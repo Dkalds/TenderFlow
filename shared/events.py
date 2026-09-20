@@ -62,6 +62,8 @@ FAMILIAS: tuple[str, ...] = (
     "ficha",
     "watchlist_rule",
     "solicitud_acceso",
+    "competidor",
+    "cuenta",
 )
 
 
@@ -193,12 +195,41 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
             tipo_notificacion="pursuit_mencion",
             clave_ajustes="pursuit.mention",
         ),
+        # F5.3: el productor (`services/contract_events`) añade al payload el
+        # `subtipo` y el texto del aviso (`aviso_titulo`, `aviso_detalle`) que
+        # calcula `services.avisos.clasificar_cambio`. La campana los usa como
+        # titular y el digest agrupa por `subtipo`. Sale por `digest` desde
+        # F5.3 con preferencia propia (por defecto `daily`): el cambio de un
+        # expediente seguido es contexto, no una acción inmediata.
         _spec(
             "licitacion.cambiada",
             "Cambio en un expediente que sigues",
             ("id_externo", "changed_fields"),
-            ("in_app", "webhook"),
+            ("in_app", "digest", "webhook"),
             tipo_notificacion="licitacion_cambiada",
+            preferencia_email=True,
+        ),
+        # F5.1. Lo emite `services/avisos_outbox.emitir_documentos_nuevos` con
+        # el cursor de `documentos.id`; `tipo` es el del adjunto (`legal`,
+        # `technical`, `additional`).
+        _spec(
+            "licitacion.documento_nuevo",
+            "Documento nuevo en un expediente que sigues",
+            ("id_externo", "tipo", "documento_id"),
+            ("in_app", "digest", "webhook"),
+            tipo_notificacion="licitacion_documento_nuevo",
+            preferencia_email=True,
+        ),
+        # F5.2. Lo emite `services/avisos_outbox.emitir_recursos` con el cursor
+        # de `resoluciones_recurso.id`. `sentido` puede llegar `None` cuando el
+        # tribunal no lo publica: el aviso sale igual, sin el sentido.
+        _spec(
+            "licitacion.recurso",
+            "Recurso sobre un expediente que sigues",
+            ("id_externo", "sentido", "resolucion_id"),
+            ("in_app", "digest", "webhook"),
+            tipo_notificacion="licitacion_recurso",
+            preferencia_email=True,
         ),
         _spec(
             "adjudicacion.detectada",
@@ -237,6 +268,49 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
             "Nueva solicitud de acceso",
             ("email",),
             ("webhook",),
+        ),
+        # F3.4. Lo emite `scheduler/competitor_alerts.check_and_notify` cuando
+        # una empresa vigilada gana en un órgano que la organización sigue
+        # (`motivo=cuenta`) o en un CPV donde tiene oportunidades abiertas
+        # (`motivo=oportunidad_abierta`). Uno por (organización, empresa,
+        # expediente); los `seguidores` son quienes vigilan la empresa en esa
+        # organización. El correo agrupado de competidores sigue saliendo por
+        # su camino de siempre: esto añade la campana y el webhook.
+        _spec(
+            "competidor.adjudicacion_en_mi_segmento",
+            "Un competidor vigilado gana en tu terreno",
+            ("id_externo", "empresa_id", "motivo"),
+            ("in_app", "webhook"),
+            tipo_notificacion="competidor_en_mi_segmento",
+        ),
+        # F1.5. Los emite `services/avisos_outbox.emitir_avisos_de_cuentas`
+        # para cada órgano de `cuentas_objetivo`; los `seguidores` son los
+        # miembros activos de la organización que sigue la cuenta.
+        _spec(
+            "cuenta.publicacion_nueva",
+            "Publicación nueva de una cuenta que sigues",
+            ("id_externo", "organo", "cuenta_id"),
+            ("in_app", "webhook"),
+            tipo_notificacion="cuenta_publicacion_nueva",
+        ),
+        _spec(
+            "cuenta.vencimiento_proximo",
+            "Contrato de una cuenta que sigues vence en seis meses",
+            ("id_externo", "organo", "cuenta_id", "fecha_fin"),
+            ("in_app", "webhook"),
+            tipo_notificacion="cuenta_vencimiento_proximo",
+        ),
+        # F4.3. Lo emite `services/cartera.emitir_avisos_de_fin` a seis, tres
+        # y un mes del fin efectivo de un contrato ganado, una vez por
+        # `(contrato, ventana, fecha de fin)`. Va al responsable de la
+        # oportunidad ganada; el opt-out es la preferencia de Ajustes.
+        _spec(
+            "pursuit.cartera_vence",
+            "Se acerca el fin de un contrato en cartera",
+            ("pursuit_id", "licitacion_id", "cartera_id", "meses", "fecha_fin", "destinatarios"),
+            ("in_app", "digest", "webhook"),
+            tipo_notificacion="cartera_vence",
+            clave_ajustes="pursuit.cartera_vence",
         ),
     )
 )

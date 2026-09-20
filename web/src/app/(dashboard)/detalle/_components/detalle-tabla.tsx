@@ -92,14 +92,12 @@ export interface DetalleTablaProps {
   detailId: string | null;
   cursor: number;
   rowSelection: Record<string, boolean>;
-  watchedIds: Set<string>;
   ccaas: string[];
   tecnologias: string[];
   compact: boolean;
   rowHeight: number;
   onOpen: (index: number, id: string) => void;
   onToggleSelect: (id: string) => void;
-  onToggleFavorite: (id: string) => void;
   onToggleCcaa: (ccaa: string) => void;
   onToggleTecnologia: (tecnologia: string) => void;
 }
@@ -142,7 +140,6 @@ export function DetalleTabla(props: DetalleTablaProps) {
                   open={props.detailId === row.id_externo}
                   picked={Boolean(props.rowSelection[row.id_externo])}
                   isCursor={index === Math.min(props.cursor, rows.length - 1)}
-                  favorite={props.watchedIds.has(row.id_externo)}
                   ccaaOn={row.ccaa ? props.ccaas.includes(row.ccaa) : false}
                   tecOn={row.tecnologia ? props.tecnologias.includes(row.tecnologia) : false}
                   compact={props.compact}
@@ -150,7 +147,6 @@ export function DetalleTabla(props: DetalleTablaProps) {
                   atenuada={props.isFetching}
                   onOpen={props.onOpen}
                   onToggleSelect={props.onToggleSelect}
-                  onToggleFavorite={props.onToggleFavorite}
                   onToggleCcaa={props.onToggleCcaa}
                   onToggleTecnologia={props.onToggleTecnologia}
                 />

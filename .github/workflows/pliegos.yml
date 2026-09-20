@@ -139,6 +139,7 @@ jobs:
         env:
           IN_PLIEGO_FACTS_ENABLED: ${{ vars.PLIEGO_FACTS_ENABLED }}
           IN_PLIEGO_FACTS_MODEL: ${{ vars.PLIEGO_FACTS_MODEL }}
+          IN_RESUMEN_PREGEN_ENABLED: ${{ vars.RESUMEN_PREGEN_ENABLED }}
           IN_FETCH_BATCH: ${{ inputs.fetch_batch }}
           IN_EMBED_BATCH: ${{ inputs.embed_batch }}
           IN_FACTS_BATCH: ${{ inputs.facts_batch }}
@@ -150,6 +151,14 @@ jobs:
           fi
           if [ -n "${IN_PLIEGO_FACTS_MODEL:-}" ]; then
             echo "PLIEGO_FACTS_MODEL=$IN_PLIEGO_FACTS_MODEL" >> "$GITHUB_ENV"
+          fi
+          # Pre-generación del resumen IA (config/settings_resumen.py). Sin la
+          # variable de repo no se exporta nada y manda el default del código,
+          # que es apagado: genera gasto LLM y se enciende a propósito. Aun
+          # encendida, la fase se salta sola si no hay REDIS_URL (ver el step
+          # siguiente): el resumen tiene que caer en la caché compartida.
+          if [ -n "${IN_RESUMEN_PREGEN_ENABLED:-}" ]; then
+            echo "RESUMEN_PREGEN_ENABLED=$IN_RESUMEN_PREGEN_ENABLED" >> "$GITHUB_ENV"
           fi
           # Los cuatro tamaños de lote son inputs de workflow_dispatch, no
           # `vars`: en el cron nocturno llegan vacíos y entonces manda el default
@@ -173,8 +182,8 @@ jobs:
         env:
           # ENV=prod porque este job escribe en la BD de producción, así que
           # los validators de datos (TLS de DATABASE_URL, alertas) deben estar
-          # activos. APP_PROFILE=scraper omite los secretos que solo necesita
-          # el proceso HTTP (SIGNING_KEY, REDIS_URL, CORS): son ejes distintos.
+          # activos. APP_PROFILE=scraper omite los secretos que solo exige
+          # el proceso HTTP (SIGNING_KEY, CORS): son ejes distintos.
           ENV: prod
           APP_PROFILE: scraper
           # ADR-012: este workflow ES el plano de orquestación activo para
@@ -182,6 +191,15 @@ jobs:
           SCHEDULER_PLANE: actions
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          # Redis compartido con la API. Lo necesita la pre-generación del
+          # resumen IA (el resumen tiene que caer en la caché que lee la API,
+          # no en la memoria de un runner que muere al terminar) y, de paso,
+          # el BudgetGuard del LLM: con Redis el presupuesto es el acumulado de
+          # verdad; sin él, arranca de 0 en cada corrida. No es obligatorio:
+          # sin el secret llegan vacíos, que es el default del código, y la
+          # fase de resumen se salta sola.
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

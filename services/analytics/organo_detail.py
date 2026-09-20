@@ -1,8 +1,9 @@
 """Organo detail analytics — drill-down for a single contracting body.
 
 Consume proyecciones ACOTADAS al órgano pedido (ADR-023):
-``AggregateRepository.licitaciones_por_organo`` y
-``AdjudicacionRepository.load_por_organo``, las dos con los filtros del ámbito
+``AggregateRepository.licitaciones_por_organo`` y tres agregados de
+``AdjudicacionRepository`` (top adjudicatarios, lead-time mediano y mejor
+adjudicación de los mejor puntuados), todos con los filtros del ámbito
 en el ``WHERE`` — todo lo que pinta el panel (KPIs, adjudicatarios, lead-time,
 estacionalidad y ranking) mide el mismo subconjunto. Hasta 2026-08 cargaba
 las dos tablas completas a pandas en el proceso API — bloqueado en Render por
@@ -17,6 +18,7 @@ loader raw tampoco traía esa columna derivada).
 
 from __future__ import annotations
 
+import math
 from datetime import date
 from typing import Any
 
@@ -123,6 +125,13 @@ def _to_repo_filters(filters: OrganoDetailFilters) -> LicitacionesFilters:
 def _lead_time_median(adj_df: pd.DataFrame) -> float | None:
     """Mediana de días entre publicación y adjudicación.
 
+    **Referencia de semántica**, no el camino de producción: desde C3.2 el
+    drill-down la pide agregada en SQL
+    (``AdjudicacionRepository.lead_time_mediano_por_organo``), y
+    ``tests/test_organo_detail_sql_paridad.py`` compara las dos sobre la misma
+    muestra. Se conserva porque es la definición legible de lo que el SQL
+    tiene que devolver.
+
     Espera un DataFrame de adjudicaciones con columnas ``fecha_publicacion``
     (de la licitación asociada) y ``fecha_adjudicacion``. Solo cuenta diferencias
     positivas. Devuelve ``None`` si no hay pares válidos.
@@ -140,22 +149,31 @@ def _lead_time_median(adj_df: pd.DataFrame) -> float | None:
     return float(valid.median())
 
 
-def _adj_lookup_for(adj_df: pd.DataFrame, ids: pd.Series) -> dict[str, dict[str, Any]]:
-    """Mejor adjudicación (mayor importe) por licitación de ``ids``."""
+def _numero(valor: object) -> float | None:
+    """``float`` de un importe, o ``None`` si falta o no es numérico (``to_numeric`` coerce)."""
+    if valor is None:
+        return None
+    try:
+        numero = float(str(valor))
+    except ValueError:
+        return None
+    return None if math.isnan(numero) else numero
+
+
+def _adj_lookup_for(filas: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Empresa, baja y fecha de la mejor adjudicación de cada licitación.
+
+    ``filas`` ya viene con una adjudicación por licitación —la de mayor
+    importe— desde ``mejor_adjudicacion_por_licitacion``; aquí sólo se deriva
+    la baja porcentual y se formatea la fecha.
+    """
     lookup: dict[str, dict[str, Any]] = {}
-    if adj_df.empty:
-        return lookup
-    sub = adj_df[adj_df["licitacion_id"].isin(ids)].copy()
-    if sub.empty:
-        return lookup
-    sub = sub.sort_values("_importe", ascending=False)
-    sub = sub.drop_duplicates(subset=["licitacion_id"], keep="first")
-    for _, row in sub.iterrows():
-        importe_lic = row.get("_importe_licitacion")
-        importe_adj = row.get("_importe")
+    for row in filas:
+        importe_lic = _numero(row.get("importe_licitacion"))
+        importe_adj = _numero(row.get("importe_adjudicado"))
         baja = None
-        if pd.notna(importe_adj) and pd.notna(importe_lic) and float(importe_lic) > 0:
-            baja = float((1 - float(importe_adj) / float(importe_lic)) * 100)
+        if importe_adj is not None and importe_lic is not None and importe_lic > 0:
+            baja = float((1 - importe_adj / importe_lic) * 100)
         fecha_adj = None
         if pd.notna(row.get("fecha_adjudicacion")):
             try:
@@ -173,6 +191,41 @@ def _adj_lookup_for(adj_df: pd.DataFrame, ids: pd.Series) -> dict[str, dict[str,
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def _estacionalidad(fechas: list[tuple[int, int]]) -> list[Estacionalidad]:
+    """Media de publicaciones por mes de calendario, con denominador por mes.
+
+    ``fechas`` son ``(año, mes)`` de cada publicación. El denominador de cada
+    mes es **cuántas veces cae ese mes de calendario en el tramo con datos**
+    —del primer mes con publicaciones al último—, no el número de años
+    distintos. Con el ``n_years`` global que había, un tramo de marzo de 2024 a
+    febrero de 2026 tiene tres años distintos pero solo dos marzos y dos
+    febreros: todos los meses se dividían entre tres y la curva salía un tercio
+    más baja, y un mes que cae dos veces valía lo mismo que uno que cae tres.
+    Es la misma regla que ``forecast_svc.get_estacionalidad_organo`` (nota T5
+    de ``docs/plans/2026-09-plan-arquitectura-v2.md``).
+
+    Un mes de calendario que no cae en el tramo no sale (no hay denominador);
+    uno que cae y no tiene publicaciones tampoco, igual que antes: la serie
+    lista los meses con actividad.
+    """
+    if not fechas:
+        return []
+    ordinales = [anio * 12 + (mes - 1) for anio, mes in fechas]
+    primero, ultimo = min(ordinales), max(ordinales)
+    denominadores: dict[int, int] = {}
+    for ordinal in range(primero, ultimo + 1):
+        mes = ordinal % 12 + 1
+        denominadores[mes] = denominadores.get(mes, 0) + 1
+    numeradores: dict[int, int] = {}
+    for ordinal in ordinales:
+        mes = ordinal % 12 + 1
+        numeradores[mes] = numeradores.get(mes, 0) + 1
+    return [
+        Estacionalidad(mes_numero=mes, count=round(numeradores[mes] / denominadores[mes]))
+        for mes in sorted(numeradores)
+    ]
 
 
 def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetailResult:
@@ -208,34 +261,20 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
         lead_time_medio=None,
     )
 
-    # Adjudicatarios del órgano (proyección acotada, con el mismo ámbito que
-    # las licitaciones de arriba: si el panel dice "13 licitaciones SAP", su
-    # top adjudicatario tiene que salir de esas 13).
-    adj_df = pd.DataFrame(_adj_repo.load_por_organo(organo, repo_filters))
-    top_adj: list[TopAdjudicatario] = []
-    if not adj_df.empty:
-        adj_df = adj_df.assign(
-            _importe=pd.to_numeric(adj_df["importe_adjudicado"], errors="coerce"),
-            _importe_licitacion=pd.to_numeric(adj_df["importe_licitacion"], errors="coerce"),
+    # Adjudicatarios del órgano, con el mismo ámbito que las licitaciones de
+    # arriba: si el panel dice "13 licitaciones SAP", su top adjudicatario
+    # tiene que salir de esas 13. Ranking y lead-time se agregan en SQL (C3.2):
+    # antes se traían todas las adjudicaciones del órgano a un DataFrame para
+    # quedarse con veinte filas y una mediana.
+    top_adj = [
+        TopAdjudicatario(
+            nombre=str(fila["nombre"]),
+            count=int(fila["count"]),
+            importe=float(fila["importe"] or 0),
         )
-        g = (
-            adj_df.groupby("nombre")
-            .agg(count=("nombre", "count"), importe=("_importe", "sum"))
-            .sort_values("count", ascending=False)
-            .head(20)
-            .reset_index()
-        )
-        top_adj = [
-            TopAdjudicatario(
-                nombre=str(row["nombre"]),
-                count=int(row["count"]),
-                importe=float(row["importe"] or 0),
-            )
-            for _, row in g.iterrows()
-        ]
-
-        # Lead time mediano (pub → adj) sobre las adjudicaciones del órgano
-        kpis.lead_time_medio = _lead_time_median(adj_df)
+        for fila in _adj_repo.top_adjudicatarios_por_organo(organo, repo_filters)
+    ]
+    kpis.lead_time_medio = _adj_repo.lead_time_mediano_por_organo(organo, repo_filters)
 
     # Top adjudicatario en kpis
     if top_adj:
@@ -243,17 +282,10 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
         kpis.top_adj_importe = top_adj[0].importe
 
     # Estacionalidad
-    estacionalidad: list[Estacionalidad] = []
     valid_dates = df.dropna(subset=["fecha_publicacion"])
-    if not valid_dates.empty:
-        valid_dates = valid_dates.copy()
-        valid_dates["mes_num"] = valid_dates["fecha_publicacion"].dt.month
-        n_years = max(valid_dates["fecha_publicacion"].dt.year.nunique(), 1)
-        mes_counts = valid_dates.groupby("mes_num").size()
-        estacionalidad = [
-            Estacionalidad(mes_numero=int(str(m)), count=round(c / n_years))
-            for m, c in mes_counts.items()
-        ]
+    estacionalidad = _estacionalidad(
+        [(int(f.year), int(f.month)) for f in valid_dates["fecha_publicacion"]]
+    )
 
     # Top scored — el mismo motor que el Radar, enriquecido con adjudicación.
     #
@@ -267,7 +299,11 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
     df = df.merge(scored_df.rename(columns={"score": "_score"}), on="id_externo", how="left")
     df["_score"] = df["_score"].fillna(0)
     top_scored_df = df.nlargest(30, "_score").copy()
-    adj_lookup = _adj_lookup_for(adj_df, top_scored_df["id_externo"])
+    adj_lookup = _adj_lookup_for(
+        _adj_repo.mejor_adjudicacion_por_licitacion(
+            organo, [str(i) for i in top_scored_df["id_externo"]], repo_filters
+        )
+    )
 
     top_scored = []
     for _, row in top_scored_df.iterrows():

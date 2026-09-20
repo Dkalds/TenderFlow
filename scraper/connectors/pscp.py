@@ -145,6 +145,58 @@ def _number(record: dict[str, Any], concept: str) -> float | None:
         return None
 
 
+def _numero_de_campo(record: dict[str, Any], name: str) -> float | None:
+    """El valor numérico de UN campo concreto, o ``None`` si falta o no es número."""
+    value = record.get(name)
+    if value in (None, ""):
+        return None
+    try:
+        return float(str(value).strip().replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _importes(record: dict[str, Any]) -> dict[str, Any]:
+    """Los importes de la fila con la base declarada (ADR-032, D21).
+
+    ``importe`` salía del primer candidato presente del concepto, y la fila no
+    guardaba cuál había sido: el mismo número podía ser el presupuesto sin IVA,
+    el mismo presupuesto con IVA, el valor estimado o —si no había ninguno— el
+    importe **adjudicado**. Aquí se decide por el nombre del campo que casó,
+    que es lo único que dice de qué base es:
+
+    - ``pressupost_licitacio_sense`` → ``sin_iva``, y es la base de comparación
+      (``importe_base_sin_iva``). Si la fila trae además el ``_amb``, se
+      conserva en ``importe_con_iva``.
+    - ``pressupost_licitacio_amb`` → ``con_iva``.
+    - ``valor_estimat_contracte`` → ``sin_iva`` (la LCSP define el valor
+      estimado sin IVA) pero **no** es presupuesto: va a ``valor_estimado`` y
+      ``importe_base_sin_iva`` queda vacío, para que bajas y pricing no lo
+      comparen contra lo adjudicado.
+    - Los candidatos históricos sin sufijo (``pressupost_licitacio``,
+      ``import_licitacio``) y el importe adjudicado usado como último recurso →
+      ``desconocido``: su base no se puede afirmar.
+    """
+    sense = _numero_de_campo(record, "pressupost_licitacio_sense")
+    amb = _numero_de_campo(record, "pressupost_licitacio_amb")
+    if sense is not None:
+        return {
+            "importe": sense,
+            "importe_base_sin_iva": sense,
+            "importe_con_iva": amb,
+            "importe_tipo": "sin_iva",
+        }
+    if amb is not None:
+        return {"importe": amb, "importe_con_iva": amb, "importe_tipo": "con_iva"}
+    estimado = _numero_de_campo(record, "valor_estimat_contracte")
+    if estimado is not None:
+        return {"importe": estimado, "valor_estimado": estimado, "importe_tipo": "sin_iva"}
+    importe = _number(record, "importe") or _number(record, "importe_adjudicacion")
+    if importe is None:
+        return {"importe": None, "importe_tipo": None}
+    return {"importe": importe, "importe_tipo": "desconocido"}
+
+
 def _marca_actualizacion(record: dict[str, Any]) -> str | None:
     """Recencia de la fila: el ``:updated_at`` de Socrata, o ``None`` si no es ISO.
 
@@ -353,7 +405,7 @@ class PscpConnector:
         cpv = _text(record, "cpv")
         if cpv:
             cpv = cpv.split(",")[0].split(";")[0].strip() or None
-        importe = _number(record, "importe") or _number(record, "importe_adjudicacion")
+        importes = _importes(record)
 
         # C4.1 / D24 — el conector acota al universo tecnológico.
         #
@@ -390,7 +442,11 @@ class PscpConnector:
             titulo=titulo[:500],
             descripcion=None,
             organo_contratacion=organo,
-            importe=importe,
+            importe=importes["importe"],
+            importe_base_sin_iva=importes.get("importe_base_sin_iva"),
+            importe_con_iva=importes.get("importe_con_iva"),
+            valor_estimado=importes.get("valor_estimado"),
+            importe_tipo=importes["importe_tipo"],
             cpv=cpv,
             tipo_contrato=_text(record, "tipo_contrato"),
             estado=estado,

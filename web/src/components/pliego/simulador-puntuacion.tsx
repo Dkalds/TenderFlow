@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePrediccionBaja } from "@/hooks/use-prediccion-baja";
 import { type SimulacionPrecio, useSimuladorPrecio } from "@/hooks/use-simulador-precio";
+import { type TenderFactSheetRecord, useTenderFactSheet } from "@/hooks/use-tender-fact-sheet";
 import { registrarEvento } from "@/lib/analytics";
 import { formatNumber, formatPercent } from "@/lib/utils";
 
@@ -54,6 +55,18 @@ function formulaParaTelemetria(tipo: string | null | undefined): FormulaTelemetr
   return tipo in FORMULAS ? (tipo as FormulaTelemetria) : "otra";
 }
 
+/**
+ * F2.4 — ¿el pliego trae tarifas con las que el backend puede dar margen?
+ * Hace falta tarifa **y** horas (la misma condición que `margen_implicito`).
+ * Sin ficha cargada no se sabe, y no se manda: un «no» por defecto mediría la
+ * latencia de la ficha, no los pliegos.
+ */
+export function conTarifas(ficha: TenderFactSheetRecord | undefined): "si" | "no" | undefined {
+  if (!ficha) return undefined;
+  const tarifas = ficha.facts?.rate_cards ?? [];
+  return tarifas.some((t) => t.max_rate_eur_hour != null && t.estimated_hours != null) ? "si" : "no";
+}
+
 /** «12», «12,5» o «12.5» → 0.125. Fuera de 0–100 o ilegible → `null`. */
 export function parsearBajaPct(texto: string): number | null {
   const limpio = texto.trim().replace("%", "").replace(",", ".");
@@ -81,6 +94,9 @@ function Hueco({ hueco }: { hueco: number }) {
 export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) {
   const referencia = useSimuladorPrecio(licitacionId);
   const { data: prediccion } = usePrediccionBaja(licitacionId);
+  // F2.4 — sólo para `con_tarifas`: la misma clave que la ficha del pliego del
+  // inspector, así que casi siempre ya está en caché.
+  const { data: ficha } = useTenderFactSheet(licitacionId);
   const [propiaTexto, setPropiaTexto] = React.useState("");
   const [rivalTexto, setRivalTexto] = React.useState("");
   const [enviada, setEnviada] = React.useState<{ propia: number; rival: number | null } | null>(
@@ -111,10 +127,12 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
     const clave = `${enviada.propia}|${enviada.rival}`;
     if (emitida.current === clave) return;
     emitida.current = clave;
+    const tarifas = conTarifas(ficha);
     registrarEvento("simulador_usado", {
       formula_tipo: formulaParaTelemetria(propio.data.formula_tipo),
+      ...(tarifas ? { con_tarifas: tarifas } : {}),
     });
-  }, [enviada, propio.data, propio.isPlaceholderData]);
+  }, [enviada, propio.data, propio.isPlaceholderData, ficha]);
 
   const p90 = prediccion?.baja_real == null ? (prediccion?.p90 ?? null) : null;
   const data = referencia.data;

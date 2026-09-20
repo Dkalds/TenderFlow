@@ -1,18 +1,51 @@
 "use client";
 
-import { Star } from "lucide-react";
+import { SeguirBoton } from "@/components/seguir-boton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pista } from "@/components/ui/pista";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { bandColor, shortEur } from "../../radar/_components/radar-shared";
+import { useMetaFilters } from "@/hooks/use-meta-filters";
+import { resolverCodigo } from "@/lib/procedimientos";
 import type { MergedRow } from "../_hooks/detalle-table-model";
+
+/**
+ * F1.7 — procedimiento legible, con la tramitación y la definición en la
+ * `Pista`. Sin `?` por fila: serían veinticinco paradas de tabulación más
+ * dentro de filas que ya son focusables; la definición entera está en la
+ * ficha. Un código sin catalogar se ve tal cual, con su aviso en el texto.
+ */
+function ProcedimientoCelda({
+  procedimiento,
+  tramitacion,
+}: {
+  procedimiento: string | null | undefined;
+  tramitacion: string | null | undefined;
+}) {
+  const { data: meta } = useMetaFilters();
+  const proc = resolverCodigo(meta, "procedimiento", procedimiento);
+  const tram = resolverCodigo(meta, "tramitacion", tramitacion);
+  if (!proc) return <span className="text-muted-foreground">—</span>;
+  const texto = proc.catalogado ? proc.etiqueta : `${proc.codigo} (código no catalogado)`;
+  const pista = [
+    proc.descripcion,
+    tram ? `Tramitación: ${tram.catalogado ? tram.etiqueta : `${tram.codigo} (no catalogada)`}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <Pista contenido={pista || null}>
+      <span className="block truncate text-[11.5px] text-muted-foreground">{texto}</span>
+    </Pista>
+  );
+}
 
 /**
  * Una fila de la tabla de Detalle.
  *
- * Las trece celdas en el mismo orden que declara `COLUMNS`: sin esa
+ * Las catorce celdas en el mismo orden que declara `COLUMNS`: sin esa
  * correspondencia el `<colgroup>` reparte anchos sobre columnas equivocadas.
  * Las dos celdas de cross-filter (CCAA y Tecnología) son botones y no texto
  * porque filtran; lo demás es dato.
@@ -23,7 +56,6 @@ export function DetalleFila({
   open,
   picked,
   isCursor,
-  favorite,
   ccaaOn,
   tecOn,
   compact,
@@ -31,7 +63,6 @@ export function DetalleFila({
   atenuada,
   onOpen,
   onToggleSelect,
-  onToggleFavorite,
   onToggleCcaa,
   onToggleTecnologia,
 }: {
@@ -40,7 +71,6 @@ export function DetalleFila({
   open: boolean;
   picked: boolean;
   isCursor: boolean;
-  favorite: boolean;
   ccaaOn: boolean;
   tecOn: boolean;
   compact: boolean;
@@ -49,7 +79,6 @@ export function DetalleFila({
   atenuada: boolean;
   onOpen: (index: number, id: string) => void;
   onToggleSelect: (id: string) => void;
-  onToggleFavorite: (id: string) => void;
   onToggleCcaa: (ccaa: string) => void;
   onToggleTecnologia: (tecnologia: string) => void;
 }) {
@@ -106,23 +135,20 @@ export function DetalleFila({
             del pie— y el `aria-label` sí distingue añadir de
             quitar, que es lo que el `title` no hacía. De paso
             son 25 Popovers menos por página. */}
-        <button
-          type="button"
-          aria-label={favorite ? "Quitar de favoritos" : "Añadir a favoritos"}
-          aria-pressed={favorite}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleFavorite(row.id_externo);
+        {/* El control único de ADR-031 §C (el mismo del Radar), con la piel
+            y los nombres accesibles de siempre de esta tabla. */}
+        <SeguirBoton
+          targetType="licitacion"
+          targetId={row.id_externo}
+          variante="icono"
+          icono="estrella"
+          nombreAccesible={{ seguir: "Añadir a favoritos", dejar: "Quitar de favoritos" }}
+          clases={{
+            base: "tf-pressable grid h-6 w-6 place-items-center rounded transition-colors duration-140 ease-out",
+            activo: "text-primary",
+            inactivo: "text-muted-foreground/45",
           }}
-          className="tf-pressable grid h-6 w-6 place-items-center rounded"
-        >
-          <Star
-            className={cn(
-              "h-3.5 w-3.5 transition-colors duration-140 ease-out",
-              favorite ? "fill-primary text-primary" : "text-muted-foreground/45",
-            )}
-          />
-        </button>
+        />
       </td>
       <td className="truncate px-1 font-mono text-[10.5px] text-muted-foreground">
         {row.id_externo.replace("PLACSP-", "")}
@@ -155,6 +181,9 @@ export function DetalleFila({
       </td>
       <td className="px-1">
         <StatusBadge value={row.estado} kind="estado" className="text-[10.5px]" />
+      </td>
+      <td className="px-1">
+        <ProcedimientoCelda procedimiento={row.procedimiento} tramitacion={row.tramitacion} />
       </td>
       <td className="truncate px-1 align-middle whitespace-nowrap">
         <span

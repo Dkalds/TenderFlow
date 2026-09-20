@@ -48,6 +48,7 @@ from api.middleware import (
     _RejectNulMiddleware,
     correlation_id_middleware,
 )
+from api.routes.admin_dlq import router as admin_dlq_router
 from api.routes.admin_solicitudes import router as admin_solicitudes_router
 from api.routes.admin_users import router as admin_users_router
 from api.routes.analytics import router as analytics_router
@@ -487,6 +488,7 @@ if not _ES_WORKER:
     app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(admin_users_router, prefix="/api/v1")
     app.include_router(admin_solicitudes_router, prefix="/api/v1")
+    app.include_router(admin_dlq_router, prefix="/api/v1")
     app.include_router(feature_flags_router, prefix="/api/v1")
     app.include_router(tecnologias_keywords_router, prefix="/api/v1")
     app.include_router(ask_router, prefix="/api/v1")

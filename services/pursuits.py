@@ -54,7 +54,13 @@ from shared.dto import (
     RadarQuality,
 )
 from shared.identity import user_key_from_email
-from shared.scoring_weights import KNOWN_WEIGHT_KEYS, WEIGHTS_TOTAL, validate_scoring_weights
+from shared.scoring_weights import (
+    KNOWN_WEIGHT_KEYS,
+    WEIGHTS_TOTAL,
+    dimension_weights,
+    penalty_weights,
+    validate_scoring_weights,
+)
 from shared.tender_facts import RequiredDocumentFact
 
 _repo = PursuitRepository()
@@ -438,7 +444,32 @@ def update_pursuit(
             _notificar_asignacion(updated, actor_user_id=user_id)
         if changes.get("status") == "preparing":
             _instanciar_plantilla_tareas(updated, resolved_id, pursuit_id, user_id)
+        if updated.get("status") == "won" and (
+            "status" in changes or "awarded_amount_eur" in changes
+        ):
+            _registrar_en_cartera(resolved_id, pursuit_id)
         return _detalle(updated, resolved_id, pursuit_id)
+
+
+def _registrar_en_cartera(organization_id: int, pursuit_id: int) -> None:
+    """F4.3 — la oportunidad ganada pasa a la cartera de contratos.
+
+    También al corregir el importe de una ya ganada: la cartera lo enseña.
+    Fail-open, por lo mismo que la plantilla de tareas: el cierre ya está
+    guardado, y la resincronización diaria (`cartera_avisos`) recoge la fila
+    si esta escritura falla.
+    """
+    from services.cartera import registrar_ganada
+
+    try:
+        registrar_ganada(organization_id, pursuit_id)
+    except Exception as exc:
+        log.warning(
+            "cartera_registro_error",
+            pursuit_id=pursuit_id,
+            organization_id=organization_id,
+            error=str(exc)[:200],
+        )
 
 
 def _instanciar_plantilla_tareas(
@@ -1306,8 +1337,10 @@ def _pesos_vigentes(
     perfil = get_user_profile(user_key, organization_id, user_id=user_id)
     weights = (perfil or {}).get("weights")
     if isinstance(weights, dict) and weights:
-        return {str(k): int(v) for k, v in weights.items()}, "perfil"
-    return dict(settings.SCORING_WEIGHTS), "global"
+        # Solo dimensiones: las penalizaciones (F1.4) no se reparten ni se
+        # enseñan como parte del 100.
+        return dimension_weights({str(k): int(v) for k, v in weights.items()}), "perfil"
+    return dimension_weights(settings.SCORING_WEIGHTS), "global"
 
 
 def _desgloses_cerrados(
@@ -1413,6 +1446,12 @@ def apply_weights_proposal(
     # reemplaza la fila entera— lo pisaría con nulos y publicaría como
     # `organization` un perfil que era `private`.
     previo = get_own_user_profile(user_key, user_id=user_id)
+    # La propuesta reparte dimensiones; las penalizaciones (F1.4) no son
+    # dimensiones y no las toca. Si el perfil tenía una —p. ej. la de anulación
+    # a cero—, sigue igual tras aplicar.
+    previos_pesos = (previo or {}).get("weights")
+    if isinstance(previos_pesos, dict):
+        pesos = {**pesos, **penalty_weights(previos_pesos)}
     visibility: Literal["private", "organization"] = (
         "private" if str((previo or {}).get("visibility") or "") == "private" else "organization"
     )

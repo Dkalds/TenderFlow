@@ -484,8 +484,13 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # medias por CPV-4 con muestras de tres expedientes. `margen` se deja
     # intacta porque es la única que viene de una predicción por licitación.
     #
+    # `organo_anula_frecuente` (F1.4) **no es una dimensión**: no cuenta en la
+    # suma de 100. Son los puntos que se restan cuando el órgano anula o deja
+    # desiertos al menos el 25 % de sus expedientes resueltos (mínimo diez, 24
+    # meses). 0 la apaga; el perfil de usuario puede sobreescribirla.
+    #
     # Overridable via ENV como JSON:
-    #   SCORING_WEIGHTS='{"importe":20,"plazo":15,"competencia":20,"margen":20,"afinidad":15,"senal_tecnica":10}'
+    #   SCORING_WEIGHTS='{"importe":20,"plazo":15,"competencia":20,"margen":20,"afinidad":15,"senal_tecnica":10,"organo_anula_frecuente":8}'
     SCORING_WEIGHTS: dict[str, int] = {
         "importe": 20,
         "plazo": 15,
@@ -493,6 +498,7 @@ class Settings(ResumenPregenSettings, BaseSettings):
         "margen": 20,
         "afinidad": 15,
         "senal_tecnica": 10,
+        "organo_anula_frecuente": 8,
     }
     # Keywords de afinidad configurables por el usuario (casefold-substring sobre título).
     # Si está vacía, la dimensión afinidad se omite del desglose y su peso se
@@ -585,6 +591,14 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # fragmento devuelve la columna vieja byte a byte. La escritura dual no
     # depende de esto — `db/upsert.py` escribe las sombras en cuanto existen.
     NUCLEO_TIPADO_LECTURA: bool = False
+    # ── Seguimiento unificado (T1, ADR-031 §B fase 2, v130) ────────────────
+    # Con True, `GET /watchlist/items`, `GET /competitive/watchlist` y los
+    # descartes del Radar deciden la pertenencia leyendo `follows`; la tabla de
+    # origen sólo aporta las columnas que `follows` no tiene (nota, correo,
+    # frecuencia, acción del descarte). Default False hasta que
+    # `scripts/check_follows_paridad.py` dé cero diferencias en producción.
+    # Las escrituras no dependen de esto: la doble escritura ya está activa.
+    FOLLOWS_LECTURA: bool = False
     # Extracción tipada de ficha del pliego. Requiere credencial para el modelo
     # seleccionado; se activa de forma explícita para no generar gasto por el
     # mero despliegue de la migración.
@@ -599,9 +613,10 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devolvía 410.
     PLIEGO_FACTS_MODEL: str = "deepseek-ai/deepseek-v4-flash-0731"
     # Tamaños de lote por fase del job scheduler/jobs/documentos_embeddings.py.
-    # pliegos.yml no propaga REDIS_URL, así que el gate de presupuesto LLM
-    # arranca de 0 en cada corrida -- el tope real del batch de facts es este
-    # tamaño de lote, no un presupuesto acumulado (documentado, no un bug).
+    # pliegos.yml propaga REDIS_URL desde el secret del mismo nombre; si el
+    # secret no está definido, el gate de presupuesto LLM arranca de 0 en cada
+    # corrida y el tope real del batch de facts es este tamaño de lote, no un
+    # presupuesto acumulado (documentado, no un bug).
     PLIEGO_FETCH_BATCH: int = 300
     PLIEGO_EMBED_BATCH: int = 100
     PLIEGO_FACTS_BATCH: int = 25
@@ -1417,6 +1432,42 @@ def jobs_cierre_por_cola() -> bool:
     if not crudo:
         return True
     return crudo not in ("0", "false", "no", "off")
+
+
+# ── Despachador del outbox (S4.1) ────────────────────────────────────────────
+
+#: Antigüedad máxima, en horas, de un evento que el despachador todavía entrega.
+#:
+#: El despachador estuvo escrito y sin cablear desde S4.1: cuando se enchufó, la
+#: cola traía semanas de ``domain_events`` sin repartir. Entregarlos habría sido
+#: un aluvión de correos y webhooks sobre cosas que ya no importan —«te han
+#: asignado» una oportunidad que se cerró hace diez días—, así que lo que supera
+#: esta antigüedad se marca como despachado **sin** entregarse, con su conteo en
+#: el log y en ``ops_events``. 48 h cubren un fin de semana con el cierre caído
+#: sin tirar nada que todavía se pueda leer como noticia.
+EVENT_DISPATCH_MAX_AGE_HOURS_DEFAULT = 48
+
+
+def event_dispatch_enabled() -> bool:
+    """¿El cierre reparte el outbox de ``domain_events``?
+
+    Por defecto sí, en todos los entornos: un aviso que no sale es un fallo que
+    nadie ve. ``EVENT_DISPATCH_ENABLED=0`` lo apaga sin desplegar código —la
+    salida de escape si el reparto diera problemas—; los eventos se siguen
+    escribiendo y esperan en la cola, sujetos a la antigüedad máxima cuando se
+    vuelva a encender.
+    """
+    crudo = os.environ.get("EVENT_DISPATCH_ENABLED", "").strip().lower()
+    if not crudo:
+        return True
+    return crudo not in ("0", "false", "no", "off")
+
+
+def event_dispatch_max_age_hours() -> int:
+    """Horas tras las que un evento pendiente caduca sin entregarse (mínimo 1)."""
+    return _entero_env(
+        "EVENT_DISPATCH_MAX_AGE_HOURS", EVENT_DISPATCH_MAX_AGE_HOURS_DEFAULT, minimo=1
+    )
 
 
 # ── ANCLA S8 — documentos: almacén de objetos y OCR ──────────────────────

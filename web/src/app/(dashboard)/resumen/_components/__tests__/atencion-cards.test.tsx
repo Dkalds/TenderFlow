@@ -155,6 +155,10 @@ describe("AtencionCards", () => {
     const pedidas = fetchWithAuth.mock.calls.map(([url]) => url);
     const cola = pedidas.find((url) => url.includes("/api/v1/licitaciones"));
     expect(cola).toBeDefined();
+    // Por el cursor, no por el listado por offset que se retira (RFC
+    // 2026-09-06); y sin COUNT(*): el recorte lo dice `has_more`.
+    expect(cola).toContain("/api/v1/licitaciones/cursor?");
+    expect(cola).not.toContain("with_total");
     expect(cola).toMatch(/cierre_desde=\d{4}-\d{2}-\d{2}/);
     expect(cola).toMatch(/cierre_hasta=\d{4}-\d{2}-\d{2}/);
     // `vencen_48h` cuenta sin guardia de estado, así que la lista tampoco la

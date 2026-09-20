@@ -17,7 +17,8 @@ import { formatCurrency, formatNumber } from "@/lib/utils";
 
 interface MonthlyEntry {
   mes: string;
-  publicaciones: number;
+  /** Publicaciones o cierres del mes, según la vista; lo nombra `etiqueta`. */
+  count: number;
   importe: number;
 }
 
@@ -28,7 +29,13 @@ interface DowEntry {
 
 /* ── Exported chart components ─────────────────────────────────── */
 
-export function CalendarioMonthlyChart({ data }: { data: MonthlyEntry[] }) {
+export function CalendarioMonthlyChart({
+  data,
+  etiqueta = "Publicaciones",
+}: {
+  data: MonthlyEntry[];
+  etiqueta?: string;
+}) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={300}>
@@ -48,7 +55,7 @@ export function CalendarioMonthlyChart({ data }: { data: MonthlyEntry[] }) {
             }
           />
           <Legend />
-          <Bar yAxisId="left" dataKey="publicaciones" fill="hsl(221, 83%, 53%)" radius={[4, 4, 0, 0]} name="Publicaciones" />
+          <Bar yAxisId="left" dataKey="count" fill="hsl(221, 83%, 53%)" radius={[4, 4, 0, 0]} name={etiqueta} />
           <Bar yAxisId="right" dataKey="importe" fill="hsl(160, 60%, 45%)" radius={[4, 4, 0, 0]} name="Importe" />
         </BarChart>
       </ResponsiveContainer>

@@ -57,12 +57,49 @@ describe("useDetalleTableState", () => {
       { initialProps: { q: "" } },
     );
 
-    act(() => result.current.setPagination({ pageIndex: 6, pageSize: PAGE_SIZE }));
-    expect(result.current.queryParams.offset).toBe("150");
+    act(() => result.current.registrarSiguiente(0, "c1"));
+    act(() => result.current.irAPagina(1));
+    expect(result.current.queryParams.cursor).toBe("c1");
 
     rerender({ q: "sap" });
     expect(result.current.pagination.pageIndex).toBe(0);
-    expect(result.current.queryParams.offset).toBe("0");
+    expect(result.current.queryParams.cursor).toBeUndefined();
+    // Los cursores aprendidos eran de otra búsqueda: se olvidan.
+    expect(result.current.alcanzables).toBe(1);
+  });
+
+  it("sólo se va a páginas cuyo cursor ya se conoce", () => {
+    const { result } = renderHook(() => useDetalleTableState({ filterParams: {}, q: "" }));
+    expect(result.current.alcanzables).toBe(1);
+
+    // Sin cursor de la 2 no se puede saltar a ella.
+    act(() => result.current.irAPagina(2));
+    expect(result.current.pagination.pageIndex).toBe(0);
+
+    act(() => result.current.registrarSiguiente(0, "c1"));
+    act(() => result.current.registrarSiguiente(0, "otro"));  // ya conocido: no pisa
+    act(() => result.current.registrarSiguiente(5, "c6"));  // fuera de secuencia: no entra
+    expect(result.current.alcanzables).toBe(2);
+
+    act(() => result.current.irAPagina(1));
+    expect(result.current.pagination.pageIndex).toBe(1);
+    expect(result.current.queryParams.cursor).toBe("c1");
+
+    act(() => result.current.irAPagina(0));
+    expect(result.current.queryParams.cursor).toBeUndefined();
+  });
+
+  it("cambiar el orden vuelve a la primera página: el cursor es de otro orden", () => {
+    const { result } = renderHook(() => useDetalleTableState({ filterParams: {}, q: "" }));
+    act(() => result.current.registrarSiguiente(0, "c1"));
+    act(() => result.current.irAPagina(1));
+    expect(result.current.pagination.pageIndex).toBe(1);
+
+    act(() => result.current.toggleSort("importe"));
+    expect(result.current.pagination.pageIndex).toBe(0);
+    expect(result.current.queryParams.cursor).toBeUndefined();
+    expect(result.current.queryParams.sort).toBe("importe");
+    expect(result.current.alcanzables).toBe(1);
   });
 
   it("no reinicia la página si la búsqueda no cambia", () => {

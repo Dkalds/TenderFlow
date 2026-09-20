@@ -89,6 +89,51 @@ describe("NotificationBell", () => {
     );
   });
 
+  it("F5.6: una alerta sobre un expediente se puede silenciar o posponer desde la campana", async () => {
+    const alerta = {
+      id: 5,
+      created_at: null,
+      type: "rule_match",
+      title: "SAP en Madrid",
+      body: null,
+      licitacion_id: "LIC-9",
+      rule_id: 3,
+      pursuit_id: null,
+      read: true,
+    };
+    renderBell({
+      items: [],
+      unread_count: 0,
+      alerts: [alerta, { ...alerta, id: 6, title: "Sin expediente", licitacion_id: null }],
+      alerts_unread_count: 0,
+      hoy: { calientes: 0, vencen_48h: 0, nuevas_24h: 0, total_activas: 0 },
+    });
+    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
+
+    // Sin expediente no hay nada que silenciar: sólo una pareja de acciones.
+    expect(screen.getAllByRole("menuitem", { name: /Ocultar del Radar 30 días/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ocultar del Radar 30 días: SAP en Madrid" }));
+    await waitFor(() =>
+      expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/radar/dismissals", {
+        id_externo: "LIC-9",
+        score: null,
+        banda: null,
+        accion: "silenciar",
+        dias: 30,
+      }),
+    );
+
+    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Recordármelo en 7 días: SAP en Madrid" }));
+    await waitFor(() =>
+      expect(apiMutate).toHaveBeenCalledWith(
+        "POST",
+        "/api/v1/radar/dismissals",
+        expect.objectContaining({ accion: "posponer", dias: 7 }),
+      ),
+    );
+  });
+
   it("surfaces a live SSE item and clears the 'no connection' notice", () => {
     renderBell({ items: [], unread_count: 0, hoy: { calientes: 0, vencen_48h: 0, nuevas_24h: 0, total_activas: 0 } });
     const es = MockEventSource.instances[0];

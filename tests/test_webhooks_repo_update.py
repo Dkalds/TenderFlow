@@ -11,6 +11,8 @@ rama), así que la conversión de ida tiene que quedar fijada.
 
 from __future__ import annotations
 
+import pytest
+
 from db import webhooks as wh_mod
 from db.repositories.webhooks import WebhookRepository
 
@@ -78,6 +80,7 @@ def test_update_de_un_id_inexistente_devuelve_false(tmp_db):
     )
 
 
+@pytest.mark.schema_propio  # tira `webhook_deliveries`
 def test_list_deliveries_degrada_a_vacio_si_la_consulta_falla(tmp_db):
     """El `except` se instrumentó en esta rama; nadie lo recorría.
 

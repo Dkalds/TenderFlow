@@ -4,12 +4,16 @@ import * as React from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { registrarEvento } from "@/lib/analytics";
 import { fetchWithAuth, apiMutate } from "@/lib/api-client";
+import { pursuitKeys, radarKeys } from "@/lib/query-keys";
 import { reportError } from "@/lib/report-error";
 
 interface NotificationBellProps {
@@ -155,6 +159,48 @@ export function NotificationBell({ className: _className }: NotificationBellProp
     }
   };
 
+  // F5.6 — silenciar y posponer desde la alerta, con el backend del Radar:
+  // `silenciar` saca el expediente del Radar y de la Agenda hasta que vence;
+  // `posponer` además lo devuelve como recordatorio ese día. No hay endpoint
+  // para silenciar la regla que disparó la alerta: eso se hace pausándola en
+  // Mi Watchlist, y aquí no se finge otra cosa.
+  //
+  // Llamadas directas y no los hooks de `use-radar`: la campana está en todas
+  // las pantallas, y arrastrar el módulo del Radar entero al bundle común por
+  // dos botones subía el First Load JS de cada ruta.
+  const refrescarRadar = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: radarKeys.dismissals }),
+      queryClient.invalidateQueries({ queryKey: radarKeys.scoring }),
+      queryClient.invalidateQueries({ queryKey: pursuitKeys.agenda }),
+    ]);
+  const aplazar = async (idExterno: string, accion: "silenciar" | "posponer", dias: number) => {
+    try {
+      await apiMutate("POST", "/api/v1/radar/dismissals", {
+        id_externo: idExterno,
+        score: null,
+        banda: null,
+        accion,
+        dias,
+      });
+    } catch (err) {
+      reportError("NotificationBell.aplazar", err);
+      toast.error("No se pudo aplazar el expediente");
+      return;
+    }
+    registrarEvento("radar_triaje", { accion });
+    void refrescarRadar();
+    toast(accion === "silenciar" ? `Oculta del Radar ${dias} días` : `Te lo recordamos en ${dias} días`, {
+      action: {
+        label: "Deshacer",
+        onClick: () =>
+          void apiMutate("DELETE", `/api/v1/radar/dismissals/${encodeURIComponent(idExterno)}`)
+            .then(refrescarRadar)
+            .catch((err: unknown) => reportError("NotificationBell.deshacer", err)),
+      },
+    });
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -210,10 +256,32 @@ export function NotificationBell({ className: _className }: NotificationBellProp
                 <h5 className="mb-1 mt-2 px-2 text-xs font-semibold text-muted-foreground">Alertas</h5>
                 <ul className="mb-2 space-y-0.5">
                   {alerts.slice(0, 5).map((a) => (
-                    <li key={a.id}>
+                    <li key={a.id} className="flex flex-col">
                       {/* Si el expediente ya es una oportunidad del equipo, el
                           destino útil es su ficha —donde está la decisión y el
                           cierre—, no el inspector genérico del catálogo. */}
+                      {a.licitacion_id && (
+                        // F5.6 — el mismo descarte temporal del inspector del
+                        // Radar (`POST /radar/dismissals`). Son `menuitem` y no
+                        // botones sueltos: dentro del menú el teclado se mueve
+                        // con las flechas, y un botón plano no sería alcanzable.
+                        <div className="order-last flex flex-wrap gap-1 pl-5">
+                          <DropdownMenuItem
+                            className="h-6 px-1.5 py-0 text-[11px] text-muted-foreground"
+                            aria-label={`Ocultar del Radar 30 días: ${a.title ?? a.type}`}
+                            onSelect={() => void aplazar(a.licitacion_id!, "silenciar", 30)}
+                          >
+                            Ocultar del Radar 30 días
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="h-6 px-1.5 py-0 text-[11px] text-muted-foreground"
+                            aria-label={`Recordármelo en 7 días: ${a.title ?? a.type}`}
+                            onSelect={() => void aplazar(a.licitacion_id!, "posponer", 7)}
+                          >
+                            Recordármelo en 7 días
+                          </DropdownMenuItem>
+                        </div>
+                      )}
                       {a.pursuit_id != null || a.licitacion_id ? (
                         <Link
                           href={

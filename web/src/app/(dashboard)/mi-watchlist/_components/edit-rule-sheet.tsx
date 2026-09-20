@@ -13,11 +13,9 @@
  * y un importe o un plazo imposibles se explican debajo de su campo.
  */
 
-import { useMutation } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FlaskConical, Mail } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -26,9 +24,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { apiMutate } from "@/lib/api-client";
 import { regla } from "@/lib/forms/esquemas";
-import { RULES_KEY } from "../_hooks/use-mi-watchlist";
+import { usePreviewRegla } from "../_hooks/use-preview-regla";
 import {
   formStateToBody,
   ruleToFormState,
@@ -36,6 +33,7 @@ import {
 } from "../_hooks/use-watchlist-rules";
 import type { ApiRule, RuleBody, RuleFormState } from "../_hooks/watchlist-rule-types";
 import { RuleFormFields, type RuleFormErrors } from "./rule-form-fields";
+import { VistaPreviaRuido } from "./vista-previa-ruido";
 
 const VACIA: RuleFormState = {
   keyword: "",
@@ -80,10 +78,7 @@ export function EditRuleSheet({
   const errores: RuleFormErrors = Object.fromEntries(
     Object.entries(errors).map(([campo, error]) => [campo, error?.message]),
   );
-  const previewMut = useMutation({
-    mutationFn: (body: RuleBody) =>
-      apiMutate<{ total: number }>("POST", `${RULES_KEY}/preview`, body),
-  });
+  const previewMut = usePreviewRegla();
 
   /** Aplica el parche; tras el primer intento, revalida al escribir. */
   const cambiar = (patch: Partial<RuleFormState>) => {
@@ -141,17 +136,15 @@ export function EditRuleSheet({
               {previewMut.isPending && (
                 <span className="text-sm text-muted-foreground">Calculando…</span>
               )}
-              {previewMut.isSuccess && (
-                <Badge variant="secondary">
-                  {previewMut.data.total} licitación(es) coincidirían
-                </Badge>
-              )}
               {previewMut.isError && (
                 <span className="text-sm text-destructive">
                   Error al probar la regla.
                 </span>
               )}
             </div>
+            {/* F5.5 — el conteo de hoy y la serie de las últimas semanas, con
+                el aviso de ruido que decide el servidor. */}
+            {previewMut.isSuccess && <VistaPreviaRuido preview={previewMut.data} />}
 
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={onClose}>

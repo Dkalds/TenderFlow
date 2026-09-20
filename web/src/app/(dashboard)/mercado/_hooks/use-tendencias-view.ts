@@ -3,19 +3,21 @@
 /**
  * Datos y series de la vista Tendencias.
  *
- * Las tres peticiones (serie mensual, overview por estado/mes y la previsión de
+ * Las dos peticiones (serie mensual con su cruce Mes×Estado, y la previsión de
  * volumen) y todas las derivaciones viven aquí. Ninguna inventa analítica: el
  * backend entrega la serie ya agregada sobre el dataset completo y aquí sólo se
  * suma, se acumula y se compara contra los doce meses anteriores (ADR-014).
  *
- * La única excepción es `heatmapData`, que es un ESTIMADO declarado: producto de
- * marginales, no un cruce real. La vista lo rotula como tal.
+ * El heatmap Mes×Estado es el cruce REAL que `/analytics/trends` sirve en
+ * `heatmap` (`GROUP BY mes, estado`). Hasta el RFC ux-tendencias #1 se fabricaba
+ * aquí como producto de marginales del overview y se rotulaba «Estimado»; aquí
+ * sólo se gira de lista de celdas a matriz.
  */
 
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import type { TrendPoint } from "@/lib/api-types";
+import type { Schemas, TrendPoint } from "@/lib/api-types";
 
 import {
   splitForecastSeries,
@@ -45,12 +47,11 @@ export interface TrendsResponse {
   waterfall: WaterfallPoint[];
   histogram_bins: HistogramBin[];
   mes_pico: MesPico;
+  /** Cruce real Mes×Estado: `row` = mes `YYYY-MM`, `col` = código de estado. */
+  heatmap?: HeatmapCellDto[];
 }
 
-export interface OverviewResponse {
-  por_estado: { estado: string; n: number }[];
-  por_mes: { mes: string; n_licitaciones: number; importe: number }[];
-}
+export type HeatmapCellDto = Schemas["HeatmapCell"];
 
 /** Punto de la serie acumulada de importe. */
 export interface CumulativePoint {
@@ -59,11 +60,46 @@ export interface CumulativePoint {
 }
 
 /** Matriz mes × estado del heatmap, con el máximo que fija la escala de color. */
-export interface HeatmapEstimado {
+export interface HeatmapMesEstado {
   estados: string[];
   meses: string[];
-  grid: { mes: string; estado: string; value: number }[];
+  /** `valores.get(\`${mes}|${estado}\`)`; ausente = 0 licitaciones. */
+  valores: Map<string, number>;
   maxVal: number;
+}
+
+/**
+ * Gira las celdas del backend a matriz. Los estados se ordenan por volumen
+ * total (el más frecuente arriba) y los meses cronológicamente.
+ */
+export function heatmapFromCells(cells: HeatmapCellDto[] | undefined): HeatmapMesEstado | null {
+  if (!cells || cells.length === 0) return null;
+  const valores = new Map<string, number>();
+  const porEstado = new Map<string, number>();
+  const meses = new Set<string>();
+  let maxVal = 0;
+  for (const c of cells) {
+    valores.set(`${c.row}|${c.col}`, c.value);
+    porEstado.set(c.col, (porEstado.get(c.col) ?? 0) + c.value);
+    meses.add(c.row);
+    if (c.value > maxVal) maxVal = c.value;
+  }
+  const estados = Array.from(porEstado.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([e]) => e);
+  return { estados, meses: Array.from(meses).sort(), valores, maxVal };
+}
+
+/**
+ * Enlace al listado de las licitaciones publicadas en un mes `YYYY-MM` (y, si
+ * se da, en un estado). Los parámetros del enlace sustituyen a los del ámbito
+ * en `useScopedHref`: el mes de la barra es la razón de existir del enlace.
+ */
+export function mesHref(mes: string, estado?: string): string {
+  const [y, m] = mes.split("-").map(Number);
+  const ultimo = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const base = `/detalle?fecha_desde=${mes}-01&fecha_hasta=${mes}-${String(ultimo).padStart(2, "0")}`;
+  return estado ? `${base}&estado=${encodeURIComponent(estado)}` : base;
 }
 
 export type ForecastMetric = "count" | "sum";
@@ -99,20 +135,14 @@ export function useTendenciasView() {
     { staleTime: 5 * 60_000 },
   );
 
-  const { data: overview, isLoading: overviewLoading, error: overviewError } = useFilteredQuery<OverviewResponse>(
-    ["analytics", "overview"],
-    "/api/v1/analytics/overview",
-    { staleTime: 5 * 60_000 },
-  );
-
   const { data: forecast, isLoading: forecastLoading } = useFilteredQuery<ForecastResponse>(
     ["analytics", "forecast", forecastMetric],
     `/api/v1/analytics/forecast/volume?months_ahead=6&metric=${forecastMetric}`,
     { staleTime: 5 * 60_000 },
   );
 
-  const isLoading = trendsLoading || overviewLoading;
-  const error = trendsError || overviewError;
+  const isLoading = trendsLoading;
+  const error = trendsError;
   const series = useMemo(() => trends?.series ?? [], [trends]);
 
   const totalCount = useMemo(() => series.reduce((s, p) => s + p.count, 0), [series]);
@@ -130,27 +160,8 @@ export function useTendenciasView() {
     return result;
   }, [series]);
 
-  // Heatmap — ESTIMADO (no es un cruce real): producto de marginales
-  // (distribución global de estados × volumen mensual). El cruce real (mes,estado)
-  // debe venir de un cross-tab en backend (ver RFC ux-tendencias). Etiquetado en UI
-  // como "Estimado" mientras tanto, para no presentar síntesis como dato real.
-  const heatmapData = useMemo<HeatmapEstimado | null>(() => {
-    if (!overview) return null;
-    const estados = overview.por_estado.map((e) => e.estado);
-    const meses = overview.por_mes.map((m) => m.mes);
-    const totalByEstado = overview.por_estado.reduce((s, e) => s + e.n, 0);
-    const grid: { mes: string; estado: string; value: number }[] = [];
-    let maxVal = 0;
-    for (const m of overview.por_mes) {
-      for (const e of overview.por_estado) {
-        const proportion = totalByEstado > 0 ? e.n / totalByEstado : 0;
-        const value = Math.round(m.n_licitaciones * proportion);
-        if (value > maxVal) maxVal = value;
-        grid.push({ mes: m.mes, estado: e.estado, value });
-      }
-    }
-    return { estados, meses, grid, maxVal };
-  }, [overview]);
+  // Heatmap — cruce REAL (mes, estado) del backend, no un producto de marginales.
+  const heatmapData = useMemo(() => heatmapFromCells(trends?.heatmap), [trends]);
 
   // Histogram: detect if log scale needed
   const histBins = trends?.histogram_bins ?? [];

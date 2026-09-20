@@ -34,7 +34,19 @@ export interface QualityData {
   last_scrape_at?: string;
   /** F6.2 — reportes de dato abiertos, por tipo (`QualityResult.reportes_por_tipo`). */
   reportes_por_tipo?: Record<string, number>;
+  /** RFC calidad #3 — completitud por mes de publicación (`QualityResult.tendencia_completitud`). */
+  tendencia_completitud?: CompletitudMes[];
   [key: string]: unknown;
+}
+
+/** Completitud de la cohorte de expedientes publicados en un mes. */
+export interface CompletitudMes {
+  mes: string;
+  total: number;
+  pct_cpv: number;
+  pct_importe: number;
+  pct_organo: number;
+  pct_fecha_limite: number;
 }
 
 export interface Frescura {

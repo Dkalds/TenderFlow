@@ -24,22 +24,21 @@ import { RadarInspector } from "./radar-inspector";
 export function RadarInspectorPanel({
   modo,
   tender,
-  followed,
   opening,
   abierta,
   onAbiertaChange,
-  onFollow,
+  onFollowed,
   onDismiss,
   onAplazar,
   onOpenPursuit,
 }: {
   modo: ModoInspector;
   tender: RadarTender | undefined;
-  followed: boolean;
   opening: boolean;
   abierta: boolean;
   onAbiertaChange: (abierta: boolean) => void;
-  onFollow: () => void;
+  /** Tras alternar «Seguir», con el estado nuevo. */
+  onFollowed: (ahoraSigue: boolean) => void;
   onDismiss: () => void;
   onAplazar: (accion: AccionAplazar, dias: number) => void;
   onOpenPursuit: () => void;
@@ -55,8 +54,7 @@ export function RadarInspectorPanel({
     <RadarInspector
       key={tender.id_externo}
       tender={tender}
-      followed={followed}
-      onFollow={onFollow}
+      onFollowed={onFollowed}
       onDismiss={onDismiss}
       onAplazar={onAplazar}
       onOpenPursuit={onOpenPursuit}
@@ -92,8 +90,7 @@ export function RadarInspectorPanel({
             <RadarInspector
               key={tender.id_externo}
               tender={tender}
-              followed={followed}
-              onFollow={onFollow}
+              onFollowed={onFollowed}
               onDismiss={onDismiss}
               onAplazar={onAplazar}
               onOpenPursuit={onOpenPursuit}

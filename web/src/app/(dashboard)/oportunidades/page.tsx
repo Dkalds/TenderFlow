@@ -4,7 +4,11 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { PanelError } from "@/components/console/panel";
 import { SpaceShell } from "@/components/layout/space-shell";
-import { useEtiquetas, useEtiquetasDe, type EtiquetaAplicada } from "@/hooks/use-etiquetas";
+import {
+  TODAS_LAS_ETIQUETAS,
+  pasaFiltroEtiqueta,
+} from "@/components/etiquetas/filtro-etiqueta";
+import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
 import type { Pursuit } from "@/hooks/use-pursuits";
 /**
@@ -20,7 +24,7 @@ const DialogoCierre = dynamic(
   () => import("./_components/dialogo-cierre").then((modulo) => modulo.DialogoCierre),
   { ssr: false },
 );
-import { TODAS, TableroFiltros } from "./_components/tablero-filtros";
+import { TableroFiltros } from "./_components/tablero-filtros";
 import { TableroColumna } from "./_components/tablero-columna";
 import { TableroMetricas } from "./_components/tablero-metricas";
 import { TableroVacio } from "./_components/tablero-vacio";
@@ -49,7 +53,7 @@ import { bloqueoDeFase, resultadosPermitidos } from "./_lib/flujo";
  */
 export default function OportunidadesPage() {
   const [query, setQuery] = React.useState("");
-  const [etiquetaFiltro, setEtiquetaFiltro] = React.useState<string>(TODAS);
+  const [etiquetaFiltro, setEtiquetaFiltro] = React.useState<string>(TODAS_LAS_ETIQUETAS);
   const pursuits = usePursuits();
   const metrics = usePursuitMetrics();
   const tablero = useTablero();
@@ -57,10 +61,10 @@ export default function OportunidadesPage() {
   // F1.6 — una sola petición con las etiquetas de todas las tarjetas.
   const ids = (pursuits.data?.items ?? []).map((pursuit) => String(pursuit.id));
   const etiquetasPorId = useEtiquetasDe("oportunidad", ids).data ?? {};
-  const etiquetasOrg = useEtiquetas().data ?? [];
-
   const items = (pursuits.data?.items ?? []).filter(
-    (pursuit) => coincide(pursuit, query) && tieneEtiqueta(etiquetasPorId[String(pursuit.id)], etiquetaFiltro),
+    (pursuit) =>
+      coincide(pursuit, query) &&
+      pasaFiltroEtiqueta(etiquetasPorId[String(pursuit.id)], etiquetaFiltro),
   );
 
   const filtros = (
@@ -69,7 +73,6 @@ export default function OportunidadesPage() {
       onQuery={setQuery}
       etiqueta={etiquetaFiltro}
       onEtiqueta={setEtiquetaFiltro}
-      etiquetas={etiquetasOrg}
     />
   );
 
@@ -139,9 +142,4 @@ function coincide(pursuit: Pursuit, query: string): boolean {
   return `${pursuit.tender_title ?? ""} ${pursuit.licitacion_id} ${pursuit.responsible_name ?? ""}`
     .toLocaleLowerCase("es")
     .includes(aguja);
-}
-
-/** F1.6 — ¿la tarjeta pasa el filtro de etiqueta? `TODAS` no filtra. */
-function tieneEtiqueta(etiquetas: readonly EtiquetaAplicada[] | undefined, filtro: string): boolean {
-  return filtro === TODAS || (etiquetas ?? []).some((etiqueta) => String(etiqueta.id) === filtro);
 }

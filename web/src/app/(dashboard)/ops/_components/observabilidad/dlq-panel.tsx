@@ -3,13 +3,13 @@
 /**
  * Recuento de la cola de errores, con la salida hacia Calidad de Datos.
  *
- * Aquí sólo se cuenta; la inspección fila a fila vive en `/calidad-datos`, que
- * es donde está el dato de origen. El botón de reintento sigue sin backend
- * detrás y lo dice con un aviso en vez de fingir que hizo algo.
+ * Aquí sólo se cuenta. La inspección entrada a entrada y el reencolado viven en
+ * Administración (`DlqCard`, sobre `/admin/dlq`); este panel enlaza allí en vez
+ * de tener un botón de reintento propio, que durante meses sólo respondía
+ * «Funcionalidad en desarrollo».
  */
 
 import Link from "next/link";
-import { toast } from "sonner";
 import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,17 +44,15 @@ export function DlqPanel({ dlqCount }: { dlqCount: number }) {
         <div className="flex items-center gap-2">
           <Button asChild variant="outline">
             <Link href="/calidad-datos">
-              <ShieldCheck className="mr-2 h-4 w-4" />
-              Inspeccionar DLQ
+              <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />
+              Calidad de datos
             </Link>
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => toast.info("Funcionalidad en desarrollo: Reintentar DLQ")}
-            disabled={!hayCola}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Reintentar DLQ
+          <Button asChild variant="outline">
+            <Link href="/ops?vista=administracion">
+              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+              Inspeccionar y reencolar
+            </Link>
           </Button>
         </div>
       </CardContent>

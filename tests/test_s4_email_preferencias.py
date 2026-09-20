@@ -97,8 +97,23 @@ def test_un_modo_inventado_se_rechaza(tmp_db):
 
 
 def test_preferencias_email_solo_expone_los_tipos_personales(tmp_db):
+    """F5.3 añade los avisos sobre expedientes seguidos: van al digest y cada
+    persona elige cómo recibirlos, igual que las asignaciones."""
     claves = set(preferencias_email("uk-1"))
-    assert claves == {"pursuit.assigned", "pursuit.commented"}
+    assert claves == {
+        "pursuit.assigned",
+        "pursuit.commented",
+        "licitacion.cambiada",
+        "licitacion.documento_nuevo",
+        "licitacion.recurso",
+    }
+
+
+def test_los_avisos_de_lo_seguido_van_al_digest_diario_por_defecto(tmp_db):
+    """Un cambio de plazo es contexto, no una acción inmediata: por defecto
+    sale en el correo de la mañana, no al instante."""
+    for tipo in ("licitacion.cambiada", "licitacion.documento_nuevo", "licitacion.recurso"):
+        assert modo_email_de("uk-nueva", tipo) == "daily"
 
 
 # ── Entrega ──────────────────────────────────────────────────────────────────

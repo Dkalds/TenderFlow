@@ -25,11 +25,13 @@ interface WatchlistEmpresasResponse {
 }
 
 /** Empresas que el usuario sigue, como conjunto de ids listo para consultar. */
-export function useEmpresasWatchlist() {
+export function useEmpresasWatchlist({ enabled = true }: { enabled?: boolean } = {}) {
   const query = useQuery<WatchlistEmpresasResponse>({
     queryKey: watchlistKeys.empresas,
     queryFn: () => fetchWithAuth<WatchlistEmpresasResponse>("/api/v1/competitive/watchlist"),
     staleTime: 60 * 1000,
+    // Ver `useWatchlistItems`: el control «Seguir» sólo pide su fuente.
+    enabled,
   });
 
   const watchedIds = useMemo(

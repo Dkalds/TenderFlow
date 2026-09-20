@@ -33,6 +33,16 @@ export interface FilterValues {
    * que cuenta "activas" pueda abrir el listado que enseña justo esas.
    */
   soloAbiertas: boolean;
+  /**
+   * F1.1 — los tres filtros que sólo aplica el listado (`GET /licitaciones`):
+   * código CODICE de procedimiento, provincia tal como la publica la fuente e
+   * importe máximo. Opcionales porque ninguna pantalla analítica los consume
+   * todavía: la barra de ámbito sólo los ofrece donde la página los declara
+   * (`optInFilterKeys` en `lib/navigation.ts`).
+   */
+  procedimientos?: string[];
+  provincias?: string[];
+  importeMax?: number | null;
 }
 
 /**
@@ -49,6 +59,9 @@ export function filtersToParams(filters: FilterValues): Record<string, string> {
   if (filters.tecnologias.length) params.tecnologia = filters.tecnologias.join(",");
   if (filters.importeMin !== null) params.importe_min = String(filters.importeMin);
   if (filters.soloAbiertas) params.solo_abiertas = "true";
+  if (filters.procedimientos?.length) params.procedimiento = filters.procedimientos.join(",");
+  if (filters.provincias?.length) params.provincia = filters.provincias.join(",");
+  if (filters.importeMax != null) params.importe_max = String(filters.importeMax);
   return params;
 }
 
@@ -76,6 +89,7 @@ export function filterParamsFromSearch(
     return valor ? valor.split(",") : [];
   };
   const importe = leer("importe_min");
+  const importeMax = leer("importe_max");
   return filtersToParams({
     q: leer("q"),
     rango: { desde: leer("fecha_desde") || null, hasta: leer("fecha_hasta") || null },
@@ -84,5 +98,8 @@ export function filterParamsFromSearch(
     tecnologias: lista("tecnologia"),
     importeMin: importe ? Number(importe) : null,
     soloAbiertas: leer("solo_abiertas") === "true",
+    procedimientos: lista("procedimiento"),
+    provincias: lista("provincia"),
+    importeMax: importeMax ? Number(importeMax) : null,
   });
 }

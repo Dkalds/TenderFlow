@@ -18,7 +18,6 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
-import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
 import { useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
 import type { ScatterPoint } from "@/components/charts/competitors-charts";
@@ -65,17 +64,15 @@ export function useCompetidoresData() {
     { limit: "100" },
   );
 
-  // Ranking de bajas por empresa (quién oferta más agresivo). Honra ccaa global
-  // vía useFilteredQuery; el endpoint ignora el resto de filtros.
+  // Ranking de bajas por empresa (quién oferta más agresivo). Honra CCAA, fechas
+  // (de adjudicación) e importe mínimo del ámbito global vía useFilteredQuery;
+  // estado, tecnología y búsqueda no los aplica (la card lo declara).
   const { data: bajasData } = useFilteredQuery<{ items: BajaItem[] }>(
     ["competitive", "bajas-empresa"],
     "/api/v1/competitive/bajas",
     { staleTime: 5 * 60 * 1000 },
     { group_by: "empresa", min_contratos: "5", limit: "15" },
   );
-
-  const { watchedIds } = useEmpresasWatchlist();
-  const toggleWatch = useToggleEmpresaWatch();
 
   const [search, setSearch] = useState("");
   const { ccaas, setCcaas } = useFilters();
@@ -160,7 +157,5 @@ export function useCompetidoresData() {
     drillDownAwards,
     isLoadingDrillDownProfile,
     isLoadingDrillDownAwards,
-    watchedIds,
-    toggleWatch,
   };
 }

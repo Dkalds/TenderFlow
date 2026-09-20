@@ -25,8 +25,8 @@ export const PAGE_SIZE = 25;
 /**
  * Columnas que el backend sabe ordenar, y el valor de `sort` que espera.
  *
- * `GET /licitaciones` acepta `sort` con seis valores (`db/repositories/
- * licitaciones.py::_SORT_MAP`) y **descarta en silencio cualquier otro**. Las
+ * `GET /licitaciones/cursor` acepta `sort` con seis valores (`db/repositories/
+ * licitaciones.py::_SORT_MAP`) y **rechaza con 422 cualquier otro**. Las
  * tres de aquí se ordenan en servidor sobre el total; el resto se ordena en
  * cliente sobre la página cargada, y la tabla lo dice en vez de fingir un orden
  * global.
@@ -56,7 +56,13 @@ export interface MergedRow extends LicitacionSummary {
 }
 
 /**
- * Query string de `GET /licitaciones` para la página y el orden actuales.
+ * Query string de `GET /licitaciones/cursor` para la página y el orden actuales.
+ *
+ * El listado por offset (`GET /licitaciones`) se retira (RFC 2026-09-06); el
+ * cursor acepta los mismos filtros y los mismos seis valores de `sort`. La
+ * página ya no es un `offset`: es el `cursor` que devolvió la anterior
+ * (`null` en la primera). `with_total` va siempre porque el pie dice «de N» en
+ * todas las páginas — el mismo `COUNT(*)` que pedía el listado por offset.
  *
  * El prefijo `-` invierte el sentido por defecto de cada columna: para fecha el
  * default es descendente y para importe/título ascendente. Una columna que el
@@ -66,16 +72,19 @@ export function buildQueryParams({
   filterParams,
   pagination,
   sorting,
+  cursor = null,
 }: {
   filterParams: Record<string, string>;
   pagination: PaginationState;
   sorting: SortingState;
+  cursor?: string | null;
 }): Record<string, string> {
   const params: Record<string, string> = {
     ...filterParams,
     limit: String(pagination.pageSize),
-    offset: String(pagination.pageIndex * pagination.pageSize),
+    with_total: "true",
   };
+  if (cursor) params.cursor = cursor;
   const active = sorting[0];
   const serverKey = active ? SERVER_SORT[active.id] : undefined;
   if (active && serverKey) {
@@ -177,11 +186,21 @@ export function toggleAllPageSelection(
   return next;
 }
 
-/** Ventana de ±2 páginas alrededor de la actual, recortada a los extremos. */
-export function pageWindowFor(pageIndex: number, totalPages: number): number[] {
+/**
+ * Ventana de ±2 páginas alrededor de la actual, recortada a los extremos.
+ *
+ * `alcanzables` es cuántas páginas tienen ya cursor conocido: con paginación
+ * por cursor sólo se puede saltar a una página ya visitada o a la siguiente,
+ * así que la ventana no ofrece números a los que no se puede ir.
+ */
+export function pageWindowFor(
+  pageIndex: number,
+  totalPages: number,
+  alcanzables: number = totalPages,
+): number[] {
   const pages: number[] = [];
   const start = Math.max(0, pageIndex - 2);
-  const end = Math.min(totalPages - 1, pageIndex + 2);
+  const end = Math.min(totalPages - 1, alcanzables - 1, pageIndex + 2);
   for (let index = start; index <= end; index += 1) pages.push(index);
   return pages;
 }

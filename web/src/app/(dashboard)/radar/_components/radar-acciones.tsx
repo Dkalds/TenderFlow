@@ -1,6 +1,7 @@
 "use client";
 
-import { PanelRight, Star, X } from "lucide-react";
+import { PanelRight, X } from "lucide-react";
+import { SeguirBoton } from "@/components/seguir-boton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { RadarTender } from "@/hooks/use-radar";
@@ -19,10 +20,9 @@ export function RadarAcciones({
   tender,
   isActive,
   inerte,
-  followed,
   conFicha,
   onDismiss,
-  onFollow,
+  onFollowed,
   onOpenPursuit,
   onOpenFicha,
 }: {
@@ -30,11 +30,11 @@ export function RadarAcciones({
   isActive: boolean;
   /** Verdadero solo donde el bloque está oculto (`md:opacity-0`) y no es activo. */
   inerte: boolean;
-  followed: boolean;
   /** El inspector se abre como panel: entre `md` y `xl` hace falta un disparador. */
   conFicha: boolean;
   onDismiss: () => void;
-  onFollow: () => void;
+  /** Tras alternar «Seguir», con el estado nuevo (el toast con deshacer). */
+  onFollowed: (ahoraSigue: boolean) => void;
   onOpenPursuit: () => void;
   onOpenFicha: () => void;
 }) {
@@ -81,26 +81,22 @@ export function RadarAcciones({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={followed ? `Dejar de seguir ${tender.titulo}` : `Seguir ${tender.titulo}`}
-            aria-pressed={followed}
-            onClick={(event) => {
-              event.stopPropagation();
-              onFollow();
+          {/* El control único de ADR-031 §C, con la piel de la fila: los
+              36→26 px de objetivo y el contraste que mide axe son de aquí. */}
+          <SeguirBoton
+            targetType="licitacion"
+            targetId={tender.id_externo}
+            etiqueta={tender.titulo ?? tender.id_externo}
+            variante="icono"
+            icono="estrella"
+            clases={{
+              base: "tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border transition-colors duration-140 ease-out md:h-6.5 md:w-6.5",
+              activo: "border-primary/50 bg-primary/16 text-primary",
+              inactivo: "border-border/80 bg-card text-muted-foreground hover:text-foreground",
+              icono: "h-4 w-4 md:h-3 md:w-3",
             }}
-            className={cn(
-              "tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border transition-colors duration-140 ease-out md:h-6.5 md:w-6.5",
-              followed
-                ? "border-primary/50 bg-primary/16 text-primary"
-                : "border-border/80 bg-card text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Star
-              className={cn("h-4 w-4 md:h-3 md:w-3", followed && "fill-current")}
-              aria-hidden="true"
-            />
-          </button>
+            onAlternar={onFollowed}
+          />
         </TooltipTrigger>
         <TooltipContent>Seguir · S</TooltipContent>
       </Tooltip>

@@ -10,6 +10,7 @@ con otro nombre.
 from __future__ import annotations
 
 import base64
+import json
 import re
 from datetime import date
 from typing import Any
@@ -80,6 +81,49 @@ def _decode_cursor(cursor: str) -> tuple[str, str]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cursor inválido.",
         ) from exc
+
+
+#: Prefijo del cursor de un orden distinto del de fecha. El de fecha conserva
+#: su forma de siempre (``fecha|id``) para que los cursores ya emitidos sigan
+#: valiendo; los nuevos llevan el orden dentro, así que un cursor de «por
+#: importe» no se puede reutilizar con «por título» sin que se note.
+_PREFIJO_CURSOR_ORDEN = "o1|"
+
+
+def _encode_cursor_orden(sort: str, valor: str | float | None, id_externo: str) -> str:
+    """Cursor opaco de un listado ordenado por ``sort`` (keyset ``(valor, id)``)."""
+    raw = _PREFIJO_CURSOR_ORDEN + json.dumps([sort, valor, id_externo], ensure_ascii=False)
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def _decode_cursor_orden(cursor: str, sort: str) -> tuple[str | float | None, str]:
+    """``(valor, id_externo)`` de un cursor de :func:`_encode_cursor_orden`.
+
+    400 si el cursor no es de este formato o es de **otro orden**: seguir
+    paginando «por título» con la posición de «por importe» devolvería una
+    página que no sigue a ninguna.
+    """
+    if len(cursor) > 512:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cursor demasiado largo.",
+        )
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        raw = base64.urlsafe_b64decode(cursor + padding).decode()
+        if not raw.startswith(_PREFIJO_CURSOR_ORDEN):
+            raise ValueError("cursor sin orden")
+        orden, valor, id_externo = json.loads(raw[len(_PREFIJO_CURSOR_ORDEN) :])
+        if orden != sort or not isinstance(id_externo, str):
+            raise ValueError("cursor de otro orden")
+        if valor is not None and not isinstance(valor, str | int | float):
+            raise ValueError("valor de cursor inválido")
+    except (ValueError, TypeError, UnicodeDecodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cursor inválido para este orden.",
+        ) from exc
+    return valor, id_externo
 
 
 # ── SAPClassifier singleton ───────────────────────────────────────────────

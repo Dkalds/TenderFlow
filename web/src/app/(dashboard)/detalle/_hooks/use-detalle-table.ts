@@ -39,6 +39,12 @@ export interface DetalleTableState {
   rowSelection: RowSelectionState;
   setRowSelection: React.Dispatch<React.SetStateAction<RowSelectionState>>;
   queryParams: Record<string, string>;
+  /** Páginas con cursor conocido: las ya vistas más, si la hay, la siguiente. */
+  alcanzables: number;
+  /** Apunta el cursor de la página siguiente a `pageIndex` al leerla. */
+  registrarSiguiente: (pageIndex: number, siguiente: string | null | undefined) => void;
+  /** Cambia de página sólo si su cursor ya se conoce. */
+  irAPagina: (pageIndex: number) => void;
   activeSort?: SortingState[number];
   clientSorted: boolean;
   toggleSort: (columnId: string) => void;
@@ -79,9 +85,45 @@ export function useDetalleTableState({
     if (pagination.pageIndex !== 0) setPagination({ ...pagination, pageIndex: 0 });
   }
 
+  // Paginación por cursor (RFC 2026-09-06): `cursores[i]` es el cursor que
+  // pide la página `i` (`null` para la primera). Se aprenden al leer cada
+  // página (`registrarSiguiente`), así que se puede volver a cualquiera ya
+  // vista o avanzar una, pero no saltar a la 40 sin pasar por la 39.
+  const [cursores, setCursores] = useState<(string | null)[]>([null]);
+
+  // Un cursor sólo vale para el orden y los filtros con los que se emitió:
+  // cualquier cambio de los dos (o del tamaño de página) vuelve a la primera
+  // y olvida los aprendidos. Mismo patrón de ajuste durante el render que el
+  // de `q`, por la misma razón.
+  const claveListado = JSON.stringify([filterParams, sorting, pagination.pageSize]);
+  const [prevClave, setPrevClave] = useState(claveListado);
+  if (claveListado !== prevClave) {
+    setPrevClave(claveListado);
+    setCursores([null]);
+    if (pagination.pageIndex !== 0) setPagination({ ...pagination, pageIndex: 0 });
+  }
+
+  const cursor = cursores[pagination.pageIndex] ?? null;
   const queryParams = useMemo(
-    () => buildQueryParams({ filterParams, pagination, sorting }),
-    [filterParams, pagination, sorting],
+    () => buildQueryParams({ filterParams, pagination, sorting, cursor }),
+    [filterParams, pagination, sorting, cursor],
+  );
+
+  const registrarSiguiente = useCallback(
+    (pageIndex: number, siguiente: string | null | undefined) =>
+      setCursores((actuales) =>
+        siguiente && actuales.length === pageIndex + 1 ? [...actuales, siguiente] : actuales,
+      ),
+    [],
+  );
+
+  const alcanzables = cursores.length;
+  const irAPagina = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex < 0 || pageIndex >= alcanzables) return;
+      setPagination((actual) => ({ ...actual, pageIndex }));
+    },
+    [alcanzables],
   );
 
   const toggleSort = useCallback(
@@ -102,6 +144,9 @@ export function useDetalleTableState({
     rowSelection,
     setRowSelection,
     queryParams,
+    alcanzables,
+    registrarSiguiente,
+    irAPagina,
     activeSort: sorting[0],
     clientSorted: isClientSorted(sorting),
     toggleSort,
@@ -129,15 +174,18 @@ export function useDetalleRows({
   activeSort,
   pagination,
   rowSelection,
+  alcanzables,
   setRowSelection,
 }: {
   items: LicitacionSummary[] | undefined;
-  total: number | undefined;
+  total: number | null | undefined;
   scoring: ScoringResponse | undefined | null;
   lastViewed: number;
   activeSort?: SortingState[number];
   pagination: PaginationState;
   rowSelection: RowSelectionState;
+  /** Páginas con cursor conocido (ver `useDetalleTableState`); sin él, todas. */
+  alcanzables?: number;
   setRowSelection: React.Dispatch<React.SetStateAction<RowSelectionState>>;
 }): DetalleRows {
   const scoreMap = useMemo(() => buildScoreMap(scoring), [scoring]);
@@ -149,8 +197,8 @@ export function useDetalleRows({
 
   const totalPages = totalPagesFor(total ?? 0, pagination.pageSize);
   const pageWindow = useMemo(
-    () => pageWindowFor(pagination.pageIndex, totalPages),
-    [pagination.pageIndex, totalPages],
+    () => pageWindowFor(pagination.pageIndex, totalPages, alcanzables ?? totalPages),
+    [pagination.pageIndex, totalPages, alcanzables],
   );
 
   const selectedIds = useMemo(

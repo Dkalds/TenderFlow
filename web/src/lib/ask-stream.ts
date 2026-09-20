@@ -40,6 +40,8 @@ export interface Fuente {
   cita: string;
   tipo?: string | null;
   filename?: string | null;
+  /** F2.8: expediente del documento citado, solo en preguntas cruzadas. */
+  id_externo?: string | null;
 }
 
 /**
@@ -71,8 +73,22 @@ export interface ResumenMeta {
  * respuesta como si fuera del expediente.
  */
 export interface AskMeta {
-  contexto: "licitacion" | "general";
+  contexto: "licitacion" | "general" | "comparacion";
   id_externo?: string | null;
+  /** F2.8 — en una pregunta cruzada, los expedientes pedidos, en orden. */
+  ids_externos?: string[];
+  /** F2.8 — qué entró de cada uno: si existe, cuánto pliego y si se recortó. */
+  expedientes?: AskMetaExpediente[];
+  /** F2.8 — algún expediente llegó al modelo con su parte del contexto recortada. */
+  truncado?: boolean;
+}
+
+export interface AskMetaExpediente {
+  id_externo: string;
+  encontrado: boolean;
+  has_pliego_text?: boolean;
+  fragmentos?: number;
+  truncado?: boolean;
 }
 
 export interface AskStreamResult {
@@ -100,6 +116,8 @@ export interface AskParams extends StreamCallbacks {
   messages?: ChatMessage[];
   /** Scope the context to one licitación (metadatos + fragmentos de pliegos). */
   idExterno?: string;
+  /** F2.8 — pregunta cruzada sobre hasta tres licitaciones (la bandeja de comparación). */
+  idsExternos?: string[];
   model?: string;
   topK?: number;
   /** Extra body params (e.g. ccaa, tecnologia from global filters). */
@@ -210,6 +228,7 @@ export async function streamAsk({
   question,
   messages,
   idExterno,
+  idsExternos,
   model,
   topK = 10,
   extras,
@@ -217,6 +236,7 @@ export async function streamAsk({
   ...callbacks
 }: AskParams): Promise<AskStreamResult> {
   const csrf = getCsrfToken();
+  const varios = idsExternos && idsExternos.length > 0 ? idsExternos : undefined;
   const res = await fetch("/api/v1/ask", {
     method: "POST",
     credentials: "include",
@@ -228,15 +248,20 @@ export async function streamAsk({
       question,
       messages: messages && messages.length > 0 ? messages : undefined,
       id_externo: idExterno || undefined,
+      ids_externos: varios,
       model: model || undefined,
       top_k: topK,
       ...extras,
     }),
     signal,
   });
-  const ambito = idExterno ? "licitacion" : "corpus";
+  const ambito = idExterno || varios ? "licitacion" : "corpus";
+  // F2.8: cuántos expedientes entraron (1-3, acotado por el endpoint). Solo
+  // viaja en preguntas con expediente: en el corpus no hay nada que contar.
+  const n = new Set([idExterno, ...(varios ?? [])].filter(Boolean)).size;
+  const conteo = n >= 1 && n <= 3 ? { n_expedientes: String(n) as "1" | "2" | "3" } : {};
   if (!res.ok) {
-    registrarEvento("asistente_usado", { modo: "pregunta", ambito, resultado: "error" });
+    registrarEvento("asistente_usado", { modo: "pregunta", ambito, resultado: "error", ...conteo });
     throw new Error(`Error ${res.status}`);
   }
   const resultado = await consumeStream(res, callbacks);
@@ -247,6 +272,7 @@ export async function streamAsk({
     modo: "pregunta",
     ambito,
     resultado: resultado.degraded ? "degradado" : "ok",
+    ...conteo,
   });
   return resultado;
 }

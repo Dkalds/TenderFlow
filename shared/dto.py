@@ -244,6 +244,21 @@ class CursorPaginatedResponse(BaseModel, Generic[_ItemT]):
     limit: int
 
 
+class CursorPaginatedResponseWithTotal(CursorPaginatedResponse[_ItemT], Generic[_ItemT]):
+    """:class:`CursorPaginatedResponse` con un ``total`` opcional.
+
+    Subclase y no un campo más en la base: las claves de la base están
+    congeladas (``tests/test_contrato_paginacion.py``) porque el cliente
+    generado ya las declara. ``total`` sólo llega cuando se pide
+    (``with_total=true``) y es ``None`` si no: el cursor existe precisamente
+    para no pagar un ``COUNT(*)`` en cada página. Lo usa el listado de
+    licitaciones, que es el que sustituye al de offset en /detalle y necesita
+    decir «de N» al pie.
+    """
+
+    total: int | None = None
+
+
 # ── Envelopes genéricos del contrato (tipado de operaciones opacas) ─────────
 #
 # Nota de modelado (backlog «Tipar el contrato API↔web»): los campos van SIN
@@ -604,6 +619,24 @@ class CompetitiveCompanyUteParticipationDTO(BaseModel):
     importe_total: float = Field(default=0, ge=0)
 
 
+class CompetitiveCompanyCorteDTO(BaseModel):
+    """F3.5 — una celda de un corte del perfil (procedimiento o tramo de importe).
+
+    Con ``n`` siempre; ``baja_media`` e ``importe_total`` solo cuando la celda
+    llega al mínimo (``CompetitiveCompanyProfileDTO.corte_min_n``). La celda no
+    se omite por debajo: que un competidor tenga dos adjudicaciones por
+    negociado también dice algo, pero su media no.
+    """
+
+    clave: str
+    n: int = Field(ge=0)
+    baja_media: float | None = Field(
+        default=None,
+        description="Baja media en tanto por uno (0.12 = 12 %). Nula por debajo del mínimo.",
+    )
+    importe_total: float | None = Field(default=None, ge=0)
+
+
 class CompetitiveCompanyProfileDTO(BaseModel):
     """Full competitor dossier used by quick and deep company views."""
 
@@ -621,6 +654,13 @@ class CompetitiveCompanyProfileDTO(BaseModel):
     movimientos: list[CompetitiveCompanySignalDTO] = Field(default_factory=list)
     contratos_recientes: list[CompetitiveCompanyAwardDTO] = Field(default_factory=list)
     participaciones_ute: list[CompetitiveCompanyUteParticipationDTO] = Field(default_factory=list)
+    #: F3.5 — bajas y adjudicaciones por tipo de procedimiento (etiqueta de
+    #: F1.7) y por tramo de importe de licitación (fronteras LCSP), sobre la
+    #: misma actividad filtrada que ``totales``.
+    por_procedimiento: list[CompetitiveCompanyCorteDTO] = Field(default_factory=list)
+    por_tramo_importe: list[CompetitiveCompanyCorteDTO] = Field(default_factory=list)
+    #: Adjudicaciones mínimas por celda para publicar su media.
+    corte_min_n: int = Field(default=5, ge=1)
 
 
 class CompetitiveCompanyAwardsDTO(BaseModel):
@@ -654,13 +694,9 @@ PursuitOutcome = Literal["pending", "won", "lost", "cancelled"]
 #: revisión ``v93`` lo guardó deliberadamente como TEXT para que la banda pueda
 #: moverse sin migrar.
 #:
-#: Queda **una copia viva**: ``Banda`` en ``services/watchlist_rules.py``, que
-#: publica ``banda_min`` en el contrato. Hoy no produce deriva porque su orden
-#: se alineó con este a mano, pero eso es lo que aplaza el problema, no lo que
-#: lo cierra: sustituirla por ``from shared.dto import RadarBanda`` está
-#: pendiente y no se hizo aquí sólo porque ese fichero está en vuelo en otra
-#: rama. Mientras exista, cualquier reordenación de una de las dos listas
-#: vuelve a poner el gate de deriva a suertes.
+#: Es la única: la copia ``Banda`` que vivía en ``services/watchlist_rules.py``
+#: (y publicaba ``banda_min`` en el contrato) se sustituyó por este alias.
+#: ``tests/test_radar_banda_canonica.py`` impide que vuelva otra.
 #:
 #: **Orden canónico: de mayor a menor interés comercial** (``Caliente`` →
 #: ``Descarte``), el mismo en que ``_band()`` va comparando umbrales de arriba
@@ -822,7 +858,9 @@ class OrganizationSettings(BaseModel):
     ccaas: list[str] = Field(default_factory=list, max_length=25)
     importe_min: float | None = Field(default=None, ge=0)
     importe_max: float | None = Field(default=None, ge=0)
-    #: Tipos de contrato CODICE que interesan (`shared/procedimientos.py`).
+    #: Tipos de órgano que interesan, contra `organos.tipo` del maestro (C1.2).
+    #: El Radar solo excluye los órganos con un tipo **conocido y distinto**:
+    #: el maestro todavía no rellena `tipo`, y exigirlo vaciaría el Radar.
     tipos_organo: list[str] = Field(default_factory=list, max_length=20)
     #: Procedimientos que la organización **no** quiere ver. Es una lista de
     #: exclusión y no de inclusión porque así es como se usa: casi nadie

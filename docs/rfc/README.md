@@ -17,7 +17,7 @@ Todos los RFCs siguen esta estructura.
 
 <!-- BEGIN indice-rfc (generado por scripts/gen_rfc_index.py — no editar a mano) -->
 
-**75 RFC**, de los cuales **19** siguen abiertos. `approved` 2 · `draft` 1 · `implemented` 50 · `obsolete` 4 · `partially-implemented` 15 · `review` 1 · `superseded` 2.
+**76 RFC**, de los cuales **18** siguen abiertos. `approved` 1 · `draft` 2 · `implemented` 52 · `obsolete` 4 · `partially-implemented` 14 · `review` 1 · `superseded` 2.
 
 **Criterio de `implemented`: que el código exista en el árbol, no que el PR se haya mergeado.** Un RFC cuyo código está pero cuyo PR quedó abierto está implementado; uno cuyo PR se mergeó sin dejar código, no.
 
@@ -38,9 +38,9 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 
 | RFC | Estado | Fecha | Evidencia |
 |---|---|---|---|
-| [Plan integral ejecutable para 7 mejoras transversales (typing, CI tests, markers, migraciones, observabilidad, DX Windows, graphify)](2026-05-28-rfc-plan-integral-7-mejoras.md) | `approved` | 2026-05-28 | — |
 | [Retirada de tres endpoints de analítica sin consumidor y del listado por offset](2026-09-06-rfc-retirada-endpoints-analitica.md) | `approved` | 2026-09-06 | — |
 | [Retirar `user_key` del payload del webhook `watchlist_rule.matched`](2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) | `draft` | 2026-09-18 | — |
+| [Retirada de los endpoints antiguos de seguimiento (favoritos, empresas vigiladas y descartes) en favor de `/follows`](2026-09-19-rfc-retirada-endpoints-watchlist.md) | `draft` | 2026-09-19 | — |
 | [Documentar la fachada db.database](001-documentar-facade-db-database.md) | `implemented` | 2026-05-24 | — |
 | [Add PEP 561 py.typed marker to shared/ package](040-py-typed-marker-shared.md) | `implemented` | 2026-05-24 | — |
 | [Fortalecer validación de secretos y contraseñas en arranque](042-rotar-secretos-fortalecer-passwords.md) | `implemented` | 2026-05-24 | — |
@@ -67,12 +67,14 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [Observabilidad de pérdida de filas en el upsert de adjudicaciones (INSERT OR IGNORE)](2026-06-16-rfc-observabilidad-perdida-filas-upsert.md) | `implemented` | 2026-06-16 | — |
 | [Soft-delete + anonimización de usuarios (preservar audit trail, GDPR Art.17)](2026-06-16-rfc-soft-delete-anonimizacion-usuarios.md) | `implemented` | 2026-06-16 | — |
 | [TTL en el cache de secrets — rotación de vault sin reiniciar el proceso](2026-06-16-rfc-ttl-cache-secrets.md) | `implemented` | 2026-06-16 | — |
+| [UX/KPIs · Active Learning — cerrar el bucle (impacto en el modelo) y etiquetado multi-clase](2026-06-16-rfc-ux-active-learning.md) | `implemented` | 2026-06-16 | #1 y #3 el 2026-06-25; #2 (multi-clase) vía el RFC 2026-06-28-rfc-ux-active-learning-multi-tech: FeedbackRequest.tecnologia y tecnologias_secundarias en api/routes/feedback.py, consumidos por ops/_hooks/use-active-learning.ts (verificado 2026-09-19) |
 | [UX · Administración — usuarios reales (no MOCK_USERS) y gestión funcional](2026-06-16-rfc-ux-administracion.md) | `implemented` | 2026-06-16 | — |
 | [UX/KPIs · Clusters — guía de calidad para elegir K e interpretabilidad de clusters](2026-06-16-rfc-ux-clusters.md) | `implemented` | 2026-06-16 | — |
 | [UX/KPIs · Ecosistema Partners — grafo de co-licitación real (UTE/co-adjudicación), no co-ocurrencia por CCAA](2026-06-16-rfc-ux-ecosistema-partners.md) | `implemented` | 2026-06-16 | — |
 | [UX · Feature Flags — lista dirigida por backend (no hardcode), persistencia y auditoría](2026-06-16-rfc-ux-feature-flags.md) | `implemented` | 2026-06-16 | — |
 | [UX/IA · Licitadores vs Competidores — eliminar redundancia (mismo endpoint) o diferenciar propósito](2026-06-16-rfc-ux-licitadores.md) | `implemented` | 2026-06-16 | — |
 | [UX/KPIs · Mi Watchlist — persistir reglas en servidor y alertas reales (hoy localStorage)](2026-06-16-rfc-ux-mi-watchlist.md) | `implemented` | 2026-06-16 | — |
+| [UX/KPIs · Observabilidad — URL de Grafana por config (no localhost), salud en vivo y rol vs calidad-datos](2026-06-16-rfc-ux-observabilidad.md) | `implemented` | 2026-06-16 | NEXT_PUBLIC_GRAFANA_URL en web/.env.example; getGrafanaUrl() en web/src/lib/runtime-config.ts, consumido por ops/_components/observabilidad/grafana-card.tsx (verificado 2026-09-19) |
 | [UX/KPIs · Órganos — totales reales (no sobre el top-50) y drill-down al listado](2026-06-16-rfc-ux-organos.md) | `implemented` | 2026-06-16 | — |
 | [UX/KPIs · Pipeline/Alertas — alertas reales suscribibles y clarificar IA vs renovaciones/calendario](2026-06-16-rfc-ux-pipeline-alertas.md) | `implemented` | 2026-06-16 | — |
 | [UX/KPIs · Proyectos/Módulos — KPIs a nivel licitación (sin doble conteo multi-módulo) y drill-down](2026-06-16-rfc-ux-proyectos-modulos.md) | `implemented` | 2026-06-16 | — |
@@ -95,9 +97,9 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [Añadir dashboard como scrape target de Prometheus](060-prometheus-dashboard-scrape.md) | `obsolete` | 2026-05-24 | — |
 | [RFC de handoff humano: bloqueos por denylist](2026-05-28-implementacion-bloqueos-denylist.md) | `obsolete` | 2026-05-28 | — |
 | [UX · Relaciones → Estructura de mercado: del hairball a vistas orientadas a preguntas (concentración, ego-network, drill-down de arista)](2026-07-21-rfc-relaciones-estructura-mercado.md) | `obsolete` | 2026-07-21 | — |
+| [Plan integral ejecutable para 7 mejoras transversales (typing, CI tests, markers, migraciones, observabilidad, DX Windows, graphify)](2026-05-28-rfc-plan-integral-7-mejoras.md) | `partially-implemented` | 2026-05-28 | Fase 0 COMPLETADA (2026-06-28); typing strict en todo el código de producción (pyproject.toml, overrides solo para tests/scripts y deps sin stubs); SLIs en docs/sli-slo.md; make doctor; /graph-refresh y hooks de graphify. Falta el alerting de burn-rate de la Fase 4 (verificado 2026-09-19) |
 | [Fase 5 — Conectores autonómicos (PSCP Catalunya primero) y resoluciones TACRC](2026-06-11-rfc-conectores-autonomicos-tacrc.md) | `partially-implemented` | 2026-06-11 | — |
 | [Fase 6 — Modelos predictivos: baja ganadora y probabilidad de adjudicación](2026-06-11-rfc-modelos-predictivos.md) | `partially-implemented` | 2026-06-11 | — |
-| [UX/KPIs · Active Learning — cerrar el bucle (impacto en el modelo) y etiquetado multi-clase](2026-06-16-rfc-ux-active-learning.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Calendario — datos diarios reales y reorientar a vencimientos accionables](2026-06-16-rfc-ux-calendario.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Calidad de Datos — integridad completa (drops de escritura, fechas, tendencia, DLQ accionable)](2026-06-16-rfc-ux-calidad-datos.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Competidores — trayectoria temporal, señales proactivas y coherencia de filtros](2026-06-16-rfc-ux-competidores.md) | `partially-implemented` | 2026-06-16 | — |
@@ -105,7 +107,6 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [UX/KPIs · Empresas — perfil con posicionamiento competitivo, trend temporal y drill-down](2026-06-16-rfc-ux-empresas.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Geografía — agregación de provincias en backend (no sample de 500) y drill-down](2026-06-16-rfc-ux-geografia.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Investigador — fidelidad de filtros en búsqueda y citas/feedback del RAG](2026-06-16-rfc-ux-investigador.md) | `partially-implemented` | 2026-06-16 | — |
-| [UX/KPIs · Observabilidad — URL de Grafana por config (no localhost), salud en vivo y rol vs calidad-datos](2026-06-16-rfc-ux-observabilidad.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Renovaciones — priorizar por riesgo de cambio (modelo de retención), no solo importe](2026-06-16-rfc-ux-renovaciones.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Resumen — deltas consistentes, KPIs accionables y arreglo de CCAA cubiertas](2026-06-16-rfc-ux-resumen.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Tendencias CPV — forecast por CPV (no global) y drill-down](2026-06-16-rfc-ux-tendencias-cpv.md) | `partially-implemented` | 2026-06-16 | — |

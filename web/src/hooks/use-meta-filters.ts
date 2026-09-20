@@ -14,14 +14,15 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import type { MetaFilters } from "@/lib/api-types";
 import { metaKeys } from "@/lib/query-keys";
 
-export interface MetaFilters {
-  estado: string[];
-  ccaa: string[];
-  tecnologia: string[];
-  cpv: string[];
-}
+/**
+ * El contrato generado, no una copia a mano: la copia se quedó en las cuatro
+ * listas de 2026-08 y no veía los catálogos de procedimiento, tramitación y
+ * tipo de contrato (F1.7) que la misma respuesta ya traía.
+ */
+export type { MetaFilters };
 
 export function useMetaFilters(enabled = true) {
   return useQuery<MetaFilters>({

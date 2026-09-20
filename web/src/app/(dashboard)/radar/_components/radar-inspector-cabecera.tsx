@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { AlertTriangle, X } from "lucide-react";
+import { GlosarioHint } from "@/components/ui/glosario-hint";
 import type { RadarTender } from "@/hooks/use-radar";
+import { estadoLabel } from "@/lib/estados";
 import { riesgoLabel } from "@/lib/riesgos";
 import { bandColor, bandColorAlpha, daysLeft } from "./radar-shared";
 
@@ -71,7 +73,14 @@ export function InspectorCabecera({ tender, onClose }: { tender: RadarTender; on
         </ul>
       ) : (
         <p className="text-[12.5px] leading-[1.55] text-muted-foreground text-pretty">
-          {tender.estado ? `Estado: ${tender.estado}.` : "Sin estado informado."}{" "}
+          {tender.estado ? (
+            <>
+              {/* F1.8 — la etiqueta y no el código crudo (`PUB`), con su ayuda. */}
+              Estado: {estadoLabel(tender.estado)} <GlosarioHint termino={tender.estado} />.
+            </>
+          ) : (
+            "Sin estado informado."
+          )}{" "}
           {days != null
             ? days >= 0
               ? `Quedan ${days} días para el cierre.`

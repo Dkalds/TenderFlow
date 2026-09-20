@@ -5,7 +5,9 @@ multi-turno (``messages``). Sin ``id_externo`` recupera licitaciones relevantes
 por FTS5 como contexto (modo general: si el corpus no cubre la pregunta, el
 modelo responde con conocimiento general indicándolo). Con ``id_externo`` el
 contexto es esa licitación concreta: metadatos del anuncio + fragmentos de sus
-pliegos (``services/rag/context.py``).
+pliegos (``services/rag/context.py``). Con ``ids_externos`` (hasta tres, F2.8)
+la pregunta es cruzada: el contexto se reparte entre los expedientes, se declara
+en ``ask_meta`` y cada cita del evento ``sources`` lleva su expediente.
 
 ``/licitaciones/{id_externo}/resumen`` genera un resumen ejecutivo
 estructurado de la oportunidad y su pliego (streaming; cacheado por firma de
@@ -37,7 +39,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
@@ -54,6 +56,10 @@ _DEFAULT_TOP_K = 5
 _MAX_TOP_K = 20
 _MAX_HISTORY_MESSAGES = 20
 _MAX_HISTORY_CONTENT_LEN = 4000
+#: F2.8 — expedientes por pregunta cruzada. Tres es lo que cabe en el
+#: presupuesto de contexto con un mínimo de pliego por expediente; con más, cada
+#: uno llegaría al modelo con dos fragmentos y la comparación sería de títulos.
+_MAX_EXPEDIENTES = 3
 
 # El prompt, la clave de caché y el armado del contexto del resumen viven en
 # `services/rag/resumen.py`: el job nocturno los usa para pre-generar, y una
@@ -119,6 +125,16 @@ class AskRequest(BaseModel):
             "de corpus."
         ),
     )
+    ids_externos: list[str] | None = Field(
+        default=None,
+        max_length=_MAX_EXPEDIENTES,
+        description=(
+            "F2.8 — hasta tres licitaciones para una pregunta cruzada (comparar). El "
+            "contexto se reparte entre ellas —el presupuesto por expediente se reduce y "
+            "se declara en `ask_meta`— y la respuesta cita cada dato con su expediente. "
+            "Compatible con `id_externo`: si llegan los dos, `id_externo` va primero."
+        ),
+    )
     force: bool = Field(
         default=False,
         description=(
@@ -127,6 +143,21 @@ class AskRequest(BaseModel):
             "no el modo por defecto."
         ),
     )
+
+    @model_validator(mode="after")
+    def _limitar_expedientes(self) -> AskRequest:
+        if len(self.expedientes()) > _MAX_EXPEDIENTES:
+            raise ValueError(f"Como mucho {_MAX_EXPEDIENTES} expedientes por pregunta.")
+        return self
+
+    def expedientes(self) -> list[str]:
+        """Los expedientes pedidos, sin vacíos ni repetidos, en orden."""
+        vistos: list[str] = []
+        for bruto in [self.id_externo, *(self.ids_externos or [])]:
+            valor = (bruto or "").strip()
+            if valor and valor not in vistos:
+                vistos.append(valor)
+        return vistos
 
 
 class AskModelInfo(BaseModel):
@@ -427,7 +458,69 @@ def _stream_sse(
     return _generate()
 
 
-def _prepare_ask_context(request: AskRequest) -> tuple[list[dict[str, Any]], PromptMode]:
+def _presupuesto_por_expediente(n: int) -> tuple[int, int]:
+    """``(max_chars, max_chunks)`` de pliego para cada uno de ``n`` expedientes.
+
+    El bloque de contexto tiene un techo por modo (``llm.prompts``); si cada
+    expediente se cargara con el presupuesto de uno solo, el tercero no
+    llegaría al modelo —``build_context_block`` corta y descarta lo que no
+    cabe— y la respuesta compararía dos fingiendo comparar tres. Se reparte
+    antes: lo que sobra tras los metadatos y el extracto de cada anuncio, a
+    partes iguales.
+    """
+    from llm.prompts import context_chars_for, excerpt_chars_for
+    from services.rag.context import MAX_PLIEGO_CONTEXT_CHARS, MAX_SELECTED_CHUNKS
+
+    n = max(1, n)
+    por_anuncio = excerpt_chars_for("comparacion") + 600  # metadatos + cabeceras
+    libre = context_chars_for("comparacion") - n * por_anuncio
+    max_chars = max(1_000, min(MAX_PLIEGO_CONTEXT_CHARS, libre // n))
+    max_chunks = max(3, (MAX_SELECTED_CHUNKS * 2) // (n + 1))
+    return max_chars, max_chunks
+
+
+def _contexto_comparacion(
+    ids: list[str], question: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Docs de contexto y declaración por expediente de una pregunta cruzada.
+
+    Cada chunk lleva el ``id_externo`` de su expediente: es lo que deja al
+    evento ``sources`` decir de qué expediente sale cada cita.
+    """
+    from services.rag.context import build_licitacion_context, primary_doc_from_context
+
+    max_chars, max_chunks = _presupuesto_por_expediente(len(ids))
+    docs: list[dict[str, Any]] = []
+    declarados: list[dict[str, Any]] = []
+    for id_externo in ids:
+        try:
+            ctx = build_licitacion_context(
+                id_externo, question, max_chars=max_chars, max_chunks=max_chunks
+            )
+        except Exception as exc:
+            log.warning("ask.comparacion_context_failed", id_externo=id_externo, error=str(exc))
+            ctx = None
+        if ctx is None:
+            declarados.append({"id_externo": id_externo, "encontrado": False})
+            continue
+        doc = primary_doc_from_context(id_externo, ctx)
+        doc["chunks"] = [{**c, "id_externo": id_externo} for c in doc.get("chunks") or []]
+        docs.append(doc)
+        declarados.append(
+            {
+                "id_externo": id_externo,
+                "encontrado": True,
+                "has_pliego_text": bool(ctx["has_pliego_text"]),
+                "fragmentos": len(doc["chunks"]),
+                "truncado": bool(ctx["truncated"]),
+            }
+        )
+    return docs, declarados
+
+
+def _prepare_ask_context(
+    request: AskRequest,
+) -> tuple[list[dict[str, Any]], PromptMode, list[dict[str, Any]]]:
     """Recupera los documentos de contexto para la pregunta (trabajo de BD).
 
     Se separa de ``_stream_ask`` para poder despacharla al threadpool: es la
@@ -435,11 +528,30 @@ def _prepare_ask_context(request: AskRequest) -> tuple[list[dict[str, Any]], Pro
     retrieval FTS + pgvector) y corría en el event loop, bloqueando la API
     entera durante cientos de milisegundos por pregunta. El streaming de tokens
     del LLM ya estaba correctamente aislado en un thread.
+
+    El tercer elemento declara, en una pregunta cruzada (F2.8), qué expediente
+    entró, con cuántos fragmentos y si se recortó. Vacío en los demás modos.
     """
     mode: PromptMode = "general"
     docs: list[dict[str, Any]] = []
+    declarados: list[dict[str, Any]] = []
+    expedientes = request.expedientes()
 
-    if request.id_externo:
+    if len(expedientes) > 1:
+        docs, declarados = _contexto_comparacion(expedientes, request.question)
+        if len(docs) > 1:
+            return docs, "comparacion", declarados
+        if len(docs) == 1:
+            # Solo uno de los pedidos existe: es una pregunta sobre ese
+            # expediente y se declara como tal, no como una comparación.
+            return docs, "licitacion", declarados
+        # Ninguno existe: cae al corpus, y `declarados` dice que ninguno cargó.
+        docs = []
+    elif expedientes:
+        request_id = expedientes[0]
+        request = request.model_copy(update={"id_externo": request_id})
+
+    if request.id_externo and len(expedientes) <= 1:
         # Contexto de licitación: anuncio completo + fragmentos de pliego
         # relevantes a la pregunta. Si el id no existe se degrada al retrieval
         # general (no romper consumidores que envían ids stale).
@@ -467,7 +579,7 @@ def _prepare_ask_context(request: AskRequest) -> tuple[list[dict[str, Any]], Pro
         )
         mode = "general"
 
-    return docs, mode
+    return docs, mode, declarados
 
 
 async def _stream_ask(
@@ -479,7 +591,7 @@ async def _stream_ask(
 
     _validate_model(request.model)
 
-    docs, mode = await run_db(_prepare_ask_context, request)
+    docs, mode, declarados = await run_db(_prepare_ask_context, request)
 
     keywords = [w for w in request.question.split() if len(w) > 3][:10]
     history: list[ChatMessage] = [
@@ -496,9 +608,15 @@ async def _stream_ask(
     # cargarse: sin este evento el fallback al corpus era silencioso y la UI
     # del detalle presentaba como "sobre este expediente" una respuesta que no
     # lo era.
-    pre_events: list[dict[str, Any]] = [
-        {"ask_meta": {"contexto": mode, "id_externo": request.id_externo}}
-    ]
+    ask_meta: dict[str, Any] = {"contexto": mode, "id_externo": request.id_externo}
+    if declarados:
+        # F2.8: qué expedientes entraron de verdad, con cuánto pliego cada uno
+        # y si su parte del contexto se recortó. Sin esto, una comparación en
+        # la que uno de los tres no cargó se leería como una de tres.
+        ask_meta["ids_externos"] = [d["id_externo"] for d in declarados]
+        ask_meta["expedientes"] = declarados
+        ask_meta["truncado"] = any(d.get("truncado") for d in declarados)
+    pre_events: list[dict[str, Any]] = [{"ask_meta": ask_meta}]
     if fuentes:
         pre_events.append({"fuentes_documentos": fuentes})
 
@@ -593,7 +711,7 @@ async def _stream_ask(
     # en metadatos de anuncios, no en páginas de pliego: pedir citas ahí las
     # inventaría, y marcar `sin_fuentes` diría que falta algo que nunca se pidió.
     post_event: Callable[[str], dict[str, Any] | None] | None = None
-    if mode == "licitacion":
+    if mode in ("licitacion", "comparacion"):
         chunks_del_contexto = [c for d in docs for c in (d.get("chunks") or [])]
 
         def _sources(texto: str) -> dict[str, Any] | None:
@@ -648,6 +766,7 @@ async def ask_question(
         question_len=len(body.question),
         n_messages=len(body.messages or []),
         id_externo=body.id_externo,
+        n_expedientes=len(body.expedientes()),
         user_key_id=user.get("user_id"),
     )
 

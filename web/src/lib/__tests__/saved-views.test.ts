@@ -56,21 +56,7 @@ describe("snapshotFilters", () => {
 
 describe("applySnapshot", () => {
   function makeMockState(): FiltersState {
-    return {
-      ...baseValues,
-      setQ: vi.fn(),
-      setRango: vi.fn(),
-      setEstados: vi.fn(),
-      setCcaas: vi.fn(),
-      setTecnologias: vi.fn(),
-      setImporteMin: vi.fn(),
-      setSoloAbiertas: vi.fn(),
-      setComparar: vi.fn(),
-      setRangoB: vi.fn(),
-      resetFilters: vi.fn(),
-      comparar: false,
-      rangoB: { desde: null, hasta: null },
-    };
+    return { ...baseValues, ...mockSetters() };
   }
 
   it("calls all setters when the snapshot is valid", () => {
@@ -145,10 +131,34 @@ function mockSetters() {
     setTecnologias: vi.fn(),
     setImporteMin: vi.fn(),
     setSoloAbiertas: vi.fn(),
+    setProcedimientos: vi.fn(),
+    setProvincias: vi.fn(),
+    setImporteMax: vi.fn(),
     setComparar: vi.fn(),
     setRangoB: vi.fn(),
     resetFilters: vi.fn(),
+    procedimientos: [],
+    provincias: [],
+    importeMax: null,
     comparar: false,
     rangoB: { desde: null, hasta: null },
   };
 }
+
+describe("saved views · filtros del listado (F1.1)", () => {
+  it("van en la instantánea sólo si están puestos", () => {
+    expect(JSON.parse(snapshotFilters(makeFilters({}))).procedimientos).toBeUndefined();
+    const snap = JSON.parse(
+      snapshotFilters(makeFilters({ procedimientos: ["1"], provincias: ["Madrid"], importeMax: 5e5 })),
+    );
+    expect(snap).toMatchObject({ procedimientos: ["1"], provincias: ["Madrid"], importeMax: 5e5 });
+  });
+
+  it("se restauran, y una vista sin ellos los apaga", () => {
+    const filters = { ...baseValues, ...mockSetters() } as FiltersState;
+    applySnapshot(filters, JSON.stringify({ procedimientos: ["9"], importeMax: 100 }));
+    expect(filters.setProcedimientos).toHaveBeenCalledWith(["9"]);
+    expect(filters.setImporteMax).toHaveBeenCalledWith(100);
+    expect(filters.setProvincias).toHaveBeenCalledWith([]);
+  });
+});

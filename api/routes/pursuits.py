@@ -22,15 +22,21 @@ from api.concurrency import run_db
 from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth, require_recent_session
 from db.audit import log_event
-from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
-from services.cartera import ContratoCartera, cartera_de_usuario
+from services.cartera import (
+    CarteraNoEncontradaError,
+    ContratoCartera,
+    PrepararRenovacionIn,
+    RenovacionInvalidaError,
+    RenovacionPreparada,
+    cartera_de_usuario,
+    preparar_renovacion,
+)
 from services.direccion import (
     CuadroDireccion,
     FeedActividad,
     actividad_de_organizacion,
-    corte_con_minimo,
-    direccion_resuelta,
+    cuadro_de_direccion,
 )
 from services.kit_presentacion import KitPresentacion
 from services.organizations import (
@@ -136,9 +142,6 @@ async def _auditar_organizacion(
         resource=f"org:{organization_id}",
         detail={"organization_id": organization_id, **detail},
     )
-
-
-_pursuit_repo = PursuitRepository()
 
 
 # ── DTOs de captura: tareas, go/no-go y «mi baja» (C6) ──────────────────────
@@ -886,6 +889,43 @@ async def get_cartera(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
+@router.post(
+    "/pursuits/cartera/{cartera_id}/renovacion",
+    response_model=RenovacionPreparada,
+    summary="Preparar la renovación de un contrato en cartera (F4.3)",
+    responses={
+        403: {"description": "No perteneces a esa organización o no puedes escribir"},
+        404: {"description": "El contrato no está en la cartera de la organización"},
+        422: {"description": "El expediente no sirve como relicitación"},
+    },
+)
+async def post_cartera_renovacion(
+    cartera_id: int,
+    body: PrepararRenovacionIn,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> RenovacionPreparada:
+    """Crea la oportunidad de la relicitación, enlazada al contrato.
+
+    Idempotente: si el contrato ya tenía oportunidad de renovación, devuelve
+    esa con ``creada=false`` y no crea otra.
+    """
+    try:
+        return await run_db(
+            preparar_renovacion,
+            int(ctx["user_id"]),
+            cartera_id,
+            body.licitacion_id,
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except CarteraNoEncontradaError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RenovacionInvalidaError, PursuitValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/pursuits/weights-proposal/apply", response_model=PesosPropuestosAplicados)
 async def post_pursuits_weights_proposal_apply(
     organization_id: int | None = Query(default=None, ge=1),
@@ -925,21 +965,12 @@ async def get_direccion(
 
     Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
     rail sin enlace es una sugerencia, esto es un permiso.
+
+    Cada tarjeta lleva universo, `n` y mínimo; por debajo del mínimo sale sin
+    `valor` y con la `nota` que dice por qué, nunca con un número inventado.
     """
-
-    def _trabajo() -> CuadroDireccion:
-        # El `with` tiene que envolver la consulta, no sólo la resolución: el
-        # ámbito de tenencia vive mientras el bloque está abierto.
-        with direccion_resuelta(int(ctx["user_id"]), organization_id) as resuelta:
-            filas = _pursuit_repo.metric_rows(resuelta)
-            return CuadroDireccion(
-                organization_id=resuelta,
-                win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
-                win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
-            )
-
     try:
-        return await run_db(_trabajo)
+        return await run_db(cuadro_de_direccion, int(ctx["user_id"]), organization_id)
     except OrganizationPermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except OrganizationAccessError as exc:

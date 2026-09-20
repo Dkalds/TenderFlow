@@ -46,11 +46,16 @@ async function cancelAndSnapshot(qc: QueryClient): Promise<WatchlistItem[] | und
   return qc.getQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY);
 }
 
-export function useWatchlistItems() {
+/**
+ * `enabled` existe para `useSeguimiento`: el control «Seguir» instancia las
+ * tres fuentes y sólo pide la que corresponde a su tipo de objetivo.
+ */
+export function useWatchlistItems({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: WATCHLIST_ITEMS_KEY,
     queryFn: () => apiGet("/api/v1/watchlist/items").then((r) => r.items),
     meta: { silent: true },
+    enabled,
   });
 }
 

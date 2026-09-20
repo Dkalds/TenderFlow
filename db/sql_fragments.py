@@ -375,6 +375,26 @@ def empresa_key_sql(alias: str = "a") -> str:
     )
 
 
+def normaliza_codigo(code: str) -> str:
+    """Código de lista controlada CODICE listo para comparar: sin ceros a la izquierda.
+
+    La fuente publica ``01`` y ``1`` para el mismo procedimiento según el
+    emisor. Mismo criterio que ``db/repositories/licitaciones._normaliza_codigo``
+    (el listado, en SA Core) y que ``shared/procedimientos.py`` al traducir.
+    """
+    limpio = code.strip()
+    return str(int(limpio)) if limpio.isdigit() else limpio
+
+
+def codigo_normalizado_sql(column: str) -> str:
+    """La columna de código normalizada en SQL, con la regla de :func:`normaliza_codigo`.
+
+    ``NULLIF``+``COALESCE`` porque ``ltrim('0', '0')`` deja ``''``, que no es
+    ningún código: el cero se conserva como ``'0'``.
+    """
+    return f"COALESCE(NULLIF(ltrim(trim({column}), '0'), ''), '0')"
+
+
 def iso_guard(column: str) -> str:
     """Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna).
 
@@ -435,7 +455,23 @@ def _tipada(tipada: bool | None) -> bool:
     return lectura_tipada_activa() if tipada is None else tipada
 
 
-def columna_nucleo_sql(nombre: str, alias: str = "l", *, tipada: bool | None = None) -> str:
+def columna_nucleo(nombre: str, *, tipada: bool | None = None) -> str:
+    """Nombre **desnudo** de la columna que hay que leer para ``nombre``.
+
+    Lo necesitan quienes no interpolan texto: el listado y el cursor compilan
+    SQLAlchemy Core (``licitaciones.c[columna_nucleo(...)]``), y un fragmento
+    con alias no sirve para indexar una ``Table``. Es la misma decisión que
+    :func:`columna_nucleo_sql`, que se construye encima.
+    """
+    vieja, sombra = _SOMBRAS[nombre]
+    return sombra if _tipada(tipada) else vieja
+
+
+def _calificada(columna: str, alias: str | None) -> str:
+    return f"{alias}.{columna}" if alias else columna
+
+
+def columna_nucleo_sql(nombre: str, alias: str | None = "l", *, tipada: bool | None = None) -> str:
     """La columna que hay que leer para ``nombre``: la vieja o su sombra.
 
     Para filtros y ``ORDER BY``. ``tipada=None`` sigue el setting; los tests y
@@ -452,12 +488,14 @@ def columna_nucleo_sql(nombre: str, alias: str = "l", *, tipada: bool | None = N
     guardados con otro offset, así que el paso de lecturas se hace **consulta
     a consulta**, con su ``EXPLAIN`` y su comparación de resultados, no
     encendiendo el flag y confiando.
+
+    ``alias`` vacío o ``None`` deja la columna sin calificar: las agregaciones
+    de ``db/repositories/aggregates.py`` leen de ``licitaciones`` a secas.
     """
-    vieja, sombra = _SOMBRAS[nombre]
-    return f"{alias}.{sombra if _tipada(tipada) else vieja}"
+    return _calificada(columna_nucleo(nombre, tipada=tipada), alias)
 
 
-def importe_sql(alias: str = "l", *, tipada: bool | None = None) -> str:
+def importe_sql(alias: str | None = "l", *, tipada: bool | None = None) -> str:
     """El importe para **proyectar** en un ``SELECT``.
 
     Con la sombra, castea a ``double precision``: ``numeric`` llega a Python
@@ -469,7 +507,19 @@ def importe_sql(alias: str = "l", *, tipada: bool | None = None) -> str:
     return f"CAST({columna} AS double precision)" if _tipada(tipada) else columna
 
 
-def fecha_valida_sql(nombre: str, alias: str = "l", *, tipada: bool | None = None) -> str:
+def importe_select_sql(alias: str | None = "l", *, tipada: bool | None = None) -> str:
+    """El importe como **elemento de una lista de SELECT**, con su nombre de siempre.
+
+    Con el flag apagado es la columna vieja tal cual (``l.importe``), byte a
+    byte lo que las consultas proyectaban antes. Encendido, la sombra casteada
+    lleva ``AS importe``: sin el alias la clave del diccionario de fila sería
+    ``importe_num`` —o ``float8``— y el DTO recibiría ``None``.
+    """
+    proyectada = importe_sql(alias, tipada=tipada)
+    return f"{proyectada} AS importe" if _tipada(tipada) else proyectada
+
+
+def fecha_valida_sql(nombre: str, alias: str | None = "l", *, tipada: bool | None = None) -> str:
     """Guarda de fecha bien formada para ``fecha_publicacion``/``fecha_limite``.
 
     Sobre el texto es exactamente :func:`iso_guard`. Sobre la sombra el rango

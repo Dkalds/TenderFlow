@@ -10,10 +10,12 @@ import { TecnologiasBlock } from "@/components/tecnologias-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
+import { CodigoLegible } from "@/components/codigo-legible";
 import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
 import { ReportarDatoBoton } from "@/components/pliego/reportar-dato";
 import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import { RecurridoBadge, ResolucionesBlock, useResoluciones } from "@/components/resoluciones-block";
+import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
@@ -131,6 +133,8 @@ export function DetailInspector({
       <div className="flex-none border-b border-border/60 px-4 pt-3.5">
         <div className="mb-2.5 flex items-center gap-[7px]">
           <StatusBadge value={l.estado} kind="estado" showIcon />
+          {/* F1.8 — «Evaluación» no dice que ya no se puede presentar. */}
+          <GlosarioHint termino={l.estado ?? undefined} />
           <RecurridoBadge licitacionId={l.id_externo} />
           <span className="font-mono text-[10.5px] text-muted-foreground">{l.id_externo}</span>
           <div className="flex-1" />
@@ -313,7 +317,31 @@ export function DetailInspector({
               <Fact label="CCAA" value={l.ccaa} />
               <Fact label="Provincia" value={l.provincia} />
               <Fact label="CPV" value={l.cpv} />
-              <Fact label="Tipo de contrato" value={l.tipo_contrato} />
+              <Fact
+                label="Tipo de contrato"
+                value={
+                  l.tipo_contrato ? (
+                    <CodigoLegible familia="tipo_contrato" codigo={l.tipo_contrato} />
+                  ) : null
+                }
+              />
+              {/* F1.7 — etiqueta legible y definición desde `/meta/filters`. */}
+              <Fact
+                label="Procedimiento"
+                value={
+                  l.procedimiento ? (
+                    <CodigoLegible familia="procedimiento" codigo={l.procedimiento} />
+                  ) : null
+                }
+              />
+              <Fact
+                label="Tramitación"
+                value={
+                  l.tramitacion ? (
+                    <CodigoLegible familia="tramitacion" codigo={l.tramitacion} />
+                  ) : null
+                }
+              />
               <Fact label="Tecnología" value={l.tecnologia} />
               <Fact label="Publicación" value={formatDate(l.fecha_publicacion)} />
               <Fact label="Fecha límite" value={formatDate(l.fecha_limite)} />

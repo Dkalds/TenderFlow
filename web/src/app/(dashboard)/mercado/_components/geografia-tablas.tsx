@@ -7,12 +7,14 @@
  * una sola vez aquí.
  */
 
+import Link from "next/link";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useScopedHref } from "@/lib/filters";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 import type {
@@ -207,10 +209,12 @@ export function GeografiaTablaProvincias({
   onSort: (key: ProvSortKey) => void;
   isLoading: boolean;
 }) {
+  const conAmbito = useScopedHref();
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Provincias</CardTitle>
+        <CardDescription>Pulsa una provincia para ver sus licitaciones en Detalle.</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -240,7 +244,16 @@ export function GeografiaTablaProvincias({
                     className="border-b border-border/50 hover:bg-muted/50"
                   >
                     <TableCell className="py-2 pr-4 font-medium">
-                      {item.provincia}
+                      {/* F1.1 — la provincia sólo la filtra el listado: el
+                          enlace abre Detalle con ella y con el resto del
+                          ámbito que ya estaba puesto. */}
+                      <Link
+                        href={conAmbito(`/detalle?provincia=${encodeURIComponent(item.provincia)}`)}
+                        aria-label={`Ver en Detalle las licitaciones de ${item.provincia}`}
+                        className="inline-flex min-h-6 items-center hover:text-primary hover:underline"
+                      >
+                        {item.provincia}
+                      </Link>
                     </TableCell>
                     <TableCell className="py-2 pr-4 text-right tabular-nums">
                       {formatNumber(item.count)}

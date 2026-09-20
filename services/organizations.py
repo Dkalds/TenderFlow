@@ -449,7 +449,40 @@ def accept_invitations_for_email(user_id: int, email: str | None) -> int:
         return 0
     if aceptadas:
         log.info("organization_invite_accepted", user_id=user_id, count=len(aceptadas))
+    _aplicar_plantillas_de(aceptadas, user_id)
     return len(aceptadas)
+
+
+def _aplicar_plantillas_de(aceptadas: list[dict[str, Any]], user_id: int) -> None:
+    """F6.4 — copia las plantillas de cada organización recién aceptada.
+
+    ``services.cuentas.aplicar_plantillas`` existía y nadie la llamaba: cada
+    miembro nuevo empezaba vacío aunque el equipo hubiera definido sus reglas y
+    vistas por defecto. Se llama aquí, al activar la membresía, que es el único
+    momento en que «recibir las plantillas al entrar» significa algo; la
+    idempotencia la da ``plantillas_aplicadas``, así que re-aceptar o volver a
+    entrar no duplica nada.
+
+    Nunca propaga, por el mismo motivo que la aceptación: una plantilla que no
+    se pudo copiar no puede dejar a nadie fuera de su propia cuenta. Cada
+    organización va en su ``tenant_scope`` porque las copias son escrituras de
+    ese equipo.
+    """
+    from services.cuentas import aplicar_plantillas
+
+    organizaciones = sorted(
+        {int(fila["organization_id"]) for fila in aceptadas if fila.get("organization_id")}
+    )
+    for organization_id in organizaciones:
+        try:
+            with tenant_scope(organization_id):
+                aplicar_plantillas(organization_id, user_id)
+        except Exception:
+            log.exception(
+                "organization_plantillas_no_aplicadas",
+                organization_id=organization_id,
+                user_id=user_id,
+            )
 
 
 def accept_invitation_token(user_id: int, email: str | None, token: str) -> OrganizationSummary:
@@ -467,7 +500,8 @@ def accept_invitation_token(user_id: int, email: str | None, token: str) -> Orga
         raise OrganizationPermissionError(
             "Esta invitación es para otra dirección de correo. Inicia sesión con ella."
         )
-    _repo.accept_invitations_for_email(email, user_id)
+    aceptadas = _repo.accept_invitations_for_email(email, user_id)
+    _aplicar_plantillas_de(aceptadas, user_id)
     organization = _repo.get_for_user(int(row["organization_id"]), user_id)
     if organization is None:
         raise OrganizationInvitationNotFoundError("La invitación ya no está pendiente.")

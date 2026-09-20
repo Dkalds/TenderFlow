@@ -124,14 +124,83 @@ class CarteraRepository:
             )
             return bool(cur.rowcount > 0)
 
+    def get(self, organization_id: int, cartera_id: int) -> dict[str, Any] | None:
+        """Una entrada de cartera dentro de su organización, o ``None``."""
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT id, organization_id, pursuit_id, licitacion_id, fecha_inicio, "
+                "       fecha_fin_efectiva, fecha_fin_origen, importe_adjudicado, "
+                "       prorrogas_aplicadas, renovacion_pursuit_id, created_at, updated_at "
+                "FROM contratos_cartera WHERE organization_id = %s AND id = %s",
+                (organization_id, cartera_id),
+            )
+            filas = rows_to_dicts(cur)
+        return filas[0] if filas else None
+
+    def fuentes_ganadas(
+        self,
+        *,
+        organization_id: int | None = None,
+        pursuit_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Oportunidades ganadas con lo que hace falta para derivar su contrato.
+
+        Trae, por cada ``pursuits.status = 'won'``, los campos de la licitación
+        de los que sale la fecha de fin (publicada, inicio + duración), la
+        primera adjudicación como inicio de último recurso —la misma prioridad
+        que ``services/competitive/renovaciones.py``—, el número de prórrogas
+        que ``contract_events`` registró y la fila de cartera que ya exista,
+        para que el llamador pueda decir qué cambia antes de escribir.
+
+        Sin filtros recorre todas las organizaciones: es lo que usan el
+        backfill y la resincronización diaria, que corren sin ámbito.
+        """
+        clauses = ["p.status = 'won'"]
+        params: list[Any] = []
+        if organization_id is not None:
+            clauses.append("p.organization_id = %s")
+            params.append(organization_id)
+        if pursuit_id is not None:
+            clauses.append("p.id = %s")
+            params.append(pursuit_id)
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT p.id AS pursuit_id, p.organization_id, p.licitacion_id, "
+                "       p.lote_numero, p.awarded_amount_eur, "
+                "       l.fecha_fin, l.fecha_inicio, l.duracion_valor, l.duracion_unidad, "
+                "       (SELECT MIN(a.fecha_adjudicacion) FROM adjudicaciones a "
+                "         WHERE a.licitacion_id = p.licitacion_id) AS fecha_adjudicacion, "
+                "       (SELECT SUM(a.importe_adjudicado) FROM adjudicaciones a "
+                "         WHERE a.licitacion_id = p.licitacion_id) AS importe_adjudicaciones, "
+                "       (SELECT COUNT(*) FROM contrato_eventos e "
+                "         WHERE e.licitacion_id = p.licitacion_id AND e.tipo = 'prorroga') "
+                "         AS prorrogas, "
+                "       c.id AS cartera_id, c.fecha_inicio AS cartera_fecha_inicio, "
+                "       c.fecha_fin_efectiva AS cartera_fecha_fin_efectiva, "
+                "       c.fecha_fin_origen AS cartera_fecha_fin_origen, "
+                "       c.importe_adjudicado AS cartera_importe_adjudicado, "
+                "       c.prorrogas_aplicadas AS cartera_prorrogas_aplicadas "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "LEFT JOIN contratos_cartera c ON c.pursuit_id = p.id "
+                "WHERE " + " AND ".join(clauses) + " ORDER BY p.id",
+                tuple(params),
+            )
+            return rows_to_dicts(cur)
+
     def vencen_entre(self, *, desde_iso: str, hasta_iso: str) -> list[dict[str, Any]]:
-        """Contratos cuyo fin efectivo cae en la ventana. Lo usa el job de avisos."""
+        """Contratos cuyo fin efectivo cae en la ventana. Lo usa el job de avisos.
+
+        Trae al responsable de la oportunidad ganada: es a quien se avisa.
+        """
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT c.id, c.organization_id, c.pursuit_id, c.licitacion_id, "
-                "       c.fecha_fin_efectiva, l.titulo, l.organo_contratacion "
+                "       c.fecha_fin_efectiva, c.renovacion_pursuit_id, "
+                "       l.titulo, l.organo_contratacion, p.responsible_user_id "
                 "FROM contratos_cartera c "
                 "JOIN licitaciones l ON l.id_externo = c.licitacion_id "
+                "LEFT JOIN pursuits p ON p.id = c.pursuit_id "
                 "WHERE c.fecha_fin_efectiva IS NOT NULL "
                 "  AND c.fecha_fin_efectiva >= %s AND c.fecha_fin_efectiva < %s "
                 "ORDER BY c.fecha_fin_efectiva",

@@ -2,51 +2,33 @@
 
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { Etiqueta } from "@/hooks/use-etiquetas";
-
-export const TODAS = "todas";
+import { FiltroEtiquetaSelect } from "@/components/etiquetas/filtro-etiqueta";
+import { ExportarCrm } from "./exportar-crm";
 
 /**
- * Los dos controles que gobiernan las seis columnas. Viven en la cabecera del
+ * Los controles que gobiernan las seis columnas. Viven en la cabecera del
  * espacio, no dentro del tablero: filtran todo a la vez, no una columna.
+ *
+ * El filtro de etiqueta es el compartido con el Radar y Detalle
+ * (`components/etiquetas/filtro-etiqueta.tsx`), no una copia: pide sus propias
+ * etiquetas y desaparece cuando la organización no tiene ninguna.
  */
 export function TableroFiltros({
   query,
   onQuery,
   etiqueta,
   onEtiqueta,
-  etiquetas,
 }: {
   query: string;
   onQuery: (valor: string) => void;
   etiqueta: string;
   onEtiqueta: (valor: string) => void;
-  etiquetas: readonly Etiqueta[];
 }) {
   return (
     <div className="flex flex-none items-center gap-2">
-      {etiquetas.length > 0 ? (
-        <Select value={etiqueta} onValueChange={onEtiqueta}>
-          <SelectTrigger className="h-7 w-44 text-tf-meta" aria-label="Filtrar por etiqueta">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={TODAS}>Todas las etiquetas</SelectItem>
-            {etiquetas.map((item) => (
-              <SelectItem key={item.id} value={String(item.id)}>
-                {item.nombre}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : null}
+      {/* F6.3 — el tablero entero como CSV para el CRM. */}
+      <ExportarCrm />
+      <FiltroEtiquetaSelect value={etiqueta} onChange={onEtiqueta} alcance="en el tablero" />
       <label className="relative block w-56 flex-none" htmlFor="pursuit-search">
         <Search
           className="text-muted-foreground pointer-events-none absolute top-1.5 left-2.5 h-3.5 w-3.5"

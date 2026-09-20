@@ -184,6 +184,11 @@ export type DescarteRadar = {
   accion?: AccionDescarte;
   /** Obligatorio para `silenciar` y `posponer`; el servidor lo valida. */
   dias?: number;
+  /**
+   * F1.3 — la explicación del score de esta señal se abrió antes de triarla.
+   * Sólo telemetría: no viaja al servidor.
+   */
+  explicacionAbierta?: boolean;
 };
 
 /**
@@ -216,14 +221,17 @@ export function useDismissRadarTender() {
       qc.setQueryData(DISMISSALS_KEY, ctx?.previous);
       toast.error("No se pudo quitar la señal de la bandeja");
     },
-    onSuccess: (ids: string[], { accion = "descartar" }: DescarteRadar) => {
+    onSuccess: (ids: string[], { accion = "descartar", explicacionAbierta }: DescarteRadar) => {
       qc.setQueryData<string[]>(DISMISSALS_KEY, ids);
       // Se mide el descarte confirmado por el servidor, no el optimista de
       // `onMutate`: un rollback dejaría contada una decisión que no ocurrió.
       // Las tres acciones se separan porque miden cosas distintas: descartar
       // es desinterés definitivo, silenciar temporal y posponer trabajo
       // aplazado.
-      registrarEvento("radar_triaje", { accion });
+      registrarEvento("radar_triaje", {
+        accion,
+        ...(explicacionAbierta ? { explicacion_abierta: "si" as const } : {}),
+      });
     },
     onSettled: () => {
       // El ranking se pide con `exclude_dismissed`: hay que volver a pedirlo

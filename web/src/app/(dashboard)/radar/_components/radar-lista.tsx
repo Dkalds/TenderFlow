@@ -66,7 +66,6 @@ export function RadarLista({
   listRef,
   rows,
   activeIndex,
-  followedIds,
   lastVisit,
   rowHeight,
   enTabla,
@@ -76,15 +75,15 @@ export function RadarLista({
   onRetry,
   onSelect,
   onDismiss,
-  onFollow,
+  onFollowed,
   onOpenPursuit,
   onOpenFicha,
+  onExplicacion,
   afinidadOrigen,
 }: {
   listRef: React.RefObject<HTMLDivElement | null>;
   rows: RadarTender[];
   activeIndex: number;
-  followedIds: Set<string>;
   lastVisit: number;
   rowHeight: number;
   enTabla: boolean;
@@ -94,9 +93,10 @@ export function RadarLista({
   onRetry: () => void;
   onSelect: (index: number) => void;
   onDismiss: (tender: RadarTender) => void;
-  onFollow: (tender: RadarTender) => void;
+  onFollowed: (tender: RadarTender, ahoraSigue: boolean) => void;
   onOpenPursuit: (tender: RadarTender) => void;
   onOpenFicha: (index: number) => void;
+  onExplicacion?: (tender: RadarTender) => void;
   /** Origen del portfolio de afinidad (S2.4). Viaja de la respuesta a cada
    *  desglose: es de la petición, no de la fila. */
   afinidadOrigen?: string | null;
@@ -141,16 +141,16 @@ export function RadarLista({
               tender={tender}
               index={index}
               isActive={index === activeIndex}
-              isFollowed={followedIds.has(tender.id_externo)}
               isNew={lastVisit > 0 && publicado > lastVisit}
               rowHeight={rowHeight}
               enTabla={enTabla}
               conFicha={conFicha}
               onSelect={onSelect}
               onDismiss={onDismiss}
-              onFollow={onFollow}
+              onFollowed={onFollowed}
               onOpenPursuit={onOpenPursuit}
               onOpenFicha={onOpenFicha}
+              onExplicacion={onExplicacion}
               afinidadOrigen={afinidadOrigen}
             />
           );

@@ -27,7 +27,6 @@ from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
 from services.watchlist_rules import (
     UMBRAL_RUIDO_SEMANAL,
-    Banda,
     Frequency,
     WatchlistRule,
     count_matches,
@@ -41,6 +40,7 @@ from services.watchlist_rules import (
 )
 from shared.dto import (
     CreatedId,
+    RadarBanda,
     StatusOk,
     TotalCount,
     WatchlistRuleMatch,
@@ -99,7 +99,7 @@ class WatchlistRuleBody(BaseModel):
     organo: str | None = Field(default=None, max_length=200)
     procedimiento: str | None = Field(default=None, max_length=80)
     tipo_contrato: str | None = Field(default=None, max_length=80)
-    banda_min: Banda | None = Field(
+    banda_min: RadarBanda | None = Field(
         default=None,
         description="Banda mínima del Radar. Acota además al universo puntuable "
         "(abiertas y en plazo), que es el conjunto sobre el que el Radar puntúa.",

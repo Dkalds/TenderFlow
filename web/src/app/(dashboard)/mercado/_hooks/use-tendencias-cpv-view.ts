@@ -61,6 +61,26 @@ export interface CpvTableRow {
   importe: number;
 }
 
+/** Lo que acepta `/forecast/volume?cpv=`: 8 dígitos y dígito de control opcional. */
+export function esCpvPrevisible(cpv: string): boolean {
+  return /^\d{8}(-\d)?$/.test(cpv);
+}
+
+/**
+ * CPV efectivo de la previsión: el elegido si sigue entre las opciones, `null`
+ * (global) si se eligió el mercado, y la primera opción mientras nadie elija.
+ * Si el CPV elegido deja de estar pintado, se vuelve a la primera opción en vez
+ * de seguir prediciendo una serie que ya no está en pantalla.
+ */
+export function resolverForecastCpv(
+  elegido: string | null | undefined,
+  opciones: string[],
+): string | null {
+  if (elegido === null) return null;
+  if (elegido !== undefined && opciones.includes(elegido)) return elegido;
+  return opciones[0] ?? null;
+}
+
 export function useTendenciasCpvView() {
   const [selectedCpvs, setSelectedCpvs] = useState<Set<string>>(new Set());
   const [showForecast, setShowForecast] = useState(false);
@@ -71,12 +91,6 @@ export function useTendenciasCpvView() {
     { staleTime: 5 * 60_000 },
   );
 
-  const { data: forecast, isLoading: forecastLoading } = useFilteredQuery<ForecastResponse>(
-    ["analytics", "forecast", "volume"],
-    "/api/v1/analytics/forecast/volume?months_ahead=6",
-    { staleTime: 5 * 60_000, enabled: showForecast },
-  );
-
   const allCpvs = useMemo(() => cpvData?.series_by_cpv ?? [], [cpvData]);
   const topCpvs = useMemo(() => cpvData?.top_cpv_by_importe?.slice(0, 15) ?? [], [cpvData]);
 
@@ -85,6 +99,27 @@ export function useTendenciasCpvView() {
     if (selectedCpvs.size > 0) return selectedCpvs;
     return new Set(allCpvs.slice(0, 3).map((c) => c.cpv));
   }, [selectedCpvs, allCpvs]);
+
+  // Previsión por CPV (RFC ux-tendencias-cpv #1). Se elige UNO de los CPV
+  // pintados —o el mercado entero—: la previsión corresponde a esa serie y no
+  // a la global que se superponía antes. Sólo son elegibles los códigos que la
+  // API acepta (`forecastCpvOptions`); lo demás cae a la previsión global.
+  const forecastCpvOptions = useMemo(
+    () => allCpvs.filter((c) => effectiveCpvs.has(c.cpv) && esCpvPrevisible(c.cpv)),
+    [allCpvs, effectiveCpvs],
+  );
+  const [forecastCpvElegido, setForecastCpv] = useState<string | null | undefined>(undefined);
+  const forecastCpv = resolverForecastCpv(
+    forecastCpvElegido,
+    forecastCpvOptions.map((c) => c.cpv),
+  );
+
+  const { data: forecast, isLoading: forecastLoading } = useFilteredQuery<ForecastResponse>(
+    ["analytics", "forecast", "volume", forecastCpv ?? "global"],
+    "/api/v1/analytics/forecast/volume?months_ahead=6",
+    { staleTime: 5 * 60_000, enabled: showForecast },
+    forecastCpv ? { cpv: forecastCpv } : undefined,
+  );
 
   const toggleCpv = (cpv: string) => {
     setSelectedCpvs((prev) => {
@@ -136,6 +171,10 @@ export function useTendenciasCpvView() {
     chartData,
     forecastData,
     forecastLoading,
+    forecastCpv,
+    forecastCpvRespuesta: forecast?.cpv ?? null,
+    forecastCpvOptions,
+    setForecastCpv,
     showForecast,
     setShowForecast,
     cpvTableData,

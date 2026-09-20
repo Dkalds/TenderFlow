@@ -16,6 +16,7 @@ prueban sin SMTP ni base de datos.
 from __future__ import annotations
 
 import html
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,10 +34,81 @@ _ETIQUETA_FRECUENCIA = {
 
 @dataclass(frozen=True)
 class BloqueDigest:
-    """Las coincidencias de una regla (o entrada legada) de la watchlist."""
+    """Las coincidencias de una regla (o entrada legada) de la watchlist, o
+    los avisos de un mismo subtipo (F5.3) cuando ``es_aviso``."""
 
     etiqueta: str
     licitaciones: list[dict[str, Any]] = field(default_factory=list)
+    #: El bloque agrupa avisos sobre lo que el usuario sigue («Plazo ampliado»,
+    #: «Documento nuevo»), no licitaciones nuevas de una regla. Cambia la
+    #: cabecera del correo: contar un plazo ampliado como «licitación nueva»
+    #: sería mentir en la primera línea.
+    es_aviso: bool = False
+
+
+def _payload(crudo: Any) -> dict[str, Any]:
+    if isinstance(crudo, dict):
+        return crudo
+    try:
+        valor = json.loads(str(crudo or "{}"))
+    except (TypeError, ValueError):
+        return {}
+    return valor if isinstance(valor, dict) else {}
+
+
+def clave_de_aviso(evento_tipo: str | None, payload: dict[str, Any]) -> tuple[str, str]:
+    """``(clave, etiqueta)`` del bloque del digest donde cae un aviso.
+
+    Con ``subtipo`` (F5.3: los de ``licitacion.*``) se agrupa por él y se
+    rotula con el nombre del catálogo de avisos. Sin él —una asignación, un
+    comentario— el bloque es el tipo de evento con su título del catálogo, en
+    vez del «tu regla» que salía cuando el digest sólo sabía de reglas.
+    """
+    from services.avisos import SUBTIPOS, etiqueta_de
+    from shared.events import CATALOGO
+
+    subtipo = str(payload.get("subtipo") or "")
+    if subtipo in SUBTIPOS:
+        return subtipo, etiqueta_de(subtipo)
+    tipo = str(evento_tipo or "")
+    spec = CATALOGO.get(tipo)
+    return tipo or "evento", spec.titulo if spec else "Aviso"
+
+
+def bloques_de_avisos(filas: list[dict[str, Any]]) -> list[BloqueDigest]:
+    """Agrupa por subtipo las filas del digest que vienen de eventos (F5.3).
+
+    ``filas`` son las de ``load_pending_digests`` con ``evento_tipo``. El
+    orden de los bloques es el de ``SUBTIPOS`` —primero lo terminal: anulado,
+    desierto, adjudicado…— y después los eventos sin subtipo, por nombre. Cada
+    licitación del bloque lleva ``aviso``, el titular concreto («Plazo ampliado
+    al 12/10»), que es lo que ``render_digest`` pinta bajo el título.
+    """
+    from services.avisos import SUBTIPOS
+
+    grupos: dict[str, tuple[str, list[dict[str, Any]]]] = {}
+    for fila in filas:
+        payload = _payload(fila.get("evento_payload"))
+        clave, etiqueta = clave_de_aviso(fila.get("evento_tipo"), payload)
+        licitacion = {
+            "id_externo": fila.get("licitacion_id"),
+            "titulo": fila.get("titulo") or payload.get("titulo") or fila.get("licitacion_id"),
+            "organo_contratacion": fila.get("organo_contratacion"),
+            "importe": fila.get("importe"),
+            "fecha_limite": fila.get("fecha_limite"),
+            "url": fila.get("url"),
+            "aviso": payload.get("aviso_titulo"),
+            "aviso_detalle": payload.get("aviso_detalle"),
+        }
+        grupos.setdefault(clave, (etiqueta, []))[1].append(licitacion)
+
+    def _orden(clave: str) -> tuple[int, str]:
+        return (SUBTIPOS.index(clave), "") if clave in SUBTIPOS else (len(SUBTIPOS), clave)
+
+    return [
+        BloqueDigest(etiqueta=etiqueta, licitaciones=lics, es_aviso=True)
+        for clave, (etiqueta, lics) in sorted(grupos.items(), key=lambda kv: _orden(kv[0]))
+    ]
 
 
 def etiqueta_de_regla(
@@ -86,10 +158,33 @@ def enlace_ficha(licitacion: dict[str, Any], base_url: str | None) -> str | None
     return str(url) if url else None
 
 
-def asunto_digest(frecuencia: str, total: int) -> str:
+def _plural_avisos(n: int) -> str:
+    return "novedad" if n == 1 else "novedades"
+
+
+def asunto_digest(frecuencia: str, total: int, *, avisos: int = 0) -> str:
+    """Asunto del digest. ``total`` son las licitaciones nuevas de reglas y
+    ``avisos`` las novedades sobre lo seguido (F5.3): se cuentan aparte porque
+    un plazo ampliado no es una licitación nueva."""
     cuando = _ETIQUETA_FRECUENCIA.get(frecuencia, "")
     plural = "licitación nueva" if total == 1 else "licitaciones nuevas"
+    if avisos and not total:
+        return f"TenderFlow · {avisos} {_plural_avisos(avisos)} en lo que sigues".strip()
+    if avisos:
+        return (
+            f"TenderFlow · {total} {plural} {cuando} y {avisos} {_plural_avisos(avisos)}"
+        ).strip()
     return f"TenderFlow · {total} {plural} {cuando}".strip()
+
+
+def _cabecera(bloques: list[BloqueDigest], cuando: str) -> str:
+    nuevas = sum(len(b.licitaciones) for b in bloques if not b.es_aviso)
+    avisos = sum(len(b.licitaciones) for b in bloques if b.es_aviso)
+    reglas = f"{nuevas} licitación(es) nueva(s) {cuando} para tus reglas de seguimiento."
+    if not avisos:
+        return reglas
+    seguidos = f"{avisos} {_plural_avisos(avisos)} en los expedientes que sigues."
+    return seguidos if not nuevas else f"{reglas} Además, {seguidos}"
 
 
 def render_digest(
@@ -101,9 +196,8 @@ def render_digest(
     max_por_bloque: int = _MAX_POR_BLOQUE,
 ) -> tuple[str, str]:
     """Devuelve ``(texto_plano, html)`` del digest."""
-    total = sum(len(b.licitaciones) for b in bloques)
     cuando = _ETIQUETA_FRECUENCIA.get(frecuencia, "")
-    cabecera = f"{total} licitación(es) nueva(s) {cuando} para tus reglas de seguimiento."
+    cabecera = _cabecera(bloques, cuando)
 
     texto: list[str] = [cabecera, ""]
     partes_html: list[str] = [
@@ -127,7 +221,11 @@ def render_digest(
             extras = " · ".join(str(x) for x in (lic.get("ccaa"), lic.get("tecnologia")) if x)
             enlace = enlace_ficha(lic, base_url)
 
+            aviso = " — ".join(str(x) for x in (lic.get("aviso"), lic.get("aviso_detalle")) if x)
+
             texto.append(f"* {titulo}")
+            if aviso:
+                texto.append(f"  {aviso}")
             texto.append(
                 f"  {organo} | {importe} | plazo {plazo}" + (f" | {extras}" if extras else "")
             )
@@ -144,7 +242,12 @@ def render_digest(
                 '<div style="padding:10px 12px;margin:0 0 8px;border:1px solid #e5e8ec;'
                 'border-radius:8px">'
                 f'<div style="font-weight:600">{titulo_html}</div>'
-                f'<div style="font-size:13px;color:#55606e">{html.escape(organo)}</div>'
+                + (
+                    f'<div style="font-size:13px;color:#1f2733">{html.escape(aviso)}</div>'
+                    if aviso
+                    else ""
+                )
+                + f'<div style="font-size:13px;color:#55606e">{html.escape(organo)}</div>'
                 f'<div style="font-size:13px"><strong>{html.escape(importe)}</strong>'
                 f" · plazo {html.escape(plazo)}"
                 + (f" · {html.escape(extras)}" if extras else "")

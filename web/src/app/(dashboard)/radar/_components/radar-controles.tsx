@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { FiltroEtiquetaSelect } from "@/components/etiquetas/filtro-etiqueta";
 import { cn } from "@/lib/utils";
 import {
   SEGMENTS,
@@ -27,6 +28,8 @@ export function RadarControles({
   onSort,
   dismissedCount,
   onRestoreAll,
+  etiqueta,
+  onEtiqueta,
 }: {
   segment: SegmentKey;
   onSegment: (segment: SegmentKey) => void;
@@ -36,6 +39,9 @@ export function RadarControles({
   onSort: (sort: SortKey) => void;
   dismissedCount: number;
   onRestoreAll: () => void;
+  /** F1.6 — filtro por etiqueta; sin etiquetas en la organización no se pinta. */
+  etiqueta?: string;
+  onEtiqueta?: (etiqueta: string) => void;
 }) {
   const conOrden = segment !== "proximas";
   return (
@@ -91,6 +97,15 @@ export function RadarControles({
         >
           Restaurar {dismissedCount} descartada{dismissedCount === 1 ? "" : "s"}
         </button>
+      )}
+      {conOrden && etiqueta != null && onEtiqueta && (
+        // Filtra las señales que ya están en pantalla: el ranking no admite etiqueta.
+        <FiltroEtiquetaSelect
+          value={etiqueta}
+          onChange={onEtiqueta}
+          alcance="en las señales cargadas"
+          className="mr-2 h-8 w-40 flex-none md:h-7"
+        />
       )}
       {conOrden ? (
         <>

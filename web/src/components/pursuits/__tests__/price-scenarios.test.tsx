@@ -11,7 +11,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
  */
 
 const fetchWithAuth = vi.hoisted(() => vi.fn((_url: string) => Promise.resolve<unknown>({})));
-vi.mock("@/lib/api-client", () => ({ fetchWithAuth }));
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  fetchWithAuth,
+}));
 
 // El pursuit de la ruta: de él sale el lote cuando el llamador no lo pasa.
 const pursuit = vi.hoisted(() => ({
@@ -108,5 +111,84 @@ describe("PriceScenariosPanel", () => {
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalled());
     expect(url()).toBe("/api/v1/licitaciones/LIC-1/escenarios-precio");
     expect(await screen.findByText(/ya no figura publicado/)).toBeInTheDocument();
+  });
+});
+
+describe("PriceScenariosPanel — tarifas y margen implícito (F2.4)", () => {
+  const cita = { documento_id: 4, page_number: 12, quote: "Consultor senior: 65 €/h", ocr: false };
+  const ficha = {
+    licitacion_id: "LIC-1",
+    status: "extracted",
+    evidence_count: 3,
+    field_count: 3,
+    extraction_version: "v1",
+    updated_at: "2026-09-01T00:00:00Z",
+    facts: {
+      rate_cards: [
+        {
+          role: "Consultor senior",
+          max_rate_eur_hour: 65,
+          estimated_hours: 400,
+          description: "Tarifa del consultor senior",
+          confidence: 0.9,
+          evidence: [cita],
+        },
+      ],
+      budget_breakdown: [
+        {
+          concept: "Personal",
+          category: "salariales",
+          amount_eur: 26000,
+          pct: 65,
+          description: "Costes de personal",
+          confidence: 0.8,
+          evidence: [],
+        },
+      ],
+    },
+  };
+
+  beforeEach(() => {
+    fetchWithAuth.mockImplementation((u: string) => {
+      if (u.endsWith("/ficha-pliego")) return Promise.resolve(ficha);
+      if (u.includes("/escenarios-precio")) {
+        return Promise.resolve({
+          ...escenarios,
+          scenarios: [
+            {
+              ...escenarios.scenarios[0],
+              margen_implicito: {
+                coste_estimado_eur: 26000,
+                margen_eur: 6000,
+                margen_pct: 0.1875,
+                perfiles: 1,
+                fuente: "Tarifas máximas por perfil publicadas en el pliego; es un margen techo.",
+              },
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`sin doble para ${u}`));
+    });
+  });
+
+  it("pinta el margen que da el backend, con su coste y su fuente", async () => {
+    renderPanel({ licitacionId: "LIC-1" });
+    expect(await screen.findByText(/Margen techo/)).toHaveTextContent(/6\.?000/);
+    expect(screen.getByText(/Coste estimado .* con 1 perfil\./)).toHaveTextContent(/margen techo/);
+  });
+
+  it("enseña las tarifas y el desglose del pliego con la cita de cada fila", async () => {
+    renderPanel({ licitacionId: "LIC-1" });
+    const tabla = await screen.findByRole("table", { name: /Tarifas máximas por perfil/ });
+    expect(tabla).toHaveTextContent("Consultor senior");
+    expect(tabla).toHaveTextContent("/h");
+    expect(
+      screen.getByRole("button", { name: "Ver la cita de Consultor senior en el pliego, página 12" }),
+    ).toBeInTheDocument();
+    const desglose = screen.getByRole("table", { name: /Desglose del presupuesto/ });
+    expect(desglose).toHaveTextContent("Costes salariales");
+    // Una partida sin cita lo dice en vez de inventar una.
+    expect(desglose).toHaveTextContent("Sin cita");
   });
 });

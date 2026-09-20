@@ -142,6 +142,7 @@ export const SpainMap = React.memo(function SpainMap({
   const [geoError, setGeoError] = React.useState(false);
   const [hoveredCcaa, setHoveredCcaa] = React.useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
+  const mapHelpId = React.useId();
 
   React.useEffect(() => {
     let cancelled = false;
@@ -237,10 +238,35 @@ export const SpainMap = React.memo(function SpainMap({
             setTooltipPos({ x: e.containerPoint.x, y: e.containerPoint.y });
           },
           click: () => onCcaaClick?.(canonical),
+          // Teclado y lector: Leaflet pinta cada región como un `<path>` sin
+          // foco ni nombre, así que el clic que filtra sólo existía para el
+          // ratón. Cuando la región filtra, su trazo pasa a ser un botón con
+          // nombre (comunidad y valor), entra en el orden de tabulación y
+          // responde a Intro y Espacio; el foco reutiliza el resaltado del
+          // hover, que es el indicador visible.
+          add: () => {
+            if (!onCcaaClick) return;
+            const el = (layer as Layer & { getElement?: () => Element | undefined }).getElement?.();
+            if (!el) return;
+            el.setAttribute("tabindex", "0");
+            el.setAttribute("role", "button");
+            el.setAttribute(
+              "aria-label",
+              `${canonical}: ${metric} ${val != null ? formatNumber(val) : "sin datos"}. Filtrar por esta comunidad`,
+            );
+            el.addEventListener("keydown", (event) => {
+              const tecla = (event as KeyboardEvent).key;
+              if (tecla !== "Enter" && tecla !== " ") return;
+              event.preventDefault();
+              onCcaaClick(canonical);
+            });
+            el.addEventListener("focus", () => setHoveredCcaa(canonical));
+            el.addEventListener("blur", () => setHoveredCcaa(null));
+          },
         });
       }
     },
-    [valueMap, onCcaaClick],
+    [valueMap, onCcaaClick, metric],
   );
 
   if (!geoData) {
@@ -255,7 +281,18 @@ export const SpainMap = React.memo(function SpainMap({
   }
 
   return (
-    <div className={cn("border-border relative w-full overflow-hidden rounded-md border", className)}>
+    <div
+      role="region"
+      aria-label={`Mapa de España por comunidad autónoma: ${metric}`}
+      aria-describedby={onCcaaClick ? mapHelpId : undefined}
+      className={cn("border-border relative w-full overflow-hidden rounded-md border", className)}
+    >
+      {onCcaaClick && (
+        <p id={mapHelpId} className="sr-only">
+          Cada comunidad es un botón: recórrelas con Tabulador y pulsa Intro para filtrar por ella.
+          La misma información está en la tabla de comunidades.
+        </p>
+      )}
       <MapContainer
         center={[40.0, -3.7]}
         zoom={6}

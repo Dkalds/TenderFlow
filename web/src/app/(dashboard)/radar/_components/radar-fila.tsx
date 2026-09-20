@@ -21,22 +21,21 @@ export function RadarFila({
   tender,
   index,
   isActive,
-  isFollowed,
   isNew,
   rowHeight,
   enTabla,
   conFicha,
   onSelect,
   onDismiss,
-  onFollow,
+  onFollowed,
   onOpenPursuit,
   onOpenFicha,
+  onExplicacion,
   afinidadOrigen,
 }: {
   tender: RadarTender;
   index: number;
   isActive: boolean;
-  isFollowed: boolean;
   isNew: boolean;
   rowHeight: number;
   /**
@@ -51,9 +50,12 @@ export function RadarFila({
   conFicha: boolean;
   onSelect: (index: number) => void;
   onDismiss: (tender: RadarTender) => void;
-  onFollow: (tender: RadarTender) => void;
+  /** Tras alternar «Seguir» (lo hace `SeguirBoton`), con el estado nuevo. */
+  onFollowed: (tender: RadarTender, ahoraSigue: boolean) => void;
   onOpenPursuit: (tender: RadarTender) => void;
   onOpenFicha: (index: number) => void;
+  /** F1.3 — se abrió «cómo se compone esta puntuación» de esta fila. */
+  onExplicacion?: (tender: RadarTender) => void;
 }) {
   const days = daysLeft(tender.fecha_limite);
   const urg = urgency(days);
@@ -119,7 +121,7 @@ export function RadarFila({
             dispara con teclado y aquí el contenido no es una
             etiqueta sino datos. El `stopPropagation` evita que
             abrir la explicación cuente como seleccionar la fila. */}
-        <Popover>
+        <Popover onOpenChange={(abierto) => abierto && onExplicacion?.(tender)}>
           <PopoverTrigger asChild>
             <button
               type="button"
@@ -239,10 +241,9 @@ export function RadarFila({
         tender={tender}
         isActive={isActive}
         inerte={enTabla && !isActive}
-        followed={isFollowed}
         conFicha={conFicha}
         onDismiss={() => onDismiss(tender)}
-        onFollow={() => onFollow(tender)}
+        onFollowed={(ahoraSigue) => onFollowed(tender, ahoraSigue)}
         onOpenPursuit={() => onOpenPursuit(tender)}
         onOpenFicha={() => onOpenFicha(index)}
       />

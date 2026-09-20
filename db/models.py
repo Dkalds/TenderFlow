@@ -31,9 +31,11 @@ from typing import Any
 
 from sqlalchemy import (
     Column,
+    DateTime,
     Float,
     Integer,
     MetaData,
+    Numeric,
     String,
     Table,
     Text,
@@ -87,6 +89,15 @@ licitaciones = Table(
     Column("peso_precio_pct", Float),
     # v138_notice_type_code: `NoticeTypeCode` crudos de `ValidNoticeInfo`, CSV.
     Column("tipos_anuncio", Text),
+    # v133_nucleo_tipado_sombra (T2): sombras tipadas. Nadie proyecta la tabla
+    # entera con `select(licitaciones)`; están aquí para que el listado y el
+    # cursor filtren y ordenen por ellas vía `db.sql_fragments.columna_nucleo`
+    # cuando `NUCLEO_TIPADO_LECTURA` está encendido. Con el flag apagado no
+    # aparecen en ningún SQL compilado: una BD sin v133 no las echa de menos.
+    Column("fecha_publicacion_ts", DateTime(timezone=True)),
+    Column("fecha_limite_ts", DateTime(timezone=True)),
+    Column("importe_num", Numeric(14, 2)),
+    Column("duracion_valor_num", Numeric),
     Column("fuente", String, nullable=False, default="placsp"),
     Column("fecha_extraccion", String, nullable=False),
 )

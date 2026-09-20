@@ -48,11 +48,17 @@ from db.sql_fragments import (
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
     clave_organo_sql,
+    codigo_normalizado_sql,
+    columna_nucleo_sql,
     empresa_key_sql,
     exclude_duplicados_presentacion_sql,
+    fecha_valida_sql,
     fold_expr,
+    importe_select_sql,
+    importe_sql,
     iso_guard,
     nombre_organo_sql,
+    normaliza_codigo,
     tecnologia_en_csv_sql,
 )
 from observability.logging import get_logger
@@ -119,7 +125,8 @@ class LicitacionesFilters:
     cpv: str | None = None
     # Un órgano concreto, por igualdad exacta sobre ``organo_contratacion`` —
     # la misma comparación que ya usan los drill-downs
-    # (``licitaciones_por_organo``, ``AdjudicacionRepository.load_por_organo``),
+    # (``licitaciones_por_organo`` y los agregados por órgano de
+    # ``AdjudicacionRepository``),
     # que reciben el nombre como argumento aparte. Aquí viaja dentro de los
     # filtros para que una agregación acotada a un órgano no necesite un
     # parámetro extra en cada firma. No es lo mismo que ``q``: aquélla es
@@ -130,6 +137,28 @@ class LicitacionesFilters:
     # ``estado``: ése fija uno concreto, éste excluye el cierre y deja pasar
     # cualquier código que la fuente publique mañana.
     solo_abiertas: bool = False
+    # ── F1.1: los filtros del listado que faltaban aquí ──────────────────
+    # Misma semántica que ``LicitacionRepository._base_filters``: sin ellos,
+    # el listado acotaba por provincia o procedimiento y los KPIs y el export
+    # de la misma pantalla seguían contando el corpus entero.
+    #: Importe de licitación máximo (inclusive). NULL queda fuera, igual que
+    #: con ``importe_min``.
+    importe_max: float | None = None
+    #: Provincias, CSV.
+    provincia: str | None = None
+    #: Códigos CODICE de procedimiento, CSV; se comparan normalizados.
+    procedimiento: str | None = None
+    # ── F6.1: ámbito de mercado de la organización ───────────────────────
+    #: CPVs por **prefijo**, CSV. No es ``cpv`` (igualdad exacta, lo que usan
+    #: los drill-downs): el ámbito se declara por familias (``72`` = TI).
+    cpv_prefijos: str | None = None
+    #: Procedimientos que **no** se quieren ver, CSV (códigos normalizados).
+    #: Un expediente sin procedimiento publicado no se excluye.
+    procedimientos_excluidos: str | None = None
+    #: Tipos de órgano (``organos.tipo`` del maestro, C1.2), CSV. Solo excluye
+    #: los expedientes cuyo órgano tiene un tipo **conocido y distinto**: el
+    #: maestro todavía no rellena ``tipo``, y exigirlo vaciaría el Radar.
+    tipos_organo: str | None = None
 
     def is_empty(self) -> bool:
         """True si ningún filtro está activo, es decir, si el ámbito es la tabla entera.
@@ -148,7 +177,7 @@ class LicitacionesFilters:
 
 
 def build_licitaciones_where(
-    filters: LicitacionesFilters, *, alias: str | None = None
+    filters: LicitacionesFilters, *, alias: str | None = None, nucleo: bool = False
 ) -> tuple[str, list[Any]]:
     """Construye el ``WHERE`` (dialecto qmark) desde :class:`LicitacionesFilters`.
 
@@ -177,19 +206,31 @@ def build_licitaciones_where(
     compara la semántica emitida (columnas tocadas y forma del predicado) para
     los mismos filtros. Si una se mueve sin la otra, falla ahí y no en un
     recuento que nadie cuadra.
+
+    ``nucleo=True`` (T2) hace que los filtros de fecha de publicación e
+    importe lean la columna que decide
+    :func:`db.sql_fragments.columna_nucleo_sql` —la sombra tipada de ``v133``
+    con ``NUCLEO_TIPADO_LECTURA`` encendido—. Es **opt-in por consulta** y no
+    global a propósito: el runbook (``docs/runbooks/nucleo-tipado-ventana.md``,
+    paso 6) pasa las lecturas consulta a consulta, y este constructor lo usan
+    decenas de agregados que no son de las cinco calientes. Con el flag
+    apagado el texto emitido es el mismo con y sin ``nucleo``.
     """
 
     def col(name: str) -> str:
         return f"{alias}.{name}" if alias else name
 
+    def col_nucleo(name: str) -> str:
+        return columna_nucleo_sql(name, alias) if nucleo else col(name)
+
     clauses: list[str] = ["1 = 1"]
     params: list[Any] = []
 
     if filters.fecha_desde:
-        clauses.append(f"{col('fecha_publicacion')} >= %s")
+        clauses.append(f"{col_nucleo('fecha_publicacion')} >= %s")
         params.append(filters.fecha_desde)
     if filters.fecha_hasta:
-        clauses.append(f"{col('fecha_publicacion')} <= %s")
+        clauses.append(f"{col_nucleo('fecha_publicacion')} <= %s")
         params.append(filters.fecha_hasta)
     ccaas = csv_values(filters.ccaa)
     if ccaas:
@@ -206,7 +247,7 @@ def build_licitaciones_where(
     if filters.solo_abiertas:
         clauses.append(abierta_sql(col("estado")))
     if filters.importe_min is not None:
-        clauses.append(f"{col('importe')} >= %s")
+        clauses.append(f"{col_nucleo('importe')} >= %s")
         params.append(filters.importe_min)
     if filters.q and filters.q.strip():
         needle = f"%{_escape_like(filters.q.strip().translate(FOLD_TABLE).lower())}%"
@@ -223,6 +264,48 @@ def build_licitaciones_where(
     if filters.organo and filters.organo.strip():
         clauses.append(f"{col('organo_contratacion')} = %s")
         params.append(filters.organo.strip())
+
+    # ── F1.1 ──────────────────────────────────────────────────────────────
+    if filters.importe_max is not None:
+        clauses.append(f"{col('importe')} <= %s")
+        params.append(filters.importe_max)
+    provincias = csv_values(filters.provincia)
+    if provincias:
+        clauses.append(_in_clause(col("provincia"), provincias))
+        params.extend(provincias)
+    procedimientos = sorted({normaliza_codigo(c) for c in csv_values(filters.procedimiento)})
+    if procedimientos:
+        marcadores = ",".join("%s" for _ in procedimientos)
+        clauses.append(f"{codigo_normalizado_sql(col('procedimiento'))} IN ({marcadores})")
+        params.extend(procedimientos)
+
+    # ── F6.1 ──────────────────────────────────────────────────────────────
+    prefijos = csv_values(filters.cpv_prefijos)
+    if prefijos:
+        disyuntos = " OR ".join(f"{col('cpv')} LIKE %s ESCAPE '\\'" for _ in prefijos)
+        clauses.append(f"({disyuntos})")
+        params.extend(f"{_escape_like(p)}%" for p in prefijos)
+    excluidos = sorted({normaliza_codigo(c) for c in csv_values(filters.procedimientos_excluidos)})
+    if excluidos:
+        marcadores = ",".join("%s" for _ in excluidos)
+        clauses.append(
+            f"({col('procedimiento')} IS NULL OR "
+            f"{codigo_normalizado_sql(col('procedimiento'))} NOT IN ({marcadores}))"
+        )
+        params.extend(excluidos)
+    tipos = csv_values(filters.tipos_organo)
+    if tipos:
+        # La tabla exterior se califica siempre: sin alias, `organo_id` a
+        # secas dentro de la subconsulta resolvería a `o.organo_id` y la
+        # condición compararía la columna consigo misma.
+        exterior = alias or "licitaciones"
+        marcadores = ",".join("%s" for _ in tipos)
+        clauses.append(
+            "NOT EXISTS (SELECT 1 FROM organos o "
+            f"WHERE o.organo_id = {exterior}.organo_id "
+            f"AND o.tipo IS NOT NULL AND o.tipo NOT IN ({marcadores}))"
+        )
+        params.extend(tipos)
 
     return " AND ".join(clauses), params
 
@@ -252,12 +335,17 @@ class AggregateRepository:
     def overview_kpis(
         self, filters: LicitacionesFilters, *, conn: Any | None = None
     ) -> dict[str, Any]:
-        """total, importe_total, importe_medio, organos_unicos — un SELECT."""
-        where, params = _build_where(filters)
+        """total, importe_total, importe_medio, organos_unicos — un SELECT.
+
+        Una de las cinco consultas calientes de T2: filtros e importe pasan por
+        el núcleo tipado (``nucleo=True`` e :func:`importe_sql`).
+        """
+        where, params = _build_where(filters, nucleo=True)
+        importe = importe_sql(None)
         sql = (
             "SELECT COUNT(*) AS total, "
-            "       COALESCE(SUM(importe), 0) AS importe_total, "
-            "       AVG(importe) AS importe_medio, "
+            f"       COALESCE(SUM({importe}), 0) AS importe_total, "
+            f"       AVG({importe}) AS importe_medio, "
             "       COUNT(DISTINCT organo_contratacion) AS organos "
             "FROM licitaciones WHERE " + where
         )
@@ -1098,6 +1186,91 @@ class AggregateRepository:
             for i, (label, _lo, _hi) in enumerate(self._HISTOGRAM_BINS)
         ]
 
+    # ── Calendario de vencimientos ───────────────────────────────────────
+    #
+    # Eje ``fecha_limite`` (fin del plazo de presentación), no publicación. El
+    # universo es el MISMO que el del listado al que enlaza cada día
+    # (``GET /licitaciones?cierre_desde=D&cierre_hasta=D``): el filtro global
+    # de ``_build_where`` más ``tecnologia`` informada, que es el
+    # ``only_classified`` que ``LicitacionRepository._base_filters`` aplica
+    # siempre. Sin esa cláusula el calendario contaría filas que el listado no
+    # enseña y el día prometería más de lo que abre (ADR-014).
+    #
+    # La cota superior es EXCLUSIVA (el día siguiente al ``hasta``) porque
+    # ``fecha_limite`` puede llevar hora: ``'2026-09-20T14:00' <= '2026-09-20'``
+    # es falso en orden lexicográfico. Es la misma convención que usa
+    # ``_base_filters`` para ``cierre_hasta``.
+
+    _VENCIMIENTOS_UNIVERSO = "tecnologia IS NOT NULL AND tecnologia != ''"
+
+    def vencimientos_diarios(
+        self, filters: LicitacionesFilters, *, desde_iso: str, hasta_exclusivo_iso: str
+    ) -> list[dict[str, Any]]:
+        """(dia YYYY-MM-DD, count, importe) de cierres en ``[desde, hasta)``.
+
+        El tamaño está acotado por la ventana (un día por fila), que el servicio
+        limita; no escala con el número de licitaciones.
+        """
+        where, params = _build_where(filters)
+        guard = iso_guard("fecha_limite")
+        sql = (
+            "SELECT substr(fecha_limite, 1, 10) AS dia, "
+            "       COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} AND {self._VENCIMIENTOS_UNIVERSO} "
+            "  AND fecha_limite >= %s AND fecha_limite < %s "
+            "GROUP BY dia ORDER BY dia"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, desde_iso, hasta_exclusivo_iso]))
+
+    def vencimientos_kpis(
+        self,
+        filters: LicitacionesFilters,
+        *,
+        hoy_iso: str,
+        manana_iso: str,
+        fin_7d_exclusivo_iso: str,
+        fin_mes_exclusivo_iso: str,
+    ) -> dict[str, int]:
+        """Cierres de hoy, de los próximos 7 días y de lo que queda de mes.
+
+        Relativos a ``hoy`` y no a la ventana que pinta el calendario: el KPI
+        responde «¿qué me vence ya?» aunque el usuario esté mirando otro año.
+        Todas las cotas superiores son exclusivas (ver la nota de la sección).
+        """
+        where, params = _build_where(filters)
+        guard = iso_guard("fecha_limite")
+        sql = (
+            "SELECT "
+            "  COUNT(*) FILTER (WHERE fecha_limite < %s) AS hoy, "
+            "  COUNT(*) FILTER (WHERE fecha_limite < %s) AS proximos_7d, "
+            "  COUNT(*) FILTER (WHERE fecha_limite < %s) AS resto_mes "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} AND {self._VENCIMIENTOS_UNIVERSO} "
+            "  AND fecha_limite >= %s AND fecha_limite < %s"
+        )
+        # El techo del WHERE es el mayor de las dos ventanas: el fin de mes
+        # puede caer antes que hoy+7 (último día del mes) o después.
+        techo = max(fin_7d_exclusivo_iso, fin_mes_exclusivo_iso)
+        run_params = [
+            manana_iso,
+            fin_7d_exclusivo_iso,
+            fin_mes_exclusivo_iso,
+            *params,
+            hoy_iso,
+            techo,
+        ]
+        with connect_read() as c:
+            row = c.execute(sql, run_params).fetchone()
+        if row is None:
+            return {"hoy": 0, "proximos_7d": 0, "resto_mes": 0}
+        return {
+            "hoy": int(row[0] or 0),
+            "proximos_7d": int(row[1] or 0),
+            "resto_mes": int(row[2] or 0),
+        }
+
     # ── Organos ──────────────────────────────────────────────────────────
 
     def _organos_where(self, filters: LicitacionesFilters, q: str | None) -> tuple[str, list[Any]]:
@@ -1483,6 +1656,35 @@ class AggregateRepository:
             "fecha_iso": int(row[len(self._QUALITY_TEXT_COLS) + 2] or 0),
         }
 
+    def quality_completitud_mensual(self, *, desde_iso: str) -> list[dict[str, Any]]:
+        """Completitud por mes de PUBLICACIÓN desde ``desde_iso`` (RFC calidad #3).
+
+        Una serie de completitud sin tabla de histórico: cada mes es la cohorte
+        de expedientes publicados en él, medida hoy. No es «cómo estaba el dato
+        el mes pasado» (eso exigiría persistir snapshots), sino «qué tan
+        completos llegan los expedientes de cada mes» — que es justo lo que se
+        rompe cuando la fuente cambia de esquema: los meses posteriores al
+        cambio caen y los anteriores no.
+
+        Acotada por la ventana (un grupo por mes, ~12 filas) y por el índice de
+        ``fecha_publicacion``.
+        """
+        guard = iso_guard("fecha_publicacion")
+        sql = (
+            "SELECT substr(fecha_publicacion, 1, 7) AS mes, COUNT(*) AS total, "
+            "  COUNT(*) FILTER (WHERE cpv IS NOT NULL AND trim(cpv) != '') AS con_cpv, "
+            "  COUNT(*) FILTER (WHERE importe IS NOT NULL) AS con_importe, "
+            "  COUNT(*) FILTER (WHERE organo_contratacion IS NOT NULL "
+            "                   AND trim(organo_contratacion) != '') AS con_organo, "
+            "  COUNT(*) FILTER (WHERE fecha_limite IS NOT NULL "
+            "                   AND trim(fecha_limite) != '') AS con_fecha_limite "
+            "FROM licitaciones "
+            f"WHERE {guard} AND fecha_publicacion >= %s "
+            "GROUP BY mes ORDER BY mes"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [desde_iso]))
+
     # ── Forecast ─────────────────────────────────────────────────────────
 
     def forecast_monthly(
@@ -1635,8 +1837,22 @@ class AggregateRepository:
     _SCORING_COLS = (
         "id_externo, titulo, descripcion, organo_contratacion, importe, cpv, "
         "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion, ml_tech_principal, url, "
-        "fuente"
+        "fuente, procedimiento, tramitacion"
     )
+
+    @classmethod
+    def _scoring_cols(cls) -> str:
+        """``_SCORING_COLS`` con el importe del núcleo tipado vigente (T2).
+
+        Apagado devuelve ``_SCORING_COLS`` byte a byte. Encendido proyecta la
+        sombra casteada con ``AS importe``, para que la fila siga teniendo la
+        clave que lee ``services/analytics/scoring.py``.
+        """
+        return cls._SCORING_COLS.replace(
+            "organo_contratacion, importe,",
+            f"organo_contratacion, {importe_select_sql(None)},",
+            1,
+        )
 
     def importe_percentiles(self) -> tuple[float, float]:
         """(P10, P90) de importe sobre TODA la tabla.
@@ -1682,16 +1898,21 @@ class AggregateRepository:
         Devuelve también el conteo para que el llamante decida si la muestra da
         para percentiles o conviene caer al fallback global.
         """
+        # Mismo predicado que `scoring_candidates`, también sobre el núcleo
+        # tipado (T2): si el universo leyera la sombra y su distribución de
+        # referencia el texto, cada fila se compararía contra otro mercado.
         abierta = abierta_sql_marcadores("estado", n=len(cerrados))
-        guard = iso_guard("fecha_limite")
+        guard = fecha_valida_sql("fecha_limite", None)
+        fecha_limite = columna_nucleo_sql("fecha_limite", None)
+        importe = importe_sql(None)
         sql = (
-            "SELECT percentile_cont(0.10) WITHIN GROUP (ORDER BY importe), "
-            "       percentile_cont(0.90) WITHIN GROUP (ORDER BY importe), "
-            "       COUNT(importe) "
+            f"SELECT percentile_cont(0.10) WITHIN GROUP (ORDER BY {importe}), "
+            f"       percentile_cont(0.90) WITHIN GROUP (ORDER BY {importe}), "
+            f"       COUNT({importe}) "
             "FROM licitaciones "
             f"WHERE {abierta} "
-            f"  AND {guard} AND fecha_limite >= %s "
-            "  AND importe IS NOT NULL"
+            f"  AND {guard} AND {fecha_limite} >= %s "
+            f"  AND {importe} IS NOT NULL"
         )
         with connect_read() as c:
             row = c.execute(sql, [*cerrados, hoy_iso]).fetchone()
@@ -1828,9 +2049,13 @@ class AggregateRepository:
         ``importe_percentiles_universo``, que calcula la distribución de
         referencia de la dimensión ``importe``: si cambia aquí, cambia allí.
         """
-        where, params = _build_where(filters or LicitacionesFilters())
+        # T2: una de las cinco consultas calientes. Plazo, filtros e importe
+        # proyectado pasan por el núcleo tipado; con el flag apagado el SQL es
+        # el de siempre (lo fija `tests/test_nucleo_tipado_consultas.py`).
+        where, params = _build_where(filters or LicitacionesFilters(), nucleo=True)
         abierta = abierta_sql_marcadores("estado", n=len(cerrados))
-        guard = iso_guard("fecha_limite")
+        guard = fecha_valida_sql("fecha_limite", None)
+        fecha_limite = columna_nucleo_sql("fecha_limite", None)
         # C4.2 / D23 — el Radar enseña un contrato una vez.
         #
         # Este universo no excluía **ningún** duplicado, ni siquiera los
@@ -1844,11 +2069,11 @@ class AggregateRepository:
         # `exclude_duplicados_presentacion_sql` y en ADR-026.
         no_duplicada = exclude_duplicados_presentacion_sql("id_externo")
         sql = (
-            f"SELECT {self._SCORING_COLS} FROM licitaciones "
+            f"SELECT {self._scoring_cols()} FROM licitaciones "
             f"WHERE {where} "
             f"  AND {abierta} "
             f"  AND {no_duplicada} "
-            f"  AND {guard} AND fecha_limite >= %s"
+            f"  AND {guard} AND {fecha_limite} >= %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, *cerrados, hoy_iso]))
@@ -1858,7 +2083,9 @@ class AggregateRepository:
         if not ids:
             return []
         placeholders = ",".join("%s" for _ in ids)
-        sql = f"SELECT {self._SCORING_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})"
+        sql = (
+            f"SELECT {self._scoring_cols()} FROM licitaciones WHERE id_externo IN ({placeholders})"
+        )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, ids))
 

@@ -63,15 +63,21 @@ class Cita:
     cita: str
     tipo: str | None = None
     filename: str | None = None
+    #: Expediente del documento citado. Solo en preguntas cruzadas (F2.8),
+    #: donde el chunk lo trae; en las de un expediente la clave no viaja.
+    id_externo: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        datos: dict[str, Any] = {
             "documento_id": self.documento_id,
             "page_number": self.page_number,
             "cita": self.cita,
             "tipo": self.tipo,
             "filename": self.filename,
         }
+        if self.id_externo is not None:
+            datos["id_externo"] = self.id_externo
+        return datos
 
 
 def extraer_marcadores(texto: str) -> list[tuple[int, int | None]]:
@@ -140,6 +146,7 @@ def validar(
                 cita=_extracto(elegido),
                 tipo=(str(elegido["tipo"]) if elegido.get("tipo") else None),
                 filename=(str(elegido["filename"]) if elegido.get("filename") else None),
+                id_externo=(str(elegido["id_externo"]) if elegido.get("id_externo") else None),
             )
         )
     return validas, invalidas

@@ -34,12 +34,18 @@ PASOS_ADVISORY = {
     # pasada siguiente. Tumbar la ingesta por un correo no enviado sería
     # cambiar un problema pequeño por uno grande.
     "informes_programados",
+    # S4.1: el outbox es persistente, así que un reparto fallido lo recoge la
+    # pasada siguiente. Un webhook de cliente caído no rompe la ingesta.
+    "event_dispatch",
     "llm_models_canary",
     "anomaly_checks",
     # Mide la paridad de `follows` (ADR-031 §B) y no repara nada: que esté rota
     # no rompe la pasada ni lo nota ningún cliente. Lo que bloquea es la
     # migración, y eso lo decide una persona leyendo la serie.
     "follows_paridad",
+    # F4.3: avisos de fin de contrato con meses de margen; la pasada
+    # siguiente recupera una fallida.
+    "cartera_avisos",
     "drift_checks",
     "sap_active_learning",
     "webhook_reintentos",

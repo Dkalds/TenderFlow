@@ -37,7 +37,7 @@ log = get_logger(__name__)
 
 _repo = NovedadesRepository()
 
-__all__ = ["Novedad", "NovedadesDesdeUltimaVisita", "desde_ultima_visita"]
+__all__ = ["Novedad", "NovedadesDesdeUltimaVisita", "VisitaMarcada", "desde_ultima_visita"]
 
 #: Ventana máxima hacia atrás. Sin tope, la primera visita de alguien que
 #: llevaba tres meses fuera traería tres meses de cambios y el diff dejaría de
@@ -74,6 +74,15 @@ class NovedadesDesdeUltimaVisita(BaseModel):
     #: `True` cuando la ventana se recortó a `DIAS_MAXIMOS`: la UI lo dice, en
     #: vez de dar a entender que no pasó nada antes.
     ventana_recortada: bool = False
+
+
+class VisitaMarcada(BaseModel):
+    """Respuesta de «marcar todo como visto»: la nueva marca de última visita."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ISO-8601 UTC. La siguiente lectura de la banda calcula desde aquí.
+    visto_en: str
 
 
 def _a_novedad(aviso: Aviso, licitacion_id: str | None, cuando: Any) -> Novedad:

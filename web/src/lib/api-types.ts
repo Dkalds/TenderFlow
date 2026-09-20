@@ -14,6 +14,11 @@ import type { components } from "@/generated/api";
 export type Schemas = components["schemas"];
 
 export type LicitacionSummary = Schemas["LicitacionSummary"];
+/**
+ * Página de `GET /licitaciones/cursor`, el sucesor del listado por offset
+ * (RFC 2026-09-06). `total` sólo llega si se pide `with_total=true`.
+ */
+export type LicitacionesCursorPage = Schemas["CursorPaginatedResponseWithTotal_LicitacionSummary_"];
 export type LicitacionDetail = Schemas["LicitacionDetail"];
 export type TrendPoint = Schemas["TrendPoint"];
 export type TrendsResult = Schemas["TrendsResult"];
@@ -172,6 +177,8 @@ export type SimulacionPrecio = Schemas["SimulacionPrecio"];
 export type EscenarioPuntos = Schemas["EscenarioPuntos"];
 export type PaginaDocumento = Schemas["PaginaDocumento"];
 export type GuionOferta = Schemas["GuionOferta"];
+/** F4.3 — resultado de «preparar renovación» sobre un contrato en cartera. */
+export type RenovacionPreparada = Schemas["RenovacionPreparada"];
 export type GuionCriterio = Schemas["GuionCriterio"];
 export type PuntoGuion = Schemas["PuntoGuion"];
 export type ComparacionFichas = Schemas["ComparacionFichas"];

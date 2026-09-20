@@ -21,7 +21,8 @@ import pytest
 
 import services.analytics.quality as q_mod
 
-pytestmark = pytest.mark.usefixtures("tmp_db")
+# `schema_propio`: `_seed` suelta el CHECK ISO de `fecha_publicacion`.
+pytestmark = [pytest.mark.usefixtures("tmp_db"), pytest.mark.schema_propio]
 
 
 def _drop_iso_check() -> None:

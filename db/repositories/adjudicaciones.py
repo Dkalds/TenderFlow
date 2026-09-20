@@ -54,6 +54,26 @@ _GRAPH_FROM = (
 )
 
 
+#: Una marca horaria con hora y zona al final (``…10:00:00+02:00``, ``…Z``).
+#: Exige la hora delante para no confundir el ``-01`` del día de
+#: ``2026-01-01`` con un offset.
+_CON_ZONA_RE = r"[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?\s*(Z|[+-][0-9]{2}(:?[0-9]{2})?)$"
+
+
+def _ts_utc(columna: str) -> str:
+    """Una fecha TEXT como ``timestamptz``, leyendo en UTC las que no traen zona.
+
+    Es lo que hace ``pd.to_datetime(..., utc=True)``. Un ``::timestamptz`` a
+    secas leería las fechas sin zona en la zona de la sesión, y con una zona
+    con horario de verano un intervalo que cruza el cambio pierde una hora: el
+    ``floor`` de días sale uno menos que en pandas.
+    """
+    return (
+        f"(CASE WHEN {columna} ~ '{_CON_ZONA_RE}' THEN {columna}::timestamptz "
+        f"ELSE {columna}::timestamp AT TIME ZONE 'UTC' END)"
+    )
+
+
 def _adj_filter_conditions(
     *,
     ccaa_filter: tuple[str, ...] | None,
@@ -431,34 +451,111 @@ class AdjudicacionRepository:
 
     # ── Drill-down por órgano (ADR-023) ──────────────────────────────────
 
-    def load_por_organo(
-        self, organo: str, filters: LicitacionesFilters | None = None
+    # Las tres consultas de abajo sustituyen a ``load_por_organo`` (C3.2), que
+    # traía **todas** las adjudicaciones del órgano a un DataFrame para sacar
+    # veinte filas, una mediana y treinta lookups. Las tres comparten el mismo
+    # universo —el órgano pedido y el ámbito activo sobre la licitación
+    # adjudicada (alias ``l``)—: sin ``filters``, un drill-down abierto con
+    # ``tecnologia=SAP`` mostraba unos KPIs filtrados junto a un «top
+    # adjudicatario» y un lead-time del histórico entero del órgano.
+    # ``tests/test_organo_detail_sql_paridad.py`` compara las tres con el
+    # cálculo en pandas al que sustituyen.
+
+    def top_adjudicatarios_por_organo(
+        self,
+        organo: str,
+        filters: LicitacionesFilters | None = None,
+        *,
+        limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Proyección ACOTADA de las adjudicaciones de UN órgano.
+        """``[{nombre, count, importe}]`` de un órgano, por número de adjudicaciones.
 
-        Justificación ADR-023: acotada por definición al órgano pedido; el
-        lead-time mediano y el lookup por licitación del drill-down siguen en
-        pandas sobre este subconjunto. ``nombre`` aplica la identidad
-        maestro-canónico-o-raw (la misma expresión que los grafos
-        órgano↔empresa); ``fecha_publicacion``/``importe_licitacion`` vienen
-        del join para el lead-time y la baja porcentual.
-
-        ``filters`` acota además por el ámbito activo, sobre la licitación
-        adjudicada (alias ``l``). Sin él, un drill-down abierto con
-        ``tecnologia=SAP`` mostraba unos KPIs filtrados junto a un "top
-        adjudicatario" y un lead-time calculados sobre el histórico entero del
-        órgano: dos universos distintos en el mismo panel.
+        ``nombre`` aplica la identidad maestro-canónico-o-raw (la misma que los
+        grafos órgano↔empresa). Una adjudicación sin nombre no forma grupo, como
+        en el ``groupby`` de pandas que sustituye. ``importe`` es la suma de lo
+        adjudicado ignorando nulos (``0`` si todos lo son). A igualdad de
+        adjudicaciones se desempata por nombre: dos lecturas seguidas no pueden
+        devolver el ranking en distinto orden.
         """
         where, params = build_licitaciones_where(filters or LicitacionesFilters(), alias="l")
         sql = (
-            f"SELECT a.licitacion_id, {_EMPRESA_KEY_SQL} AS nombre, "
-            "       a.importe_adjudicado, a.fecha_adjudicacion, "
-            "       l.fecha_publicacion, l.importe AS importe_licitacion "
-            f"{_GRAPH_FROM}"
-            f"WHERE {where} AND l.organo_contratacion = %s"
+            "SELECT nombre, COUNT(*) AS count, COALESCE(SUM(importe_adjudicado), 0) AS importe "
+            "FROM ("
+            f"  SELECT {_EMPRESA_KEY_SQL} AS nombre, a.importe_adjudicado "
+            f"  {_GRAPH_FROM}"
+            f"  WHERE {where} AND l.organo_contratacion = %s"
+            ") t "
+            "WHERE nombre IS NOT NULL "
+            "GROUP BY nombre "
+            "ORDER BY COUNT(*) DESC, nombre "
+            "LIMIT %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, organo]))
+            return rows_to_dicts(c.execute(sql, [*params, organo, max(1, int(limit))]))
+
+    def lead_time_mediano_por_organo(
+        self, organo: str, filters: LicitacionesFilters | None = None
+    ) -> float | None:
+        """Mediana de días entre publicar la licitación y adjudicarla, o ``None``.
+
+        Una observación por fila de adjudicación y sólo diferencias positivas,
+        como el cálculo en pandas al que sustituye. Los días son los **días
+        completos** del intervalo en UTC (``floor`` del intervalo, que es lo que
+        daba ``Timedelta.days``), no la resta de fechas de calendario: con horas
+        en las dos columnas, las dos cosas difieren en un día.
+
+        ``percentile_cont(0.5)`` es la mediana de pandas: con un número par de
+        observaciones, la media de las dos centrales.
+        """
+        where, params = build_licitaciones_where(filters or LicitacionesFilters(), alias="l")
+        dias = (
+            f"floor(extract(epoch FROM ({_ts_utc('a.fecha_adjudicacion')} - "
+            f"{_ts_utc('l.fecha_publicacion')})) / 86400)"
+        )
+        sql = (
+            "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY dias) AS mediana "
+            "FROM ("
+            f"  SELECT {dias} AS dias "
+            f"  {_GRAPH_FROM}"
+            f"  WHERE {where} AND l.organo_contratacion = %s "
+            f"    AND {iso_guard('a.fecha_adjudicacion')} "
+            f"    AND {iso_guard('l.fecha_publicacion')}"
+            ") d "
+            "WHERE dias > 0"
+        )
+        with connect_read() as c:
+            fila = c.execute(sql, [*params, organo]).fetchone()
+        # Un agregado sin filas devuelve una fila con NULL, no ninguna fila.
+        return float(fila[0]) if fila is not None and fila[0] is not None else None
+
+    def mejor_adjudicacion_por_licitacion(
+        self,
+        organo: str,
+        licitacion_ids: list[str],
+        filters: LicitacionesFilters | None = None,
+    ) -> list[dict[str, Any]]:
+        """La adjudicación de mayor importe de cada licitación pedida, dentro del órgano.
+
+        Acotada por identidad: una fila como mucho por id de ``licitacion_ids``
+        (el drill-down pide los 30 mejor puntuados). Los importes nulos van al
+        final, como en el ``sort_values`` de pandas al que sustituye.
+        """
+        if not licitacion_ids:
+            return []
+        where, params = build_licitaciones_where(filters or LicitacionesFilters(), alias="l")
+        sql = (
+            "SELECT DISTINCT ON (a.licitacion_id) "
+            f"       a.licitacion_id, {_EMPRESA_KEY_SQL} AS nombre, "
+            "       a.importe_adjudicado, a.fecha_adjudicacion, "
+            "       l.importe AS importe_licitacion "
+            f"{_GRAPH_FROM}"
+            f"WHERE a.licitacion_id = ANY(%s) AND {where} AND l.organo_contratacion = %s "
+            "ORDER BY a.licitacion_id, a.importe_adjudicado DESC NULLS LAST, a.id "
+            "LIMIT %s"
+        )
+        ids = list(dict.fromkeys(licitacion_ids))
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [ids, *params, organo, len(ids)]))
 
     # ── Etiquetado de retención (Fase 6.2) ───────────────────────────────
 

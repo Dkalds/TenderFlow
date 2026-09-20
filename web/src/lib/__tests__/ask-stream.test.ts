@@ -430,8 +430,35 @@ describe("telemetría asistente_usado", () => {
     });
 
     const [, propiedades] = vi.mocked(registrarEvento).mock.calls[0];
-    expect(Object.keys(propiedades)).toEqual(["modo", "ambito", "resultado"]);
+    // `n_expedientes` (F2.8) es un conteo acotado (1-3), no un identificador.
+    expect(Object.keys(propiedades)).toEqual(["modo", "ambito", "resultado", "n_expedientes"]);
     expect(JSON.stringify(propiedades)).not.toContain("EXP-SECRETO");
+  });
+
+  it("F2.8: una pregunta cruzada manda los ids y cuenta los expedientes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(["data: [DONE]\n\n"]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamAsk({ question: "q", idsExternos: ["A", "B", "C"], onToken: vi.fn() });
+
+    const cuerpo = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(cuerpo.ids_externos).toEqual(["A", "B", "C"]);
+    expect(cuerpo).not.toHaveProperty("id_externo");
+    expect(registrarEvento).toHaveBeenCalledWith("asistente_usado", {
+      modo: "pregunta",
+      ambito: "licitacion",
+      resultado: "ok",
+      n_expedientes: "3",
+    });
+  });
+
+  it("F2.8: sin lista no viaja `ids_externos`", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(["data: [DONE]\n\n"]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamAsk({ question: "q", idsExternos: [], onToken: vi.fn() });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty("ids_externos");
   });
 });
 

@@ -28,6 +28,7 @@ export function DetallePie({
   pageWindow,
   canPrevious,
   canNext,
+  canLast,
   onPageChange,
 }: {
   showingLine: string;
@@ -37,6 +38,11 @@ export function DetallePie({
   pageWindow: number[];
   canPrevious: boolean;
   canNext: boolean;
+  /**
+   * «Última página». Con paginación por cursor sólo se llega a una página ya
+   * alcanzada, así que no basta con `canNext`: por defecto, el mismo valor.
+   */
+  canLast?: boolean;
   onPageChange: (page: number) => void;
 }) {
   return (
@@ -134,7 +140,7 @@ export function DetallePie({
               aria-label="Última página"
               className={BOTON_PAGINA}
               onClick={() => onPageChange(totalPages - 1)}
-              disabled={!canNext}
+              disabled={!(canLast ?? canNext)}
             >
               <ChevronsRight className="h-3 w-3" aria-hidden="true" />
             </button>

@@ -99,6 +99,9 @@ TECNOLOGIAS_KEYWORD_REMOVED: Final = "tecnologias_keyword.removed"
 TECNOLOGIAS_KEYWORD_SEEDED: Final = "tecnologias_keyword.seeded"
 EMPRESA_REVIEW_RESOLVED: Final = "empresa.review_resolved"
 
+# ── operación — acciones sobre la ingesta (solo administración) ────────────
+DLQ_REQUEUED: Final = "dlq.requeued"
+
 # ── producto — acciones de negocio que dejan rastro ────────────────────────
 FEEDBACK_SUBMITTED: Final = "feedback.submitted"
 PURSUIT_WEIGHTS_PROPOSAL_APPLIED: Final = "pursuit.weights_proposal_applied"
@@ -156,6 +159,7 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
             EMPRESA_REVIEW_RESOLVED,
         }
     ),
+    "operacion": frozenset({DLQ_REQUEUED}),
     "producto": frozenset(
         {FEEDBACK_SUBMITTED, PURSUIT_WEIGHTS_PROPOSAL_APPLIED, GO_NO_GO_WEIGHTS_UPDATED}
     ),

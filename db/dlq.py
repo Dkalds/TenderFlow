@@ -15,7 +15,7 @@ Columnas clave:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from db.database import connect, now_utc_iso
 from observability.logging import get_logger
@@ -200,6 +200,58 @@ def mark_matching_resolved(fuente: str, scope: str | None = None) -> int:
             (now_utc_iso(), fuente, scope),
         )
         return int(cur.rowcount or 0)
+
+
+EstadoReencolado = Literal["abierta", "agotada", "duplicada", "resuelta", "inexistente"]
+
+
+def requeue(failure_id: int) -> EstadoReencolado:
+    """Devuelve una entrada a la cola de reintentos, lista para el próximo ciclo.
+
+    No reintenta aquí: reintentar es correr un conector entero (minutos, u
+    horas para un mes bulk), trabajo que no cabe en una petición HTTP. Lo que
+    hace es dejar la entrada **vencida** para ``scheduler.dlq_retry``:
+    ``retry_count = 0`` y ``last_attempt_at = NULL``, con lo que el backoff se
+    mide desde ``created_at`` con el tramo base y ya ha expirado. Una entrada
+    agotada vuelve a ser candidata (se limpia ``exhausted_at``).
+
+    Devuelve el estado previo: ``"abierta"``, ``"agotada"``, ``"resuelta"``
+    (no se toca: ya no hay nada que reintentar), ``"duplicada"`` (agotada, pero
+    ya hay otra entrada abierta para la misma fuente/scope/payload, que es la
+    que se reintentará: reabrir ésta violaría ``idx_fail_unique_unresolved``) o
+    ``"inexistente"``. El ``UPDATE`` lleva la condición en el ``WHERE`` para que
+    una resolución concurrente no se deshaga.
+    """
+    with connect() as c:
+        row = c.execute(
+            "SELECT resolved_at, exhausted_at, fuente, scope, payload_ref "
+            "FROM failed_extractions WHERE id = %s",
+            (failure_id,),
+        ).fetchone()
+        if row is None:
+            return "inexistente"
+        resolved_at, exhausted_at, fuente, scope, payload_ref = row
+        if resolved_at is not None:
+            return "resuelta"
+        if exhausted_at is not None:
+            gemela = c.execute(
+                "SELECT 1 FROM failed_extractions "
+                "WHERE fuente = %s "
+                "  AND COALESCE(scope, '') = COALESCE(%s, '') "
+                "  AND COALESCE(payload_ref, '') = COALESCE(%s, '') "
+                "  AND resolved_at IS NULL AND exhausted_at IS NULL "
+                "  AND id != %s LIMIT 1",
+                (fuente, scope, payload_ref, failure_id),
+            ).fetchone()
+            if gemela is not None:
+                return "duplicada"
+        c.execute(
+            "UPDATE failed_extractions "
+            "SET retry_count = 0, last_attempt_at = NULL, exhausted_at = NULL "
+            "WHERE id = %s AND resolved_at IS NULL",
+            (failure_id,),
+        )
+    return "agotada" if exhausted_at is not None else "abierta"
 
 
 def increment_retry(failure_id: int) -> None:
