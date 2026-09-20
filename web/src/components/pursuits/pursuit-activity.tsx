@@ -54,6 +54,8 @@ interface Cambio {
 const TIPO_LEGIBLE: Record<string, string> = {
   "pursuit.created": "Oportunidad abierta",
   "pursuit.updated": "Actualización",
+  // Lo sella `services/go_no_go.py` una vez por versión de ficha del pliego.
+  checklist_evaluated: "Pliego contrastado con la capacidad",
 };
 
 /** Etiquetas de los campos que el editor puede cambiar. */
@@ -125,6 +127,27 @@ function valorLegible(campo: string, valor: unknown, miembros: readonly ActorCon
   return EMPTY;
 }
 
+/**
+ * El sello del contraste no trae cambios, sino conteos: se leen uno a uno, y
+ * si no están, la entrada se queda con su titular y su fecha.
+ */
+function resumenContraste(evento: PursuitEvent): string | null {
+  if (evento.event_type !== "checklist_evaluated") return null;
+  const payload = evento.payload as Record<string, unknown> | undefined;
+  const numero = (clave: string): number | null =>
+    typeof payload?.[clave] === "number" ? (payload[clave] as number) : null;
+  const partes = [
+    [numero("cumple"), "cumple"],
+    [numero("no_cumple"), "no cumple"],
+    [numero("desconocido"), "sin dato"],
+  ] as const;
+  const texto = partes
+    .filter(([valor]) => valor != null)
+    .map(([valor, etiqueta]) => `${valor} ${etiqueta}`)
+    .join(" · ");
+  return texto || null;
+}
+
 /** El titular de la entrada: el cambio de fase manda sobre el tipo de evento. */
 function tituloDe(evento: PursuitEvent, cambios: Cambio[]): string {
   const estado = cambios.find((cambio) => cambio.campo === "status");
@@ -181,6 +204,11 @@ export function PursuitActivity({
               <p className="text-muted-foreground mt-0.5 font-mono text-tf-micro">
                 {formatDate(evento.created_at)} · {actorLegible(evento, miembros)}
               </p>
+              {resumenContraste(evento) ? (
+                <p className="text-muted-foreground mt-0.5 text-tf-micro">
+                  {resumenContraste(evento)}
+                </p>
+              ) : null}
               {resto.length > 0 && (
                 <ul className="mt-1 flex flex-col gap-0.5">
                   {resto.map((cambio) => (

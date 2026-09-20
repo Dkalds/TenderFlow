@@ -74,6 +74,22 @@ describe("PursuitActivity", () => {
     expect(screen.getByText(/2,\d\s?M/)).toBeInTheDocument();
   });
 
+  it("traduce el sello del contraste del pliego y enseña sus conteos", () => {
+    render(
+      <PursuitActivity
+        events={[
+          evento({
+            id: 5,
+            event_type: "checklist_evaluated",
+            payload: { cumple: 12, no_cumple: 3, desconocido: 4, licitacion_id: "2026/0410" },
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Pliego contrastado con la capacidad")).toBeInTheDocument();
+    expect(screen.getByText("12 cumple · 3 no cumple · 4 sin dato")).toBeInTheDocument();
+  });
+
   it("nombra al actor cuando conoce al miembro", () => {
     render(
       <PursuitActivity
