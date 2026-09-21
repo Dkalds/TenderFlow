@@ -310,6 +310,41 @@ def test_la_semana_siguiente_vuelve_a_enviar(tmp_db: Any) -> None:
     assert enviar.call_count == 2
 
 
+def test_la_ventana_se_sella_con_el_instante_de_la_pasada(tmp_db: Any) -> None:
+    """`ultimo_envio_at` guarda el instante que procesó la pasada, no el reloj.
+
+    Regresión de un fallo dormido: `marcar_envio` sellaba con la hora real
+    mientras `pendientes` decidía con el instante recibido. En producción
+    coinciden —el job no pasa argumento—, así que el error sólo se veía cuando
+    la hora real caía dentro de la ventana de un instante simulado. Eso lo hacía
+    depender del día en que corriera la suite: `test_la_semana_siguiente_vuelve_a_enviar`
+    pasó verde durante semanas y rompió el 2026-09-21, exactamente `AHORA + 7d`.
+    Aquí la comprobación es directa y no depende del calendario.
+    """
+    db_mod, _ = tmp_db
+    from db.repositories import report_schedules
+    from observability.mailer import ResultadoEnvio
+    from scheduler.jobs.informes_programados import ejecutar
+
+    user_id, org_id = _organizacion(db_mod, "sello@example.test")
+    _pursuit(db_mod, org_id, user_id, id_externo="SELLO-1")
+    report_schedules.guardar(
+        org_id, activo=True, dia_semana=0, hora_utc=7, destinatarios=["a@b.test"]
+    )
+
+    with patch(
+        "observability.mailer.enviar", return_value=ResultadoEnvio(ok=True, backend="console")
+    ):
+        assert ejecutar(AHORA).enviados == 1
+
+    fila = report_schedules.get(org_id)
+    assert fila is not None
+    sellado = datetime.fromisoformat(str(fila["ultimo_envio_at"]))
+    if sellado.tzinfo is None:
+        sellado = sellado.replace(tzinfo=UTC)
+    assert sellado == AHORA, "la ventana se selló con otro instante que el procesado"
+
+
 def test_una_programacion_apagada_no_entra(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
     from db.repositories import report_schedules
