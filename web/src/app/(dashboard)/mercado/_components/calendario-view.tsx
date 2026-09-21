@@ -10,7 +10,6 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { PipelineRoleNav } from "@/components/pipeline-role-nav";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { useCalendarioView, type CalendarioModo } from "../_hooks/use-calendario-view";
@@ -112,8 +111,6 @@ export default function CalendarioView() {
           </div>
         </div>
       </div>
-
-      <PipelineRoleNav current="calendario" />
 
       {esVencimientos && <CalendarioVencimientosKpis data={vencimientos} isLoading={isLoading} />}
 

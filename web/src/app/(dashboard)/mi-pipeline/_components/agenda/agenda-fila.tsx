@@ -3,49 +3,67 @@
 /**
  * Un compromiso de la agenda.
  *
+ * La fila declara **qué clase de fecha** es la del chip (`metaLinea`): un «3 d»
+ * suelto no distingue el plazo de presentación de una licitación, la tarea que
+ * alguien se apuntó y la ventana en la que se espera la relicitación de un
+ * contrato ya ganado. Tres relojes distintos, y hasta ahora los tres se pintaban
+ * igual.
+ *
  * **Por debajo de `md` deja de ser fila de tabla**: mirar la agenda en el móvil
  * es el otro caso de uso en movilidad, y una lista comprimida en cinco columnas
- * de 384 px obliga a scroll horizontal para llegar a «Seguir». Los envoltorios
+ * de 384 px obliga a scroll horizontal para llegar a la acción. Los envoltorios
  * se disuelven con `md:contents`, así que fila y ficha son el mismo árbol.
  */
 
-import { X } from "lucide-react";
 import { cn, EMPTY, formatCompactCurrency } from "@/lib/utils";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
-import { CHIP_POR_BANDA, GRID, KIND_META, metaLinea, plazoChip } from "./agenda-meta";
+import { AgendaAccion, type AccionesFila } from "./agenda-accion";
+import {
+  CHIP_POR_BANDA,
+  claseDeIcono,
+  etiquetaKind,
+  GRID,
+  ICONOS,
+  metaLinea,
+  plazoChip,
+  tituloDe,
+} from "./agenda-meta";
 
 export function AgendaFila({
   item,
   activa,
   rowPad,
   onSeleccionar,
-  onAbrir,
-  onSeguir,
-  onDescartar,
+  acciones,
 }: {
   item: PipelineAgendaItem;
   activa: boolean;
   rowPad: string;
   onSeleccionar: () => void;
-  onAbrir: () => void;
-  onSeguir: () => void;
-  onDescartar: () => void;
+  acciones: AccionesFila;
 }) {
-  const Meta = KIND_META[item.kind];
+  const Icono = ICONOS[claseDeIcono(item)];
 
   return (
     <div
       data-active={activa || undefined}
       role="button"
+      // Nombre explícito y no el texto que la fila contiene: sin él, el nombre
+      // accesible de la fila era la concatenación de todo lo de dentro —chip,
+      // importe y la etiqueta del botón de acción incluidos—, así que un lector
+      // de pantalla anunciaba «… 940 mil € Preparar renovación» antes de que el
+      // usuario supiera de qué contrato hablaba.
+      aria-label={`${etiquetaKind(item)}: ${tituloDe(item)}. ${metaLinea(item)}`}
       tabIndex={0}
       onClick={onSeleccionar}
-      onDoubleClick={onAbrir}
+      onDoubleClick={acciones.onAbrir}
       onKeyDown={(event) => {
-        if (event.key === "Enter") onAbrir();
+        if (event.key === "Enter") acciones.onAbrir();
       }}
       className={cn(
         "flex cursor-pointer flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-120 ease-out",
         "md:grid md:items-center md:py-0",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset",
         GRID,
         rowPad,
         activa ? "bg-primary/8" : "hover:bg-secondary/60",
@@ -63,22 +81,16 @@ export function AgendaFila({
         >
           {plazoChip(item)}
         </span>
-        <Meta.icon
-          className="h-3.5 w-3.5 flex-none text-muted-foreground"
-          aria-label={Meta.label}
-        />
+        <Icono className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           {/* Dos líneas en móvil, una en la tabla: el
-              título de un expediente no cabe en 240 px.
-              Misma utilidad en las dos anchuras (`md:` y no
-              `truncate`) para que el orden en cascada lo
-              decida el prefijo, no la ordenación interna. */}
+              título de un expediente no cabe en 240 px. */}
+          {/* El icono va `aria-hidden` porque la clase de compromiso ya está en
+              el `aria-label` de la fila: repetirla la anunciaría dos veces. */}
           <p className="line-clamp-2 text-[12.5px] font-medium leading-[1.35] md:line-clamp-1">
-            {item.titulo ?? item.licitacion_id}
+            {tituloDe(item)}
           </p>
-          <p className="truncate text-[10.5px] text-muted-foreground">
-            {metaLinea(item)}
-          </p>
+          <p className="truncate text-[10.5px] text-muted-foreground">{metaLinea(item)}</p>
         </div>
       </div>
 
@@ -86,48 +98,8 @@ export function AgendaFila({
         <span className="tf-tnum font-mono text-[11.5px] text-foreground/85 md:text-right">
           {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
         </span>
-        {/* 32 px de alto en móvil frente a los 24 de la
-            consola: 24×24 es el mínimo que exige WCAG 2.5.8,
-            no una medida cómoda para el pulgar. */}
-        <span className="flex flex-none justify-end">
-          {item.kind === "pursuit" ? (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onAbrir();
-              }}
-              className="tf-pressable h-8 rounded-md border border-border/70 px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground md:h-6 md:px-2"
-            >
-              Abrir
-            </button>
-          ) : (
-            <span className="flex items-center gap-1.5 md:gap-1">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSeguir();
-                }}
-                className="tf-pressable h-8 rounded-md border border-primary/30 bg-primary/8 px-3 text-[11px] font-medium text-primary md:h-6 md:px-2"
-              >
-                {item.kind === "renovacion" ? "Anticipar" : "Seguir"}
-              </button>
-              {item.kind === "senal" && (
-                <button
-                  type="button"
-                  aria-label="Descartar señal"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDescartar();
-                  }}
-                  className="tf-pressable grid h-8 w-8 place-items-center rounded-md border border-border/70 text-muted-foreground transition-colors hover:text-destructive md:h-6 md:w-6"
-                >
-                  <X className="h-3.5 w-3.5 md:h-3 md:w-3" aria-hidden="true" />
-                </button>
-              )}
-            </span>
-          )}
+        <span className="flex min-w-0 flex-none justify-end">
+          <AgendaAccion item={item} acciones={acciones} />
         </span>
       </div>
     </div>

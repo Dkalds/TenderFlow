@@ -70,6 +70,29 @@ export function RadarQualityNota({
   );
 }
 
+/** Lo que se dice cuando no hay ni una oportunidad con banda sellada. */
+function SinBandaSellada() {
+  return (
+    <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+      Todavía no se puede medir si el Radar prioriza bien: ninguna oportunidad guarda la banda con
+      la que se abrió. Se guarda al convertir una señal del Radar en oportunidad.
+    </p>
+  );
+}
+
+/** «8 de 12 desde el 2026-01-01»: el universo del que habla el cuadro. */
+function CoberturaRadar({ calidad }: { calidad: RadarQuality }) {
+  const desde = calidad.ventana_desde?.slice(0, 10);
+  const hasta = calidad.ventana_hasta?.slice(0, 10);
+  return (
+    <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
+      {desde && hasta ? `Ventana ${desde} → ${hasta}. ` : null}
+      {calidad.pursuits_con_banda} de {calidad.pursuits_total} oportunidades guardan la banda con
+      la que se abrieron; el resto es anterior a que se empezara a guardar.
+    </p>
+  );
+}
+
 /**
  * El cuadro completo: una línea por banda, más la ventana y la cobertura.
  *
@@ -85,16 +108,8 @@ export function RadarQualityResumen({
 }) {
   const bandas = calidad?.bandas ?? [];
   if (!calidad || bandas.length === 0) {
-    return (
-      <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-        Todavía no se puede medir si el Radar prioriza bien: ninguna oportunidad guarda la banda
-        con la que se abrió. Se guarda al convertir una señal del Radar en oportunidad.
-      </p>
-    );
+    return <SinBandaSellada />;
   }
-
-  const desde = calidad.ventana_desde?.slice(0, 10);
-  const hasta = calidad.ventana_hasta?.slice(0, 10);
 
   return (
     <div className={className}>
@@ -110,11 +125,87 @@ export function RadarQualityResumen({
           </li>
         ))}
       </ul>
+      <CoberturaRadar calidad={calidad} />
+    </div>
+  );
+}
+
+/**
+ * El mismo dato en tabla, para la vista que lo tiene como panel propio
+ * (Oportunidades → Rendimiento) y no como nota al pie de otra cosa.
+ *
+ * Una fila por banda con las cuatro cifras que responden «¿el Radar ordena
+ * bien?»: cuántas oportunidades salieron de esa banda, cuántas acabaron,
+ * cuántas se ganaron y el acierto. El acierto es el único porcentaje, y por
+ * debajo del mínimo que declara el backend enseña **el hueco** —«aún no» con
+ * las resueltas que hay sobre las que hacen falta— en vez de un número: un
+ * 100 % sobre dos cierres no mide el Radar.
+ */
+export function RadarQualityTabla({
+  calidad,
+  className,
+}: {
+  calidad: RadarQuality | null | undefined;
+  className?: string;
+}) {
+  const bandas = calidad?.bandas ?? [];
+  if (!calidad || bandas.length === 0) {
+    return <SinBandaSellada />;
+  }
+
+  return (
+    <div className={className}>
+      <table className="w-full text-[11.5px]">
+        <caption className="sr-only">
+          Calidad del Radar por banda de entrada: oportunidades seguidas, cerradas, ganadas y
+          acierto
+        </caption>
+        <thead>
+          <tr className="text-left text-[10.5px] text-muted-foreground">
+            <th scope="col" className="pb-1.5 font-medium">
+              Banda
+            </th>
+            <th scope="col" className="pb-1.5 text-right font-medium">
+              Seguidas
+            </th>
+            <th scope="col" className="pb-1.5 text-right font-medium">
+              Cerradas
+            </th>
+            <th scope="col" className="pb-1.5 text-right font-medium">
+              Ganadas
+            </th>
+            <th scope="col" className="pb-1.5 text-right font-medium">
+              Acierto
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {bandas.map((banda) => (
+            <tr key={banda.banda} className="border-t border-border/50">
+              <th scope="row" className="py-1.5 text-left font-medium">
+                {banda.banda}
+              </th>
+              <td className="tf-tnum py-1.5 text-right font-mono">{banda.abiertas}</td>
+              <td className="tf-tnum py-1.5 text-right font-mono">{banda.cerradas}</td>
+              <td className="tf-tnum py-1.5 text-right font-mono">{banda.ganadas}</td>
+              <td className="tf-tnum py-1.5 text-right font-mono">
+                {banda.precision === null || banda.precision === undefined ? (
+                  <span className="text-muted-foreground">
+                    aún no · {banda.resueltas}/{calidad.minimo_por_banda}
+                  </span>
+                ) : (
+                  porcentaje(banda.precision)
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
-        {desde && hasta ? `Ventana ${desde} → ${hasta}. ` : null}
-        {calidad.pursuits_con_banda} de {calidad.pursuits_total} oportunidades guardan la banda
-        con la que se abrieron; el resto es anterior a que se empezara a guardar.
+        «Seguidas» son las oportunidades abiertas desde esa banda; el acierto es ganadas sobre
+        resueltas (ganadas + perdidas), porque una retirada no dice si el Radar acertó.
       </p>
+      <CoberturaRadar calidad={calidad} />
     </div>
   );
 }

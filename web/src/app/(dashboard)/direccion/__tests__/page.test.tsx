@@ -3,7 +3,7 @@
  *
  * Sin `organization_id` el backend resuelve la organización personal, y las
  * oportunidades viven en la del equipo: la pantalla salía con «Sin cierres»
- * para un owner que en Mi Pipeline sí veía sus oportunidades.
+ * para un owner que en la Agenda sí veía sus oportunidades.
  */
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

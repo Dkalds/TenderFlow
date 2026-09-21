@@ -44,24 +44,41 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
       from: "proyectos-modulos",
       visibility: "experimental",
     },
+    // Reestructura 2026-09-20 («un espacio, una pregunta»): las renovaciones
+    // son una pregunta de mercado —qué contratos ajenos vencen y quién los
+    // defiende—, no un compromiso personal, así que la pantalla de
+    // `/renovaciones` (hasta entonces «Horizonte» de Mi Pipeline) vive aquí.
+    // Absorbe la ruta heredada, de modo que `/renovaciones` redirige a
+    // `/mercado?vista=renovaciones`; el `?vista=horizonte` viejo lo reenvía la
+    // página de `/mi-pipeline`.
+    { key: "renovaciones", label: "Renovaciones", from: "renovaciones" },
   ],
   competencia: [
     { key: "competidores", label: "Competidores", from: "competidores" },
     { key: "utes", label: "UTEs", from: "utes" },
   ],
-  // Rediseño 2026-08: la agenda absorbe pipeline-alertas (inventario de
-  // funciones en docs/redesign/mi-pipeline-inventario.md) y el horizonte es la
-  // pantalla de renovaciones con el CTA de anticipar. Los `?vista=` heredados
-  // (`pipeline`, `renovaciones`) los alias-ea la página del espacio.
-  "mi-pipeline": [
-    { key: "agenda", label: "Agenda", from: "pipeline-alertas" },
-    { key: "embudo", label: "Embudo" },
-    { key: "horizonte", label: "Horizonte", from: "renovaciones" },
-    // F4.3: `won` deja de ser un estado terminal sin vida posterior. La
-    // cartera es la continuación del contrato ganado — su fecha de fin, sus
-    // prórrogas y la ventana en que se espera la relicitación.
+  // Reestructura 2026-09-20: Oportunidades es el espacio de ejecución y reúne
+  // las tres preguntas sobre las oportunidades propias. `tablero` es la
+  // entrada (por fases, con arrastre); `cartera` (F4.3) es la continuación del
+  // contrato ganado —fecha de fin, prórrogas y ventana de relicitación— y
+  // `rendimiento` es el embudo de `GET /pursuits/metrics` (win rate, valor
+  // ponderado, pérdidas por motivo). Las dos últimas venían de Mi Pipeline;
+  // sus `?vista=` viejos (`cartera`, `embudo`) los reenvía aquella página.
+  // Ninguna absorbe ruta heredada: siempre fueron vistas de un espacio.
+  oportunidades: [
+    { key: "tablero", label: "Tablero" },
     { key: "cartera", label: "Cartera" },
+    { key: "rendimiento", label: "Rendimiento" },
   ],
+  // Rediseño 2026-08: la agenda absorbe pipeline-alertas (inventario de
+  // funciones en docs/redesign/mi-pipeline-inventario.md). Reestructura
+  // 2026-09-20: el espacio se llama «Agenda» y responde una sola pregunta
+  // —qué se me muere si hoy no hago nada—, así que ésta es su única vista.
+  // El `key`/slug `mi-pipeline` se conserva para no romper URLs ni
+  // telemetría. Los `?vista=` heredados los resuelve la página del espacio:
+  // `pipeline` es un alias de la agenda; `embudo`, `cartera`, `horizonte` y
+  // `renovaciones` reenvían al espacio donde vive hoy cada vista.
+  "mi-pipeline": [{ key: "agenda", label: "Agenda", from: "pipeline-alertas" }],
   // F1.5: Cuentas absorbe `Mercado → Órganos` como `?vista=mercado`.
   // Consolidar no elimina: el corte analítico sigue estando, y lo que se añade
   // encima es lo que faltaba —poder seguir un órgano y ver qué tiene el equipo
@@ -71,12 +88,13 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "seguidas", label: "Cuentas seguidas" },
     { key: "mercado", label: "Todos los órganos" },
   ],
-  // F4.2: Dirección absorbe `Mi Pipeline → Embudo` como `?vista=embudo`.
-  // Mismo criterio: el embudo no desaparece de Mi Pipeline, y aquí se le
-  // añaden los cortes que un owner necesita y que allí no caben.
+  // F4.2: Dirección nació para añadir al embudo los cortes que un owner
+  // necesita (win rate por tecnología y órgano, ciclo, motivos de pérdida).
+  // Tuvo una vista `embudo` que era sólo un `EmptyState` devolviendo a Mi
+  // Pipeline; la reestructura 2026-09-20 la retiró —no tenía funcionalidad—
+  // y el embudo vive en `Oportunidades → Rendimiento`.
   direccion: [
     { key: "resultado", label: "Resultado" },
-    { key: "embudo", label: "Embudo" },
     { key: "actividad", label: "Actividad del equipo" },
   ],
   // Empresas no absorbe ninguna ruta heredada: sus dos vistas siempre

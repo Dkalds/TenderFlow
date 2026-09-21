@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import Any
 
 # Identificadores SQL que se pueden interpolar: los nombres de tabla y columna
@@ -40,6 +41,52 @@ def csv_values(value: str | None) -> list[str]:
     un único valor no cambian de comportamiento.
     """
     return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
+def ambito_agenda_sql(
+    alias: str,
+    *,
+    tecnologias: Sequence[str] | None,
+    ccaas: Sequence[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Cláusulas de ámbito (tecnología, CCAA) de la agenda: ``(clauses, params)``.
+
+    Tres consultas de la agenda —pursuits abiertos, tareas abiertas y
+    señales— aplican el mismo ámbito sobre ``licitaciones`` (``alias``). Vive
+    aquí para que las tres lo lean igual: si una explotara el CSV de
+    tecnologías y otra comparara por igualdad, el mismo filtro daría universos
+    distintos según el ``kind``.
+
+    - ``tecnologias``: OR dentro de la lista, buscado en el CSV de la fila
+      (:func:`db.sql_fragments.tecnologia_en_csv_sql`), nunca por igualdad.
+    - ``ccaas``: OR dentro de la lista; con un solo valor se conserva la
+      igualdad para no cambiar el plan de las consultas que ya existían.
+
+    Listas vacías o ``None`` no añaden cláusula, y una lista que sólo trae
+    blancos cuenta como vacía: los valores se recortan **aquí** y no sólo en
+    :func:`csv_values`, porque un llamante que arme la lista a mano (un job,
+    un test, otra ruta) no pasa por el parser del query string y un ``"  "``
+    colado se convertiría en un filtro que no casa con nada — la agenda
+    entera vacía, sin error.
+    """
+    from db.sql_fragments import tecnologia_en_csv_sql
+
+    clauses: list[str] = []
+    params: list[str] = []
+    tecs = [t.strip() for t in (tecnologias or []) if t and t.strip()]
+    if tecs:
+        clauses.append(tecnologia_en_csv_sql(f"{alias}.tecnologia", n=len(tecs)))
+        params.extend(tecs)
+    regiones = [c.strip() for c in (ccaas or []) if c and c.strip()]
+    if len(regiones) == 1:
+        clauses.append(f"{alias}.ccaa = %s")
+        params.extend(regiones)
+    elif regiones:
+        # Se interpolan marcadores, nunca valores: éstos van siempre por params.
+        marcadores = ", ".join(["%s"] * len(regiones))
+        clauses.append(f"{alias}.ccaa IN ({marcadores})")
+        params.extend(regiones)
+    return clauses, params
 
 
 def rows_to_dicts(cursor: Any) -> list[dict[str, Any]]:

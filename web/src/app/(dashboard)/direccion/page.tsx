@@ -21,9 +21,11 @@ import { PerdidasDireccion, RadarDireccion, TarjetasDireccion } from "./_compone
  *
  * El Embudo son tres barras y cuatro cifras. Con eso un owner no puede
  * responder ninguna de las preguntas que se hace: dónde ganamos, dónde
- * perdemos, cuánto tarda el ciclo. Este espacio **absorbe** el embudo como
- * `?vista=embudo` —sin quitarlo de Mi Pipeline— y le añade los cortes que allí
- * no caben.
+ * perdemos, cuánto tarda el ciclo. Este espacio añade los cortes que en el
+ * embudo no caben. Tuvo una vista `embudo` que era sólo un `EmptyState`
+ * devolviendo a Mi Pipeline; la reestructura 2026-09-20 la retiró —no tenía
+ * funcionalidad que conservar— y el embudo vive en Oportunidades →
+ * Rendimiento.
  *
  * La regla de esta pantalla: **ninguna celda se pinta por debajo del mínimo**.
  * El backend devuelve `valor: null` con su `n`, y aquí se enseña el hueco con
@@ -96,7 +98,7 @@ export default function DireccionPage() {
   const { view: vista, setView: setVista } = useSpaceView(SPACE);
   // Sin `organization_id` el backend resuelve la organización **personal**, y
   // las oportunidades viven en la del equipo: la pantalla salía vacía para
-  // cualquier owner mientras Mi Pipeline, que sí la manda, las enseñaba.
+  // cualquier owner mientras la Agenda, que sí la manda, las enseñaba.
   const organizationId = useActiveOrganizationId();
   const { data, isPending, isError, error } = useQuery({
     queryKey: pursuitKeys.direccion(organizationId),
@@ -135,16 +137,6 @@ export default function DireccionPage() {
         />
       ) : vista === "actividad" ? (
         <ActividadEquipo organizationId={organizationId} />
-      ) : vista === "embudo" ? (
-        // La vista existe en `space-views.ts`; sin esta rama caía al `else` y
-        // pintaba las tablas de Resultado bajo la pestaña Embudo, que es peor
-        // que no tenerla: dos pestañas con el mismo contenido se leen como un
-        // fallo de datos.
-        <EmptyState
-          icon={LayoutDashboard}
-          title="Embudo"
-          hint="El embudo por etapa sigue en Mi Pipeline → Embudo mientras se le añaden aquí los cortes de dirección."
-        />
       ) : (
         <div className="flex flex-col gap-8">
           <TarjetasDireccion tarjetas={data?.tarjetas ?? []} />

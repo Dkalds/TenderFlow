@@ -140,7 +140,7 @@ export function useRadarDismissals() {
  * dato es irrecuperable a posteriori (revisión `v93`).
  *
  * Son opcionales porque hay una superficie que descarta sin tener el score
- * delante —la agenda de Mi Pipeline—, y descartar no puede depender de poder
+ * delante —la Agenda (`/mi-pipeline`)—, y descartar no puede depender de poder
  * medirlo. Ahí la fila queda con `null`, que significa «no se supo».
  */
 /**
@@ -240,7 +240,7 @@ export function useDismissRadarTender() {
       // El ranking se pide con `exclude_dismissed`: hay que volver a pedirlo
       // para que entre la señal que ocupa el hueco.
       void qc.invalidateQueries({ queryKey: radarKeys.scoring });
-      // La agenda de Mi Pipeline excluye señales descartadas: comparte triaje.
+      // La Agenda (`/mi-pipeline`) excluye señales descartadas: comparte triaje.
       void qc.invalidateQueries({ queryKey: pursuitKeys.agenda });
     },
   });
@@ -269,7 +269,7 @@ export function useRestoreRadarTender() {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: DISMISSALS_KEY });
       void qc.invalidateQueries({ queryKey: radarKeys.scoring });
-      // La agenda de Mi Pipeline excluye señales descartadas: comparte triaje.
+      // La Agenda (`/mi-pipeline`) excluye señales descartadas: comparte triaje.
       void qc.invalidateQueries({ queryKey: pursuitKeys.agenda });
     },
   });

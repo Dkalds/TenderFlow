@@ -1446,22 +1446,48 @@ class PursuitMetrics(BaseModel):
 
 # ── Agenda de Mi Pipeline ───────────────────────────────────────────────────
 #
-# La agenda fusiona tres clases de compromiso en una sola cronología por
-# usuario/organización. La fusión, el orden y la banda de urgencia se calculan
-# en backend (ADR-014: el frontend no fabrica orden ni agregados).
+# La agenda fusiona los compromisos de la organización en una sola cronología
+# por usuario/organización. La fusión, el orden y la banda de urgencia se
+# calculan en backend (ADR-014: el frontend no fabrica orden ni agregados).
+#
+# Cada ``kind`` lleva **una** fecha y dice de qué clase es (``due_kind``): el
+# plazo externo de presentación de un pursuit y la acción interna que alguien
+# tiene que hacer son compromisos distintos, con dueños distintos, y mezclarlos
+# en un mismo ``due_date`` dejaba al usuario sin saber cuál de los dos vencía.
 
-AgendaItemKind = Literal["pursuit", "senal", "renovacion"]
+AgendaItemKind = Literal["pursuit", "tarea", "contrato", "senal", "renovacion"]
+#: Qué clase de fecha es ``due_date``: ``plazo`` (presentación de la licitación,
+#: en pursuits y señales), ``accion`` (vencimiento de una tarea), ``fin_contrato``
+#: (fin efectivo de un contrato, propio o del mercado) o ``relicitacion``
+#: (inicio de la ventana en la que se espera la relicitación de un contrato
+#: propio sin renovación preparada).
+AgendaDueKind = Literal["plazo", "accion", "fin_contrato", "relicitacion"]
 AgendaUrgencia = Literal["vencida", "hoy", "semana", "mes", "despues", "sin_fecha"]
 
 
 class PipelineAgendaItem(BaseModel):
     """Una fila de la agenda, ya clasificada por urgencia.
 
-    Los campos específicos de cada ``kind`` son NULL en los otros dos:
-    ``pursuit_*``/``status``/``next_action`` solo en pursuits, ``rule_*`` solo
-    en señales, ``adjudicatario``/``riesgo_cambio`` solo en renovaciones.
-    ``importe_eur`` es presupuesto de licitación (pursuit/señal) o importe
-    adjudicado del contrato que vence (renovación).
+    Los campos específicos de cada ``kind`` son NULL en los demás:
+
+    - ``pursuit``: ``pursuit_id``/``status``/``decision``/``responsible_*``/
+      ``next_action``/``version``. ``due_date`` es **solo** el plazo de
+      presentación; ``next_action``/``next_action_due`` viajan como dato
+      informativo, no como la fecha del compromiso.
+    - ``tarea``: los mismos campos del pursuit al que pertenece, más
+      ``tarea_id``/``tarea_texto``. ``tarea_id`` es NULL cuando la fila es la
+      ``next_action`` manual de un pursuit sin tareas abiertas (se edita con
+      ``PATCH /pursuits/{id}``, no con las rutas de tareas).
+    - ``contrato``: ``cartera_id``, ``fecha_fin_efectiva``, ``fecha_fin_origen``,
+      ``relicitacion_desde``/``relicitacion_hasta``, ``renovacion_pursuit_id``
+      y ``prorrogas_aplicadas``; ``pursuit_id`` es la oportunidad ganada de
+      origen.
+    - ``senal``: ``rule_id``/``rule_nombre``.
+    - ``renovacion`` (mercado, solo con ``incluir_mercado``): ``adjudicatario``,
+      ``riesgo_cambio`` y ``fecha_fin_origen``.
+
+    ``importe_eur`` es presupuesto de licitación (pursuit/tarea/señal) o importe
+    adjudicado del contrato (contrato/renovación).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1489,20 +1515,48 @@ class PipelineAgendaItem(BaseModel):
     rule_nombre: str | None
     adjudicatario: str | None
     riesgo_cambio: float | None
-    #: Sólo en renovaciones: ``real`` si la fuente publicó la fecha de fin,
-    #: ``estimada_*`` si se calculó con la duración. Opcional para no romper a
-    #: los clientes que construyen items sin este dato.
+    #: En renovaciones de mercado: ``real`` si la fuente publicó la fecha de
+    #: fin, ``estimada_*`` si se calculó con la duración. En contratos propios:
+    #: ``publicada`` | ``duracion`` | ``prorroga`` | ``manual`` (el vocabulario
+    #: de la cartera). Opcional para no romper a los clientes que construyen
+    #: items sin este dato.
     fecha_fin_origen: str | None = None
+    #: Qué clase de fecha es ``due_date``. Va puesto aunque ``due_date`` sea
+    #: NULL: describe el hueco del compromiso, no solo la fecha que lo llena.
+    due_kind: AgendaDueKind | None = None
+    #: Solo en ``tarea``. ``tarea_id`` NULL = la ``next_action`` manual del
+    #: pursuit (no hay fila en ``pursuit_tasks`` que editar).
+    tarea_id: int | None = None
+    tarea_texto: str | None = None
+    #: Solo en ``contrato`` (la fila de ``contratos_cartera`` que lo origina).
+    cartera_id: int | None = None
+    fecha_fin_efectiva: date | None = None
+    relicitacion_desde: date | None = None
+    relicitacion_hasta: date | None = None
+    renovacion_pursuit_id: int | None = None
+    prorrogas_aplicadas: int | None = None
 
 
 class PipelineAgendaKpis(BaseModel):
-    """Franja de compromisos de la agenda, calculada sobre el scope completo."""
+    """Franja de compromisos de la agenda, calculada sobre el scope completo.
+
+    ``vence_semana`` mide **plazos de presentación** (pursuits, vencidos
+    incluidos); ``acciones_hoy`` mide tareas; ``relicitaciones_abiertas``,
+    contratos propios cuya ventana de relicitación ya empezó sin renovación
+    preparada. Tres relojes distintos, tres contadores: sumarlos daría un
+    número que no dice a quién le toca hacer qué.
+    """
 
     vence_semana: int = Field(ge=0)
     vence_semana_importe_eur: float = Field(ge=0)
     go_no_go_pendientes: int = Field(ge=0)
+    #: Pursuits sin ``next_action`` **y** sin tarea abierta.
     sin_proxima_accion: int = Field(ge=0)
     senales_nuevas: int = Field(ge=0)
+    #: Tareas que vencen hoy o ya vencieron.
+    acciones_hoy: int = Field(default=0, ge=0)
+    #: Contratos con ``due_kind="relicitacion"`` cuya ventana ya está abierta.
+    relicitaciones_abiertas: int = Field(default=0, ge=0)
 
 
 class PipelineAgendaResponse(BaseModel):
@@ -1518,6 +1572,8 @@ class PipelineAgendaResponse(BaseModel):
     pursuits_truncados: bool
     senales_truncadas: bool
     renovaciones_horizonte_meses: int = Field(ge=1, le=60)
+    #: Las tareas abiertas también tienen tope; si se alcanzó, se declara.
+    tareas_truncadas: bool = False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
