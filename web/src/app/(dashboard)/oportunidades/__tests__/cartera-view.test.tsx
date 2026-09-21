@@ -137,11 +137,12 @@ describe("CarteraView · franja de KPIs", () => {
     expect(within(kpi("Contratos vivos")).getByText("7")).toBeInTheDocument();
     // La cadena esperada sale del mismo formateador y no de un literal: con el
     // literal «4,2 M€» el test pasaba en Windows y fallaba en el runner Linux de
-    // CI, cuyo ICU espacia la notación compacta de otra forma. Lo que este test
-    // fija es de dónde viene la cifra, no cómo se espacia.
-    expect(
-      within(kpi("Importe en ejecución")).getByText(formatCompactCurrency(4_200_000)),
-    ).toBeInTheDocument();
+    // CI, cuyo ICU espacia la notación compacta de otra forma. Y se normaliza
+    // igual que Testing Library normaliza el texto del DOM (`\s+` → « »), que
+    // no toca un matcher de cadena: el formateador mete un espacio duro y sin
+    // esto no casaría nunca. Lo que el test fija es de dónde sale la cifra.
+    const importe = formatCompactCurrency(4_200_000).replace(/\s+/g, " ");
+    expect(within(kpi("Importe en ejecución")).getByText(importe)).toBeInTheDocument();
     expect(within(kpi("Vencen en 6 meses")).getByText("3")).toBeInTheDocument();
     expect(within(kpi("Vencen en 6 meses")).getByText(/900 mil €/)).toBeInTheDocument();
 
