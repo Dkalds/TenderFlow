@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 // pestaña del navegador decía sólo "TenderFlow" en los cinco espacios nuevos,
 // mientras que las rutas que absorbieron sí tenían nombre propio.
 export const metadata: Metadata = {
-  title: "Mi Pipeline",
+  title: "Agenda",
 };
 
 export default function MiPipelineLayout({ children }: { children: React.ReactNode }) {

@@ -15,12 +15,13 @@ congelado en la whitelist TID251.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from db.database import connect_read
 from db.radar_dismissals import VIGENTE_SQL
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import ambito_agenda_sql, rows_to_dicts
 from db.sql_fragments import ISO_MAX
 from shared.estados import abierta_sql
 
@@ -65,8 +66,8 @@ def signal_rows(
     *,
     user_key: str,
     organization_id: int,
-    tecnologia: str | None = None,
-    ccaa: str | None = None,
+    tecnologias: Sequence[str] | None = None,
+    ccaas: Sequence[str] | None = None,
     limit: int = 25,
     user_id: int | None = None,
 ) -> list[dict[str, Any]]:
@@ -74,6 +75,11 @@ def signal_rows(
 
     ``user_id`` (v129) hace dual la lectura de los descartes: sin él, los
     descartados bajo la clave de un correo anterior volverían a la Agenda.
+
+    ``tecnologias``/``ccaas`` son el ámbito de la agenda (OR dentro de cada
+    lista, mismo criterio que los pursuits: ``ambito_agenda_sql``). La CCAA de
+    la **regla** (``criteria.ccaa``) es otra cosa —forma parte del match— y se
+    aplica aparte.
     """
     clauses = [
         abierta_sql("l.estado"),
@@ -106,12 +112,9 @@ def signal_rows(
     if criteria.ccaa:
         clauses.append("l.ccaa = %s")
         params.append(criteria.ccaa)
-    if tecnologia:
-        clauses.append("l.tecnologia = %s")
-        params.append(tecnologia)
-    if ccaa:
-        clauses.append("l.ccaa = %s")
-        params.append(ccaa)
+    ambito, valores = ambito_agenda_sql("l", tecnologias=tecnologias, ccaas=ccaas)
+    clauses.extend(ambito)
+    params.extend(valores)
 
     sql = (
         "SELECT "

@@ -250,6 +250,21 @@ export const SECTIONS: NavSection[] = [
           "Agrupaciones semánticas de licitaciones para detectar patrones y nichos de mercado.",
         icon: Target,
       },
+      {
+        // Reestructura 2026-09-20: `/renovaciones` la absorbe Mercado
+        // (`?vista=renovaciones`), no la Agenda. Su contrato de filtros no
+        // cambia: sólo aplica tecnología.
+        label: "Renovaciones",
+        slug: "renovaciones",
+        description:
+          // «Pipeline comercial» describía la vista cuando vivía en Mi Pipeline;
+          // hoy es un corte de mercado sobre contratos de cualquier
+          // adjudicatario, y lo tuyo sólo se marca.
+          "Contratos de cualquier adjudicatario que vencen pronto: cartera en juego por empresa y riesgo de cambio.",
+        icon: CalendarClock,
+        usesGlobalFilters: false,
+        globalFilterKeys: ["tecnologia"],
+      },
     ],
   },
   {
@@ -281,7 +296,10 @@ export const SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: "Mi Pipeline",
+    // Hasta 2026-09-20 la sección se llamaba «Mi Pipeline» y agrupaba también
+    // `/renovaciones`; el espacio pasó a llamarse «Agenda» (slug `mi-pipeline`
+    // intacto) y las renovaciones son hoy una vista de Mercado.
+    label: "Agenda",
     icon: ListChecks,
     pages: [
       {
@@ -293,15 +311,6 @@ export const SECTIONS: NavSection[] = [
         usesGlobalFilters: false,
         globalFilterKeys: ["tecnologia", "ccaa"],
         singleValueFilterKeys: ["tecnologia", "ccaa"],
-      },
-      {
-        label: "Renovaciones",
-        slug: "renovaciones",
-        description:
-          "Contratos que vencen próximamente: cartera en juego por empresa y pipeline comercial.",
-        icon: CalendarClock,
-        usesGlobalFilters: false,
-        globalFilterKeys: ["tecnologia"],
       },
       {
         label: "Mi Watchlist",

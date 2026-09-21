@@ -25,12 +25,16 @@ from db.audit import log_event
 from observability.logging import get_logger
 from services.cartera import (
     CarteraNoEncontradaError,
+    CarteraResumen,
     ContratoCartera,
+    ContratoEvento,
     PrepararRenovacionIn,
     RenovacionInvalidaError,
     RenovacionPreparada,
     cartera_de_usuario,
+    eventos_de_contrato,
     preparar_renovacion,
+    resumen_de_usuario,
 )
 from services.direccion import (
     CuadroDireccion,
@@ -811,13 +815,35 @@ async def get_pursuits_agenda(
     organization_id: int | None = Query(default=None, ge=1),
     solo_mios: bool = Query(
         default=False,
-        description="Limita los pursuits a los que el usuario es responsable",
+        description="Limita pursuits y tareas a los que el usuario es responsable",
     ),
-    tecnologia: str | None = Query(default=None, max_length=80),
-    ccaa: str | None = Query(default=None, max_length=80),
+    tecnologia: str | None = Query(
+        default=None,
+        max_length=500,
+        description="Uno o varios códigos separados por comas (OR): `SAP,Oracle`",
+    ),
+    ccaa: str | None = Query(
+        default=None,
+        max_length=500,
+        description="Una o varias CCAA separadas por comas (OR)",
+    ),
+    incluir_mercado: bool = Query(
+        default=False,
+        description=(
+            "Fusiona también las renovaciones del mercado (`kind=renovacion`): "
+            "contratos ajenos que vencen en el horizonte. No son compromisos de "
+            "la organización y por eso no entran por defecto."
+        ),
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PipelineAgendaResponse:
     """Agenda de compromisos: fusión, orden y bandas calculados en backend.
+
+    Cada fila lleva una sola fecha y dice de qué clase es (`due_kind`): plazo
+    de presentación (`pursuit`, `senal`), vencimiento de una tarea (`tarea`),
+    inicio de la ventana de relicitación o fin efectivo de un contrato propio
+    (`contrato`). Las renovaciones del mercado sólo entran con
+    `incluir_mercado=true`.
 
     Sin caché compartida: la respuesta es por usuario/organización (incluye el
     triaje de señales del propio usuario).
@@ -831,6 +857,7 @@ async def get_pursuits_agenda(
             solo_mios=solo_mios,
             tecnologia=tecnologia,
             ccaa=ccaa,
+            incluir_mercado=incluir_mercado,
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -887,6 +914,66 @@ async def get_cartera(
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/cartera/resumen",
+    response_model=CarteraResumen,
+    summary="Agregados de la cartera: vivos, importe en ejecución y vencimientos a seis meses",
+    responses={403: {"description": "No perteneces a esa organización"}},
+)
+async def get_cartera_resumen(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> CarteraResumen:
+    """Los totales de la cartera, calculados en backend (ADR-014).
+
+    Mismo ámbito y permisos que `GET /pursuits/cartera`: quien puede leer la
+    cartera puede leer sus totales. Un contrato cuenta como vivo si no tiene
+    fecha de fin o si ésta no ha pasado; `sin_renovacion_preparada` es, de los
+    que vencen en seis meses, cuántos no tienen todavía oportunidad de
+    renovación.
+    """
+    try:
+        return await run_db(
+            resumen_de_usuario, int(ctx["user_id"]), organization_id=organization_id
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/cartera/{cartera_id}/eventos",
+    response_model=list[ContratoEvento],
+    summary="Eventos del contrato vigente de una entrada de cartera",
+    responses={
+        403: {"description": "No perteneces a esa organización"},
+        404: {"description": "El contrato no está en la cartera de la organización"},
+    },
+)
+async def get_cartera_eventos(
+    cartera_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> list[ContratoEvento]:
+    """Qué le pasó al contrato después de ganarlo, del más antiguo al más nuevo.
+
+    Son los eventos de `contrato_eventos` (los mismos de los que la cartera
+    cuenta las prórrogas): adjudicación, formalización, modificaciones de
+    importe, prórrogas, anulación. `importe_delta_eur` sólo viene en las
+    modificaciones de importe.
+    """
+    try:
+        return await run_db(
+            eventos_de_contrato,
+            int(ctx["user_id"]),
+            cartera_id,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except CarteraNoEncontradaError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post(

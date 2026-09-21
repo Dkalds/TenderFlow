@@ -86,15 +86,21 @@ describe("contrato de filtros de los espacios", () => {
     expect(pathUsesGlobalFilters("/ops")).toBe(false);
   });
 
-  it("Mercado sí lo consume: sus ocho vistas son análisis del ámbito", () => {
+  it("Mercado sí lo consume: sus ocho cortes analíticos aplican el ámbito entero", () => {
+    // La novena vista, Renovaciones (desde 2026-09-20), sólo declara
+    // tecnología, pero la unión manda: basta con que un corte consuma todos
+    // los filtros para que el espacio los ofrezca todos.
     expect(pathUsesGlobalFilters("/mercado")).toBe(true);
+    expect(pageGlobalFilterKeys("/mercado")).toBeNull();
   });
 
-  it("Mi Pipeline aplica solo tecnología y CCAA, la unión de sus vistas", () => {
-    // La agenda (heredera de /pipeline-alertas) declara tecnología + CCAA y
-    // /renovaciones solo tecnología: la barra muestra esa unión y nada más.
+  it("la Agenda (/mi-pipeline) aplica solo tecnología y CCAA, lo que declara su única vista", () => {
+    // La agenda (heredera de /pipeline-alertas) declara tecnología + CCAA.
+    // Hasta 2026-09-20 el espacio absorbía también /renovaciones (solo
+    // tecnología) y la barra mostraba la unión; hoy /renovaciones es de
+    // Mercado y el contrato de la Agenda es el de la agenda.
     // `filtersApply` en scope-bar es `usesGlobalFilters || subset.length > 0`,
-    // así que la barra sigue apareciendo aunque ambas declaren `false`.
+    // así que la barra sigue apareciendo aunque la vista declare `false`.
     expect(pathUsesGlobalFilters("/mi-pipeline")).toBe(false);
     expect(pageGlobalFilterKeys("/mi-pipeline")).toEqual(["tecnologia", "ccaa"]);
   });

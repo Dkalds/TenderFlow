@@ -52,8 +52,8 @@ export function PursuitCard({
   etiquetas?: readonly EtiquetaAplicada[];
   /**
    * El menú de «Mover a». Llega como slot y no importado aquí porque la tabla
-   * de fases es de la pantalla del tablero, no de la tarjeta, que también se
-   * pinta en Mi Pipeline.
+   * de fases es de la pantalla del tablero, no de la tarjeta, que no tiene por
+   * qué conocer el flujo de fases.
    */
   acciones?: React.ReactNode;
   arrastrando?: boolean;

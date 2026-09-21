@@ -5,6 +5,56 @@ reconstruir el espacio se inventarían las funciones de las pantallas
 absorbidas y se declara **dónde vive cada una después**. Este documento es ese
 inventario.
 
+## Reestructura 2026-09-20: un espacio, una pregunta
+
+**Decisión.** `/mi-pipeline` se queda con una sola vista, la agenda, y el
+espacio pasa a llamarse **Agenda** (rail y cabecera; `key` y slug
+`mi-pipeline` intactos para no romper URLs ni telemetría). Las otras tres
+vistas se van a donde vive su pregunta: el embudo y la cartera hablan de las
+oportunidades propias, así que son vistas de Oportunidades; el horizonte de
+renovaciones habla del mercado —qué contratos ajenos vencen y quién los
+defiende—, así que es una vista de Mercado. El motivo es que un espacio con
+cuatro preguntas distintas bajo el posesivo «Mi» obligaba a explicar en una
+banda (`PipelineRoleNav`) qué hacía cada pestaña; con una pregunta por
+espacio, el conmutador de vistas ya orienta y la banda sobra.
+
+**Dónde vive cada cosa ahora.** Ninguna función se pierde: cada vista se
+mueve entera, con su hook, sus subcomponentes y sus tests.
+
+| Función | Antes | Ahora |
+| --- | --- | --- |
+| Agenda (pursuits + señales + renovaciones próximas por bandas de urgencia, inspector, próxima acción) | `/mi-pipeline?vista=agenda` | Se queda: `/mi-pipeline` (única vista; el espacio se llama Agenda) |
+| Embudo (`GET /pursuits/metrics`: funnel, win rate, valor ponderado, previsión, pérdidas por motivo) | `/mi-pipeline?vista=embudo` | **Oportunidades → Rendimiento** (`/oportunidades?vista=rendimiento`, `oportunidades/_components/rendimiento-view.tsx`) |
+| Cartera (F4.3: contratos ganados, fin efectivo con origen, prórrogas, ventana de relicitación, «preparar renovación», filtros por tecnología y órgano) | `/mi-pipeline?vista=cartera` | **Oportunidades → Cartera** (`/oportunidades?vista=cartera`, `oportunidades/_components/cartera-view.tsx` + `preparar-renovacion.tsx`) |
+| Horizonte (pantalla completa de `/renovaciones`: KPIs server-side, cartera por empresa, tabla virtualizada con score, búsqueda, ventana 3-24 meses, CTA Anticipar) | `/mi-pipeline?vista=horizonte` | **Mercado → Renovaciones** (`/mercado?vista=renovaciones`, `mercado/_components/renovaciones-view.tsx`, `_components/renovaciones/*`, `_hooks/use-renovaciones.ts`) |
+| `PipelineRoleNav` (banda Agenda / Horizonte / Calendario) | Agenda, Horizonte y Mercado → Calendario | **Borrado** (`components/pipeline-role-nav.tsx` y su test): el conmutador de vistas de cada espacio ya orienta, y su tercer enlace apuntaba a `/calendario`, que ya redirigía a Mercado |
+| Dirección → Embudo | `/direccion?vista=embudo` | **Retirado**: era un `EmptyState` que devolvía a Mi Pipeline, sin funcionalidad propia. Dirección queda con Resultado y Actividad del equipo |
+
+Oportunidades pasa así a tres vistas —`tablero` (entrada, la pantalla de
+siempre) · `cartera` · `rendimiento`— y Mercado a nueve, con `renovaciones`
+al final. El tablero se monta sólo cuando es la vista activa, de modo que
+mirar la cartera no dispara sus consultas.
+
+**`?vista=` heredados de `/mi-pipeline`.** Los dos primeros son alias en la
+página; los cuatro restantes son un `router.replace` hacia el espacio donde
+vive hoy la vista, conservando el resto de la query (ámbito, `origen`) y
+sustituyendo el `vista` viejo. No van en `next.config.ts` porque un redirect
+con `has` sobre `vista` arrastraría el valor viejo junto al nuevo.
+
+| Marcador viejo | Aterriza en |
+| --- | --- |
+| `/pipeline-alertas` | `/mi-pipeline?vista=agenda` (redirect 308, sin cambios) |
+| `/mi-pipeline?vista=pipeline` | vista `agenda` (alias en la página, sin cambios) |
+| `/renovaciones` | `/mercado?vista=renovaciones` (redirect 308; antes `/mi-pipeline?vista=horizonte`) |
+| `/mi-pipeline?vista=renovaciones` | `/mercado?vista=renovaciones` |
+| `/mi-pipeline?vista=horizonte` | `/mercado?vista=renovaciones` |
+| `/mi-pipeline?vista=embudo` | `/oportunidades?vista=rendimiento` |
+| `/mi-pipeline?vista=cartera` | `/oportunidades?vista=cartera` |
+
+Lo que sigue es el histórico de la reconstrucción de 2026-08-13; las
+referencias a «Embudo», «Horizonte» y `PipelineRoleNav` describen el estado
+de entonces y su destino actual es el de la tabla de arriba.
+
 ## El movimiento
 
 `/mi-pipeline` dejaba de significar dos cosas a la vez. La palabra *pipeline*

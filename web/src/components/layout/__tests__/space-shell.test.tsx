@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, renderHook, fireEvent } from "@testing-library/react";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
+import { SPACE_VIEWS } from "@/lib/space-views";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 
 const { replace, searchParamsRef } = vi.hoisted(() => ({
@@ -91,7 +92,10 @@ describe("SpaceShell", () => {
       </SpaceShell>,
     );
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(8);
+    // Nueve desde que Renovaciones (el antiguo Horizonte de Mi Pipeline) es un
+    // corte más de Mercado. El número sale de la tabla, no de una constante:
+    // si alguien añade una vista y no actualiza esto, el fallo lo dice.
+    expect(tabs).toHaveLength(SPACE_VIEWS.mercado.length);
     expect(screen.getByRole("tab", { name: "Órganos" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Calendario" })).toHaveAttribute(
       "aria-selected",

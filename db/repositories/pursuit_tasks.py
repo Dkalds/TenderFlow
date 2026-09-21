@@ -11,10 +11,12 @@ el tablero, la agenda y el ICS siguen leyendo lo que ya leían.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import ambito_agenda_sql, rows_to_dicts
+from db.repositories.pursuits import _ESTADOS_TERMINALES_SQL
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -32,6 +34,28 @@ _SELECT = (
     "t.vence, t.estado, t.created_at, t.updated_at "
     "FROM pursuit_tasks t "
     "LEFT JOIN users u ON u.id = t.responsable_user_id "
+)
+
+# Tarea abierta con su oportunidad y su licitación, en una sola consulta. Las
+# columnas de la oportunidad llevan los mismos nombres que ``_AGENDA_SELECT``
+# de ``db/repositories/pursuits.py`` a propósito: el servicio construye la fila
+# de agenda de una tarea con el mismo constructor de campos que la del
+# pursuit, y un alias distinto sería un campo vacío sin que nada avisara.
+_AGENDA_TAREAS_SELECT = (
+    "SELECT t.id AS tarea_id, t.titulo AS tarea_texto, t.vence AS tarea_vence, "
+    "t.estado AS tarea_estado, t.responsable_user_id AS tarea_responsable_user_id, "
+    "p.id AS pursuit_id, p.licitacion_id, "
+    "CASE WHEN p.lote_numero IS NULL THEN l.titulo "
+    "     ELSE COALESCE(l.titulo, p.licitacion_id) || ' · Lote ' || p.lote_numero "
+    "END AS titulo, "
+    "l.fecha_limite AS tender_deadline, l.importe AS importe_eur, "
+    "l.organo_contratacion AS organo, l.ccaa, l.tecnologia, l.url, "
+    "p.responsible_user_id, u.display_name AS responsible_name, "
+    "p.status, p.decision, p.next_action, p.next_action_due, p.version "
+    "FROM pursuit_tasks t "
+    "JOIN pursuits p ON p.id = t.pursuit_id "
+    "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+    "LEFT JOIN users u ON u.id = p.responsible_user_id "
 )
 
 
@@ -113,6 +137,62 @@ class PursuitTasksRepository:
                 (organization_id, max(1, min(int(limit), 500))),
             )
             return rows_to_dicts(cur)
+
+    def agenda_rows(
+        self,
+        organization_id: int,
+        *,
+        responsible_user_id: int | None = None,
+        tecnologias: Sequence[str] | None = None,
+        ccaas: Sequence[str] | None = None,
+        limit: int = 500,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Tareas abiertas de pursuits abiertos, con su oportunidad y licitación.
+
+        Es la consulta de la agenda unificada de Mi Pipeline: cada fila lleva la
+        tarea y los campos del pursuit al que pertenece, para que el servicio
+        no vuelva a la base por cada una. Devuelve ``(filas, truncado)`` con el
+        mismo contrato que ``PursuitRepository.agenda_rows``: se pide
+        ``limit + 1`` y se recorta, y el servicio declara el corte (ADR-014).
+
+        Solo tareas abiertas (``pendiente``/``en_curso``, no borradas) de
+        oportunidades **abiertas**: una tarea pendiente de una oportunidad
+        perdida es trabajo que ya nadie tiene que hacer. ``responsible_user_id``
+        filtra por el responsable de la **oportunidad**, que es lo que
+        significa «solo mías» en el resto de la agenda; el responsable de la
+        tarea viaja aparte (``tarea_responsable_user_id``).
+
+        Orden: sin fecha al final, después por vencimiento y por ``id``, como
+        :meth:`agenda`.
+        """
+        clauses = [
+            "t.organization_id = %s",
+            "t.estado IN ('pendiente', 'en_curso')",
+            "p.status NOT IN " + _ESTADOS_TERMINALES_SQL,
+        ]
+        params: list[Any] = [organization_id]
+        if responsible_user_id is not None:
+            clauses.append("p.responsible_user_id = %s")
+            params.append(responsible_user_id)
+        ambito, valores = ambito_agenda_sql("l", tecnologias=tecnologias, ccaas=ccaas)
+        clauses.extend(ambito)
+        params.extend(valores)
+        with connect_read() as c:
+            # ``deleted_at`` va en el literal del ``execute`` y no en ``clauses``
+            # a propósito: el guardarraíl estructural de v131
+            # (``tests/test_pursuit_borrado_logico.py``) lee el AST de esta
+            # llamada, y un filtro escondido en una lista de más arriba pasa la
+            # revisión sin que nadie lo vea — que es exactamente el olvido que
+            # ese test existe para atrapar.
+            cur = c.execute(
+                _AGENDA_TAREAS_SELECT
+                + " WHERE t.deleted_at IS NULL AND "
+                + " AND ".join(clauses)
+                + " ORDER BY t.vence IS NULL, t.vence, t.id LIMIT %s",
+                tuple([*params, limit + 1]),
+            )
+            rows = rows_to_dicts(cur)
+        return rows[:limit], len(rows) > limit
 
     def update(
         self,

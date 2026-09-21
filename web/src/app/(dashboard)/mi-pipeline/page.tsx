@@ -1,33 +1,30 @@
 "use client";
 
+import * as React from "react";
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 
 /**
- * Mi Pipeline — tus compromisos, ordenados por lo que vence.
+ * Agenda (`/mi-pipeline`) — tus compromisos, ordenados por lo que vence.
  *
- * Tres vistas sobre el mismo eje temporal:
+ * Reestructura 2026-09-20, «un espacio, una pregunta»: el espacio se llama
+ * Agenda y tiene una sola vista —pursuits abiertos, señales sin triar y
+ * renovaciones próximas en una cronología por bandas de urgencia, con la
+ * fusión y el orden en backend—. Las otras tres vistas que tuvo se fueron a
+ * donde vive su pregunta: el embudo a Oportunidades → Rendimiento, la cartera
+ * a Oportunidades → Cartera y el horizonte de renovaciones a Mercado →
+ * Renovaciones. Ninguna perdió nada al moverse; el inventario de funciones y
+ * el destino de cada una está en `docs/redesign/mi-pipeline-inventario.md`.
  *
- * - **Agenda**: pursuits abiertos, señales sin triar y renovaciones próximas
- *   en una sola cronología por bandas de urgencia (fusión y orden en backend).
- * - **Embudo**: métricas reproducibles del funnel de pursuits.
- * - **Horizonte**: renovaciones a 3-24 meses con el CTA de anticipar.
- *
- * El inventario de funciones de las pantallas absorbidas y el destino de cada
- * una está en `docs/redesign/mi-pipeline-inventario.md`.
- *
- * Las tres viven en `_components/`. El horizonte se importaba de
- * `../renovaciones/page`, lo que hacía de aquel fichero boundary de ruta y
- * componente a la vez: como componente no recibía el contrato
- * `params`/`searchParams`, y como ruta no se ejecutaba nunca —`/renovaciones`
- * la redirige `next.config.ts` con un 308, y los redirects de Next corren antes
- * que el enrutado por sistema de ficheros—.
+ * El `key`/slug `mi-pipeline` se conserva: cambiarlo rompería marcadores, el
+ * redirect 308 de `/pipeline-alertas` y la serie histórica de
+ * `espacio_abierto`.
  */
 
-const loading = () => (
+const Loading = () => (
   <div className="space-y-4">
     <Skeleton className="h-24 w-full rounded-xl" />
     <Skeleton className="h-[320px] w-full rounded-xl" />
@@ -35,38 +32,64 @@ const loading = () => (
 );
 
 const VIEWS: Record<string, React.ComponentType> = {
-  agenda: dynamic(() => import("./_components/agenda-view"), { loading }),
-  embudo: dynamic(() => import("./_components/embudo-view"), { loading }),
-  horizonte: dynamic(() => import("./_components/horizonte-view"), { loading }),
-  // F4.3: la vista estaba declarada en `space-views.ts` sin componente, así
-  // que `?vista=cartera` caía en silencio a la agenda.
-  cartera: dynamic(() => import("./_components/cartera-view"), { loading }),
+  agenda: dynamic(() => import("./_components/agenda-view"), { loading: Loading }),
 };
 
 /**
- * `?vista=` heredados de la generación anterior del espacio. `pipeline` era la
- * pantalla de plazos del mercado (absorbida por la agenda) y `renovaciones` es
- * hoy el horizonte. Los marcadores viejos aterrizan en la vista equivalente en
- * vez de caer al default en silencio.
+ * `?vista=` heredados que siguen aterrizando aquí. `pipeline` era la pantalla
+ * de plazos del mercado, absorbida por la agenda: un marcador viejo entra en
+ * la vista equivalente en vez de caer al default en silencio.
  */
 const LEGACY_VIEWS: Record<string, string> = {
   pipeline: "agenda",
-  renovaciones: "horizonte",
+};
+
+/**
+ * `?vista=` heredados cuya vista vive hoy en **otro** espacio.
+ *
+ * Se reenvían desde la página y no desde `next.config.ts` a propósito: un
+ * redirect declarativo con `has: [{ type: "query", key: "vista", value:
+ * "embudo" }]` arrastra la query entrante entera —es lo que hace que un enlace
+ * con filtros llegue con su ámbito—, así que el destino recibiría el `vista`
+ * viejo junto al nuevo y qué vista se abre dependería del orden en que
+ * quedaran. Aquí se **sustituye** el valor y se conserva el resto de la query
+ * (ámbito, filtros, `origen`), que es lo que un enlace guardado espera
+ * encontrar al llegar.
+ */
+const VISTAS_REUBICADAS: Record<string, { espacio: string; vista: string }> = {
+  renovaciones: { espacio: "mercado", vista: "renovaciones" },
+  horizonte: { espacio: "mercado", vista: "renovaciones" },
+  embudo: { espacio: "oportunidades", vista: "rendimiento" },
+  cartera: { espacio: "oportunidades", vista: "cartera" },
 };
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "mi-pipeline")!;
 
 export default function MiPipelinePage() {
   const params = useSearchParams();
+  const router = useRouter();
   const { view, setView } = useSpaceView(SPACE);
   const requested = params.get("vista");
+  const reubicada = requested ? VISTAS_REUBICADAS[requested] : undefined;
+
+  React.useEffect(() => {
+    if (!reubicada) return;
+    const search = new URLSearchParams(params.toString());
+    search.set("vista", reubicada.vista);
+    // `replace`, no `push`: el marcador viejo no merece una entrada de
+    // historial que devuelva a una URL que vuelve a reenviar.
+    router.replace(`/${reubicada.espacio}?${search.toString()}`);
+  }, [params, reubicada, router]);
+
   const legacy = requested ? LEGACY_VIEWS[requested] : undefined;
   const effective = legacy ?? view;
   const View = VIEWS[effective] ?? VIEWS.agenda;
 
   return (
     <SpaceShell spaceKey="mi-pipeline" view={effective} onViewChange={setView}>
-      <View />
+      {/* Mientras se reenvía no se monta la agenda: pediría sus datos para una
+          pantalla que se va a ir en el siguiente tick. */}
+      {reubicada ? <Loading /> : <View />}
     </SpaceShell>
   );
 }
