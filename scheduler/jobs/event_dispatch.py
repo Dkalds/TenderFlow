@@ -294,6 +294,10 @@ def _frecuencia_en_ajustes(
     Fail-safe hacia el defecto del canal y no hacia ``off``, por lo mismo que
     ``services.notifications.modo_email_de``: silenciar por un fallo de lectura
     es el modo de fallo que nadie detecta.
+
+    Es la lectura de los canales **personales** (``in_app``, ``email``). El
+    canal ``webhook`` no puede usarla porque su defecto es ``off`` y el
+    destino es de la organización: usa :func:`_frecuencia_explicita_en_ajustes`.
     """
     if spec.clave_ajustes is None or destinatario.user_id is None:
         return None
@@ -309,6 +313,55 @@ def _frecuencia_en_ajustes(
     except Exception:
         log.warning("event_dispatch_prefs_ilegibles", tipo=spec.tipo, canal=canal, exc_info=True)
         return prefs.frecuencia_por_defecto(canal)
+
+
+def _frecuencia_explicita_en_ajustes(
+    destinatario: Destinatario, spec: EspecificacionEvento, canal: str
+) -> str | None:
+    """Frecuencia que el destinatario **fijó** en Ajustes, o ``None`` si no dijo nada.
+
+    Mismas condiciones que :func:`_frecuencia_en_ajustes` (evento con
+    ``clave_ajustes`` y destinatario con ``user_id``), pero sin rellenar con el
+    defecto del canal: ``None`` es «sin opinión» y el llamador decide qué hacer
+    con ello.
+
+    El fail-safe también es «sin opinión»: un fallo de lectura no puede
+    convertirse en un ``off`` que silencie el webhook de toda la organización.
+    """
+    if spec.clave_ajustes is None or destinatario.user_id is None:
+        return None
+    from db.repositories import notification_preferences as prefs
+
+    try:
+        return prefs.resolver_explicita(
+            destinatario.user_id,
+            tipo=spec.clave_ajustes,
+            canal=canal,
+            organization_id=destinatario.organization_id or None,
+        )
+    except Exception:
+        log.warning("event_dispatch_prefs_ilegibles", tipo=spec.tipo, canal=canal, exc_info=True)
+        return None
+
+
+def _webhook_apagado_por_todos(evento: dict[str, Any], spec: EspecificacionEvento) -> bool:
+    """¿Todos los destinatarios apagaron el canal ``webhook`` de este aviso en Ajustes?
+
+    Es la regla con la que la preferencia personal gobierna una suscripción de
+    organización (ver :func:`_canal_webhook`). Devuelve ``False`` —el webhook
+    sale— cuando el evento no se gobierna desde Ajustes, cuando no tiene
+    destinatarios a quienes preguntar, o cuando al menos uno no lo apagó
+    explícitamente (fila ``immediate``/``daily`` o ninguna fila).
+    """
+    if spec.clave_ajustes is None:
+        return False
+    destinatarios = _destinatarios(evento)
+    if not destinatarios:
+        return False
+    return all(
+        _frecuencia_explicita_en_ajustes(destinatario, spec, "webhook") == "off"
+        for destinatario in destinatarios
+    )
 
 
 def _canal_in_app(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
@@ -490,6 +543,28 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     ``db/webhooks.py``: lo único nuevo es de dónde sale el cuerpo (la plantilla
     del formato del webhook) y qué filas se consultan (las de la organización
     del evento, más las globales sin dueño).
+
+    **Preferencia personal sobre una suscripción de organización (R7.2).** El
+    webhook es de la organización (``webhooks`` no tiene ``user_id``) y la
+    preferencia de Ajustes es de cada persona, así que el canal no puede
+    filtrar destinatario a destinatario como ``in_app`` o ``email``: el aviso
+    sale entero o no sale. La regla es la del opt-out unánime: para los
+    eventos con ``clave_ajustes``, el webhook **no** recibe el aviso solo si
+    **todos** sus destinatarios lo apagaron explícitamente para el canal
+    ``webhook``; basta uno que lo tenga en ``immediate``/``daily`` o que no
+    haya dicho nada para que salga. Los eventos sin ``clave_ajustes`` no
+    cambian.
+
+    Por qué «sin fila» cuenta como «que salga» y no como el defecto ``off`` del
+    canal: aplicar el defecto habría cortado de golpe los ``pursuit.*`` de
+    todos los webhooks ya dados de alta (Slack, Teams) hasta que cada
+    destinatario entrara en Ajustes a encenderlo, y ninguno de ellos habría
+    pedido silencio. Lo que la persona no dijo lo decide la suscripción de la
+    organización, que sí lo pidió. ``daily`` equivale a ``immediate``: un
+    webhook no tiene digest.
+
+    Un aviso bloqueado no deja fila en ``webhook_deliveries``: no hubo intento
+    de entrega que registrar. Documentado en ``docs/integraciones/webhooks.md``.
     """
     import requests
 
@@ -503,17 +578,29 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     suscriptores = repo.list_active_subscribers(
         organization_id=int(organization_id) if organization_id is not None else None
     )
-    if not suscriptores:
+    candidatos = [
+        fila
+        for fila in suscriptores
+        if suscripcion_cubre(frozenset(fila.get("event_types") or []), spec.tipo)
+    ]
+    if not candidatos:
+        return 0
+    # Las preferencias se leen solo cuando hay a quién entregar: la mayoría de
+    # las organizaciones no tiene webhooks y no hay por qué pagar la consulta.
+    if _webhook_apagado_por_todos(evento, spec):
+        log.info(
+            "event_dispatch_webhook_apagado_en_ajustes",
+            tipo=spec.tipo,
+            organization_id=organization_id,
+            webhooks=len(candidatos),
+        )
         return 0
 
     permitidos = frozenset(
         host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip()
     )
     entregados = 0
-    for fila in suscriptores:
-        suscripciones = frozenset(fila.get("event_types") or [])
-        if not suscripcion_cubre(suscripciones, spec.tipo):
-            continue
+    for fila in candidatos:
         webhook_id = int(fila["id"])
         url = str(fila["url"])
         marca = str(evento.get("created_at") or now_utc_iso())

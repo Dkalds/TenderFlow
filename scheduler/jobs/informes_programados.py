@@ -199,7 +199,7 @@ def ejecutar(ahora: datetime | None = None) -> Resumen:
                     "informe_semanal_vacio",
                     detail=f"organization_id={organization_id}",
                 )
-                report_schedules.marcar_envio(int(fila["id"]), estado="vacio")
+                report_schedules.marcar_envio(int(fila["id"]), estado="vacio", instante=instante)
                 continue
 
             destinos = _destinatarios(fila)
@@ -209,7 +209,9 @@ def ejecutar(ahora: datetime | None = None) -> Resumen:
                     "informe_semanal_sin_destinatarios",
                     detail=f"organization_id={organization_id}",
                 )
-                report_schedules.marcar_envio(int(fila["id"]), estado="sin_destinatarios")
+                report_schedules.marcar_envio(
+                    int(fila["id"]), estado="sin_destinatarios", instante=instante
+                )
                 continue
 
             enviados = _enviar(fila, informe, destinos)
@@ -238,7 +240,9 @@ def ejecutar(ahora: datetime | None = None) -> Resumen:
                 )
                 continue
             report_schedules.marcar_envio(
-                int(fila["id"]), estado=f"enviado:{enviados}/{len(destinos)}"
+                int(fila["id"]),
+                estado=f"enviado:{enviados}/{len(destinos)}",
+                instante=instante,
             )
         except Exception:
             resumen.fallidos += 1

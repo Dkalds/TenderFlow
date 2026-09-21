@@ -198,17 +198,32 @@ def marcar_estado(schedule_id: int, *, estado: str) -> None:
         )
 
 
-def marcar_envio(schedule_id: int, *, estado: str) -> None:
+def marcar_envio(schedule_id: int, *, estado: str, instante: datetime | None = None) -> None:
     """Sella el envío (o su ausencia) para que la ventana quede cerrada.
 
     Se llama **también cuando no se envía nada** —organización sin
     oportunidades, destinatarios todos dados de baja—: si sólo se sellara el
     éxito, esos casos se recalcularían en cada pasada de la pipeline durante
     toda la semana.
+
+    ``instante`` es el momento **lógico** de la pasada, el mismo que se le pasó
+    a :func:`pendientes`. Importa porque las dos funciones se comparan entre
+    sí: `pendientes` descarta la fila cuando ``ultimo_envio_at`` cae dentro de
+    la ventana que está evaluando. Sellar con el reloj de pared mientras se
+    decide con el instante recibido es coherente sólo mientras coinciden —en
+    producción coinciden siempre, porque el job no pasa argumento—, pero con
+    un instante simulado sella una ventana que no es la que se procesó. Se
+    quedó fuera por eso: el fallo sólo aparece cuando la hora real cruza la
+    ventana del instante simulado, así que dormía hasta dar en la fecha
+    exacta.
     """
     with connect() as c:
         c.execute(
             "UPDATE organization_report_schedules "
             "SET ultimo_envio_at = %s, ultimo_estado = %s, updated_at = now() WHERE id = %s",
-            (now_utc_iso(), estado[:60], schedule_id),
+            (
+                instante.astimezone(UTC).isoformat() if instante else now_utc_iso(),
+                estado[:60],
+                schedule_id,
+            ),
         )

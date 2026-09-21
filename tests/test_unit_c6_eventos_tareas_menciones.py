@@ -17,7 +17,9 @@ la decisión (a quién, cuándo, cuántas veces), no el SQL.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -304,7 +306,13 @@ def despacho(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     import services.watchlist as watchlist
 
     estado: dict[str, Any] = {
+        # `(tipo, canal)` → frecuencia explícita (o una excepción a lanzar).
+        # Sin entrada, el usuario «no dijo nada»: `resolver` rellena con el
+        # defecto del canal y `resolver_explicita` devuelve `None`.
         "frecuencias": {},
+        # `(user_id, tipo, canal)` → frecuencia explícita; gana sobre la anterior.
+        "frecuencias_por_usuario": {},
+        "lecturas_explicitas": 0,
         "notificaciones": [],
         "digests": [],
         "modo_email_de": 0,
@@ -318,17 +326,32 @@ def despacho(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         ],
     )
 
+    def _explicita(user_id: int, tipo: str, canal: str) -> Any:
+        if (user_id, tipo, canal) in estado["frecuencias_por_usuario"]:
+            return estado["frecuencias_por_usuario"][(user_id, tipo, canal)]
+        return estado["frecuencias"].get((tipo, canal))
+
     def _resolver(user_id: int, *, tipo: str, canal: str, organization_id: int | None) -> str:
-        valor = estado["frecuencias"].get((tipo, canal))
+        valor = _explicita(user_id, tipo, canal)
         if isinstance(valor, Exception):
             raise valor
         return str(valor or prefs.frecuencia_por_defecto(canal))
+
+    def _resolver_explicita(
+        user_id: int, *, tipo: str, canal: str, organization_id: int | None
+    ) -> str | None:
+        estado["lecturas_explicitas"] += 1
+        valor = _explicita(user_id, tipo, canal)
+        if isinstance(valor, Exception):
+            raise valor
+        return str(valor) if valor is not None else None
 
     def _modo_email_de(*_: Any, **__: Any) -> str:
         estado["modo_email_de"] += 1
         return "immediate"
 
     monkeypatch.setattr(prefs, "resolver", _resolver)
+    monkeypatch.setattr(prefs, "resolver_explicita", _resolver_explicita)
     monkeypatch.setattr(svc_notifications, "modo_email_de", _modo_email_de)
     monkeypatch.setattr(
         notifications,
@@ -439,6 +462,166 @@ def test_los_eventos_de_s46_siguen_leyendo_user_event_prefs(
 
     assert despacho["modo_email_de"] == 1
     assert len(enviados) == 1
+
+
+# ── Canal webhook: la preferencia personal sobre la suscripción de organización ──
+
+
+@pytest.fixture
+def webhook_org(despacho: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """Un webhook de la organización 7 suscrito a ``pursuit.*``; la salida HTTP se graba.
+
+    Se sustituyen el repositorio, el secret, la validación SSRF y el transporte
+    fijado: lo que se prueba es si el despachador **decide** entregar, no cómo
+    firma ni cómo conecta (eso lo cubren los tests de S4).
+    """
+    import db.repositories.webhooks as webhooks
+    import shared.outbound_http as outbound
+    import shared.ssrf as ssrf
+    from config.settings import settings
+
+    despacho["entregas"] = []
+    despacho["registros"] = []
+    despacho["webhooks"] = [
+        {
+            "id": 31,
+            "url": "https://hooks.example.test/tenderflow",
+            "secret": "secreto",  # pragma: allowlist secret
+            "event_types": ["pursuit.*"],
+            "formato": "json",
+            "organization_id": 7,
+        }
+    ]
+
+    class _Repo:
+        def list_active_subscribers(
+            self, *, organization_id: int | None = None
+        ) -> list[dict[str, Any]]:
+            return list(despacho["webhooks"])
+
+        def record_delivery(self, webhook_id: int, **kw: Any) -> None:
+            despacho["registros"].append({"webhook_id": webhook_id, **kw})
+
+    @contextmanager
+    def _post(method: str, url: str, **kw: Any) -> Iterator[SimpleNamespace]:
+        despacho["entregas"].append({"method": method, "url": url, **kw})
+        yield SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(webhooks, "WebhookRepository", _Repo)
+    monkeypatch.setattr(webhooks, "resolve_stored_secret", lambda webhook_id, stored: stored)
+    monkeypatch.setattr(ssrf, "validate_outbound_url", lambda url, **_: url)
+    monkeypatch.setattr(outbound, "pinned_https_request", _post)
+    # En prod/staging el canal exige allowlist; el test no prueba eso.
+    monkeypatch.setattr(settings, "WEBHOOK_ALLOWED_HOSTS", "hooks.example.test")
+    return despacho
+
+
+def test_webhook_apagado_por_todos_los_destinatarios_no_sale(webhook_org: dict[str, Any]) -> None:
+    """Un `off` explícito en Ajustes bloquea el webhook de la organización, y no
+    deja fila de entrega: no hubo intento que registrar."""
+    mod = webhook_org["mod"]
+    webhook_org["frecuencias"][("pursuit.task_due", "webhook")] = "off"
+
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 0
+    assert webhook_org["entregas"] == []
+    assert webhook_org["registros"] == []
+
+
+def test_webhook_immediate_en_ajustes_sale(webhook_org: dict[str, Any]) -> None:
+    mod = webhook_org["mod"]
+    webhook_org["frecuencias"][("pursuit.task_due", "webhook")] = "immediate"
+
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 1
+    (entrega,) = webhook_org["entregas"]
+    assert entrega["headers"]["X-Webhook-Event"] == "pursuit.task_due"
+    (registro,) = webhook_org["registros"]
+    assert registro["success"] is True
+
+
+def test_webhook_sin_preferencia_sale_como_hasta_ahora(webhook_org: dict[str, Any]) -> None:
+    """Sin fila explícita el webhook sigue recibiendo el evento aunque el defecto
+    del canal en Ajustes sea `off`: el defecto es de presentación, y aplicarlo
+    aquí cortaría de golpe todas las integraciones ya dadas de alta."""
+    mod = webhook_org["mod"]
+
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 1
+    assert webhook_org["lecturas_explicitas"] == 1, "la preferencia sí se consultó"
+
+
+def test_webhook_daily_equivale_a_immediate(webhook_org: dict[str, Any]) -> None:
+    """Un webhook no tiene digest: cualquier valor distinto de `off` entrega ya."""
+    mod = webhook_org["mod"]
+    webhook_org["frecuencias"][("pursuit.task_due", "webhook")] = "daily"
+
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 1
+
+
+def test_webhook_basta_un_destinatario_que_no_lo_apago(
+    webhook_org: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """El opt-out tiene que ser unánime: el aviso sale entero o no sale."""
+    mod = webhook_org["mod"]
+    monkeypatch.setattr(
+        mod,
+        "_destinatarios",
+        lambda evento: [
+            mod.Destinatario(user_key="uk-1", organization_id=7, user_id=1, email="a@b.es"),
+            mod.Destinatario(user_key="uk-2", organization_id=7, user_id=2, email="c@d.es"),
+        ],
+    )
+    webhook_org["frecuencias_por_usuario"][(1, "pursuit.task_due", "webhook")] = "off"
+
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 1
+
+    webhook_org["frecuencias_por_usuario"][(2, "pursuit.task_due", "webhook")] = "off"
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 0
+    assert len(webhook_org["entregas"]) == 1
+
+
+def test_webhook_sin_destinatarios_sale(
+    webhook_org: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sin nadie a quien preguntar no hay opt-out posible: la suscripción decide."""
+    mod = webhook_org["mod"]
+    monkeypatch.setattr(mod, "_destinatarios", lambda evento: [])
+    webhook_org["frecuencias"][("pursuit.task_due", "webhook")] = "off"
+
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 1
+    assert webhook_org["lecturas_explicitas"] == 0
+
+
+def test_webhook_preferencias_ilegibles_no_silencian(webhook_org: dict[str, Any]) -> None:
+    """Fail-safe hacia «sin opinión», nunca hacia `off`: un fallo de lectura no
+    puede callar el webhook de toda la organización."""
+    mod = webhook_org["mod"]
+    webhook_org["frecuencias"][("pursuit.task_due", "webhook")] = RuntimeError("tabla caída")
+
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 1
+
+
+def test_webhook_de_evento_sin_clave_ajustes_no_cambia(webhook_org: dict[str, Any]) -> None:
+    """`pursuit.assigned` no se gobierna desde Ajustes: sale por suscripción y no
+    consulta preferencias, aunque haya una fila `off` con su nombre."""
+    mod = webhook_org["mod"]
+    webhook_org["frecuencias"][("pursuit.assigned", "webhook")] = "off"
+    evento = {
+        "id": 903,
+        "event_type": "pursuit.assigned",
+        "organization_id": 7,
+        "payload": {"pursuit_id": 1, "licitacion_id": "L", "responsible_user_id": 1},
+    }
+
+    assert mod._canal_webhook(evento, especificacion("pursuit.assigned")) == 1
+    assert webhook_org["lecturas_explicitas"] == 0
+
+
+def test_webhook_sin_suscriptores_no_consulta_ajustes(webhook_org: dict[str, Any]) -> None:
+    """La lectura de preferencias solo se paga cuando hay a quién entregar."""
+    mod = webhook_org["mod"]
+    webhook_org["webhooks"][0]["event_types"] = ["licitacion.*"]
+
+    assert mod._canal_webhook(_evento_tarea(), especificacion("pursuit.task_due")) == 0
+    assert webhook_org["lecturas_explicitas"] == 0
 
 
 # ── run(): el productor de vencimientos va antes del despacho ────────────────

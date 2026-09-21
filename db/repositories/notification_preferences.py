@@ -32,6 +32,15 @@ CANALES = ("email", "in_app", "webhook")
 #: `webhook` sí nace apagado, pero por otro motivo: mandar un evento a un
 #: endpoint que el usuario no ha configurado no es una notificación, es tráfico
 #: contra un sitio que no lo espera.
+#:
+#: Ese `off` es el valor que ve la pantalla de Ajustes cuando nadie ha tocado
+#: el canal; **no** es lo que aplica el despachador. Los webhooks son
+#: suscripciones de la organización (tabla `webhooks`, sin `user_id`), así que
+#: para ese canal el despachador solo mira las filas explícitas
+#: (:func:`resolver_explicita`) y trata la ausencia de fila como «sin
+#: opinión»: ver `scheduler.jobs.event_dispatch._canal_webhook`. Si el defecto
+#: mandara ahí, todo webhook de organización dejaría de recibir los eventos con
+#: `clave_ajustes` hasta que cada destinatario entrara en Ajustes a encenderlo.
 DEFECTOS: dict[str, str] = {
     "in_app": "immediate",
     "email": "daily",
@@ -97,12 +106,16 @@ def listar(user_id: int, *, organization_id: int | None = None) -> list[dict[str
         )
 
 
-def resolver(user_id: int, *, tipo: str, canal: str, organization_id: int | None = None) -> str:
-    """Frecuencia efectiva para un `(usuario, tipo, canal)`.
+def resolver_explicita(
+    user_id: int, *, tipo: str, canal: str, organization_id: int | None = None
+) -> str | None:
+    """Frecuencia que el usuario **fijó** para `(tipo, canal)`, o `None` si no hay fila.
 
-    Precedencia: la preferencia **de esa organización** gana sobre la global, y
-    la global sobre el defecto. Alguien que quiere el digest diario de su
-    consultora y nada de su cooperativa necesita justamente eso.
+    Precedencia: la preferencia **de esa organización** gana sobre la global.
+    A diferencia de :func:`resolver`, no rellena con el defecto del canal: el
+    llamador que necesita distinguir «lo apagó» de «nunca dijo nada» es el
+    canal `webhook` del despachador, donde el defecto del canal no puede
+    decidir por toda una organización (ver :data:`DEFECTOS`).
     """
     with connect_read() as c:
         fila = c.execute(
@@ -115,7 +128,18 @@ def resolver(user_id: int, *, tipo: str, canal: str, organization_id: int | None
         ).fetchone()
     if fila and fila[0]:
         return str(fila[0])
-    return frecuencia_por_defecto(canal)
+    return None
+
+
+def resolver(user_id: int, *, tipo: str, canal: str, organization_id: int | None = None) -> str:
+    """Frecuencia efectiva para un `(usuario, tipo, canal)`.
+
+    Precedencia: la preferencia **de esa organización** gana sobre la global, y
+    la global sobre el defecto. Alguien que quiere el digest diario de su
+    consultora y nada de su cooperativa necesita justamente eso.
+    """
+    explicita = resolver_explicita(user_id, tipo=tipo, canal=canal, organization_id=organization_id)
+    return explicita if explicita is not None else frecuencia_por_defecto(canal)
 
 
 def guardar(

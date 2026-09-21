@@ -213,6 +213,34 @@ resto del payload de `licitacion.cambiada` no cambia de forma.
 `organization_id`; los favoritos antiguos también su clave opaca). Es dato
 interno de la organización: no lo reenvíes fuera de ella.
 
+**Preferencias personales y webhooks de organización.** Un webhook es una
+suscripción de la organización (la tabla `webhooks` no tiene `user_id`), y la
+preferencia de `/ajustes` → Notificaciones es de cada persona, por `(tipo,
+canal)`. Como el aviso sale entero o no sale, el canal `webhook` no puede
+filtrar destinatario a destinatario como hacen la campana y el correo; la regla
+es el **opt-out unánime**:
+
+- Solo afecta a los eventos gobernados desde Ajustes (los que tienen
+  `clave_ajustes` en `shared/events.py`: hoy `pursuit.task_due`,
+  `pursuit.mentioned` y `pursuit.cartera_vence`). El resto sale por la
+  suscripción sin mirar preferencias.
+- El webhook **no** recibe el aviso solo si **todos** sus destinatarios lo
+  pusieron en «No avisar» para el canal Webhook. Basta uno con «Al momento» o
+  «Resumen diario», o uno que nunca haya tocado el ajuste, para que salga.
+- Quien no ha dicho nada no cuenta como «No avisar», aunque ese sea el valor
+  que pinta la pantalla por defecto. El defecto del canal es un valor de
+  presentación: si el despachador lo aplicara, todos los webhooks ya dados de
+  alta dejarían de recibir estos eventos hasta que cada destinatario entrara
+  en Ajustes a encenderlos, y ninguno de ellos habría pedido silencio. Lo que
+  la persona no dijo lo decide la suscripción de la organización, que sí lo
+  pidió.
+- «Resumen diario» equivale a «Al momento»: un webhook no tiene digest.
+- Un fallo al leer las preferencias no silencia: el aviso sale, como si nadie
+  hubiera dicho nada, y queda un aviso en el log.
+- Un aviso bloqueado no deja fila en `webhook_deliveries` (no hubo intento de
+  entrega); el despachador lo registra en el log como
+  `event_dispatch_webhook_apagado_en_ajustes`.
+
 **Eventos viejos.** El despachador no entrega eventos con más de
 `EVENT_DISPATCH_MAX_AGE_HOURS` horas (48 por defecto): si el reparto estuvo
 parado, lo acumulado caduca sin salir en vez de llegar de golpe. Un receptor
