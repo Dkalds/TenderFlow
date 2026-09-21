@@ -5,12 +5,12 @@
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 46931 nodes · 82398 edges · 2559 communities (1936 shown, 623 thin omitted)
-- Extraction: 82% EXTRACTED · 18% INFERRED · 0% AMBIGUOUS · INFERRED: 14487 edges (avg confidence: 0.73)
+- 46947 nodes · 82427 edges · 2592 communities (1956 shown, 636 thin omitted)
+- Extraction: 82% EXTRACTED · 18% INFERRED · 0% AMBIGUOUS · INFERRED: 14496 edges (avg confidence: 0.73)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4f3a1c1f`
+- Built from commit: `b4ed85d5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -2524,6 +2524,39 @@
 - [[_COMMUNITY_Community 2556|Community 2556]]
 - [[_COMMUNITY_Community 2557|Community 2557]]
 - [[_COMMUNITY_Community 2558|Community 2558]]
+- [[_COMMUNITY_Community 2559|Community 2559]]
+- [[_COMMUNITY_Community 2560|Community 2560]]
+- [[_COMMUNITY_Community 2561|Community 2561]]
+- [[_COMMUNITY_Community 2562|Community 2562]]
+- [[_COMMUNITY_Community 2563|Community 2563]]
+- [[_COMMUNITY_Community 2564|Community 2564]]
+- [[_COMMUNITY_Community 2565|Community 2565]]
+- [[_COMMUNITY_Community 2566|Community 2566]]
+- [[_COMMUNITY_Community 2567|Community 2567]]
+- [[_COMMUNITY_Community 2568|Community 2568]]
+- [[_COMMUNITY_Community 2569|Community 2569]]
+- [[_COMMUNITY_Community 2570|Community 2570]]
+- [[_COMMUNITY_Community 2571|Community 2571]]
+- [[_COMMUNITY_Community 2572|Community 2572]]
+- [[_COMMUNITY_Community 2573|Community 2573]]
+- [[_COMMUNITY_Community 2574|Community 2574]]
+- [[_COMMUNITY_Community 2575|Community 2575]]
+- [[_COMMUNITY_Community 2576|Community 2576]]
+- [[_COMMUNITY_Community 2577|Community 2577]]
+- [[_COMMUNITY_Community 2578|Community 2578]]
+- [[_COMMUNITY_Community 2579|Community 2579]]
+- [[_COMMUNITY_Community 2580|Community 2580]]
+- [[_COMMUNITY_Community 2581|Community 2581]]
+- [[_COMMUNITY_Community 2582|Community 2582]]
+- [[_COMMUNITY_Community 2583|Community 2583]]
+- [[_COMMUNITY_Community 2584|Community 2584]]
+- [[_COMMUNITY_Community 2585|Community 2585]]
+- [[_COMMUNITY_Community 2586|Community 2586]]
+- [[_COMMUNITY_Community 2587|Community 2587]]
+- [[_COMMUNITY_Community 2588|Community 2588]]
+- [[_COMMUNITY_Community 2589|Community 2589]]
+- [[_COMMUNITY_Community 2590|Community 2590]]
+- [[_COMMUNITY_Community 2591|Community 2591]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `connect()` - 719 edges
@@ -2546,8 +2579,8 @@
   tests/test_auth.py → api/auth.py
 - `test_auth_context_specific_scope_denied()` --calls--> `AuthContext`  [INFERRED]
   tests/test_auth.py → api/auth.py
-- `test_el_export_de_auditoria_tiene_scope_propio()` --calls--> `required_scope_for_request()`  [INFERRED]
-  tests/test_unit_audit_events.py → api/scopes.py
+- `api_key()` --calls--> `create_api_key()`  [INFERRED]
+  tests/test_ola2_performance.py → api/auth.py
 
 ## Hyperedges (group relationships)
 - **Security Scanning Pre-commit Hooks** — precommit_detect_secrets, precommit_gitleaks, precommit_bandit, precommit_pip_audit [EXTRACTED 0.95]
@@ -2569,75 +2602,75 @@
 - **Operations Runbook Suite** — disaster_recovery_runbook, dlq_replay_runbook, incident_playbooks, model_rollback_runbook, rate_limit_reset_runbook [EXTRACTED 1.00]
 - **Incident Response Dependencies** — licitaciones_db, sap_classifier, streamlit_dashboard, backup_system, cache_signal [INFERRED 0.80]
 
-## Communities (2559 total, 623 thin omitted)
+## Communities (2592 total, 636 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.01
-Nodes (334): ColumnCompleteness, CompletitudMes, completitudSeries(), Frescura, freshnessInfo(), QualityData, prefijoCpv(), SociosUte() (+326 more)
+Nodes (362): ActiveLearningContent(), FilaActividad(), ItemActividad, VERBO, verboDeEvento(), fecha(), DesdeUltimaVisita(), LineaNovedad() (+354 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.03
-Nodes (238): PageParams, Ventana pedida por el cliente, ya validada contra el contrato., Criterios de una regla de watchlist, sin acoplar ``db/`` a services., Criterios de una regla de watchlist, sin acoplar ``db/`` a services., SignalCriteria, PursuitAttachmentExists, Ese fichero ya está en esa oportunidad (misma huella)., DeleteOrganizationBody (+230 more)
+Cohesion: 0.02
+Nodes (273): PageParams, Ventana pedida por el cliente, ya validada contra el contrato., LookupError, PermissionError, Criterios de una regla de watchlist, sin acoplar ``db/`` a services., Criterios de una regla de watchlist, sin acoplar ``db/`` a services., SignalCriteria, PursuitAttachmentExists (+265 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.05
-Nodes (90): EtiquetasRepository, Etiquetas libres por organización y sus aplicaciones (D38)., Borra una etiqueta y, en cascada, sus aplicaciones (FK ON DELETE)., Etiquetas libres por organización y sus aplicaciones (D38)., Borra una etiqueta y, en cascada, sus aplicaciones (FK ON DELETE)., Los objetos que llevan una etiqueta. Es el filtro «por etiqueta»., Los objetos que llevan una etiqueta. Es el filtro «por etiqueta»., _aplicacion() (+82 more)
+Cohesion: 0.08
+Nodes (72): _aplicacion(), _aplicar(), como(), _crear_etiqueta(), _cuentas(), _escrituras_del_viewer(), _etiqueta_en_bd(), _etiquetas() (+64 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.02
-Nodes (146): LicitacionRepository, Etiquetas de tecnología **independientes del regex de keywords**.          El cl, Muestra aleatoria sin etiquetar. Mismo criterio que         :meth:`get_unlabelle, Devuelve el registro completo o None., ``True`` si el expediente existe. Para los guardas de 404.          No es ``get_, Etiquetas de tecnología **independientes del regex de keywords**.          El cl, Busca con FTS5/search_vector y devuelve id_externo ordenados por rank., Muestra aleatoria sin etiquetar. Mismo criterio que         :meth:`get_unlabelle (+138 more)
+Nodes (133): LicitacionRepository, Etiquetas de tecnología **independientes del regex de keywords**.          El cl, Muestra aleatoria sin etiquetar. Mismo criterio que         :meth:`get_unlabelle, Devuelve el registro completo o None., Etiquetas de tecnología **independientes del regex de keywords**.          El cl, Muestra aleatoria sin etiquetar. Mismo criterio que         :meth:`get_unlabelle, Carga licitaciones de un rango de fechas para drift detection., LIKE fallback para cuando FTS5/search_vector no está disponible. (+125 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.01
-Nodes (386): LabelingQueue(), TechQueueChips(), LabelingStats(), ModelInfoCard(), ActiveLearningPage(), FeedbackStats, headlineMetric(), ModelInfo (+378 more)
+Nodes (433): FeedbackStats, headlineMetric(), ModelInfo, ModelVersionInfo, QueueItem, QueueResponse, ScoringItem, ScoringResponse (+425 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.02
-Nodes (145): claveDe(), AgendaTareas(), FilaTarea(), baja(), Batalla, BatallasContraMi, CompanyContraMi(), ORDEN_RESULTADOS (+137 more)
+Cohesion: 0.06
+Nodes (59): AccionesFila, AgendaAccion(), AgendaContrato(), AgendaFechas(), AgendaFila(), Cabecera(), AgendaLista(), VACIO (+51 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.01
-Nodes (289): AdministracionPage(), ApiKey, ApiKeysResponse, ApiUser, MOCK_API_KEYS, MOCK_USERS, QualityData, UserRow (+281 more)
+Nodes (318): LabelingStats(), ModelInfoCard(), ActiveLearningPage(), AgendaInspector(), AgendaKpis(), recortes(), CalidadKpis(), FormatoFechaCard() (+310 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.03
-Nodes (117): _apply_filters(), get_resumen_hoy(), get_resumen_novedades(), get_sankey_flow(), get_timeline_scatter(), get_top_licitaciones(), _load_df(), Resumen analytics — novedades, hoy, timeline, sankey, top licitaciones.  Los cin (+109 more)
+Nodes (120): _apply_filters(), get_resumen_hoy(), get_resumen_novedades(), get_sankey_flow(), get_timeline_scatter(), get_top_licitaciones(), _load_df(), Resumen analytics — novedades, hoy, timeline, sankey, top licitaciones.  Los cin (+112 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.01
-Nodes (271): connect_read(), Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      La garantía es la misma de siempre —cualqu, Context manager de SOLO LECTURA.      Con Postgres: mismo pool + ``SET LOCAL def (+263 more)
+Nodes (268): connect_read(), Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      Si ``TURSO_REPLICA_URL`` está configurado,, Context manager de SOLO LECTURA.      La garantía es la misma de siempre —cualqu, Context manager de SOLO LECTURA.      Con Postgres: mismo pool + ``SET LOCAL def (+260 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.03
-Nodes (55): Predice si un texto corresponde a una licitación SAP.          Args:, Predicción en batch (más eficiente que llamadas individuales)., Predice si un texto corresponde a una licitación SAP.          Args:, Predice si un texto corresponde a una licitación SAP.          Args:, Predice si un texto corresponde a una licitación SAP.          Args:, Devuelve los términos que más contribuyen a la predicción.          Con Calibrat, Predicción en batch (más eficiente que llamadas individuales).          Args:, Predicción en batch (más eficiente que llamadas individuales).          Args: (+47 more)
+Nodes (57): Entrena el clasificador con datos de la BD.          Args:             df: DataF, Entrena el clasificador con datos de la BD.          Args:             df: DataF, Predice si un texto corresponde a una licitación SAP.          Args:, Predicción en batch (más eficiente que llamadas individuales)., Predice si un texto corresponde a una licitación SAP.          Args:, Predice si un texto corresponde a una licitación SAP.          Args:, Predice si un texto corresponde a una licitación SAP.          Args:, Devuelve los términos que más contribuyen a la predicción.          Con Calibrat (+49 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.01
-Nodes (167): compile_query(), Definiciones de tablas SQLAlchemy Core para el proyecto.  Usado exclusivamente p, Compila una expresión SQLAlchemy a (sql_string, params_list) para libsql.      U, Compila una expresión SQLAlchemy a (sql_string, params_list) para libsql.      U, Compila una expresión SQLAlchemy a (sql_string, params_list) para libsql.      U, Compila una expresión SQLAlchemy a ``(sql, params)`` para psycopg3.      Usa el, Compila una expresión SQLAlchemy a ``(sql, params)`` para psycopg3.      Usa el, Compila una expresión SQLAlchemy a ``(sql, params)`` para psycopg3.      Usa el (+159 more)
+Cohesion: 0.02
+Nodes (100): compile_query(), Definiciones de tablas SQLAlchemy Core para el proyecto.  Usado exclusivamente p, Compila una expresión SQLAlchemy a (sql_string, params_list) para libsql.      U, Compila una expresión SQLAlchemy a (sql_string, params_list) para libsql.      U, Compila una expresión SQLAlchemy a (sql_string, params_list) para libsql.      U, Compila una expresión SQLAlchemy a ``(sql, params)`` para psycopg3.      Usa el, Compila una expresión SQLAlchemy a ``(sql, params)`` para psycopg3.      Usa el, Compila una expresión SQLAlchemy a ``(sql, params)`` para psycopg3.      Usa el (+92 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.04
 Nodes (70): Frontera de tenencia — resuelve la organización activa como dependency.  ``resol, Resuelve la organización (o la personal por defecto) y valida el rol.      Tradu, Resuelve la organización (o la personal por defecto) y valida el rol.      Tradu, Dependency para rutas GET/DELETE: ``organization_id`` viaja en la query.      Pa, Dependency para rutas GET/DELETE: ``organization_id`` viaja en la query.      Pa, require_organization(), resolve_organization_ctx(), F5.4 — lo que ha pasado desde la última vez.      **No se cachea.** Es un diff p (+62 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.01
-Nodes (212): get_user_by_email(), Busca usuario por email., Busca usuario por email., _activar_invitaciones(), _authorize_url(), _clear_session_cookies(), confirm_password_reset(), confirm_totp() (+204 more)
+Cohesion: 0.02
+Nodes (157): _activar_invitaciones(), _authorize_url(), _clear_session_cookies(), confirm_password_reset(), confirm_totp(), _csrf_for_session(), dev_login(), _email_from_claims() (+149 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.06
 Nodes (37): acquire(), force_release(), get_all_locks(), is_held(), Locks de exclusión mutua para jobs no idempotentes (ADR-012, ADR-022).  Respalda, Borra el lock ignorando el holder. Solo para intervención manual.      Los runbo, Extiende el TTL de un lock que seguimos teniendo (heartbeat).      Devuelve Fals, True si el lock está tomado y no ha expirado. (+29 more)
 
 ### Community 14 - "Community 14"
-Cohesion: 0.02
-Nodes (78): Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., SAPClassifier, _expected_calibration_error(), Expected Calibration Error con bins equi-anchos.      Mide la diferencia pondera (+70 more)
+Cohesion: 0.03
+Nodes (62): Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., Pipeline FeatureUnion(TF-IDF) + CalibratedLR para detección de licitaciones SAP., SAPClassifier, Tests de que no hay doble calibración según ML_USE_CALIBRATION.  El pipeline bas, test_make_pipeline_embeddings_respects_calibrate_flag() (+54 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.04
-Nodes (76): _date(), _fase_to_estado(), _field(), _importes(), main(), _marca_actualizacion(), _number(), _numero_de_campo() (+68 more)
+Nodes (79): _date(), _fase_to_estado(), _field(), _importes(), main(), _marca_actualizacion(), _number(), _numero_de_campo() (+71 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.08
-Nodes (31): delete_rule(), _fila_a_regla(), list_rules(), Reglas de watchlist por criterio (keyword/CPV/importe/CCAA) — persistencia serve, Activa o pausa una regla propia., Borra una regla propia. ``False`` si no existe o no es del usuario., Reglas de un usuario, más recientes primero., Reglas de un usuario, más recientes primero. (+23 more)
+Cohesion: 0.04
+Nodes (63): _clausula_organo(), _clausula_tecnologia(), _clausulas_universo_puntuable(), deactivate_all_for_user(), delete_all_for_user(), delete_rule(), _escape_like(), _fila_a_regla() (+55 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.03
@@ -2652,144 +2685,144 @@ Cohesion: 0.03
 Nodes (111): _audit(), _check_lockout(), check_password(), _client_key(), current_user_is_admin(), get_current_user(), _get_password(), _handle_oauth_callback() (+103 more)
 
 ### Community 20 - "Community 20"
-Cohesion: 0.04
-Nodes (55): _run_daily_atom(), Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat (+47 more)
+Cohesion: 0.05
+Nodes (53): Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, Valida calidad del DataFrame antes del entrenamiento.      Args:         df: Dat, validate_training_data() (+45 more)
 
 ### Community 21 - "Community 21"
 Cohesion: 0.01
-Nodes (115): now_utc_iso(), ISO 8601 del instante actual en UTC., ISO 8601 del instante actual en UTC., ISO 8601 del instante actual en UTC., ISO 8601 del instante actual en UTC., ISO 8601 del instante actual en UTC., Revoca UNA sesión del usuario por su id público (C2.1).      Devuelve ``False``, Revoca UNA sesión del usuario por su id público (C2.1).      Devuelve ``False`` (+107 more)
+Nodes (233): _cutoff_iso(), _load_competencia_stats_raw(), _load_margen_stats_raw(), ISO 8601 en UTC del instante hace ``months`` meses., Carga sin caché — llamado solo por SignalAwareCache.get().      El SQL vive en `, Carga sin caché — llamado solo por SignalAwareCache.get()., ISO 8601 en UTC del instante hace ``months`` meses., Carga sin caché — llamado solo por SignalAwareCache.get(). (+225 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.11
-Nodes (35): Firma del ``user_key`` para el enlace de baja, o ``None`` si no hay claves., Firma del ``user_key`` para el enlace de baja, o ``None`` si no hay claves., token_de_baja(), verificar_token_de_baja(), active_kid(), _b64d(), _b64e(), known_kids() (+27 more)
+Cohesion: 0.13
+Nodes (30): active_kid(), _b64d(), _b64e(), known_kids(), _load_keys(), Rotación de claves de firma con `kid` (F4).  Soporta múltiples claves activas si, Carga el mapa kid→clave y devuelve ``(keys, active_kid)``.      Cacheada para ev, Invalida el caché tras rotación. Re-leerá de env en el siguiente uso. (+22 more)
 
 ### Community 23 - "Community 23"
 Cohesion: 0.06
 Nodes (35): Job dedicado de evaluación de reglas de watchlist (mi-watchlist).  Plan Pliegos+, Evalúa las reglas activas y notifica matches nuevos.      No-op (devuelve 0 sin, run(), Persiste una coincidencia en ``pending_digests``., Persiste una coincidencia en ``pending_digests``.          ``user_id`` se escrib, _build_body(), _build_title(), check_rules_and_notify() (+27 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.04
-Nodes (104): Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Reemplaza los lotes de una licitación (idempotente): mismo patrón     DELETE-the (+96 more)
+Cohesion: 0.02
+Nodes (222): Lote, Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Reemplaza todas las adjudicaciones de una licitación (idempotente)., Reemplaza todas las adjudicaciones de una licitación (idempotente)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Inserta o actualiza licitaciones. Devuelve (nuevas, actualizadas)., Reemplaza todas las adjudicaciones de una licitación (idempotente).      Returns (+214 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.03
-Nodes (79): a_duracion_num(), a_importe_num(), a_timestamptz(), _decimal_de_float(), _diverge_numerica_sql(), _divergencias_sql(), duracion_num_sql(), _fin_de_lote() (+71 more)
+Cohesion: 0.06
+Nodes (36): a_timestamptz(), ``True`` si las cuatro columnas de ``v133`` existen en ``licitaciones``.      La, Gemela Python de ``nucleo_iso_a_timestamptz`` (``v133``).      Reglas, en este o, sombras_disponibles(), _cargar(), _ConexionCatalogo, lectura(), _LotesFalsos (+28 more)
 
 ### Community 26 - "Community 26"
 Cohesion: 0.06
-Nodes (68): chart_card(), Context manager — envuelve contenido en una chart-card glass-morphism.      Rend, fmt_eur(), Helper local para formatear euros (evitar import circular)., Helper local para formatear euros (evitar import circular)., PageContext, Base para el sistema de páginas — PageContext y helpers., Contexto inyectado a cada página por el router de app.py. (+60 more)
+Nodes (65): chart_card(), Context manager — envuelve contenido en una chart-card glass-morphism.      Rend, fmt_eur(), Helper local para formatear euros (evitar import circular)., Helper local para formatear euros (evitar import circular)., _rag_query(), Búsqueda híbrida FAISS+FTS5 con reranking.      Returns:         (docs, source_b, Página Resumen — top licitaciones, distribución y mercado. (+57 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.04
-Nodes (53): AccessLogMiddleware, _BodyTooLargeError, correlation_id_middleware(), CostTrackingMiddleware, ETagMiddleware, _rate_bucket(), RateLimitMiddleware, Middlewares ASGI personalizados para la API REST.  * :class:`SecurityHeadersMidd (+45 more)
+Cohesion: 0.05
+Nodes (37): CostTrackingMiddleware, ETagMiddleware, RateLimitMiddleware, Middlewares ASGI personalizados para la API REST.  * :class:`SecurityHeadersMidd, Rate limiting global por cliente sobre la API REST.      Usa :func:`services.rat, Rate limiting global por cliente sobre la API REST.      Usa :func:`services.rat, Estima coste por request y lo acumula como counter Prometheus.      Modelo simpl, Rate limiting global por cliente sobre la API REST.      Usa :func:`services.rat (+29 more)
 
 ### Community 28 - "Community 28"
 Cohesion: 0.01
-Nodes (287): Ejecuta ``fn(*args, **kwargs)`` en el threadpool general de anyio.      Uso::, Ejecuta ``fn(*args, **kwargs)`` en el threadpool general de anyio.      Crea un, Ejecuta ``fn(*args, **kwargs)`` en el threadpool general de anyio.      Crea un, run_db(), get_simulador_precio(), F2.2 — el simulador de puntuación de la oferta.      Devuelve 200 también cuando, F2.2 — el simulador de puntuación de la oferta.      Devuelve 200 también cuando, _budget_subject() (+279 more)
+Nodes (373): ResumenHoyFilters, Ejecuta ``fn(*args, **kwargs)`` en el threadpool general de anyio.      Uso::, Ejecuta ``fn(*args, **kwargs)`` en el threadpool general de anyio.      Crea un, Ejecuta ``fn(*args, **kwargs)`` en el threadpool general de anyio.      Crea un, run_db(), list_adjudicaciones(), Familia **adjudicaciones**: ``/adjudicaciones``, que no cuelga de un expediente., Devuelve lista paginada de adjudicaciones. (+365 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.05
-Nodes (45): build_dataset_rows(), _clave_grupo(), DatasetRow, DatasetSplit, _fecha_clave(), _grupos_efectivos(), Construcción del pipeline sklearn y utilidades de features para el clasificador, Una fila del dataset, con todo lo que el split necesita para no filtrar.      `` (+37 more)
+Cohesion: 0.04
+Nodes (52): build_dataset_rows(), _clave_grupo(), DatasetRow, DatasetSplit, _expected_calibration_error(), _fecha_clave(), Construcción del pipeline sklearn y utilidades de features para el clasificador, Expected Calibration Error con bins equi-anchos.      Mide la diferencia pondera (+44 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.03
-Nodes (92): _format_last_updated(), Componentes de layout — topbar unificada, footer y branding.  Premium refresh: e, Exportación global eliminada — función mantenida por compatibilidad., Compat: en el nuevo layout el brand vive en la topbar.      Mantenida para no ro, Exportación global eliminada — función mantenida por compatibilidad., Compat: en el nuevo layout el brand vive en la topbar.      Mantenida para no ro, Campana de notificaciones en la topbar con badge de no leídas.      Muestra un p, Campana de notificaciones en la topbar con badge de no leídas.      Muestra un p (+84 more)
+Cohesion: 0.04
+Nodes (78): _format_last_updated(), Componentes de layout — topbar unificada, footer y branding.  Premium refresh: e, Exportación global eliminada — función mantenida por compatibilidad., Compat: en el nuevo layout el brand vive en la topbar.      Mantenida para no ro, Exportación global eliminada — función mantenida por compatibilidad., Compat: en el nuevo layout el brand vive en la topbar.      Mantenida para no ro, Devuelve un texto humano corto para la pill de 'Última actualización'., Renderiza el bloque brand del topbar (logo + nombre + tagline). (+70 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.05
-Nodes (42): count_unresolved(), get_failure(), increment_retry(), list_exhausted(), list_unresolved(), mark_exhausted(), mark_matching_resolved(), mark_resolved() (+34 more)
+Cohesion: 0.04
+Nodes (49): _dlq_count(), Número real de fallos abiertos en la DLQ (best-effort).      Antes era un stub q, Número real de fallos abiertos en la DLQ (best-effort).      Antes era un stub q, Número real de fallos abiertos en la DLQ (best-effort).      Antes era un stub q, Número real de fallos abiertos en la DLQ (best-effort).      Antes era un stub q, Get DLQ count if available., Get DLQ count if available., count_unresolved() (+41 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.04
-Nodes (43): _build_multilabel_dataset(), _make_tech_pipeline(), _parse_tecnologia_csv(), Pipeline para una sola tecnología (binario, OneVsRest-friendly).      Args:, Pipeline para una sola tecnología (binario, OneVsRest-friendly).      Args:, Construye (textos_aumentados, Y_binaria, positivos_por_label).      Args:, Normaliza el valor CSV de la columna ``tecnologia`` a una lista de labels., Construye (textos_aumentados, Y_binaria, positivos_por_label).      Args: (+35 more)
+Nodes (48): _build_multilabel_dataset(), _make_tech_pipeline(), _parse_tecnologia_csv(), Pipeline para una sola tecnología (binario, OneVsRest-friendly).      Args:, Pipeline para una sola tecnología (binario, OneVsRest-friendly).      Args:, Construye (textos_aumentados, Y_binaria, positivos_por_label).      Args:, Normaliza el valor CSV de la columna ``tecnologia`` a una lista de labels., Construye (textos_aumentados, Y_binaria, positivos_por_label).      Args: (+40 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.03
-Nodes (80): _get_webhook_master_key(), Get the effective signing secret for a webhook.          For derived secrets, re, Get the effective signing secret for a webhook.          For derived secrets, re, Obtiene la clave maestra para derivar secretos de webhook., Obtiene la clave maestra para derivar secretos de webhook., Get the effective signing secret for a webhook.          For derived secrets, re, Obtiene la clave maestra para derivar secretos de webhook., Get the effective signing secret for a webhook.          For derived secrets, re (+72 more)
+Cohesion: 0.02
+Nodes (136): _allowed_webhook_hosts(), _aplicar_decision(), _cabeceras(), create_webhook(), delete_webhook(), _get_webhook_master_key(), _intentar_entrega(), list_webhooks() (+128 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.21
-Nodes (10): Tests para shared/schemas.py — validación de DataFrames con pandera., Sin pandera, validate_licitaciones devuelve el df sin error., Con pandera disponible, schema valida correctamente un DataFrame válido., El módulo se importa sin error, incluso si pandera no está instalado., test_licitacion_schema_valid(), test_schemas_importable(), test_validate_adjudicaciones_helper_exists(), test_validate_adjudicaciones_no_pandera_passthrough() (+2 more)
+Cohesion: 0.06
+Nodes (35): _fetch(), main(), _non_empty_lists(), Compone y **valida** la URL final contra la base esperada.      El guard anterio, Exige que **todas** las listas nombradas traigan algo.      ``/publico/hubs`` de, Valida `/health/ready`: estado global **y** alineación del schema.      ``degrad, _resolver_url(), _status_ok() (+27 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.02
-Nodes (131): _identidad_de(), La identidad fiscal de quien pregunta, o ``None`` si no se puede saber.      Un, PursuitAttachmentsRepository, Adjuntos propios de una oportunidad (C6.3, v127).  TID251: el SQL de `pursuit_at, Un adjunto por id, acotado a su organización., Adjuntos de una oportunidad, recientes primero., Marca el adjunto como borrado (v131). Devuelve su ``blob_key``, o ``None``., Levanta o baja el opt-in de indexación del RAG para UN adjunto. (+123 more)
+Cohesion: 0.04
+Nodes (74): _identidad_de(), La identidad fiscal de quien pregunta, o ``None`` si no se puede saber.      Un, cartera_de_usuario(), La cartera de la organización activa del usuario.      La resolución de organiza, La cartera de la organización activa del usuario.      La resolución de organiza, La cartera de la organización activa del usuario.      La resolución de organiza, aplicar_etiqueta(), borrar_etiqueta() (+66 more)
 
 ### Community 36 - "Community 36"
-Cohesion: 0.02
-Nodes (134): compare_periods(), forecast_estacionalidad_organo(), forecast_retendering(), forecast_volume_endpoint(), organos(), _parse_scoring_ids(), pipeline(), quality() (+126 more)
+Cohesion: 0.01
+Nodes (171): competitors(), forecast_retendering(), forecast_volume_endpoint(), geography(), organo_detail(), organos(), _parse_scoring_ids(), pipeline() (+163 more)
 
 ### Community 37 - "Community 37"
-Cohesion: 0.09
-Nodes (57): _get_user_context(), Página Mi Watchlist — seguimiento personalizado de CPVs / keywords.  Identificam, # NOTE: astype(str) must come BEFORE fillna("") to avoid TypeError when the, # NOTE: astype(str) must come BEFORE fillna("") to avoid TypeError when the, Deriva una clave opaca para el usuario actual.      Usa el password del dashboar, Devuelve (user_key, user_id) del usuario actual., Devuelve (user_key, user_id) del usuario actual., _user_key() (+49 more)
+Cohesion: 0.08
+Nodes (63): Página de Administración — solo accesible para usuarios con flag is_admin.  Func, render(), _render_api_keys(), _render_dlq(), _render_users(), PageContext, Base para el sistema de páginas — PageContext y helpers., Contexto inyectado a cada página por el router de app.py. (+55 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.02
-Nodes (199): AccionesFila, AgendaAccion(), AgendaContrato(), AgendaFechas(), AgendaFila(), AgendaInspector(), Cabecera(), VACIO (+191 more)
+Cohesion: 0.01
+Nodes (279): AjustesPage(), VIEWS, CompetenciaPage(), VIEWS, ActividadEquipo(), Cuadro, formatoTarjeta(), PerdidasDireccion() (+271 more)
 
 ### Community 39 - "Community 39"
-Cohesion: 0.02
-Nodes (143): ConfianzaBinaria(), ModelPrediction(), TechScoreRow(), QueueItemCard(), QueueItemHeader(), ActiveLearningContent(), CodigoLegible(), CompetitorRow (+135 more)
+Cohesion: 0.01
+Nodes (264): ConfianzaBinaria(), ModelPrediction(), TechScoreRow(), QueueItemCard(), QueueItemHeader(), WebhookRow(), ChartTooltip(), ChartTooltipProps (+256 more)
 
 ### Community 40 - "Community 40"
-Cohesion: 0.05
-Nodes (59): _get_nonce_store(), Devuelve el almacén de nonces adecuado según la configuración., Devuelve el almacén de nonces adecuado según la configuración., Devuelve el almacén de nonces adecuado según la configuración., Resetea el singleton del nonce store. Uso exclusivo en tests., Resetea el singleton del nonce store. Uso exclusivo en tests., Resetea el singleton del nonce store. Uso exclusivo en tests., Almacén en memoria usando cachetools.TTLCache (single-process).      Máximo 10 0 (+51 more)
+Cohesion: 0.04
+Nodes (66): _get_nonce_store(), Devuelve el almacén de nonces adecuado según la configuración., Devuelve el almacén de nonces adecuado según la configuración., Devuelve el almacén de nonces adecuado según la configuración., Resetea el singleton del nonce store. Uso exclusivo en tests., Resetea el singleton del nonce store. Uso exclusivo en tests., Resetea el singleton del nonce store. Uso exclusivo en tests., Almacén en memoria usando cachetools.TTLCache (single-process).      Máximo 10 0 (+58 more)
 
 ### Community 41 - "Community 41"
-Cohesion: 0.08
-Nodes (14): hash_api_key(), HMAC-SHA256 (con server secret si configurado) o SHA-256 plain., HMAC-SHA256 (con server secret si configurado) o SHA-256 plain., HMAC-SHA256 (con server secret si configurado) o SHA-256 plain., TestApiKeyAuth, Sin API_HMAC_SECRET usa SHA-256 plain., Sin API_HMAC_SECRET usa SHA-256 plain., Inputs distintos → hashes distintos. (+6 more)
+Cohesion: 0.06
+Nodes (20): hash_api_key(), Núcleo compartido de validación de API keys.      Único camino de validación par, True si el contexto tiene el scope o es wildcard., True si el contexto tiene el scope o es wildcard., True si el contexto tiene el scope o es wildcard., HMAC-SHA256 (con server secret si configurado) o SHA-256 plain., HMAC-SHA256 (con server secret si configurado) o SHA-256 plain., HMAC-SHA256 (con server secret si configurado) o SHA-256 plain. (+12 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.03
-Nodes (143): BaseModel, BatallasContraMi, El historial de cruces con un competidor., El historial de cruces con un competidor., MovimientosVigiladasResult, Señales y actividad de las empresas vigiladas en los últimos ``dias``., CarteraEmpresa, Respuesta de ``GET /competitive/renovaciones``. (+135 more)
+Cohesion: 0.01
+Nodes (229): Query filters for trends., Query filters for trends., TrendsFilters, BaseModel, BatallasContraMi, El historial de cruces con un competidor., El historial de cruces con un competidor., MovimientosVigiladasResult (+221 more)
 
 ### Community 43 - "Community 43"
 Cohesion: 0.06
-Nodes (70): _apply_filters(), EstacionalidadMes, EstacionalidadOrganoResult, ForecastEntry, ForecastFilters, ForecastSeriesPoint, ForecastVolumeResult, get_estacionalidad_organo() (+62 more)
+Nodes (69): _apply_filters(), EstacionalidadMes, EstacionalidadOrganoResult, ForecastEntry, ForecastFilters, ForecastSeriesPoint, ForecastVolumeResult, get_estacionalidad_organo() (+61 more)
 
 ### Community 44 - "Community 44"
-Cohesion: 0.05
-Nodes (46): _apply_filters(), cargar_adjudicaciones_resueltas(), _clean_text(), CompetitorEntry, _compute_hhi(), _connected_identity_keys(), _corporate_group_identity(), EstacionalidadEntry (+38 more)
+Cohesion: 0.04
+Nodes (55): _apply_filters(), cargar_adjudicaciones_resueltas(), _clean_text(), CompetitorEntry, _compute_hhi(), _connected_identity_keys(), _corporate_group_identity(), EstacionalidadEntry (+47 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.05
-Nodes (57): LookupError, PursuitCommentRepository, Marca el comentario como borrado; ``False`` si no existía dentro del scope., Desvincula la autoría; el texto sigue siendo trabajo del equipo.          Mismo, Persiste a quién menciona un comentario. Devuelve cuántas se guardaron., Desvincula la autoría; el texto sigue siendo trabajo del equipo.          Mismo, Persiste a quién menciona un comentario. Devuelve cuántas se guardaron., Queries del hilo, siempre acotadas por ``organization_id`` y ``pursuit_id``. (+49 more)
+Cohesion: 0.12
+Nodes (27): PursuitCommentRepository, Marca el comentario como borrado; ``False`` si no existía dentro del scope., Desvincula la autoría; el texto sigue siendo trabajo del equipo.          Mismo, Desvincula la autoría; el texto sigue siendo trabajo del equipo.          Mismo, Queries del hilo, siempre acotadas por ``organization_id`` y ``pursuit_id``., _adjunto(), _fuente_de_las_consultas(), _organizacion() (+19 more)
 
 ### Community 46 - "Community 46"
-Cohesion: 0.08
-Nodes (22): funnel_estados(), kpi_sparkline_series(), por_cpv(), por_estado(), por_mes(), Funnel de conversión por estado del proceso de contratación., Funnel de conversión por estado del proceso de contratación., Funnel de conversión por estado del proceso de contratación. (+14 more)
+Cohesion: 0.10
+Nodes (16): funnel_estados(), kpi_sparkline_series(), por_mes(), Funnel de conversión por estado del proceso de contratación., Funnel de conversión por estado del proceso de contratación., Funnel de conversión por estado del proceso de contratación., Serie histórica agregada para usar como sparkline inline.      Args:         df:, Serie histórica agregada para usar como sparkline inline.      Args:         df: (+8 more)
 
 ### Community 47 - "Community 47"
 Cohesion: 0.03
-Nodes (104): _adj_indicadores(), _apply_filters(), _cobertura(), _cobertura_desconocida(), EstadoCount, _funnel_estados(), FunnelStep, get_overview() (+96 more)
+Nodes (130): _adj_indicadores(), _apply_filters(), _cobertura(), _cobertura_desconocida(), construir_embudo(), EstadoCount, _funnel_estados(), FunnelStep (+122 more)
 
 ### Community 48 - "Community 48"
-Cohesion: 0.07
-Nodes (37): _compute_top_empresas(), Agrupa adjudicatarios por CCAA y devuelve el top-N de cada comunidad., _insert_adjudicaciones(), _insert_licitaciones(), Tests para scheduler/aggregates_precompute.py.  Cubre: - _compute_clusters: comp, Cada fila tiene las claves requeridas para INSERT., Sin BD alguna, las dos mitades caen y el status es error, sin propagar., Devuelve una asignación por cada licitación cuando sklearn está disponible. (+29 more)
+Cohesion: 0.06
+Nodes (40): _compute_top_empresas(), Agrupa adjudicatarios por CCAA y devuelve el top-N de cada comunidad., _insert_adjudicaciones(), Tests para scheduler/aggregates_precompute.py.  Cubre: - _compute_clusters: comp, Inserta filas en mat_clusters., Cada fila tiene las claves requeridas para INSERT., run_aggregates_precompute devuelve status=ok con BD vacía., ``mat_top_empresas_ccaa`` se eliminó: no tenía lectores (ADR-017). (+32 more)
 
 ### Community 49 - "Community 49"
-Cohesion: 0.09
-Nodes (18): _backfill_ccaa(), _build_canonical_names(), _enrich_dataframe(), load_adjudicaciones(), Aplica enriquecimientos NLP/lookup sobre el DataFrame raw.      Función pura (si, Carga adjudicaciones enriquecidas desde la DB.      Args:         limit: Límite, Carga adjudicaciones enriquecidas desde la DB.      Args:         limit: Límite, Calcula el nombre canónico (más frecuente) por ``empresa_key``.      Usa Polars (+10 more)
+Cohesion: 0.05
+Nodes (39): _backfill_ccaa(), _build_canonical_names(), _enrich_dataframe(), invalidate_caches(), load_adjudicaciones(), load_dataframe(), _load_dataframe_shared(), load_mat_clusters() (+31 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.05
-Nodes (52): _apply_filters(), _build_cpv(), _build_modulos(), _build_tipo_estado(), _build_tipos_proyecto(), _combined_text(), CpvEntry, get_proyectos_modulos() (+44 more)
+Cohesion: 0.04
+Nodes (95): _apply_filters(), _build_cpv(), _build_modulos(), _build_tipo_estado(), _build_tipos_proyecto(), _combined_text(), CpvEntry, _detect_modules() (+87 more)
 
 ### Community 51 - "Community 51"
-Cohesion: 0.03
-Nodes (61): BaseEstimator, Basic Usage, code:python (from sklearn.pipeline import FeatureUnion), code:python (from sklearn.pipeline import Pipeline, FeatureUnion), code:python (# Apply weights to transformers), FeatureUnion, Weighted Feature Union, With Pipeline (+53 more)
+Cohesion: 0.05
+Nodes (39): BaseEstimator, Basic Usage, code:python (from sklearn.pipeline import FeatureUnion), code:python (from sklearn.pipeline import Pipeline, FeatureUnion), code:python (# Apply weights to transformers), FeatureUnion, Weighted Feature Union, With Pipeline (+31 more)
 
 ### Community 52 - "Community 52"
 Cohesion: 0.04
-Nodes (74): Marca como agotadas las entradas que han alcanzado max_retries.      Returns:, Marca como agotadas las entradas que han alcanzado max_retries.      Returns:, Marca como agotadas las entradas que han alcanzado max_retries.      Returns:, Marca como agotadas las entradas que han alcanzado max_retries.      Returns:, sweep_exhausted(), _backoff_seconds(), _get_batch_size(), _get_max_retries() (+66 more)
+Nodes (72): list_unresolved(), Devuelve fallos abiertos (no resueltos y no agotados)., Devuelve fallos abiertos (no resueltos y no agotados).      Args:         limit:, _backoff_seconds(), _get_batch_size(), _get_max_retries(), _is_due(), Reintento automático de extracciones fallidas en la Dead Letter Queue.  Para cad (+64 more)
 
 ### Community 53 - "Community 53"
 Cohesion: 0.03
-Nodes (86): _query_licitaciones_batch(), _query_licitaciones_since(), Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece, Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece, Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece, Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece, Consulta licitaciones para múltiples entradas en una sola query por fecha., Consulta licitaciones para múltiples entradas en una sola query por fecha. (+78 more)
+Nodes (81): Persiste coincidencias en ``pending_digests`` para envío posterior., Persiste coincidencias en ``pending_digests`` para envío posterior., Persiste coincidencias en ``pending_digests`` para envío posterior., Persiste coincidencias en ``pending_digests`` para envío posterior., _store_pending_digests(), add_entry(), generate_atom_feed(), list_entries() (+73 more)
 
 ### Community 54 - "Community 54"
 Cohesion: 0.02
-Nodes (167): baja_de_referencia(), bajas_agregadas(), _filtro_de_base(), Análisis de bajas: presupuesto de licitación vs importe adjudicado.  Responde "¿, Baja media y rango en un segmento concreto (órgano y/o CPV).      Es el dato acc, Baja media y rango en un segmento concreto (órgano y/o CPV).      Es el dato acc, Baja media/mediana-aproximada por dimensión.      ``baja_pct`` = (presupuesto -, Baja media/mediana-aproximada por dimensión.      ``baja_pct`` = (presupuesto - (+159 more)
+Nodes (148): baja_de_referencia(), bajas_agregadas(), _filtro_de_base(), Análisis de bajas: presupuesto de licitación vs importe adjudicado.  Responde "¿, Baja media y rango en un segmento concreto (órgano y/o CPV).      Es el dato acc, Baja media y rango en un segmento concreto (órgano y/o CPV).      Es el dato acc, Baja media/mediana-aproximada por dimensión.      ``baja_pct`` = (presupuesto -, Baja media/mediana-aproximada por dimensión.      ``baja_pct`` = (presupuesto - (+140 more)
 
 ### Community 55 - "Community 55"
 Cohesion: 0.04
@@ -2800,8 +2833,8 @@ Cohesion: 0.08
 Nodes (37): Ejecutado en BackgroundTask: consulta la BD y genera el PDF., Ejecutado en BackgroundTask: consulta la BD y genera el PDF., Ejecutado en BackgroundTask: consulta la BD y genera el PDF., _run_export(), Unit tests for api/routes/exports, me, security, feedback — batch 2b., Cover _gc_store deleting expired keys (line 44)., Cover me.py uncovered lines., Cover security.py uncovered lines. (+29 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.08
-Nodes (63): Licitacion, UpsertResult, Página Competencia — Ecosistema de Partners.  Grafo de co-adjudicaciones, rankin, Ranking de ganadores con filtro por keyword/CPV., Ranking de ganadores con filtro por keyword/CPV., Renderiza un card de perfil de empresa., Renderiza un card de perfil de empresa., Buscador de partners potenciales para subcontratación. (+55 more)
+Cohesion: 0.10
+Nodes (49): Licitacion, UpsertResult, CircuitOpenError, El circuit breaker está abierto — PLACSP está caído., TestProcessDaily, TestSignalPostIngestion, TestUpdateDaily, _adj_df() (+41 more)
 
 ### Community 58 - "Community 58"
 Cohesion: 0.04
@@ -2809,47 +2842,47 @@ Nodes (45): Adding and Modifying Columns, Advanced Sorting, Anti-Patterns to Avo
 
 ### Community 59 - "Community 59"
 Cohesion: 0.02
-Nodes (169): CarteraFiltros(), GanttChart(), GanttChartProps, GanttItem, ActividadEquipo(), FilaActividad(), ItemActividad, VERBO (+161 more)
+Nodes (221): CarteraFiltros(), Comparator(), DetailPanel(), LicitacionDetail, COLUMNS, DetalleColumna, SHORTCUTS, DetalleTabla() (+213 more)
 
 ### Community 60 - "Community 60"
 Cohesion: 0.04
 Nodes (44): 1.1 Avoid Boolean Prop Proliferation, 1.2 Use Compound Components, 1. Component Architecture, 2.1 Decouple State Management from UI, 2.2 Define Generic Context Interfaces for Dependency Injection, 2.3 Lift State into Provider Components, 2. State Management, 3.1 Create Explicit Component Variants (+36 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.03
-Nodes (95): _apply_filters(), _build_cross_geo(), _build_cross_organo(), _build_entries(), _build_evolucion(), _codes_for_label(), CrossGeoEntry, CrossOrganoEntry (+87 more)
+Cohesion: 0.04
+Nodes (87): _apply_filters(), _build_cross_geo(), _build_cross_organo(), _build_entries(), _build_evolucion(), _codes_for_label(), CrossGeoEntry, CrossOrganoEntry (+79 more)
 
 ### Community 62 - "Community 62"
-Cohesion: 0.04
-Nodes (83): Puntúa ``target_df`` con contexto (percentiles, señales) calculado sobre     ``b, Puntúa ``target_df`` con contexto (percentiles, señales) calculado sobre     ``b, score_dataframe(), _patch_dismissals(), _patch_signals(), Tests for the Opportunity scoring service.  Cubre los dos modos del endpoint /ap, Mockea los loaders de señales en el namespace de scoring (donde están bound)., Modo por defecto: ordenado por score desc y truncado a limit. (+75 more)
+Cohesion: 0.05
+Nodes (76): Puntúa ``target_df`` con contexto (percentiles, señales) calculado sobre     ``b, Puntúa ``target_df`` con contexto (percentiles, señales) calculado sobre     ``b, score_dataframe(), _patch_dismissals(), _patch_signals(), Tests for the Opportunity scoring service.  Cubre los dos modos del endpoint /ap, Mockea los loaders de señales en el namespace de scoring (donde están bound)., Modo por defecto: ordenado por score desc y truncado a limit. (+68 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.06
-Nodes (38): _bounded_count_stmt(), bounded_match_counts(), _columna_ausente(), daily_match_counts(), list_rules_rows(), matches_pendientes(), Repository de conteo de matches de reglas de watchlist.  Existe por una razón mu, ``NOT EXISTS`` contra las notificaciones ya escritas para ese usuario.      Se e (+30 more)
+Cohesion: 0.07
+Nodes (35): _bounded_count_stmt(), bounded_match_counts(), _columna_ausente(), daily_match_counts(), list_rules_rows(), matches_pendientes(), Repository de conteo de matches de reglas de watchlist.  Existe por una razón mu, ``NOT EXISTS`` contra las notificaciones ya escritas para ese usuario.      Se e (+27 more)
 
 ### Community 64 - "Community 64"
 Cohesion: 0.04
-Nodes (28): lic_client(), Tests para las mejoras implementadas: SSRF, scopes, RFC 7807, health liveness/re, Key con scope '*' puede acceder a todos los endpoints., Key con scope 'licitaciones:read' puede leer licitaciones., Una BD colgada da 503 "degraded", no un endpoint colgado.          Sin techo de, Los URLs privados/localhost deben rechazarse con 422., Con el lifespan nuevo, la app debe responder correctamente., La cabecera X-Correlation-Id se propaga en la respuesta. (+20 more)
+Nodes (30): lic_client(), Tests para las mejoras implementadas: SSRF, scopes, RFC 7807, health liveness/re, Key con scope '*' puede acceder a todos los endpoints., Key con scope 'licitaciones:read' no puede crear webhooks., Key con scope 'licitaciones:read' puede leer licitaciones., Una BD colgada da 503 "degraded", no un endpoint colgado.          Sin techo de, Los URLs privados/localhost deben rechazarse con 422., Con el lifespan nuevo, la app debe responder correctamente. (+22 more)
 
 ### Community 65 - "Community 65"
 Cohesion: 0.05
 Nodes (42): Agent-Specific Notes, Claude Code / terminal-based agents, CLI Auth Failure, code:bash (# 1. Check for a git remote), code:bash (vercel link --repo --scope <team-slug>), code:bash (vercel link --scope <team-slug>), code:bash (npm install -g vercel), code:bash (vercel login) (+34 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.13
-Nodes (21): Arquitectura, Características principales, code:block1 (┌─────────────────────────┐       ┌──────────────────────┐), code:block2 (tenderflow/), code:bash (git clone https://github.com/Dkalds/TenderFlow.git), code:bash (pip install -e ".[ml]"), code:bash (docker compose up -d), code:dotenv (# ── Entorno ─────────────────────────────────────────────) (+13 more)
+Cohesion: 0.15
+Nodes (20): Arquitectura, Características principales, CI / Calidad de código, code:block1 (┌─────────────────────────┐       ┌──────────────────────┐), code:dotenv (API_HMAC_SECRET=<secreto-hmac-32+-chars>), code:bash (# Linting y formato), code:bash (# Linting y formato), code:block2 (tenderflow/) (+12 more)
 
 ### Community 67 - "Community 67"
-Cohesion: 0.02
-Nodes (243): AuthContext, Contexto de autenticación de una request autenticada.      Attributes:         k, Contexto de autenticación de una request autenticada.      Attributes:         k, Contexto de autenticación de una request autenticada.      Attributes:         k, explain_licitacion(), ExplainFeature, ExplainPayload, ExplainResult (+235 more)
+Cohesion: 0.01
+Nodes (312): AuthContext, Contexto de autenticación de una request autenticada.      Attributes:         k, Contexto de autenticación de una request autenticada.      Attributes:         k, Contexto de autenticación de una request autenticada.      Attributes:         k, AdjudicacionSummary, explain_licitacion(), ExplainFeature, ExplainPayload (+304 more)
 
 ### Community 68 - "Community 68"
 Cohesion: 0.05
 Nodes (44): 5.10 Subscribe to Derived State, 5.11 Use Functional setState Updates, 5.12 Use Lazy State Initialization, 5.13 Use Transitions for Non-Urgent Updates, 5.14 Use useDeferredValue for Expensive Derived Renders, 5.15 Use useRef for Transient Values, 5.1 Calculate Derived State During Rendering, 5.2 Defer State Reads to Usage Point (+36 more)
 
 ### Community 69 - "Community 69"
-Cohesion: 0.03
-Nodes (71): activate_version(), active_model_summary(), feedbacks_since_last_train(), get_active(), list_versions(), Model registry for ML lifecycle (C2).  Persiste metadata de versiones de modelos, Lista las últimas ``limit`` versiones del modelo ``name``., Activa la versión ``version`` del modelo ``name`` (rollback / A/B switch). (+63 more)
+Cohesion: 0.04
+Nodes (55): activate_version(), active_model_summary(), feedbacks_since_last_train(), list_versions(), Model registry for ML lifecycle (C2).  Persiste metadata de versiones de modelos, Lista las últimas ``limit`` versiones del modelo ``name``., Activa la versión ``version`` del modelo ``name`` (rollback / A/B switch)., Resumen del modelo activo para el panel de active learning.      Compone la vers (+47 more)
 
 ### Community 70 - "Community 70"
 Cohesion: 0.28
@@ -2860,8 +2893,8 @@ Cohesion: 0.09
 Nodes (24): nuts_to_ccaa(), Utilidades geográficas compartidas: NUTS3 → Comunidad Autónoma.  Usado por ``scr, Convierte un código NUTS3 (o NUTS2) a su Comunidad Autónoma.      Args:, TestNutsToCcaa, Tests para la función nuts_to_ccaa de shared/geo.py., TestNutsToCcaaShared, Tests para shared/geo.py — mapeo NUTS3 → CCAA., Códigos NUTS2 (4 caracteres) resuelven por prefijo. (+16 more)
 
 ### Community 72 - "Community 72"
-Cohesion: 0.05
-Nodes (58): _baja_real_lote(), LoteDesconocidoError, _media_global_baja(), _media_global_retencion(), _offset_baseline(), _prediccion_baja_lote(), Scoring batch de predicciones (Fase 6, RFC 20260611-2).  Serving = batch nocturn, Cuerpo común de los dos batches de baja; ver sus docstrings. (+50 more)
+Cohesion: 0.03
+Nodes (101): get_active(), Devuelve la versión activa del modelo ``name`` o None si no hay., _edad_horas(), purgar_predicciones_cerradas(), Jobs de modelos predictivos (Fase 6, RFC 20260611-2).  - ``run_scoring``: batch, Horas transcurridas desde ``valor`` (ISO-8601 UTC o ``datetime``).      ``comput, Horas transcurridas desde ``valor`` (ISO-8601 UTC o ``datetime``).      ``comput, Ejecuta el batch de scoring y falla si el modelo de baja no completó.      Falla (+93 more)
 
 ### Community 73 - "Community 73"
 Cohesion: 0.06
@@ -2876,16 +2909,16 @@ Cohesion: 0.05
 Nodes (44): Tests para scheduler/run_update.py — lógica de orquestación del pipeline.  Actua, --backfill sin fallos devuelve 0., --backfill sin fallos devuelve 0., --backfill sin fallos devuelve 0., Si status != ok, no se invoca check_and_notify ni notify., Si status != ok, no se invoca check_and_notify ni notify., --daily con status ok devuelve código 0., Si hay modificaciones, se llama notify con AlertLevel.INFO. (+36 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.07
-Nodes (35): delete_export(), get_export(), Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Elimina un job de exportación de la memoria. (+27 more)
+Cohesion: 0.06
+Nodes (37): delete_export(), get_export(), Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Sondea el estado del job. Devuelve el PDF cuando ``status=done``., Elimina un job de exportación de la memoria. (+29 more)
 
 ### Community 77 - "Community 77"
 Cohesion: 0.06
 Nodes (40): _make_index(), Tests para services.faiss_index.  Cubre: - T1a: cache hit — dos llamadas a _load, load() debe restaurar embedding_version y embedding_model correctamente., load() debe restaurar embedding_version y embedding_model correctamente., load() debe restaurar embedding_version y embedding_model correctamente., save() debe persistir embedding_version y embedding_model en JSON companion., save() debe persistir embedding_version y embedding_model en JSON companion., save() debe persistir embedding_version y embedding_model en JSON companion. (+32 more)
 
 ### Community 78 - "Community 78"
-Cohesion: 0.03
-Nodes (61): _ensure_adjudicaciones_columns(), _ensure_licitaciones_columns(), _ensure_ml_feedback_columns(), init_db(), Inicialización de la conexión a BD.  Desde ADR-021 el esquema lo gestiona **excl, Aplica el schema y migraciones pendientes. Idempotente (no-op si ya init)., Aplica el schema y migraciones pendientes. Idempotente (no-op si ya init)., Asegura que todas las columnas del dataclass Licitacion existen en la tabla. (+53 more)
+Cohesion: 0.06
+Nodes (39): _ensure_adjudicaciones_columns(), _ensure_licitaciones_columns(), _ensure_ml_feedback_columns(), init_db(), Inicialización de la conexión a BD.  Desde ADR-021 el esquema lo gestiona **excl, Aplica el schema y migraciones pendientes. Idempotente (no-op si ya init)., Aplica el schema y migraciones pendientes. Idempotente (no-op si ya init)., Asegura que todas las columnas del dataclass Licitacion existen en la tabla. (+31 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.06
@@ -2896,16 +2929,16 @@ Cohesion: 0.09
 Nodes (27): Borrador, OrganizacionCapacidadCard(), VACIO, Certificacion, Facturacion, filaCertificacion(), filaFacturacion(), filaPerfil() (+19 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.03
-Nodes (81): AjustesPage(), VIEWS, CompetenciaPage(), VIEWS, Cuadro, PerdidasDireccion(), RadarDireccion(), Tarjeta (+73 more)
+Cohesion: 0.02
+Nodes (121): DialogoCierre(), MOTIVOS, RESULTADOS, TODOS, ExportPopoverProps, AlertItem, HoyCounters, LiveItem (+113 more)
 
 ### Community 82 - "Community 82"
 Cohesion: 0.04
 Nodes (49): dependencies, class-variance-authority, clsx, cmdk, d3-array, d3-drag, d3-force, d3-interpolate (+41 more)
 
 ### Community 83 - "Community 83"
-Cohesion: 0.08
-Nodes (19): ccaa_mas_activa(), concentracion_geografica(), load_dataframe(), media_movil(), mes_pico(), Cálculo de estadísticas a partir de la BD., Carga ligera de licitaciones (sin enriquecimiento del dashboard).      Delega en, % del importe total acumulado por las top N CCAA (0-100). (+11 more)
+Cohesion: 0.19
+Nodes (7): ccaa_mas_activa(), concentracion_geografica(), mes_pico(), % del importe total acumulado por las top N CCAA (0-100)., % del importe total acumulado por las top N CCAA (0-100)., % del importe total acumulado por las top N CCAA (0-100)., TestGeoKpis
 
 ### Community 84 - "Community 84"
 Cohesion: 0.07
@@ -2928,16 +2961,16 @@ Cohesion: 0.09
 Nodes (25): paginate_df(), Muestra controles prev/next y devuelve sólo las filas de la página actual., DlqRow, KpiSnapshot, LicitacionRow, NotificationRow, Tipos compartidos entre scraper, scheduler, dashboard y API.  Centraliza TypedDi, Dict que representa una fila de la tabla ``users``.      Campos: id, email, disp (+17 more)
 
 ### Community 89 - "Community 89"
-Cohesion: 0.14
-Nodes (28): delete_flag(), get_flag(), _get_flag_row(), is_enabled(), Feature flags helpers — CRUD sobre tabla ``feature_flags``.  La tabla ya está en, Devuelve True si el flag está activo para el usuario/porcentaje dado.      Lógic, Devuelve el dict del flag o None si no existe., Crea o actualiza un flag. (+20 more)
+Cohesion: 0.11
+Nodes (35): delete_flag(), get_flag(), _get_flag_row(), is_enabled(), list_flags(), Feature flags helpers — CRUD sobre tabla ``feature_flags``.  La tabla ya está en, Devuelve True si el flag está activo para el usuario/porcentaje dado.      Lógic, Devuelve el dict del flag o None si no existe. (+27 more)
 
 ### Community 90 - "Community 90"
-Cohesion: 0.09
-Nodes (36): _extraer_numero_recurso(), _extraer_numero_resolucion(), _fecha_iso(), fetch_index(), main(), parse_index(), Conector TACRC — índice público de resoluciones del Ministerio de Hacienda.  El, Número de resolución, en orden de confianza: prefijo explícito     ('Resolución (+28 more)
+Cohesion: 0.07
+Nodes (45): _extraer_numero_recurso(), _extraer_numero_resolucion(), _fecha_iso(), fetch_index(), main(), parse_index(), Conector TACRC — índice público de resoluciones del Ministerio de Hacienda.  El, Número de resolución, en orden de confianza: prefijo explícito     ('Resolución (+37 more)
 
 ### Community 91 - "Community 91"
 Cohesion: 0.04
-Nodes (78): Extrae fichas tipadas; fail-open por licitación y con gate de gasto., Extrae fichas tipadas; fail-open por licitación y con gate de gasto.      La exc, Extrae fichas tipadas; fail-open por licitación y con gate de gasto.      La exc, _run_facts_phase(), clear_extraction_running(), _counts(), ensure_documents_ready(), extract_fact_sheet() (+70 more)
+Nodes (75): Extrae fichas tipadas; fail-open por licitación y con gate de gasto., Extrae fichas tipadas; fail-open por licitación y con gate de gasto.      La exc, Extrae fichas tipadas; fail-open por licitación y con gate de gasto.      La exc, _run_facts_phase(), clear_extraction_running(), _counts(), ensure_documents_ready(), extract_fact_sheet() (+67 more)
 
 ### Community 92 - "Community 92"
 Cohesion: 0.11
@@ -2945,7 +2978,7 @@ Nodes (24): get_partnership_graph(), PartnerEdge, PartnerGraphFilters, PartnerNo
 
 ### Community 93 - "Community 93"
 Cohesion: 0.04
-Nodes (41): _import_auth(), mock_streamlit(), Tests para api/auth.py — hashing, creación, revocación y scope checks., create_api_key acepta expires_days sin error., create_api_key acepta expires_days sin error., create_api_key acepta expires_days sin error., Una clave nueva en producción no puede quedar sin propietario., Reemplaza las llamadas a streamlit con stubs durante los tests. (+33 more)
+Nodes (44): _import_auth(), mock_streamlit(), Tests para api/auth.py — hashing, creación, revocación y scope checks., Sin API_HMAC_SECRET usa SHA-256 plain., create_api_key acepta expires_days sin error., create_api_key acepta expires_days sin error., create_api_key acepta expires_days sin error., Una clave nueva en producción no puede quedar sin propietario. (+36 more)
 
 ### Community 94 - "Community 94"
 Cohesion: 0.04
@@ -2965,15 +2998,15 @@ Nodes (21): Unit tests for auth_core, tracing, and drift_report — coverage bat
 
 ### Community 98 - "Community 98"
 Cohesion: 0.05
-Nodes (44): 7.10 Hoist RegExp Creation, 7.13 Use Set/Map for O(1) Lookups, 7.1 Avoid Layout Thrashing, 7.2 Build Index Maps for Repeated Lookups, 7.3 Cache Property Access in Loops, 7.4 Cache Repeated Function Calls, 7.5 Cache Storage API Calls, 7.6 Combine Multiple Array Iterations (+36 more)
+Nodes (43): 7.10 Hoist RegExp Creation, 7.12 Use Loop for Min/Max Instead of Sort, 7.13 Use Set/Map for O(1) Lookups, 7.2 Build Index Maps for Repeated Lookups, 7.3 Cache Property Access in Loops, 7.4 Cache Repeated Function Calls, 7.5 Cache Storage API Calls, 7.6 Combine Multiple Array Iterations (+35 more)
 
 ### Community 99 - "Community 99"
 Cohesion: 0.04
 Nodes (50): EmpresaAlias, EmpresaDetail, EmpresaListItem, EmpresaRef, EmpresaReviewItem, EmpresaReviewsResult, empresas_stats(), EmpresasListResult (+42 more)
 
 ### Community 100 - "Community 100"
-Cohesion: 0.05
-Nodes (39): _check_identifiers(), loose_distinct_count(), loose_distinct_strings(), _loose_scan_cte(), Base helpers compartidos por todos los repositories., Número de valores distintos de ``col``, equivalente a ``COUNT(DISTINCT col)``., CTE recursivo que salta de un valor distinto al siguiente por el btree.      El, Valores distintos no vacíos de ``col``, ordenados.      Semilla ``col > ''``: es (+31 more)
+Cohesion: 0.06
+Nodes (28): Devuelve listas de valores únicos para filtros (CCAA, estado, tecnologia, CPV)., Devuelve scores por tecnología desde ``licitacion_tecnologia_score``., Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)., Devuelve listas de valores únicos para filtros (CCAA, estado, tecnologia, CPV)., Devuelve scores por tecnología desde ``licitacion_tecnologia_score``., Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)., Devuelve listas de valores únicos para filtros (CCAA, estado, tecnologia, CPV)., Devuelve listas de valores únicos para filtros (CCAA, estado, tecnologia, CPV). (+20 more)
 
 ### Community 101 - "Community 101"
 Cohesion: 0.22
@@ -2996,8 +3029,8 @@ Cohesion: 0.06
 Nodes (35): 3D Model Processing, 3D Processing, API Calls, App Details, code:bash (belt login), code:bash (# Default (8GB RAM)), code:bash (# AI image generation (for ML-based images)), code:json ({) (+27 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.04
-Nodes (69): _apply_filters(), _build_heatmap(), _build_histogram(), _build_series(), _build_waterfall(), _find_mes_pico(), get_trends(), HeatmapCell (+61 more)
+Cohesion: 0.07
+Nodes (41): _apply_filters(), _build_heatmap(), _build_histogram(), _build_series(), _build_waterfall(), _find_mes_pico(), get_trends(), HeatmapCell (+33 more)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.08
@@ -3008,36 +3041,36 @@ Cohesion: 0.06
 Nodes (35): 6.10 Use React DOM Resource Hints, 6.11 Use useTransition Over Manual Loading States, 6.1 Animate SVG Wrapper Instead of SVG Element, 6.2 CSS content-visibility for Long Lists, 6.3 Hoist Static JSX Elements, 6.4 Optimize SVG Precision, 6.5 Prevent Hydration Mismatch Without Flickering, 6.6 Suppress Expected Hydration Mismatches (+27 more)
 
 ### Community 109 - "Community 109"
-Cohesion: 0.15
-Nodes (17): api_key(), _auth(), Rutas /api/v1/radar/dismissals — triaje del Radar persistido por usuario.  El de, El descarte persiste: es el P0 que este endpoint vino a cerrar.      Antes vivía, Aislamiento por user_key: el repositorio se defiende solo., Postgres rechaza el byte NUL en columnas de texto con un ``DataError``.      Sin, Override de conftest: vincula la key a un usuario real.      ``require_any_auth`, Descartar, verlo listado y deshacerlo. (+9 more)
+Cohesion: 0.17
+Nodes (15): _auth(), Rutas /api/v1/radar/dismissals — triaje del Radar persistido por usuario.  El de, El descarte persiste: es el P0 que este endpoint vino a cerrar.      Antes vivía, Aislamiento por user_key: el repositorio se defiende solo., Postgres rechaza el byte NUL en columnas de texto con un ``DataError``.      Sin, Descartar, verlo listado y deshacerlo., Una señal de PLACSP con '/' se puede descartar y también recuperar.      El POST, Descartar dos veces no duplica: la PK es (user_key, id_externo). (+7 more)
 
 ### Community 110 - "Community 110"
 Cohesion: 0.06
 Nodes (34): Algorithm Selection Guide, Choose based on:, Classification, code:python (from sklearn.linear_model import LinearRegression), code:python (from sklearn.ensemble import RandomForestClassifier), code:python (from sklearn.ensemble import GradientBoostingClassifier), code:python (from sklearn.ensemble import HistGradientBoostingClassifier), code:python (from sklearn.ensemble import AdaBoostClassifier) (+26 more)
 
 ### Community 111 - "Community 111"
-Cohesion: 0.05
-Nodes (61): normaliza_codigo(), Código de lista controlada CODICE listo para comparar: sin ceros a la izquierda., ``[{nombre, count, importe}]`` de un órgano, por número de adjudicaciones., Mediana de días entre publicar la licitación y adjudicarla, o ``None``., La adjudicación de mayor importe de cada licitación pedida, dentro del órgano., build_licitaciones_where(), _escape_like(), _in_clause() (+53 more)
+Cohesion: 0.04
+Nodes (84): _ambito_como_filtros(), El ámbito de la organización (F6.1), traducido al filtro del universo.      Es e, El ámbito de la organización (F6.1), traducido al filtro del universo.      Es e, normaliza_codigo(), Código de lista controlada CODICE listo para comparar: sin ceros a la izquierda., build_licitaciones_where(), _in_clause(), LicitacionesFilters (+76 more)
 
 ### Community 112 - "Community 112"
 Cohesion: 0.09
-Nodes (25): ensure_downloaded(), Clasificador ML para detección de licitaciones SAP.  Complementa el filtro por k, resolve_artifact(), ensure_downloaded(), _download_release_asset(), Descarga ``asset_name`` de la última Release a ``dest``. True si lo logró., Descarga ``asset_name`` de la última Release a ``dest``. True si lo logró., pinned_https_request() (+17 more)
+Nodes (27): ensure_downloaded(), load(), Clasificador ML para detección de licitaciones SAP.  Complementa el filtro por k, resolve_artifact(), ensure_downloaded(), resolve_artifact(), _download_release_asset(), Descarga ``asset_name`` de la última Release a ``dest``. True si lo logró. (+19 more)
 
 ### Community 113 - "Community 113"
-Cohesion: 0.10
-Nodes (18): _append_event(), _event_key_exists(), _get_scoped(), PursuitConcurrencyError, Persistencia transaccional de pursuits y su ledger append-only., Crea idempotentemente y registra exactamente un evento inicial.          La unid, Crea idempotentemente y registra exactamente un evento inicial.          La unid, Crea idempotentemente y registra exactamente un evento inicial.          La unid (+10 more)
+Cohesion: 0.06
+Nodes (31): _append_event(), _event_key_exists(), _get_scoped(), PursuitConcurrencyError, PursuitRepository, Persistencia transaccional de pursuits y su ledger append-only., Crea idempotentemente y registra exactamente un evento inicial.          La unid, Crea idempotentemente y registra exactamente un evento inicial.          La unid (+23 more)
 
 ### Community 114 - "Community 114"
-Cohesion: 0.04
-Nodes (62): Base types for the scheduler job registry., Declarative description of a periodic scheduler job.      Attributes:         na, Declarative description of a periodic scheduler job.      Attributes:         na, ScheduledJob, build_default_registry(), Scheduler job registry — declarative definition of all periodic jobs.  Usage::, Return the ordered list of all scheduled jobs with their defaults.      The orde, arrancar_en_hilo() (+54 more)
+Cohesion: 0.07
+Nodes (41): arrancar_en_hilo(), CronPlane, _holder(), jobs_del_plano(), plano_activo(), plano_declarado(), Plano de cron dentro del worker de Render (ADR-033).  Qué problema resuelve ----, Valor de ``SCHEDULER_PLANE``, o cadena vacía si nadie lo puso. (+33 more)
 
 ### Community 115 - "Community 115"
 Cohesion: 0.07
 Nodes (34): build_partnership_graph(), company_profile(), _detect_communities(), Análisis de ecosistema de partners y grafo de adjudicatarios.  Funciones para co, Asigna un id de comunidad a cada nodo por modularidad (Louvain).      Devuelve `, Asigna un id de comunidad a cada nodo por modularidad (Louvain).      Devuelve `, Ranking de partners potenciales filtrado por keywords/CCAA.      Filtra adjudica, Ranking de partners potenciales filtrado por keywords/CPV/CCAA.      ``keywords` (+26 more)
 
 ### Community 116 - "Community 116"
-Cohesion: 0.12
-Nodes (27): current_version(), _ensure_version_table(), Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive (+19 more)
+Cohesion: 0.13
+Nodes (25): Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, rollback(), _fresh_conn() (+17 more)
 
 ### Community 117 - "Community 117"
 Cohesion: 0.08
@@ -3049,43 +3082,43 @@ Nodes (32): _make_atom_feed(), _make_entry_with_adjudicacion(), _make_entry_with
 
 ### Community 119 - "Community 119"
 Cohesion: 0.03
-Nodes (99): inicio_ventana_tendencia(), Día 1 del mes que abre una ventana de ``meses`` meses terminada en el actual., datetime, _Acumuladores, _ancla(), _baja_agregada(), _banda_importe(), _cargar_pares() (+91 more)
+Nodes (87): datetime, _Acumuladores, _ancla(), _baja_agregada(), _banda_importe(), _cargar_pares(), construir_dataset_baja(), _cpv4() (+79 more)
 
 ### Community 120 - "Community 120"
-Cohesion: 0.10
-Nodes (26): _capture(), _normalizar(), La superficie pública no puede servir dos veces el mismo contrato.  Auditoría de, Ninguna puede volver a resolver la canónica por su cuenta.      Es el invariante, El anti-join y la agrupación no pueden volver por la puerta de atrás.      Los d, Asimetría deliberada: toda URL del sitemap tiene ficha, no al revés.      Si ``f, El fallo silencioso: un ``%s`` de más desplaza todos los valores siguientes., Un ``%`` suelto en el fragmento rompería psycopg, no solo el conteo de ``%s``. (+18 more)
+Cohesion: 0.03
+Nodes (92): periodo_canonico(), Gemelo Python de :func:`periodo_publicacion_sql`.      Espeja ``coalesce`` y no, Gemelo Python de :func:`periodo_publicacion_sql`.      Espeja ``coalesce`` y no, Gemelo Python de :func:`periodo_publicacion_sql`.      Espeja ``coalesce`` y no, _clave_de_fila(), medir_solape(), normalize_titulo(), _pick_canonical() (+84 more)
 
 ### Community 121 - "Community 121"
 Cohesion: 0.07
-Nodes (32): _apply_v21_api_keys_columns(), _apply_v23_ml_proba(), _apply_v25_api_keys_prefix_expiry(), _apply_v26_audit_hash_chain(), _apply_v28_api_key_tiers(), Sistema simple de migraciones basado en tabla ``schema_version``.  Cada migració, Añade columnas scopes y user_id a api_keys si no existen (idempotente)., Añade columna ml_proba a licitaciones si no existe (idempotente).      Uses a tr (+24 more)
+Nodes (31): _apply_v21_api_keys_columns(), _apply_v23_ml_proba(), _apply_v25_api_keys_prefix_expiry(), _apply_v26_audit_hash_chain(), _apply_v28_api_key_tiers(), Añade columnas scopes y user_id a api_keys si no existen (idempotente)., Añade columna ml_proba a licitaciones si no existe (idempotente).      Uses a tr, Añade columnas scopes y user_id a api_keys si no existen (idempotente). (+23 more)
 
 ### Community 122 - "Community 122"
 Cohesion: 0.04
-Nodes (44): _escribir_local(), _json_default(), _ks_test(), _load_window(), _persistir_resumen(), Drift detection semanal — compara distribución de inputs recientes vs training s, Genera informe de drift. Devuelve resumen con flags de alerta., Lo que se guarda en ``ops_events``: pequeño, plano y suficiente.      El informe (+36 more)
+Nodes (52): _escribir_local(), _json_default(), _ks_test(), _load_window(), _persistir_resumen(), _prediction_drift(), Drift detection semanal — compara distribución de inputs recientes vs training s, Genera informe de drift. Devuelve resumen con flags de alerta. (+44 more)
 
 ### Community 123 - "Community 123"
 Cohesion: 0.05
 Nodes (36): 3.10 Use after() for Non-Blocking Operations, 3.1 Authenticate Server Actions Like API Routes, 3.2 Avoid Duplicate Serialization in RSC Props, 3.3 Avoid Shared Module State for Request Data, 3.4 Cross-Request LRU Caching, 3.5 Hoist Static I/O to Module Level, 3.6 Minimize Serialization at RSC Boundaries, 3.7 Parallel Data Fetching with Component Composition (+28 more)
 
 ### Community 124 - "Community 124"
-Cohesion: 0.04
-Nodes (59): correlation_id_middleware(), lifespan(), _prometheus_metrics(), API REST FastAPI — punto de entrada.  Expone los endpoints bajo ``/api/v1/``:  *, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Rechaza requests con body > 1 MB usando raw ASGI.          Comprueba Content-Len (+51 more)
+Cohesion: 0.03
+Nodes (69): _BodyTooLargeError, correlation_id_middleware(), _MaxBodyMiddleware, _prometheus_metrics(), API REST FastAPI — punto de entrada.  Expone los endpoints bajo ``/api/v1/``:  *, Rechaza requests con body > max_bytes.          Comprueba Content-Length (fast p, Rechaza requests con body > max_bytes antes de procesarlos., Rechaza requests con body > max_bytes.          Comprueba Content-Length (fast p (+61 more)
 
 ### Community 125 - "Community 125"
 Cohesion: 0.07
 Nodes (29): API Response Format, Authentication & Authorization, Caching Strategies, CI/CD Integration, code:typescript (// di-container.ts), code:typescript (// config/database.ts), code:typescript (// config/mongoose.ts), code:typescript (// services/order.service.ts) (+21 more)
 
 ### Community 126 - "Community 126"
-Cohesion: 0.05
-Nodes (32): enqueue_bulk_download(), Descarga el bulk XML de un mes completo en background., Descarga el bulk XML de un mes completo en background., Descarga el bulk XML de un mes completo en background., Inline fallback (dramatiq not installed)., Inline fallback (dramatiq not installed)., Inline fallback (dramatiq not installed)., Descarga el bulk XML de un mes completo en background. (+24 more)
+Cohesion: 0.04
+Nodes (48): _iter_atom_entries(), Conectores PLACSP sobre el contrato Connector (ADR-009, F2).  Dos conectores ind, Descarga el ZIP y emite entries XML como ``RawNotice``.          El cursor se ig, Descarga el ZIP y emite entries XML como ``RawNotice``.          El cursor se ig, Descarga el ZIP y emite entries XML como ``RawNotice``.          El cursor se ig, Parsea un XML ATOM y emite sus ``<entry>`` como elementos lxml.      Replica el, Parsea un XML ATOM y emite sus ``<entry>`` como elementos lxml.      Replica el, Parsea un XML ATOM y emite sus ``<entry>`` como elementos lxml.      Replica el (+40 more)
 
 ### Community 127 - "Community 127"
-Cohesion: 0.05
-Nodes (53): append_event(), get_events(), get_events_by_type(), Reconstruye el estado de la watchlist de un usuario reproduciendo sus eventos., Devuelve el feedback efectivo reconstruido desde eventos (el último por expedien, Devuelve todos los eventos de un agregado, ordenados por created_at., Devuelve eventos de un tipo concreto, opcionalmente desde una fecha ISO., Añade un evento al log. Devuelve el ID del evento creado. (+45 more)
+Cohesion: 0.07
+Nodes (37): append_event(), get_events(), Reconstruye el estado de la watchlist de un usuario reproduciendo sus eventos., Devuelve todos los eventos de un agregado, ordenados por created_at., Añade un evento al log. Devuelve el ID del evento creado., Reconstruye el estado de la watchlist de un usuario reproduciendo sus eventos., Reconstruye el estado de la watchlist de un usuario reproduciendo sus eventos., Reconstruye el estado de la watchlist de un usuario reproduciendo sus eventos. (+29 more)
 
 ### Community 128 - "Community 128"
-Cohesion: 0.02
-Nodes (153): delete_user_profile(), get_own_user_profile(), get_user_profile(), Repositorio de perfiles de usuario para scoring personalizado (Feature B).  Cada, Crea o actualiza el perfil del usuario.      ``organization_id`` sin default: es, Crea o actualiza el perfil del usuario.      ``organization_id`` sin default: es, Crea o actualiza el perfil del usuario.      ``organization_id`` sin default: es, Elimina el perfil del usuario. Devuelve True si existia. (+145 more)
+Cohesion: 0.05
+Nodes (53): export_my_data(), Exporta watchlist, reglas, perfil, notificaciones, feedback, API keys y     audi, Exporta watchlist, reglas, perfil, notificaciones, feedback, API keys y     audi, Exporta watchlist, feedback, API keys y audit log en un ZIP JSON.      La export, Exporta watchlist, feedback, API keys y audit log en un ZIP JSON.      La export, Exporta watchlist, feedback, API keys y audit log en un ZIP JSON.      La export, Exporta watchlist, feedback, API keys y audit log en un ZIP JSON.      La export, Exporta watchlist, feedback, API keys y audit log en un ZIP JSON.      La export (+45 more)
 
 ### Community 129 - "Community 129"
 Cohesion: 0.06
@@ -3096,8 +3129,8 @@ Cohesion: 0.06
 Nodes (35): Smoke tests para detectar incompatibilidades del backend Turso/Hrana.  No requie, Smoke test del servicio de auth: key inexistente devuelve None., Regresión: ``init_db()`` no debe fallar si ``ml_feedback`` ya existe sin     la, Smoke test del helper síncrono del middleware /metrics., Smoke test del helper síncrono del middleware /metrics., End-to-end mínimo del servicio de auth (sin pasar por FastAPI)., End-to-end mínimo del servicio de auth (sin pasar por FastAPI)., Con override de tests, nunca se considera backend Turso. (+27 more)
 
 ### Community 131 - "Community 131"
-Cohesion: 0.04
-Nodes (64): clave_canonica_sql(), componentes_republicacion_sql(), cpv4_sql(), fila_canonica_sql(), organo_normalizado_sql(), periodo_publicacion_sql(), Órgano de contratación plegado, o ``NULL`` si no hay órgano.      El ``NULL`` es, CPV a 4 dígitos, o cadena vacía si no hay CPV utilizable.      Misma granularida (+56 more)
+Cohesion: 0.02
+Nodes (129): _calificada(), clave_canonica_agrupable_sql(), clave_canonica_sql(), clave_republicacion(), columna_nucleo(), columna_nucleo_sql(), componentes_republicacion(), componentes_republicacion_sql() (+121 more)
 
 ### Community 132 - "Community 132"
 Cohesion: 0.12
@@ -3117,19 +3150,19 @@ Nodes (13): Tests para las mejoras de hardening: request size limits, cursor val
 
 ### Community 136 - "Community 136"
 Cohesion: 0.05
-Nodes (62): actividad_de_organizacion(), _ajustes(), construir_cuadro(), CorteMetrica, cuadro_de_direccion(), direccion_resuelta(), exigir_direccion(), ItemActividad (+54 more)
+Nodes (55): actividad_de_organizacion(), _ajustes(), construir_cuadro(), CorteMetrica, cuadro_de_direccion(), direccion_resuelta(), exigir_direccion(), ItemActividad (+47 more)
 
 ### Community 137 - "Community 137"
-Cohesion: 0.02
-Nodes (139): PermissionError, accept_invitation_token(), accept_invitations_for_email(), add_member_by_email(), ajustes_guardados(), _aplicar_plantillas_de(), borrar_organizacion(), create_invitation() (+131 more)
+Cohesion: 0.03
+Nodes (46): borrar_organizacion(), OrganizationLifecycleError, OrganizationPermissionError, La membresía existe, pero su rol no permite la operación., La membresía existe, pero su rol no permite la operación., Una transición del ciclo de vida que no se puede hacer., Escribe la configuración. Sólo owner/admin: es la estrategia del equipo.      La, Salida voluntaria de un miembro (C2.2).      El owner **no puede irse sin traspa (+38 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.06
-Nodes (37): check_baja_temeraria(), check_importe_anomalo(), check_spike_publicaciones(), _query_adjudicaciones_recientes(), _query_historico_organo(), _query_licitaciones_nuevas_hoy(), _query_volumen_diario_30d(), _query_volumen_hoy() (+29 more)
+Cohesion: 0.05
+Nodes (48): _dias_restantes_sql(), Días restantes hasta el vencimiento, como entero., _create_sqlite_connection(), is_postgres_backend(), Crea una nueva conexión a la BD SQLite/Turso según la configuración actual., Devuelve (creando si es necesario) el pool de escritura., Crea una nueva conexión a la BD SQLite/Turso según la configuración actual., Crea una nueva conexión a la BD SQLite/Turso según la configuración actual. (+40 more)
 
 ### Community 139 - "Community 139"
 Cohesion: 0.13
-Nodes (24): _fresh_conn(), _indexes(), Rollback tests for db.migrations.  For each reversible version: apply all migrat, v11 creates only an index (no table). Verify the index is removed but     failed, v11 creates only an index (no table). Verify the index is removed but     failed, In a memory test DB, licitaciones doesn't exist so FTS is never built.     Rollb, In a memory test DB, licitaciones doesn't exist so FTS is never built.     Rollb, Rolling back only v13 must not touch v12 and below. (+16 more)
+Nodes (23): _fresh_conn(), _indexes(), Rollback tests for db.migrations.  For each reversible version: apply all migrat, v11 creates only an index (no table). Verify the index is removed but     failed, v11 creates only an index (no table). Verify the index is removed but     failed, In a memory test DB, licitaciones doesn't exist so FTS is never built.     Rollb, In a memory test DB, licitaciones doesn't exist so FTS is never built.     Rollb, Rolling back only v13 must not touch v12 and below. (+15 more)
 
 ### Community 140 - "Community 140"
 Cohesion: 0.09
@@ -3140,24 +3173,24 @@ Cohesion: 0.10
 Nodes (22): _load_multilabel_clf(), _load_registry(), _load_uncertainty_zone(), _ml_label_probas(), Página Admin — Active Learning.  Revisión humana de licitaciones en zona de ince, Persiste etiqueta humana vía FeedbackRepository.      ``relevante=True`` sólo cu, Persiste etiqueta humana vía FeedbackRepository.      ``relevante=True`` sólo cu, Carga licitaciones con ml_proba en zona de incertidumbre, ordenadas por importe (+14 more)
 
 ### Community 142 - "Community 142"
-Cohesion: 0.07
-Nodes (55): Todas las variables de entorno del proyecto, validadas al arrancar., Todas las variables de entorno del proyecto, validadas al arrancar., Todas las variables de entorno del proyecto, validadas al arrancar., Todas las variables de entorno del proyecto, validadas al arrancar., Todas las variables de entorno del proyecto, validadas al arrancar., Settings, ResumenPregenSettings, make_settings() (+47 more)
+Cohesion: 0.05
+Nodes (68): Todas las variables de entorno del proyecto, validadas al arrancar., Todas las variables de entorno del proyecto, validadas al arrancar., Todas las variables de entorno del proyecto, validadas al arrancar., Todas las variables de entorno del proyecto, validadas al arrancar., Todas las variables de entorno del proyecto, validadas al arrancar., Settings, ResumenPregenSettings, make_settings() (+60 more)
 
 ### Community 143 - "Community 143"
 Cohesion: 0.04
-Nodes (67): asistente_feedback_peores(), asistente_feedback_resumen(), AsistenteFeedbackRequest, AsistenteFeedbackResponse, AsistenteFeedbackResumen, AsistenteModoStats, AsistentePeorPregunta, _build_queue_items() (+59 more)
+Nodes (68): asistente_feedback_peores(), asistente_feedback_resumen(), AsistenteFeedbackRequest, AsistenteFeedbackResponse, AsistenteFeedbackResumen, AsistenteModoStats, AsistentePeorPregunta, _build_queue_items() (+60 more)
 
 ### Community 144 - "Community 144"
-Cohesion: 0.11
-Nodes (20): detect_drift(), _fetch_recent_texts(), Concept drift detector — detecta términos emergentes no cubiertos por SAP_KEYWOR, Extrae tokens alfanuméricos de 3+ caracteres, minúsculas., Obtiene títulos y descripciones de licitaciones de los últimos N días., Detecta términos emergentes no presentes en SAP_KEYWORDS.      Args:         day, Detecta términos emergentes no presentes en SAP_KEYWORDS.      Args:         day, Ejecuta el análisis de drift y opcionalmente envía alerta por email.      Diseña (+12 more)
+Cohesion: 0.21
+Nodes (11): detect_drift(), Detecta términos emergentes no presentes en SAP_KEYWORDS.      Args:         day, Detecta términos emergentes no presentes en SAP_KEYWORDS.      Args:         day, Tests para scheduler/concept_drift.py — detección de concept drift., test_detects_unknown_terms(), test_doc_freq_returned(), test_empty_texts(), test_excludes_known_terms() (+3 more)
 
 ### Community 145 - "Community 145"
-Cohesion: 0.13
-Nodes (33): load_uncertainty_zone(), Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)., Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)., Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)., Búsqueda avanzada con criterios complejos (multi-CCAA, rangos de importe...)., Búsqueda avanzada con criterios complejos (multi-CCAA, rangos de importe...)., Búsqueda avanzada con criterios complejos (multi-CCAA, rangos de importe...)., Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning). (+25 more)
+Cohesion: 0.05
+Nodes (57): accept_invitation_token(), accept_invitations_for_email(), ajustes_guardados(), _aplicar_plantillas_de(), create_invitation(), get_active_organization(), get_settings(), _invitation_signature_valid() (+49 more)
 
 ### Community 146 - "Community 146"
-Cohesion: 0.06
-Nodes (39): check_rate_limit_db(), cleanup_expired(), clear_login_attempts(), clear_mfa_attempts(), _connect(), is_login_locked_out(), is_mfa_locked_out(), Rate limiting persistente basado en SQLite.  Complementa los controles de rate l (+31 more)
+Cohesion: 0.07
+Nodes (35): cleanup_expired(), clear_login_attempts(), clear_mfa_attempts(), _connect(), is_login_locked_out(), is_mfa_locked_out(), Rate limiting persistente basado en SQLite.  Complementa los controles de rate l, Comprueba si un cliente está bloqueado por intentos fallidos.      Args: (+27 more)
 
 ### Community 147 - "Community 147"
 Cohesion: 0.15
@@ -3168,32 +3201,32 @@ Cohesion: 0.09
 Nodes (30): configure_logging(), get_logger(), Configura structlog + logging stdlib para toda la app.      Idempotente: llamar, Configura structlog + logging stdlib para toda la app.      Idempotente: llamar, Configura structlog + logging stdlib para toda la app.      Idempotente: llamar, Configura structlog + logging stdlib para toda la app.      Idempotente: llamar, _find_event(), Si un valor coincide con el contenido de una env var sensible, se redacta. (+22 more)
 
 ### Community 149 - "Community 149"
-Cohesion: 0.10
-Nodes (8): licitacion_popover(), Componente de preview rápido de una licitación vía popover., Botón ☰ que abre un popover con el resumen de la licitación.      Args:, Tests para safe_url de dashboard/utils/security.py., TestSafeUrlSecurity, TestSafeUrl, Devuelve la URL solo si usa esquema http/https; en caso contrario ``None``., safe_url()
+Cohesion: 0.12
+Nodes (5): Tests para safe_url de dashboard/utils/security.py., TestSafeUrlSecurity, TestSafeUrl, Devuelve la URL solo si usa esquema http/https; en caso contrario ``None``., safe_url()
 
 ### Community 150 - "Community 150"
-Cohesion: 0.07
-Nodes (84): _a_novedad(), _campos(), desde_ultima_visita(), Novedad, NovedadesDesdeUltimaVisita, F5.4 — qué ha cambiado desde tu última visita.  Quien entra una vez al día no qu, ``changed_fields`` viene como JSON o como CSV según la época., El diff personal desde ``last_seen``.      Sin ``last_seen`` —primera visita, o (+76 more)
+Cohesion: 0.10
+Nodes (57): _abrir_oportunidad(), _documento(), _evento_fechado(), _hace(), _historial(), _iso(), _licitacion(), _por_expediente() (+49 more)
 
 ### Community 151 - "Community 151"
-Cohesion: 0.07
-Nodes (49): _apply_filters(), _box(), _cluster_items(), ClusterEntry, ClusterItem, ClustersResult, _ctfidf_labels(), _dominant() (+41 more)
+Cohesion: 0.05
+Nodes (62): _apply_filters(), _box(), _cluster_items(), ClusterEntry, ClusterItem, ClustersFilters, ClustersResult, _ctfidf_labels() (+54 more)
 
 ### Community 152 - "Community 152"
-Cohesion: 0.11
-Nodes (19): compute_kpis(), _last_12m_series(), _load_precomputed_kpis(), KPI bar del dashboard — extraído de app.py para reutilización y tests., Adapta un snapshot global al contrato de ``compute_kpis``.      Solo se usa si e, Devuelve la serie agregada por mes de los últimos 12 meses.      Si `value_col`, Renderiza la barra de 5 KPIs con tooltips, sparklines e iconos SVG., Calcula los KPIs principales sobre el dataframe filtrado.      Usa Polars para l (+11 more)
+Cohesion: 0.13
+Nodes (17): compute_kpis(), _last_12m_series(), _load_precomputed_kpis(), KPI bar del dashboard — extraído de app.py para reutilización y tests., Adapta un snapshot global al contrato de ``compute_kpis``.      Solo se usa si e, Devuelve la serie agregada por mes de los últimos 12 meses.      Si `value_col`, Renderiza la barra de 5 KPIs con tooltips, sparklines e iconos SVG., Calcula los KPIs principales sobre el dataframe filtrado.      Usa Polars para l (+9 more)
 
 ### Community 153 - "Community 153"
-Cohesion: 0.09
-Nodes (37): derive_all_events(), derive_new_events(), eventos_recientes(), Backfill: itera lotes hasta agotar el historial pendiente., Backfill: itera lotes hasta agotar el historial pendiente., Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard., Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard., Deriva eventos de las filas de historial aún no procesadas.      Devuelve el núm (+29 more)
+Cohesion: 0.07
+Nodes (49): _classify(), derive_all_events(), derive_new_events(), eventos_recientes(), Eventos de contrato derivados de ``licitaciones_history`` (Fase 4).  ``licitacio, Backfill: itera lotes hasta agotar el historial pendiente., Backfill: itera lotes hasta agotar el historial pendiente., Línea de tiempo completa de un contrato.      Une los eventos materializados con (+41 more)
 
 ### Community 154 - "Community 154"
-Cohesion: 0.07
-Nodes (29): Desactiva una API Key por su hash. Devuelve True si se encontró., Desactiva una API Key por su hash. Devuelve True si se encontró., Desactiva una API Key por su hash. Devuelve True si se encontró., Desactiva una API Key por su hash. Devuelve True si se encontró., revoke_api_key(), list_api_keys(), Lista todas las API keys (sin exponer el hash)., Lista todas las API keys (sin exponer el hash). (+21 more)
+Cohesion: 0.05
+Nodes (43): Desactiva una API Key por su hash. Devuelve True si se encontró., Desactiva una API Key por su hash. Devuelve True si se encontró., Desactiva una API Key por su hash. Devuelve True si se encontró., Desactiva una API Key por su hash. Devuelve True si se encontró., revoke_api_key(), _github_public_key(), leaked_key_notification(), Endpoint registrado en GitHub Secret Scanning Partner Program.      GitHub envía (+35 more)
 
 ### Community 155 - "Community 155"
-Cohesion: 0.05
-Nodes (39): PlacspAtomConnector, Conector incremental sobre el feed ATOM en vivo de PLACE.      Implementa el con, Pagina el feed ATOM y emite entries como ``RawNotice``.          El ``payload``, Cursor con el timestamp más nuevo visto + etag/last_modified., Cursor con el timestamp más nuevo visto + etag/last_modified., Cursor con el timestamp más nuevo visto + etag/last_modified., Conector incremental sobre el feed ATOM en vivo de PLACE.      Implementa el con, Sin cursor propio, el conector retoma desde place_live_atom. (+31 more)
+Cohesion: 0.03
+Nodes (66): PlacspAtomConnector, PlacspBulkConnector, _PlacspParseCore, Conector incremental sobre el feed ATOM en vivo de PLACE.      Implementa el con, Pagina el feed ATOM y emite entries como ``RawNotice``.          El ``payload``, Cursor con el timestamp más nuevo visto + etag/last_modified., Cursor con el timestamp más nuevo visto + etag/last_modified., Conector para descarga de ZIPs mensuales de PLACE.      Implementa el contrato ` (+58 more)
 
 ### Community 156 - "Community 156"
 Cohesion: 0.11
@@ -3204,36 +3237,36 @@ Cohesion: 0.05
 Nodes (32): _patch_fast_stream(), Tests para api/routes/stream.py — GET /api/v1/licitaciones/stream (B12).  Cubre:, Respuesta tiene Content-Type text/event-stream., El primer evento emitido es heartbeat., El stream termina con evento close., Last-Event-ID válido es aceptado sin error., Last-Event-ID no numérico no causa error (fallback a 0.0)., ?batch= es aceptado sin error. (+24 more)
 
 ### Community 158 - "Community 158"
-Cohesion: 0.05
-Nodes (38): configure_tracing(), Decorador que envuelve una función con un span OpenTelemetry.      Args:, Decorador que envuelve una función con un span OpenTelemetry.      Args:, Decorador que envuelve una función con un span OpenTelemetry.      Args:, Configura el TracerProvider global.      Si ``OTEL_EXPORTER_OTLP_ENDPOINT`` no e, Configura el TracerProvider global.      Si ``OTEL_EXPORTER_OTLP_ENDPOINT`` no e, traced(), Tests para observability/tracing.py — modo NoOp y decorador @traced. (+30 more)
+Cohesion: 0.04
+Nodes (50): configure_tracing(), Decorador que envuelve una función con un span OpenTelemetry.      Args:, Decorador que envuelve una función con un span OpenTelemetry.      Args:, Decorador que envuelve una función con un span OpenTelemetry.      Args:, Redacta valores sensibles antes de enviarlos como atributo de span OTel.      Re, Configura el TracerProvider global.      Si ``OTEL_EXPORTER_OTLP_ENDPOINT`` no e, Configura el TracerProvider global.      Si ``OTEL_EXPORTER_OTLP_ENDPOINT`` no e, _redact_span_text() (+42 more)
 
 ### Community 159 - "Community 159"
 Cohesion: 0.06
 Nodes (32): devDependencies, @axe-core/playwright, eslint, eslint-config-next, eslint-plugin-jsx-a11y, jsdom, @next/bundle-analyzer, openapi-typescript (+24 more)
 
 ### Community 160 - "Community 160"
-Cohesion: 0.13
-Nodes (19): Unit tests for saved_filters, analytics, drift_monitor, and queue modules., test_crit_triggers_notify(), test_delete_calls_execute(), test_import_error_psi(), test_list_returns_dicts(), test_notify_import_error_handled(), test_ok_no_alert(), test_save_filter_calls_execute() (+11 more)
+Cohesion: 0.11
+Nodes (24): DriftStatus, TestDriftStatus, Unit tests for saved_filters, analytics, drift_monitor, and queue modules., test_crit_triggers_notify(), test_delete_calls_execute(), test_import_error_psi(), test_list_returns_dicts(), test_notify_import_error_handled() (+16 more)
 
 ### Community 161 - "Community 161"
-Cohesion: 0.08
-Nodes (38): generate_csv(), generate_excel(), Export service — CSV, Excel, PDF generation from licitaciones data., Generate CSV bytes with UTF-8 BOM and semicolon delimiter for Excel compat., Generate .xlsx bytes using openpyxl engine via pandas., Generate CSV bytes with UTF-8 BOM and semicolon delimiter for Excel compat., Generate .xlsx bytes using openpyxl engine via pandas., Tests unitarios para services/exports (CSV/Excel/filename).  Funciones puras de (+30 more)
+Cohesion: 0.07
+Nodes (40): generate_csv(), generate_excel(), Export service — CSV, Excel, PDF generation from licitaciones data., Generate CSV bytes with UTF-8 BOM and semicolon delimiter for Excel compat., Generate .xlsx bytes using openpyxl engine via pandas., Generate CSV bytes with UTF-8 BOM and semicolon delimiter for Excel compat., Generate .xlsx bytes using openpyxl engine via pandas., Tests unitarios para services/exports (CSV/Excel/filename).  Funciones puras de (+32 more)
 
 ### Community 162 - "Community 162"
 Cohesion: 0.01
-Nodes (133): licitaciones_publicadas_desde(), licitaciones_seguidas_abiertas(), Candidatas a la pre-generación nocturna del resumen IA (ADR-022: el SQL, aquí)., Abiertas que alguien convirtió en oportunidad o marcó como favorita.      Oportu, Abiertas publicadas en o después de ``desde_iso``, las más recientes primero., empresa_key_sql(), iso_guard(), Clave de competidor de una fila de ``adjudicaciones``.      No es una columna: ` (+125 more)
+Nodes (126): empresa_key_sql(), iso_guard(), Clave de competidor de una fila de ``adjudicaciones``.      No es una columna: `, Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna)., Clave de competidor de una fila de ``adjudicaciones``.      No es una columna: `, Clave de competidor de una fila de ``adjudicaciones``.      No es una columna: `, Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna)., Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna). (+118 more)
 
 ### Community 163 - "Community 163"
-Cohesion: 0.07
-Nodes (34): cosine_similarity(), embeddings_available(), encode_texts(), _has_sentence_transformers(), _load_model(), Embeddings semánticos para similitud de licitaciones.  Usa sentence-transformers, Encuentra textos del corpus similares a la query.      Args:         query: Text, Encuentra textos del corpus similares a la query.      Args:         query: Text (+26 more)
+Cohesion: 0.08
+Nodes (28): cosine_similarity(), embeddings_available(), encode_texts(), _has_sentence_transformers(), _load_model(), Embeddings semánticos para similitud de licitaciones.  Usa sentence-transformers, Encuentra textos del corpus similares a la query.      Args:         query: Text, Encuentra textos del corpus similares a la query.      Args:         query: Text (+20 more)
 
 ### Community 164 - "Community 164"
 Cohesion: 0.08
 Nodes (12): Tests para la API REST FastAPI., Límite > 500 devuelve 422 Unprocessable Entity., Dos páginas con cursor cubren todos los ítems sin duplicados., Cursor inválido devuelve 400., Health no debe pedir API Key., Un filtro que no devuelve resultados debe tener next_cursor=null., Client con datos de prueba en la DB., seeded_client() (+4 more)
 
 ### Community 165 - "Community 165"
-Cohesion: 0.03
-Nodes (51): configure_sentry(), Integración opcional de Sentry (F5).  Es **opt-in** vía la variable ``SENTRY_DSN, Inicializa Sentry si ``SENTRY_DSN`` está definido y el SDK está instalado., Limpia campos sensibles antes de enviar al backend., Asocia el span/scope actual a un usuario opaco (hash)., set_user_context(), _strip_pii(), main() (+43 more)
+Cohesion: 0.06
+Nodes (29): configure_sentry(), Inicializa Sentry si ``SENTRY_DSN`` está definido y el SDK está instalado., _env_int(), main(), Long-running scheduler for Docker Compose deployments.  GitHub Actions remains t, Purga datos históricos según la política de retención., Ejecuta un job ligero en un thread con timeout. Devuelve True si tuvo éxito., Ejecuta un job ligero en un thread con timeout. Devuelve True si tuvo éxito. (+21 more)
 
 ### Community 166 - "Community 166"
 Cohesion: 0.07
@@ -3252,44 +3285,44 @@ Cohesion: 0.10
 Nodes (36): check_cache_signal(), _database_signal_enabled(), _get_local_signal_timestamp(), _get_shared_signal_timestamp(), get_signal_timestamp(), Señal de invalidación de caché entre el scraper y el API.  En producción la seña, Reinicia el estado de polling. Uso exclusivo en tests., Publica una invalidación compartida y actualiza el fallback local.      Debe lla (+28 more)
 
 ### Community 170 - "Community 170"
-Cohesion: 0.12
-Nodes (23): cluster_licitaciones(), _ctfidf_labels(), _get_embeddings(), _k_max_for(), _kmeans_factory(), _optimal_k(), Clustering semántico de licitaciones basado en embeddings.  Agrupa licitaciones, Fallback: TF-IDF sparse → dense para cuando no hay sentence-transformers. (+15 more)
+Cohesion: 0.09
+Nodes (29): code:python (from sklearn.feature_extraction.text import TfidfVectorizer), TfidfVectorizer, Entrena usando el SAP binario + heurística para labels extras., Entrena usando el SAP binario + heurística para labels extras., Entrena usando el SAP binario + heurística para labels extras., Entrena usando el SAP binario + heurística para labels extras., cluster_licitaciones(), _ctfidf_labels() (+21 more)
 
 ### Community 171 - "Community 171"
 Cohesion: 0.04
-Nodes (87): ParsedTender, Aviso crudo tal como llega de la fuente.      ``natural_id`` es el identificador, Aviso crudo tal como llega de la fuente.      ``natural_id`` es el identificador, Aviso crudo tal como llega de la fuente.      ``natural_id`` es el identificador, RawNotice, _cursor_date(), _documents_url(), _first_date() (+79 more)
+Nodes (85): Ejecuta un ciclo completo de ingesta para una fuente.      Procesa en lotes de `, Ejecuta un ciclo completo de ingesta para una fuente.      Procesa en lotes de `, Ejecuta un ciclo completo de ingesta para una fuente.      Procesa en lotes de `, Ejecuta un ciclo completo de ingesta para una fuente.      Procesa en lotes de `, Aviso crudo tal como llega de la fuente.      ``natural_id`` es el identificador, Ejecuta un ciclo completo de ingesta para una fuente.      Procesa en lotes de `, Aviso crudo tal como llega de la fuente.      ``natural_id`` es el identificador, Aviso crudo tal como llega de la fuente.      ``natural_id`` es el identificador (+77 more)
 
 ### Community 172 - "Community 172"
-Cohesion: 0.03
-Nodes (75): _allowed_webhook_hosts(), _aplicar_decision(), _cabeceras(), create_webhook(), delete_webhook(), _get_webhook_master_key(), _intentar_entrega(), list_webhooks() (+67 more)
+Cohesion: 0.05
+Nodes (49): PursuitAttachmentsRepository, Adjuntos propios de una oportunidad (C6.3, v127).  TID251: el SQL de `pursuit_at, Un adjunto por id, acotado a su organización., Adjuntos de una oportunidad, recientes primero., Marca el adjunto como borrado (v131). Devuelve su ``blob_key``, o ``None``., Levanta o baja el opt-in de indexación del RAG para UN adjunto., Todas las claves de una organización, para purgarlas al borrarla.          ADR-0, Levanta o baja el opt-in de indexación del RAG para UN adjunto. (+41 more)
 
 ### Community 173 - "Community 173"
-Cohesion: 0.04
-Nodes (21): _extract_host(), _extract_sslmode(), _flotante_env(), jobs_worker_poll_segundos(), _load(), oauth_microsoft_tenant(), Configuración global del proyecto — basada en pydantic-settings., ``OAUTH_MICROSOFT_TENANT`` — tenant del documento de descubrimiento.      Defaul (+13 more)
+Cohesion: 0.03
+Nodes (45): _entero_env(), event_dispatch_max_age_hours(), _extract_host(), _extract_sslmode(), _flotante_env(), jobs_backoff_base_segundos(), jobs_lock_ttl_segundos(), jobs_max_intentos() (+37 more)
 
 ### Community 174 - "Community 174"
 Cohesion: 0.11
 Nodes (26): Data Science Agent (03), Matplotlib, MLOps, Pandas, Pandera Schema Validation, PyTorch, Scikit-learn, Vectorized Operations (+18 more)
 
 ### Community 175 - "Community 175"
-Cohesion: 0.03
-Nodes (95): _Ambito, _ambito_expediente(), _ambito_lote(), _competition_band(), coste_de_tarifas(), _cpv4(), _distribution(), get_price_scenarios() (+87 more)
+Cohesion: 0.02
+Nodes (116): CalibracionBajaDTO, Vista simplificada de 3 estados para la UI (calidad-datos).      ``comprobar_cal, Vista simplificada de 3 estados para la UI (calidad-datos).      ``comprobar_cal, _Ambito, _ambito_expediente(), _ambito_lote(), _competition_band(), coste_de_tarifas() (+108 more)
 
 ### Community 176 - "Community 176"
-Cohesion: 0.11
-Nodes (9): Factory de dependencias que require un scope específico.      Uso::          @ro, Factory de dependencias que require un scope específico.      Uso::          @ro, Factory de dependencias que require un scope específico.      Uso::          @ro, Factory de dependencias que require un scope específico.      Uso::          @ro, require_scope(), Tests para api/routes/security.py — CSP reports, leaked-key notifications, audit, Cover security.py uncovered lines., test_verify_audit_integrity() (+1 more)
+Cohesion: 0.17
+Nodes (3): Tests para api/routes/security.py — CSP reports, leaked-key notifications, audit, Cover security.py uncovered lines., TestSecurityEndpoints
 
 ### Community 177 - "Community 177"
-Cohesion: 0.06
-Nodes (43): Persiste solo si alguna adjudicación coincide por NIF normalizado., Persiste solo si alguna adjudicación coincide por NIF normalizado., _criterios_raiz(), _es_criterio_precio(), _float(), _int(), _issue_date(), parse_adjudicaciones() (+35 more)
+Cohesion: 0.07
+Nodes (41): _criterios_raiz(), _es_criterio_precio(), _float(), _int(), _issue_date(), parse_adjudicaciones(), parse_entry(), parse_entry_unfiltered() (+33 more)
 
 ### Community 178 - "Community 178"
 Cohesion: 0.06
 Nodes (32): _client_key(), Extrae la IP real del cliente validando proxies de confianza.      Solo honra ``, Identifica al cliente por API-Key (preferido) o por IP verificada (fallback)., Extrae la IP real del cliente validando proxies de confianza.      Solo honra ``, Identifica al cliente por API-Key (preferido) o por IP verificada (fallback)., Identifica al cliente **solo** por IP verificada, nunca por API-Key.      Un buc, Extrae la IP real del cliente validando proxies de confianza.      Solo honra ``, _trusted_client_ip() (+24 more)
 
 ### Community 179 - "Community 179"
-Cohesion: 0.07
-Nodes (50): Métricas de cobertura del maestro: filas e importe enlazados., Métricas de cobertura del maestro: filas e importe enlazados., Métricas de cobertura del maestro: filas e importe enlazados., resolution_stats(), Procesa un lote de adjudicaciones sin empresa_id. Devuelve estadísticas.      Ll, Procesa un lote de adjudicaciones sin empresa_id. Devuelve estadísticas.      Ll, Procesa un lote de adjudicaciones sin empresa_id. Devuelve estadísticas.      Ll, ResolutionStats (+42 more)
+Cohesion: 0.03
+Nodes (129): add_alias(), add_ute_member(), apply_review(), create_empresa(), EmpresaCaches, enqueue_review(), fetch_unlinked(), link_adjudicacion() (+121 more)
 
 ### Community 180 - "Community 180"
 Cohesion: 0.13
@@ -3300,8 +3333,8 @@ Cohesion: 0.09
 Nodes (24): bootstrap(), Bootstrap del dashboard — configuración única por proceso.  Centraliza todo lo q, Inicializa el proceso del dashboard.      Debe llamarse al inicio de app.py, ant, Arranca un servidor HTTP para exponer métricas Prometheus.      Usa ``prometheus, Inicializa el proceso del dashboard.      Debe llamarse al inicio de app.py, ant, Inicializa el proceso del dashboard.      Debe llamarse al inicio de app.py, ant, start_metrics_server(), apply_premium_line_style() (+16 more)
 
 ### Community 182 - "Community 182"
-Cohesion: 0.06
-Nodes (45): Tests para db/connection.py — helpers de fecha, safe_pragma y connect., Con _DB_PATH_OVERRIDE activo (tmp_db), is_turso_backend devuelve False., Con _DB_PATH_OVERRIDE activo (tmp_db), is_turso_backend devuelve False., `LIKE 'daily|%%'` + `LIMIT %s` en la misma sentencia, contra Postgres real., close_pool() sets _pool to None atomically under _pool_lock., Sin parámetros, psycopg no interpreta `%`: el literal va tal cual., close_pool() drains and closes all connections in the pool., 0 = sin límite: la opción correspondiente no debe incluirse. (+37 more)
+Cohesion: 0.04
+Nodes (61): _ajustes(), _FakeConn, _FakeCursor, Tests para db/connection.py — helpers de fecha, safe_pragma y connect., Con _DB_PATH_OVERRIDE activo (tmp_db), is_turso_backend devuelve False., Con _DB_PATH_OVERRIDE activo (tmp_db), is_turso_backend devuelve False., `LIKE 'daily|%%'` + `LIMIT %s` en la misma sentencia, contra Postgres real., close_pool() sets _pool to None atomically under _pool_lock. (+53 more)
 
 ### Community 183 - "Community 183"
 Cohesion: 0.08
@@ -3312,20 +3345,20 @@ Cohesion: 0.08
 Nodes (23): Buttons, code:html (<button>Label</button>), code:html (<a href="/page">Descriptive link text</a>), code:html (<label for="email">Email address</label>), code:html (<label for="email">Email</label>), code:html (<nav aria-label="Main">), code:html (<div role="dialog" aria-modal="true" aria-labelledby="dialog), code:html (<!-- Polite (waits for pause in speech) -->) (+15 more)
 
 ### Community 185 - "Community 185"
-Cohesion: 0.07
-Nodes (42): CalendarioDiaSemana(), CalendarioDowChart, CalendarioMensual(), CalendarioMonthlyChart, CalendarioHeatmap(), Celda(), COLOR_SCALE, getColorClass() (+34 more)
+Cohesion: 0.04
+Nodes (58): CalendarioDowChart, CalendarioMonthlyChart, CalendarioPage(), CalendarWeek, COLOR_SCALE, DAY_LABELS, DayCell, MONTH_NAMES (+50 more)
 
 ### Community 186 - "Community 186"
-Cohesion: 0.10
-Nodes (19): _AdaptiveBackoffListener, _is_transient(), Capas de resiliencia para llamadas de red del scraper.  - ``http_retry``: decora, Reintenta solo en errores transitorios de red y 5xx/429., Ajusta ``reset_timeout`` con backoff exponencial entre aperturas consecutivas., _Boom, _FakeResp, Tests para scraper.resilience: retries y circuit breaker. (+11 more)
+Cohesion: 0.09
+Nodes (22): _BodyTooLargeError, Señal interna para abortar el pipeline cuando el body excede el límite., Exception, _AdaptiveBackoffListener, _is_transient(), Capas de resiliencia para llamadas de red del scraper.  - ``http_retry``: decora, Reintenta solo en errores transitorios de red y 5xx/429., Ajusta ``reset_timeout`` con backoff exponencial entre aperturas consecutivas. (+14 more)
 
 ### Community 187 - "Community 187"
 Cohesion: 0.08
 Nodes (24): 1. Statistical Methods Advanced, 2. Experiment Design Frameworks, 3. Feature Engineering Patterns, Best Practices, code:bash (# Core Tool 1), code:bash (# Development), Common Commands, Core Expertise (+16 more)
 
 ### Community 188 - "Community 188"
-Cohesion: 0.05
-Nodes (44): add_alias(), add_ute_member(), apply_review(), create_empresa(), EmpresaCaches, enqueue_review(), link_adjudicacion(), list_pending_reviews() (+36 more)
+Cohesion: 0.07
+Nodes (31): imprimir(), main(), Lleva a la cartera (F4.3) las oportunidades que ya estaban ganadas.  ``contratos, accion_para(), contrato_de_fuente(), Los campos de ``contratos_cartera`` que salen de una oportunidad ganada.      Pu, ``(accion, contrato)`` para una oportunidad ganada.      ``accion`` ∈ ``nuevo``, Los campos de ``contratos_cartera`` que salen de una oportunidad ganada.      Pu (+23 more)
 
 ### Community 189 - "Community 189"
 Cohesion: 0.12
@@ -3336,20 +3369,20 @@ Cohesion: 0.07
 Nodes (33): code:bash (# En GH Actions: deshabilitar temporalmente los workflows de), code:bash (# 1. Health check), code:bash (gh workflow enable scrape-daily.yml), code:bash (psql "$DATABASE_ADMIN_URL" -c "SELECT relname FROM pg_class ), code:bash (psql "$DATABASE_ADMIN_URL" -f scripts/setup_pg_roles.sql), code:bash (psql "$DATABASE_URL" -c "SELECT current_user"               ), code:bash (# 1. Revertir DATABASE_URL en .env y GH Secrets a los valore), code:bash (docker compose stop scheduler) (+25 more)
 
 ### Community 191 - "Community 191"
-Cohesion: 0.06
-Nodes (41): close(), _database_url(), duckdb_query(), export_parquet(), get_connection(), has_duckdb(), _postgres_row_counts(), Motor analítico opcional basado en DuckDB.  DuckDB se ATTACHa sobre la BD operac (+33 more)
+Cohesion: 0.07
+Nodes (35): close(), _database_url(), duckdb_query(), export_parquet(), get_connection(), _postgres_row_counts(), Motor analítico opcional basado en DuckDB.  DuckDB se ATTACHa sobre la BD operac, Ejecuta una query DuckDB y devuelve un DataFrame.      Devuelve ``None`` si Duck (+27 more)
 
 ### Community 192 - "Community 192"
 Cohesion: 0.03
-Nodes (79): Connector, _contar_dedupe_fallido(), _es_reaparicion_mas_vieja(), _is_retryable_db_error(), _persist_documentos(), _post_ingestion(), Contrato ``Connector`` y runner genérico de ingesta (ADR-009).  Una fuente nueva, Escribe una fila de ``source_ingestion_health`` para una fuente.      La usan lo (+71 more)
+Nodes (60): Connector, _contar_dedupe_fallido(), _es_reaparicion_mas_vieja(), _is_retryable_db_error(), ParsedTender, _persist_documentos(), _post_ingestion(), Contrato ``Connector`` y runner genérico de ingesta (ADR-009).  Una fuente nueva (+52 more)
 
 ### Community 193 - "Community 193"
-Cohesion: 0.05
-Nodes (42): Purga datos históricos según la política de retención., Ejecuta un job ligero en un thread con timeout. Devuelve True si tuvo éxito., Purga datos históricos según la política de retención., _run_retention_cleanup(), _aislado(), _ConexionConteo, _count_and_delete(), _cutoff_iso() (+34 more)
+Cohesion: 0.06
+Nodes (37): _aislado(), _ConexionConteo, _count_and_delete(), _cutoff_iso(), _plazo(), Política de retención de datos — módulo del scheduler.  Extrae la lógica de ``sc, Una fila de la política de retención publicada.      Existe para que `docs/SECUR, Una fila de la política de retención publicada.      Existe para que `docs/SECUR (+29 more)
 
 ### Community 194 - "Community 194"
-Cohesion: 0.11
-Nodes (23): parse_atom_bytes(), Itera (licitación, adjudicaciones) encontradas en un ATOM., Itera (licitación, adjudicaciones) encontradas en un ATOM., Itera (licitación, adjudicaciones) encontradas en un ATOM., Itera (licitación, adjudicaciones) encontradas en un ATOM., _make_atom_feed(), _make_non_sap_entry(), _make_sap_entry() (+15 more)
+Cohesion: 0.09
+Nodes (27): parse_atom_bytes(), Itera (licitación, adjudicaciones) encontradas en un ATOM., Itera (licitación, adjudicaciones) encontradas en un ATOM., Itera (licitación, adjudicaciones) encontradas en un ATOM., Itera (licitación, adjudicaciones) encontradas en un ATOM., _make_atom_feed(), _make_non_sap_entry(), _make_sap_entry() (+19 more)
 
 ### Community 195 - "Community 195"
 Cohesion: 0.15
@@ -3357,27 +3390,27 @@ Nodes (22): author, category, created_at, description, entry_point_tokens, frame
 
 ### Community 196 - "Community 196"
 Cohesion: 0.05
-Nodes (43): Componentes de tarjeta — top_card para licitaciones y adjudicaciones., Devuelve HTML de un badge pill con color semántico e icono.      Args:         l, Envuelve *content_html* en un contenedor con tooltip CSS-only.      El tooltip a, status_badge(), with_tooltip(), notify_error(), notify_success(), Wrappers de notificaciones — st.toast con iconos semánticos. (+35 more)
+Nodes (48): licitacion_popover(), Componente de preview rápido de una licitación vía popover., Botón ☰ que abre un popover con el resumen de la licitación.      Args:, M8 — Timeline vertical para historial de cambios de una licitación., Render a popover button that shows the change history timeline., timeline_popover(), notify_error(), notify_success() (+40 more)
 
 ### Community 197 - "Community 197"
 Cohesion: 0.11
 Nodes (25): Alcance, Bloqueos por path denylist, Conflictos con ADRs vigentes, Criterios de aceptacion globales, Dependencias entre fases, Estrategia global de rollback y migracion, Fase 0 - Baseline y gating de ejecucion, Fase 1 - Typing strict por oleadas (+17 more)
 
 ### Community 198 - "Community 198"
-Cohesion: 0.02
-Nodes (118): ambito_del_radar(), Ámbito de mercado efectivo del Radar (F6.1), con su procedencia.      Aplica la, Ámbito de mercado efectivo del Radar (F6.1), con su procedencia.      Aplica la, contar_huerfanos(), Inventario de filas sin organización (backfill de tenencia, S4.3).  Existe por e, Filas con ``organization_id IS NULL`` por tabla.      Una tabla que todavía no e, OrganizationRepository, Queries finas para el scope colaborativo. (+110 more)
+Cohesion: 0.06
+Nodes (51): claim_legacy_scope(), Adjudica al espacio personal las filas del usuario que aún no tienen organizació, current_organization(), Organización activa de la petición en curso (contexto de tenencia).  Es la mitad, Acepta un entero positivo o ``None`` (sin ámbito).      El valor acaba interpola, Fija la organización activa y devuelve el token para ``reset_organization``., Restaura el valor previo a la llamada que produjo ``token``., Organización activa, o ``None`` si nadie fijó ámbito en este contexto. (+43 more)
 
 ### Community 199 - "Community 199"
 Cohesion: 0.07
-Nodes (23): openapi_schema(), Tests de contrato para la frontera API ↔ dashboard.  Este fichero existe para qu, LicitacionDetail tiene campos adicionales sobre LicitacionSummary., El contrato de adjudicaciones rechaza importes negativos., El componente ``LicitacionSummary`` del esquema es el modelo de la ruta.      Co, En este contrato las fechas son strings, no ``date-time``.      El DTO muerto de, ``LicitacionDetail`` tiene campos adicionales sobre ``LicitacionSummary``., Los nombres que ``api.d.ts`` referencia para los envelopes no se mueven.      `` (+15 more)
+Nodes (21): KpiSnapshotDTO, Snapshot de KPIs pre-computados., openapi_schema(), Tests de contrato para la frontera API ↔ dashboard.  Este fichero existe para qu, El contrato de adjudicaciones rechaza importes negativos., El componente ``LicitacionSummary`` del esquema es el modelo de la ruta.      Co, En este contrato las fechas son strings, no ``date-time``.      El DTO muerto de, Los nombres que ``api.d.ts`` referencia para los envelopes no se mueven.      `` (+13 more)
 
 ### Community 200 - "Community 200"
-Cohesion: 0.09
-Nodes (38): clear_raw_adj_cache(), load_raw_adjudicaciones(), Carga adjudicaciones raw con datos de la licitación asociada.      El caso sin f, Invalida la caché de :func:`load_raw_adjudicaciones` (caso sin filtros)., Carga adjudicaciones raw con datos de la licitación asociada.      Devuelve list, Carga adjudicaciones raw con datos de la licitación asociada., Tests para services/adjudicaciones.py con BD real (tmp_db).  Los loaders full-ta, Una licitación puede tener varias adjudicaciones (lotes). (+30 more)
+Cohesion: 0.07
+Nodes (45): clear_raw_adj_cache(), load_adjudicaciones(), load_for_competitors(), load_raw_adjudicaciones(), Servicio de adjudicaciones — acceso de lectura para API y jobs.  Centraliza la l, Carga adjudicaciones raw con datos de la licitación asociada.      El caso sin f, Invalida la caché de :func:`load_raw_adjudicaciones` (caso sin filtros)., Carga adjudicaciones enriquecidas. (+37 more)
 
 ### Community 201 - "Community 201"
-Cohesion: 0.21
-Nodes (5): _append_to_registry(), Añade una entrada al registro de entrenamientos JSON (lista append-only).      E, Añade una entrada al registro de entrenamientos JSON (lista append-only).      E, TestAppendToRegistry, TestAppendToRegistry
+Cohesion: 0.09
+Nodes (10): _append_to_registry(), Añade una entrada al registro de entrenamientos JSON (lista append-only).      E, Añade una entrada al registro de entrenamientos JSON (lista append-only).      E, Lee el histórico de entrenamientos como lista de dicts (vacía si no existe)., Lee el histórico de entrenamientos como lista de dicts (vacía si no existe)., read_registry(), TestAppendToRegistry, TestReadRegistry (+2 more)
 
 ### Community 202 - "Community 202"
 Cohesion: 0.08
@@ -3392,28 +3425,28 @@ Cohesion: 0.13
 Nodes (22): _make_manifest(), _make_mock_con(), Tests unitarios para services/analytics_engine.py — Bloque 4 Phase 2., _DuckDBEngine.maybe_refresh() llama _refresh si la señal es más nueva., _DuckDBEngine.maybe_refresh() llama _refresh si la señal es más nueva., Construye un Manifest fake con generated_at_timestamp() == generated_at_ts., _DuckDBEngine.maybe_refresh() llama _refresh si el manifest es más nuevo., _DuckDBEngine.maybe_refresh() no llama _refresh si la señal es anterior. (+14 more)
 
 ### Community 205 - "Community 205"
-Cohesion: 0.05
-Nodes (75): get_pipeline(), HorizonteCount, _load_df(), PipelineEntry, PipelineFilters, PipelineResult, Pipeline analytics — upcoming deadlines and alerts.  ADR-023: la ventana de venc, Compute upcoming deadlines and urgency alerts. (+67 more)
+Cohesion: 0.06
+Nodes (74): get_pipeline(), HorizonteCount, PipelineEntry, PipelineFilters, PipelineResult, Pipeline analytics — upcoming deadlines and alerts.  ADR-023: la ventana de venc, Compute upcoming deadlines and urgency alerts., Compute upcoming deadlines and urgency alerts. (+66 more)
 
 ### Community 206 - "Community 206"
-Cohesion: 0.02
-Nodes (176): PursuitRepository, Queries de pursuits siempre limitadas por ``organization_id``., Queries de pursuits siempre limitadas por ``organization_id``., Queries de pursuits siempre limitadas por ``organization_id``., marcar_item(), Anota en el ledger que alguien marcó (o desmarcó) un ítem.      No hay ``UPDATE`, Anota en el ledger que alguien marcó (o desmarcó) un ítem.      No hay ``UPDATE`, Valida que un responsable pertenezca activamente al equipo. (+168 more)
+Cohesion: 0.12
+Nodes (47): _as_utc_iso(), _detalle(), _elapsed_hours(), get_metrics(), get_pursuit(), update_pursuit(), _advance(), _licitacion() (+39 more)
 
 ### Community 207 - "Community 207"
 Cohesion: 0.09
 Nodes (16): build_animations_css(), CSS de animaciones y fondo decorativo., build_base_css(), CSS base: variables, tipografía, chrome de Streamlit, sidebar, layout., build_components_css(), CSS de componentes UI: KPI cards, top cards, filtros, tablas, estados, etc., build_css(), Generador del bloque `<style>` inyectado en Streamlit.  Orquesta los submódulos (+8 more)
 
 ### Community 208 - "Community 208"
-Cohesion: 0.04
-Nodes (71): _CanalYFrecuencia, CreatedKey, CreateKeyBody, DeleteMyDataRequest, get_notification_preferences(), _hash_de_la_sesion_actual(), list_my_keys(), list_my_sessions() (+63 more)
+Cohesion: 0.02
+Nodes (128): Revoca todas las sesiones activas de un usuario (logout-all). Devuelve N., Revoca todas las sesiones activas de un usuario (logout-all). Devuelve N., Revoca todas las sesiones activas de un usuario (logout-all). Devuelve N., revoke_all_sessions(), ApiKeyRepository, _actor_key(), _CanalYFrecuencia, create_my_key() (+120 more)
 
 ### Community 209 - "Community 209"
-Cohesion: 0.13
-Nodes (21): _instance(), problem_400(), problem_401(), problem_403(), problem_404(), problem_409(), problem_422(), problem_429() (+13 more)
+Cohesion: 0.17
+Nodes (17): _instance(), problem_400(), problem_401(), problem_403(), problem_404(), problem_409(), problem_422(), problem_429() (+9 more)
 
 ### Community 210 - "Community 210"
-Cohesion: 0.05
-Nodes (44): check_rate_limit(), check_rate_limit_redis(), _get_client(), has_redis(), Backend Redis para rate limiting (F4), elegido con ``RATE_LIMIT_BACKEND=redis``., Dispatcher: Redis si configurado y operativo; BD como fallback.      Permite cam, Dispatcher: Redis si configurado y operativo; BD como fallback.      Permite cam, Versión Redis de :func:`db.rate_limits.check_rate_limit_db`.      Devuelve: (+36 more)
+Cohesion: 0.09
+Nodes (25): check_rate_limit_db(), Verifica el rate limit persistido en SQLite.      Args:         key: Identificad, check_rate_limit(), check_rate_limit_redis(), _get_client(), has_redis(), Backend Redis para rate limiting (F4), elegido con ``RATE_LIMIT_BACKEND=redis``., Dispatcher: Redis si configurado y operativo; BD como fallback.      Permite cam (+17 more)
 
 ### Community 211 - "Community 211"
 Cohesion: 0.07
@@ -3421,7 +3454,7 @@ Nodes (27): encode_stub(), fake_faiss(), _make_index(), Tests para services/fais
 
 ### Community 212 - "Community 212"
 Cohesion: 0.05
-Nodes (38): api_key(), Tests basicos para /api/v1/competitive — verifica 200 con BD vacia., Override de conftest: vincula la key a un usuario real.      ``/competitive/watc, GET /competitive/hhi → 200 con items vacío., Sin autenticacion → 401 o 403., GET /competitive/renovaciones → 200 con items vacío., GET /competitive/empresas/99999/perfil → 404 (empresa sin adjudicaciones)., GET /competitive/watchlist → 200 con lista vacía. (+30 more)
+Nodes (36): Tests basicos para /api/v1/competitive — verifica 200 con BD vacia., GET /competitive/hhi → 200 con items vacío., Sin autenticacion → 401 o 403., GET /competitive/renovaciones → 200 con items vacío., GET /competitive/empresas/99999/perfil → 404 (empresa sin adjudicaciones)., GET /competitive/watchlist → 200 con lista vacía., POST /competitive/watchlist con empresa_id=99999 (no en maestro) → 404., Sin autenticacion → 401 o 403. (+28 more)
 
 ### Community 213 - "Community 213"
 Cohesion: 0.09
@@ -3436,24 +3469,24 @@ Cohesion: 0.06
 Nodes (40): 1. Feed diario con lag (> 8h), 1. Hay DOS planos de alerta, 2. Feed diario: 3 fallos consecutivos, 2. Las diez reglas y por dónde sale cada una, 3. Comprobar que el `Watchdog` llega, 3. Modelo ML SAP obsoleto (> 30 días), 4. `alert_delivery_failed_total`: dónde se mira, 4. Scheduler job timeout (+32 more)
 
 ### Community 216 - "Community 216"
-Cohesion: 0.08
-Nodes (34): _columnas_insertables(), _huella_ddl(), _isolate_dotenv_from_fresh_settings(), _limpia_schema(), _pg_schema(), _pg_schema_por_creacion(), _pg_schema_por_truncado(), _pg_schema_sesion() (+26 more)
+Cohesion: 0.15
+Nodes (18): _huella_ddl(), _limpia_schema(), _pg_schema(), _pg_schema_por_creacion(), _pg_schema_por_truncado(), pytest_configure(), Deja el schema como recién migrado, sin volver a crearlo.      Un solo `TRUNCATE, Base de datos limpia para un test. La estrategia decide el cómo. (+10 more)
 
 ### Community 217 - "Community 217"
-Cohesion: 0.02
-Nodes (90): PursuitTasksRepository, Tareas de una oportunidad (C6.1, v122).  Una oportunidad tenía **una** `next_act, Acceso a ``pursuit_tasks`` (TID251: el SQL de tareas vive solo aquí)., Acceso a ``pursuit_tasks`` (TID251: el SQL de tareas vive solo aquí)., Cuerpo de creación de un favorito., Cuerpo de creación de un favorito., Nota personal de un favorito (C6.6).      `None` o cadena vacía la borran: no ha, WatchlistItemBody (+82 more)
+Cohesion: 0.03
+Nodes (53): delete_item(), get_items(), post_item(), put_item_nota(), Rutas /api/v1/watchlist/items — favoritos de licitaciones individuales.  Marcar/, La nota es de quien la escribe, no de la organización.      El repositorio filtr, La nota es de quien la escribe, no de la organización.      El repositorio filtr, Clave opaca y estable por usuario (email de sesión o hash de API key). (+45 more)
 
 ### Community 218 - "Community 218"
-Cohesion: 0.06
-Nodes (28): _generate_xml_entries(), perf_db(), Tests de rendimiento — parseo XML masivo y upserts a gran escala.  Marcar con @p, Verifica que consultas de agregación sobre volúmenes grandes son rápidas., Verifica que consultas de agregación sobre volúmenes grandes son rápidas., Verifica rendimiento del parseo XML., Parsear un XML de ~5MB con 1000 entries debe ser rápido., Verifica rendimiento del parseo XML. (+20 more)
+Cohesion: 0.08
+Nodes (21): _generate_xml_entries(), perf_db(), Tests de rendimiento — parseo XML masivo y upserts a gran escala.  Marcar con @p, Verifica que consultas de agregación sobre volúmenes grandes son rápidas., Verifica que consultas de agregación sobre volúmenes grandes son rápidas., Verifica rendimiento del parseo XML., Parsear un XML de ~5MB con 1000 entries debe ser rápido., Verifica rendimiento del parseo XML. (+13 more)
 
 ### Community 219 - "Community 219"
-Cohesion: 0.03
-Nodes (62): create_api_key(), Genera una nueva API Key segura, la persiste y devuelve el token en bruto., Genera una nueva API Key segura, la persiste y devuelve el token en bruto., Genera una nueva API Key segura, la persiste y devuelve el token en bruto., Genera una nueva API Key segura, la persiste y devuelve el token en bruto., _owned_key(), Contrato de autenticación por API key de la superficie Analytics., test_analytics_accepts_owned_api_key_with_analytics_scope() (+54 more)
+Cohesion: 0.06
+Nodes (35): api_key(), app_and_client(), Tests para las mejoras de OLA 1 — cierre de deuda técnica.  Cubre: - Idempotency, The cache is actor-scoped, secret-free, and bound to the request body., AccessLogMiddleware debe usar route template para evitar cardinalidad explosiva., Si no hay route en scope, fallback al path crudo., AccessLogMiddleware debe usar route template para evitar cardinalidad explosiva., METRICS_ALLOWED_IPS debe estar declarado en Settings con default '127.0.0.1'. (+27 more)
 
 ### Community 220 - "Community 220"
 Cohesion: 0.04
-Nodes (66): _backend(), cache_clear_all(), cache_delete(), cache_get(), cache_set(), _get_redis(), _memory_clear(), _memory_delete() (+58 more)
+Nodes (67): _backend(), cache_clear_all(), cache_delete(), cache_get(), cache_set(), _get_redis(), _memory_clear(), _memory_delete() (+59 more)
 
 ### Community 221 - "Community 221"
 Cohesion: 0.14
@@ -3480,8 +3513,8 @@ Cohesion: 0.05
 Nodes (39): Documentar la fachada `db.database`, Instalar stubs de pandas para mypy, [P1] Cobertura de tests de las páginas del frontend, [P2] `baja_model` v2 y `retencion_model` v1 están entrenados y publicados, pero nadie puede decidir si activarlos, [P2] Cada re-ingesta nulea las cuatro columnas ML, y `tech_signal_merge` lo cura a ciegas cada 4h, [P2] Calibrar los umbrales de la auditoría de verdad del dato, [P2] Clasificar `IntegrityError` (dedup vs CHECK/FK) y enrutar a DLQ en upsert, [P2] Cobertura de tests del frontend en flujos críticos (+31 more)
 
 ### Community 227 - "Community 227"
-Cohesion: 0.14
-Nodes (22): _a_dto(), borrar_plantilla_miembro(), _contenido(), _contenido_del_tipo(), crear_plantilla_miembro(), _de_miembro(), _exigir_gestor(), leer_plantillas_miembro() (+14 more)
+Cohesion: 0.13
+Nodes (23): _a_dto(), borrar_plantilla_miembro(), _contenido(), _contenido_del_tipo(), crear_plantilla_miembro(), _de_miembro(), _exigir_gestor(), leer_plantillas_miembro() (+15 more)
 
 ### Community 228 - "Community 228"
 Cohesion: 0.10
@@ -3493,23 +3526,23 @@ Nodes (20): generate_claude_agent(), generate_copilot_section(), generate_openco
 
 ### Community 230 - "Community 230"
 Cohesion: 0.01
-Nodes (302): WebhookRow(), AgendaLista(), ChartTooltip(), ChartTooltipProps, ChartTooltipRow, TransformedPoint, WaterfallChart(), WaterfallChartProps (+294 more)
+Nodes (232): CommandPalette(), CommandPaletteInner(), GROUP_LABELS, GRUPO_TIPO, ICONO_TIPO, listaTipos(), looksLikeLicitacionId(), subtituloResultado() (+224 more)
 
 ### Community 231 - "Community 231"
 Cohesion: 0.16
 Nodes (4): Tests unitarios para _MemoryBackend., Tests unitarios para _MemoryBackend., Tests unitarios para _MemoryBackend., TestMemoryBackend
 
 ### Community 232 - "Community 232"
-Cohesion: 0.07
-Nodes (17): func_db_with_runs(), Tests funcionales: verifican contenido generado por cada página del dashboard., Verifica que la página Resumen genera KPIs y gráficos., Verifica que hay datos para la tabla de detalle., Verifica datos geográficos., Verifica datos temporales para tendencias., Verifica datos para la página de Tecnologías., La función auxiliar de la página debe funcionar sin errores. (+9 more)
+Cohesion: 0.09
+Nodes (12): func_db_with_runs(), Tests funcionales: verifican contenido generado por cada página del dashboard., Verifica que la página Resumen genera KPIs y gráficos., Verifica que hay datos para la tabla de detalle., Verifica datos geográficos., Verifica datos temporales para tendencias., Verifica métricas de calidad del dataset., TestCalidadDatosPage (+4 more)
 
 ### Community 233 - "Community 233"
-Cohesion: 0.06
-Nodes (39): count_licitaciones(), Devuelve el número total de licitaciones en la BD., Devuelve el número total de licitaciones en la BD., Devuelve el número total de licitaciones en la BD., Devuelve el número total de licitaciones en la BD., Acumula resultados de otro UpsertResult en este., Acumula resultados de otro UpsertResult en este., Acumula resultados de otro UpsertResult en este. (+31 more)
+Cohesion: 0.03
+Nodes (80): Actualiza la marca de tiempo de última notificación para una entrada., Actualiza la marca de tiempo de última notificación para una entrada., Actualiza la marca de tiempo de última notificación para una entrada., update_last_notified(), Daily ATOM ingestion + downstream canonical pipeline (ADR-012)., Execute the daily ATOM pipeline via the canonical pipeline_runs sequence., run(), _env_int() (+72 more)
 
 ### Community 234 - "Community 234"
-Cohesion: 0.06
-Nodes (43): _admin_principal(), admin_user_id(), _crear_usuario(), _create_webhook(), Tests de los endpoints /api/v1/webhooks (GET, PATCH, DELETE, ping, deliveries)., Regresión: event_types se guarda como CSV en la tabla pero la API/UI     (F13·C3, Crear → ping con mock requests.post devolviendo 200 → success=True., Crear → PATCH con name nuevo → 200 y el nombre queda actualizado. (+35 more)
+Cohesion: 0.05
+Nodes (45): _admin_principal(), admin_user_id(), _crear_usuario(), _create_webhook(), Tests de los endpoints /api/v1/webhooks (GET, PATCH, DELETE, ping, deliveries)., Regresión: event_types se guarda como CSV en la tabla pero la API/UI     (F13·C3, Crear → ping con mock requests.post devolviendo 200 → success=True., Crear → PATCH con name nuevo → 200 y el nombre queda actualizado. (+37 more)
 
 ### Community 235 - "Community 235"
 Cohesion: 0.08
@@ -3517,15 +3550,15 @@ Nodes (37): HTMLParser, _clave_api(), _construir_mime(), enviar(), _enviar_conso
 
 ### Community 236 - "Community 236"
 Cohesion: 0.05
-Nodes (34): Fts5Backend, get_search_backend(), FTS5 bm25 rank (valores negativos = más relevante)., True si Postgres está activo y la columna search_vector existe., True si la columna ``search_vector`` existe., Devuelve el backend de búsqueda activo.      - Postgres con search_vector → ``Pg, Devuelve el backend de búsqueda.      Siempre ``PgTsBackend`` desde ADR-021. Si, Implementación FTS5 para SQLite/Turso.      Replica el comportamiento actual de (+26 more)
+Nodes (33): Fts5Backend, get_search_backend(), FTS5 bm25 rank (valores negativos = más relevante)., True si Postgres está activo y la columna search_vector existe., True si la columna ``search_vector`` existe., Devuelve el backend de búsqueda activo.      - Postgres con search_vector → ``Pg, Devuelve el backend de búsqueda.      Siempre ``PgTsBackend`` desde ADR-021. Si, Implementación FTS5 para SQLite/Turso.      Replica el comportamiento actual de (+25 more)
 
 ### Community 237 - "Community 237"
-Cohesion: 0.23
-Nodes (11): compare_clustering_algorithms(), complete_clustering_analysis(), find_optimal_k_kmeans(), preprocess_for_clustering(), Clustering analysis example with multiple algorithms, evaluation, and visualizat, Compare different clustering algorithms.      Parameters:     -----------     X, Preprocess data for clustering.      Parameters:     -----------     X : array-l, Visualize clustering results using PCA for 2D projection.      Parameters:     - (+3 more)
+Cohesion: 0.11
+Nodes (20): code:python (from sklearn.preprocessing import StandardScaler), code:python (from sklearn.preprocessing import MinMaxScaler), code:python (from sklearn.preprocessing import RobustScaler), code:python (from sklearn.preprocessing import Normalizer), Feature Scaling and Normalization, MinMaxScaler, Normalizer, RobustScaler (+12 more)
 
 ### Community 238 - "Community 238"
-Cohesion: 0.10
-Nodes (19): ForceGraph, ForceGraphProps, GraphLink, GraphNode, SimLink, SimNode, TooltipState, circle (+11 more)
+Cohesion: 0.11
+Nodes (18): ForceGraph, ForceGraphProps, GraphLink, GraphNode, SimLink, SimNode, TooltipState, circle (+10 more)
 
 ### Community 239 - "Community 239"
 Cohesion: 0.05
@@ -3537,7 +3570,7 @@ Nodes (21): 2.1 Avoid Barrel File Imports, 2.2 Conditional Module Loading, 2.3 D
 
 ### Community 241 - "Community 241"
 Cohesion: 0.03
-Nodes (74): _adjudicaciones_por_fuente(), AdjudicacionesPorFuente, _blob_store_ocupacion(), CodigoNoCatalogado, _codigos_no_catalogados(), ColumnCompleteness, CompletitudMes, _dlq_count() (+66 more)
+Nodes (102): PortfolioResolution, El portfolio con el que se puntúa y de dónde salió., _adjudicaciones_por_fuente(), AdjudicacionesPorFuente, _blob_store_ocupacion(), CodigoNoCatalogado, _codigos_no_catalogados(), ColumnCompleteness (+94 more)
 
 ### Community 242 - "Community 242"
 Cohesion: 0.33
@@ -3556,20 +3589,20 @@ Cohesion: 0.15
 Nodes (8): Tests para dashboard/utils/chart_helpers.py., TestApplyChartDefaults, TestFmtHoverEur, apply_chart_defaults(), fmt_hover_eur(), Utilidades compartidas para gráficos Plotly., Apply consistent defaults to any Plotly figure., Format euro values for hover tooltips.
 
 ### Community 246 - "Community 246"
-Cohesion: 0.05
-Nodes (57): a_markdown(), a_pdf(), _clave_cache(), contar_frases(), _dos_frases(), firma_de(), generar_guion(), _guardar_cache() (+49 more)
+Cohesion: 0.03
+Nodes (101): _agrupar(), _baja(), Batalla, CeldaCorte, construir_batallas(), corte_por_procedimiento(), corte_por_tramo(), _entero() (+93 more)
 
 ### Community 247 - "Community 247"
 Cohesion: 0.03
-Nodes (131): _adj_lookup_for(), _apply_filters(), Estacionalidad, get_organo_detail(), _lead_time_median(), _load_df(), _numero(), OrganoDetailFilters (+123 more)
+Nodes (120): _adj_lookup_for(), _apply_filters(), Estacionalidad, get_organo_detail(), _lead_time_median(), _load_df(), _numero(), OrganoDetailFilters (+112 more)
 
 ### Community 248 - "Community 248"
 Cohesion: 0.11
 Nodes (20): _apply_v14_tecnologia(), _apply_v32_perf_indexes(), _apply_v7_fts(), Añade columna tecnologia a licitaciones si no existe (idempotente).      También, Crea tabla FTS5, triggers y rebuild del índice (idempotente)., Añade columna tecnologia a licitaciones si no existe (idempotente).      También, Crea tabla FTS5, triggers y rebuild del índice (idempotente)., Crea tabla FTS5, triggers y rebuild del índice (idempotente). (+12 more)
 
 ### Community 249 - "Community 249"
-Cohesion: 0.16
-Nodes (6): normalize_company(), Normaliza un nombre de empresa para agrupar duplicados.      Pasos: mayúsculas →, Normaliza un nombre de empresa para agrupar duplicados.      Pasos: mayúsculas →, Normaliza un nombre de empresa para agrupar duplicados.      Pasos: mayúsculas →, TestNormalizeCompany, test_result_has_no_leading_trailing_whitespace()
+Cohesion: 0.17
+Nodes (5): normalize_company(), Normaliza un nombre de empresa para agrupar duplicados.      Pasos: mayúsculas →, Normaliza un nombre de empresa para agrupar duplicados.      Pasos: mayúsculas →, Normaliza un nombre de empresa para agrupar duplicados.      Pasos: mayúsculas →, TestNormalizeCompany
 
 ### Community 250 - "Community 250"
 Cohesion: 0.09
@@ -3601,19 +3634,19 @@ Nodes (18): annotations, list, editable, fiscalYearStartMonth, graphTooltip, id,
 
 ### Community 257 - "Community 257"
 Cohesion: 0.03
-Nodes (74): _actor_key(), _allowed_webhook_hosts(), create(), delete(), deliveries(), event_types(), get_one(), _idempotency_endpoint() (+66 more)
+Nodes (78): _actor_key(), _allowed_webhook_hosts(), create(), delete(), deliveries(), event_types(), get_one(), _idempotency_endpoint() (+70 more)
 
 ### Community 258 - "Community 258"
-Cohesion: 0.03
-Nodes (66): _band(), _build_context(), _cpv4(), _effective_weights(), get_scoring(), _load_tasas_anulacion(), _load_tech_signal(), Opportunity scoring — puntuación 0-100 genérica para cualquier pliego.  Dimensio (+58 more)
+Cohesion: 0.05
+Nodes (52): _band(), _cpv4(), FilaPuntuada, get_scoring(), Opportunity scoring — puntuación 0-100 genérica para cualquier pliego.  Dimensio, Single scored opportunity., Parámetros globales del request de scoring., Pesos efectivos: si no hay keywords, redistribuye el peso de afinidad.      Func (+44 more)
 
 ### Community 259 - "Community 259"
 Cohesion: 0.36
 Nodes (6): useScrolledPast(), el, { result }, scrollTo(), setupMainContent(), { unmount }
 
 ### Community 260 - "Community 260"
-Cohesion: 0.14
-Nodes (18): apply_pending(), _apply_v33_password_hash(), _apply_v35_deactivated_at(), Añade columna password_hash a users si no existe (idempotente).      Habilita el, Añade columna deactivated_at a users si no existe (idempotente).      Habilita s, Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas., Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas., Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas. (+10 more)
+Cohesion: 0.16
+Nodes (16): apply_pending(), current_version(), Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas., Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas., Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas., Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas., Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas., Aplica todas las migraciones pendientes. Devuelve las versiones aplicadas. (+8 more)
 
 ### Community 261 - "Community 261"
 Cohesion: 0.11
@@ -3644,8 +3677,8 @@ Cohesion: 0.22
 Nodes (8): Checklist para PRs, code:bash (make dev   # instala deps de desarrollo + pre-commit hooks), code:block2 (feature/nombre-descriptivo), code:bash (make lint && make typecheck && make test-unit), Configuración inicial, Contribuir al proyecto, Convención de ramas, Suite de verificación completa
 
 ### Community 268 - "Community 268"
-Cohesion: 0.09
-Nodes (22): Tests para observabilidad de tokens y coste LLM (RFC observabilidad-tokens-coste, Sin prometheus_client, _record_usage no falla., El proveedor Anthropic rellena usage_sink tras stream exitoso., El proveedor OpenAI rellena usage_sink del chunk final., El proveedor OpenAI rellena usage_sink del chunk final., Sin chunk de usage del SDK, el provider OpenAI estima y marca source=1., Sin chunk de usage del SDK, el provider OpenAI estima y marca source=1., Si el provider no puebla el uso antes del cierre, el cliente no lo inventa. (+14 more)
+Cohesion: 0.08
+Nodes (27): Registra tokens y coste en Prometheus si hay datos., Registra tokens y coste en Prometheus si hay datos., Registra tokens y coste en Prometheus si hay datos., Registra tokens y coste en Prometheus si hay datos., _record_usage(), Tests para observabilidad de tokens y coste LLM (RFC observabilidad-tokens-coste, Sin prometheus_client, _record_usage no falla., El proveedor Anthropic rellena usage_sink tras stream exitoso. (+19 more)
 
 ### Community 269 - "Community 269"
 Cohesion: 0.11
@@ -3669,19 +3702,19 @@ Nodes (24): Caché en memoria, consciente de la señal de invalidación de inges
 
 ### Community 274 - "Community 274"
 Cohesion: 0.05
-Nodes (47): Parámetros globales del request de scoring., Perfil de usuario para scoring personalizado (Feature B).      Cuando es None, s, Parámetros globales del request de scoring., Perfil de usuario para scoring personalizado (Feature B).      Cuando es None, s, Parámetros globales del request de scoring., Perfil de usuario para scoring personalizado (Feature B).      Cuando es None, s, _ScoringContext, ScoringProfile (+39 more)
+Nodes (45): CompetenciaStats, MargenStats, Estadísticas de competencia por segmento CPV-4., Estadísticas de margen / baja esperada., Estadísticas de competencia por segmento CPV-4., Estadísticas de margen / baja esperada., Modo por defecto: ordenado por score desc y truncado a limit., CPV sin datos → usa media global. (+37 more)
 
 ### Community 275 - "Community 275"
 Cohesion: 0.27
 Nodes (16): calibrate_and_tune(), Calibración de probabilidades y tuning de umbral (F3).  Combina :class:`sklearn., Resultado de la calibración + búsqueda de umbral., Calibra el estimador y busca el umbral que maximiza F-beta sensible a coste., ThresholdTuningResult, _fitted_estimator(), _make_data(), Tests for services/threshold_tuning.py — calibration and threshold optimization. (+8 more)
 
 ### Community 276 - "Community 276"
-Cohesion: 0.05
-Nodes (31): _keyword_fallback_score(), _keyword_pattern(), Fracción de keywords del label presentes en el texto (en minúsculas).      Usado, Fracción de keywords del label presentes en el texto (en minúsculas).      Usado, Regex de una keyword con límites de palabra, memoizada por keyword.      Mismo c, Fracción de keywords del label presentes en el texto (palabra entera).      Usad, Fracción de keywords del label presentes en el texto (en minúsculas).      Usado, Fracción de keywords del label presentes en el texto (en minúsculas).      Usado (+23 more)
+Cohesion: 0.06
+Nodes (27): _grupos_efectivos(), _keyword_fallback_score(), _keyword_pattern(), Fracción de keywords del label presentes en el texto (en minúsculas).      Usado, Fracción de keywords del label presentes en el texto (en minúsculas).      Usado, Regex de una keyword con límites de palabra, memoizada por keyword.      Mismo c, Fracción de keywords del label presentes en el texto (palabra entera).      Usad, Fracción de keywords del label presentes en el texto (en minúsculas).      Usado (+19 more)
 
 ### Community 277 - "Community 277"
-Cohesion: 0.09
-Nodes (13): Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, validate_google_id_token(), Lines 403-440: validate_google_id_token. (+5 more)
+Cohesion: 0.10
+Nodes (12): Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, Valida los claims de un id_token de Google ya decodificado.      Sólo valida los, validate_google_id_token(), Lines 403-440: validate_google_id_token. (+4 more)
 
 ### Community 278 - "Community 278"
 Cohesion: 0.12
@@ -3692,8 +3725,8 @@ Cohesion: 0.12
 Nodes (16): Advanced Patterns, Best Practices, Code Quality, Core Principles, Experiment Design Frameworks, Further Reading, Overview, Pattern 1: Distributed Processing (+8 more)
 
 ### Community 280 - "Community 280"
-Cohesion: 0.06
-Nodes (47): Valor de ``user_notifications.type`` para este evento concreto.      El único de, Valor de ``user_notifications.type`` para este evento concreto.      El único de, Valor de ``user_notifications.type`` para este evento concreto.      El único de, _tipo_notificacion(), especificacion(), Especificación de un tipo del catálogo., Especificación de un tipo del catálogo., El correo de competidores ya sale agrupado por su camino; las cuentas     avisan (+39 more)
+Cohesion: 0.08
+Nodes (40): especificacion(), Especificación de un tipo del catálogo., Especificación de un tipo del catálogo., El correo de competidores ya sale agrupado por su camino; las cuentas     avisan, test_competidor_y_cuentas_no_mandan_correo_por_el_despachador(), test_los_avisos_de_lo_seguido_van_al_digest_con_preferencia(), cola(), _comentar() (+32 more)
 
 ### Community 281 - "Community 281"
 Cohesion: 0.05
@@ -3701,7 +3734,7 @@ Nodes (35): Graphify Always-On Rule, 0. FREEZE de features — LEVANTADO (2026-0
 
 ### Community 282 - "Community 282"
 Cohesion: 0.05
-Nodes (47): Tests para llm/client.py — dispatcher multi-proveedor.  Cubre: - provider_for: c, Todo modelo ofertado tiene entrada en _PRICE_PER_MTOK.      `_record_usage` solo, Todo modelo ofertado tiene entrada en _PRICE_PER_MTOK.      `_record_usage` solo, Los defaults Pydantic de /ask y /resumen siguen a llm.client.DEFAULT_MODEL., Los defaults Pydantic de /ask y /resumen siguen a llm.client.DEFAULT_MODEL., settings.LLM_TECH_LABELING_MODEL es un modelo ofertado.      Lo consume schedule, settings.LLM_TECH_LABELING_MODEL es un modelo ofertado.      Lo consume schedule, El historial y el modo llegan al provider como (system, messages) montados. (+39 more)
+Nodes (49): Tests para llm/client.py — dispatcher multi-proveedor.  Cubre: - provider_for: c, AVAILABLE_MODELS tiene al menos un modelo., AVAILABLE_MODELS tiene al menos un modelo., AVAILABLE_MODELS tiene al menos un modelo., AVAILABLE_MODELS tiene al menos un modelo., Todo modelo ofertado tiene entrada en _PRICE_PER_MTOK.      `_record_usage` solo, Todo modelo ofertado tiene entrada en _PRICE_PER_MTOK.      `_record_usage` solo, Los defaults Pydantic de /ask y /resumen siguen a llm.client.DEFAULT_MODEL. (+41 more)
 
 ### Community 283 - "Community 283"
 Cohesion: 0.07
@@ -3720,8 +3753,8 @@ Cohesion: 0.12
 Nodes (16): Advanced Patterns, Best Practices, Code Quality, Core Principles, Further Reading, Overview, Pattern 1: Distributed Processing, Pattern 2: Real-Time Systems (+8 more)
 
 ### Community 287 - "Community 287"
-Cohesion: 0.11
-Nodes (31): Mensaje, Un correo tal y como lo describe el llamante, sin decisiones de transporte., ajustes(), _mensaje_enviado(), Transporte de correo (``observability/mailer.py``) y sus cuatro backends.  Sin r, Sustituye ``config.settings`` por un namespace con los campos del mailer., La URL del pie del digest es la misma que va en el encabezado RFC 8058., Parchea ``pinned_https_request`` y devuelve la lista de llamadas capturadas. (+23 more)
+Cohesion: 0.08
+Nodes (41): _contar_fallo_entrega(), _entregar_email(), enviar_email_transaccional(), Entrega un email por SMTP con STARTTLS. Devuelve si salió de aquí.      Punto ún, Entrega un email por el backend configurado. Devuelve si salió de aquí.      Pun, Envía un email **de producto** a una persona, no una alerta de operación.      E, Envía un email **de producto** a una persona, no una alerta de operación.      `, Suma uno a ``alert_delivery_failed_total`` sin poder fallar.      Va envuelto en (+33 more)
 
 ### Community 288 - "Community 288"
 Cohesion: 0.12
@@ -3732,16 +3765,16 @@ Cohesion: 0.08
 Nodes (22): hash_password(), Verifica *candidate* contra *pw_hash*.      Soporta:     * **argon2** (``$argon2, Hashea *password* para almacenarlo en ``users.password_hash``.      Usa **Argon2, Hashea *password* para almacenarlo en ``users.password_hash``.      Usa **Argon2, Verifica *candidate* contra *pw_hash*.      Soporta:     * **argon2** (``$argon2, verify_password(), Lines 186-218: verify_password branches., Ida y vuelta con la librería real, sin mocks: lo que se guarda en         `users (+14 more)
 
 ### Community 290 - "Community 290"
-Cohesion: 0.04
-Nodes (57): CompanyProfile(), CompanyProfileProps, initialCompanyProfilePeriod(), Period, Pestana, CompanyAward, CompanyAwardsData, CompanyBreakdown (+49 more)
+Cohesion: 0.03
+Nodes (92): BarEntry, CompetitorsBarChart, CompetitorsEstacionalidadChart, CompetitorsPieChart, CompetitorsPositioningChart, CompetitorsScatterChart, CompetitorsTreemap, EstacionalidadEntry (+84 more)
 
 ### Community 291 - "Community 291"
-Cohesion: 0.09
-Nodes (22): _empresa_resolution_snapshot(), instrument_run(), _prometheus_available(), Instrumentación Prometheus para el scraper de TenderFlow.  Expone métricas en fo, Vuelca las métricas del run a un fichero .prom., Vuelca las métricas del run a un fichero .prom., Usa prometheus_client para escribir métricas (formato correcto).      NOTE: Uses, Devuelve adjudicaciones enlazadas y pendientes sin romper el scraper. (+14 more)
+Cohesion: 0.07
+Nodes (30): _empresa_resolution_snapshot(), instrument_run(), _prometheus_available(), Instrumentación Prometheus para el scraper de TenderFlow.  Expone métricas en fo, Vuelca las métricas del run a un fichero .prom., Vuelca las métricas del run a un fichero .prom., Usa prometheus_client para escribir métricas (formato correcto).      NOTE: Uses, Devuelve adjudicaciones enlazadas y pendientes sin romper el scraper. (+22 more)
 
 ### Community 292 - "Community 292"
 Cohesion: 0.09
-Nodes (20): csv_set(), oauth_email_is_admin(), Convierte una cadena CSV a un conjunto de valores en minúsculas., Verifica *candidate* contra *pw_hash*.      Soporta:     * **argon2** (``$argon2, Convierte una cadena CSV a un conjunto de valores en minúsculas., Convierte una cadena CSV a un conjunto de valores en minúsculas., Convierte una cadena CSV a un conjunto de valores en minúsculas., True si el email está en la lista de admins OAuth. (+12 more)
+Nodes (19): google_callback(), Handle Google OAuth callback: exchange code, validate, set session., Handle Google OAuth callback: exchange code, validate, set session., Handle Google OAuth callback: exchange code, validate, set session., Handle Google OAuth callback: exchange code, validate, set session., Handle Google OAuth callback: exchange code, validate, set session., Handle Google OAuth callback: exchange code, validate, set session., oauth_email_is_admin() (+11 more)
 
 ### Community 293 - "Community 293"
 Cohesion: 0.12
@@ -3756,8 +3789,8 @@ Cohesion: 0.11
 Nodes (19): scripts, build, capturas:landing, codegen, codegen:best-effort, codegen:file, dev, format (+11 more)
 
 ### Community 296 - "Community 296"
-Cohesion: 0.12
-Nodes (14): _MaxBodyMiddleware, Rechaza requests con body > max_bytes.          Comprueba Content-Length (fast p, Rechaza requests con body > max_bytes antes de procesarlos., Rechaza requests con body > max_bytes.          Comprueba Content-Length (fast p, Rechaza requests con body > 1 MB usando raw ASGI.          Comprueba Content-Len, Rechaza requests con body > max_bytes.          Comprueba Content-Length (fast p, Rechaza requests con body > 1 MB usando raw ASGI.          Comprueba Content-Len, Rechaza requests con body > 1 MB usando raw ASGI.          Comprueba Content-Len (+6 more)
+Cohesion: 0.05
+Nodes (48): export_api_keys(), get_key_name_and_scopes(), get_user_id_from_key_id(), Obtiene nombre y scopes de una API key por ID., Obtiene nombre y scopes de una API key por ID., Desactiva todas las API keys del usuario (borrado de cuenta por sesión)., Obtiene nombre y scopes de una API key por ID., Desactiva todas las API keys del usuario (borrado de cuenta por sesión). (+40 more)
 
 ### Community 297 - "Community 297"
 Cohesion: 0.07
@@ -3784,12 +3817,12 @@ Cohesion: 0.20
 Nodes (15): append_items_to_backlog(), discover_new_items(), has_skip_mark(), is_eligible(), is_in_cooldown(), load_attempted_state(), main(), parse_backlog() (+7 more)
 
 ### Community 303 - "Community 303"
-Cohesion: 0.16
-Nodes (24): CompareFilters, CompareResult, get_compare_periods(), _load_df(), _pct_delta(), _period_stats(), PeriodDeltas, PeriodStats (+16 more)
+Cohesion: 0.11
+Nodes (32): CompareFilters, CompareResult, get_compare_periods(), _load_df(), _pct_delta(), _period_stats(), PeriodDeltas, PeriodStats (+24 more)
 
 ### Community 304 - "Community 304"
-Cohesion: 0.09
-Nodes (35): _apply_filters(), GeoEntry, GeoFilters, GeoResult, get_geography(), _load_df(), ProvinciaEntry, Geography analytics — distribution by CCAA.  Agrega en Postgres vía :class:`Aggr (+27 more)
+Cohesion: 0.12
+Nodes (27): _apply_filters(), GeoEntry, GeoFilters, GeoResult, get_geography(), _load_df(), ProvinciaEntry, Geography analytics — distribution by CCAA.  Agrega en Postgres vía :class:`Aggr (+19 more)
 
 ### Community 305 - "Community 305"
 Cohesion: 0.07
@@ -3797,15 +3830,15 @@ Nodes (18): _FakeCol, Tests unitarios de dashboard/components y helpers de UI �
 
 ### Community 306 - "Community 306"
 Cohesion: 0.03
-Nodes (100): _cuantil_conformal(), intervalo_baseline(), _offset_conformal(), offset_conformal_baseline(), Intervalo del baseline alrededor de ``p50``, con corrección conformal.      Punt, Corrección split-conformal para que el intervalo del baseline cubra el 80%., Intervalo del baseline alrededor de ``p50``, con corrección conformal.      Punt, Corrección split-conformal para que el intervalo del baseline cubra el 80%. (+92 more)
+Nodes (121): _cuantil_conformal(), intervalo_baseline(), _offset_conformal(), offset_conformal_baseline(), Intervalo del baseline alrededor de ``p50``, con corrección conformal.      Punt, Corrección split-conformal para que el intervalo del baseline cubra el 80%., Intervalo del baseline alrededor de ``p50``, con corrección conformal.      Punt, Corrección split-conformal para que el intervalo del baseline cubra el 80%. (+113 more)
 
 ### Community 307 - "Community 307"
 Cohesion: 0.17
 Nodes (16): Alembic Migrations, FastAPI, Safe Migration Pattern (NOT VALID + Validate), SQLAlchemy, Pydantic v2, Pydantic Validation Skill, Change Column Types Safely, Ensure Index Not Already Covered (+8 more)
 
 ### Community 308 - "Community 308"
-Cohesion: 0.10
-Nodes (20): fake_streamlit(), Tests para db.rate_limits., cleanup_expired elimina entradas viejas sin errores., Mock mínimo de streamlit con session_state como dict y warning() no-op., Tras pasar la ventana, el contador se purga y permite nuevas llamadas., test_check_rate_limit_window_slides(), test_db_rate_limit_cleanup_expired(), test_get_call_count_reflects_calls() (+12 more)
+Cohesion: 0.09
+Nodes (22): fake_streamlit(), Tests para db.rate_limits., cleanup_expired elimina entradas viejas sin errores., Mock mínimo de streamlit con session_state como dict y warning() no-op., check_rate_limit_db falla en cerrado si hay error de BD (fail closed)., Tras pasar la ventana, el contador se purga y permite nuevas llamadas., test_check_rate_limit_window_slides(), test_db_rate_limit_cleanup_expired() (+14 more)
 
 ### Community 309 - "Community 309"
 Cohesion: 0.05
@@ -3817,7 +3850,7 @@ Nodes (24): BaseSettings, Settings del resumen IA pre-generado por el job noctur
 
 ### Community 312 - "Community 312"
 Cohesion: 0.03
-Nodes (69): Página Competidores — lógica principal de renderizado.  La sección de UTEs está, render(), Sub-sección de UTEs (Uniones Temporales de Empresas) para la página Competidores, Sub-apartado dedicado al análisis de UTEs dentro de Competencia., render_utes_section(), Renderiza una top-card con importe, título enlazado y metadatos.      Args:, top_card(), _catmull_rom_to_bezier() (+61 more)
+Nodes (69): Página Competidores — lógica principal de renderizado.  La sección de UTEs está, render(), Sub-sección de UTEs (Uniones Temporales de Empresas) para la página Competidores, Sub-apartado dedicado al análisis de UTEs dentro de Competencia., render_utes_section(), _catmull_rom_to_bezier(), kpi_card(), Componente KPI card — genera HTML para st.markdown.  Soporta: - sparkline: lista (+61 more)
 
 ### Community 313 - "Community 313"
 Cohesion: 0.10
@@ -3840,56 +3873,56 @@ Cohesion: 0.13
 Nodes (14): author, category, created, entry_point_tokens, full_tokens, license, name, related_skills (+6 more)
 
 ### Community 318 - "Community 318"
-Cohesion: 0.06
-Nodes (35): Pipeline canónica para el carril bulk (últimos N meses).      Siempre por ``Plac, Pipeline canónica para el carril bulk (últimos N meses).      Siempre por ``Plac, Pipeline canónica para el carril bulk (últimos N meses).      Siempre por ``Plac, Pipeline canónica para el carril bulk (últimos N meses).      Ejecuta la ingesta, Pipeline canónica para el carril bulk (últimos N meses).      Ejecuta la ingesta, Pipeline canónica para el carril bulk (últimos N meses).      Cuando ``PLACSP_CO, run_bulk_pipeline(), Tests para scheduler/jobs/recent_bulk.py — pipeline canónica (ADR-012). (+27 more)
+Cohesion: 0.07
+Nodes (27): Tests para scheduler/jobs/recent_bulk.py — pipeline canónica (ADR-012)., Si fallan todos los meses, se lanza RuntimeError (fatal genuino)., Un mes fallido no aborta la pipeline: corre post-ingesta y reporta degraded., run_bulk_pipeline ejecuta analytics export antes que KPI precompute., run_update.main devuelve 1 (no fatal) cuando el bulk queda degradado., Si fallan todos los meses, se lanza RuntimeError (fatal genuino)., ``side_effect`` para ``run_connector``: un resultado por mes esperado.      Trad, run_update.main devuelve 1 (no fatal) cuando el bulk queda degradado. (+19 more)
 
 ### Community 319 - "Community 319"
-Cohesion: 0.01
-Nodes (195): ClavesView(), NotificacionesView(), OAuthLoginTelemetry(), BotonNativo, Icono(), iconoPorDefecto(), IconoSeguir, SeguirBoton() (+187 more)
+Cohesion: 0.02
+Nodes (113): ClavesView(), NotificacionesView(), ProbabilidadesEtapaCard(), SesionesView(), ajustesKeys, CrearClaveInput, useClaves(), useCrearClave() (+105 more)
 
 ### Community 320 - "Community 320"
 Cohesion: 0.13
 Nodes (19): 1. Disponibilidad de la API, 1. Disponibilidad del dashboard, 1. Disponibilidad del frontend web, 2. Frescura de datos, 3. Latencia de carga del dashboard, 3. Latencia de carga del frontend web, 4. Tasa de éxito del pipeline de scraping, 5. Cobertura de datos — importe presente (+11 more)
 
 ### Community 321 - "Community 321"
-Cohesion: 0.06
-Nodes (33): _catalog_url(), Canary del catálogo de modelos NVIDIA NIM.  NVIDIA retira modelos sin aviso: ``d, Devuelve ``{"checked": n, "missing": [...], "error": str | None}``.      Un fall, run(), provider_for(), Devuelve el nombre del proveedor para un modelo dado., Devuelve el nombre del proveedor para un modelo dado., Devuelve el nombre del proveedor para un modelo dado. (+25 more)
+Cohesion: 0.05
+Nodes (38): _catalog_url(), Canary del catálogo de modelos NVIDIA NIM.  NVIDIA retira modelos sin aviso: ``d, Devuelve ``{"checked": n, "missing": [...], "error": str | None}``.      Un fall, run(), provider_for(), Devuelve el nombre del proveedor para un modelo dado., Devuelve el nombre del proveedor para un modelo dado., Devuelve el nombre del proveedor para un modelo dado. (+30 more)
 
 ### Community 322 - "Community 322"
-Cohesion: 0.06
-Nodes (54): resolve_artifact(), Path del artefacto de la versión activa de ``name``, verificado por sha256., Path del artefacto de la versión activa de ``name``, verificado por sha256., Artefacto servible de ``name``, o ``None`` si no hay ninguno.      Prefiere el d, Artefacto servible de ``name``, o ``None`` si no hay ninguno.      Prefiere el d, resolve_active_artifact(), resolve_servable_artifact(), cache_dir() (+46 more)
+Cohesion: 0.05
+Nodes (55): publish_artifact_to_bucket(), Sube un artefacto ya publicado al bucket, para que la API pueda servirlo.      C, Sube un artefacto ya publicado al bucket, para que la API pueda servirlo.      C, Artefacto servible de ``name``, o ``None`` si no hay ninguno.      Prefiere el d, Artefacto servible de ``name``, o ``None`` si no hay ninguno.      Prefiere el d, resolve_servable_artifact(), cache_dir(), _descarga_falsa() (+47 more)
 
 ### Community 323 - "Community 323"
-Cohesion: 0.09
-Nodes (27): Búsqueda de texto — POST /api/v1/search/semantic.  Expone el motor de :mod:`serv, Búsqueda semántica híbrida., Búsqueda semántica híbrida., Un resultado de búsqueda semántica., Búsqueda semántica híbrida., Respuesta de búsqueda semántica., Búsqueda semántica híbrida., Cuerpo de la petición de búsqueda semántica. (+19 more)
+Cohesion: 0.08
+Nodes (29): Búsqueda de texto — POST /api/v1/search/semantic.  Expone el motor de :mod:`serv, Búsqueda semántica híbrida., Búsqueda semántica híbrida., Un resultado de búsqueda semántica., Búsqueda semántica híbrida., Respuesta de búsqueda semántica., Búsqueda semántica híbrida., Cuerpo de la petición de búsqueda semántica. (+21 more)
 
 ### Community 324 - "Community 324"
 Cohesion: 0.09
 Nodes (25): 0. Antes de tocar nada: cuál es el fallo, 1. Evaluación inicial, 1. Requisitos del que actúa, 2. Restaurar base de datos desde backup, 2. Restaurar la base de datos desde backup, 3. Pérdida del proveedor: reconstruir el proyecto de Supabase, 3. Restaurar modelo ML, 4. Despliegue roto en Render (+17 more)
 
 ### Community 325 - "Community 325"
-Cohesion: 0.13
-Nodes (30): get_utes(), _load_df(), UTE analytics — analysis of Uniones Temporales de Empresas.  Agrega en Postgres, UTE-specific analysis from adjudicaciones., UTE-specific analysis from adjudicaciones., Par de empresas que han co-licitado en UTE (quién se asocia con quién)., Par de empresas que han co-licitado en UTE (quién se asocia con quién)., UTE-specific analysis from adjudicaciones. (+22 more)
+Cohesion: 0.09
+Nodes (40): get_utes(), _load_df(), UTE analytics — analysis of Uniones Temporales de Empresas.  Agrega en Postgres, UTE-specific analysis from adjudicaciones., UTE-specific analysis from adjudicaciones., Par de empresas que han co-licitado en UTE (quién se asocia con quién)., Par de empresas que han co-licitado en UTE (quién se asocia con quién)., UTE-specific analysis from adjudicaciones. (+32 more)
 
 ### Community 326 - "Community 326"
-Cohesion: 0.04
-Nodes (69): Puntúa (keywords) licitaciones con páginas extraídas y sin señal     vigente, y, Puntúa (keywords) licitaciones con páginas extraídas y sin señal     vigente, y, Puntúa (keywords) licitaciones con páginas extraídas y sin señal     vigente, y, _run_tech_signal_phase(), Señal detectada para una tecnología: score + evidencia (una de las dos)., Señal detectada para una tecnología: score + evidencia (una de las dos)., Señal detectada para una tecnología: score + evidencia (una de las dos)., TechSignal (+61 more)
+Cohesion: 0.05
+Nodes (36): Carga la proyección/filtro necesarios para ``services.analytics.competitors``., Carga la proyección/filtro necesarios para ``services.analytics.competitors``., ambito_agenda_sql(), _check_identifiers(), count_where(), csv_values(), loose_distinct_count(), loose_distinct_strings() (+28 more)
 
 ### Community 327 - "Community 327"
-Cohesion: 0.06
-Nodes (49): ForecastVolPoint, HORIZON_COLORS, horizonColor(), HorizonteCount, PipelineForecastChart(), PipelineHorizonChart(), PipelineQuarterlyChart(), PipelineUrgencyScatter() (+41 more)
+Cohesion: 0.11
+Nodes (27): barColor(), CalidadCompletenessChart(), ColumnCompleteness, CompletitudMesEntry, TENDENCIA_SERIES, ForecastVolPoint, HORIZON_COLORS, horizonColor() (+19 more)
 
 ### Community 328 - "Community 328"
-Cohesion: 0.11
-Nodes (40): Return (score 0-100, band, risk_flags, desglose) for a single row., Return (score 0-100, band, risk_flags, desglose) for a single row., Devuelve (score 0-100, band, risk_flags, desglose) para una fila., Devuelve (score 0-100, band, risk_flags, desglose) para una fila., Devuelve (score 0-100, band, risk_flags, desglose, explicacion) para una fila., Devuelve (score 0-100, band, risk_flags, desglose, explicacion) para una fila., Return (score 0-100, band, risk_flags) for a single row., Return (score 0-100, band, risk_flags, desglose) for a single row. (+32 more)
+Cohesion: 0.08
+Nodes (53): _effective_weights(), Return (score 0-100, band, risk_flags, desglose) for a single row., Return (score 0-100, band, risk_flags, desglose) for a single row., Pesos efectivos: si no hay keywords, redistribuye el peso de afinidad.      Func, Devuelve (score 0-100, band, risk_flags, desglose) para una fila., Devuelve (score 0-100, band, risk_flags, desglose) para una fila., Pesos efectivos: si no hay keywords, redistribuye el peso de afinidad.      Func, Devuelve (score 0-100, band, risk_flags, desglose, explicacion) para una fila. (+45 more)
 
 ### Community 329 - "Community 329"
 Cohesion: 0.09
 Nodes (15): count, date, backfill(), Backfill desde una fecha histórica hasta hoy (paralelo por meses)., Backfill desde una fecha histórica hasta hoy (paralelo por meses)., Backfill desde una fecha histórica hasta hoy (paralelo por meses)., Backfill desde una fecha histórica hasta hoy (paralelo por meses)., Backfill desde una fecha histórica hasta hoy (paralelo por meses). (+7 more)
 
 ### Community 330 - "Community 330"
-Cohesion: 0.09
-Nodes (32): backup_sqlite(), Copia segura (online backup) de una base de datos SQLite., Copia segura (online backup) de una base de datos SQLite., _decompress_to(), latest_backup(), main(), _materialize_compressed_backup(), Restore y verificación de backups SQLite (complementa scripts/backup_db.py).  Ha (+24 more)
+Cohesion: 0.06
+Nodes (46): eventos, path, backup_sqlite(), Copia segura (online backup) de una base de datos SQLite., Copia segura (online backup) de una base de datos SQLite., _decompress_to(), latest_backup(), main() (+38 more)
 
 ### Community 331 - "Community 331"
 Cohesion: 0.18
@@ -3916,20 +3949,20 @@ Cohesion: 0.14
 Nodes (11): code:bash (git diff --name-only HEAD~1 | grep "\.py$" | xargs bandit -f), code:block2 (## Security Triage Report — PR #{N}), Cuándo escalar al orchestrator, denylist: "**/*", Formato de reporte, Knowledge bases, Proceso de triage, Reglas del proyecto (de .pre-commit-config.yaml y pyproject.toml) (+3 more)
 
 ### Community 337 - "Community 337"
-Cohesion: 0.07
-Nodes (36): _matches_for(), _ids_desde_banda(), list_matches(), Matches de la regla (preview en vivo), más recientes primero., ``id_externo`` de la regla cuya banda del Radar llega a ``banda_min``.      Dos, ``id_externo`` de la regla cuya banda del Radar llega a ``banda_min``.      Dos, ``id_externo`` de la regla cuya banda del Radar llega a ``banda_min``.      Dos, Matches de la regla (preview en vivo), más recientes primero. (+28 more)
+Cohesion: 0.11
+Nodes (23): corpus(), duenya(), _ids(), Reglas de watchlist con los seis criterios de S4.4.  Integración (``tmp_db``). T, Sin los criterios nuevos, el predicado es el de siempre.      Es el criterio de, ``licitaciones.tecnologia`` guarda ``"SAP,SALESFORCE"``: con igualdad,     filtr, Los dos lados se pliegan: «Alcañiz» y «Alcaniz» son el mismo órgano., Una regla para quien no puede preparar una oferta en menos de N días. (+15 more)
 
 ### Community 338 - "Community 338"
 Cohesion: 0.21
 Nodes (7): _patch_settings(), Tests para _try_redis — lógica de fallback y fail-fast en prod., Tests para _try_redis — lógica de fallback y fail-fast en prod., Tests para _try_redis — lógica de fallback y fail-fast en prod., Tests para _try_redis — lógica de fallback y fail-fast en prod., Tests para _try_redis — lógica de fallback y fail-fast en prod., TestTryRedis
 
 ### Community 339 - "Community 339"
-Cohesion: 0.12
-Nodes (12): cpv_label(), Clasificación de licitaciones: CPV, módulos SAP, tecnología, tipo de proyecto., Devuelve etiqueta legible para un código de tipo de contrato., Devuelve etiqueta legible para un código de tipo de contrato.      Sin catalogar, Devuelve etiqueta legible para un código de tipo de contrato.      Sin catalogar, Devuelve etiqueta legible para un código CPV., Devuelve etiqueta legible para un código CPV., Devuelve etiqueta legible para un código CPV. (+4 more)
+Cohesion: 0.05
+Nodes (27): cpv_label(), detect_modules(), detect_project_type(), estado_label(), Clasificación de licitaciones: CPV, módulos SAP, tecnología, tipo de proyecto., Detecta módulos SAP mencionados en *text*., Detecta módulos SAP mencionados en *text*., Detecta módulos SAP mencionados en *text*. (+19 more)
 
 ### Community 340 - "Community 340"
-Cohesion: 0.04
-Nodes (73): calibracion_baja_dto(), CalibracionBajaDTO, CalibracionPorLoteDTO, CalibracionRegimenDTO, comprobar_calibracion_baja(), _estado_publico(), Calibración del modelo de baja en producción (closed-loop).  ``drift.py`` cubre, Sobre qué cifra se decide la severidad, y cuál es esa cifra.      La degradación (+65 more)
+Cohesion: 0.10
+Nodes (32): comprobar_calibracion_baja(), Cobertura empírica del intervalo p10-p90 vs bajas realizadas.      Devuelve cobe, Cobertura empírica del intervalo p10-p90 vs bajas realizadas.      Devuelve cobe, Tests del monitor de calibración del modelo de baja (closed-loop).  Verifica que, Calibrar el baseline con intervalos que produjo el modelo mediría otra     cosa:, Inserta licitación + adjudicación (baja real) + predicción servida., Regresión de idempotencia: el offset se mide contra el intervalo crudo.      Est, Inserta licitación + adjudicación (baja real) + predicción servida.      ``model (+24 more)
 
 ### Community 341 - "Community 341"
 Cohesion: 0.14
@@ -3948,12 +3981,12 @@ Cohesion: 0.14
 Nodes (13): A. Enriquecer el payload del queue (sin nuevos cálculos en el frontend), Acceptance criteria, Alternativas consideradas, B. Etiquetado multi-tecnología, C. Persistencia, code:json ({), code:sql (ALTER TABLE ml_feedback ADD COLUMN tecnologia TEXT;), Contexto (+5 more)
 
 ### Community 345 - "Community 345"
-Cohesion: 0.04
-Nodes (53): MergeOutcome, Repository para ``licitacion_tecnologia_pliego`` y la escritura del merge hacia, Read-modify-write atómico del merge para un lote de licitaciones,         serial, Read-modify-write atómico del merge para un lote de licitaciones,         serial, Read-modify-write atómico del merge para un lote de licitaciones,         serial, Una transacción del merge por lotes: lock, lectura del estado de         todo el, Una transacción del merge por lotes: lock, lectura del estado de         todo el, Una transacción del merge por lotes: lock, lectura del estado de         todo el (+45 more)
+Cohesion: 0.11
+Nodes (18): MergeOutcome, Salida de ``merge_many_with_lock``: lo escrito y lo que falló.      Ambos van po, Salida de ``merge_many_with_lock``: lo escrito y lo que falló.      Ambos van po, Salida de ``merge_many_with_lock``: lo escrito y lo que falló.      Ambos van po, Tests unitarios (sin BD) de services/tech_signal.py.  ``score_documents`` es pur, Orquestación: lectura de señales, dedupe de eventos por ``merged_at``     y fail, Antes: elegir un único 'best row' por tecnología con comparación         estrict, Orquestación: lectura de señales, dedupe de eventos por ``merged_at``     y fail (+10 more)
 
 ### Community 346 - "Community 346"
-Cohesion: 0.04
-Nodes (41): _actor_key(), create_my_key(), delete_my_session(), _get_user_id_from_key_id(), logout_all(), Identificador corto para audit log — misma convención que feedback.py., Identificador corto para audit log — misma convención que feedback.py., Revoca todas las sesiones server-side del usuario. (+33 more)
+Cohesion: 0.09
+Nodes (23): _get_user_id_from_key_id(), Genera una nueva API key con los mismos scopes que la actual.      La key anteri, Genera una nueva API key con los mismos scopes que la actual.      La key anteri, Genera una nueva API key con los mismos scopes que la actual.      La key anteri, Genera una nueva API key con los mismos scopes que la actual.      La key anteri, Genera una nueva API key con los mismos scopes que la actual.      La key anteri, Proxy a services.gdpr — compatibilidad interna., Proxy a services.gdpr — compatibilidad interna. (+15 more)
 
 ### Community 347 - "Community 347"
 Cohesion: 0.12
@@ -3964,8 +3997,8 @@ Cohesion: 0.22
 Nodes (5): TestHighlightMatch, _compile_token_pattern(), highlight_match(), Compila y cachea el regex para un token HTML-escapado., Envuelve las coincidencias de *query* en ``<mark class="search-hl">``.      - Es
 
 ### Community 349 - "Community 349"
-Cohesion: 0.09
-Nodes (16): Tests de paridad de pipeline canónica (ADR-012).  Verifica que ``run_update --da, A failing step is recorded as 'error' but does not stop other steps., A failing step is recorded as 'error' but does not stop other steps., A failing step is recorded as 'error' but does not stop other steps., A failing step is recorded as 'error' but does not stop other steps., run_update --daily y daily_atom invocan la misma secuencia canónica., run_update --daily calls run_daily_pipeline from pipeline_runs., scheduler/jobs/daily_atom.run() calls run_daily_pipeline. (+8 more)
+Cohesion: 0.07
+Nodes (31): eventos_de_contrato(), Agregados sobre las filas que ya devuelve :func:`listar_cartera`. Puro.      La, El resumen de la cartera de la organización activa del usuario.      Mismo ámbit, El resumen de la cartera de la organización activa del usuario.      Mismo ámbit, Los eventos del contrato vigente de una entrada de cartera, en orden.      404 (, Los eventos del contrato vigente de una entrada de cartera, en orden.      404 (, resumen_cartera(), resumen_de_usuario() (+23 more)
 
 ### Community 350 - "Community 350"
 Cohesion: 0.14
@@ -3984,16 +4017,16 @@ Cohesion: 0.15
 Nodes (11): code:bash (pnpm install), code:bash (pnpm build), code:bash (pnpm validate), code:bash (pnpm extract-tests), code:markdown (---), code:block6, Creating a New Rule, Getting Started (+3 more)
 
 ### Community 354 - "Community 354"
-Cohesion: 0.33
-Nodes (3): Unit tests: verify consistent use of _trusted_client_ip (issue #51).  Ensures Ac, AccessLogMiddleware must call _trusted_client_ip, not read XFF directly., TestAccessLogUseTrustedIp
+Cohesion: 0.13
+Nodes (11): AccessLogMiddleware, Access log estructurado por request.      Registra por request:     - método, pa, Access log estructurado por request.      Registra por request:     - método, pa, Access log estructurado por request.      Registra por request:     - método, pa, Access log estructurado por request.      Registra por request:     - método, pa, Access log estructurado por request.      Registra por request:     - método, pa, Access log estructurado por request.      Registra por request:     - método, pa, Access log estructurado por request.      Registra por request:     - método, pa (+3 more)
 
 ### Community 355 - "Community 355"
-Cohesion: 0.02
-Nodes (108): _como_pagina(), DocumentoPagina, Repository para ``documentos``/``documento_chunks`` (plan Pliegos+RAG, F6).  Met, Una página lógica extraída, y de dónde salió su texto.      ``ocr=True`` signifi, Texto extraído con éxito. ``sha256`` es del binario descargado —         usado p, Acepta el ``list[str]`` histórico además del tipo nuevo., Formato de texto que pgvector castea con ``::vector`` (``[0.1,0.2,...]``)., Reemplaza (delete+insert) los chunks+embeddings de un documento.          ``embe (+100 more)
+Cohesion: 0.07
+Nodes (41): _agrupar_en_paginas_logicas(), DocumentFetchError, _entorno_bool(), _es_pdf_sin_texto(), _extract_docx_paginas(), _extract_odt_paginas(), _extract_pdf_pages(), _extract_pdf_pages_local() (+33 more)
 
 ### Community 356 - "Community 356"
-Cohesion: 0.05
-Nodes (30): _apply_tech_prediction(), _get_tech_clf(), _ml_classify_entry(), Anota ``lic`` con ml_tecnologias / ml_proba_max / ml_tech_principal.      Devuel, Devuelve el TechnologyClassifier cargado. None si deshabilitado o no disponible., Devuelve el TechnologyClassifier cargado. None si deshabilitado o no disponible., Devuelve el TechnologyClassifier cargado. None si deshabilitado o no disponible., Anota ``lic`` con ml_tecnologias / ml_proba_max / ml_tech_principal.      Devuel (+22 more)
+Cohesion: 0.06
+Nodes (37): Serialize *payload* to JSON and sign with HMAC-SHA256.      Format: ``{base64url, Serialize *payload* to JSON and sign with HMAC-SHA256.      Format: ``{base64url, Serialize *payload* to JSON and sign with HMAC-SHA256.      Format: ``{base64url, Require a recently-created browser session before changing MFA state., Verify signature and decode the session payload. Returns None on failure., Verify signature and decode the session payload. Returns None on failure., Verify signature and decode the session payload. Returns None on failure., Require a recently-created browser session before changing MFA state. (+29 more)
 
 ### Community 357 - "Community 357"
 Cohesion: 0.15
@@ -4004,8 +4037,8 @@ Cohesion: 0.09
 Nodes (22): 1. Mapa detallado de paquetes, 2.1 Añadir un endpoint a la API, 2.2 Añadir una página al dashboard, 2.2 Añadir una página al frontend, 2.3 Añadir un job al scraper, 2.4 Fix de bug, 2.5 Refactor / mover archivos, 2. Comandos y prerrequisitos (+14 more)
 
 ### Community 359 - "Community 359"
-Cohesion: 0.08
-Nodes (35): chat_template_kwargs_for(), _get_llm_histogram(), _get_token_counters(), _histogram(), _note_fallback(), Cliente LLM unificado — despacha al proveedor correcto según el modelo.  Interfa, Devuelve (tokens_counter, cost_counter) o (None, None)., Registra tokens y coste en Prometheus si hay datos. (+27 more)
+Cohesion: 0.06
+Nodes (39): chat_template_kwargs_for(), _get_key(), _get_llm_histogram(), _get_token_counters(), _histogram(), _note_fallback(), _provider_key_available(), Cliente LLM unificado — despacha al proveedor correcto según el modelo.  Interfa (+31 more)
 
 ### Community 360 - "Community 360"
 Cohesion: 0.17
@@ -4013,15 +4046,15 @@ Nodes (11): Feature Engineering, Learning Outcomes, MLOps Basics, Model Evaluati
 
 ### Community 361 - "Community 361"
 Cohesion: 0.06
-Nodes (53): clear_scoring_signals_cache(), _es_error(), ImportePercentiles, load_competencia_stats(), load_importe_percentiles(), _load_importe_percentiles_raw(), load_margen_stats(), _months_ago() (+45 more)
+Nodes (50): clear_scoring_signals_cache(), _es_error(), ImportePercentiles, load_competencia_stats(), load_importe_percentiles(), _load_importe_percentiles_raw(), _months_ago(), Señales externas para el scoring de oportunidades.  Carga y cachea tres señales (+42 more)
 
 ### Community 362 - "Community 362"
 Cohesion: 0.15
 Nodes (12): Basic Metrics, Classification Metrics, Classification Report, code:python (from sklearn.metrics import classification_report), code:python (from sklearn.metrics import confusion_matrix, ConfusionMatri), code:python (from sklearn.metrics import roc_auc_score, roc_curve, RocCur), code:python (from sklearn.metrics import precision_recall_curve, Precisio), code:python (from sklearn.metrics import log_loss) (+4 more)
 
 ### Community 363 - "Community 363"
-Cohesion: 0.17
-Nodes (12): code:python (from sklearn.impute import SimpleImputer), code:python (from sklearn.experimental import enable_iterative_imputer), code:python (from sklearn.impute import KNNImputer), Iterative Imputer, KNN Imputer, Missing Value Imputation, SimpleImputer, create_preprocessing_pipeline() (+4 more)
+Cohesion: 0.06
+Nodes (29): _apply_tenant_scope_write(), _begin_tenant_scope_read(), _end_tenant_scope_read(), _PgConnAdapter, ping(), Expone una conexión psycopg3 con la interfaz que usan los call-sites.      Une c, Expone una conexión psycopg3 con la interfaz que usan los call-sites.      Une c, Envuelve una conexión psycopg3 y traduce qmark→%s en execute/executemany.      E (+21 more)
 
 ### Community 364 - "Community 364"
 Cohesion: 0.15
@@ -4040,20 +4073,20 @@ Cohesion: 0.17
 Nodes (13): ADR-004: SQLite+Turso vs PostgreSQL, ADR-0011: CDC Debezium (not adopted), sap_classifier.pkl (ML model), Debezium CDC (not adopted), Healthcheck Workflow, db/events.py (domain_events), scheduler.healthcheck, scheduler.run_update (+5 more)
 
 ### Community 368 - "Community 368"
-Cohesion: 0.15
-Nodes (12): FAISS index rebuild — checks staleness and enqueues rebuild if needed., Rebuild the FAISS index if data has changed since the last build.      Checks wh, run(), enqueue_rebuild_embeddings(), Inline fallback (dramatiq not installed)., Reconstruye el índice FAISS de embeddings en background., Reconstruye el índice FAISS de embeddings en background., Reconstruye el índice FAISS de embeddings en background. (+4 more)
+Cohesion: 0.09
+Nodes (20): FAISS index rebuild — checks staleness and enqueues rebuild if needed., Rebuild the FAISS index if data has changed since the last build.      Checks wh, run(), Reconstruye el índice FAISS si los datos han cambiado desde la última build., Reconstruye el índice FAISS si los datos han cambiado desde la última build., Reconstruye el índice FAISS si los datos han cambiado desde la última build., _rebuild_faiss_if_stale(), enqueue_rebuild_embeddings() (+12 more)
 
 ### Community 370 - "Community 370"
-Cohesion: 0.05
-Nodes (44): Inserta/actualiza licitaciones y registra cambios en licitaciones_history., Inserta/actualiza licitaciones y registra cambios en licitaciones_history., Inserta/actualiza licitaciones y registra cambios en licitaciones_history., Devuelve el cursor para una fuente de ingesta, o None si no existe., Inserta/actualiza licitaciones y registra cambios en licitaciones_history., Inserta/actualiza licitaciones y registra cambios en licitaciones_history., Inserta/actualiza licitaciones y registra cambios en licitaciones_history., Inserta/actualiza licitaciones y registra cambios en licitaciones_history. (+36 more)
+Cohesion: 0.08
+Nodes (37): a_duracion_num(), a_importe_num(), _decimal_de_float(), _diverge_numerica_sql(), _divergencias_sql(), duracion_num_sql(), _fin_de_lote(), importe_num_sql() (+29 more)
 
 ### Community 371 - "Community 371"
 Cohesion: 0.20
 Nodes (9): _cluster_keywords(), Etiqueta un cluster aislado vía CountVectorizer + stopwords externas.      Mante, code:python (from sklearn.feature_extraction.text import CountVectorizer), CountVectorizer, _cluster_keywords(), Etiqueta un cluster aislado vía CountVectorizer + stopwords externas.      Mante, Etiqueta un cluster aislado vía CountVectorizer + stopwords externas.      Mante, TestClusterKeywords (+1 more)
 
 ### Community 373 - "Community 373"
-Cohesion: 0.03
-Nodes (83): _cartera(), _cartera_id(), _contrato(), _Escenario, _eventos(), _licitacion(), _primero_de_mes(), F4.3 — las tres rutas de cartera: qué devuelven, en qué orden y a quién.  ``GET (+75 more)
+Cohesion: 0.21
+Nodes (13): _cartera_id(), _eventos(), F4.3 — las tres rutas de cartera: qué devuelven, en qué orden y a quién.  ``GET, Lo que ``services/contract_events.py`` deja en la tabla, desordenado.      Se in, Es el historial del contrato: leerlo al revés cuenta otra historia., Las filas antiguas no traen ``detalle``; la fila no puede quedar muda., Vacío no es 404: el contrato existe, sólo que no le ha pasado nada., Y 404, no 403: la existencia de una entrada de otra organización no se     confi (+5 more)
 
 ### Community 374 - "Community 374"
 Cohesion: 0.05
@@ -4065,7 +4098,7 @@ Nodes (35): dia_pico(), get_vencimientos(), Calendario de vencimientos — cierr
 
 ### Community 376 - "Community 376"
 Cohesion: 0.10
-Nodes (25): _normalizar_nifs(), Normaliza, valida forma y unicidad, y comprueba que haya un principal.      Se h, Normaliza, valida forma y unicidad, y comprueba que haya un principal.      Se h, clasificar_nif(), nif_espanol_malformado(), nif_valido(), normalize_nif(), Normaliza un NIF/CIF: quita espacios, guiones, mayúsculas.      Solo normaliza, (+17 more)
+Nodes (24): _normalizar_nifs(), Normaliza, valida forma y unicidad, y comprueba que haya un principal.      Se h, Normaliza, valida forma y unicidad, y comprueba que haya un principal.      Se h, clasificar_nif(), nif_espanol_malformado(), nif_valido(), normalize_nif(), Normaliza un NIF/CIF: quita espacios, guiones, mayúsculas.      Solo normaliza, (+16 more)
 
 ### Community 377 - "Community 377"
 Cohesion: 0.08
@@ -4092,8 +4125,8 @@ Cohesion: 0.17
 Nodes (12): 1) Crear entorno e instalar, 2) Verificar entorno, 3) Flujo de desarrollo diario, 4) Limpieza portable, 4) Limpieza portable (sin comandos Unix), 5) Navegacion graphify-first, code:powershell (python -m venv .venv), code:powershell (python scripts/doctor.py) (+4 more)
 
 ### Community 383 - "Community 383"
-Cohesion: 0.05
-Nodes (43): anyOf, title, description, properties, required, title, type, description (+35 more)
+Cohesion: 0.06
+Nodes (36): anyOf, title, properties, properties, anyOf, title, default, pattern (+28 more)
 
 ### Community 384 - "Community 384"
 Cohesion: 0.17
@@ -4136,12 +4169,12 @@ Cohesion: 0.11
 Nodes (21): _make_sqlite_db(), Tests para db/analytics.py::run_analytics_export — snapshot Parquet + manifest (, El resumen devuelto incluye manifest_path y elapsed_ms., El resumen devuelto incluye manifest_path y elapsed_ms., _postgres_row_counts emite un COUNT(*) por tabla sobre la conexión de lectura., Crea un SQLite mínimo con las tablas licitaciones/adjudicaciones., _sqlite_row_counts devuelve los COUNT(*) reales para cada tabla., El camino SQLite quedó retirado: ni resolutor de fichero ni row counts.      Es (+13 more)
 
 ### Community 394 - "Community 394"
-Cohesion: 0.03
-Nodes (80): validate_events(), contar(), main(), Ratchet de estilos inline en JSX — el bloqueo real de C2.8.  El ítem pide quitar, `{ruta relativa: ocurrencias}` de los ficheros con estilos inline., find_opaque(), _is_opaque(), main() (+72 more)
+Cohesion: 0.04
+Nodes (71): _cargar_presupuesto(), _guardar_presupuesto(), main(), medir(), Presupuesto de First Load JS por ruta, como ratchet (C7.6).  Qué mide -------- E, `{ruta: bytes de First Load JS}` según la última build., contar(), main() (+63 more)
 
 ### Community 395 - "Community 395"
 Cohesion: 0.02
-Nodes (155): connect(), Context manager de escritura. Hace commit al salir, rollback en error., Context manager de escritura. Hace commit al salir, rollback en error., Context manager de escritura. Hace commit al salir, rollback en error.      Inst, Context manager de escritura. Hace commit al salir, rollback en error.      Inst, Context manager de escritura. Hace commit al salir, rollback en error.      Inst, Context manager de escritura. Hace commit al salir, rollback en error.      Inst, Context manager de escritura. Hace commit al salir, rollback en error.      Inst (+147 more)
+Nodes (118): count_licitaciones(), estimar_filas(), Devuelve el número total de licitaciones en la BD., Devuelve el número total de licitaciones en la BD., Devuelve el número total de licitaciones en la BD., Devuelve el número total de licitaciones en la BD., Acumula resultados de otro UpsertResult en este., Acumula resultados de otro UpsertResult en este. (+110 more)
 
 ### Community 396 - "Community 396"
 Cohesion: 0.11
@@ -4161,7 +4194,7 @@ Nodes (45): ask_question(), _budget_org(), _budget_subject(), _check_ask_scope()
 
 ### Community 400 - "Community 400"
 Cohesion: 0.05
-Nodes (64): _fecha_dt(), _fecha_opt(), ``datetime`` de una fecha del dataset. Lanza ``ValueError`` si no parsea.      N, ``datetime`` de una fecha del dataset. Lanza ``ValueError`` si no parsea.      N, Parseo tolerante: las columnas de fecha son TEXT y admiten basura.      Un año d, Parseo tolerante: las columnas de fecha son TEXT y admiten basura.      Un año d, _cargar_adjudicaciones(), construir_pares() (+56 more)
+Nodes (61): _fecha_dt(), ``datetime`` de una fecha del dataset. Lanza ``ValueError`` si no parsea.      N, ``datetime`` de una fecha del dataset. Lanza ``ValueError`` si no parsea.      N, _cargar_adjudicaciones(), construir_pares(), _Emparejamiento, _emparejar(), _features_historicas() (+53 more)
 
 ### Community 401 - "Community 401"
 Cohesion: 0.17
@@ -4177,23 +4210,23 @@ Nodes (10): ADR-008: Consolidación hacia Alembic como sistema canónico de migr
 
 ### Community 404 - "Community 404"
 Cohesion: 0.06
-Nodes (43): count_unread(), get_last_seen_ts(), get_unread_ids(), marcar_visita(), mark_all_read(), mark_read(), CRUD para notificaciones in-app y seguimiento de lecturas.  Modelo simple:   - L, Marca una notificación como leída para el usuario (idempotente). (+35 more)
+Nodes (46): Campana de notificaciones en la topbar con badge de no leídas.      Muestra un p, Campana de notificaciones en la topbar con badge de no leídas.      Muestra un p, render_notification_bell(), count_unread(), get_last_seen_ts(), get_unread_ids(), marcar_visita(), mark_all_read() (+38 more)
 
 ### Community 405 - "Community 405"
-Cohesion: 0.24
-Nodes (7): _default_golden_path(), load_golden_set(), Resuelve la ruta del golden set desde settings (relativa al repo)., Carga el golden set JSONL. Tolera líneas vacías y comentarios (``#``).      Args, Resuelve la ruta del golden set desde settings (relativa al repo)., Carga el golden set JSONL. Tolera líneas vacías y comentarios (``#``).      Args, TestLoadGoldenSet
+Cohesion: 0.14
+Nodes (11): _default_golden_path(), load_golden_set(), _ProbaClassifier, Evaluación honesta del clasificador SAP contra un golden set etiquetado a mano., Interfaz mínima de un clasificador con probabilidad de SAP., Resuelve la ruta del golden set desde settings (relativa al repo)., Interfaz mínima de un clasificador con probabilidad de SAP., Carga el golden set JSONL. Tolera líneas vacías y comentarios (``#``).      Args (+3 more)
 
 ### Community 406 - "Community 406"
-Cohesion: 0.15
-Nodes (18): build_bipartite_graph(), Grafo bipartito Órganos ↔ Empresas.  Construye un grafo bipartito donde los nodo, Construye grafo bipartito órgano ↔ empresa.      Nodos = órganos contratantes +, _adj_df(), Tests unitarios para services/organ_company_graph.  `build_bipartite_graph` es u, top_organos=1 se queda con el órgano de mayor importe (ORG B, 500k)., 2 contratos en un span de 2 años → ~1 contrato/año., Sin fecha_adjudicacion la frecuencia degrada al nº de contratos. (+10 more)
+Cohesion: 0.07
+Nodes (41): get_organ_company_graph(), GraphEdge, GraphFilters, GraphNode, OrganCompanyGraphResult, _prepare_df(), Red Órgano-Empresa — grafo bipartito de adjudicaciones REALES.  Wrapper de servi, Filtros para el grafo órgano-empresa. (+33 more)
 
 ### Community 407 - "Community 407"
 Cohesion: 0.03
 Nodes (91): AccessGrant, grant_access(), grant_access_request(), GrantedAccessRequest, is_access_granted(), list_access_grants(), normalize_grant(), Persistencia de concesiones dinámicas de acceso OAuth. (+83 more)
 
 ### Community 408 - "Community 408"
-Cohesion: 0.03
-Nodes (114): AnadirMiembroForm(), CrearOrganizacionForm(), EditRuleSheet(), AddMemberForm(), FormularioProbabilidades(), probabilidadesDeValores(), ProbabilidadesEtapaCard(), valoresDeAjustes() (+106 more)
+Cohesion: 0.02
+Nodes (167): BajaItem, CHART_COLORS, Competitor, CompetitorCcaaEntry, CompetitorProfile, CompetitorRecentContract, CompetitorsBarChart, CompetitorsData (+159 more)
 
 ### Community 409 - "Community 409"
 Cohesion: 0.18
@@ -4212,8 +4245,8 @@ Cohesion: 0.20
 Nodes (11): Backup System, Cache Signal Mechanism, Disaster Recovery Runbook, Incident Playbooks, Licitaciones SQLite Database, Model Rollback Runbook, Model Versions Table, PLACSP (Procurement Platform) (+3 more)
 
 ### Community 413 - "Community 413"
-Cohesion: 0.06
-Nodes (39): _build_system_prompt(), _build_user_message(), _is_retryable(), Proveedor Anthropic (Claude) para el cliente LLM unificado.  Usa la API de Messa, Determina si la excepción amerita un retry., Determina si la excepción amerita un retry., Streaming Anthropic Messages API con retry y timeout.      Args:         system:, Streaming Anthropic Messages API con retry y timeout.      Args:         system: (+31 more)
+Cohesion: 0.11
+Nodes (21): _build_prompt(), _close_stream(), _fill_estimated_usage(), _is_retryable(), Proveedor OpenAI para el cliente LLM unificado.  Compatible con cualquier endpoi, Construye el prompt RAG estándar., Construye el prompt RAG estándar., Construye el prompt RAG estándar. (+13 more)
 
 ### Community 414 - "Community 414"
 Cohesion: 0.18
@@ -4260,32 +4293,32 @@ Cohesion: 0.18
 Nodes (11): code:html (<!-- ❌ Poor structure -->), code:html (<!-- ❌ Poor image SEO -->), code:html (<!-- ❌ Non-descriptive -->), code:html (<!-- ❌ Missing or generic -->), code:html (<!-- ❌ Missing or duplicate -->), Heading structure, Image SEO, Internal linking (+3 more)
 
 ### Community 425 - "Community 425"
-Cohesion: 0.11
-Nodes (27): _build_licitacion(), _dia(), main(), Seed de datos de desarrollo para Tenderflow.  Inserta datos mínimos para que el, Inicializa el schema (idempotente)., Elimina datos de seed previos (fuente='seed' + predicciones demo)., Upsert de licitaciones de ejemplo usando el camino real., Fecha ISO a ``offset`` días de hoy (negativo = pasado).      Las fechas del seed (+19 more)
+Cohesion: 0.10
+Nodes (31): get_user_by_email(), Busca usuario por email., Busca usuario por email., _build_adjudicacion(), _build_licitacion(), _dia(), main(), Seed de datos de desarrollo para Tenderflow.  Inserta datos mínimos para que el (+23 more)
 
 ### Community 426 - "Community 426"
 Cohesion: 0.09
 Nodes (19): generate_pkce_pair(), Genera un par (code_verifier, code_challenge) para PKCE S256.      Returns:, Verifica que *code_verifier* corresponde a *code_challenge* (S256).      Returns, Genera un par (code_verifier, code_challenge) para PKCE S256.      Returns:, Genera un par (code_verifier, code_challenge) para PKCE S256.      Returns:, Genera un par (code_verifier, code_challenge) para PKCE S256.      Returns:, Verifica que *code_verifier* corresponde a *code_challenge* (S256).      Returns, Genera un par (code_verifier, code_challenge) para PKCE S256.      Returns: (+11 more)
 
 ### Community 427 - "Community 427"
-Cohesion: 0.02
-Nodes (78): HttpUser, Daily ATOM ingestion + downstream canonical pipeline (ADR-012)., Execute the daily ATOM pipeline via the canonical pipeline_runs sequence., run(), APIUser, Load test contra la API REST (E4 — Locust).  Uso::      pip install locust     L, Simula un cliente externo consumiendo la API REST., Carga la API key desde el entorno. (+70 more)
+Cohesion: 0.03
+Nodes (61): RuntimeError, process_month(), Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.      Gara, Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.      Gara, Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.      Gara, Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.      Gara, Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.      Gara, Tests for API startup / lifespan DB initialization. (+53 more)
 
 ### Community 428 - "Community 428"
 Cohesion: 0.15
 Nodes (13): Basic Usage, code:python (from sklearn.compose import make_column_transformer), code:python (# By column names (if X is DataFrame)), code:python (# Get output feature names), code:python (# Drop unspecified columns (default)), code:python (from sklearn.compose import ColumnTransformer), code:python (from sklearn.pipeline import Pipeline), Column Selection (+5 more)
 
 ### Community 429 - "Community 429"
-Cohesion: 0.04
-Nodes (55): _clean_llm_csv(), _collapse_rare(), _es_circular(), LabelResolution, _llm_min_score(), Clasificador multi-tecnología sobre las etiquetas de ``TECHNOLOGY_KEYWORDS``.  R, Anota el entrenamiento en el registro append-only del multi-tecnología.      Exi, Anota el entrenamiento en el registro append-only del multi-tecnología.      Exi (+47 more)
+Cohesion: 0.05
+Nodes (42): _clean_llm_csv(), _collapse_rare(), _es_circular(), LabelResolution, _llm_min_score(), Clasificador multi-tecnología sobre las etiquetas de ``TECHNOLOGY_KEYWORDS``.  R, Columna de etiquetas elegida para entrenar y su procedencia.      Attributes:, Columna de etiquetas elegida para entrenar y su procedencia.      Attributes: (+34 more)
 
 ### Community 430 - "Community 430"
 Cohesion: 0.04
 Nodes (63): confirm_totp(), delete_totp(), generate_recovery_codes(), generate_totp_secret(), get_totp_secret(), get_totp_uri(), is_totp_required(), CRUD para 2FA TOTP — generación de secrets, verificación y recovery codes. (+55 more)
 
 ### Community 431 - "Community 431"
-Cohesion: 0.08
-Nodes (24): ejecutar_ficha_pliego(), Extrae la ficha estructurada del pliego (el botón «Extraer ficha»).      Delega, Declaración de un tipo de job: quién lo ejecuta y cómo se deduplica.      ``hand, TipoJob, _job(), Worker de la cola, sus handlers y el plano declarado (plan v2, S5.3).  La mayorí, ADR-012: el cierre de la pasada consume su cola dentro del job de Actions., Si un tipo estuviera en los dos, el worker reclamaría trabajo del cierre. (+16 more)
+Cohesion: 0.04
+Nodes (57): build_pdf_export(), descargar_export_encolado(), Consulta + maquetado del PDF de exportación. Devuelve ``(bytes, filas)``.      E, Sirve el PDF que dejó maquetado el worker, mientras siga en caché.      Es una r, Sirve el PDF que dejó maquetado el worker, mientras siga en caché.      Es una r, Sirve el PDF que dejó maquetado el worker, mientras siga en caché.      Es una r, Consulta + maquetado del PDF de exportación. Devuelve ``(bytes, filas)``.      E, arrancar_en_hilo() (+49 more)
 
 ### Community 432 - "Community 432"
 Cohesion: 0.08
@@ -4340,16 +4373,16 @@ Cohesion: 0.20
 Nodes (9): Architect, Coder, Copilot instructions, Orchestrator, Overrides Copilot, Perfiles de trabajo (sincronizado desde docs/agents/), Reviewer, Security Triage (+1 more)
 
 ### Community 445 - "Community 445"
-Cohesion: 0.11
-Nodes (26): buildQueryParams(), buildScoreMap(), CSV_HEADERS, isClientSorted(), MergedRow, mergeRows(), nextSorting(), pageIdsOf() (+18 more)
+Cohesion: 0.13
+Nodes (23): buildQueryParams(), buildScoreMap(), CSV_HEADERS, isClientSorted(), MergedRow, mergeRows(), nextSorting(), pageIdsOf() (+15 more)
 
 ### Community 446 - "Community 446"
 Cohesion: 0.09
 Nodes (22): Tests para GET /api/v1/licitaciones/{id}/eventos y GET /api/v1/eventos., Los filtros generales del Resumen viajan al feed sin romperlo., fecha_desde no ISO → 422 (no una query con basura dentro)., importe_min < 0 → 422., Licitacion inexistente → 404., Licitacion existente sin eventos → 200 con items vacío., Sin cabecera de autenticacion → 401 o 403., GET /eventos sin filtros → 200 con items y dias. (+14 more)
 
 ### Community 447 - "Community 447"
-Cohesion: 0.09
-Nodes (24): api_key(), _crear_filtro(), Tests para GET/POST/DELETE /api/v1/saved-filters., Filtro creado con key A → intento de borrado con key B → 404 (IDOR)., POST → DELETE → 200 → GET → lista vacía., Filtro creado con key A → intento de borrado con key B → 404 (IDOR)., Override de conftest: vincula la key a un usuario real.      Esta ruta resuelve, Sin filtros guardados → {"items": []}. (+16 more)
+Cohesion: 0.10
+Nodes (22): _crear_filtro(), Tests para GET/POST/DELETE /api/v1/saved-filters., Filtro creado con key A → intento de borrado con key B → 404 (IDOR)., POST → DELETE → 200 → GET → lista vacía., Filtro creado con key A → intento de borrado con key B → 404 (IDOR)., Sin filtros guardados → {"items": []}., POST crea el filtro → GET devuelve el nombre correcto., filters_json con string no-JSON → 422. (+14 more)
 
 ### Community 448 - "Community 448"
 Cohesion: 0.20
@@ -4360,16 +4393,16 @@ Cohesion: 0.27
 Nodes (9): check(), main(), _pct(), _prefix_for(), Verifica que los módulos críticos cumplen umbrales de cobertura mínima.  Lee ``c, Devuelve el prefijo de módulo que aplica, o None si está excluido., Devuelve el prefijo de módulo que aplica, o None si está excluido., Carga coverage.json y comprueba umbrales. Devuelve número de fallos. (+1 more)
 
 ### Community 450 - "Community 450"
-Cohesion: 0.07
-Nodes (40): ack(), claim(), enqueue(), procesar_uno(), Encola un job y devuelve su id (o el del equivalente ya en cola).      La dedupl, Reclama un job para este consumidor, o ``None`` si no hay trabajo.      ``tipos`, Cierra el job como ``done`` con su resultado., Reclama, ejecuta y cierra un job. ``None`` si no había trabajo.      Nunca lanza (+32 more)
+Cohesion: 0.06
+Nodes (55): _a_estado(), _a_job(), ack(), _cargar_json(), claim(), ejecutar(), enqueue(), Job (+47 more)
 
 ### Community 451 - "Community 451"
 Cohesion: 0.07
 Nodes (28): build_forecast_df(), estimate_end_date(), forecast_volume(), forecast_volume_from_monthly(), Estimación de fechas de fin y ventana de re-licitación., Pronostica el volumen mensual de licitaciones usando suavizado exponencial., Pronostica el volumen mensual de licitaciones usando suavizado exponencial., Núcleo del forecast sobre una serie mensual YA agregada (ADR-023).      ``hist`` (+20 more)
 
 ### Community 452 - "Community 452"
-Cohesion: 0.02
-Nodes (174): _apply_tenant_scope_write(), _begin_tenant_scope_read(), _build_pool(), _close_pg_pool(), close_pool(), _create_connection(), _create_pg_connection(), _create_sqlite_connection() (+166 more)
+Cohesion: 0.05
+Nodes (50): _build_pool(), _create_pg_connection(), _database_url(), description(), _get_pg_pool(), _get_pg_read_pool(), lastrowid(), _make_pg_configure() (+42 more)
 
 ### Community 453 - "Community 453"
 Cohesion: 0.17
@@ -4381,11 +4414,11 @@ Nodes (43): properties, required, title, type, properties, required, title, type
 
 ### Community 455 - "Community 455"
 Cohesion: 0.04
-Nodes (61): filtrar_fechas_invalidas(), predecir_baseline(), Prediccion, Serving honesto cuando no hay modelo activo: la media del segmento como     p50, Serving honesto cuando no hay modelo activo: la media del segmento como     p50, Serving honesto cuando no hay modelo activo: la media del segmento como     p50, Descarta las filas cuya fecha no es parseable. Devuelve ``(filas, n)``.      Las, Quita del mapa de fechas de etiqueta las que no parsean.      Mismo criterio que (+53 more)
+Nodes (63): filtrar_fechas_invalidas(), predecir_baseline(), Prediccion, Serving honesto cuando no hay modelo activo: la media del segmento como     p50, Serving honesto cuando no hay modelo activo: la media del segmento como     p50, Serving honesto cuando no hay modelo activo: la media del segmento como     p50, Descarta las filas cuya fecha no es parseable. Devuelve ``(filas, n)``.      Las, Quita del mapa de fechas de etiqueta las que no parsean.      Mismo criterio que (+55 more)
 
 ### Community 456 - "Community 456"
-Cohesion: 0.06
-Nodes (31): clave_organo_sql(), fold_expr(), nombre_organo_sql(), Clave de agrupación de órgano, con lectura dual (C1.2, ADR-032 §C).      ``organ, Nombre a mostrar: el canónico del maestro, o la grafía de la fila.      Preferir, Expresión SQL que pliega tildes y mayúsculas de ``column``.      Aproximación de, Expresión SQL que pliega tildes y mayúsculas de ``column``.      Aproximación de, Expresión SQL que pliega tildes y mayúsculas de ``column``.      Aproximación de (+23 more)
+Cohesion: 0.12
+Nodes (13): clave_organo_sql(), nombre_organo_sql(), Clave de agrupación de órgano, con lectura dual (C1.2, ADR-032 §C).      ``organ, Nombre a mostrar: el canónico del maestro, o la grafía de la fila.      Preferir, Clave de agrupación de órgano, con lectura dual (C1.2, ADR-032 §C).      ``organ, Nombre a mostrar: el canónico del maestro, o la grafía de la fila.      Preferir, Clave de agrupación de órgano, con lectura dual (C1.2, ADR-032 §C).      ``organ, Nombre a mostrar: el canónico del maestro, o la grafía de la fila.      Preferir (+5 more)
 
 ### Community 457 - "Community 457"
 Cohesion: 0.20
@@ -4453,15 +4486,15 @@ Nodes (9): code:python (# Automatic downcasting for integers), code:python (# Co
 
 ### Community 473 - "Community 473"
 Cohesion: 0.07
-Nodes (34): TendenciasCpvForecast(), TendenciasCpvSeries(), TendenciasCpvTop(), TendenciasCpvSelector(), TendenciasCpvTabla(), TendenciasCpvView(), TendenciasView(), ForecastPoint (+26 more)
+Nodes (34): TendenciasCpvForecast(), TendenciasCpvSeries(), TendenciasCpvTop(), TendenciasCpvSelector(), TendenciasCpvTabla(), TendenciasCpvView(), ForecastPoint, ForecastResponse (+26 more)
 
 ### Community 474 - "Community 474"
-Cohesion: 0.02
-Nodes (60): get_table_columns(), Devuelve el conjunto de nombres de columna de ``table``.      Funciona tanto en, Valida que ``name`` sea un identificador SQL seguro (previene inyección)., Valida que ``name`` sea un identificador SQL seguro (previene inyección)., Devuelve el conjunto de nombres de columna de ``table``.      Funciona tanto en, Devuelve el conjunto de nombres de columna de ``table``.      Funciona tanto en, Valida que ``name`` sea un identificador SQL seguro (previene inyección)., Valida que ``name`` sea un identificador SQL seguro (previene inyección). (+52 more)
+Cohesion: 0.07
+Nodes (25): get_table_columns(), Devuelve el conjunto de nombres de columna de ``table``.      Funciona tanto en, Valida que ``name`` sea un identificador SQL seguro (previene inyección)., Valida que ``name`` sea un identificador SQL seguro (previene inyección)., Devuelve el conjunto de nombres de columna de ``table``.      Funciona tanto en, Devuelve el conjunto de nombres de columna de ``table``.      Funciona tanto en, Valida que ``name`` sea un identificador SQL seguro (previene inyección)., Valida que ``name`` sea un identificador SQL seguro (previene inyección). (+17 more)
 
 ### Community 475 - "Community 475"
-Cohesion: 0.12
-Nodes (18): Implementación del carril diario usando PlacspAtomConnector (F2).      Mantiene, Implementación del carril diario usando PlacspAtomConnector (F2).      Mantiene, Implementación del carril diario usando PlacspAtomConnector (F2).      Mantiene, Implementación del carril diario usando PlacspAtomConnector (F2).      Mantiene, _run_daily_pipeline_connector(), _patch_steps(), Tests del glue de activación del PlacspConnector (F2 flip).  Cubren la paridad o, Errores por-entry (DLQ) mantienen status ok — paridad con legacy. (+10 more)
+Cohesion: 0.13
+Nodes (17): Implementación del carril diario usando PlacspAtomConnector (F2).      Mantiene, Implementación del carril diario usando PlacspAtomConnector (F2).      Mantiene, Implementación del carril diario usando PlacspAtomConnector (F2).      Mantiene, Implementación del carril diario usando PlacspAtomConnector (F2).      Mantiene, _run_daily_pipeline_connector(), _patch_steps(), Errores por-entry (DLQ) mantienen status ok — paridad con legacy., inserted/modified son listas — _log_daily_summary no debe crashear. (+9 more)
 
 ### Community 476 - "Community 476"
 Cohesion: 0.22
@@ -4504,8 +4537,8 @@ Cohesion: 0.22
 Nodes (7): code:ts (const PAGE_MODULES = {), code:ts (const PAGE_MODULES = {), code:ts (const baseDir = path.join(process.cwd(), 'content/' + conten), code:ts (const baseDir =), File-System Paths, Import Paths, Prefer Statically Analyzable Paths
 
 ### Community 486 - "Community 486"
-Cohesion: 0.06
-Nodes (52): build_organization_portfolio(), build_portfolio(), build_portfolio_from_capabilities(), _candidate_text(), _clean(), _cpv_similarity(), _fallback_score(), _keyword_pattern() (+44 more)
+Cohesion: 0.09
+Nodes (33): AffinityPortfolio, build_organization_portfolio(), build_portfolio_from_capabilities(), _clean(), Portfolio derivado del perfil de capacidad de la organización (S2.2).      Las r, Lee capacidad y familias declaradas de la organización y las convierte.      Imp, Decide con qué portfolio se puntúa y declara de dónde salió.      Orden: perfil, Señales explícitas que describen el trabajo que una organización sabe hacer. (+25 more)
 
 ### Community 487 - "Community 487"
 Cohesion: 0.39
@@ -4528,12 +4561,12 @@ Cohesion: 0.22
 Nodes (7): Best Practices, code:python (from fastapi import FastAPI, Depends, HTTPException, status), Complete FastAPI Example, FastAPI Integration, Related Skills, Resources, SQLAlchemy ORM Skill
 
 ### Community 492 - "Community 492"
-Cohesion: 0.12
-Nodes (6): Tests para shared.geo., Tests para la función fmt_eur de format.py., TestFmtEurFormat, TestKpisSnapshotCsv, kpis_snapshot_csv(), Serializa un diccionario {label: valor_formateado} a CSV listo para descargar.
+Cohesion: 0.17
+Nodes (3): Tests para shared.geo., Tests para la función fmt_eur de format.py., TestFmtEurFormat
 
 ### Community 493 - "Community 493"
 Cohesion: 0.06
-Nodes (33): EscenarioPuntos, _puntos_por_tramos(), _puntos_proporcional_inversa(), F2.2 — cuántos puntos me da esta baja, y cuánto me falta contra un rival.  Los e, Escalones: la clave es la baja mínima del tramo, el valor sus puntos.      Se el, Puntos de precio por cada baja de ``bajas``.      ``baja_mayor_esperada`` es la, Lee la ficha del pliego y simula. Es la entrada que usa la ruta.      Vive aquí, Los puntos de precio que da una baja concreta. (+25 more)
+Nodes (35): EscenarioPuntos, _puntos_por_tramos(), _puntos_proporcional_inversa(), F2.2 — cuántos puntos me da esta baja, y cuánto me falta contra un rival.  Los e, Escalones: la clave es la baja mínima del tramo, el valor sus puntos.      Se el, Puntos de precio por cada baja de ``bajas``.      ``baja_mayor_esperada`` es la, Lee la ficha del pliego y simula. Es la entrada que usa la ruta.      Vive aquí, Los puntos de precio que da una baja concreta. (+27 more)
 
 ### Community 494 - "Community 494"
 Cohesion: 0.39
@@ -4544,8 +4577,8 @@ Cohesion: 0.39
 Nodes (7): Acceptance criteria, Alternativas consideradas, Contexto, Decisión, Impacto en invariantes (AGENTS.md §3), Notas de review, Plan de implementación
 
 ### Community 496 - "Community 496"
-Cohesion: 0.07
-Nodes (32): Registra una entrega en webhook_deliveries y actualiza stats., Registra una entrega en webhook_deliveries y actualiza stats., Actualiza campos opcionales. Devuelve True si encontró el registro.          ``o, Actualiza campos opcionales. Devuelve True si encontró el registro.          ``o, Registra una entrega en webhook_deliveries y actualiza stats., Registra una entrega en webhook_deliveries y actualiza stats., Replace our pending reservation with a secret-free response., Release only our own pending reservation after a failed create. (+24 more)
+Cohesion: 0.06
+Nodes (36): _get_webhook_master_key(), Todos los webhooks de la instancia. Solo lo usa la vista global de ``/ops``., Get the effective signing secret for a webhook.          For derived secrets, re, Get the effective signing secret for a webhook.          For derived secrets, re, Todos los webhooks de la instancia. Solo lo usa la vista global de ``/ops``., Webhooks de una organización. Nunca los de otra, ni los globales.          Los g, Webhooks de una organización. Nunca los de otra, ni los globales.          Los g, Obtiene la clave maestra para derivar secretos de webhook. (+28 more)
 
 ### Community 497 - "Community 497"
 Cohesion: 0.22
@@ -4556,8 +4589,8 @@ Cohesion: 0.22
 Nodes (9): ADR-001: SQL crudo vs ORM, ADR-003: Migraciones caseras + Alembic, CI Workflow, Alembic (migrations), diff-cover (PR coverage gate), Mypy (type checker), pip-audit, Pytest (+1 more)
 
 ### Community 499 - "Community 499"
-Cohesion: 0.07
-Nodes (32): Revoca todas las sesiones activas de un usuario (logout-all). Devuelve N., Revoca todas las sesiones activas de un usuario (logout-all). Devuelve N., Revoca todas las sesiones activas de un usuario (logout-all). Devuelve N., revoke_all_sessions(), admin_deactivate_user(), admin_get_user(), admin_list_users(), admin_set_admin() (+24 more)
+Cohesion: 0.08
+Nodes (28): admin_deactivate_user(), admin_get_user(), admin_list_users(), admin_set_admin(), AdminUserAction, AdminUserOut, DeactivateBody, Admin endpoints — gestión de usuarios (RFC UX Administración).  Requiere autenti (+20 more)
 
 ### Community 500 - "Community 500"
 Cohesion: 0.25
@@ -4581,19 +4614,19 @@ Nodes (12): Alembic environment — configurado para TenderFlow.  Este entorno l
 
 ### Community 505 - "Community 505"
 Cohesion: 0.04
-Nodes (42): _one_doc_retrieve(), La respuesta tiene Content-Type text/event-stream., La respuesta tiene Content-Type text/event-stream., El stream termina con el evento [DONE]., El stream termina con el evento [DONE]., El stream contiene fragmentos de texto del LLM., El stream contiene fragmentos de texto del LLM., Sin documentos, devuelve mensaje de fallback. (+34 more)
+Nodes (44): _one_doc_retrieve(), La respuesta tiene Content-Type text/event-stream., La respuesta tiene Content-Type text/event-stream., El stream termina con el evento [DONE]., El stream termina con el evento [DONE]., El stream contiene fragmentos de texto del LLM., El stream contiene fragmentos de texto del LLM., Sin documentos, devuelve mensaje de fallback. (+36 more)
 
 ### Community 506 - "Community 506"
 Cohesion: 0.09
 Nodes (24): dependencies, @vercel/analytics, @vercel/speed-insights, dependencies, @vercel/analytics, @vercel/speed-insights, devDependencies, @axe-core/playwright (+16 more)
 
 ### Community 507 - "Community 507"
-Cohesion: 0.04
-Nodes (44): Verifica el ``id_token`` con el camino que corresponde al proveedor., Verifica el ``id_token`` con el camino que corresponde al proveedor., _verify_provider_id_token(), generate_oauth_state(), get_signing_key(), json_loads_b64url(), oauth_state_nonce(), Lógica central de autenticación y utilidades criptográficas compartidas.  Este m (+36 more)
+Cohesion: 0.05
+Nodes (40): Verifica el ``id_token`` con el camino que corresponde al proveedor., Verifica el ``id_token`` con el camino que corresponde al proveedor., _verify_provider_id_token(), generate_oauth_state(), get_signing_key(), json_loads_b64url(), oauth_state_nonce(), Lógica central de autenticación y utilidades criptográficas compartidas.  Este m (+32 more)
 
 ### Community 508 - "Community 508"
-Cohesion: 0.22
-Nodes (9): Verifica que las tablas principales y sus columnas clave existen.      Returns:, Revierte migraciones desde la versión actual hasta ``target_version`` (inclusive, Verifica que las tablas principales y sus columnas clave existen.      Returns:, Verifica que las tablas principales y sus columnas clave existen.      Returns:, Verifica que las tablas principales y sus columnas clave existen.      Returns:, Verifica que las tablas principales y sus columnas clave existen.      Returns:, Verifica que las tablas principales y sus columnas clave existen.      Returns:, Verifica que las tablas principales y sus columnas clave existen.      Returns: (+1 more)
+Cohesion: 0.09
+Nodes (21): _apply_v31_dlq_columns(), _apply_v33_password_hash(), _apply_v35_deactivated_at(), _ensure_version_table(), Sistema simple de migraciones basado en tabla ``schema_version``.  Cada migració, Añade columna password_hash a users si no existe (idempotente).      Habilita el, Añade columna deactivated_at a users si no existe (idempotente).      Habilita s, Verifica que las tablas principales y sus columnas clave existen.      Returns: (+13 more)
 
 ### Community 509 - "Community 509"
 Cohesion: 0.39
@@ -4696,8 +4729,8 @@ Cohesion: 0.09
 Nodes (21): extends, rules, header-max-length, subject-case, subject-empty, subject-full-stop, type-enum, extends (+13 more)
 
 ### Community 534 - "Community 534"
-Cohesion: 0.05
-Nodes (41): _auditar_organizacion(), delete_organization_invitation(), post_accept_organization_invitation(), post_delete_organization(), post_leave_organization(), post_organization(), post_organization_member(), post_resend_organization_invitation() (+33 more)
+Cohesion: 0.07
+Nodes (18): Componentes de tarjeta — top_card para licitaciones y adjudicaciones., Renderiza una top-card con importe, título enlazado y metadatos.      Args:, Devuelve HTML de un badge pill con color semántico e icono.      Args:         l, Envuelve *content_html* en un contenedor con tooltip CSS-only.      El tooltip a, status_badge(), top_card(), with_tooltip(), Página Órganos — top órganos, treemap y drill-down por órgano. (+10 more)
 
 ### Community 535 - "Community 535"
 Cohesion: 0.25
@@ -4740,8 +4773,8 @@ Cohesion: 0.25
 Nodes (6): code:typescript (function handleSearch(query: string) {), code:typescript (function handleSearch(query: string) {), code:typescript (// Ensure analytics fires within 2 seconds even if browser s), code:typescript (function processLargeDataset(items: Item[]) {), code:typescript (const scheduleIdleWork = window.requestIdleCallback ?? ((cb:), Defer Non-Critical Work with requestIdleCallback
 
 ### Community 545 - "Community 545"
-Cohesion: 0.02
-Nodes (163): ChatThread(), ChatThreadProps, FeedbackButtons(), FuentesBlock(), CopilotPanel(), CopilotPanelProps, EXAMPLE_QUESTIONS, renderAnswer() (+155 more)
+Cohesion: 0.05
+Nodes (48): ChatThread(), ChatThreadProps, FeedbackButtons(), FuentesBlock(), LicitacionAI(), LicitacionAIProps, STATUS_LABELS, linkifyExpedientes() (+40 more)
 
 ### Community 546 - "Community 546"
 Cohesion: 0.17
@@ -4753,15 +4786,15 @@ Nodes (15): errores, errorOverlay, errors, esFalloDeRecurso, isOnDashboard, isOn
 
 ### Community 548 - "Community 548"
 Cohesion: 0.04
-Nodes (72): append_domain_event(), Escribe un evento **del catálogo** en el outbox. Devuelve su id.      Valida tip, delete_all_alerts(), delete_email_prefs(), get_alerts_unread_count(), get_unread_ids(), get_user_alerts(), mark_alerts_read() (+64 more)
+Nodes (52): delete_all_alerts(), delete_email_prefs(), get_alerts_unread_count(), get_unread_ids(), get_user_alerts(), mark_alerts_read(), mark_all_alerts_read(), mark_all_read() (+44 more)
 
 ### Community 549 - "Community 549"
 Cohesion: 0.03
 Nodes (78): distribucion_ml_proba(), feedback_humano_sap(), filas_entrenamiento_sap(), filas_entrenamiento_tecnologia(), filas_pendientes_ml_proba(), _filtro_fecha_adj(), guardar_ml_proba(), guardar_scores_tecnologia() (+70 more)
 
 ### Community 550 - "Community 550"
-Cohesion: 0.04
-Nodes (94): AffinityBatch, AffinityPortfolio, PortfolioResolution, Señales explícitas que describen el trabajo que una organización sabe hacer., Resultado reproducible para un lote de oportunidades., El portfolio con el que se puntúa y de dónde salió., OrganizationCapabilitiesRepository, Lee y reemplaza el perfil de capacidad completo de una organización. (+86 more)
+Cohesion: 0.16
+Nodes (23): _certificacion_que_encaja(), ChecklistItem, _clave_de_sellado(), _con_evidencia(), _contiene(), _eur(), _evaluar_certificaciones(), _evaluar_equipo() (+15 more)
 
 ### Community 551 - "Community 551"
 Cohesion: 0.25
@@ -4772,24 +4805,24 @@ Cohesion: 0.03
 Nodes (76): _Codigo, _copias_literales(), _ficheros_de_produccion(), _Funcion, _funciones(), _is_guarded(), _iter_functions(), _module_guard_names() (+68 more)
 
 ### Community 553 - "Community 553"
-Cohesion: 0.03
-Nodes (72): batch_failed_systemically(), Job batch: categorización de licitaciones por LLM sobre la metadata.  Etiquetar, True si se intentó clasificar y **nada** salió bien.      Un anuncio que el mode, Clasifica un lote de licitaciones pendientes. Fail-open por item., Corre el job; falla solo si el lote entero se cayó.      Un anuncio que el model, Vuelca a ``ml_feedback`` las etiquetas lo bastante seguras.      Una fila de fee, run(), run_cli() (+64 more)
+Cohesion: 0.02
+Nodes (127): Puntúa (keywords) licitaciones con páginas extraídas y sin señal     vigente, y, Puntúa (keywords) licitaciones con páginas extraídas y sin señal     vigente, y, Puntúa (keywords) licitaciones con páginas extraídas y sin señal     vigente, y, _run_tech_signal_phase(), batch_failed_systemically(), Job batch: categorización de licitaciones por LLM sobre la metadata.  Etiquetar, True si se intentó clasificar y **nada** salió bien.      Un anuncio que el mode, Clasifica un lote de licitaciones pendientes. Fail-open por item. (+119 more)
 
 ### Community 554 - "Community 554"
-Cohesion: 0.04
-Nodes (48): corte_con_minimo(), Win rate por ``clave``, con el mínimo aplicado **dentro**.      El corte se devu, Win rate por ``clave``, con el mínimo aplicado **dentro**.      El corte se devu, Win rate por ``clave``, con el mínimo aplicado **dentro**.      El corte se devu, a_csv_fila(), csv_crm(), payload_de_pursuit(), PayloadCRM (+40 more)
+Cohesion: 0.18
+Nodes (10): corte_con_minimo(), Win rate por ``clave``, con el mínimo aplicado **dentro**.      El corte se devu, Win rate por ``clave``, con el mínimo aplicado **dentro**.      El corte se devu, Win rate por ``clave``, con el mínimo aplicado **dentro**.      El corte se devu, _cierre(), Un win rate del 100 % sobre dos cierres se cree; el hueco se pregunta., Omitirla escondería que hay un segmento donde el equipo empieza., Una oportunidad abierta no ha ganado ni perdido todavía. (+2 more)
 
 ### Community 555 - "Community 555"
-Cohesion: 0.06
-Nodes (49): jobs_cierre_por_cola(), ¿El cierre post-ingesta encola sus pasos en vez de ejecutarlos en línea?      Po, ¿El cierre post-ingesta encola sus pasos en vez de ejecutarlos en línea?      Po, ¿El cierre post-ingesta encola sus pasos en vez de ejecutarlos en línea?      Po, dependencias_incumplidas(), Solo el cierre de la pasada: los pasos post-ingesta, sin ingerir nada.      Exis, Ejecuta todos los pasos post-ingesta en orden canónico.      Returns:         Di, Ejecuta todos los pasos post-ingesta en orden canónico.      Returns:         Di (+41 more)
+Cohesion: 0.05
+Nodes (56): jobs_cierre_por_cola(), ¿El cierre post-ingesta encola sus pasos en vez de ejecutarlos en línea?      Po, ¿El cierre post-ingesta encola sus pasos en vez de ejecutarlos en línea?      Po, ¿El cierre post-ingesta encola sus pasos en vez de ejecutarlos en línea?      Po, dependencias_incumplidas(), Solo el cierre de la pasada: los pasos post-ingesta, sin ingerir nada.      Exis, Ejecuta todos los pasos post-ingesta en orden canónico.      Returns:         Di, Ejecuta todos los pasos post-ingesta en orden canónico.      Returns:         Di (+48 more)
 
 ### Community 556 - "Community 556"
-Cohesion: 0.11
-Nodes (23): _con_catalogos(), get_filter_options(), get_last_extraction(), LastExtraction, _load_filter_options(), MetaFilters, OpcionCodificada, _opciones() (+15 more)
+Cohesion: 0.19
+Nodes (13): _con_catalogos(), get_last_extraction(), LastExtraction, MetaFilters, OpcionCodificada, _opciones(), Ruta /api/v1/meta — metadatos para filtros de búsqueda.  GET /api/v1/meta/filter, Devuelve la fecha/hora de la última extracción del scraper.      Respuesta cache (+5 more)
 
 ### Community 557 - "Community 557"
-Cohesion: 0.25
-Nodes (8): _apply_v24_cursor_index(), Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio
+Cohesion: 0.12
+Nodes (15): _apply_v24_cursor_index(), _apply_v30_ml_tech_columns(), Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio, Crea índice compuesto (fecha_publicacion DESC, id_externo) para cursor paginatio (+7 more)
 
 ### Community 558 - "Community 558"
 Cohesion: 0.25
@@ -4823,17 +4856,13 @@ Nodes (5): Avoid Barrel File Imports, code:tsx (import { Check, X, Menu } from '
 Cohesion: 0.29
 Nodes (5): Cache Storage API Calls, code:typescript (function getTheme() {), code:typescript (const storageCache = new Map<string, string | null>()), code:typescript (let cookieCache: Record<string, string> | null = null), code:typescript (window.addEventListener('storage', (e) => {)
 
-### Community 566 - "Community 566"
-Cohesion: 0.23
-Nodes (4): _auth(), fb_client(), Tests for POST /api/v1/feedback — multi-tecnologia label support., TestFeedbackPostMultilabel
-
 ### Community 567 - "Community 567"
 Cohesion: 0.16
 Nodes (15): _connect_pg(), _connect_sqlite(), _get_columns(), _get_pg_max(), main(), _migrate_table(), Migración de datos SQLite → Postgres (F3b, ADR-016).  Lee la BD SQLite local (ré, Devuelve el valor máximo de col en la tabla PG, o None si vacía. (+7 more)
 
 ### Community 568 - "Community 568"
-Cohesion: 0.07
-Nodes (21): event_dispatch_enabled(), event_dispatch_max_age_hours(), ¿El cierre reparte el outbox de ``domain_events``?      Por defecto sí, en todos, Horas tras las que un evento pendiente caduca sin entregarse (mínimo 1)., Reparte el outbox de ``domain_events`` (S4.1, ADR-027).      Va después de ``wat, _run_event_dispatch(), El despachador del outbox, cableado al cierre (S4.1) — sin base de datos.  Hasta, El lote de la pasada no se gasta en eventos que no se van a entregar. (+13 more)
+Cohesion: 0.05
+Nodes (31): event_dispatch_enabled(), ¿El cierre reparte el outbox de ``domain_events``?      Por defecto sí, en todos, ejecutar_paso(), ejecutar_paso_encolado(), Reparte el outbox de ``domain_events`` (S4.1, ADR-027).      Va después de ``wat, Ejecuta UN paso canónico y devuelve ``ok``/``skipped``. Propaga el fallo.      E, Handler del tipo ``paso_pipeline`` de la cola (``shared/jobs.py``).      ``job``, Ejecuta UN paso canónico y devuelve ``ok``/``skipped``. Propaga el fallo.      E (+23 more)
 
 ### Community 569 - "Community 569"
 Cohesion: 0.07
@@ -5004,8 +5033,8 @@ Cohesion: 0.08
 Nodes (30): insert_user_notification(), Escribe una alerta in-app en ``user_notifications``; idempotente.      La tabla, Escribe una alerta in-app en ``user_notifications``; idempotente.      La tabla, Escribe una alerta in-app en ``user_notifications``; idempotente.      La tabla, check_all_users_deadlines(), check_pursuit_deadlines(), check_radar_postponements(), _deadline_type() (+22 more)
 
 ### Community 611 - "Community 611"
-Cohesion: 0.07
-Nodes (49): _build_body(), Comprueba la watchlist tras cada ejecución del pipeline y envía alertas por emai, Persiste coincidencias en ``pending_digests`` para envío posterior., Envía los digests pendientes para la frecuencia indicada.      Agrupa todas las, Envía los digests pendientes para la frecuencia indicada.      Agrupa todas las, Envía los digests pendientes para la frecuencia indicada.      Agrupa todas las, Persiste coincidencias en ``pending_digests`` para envío posterior., Persiste coincidencias en ``pending_digests`` para envío posterior. (+41 more)
+Cohesion: 0.08
+Nodes (43): _build_body(), Envía los digests pendientes para la frecuencia indicada.      Agrupa todas las, Envía los digests pendientes para la frecuencia indicada.      Agrupa todas las, Envía los digests pendientes para la frecuencia indicada.      Agrupa todas las, send_pending_digests(), _make_entry(), _make_lic(), Tests para scheduler/watchlist_alerts.py. (+35 more)
 
 ### Community 612 - "Community 612"
 Cohesion: 0.29
@@ -5116,8 +5145,8 @@ Cohesion: 0.29
 Nodes (8): build_id_map(), convert_bare_ids(), convert_relative_links(), main(), process_file(), One-off migration: convertir referencias ADR-NNN/RFC-NNN y links relativos markd, Mapea 'ADR-004' / 'RFC-086' -> stem del archivo (para [[stem]])., [texto](../rfc/xxx.md) o [texto](../adr/xxx.md) -> [[xxx|texto]]
 
 ### Community 640 - "Community 640"
-Cohesion: 0.06
-Nodes (38): CHIP, ContenidoFila(), ETIQUETA, PrimerosPasos(), WatchlistRuleOut, estaDescartado(), estaDescartadoEnServidor(), marcarDescartado() (+30 more)
+Cohesion: 0.04
+Nodes (66): CHIP, ContenidoFila(), ETIQUETA, PrimerosPasos(), ModulosBarChart, ModulosTreemap, ProyectosGraficos(), TipoEstadoStackedChart (+58 more)
 
 ### Community 641 - "Community 641"
 Cohesion: 0.29
@@ -5176,8 +5205,8 @@ Cohesion: 0.33
 Nodes (4): code:tsx (export default function Document() {), code:tsx (export default function Document() {), code:tsx (import Script from 'next/script'), Use defer or async on Script Tags
 
 ### Community 655 - "Community 655"
-Cohesion: 0.05
-Nodes (27): ask_client(), ask_client_no_scope(), _fake_ctx(), Tests para api/routes/ask.py — POST /api/v1/ask (B12).  Cubre: - Autenticación (, Vacía la caché de respuestas del LLM (C5.5) antes de cada test.      Cinco tests, Vacía la caché de respuestas del LLM (C5.5) antes de cada test.      Cinco tests, TestClient con API key sin scope ask:read., TestClient con API key sin scope ask:read. (+19 more)
+Cohesion: 0.07
+Nodes (17): ask_client(), ask_client_no_scope(), Tests para api/routes/ask.py — POST /api/v1/ask (B12).  Cubre: - Autenticación (, Vacía la caché de respuestas del LLM (C5.5) antes de cada test.      Cinco tests, Vacía la caché de respuestas del LLM (C5.5) antes de cada test.      Cinco tests, TestClient con API key sin scope ask:read., TestClient con API key sin scope ask:read., TestClient con una API key que tiene scope ask:read. (+9 more)
 
 ### Community 656 - "Community 656"
 Cohesion: 0.19
@@ -5316,8 +5345,8 @@ Cohesion: 0.33
 Nodes (4): References, SEO fundamentals, SEO optimization, Tools
 
 ### Community 690 - "Community 690"
-Cohesion: 0.15
-Nodes (13): _extreme_db(), Smoke tests: cada página del dashboard renderiza sin errores.  Se usa ``streamli, Renderizar ``page_name`` no debe lanzar excepción., Cada página debe renderizar sin excepciones cuando el dataset está vacío.      P, BD temporal con datos extremos/sucios., Páginas clave deben tolerarse ante datos sucios, nulos y valores extremos., Inserta licitaciones de prueba, una extracción y un run en extraction_runs., BD SQLite temporal poblada con 5 licitaciones representativas. (+5 more)
+Cohesion: 0.11
+Nodes (18): _extract_paginas(), Despacha extracción preservando límites de página.      ``None`` sigue significa, _fixture(), Formatos, OCR y almacén de binarios del fetcher de pliegos (S8.1–S8.3).  Los fix, La convención del módulo es lo que ancla los offsets: se fija aquí., Sin recursión: ``04_anexo.zip`` no aporta páginas y no lanza., El tope no se fía de ``file_size``: la lectura misma va acotada., La dependencia opcional que falta es cobertura ausente, no un fallo. (+10 more)
 
 ### Community 691 - "Community 691"
 Cohesion: 0.33
@@ -5328,12 +5357,12 @@ Cohesion: 0.33
 Nodes (6): Basic Model Definition, code:python (from datetime import datetime), code:python (class Post(Base):), code:python (from sqlalchemy import Table, Column, Integer, ForeignKey), Declarative Models (SQLAlchemy 2.0), Relationships
 
 ### Community 694 - "Community 694"
-Cohesion: 0.06
-Nodes (30): es_compartida(), _get_cache_lock(), invalidate_organization_scoped(), invalidate_user_scoped(), _MemoryBackend, Cache unificado con backends Memory (LRU+TTL) y Redis.  Reemplaza las implementa, Cache Redis con serialización JSON. Falla en silencio a Memory., Cache Redis con serialización JSON. Falla en silencio a Memory. (+22 more)
+Cohesion: 0.07
+Nodes (26): es_compartida(), invalidate_organization_scoped(), invalidate_user_scoped(), _MemoryBackend, Cache unificado con backends Memory (LRU+TTL) y Redis.  Reemplaza las implementa, Cache Redis con serialización JSON. Falla en silencio a Memory., Cache Redis con serialización JSON. Falla en silencio a Memory., Elimina solo las keys con el namespace actual (no flushdb). (+18 more)
 
 ### Community 695 - "Community 695"
 Cohesion: 0.08
-Nodes (29): _campos_incompletos(), _capabilities_out(), _escribir_capacidad(), get_organization_capabilities(), get_organization_nifs(), _leer_capacidad(), _organizacion_gestionada(), put_organization_capabilities() (+21 more)
+Nodes (28): _campos_incompletos(), _capabilities_out(), get_organization_capabilities(), get_organization_nifs(), _leer_capacidad(), _leer_nifs(), _organizacion_gestionada(), put_organization_capabilities() (+20 more)
 
 ### Community 696 - "Community 696"
 Cohesion: 0.24
@@ -5344,12 +5373,12 @@ Cohesion: 0.09
 Nodes (28): _fn_name(), _get_ml_limiter(), _get_probe_limiter(), Helpers de concurrencia para la API REST.  El driver de Postgres (psycopg3) es s, Ejecuta un sondeo de salud en un threadpool propio, **abandonable**.      Difere, Ejecuta I/O de red **síncrona** (SMTP, HTTP saliente) en el threadpool.      Mis, Ejecuta ``fn(*args, **kwargs)`` en el threadpool ML dedicado (bulkhead).      Us, Ejecuta ``fn`` en el carril CPU-bound (analítica pandas).      Mismo bulkhead qu (+20 more)
 
 ### Community 699 - "Community 699"
-Cohesion: 0.09
-Nodes (29): CierrePublico(), EnlaceSolicitarAcceso(), FormularioSolicitud(), CapturaProducto(), CierreLanding(), ComoFuncionaLanding(), CtaAcceso(), ExplorarLanding() (+21 more)
+Cohesion: 0.11
+Nodes (23): FormularioSolicitud(), FranjaDatos(), CapturaProducto(), CierreLanding(), ComoFuncionaLanding(), ExplorarLanding(), FaqLanding(), HeroLanding() (+15 more)
 
 ### Community 700 - "Community 700"
-Cohesion: 0.14
-Nodes (19): _cursor_entero(), emitir_avisos(), emitir_avisos_de_cuentas(), emitir_documentos_nuevos(), emitir_recursos(), emitir_vencimientos_de_cuentas(), _miembros(), _organizaciones() (+11 more)
+Cohesion: 0.09
+Nodes (27): Entry point del scheduler. Devuelve cuántos eventos quedaron despachados., Entry point del scheduler. Devuelve cuántos eventos quedaron despachados., Entry point del scheduler. Devuelve cuántos eventos quedaron despachados.      A, run(), _cursor_entero(), emitir_avisos(), emitir_avisos_de_cuentas(), emitir_documentos_nuevos() (+19 more)
 
 ### Community 701 - "Community 701"
 Cohesion: 0.13
@@ -5480,8 +5509,8 @@ Cohesion: 0.40
 Nodes (3): code:tsx (async function Page() {), code:tsx (async function Page() {), Minimize Serialization at RSC Boundaries
 
 ### Community 734 - "Community 734"
-Cohesion: 0.08
-Nodes (28): _correr(), _oferta(), C6.5 — «mi baja frente al mercado»: orquestación (`services/mi_baja.py`).  El mó, Perder mi cifra porque falló la del mercado sería esconder lo que sé., Perder mi cifra porque falló la del mercado sería esconder lo que sé., Dos ofertas no son evidencia, pero saber que son dos sí es información., Dos ofertas no son evidencia, pero saber que son dos sí es información., Sin presupuesto no hay baja que calcular; la fila no inventa un 0 %. (+20 more)
+Cohesion: 0.17
+Nodes (10): _correr(), El orden es por población, así que el corte se lleva los menos legibles., El orden es por población, así que el corte se lleva los menos legibles., Una organización que no ha presentado nada ve la pantalla vacía, no un 500., Una organización que no ha presentado nada ve la pantalla vacía, no un 500., Ejecuta `mi_baja` con la organización, el repo y el mercado simulados., Ejecuta `mi_baja` con la organización, el repo y el mercado simulados., CPV4 y órgano no se combinan: cruzarlos daría casi siempre `n = 1`. (+2 more)
 
 ### Community 735 - "Community 735"
 Cohesion: 0.40
@@ -5652,16 +5681,16 @@ Cohesion: 0.43
 Nodes (7): Finding, _is_comment(), _iter_files(), main(), Verifica los invariantes de integridad analítica del frontend (ADR-014).  Escane, _report(), scan_file()
 
 ### Community 777 - "Community 777"
-Cohesion: 0.10
-Nodes (43): generateMetadata(), HubCcaa(), nombreDesdeSlug(), paginaDe(), Params, Query, descripcionDivision(), DIVISIONES (+35 more)
+Cohesion: 0.12
+Nodes (32): generateMetadata(), HubCcaa(), nombreDesdeSlug(), paginaDe(), Params, Query, IndiceCpv(), metadata (+24 more)
 
 ### Community 778 - "Community 778"
 Cohesion: 0.06
-Nodes (37): title, type, properties, description, properties, required, title, type (+29 more)
+Nodes (42): title, type, description, properties, required, title, type, description (+34 more)
 
 ### Community 779 - "Community 779"
-Cohesion: 0.08
-Nodes (36): fetch_unlinked(), Adjudicaciones sin empresa_id, paginadas por id ascendente.      ``after_id`` pe, Adjudicaciones sin empresa_id, paginadas por id ascendente.      ``after_id`` pe, Adjudicaciones sin empresa_id, paginadas por id ascendente.      ``after_id`` pe, main(), Backfill del maestro de empresas sobre las adjudicaciones históricas.  Resuelve, _cursor_source(), Itera lotes hasta agotar las adjudicaciones resolubles (backfill). (+28 more)
+Cohesion: 0.11
+Nodes (17): DocumentoPagina, Una página lógica extraída, y de dónde salió su texto.      ``ocr=True`` signifi, _contenido_desde_blob(), fetch_and_extract(), Recupera el binario guardado de un documento, si lo hay.      Es lo que conviert, Descarga ``documento['uri']``, extrae su texto y persiste el resultado     vía `, Re-extrae un documento **sin tocar la fuente**, leyendo el binario guardado., reextract_from_blob() (+9 more)
 
 ### Community 780 - "Community 780"
 Cohesion: 0.29
@@ -5684,8 +5713,8 @@ Cohesion: 0.40
 Nodes (5): code:python (# Use n_jobs=-1 for parallel processing), code:python (# Use sparse matrices), Memory Efficiency, Performance Tips, Speed Up Training
 
 ### Community 785 - "Community 785"
-Cohesion: 0.02
-Nodes (141): compute_all_kpis(), compute_and_persist_snapshots(), get_all_latest(), get_latest_snapshot(), persist_snapshots(), SQL del precálculo de KPIs: métricas del radar, ``kpi_snapshots`` y Parquet.  Es, Inserta los snapshots en la BD. Devuelve el número de filas insertadas., Calcula el snapshot completo y reemplaza el anterior en una transacción.      El (+133 more)
+Cohesion: 0.08
+Nodes (30): compute_all_kpis(), Calcula todos los KPIs desde la BD directamente.      Returns:         Lista de, _compute_all_kpis(), Calcula todos los KPIs desde la BD directamente.      Returns:         Lista de, Calcula todos los KPIs desde la BD directamente.      Returns:         Lista de, Calcula todos los KPIs desde la BD directamente.      Returns:         Lista de, Tests del pre-cálculo de KPIs: el job de ``scheduler/`` y su SQL en ``db/``.  ``, run_kpi_precompute devuelve dict con n_metricas y elapsed_ms. (+22 more)
 
 ### Community 786 - "Community 786"
 Cohesion: 0.40
@@ -5812,8 +5841,8 @@ Cohesion: 0.60
 Nodes (3): config, middleware(), PUBLIC_PATHS
 
 ### Community 819 - "Community 819"
-Cohesion: 0.07
-Nodes (30): artifact_cache_dir(), _download_bucket_asset(), _ensure_sidecar_checksum(), _materializar_artefacto(), ModelArtifactError, ModelArtifactMismatch, publish_artifact_to_bucket(), Resolución verificada de artefactos de modelo (revisión arquitectura 2026-08). (+22 more)
+Cohesion: 0.21
+Nodes (7): _guardar_binario(), Guarda el binario y devuelve su clave, o ``None`` si no se guardó.      Best-eff, document_blob_key(), Clave canónica del binario de un adjunto: ``documentos/{source_hash}``.      ``s, Guardar bajo el id de la fila rompería la deduplicación en silencio., Su ciclo de vida no es el de un pliego: la retención no los toca., TestClaves
 
 ### Community 820 - "Community 820"
 Cohesion: 0.40
@@ -5836,8 +5865,8 @@ Cohesion: 0.40
 Nodes (4): 5.9 Split Combined Hook Computations, code:tsx (const sortedProducts = useMemo(() => {), code:tsx (useEffect(() => {), code:tsx (useEffect(() => {)
 
 ### Community 825 - "Community 825"
-Cohesion: 0.10
-Nodes (15): Deriva una clave opaca y estable a partir de la configuración local., Deriva una clave opaca y estable a partir de la configuración local., Misma derivación que usa el dashboard (hash del DASHBOARD_PASSWORD)., _user_key(), Derivación centralizada de user_key a partir de la configuración., Deriva una clave opaca para el usuario actual.      Usa una semilla de configura, user_key(), Tests no dependientes del dashboard para Ronda 2. (+7 more)
+Cohesion: 0.06
+Nodes (31): apply_filters(), _check_fts(), Aplica FiltersState a un DataFrame de licitaciones., Busca con FTS5 y devuelve id_externo ordenados por bm25 rank.      Returns None, Comprueba una sola vez si FTS5 está disponible., Busca con FTS5 y devuelve id_externo ordenados por bm25 rank.      Returns None, _search_fts_ids(), Deriva una clave opaca y estable a partir de la configuración local. (+23 more)
 
 ### Community 826 - "Community 826"
 Cohesion: 0.11
@@ -5884,8 +5913,8 @@ Cohesion: 0.60
 Nodes (3): downgrade(), Migración v35 — Maestro de empresas (entity resolution).  Tablas dimensionales p, upgrade()
 
 ### Community 839 - "Community 839"
-Cohesion: 0.06
-Nodes (36): delete_my_data(), delete_profile(), get_profile(), _get_user_key_for_profile(), _invalidate_profile_scoring(), put_profile(), Anonimiza watchlist y feedback; revoca la API key autenticada.      La identific, Anonimiza watchlist y feedback; revoca la API key autenticada.      La identific (+28 more)
+Cohesion: 0.10
+Nodes (19): emitir_avisos_de_fin(), preparar_renovacion(), Escribe un ``pursuit.cartera_vence`` por contrato y ventana cruzada.      Devuel, Escribe un ``pursuit.cartera_vence`` por contrato y ventana cruzada.      Devuel, Escribe un ``pursuit.cartera_vence`` por contrato y ventana cruzada.      Devuel, Crea la oportunidad de la relicitación, enlazada al contrato. Idempotente., Crea la oportunidad de la relicitación, enlazada al contrato. Idempotente., Crea la oportunidad de la relicitación, enlazada al contrato. Idempotente. (+11 more)
 
 ### Community 840 - "Community 840"
 Cohesion: 0.06
@@ -5893,11 +5922,11 @@ Nodes (39): _dump(), Tests para GET /api/v1/licitaciones/{id}/prediccion-baja., 
 
 ### Community 841 - "Community 841"
 Cohesion: 0.05
-Nodes (34): _perdidas_por_motivo(), Reparto de las pérdidas por motivo, o lista vacía si no hay base.      Por debaj, Reparto de las pérdidas por motivo, o lista vacía si no hay base.      Por debaj, ``2026-Q4`` a partir de una fecha ISO; ``None`` si no se entiende., ``(valor, previsión por trimestre, sin importe, probabilidades usadas)``.      S, ``(valor, previsión por trimestre, sin importe, probabilidades usadas)``.      S, Reparto de las pérdidas por motivo, o lista vacía si no hay base.      Por debaj, Reparto de las pérdidas por motivo, o lista vacía si no hay base.      Por debaj (+26 more)
+Nodes (36): _con_fecha_prevista(), _instanciar_plantilla_tareas(), _lead_time_por_organo(), Percentiles de lead-time de esos órganos, o ``{}`` si la consulta falla.      Un, Percentiles de lead-time de esos órganos, o ``{}`` si la consulta falla.      Un, Percentiles de lead-time de esos órganos, o ``{}`` si la consulta falla.      Un, Percentiles de lead-time de esos órganos, o ``{}`` si la consulta falla.      Un, Añade `expected_award` (F4.4) a las filas ya leídas.      Una sola consulta para (+28 more)
 
 ### Community 842 - "Community 842"
-Cohesion: 0.06
-Nodes (32): clave_canonica_agrupable_sql(), _criterios_canonicos_sql(), orden_canonico_sql(), _rango_canonico_sql(), Los cuatro criterios de canónica, como lista separada por comas.      Punto únic, Tupla de orden que decide cuál de las filas gemelas es la canónica.      Menor g, Los cuatro criterios de canónica, como lista separada por comas.      Punto únic, Tupla de orden que decide cuál de las filas gemelas es la canónica.      Menor g (+24 more)
+Cohesion: 0.10
+Nodes (17): _extract_pages(), _extract_text(), Compatibilidad: sólo el texto de cada página., Despacha la extracción según content-type y devuelve el texto agregado., _http_error_del_transporte_real(), _make_minimal_pdf(), Tests de scraper/document_fetcher.py (plan Pliegos+RAG, F7).  ``_download_bytes`, Algunos servidores no envían Content-Type — asumimos PDF (caso común). (+9 more)
 
 ### Community 843 - "Community 843"
 Cohesion: 0.50
@@ -5913,7 +5942,7 @@ Nodes (5): email, emailInput, google, googleBtn, toggle
 
 ### Community 847 - "Community 847"
 Cohesion: 0.22
-Nodes (9): computedHash, source, sourceType, computedHash, source, sourceType, skills, bash-defensive-patterns (+1 more)
+Nodes (9): computedHash, source, sourceType, computedHash, source, sourceType, skills, deploy-to-vercel (+1 more)
 
 ### Community 848 - "Community 848"
 Cohesion: 0.06
@@ -5928,8 +5957,8 @@ Cohesion: 0.50
 Nodes (4): computedHash, source, sourceType, nodejs-best-practices
 
 ### Community 851 - "Community 851"
-Cohesion: 0.07
-Nodes (31): _finalize_ingestion(), _notify_degraded(), Alerta best-effort (nivel WARN) por meses con fallo recuperable., Cierra una ingesta bulk/backfill tolerando fallos parciales.      - **Fallo tota, Alerta best-effort (nivel WARN) por meses con fallo recuperable., Pipeline canónica para backfill histórico (desde año/mes hasta hoy).      Aplica, Cierra una ingesta bulk/backfill tolerando fallos parciales.      - **Fallo tota, Alerta best-effort (nivel WARN) por meses con fallo recuperable. (+23 more)
+Cohesion: 0.08
+Nodes (30): _awaited_call_ids(), _call_name(), _iter_async_scopes(), _own_nodes(), Guardarraíl: ningún handler ``async def`` puede bloquear el event loop.  Motivac, Nodos del cuerpo propio, sin bajar a funciones anidadas ni lambdas.      Ese des, Nodos del cuerpo propio, sin bajar a funciones anidadas ni lambdas.      Ese des, Nodos del cuerpo propio, sin bajar a funciones anidadas ni lambdas.      Ese des (+22 more)
 
 ### Community 852 - "Community 852"
 Cohesion: 0.50
@@ -5944,8 +5973,8 @@ Cohesion: 0.50
 Nodes (4): computedHash, source, sourceType, accessibility
 
 ### Community 855 - "Community 855"
-Cohesion: 0.07
-Nodes (18): _guard(), Cuentas y seguridad: lo que el usuario no podía gobernar (C2).  Cuatro huecos qu, Un tope que no acumula no corta nunca: el modo de fallo del ítem., C2.8 — el bloqueo medido, y por qué la corrección parcial es peor., Tres `style={{ minHeight: ALTO }}` pasaron a `min-h-[Npx]`.          Es la clase, Un relajamiento sin motivo escrito se hereda sin revisarse., C2.4 — la parte que faltaba: que el reintento *ocurra*.      `decidir()` sabía c, Reconstruirlo en el reintento cambiaría el `timestamp`, y con él la firma. (+10 more)
+Cohesion: 0.12
+Nodes (13): Base types for the scheduler job registry., Declarative description of a periodic scheduler job.      Attributes:         na, Declarative description of a periodic scheduler job.      Attributes:         na, ScheduledJob, build_default_registry(), Scheduler job registry — declarative definition of all periodic jobs.  Usage::, Return the ordered list of all scheduled jobs with their defaults.      The orde, Read the interval from the environment or fall back to the job's default. (+5 more)
 
 ### Community 856 - "Community 856"
 Cohesion: 0.50
@@ -5984,8 +6013,8 @@ Cohesion: 0.50
 Nodes (4): sqlalchemy, computedHash, source, sourceType
 
 ### Community 865 - "Community 865"
-Cohesion: 0.20
-Nodes (10): code:python (from sklearn.feature_selection import VarianceThreshold), code:python (from sklearn.feature_selection import SelectKBest, f_classif), code:python (from sklearn.feature_selection import RFE), code:python (from sklearn.feature_selection import RFECV), code:python (from sklearn.feature_selection import SelectFromModel), code:python (from sklearn.linear_model import LogisticRegression), Embedded Methods, Feature Selection (+2 more)
+Cohesion: 0.08
+Nodes (13): _organizacion(), Tests para db/saved_filters.py — serialización de filtros y CRUD., Dos usuarios de la MISMA organización: compartir no es ceder el borrado.      Co, Dos usuarios de la MISMA organización: compartir no es ceder el borrado.      Co, La regresión que NO se quería introducir: el predicado de         organización s, La regresión que NO se quería introducir: el predicado de         organización s, _seed(), TestDeleteSavedFilter (+5 more)
 
 ### Community 866 - "Community 866"
 Cohesion: 0.13
@@ -6005,7 +6034,7 @@ Nodes (4): Advanced Testing Patterns Reference, Pytest, Python Development Patte
 
 ### Community 876 - "Community 876"
 Cohesion: 0.03
-Nodes (82): OneVsRest multi-label sobre las etiquetas de ``TECHNOLOGY_KEYWORDS``.      No he, OneVsRest multi-label sobre las etiquetas de ``TECHNOLOGY_KEYWORDS``.      No he, OneVsRest multi-label sobre las etiquetas de ``TECHNOLOGY_KEYWORDS``.      No he, TechnologyClassifier, _make_synthetic_df(), Unit tests para el clasificador multi-tecnología (TechnologyClassifier)., Genera un dataset sintético desbalanceado para validar los 3 tiers.      Usa voc, Genera un dataset sintético desbalanceado para validar los 3 tiers. (+74 more)
+Nodes (86): Ejecuta PRAGMA wal_checkpoint(TRUNCATE) para liberar espacio del WAL., Ejecuta PRAGMA wal_checkpoint(TRUNCATE) para liberar espacio del WAL., Ejecuta PRAGMA wal_checkpoint(TRUNCATE) para liberar espacio del WAL., _run_wal_checkpoint(), OneVsRest multi-label sobre las etiquetas de ``TECHNOLOGY_KEYWORDS``.      No he, OneVsRest multi-label sobre las etiquetas de ``TECHNOLOGY_KEYWORDS``.      No he, OneVsRest multi-label sobre las etiquetas de ``TECHNOLOGY_KEYWORDS``.      No he, TechnologyClassifier (+78 more)
 
 ### Community 877 - "Community 877"
 Cohesion: 0.11
@@ -6020,8 +6049,8 @@ Cohesion: 0.50
 Nodes (4): code:bash (# Core SQLAlchemy), Core Concepts, Installation, SQLAlchemy 2.0 Modern API
 
 ### Community 880 - "Community 880"
-Cohesion: 0.05
-Nodes (52): append_cache_invalidation_event(), caducar_pendientes(), claim_channel(), count_pending_events(), get_latest_cache_invalidation_timestamp(), mark_dispatched(), _pendientes_muestreados(), pending_events() (+44 more)
+Cohesion: 0.06
+Nodes (45): caducar_pendientes(), claim_channel(), count_pending_events(), get_events_by_type(), mark_dispatched(), _pendientes_muestreados(), pending_events(), Event sourcing ligero — append-only log de eventos de dominio, y **outbox**.  La (+37 more)
 
 ### Community 881 - "Community 881"
 Cohesion: 0.22
@@ -6032,12 +6061,12 @@ Cohesion: 0.09
 Nodes (21): _candidato_mas_parecido(), _candidatos_por_palabras(), normalizar(), Resolución de identidad de órganos de contratación (C1.2, ADR-032, D22).  La per, Resuelve una grafía a un órgano del maestro.      Devuelve ``None`` si el nombre, Órgano existente más parecido a *normalizado*, con su score.      Se acota a los, Grafías que acabaron con un ``organo_id`` firme., Órgano existente más parecido a *normalizado*, con su score.      Se acota a los (+13 more)
 
 ### Community 883 - "Community 883"
-Cohesion: 0.25
-Nodes (8): _escape_like(), Señales de la agenda de Mi Pipeline: matches de reglas sin triar.  Una señal es, Escapa comodines LIKE (``%``, ``_``) del input de usuario., Escapa comodines LIKE (``%``, ``_``) del input de usuario., Matches vivos y sin triar de una regla, más urgentes primero., Matches vivos y sin triar de una regla, más urgentes primero.      ``user_id`` (, Matches vivos y sin triar de una regla, más urgentes primero.      ``user_id`` (, signal_rows()
+Cohesion: 0.06
+Nodes (31): licitaciones_publicadas_desde(), licitaciones_seguidas_abiertas(), Candidatas a la pre-generación nocturna del resumen IA (ADR-022: el SQL, aquí)., Abiertas que alguien convirtió en oportunidad o marcó como favorita.      Oportu, Abiertas publicadas en o después de ``desde_iso``, las más recientes primero., _escape_like(), Señales de la agenda de Mi Pipeline: matches de reglas sin triar.  Una señal es, Escapa comodines LIKE (``%``, ``_``) del input de usuario. (+23 more)
 
 ### Community 884 - "Community 884"
-Cohesion: 0.12
-Nodes (27): Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., set_cursor() (+19 more)
+Cohesion: 0.08
+Nodes (41): Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., Crea o actualiza el cursor de una fuente de ingesta., set_cursor() (+33 more)
 
 ### Community 885 - "Community 885"
 Cohesion: 0.08
@@ -6056,24 +6085,24 @@ Cohesion: 0.50
 Nodes (4): Must Use, Recommended, Skip, When to Apply
 
 ### Community 889 - "Community 889"
-Cohesion: 0.29
-Nodes (9): api_key(), _auth(), Tests de la API /api/v1/watchlist/rules (CRUD + matches + preview).  Fixtures ap, Override de conftest: vincula la key a un usuario real.      Esta ruta resuelve, _seed_licitaciones(), test_crud_roundtrip(), test_matches_de_una_regla(), test_preview_cuenta_matches() (+1 more)
+Cohesion: 0.39
+Nodes (7): _auth(), Tests de la API /api/v1/watchlist/rules (CRUD + matches + preview).  Fixtures ap, _seed_licitaciones(), test_crud_roundtrip(), test_matches_de_una_regla(), test_preview_cuenta_matches(), test_update_inexistente_404()
 
 ### Community 890 - "Community 890"
 Cohesion: 0.08
 Nodes (23): _con_repos(), _PursuitsDoble, Tareas de una oportunidad: el servicio, ejecutado (C6.1).  `test_c6_captura.py`, Un `viewer` tiene que poder leer las tareas., Un `viewer` tiene que poder leer las tareas., El repositorio filtra por organización: si no vuelve, no hay nada., El repositorio filtra por organización: si no vuelve, no hay nada., Un `viewer` no escribe, y quien decide eso es `resolve_organization`. (+15 more)
 
 ### Community 891 - "Community 891"
-Cohesion: 0.12
-Nodes (33): _detect_modules(), ProyectosModulosFilters, Detect SAP modules mentioned in a text string., Detect SAP modules mentioned in a text string., Detect SAP modules mentioned in a text string., Query filters for proyectos-modulos endpoint., Query filters for proyectos-modulos endpoint., Detect SAP modules mentioned in a text string (paridad con `~*` en SQL). (+25 more)
+Cohesion: 0.08
+Nodes (27): compute_and_persist_snapshots(), export_mat_query_duckdb(), persist_snapshots(), SQL del precálculo de KPIs: métricas del radar, ``kpi_snapshots`` y Parquet.  Es, Inserta los snapshots en la BD. Devuelve el número de filas insertadas., Calcula el snapshot completo y reemplaza el anterior en una transacción.      El, Materializa la consulta ``nombre`` de :data:`MAT_QUERIES` en ``dest`` vía DuckDB, _persist_snapshots() (+19 more)
 
 ### Community 892 - "Community 892"
 Cohesion: 0.08
 Nodes (29): robots(), esPaginaPrerenderizada(), esPaginaPublica(), Frecuencia, PaginaPublica, PAGINAS_PUBLICAS, rutasRastreables(), buildCsp() (+21 more)
 
 ### Community 915 - "Community 915"
-Cohesion: 0.09
-Nodes (36): count_matches(), count_matches_bounded(), matches_since(), Conteo de matches sobre el dataset COMPLETO (no un ``limit=20`` cliente)., Como ``list_matches`` pero solo licitaciones con ``fecha_publicacion``     poste, Conteo de matches sobre el dataset COMPLETO (no un ``limit=20`` cliente).      E, Conteo de matches sobre el dataset COMPLETO (no un ``limit=20`` cliente).      E, Conteo de matches sobre el dataset COMPLETO (no un ``limit=20`` cliente).      E (+28 more)
+Cohesion: 0.06
+Nodes (54): _matches_for(), count_matches(), count_matches_bounded(), _ids_desde_banda(), list_matches(), matches_since(), Traduce los filtros de la regla a condiciones SQLAlchemy.      Aplica TODOS los, Conteo de matches sobre el dataset COMPLETO (no un ``limit=20`` cliente). (+46 more)
 
 ### Community 917 - "Community 917"
 Cohesion: 0.05
@@ -6096,16 +6125,16 @@ Cohesion: 0.67
 Nodes (3): code:python (from django.db import models), Django Integration, Django Model Validation
 
 ### Community 927 - "Community 927"
-Cohesion: 0.12
-Nodes (16): Accessing Attributes, Accessing Pipeline Components, Accessing Steps, code:python (import pandas as pd), code:python (# By index), code:python (# Set parameters using double underscore notation), code:python (# Access fitted attributes), code:python (from sklearn.model_selection import GridSearchCV) (+8 more)
+Cohesion: 0.29
+Nodes (7): Accessing Attributes, Accessing Pipeline Components, Accessing Steps, code:python (# By index), code:python (# Set parameters using double underscore notation), code:python (# Access fitted attributes), Setting Parameters
 
 ### Community 928 - "Community 928"
-Cohesion: 0.07
-Nodes (24): get_guion_oferta_pdf(), F2.6 — descarga en PDF del guion **ya generado**.      Nunca genera: descargar n, get_pursuit_ficha_pdf(), F2.7 — el one-pager que se lleva a un comité.      Va por la misma lectura con á, F2.7 — el one-pager que se lleva a un comité.      Va por la misma lectura con á, F2.7 — el one-pager que se lleva a un comité.      Va por la misma lectura con á, F2.7 — el one-pager que se lleva a un comité.      Va por la misma lectura con á, callback_sin_bd() (+16 more)
+Cohesion: 0.06
+Nodes (28): _ip_permitida(), prometheus_metrics(), Endpoint Prometheus ``GET /metrics``.  Vivía dentro de ``api/app.py``, donde ade, Métricas en formato de exposición Prometheus., ¿La IP de origen está en ``METRICS_ALLOWED_IPS``?, Autoriza el scrape. Devuelve el contexto, o ``None`` si entró por IP.      Devue, require_metrics_reader(), Feed Atom/RSS de la watchlist de un usuario.  GET /api/v1/watchlist/feed.xml?tok (+20 more)
 
 ### Community 929 - "Community 929"
-Cohesion: 0.03
-Nodes (84): Persiste un fallo en la DLQ. No lanza excepciones — best-effort.      Si ya exis, Persiste un fallo en la DLQ. No lanza excepciones — best-effort.      Si ya exis, record_failure(), Enruta violaciones de integridad a la DLQ, fuera de la transacción del upsert., _route_violations_to_dlq(), _organizacion_de_pruebas(), Tests para la capa de servicios wrapper: users, saved_filters, dlq, audit.  Todo, deactivate → usuario no aparece en list_users; reactivate → reaparece. (+76 more)
+Cohesion: 0.12
+Nodes (15): Tests para la capa de servicios wrapper: users, saved_filters, dlq, audit.  Todo, deactivate → usuario no aparece en list_users; reactivate → reaparece., log_access registra sin lanzar excepciones (con y sin user_id)., Dos llamadas con el mismo (provider, sub) devuelven el mismo id., Dos subs distintos crean dos usuarios distintos., set_admin(True) luego is_admin devuelve True; set_admin(False) → False., list_users devuelve lista; incluye el usuario recién creado., list_users con limit=1 devuelve como máximo 1 elemento. (+7 more)
 
 ### Community 930 - "Community 930"
 Cohesion: 1.00
@@ -6116,8 +6145,8 @@ Cohesion: 0.33
 Nodes (5): deudaTitleNativo, eslintConfig, jsxA11yRecommendedAsError, restriccionesDeSintaxis, restriccionTitleNativo
 
 ### Community 968 - "Community 968"
-Cohesion: 0.07
-Nodes (27): con_limites(), patron_de_keywords(), Keywords por tecnología para filtrar licitaciones del sector público.  Consumido, Fragmento de regex para ``keyword`` con el límite correcto a cada lado., Regex que casa cualquiera de ``keywords``, cada una con sus límites.      Fuente, _desde_la_semilla(), _detectadas(), _golden_textos() (+19 more)
+Cohesion: 0.05
+Nodes (31): con_limites(), patron_de_keywords(), Keywords por tecnología para filtrar licitaciones del sector público.  Consumido, Fragmento de regex para ``keyword`` con el límite correcto a cada lado., Regex que casa cualquiera de ``keywords``, cada una con sus límites.      Fuente, _desde_la_semilla(), _detectadas(), _golden_textos() (+23 more)
 
 ### Community 969 - "Community 969"
 Cohesion: 0.08
@@ -6137,7 +6166,7 @@ Nodes (42): 0. Alcance y método, 1. Hechos verificados (2026-09-05), 2. Olas, 3
 
 ### Community 1001 - "Community 1001"
 Cohesion: 0.03
-Nodes (62): Núcleo compartido de validación de API keys.      Único camino de validación par, True si el contexto tiene el scope o es wildcard., True si el contexto tiene el scope o es wildcard., True si el contexto tiene el scope o es wildcard., validate_api_key_credential(), deactivate_user(), get_active_user_by_email_ci(), get_or_create_oauth_user() (+54 more)
+Nodes (57): anonymize_user(), deactivate_user(), get_active_user_by_email_ci(), get_or_create_oauth_user(), get_user_by_id(), is_admin(), list_users(), log_access() (+49 more)
 
 ### Community 1009 - "Community 1009"
 Cohesion: 0.33
@@ -6148,32 +6177,32 @@ Cohesion: 0.14
 Nodes (29): _como(), correos(), _organizacion(), Invitaciones a correos sin cuenta (S1.1).  Hasta 2026-09, incorporar a alguien e, La rama que ya funcionaba no cambia: membresía activa y sin correo., Sin esto, el único parcial de v104 haría fallar el segundo intento., Una invitación con rol menor no puede quitarle la propiedad a nadie., 422 de Pydantic, sin fila ni envío: invitar a un `.test` no lleva a ninguna part (+21 more)
 
 ### Community 1204 - "Community 1204"
-Cohesion: 0.08
-Nodes (35): EstacionalidadFilters, Ámbito de la estacionalidad por órgano.      ``organo`` es obligatorio: la estac, Ámbito de la estacionalidad por órgano.      ``organo`` es obligatorio: la estac, _ConexionFalsa, _correr(), _CursorFalso, _mes(), T5 — estacionalidad por órgano: el corte de ADR-014 lo decide el servicio.  Test (+27 more)
+Cohesion: 0.07
+Nodes (39): EstacionalidadFilters, Ámbito de la estacionalidad por órgano.      ``organo`` es obligatorio: la estac, Ámbito de la estacionalidad por órgano.      ``organo`` es obligatorio: la estac, forecast_estacionalidad_organo(), Calendario de compra de un órgano: publicaciones por mes del calendario.      La, Calendario de compra de un órgano: publicaciones por mes del calendario.      La, Calendario de compra de un órgano: publicaciones por mes del calendario.      La, _ConexionFalsa (+31 more)
 
 ### Community 1205 - "Community 1205"
 Cohesion: 0.12
 Nodes (27): base(), _eventos_de_cambio(), _historial(), _lic(), org_seguidora(), Alertas de cambio en expedientes seguidos (S4.5).  Integración (``tmp_db``). ``l, Criterio de S4.5: el seguidor ve QUÉ cambió y a QUÉ, no un «algo cambió»., Criterio de S4.5: el seguidor ve QUÉ cambió y a QUÉ, no un «algo cambió». (+19 more)
 
 ### Community 1206 - "Community 1206"
-Cohesion: 0.08
-Nodes (28): _current_request(), Autenticación y autorización por API-Key para la API REST.  La clave se pasa en, Actualiza last_used de forma best-effort (llamado en background)., Actualiza last_used de forma best-effort (llamado en background)., Actualiza last_used de forma best-effort (llamado en background)., Dependencia FastAPI que valida la API Key (ver ``validate_api_key_credential``)., Actualiza last_used de forma best-effort (llamado en background)., Dependencia FastAPI que valida la API Key.      - Comparación de hash en tiempo (+20 more)
+Cohesion: 0.06
+Nodes (34): _current_request(), Autenticación y autorización por API-Key para la API REST.  La clave se pasa en, Actualiza last_used de forma best-effort (llamado en background)., Actualiza last_used de forma best-effort (llamado en background)., Factory de dependencias que require un scope específico.      Uso::          @ro, Factory de dependencias que require un scope específico.      Uso::          @ro, Actualiza last_used de forma best-effort (llamado en background)., Factory de dependencias que require un scope específico.      Uso::          @ro (+26 more)
 
 ### Community 1207 - "Community 1207"
-Cohesion: 0.31
-Nodes (6): _DuckDBEngine, Ejecuta una query y devuelve la relación DuckDB (llama .df() para DataFrame)., Ejecuta una query y devuelve la relación DuckDB (llama .df() para DataFrame)., Wrapper del singleton DuckDB con estado de invalidación., Recarga la tabla desde SQLite., Invalida y recarga si el manifest Parquet es más reciente que el último attach.
+Cohesion: 0.09
+Nodes (29): get_latest_snapshot(), Lee el snapshot más reciente de una métrica desde la BD.      Args:         metr, get_latest_snapshot(), Lee el snapshot más reciente de una métrica desde la BD.      Args:         metr, Lee el snapshot más reciente de una métrica desde la BD.      Args:         metr, Lee el snapshot más reciente de una métrica desde la BD.      Args:         metr, Lee el snapshot más reciente de una métrica desde la BD.      Args:         metr, Sin datos en kpi_snapshots devuelve None. (+21 more)
 
 ### Community 1208 - "Community 1208"
 Cohesion: 0.03
-Nodes (59): delete_adjunto(), get_adjunto_descarga(), get_adjunto_enlace(), post_pursuits_weights_proposal_apply(), put_adjunto_indexable(), Aplica la propuesta vigente al perfil de scoring. Queda en el audit log.      No, Emite un enlace de descarga **firmado y con caducidad**.      La autorización se, Borra el adjunto y su binario del almacén. (+51 more)
+Nodes (38): firmar_descarga(), _payload(), Enlace de descarga firmado que caduca.      La caducidad va **dentro de lo firma, ``True`` si la firma es válida **y** no ha caducado., verificar_descarga(), C6.3 — la propuesta del equipo vive en el producto, no en el disco de alguien., C6.3 — la propuesta del equipo vive en el producto, no en el disco de alguien., Una lista negra es una carrera que se pierde: basta un formato nuevo. (+30 more)
 
 ### Community 1209 - "Community 1209"
-Cohesion: 0.05
-Nodes (47): _es_ventana_matinal(), Pipeline canónica de orquestación — ADR-012.  Define la secuencia oficial de pas, Ejecuta ``fn`` como mucho una vez cada ``ttl_seconds``.      La pipeline canónic, Ejecuta ``fn`` como mucho una vez cada ``ttl_seconds``.      La pipeline canónic, Ejecuta ``fn`` como mucho una vez cada ``ttl_seconds``.      La pipeline canónic, Re-aplica la señal de pliego sobre TODAS las licitaciones con señal.      ``prec, Fusiona la señal de pliego que el resumen ML aún no refleja.      Sin ids, ``mer, Fusiona la señal de pliego que el resumen ML aún no refleja.      Sin ids, ``mer (+39 more)
+Cohesion: 0.03
+Nodes (61): _es_ventana_matinal(), _notify_degraded(), Pipeline canónica de orquestación — ADR-012.  Define la secuencia oficial de pas, Alerta best-effort (nivel WARN) por meses con fallo recuperable., Alerta best-effort (nivel WARN) por meses con fallo recuperable., Alerta best-effort (nivel WARN) por meses con fallo recuperable., Alerta best-effort (nivel WARN) por meses con fallo recuperable., Alerta best-effort (nivel WARN) por meses con fallo recuperable. (+53 more)
 
 ### Community 1216 - "Community 1216"
-Cohesion: 0.08
-Nodes (19): metadata, metadata, AdminGuard(), AdminGuardProps, CuentaView(), FeatureFlagsContent(), metadata, FeatureFlagsPage() (+11 more)
+Cohesion: 0.12
+Nodes (9): LabelingQueue(), TechQueueChips(), metadata, metadata, AdminGuard(), AdminGuardProps, metadata, { container } (+1 more)
 
 ### Community 1217 - "Community 1217"
 Cohesion: 0.17
@@ -6184,40 +6213,40 @@ Cohesion: 0.05
 Nodes (35): abrir, acciones, { action }, addWatchlist, cabecera, { container }, createPursuit, descartar (+27 more)
 
 ### Community 1219 - "Community 1219"
-Cohesion: 0.08
-Nodes (21): load(), load(), Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar (+13 more)
+Cohesion: 0.09
+Nodes (20): load(), Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar, Serializa el modelo a disco usando joblib (más seguro que pickle).          Guar (+12 more)
 
 ### Community 1220 - "Community 1220"
 Cohesion: 0.12
 Nodes (19): Tests del pin out-of-band ML_MODEL_SHA256 en SAPClassifier.load/ensure_downloade, Sin el ``.sha256``, ``load()`` con ENV=prod rechaza el artefacto.      Bajar sol, El caso de producción: sin fila en `model_versions` y sin fichero local., Gemelo del SAP: hoy no encuentra nada porque `train-tech.yml` aún no publica., En ENV=prod, sin pin ni checksum co-ubicado, load() debe fallar duro., En ENV=prod, un checksum co-ubicado válido basta (sin pin)., El repositorio no puede inyectar rutas ni consultas en la GitHub API.      La va, _save_untrained() (+11 more)
 
 ### Community 1221 - "Community 1221"
-Cohesion: 0.14
-Nodes (21): Chunkea + embebe documentos ``extracted`` sin chunks o con versión vieja.      E, Chunkea + embebe documentos ``extracted`` sin chunks o con versión vieja.      E, Chunkea + embebe documentos ``extracted`` sin chunks o con versión vieja.      E, _run_embed_phase(), _fake_embeddings(), _insert_licitacion(), _metric_value(), _mock_ml_available() (+13 more)
+Cohesion: 0.13
+Nodes (22): Chunkea + embebe documentos ``extracted`` sin chunks o con versión vieja.      E, Chunkea + embebe documentos ``extracted`` sin chunks o con versión vieja.      E, Chunkea + embebe documentos ``extracted`` sin chunks o con versión vieja.      E, _run_embed_phase(), _fake_embeddings(), _insert_licitacion(), _mock_ml_available(), Tests de scheduler/jobs/documentos_embeddings.py (plan Pliegos+RAG, F8).  ``serv (+14 more)
 
 ### Community 1222 - "Community 1222"
 Cohesion: 0.29
 Nodes (6): engine, generated_at, row_counts, adjudicaciones, licitaciones, source_db_mtime
 
 ### Community 1223 - "Community 1223"
-Cohesion: 0.40
-Nodes (6): licitaciones, licitaciones, delta_pct, match, pg, sqlite
+Cohesion: 0.33
+Nodes (7): checksums, licitaciones, licitaciones, delta_pct, match, pg, sqlite
 
 ### Community 1224 - "Community 1224"
 Cohesion: 0.10
 Nodes (35): build_licitacion_context(), _chunks_from_textos(), LicitacionContext, _rank_by_question(), Contexto de una licitación para el LLM (resumen y chat contextualizado).  Arma e, Índices de candidatos ordenados por relevancia; orden documental de relleno., Selecciona chunks hasta agotar presupuesto. Devuelve (selección, truncado)., Contexto de la licitación ``id_externo`` para el LLM.      Args:         id_exte (+27 more)
 
 ### Community 1225 - "Community 1225"
-Cohesion: 0.11
-Nodes (41): CompetitorFilters, get_competitors(), Compute competitor rankings, HHI, and single-bid percentage., Compute competitor rankings, HHI, and single-bid percentage., Compute competitor rankings, HHI, and single-bid percentage., Query filters for competitor analysis., Query filters for competitor analysis., Query filters for competitor analysis. (+33 more)
+Cohesion: 0.09
+Nodes (47): CompetitorFilters, get_competitors(), Compute competitor rankings, HHI, and single-bid percentage., Compute competitor rankings, HHI, and single-bid percentage., Compute competitor rankings, HHI, and single-bid percentage., Query filters for competitor analysis., Query filters for competitor analysis., Query filters for competitor analysis. (+39 more)
 
 ### Community 1226 - "Community 1226"
 Cohesion: 0.40
 Nodes (5): upstash, computedHash, skillPath, source, sourceType
 
 ### Community 1227 - "Community 1227"
-Cohesion: 0.13
-Nodes (12): _effective_max_calls(), Regla de endpoint pesado aplicable a ``path``: ``(etiqueta, límite)``.      Si v, Límite de requests por ventana aplicable a ``path``., _regla_pesada(), Las dos rutas LLM de /licitaciones tienen los mismos frenos que /ask.  Hasta est, test_las_rutas_vecinas_baratas_no_heredan_el_tope(), test_rutas_llm_de_licitaciones_comparten_el_tope_de_ask(), Pasarse de estricto cuesta un 429 recuperable; quedarse corto deja el         en (+4 more)
+Cohesion: 0.07
+Nodes (25): correlation_id_middleware(), _effective_max_calls(), _rate_bucket(), Bucket y tope de una request con API key, o `None` si no la lleva.      El bucke, Clave de cuota y tope propio para ``path``.      Devuelve ``(clave, tope)``. Un, Regla de endpoint pesado aplicable a ``path``: ``(etiqueta, límite)``.      Si v, Límite de requests por ventana aplicable a ``path``., Rechaza el byte NUL en la línea de petición (path y query string).      Postgres (+17 more)
 
 ### Community 1228 - "Community 1228"
 Cohesion: 0.40
@@ -6232,16 +6261,16 @@ Cohesion: 0.07
 Nodes (29): properties, required, title, type, anyOf, title, anyOf, title (+21 more)
 
 ### Community 1231 - "Community 1231"
-Cohesion: 0.33
-Nodes (7): checksums, users, users, delta_pct, match, pg, sqlite
+Cohesion: 0.40
+Nodes (6): users, users, delta_pct, match, pg, sqlite
 
 ### Community 1232 - "Community 1232"
 Cohesion: 0.40
 Nodes (5): upstash-box-py, computedHash, skillPath, source, sourceType
 
 ### Community 1233 - "Community 1233"
-Cohesion: 0.08
-Nodes (30): _compute_clusters(), _load_clustering_data(), Job de pre-cálculo de agregados materializados.  Calcula la asignación de cada l, Carga las licitaciones relevantes para el clustering.      Limitado a las última, Calcula la asignación de clusters para las licitaciones dadas., Calcula la asignación de clusters para las licitaciones dadas., Recalcula ``mat_clusters`` y devuelve cuántas filas quedaron., Carga las licitaciones relevantes para el clustering.      Limitado a las última (+22 more)
+Cohesion: 0.09
+Nodes (29): _compute_clusters(), _insert_batched(), _load_clustering_data(), _persist_clusters(), Job de pre-cálculo de agregados materializados.  Calcula la asignación de cada l, Carga las licitaciones relevantes para el clustering.      Limitado a las última, Calcula la asignación de clusters para las licitaciones dadas., Reemplaza atómicamente la tabla mat_clusters. (+21 more)
 
 ### Community 1234 - "Community 1234"
 Cohesion: 0.11
@@ -6256,36 +6285,36 @@ Cohesion: 0.12
 Nodes (24): map, _app_que_convierte_el_error_en_400(), _app_que_responde_antes_de_leer(), _AppQueLeeTodo, _ejecutar(), _enviar_troceado(), _inicios(), _leer_todo() (+16 more)
 
 ### Community 1237 - "Community 1237"
-Cohesion: 0.22
-Nodes (9): code:python (from sklearn.preprocessing import OneHotEncoder), code:python (from sklearn.preprocessing import OrdinalEncoder), code:python (from sklearn.preprocessing import LabelEncoder), code:python (# Install: uv pip install category-encoders), Encoding Categorical Variables, LabelEncoder, OneHotEncoder, OrdinalEncoder (+1 more)
+Cohesion: 0.09
+Nodes (17): calcular(), discrepa(), normalizar_pesos(), pesos_por_defecto(), Puntuacion, Plantilla de go/no-go ponderada (C6.4, D30).  `pursuits.decision` registraba **q, Media ponderada de lo puntuado, en la misma escala 1-5.      **Solo se promedian, Si la decisión tomada contradice lo que la plantilla recomienda.      Es la métr (+9 more)
 
 ### Community 1238 - "Community 1238"
-Cohesion: 0.15
-Nodes (14): _persist_clusters(), Reemplaza atómicamente la tabla mat_clusters., Reemplaza atómicamente la tabla mat_clusters., Reemplaza atómicamente la tabla mat_clusters., Reemplaza atómicamente la tabla mat_clusters., Inserta filas en mat_clusters., Persiste correctamente un volumen que cruza el borde de _INSERT_CHUNK., Segunda llamada reemplaza datos previos. (+6 more)
+Cohesion: 0.33
+Nodes (6): Persiste correctamente un volumen que cruza el borde de _INSERT_CHUNK., Segunda llamada reemplaza datos previos., Persiste correctamente un volumen que cruza el borde de _INSERT_CHUNK., Segunda llamada reemplaza datos previos., test_persist_clusters_batches_across_chunk_boundary(), test_persist_clusters_replaces_atomically()
 
 ### Community 1239 - "Community 1239"
-Cohesion: 0.08
-Nodes (30): _validate_scoring_weights(), dimension_weights(), penalty_weights(), Validación de los pesos del scoring — un solo sitio para las dos entradas.  Los, Valida un mapa de pesos. Lanza ``ValueError`` con el motivo concreto.      ``sou, Solo las dimensiones ponderables, sin las penalizaciones., Solo las penalizaciones presentes en ``weights``., Valida un mapa de pesos. Lanza ``ValueError`` con el motivo concreto.      ``sou (+22 more)
+Cohesion: 0.06
+Nodes (35): _validate_scoring_weights(), _pesos_vigentes(), Pesos con los que el Radar puntúa hoy, y de dónde salen.      Mismo orden de pre, Pesos con los que el Radar puntúa hoy, y de dónde salen.      Mismo orden de pre, Pesos con los que el Radar puntúa hoy, y de dónde salen.      Mismo orden de pre, Pesos con los que el Radar puntúa hoy, y de dónde salen.      Mismo orden de pre, dimension_weights(), penalty_weights() (+27 more)
 
 ### Community 1240 - "Community 1240"
 Cohesion: 0.40
 Nodes (5): upstash-cli, computedHash, skillPath, source, sourceType
 
 ### Community 1241 - "Community 1241"
-Cohesion: 0.04
-Nodes (44): _ClassifierHolder, _get_ml_clf(), _load_classifiers(), Carga SAPClassifier y TechnologyClassifier una sola vez por proceso.      Thread, Carga SAPClassifier y TechnologyClassifier una sola vez por proceso.      Thread, Carga SAPClassifier y TechnologyClassifier una sola vez por proceso.      Thread, Contenedor inmutable de los clasificadores ML cargados para este proceso.      R, Carga SAPClassifier y TechnologyClassifier una sola vez por proceso.      Thread (+36 more)
+Cohesion: 0.09
+Nodes (27): _build_context(), _load_tasas_anulacion(), _load_tech_signal(), Lee settings y carga señales para construir un _ScoringContext inmutable.      I, Lee settings (o perfil de usuario) y carga señales para construir un contexto., Pesos efectivos: si no hay keywords, redistribuye el peso de afinidad.      Func, Lee settings (o perfil de usuario) y carga señales para construir un contexto., Fuerza de la señal técnica por id, o None si la consulta falla. (+19 more)
 
 ### Community 1242 - "Community 1242"
 Cohesion: 0.09
 Nodes (19): ficha, hub, rutaHub, body, devBtn, url, VISTAS_ADMIN, erroresJs (+11 more)
 
 ### Community 1243 - "Community 1243"
-Cohesion: 0.06
-Nodes (31): Tests unitarios para observability/ops_events.py.  Verifica: cap del buffer, flu, writers_high solo se emite 1 vez por minuto., writers_high solo se emite 1 vez por minuto., writers_high no se emite si n <= 3., writers_high no se emite si n <= 3., run_check marca warning si hay >=10 sqlite_busy en las ultimas 6h., run_check marca warning si hay >=10 sqlite_busy en las ultimas 6h., run_check pasa limpio si no hay eventos problematicos. (+23 more)
+Cohesion: 0.07
+Nodes (25): codigo_normalizado_sql(), La columna de código normalizada en SQL, con la regla de :func:`normaliza_codigo, Busca con FTS5/search_vector y devuelve id_externo ordenados por rank., Carga licitaciones recientes para SSE streaming., Carga licitaciones para exportación PDF.          ``tecnologia``/``fecha_desde``, Busca con FTS5/search_vector y devuelve id_externo ordenados por rank., Carga licitaciones recientes para SSE streaming., Carga licitaciones para exportación PDF.          ``tecnologia``/``fecha_desde`` (+17 more)
 
 ### Community 1244 - "Community 1244"
-Cohesion: 0.05
-Nodes (37): ActividadRepository, normalizar_nombre(), Persistencia de cuentas objetivo (F1.5) y etiquetas de organización (F1.6).  Las, La etiqueta de ese nombre, o ``None``. Busca por ``nombre_norm``,         que es, Crea una etiqueta. ``None`` si ya existía con ese nombre.          El ``DO NOTHI, Aplica una etiqueta a un objeto. ``False`` si la etiqueta no es de         esta, La etiqueta de ese nombre, o ``None``. Busca por ``nombre_norm``,         que es, Crea una etiqueta. ``None`` si ya existía con ese nombre.          El ``DO NOTHI (+29 more)
+Cohesion: 0.04
+Nodes (44): ActividadRepository, EtiquetasRepository, normalizar_nombre(), Persistencia de cuentas objetivo (F1.5) y etiquetas de organización (F1.6).  Las, Etiquetas libres por organización y sus aplicaciones (D38)., La etiqueta de ese nombre, o ``None``. Busca por ``nombre_norm``,         que es, Crea una etiqueta. ``None`` si ya existía con ese nombre.          El ``DO NOTHI, Etiquetas libres por organización y sus aplicaciones (D38). (+36 more)
 
 ### Community 1245 - "Community 1245"
 Cohesion: 0.40
@@ -6312,8 +6341,8 @@ Cohesion: 0.16
 Nodes (10): lead_time_medio(), Días promedio desde publicación hasta adjudicación., Días promedio desde publicación hasta adjudicación., Días promedio desde publicación hasta adjudicación., Días medianos que tarda una licitación en cada transición.      - pub_a_adj: med, Días medianos que tarda una licitación en cada transición.      - pub_a_adj: med, Días medianos que tarda una licitación en cada transición.      - pub_a_adj: med, velocity_funnel() (+2 more)
 
 ### Community 1252 - "Community 1252"
-Cohesion: 0.10
-Nodes (27): meses_a_procesar(), Lista de ``(año, mes)`` que recorre el carril bulk.      Dos modos, con **orden, Lista de ``(año, mes)`` que recorre el carril bulk.      Dos modos, con **orden, Lista de ``(año, mes)`` que recorre el carril bulk.      Dos modos, con **orden, _correr_bucle(), Bucle por meses del carril bulk/backfill sobre conectores (S2.1).  Tests de cara, Ejecuta el bucle interceptando ``run_connector``; devuelve los source_id.      `, ``process_month``/``backfill``/``update_recent`` se retiraron (S2.1).      Escri (+19 more)
+Cohesion: 0.05
+Nodes (51): _finalize_ingestion(), meses_a_procesar(), Cierra una ingesta bulk/backfill tolerando fallos parciales.      - **Fallo tota, Pipeline canónica para backfill histórico (desde año/mes hasta hoy).      Aplica, Cierra una ingesta bulk/backfill tolerando fallos parciales.      - **Fallo tota, Lista de ``(año, mes)`` que recorre el carril bulk.      Dos modos, con **orden, Pipeline canónica para backfill histórico (desde año/mes hasta hoy).      Aplica, Cierra una ingesta bulk/backfill tolerando fallos parciales.      - **Fallo tota (+43 more)
 
 ### Community 1253 - "Community 1253"
 Cohesion: 0.40
@@ -6341,19 +6370,19 @@ Nodes (26): _crear_usuario(), _ejecutar(), _Inspector, _load(), _organizacion_pe
 
 ### Community 1263 - "Community 1263"
 Cohesion: 0.05
-Nodes (43): parse_summary(), Extrae id/órgano/importe/estado del texto del summary., Extrae id/órgano/importe/estado del texto del summary., Extrae id/órgano/importe/estado del texto del summary., TestParseSummary, Property-based tests para parsers (E1).  Usa Hypothesis para generar inputs alea, No debe lanzar excepciones para cualquier entrada., Todas las claves devueltas deben ser strings. (+35 more)
+Nodes (44): parse_summary(), Extrae id/órgano/importe/estado del texto del summary., Extrae id/órgano/importe/estado del texto del summary., Extrae id/órgano/importe/estado del texto del summary., TestParseSummary, Property-based tests para parsers (E1).  Usa Hypothesis para generar inputs alea, No debe lanzar excepciones para cualquier entrada., Todas las claves devueltas deben ser strings. (+36 more)
 
 ### Community 1264 - "Community 1264"
 Cohesion: 0.09
-Nodes (15): anonimo(), autenticado(), _guardia(), _pedir(), Cuentas y etiquetas: lo que las nueve rutas rechazan **antes** del servicio.  He, Control del guardia: sin él, los rechazos de abajo no probarían nada., Las nueve rutas, con la misma petición que en el control llega al servicio., Lo que estos tests leen de una respuesta del ``TestClient``.      No se anota co (+7 more)
+Nodes (17): anonimo(), autenticado(), _guardia(), LlegoAlServicioError, _pedir(), Cuentas y etiquetas: lo que las nueve rutas rechazan **antes** del servicio.  He, Control del guardia: sin él, los rechazos de abajo no probarían nada., Las nueve rutas, con la misma petición que en el control llega al servicio. (+9 more)
 
 ### Community 1265 - "Community 1265"
-Cohesion: 0.02
-Nodes (140): barColor(), CalidadCompletenessChart(), ColumnCompleteness, CompletitudMesEntry, TENDENCIA_SERIES, BarEntry, CompetitorsBarChart, CompetitorsEstacionalidadChart (+132 more)
+Cohesion: 0.08
+Nodes (23): AdjudicatarioEntry, EstacionalidadEntry, MONTH_LABELS, OrganosRankingChartProps, RankingEntry, TreemapEntry, ModuloBarEntry, ModulosBarChart() (+15 more)
 
 ### Community 1266 - "Community 1266"
-Cohesion: 0.17
-Nodes (12): _insert_batched(), _persist_top_empresas(), Reemplaza atómicamente la tabla mat_top_empresas_ccaa., Inserta ``rows`` en bloques de ``_INSERT_CHUNK`` con VALUES multi-fila.      ``e, Reemplaza atómicamente la tabla mat_top_empresas_ccaa., Inserta ``rows`` en bloques de ``_INSERT_CHUNK`` con VALUES multi-fila.      ``e, Inserta filas correctamente en mat_top_empresas_ccaa., Llamadas sucesivas reemplazan datos previos. (+4 more)
+Cohesion: 0.22
+Nodes (9): _persist_top_empresas(), Reemplaza atómicamente la tabla mat_top_empresas_ccaa., Reemplaza atómicamente la tabla mat_top_empresas_ccaa., Inserta filas correctamente en mat_top_empresas_ccaa., Llamadas sucesivas reemplazan datos previos., Persistir lista vacía elimina todas las filas existentes., test_persist_top_empresas_empty_clears_table(), test_persist_top_empresas_inserts_rows() (+1 more)
 
 ### Community 1267 - "Community 1267"
 Cohesion: 0.60
@@ -6372,12 +6401,12 @@ Cohesion: 0.07
 Nodes (23): download_crm(), download_export(), _download_pursuits(), Descarga (CSV, Excel o PDF) con los filtros actuales.      ``format=pdf`` es **e, Descarga (CSV, Excel o PDF) con los filtros actuales.      ``format=pdf`` es **e, Descarga (CSV, Excel o PDF) con los filtros actuales.      ``format=pdf`` es **e, Synchronous CSV or Excel download with current filters., Synchronous CSV or Excel download with current filters. (+15 more)
 
 ### Community 1276 - "Community 1276"
-Cohesion: 0.10
-Nodes (13): agrupar(), baja_propia_pct(), Mi baja frente al mercado (C6.5).  `bajas/referencia` responde «en este órgano,, Mi baja media en un segmento, junto a la del mercado., `(presupuesto - oferta) / presupuesto * 100`, o `None` si no se puede.      Se d, Agrupa mis ofertas por CPV4 y por órgano, y las cruza con el mercado.      Args:, SegmentoBaja, C6.5 — la otra mitad de `bajas/referencia`. (+5 more)
+Cohesion: 0.14
+Nodes (8): baja_propia_pct(), `(presupuesto - oferta) / presupuesto * 100`, o `None` si no se puede.      Se d, C6.5 — la otra mitad de `bajas/referencia`., Ofertar por encima del presupuesto es raro pero real., Se devuelve igual, con su `n`: no saberlo es lo que engaña., Restar contra un hueco daría un número que parece comparación., Mezclar bases devolvería una baja del 21 % que es el IVA (C1.1)., TestMiBaja
 
 ### Community 1277 - "Community 1277"
-Cohesion: 0.10
-Nodes (26): _entero_env(), jobs_backoff_base_segundos(), jobs_lock_ttl_segundos(), jobs_max_intentos(), Entero de entorno con suelo. Un valor ilegible NO tumba el proceso.      Un typo, Entero de entorno con suelo. Un valor ilegible NO tumba el proceso.      Un typo, Entero de entorno con suelo. Un valor ilegible NO tumba el proceso.      Un typo, _a_estado() (+18 more)
+Cohesion: 0.09
+Nodes (21): TecnologiasDetalle(), TecnologiasBarras(), TecnologiasDistribucion(), TecnologiasEvolucion(), TecnologiasHeatmap(), TecnologiasCobertura(), TecnologiasTabla(), TecnologiasTopScore() (+13 more)
 
 ### Community 1278 - "Community 1278"
 Cohesion: 0.40
@@ -6388,20 +6417,20 @@ Cohesion: 0.13
 Nodes (18): Return the single least-privilege scope required for an API-key request., Return the single least-privilege scope required for an API-key request., required_scope_for_request(), Regression tests for the centralized API-key authorization policy., La vecina de ``/resumen`` en el mismo subárbol sí muta, y no puede colarse., El subárbol /licitaciones no es de solo lectura.      ``POST .../ficha-pliego/ex, Mecanismo exacto del 403 de ``api/auth.py``: ``data:read`` —el scope por     def, ``search`` y ``bulk-get`` son POST porque el criterio no cabe en query     strin (+10 more)
 
 ### Community 1280 - "Community 1280"
-Cohesion: 0.09
-Nodes (20): Página Proyectos & Módulos — módulos SAP, sunburst, CPV., 4 KPIs comerciales específicos de SAP: ticket medio, módulo YoY, multi-módulo, p, 4 KPIs comerciales específicos de SAP: ticket medio, módulo YoY, multi-módulo, p, render(), _render_perfil_sap(), importe_medio_por_modulo(), pct_multi_modulo(), Importe medio y nº de licitaciones por módulo SAP detectado.      Requiere que ` (+12 more)
+Cohesion: 0.12
+Nodes (15): Página Proyectos & Módulos — módulos SAP, sunburst, CPV., 4 KPIs comerciales específicos de SAP: ticket medio, módulo YoY, multi-módulo, p, 4 KPIs comerciales específicos de SAP: ticket medio, módulo YoY, multi-módulo, p, render(), _render_perfil_sap(), importe_medio_por_modulo(), Importe medio y nº de licitaciones por módulo SAP detectado.      Requiere que `, Importe medio y nº de licitaciones por módulo SAP detectado.      Requiere que ` (+7 more)
 
 ### Community 1281 - "Community 1281"
-Cohesion: 0.09
-Nodes (32): components_sql(), _graph_stats_sql(), _identity_for_rows_sql(), identity_graph_stats(), _identity_sql(), load_competitor_identity(), normalize_company_lateral(), normalize_nif_sql() (+24 more)
+Cohesion: 0.06
+Nodes (53): components_sql(), _graph_stats_sql(), _identity_for_rows_sql(), identity_graph_stats(), _identity_sql(), load_competitor_identity(), normalize_company_lateral(), normalize_nif_sql() (+45 more)
 
 ### Community 1282 - "Community 1282"
 Cohesion: 0.13
 Nodes (9): chunk_text(), Divide ``texto`` en fragmentos de ``~chunk_size`` caracteres con solape.      Ev, Tests de services/rag/chunking.py (plan Pliegos+RAG, F8)., Ningún chunk debería superar chunk_size significativamente (el         recorte p, Cada palabra completa del texto original aparece entera en algún         chunk -, Concatenar chunks (deduplicando solape) debe cubrir todo el texto         -- no, El plan pide ~1200-1500 chars de chunk_size y ~15% de solape., Guarda anti-loop-infinito: un documento largo con palabras largas         (sin e (+1 more)
 
 ### Community 1283 - "Community 1283"
-Cohesion: 0.22
-Nodes (9): code:python (from sklearn.preprocessing import StandardScaler), code:python (from sklearn.preprocessing import MinMaxScaler), code:python (from sklearn.preprocessing import RobustScaler), code:python (from sklearn.preprocessing import Normalizer), Feature Scaling and Normalization, MinMaxScaler, Normalizer, RobustScaler (+1 more)
+Cohesion: 0.10
+Nodes (25): NovedadesRepository, SQL de «qué cambió desde tu última visita» (F5.4) y de los avisos F5.1/F5.2.  Tr, Lo que ha pasado, desde una fecha, en lo que el usuario sigue., Lo que ha pasado, desde una fecha, en lo que el usuario sigue., _a_novedad(), _campos(), desde_ultima_visita(), Novedad (+17 more)
 
 ### Community 1284 - "Community 1284"
 Cohesion: 0.08
@@ -6420,16 +6449,20 @@ Cohesion: 0.50
 Nodes (3): CA raíz para TLS verificado a Supabase (`sslmode=verify-full`), code:block1 (DATABASE_SSL_ROOT_CERT=/app/db/certs/prod-ca-2021.crt), Cómo obtenerla
 
 ### Community 1297 - "Community 1297"
-Cohesion: 0.05
-Nodes (50): pasos_bloqueantes_fallidos(), Pasos que ponen la pasada en rojo: ``error`` **y** ``bloqueante``.      Un paso, Pasos que ponen la pasada en rojo: ``error`` **y** ``bloqueante``.      Un paso, Multi-technology scoring (feature-flagged).      Sin try/except propio por el mi, Multi-technology scoring (feature-flagged).      Sin try/except propio por el mi, Multi-technology scoring (feature-flagged).      Sin try/except propio por el mi, Multi-technology scoring (feature-flagged)., _run_ml_tecnologias() (+42 more)
+Cohesion: 0.04
+Nodes (60): pasos_bloqueantes_fallidos(), Pasos que ponen la pasada en rojo: ``error`` **y** ``bloqueante``.      Un paso, Pasos que ponen la pasada en rojo: ``error`` **y** ``bloqueante``.      Un paso, Score keyword-route licitaciones (ml_proba IS NULL).      Sin try/except propio:, Score keyword-route licitaciones (ml_proba IS NULL).      Sin try/except propio:, Score keyword-route licitaciones (ml_proba IS NULL).      Sin try/except propio:, Multi-technology scoring (feature-flagged).      Sin try/except propio por el mi, Multi-technology scoring (feature-flagged).      Sin try/except propio por el mi (+52 more)
+
+### Community 1298 - "Community 1298"
+Cohesion: 0.09
+Nodes (19): Aviso, aviso_documento_nuevo(), aviso_recurso(), etiqueta_de(), _euros(), _fecha_corta(), F5.1 a F5.4 — avisos con nombre, en vez de «algo cambió».  La campana tenía dos, F5.1 — un adjunto nuevo en un expediente seguido.      El tipo va en el titular (+11 more)
 
 ### Community 1299 - "Community 1299"
-Cohesion: 0.09
-Nodes (21): csrf_token_valido(), generate_csrf_token(), legacy_aceptado(), legacy_csrf_token(), Tokens CSRF firmados con HMAC, ligados a la sesión, con ``kid`` y caducidad.  Fo, Token en el formato anterior: HMAC-SHA256 plano de la clave de firma.      Se co, ¿Sigue abierto el periodo de gracia? Ver el docstring del módulo., Punto de validación único del sistema. Acepta el formato nuevo siempre.      Ace (+13 more)
+Cohesion: 0.08
+Nodes (26): Valida el double-submit token contra la sesión que lo emitió.      ``max_age`` e, Valida el double-submit token contra la sesión que lo emitió.      ``max_age`` e, Igual que :func:`require_csrf` pero admite sesiones pendientes de MFA.      ``/a, _reject_bad_csrf(), require_csrf_pending_mfa(), csrf_token_valido(), generate_csrf_token(), legacy_aceptado() (+18 more)
 
 ### Community 1300 - "Community 1300"
-Cohesion: 0.11
-Nodes (18): Algorithm-Specific Requirements, Best Practices, code:python (from sklearn.feature_extraction.text import HashingVectorize), code:python (import numpy as np), code:python (from scipy.stats import mstats), code:python (# Correct), code:python (from sklearn.pipeline import Pipeline), code:python (from sklearn.compose import ColumnTransformer) (+10 more)
+Cohesion: 0.04
+Nodes (56): Algorithm-Specific Requirements, Best Practices, code:python (from sklearn.preprocessing import PowerTransformer), code:python (from sklearn.preprocessing import QuantileTransformer), code:python (import numpy as np), code:python (from sklearn.impute import SimpleImputer), code:python (from sklearn.experimental import enable_iterative_imputer), code:python (from sklearn.impute import KNNImputer) (+48 more)
 
 ### Community 1301 - "Community 1301"
 Cohesion: 0.07
@@ -6457,27 +6490,27 @@ Nodes (24): paquete_del_pipeline_ausente(), Qué hacer cuando una ruta toca una 
 
 ### Community 1323 - "Community 1323"
 Cohesion: 0.04
-Nodes (39): _desajustes(), La superficie pública publica lo que debe, y solo eso.  Tres invariantes que est, El riesgo real: reutilizar un ``SELECT *`` publicaría ml_proba el día uno., Columnas cuyo valor real no cabe en el tipo que declara ``forma``.      Compara, Para el visitante los cuatro casos son el mismo 404., Si discreparan, Search Console lo reporta como error de cobertura., ``FilaLicitacionPublica`` no puede ganar ni perder una columna a solas.      Si, El slug de SQL tiene que dar lo mismo que ``slugificar()`` del frontend. (+31 more)
+Nodes (36): _desajustes(), La superficie pública publica lo que debe, y solo eso.  Tres invariantes que est, El riesgo real: reutilizar un ``SELECT *`` publicaría ml_proba el día uno., Columnas cuyo valor real no cabe en el tipo que declara ``forma``.      Compara, Para el visitante los cuatro casos son el mismo 404., Si discreparan, Search Console lo reporta como error de cobertura., ``FilaLicitacionPublica`` no puede ganar ni perder una columna a solas.      Si, El slug de SQL tiene que dar lo mismo que ``slugificar()`` del frontend. (+28 more)
 
 ### Community 1324 - "Community 1324"
-Cohesion: 0.10
-Nodes (36): _cutoff_iso(), _load_competencia_stats_raw(), _load_margen_stats_raw(), ISO 8601 en UTC del instante hace ``months`` meses., Carga sin caché — llamado solo por SignalAwareCache.get().      El SQL vive en `, Carga sin caché — llamado solo por SignalAwareCache.get()., ISO 8601 en UTC del instante hace ``months`` meses., Carga sin caché — llamado solo por SignalAwareCache.get(). (+28 more)
+Cohesion: 0.13
+Nodes (23): AffinityBatch, build_portfolio(), _candidate_text(), _cpv_similarity(), _fallback_score(), _keyword_pattern(), Afinidad semántica entre oportunidades y el portfolio explícito del usuario.  El, Alternancia con límites de palabra, compilada una vez por lote.      El fallback (+15 more)
 
 ### Community 1325 - "Community 1325"
 Cohesion: 0.08
 Nodes (26): anyOf, title, anyOf, title, anyOf, title, anyOf, title (+18 more)
 
 ### Community 1326 - "Community 1326"
-Cohesion: 0.10
-Nodes (14): FeedbackRepository, Repository para ml_feedback., Devuelve la respuesta cacheada si la idempotency key ya existe., Exporta todo el ML feedback (anónimo, sin FK a usuario). Para GDPR., Devuelve expedientes ya etiquetados (por prefijo de nota)., Devuelve expedientes ya etiquetados (por prefijo de nota)., Devuelve la respuesta cacheada si la idempotency key ya existe., Devuelve la respuesta cacheada si la idempotency key ya existe. (+6 more)
+Cohesion: 0.18
+Nodes (8): Devuelve la respuesta cacheada si la idempotency key ya existe., Devuelve expedientes ya etiquetados (por prefijo de nota)., Devuelve expedientes ya etiquetados (por prefijo de nota)., Devuelve la respuesta cacheada si la idempotency key ya existe., Devuelve la respuesta cacheada si la idempotency key ya existe., Devuelve expedientes ya etiquetados (por prefijo de nota)., Cuáles de estos expedientes ya tienen alguna fila de feedback.          El etiqu, Devuelve expedientes ya etiquetados (por prefijo de nota).
 
 ### Community 1328 - "Community 1328"
 Cohesion: 0.14
 Nodes (9): question con < 3 chars → 422 de Pydantic., question con < 3 chars → 422 de Pydantic., Modelo desconocido → 400 (ValueError de llm.client)., Modelo desconocido → 400 (ValueError de llm.client)., question con < 3 chars → 422 de Pydantic., question con < 3 chars → 422 de Pydantic., Modelo desconocido → 400 (ValueError de llm.client)., Modelo desconocido → 400 (ValueError de llm.client). (+1 more)
 
 ### Community 1334 - "Community 1334"
-Cohesion: 0.29
-Nodes (7): code:python (from sklearn.preprocessing import PowerTransformer), code:python (from sklearn.preprocessing import QuantileTransformer), code:python (import numpy as np), Log Transform, Non-linear Transformations, Power Transforms, Quantile Transformation
+Cohesion: 0.09
+Nodes (26): get_all_latest(), Devuelve todos los snapshots más recientes como un dict plano.      Útil para ca, get_all_latest(), Devuelve todos los snapshots más recientes como un dict plano.      Útil para qu, Devuelve todos los snapshots más recientes como un dict plano.      Útil para ca, Devuelve todos los snapshots más recientes como un dict plano.      Útil para ca, Devuelve todos los snapshots más recientes como un dict plano.      Útil para ca, Sin snapshots, get_all_latest devuelve dict vacío. (+18 more)
 
 ### Community 1335 - "Community 1335"
 Cohesion: 0.50
@@ -6504,8 +6537,8 @@ Cohesion: 0.60
 Nodes (4): downgrade(), _is_postgres(), True si la migración se está ejecutando contra Postgres., upgrade()
 
 ### Community 1341 - "Community 1341"
-Cohesion: 0.13
-Nodes (24): ResumenHoyFilters, AlertItem, baja_de_tipo(), baja_de_tipo_un_clic(), get_notifications(), HoyCounters, MarkAlertsReadRequest, MarkReadRequest (+16 more)
+Cohesion: 0.09
+Nodes (22): ``riesgo_cambio x importe x urgencia``.      Devuelve 0 cuando falta el riesgo o, Urgencia normalizada 0..1.      Vale 1 cuando el contrato vence ya (o venció) y, score_oportunidad(), urgencia_oportunidad(), _FakeConn, _FakeCursor, _ordenado_por_score(), El score de oportunidad ordena en el servidor y coincide con el del cliente.  La (+14 more)
 
 ### Community 1342 - "Community 1342"
 Cohesion: 0.40
@@ -6524,16 +6557,16 @@ Cohesion: 0.17
 Nodes (13): bind_session_context(), Asocia el session_id de Streamlit al contexto de logging.      Permite correlaci, No-op — session context binding has been removed., No-op — session context binding has been removed., No-op — session context binding has been removed., No-op — session context binding has been removed., No-op — session context binding has been removed., bind_session_context always returns None (Streamlit removed). (+5 more)
 
 ### Community 1346 - "Community 1346"
-Cohesion: 0.10
-Nodes (21): document_embeddings_available(), True si ``documento_chunks`` tiene al menos un embedding que fusionar.      Es l, _buscar(), _doc(), _MotorFalso, O0.6a (D15) — la ruta deriva ``source`` del camino que ejecutó, sin BD.  ``tests, Ejecuta la ruta con el motor ya sustituido y devuelve su respuesta., Criterios 2 y 4 de O0.6a, ejecutados aquí. (+13 more)
+Cohesion: 0.14
+Nodes (14): _buscar(), _doc(), _MotorFalso, Ejecuta la ruta con el motor ya sustituido y devuelve su respuesta., Criterios 2 y 4 de O0.6a, ejecutados aquí., Criterio 4: con ``documento_chunks`` vacío ``hybrid_search`` devuelve         ``, Lo que promete la descripción del campo para ``source=rrf``., Criterio 6: ``alpha`` deja de morir en el DTO. (+6 more)
 
 ### Community 1347 - "Community 1347"
 Cohesion: 0.10
 Nodes (32): _load_golden_set(), _measure(), _publicar(), Eval determinista de retrieval para RAG (plan Pliegos+RAG, F10; RFC LLM parte 3), ``(hit_rate@TOP_K, MRR, fallos)`` de un recuperador sobre el golden set.      ``, Imprime ``texto`` y, en GitHub Actions, lo añade al resumen del job.      El ``p, Ranking de ``PgTsBackend`` (pasada estricta + pasada relajada a OR)., ``(hit_rate@TOP_K, MRR, fallos)`` de un recuperador sobre el golden set.      `` (+24 more)
 
 ### Community 1349 - "Community 1349"
-Cohesion: 0.06
-Nodes (41): _edad_horas(), purgar_predicciones_cerradas(), Jobs de modelos predictivos (Fase 6, RFC 20260611-2).  - ``run_scoring``: batch, Horas transcurridas desde ``valor`` (ISO-8601 UTC o ``datetime``).      ``comput, Horas transcurridas desde ``valor`` (ISO-8601 UTC o ``datetime``).      ``comput, Ejecuta el batch de scoring y falla si el modelo de baja no completó.      Falla, Verifica que ``predicciones_baja`` quedó materializada **y fresca**.      Compro, Verifica que ``predicciones_baja`` quedó materializada **y fresca**.      Compro (+33 more)
+Cohesion: 0.11
+Nodes (23): _caida_contador(), comprobar_drift_baja(), _cortes(), _mediana(), _numeric_features(), _Psi, _psi_detalle(), Drift de los modelos predictivos (Fase 6.3, RFC 20260611-2).  PSI por feature nu (+15 more)
 
 ### Community 1350 - "Community 1350"
 Cohesion: 0.29
@@ -6544,12 +6577,12 @@ Cohesion: 0.14
 Nodes (22): _Conexion, _Cursor, lectura(), _listado(), Las cinco consultas calientes de T2 leen el núcleo tipado detrás del flag.  Sin, Sin caché de importación: cambiar el flag cambia el orden sin reiniciar., ``nucleo`` es opt-in: el resto de agregados no se mueve con el flag., Conexión espía: guarda el SQL y no devuelve filas. (+14 more)
 
 ### Community 1352 - "Community 1352"
-Cohesion: 0.11
-Nodes (19): buscar_global(), es_nif(), Busca en los cuatro tipos y devuelve lo que encuentre de cada uno.      Cada tip, ``True`` si el término tiene forma de NIF/CIF., F1.2 (búsqueda global de la paleta) y F3.3 (socios de UTE).  Las dos comparten l, La empresa tiene id numérico y el expediente no; la paleta navega         con un, Quien teclea un NIF no busca: identifica. La paleta abre el perfil., Un fallo parcial visto como «no hay nada» es el peor resultado. (+11 more)
+Cohesion: 0.10
+Nodes (23): buscar_global(), es_nif(), _fila(), F1.2 — la paleta ⌘K busca lo que el usuario tiene en la cabeza.  Hoy la paleta n, Busca en los cuatro tipos y devuelve lo que encuentre de cada uno.      Cada tip, Un resultado, con lo justo para pintar una fila de la paleta., ``True`` si el término tiene forma de NIF/CIF., ResultadoBusqueda (+15 more)
 
 ### Community 1353 - "Community 1353"
 Cohesion: 0.05
-Nodes (57): _a_dto(), AmbitoFueraDeAlcance, Cobertura, entradas_sitemap(), EntradaSitemap, _fecha(), ficha_publica(), FuenteCobertura (+49 more)
+Nodes (55): _a_dto(), AmbitoFueraDeAlcance, Cobertura, entradas_sitemap(), EntradaSitemap, _fecha(), ficha_publica(), FuenteCobertura (+47 more)
 
 ### Community 1355 - "Community 1355"
 Cohesion: 0.13
@@ -6561,15 +6594,15 @@ Nodes (4): downgrade(), _is_postgres(), Migracion baseline002 -- genesis de tabl
 
 ### Community 1365 - "Community 1365"
 Cohesion: 0.05
-Nodes (44): jobs_export_umbral_filas(), Las rutas que encolan y la que consulta el trabajo (plan v2, S5.2).  Todo lo que, Dos clics seguidos son un solo trabajo., Dos clics seguidos son un solo trabajo., Criterio de S5.2: ``…/ficha-pliego/estado`` consulta ``jobs``.      Antes leía u, Criterio de S5.2: ``…/ficha-pliego/estado`` consulta ``jobs``.      Antes leía u, El resultado NO es un ``dict[str, Any]``: el cliente TS recibe forma., El resultado NO es un ``dict[str, Any]``: el cliente TS recibe forma. (+36 more)
+Nodes (41): jobs_export_umbral_filas(), Las rutas que encolan y la que consulta el trabajo (plan v2, S5.2).  Todo lo que, Dos clics seguidos son un solo trabajo., Dos clics seguidos son un solo trabajo., Criterio de S5.2: ``…/ficha-pliego/estado`` consulta ``jobs``.      Antes leía u, Criterio de S5.2: ``…/ficha-pliego/estado`` consulta ``jobs``.      Antes leía u, El resultado NO es un ``dict[str, Any]``: el cliente TS recibe forma., El resultado NO es un ``dict[str, Any]``: el cliente TS recibe forma. (+33 more)
 
 ### Community 1366 - "Community 1366"
-Cohesion: 0.10
-Nodes (28): admin_granted_by(), create_user(), Origen de la concesión de admin: ``'panel'``, ``'oauth'`` o ``None``.      ``Non, Crea un usuario local (email + password) y devuelve su ``id``.      Pensado para, Refleja ``OAUTH_ADMIN_EMAILS`` sobre ``is_admin`` en ambos sentidos.      Antes, Refleja ``OAUTH_ADMIN_EMAILS`` sobre ``is_admin`` en ambos sentidos.      Antes, _sync_oauth_admin(), _con_lista_oauth() (+20 more)
+Cohesion: 0.03
+Nodes (78): create_api_key(), Genera una nueva API Key segura, la persiste y devuelve el token en bruto., Genera una nueva API Key segura, la persiste y devuelve el token en bruto., Genera una nueva API Key segura, la persiste y devuelve el token en bruto., Genera una nueva API Key segura, la persiste y devuelve el token en bruto., admin_granted_by(), create_user(), Origen de la concesión de admin: ``'panel'``, ``'oauth'`` o ``None``.      ``Non (+70 more)
 
 ### Community 1367 - "Community 1367"
-Cohesion: 0.33
-Nodes (5): _arima_forecast(), Página Tendencias CPV — evolución y predicción de precios por código CPV., Intenta ajustar ARIMA(1,1,1) y devuelve predicción; None si falla., Intenta ajustar ARIMA(1,1,1) y devuelve predicción; None si falla., render()
+Cohesion: 0.11
+Nodes (24): add_comment(), _can_delete(), delete_comment(), _emitir_mencion(), list_comments(), Hilo de comentarios de una oportunidad: permisos, moderación y forma de salida., Escribe ``pursuit.mentioned`` para que el despachador avise (C6.2).      El avis, Borra un comentario propio; owner y admin pueden borrar cualquiera. (+16 more)
 
 ### Community 1368 - "Community 1368"
 Cohesion: 0.50
@@ -6580,8 +6613,8 @@ Cohesion: 0.09
 Nodes (26): bind_budget_subject(), Fija el sujeto del gasto para el contexto actual, sin token de reset.      Pensa, BrokenRedis, FakeRedis, FrozenClock, _guard(), _limpia_sujeto_de_contexto(), Tests del presupuesto LLM por usuario (revisión de seguridad, hallazgo #4b).  An (+18 more)
 
 ### Community 1370 - "Community 1370"
-Cohesion: 0.05
-Nodes (43): Mide y registra el tiempo de una query de BD.      Args:         query: Identifi, Mide y registra el tiempo de una query de BD.      Args:         query: Identifi, timed_query(), fetch_for_pdf(), fetch_recent(), get_history(), get_licitacion_detail(), list_licitaciones() (+35 more)
+Cohesion: 0.04
+Nodes (84): _load_licit_df(), _load_df(), Mide y registra el tiempo de una query de BD.      Args:         query: Identifi, Mide y registra el tiempo de una query de BD.      Args:         query: Identifi, timed_query(), fetch_for_pdf(), fetch_recent(), get_history() (+76 more)
 
 ### Community 1371 - "Community 1371"
 Cohesion: 0.40
@@ -6600,36 +6633,36 @@ Cohesion: 0.57
 Nodes (5): _add_column_if_not_exists(), downgrade(), _is_postgres(), Migracion v55 -- backfill de tablas v27-v49 con DDL SQLite embebida (Postgres)., upgrade()
 
 ### Community 1379 - "Community 1379"
-Cohesion: 0.10
-Nodes (25): _organizacion_personal(), owned_api_key(), Cobertura end-to-end de los dos endpoints de exportación con sesión real.  Los t, Sin cookie ni API key no se llega al cuerpo: 401/403, nunca 5xx., API key CON propietario.      La fixture genérica `api_key` crea la key sin `use, La organización con la que el endpoint lee los favoritos.      Siempre la person, El .ics incluye un VEVENT por deadline y otro por fin de contrato., El ICS lo sirve un enlace firmado de larga vida y sin sesión.      Hasta 2026-09 (+17 more)
+Cohesion: 0.11
+Nodes (23): _organizacion_personal(), Cobertura end-to-end de los dos endpoints de exportación con sesión real.  Los t, Sin cookie ni API key no se llega al cuerpo: 401/403, nunca 5xx., La organización con la que el endpoint lee los favoritos.      Siempre la person, El .ics incluye un VEVENT por deadline y otro por fin de contrato., El ICS lo sirve un enlace firmado de larga vida y sin sesión.      Hasta 2026-09, Sin favoritos el .ics existe y está bien formado, no es un 500., El token va en X-API-Key y solo ahí: en la URL acabaría en los logs. (+15 more)
 
 ### Community 1380 - "Community 1380"
-Cohesion: 0.06
-Nodes (21): _montar(), La salud competitiva no publica un porcentaje sin decir sobre cuántas filas va., El agregado actual no cuenta filas: la cobertura sale desconocida.      El valor, Cuando `db/` empiece a contar filas, el número pequeño llega entero., Si el agregado revienta, el fallback deja ceros — pero no una cobertura.      Un, Sin base medida, `suficiente` es False — el default seguro., 0/0 no es «lo tenemos todo»: es que no hay corpus que medir., El caso del hallazgo: 5.780 de 170.000 filas traen el dato.      Lo que no puede (+13 more)
+Cohesion: 0.07
+Nodes (19): _montar(), La salud competitiva no publica un porcentaje sin decir sobre cuántas filas va., El agregado actual no cuenta filas: la cobertura sale desconocida.      El valor, Cuando `db/` empiece a contar filas, el número pequeño llega entero., Si el agregado revienta, el fallback deja ceros — pero no una cobertura.      Un, Sin base medida, `suficiente` es False — el default seguro., 0/0 no es «lo tenemos todo»: es que no hay corpus que medir., El caso del hallazgo: 5.780 de 170.000 filas traen el dato.      Lo que no puede (+11 more)
 
 ### Community 1381 - "Community 1381"
-Cohesion: 0.09
-Nodes (20): _hits_from_fused(), Adapta los documentos de la fusión RRF a la forma de ``SemanticHit``.      El ``, _codigo_del_investigador(), _doc(), O0.6a (D15) — el campo ``source`` de /search/semantic no miente.  Estos tests NO, La adaptación de los docs de RRF a ``SemanticHit``., ``chunks`` y ``rrf_score`` son del RAG, no del contrato de esta ruta., Contrato: lo que produce la fusión encaja en el DTO publicado. (+12 more)
+Cohesion: 0.07
+Nodes (21): _codigo_del_investigador(), _FakeConn, O0.6a (D15) — el campo ``source`` de /search/semantic no miente.  Estos tests NO, Conexión que captura SQL y parámetros sin BD (mismo patrón que     ``tests/test_, La consulta por defecto (la del RAG) no gana ni una columna ni un     parámetro, 8 parámetros: los mismos de siempre (query, query, k, vec, vec, k,         RRF_K, En los extremos del deslizador una lista pesa 0; sus documentos         exclusiv, El contrato público explica qué significa cada uno. (+13 more)
 
 ### Community 1382 - "Community 1382"
 Cohesion: 0.08
-Nodes (24): components, schemas, required, title, type, description, required, title (+16 more)
+Nodes (25): components, schemas, description, required, title, type, description, required (+17 more)
 
 ### Community 1383 - "Community 1383"
 Cohesion: 0.06
-Nodes (34): _adj_filter_conditions(), completitud_por_fuente(), lead_time_por_organo(), Repository para adjudicaciones., Conteos/importes UTE vs individual + nº de nombres UTE distintos., Conteos/importes UTE vs individual + nº de nombres UTE distintos., Ranking de nombres UTE por nº de adjudicaciones (nombre completo)., Ranking de nombres UTE por nº de adjudicaciones (nombre completo). (+26 more)
+Nodes (33): _adj_filter_conditions(), completitud_por_fuente(), lead_time_por_organo(), Repository para adjudicaciones., Conteos/importes UTE vs individual + nº de nombres UTE distintos., Conteos/importes UTE vs individual + nº de nombres UTE distintos., Ranking de nombres UTE por nº de adjudicaciones (nombre completo)., Ranking de nombres UTE por nº de adjudicaciones (nombre completo). (+25 more)
 
 ### Community 1393 - "Community 1393"
 Cohesion: 0.08
 Nodes (19): estimar_adjudicacion(), F4.4 — cuándo se adjudicará esto, con el margen de error delante.  El lead-time, Fecha prevista de adjudicación, o ``None`` si no hay base para darla.      ``sta, ExpectedAward, F4.4 — cuándo se espera la adjudicación, y de dónde sale esa fecha.      Viaja c, F4.4 — cuándo se espera la adjudicación, y de dónde sale esa fecha.      Viaja c, F4.4 — cuándo se espera la adjudicación, y de dónde sale esa fecha.      Viaja c, F4.4 — fecha prevista de adjudicación.  Lo que se prueba aquí es la **abstención (+11 more)
 
 ### Community 1394 - "Community 1394"
-Cohesion: 0.40
-Nodes (5): code:python (from sklearn.preprocessing import FunctionTransformer), code:python (from sklearn.base import BaseEstimator, TransformerMixin), Creating Custom Transformer, Custom Transformers, Using FunctionTransformer
+Cohesion: 0.10
+Nodes (11): _fake_ctx(), Con id_externo el contexto es la licitación (modo licitacion) y no         se ha, Con id_externo el contexto es la licitación (modo licitacion) y no         se ha, Los expedientes PLACSP con '/' en el id llegan al handler.          Con el conve, Los expedientes PLACSP con '/' en el id llegan al handler.          Con el conve, Mismo expediente + mismo estado de documentos → el segundo resumen         sale, Mismo expediente + mismo estado de documentos → el segundo resumen         sale, Un stream vacío degrada y NO deja entrada: el siguiente intento         vuelve a (+3 more)
 
 ### Community 1395 - "Community 1395"
-Cohesion: 0.11
-Nodes (16): S2.1 — «contra quién» deja de contar a la propia organización.  `IdentidadFiscal, `lideres` es el «contra quién se va»: verse ahí es el bug de S2.1., `lideres` es el «contra quién se va»: verse ahí es el bug de S2.1., El degradado: sin NIFs declarados el segmento entero sigue dentro., El degradado: sin NIFs declarados el segmento entero sigue dentro., El corte por `MIN_CONTRATOS` se hace sobre el universo real., El corte por `MIN_CONTRATOS` se hace sobre el universo real., Se descarta la fila, no el denominador: la cuota es un dato medido. (+8 more)
+Cohesion: 0.10
+Nodes (21): _build_system_prompt(), _build_user_message(), _is_retryable(), Proveedor Anthropic (Claude) para el cliente LLM unificado.  Usa la API de Messa, Determina si la excepción amerita un retry., Determina si la excepción amerita un retry., Streaming Anthropic Messages API con retry y timeout.      Args:         system:, Streaming Anthropic Messages API con retry y timeout.      Args:         system: (+13 more)
 
 ### Community 1396 - "Community 1396"
 Cohesion: 0.33
@@ -6652,24 +6685,24 @@ Cohesion: 0.07
 Nodes (28): main(), PlacspWatchedCompanyAwardsBulkConnector, PlacspWatchedCompanyAwardsConnector, Ingesta prospectiva de adjudicaciones PLACSP para empresas vigiladas.  Este carr, Cursor propio de este carril, separado del radar tecnológico., Backfill manual de un mes PLACSP para los NIF vigilados actuales.      No guarda, Backfill manual de un mes PLACSP para los NIF vigilados actuales.      No guarda, Ejecuta la fuente incremental o un backfill mensual manual. (+20 more)
 
 ### Community 1401 - "Community 1401"
-Cohesion: 0.04
-Nodes (63): _agrupar(), _baja(), Batalla, batallas_de_usuario(), CeldaCorte, construir_batallas(), corte_por_procedimiento(), corte_por_tramo() (+55 more)
+Cohesion: 0.13
+Nodes (19): batallas_de_usuario(), _identidad_propia(), _nif_principal(), El historial de cruces con un competidor, con el ámbito ya resuelto.      La res, El NIF declarado por la organización, o ``None`` si no declaró ninguno.      Un, El historial de cruces con un competidor, con el ámbito ya resuelto.      La res, La identidad fiscal declarada, o ``None`` si no se pudo leer.      Un fallo de l, _cruces() (+11 more)
 
 ### Community 1402 - "Community 1402"
-Cohesion: 0.07
-Nodes (25): build_object_store(), _es_no_encontrado(), FilesystemObjectStore, _normalize_key(), NullObjectStore, ObjectStore, ObjectStoreError, ObjectStoreStats (+17 more)
+Cohesion: 0.06
+Nodes (32): blob_prefix(), build_object_store(), disk_usage_bytes(), _es_no_encontrado(), load_config(), model_artifact_key(), _normalize_key(), NullObjectStore (+24 more)
 
 ### Community 1403 - "Community 1403"
 Cohesion: 0.07
 Nodes (20): cached_response(), _caducada(), Almacén genérico de idempotencia sobre ``idempotency_keys`` (C8.4).  La tabla ex, Guarda la respuesta de *key* en *endpoint*. Sin clave, no hace nada., ¿La marca es más vieja que ``IDEMPOTENCY_TTL_SECONDS``?      Una fila sin fecha, Ámbito de una clave de idempotencia: nunca es solo el nombre del endpoint., Respuesta guardada para *key* en *endpoint*, si existe y no caducó., scope() (+12 more)
 
 ### Community 1404 - "Community 1404"
-Cohesion: 0.14
-Nodes (15): _actor_user_id(), AuditRepository, descomponer_detalle(), _proyectar_entrada(), Repository para audit_log., Acceso de lectura a la tabla ``audit_log``., Acceso de lectura a la tabla ``audit_log``., Exporta el audit log filtrado por ``user_key`` (GDPR). (+7 more)
+Cohesion: 0.25
+Nodes (7): AuditRepository, Acceso de lectura a la tabla ``audit_log``., Acceso de lectura a la tabla ``audit_log``., Exporta el audit log filtrado por ``user_key`` (GDPR)., Acceso de lectura a la tabla ``audit_log``., Exporta el audit log del usuario (GDPR).          Con ``user_id`` la lectura es, Rastro de una organización, del más reciente al más antiguo.          ``audit_lo
 
 ### Community 1405 - "Community 1405"
-Cohesion: 0.03
-Nodes (69): Repository para watchlist y pending_digests., Marca los digests como enviados., Marca los digests como enviados., Marca los digests como enviados., Anonimiza la watchlist del usuario (GDPR)., Anonimiza la watchlist del usuario (GDPR)., Favoritos del usuario, enriquecidos con datos de la licitación.          El back, Favoritos del usuario, enriquecidos con datos de la licitación.          El back (+61 more)
+Cohesion: 0.05
+Nodes (51): Repository para watchlist y pending_digests., Marca los digests como enviados., Marca los digests como enviados., Marca los digests como enviados., Marca los digests como enviados., Marca los digests como enviados., Añade un favorito de forma idempotente.          Si el par ``(user_key, id_exter, Añade un favorito de forma idempotente.          Si el par ``(user_key, id_exter (+43 more)
 
 ### Community 1406 - "Community 1406"
 Cohesion: 0.04
@@ -6677,23 +6710,23 @@ Nodes (60): _baja_real(), prediccion_baja(), Lectura de la predicción materiali
 
 ### Community 1407 - "Community 1407"
 Cohesion: 0.12
-Nodes (39): _escribir_nifs(), OrganizationNif, OrganizationNifsIn, Un NIF/CIF con el que la organización se presenta a licitación.      Son varios, Cuerpo del PUT: el conjunto completo de NIFs, no un alta suelta.      Reemplazar, Un NIF/CIF con el que la organización se presenta a licitación.      Son varios, Cuerpo del PUT: el conjunto completo de NIFs, no un alta suelta.      Reemplazar, Un NIF/CIF con el que la organización se presenta a licitación.      Son varios (+31 more)
+Nodes (39): _escribir_capacidad(), _escribir_nifs(), identidad_fiscal(), Lee la identidad fiscal declarada por la organización., OrganizationNif, OrganizationNifsIn, Un NIF/CIF con el que la organización se presenta a licitación.      Son varios, Cuerpo del PUT: el conjunto completo de NIFs, no un alta suelta.      Reemplazar (+31 more)
 
 ### Community 1408 - "Community 1408"
 Cohesion: 0.08
 Nodes (24): title, type, title, type, properties, required, title, type (+16 more)
 
 ### Community 1409 - "Community 1409"
-Cohesion: 0.02
-Nodes (128): AgendaKpis(), recortes(), CarteraEventos(), CarteraFila(), CarteraInspector(), CarteraKpis(), OrigenFin(), CarteraView() (+120 more)
+Cohesion: 0.15
+Nodes (12): EmpresaRelaciones(), EmpresasCobertura(), MiniRanking(), EmpresaDetail, EmpresaRow, EmpresaStats, PerfilEmpresa, RankingRow (+4 more)
 
 ### Community 1410 - "Community 1410"
 Cohesion: 0.13
-Nodes (23): _build_adjudicacion(), _construidas(), _es_puntuable(), _hoy(), El calendario del seed no caduca, y sus adjudicaciones no se descuelgan.  Desde, El hueco que dejó #166: la adjudicación tiene que seguir a su licitación.      L, Adjudicar en el futuro tampoco es un dato posible., Lo que hace que esto no vuelva a pasar: las fechas se calculan, no se fijan. (+15 more)
+Nodes (22): _construidas(), _es_puntuable(), _hoy(), El calendario del seed no caduca, y sus adjudicaciones no se descuelgan.  Desde, El hueco que dejó #166: la adjudicación tiene que seguir a su licitación.      L, Adjudicar en el futuro tampoco es un dato posible., Lo que hace que esto no vuelva a pasar: las fechas se calculan, no se fijan., Cada fila conserva su distancia a hoy, que es lo que lo hace estable.      Compl (+14 more)
 
 ### Community 1411 - "Community 1411"
-Cohesion: 0.36
-Nodes (5): AccessPanel(), DevLogin(), OAuthButtons(), Separador(), LoginForm
+Cohesion: 0.15
+Nodes (14): AccessPanel(), CierrePublico(), DevLogin(), EnlaceSolicitarAcceso(), CtaAcceso(), OAuthButtons(), Separador(), solicitarAccesoHref() (+6 more)
 
 ### Community 1412 - "Community 1412"
 Cohesion: 0.10
@@ -6709,7 +6742,7 @@ Nodes (27): PlantillasRepository, Persistencia de la cartera de contratos (F4.3)
 
 ### Community 1415 - "Community 1415"
 Cohesion: 0.10
-Nodes (24): BloqueFicha, construir_pdf(), FichaOportunidad, F2.7 — la ficha de una oportunidad en un PDF que se lleva a dirección.  Quien ti, Una sección del one-pager.      ``filas`` son pares etiqueta/valor. ``procedenci, Todo lo que va al papel, ya resuelto y sin acceso a BD., Valor listo para una celda: nunca ``None``, nunca sin recortar., Renderiza el one-pager. ``reportlab`` ya es dependencia del proyecto.      Los i (+16 more)
+Nodes (22): BloqueFicha, construir_pdf(), F2.7 — la ficha de una oportunidad en un PDF que se lleva a dirección.  Quien ti, Una sección del one-pager.      ``filas`` son pares etiqueta/valor. ``procedenci, Valor listo para una celda: nunca ``None``, nunca sin recortar., Renderiza el one-pager. ``reportlab`` ya es dependencia del proyecto.      Los i, _texto(), ficha_pdf() (+14 more)
 
 ### Community 1425 - "Community 1425"
 Cohesion: 0.80
@@ -6728,16 +6761,16 @@ Cohesion: 0.12
 Nodes (15): _descartar(), _iso(), F5.6 — silenciar N días y «recordar en N días».  El criterio que importa es la *, El criterio de aceptación de F5.6, literal., Deja de aplicar; no desaparece. Es lo que permite auditarlo., v93: el score que motivó la decisión no se reescribe., Avisar de que ha vuelto es lo contrario de lo que el usuario pidió., Avisar de que ha vuelto es lo contrario de lo que el usuario pidió. (+7 more)
 
 ### Community 1433 - "Community 1433"
-Cohesion: 0.07
-Nodes (29): backup_turso(), encrypt_backup_file(), main(), prune_old_backups(), prune_s3_backups(), Backup de la base de datos SQLite local.  Uso:     python scripts/backup_db.py, Sube ``file_path`` a S3/R2.      Requiere las variables de entorno BACKUP_S3_BUC, Sube ``file_path`` a S3/R2.      Requiere las variables de entorno BACKUP_S3_BUC (+21 more)
+Cohesion: 0.08
+Nodes (27): backup_turso(), encrypt_backup_file(), main(), prune_old_backups(), prune_s3_backups(), Backup de la base de datos SQLite local.  Uso:     python scripts/backup_db.py, Sube ``file_path`` a S3/R2.      Requiere las variables de entorno BACKUP_S3_BUC, Sube ``file_path`` a S3/R2.      Requiere las variables de entorno BACKUP_S3_BUC (+19 more)
 
 ### Community 1434 - "Community 1434"
 Cohesion: 0.21
 Nodes (11): _pausar_por_enlace(), Verificación, pausa y destino en un solo salto al threadpool.      La verificaci, frontend_base_url(), URLs absolutas del frontend, deducidas de la configuración existente.  No hay un, Origen del frontend (``https://host``) sin barra final, o ``None``., ``path`` (con barra inicial) sobre el origen del frontend, o ``None``., Ficha del expediente en la consola (inspector de Detalle)., Ficha de la oportunidad. (+3 more)
 
 ### Community 1435 - "Community 1435"
-Cohesion: 0.10
-Nodes (21): invalidate_caches(), load_dataframe(), _load_dataframe_shared(), load_mat_clusters(), load_mat_top_empresas(), _load_raw(), Carga y enriquecimiento de datos desde SQLite, con caché Streamlit., Carga base compartida entre todas las sesiones.      Orquesta ``_load_raw()`` + (+13 more)
+Cohesion: 0.09
+Nodes (23): calibracion_baja_dto(), CalibracionPorLoteDTO, CalibracionRegimenDTO, _estado_publico(), Calibración del modelo de baja en producción (closed-loop).  ``drift.py`` cubre, Sobre qué cifra se decide la severidad, y cuál es esa cifra.      La degradación, Calibración de uno de los dos regímenes de serving por separado.      Existe por, Calibración de uno de los dos regímenes de serving por separado.      Existe por (+15 more)
 
 ### Community 1437 - "Community 1437"
 Cohesion: 0.08
@@ -6748,8 +6781,8 @@ Cohesion: 0.13
 Nodes (20): _buscar(), embeddings_simulados(), O0.6a (D15) — /search/semantic sirve la fusión RRF que ya existía.  Tests de INT, Criterio 4 de O0.6a: ``documento_chunks`` vacío → ``source=fts``.          Con m, Aunque haya chunks: sin modelo no hay vector de consulta., Sin fusión y con el FTS vacío, la fuente es ``like``., El deslizador del Investigador deja de ser decorativo., El RAG (services/licitaciones.py) llama sin ``alpha``: ese camino no     puede c (+12 more)
 
 ### Community 1439 - "Community 1439"
-Cohesion: 0.12
-Nodes (11): _app_con_stack_completo(), _assert_cabeceras_completas(), _observed_max_calls(), Regresiones del review de seguridad sobre el stack de middlewares.  Cubre tres d, App efímera con el stack real de ``api.app`` y una ruta trivial., Rate limiter de test: registra los kwargs y responde lo que se le diga., Ejecuta una request contra ``path`` y devuelve el ``max_calls`` aplicado.      S, _StubLimiter (+3 more)
+Cohesion: 0.11
+Nodes (15): Registra manejadores globales de excepciones con respuestas RFC 7807., Registra manejadores globales de excepciones con respuestas RFC 7807., register_exception_handlers(), _app_con_stack_completo(), _assert_cabeceras_completas(), client(), _observed_max_calls(), Regresiones del review de seguridad sobre el stack de middlewares.  Cubre tres d (+7 more)
 
 ### Community 1440 - "Community 1440"
 Cohesion: 0.10
@@ -6776,8 +6809,8 @@ Cohesion: 0.10
 Nodes (22): BrokenRedis, FakeRedis, FrozenClock, _guard(), _metric(), Tests de llm/budget.py — presupuesto + breaker de coste LLM.  RFC 2026-06-30 (ll, Mock mínimo de redis: incrbyfloat/expire/get sobre un dict., Redis que falla en toda operación — fuerza el fallback in-memory. (+14 more)
 
 ### Community 1446 - "Community 1446"
-Cohesion: 0.06
-Nodes (48): build_checklist(), _clave_de_sellado(), Una evaluación por versión de ficha, no una por visita a la pestaña.      La ver, Checklist de una oportunidad, sellado una vez por versión de ficha., _codigos(), _declara_iso(), _Escenario, _familia() (+40 more)
+Cohesion: 0.11
+Nodes (28): _codigos(), _familia(), _oportunidad(), S2.3 — ``GET /api/v1/pursuits/{pursuit_id}/checklist``: acceso y ámbito.  ``test, ``(checklist, detalle)`` para la misma oportunidad y el mismo ámbito., Es una lectura: quien solo mira tiene que entender por qué se propone go o no-go, Lo que fija es el ``(403, 403)``; el ledger se mira solo como guarda.      Hoy s, Segunda barrera: ``build_checklist`` rechaza al extraño por sí mismo.      La ru (+20 more)
 
 ### Community 1447 - "Community 1447"
 Cohesion: 0.06
@@ -6785,35 +6818,35 @@ Nodes (27): El endpoint de salud compara el código desplegado con el schema apl
 
 ### Community 1448 - "Community 1448"
 Cohesion: 0.06
-Nodes (25): _fila(), JobsRepository, Persistencia de la cola de trabajo (`jobs`) — plan 2026-09 v2, S5.1.  **Todo el, Toma el job reclamable más antiguo, o ``None`` si no hay ninguno.          ``tip, ``done``: suelta el lock y guarda el resultado., ``failed`` definitivo: se agotaron los intentos., Devuelve el job a ``pending`` con su próxima ventana (backoff).          ``error, Devuelve a ``pending`` los ``running`` cuyo lock caducó.          Es la red que (+17 more)
+Nodes (29): _fila(), JobsRepository, Persistencia de la cola de trabajo (`jobs`) — plan 2026-09 v2, S5.1.  **Todo el, Toma el job reclamable más antiguo, o ``None`` si no hay ninguno.          ``tip, ``done``: suelta el lock y guarda el resultado., ``failed`` definitivo: se agotaron los intentos., Devuelve el job a ``pending`` con su próxima ventana (backoff).          ``error, Devuelve a ``pending`` los ``running`` cuyo lock caducó.          Es la red que (+21 more)
 
 ### Community 1449 - "Community 1449"
-Cohesion: 0.06
-Nodes (46): asunto_digest(), BloqueDigest, bloques_de_avisos(), _cabecera(), clave_de_aviso(), enlace_ficha(), etiqueta_de_regla(), _importe() (+38 more)
+Cohesion: 0.05
+Nodes (53): asunto_digest(), asunto_evento(), BloqueDigest, bloques_de_avisos(), _cabecera(), clave_de_aviso(), enlace_ficha(), etiqueta_de_regla() (+45 more)
 
 ### Community 1450 - "Community 1450"
 Cohesion: 0.11
 Nodes (14): _fila(), mod(), Predecesor y similares: la búsqueda, ejecutada (C1.3).  `test_similares.py` cubr, Sin el fallback, un fallo del modelo dejaría la ficha sin similares., Es la afirmación fuerte del módulo: sin evidencia, no se hace., «Qué más se compra parecido» es de cualquier órgano., Solo el predecesor afirma quién ganó; un similar no., El módulo con los embeddings apagados: el camino por defecto en CI. (+6 more)
 
 ### Community 1451 - "Community 1451"
-Cohesion: 0.10
-Nodes (18): _motivos(), Por qué esta empresa. Cada motivo cita el dato que lo sostiene., Empresas que complementan en este segmento, con su motivo.      ``excluir`` son, sugerir_socios(), _adjudicaciones(), Con dos contratos, la «especialización» es una casualidad., Una sugerencia sin motivo es sólo un nombre en una lista., Sin nada que la distinga, el motivo es el volumen: un hecho medido. (+10 more)
+Cohesion: 0.11
+Nodes (16): Empresas que complementan en este segmento, con su motivo.      ``excluir`` son, sugerir_socios(), _adjudicaciones(), Con dos contratos, la «especialización» es una casualidad., Una sugerencia sin motivo es sólo un nombre en una lista., Sin nada que la distinga, el motivo es el volumen: un hecho medido., La propia organización y los competidores marcados quedan fuera., El corte por mínimo se hace sobre el universo real. (+8 more)
 
 ### Community 1452 - "Community 1452"
-Cohesion: 0.07
-Nodes (30): _clausula_organo(), _clausula_tecnologia(), _clausulas_universo_puntuable(), _escape_like(), _hoy(), Escapa wildcards LIKE (%, _) del input de usuario., Traduce los filtros de la regla a condiciones SQLAlchemy.      Aplica TODOS los, Escapa wildcards LIKE (%, _) del input de usuario. (+22 more)
+Cohesion: 0.09
+Nodes (23): is_turso_backend(), Devuelve una conexión al pool (Turso) o la mantiene en thread-local., Devuelve una conexión al pool (Turso) o la mantiene en thread-local., Devuelve una conexión al pool (Turso) o la mantiene en thread-local., Indica si la conexión activa apunta a Turso/Hrana (cloud o réplica).      Centra, Indica si la conexión activa apunta a Turso/Hrana (cloud o réplica).      Centra, Indica si la conexión activa apunta a Turso/Hrana (cloud o réplica).      Centra, Indica si la conexión activa apunta a Turso/Hrana (cloud o réplica).      Centra (+15 more)
 
 ### Community 1453 - "Community 1453"
-Cohesion: 0.09
-Nodes (17): contar_por_licitacion_y_tipo(), Acceso de lectura a ``contrato_eventos`` (eventos del ciclo de vida del contrato, Nº de eventos por licitación y tipo: ``{licitacion_id: {tipo: n}}``.      Las li, Nº de eventos por licitación y tipo: ``{licitacion_id: {tipo: n}}``.      Las li, _adj(), _fake_conn(), Caracterización de la frontera services↔db de ``services/ml/retencion_labels.py`, ``construir_pares`` se alimenta de dos —y solo dos— fuentes de datos. (+9 more)
+Cohesion: 0.10
+Nodes (13): _adj(), _fake_conn(), Caracterización de la frontera services↔db de ``services/ml/retencion_labels.py`, ``construir_pares`` se alimenta de dos —y solo dos— fuentes de datos., El dict de ``contrato_eventos`` entra tal cual en las features., Fila tal y como la devuelve la consulta de adjudicaciones., Conexión de mentira que devuelve ``rows`` con las columnas dadas., El invariante del ratchet TID251, sobre el AST del propio módulo. (+5 more)
 
 ### Community 1454 - "Community 1454"
 Cohesion: 0.13
 Nodes (34): _category_marker(), check_claude_skills(), check_command_copies(), check_hook_parity(), check_hooks_and_absolute_paths(), check_make_targets(), check_manual_test_markers(), check_nested_wikilinks() (+26 more)
 
 ### Community 1455 - "Community 1455"
-Cohesion: 0.12
-Nodes (23): get_organ_company_graph(), GraphEdge, GraphFilters, GraphNode, OrganCompanyGraphResult, _prepare_df(), Red Órgano-Empresa — grafo bipartito de adjudicaciones REALES.  Wrapper de servi, Filtros para el grafo órgano-empresa. (+15 more)
+Cohesion: 0.17
+Nodes (23): as_user(), _licitacion(), Contrato HTTP de organizaciones y oportunidades: permisos y códigos de error.  `, ``/pursuits/metrics`` debe resolver antes que ``/pursuits/{pursuit_id}``., Autentica la petición como el ``user_id`` que indique cada test., test_a_member_payload_that_contradicts_the_path_is_rejected(), test_a_retried_patch_with_the_same_idempotency_key_does_not_advance_the_version(), test_a_stale_expected_version_is_409() (+15 more)
 
 ### Community 1456 - "Community 1456"
 Cohesion: 0.10
@@ -6828,28 +6861,28 @@ Cohesion: 0.11
 Nodes (13): _montar(), El diccionario de tecnologías como dato, por sus rutas (C5.6, D28).  Antes de C5, Es lo que de verdad gobierna el filtro., «SAP» aparece en miles de expedientes que ya están dentro: ese número         no, «Se añadió `cloud` y trajo 4.200 expedientes» explica por sí solo una         de, Después, la siguiente ingesta ya habría asignado tecnología y el         número, La decisión tiene que quedar revisable., Sustituye repositorio, diccionario y auditoría. Devuelve los eventos. (+5 more)
 
 ### Community 1459 - "Community 1459"
-Cohesion: 0.08
-Nodes (22): generateSitemaps(), FranjaDatos(), buildSinBackend(), contarPublicables(), EntradaSitemap, ErrorApiPublica, esperar(), esTransitorio() (+14 more)
+Cohesion: 0.10
+Nodes (21): estaticas(), generateSitemaps(), sitemap(), buildSinBackend(), contarPublicables(), EntradaSitemap, entradasSitemap(), ErrorApiPublica (+13 more)
 
 ### Community 1460 - "Community 1460"
-Cohesion: 0.12
-Nodes (20): hybrid_search(), Fusión RRF (FTS + pgvector) para una consulta, o ``[]`` si no aplica.      Devue, ejecutar_embeddings_expediente(), Chunkea y embebe los documentos de UN expediente.      El cron nocturno (``sched, embeddings_available(), encode_texts(), _has_sentence_transformers(), _load_model() (+12 more)
+Cohesion: 0.18
+Nodes (16): hybrid_search(), Fusión RRF (FTS + pgvector) para una consulta, o ``[]`` si no aplica.      Devue, ejecutar_embeddings_expediente(), Chunkea y embebe los documentos de UN expediente.      El cron nocturno (``sched, embeddings_available(), encode_texts(), _has_sentence_transformers(), _load_model() (+8 more)
 
 ### Community 1461 - "Community 1461"
 Cohesion: 0.07
 Nodes (27): code:sql (-- revisión A: columnas sombra, sin índices), code:python ("tecnologia": r"UPDATE\s+licitaciones\s+SET\s+[^;]*\b(tecnol), El breaking que hay que anunciar, El guardrail que hay que ampliar, Las nueve tablas que faltan, Las tres trampas de este ítem, Lo barato, Lo que falta de verdad (+19 more)
 
 ### Community 1462 - "Community 1462"
-Cohesion: 0.17
-Nodes (8): keyword_labels_for(), load_golden_tech_set(), Tecnologías que ``matches_technology`` detecta sobre este texto.      Es la defi, Carga el golden set multi-label. Tolera líneas vacías y comentarios (``#``)., Sin positivos fuera del alcance del regex, recall_no_keyword no mide nada., Sin negativos no se puede medir precisión., Un typo convertiría un positivo humano en negativo sin avisar., TestLoadGoldenTechSet
+Cohesion: 0.07
+Nodes (24): _default_golden_tech_path(), evaluate_tech_classifier(), _f1(), GoldenTechExample, keyword_labels_for(), load_golden_tech_set(), _MultiLabelClassifier, _normalize_labels() (+16 more)
 
 ### Community 1463 - "Community 1463"
-Cohesion: 0.17
-Nodes (8): frecuencia_por_defecto(), Frecuencia cuando no hay fila. Ver :data:`DEFECTOS`., Frecuencia cuando no hay fila. Ver :data:`DEFECTOS`., Frecuencia cuando no hay fila. Ver :data:`DEFECTOS`., Apagar por omisión hace que nadie se entere y nadie sepa por qué., Mandar a un endpoint no configurado no es notificar., Sin ellos el frontend no puede pintar un ajuste que nadie tocó., TestPreferenciasDeNotificacion
+Cohesion: 0.09
+Nodes (21): apagar_canal(), borrar_de_usuario(), frecuencia_por_defecto(), guardar(), Preferencias de notificación por usuario, tipo y canal (C2.7).  Ninguna tabla ni, Frecuencia efectiva para un `(usuario, tipo, canal)`.      Precedencia: la prefe, Fija una preferencia. Idempotente por `(usuario, org, tipo, canal)`., Fija una preferencia. Idempotente por `(usuario, org, tipo, canal)`. (+13 more)
 
 ### Community 1464 - "Community 1464"
-Cohesion: 0.14
-Nodes (15): Verifica downgrade y re-upgrade de cada migración Alembic (v14-v20).      La BD, Verifica que la BD arranca con todas las tablas ya presentes., v20 downgrade elimina las tablas materializadas., v19 downgrade elimina el índice (la tabla licitaciones sigue existiendo)., v18 downgrade elimina las vistas anuales., v17 downgrade elimina las tablas totp_secrets y sessions., v16 downgrade elimina la tabla model_versions., v15 downgrade elimina la tabla webhooks. (+7 more)
+Cohesion: 0.12
+Nodes (19): migrated_db(), Tests de rollback para las migraciones Alembic (v14-v20).  Verifican que cada mi, Verifica downgrade y re-upgrade de cada migración Alembic (v14-v20).      La BD, Verifica que la BD arranca con todas las tablas ya presentes., v20 downgrade elimina las tablas materializadas., v19 downgrade elimina el índice (la tabla licitaciones sigue existiendo)., v18 downgrade elimina las vistas anuales., v17 downgrade elimina las tablas totp_secrets y sessions. (+11 more)
 
 ### Community 1465 - "Community 1465"
 Cohesion: 0.28
@@ -6860,8 +6893,8 @@ Cohesion: 0.10
 Nodes (29): database_admin_url(), DSN del rol administrador, o ``None`` si el cutover sigue pendiente.      Se lee, DSN del rol administrador, o ``None`` si el cutover sigue pendiente.      Se lee, DSN del rol administrador, o ``None`` si el cutover sigue pendiente.      Se lee, _entorno(), La credencial de administración de la base no llega al proceso que sirve HTTP., La diferencia entre allowlist y lista de prohibidos, fijada como test.      Con, Un proceso que no declara perfil no recibe la credencial. (+21 more)
 
 ### Community 1467 - "Community 1467"
-Cohesion: 0.07
-Nodes (29): ConnectorRunResult, EuskadiRssConnector, main(), RSS oficial de anuncios de contratación de Euskadi.  La API REST de KontratazioA, Ejecuta la ingesta incremental del RSS oficial de Euskadi., GaliciaRssConnector, main(), RSS oficial de la Plataforma de Contratos Públicos de Galicia.  Cobertura: publi (+21 more)
+Cohesion: 0.10
+Nodes (21): ConnectorRunResult, EuskadiRssConnector, main(), RSS oficial de anuncios de contratación de Euskadi.  La API REST de KontratazioA, Ejecuta la ingesta incremental del RSS oficial de Euskadi., GaliciaRssConnector, main(), RSS oficial de la Plataforma de Contratos Públicos de Galicia.  Cobertura: publi (+13 more)
 
 ### Community 1468 - "Community 1468"
 Cohesion: 0.10
@@ -6877,19 +6910,19 @@ Nodes (22): MotionProvider(), queryClient, claveDeIncidente(), debeReintentar(),
 
 ### Community 1471 - "Community 1471"
 Cohesion: 0.05
-Nodes (58): caducar_viejos(), _canal_cache(), _canal_digest(), _canal_in_app(), _canal_webhook(), _despachar_canal(), Destinatario, _destinatarios() (+50 more)
+Nodes (51): caducar_viejos(), _canal_cache(), _canal_digest(), _canal_in_app(), _canal_webhook(), _despachar_canal(), Destinatario, _destinatarios() (+43 more)
 
 ### Community 1472 - "Community 1472"
 Cohesion: 0.09
 Nodes (17): Cita, evento_sources(), _extracto(), Citas estructuradas de las respuestas del asistente (C5.3, D29).  El defecto que, Separa los marcadores del texto en válidos e inventados.      Un marcador es vál, Evento SSE ``sources``, aditivo al stream (nunca al DTO).      Se emite **siempr, Evento SSE ``sources``, aditivo al stream (nunca al DTO).      Se emite **siempr, Una referencia validada contra el contexto que se envió al modelo. (+9 more)
 
 ### Community 1473 - "Community 1473"
-Cohesion: 0.05
-Nodes (50): _cuerpo_json(), _cuerpo_slack(), _cuerpo_teams(), EspecificacionEvento, _hechos(), normalizar_formato(), Catálogo de eventos de dominio y plantillas de salida (plan 2026-09 v2, S4).  Ha, Vocabulario que acepta un webhook: comodines + tipos del catálogo.      Es la li (+42 more)
+Cohesion: 0.07
+Nodes (31): _cuerpo_json(), _cuerpo_slack(), _cuerpo_teams(), EspecificacionEvento, _hechos(), normalizar_formato(), Catálogo de eventos de dominio y plantillas de salida (plan 2026-09 v2, S4).  Ha, Vocabulario que acepta un webhook: comodines + tipos del catálogo.      Es la li (+23 more)
 
 ### Community 1474 - "Community 1474"
-Cohesion: 0.20
-Nodes (4): AgentDocsCheckerTests, _install_locked_skill(), Tests for deterministic agent-customization validation., _write()
+Cohesion: 0.15
+Nodes (5): AgentDocsCheckerTests, AgentHookTests, _install_locked_skill(), Tests for deterministic agent-customization validation., _write()
 
 ### Community 1475 - "Community 1475"
 Cohesion: 0.10
@@ -6921,39 +6954,39 @@ Nodes (25): 0. Alcance y método, 1. Hechos verificados (2026-09-05), 2. Decisio
 
 ### Community 1482 - "Community 1482"
 Cohesion: 0.09
-Nodes (23): ClustersFilters, Query filters for the clusters endpoint., Query filters for the clusters endpoint., Query filters for the clusters endpoint., clusters(), proyectos_modulos(), SAP module and project type breakdown., SAP module and project type breakdown. (+15 more)
+Nodes (23): _create_connection(), _get_conn(), _health_check(), Crea una nueva conexión a la BD según la configuración actual., Crea una nueva conexión a la BD según la configuración actual., Crea una nueva conexión a la BD según la configuración actual., Devuelve una conexión reutilizada por hilo.      Para Turso cloud usa un pool co, Verifica que una conexión sigue viva. (+15 more)
 
 ### Community 1483 - "Community 1483"
-Cohesion: 0.06
-Nodes (34): Aviso, aviso_documento_nuevo(), aviso_recurso(), clasificar_cambio(), etiqueta_de(), _euros(), _fecha_corta(), F5.1 a F5.4 — avisos con nombre, en vez de «algo cambió».  La campana tenía dos (+26 more)
+Cohesion: 0.12
+Nodes (15): clasificar_cambio(), Pone nombre a lo que cambió entre dos versiones del expediente.      ``changed_f, _lic(), F5.1–F5.3 (avisos con nombre) y F5.4 (diff desde la última visita).  La campana, Nunca se deduce de «adjudicado sin adjudicatario», que también es         un hue, Un expediente anulado suele cambiar también fecha e importe., Una rectificación que mueve el cierre es lo que hay que mirar., Adelantar el cierre es una urgencia; ampliarlo, un respiro. (+7 more)
 
 ### Community 1484 - "Community 1484"
-Cohesion: 0.09
-Nodes (29): _classify(), Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento., Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento., Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento., Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento., _is_number(), Igualdad de valores insensible al ruido de precisión de la BD.  ``licitaciones.i, True si el valor entra en la comparación numérica con tolerancia.      ``bool`` (+21 more)
+Cohesion: 0.11
+Nodes (24): _is_number(), Igualdad de valores insensible al ruido de precisión de la BD.  ``licitaciones.i, True si el valor entra en la comparación numérica con tolerancia.      ``bool``, Compara dos valores de una misma columna tolerando el ruido de float4.      Dos, values_equal(), _float4_roundtrip(), Tests para shared/numeric.py — igualdad tolerante al ruido de float4., Lo que devuelve una columna ``real`` de Postgres para ``value``.      Reproduce (+16 more)
 
 ### Community 1485 - "Community 1485"
-Cohesion: 0.05
-Nodes (37): _guardar_binario(), Guarda el binario y devuelve su clave, o ``None`` si no se guardó.      Best-eff, blob_prefix(), disk_usage_bytes(), document_blob_key(), get_object_store(), load_config(), ObjectStoreConfig (+29 more)
+Cohesion: 0.10
+Nodes (20): get_object_store(), purge_keys(), Almacén vigente, cacheado por configuración.      La caché se invalida sola cuan, Olvida el almacén cacheado (tests)., Ocupación del almacén, o ``None`` si no hay almacén o falla.      ``None`` signi, Borra las claves indicadas y devuelve cuántas existían.      Fail-open por clave, reset_object_store_cache(), store_stats() (+12 more)
 
 ### Community 1486 - "Community 1486"
 Cohesion: 0.07
-Nodes (25): codificar_ref(), Convierte un ``id_externo`` en su referencia pública.      Args:         id_exte, La superficie pública responde **sin autenticación** y no filtra de más.  Lo que, El cuerpo entero, campo a campo, con un valor distinto en cada columna.      El, Distinguirlos filtraría qué expedientes existen pero se ocultan., Mismo tramo, mismas URLs: si no, Search Console reporta cobertura rota., ``+00`` a secas es como Postgres escribe en texto un ``timestamptz``.      El pa, Distinguirlos filtraría qué expedientes existen pero se ocultan. (+17 more)
+Nodes (27): codificar_ref(), Convierte un ``id_externo`` en su referencia pública.      Args:         id_exte, La superficie pública responde **sin autenticación** y no filtra de más.  Lo que, El cuerpo entero, campo a campo, con un valor distinto en cada columna.      El, Distinguirlos filtraría qué expedientes existen pero se ocultan., Mismo tramo, mismas URLs: si no, Search Console reporta cobertura rota., ``+00`` a secas es como Postgres escribe en texto un ``timestamptz``.      El pa, Cuando la fuente cambia de formato, lo primero que hay que saber es dónde. (+19 more)
 
 ### Community 1487 - "Community 1487"
 Cohesion: 0.16
-Nodes (21): estaticas(), sitemap(), CabeceraFicha(), Miga, nombreFuente(), LotesLicitacion(), entradasSitemap(), LicitacionPublica (+13 more)
+Nodes (18): CabeceraFicha(), Miga, nombreFuente(), LotesLicitacion(), obtenerLicitacion(), rutaHubCcaa(), rutaLicitacion(), slugCcaa() (+10 more)
 
 ### Community 1488 - "Community 1488"
-Cohesion: 0.22
-Nodes (9): Punto de entrada del endpoint: carga el segmento y lo rankea.      La carga vive, socios_del_segmento(), Un job sin contexto no tiene identidad fiscal: no se inventa una., Un job sin contexto no tiene identidad fiscal: no se inventa una., Sin exclusión la lista sigue sirviendo; sin lista, no., Sin exclusión la lista sigue sirviendo; sin lista, no., Tragarse el permiso convertiría un 403 en una respuesta distinta., Tragarse el permiso convertiría un 403 en una respuesta distinta. (+1 more)
+Cohesion: 0.15
+Nodes (13): Punto de entrada del endpoint: carga el segmento y lo rankea.      La carga vive, socios_del_segmento(), S2.1 — «contra quién» deja de contar a la propia organización.  `IdentidadFiscal, Un job sin contexto no tiene identidad fiscal: no se inventa una., Un job sin contexto no tiene identidad fiscal: no se inventa una., Sin exclusión la lista sigue sirviendo; sin lista, no., Sin exclusión la lista sigue sirviendo; sin lista, no., Tragarse el permiso convertiría un 403 en una respuesta distinta. (+5 more)
 
 ### Community 1489 - "Community 1489"
-Cohesion: 0.09
-Nodes (23): _amount(), _date(), _label(), _natural_id(), _parser_seguro(), _plain(), Base conservadora para feeds RSS autonómicos de contratación.  Los RSS se tratan, Implementación común para un RSS oficial con id namespaceado. (+15 more)
+Cohesion: 0.06
+Nodes (40): _amount(), _date(), _label(), _natural_id(), _parser_seguro(), _plain(), Base conservadora para feeds RSS autonómicos de contratación.  Los RSS se tratan, La base del importe que publica el feed (ADR-032, D21).      Los RSS autonómicos (+32 more)
 
 ### Community 1490 - "Community 1490"
-Cohesion: 0.06
-Nodes (63): comparar_mae_p50(), Mide ``mae_p50`` a las dos granularidades y devuelve la comparación.      Es el, Granularidad de lote del dataset y del monitor de calibración (v86).  El lote es, Sin lotes parseados el expediente ES la unidad: lote_id NULL, no una fila perdid, Sin lotes parseados el expediente ES la unidad: lote_id NULL, no una fila perdid, Dos adjudicatarios del mismo lote son una unidad de compra, no dos., Dos adjudicatarios del mismo lote son una unidad de compra, no dos., La parte sin lote no tiene denominador propio: `l.importe` ya lo cuenta el lote. (+55 more)
+Cohesion: 0.09
+Nodes (46): Granularidad de lote del dataset y del monitor de calibración (v86).  El lote es, Sin lotes parseados el expediente ES la unidad: lote_id NULL, no una fila perdid, Sin lotes parseados el expediente ES la unidad: lote_id NULL, no una fila perdid, Dos adjudicatarios del mismo lote son una unidad de compra, no dos., Dos adjudicatarios del mismo lote son una unidad de compra, no dos., La parte sin lote no tiene denominador propio: `l.importe` ya lo cuenta el lote., La parte sin lote no tiene denominador propio: `l.importe` ya lo cuenta el lote., Sin `lotes.importe` no hay denominador por lote — y no se inventa uno. (+38 more)
 
 ### Community 1491 - "Community 1491"
 Cohesion: 0.05
@@ -6976,8 +7009,8 @@ Cohesion: 0.06
 Nodes (41): delete_dismissal(), get_dismissals(), get_proximas(), _invalidar_ranking(), _organizacion_activa(), post_dismissal(), RadarDismissal, RadarDismissalsResult (+33 more)
 
 ### Community 1496 - "Community 1496"
-Cohesion: 0.11
-Nodes (15): claves_de_la_organizacion(), ``None`` en lugar de los ausentes de pandas (``NA``/``NaN``/``NaT``)., Las ``empresa_key`` de este segmento que **son** la propia organización.      Es, _sin_na(), Sin las columnas de identidad se declara que no se excluyó nada., Sin las columnas de identidad se declara que no se excluyó nada., La organización sabe su NIF; la lista de competidores usa otra clave., La organización sabe su NIF; la lista de competidores usa otra clave. (+7 more)
+Cohesion: 0.07
+Nodes (28): claves_de_la_organizacion(), Las ``empresa_key`` de este segmento que **son** la propia organización.      Es, IdentidadFiscal, Quién es una organización a efectos de contratación pública.      Dos claves y n, ¿Alguna de esas identidades es la de esta organización?, Sin las columnas de identidad se declara que no se excluyó nada., Sin las columnas de identidad se declara que no se excluyó nada., `lideres` es el «contra quién se va»: verse ahí es el bug de S2.1. (+20 more)
 
 ### Community 1497 - "Community 1497"
 Cohesion: 0.10
@@ -6988,16 +7021,16 @@ Cohesion: 0.15
 Nodes (20): Qué resultado proponer para una adjudicación ya publicada.      ``None`` signifi, sugerir_resultado(), _adjudicatario(), S2.1 — el cierre de una oportunidad se propone por NIF, y no se decide solo., ``None`` es «no lo sé», nunca «no ganó»: es el caso previo a S2.1., La fuente no siempre publica el NIF; comparar nombres sería inventar., En una UTE basta con estar: el expediente lo ganó también la propia casa., La fuente escribe el NIF con guiones y puntos; la tabla lo guarda plano. (+12 more)
 
 ### Community 1499 - "Community 1499"
-Cohesion: 0.08
-Nodes (10): Tests para db/analytics.py — puente DuckDB/Postgres para consultas analíticas., TestAnalyticsClose, TestAnalyticsDatabaseUrl, TestDuckdbQueryNoDuckdb, TestDuckdbQueryWithDuckdb, TestExportParquetNoDuckdb, TestExportParquetWithDuckdb, TestGetConnectionNoDuckdb (+2 more)
+Cohesion: 0.07
+Nodes (14): has_duckdb(), True si DuckDB está disponible en runtime., True si DuckDB está disponible en runtime., True si DuckDB está disponible en runtime., Tests para db/analytics.py — puente DuckDB/Postgres para consultas analíticas., TestAnalyticsClose, TestAnalyticsDatabaseUrl, TestDuckdbQueryNoDuckdb (+6 more)
 
 ### Community 1500 - "Community 1500"
-Cohesion: 0.13
-Nodes (21): api_key(), _auth(), Entradas malformadas devuelven 4xx, no 5xx.  Las tres operaciones que cubre este, RFC 7807: `instance` identifica la petición y va en el cuerpo., Igual que el anterior pero con el byte crudo, no percent-encoded., El guard no puede romper el camino feliz que protege., Estructural: si alguien lo desmonta, el 500 vuelve en silencio., Key de un usuario admin: `PUT /feature-flags` exige ese rol.      Sin él la ruta (+13 more)
+Cohesion: 0.14
+Nodes (19): _auth(), Entradas malformadas devuelven 4xx, no 5xx.  Las tres operaciones que cubre este, RFC 7807: `instance` identifica la petición y va en el cuerpo., Igual que el anterior pero con el byte crudo, no percent-encoded., El guard no puede romper el camino feliz que protege., Estructural: si alguien lo desmonta, el 500 vuelve en silencio., El validador no puede romper el camino feliz., ``%ff`` en el path no puede reventar antes de llegar a la ruta. (+11 more)
 
 ### Community 1501 - "Community 1501"
-Cohesion: 0.06
-Nodes (34): ``ROUND`` para expresiones sobre columnas de coma flotante.      Postgres no tie, ``ROUND`` para expresiones sobre columnas de coma flotante.      Postgres no tie, round_sql(), NamedTuple, adjudicaciones_empresa(), Alcance, alcance_sql(), concentracion_hhi() (+26 more)
+Cohesion: 0.08
+Nodes (27): NamedTuple, adjudicaciones_empresa(), Alcance, alcance_sql(), denominador_cuota(), DenominadorCuota, _exigir_dedupe(), filas_perfil_empresa() (+19 more)
 
 ### Community 1502 - "Community 1502"
 Cohesion: 0.10
@@ -7008,8 +7041,8 @@ Cohesion: 0.09
 Nodes (22): C1 — Datos maestros y semántica, C2 — Cuentas y seguridad, C3 — Plataforma, coste y rendimiento, C4 — Ingesta y calidad, C5 — Conocimiento, C6 — Colaboración y captura, C7 — Frontend y accesibilidad, C8 y C9 (+14 more)
 
 ### Community 1504 - "Community 1504"
-Cohesion: 0.08
-Nodes (22): FilaPuntuada, Query filters for scoring., Query filters for scoring., Lo que ``_score_row`` sabe de una fila.      Era una tupla anónima de cuatro y F, Query filters for scoring., Lo que ``_score_row`` sabe de una fila.      Era una tupla anónima de cuatro y F, Query filters for scoring., ScoringFilters (+14 more)
+Cohesion: 0.10
+Nodes (15): ambito_del_radar(), Ámbito de mercado efectivo del Radar (F6.1), con su procedencia.      Aplica la, Ámbito de mercado efectivo del Radar (F6.1), con su procedencia.      Aplica la, _primer_numero(), _primera_lista(), F6.1 — de qué mercado hablamos: perfil personal, organización, o nada.  El ámbit, El número del perfil si está fijado; si no, el de la organización.      ``None``, Combina las dos capas campo a campo y devuelve el ámbito efectivo.      ``perfil (+7 more)
 
 ### Community 1505 - "Community 1505"
 Cohesion: 0.07
@@ -7029,15 +7062,15 @@ Nodes (22): alcanzables_desde_la_analitica(), _literales_de_cadena(), main(), _m
 
 ### Community 1509 - "Community 1509"
 Cohesion: 0.04
-Nodes (80): _assert_or_bootstrap_chain_state(), _audit_hmac(), list_recent(), log_action(), log_event(), Registro de auditoría para acciones de usuario.  Las acciones se persisten en ``, Persiste una acción de usuario en ``audit_log``. No lanza excepciones.      Calc, Persiste una acción de usuario en ``audit_log``. No lanza excepciones.      Calc (+72 more)
+Nodes (76): _assert_or_bootstrap_chain_state(), _audit_hmac(), list_recent(), log_action(), log_event(), Registro de auditoría para acciones de usuario.  Las acciones se persisten en ``, Persiste una acción de usuario en ``audit_log``. No lanza excepciones.      Calc, Persiste una acción de usuario en ``audit_log``. No lanza excepciones.      Calc (+68 more)
 
 ### Community 1510 - "Community 1510"
 Cohesion: 0.13
 Nodes (19): enriquecer_renovaciones(), Añade a cada fila la prórroga leída de la ficha y la fecha fin máxima.      Se h, _a_entero(), meses_de_prorroga(), meses_de_prorroga_en_texto(), Prórroga prevista de un contrato, leída de la ficha estructurada del pliego.  El, Meses de prórroga que declara un fragmento de cláusula, o ``None``.      Si el t, Meses de prórroga de una ficha (dict o JSON), leyendo ``extensions``. (+11 more)
 
 ### Community 1511 - "Community 1511"
-Cohesion: 0.10
-Nodes (18): _build_searchable_text(), _keywords_mask(), portfolio_match(), Concatena titulo + descripcion en una Series de strings en minusculas.      Help, Concatena titulo + descripcion en una Series de strings en minusculas.      Help, Concatena titulo + descripcion en una Series de strings en minusculas.      Help, Boolean mask: True where *text* contains any of *keywords* (vectorized)., Boolean mask: True where *text* contains any of *keywords* (vectorized). (+10 more)
+Cohesion: 0.08
+Nodes (23): _build_searchable_text(), _keywords_mask(), load_dataframe(), portfolio_match(), Cálculo de estadísticas a partir de la BD., Carga ligera de licitaciones (sin enriquecimiento del dashboard).      Delega en, Carga ligera de licitaciones (sin enriquecimiento del dashboard).      Delega en, Carga ligera de licitaciones (sin enriquecimiento del dashboard).      Delega en (+15 more)
 
 ### Community 1512 - "Community 1512"
 Cohesion: 0.10
@@ -7048,12 +7081,12 @@ Cohesion: 0.09
 Nodes (22): items, title, type, items, title, type, properties, title (+14 more)
 
 ### Community 1514 - "Community 1514"
-Cohesion: 0.13
-Nodes (19): Tests para shared/dto.py — DTOs Pydantic v2.  El 2026-09-03 (S4.7) se borraron d, Las fechas del contrato aceptan strings ISO 8601 y se normalizan a datetime., ``SearchRequest`` salió de ``shared/dto.py`` el 2026-09-04.      Era el sexto ho, El detalle no puede perder campos del resumen.      Traslado de ``test_licitacio, Y el detalle aporta algo que el resumen no tiene: si no, sobra., test_adjudicacion_summary(), test_cluster_summary(), test_detail_extends_summary() (+11 more)
+Cohesion: 0.15
+Nodes (17): Tests para shared/dto.py — DTOs Pydantic v2.  El 2026-09-03 (S4.7) se borraron d, ``total = -1`` es parte del contrato: la página vale, el conteo no se hizo., Las fechas del contrato aceptan strings ISO 8601 y se normalizan a datetime., El detalle no puede perder campos del resumen.      Traslado de ``test_licitacio, test_adjudicacion_summary(), test_cluster_summary(), test_detail_extends_summary(), test_kpi_snapshot_dto() (+9 more)
 
 ### Community 1515 - "Community 1515"
-Cohesion: 0.09
-Nodes (22): anyOf, title, enum, title, type, title, type, description (+14 more)
+Cohesion: 0.08
+Nodes (25): anyOf, title, enum, title, type, title, type, properties (+17 more)
 
 ### Community 1516 - "Community 1516"
 Cohesion: 0.09
@@ -7064,8 +7097,8 @@ Cohesion: 0.14
 Nodes (21): _adj(), _construir(), _par_con_sucesora_anticipada(), Anti-fuga del etiquetado de retención (``services/ml/retencion_labels.py``).  El, La antigüedad se mide hasta el ancla, no hasta el vencimiento.      Ancla = ``mi, Defensa en profundidad: la exclusión es por id, no solo por fecha.      Un exped, 12 meses antes del vencimiento no es una renovación, es otro contrato.      Con, El margen de anticipación es un parámetro, no un número mágico. (+13 more)
 
 ### Community 1518 - "Community 1518"
-Cohesion: 0.17
-Nodes (6): _aislar(), _Cursor, Sustituye ``connect()``: una fila de webhook para el abanico y para el reintento, Devuelve lo escrito por ``crear_entrega`` y las peticiones «enviadas»., Con el sello regenerado, el mismo evento tendría dos firmas v2 y el         rein, TestEntregaConSello
+Cohesion: 0.11
+Nodes (9): _aislar(), _Cursor, Firma v2 con sello de tiempo y material de rotación (Ola 1 · Webhooks).  Unitari, Sustituye ``connect()``: una fila de webhook para el abanico y para el reintento, Devuelve lo escrito por ``crear_entrega`` y las peticiones «enviadas»., Con el sello regenerado, el mismo evento tendría dos firmas v2 y el         rein, TestEntregaConSello, TestScopeDeLaRuta (+1 more)
 
 ### Community 1519 - "Community 1519"
 Cohesion: 0.13
@@ -7076,8 +7109,8 @@ Cohesion: 0.11
 Nodes (21): _destinatarios(), ejecutar(), _enviar(), Envío de los informes programados (T6).  Qué hace en una pasada ----------------, Manda el informe a cada destinatario. Devuelve cuántos salieron., Una pasada completa. **No lanza**: ver la cabecera., Punto de entrada del registry y del paso canónico., Qué hizo la pasada. Lo devuelve el job y lo registra el paso. (+13 more)
 
 ### Community 1521 - "Community 1521"
-Cohesion: 0.09
-Nodes (18): bind_budget_org(), BudgetGuard, get_budget_guard(), Presupuesto de gasto LLM + circuit-breaker de coste.  RFC 2026-06-30 (llm-depend, Acumulador de gasto LLM por ventana con enforcement configurable.      ``clock``, Cliente Redis lazy desde settings; None si no hay o falló., Una operación Redis falló: degradar a in-memory para este proceso., Organización efectiva: la explícita gana sobre la del contexto.          El pref (+10 more)
+Cohesion: 0.02
+Nodes (78): Identificador estable y no reversible de una sesión, para la API., Identificador estable y no reversible de una sesión, para la API., session_public_id(), bind_budget_org(), BudgetGuard, get_budget_guard(), Presupuesto de gasto LLM + circuit-breaker de coste.  RFC 2026-06-30 (llm-depend, Acumulador de gasto LLM por ventana con enforcement configurable.      ``clock`` (+70 more)
 
 ### Community 1522 - "Community 1522"
 Cohesion: 0.29
@@ -7100,24 +7133,24 @@ Cohesion: 0.15
 Nodes (17): mat_query_reader(), Conexión del fallback pandas, con un lector de :data:`MAT_QUERIES` por nombre., _AdaptadorSinConexionCruda, _connect_sin_conexion_cruda(), _conteos(), El fallback pandas del export Parquet lee de Postgres de verdad.  Es el camino q, Sin esto, de una consulta nueva los tests de abajo no comprobarían el contenido., ``mat_query_reader`` cede un lector y cada nombre devuelve su agregado real. (+9 more)
 
 ### Community 1527 - "Community 1527"
-Cohesion: 0.04
-Nodes (56): AuditChainVerification, client_error(), ClientErroresResult, ClientErrorReport, ClientErrorRow, csp_report(), _github_public_key(), leaked_key_notification() (+48 more)
+Cohesion: 0.07
+Nodes (33): AuditChainVerification, client_error(), ClientErroresResult, ClientErrorReport, CSPReport, _leer_body_acotado(), list_client_errors(), Endpoints de seguridad: CSP reports, errores de cliente y GitHub Secret Scanning (+25 more)
 
 ### Community 1528 - "Community 1528"
-Cohesion: 0.12
-Nodes (14): oauth_email_allowed(), Verifica *candidate* contra *pw_hash*.      Soporta:     * **argon2** (``$argon2, Verifica la firma y frescura de un state OAuth.      Returns True si el formato, Valida el email OAuth contra allowlists opcionales (settings)., Valida el email OAuth contra allowlists opcionales (settings)., Valida el email OAuth contra allowlists opcionales (settings)., Valida el email OAuth contra allowlists opcionales (settings).      ``OAUTH_ALLO, Lines 312-320: oauth_email_allowed. (+6 more)
+Cohesion: 0.07
+Nodes (22): csv_set(), oauth_email_allowed(), Convierte una cadena CSV a un conjunto de valores en minúsculas., Verifica *candidate* contra *pw_hash*.      Soporta:     * **argon2** (``$argon2, Convierte una cadena CSV a un conjunto de valores en minúsculas., Verifica la firma y frescura de un state OAuth.      Returns True si el formato, Convierte una cadena CSV a un conjunto de valores en minúsculas., Valida el email OAuth contra allowlists opcionales (settings). (+14 more)
 
 ### Community 1529 - "Community 1529"
-Cohesion: 0.10
-Nodes (17): Drena la DLQ. En el carril diario **no** reintenta meses bulk.      Una entrada, Drena la DLQ. En el carril diario **no** reintenta meses bulk.      Una entrada, Drena la DLQ. En el carril diario **no** reintenta meses bulk.      Una entrada, _run_dlq_retry(), El carril diario y el bulk no hacen el mismo trabajo en cada paso.      Reintent, El carril diario y el bulk no hacen el mismo trabajo en cada paso.      Reintent, El carril diario y el bulk no hacen el mismo trabajo en cada paso.      Reintent, Un caller que no declare carril no pierde trabajo en silencio. (+9 more)
+Cohesion: 0.06
+Nodes (26): Drena la DLQ. En el carril diario **no** reintenta meses bulk.      Una entrada, Drena la DLQ. En el carril diario **no** reintenta meses bulk.      Una entrada, Drena la DLQ. En el carril diario **no** reintenta meses bulk.      Una entrada, _run_dlq_retry(), Tests de paridad de pipeline canónica (ADR-012).  Verifica que ``run_update --da, run_update --daily y daily_atom invocan la misma secuencia canónica., El carril diario y el bulk no hacen el mismo trabajo en cada paso.      Reintent, El carril diario y el bulk no hacen el mismo trabajo en cada paso.      Reintent (+18 more)
 
 ### Community 1530 - "Community 1530"
 Cohesion: 0.07
 Nodes (16): Conocimiento: citas, versión de embeddings, caché y voto (C5).  Cuatro huecos qu, C5.3 — el evento es aditivo al stream y solo en modo licitación., No hay respuesta que citar: `sin_fuentes` ahí sería una afirmación falsa., No hay respuesta que citar: `sin_fuentes` ahí sería una afirmación falsa., C5.4 — el voto deja de morir como evento de telemetría., C5.4 — el voto deja de morir como evento de telemetría., Sin sal, «¿cuál es el plazo?» se revierte con un diccionario., Sin sal, «¿cuál es el plazo?» se revierte con un diccionario. (+8 more)
 
 ### Community 1531 - "Community 1531"
-Cohesion: 0.06
-Nodes (19): cluster_summary(), Resumen estadístico por cluster., cluster_summary(), Resumen estadístico por cluster., Resumen estadístico por cluster., _make_df(), Tests para services.clustering_engine., DataFrame de licitaciones sintéticas para tests. (+11 more)
+Cohesion: 0.05
+Nodes (23): cluster_summary(), Resumen estadístico por cluster., cluster_summary(), Resumen estadístico por cluster., Resumen estadístico por cluster., _make_df(), Tests para services.clustering_engine., DataFrame de licitaciones sintéticas para tests. (+15 more)
 
 ### Community 1532 - "Community 1532"
 Cohesion: 0.10
@@ -7132,8 +7165,8 @@ Cohesion: 0.16
 Nodes (10): Límite por minuto del tier de la clave, cacheado. `None` = sin tope propio., _tier_limit(), Repository para api_keys., Requests/minuto que el tier de esta API key permite (C2.3, D25).      ``api_key_, tier_limit_por_hash(), C2.3 — el tier de la clave, cacheado, sin poder tumbar el limitador., Errar hacia el default deja la API respondiendo; propagar la         excepción l, Si se cacheara, una caída momentánea dejaría la clave sin su tier         durant (+2 more)
 
 ### Community 1535 - "Community 1535"
-Cohesion: 0.07
-Nodes (19): exclude_duplicados_presentacion_sql(), Como :func:`exclude_duplicados_sql`, pero también esconde los ``pending``., Como :func:`exclude_duplicados_sql`, pero también esconde los ``pending``., Como :func:`exclude_duplicados_sql`, pero también esconde los ``pending``., candidatos_a_predecesor(), candidatos_a_similar(), Lecturas para predecesor y expedientes similares (C1.3).  Todo el SQL vive aquí, Expedientes de CUALQUIER órgano con el mismo CPV4.      A diferencia del predece (+11 more)
+Cohesion: 0.09
+Nodes (14): exclude_duplicados_presentacion_sql(), Como :func:`exclude_duplicados_sql`, pero también esconde los ``pending``., Como :func:`exclude_duplicados_sql`, pero también esconde los ``pending``., Como :func:`exclude_duplicados_sql`, pero también esconde los ``pending``., La republicación tiene una regla, y es distinta por superficie (C4.2 / D23).  `d, Retirar un contrato de la cuota de mercado exige evidencia confirmada., En una lista que alguien lee, esconder de más solo cuesta una fila., Si alguien los unifica, uno de los dos lados queda mal.          Unificar hacia (+6 more)
 
 ### Community 1536 - "Community 1536"
 Cohesion: 0.11
@@ -7176,8 +7209,8 @@ Cohesion: 0.13
 Nodes (15): _is_public_address(), PinnedHttpsTarget, Validación estricta de URLs salientes para prevenir SSRF y DNS rebinding., Compatibilidad para callers legacy que necesitan fijar una IP.      Solo debe us, A validated HTTPS destination with one DNS answer selected for dialing., Acepta exclusivamente direcciones globales, normalizando IPv4-mapped IPv6., Valida una URL sin reemplazar el host y por tanto sin romper TLS/SNI.      El co, Resolve a public HTTPS destination once for a pinned TLS connection.      The re (+7 more)
 
 ### Community 1546 - "Community 1546"
-Cohesion: 0.10
-Nodes (21): anyOf, title, anyOf, format, title, type, properties, anyOf (+13 more)
+Cohesion: 0.09
+Nodes (22): anyOf, title, anyOf, format, title, type, properties, required (+14 more)
 
 ### Community 1547 - "Community 1547"
 Cohesion: 0.06
@@ -7185,7 +7218,7 @@ Nodes (16): _falla_con(), Adjuntos propios de una oportunidad, por sus rutas (C6
 
 ### Community 1548 - "Community 1548"
 Cohesion: 0.07
-Nodes (23): PlantillaTareas, Cuerpo del PUT: la plantilla entera, que sustituye a la anterior., ``YYYY-MM-DD`` de la tarea, o ``None`` si no hay con qué calcularlo.      Sin fe, Una tarea de la plantilla: título y plazo relativo a la fecha límite., TareaPlantilla, vence_relativo(), alcance_fijo(), El caso corriente: siempre la misma organización y el mismo rol. (+15 more)
+Nodes (26): PlantillaTareas, Cuerpo del PUT: la plantilla entera, que sustituye a la anterior., Una tarea de la plantilla: título y plazo relativo a la fecha límite., TareaPlantilla, alcance_doble(), alcance_fijo(), Dobles del ámbito de tenencia (ADR-034) para los tests de servicio.  Vive en un, Sustituto de ``alcance_resuelto`` que cede lo que devuelva ``resolucion``. (+18 more)
 
 ### Community 1549 - "Community 1549"
 Cohesion: 0.10
@@ -7200,8 +7233,8 @@ Cohesion: 0.13
 Nodes (19): _celda(), con_porcentajes(), _corte(), main(), _pct(), Mide la cobertura de ``procedimiento``, ``tramitacion`` y ``peso_precio_pct``., Añade ``<campo>_pct`` a cada fila. Toma dicts para testear sin BD., Informe en Markdown sobre filas ya con porcentajes. (+11 more)
 
 ### Community 1552 - "Community 1552"
-Cohesion: 0.12
-Nodes (16): _run_watchlist_notify(), build_notification(), _destinatarios(), _formatear_importe(), identidad_fiscal(), notify_detected_awards(), Cierre asistido: avisar cuando un expediente con oportunidad abierta ya se adjud, :func:`sugerir_resultado` leyendo la identidad de la organización. (+8 more)
+Cohesion: 0.13
+Nodes (14): _run_watchlist_notify(), build_notification(), _destinatarios(), _formatear_importe(), notify_detected_awards(), Cierre asistido: avisar cuando un expediente con oportunidad abierta ya se adjud, :func:`sugerir_resultado` leyendo la identidad de la organización., ``(user_id, email)`` de quien debe enterarse: responsable, o el equipo. (+6 more)
 
 ### Community 1553 - "Community 1553"
 Cohesion: 0.27
@@ -7228,8 +7261,8 @@ Cohesion: 0.16
 Nodes (10): _Bind, _load_migration(), _PostgresOp, Regresiones unitarias de la migración organizativa v64., _Rows, test_v64_downgrade_removes_only_added_scope(), test_v64_identity_keys_cover_current_and_legacy_forms(), test_v64_revision_chain_and_scope_shape() (+2 more)
 
 ### Community 1559 - "Community 1559"
-Cohesion: 0.11
-Nodes (18): _BodyTooLargeError, Rechaza requests con body > 1 MB usando raw ASGI.          Comprueba Content-Len, Señal interna para abortar el pipeline cuando el body excede el límite., Señal interna para abortar el pipeline cuando el body excede el límite., Señal interna para abortar el pipeline cuando el body excede el límite., Señal interna para abortar el pipeline cuando el body excede el límite., Señal interna para abortar el pipeline cuando el body excede el límite., Señal interna para abortar el pipeline cuando el body excede el límite. (+10 more)
+Cohesion: 0.50
+Nodes (4): _DuckDBEngine._refresh no lanza excepciones — loguea warning y continúa., _DuckDBEngine._refresh no lanza excepciones — loguea warning y continúa., _DuckDBEngine._refresh no lanza excepciones — loguea warning y continúa., test_duckdb_engine_refresh_handles_exception_gracefully()
 
 ### Community 1560 - "Community 1560"
 Cohesion: 0.10
@@ -7240,32 +7273,32 @@ Cohesion: 0.18
 Nodes (17): cluster_is_up(), emit(), ensure_extensions(), ensure_role_and_db(), main(), persist_test_url(), psql_as_superuser(), SessionStart: provisiona el Postgres de tests en sesiones remotas.  Las sesiones (+9 more)
 
 ### Community 1562 - "Community 1562"
-Cohesion: 0.18
-Nodes (14): AtribucionFuente(), conValor(), datosDeAnuncio(), DatosDelAnuncio(), destacadosDeAnuncio(), Par, fechaOpcional(), diaEnEspana() (+6 more)
+Cohesion: 0.16
+Nodes (15): AtribucionFuente(), conValor(), datosDeAnuncio(), DatosDelAnuncio(), destacadosDeAnuncio(), Par, fechaOpcional(), ListadoLicitaciones() (+7 more)
 
 ### Community 1563 - "Community 1563"
-Cohesion: 0.07
-Nodes (23): fusion_weights(), hybrid_search_docs(), Abstracción de búsqueda full-text (ADR-016, ADR-021).  Define el protocolo ``Sea, Contrato mínimo de un backend de búsqueda full-text., True si el backend está operativo en la BD actual., Devuelve lista de id_externo ordenados por relevancia., Devuelve dicts con id_externo + campos de contexto (snippet)., Devuelve (id_externo, score) ordenados por relevancia. (+15 more)
+Cohesion: 0.14
+Nodes (11): fusion_weights(), hybrid_search_docs(), Abstracción de búsqueda full-text (ADR-016, ADR-021).  Define el protocolo ``Sea, Formato de texto que pgvector castea con ``::vector`` (``[0.1,0.2,...]``)., Retrieval híbrido: FTS (tsvector) + similitud vectorial (``documento_chunks``),, ``PgTsBackend.hybrid_search_docs`` abriendo su propia conexión de lectura., Pesos ``(fts, vectorial)`` de la fusión RRF para un ``alpha`` dado.      ``alpha, _to_pg_vector_literal() (+3 more)
 
 ### Community 1564 - "Community 1564"
 Cohesion: 0.11
 Nodes (19): P1 — Alta, [P1] Ampliar el golden set del clasificador SAP a 300-500 ejemplos etiquetados a mano, [P1] Cablear TED en el cron diario (PSCP/TACRC ya activos — ver hallazgo de corrección abajo), [P1] El despachador del outbox no lo invoca ningún plano, [P1] LLM como dependencia gestionada (presupuesto + circuit-breaker + fallback + eval RAG), [P1] [Ola 1 · S1] Identidad y equipo: invitar sin cuenta previa, OIDC y el ratchet de `user_key`, [P1] [Ola 1 · S2] La organización no sabe quién es: NIF, capacidad y go/no-go asistido, [P1] [Ola 1 · S5] Cola de trabajo y worker: un despliegue mata lo que un usuario pidió (+11 more)
 
 ### Community 1565 - "Community 1565"
-Cohesion: 0.32
-Nodes (7): _emitir_salida_github(), promocionado(), Entrenamiento del clasificador SAP — entrypoint del workflow de release.  Invoca, Siembra negativos, entrena desde BD y precomputa ``ml_proba``.      Returns:, ¿Pasó el gate de promoción y hay artefacto nuevo que publicar?      ``train_from, Escribe el desenlace en ``$GITHUB_OUTPUT`` para que el workflow decida.      Sin, run()
+Cohesion: 0.20
+Nodes (10): _emitir_salida_github(), promocionado(), Entrenamiento del clasificador SAP — entrypoint del workflow de release.  Invoca, Siembra negativos, entrena desde BD y precomputa ``ml_proba``.      Returns:, ¿Pasó el gate de promoción y hay artefacto nuevo que publicar?      ``train_from, Escribe el desenlace en ``$GITHUB_OUTPUT`` para que el workflow decida.      Sin, run(), CCAA (+2 more)
 
 ### Community 1566 - "Community 1566"
-Cohesion: 0.15
-Nodes (20): La base del importe que publica el feed (ADR-032, D21).      Los RSS autonómicos, _tipo_de_importe(), _pscp(), Los conectores declaran la base del importe (ADR-032, D21).  Solo ``scraper/codi, La LCSP define el valor estimado sin IVA, pero no es el presupuesto base:     si, _ted(), test_pscp_campo_historico_sin_sufijo_es_desconocido(), test_pscp_importe_adjudicado_como_ultimo_recurso_es_desconocido() (+12 more)
+Cohesion: 0.11
+Nodes (13): Anota el entrenamiento en el registro append-only del multi-tecnología.      Exi, Anota el entrenamiento en el registro append-only del multi-tecnología.      Exi, Anota el entrenamiento en el registro append-only del multi-tecnología.      Exi, registrar_entrenamiento(), _df(), Etiquetas no circulares del clasificador multi-tecnología (S6.2).  ``licitacione, Un rechazo sin conteo no informa: lo que hay que mirar es justo con         qué, El SQL vive en ``db/`` (ADR-022): aquí se sustituyen sus funciones. (+5 more)
 
 ### Community 1567 - "Community 1567"
 Cohesion: 0.10
 Nodes (20): Elimina instancias del singleton (útil en tests o tras cambio de config).      A, Elimina instancias del singleton (útil en tests o tras cambio de config).      A, Elimina instancias del singleton (útil en tests o tras cambio de config).      A, Elimina instancias del singleton (útil en tests o tras cambio de config).      A, Elimina instancias del singleton (útil en tests o tras cambio de config).      A, Elimina instancias del singleton (útil en tests o tras cambio de config).      A, reset_cache(), El caché del resumen es process-wide (shared.cache): sin reset, el hit     de un (+12 more)
 
 ### Community 1568 - "Community 1568"
-Cohesion: 0.23
-Nodes (5): evaluate_tech_predictions(), Núcleo puro de evaluación a partir de conjuntos de etiquetas.      Separado de :, Promediar sólo las etiquetas con soporte es un promedio de aprobados., Un modelo que replica exactamente las keywords: F1 alto, valor cero., TestEvaluateTechPredictions
+Cohesion: 0.12
+Nodes (12): evaluate_tech_predictions(), Serializa a dict plano (para logging/registry/API)., Resultado de evaluar el multi-label contra el golden set., Serializa a dict plano (para logging/registry/API)., Desglose por etiqueta ordenado por soporte descendente., Núcleo puro de evaluación a partir de conjuntos de etiquetas.      Separado de :, Métricas de una tecnología contra las etiquetas humanas., TechEvalResult (+4 more)
 
 ### Community 1569 - "Community 1569"
 Cohesion: 0.14
@@ -7276,24 +7309,24 @@ Cohesion: 0.11
 Nodes (18): Arquitectura, Autenticación, Características principales, CI / Calidad de código, code:block1 (┌───────────────────────────────┐       ┌───────────────────), code:bash (# Linting y formato), code:bash (make web-lint        # ESLint), code:block2 (tenderflow/) (+10 more)
 
 ### Community 1571 - "Community 1571"
-Cohesion: 0.11
-Nodes (16): arrancar_en_hilo(), main(), Consumidor de la cola de trabajo — plan 2026-09 v2, S5.1 y S5.3.  Dos cosas vive, Bucle de consumo de la cola. Reutilizable como hilo o como proceso., Pide al bucle que termine tras el job en curso., Procesa hasta ``maximo`` jobs disponibles y devuelve cuántos hizo.          Se d, Consume hasta que alguien llame a :meth:`detener`.          Un fallo de la cola, Arranca el bucle en un hilo daemon y devuelve el worker para pararlo.      Lo us (+8 more)
+Cohesion: 0.12
+Nodes (21): _organizaciones_visibles(), RLS por tenant (``v128``) y ámbito de organización (ADR-034), contra Postgres., Dos usuarios, sus organizaciones personales, un pursuit y un favorito en cada un, El GUC vuelve a ``''`` (no a NULL) tras un ``SET LOCAL``: sigue siendo paso fran, ``GET /watchlist/items`` usa ``require_organization()``: la petición queda acota, ``GET /pursuits`` resuelve en ``services/pursuits.py`` y aun así queda acotada., Regresión de la trampa de envolver una función que sólo resuelve.      ``exigir_, Ninguna tabla con ``organization_id`` queda sin decidir: políticas o exclusión. (+13 more)
 
 ### Community 1572 - "Community 1572"
 Cohesion: 0.11
 Nodes (17): load_calidad_runs(), load_extracciones(), load_recent_daily_statuses(), load_runs(), Servicio de extraction runs — historial del pipeline de scraping.  Centraliza la, Carga los últimos ``limit`` estados de runs del carril diario., Carga los últimos ``limit`` estados de runs del carril diario., Carga las últimas extraction runs (columnas completas para observabilidad). (+9 more)
 
 ### Community 1573 - "Community 1573"
-Cohesion: 0.11
-Nodes (22): delete_keyword(), DiccionarioOut, get_impacto(), get_keywords(), ImpactoOut, KeywordIn, KeywordOut, post_sembrar() (+14 more)
+Cohesion: 0.10
+Nodes (21): Establece (o limpia con None) el override de ruta de BD para tests., Establece (o limpia con None) el override de ruta de BD para tests., Establece (o limpia con None) el override de ruta de BD para tests., Establece (o limpia con None) el override de ruta de BD para tests., Establece (o limpia con None) el override de ruta de BD para tests., Establece (o limpia con None) el override de ruta de BD para tests., Establece (o limpia con None) el override de ruta de BD para tests., Establece (o limpia con None) el override de ruta de BD para tests. (+13 more)
 
 ### Community 1574 - "Community 1574"
-Cohesion: 0.09
-Nodes (22): clear_stats_cache(), Invalida la caché de :func:`load_stats_dataframe`., api_db(), _clear_service_data_caches(), Limpia las cachés de full-table de la capa de servicios entre tests.      ``load, BD temporal con todas las migraciones, para tests de API., BD temporal con todas las migraciones, para tests de API., BD SQLite temporal con migraciones aplicadas. Aislada por test. (+14 more)
+Cohesion: 0.15
+Nodes (13): api_db(), BD temporal con todas las migraciones, para tests de API., BD temporal con todas las migraciones, para tests de API., BD SQLite temporal con migraciones aplicadas. Aislada por test., BD temporal con todas las migraciones, para tests de API., Schema Postgres aislado por test, con las migraciones aplicadas.      ``tmp_path, BD SQLite temporal con migraciones aplicadas. Aislada por test., Schema Postgres aislado por test, con las migraciones aplicadas.      ``tmp_path (+5 more)
 
 ### Community 1575 - "Community 1575"
-Cohesion: 0.14
-Nodes (9): admin_api_key(), _FakeClassifier, Tests del cableado nuevo: métricas de pool y caché del clasificador.  Las métric, Doble del SAPClassifier que cuenta cargas.      ``load`` acepta la ruta porque d, Schema Postgres aislado (los pools se abren de verdad)., API key de un usuario **administrador**.      ``POST /models/{name}/activate/{ve, Una métrica rota no puede tumbar el endpoint `/metrics`., TestRefreshDbPoolMetrics (+1 more)
+Cohesion: 0.07
+Nodes (20): pool_stats(), Estadísticas de ambos pools para métricas y diagnóstico.      Devuelve ``{}`` pa, Estadísticas de ambos pools para métricas y diagnóstico.      Devuelve ``{}`` pa, _FakeClassifier, _preparar_cache(), Tests del cableado nuevo: métricas de pool y caché del clasificador.  Las métric, Doble del SAPClassifier que cuenta cargas.      ``load`` acepta la ruta porque d, Clasificador falso + resolvedor inyectado (sin red ni BD). (+12 more)
 
 ### Community 1577 - "Community 1577"
 Cohesion: 0.15
@@ -7308,8 +7341,8 @@ Cohesion: 0.16
 Nodes (13): _load_migration(), Regresiones unitarias de la migración v76 (``radar_dismissals``).  Las migracion, ``op`` de mentira: anota qué tablas se crean y qué SQL se ejecuta., Una migración fuera de la cadena no se aplica nunca., El guard de dialecto: v48 hacía ``return`` en Postgres, el error inverso., ``(user_key, id_externo)`` es lo que hace idempotente al POST.      Sin esa PK e, Tabla per-user: sin esto queda expuesta a ``anon``/``authenticated``., _RecordingOp (+5 more)
 
 ### Community 1580 - "Community 1580"
-Cohesion: 0.16
-Nodes (16): _applied_revisions(), _check_schema(), _check_timeout_seconds(), _database_url(), _gather_checks(), HealthResponse, Rutas /api/v1/health — sin autenticación.  Endpoints:     GET /api/v1/health, Devuelve ``(cabezas, todas las revisiones)`` según este checkout.      Import di (+8 more)
+Cohesion: 0.04
+Nodes (63): _abreviar(), _applied_revisions(), _check_db(), _check_disk(), _check_redis(), _check_schema(), _check_timeout_seconds(), _comparar_revisiones() (+55 more)
 
 ### Community 1581 - "Community 1581"
 Cohesion: 0.18
@@ -7340,12 +7373,12 @@ Cohesion: 0.18
 Nodes (14): _crear_api_key(), _desactivar_rate_limiter(), ejecutar_fuzzing(), _fuzzear_operacion(), _imprimir_resumen(), Informe, main(), _preparar_entorno() (+6 more)
 
 ### Community 1588 - "Community 1588"
-Cohesion: 0.20
-Nodes (11): GoldenExample, Busca el threshold que maximiza F-beta sobre el golden set (labels humanas)., Busca el threshold que maximiza F-beta sobre el golden set (labels humanas)., Un ejemplo del golden set con etiqueta humana., tune_threshold_on_golden(), Tests de la evaluación honesta contra el golden set (services/ml_eval.py)., Clasificador fake: SAP si el texto contiene 'sap' o 'abap' (case-insensitive)., Clasificador fake: SAP si el texto contiene 'sap' o 'abap' (case-insensitive). (+3 more)
+Cohesion: 0.14
+Nodes (16): evaluate_classifier(), GoldenExample, Serializa a dict plano (para logging/registry/API)., Evalúa un clasificador entrenado contra el golden set.      Args:         clf: C, Busca el threshold que maximiza F-beta sobre el golden set (labels humanas)., Evalúa un clasificador entrenado contra el golden set.      Args:         clf: C, Busca el threshold que maximiza F-beta sobre el golden set (labels humanas)., Un ejemplo del golden set con etiqueta humana. (+8 more)
 
 ### Community 1589 - "Community 1589"
 Cohesion: 0.12
-Nodes (13): decidir(), Decision, espera_para(), Reintento y re-entrega de webhooks (C2.4).  ``db/webhooks.py::_record_delivery``, Cuánto esperar antes del intento *intento* (1-indexado).      Backoff exponencia, Qué hacer tras un intento de entrega., Decide el destino de una entrega tras un intento.      La regla que cambia respe, C2.4 — un despliegue del receptor no puede perder eventos. (+5 more)
+Nodes (21): get_rate_limiter(), Descarta el singleton (útil en tests para cambiar el backend)., Descarta el singleton (útil en tests para cambiar el backend)., Devuelve el limiter singleton según ``RATE_LIMIT_BACKEND`` / disponibilidad., Devuelve el limiter singleton según ``RATE_LIMIT_BACKEND`` / disponibilidad., reset_rate_limiter(), Tests para services/rate_limiting.py — la factory de backends.  El módulo no ten, La factory cachea el limiter; cada test parte de cero. (+13 more)
 
 ### Community 1590 - "Community 1590"
 Cohesion: 0.12
@@ -7356,12 +7389,12 @@ Cohesion: 0.18
 Nodes (5): Los lotes son parte del contrato, no un detalle interno (C1.4).  `GET /licitacio, Los tres campos que el ítem pide, no solo el número., Lote único implícito es el caso mayoritario, y no es «no medido»., Añadirlo no puede cambiar lo que reciben los clientes de hoy., TestContrato
 
 ### Community 1592 - "Community 1592"
-Cohesion: 0.22
-Nodes (9): Llamar a set_cursor dos veces actualiza en lugar de insertar duplicado., Llamar a set_cursor dos veces actualiza en lugar de insertar duplicado., Llamar a set_cursor dos veces actualiza en lugar de insertar duplicado., Llamar a set_cursor dos veces actualiza en lugar de insertar duplicado., Llamar a set_cursor dos veces actualiza en lugar de insertar duplicado., Llamar a set_cursor dos veces actualiza en lugar de insertar duplicado., Llamar a set_cursor dos veces actualiza en lugar de insertar duplicado., Llamar a set_cursor dos veces actualiza en lugar de insertar duplicado. (+1 more)
+Cohesion: 0.10
+Nodes (21): _close_pg_pool(), close_pool(), Cierra la conexión del hilo actual y vacía el pool compartido., Cierra el pool Postgres si está abierto., Cierra el pool Postgres si está abierto., Cierra la conexión del hilo actual y vacía el pool compartido., Cierra el pool Postgres si está abierto., Cierra la conexión del hilo actual y vacía el pool compartido. (+13 more)
 
 ### Community 1593 - "Community 1593"
-Cohesion: 0.04
-Nodes (38): agenda_deps(), _Dependencias, _pursuit_row(), Unit tests de la agenda de Mi Pipeline (``services.pursuits.get_agenda``).  Las, Un pursuit vale por su plazo externo, y por nada más., Antes era el mínimo con ``next_action_due``, y eso mentía.          Con las dos, Cada acción interna es su propio compromiso, con su propio vencimiento., Una tarea sin fecha no es más urgente que una que vence mañana. (+30 more)
+Cohesion: 0.10
+Nodes (11): Unit tests de la agenda de Mi Pipeline (``services.pursuits.get_agenda``).  Las, Una renovación ajena no es un compromiso de la organización.      Y no basta con, Los contratos no: son de la organización, no de una persona., El mismo ámbito llega a las tres consultas: si una lo leyera distinto,     el mi, El contrato de la cartera es de Andalucía: pedir Galicia lo deja fuera., ``proximas_renovaciones`` filtra por **una** CCAA; la unión se reordena., test_get_agenda_acota_los_contratos_con_el_mismo_ambito(), test_get_agenda_con_varias_ccaa_consulta_el_mercado_una_vez_por_region() (+3 more)
 
 ### Community 1594 - "Community 1594"
 Cohesion: 0.18
@@ -7380,19 +7413,19 @@ Cohesion: 0.12
 Nodes (15): 1. No existe ningún elemento de plan, 2. El estado `PRE` es residual en el flujo, 3. El PIN sí está etiquetado, y no se extrae hoy, 4. Cuánto anticipa realmente un PIN — el número que decide, code:xml (<summary type="text">Id licitación: 300/2026/01575; Órgano d), Cuándo se reabre, Cómo repetir la medida, Decisión (+7 more)
 
 ### Community 1598 - "Community 1598"
-Cohesion: 0.11
-Nodes (18): _ClasificadorEvaluable, DecisionPredictiva, _escribir_checksum(), evaluar_en_golden(), promote_if_better(), Gate de promoción: clasificador SAP y modelos predictivos (baja, retención).  Mo, Qué decidió el gate y por qué., Evalúa el clasificador sobre la mitad ``holdout`` del golden set.      Devuelve (+10 more)
+Cohesion: 0.13
+Nodes (16): _ClasificadorEvaluable, DecisionPredictiva, _escribir_checksum(), evaluar_en_golden(), promote_if_better(), Gate de promoción: clasificador SAP y modelos predictivos (baja, retención).  Mo, Qué decidió el gate y por qué., Evalúa el clasificador sobre la mitad ``holdout`` del golden set.      Devuelve (+8 more)
 
 ### Community 1599 - "Community 1599"
 Cohesion: 0.19
 Nodes (15): _endpoints(), _jobs_table(), main(), Rutas expuestas por la API, leídas del router de FastAPI., Indica si CI ejercita la suite contra el motor de producción (ADR-018)., Archivos con acceso directo a BD todavía permitidos (ratchet decreciente)., Entradas del ratchet que apuntan a archivos que ya no existen.      Una whitelis, ``(ficheros que usan user_key hoy, tamaño de la lista congelada)``.      D18 fas (+7 more)
 
 ### Community 1600 - "Community 1600"
-Cohesion: 0.05
-Nodes (28): fin_efectivo(), _meses_de_duracion(), ``(fecha_fin_efectiva ISO, origen)``, o ``(None, None)``.      Prioridad: la fec, ``(fecha_fin_efectiva ISO, origen)``, o ``(None, None)``.      Prioridad: la fec, ``(fecha_fin_efectiva ISO, origen)``, o ``(None, None)``.      Prioridad: la fec, Duración en meses enteros. ``0`` si no se puede convertir sin adivinar.      El, Duración en meses enteros. ``0`` si no se puede convertir sin adivinar.      El, Duración en meses enteros. ``0`` si no se puede convertir sin adivinar.      El (+20 more)
+Cohesion: 0.07
+Nodes (19): fin_efectivo(), ``(fecha_fin_efectiva ISO, origen)``, o ``(None, None)``.      Prioridad: la fec, ``(fecha_fin_efectiva ISO, origen)``, o ``(None, None)``.      Prioridad: la fec, ``(fecha_fin_efectiva ISO, origen)``, o ``(None, None)``.      Prioridad: la fec, F4.3 — cartera de contratos en ejecución.  Dos cosas se fijan aquí. La primera,, DD/MM/YYYY no es una fecha malformada: es la que publican varios         conecto, Lo que el usuario tiene delante ya no es lo que publicó la fuente., «Un mes después del 31 de enero» es el 28, no un desbordamiento. (+11 more)
 
 ### Community 1601 - "Community 1601"
-Cohesion: 0.16
+Cohesion: 0.17
 Nodes (14): _hash_de(), invalidar(), _leer(), El diccionario de tecnologías vigente (C5.6, D28).  `config/keywords.py` era **c, Hash del diccionario vigente. Es lo que `filter_version` publica., Olvida lo cacheado. La llama quien acaba de escribir en la tabla., Vuelca en la tabla las keywords de la semilla que falten. Idempotente.      No v, El diccionario de `config/keywords.py`, que sigue siendo el respaldo. (+6 more)
 
 ### Community 1602 - "Community 1602"
@@ -7412,8 +7445,8 @@ Cohesion: 0.12
 Nodes (3): Tests para shared/i18n.py., When active locale == default, fallback dict should be empty., TestI18n
 
 ### Community 1606 - "Community 1606"
-Cohesion: 0.22
-Nodes (11): CspViolationRepository, Repository para csp_violations., Acceso a la tabla ``csp_violations``., Tests para db/repositories/csp_violations.py.  El repositorio no tenía ningún te, Sin la tabla, guarda nada y no rompe: el endpoint sigue devolviendo 204.      ``, Un fallo de BD no puede convertirse en un 500 para el navegador., _stored(), test_store_acumula_varias_violaciones() (+3 more)
+Cohesion: 0.18
+Nodes (12): CspViolationRepository, Repository para csp_violations., Acceso a la tabla ``csp_violations``., Persiste una violación CSP (si la tabla existe)., Tests para db/repositories/csp_violations.py.  El repositorio no tenía ningún te, Sin la tabla, guarda nada y no rompe: el endpoint sigue devolviendo 204.      ``, Un fallo de BD no puede convertirse en un 500 para el navegador., _stored() (+4 more)
 
 ### Community 1607 - "Community 1607"
 Cohesion: 0.11
@@ -7428,16 +7461,16 @@ Cohesion: 0.12
 Nodes (16): Organizaciones y oportunidades, `organization_certifications`, `organization_invitations`, `organization_memberships`, `organization_nifs`, `organization_references`, `organization_report_schedules`, `organization_revenues` (+8 more)
 
 ### Community 1610 - "Community 1610"
-Cohesion: 0.13
-Nodes (15): properties, type, type, facts, isSubtle, size, spacing, text (+7 more)
+Cohesion: 0.15
+Nodes (13): properties, type, isSubtle, size, spacing, text, weight, wrap (+5 more)
 
 ### Community 1611 - "Community 1611"
-Cohesion: 0.03
-Nodes (77): AdjudicacionSummary, list_adjudicaciones(), Familia **adjudicaciones**: ``/adjudicaciones``, que no cuelga de un expediente., Devuelve lista paginada de adjudicaciones., Devuelve lista paginada de adjudicaciones., _decode_cursor(), _decode_cursor_orden(), _encode_cursor() (+69 more)
+Cohesion: 0.06
+Nodes (36): _decode_cursor(), _decode_cursor_orden(), _encode_cursor(), _encode_cursor_orden(), Piezas compartidas por las familias de ``/licitaciones``.  Aquí sólo hay lo que, ``(valor, id_externo)`` de un cursor de :func:`_encode_cursor_orden`.      400 s, Raise 422 si el valor no es YYYY-MM-DD., Raise 422 si el valor no es YYYY-MM-DD. (+28 more)
 
 ### Community 1612 - "Community 1612"
-Cohesion: 0.04
-Nodes (38): _iter_atom_entries(), PlacspBulkConnector, _PlacspParseCore, Conectores PLACSP sobre el contrato Connector (ADR-009, F2).  Dos conectores ind, Conector para descarga de ZIPs mensuales de PLACE.      Implementa el contrato `, Conector para descarga de ZIPs mensuales de PLACE.      Implementa el contrato `, Conector para descarga de ZIPs mensuales de PLACE.      Implementa el contrato `, Descarga el ZIP y emite entries XML como ``RawNotice``.          El cursor se ig (+30 more)
+Cohesion: 0.10
+Nodes (16): now_utc(), Devuelve datetime actual en UTC (aware). Reemplaza datetime.utcnow()., Devuelve datetime actual en UTC (aware). Reemplaza datetime.utcnow()., Devuelve datetime actual en UTC (aware). Reemplaza datetime.utcnow()., Devuelve datetime actual en UTC (aware). Reemplaza datetime.utcnow()., Devuelve datetime actual en UTC (aware). Reemplaza datetime.utcnow()., Crea la invitación, reemplazando la pendiente del mismo correo.          Reinvit, Crea la invitación, reemplazando la pendiente del mismo correo.          Reinvit (+8 more)
 
 ### Community 1613 - "Community 1613"
 Cohesion: 0.25
@@ -7452,16 +7485,16 @@ Cohesion: 0.19
 Nodes (14): _cargar_candidatos(), _cuotas(), _estrato(), _keyword_match(), main(), muestrear(), _puntuar(), Muestrea candidatos para ampliar el golden set del clasificador SAP.  Por qué ha (+6 more)
 
 ### Community 1616 - "Community 1616"
-Cohesion: 0.14
-Nodes (16): _a_candidato(), _baja(), buscar(), Candidato, _cpv4(), _ordenar(), Predecesor y expedientes similares (C1.3).  ``services/embeddings.py`` sabía bus, Respuesta de `/licitaciones/{id}/similares`. (+8 more)
+Cohesion: 0.20
+Nodes (14): _a_candidato(), _baja(), buscar(), Candidato, _cpv4(), _ordenar(), Predecesor y expedientes similares (C1.3).  ``services/embeddings.py`` sabía bus, Respuesta de `/licitaciones/{id}/similares`. (+6 more)
 
 ### Community 1617 - "Community 1617"
-Cohesion: 0.18
-Nodes (17): guardar_plantilla(), instanciar_en_pursuit(), leer_plantilla(), PlantillaTareasOut, F4.6 — plantilla de tareas por etapa.  Un equipo con método prepara todas las of, La plantilla leída, con lo que la pantalla necesita para editarla., Cualquier miembro la ve; ``puede_editar`` dice si además la cambia., Sustituye la plantilla. Solo owner y admin.      No toca las oportunidades que y (+9 more)
+Cohesion: 0.13
+Nodes (20): guardar_plantilla(), instanciar_en_pursuit(), leer_plantilla(), PlantillaTareasOut, F4.6 — plantilla de tareas por etapa.  Un equipo con método prepara todas las of, La plantilla leída, con lo que la pantalla necesita para editarla., Cualquier miembro la ve; ``puede_editar`` dice si además la cambia., Sustituye la plantilla. Solo owner y admin.      No toca las oportunidades que y (+12 more)
 
 ### Community 1618 - "Community 1618"
-Cohesion: 0.08
-Nodes (28): contar_por_tipo(), descartes_desde_follows(), empresas_desde_follows(), exportar_de_usuario(), _fila(), _iso(), lectura_desde_follows(), listar() (+20 more)
+Cohesion: 0.07
+Nodes (34): contar_por_tipo(), descartes_desde_follows(), empresas_desde_follows(), exportar_de_usuario(), _fila(), _iso(), lectura_desde_follows(), listar() (+26 more)
 
 ### Community 1619 - "Community 1619"
 Cohesion: 0.21
@@ -7480,24 +7513,20 @@ Cohesion: 0.13
 Nodes (14): A. Los seis caminos de lectura, con su dueño y su contrato de frescura, Addendum 2026-09-06 — Qué se hace con una republicación (D23), Addendum 2026-09-18 — El resumen `ml_*` se deriva (T3, `v136`), ADR-026 — Caminos de lectura analítica y precedencia de la señal tecnológica, Alternativas descartadas, B. Precedencia de la señal tecnológica, C. Un predicado, un dueño, Consecuencias (+6 more)
 
 ### Community 1623 - "Community 1623"
-Cohesion: 0.09
-Nodes (21): FlagIn, FlagOut, get_feature_flags(), Feature flags endpoints (RFC UX Feature Flags).  La lista de flags la dirige el, Flag tal y como lo expone el backend (fuente de verdad)., Flag tal y como lo expone el backend (fuente de verdad)., Flag tal y como lo expone el backend (fuente de verdad)., Lista TODOS los flags del backend (incl. los que no estaban en ningún hardcode). (+13 more)
+Cohesion: 0.12
+Nodes (18): FlagIn, FlagOut, get_feature_flags(), Feature flags endpoints (RFC UX Feature Flags).  La lista de flags la dirige el, Flag tal y como lo expone el backend (fuente de verdad)., Flag tal y como lo expone el backend (fuente de verdad)., Flag tal y como lo expone el backend (fuente de verdad)., Lista TODOS los flags del backend (incl. los que no estaban en ningún hardcode). (+10 more)
 
 ### Community 1624 - "Community 1624"
 Cohesion: 0.12
 Nodes (15): 1. Qué correo sale y por dónde, 2.1 `smtp` (el que hay), 2.2 `resend`, 2.3 `postmark`, 2.4 `console`, 2.5 Vuelta atrás, 2.6 Dónde viven las variables, 2. Backends y cómo cambiar (+7 more)
 
 ### Community 1625 - "Community 1625"
-Cohesion: 0.18
-Nodes (9): Descarga + extrae texto de documentos ``pending``, por lotes., Descarga + extrae texto de documentos ``pending``, por lotes., Descarga + extrae texto de documentos ``pending``, por lotes., _run_fetch_phase(), Un documento saltado por breaker abierto se cuenta aparte y sigue         ``pend, S8.2 partió ``error`` en dos: un formato sin parser no es un fallo.          Los, Un documento saltado por breaker abierto se cuenta aparte y sigue         ``pend, S8.2 partió ``error`` en dos: un formato sin parser no es un fallo.          Los (+1 more)
+Cohesion: 0.15
+Nodes (11): Descarga + extrae texto de documentos ``pending``, por lotes., Descarga + extrae texto de documentos ``pending``, por lotes., Descarga + extrae texto de documentos ``pending``, por lotes., _run_fetch_phase(), _metric_value(), Un documento saltado por breaker abierto se cuenta aparte y sigue         ``pend, S8.2 partió ``error`` en dos: un formato sin parser no es un fallo.          Los, Valor de una serie del REGISTRY: 0.0 si está registrada y aún sin muestra. (+3 more)
 
 ### Community 1626 - "Community 1626"
 Cohesion: 0.14
 Nodes (13): 0. Antes de nada: ¿me entero de que hay solicitudes?, 1. Ver la cola, 2. Decidir, conceder y avisar, 3. Revocar una concesión dinámica, 4. Descartar, code:bash (curl -s -H "X-API-Key: $ADMIN_API_KEY" \), code:bash (curl -s -X PATCH -H "X-API-Key: $ADMIN_API_KEY" -H "Content-), code:bash (curl -s -X PATCH -H "X-API-Key: $ADMIN_API_KEY" -H "Content-) (+5 more)
-
-### Community 1627 - "Community 1627"
-Cohesion: 0.09
-Nodes (6): Tests para dashboard/utils/format.py y dashboard/utils/export.py., TestFmtEur, TestToExcelBytes, Serializa un DataFrame a CSV en chunks para evitar picos de memoria.      Para D, to_csv_bytes(), to_excel_bytes()
 
 ### Community 1628 - "Community 1628"
 Cohesion: 0.13
@@ -7516,20 +7545,20 @@ Cohesion: 0.18
 Nodes (12): _placeholders(), Los filtros opcionales de ``services.competitive.mercado`` arman SQL válido.  Es, El caso que un test por filtro no cubre: la suma., Documentado en el docstring de `_scope_sql`; nadie lo comprobaba., Ejecuta de verdad: valida la sentencia, no sólo su forma., `q` y `organo` son `LIKE` con `%` alrededor: el caso propenso a fallar., test_cada_filtro_aporta_sus_placeholders(), test_cuota_mercado_acepta_sus_tres_filtros_en_postgres() (+4 more)
 
 ### Community 1633 - "Community 1633"
-Cohesion: 0.14
-Nodes (13): Tests de ``POST /api/v1/publico/solicitudes-acceso``.  Es el único endpoint públ, El embudo no puede terminar en una fila que nadie mira.      El aviso sale por e, Entrada de internet, salida limpia: el fuzzer del contrato exige 0 5xx., La superficie pública no exige sesión: si la exigiera, el CTA moriría., La API caída no puede devolver un error de servidor a una página pública., La lista se lee del entorno, sin barras finales, y en dev añade localhost., El estado dice qué falló; el email no vuelve en la URL.      Diferenciar el moti, test_cuerpo_basura_no_da_5xx() (+5 more)
+Cohesion: 0.07
+Nodes (38): _con_origenes(), _contar(), Tests de ``POST /api/v1/publico/solicitudes-acceso``.  Es el único endpoint públ, El índice es parcial: sólo hay una pendiente por email, no una histórica.      S, El embudo no puede terminar en una fila que nadie mira.      El aviso sale por e, El aviso es un efecto lateral: no puede tumbar un formulario público., Un bot que rellena el campo trampa recibe el mismo 303 de éxito.      Devolver u, El endpoint sirve a un `<form>` HTML; nada más entra. (+30 more)
 
 ### Community 1634 - "Community 1634"
-Cohesion: 0.15
-Nodes (17): _persist(), Métricas por run del pipeline — persistidas en BD para visualizar histórico., Context manager que persiste el resultado del run al salir., record_run(), RunMetrics, to_dict(), persist_run(), Persiste métricas de un run del pipeline en ``extraction_runs``. (+9 more)
+Cohesion: 0.20
+Nodes (20): append_domain_event(), Escribe un evento **del catálogo** en el outbox. Devuelve su id.      Valida tip, Fija la preferencia de correo del usuario para un tipo de evento.      Raises:, Fija la preferencia de correo del usuario para un tipo de evento.      La fila a, set_modo_email(), correos(), _digests_pendientes(), _evento_asignacion() (+12 more)
 
 ### Community 1635 - "Community 1635"
 Cohesion: 0.11
 Nodes (19): AskModelInfo, list_ask_models(), Información sobre los modelos LLM disponibles., Información sobre los modelos LLM disponibles., Lista los modelos LLM disponibles para usar en POST /api/v1/ask., Lista los modelos LLM disponibles para usar en POST /api/v1/ask., Lista los modelos LLM disponibles para usar en POST /api/v1/ask., Lista los modelos LLM disponibles para usar en POST /api/v1/ask. (+11 more)
 
 ### Community 1636 - "Community 1636"
-Cohesion: 0.19
-Nodes (12): _cargar(), classifier_degradation(), get_classifier(), invalidate_classifier_cache(), Caché de proceso del clasificador SAP servido por la API.  Tres problemas que es, Devuelve el ``SAPClassifier`` activo, cargándolo si hace falta.      La carga oc, Por qué lo servido NO es el artefacto de la versión activa (o ``None``).      Se, Fuerza la recarga en la siguiente petición (tras activar otra versión). (+4 more)
+Cohesion: 0.06
+Nodes (34): _cargar(), classifier_degradation(), get_classifier(), invalidate_classifier_cache(), Caché de proceso del clasificador SAP servido por la API.  Tres problemas que es, Devuelve el ``SAPClassifier`` activo, cargándolo si hace falta.      La carga oc, Por qué lo servido NO es el artefacto de la versión activa (o ``None``).      Se, Fuerza la recarga en la siguiente petición (tras activar otra versión). (+26 more)
 
 ### Community 1637 - "Community 1637"
 Cohesion: 0.24
@@ -7552,8 +7581,8 @@ Cohesion: 0.15
 Nodes (12): Anatomía del marco, Deuda declarada, El contrato de filtros lo hereda el espacio, Estado: los 16 espacios, cubriendo las 25 rutas, Los movimientos estructurales, uno por pantalla, Migración por lotes, Qué está verificado y qué no, Rediseño de consola — estado y reglas (+4 more)
 
 ### Community 1642 - "Community 1642"
-Cohesion: 0.18
-Nodes (13): items, $ref, const, type, items, properties, required, type (+5 more)
+Cohesion: 0.22
+Nodes (9): $ref, const, type, properties, content, contentType, contentUrl, title (+1 more)
 
 ### Community 1643 - "Community 1643"
 Cohesion: 0.15
@@ -7572,12 +7601,12 @@ Cohesion: 0.11
 Nodes (15): addWatchlist, createPursuit, dismissMutate, estado, etiquetasPorObjeto, push, removeWatchlist, restoreMutate (+7 more)
 
 ### Community 1647 - "Community 1647"
-Cohesion: 0.11
-Nodes (19): _encolar_export_pdf(), Encola el maquetado y responde 202 con el estado del trabajo., Encola el maquetado y responde 202 con el estado del trabajo., Encola el maquetado y responde 202 con el estado del trabajo., a_dto(), get_job(), Ruta /api/v1/jobs — consulta del trabajo encolado (plan 2026-09 v2, S5.2).  Solo, Traduce el job de dominio a su forma publicada.      Vive aquí y no en ``shared/ (+11 more)
+Cohesion: 0.09
+Nodes (23): _encolar_export_pdf(), Encola el maquetado y responde 202 con el estado del trabajo., Encola el maquetado y responde 202 con el estado del trabajo., Encola el maquetado y responde 202 con el estado del trabajo., a_dto(), get_job(), Ruta /api/v1/jobs — consulta del trabajo encolado (plan 2026-09 v2, S5.2).  Solo, Traduce el job de dominio a su forma publicada.      Vive aquí y no en ``shared/ (+15 more)
 
 ### Community 1648 - "Community 1648"
-Cohesion: 0.11
-Nodes (19): title, type, description, properties, required, title, type, anyOf (+11 more)
+Cohesion: 0.12
+Nodes (16): title, type, description, properties, required, title, type, anyOf (+8 more)
 
 ### Community 1649 - "Community 1649"
 Cohesion: 0.16
@@ -7592,8 +7621,8 @@ Cohesion: 0.18
 Nodes (11): decodificar_ref(), Referencia pública de una licitación: ``id_externo`` en forma apta para una URL., Recupera el ``id_externo`` a partir de su referencia pública.      Devuelve ``No, Referencia pública de licitación: ida y vuelta, y fallo cerrado ante basura.  Es, Una URL indexada no puede depender de cuándo se generó., Evita que alguien "arregle" el endpoint aceptando el id sin codificar.      Serí, test_entrada_invalida_devuelve_none_sin_lanzar(), test_ida_y_vuelta_conserva_el_id_exacto() (+3 more)
 
 ### Community 1652 - "Community 1652"
-Cohesion: 0.08
-Nodes (20): eventos, path, _export_parquet_pandas_fallback(), Fallback Pandas cuando DuckDB no está disponible., Fallback Pandas cuando DuckDB no está disponible., Fallback Pandas cuando DuckDB no está disponible., Fallback Pandas cuando DuckDB no está disponible., Fallback Pandas cuando DuckDB no está disponible. (+12 more)
+Cohesion: 0.12
+Nodes (16): _export_parquet_pandas_fallback(), Job de pre-cálculo de KPIs — se ejecuta tras cada scraping.  Calcula métricas cl, Fallback Pandas cuando DuckDB no está disponible., Exporta agregados materializados a Parquet usando DuckDB + SQLite (F2).      Req, Exporta agregados materializados a Parquet usando DuckDB + SQLite (F2).      Req, Exporta agregados materializados a Parquet usando DuckDB + SQLite (F2).      Req, Fallback Pandas cuando DuckDB no está disponible., Fallback Pandas cuando DuckDB no está disponible. (+8 more)
 
 ### Community 1653 - "Community 1653"
 Cohesion: 0.15
@@ -7603,17 +7632,13 @@ Nodes (11): Cobertura de GET/PUT/DELETE ``/api/v1/me/profile``.  Ningún test me
 Cohesion: 0.21
 Nodes (12): Tests para GET /api/v1/licitaciones/{id}/documentos., Licitación existente sin documentos parseados → 200 con items vacío., Licitación inexistente → 200 con items vacío (no distingue de "sin documentos")., Licitación con pliegos parseados → 200 con metadatos, sin el texto., El orden lo fija el backend, no el cliente: el bloque de la UI pinta la     list, Sin cabecera de autenticación → 401 o 403., _seed_licitacion(), test_documentos_licitacion_con_documentos() (+4 more)
 
-### Community 1655 - "Community 1655"
-Cohesion: 0.13
-Nodes (11): Todos los webhooks de la instancia. Solo lo usa la vista global de ``/ops``., Todos los webhooks de la instancia. Solo lo usa la vista global de ``/ops``., Webhooks de una organización. Nunca los de otra, ni los globales.          Los g, Webhooks de una organización. Nunca los de otra, ni los globales.          Los g, Detalle de un webhook, opcionalmente acotado a una organización.          Con ``, Detalle de un webhook, opcionalmente acotado a una organización.          Con ``, Webhooks activos candidatos a recibir un evento.          Devuelve la fila con `, ``event_types`` se guarda como TEXT (CSV) en la tabla; los consumidores     de l (+3 more)
-
 ### Community 1656 - "Community 1656"
 Cohesion: 0.20
 Nodes (11): _asignacion(), _asignaciones(), El linaje de inclusión no se borra en una re-ingesta (S2.2).  Sin BD: se afirma, El fragmento ``col=...`` que ``_LIC_UPDATES`` genera para esa columna., Regresión: añadir linaje no puede desproteger `fecha_limite` y compañía., Regresión del ítem «cada re-ingesta nulea las cuatro columnas ML»     (cerrado e, Regresión: añadir linaje no puede desproteger `fecha_limite` y compañía., test_el_linaje_se_actualiza_con_coalesce_y_no_con_excluded_a_secas() (+3 more)
 
 ### Community 1657 - "Community 1657"
-Cohesion: 0.15
-Nodes (16): construir_movimientos(), EmpresaVigiladaActividad, _fecha(), Movimientos de las empresas vigiladas — señales proactivas (RFC ux-competidores, Actividad de una empresa vigilada en la ventana (0 si no se ha movido)., Una señal explicable sobre una empresa vigilada., Clasifica las filas de :func:`db.watchlist_empresas.movimientos_vigiladas`., SenalCompetitiva (+8 more)
+Cohesion: 0.13
+Nodes (18): construir_movimientos(), EmpresaVigiladaActividad, _fecha(), Movimientos de las empresas vigiladas — señales proactivas (RFC ux-competidores, Actividad de una empresa vigilada en la ventana (0 si no se ha movido)., Una señal explicable sobre una empresa vigilada., Clasifica las filas de :func:`db.watchlist_empresas.movimientos_vigiladas`., SenalCompetitiva (+10 more)
 
 ### Community 1658 - "Community 1658"
 Cohesion: 0.21
@@ -7632,8 +7657,8 @@ Cohesion: 0.17
 Nodes (11): A. Tres importes aditivos y una etiqueta (D21), ADR-032 — Semántica del importe y maestro de órganos, B. Todo cálculo comparativo usa la base sin IVA, y lo declara, C. El maestro de órganos copia el patrón de `empresas` (D22), code:block1 (organos(id, nombre_canonico, dir3, ccaa, tipo, url_perfil, .), Consecuencias, Contexto, D. Las cifras cambian, y el cambio se anota (+3 more)
 
 ### Community 1662 - "Community 1662"
-Cohesion: 0.13
-Nodes (21): _insertar(), _pandas_particion(), _particion(), Paridad SQL↔pandas de la resolución de identidad de competidores.  ``db/reposito, ``N/A`` sobrevive a la normalización: por eso hace falta la lista negra.      Si, ``N/A`` sobrevive a la normalización: por eso hace falta la lista negra.      Si, Partición según ``_connected_identity_keys``, la implementación actual., Partición según ``_connected_identity_keys``, la implementación actual. (+13 more)
+Cohesion: 0.14
+Nodes (17): get_licitacion(), get_similares(), post_comparar_fichas(), Familia **ficha**: el expediente como objeto.  El detalle, sus parecidos y la co, Un expediente propuesto como predecesor o similar (C1.3)., Predecesor y expedientes parecidos., ¿Este contrato ya se licitó antes? ¿Quién lo tiene hoy?      `services/embedding, F2.8 — determinista y sin LLM.      Una familia vacía **se muestra vacía**, no s (+9 more)
 
 ### Community 1663 - "Community 1663"
 Cohesion: 0.18
@@ -7676,16 +7701,16 @@ Cohesion: 0.21
 Nodes (8): _Inspector, _load(), _PostgresOp, Regresiones unitarias de la migración v129 (``user_id`` fase 2, ADR-030).  La ej, test_v129_cadena_e_inventario(), test_v129_downgrade_retira_solo_lo_anadido(), test_v129_no_hace_nada_fuera_de_postgres(), test_v129_upgrade_anade_columnas_backfillea_e_indexa()
 
 ### Community 1673 - "Community 1673"
-Cohesion: 0.15
-Nodes (10): _CounterMetric, _GaugeMetric, _HistogramMetric, _Metric, _NoopMetric, Métricas runtime de Prometheus expuestas en proceso (D1 + D2).  Estas gauges/cou, Vuelca el estado de los pools de BD en sus gauges.      Se invoca al servir ``/m, Vuelca el estado de los pools de BD en sus gauges.      Se invoca al servir ``/m (+2 more)
+Cohesion: 0.10
+Nodes (14): _CounterMetric, _GaugeMetric, _HistogramMetric, _Metric, _NoopMetric, Métricas runtime de Prometheus expuestas en proceso (D1 + D2).  Estas gauges/cou, Vuelca el estado de los pools de BD en sus gauges.      Se invoca al servir ``/m, Vuelca el estado de los pools de BD en sus gauges.      Se invoca al servir ``/m (+6 more)
 
 ### Community 1674 - "Community 1674"
 Cohesion: 0.12
 Nodes (15): _con_reintentos(), main(), Backfill por lotes de las columnas sombra del núcleo tipado (T2, ``v133``).  Rel, Ejecuta un lote reintentando si choca con locks o con el timeout.      Un ``lock, base, conDudas, conKit, ganada (+7 more)
 
 ### Community 1675 - "Community 1675"
-Cohesion: 0.11
-Nodes (19): normalize_titulo(), Título plegado para matching de reemisiones; ``None`` si no hay título.      Esp, Título plegado para matching de reemisiones; ``None`` si no hay título.      Esp, Clave de reemisión: órgano + CPV4 + año-mes + título. ``None`` si falta alguno., Clave de reemisión: órgano + CPV4 + año-mes + título. ``None`` si falta alguno., republicacion_key(), Es lo mismo que hace ``lower(btrim(...))`` en SQL., Distinto órgano, distinto CPV4 o distinto título ⇒ claves distintas. (+11 more)
+Cohesion: 0.15
+Nodes (14): _build_dataset(), Construye el dataset de entrenamiento desde el DataFrame.      Fuentes de etique, Construye el dataset de entrenamiento desde el DataFrame.      Fuentes de etique, Construye el dataset de entrenamiento desde el DataFrame.      Fuentes de etique, Construye el dataset de entrenamiento desde el DataFrame.      Fuentes de etique, Construye el dataset de entrenamiento desde el DataFrame.      Fuentes de etique, Construye el dataset de entrenamiento desde el DataFrame.      Fuentes de etique, Atajo ``(texts, labels[, weights])`` sobre :func:`build_dataset_rows`.      Se m (+6 more)
 
 ### Community 1676 - "Community 1676"
 Cohesion: 0.11
@@ -7729,27 +7754,27 @@ Nodes (11): _membresia(), Configuración de la organización: quién lee, quién
 
 ### Community 1686 - "Community 1686"
 Cohesion: 0.17
-Nodes (12): _mini_app(), App mínima con routers reales, sin el middleware ni la BD de api.app., Un endpoint de analytics ya no es alcanzable con solo la contraseña., El SPA necesita /auth/me para saber que debe pedir el TOTP., Abandonar un login a medias no puede exigir completarlo., Es la ruta donde se verifica el segundo factor: gatearla cerraría el login., Relajar el gate de MFA no relaja el CSRF de la mutación., test_analytics_con_mfa_pendiente_da_403() (+4 more)
+Nodes (12): _mini_app(), App mínima con routers reales, sin el middleware ni la BD de api.app., Un endpoint de analytics ya no es alcanzable con solo la contraseña., El corpus completo tampoco se descarga con la sesión a medio autenticar., Abandonar un login a medias no puede exigir completarlo., Es la ruta donde se verifica el segundo factor: gatearla cerraría el login., Relajar el gate de MFA no relaja el CSRF de la mutación., test_analytics_con_mfa_pendiente_da_403() (+4 more)
 
 ### Community 1687 - "Community 1687"
 Cohesion: 0.17
-Nodes (12): La variante explícita devuelve el principal aunque falte el segundo factor., El corpus completo tampoco se descarga con la sesión a medio autenticar., Sustituye la capa db que consulta ``_session_principal``.      Desde 2026-08 la, MFA exigido y sin verificar → 403 en la dependencia base., Con el segundo factor ya verificado la dependencia devuelve el principal., Un usuario sin TOTP confirmado no se ve afectado por el gate., _stub_session(), test_export_descarga_con_mfa_pendiente_da_403() (+4 more)
+Nodes (12): La variante explícita devuelve el principal aunque falte el segundo factor., El SPA necesita /auth/me para saber que debe pedir el TOTP., Sustituye la capa db que consulta ``_session_principal``.      Desde 2026-08 la, MFA exigido y sin verificar → 403 en la dependencia base., Con el segundo factor ya verificado la dependencia devuelve el principal., Un usuario sin TOTP confirmado no se ve afectado por el gate., _stub_session(), test_auth_me_funciona_con_mfa_pendiente() (+4 more)
 
 ### Community 1688 - "Community 1688"
 Cohesion: 0.18
 Nodes (10): Addendum — migración completada (2026-08-03), ADR-023 — Cómputo en vivo del camino de lectura analítico: agregación SQL, no scan pandas en proceso, Camino de lectura canónico (actualizado), code:block1 (Supabase Postgres (OLTP)), Consecuencias, Contexto, "Cómputo en vivo" tiene dos formas, y solo una está exenta de la vara de medir, Decisión (+2 more)
 
 ### Community 1689 - "Community 1689"
-Cohesion: 0.06
-Nodes (29): _avisar_operador(), Anuncia una solicitud nueva por webhook.      Sin esto el embudo terminaba en un, avisar_operador_de_solicitud(), _cuerpo_acceso(), _dentro_de_la_ventana_de_aviso(), notificar_acceso_concedido(), Avisos del embudo de acceso: al operador cuando llega, a la persona cuando entra, Escribe a quien pidió acceso para decirle que ya puede entrar.      Devuelve si (+21 more)
+Cohesion: 0.11
+Nodes (17): _avisar_operador(), Anuncia una solicitud nueva por webhook.      Sin esto el embudo terminaba en un, avisar_operador_de_solicitud(), _cuerpo_acceso(), _dentro_de_la_ventana_de_aviso(), Avisos del embudo de acceso: al operador cuando llega, a la persona cuando entra, ``True`` si toca emitir el aviso; ``False`` si se agrupa con el anterior.      C, ``True`` si toca emitir el aviso; ``False`` si se agrupa con el anterior.      C (+9 more)
 
 ### Community 1690 - "Community 1690"
 Cohesion: 0.24
 Nodes (7): ConnectionBanner(), hayReintentosEnVuelo(), QueryObservable, i, oyentes, pastilla, queriesDelCache
 
 ### Community 1691 - "Community 1691"
-Cohesion: 0.31
-Nodes (10): actualizar_estado(), Mueve una solicitud de estado. Devuelve ``False`` si no existe., _crear(), Tests de ``db/solicitudes_acceso.py`` — CRUD de la cola de solicitudes., El CHECK de la tabla lo rechazaría igual; esto falla antes y más claro., test_actualizar_una_solicitud_inexistente_devuelve_false(), test_contar_pendientes_solo_cuenta_lo_que_espera_revision(), test_listar_filtra_por_estado() (+2 more)
+Cohesion: 0.13
+Nodes (21): actualizar_estado(), contar_pendientes(), crear_solicitud(), listar_solicitudes(), obtener_solicitud(), CRUD de ``solicitudes_acceso`` — cola de peticiones de acceso de la landing.  El, Mueve una solicitud de estado. Devuelve ``False`` si no existe., Cuántas solicitudes esperan revisión. (+13 more)
 
 ### Community 1692 - "Community 1692"
 Cohesion: 0.18
@@ -7776,20 +7801,20 @@ Cohesion: 0.21
 Nodes (12): _licitacion(), El paso que mide la paridad de `follows` en cada pasada (ADR-031 §B).  Por qué e, `ops_events` se consulta sin ceremonia; no es sitio para `user_key`.      El scr, Advisory: un fallo aquí no puede tumbar la pasada de ingesta., `_run_{nombre}`: si el paso está en la lista y la función no existe, la     pasa, Lo importante de este test es la segunda mitad.      Que el job cuente la fila q, test_con_escritura_doble_la_paridad_sale_en_cero(), test_el_detalle_no_lleva_identificadores_de_personas() (+4 more)
 
 ### Community 1698 - "Community 1698"
-Cohesion: 0.18
-Nodes (15): UtesView(), useUtesData(), bin(), BIN_ORDER, buildComparativaRows(), buildMemberDistribution(), buildTopMiembrosPorImporte(), filterMiembros() (+7 more)
+Cohesion: 0.12
+Nodes (22): UtesGraficosDistribucion(), UtesGraficosMiembros(), UtesKpis(), UtesMiembros(), UtesComparativa(), UtesSocios(), UtesView(), useUtesData() (+14 more)
 
 ### Community 1699 - "Community 1699"
-Cohesion: 0.02
-Nodes (140): CarteraRepository, Contratos ganados que siguen en ejecución., imprimir(), main(), Lleva a la cartera (F4.3) las oportunidades que ya estaban ganadas.  ``contratos, accion_para(), cartera_de_usuario(), CarteraNoEncontradaError (+132 more)
+Cohesion: 0.03
+Nodes (105): CarteraRepository, Contratos ganados que siguen en ejecución., CarteraNoEncontradaError, CarteraResumen, ContratoCartera, ContratoEvento, _existente(), listar_cartera() (+97 more)
 
 ### Community 1700 - "Community 1700"
 Cohesion: 0.13
 Nodes (14): _embeber_documentos(), Chunkea, embebe y persiste cada documento del lote, con su versión., Chunkea, embebe y persiste cada documento del lote, con su versión., Chunkea, embebe y persiste cada documento del lote, con su versión., chunk_text_with_offsets(), pagina_de_offset(), Chunking determinista de texto extraído de pliegos (plan Pliegos+RAG, F8).  Puro, Como :func:`chunk_text`, pero cada chunk trae su offset en ``texto``.      El of (+6 more)
 
 ### Community 1701 - "Community 1701"
-Cohesion: 0.12
-Nodes (17): _default_placsp_connector_disabled(), _disable_rate_limiter(), _infer_marker(), _isolate_database_url(), pytest_collection_modifyitems(), Fixtures compartidos para aislar la BD en tests., Fuerza ``PLACSP_CONNECTOR_ENABLED=False`` por defecto en tests unitarios.      D, Fuerza ``PLACSP_CONNECTOR_ENABLED=False`` por defecto en tests unitarios.      D (+9 more)
+Cohesion: 0.17
+Nodes (12): _default_placsp_connector_disabled(), _disable_rate_limiter(), _isolate_database_url(), Fuerza ``PLACSP_CONNECTOR_ENABLED=False`` por defecto en tests unitarios.      D, Fuerza ``PLACSP_CONNECTOR_ENABLED=False`` por defecto en tests unitarios.      D, Disable rate limiting in tests to avoid 429s from shared state., Disable rate limiting in tests to avoid 429s from shared state., Evita que un ``DATABASE_URL`` real en ``.env`` contamine tests unitarios.      p (+4 more)
 
 ### Community 1702 - "Community 1702"
 Cohesion: 0.24
@@ -7812,20 +7837,20 @@ Cohesion: 0.12
 Nodes (12): { apiGet, ApiError }, { apiGet, ApiError, vista }, cpvInput, dialog, importeInput, keywordInput, onPut, { registrarEvento } (+4 more)
 
 ### Community 1707 - "Community 1707"
-Cohesion: 0.07
-Nodes (49): create_rule(), Persiste una regla nueva y devuelve su id., Persiste una regla nueva y devuelve su id., Persiste una regla nueva y devuelve su id., Persiste una regla nueva y devuelve su id., Tests de /api/v1/me/data y /api/v1/me (DELETE) con autenticación dual (F13·C3.1/, Con sesión (sin API key), las api_keys exportadas vienen de get_all_for_user., Una credencial de automatización no puede borrar una cuenta humana. (+41 more)
+Cohesion: 0.12
+Nodes (34): create_rule(), Persiste una regla nueva y devuelve su id., Persiste una regla nueva y devuelve su id., Persiste una regla nueva y devuelve su id., Persiste una regla nueva y devuelve su id., _eventos_de_regla(), _insert_lic(), Tests del job de alertas de reglas de watchlist (scheduler/watchlist_rules_alert (+26 more)
 
 ### Community 1708 - "Community 1708"
-Cohesion: 0.18
-Nodes (6): El diccionario de tecnologías como dato (C5.6, D28).  `config/keywords.py` era c, Cada test parte de la caché vacía.      El módulo cachea el diccionario 60 s a p, La tabla manda; la semilla es el suelo., Quedarse sin diccionario no degradaría el filtro: lo apagaría., _sin_cache(), TestFuenteVigente
+Cohesion: 0.11
+Nodes (10): El diccionario de tecnologías como dato (C5.6, D28).  `config/keywords.py` era c, Cada test parte de la caché vacía.      El módulo cachea el diccionario 60 s a p, El criterio de aceptación: semilla y tabla coinciden en un arranque limpio., Sin decirlo, alguien añadiría una keyword ahí y esperaría que entrase., Si lo hiciera, cada despliegue desharía una decisión del equipo., La tabla manda; la semilla es el suelo., Quedarse sin diccionario no degradaría el filtro: lo apagaría., _sin_cache() (+2 more)
 
 ### Community 1709 - "Community 1709"
 Cohesion: 0.13
 Nodes (19): _alertar_fichas_fallidas(), _candidatas_resumen(), _ids_banda_caliente(), Job de pliegos: descarga+extracción (F7) + chunking+embeddings (F8).  Patrón ``s, Entry point del job.      Los límites por fase vienen de ``config.settings`` (PL, Corre el job y falla solo si el lote entero de fetch se cayó.      Un PDF corrup, Entry point del job.      Los límites por fase vienen de ``config.settings`` (PL, Top de la banda ``Caliente`` del score genérico (sin perfil de usuario).      El (+11 more)
 
 ### Community 1710 - "Community 1710"
-Cohesion: 0.14
-Nodes (12): Redacta valores sensibles antes de enviarlos como atributo de span OTel.      Re, _redact_span_text(), _redact_span_text devuelve una cadena sin lanzar excepciones., _redact_span_text devuelve una cadena sin lanzar excepciones., _redact_span_text maneja cadena vacía sin error., _redact_span_text maneja cadena vacía sin error., Lines 43-44, 46-47: _redact_span_text., test_redact_span_text_empty_input() (+4 more)
+Cohesion: 0.12
+Nodes (16): _desplazar_meses(), Desplaza ``meses`` (con signo) sin dependencias externas.      Aritmética por me, Desplaza ``meses`` (con signo) sin dependencias externas.      Aritmética por me, Cuándo se espera que salga el contrato siguiente.      Es una **estimación decla, Cuándo se espera que salga el contrato siguiente.      Es una **estimación decla, Cuándo se espera que salga el contrato siguiente.      Es una **estimación decla, La ventana de aviso **más urgente** que el contrato ya cruzó, o ``None``.      U, La ventana de aviso **más urgente** que el contrato ya cruzó, o ``None``.      U (+8 more)
 
 ### Community 1712 - "Community 1712"
 Cohesion: 0.25
@@ -7876,8 +7901,8 @@ Cohesion: 0.20
 Nodes (9): A. Una tabla poligámica, con `target_type` cerrado, ADR-031 — Seguimiento unificado: una tabla `follows`, un control «Seguir», B. Backfill, lectura dual, y solo entonces retirada, C. Un solo componente «Seguir», code:block1 (follows(id, organization_id, user_id, target_type, target_id), Consecuencias, Contexto, D. `follows` es un productor de eventos, no un notificador (+1 more)
 
 ### Community 1724 - "Community 1724"
-Cohesion: 0.15
-Nodes (16): get_eventos(), get_timeline(), _licitacion_existe(), Rutas de eventos de contrato (Fase 4).  - ``GET /licitaciones/{id}/eventos`` — l, Movimientos de contrato recientes, acotados por el ámbito global.      Los filtr, Movimientos de contrato recientes, acotados por el ámbito global.      Los filtr, Hito de la línea de tiempo (evento materializado o implícito)., Hitos del ciclo de vida: publicación → adjudicación → formalización →     modifi (+8 more)
+Cohesion: 0.16
+Nodes (19): Cuerpo del webhook para este evento en el formato pedido.      Un formato descon, Cuerpo del webhook para este evento en el formato pedido.      Un formato descon, renderizar(), _esquema(), Plantillas de webhook por formato, validadas contra su esquema (S4.3, D13).  Los, Slack rechaza el mensaje si el ``plain_text`` de un header lo supera., Block Kit admite como mucho 10 ``fields`` por ``section``., Criterio de S4.3, y además la degradación correcta: un receptor que     espera e (+11 more)
 
 ### Community 1725 - "Community 1725"
 Cohesion: 0.13
@@ -7904,8 +7929,8 @@ Cohesion: 0.18
 Nodes (10): ctas, faq, formulario, grafo, header, hubs, locs, preguntas (+2 more)
 
 ### Community 1731 - "Community 1731"
-Cohesion: 0.20
-Nodes (10): properties, items, minItems, type, $ref, body, $schema, version (+2 more)
+Cohesion: 0.25
+Nodes (8): properties, $schema, type, version, const, const, enum, enum
 
 ### Community 1732 - "Community 1732"
 Cohesion: 0.22
@@ -7916,16 +7941,16 @@ Cohesion: 0.20
 Nodes (9): active, created_at, event_types, failure_count, id, last_status, last_triggered_at, name (+1 more)
 
 ### Community 1734 - "Community 1734"
-Cohesion: 0.22
-Nodes (10): 1. Primera carga histórica, 2. Actualización incremental (últimos 3 meses), 3. Actualización ligera (feed ATOM en vivo), 4. Entrenar el clasificador ML, 4. Lanzar el dashboard, code:bash (python -m scraper.ml_classifier train), code:bash (python -m scheduler.run_update --backfill 2024 1), code:bash (python -m scheduler.run_update) (+2 more)
+Cohesion: 0.18
+Nodes (12): 1. Primera carga histórica, 2. Actualización incremental (últimos 3 meses), 3. Actualización ligera (feed ATOM en vivo), 4. Entrenar el clasificador ML, 4. Lanzar el dashboard, 5. Entrenar el clasificador ML, code:bash (python -m scraper.ml_classifier train), code:bash (cp .env.example .env   # edita con tus credenciales) (+4 more)
 
 ### Community 1735 - "Community 1735"
 Cohesion: 0.33
 Nodes (6): computedHash, source, sourceType, trust, verifiedHash, pandas-data-analysis
 
 ### Community 1736 - "Community 1736"
-Cohesion: 0.14
-Nodes (12): Calcula PSI + drop F1 y notifica si supera el umbral.      Devuelve el ``DriftSt, Calcula PSI + drop F1 y notifica si supera el umbral.      Devuelve el ``DriftSt, Calcula PSI + drop F1 y notifica si supera el umbral.      Devuelve el ``DriftSt, run_once(), Tests para scheduler/drift_monitor.py — clasificación de severidad y ciclo run_o, test_crit_triggers_notify(), test_import_error_psi(), test_notify_import_error_handled() (+4 more)
+Cohesion: 0.23
+Nodes (11): Calcula PSI + drop F1 y notifica si supera el umbral.      Devuelve el ``DriftSt, Calcula PSI + drop F1 y notifica si supera el umbral.      Devuelve el ``DriftSt, Calcula PSI + drop F1 y notifica si supera el umbral.      Devuelve el ``DriftSt, run_once(), Tests para scheduler/drift_monitor.py — clasificación de severidad y ciclo run_o, test_crit_triggers_notify(), test_import_error_psi(), test_notify_import_error_handled() (+3 more)
 
 ### Community 1737 - "Community 1737"
 Cohesion: 0.17
@@ -7944,8 +7969,8 @@ Cohesion: 0.36
 Nodes (9): _campo(), _evidencia(), leer_rfcs(), main(), Genera el índice de RFC en ``docs/rfc/README.md`` (C9.6).  Setenta RFC en un dir, Devuelve ``(rfcs, errores)``. Un RFC sin `status` válido es un error., _reemplaza(), render_block() (+1 more)
 
 ### Community 1741 - "Community 1741"
-Cohesion: 0.11
-Nodes (18): Cambiar un campo rastreado genera entrada en licitaciones_history., Cambiar un campo rastreado genera entrada en licitaciones_history., RFC dlq-upsert acceptance criterion: una violación de CHECK     (fecha no-ISO) e, RFC dlq-upsert acceptance criterion: una violación de CHECK en     una adjudicac, Cambiar un campo rastreado genera entrada en licitaciones_history., RFC dlq-upsert acceptance criterion: una violación de CHECK     (fecha no-ISO) e, Cambiar un campo rastreado genera entrada en licitaciones_history., RFC dlq-upsert acceptance criterion: una violación de CHECK     (fecha no-ISO) e (+10 more)
+Cohesion: 0.13
+Nodes (19): _cargar_revision_del_indice(), El índice vigente y la expresión que consulta la API tienen que ser la misma.  U, Ejecuta ``upgrade``/``downgrade`` de la revisión vigente y devuelve su DDL., Las tres piezas del DDL son las tres que hacen falta, y ninguna sobra.      ``CO, Sin ``ANALYZE`` el índice puede existir y el planificador ignorarlo.      Nació, Un ``DROP INDEX`` sin ``CONCURRENTLY`` toma un lock exclusivo sobre la     tabla, DIALECT-GUARDED: la suite corre parte de sus casos sobre SQLite, donde ni     ``, Carga la revisión por ruta: ``db/alembic/versions/`` no es un paquete.      Añad (+11 more)
 
 ### Community 1742 - "Community 1742"
 Cohesion: 0.12
@@ -7960,7 +7985,7 @@ Cohesion: 0.21
 Nodes (8): evaluar(), Devuelve la lista de violaciones de umbral, vacía si todo está en rango.      La, Devuelve la lista de violaciones de umbral, vacía si todo está en rango.      La, TED al 80 % (calibrado en 65,9, límite 72,49) tiene que saltar., 3 de 4 sin plazo es 75 % y no significa nada., El conector las corta en el origen: si crecen, entran por otro camino., `evaluar` sobre las cifras reales de producción del 2026-09-18 (recalibración)., TestEvaluar
 
 ### Community 1745 - "Community 1745"
-Cohesion: 0.16
+Cohesion: 0.15
 Nodes (10): parse_lotes(), Extrae los lotes (``cac:ProcurementProjectLot``) de una entry CODICE.      Cada, Extrae los lotes (``cac:ProcurementProjectLot``) de una entry CODICE.      Cada, _make_entry_with_lotes(), Entry con ``cac:ProcurementProjectLot`` y, opcionalmente, ``TenderResult``     q, Regresión de Ola 2 (docs/IMPROVEMENT_BACKLOG.md): el lote es la unidad     real, Un lote sin numero no es direccionable -- ninguna adjudicación         podría re, La mayoría de expedientes con lotes comparten un único plazo de         presenta (+2 more)
 
 ### Community 1746 - "Community 1746"
@@ -8032,8 +8057,8 @@ Cohesion: 0.12
 Nodes (17): title, type, anyOf, title, properties, required, title, type (+9 more)
 
 ### Community 1763 - "Community 1763"
-Cohesion: 0.16
-Nodes (11): ScoringResponse, LicitacionSummary, PAGINATION, row(), { hook }, { hook, state }, items, marcada (+3 more)
+Cohesion: 0.20
+Nodes (9): PAGINATION, row(), { hook }, { hook, state }, items, marcada, { result }, { result, rerender } (+1 more)
 
 ### Community 1764 - "Community 1764"
 Cohesion: 0.24
@@ -8048,8 +8073,8 @@ Cohesion: 0.28
 Nodes (5): etiqueta_tipo_contrato(), Etiqueta legible del tipo de contrato. Sin catalogar → el código tal cual., El mapa que vivía en ``classification.py`` tenía 40 y 50 desplazados., Una sola fuente: el re-export no puede divergir del catálogo., TestTipoContratoCorregido
 
 ### Community 1767 - "Community 1767"
-Cohesion: 0.22
-Nodes (5): Tenerlo en dos lo dejaría divergir sin que nada fallase., `filter_version` sigue siendo el hash del contenido., Dos formas de escribir lo mismo no pueden invalidar el linaje entero., Las series de antes y después de `cpv_ti_universe` no son comparables., TestVersion
+Cohesion: 0.13
+Nodes (9): current_filter_version(), Versionado reproducible del universo de inclusión del scraper., Hash estable del filtro que decide el universo tecnológico observado.      Desde, Tenerlo en dos lo dejaría divergir sin que nada fallase., `filter_version` sigue siendo el hash del contenido., Dos formas de escribir lo mismo no pueden invalidar el linaje entero., Las series de antes y después de `cpv_ti_universe` no son comparables., El acoplamiento que hace que editar desde /ops cambie el linaje. (+1 more)
 
 ### Community 1768 - "Community 1768"
 Cohesion: 0.12
@@ -8060,8 +8085,8 @@ Cohesion: 0.20
 Nodes (11): _imports_resolve_organization_directly(), Test de arquitectura: las rutas nunca resuelven organización por su cuenta.  Con, ``api/tenancy.py`` debe llamar a resolve_organization sin guardarla     tras un, ``api/tenancy.py`` debe llamar a resolve_organization sin guardarla     tras un, True si el archivo importa ``resolve_organization`` desde     ``services.organiz, True si el archivo importa ``resolve_organization`` desde     ``services.organiz, ``resolve_organization`` solo debe importarse desde ``api/tenancy.py``.      Un, ``resolve_organization`` solo debe importarse desde ``api/tenancy.py``.      Un (+3 more)
 
 ### Community 1770 - "Community 1770"
-Cohesion: 0.12
-Nodes (17): build_pdf_export(), descargar_export_encolado(), Consulta + maquetado del PDF de exportación. Devuelve ``(bytes, filas)``.      E, Sirve el PDF que dejó maquetado el worker, mientras siga en caché.      Es una r, Sirve el PDF que dejó maquetado el worker, mientras siga en caché.      Es una r, Sirve el PDF que dejó maquetado el worker, mientras siga en caché.      Es una r, Consulta + maquetado del PDF de exportación. Devuelve ``(bytes, filas)``.      E, ejecutar_export_pdf() (+9 more)
+Cohesion: 0.13
+Nodes (12): _pursuit_row(), Un pursuit vale por su plazo externo, y por nada más., Antes era el mínimo con ``next_action_due``, y eso mentía.          Con las dos, Existe como compromiso, pero no hay fila de ``pursuit_tasks`` que editar., ``next_action`` se deriva de la tarea más urgente (C6.1): repetirla         cont, El cruce es por ``pursuit_id``, no «hay alguna tarea en la agenda»., test_kpis_cuentan_vencidas_dentro_de_la_semana(), test_orden_sin_fecha_al_final_y_pursuit_antes_que_senal() (+4 more)
 
 ### Community 1771 - "Community 1771"
 Cohesion: 0.18
@@ -8096,12 +8121,12 @@ Cohesion: 0.18
 Nodes (10): 0. Leer el número (30 segundos), 1. Mover las lecturas (cambio de código, con PR), 2. Ventana de observación, 3. Retirar los endpoints antiguos (RFC), code:sql (SELECT ts::date AS dia, value AS faltan, detail), code:block2 (python scripts/check_follows_paridad.py --detalle 20), Por qué no se ha hecho ya, Qué NO hace el paso automático (+2 more)
 
 ### Community 1779 - "Community 1779"
-Cohesion: 0.03
-Nodes (80): _classify_integrity_error(), _con_sombras(), _constraint_exc_types(), _dedup_adj_rows(), _earliest_iso_date(), _insert_adj_rowwise(), log_extraccion(), Dataclasses de dominio y operaciones de escritura sobre la BD.  Contiene los mod (+72 more)
+Cohesion: 0.02
+Nodes (110): Persiste un fallo en la DLQ. No lanza excepciones — best-effort.      Si ya exis, Persiste un fallo en la DLQ. No lanza excepciones — best-effort.      Si ya exis, record_failure(), _classify_integrity_error(), _con_sombras(), _constraint_exc_types(), _dedup_adj_rows(), _earliest_iso_date() (+102 more)
 
 ### Community 1780 - "Community 1780"
-Cohesion: 0.25
-Nodes (9): Tests para dashboard/utils/pdf.py — generación de PDF ejecutivo., test_generate_pdf_basic(), test_generate_pdf_empty_data(), test_generate_pdf_many_kpis(), test_generate_pdf_with_chart(), generate_pdf(), Generador de PDF «informe ejecutivo» de licitaciones SAP.  Usa reportlab para ge, Genera un PDF en memoria y devuelve los bytes.      Args:         kpis: {label: (+1 more)
+Cohesion: 0.21
+Nodes (10): Tests para dashboard/utils/pdf.py — generación de PDF ejecutivo., test_generate_pdf_basic(), test_generate_pdf_empty_data(), test_generate_pdf_many_kpis(), test_generate_pdf_with_chart(), TestPdfHtmlEscape, generate_pdf(), Generador de PDF «informe ejecutivo» de licitaciones SAP.  Usa reportlab para ge (+2 more)
 
 ### Community 1781 - "Community 1781"
 Cohesion: 0.25
@@ -8132,8 +8157,8 @@ Cohesion: 0.25
 Nodes (8): items, items, maxItems, minItems, type, items, $ref, elements
 
 ### Community 1788 - "Community 1788"
-Cohesion: 0.12
-Nodes (9): C2.2 — traspaso, salida y borrado (ADR-030 §D)., Un botón no basta: la acción no tiene deshacer y borra trabajo ajeno., Dos owners es un estado que ningún flujo sabe leer; cero, tampoco., Invitar y traspasar son cosas distintas., Quien monta un equipo no debería perder el acceso al traspasarlo., Un comentario firmado por alguien que ya no está sigue siendo suyo., «14 oportunidades y 37 comentarios» es una advertencia; «¿seguro?» no., Se lleva trabajo de otras personas y no tiene deshacer. (+1 more)
+Cohesion: 0.17
+Nodes (18): evaluate(), El peor de los ítems. Una familia sin ítems es ``desconocido``., Contrasta una ficha contra un perfil. Función pura: ni lee ni escribe BD.      Q, _veredicto_familia(), _casos(), S2.3 — contraste ficha × capacidad: golden y reglas que lo sostienen.  El golden, Un requisito incumplido no se diluye con otro que sí se cumple., La regla 1 del módulo, comprobada sobre los diez casos del golden. (+10 more)
 
 ### Community 1789 - "Community 1789"
 Cohesion: 0.23
@@ -8160,12 +8185,12 @@ Cohesion: 0.12
 Nodes (16): api_key(), auth(), Crea una API Key en la DB de test y devuelve el token en bruto., Crea una API Key en la DB de test y devuelve el token en bruto., Crea una API Key en la DB de test y devuelve el token en bruto., Headers de autenticación con la API key de test., Headers de autenticación con la API key de test., Crea una API Key en la DB de test y devuelve el token en bruto. (+8 more)
 
 ### Community 1795 - "Community 1795"
-Cohesion: 0.17
-Nodes (15): _ambito_como_filtros(), El ámbito de la organización (F6.1), traducido al filtro del universo.      Es e, El ámbito de la organización (F6.1), traducido al filtro del universo.      Es e, El ámbito de la organización acota el Radar sólo cuando nadie filtra a mano., Quien filtra a mano ha dicho qué quiere ver; el ámbito es el defecto., CCAA, CPV e importe mínimo se resolvían y se tiraban.      El admin acotaba su m, ``settings_json`` admite claves nuevas y el modelo declara     ``extra="forbid"`, ``settings_json`` admite claves nuevas y el modelo declara     ``extra="forbid"` (+7 more)
+Cohesion: 0.16
+Nodes (18): create_pursuit(), _notificar_asignacion(), El desglose del score, listo para la columna TEXT de ``v110``., El desglose del score, listo para la columna TEXT de ``v110``., El desglose del score, listo para la columna TEXT de ``v110``., Alerta in-app a quien acaba de recibir la oportunidad.      Asignar a alguien no, El desglose del score, listo para la columna TEXT de ``v110``., Alerta in-app a quien acaba de recibir la oportunidad.      Asignar a alguien no (+10 more)
 
 ### Community 1796 - "Community 1796"
-Cohesion: 0.12
-Nodes (15): delete_all_for_user(), delete_saved_filter(), list_saved_filters(), CRUD para búsquedas/filtros guardados por el usuario.  La tabla ``saved_filters`, Elimina un filtro guardado por ID, siempre acotado a su dueño.      ``False`` si, Borra todas las vistas del usuario (GDPR Art. 17). Filas borradas.      Son dato, Guarda o actualiza un filtro con nombre para el usuario.      Si ya existe una e, Guarda o actualiza un filtro con nombre para el usuario.      Si ya existe una e (+7 more)
+Cohesion: 0.09
+Nodes (22): Componente de búsqueda con autocompletado JS y debounce 300ms.  Inyecta un overl, Inyecta el JS de autocompletado sobre el input de búsqueda del sidebar.      Arg, render_search_autocomplete(), delete_all_for_user(), delete_saved_filter(), list_saved_filters(), CRUD para búsquedas/filtros guardados por el usuario.  La tabla ``saved_filters`, Elimina un filtro guardado por ID, siempre acotado a su dueño.      ``False`` si (+14 more)
 
 ### Community 1797 - "Community 1797"
 Cohesion: 0.25
@@ -8184,8 +8209,8 @@ Cohesion: 0.25
 Nodes (5): S2.2 — el perfil de capacidad es dato corporativo, no personal.  RGPD Art. 17/20, ``export_collaboration_data`` enumera sus claves; ninguna es del perfil., Borrar una cuenta quita su membresía, no la capacidad de la empresa., test_el_export_de_colaboracion_no_declara_capacidad(), test_la_anonimizacion_no_toca_el_perfil_de_la_organizacion()
 
 ### Community 1802 - "Community 1802"
-Cohesion: 0.36
-Nodes (3): _hybrid(), ``hybrid_search`` devuelve ``[]`` en cada uno de los motivos por los que     el, TestPuertasDeLaFusion
+Cohesion: 0.16
+Nodes (10): document_embeddings_available(), True si ``documento_chunks`` tiene al menos un embedding que fusionar.      Es l, _hybrid(), O0.6a (D15) — la ruta deriva ``source`` del camino que ejecutó, sin BD.  ``tests, ``document_embeddings_available`` es lo que separa «fusioné» de «llamé a     la, Fail-closed: sin poder mirar, lo honesto es degradar a FTS y no         etiqueta, ``hybrid_search`` devuelve ``[]`` en cada uno de los motivos por los que     el, _responde() (+2 more)
 
 ### Community 1803 - "Community 1803"
 Cohesion: 0.29
@@ -8264,8 +8289,8 @@ Cohesion: 0.43
 Nodes (6): downgrade(), _is_postgres(), _protect_table(), v97: hilo de comentarios de cada oportunidad (``pursuit_comments``).  Revision I, Cierra Data API y conserva acceso del rol runtime de la aplicación., upgrade()
 
 ### Community 1822 - "Community 1822"
-Cohesion: 0.25
-Nodes (6): pool_stats(), Estadísticas de ambos pools para métricas y diagnóstico.      Devuelve ``{}`` pa, Estadísticas de ambos pools para métricas y diagnóstico.      Devuelve ``{}`` pa, `pool_stats` describe el pool de escritura y el de lectura., Exponer la métrica no debe abrir conexiones por sí mismo., TestPoolStats
+Cohesion: 0.20
+Nodes (8): ``(tasa, n)`` que aplica a una fila, o ``None`` si no hay muestra.      Primero, tasa_anulacion(), _ctx(), F1.4 — riesgo de anulación o desierto por órgano, sin BD.  El texto de ``organo_, Con peso 0 el flag diría «penaliza» sin penalizar., _row(), TestScoreRow, TestTasa
 
 ### Community 1823 - "Community 1823"
 Cohesion: 0.18
@@ -8273,15 +8298,15 @@ Nodes (12): anchor, anclas, appendSpy, clickSpy, fetchMock, liberadas, params, p
 
 ### Community 1824 - "Community 1824"
 Cohesion: 0.12
-Nodes (16): _get_key(), _provider_key_available(), Lee una clave de config.secrets con fallback a os.environ.      Loguea warning s, Lee una clave de config.secrets con fallback a os.environ.      Loguea warning s, Lee una clave de config.secrets con fallback a os.environ.      Loguea warning s, Lee una clave de config.secrets con fallback a os.environ.      Loguea warning s, True si el proveedor tiene API key configurada (secrets o entorno)., True si el proveedor tiene API key configurada (secrets o entorno). (+8 more)
+Nodes (17): delete_user_profile(), get_own_user_profile(), get_user_profile(), Repositorio de perfiles de usuario para scoring personalizado (Feature B).  Cada, Elimina el perfil del usuario. Devuelve True si existia., Elimina el perfil del usuario. Devuelve True si existia., Elimina el perfil del usuario. Devuelve True si existia., Carga el perfil del usuario. Devuelve None si no tiene perfil. (+9 more)
 
 ### Community 1825 - "Community 1825"
 Cohesion: 0.29
 Nodes (7): `domain_events`, `feature_flags`, `job_locks`, `jobs`, `kpi_snapshots`, Operación y observabilidad, `ops_events`
 
 ### Community 1826 - "Community 1826"
-Cohesion: 0.08
-Nodes (23): Camino que sirve ``/ask`` hoy: ``search_for_ask`` (FTS + LIKE fallback)., Camino que sirve ``/ask`` hoy: ``search_for_ask`` (FTS + LIKE fallback)., _retrieve_production(), _load_golden_set(), main(), Eval manual de generación RAG contra un LLM real (plan Pliegos+RAG, F10).  Compl, _seed_temp_db(), load_drift_window() (+15 more)
+Cohesion: 0.09
+Nodes (21): Camino que sirve ``/ask`` hoy: ``search_for_ask`` (FTS + LIKE fallback)., Camino que sirve ``/ask`` hoy: ``search_for_ask`` (FTS + LIKE fallback)., _retrieve_production(), _load_golden_set(), main(), Eval manual de generación RAG contra un LLM real (plan Pliegos+RAG, F10).  Compl, _seed_temp_db(), Búsqueda para el endpoint ``/ask`` (RAG).      Con ``settings.RAG_HYBRID_ENABLED (+13 more)
 
 ### Community 1827 - "Community 1827"
 Cohesion: 0.29
@@ -8308,20 +8333,20 @@ Cohesion: 0.29
 Nodes (7): required, type, definitions, adaptiveCard, elemento, required, type
 
 ### Community 1833 - "Community 1833"
-Cohesion: 0.29
-Nodes (7): minItems, type, properties, attachments, type, const, enum
+Cohesion: 0.15
+Nodes (15): Tests de /api/v1/me/data y /api/v1/me (DELETE) con autenticación dual (F13·C3.1/, Con sesión (sin API key), las api_keys exportadas vienen de get_all_for_user., Una credencial de automatización no puede borrar una cuenta humana., End-to-end: borrar mis datos por sesión borra mis reglas de watchlist., Simula el ctx que ``require_any_auth`` produce para una sesión OAuth.      Inclu, me.py y watchlist_rules.py deben derivar el mismo user_key del mismo ctx., Regresión: una regla creada vía sesión debe aparecer en el export.      Antes de, _session_ctx() (+7 more)
 
 ### Community 1834 - "Community 1834"
-Cohesion: 0.29
-Nodes (7): required, type, definitions, bloque, textoCompuesto, required, type
+Cohesion: 0.22
+Nodes (9): required, type, definitions, bloque, textoCompuesto, required, type, Dos lotes con bajas opuestas: el agregado solo puede dar la media.      El lote (+1 more)
 
 ### Community 1835 - "Community 1835"
 Cohesion: 0.29
 Nodes (6): defaults, email, in_app, webhook, items, tipos
 
 ### Community 1836 - "Community 1836"
-Cohesion: 0.23
-Nodes (8): evaluate_tech_classifier(), GoldenTechExample, Evalúa un clasificador multi-tecnología entrenado contra el golden set.      Arg, Un ejemplo del golden set multi-label con etiquetas humanas.      Attributes:, _FakeClassifier, Tests de la evaluación honesta multi-label (services/ml/eval_tech.py).  El foco, Clasificador mínimo que devuelve etiquetas fijas por texto., TestEvaluateTechClassifier
+Cohesion: 0.13
+Nodes (16): comparar_mae_p50(), Mide ``mae_p50`` a las dos granularidades y devuelve la comparación.      Es el, main(), ¿Sustituir el modelo de baja agregado por uno por lote? Mide antes de decidir., Clase-repositorio que devuelve medidas fijas, sin tocar Postgres., Con pares insuficientes por lote no se compara contra un None., Clase-repositorio que devuelve medidas fijas, sin tocar Postgres., La guardia no se despierta por una granularidad que nadie está viendo. (+8 more)
 
 ### Community 1837 - "Community 1837"
 Cohesion: 0.29
@@ -8436,8 +8461,8 @@ Cohesion: 0.18
 Nodes (4): Compatibilidad: los receptores que ya verifican v1 no se enteran., Es lo que distingue una firma con replay de una sin él., Re-serializar el JSON (espacios, orden) daría otra firma: el doc lo avisa., TestVectorDeFirma
 
 ### Community 1866 - "Community 1866"
-Cohesion: 0.07
-Nodes (37): detect_duplicates(), natural_expediente(), Expediente nacional: el id natural sin el namespace de fuente (ADR-009)., Detecta duplicados cross-fuente entre las filas nuevas de ``fuente``.      Pensa, Expediente nacional: el id natural sin el namespace de fuente (ADR-009)., Resuelve un match pendiente: aceptar lo confirma, rechazarlo lo descarta., Resuelve un match pendiente: aceptar lo confirma, rechazarlo lo descarta., Detecta duplicados cross-fuente entre las filas nuevas de ``fuente``.      Pensa (+29 more)
+Cohesion: 0.06
+Nodes (43): main(), _ContadorNoop, DedupeResult, detect_duplicates(), detect_republicaciones(), natural_expediente(), Dedupe cross-fuente de licitaciones (Fase 5.2, RFC 20260611-1).  Con varias fuen, Expediente nacional: el id natural sin el namespace de fuente (ADR-009). (+35 more)
 
 ### Community 1867 - "Community 1867"
 Cohesion: 0.33
@@ -8468,12 +8493,12 @@ Cohesion: 0.33
 Nodes (5): ADR-025 — Cómo se construye el SQL y cómo se abren las conexiones, Alternativas descartadas, Consecuencias, Contexto, Decisión
 
 ### Community 1874 - "Community 1874"
-Cohesion: 0.16
-Nodes (9): main(), _ContadorNoop, ContadorPorFuente, DedupeResult, detect_republicaciones(), Dedupe cross-fuente de licitaciones (Fase 5.2, RFC 20260611-1).  Con varias fuen, Detecta reemisiones del mismo contrato entre las filas nuevas de ``fuente``., Detecta reemisiones del mismo contrato entre las filas nuevas de ``fuente``. (+1 more)
+Cohesion: 0.18
+Nodes (11): _perdidas_por_motivo(), Reparto de las pérdidas por motivo, o lista vacía si no hay base.      Por debaj, Reparto de las pérdidas por motivo, o lista vacía si no hay base.      Por debaj, Reparto de las pérdidas por motivo, o lista vacía si no hay base.      Por debaj, Reparto de las pérdidas por motivo, o lista vacía si no hay base.      Por debaj, _perdida(), «60 % por precio» sobre tres casos es ruido con forma de conclusión., No se reparten entre los motivos: los inflarían. (+3 more)
 
 ### Community 1875 - "Community 1875"
-Cohesion: 0.06
-Nodes (34): M8 — Timeline vertical para historial de cambios de una licitación., Render a popover button that shows the change history timeline., timeline_popover(), True si la tabla FTS5 ``licitaciones_fts`` existe., fts_available(), get_history(), Devuelve el historial de cambios de una licitación., True si la columna ``search_vector`` existe (búsqueda de texto completo). (+26 more)
+Cohesion: 0.17
+Nodes (9): _build_merge_result(), Lógica de dominio pura del merge -- separada para poder correr dentro     de ``T, ``_build_merge_result`` es la aritmética pura del merge -- corre dentro     de `, El pliego solo detecta META4; SAP (ya predicho por título/ML) sigue         en m, Si el título/ML ya tenía un score mayor para esa tecnología, se conserva., Una tecnología con score>0 en licitacion_tecnologia_score pero por         debaj, Regresión (2026-09-02): ``ml_tecnologias`` puede nombrar una         tecnología, Sin nada mejor, la huérfana sigue siendo el principal (0.0): el         contrato (+1 more)
 
 ### Community 1876 - "Community 1876"
 Cohesion: 0.53
@@ -8500,8 +8525,8 @@ Cohesion: 0.47
 Nodes (5): downgrade(), _is_postgres(), v88: ``documentos.source_hash`` — identidad estable de un adjunto.  Revision ID:, Retira columna e índice.      No restaura el ``status='error'`` de las filas rep, upgrade()
 
 ### Community 1882 - "Community 1882"
-Cohesion: 0.33
-Nodes (5): description, required, $schema, title, type
+Cohesion: 0.20
+Nodes (9): minItems, type, description, properties, attachments, required, $schema, title (+1 more)
 
 ### Community 1883 - "Community 1883"
 Cohesion: 0.33
@@ -8588,8 +8613,8 @@ Cohesion: 0.33
 Nodes (6): sqlalchemy-alembic-expert-best-practices-code-review, computedHash, source, sourceType, trust, verifiedHash
 
 ### Community 1904 - "Community 1904"
-Cohesion: 0.40
-Nodes (5): get_pagina(), F2.5 — la página del pliego con la cita resaltada, sin binario.  La ficha del pl, La página ``page_number`` del documento, o ``None`` si no existe.      ``licitac, Pasa unos offsets absolutos del documento a índices de esta página.      Devuelv, _relativos()
+Cohesion: 0.24
+Nodes (8): Puntúa cada tecnología por menciones ponderadas por tipo de documento.      ``pa, score_documents(), _patched_patterns(), Fija un diccionario mínimo para los tests de puntuación.      Antes parcheaba el, Una mención de pasada en el legal (peso 0.3) no alcanza el mínimo --         ant, sap' no debe matchear dentro de 'desaparecer' (mismo caso que         scraper/fi, Un tipo de documento inesperado no debe pesar como 'technical'., TestScoreDocuments
 
 ### Community 1905 - "Community 1905"
 Cohesion: 0.12
@@ -8600,16 +8625,16 @@ Cohesion: 0.24
 Nodes (11): _fila(), get(), guardar(), inicio_de_ventana(), pendientes(), Programación del informe por organización (`organization_report_schedules`, v132, Alta o edición de la programación. Una fila por organización y tipo.      **No t, Programaciones activas cuya ventana está abierta y sin enviar.      Ver la cabec (+3 more)
 
 ### Community 1907 - "Community 1907"
-Cohesion: 0.21
-Nodes (5): detect_project_type(), Detecta el tipo de proyecto a partir del texto de la licitación., Detecta el tipo de proyecto a partir del texto de la licitación., Detecta el tipo de proyecto a partir del texto de la licitación., TestDetectProjectType
+Cohesion: 0.18
+Nodes (6): FilesystemObjectStore, La misma interfaz sobre un directorio.      Existe por los tests —el criterio de, Tests de ``shared/object_store.py`` (plan 2026-09 v2, S8.1).  Todo lo de aquí es, "No está" y "el almacén falla" son cosas distintas para el fetcher., test_claves_que_se_escapan_de_la_raiz_se_rechazan(), TestFilesystemObjectStore
 
 ### Community 1908 - "Community 1908"
 Cohesion: 0.33
 Nodes (9): _add_fk(), _add_user_id(), downgrade(), _is_postgres(), v129: ``user_id`` junto a ``user_key`` en todas las tablas de usuario (ADR-030 f, ``UPDATE`` que resuelve ``user_id`` por ``user_key`` en ``tabla``.      Público, sql_backfill(), upgrade() (+1 more)
 
 ### Community 1909 - "Community 1909"
-Cohesion: 0.13
-Nodes (10): _ajustes(), _FakeConn, _FakeCursor, {nombre: valor} de los set_config que recibió la conexión., El pool fija statement_timeout con SET además de pedirlo por `options`.      `op, El read-only del pool de lectura es una garantía, no una optimización., A 0 (sin límite) no se emite ningún SET., test_configure_aplica_los_timeouts_por_sesion() (+2 more)
+Cohesion: 0.15
+Nodes (14): _columnas_insertables(), _pg_schema_sesion(), Filas presentes justo tras aplicar el DDL: las que sembró una migración.      `a, Columnas de ``tabla`` que admiten un valor explícito en un ``INSERT``.      Fuer, Un schema por sesión, reutilizado entre tests (estrategia ``truncate``).      Se, Filas presentes justo tras aplicar el DDL: las que sembró una migración.      `a, ``{secuencia: (last_value, is_called)}`` justo tras aplicar el DDL.      Es el e, El schema compartido de la estrategia ``truncate`` y su foto de recién migrado. (+6 more)
 
 ### Community 1910 - "Community 1910"
 Cohesion: 0.53
@@ -8620,8 +8645,8 @@ Cohesion: 0.20
 Nodes (9): 1. Decisiones (D40–D45), 2. Streams y estado, 3. Acciones humanas que este plan deja listas pero no ejecuta, 4-bis. Los tests que fallaban en paralelo: causa y arreglo, 4. Lo que este plan no hace, y por qué, 5. Estado de ejecución, Lo de Ola 2 que se queda fuera, y qué falta exactamente, Ola 2 (+1 more)
 
 ### Community 1912 - "Community 1912"
-Cohesion: 0.10
-Nodes (24): F6.2 — «este dato está mal»: la entrada que el usuario no tenía.  El producto ve, El ``source`` con el que se guarda un reporte de este tipo., Guarda el reporte y devuelve su marca de tiempo.      El comentario es opcional, registrar_reporte(), source_de(), _filas_feedback(), _licitacion(), F6.2 — qué cola nombra un reporte de dato y con qué ``source`` se guarda.  ``ser (+16 more)
+Cohesion: 0.14
+Nodes (19): Guarda el reporte y devuelve su marca de tiempo.      El comentario es opcional, registrar_reporte(), _filas_feedback(), _licitacion(), F6.2 — qué cola nombra un reporte de dato y con qué ``source`` se guarda.  ``ser, Fija el literal ``reporte:`` y que las dos constantes coinciden.      No demuest, Expediente, nota, autor y fecha: la cola de revisión que ya existe.     ``releva, ``nota`` es NOT NULL y el servicio no confía en que la ruta haya     acotado la (+11 more)
 
 ### Community 1913 - "Community 1913"
 Cohesion: 0.18
@@ -8804,8 +8829,8 @@ Cohesion: 0.21
 Nodes (11): _id_de(), Admin de la DLQ: reencolar desde la consola (RFC ux-calidad-datos #4).  - Sin BD, Las dos rutas dependen de `require_admin`, no de la auth genérica., _reintentar(), test_entrada_inexistente_es_404(), test_las_rutas_exigen_admin(), test_lo_que_no_se_reencola_no_se_audita(), test_reencolar_audita_con_actor_y_recurso() (+3 more)
 
 ### Community 1960 - "Community 1960"
-Cohesion: 0.23
-Nodes (14): construir_embudo(), Tramos del embudo, su denominador y lo que queda fuera.      ``conteos`` es la s, _por_estado(), Denominador declarado del embudo del Resumen (`construir_embudo`).  Ítem P3 «El, OTROS recoge lo que no cae en ningún código y los tramos suman el total., Un ámbito todo `AGR` (p.ej. filtrado a Cataluña) deja el embudo a cero., AGENTS §3.5: el cambio de semántica de `pct` queda escrito en el DTO., test_ambito_sin_escalones_no_inventa_porcentajes() (+6 more)
+Cohesion: 0.20
+Nodes (14): Página Competencia — Ecosistema de Partners.  Grafo de co-adjudicaciones, rankin, Ranking de ganadores con filtro por keyword/CPV., Ranking de ganadores con filtro por keyword/CPV., Renderiza un card de perfil de empresa., Renderiza un card de perfil de empresa., Buscador de partners potenciales para subcontratación., Buscador de partners potenciales para subcontratación., Network graph interactivo de co-adjudicaciones en UTEs. (+6 more)
 
 ### Community 1961 - "Community 1961"
 Cohesion: 0.60
@@ -8832,16 +8857,16 @@ Cohesion: 0.50
 Nodes (4): _current_totp(), Pruebas del flujo MFA real: alta, desafÃ­o y elevaciÃ³n de sesiÃ³n., Calcula el TOTP RFC 6238 que aceptarÃ­a un autenticador externo., test_totp_confirmation_requires_a_second_factor_before_access()
 
 ### Community 1967 - "Community 1967"
-Cohesion: 0.05
-Nodes (37): _contar_fallo_entrega(), _entregar_email(), enviar_email_transaccional(), Entrega un email por SMTP con STARTTLS. Devuelve si salió de aquí.      Punto ún, Entrega un email por el backend configurado. Devuelve si salió de aquí.      Pun, Envía un email **de producto** a una persona, no una alerta de operación.      E, Envía un email **de producto** a una persona, no una alerta de operación.      `, Suma uno a ``alert_delivery_failed_total`` sin poder fallar.      Va envuelto en (+29 more)
+Cohesion: 0.15
+Nodes (10): El comportamiento por defecto no cambia: nadie recibe un correo., El comportamiento por defecto no cambia: nadie recibe un correo., Pulsar dos veces no puede escribirle dos veces a la misma persona., Pulsar dos veces no puede escribirle dos veces a la misma persona., Un descarte con `notificar` no puede felicitar a quien se rechaza., Un descarte con `notificar` no puede felicitar a quien se rechaza., El operador tiene que saber que no ha avisado a nadie., El operador tiene que saber que no ha avisado a nadie. (+2 more)
 
 ### Community 1968 - "Community 1968"
 Cohesion: 0.20
 Nodes (10): **/.mypy_cache, **/__pycache__, **/.pytest_cache, **/.ruff_cache, files.exclude, python.analysis.typeCheckingMode, python.defaultInterpreterPath, python.testing.pytestEnabled (+2 more)
 
 ### Community 1970 - "Community 1970"
-Cohesion: 0.15
-Nodes (14): CIERRE_KEYS, cierreLabel(), cierreParams(), CierreRecorte, useCierreRecorte(), asc, cuarta, desc (+6 more)
+Cohesion: 0.14
+Nodes (15): SERVER_SORT, CIERRE_KEYS, cierreLabel(), cierreParams(), CierreRecorte, useCierreRecorte(), asc, cuarta (+7 more)
 
 ### Community 1972 - "Community 1972"
 Cohesion: 0.22
@@ -8912,8 +8937,8 @@ Cohesion: 0.83
 Nodes (3): downgrade(), _is_postgres(), upgrade()
 
 ### Community 1992 - "Community 1992"
-Cohesion: 0.13
-Nodes (13): LIKE fallback para cuando FTS5/search_vector no está disponible., Devuelve el historial de cambios de una licitación., LIKE fallback para cuando FTS5/search_vector no está disponible., Devuelve el historial de cambios de una licitación., LIKE fallback para cuando FTS5 no está disponible., LIKE fallback para cuando FTS5 no está disponible., LIKE fallback para cuando FTS5 no está disponible., LIKE fallback para cuando FTS5 no está disponible. (+5 more)
+Cohesion: 0.15
+Nodes (16): Crea o actualiza el perfil del usuario.      ``organization_id`` sin default: es, Crea o actualiza el perfil del usuario.      ``organization_id`` sin default: es, Crea o actualiza el perfil del usuario.      ``organization_id`` sin default: es, Crea o actualiza el perfil del usuario., Crea o actualiza el perfil del usuario., upsert_user_profile(), _organizacion_de_pruebas(), _organizacion_y_owner() (+8 more)
 
 ### Community 1993 - "Community 1993"
 Cohesion: 0.50
@@ -8948,8 +8973,8 @@ Cohesion: 0.39
 Nodes (8): _desproteger(), downgrade(), _is_postgres(), _proteger(), v128: RLS por tenant con variable de transacción (defensa en profundidad).  Revi, Solo las que existen: la revisión debe poder aplicarse a una base a medias., _tablas_presentes(), upgrade()
 
 ### Community 2002 - "Community 2002"
-Cohesion: 0.26
-Nodes (11): api_key(), _auth(), Tests de la API /api/v1/watchlist/items (favoritos de licitaciones).  Fixtures a, Override de conftest: vincula la key a un usuario real.      Esta ruta resuelve, Un expediente de PLACSP con '/' se puede marcar y también desmarcar.      El POS, _seed_licitaciones(), test_add_is_idempotent(), test_add_list_remove_roundtrip() (+3 more)
+Cohesion: 0.33
+Nodes (9): _auth(), Tests de la API /api/v1/watchlist/items (favoritos de licitaciones).  Fixtures a, Un expediente de PLACSP con '/' se puede marcar y también desmarcar.      El POS, _seed_licitaciones(), test_add_is_idempotent(), test_add_list_remove_roundtrip(), test_items_de_distintos_usuarios_no_se_mezclan(), test_remove_inexistente_404() (+1 more)
 
 ### Community 2003 - "Community 2003"
 Cohesion: 0.22
@@ -8968,12 +8993,12 @@ Cohesion: 0.18
 Nodes (11): PrefetchServidor(), consultasRadar(), ConsultaServidor, origenApi(), pedir(), metadata, RadarLayout(), consultas (+3 more)
 
 ### Community 2032 - "Community 2032"
-Cohesion: 0.17
-Nodes (7): _make_dlq_middleware(), Cola de tareas asíncronas opcional — usa Dramatiq si está disponible.  Si ``DRAM, Crea el DLQMiddleware de Dramatiq que registra fallos en la DLQ SQLite.      Dev, _setup_broker(), TestDlqMiddlewareBehavior, TestMakeDlqMiddleware, TestSetupBroker
+Cohesion: 0.21
+Nodes (6): _make_dlq_middleware(), Cola de tareas asíncronas opcional — usa Dramatiq si está disponible.  Si ``DRAM, Crea el DLQMiddleware de Dramatiq que registra fallos en la DLQ SQLite.      Dev, _setup_broker(), TestDlqMiddlewareBehavior, TestMakeDlqMiddleware
 
 ### Community 2033 - "Community 2033"
-Cohesion: 0.22
-Nodes (5): detect_modules(), Detecta módulos SAP mencionados en *text*., Detecta módulos SAP mencionados en *text*., Detecta módulos SAP mencionados en *text*., TestDetectModules
+Cohesion: 0.17
+Nodes (9): payload_de_pursuit(), Construye el payload. Puro: no consulta nada.      Una etapa que no esté en el m, Construye el payload. Puro: no consulta nada.      Una etapa que no esté en el m, En un CRM, una cuenta se repite entre años; una licitación no., Con el id del pursuit, dos organizaciones crearían dos registros., Un CRM con lista cerrada rechazaría el registro entero., La prevista de adjudicación es una estimación nuestra; exportarla la         con, Un CRM es un sistema de terceros: cuanto menos salga, mejor. (+1 more)
 
 ### Community 2034 - "Community 2034"
 Cohesion: 0.22
@@ -8984,12 +9009,12 @@ Cohesion: 0.17
 Nodes (11): error_detail, evidence_count, extracted_at, extraction_version, facts, award_criteria, field_count, licitacion_id (+3 more)
 
 ### Community 2036 - "Community 2036"
-Cohesion: 0.20
-Nodes (11): marcar_censo_de_fuente(), medir_censo_de_fuente(), Fotografía del corpus de una fuente: cuánto trae señal tecnológica.      Medido, Marca UN lote de filas sin señal como censo. Devuelve cuántas marcó.      Por lo, Fotografía del corpus de una fuente: cuánto trae señal tecnológica.      Medido, Marca UN lote de filas sin señal como censo. Devuelve cuántas marcó.      Por lo, _imprime(), main() (+3 more)
+Cohesion: 0.13
+Nodes (15): lifespan(), Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup:, Inicializa la DB al arrancar y hace graceful shutdown al parar.      - Startup: (+7 more)
 
 ### Community 2037 - "Community 2037"
-Cohesion: 0.03
-Nodes (77): process_daily(), process_month(), _process_month_impl(), Clasificación compartida + carril diario legacy (ATOM en vivo).  .. deprecated::, Invalida la caché del API tras una ingestión (shared.cache_signal).      Fail-op, Invalida la caché del API tras una ingestión (shared.cache_signal).      Fail-op, Implementación interna de process_month (sin gestión de recursos del hilo)., Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.      Gara (+69 more)
+Cohesion: 0.02
+Nodes (124): _apply_tech_prediction(), _ClassifierHolder, _get_ml_clf(), _get_tech_clf(), _load_classifiers(), _ml_classify_entry(), process_daily(), Clasificación compartida + carril diario legacy (ATOM en vivo).  .. deprecated:: (+116 more)
 
 ### Community 2038 - "Community 2038"
 Cohesion: 0.23
@@ -9000,12 +9025,12 @@ Cohesion: 0.18
 Nodes (12): campo, CarteraView(), celda, contratos, crear, inspector, mutate, { rerender } (+4 more)
 
 ### Community 2055 - "Community 2055"
-Cohesion: 0.10
-Nodes (20): _build_engine(), engine_available(), get_engine(), Motor analítico DuckDB — singleton en memoria para hot paths del dashboard.  Pro, Construye el singleton — llamado una sola vez por @st.cache_resource., Construye el singleton — llamado una sola vez por @st.cache_resource., Devuelve el singleton DuckDB, cacheado por Streamlit.      Importa streamlit sól, Devuelve el singleton DuckDB, cacheado en memoria. (+12 more)
+Cohesion: 0.12
+Nodes (17): _build_engine(), _DuckDBEngine, get_engine(), Motor analítico DuckDB — singleton en memoria para hot paths del dashboard.  Pro, Ejecuta una query y devuelve la relación DuckDB (llama .df() para DataFrame)., Construye el singleton — llamado una sola vez por @st.cache_resource., Ejecuta una query y devuelve la relación DuckDB (llama .df() para DataFrame)., Construye el singleton — llamado una sola vez por @st.cache_resource. (+9 more)
 
 ### Community 2056 - "Community 2056"
 Cohesion: 0.15
-Nodes (11): _ConectorDosFases, _estado_persistido(), Emite dos veces el MISMO ``id_externo``, como PSCP: una fila por fase.      ``re, Sin recencia en NINGÚN lado, en un feed ASC gana la última vista.      Es el bug, En un feed newest-first la primera vista ES la más reciente: no se pisa., Cuando la fuente sí puebla la recencia, decide ella aunque llegue última., PSCP arrastra ``:updated_at`` al modelo: sin él las fases no se ordenan., test_pscp_parse_puebla_la_recencia_con_el_updated_at() (+3 more)
+Nodes (11): Persiste solo si alguna adjudicación coincide por NIF normalizado., Persiste solo si alguna adjudicación coincide por NIF normalizado., OrganizationCapabilitiesRepository, Reemplaza el perfil completo y lo relee. Todo o nada: una transacción., Lee y reemplaza el perfil de capacidad completo de una organización., El perfil entero, con las claves exactas de ``OrganizationCapabilities``., _declara_iso(), _Escenario (+3 more)
 
 ### Community 2057 - "Community 2057"
 Cohesion: 0.14
@@ -9016,8 +9041,8 @@ Cohesion: 0.27
 Nodes (10): _campo(), destino_error(), _limpiar(), _origen_ajeno(), _origenes_validos(), Ruta ``POST /api/v1/publico/solicitudes-acceso`` — cola de peticiones de acceso., URL de la página de gracias para un envío que no prosperó., ``True`` si la petición declara un origen y no es de los nuestros. (+2 more)
 
 ### Community 2059 - "Community 2059"
-Cohesion: 0.25
-Nodes (6): _highlight_diff(), Página Comparador — diff side-by-side de 2-3 licitaciones., Retorna HTML con fondo amarillo si el valor difiere del baseline., Retorna HTML con fondo amarillo si el valor difiere del baseline., render(), TestComparador
+Cohesion: 0.13
+Nodes (11): Contrato mínimo de un backend de búsqueda full-text., True si el backend está operativo en la BD actual., Devuelve lista de id_externo ordenados por relevancia., Devuelve dicts con id_externo + campos de contexto (snippet)., Devuelve (id_externo, score) ordenados por relevancia., Contrato mínimo de un backend de búsqueda full-text., True si el backend está operativo en la BD actual., Devuelve lista de id_externo ordenados por relevancia. (+3 more)
 
 ### Community 2060 - "Community 2060"
 Cohesion: 0.14
@@ -9032,8 +9057,8 @@ Cohesion: 0.25
 Nodes (7): _es_post_de_lectura_de_licitaciones(), has_scope(), Scope taxonomy and request-to-scope authorization policy.  Sessions represent an, Return whether *scopes* grants *required_scope* without wildcard aliases., Return whether *scopes* grants *required_scope* without wildcard aliases., ¿Este POST bajo /licitaciones sólo lee?      Dos mecanismos porque hay dos forma, ¿Este POST bajo /licitaciones sólo lee?      Dos mecanismos porque hay dos forma
 
 ### Community 2171 - "Community 2171"
-Cohesion: 0.19
-Nodes (8): _prediction_drift(), KS test on ml_proba distribution: last N days vs previous N days., KS test on ml_proba distribution: last N days vs previous N days., KS test on ml_proba distribution: last N days vs previous N days., Lines 57-107: _prediction_drift., TestPredictionDrift, Lines 57-107: _prediction_drift., TestPredictionDrift
+Cohesion: 0.20
+Nodes (6): _backoff_interval(), Calcula intervalo con backoff exponencial basado en fallos consecutivos.      Tr, Calcula intervalo con backoff exponencial basado en fallos consecutivos.      Tr, Calcula intervalo con backoff exponencial basado en fallos consecutivos.      Tr, TestBackoff, TestBackoffInterval
 
 ### Community 2172 - "Community 2172"
 Cohesion: 0.50
@@ -9052,12 +9077,12 @@ Cohesion: 0.39
 Nodes (7): downgrade(), _existentes(), _is_postgres(), v131: ``deleted_at`` en comentarios, tareas y adjuntos de la oportunidad.  Revis, Solo las tablas que existen: la revisión debe aplicarse a una base a medias., Quita la columna — y con ella la marca de lo borrado.      Es una pérdida real y, upgrade()
 
 ### Community 2176 - "Community 2176"
-Cohesion: 0.18
-Nodes (7): _FakeConn, Conexión que captura SQL y parámetros sin BD (mismo patrón que     ``tests/test_, La consulta por defecto (la del RAG) no gana ni una columna ni un     parámetro, 8 parámetros: los mismos de siempre (query, query, k, vec, vec, k,         RRF_K, En los extremos del deslizador una lista pesa 0; sus documentos         exclusiv, _sql(), TestElRagNoCambia
+Cohesion: 0.21
+Nodes (14): build_plan(), find_affected(), main(), _print_plan(), One-shot backfill: corrige ``fecha_publicacion`` posterior a la adjudicación.  D, Re-ingiere los meses PLACSP indicados por el conector bulk.      Antes llamaba a, Licitaciones con ``fecha_publicacion`` posterior a su primera adjudicación., (año, mes) a partir de una fecha ISO ``YYYY-MM-DD``. (+6 more)
 
 ### Community 2177 - "Community 2177"
-Cohesion: 0.15
-Nodes (13): periodo_canonico(), Gemelo Python de :func:`periodo_publicacion_sql`.      Espeja ``coalesce`` y no, Gemelo Python de :func:`periodo_publicacion_sql`.      Espeja ``coalesce`` y no, Gemelo Python de :func:`periodo_publicacion_sql`.      Espeja ``coalesce`` y no, _clave_de_fila(), Clave de reemisión de una fila, con su año-mes. ``None`` si no la tiene.      ``, Clave de reemisión de una fila, con su año-mes. ``None`` si no la tiene.      ``, Lo que la componente temporal NO puede romper: la reemisión real.      Un corrig (+5 more)
+Cohesion: 0.16
+Nodes (6): _ficha_con_criterios(), F4.2 (cuadro de dirección), F2.8 (comparar fichas) y F6.3 (export a CRM).  Los t, Que uno de los dos no diga nada de solvencia es lo que hay que ver., Una columna en blanco no puede confundirse con un pliego sin exigencias., test_todas_las_etapas_se_traducen(), TestComparador
 
 ### Community 2178 - "Community 2178"
 Cohesion: 0.32
@@ -9075,25 +9100,21 @@ Nodes (10): LEGACY_FREQ, LegacyMigrationDeps, LegacyRule, legacyToBody(), migrat
 Cohesion: 0.15
 Nodes (7): RadarDismissalBody, Cuerpo del descarte de una señal.      ``score`` y ``banda`` son los que el usua, Cuerpo del descarte de una señal.      ``score`` y ``banda`` son los que el usua, Cuerpo del descarte de una señal.      ``score`` y ``banda`` son los que el usua, Lo que la ruta acepta y lo que rechaza, sin BD., Sin esto, silenciar sin `dias` escribiría un descarte permanente         que el, TestContratoDelDescarte
 
-### Community 2182 - "Community 2182"
-Cohesion: 0.22
-Nodes (8): _incorporar_frescura_fuentes(), _lag_horas(), Healthcheck del pipeline.  Comprueba:   1. La BD es accesible y tiene esquema co, Horas desde el último run exitoso; ``None`` si nunca hubo uno legible.      «Nun, Ejecuta el chequeo de frescura por fuente y lo vuelca en el informe.      En su, Mismo criterio que el resto de checks secundarios del healthcheck., test_el_informe_incluye_la_frescura_y_avisa(), test_no_poder_medir_la_frescura_no_tumba_el_informe()
-
 ### Community 2183 - "Community 2183"
-Cohesion: 0.16
-Nodes (12): asignar_splits(), evaluate_classifier(), filtrar_split(), _ProbaClassifier, Evaluación honesta del clasificador SAP contra un golden set etiquetado a mano., Interfaz mínima de un clasificador con probabilidad de SAP., Interfaz mínima de un clasificador con probabilidad de SAP., Reparte el golden set en "tune" y "holdout" de forma **estable**.      El umbral (+4 more)
+Cohesion: 0.35
+Nodes (5): asignar_splits(), filtrar_split(), Reparte el golden set en "tune" y "holdout" de forma **estable**.      El umbral, Devuelve los ejemplos de una mitad del golden set., TestSplitDelGoldenSet
 
 ### Community 2184 - "Community 2184"
-Cohesion: 0.16
-Nodes (7): Firma v2 con sello de tiempo y material de rotación (Ola 1 · Webhooks).  Unitari, El ataque que la v1 no ve: mismo cuerpo, sello «fresco» inventado., La receta Python de ``docs/integraciones/webhooks.md``, con el reloj inyectado., TestRecetaDelReceptor, TestScopeDeLaRuta, TestSegundosUnix, _verificar_como_el_doc()
+Cohesion: 0.36
+Nodes (4): El ataque que la v1 no ve: mismo cuerpo, sello «fresco» inventado., La receta Python de ``docs/integraciones/webhooks.md``, con el reloj inyectado., TestRecetaDelReceptor, _verificar_como_el_doc()
 
 ### Community 2186 - "Community 2186"
-Cohesion: 0.17
-Nodes (9): Patrones del diccionario vigente, compartidos con `scraper/filters.py`.      Ant, _tech_patterns(), patrones(), `{tecnologia: regex}` con límites de palabra, memoizado por versión.      El lím, Lo derivado se memoiza por versión, no por tiempo., Sin `\\b`, «sap» casa dentro de «desaparecer»., Antes cada uno compilaba los suyos; con la tabla podían divergir., Un `dict` de nivel de módulo se quedaría con el diccionario del arranque. (+1 more)
+Cohesion: 0.12
+Nodes (12): _decode_evidence(), Señal de tecnología detectada en el texto de los pliegos, y su fusión hacia ``li, Patrones del diccionario vigente, compartidos con `scraper/filters.py`.      Ant, Evidencia legible para el payload del evento -- decodifica el JSON     persistid, _tech_patterns(), patrones(), `{tecnologia: regex}` con límites de palabra, memoizado por versión.      El lím, Lo derivado se memoiza por versión, no por tiempo. (+4 more)
 
 ### Community 2187 - "Community 2187"
-Cohesion: 0.15
-Nodes (13): ejecutar_paso(), ejecutar_paso_encolado(), Ejecuta UN paso canónico y devuelve ``ok``/``skipped``. Propaga el fallo.      E, Handler del tipo ``paso_pipeline`` de la cola (``shared/jobs.py``).      ``job``, Ejecuta UN paso canónico y devuelve ``ok``/``skipped``. Propaga el fallo.      E, Handler del tipo ``paso_pipeline`` de la cola (``shared/jobs.py``).      ``job``, Ejecuta UN paso canónico y devuelve ``ok``/``skipped``. Propaga el fallo.      E, Handler del tipo ``paso_pipeline`` de la cola (``shared/jobs.py``).      ``job`` (+5 more)
+Cohesion: 0.16
+Nodes (9): Cada acción interna es su propio compromiso, con su propio vencimiento., Una tarea sin fecha no es más urgente que una que vence mañana., Los relojes no se suman: ``vence_semana`` son plazos, no acciones., La que empieza dentro de un mes no está abierta; la de ayer sí., Un pursuit sin ``next_action`` **pero** con tarea sí tiene qué hacer.          E, Fila de ``PursuitTasksRepository.agenda_rows``: la tarea **y** su pursuit., _tarea_row(), TestItemTarea (+1 more)
 
 ### Community 2188 - "Community 2188"
 Cohesion: 0.25
@@ -9104,8 +9125,8 @@ Cohesion: 0.18
 Nodes (11): client(), _la_app_es_siempre_la_misma(), TestClient de FastAPI con DB temporal (raise_server_exceptions=True)., TestClient de FastAPI con DB temporal (raise_server_exceptions=True)., TestClient de FastAPI con DB temporal (raise_server_exceptions=True)., TestClient de FastAPI con DB temporal (raise_server_exceptions=True)., TestClient de FastAPI con DB temporal (raise_server_exceptions=True)., Guardarraíl: nadie puede dejar un ``api.app`` nuevo en ``sys.modules``.      ``a (+3 more)
 
 ### Community 2190 - "Community 2190"
-Cohesion: 0.33
-Nodes (4): Feed Atom/RSS de la watchlist de un usuario.  GET /api/v1/watchlist/feed.xml?tok, Devuelve un feed Atom 1.0 con las últimas licitaciones que coinciden     con las, Devuelve un feed Atom 1.0 con las últimas licitaciones que coinciden     con las, watchlist_feed()
+Cohesion: 0.14
+Nodes (14): append_cache_invalidation_event(), get_latest_cache_invalidation_timestamp(), Quién sigue un expediente: favoritos y oportunidades abiertas.      Devuelve fil, Quién sigue un expediente: favoritos y oportunidades abiertas.      Devuelve fil, Persiste una señal global de invalidación visible entre procesos.      El scrape, Devuelve el instante de la última invalidación global, o ``0.0``., Devuelve el instante de la última invalidación global, o ``0.0``., Persiste una señal global de invalidación visible entre procesos.      El scrape (+6 more)
 
 ### Community 2191 - "Community 2191"
 Cohesion: 0.33
@@ -9120,16 +9141,16 @@ Cohesion: 0.43
 Nodes (6): downgrade(), _is_postgres(), v132: preferencia de informe programado por organización (T6).  Revision ID: v13, Tira la tabla. Se pierden las programaciones, no el dato del informe.      El in, _tablas(), upgrade()
 
 ### Community 2194 - "Community 2194"
-Cohesion: 0.29
-Nodes (7): _apply_v30_ml_tech_columns(), Añade columnas multi-tecnología a licitaciones (idempotente).      ``ml_tecnolog, Añade columnas multi-tecnología a licitaciones (idempotente).      ``ml_tecnolog, Añade columna tier a api_keys con default 'free'.      La tabla api_key_tiers ya, Añade columnas multi-tecnología a licitaciones (idempotente).      ``ml_tecnolog, Añade columnas multi-tecnología a licitaciones (idempotente).      ``ml_tecnolog, Añade columnas multi-tecnología a licitaciones (idempotente).      ``ml_tecnolog
+Cohesion: 0.14
+Nodes (8): FeedbackRepository, Repository para ml_feedback., Inserta feedback y devuelve el timestamp de creación., Inserta feedback y devuelve el timestamp de creación., Elimina el feedback personal como parte del derecho de supresión., Inserta feedback y devuelve el timestamp de creación., Inserta feedback y devuelve el timestamp de creación.          ``source`` distin, Un lote del LLM no puede disparar el reentrenamiento semanal.
 
 ### Community 2196 - "Community 2196"
 Cohesion: 0.40
 Nodes (5): openFiles, customizations, codespaces, vscode, extensions
 
 ### Community 2197 - "Community 2197"
-Cohesion: 0.15
-Nodes (13): Re-ingesta idéntica produce dropped=0 (idempotencia testeable).      El RFC seña, Re-ingesta idéntica produce dropped=0 (idempotencia testeable).      El RFC seña, Re-ejecutar un upsert chunked no duplica registros., Re-ejecutar un upsert chunked no duplica registros., Re-ingesta idéntica produce dropped=0 (idempotencia testeable).      El RFC seña, Re-ingesta idéntica produce dropped=0 (idempotencia testeable).      El RFC seña, Re-ejecutar un upsert chunked no duplica registros., Re-ejecutar un upsert chunked no duplica registros. (+5 more)
+Cohesion: 0.14
+Nodes (11): _fetch_recent_texts(), _fetch_training_dataframe(), Concept drift detector — detecta términos emergentes no cubiertos por SAP_KEYWOR, Obtiene títulos y descripciones de licitaciones de los últimos N días., Ejecuta el análisis de drift y opcionalmente envía alerta por email.      Diseña, Ejecuta el análisis de drift y opcionalmente envía alerta por email.      Diseña, Construye un DataFrame con licitaciones + feedbacks para entrenamiento.      Inc, Construye un DataFrame con licitaciones + feedbacks para entrenamiento.      Inc (+3 more)
 
 ### Community 2198 - "Community 2198"
 Cohesion: 0.29
@@ -9140,8 +9161,8 @@ Cohesion: 0.21
 Nodes (11): _ClfFalso, _promocionar(), Gate de promoción único y evaluación honesta del golden set.  Fija tres invarian, Mínimo que `promote_if_better` le pide a un clasificador: `save`., Corre `promote_if_better` con el registro y el gate mockeados., El nombre registrado tiene que ser el que viaja a la Release., `publicar_como` es copia byte a byte, así que el hash sigue valiendo --     es l, Un rechazo no toca el artefacto que sirve producción, así que registrar     su r (+3 more)
 
 ### Community 2201 - "Community 2201"
-Cohesion: 0.15
-Nodes (13): _contar(), El aviso es un efecto lateral: no puede tumbar un formulario público., Un bot que rellena el campo trampa recibe el mismo 303 de éxito.      Devolver u, El endpoint sirve a un `<form>` HTML; nada más entra., Sin la casilla marcada no hay base para guardar un dato de contacto., Un doble clic o un reintento no pueden crear tres filas iguales.      Es el caso, test_email_invalido_no_guarda(), test_envio_valido_redirige_y_persiste() (+5 more)
+Cohesion: 0.26
+Nodes (13): build_checklist(), Checklist de una oportunidad, sellado una vez por versión de ficha., _escenario(), _eventos_checklist(), S2.3 — el checklist se sella una vez por versión de ficha, no por visita.  Integ, Otra ficha es otro veredicto, aunque la versión del extractor no cambie., Sellar «se evaluó» de algo que no se pudo evaluar sería mentir al ledger., Guarda contra un sellado que pisara el ledger existente. (+5 more)
 
 ### Community 2202 - "Community 2202"
 Cohesion: 0.33
@@ -9172,56 +9193,52 @@ Cohesion: 0.24
 Nodes (8): _cliente_con_pagina(), Contrato de paginación común del API + cota de la serie de `trends`.  Dos mitade, El tope es `MAX_PAGE_LIMIT` para todas: no hay tope propio por ruta., Si no, toda petición sin `limit` a esa ruta respondería 422., test_dependencia_acepta_el_tope_exacto(), test_dependencia_aplica_el_default_de_la_ruta(), test_dependencia_rechaza_fuera_del_contrato(), test_un_default_fuera_de_rango_falla_al_registrar()
 
 ### Community 2210 - "Community 2210"
-Cohesion: 0.17
-Nodes (11): create_export(), _gc_store(), Crea un job de exportación PDF asíncrono.      Devuelve ``{id, status}`` inmedia, Crea un job de exportación PDF asíncrono.      Devuelve ``{id, status}`` inmedia, Crea un job de exportación PDF asíncrono.      Devuelve ``{id, status}`` inmedia, Crea un job de exportación PDF asíncrono.      Devuelve ``{id, status}`` inmedia, Elimina jobs expirados (>TTL)., Elimina jobs expirados (>TTL). (+3 more)
+Cohesion: 0.22
+Nodes (9): create_export(), _gc_store(), Crea un job de exportación PDF asíncrono.      Devuelve ``{id, status}`` inmedia, Crea un job de exportación PDF asíncrono.      Devuelve ``{id, status}`` inmedia, Crea un job de exportación PDF asíncrono.      Devuelve ``{id, status}`` inmedia, Crea un job de exportación PDF asíncrono.      Devuelve ``{id, status}`` inmedia, Elimina jobs expirados (>TTL)., Elimina jobs expirados (>TTL). (+1 more)
 
 ### Community 2211 - "Community 2211"
-Cohesion: 0.17
-Nodes (12): _abreviar(), _comparar_revisiones(), health(), Estado del servicio y conectividad con la base de datos.      No requiere autent, Rinde un conjunto de revisiones en algo legible en una línea., Estado del servicio y conectividad con la base de datos.      No requiere autent, Traduce (aplicadas, cabezas, conocidas) al vocabulario del payload.      Función, Estado del servicio y conectividad con la base de datos.      No requiere autent (+4 more)
+Cohesion: 0.15
+Nodes (14): apply_weights_proposal(), _desgloses_cerrados(), get_weights_proposal(), Desgloses sellados de las oportunidades ganadas y de las perdidas., Desgloses sellados de las oportunidades ganadas y de las perdidas., Propuesta de ajuste de pesos a partir de los cierres de la organización., Propuesta de ajuste de pesos a partir de los cierres de la organización., Desgloses sellados de las oportunidades ganadas y de las perdidas. (+6 more)
 
 ### Community 2212 - "Community 2212"
 Cohesion: 0.18
 Nodes (11): Todos los modelos son cadenas no vacías., Todos los modelos son cadenas no vacías., Todos los modelos son cadenas no vacías., Todos los modelos son cadenas no vacías., DEFAULT_MODEL está en AVAILABLE_MODELS.      Sin esto, /ask rechaza con 400 su p, DEFAULT_MODEL está en AVAILABLE_MODELS.      Sin esto, /ask rechaza con 400 su p, Con modelo gpt-*, llama a openai_provider.stream., Con modelo gpt-*, llama a openai_provider.stream. (+3 more)
 
 ### Community 2213 - "Community 2213"
-Cohesion: 0.17
-Nodes (12): _http_status_for_readiness(), Kubernetes readiness probe. Verifica DB, Redis y disco; devuelve 503 si degradad, Kubernetes readiness probe. Verifica DB, Redis y disco; devuelve 503 si degradad, Kubernetes readiness probe. Verifica DB, Redis y disco; devuelve 503 si degradad, Kubernetes readiness probe. Verifica DB, Redis y disco; devuelve 503 si degradad, 503 solo si la BD no está disponible. Redis/disco degradado → 200 con payload de, Kubernetes readiness probe. Verifica DB, Redis y disco; devuelve 503 si degradad, Kubernetes readiness probe.      - ``503`` solo si la base de datos no responde (+4 more)
-
-### Community 2214 - "Community 2214"
-Cohesion: 0.20
-Nodes (5): DriftStatus, TestDriftStatus, TestAnalyticsClose, TestDriftStatus, TestDuckdbQueryWithDuckdb
+Cohesion: 0.16
+Nodes (9): Tests del cierre del embudo de acceso: a quién se avisa, cuándo y con qué.  Lo q, La misma promesa, un nivel más abajo: en ``observability/alerts.py``.      ``tes, No es una regresión encubierta: el destinatario de una alerta es         configu, No es una regresión encubierta: el destinatario de una alerta es         configu, Deja pasar la ventana de agrupación del aviso al operador.      Sin esto los tes, Deja pasar la ventana de agrupación del aviso al operador.      Sin esto los tes, _settings_smtp(), TestElTransporteTampocoRegistraLaDireccion (+1 more)
 
 ### Community 2215 - "Community 2215"
-Cohesion: 0.20
-Nodes (12): _pick_canonical(), (canónica, duplicada): PLACSP gana; si no, la fila más antigua., (canónica, duplicada): PLACSP gana; si no, la más antigua; si no, la de id menor, _fila(), El caso que separa las dos definiciones, y el que hace caro equivocarse.      Do, El bug que arregla ``_rango_canonico``: antes decidía el orden de la query., El criterio anterior no se pierde: PLACSP lleva más detalle de adjudicación., Preferir la más antigua es lo que mantiene quieta la URL ante corrigendos. (+4 more)
+Cohesion: 0.14
+Nodes (12): btn, clickSpy, destinations, editor, focusSpy, input, listbox, option (+4 more)
 
 ### Community 2216 - "Community 2216"
-Cohesion: 0.17
-Nodes (10): AdjudicacionSchema, Config, LicitacionSchema, _NoOpSchema, _pandera_installed(), Esquemas pandera para validación de DataFrames en boundaries.  Define los contra, Schema del DataFrame base de licitaciones (post-enriquecimiento)., Schema del DataFrame de adjudicaciones. (+2 more)
+Cohesion: 0.27
+Nodes (10): CalidadKpisProps, ColumnCompleteness, CompletitudMes, completitudSeries(), Frescura, freshnessInfo(), QualityData, CalidadDatosView() (+2 more)
 
 ### Community 2217 - "Community 2217"
-Cohesion: 0.18
-Nodes (7): calidad_dato(), Métricas de completitud del dataset.      Returns:         dict con claves: pct_, Métricas de completitud del dataset.      Returns:         dict con claves: pct_, Métricas de completitud del dataset.      Returns:         dict con claves: pct_, Verifica métricas de calidad del dataset., TestCalidadDatosPage, TestCalidadDato
+Cohesion: 0.33
+Nodes (5): calidad_dato(), Métricas de completitud del dataset.      Returns:         dict con claves: pct_, Métricas de completitud del dataset.      Returns:         dict con claves: pct_, Métricas de completitud del dataset.      Returns:         dict con claves: pct_, TestCalidadDato
 
 ### Community 2218 - "Community 2218"
-Cohesion: 0.20
-Nodes (7): Identificador estable y no reversible de una sesión, para la API., Identificador estable y no reversible de una sesión, para la API., session_public_id(), Lo que sale a la API no puede abrir la sesión., Revocar exige poder nombrar la misma sesión dos veces., Sin el `user_id`, un id público enumerable cerraría sesiones ajenas., TestSesiones
+Cohesion: 0.33
+Nodes (12): csv_crm(), El CSV del mapeo a partir de las filas del tablero. Puro.      ``filas`` son las, _fila(), _leer(), F6.3 — ``GET /exports/crm``: el tablero de oportunidades en CSV para el CRM.  ``, test_el_csv_lleva_las_cabeceras_del_mapeo_y_una_fila_por_oportunidad(), test_el_servicio_resuelve_la_organizacion_y_pasa_los_filtros(), test_la_ruta_devuelve_el_csv_y_audita_formato_crm() (+4 more)
 
 ### Community 2219 - "Community 2219"
-Cohesion: 0.22
-Nodes (7): _get_classifier(), Devuelve el SAPClassifier activo (caché de proceso con lock y TTL).      La cach, Devuelve el SAPClassifier activo (caché de proceso con lock y TTL).      La cach, _preparar_cache(), Clasificador falso + resolvedor inyectado (sin red ni BD)., Es lo que hace efectivo el rollback de modelo., TestClassifierCache
+Cohesion: 0.17
+Nodes (13): _contrato(), _Escenario, _licitacion(), Oportunidad real en la organización y su entrada de cartera., Oportunidad real en la organización y su entrada de cartera., Oportunidad real en la organización y su entrada de cartera., Dos organizaciones con cartera; el orden de inserción no es el esperado.      Se, Dos organizaciones con cartera; el orden de inserción no es el esperado.      Se (+5 more)
 
 ### Community 2220 - "Community 2220"
-Cohesion: 0.18
-Nodes (8): _default_golden_tech_path(), _f1(), _MultiLabelClassifier, _normalize_labels(), Evaluación honesta del clasificador multi-tecnología contra un golden set.  Moti, Interfaz mínima del clasificador multi-tecnología.      La cumple ``scraper.tech, Resuelve la ruta del golden set multi-label (relativa al repo).      ``ML_GOLDEN, Normaliza una lista de tecnologías del JSONL y valida contra TECH_LABELS.      U
+Cohesion: 0.22
+Nodes (12): _insert_lic(), _load_pairs(), _metric_value(), Gate de calidad del dedupe cross-fuente sobre el golden set etiquetado a mano., Valor de una serie del REGISTRY: 0.0 si está registrada y aún sin muestra., RFC dedupe/linaje: dedupe_marked_total{source_pair} y dedupe_match_rate., RFC dedupe/linaje: dedupe_marked_total{source_pair} y dedupe_match_rate., El ``except`` fail-open de ``_post_ingestion`` incrementa un contador.      Sin (+4 more)
 
 ### Community 2221 - "Community 2221"
 Cohesion: 0.22
-Nodes (6): fingerprint(), Huella estable de un error, insensible a los números que cambian., Mil ocurrencias son una fila, no mil: eso es lo que el log no daba., El mismo mensaje en dos pantallas son dos problemas distintos., Un error que sigue pasando no caduca por haber empezado hace un mes., TestErroresDeCliente
+Nodes (12): _cadenas_de(), _docstrings(), Guardarraíl: una tabla citada en SQL tiene que existir en las migraciones.  El b, `id()` de los literales que son docstring.      Se excluyen porque este repo doc, Literales de cadena del módulo —sin docstrings—, que es donde vive el SQL., Todo lo que las migraciones crean o renombran., `{tabla: {ficheros que la citan}}` en el SQL de `db/` y `services/`., Si el extractor deja de ver las migraciones, el test de abajo no prueba nada. (+4 more)
 
 ### Community 2222 - "Community 2222"
-Cohesion: 0.27
-Nodes (5): estado_label(), Devuelve etiqueta legible para un código de estado PLACSP., Devuelve etiqueta legible para un código de estado PLACSP., Devuelve etiqueta legible para un código de estado PLACSP., TestEstadoLabel
+Cohesion: 0.23
+Nodes (8): _derivar_como_el_trigger(), Réplica en Python de ``lts_derivar_ml`` (``v136``): predicha es     ``probabilid, T3 (v136): el merge ya no escribe ``licitaciones.ml_*``; escribe filas     de sc, El camino de ingesta escribe el CSV sin filas de score: si el merge         no l, SAP=0.45 bajo su umbral y ausente del CSV: ni el merge ni el         trigger la, Un llamador que no lee umbrales no adopta a ciegas: reescribiría         el umbr, _tabla_tras_merge(), TestMergeWritesOnlyTheSingleSource
 
 ### Community 2223 - "Community 2223"
 Cohesion: 0.22
@@ -9240,12 +9257,12 @@ Cohesion: 0.27
 Nodes (6): _df_cache_fingerprint(), Fingerprint compacto para caché de clustering.      Evita el hashing profundo po, _df_cache_fingerprint(), Fingerprint compacto para caché de clustering.      Evita el hashing profundo so, TestDfCacheFingerprint, TestDfCacheFingerprint
 
 ### Community 2233 - "Community 2233"
-Cohesion: 0.33
-Nodes (6): _apply_v31_dlq_columns(), Añade columnas last_attempt_at y exhausted_at a failed_extractions (idempotente), Añade columnas last_attempt_at y exhausted_at a failed_extractions (idempotente), Añade columnas last_attempt_at y exhausted_at a failed_extractions (idempotente), Añade columnas last_attempt_at y exhausted_at a failed_extractions (idempotente), Añade columnas last_attempt_at y exhausted_at a failed_extractions (idempotente)
+Cohesion: 0.24
+Nodes (10): DonutEntry, TecnologiaItem, TecnologiasDonutChart(), TecnologiasEvolutionChart(), TecnologiasGeoBarChart(), TecnologiasImporteBarChart(), TecnologiasVolumeBarChart(), VolumeBarEntry (+2 more)
 
 ### Community 2234 - "Community 2234"
-Cohesion: 0.31
-Nodes (10): _corpus_mixto(), _dias_atras(), _insert(), Denominadores explícitos de Proyectos & Módulos.  Fichero aparte de ``test_analy, 4 licitaciones: 1 multi-módulo, 2 mono-módulo, 1 sin módulo.      «Migración SAP, `total` es el ámbito COMPLETO, no la suma de filas de módulo., El signo correcto: más multi-módulo ⇒ ratio MÁS ALTO.      El KPI viejo hacía lo, test_densidad_de_modulos_sube_con_las_multimodulo() (+2 more)
+Cohesion: 0.29
+Nodes (10): descripcionDivision(), DIVISIONES, generateMetadata(), HubCpv(), paginaDe(), Params, Query, Paginacion() (+2 more)
 
 ### Community 2235 - "Community 2235"
 Cohesion: 0.20
@@ -9256,8 +9273,8 @@ Cohesion: 0.22
 Nodes (10): _parece_ruta_de_fichero(), Las rutas de fichero que la documentación cita tienen que existir (C9.2).  `scri, `docs/api-design.md` citaba `/exports/{job_id}`, `/webhooks/{id}/test` y     `/m, `docs/api-design.md` citaba `/exports/{job_id}`, `/webhooks/{id}/test` y     `/m, Mismo criterio que `check_agent_docs.looks_like_path`, para no divergir., Mismo criterio que `check_agent_docs.looks_like_path`, para no divergir., _rutas_reales_de_la_api(), test_api_design_no_cita_rutas_http_inexistentes() (+2 more)
 
 ### Community 2237 - "Community 2237"
-Cohesion: 0.07
-Nodes (40): Manifest, Manifest de linaje para el snapshot Parquet de hechos analíticos (RFC 086).  Reg, Lee el manifest desde *path*.      Devuelve ``None`` si el fichero no existe o n, Lee el manifest desde *path*.      Devuelve ``None`` si el fichero no existe o n, Metadata de linaje del último snapshot Parquet de hechos analíticos.      Attrib, Metadata de linaje del último snapshot Parquet de hechos analíticos.      Attrib, Devuelve ``generated_at`` parseado a epoch (segundos, UTC)., Devuelve ``generated_at`` parseado a epoch (segundos, UTC). (+32 more)
+Cohesion: 0.08
+Nodes (35): Manifest de linaje para el snapshot Parquet de hechos analíticos (RFC 086).  Reg, Lee el manifest desde *path*.      Devuelve ``None`` si el fichero no existe o n, Lee el manifest desde *path*.      Devuelve ``None`` si el fichero no existe o n, Escribe el manifest de forma atómica (write-temp + ``os.replace``).      Args:, Escribe el manifest de forma atómica (write-temp + ``os.replace``).      Args:, read_manifest(), _validate_engine(), write_manifest() (+27 more)
 
 ### Community 2238 - "Community 2238"
 Cohesion: 0.27
@@ -9284,8 +9301,8 @@ Cohesion: 0.20
 Nodes (9): cache_key(), Genera una cache key determinista desde varios componentes., Genera una cache key determinista desde varios componentes., cache_key(), llm_cache_key(), Clave determinista a partir de varios componentes.      Formato conservado tal c, Clave de una respuesta del LLM: modo + modelo + versión de prompt + contexto., La clave es determinista, discrimina, y **conserva el formato histórico**. (+1 more)
 
 ### Community 2244 - "Community 2244"
-Cohesion: 0.22
-Nodes (7): Rechaza el byte NUL en la línea de petición (path y query string).      Postgres, Rechaza el byte NUL en la línea de petición (path y query string).      Postgres, _RejectNulMiddleware, _tiene_nul(), anyOf, title, bytes
+Cohesion: 0.18
+Nodes (11): _lideres(), LiderSegmento, _motivos(), F3.3 — con quién ir a una UTE, y por qué.  ``services/partners.py`` lleva meses, Por qué esta empresa. Cada motivo cita el dato que lo sostiene., ``None`` en lugar de los ausentes de pandas (``NA``/``NaN``/``NaT``)., Los que más adjudican en el segmento, con su cuota.      Es el otro consumidor q, Una empresa propuesta, con el motivo por el que se propone. (+3 more)
 
 ### Community 2245 - "Community 2245"
 Cohesion: 0.40
@@ -9345,71 +9362,71 @@ Nodes (9): Checklist para PRs, code:bash (make dev   # instala deps de desarroll
 
 ### Community 2259 - "Community 2259"
 Cohesion: 0.20
-Nodes (10): Score keyword-route licitaciones (ml_proba IS NULL).      Sin try/except propio:, Score keyword-route licitaciones (ml_proba IS NULL).      Sin try/except propio:, Score keyword-route licitaciones (ml_proba IS NULL).      Sin try/except propio:, Score keyword-route licitaciones (ml_proba IS NULL)., _run_ml_scoring(), La clave leída es ``skipped_no_model`` (contrato con scraper/ml_training)., La clave leída es ``skipped_no_model`` (contrato con scraper/ml_training)., La clave leída es ``skipped_no_model`` (contrato con scraper/ml_training). (+2 more)
+Nodes (11): canonical_for(), _iter_dicts(), iter_filas_de_otras_fuentes_por_expediente(), iter_filas_publicables_de_organos(), marcar_duplicados(), SQL de los detectores de duplicados y reemisiones (ADR-022).  ``services/dedupe., Filas **publicables** cuyo órgano plegado está en la lista, de cualquier fuente., Candidatas del dedupe cross-fuente: otras fuentes, expediente en la lista. (+3 more)
 
 ### Community 2260 - "Community 2260"
 Cohesion: 0.31
 Nodes (5): ratio_relicitacion(), % de oportunidades del pipeline que vienen de un contrato ya adjudicado (re-lici, % de oportunidades del pipeline que vienen de un contrato ya adjudicado (re-lici, % de oportunidades del pipeline que vienen de un contrato ya adjudicado (re-lici, TestRatioRelicitacion
 
 ### Community 2261 - "Community 2261"
-Cohesion: 0.31
-Nodes (7): _jaccard(), Tests de contrato del protocolo ``SearchBackend``.  Este fichero nació como gate, Coeficiente de Jaccard entre dos listas (conjuntos)., Coeficiente de Jaccard entre dos listas (conjuntos)., Paridad Jaccard top-10 ≥ 0.6 entre FTS5 y PgTs para todas las queries.      Solo, Cobertura FTS5 vs PgTs -- PG no debe devolver 0 cuando FTS5 encuentra resultados, test_search_parity_fts5_vs_pg()
+Cohesion: 0.17
+Nodes (12): get_filter_options(), Devuelve los valores únicos disponibles para cada filtro de licitaciones.      Ú, Devuelve los valores únicos disponibles para cada filtro de licitaciones.      Ú, Devuelve los valores únicos disponibles para cada filtro de licitaciones.      Ú, Devuelve los valores únicos disponibles para cada filtro de licitaciones.      Ú, _get_cache_lock(), Obtiene (o crea) un ``asyncio.Lock`` por *key* de forma thread-safe., Obtiene (o crea) un ``asyncio.Lock`` por *key* de forma thread-safe.      LRU-ac (+4 more)
 
 ### Community 2262 - "Community 2262"
 Cohesion: 0.22
 Nodes (9): _materialize_schema_ddl(), _pg_schema_ddl(), _pg_test_url(), URL del Postgres de tests: entorno primero, ``.env`` como fallback.      El fall, URL del Postgres de tests: entorno primero, ``.env`` como fallback.      El fall, DDL completo del schema, materializado una vez por sesión.      Aplicar ``alembi, DDL completo del schema, materializado una vez por sesión.      Aplicar ``alembi, alembic → pg_dump → vaciado de ``public`` → DDL reproyectable. (+1 more)
 
 ### Community 2264 - "Community 2264"
-Cohesion: 0.22
-Nodes (7): _fetch(), _non_empty_lists(), Compone y **valida** la URL final contra la base esperada.      El guard anterio, Exige que **todas** las listas nombradas traigan algo.      ``/publico/hubs`` de, Valida `/health/ready`: estado global **y** alineación del schema.      ``degrad, _resolver_url(), _status_ok()
+Cohesion: 0.29
+Nodes (7): _hits_from_fused(), Adapta los documentos de la fusión RRF a la forma de ``SemanticHit``.      El ``, _doc(), La adaptación de los docs de RRF a ``SemanticHit``., ``chunks`` y ``rrf_score`` son del RAG, no del contrato de esta ruta., Contrato: lo que produce la fusión encaja en el DTO publicado., TestHitsDeLaFusion
 
 ### Community 2265 - "Community 2265"
-Cohesion: 0.67
-Nodes (3): No lanza excepción (aunque otros validators de prod puedan avisar)., No lanza excepción (aunque otros validators de prod puedan avisar)., test_database_url_with_sslmode_ok_in_prod()
+Cohesion: 0.17
+Nodes (11): csp_report(), Recibe reportes de violación de Content-Security-Policy del navegador.      Alma, Recibe reportes de violación de Content-Security-Policy del navegador.      Alma, Recibe reportes de violación de Content-Security-Policy del navegador.      Alma, Recibe reportes de violación de Content-Security-Policy del navegador.      Alma, Recibe reportes de violación de Content-Security-Policy del navegador.      Alma, Recibe reportes de violación de Content-Security-Policy del navegador.      Alma, Servicio de seguridad — persistencia de violaciones CSP. (+3 more)
 
 ### Community 2266 - "Community 2266"
-Cohesion: 0.20
-Nodes (8): main(), Valida el DataFrame de adjudicaciones contra el schema., Valida el DataFrame de licitaciones contra el schema.      Args:         df: Dat, validate(), validate_adjudicaciones(), validate_licitaciones(), test_validate_adjudicaciones_returns_df_lazy(), test_validate_licitaciones_returns_df_lazy()
+Cohesion: 0.17
+Nodes (11): _query_licitaciones_batch(), _query_licitaciones_since(), Comprueba la watchlist tras cada ejecución del pipeline y envía alertas por emai, Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece, Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece, Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece, Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece, Consulta licitaciones para múltiples entradas en una sola query por fecha. (+3 more)
 
 ### Community 2267 - "Community 2267"
 Cohesion: 0.20
-Nodes (10): CompetitiveCompanyHistoryDTO, CompetitiveCompanyTotalsDTO, CompetitiveCompanyYearDTO, Headline activity and data-coverage metrics for the selected scope., Annual activity point., Headline activity and data-coverage metrics for the selected scope., Headline activity and data-coverage metrics for the selected scope., Annual activity point. (+2 more)
+Nodes (6): GoNoGoRepository, Pesos y puntuaciones de la plantilla go/no-go (C6.4, v123).  El criterio —qué se, `{pursuit_id: {criterio: puntuacion}}` de toda la organización.          Lo cons, Acceso a ``go_no_go_weights`` y ``go_no_go_scores``., Pesos guardados. Los ausentes los rellena el servicio con el default., Upsert de los pesos. Ignora criterios desconocidos.          Se escriben uno a u
 
 ### Community 2268 - "Community 2268"
 Cohesion: 0.27
 Nodes (5): etiqueta_procedimiento(), Etiqueta legible del procedimiento. Sin catalogar → el código tal cual., Nunca una etiqueta inventada: el código crudo y nada más., La fuente publica ``01`` y ``1`` para lo mismo según el emisor., TestEtiquetas
 
 ### Community 2269 - "Community 2269"
-Cohesion: 0.22
-Nodes (5): DETALLE, { fetchWithAuth, apiMutate, setView }, LISTA, PERFIL, STATS
+Cohesion: 0.18
+Nodes (5): HttpUser, APIUser, Load test contra la API REST (E4 — Locust).  Uso::      pip install locust     L, Simula un cliente externo consumiendo la API REST., Carga la API key desde el entorno.
 
 ### Community 2270 - "Community 2270"
 Cohesion: 0.22
 Nodes (9): description, properties, required, title, type, title, type, id_externo (+1 more)
 
 ### Community 2271 - "Community 2271"
-Cohesion: 0.22
-Nodes (9): oauth_microsoft_client_id(), oauth_microsoft_client_secret(), ``OAUTH_MICROSOFT_CLIENT_ID`` — id de aplicación registrado en Entra ID., ``OAUTH_MICROSOFT_CLIENT_SECRET`` — secreto de cliente de esa aplicación., ``OAUTH_MICROSOFT_CLIENT_ID`` — id de aplicación registrado en Entra ID., ``OAUTH_MICROSOFT_CLIENT_SECRET`` — secreto de cliente de esa aplicación., ``OAUTH_MICROSOFT_CLIENT_ID`` — id de aplicación registrado en Entra ID., ``OAUTH_MICROSOFT_CLIENT_SECRET`` — secreto de cliente de esa aplicación. (+1 more)
+Cohesion: 0.18
+Nodes (9): Anonimiza la watchlist del usuario (GDPR)., Anonimiza la watchlist del usuario (GDPR)., Favoritos del usuario, enriquecidos con datos de la licitación.          El back, Favoritos del usuario, enriquecidos con datos de la licitación.          El back, Anonimiza la watchlist CPV del usuario (GDPR Art. 17).          ``watchlist_cpv`, Anonimiza la watchlist CPV del usuario (GDPR Art. 17).          ``watchlist_cpv`, Anonimiza la watchlist CPV del usuario (GDPR Art. 17).          ``watchlist_cpv`, Favoritos del usuario, enriquecidos con datos de la licitación.          El back (+1 more)
 
 ### Community 2272 - "Community 2272"
 Cohesion: 0.31
 Nodes (5): json_to_session_state(), Convierte un JSON guardado a un dict de session_state keys., Convierte un JSON guardado a un dict de session_state keys., Convierte un JSON guardado a un dict de session_state keys., TestJsonToSessionState
 
 ### Community 2273 - "Community 2273"
-Cohesion: 0.22
-Nodes (5): _check_db(), check_db(), Servicio de health check — conectividad de la base de datos., Devuelve ``'ok'`` si la BD responde, ``'error'`` si no.      El ``SELECT 1`` viv, TestPing
+Cohesion: 0.25
+Nodes (4): check_db(), Servicio de health check — conectividad de la base de datos., Devuelve ``'ok'`` si la BD responde, ``'error'`` si no.      El ``SELECT 1`` viv, TestPing
 
 ### Community 2274 - "Community 2274"
-Cohesion: 0.22
-Nodes (9): _check_disk(), _min_free_disk_bytes(), Verifica espacio libre en disco.      Devuelve ``"ok"`` si hay al menos el umbra, Devuelve el umbral de espacio libre configurado o el default., Verifica espacio libre en disco.      Devuelve ``"ok"`` si hay al menos el umbra, Verifica espacio libre en disco.      Devuelve ``"ok"`` si hay al menos 500 MB l, Verifica espacio libre en disco.      Devuelve ``"ok"`` si hay al menos 500 MB l, Verifica espacio libre en disco.      Devuelve ``"ok"`` si hay al menos 500 MB l (+1 more)
+Cohesion: 0.18
+Nodes (9): Exporta los favoritos (watchlist_items) del usuario (GDPR)., Exporta los favoritos (watchlist_items) del usuario (GDPR)., Anonimiza (borra) los favoritos del usuario (GDPR).          A diferencia de ``w, Anonimiza (borra) los favoritos del usuario (GDPR).          A diferencia de ``w, Exporta los favoritos (watchlist_items) del usuario (GDPR)., Anonimiza (borra) los favoritos del usuario (GDPR).          A diferencia de ``w, Exporta los favoritos (watchlist_items) del usuario (GDPR)., Exporta los favoritos (watchlist_items) del usuario (GDPR). (+1 more)
 
 ### Community 2275 - "Community 2275"
 Cohesion: 0.33
 Nodes (3): _classify(), Drift monitor programado (F3).  Capa fina sobre :mod:`scheduler.concept_drift` y, TestClassify
 
 ### Community 2276 - "Community 2276"
-Cohesion: 0.33
-Nodes (6): Diferencia, main(), medir(), Resultado de comparar una tabla de origen con ``follows``., Los tres pares, en el orden de ``PARES_DE_ORIGEN``.      El SQL está en ``db/rep, _render()
+Cohesion: 0.18
+Nodes (9): a_csv_fila(), PayloadCRM, F6.3 — llevar el pipeline al CRM donde vive el comercial (D35).  D35 decidió: **, La fila del CSV, en el orden de ``CABECERAS_CSV``.      Se deriva del payload y, La fila del CSV, en el orden de ``CABECERAS_CSV``.      Se deriva del payload y, ``(bytes, n_filas)`` del CSV para el CRM, con el ámbito ya resuelto.      La org, Una oportunidad en el vocabulario de un CRM genérico., Una oportunidad en el vocabulario de un CRM genérico. (+1 more)
 
 ### Community 2277 - "Community 2277"
 Cohesion: 0.31
@@ -9419,45 +9436,53 @@ Nodes (5): is_anomaly(), Detecta si `current` se desvía más de `sigma` desviac
 Cohesion: 0.22
 Nodes (6): cita, desglose, escenarios, fetchWithAuth, ficha, pursuit
 
+### Community 2280 - "Community 2280"
+Cohesion: 0.18
+Nodes (11): export_watchlist(), Exporta las entradas de watchlist del usuario., Exporta las entradas de watchlist del usuario., Exporta las entradas de watchlist del usuario., Exporta las entradas de watchlist del usuario., Exporta las entradas de watchlist del usuario., watchlist table may not exist (gdpr queries 'watchlist' not 'watchlist_cpv')., Un user_key sin entradas exporta lista vacía (la tabla real es watchlist_cpv). (+3 more)
+
+### Community 2281 - "Community 2281"
+Cohesion: 0.24
+Nodes (7): notificar_acceso_concedido(), Escribe a quien pidió acceso para decirle que ya puede entrar.      Devuelve si, Escribe a quien pidió acceso para decirle que ya puede entrar.      Devuelve si, `empresa` es texto que escribió un desconocido en un formulario público., La solicitud ya está marcada cuando esto corre: no puede reventar., El email es dato personal: al log va el dominio, no la dirección., TestCorreoDeAcceso
+
 ### Community 2282 - "Community 2282"
 Cohesion: 0.22
 Nodes (7): { container }, { container, rerender }, onViewChange, query, { replace, searchParamsRef }, { result }, tabs
 
 ### Community 2283 - "Community 2283"
-Cohesion: 0.25
-Nodes (9): _correr_detector(), _fila_repub(), Ejecuta ``detect_republicaciones`` con el repositorio doblado y devuelve las mar, El caso que el `len(grupo) < 2` de antes no podía ver.      La fila nueva puede, El mismo objeto licitado en 2019 no es reemisión del licitado en 2026., Si no, la misma pasada se repite para siempre sobre las mismas filas., test_la_edicion_de_hace_siete_anos_no_tapa_la_convocatoria_viva(), test_una_fila_nueva_no_publicable_se_marca_contra_su_gemela_buena() (+1 more)
+Cohesion: 0.18
+Nodes (6): cabecera, cola, mutar, respuesta, SolicitudFalsa, urlsPedidas
 
 ### Community 2328 - "Community 2328"
 Cohesion: 0.28
 Nodes (5): _item(), Un item mínimo, sólo con lo que mira :func:`sp._agenda_orden`., Primero el plazo externo, después lo que hay que hacer, después lo         propi, Un plazo pasado sigue exigiendo acción: no desaparece por llegar tarde., TestOrden
 
 ### Community 2329 - "Community 2329"
-Cohesion: 0.22
-Nodes (9): _con_origenes(), Fija los orígenes aceptados sin depender de la configuración del entorno., Un formulario alojado en otro dominio no puede sembrar la cola.      No es una d, Una cabecera malformada no es prueba de origen ajeno, así que no corta., Un despliegue sin CORS_ALLOWED_ORIGINS no puede quedarse sin formulario.      Si, test_el_origen_propio_sigue_pasando(), test_sin_origenes_configurados_no_se_bloquea_a_nadie(), test_un_origen_ajeno_no_guarda() (+1 more)
+Cohesion: 0.18
+Nodes (11): _cartera(), Lo que vence antes arriba: es lo que hay que empezar a preparar.      El empate, Lo que vence antes arriba: es lo que hay que empezar a preparar.      El empate, Lo que vence antes arriba: es lo que hay que empezar a preparar.      El empate, Existe y se ejecuta, pero no hay de dónde sacar cuándo se relicita., Existe y se ejecuta, pero no hay de dónde sacar cuándo se relicita., Existe y se ejecuta, pero no hay de dónde sacar cuándo se relicita., Dos rutas, un solo universo: si divergen, la cifra de arriba desmiente     la ta (+3 more)
 
 ### Community 2330 - "Community 2330"
 Cohesion: 0.39
 Nodes (8): _load_test_conftest_module(), Tests unitarios para la inferencia de markers automática., test_infer_marker_e2e_has_priority(), test_infer_marker_integration_by_name_pattern(), test_infer_marker_integration_by_path_token(), test_infer_marker_load(), test_infer_marker_property(), test_infer_marker_unit_default()
 
 ### Community 2331 - "Community 2331"
-Cohesion: 0.22
-Nodes (5): Frescura por fuente de ingesta (S2.3).  Hoy un conector puede llevar semanas mue, 36 h = nueve ciclos de 4 h, el mismo número que ``--freshness-hours``., Un umbral sin motivo escrito se relaja hasta que deja de alertar., test_placsp_tiene_el_umbral_del_carril_diario(), test_toda_fuente_declara_por_que_tiene_ese_umbral()
+Cohesion: 0.15
+Nodes (10): _incorporar_frescura_fuentes(), Ejecuta el chequeo de frescura por fuente y lo vuelca en el informe.      En su, Frescura por fuente de ingesta (S2.3).  Hoy un conector puede llevar semanas mue, Mismo criterio que el resto de checks secundarios del healthcheck., 36 h = nueve ciclos de 4 h, el mismo número que ``--freshness-hours``., Un umbral sin motivo escrito se relaja hasta que deja de alertar., test_el_informe_incluye_la_frescura_y_avisa(), test_no_poder_medir_la_frescura_no_tumba_el_informe() (+2 more)
 
 ### Community 2332 - "Community 2332"
 Cohesion: 0.25
 Nodes (7): por_tipo, expediente, organo, q, resultados, sin_busqueda, tipos_buscados
 
 ### Community 2333 - "Community 2333"
-Cohesion: 0.29
-Nodes (7): _ip_permitida(), prometheus_metrics(), Endpoint Prometheus ``GET /metrics``.  Vivía dentro de ``api/app.py``, donde ade, Métricas en formato de exposición Prometheus., ¿La IP de origen está en ``METRICS_ALLOWED_IPS``?, Autoriza el scrape. Devuelve el contexto, o ``None`` si entró por IP.      Devue, require_metrics_reader()
+Cohesion: 0.18
+Nodes (11): _organizacion_de_pruebas(), Crea una organización real (con su owner) y devuelve su id.      ``saved_filters, Varios filtros del mismo usuario se listan todos., Varios filtros del mismo usuario se listan todos., Los filtros de un usuario no aparecen en el de otro., Un usuario que nunca guardó filtros recibe lista vacía., Aislamiento en sus dos dimensiones: entre usuarios y entre organizaciones., Un usuario que nunca guardó filtros recibe lista vacía. (+3 more)
 
 ### Community 2334 - "Community 2334"
-Cohesion: 0.25
-Nodes (7): list_flags(), Lista todos los flags con sus metadatos., Página Admin — Feature Flags.  Permite a los administradores del sistema activar, render(), test_list_flags_empty(), test_list_flags_returns_all(), test_list_flags_sorted_by_name()
+Cohesion: 0.22
+Nodes (8): _avisar(), El formulario que dispara esto es público, anónimo y sin captcha.      ``notify`, El formulario que dispara esto es público, anónimo y sin captcha.      ``notify`, Con clave por IP el ataque queda intacto: basta rotar de origen.          El rec, Con clave por IP el ataque queda intacto: basta rotar de origen.          El rec, El fallo que se acepta al degradar es el ruido, nunca el silencio., El fallo que se acepta al degradar es el ruido, nunca el silencio., TestAgrupacionDelAviso
 
 ### Community 2335 - "Community 2335"
-Cohesion: 0.25
-Nodes (7): contar_pendientes(), crear_solicitud(), obtener_solicitud(), CRUD de ``solicitudes_acceso`` — cola de peticiones de acceso de la landing.  El, Cuántas solicitudes esperan revisión., Registra una solicitud y devuelve su id.      ``consentimiento_at`` se sella aqu, Una solicitud por id, o ``None`` si no existe.      La necesita el panel al apro
+Cohesion: 0.44
+Nodes (7): apiMutate, logout, mercadoToggle, renderNav(), sectionToggle, setCommandOpen, setTheme
 
 ### Community 2336 - "Community 2336"
 Cohesion: 0.36
@@ -9476,8 +9501,8 @@ Cohesion: 0.25
 Nodes (8): hybrid_rerank(), Reranking híbrido: alpha·FAISS + (1-alpha)·FTS5., Reranking híbrido: alpha·FAISS + (1-alpha)·FTS5., Reranking híbrido: alpha·FAISS + (1-alpha)·FTS5., test_hybrid_rerank_combines_scores(), test_hybrid_rerank_faiss_only(), test_hybrid_rerank_fts_only(), test_hybrid_rerank_respects_top_k()
 
 ### Community 2340 - "Community 2340"
-Cohesion: 0.25
-Nodes (8): 5. Entrenar el clasificador ML, CI / Calidad de código, code:bash (cp .env.example .env   # edita con tus credenciales), code:dotenv (API_HMAC_SECRET=<secreto-hmac-32+-chars>), code:bash (# Linting y formato), code:bash (# Linting y formato), Docker (autohospedado), Opción B — Docker (autohospedado)
+Cohesion: 0.33
+Nodes (6): Fallback: similitud basada en % de palabras de la query presentes en el texto., Fallback: similitud basada en % de palabras de la query presentes en el texto., substring_match(), Fallback: similitud basada en % de palabras de la query presentes en el texto., substring_match(), TestSubstringMatch
 
 ### Community 2341 - "Community 2341"
 Cohesion: 0.29
@@ -9504,8 +9529,8 @@ Cohesion: 0.36
 Nodes (6): ``pliegos.yml`` propaga lo que necesita la pre-generación del resumen IA.  La fa, Sin la variable de repo no se exporta nada: manda el default (apagado)., _step(), _steps(), test_el_batch_recibe_redis_de_los_secrets(), test_resumen_pregen_solo_se_exporta_si_la_variable_existe()
 
 ### Community 2347 - "Community 2347"
-Cohesion: 0.25
-Nodes (7): load_adjudicaciones(), load_for_competitors(), Servicio de adjudicaciones — acceso de lectura para API y jobs.  Centraliza la l, Carga adjudicaciones enriquecidas., Carga adjudicaciones enriquecidas., Carga adjudicaciones enriquecidas., Carga filtrada+proyectada para ``services/analytics/competitors.py``.      Aplic
+Cohesion: 0.24
+Nodes (5): Tests para dashboard/utils/format.py y dashboard/utils/export.py., TestToExcelBytes, Serializa un DataFrame a CSV en chunks para evitar picos de memoria.      Para D, to_csv_bytes(), to_excel_bytes()
 
 ### Community 2348 - "Community 2348"
 Cohesion: 0.29
@@ -9620,24 +9645,24 @@ Cohesion: 0.29
 Nodes (3): md, px(), xl
 
 ### Community 2376 - "Community 2376"
-Cohesion: 0.38
-Nodes (6): _filas(), El interruptor ``COMPETITORS_IDENTITY_SQL`` elige camino, sin BD.  La paridad SQ, ``curated_groups`` se deriva de ``_CURATED_GROUPS_BY_NIF``: una sola copia., test_apagado_por_defecto_no_llama_al_sql(), test_encendido_entrega_las_filas_cargadas_sin_normalizar(), test_la_politica_curada_es_la_del_servicio()
+Cohesion: 0.20
+Nodes (7): _como_pagina(), Repository para ``documentos``/``documento_chunks`` (plan Pliegos+RAG, F6).  Met, Texto extraído con éxito. ``sha256`` es del binario descargado —         usado p, Acepta el ``list[str]`` histórico además del tipo nuevo., Formato de texto que pgvector castea con ``::vector`` (``[0.1,0.2,...]``)., Reemplaza (delete+insert) los chunks+embeddings de un documento.          ``embe, _to_pg_vector_literal()
 
 ### Community 2377 - "Community 2377"
-Cohesion: 0.29
-Nodes (3): El historial viaja al LLM como kwarg history (sin persistirse)., El historial viaja al LLM como kwarg history (sin persistirse)., TestAskMessages
+Cohesion: 0.20
+Nodes (7): Valor de ``user_notifications.type`` para este evento concreto.      El único de, Valor de ``user_notifications.type`` para este evento concreto.      El único de, Valor de ``user_notifications.type`` para este evento concreto.      El único de, _tipo_notificacion(), El único de `user_notifications` es por tipo y expediente: sin el         discri, TestCatalogoYDespachador, test_cada_vencimiento_y_cada_mencion_son_avisos_distintos()
 
 ### Community 2378 - "Community 2378"
 Cohesion: 0.29
-Nodes (4): El criterio de aceptación: semilla y tabla coinciden en un arranque limpio., Sin decirlo, alguien añadiría una keyword ahí y esperaría que entrase., Si lo hiciera, cada despliegue desharía una decisión del equipo., TestSemillaYTabla
+Nodes (9): check(), check_cola(), main(), _modules_invoked_by_workflows(), plano_worker_declarado(), ¿Hay en ``render.yaml`` un servicio con ``APP_PROFILE=worker``?      Es la compr, Paridad de la cola de trabajo: handler resoluble y plano declarado., Devuelve (filas de estado, lista de problemas). (+1 more)
 
 ### Community 2379 - "Community 2379"
 Cohesion: 0.25
 Nodes (5): API key sin scope ask:read → 403., API key sin scope ask:read → 403., API key sin scope ask:read → 403., API key sin scope ask:read → 403., TestAskAuth
 
 ### Community 2380 - "Community 2380"
-Cohesion: 0.40
-Nodes (5): Página Observabilidad — runs del pipeline, DLQ y estado del sistema., Sección con KPIs de completitud del dataset y frescura del scrape., Sección con KPIs de completitud del dataset y frescura del scrape., render(), _render_calidad_dato()
+Cohesion: 0.28
+Nodes (8): Página Observabilidad — runs del pipeline, DLQ y estado del sistema., Sección admin para listar, dar/quitar admin y desactivar usuarios., Sección admin para listar, dar/quitar admin y desactivar usuarios., Sección con KPIs de completitud del dataset y frescura del scrape., Sección con KPIs de completitud del dataset y frescura del scrape., render(), _render_calidad_dato(), _render_user_management()
 
 ### Community 2381 - "Community 2381"
 Cohesion: 0.33
@@ -9652,8 +9677,8 @@ Cohesion: 0.33
 Nodes (5): code:bash (TF_TEST_SCHEMA_STRATEGY=truncate make test-integration), Pasos para cambiar el default, Qué garantiza hoy `truncate`, Riesgos conocidos que no cubre, Suite de integración: schema por sesión (`TF_TEST_SCHEMA_STRATEGY=truncate`)
 
 ### Community 2384 - "Community 2384"
-Cohesion: 0.29
-Nodes (7): listar_solicitudes(), Cola de solicitudes, las más recientes primero., La segunda vez es la misma petición mejor explicada, no otra distinta., El índice es parcial: sólo hay una pendiente por email, no una histórica.      S, test_campos_largos_se_recortan_sin_romper(), test_la_unicidad_no_bloquea_pedir_acceso_otra_vez(), test_reenviar_actualiza_lo_que_llega_mejor_contado()
+Cohesion: 0.22
+Nodes (9): _meses_de_duracion(), Duración en meses enteros. ``0`` si no se puede convertir sin adivinar.      El, Duración en meses enteros. ``0`` si no se puede convertir sin adivinar.      El, Duración en meses enteros. ``0`` si no se puede convertir sin adivinar.      El, codigo_de_unidad(), meses_de(), Vocabulario de unidades de duración de CODICE.  ``licitaciones.duracion_unidad``, El código CODICE de una unidad escrita como sea, o ``None``.      ``None`` signi (+1 more)
 
 ### Community 2385 - "Community 2385"
 Cohesion: 0.33
@@ -9736,24 +9761,24 @@ Cohesion: 0.29
 Nodes (7): _detect_json_default(), Por defecto JSON en entornos no-TTY (CI, Docker, systemd)., Por defecto JSON en entornos no-TTY (CI, Docker, systemd)., Por defecto JSON en entornos no-TTY (CI, Docker, systemd)., Por defecto JSON en entornos no-TTY (CI, Docker, systemd)., Por defecto JSON en entornos no-TTY (CI, Docker, systemd)., Por defecto JSON en entornos no-TTY (CI, Docker, systemd).
 
 ### Community 2405 - "Community 2405"
-Cohesion: 0.33
-Nodes (4): current_filter_version(), Versionado reproducible del universo de inclusión del scraper., Hash estable del filtro que decide el universo tecnológico observado.      Desde, El acoplamiento que hace que editar desde /ops cambie el linaje.
+Cohesion: 0.20
+Nodes (6): controller, f, f1, f2, onToken, tokens
 
 ### Community 2406 - "Community 2406"
 Cohesion: 0.47
 Nodes (4): { container }, handler, link, ref
 
 ### Community 2407 - "Community 2407"
-Cohesion: 0.29
-Nodes (7): _overall_status(), ok si DB está bien y Redis/disco ok; degraded si Redis/disco fallan pero DB ok., ok si DB está bien y Redis/disco/schema ok; degraded en caso contrario.      ``s, Verifica espacio libre en disco.      Devuelve ``"ok"`` si hay al menos el umbra, ok si DB está bien; degraded si Redis falla o disco bajo pero DB ok., ok si DB está bien; degraded si Redis falla o disco bajo pero DB ok., ok si DB está bien; degraded si Redis falla o disco bajo pero DB ok.
+Cohesion: 0.20
+Nodes (6): agenda_deps(), _Dependencias, Los dobles de una llamada a ``get_agenda``, para inspeccionarlos después., Un tope alcanzado se declara; presentar el corte como el total es mentir., _RepoStub, test_get_agenda_declara_el_corte_de_tareas()
 
 ### Community 2408 - "Community 2408"
 Cohesion: 0.40
 Nodes (4): Paginación por cursor ordenada, de punta a punta contra Postgres.  Recorrer toda, _recorrer(), sembrado(), test_cada_fila_una_vez_y_en_orden()
 
 ### Community 2410 - "Community 2410"
-Cohesion: 0.29
-Nodes (7): _leer_nifs(), Lectura pura: la organización llega ya resuelta y autorizada., Lectura pura: la organización llega ya resuelta y autorizada., OrganizationNifsOut, Identidad fiscal completa de una organización., Identidad fiscal completa de una organización., Identidad fiscal completa de una organización.
+Cohesion: 0.28
+Nodes (8): _actor_user_id(), descomponer_detalle(), _proyectar_entrada(), Repository para audit_log., Separa el ``detail`` persistido en sus campos de cabecera y el payload.      Dev, Actor como ``users.id``: la columna de v129 y, si falta, la clave en texto., Forma que publica ``shared.dto.AuditEntryOut``; el DTO la valida., test_descomponer_detalle()
 
 ### Community 2411 - "Community 2411"
 Cohesion: 0.47
@@ -9800,20 +9825,20 @@ Cohesion: 0.40
 Nodes (5): code:block3 (feat(scraper): agregar parser para formato CODICE 3.0), Conventional Commits, Ejemplos, Reglas, Tipos permitidos
 
 ### Community 2422 - "Community 2422"
-Cohesion: 0.43
-Nodes (6): _cargar_presupuesto(), _guardar_presupuesto(), main(), medir(), Presupuesto de First Load JS por ruta, como ratchet (C7.6).  Qué mide -------- E, `{ruta: bytes de First Load JS}` según la última build.
+Cohesion: 0.25
+Nodes (5): Diccionario de tecnologías como dato (C5.6, D28, v126).  El criterio —qué diccio, Cuántos expedientes **nuevos** traería una keyword (preview de D28).          «N, Acceso a ``tecnologias_keywords``., `{tecnologia: [keywords]}` de las filas activas.          Devuelve `{}` cuando l, TecnologiasKeywordsRepository
 
 ### Community 2423 - "Community 2423"
-Cohesion: 0.33
-Nodes (6): BusquedaGlobal, _fila(), F1.2 — la paleta ⌘K busca lo que el usuario tiene en la cabeza.  Hoy la paleta n, Un resultado, con lo justo para pintar una fila de la paleta., La respuesta de la paleta., ResultadoBusqueda
+Cohesion: 0.22
+Nodes (8): buildCsv(), csv, current, [, line], next, once, rows, sorting
 
 ### Community 2424 - "Community 2424"
-Cohesion: 0.29
-Nodes (7): _rango_canonico(), Orden de preferencia de canónica; menor gana.      Espeja ``db.sql_fragments._ra, Orden de preferencia de canónica; menor gana.      Espeja ``db.sql_fragments._ra, Las dos definiciones tienen que ordenar igual o el detector y la     proyección, El tercer término del ``coalesce`` no es decorativo.      Mientras ``db/upsert.p, test_el_rango_conserva_fecha_extraccion_como_respaldo(), test_el_rango_de_python_espeja_el_de_sql()
+Cohesion: 0.31
+Nodes (5): _download_bytes(), Descarga ``uri`` en memoria con guardas SSRF + tamaño.      DNS-pinning (mismo h, SSRF: resolve_and_validate rechaza ANTES de llamar requests.get.         ValueEr, El header puede mentir -- el contador en streaming es la guarda real., TestDownloadGuards
 
 ### Community 2425 - "Community 2425"
-Cohesion: 0.40
-Nodes (5): 7.12 Use Loop for Min/Max Instead of Sort, code:typescript (interface Project {), code:typescript (function getOldestAndNewest(projects: Project[]) {), code:typescript (function getLatestProject(projects: Project[]) {), code:typescript (const numbers = [5, 2, 8, 1, 9])
+Cohesion: 0.22
+Nodes (9): engine_available(), True si duckdb está instalado y la feature flag está activa., engine_available() devuelve False si duckdb no está instalado., engine_available() devuelve False si duckdb no está instalado., engine_available() devuelve False cuando la feature flag está desactivada., engine_available() devuelve False cuando la feature flag está desactivada., engine_available() devuelve False cuando la feature flag está desactivada., test_engine_available_false_when_duckdb_missing() (+1 more)
 
 ### Community 2426 - "Community 2426"
 Cohesion: 0.83
@@ -9856,24 +9881,24 @@ Cohesion: 0.50
 Nodes (4): code:bash (make pre-commit              # todos los hooks sobre todos l), Ejecutar manualmente, Hooks configurados, Pre-commit hooks
 
 ### Community 2436 - "Community 2436"
-Cohesion: 0.29
-Nodes (7): CompetitiveCompanyBreakdownDTO, CompetitiveCompanyComparisonDTO, Reusable amount/count distribution row (CPV, territory or buyer)., Current period compared with the immediately preceding equal period., Reusable amount/count distribution row (CPV, territory or buyer)., Reusable amount/count distribution row (CPV, territory or buyer)., Current period compared with the immediately preceding equal period.
+Cohesion: 0.31
+Nodes (5): _describir_evento(), El texto del evento: el ``detalle`` derivado o, si falta, el cambio.      ``cont, El texto del evento: el ``detalle`` derivado o, si falta, el cambio.      ``cont, Las filas antiguas sólo traen campo y los dos valores; siguen siendo         una, TestDescripcionDelEvento
 
 ### Community 2437 - "Community 2437"
-Cohesion: 0.50
-Nodes (3): Licitaciones con al menos un documento ``extracted`` y sin señal         ``metho, Licitaciones con al menos un documento ``extracted`` y sin señal         ``metho, Licitaciones con al menos un documento ``extracted`` y sin señal         ``metho
+Cohesion: 0.13
+Nodes (11): Devuelve scopes de una key activa, o ``None`` si no existe., Devuelve scopes de una key activa, o ``None`` si no existe., Devuelve scopes de una key activa, o ``None`` si no existe., Licitaciones con al menos un documento ``extracted`` y sin señal         ``metho, Licitaciones con al menos un documento ``extracted`` y sin señal         ``metho, Licitaciones con al menos un documento ``extracted`` y sin señal         ``metho, load_pending_digests(), Carga los digests pendientes (no enviados) para una frecuencia dada. (+3 more)
 
 ### Community 2438 - "Community 2438"
-Cohesion: 0.33
-Nodes (5): calientes_hoy(), Licitaciones 'calientes' = en plazo + importe > P75 + riesgo ≤1 flag.      Si `w, Licitaciones 'calientes' = en plazo + importe > P75 + riesgo ≤1 flag.      Si `w, Licitaciones 'calientes' = en plazo + importe > P75 + riesgo ≤1 flag.      Si `w, TestCalientesHoy
+Cohesion: 0.11
+Nodes (16): calientes_hoy(), por_cpv(), por_estado(), Licitaciones 'calientes' = en plazo + importe > P75 + riesgo ≤1 flag.      Si `w, Licitaciones 'calientes' = en plazo + importe > P75 + riesgo ≤1 flag.      Si `w, Licitaciones 'calientes' = en plazo + importe > P75 + riesgo ≤1 flag.      Si `w, Nº de licitaciones cuyo plazo de presentación vence en las próximas N horas., Nº de licitaciones cuyo plazo de presentación vence en las próximas N horas. (+8 more)
 
 ### Community 2440 - "Community 2440"
 Cohesion: 0.50
 Nodes (3): a, done, start
 
 ### Community 2441 - "Community 2441"
-Cohesion: 0.33
-Nodes (5): Nº de licitaciones cuyo plazo de presentación vence en las próximas N horas., Nº de licitaciones cuyo plazo de presentación vence en las próximas N horas., Nº de licitaciones cuyo plazo de presentación vence en las próximas N horas., vencen_en(), TestVencenEn
+Cohesion: 0.36
+Nodes (7): anomalyEl, anomalySpan, card, { container }, link, TestIcon(), trendSpan
 
 ### Community 2442 - "Community 2442"
 Cohesion: 0.50
@@ -9896,44 +9921,44 @@ Cohesion: 0.50
 Nodes (4): Campos aditivos: sus defaults reproducen la respuesta de hoy., Campos aditivos: sus defaults reproducen la respuesta de hoy., Campos aditivos: sus defaults reproducen la respuesta de hoy., test_respuesta_declara_granularidad_y_recorte()
 
 ### Community 2447 - "Community 2447"
-Cohesion: 0.50
-Nodes (4): db_importe_float4(), Alinea ``licitaciones.importe`` con producción: ``real`` (float4).      ``alembi, Alinea ``licitaciones.importe`` con producción: ``real`` (float4).      ``alembi, Alinea ``licitaciones.importe`` con producción: ``real`` (float4).      ``alembi
+Cohesion: 0.22
+Nodes (9): _insert_licitaciones(), Devuelve una asignación por cada licitación cuando sklearn está disponible., Inserta rows de (id_externo, titulo, descripcion)., Si sklearn no está instalado, devuelve lista vacía sin propagar excepción., Inserta rows de (id_externo, titulo, descripcion)., Devuelve una asignación por cada licitación cuando sklearn está disponible., Si sklearn no está instalado, devuelve lista vacía sin propagar excepción., test_compute_clusters_returns_empty_on_sklearn_missing() (+1 more)
 
 ### Community 2448 - "Community 2448"
-Cohesion: 0.29
-Nodes (6): alcance_doble(), Dobles del ámbito de tenencia (ADR-034) para los tests de servicio.  Vive en un, Sustituto de ``alcance_resuelto`` que cede lo que devuelva ``resolucion``., mod(), El módulo con sus dependencias sustituidas y una organización resuelta., El módulo con sus dependencias sustituidas y una organización resuelta.
+Cohesion: 0.22
+Nodes (7): _oferta(), Perder mi cifra porque falló la del mercado sería esconder lo que sé., Perder mi cifra porque falló la del mercado sería esconder lo que sé., Una oferta presentada, en la forma que devuelve `ofertas_presentadas`., Una oferta presentada, en la forma que devuelve `ofertas_presentadas`., Aquí no hay población mixta que declarar: solo entra base declarada., Aquí no hay población mixta que declarar: solo entra base declarada.
 
 ### Community 2451 - "Community 2451"
 Cohesion: 0.50
 Nodes (4): 7.14 Use toSorted() Instead of sort() for Immutability, code:typescript (function UserList({ users }: { users: User[] }) {), code:typescript (function UserList({ users }: { users: User[] }) {), code:typescript (// Fallback for older browsers)
 
 ### Community 2452 - "Community 2452"
-Cohesion: 0.38
-Nodes (5): _catalog_response(), Tests del canary del catálogo NVIDIA NIM (scheduler/jobs/llm_models_canary)., Un modelo ofertado que desapareció del catálogo es el hallazgo que este     job, test_canary_ok_when_all_nim_models_in_catalog(), test_canary_reports_missing_models()
+Cohesion: 0.22
+Nodes (9): Es lectura: un ``viewer`` tiene que poder ver qué vence y cuándo., Es lectura: un ``viewer`` tiene que poder ver qué vence y cuándo., Es lectura: un ``viewer`` tiene que poder ver qué vence y cuándo., La fila de membresía sigue existiendo; lo que cuenta es que esté activa., La fila de membresía sigue existiendo; lo que cuenta es que esté activa., La fila de membresía sigue existiendo; lo que cuenta es que esté activa., test_cualquier_miembro_activo_lee_la_misma_cartera_que_el_owner(), test_una_membresia_revocada_pierde_la_cartera() (+1 more)
 
 ### Community 2454 - "Community 2454"
-Cohesion: 0.33
-Nodes (6): HeatmapCcaaCell, Heatmap cell: empresa x CCAA., Heatmap cell: empresa x CCAA., Heatmap cell: empresa x CCAA., Heatmap cell: empresa x CCAA., Heatmap cell: empresa x CCAA.
+Cohesion: 0.22
+Nodes (7): Verifica que el clustering es aceptablemente rápido con TF-IDF fallback., Clustering sobre 1K filas con TF-IDF debe completar en <10s., Verifica que el clustering es aceptablemente rápido con TF-IDF fallback., Clustering sobre 1K filas con TF-IDF debe completar en <10s., KMeans clustering sobre 500 filas (via TF-IDF) debe terminar en <30s., KMeans clustering sobre 500 filas (via TF-IDF) debe terminar en <30s., TestClusteringPerformance
 
 ### Community 2455 - "Community 2455"
-Cohesion: 0.40
-Nodes (4): Resultado de evaluar el multi-label contra el golden set., Serializa a dict plano (para logging/registry/API)., Desglose por etiqueta ordenado por soporte descendente., TechEvalResult
+Cohesion: 0.25
+Nodes (6): Read-modify-write atómico del merge para un lote de licitaciones,         serial, Read-modify-write atómico del merge para un lote de licitaciones,         serial, Read-modify-write atómico del merge para un lote de licitaciones,         serial, Una transacción del merge por lotes: lock, lectura del estado de         todo el, Una transacción del merge por lotes: lock, lectura del estado de         todo el, Una transacción del merge por lotes: lock, lectura del estado de         todo el
 
 ### Community 2456 - "Community 2456"
-Cohesion: 0.33
-Nodes (6): _check_redis(), Verifica conectividad con Redis si está configurado.      Devuelve ``"ok"``, ``", Verifica conectividad con Redis si está configurado.      Devuelve ``"ok"``, ``", Verifica conectividad con Redis si está configurado.      Devuelve ``"ok"``, ``", Verifica conectividad con Redis si está configurado.      Devuelve ``"ok"``, ``", Verifica conectividad con Redis si está configurado.      Devuelve ``"ok"``, ``"
+Cohesion: 0.25
+Nodes (8): clear_stats_cache(), Invalida la caché de :func:`load_stats_dataframe`., _clear_service_data_caches(), Limpia las cachés de full-table de la capa de servicios entre tests.      ``load, Limpia las cachés en memoria de la capa de servicios entre tests.      Las señal, Limpia las cachés en memoria de la capa de servicios entre tests.      Las señal, Limpia las cachés de full-table de la capa de servicios entre tests.      ``load, Limpia las cachés de full-table de la capa de servicios entre tests.      ``load
 
 ### Community 2457 - "Community 2457"
-Cohesion: 0.33
-Nodes (6): medir_solape(), Mide el solape detectado entre dos fuentes (acceptance del RFC)., Mide el solape detectado entre dos fuentes (acceptance del RFC)., (canónica, duplicada): PLACSP gana; si no, la más antigua; si no, la de id menor, Mide el solape detectado entre dos fuentes (acceptance del RFC)., Mide el solape detectado entre dos fuentes (acceptance del RFC).
+Cohesion: 0.29
+Nodes (5): agrupar(), Mi baja frente al mercado (C6.5).  `bajas/referencia` responde «en este órgano,, Mi baja media en un segmento, junto a la del mercado., Agrupa mis ofertas por CPV4 y por órgano, y las cruza con el mercado.      Args:, SegmentoBaja
 
 ### Community 2458 - "Community 2458"
 Cohesion: 0.33
 Nodes (3): { pathname, query }, reenvio, { replace, searchParamsRef }
 
 ### Community 2459 - "Community 2459"
-Cohesion: 0.33
-Nodes (6): Pregunta demasiado larga lanza ValueError., Pregunta demasiado larga lanza ValueError., Pregunta demasiado larga lanza ValueError., Pregunta demasiado larga lanza ValueError., Pregunta demasiado larga lanza ValueError., test_stream_llm_response_question_too_long_raises()
+Cohesion: 0.07
+Nodes (29): Genera tokens LLM en streaming delegando al proveedor correcto.      Args:, Genera tokens LLM en streaming delegando al proveedor correcto.      Args:, Genera tokens LLM en streaming delegando al proveedor correcto.      Args:, Genera tokens LLM en streaming delegando al proveedor correcto.      Args:, Genera tokens LLM en streaming delegando al proveedor correcto.      Args:, Genera tokens LLM en streaming delegando al proveedor correcto.      Args:, stream_llm_response(), Con modelo namespace/modelo, enruta al provider OpenAI con base_url NVIDIA. (+21 more)
 
 ### Community 2460 - "Community 2460"
 Cohesion: 0.67
@@ -9980,8 +10005,8 @@ Cohesion: 0.67
 Nodes (3): `with_total=false` devuelve la página sin COUNT(*) → total = -1., `with_total=false` devuelve la página sin COUNT(*) → total = -1., test_total_negativo_significa_conteo_no_calculado()
 
 ### Community 2471 - "Community 2471"
-Cohesion: 0.33
-Nodes (3): La contrapartida del cambio: una key sin dueño admin recibe 403., Sin esto el cambio de `is_active` se quedaba solo en la BD., TestActivateInvalidatesCache
+Cohesion: 0.32
+Nodes (5): URL de la pantalla de acceso, deducida de la configuración existente.      No se, url_de_login(), De dónde sale el enlace del correo, sin inventar una variable nueva., Mejor un correo sin botón que un botón a ninguna parte., TestUrlDeLogin
 
 ### Community 2472 - "Community 2472"
 Cohesion: 0.67
@@ -9999,21 +10024,45 @@ Nodes (5): code:python (# In Jupyter notebooks, pipelines display as diagrams), 
 Cohesion: 0.60
 Nodes (4): _description(), main(), Primera línea de `description:` del frontmatter de SKILL.md, si existe., render()
 
+### Community 2480 - "Community 2480"
+Cohesion: 0.25
+Nodes (8): _primero_de_mes(), El día 1 del mes que queda a ``desplazamiento`` meses de ``_HOY``.      Día 1 a, El día 1 del mes que queda a ``desplazamiento`` meses de ``_HOY``.      Día 1 a, El día 1 del mes que queda a ``desplazamiento`` meses de ``_HOY``.      Día 1 a, Órgano y tecnología salen de ``licitaciones``; la ventana, de la fecha., Órgano y tecnología salen de ``licitaciones``; la ventana, de la fecha., Órgano y tecnología salen de ``licitaciones``; la ventana, de la fecha., test_cada_contrato_trae_su_licitacion_y_la_ventana_de_su_fecha()
+
+### Community 2482 - "Community 2482"
+Cohesion: 0.29
+Nodes (8): 403 con el problem+json de no pertenecer, no un 403 por otro motivo., 403 con el problem+json de no pertenecer, no un 403 por otro motivo., 403 con el problem+json de no pertenecer, no un 403 por otro motivo., El motivo es no pertenecer: otro 403 (un scope, un guard) no vale igual., El motivo es no pertenecer: otro 403 (un scope, un guard) no vale igual., _rechazo_por_membresia(), test_el_resumen_de_una_organizacion_ajena_es_403_por_membresia(), test_quien_no_es_miembro_recibe_403_por_membresia()
+
+### Community 2483 - "Community 2483"
+Cohesion: 0.39
+Nodes (3): TestKpisSnapshotCsv, kpis_snapshot_csv(), Serializa un diccionario {label: valor_formateado} a CSV listo para descargar.
+
+### Community 2485 - "Community 2485"
+Cohesion: 0.33
+Nodes (5): contar_huerfanos(), Inventario de filas sin organización (backfill de tenencia, S4.3).  Existe por e, Filas con ``organization_id IS NULL`` por tabla.      Una tabla que todavía no e, _informe(), main()
+
 ### Community 2487 - "Community 2487"
-Cohesion: 0.40
-Nodes (5): OrganizationFacturacion, Facturación de un ejercicio cerrado., Facturación de un ejercicio cerrado., Facturación de un ejercicio cerrado., Facturación de un ejercicio cerrado.
+Cohesion: 0.29
+Nodes (7): code:bash (git clone https://github.com/Dkalds/TenderFlow.git), code:bash (pip install -e ".[ml]"), code:bash (docker compose up -d), Con búsqueda semántica (opcional, ~2 GB adicionales por PyTorch), Con Docker, Instalación, Instalación estándar
 
 ### Community 2488 - "Community 2488"
-Cohesion: 0.40
-Nodes (5): OrganizationNifOut, Franja de compromisos de la agenda, calculada sobre el scope completo., Un NIF ya persistido, resuelto contra el maestro de empresas., Un NIF ya persistido, resuelto contra el maestro de empresas., Un NIF ya persistido, resuelto contra el maestro de empresas.
+Cohesion: 0.38
+Nodes (6): fix_adjudicaciones(), main(), _normalize(), One-shot data fix: normalize DD/MM/YYYY dates to ISO in adjudicaciones.  Run aga, Convert DD/MM/YYYY → YYYY-MM-DD. Returns None if already ISO or unrecognized., Find and fix DD/MM/YYYY dates in adjudicaciones.fecha_adjudicacion.
+
+### Community 2489 - "Community 2489"
+Cohesion: 0.33
+Nodes (5): pct_multi_modulo(), % de licitaciones con >=2 módulos SAP detectados (proyectos integrales)., % de licitaciones con >=2 módulos SAP detectados (proyectos integrales)., % de licitaciones con >=2 módulos SAP detectados (proyectos integrales)., TestPctMultiModulo
+
+### Community 2490 - "Community 2490"
+Cohesion: 0.33
+Nodes (5): % de licitaciones de cada órgano que acaban en estado ADJ.      Útil para identi, % de licitaciones de cada órgano que acaban en estado ADJ.      Útil para identi, % de licitaciones de cada órgano que acaban en estado ADJ.      Útil para identi, tasa_conversion_organo(), TestTasaConversionOrgano
 
 ### Community 2528 - "Community 2528"
-Cohesion: 0.40
-Nodes (5): AVAILABLE_MODELS tiene al menos un modelo., AVAILABLE_MODELS tiene al menos un modelo., AVAILABLE_MODELS tiene al menos un modelo., AVAILABLE_MODELS tiene al menos un modelo., test_available_models_not_empty()
+Cohesion: 0.47
+Nodes (4): CalendarioDowChart(), CalendarioMonthlyChart(), DowEntry, MonthlyEntry
 
 ### Community 2529 - "Community 2529"
-Cohesion: 0.50
-Nodes (4): migrated_db(), Tests de rollback para las migraciones Alembic (v14-v20).  Verifican que cada mi, Aplica todas las migraciones (v1-v29 custom + schema) y sella ``head`` en Alembi, _setup_baseline()
+Cohesion: 0.40
+Nodes (5): _infer_marker(), pytest_collection_modifyitems(), Fixtures compartidos para aislar la BD en tests., Infer the pytest marker for a test item based on path/name conventions., Infer the pytest marker for a test item based on path/name conventions.
 
 ### Community 2531 - "Community 2531"
 Cohesion: 0.50
@@ -10024,114 +10073,178 @@ Cohesion: 0.50
 Nodes (4): predicciones_baja, delta_pct, pg, sqlite
 
 ### Community 2533 - "Community 2533"
-Cohesion: 0.50
-Nodes (4): computedHash, source, sourceType, deploy-to-vercel
+Cohesion: 0.40
+Nodes (6): items, items, type, required, type, facts
 
 ### Community 2534 - "Community 2534"
-Cohesion: 0.50
-Nodes (3): Serializa a dict plano (para logging/registry/API)., Métricas de una tecnología contra las etiquetas humanas., TechLabelMetrics
+Cohesion: 0.33
+Nodes (5): Integración opcional de Sentry (F5).  Es **opt-in** vía la variable ``SENTRY_DSN, Limpia campos sensibles antes de enviar al backend., Asocia el span/scope actual a un usuario opaco (hash)., set_user_context(), _strip_pii()
 
 ### Community 2535 - "Community 2535"
-Cohesion: 0.50
-Nodes (4): _notify_step_failure(), Alerta best-effort de un paso canónico fallido.      Hasta 2026-08 un paso falli, Alerta best-effort de un paso canónico fallido.      Hasta 2026-08 un paso falli, Alerta best-effort de un paso canónico fallido.      Hasta 2026-08 un paso falli
+Cohesion: 0.47
+Nodes (3): Extrae tokens alfanuméricos de 3+ caracteres, minúsculas., _tokenize(), TestTokenize
 
 ### Community 2536 - "Community 2536"
-Cohesion: 0.50
-Nodes (4): AuditEntryOut, Una entrada del rastro de auditoría de la organización.      Es lo que sirve ``G, Una entrada del rastro de auditoría de la organización.      Es lo que sirve ``G, Una entrada del rastro de auditoría de la organización.      Es lo que sirve ``G
+Cohesion: 0.33
+Nodes (5): F6.2 — «este dato está mal»: la entrada que el usuario no tenía.  El producto ve, El ``source`` con el que se guarda un reporte de este tipo., source_de(), Los consumidores de ML filtran por ``source = 'human'``: un reporte con     otro, test_el_source_de_cada_tipo_nunca_parece_una_etiqueta()
 
 ### Community 2537 - "Community 2537"
-Cohesion: 0.50
-Nodes (4): CalendarioEnlace, Enlace de suscripción al calendario ICS del usuario., Enlace de suscripción al calendario ICS del usuario., Enlace de suscripción al calendario ICS del usuario.
+Cohesion: 0.33
+Nodes (5): Manifest, Metadata de linaje del último snapshot Parquet de hechos analíticos.      Attrib, Metadata de linaje del último snapshot Parquet de hechos analíticos.      Attrib, Devuelve ``generated_at`` parseado a epoch (segundos, UTC)., Devuelve ``generated_at`` parseado a epoch (segundos, UTC).
 
 ### Community 2538 - "Community 2538"
-Cohesion: 0.50
-Nodes (4): CompetitiveCompanyAwardDTO, Award row in the paginated company history., Award row in the paginated company history., Award row in the paginated company history.
-
-### Community 2539 - "Community 2539"
-Cohesion: 0.50
-Nodes (4): CompetitiveCompanyConcentrationDTO, Dependence on the most relevant public buyers., Dependence on the most relevant public buyers., Dependence on the most relevant public buyers.
+Cohesion: 0.33
+Nodes (5): C6.5 — «mi baja frente al mercado»: orquestación (`services/mi_baja.py`).  El mó, El cálculo, que vive en `services/pursuit_bajas.py`., El cálculo, que vive en `services/pursuit_bajas.py`., test_baja_propia_pct(), TestBajaPropia
 
 ### Community 2540 - "Community 2540"
-Cohesion: 0.50
-Nodes (4): CompetitiveCompanyIdentityDTO, Canonical identity displayed in a competitor dossier., Canonical identity displayed in a competitor dossier., Canonical identity displayed in a competitor dossier.
+Cohesion: 0.33
+Nodes (6): El valor exacto que produce un bug abierto, y sólo ése.      Los xfail de este m, La aserción final de un xfail, con sus tres salidas separadas.      * ``obtenido, El caso habitual: miro el Resumen por la mañana, el órgano publica el     pliego, _sintoma_del_bug(), _SintomaDelBug, test_un_pliego_publicado_el_dia_de_la_visita_pero_despues_es_novedad()
 
 ### Community 2541 - "Community 2541"
-Cohesion: 0.50
-Nodes (4): CompetitiveCompanyPositionDTO, Market position inside the currently selected segment., Market position inside the currently selected segment., Market position inside the currently selected segment.
+Cohesion: 0.33
+Nodes (6): 7.1 Avoid Layout Thrashing, code:typescript (function updateElementStyles(element: HTMLElement) {), code:typescript (function layoutThrashing(element: HTMLElement) {), code:typescript (function updateElementStyles(element: HTMLElement) {), code:typescript (function updateElementStyles(element: HTMLElement) {), code:tsx (// Incorrect: interleaving style changes with layout queries)
 
 ### Community 2542 - "Community 2542"
-Cohesion: 0.50
-Nodes (4): CompetitiveCompanyScopeDTO, Effective filters used to calculate a company dossier., Effective filters used to calculate a company dossier., Effective filters used to calculate a company dossier.
+Cohesion: 0.40
+Nodes (4): code:python (import pandas as pd), Complete Example: End-to-End Pipeline, Overview, Pipelines and Composite Estimators Reference
 
 ### Community 2543 - "Community 2543"
-Cohesion: 0.50
-Nodes (4): CompetitiveCompanyUteParticipationDTO, UTE en la que la empresa participa como miembro, con su actividad propia.      D, UTE en la que la empresa participa como miembro, con su actividad propia.      D, UTE en la que la empresa participa como miembro, con su actividad propia.      D
+Cohesion: 0.40
+Nodes (5): items, minItems, type, $ref, body
 
 ### Community 2544 - "Community 2544"
-Cohesion: 0.50
-Nodes (4): KpiSnapshotDTO, Snapshot de KPIs pre-computados., test_kpi_snapshot_defaults(), test_kpi_snapshot_serialization()
+Cohesion: 0.40
+Nodes (5): code:python (from sklearn.model_selection import GridSearchCV), code:python (param_grid = {), Grid Search with Pipeline, Hyperparameter Tuning with Pipelines, Tuning Multiple Pipeline Steps
 
 ### Community 2545 - "Community 2545"
-Cohesion: 0.50
-Nodes (4): PursuitEventOut, Entrada inmutable del historial de una oportunidad., Entrada inmutable del historial de una oportunidad., Entrada inmutable del historial de una oportunidad.
+Cohesion: 0.40
+Nodes (5): _agenda_orden(), Sin fecha al final; por días; a igual día por ``_KIND_ORDEN``; luego expediente., Sin fecha al final; a igual día, pursuit antes que señal y renovación., Sin fecha al final; a igual día, pursuit antes que señal y renovación., Sin fecha al final; a igual día, pursuit antes que señal y renovación.
 
 ### Community 2546 - "Community 2546"
-Cohesion: 0.50
-Nodes (4): `log_extraccion` se retiró: era la cuarta tabla de salud, y sin lector.      Est, `log_extraccion` se retiró: era la cuarta tabla de salud, y sin lector.      Est, `log_extraccion` se retiró: era la cuarta tabla de salud, y sin lector.      Est, test_no_queda_ningun_escritor_de_extracciones()
+Cohesion: 0.40
+Nodes (4): es_evento_conocido(), Catálogo cerrado de tipos de evento del registro de auditoría.  Hasta 2026-09 ca, ¿Está ``event_type`` en el catálogo?      La validación es *blanda* a propósito:, ¿Está ``event_type`` en el catálogo?      La validación es *blanda* a propósito:
 
 ### Community 2547 - "Community 2547"
-Cohesion: 0.50
-Nodes (4): Con modelo namespace/modelo, enruta al provider OpenAI con base_url NVIDIA., Con modelo namespace/modelo, enruta al provider OpenAI con base_url NVIDIA., Con modelo namespace/modelo, enruta al provider OpenAI con base_url NVIDIA., test_stream_llm_response_dispatches_to_nvidia()
+Cohesion: 0.60
+Nodes (3): { container }, handler, paragraphs
 
 ### Community 2550 - "Community 2550"
-Cohesion: 0.67
-Nodes (3): _identity_summary(), Return traceability metadata once per analytical competitor group., Return traceability metadata once per analytical competitor group.
+Cohesion: 0.40
+Nodes (5): El contrato ajeno es el más caro de los dos escenarios: si el filtro se     perd, Igual que la lista: omitir el parámetro es la personal, no «todas»., _resumen(), test_el_resumen_no_mezcla_organizaciones(), test_sin_organization_id_el_resumen_es_el_de_la_cartera_personal()
 
 ### Community 2552 - "Community 2552"
-Cohesion: 0.67
-Nodes (3): ClusterSummary, Resumen de un cluster generado por `services/clusters.py`., Resumen de un cluster generado por `services/clusters.py`/`dashboard/clustering.
+Cohesion: 0.40
+Nodes (5): list_recent con action filtra solo ese tipo de acción., list_recent con action filtra solo ese tipo de acción., El campo detail se persiste y recupera correctamente., test_auditoria_detail_persiste(), test_auditoria_list_recent_filtro_action()
 
 ### Community 2553 - "Community 2553"
-Cohesion: 0.67
-Nodes (3): Camino feliz: el pool se crea con conn_kwargs y se loguea sin error., Camino feliz: el pool se crea con conn_kwargs y se loguea sin error., test_get_pg_pool_creates_pool_with_kwargs_and_logs()
+Cohesion: 0.50
+Nodes (3): WAL checkpoint — truncate the SQLite write-ahead log to reclaim disk space., Execute ``PRAGMA wal_checkpoint(TRUNCATE)`` and return the result., run()
 
 ### Community 2554 - "Community 2554"
-Cohesion: 0.67
-Nodes (3): Si ConnectionPool() falla, el error no debe filtrar la password del DSN., Si ConnectionPool() falla, el error no debe filtrar la password del DSN., test_get_pg_pool_wraps_connection_error_without_leaking_dsn()
+Cohesion: 0.50
+Nodes (4): computedHash, source, sourceType, bash-defensive-patterns
 
 ### Community 2555 - "Community 2555"
-Cohesion: 0.67
-Nodes (3): ``run()`` delega el tamaño de lote de cada fase a config.settings en     vez de, ``run()`` delega el tamaño de lote de cada fase a config.settings en     vez de, test_run_passes_batch_sizes_from_settings()
+Cohesion: 0.50
+Nodes (3): Obtiene nombre y scopes de una API key por ID., Obtiene nombre y scopes de una API key por ID., Obtiene nombre y scopes de una API key por ID.
 
 ### Community 2556 - "Community 2556"
-Cohesion: 0.67
-Nodes (3): settings.PLIEGO_FACTS_MODEL es un modelo ofertado.      Lo consumen api/routes/l, settings.PLIEGO_FACTS_MODEL es un modelo ofertado.      Lo consumen api/routes/l, test_pliego_facts_model_is_available()
+Cohesion: 0.50
+Nodes (3): Content-types que este módulo sabe extraer.      Se expone para que el despacho, supported_content_types(), Cada content-type declarado tiene que tener rama de extracción.
 
 ### Community 2557 - "Community 2557"
-Cohesion: 0.67
-Nodes (3): Historial con más de 20 mensajes lanza ValueError., Historial con más de 20 mensajes lanza ValueError., test_stream_llm_response_history_too_long_raises()
+Cohesion: 0.50
+Nodes (3): Probabilidad efectiva de una etapa: la configurada o el default.          Una et, Probabilidad efectiva de una etapa: la configurada o el default.          Una et, Probabilidad efectiva de una etapa: la configurada o el default.          Una et
 
-### Community 2558 - "Community 2558"
+### Community 2559 - "Community 2559"
+Cohesion: 0.50
+Nodes (3): onWeightChange, PESOS, { rerender }
+
+### Community 2560 - "Community 2560"
+Cohesion: 0.50
+Nodes (4): Cada organización ve lo suyo, también quien pertenece a las dos.      El caso de, Cada organización ve lo suyo, también quien pertenece a las dos.      El caso de, Cada organización ve lo suyo, también quien pertenece a las dos.      El caso de, test_la_cartera_de_otra_organizacion_no_aparece()
+
+### Community 2561 - "Community 2561"
+Cohesion: 0.50
+Nodes (4): Omitir el parámetro no es «todas mis organizaciones»: es la personal.      Es lo, Omitir el parámetro no es «todas mis organizaciones»: es la personal.      Es lo, Omitir el parámetro no es «todas mis organizaciones»: es la personal.      Es lo, test_sin_organization_id_se_lee_la_cartera_personal()
+
+### Community 2562 - "Community 2562"
 Cohesion: 0.67
-Nodes (3): Mensaje de historial de más de 4000 chars lanza ValueError., Mensaje de historial de más de 4000 chars lanza ValueError., test_stream_llm_response_history_content_too_long_raises()
+Nodes (3): _isolate_dotenv_from_fresh_settings(), Evita que el ``.env`` del desarrollador entre en un ``Settings(...)`` nuevo., Evita que el ``.env`` del desarrollador entre en un ``Settings(...)`` nuevo.
+
+### Community 2567 - "Community 2567"
+Cohesion: 0.67
+Nodes (3): LicitacionDetail tiene campos adicionales sobre LicitacionSummary., ``LicitacionDetail`` tiene campos adicionales sobre ``LicitacionSummary``., test_detail_extra_fields_present()
+
+### Community 2568 - "Community 2568"
+Cohesion: 0.67
+Nodes (3): El agregado por cluster conserva id, etiqueta y tamaño.      Traslado de ``test_, El agregado por cluster conserva id, etiqueta y tamaño.      Traslado de ``test_, test_cluster_entry_contract()
+
+### Community 2569 - "Community 2569"
+Cohesion: 0.67
+Nodes (3): Equipos, Dos organizaciones compartidas.      La A tiene los tres roles que importan —own, _user()
+
+### Community 2570 - "Community 2570"
+Cohesion: 0.67
+Nodes (3): Aditivo de verdad: el consumidor actual ve la misma respuesta que antes., Aditivo de verdad: el consumidor actual ve la misma respuesta que antes., test_dto_por_defecto_no_expone_el_bloque_por_lote()
+
+### Community 2572 - "Community 2572"
+Cohesion: 0.67
+Nodes (3): Ordena por ``id_externo``: republicar algo no debe moverlo de fichero., Ordena por ``id_externo``: republicar algo no debe moverlo de fichero., test_la_particion_del_sitemap_es_estable_entre_ejecuciones()
+
+### Community 2573 - "Community 2573"
+Cohesion: 0.67
+Nodes (3): Guardar un filtro y listarlo devuelve la entrada esperada., Guardar un filtro y listarlo devuelve la entrada esperada., test_filtros_save_list_roundtrip()
+
+### Community 2574 - "Community 2574"
+Cohesion: 0.67
+Nodes (3): Guardar con el mismo (user_key, name) sobreescribe el payload., Guardar con el mismo (user_key, name) sobreescribe el payload., test_filtros_save_upsert_sobreescribe()
+
+### Community 2575 - "Community 2575"
+Cohesion: 0.67
+Nodes (3): Guardar y luego borrar → lista vacía., Guardar y luego borrar → lista vacía., test_filtros_delete_roundtrip()
+
+### Community 2576 - "Community 2576"
+Cohesion: 0.67
+Nodes (3): list_unresolved en BD vacía devuelve lista vacía., list_unresolved en BD vacía devuelve lista vacía., test_dlq_lista_vacia_sin_datos()
+
+### Community 2577 - "Community 2577"
+Cohesion: 0.67
+Nodes (3): log_action + list_recent devuelve la acción registrada., log_action + list_recent devuelve la acción registrada., test_auditoria_log_action_y_list_recent()
+
+### Community 2578 - "Community 2578"
+Cohesion: 0.67
+Nodes (3): list_recent con user_key filtra correctamente., list_recent con user_key filtra correctamente., test_auditoria_list_recent_filtro_user_key()
+
+### Community 2579 - "Community 2579"
+Cohesion: 0.67
+Nodes (3): list_recent con limit=1 no devuelve más de 1 entrada., list_recent con limit=1 no devuelve más de 1 entrada., test_auditoria_list_recent_respeta_limit()
+
+### Community 2580 - "Community 2580"
+Cohesion: 0.67
+Nodes (3): Múltiples acciones de un mismo usuario se registran todas., Múltiples acciones de un mismo usuario se registran todas., test_auditoria_multiples_acciones_misma_sesion()
+
+### Community 2581 - "Community 2581"
+Cohesion: 0.67
+Nodes (3): list_recent en BD vacía devuelve lista (vacía o no falla)., list_recent en BD vacía devuelve lista (vacía o no falla)., test_auditoria_bd_vacia_devuelve_lista()
 
 ## Knowledge Gaps
-- **6535 isolated node(s):** `extends`, `type-enum`, `subject-case`, `subject-empty`, `subject-full-stop` (+6530 more)
+- **6535 isolated node(s):** `Por qué estas y no otras`, `1. Hechos verificados (2026-09-05)`, `2. Decisiones del mantenedor (D32–D39)`, `F1.1 Filtros que faltan en el listado y la barra de ámbito — P0`, `F1.2 Búsqueda global unificada en ⌘K — P1` (+6530 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **623 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **636 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `sorted` connect `Community 394` to `Community 2`, `Community 3`, `Community 1538`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 1543`, `Community 15`, `Community 1554`, `Community 1556`, `Community 21`, `Community 28`, `Community 29`, `Community 35`, `Community 548`, `Community 552`, `Community 553`, `Community 42`, `Community 1580`, `Community 45`, `Community 44`, `Community 47`, `Community 50`, `Community 1587`, `Community 54`, `Community 1593`, `Community 1594`, `Community 62`, `Community 1599`, `Community 1601`, `Community 67`, `Community 1604`, `Community 76`, `Community 1613`, `Community 78`, `Community 1615`, `Community 1617`, `Community 1618`, `Community 1619`, `Community 91`, `Community 1628`, `Community 1630`, `Community 611`, `Community 1637`, `Community 111`, `Community 113`, `Community 114`, `Community 115`, `Community 1652`, `Community 637`, `Community 1662`, `Community 1665`, `Community 1667`, `Community 137`, `Community 140`, `Community 1677`, `Community 1678`, `Community 143`, `Community 657`, `Community 1681`, `Community 1683`, `Community 1684`, `Community 150`, `Community 151`, `Community 2205`, `Community 2207`, `Community 2211`, `Community 1700`, `Community 1702`, `Community 170`, `Community 171`, `Community 2220`, `Community 173`, `Community 1712`, `Community 177`, `Community 1715`, `Community 1716`, `Community 1724`, `Community 701`, `Community 700`, `Community 2237`, `Community 192`, `Community 2236`, `Community 2241`, `Community 198`, `Community 199`, `Community 1225`, `Community 1738`, `Community 1740`, `Community 205`, `Community 206`, `Community 1744`, `Community 1746`, `Community 1235`, `Community 1239`, `Community 216`, `Community 217`, `Community 1244`, `Community 225`, `Community 1765`, `Community 231`, `Community 1769`, `Community 1773`, `Community 239`, `Community 1264`, `Community 1263`, `Community 244`, `Community 246`, `Community 247`, `Community 1274`, `Community 1276`, `Community 1791`, `Community 1792`, `Community 257`, `Community 258`, `Community 776`, `Community 266`, `Community 781`, `Community 276`, `Community 2328`, `Community 297`, `Community 1322`, `Community 1339`, `Community 325`, `Community 1349`, `Community 841`, `Community 1866`, `Community 330`, `Community 1874`, `Community 1365`, `Community 342`, `Community 343`, `Community 345`, `Community 346`, `Community 355`, `Community 1381`, `Community 1383`, `Community 2408`, `Community 880`, `Community 885`, `Community 2422`, `Community 1399`, `Community 1400`, `Community 1401`, `Community 374`, `Community 1398`, `Community 1410`, `Community 2442`, `Community 396`, `Community 2455`, `Community 1433`, `Community 1437`, `Community 928`, `Community 1441`, `Community 1961`, `Community 1449`, `Community 1454`, `Community 2479`, `Community 1970`, `Community 438`, `Community 1462`, `Community 1466`, `Community 1471`, `Community 449`, `Community 1473`, `Community 451`, `Community 1476`, `Community 968`, `Community 969`, `Community 1483`, `Community 1489`, `Community 1501`, `Community 1506`, `Community 1508`, `Community 1001`, `Community 1516`, `Community 493`, `Community 1524`, `Community 1533`?**
-  _High betweenness centrality (0.141) - this node is a cross-community bridge._
-- **Why does `connect()` connect `Community 395` to `Community 2`, `Community 3`, `Community 1527`, `Community 7`, `Community 8`, `Community 12`, `Community 13`, `Community 2060`, `Community 1551`, `Community 16`, `Community 1553`, `Community 1554`, `Community 20`, `Community 21`, `Community 23`, `Community 24`, `Community 25`, `Community 31`, `Community 1569`, `Community 33`, `Community 35`, `Community 548`, `Community 549`, `Community 1575`, `Community 553`, `Community 45`, `Community 52`, `Community 53`, `Community 54`, `Community 56`, `Community 1081`, `Community 63`, `Community 64`, `Community 69`, `Community 72`, `Community 78`, `Community 1618`, `Community 89`, `Community 90`, `Community 91`, `Community 1629`, `Community 1630`, `Community 610`, `Community 611`, `Community 1634`, `Community 111`, `Community 113`, `Community 1652`, `Community 119`, `Community 1657`, `Community 127`, `Community 128`, `Community 1665`, `Community 1666`, `Community 131`, `Community 1667`, `Community 133`, `Community 138`, `Community 144`, `Community 146`, `Community 2197`, `Community 150`, `Community 153`, `Community 2202`, `Community 1691`, `Community 1699`, `Community 164`, `Community 165`, `Community 1704`, `Community 2217`, `Community 1707`, `Community 172`, `Community 171`, `Community 690`, `Community 179`, `Community 1205`, `Community 182`, `Community 696`, `Community 188`, `Community 192`, `Community 193`, `Community 194`, `Community 196`, `Community 1221`, `Community 2246`, `Community 198`, `Community 1224`, `Community 202`, `Community 203`, `Community 1741`, `Community 2253`, `Community 2255`, `Community 1233`, `Community 1747`, `Community 2261`, `Community 217`, `Community 218`, `Community 1244`, `Community 2273`, `Community 232`, `Community 233`, `Community 236`, `Community 1262`, `Community 1779`, `Community 247`, `Community 1274`, `Community 1796`, `Community 266`, `Community 779`, `Community 785`, `Community 2334`, `Community 2335`, `Community 287`, `Community 1822`, `Community 2338`, `Community 1324`, `Community 1326`, `Community 306`, `Community 309`, `Community 1347`, `Community 326`, `Community 1866`, `Community 2381`, `Community 2384`, `Community 337`, `Community 1875`, `Community 1366`, `Community 345`, `Community 352`, `Community 355`, `Community 2408`, `Community 880`, `Community 1905`, `Community 1906`, `Community 370`, `Community 884`, `Community 373`, `Community 368`, `Community 1912`, `Community 889`, `Community 1403`, `Community 1405`, `Community 1414`, `Community 392`, `Community 2447`, `Community 400`, `Community 915`, `Community 404`, `Community 917`, `Community 407`, `Community 1432`, `Community 1438`, `Community 929`, `Community 1442`, `Community 1446`, `Community 1959`, `Community 1448`, `Community 425`, `Community 2476`, `Community 430`, `Community 432`, `Community 439`, `Community 452`, `Community 2002`, `Community 1492`, `Community 1494`, `Community 474`, `Community 1509`, `Community 1001`, `Community 496`, `Community 499`, `Community 2036`, `Community 1526`, `Community 2038`?**
-  _High betweenness centrality (0.133) - this node is a cross-community bridge._
-- **Why does `connect_read()` connect `Community 8` to `Community 2`, `Community 3`, `Community 2056`, `Community 10`, `Community 11`, `Community 21`, `Community 23`, `Community 25`, `Community 1563`, `Community 33`, `Community 35`, `Community 548`, `Community 549`, `Community 1572`, `Community 53`, `Community 54`, `Community 566`, `Community 1081`, `Community 63`, `Community 72`, `Community 1618`, `Community 90`, `Community 94`, `Community 610`, `Community 99`, `Community 100`, `Community 111`, `Community 113`, `Community 1655`, `Community 119`, `Community 1657`, `Community 122`, `Community 1662`, `Community 128`, `Community 1665`, `Community 131`, `Community 1667`, `Community 145`, `Community 153`, `Community 154`, `Community 162`, `Community 1704`, `Community 182`, `Community 1206`, `Community 1724`, `Community 191`, `Community 705`, `Community 198`, `Community 200`, `Community 1742`, `Community 206`, `Community 1233`, `Community 219`, `Community 1244`, `Community 236`, `Community 239`, `Community 1281`, `Community 266`, `Community 1822`, `Community 1826`, `Community 1324`, `Community 1326`, `Community 1346`, `Community 1347`, `Community 1866`, `Community 2381`, `Community 337`, `Community 1875`, `Community 340`, `Community 1370`, `Community 352`, `Community 1383`, `Community 880`, `Community 1906`, `Community 883`, `Community 1397`, `Community 1400`, `Community 1403`, `Community 1404`, `Community 1405`, `Community 1406`, `Community 2437`, `Community 395`, `Community 396`, `Community 400`, `Community 915`, `Community 407`, `Community 2457`, `Community 1435`, `Community 1438`, `Community 1441`, `Community 1448`, `Community 1453`, `Community 452`, `Community 456`, `Community 1992`, `Community 1492`, `Community 474`, `Community 1501`, `Community 1509`, `Community 496`, `Community 2036`, `Community 1525`, `Community 1534`, `Community 1535`?**
-  _High betweenness centrality (0.047) - this node is a cross-community bridge._
-- **Are the 697 inferred relationships involving `connect()` (e.g. with `grant_access()` and `grant_access_request()`) actually correct?**
+- **Why does `connect()` connect `Community 21` to `Community 3`, `Community 7`, `Community 8`, `Community 2056`, `Community 10`, `Community 2060`, `Community 13`, `Community 1551`, `Community 16`, `Community 1553`, `Community 1554`, `Community 20`, `Community 23`, `Community 24`, `Community 25`, `Community 31`, `Community 1569`, `Community 33`, `Community 548`, `Community 549`, `Community 1573`, `Community 1575`, `Community 41`, `Community 553`, `Community 45`, `Community 52`, `Community 53`, `Community 54`, `Community 56`, `Community 1081`, `Community 64`, `Community 69`, `Community 1606`, `Community 72`, `Community 1612`, `Community 78`, `Community 1618`, `Community 89`, `Community 90`, `Community 91`, `Community 1629`, `Community 1630`, `Community 610`, `Community 1634`, `Community 611`, `Community 111`, `Community 113`, `Community 1652`, `Community 119`, `Community 1657`, `Community 126`, `Community 127`, `Community 128`, `Community 1665`, `Community 1666`, `Community 1667`, `Community 133`, `Community 138`, `Community 146`, `Community 2194`, `Community 2197`, `Community 150`, `Community 153`, `Community 2202`, `Community 1691`, `Community 1699`, `Community 164`, `Community 1704`, `Community 1707`, `Community 172`, `Community 2219`, `Community 171`, `Community 2220`, `Community 179`, `Community 1205`, `Community 182`, `Community 1207`, `Community 696`, `Community 192`, `Community 193`, `Community 194`, `Community 196`, `Community 1221`, `Community 2246`, `Community 1224`, `Community 202`, `Community 203`, `Community 2253`, `Community 2255`, `Community 208`, `Community 1233`, `Community 2259`, `Community 1747`, `Community 1241`, `Community 218`, `Community 2267`, `Community 1244`, `Community 2265`, `Community 2271`, `Community 2273`, `Community 2274`, `Community 232`, `Community 233`, `Community 236`, `Community 1262`, `Community 1779`, `Community 247`, `Community 1274`, `Community 1796`, `Community 266`, `Community 779`, `Community 287`, `Community 1824`, `Community 2338`, `Community 296`, `Community 306`, `Community 309`, `Community 1334`, `Community 312`, `Community 1347`, `Community 2376`, `Community 1866`, `Community 842`, `Community 2381`, `Community 337`, `Community 1366`, `Community 346`, `Community 352`, `Community 2408`, `Community 363`, `Community 876`, `Community 880`, `Community 1905`, `Community 370`, `Community 1906`, `Community 884`, `Community 373`, `Community 368`, `Community 1912`, `Community 889`, `Community 891`, `Community 1403`, `Community 1405`, `Community 1414`, `Community 392`, `Community 394`, `Community 395`, `Community 400`, `Community 915`, `Community 404`, `Community 917`, `Community 407`, `Community 2455`, `Community 1432`, `Community 1438`, `Community 1442`, `Community 1959`, `Community 1448`, `Community 425`, `Community 1452`, `Community 2476`, `Community 430`, `Community 1455`, `Community 432`, `Community 1463`, `Community 2488`, `Community 439`, `Community 452`, `Community 1992`, `Community 1482`, `Community 2002`, `Community 1492`, `Community 1494`, `Community 474`, `Community 1509`, `Community 1001`, `Community 2540`, `Community 496`, `Community 1526`, `Community 2038`, `Community 2553`?**
+  _High betweenness centrality (0.139) - this node is a cross-community bridge._
+- **Why does `sorted` connect `Community 394` to `Community 2`, `Community 3`, `Community 1538`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 1543`, `Community 15`, `Community 1554`, `Community 1556`, `Community 28`, `Community 29`, `Community 32`, `Community 1568`, `Community 1571`, `Community 548`, `Community 552`, `Community 41`, `Community 42`, `Community 553`, `Community 1580`, `Community 44`, `Community 47`, `Community 50`, `Community 1587`, `Community 54`, `Community 1594`, `Community 62`, `Community 1599`, `Community 1601`, `Community 67`, `Community 1604`, `Community 76`, `Community 1613`, `Community 78`, `Community 1615`, `Community 1617`, `Community 1618`, `Community 1619`, `Community 91`, `Community 1628`, `Community 1630`, `Community 611`, `Community 1637`, `Community 111`, `Community 113`, `Community 115`, `Community 637`, `Community 2176`, `Community 1665`, `Community 131`, `Community 1667`, `Community 140`, `Community 1677`, `Community 2190`, `Community 143`, `Community 1678`, `Community 145`, `Community 657`, `Community 1681`, `Community 1683`, `Community 1684`, `Community 150`, `Community 151`, `Community 2205`, `Community 2207`, `Community 1700`, `Community 1702`, `Community 170`, `Community 171`, `Community 172`, `Community 173`, `Community 2220`, `Community 2221`, `Community 1712`, `Community 177`, `Community 2222`, `Community 1715`, `Community 1716`, `Community 700`, `Community 701`, `Community 2237`, `Community 2236`, `Community 1724`, `Community 2241`, `Community 199`, `Community 1225`, `Community 1738`, `Community 1740`, `Community 205`, `Community 208`, `Community 1744`, `Community 1746`, `Community 1235`, `Community 1239`, `Community 216`, `Community 1241`, `Community 1243`, `Community 1244`, `Community 225`, `Community 1765`, `Community 231`, `Community 1769`, `Community 1770`, `Community 1773`, `Community 239`, `Community 1264`, `Community 1263`, `Community 244`, `Community 246`, `Community 247`, `Community 1274`, `Community 1791`, `Community 1792`, `Community 257`, `Community 1281`, `Community 776`, `Community 266`, `Community 781`, `Community 2328`, `Community 297`, `Community 1322`, `Community 1339`, `Community 1341`, `Community 325`, `Community 1349`, `Community 328`, `Community 841`, `Community 2378`, `Community 330`, `Community 1866`, `Community 1874`, `Community 1875`, `Community 851`, `Community 1365`, `Community 342`, `Community 1367`, `Community 343`, `Community 355`, `Community 1381`, `Community 1383`, `Community 2408`, `Community 1904`, `Community 885`, `Community 374`, `Community 1399`, `Community 1400`, `Community 1401`, `Community 1398`, `Community 1410`, `Community 2442`, `Community 396`, `Community 2455`, `Community 1433`, `Community 2457`, `Community 1437`, `Community 928`, `Community 1441`, `Community 1961`, `Community 1449`, `Community 1454`, `Community 2479`, `Community 1970`, `Community 2485`, `Community 438`, `Community 1462`, `Community 1466`, `Community 1471`, `Community 449`, `Community 1473`, `Community 451`, `Community 1476`, `Community 968`, `Community 969`, `Community 1483`, `Community 1489`, `Community 1506`, `Community 1508`, `Community 1516`, `Community 493`, `Community 1524`, `Community 1533`?**
+  _High betweenness centrality (0.113) - this node is a cross-community bridge._
+- **Why does `connect_read()` connect `Community 8` to `Community 3`, `Community 10`, `Community 11`, `Community 21`, `Community 23`, `Community 1563`, `Community 548`, `Community 549`, `Community 1572`, `Community 1575`, `Community 49`, `Community 53`, `Community 54`, `Community 566`, `Community 1081`, `Community 63`, `Community 72`, `Community 1618`, `Community 90`, `Community 94`, `Community 610`, `Community 99`, `Community 100`, `Community 1634`, `Community 111`, `Community 113`, `Community 119`, `Community 120`, `Community 1657`, `Community 122`, `Community 128`, `Community 1665`, `Community 131`, `Community 1667`, `Community 138`, `Community 2190`, `Community 2194`, `Community 153`, `Community 154`, `Community 162`, `Community 1704`, `Community 172`, `Community 182`, `Community 1206`, `Community 191`, `Community 705`, `Community 200`, `Community 1742`, `Community 1233`, `Community 2259`, `Community 1241`, `Community 2267`, `Community 1244`, `Community 1243`, `Community 219`, `Community 2271`, `Community 2274`, `Community 2280`, `Community 236`, `Community 239`, `Community 1281`, `Community 1802`, `Community 266`, `Community 1824`, `Community 296`, `Community 1326`, `Community 825`, `Community 1347`, `Community 326`, `Community 1866`, `Community 2381`, `Community 337`, `Community 340`, `Community 1370`, `Community 352`, `Community 1383`, `Community 363`, `Community 880`, `Community 370`, `Community 883`, `Community 1906`, `Community 1397`, `Community 2422`, `Community 1400`, `Community 1403`, `Community 1404`, `Community 1405`, `Community 1406`, `Community 2437`, `Community 396`, `Community 400`, `Community 915`, `Community 407`, `Community 1438`, `Community 1441`, `Community 1448`, `Community 1452`, `Community 2485`, `Community 1463`, `Community 452`, `Community 456`, `Community 1482`, `Community 1492`, `Community 474`, `Community 1501`, `Community 1509`, `Community 496`, `Community 1525`, `Community 2555`, `Community 1534`?**
+  _High betweenness centrality (0.081) - this node is a cross-community bridge._
+- **Are the 697 inferred relationships involving `connect()` (e.g. with `_retrieve_docs()` and `_fetch_recent()`) actually correct?**
   _`connect()` has 697 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 497 inferred relationships involving `connect_read()` (e.g. with `is_access_granted()` and `list_access_grants()`) actually correct?**
+- **Are the 497 inferred relationships involving `connect_read()` (e.g. with `list_empresas()` and `get_empresa()`) actually correct?**
   _`connect_read()` has 497 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 323 inferred relationships involving `sorted` (e.g. with `validate_api_key_credential()` and `filtrar_publico()`) actually correct?**
   _`sorted` has 323 INFERRED edges - model-reasoned connections that need verification._
