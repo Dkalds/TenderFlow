@@ -96,7 +96,11 @@ class EspecificacionEvento:
             Ajustes y no en ``user_event_prefs``. Con clave, el despachador lee
             ahí la frecuencia de los canales ``in_app`` y ``email``: un aviso
             que el usuario apagó en Ajustes no puede seguir llegando porque el
-            despachador mire otra tabla.
+            despachador mire otra tabla. El canal ``webhook`` también la lee,
+            pero con otra regla, porque el destino es de la organización y no
+            de la persona: el webhook deja de recibir el aviso solo si
+            **todos** sus destinatarios lo apagaron explícitamente
+            (``scheduler.jobs.event_dispatch._canal_webhook``).
     """
 
     tipo: str

@@ -161,7 +161,11 @@ class TestPreferenciasDeNotificacion:
         assert DEFECTOS["email"] == "daily"
 
     def test_el_webhook_si_nace_apagado(self) -> None:
-        """Mandar a un endpoint no configurado no es notificar."""
+        """Mandar a un endpoint no configurado no es notificar.
+
+        Es el valor que pinta Ajustes; el despachador **no** lo aplica al canal
+        webhook (suscripción de organización): ahí solo cuentan las filas
+        explícitas (`resolver_explicita`), ver `tests/test_unit_c6_*`."""
         from db.repositories.notification_preferences import frecuencia_por_defecto
 
         assert frecuencia_por_defecto("webhook") == "off"
