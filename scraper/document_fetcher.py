@@ -48,7 +48,8 @@ Configuración del OCR (variables de entorno, leídas aquí y no en
 ``pliegos.yml``)::
 
     DOCUMENT_OCR_ENABLED           1 (defecto) | 0
-    DOCUMENT_OCR_LANGUAGES         idiomas de tesseract (defecto: spa+eng)
+    DOCUMENT_OCR_LANGUAGES         idiomas de tesseract (defecto: spa+eng; solo
+                                   spa, cat, glg, eus y eng, ver _IDIOMAS_OCR)
     DOCUMENT_OCR_TIMEOUT_SECONDS   presupuesto por documento (defecto: 600)
 
 El tope de páginas del OCR es ``MAX_DOCUMENT_PAGES``, el mismo que el del
@@ -405,6 +406,34 @@ def ocr_binario() -> str | None:
     return shutil.which("ocrmypdf")
 
 
+#: Idiomas de tesseract que admite ``DOCUMENT_OCR_LANGUAGES``: el castellano,
+#: las otras lenguas cooficiales —hay plataformas autonómicas que publican los
+#: pliegos en ellas— y el inglés. Lista cerrada porque el valor acaba en la
+#: línea de comandos de ``ocrmypdf``. Admitir un código no instala su paquete:
+#: el runner de ``pliegos.yml`` solo trae ``spa`` y ``eng``, y pedir otro sin
+#: instalarlo hace fallar el OCR con la degradación limpia de siempre.
+_IDIOMAS_OCR = ("spa", "cat", "glg", "eus", "eng")
+_IDIOMAS_OCR_DEFECTO = "spa+eng"
+
+
+def _idiomas_ocr() -> str:
+    """``DOCUMENT_OCR_LANGUAGES`` reducida a :data:`_IDIOMAS_OCR`, en el orden pedido.
+
+    El orden se respeta porque tesseract toma el primero como idioma principal.
+    Un código fuera de la lista se descarta con aviso en vez de llegar a
+    ``argv``, y si no queda ninguno se usa el defecto: la variable es
+    configuración del despliegue, pero lo que se pasa a un binario externo se
+    valida igual.
+    """
+    crudo = os.environ.get("DOCUMENT_OCR_LANGUAGES", "")
+    pedidos = [codigo.strip() for codigo in crudo.split("+") if codigo.strip()]
+    descartados = [codigo for codigo in pedidos if codigo not in _IDIOMAS_OCR]
+    if descartados:
+        log.warning("document_ocr_idioma_descartado", idiomas=descartados)
+    validos = [codigo for codigo in pedidos if codigo in _IDIOMAS_OCR]
+    return "+".join(dict.fromkeys(validos)) or _IDIOMAS_OCR_DEFECTO
+
+
 def _ocr_pdf(content: bytes) -> bytes | None:
     """Devuelve el PDF con capa de texto, o ``None`` si el OCR no se pudo hacer.
 
@@ -419,7 +448,7 @@ def _ocr_pdf(content: bytes) -> bytes | None:
         return None
 
     timeout = float(os.environ.get("DOCUMENT_OCR_TIMEOUT_SECONDS", "600") or 600)
-    idiomas = os.environ.get("DOCUMENT_OCR_LANGUAGES", "spa+eng").strip() or "spa+eng"
+    idiomas = _idiomas_ocr()
 
     with tempfile.TemporaryDirectory(prefix="tf-ocr-") as tmp:
         entrada = Path(tmp) / "entrada.pdf"

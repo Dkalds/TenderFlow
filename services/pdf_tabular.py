@@ -35,8 +35,8 @@ from __future__ import annotations
 
 import io
 from datetime import UTC, datetime
+from html import escape
 from typing import Any
-from xml.sax.saxutils import escape as _escape_xml
 
 #: Tope de filas por tabla. Ver «Límites deliberados».
 MAX_FILAS = 500
@@ -65,8 +65,13 @@ def _texto(valor: Any) -> str:
 
     `render_html` de `services/informes.py` ya escapaba; era el camino del PDF
     el que no.
+
+    `html.escape` con ``quote=False`` y no `xml.sax.saxutils.escape`: escapan
+    los mismos tres caracteres (``&``, ``<``, ``>``), pero importar de `xml`
+    dispara la regla `use-defused-xml` de Semgrep, que no distingue escapar
+    texto de parsear XML.
     """
-    return _escape_xml(str(valor))
+    return escape(str(valor), quote=False)
 
 
 def _estilo_tabla() -> Any:
