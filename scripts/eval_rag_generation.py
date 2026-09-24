@@ -8,12 +8,28 @@ ejecución, por eso vive fuera del gate de CI (RFC llm-dependencia-gestionada
 pregunta, los documentos recuperados y la respuesta generada para revisión
 humana.
 
-Mide además, sin intervención humana, **la tasa de citas válidas en modo
-licitación** (C5.3 / D29): el objetivo del plan es ≥ 90 % de respuestas con al
+**No usa base de datos.** La recuperación se emula sobre el propio golden set
+(``tests/eval/fixtures/eval_rag.jsonl``): cada pregunta recibe las licitaciones
+del golden set con más palabras en común, con la forma que devuelve
+``search_for_ask``. La recuperación real ya la mide ``test_eval_rag.py``; aquí
+se prueban el modelo, el prompt y la validación de citas, que son los de
+producción.
+
+Hasta 2026-09 el script sembraba el golden set con ``upsert_licitaciones`` en
+lo que dijera ``DATABASE_URL``: el ``settings.DB_PATH`` temporal que lo aislaba
+era de la época SQLite y dejó de aislar nada con ADR-021. Desde el checkout
+principal, cuyo ``.env`` apunta a producción, eso escribía las licitaciones
+falsas ``EVAL-0xx`` en producción. Ahora el proceso arranca además con
+``DATABASE_URL`` vacía, para que una consulta que alguien reintroduzca falle en
+vez de llegar a una base real (``tests/test_unit_eval_rag_generation.py``).
+
+Mide además, sin intervención humana, **la tasa de citas válidas** (C5.3 /
+D29): el objetivo del plan es ≥ 90 % de respuestas en modo licitación con al
 menos una fuente que exista en el contexto enviado. La validación la hace el
-mismo módulo que la ruta (``services/rag/citas``), así que lo que se mide aquí
-es exactamente lo que el usuario recibe. La *calidad* de la respuesta sigue sin
-pass/fail automático: eso es revisión humana.
+mismo módulo que la ruta (``services/rag/citas``). Solo cuentan las respuestas
+cuyo contexto trae fragmentos de pliego, y el golden set no los tiene: hoy la
+métrica sale «sin población» y ``--min-citas`` no puede fallar. La *calidad*
+de la respuesta sigue sin pass/fail automático: eso es revisión humana.
 
 Uso::
 
@@ -28,14 +44,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
+import unicodedata
 from pathlib import Path
+from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE = _REPO_ROOT / "tests" / "eval" / "fixtures" / "eval_rag.jsonl"
 
+#: Documentos de contexto por pregunta: el ``top_k`` por defecto de ``/ask``.
+_TOP_K = 5
 
-def _load_golden_set() -> list[dict]:
+
+def _load_golden_set() -> list[dict[str, Any]]:
     entries = []
     for raw in _FIXTURE.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -45,24 +68,65 @@ def _load_golden_set() -> list[dict]:
     return entries
 
 
-def _seed_temp_db(entries: list[dict]) -> None:
-    from db.database import Licitacion, init_db, upsert_licitaciones
+def _sin_bd() -> None:
+    """Deja el proceso sin base de datos: cualquier conexión falla al abrirse.
 
-    init_db()
-    licitaciones = [
-        Licitacion(
-            id_externo=entry["licitacion"]["id_externo"],
-            titulo=entry["licitacion"]["titulo"],
-            descripcion=entry["licitacion"]["descripcion"],
-            organo_contratacion=entry["licitacion"]["organo"],
-            cpv=entry["licitacion"]["cpv"],
-        )
-        for entry in entries
+    ``db.connection._database_url`` mira primero la variable de entorno y luego
+    ``settings.DATABASE_URL``, que ``config.settings`` carga del ``.env`` del
+    directorio de trabajo (en el checkout principal, producción). Se vacían
+    las dos: la variable por si el shell la exporta, y el atributo por si
+    ``config`` ya estaba importado cuando se llega aquí.
+    """
+    os.environ["DATABASE_URL"] = ""
+
+    from pydantic import SecretStr
+
+    from config import settings
+
+    settings.DATABASE_URL = SecretStr("")
+
+
+def _palabras(texto: str) -> set[str]:
+    """Palabras de más de tres letras, en minúsculas y sin tildes."""
+    plano = unicodedata.normalize("NFKD", texto.lower()).encode("ascii", "ignore").decode()
+    return {p for p in re.findall(r"\w+", plano) if len(p) > 3}
+
+
+def _corpus(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Las licitaciones del golden set, con las claves que usa el prompt."""
+    return [
+        {
+            "id_externo": e["licitacion"]["id_externo"],
+            "titulo": e["licitacion"]["titulo"],
+            "descripcion": e["licitacion"]["descripcion"],
+            "organo_contratacion": e["licitacion"]["organo"],
+            "cpv": e["licitacion"]["cpv"],
+        }
+        for e in entries
     ]
-    upsert_licitaciones(licitaciones)
 
 
-def main() -> int:
+def _recuperar(pregunta: str, corpus: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
+    """Sustituto de ``search_for_ask``: las ``top_k`` con más palabras en común.
+
+    No imita el ranking de producción: busca que el modelo reciba la licitación
+    correcta junto a otras que se le parecen, como en ``/ask``. Las que no
+    comparten ninguna palabra quedan fuera, igual que en la búsqueda real, y el
+    empate se resuelve por ``id_externo`` para que dos ejecuciones manden el
+    mismo contexto.
+    """
+    consulta = _palabras(pregunta)
+    puntuados: list[tuple[int, dict[str, Any]]] = []
+    for doc in corpus:
+        texto = f"{doc['titulo']} {doc['descripcion']} {doc['organo_contratacion']}"
+        solape = len(consulta & _palabras(texto))
+        if solape:
+            puntuados.append((solape, doc))
+    puntuados.sort(key=lambda par: (-par[0], par[1]["id_externo"]))
+    return [doc for _, doc in puntuados[:top_k]]
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model", default=None, help="Modelo LLM (default: llm.client.DEFAULT_MODEL)"
@@ -79,24 +143,21 @@ def main() -> int:
             "(0-1). Sin este flag solo se informa."
         ),
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     sys.path.insert(0, str(_REPO_ROOT))
-    import tempfile
-
-    from config import settings
-
-    settings.DB_PATH = Path(tempfile.mkdtemp()) / "eval_rag_llm.db"
+    _sin_bd()
 
     from llm.client import DEFAULT_MODEL, stream_llm_response
-    from services.licitaciones import search_for_ask
+    from services.rag.citas import evento_sources
 
     model = args.model or DEFAULT_MODEL
-    entries = _load_golden_set()[: args.limit]
-
-    _seed_temp_db(entries)
-
-    from services.rag.citas import evento_sources
+    golden = _load_golden_set()
+    # El corpus es el golden set entero aunque `--limit` recorte las preguntas:
+    # con solo las licitaciones preguntadas, el contexto se quedaría sin
+    # distractores.
+    corpus = _corpus(golden)
+    entries = golden[: args.limit]
 
     con_contexto = 0
     con_fuente = 0
@@ -104,7 +165,7 @@ def main() -> int:
 
     for i, entry in enumerate(entries, start=1):
         question = entry["question"]
-        docs = search_for_ask(question, top_k=5)
+        docs = _recuperar(question, corpus, _TOP_K)
         print(f"\n{'=' * 70}\n[{i}/{len(entries)}] {question}")
         print(f"  esperado: {entry['expected_ids']}")
         print(f"  recuperado: {[d['id_externo'] for d in docs]}")
