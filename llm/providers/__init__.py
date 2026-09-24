@@ -1,6 +1,7 @@
 """Proveedores LLM disponibles.
 
-Además, lo que comparten los providers: el error de credencial rechazada y las
+Además, lo que comparten los providers: los errores que un reintento no
+arregla (credencial rechazada, modelo que el proveedor ya no sirve) y las
 utilidades para respetar la señal de parada del consumidor
 (``stream_llm_response(stop=...)`` en ``llm/client.py``).
 """
@@ -18,8 +19,9 @@ AUTH_HTTP_CODES: frozenset[int] = frozenset({401, 403})
 class LLMAuthError(RuntimeError):
     """El proveedor rechazó la API key (HTTP 401/403).
 
-    Los providers se tragan el resto de fallos y devuelven un stream vacío, que
-    los consumidores ya saben degradar. Una credencial rechazada no es un fallo
+    Los providers se tragan el resto de fallos (salvo el de modelo retirado,
+    ``LLMModelUnavailableError``) y devuelven un stream vacío, que los
+    consumidores ya saben degradar. Una credencial rechazada no es un fallo
     más: se repite idéntica en cada llamada que use esa key, y convertida en
     «respuesta vacía» esconde la causa. El scrape diario estuvo en rojo del
     2026-09-05 al 2026-09-10 con `NVIDIA_API_KEY` devolviendo 401 en todas las
@@ -33,6 +35,35 @@ class LLMAuthError(RuntimeError):
         super().__init__(
             f"El proveedor rechazó la API key (HTTP {status_code}) para {model}: "
             "la credencial no es válida y hay que rotarla"
+        )
+
+
+# Códigos con los que un proveedor dice «ese modelo no lo sirvo»: 410 es como
+# NVIDIA NIM responde a un modelo retirado (EOL), y 404 es como OpenAI y
+# Anthropic responden a un id que no existe. Igual que los de credencial, no
+# son transitorios: reintentar no devuelve el modelo.
+MODEL_UNAVAILABLE_HTTP_CODES: frozenset[int] = frozenset({404, 410})
+
+
+class LLMModelUnavailableError(RuntimeError):
+    """El proveedor ya no sirve el modelo pedido (HTTP 404/410).
+
+    Mismo caso que ``LLMAuthError``: el fallo se repite idéntico en cada
+    llamada a ese modelo, y convertido en «respuesta vacía» esconde la causa.
+    `deepseek-ai/deepseek-v4-flash-0731` llegó a su EOL en NVIDIA el
+    2026-09-21T08:00Z. Desde entonces la ficha del pliego, el etiquetado de
+    tecnologías y el guion de oferta, que no tienen fallback de modelo,
+    fallaron en todas las llamadas con «El extractor no devolvió un objeto
+    JSON» o «El LLM devolvió una respuesta vacía». Ninguno de los dos mensajes
+    nombraba el 410.
+    """
+
+    def __init__(self, *, model: str, status_code: int) -> None:
+        self.model = model
+        self.status_code = status_code
+        super().__init__(
+            f"El proveedor no sirve el modelo {model} (HTTP {status_code}): está "
+            "retirado o no existe y hay que cambiar de modelo"
         )
 
 

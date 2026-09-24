@@ -22,6 +22,11 @@ Contratos de fallo (importantes para no corromper el estado):
   lote se corta en el primer item: la misma key fallaría en todos los demás.
   La causa queda en ``counts["credencial_rechazada"]`` y llega así al mensaje
   del paso canónico, que es el cuerpo del email de alerta.
+- Con el modelo **retirado** (404/410) el provider lanza
+  ``LLMModelUnavailableError`` y el corte es el mismo, con la causa en
+  ``counts["modelo_no_disponible"]``. Del 2026-09-21 al 2026-09-24 el cierre de
+  ``scrape-daily`` estuvo en rojo por el 410 de ``deepseek-v4-flash-0731``, y
+  el log solo decía «El LLM devolvió una respuesta vacía».
 - Si el lote entero se cae, ``batch_failed_systemically`` lo detecta y el paso
   canónico lanza, de forma que ``_run_periodic`` suelte la ventana diaria y la
   siguiente pasada reintente en vez de dar el día por consumido.
@@ -143,7 +148,7 @@ def run() -> dict[str, Any]:
 
     from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
     from llm.budget import LLMBudgetExceeded, get_budget_guard
-    from llm.providers import LLMAuthError
+    from llm.providers import LLMAuthError, LLMModelUnavailableError
     from observability.ops_events import record_event
     from observability.runtime_metrics import pliego_tech_signal_total
     from services.llm_tech_labeling import METHOD, classify_licitacion, signal_version
@@ -185,6 +190,19 @@ def run() -> dict[str, Any]:
             pliego_tech_signal_total.labels(method=METHOD, status="error").inc()
             log.error(
                 "llm_tech_labeling_auth_rejected",
+                licitacion_id=licitacion_id,
+                pendientes_sin_procesar=len(pendientes) - len(procesadas),
+                error=str(exc),
+            )
+            break
+        except LLMModelUnavailableError as exc:
+            # Mismo corte que la key: el modelo retirado falla igual en todo lo
+            # que queda, y la causa tiene que llegar al email con su nombre.
+            counts["error"] += 1
+            counts["modelo_no_disponible"] = str(exc)
+            pliego_tech_signal_total.labels(method=METHOD, status="error").inc()
+            log.error(
+                "llm_tech_labeling_model_unavailable",
                 licitacion_id=licitacion_id,
                 pendientes_sin_procesar=len(pendientes) - len(procesadas),
                 error=str(exc),

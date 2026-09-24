@@ -330,13 +330,14 @@ def test_extraction_question_fits_llm_limit():
     este comprueba la constante contra el validador real, en el modo real
     (``extraction``, que usa el tope interno de plantilla).
     """
+    from config import settings
     from llm.client import MAX_INTERNAL_QUESTION_LEN, _validate_request
     from services.rag.fact_sheet import _EXTRACTION_QUESTION
 
     assert len(_EXTRACTION_QUESTION) <= MAX_INTERNAL_QUESTION_LEN
-    _validate_request(
-        _EXTRACTION_QUESTION, [], "deepseek-ai/deepseek-v4-flash-0731", mode="extraction"
-    )
+    # El modelo con que la ficha se extrae de verdad, no un literal que caduca
+    # con el siguiente EOL de NVIDIA.
+    _validate_request(_EXTRACTION_QUESTION, [], settings.PLIEGO_FACTS_MODEL, mode="extraction")
 
 
 class TestPartialPayloadSurvives:
