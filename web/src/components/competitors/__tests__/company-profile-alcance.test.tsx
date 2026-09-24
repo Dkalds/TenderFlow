@@ -36,13 +36,14 @@ vi.mock("@/components/competitors/company-profile-summary", () => ({
 vi.mock("@/components/competitors/company-awards", () => ({
   CompanyAwards: ({ scopeQuery }: { scopeQuery: string }) => <p data-testid="adjudicaciones">{scopeQuery}</p>,
 }));
-vi.mock("@/components/competitors/company-contra-mi", () => ({ CompanyContraMi: () => <p>contra mí</p> }));
-// La pestaña Identidad se carga con `next/dynamic`; su contenido tiene su
-// propio test. Aquí basta con ver qué identidades le llegan.
+// «Identidad» y «Contra mí» se cargan con `next/dynamic`, y las dos tienen su
+// propio test. Aquí basta con ver qué le llega a cada una.
 vi.mock("next/dynamic", () => ({
   default:
     () =>
-    ({ empresaIds }: { empresaIds: number[] }) => <p>identidad de {empresaIds.join(",")}</p>,
+    ({ empresaIds, empresaKey }: { empresaIds?: number[]; empresaKey?: string }) => (
+      <p>{empresaIds ? `identidad de ${empresaIds.join(",")}` : `contra mí de ${empresaKey}`}</p>
+    ),
 }));
 
 import { CompanyProfile } from "../company-profile";
@@ -175,5 +176,14 @@ describe("CompanyProfile · alcance", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Identidad" }));
 
     expect(await screen.findByText("identidad de 7,8")).toBeInTheDocument();
+  });
+
+  it("«Contra mí» cruza por la empresa que abre la ficha", async () => {
+    renderFicha({ groupIds: [8] });
+    await screen.findByRole("heading", { name: "Ejemplo Digital" });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Contra mí" }));
+
+    expect(await screen.findByText("contra mí de 7")).toBeInTheDocument();
   });
 });

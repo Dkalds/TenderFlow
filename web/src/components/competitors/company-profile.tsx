@@ -20,17 +20,22 @@ import { PanelTabs } from "@/components/console/panel";
 import { registrarEvento } from "@/lib/analytics";
 
 import { CompanyAwards } from "./company-awards";
-import { CompanyContraMi } from "./company-contra-mi";
 import { CompanyProfileSummary } from "./company-profile-summary";
 import { CompanyUteParticipations } from "./company-ute-participations";
 import type { CompanyProfileData } from "./company-profile-types";
 import { competitiveKeys } from "@/lib/query-keys";
 
-// La identidad no se ve al entrar —es una pestaña— y esta ruta va justa de
-// presupuesto de First Load (`web/bundle-budget.json`): se carga al abrirla.
+// «Identidad» y «Contra mí» son pestañas: no se ven al entrar, y esta ruta va
+// justa de presupuesto de First Load (`web/bundle-budget.json`). Se cargan al
+// abrirlas, como el inspector de /detalle.
+const pestanaCargando = () => <Skeleton className="h-48 w-full rounded-lg" />;
 const CompanyIdentidad = dynamic(
   () => import("./company-identidad").then((modulo) => modulo.CompanyIdentidad),
-  { loading: () => <Skeleton className="h-48 w-full rounded-lg" /> },
+  { loading: pestanaCargando },
+);
+const CompanyContraMi = dynamic(
+  () => import("./company-contra-mi").then((modulo) => modulo.CompanyContraMi),
+  { loading: pestanaCargando },
 );
 
 type Period = "12m" | "3y" | "all" | "global";
