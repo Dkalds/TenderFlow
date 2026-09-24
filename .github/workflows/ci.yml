@@ -753,22 +753,30 @@ jobs:
       - name: Export OpenAPI (base)
         env:
           ENV: dev
+          # Los datos del evento entran por env y nunca interpolados en el
+          # script: `${{ }}` dentro de `run:` es lo que Semgrep marca como
+          # run-shell-injection, y el nombre de una rama admite `$(...)`.
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          git worktree add /tmp/base "origin/${{ github.base_ref }}"
+          git worktree add /tmp/base "origin/${BASE_REF}"
           # El script se ejecuta desde el árbol base, no desde el de la PR: lo
           # que interesa es el contrato que la base publica hoy.
           (cd /tmp/base && python scripts/export_openapi.py /tmp/openapi-base.json)
 
       - name: Detect breaking changes
+        env:
+          # Por env, como BASE_REF en el paso anterior.
+          API_BREAKING: ${{ contains(github.event.pull_request.labels.*.name, 'api-breaking') }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           set -euo pipefail
           ARGS=(--base /tmp/openapi-base.json --head /tmp/openapi-head.json)
-          if [ "${{ contains(github.event.pull_request.labels.*.name, 'api-breaking') }}" = "true" ]; then
+          if [ "${API_BREAKING}" = "true" ]; then
             # La etiqueta autoriza el cambio; la RFC dice dónde está documentado.
             # Sin RFC el script falla igual, que es lo que se quiere: romper el
             # contrato sin dejar rastro escrito no es una opción.
-            ARGS+=(--allow-breaking --rfc "${{ github.event.pull_request.html_url }}")
+            ARGS+=(--allow-breaking --rfc "${PR_URL}")
           fi
           python scripts/check_api_breaking.py "${ARGS[@]}"
 
@@ -837,7 +845,7 @@ jobs:
 
       - name: Upload bundle analyzer report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-bundle-analyzer
           path: web/.next/analyze/
