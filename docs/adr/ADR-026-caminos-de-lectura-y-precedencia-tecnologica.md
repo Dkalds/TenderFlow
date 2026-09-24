@@ -213,3 +213,62 @@ trigger pueda perderla.
 §B y no nace de esta tabla. Ni §A ni §C cambian — la columna que lee
 `universo_tecnologico_sql` es la misma, así que la vista materializada no se
 reconstruye.
+
+---
+
+## Addendum 2026-09-24 — TED frente a la plataforma del comprador
+
+### El hecho, medido
+
+El mismo contrato salía dos veces: la fila de PLACSP (o PSCP) y la de TED que lo
+republica en el DOUE. Ninguno de los dos detectores de D23 podía verlo:
+
+- `detect_duplicates` empareja por expediente natural, y el de una fila TED es su
+  `publication-number`, no el expediente del comprador.
+- La clave de reemisión —y con ella `fila_canonica_sql` y la vista
+  `licitaciones_canonicas`— compara el título, y el de TED se guardaba como
+  «España – {etiqueta del CPV} – {título}». Ese prefijo lo compone TED, no el
+  comprador: estaba en el 100 % de 300 avisos medidos.
+
+Medido el 2026-09-24 sobre los 99 expedientes de PLACSP del 2026-09-08 que se
+publicaron también en el DOUE: el BT-22 del aviso TED es el `ContractFolderID` de
+PLACSP en 98 de ellos, pero BT-22 **no es único** («01/2026» lo comparten decenas
+de órganos). El `idEvl` del deeplink de PLACSP sí lo es: en los 157 pares que lo
+traían, cada discrepancia de `idEvl` era un falso positivo de BT-22.
+
+### La regla
+
+| Referencia que publica el aviso TED | Condición | Marca |
+|---|---|---|
+| `idEvl` del deeplink de PLACSP (BT-15) | basta | `confirmed` |
+| BT-22 = expediente natural de otra fuente | y mismo órgano **o** mismo título | `confirmed` |
+| BT-22 solo | — | ninguna |
+
+En esos pares **la canónica es siempre la otra fuente** —PLACSP antes que las
+demás, contando `bulk_YYYYMM` como PLACSP—: TED republica, no origina, y lo hace
+con menos detalle (sin lotes ni pliegos). Es `confirmed` y no `pending` porque la
+evidencia es un identificador y no una clave heurística, y porque el aviso de
+adjudicación de TED trae su propia adjudicación: sin la marca, la cuota de
+mercado contaba el contrato dos veces.
+
+La canónica tiene que seguir visible: solo es candidata una fila publicable y
+sin marca previa de duplicado, para que esconder la de TED no se lleve nunca el
+contrato entero ni cierre un ciclo de dos filas escondiéndose mutuamente.
+
+Implementación: `services.dedupe.detect_duplicados_por_referencia`, alimentado por
+`TedConnector.referencias_cruzadas()` desde `scraper/connectors/base.py`.
+
+### Lo que queda fuera
+
+- **El orden de la vista canónica.** `_criterios_canonicos_sql`, congelado en
+  `v102`, sigue siendo «`fuente = 'placsp'` primero, luego la más antigua». Un par
+  sin referencia explícita que colapse por clave puede seguir eligiendo la fila
+  TED si es la más antigua, y `bulk_YYYYMM` sigue sin contar como PLACSP.
+  Cambiarlo exige una migración que reconstruya la vista.
+- **BT-22 y el `idEvl` no son columnas.** El emparejamiento ocurre mientras el
+  conector re-lee su ventana de 14 días; pasada la ventana, un backfill
+  (`python -m scraper.connectors.ted --desde YYYYMMDD`) re-lee y empareja.
+- **La ficha pública de la fila TED marcada responde 404**, porque su predicado
+  (`_publicable_sql`) excluye los duplicados `confirmed`. Es la regla que ya
+  regía para cualquier duplicado confirmado; una redirección 301 a la canónica
+  conservaría mejor lo ya indexado.
