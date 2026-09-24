@@ -74,7 +74,7 @@ describe("SociosUte", () => {
     });
     renderSocios("72212000-4");
 
-    expect(await screen.findByText("Consultora Norte")).toHaveAttribute("href", "/competidores/empresa/42");
+    expect(await screen.findByText("Consultora Norte")).toHaveAttribute("href", "/competencia/empresa/42");
     expect(apiGet).toHaveBeenCalledWith("/api/v1/competitive/partners", {
       params: { query: { cpv: "72212", ccaa: "Madrid", limit: 5 } },
     });

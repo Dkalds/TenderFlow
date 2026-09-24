@@ -69,7 +69,7 @@ export function useSociosUte(cpv: string | null, ccaa: string | null) {
 function Empresa({ nombre, clave }: { nombre: string; clave: string }) {
   if (/^\d+$/.test(clave)) {
     return (
-      <Link href={`/competidores/empresa/${clave}`} className="font-medium hover:underline">
+      <Link href={`/competencia/empresa/${clave}`} className="font-medium hover:underline">
         {nombre}
       </Link>
     );

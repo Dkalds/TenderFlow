@@ -190,6 +190,11 @@ diff habría hecho ilegible el uno y arriesgado el otro.
 > `ops/_components/observabilidad-view.tsx`…). De `competidores/` solo queda la
 > subruta viva `empresa/[empresaId]`, y `licitadores/` se conserva como
 > redirect deliberado a `/competencia?vista=competidores`.
+>
+> *Actualización (2026-09-24):* esa subruta también se movió. La ficha de
+> empresa vive en `competencia/empresa/[empresaId]`, y la antigua redirige allí
+> con un 308 que conserva el id y la query (`SUBRUTAS_MOVIDAS` en
+> `lib/space-views.ts`). `competidores/` ya no existe en `app/(dashboard)/`.
 
 ### Qué está verificado y qué no
 

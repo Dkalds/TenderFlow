@@ -3,6 +3,7 @@ import {
   BUILT_SPACE_ROUTES,
   SPACE_VIEWS,
   legacyRedirects,
+  SUBRUTAS_MOVIDAS,
   type SpaceView,
 } from "@/lib/space-views";
 
@@ -166,6 +167,30 @@ describe("legacyRedirects", () => {
     for (const { destination } of legacyRedirects()) {
       const slug = destination.replace(/^\//, "").split("?")[0];
       expect(BUILT_SPACE_ROUTES).toContain(slug);
+    }
+  });
+});
+
+describe("SUBRUTAS_MOVIDAS", () => {
+  it("la ficha de empresa antigua lleva a la nueva con su id", () => {
+    // Marcadores y enlaces de fuera siguen apuntando a `/competidores/empresa/…`:
+    // el parámetro viaja en el path y la query (`ids`, ámbito) la arrastra Next.
+    expect(SUBRUTAS_MOVIDAS).toContainEqual({
+      source: "/competidores/empresa/:empresaId",
+      destination: "/competencia/empresa/:empresaId",
+    });
+  });
+
+  it("no pisa ningún redirect de vista", () => {
+    const vistas = new Set(legacyRedirects().map((redirect) => redirect.source));
+    for (const { source } of SUBRUTAS_MOVIDAS) {
+      expect(vistas.has(source)).toBe(false);
+    }
+  });
+
+  it("cada destino cuelga de un espacio construido", () => {
+    for (const { destination } of SUBRUTAS_MOVIDAS) {
+      expect(BUILT_SPACE_ROUTES).toContain(destination.split("/")[1]);
     }
   });
 });
