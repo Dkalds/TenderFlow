@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Star } from "lucide-react";
-import { cn, formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/lib/utils";
+import { SeguirBoton } from "@/components/seguir-boton";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { EmpresaDetail, PerfilEmpresa } from "../_hooks/use-maestro";
 import { Ranking, Relacionadas, Separador, SubTitulo, Total, Trayectoria } from "./empresa-perfil-piezas";
@@ -12,10 +12,11 @@ export interface EmpresaPerfilProps {
   detail: EmpresaDetail | undefined;
   perfil: PerfilEmpresa | undefined;
   loading: boolean;
-  watched: boolean;
-  onToggleWatch: () => void;
-  /** Hay un alta o baja de vigilancia en vuelo: no se aceptan más clics. */
-  watchPending: boolean;
+  /**
+   * Tras vigilar o dejar de vigilar, con el estado nuevo. El cambio lo hace
+   * `SeguirBoton`; esto es sólo para que la pantalla avise.
+   */
+  onWatchToggled?: (ahoraVigila: boolean) => void;
   /** Filtra el maestro por el grupo empresarial de la ficha. */
   onOpenGrupo: (grupo: string) => void;
   /** Salta a otra empresa del maestro por su id (miembros de UTE, UTEs). */
@@ -26,9 +27,7 @@ export function EmpresaPerfil({
   detail,
   perfil,
   loading,
-  watched,
-  onToggleWatch,
-  watchPending,
+  onWatchToggled,
   onOpenGrupo,
   onOpenEmpresa,
 }: EmpresaPerfilProps) {
@@ -54,21 +53,22 @@ export function EmpresaPerfil({
         <div className="mb-1.5 flex items-center gap-2.5">
           <h2 className="font-display text-tf-title font-semibold tracking-[-0.01em]">{detail.nombre_canonico}</h2>
           <div className="flex-1" />
-          <button
-            type="button"
-            onClick={onToggleWatch}
-            disabled={watchPending}
-            aria-pressed={watched}
-            className={cn(
-              "tf-pressable text-tf-meta inline-flex h-[30px] flex-none items-center gap-1.5 rounded-md border px-3 font-medium transition-colors duration-140 ease-out",
-              watched
-                ? "border-primary/50 bg-primary/12 text-primary"
-                : "border-border/70 text-foreground hover:border-primary/40",
-            )}
-          >
-            <Star className="h-3 w-3" fill={watched ? "currentColor" : "none"} aria-hidden="true" />
-            {watched ? "En vigilancia" : "Vigilar"}
-          </button>
+          {/* El control único de ADR-031 §C, el mismo de la fila del maestro
+              y del dossier de Competencia, con la piel de esta cabecera. */}
+          <SeguirBoton
+            targetType="empresa"
+            targetId={String(detail.empresa_id)}
+            icono="estrella"
+            nombreAccesible="visible"
+            textos={{ seguir: "Vigilar", siguiendo: "En vigilancia" }}
+            clases={{
+              base: "tf-pressable text-tf-meta inline-flex h-[30px] flex-none items-center gap-1.5 rounded-md border px-3 font-medium transition-colors duration-140 ease-out",
+              activo: "border-primary/50 bg-primary/12 text-primary",
+              inactivo: "border-border/70 text-foreground hover:border-primary/40",
+              icono: "h-3 w-3",
+            }}
+            onAlternar={onWatchToggled}
+          />
         </div>
         {/* Identidad en una línea de texto neutro: NIF, marcas y ventana de
             actividad. El grupo es lo único que lleva a algún sitio, así que es

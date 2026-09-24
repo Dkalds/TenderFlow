@@ -9,6 +9,28 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
+// La estrella es `SeguirBoton` (ADR-031 §C), que lee y escribe por
+// `useSeguimiento`. Aquí se prueba cómo lo monta la fila, no el seguimiento:
+// basta un estado fijo, sin red, en el que la empresa 3 ya está vigilada.
+const { alternar, vigilada } = vi.hoisted(() => {
+  // Una lista siempre: con un `string`, `includes` buscaría una subcadena y
+  // «13» contaría como vigilada.
+  const vigilada = (ids: string | readonly string[]) => (typeof ids === "string" ? [ids] : ids).includes("3");
+  return { vigilada, alternar: vi.fn((ids: string | readonly string[]) => !vigilada(ids)) };
+});
+vi.mock("@/hooks/use-seguimiento", () => ({
+  useSeguimiento: () => ({
+    ids: new Set(["3"]),
+    sigue: vigilada,
+    alternar,
+    seguir: vi.fn(),
+    dejar: vi.fn(),
+    isLoading: false,
+    enVuelo: false,
+  }),
+}));
+
 import { MaestroList, ventanaDePaginas } from "../_components/maestro-list";
 import type { EmpresaRow } from "../_hooks/use-maestro";
 
@@ -59,15 +81,13 @@ function renderLista(overrides: Partial<React.ComponentProps<typeof MaestroList>
     onSort: vi.fn(),
     selectedId: 1,
     onSelect: vi.fn(),
-    watchedIds: new Set<number>([3]),
-    onToggleWatch: vi.fn(),
-    watchPending: false,
+    onWatchToggled: vi.fn(),
     loading: false,
     error: false,
     onRetry: vi.fn(),
     ...overrides,
   };
-  // `TooltipProvider`: la marca «desde grafo» lleva `Pista` (un `Tooltip`).
+  // `TooltipProvider`: la marca «desde enlace» lleva `Pista` (un `Tooltip`).
   return {
     props,
     ...render(
@@ -78,7 +98,10 @@ function renderLista(overrides: Partial<React.ComponentProps<typeof MaestroList>
   };
 }
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  alternar.mockClear();
+});
 
 describe("ventanaDePaginas", () => {
   it("las pinta todas cuando caben", () => {
@@ -117,12 +140,14 @@ describe("MaestroList", () => {
     expect(screen.getByText("Vigilar")).toBeInTheDocument();
   });
 
-  it("la estrella dice si la empresa ya está vigilada y alterna sin abrir la ficha", () => {
+  it("la estrella es el control único: dice si ya se vigila y alterna sin abrir la ficha", () => {
     const { props } = renderLista();
-    const botones = screen.getAllByRole("button", { name: /vigilar/i });
-    fireEvent.click(botones[0]);
-    // La primera fila no está vigilada: el clic pide seguirla.
-    expect(props.onToggleWatch).toHaveBeenCalledWith(1, false);
+    fireEvent.click(screen.getAllByRole("button", { name: "Vigilar empresa" })[0]);
+    // La primera fila no está vigilada: el clic pide vigilarla, por el mismo
+    // camino que el resto de pantallas, y la pantalla recibe el estado nuevo
+    // para su aviso.
+    expect(alternar).toHaveBeenCalledWith(["1"]);
+    expect(props.onWatchToggled).toHaveBeenCalledWith(true);
     expect(props.onSelect).not.toHaveBeenCalled();
     // La tercera sí lo está, así que su botón ofrece dejar de vigilarla.
     expect(screen.getByRole("button", { name: "Dejar de vigilar" })).toHaveAttribute("aria-pressed", "true");
@@ -136,7 +161,9 @@ describe("MaestroList", () => {
 
   it("marca la búsqueda que llega por deep-link y deja limpiarla", () => {
     const { props } = renderLista({ search: "Indra", fromDeepLink: true });
-    expect(screen.getByText("desde grafo")).toBeInTheDocument();
+    // «desde enlace» y no «desde grafo»: los grafos de Relaciones que
+    // enlazaban aquí se retiraron, y hoy el `?q=` llega desde Competencia.
+    expect(screen.getByText("desde enlace")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
     expect(props.onSearchChange).toHaveBeenCalledWith("");
   });

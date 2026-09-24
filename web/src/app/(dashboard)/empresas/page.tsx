@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAdmin } from "@/hooks/use-admin";
 import { useDebounce } from "@/hooks/use-debounce";
-import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
+import { useEmpresasWatchlist } from "@/hooks/use-empresas-watchlist";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
@@ -51,9 +51,10 @@ export default function EmpresasPage() {
   const { view, setView } = useSpaceView(space);
   const isAdmin = useAdmin();
 
-  // Deep-link externo: `?q=` desde los grafos de Relaciones y desde el botón
-  // «Maestro ↗» de Competencia. Se marca en el buscador mientras no se toque,
-  // para que se vea de dónde sale el filtro con el que se ha aterrizado.
+  // Deep-link externo: `?q=` desde la tabla de Competencia, que enlaza aquí el
+  // nombre de un competidor sin identidad en el maestro (`competidor-fila.tsx`).
+  // Se marca en el buscador mientras no se toque, para que se vea de dónde sale
+  // el filtro con el que se ha aterrizado.
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(() => searchParams?.get("q") ?? "");
   const [fromDeepLink, setFromDeepLink] = useState(() => Boolean(searchParams?.get("q")));
@@ -66,8 +67,10 @@ export default function EmpresasPage() {
 
   const stats = useEmpresasStats();
   const lista = useEmpresasList({ search: debouncedSearch, page, sort: sortKey, order: sortDir });
+  // Solo para el recuento de «Vigiladas». Vigilar y dejar de vigilar lo hace
+  // `SeguirBoton` (ADR-031 §C) en la fila y en la ficha, sobre esta misma
+  // consulta, así que el recuento se mueve con el botón.
   const { watchedIds } = useEmpresasWatchlist();
-  const toggleWatch = useToggleEmpresaWatch();
   const onCommitError = useCallback(() => toast.error("No se pudo guardar la decisión · la fila vuelve a la cola"), []);
   const revisiones = useReviewQueue({
     enabled: view === "revision" && isAdmin,
@@ -104,19 +107,12 @@ export default function EmpresasPage() {
     setSelectedId(null);
   }, []);
 
-  const onToggleWatch = useCallback(
-    (empresaId: number, watched: boolean) => {
-      toggleWatch.mutate(
-        { empresaIds: [empresaId], watched },
-        {
-          onSuccess: () =>
-            toast.success(watched ? "Retirada de la vigilancia" : "Añadida a la vigilancia · alerta diaria"),
-          onError: () => toast.error("No se pudo cambiar la vigilancia"),
-        },
-      );
-    },
-    [toggleWatch],
-  );
+  // El aviso dice lo que implica vigilar: una alerta diaria. Sale al pulsar,
+  // como el del Radar; si el servidor rechaza el cambio, el botón no cambia de
+  // estado y el error lo avisa el manejador global de mutaciones.
+  const avisarVigilancia = useCallback((ahoraVigila: boolean) => {
+    toast(ahoraVigila ? "Añadida a la vigilancia · alerta diaria" : "Retirada de la vigilancia");
+  }, []);
 
   const { decidir, deshacer } = revisiones;
   const onDecidir = useCallback(
@@ -216,9 +212,7 @@ export default function EmpresasPage() {
             onSort={onSort}
             selectedId={activeId}
             onSelect={setSelectedId}
-            watchedIds={watchedIds}
-            onToggleWatch={onToggleWatch}
-            watchPending={toggleWatch.isPending}
+            onWatchToggled={avisarVigilancia}
             loading={lista.isLoading}
             error={lista.isError}
             errorDetail={detalleDeError(lista.error, "/api/v1/empresas")}
@@ -234,9 +228,7 @@ export default function EmpresasPage() {
                 detail={detail.data}
                 perfil={perfil.data}
                 loading={lista.isLoading || detail.isLoading}
-                watched={activeId != null && watchedIds.has(activeId)}
-                onToggleWatch={() => activeId != null && onToggleWatch(activeId, watchedIds.has(activeId))}
-                watchPending={toggleWatch.isPending}
+                onWatchToggled={avisarVigilancia}
                 onOpenGrupo={onSearchChange}
                 onOpenEmpresa={setSelectedId}
               />
