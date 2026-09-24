@@ -14,8 +14,9 @@
  * vistas de Mercado y las seis de Ops.
  *
  * Lo que preserva los enlaces guardados es el 308, no el fichero de ruta. El
- * dossier de empresa (`competidores/empresa/[empresaId]`) sí sigue siendo ruta:
- * el redirect es de path exacto y no lo tapa.
+ * dossier de empresa sí es ruta propia, `competencia/empresa/[empresaId]`; la
+ * de antes, `competidores/empresa/[empresaId]`, redirige allí
+ * (`SUBRUTAS_MOVIDAS` en `lib/space-views.ts`).
  *
  * Aquí sólo queda el orden de la pantalla. Las peticiones y el estado están en
  * `_hooks/use-competidores-data.ts`, las series en `_hooks/competidores-series.ts`

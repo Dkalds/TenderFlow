@@ -63,7 +63,7 @@ export function CompanyUteParticipations({
                       enlace, que no está truncado: no aportaba nada y encima
                       era inalcanzable con teclado. */}
                   <Link
-                    href={`/competidores/empresa/${participation.ute_empresa_id}`}
+                    href={`/competencia/empresa/${participation.ute_empresa_id}`}
                     className="hover:text-primary text-sm font-medium hover:underline"
                   >
                     {participation.ute_nombre}
