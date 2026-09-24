@@ -1172,6 +1172,12 @@ formato en su resumen.
 > desde `follows` (favoritos, empresas y Radar siguen leyendo su tabla), el
 > control único en Radar, Detalle y Empresas, y la RFC de retirada de los
 > endpoints antiguos, que no existe todavía.
+>
+> *Actualización (2026-09-24), solo de esos dos puntos:* el control único está
+> completo. `SeguirBoton` es la estrella de Radar y Detalle y el «Vigilar» del
+> dossier de Competencia desde `d759d42`, y el de `/empresas` (fila del maestro
+> y ficha) desde el 2026-09-24. La RFC de retirada existe:
+> [2026-09-19](../rfc/2026-09-19-rfc-retirada-endpoints-watchlist.md).
 
 **Qué.** Tabla `follows(id, organization_id, user_id, target_type ∈
 {licitacion, lote, empresa, organo, cpv}, target_id, kind ∈ {seguir,
