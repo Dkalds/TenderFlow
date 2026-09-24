@@ -185,14 +185,20 @@ test.describe("Móvil (375×812)", () => {
     // y el desborde que quedaba era el mismo de la barra de ámbito que el test
     // de la watchlist. `fixme` retirado el 2026-09-18.
     //
-    // El texto se ancla al recuento («N compromisos») o al vacío. Un
-    // `/compromisos/` suelto resolvía primero a la descripción del espacio
-    // («Tus compromisos, ordenados…»), que es `hidden xl:inline` en la
-    // cabecera: el test esperaba 20 s a que se viera algo que a 375 px está
-    // oculto a propósito, con la agenda ya pintada debajo.
+    // El texto se ancla al recuento del carril («N en este carril»), que solo
+    // aparece con la agenda ya cargada (antes dice «Cargando agenda…») y
+    // también cuando está vacía («0 en este carril»). Un `/compromisos/` suelto
+    // resolvía primero a la descripción del espacio («Tus compromisos,
+    // ordenados…»), que es `hidden xl:inline` en la cabecera: el test esperaba
+    // 20 s a que se viera algo que a 375 px está oculto a propósito.
+    //
+    // Hasta el 2026-09-24 el ancla era «N compromisos» o «Tu agenda está
+    // vacía»: los dos textos desaparecieron con el rediseño de la Agenda en
+    // dos carriles (#330), cuyo E2E no llegó a correr, y el siguiente PR que lo
+    // ejecutó (#332) cayó aquí.
     await page.goto("/mi-pipeline");
     await expect(page.locator('[data-slot="agenda-filas"]')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/^[\d.]+ compromisos$|Tu agenda está vacía/).first()).toBeVisible({
+    await expect(page.getByText(/^[\d.]+ en este carril$/).first()).toBeVisible({
       timeout: 20_000,
     });
 
