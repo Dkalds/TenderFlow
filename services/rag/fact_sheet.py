@@ -27,6 +27,13 @@ log = get_logger(__name__)
 # El bump es obligatorio: sin él las fichas escritas por v4 —que no las
 # contienen— se darían por completas, y el simulador de precio, el kit y el
 # margen implícito seguirían vacíos para siempre sobre pliegos ya extraídos.
+#
+# Sin bump el 2026-09-24, a propósito: la pregunta repite `description` en las
+# llaves de cada familia. Los Nemotron de NVIDIA, que sustituyeron a DeepSeek
+# ese día, tomaban esas llaves como el esquema completo y omitían el campo: 14
+# de 17 hechos de un pliego de prueba caían por «description: Field required».
+# El esquema no cambia y las fichas v5 ya guardadas son válidas, así que un
+# bump solo las reencolaría para extraer lo mismo otra vez.
 EXTRACTION_VERSION = "tender-facts-v5"
 _MAX_CONTEXT_CHARS = 15_000
 _MAX_PAGES = 24
@@ -80,25 +87,25 @@ _TECH_TERMS = ("sap", "oracle", "salesforce", "microsoft", "hana", "erp", "crm",
 # pero sí pierde ese hecho.
 _EXTRACTION_QUESTION = """
 Devuelve un objeto JSON con estas claves exactas. Cada valor es una lista de
-objetos que SIEMPRE llevan description, confidence (0 a 1) y evidence, más los
-campos propios de su familia:
-lots: {lot_number, name, amount_eur},
-award_criteria: {name, weight_pct, criterion_type},
-technical_solvency: {},
-economic_solvency: {amount_eur},
-guarantees: {amount_eur},
-penalties: {amount_eur},
-service_levels: {name, target},
-subcontracting: {},
-team_requirements: {role, minimum_years, quantity},
-certifications: {name, scope},
-extensions: {},
-critical_deadlines: {name, date_value},
-technologies: {name},
-price_formula: {formula_type, max_points, umbral_temeridad, params},
-required_documents: {name, scope, subsanable},
-rate_cards: {role, max_rate_eur_hour, estimated_hours},
-budget_breakdown: {concept, category, amount_eur, pct}.
+objetos que SIEMPRE llevan description (qué dice el pliego, en una frase),
+confidence (0 a 1) y evidence, más los campos propios de su familia:
+lots: {description, lot_number, name, amount_eur},
+award_criteria: {description, name, weight_pct, criterion_type},
+technical_solvency: {description},
+economic_solvency: {description, amount_eur},
+guarantees: {description, amount_eur},
+penalties: {description, amount_eur},
+service_levels: {description, name, target},
+subcontracting: {description},
+team_requirements: {description, role, minimum_years, quantity},
+certifications: {description, name, scope},
+extensions: {description},
+critical_deadlines: {description, name, date_value},
+technologies: {description, name},
+price_formula: {description, formula_type, max_points, umbral_temeridad, params},
+required_documents: {description, name, scope, subsanable},
+rate_cards: {description, role, max_rate_eur_hour, estimated_hours},
+budget_breakdown: {description, concept, category, amount_eur, pct}.
 lots: un elemento por lote publicado, con lot_number tal como aparece ("1",
 "Lote III") y su presupuesto sin IVA si es inequívoco; vacío si no hay lotes.
 criterion_type: solo "price", "quality", "automatic", "judgement" u "other".
@@ -111,8 +118,9 @@ licencia ("migración a SAP S/4HANA"), nunca menciones incidentales.
 date_value: fecha ISO AAAA-MM-DD, o null si el pliego no fija una exacta.
 formula_type: solo "proporcional_inversa" (puntos = max * baja_propia /
 baja_mayor), "lineal_por_tramos", "con_umbral_temeridad" u "otra"; usa "otra"
-cuando la fórmula no encaje, nunca la más parecida. params lleva sólo números
-(los tramos, el umbral), jamás prosa; umbral_temeridad en tanto por uno
+cuando la fórmula no encaje, nunca la más parecida. params es un objeto
+{nombre: número} (los tramos, el umbral), {} si no hay, jamás prosa ni lista;
+umbral_temeridad en tanto por uno
 (0,25 para un 25%). Una entrada por lote si el pliego publica varias.
 required_documents: scope "sobre_a" (documentación administrativa), "sobre_b"
 (criterios sujetos a juicio de valor), "sobre_c" (criterios automáticos) u
@@ -121,9 +129,11 @@ rate_cards: una entrada por perfil con tarifa máxima publicada; deja
 estimated_hours a null si el pliego no da horas.
 budget_breakdown: una entrada por línea del desglose del presupuesto base, con
 category "salariales", "directos", "indirectos", "beneficio" u "otro".
-Cada evidence es {documento_id, page_number, quote}, con quote copiado
-literalmente del fragmento y de menos de 400 caracteres. Usa null cuando un
-valor tipado no aparezca y listas vacías cuando no haya evidencia.
+evidence es una lista de citas [{documento_id, page_number, quote}], nunca un
+objeto suelto: documento_id y page_number son los números N y M de la cabecera
+[doc:N p.M] del fragmento, y quote se copia literalmente de él, en menos de 400
+caracteres. Usa null cuando un valor tipado no aparezca y listas vacías cuando
+no haya evidencia.
 """.strip()
 
 

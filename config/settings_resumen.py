@@ -32,5 +32,5 @@ class ResumenPregenSettings(BaseSettings):
     # Tiene que ser el modelo que pide la UI: el modelo forma parte de la clave
     # de caché, así que pre-generar con otro no calienta nada. Mantener
     # sincronizado con `ResumenRequest.model` (`api/routes/ask.py`) y con
-    # `llm.client.DEFAULT_MODEL`.
-    RESUMEN_PREGEN_MODEL: str = "deepseek-ai/deepseek-v4-flash-0731"
+    # `llm.client.DEFAULT_MODEL` (lo comprueba `tests/test_llm_client.py`).
+    RESUMEN_PREGEN_MODEL: str = "nvidia/nemotron-3-super-120b-a12b"

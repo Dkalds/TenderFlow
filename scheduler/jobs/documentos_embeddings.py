@@ -15,7 +15,8 @@ resto del scraper):
    → ``services.embeddings.encode_texts`` → ``documento_chunks``.
 3. **Facts**: licitaciones con páginas y sin ficha → extracción Pydantic
    verificable (solo cuando ``PLIEGO_FACTS_ENABLED=True``). Una credencial
-   rechazada (``LLMAuthError``) corta el lote en el primer rechazo, y un
+   rechazada (``LLMAuthError``) o un modelo que el proveedor ya no sirve
+   (``LLMModelUnavailableError``) corta el lote en el primer fallo, y un
    lote sin ninguna ficha útil pone el workflow en rojo (``run_cli``).
 4. **Tech signal**: licitaciones con páginas y sin señal de tecnología
    vigente → ``services.tech_signal.score_documents`` (keywords) → fusión
@@ -29,10 +30,15 @@ resto del scraper):
 
 Si el extra ``[ml-embeddings]`` no está instalado, la fase de embeddings se
 salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``).
+
+Las fases 1-3 tienen además un tope de reloj (``PLIEGO_*_MAX_SECONDS``): lo
+que no cabe se cuenta como ``aplazados`` y queda para el lote siguiente, de
+modo que una fase lenta no deja sin turno a las que van detrás.
 """
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -47,26 +53,85 @@ _TECH_SIGNAL_BATCH_SIZE = 500
 _RESUMEN_PREGEN_BATCH_SIZE = 20
 
 
-def _run_fetch_phase(limit: int = _FETCH_BATCH_SIZE) -> dict[str, int]:
-    """Descarga + extrae texto de documentos ``pending``, por lotes."""
+def _presupuesto_agotado(inicio: float, max_seconds: float | None) -> bool:
+    """True si la fase ya gastó su tope de reloj (``None`` o ``0``: sin tope).
+
+    Del run #65 (2026-09-15) al #73 (2026-09-23) pliegos.yml se canceló nueve
+    noches seguidas por su ``timeout-minutes``: el fetch de 300 documentos
+    tardaba de 17 a 37 min y el embed de 100, de 15 a más de 25, así que las
+    fichas, la señal de tecnología y la alerta de ``run_cli`` no llegaban a
+    correr. El tope se comprueba **antes** de empezar cada elemento, nunca a
+    mitad: la fase puede pasarse de él lo que tarde el último que empezó.
+    """
+    if not max_seconds:
+        return False
+    return time.monotonic() - inicio >= max_seconds
+
+
+def _marcar_error_inesperado(repo: Any, doc: Mapping[str, Any], exc: Exception) -> None:
+    """Saca de ``pending`` un documento que falló fuera de los casos previstos.
+
+    ``fetch_and_extract`` marca ``error`` en los fallos que conoce (descarga,
+    extracción). Una excepción inesperada salía sin tocar la fila y la dejaba
+    ``pending``: en septiembre de 2026, 64 documentos cuyo texto traía bytes NUL
+    (Postgres los rechaza en ``mark_extracted``) se reintentaban cada noche y
+    ocupaban de 30 a 53 de los 300 huecos del lote. Si lo caído es la propia BD,
+    este UPDATE también falla y el documento se queda ``pending``, que es lo
+    correcto: lo reintenta el lote siguiente.
+    """
+    documento_id = doc.get("id")
+    if documento_id is None:
+        return
+    try:
+        repo.mark_error(int(documento_id), error_detail=f"Error inesperado: {exc}")
+    except Exception:
+        log.warning("documentos_fetch_mark_error_failed", documento_id=documento_id, exc_info=True)
+
+
+def _run_fetch_phase(
+    limit: int = _FETCH_BATCH_SIZE, max_seconds: float | None = None
+) -> dict[str, int]:
+    """Descarga + extrae texto de documentos ``pending``, por lotes.
+
+    ``max_seconds`` acota la fase por reloj además de por número (ver
+    ``_presupuesto_agotado``): lo que no cabe sigue ``pending`` y se cuenta en
+    ``aplazados``.
+    """
     from db.repositories.documentos import DocumentosRepository
     from observability.runtime_metrics import documentos_fetched_total
     from scraper.document_fetcher import fetch_and_extract
 
     repo = DocumentosRepository()
     pendientes = repo.list_pendientes(limit=limit)
-    # ``skipped`` (breaker abierto) y ``unsupported`` (formato que no sabemos
-    # leer, S8.2) se declaran aquí para que el informe del cron tenga siempre la
-    # misma forma: un lote entero saltado debe verse como 300 skipped, no como
-    # una clave ausente.
-    counts: dict[str, int] = {"extracted": 0, "error": 0, "skipped": 0, "unsupported": 0}
-    for doc in pendientes:
+    # ``skipped`` (breaker abierto), ``unsupported`` (formato que no sabemos
+    # leer, S8.2) y ``aplazados`` (no cupieron en el tope de reloj) se declaran
+    # aquí para que el informe del cron tenga siempre la misma forma: un lote
+    # entero saltado debe verse como 300 skipped, no como una clave ausente.
+    counts: dict[str, int] = {
+        "extracted": 0,
+        "error": 0,
+        "skipped": 0,
+        "unsupported": 0,
+        "aplazados": 0,
+    }
+    inicio = time.monotonic()
+    for posicion, doc in enumerate(pendientes):
+        if _presupuesto_agotado(inicio, max_seconds):
+            counts["aplazados"] = len(pendientes) - posicion
+            log.info(
+                "documentos_fetch_budget_exhausted",
+                procesados=posicion,
+                aplazados=counts["aplazados"],
+                max_seconds=max_seconds,
+            )
+            break
         try:
             status = fetch_and_extract(doc)
         except Exception as e:
             log.warning(
                 "documentos_fetch_unexpected_error", documento_id=doc.get("id"), error=str(e)
             )
+            _marcar_error_inesperado(repo, doc, e)
             status = "error"
         counts[status] = counts.get(status, 0) + 1
         documentos_fetched_total.labels(status=status).inc()
@@ -92,15 +157,29 @@ def _paginas_del_documento(repo: Any, documento_id: int) -> list[tuple[int, int]
 
 
 def _embeber_documentos(
-    repo: Any, candidatos: list[dict[str, Any]], counts: dict[str, int]
+    repo: Any,
+    candidatos: list[dict[str, Any]],
+    counts: dict[str, int],
+    *,
+    inicio: float | None = None,
+    max_seconds: float | None = None,
 ) -> None:
-    """Chunkea, embebe y persiste cada documento del lote, con su versión."""
+    """Chunkea, embebe y persiste cada documento del lote, con su versión.
+
+    Con ``max_seconds``, deja de empezar documentos cuando el reloj de la fase
+    (que arrancó en ``inicio``) se agota, y suma los que faltan a
+    ``counts["aplazados"]``.
+    """
     from config.settings import settings
     from observability.runtime_metrics import documento_chunks_total
     from services.embeddings import encode_texts
     from services.rag.chunking import chunk_text_with_offsets, pagina_de_offset
 
-    for doc in candidatos:
+    arranque = time.monotonic() if inicio is None else inicio
+    for posicion, doc in enumerate(candidatos):
+        if _presupuesto_agotado(arranque, max_seconds):
+            counts["aplazados"] += len(candidatos) - posicion
+            return
         texto = doc.get("texto")
         con_offset = chunk_text_with_offsets(texto) if texto else []
         if not con_offset:
@@ -128,14 +207,17 @@ def _embeber_documentos(
         documento_chunks_total.inc(n)
 
 
-def _run_embed_phase(limit: int = _EMBED_BATCH_SIZE) -> dict[str, int]:
+def _run_embed_phase(
+    limit: int = _EMBED_BATCH_SIZE, max_seconds: float | None = None
+) -> dict[str, int]:
     """Chunkea + embebe documentos ``extracted`` sin chunks o con versión vieja.
 
     El segundo grupo es el re-embedding de C5.7 y va **después** del primero: un
     documento sin ningún chunk no tiene retrieval en absoluto, mientras que uno
     con la versión anterior sí lo tiene (degradado, pero consistente). Poner el
     re-embedding delante dejaría a los documentos nuevos esperando detrás de una
-    migración que puede durar días.
+    migración que puede durar días. Los dos grupos comparten el tope de reloj
+    ``max_seconds``, así que el re-embedding solo usa lo que sobra.
     """
     from config.settings import settings
     from db.repositories.documentos import DocumentosRepository
@@ -147,6 +229,7 @@ def _run_embed_phase(limit: int = _EMBED_BATCH_SIZE) -> dict[str, int]:
         "sin_texto": 0,
         "error": 0,
         "reembebidos": 0,
+        "aplazados": 0,
     }
 
     candidatos = repo.list_extracted_without_chunks(limit=limit)
@@ -173,37 +256,68 @@ def _run_embed_phase(limit: int = _EMBED_BATCH_SIZE) -> dict[str, int]:
         log.warning("documentos_embed_phase_skipped_no_ml_extra")
         return counts
 
-    _embeber_documentos(repo, candidatos, counts)
+    inicio = time.monotonic()
+    _embeber_documentos(repo, candidatos, counts, inicio=inicio, max_seconds=max_seconds)
     antes = counts["documentos_procesados"]
-    _embeber_documentos(repo, obsoletos, counts)
+    _embeber_documentos(repo, obsoletos, counts, inicio=inicio, max_seconds=max_seconds)
     counts["reembebidos"] = counts["documentos_procesados"] - antes
+    if counts["aplazados"]:
+        log.info(
+            "documentos_embed_budget_exhausted",
+            procesados=counts["documentos_procesados"],
+            aplazados=counts["aplazados"],
+            max_seconds=max_seconds,
+        )
     return counts
 
 
-def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, Any]:
+def _run_facts_phase(
+    limit: int = _FACTS_BATCH_SIZE, max_seconds: float | None = None
+) -> dict[str, Any]:
     """Extrae fichas tipadas; fail-open por licitación y con gate de gasto.
 
-    La excepción es una credencial rechazada: ``LLMAuthError`` corta el lote en
-    el primer rechazo, porque la misma key fallaría en todo lo que queda, y
-    deja la causa en ``counts["credencial_rechazada"]`` para que ``run_cli`` la
-    nombre en la alerta.
+    Las excepciones son los dos fallos que se repetirían idénticos en todo lo
+    que queda del lote: una credencial rechazada (``LLMAuthError``) y un
+    modelo que el proveedor ya no sirve (``LLMModelUnavailableError``). Cortan
+    el lote en el primero y dejan la causa en ``counts["credencial_rechazada"]``
+    o ``counts["modelo_no_disponible"]`` para que ``run_cli`` la nombre en la
+    alerta.
+
+    ``max_seconds`` acota la fase por reloj (``_presupuesto_agotado``): las
+    licitaciones que no caben se cuentan en ``aplazados`` y siguen pendientes.
     """
     from config import settings
 
-    # Any: contadores enteros más la causa textual de ``credencial_rechazada``.
-    counts: dict[str, Any] = {"procesadas": 0, "needs_review": 0, "error": 0, "disabled": 0}
+    # Any: contadores enteros más la causa textual del corte, si lo hubo.
+    counts: dict[str, Any] = {
+        "procesadas": 0,
+        "needs_review": 0,
+        "error": 0,
+        "disabled": 0,
+        "aplazados": 0,
+    }
     if not settings.PLIEGO_FACTS_ENABLED:
         counts["disabled"] = 1
         return counts
 
     from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
-    from llm.providers import LLMAuthError
+    from llm.providers import LLMAuthError, LLMModelUnavailableError
     from services.rag.fact_sheet import EXTRACTION_VERSION, extract_fact_sheet
     from services.tech_signal import ingest_llm_technologies
 
     repo = TenderFactSheetsRepository()
     pendientes = repo.list_pending_licitaciones(extraction_version=EXTRACTION_VERSION, limit=limit)
-    for licitacion_id in pendientes:
+    inicio = time.monotonic()
+    for posicion, licitacion_id in enumerate(pendientes):
+        if _presupuesto_agotado(inicio, max_seconds):
+            counts["aplazados"] = len(pendientes) - posicion
+            log.info(
+                "documentos_facts_budget_exhausted",
+                procesadas=counts["procesadas"],
+                aplazados=counts["aplazados"],
+                max_seconds=max_seconds,
+            )
+            break
         try:
             record = extract_fact_sheet(
                 licitacion_id,
@@ -218,7 +332,21 @@ def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, Any]:
             log.error(
                 "documentos_facts_auth_rejected",
                 licitacion_id=licitacion_id,
-                pendientes_sin_procesar=len(pendientes) - counts["procesadas"],
+                pendientes_sin_procesar=len(pendientes) - posicion,
+                error=str(exc),
+            )
+            break
+        except LLMModelUnavailableError as exc:
+            # El run #72 (2026-09-22) pidió las 25 fichas del lote a un modelo
+            # que NVIDIA había retirado el día antes, y las 25 acabaron en
+            # `failed` con «El extractor no devolvió un objeto JSON». Mismo
+            # corte que con la key: el modelo no va a volver a mitad de lote.
+            counts["error"] += 1
+            counts["modelo_no_disponible"] = str(exc)
+            log.error(
+                "documentos_facts_model_unavailable",
+                licitacion_id=licitacion_id,
+                pendientes_sin_procesar=len(pendientes) - posicion,
                 error=str(exc),
             )
             break
@@ -250,10 +378,11 @@ def facts_failed_systemically(counts: Mapping[str, object]) -> bool:
     Mismo criterio que ``llm_tech_labeling.batch_failed_systemically``: una
     ficha que el modelo no sabe extraer es normal y se cuenta como error
     suelto; que el lote entero falle sin dejar ni una ficha no lo es. Una
-    credencial rechazada lo es siempre, aunque antes del rechazo se hubiera
-    extraído alguna ficha: la corrida siguiente fallará entera con la misma key.
+    credencial rechazada o un modelo retirado lo son siempre, aunque antes del
+    corte se hubiera extraído alguna ficha: la corrida siguiente fallará entera
+    con la misma key o el mismo modelo.
     """
-    if counts.get("credencial_rechazada"):
+    if counts.get("credencial_rechazada") or counts.get("modelo_no_disponible"):
         return True
     return bool(counts.get("error")) and not counts.get("procesadas")
 
@@ -360,8 +489,8 @@ def _run_resumen_pregen_phase(limit: int = _RESUMEN_PREGEN_BATCH_SIZE) -> dict[s
     pagar por nada. El presupuesto LLM se comprueba **antes de cada**
     licitación con el BudgetGuard global: agotarlo corta el lote, porque un
     usuario que pide su resumen mañana tiene prioridad sobre calentar uno que
-    quizá nadie abra. Una credencial rechazada también lo corta, por lo mismo
-    que en la fase de fichas.
+    quizá nadie abra. Una credencial rechazada o un modelo retirado también lo
+    cortan, por lo mismo que en la fase de fichas.
     """
     from config import settings
 
@@ -387,7 +516,7 @@ def _run_resumen_pregen_phase(limit: int = _RESUMEN_PREGEN_BATCH_SIZE) -> dict[s
         return counts
 
     from llm.budget import LLMBudgetExceeded, get_budget_guard
-    from llm.providers import LLMAuthError
+    from llm.providers import LLMAuthError, LLMModelUnavailableError
 
     guard = get_budget_guard()
     candidatas = _candidatas_resumen(limit)
@@ -405,6 +534,11 @@ def _run_resumen_pregen_phase(limit: int = _RESUMEN_PREGEN_BATCH_SIZE) -> dict[s
             counts["error"] += 1
             counts["credencial_rechazada"] = str(exc)
             log.error("resumen_pregen_auth_rejected", id_externo=id_externo, error=str(exc))
+            break
+        except LLMModelUnavailableError as exc:
+            counts["error"] += 1
+            counts["modelo_no_disponible"] = str(exc)
+            log.error("resumen_pregen_model_unavailable", id_externo=id_externo, error=str(exc))
             break
         except Exception as exc:
             counts["error"] += 1
@@ -425,16 +559,24 @@ def run() -> dict[str, Any]:
 
     Los límites por fase vienen de ``config.settings`` (PLIEGO_FETCH_BATCH /
     PLIEGO_EMBED_BATCH / PLIEGO_FACTS_BATCH / PLIEGO_TECH_SIGNAL_BATCH /
-    RESUMEN_PREGEN_BATCH); las
+    RESUMEN_PREGEN_BATCH), igual que los topes de reloj de las tres primeras
+    (PLIEGO_FETCH_MAX_SECONDS / PLIEGO_EMBED_MAX_SECONDS /
+    PLIEGO_FACTS_MAX_SECONDS); las
     constantes de módulo ``_FETCH_BATCH_SIZE`` etc. quedan como default de
     cada función para quien las invoque directamente (tests, backfills
-    manuales) sin pasar por aquí.
+    manuales) sin pasar por aquí, y sin tope de reloj.
     """
     from config import settings
 
-    fetch_result = _run_fetch_phase(limit=settings.PLIEGO_FETCH_BATCH)
-    embed_result = _run_embed_phase(limit=settings.PLIEGO_EMBED_BATCH)
-    facts_result = _run_facts_phase(limit=settings.PLIEGO_FACTS_BATCH)
+    fetch_result = _run_fetch_phase(
+        limit=settings.PLIEGO_FETCH_BATCH, max_seconds=settings.PLIEGO_FETCH_MAX_SECONDS
+    )
+    embed_result = _run_embed_phase(
+        limit=settings.PLIEGO_EMBED_BATCH, max_seconds=settings.PLIEGO_EMBED_MAX_SECONDS
+    )
+    facts_result = _run_facts_phase(
+        limit=settings.PLIEGO_FACTS_BATCH, max_seconds=settings.PLIEGO_FACTS_MAX_SECONDS
+    )
     tech_signal_result = _run_tech_signal_phase(limit=settings.PLIEGO_TECH_SIGNAL_BATCH)
     resumen_result = _run_resumen_pregen_phase(limit=settings.RESUMEN_PREGEN_BATCH)
     log.info(
@@ -464,9 +606,9 @@ def _alertar_fichas_fallidas(facts: Mapping[str, object]) -> None:
     """Log de error y alerta que nombra la causa del fallo de la fase de fichas."""
     from observability.alerts import notify
 
-    causa = facts.get("credencial_rechazada")
+    causa = facts.get("credencial_rechazada") or facts.get("modelo_no_disponible")
     if causa:
-        cuerpo = f"{causa}. El lote de fichas se cortó en el primer rechazo."
+        cuerpo = f"{causa}. El lote de fichas se cortó ahí: el resto habría fallado igual."
     else:
         cuerpo = (
             f"Las {facts.get('error')} extracciones del lote fallaron sin dejar "

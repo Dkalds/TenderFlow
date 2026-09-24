@@ -81,7 +81,16 @@ jobs:
     # El lote diario subió de 50 a 300 (PLIEGO_FETCH_BATCH) para drenar el
     # backlog de ~44k documentos en semanas en vez de meses; 30min medía
     # corto para el lote nuevo.
-    timeout-minutes: 45
+    #
+    # 45 min tampoco bastaron: del run #65 (2026-09-15) al #73 (2026-09-23)
+    # nueve noches seguidas se cancelaron a mitad del embed o de tech_signal,
+    # sin llegar a `run_cli` ni a su alerta. El fetch de 300 documentos iba de
+    # 17 a 37 min y el embed de 100, de 15 a más de 25. Desde entonces fetch,
+    # embed y fichas tienen tope de reloj propio (PLIEGO_*_MAX_SECONDS en
+    # config/settings.py: 20 + 15 + 10 min), y este timeout es la red de
+    # seguridad, no lo que corta el trabajo. Si salta, algo sin tope (el setup,
+    # tech_signal o el report) se disparó, y hay que mirarlo antes de subirlo.
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
