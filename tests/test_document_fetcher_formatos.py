@@ -21,6 +21,7 @@ tesseract esté instalado.
 from __future__ import annotations
 
 import importlib
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -210,6 +211,41 @@ class TestOcr:
         falso.write_text("")
         monkeypatch.setattr(df.shutil, "which", lambda _nombre: str(falso))
         assert df._ocr_pdf(b"%PDF-1.4") is None
+
+    @pytest.mark.parametrize(
+        ("valor", "esperado"),
+        [
+            (None, "spa+eng"),
+            ("", "spa+eng"),
+            ("cat+spa", "cat+spa"),
+            (" eus + eng ", "eus+eng"),
+            ("spa+spa", "spa"),
+            ("spa+--sidecar=/tmp/x", "spa"),
+            ("--output-type=pdfa", "spa+eng"),
+        ],
+    )
+    def test_los_idiomas_se_validan_contra_la_lista_cerrada(self, monkeypatch, valor, esperado):
+        """Solo pasan códigos de ``_IDIOMAS_OCR``, en el orden pedido; si no queda ninguno, el defecto."""
+        if valor is None:
+            monkeypatch.delenv("DOCUMENT_OCR_LANGUAGES", raising=False)
+        else:
+            monkeypatch.setenv("DOCUMENT_OCR_LANGUAGES", valor)
+        assert df._idiomas_ocr() == esperado
+
+    def test_ocrmypdf_recibe_los_idiomas_ya_validados(self, monkeypatch, tmp_path):
+        """El valor de la variable no llega a ``argv``: llega lo que queda tras validarlo."""
+        monkeypatch.setenv("DOCUMENT_OCR_LANGUAGES", "cat+spa+;rm -rf /")
+        monkeypatch.setattr(df.shutil, "which", lambda _nombre: str(tmp_path / "ocrmypdf"))
+        comandos = []
+
+        def _run(comando, **_kwargs):
+            comandos.append(comando)
+            return subprocess.CompletedProcess(comando, 1, b"", b"")
+
+        monkeypatch.setattr(df.subprocess, "run", _run)
+        assert df._ocr_pdf(b"%PDF-1.4") is None
+        (comando,) = comandos
+        assert comando[comando.index("-l") + 1] == "cat+spa"
 
     @pytest.mark.skipif(ocr_binario() is None, reason="ocrmypdf no instalado en este entorno")
     @pytest.mark.slow

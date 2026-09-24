@@ -486,6 +486,25 @@ class TestMarkTransitions:
         assert row["status"] == "extracted"
         assert row["texto"] == "texto extraído del PDF"
 
+    def test_mark_extracted_sanea_nul_y_surrogates_sin_descuadrar_paginas(self, repo):
+        """Un NUL o un surrogate suelto tumbaban el UPDATE entero, y el
+        documento se quedaba `pending` para siempre (64 en septiembre de 2026)."""
+        _insert_licitacion("EXP-9B")
+        repo.upsert_meta("EXP-9B", [DocumentoReferencia(tipo="legal", uri="https://x/n.pdf")])
+        doc_id = repo.list_pendientes()[0]["id"]
+        paginas = ["P\x00l\x00i\x00e\x00g\x00o", "importe \udbc0 euros"]
+
+        repo.mark_extracted(doc_id, texto="\n".join(paginas), sha256="h3", pages=paginas)
+
+        row = repo.get(doc_id)
+        assert row is not None
+        assert row["status"] == "extracted"
+        assert row["texto"] == "Pliego\nimporte � euros"
+        guardadas = repo.list_pages(doc_id)
+        assert [p["texto"] for p in guardadas] == ["Pliego", "importe � euros"]
+        for pagina in guardadas:
+            assert row["texto"][pagina["start_offset"] : pagina["end_offset"]] == pagina["texto"]
+
     def test_mark_error_sets_detail_and_truncates(self, repo):
         _insert_licitacion("EXP-10")
         repo.upsert_meta("EXP-10", [DocumentoReferencia(tipo="legal", uri="https://x/f.pdf")])

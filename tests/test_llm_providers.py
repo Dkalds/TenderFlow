@@ -339,6 +339,59 @@ def test_anthropic_stream_rejected_key_raises_without_retry() -> None:
     assert call_count[0] == 1
 
 
+# ── Modelo retirado: se lanza con su nombre, tampoco se disfraza de vacío ─────
+
+
+@pytest.mark.parametrize("status_code", [404, 410])
+def test_openai_stream_unavailable_model_raises_without_retry(status_code: int) -> None:
+    """NVIDIA responde 410 a un modelo retirado, y el provider lo convertía en
+    stream vacío: del 2026-09-21 al 2026-09-24 la ficha, el etiquetado y el
+    guion fallaron con «respuesta vacía» sin que ningún log nombrara el 410."""
+    from llm.providers import LLMModelUnavailableError
+
+    call_count = [0]
+    mock_openai_module = MagicMock()
+
+    def failing_create(*args: Any, **kwargs: Any) -> None:
+        call_count[0] += 1
+        raise _HTTPStatusError(status_code)
+
+    mock_openai_module.OpenAI.return_value.chat.completions.create.side_effect = failing_create
+
+    with (
+        patch.dict("sys.modules", {"openai": mock_openai_module}),
+        patch("time.sleep"),
+        pytest.raises(LLMModelUnavailableError) as info,
+    ):
+        list(oai.stream(SYSTEM, MESSAGES, "deepseek-ai/deepseek-v4-flash-0731", "key"))
+
+    assert call_count[0] == 1
+    assert info.value.status_code == status_code
+    assert "deepseek-ai/deepseek-v4-flash-0731" in str(info.value)
+
+
+def test_anthropic_stream_unknown_model_raises_without_retry() -> None:
+    from llm.providers import LLMModelUnavailableError
+
+    call_count = [0]
+    mock_anthropic_module = MagicMock()
+
+    def failing_stream(*args: Any, **kwargs: Any) -> None:
+        call_count[0] += 1
+        raise _HTTPStatusError(404)
+
+    mock_anthropic_module.Anthropic.return_value.messages.stream.side_effect = failing_stream
+
+    with (
+        patch.dict("sys.modules", {"anthropic": mock_anthropic_module}),
+        patch("time.sleep"),
+        pytest.raises(LLMModelUnavailableError),
+    ):
+        list(anth.stream(SYSTEM, MESSAGES, "claude-retirado", "key"))
+
+    assert call_count[0] == 1
+
+
 # ── Una sola capa de retry: el SDK no reintenta por dentro ────────────────────
 #
 # El provider ya tiene su bucle de 3 intentos con backoff. Con el default del

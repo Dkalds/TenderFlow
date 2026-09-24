@@ -330,13 +330,39 @@ def test_extraction_question_fits_llm_limit():
     este comprueba la constante contra el validador real, en el modo real
     (``extraction``, que usa el tope interno de plantilla).
     """
+    from config import settings
     from llm.client import MAX_INTERNAL_QUESTION_LEN, _validate_request
     from services.rag.fact_sheet import _EXTRACTION_QUESTION
 
     assert len(_EXTRACTION_QUESTION) <= MAX_INTERNAL_QUESTION_LEN
-    _validate_request(
-        _EXTRACTION_QUESTION, [], "deepseek-ai/deepseek-v4-flash-0731", mode="extraction"
-    )
+    # El modelo con que la ficha se extrae de verdad, no un literal que caduca
+    # con el siguiente EOL de NVIDIA.
+    _validate_request(_EXTRACTION_QUESTION, [], settings.PLIEGO_FACTS_MODEL, mode="extraction")
+
+
+def test_extraction_question_lists_required_fields_per_family():
+    """Las llaves de cada familia nombran todos sus campos obligatorios.
+
+    Con los Nemotron de NVIDIA (2026-09-24) las llaves se leen como el esquema
+    completo: `description` iba solo en la frase general, ningún hecho lo traía
+    y 14 de 17 caían por «Field required». ``confidence`` queda fuera a
+    sabiendas: va en la misma frase general y los dos modelos probados lo
+    incluían siempre.
+    """
+    import re
+    from typing import get_args
+
+    from services.rag.fact_sheet import _EXTRACTION_QUESTION
+    from shared.tender_facts import TenderFactSheet
+
+    for familia, campo in TenderFactSheet.model_fields.items():
+        (modelo,) = get_args(campo.annotation)
+        llaves = re.search(rf"^{familia}: \{{([^}}]*)\}}", _EXTRACTION_QUESTION, re.M)
+        assert llaves, f"la pregunta no declara la familia {familia}"
+        pedidos = {c.strip() for c in llaves.group(1).split(",") if c.strip()}
+        obligatorios = {n for n, f in modelo.model_fields.items() if f.is_required()}
+        faltan = obligatorios - pedidos - {"confidence"}
+        assert not faltan, f"{familia}: faltan {sorted(faltan)} en sus llaves"
 
 
 class TestPartialPayloadSurvives:

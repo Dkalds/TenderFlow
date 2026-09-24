@@ -15,6 +15,8 @@ Hardening (B11):
       Es la única capa: el SDK se crea con ``max_retries=0``.
     - Log de API key missing como warning en vez de silencio.
     - Una key rechazada (HTTP 401/403) **lanza** ``LLMAuthError`` sin reintentar.
+    - Un modelo que la API no conoce (HTTP 404/410) **lanza**
+      ``LLMModelUnavailableError``, también sin reintentar.
     - Señal de parada (``stop``): con ella activa no se abre ningún intento
       nuevo y el backoff se corta.
 """
@@ -25,7 +27,14 @@ import threading
 from collections.abc import Iterator, MutableMapping
 
 from llm.prompts import ChatMessage
-from llm.providers import AUTH_HTTP_CODES, LLMAuthError, backoff_wait, stop_requested
+from llm.providers import (
+    AUTH_HTTP_CODES,
+    MODEL_UNAVAILABLE_HTTP_CODES,
+    LLMAuthError,
+    LLMModelUnavailableError,
+    backoff_wait,
+    stop_requested,
+)
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -162,6 +171,11 @@ def stream(
                 # devolver vacío escondería la causa.
                 log.error("llm_anthropic.auth_rejected", model=model, status_code=status_code)
                 raise LLMAuthError(model=model, status_code=int(status_code)) from exc
+            if status_code in MODEL_UNAVAILABLE_HTTP_CODES:
+                # Ver `LLMModelUnavailableError`: un id de modelo que la API ya
+                # no conoce falla igual en cada intento.
+                log.error("llm_anthropic.model_unavailable", model=model, status_code=status_code)
+                raise LLMModelUnavailableError(model=model, status_code=int(status_code)) from exc
             if attempt < max_attempts and _is_retryable(exc):
                 wait = 2 ** (attempt - 1)
                 log.warning(

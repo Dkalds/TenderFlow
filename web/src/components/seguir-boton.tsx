@@ -6,8 +6,9 @@
  * ADR-031 §C: «Radar, Detalle, Empresas y Órganos usan el mismo componente. Un
  * control que se comporta distinto en dos pantallas es dos controles». Desde
  * 2026-09-19 lo es: la estrella del expediente (Radar y /detalle), la
- * vigilancia de empresa (competidores y /empresas) y el seguimiento de órgano
- * pasan por aquí. Lo que cambia entre pantallas es la **piel** (icono, texto,
+ * vigilancia de empresa (competidores, y /empresas desde 2026-09-24, que hasta
+ * entonces mantenía un botón propio) y el seguimiento de órgano pasan por
+ * aquí. Lo que cambia entre pantallas es la **piel** (icono, texto,
  * clases); el comportamiento es este y sólo este.
  *
  * A qué endpoint va cada tipo lo decide `useSeguimiento` (ver su cabecera):

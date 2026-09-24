@@ -18,6 +18,7 @@ que es lo que ``formato_counts`` publica ahora en ``/analytics/quality``.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -53,6 +54,33 @@ class DocumentoPagina:
 def _como_pagina(pagina: str | DocumentoPagina) -> DocumentoPagina:
     """Acepta el ``list[str]`` histórico además del tipo nuevo."""
     return pagina if isinstance(pagina, DocumentoPagina) else DocumentoPagina(texto=pagina)
+
+
+# Code points sustitutos (U+D800-U+DFFF): en un ``str`` solo aparecen si el
+# texto se decodificó mal, y no se pueden codificar en UTF-8.
+_SURROGATES = re.compile("[\ud800-\udfff]")
+
+
+def _texto_para_postgres(texto: str) -> str:
+    """Quita del texto extraído lo que una columna ``text`` de Postgres rechaza.
+
+    Hay dos casos, y los dos salen de extractores de PDF con encodings rotos:
+    el byte NUL (``PostgreSQL text fields cannot contain NUL (0x00) bytes``) y
+    los surrogates sueltos (``'utf-8' codec can't encode character '\\udbc0'``).
+    Cualquiera de los dos tumbaba el ``UPDATE`` entero, y el documento se
+    quedaba ``pending`` y se reintentaba cada noche: en septiembre de 2026
+    fueron 64 documentos y de 30 a 53 huecos del lote de 300.
+
+    El NUL se elimina, en vez de sustituirse, porque casi siempre es el relleno
+    de un texto UTF-16 leído como si fuera de un byte (``T\\x00e\\x00x\\x00t``)
+    y lo legible es lo que queda al quitarlo. Cada surrogate pasa a U+FFFD. Las
+    dos operaciones son carácter a carácter y no tocan el ``\\n`` que une las
+    páginas, así que sanear las páginas y el texto agregado por separado da el
+    mismo resultado que sanear el texto ya unido, y los offsets que
+    :meth:`DocumentosRepository.mark_extracted` calcula sobre las páginas
+    siguen cuadrando con ``texto``.
+    """
+    return _SURROGATES.sub("�", texto.replace("\x00", ""))
 
 
 def _to_pg_vector_literal(vec: Sequence[float]) -> str:
@@ -418,7 +446,12 @@ class DocumentosRepository:
         cubo «desconocido»: medía la cobertura que falta contra un denominador
         que no incluía la que sí hay. ``None`` conserva el valor actual
         (``COALESCE``): quien no los sepa no los borra.
+
+        ``texto`` y el de cada página pasan por :func:`_texto_para_postgres`
+        antes de calcular offsets: un NUL o un surrogate suelto hacían fallar
+        el ``UPDATE`` entero.
         """
+        texto = _texto_para_postgres(texto)
         with connect() as c:
             c.execute(
                 "UPDATE documentos SET status = 'extracted', texto = %s, sha256 = %s, "
@@ -446,13 +479,14 @@ class DocumentosRepository:
                 offset = 0
                 for page_number, page in enumerate(pages, start=1):
                     pagina = _como_pagina(page)
+                    texto_pagina = _texto_para_postgres(pagina.texto)
                     start_offset = offset
-                    end_offset = start_offset + len(pagina.texto)
+                    end_offset = start_offset + len(texto_pagina)
                     page_rows.append(
                         (
                             documento_id,
                             page_number,
-                            pagina.texto,
+                            texto_pagina,
                             start_offset,
                             end_offset,
                             pagina.ocr,
