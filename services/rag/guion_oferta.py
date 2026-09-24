@@ -491,7 +491,7 @@ def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
     """
     import io
     from datetime import UTC, datetime
-    from xml.sax.saxutils import escape
+    from html import escape
 
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -530,7 +530,9 @@ def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
 
     def _t(texto: str) -> str:
         # `Paragraph` interpreta marcado: un `<` del pliego rompería el PDF.
-        return escape(texto)
+        # `quote=False` deja la salida idéntica a la de `xml.sax.saxutils.escape`
+        # (ver `services/pdf_tabular._texto`).
+        return escape(texto, quote=False)
 
     story: list[Any] = [
         Paragraph(_t(titulo), base["Title"]),
