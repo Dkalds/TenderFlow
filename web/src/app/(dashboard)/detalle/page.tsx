@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useTable } from "@tanstack/react-table";
 import { Comparator } from "@/components/comparator";
@@ -14,7 +15,6 @@ import type { LicitacionSummary } from "@/lib/api-types";
 import { useModoInspector } from "../radar/_hooks/use-media-query";
 import { DetalleBarra } from "./_components/detalle-barra";
 import { COLUMNS } from "./_components/detalle-columnas";
-import { DetalleInspectorPanel } from "./_components/detalle-inspector-panel";
 import { DetallePie } from "./_components/detalle-pie";
 import { DetalleSeleccion } from "./_components/detalle-seleccion";
 import { DetalleTabla } from "./_components/detalle-tabla";
@@ -45,6 +45,13 @@ import { useDetalleTeclado } from "./_hooks/use-detalle-teclado";
  * Esta pantalla es la composición: el estado y las consultas viven en
  * `_hooks/`, cada bloque de UI en `_components/`.
  */
+
+// El inspector no pinta nada hasta que se abre una fila, y arrastra los once
+// bloques de la ficha (IA, documentos, eventos). Fuera del First Load de la
+// tabla, que es lo que se mide al entrar.
+const DetalleInspectorPanel = dynamic(() =>
+  import("./_components/detalle-inspector-panel").then((modulo) => modulo.DetalleInspectorPanel),
+);
 
 function downloadCsv(rows: LicitacionSummary[], filename: string) {
   // Vía `descargarBlob` y no con un ancla propia: esta exportación se arma en el

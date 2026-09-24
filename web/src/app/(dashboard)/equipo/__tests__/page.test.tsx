@@ -51,15 +51,20 @@ afterEach(() => {
 });
 
 describe("EquipoPage — pestaña Integraciones", () => {
-  it.each(["owner", "admin"])("un %s ve la pestaña y monta los webhooks del equipo", (role) => {
-    fijarRol(role);
-    render(<EquipoPage />);
+  it.each(["owner", "admin"])(
+    "un %s ve la pestaña y monta los webhooks del equipo",
+    async (role) => {
+      fijarRol(role);
+      render(<EquipoPage />);
 
-    const pestana = screen.getByRole("tab", { name: "Integraciones" });
-    // Radix activa la pestaña en `mousedown`, no en `click`.
-    fireEvent.mouseDown(pestana);
-    expect(screen.getByText("webhooks del equipo")).toBeInTheDocument();
-  });
+      const pestana = screen.getByRole("tab", { name: "Integraciones" });
+      // Radix activa la pestaña en `mousedown`, no en `click`.
+      fireEvent.mouseDown(pestana);
+      // `findBy`: la vista entra por `next/dynamic`, así que no está montada en
+      // el mismo tick que el cambio de pestaña.
+      expect(await screen.findByText("webhooks del equipo")).toBeInTheDocument();
+    },
+  );
 
   it.each(["member", "viewer"])("un %s no ve la pestaña", (role) => {
     fijarRol(role);
@@ -73,11 +78,14 @@ describe("EquipoPage — pestaña Integraciones", () => {
 describe("EquipoPage — pestaña Actividad (F4.5)", () => {
   // Un `member` también: el feed vivía sólo en Dirección (owner/admin) y el
   // backend ya lo acota por rol, así que la pantalla no tiene nada que ocultar.
-  it.each(["owner", "admin", "member"])("un %s ve el feed de la organización activa", (role) => {
-    fijarRol(role);
-    render(<EquipoPage />);
+  it.each(["owner", "admin", "member"])(
+    "un %s ve el feed de la organización activa",
+    async (role) => {
+      fijarRol(role);
+      render(<EquipoPage />);
 
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Actividad" }));
-    expect(screen.getByText("feed de la organización 21")).toBeInTheDocument();
-  });
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Actividad" }));
+      expect(await screen.findByText("feed de la organización 21")).toBeInTheDocument();
+    },
+  );
 });

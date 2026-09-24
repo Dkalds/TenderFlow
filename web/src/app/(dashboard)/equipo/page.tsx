@@ -28,9 +28,11 @@
  */
 
 import { Plus } from "lucide-react";
+import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SpaceShell } from "@/components/layout/space-shell";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   useActiveOrganizationId,
   useOrganizations,
@@ -40,9 +42,24 @@ import { CrearOrganizacionForm } from "./_components/crear-organizacion-form";
 import { InvitacionesPendientes } from "./_components/invitaciones-pendientes";
 import { MatrizPermisos } from "./_components/matriz-permisos";
 import { MiembrosCard } from "./_components/miembros-card";
-import { OrganizacionTab } from "./_components/organizacion-tab";
-import { WebhooksEquipoView } from "../ops/_components/webhooks-view";
-import { ActividadEquipo } from "../direccion/_components/actividad-equipo";
+
+// Solo «Miembros» se ve al entrar. Las otras tres pestañas viajaban igualmente
+// en el First Load de /equipo, y dos de ellas (actividad, webhooks) arrastran
+// pantallas completas de otros espacios.
+const loading = () => <Skeleton className="h-[320px] w-full rounded-xl" />;
+
+const OrganizacionTab = dynamic(
+  () => import("./_components/organizacion-tab").then((modulo) => modulo.OrganizacionTab),
+  { loading },
+);
+const WebhooksEquipoView = dynamic(
+  () => import("../ops/_components/webhooks-view").then((modulo) => modulo.WebhooksEquipoView),
+  { loading },
+);
+const ActividadEquipo = dynamic(
+  () => import("../direccion/_components/actividad-equipo").then((modulo) => modulo.ActividadEquipo),
+  { loading },
+);
 
 export default function EquipoPage() {
   const organizations = useOrganizations();
