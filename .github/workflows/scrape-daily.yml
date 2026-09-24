@@ -12,8 +12,14 @@ name: Scrape PLACSP diario (ATOM live feed + conectores)
 
 on:
   schedule:
-    # Cada 4 horas: 00, 04, 08, 12, 16, 20 UTC
-    - cron: "0 */4 * * *"
+    # Cada 4 horas, en el minuto 23: 00:23, 04:23, 08:23… UTC.
+    #
+    # No en punto. GitHub documenta que el inicio de cada hora es su pico de
+    # carga y que ahí los `schedule` se retrasan y, con carga alta, se
+    # descartan. Con "0 */4 * * *" corrían de media 4,5 de las 6 pasadas
+    # diarias (medido del 2026-09-11 al 09-23), con retrasos de una a cuatro
+    # horas: la de las 00:00 arrancaba sistemáticamente hacia las 03:00.
+    - cron: "23 */4 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -26,11 +32,14 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    # Presupuesto del job >= suma de los presupuestos por step (los seis
-    # conectores con continue-on-error suman 45 min de peor caso; hasta
-    # 2026-08 el timeout era 30 y los steps de la cola — PSCP y TACRC —
-    # quedaban truncados cuando los anteriores se degradaban).
-    timeout-minutes: 55
+    # Presupuesto del job >= suma de los presupuestos por step: 45 de la
+    # ingesta de PLACSP + 45 de los seis conectores + 20 del cierre = 110, más
+    # la preparación y el healthcheck. Hasta 2026-08 era 30 y truncaba los
+    # conectores de la cola (PSCP y TACRC); luego fue 55, que ya no cubría el
+    # cierre: el 2026-09-23 (run 35840505923) la ingesta tardó 37 min, el job
+    # se canceló a los 56 y el cierre —vista pública, alertas de vigilancia— no
+    # llegó a correr en esa pasada.
+    timeout-minutes: 120
 
     env:
       # ENV=prod: este job escribe en la BD de producción, así que los
@@ -112,7 +121,16 @@ jobs:
       #
       # Los env del LLM se mudan con él al step de cierre: `llm_tech_labeling`
       # es un paso post-ingesta y aquí ya no corre.
+      #
+      # Presupuesto propio, como el de los conectores: sin él, una descarga
+      # lenta de PLACSP se comía el del job entero. En los 45 runs del
+      # 2026-09-14 al 09-24 la mediana fue 0,6 min y el máximo 37 (la primera
+      # página del feed pesa 17 MB). No se aprieta más porque el cursor del ATOM
+      # solo avanza al final de una descarga completa: con un tope por debajo
+      # de lo que tarda una recuperación de varias páginas, cada pasada se
+      # cortaría en el mismo punto y el carril no se pondría al día nunca.
       - name: Run daily scraper
+        timeout-minutes: 45
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
@@ -154,6 +172,7 @@ jobs:
       # auth y sin dataset/índice por entorno que configurar, así que corre
       # sin gate de variable (a diferencia de PSCP/TACRC más abajo).
       - name: Run TED connector
+        id: ted
         if: ${{ !cancelled() }}
         continue-on-error: true
         # Presupuesto propio: no debe consumir el timeout del job si la API
@@ -165,12 +184,14 @@ jobs:
       # y cada fuente queda aislada para que una indisponibilidad regional no
       # impida la actualización nacional ni las demás fuentes.
       - name: Run Galicia RSS connector
+        id: galicia
         if: ${{ !cancelled() }}
         continue-on-error: true
         timeout-minutes: 5
         run: python -m scraper.connectors.galicia
 
       - name: Run Euskadi RSS connector
+        id: euskadi
         if: ${{ !cancelled() }}
         continue-on-error: true
         timeout-minutes: 5
@@ -180,6 +201,7 @@ jobs:
       # empresa está vigilada por NIF canónico. Sin NIF vigilados termina sin
       # descargar el feed; el timeout aísla cualquier degradación de PLACE.
       - name: Run watched-company awards connector
+        id: watched_awards
         if: ${{ !cancelled() }}
         continue-on-error: true
         timeout-minutes: 5
@@ -204,6 +226,7 @@ jobs:
       # fuentes independientes que no deben tumbar el carril diario ni comerse
       # el presupuesto del job.
       - name: Run PSCP Catalunya connector
+        id: pscp
         if: ${{ !cancelled() }}
         continue-on-error: true
         # Presupuesto propio: si la API pública de Catalunya se cuelga o
@@ -216,6 +239,7 @@ jobs:
         run: python -m scraper.connectors.pscp
 
       - name: Run TACRC resoluciones connector
+        id: tacrc
         if: ${{ !cancelled() }}
         continue-on-error: true
         timeout-minutes: 10
@@ -250,6 +274,47 @@ jobs:
           # Actions → Variables, sin tocar código (mismo patrón que pliegos.yml).
           # Con la variable sin definir manda el default de config/settings.py.
         run: python -m scheduler.run_update --daily --fase cierre
+
+      # Resultado real de cada conector, a la vista.
+      #
+      # Con `continue-on-error`, un conector que falla o agota su timeout sale
+      # con `conclusion: success`: el check queda verde y el fallo solo se ve
+      # abriendo el log. PSCP lleva así desde al menos el 2026-09-15: agota sus
+      # 10 minutos en la pasada de hacia las 09:00 UTC de cada día (8 de las 45
+      # pasadas entre el 09-14 y el 09-24) sin que nada lo señalara. Este
+      # paso lee el `outcome` (el resultado antes de aplicar
+      # `continue-on-error`), lo vuelca como tabla en el resumen del run y
+      # anota cada fallo. No toca el exit code del job: que un conector falle
+      # sigue sin ser motivo para poner en rojo el carril.
+      #
+      # Los `outcome` son valores fijos de GitHub (success, failure, cancelled,
+      # skipped); aun así viajan por `env:` y no interpolados en el script.
+      - name: Resumen de conectores
+        if: ${{ !cancelled() }}
+        env:
+          RESULTADOS: >-
+            ted=${{ steps.ted.outcome }}
+            galicia=${{ steps.galicia.outcome }}
+            euskadi=${{ steps.euskadi.outcome }}
+            watched_awards=${{ steps.watched_awards.outcome }}
+            pscp=${{ steps.pscp.outcome }}
+            tacrc=${{ steps.tacrc.outcome }}
+        run: |
+          set -u
+          {
+            echo "### Conectores"
+            echo ""
+            echo "| Conector | Resultado |"
+            echo "|---|---|"
+            for par in $RESULTADOS; do
+              echo "| ${par%%=*} | ${par#*=} |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          for par in $RESULTADOS; do
+            if [ "${par#*=}" = "failure" ]; then
+              echo "::warning title=Conector con fallo::${par%%=*} falló o agotó su timeout (el step sale verde por continue-on-error)"
+            fi
+          done
 
       - name: Healthcheck post-run
         if: always()
