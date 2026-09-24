@@ -473,3 +473,125 @@ class TestRutasDeGoNoGo:
         respuesta = client.put(self.PUNTUACION, json={"criterio": "encaje", "puntuacion": 4})
         assert respuesta.status_code == 200
         assert respuesta.json()["total"] == 4.0
+
+
+class TestRutasDeCartera:
+    """Los dos agregados de la cartera: su ámbito y su 404.
+
+    Son envoltorios finos —resuelven el usuario, llaman al servicio y traducen
+    su excepción—, así que lo que aporta la ruta se ejercita entero sin base:
+    que el 403 de membresía y el 404 de contrato ajeno salgan con el código que
+    el frontend distingue, y que `/cartera/resumen` no lo capture la ruta con
+    `{cartera_id}` que vive dos líneas más abajo.
+    """
+
+    RESUMEN = "/api/v1/pursuits/cartera/resumen"
+    EVENTOS = "/api/v1/pursuits/cartera/3/eventos"
+
+    _RESUMEN: ClassVar[dict[str, Any]] = {
+        "organization_id": 7,
+        "contratos_vivos": 4,
+        "importe_en_ejecucion_eur": 1_250_000.0,
+        "vencen_6_meses": 2,
+        "vencen_6_meses_importe_eur": 300_000.0,
+        "sin_renovacion_preparada": 1,
+    }
+
+    def test_el_resumen_devuelve_los_agregados_tipados(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import api.routes.pursuits as rutas
+        from services.cartera import CarteraResumen
+
+        monkeypatch.setattr(
+            rutas, "resumen_de_usuario", lambda *a, **k: CarteraResumen(**self._RESUMEN)
+        )
+
+        respuesta = client.get(self.RESUMEN)
+
+        assert respuesta.status_code == 200, respuesta.text
+        assert respuesta.json() == self._RESUMEN
+
+    def test_el_resumen_no_lo_captura_la_ruta_de_eventos(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`resumen` es un segmento literal, no un `cartera_id` mal tipado.
+
+        Si el orden de registro cambiara y `{cartera_id}` se declarara antes,
+        esto saldría 422 («resumen no es un entero») en vez de los totales.
+        """
+        import api.routes.pursuits as rutas
+        from services.cartera import CarteraResumen
+
+        monkeypatch.setattr(
+            rutas, "resumen_de_usuario", lambda *a, **k: CarteraResumen(**self._RESUMEN)
+        )
+        _falla_con(monkeypatch, rutas, "eventos_de_contrato", AssertionError("ruta equivocada"))
+
+        assert client.get(self.RESUMEN).status_code == 200
+
+    def test_el_resumen_de_una_organizacion_ajena_es_403(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import api.routes.pursuits as rutas
+        from services.organizations import OrganizationAccessError
+
+        _falla_con(
+            monkeypatch, rutas, "resumen_de_usuario", OrganizationAccessError("no perteneces")
+        )
+
+        assert client.get(self.RESUMEN, params={"organization_id": 9}).status_code == 403
+
+    def test_los_eventos_salen_en_el_orden_en_que_llegan(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Del más antiguo al más nuevo: la ruta no reordena lo que le dan."""
+        import api.routes.pursuits as rutas
+        from services.cartera import ContratoEvento
+
+        monkeypatch.setattr(
+            rutas,
+            "eventos_de_contrato",
+            lambda *a, **k: [
+                ContratoEvento(fecha="2025-06-01", tipo="formalizacion", descripcion="Formalizado"),
+                ContratoEvento(
+                    fecha="2026-09-15",
+                    tipo="modificacion",
+                    descripcion="Modificación al alza",
+                    importe_delta_eur=25_000.0,
+                ),
+            ],
+        )
+
+        cuerpo = client.get(self.EVENTOS).json()
+
+        assert [e["fecha"] for e in cuerpo] == ["2025-06-01", "2026-09-15"]
+        assert cuerpo[0]["importe_delta_eur"] is None
+        assert cuerpo[1]["importe_delta_eur"] == 25_000.0
+
+    def test_un_contrato_que_no_esta_en_la_cartera_es_404(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ajeno o inexistente dan lo mismo: la entrada de otro no se confirma."""
+        import api.routes.pursuits as rutas
+        from services.cartera import CarteraNoEncontradaError
+
+        _falla_con(
+            monkeypatch, rutas, "eventos_de_contrato", CarteraNoEncontradaError("no encontrado")
+        )
+
+        assert client.get(self.EVENTOS).status_code == 404
+
+    def test_los_eventos_de_una_organizacion_ajena_son_403(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """403 y 404 no son intercambiables: uno dice «no sos de esa
+        organización» y el otro, «ese contrato no está en la tuya»."""
+        import api.routes.pursuits as rutas
+        from services.organizations import OrganizationAccessError
+
+        _falla_con(
+            monkeypatch, rutas, "eventos_de_contrato", OrganizationAccessError("no perteneces")
+        )
+
+        assert client.get(self.EVENTOS, params={"organization_id": 9}).status_code == 403

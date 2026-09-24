@@ -30,9 +30,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from db.contrato_eventos import eventos_de_licitacion
 from db.repositories.cartera import CarteraRepository
 from observability.logging import get_logger
-from shared.dates import a_fecha
+from shared.dates import a_fecha, to_iso_date
 from shared.duracion import meses_de
 
 log = get_logger(__name__)
@@ -43,7 +44,9 @@ __all__ = [
     "EVENTO_CARTERA_VENCE",
     "VENTANAS_AVISO_MESES",
     "CarteraNoEncontradaError",
+    "CarteraResumen",
     "ContratoCartera",
+    "ContratoEvento",
     "PrepararRenovacionIn",
     "RenovacionInvalidaError",
     "RenovacionPreparada",
@@ -51,10 +54,13 @@ __all__ = [
     "accion_para",
     "contrato_de_fuente",
     "emitir_avisos_de_fin",
+    "eventos_de_contrato",
     "fin_efectivo",
     "listar_cartera",
     "preparar_renovacion",
     "registrar_ganada",
+    "resumen_cartera",
+    "resumen_de_usuario",
     "sincronizar_cartera",
     "ventana_cruzada",
     "ventana_relicitacion",
@@ -86,6 +92,11 @@ class ContratoCartera(BaseModel):
     organo_contratacion: str | None = None
     tecnologia: str | None = None
     cpv: str | None = None
+    #: CCAA y enlace del expediente vigente. Los lee la agenda de Mi Pipeline
+    #: para acotar por ámbito y enlazar; opcionales para no romper a quien
+    #: construye contratos sin ellos.
+    ccaa: str | None = None
+    url: str | None = None
     fecha_inicio: str | None = None
     fecha_fin_efectiva: str | None = None
     #: `publicada` | `duracion` | `prorroga` | `manual`. Nunca se omite cuando
@@ -236,6 +247,76 @@ def cartera_de_usuario(
 
     with alcance_resuelto(user_id, organization_id) as (resuelta, _rol):
         return listar_cartera(resuelta)
+
+
+# ── Resumen de la cartera ──────────────────────────────────────────────────
+
+
+class CarteraResumen(BaseModel):
+    """Los agregados de la cartera (``GET /pursuits/cartera/resumen``).
+
+    Se calculan aquí y no en el cliente (ADR-014): el frontend pinta cifras,
+    no las fabrica. Un contrato está **vivo** si no tiene fecha de fin o si
+    ésta no ha pasado; uno cuyo fin ya quedó atrás sigue en la tabla —nadie lo
+    borra— pero no está en ejecución y no cuenta como importe en ejecución.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int = Field(ge=1)
+    contratos_vivos: int = Field(ge=0)
+    importe_en_ejecucion_eur: float = Field(ge=0)
+    #: Vivos cuyo fin cae dentro del horizonte de aviso más largo
+    #: (``max(VENTANAS_AVISO_MESES)``: seis meses).
+    vencen_6_meses: int = Field(ge=0)
+    vencen_6_meses_importe_eur: float = Field(ge=0)
+    #: De los que vencen en seis meses, cuántos no tienen todavía oportunidad
+    #: de renovación (``renovacion_pursuit_id`` vacío).
+    sin_renovacion_preparada: int = Field(ge=0)
+
+
+def resumen_cartera(
+    contratos: list[ContratoCartera], *, organization_id: int, hoy: date
+) -> CarteraResumen:
+    """Agregados sobre las filas que ya devuelve :func:`listar_cartera`. Puro.
+
+    La cartera de una organización son decenas de contratos, no miles: sumar
+    en Python sobre lo que la vista ya pide evita una segunda consulta que
+    tendría que repetir la misma regla de «vivo» en SQL.
+    """
+    horizonte = _desplazar_meses(hoy, max(VENTANAS_AVISO_MESES))
+    vivos: list[ContratoCartera] = []
+    for contrato in contratos:
+        fin = a_fecha(contrato.fecha_fin_efectiva)
+        if fin is None or fin >= hoy:
+            vivos.append(contrato)
+    vencen = [
+        c for c in vivos if (fin := a_fecha(c.fecha_fin_efectiva)) is not None and fin <= horizonte
+    ]
+    return CarteraResumen(
+        organization_id=organization_id,
+        contratos_vivos=len(vivos),
+        importe_en_ejecucion_eur=sum(c.importe_adjudicado or 0.0 for c in vivos),
+        vencen_6_meses=len(vencen),
+        vencen_6_meses_importe_eur=sum(c.importe_adjudicado or 0.0 for c in vencen),
+        sin_renovacion_preparada=sum(1 for c in vencen if c.renovacion_pursuit_id is None),
+    )
+
+
+def resumen_de_usuario(user_id: int, *, organization_id: int | None = None) -> CarteraResumen:
+    """El resumen de la cartera de la organización activa del usuario.
+
+    Mismo ámbito y mismos permisos que :func:`cartera_de_usuario`: quien puede
+    leer la cartera puede leer sus totales.
+    """
+    from services.organizations import alcance_resuelto
+
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _rol):
+        return resumen_cartera(
+            listar_cartera(resuelta),
+            organization_id=resuelta,
+            hoy=datetime.now(UTC).date(),
+        )
 
 
 # ── Escritor: de oportunidad ganada a contrato en cartera ──────────────────
@@ -601,3 +682,72 @@ def preparar_renovacion(
         return RenovacionPreparada(
             cartera_id=cartera_id, renovacion_pursuit_id=int(pursuit.id), creada=True
         )
+
+
+# ── Eventos del contrato vigente ───────────────────────────────────────────
+
+
+class ContratoEvento(BaseModel):
+    """Un hito del ciclo de vida del contrato (``GET /pursuits/cartera/{id}/eventos``).
+
+    Sale de ``contrato_eventos``, la misma tabla de la que la cartera cuenta las
+    prórrogas: ``tipo`` es su vocabulario (``adjudicacion``, ``formalizacion``,
+    ``modificacion``, ``prorroga``, ``anulacion``, ``cambio_estado``) y
+    ``importe_delta_eur`` solo viene en las modificaciones de importe.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    fecha: str
+    tipo: str
+    descripcion: str
+    importe_delta_eur: float | None = None
+
+
+def _describir_evento(fila: dict[str, Any]) -> str:
+    """El texto del evento: el ``detalle`` derivado o, si falta, el cambio.
+
+    ``contract_events`` escribe ``detalle`` en casi todos los casos; el
+    fallback existe para las filas antiguas que solo traen ``campo`` y los dos
+    valores, que siguen siendo una descripción honesta del cambio.
+    """
+    detalle = str(fila.get("detalle") or "").strip()
+    if detalle:
+        return detalle
+    tipo = str(fila.get("tipo") or "evento")
+    campo = fila.get("campo")
+    if not campo:
+        return tipo
+    antes = fila.get("valor_antes")
+    despues = fila.get("valor_despues")
+    return f"{tipo} · {campo}: {antes if antes is not None else '—'} → {despues if despues is not None else '—'}"
+
+
+def eventos_de_contrato(
+    user_id: int, cartera_id: int, *, organization_id: int | None = None
+) -> list[ContratoEvento]:
+    """Los eventos del contrato vigente de una entrada de cartera, en orden.
+
+    404 (``CarteraNoEncontradaError``) si el contrato no es de la organización
+    resuelta, como el resto de rutas de cartera: la existencia de una entrada
+    ajena no se revela. La fecha se normaliza a ``YYYY-MM-DD`` cuando se
+    entiende; si no, viaja tal cual antes que inventar un día.
+    """
+    from services.organizations import alcance_resuelto
+
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _rol):
+        contrato = _repo.get(resuelta, cartera_id)
+        if contrato is None:
+            raise CarteraNoEncontradaError("Contrato no encontrado en la cartera.")
+        eventos: list[ContratoEvento] = []
+        for fila in eventos_de_licitacion(str(contrato["licitacion_id"])):
+            cruda = str(fila.get("fecha") or "")
+            eventos.append(
+                ContratoEvento(
+                    fecha=to_iso_date(cruda) or cruda,
+                    tipo=str(fila.get("tipo") or "evento"),
+                    descripcion=_describir_evento(fila),
+                    importe_delta_eur=_num(fila.get("importe_delta")),
+                )
+            )
+        return eventos

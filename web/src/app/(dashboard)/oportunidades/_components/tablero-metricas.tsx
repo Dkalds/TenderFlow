@@ -21,6 +21,13 @@ import { cn } from "@/lib/utils";
  * `pipeline_sin_importe` va en ámbar porque no es una cifra de negocio, es un
  * hueco de dato: esas oportunidades quedan fuera de las dos primeras columnas y
  * quien mira la tira tiene que saber cuánto le falta para fiarse de ellas.
+ *
+ * Esto es **el resumen**, no el informe: cuatro cifras sobre el tablero que se
+ * está mirando. La vista completa de `GET /pursuits/metrics` —funnel con sus
+ * tasas de conversión, valor ponderado con supuestos, pérdidas por motivo,
+ * calidad del Radar y selector de periodo— es Oportunidades → **Rendimiento**
+ * (`_components/rendimiento-view.tsx`). Si hace falta una cifra más aquí, casi
+ * siempre lo que hace falta es abrir aquélla.
  */
 export function TableroMetricas({
   metrics,

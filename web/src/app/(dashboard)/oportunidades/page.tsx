@@ -2,144 +2,82 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { PanelError } from "@/components/console/panel";
-import { SpaceShell } from "@/components/layout/space-shell";
-import {
-  TODAS_LAS_ETIQUETAS,
-  pasaFiltroEtiqueta,
-} from "@/components/etiquetas/filtro-etiqueta";
-import { useEtiquetasDe } from "@/hooks/use-etiquetas";
-import { usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
-import type { Pursuit } from "@/hooks/use-pursuits";
-/**
- * El diálogo de cierre, sólo cuando se cierra algo.
- *
- * Trae el `Dialog` y el `Select` de Radix, y se abre en una de cada muchas
- * visitas al tablero: estáticamente son 68 KB de First Load que paga todo el
- * mundo por un caso raro, y el presupuesto por ruta
- * (`scripts/check_bundle_budget.py`) lo cobra. Va montado bajo condición, no
- * sólo importado así: un `dynamic` que se renderiza siempre carga igual.
- */
-const DialogoCierre = dynamic(
-  () => import("./_components/dialogo-cierre").then((modulo) => modulo.DialogoCierre),
-  { ssr: false },
-);
+import { Skeleton } from "@/components/ui/skeleton";
+import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { TODAS_LAS_ETIQUETAS } from "@/components/etiquetas/filtro-etiqueta";
+import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { TableroFiltros } from "./_components/tablero-filtros";
-import { TableroColumna } from "./_components/tablero-columna";
-import { TableroMetricas } from "./_components/tablero-metricas";
-import { TableroVacio } from "./_components/tablero-vacio";
-import { useTablero } from "./_hooks/use-tablero";
-import { FASES, faseDe } from "./_lib/fases";
-import { bloqueoDeFase, resultadosPermitidos } from "./_lib/flujo";
+import TableroView from "./_components/tablero-view";
 
 /**
- * Oportunidades — tablero por fases.
+ * Oportunidades — el espacio de ejecución, con las tres preguntas sobre las
+ * oportunidades propias (reestructura 2026-09-20, «un espacio, una pregunta»):
  *
- * Una columna por estado abierto del workflow y una sola para los tres
- * terminales. La versión anterior agrupaba los ocho estados en cuatro carriles,
- * y eso escondía lo único que un tablero tiene que decir: en qué punto exacto
- * está cada oportunidad. Con una columna por fase, mover una tarjeta significa
- * algo concreto y es un PATCH de un campo (`status`, con `expected_version`).
+ * - **Tablero** (entrada): una columna por fase, mover con arrastre o menú. Es
+ *   lo que era esta página entera; el cuerpo vive en
+ *   `_components/tablero-view.tsx` y se importa estático porque es la vista de
+ *   entrada y un `dynamic` le pondría un esqueleto delante en cada visita.
+ * - **Cartera** (F4.3): contratos ganados en ejecución —fin efectivo,
+ *   prórrogas, ventana de relicitación y «preparar renovación»—.
+ * - **Rendimiento**: el embudo de `GET /pursuits/metrics` — win rate, valor
+ *   ponderado, previsión por trimestre y pérdidas por motivo.
  *
- * Arrastrar no es la única forma de mover: cada tarjeta lleva su menú «Mover
- * a», que es la vía de teclado y de lector de pantalla. Soltar en «Cerradas»
- * abre el diálogo de resultado y motivo en vez de elegir uno por el usuario.
- * Las dos vías respetan el flujo del backend (`_lib/flujo.ts`): mientras se
- * arrastra, solo aceptan la tarjeta la fase siguiente, «Cerradas» y la suya.
+ * Cartera y Rendimiento venían de Mi Pipeline (hoy Agenda); sus `?vista=`
+ * viejos los reenvía aquella página. Se cargan bajo demanda, como en Mercado:
+ * quien entra al tablero no paga las tablas de la cartera.
  *
- * La unidad sigue siendo la **oportunidad**, no el expediente: un expediente
- * dividido en lotes puede tener una por lote, así que las columnas agrupan por
- * expediente y la tira declara su unidad de conteo.
+ * Los filtros del tablero (búsqueda y etiqueta) son estado de esta página y no
+ * del tablero porque sus controles van en la cabecera del espacio (`actions`),
+ * que sólo se monta en esa vista. Dos `useState` sin efectos no cuestan nada
+ * en las otras dos; lo que sí cuesta —las consultas— vive en `TableroView`,
+ * que sólo se monta cuando el tablero es la vista activa.
  */
+
+const loading = () => (
+  <div className="space-y-4">
+    <Skeleton className="h-24 w-full rounded-xl" />
+    <Skeleton className="h-[320px] w-full rounded-xl" />
+  </div>
+);
+
+const VIEWS: Record<string, React.ComponentType> = {
+  cartera: dynamic(() => import("./_components/cartera-view"), { loading }),
+  rendimiento: dynamic(() => import("./_components/rendimiento-view"), { loading }),
+};
+
+const SPACE = CONSOLE_SPACES.find((space) => space.key === "oportunidades")!;
+
 export default function OportunidadesPage() {
+  const { view, setView } = useSpaceView(SPACE);
   const [query, setQuery] = React.useState("");
   const [etiquetaFiltro, setEtiquetaFiltro] = React.useState<string>(TODAS_LAS_ETIQUETAS);
-  const pursuits = usePursuits();
-  const metrics = usePursuitMetrics();
-  const tablero = useTablero();
 
-  // F1.6 — una sola petición con las etiquetas de todas las tarjetas.
-  const ids = (pursuits.data?.items ?? []).map((pursuit) => String(pursuit.id));
-  const etiquetasPorId = useEtiquetasDe("oportunidad", ids).data ?? {};
-  const items = (pursuits.data?.items ?? []).filter(
-    (pursuit) =>
-      coincide(pursuit, query) &&
-      pasaFiltroEtiqueta(etiquetasPorId[String(pursuit.id)], etiquetaFiltro),
-  );
-
-  const filtros = (
-    <TableroFiltros
-      query={query}
-      onQuery={setQuery}
-      etiqueta={etiquetaFiltro}
-      onEtiqueta={setEtiquetaFiltro}
-    />
-  );
-
-  const vacio = !pursuits.isPending && !pursuits.error && (pursuits.data?.items?.length ?? 0) === 0;
-  const arrastrada = items.find((item) => item.id === tablero.arrastrandoId) ?? null;
+  // `useSpaceView` ya cae a la primera vista (`tablero`) ante un `?vista=`
+  // desconocido; el `?? null` es sólo para que el tablero sea también el
+  // destino de cualquier clave sin componente.
+  const View = view === "tablero" ? null : (VIEWS[view] ?? null);
+  const esTablero = View === null;
 
   return (
-    <SpaceShell spaceKey="oportunidades" actions={filtros} bleed>
-      <div className="flex h-full min-h-0 flex-col">
-        <TableroMetricas metrics={metrics.data} cargando={metrics.isPending} />
-
-        {pursuits.error ? (
-          <div className="grid flex-1 place-items-center p-10">
-            <PanelError
-              title="No se pudieron cargar las oportunidades"
-              detail={(pursuits.error as Error).message}
-              onRetry={() => void pursuits.refetch()}
-            />
-          </div>
-        ) : vacio ? (
-          <TableroVacio />
-        ) : (
-          <div className="bg-border/50 grid min-h-0 flex-1 grid-cols-1 gap-px md:grid-cols-3 xl:grid-cols-6">
-            {FASES.map((fase) => (
-              <TableroColumna
-                key={fase.key}
-                fase={fase}
-                items={items.filter((item) => faseDe(tablero.estadoDe(item)) === fase.key)}
-                etiquetasPorId={etiquetasPorId}
-                cargando={pursuits.isPending}
-                activa={tablero.columnaActiva === fase.key}
-                aceptaSoltar={arrastrada == null || bloqueoDeFase(arrastrada, fase.key) === null}
-                arrastrandoId={tablero.arrastrandoId}
-                onSobrevolar={() => tablero.sobrevolar(fase.key)}
-                onSalir={() => tablero.salirDe(fase.key)}
-                onSoltarEnColumna={() => {
-                  if (arrastrada) tablero.moverA(arrastrada, fase.key);
-                }}
-                onArrastrar={tablero.empezarArrastre}
-                onFinArrastre={tablero.terminarArrastre}
-                onMover={tablero.moverA}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* `key` por oportunidad: el diálogo se remonta limpio para cada tarjeta,
-          que es cómo se reinicia su estado sin un efecto que lo haga a mano. */}
-      {tablero.cierre ? (
-        <DialogoCierre
-          key={tablero.cierre.id}
-          pursuit={tablero.cierre}
-          resultados={resultadosPermitidos(tablero.cierre)}
-          onCancelar={tablero.cancelarCierre}
-          onConfirmar={tablero.confirmarCierre}
-        />
-      ) : null}
+    <SpaceShell
+      spaceKey="oportunidades"
+      view={view}
+      onViewChange={setView}
+      actions={
+        esTablero ? (
+          <TableroFiltros
+            query={query}
+            onQuery={setQuery}
+            etiqueta={etiquetaFiltro}
+            onEtiqueta={setEtiquetaFiltro}
+          />
+        ) : undefined
+      }
+      // Sin relleno ni scroll propio sólo en el tablero: sus columnas hacen
+      // su propio scroll. Cartera y Rendimiento son paneles normales.
+      bleed={esTablero}
+    >
+      {View ? <View /> : <TableroView query={query} etiquetaFiltro={etiquetaFiltro} />}
     </SpaceShell>
   );
-}
-
-/** Busca por título, referencia y responsable, que es lo que promete el campo. */
-function coincide(pursuit: Pursuit, query: string): boolean {
-  const aguja = query.trim().toLocaleLowerCase("es");
-  if (!aguja) return true;
-  return `${pursuit.tender_title ?? ""} ${pursuit.licitacion_id} ${pursuit.responsible_name ?? ""}`
-    .toLocaleLowerCase("es")
-    .includes(aguja);
 }

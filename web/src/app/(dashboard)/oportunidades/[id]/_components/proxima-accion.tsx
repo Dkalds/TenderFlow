@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  * `next_action` y su vencimiento: qué toca hacer aquí y cuándo.
  *
  * Es el dato que hace medible el abandono, y hasta ahora sólo se editaba desde
- * la agenda de Mi Pipeline: quien abría la ficha para decidir tenía que salir a
+ * la Agenda (`/mi-pipeline`): quien abría la ficha para decidir tenía que salir a
  * otra pantalla para apuntar el siguiente paso. La banda roja no es decoración:
  * sale de la misma rampa `--urgency-*` que el plazo de la tarjeta, y aparece
  * cuando vence hoy o mañana.

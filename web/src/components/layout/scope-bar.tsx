@@ -495,7 +495,7 @@ export function ScopeBar() {
         {/* `overflow-x-auto` como la barra con ámbito. Sin él, a 375 px el
             rótulo «Ámbito · no aplica…» más las utilidades medían ~650 px y
             empujaban el documento entero: era el desborde de 274 px de Mi
-            Watchlist y de Mi Pipeline en `responsive.spec.ts`, que no son
+            Watchlist y de la Agenda (`/mi-pipeline`) en `responsive.spec.ts`, que no son
             pantallas con ámbito. El rótulo, además, se oculta en móvil. */}
         <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden">
           {activeCount > 0 ? (

@@ -3,10 +3,15 @@
 /**
  * Agenda — la vista de entrada de Mi Pipeline.
  *
- * Una sola cronología con tres clases de compromiso, agrupada por las bandas
- * de urgencia que ya vienen del backend (`GET /pursuits/agenda`): el frontend
- * no fusiona, no ordena y no clasifica (ADR-014). Los gestos son los del
- * Radar: J/K recorren, S sigue/anticipa, X descarta, ⏎ abre.
+ * Dos carriles sobre una misma cronología: **Compromisos** (plazos de
+ * presentación, acciones propias y contratos de la cartera) y **Por triar**
+ * (las señales de tus reglas). Dentro de cada uno, las filas van agrupadas por
+ * las bandas de urgencia que ya vienen del backend (`GET /pursuits/agenda`): el
+ * frontend no fusiona, no ordena y no clasifica (ADR-014).
+ *
+ * Gestos: J/K recorren, S sigue, X descarta, C completa la tarea activa, ⏎
+ * abre. El carril y `solo_mios` viven en la URL para que la vista sea
+ * enlazable.
  *
  * Estado y gestos viven en `_hooks/use-agenda.ts`; las piezas de pantalla, en
  * `_components/agenda/`. Aquí queda el reparto de la pantalla y el estado de
@@ -45,14 +50,9 @@ export default function AgendaView() {
 
       <AgendaKpis data={agenda.data} isLoading={agenda.isLoading} />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <AgendaLista agenda={agenda} />
-        <AgendaInspector
-          item={agenda.active}
-          onSeguir={agenda.seguir}
-          onDescartar={agenda.descartar}
-          onAbrir={agenda.abrir}
-        />
+        <AgendaInspector agenda={agenda} />
       </div>
     </div>
   );

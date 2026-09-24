@@ -13,6 +13,7 @@ filtros que justifiquen agruparlas en un repository.
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
@@ -48,3 +49,27 @@ def contar_por_licitacion_y_tipo(
     for r in rows:
         out[str(r["licitacion_id"])][str(r["tipo"])] = int(r["n"])
     return out
+
+
+def eventos_de_licitacion(licitacion_id: str) -> list[dict[str, Any]]:
+    """Los eventos materializados de un contrato, del más antiguo al más nuevo.
+
+    Es lo que enseña ``GET /pursuits/cartera/{id}/eventos``: el ciclo de vida
+    del contrato vigente (adjudicación, formalización, modificaciones,
+    prórrogas, anulación) tal como lo derivó ``services/contract_events.py``.
+    Sólo la tabla, sin los hitos implícitos que añade
+    ``services.contract_events.timeline`` (publicación, adjudicaciones): la
+    cartera pregunta qué le pasó al contrato **después** de ganarlo.
+
+    ``id`` desempata dos eventos del mismo día en el orden en que se
+    derivaron, que es el orden del historial.
+    """
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT id, licitacion_id, tipo, fecha, campo, valor_antes, valor_despues, "
+                "       importe_delta, detalle "
+                "FROM contrato_eventos WHERE licitacion_id = %s ORDER BY fecha, id",
+                (licitacion_id,),
+            )
+        )

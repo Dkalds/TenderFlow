@@ -8,7 +8,7 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 
 /**
- * Mercado — las ocho rutas analíticas como cortes de una sola superficie.
+ * Mercado — las nueve rutas de mercado como cortes de una sola superficie.
  *
  * `/tendencias`, `/tendencias-cpv`, `/calendario`, `/geografia`,
  * `/tecnologias`, `/organos`, `/clusters` y `/proyectos-modulos` eran el mismo
@@ -16,15 +16,22 @@ import { useFeatureFlag } from "@/hooks/use-feature-flag";
  * Aquí son vistas de un espacio: **el ámbito sobrevive al cambio de corte**,
  * porque cambiar de vista no navega, sólo cambia qué se pinta.
  *
- * Cada vista monta la pantalla original tal cual, así que las 88 funciones
- * inventariadas de esas ocho rutas siguen exactamente donde estaban. Se cargan
- * bajo demanda (`next/dynamic`): ocho pantallas de gráficos en un solo bundle
- * costarían el arranque del espacio entero para ver un corte.
+ * La novena, **Renovaciones** (`/renovaciones`), llegó con la reestructura
+ * 2026-09-20 («un espacio, una pregunta»): era el «Horizonte» de Mi Pipeline y
+ * su pregunta —qué contratos ajenos vencen y quién los defiende— es de
+ * mercado, no un compromiso personal. Su ruta heredada redirige aquí y el
+ * `?vista=horizonte` viejo lo reenvía la página de `/mi-pipeline`.
  *
- * Las vistas viven en `_components/<x>-view.tsx` y las consumen dos entradas:
- * este espacio y el `page.tsx` de la ruta heredada. Hasta 2026-08 este módulo
- * importaba directamente esos `page.tsx`, así que cada uno era a la vez
- * boundary de ruta y componente y Next no podía tratarlo como lo primero.
+ * Cada vista monta la pantalla original tal cual, así que las 88 funciones
+ * inventariadas de las ocho rutas analíticas y la pantalla completa de
+ * renovaciones siguen exactamente donde estaban. Se cargan bajo demanda
+ * (`next/dynamic`): nueve pantallas en un solo bundle costarían el arranque
+ * del espacio entero para ver un corte.
+ *
+ * Las vistas viven en `_components/<x>-view.tsx` y las monta una sola entrada,
+ * este espacio. Hasta 2026-08 este módulo importaba directamente los `page.tsx`
+ * de las rutas heredadas, así que cada uno era a la vez boundary de ruta y
+ * componente y Next no podía tratarlo como lo primero.
  */
 
 const loading = () => (
@@ -43,6 +50,9 @@ const VIEWS: Record<string, React.ComponentType> = {
   organos: dynamic(() => import("./_components/organos-view"), { loading }),
   clusters: dynamic(() => import("./_components/clusters-view"), { loading }),
   proyectos: dynamic(() => import("./_components/proyectos-modulos-view"), { loading }),
+  // Core, no experimental: es la pantalla de `/renovaciones` intacta, con uso
+  // real, más el CTA de anticipar. No lleva flag ni badge.
+  renovaciones: dynamic(() => import("./_components/renovaciones-view"), { loading }),
 };
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "mercado")!;

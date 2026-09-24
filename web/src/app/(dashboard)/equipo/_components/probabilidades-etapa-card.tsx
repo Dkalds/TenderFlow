@@ -4,7 +4,7 @@
  * F4.1 — probabilidad de cierre por etapa, en Equipo → Organización.
  *
  * Es el supuesto con el que el backend calcula el valor ponderado del pipeline
- * (`PursuitMetrics.pipeline_value_eur`) que Mi Pipeline → Embudo enseña. Hasta
+ * (`PursuitMetrics.pipeline_value_eur`) que Oportunidades → Rendimiento enseña. Hasta
  * ahora sólo se podía leer: todas las organizaciones ponderaban con los
  * defaults de D34.
  *
@@ -77,7 +77,7 @@ export function ProbabilidadesEtapaCard({
           Probabilidad de cierre por etapa
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Con estos porcentajes se pondera el valor del pipeline en Mi Pipeline → Embudo: cada
+          Con estos porcentajes se pondera el valor del pipeline en Oportunidades → Rendimiento: cada
           oportunidad abierta cuenta su importe por la probabilidad de su etapa. Un campo vacío
           usa el valor por defecto.
         </p>

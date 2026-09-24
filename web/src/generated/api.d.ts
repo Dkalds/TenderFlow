@@ -4206,6 +4206,12 @@ export interface paths {
          * Get Pursuits Agenda
          * @description Agenda de compromisos: fusión, orden y bandas calculados en backend.
          *
+         *     Cada fila lleva una sola fecha y dice de qué clase es (`due_kind`): plazo
+         *     de presentación (`pursuit`, `senal`), vencimiento de una tarea (`tarea`),
+         *     inicio de la ventana de relicitación o fin efectivo de un contrato propio
+         *     (`contrato`). Las renovaciones del mercado sólo entran con
+         *     `incluir_mercado=true`.
+         *
          *     Sin caché compartida: la respuesta es por usuario/organización (incluye el
          *     triaje de señales del propio usuario).
          */
@@ -4234,6 +4240,57 @@ export interface paths {
          *     la pantalla donde se decide cuándo preparar una renovación.
          */
         get: operations["get_cartera_api_v1_pursuits_cartera_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/cartera/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agregados de la cartera: vivos, importe en ejecución y vencimientos a seis meses
+         * @description Los totales de la cartera, calculados en backend (ADR-014).
+         *
+         *     Mismo ámbito y permisos que `GET /pursuits/cartera`: quien puede leer la
+         *     cartera puede leer sus totales. Un contrato cuenta como vivo si no tiene
+         *     fecha de fin o si ésta no ha pasado; `sin_renovacion_preparada` es, de los
+         *     que vencen en seis meses, cuántos no tienen todavía oportunidad de
+         *     renovación.
+         */
+        get: operations["get_cartera_resumen_api_v1_pursuits_cartera_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/cartera/{cartera_id}/eventos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Eventos del contrato vigente de una entrada de cartera
+         * @description Qué le pasó al contrato después de ganarlo, del más antiguo al más nuevo.
+         *
+         *     Son los eventos de `contrato_eventos` (los mismos de los que la cartera
+         *     cuenta las prórrogas): adjudicación, formalización, modificaciones de
+         *     importe, prórrogas, anulación. `importe_delta_eur` sólo viene en las
+         *     modificaciones de importe.
+         */
+        get: operations["get_cartera_eventos_api_v1_pursuits_cartera__cartera_id__eventos_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6083,6 +6140,29 @@ export interface components {
             proximo_vencimiento: string | null;
         };
         /**
+         * CarteraResumen
+         * @description Los agregados de la cartera (``GET /pursuits/cartera/resumen``).
+         *
+         *     Se calculan aquí y no en el cliente (ADR-014): el frontend pinta cifras,
+         *     no las fabrica. Un contrato está **vivo** si no tiene fecha de fin o si
+         *     ésta no ha pasado; uno cuyo fin ya quedó atrás sigue en la tabla —nadie lo
+         *     borra— pero no está en ejecución y no cuenta como importe en ejecución.
+         */
+        CarteraResumen: {
+            /** Contratos Vivos */
+            contratos_vivos: number;
+            /** Importe En Ejecucion Eur */
+            importe_en_ejecucion_eur: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Sin Renovacion Preparada */
+            sin_renovacion_preparada: number;
+            /** Vencen 6 Meses */
+            vencen_6_meses: number;
+            /** Vencen 6 Meses Importe Eur */
+            vencen_6_meses_importe_eur: number;
+        };
+        /**
          * CeldaComparacion
          * @description Lo que una ficha dice de una familia.
          */
@@ -6889,6 +6969,8 @@ export interface components {
          * @description Un contrato ganado que sigue vivo.
          */
         ContratoCartera: {
+            /** Ccaa */
+            ccaa?: string | null;
             /** Cpv */
             cpv?: string | null;
             /** Fecha Fin Efectiva */
@@ -6926,6 +7008,27 @@ export interface components {
             tecnologia?: string | null;
             /** Titulo */
             titulo?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * ContratoEvento
+         * @description Un hito del ciclo de vida del contrato (``GET /pursuits/cartera/{id}/eventos``).
+         *
+         *     Sale de ``contrato_eventos``, la misma tabla de la que la cartera cuenta las
+         *     prórrogas: ``tipo`` es su vocabulario (``adjudicacion``, ``formalizacion``,
+         *     ``modificacion``, ``prorroga``, ``anulacion``, ``cambio_estado``) y
+         *     ``importe_delta_eur`` solo viene en las modificaciones de importe.
+         */
+        ContratoEvento: {
+            /** Descripcion */
+            descripcion: string;
+            /** Fecha */
+            fecha: string;
+            /** Importe Delta Eur */
+            importe_delta_eur?: number | null;
+            /** Tipo */
+            tipo: string;
         };
         /**
          * CorteMetrica
@@ -10389,15 +10492,32 @@ export interface components {
          * PipelineAgendaItem
          * @description Una fila de la agenda, ya clasificada por urgencia.
          *
-         *     Los campos específicos de cada ``kind`` son NULL en los otros dos:
-         *     ``pursuit_*``/``status``/``next_action`` solo en pursuits, ``rule_*`` solo
-         *     en señales, ``adjudicatario``/``riesgo_cambio`` solo en renovaciones.
-         *     ``importe_eur`` es presupuesto de licitación (pursuit/señal) o importe
-         *     adjudicado del contrato que vence (renovación).
+         *     Los campos específicos de cada ``kind`` son NULL en los demás:
+         *
+         *     - ``pursuit``: ``pursuit_id``/``status``/``decision``/``responsible_*``/
+         *       ``next_action``/``version``. ``due_date`` es **solo** el plazo de
+         *       presentación; ``next_action``/``next_action_due`` viajan como dato
+         *       informativo, no como la fecha del compromiso.
+         *     - ``tarea``: los mismos campos del pursuit al que pertenece, más
+         *       ``tarea_id``/``tarea_texto``. ``tarea_id`` es NULL cuando la fila es la
+         *       ``next_action`` manual de un pursuit sin tareas abiertas (se edita con
+         *       ``PATCH /pursuits/{id}``, no con las rutas de tareas).
+         *     - ``contrato``: ``cartera_id``, ``fecha_fin_efectiva``, ``fecha_fin_origen``,
+         *       ``relicitacion_desde``/``relicitacion_hasta``, ``renovacion_pursuit_id``
+         *       y ``prorrogas_aplicadas``; ``pursuit_id`` es la oportunidad ganada de
+         *       origen.
+         *     - ``senal``: ``rule_id``/``rule_nombre``.
+         *     - ``renovacion`` (mercado, solo con ``incluir_mercado``): ``adjudicatario``,
+         *       ``riesgo_cambio`` y ``fecha_fin_origen``.
+         *
+         *     ``importe_eur`` es presupuesto de licitación (pursuit/tarea/señal) o importe
+         *     adjudicado del contrato (contrato/renovación).
          */
         PipelineAgendaItem: {
             /** Adjudicatario */
             adjudicatario: string | null;
+            /** Cartera Id */
+            cartera_id?: number | null;
             /** Ccaa */
             ccaa: string | null;
             /** Decision */
@@ -10406,6 +10526,10 @@ export interface components {
             dias_restantes: number | null;
             /** Due Date */
             due_date: string | null;
+            /** Due Kind */
+            due_kind?: ("plazo" | "accion" | "fin_contrato" | "relicitacion") | null;
+            /** Fecha Fin Efectiva */
+            fecha_fin_efectiva?: string | null;
             /** Fecha Fin Origen */
             fecha_fin_origen?: string | null;
             /** Importe Eur */
@@ -10414,7 +10538,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "pursuit" | "senal" | "renovacion";
+            kind: "pursuit" | "tarea" | "contrato" | "senal" | "renovacion";
             /** Licitacion Id */
             licitacion_id: string;
             /** Next Action */
@@ -10423,8 +10547,16 @@ export interface components {
             next_action_due: string | null;
             /** Organo */
             organo: string | null;
+            /** Prorrogas Aplicadas */
+            prorrogas_aplicadas?: number | null;
             /** Pursuit Id */
             pursuit_id: number | null;
+            /** Relicitacion Desde */
+            relicitacion_desde?: string | null;
+            /** Relicitacion Hasta */
+            relicitacion_hasta?: string | null;
+            /** Renovacion Pursuit Id */
+            renovacion_pursuit_id?: number | null;
             /** Responsible Name */
             responsible_name: string | null;
             /** Responsible User Id */
@@ -10437,6 +10569,10 @@ export interface components {
             rule_nombre: string | null;
             /** Status */
             status: ("identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn") | null;
+            /** Tarea Id */
+            tarea_id?: number | null;
+            /** Tarea Texto */
+            tarea_texto?: string | null;
             /** Tecnologia */
             tecnologia: string | null;
             /** Titulo */
@@ -10454,10 +10590,26 @@ export interface components {
         /**
          * PipelineAgendaKpis
          * @description Franja de compromisos de la agenda, calculada sobre el scope completo.
+         *
+         *     ``vence_semana`` mide **plazos de presentación** (pursuits, vencidos
+         *     incluidos); ``acciones_hoy`` mide tareas; ``relicitaciones_abiertas``,
+         *     contratos propios cuya ventana de relicitación ya empezó sin renovación
+         *     preparada. Tres relojes distintos, tres contadores: sumarlos daría un
+         *     número que no dice a quién le toca hacer qué.
          */
         PipelineAgendaKpis: {
+            /**
+             * Acciones Hoy
+             * @default 0
+             */
+            acciones_hoy: number;
             /** Go No Go Pendientes */
             go_no_go_pendientes: number;
+            /**
+             * Relicitaciones Abiertas
+             * @default 0
+             */
+            relicitaciones_abiertas: number;
             /** Senales Nuevas */
             senales_nuevas: number;
             /** Sin Proxima Accion */
@@ -10487,6 +10639,11 @@ export interface components {
             senales_truncadas: boolean;
             /** Solo Mios */
             solo_mios: boolean;
+            /**
+             * Tareas Truncadas
+             * @default false
+             */
+            tareas_truncadas: boolean;
         };
         /**
          * PipelineEntry
@@ -22635,10 +22792,14 @@ export interface operations {
         parameters: {
             query?: {
                 organization_id?: number | null;
-                /** @description Limita los pursuits a los que el usuario es responsable */
+                /** @description Limita pursuits y tareas a los que el usuario es responsable */
                 solo_mios?: boolean;
+                /** @description Uno o varios códigos separados por comas (OR): `SAP,Oracle` */
                 tecnologia?: string | null;
+                /** @description Una o varias CCAA separadas por comas (OR) */
                 ccaa?: string | null;
+                /** @description Fusiona también las renovaciones del mercado (`kind=renovacion`): contratos ajenos que vencen en el horizonte. No son compromisos de la organización y por eso no entran por defecto. */
+                incluir_mercado?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -22696,6 +22857,99 @@ export interface operations {
             };
             /** @description No perteneces a esa organización */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cartera_resumen_api_v1_pursuits_cartera_resumen_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarteraResumen"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cartera_eventos_api_v1_pursuits_cartera__cartera_id__eventos_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cartera_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContratoEvento"][];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El contrato no está en la cartera de la organización */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

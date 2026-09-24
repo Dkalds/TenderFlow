@@ -106,16 +106,17 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     label: "Oportunidades",
     short: "OPS",
     slug: "oportunidades",
-    description: "Espacio de ejecución: decisión, pliego y precio.",
+    description: "Espacio de ejecución: tablero por fases, cartera y rendimiento.",
     icon: Briefcase,
     group: "trabajo",
+    views: SPACE_VIEWS.oportunidades,
   },
   {
     key: "mercado",
     label: "Mercado",
     short: "MKT",
     slug: "mercado",
-    description: "Ocho cortes del mismo dataset sobre una superficie.",
+    description: "Nueve cortes del mercado sobre una superficie, renovaciones incluidas.",
     icon: Binoculars,
     group: "analisis",
     views: SPACE_VIEWS.mercado,
@@ -135,7 +136,7 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     label: "Dirección",
     short: "DIR",
     slug: "direccion",
-    description: "Resultado, embudo y actividad del equipo. Solo owner y admin.",
+    description: "Resultado y actividad del equipo. Solo owner y admin.",
     icon: LayoutDashboard,
     group: "organizacion",
     // `admin` aquí es un filtro de **navegación**: la autorización real la
@@ -165,9 +166,13 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     group: "analisis",
   },
   {
+    // Reestructura 2026-09-20: el espacio se llama «Agenda» porque responde una
+    // sola pregunta y ésa es su única vista. `key` y `slug` siguen siendo
+    // `mi-pipeline`: cambiarlos rompería marcadores, el redirect de
+    // `/pipeline-alertas` y la serie histórica de `espacio_abierto`.
     key: "mi-pipeline",
-    label: "Mi Pipeline",
-    short: "PIP",
+    label: "Agenda",
+    short: "AGE",
     slug: "mi-pipeline",
     description: "Tus compromisos, ordenados por lo que vence.",
     icon: ListChecks,

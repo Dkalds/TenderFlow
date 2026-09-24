@@ -5,7 +5,8 @@
  *
  * Sólo el ~6% de los contratos trae `fecha_fin` de la fuente; el resto se
  * estima con `fecha_inicio + duración` (o, en último recurso, con la fecha de
- * adjudicación). El horizonte de renovaciones las pintaba todas igual, así que
+ * adjudicación). La vista Renovaciones de Mercado —«Horizonte» de Mi Pipeline
+ * hasta 2026-09-20— las pintaba todas igual, así que
  * una fecha inventada por aritmética se leía como una fecha oficial — y sobre
  * esa fecha se decide cuándo empezar a preparar la relicitación.
  *

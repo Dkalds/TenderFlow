@@ -73,11 +73,15 @@ no absorben ninguna ruta heredada y no aparecen en la tabla de redirects.
   plano, en vez del Sheet modal de once bloques apilados. La cronología de
   eventos cierra el Resumen: era una pestaña propia y describe los mismos
   campos que la ficha, así que leerla exigía cambiar de pestaña.
-- **Mi Pipeline** (`/mi-pipeline`) — reconstruido como cockpit personal de
-  compromisos: agenda por bandas de urgencia (`GET /pursuits/agenda`, fusión y
-  orden en backend), embudo sobre `GET /pursuits/metrics` y horizonte de
-  renovaciones con CTA de anticipar. Inventario función a función de las
-  pantallas absorbidas en
+- **Agenda** (`/mi-pipeline`) — reconstruido el 2026-08-13 como cockpit
+  personal de compromisos y, desde la reestructura del 2026-09-20 («un espacio,
+  una pregunta»), reducido a esa sola pregunta: la agenda por bandas de
+  urgencia (`GET /pursuits/agenda`, fusión y orden en backend). El espacio se
+  llama Agenda en el rail y la cabecera; `key` y slug siguen siendo
+  `mi-pipeline`. El embudo y la cartera que tuvo son hoy vistas de
+  Oportunidades y el horizonte de renovaciones es una vista de Mercado; los
+  `?vista=` viejos se reenvían desde la página. Inventario función a función,
+  con el destino de cada vista movida, en
   [mi-pipeline-inventario.md](mi-pipeline-inventario.md).
 
 **Consolidadas**, con el cromo de consola y su conmutador de vistas
@@ -86,26 +90,33 @@ completa, así que no se ha tocado una sola de sus funciones:
 
 | Espacio | Vistas | Rutas absorbidas |
 | --- | --- | --- |
-| `/mercado` | 8 | tendencias · tendencias-cpv · calendario · geografía · tecnologías · órganos · clusters · proyectos-modulos |
+| `/mercado` | 9 | tendencias · tendencias-cpv · calendario · geografía · tecnologías · órganos · clusters · proyectos-modulos · renovaciones |
+| `/oportunidades` | 3 | ninguna — tablero (entrada) · cartera · rendimiento, ver abajo |
 | `/competencia` | 2 | competidores · utes |
 | `/ops` | 5 | observabilidad · calidad-datos · administración · feature-flags · active-learning |
 | `/empresas` | 2 | ninguna — ver abajo |
 
-`/empresas` es el único de la tabla que no absorbe ninguna ruta: sus dos
-vistas (maestro y cola de revisión) siempre convivieron dentro de la misma
-pantalla y eran unas pestañas propias. Pasan a `?vista=` para que la cola sea
-direccionable —`/empresas?vista=revision` es lo que se pega en un mensaje
-cuando hay matches que resolver— y para que cambiar de vista sea el mismo
-gesto que en el resto de espacios.
+`/empresas` no absorbe ninguna ruta: sus dos vistas (maestro y cola de
+revisión) siempre convivieron dentro de la misma pantalla y eran unas pestañas
+propias. Pasan a `?vista=` para que la cola sea direccionable
+—`/empresas?vista=revision` es lo que se pega en un mensaje cuando hay matches
+que resolver— y para que cambiar de vista sea el mismo gesto que en el resto
+de espacios.
+
+`/oportunidades` tampoco absorbe rutas: sus tres vistas siempre fueron vistas
+de un espacio. El tablero por fases es la entrada y la pantalla de siempre;
+`cartera` (F4.3) y `rendimiento` (el embudo de `GET /pursuits/metrics`)
+llegaron el 2026-09-20 desde Mi Pipeline, enteras y con sus tests.
 
 `/mi-pipeline` estuvo en esta tabla (2 vistas montando las pantallas
 originales); desde 2026-08-13 está **rediseñado a fondo** — ver arriba y su
 [inventario](mi-pipeline-inventario.md). `/pipeline-alertas` se borró (su
-redirect sigue vivo hacia `?vista=agenda`) y `/renovaciones` vive como vista
-`horizonte`.
+redirect sigue vivo hacia `?vista=agenda`) y `/renovaciones` vive desde el
+2026-09-20 como vista `renovaciones` de `/mercado` (antes, `horizonte` de
+`/mi-pipeline`).
 
-**Con cabecera de espacio** y su pantalla intacta: `/oportunidades`,
-`/investigador`, `/mi-watchlist`, `/mi-perfil`, `/equipo`.
+**Con cabecera de espacio** y su pantalla intacta: `/investigador`,
+`/mi-watchlist`, `/mi-perfil`, `/equipo`.
 
 **Retiradas**: `/red-organo-empresa` y `/ecosistema-partners` (antes
 consolidadas bajo `/relaciones`) se borraron por completo — pantallas,
@@ -122,8 +133,8 @@ Consolidar no era el objetivo: era el envase. Esto es lo que cambia dentro.
 | Resumen | Lo personal primero (agenda de la organización); el mercado después. Cada panel declara qué parte del ámbito aplica y qué listado abre de verdad |
 | Radar | Consola tabular: J/K · S · X con deshacer · ⏎, inspector siguiendo a la selección |
 | Detalle | Los once bloques del Sheet modal en cuatro pestañas, en el mismo plano que la tabla |
-| Mi Pipeline | De dos pantallas de mercado cosidas a la agenda personal: una cronología de compromisos con bandas de urgencia del backend, inspector al lado con editor de próxima acción, y triaje compartido con el Radar |
-| Oportunidades | Carriles a alto de pantalla con scroll propio; en la ficha, **Decisión abre** (era el último de seis paneles) |
+| Agenda (`/mi-pipeline`) | De dos pantallas de mercado cosidas a la agenda personal: una cronología de compromisos con bandas de urgencia del backend, inspector al lado con editor de próxima acción, y triaje compartido con el Radar. Desde 2026-09-20, una sola vista: embudo, cartera y horizonte viven en Oportunidades y Mercado |
+| Oportunidades | Carriles a alto de pantalla con scroll propio; en la ficha, **Decisión abre** (era el último de seis paneles). Desde 2026-09-20, tres vistas: tablero · cartera · rendimiento |
 | Competencia | La tabla que gobierna los nueve gráficos va primero; los nueve pasan a cortes con pestañas; el dossier sale del modal |
 | Investigador | `alpha` y `top_k` visibles; resultados y conversación conviven en vez de excluirse |
 | Mercado · Órganos | El drill-down sale del Sheet y convive con el ranking |

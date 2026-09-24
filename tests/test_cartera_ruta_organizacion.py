@@ -1,4 +1,10 @@
-"""F4.3 — ``GET /api/v1/pursuits/cartera``: qué devuelve, en qué orden y a quién.
+"""F4.3 — las tres rutas de cartera: qué devuelven, en qué orden y a quién.
+
+``GET /api/v1/pursuits/cartera`` (la lista), ``/cartera/resumen`` (sus
+agregados) y ``/cartera/{id}/eventos`` (el historial de un contrato). Van
+juntas porque comparten escenario y, sobre todo, porque lo que hay que
+demostrar es que las tres ven la **misma** cartera: un resumen que contara
+sobre otro universo desmentiría la tabla en la misma pantalla.
 
 ``tests/test_cartera.py`` fija la aritmética pura (fecha de fin efectiva,
 ventana de relicitación). Nada ejercitaba la ruta ni la consulta de
@@ -35,6 +41,10 @@ from db.repositories.organizations import OrganizationRepository
 from shared.dto import PursuitCreate
 
 _RUTA = "/api/v1/pursuits/cartera"
+#: Los agregados de la misma cartera y el historial de un contrato suyo. Se
+#: prueban aquí y no aparte porque comparten escenario, ámbito y 403: lo que
+#: hay que demostrar es que las tres rutas ven **la misma** cartera.
+_RUTA_RESUMEN = f"{_RUTA}/resumen"
 
 _SIN_FECHA = "LIC-CART-SIN-FECHA"
 _LEJANO = "LIC-CART-LEJANO"
@@ -401,5 +411,189 @@ def test_una_membresia_revocada_pierde_la_cartera(
     sesion.user_id = antiguo
 
     respuesta = client.get(_RUTA, params={"organization_id": escenario.organizacion})
+
+    _rechazo_por_membresia(respuesta)
+
+
+# ── Resumen: los agregados de la misma cartera ────────────────────────────
+
+
+def _resumen(client: TestClient, organization_id: int | None) -> dict[str, Any]:
+    params = {} if organization_id is None else {"organization_id": organization_id}
+    respuesta = client.get(_RUTA_RESUMEN, params=params)
+    assert respuesta.status_code == 200, respuesta.text
+    cuerpo = respuesta.json()
+    assert isinstance(cuerpo, dict)
+    return cuerpo
+
+
+def test_el_resumen_cuenta_la_misma_cartera_que_la_lista(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    """Dos rutas, un solo universo: si divergen, la cifra de arriba desmiente
+    la tabla de abajo en la misma pantalla.
+
+    Los cuatro contratos están vivos con el reloj congelado en ``_HOY``
+    (ninguno ha vencido), y sólo ``_CERCANO`` —a cuatro meses— cae dentro del
+    horizonte de seis.
+    """
+    sesion.user_id = escenario.owner
+
+    resumen = _resumen(client, escenario.organizacion)
+    lista = _cartera(client, escenario.organizacion)
+
+    assert resumen["organization_id"] == escenario.organizacion
+    assert resumen["contratos_vivos"] == len(lista) == 4
+    assert resumen["importe_en_ejecucion_eur"] == 1_380_000.5
+    assert resumen["vencen_6_meses"] == 1
+    assert resumen["vencen_6_meses_importe_eur"] == 250_000.5
+    assert resumen["sin_renovacion_preparada"] == 1
+
+
+def test_el_resumen_no_mezcla_organizaciones(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    """El contrato ajeno es el más caro de los dos escenarios: si el filtro se
+    perdiera, el importe en ejecución de la propia lo delataría."""
+    sesion.user_id = escenario.owner_ajeno
+
+    ajeno = _resumen(client, escenario.organizacion_ajena)
+
+    assert ajeno["contratos_vivos"] == 1
+    assert ajeno["importe_en_ejecucion_eur"] == 777_000.0
+
+
+def test_sin_organization_id_el_resumen_es_el_de_la_cartera_personal(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    """Igual que la lista: omitir el parámetro es la personal, no «todas»."""
+    sesion.user_id = escenario.owner
+
+    assert _resumen(client, None)["contratos_vivos"] == 0
+
+
+def test_el_resumen_de_una_organizacion_ajena_es_403_por_membresia(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    sesion.user_id = escenario.owner_ajeno
+
+    respuesta = client.get(_RUTA_RESUMEN, params={"organization_id": escenario.organizacion})
+
+    _rechazo_por_membresia(respuesta)
+
+
+# ── Eventos del contrato vigente ──────────────────────────────────────────
+
+
+def _eventos(licitacion_id: str) -> None:
+    """Lo que ``services/contract_events.py`` deja en la tabla, desordenado.
+
+    Se insertan en orden inverso al cronológico a propósito: el orden que se
+    comprueba tiene que salir del ``ORDER BY fecha, id`` de la consulta y no
+    del orden de inserción.
+    """
+    from db.database import connect
+
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO contrato_eventos (licitacion_id, tipo, fecha, campo, valor_antes, "
+            "valor_despues, importe_delta, detalle) "
+            "VALUES (%s, 'modificacion', '2024-09-30', 'importe', '100000', '125000', "
+            "25000, 'Modificación al alza del 25%%')",
+            (licitacion_id,),
+        )
+        conn.execute(
+            "INSERT INTO contrato_eventos (licitacion_id, tipo, fecha, campo, valor_antes, "
+            "valor_despues) VALUES (%s, 'prorroga', '2024-02-01', 'fecha_fin', "
+            "'2025-01-31', '2026-01-31')",
+            (licitacion_id,),
+        )
+
+
+def _cartera_id(client: TestClient, organization_id: int, licitacion_id: str) -> int:
+    contrato = next(
+        c for c in _cartera(client, organization_id) if c["licitacion_id"] == licitacion_id
+    )
+    return int(contrato["id"])
+
+
+def test_los_eventos_salen_del_mas_antiguo_al_mas_nuevo(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    """Es el historial del contrato: leerlo al revés cuenta otra historia."""
+    sesion.user_id = escenario.owner
+    _eventos(_CERCANO)
+    cartera_id = _cartera_id(client, escenario.organizacion, _CERCANO)
+
+    respuesta = client.get(
+        f"{_RUTA}/{cartera_id}/eventos", params={"organization_id": escenario.organizacion}
+    )
+
+    assert respuesta.status_code == 200, respuesta.text
+    eventos = respuesta.json()
+    assert [e["fecha"] for e in eventos] == ["2024-02-01", "2024-09-30"]
+    assert [e["tipo"] for e in eventos] == ["prorroga", "modificacion"]
+    # El delta sólo viene en las modificaciones de importe.
+    assert eventos[0]["importe_delta_eur"] is None
+    assert eventos[1]["importe_delta_eur"] == 25_000.0
+
+
+def test_sin_detalle_el_evento_se_describe_con_el_cambio(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    """Las filas antiguas no traen ``detalle``; la fila no puede quedar muda."""
+    sesion.user_id = escenario.owner
+    _eventos(_CERCANO)
+    cartera_id = _cartera_id(client, escenario.organizacion, _CERCANO)
+
+    eventos = client.get(
+        f"{_RUTA}/{cartera_id}/eventos", params={"organization_id": escenario.organizacion}
+    ).json()
+
+    assert eventos[0]["descripcion"] == "prorroga · fecha_fin: 2025-01-31 → 2026-01-31"
+    assert eventos[1]["descripcion"] == "Modificación al alza del 25%"
+
+
+def test_un_contrato_sin_eventos_devuelve_una_lista_vacia(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    """Vacío no es 404: el contrato existe, sólo que no le ha pasado nada."""
+    sesion.user_id = escenario.owner
+    cartera_id = _cartera_id(client, escenario.organizacion, _LEJANO)
+
+    respuesta = client.get(
+        f"{_RUTA}/{cartera_id}/eventos", params={"organization_id": escenario.organizacion}
+    )
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == []
+
+
+def test_los_eventos_de_un_contrato_ajeno_son_404(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    """Y 404, no 403: la existencia de una entrada de otra organización no se
+    confirma ni siquiera a quien pertenece a las dos."""
+    sesion.user_id = escenario.owner_ajeno
+    _eventos(_AJENO)
+    ajeno_id = _cartera_id(client, escenario.organizacion_ajena, _AJENO)
+    OrganizationRepository().add_membership(escenario.organizacion, escenario.owner_ajeno, "member")
+
+    respuesta = client.get(
+        f"{_RUTA}/{ajeno_id}/eventos", params={"organization_id": escenario.organizacion}
+    )
+
+    assert respuesta.status_code == 404, respuesta.text
+
+
+def test_los_eventos_de_una_organizacion_ajena_son_403_por_membresia(
+    client: TestClient, sesion: _Sesion, escenario: _Escenario
+) -> None:
+    sesion.user_id = escenario.owner_ajeno
+    cartera_id = _cartera_id(client, escenario.organizacion_ajena, _AJENO)
+
+    respuesta = client.get(
+        f"{_RUTA}/{cartera_id}/eventos", params={"organization_id": escenario.organizacion}
+    )
 
     _rechazo_por_membresia(respuesta)

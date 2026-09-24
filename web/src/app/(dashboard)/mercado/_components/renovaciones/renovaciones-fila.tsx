@@ -3,9 +3,10 @@
 import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
+import { Pista } from "@/components/ui/pista";
 import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
 import { formatCurrency, truncate } from "@/lib/utils";
-import type { RenovacionRow } from "../../_hooks/use-horizonte";
+import type { MarcaPropia, RenovacionRow } from "../../_hooks/use-renovaciones";
 
 /** Semáforo del plazo: los mismos cortes de urgencia que usa el resto del producto. */
 export function diasBadgeVariant(dias: number | null): "destructive" | "secondary" | "outline" {
@@ -14,6 +15,27 @@ export function diasBadgeVariant(dias: number | null): "destructive" | "secondar
   if (dias <= 90) return "secondary";
   return "outline";
 }
+
+/**
+ * Qué dice la última celda cuando el contrato ya es tuyo.
+ *
+ * Es el cruce fila a fila de `use-renovaciones.ts` aterrizando en pantalla:
+ * ofrecer «Anticipar» sobre un contrato que ya está en tu cartera —o sobre uno
+ * que ya anticipaste— obligaba a abrir Oportunidades para descubrirlo.
+ */
+export const MARCA_PROPIA: Record<MarcaPropia, { texto: string; explicacion: string }> = {
+  cartera: {
+    texto: "En tu cartera",
+    explicacion:
+      "Lo tiene adjudicado tu organización. Su renovación se prepara en Oportunidades → Cartera, con la ventana de relicitación delante.",
+  },
+  anticipada: {
+    texto: "Anticipada",
+    // «Ya tiene», no «tiene abierta»: el listado de oportunidades trae también
+    // las cerradas, y prometer que sigue viva sería decir más de lo que se sabe.
+    explicacion: "Tu organización ya tiene una oportunidad sobre este expediente.",
+  },
+};
 
 /**
  * Las ocho celdas de un contrato que vence.
@@ -37,6 +59,7 @@ export function CeldasRenovacion({
   onAnticipar: (licitacionId: string) => void;
 }) {
   const relativo = maxScore > 0 ? Math.round((fila._score / maxScore) * 100) : 0;
+  const propio = fila._propio ? MARCA_PROPIA[fila._propio] : null;
 
   return (
     <>
@@ -115,16 +138,33 @@ export function CeldasRenovacion({
         )}
       </TableCell>
       <TableCell className="text-right whitespace-nowrap">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAnticipar(fila.licitacion_id);
-          }}
-          className="tf-pressable h-6 rounded-md border border-primary/30 bg-primary/8 px-2 text-[11px] font-medium text-primary"
-        >
-          Anticipar
-        </button>
+        {propio ? (
+          // Un rótulo, no un control: el estado ya está tomado y un botón
+          // deshabilitado sólo prometería una acción que no existe aquí. El
+          // porqué va en una `Pista` —el `title` nativo no llega ni al teclado
+          // ni al táctil— y su disparador no es focusable, así que la tabla no
+          // gana doscientas paradas de tabulación.
+          <Pista contenido={propio.explicacion}>
+            <span className="inline-flex h-6 items-center rounded-md border border-border/70 bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
+              {propio.texto}
+            </span>
+          </Pista>
+        ) : (
+          <button
+            type="button"
+            // Doscientos botones llamados «Anticipar» son doscientas entradas
+            // idénticas en la lista de controles del lector de pantalla; el
+            // nombre accesible dice sobre qué contrato actúa cada uno.
+            aria-label={`Anticipar la renovación de ${truncate(fila.titulo ?? fila.licitacion_id, 60)}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAnticipar(fila.licitacion_id);
+            }}
+            className="tf-pressable h-6 rounded-md border border-primary/30 bg-primary/8 px-2 text-[11px] font-medium text-primary"
+          >
+            Anticipar
+          </button>
+        )}
       </TableCell>
     </>
   );

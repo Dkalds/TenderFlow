@@ -17,6 +17,13 @@ describe("SPACE_VIEWS", () => {
     // sin actualizar el doc, la tabla del README miente. `ajustes` entró con
     // C7.5: cuatro vistas, de las que solo `cuenta` absorbe una ruta heredada
     // (`/mi-cuenta`) — las otras tres no existían en ninguna parte.
+    //
+    // Reestructura 2026-09-20 («un espacio, una pregunta»): `mi-pipeline` se
+    // queda con la agenda; su embudo y su cartera son las vistas `rendimiento`
+    // y `cartera` de `oportunidades` (que entra en la tabla con el tablero
+    // como entrada), y su horizonte es la novena vista de `mercado`,
+    // `renovaciones`, que absorbe `/renovaciones`. `direccion` pierde el
+    // `embudo` vacío que sólo devolvía a Mi Pipeline.
     expect(Object.keys(SPACE_VIEWS).sort()).toEqual([
       "ajustes",
       "competencia",
@@ -25,24 +32,42 @@ describe("SPACE_VIEWS", () => {
       "empresas",
       "mercado",
       "mi-pipeline",
+      "oportunidades",
       "ops",
     ]);
-    expect(SPACE_VIEWS.mercado).toHaveLength(8);
+    expect(SPACE_VIEWS.mercado).toHaveLength(9);
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
-    expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(4);
+    expect(SPACE_VIEWS.oportunidades.map((view) => view.key)).toEqual([
+      "tablero",
+      "cartera",
+      "rendimiento",
+    ]);
+    expect(SPACE_VIEWS["mi-pipeline"].map((view) => view.key)).toEqual(["agenda"]);
     expect(SPACE_VIEWS.ops).toHaveLength(6);
     expect(SPACE_VIEWS.empresas).toHaveLength(2);
     expect(SPACE_VIEWS.cuentas).toHaveLength(2);
-    expect(SPACE_VIEWS.direccion).toHaveLength(3);
+    expect(SPACE_VIEWS.direccion.map((view) => view.key)).toEqual(["resultado", "actividad"]);
     expect(SPACE_VIEWS.ajustes).toHaveLength(4);
+  });
+
+  it("las renovaciones viven en Mercado y absorben su ruta heredada", () => {
+    // Es el único movimiento de la reestructura que cambia un redirect: antes
+    // `/renovaciones` llevaba a `/mi-pipeline?vista=horizonte`.
+    expect(SPACE_VIEWS.mercado.at(-1)).toEqual({
+      key: "renovaciones",
+      label: "Renovaciones",
+      from: "renovaciones",
+    });
+    expect(SPACE_VIEWS["mi-pipeline"].some((view) => view.from === "renovaciones")).toBe(false);
   });
 
   it("los espacios que no consolidan nada no declaran rutas heredadas", () => {
     // `empresas` tenía sus dos vistas dentro de `/empresas`; `cuentas` y
-    // `direccion` son espacios nuevos del plan de funcionalidades 2026-09.
-    // Los tres entran en la tabla para ser direccionables (`?vista=`), no para
+    // `direccion` son espacios nuevos del plan de funcionalidades 2026-09, y
+    // las tres vistas de `oportunidades` siempre fueron vistas de un espacio.
+    // Entran en la tabla para ser direccionables (`?vista=`), no para
     // absorber nada, y por eso el recuento de rutas heredadas de abajo no sube.
-    for (const slug of ["empresas", "cuentas", "direccion"]) {
+    for (const slug of ["empresas", "cuentas", "direccion", "oportunidades"]) {
       expect(
         SPACE_VIEWS[slug].every((view) => view.from === undefined),
         `${slug} no debería absorber rutas`,
@@ -110,6 +135,17 @@ describe("legacyRedirects", () => {
     expect(redirects).toContainEqual({
       source: "/mi-cuenta",
       destination: "/ajustes?vista=cuenta",
+    });
+    // Reestructura 2026-09-20: `/pipeline-alertas` sigue entrando en la agenda
+    // y `/renovaciones` cambia de destino —de Mi Pipeline a Mercado— sin dejar
+    // de redirigir. Es el único redirect que la reestructura toca.
+    expect(redirects).toContainEqual({
+      source: "/pipeline-alertas",
+      destination: "/mi-pipeline?vista=agenda",
+    });
+    expect(redirects).toContainEqual({
+      source: "/renovaciones",
+      destination: "/mercado?vista=renovaciones",
     });
   });
 

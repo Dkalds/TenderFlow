@@ -282,6 +282,25 @@ export const pursuitKeys = {
   list: (filters: object) => ["pursuits", "list", filters] as const,
   detail: (id: string) => ["pursuits", "detail", id] as const,
   metrics: ["pursuits", "metrics"] as const,
+  /**
+   * Las mismas métricas con el periodo que elige Oportunidades → Rendimiento
+   * (`period_from`/`period_to` de `GET /pursuits/metrics`).
+   *
+   * Sin periodo devuelve **exactamente** la clave de `usePursuitMetrics`
+   * (`[...metrics, organizationId]`), porque sin periodo es la misma petición:
+   * así la tira del tablero y la vista de Rendimiento comparten una entrada de
+   * caché en vez de pedir dos veces lo mismo. Con periodo, dos segmentos más y
+   * una entrada por ventana; `pursuits` sigue siendo prefijo de todas, que es
+   * lo que hace que cerrar una oportunidad las invalide.
+   */
+  metricsPeriodo: (
+    organizationId: OrganizacionDeClave,
+    desde: string | null,
+    hasta: string | null,
+  ) =>
+    desde == null && hasta == null
+      ? (["pursuits", "metrics", organizationId] as const)
+      : (["pursuits", "metrics", organizationId, desde, hasta] as const),
   agenda: ["pursuits", "agenda"] as const,
   /**
    * Contraste ficha × capacidad de una oportunidad
@@ -289,6 +308,14 @@ export const pursuitKeys = {
    */
   checklist: (pursuitId: number | string) =>
     ["pursuits", "checklist", String(pursuitId)] as const,
+  /**
+   * Tareas de una oportunidad (`GET /pursuits/{id}/tasks`, C6.1). Cuelga de la
+   * raíz `pursuits` a propósito: crear o completar una tarea recalcula
+   * `next_action` en servidor, así que la agenda y la ficha tienen que volver
+   * a pedirse — y la invalidación por prefijo que ya hacen las mutaciones de
+   * pursuits las alcanza sin enumerarlas.
+   */
+  tasks: (pursuitId: number | string) => ["pursuits", "tasks", String(pursuitId)] as const,
   /**
    * Propuesta de pesos a partir de los cierres con desglose sellado
    * (`GET /pursuits/weights-proposal`, S3.3). Cuelga de la raíz `pursuits`
@@ -320,6 +347,21 @@ export const pursuitKeys = {
     ["pursuits", "kit", String(pursuitId), organizationId] as const,
   /** Contratos ganados en ejecución (`GET /pursuits/cartera`, F4.3). */
   cartera: (organizationId: OrganizacionDeClave) => ["pursuits", "cartera", organizationId] as const,
+  /**
+   * Agregados de la cartera (`GET /pursuits/cartera/resumen`). Clave hermana y
+   * no hija de `cartera(...)`: son dos respuestas distintas de la misma
+   * pantalla y ninguna se deriva de la otra. Lo que invalidan las mutaciones es
+   * `pursuits`, que es prefijo de las dos.
+   */
+  carteraResumen: (organizationId: OrganizacionDeClave) =>
+    ["pursuits", "cartera", "resumen", organizationId] as const,
+  /**
+   * Cronología del contrato de una entrada de cartera
+   * (`GET /pursuits/cartera/{id}/eventos`). Va por contrato porque es el
+   * detalle del inspector: se pide el del seleccionado, no el de la tabla.
+   */
+  carteraEventos: (carteraId: number | string, organizationId: OrganizacionDeClave) =>
+    ["pursuits", "cartera", "eventos", String(carteraId), organizationId] as const,
 };
 
 /**

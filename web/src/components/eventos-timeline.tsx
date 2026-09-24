@@ -17,7 +17,13 @@ interface EventoContrato {
   detalle: string | null;
 }
 
-const TIPO_LABELS: Record<string, string> = {
+/**
+ * El vocabulario de `contrato_eventos.tipo`, exportado porque lo comparten las
+ * dos pantallas que leen esa tabla: esta cronología de la ficha de licitación
+ * y la del contrato en Oportunidades → Cartera. Dos mapas para una sola
+ * columna del backend acaban dando dos nombres al mismo hecho.
+ */
+export const TIPO_EVENTO_LABELS: Record<string, string> = {
   publicacion: "Publicación",
   adjudicacion: "Adjudicación",
   formalizacion: "Formalización",
@@ -94,7 +100,7 @@ export function EventosTimeline({ licitacionId }: { licitacionId: string }) {
           />
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={TIPO_VARIANTS[ev.tipo] ?? "outline"} className="text-xs">
-              {TIPO_LABELS[ev.tipo] ?? ev.tipo}
+              {TIPO_EVENTO_LABELS[ev.tipo] ?? ev.tipo}
             </Badge>
             <span className="text-xs text-muted-foreground">{formatDate(ev.fecha)}</span>
             {ev.importe_delta != null && ev.importe_delta !== 0 && ev.tipo !== "adjudicacion" && (

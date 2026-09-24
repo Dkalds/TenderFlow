@@ -1,163 +1,145 @@
 "use client";
 
 /**
- * Inspector en el mismo plano: el detalle del compromiso seleccionado y, para
- * pursuits, el editor de próxima acción.
+ * Inspector en el mismo plano: el detalle del compromiso seleccionado.
+ *
+ * Cada clase de compromiso enseña lo suyo, porque lo que hace falta para
+ * decidir es distinto: una oportunidad o una tarea piden sus dos fechas y la
+ * lista de tareas; un contrato, su fin efectivo con el origen y la ventana de
+ * relicitación; una señal, la regla que la trajo. La cabecera y los datos
+ * comunes son los mismos para las cinco.
+ *
+ * Decisión escrita: el inspector no baja de `xl`. Lo accionable de cada
+ * compromiso ya está en su ficha (abrir / completar / preparar renovación /
+ * seguir / descartar), así que en móvil no se pierde ninguna decisión. Lo que
+ * sí queda fuera es el editor de próxima acción y el alta de tareas: escribir
+ * texto libre y una fecha en 375 px pide una hoja a pantalla completa, no un
+ * panel lateral encogido, y eso es trabajo aparte — anotado como pendiente, no
+ * resuelto con un `hidden`.
  */
 
+import type { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { cn, EMPTY, formatCompactCurrency, formatDate, truncate } from "@/lib/utils";
-import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
+import { statusLabel } from "@/components/pursuits/pursuit-presenters";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
-import { CHIP_POR_BANDA, KIND_META, plazoChip, STATUS_LABELS } from "./agenda-meta";
-import { NextActionEditor } from "./next-action-editor";
+import type { Agenda } from "../../_hooks/use-agenda";
+import { AgendaContrato } from "./agenda-contrato";
+import { AgendaFechas } from "./agenda-fechas";
+import { AgendaSenal } from "./agenda-senal";
+import { AgendaTareas } from "./agenda-tareas";
+import { CHIP_POR_BANDA, claveDe, etiquetaKind, plazoChip, tipoDeFecha, tituloDe } from "./agenda-meta";
 
-export function AgendaInspector({
-  item,
-  onSeguir,
-  onDescartar,
-  onAbrir,
-}: {
-  item: PipelineAgendaItem | undefined;
-  onSeguir: (item: PipelineAgendaItem) => Promise<void>;
-  onDescartar: (item: PipelineAgendaItem) => void;
-  onAbrir: (item: PipelineAgendaItem) => void;
-}) {
-  const esPursuit = item?.kind === "pursuit" && item.pursuit_id != null;
+function Dato({ label, valor }: { label: string; valor: ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="flex-none text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 truncate text-right">{valor}</dd>
+    </div>
+  );
+}
+
+function Cabecera({ item }: { item: PipelineAgendaItem }) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span
+          className={cn(
+            "inline-flex h-5 items-center rounded-full px-2 font-mono text-[10px] font-semibold",
+            CHIP_POR_BANDA[item.urgencia],
+          )}
+        >
+          {plazoChip(item)}
+        </span>
+        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+          {etiquetaKind(item)}
+        </span>
+      </div>
+      <h3 className="text-[13px] font-semibold leading-[1.4]">{tituloDe(item)}</h3>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {tipoDeFecha(item)}
+        {item.due_date ? ` · ${formatDate(item.due_date)}` : " · sin fecha"}
+      </p>
+    </div>
+  );
+}
+
+export function AgendaInspector({ agenda }: { agenda: Agenda }) {
+  const item = agenda.active;
+  const esPursuitOTarea = item?.kind === "pursuit" || item?.kind === "tarea";
 
   return (
-    // Decisión escrita: el inspector no baja de `xl`. Lo accionable de cada
-    // compromiso ya está en su ficha (abrir / seguir / anticipar / descartar),
-    // así que en móvil no se pierde ninguna decisión. Lo que sí queda fuera es
-    // el editor de próxima acción: escribir un texto libre y una fecha en 375 px
-    // pide una hoja a pantalla completa, no un panel lateral encogido, y eso es
-    // trabajo aparte — anotado como pendiente, no resuelto con un `hidden`.
-    <aside className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card/70 p-4 xl:sticky xl:top-0 xl:block">
+    <aside
+      aria-label="Detalle del compromiso"
+      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card/70 p-4 xl:sticky xl:top-0 xl:block"
+    >
       {!item ? (
         <p className="py-8 text-center text-[11.5px] text-muted-foreground">
           Selecciona un compromiso para ver su detalle.
         </p>
       ) : (
         <div className="space-y-4">
-          <div>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span
-                className={cn(
-                  "inline-flex h-5 items-center rounded-full px-2 font-mono text-[10px] font-semibold",
-                  CHIP_POR_BANDA[item.urgencia],
-                )}
-              >
-                {plazoChip(item)}
-              </span>
-              <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                {KIND_META[item.kind].label}
-              </span>
-            </div>
-            <h3 className="text-[13px] font-semibold leading-[1.4]">
-              {item.titulo ?? item.licitacion_id}
-            </h3>
-            {item.due_date && (
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Vence el {formatDate(item.due_date)}
-              </p>
-            )}
-          </div>
+          <Cabecera item={item} />
 
           <dl className="space-y-1.5 text-[11.5px]">
-            {item.organo && (
-              <div className="flex justify-between gap-3">
-                <dt className="flex-none text-muted-foreground">Órgano</dt>
-                <dd className="truncate text-right">{truncate(item.organo, 40)}</dd>
-              </div>
-            )}
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Importe</dt>
-              <dd className="tf-tnum font-mono">
-                {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
-              </dd>
-            </div>
-            {item.ccaa && (
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">CCAA</dt>
-                <dd>{item.ccaa}</dd>
-              </div>
-            )}
-            {item.kind === "pursuit" && item.status && (
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Estado</dt>
-                <dd>{STATUS_LABELS[item.status] ?? item.status}</dd>
-              </div>
-            )}
-            {item.kind === "pursuit" && item.responsible_name && (
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Responsable</dt>
-                <dd className="truncate">{item.responsible_name}</dd>
-              </div>
-            )}
-            {item.kind === "senal" && item.rule_nombre && (
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Regla</dt>
-                <dd className="truncate">{item.rule_nombre}</dd>
-              </div>
-            )}
-            {item.kind === "renovacion" && (
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Vencimiento</dt>
-                {/* El 94% de estas fechas se calcula con la duración del
-                    contrato; presentarlas como publicadas era prometer una
-                    precisión que la fuente no da. */}
-                <dd className="flex items-center gap-1.5">
-                  {formatDate(item.due_date)}
-                  <FechaFinOrigenBadge origen={item.fecha_fin_origen} />
-                </dd>
-              </div>
-            )}
+            {item.organo && <Dato label="Órgano" valor={truncate(item.organo, 40)} />}
+            <Dato
+              label="Importe"
+              valor={
+                <span className="tf-tnum font-mono">
+                  {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
+                </span>
+              }
+            />
+            {item.ccaa && <Dato label="CCAA" valor={item.ccaa} />}
+            {item.status && <Dato label="Estado" valor={statusLabel(item.status)} />}
+            {item.responsible_name && <Dato label="Responsable" valor={item.responsible_name} />}
             {item.kind === "renovacion" && item.adjudicatario && (
-              <div className="flex justify-between gap-3">
-                <dt className="flex-none text-muted-foreground">Adjudicatario</dt>
-                <dd className="truncate text-right">{truncate(item.adjudicatario, 36)}</dd>
-              </div>
+              <Dato label="Adjudicatario" valor={truncate(item.adjudicatario, 36)} />
             )}
             {item.kind === "renovacion" && item.riesgo_cambio != null && (
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Riesgo de cambio</dt>
-                <dd className="tf-tnum font-mono">{Math.round(item.riesgo_cambio * 100)}%</dd>
-              </div>
+              <Dato
+                label="Riesgo de cambio"
+                valor={
+                  <span className="tf-tnum font-mono">
+                    {Math.round(item.riesgo_cambio * 100)}%
+                  </span>
+                }
+              />
             )}
           </dl>
 
-          {esPursuit && (
-            <NextActionEditor key={`${item.licitacion_id}:${item.version ?? 0}`} item={item} />
+          {/* `key` por fila y versión: cambiar de compromiso remonta el editor
+              con el valor del servidor, sin efectos que sincronicen estado. */}
+          {esPursuitOTarea && (
+            <AgendaFechas
+              key={`${claveDe(item)}:${item.version ?? 0}`}
+              item={item}
+              enfoque={agenda.focoAccion}
+            />
+          )}
+          {esPursuitOTarea && item.pursuit_id != null && (
+            <AgendaTareas pursuitId={item.pursuit_id} />
+          )}
+          {item.kind === "contrato" && <AgendaContrato item={item} />}
+          {item.kind === "senal" && (
+            <AgendaSenal
+              item={item}
+              onSeguir={() => void agenda.seguir(item)}
+              onDescartar={() => agenda.descartar(item)}
+              onPosponer={() => agenda.posponer(item)}
+            />
           )}
 
           <div className="flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
-            {item.kind === "pursuit" ? (
+            {item.kind !== "senal" && (
               <button
                 type="button"
-                onClick={() => onAbrir(item)}
+                onClick={() => agenda.abrir(item)}
                 className="tf-pressable h-7 flex-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 text-[11.5px] font-medium text-primary"
               >
-                Abrir ficha
+                {item.kind === "renovacion" ? "Anticipar pursuit" : "Abrir ficha"}
               </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void onSeguir(item)}
-                  className="tf-pressable h-7 flex-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 text-[11.5px] font-medium text-primary"
-                >
-                  {item.kind === "renovacion" ? "Anticipar pursuit" : "Seguir"}
-                </button>
-                {item.kind === "senal" && (
-                  <button
-                    type="button"
-                    onClick={() => onDescartar(item)}
-                    className="tf-pressable h-7 rounded-md border border-border/70 px-2.5 text-[11.5px] font-medium text-muted-foreground hover:text-destructive"
-                  >
-                    Descartar
-                  </button>
-                )}
-              </>
             )}
             {item.url && (
               // Enlace a la página del expediente en PLACSP, nunca al documento:

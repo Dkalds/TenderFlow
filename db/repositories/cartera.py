@@ -25,7 +25,9 @@ class CarteraRepository:
 
         Une contra `licitaciones` porque la cartera se lee por órgano y por
         tecnología, y guardar esos campos duplicados aquí los dejaría viejos en
-        cuanto la ingesta corrigiera uno.
+        cuanto la ingesta corrigiera uno. ``ccaa`` y ``url`` van por lo mismo:
+        la agenda de Mi Pipeline acota los contratos por CCAA y enlaza al
+        expediente.
         """
         with connect_read() as conn:
             cur = conn.execute(
@@ -33,7 +35,8 @@ class CarteraRepository:
                 "       c.fecha_inicio, c.fecha_fin_efectiva, c.fecha_fin_origen, "
                 "       c.importe_adjudicado, c.prorrogas_aplicadas, "
                 "       c.renovacion_pursuit_id, c.created_at, c.updated_at, "
-                "       l.titulo, l.organo_contratacion, l.tecnologia, l.cpv "
+                "       l.titulo, l.organo_contratacion, l.tecnologia, l.cpv, "
+                "       l.ccaa, l.url "
                 "FROM contratos_cartera c "
                 "JOIN licitaciones l ON l.id_externo = c.licitacion_id "
                 "WHERE c.organization_id = %s "

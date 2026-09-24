@@ -16,10 +16,13 @@ import { BUILT_SPACE_ROUTES, SPACE_VIEWS } from "@/lib/space-views";
 describe("CONSOLE_SPACES", () => {
   // 14 → 16 el 2026-09-06 (plan de funcionalidades) y 17 con `ajustes` (C7.5).
   // La condición para añadir espacio no ha cambiado: cada uno **absorbe** una
-  // vista existente —Cuentas absorbe `Mercado → Órganos`, Dirección absorbe
-  // `Mi Pipeline → Embudo`, Ajustes absorbe `/mi-cuenta`— y ninguna desaparece
-  // de su sitio original, porque consolidar no elimina. Un espacio que sólo
-  // fuera un corte analítico más no entraría: eso es lo que el plan descarta.
+  // vista existente —Cuentas absorbe `Mercado → Órganos`, Ajustes absorbe
+  // `/mi-cuenta`— y ninguna desaparece de su sitio original, porque consolidar
+  // no elimina. Un espacio que sólo fuera un corte analítico más no entraría:
+  // eso es lo que el plan descarta. Dirección nació para absorber el embudo de
+  // Mi Pipeline y añadirle cortes; la reestructura 2026-09-20 retiró su vista
+  // `embudo` (un `EmptyState` sin función) y el embudo vive en
+  // `Oportunidades → Rendimiento`.
   it("consolida las rutas del dashboard, y cada absorbida una sola vez", () => {
     // El recuento se **deriva**. Fijarlo a mano obliga a tocar el test cada vez
     // que un espacio absorbe una ruta, y no dice nada que las tablas no digan.
@@ -173,10 +176,16 @@ describe("LEGACY_REDIRECTS", () => {
       from: "/pipeline-alertas",
       to: "/mi-pipeline?vista=agenda",
     });
+    // Reestructura 2026-09-20: las renovaciones son una vista de Mercado, así
+    // que `/renovaciones` cambia de destino sin dejar de redirigir. El
+    // `?vista=horizonte` viejo de `/mi-pipeline` lo reenvía su página.
     expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/renovaciones",
-      to: "/mi-pipeline?vista=horizonte",
+      to: "/mercado?vista=renovaciones",
     });
+    expect(LEGACY_REDIRECTS.some((redirect) => redirect.to.startsWith("/mi-pipeline?vista=horizonte"))).toBe(
+      false,
+    );
   });
 
   it("no colisiona con un espacio existente", () => {

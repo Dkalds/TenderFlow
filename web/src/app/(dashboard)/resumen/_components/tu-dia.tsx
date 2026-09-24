@@ -2,11 +2,21 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { ArrowRight, Bell, Briefcase, CalendarClock, type LucideIcon } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { PanelError, StatCell, StatStrip } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilters } from "@/lib/filters";
 import { cn, EMPTY, formatCompactCurrency, formatNumber, truncate } from "@/lib/utils";
+import {
+  CHIP_POR_BANDA,
+  claseDeIcono,
+  destinoDe,
+  etiquetaKind,
+  ICONOS,
+  plazoChip,
+  tipoDeFecha,
+  tituloDe,
+} from "@/app/(dashboard)/mi-pipeline/_components/agenda/agenda-meta";
 import {
   type AgendaUrgencia,
   type PipelineAgendaItem,
@@ -19,57 +29,74 @@ import {
  * El Resumen abría con «Total licitaciones 148.320 / Órganos únicos 2.104»:
  * una radiografía del mercado español en la pantalla de entrada de un producto
  * cuyo usuario abre la aplicación para saber **qué tiene que hacer hoy**. Todo
- * lo personal —pursuits con plazo, decisiones Go/No-go sin tomar, señales de
- * sus reglas sin triar— vivía dos clics más allá, en Mi Pipeline, y la entrada
- * no daba ni una pista de que existiera.
+ * lo personal —plazos de presentación, tareas propias, contratos que entran en
+ * su ventana de relicitación, señales sin triar— vivía dos clics más allá, en
+ * la Agenda, y la entrada no daba ni una pista de que existiera.
  *
- * No hay analítica nueva: los cinco contadores y las bandas de urgencia los
- * calcula el backend en `GET /pursuits/agenda` (ADR-014), el mismo endpoint que
- * ya alimenta la agenda. Aquí sólo se recorta a los tres primeros tramos y se
- * enseñan cuatro filas; la agenda completa sigue siendo su pantalla.
+ * No hay analítica nueva: los contadores y las bandas de urgencia los calcula
+ * el backend en `GET /pursuits/agenda` (ADR-014), el mismo endpoint que alimenta
+ * la Agenda. Aquí sólo se recorta a los tres primeros tramos y se enseñan cuatro
+ * filas; la agenda completa sigue siendo su pantalla.
  *
- * Alcance: la agenda acepta **una** tecnología y **una** CCAA, así que con
- * varias seleccionadas se manda la primera — y se dice.
+ * **El vocabulario visual se importa de la Agenda** (`agenda-meta.ts`): iconos,
+ * chips y el nombre de cada clase de fecha. Con dos mapas separados, la misma
+ * fila se leía de dos maneras según por dónde entraras — y el que estaba aquí
+ * ni siquiera conocía `tarea` ni `contrato`, así que las pintaba a las dos con
+ * el icono de otra cosa.
  */
-
-const KIND_META: Record<PipelineAgendaItem["kind"], { icon: LucideIcon; label: string }> = {
-  pursuit: { icon: Briefcase, label: "Pursuit" },
-  senal: { icon: Bell, label: "Señal" },
-  renovacion: { icon: CalendarClock, label: "Renovación" },
-};
 
 /** Tramos que caben en una banda de entrada: lo vencido, lo de hoy y la semana. */
 const URGENTES: AgendaUrgencia[] = ["vencida", "hoy", "semana"];
 
-const CHIP: Record<string, string> = {
-  vencida: "bg-destructive/12 text-destructive",
-  hoy: "bg-destructive/12 text-destructive",
-  semana: "bg-[hsl(var(--warning)/0.15)] text-[hsl(var(--warning))]",
-};
-
 const MAX_FILAS = 4;
 
-function plazo(item: PipelineAgendaItem): string {
-  if (item.urgencia === "hoy") return "hoy";
-  if (item.dias_restantes == null) return EMPTY;
-  if (item.dias_restantes < 0) return `−${Math.abs(item.dias_restantes)} d`;
-  return `${item.dias_restantes} d`;
-}
-
-/** Dónde vive el compromiso: el pursuit ya abierto, o la ficha del expediente. */
-function destino(item: PipelineAgendaItem): string {
-  if (item.kind === "pursuit" && item.pursuit_id != null) {
-    return `/oportunidades/${item.pursuit_id}`;
-  }
-  return `/detalle?lic=${encodeURIComponent(item.licitacion_id)}`;
+function FilaTuDia({ item }: { item: PipelineAgendaItem }) {
+  const Icono = ICONOS[claseDeIcono(item)];
+  return (
+    <li>
+      <Link
+        href={destinoDe(item)}
+        className="border-border/25 hover:bg-primary/4 flex items-center gap-2.5 border-b px-3.5 py-2 transition-colors duration-140 ease-out last:border-b-0"
+      >
+        <span
+          className={cn(
+            "tf-tnum w-[54px] flex-none rounded px-1.5 py-0.5 text-center font-mono text-[10.5px] font-semibold",
+            CHIP_POR_BANDA[item.urgencia],
+          )}
+        >
+          {plazoChip(item)}
+        </span>
+        <Icono className="text-muted-foreground h-3.5 w-3.5 flex-none" aria-hidden="true" />
+        <span className="sr-only">
+          {etiquetaKind(item)} · {tipoDeFecha(item)}:
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium">{tituloDe(item)}</span>
+        {/* Qué clase de fecha es la del chip. Sin esto, «3 d» podía ser el
+            plazo del pliego, una tarea propia o la ventana de una renovación:
+            tres relojes distintos pintados igual. */}
+        <span className="text-muted-foreground hidden flex-none text-[10.5px] lg:inline">
+          {tipoDeFecha(item)}
+        </span>
+        <span className="text-muted-foreground hidden min-w-0 max-w-[180px] truncate text-[10.5px] xl:inline">
+          {item.organo ? truncate(item.organo, 36) : ""}
+        </span>
+        <span className="tf-tnum flex-none font-mono text-[11px] font-semibold">
+          {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
+        </span>
+        <ArrowRight className="text-muted-foreground h-3 w-3 flex-none" aria-hidden="true" />
+      </Link>
+    </li>
+  );
 }
 
 export function TuDia() {
   const { tecnologias, ccaas } = useFilters();
   const { data, isPending, error, refetch } = usePipelineAgenda({
     soloMios: false,
-    tecnologia: tecnologias[0] ?? null,
-    ccaa: ccaas[0] ?? null,
+    // El backend acepta listas desde 2026-09-21: el ámbito entero viaja, así
+    // que ya no hay que avisar de que sólo se aplicaba el primer valor.
+    tecnologia: tecnologias.length ? tecnologias.join(",") : null,
+    ccaa: ccaas.length ? ccaas.join(",") : null,
   });
 
   const urgentes = useMemo(
@@ -78,9 +105,8 @@ export function TuDia() {
   );
 
   const kpis = data?.kpis;
-  // El ámbito de la agenda es la organización, no los siete chips: se dice en la
-  // cabecera para que nadie lea estos cuatro números como «del ámbito activo».
-  const parcial = tecnologias.length > 1 || ccaas.length > 1;
+  const recortada =
+    data?.pursuits_truncados || data?.tareas_truncadas || data?.senales_truncadas;
 
   return (
     <section aria-labelledby="resumen-tu-dia" className="mb-5.5">
@@ -90,7 +116,6 @@ export function TuDia() {
         </h2>
         <span className="text-muted-foreground min-w-0 flex-1 truncate text-[10.5px]">
           compromisos de tu organización
-          {parcial ? " · la agenda sólo aplica la primera tecnología y CCAA del ámbito" : ""}
         </span>
         <Link
           href="/mi-pipeline?vista=agenda"
@@ -113,7 +138,7 @@ export function TuDia() {
             className="lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]"
           >
             <StatCell
-              label="Vence en ≤7 días"
+              label="Plazos ≤ 7 días"
               loading={isPending}
               value={kpis ? formatNumber(kpis.vence_semana) : EMPTY}
               accent={kpis && kpis.vence_semana > 0 ? "hsl(var(--score-hot))" : undefined}
@@ -122,6 +147,12 @@ export function TuDia() {
                   ? `${formatCompactCurrency(kpis.vence_semana_importe_eur)} en juego`
                   : "Incluye lo ya vencido"
               }
+            />
+            <StatCell
+              label="Acciones hoy o vencidas"
+              loading={isPending}
+              value={kpis ? formatNumber(kpis.acciones_hoy) : EMPTY}
+              hint="Tareas propias con fecha pasada o de hoy"
             />
             <StatCell
               label="Go/No-go pendientes"
@@ -134,19 +165,13 @@ export function TuDia() {
               loading={isPending}
               value={kpis ? formatNumber(kpis.sin_proxima_accion) : EMPTY}
               accent={kpis && kpis.sin_proxima_accion > 0 ? "hsl(var(--warning))" : undefined}
-              hint="Pursuits sin siguiente paso"
-            />
-            <StatCell
-              label="Señales nuevas"
-              loading={isPending}
-              value={kpis ? formatNumber(kpis.senales_nuevas) : EMPTY}
-              hint="Matches de tus reglas sin triar"
+              hint="Oportunidades sin tarea abierta"
             />
           </StatStrip>
 
           {/* El recorte de la agenda es del backend y se declara: unos KPIs
               silenciosamente bajos se leen como «no tengo trabajo». */}
-          {(data?.pursuits_truncados || data?.senales_truncadas) && (
+          {recortada && (
             <p
               role="status"
               className="mt-2 rounded-lg border border-[hsl(var(--warning)/0.28)] bg-[hsl(var(--warning)/0.08)] px-2.5 py-1.5 text-[10.5px] text-[hsl(var(--warning))]"
@@ -172,44 +197,9 @@ export function TuDia() {
               </div>
             ) : (
               <ul>
-                {urgentes.map((item) => {
-                  const Icon = KIND_META[item.kind].icon;
-                  return (
-                    <li key={`${item.kind}-${item.licitacion_id}`}>
-                      <Link
-                        href={destino(item)}
-                        className="border-border/25 hover:bg-primary/4 flex items-center gap-2.5 border-b px-3.5 py-2 transition-colors duration-140 ease-out last:border-b-0"
-                      >
-                        <span
-                          className={cn(
-                            "tf-tnum w-[54px] flex-none rounded px-1.5 py-0.5 text-center font-mono text-[10.5px] font-semibold",
-                            CHIP[item.urgencia] ?? "bg-secondary text-foreground/80",
-                          )}
-                        >
-                          {plazo(item)}
-                        </span>
-                        <Icon
-                          className="text-muted-foreground h-3.5 w-3.5 flex-none"
-                          aria-hidden="true"
-                        />
-                        <span className="sr-only">{KIND_META[item.kind].label}:</span>
-                        <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium">
-                          {item.titulo ?? item.licitacion_id}
-                        </span>
-                        <span className="text-muted-foreground hidden min-w-0 max-w-[220px] truncate text-[10.5px] lg:inline">
-                          {item.organo ? truncate(item.organo, 44) : ""}
-                        </span>
-                        <span className="tf-tnum flex-none font-mono text-[11px] font-semibold">
-                          {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
-                        </span>
-                        <ArrowRight
-                          className="text-muted-foreground h-3 w-3 flex-none"
-                          aria-hidden="true"
-                        />
-                      </Link>
-                    </li>
-                  );
-                })}
+                {urgentes.map((item) => (
+                  <FilaTuDia key={`${item.kind}-${item.licitacion_id}-${item.tarea_id ?? ""}`} item={item} />
+                ))}
               </ul>
             )}
           </div>

@@ -1,6 +1,8 @@
 /**
- * Las ocho vistas de Mercado viven en `_components/<x>-view.tsx` y las monta
- * una sola entrada: el espacio `/mercado`.
+ * Las nueve vistas de Mercado viven en `_components/<x>-view.tsx` y las monta
+ * una sola entrada: el espacio `/mercado`. Ocho son los cortes analíticos de
+ * siempre; la novena, Renovaciones, llegó el 2026-09-20 desde Mi Pipeline y
+ * absorbe `/renovaciones` con la misma regla que las demás.
  *
  * Hasta 2026-09 cada vista tenía además un `page.tsx` de ruta heredada que la
  * re-exportaba, y este test exigía que ese boundary siguiera existiendo «porque
@@ -54,6 +56,7 @@ const ROUTES: Record<string, string> = {
   organos: "organos-view",
   clusters: "clusters-view",
   "proyectos-modulos": "proyectos-modulos-view",
+  renovaciones: "renovaciones-view",
 };
 
 /** ruta absorbida → `?vista=` del espacio que la sirve hoy. */
@@ -66,6 +69,7 @@ const VISTA_POR_RUTA: Record<string, string> = {
   organos: "organos",
   clusters: "clusters",
   "proyectos-modulos": "proyectos",
+  renovaciones: "renovaciones",
 };
 
 const read = (...segments: string[]): string => readFileSync(path.join(...segments), "utf8");
@@ -98,7 +102,7 @@ describe("vistas de Mercado — módulo compartido", () => {
     expect(importaUnPage(read(MERCADO_DIR, "page.tsx"))).toBe(false);
   });
 
-  it("mercado/page.tsx monta las ocho vistas desde _components", () => {
+  it("mercado/page.tsx monta las nueve vistas desde _components", () => {
     const source = read(MERCADO_DIR, "page.tsx");
     for (const view of Object.values(ROUTES)) {
       expect(source).toContain(`./_components/${view}`);

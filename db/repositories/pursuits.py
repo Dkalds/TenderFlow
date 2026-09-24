@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import ambito_agenda_sql, rows_to_dicts
 from db.sql_fragments import empresa_key_sql
 
 # El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
@@ -253,8 +254,8 @@ class PursuitRepository:
         organization_id: int,
         *,
         responsible_user_id: int | None = None,
-        tecnologia: str | None = None,
-        ccaa: str | None = None,
+        tecnologias: Sequence[str] | None = None,
+        ccaas: Sequence[str] | None = None,
         limit: int = 500,
     ) -> tuple[list[dict[str, Any]], bool]:
         """Pursuits abiertos de la organización con su licitación, para la agenda.
@@ -262,6 +263,11 @@ class PursuitRepository:
         Devuelve ``(filas, truncado)``: se pide ``limit + 1`` y se recorta, para
         que el servicio pueda declarar el truncamiento en vez de presentar KPIs
         silenciosamente bajos (ADR-014).
+
+        ``tecnologias`` y ``ccaas`` son listas con OR dentro de cada dimensión
+        (la barra de ámbito manda varias). La tecnología se busca en el CSV de
+        la fila y no por igualdad, como el listado y los agregados: la
+        igualdad dejaba fuera los expedientes multi-tecnología.
         """
         clauses = [
             "p.organization_id = %s",
@@ -271,12 +277,9 @@ class PursuitRepository:
         if responsible_user_id is not None:
             clauses.append("p.responsible_user_id = %s")
             params.append(responsible_user_id)
-        if tecnologia:
-            clauses.append("l.tecnologia = %s")
-            params.append(tecnologia)
-        if ccaa:
-            clauses.append("l.ccaa = %s")
-            params.append(ccaa)
+        clausula, valores = ambito_agenda_sql("l", tecnologias=tecnologias, ccaas=ccaas)
+        clauses.extend(clausula)
+        params.extend(valores)
         with connect_read() as conn:
             cur = conn.execute(
                 _AGENDA_SELECT + " WHERE " + " AND ".join(clauses) + " ORDER BY p.id LIMIT %s",
