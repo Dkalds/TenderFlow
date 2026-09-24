@@ -3,11 +3,11 @@ name: ML scoring predicciones
 on:
   schedule:
     # Diario a las 07:30 UTC. El carril de ingesta (`scrape-daily.yml`) corre
-    # cada 4 h (00, 04, 08, 12, 16, 20 UTC) con un presupuesto de 55 min, así
-    # que a las 07:30 la pasada de las 04:00 ya terminó y la de las 08:00 aún
-    # no ha empezado: se puntúa sobre datos recién ingeridos sin competir con
-    # el scrape. Replica el orden del scheduler local (ml_scoring_baja corre
-    # tras la ingesta).
+    # cada 4 h en el minuto 23 (00:23, 04:23, 08:23… UTC) con un presupuesto
+    # de 120 min, así que a las 07:30 la pasada de las 04:23 ya terminó (como
+    # tarde a las 06:23) y la de las 08:23 aún no ha empezado: se puntúa sobre
+    # datos recién ingeridos sin competir con el scrape. Replica el orden del
+    # scheduler local (ml_scoring_baja corre tras la ingesta).
     - cron: "30 7 * * *"
   workflow_dispatch:
 

@@ -33,8 +33,18 @@ hay ``codi_expedient``). Eso lo cubre :func:`detect_republicaciones`, con la
 clave órgano + CPV4 + año-mes + título y marcando siempre ``pending``: ver su
 docstring para por qué no puede marcar ``confirmed``.
 
-El SQL de ese detector vive en ``db/repositories/dedupe.py`` (ADR-022). Aquí se
-queda la lógica de dominio: construir la clave, agrupar y elegir canónica.
+**Tercer caso, TED contra la plataforma del comprador.** Ninguno de los dos
+anteriores ve el duplicado que más se nota: el mismo contrato publicado en
+PLACSP (o PSCP) y reenviado al DOUE. El expediente natural de una fila TED es su
+``publication-number`` y no el del comprador, y su título llegaba con el prefijo
+«España \u2013 {CPV} \u2013 », así que ni el expediente ni la clave de reemisión podían
+coincidir nunca. Lo cubre :func:`detect_duplicados_por_referencia`, que empareja
+por las referencias que el propio aviso TED publica del expediente original
+(``idEvl`` del deeplink de PLACSP y BT-22). En ese par la canónica es **siempre**
+la otra fuente: TED republica, no origina.
+
+El SQL de esos detectores vive en ``db/repositories/dedupe.py`` (ADR-022). Aquí
+se queda la lógica de dominio: construir la clave, agrupar y elegir canónica.
 
 La detección es incremental: cursor por fuente en ``ingestion_cursors``
 (``dedupe_<fuente>``, watermark = max ``fecha_extraccion`` procesada), solo
@@ -44,7 +54,8 @@ evalúa filas nuevas de la pasada — sin full scan de pares.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol, Self
+from typing import TYPE_CHECKING, Any, Protocol, Self
+from urllib.parse import unquote, urlparse
 
 from db.database import connect, connect_read, get_cursor, set_cursor
 from db.repositories import dedupe as dedupe_repo
@@ -60,6 +71,9 @@ from db.sql_fragments import periodo_canonico, plegar_organo
 from observability.logging import get_logger
 from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 log = get_logger(__name__)
 
@@ -475,6 +489,243 @@ def detect_republicaciones(*, fuente: str) -> DedupeResult:
         set_cursor(cursor_source, last_seen_updated=max_extraccion)
     if result.pendientes:
         log.info("dedupe_republicaciones_detected", **result.as_dict())
+    return result
+
+
+# ── Referencias explícitas: TED contra la plataforma del comprador ──────────
+#
+# Medido el 2026-09-24 contra la API pública de TED (300 avisos ESP de CPV 48/72
+# desde el 2026-08-01) y contra el feed ATOM de PLACSP (los 99 expedientes del
+# 2026-09-08 publicados también en el DOUE):
+#
+# - El ``notice-title`` lleva el prefijo «España \u2013 {CPV} \u2013 » en el 100 % de los
+#   avisos, y su tercer tramo es exactamente BT-21 (``title-proc``).
+# - BT-22 (``internal-identifier-proc``) viene en el 93 % y es el
+#   ``ContractFolderID`` de PLACSP: 98 de los 99 expedientes aparecen en TED
+#   con ese valor.
+# - Pero BT-22 **no es único**: «01/2026», «20/2026» o «34/2025» los comparten
+#   decenas de órganos, y el mismo «2026-00054» salía a la vez en una autoridad
+#   portuaria española y en un ayuntamiento sueco. Sin comprobar el órgano, BT-22
+#   solo empareja basura.
+# - El ``idEvl`` del deeplink de PLACSP (BT-15) solo viene en el 19 %, pero es
+#   exacto: en los 157 pares que lo traían, coincidió siempre que el órgano
+#   coincidía, y cada discrepancia de ``idEvl`` era un falso positivo de BT-22.
+# - El único par verdadero con órgano distinto («ADIF - Presidencia» frente a
+#   «Administrador de Infraestructuras Ferroviarias») coincidía en título.
+
+#: Fuente que nunca es canónica frente a otra: publica en el DOUE lo que el
+#: comprador ya publicó en su plataforma, con menos detalle (sin lotes, sin
+#: pliegos, sin importes por lote).
+FUENTE_TED = "ted"
+
+
+@dataclass(frozen=True)
+class ReferenciaCruzada:
+    """Lo que un aviso de TED dice del expediente en la plataforma del comprador.
+
+    ``expediente`` es BT-22, el identificador interno del procedimiento: en
+    PLACSP coincide con el ``ContractFolderID`` y en PSCP con el
+    ``codi_expedient``. ``id_evl`` es el identificador del deeplink de PLACSP
+    que el aviso publica como acceso a los pliegos (BT-15), ya decodificado.
+    """
+
+    expediente: str | None = None
+    id_evl: str | None = None
+
+    @property
+    def vacia(self) -> bool:
+        return not self.expediente and not self.id_evl
+
+
+def id_evl_de_url(url: str | None) -> str | None:
+    """``idEvl`` de un deeplink de PLACSP, decodificado; ``None`` si la URL no lo lleva.
+
+    El mismo expediente llega escrito de dos maneras: PLACSP pone
+    ``idEvl=CEGLc1%2Fkxg%2FE6P%2FuLemXRw%3D%3D`` en el enlace de su feed y el
+    aviso TED lo copia a veces igual y a veces con otra capitalización del
+    escape. El valor es base64, así que se compara decodificado.
+
+    ``unquote`` y no ``unquote_plus``: un ``+`` literal es parte del base64, no
+    un espacio.
+    """
+    if not url:
+        return None
+    for parametro in urlparse(url).query.split("&"):
+        clave, _, valor = parametro.partition("=")
+        if clave.lower() == "idevl" and valor:
+            return unquote(valor)
+    return None
+
+
+def _es_placsp(fuente: str | None) -> bool:
+    """PLACSP entra con dos etiquetas: ``placsp`` (ATOM) y ``bulk_YYYYMM`` (ZIP mensual).
+
+    ``_rango_canonico`` solo reconoce la primera, así que una fila que refrescó
+    el carril bulk competía con TED como si fuera una fuente cualquiera.
+    """
+    valor = fuente or ""
+    return valor == "placsp" or valor.startswith("bulk_")
+
+
+def _organo_emparejable(nombre: str | None) -> str | None:
+    """Órgano plegado para comparar con TED; colapsa el «X - X» que TED repite.
+
+    Los avisos que llegan de la plataforma de Euskadi traen el comprador dos
+    veces («Bomberos Forales de Álava - Bomberos Forales de Álava»). Se colapsa
+    **antes** de :func:`normalize_organo`, que convierte el guion en espacio y
+    ya no dejaría ver las dos mitades.
+    """
+    if nombre:
+        izquierda, separador, derecha = nombre.partition(" - ")
+        if separador and normalize_organo(izquierda) == normalize_organo(derecha):
+            nombre = izquierda
+    return normalize_organo(nombre)
+
+
+def _orden_de_candidata(fila: dict[str, Any]) -> tuple[bool, tuple[bool, str, str, str]]:
+    """Qué fila representa al contrato cuando TED tiene varias gemelas: PLACSP primero.
+
+    Detrás, el mismo criterio total de :func:`_rango_canonico`, para que el
+    resultado no dependa del orden en que la consulta devolvió las filas.
+    """
+    return (not _es_placsp(fila.get("fuente")), _rango_canonico(fila))
+
+
+def _elegir_canonica_por_referencia(
+    fila_ted: dict[str, Any],
+    referencia: ReferenciaCruzada,
+    *,
+    por_id_evl: Mapping[str, list[dict[str, Any]]],
+    por_expediente: Mapping[str, list[dict[str, Any]]],
+) -> tuple[dict[str, Any], str] | None:
+    """(canónica, clave de match) para una fila TED, o ``None`` si no tiene gemela.
+
+    Dos caminos, en orden de fuerza:
+
+    1. **``idEvl``**: identifica un expediente de PLACSP sin ambigüedad. Basta.
+    2. **BT-22 + órgano o título**: BT-22 solo no vale (ver el bloque de arriba),
+       pero dentro de un mismo órgano el número de expediente no se repite, y
+       dos contratos con el mismo expediente y el mismo título son el mismo.
+
+    Las candidatas nunca son de TED: las trae así la consulta, y se vuelve a
+    filtrar aquí porque la regla es de dominio, no de SQL.
+    """
+
+    def ajenas(candidatas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            c
+            for c in candidatas
+            if c.get("fuente") != FUENTE_TED and c["id_externo"] != fila_ted["id_externo"]
+        ]
+
+    if referencia.id_evl:
+        por_evl = ajenas(por_id_evl.get(referencia.id_evl, []))
+        if por_evl:
+            return min(por_evl, key=_orden_de_candidata), f"idEvl:{referencia.id_evl}"
+    if referencia.expediente:
+        organo = _organo_emparejable(fila_ted.get("organo_contratacion"))
+        titulo = normalize_titulo(fila_ted.get("titulo"))
+        mismo_contrato = ajenas(
+            [
+                c
+                for c in por_expediente.get(referencia.expediente, [])
+                if (organo and _organo_emparejable(c.get("organo_contratacion")) == organo)
+                or (titulo and normalize_titulo(c.get("titulo")) == titulo)
+            ]
+        )
+        if mismo_contrato:
+            return (
+                min(mismo_contrato, key=_orden_de_candidata),
+                f"expediente:{referencia.expediente}",
+            )
+    return None
+
+
+def detect_duplicados_por_referencia(
+    *, fuente: str, referencias: Mapping[str, ReferenciaCruzada]
+) -> DedupeResult:
+    """Marca como duplicada cada fila de ``fuente`` cuyo expediente ya tiene otra fuente.
+
+    ``referencias`` son las que el conector leyó en esta pasada, por
+    ``id_externo``: BT-22 y el ``idEvl`` no son columnas de ``licitaciones``,
+    así que solo existen mientras el aviso está en memoria. Por eso el conector
+    de TED re-lee sus últimos 14 días en cada ejecución (``_OVERLAP_DAYS``) y
+    empareja lo re-leído: si el expediente de PLACSP llega después que el aviso
+    TED, el emparejamiento ocurre en cualquiera de las pasadas de esa ventana.
+    Pasada la ventana, un backfill (``python -m scraper.connectors.ted --desde
+    YYYYMMDD``) re-lee y vuelve a emparejar.
+
+    **Marca ``confirmed``**, y no ``pending`` como las reemisiones: ``idEvl`` es
+    un identificador exacto, y BT-22 dentro del mismo órgano (o con el mismo
+    título) también lo es. Eso retira la fila TED de las métricas competitivas,
+    que es justo lo que hace falta: el aviso de adjudicación de TED trae su
+    propia ``Adjudicacion`` y, sin la marca, la cuota de mercado contaba dos
+    veces el contrato.
+
+    **La canónica tiene que seguir visible.** Solo son candidatas las filas
+    publicables (mismo predicado que la superficie pública) y que no estén ya
+    marcadas como duplicadas de nada. Si no, esconder la fila TED podía hacer
+    desaparecer el contrato entero —o, con una marca previa en sentido
+    contrario, crear un ciclo en el que las dos filas se esconden mutuamente—.
+
+    Una marca ``pending`` previa sin resolver se **promueve**: la evidencia de
+    aquí es más fuerte que la clave de reemisión. Lo que un humano ya resolvió
+    no se toca (ver :func:`db.repositories.dedupe.marcar_duplicados_por_referencia`).
+    """
+    result = DedupeResult(fuente=fuente)
+    utiles = {id_externo: ref for id_externo, ref in referencias.items() if not ref.vacia}
+    if not utiles:
+        return result
+
+    filas = dedupe_repo.filas_por_id(sorted(utiles))
+    expedientes = sorted({ref.expediente for ref in utiles.values() if ref.expediente})
+    id_evls = sorted({ref.id_evl for ref in utiles.values() if ref.id_evl})
+
+    por_id_evl: dict[str, list[dict[str, Any]]] = {}
+    por_expediente: dict[str, list[dict[str, Any]]] = {}
+    for candidata in dedupe_repo.iter_candidatas_por_referencia(fuente, expedientes, id_evls):
+        if (evl := id_evl_de_url(candidata.get("url"))) is not None:
+            por_id_evl.setdefault(evl, []).append(candidata)
+        por_expediente.setdefault(natural_expediente(str(candidata["id_externo"])), []).append(
+            candidata
+        )
+
+    marcas: list[tuple[str, str, str, float, str]] = []
+    for fila in filas:
+        result.evaluadas += 1
+        elegida = _elegir_canonica_por_referencia(
+            fila,
+            utiles[str(fila["id_externo"])],
+            por_id_evl=por_id_evl,
+            por_expediente=por_expediente,
+        )
+        if elegida is None:
+            continue
+        canonica, clave = elegida
+        marcas.append(
+            (
+                str(fila["id_externo"]),
+                str(canonica["id_externo"]),
+                clave,
+                CONFIANZA_EXACTA,
+                "confirmed",
+            )
+        )
+        source_pair = "|".join(sorted((str(fila["fuente"]), str(canonica["fuente"]))))
+        dedupe_marked_total.labels(source_pair=source_pair, status="confirmed").inc()
+        result.confirmados += 1
+        result.detalles.append(
+            {
+                "duplicada": fila["id_externo"],
+                "canonica": canonica["id_externo"],
+                "confianza": CONFIANZA_EXACTA,
+                "status": "confirmed",
+            }
+        )
+
+    dedupe_repo.marcar_duplicados_por_referencia(marcas)
+    if result.confirmados:
+        log.info("dedupe_referencias_detected", **result.as_dict())
     return result
 
 

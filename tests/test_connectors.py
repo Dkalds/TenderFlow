@@ -531,6 +531,134 @@ def test_ted_parse_tipo_desconocido_descarta():
     assert TedConnector().parse(RawNotice(natural_id="X", payload=notice)) is None
 
 
+# ---------------------------------------------------------------------------
+# TED — título del comprador y referencias para el dedupe
+#
+# El `notice-title` lo compone TED como «España \u2013 {CPV} \u2013 {BT-21}» (100 % de 300
+# avisos medidos el 2026-09-24). Con ese prefijo la fila TED no podía colapsar
+# nunca con la de PLACSP del mismo contrato. Ver `_titulo` y
+# `tests/test_dedupe_referencias.py`.
+# ---------------------------------------------------------------------------
+
+_PREFIJO_CPV_72 = (
+    "España \u2013 Servicios TI: consultoría, desarrollo de software, Internet y apoyo \u2013 "
+)
+
+
+def test_ted_pide_a_la_api_el_titulo_y_el_expediente_del_comprador():
+    from scraper.connectors.ted import _FIELDS
+
+    assert "title-proc" in _FIELDS
+    assert "internal-identifier-proc" in _FIELDS
+
+
+def test_ted_el_titulo_es_bt21_y_no_el_notice_title():
+    notice = _ted_notice_cn()
+    notice["notice-title"] = {"spa": _PREFIJO_CPV_72 + "Contratación de los servicios de CPD"}
+    notice["title-proc"] = {"spa": "Contratación de los servicios de CPD"}
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert parsed.licitacion.titulo == "Contratación de los servicios de CPD"
+
+
+def test_ted_sin_bt21_recorta_el_prefijo_del_notice_title():
+    notice = _ted_notice_cn()
+    notice["notice-title"] = {"spa": [_PREFIJO_CPV_72 + "Suministro de licencias - Lote 1"]}
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    # Solo se cortan los dos primeros tramos; el guion corto del título real queda.
+    assert parsed.licitacion.titulo == "Suministro de licencias - Lote 1"
+
+
+def test_ted_un_guion_corto_no_se_toma_por_el_prefijo():
+    notice = _ted_notice_cn()
+    notice["notice-title"] = {"spa": ["Servicio de soporte - Lote 1 - Hospital del Mar"]}
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert parsed.licitacion.titulo == "Servicio de soporte - Lote 1 - Hospital del Mar"
+
+
+def test_ted_sin_ningun_titulo_cae_al_numero_de_publicacion():
+    notice = _ted_notice_cn()
+    del notice["notice-title"]
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert parsed.licitacion.titulo == "TED 371218-2026"
+
+
+def test_ted_la_etiqueta_del_cpv_ya_no_etiqueta_tecnologia():
+    """La etiqueta de CPV 72000000 dice «desarrollo de software».
+
+    Con el `notice-title` entero, 52 de 300 avisos reales salían etiquetados
+    `DESARROLLO` solo por el prefijo de TED; la fila de PLACSP del mismo
+    contrato no llevaba esa etiqueta.
+    """
+    from scraper.filters import matches_technology
+
+    compuesto = _PREFIJO_CPV_72 + "Mantenimiento del centro de proceso de datos"
+    # El prefijo sí casaba: sin esto el test pasaría por el motivo equivocado.
+    assert "DESARROLLO" in matches_technology(compuesto)[1]
+
+    notice = _ted_notice_cn()
+    notice["description-proc"] = None
+    notice["notice-title"] = {"spa": compuesto}
+    notice["title-proc"] = {"spa": "Mantenimiento del centro de proceso de datos"}
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert "DESARROLLO" not in (parsed.licitacion.tecnologia or "")
+
+
+def test_ted_expone_bt22_y_el_id_evl_del_deeplink():
+    from services.dedupe import ReferenciaCruzada
+
+    notice = _ted_notice_cn()
+    notice["internal-identifier-proc"] = " 2025/ETSAE0906/00006072E "
+    notice["document-url-lot"] = [
+        "https://contractaciopublica.cat/ca/perfils-contractant/detall/12628397",
+        "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion"
+        "&idEvl=QGM1HX7Wxp16nTs9LZ9RhQ%3D%3D",
+    ]
+    connector = TedConnector()
+
+    connector.parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert connector.referencias_cruzadas() == {
+        "ted:371218-2026": ReferenciaCruzada(
+            expediente="2025/ETSAE0906/00006072E", id_evl="QGM1HX7Wxp16nTs9LZ9RhQ=="
+        )
+    }
+
+
+def test_ted_el_acceso_restringido_y_bt22_en_lista_tambien_cuentan():
+    from services.dedupe import ReferenciaCruzada
+
+    notice = _ted_notice_cn()
+    notice["internal-identifier-proc"] = ["EXP-9"]
+    notice["document-restricted-url-lot"] = (
+        "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=abc%3D"
+    )
+    connector = TedConnector()
+
+    connector.parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert connector.referencias_cruzadas() == {
+        "ted:371218-2026": ReferenciaCruzada(expediente="EXP-9", id_evl="abc=")
+    }
+
+
+def test_ted_sin_referencias_no_registra_nada():
+    connector = TedConnector()
+
+    connector.parse(RawNotice(natural_id="371218-2026", payload=_ted_notice_cn()))
+
+    assert connector.referencias_cruzadas() == {}
+
+
 def test_ted_query_y_cursor():
     connector = TedConnector(cpv_families=("48", "72"))
     q = connector._build_query("20260101")
