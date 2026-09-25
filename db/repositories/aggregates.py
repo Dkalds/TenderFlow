@@ -3,12 +3,18 @@
 Contrapartida SQL de los servicios ``services/analytics/{overview,tecnologias,
 competitors}.py``, que hasta ahora cargaban la tabla completa a pandas y
 agregaban en el proceso web (ver AGENTS.md / postmortem OOM en
-``services/_data_cache.py``). Postgres resuelve estos ``GROUP BY`` sobre las
-~47k filas de ``licitaciones`` en milisegundos; este módulo es el único lugar
-donde vive el SQL de esas agregaciones (ADR-022, invariante §3.10) — incluida
-la construcción del ``WHERE`` a partir de los filtros: los servicios de
-``services/analytics/*`` pasan valores (fechas, strings, floats), nunca
-fragmentos de SQL.
+``services/_data_cache.py``). Este módulo es el único lugar donde vive el SQL
+de esas agregaciones (ADR-022, invariante §3.10) — incluida la construcción del
+``WHERE`` a partir de los filtros: los servicios de ``services/analytics/*``
+pasan valores (fechas, strings, floats), nunca fragmentos de SQL.
+
+Coste: ya no son milisegundos. Cuando se escribió esto la tabla tenía ~47k
+filas; con la carga completa de PSCP pasó de 700k (~870 MB de heap) y un
+``GROUP BY`` que la recorre entera tarda ~15 s en producción (medido el
+2026-09-25), frente al ``statement_timeout`` de 30 s de la API. Antes de añadir
+una agregación, mirá por qué índice va a ir: con filtro de tecnología, por el
+parcial ``idx_lic_tecnologia`` (ver :func:`db.sql_fragments.tecnologia_en_csv_sql`
+y ``_CON_TECNOLOGIA``).
 
 Convenciones de fecha (importante, ver ``db/alembic/versions/
 v59_pg_date_format_checks.py``): las columnas de fecha (``fecha_publicacion``,
@@ -894,20 +900,44 @@ class AggregateRepository:
         return count, sample
 
     # ── Tecnologias ──────────────────────────────────────────────────────
+    #
+    # Todas las consultas que explotan el CSV de ``tecnologia`` llevan
+    # ``_CON_TECNOLOGIA``. No cambia el resultado —una fila sin tecnología no
+    # produce ningún ``code``—, pero es lo que deja a Postgres ir por el índice
+    # parcial ``idx_lic_tecnologia`` (``WHERE tecnologia IS NOT NULL``) en vez de
+    # recorrer la tabla entera, que es ~99 % filas sin etiqueta (casi todo PSCP):
+    # ~10k filas en lugar de ~713k. Misma guarda, y mismo motivo, que la de
+    # :func:`db.sql_fragments.tecnologia_en_csv_sql`.
+
+    _CON_TECNOLOGIA = "tecnologia IS NOT NULL"
 
     def tecnologias_total_y_sin_clasificar(self, filters: LicitacionesFilters) -> tuple[int, int]:
+        """(total del ámbito, filas sin tecnología).
+
+        Dos subconsultas en una sola sentencia —una sola foto de la tabla— y no
+        un ``COUNT(*) FILTER`` sobre el mismo recorrido: el ``FILTER`` necesita
+        leer ``tecnologia`` de cada fila, y eso obligaba a un Seq Scan de la tabla
+        entera (~15 s en producción). Separadas, el total puede ir por un Index
+        Only Scan del índice más pequeño que sirva al ``WHERE`` y las
+        clasificadas por el índice parcial de tecnología: 1,6 s medido en
+        producción sin filtros (2026-09-25).
+
+        Las filas sin clasificar son el complemento exacto: toda fila cumple
+        ``tecnologia IS NULL OR trim(tecnologia) = ''`` o su negación, que es lo
+        que cuenta la segunda subconsulta.
+        """
         where, params = _build_where(filters)
         sql = (
-            "SELECT COUNT(*) AS total, "
-            "       COUNT(*) FILTER (WHERE tecnologia IS NULL OR trim(tecnologia) = '')"
-            "         AS sin_clasificar "
-            "FROM licitaciones WHERE " + where
+            f"SELECT (SELECT COUNT(*) FROM licitaciones WHERE {where}) AS total, "
+            f"       (SELECT COUNT(*) FROM licitaciones WHERE {where} "
+            f"          AND {self._CON_TECNOLOGIA} AND trim(tecnologia) != '') AS clasificadas"
         )
         with connect_read() as c:
-            row = c.execute(sql, params).fetchone()
+            row = c.execute(sql, [*params, *params]).fetchone()
         if row is None:
             return 0, 0
-        return int(row[0] or 0), int(row[1] or 0)
+        total = int(row[0] or 0)
+        return total, total - int(row[1] or 0)
 
     def tecnologias_entries(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
         """Explode de ``tecnologia`` (CSV) vía ``unnest(string_to_array(...))``.
@@ -925,7 +955,7 @@ class AggregateRepository:
             "       COUNT(*) FILTER (WHERE estado = 'ADJ') AS adjudicadas "
             "FROM licitaciones, "
             "     unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
-            "WHERE " + where + " AND trim(code) != '' "
+            f"WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) != '' "
             "GROUP BY trim(code)"
         )
         with connect_read() as c:
@@ -939,7 +969,8 @@ class AggregateRepository:
             "WITH exploded AS ("
             "  SELECT organo_contratacion AS organo, trim(code) AS code "
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + " AND trim(code) != '' AND organo_contratacion IS NOT NULL"
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) != '' "
+            "    AND organo_contratacion IS NOT NULL"
             "), top_organos AS ("
             "  SELECT organo FROM exploded GROUP BY organo ORDER BY COUNT(*) DESC LIMIT %s"
             "), top_techs AS ("
@@ -962,7 +993,7 @@ class AggregateRepository:
             "WITH exploded AS ("
             "  SELECT ccaa, trim(code) AS code "
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + " AND trim(code) != '' AND ccaa IS NOT NULL"
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) != '' AND ccaa IS NOT NULL"
             "), top_ccaa AS ("
             "  SELECT ccaa FROM exploded GROUP BY ccaa ORDER BY COUNT(*) DESC LIMIT %s"
             "), top_techs AS ("
@@ -986,7 +1017,7 @@ class AggregateRepository:
             "WITH exploded AS ("
             "  SELECT substr(fecha_publicacion, 1, 7) AS mes, trim(code) AS code, importe "
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + f" AND trim(code) != '' AND {guard}"
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) != '' AND {guard}"
             "), top_techs AS ("
             "  SELECT code FROM exploded GROUP BY code ORDER BY COUNT(*) DESC LIMIT %s"
             ") "
@@ -1034,7 +1065,7 @@ class AggregateRepository:
             "         l.estado, l.ccaa, l.fecha_publicacion "
             "  FROM licitaciones l, "
             "       unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + f" AND trim(code) IN ({placeholders}) "
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) IN ({placeholders}) "
             "  ORDER BY l.id_externo, l.importe DESC NULLS LAST"
             ") AS distintas "
             "ORDER BY distintas.importe DESC NULLS LAST, distintas.id_externo "
@@ -2193,7 +2224,7 @@ class AggregateRepository:
             "  SELECT DISTINCT ON (l.id_externo) l.id_externo, l.importe "
             "  FROM licitaciones l, "
             "       unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + f" AND trim(code) IN ({placeholders}) "
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) IN ({placeholders}) "
             ") sub"
         )
         with connect_read() as c:

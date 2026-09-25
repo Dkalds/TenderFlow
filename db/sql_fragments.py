@@ -350,11 +350,20 @@ def tecnologia_en_csv_sql(col: str, *, n: int, marcador: str = "%s") -> str:
     qué superficie entrara: el listado y los agregados explotaban el CSV,
     ``load_for_competitors`` comparaba por igualdad.
 
-    Coste: el explode no puede usar ``idx_lic_tecnologia`` (btree de igualdad,
-    v21), así que las consultas **con** filtro de tecnología pasan a secuencial.
-    Las que no lo llevan no cambian, porque no se añade cláusula. Un índice GIN
-    sobre ``string_to_array(tecnologia, ',')`` lo devolvería a indexado, pero
-    exige migración y va aparte.
+    Coste, y por qué va delante ``{col} IS NOT NULL``: el explode no es
+    sargable, y con el ``EXISTS`` a solas Postgres lo evaluaba fila a fila sobre
+    la tabla entera. Con ~713k filas y el 98,7 % sin etiqueta (casi todo PSCP),
+    cada consulta del ámbito SAP era un Seq Scan de ~870 MB, y las vistas de
+    Mercado con ``?tecnologia=SAP``, que encadenan varias, tardaban 33-41 s en
+    producción (2026-09-25). La guarda no cambia el resultado —una fila sin
+    tecnología no produce ningún ``code``— pero implica el predicado del índice
+    parcial ``idx_lic_tecnologia`` (``WHERE tecnologia IS NOT NULL``), y el plan
+    pasa a recorrer solo las ~10k filas etiquetadas: coste estimado de 229k a
+    11k, 72 ms con la caché caliente.
+
+    El ``COALESCE`` se queda para que el ``EXISTS`` sea correcto por sí solo si
+    alguien retira la guarda creyéndola redundante: lo es para el resultado, no
+    para el plan.
 
     Los ``n`` valores van con marcadores; el llamante los pasa en su sitio.
     """
@@ -362,9 +371,9 @@ def tecnologia_en_csv_sql(col: str, *, n: int, marcador: str = "%s") -> str:
         raise ValueError("tecnologia_en_csv_sql necesita al menos un código")
     marcadores = ",".join([marcador] * n)
     return (
-        "EXISTS (SELECT 1 FROM unnest(string_to_array("
+        f"({col} IS NOT NULL AND EXISTS (SELECT 1 FROM unnest(string_to_array("
         f"COALESCE({col}, ''), ',')) AS _tec(code) "
-        f"WHERE trim(_tec.code) IN ({marcadores}))"
+        f"WHERE trim(_tec.code) IN ({marcadores})))"
     )
 
 

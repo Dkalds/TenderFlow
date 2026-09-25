@@ -214,6 +214,38 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P1 — Alta
 
+### [P1] Mercado sin filtros: cada vista recorre la tabla entera (20-110 s o 500)
+- **Área:** db/repositories/aggregates.py, db/alembic (índice), scheduler/kpi_precompute
+- **Problema:** `licitaciones` tiene ~713k filas y ~870 MB de heap (97 % PSCP) en un
+  Supabase Micro (`shared_buffers` 256 MB, E/S limitada), y cada `GROUP BY` que la
+  recorre tarda ~15 s (medido el 2026-09-25: `geography_by_ccaa` sin filtros, 15,2 s,
+  87k páginas leídas de disco). Las vistas encadenan de 2 a 6 recorridos: en los logs
+  de Render, `/analytics/organos` y `/proyectos-modulos` dan 500 por `statement_timeout`
+  (30 s por sentencia), `/trends?group_by=month` tarda 20-72 s, `/trends-cpv` ~40 s,
+  `/geography` ~30 s. Con `?tecnologia=` quedó resuelto el 2026-09-25 (las consultas
+  van por el índice parcial `idx_lic_tecnologia`, 72 ms en caliente), igual que
+  `/tecnologias`; lo que queda es el ámbito sin filtro de tecnología, que es con el
+  que se abre Mercado.
+- **Decisión pendiente (una o varias):**
+  - Índice cubriente `(fecha_publicacion) INCLUDE (importe, estado, ccaa, provincia,
+    cpv, tipo_contrato, organo_id, organo_contratacion, tecnologia)` (~100-130 MB):
+    toda agregación sin `q` pasaría a Index Only Scan. Referencias medidas: el total
+    por `idx_ccaa`, 1,6 s; el histograma por `idx_lic_importe`, 1,7 s. Migración
+    (requiere OK, AGENTS.md §6) y `migrate.yml` a mano. El 24 % de las filas cae en
+    páginas sin marcar en el visibility map: afinar el autovacuum de la tabla ayuda.
+  - Snapshot del ámbito por defecto de cada vista en `kpi_precompute`, como el overview
+    (ADR-026, camino 3). Hoy costaría ~5 min por pasada y el cierre ya va por 9-15 min
+    de sus 20 de `timeout-minutes`: solo cabe después del índice.
+  - Subir el cómputo de Supabase (con 4 GB la tabla cabe en caché): decisión de coste.
+  - Acotar la analítica al universo tecnológico: decisión de producto. El listado ya
+    enseña solo filas con `tecnologia`; la analítica cuenta además todo PSCP.
+- **Acceptance criteria:**
+  - Cada vista de Mercado sin filtros responde en < 3 s (p95 de `duration_ms` en los
+    logs `http_request` de Render).
+  - Siete días sin `QueryCanceled` en `/api/v1/analytics/*`.
+- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [db/repositories/kpi_snapshots.py](../db/repositories/kpi_snapshots.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py)
+- **Riesgo:** medio — el índice es aditivo, pero migra schema; el snapshot toca el cierre.
+
 ### [P1] Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó
 - **Área:** scraper/connectors/ted.py, services/dedupe.py (ADR-026, addendum 2026-09-24)
 - **Problema:** `detect_duplicados_por_referencia` solo empareja los avisos que el
