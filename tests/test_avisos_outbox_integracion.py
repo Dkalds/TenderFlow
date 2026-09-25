@@ -43,14 +43,22 @@ def _lic(
     organo: str = "Órgano de prueba",
     primera_extraccion: str = "2026-09-01T00:00:00+00:00",
     fecha_fin: str | None = None,
+    universo: str | None = None,
 ) -> None:
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones "
             "(id_externo, titulo, estado, organo_contratacion, fecha_publicacion, "
-            " fecha_extraccion, primera_extraccion, fecha_fin) "
-            "VALUES (%s, %s, 'PUB', %s, '2026-09-01', '2026-09-01', %s, %s)",
-            (id_externo, f"Expediente {id_externo}", organo, primera_extraccion, fecha_fin),
+            " fecha_extraccion, primera_extraccion, fecha_fin, analysis_universe) "
+            "VALUES (%s, %s, 'PUB', %s, '2026-09-01', '2026-09-01', %s, %s, %s)",
+            (
+                id_externo,
+                f"Expediente {id_externo}",
+                organo,
+                primera_extraccion,
+                fecha_fin,
+                universo,
+            ),
         )
 
 
@@ -305,7 +313,7 @@ def test_vencimiento_a_seis_meses_de_una_cuenta_una_sola_vez(cuenta):
 
 
 def test_una_cuenta_de_varios_organos_avisa_de_todos_y_nombra_al_cliente(tmp_db):
-    """v142: el aviso sale por cualquier órgano de la cuenta, una vez.
+    """v145: el aviso sale por cualquier órgano de la cuenta, una vez.
 
     El titular nombra al cliente —la cuenta— y ``organo`` sigue diciendo qué
     órgano publicó: «Área de Gobierno de Economía… del Ayuntamiento de Madrid»
@@ -351,3 +359,61 @@ def test_una_cuenta_de_varios_organos_avisa_de_todos_y_nombra_al_cliente(tmp_db)
     assert payload["aviso_titulo"] == "Publicación nueva de Ayuntamiento de Madrid"
     assert payload["cuenta_nombre"] == "Ayuntamiento de Madrid"
     assert payload["organo"] == "Organismo Autónomo Informática del Ayuntamiento de Madrid"
+
+
+def _duplicado_confirmado(licitacion_id: str, canonical_id: str) -> None:
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones_duplicados "
+            "(licitacion_id, canonical_id, confianza, status, clave_match) "
+            "VALUES (%s, %s, 1.0, 'confirmed', 'test')",
+            (licitacion_id, canonical_id),
+        )
+
+
+def test_los_avisos_de_cuenta_salen_del_mismo_universo_que_la_ficha(cuenta):
+    """Ni el censo regional ni los duplicados confirmados avisan.
+
+    La ficha y el resumen cuentan sobre el universo analítico sin duplicados;
+    un aviso de algo que la ficha no enseña manda al comercial a buscar un
+    expediente que no está. ``pscp_observed`` es el censo entero de Cataluña,
+    de cualquier materia, y un duplicado confirmado es el mismo contrato otra
+    vez. Una fila sin universo es legado del radar y sí cuenta.
+    """
+    ahora = datetime.now(UTC)
+    ayer = (ahora - timedelta(days=1)).isoformat()
+    set_cursor(
+        avisos_outbox.CURSOR_CUENTAS, last_seen_updated=(ahora - timedelta(days=5)).isoformat()
+    )
+    organo = "Ayuntamiento de Pruebas"
+    fin = (date.today() + timedelta(days=180)).isoformat()
+    _lic("G1-U-TEC", organo=organo, primera_extraccion=ayer, universo="technology_observed")
+    _lic("G1-U-LEGADO", organo=organo, primera_extraccion=ayer)
+    _lic("G1-U-PSCP", organo=organo, primera_extraccion=ayer, universo="pscp_observed")
+    _lic("G1-U-DUP", organo=organo, primera_extraccion=ayer)
+    _duplicado_confirmado("G1-U-DUP", "G1-U-TEC")
+    _lic("G1-V-TEC", organo=organo, fecha_fin=fin, primera_extraccion="2025-01-01T00:00:00+00:00")
+    _lic(
+        "G1-V-PSCP",
+        organo=organo,
+        fecha_fin=fin,
+        primera_extraccion="2025-01-01T00:00:00+00:00",
+        universo="pscp_observed",
+    )
+    _lic("G1-V-DUP", organo=organo, fecha_fin=fin, primera_extraccion="2025-01-01T00:00:00+00:00")
+    _duplicado_confirmado("G1-V-DUP", "G1-V-TEC")
+    with connect() as c:
+        for id_externo in ("G1-V-TEC", "G1-V-PSCP", "G1-V-DUP"):
+            c.execute(
+                "INSERT INTO adjudicaciones (licitacion_id, nombre, fecha_extraccion) "
+                "VALUES (%s, 'Incumbente SA', '2026-09-01')",
+                (id_externo,),
+            )
+
+    assert avisos_outbox.emitir_avisos_de_cuentas() == 2
+    assert avisos_outbox.emitir_vencimientos_de_cuentas() == 1
+
+    publicadas = {e["payload"]["id_externo"] for e in _eventos("cuenta.publicacion_nueva")}
+    assert publicadas == {"G1-U-TEC", "G1-U-LEGADO"}
+    (vencimiento,) = _eventos("cuenta.vencimiento_proximo")
+    assert vencimiento["payload"]["id_externo"] == "G1-V-TEC"

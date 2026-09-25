@@ -211,8 +211,11 @@ function conQuery(fetchMock: ReturnType<typeof vi.fn>): string[] {
 describe("SeguirBoton sobre un órgano", () => {
   beforeEach(() => {
     vi.mocked(registrarEvento).mockClear();
-    // Sin organización elegida: resuelve a la primera de equipo (la 21).
-    useOrganizationStore.setState({ activeOrganizationId: null });
+    // Sin organización elegida: resuelve a la primera de equipo (la 21). Y sin
+    // la por defecto recordada, que un test anterior deja escrita y se adelanta
+    // a `/organizations`: con ella la organización ya «se sabe» desde el primer
+    // render.
+    useOrganizationStore.setState({ activeOrganizationId: null, ultimaPorDefecto: undefined });
   });
 
   function pintar() {
@@ -260,7 +263,7 @@ describe("SeguirBoton sobre un órgano", () => {
   });
 
   it("dejar de seguir quita el órgano por su nombre, no la cuenta por su id", async () => {
-    // Desde v142 una cuenta puede tener varios órganos: quitar la estrella de
+    // Desde v145 una cuenta puede tener varios órganos: quitar la estrella de
     // uno no puede borrar los demás, y qué entrada de la cuenta es la de este
     // botón sólo lo sabe el servidor, que pliega el nombre.
     const fetchMock = servidorDeCuentas({ siguiendo: true });

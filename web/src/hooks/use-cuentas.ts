@@ -3,7 +3,7 @@
 /**
  * F1.5 — cuentas objetivo: los clientes que **la organización** sigue.
  *
- * Una cuenta es un cliente con uno o varios órganos de contratación (v142): el
+ * Una cuenta es un cliente con uno o varios órganos de contratación (v145): el
  * Ayuntamiento de Madrid contrata a través de seis órganos y ninguno se llama
  * así. Es el único «seguir un órgano» con efectos: avisa a todos los miembros
  * activos de las publicaciones nuevas de sus órganos y de sus contratos que

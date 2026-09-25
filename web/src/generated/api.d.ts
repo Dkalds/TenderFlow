@@ -7355,7 +7355,7 @@ export interface components {
          * CuentaObjetivo
          * @description Una cuenta de la organización: un cliente y sus órganos de contratación.
          *
-         *     Hasta v142 una cuenta **era** un órgano. Desde entonces tiene nombre propio
+         *     Hasta v145 una cuenta **era** un órgano. Desde entonces tiene nombre propio
          *     y uno o varios órganos (``organos``), porque un cliente no publica con un
          *     solo nombre: el Ayuntamiento de Madrid contrata a través de seis órganos y
          *     ninguno se llama así.
@@ -7421,7 +7421,7 @@ export interface components {
         };
         /**
          * CuentaOrgano
-         * @description Un órgano de contratación de una cuenta (v142).
+         * @description Un órgano de contratación de una cuenta (v145).
          */
         CuentaOrgano: {
             /** Id */

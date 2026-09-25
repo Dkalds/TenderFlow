@@ -1,8 +1,8 @@
-"""Cuentas de varios órganos (v142), su ficha, su resumen y el buscador del alta.
+"""Cuentas de varios órganos (v145), su ficha, su resumen y el buscador del alta.
 
 Hermano de ``test_cuentas_objetivo_etiquetas.py``, que fija el contrato de
 siempre —seguir un órgano, aislamiento, etiquetas, roles— y sigue pasando sin
-cambios: una cuenta de un solo órgano es exactamente lo que era antes de v142.
+cambios: una cuenta de un solo órgano es exactamente lo que era antes de v145.
 Aquí va lo nuevo:
 
 - Una cuenta es un **cliente** con nombre propio y uno o varios órganos. Un
@@ -210,7 +210,7 @@ def test_una_cuenta_agrupa_varios_organos_con_nombre_propio(como: Como) -> None:
 
     assert cuenta["nombre"] == "Ayuntamiento de Madrid"
     assert _nombres(cuenta) == [_ECONOMIA, _INFORMATICA]
-    # El contrato anterior a v142 dice el primer órgano.
+    # El contrato anterior a v145 dice el primer órgano.
     assert cuenta["organo_nombre"] == _ECONOMIA
     assert cuenta["organo_norm"] == cuenta["organos"][0]["organo_norm"]
     assert [c["id"] for c in _lista(como(e.viewer), e.org)] == [cuenta["id"]]

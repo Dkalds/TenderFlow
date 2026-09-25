@@ -998,7 +998,7 @@ class OrganizationSettingsOut(OrganizationSettings):
 
 
 class CuentaOrgano(BaseModel):
-    """Un órgano de contratación de una cuenta (v142)."""
+    """Un órgano de contratación de una cuenta (v145)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1017,7 +1017,7 @@ class CuentaOrgano(BaseModel):
 class CuentaObjetivo(BaseModel):
     """Una cuenta de la organización: un cliente y sus órganos de contratación.
 
-    Hasta v142 una cuenta **era** un órgano. Desde entonces tiene nombre propio
+    Hasta v145 una cuenta **era** un órgano. Desde entonces tiene nombre propio
     y uno o varios órganos (``organos``), porque un cliente no publica con un
     solo nombre: el Ayuntamiento de Madrid contrata a través de seis órganos y
     ninguno se llama así.

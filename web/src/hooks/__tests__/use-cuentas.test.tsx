@@ -13,7 +13,7 @@
  *    seguimiento de órgano con efectos, y un intento fallido no es uso.
  * 4. **Optimista y reversible** sobre la pregunta del botón, con el motivo de
  *    la API en el aviso de error (el 403 del viewer).
- * 5. **Quitar la estrella va por nombre** (`/cuentas/por-organo`): desde v142
+ * 5. **Quitar la estrella va por nombre** (`/cuentas/por-organo`): desde v145
  *    una cuenta puede tener varios órganos, y el servidor decide si quita uno
  *    o la cuenta entera.
  * 6. **«Deshacer» rehace la cuenta** con sus órganos, su nota y sus etiquetas.
@@ -113,8 +113,10 @@ beforeEach(() => {
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
   // La elección de organización persiste en `localStorage`: cada test parte de
-  // «no ha elegido ninguna», que resuelve a la primera de equipo.
-  useOrganizationStore.setState({ activeOrganizationId: null });
+  // «no ha elegido ninguna», que resuelve a la primera de equipo. También sin
+  // la por defecto recordada, que un test anterior deja escrita y se adelanta
+  // a `/organizations`.
+  useOrganizationStore.setState({ activeOrganizationId: null, ultimaPorDefecto: undefined });
 });
 
 afterEach(() => {

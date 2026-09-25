@@ -278,7 +278,7 @@ def emitir_avisos_de_cuentas(ahora: datetime | None = None) -> int:
         id_externo = str(fila["id_externo"])
         organo = str(fila.get("organo_nombre") or "")
         # El titular nombra al cliente, no al órgano: en una cuenta de varios
-        # órganos (v142) «Área de Gobierno de Economía… del Ayuntamiento de
+        # órganos (v145) «Área de Gobierno de Economía… del Ayuntamiento de
         # Madrid» dice menos que «Ayuntamiento de Madrid». En una de uno solo
         # son el mismo nombre.
         cuenta = str(fila.get("cuenta_nombre") or organo)

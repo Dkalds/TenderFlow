@@ -298,7 +298,7 @@ L · **[§6]** migración, pre-autorizada.
 *Adopción:* evento nuevo `organo_seguido` y propiedad `espacio=cuentas` en
 `espacio_abierto`.
 
-*Estado (2026-09-25):* **completo en código; v142 y v143 sin aplicar en
+*Estado (2026-09-25):* **completo en código; v145 y v146 sin aplicar en
 producción** (`migrate.yml` es manual, y hasta aplicarlas `/cuentas` no
 funciona contra esa base). La primera versión sólo marcaba la cuenta, y además
 en la organización **personal** de cada usuario: la página no mandaba
@@ -306,7 +306,7 @@ en la organización **personal** de cada usuario: la página no mandaba
 500. Ahora:
 
 - Una cuenta es un **cliente con uno o varios órganos** (`cuenta_organos`,
-  v142): el Ayuntamiento de Madrid contrata a través de seis órganos y ninguno
+  v145): el Ayuntamiento de Madrid contrata a través de seis órganos y ninguno
   se llama así. Los órganos se eligen con un buscador de órganos reales
   (`GET /cuentas/buscar-organos`), no con texto libre.
 - `/cuentas` da, por cuenta, las licitaciones abiertas, la última
@@ -319,10 +319,11 @@ en la organización **personal** de cada usuario: la página no mandaba
 - El botón «Seguir» de Mercado → Órganos escribe en `/cuentas` (antes en
   `follows`, sin efecto), y quitar la estrella saca sólo ese órgano de su
   cuenta (`DELETE /cuentas/por-organo`).
-- La ficha y el resumen cuentan sobre el universo analítico
-  (`technology_observed_sql`), sin `pscp_observed`. **Los avisos no**: un
-  órgano catalán en una cuenta avisa de todo lo que publique en PSCP, de
-  cualquier materia. Queda por decidir si se acotan al mismo universo.
+- La ficha, el resumen y los avisos `cuenta.*` cuentan sobre el mismo
+  universo: el analítico (`technology_observed_sql`), sin `pscp_observed` y
+  sin duplicados confirmados. Hasta 2026-09-25 los avisos no se acotaban, y
+  un órgano catalán en una cuenta avisaba de todo lo que publicara en PSCP,
+  de cualquier materia, que luego la ficha no enseñaba.
 
 #### F1.6 Etiquetas de organización (D38) — P2
 

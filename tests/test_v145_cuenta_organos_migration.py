@@ -1,6 +1,6 @@
-"""La forma de v142: lo que la migración emite, sin base.
+"""La forma de v145: lo que la migración emite, sin base.
 
-Lo que v142 hace con datos —el backfill de una cuenta por órgano— lo ejerce
+Lo que v145 hace con datos —el backfill de una cuenta por órgano— lo ejerce
 toda la suite de integración, que construye su esquema con ``alembic upgrade
 head``. Aquí se fija lo que un test contra una base vacía no ve:
 
@@ -26,12 +26,12 @@ from db.repositories.cuentas import clave_de_nombre
 from db.sql_fragments import FOLD_DST, FOLD_SRC
 
 _RUTA = (
-    Path(__file__).resolve().parents[1] / "db" / "alembic" / "versions" / "v142_cuenta_organos.py"
+    Path(__file__).resolve().parents[1] / "db" / "alembic" / "versions" / "v145_cuenta_organos.py"
 )
 
 
 def _cargar() -> Any:
-    spec = importlib.util.spec_from_file_location("v142_cuenta_organos", _RUTA)
+    spec = importlib.util.spec_from_file_location("v145_cuenta_organos", _RUTA)
     assert spec is not None and spec.loader is not None
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)

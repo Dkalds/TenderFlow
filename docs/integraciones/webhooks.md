@@ -208,6 +208,11 @@ través de seis). En los avisos de cuenta, `organo` es el órgano que publicó y
 son el mismo nombre. `cuenta_nombre` es un campo **añadido**: el resto del
 payload no cambia de forma.
 
+Los dos avisos de cuenta salen del mismo universo que la ficha de la cuenta:
+el analítico, sin las fuentes regionales que traen el censo entero de su
+comunidad (`pscp_observed`) y sin duplicados confirmados. Un órgano catalán
+en una cuenta no avisa de todo lo que publique en PSCP.
+
 **`subtipo` y `aviso_titulo`.** Los avisos de `licitacion.*` traen el nombre
 de lo que pasó, calculado por `services/avisos.py`: `subtipo` es uno de
 `anulado`, `desierto`, `plazo_ampliado`, `plazo_acortado`,

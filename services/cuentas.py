@@ -16,7 +16,7 @@ cuenta es una decisión de equipo (ADR-030 §D) que no se puede ir con quien la
 creó. Cuando ``follows`` absorba esta tabla (T1), tendrá que saber guardar un
 seguimiento de organización.
 
-Una cuenta es un **cliente con uno o varios órganos** (v142), no un órgano:
+Una cuenta es un **cliente con uno o varios órganos** (v145), no un órgano:
 el Ayuntamiento de Madrid contrata a través de seis y ninguno se llama así.
 Un órgano pertenece a una sola cuenta de cada organización; si pudiera estar
 en dos, cada publicación suya avisaría dos veces a cada miembro. Hay dos
@@ -29,6 +29,8 @@ contratos que vencen con su adjudicatario, oportunidades del equipo— y
 declaran en cada bloque su universo y su ventana (ADR-014): el universo
 analítico del producto, sin las fuentes regionales que publican el censo
 completo de su comunidad, que el criterio de F1.5 prohíbe sumar como censo.
+Los avisos ``cuenta.*`` (``services/avisos_outbox.py``) salen del mismo
+universo: avisar de algo que la ficha no enseña manda a buscar lo que no está.
 
 **Etiquetas (D38).** Libres por organización, hasta treinta, con color,
 aplicables a favoritos, oportunidades y cuentas. El límite no es decorativo:

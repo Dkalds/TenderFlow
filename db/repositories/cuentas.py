@@ -6,11 +6,11 @@ no debe llevarse la cartera de cuentas con él. Por eso ninguna consulta de
 este módulo acepta ``user_key``: todas exigen ``organization_id``, y ése es el
 aislamiento que el test comprueba.
 
-Una cuenta es un **cliente**, no un órgano (v142): tiene nombre propio y uno o
+Una cuenta es un **cliente**, no un órgano (v145): tiene nombre propio y uno o
 varios órganos de contratación en ``cuenta_organos``. Todo lo que casa una
 cuenta contra el corpus —avisos, cruce de competidores, resumen y ficha— lo
 hace por sus órganos, comparando ``cuenta_organos.organo_norm`` con
-:func:`organo_normalizado_sql`, que tiene índice propio desde v143.
+:func:`organo_normalizado_sql`, que tiene índice propio desde v146.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from db.sql_fragments import (
     exclude_duplicados_sql,
     fecha_fin_origen_sql,
     fecha_fin_sql,
+    fold_expr,
     organo_normalizado_sql,
     plegar_organo,
     technology_observed_sql,
@@ -73,7 +74,7 @@ def clave_de_organo(nombre: str) -> str:
 def clave_de_nombre(nombre: str) -> str:
     """``nombre_norm`` de una cuenta: plegada como un órgano y sin espacios
     repetidos. «Ayuntamiento de Alcalá» y «AYUNTAMIENTO  DE ALCALA» son la
-    misma cuenta escrita dos veces. Gemela de ``_CLAVE_NOMBRE_SQL`` en v142."""
+    misma cuenta escrita dos veces. Gemela de ``_CLAVE_NOMBRE_SQL`` en v145."""
     return " ".join((plegar_organo(nombre) or "").split())
 
 
@@ -95,7 +96,7 @@ class NombreOcupadoError(Exception):
 
 
 #: Columnas de una cuenta. ``nombre`` cae al órgano legado para las filas que
-#: escribió el código anterior a v142 durante el despliegue.
+#: escribió el código anterior a v145 durante el despliegue.
 _COLS_CUENTA = (
     "c.id, c.organization_id, COALESCE(c.nombre, c.organo_nombre) AS nombre, "
     "c.organo_nombre AS legado_organo_nombre, c.organo_norm AS legado_organo_norm, "
@@ -120,7 +121,7 @@ _ABIERTA = (
 )
 
 #: Licitaciones de los órganos de las cuentas: el cruce que usan todos los
-#: bloques. Va por el índice por expresión de v143.
+#: bloques. Va por el índice por expresión de v146.
 _JOIN_LICITACIONES = f"JOIN licitaciones l ON {organo_normalizado_sql('l')} = co.organo_norm "
 
 
@@ -128,7 +129,7 @@ def _componer(cuentas: list[dict[str, Any]], organos: list[dict[str, Any]]) -> l
     """Cada cuenta con sus órganos, en la forma del DTO ``CuentaObjetivo``.
 
     ``organo_nombre``/``organo_norm``/``organo_id`` son el contrato anterior a
-    v142, cuando una cuenta era un órgano: ahora dicen el **primer** órgano de
+    v145, cuando una cuenta era un órgano: ahora dicen el **primer** órgano de
     la cuenta, que en una cuenta de un solo órgano es exactamente lo que
     decían. Una fila sin órganos —sólo puede escribirla el código anterior
     durante el despliegue— cae a sus columnas legadas.
@@ -292,7 +293,7 @@ class CuentasRepository:
         """Crea la cuenta sin órganos. ``None`` si otra ya se llama así.
 
         Las columnas legadas (``organo_*``) quedan a ``NULL``: su unicidad es
-        la de v105 y no puede chocar con un ``NULL`` (ver la cabecera de v142).
+        la de v105 y no puede chocar con un ``NULL`` (ver la cabecera de v145).
         """
         fila = conn.execute(
             "INSERT INTO cuentas_objetivo "
@@ -321,7 +322,7 @@ class CuentasRepository:
         """Sigue un órgano. **Idempotente**: seguir dos veces no duplica.
 
         Es el alta de un clic —el botón de Mercado y el contrato anterior a
-        v142 de ``POST /cuentas`` con ``organo``—, así que decide sola dónde
+        v145 de ``POST /cuentas`` con ``organo``—, así que decide sola dónde
         cae el órgano, en este orden:
 
         1. Si ya es de una cuenta, esa cuenta.
@@ -632,6 +633,12 @@ class CuentasRepository:
         órgano por su nombre, y uno que sólo publica en una fuente regional
         también existe. El número es el que ve el usuario para elegir entre
         grafías parecidas.
+
+        El primer ``LIKE`` no filtra nada que el segundo deje pasar —el
+        patrón llega sin espacios en los bordes, y lo que contiene el nombre
+        recortado lo contiene el entero—: está para el trigram de órgano de
+        v143, cuya expresión es ``fold_expr`` sin ``btrim``. Sin él, cada
+        tecla del buscador recorre la tabla entera.
         """
         from db.repositories.busqueda import _patron
 
@@ -647,7 +654,8 @@ class CuentasRepository:
                     "          min(l.organo_contratacion) AS organo_nombre, "
                     "          COUNT(*) AS expedientes "
                     "  FROM licitaciones l "
-                    f"  WHERE {normalizado} LIKE %s "
+                    f"  WHERE {fold_expr('l.organo_contratacion')} LIKE %s "
+                    f"    AND {normalizado} LIKE %s "
                     f"  GROUP BY {normalizado} "
                     "  ORDER BY COUNT(*) DESC LIMIT %s"
                     ") o "
@@ -655,7 +663,7 @@ class CuentasRepository:
                     "  ON co.organization_id = %s AND co.organo_norm = o.organo_norm "
                     "LEFT JOIN cuentas_objetivo c ON c.id = co.cuenta_id "
                     "ORDER BY o.expedientes DESC, o.organo_nombre",
-                    (patron, limite, organization_id),
+                    (patron, patron, limite, organization_id),
                 )
             )
 
@@ -844,6 +852,11 @@ class CuentasRepository:
 
         ``organo`` es el órgano que publicó y ``cuenta_nombre`` el cliente al
         que pertenece: en una cuenta de varios órganos no son lo mismo.
+
+        El universo es el de la ficha (:data:`_UNIVERSO`, sin duplicados
+        confirmados): un aviso que la ficha no enseña manda al comercial a
+        buscar algo que no está, y el censo catalán de ``pscp_observed`` son
+        expedientes de cualquier materia.
         """
 
         with connect_read() as conn:
@@ -856,6 +869,7 @@ class CuentasRepository:
                 f"JOIN cuenta_organos co ON co.organo_norm = {organo_normalizado_sql('l')} "
                 "JOIN cuentas_objetivo c ON c.id = co.cuenta_id "
                 "WHERE l.primera_extraccion > %s AND l.primera_extraccion <= %s "
+                f"  AND {_UNIVERSO} AND {exclude_duplicados_sql()} "
                 "ORDER BY l.primera_extraccion, l.id_externo, co.organization_id "
                 "LIMIT %s",
                 (desde_iso, hasta_iso, limit),
@@ -877,6 +891,8 @@ class CuentasRepository:
 
         La fecha es :data:`FECHA_FIN_SQL` (fin explícito, o inicio/adjudicación
         más duración), la misma que usan Renovaciones y la ficha de la cuenta.
+        El universo también es el de la ficha, por lo mismo que en
+        :meth:`publicaciones_nuevas`.
         """
 
         fecha_fin = fecha_fin_sql()
@@ -893,6 +909,7 @@ class CuentasRepository:
                 f"WHERE {fecha_fin} BETWEEN "
                 "      to_char(CURRENT_DATE + %s * INTERVAL '1 day', 'YYYY-MM-DD') "
                 "  AND to_char(CURRENT_DATE + %s * INTERVAL '1 day', 'YYYY-MM-DD') "
+                f"  AND {_UNIVERSO} AND {exclude_duplicados_sql()} "
                 "ORDER BY co.organization_id, l.id_externo "
                 "LIMIT %s",
                 (dias_desde, dias_hasta, limit),

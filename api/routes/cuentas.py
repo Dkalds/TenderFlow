@@ -8,7 +8,7 @@ CRUD sobre tablas de organización: las rutas llaman al servicio, que resuelve
 la organización y el permiso de escritura (ADR-024). Aquí sólo se traduce
 HTTP.
 
-Una cuenta es un cliente con uno o varios órganos (v142). Las rutas fijas
+Una cuenta es un cliente con uno o varios órganos (v145). Las rutas fijas
 (``/cuentas/resumen``, ``/cuentas/buscar-organos``) van **antes** que
 ``/cuentas/{cuenta_id}``: FastAPI prueba las rutas en orden, y ``resumen``
 contra un ``cuenta_id: int`` sería un 422, no la ruta siguiente.

@@ -46,7 +46,7 @@ ya sin marca. Siembran por repositorio y comprueban sus precondiciones con
 ``pytest.fail``, no con ``assert``: un fallo preparando los datos tiene que
 salir como fallo y no confundirse con el que el test vigila.
 
-Las cuentas de varios órganos (v142), su ficha y el buscador del alta están en
+Las cuentas de varios órganos (v145), su ficha y el buscador del alta están en
 ``test_cuentas_organos.py``.
 """
 

@@ -1,7 +1,7 @@
-"""v142: una cuenta objetivo agrupa uno o varios órganos (``cuenta_organos``).
+"""v145: una cuenta objetivo agrupa uno o varios órganos (``cuenta_organos``).
 
-Revision ID: v142_cuenta_organos
-Revises: v141_tasas_anulacion_organo
+Revision ID: v145_cuenta_organos
+Revises: v143_lic_busqueda_plegada_trgm
 Create Date: 2026-09-25
 
 Qué falta hoy
@@ -60,7 +60,7 @@ en v130 y ``organization_report_schedules`` en v132: cada migración protege
 las tablas que crea.
 
 El índice por expresión sobre ``licitaciones`` con el que la ficha y el
-resumen buscan las licitaciones de un órgano va aparte, en v143:
+resumen buscan las licitaciones de un órgano va aparte, en v146:
 ``CREATE INDEX CONCURRENTLY`` no puede correr dentro de la transacción de este
 backfill.
 
@@ -74,8 +74,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "v142_cuenta_organos"
-down_revision: str | Sequence[str] | None = "v141_tasas_anulacion_organo"
+revision: str = "v145_cuenta_organos"
+down_revision: str | Sequence[str] | None = "v143_lic_busqueda_plegada_trgm"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

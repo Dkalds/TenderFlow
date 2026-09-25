@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-09-25
 
-Revisión Alembic aplicada: `v145_lic_organo_norm_index`.
+Revisión Alembic aplicada: `v146_lic_organo_norm_index`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas

@@ -36,7 +36,7 @@
  * (`useCuentaDeOrgano`) en vez de bajarse la lista: la identidad de un órgano
  * es su nombre plegado, y el plegado lo hace el servidor. Por eso necesita el
  * tercer argumento, y `seguir`/`dejar` sólo conocen ese órgano. La baja también
- * va por nombre (`useDejarDeSeguirOrgano`): desde v142 una cuenta puede tener
+ * va por nombre (`useDejarDeSeguirOrgano`): desde v145 una cuenta puede tener
  * varios órganos, y quitar la estrella de uno lo saca de su cuenta sin borrar
  * los demás.
  *

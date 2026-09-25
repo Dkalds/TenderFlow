@@ -1,7 +1,7 @@
-"""v143: índice por el órgano plegado de ``licitaciones``.
+"""v146: índice por el órgano plegado de ``licitaciones``.
 
-Revision ID: v143_lic_organo_norm_index
-Revises: v142_cuenta_organos
+Revision ID: v146_lic_organo_norm_index
+Revises: v145_cuenta_organos
 Create Date: 2026-09-25
 
 Qué falta hoy
@@ -14,9 +14,9 @@ la lleva dentro de un ``md5``. Sin índice, el resumen de la lista de cuentas y
 la ficha de cada una serían un escaneo completo de ~710k filas con un
 ``translate`` por fila en cada carga de pantalla.
 
-Va en revisión aparte de v142 por lo mismo que v101 fue aparte de v100:
+Va en revisión aparte de v145 por lo mismo que v101 fue aparte de v100:
 ``CREATE INDEX CONCURRENTLY`` no puede correr dentro de una transacción, y el
-backfill de v142 sí tiene que ir en una. ``CONCURRENTLY`` porque el scraper
+backfill de v145 sí tiene que ir en una. ``CONCURRENTLY`` porque el scraper
 tiene que poder seguir escribiendo mientras se construye.
 
 La expresión va congelada en vez de importarse del árbol de la app, como en
@@ -33,8 +33,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "v143_lic_organo_norm_index"
-down_revision: str | Sequence[str] | None = "v142_cuenta_organos"
+revision: str = "v146_lic_organo_norm_index"
+down_revision: str | Sequence[str] | None = "v145_cuenta_organos"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
