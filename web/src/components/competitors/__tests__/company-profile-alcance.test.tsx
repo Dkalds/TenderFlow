@@ -42,7 +42,11 @@ vi.mock("next/dynamic", () => ({
   default:
     () =>
     ({ empresaIds, empresaKey }: { empresaIds?: number[]; empresaKey?: string }) => (
-      <p>{empresaIds ? `identidad de ${empresaIds.join(",")}` : `contra mí de ${empresaKey}`}</p>
+      <p>
+        {empresaKey
+          ? `contra mí de ${empresaKey} con ${empresaIds?.join(",")}`
+          : `identidad de ${empresaIds?.join(",")}`}
+      </p>
     ),
 }));
 
@@ -178,15 +182,12 @@ describe("CompanyProfile · alcance", () => {
     expect(await screen.findByText("identidad de 7,8")).toBeInTheDocument();
   });
 
-  it("la pestaña «Contra mí» se carga al abrirla", async () => {
+  it("«Contra mí» recibe todas las identidades del grupo, como el perfil", async () => {
     renderFicha({ groupIds: [8] });
     await screen.findByRole("heading", { name: "Ejemplo Digital" });
 
     fireEvent.click(screen.getByRole("tab", { name: "Contra mí" }));
 
-    // Sólo la identidad que abre la ficha, no el grupo: el cruce del backend
-    // (`cruces_con_competidor`) recibe una clave. Es un límite anterior al
-    // dossier agrupado, no una decisión; si se amplía, este `7` pasa a `7,8`.
-    expect(await screen.findByText("contra mí de 7")).toBeInTheDocument();
+    expect(await screen.findByText("contra mí de 7 con 7,8")).toBeInTheDocument();
   });
 });

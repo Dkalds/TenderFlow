@@ -44,7 +44,8 @@ type Period = "12m" | "3y" | "all" | "global";
  * Pestañas del dossier. «Contra mí» (F3.2) es la única que habla de nosotros:
  * cruza las oportunidades presentadas del equipo con las adjudicaciones de
  * esta empresa. La clave del competidor es su id del maestro, que es lo primero
- * que prueba `empresa_key_sql` en el backend. «Identidad» es quién es la
+ * que prueba `empresa_key_sql` en el backend, y cruza también las del grupo,
+ * como el perfil. «Identidad» es quién es la
  * empresa en el maestro —NIF, alias, UTE y, si la ficha suma varias, cuáles—,
  * y no depende de ningún filtro.
  */
@@ -305,7 +306,7 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
       />
 
       {pestana === "contra_mi" ? (
-        <CompanyContraMi empresaKey={String(empresaId)} />
+        <CompanyContraMi empresaKey={String(empresaId)} empresaIds={allIds} />
       ) : pestana === "identidad" ? (
         <CompanyIdentidad empresaIds={allIds} />
       ) : (

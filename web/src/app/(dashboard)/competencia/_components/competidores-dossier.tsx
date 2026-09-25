@@ -92,7 +92,7 @@ export function CompetidoresDossier({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {companyId != null && pestana === "contra_mi" ? (
           <div className="p-3">
-            <CompanyContraMi empresaKey={String(companyId)} />
+            <CompanyContraMi empresaKey={String(companyId)} empresaIds={groupIds} />
           </div>
         ) : companyId != null ? (
           <CompanyQuickView
