@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
 import { PrefetchServidor } from "@/components/prefetch-servidor";
 import { consultasRadar } from "./_lib/prefetch";
 import { RadarView } from "./_components/radar-view";
-
-export const metadata: Metadata = {
-  title: "Radar",
-};
 
 /**
  * Radar en servidor: pide mientras renderiza las consultas que no dependen de

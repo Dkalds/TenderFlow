@@ -17,12 +17,14 @@ Radar pueda decirlo.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import infer_dtype
 
 from observability.logging import get_logger
 from shared.dto import OrganizationCapabilities
@@ -247,9 +249,39 @@ def _fallback_score(
     return max(keyword_score, _cpv_similarity(cpv, portfolio.cpvs))
 
 
-def _columna(df: pd.DataFrame, nombre: str) -> list[object]:
-    """Valores crudos de ``nombre``, o ``None`` por fila si no existe (``row.get``)."""
-    return df[nombre].tolist() if nombre in df.columns else [None] * len(df)
+def _columnas_como_iterrows(df: pd.DataFrame, nombres: tuple[str, ...]) -> list[list[object]]:
+    """Los valores de cada columna tal como los daba ``row.get`` de ``iterrows``.
+
+    ``iterrows`` construye cada fila como una ``Series`` a partir de la matriz
+    intercalada (``df.values``), y con pandas 3 (``future.infer_string``) esa
+    ``Series`` infiere el dtype de texto cuando todos los valores de la fila son
+    texto o ausentes: entonces un ``None`` sale como ``nan``. En el resto de
+    filas se queda ``None``. Aquí importa porque ``str(nan or "")`` es «nan» y
+    ``str(None or "")`` es «»: el texto que se codifica, y con él el embedding
+    y la afinidad, cambiaban (lo destapó el test de paridad con pandas 3 en CI).
+    Se reproduce la regla solo en las filas donde hay un ``None`` que mirar, así
+    que no se construye una ``Series`` por fila. ``None`` en toda la columna si
+    no existe, como ``row.get``.
+    """
+    matriz = df.values
+    infiere_texto = bool(pd.get_option("future.infer_string"))
+    es_fila_de_texto: dict[int, bool] = {}
+    columnas: list[list[object]] = []
+    for nombre in nombres:
+        if nombre not in df.columns:
+            columnas.append([None] * len(df))
+            continue
+        valores: list[object] = list(matriz[:, df.columns.get_loc(nombre)])
+        if infiere_texto:
+            for i, valor in enumerate(valores):
+                if valor is not None:
+                    continue
+                if i not in es_fila_de_texto:
+                    es_fila_de_texto[i] = infer_dtype(matriz[i], skipna=True) == "string"
+                if es_fila_de_texto[i]:
+                    valores[i] = math.nan
+        columnas.append(valores)
+    return columnas
 
 
 def score_affinity_batch(df: pd.DataFrame, portfolio: AffinityPortfolio) -> AffinityBatch:
@@ -263,9 +295,7 @@ def score_affinity_batch(df: pd.DataFrame, portfolio: AffinityPortfolio) -> Affi
         return AffinityBatch()
 
     ids = [str(value) for value in df.get("id_externo", pd.Series(dtype=str)).tolist()]
-    titulos = _columna(df, "titulo")
-    descripciones = _columna(df, "descripcion")
-    cpvs = _columna(df, "cpv")
+    titulos, descripciones, cpvs = _columnas_como_iterrows(df, ("titulo", "descripcion", "cpv"))
     pattern = _keyword_pattern(portfolio.keywords)
     fallback = {
         row_id: round(_fallback_score(titulo, descripcion, cpv, portfolio, pattern), 6)

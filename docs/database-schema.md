@@ -6,7 +6,7 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-09-18
+Generado: 2026-09-25
 
 Revisión Alembic aplicada: `v143_lic_busqueda_plegada_trgm`.
 
@@ -24,7 +24,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 11 | 156 | 53 |
+| Licitaciones y fuente | 11 | 156 | 58 |
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 141 | 31 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 20 | 157 | 28 |
-| **Total** | **96** | **869** | **215** |
+| **Total** | **96** | **869** | **220** |
 
 ## Licitaciones y fuente
 
