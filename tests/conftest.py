@@ -82,12 +82,27 @@ def pytest_configure(config):
         )
 
 
+def _ruta_relativa(item: pytest.Item, raiz: Path) -> str:
+    """Ruta del módulo relativa a la raíz del repo, que es lo que se clasifica.
+
+    Con la ruta absoluta entraban en la inferencia los directorios donde vive
+    el checkout: un worktree llamado ``app-performance-optimization-…`` marcaba
+    ``load`` la suite entera, y ``-m "unit and not slow"`` no seleccionaba
+    ningún test y salía con exit 0 — un verde sin suite (detectado el
+    2026-09-24). Solo la parte del repo describe al test.
+    """
+    try:
+        return item.path.relative_to(raiz).as_posix()
+    except ValueError:
+        return str(item.path)
+
+
 def pytest_collection_modifyitems(config, items):
     for item in items:
         marks_existing = {m.name for m in item.iter_markers()}
         if marks_existing & {"unit", "integration", "e2e", "property", "load"}:
             continue
-        marker_name = _infer_marker(str(item.fspath), item.name)
+        marker_name = _infer_marker(_ruta_relativa(item, config.rootpath), item.name)
         if marker_name == "unit" and _PG_FIXTURES & set(getattr(item, "fixturenames", ())):
             marker_name = "integration"
         item.add_marker(getattr(pytest.mark, marker_name))

@@ -15,7 +15,8 @@ vi.mock("@/lib/publico-api", () => ({ obtenerLicitacion: vi.fn() }));
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 
 const { obtenerLicitacion } = await import("@/lib/publico-api");
-const { default: FichaLicitacion } = await import("../page");
+const ficha = await import("../page");
+const { default: FichaLicitacion } = ficha;
 
 function anuncio(extra: Partial<LicitacionPublica> = {}): LicitacionPublica {
   return {
@@ -81,5 +82,13 @@ describe("FichaLicitacion", () => {
 
     const login = screen.getByRole("link", { name: "Ya tengo cuenta" });
     expect(login).toHaveAttribute("href", "/login?utm_source=publico&utm_content=ficha");
+  });
+
+  it("se sirve desde la caché ISR: nada en el build, todo en su primera visita", async () => {
+    // Declaraba `revalidate` y se renderizaba en cada petición: a una ruta
+    // dinámica le hace falta además `generateStaticParams`, aunque sea vacía.
+    expect(await ficha.generateStaticParams()).toEqual([]);
+    expect(ficha.dynamicParams).toBe(true);
+    expect(ficha.revalidate).toBe(3600);
   });
 });

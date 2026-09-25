@@ -4,7 +4,7 @@ Centraliza la elección de backend (base de datos o Redis) mediante una
 factory. Las implementaciones concretas delegan en los módulos existentes:
 
 * :class:`DbRateLimiter`     — ventana deslizante en la tabla ``rate_limits``.
-* :class:`RedisRateLimiter`  — sorted set en Redis (``RATE_LIMIT_BACKEND=redis``).
+* :class:`RedisRateLimiter`  — sorted set en Redis, con la BD de respaldo.
 
 Uso::
 
@@ -13,15 +13,44 @@ Uso::
     limiter = get_rate_limiter()
     allowed = limiter.check("ak:abc123", max_calls=120, window_seconds=60)
 
-El backend se selecciona mediante la variable de entorno
-``RATE_LIMIT_BACKEND`` (``redis`` | ``db``, por defecto ``db``) o según
-disponibilidad de Redis si está configurado. ``sqlite`` se sigue aceptando
-como alias histórico de ``db``: el motor es Postgres desde ADR-021, pero el
-valor pudo quedar fijado en despliegues anteriores.
+**Elección de backend** — variable de entorno ``RATE_LIMIT_BACKEND``:
+
+* ``auto`` (**por defecto** desde 2026-09): Redis si hay ``REDIS_URL`` (y el
+  paquete ``redis``); si no, la BD. Que Redis sea *alcanzable* se decide en cada
+  comprobación, no al arrancar: si no responde, esa comprobación la resuelve la
+  BD y Redis queda en enfriamiento (``services.rate_limit_redis.ENFRIAMIENTO_S``)
+  sin reintentar la conexión en cada petición. Así ni un Redis caído durante el
+  arranque condena el proceso a la BD para siempre, ni uno que cae después deja
+  la API sin límite. Hasta 2026-09 el default era ``db`` aunque producción
+  tuviera ``REDIS_URL``: cada petición hacía ~5 viajes a Postgres solo para
+  contarse.
+* ``redis``: lo mismo que ``auto``, pero avisa en el log si falta ``REDIS_URL``,
+  porque se pidió explícitamente y no se puede cumplir.
+* ``db``: siempre la tabla ``rate_limits``, aunque haya Redis. Es el
+  interruptor para volver al comportamiento anterior sin desplegar. ``sqlite``
+  se sigue aceptando como alias histórico: el motor es Postgres desde ADR-021,
+  pero el valor pudo quedar fijado en despliegues anteriores.
+
+Un valor desconocido se trata como ``auto`` y se avisa en el log.
+
+**Ante fallos nunca se abre el límite:**
+
+* Error de BD → se deniega (fail-closed, ``db.rate_limits.check_rate_limit_db``).
+* Error de Redis → esa comprobación cae a la BD (y, si la BD también falla, se
+  deniega). Los contadores de Redis y de la BD no se coordinan, así que en la
+  transición un cliente puede estrenar cuota en el otro almacén: es el precio de
+  degradar sin quedarse sin límite.
+
+**Bloqueo.** ``check()`` es síncrono y hace E/S de red: un viaje a Redis o
+varios a Postgres. Desde código ``async`` hay que despacharlo a un hilo; el
+``RateLimitMiddleware`` lo hace con su propio ``CapacityLimiter`` y el resto de
+consumidores async (``api/routes/security.py``, ``api/routes/auth.py``) con
+``run_db``.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Protocol
 
 from observability.logging import get_logger
@@ -89,6 +118,10 @@ class RedisRateLimiter:
 
 # ── Factory ──────────────────────────────────────────────────────────────────
 
+#: Valores de ``RATE_LIMIT_BACKEND`` que fuerzan la base de datos.
+_BACKENDS_BD = frozenset({"db", "sqlite"})
+_BACKENDS_VALIDOS = _BACKENDS_BD | {"auto", "redis"}
+
 _instance: RateLimiter | None = None
 
 
@@ -111,18 +144,23 @@ def reset_rate_limiter() -> None:
 
 
 def _create_limiter() -> RateLimiter:
-    import os
+    backend = os.getenv("RATE_LIMIT_BACKEND", "auto").strip().lower()
+    if backend not in _BACKENDS_VALIDOS:
+        log.warning("rate_limiting_backend_desconocido", valor=backend, usando="auto")
+        backend = "auto"
 
-    backend = os.getenv("RATE_LIMIT_BACKEND", "db").lower()
+    if backend in _BACKENDS_BD:
+        log.info("rate_limiting_backend_db", modo=backend)
+        return DbRateLimiter()
+
+    from services.rate_limit_redis import has_redis
+
+    if has_redis():
+        log.info("rate_limiting_backend_redis", modo=backend)
+        return RedisRateLimiter()
     if backend == "redis":
-        from services.rate_limit_redis import has_redis
-
-        if has_redis():
-            log.info("rate_limiting_backend_redis")
-            return RedisRateLimiter()
         log.warning("rate_limiting_redis_requested_but_unavailable_using_db")
-
-    log.info("rate_limiting_backend_db")
+    log.info("rate_limiting_backend_db", modo=backend)
     return DbRateLimiter()
 
 

@@ -8,9 +8,12 @@
  *    network calls.
  *  - Mock Radix Sheet to a simple div so we can render in jsdom without
  *    portal / focus-trap issues.
+ *  - El hilo (`ChatThread`, con react-markdown) entra por `next/dynamic`: lo
+ *    que pinta el hilo se espera con `findBy`, porque no está montado en el
+ *    mismo tick que el panel. La cabecera, los ejemplos y la caja de texto sí.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import * as React from "react";
 import type { ChatTurn } from "@/hooks/use-ask";
@@ -73,6 +76,21 @@ import { CopilotPanel, GlobalCopilot, CopilotBar } from "@/components/copilot-pa
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
 
+/**
+ * El primer import dinámico del hilo transforma react-markdown entero: con la
+ * máquina cargada pasa de los 5 s por defecto, así que la espera y el test
+ * (`describe` de abajo) tienen margen propio.
+ */
+const ESPERA_HILO = { timeout: 15_000 };
+
+// El import en frío del hilo (react-markdown, remark-gfm, micromark…) se paga
+// aquí, con su propio margen, y no dentro del primer test que lo necesite. El
+// panel lo sigue cargando por `next/dynamic`, así que lo que pinta el hilo
+// sigue llegando un tick después y se espera con `findBy`.
+beforeAll(async () => {
+  await import("@/components/chat-thread");
+}, 120_000);
+
 beforeEach(() => {
   mockSend.mockReset();
   mockStop.mockReset();
@@ -85,7 +103,7 @@ beforeEach(() => {
 
 // ── CopilotPanel ───────────────────────────────────────────────────────────────
 
-describe("CopilotPanel", () => {
+describe("CopilotPanel", { timeout: 30_000 }, () => {
   it("renders without crashing when open", () => {
     expect(() => render(<CopilotPanel open={true} onOpenChange={vi.fn()} />)).not.toThrow();
   });
@@ -153,16 +171,16 @@ describe("CopilotPanel", () => {
     expect(screen.queryByText("Preguntas de ejemplo")).not.toBeInTheDocument();
   });
 
-  it("displays the error message in an alert when error is set", () => {
+  it("displays the error message in an alert when error is set", async () => {
     chatState = { ...defaultChatState, error: "Error del servidor" };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    const alert = screen.getByRole("alert");
+    const alert = await screen.findByRole("alert", {}, ESPERA_HILO);
     expect(alert).toBeInTheDocument();
     expect(alert).toHaveTextContent("Error del servidor");
   });
 
-  it("renders user and assistant turns of the conversation", () => {
+  it("renders user and assistant turns of the conversation", async () => {
     chatState = {
       ...defaultChatState,
       messages: [
@@ -172,11 +190,11 @@ describe("CopilotPanel", () => {
     };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    expect(screen.getByText("¿Cuántas hay?")).toBeInTheDocument();
+    expect(await screen.findByText("¿Cuántas hay?", {}, ESPERA_HILO)).toBeInTheDocument();
     expect(screen.getByText("Aquí están los resultados.")).toBeInTheDocument();
   });
 
-  it("renders id_externo tokens as links to /detalle", () => {
+  it("renders id_externo tokens as links to /detalle", async () => {
     chatState = {
       ...defaultChatState,
       messages: [
@@ -186,11 +204,11 @@ describe("CopilotPanel", () => {
     };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    const link = screen.getByRole("link", { name: "ABC-123-XYZ-001" });
+    const link = await screen.findByRole("link", { name: "ABC-123-XYZ-001" }, ESPERA_HILO);
     expect(link).toHaveAttribute("href", "/detalle?lic=ABC-123-XYZ-001");
   });
 
-  it("shows streaming cursor when streaming=true", () => {
+  it("shows streaming cursor when streaming=true", async () => {
     chatState = {
       ...defaultChatState,
       streaming: true,
@@ -201,10 +219,27 @@ describe("CopilotPanel", () => {
     };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    expect(screen.getByText("▌")).toBeInTheDocument();
+    expect(await screen.findByText("▌", {}, ESPERA_HILO)).toBeInTheDocument();
   });
 
-  it("shows pliego sources block for assistant turns with fuentes", () => {
+  it("a pending answer shows a skeleton from the first tick, loaded thread or not", () => {
+    chatState = {
+      ...defaultChatState,
+      loading: true,
+      messages: [
+        { role: "user", content: "pregunta" },
+        { role: "assistant", content: "" },
+      ],
+    };
+    const { container } = render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
+
+    // Si el hilo aún no llegó, el esqueleto es el de su carga; si ya estaba
+    // descargado (otro test lo pidió antes), el suyo del primer token. En
+    // ninguno de los dos casos el panel se queda en blanco.
+    expect(container.querySelector(".tf-shimmer")).toBeInTheDocument();
+  });
+
+  it("shows pliego sources block for assistant turns with fuentes", async () => {
     chatState = {
       ...defaultChatState,
       messages: [
@@ -224,13 +259,13 @@ describe("CopilotPanel", () => {
     };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    const toggle = screen.getByRole("button", { name: /Fuentes del pliego \(1\)/i });
+    const toggle = await screen.findByRole("button", { name: /Fuentes del pliego \(1\)/i }, ESPERA_HILO);
     fireEvent.click(toggle);
     expect(screen.getByText(/fragmento del pliego/)).toBeInTheDocument();
     expect(screen.getByText(/PCAP\.pdf/)).toBeInTheDocument();
   });
 
-  it("shows a degraded notice with retrieved docs when the backend degraded", () => {
+  it("shows a degraded notice with retrieved docs when the backend degraded", async () => {
     chatState = {
       ...defaultChatState,
       messages: [
@@ -247,7 +282,7 @@ describe("CopilotPanel", () => {
     };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("El asistente no está disponible");
+    expect(await screen.findByRole("status", {}, ESPERA_HILO)).toHaveTextContent("El asistente no está disponible");
     expect(screen.getByRole("link", { name: "Licitación uno" })).toHaveAttribute("href", "/detalle?lic=LIC-1");
   });
 

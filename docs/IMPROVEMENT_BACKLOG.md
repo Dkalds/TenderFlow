@@ -9,6 +9,46 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - Si añadís un ítem nuevo, copiá la plantilla del final.
 - Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
 
+## Rendimiento 2026-09 — rama `claude/app-performance-optimization-222a43`
+
+Revisión de rendimiento del 2026-09-24 y su implementación (2026-09-25). Punto
+de partida medido: las funciones de Vercel corrían en `iad1` (`X-Vercel-Id:
+cdg1::iad1::…` en `/login`) con la API en Frankfurt y la BD en París; el
+dashboard es `force-dynamic` sin caché de router; la API es un proceso con un
+event loop y `--limit-concurrency 20`.
+
+**Hecho en la rama** (detalle en los commits):
+- **Red y navegación:** `regions: ["fra1"]`; `staleTimes.dynamic = 30`; cambiar
+  de pestaña, carril, periodo o búsqueda de Renovaciones ya no navega
+  (`lib/url-superficial.ts`); prefetch de servidor con 600 ms de presupuesto y
+  el del Radar movido a su página; esqueletos propios en Radar, Mercado y
+  Oportunidades.
+- **Frontend:** búsqueda del ámbito con debounce y cancelación de peticiones
+  (`signal` hasta `fetch`); `gcTime` 30 min y `refetchOnWindowFocus` solo donde
+  aporta; `keepPreviousData` en Radar y agenda; total de /detalle solo en la
+  primera página; organización por defecto adelantada; overlays del dashboard,
+  recharts de /resumen y pestañas de la ficha de oportunidad bajo demanda;
+  streaming del copiloto agrupado por frame; SSE de la campana cerrado con la
+  pestaña oculta y montado una sola vez; fichas y hubs públicos en ISR sin
+  cambiar URLs (`lib/paginacion-hubs.ts`), con precarga solo ante intención.
+- **API:** cuota fuera del event loop y en Redis por defecto; middlewares ASGI
+  puros; caché de respuestas sin E/S en el loop, con clave canónica (cerraba
+  una colisión entre parámetros) y ETag calculado al guardar (ADR-035); sesión y
+  organización personal con menos viajes; `/notifications` en una conexión;
+  SSE con una consulta por señal; pools con conexiones mínimas verificadas;
+  consulta cancelada como 503 que el navegador no reintenta.
+- **Analítica:** `adj_indicadores` del snapshot aunque haya filtro; consultas
+  del overview en paralelo acotado; variantes precalculadas para las cinco
+  tecnologías más frecuentes; scoring del Radar por columnas (×15-20);
+  `/competitive/*` cacheado.
+- **Tests:** `tests/conftest.py` clasificaba por ruta absoluta y en un checkout
+  con «performance» en el nombre `make test-unit` no seleccionaba ningún test.
+
+**Pendiente:** los cinco ítems marcados «Rendimiento 2026-09» más abajo, y
+comprobar tras el primer despliegue que `X-Vercel-Id` de `/login` dice `fra1`,
+que `?p=2` de un hub da `X-Vercel-Cache: HIT` a la segunda petición y que el log
+de la API muestra `ratelimit_redis_connected`.
+
 ## Plan de funcionalidades 2026-09 — ejecutado casi entero
 
 El plan y sus criterios de aceptación están en
@@ -185,6 +225,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P1 — Alta
 
+### [P1] [Rendimiento 2026-09] Aplicar los índices de la búsqueda `q` y del filtro de tecnología
+- **Área:** db/alembic/versions (migración, OK humano de AGENTS.md §6), db/sql_fragments.py
+- **Problema:** la búsqueda `q` del listado y de los agregados es un `LIKE '%q%'` sobre cuatro columnas plegadas sin índice utilizable, y el filtro de tecnología no tenía expresión indexable: cada búsqueda y cada filtro recorren ~1,64 M filas. La rama de rendimiento dejó el código listo —tablas de plegado como literales, idénticas en listado y agregados; tecnología con `&&` sobre una sola expresión—, pero crear los índices es una migración y quedó pendiente de OK.
+- **Acceptance criteria:**
+  - `v142` (GIN de tecnología) y `v143` (cuatro trigram sobre las expresiones plegadas) según [la propuesta](plans/2026-09-indices-busqueda-propuestos.md), con su test de DDL.
+  - Medido antes de `v143` el tamaño de `descripcion` (consultas en la propuesta); si el índice no cabe, la alternativa que la propuesta describe.
+  - `EXPLAIN` con plan genérico usando los índices, tras aplicar con `migrate.yml`.
+- **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](plans/2026-09-indices-busqueda-propuestos.md), [db/sql_fragments.py](../db/sql_fragments.py)
+- **Riesgo:** medio — índices grandes creados en caliente (`CONCURRENTLY`); el de `descripcion` puede ocupar mucho.
+
 ### [P1] Ampliar el golden set del clasificador SAP a 300-500 ejemplos etiquetados a mano
 - **Área:** tests/fixtures/golden_set.jsonl, tests/fixtures/golden_set_tech.jsonl, scripts/sample_golden_candidates.py (acción del usuario: etiquetar)
 - **Problema:** el golden set es el único sitio del repo con etiquetas humanas independientes del filtro de keywords, y de él salen dos cosas que gobiernan producción: el umbral servido y `recall_no_keyword`, la métrica que decide si el ML aporta algo sobre `matches_sap()` (desde el 2026-08-24 es criterio **bloqueante** del gate de promoción, `services/ml/promotion.py`). Con 27 ejemplos no sostiene ninguna de las dos: solo 6 son positivos humanos sin keyword, así que `recall_no_keyword` se mueve a saltos de 16,7 puntos y solo puede tomar 7 valores; un bootstrap sobre esos 27 da un umbral con sigma=0,084 y rango p5-p95 de [0,30, 0,56] sobre un rango útil de 0,65, y el F-beta reportado sobre el mismo conjunto donde se elegía el umbral sobreestimaba el real en +0,08 de media (+0,25 en el p90). El reparto tune/holdout ya está implementado; partir 27 en dos no arregla el tamaño. El golden multi-etiqueta (`golden_set_tech.jsonl`) tiene 23 ejemplos semilla y el mismo problema.
@@ -271,6 +321,32 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — primera vez que salen correos y webhooks del outbox.
 
 ## P2 — Media
+
+### [P2] [Rendimiento 2026-09] Subir el `--limit-concurrency` de uvicorn (20)
+- **Área:** docker/docker-entrypoint-api.sh, render.yaml, servicio de Render (acción del usuario)
+- **Problema:** uvicorn responde 503 en cuanto las conexiones abiertas —keep-alive ociosas incluidas— o las tareas llegan a 20, y cada pestaña del dashboard mantiene un SSE (`/licitaciones/stream`, hasta 5 min). Con una decena de pestañas y una ráfaga de carga salen 503 que el navegador reintenta con backoff: se percibe como lentitud. La rama de rendimiento ya cierra el SSE con la pestaña oculta y lo monta una sola vez, pero el techo sigue en 20; subirlo es configuración de despliegue y quedó pendiente de OK.
+- **Acceptance criteria:**
+  - Default de `UVICORN_LIMIT_CONCURRENCY` a 200 en el entrypoint (los límites reales son el threadpool de 24 y los pools) y la variable documentada en `render.yaml`.
+  - Comprobado en el panel de Render que no hay un valor explícito que lo pise, y sin `Exceeded concurrency limit` en los logs tras desplegar.
+- **Files de partida:** [docker/docker-entrypoint-api.sh](../docker/docker-entrypoint-api.sh)
+- **Riesgo:** bajo — el techo que protege de verdad (hilos y conexiones) no cambia.
+
+### [P2] [Rendimiento 2026-09] Medir la analítica en producción y encender su techo de sentencia
+- **Área:** config/settings.py (`API_ANALYTICS_STATEMENT_TIMEOUT_MS`), variables de Render
+- **Problema:** el mecanismo existe (`api/techo_analitica.py`, `db.connection.techo_de_sentencia`) pero nace apagado: sin `pg_stat_statements` de producción no se sabe cuántas agregaciones filtradas tardan hoy entre 15 y 30 s y pasarían a fallar. Una consulta cancelada ya no se reintenta (503 `query-timeout`), así que encenderlo no multiplica la carga.
+- **Acceptance criteria:**
+  - Distribución de duraciones de las consultas de `/analytics` y `/competitive` medida (`pg_stat_statements` o `http_request_duration_seconds` por ruta), anotada con fecha.
+  - El valor elegido fijado en Render (o el default del setting cambiado) con el motivo; preferiblemente después del P1 de índices.
+- **Riesgo:** medio — un techo corto convierte consultas lentas en errores.
+
+### [P2] [Rendimiento 2026-09] El auto-marcado de tests excluye del gate los módulos con «download» en el nombre
+- **Área:** tests/conftest.py (`_LOAD_TOKENS`), scripts/check_agent_docs.py
+- **Problema:** `_infer_marker` busca `load` como subcadena de la ruta, así que `tests/test_bulk_downloader.py` y `tests/test_exports_download_session.py` quedan marcados `load` y fuera de `make check` y `make test-unit`, que corren `unit or integration`. Hallado al arreglar que la ruta se tomaba absoluta (rama de rendimiento); no se tocó porque incluirlos puede destapar fallos de tests que nunca se han ejecutado en el gate.
+- **Acceptance criteria:**
+  - El token de carga casa como palabra del nombre del módulo (`test_load_*`, `*_performance*`), no como subcadena, y `check_agent_docs` sigue en verde.
+  - Los dos módulos corren en el gate y pasan, o sus fallos quedan arreglados en el mismo cambio.
+- **Files de partida:** [tests/conftest.py](../tests/conftest.py)
+- **Riesgo:** bajo — solo cambia qué tests entran en el gate.
 
 ### [P2] La portada cita el tamaño del censo bajo un titular que promete lo contrario
 - **Área:** producción (acción del usuario) + web/src/app/(publico)/_components/franja-datos.tsx
@@ -453,6 +529,18 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## P3 — Nice to have
+
+### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
+- **Área:** web/bundle-budget.json, .env.example (OK humano), varios
+- **Problema:** lo que la rama no pudo cerrar por falta de build, de permiso o de alcance:
+  - Los techos de `web/bundle-budget.json` no se han bajado: sin `next build` no se midió. Estimado: −200 a −570 KB sin comprimir según la ruta (/resumen la que más). Las rutas nuevas de `hub-paginado/` salen como «NUEVA».
+  - `.env.example` no declara `RATE_LIMIT_BACKEND=auto` (sigue diciendo `sqlite`), `DB_POOL_MIN_SIZE`, `DB_READ_POOL_MIN_SIZE` ni `API_ANALYTICS_STATEMENT_TIMEOUT_MS`.
+  - Siguen con E/S síncrona en handlers `async`: `_check_budget` de `api/routes/ask.py` (presupuesto LLM en Redis).
+  - La imagen Open Graph de la ficha pública (`opengraph-image.tsx`) sigue dinámica.
+  - El scoring de /detalle no manda `organization_id` y puntúa con los pesos de la organización personal; las renovaciones filtran tecnología por igualdad (`IN`) y `tecnologia_detalle_*` sigue con `unnest`.
+  - Si se activa `NUCLEO_TIPADO_LECTURA`, el listado por cursor pierde `idx_lic_cursor` (v134 solo crea índices simples).
+- **Acceptance criteria:** cada viñeta cerrada o convertida en su propio ítem; `python scripts/check_bundle_budget.py --update` tras el primer build de la rama mergeada.
+- **Riesgo:** bajo.
 
 ### [P3] Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)
 - **Área:** GitHub Security (acción del usuario), .github/dependabot.yml

@@ -6,7 +6,12 @@ import asyncio
 import json
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+#: Contraseña de Redis de mentira para los tests. Una sola aparición del literal:
+#: detect-secrets agrupa por valor y fichero, y avisaría en cada uso si no.
+_CLAVE_REDIS_FALSA = "s3creta"  # pragma: allowlist secret
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -450,7 +455,42 @@ class TestInvalidateUserScoped:
         assert borradas == 2
         restantes = cache.keys("*")
         assert len(restantes) == 2
-        assert all("principal:user-a" not in k or not k.startswith("scoring|") for k in restantes)
+        assert all(
+            '"principal":"user-a"' not in k or not k.startswith("scoring|") for k in restantes
+        )
+
+    def test_invalidar_a_un_usuario_no_toca_a_otro_que_empieza_igual(self):
+        """``u1`` no es un prefijo de la marca de ``u10``: la marca lleva sus comillas."""
+        mod = _fresh_import()
+
+        @mod.cache_response(ttl=60, namespace="invalidate-prefijo")
+        def scoring(*, _user):
+            return {"principal": _user["user_key"]}
+
+        async def invoke():
+            await scoring(_user={"user_key": "u1"})
+            await scoring(_user={"user_key": "u10"})
+
+        asyncio.run(invoke())
+
+        assert mod.invalidate_user_scoped("invalidate-prefijo", "scoring", "u1") == 1
+        (restante,) = mod.get_cache("invalidate-prefijo").keys("*")
+        assert '"principal":"u10"' in restante
+
+    def test_un_parametro_no_puede_hacerse_pasar_por_un_usuario(self):
+        """El texto de la marca dentro de un parámetro va escapado: no casa."""
+        mod = _fresh_import()
+
+        @mod.cache_response(ttl=60, namespace="invalidate-suplantacion", user_scoped=False)
+        def scoring(*, q, _user):
+            return {"q": q}
+
+        async def invoke():
+            await scoring(q='x","principal":"victima', _user={"user_key": "atacante"})
+
+        asyncio.run(invoke())
+
+        assert mod.invalidate_user_scoped("invalidate-suplantacion", "scoring", "victima") == 0
 
     def test_no_falla_cuando_no_hay_nada_que_invalidar(self):
         mod = _fresh_import()
@@ -473,7 +513,7 @@ class TestInvalidateUserScoped:
         assert mod.invalidate_organization_scoped("invalidate-org", "scoring", 7) == 2
         restantes = mod.get_cache("invalidate-org").keys("*")
         assert len(restantes) == 1
-        assert "organization:8" in restantes[0]
+        assert '"organization":"8"' in restantes[0]
 
 
 class TestCacheResponseIdentity:
@@ -566,6 +606,94 @@ class TestCacheResponseIdentity:
         assert madrid["ccaa"] == "Madrid"
         assert galicia["ccaa"] == "Galicia"
 
+    def test_un_valor_con_separadores_no_ocupa_la_entrada_de_otra_consulta(self):
+        """``?ccaa=Madrid|cpv:72`` fabricaba la clave de ``?ccaa=Madrid&cpv=72``.
+
+        Con la clave ``k:v`` unida por ``|``, cualquier usuario autenticado
+        podía sembrar una respuesta en la entrada de otra consulta, y en un
+        endpoint ``user_scoped=False`` esa respuesta la recibían todos durante
+        el TTL. La clave es JSON canónico: los separadores de un valor van
+        dentro de su cadena y no pueden partirla.
+        """
+        mod = _fresh_import()
+        calls = 0
+
+        @mod.cache_response(ttl=60, namespace="global-colision", user_scoped=False)
+        def global_data(*, ccaa, cpv=None, _user):
+            nonlocal calls
+            calls += 1
+            return {"ccaa": ccaa, "cpv": cpv}
+
+        async def invoke():
+            sembrada = await global_data(ccaa="Madrid|cpv:72", _user={"user_key": "atacante"})
+            legitima = await global_data(ccaa="Madrid", cpv="72", _user={"user_key": "victima"})
+            return sembrada, legitima
+
+        sembrada, legitima = asyncio.run(invoke())
+
+        assert legitima == {"ccaa": "Madrid", "cpv": "72"}, "servida la respuesta sembrada"
+        assert sembrada == {"ccaa": "Madrid|cpv:72", "cpv": None}
+        assert calls == 2
+        assert len(mod.get_cache("global-colision").keys("*")) == 2
+
+    def test_la_clave_distingue_ninguno_de_los_separadores_clasicos(self):
+        """Pares que con la clave antigua colisionaban: aquí dan claves distintas."""
+        from shared.cache import _clave_de_peticion
+
+        pares = [
+            ({"ccaa": "Madrid|cpv:72"}, {"ccaa": "Madrid", "cpv": "72"}),
+            ({"a": "1|b:2"}, {"a": "1", "b": "2"}),
+            ({"q": 'x","y":"z'}, {"q": "x", "y": "z"}),
+            ({"q": "None"}, {"q": None}),
+        ]
+        for uno, otro in pares:
+            assert _clave_de_peticion(
+                "f", uno, user_scoped=False, huella="h"
+            ) != _clave_de_peticion("f", otro, user_scoped=False, huella="h"), (uno, otro)
+
+    def test_un_dto_distinto_no_sirve_las_entradas_del_anterior(self):
+        """Tras un despliegue que cambia el DTO, lo guardado antes no se sirve.
+
+        Antes el acierto pasaba por la validación de FastAPI contra el
+        ``response_model``; ahora el cuerpo sale tal cual, así que la forma de
+        la respuesta va en la clave.
+        """
+        from pydantic import BaseModel
+
+        mod = _fresh_import()
+
+        class Antes(BaseModel):
+            total: int
+
+        class Despues(BaseModel):
+            total: int
+            nuevo: str = "x"
+
+        llamadas: list[str] = []
+
+        def _version(modelo, etiqueta):
+            def resumen(*, _user):
+                llamadas.append(etiqueta)
+                return modelo(total=1)
+
+            # Anotación real y no texto: con `from __future__ import annotations`
+            # un tipo local no se podría resolver, y ahí la huella cae a un
+            # valor fijo (el caso de un handler sin tipo). Las rutas de verdad
+            # anotan clases de módulo: ver tests/test_cache_response_http.py.
+            resumen.__annotations__ = {"return": modelo}
+            return mod.cache_response(ttl=60, namespace="huella-dto", user_scoped=False)(resumen)
+
+        async def invoke():
+            await _version(Antes, "antes")(_user={})
+            await _version(Despues, "despues")(_user={})
+            await _version(Despues, "despues")(_user={})
+
+        asyncio.run(invoke())
+
+        assert llamadas == ["antes", "despues"], "el despliegue nuevo calcula una vez y reutiliza"
+        claves = mod.get_cache("huella-dto").keys("resumen|*")
+        assert len(claves) == 2
+
 
 # ---------------------------------------------------------------------------
 # single_flight
@@ -648,3 +776,281 @@ class TestSingleFlight:
             return await asyncio.wait_for(invoke(), timeout=5)
 
         assert asyncio.run(con_limite()) == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Redis: timeouts, cortacircuitos y formato de las respuestas cacheadas
+# ---------------------------------------------------------------------------
+
+
+class _RedisFalso:
+    """Doble del cliente redis-py: un dict, y la opción de fallar o contar."""
+
+    def __init__(self) -> None:
+        self.datos: dict[str, str] = {}
+        self.llamadas = 0
+        self.error: Exception | None = None
+
+    def _uso(self) -> None:
+        self.llamadas += 1
+        if self.error is not None:
+            raise self.error
+
+    def get(self, key: str) -> str | None:
+        self._uso()
+        return self.datos.get(key)
+
+    def setex(self, key: str, ttl: int, value: str) -> None:
+        self._uso()
+        assert ttl >= 1, "Redis rechaza un SETEX con plazo 0"
+        self.datos[key] = value
+
+    def set(self, key: str, value: str) -> None:
+        self._uso()
+        self.datos[key] = value
+
+    def delete(self, *keys: str) -> None:
+        self._uso()
+        for key in keys:
+            self.datos.pop(key, None)
+
+    def scan(self, cursor: int = 0, match: str = "*", count: int = 100) -> tuple[int, list[str]]:
+        self._uso()
+        prefijo = match.rstrip("*")
+        return 0, [k for k in self.datos if k.startswith(prefijo)]
+
+
+def _backend_con(cliente: _RedisFalso):
+    from shared.cache import _RedisBackend
+
+    backend = _RedisBackend.__new__(_RedisBackend)
+    backend._ns = "ns:"
+    backend._r = cliente
+    return backend
+
+
+class TestRedisTimeoutsYCortacircuitos:
+    """Un Redis colgado no puede costar un timeout por petición, ni parar el proceso."""
+
+    def test_el_cliente_se_crea_con_timeouts_y_un_solo_reintento(self):
+        """Sin ``socket_timeout`` un Redis que no responde bloqueaba para siempre."""
+        import redis
+        from redis.retry import Retry
+
+        import shared.cache as mod
+
+        capturado: dict = {}
+
+        class _Cliente:
+            def ping(self):
+                return True
+
+        def _from_url(url, **kwargs):
+            capturado.update(kwargs)
+            return _Cliente()
+
+        with patch.object(redis.Redis, "from_url", side_effect=_from_url):
+            mod._RedisBackend(
+                "redis://localhost:6379/0",
+                namespace="x",
+                password=_CLAVE_REDIS_FALSA,
+            )
+
+        assert capturado["password"] == _CLAVE_REDIS_FALSA
+        assert capturado["socket_timeout"] == mod._REDIS_SOCKET_TIMEOUT_S <= 1.0
+        assert capturado["socket_connect_timeout"] == mod._REDIS_CONNECT_TIMEOUT_S
+        retry = capturado["retry"]
+        assert isinstance(retry, Retry)
+        # Un reintento como mucho: el tiempo máximo de una operación queda acotado.
+        # (`get_retries` en redis-py reciente; `_retries` en la 5.x.)
+        reintentos = retry.get_retries() if hasattr(retry, "get_retries") else retry._retries
+        assert reintentos == 1
+
+    def test_try_redis_pasa_redis_password(self):
+        """Como ``llm/budget.py`` y el rate limiter: sin la contraseña, contra un
+        Redis con ``requirepass`` el PING fallaba y el namespace se quedaba en
+        memoria para siempre."""
+        from pydantic import SecretStr
+
+        import config as config_mod
+
+        mod = _fresh_import()
+        mock_s = MagicMock()
+        mock_s.REDIS_URL = "redis://redis:6379/0"
+        mock_s.REDIS_PASSWORD = SecretStr(_CLAVE_REDIS_FALSA)
+        with (
+            patch.object(config_mod, "settings", mock_s),
+            patch("shared.cache._RedisBackend") as backend,
+        ):
+            mod._try_redis("ns")
+
+        backend.assert_called_once_with(
+            "redis://redis:6379/0", namespace="ns", password=_CLAVE_REDIS_FALSA
+        )
+
+    def test_sin_redis_password_no_se_manda_ninguna(self):
+        from pydantic import SecretStr
+
+        import shared.cache as mod
+
+        assert mod._contrasena_redis(SimpleNamespace(REDIS_PASSWORD=SecretStr(""))) is None
+        assert mod._contrasena_redis(SimpleNamespace()) is None
+        assert mod._contrasena_redis(MagicMock()) is None
+
+    def test_tras_un_fallo_se_salta_redis_y_se_usa_la_memoria(self):
+        cliente = _RedisFalso()
+        backend = _backend_con(cliente)
+        cliente.error = TimeoutError("redis colgado")
+
+        backend.set("k", {"v": 1}, ttl=60)  # falla: abre el circuito y guarda en memoria
+        llamadas_tras_el_fallo = cliente.llamadas
+
+        assert backend.get("k") == {"v": 1}, "el respaldo en memoria sirve lo guardado"
+        backend.set("otra", 2, ttl=60)
+        assert backend.get("otra") == 2
+        assert sorted(backend.keys("*")) == ["k", "otra"]
+        assert cliente.llamadas == llamadas_tras_el_fallo, (
+            "con el circuito abierto no se toca Redis"
+        )
+
+    def test_pasado_el_plazo_vuelve_a_probar_redis_y_vacia_el_respaldo(self):
+        cliente = _RedisFalso()
+        backend = _backend_con(cliente)
+        cliente.error = ConnectionError("caído")
+        backend.set("k", "durante la caída", ttl=60)
+
+        cliente.error = None
+        backend._saltar_hasta = 0.0  # plazo cumplido
+        assert backend.get("k") is None, "Redis responde: lo del respaldo no se sirve"
+        assert cliente.llamadas >= 2
+        # Recuperado Redis, el respaldo se vacía: sus entradas eran de la caída.
+        assert backend._memoria().keys("*") == []
+
+    def test_el_plazo_del_cortacircuitos_es_corto(self):
+        import shared.cache as mod
+
+        cliente = _RedisFalso()
+        backend = _backend_con(cliente)
+        cliente.error = ConnectionError("caído")
+        antes = time.monotonic()
+        backend.get("k")
+
+        assert 0 < backend._saltar_hasta - antes <= mod._REDIS_BREAKER_S + 1
+        assert mod._REDIS_BREAKER_S <= 60
+
+    def test_un_valor_ilegible_no_abre_el_circuito(self):
+        cliente = _RedisFalso()
+        backend = _backend_con(cliente)
+        cliente.datos["ns:k"] = "{no es json"
+
+        assert backend.get("k") is None
+        assert backend._redis_activo()
+
+    def test_ttl_menor_de_un_segundo_no_manda_setex_0(self):
+        cliente = _RedisFalso()
+        backend = _backend_con(cliente)
+
+        backend.set("k", 1, ttl=0.5)
+
+        assert backend._redis_activo(), "SETEX 0 es un error de Redis y abriría el circuito"
+        assert "ns:k" in cliente.datos
+
+
+class TestRespuestaCacheadaEnRedis:
+    """``cache_response`` guarda en Redis el JSON ya serializado, sin reparsearlo."""
+
+    def test_ida_y_vuelta(self):
+        from shared.cache import _RespuestaCacheada
+
+        cliente = _RedisFalso()
+        backend = _backend_con(cliente)
+        entrada = _RespuestaCacheada(cuerpo='{"a":"ñ"}'.encode(), etag='W/"abc"')
+
+        backend.set_respuesta("k", entrada, ttl=60)
+
+        assert cliente.datos["ns:k"].startswith("tf-respuesta-v1\n")
+        assert backend.get_respuesta("k") == entrada
+
+    def test_una_entrada_del_formato_anterior_es_un_fallo(self):
+        """Lo que escribió la versión anterior (un dict en JSON) se recalcula."""
+        cliente = _RedisFalso()
+        backend = _backend_con(cliente)
+        cliente.datos["ns:k"] = json.dumps({"total": 3})
+
+        assert backend.get_respuesta("k") is None
+
+    def test_con_el_circuito_abierto_la_respuesta_va_a_memoria(self):
+        from shared.cache import _RespuestaCacheada
+
+        cliente = _RedisFalso()
+        backend = _backend_con(cliente)
+        cliente.error = TimeoutError("colgado")
+        entrada = _RespuestaCacheada(cuerpo=b"{}", etag='W/"x"')
+
+        backend.set_respuesta("k", entrada, ttl=60)
+
+        assert backend.get_respuesta("k") == entrada
+
+    def test_las_variantes_async_no_hacen_la_e_s_en_el_loop(self):
+        from shared.cache import _RespuestaCacheada
+
+        hilos: list[int] = []
+        cliente = _RedisFalso()
+        get_original = cliente.get
+
+        def _get_espia(key):
+            hilos.append(threading.get_ident())
+            return get_original(key)
+
+        cliente.get = _get_espia
+        backend = _backend_con(cliente)
+        backend.set_respuesta("k", _RespuestaCacheada(cuerpo=b"{}", etag='W/"x"'), ttl=60)
+
+        async def _leer():
+            entrada = await backend.aget_respuesta("k")
+            valor = await backend.aget("k")
+            return entrada, valor, threading.get_ident()
+
+        entrada, _valor, hilo_del_loop = asyncio.run(_leer())
+
+        assert entrada is not None
+        assert hilos
+        assert all(h != hilo_del_loop for h in hilos)
+
+    def test_cache_response_con_redis_no_llama_al_cliente_desde_el_loop(self):
+        """El wrapper de extremo a extremo con un backend Redis simulado."""
+        from starlette.responses import Response
+
+        import shared.cache as mod
+
+        mod.reset_cache()
+        hilos: list[int] = []
+        cliente = _RedisFalso()
+        for nombre in ("get", "setex"):
+            original = getattr(cliente, nombre)
+
+            def _espia(*args, _original=original, **kwargs):
+                hilos.append(threading.get_ident())
+                return _original(*args, **kwargs)
+
+            setattr(cliente, nombre, _espia)
+        mod._instances["redis-e2e"] = _backend_con(cliente)
+
+        @mod.cache_response(ttl=60, namespace="redis-e2e")
+        def handler(*, _user):
+            return {"ok": True}
+
+        async def _dos():
+            primera = await handler(_user={}, _cache_response_temporal=Response())
+            segunda = await handler(_user={}, _cache_response_temporal=Response())
+            return primera, segunda, threading.get_ident()
+
+        try:
+            primera, segunda, hilo_del_loop = asyncio.run(_dos())
+        finally:
+            mod.reset_cache()
+
+        assert primera.body == segunda.body == b'{"ok":true}'
+        assert segunda.headers["etag"] == primera.headers["etag"]
+        assert hilos
+        assert all(h != hilo_del_loop for h in hilos)

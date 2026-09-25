@@ -13,11 +13,7 @@
  * no necesite servidor.
  */
 
-import type {
-  PaginationState,
-  RowSelectionState,
-  SortingState,
-} from "@tanstack/react-table";
+import type { PaginationState, RowSelectionState, SortingState } from "@tanstack/react-table";
 import type { LicitacionSummary } from "@/lib/api-types";
 
 export const PAGE_SIZE = 25;
@@ -61,8 +57,14 @@ export interface MergedRow extends LicitacionSummary {
  * El listado por offset (`GET /licitaciones`) se retira (RFC 2026-09-06); el
  * cursor acepta los mismos filtros y los mismos seis valores de `sort`. La
  * página ya no es un `offset`: es el `cursor` que devolvió la anterior
- * (`null` en la primera). `with_total` va siempre porque el pie dice «de N» en
- * todas las páginas — el mismo `COUNT(*)` que pedía el listado por offset.
+ * (`null` en la primera).
+ *
+ * `with_total` sólo va en la primera página. Es un `COUNT(*)` con los mismos
+ * filtros sobre el histórico entero, y se pedía en todas: pasar de página
+ * volvía a contar lo que ya se sabía. La API pide hacerlo sólo en la primera
+ * (`api/routes/licitaciones/listado.py`, `with_total`); las siguientes
+ * reutilizan el total de su conjunto (`conTotalConocido`), porque el pie sigue
+ * diciendo «de N» en todas.
  *
  * El prefijo `-` invierte el sentido por defecto de cada columna: para fecha el
  * default es descendente y para importe/título ascendente. Una columna que el
@@ -82,9 +84,9 @@ export function buildQueryParams({
   const params: Record<string, string> = {
     ...filterParams,
     limit: String(pagination.pageSize),
-    with_total: "true",
   };
   if (cursor) params.cursor = cursor;
+  else params.with_total = "true";
   const active = sorting[0];
   const serverKey = active ? SERVER_SORT[active.id] : undefined;
   if (active && serverKey) {
@@ -94,10 +96,46 @@ export function buildQueryParams({
   return params;
 }
 
+/** Total de un conjunto de filtros y orden, aprendido de su primera página. */
+export interface TotalConocido {
+  conjunto: string;
+  total: number;
+}
+
+/**
+ * Identidad del conjunto que cuenta el total: filtros, orden y tamaño de
+ * página. Todo lo que `buildQueryParams` manda salvo la página en sí (`cursor`)
+ * y la petición del total, que es justo lo que cambia de una página a otra del
+ * mismo conjunto.
+ */
+export function conjuntoDelListado(queryParams: Record<string, string>): string {
+  const { cursor: _cursor, with_total: _withTotal, ...conjunto } = queryParams;
+  return JSON.stringify(Object.entries(conjunto).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/**
+ * La página con su `total`: el que trae (primera página) o el aprendido de la
+ * primera página de su mismo conjunto.
+ *
+ * Un total de otro conjunto sólo se pinta sobre datos de relleno
+ * (`placeholderData`): mientras llega la primera página de un filtro nuevo se
+ * sigue enseñando la página anterior, y su «de N» es el de entonces, como
+ * antes. Sobre una respuesta real de otro conjunto no se inventa: sin total
+ * conocido la página sale sin él.
+ */
+export function conTotalConocido<P extends { total?: number | null }>(
+  pagina: P | undefined,
+  conjunto: string,
+  conocido: TotalConocido | null,
+  esRelleno: boolean,
+): P | undefined {
+  if (!pagina || pagina.total != null || !conocido) return pagina;
+  if (conocido.conjunto !== conjunto && !esRelleno) return pagina;
+  return { ...pagina, total: conocido.total };
+}
+
 /** Índice `id_externo → score` de la respuesta de scoring. */
-export function buildScoreMap(
-  scoring: ScoringResponse | undefined | null,
-): Map<string, ScoringItem> {
+export function buildScoreMap(scoring: ScoringResponse | undefined | null): Map<string, ScoringItem> {
   const map = new Map<string, ScoringItem>();
   for (const item of scoring?.opportunities ?? []) map.set(item.id_externo, item);
   return map;
@@ -162,10 +200,7 @@ export function nextSorting(current: SortingState, columnId: string): SortingSta
 }
 
 /** Alterna una fila en la selección (ausencia = no seleccionada). */
-export function toggleRowSelection(
-  current: RowSelectionState,
-  id: string,
-): RowSelectionState {
+export function toggleRowSelection(current: RowSelectionState, id: string): RowSelectionState {
   const next = { ...current };
   if (next[id]) delete next[id];
   else next[id] = true;
@@ -193,11 +228,7 @@ export function toggleAllPageSelection(
  * por cursor sólo se puede saltar a una página ya visitada o a la siguiente,
  * así que la ventana no ofrece números a los que no se puede ir.
  */
-export function pageWindowFor(
-  pageIndex: number,
-  totalPages: number,
-  alcanzables: number = totalPages,
-): number[] {
+export function pageWindowFor(pageIndex: number, totalPages: number, alcanzables: number = totalPages): number[] {
   const pages: number[] = [];
   const start = Math.max(0, pageIndex - 2);
   const end = Math.min(totalPages - 1, alcanzables - 1, pageIndex + 2);
@@ -225,9 +256,7 @@ export function buildCsv(rows: LicitacionSummary[]): string {
       CSV_HEADERS.map((header) => {
         const value = (row as unknown as Record<string, unknown>)[header];
         const text = value == null ? "" : String(value);
-        return text.includes(",") || text.includes('"')
-          ? `"${text.replace(/"/g, '""')}"`
-          : text;
+        return text.includes(",") || text.includes('"') ? `"${text.replace(/"/g, '""')}"` : text;
       }).join(","),
     ),
   ].join("\n");

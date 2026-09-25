@@ -6,13 +6,17 @@
  * el selector del menú de cuenta: el trabajo compartido vive en el equipo.
  */
 import * as React from "react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import {
+  olvidarOrganizacionPorDefecto,
   organizacionPorDefecto,
   organizacionResuelta,
   useActiveOrganizationId,
+  useOrganizations,
   useOrganizationStore,
   type Organization,
 } from "@/hooks/use-organization";
@@ -36,14 +40,20 @@ function wrapper({ children }: { children: React.ReactNode }) {
 function servirOrganizaciones(organizations: Organization[]) {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockImplementation((...call: unknown[]) =>
-      Promise.resolve(jsonResponse(callUrl(call).includes("/organizations") ? organizations : {})),
-    ),
+    vi
+      .fn()
+      .mockImplementation((...call: unknown[]) =>
+        Promise.resolve(jsonResponse(callUrl(call).includes("/organizations") ? organizations : {})),
+      ),
   );
 }
 
 afterEach(() => {
-  useOrganizationStore.setState({ activeOrganizationId: null });
+  // Desmontar antes de limpiar el store: un hook aún montado recibe su
+  // `/organizations` tarde y apuntaría la de por defecto en la caché después de
+  // limpiarla, y el test siguiente la heredaría.
+  cleanup();
+  useOrganizationStore.setState({ activeOrganizationId: null, ultimaPorDefecto: undefined });
   vi.unstubAllGlobals();
 });
 
@@ -137,5 +147,153 @@ describe("useActiveOrganizationId", () => {
     const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
 
     await waitFor(() => expect(result.current).toBe(21));
+  });
+});
+
+/**
+ * Sin elección guardada, cada carga completa esperaba a `/organizations` antes
+ * de lanzar el Radar, la Agenda, las oportunidades y las métricas: un viaje de
+ * ida y vuelta entero para acabar casi siempre en la misma organización. Ahora
+ * se adelanta la última por defecto que confirmó el listado, y el listado la
+ * corrige si ha dejado de valer.
+ */
+describe("useActiveOrganizationId — organización por defecto adelantada", () => {
+  /** `/organizations` que no contesta hasta que se libere. */
+  function organizacionesEnVuelo(organizations: Organization[]) {
+    let liberar: () => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            liberar = () => resolve(jsonResponse(organizations));
+          }),
+      ),
+    );
+    return { liberar: () => liberar() };
+  }
+
+  it("recuerda la organización por defecto que confirma el listado", async () => {
+    servirOrganizaciones([org(9, true), org(21, false)]);
+    const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
+
+    await waitFor(() => expect(result.current).toBe(21));
+    await waitFor(() => expect(useOrganizationStore.getState().ultimaPorDefecto).toBe(21));
+  });
+
+  it("con una recordada, la entrega desde el primer render sin esperar al listado", () => {
+    useOrganizationStore.setState({ ultimaPorDefecto: 21 });
+    organizacionesEnVuelo([org(9, true), org(21, false)]);
+
+    const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
+
+    expect(result.current).toBe(21);
+    expect(organizacionResuelta(result.current)).toBe(true);
+  });
+
+  it("si la recordada ya no vale, el listado la corrige y la caché se actualiza", async () => {
+    // La recordada es el equipo 40, del que la persona ya no es miembro.
+    useOrganizationStore.setState({ ultimaPorDefecto: 40 });
+    const api = organizacionesEnVuelo([org(9, true), org(21, false)]);
+
+    const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
+    expect(result.current).toBe(40);
+
+    api.liberar();
+    await waitFor(() => expect(result.current).toBe(21));
+    await waitFor(() => expect(useOrganizationStore.getState().ultimaPorDefecto).toBe(21));
+  });
+
+  it("también recuerda que no hay ninguna: `null` sale sin esperar la próxima vez", async () => {
+    servirOrganizaciones([]);
+    const primera = renderHook(() => useActiveOrganizationId(), { wrapper });
+    await waitFor(() => expect(useOrganizationStore.getState().ultimaPorDefecto).toBeNull());
+    primera.unmount();
+
+    organizacionesEnVuelo([]);
+    const segunda = renderHook(() => useActiveOrganizationId(), { wrapper });
+    expect(segunda.result.current).toBeNull();
+    expect(organizacionResuelta(segunda.result.current)).toBe(true);
+  });
+
+  it("una elección guardada sigue mandando sobre la recordada", async () => {
+    useOrganizationStore.setState({ activeOrganizationId: 9, ultimaPorDefecto: 30 });
+    const api = organizacionesEnVuelo([org(9, true), org(21, false)]);
+
+    const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
+    expect(result.current).toBe(9);
+
+    api.liberar();
+    // La caché apunta la de por defecto (para cuando no haya elección)…
+    await waitFor(() => expect(useOrganizationStore.getState().ultimaPorDefecto).toBe(21));
+    // …pero la activa sigue siendo la elegida.
+    expect(result.current).toBe(9);
+  });
+
+  it("si el listado falla, sigue con la recordada en vez de saltar a la personal", async () => {
+    useOrganizationStore.setState({ ultimaPorDefecto: 21 });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("sin red")));
+
+    const { result } = renderHook(() => ({ activa: useActiveOrganizationId(), listado: useOrganizations() }), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.listado.isError).toBe(true));
+    expect(result.current.activa).toBe(21);
+    expect(useOrganizationStore.getState().ultimaPorDefecto).toBe(21);
+  });
+
+  it("el HTML del servidor y la hidratación no ven la caché: no hay desajuste", async () => {
+    // El servidor no tiene `localStorage`; si el primer render del cliente
+    // leyera la caché, pintaría otra cosa que el HTML y React tendría que
+    // descartarlo. zustand entrega el estado inicial durante la hidratación.
+    useOrganizationStore.setState({ ultimaPorDefecto: 21 });
+    const api = organizacionesEnVuelo([org(9, true), org(21, false)]);
+
+    function Organizacion() {
+      const id = useActiveOrganizationId();
+      return <span data-testid="org">{id === undefined ? "pendiente" : String(id)}</span>;
+    }
+    const conCliente = () => (
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <Organizacion />
+      </QueryClientProvider>
+    );
+
+    const contenedor = document.createElement("div");
+    contenedor.innerHTML = renderToString(conCliente());
+    // El servidor no conoce la caché: pinta «pendiente».
+    expect(contenedor.textContent).toBe("pendiente");
+    document.body.appendChild(contenedor);
+
+    const erroresRecuperables = vi.fn();
+    let raiz: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => {
+      raiz = hydrateRoot(contenedor, conCliente(), { onRecoverableError: erroresRecuperables });
+    });
+
+    // Tras hidratar sin desajustes, el cliente ya usa la recordada.
+    expect(erroresRecuperables).not.toHaveBeenCalled();
+    expect(contenedor.textContent).toBe("21");
+
+    api.liberar();
+    await act(async () => {
+      raiz?.unmount();
+    });
+    contenedor.remove();
+  });
+});
+
+describe("olvidarOrganizacionPorDefecto", () => {
+  it("olvida la por defecto recordada y conserva la elegida", () => {
+    // La recordada es una apuesta de este navegador, no una decisión de la
+    // persona: al empezar sesión puede ser de otra. La elegida sí lo es.
+    useOrganizationStore.setState({ activeOrganizationId: 9, ultimaPorDefecto: 21 });
+
+    olvidarOrganizacionPorDefecto();
+
+    const estado = useOrganizationStore.getState();
+    expect(estado.ultimaPorDefecto).toBeUndefined();
+    expect(estado.activeOrganizationId).toBe(9);
   });
 });

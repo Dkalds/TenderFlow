@@ -11,14 +11,15 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
-from sqlalchemy import Select, and_, func, literal_column, or_, select, text
+from sqlalchemy import Select, Text, and_, cast, func, literal_column, or_, select, text
+from sqlalchemy.dialects.postgresql import ARRAY, array
 
 from db.database import connect, connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
 from db.repositories.base import csv_values, loose_distinct_strings, rows_to_dicts
 from db.sql_fragments import (
-    FOLD_DST,
-    FOLD_SRC,
+    FOLD_DST_SQL,
+    FOLD_SRC_SQL,
     FOLD_TABLE,
     ISO_MAX,
     ISO_MIN,
@@ -31,6 +32,7 @@ from db.sql_fragments import (
     importe_sql,
     lectura_tipada_activa,
     tecnologia_en_csv_sql,
+    tecnologia_tokens_sql,
 )
 from observability.logging import get_logger
 from shared.estados import (
@@ -131,8 +133,19 @@ def _plegado(column: Any) -> Any:
     como parámetro. Se comparte la tabla de traducción con el fragmento de texto
     para que buscar "murcia" y "Murcía" no dependa de por qué superficie entre
     la consulta.
+
+    Las dos tablas van como **literales** (``literal_column`` sobre
+    ``FOLD_SRC_SQL``/``FOLD_DST_SQL``), no como ``func.translate(col, FOLD_SRC,
+    FOLD_DST)``: con cadenas de Python, SQLAlchemy las convertía en dos
+    parámetros ligados y la consulta llegaba como ``translate(col, $1, $2)``,
+    que ningún índice de expresión reconoce en cuanto el plan es genérico (ver
+    el comentario de ``FOLD_SRC_SQL``). Compilado, esto es carácter a carácter
+    ``fold_expr("licitaciones.<columna>")``, la misma expresión que emiten los
+    agregados; lo fija ``tests/test_s1_paridad_filtros.py``.
     """
-    return func.lower(func.translate(column, FOLD_SRC, FOLD_DST))
+    return func.lower(
+        func.translate(column, literal_column(FOLD_SRC_SQL), literal_column(FOLD_DST_SQL))
+    )
 
 
 #: Dónde busca ``q``. Es la misma lista que arma
@@ -189,26 +202,22 @@ def _tecnologia_en_csv(codes: list[str]) -> Any:
     igualdad dejaba fuera los expedientes multi-tecnología, así que filtrar por
     SAP escondía justo los que además llevan otra. Mismo universo que resuelve
     ``db/repositories/aggregates.py`` para los agregados de analytics —el
-    listado y los KPIs de la misma pantalla tienen que contar lo mismo—, con la
-    normalización de espacios que allí hace el ``trim`` del explode.
+    listado y los KPIs de la misma pantalla tienen que contar lo mismo—.
+
+    Hasta 2026-09 esto eran cuatro ``LIKE`` por código (igual, ``'c,%'``,
+    ``'%,c,%'``, ``'%,c'``) sobre el CSV sin espacios. Ahora es el mismo ``&&``
+    que emite ``db.sql_fragments.tecnologia_en_csv_sql`` para los agregados,
+    con el lado de la columna tomado **literalmente** de
+    ``tecnologia_tokens_sql``: esa expresión es la que indexaría el GIN
+    propuesto, y una grafía propia de SQLAlchemy (``coalesce`` en minúscula,
+    los literales como parámetros) no la reconocería. Misma semántica que los
+    ``LIKE``: código entero del CSV, nunca subcadena, con los espacios fuera.
+
+    El lado de los valores sí son parámetros, uno por código, y el ``CAST`` a
+    ``TEXT[]`` hace lo que el ``::text[]`` del fragmento de texto.
     """
-    normalized = func.replace(func.coalesce(licitaciones.c.tecnologia, ""), " ", "")
-    # Sin `escape=`: el escape por defecto de LIKE en Postgres ya es la barra
-    # invertida que pone `_escape_like`, igual que el resto del módulo. Pasarlo
-    # explícito lo rompería —el dialecto se compila sin conexión, asume
-    # `standard_conforming_strings=off` y emitiría `ESCAPE '\'`, dos caracteres
-    # donde Postgres exige uno.
-    return or_(
-        *[
-            or_(
-                normalized == code,
-                normalized.like(f"{_escape_like(code)},%"),
-                normalized.like(f"%,{_escape_like(code)},%"),
-                normalized.like(f"%,{_escape_like(code)}"),
-            )
-            for code in codes
-        ]
-    )
+    tokens = literal_column(tecnologia_tokens_sql("licitaciones.tecnologia"), ARRAY(Text))
+    return tokens.op("&&")(cast(array(codes), ARRAY(Text)))
 
 
 # Columnas devueltas en listados (resumen)

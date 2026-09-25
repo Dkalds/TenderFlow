@@ -72,7 +72,9 @@ describe("streamAsk", () => {
     });
 
     expect(result.answer).toBe("Hola mundo");
-    expect(tokens).toEqual(["Hola ", "Hola mundo"]);
+    // El cuerpo entero ya está encolado, así que los dos tokens caen en el
+    // mismo frame y se entregan juntos (ver `ask-stream-frames.test.ts`).
+    expect(tokens).toEqual(["Hola mundo"]);
     expect(result.fuentes).toEqual([]);
     expect(result.degraded).toBeNull();
   });

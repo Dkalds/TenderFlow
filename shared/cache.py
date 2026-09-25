@@ -16,7 +16,23 @@ Backends:
   - **Memory** (default): ``OrderedDict`` con LRU eviction y TTL por entrada.
     Thread-safe con ``threading.Lock``.
   - **Redis** (si ``REDIS_URL`` está configurado): Compartido entre procesos/workers.
-    Falla de forma silenciosa volviendo a Memory si Redis no está disponible.
+    Falla de forma silenciosa volviendo a Memory si Redis no está disponible: al
+    arrancar (si el ``PING`` falla, el namespace se queda en memoria) y en
+    caliente, con un cortacircuitos (ver :class:`_RedisBackend`).
+
+Redis y el event loop
+---------------------
+El cliente Redis es **síncrono** (redis-py) y lo siguen usando llamadores
+síncronos (jobs, ``run_db``). Desde un ``async def`` no se le llama directamente:
+se usan los métodos ``a*`` de los backends (``aget``, ``aset``,
+``aget_respuesta``…), que despachan la E/S a un hilo con
+``anyio.to_thread.run_sync`` — el backend en memoria no tiene E/S y responde en
+el propio loop. Se descartó ``redis.asyncio``: un cliente asíncrono queda atado
+al loop que lo creó (la suite abre uno por ``TestClient``) y exigiría un segundo
+pool de conexiones para los llamadores síncronos. Un salto a un hilo cuesta
+décimas de milisegundo; lo que había que evitar era parar el loop, no el hilo.
+``tests/test_async_handlers_no_blocking_io.py`` vigila los wrappers async de
+este módulo.
 
 Capas de caché del sistema
 --------------------------
@@ -32,7 +48,9 @@ Capa                           Qué guarda                           Quién la i
 ============================== ==================================== =========================================
 ``shared/cache`` (este)        Respuestas de endpoints por           **Nadie: expira por TTL.** Es la
                                namespace (``api``, ``analytics``,    decisión, no un olvido — la mayoría de
-                               ``llm_resumen``…)                     los namespaces tienen TTL de 60-300 s.
+                               ``llm_resumen``…); las de             los namespaces tienen TTL de 60-300 s.
+                               ``cache_response``, ya serializadas
+                               y con su ``ETag``
                                                                      Las invalidaciones puntuales por acción
                                                                      del usuario (no por ingesta) usan
                                                                      :func:`invalidate_user_scoped` y
@@ -45,8 +63,9 @@ Capa                           Qué guarda                           Quién la i
                                (event log de Postgres + fichero      de Postgres); las lecturas se memoizan
                                centinela como fallback)              5 s.
 ETag (``api/middleware``)      Nada en servidor: emite ``ETag`` y    El **cuerpo de la respuesta**. Si el
-                               responde 304                          dato cambia, el hash cambia y el 304
-                                                                     deja de emitirse. No hay que invalidar.
+                               responde 304 (respeta la que ya       dato cambia, el hash cambia y el 304
+                               trae una respuesta de                 deja de emitirse. No hay que invalidar.
+                               ``cache_response``)
 ``functools.lru_cache``        Config derivada y cara de recalcular  Nadie en caliente: **muere con el
 de proceso                     (claves de firma, catálogos i18n,     proceso**. Lo que sí se invalida a mano
                                versión del servicio)                 es ``shared/signing`` tras rotar clave
@@ -76,21 +95,41 @@ import functools
 import hashlib
 import inspect
 import json
+import math
 import os
 import threading
 import time
+import typing
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from pydantic import BaseModel
+import anyio.to_thread
+from pydantic import BaseModel, SecretStr, TypeAdapter, ValidationError
+from starlette.responses import Response
 
 from observability.logging import get_logger
+from shared.etag import etag_debil
 
 log = get_logger(__name__)
 
 _MEMORY_MAX_SIZE = 256  # entradas máximas por namespace en modo memory
+
+#: Tiempo máximo de una operación contra Redis (segundos). Sin él, un Redis
+#: colgado —TCP abierto que no responde— dejaba el hilo esperando para siempre;
+#: y cuando la llamada corría en el event loop, era el proceso entero el que se
+#: paraba. Medio segundo es dos órdenes de magnitud sobre lo que tarda un GET
+#: sano en la misma región.
+_REDIS_SOCKET_TIMEOUT_S = 0.5
+#: Tiempo máximo para abrir una conexión nueva con Redis (segundos).
+_REDIS_CONNECT_TIMEOUT_S = 1.0
+#: Tras un fallo, cuánto tiempo se salta Redis y se sirve del respaldo en
+#: memoria (segundos). Corto a propósito: su trabajo es que un Redis caído no
+#: cueste un timeout **por petición**; pasado el plazo, la siguiente operación
+#: vuelve a probar.
+_REDIS_BREAKER_S = 15.0
 
 #: Namespace de las respuestas de la API REST. Era el ``_NAMESPACE`` privado de
 #: ``api/cache.py``; se conserva con el mismo valor para no invalidar de golpe
@@ -147,6 +186,61 @@ def llm_cache_key(
       hace que un pliego recién indexado invalide la entrada.
     """
     return cache_key("llm", modo, modelo, prompt_version, contexto)
+
+
+# ---------------------------------------------------------------------------
+# Respuesta cacheada por ``cache_response``
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _RespuestaCacheada:
+    """Una respuesta de endpoint lista para servir: el JSON exacto y su ``ETag``.
+
+    Se guarda **serializada** y no como ``dict``: en un acierto el cuerpo sale
+    tal cual, sin volver a validarlo contra el ``response_model`` ni a
+    serializarlo, que era trabajo de CPU dentro del event loop en cada acierto.
+    La ``ETag`` se calcula una sola vez, al guardar, con la misma fórmula que
+    el ``ETagMiddleware`` (:func:`shared.etag.etag_debil`): así el middleware no
+    hashea el cuerpo en cada acierto, y un fallo y un acierto del mismo cuerpo
+    llevan la misma etiqueta.
+    """
+
+    cuerpo: bytes
+    etag: str
+
+
+#: Prefijo de una respuesta cacheada en Redis. Las entradas anteriores a este
+#: formato (un ``dict`` en JSON) no lo llevan y se tratan como fallo: se
+#: recalculan y se sobrescriben, sin mezclar formatos. Mientras convivan dos
+#: versiones en un despliegue, cada una ignora lo que escribe la otra.
+_MARCA_RESPUESTA = "tf-respuesta-v1\n"
+
+
+def _codificar_respuesta(entrada: _RespuestaCacheada) -> str:
+    """``marca + etag + "\\n" + cuerpo``: se parte sin parsear JSON."""
+    return f"{_MARCA_RESPUESTA}{entrada.etag}\n{entrada.cuerpo.decode('utf-8')}"
+
+
+def _decodificar_respuesta(crudo: object) -> _RespuestaCacheada | None:
+    """Inversa de :func:`_codificar_respuesta`; ``None`` si no tiene ese formato."""
+    if isinstance(crudo, bytes):
+        crudo = crudo.decode("utf-8", errors="replace")
+    if not isinstance(crudo, str) or not crudo.startswith(_MARCA_RESPUESTA):
+        return None
+    etag, separador, cuerpo = crudo[len(_MARCA_RESPUESTA) :].partition("\n")
+    if not separador or not etag:
+        return None
+    return _RespuestaCacheada(cuerpo=cuerpo.encode("utf-8"), etag=etag)
+
+
+def _como_respuesta(valor: object) -> _RespuestaCacheada | None:
+    return valor if isinstance(valor, _RespuestaCacheada) else None
+
+
+def _segundos_redis(ttl: float) -> int:
+    """TTL entero para ``SETEX``: nunca 0, que Redis rechaza como plazo inválido."""
+    return max(1, math.ceil(ttl))
 
 
 # ---------------------------------------------------------------------------
@@ -217,50 +311,213 @@ class _MemoryBackend:
         with self._lock:
             return len(self._store)
 
+    # -- respuestas de ``cache_response`` -----------------------------------
+
+    def get_respuesta(self, key: str) -> _RespuestaCacheada | None:
+        return _como_respuesta(self.get(key))
+
+    def set_respuesta(self, key: str, entrada: _RespuestaCacheada, ttl: float = 60.0) -> None:
+        self.set(key, entrada, ttl)
+
+    # -- variantes para ``async def`` ---------------------------------------
+    #
+    # Mismo contrato que en ``_RedisBackend``, para que el llamador async no
+    # tenga que distinguir backends. Aquí no hay E/S —un ``dict`` con un lock
+    # que nadie retiene más que unos microsegundos—, así que se responde en el
+    # propio event loop: un salto a un hilo costaría más que la operación.
+
+    async def aget(self, key: str) -> Any | None:
+        return self.get(key)
+
+    async def aset(self, key: str, value: Any, ttl: float = 60.0) -> None:
+        self.set(key, value, ttl)
+
+    async def aget_respuesta(self, key: str) -> _RespuestaCacheada | None:
+        return self.get_respuesta(key)
+
+    async def aset_respuesta(
+        self, key: str, entrada: _RespuestaCacheada, ttl: float = 60.0
+    ) -> None:
+        self.set_respuesta(key, entrada, ttl)
+
 
 class _RedisBackend:
-    """Cache Redis con serialización JSON. Falla en silencio a Memory."""
+    """Cache Redis con serialización JSON. Falla en silencio a Memory.
 
-    def __init__(self, url: str, namespace: str = "") -> None:
+    **Cortacircuitos.** Toda llamada al cliente lleva ``socket_timeout``
+    (:data:`_REDIS_SOCKET_TIMEOUT_S`), y el primer fallo —timeout, conexión
+    rechazada, lo que sea— abre el circuito durante :data:`_REDIS_BREAKER_S`:
+    en ese plazo ni se intenta Redis y las operaciones van a un
+    :class:`_MemoryBackend` de respaldo, el mismo fallback a memoria que ya se
+    aplicaba al arrancar. Sin esto, con Redis colgado cada operación pagaba su
+    timeout, y con el cliente sin timeout la esperaba entera. Pasado el plazo,
+    la siguiente operación vuelve a probar Redis; si responde, el respaldo se
+    vacía, porque sus entradas son de la caída y ninguna invalidación las
+    alcanzaría después.
+
+    Un error al **decodificar** un valor no abre el circuito: es un dato raro,
+    no un Redis caído, y se trata como fallo de caché.
+
+    Los atributos del cortacircuitos tienen valor de clase para que un backend
+    construido sin ``__init__`` (``tests/test_shared_cache.py`` lo hace así para
+    inyectar un cliente simulado) funcione igual. Las carreras entre hilos sobre
+    ellos solo pueden costar una prueba de más contra Redis o una entrada de
+    respaldo perdida: es una caché.
+    """
+
+    #: Instante (``time.monotonic``) hasta el que se salta Redis.
+    _saltar_hasta: float = 0.0
+    #: ``True`` si el respaldo recibió escrituras durante la caída.
+    _respaldo_usado: bool = False
+    _respaldo: _MemoryBackend | None = None
+
+    def __init__(self, url: str, namespace: str = "", *, password: str | None = None) -> None:
         import redis as redis_lib
+        from redis.backoff import NoBackoff
+        from redis.retry import Retry
 
         self._ns = f"{namespace}:" if namespace else ""
+        self._respaldo = _MemoryBackend()
+        # `retry` explícito con un solo reintento y sin espera: el valor por
+        # defecto cambia entre versiones de redis-py (la 6 pasó a tres
+        # reintentos con backoff exponencial de hasta varios segundos), y con
+        # él el tiempo máximo de una operación dejaba de ser el de arriba. Un
+        # reintento cubre la conexión del pool que el servidor cerró por
+        # inactividad sin disparar el cortacircuitos.
+        #
+        # `password`: `REDIS_PASSWORD` (obligatoria en prod) puede venir aparte
+        # de la URL, como la leen `llm/budget.py` y el rate limiter. Sin ella,
+        # contra un Redis con `requirepass` el PING fallaba y el namespace se
+        # quedaba en memoria para siempre. Si la URL ya trae contraseña,
+        # redis-py da prioridad a la de la URL.
         self._r: Any = redis_lib.Redis.from_url(
-            url, decode_responses=True, socket_connect_timeout=2
+            url,
+            password=password,
+            decode_responses=True,
+            socket_connect_timeout=_REDIS_CONNECT_TIMEOUT_S,
+            socket_timeout=_REDIS_SOCKET_TIMEOUT_S,
+            retry=Retry(NoBackoff(), 1),
         )
         self._r.ping()
 
     def _k(self, key: str) -> str:
         return f"{self._ns}{key}"
 
+    # -- cortacircuitos -----------------------------------------------------
+
+    def _memoria(self) -> _MemoryBackend:
+        respaldo = self._respaldo
+        if respaldo is None:
+            respaldo = self._respaldo = _MemoryBackend()
+        return respaldo
+
+    def _redis_activo(self) -> bool:
+        return time.monotonic() >= self._saltar_hasta
+
+    def _registrar_fallo(self, operacion: str, exc: BaseException) -> None:
+        self._saltar_hasta = time.monotonic() + _REDIS_BREAKER_S
+        log.warning(
+            "shared_cache_redis_breaker_abierto",
+            namespace=self._ns.rstrip(":"),
+            operacion=operacion,
+            error=str(exc),
+            segundos=_REDIS_BREAKER_S,
+        )
+
+    def _registrar_exito(self) -> None:
+        if self._respaldo_usado:
+            self._respaldo_usado = False
+            self._memoria().clear()
+            log.info("shared_cache_redis_recuperado", namespace=self._ns.rstrip(":"))
+
+    def _guardar_en_respaldo(self, key: str, valor: Any, ttl: float) -> None:
+        self._respaldo_usado = True
+        self._memoria().set(key, valor, ttl)
+
+    # -- operaciones --------------------------------------------------------
+
     def get(self, key: str) -> Any | None:
+        if not self._redis_activo():
+            return self._memoria().get(key)
         try:
             raw = self._r.get(self._k(key))
-            if raw is None:
-                return None
-            return json.loads(raw)
         except Exception as exc:
+            self._registrar_fallo("get", exc)
+            return self._memoria().get(key)
+        self._registrar_exito()
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (TypeError, ValueError) as exc:
             log.debug("shared_cache_redis_get_error", key=key, error=str(exc))
             return None
 
     def set(self, key: str, value: Any, ttl: float = 60.0) -> None:
+        if not self._redis_activo():
+            self._guardar_en_respaldo(key, value, ttl)
+            return
         try:
             serialized = json.dumps(value, ensure_ascii=False, default=str)
+        except (TypeError, ValueError) as exc:
+            log.debug("shared_cache_redis_set_error", key=key, error=str(exc))
+            return
+        try:
             if ttl > 0:
-                self._r.setex(self._k(key), int(ttl), serialized)
+                self._r.setex(self._k(key), _segundos_redis(ttl), serialized)
             else:
                 self._r.set(self._k(key), serialized)
         except Exception as exc:
-            log.debug("shared_cache_redis_set_error", key=key, error=str(exc))
+            self._registrar_fallo("set", exc)
+            self._guardar_en_respaldo(key, value, ttl)
+            return
+        self._registrar_exito()
+
+    def get_respuesta(self, key: str) -> _RespuestaCacheada | None:
+        """La respuesta de ``cache_response`` guardada en ``key``, o ``None``."""
+        if not self._redis_activo():
+            return _como_respuesta(self._memoria().get(key))
+        try:
+            raw = self._r.get(self._k(key))
+        except Exception as exc:
+            self._registrar_fallo("get_respuesta", exc)
+            return _como_respuesta(self._memoria().get(key))
+        self._registrar_exito()
+        return _decodificar_respuesta(raw)
+
+    def set_respuesta(self, key: str, entrada: _RespuestaCacheada, ttl: float = 60.0) -> None:
+        if not self._redis_activo():
+            self._guardar_en_respaldo(key, entrada, ttl)
+            return
+        raw = _codificar_respuesta(entrada)
+        try:
+            if ttl > 0:
+                self._r.setex(self._k(key), _segundos_redis(ttl), raw)
+            else:
+                self._r.set(self._k(key), raw)
+        except Exception as exc:
+            self._registrar_fallo("set_respuesta", exc)
+            self._guardar_en_respaldo(key, entrada, ttl)
+            return
+        self._registrar_exito()
 
     def delete(self, key: str) -> None:
+        # El respaldo se limpia siempre: puede guardar la entrada de una caída.
+        self._memoria().delete(key)
+        if not self._redis_activo():
+            return
         try:
             self._r.delete(self._k(key))
-        except Exception:
-            pass
+        except Exception as exc:
+            self._registrar_fallo("delete", exc)
+            return
+        self._registrar_exito()
 
     def clear(self) -> None:
         """Elimina solo las keys con el namespace actual (no flushdb)."""
+        self._memoria().clear()
+        if not self._redis_activo():
+            return
         try:
             pattern = f"{self._ns}*" if self._ns else "*"
             cursor = 0
@@ -271,9 +528,13 @@ class _RedisBackend:
                 if cursor == 0:
                     break
         except Exception as exc:
-            log.debug("shared_cache_redis_clear_error", error=str(exc))
+            self._registrar_fallo("clear", exc)
+            return
+        self._registrar_exito()
 
     def keys(self, pattern: str = "*") -> list[str]:
+        if not self._redis_activo():
+            return self._memoria().keys(pattern)
         try:
             full_pattern = f"{self._ns}{pattern}"
             result: list[str] = []
@@ -284,10 +545,27 @@ class _RedisBackend:
                 result.extend(k[ns_len:] for k in keys)
                 if cursor == 0:
                     break
-            return result
         except Exception as exc:
-            log.debug("shared_cache_redis_keys_error", error=str(exc))
-            return []
+            self._registrar_fallo("keys", exc)
+            return self._memoria().keys(pattern)
+        self._registrar_exito()
+        return result
+
+    # -- variantes para ``async def``: la E/S va a un hilo -------------------
+
+    async def aget(self, key: str) -> Any | None:
+        return await anyio.to_thread.run_sync(self.get, key)
+
+    async def aset(self, key: str, value: Any, ttl: float = 60.0) -> None:
+        await anyio.to_thread.run_sync(self.set, key, value, ttl)
+
+    async def aget_respuesta(self, key: str) -> _RespuestaCacheada | None:
+        return await anyio.to_thread.run_sync(self.get_respuesta, key)
+
+    async def aset_respuesta(
+        self, key: str, entrada: _RespuestaCacheada, ttl: float = 60.0
+    ) -> None:
+        await anyio.to_thread.run_sync(self.set_respuesta, key, entrada, ttl)
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +600,19 @@ def get_cache(namespace: str = "default") -> _MemoryBackend | _RedisBackend:
         return backend
 
 
+async def aget_cache(namespace: str = "default") -> _MemoryBackend | _RedisBackend:
+    """:func:`get_cache` para ``async def``.
+
+    Una vez creado el backend es una lectura de ``dict``. La **primera** vez lo
+    construye, y con Redis eso incluye un ``PING`` con timeout de conexión: ese
+    único caso va a un hilo para no parar el loop mientras se conecta.
+    """
+    existente = _instances.get(namespace)
+    if existente is not None:
+        return existente
+    return await anyio.to_thread.run_sync(get_cache, namespace)
+
+
 def es_compartida(backend: _MemoryBackend | _RedisBackend) -> bool:
     """True si lo que se escriba en ``backend`` lo verá otro proceso.
 
@@ -346,7 +637,9 @@ def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
         if not settings.REDIS_URL:
             return _MemoryBackend()
 
-        backend = _RedisBackend(settings.REDIS_URL, namespace=namespace)
+        backend = _RedisBackend(
+            settings.REDIS_URL, namespace=namespace, password=_contrasena_redis(settings)
+        )
         log.info("shared_cache_redis_connected", namespace=namespace)
         return backend
     except ImportError as exc:
@@ -364,6 +657,14 @@ def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
             fallback="memory",
         )
         return _MemoryBackend()
+
+
+def _contrasena_redis(settings_obj: object) -> str | None:
+    """``REDIS_PASSWORD`` en claro, o ``None`` si no hay (``SecretStr`` o ``str``)."""
+    valor = getattr(settings_obj, "REDIS_PASSWORD", None)
+    if isinstance(valor, SecretStr):
+        valor = valor.get_secret_value()
+    return valor if isinstance(valor, str) and valor else None
 
 
 def reset_cache(namespace: str | None = None) -> None:
@@ -440,6 +741,294 @@ async def single_flight(key: str) -> AsyncIterator[None]:
         yield
 
 
+#: Parámetro que :func:`cache_response` añade a la firma **pública** del
+#: endpoint (``__signature__``) para que FastAPI le inyecte la respuesta
+#: temporal de la petición. Que llegue es lo que distingue una llamada HTTP de
+#: una llamada directa desde Python, y sus cabeceras (las que fije una
+#: dependencia) se copian a la respuesta final, como hace FastAPI. No aparece en
+#: el OpenAPI: FastAPI no documenta los parámetros de tipo ``Response``.
+_PARAM_RESPUESTA = "_cache_response_temporal"
+
+
+def _json_canonico(valor: object) -> str:
+    """JSON compacto y con claves ordenadas: la misma entrada, la misma cadena."""
+    return json.dumps(valor, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _marca_de_identidad(campo: str, valor: object) -> str:
+    """Fragmento exacto con el que ``campo`` aparece en una clave de caché.
+
+    Es lo que buscan :func:`invalidate_user_scoped` y
+    :func:`invalidate_organization_scoped`. Lleva las comillas de cierre del
+    valor, así que ``u1`` no casa con ``u10``, y ningún parámetro puede
+    imitarlo: dentro del JSON de un parámetro las comillas van escapadas.
+    """
+    return f"{_json_canonico(campo)}:{_json_canonico(str(valor))}"
+
+
+def _clave_de_peticion(
+    nombre: str, kwargs: dict[str, Any], *, user_scoped: bool, huella: str
+) -> str:
+    """Clave de caché de una llamada: ``<función>|<huella>|<JSON canónico de la llamada>``.
+
+    ``huella`` identifica la forma de la respuesta (ver
+    :meth:`_Serializador.ahuella`): un despliegue que cambia el DTO no sirve
+    las entradas que guardó el anterior.
+
+    **Sin ambigüedad.** Hasta 2026-09 la clave era ``k:v`` unido por ``|``, y
+    un valor con esos separadores fabricaba la clave de **otra** consulta:
+    ``?ccaa=Madrid|cpv:72`` ocupaba la entrada de ``?ccaa=Madrid&cpv=72``. En
+    un endpoint ``user_scoped=False`` eso servía una respuesta equivocada a
+    todos los usuarios durante el TTL. En JSON cada valor es una cadena con sus
+    comillas y sus escapes: dos llamadas distintas no pueden dar el mismo texto.
+
+    El prefijo ``<función>|`` se conserva porque es por donde las
+    invalidaciones buscan (``keys("<función>|*")``); el nombre es un
+    identificador de Python y no puede contener ``|``.
+
+    Función aparte y síncrona porque trabaja sobre los **parámetros** de la
+    petición (unos pocos escalares y, como mucho, un modelo de filtros), no
+    sobre la respuesta: es microsegundos de CPU y puede correr en el loop.
+    """
+    identidad: dict[str, str] = {}
+    parametros: list[list[str]] = []
+    for k, v in sorted(kwargs.items()):
+        if k.startswith("_"):
+            # Las dependencias de autenticación pueden alterar la
+            # respuesta; cuando lo hacen, la identidad entra en la clave
+            # y dos usuarios nunca comparten entrada. Los endpoints que
+            # declaran `user_scoped=False` afirman lo contrario —su
+            # respuesta solo depende de los query params— y ahí meter el
+            # `user_key` solo multiplicaba por N el mismo cálculo.
+            if user_scoped and isinstance(v, dict) and v.get("user_key"):
+                identidad["principal"] = str(v["user_key"])
+                if v.get("organization_id") is not None:
+                    identidad["organization"] = str(v["organization_id"])
+            continue
+        if isinstance(v, BaseModel):
+            parametros.append([k, v.model_dump_json(exclude_none=True)])
+        elif v is not None:
+            parametros.append([k, str(v)])
+    return f"{nombre}|{huella}|{_json_canonico({**identidad, 'parametros': parametros})}"
+
+
+def _adaptador_de_retorno(func: Callable[..., Any]) -> TypeAdapter[Any] | None:
+    """``TypeAdapter`` del tipo de retorno anotado, o ``None`` si no lo hay.
+
+    Es el mismo tipo con el que FastAPI valida y serializa la respuesta: en
+    las rutas cacheadas el ``response_model`` coincide con la anotación de
+    retorno (``tests/test_cache_response_http.py`` lo verifica ruta a ruta).
+    ``None`` para funciones sin anotación o con una que no se puede resolver
+    —tipos locales de un test—: entonces se serializa como lo haría FastAPI
+    sin ``response_model``.
+    """
+    try:
+        retorno = typing.get_type_hints(func).get("return")
+    except Exception:  # anotaciones irresolubles: se cae al camino sin modelo
+        log.debug("cache_response_sin_tipo_de_retorno", func=func.__name__, exc_info=True)
+        return None
+    if retorno is None or retorno is Any or retorno is type(None):
+        return None
+    try:
+        return TypeAdapter(retorno)
+    except Exception:  # un tipo que pydantic no sabe adaptar: mismo camino
+        log.debug("cache_response_tipo_no_adaptable", func=func.__name__, exc_info=True)
+        return None
+
+
+class _Serializador:
+    """Convierte el resultado del handler en el JSON que habría servido FastAPI.
+
+    Con tipo de retorno hace lo mismo que FastAPI con el ``response_model``:
+    ``validate_python`` (un no-op para una instancia del propio modelo; un
+    ``dict`` sí se valida, y una subclase se recorta a los campos declarados)
+    y ``dump_json(by_alias=True)``. Sin tipo, ``jsonable_encoder`` +
+    ``json.dumps`` compacto, que es lo que renderiza ``JSONResponse``.
+
+    Un fallo de validación se relanza como ``ResponseValidationError``, igual
+    que FastAPI: el ``ValidationError`` de pydantic es un ``ValueError`` y el
+    manejador de ``api/errors.py`` lo convertiría en un 400, cuando un
+    handler que devuelve algo que no cumple su contrato es un 500.
+
+    Corre siempre en un hilo, junto al handler o justo después: es CPU
+    proporcional al tamaño de la respuesta.
+    """
+
+    def __init__(self, func: Callable[..., Any]) -> None:
+        self._func = func
+        self._adaptador: TypeAdapter[Any] | None = None
+        self._resuelto = False
+        self._huella: str | None = None
+        self._lock = threading.Lock()
+
+    def _obtener_adaptador(self) -> TypeAdapter[Any] | None:
+        if not self._resuelto:
+            with self._lock:
+                if not self._resuelto:
+                    self._adaptador = _adaptador_de_retorno(self._func)
+                    self._resuelto = True
+        return self._adaptador
+
+    def _calcular_huella(self) -> str:
+        """Huella corta del esquema JSON de salida del tipo de retorno."""
+        if self._huella is None:
+            adaptador = self._obtener_adaptador()
+            if adaptador is None:
+                huella = "sin-tipo"
+            else:
+                try:
+                    esquema = adaptador.json_schema(mode="serialization", by_alias=True)
+                    huella = hashlib.blake2b(
+                        _json_canonico(esquema).encode("utf-8"), digest_size=6
+                    ).hexdigest()
+                except Exception:  # un tipo sin esquema JSON: la caché funciona igual
+                    log.debug("cache_response_sin_esquema", func=self._func.__name__, exc_info=True)
+                    huella = "sin-esquema"
+            self._huella = huella
+        return self._huella
+
+    async def ahuella(self) -> str:
+        """Huella de la forma de la respuesta, para la clave de caché.
+
+        Antes, un acierto devolvía el ``dict`` cacheado y FastAPI lo volvía a
+        validar contra el ``response_model``: tras un despliegue que cambiaba
+        el DTO, la entrada vieja se rellenaba con defaults o daba un 500 hasta
+        que caducaba. Ahora el cuerpo sale tal cual, así que la forma entra en
+        la clave: un DTO distinto es una clave distinta, y lo que guardó el
+        despliegue anterior simplemente no se encuentra.
+
+        Se calcula una vez por endpoint, en un hilo (generar el esquema de un
+        modelo grande son milisegundos de CPU); después es una lectura.
+        """
+        if self._huella is not None:
+            return self._huella
+        return await anyio.to_thread.run_sync(self._calcular_huella)
+
+    def __call__(self, resultado: Any) -> _RespuestaCacheada:
+        adaptador = self._obtener_adaptador()
+        if adaptador is not None:
+            try:
+                valor = adaptador.validate_python(resultado, from_attributes=True)
+            except ValidationError as exc:
+                from fastapi.exceptions import ResponseValidationError
+
+                errores = [
+                    {**error, "loc": ("response", *error.get("loc", ()))}
+                    for error in exc.errors(include_url=False)
+                ]
+                raise ResponseValidationError(errores, body=resultado) from exc
+            cuerpo = adaptador.dump_json(valor, by_alias=True)
+        else:
+            from fastapi.encoders import jsonable_encoder
+
+            cuerpo = json.dumps(
+                jsonable_encoder(resultado),
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        return _RespuestaCacheada(cuerpo=cuerpo, etag=etag_debil(cuerpo))
+
+
+def _calcular_y_serializar(
+    func: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    serializador: _Serializador,
+) -> tuple[Any, _RespuestaCacheada]:
+    """Handler síncrono + serialización en el mismo salto al hilo."""
+    resultado = func(*args, **kwargs)
+    return resultado, serializador(resultado)
+
+
+def _respuesta_http(entrada: _RespuestaCacheada, temporal: Response) -> Response:
+    """La respuesta HTTP de una entrada: el cuerpo tal cual y su ``ETag``.
+
+    ``Cache-Control`` y ``Vary`` no se fijan aquí: los pone el
+    ``ETagMiddleware``, que es quien sabe si la petición venía autenticada, y
+    también es quien responde el 304 cuando ``If-None-Match`` nombra la
+    etiqueta. Lo que sí se conserva es lo que FastAPI habría conservado: el
+    ``status_code`` y las cabeceras que las dependencias fijaron en la
+    respuesta temporal.
+    """
+    respuesta = Response(
+        content=entrada.cuerpo,
+        status_code=temporal.status_code or 200,
+        media_type="application/json",
+        headers={"ETag": entrada.etag},
+    )
+    respuesta.headers.raw.extend(temporal.headers.raw)
+    return respuesta
+
+
+#: Nombres de las clases de respuesta de Starlette/FastAPI, para reconocer una
+#: anotación que no se pudo resolver (``from __future__ import annotations``).
+_NOMBRES_DE_RESPUESTA_HTTP = frozenset(
+    {
+        "Response",
+        "JSONResponse",
+        "ORJSONResponse",
+        "UJSONResponse",
+        "HTMLResponse",
+        "PlainTextResponse",
+        "StreamingResponse",
+        "FileResponse",
+        "RedirectResponse",
+    }
+)
+
+
+def _anotacion_de_respuesta_http(anotacion: object) -> bool:
+    if isinstance(anotacion, type):
+        return issubclass(anotacion, Response)
+    if isinstance(anotacion, str):
+        return anotacion.rsplit(".", 1)[-1] in _NOMBRES_DE_RESPUESTA_HTTP
+    return False
+
+
+def _firma_con_respuesta(func: Callable[..., Any]) -> inspect.Signature:
+    """Firma de ``func`` más el parámetro por el que FastAPI inyecta la respuesta.
+
+    Rechaza en el arranque —no en la primera petición— los handlers que ya
+    reciben una ``Response``: FastAPI inyecta la respuesta temporal en un solo
+    parámetro por endpoint, y con dos uno de ellos llegaría vacío.
+    """
+    firma = inspect.signature(func)
+    try:
+        resueltas = typing.get_type_hints(func)
+    except Exception:  # anotaciones irresolubles: se mira el texto de la anotación
+        resueltas = {}
+    parametros = list(firma.parameters.values())
+    for parametro in parametros:
+        anotacion = resueltas.get(parametro.name, parametro.annotation)
+        if parametro.name == _PARAM_RESPUESTA or _anotacion_de_respuesta_http(anotacion):
+            raise TypeError(
+                f"cache_response no admite handlers que reciben una Response "
+                f"({func.__qualname__}.{parametro.name}): la respuesta la construye el "
+                "decorador. Fija las cabeceras desde una dependencia."
+            )
+    nuevo = inspect.Parameter(_PARAM_RESPUESTA, inspect.Parameter.KEYWORD_ONLY, annotation=Response)
+    posicion = next(
+        (i for i, p in enumerate(parametros) if p.kind is inspect.Parameter.VAR_KEYWORD),
+        len(parametros),
+    )
+    parametros.insert(posicion, nuevo)
+    return firma.replace(parameters=parametros)
+
+
+async def _entregar(entrada: _RespuestaCacheada, temporal: Response | None) -> Any:
+    """Lo que devuelve el wrapper en un acierto.
+
+    Por HTTP, la ``Response`` con el cuerpo ya serializado: FastAPI la entrega
+    sin validarla ni serializarla otra vez. En una llamada directa desde
+    Python (tests, scripts) se conserva el contrato de siempre —el valor
+    cacheado como ``dict``—, decodificado en un hilo.
+    """
+    if temporal is not None:
+        return _respuesta_http(entrada, temporal)
+    return await anyio.to_thread.run_sync(json.loads, entrada.cuerpo)
+
+
 def cache_response(
     ttl: int = 300,
     namespace: str = "analytics",
@@ -457,8 +1046,20 @@ def cache_response(
         FastAPI despache la llamada al threadpool *antes* de revisar caché.
         Si la función subyacente es síncrona, se ejecuta con
         ``anyio.to_thread.run_sync`` **dentro** del lock.
-      - Compatible con funciones que devuelven ``pydantic.BaseModel`` (se
-        cachea como dict vía ``model_dump()``).
+      - **Nada pesado en el event loop**: la E/S de Redis va a un hilo
+        (``aget_respuesta``/``aset_respuesta``) y la serialización también,
+        en el mismo salto que el handler cuando este es síncrono.
+      - **Se guarda la respuesta serializada, con su ETag** (ver
+        :class:`_RespuestaCacheada`). Por HTTP, el wrapper devuelve una
+        ``Response`` con ese cuerpo tanto en el fallo como en el acierto: el
+        mismo JSON y la misma etiqueta en los dos caminos, y FastAPI no
+        revalida el ``dict`` entero contra el ``response_model`` en cada
+        acierto. El ``response_model`` de la ruta sigue declarado, así que el
+        OpenAPI no cambia.
+      - **Llamada directa desde Python** (sin la respuesta temporal que
+        inyecta FastAPI): contrato de siempre, el resultado del handler en un
+        fallo y el valor cacheado como ``dict`` en un acierto. Para el modelo
+        sin caché está ``__wrapped__``.
 
     Args:
         ttl: Tiempo de vida en segundos (default 5 min).
@@ -481,68 +1082,64 @@ def cache_response(
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         is_sync = not inspect.iscoroutinefunction(func)
+        serializador = _Serializador(func)
+        firma_publica = _firma_con_respuesta(func)
 
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            cache = get_cache(namespace)
-
-            # --- Build cache key ---
-            key_parts = [func.__name__]
-            for k, v in sorted(kwargs.items()):
-                if k.startswith("_"):
-                    # Las dependencias de autenticación pueden alterar la
-                    # respuesta; cuando lo hacen, la identidad entra en la clave
-                    # y dos usuarios nunca comparten entrada. Los endpoints que
-                    # declaran `user_scoped=False` afirman lo contrario —su
-                    # respuesta solo depende de los query params— y ahí meter el
-                    # `user_key` solo multiplicaba por N el mismo cálculo.
-                    if user_scoped and isinstance(v, dict) and v.get("user_key"):
-                        key_parts.append(f"principal:{v['user_key']}")
-                        if v.get("organization_id") is not None:
-                            key_parts.append(f"organization:{v['organization_id']}")
-                    continue
-                if isinstance(v, BaseModel):
-                    key_parts.append(f"{k}:{v.model_dump_json(exclude_none=True)}")
-                elif v is not None:
-                    key_parts.append(f"{k}:{v}")
-            cache_key = "|".join(key_parts)
+            temporal: Response | None = kwargs.pop(_PARAM_RESPUESTA, None)
+            cache = await aget_cache(namespace)
+            cache_key = _clave_de_peticion(
+                func.__name__,
+                kwargs,
+                user_scoped=user_scoped,
+                huella=await serializador.ahuella(),
+            )
 
             # --- Fast path (no lock) ---
-            cached = cache.get(cache_key)
-            if cached is not None:
+            entrada = await cache.aget_respuesta(cache_key)
+            if entrada is not None:
                 log.debug("cache_hit", key=cache_key, func=func.__name__)
-                return cached
+                return await _entregar(entrada, temporal)
 
             # --- Stampede-protected slow path ---
             lock = _get_cache_lock(cache_key)
             async with lock:
                 # Double-check inside lock
-                cached = cache.get(cache_key)
-                if cached is not None:
+                entrada = await cache.aget_respuesta(cache_key)
+                if entrada is not None:
                     log.debug("cache_hit_after_lock", key=cache_key, func=func.__name__)
-                    return cached
+                    return await _entregar(entrada, temporal)
 
                 log.debug("cache_miss", key=cache_key, func=func.__name__)
+                nueva: _RespuestaCacheada
                 if is_sync:
-                    import anyio.to_thread
-
                     limiter = None
                     if cpu_bound:
                         from shared.concurrency import cpu_limiter
 
                         limiter = cpu_limiter()
-                    result = await anyio.to_thread.run_sync(
-                        functools.partial(func, *args, **kwargs),
+                    # Handler y serialización en el mismo salto: con
+                    # `cpu_bound` la serialización también cuenta contra el
+                    # bulkhead, que es donde debe estar el trabajo de CPU.
+                    result, nueva = await anyio.to_thread.run_sync(
+                        functools.partial(_calcular_y_serializar, func, args, kwargs, serializador),
                         limiter=limiter,
                     )
                 else:
                     result = await func(*args, **kwargs)
+                    nueva = await anyio.to_thread.run_sync(serializador, result)
 
-                # Serialize Pydantic → dict for cache backends
-                val = result.model_dump() if isinstance(result, BaseModel) else result
-                cache.set(cache_key, val, ttl=ttl)
+                await cache.aset_respuesta(cache_key, nueva, ttl)
+
+            if temporal is None:
                 return result
+            return _respuesta_http(nueva, temporal)
 
+        # FastAPI lee la firma para decidir qué inyectar: con este parámetro
+        # extra le pasa la respuesta temporal. `__wrapped__` (la función
+        # desnuda, sin caché) conserva la firma original.
+        wrapper.__dict__["__signature__"] = firma_publica
         return wrapper
 
     return decorator
@@ -557,8 +1154,9 @@ def invalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int
     ranking se sirve cacheado.
 
     Se filtra por contenido y no por prefijo: la clave la construye
-    ``cache_response`` ordenando kwargs, así que la posición de
-    ``principal:<user_key>`` depende de qué otros parámetros vengan. Devuelve
+    ``cache_response`` como JSON canónico, y el usuario va en su campo
+    ``"principal"`` (ver :func:`_marca_de_identidad`: la marca no casa con otro
+    usuario que empiece igual ni la puede imitar un parámetro). Devuelve
     cuántas entradas se borraron.
 
     Alcance: la instancia local con backend en memoria, todas con Redis. Con
@@ -566,7 +1164,7 @@ def invalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int
     mantiene además su filtro optimista.
     """
     cache = get_cache(namespace)
-    marca = f"principal:{user_key}"
+    marca = _marca_de_identidad("principal", user_key)
     borradas = 0
     for key in cache.keys(f"{func_name}|*"):
         if marca in key:
@@ -581,12 +1179,12 @@ def invalidate_organization_scoped(namespace: str, func_name: str, organization_
     """Borra las entradas de ``func_name`` calculadas para una organización.
 
     Un perfil de scoring con visibilidad de organización cambia el ranking de
-    todos sus miembros, no solo el de quien lo guarda. La marca forma parte de
-    la misma clave segura que ``principal:<user_key>`` y funciona tanto con el
-    backend en memoria como con Redis.
+    todos sus miembros, no solo el de quien lo guarda. La marca es el campo
+    ``"organization"`` de la misma clave JSON que lleva ``"principal"`` y
+    funciona tanto con el backend en memoria como con Redis.
     """
     cache = get_cache(namespace)
-    marca = f"organization:{organization_id}"
+    marca = _marca_de_identidad("organization", organization_id)
     borradas = 0
     for key in cache.keys(f"{func_name}|*"):
         if marca in key:
@@ -600,3 +1198,22 @@ def invalidate_organization_scoped(namespace: str, func_name: str, organization_
             borradas=borradas,
         )
     return borradas
+
+
+async def ainvalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int:
+    """:func:`invalidate_user_scoped` para ``async def``: el ``SCAN`` va a un hilo.
+
+    Con Redis la invalidación recorre las claves del namespace con ``SCAN`` y
+    borra las del usuario: varios viajes de red, que desde un handler async
+    tienen que salir del event loop.
+    """
+    return await anyio.to_thread.run_sync(invalidate_user_scoped, namespace, func_name, user_key)
+
+
+async def ainvalidate_organization_scoped(
+    namespace: str, func_name: str, organization_id: int
+) -> int:
+    """:func:`invalidate_organization_scoped` para ``async def`` (ver arriba)."""
+    return await anyio.to_thread.run_sync(
+        invalidate_organization_scoped, namespace, func_name, organization_id
+    )

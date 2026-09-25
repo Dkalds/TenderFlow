@@ -14,7 +14,7 @@
  * cuando esto vivía dentro de `page.tsx`.
  */
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,6 +23,7 @@ import { acceso, registroFormulario } from "@/lib/forms/esquemas";
 import { apiMutate, ApiError, fetchWithAuth } from "@/lib/api-client";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { registrarEvento } from "@/lib/analytics";
+import { olvidarOrganizacionPorDefecto } from "@/hooks/use-organization";
 
 export type Mode = "login" | "register";
 
@@ -65,6 +66,11 @@ const resolverCredenciales: Resolver<CredencialesValores, { mode: Mode }> = (val
 
 export function useLoginForm() {
   const searchParams = useSearchParams();
+  // Toda sesión nueva pasa por aquí: la organización por defecto que recordaba
+  // este navegador puede ser de otra persona (ver `olvidarOrganizacionPorDefecto`).
+  useEffect(() => {
+    olvidarOrganizacionPorDefecto();
+  }, []);
   const [mode, setMode] = useState<Mode>("login");
   const form = useForm<CredencialesValores, { mode: Mode }>({
     resolver: resolverCredenciales,

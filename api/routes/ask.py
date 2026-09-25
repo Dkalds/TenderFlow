@@ -628,10 +628,13 @@ async def _stream_ask(
     # existe para la pregunta que veinte personas hacen sobre el mismo pliego.
     from llm.prompts import prompt_version
     from observability.runtime_metrics import llm_cache_hit_total
-    from shared.cache import LLM_CACHE_TTL_SECONDS, LLM_NAMESPACE, get_cache, llm_cache_key
+    from shared.cache import LLM_CACHE_TTL_SECONDS, LLM_NAMESPACE, aget_cache, llm_cache_key
 
     cacheable = not history
-    cache = get_cache(LLM_NAMESPACE) if cacheable else None
+    # La lectura va con `aget`: este cuerpo corre en el event loop. La escritura
+    # de abajo (`set`) no hace falta cambiarla: vive en `_factory`, que corre en
+    # un hilo.
+    cache = await aget_cache(LLM_NAMESPACE) if cacheable else None
     clave = (
         llm_cache_key(
             modo=mode,
@@ -646,7 +649,7 @@ async def _stream_ask(
     cacheado: str | None = None
     if cache is not None and clave is not None and not request.force:
         try:
-            crudo = cache.get(clave)
+            crudo = await cache.aget(clave)
         except Exception:
             log.debug("ask.cache_get_failed", exc_info=True)
             crudo = None
@@ -857,11 +860,12 @@ async def resumen_licitacion(
     ctx, doc, ficha_at = loaded_tuple
     degraded_docs = [{k: doc.get(k) for k in _DEGRADED_DOC_FIELDS}]
 
-    from shared.cache import get_cache
+    from shared.cache import aget_cache
 
-    cache = get_cache(RESUMEN_CACHE_NAMESPACE)
+    # Lectura con `aget` (event loop); la escritura sigue en `_factory`, en un hilo.
+    cache = await aget_cache(RESUMEN_CACHE_NAMESPACE)
     cache_key = resumen_cache_key(id_externo, body.model, doc, ctx["documentos"], ficha_at)
-    cached_raw = None if body.force else cache.get(cache_key)
+    cached_raw = None if body.force else await cache.aget(cache_key)
     cached_text = str(cached_raw) if isinstance(cached_raw, str) and cached_raw.strip() else None
 
     from observability.runtime_metrics import llm_cache_hit_total

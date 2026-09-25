@@ -6,7 +6,8 @@ import { QueryClient, hydrate } from "@tanstack/react-query";
  *
  * - reenvía la cookie de la request a la API y no pide nada sin ella;
  * - lo que falla no se hidrata (el cliente lo pedirá como antes);
- * - cada consulta lleva un presupuesto de tiempo;
+ * - cada consulta lleva un presupuesto de tiempo, y es corto;
+ * - no se deshidrata nada pendiente: las pantallas usan `useQuery`;
  * - `transformar` se aplica antes de cachear, igual que el `queryFn` del hook.
  */
 
@@ -102,6 +103,27 @@ describe("prefetchEnServidor", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(estado.queries).toEqual([]);
+  });
+
+  it("el presupuesto es corto: el render lo espera y el cliente sabe pedir el dato solo", () => {
+    // Con las funciones en `fra1`, junto a la API, una consulta sana cabe de
+    // sobra. Subirlo vuelve a retener el HTML entero por una API lenta o fría.
+    expect(PRESUPUESTO_PREFETCH_MS).toBeLessThanOrEqual(600);
+  });
+
+  it("espera a sus consultas: no deshidrata ninguna pendiente", async () => {
+    // Una promesa deshidratada se resolvería al hidratar y `useQuery` pintaría
+    // el dato donde el HTML del servidor pintó el esqueleto.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise((resolver) => setTimeout(() => resolver(respuesta({ ok: 1 })), 20))),
+    );
+
+    const estado = await prefetchEnServidor([{ queryKey: ["lenta"], path: "/api/v1/lenta" }]);
+
+    expect(estado.queries).toHaveLength(1);
+    expect(estado.queries[0].state.status).toBe("success");
+    expect(estado.queries[0]).not.toHaveProperty("promise");
   });
 
   it("la petición lleva la señal del presupuesto", async () => {

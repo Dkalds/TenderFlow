@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { Pursuit } from "@/hooks/use-pursuits";
 import { PathFases } from "../_components/path-fases";
@@ -35,6 +35,13 @@ const base = {
 } as unknown as Pursuit;
 
 const en = (cambios: Partial<Pursuit>): Pursuit => ({ ...base, ...cambios }) as Pursuit;
+
+// El diálogo de cierre entra por `next/dynamic`. Su import en frío se paga
+// aquí, con margen propio: dentro del test competía con sus 5 s por defecto
+// (el mismo plazo que su `findBy`), y en una máquina cargada los perdía.
+beforeAll(async () => {
+  await import("../../_components/dialogo-cierre");
+}, 120_000);
 
 describe("PathFases", () => {
   it("marca la fase actual como paso en curso", () => {

@@ -14,7 +14,7 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.repositories.kpi_snapshots import read_meta_cpv
 from db.repositories.licitaciones import LicitacionRepository
-from shared.cache import API_NAMESPACE, cache_key, get_cache, single_flight
+from shared.cache import API_NAMESPACE, aget_cache, cache_key, single_flight
 from shared.procedimientos import Familia, opciones
 
 router = APIRouter(prefix="/meta", tags=["meta"])
@@ -136,7 +136,11 @@ async def get_filter_options(
     (``shared/procedimientos.py``), etiqueta y definición incluidas, para que
     la consola no tenga que llevar su propia copia del vocabulario.
     """
-    cached = get_cache(API_NAMESPACE).get(_FILTERS_CACHE_KEY)
+    # `aget`/`aset` y no `get`/`set`: con Redis son un viaje de red, y este
+    # handler es `async` — la versión síncrona paraba el event loop del único
+    # proceso de la API en cada carga de página (ver `shared/cache.py`).
+    cache = await aget_cache(API_NAMESPACE)
+    cached = await cache.aget(_FILTERS_CACHE_KEY)
     if cached is not None:
         response.headers["X-Cache"] = "HIT"
         return _con_catalogos(cast("dict[str, Any]", cached))
@@ -146,13 +150,13 @@ async def get_filter_options(
     # consulta. Dentro del lock hay que volver a leer, porque quien esperaba lo
     # hacía mientras otra corrutina rellenaba la entrada.
     async with single_flight(_FILTERS_CACHE_KEY):
-        cached = get_cache(API_NAMESPACE).get(_FILTERS_CACHE_KEY)
+        cached = await cache.aget(_FILTERS_CACHE_KEY)
         if cached is not None:
             response.headers["X-Cache"] = "HIT"
             return _con_catalogos(cast("dict[str, Any]", cached))
 
         result = await run_db(_load_filter_options)
-        get_cache(API_NAMESPACE).set(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)
+        await cache.aset(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)
 
     response.headers["X-Cache"] = "MISS"
     return _con_catalogos(result)
@@ -178,14 +182,13 @@ async def get_last_extraction(
     #
     # Se cachea un `dict` y no el `str` pelado para que `None` (corpus vacío) sea
     # un valor cacheable y no se confunda con "no hay entrada".
-    cached = get_cache(API_NAMESPACE).get(_LAST_EXTRACTION_CACHE_KEY)
+    cache = await aget_cache(API_NAMESPACE)
+    cached = await cache.aget(_LAST_EXTRACTION_CACHE_KEY)
     if cached is None:
         async with single_flight(_LAST_EXTRACTION_CACHE_KEY):
-            cached = get_cache(API_NAMESPACE).get(_LAST_EXTRACTION_CACHE_KEY)
+            cached = await cache.aget(_LAST_EXTRACTION_CACHE_KEY)
             if cached is None:
                 date = await run_db(_lic_repo.get_last_extraction_date)
                 cached = {"last_extraction": date}
-                get_cache(API_NAMESPACE).set(
-                    _LAST_EXTRACTION_CACHE_KEY, cached, ttl=_LAST_EXTRACTION_TTL
-                )
+                await cache.aset(_LAST_EXTRACTION_CACHE_KEY, cached, ttl=_LAST_EXTRACTION_TTL)
     return LastExtraction(**cast("dict[str, Any]", cached))

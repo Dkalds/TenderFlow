@@ -185,11 +185,11 @@ def resolve_portfolio(
     return PortfolioResolution(portfolio=personal, origen="ninguno")
 
 
-def _candidate_text(row: pd.Series) -> str:
+def _candidate_text(titulo: object, descripcion: object, cpv: object) -> str:
     parts = [
-        str(row.get("titulo") or "").strip(),
-        str(row.get("descripcion") or "").strip(),
-        str(row.get("cpv") or "").strip(),
+        str(titulo or "").strip(),
+        str(descripcion or "").strip(),
+        str(cpv or "").strip(),
     ]
     return " · ".join(part for part in parts if part)
 
@@ -227,7 +227,9 @@ def _keyword_pattern(keywords: tuple[str, ...]) -> re.Pattern[str] | None:
 
 
 def _fallback_score(
-    row: pd.Series,
+    titulo: object,
+    descripcion: object,
+    cpv: object,
     portfolio: AffinityPortfolio,
     pattern: re.Pattern[str] | None,
 ) -> float:
@@ -239,27 +241,35 @@ def _fallback_score(
     """
     hits = 0
     if pattern is not None:
-        texto = " ".join(
-            part
-            for part in (str(row.get("titulo") or ""), str(row.get("descripcion") or ""))
-            if part
-        )
+        texto = " ".join(part for part in (str(titulo or ""), str(descripcion or "")) if part)
         hits = len({match.group(0).casefold() for match in pattern.finditer(texto)})
     keyword_score = min(hits / 3.0, 1.0)
-    return max(keyword_score, _cpv_similarity(row.get("cpv"), portfolio.cpvs))
+    return max(keyword_score, _cpv_similarity(cpv, portfolio.cpvs))
+
+
+def _columna(df: pd.DataFrame, nombre: str) -> list[object]:
+    """Valores crudos de ``nombre``, o ``None`` por fila si no existe (``row.get``)."""
+    return df[nombre].tolist() if nombre in df.columns else [None] * len(df)
 
 
 def score_affinity_batch(df: pd.DataFrame, portfolio: AffinityPortfolio) -> AffinityBatch:
-    """Puntúa afinidad 0..1 en lote, con embeddings normalizados y fallback estable."""
+    """Puntúa afinidad 0..1 en lote, con embeddings normalizados y fallback estable.
+
+    Lee título, descripción y CPV como columnas, no con ``iterrows``: construir
+    una ``Series`` por fila para leer tres campos era casi todo su coste (~200
+    → ~25 ms medidos en local con 2 k filas y el fallback por keywords).
+    """
     if df.empty or not portfolio.available:
         return AffinityBatch()
 
     ids = [str(value) for value in df.get("id_externo", pd.Series(dtype=str)).tolist()]
-    rows = [row for _, row in df.iterrows()]
+    titulos = _columna(df, "titulo")
+    descripciones = _columna(df, "descripcion")
+    cpvs = _columna(df, "cpv")
     pattern = _keyword_pattern(portfolio.keywords)
     fallback = {
-        row_id: round(_fallback_score(row, portfolio, pattern), 6)
-        for row_id, row in zip(ids, rows, strict=True)
+        row_id: round(_fallback_score(titulo, descripcion, cpv, portfolio, pattern), 6)
+        for row_id, titulo, descripcion, cpv in zip(ids, titulos, descripciones, cpvs, strict=True)
     }
 
     try:
@@ -273,7 +283,10 @@ def score_affinity_batch(df: pd.DataFrame, portfolio: AffinityPortfolio) -> Affi
             *(f"CPV {cpv}" for cpv in portfolio.cpvs),
             *portfolio.contracts,
         ]
-        candidates = [_candidate_text(row) for row in rows]
+        candidates = [
+            _candidate_text(titulo, descripcion, cpv)
+            for titulo, descripcion, cpv in zip(titulos, descripciones, cpvs, strict=True)
+        ]
         vectors = encode_texts([*portfolio_items, *candidates])
         split = len(portfolio_items)
         portfolio_vectors = np.asarray(vectors[:split], dtype=float)
@@ -281,7 +294,7 @@ def score_affinity_batch(df: pd.DataFrame, portfolio: AffinityPortfolio) -> Affi
         if (
             portfolio_vectors.ndim != 2
             or candidate_vectors.ndim != 2
-            or len(candidate_vectors) != len(rows)
+            or len(candidate_vectors) != len(candidates)
         ):
             raise ValueError("shape de embeddings inesperada")
 
@@ -292,11 +305,11 @@ def score_affinity_batch(df: pd.DataFrame, portfolio: AffinityPortfolio) -> Affi
                 max(
                     0.0,
                     min(1.0, float(semantic)),
-                    _cpv_similarity(row.get("cpv"), portfolio.cpvs),
+                    _cpv_similarity(cpv, portfolio.cpvs),
                 ),
                 6,
             )
-            for row_id, row, semantic in zip(ids, rows, semantic_scores, strict=True)
+            for row_id, cpv, semantic in zip(ids, cpvs, semantic_scores, strict=True)
         }
         return AffinityBatch(scores=scores, method="semantic_embeddings")
     except Exception as exc:

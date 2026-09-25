@@ -10,11 +10,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate, fetchWithAuth, type ApiQueryValue } from "@/lib/api-client";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
-import {
-  organizacionResuelta,
-  useActiveOrganizationId,
-  type OrganizacionActiva,
-} from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId, type OrganizacionActiva } from "@/hooks/use-organization";
 import type {
   PipelineAgendaItem as PipelineAgendaItemDTO,
   PipelineAgendaResponse,
@@ -48,11 +44,7 @@ export const PURSUIT_STATUSES = [
  * aquí, junto al orden del workflow, y no en la pantalla del tablero: la
  * tarjeta y la ficha también necesitan saber si algo está cerrado.
  */
-export const ESTADOS_TERMINALES = [
-  "won",
-  "lost",
-  "withdrawn",
-] as const satisfies readonly PursuitStatus[];
+export const ESTADOS_TERMINALES = ["won", "lost", "withdrawn"] as const satisfies readonly PursuitStatus[];
 
 export type EstadoTerminal = (typeof ESTADOS_TERMINALES)[number];
 
@@ -82,10 +74,7 @@ export interface PursuitFilters {
  * Query del listado. Los valores `undefined` los descarta el serializador del
  * cliente tipado, así que esto equivale al `if (x) params.set(...)` anterior.
  */
-function pursuitQuery(
-  filters: PursuitFilters,
-  organizationId: OrganizacionActiva,
-): Record<string, ApiQueryValue> {
+function pursuitQuery(filters: PursuitFilters, organizationId: OrganizacionActiva): Record<string, ApiQueryValue> {
   return {
     status: filters.status,
     responsible_user_id: filters.responsible_user_id || undefined,
@@ -110,13 +99,17 @@ function organizationQuery(organizationId: OrganizacionActiva): Record<string, A
  * otra organización; en `usePursuit` era un 404 con toast rojo en cada apertura
  * de ficha, corregido medio segundo después por la petición buena. De ahí el
  * `organizacionResuelta` de cada `enabled`.
+ *
+ * El tablero y la ficha se vuelven a pedir al volver a la pestaña
+ * (`CLAVES_FRESCAS_AL_VOLVER` en `components/providers.tsx`): los mueven varias
+ * personas y el PATCH lleva `expected_version`.
  */
 export function usePursuits(filters: PursuitFilters = {}) {
   const organizationId = useActiveOrganizationId();
   return useQuery({
     queryKey: [...pursuitKeys.list(filters), organizationId],
-    queryFn: () =>
-      apiGet("/api/v1/pursuits", { params: { query: pursuitQuery(filters, organizationId) } }),
+    queryFn: ({ signal }) =>
+      apiGet("/api/v1/pursuits", { params: { query: pursuitQuery(filters, organizationId) }, signal }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
   });
@@ -126,13 +119,13 @@ export function usePursuit(id: string | null) {
   const organizationId = useActiveOrganizationId();
   return useQuery({
     queryKey: [...pursuitKeys.detail(id ?? ""), organizationId],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const params = new URLSearchParams();
       if (organizationId != null) params.set("organization_id", String(organizationId));
       const query = params.toString();
-      return fetchWithAuth<Pursuit>(
-        `/api/v1/pursuits/${encodeURIComponent(id!)}${query ? `?${query}` : ""}`,
-      );
+      return fetchWithAuth<Pursuit>(`/api/v1/pursuits/${encodeURIComponent(id!)}${query ? `?${query}` : ""}`, {
+        signal,
+      });
     },
     enabled: Boolean(id) && organizacionResuelta(organizationId),
   });
@@ -190,9 +183,7 @@ export function useUpdatePursuit(id: string | number) {
       if (input.status) {
         registrarEvento("pursuit_estado_cambiado", {
           estado: input.status,
-          ...(input.status === "lost" && input.outcome_reason_code
-            ? { motivo: input.outcome_reason_code }
-            : {}),
+          ...(input.status === "lost" && input.outcome_reason_code ? { motivo: input.outcome_reason_code } : {}),
         });
       }
       // La misma clave que lee `usePursuit`, organización incluida: sin ella el
@@ -240,10 +231,7 @@ export function useMoverPursuit() {
             : {}),
         });
       }
-      queryClient.setQueryData(
-        [...pursuitKeys.detail(String(variables.id)), organizationId],
-        pursuit,
-      );
+      queryClient.setQueryData([...pursuitKeys.detail(String(variables.id)), organizationId], pursuit);
       return invalidatePursuits(queryClient);
     },
   });
@@ -253,8 +241,8 @@ export function usePursuitMetrics() {
   const organizationId = useActiveOrganizationId();
   return useQuery({
     queryKey: [...pursuitKeys.metrics, organizationId],
-    queryFn: () =>
-      apiGet("/api/v1/pursuits/metrics", { params: { query: organizationQuery(organizationId) } }),
+    queryFn: ({ signal }) =>
+      apiGet("/api/v1/pursuits/metrics", { params: { query: organizationQuery(organizationId) }, signal }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 60_000,
   });
@@ -273,12 +261,15 @@ export interface AgendaFilters {
  * urgencia vienen del backend; aquí solo se agrupan por la banda ya puesta.
  * El descarte de señales comparte persistencia con el Radar
  * (`/api/v1/radar/dismissals`), así que sus mutaciones invalidan esta query.
+ *
+ * Es de las pocas consultas que se vuelven a pedir al volver a la pestaña
+ * (`CLAVES_FRESCAS_AL_VOLVER` en `components/providers.tsx`).
  */
 export function usePipelineAgenda(filters: AgendaFilters) {
   const organizationId = useActiveOrganizationId();
   return useQuery({
     queryKey: [...pursuitKeys.agenda, filters, organizationId],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiGet("/api/v1/pursuits/agenda", {
         params: {
           query: {
@@ -290,8 +281,15 @@ export function usePipelineAgenda(filters: AgendaFilters) {
             ccaa: filters.ccaa || undefined,
           },
         },
+        signal,
       }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
+    // «Sólo mías», la tecnología y la CCAA del ámbito cambian la clave: sin
+    // esto, cada cambio devolvía la Agenda al esqueleto. Mismo criterio que
+    // `useRadar`: la respuesta anterior se conserva sólo si es de la misma
+    // organización (último segmento de la clave).
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[3] === organizationId ? previous : undefined,
   });
 }

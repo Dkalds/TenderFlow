@@ -155,6 +155,36 @@ const nextConfig: NextConfig = {
     ];
   },
 
+  /**
+   * Caché del router en el cliente para las rutas dinámicas.
+   *
+   * Todo el dashboard es `force-dynamic` (`app/(dashboard)/layout.tsx`), y desde
+   * Next 15 el cliente no guarda el RSC de una ruta dinámica
+   * (`staleTimes.dynamic` vale 0): volver a una pantalla recién vista era otra
+   * petición a la función de Vercel, con el `loading.tsx` parpadeando mientras
+   * llegaba. Con 30 s, el router reutiliza durante ese tiempo el RSC de una ruta
+   * dinámica ya visitada.
+   *
+   * Lo que se reutiliza es el árbol de Server Components —layouts, metadatos y
+   * el estado deshidratado del prefetch en servidor—, no los datos de la
+   * pantalla: esos los gobierna React Query, con su `staleTime` y sus refetch, y
+   * `HydrationBoundary` nunca pisa una consulta de la caché del navegador con un
+   * estado deshidratado más viejo que ella. Atrás/adelante no cambia: ya se
+   * servía de la caché.
+   *
+   * No cruza sesiones. La caché vive en la memoria de la pestaña, y entrar y
+   * salir de la sesión son navegaciones completas, no del router:
+   * `window.location.href` en `app/login/_hooks/use-login-form.ts`, en el menú
+   * de cuenta (`components/layout/console-rail.tsx`), al borrar la cuenta y en
+   * `lib/api-client.ts` ante un 401. Recargar el documento la destruye, así que
+   * nadie navega sobre el RSC de la sesión anterior.
+   */
+  experimental: {
+    staleTimes: {
+      dynamic: 30,
+    },
+  },
+
   /** Allow external images (e.g., Google avatar) */
   images: {
     remotePatterns: [

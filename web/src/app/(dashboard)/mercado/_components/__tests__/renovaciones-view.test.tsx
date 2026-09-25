@@ -1,6 +1,6 @@
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RenovacionRow } from "../../_hooks/use-renovaciones";
@@ -25,17 +25,13 @@ interface RenovacionesRowContext {
  *    mueven por ella.
  * 3. **Sin cruce disponible, la tabla no se bloquea**: si las dos consultas de
  *    organización no han resuelto, todas las filas vuelven a ofrecer el CTA.
+ * 4. **El corte es enlazable sin navegar**: la ventana y la búsqueda se siembran
+ *    desde la URL y vuelven a ella con `history.replaceState`, no con el
+ *    router. Era una petición RSC por cada pausa de 300 ms al escribir.
  */
 
-const navegacion = vi.hoisted(() => ({
-  replace: vi.fn(),
-  push: vi.fn(),
-  search: new URLSearchParams(),
-}));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: navegacion.replace, push: navegacion.push }),
-  useSearchParams: () => navegacion.search,
-}));
+// URL de jsdom y el doble de `next/navigation` que la lee como Next.
+vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 
 // El ámbito global sólo aporta la tecnología a esta vista.
 vi.mock("@/lib/filters", () => ({ useFilters: () => ({ tecnologias: [] }) }));
@@ -107,6 +103,11 @@ const fetchWithAuth = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/api-client", () => ({ fetchWithAuth }));
 
 import RenovacionesView from "../renovaciones-view";
+import { irA, router } from "@/test/navegacion-superficial";
+
+function query(): URLSearchParams {
+  return new URLSearchParams(window.location.search);
+}
 
 /** Tres contratos que vencen; ninguno de ellos suma lo que dicen los KPIs. */
 const FILAS = [
@@ -166,6 +167,7 @@ function pintar() {
 // el módulo: así el `clearAllMocks` de abajo no puede dejar el `fetch` mudo si
 // alguien lo cambia por un `resetAllMocks`.
 beforeEach(() => {
+  irA("/mercado?vista=renovaciones");
   fetchWithAuth.mockImplementation((url: string) =>
     Promise.resolve(
       url.includes("/resumen")
@@ -178,7 +180,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  navegacion.search = new URLSearchParams();
   propias.cartera = [];
   propias.pursuits = undefined;
 });
@@ -237,18 +238,19 @@ describe("Renovaciones — lo que ya es tuyo", () => {
 
 describe("Renovaciones — el corte es enlazable", () => {
   it("siembra el horizonte desde la URL y pide esa ventana", async () => {
-    navegacion.search = new URLSearchParams("meses=24");
+    irA("/mercado?vista=renovaciones&meses=24");
     pintar();
 
     await waitFor(() =>
       expect(fetchWithAuth.mock.calls.some(([url]) => String(url).includes("months=24"))).toBe(true),
     );
-    // Lo que ya está en la URL no se reescribe.
-    expect(navegacion.replace).not.toHaveBeenCalled();
+    // Lo que ya está en la URL no se reescribe: ni por el router ni a mano.
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(window.location.search).toBe("?vista=renovaciones&meses=24");
   });
 
   it("siembra la búsqueda local desde su propio parámetro, no desde `q`", async () => {
-    navegacion.search = new URLSearchParams("renovacion_q=diputación");
+    irA("/mercado?renovacion_q=diputación");
     pintar();
 
     // Filtra sobre las filas ya servidas: queda la que casa y desaparecen las
@@ -257,5 +259,22 @@ describe("Renovaciones — el corte es enlazable", () => {
       expect(screen.getAllByRole("button", { name: /^Anticipar la renovación de / })).toHaveLength(1),
     );
     expect(screen.getByRole("searchbox")).toHaveValue("diputación");
+  });
+
+  it("escribir en la búsqueda la lleva a la URL sin navegar, pasada la pausa", async () => {
+    const entradas = window.history.length;
+    pintar();
+
+    fireEvent.change(await screen.findByRole("searchbox"), { target: { value: "diputación" } });
+
+    // Con debounce: la URL no se toca a cada tecla, sino al pararse.
+    expect(query().has("renovacion_q")).toBe(false);
+    await waitFor(() => expect(query().get("renovacion_q")).toBe("diputación"));
+    // Ni `replace` ni `push`: antes cada pausa era una petición RSC. El resto
+    // del ámbito sigue ahí y el historial no crece.
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
+    expect(query().get("vista")).toBe("renovaciones");
+    expect(window.history.length).toBe(entradas);
   });
 });

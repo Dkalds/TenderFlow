@@ -317,3 +317,92 @@ def test_overview_da_el_mismo_resultado_con_y_sin_snapshot(snapshot_db):
     con_snapshot = get_overview(OverviewFilters())
 
     assert con_snapshot.model_dump() == sin_snapshot.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Indicadores de adjudicaciones con filtros y variantes por tecnología (2026-09)
+# ---------------------------------------------------------------------------
+
+
+def test_con_filtros_los_indicadores_salen_del_snapshot(snapshot_db):
+    """Con cualquier filtro, la fila global de indicadores sustituye al cálculo en vivo.
+
+    El doble del cálculo en vivo revienta si se le llama: si el overview
+    filtrado siguiera recalculando la pieza, el test caería aquí.
+    """
+    from unittest.mock import patch
+
+    from db.repositories.kpi_snapshots import read_adj_indicadores_snapshot
+    from scheduler.kpi_precompute import run_kpi_precompute
+    from services.analytics.overview import OverviewFilters, get_overview
+
+    run_kpi_precompute()
+    repo = AggregateRepository()
+
+    assert read_adj_indicadores_snapshot() == repo.overview_adjudicaciones_indicadores()
+    with patch(
+        "services.analytics.overview._adj_indicadores",
+        side_effect=AssertionError("recalculado en vivo"),
+    ):
+        resultado = get_overview(OverviewFilters(ccaa="Madrid"))
+    assert resultado.hhi == repo.overview_adjudicaciones_indicadores()["hhi"]
+
+
+def test_variante_por_tecnologia_coincide_con_el_calculo_en_vivo(snapshot_db):
+    """La variante precalculada de SAP es lo que el repositorio devuelve con ese filtro."""
+    from datetime import UTC, datetime, timedelta
+
+    from db.repositories.kpi_snapshots import read_overview_snapshot_for
+    from scheduler.kpi_precompute import run_kpi_precompute
+
+    run_kpi_precompute()
+    repo = AggregateRepository()
+    filtros = LicitacionesFilters(tecnologia="SAP")
+
+    snap = read_overview_snapshot_for(filtros)
+
+    assert snap is not None
+    assert snap.dimension == "tecnologia:SAP"
+    assert snap.kpis == repo.overview_kpis(filtros)
+    hace_365d = (datetime.now(UTC) - timedelta(days=365)).isoformat()
+    assert snap.tasa_anulacion == repo.overview_tasa_anulacion(filtros, hace_365d_iso=hace_365d)
+    assert snap.adj_indicadores == repo.overview_adjudicaciones_indicadores()
+    assert snap.importe_p75 is None
+    assert snap.total_activas is None
+
+
+def test_la_variante_no_se_sirve_a_otras_preguntas(snapshot_db):
+    from db.repositories.kpi_snapshots import read_overview_snapshot_for
+    from scheduler.kpi_precompute import run_kpi_precompute
+
+    run_kpi_precompute()
+
+    assert read_overview_snapshot_for(LicitacionesFilters(tecnologia="SAP")) is not None
+    assert read_overview_snapshot_for(LicitacionesFilters(tecnologia="SAP", ccaa="Madrid")) is None
+    assert read_overview_snapshot_for(LicitacionesFilters(tecnologia="SAP,ORACLE")) is None
+    assert read_overview_snapshot_for(LicitacionesFilters(tecnologia="ORACLE")) is None
+
+
+def test_overview_con_tecnologia_da_lo_mismo_con_y_sin_variante(snapshot_db):
+    """Leer la variante no cambia la respuesta del endpoint con ese filtro."""
+    from scheduler.kpi_precompute import run_kpi_precompute
+    from services.analytics.overview import OverviewFilters, get_overview
+
+    sin_variante = get_overview(OverviewFilters(tecnologia="SAP"))
+    run_kpi_precompute()
+    con_variante = get_overview(OverviewFilters(tecnologia="SAP"))
+
+    assert con_variante.model_dump() == sin_variante.model_dump()
+
+
+def test_las_variantes_comparten_computed_at_con_el_snapshot_global(snapshot_db):
+    """Mismo ``computed_at``: ``get_all_latest`` y el healthcheck siguen viendo una pasada."""
+    from scheduler.kpi_precompute import run_kpi_precompute
+
+    run_kpi_precompute()
+    with snapshot_db.connect() as conn:
+        filas = conn.execute(
+            "SELECT DISTINCT computed_at FROM kpi_snapshots WHERE dimension IN (%s, %s)",
+            ("global", "tecnologia:SAP"),
+        ).fetchall()
+    assert len(filas) == 1

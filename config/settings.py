@@ -403,6 +403,17 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # sostiene `min_size`. 0 desactiva cada uno.
     DB_POOL_MAX_IDLE_SECONDS: float = 120.0
     DB_POOL_MAX_LIFETIME_SECONDS: float = 1800.0
+    # Conexiones que cada pool mantiene abiertas aunque no haya tráfico
+    # (`min_size`). Con 1, tras un rato sin peticiones una ráfaga abría el resto
+    # (TLS + SCRAM + los `set_config` de sesión) y psycopg_pool crece de una en
+    # una: la última petición esperaba todas las aperturas. Estos valores son
+    # los de la API en prod/staging; el resto de perfiles y entornos se quedan
+    # en 1 (`_pool_minimo_por_perfil`) salvo valor explícito. Nunca pasan de
+    # `DB_POOL_SIZE`/`DB_READ_POOL_SIZE`, que siguen siendo el techo. Que una
+    # conexión ociosa de estas no se entregue muerta lo garantiza la
+    # verificación por checkout de `db/connection.py::_make_pg_check`.
+    DB_POOL_MIN_SIZE: int = 2
+    DB_READ_POOL_MIN_SIZE: int = 4
 
     # ── Scraper ──────────────────────────────────────────────────────────
     REQUEST_TIMEOUT: int = 30
@@ -528,6 +539,25 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # Bulkheads dedicados (subconjuntos del threadpool anterior).
     API_CPU_BOUND_TOKENS: int = 2
     API_ML_TOKENS: int = 2
+    # `statement_timeout` (ms) de las lecturas de la analítica, más corto que el
+    # general (`DB_STATEMENT_TIMEOUT_MS`, 30 s). Una agregación que pasa de
+    # unos segundos ya no la espera nadie en la pantalla, y cada segundo que
+    # sigue corriendo retiene una conexión del pool de lectura y un hilo del
+    # bulkhead de CPU. Lo fijan las rutas de `/analytics` y `/competitive` para
+    # toda la petición (`api/techo_analitica.py` → `db.connection.
+    # techo_de_sentencia`), nunca los jobs de precálculo, que necesitan las
+    # consultas largas. Solo baja el techo: un valor igual o mayor que el
+    # general no cambia nada, y 0 lo desactiva (manda el general).
+    #
+    # **Apagado por defecto a propósito.** No hay medición de producción de
+    # cuánto tardan hoy las agregaciones filtradas, y la búsqueda `q` sigue
+    # sin índice utilizable hasta aplicar la propuesta de
+    # `docs/plans/2026-09-indices-busqueda-propuestos.md`: con un techo corto,
+    # consultas que hoy terminan en 15-25 s pasarían a fallar. Se enciende por
+    # entorno (p. ej. 15000) cuando `pg_stat_statements` diga dónde cortar. La
+    # cancelación ya no se reintenta desde el navegador (503 `query-timeout`,
+    # ver `api/errors.py`), así que encenderlo no multiplica la carga.
+    API_ANALYTICS_STATEMENT_TIMEOUT_MS: int = 0
     # TTL de la caché de proceso del clasificador ML. Cubre el caso
     # multi-worker: `/models/{name}/activate` invalida el proceso que atiende
     # la petición, y los demás recargan al vencer este plazo. 0 = sin recarga
@@ -809,6 +839,24 @@ class Settings(ResumenPregenSettings, BaseSettings):
             raise ValueError("API_THREADPOOL_TOKENS debe ser >= 1")
         return val
 
+    @field_validator("DB_POOL_MIN_SIZE", "DB_READ_POOL_MIN_SIZE", mode="before")
+    @classmethod
+    def _validate_pool_min_size(cls, v: object) -> int:
+        val = int(str(v))
+        if val < 1:
+            raise ValueError("DB_POOL_MIN_SIZE y DB_READ_POOL_MIN_SIZE deben ser >= 1")
+        return val
+
+    @field_validator("API_ANALYTICS_STATEMENT_TIMEOUT_MS", mode="before")
+    @classmethod
+    def _validate_analytics_statement_timeout(cls, v: object) -> int:
+        # 0 es válido (desactivado); lo que no puede ser es un negativo, que
+        # Postgres rechazaría en el `SET LOCAL` de cada lectura analítica.
+        val = int(str(v))
+        if val < 0:
+            raise ValueError("API_ANALYTICS_STATEMENT_TIMEOUT_MS debe ser >= 0 (0 = desactivado)")
+        return val
+
     @model_validator(mode="after")
     def _validate_ml_uncertainty_range(self) -> Settings:
         if self.ML_UNCERTAINTY_LO >= self.ML_UNCERTAINTY_HI:
@@ -865,6 +913,28 @@ class Settings(ResumenPregenSettings, BaseSettings):
         """
         if "DB_STATEMENT_TIMEOUT_MS" not in self.model_fields_set and not self._serves_http:
             self.DB_STATEMENT_TIMEOUT_MS = _BATCH_STATEMENT_TIMEOUT_MS
+        return self
+
+    @model_validator(mode="after")
+    def _pool_minimo_por_perfil(self) -> Settings:
+        """Solo la API de prod/staging mantiene conexiones calientes de sobra.
+
+        Los defaults de ``DB_POOL_MIN_SIZE``/``DB_READ_POOL_MIN_SIZE`` son los
+        de la API en producción, que es donde una ráfaga tras un rato sin
+        tráfico se nota en la latencia. Un job, el worker o un entorno de
+        desarrollo no tienen esa ráfaga, y cada conexión ociosa que mantuvieran
+        ocuparía una ranura del pooler de Supabase compartido (ver la nota de
+        presupuesto de conexiones en ``render.yaml``); la suite de tests,
+        además, recrea los pools en cada test. Ahí vuelven a 1, como antes.
+
+        Mismo criterio que ``_relax_batch_statement_timeout``: se deriva del
+        perfil y un valor explícito en el entorno gana siempre.
+        """
+        if self._serves_http and self._is_prod_data:
+            return self
+        for nombre in ("DB_POOL_MIN_SIZE", "DB_READ_POOL_MIN_SIZE"):
+            if nombre not in self.model_fields_set:
+                setattr(self, nombre, 1)
         return self
 
     @model_validator(mode="after")

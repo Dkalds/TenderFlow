@@ -33,6 +33,7 @@ import { useOrganizationStore } from "@/hooks/use-organization";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { Renovacion, RenovacionesResult, RenovacionesResumenResult } from "@/lib/api-types";
 import { useFilters } from "@/lib/filters";
+import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import { truncate } from "@/lib/utils";
 import { opportunityScore } from "@/lib/opportunity-score";
 
@@ -103,8 +104,11 @@ export function useRenovaciones() {
   const [empresaSearch, setEmpresaSearch] = useState(() => searchParams?.get(PARAM_BUSQUEDA) ?? "");
   const busquedaEnlazable = useDebounce(empresaSearch, 300);
 
+  // `searchParams` sigue en las dependencias aunque la URL se lea viva (ver
+  // `queryActual`): es lo que vuelve a ejecutar el efecto cuando la URL cambia
+  // por fuera, y entonces el estado se vuelve a escribir, como hasta ahora.
   useEffect(() => {
-    const actuales = new URLSearchParams(searchParams?.toString() ?? "");
+    const actuales = queryActual();
     // Los valores por defecto no se escriben: abrir la vista no tiene por qué
     // reescribir la URL, y un `?meses=6&renovacion_q=` vacío no dice nada que
     // la URL limpia no diga ya.
@@ -120,9 +124,12 @@ export function useRenovaciones() {
 
     // `replace` y no `push`, como el conmutador de vistas: ajustar el corte no
     // es navegar, y un entry de historial por tecla dejaría el botón «atrás»
-    // inservible.
-    router.replace(`?${actuales.toString()}`, { scroll: false });
-  }, [router, searchParams, meses, busquedaEnlazable]);
+    // inservible. Y sin pasar por el servidor (`lib/url-superficial.ts`): era
+    // una petición RSC por cada pausa de 300 ms al escribir, para una página
+    // `"use client"` que filtra en local y pide sus datos ella misma. Ningún
+    // Server Component lee `meses` ni `renovacion_q`.
+    reemplazarQuery(actuales);
+  }, [searchParams, meses, busquedaEnlazable]);
 
   // Anticipar: abre un pursuit sobre el contrato que vence, antes de que la
   // relicitación se publique. Mismo flujo de creación que el Radar; la Agenda
