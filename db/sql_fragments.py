@@ -421,8 +421,18 @@ def tecnologia_en_csv_sql(col: str, *, n: int, marcador: str = "%s") -> str:
     basta uno—, pero la forma cambia lo que el planificador puede hacer: el
     ``unnest`` era un subplan por fila sin índice posible, y ``&&`` sobre una
     expresión fija es un operador que un GIN (``array_ops``) sobre esa misma
-    expresión resuelve. Sin el índice sigue siendo secuencial, pero sin
-    desplegar una lista por fila.
+    expresión resuelve (``v142_lic_tecnologia_tokens_gin``).
+
+    Delante va ``{col} IS NOT NULL``. No cambia el resultado —una fila sin
+    tecnología da la lista vacía, que no solapa con nada—, pero cualquier btree
+    sobre ``tecnologia`` la resuelve, y en producción ``idx_lic_tecnologia`` es
+    parcial con ese mismo predicado (la cadena de Alembic, v21, lo crea sin él).
+    Sin ella, y sin el GIN, cada consulta del ámbito SAP era un Seq Scan de las
+    ~713k filas (~870 MB, el 98,7 % sin etiqueta), y las vistas de Mercado con
+    ``?tecnologia=SAP``, que encadenan varias, tardaban 33-41 s en producción
+    (2026-09-25). Con ella el plan recorre solo las ~10k filas etiquetadas: el
+    coste estimado baja de 229k a 11k y la consulta tarda 72 ms con la caché
+    caliente.
 
     Los ``n`` valores van con marcadores —uno por código, como siempre, para no
     cambiar lo que los llamantes pasan en ``params``— y el ``::text[]`` fija el
@@ -432,7 +442,7 @@ def tecnologia_en_csv_sql(col: str, *, n: int, marcador: str = "%s") -> str:
     if n <= 0:
         raise ValueError("tecnologia_en_csv_sql necesita al menos un código")
     marcadores = ",".join([marcador] * n)
-    return f"{tecnologia_tokens_sql(col)} && ARRAY[{marcadores}]::text[]"
+    return f"({col} IS NOT NULL AND {tecnologia_tokens_sql(col)} && ARRAY[{marcadores}]::text[])"
 
 
 # ── Guarda de fecha bien formada ──────────────────────────────────────────
