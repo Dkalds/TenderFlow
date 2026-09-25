@@ -127,11 +127,16 @@ _SYSTEM_GENERAL_WITH_CORPUS = (
     _BASE
     + _UNTRUSTED_CONTEXT_RULES
     + (
+        # Sin ID de ejemplo, a propósito. Con «ej: [EXP-2024-001]» aquí,
+        # nemotron-3-super citó el ejemplo en vez del expediente real (eval del
+        # 2026-09-25: 1 de 35 respuestas, con un solo expediente en el
+        # contexto). La cabecera de cada bloque ya enseña el formato real.
         "Cuando el CONTEXTO contenga expedientes relevantes para la pregunta, básate en ellos "
-        "y cita siempre el ID del expediente entre corchetes, copiado tal cual del CONTEXTO "
-        "(el formato varía: ej: [EXP-2024-001]), dentro de una frase que diga qué se "
-        "licita, quién lo licita y por qué responde a la pregunta: el ID acompaña a la "
-        "respuesta, nunca la sustituye. "
+        "y cita siempre el ID del expediente entre corchetes, copiado tal cual de la cabecera "
+        "de su bloque en el CONTEXTO (el formato cambia de un organismo a otro), dentro de "
+        "una frase que diga qué se licita, quién lo licita y por qué responde a la pregunta: "
+        "el ID acompaña a la respuesta, nunca la sustituye. Nunca escribas un ID que no "
+        "esté en el CONTEXTO. "
         "Si hay varios expedientes relevantes, incluye además una tabla Markdown resumen "
         "con columnas: Expediente | Órgano | Importe | Relevancia; con uno solo basta la prosa. "
         "Si la pregunta pide algo que los expedientes no contienen (total o parcialmente), "
@@ -185,8 +190,9 @@ _SYSTEM_COMPARACION = (
         "El CONTEXTO contiene entre dos y tres licitaciones, cada una encabezada por su ID "
         "entre corchetes, con los metadatos de su anuncio y, si están disponibles, fragmentos "
         "de sus pliegos. Responde a la pregunta comparándolas. Atribuye cada dato a su "
-        "expediente citando su ID entre corchetes, ej: [EXP-2024-001]; nunca mezcles en una "
-        "misma frase datos de dos expedientes sin decir de cuál es cada uno. "
+        # Sin ID de ejemplo, por lo mismo que en el modo general.
+        "expediente citando su ID entre corchetes, copiado tal cual de su cabecera; nunca "
+        "mezcles en una misma frase datos de dos expedientes sin decir de cuál es cada uno. "
         "Cada afirmación que salga de un pliego debe terminar además con el marcador del "
         "fragmento que la sostiene, copiado tal cual de su cabecera: [doc:N p.M] (o [doc:N] "
         "si la cabecera no trae página). No inventes marcadores: si el CONTEXTO no trae "
