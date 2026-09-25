@@ -97,6 +97,30 @@ test.describe("Móvil (375×812)", () => {
     await expect(drawer).toBeHidden();
   });
 
+  test("la barra móvil va encima del contenido y la pantalla cabe en alto", async ({ page }) => {
+    // El marco era una fila también en móvil: la barra quedaba como una
+    // columna de ~181px a la izquierda y el contenido se estrujaba en ~194px.
+    // Las medidas de desborde no lo veían porque nada desbordaba: miden el
+    // ancho del documento, no el del contenido.
+    await page.goto("/radar");
+    await expect(page.getByText(SEED_LICITACION.tituloRadar).first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const hamburguesa = await page.getByRole("button", { name: "Abrir navegación" }).boundingBox();
+    const contenido = await page.locator("#main-content").boundingBox();
+    expect(hamburguesa).not.toBeNull();
+    expect(contenido).not.toBeNull();
+
+    expect(contenido!.x).toBeLessThanOrEqual(1);
+    expect(contenido!.width).toBeGreaterThanOrEqual(MOVIL.width - 1);
+    expect(contenido!.y).toBeGreaterThanOrEqual(hamburguesa!.y + hamburguesa!.height);
+    // Las pantallas miden `100vh - var(--alto-cromo)`, que por debajo de `md`
+    // cuenta también los 48px de la barra móvil: sin ellos, cada pantalla
+    // acababa esos 48px por debajo del pliegue.
+    expect(contenido!.y + contenido!.height).toBeLessThanOrEqual(MOVIL.height + 1);
+  });
+
   test("el Radar cabe a lo ancho: ni la lista ni la página desbordan", async ({ page }) => {
     await page.goto("/radar");
     // Sin una fila real no hay nada que pueda desbordar y la medida daría verde

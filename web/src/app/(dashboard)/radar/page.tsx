@@ -96,7 +96,7 @@ export default function RadarPage() {
         : `${formatNumber(consola.rows.length)} filas · ${consola.counts.bandeja} por revisar · ${consola.counts.siguiendo} en seguimiento`;
 
   return (
-    <div className="flex h-[calc(100vh-52px)] min-h-0">
+    <div className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0">
       {/* El borde derecho solo separa de algo cuando el inspector existe. */}
       <section
         className={cn(
