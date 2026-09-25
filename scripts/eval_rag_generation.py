@@ -23,13 +23,20 @@ falsas ``EVAL-0xx`` en producción. Ahora el proceso arranca además con
 ``DATABASE_URL`` vacía, para que una consulta que alguien reintroduzca falle en
 vez de llegar a una base real (``tests/test_unit_eval_rag_generation.py``).
 
-Mide además, sin intervención humana, **la tasa de citas válidas** (C5.3 /
-D29): el objetivo del plan es ≥ 90 % de respuestas en modo licitación con al
-menos una fuente que exista en el contexto enviado. La validación la hace el
-mismo módulo que la ruta (``services/rag/citas``). Solo cuentan las respuestas
-cuyo contexto trae fragmentos de pliego, y el golden set no los tiene: hoy la
-métrica sale «sin población» y ``--min-citas`` no puede fallar. La *calidad*
-de la respuesta sigue sin pass/fail automático: eso es revisión humana.
+Cuenta sin intervención humana **si cada respuesta cita el expediente
+esperado** como pide el prompt general, con el id entre corchetes copiado del
+contexto. También cuenta los ids entre corchetes que no estaban en el contexto
+enviado (el ``[EXP-2024-001]`` del ejemplo del prompt, o uno inventado) y las
+respuestas vacías. Es lo que se contó a mano en el eval del cambio de modelo
+del 2026-09-24.
+
+Mide además **la tasa de citas válidas** de pliego (C5.3 / D29): el objetivo
+del plan es ≥ 90 % de respuestas en modo licitación con al menos una fuente que
+exista en el contexto enviado. La validación la hace el mismo módulo que la
+ruta (``services/rag/citas``). Solo cuentan las respuestas cuyo contexto trae
+fragmentos de pliego, y el golden set no los tiene: hoy la métrica sale «sin
+población» y ``--min-citas`` no puede fallar. La *calidad* de la respuesta
+sigue sin pass/fail automático: eso es revisión humana.
 
 Uso::
 
@@ -56,6 +63,12 @@ _FIXTURE = _REPO_ROOT / "tests" / "eval" / "fixtures" / "eval_rag.jsonl"
 
 #: Documentos de contexto por pregunta: el ``top_k`` por defecto de ``/ask``.
 _TOP_K = 5
+
+#: Un id de expediente citado como pide el prompt general: entre corchetes y
+#: copiado tal cual del contexto (``[EXP-2024-001]``, ``llm/prompts.py``). Se
+#: exige un dígito para no contar un ``[Nota]``, y se excluyen espacios y «:»
+#: para no confundirlo con los marcadores de pliego ``[doc:N p.M]``.
+_ID_ENTRE_CORCHETES = re.compile(r"\[(?=[^\[\]\s:]*\d)([^\[\]\s:]{3,40})\]")
 
 
 def _load_golden_set() -> list[dict[str, Any]]:
@@ -126,6 +139,19 @@ def _recuperar(pregunta: str, corpus: list[dict[str, Any]], top_k: int) -> list[
     return [doc for _, doc in puntuados[:top_k]]
 
 
+def _citas_de_expediente(texto: str, docs: list[dict[str, Any]]) -> tuple[set[str], list[str]]:
+    """``(citados, ajenos)`` de una respuesta en modo general.
+
+    ``citados``: los expedientes del contexto que la respuesta cita entre
+    corchetes. ``ajenos``: los ids entre corchetes que no estaban en el
+    contexto, sea el ejemplo del prompt copiado o un expediente inventado. Un id
+    sin corchetes no cuenta como cita, porque el prompt pide el corchete.
+    """
+    del_contexto = {str(d["id_externo"]) for d in docs}
+    ids = set(_ID_ENTRE_CORCHETES.findall(texto))
+    return ids & del_contexto, sorted(ids - del_contexto)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -159,6 +185,10 @@ def main(argv: list[str] | None = None) -> int:
     corpus = _corpus(golden)
     entries = golden[: args.limit]
 
+    con_esperado = 0
+    ids_ajenos = 0
+    vacias = 0
+    errores = 0
     con_contexto = 0
     con_fuente = 0
     inventadas = 0
@@ -179,7 +209,17 @@ def main(argv: list[str] | None = None) -> int:
             print()
         except Exception as e:
             print(f"  [ERROR generando respuesta: {e}]")
+            errores += 1
             continue
+
+        texto = "".join(partes)
+        if not texto.strip():
+            vacias += 1
+        citados, ajenos = _citas_de_expediente(texto, docs)
+        if citados & set(entry["expected_ids"]):
+            con_esperado += 1
+        ids_ajenos += len(ajenos)
+        print(f"  [expedientes: citados {sorted(citados)}, ajenos al contexto {ajenos}]")
 
         chunks = [c for d in docs for c in (d.get("chunks") or [])]
         if not chunks:
@@ -189,13 +229,18 @@ def main(argv: list[str] | None = None) -> int:
             print("  [citas: sin fragmentos de pliego en el contexto — fuera de la métrica]")
             continue
         con_contexto += 1
-        evento = evento_sources("".join(partes), chunks)
+        evento = evento_sources(texto, chunks)
         inventadas += int(evento["descartadas"])
         if not evento["sin_fuentes"]:
             con_fuente += 1
         print(f"  [citas: {len(evento['sources'])} válidas, {evento['descartadas']} inventadas]")
 
     print(f"\n{'=' * 70}")
+    con_error = f"; {errores} pregunta/s con error" if errores else ""
+    print(
+        f"Expedientes: el esperado se cita en {con_esperado}/{len(entries)} preguntas; "
+        f"{ids_ajenos} id/s ajeno/s al contexto; {vacias} respuesta/s vacía/s{con_error}."
+    )
     if con_contexto:
         tasa = con_fuente / con_contexto
         print(

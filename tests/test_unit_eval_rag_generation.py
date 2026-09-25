@@ -4,7 +4,8 @@ El script sembraba el golden set con ``upsert_licitaciones`` en lo que dijera
 ``DATABASE_URL``. Lanzado desde el checkout principal, cuyo ``.env`` apunta a
 producción, escribía allí las licitaciones falsas ``EVAL-0xx``. Ahora emula la
 recuperación sobre el propio golden set y arranca con ``DATABASE_URL`` vacía.
-Estos tests fijan las dos cosas sin LLM real ni red.
+Estos tests fijan las dos cosas sin LLM real ni red, y también el recuento de
+expedientes citados que el eval hace de cada respuesta.
 """
 
 from __future__ import annotations
@@ -79,3 +80,55 @@ def test_la_recuperacion_emulada_mete_la_licitacion_esperada_en_el_contexto() ->
         ids = [d["id_externo"] for d in docs]
         assert len(ids) <= eval_rag._TOP_K
         assert set(entry["expected_ids"]) & set(ids), f"{entry['question']!r} -> {ids}"
+
+
+def test_citas_de_expediente_separa_las_del_contexto_de_las_ajenas() -> None:
+    docs = [{"id_externo": "EVAL-001"}, {"id_externo": "EVAL-008"}]
+    texto = (
+        "El Ayuntamiento licita [EVAL-001] ([doc:3 p.2]). EVAL-008 va sin corchetes, "
+        "y [EXP-2024-001] y [EVAL-020] no estaban en el contexto. [Nota] y [1] no son ids."
+    )
+
+    citados, ajenos = eval_rag._citas_de_expediente(texto, docs)
+
+    # Sin corchetes no hay cita; el marcador de pliego, `[Nota]` y `[1]` no son ids.
+    assert citados == {"EVAL-001"}
+    assert ajenos == ["EVAL-020", "EXP-2024-001"]
+
+
+def test_el_resumen_cuenta_el_expediente_esperado_los_ajenos_vacias_y_errores(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import llm.client
+
+    # `main()` vacía `DATABASE_URL` y añade la raíz a `sys.path`: que no salga del test.
+    monkeypatch.setenv("DATABASE_URL", "")
+    monkeypatch.setattr(sys, "path", [*sys.path])
+
+    # Una respuesta por pregunta del golden set, en orden: EVAL-001, 002, 003 y 004.
+    respuestas: Iterator[str | Exception] = iter(
+        [
+            "El proyecto Fénix es [EVAL-001], del Ayuntamiento de Zaragoza.",
+            "",
+            "Puede ser [EVAL-020] o [EXP-2024-001].",
+            RuntimeError("503 Service temporarily overloaded"),
+        ]
+    )
+
+    def _llm_falso(
+        question: str, docs: list[dict[str, Any]], model: str, keywords: list[str], **_: Any
+    ) -> Iterator[str]:
+        respuesta = next(respuestas)
+        if isinstance(respuesta, Exception):
+            raise respuesta
+        if respuesta:
+            yield respuesta
+
+    monkeypatch.setattr(llm.client, "stream_llm_response", _llm_falso)
+
+    assert eval_rag.main(["--limit", "4"]) == 0
+
+    assert (
+        "Expedientes: el esperado se cita en 1/4 preguntas; 2 id/s ajeno/s al contexto; "
+        "1 respuesta/s vacía/s; 1 pregunta/s con error."
+    ) in capsys.readouterr().out
