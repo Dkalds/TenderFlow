@@ -176,9 +176,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:**
   - Recuperar el hueco: `scrape-bulk.yml` con `months=1` (acción del usuario:
     escribe en producción) y comprobar que el corpus PLACSP del 09-08 en adelante
-    aparece.
-  - El healthcheck avisa cuando el `last_seen_updated` de una fuente con cursor
-    de dato (PLACSP, TED) supera un umbral propio, además de `last_success_at`.
+    aparece. *Lanzado el 2026-09-25 (run 36127626642); falta comprobar el
+    corpus.* `months=1` procesa el mes en curso (`meses_a_procesar`). No cubre
+    `placsp_watched_company_awards`, que lee el mismo ATOM y sigue parado.
+  - ~~El healthcheck avisa cuando el `last_seen_updated` de una fuente con cursor
+    de dato (PLACSP, TED) supera un umbral propio, además de `last_success_at`.~~
+    **Hecho el 2026-09-25:** `RegisteredSource.max_antiguedad_dato_hours` (48 h
+    PLACSP, 168 h TED) y el estado `sin_datos_nuevos` en
+    `comprobar_frescura_fuentes`, con aviso `fuente_sin_datos_nuevos:<fuente>`.
+    Mientras el ATOM siga congelado avisará en cada healthcheck: es la señal
+    que faltaba, no ruido.
   - Decidir si el carril diario cae al ZIP del mes en curso cuando el ATOM no
     avanza durante N pasadas.
 - **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)

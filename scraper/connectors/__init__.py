@@ -106,6 +106,21 @@ class RegisteredSource:
     #: ``DocumentoReferencia``, su dominio se declara aquí y el test de
     #: paridad exige que la allowlist por defecto lo incluya.
     dominios_documentos: tuple[str, ...] = ()
+    #: Horas sin **dato** nuevo a partir de las cuales la fuente está atascada
+    #: aunque sus runs terminen bien. Se mide sobre el ``last_seen_updated`` de
+    #: su cursor, no sobre ``last_success_at``: son dos preguntas distintas
+    #: —«¿el conector corre?» y «¿la fuente publica?»— y ``max_lag_hours`` solo
+    #: contesta la primera.
+    #:
+    #: ``None`` = no se mide. Solo tiene sentido en fuentes cuyo cursor es la
+    #: marca de tiempo del dato publicado (el ``<updated>`` del ATOM de PLACSP,
+    #: la ``publication-date`` de TED), no en las que guardan una posición de
+    #: paginación o de recuperación, cuyo cursor puede ir legítimamente atrasado.
+    #:
+    #: Existe por lo que pasó desde el 2026-09-08: el feed ATOM de PLACSP dejó
+    #: de publicar entradas nuevas, cada pasada terminaba en ``success`` con 0
+    #: avisos y el healthcheck dio la fuente por «fresca» durante 16 días.
+    max_antiguedad_dato_hours: int | None = None
 
     @property
     def opcional(self) -> bool:
@@ -134,6 +149,12 @@ _LAG_DIARIO_TOLERANTE = 72
 #: Una semana. Para las fuentes declaradas explícitamente como *cobertura de
 #: descubrimiento*, no como censo (ver el docstring de ``regional_rss``).
 _LAG_SEMANAL = 168
+#: Antigüedad máxima del dato del feed ATOM de PLACSP. Su cursor es el
+#: ``<updated>`` más reciente de **todas** las entradas del feed, antes de
+#: filtrar por tecnología, y la plataforma mueve expedientes de todo el país a
+#: cualquier hora: en un feed sano el cursor va minutos por detrás. Dos días sin
+#: una sola entrada nueva no es un fin de semana tranquilo, es un feed parado.
+_DATO_PLACSP = 48
 
 #: Inventario de fuentes vivas. Las fuentes ``bulk_YYYYMM`` NO están aquí: son
 #: efímeras por diseño (una por mes reprocesado) y no tienen frescura que vigilar.
@@ -145,7 +166,9 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         max_lag_hours=_LAG_CARRIL_DIARIO,
         motivo=(
             "Feed ATOM nacional: es el corpus, no un complemento. Corre en cada "
-            "pasada de 4 h; 36 h sin un run exitoso son nueve ciclos perdidos."
+            "pasada de 4 h; 36 h sin un run exitoso son nueve ciclos perdidos. "
+            "El dato se vigila aparte (48 h sin ninguna entrada nueva): un feed "
+            "congelado no hace fallar el run, que termina en 'success' con 0 avisos."
         ),
         alcance=(
             "Feed ATOM oficial. Es el corpus: los anuncios de los órganos que "
@@ -154,6 +177,7 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
             "incremental e historial de cambios por expediente."
         ),
         dominios_documentos=("contrataciondelestado.es", "*.contrataciondelestado.es"),
+        max_antiguedad_dato_hours=_DATO_PLACSP,
     ),
     RegisteredSource(
         source_id="ted",
@@ -163,13 +187,16 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         motivo=(
             "Cobertura europea complementaria. Corre a diario, pero un run sin "
             "avisos TI se registra igual como 'success', así que el lag solo "
-            "crece cuando el conector de verdad no completa."
+            "crece cuando el conector de verdad no completa. El dato (la "
+            "publication-date más reciente vista) tiene el mismo umbral semanal: "
+            "el DOUE no publica todos los días y el cursor es una fecha sin hora."
         ),
         alcance=(
             "Cobertura europea complementaria. Ni sustituye a PLACSP ni "
             "completa su histórico: aporta los anuncios que llegan al diario "
             "europeo, no una segunda copia del mercado español."
         ),
+        max_antiguedad_dato_hours=_LAG_SEMANAL,
     ),
     RegisteredSource(
         source_id="galicia_rss",
