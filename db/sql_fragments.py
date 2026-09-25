@@ -356,10 +356,13 @@ def tecnologia_en_csv_sql(col: str, *, n: int, marcador: str = "%s") -> str:
     cada consulta del ámbito SAP era un Seq Scan de ~870 MB, y las vistas de
     Mercado con ``?tecnologia=SAP``, que encadenan varias, tardaban 33-41 s en
     producción (2026-09-25). La guarda no cambia el resultado —una fila sin
-    tecnología no produce ningún ``code``— pero implica el predicado del índice
-    parcial ``idx_lic_tecnologia`` (``WHERE tecnologia IS NOT NULL``), y el plan
-    pasa a recorrer solo las ~10k filas etiquetadas: coste estimado de 229k a
-    11k, 72 ms con la caché caliente.
+    tecnología no produce ningún ``code``— pero implica el predicado de
+    ``idx_lic_tecnologia_cubriente`` (``WHERE tecnologia IS NOT NULL``, v142), y
+    cualquier btree sobre ``tecnologia`` la resuelve también: el plan pasa a
+    recorrer solo las ~10k filas etiquetadas. Medido en producción con
+    ``idx_lic_tecnologia``, que allí es parcial con ese mismo predicado (la
+    cadena de Alembic, v21, lo crea sin él): coste estimado de 229k a 11k, 72 ms
+    con la caché caliente.
 
     El ``COALESCE`` se queda para que el ``EXISTS`` sea correcto por sí solo si
     alguien retira la guarda creyéndola redundante: lo es para el resultado, no

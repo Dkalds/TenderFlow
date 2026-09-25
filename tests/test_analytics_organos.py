@@ -292,6 +292,161 @@ def test_get_organos_global_q_can_match_tender_title(tmp_db):
     assert [o.organo_contratacion for o in result.organos] == ["ORG A"]
 
 
+# ── /organos agrega por hash: forma del SQL y semántica que conserva ────────
+#
+# Sin filtros las tres consultas recorren ~713k filas, y en producción un
+# `COUNT(DISTINCT)`, un `mode() WITHIN GROUP` o el bucle del treemap sobre
+# `idx_organo` las mandaban a ordenar o leer en disco hasta el
+# `statement_timeout`. Lo de abajo fija que no vuelvan, y que el resultado
+# sigue siendo el de antes: la moda con su desempate y el desglose del treemap.
+
+
+class _ConexionQueApunta:
+    """Conexión y cursor de mentira: guarda cada sentencia, no devuelve filas."""
+
+    description: tuple[tuple[str], ...] = ()
+
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+
+    def execute(self, sql: str, params: list[object] | None = None) -> _ConexionQueApunta:
+        self.sql.append(sql)
+        return self
+
+    def fetchone(self) -> None:
+        return None
+
+    def fetchall(self) -> list[tuple[object, ...]]:
+        return []
+
+    def __enter__(self) -> _ConexionQueApunta:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+
+def _sql_de(llamada) -> str:
+    from db.repositories.aggregates import AggregateRepository
+
+    conexion = _ConexionQueApunta()
+    with patch("db.repositories.aggregates.connect_read", return_value=conexion):
+        llamada(AggregateRepository())
+    [sql] = conexion.sql
+    return sql
+
+
+def test_organos_totales_cuenta_organos_sin_count_distinct():
+    from db.repositories.aggregates import LicitacionesFilters
+
+    sql = _sql_de(lambda r: r.organos_totales(LicitacionesFilters(), q_folded=None))
+
+    assert "COUNT(DISTINCT" not in sql
+    assert "GROUP BY 1" in sql
+
+
+def test_organos_ranking_saca_la_moda_de_un_distinct_on_y_no_de_un_ordered_set():
+    from db.repositories.aggregates import LicitacionesFilters
+
+    sql = _sql_de(lambda r: r.organos_ranking(LicitacionesFilters(), q_folded=None, limit=50))
+
+    assert "WITHIN GROUP" not in sql
+    assert "DISTINCT ON (clave, nombre)" in sql
+    assert "ORDER BY clave, nombre, n DESC, ccaa" in sql
+
+
+def test_organos_treemap_recorre_la_tabla_una_sola_vez():
+    from db.repositories.aggregates import LicitacionesFilters
+
+    sql = _sql_de(lambda r: r.organos_treemap(LicitacionesFilters(), q_folded=None, top_organos=30))
+
+    assert sql.count("FROM licitaciones") == 1
+
+
+def _fila_organo(
+    id_externo: str,
+    organo: str,
+    ccaa: str | None,
+    *,
+    tipo: str | None = "2",
+    importe: float | None = 1000.0,
+) -> dict:
+    return {
+        "id_externo": id_externo,
+        "titulo": f"Licitación {id_externo}",
+        "organo_contratacion": organo,
+        "importe": importe,
+        "estado": "PUB",
+        "fecha_publicacion": "2025-01-01",
+        "ccaa": ccaa,
+        "tipo_contrato": tipo,
+        "url": None,
+        "modulos_str": None,
+    }
+
+
+def test_la_ccaa_modal_desempata_por_orden_alfabetico(tmp_db):
+    """La más frecuente gana, el empate va a la primera alfabética y NULL no cuenta."""
+    _insert_licitaciones(
+        [
+            _fila_organo("M1", "ORG MAYORIA", "Madrid"),
+            _fila_organo("M2", "ORG MAYORIA", "Cataluña"),
+            _fila_organo("M3", "ORG MAYORIA", "Cataluña"),
+            _fila_organo("E1", "ORG EMPATE", "Madrid"),
+            _fila_organo("E2", "ORG EMPATE", "Cataluña"),
+            _fila_organo("E3", "ORG EMPATE", None),
+            _fila_organo("N1", "ORG SIN CCAA", None),
+        ]
+    )
+
+    result = get_organos(OrganosFilters())
+
+    modas = {o.organo_contratacion: o.ccaa for o in result.organos}
+    assert modas == {"ORG MAYORIA": "Cataluña", "ORG EMPATE": "Cataluña", "ORG SIN CCAA": None}
+    # El NULL no cuenta para la moda, pero la fila sí cuenta para el órgano.
+    assert {o.organo_contratacion: o.count for o in result.organos}["ORG EMPATE"] == 3
+
+
+def test_el_treemap_desglosa_por_tipo_solo_los_organos_mayores(tmp_db):
+    """Sin tipo, sin importe o con suma cero no entra; el órgano menor tampoco."""
+    from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
+
+    _insert_licitaciones(
+        [
+            _fila_organo("T1", "ORG A", "Madrid", tipo="2", importe=100.0),
+            _fila_organo("T2", "ORG A", "Madrid", tipo="2", importe=50.0),
+            _fila_organo("T3", "ORG A", "Madrid", tipo="1", importe=None),
+            _fila_organo("T4", "ORG A", "Madrid", tipo=None, importe=70.0),
+            _fila_organo("T5", "ORG B", "Madrid", tipo="3", importe=0.0),
+            _fila_organo("T6", "ORG B", "Madrid", tipo="2", importe=10.0),
+            _fila_organo("T7", "ORG C", "Madrid", tipo="2", importe=5.0),
+        ]
+    )
+
+    filas = AggregateRepository().organos_treemap(
+        LicitacionesFilters(), q_folded=None, top_organos=2
+    )
+
+    assert {(f["organo"], f["tipo_contrato"]): f["importe"] for f in filas} == {
+        ("ORG A", "2"): 150.0,
+        ("ORG B", "2"): 10.0,
+    }
+
+
+def test_el_treemap_desempata_por_nombre(tmp_db):
+    from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
+
+    _insert_licitaciones(
+        [_fila_organo("D1", "ORG Y", "Madrid"), _fila_organo("D2", "ORG X", "Madrid")]
+    )
+
+    [fila] = AggregateRepository().organos_treemap(
+        LicitacionesFilters(), q_folded=None, top_organos=1
+    )
+
+    assert fila["organo"] == "ORG X"
+
+
 # ── get_organo_detail ───────────────────────────────────────────────────────
 
 
