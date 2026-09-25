@@ -273,6 +273,44 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](plans/2026-09-indices-busqueda-propuestos.md), [tests/test_indices_busqueda.py](../tests/test_indices_busqueda.py)
 - **Riesgo:** medio — índices grandes creados en caliente (`CONCURRENTLY`, dos pasadas por la tabla por índice).
 
+### [P1] Mercado sin filtros: aplicar `v144` en producción y medir
+- **Área:** db/alembic (`v144_lic_indices_analitica`), db/repositories/aggregates.py
+- **Problema:** `licitaciones` tiene ~713k filas y ~870 MB de heap (97 % PSCP) en un
+  Supabase Micro (`shared_buffers` 256 MB, E/S limitada), y cada `GROUP BY` que la
+  recorre tarda de 5 a 15 s según la caché (medido el 2026-09-25: `geography_by_ccaa`
+  sin filtros, 15,2 s, 87k páginas leídas de disco). Las vistas de Mercado encadenan de
+  2 a 6 recorridos: en los logs de Render, `/analytics/organos` y `/proyectos-modulos`
+  dan 500 por `statement_timeout` (30 s por sentencia), `/trends?group_by=month` tarda
+  20-72 s, `/trends-cpv` ~40 s y `/geography` ~30 s.
+- **Hecho (2026-09-25):**
+  - `?tecnologia=` va por índice de tecnología: vistas SAP de 33-41 s a 0,1-2 s (#347).
+    El filtro es el `&&` de la entrada anterior con `tecnologia IS NOT NULL` delante:
+    sin el GIN de `v142` aplicado, la guarda es lo que evita el Seq Scan.
+  - Órganos agrega por hash: el treemap, que era la sentencia que moría (buscaba los 30
+    órganos mayores y leía sus filas una a una por `idx_organo`), tarda 4,7 s sin
+    filtros; la moda y el recuento de órganos dejan de ordenar la tabla en disco.
+  - Migración `v144` (sobre `v143`): índice cubriente `idx_lic_analitica` para las agregaciones sin
+    filtros, `idx_lic_tecnologia_cubriente` para las del ámbito de tecnología y
+    autovacuum al 2 %. Con índices hipotéticos (`hypopg`) el planificador ya elige
+    Index Only Scan para geografía, tendencias y las tres de órganos.
+- **Acceptance criteria:**
+  - `migrate.yml` con `mode=apply` (acción con escritura en producción: la lanza el
+    usuario) y, después, `indisvalid` de los dos índices, su `pg_relation_size`
+    anotado aquí y un `EXPLAIN` de `geography_by_ccaa` sin filtros con Index Only Scan.
+  - Cada vista de Mercado sin filtros responde en < 3 s (p95 de `duration_ms` en los
+    logs `http_request` de Render) y siete días sin `QueryCanceled` en
+    `/api/v1/analytics/*`.
+- **Queda fuera:** `/proyectos-modulos` sin filtros sigue leyendo `titulo` (regex de
+  módulos SAP) y no cabe en el índice; `/competitive/renovaciones` sin tecnología
+  (8-31 s) va por otro SQL. Si el índice no basta: snapshot del ámbito por defecto en
+  `kpi_precompute` (ADR-026, camino 3; el cierre ya usa 9-15 de sus 20 minutos) o
+  subir el cómputo de Supabase (con 4 GB la tabla cabría en caché). Sigue abierta una
+  decisión de producto: acotar la analítica al universo tecnológico. El listado ya
+  enseña solo filas con `tecnologia`; la analítica cuenta además todo PSCP.
+- **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates.py](../db/repositories/aggregates.py), [tests/test_v144_indices_analitica.py](../tests/test_v144_indices_analitica.py)
+- **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
+  y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
+
 ### [P1] Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó
 - **Área:** scraper/connectors/ted.py, services/dedupe.py (ADR-026, addendum 2026-09-24)
 - **Problema:** `detect_duplicados_por_referencia` solo empareja los avisos que el
