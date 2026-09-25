@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getErrorMessage, notifyQueryError, notifyMutationError, notifyMutationSuccess } from "@/lib/query-feedback";
+import {
+  esErrorTransitorio,
+  getErrorMessage,
+  notifyQueryError,
+  notifyMutationError,
+  notifyMutationSuccess,
+  TIPO_CONSULTA_CANCELADA,
+} from "@/lib/query-feedback";
 import { ApiError } from "@/lib/api-client";
 
 vi.mock("sonner", () => ({
@@ -10,6 +17,23 @@ vi.mock("sonner", () => ({
 }));
 
 import { toast } from "sonner";
+
+describe("consulta cancelada por statement_timeout (503 query-timeout)", () => {
+  const cancelada = () =>
+    new ApiError(503, "La consulta tardó demasiado y se canceló. Acota los filtros.", TIPO_CONSULTA_CANCELADA);
+
+  it("no se reintenta: se cortaría otra vez en el mismo punto", () => {
+    expect(esErrorTransitorio(cancelada())).toBe(false);
+  });
+
+  it("un 503 sin ese tipo sigue siendo transitorio (arranque en frío)", () => {
+    expect(esErrorTransitorio(new ApiError(503, "Service Unavailable"))).toBe(true);
+  });
+
+  it("enseña el detail de la API, que dice qué hacer", () => {
+    expect(getErrorMessage(cancelada())).toBe("La consulta tardó demasiado y se canceló. Acota los filtros.");
+  });
+});
 
 describe("getErrorMessage", () => {
   it("returns a server error message for ApiError 5xx", () => {

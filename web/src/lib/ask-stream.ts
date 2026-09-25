@@ -101,7 +101,12 @@ export interface AskStreamResult {
 }
 
 interface StreamCallbacks {
-  /** Called with the full accumulated answer each time new text arrives. */
+  /**
+   * Recibe siempre la respuesta **acumulada**. Se llama como mucho una vez por
+   * frame —los tokens que llegan dentro del mismo frame se entregan juntos— y
+   * lo pendiente se entrega antes de que la promesa resuelva y antes de
+   * cualquier otro evento del stream, así que el orden no cambia.
+   */
   onToken: (accumulated: string) => void;
   onFuentes?: (fuentes: FuenteDocumento[]) => void;
   onDegraded?: (info: DegradedInfo) => void;
@@ -133,8 +138,26 @@ export interface ResumenParams extends StreamCallbacks {
   signal?: AbortSignal;
 }
 
+/**
+ * Programa `fn` para el próximo frame y devuelve cómo cancelarlo.
+ *
+ * `requestAnimationFrame` y no un temporizador: el frame es la unidad en la
+ * que el navegador pinta, así que agrupar por frame es agrupar justo lo que se
+ * iba a ver junto. Y con la pestaña oculta no dispara: el texto se acumula sin
+ * repintar nada y sale entero al cerrar el stream o al volver a la pestaña.
+ * Fuera del navegador cae a un temporizador de un frame.
+ */
+function programarFrame(fn: () => void): () => void {
+  if (typeof requestAnimationFrame === "function") {
+    const id = requestAnimationFrame(fn);
+    return () => cancelAnimationFrame(id);
+  }
+  const id = setTimeout(fn, 16);
+  return () => clearTimeout(id);
+}
+
 /** Parse the SSE body (or plain-JSON fallback) dispatching every known event. */
-async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStreamResult> {
+async function consumeStream(res: Response, cb: StreamCallbacks, signal?: AbortSignal): Promise<AskStreamResult> {
   const result: AskStreamResult = {
     answer: "",
     fuentes: [],
@@ -144,11 +167,44 @@ async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStr
     sources: null,
   };
 
+  // Tokens agrupados por frame. Un modelo rápido emite varios tokens por frame
+  // y cada `onToken` acaba en un `setState` que repinta el hilo: entregarlos
+  // uno a uno era trabajo que nadie llegaba a ver. Como el callback recibe
+  // siempre el acumulado, agrupar no pierde texto.
+  let tokenPendiente = false;
+  let cancelarFrame: (() => void) | null = null;
+
+  const entregarToken = (): void => {
+    cancelarFrame?.();
+    cancelarFrame = null;
+    if (!tokenPendiente) return;
+    tokenPendiente = false;
+    // Tras un abort no se entrega nada: quien llamó ya pasó a otra cosa (otra
+    // pregunta, «Nueva conversación») y pintar el texto viejo pisaría el turno
+    // nuevo. Antes no hacía falta decirlo porque cada token salía en el acto.
+    if (signal?.aborted) return;
+    cb.onToken(result.answer);
+  };
+
+  const anotarToken = (): void => {
+    tokenPendiente = true;
+    if (cancelarFrame) return;
+    cancelarFrame = programarFrame(() => {
+      cancelarFrame = null;
+      entregarToken();
+    });
+  };
+
   const handleParsed = (parsed: Record<string, unknown>): void => {
     if (typeof parsed.text === "string" && parsed.text) {
       result.answer += parsed.text;
-      cb.onToken(result.answer);
-    } else if (Array.isArray(parsed.fuentes_documentos)) {
+      anotarToken();
+      return;
+    }
+    // Los metadatos salen en el orden del stream: el texto que los precedía se
+    // entrega antes que ellos.
+    entregarToken();
+    if (Array.isArray(parsed.fuentes_documentos)) {
       result.fuentes = parsed.fuentes_documentos as FuenteDocumento[];
       cb.onFuentes?.(result.fuentes);
     } else if (parsed.degraded) {
@@ -180,30 +236,43 @@ async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStr
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let terminado = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (!terminado) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      // Keep the incomplete last line in the buffer for the next chunk.
-      buffer = lines.pop() ?? "";
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        // Keep the incomplete last line in the buffer for the next chunk.
+        buffer = lines.pop() ?? "";
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-        const payload = trimmed.slice(6);
-        if (payload === "[DONE]") return result;
-        try {
-          handleParsed(JSON.parse(payload));
-        } catch {
-          // Non-JSON SSE line — accumulate as raw text.
-          result.answer += payload;
-          cb.onToken(result.answer);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const payload = trimmed.slice(6);
+          if (payload === "[DONE]") {
+            terminado = true;
+            break;
+          }
+          try {
+            handleParsed(JSON.parse(payload));
+          } catch {
+            // Non-JSON SSE line — accumulate as raw text.
+            result.answer += payload;
+            anotarToken();
+          }
         }
       }
+    } catch (err) {
+      // Un corte de red a media respuesta entrega lo que sí llegó: la burbuja
+      // enseña ese texto junto al error. (Un abort no entrega nada: lo filtra
+      // `entregarToken`.)
+      entregarToken();
+      throw err;
     }
+    entregarToken();
     return result;
   }
 
@@ -264,7 +333,7 @@ export async function streamAsk({
     registrarEvento("asistente_usado", { modo: "pregunta", ambito, resultado: "error", ...conteo });
     throw new Error(`Error ${res.status}`);
   }
-  const resultado = await consumeStream(res, callbacks);
+  const resultado = await consumeStream(res, callbacks, signal);
   // `degradado` es la respuesta sin síntesis del LLM: cuenta como uso, pero no
   // como uso que sirva. Separarlas es la única forma de ver si el asistente
   // aparenta funcionar. La pregunta, el modelo y la licitación no salen de aquí.
@@ -308,7 +377,7 @@ export async function streamResumen({
     });
     throw new Error(`Error ${res.status}`);
   }
-  const resultado = await consumeStream(res, callbacks);
+  const resultado = await consumeStream(res, callbacks, signal);
   registrarEvento("asistente_usado", {
     modo: "resumen",
     ambito: "licitacion",

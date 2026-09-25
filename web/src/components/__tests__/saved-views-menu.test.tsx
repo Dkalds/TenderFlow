@@ -128,6 +128,56 @@ describe("SavedViewsMenu", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  /**
+   * `/saved-filters` se pedía al montar la barra, en cada carga de cada
+   * pantalla con ámbito, para un menú que casi nunca se abre y cuyo botón no
+   * enseña ningún contador.
+   */
+  describe("carga bajo demanda", () => {
+    const pidioVistas = (fetchMock: ReturnType<typeof vi.fn>) =>
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes("/api/v1/saved-filters")).length;
+
+    it("no pide las vistas al montar", async () => {
+      const fetchMock = vi.fn(() => new Promise(() => {}));
+      vi.stubGlobal("fetch", fetchMock);
+      renderMenu();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(pidioVistas(fetchMock)).toBe(0);
+    });
+
+    it("las pide al abrir el menú", () => {
+      const fetchMock = vi.fn(() => new Promise(() => {}));
+      vi.stubGlobal("fetch", fetchMock);
+      renderMenu();
+      fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
+      expect(pidioVistas(fetchMock)).toBe(1);
+    });
+
+    it("las adelanta al acercarse al botón, sin repetir la petición al abrir", () => {
+      const fetchMock = vi.fn(() => new Promise(() => {}));
+      vi.stubGlobal("fetch", fetchMock);
+      renderMenu();
+      const boton = screen.getByRole("button", { name: /Vistas/ });
+
+      fireEvent.pointerEnter(boton);
+      expect(pidioVistas(fetchMock)).toBe(1);
+
+      fireEvent.click(boton);
+      expect(screen.getByText("Cargando…")).toBeInTheDocument();
+      expect(pidioVistas(fetchMock)).toBe(1);
+    });
+
+    it("también al llegar con el teclado", () => {
+      const fetchMock = vi.fn(() => new Promise(() => {}));
+      vi.stubGlobal("fetch", fetchMock);
+      renderMenu();
+      act(() => screen.getByRole("button", { name: /Vistas/ }).focus());
+      expect(pidioVistas(fetchMock)).toBe(1);
+    });
+  });
+
   it("closing (e.g. Escape) also updates the shared ui store", () => {
     // Real pointer-outside-click dismissal relies on Radix's DismissableLayer
     // capturing a native pointerdown on `document`, which jsdom + fireEvent's

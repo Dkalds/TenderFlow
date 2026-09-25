@@ -129,9 +129,20 @@ class _RepoFalso:
         return {"total": 10, "PUB": 4, "EV": 2, "RES": 2, "ADJ": 1, "ANUL": 1}
 
 
+def _sin_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ni snapshot aplicable ni fila suelta de indicadores: todo en vivo, sin BD.
+
+    Desde 2026-09 el overview lee los indicadores de adjudicaciones del
+    snapshot también cuando no hay snapshot aplicable al filtro; sin esta
+    segunda sustitución el test intentaría abrir una conexión.
+    """
+    monkeypatch.setattr(ov, "read_overview_snapshot_for", lambda _f, **_kw: None)
+    monkeypatch.setattr(ov, "read_adj_indicadores_snapshot", lambda **_kw: None)
+
+
 def _montar(monkeypatch: pytest.MonkeyPatch, adj: dict[str, float | None]) -> ov.OverviewResult:
     monkeypatch.setattr(ov, "_repo", _RepoFalso(adj))
-    monkeypatch.setattr(ov, "read_overview_snapshot_for", lambda _f, **_kw: None)
+    _sin_snapshot(monkeypatch)
     return ov.get_overview(ov.OverviewFilters())
 
 
@@ -206,7 +217,7 @@ def test_fallo_del_agregado_no_inventa_cobertura(monkeypatch: pytest.MonkeyPatch
             raise RuntimeError("agregado caído")
 
     monkeypatch.setattr(ov, "_repo", _RepoRoto({}))
-    monkeypatch.setattr(ov, "read_overview_snapshot_for", lambda _f, **_kw: None)
+    _sin_snapshot(monkeypatch)
     result = ov.get_overview(ov.OverviewFilters())
 
     assert result.pct_oferta_unica == 0.0

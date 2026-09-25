@@ -31,6 +31,14 @@ Diseño
 * Los clientes comparan ese timestamp contra su propio checkpoint. Es
   exactamente lo que hacía ``check_cache_signal(last_check)``
   (``get_signal_timestamp() > last_check``), pero sin viaje a BD por cliente.
+* **Una consulta por señal, no una por cliente.** Con cada ingesta todos los
+  clientes despertaban a la vez y cada uno lanzaba su ``fetch_recent``: N
+  consultas idénticas en el mismo instante. Ahora la consulta la hace el
+  watcher (``_SignalWatcher.recientes``) y la comparten los clientes que piden
+  lo mismo en esa señal: mismo ``desde`` (el checkpoint de cada cliente,
+  acotado a ``_MAX_LOOKBACK_SECONDS``, al segundo) y mismo ``batch``. Cada
+  cliente sigue recibiendo exactamente lo que le devolvería su propia consulta:
+  no se filtra nada en memoria, se deduplica la consulta.
 * Heartbeat cada ``HEARTBEAT_INTERVAL`` segundos (por defecto 30 s) para
   mantener la conexión TCP viva a través de proxies y load-balancers.
 * Máximo ``MAX_DURATION_SECONDS`` por conexión (por defecto 300 s = 5 min)
@@ -46,6 +54,7 @@ import math
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -70,6 +79,13 @@ _DEFAULT_BATCH = 20  # licitaciones por evento
 # para devolver `batch` filas. Con la ingesta cada 4 h, 48 h son doce ciclos:
 # cualquier novedad que este evento pueda emitir cae dentro del recorte.
 _MAX_LOOKBACK_SECONDS = 48 * 3600
+# Cuánto se reutiliza el resultado de una consulta compartida (segundos). Tiene
+# que cubrir a la estampida de clientes que despierta la misma señal —llegan en
+# milisegundos—, no más: un cliente que se conecta más tarde merece su consulta.
+_LOTE_TTL_SECONDS = _POLL_INTERVAL
+# Consultas distintas que el watcher recuerda a la vez. Cada una es un
+# `desde` + `batch` distinto; con clientes normales hay una o dos por señal.
+_MAX_LOTES = 64
 
 
 def _sse_event(event: str, data: Any) -> str:
@@ -87,17 +103,43 @@ def _parse_last_event_id(value: str) -> float:
     return timestamp if math.isfinite(timestamp) else 0.0
 
 
-def _fetch_recent(since_ts: float, limit: int) -> list[dict[str, Any]]:
-    """Recupera licitaciones publicadas/actualizadas desde ``since_ts``."""
+def _desde_iso(since_ts: float, ahora: float) -> str:
+    """Cursor de ``fetch_recent``: ``since_ts`` acotado a la ventana máxima, al segundo."""
+    since_ts = max(since_ts, ahora - _MAX_LOOKBACK_SECONDS)
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(since_ts))
+
+
+def _fetch_recent(
+    since_ts: float, limit: int, *, ahora: float | None = None
+) -> list[dict[str, Any]]:
+    """Recupera licitaciones publicadas/actualizadas desde ``since_ts``.
+
+    ``ahora`` fija el instante contra el que se acota la ventana; el watcher lo
+    pasa para que el cursor de la consulta sea exactamente el de la clave con
+    la que la comparte (ver ``_SignalWatcher.recientes``).
+    """
     from services.licitaciones import fetch_recent
 
-    since_ts = max(since_ts, time.time() - _MAX_LOOKBACK_SECONDS)
-    since_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(since_ts))
+    since_iso = _desde_iso(since_ts, time.time() if ahora is None else ahora)
     try:
         return fetch_recent(since_iso, limit)
     except Exception as exc:
         log.warning("stream.fetch_recent_failed", error=str(exc))
         return []
+
+
+@dataclass
+class _Lote:
+    """Una consulta de ``fetch_recent`` compartida, en vuelo o recién terminada."""
+
+    tarea: asyncio.Task[list[dict[str, Any]]]
+    creado: float  # time.monotonic()
+
+
+def _recoger_excepcion(tarea: asyncio.Task[list[dict[str, Any]]]) -> None:
+    """Evita el aviso de «excepción nunca recuperada» si ya nadie esperaba el lote."""
+    if not tarea.cancelled():
+        tarea.exception()
 
 
 class _SignalWatcher:
@@ -113,6 +155,11 @@ class _SignalWatcher:
     un suscriptor, y el resultado se reparte por una ``asyncio.Condition``. El
     coste pasa de O(clientes) a O(1), y además el aviso es inmediato en vez de
     esperar al siguiente tick de cada generador.
+
+    Lo mismo con la consulta de novedades que sigue a cada señal
+    (:meth:`recientes`): cada marca nueva del centinela abre una **generación**,
+    y dentro de ella los clientes que piden la misma consulta esperan la misma
+    tarea en vez de lanzar la suya.
     """
 
     def __init__(self) -> None:
@@ -121,6 +168,16 @@ class _SignalWatcher:
         self._cond = asyncio.Condition()
         self._signal_ts: float = 0.0
         self._loop: asyncio.AbstractEventLoop | None = None
+        # Sube con cada marca nueva del centinela. Separa las consultas de una
+        # señal de las de la siguiente: una consulta lanzada antes de que
+        # terminara la ingesta no puede servir a quien despierta por ella.
+        self._generacion = 0
+        self._lotes: dict[tuple[int, str, int], _Lote] = {}
+
+    @property
+    def generacion(self) -> int:
+        """Generación vigente: cuántas marcas nuevas del centinela lleva vistas."""
+        return self._generacion
 
     @asynccontextmanager
     async def subscribe(self) -> AsyncIterator[_SignalWatcher]:
@@ -138,6 +195,7 @@ class _SignalWatcher:
                     self._task.cancel()
                     self._task = None
                     self._signal_ts = 0.0
+                    self._lotes.clear()
 
     async def _run(self) -> None:
         from shared.cache_signal import get_signal_timestamp
@@ -153,19 +211,69 @@ class _SignalWatcher:
             if ts > self._signal_ts:
                 async with self._cond:
                     self._signal_ts = ts
+                    self._generacion += 1
+                    self._lotes.clear()
                     self._cond.notify_all()
             await asyncio.sleep(_POLL_INTERVAL)
 
-    async def wait_for_signal(self, since: float, timeout: float) -> float | None:
-        """Marca del centinela si supera ``since``; ``None`` si expiró el plazo."""
+    async def wait_for_signal(
+        self, since: float, timeout: float, *, generacion_servida: int | None = None
+    ) -> float | None:
+        """Marca del centinela si supera ``since``; ``None`` si expiró el plazo.
+
+        ``generacion_servida`` es la última generación que el cliente ya
+        atendió: esa no vuelve a despertarlo. Con relojes de sistema bien
+        sincronizados da igual —tras atender una señal el checkpoint del cliente
+        ya es posterior a su marca—, pero si la marca llega adelantada respecto
+        al reloj de la API, el cliente volvía a despertar en cada vuelta sin
+        esperar y relanzaba la consulta en bucle.
+        """
+
+        def _hay_novedad() -> bool:
+            return self._signal_ts > since and self._generacion != generacion_servida
+
         async with self._cond:
-            if self._signal_ts > since:
+            if _hay_novedad():
                 return self._signal_ts
             try:
                 await asyncio.wait_for(self._cond.wait(), timeout=timeout)
             except TimeoutError:
                 return None
-            return self._signal_ts if self._signal_ts > since else None
+            return self._signal_ts if _hay_novedad() else None
+
+    async def recientes(self, since_ts: float, batch: int) -> list[dict[str, Any]]:
+        """Lo que devolvería ``_fetch_recent(since_ts, batch)``, con una consulta compartida.
+
+        Los clientes que despierta la misma señal piden, casi todos, lo mismo:
+        el mismo ``desde`` al segundo —su checkpoint, o el tope de la ventana— y
+        el mismo ``batch``. El primero lanza la consulta en una tarea propia del
+        watcher; los demás esperan esa tarea. Cada uno la espera con
+        ``asyncio.shield``: si un cliente se desconecta, la consulta sigue para
+        el resto. El resultado se reutiliza como mucho ``_LOTE_TTL_SECONDS`` y
+        nunca entre generaciones.
+        """
+        ahora = time.time()
+        clave = (self._generacion, _desde_iso(since_ts, ahora), batch)
+        instante = time.monotonic()
+        lote = self._lotes.get(clave)
+        if lote is None or (lote.tarea.done() and instante - lote.creado > _LOTE_TTL_SECONDS):
+            self._purgar_lotes(instante)
+            tarea = asyncio.create_task(run_db(_fetch_recent, since_ts, batch, ahora=ahora))
+            tarea.add_done_callback(_recoger_excepcion)
+            lote = _Lote(tarea=tarea, creado=instante)
+            if len(self._lotes) < _MAX_LOTES:
+                self._lotes[clave] = lote
+        return await asyncio.shield(lote.tarea)
+
+    def _purgar_lotes(self, instante: float) -> None:
+        """Suelta los lotes terminados que ya no se reutilizarían."""
+        caducados = [
+            clave
+            for clave, lote in self._lotes.items()
+            if lote.tarea.done() and instante - lote.creado > _LOTE_TTL_SECONDS
+        ]
+        for clave in caducados:
+            del self._lotes[clave]
 
 
 _watcher: _SignalWatcher | None = None
@@ -197,6 +305,7 @@ async def _event_generator(
     deadline = time.monotonic() + _MAX_DURATION_SECONDS
     last_signal_check = last_event_id  # timestamp del último evento conocido por el cliente
     last_heartbeat = time.monotonic()
+    generacion_servida: int | None = None  # última señal ya atendida
 
     # Enviar heartbeat inicial para confirmar conexión
     yield _sse_event("heartbeat", {"ts": time.time()})
@@ -221,13 +330,18 @@ async def _event_generator(
                 last_heartbeat = now
 
             # Esperar aviso del poller compartido (sin tocar la BD desde aquí).
-            signal_ts = await watcher.wait_for_signal(last_signal_check, _POLL_INTERVAL)
+            signal_ts = await watcher.wait_for_signal(
+                last_signal_check, _POLL_INTERVAL, generacion_servida=generacion_servida
+            )
             if signal_ts is None:
                 continue
 
+            generacion = watcher.generacion
             new_signal_ts = time.time()
             try:
-                items = await run_db(_fetch_recent, last_signal_check, batch)
+                # La consulta la hace el watcher, una por señal para todos los
+                # clientes que piden lo mismo (ver `_SignalWatcher.recientes`).
+                items = await watcher.recientes(last_signal_check, batch)
             except Exception as exc:
                 log.warning("stream.fetch_failed", error=str(exc))
                 items = []
@@ -244,6 +358,7 @@ async def _event_generator(
                 log.info("stream.sent_batch", n=len(items))
 
             last_signal_check = new_signal_ts
+            generacion_servida = generacion
 
     # Evento de cierre limpio
     yield _sse_event("close", {"reason": "max_duration_reached"})

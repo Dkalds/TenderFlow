@@ -1,12 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, FileText, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
-import { registrarEvento } from "@/lib/analytics";
-import { apiMutate } from "@/lib/api-client";
 import type { ChatTurn } from "@/hooks/use-ask";
 import type { AskMeta, DegradedInfo, FuenteDocumento, SourcesInfo } from "@/lib/ask-stream";
 
@@ -113,75 +112,6 @@ function SinFuentesNotice() {
   );
 }
 
-/**
- * Pulgares de calidad sobre una respuesta completa del asistente.
- *
- * Hasta C5.4 el voto era **solo** un evento de telemetría: no llegaba a ninguna
- * tabla, así que se le pedía al usuario que evaluase y su evaluación se tiraba.
- * Ahora también va a `POST /feedback/asistente`, que guarda el **hash** de la
- * pregunta —no su texto— junto al modo y al voto.
- *
- * `pregunta` viaja para poder hashearla en servidor con la sal de la
- * aplicación; hashearla aquí dejaría la sal en el navegador, que es lo mismo
- * que no tenerla. Sin `pregunta` (resumen, ficha) se manda la etiqueta del modo:
- * el turno no tiene pregunta de usuario, y el hash agrupa igual.
- *
- * El fallo de red se ignora a propósito: quien vota nos hace un favor, y un
- * error en su pantalla por nuestra tabla convierte esa cortesía en un problema.
- */
-export function FeedbackButtons({
-  modo,
-  pregunta,
-  licitacionId,
-}: {
-  modo: "pregunta" | "resumen" | "ficha";
-  pregunta?: string;
-  licitacionId?: string;
-}) {
-  const [voted, setVoted] = React.useState<"si" | "no" | null>(null);
-
-  const vote = (util: "si" | "no") => {
-    if (voted) return;
-    setVoted(util);
-    registrarEvento("asistente_feedback", { modo, util });
-    void apiMutate("POST", "/api/v1/feedback/asistente", {
-      pregunta: pregunta?.trim() || `[${modo}]`,
-      modo,
-      voto: util,
-      licitacion_id: licitacionId,
-    }).catch(() => {
-      /* el voto ya está reflejado en la UI; un fallo aquí no es del usuario */
-    });
-  };
-
-  return (
-    <div className="mt-1.5 flex items-center gap-1" role="group" aria-label="¿Te ha servido?">
-      {voted ? (
-        <span className="text-muted-foreground text-[11px]">Gracias por el feedback.</span>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => vote("si")}
-            aria-label="Respuesta útil"
-            className="text-muted-foreground hover:text-foreground grid h-6 w-6 place-items-center rounded-md transition-colors"
-          >
-            <ThumbsUp className="h-3 w-3" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={() => vote("no")}
-            aria-label="Respuesta no útil"
-            className="text-muted-foreground hover:text-foreground grid h-6 w-6 place-items-center rounded-md transition-colors"
-          >
-            <ThumbsDown className="h-3 w-3" aria-hidden="true" />
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
 /** Aviso: se pidió contexto de una licitación pero la respuesta salió del
  *  corpus general (el backend no pudo cargar el expediente). Sin esto el
  *  fallback era silencioso y la respuesta se leía como si fuera del pliego. */
@@ -278,6 +208,63 @@ export interface ChatThreadProps {
   expectLicitacionContext?: boolean;
 }
 
+interface TurnoAsistenteProps {
+  turno: ChatTurn;
+  /** La pregunta que lo originó: la hashea el voto de los pulgares. */
+  pregunta: string | undefined;
+  /** Último turno sin su primer token todavía: esqueleto en vez de burbuja vacía. */
+  esperandoPrimerToken: boolean;
+  /** Último turno con el stream abierto: cursor al final del texto. */
+  emitiendo: boolean;
+  /** Último turno con la respuesta en curso: aún no se puede votar. */
+  enCurso: boolean;
+  expectLicitacionContext?: boolean;
+}
+
+/**
+ * Un turno del asistente.
+ *
+ * `memo` porque mientras la última respuesta se emite el hilo entero se repinta
+ * en cada frame, y los turnos anteriores —el mismo objeto, las mismas banderas—
+ * no tienen nada que repintar: solo el último recibe props nuevas.
+ */
+const TurnoAsistente = React.memo(function TurnoAsistente({
+  turno,
+  pregunta,
+  esperandoPrimerToken,
+  emitiendo,
+  enCurso,
+  expectLicitacionContext,
+}: TurnoAsistenteProps) {
+  return (
+    <div className="text-sm">
+      {turno.content ? (
+        <MarkdownAnswer text={turno.content} />
+      ) : esperandoPrimerToken ? (
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+        </div>
+      ) : null}
+      {emitiendo && turno.content ? (
+        <span className="text-primary motion-safe:animate-pulse" aria-hidden="true">
+          ▌
+        </span>
+      ) : null}
+      {expectLicitacionContext && turno.askMeta && turno.askMeta.contexto === "general" ? (
+        <ScopeFallbackNotice />
+      ) : null}
+      {turno.askMeta?.expedientes ? <ComparacionNotice meta={turno.askMeta} /> : null}
+      {turno.degraded ? <DegradedNotice degraded={turno.degraded} /> : null}
+      {turno.sources ? <CitasBlock info={turno.sources} /> : null}
+      {turno.sources?.sinFuentes ? <SinFuentesNotice /> : null}
+      {turno.fuentes && turno.fuentes.length > 0 ? <FuentesBlock fuentes={turno.fuentes} /> : null}
+      {turno.content && !turno.degraded && !enCurso ? <FeedbackButtons modo="pregunta" pregunta={pregunta} /> : null}
+    </div>
+  );
+});
+
 /**
  * Presentational multi-turn chat thread (shared by the copilot panel, the
  * investigador page and the licitación AI tab). Inputs live in the parents.
@@ -292,8 +279,13 @@ export function ChatThread({
 }: ChatThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
+  // Como mucho un scroll por frame. `scrollIntoView` fuerza un layout, y con
+  // una respuesta emitiéndose `messages` cambia sin parar: el scroll se
+  // programa para el frame siguiente y un cambio posterior dentro del mismo
+  // frame lo sustituye en vez de sumarle otro.
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const frame = requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
+    return () => cancelAnimationFrame(frame);
   }, [messages]);
 
   const last = messages[messages.length - 1];
@@ -302,7 +294,6 @@ export function ChatThread({
   return (
     <div className={cn("space-y-3", className)}>
       {messages.map((m, i) => {
-        const isLast = i === messages.length - 1;
         if (m.role === "user") {
           return (
             <div key={i} className="flex justify-end">
@@ -310,34 +301,17 @@ export function ChatThread({
             </div>
           );
         }
+        const isLast = i === messages.length - 1;
         return (
-          <div key={i} className="text-sm">
-            {m.content ? (
-              <MarkdownAnswer text={m.content} />
-            ) : isLast && waitingFirstToken ? (
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-              </div>
-            ) : null}
-            {isLast && streaming && m.content ? (
-              <span className="text-primary motion-safe:animate-pulse" aria-hidden="true">
-                ▌
-              </span>
-            ) : null}
-            {expectLicitacionContext && m.askMeta && m.askMeta.contexto === "general" ? (
-              <ScopeFallbackNotice />
-            ) : null}
-            {m.askMeta?.expedientes ? <ComparacionNotice meta={m.askMeta} /> : null}
-            {m.degraded ? <DegradedNotice degraded={m.degraded} /> : null}
-            {m.sources ? <CitasBlock info={m.sources} /> : null}
-            {m.sources?.sinFuentes ? <SinFuentesNotice /> : null}
-            {m.fuentes && m.fuentes.length > 0 ? <FuentesBlock fuentes={m.fuentes} /> : null}
-            {m.content && !m.degraded && !(isLast && (streaming || loading)) ? (
-              <FeedbackButtons modo="pregunta" pregunta={messages[i - 1]?.content} />
-            ) : null}
-          </div>
+          <TurnoAsistente
+            key={i}
+            turno={m}
+            pregunta={messages[i - 1]?.content}
+            esperandoPrimerToken={isLast && waitingFirstToken}
+            emitiendo={isLast && streaming}
+            enCurso={isLast && (streaming || loading)}
+            expectLicitacionContext={expectLicitacionContext}
+          />
         );
       })}
 

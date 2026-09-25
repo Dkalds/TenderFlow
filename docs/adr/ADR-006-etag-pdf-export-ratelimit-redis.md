@@ -9,7 +9,11 @@ tags: [adr]
 # ADR-006: ETag middleware + async PDF export endpoint
 
 **Status:** Accepted  
-**Date:** 2026-05-19
+**Date:** 2026-05-19  
+**Revisado por:** [ADR-035](ADR-035-camino-de-peticion-sin-bloquear-el-event-loop.md)
+(2026-09-25): §1 —el ETag de una respuesta cacheada se calcula al guardarla— y
+§3 —sin configuración la cuota va a Redis si está disponible, y nunca se decide
+en el event loop.
 
 ## Contexto
 

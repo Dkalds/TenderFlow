@@ -66,6 +66,16 @@ const MAX_RECONNECT_DELAY = 60_000;
 const INITIAL_RECONNECT_DELAY = 1_000;
 const NOTIFICATIONS_KEY = ["notifications"] as const;
 
+/**
+ * Cuánto se espera con la pestaña oculta antes de cerrar el SSE.
+ *
+ * Cada `EventSource` abierto ocupa una de las plazas de concurrencia de
+ * uvicorn en la API (20), también el de una pestaña olvidada en segundo plano.
+ * El margen evita el caso contrario: cerrar y reabrir la conexión cada vez que
+ * alguien cambia de pestaña un momento para copiar un dato.
+ */
+export const MARGEN_OCULTA_MS = 45_000;
+
 export function NotificationBell({ className: _className }: NotificationBellProps) {
   const queryClient = useQueryClient();
   const [liveItems, setLiveItems] = React.useState<LiveItem[]>([]);
@@ -83,8 +93,18 @@ export function NotificationBell({ className: _className }: NotificationBellProp
   // Live push of brand-new licitaciones via SSE.
   React.useEffect(() => {
     let es: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout>;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let reconnectDelay = INITIAL_RECONNECT_DELAY;
+    // Pestaña oculta: el temporizador del margen y si la conexión ya se cerró.
+    let ocultaTimer: ReturnType<typeof setTimeout> | undefined;
+    let enPausa = false;
+
+    function scheduleReconnect() {
+      reconnectTimer = setTimeout(() => {
+        reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+        connect();
+      }, reconnectDelay);
+    }
 
     function connect() {
       try {
@@ -114,25 +134,53 @@ export function NotificationBell({ className: _className }: NotificationBellProp
         es.onerror = () => {
           setConnected(false);
           es?.close();
-          reconnectTimer = setTimeout(() => {
-            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-            connect();
-          }, reconnectDelay);
+          scheduleReconnect();
         };
       } catch (connError) {
         reportError("NotificationBell.connect", connError);
         setConnected(false);
-        reconnectTimer = setTimeout(() => {
-          reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-          connect();
-        }, reconnectDelay);
+        scheduleReconnect();
       }
     }
 
-    connect();
+    /** Cierra la conexión (y cualquier reintento pendiente) hasta que se vuelva. */
+    function pausar() {
+      ocultaTimer = undefined;
+      enPausa = true;
+      clearTimeout(reconnectTimer);
+      es?.close();
+      es = null;
+      setConnected(false);
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        if (!enPausa && ocultaTimer === undefined) ocultaTimer = setTimeout(pausar, MARGEN_OCULTA_MS);
+        return;
+      }
+      clearTimeout(ocultaTimer);
+      ocultaTimer = undefined;
+      if (!enPausa) return;
+      enPausa = false;
+      // El backoff no se reinicia: si la API estaba fallando, el siguiente
+      // error sigue esperando lo que tocaba. Lo que sí se hace en el acto es
+      // reconectar y pedir el feed: lo publicado mientras la pestaña estuvo
+      // oculta no llegó por el SSE cerrado. `cancelRefetch: false` porque el
+      // feed también se refresca al volver a la pestaña (`providers.tsx`): si
+      // esa petición ya está en vuelo, vale, no se cancela para repetirla.
+      connect();
+      queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }, { cancelRefetch: false });
+    }
+
+    // Una pestaña que se abre ya en segundo plano no conecta hasta que se mira.
+    if (document.visibilityState === "hidden") enPausa = true;
+    else connect();
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       es?.close();
       clearTimeout(reconnectTimer);
+      clearTimeout(ocultaTimer);
     };
   }, [queryClient]);
 

@@ -52,7 +52,8 @@ describe("framing SSE", () => {
     const tokens: string[] = [];
     const result = await streamAsk({ question: "q", onToken: (acc) => tokens.push(acc) });
     expect(result.answer).toBe("abc");
-    expect(tokens).toEqual(["a", "ab", "abc"]);
+    // Tres tokens en el mismo frame: una sola entrega con el acumulado.
+    expect(tokens).toEqual(["abc"]);
   });
 
   it("una línea SSE que no es JSON se acumula como texto crudo", async () => {

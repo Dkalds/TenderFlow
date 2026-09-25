@@ -2,10 +2,7 @@ import type { Metadata } from "next";
 import { SuperficiePrivada } from "@/components/layout/superficie-privada";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { ConsoleFrame } from "@/components/layout/console-frame";
-import { CommandPalette } from "@/components/command-palette";
-import { GlobalCopilot } from "@/components/copilot-panel";
-import { KeyboardHelp } from "@/components/keyboard-help";
-import { BandejaComparacion } from "@/components/pliego/comparacion-bandeja";
+import { OverlaysDashboard } from "@/components/layout/overlays-dashboard";
 import { OAuthLoginTelemetry } from "@/components/oauth-login-telemetry";
 
 export const dynamic = "force-dynamic";
@@ -39,12 +36,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           reintentos en vuelo (arranque en frío de la API). */}
       <ConnectionBanner />
       <ConsoleFrame>{children}</ConsoleFrame>
-      <CommandPalette />
-      <GlobalCopilot />
-      {/* F2.8 — los expedientes marcados para comparar siguen a mano al
-          cambiar de pantalla (Radar → watchlist → ficha). */}
-      <BandejaComparacion />
-      <KeyboardHelp />
+      {/* Paleta, copiloto, bandeja de comparación (F2.8: los expedientes
+          marcados siguen a mano al cambiar de pantalla) y ayuda de atajos.
+          Cerrados al entrar, así que se descargan la primera vez que se abren:
+          ver `overlays-dashboard.tsx`. */}
+      <OverlaysDashboard />
     </SuperficiePrivada>
   );
 }

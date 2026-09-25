@@ -24,8 +24,11 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -216,6 +219,35 @@ def _url_options(url: str) -> str:
     return values[-1] if values else ""
 
 
+def _url_params(url: str) -> frozenset[str]:
+    """Nombres de los parámetros libpq que trae la query string de ``url``."""
+    from urllib.parse import parse_qs, urlsplit
+
+    if not url:
+        return frozenset()
+    return frozenset(parse_qs(urlsplit(url).query))
+
+
+#: TCP keepalives de libpq para las conexiones de los pools. Con los valores del
+#: sistema (Linux: primera sonda a las **2 horas**) no protegían nada. Con
+#: estos, una conexión ociosa manda una sonda cada 30 s: mantiene viva la
+#: entrada de cualquier NAT o balanceador entre Render y Supabase —que tira un
+#: flujo TCP ocioso sin avisar a ninguno de los dos extremos— y, si el otro
+#: extremo desapareció, el kernel da la conexión por muerta en ~1 min en vez de
+#: dejar que la siguiente consulta espere la retransmisión TCP (~15 min). No
+#: sustituyen a la verificación por checkout (``_make_pg_check``): una sonda
+#: TCP la contesta el kernel del pooler y no cuenta como actividad para su
+#: timeout de inactividad. ``tcp_user_timeout`` no se fija a propósito: también
+#: corta una conexión cuyo servidor tarda en leer (ventana TCP a cero), que es
+#: justo lo que pasa en un upsert por lotes del scraper.
+_KEEPALIVES: dict[str, int] = {
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+}
+
+
 def _pg_connect_kwargs(url: str = "", *, read_only: bool = False) -> dict[str, Any]:
     """Parámetros libpq extra aplicados a cada conexión del pool Postgres.
 
@@ -230,8 +262,13 @@ def _pg_connect_kwargs(url: str = "", *, read_only: bool = False) -> dict[str, A
       ``SET TRANSACTION READ ONLY`` por bloque del camino de lectura: misma
       garantía (una escritura por esa vía lanza ``ReadOnlySqlTransaction``) sin
       gastar un round-trip por lectura.
+    - TCP keepalives (:data:`_KEEPALIVES`), salvo los que ya fije la URL: un
+      valor explícito en la cadena de conexión gana.
     """
-    kwargs: dict[str, Any] = {}
+    en_url = _url_params(url)
+    kwargs: dict[str, Any] = {
+        nombre: valor for nombre, valor in _KEEPALIVES.items() if nombre not in en_url
+    }
     stmt_ms = int(getattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000))
     idle_ms = int(getattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000))
     opts: list[str] = []
@@ -316,6 +353,8 @@ def _make_pg_configure(*, read_only: bool) -> Callable[[Any], None]:
     """
 
     def _configure(conn: Any) -> None:
+        # Recién abierta: cuenta como actividad para `_make_pg_check`.
+        _marcar_actividad(conn)
         stmt_ms = int(getattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000))
         idle_ms = int(getattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000))
         ajustes: list[tuple[str, str]] = []
@@ -339,6 +378,103 @@ def _make_pg_configure(*, read_only: bool) -> Callable[[Any], None]:
     return _configure
 
 
+# ---------------------------------------------------------------------------
+# Verificación de conexiones ociosas (``check`` del pool)
+# ---------------------------------------------------------------------------
+
+#: Atributo con el instante (``time.monotonic``) de la última actividad
+#: conocida de una conexión: su apertura o su última devolución al pool.
+#: ``psycopg_pool`` guarda sus propias marcas en la conexión igual
+#: (``_created_at``, ``_expire_at``), y así la marca muere con ella.
+_ATRIBUTO_ACTIVIDAD = "_tenderflow_ultima_actividad"
+
+#: Una conexión que lleva más que esto sin usarse se verifica antes de
+#: entregarla (segundos). Por debajo de cualquier timeout de inactividad
+#: razonable del pooler —``DB_POOL_MAX_IDLE_SECONDS`` ya asume que ese timeout
+#: pasa de 120 s— y por encima de lo que tarda una conexión en volver a salir con
+#: tráfico normal, que es cuando la verificación sobraría.
+_VERIFICAR_OCIOSA_TRAS_S = 60.0
+
+
+def _marcar_actividad(conn: Any) -> None:
+    try:
+        setattr(conn, _ATRIBUTO_ACTIVIDAD, time.monotonic())
+    except (AttributeError, TypeError):
+        # Un doble de test con `__slots__`: sin marca, la siguiente entrega la
+        # verifica, que es el lado seguro.
+        log.debug("pg_conexion_sin_marca_de_actividad", exc_info=True)
+
+
+def _make_pg_check(*, read_only: bool) -> Callable[[Any], None]:
+    """Callback ``check`` del pool: nunca entrega una conexión ociosa sin verificarla.
+
+    ``psycopg_pool`` llama a ``check`` en **cada** checkout
+    (``ConnectionPool._getconn_with_check_loop``) y, si lanza, descarta la
+    conexión —``_return_connection`` la ve rota, suma ``connections_lost`` y
+    pide otra con ``AddConnection``— y prueba con la siguiente. Sin ``check``
+    (lo que había), una conexión que el pooler cerró por inactividad se
+    entregaba igual y la consulta fallaba.
+
+    Verificar siempre cuesta un viaje por checkout, así que solo se verifica lo
+    que lleva más de :data:`_VERIFICAR_OCIOSA_TRAS_S` sin actividad; con
+    tráfico, una conexión vuelve a salir mucho antes. La verificación es la de
+    ``ConnectionPool.check_connection``: una consulta vacía, en autocommit.
+
+    **Si una ociosa está muerta, se purgan todas**: la causa habitual (el
+    pooler, o una red que cortó flujos ociosos) no se lleva una sola conexión.
+    Dejar que las descubra el bucle de reintentos de ``psycopg_pool`` las
+    encontraría de una en una con espera exponencial entre intentos (0 s, 1 s,
+    2 s, 4 s…); ``pool.check()`` las prueba todas de una vez, descarta las
+    rotas y pide sus reemplazos.
+
+    Esto es lo que permite tener un ``min_size`` mayor que 1: las conexiones que
+    sostiene ``min_size`` no las recicla ``max_idle``, solo ``max_lifetime``, y
+    pueden pasar mucho tiempo ociosas.
+    """
+
+    def _check(conn: Any) -> None:
+        ultima = getattr(conn, _ATRIBUTO_ACTIVIDAD, None)
+        if isinstance(ultima, float) and time.monotonic() - ultima < _VERIFICAR_OCIOSA_TRAS_S:
+            return
+        from psycopg_pool import ConnectionPool
+
+        try:
+            ConnectionPool.check_connection(conn)
+        except Exception:
+            log.warning("pg_pool_conexion_ociosa_muerta", pool="read" if read_only else "write")
+            _purgar_ociosas(read_only=read_only)
+            raise
+        _marcar_actividad(conn)
+
+    return _check
+
+
+def _purgar_ociosas(*, read_only: bool) -> None:
+    """``pool.check()`` del pool dado: descarta las ociosas rotas y las repone."""
+    pool = _pg_read_pool if read_only else _pg_pool
+    if pool is None:
+        return
+    try:
+        pool.check()
+    except Exception:
+        log.warning("pg_pool_purga_fallida", pool="read" if read_only else "write", exc_info=True)
+
+
+def _min_size(*, read_only: bool, max_size: int) -> int:
+    """``min_size`` del pool, entre 1 y ``max_size``.
+
+    Cuántas conexiones se mantienen abiertas aunque no haya tráfico. Con 1, tras
+    un rato sin peticiones una ráfaga tenía que abrir el resto (TLS + SCRAM +
+    los ``set_config`` de ``_make_pg_configure``), y ``psycopg_pool`` crece **de
+    una en una** (su flag ``_growing``): la última petición de la ráfaga
+    esperaba todas las aperturas anteriores. El valor sale de settings
+    (``DB_POOL_MIN_SIZE`` / ``DB_READ_POOL_MIN_SIZE``).
+    """
+    nombre = "DB_READ_POOL_MIN_SIZE" if read_only else "DB_POOL_MIN_SIZE"
+    pedido = int(getattr(settings, nombre, 1) or 1)
+    return max(1, min(pedido, max_size))
+
+
 def _build_pool(*, read_only: bool) -> Any:
     """Crea un ``ConnectionPool`` de escritura o de lectura."""
     try:
@@ -353,17 +489,24 @@ def _build_pool(*, read_only: bool) -> Any:
         pool_size = getattr(settings, "DB_READ_POOL_SIZE", 0) or default_size
     else:
         pool_size = default_size
+    max_size = max(pool_size, 2)
+    min_size = _min_size(read_only=read_only, max_size=max_size)
     url = _database_url()
     conn_kwargs = _pg_connect_kwargs(url, read_only=read_only)
     lifecycle = _pool_lifecycle_kwargs()
     name = "read" if read_only else "write"
+    # `num_workers` se deja en el valor de psycopg_pool (3) a propósito: subirlo
+    # no acelera el crecimiento bajo una ráfaga, que el pool serializa de una
+    # en una conexión (`_growing`). Los workers solo paralelizan el llenado
+    # inicial hasta `min_size` y la reposición de conexiones descartadas.
     try:
         pool = ConnectionPool(
             conninfo=url,
-            min_size=1,
-            max_size=max(pool_size, 2),
+            min_size=min_size,
+            max_size=max_size,
             kwargs=conn_kwargs,
             configure=_make_pg_configure(read_only=read_only),
+            check=_make_pg_check(read_only=read_only),
             open=True,
             name=f"tenderflow-{name}",
             **lifecycle,
@@ -376,8 +519,8 @@ def _build_pool(*, read_only: bool) -> Any:
     log.info(
         "pg_pool_created",
         pool=name,
-        min=1,
-        max=max(pool_size, 2),
+        min=min_size,
+        max=max_size,
         timeouts=conn_kwargs.get("options", "none"),
         ssl_ca=bool(conn_kwargs.get("sslrootcert")),
         acquire_timeout=lifecycle.get("timeout"),
@@ -527,6 +670,10 @@ def _return_pg_connection(adapter: _PgConnAdapter) -> None:
     """Devuelve la conexión subyacente a su pool de origen."""
     pool = adapter._pool if adapter._pool is not None else _pg_pool
     if pool is not None:
+        # Aquí y no en un `reset` del pool: con `reset` configurado,
+        # psycopg_pool devuelve cada conexión a través de un worker en vez de en
+        # el hilo que la suelta, y la conexión tarda más en estar disponible.
+        _marcar_actividad(adapter._conn)
         try:
             pool.putconn(adapter._conn)
         except Exception:
@@ -601,7 +748,23 @@ def _apply_tenant_scope_write(conn: _PgConnAdapter) -> None:
     conn._conn.execute(_tenant_scope_sql(organization_id))
 
 
-def _begin_tenant_scope_read(conn: _PgConnAdapter) -> bool:
+def _sentencias_de_lectura(organization_id: int | None, statement_timeout_ms: int | None) -> str:
+    """``BEGIN`` + los ``SET LOCAL`` de una lectura, en una sola cadena; ``""`` si no hay."""
+    ajustes: list[str] = []
+    if organization_id is not None:
+        ajustes.append(_tenant_scope_sql(organization_id))
+    if statement_timeout_ms is not None:
+        # Literal por lo mismo que `_tenant_scope_sql`: `SET` no admite
+        # parámetros y va en el mismo viaje que el `BEGIN`. Es un `int`.
+        ajustes.append(f"SET LOCAL statement_timeout = {int(statement_timeout_ms)}")
+    if not ajustes:
+        return ""
+    return "BEGIN; " + "; ".join(ajustes)
+
+
+def _begin_tenant_scope_read(
+    conn: _PgConnAdapter, *, statement_timeout_ms: int | None = None
+) -> bool:
     """Abre la transacción con ámbito en el camino de lectura. True si lo hizo.
 
     La conexión de lectura está en **autocommit** (ver ``connect_read``), y
@@ -613,11 +776,16 @@ def _begin_tenant_scope_read(conn: _PgConnAdapter) -> bool:
     solo lectura se mantiene. El cierre (``_end_tenant_scope_read``) cuesta el
     otro viaje: una lectura con ámbito pasa de 1 a 3 round-trips; una sin
     ámbito sigue en 1.
+
+    ``statement_timeout_ms`` viaja en esa misma sentencia como ``SET LOCAL``, y
+    por eso también abre transacción cuando no hay ámbito: es la única forma de
+    que el ajuste muera con el ``ROLLBACK`` de cierre en vez de quedarse en la
+    conexión que vuelve al pool. Con ámbito no cuesta ningún viaje más.
     """
-    organization_id = current_organization()
-    if organization_id is None:
+    sentencias = _sentencias_de_lectura(current_organization(), statement_timeout_ms)
+    if not sentencias:
         return False
-    conn._conn.execute(f"BEGIN; {_tenant_scope_sql(organization_id)}")
+    conn._conn.execute(sentencias)
     return True
 
 
@@ -702,8 +870,71 @@ def connect() -> Iterator[Any]:
         _return_conn(conn)
 
 
+#: Techo de ``statement_timeout`` que heredan las lecturas que no fijan el suyo.
+#: Lo pone el camino HTTP de la analítica con :func:`techo_de_sentencia` y nunca
+#: los jobs: el precálculo de agregados necesita precisamente las consultas
+#: largas que este techo cortaría, y llama a las mismas funciones de
+#: ``db/repositories/aggregates.py``. Por eso el techo va en el contexto de la
+#: petición y no en esas funciones.
+_techo_sentencia: ContextVar[int | None] = ContextVar("techo_sentencia_lectura", default=None)
+
+
 @contextmanager
-def connect_read() -> Iterator[Any]:
+def techo_de_sentencia(statement_timeout_ms: int | None) -> Iterator[None]:
+    """Aplica ``statement_timeout_ms`` a las lecturas del bloque que no fijen el suyo.
+
+    ``None`` o ``0`` no ponen techo. Llega a los hilos del threadpool (anyio
+    copia el contexto al despachar) y a los ayudantes del overview, que corren
+    con ``copy_context()``. Se valida al entrar para que un valor imposible
+    falle aquí y no en la primera lectura.
+    """
+    valor = statement_timeout_ms or None
+    _timeout_de_lectura(valor)
+    token = _techo_sentencia.set(valor)
+    try:
+        yield
+    finally:
+        _techo_sentencia.reset(token)
+
+
+def fijar_techo_de_sentencia(statement_timeout_ms: int | None) -> None:
+    """Como :func:`techo_de_sentencia`, pero para el resto del contexto actual.
+
+    Es la forma que necesita una dependencia de FastAPI: cada petición corre en
+    su propia tarea, con su copia del contexto, así que el valor muere con ella
+    y no hace falta deshacerlo — ni arriesgarse a deshacerlo desde un contexto
+    que no es el que lo fijó, que es un ``ValueError`` de ``ContextVar.reset``.
+    """
+    valor = statement_timeout_ms or None
+    _timeout_de_lectura(valor)
+    _techo_sentencia.set(valor)
+
+
+def _timeout_de_lectura(statement_timeout_ms: int | None) -> int | None:
+    """``statement_timeout`` que hay que fijar para una lectura, o ``None``.
+
+    Solo sirve para **bajar** el techo de la sesión (``DB_STATEMENT_TIMEOUT_MS``,
+    que ya fija ``_make_pg_configure``): pedir uno igual o mayor no cambia nada,
+    así que no se paga la transacción que haría falta para fijarlo.
+    """
+    if statement_timeout_ms is None:
+        return None
+    if (
+        isinstance(statement_timeout_ms, bool)
+        or not isinstance(statement_timeout_ms, int)
+        or statement_timeout_ms < 1
+    ):
+        raise ValueError(
+            f"statement_timeout_ms debe ser un entero positivo: {statement_timeout_ms!r}"
+        )
+    techo = int(getattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000))
+    if techo > 0 and statement_timeout_ms >= techo:
+        return None
+    return statement_timeout_ms
+
+
+@contextmanager
+def connect_read(*, statement_timeout_ms: int | None = None) -> Iterator[Any]:
     """Context manager de SOLO LECTURA.
 
     La garantía es la misma de siempre —cualquier INSERT/UPDATE/DELETE/DDL mal
@@ -726,21 +957,151 @@ def connect_read() -> Iterator[Any]:
     app.organization_id`` tenga efecto, y se cierra con ``ROLLBACK`` antes de
     devolver la conexión — ver ``_begin_tenant_scope_read``. Cuesta dos viajes
     más por lectura acotada; la lectura sin ámbito no cambia.
-    """
-    import time as _time
 
+    ``statement_timeout_ms`` baja el ``statement_timeout`` **solo para este
+    bloque** (la analítica lo usa con ``API_ANALYTICS_STATEMENT_TIMEOUT_MS``):
+    va como ``SET LOCAL`` dentro de la transacción de la lectura, que se abre
+    para eso aunque no haya ámbito, y el ``ROLLBACK`` de cierre lo deshace. La
+    conexión vuelve al pool con el techo de la sesión intacto; si ni siquiera
+    el ``ROLLBACK`` llega, ``_end_tenant_scope_read`` la cierra. Un valor igual
+    o mayor que el techo no hace nada (ver ``_timeout_de_lectura``). Sin valor
+    propio se hereda el de :func:`techo_de_sentencia`, si el contexto lo fijó.
+
+    Dentro de :func:`lecturas_agrupadas` el bloque reutiliza la conexión y el
+    ámbito del grupo en vez de pedir otra al pool, salvo que pida su propio
+    ``statement_timeout_ms`` o corra con otra organización.
+    """
     from observability.runtime_metrics import db_read_duration_seconds
 
+    timeout_ms = _timeout_de_lectura(
+        statement_timeout_ms if statement_timeout_ms is not None else _techo_sentencia.get()
+    )
+
+    grupo = _lectura_agrupada.get()
+    if timeout_ms is None and grupo is not None and grupo.admite(current_organization()):
+        adaptador = grupo.prestar()
+        t0 = time.monotonic()
+        try:
+            yield adaptador
+        finally:
+            db_read_duration_seconds.observe(time.monotonic() - t0)
+        return
+
     conn = _get_conn(read_only=True)
-    t0 = _time.monotonic()
+    t0 = time.monotonic()
     scoped = False
     try:
-        scoped = _begin_tenant_scope_read(conn)
+        scoped = _begin_tenant_scope_read(conn, statement_timeout_ms=timeout_ms)
         yield conn
     finally:
         if scoped:
             _end_tenant_scope_read(conn)
-        db_read_duration_seconds.observe(_time.monotonic() - t0)
+        db_read_duration_seconds.observe(time.monotonic() - t0)
+        _return_conn(conn)
+
+
+# ---------------------------------------------------------------------------
+# Lecturas agrupadas: varias lecturas, una conexión y un ámbito
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _GrupoDeLecturas:
+    """Estado de un bloque :func:`lecturas_agrupadas` en curso."""
+
+    conn: _PgConnAdapter
+    organization_id: int | None
+    hilo: int
+    en_transaccion: bool
+
+    def admite(self, organization_id: int | None) -> bool:
+        """¿Puede una lectura anidada usar la conexión del grupo?
+
+        Solo desde el mismo hilo —una conexión psycopg no se comparte entre
+        hilos a la vez— y con la misma organización: la transacción del grupo
+        lleva el ``SET LOCAL`` de la organización con que se abrió, y una
+        lectura bajo ``tenant_scope(otra)`` no puede heredarlo.
+        """
+        return self.hilo == threading.get_ident() and self.organization_id == organization_id
+
+    def prestar(self) -> _PgConnAdapter:
+        """Un adaptador propio sobre la conexión del grupo, con la transacción sana.
+
+        Adaptador nuevo por bloque porque ``_PgConnAdapter`` guarda el último
+        cursor: si dos bloques anidados compartieran uno, el ``fetchall`` del
+        exterior leería el resultado de la consulta del interior. Los cursores
+        de psycopg traen el resultado entero al ejecutar, así que dos
+        adaptadores sobre la misma conexión no se estorban.
+
+        Si una lectura anterior del grupo falló dentro de la transacción (un
+        loader que captura su error y devuelve un neutro, como
+        ``read_overview_snapshot_for``), Postgres rechazaría todo lo que venga
+        detrás hasta el ``ROLLBACK``. Hasta ahora cada lectura tenía su propia
+        conexión y ese fallo no contagiaba a la siguiente; para que siga sin
+        contagiar, se reabre la transacción con el mismo ámbito (un viaje, solo
+        en ese caso). Lo mismo si algo la cerró por su cuenta.
+        """
+        if self.en_transaccion:
+            from psycopg.pq import TransactionStatus
+
+            estado = self.conn._conn.info.transaction_status
+            if estado != TransactionStatus.INTRANS:
+                sentencias = _sentencias_de_lectura(self.organization_id, None)
+                prefijo = "ROLLBACK; " if estado == TransactionStatus.INERROR else ""
+                self.conn._conn.execute(prefijo + sentencias)
+        return _PgConnAdapter(self.conn._conn, pool=None)
+
+
+_lectura_agrupada: ContextVar[_GrupoDeLecturas | None] = ContextVar(
+    "db_lectura_agrupada", default=None
+)
+
+
+@contextmanager
+def lecturas_agrupadas() -> Iterator[None]:
+    """Hace que todas las lecturas del bloque compartan una conexión y un ámbito.
+
+    Cada ``connect_read`` pide su conexión al pool y, con organización fijada,
+    abre y cierra su propia transacción: ``BEGIN; SET LOCAL`` + consulta +
+    ``ROLLBACK``, tres viajes por lectura. Un handler que hace cinco lecturas
+    seguidas —``GET /notifications``— pagaba quince viajes y cinco checkouts.
+    Dentro de este bloque las lecturas usan **una** conexión de lectura y
+    **una** transacción: ``BEGIN; SET LOCAL`` al entrar, una consulta por
+    lectura y un ``ROLLBACK`` al salir. Sin organización fijada no hay
+    transacción y cada consulta va en autocommit, como siempre.
+
+    No expone la conexión: quien lo usa sigue leyendo a través de las funciones
+    de ``db/``, sin SQL fuera de su sitio (ADR-022). Agrupa lecturas, no
+    escrituras: ``connect()`` sigue yendo al pool de escritura. Anidarlo no
+    abre un segundo grupo.
+
+    La contrapartida es que la conexión se retiene lo que dure el bloque, así
+    que el bloque debe ser solo lecturas seguidas y el trabajo de CPU que las
+    une, no una espera larga.
+    """
+    if _lectura_agrupada.get() is not None:
+        yield
+        return
+    organization_id = current_organization()
+    conn = _get_conn(read_only=True)
+    en_transaccion = False
+    token = None
+    try:
+        en_transaccion = _begin_tenant_scope_read(conn)
+        token = _lectura_agrupada.set(
+            _GrupoDeLecturas(
+                conn=conn,
+                organization_id=organization_id,
+                hilo=threading.get_ident(),
+                en_transaccion=en_transaccion,
+            )
+        )
+        yield
+    finally:
+        if token is not None:
+            _lectura_agrupada.reset(token)
+        if en_transaccion:
+            _end_tenant_scope_read(conn)
         _return_conn(conn)
 
 

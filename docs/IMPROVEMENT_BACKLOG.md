@@ -9,6 +9,52 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - Si añadís un ítem nuevo, copiá la plantilla del final.
 - Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
 
+## Rendimiento 2026-09 — rama `claude/app-performance-optimization-222a43`
+
+Revisión de rendimiento del 2026-09-24 y su implementación (2026-09-25). Punto
+de partida medido: las funciones de Vercel corrían en `iad1` (`X-Vercel-Id:
+cdg1::iad1::…` en `/login`) con la API en Frankfurt y la BD en París; el
+dashboard es `force-dynamic` sin caché de router; la API es un proceso con un
+event loop y `--limit-concurrency 20`.
+
+**Hecho en la rama** (detalle en los commits):
+- **Red y navegación:** `regions: ["fra1"]`; `staleTimes.dynamic = 30`; cambiar
+  de pestaña, carril, periodo o búsqueda de Renovaciones ya no navega
+  (`lib/url-superficial.ts`); prefetch de servidor con 600 ms de presupuesto y
+  el del Radar movido a su página; esqueletos propios en Radar, Mercado y
+  Oportunidades.
+- **Frontend:** búsqueda del ámbito con debounce y cancelación de peticiones
+  (`signal` hasta `fetch`); `gcTime` 30 min y `refetchOnWindowFocus` solo donde
+  aporta; `keepPreviousData` en Radar y agenda; total de /detalle solo en la
+  primera página; organización por defecto adelantada; overlays del dashboard,
+  recharts de /resumen y pestañas de la ficha de oportunidad bajo demanda;
+  streaming del copiloto agrupado por frame; SSE de la campana cerrado con la
+  pestaña oculta y montado una sola vez; fichas y hubs públicos en ISR sin
+  cambiar URLs (`lib/paginacion-hubs.ts`), con precarga solo ante intención.
+- **API:** cuota fuera del event loop y en Redis por defecto; middlewares ASGI
+  puros; caché de respuestas sin E/S en el loop, con clave canónica (cerraba
+  una colisión entre parámetros) y ETag calculado al guardar (ADR-035); sesión y
+  organización personal con menos viajes; `/notifications` en una conexión;
+  SSE con una consulta por señal; pools con conexiones mínimas verificadas;
+  consulta cancelada como 503 que el navegador no reintenta; el
+  `--limit-concurrency` de uvicorn pasa de 20 a 200 (cada pestaña ocupaba una
+  plaza con su SSE).
+- **Analítica:** `adj_indicadores` del snapshot aunque haya filtro; consultas
+  del overview en paralelo acotado; variantes precalculadas para las cinco
+  tecnologías más frecuentes; scoring del Radar por columnas (×15-20);
+  `/competitive/*` cacheado; migraciones `v142` (GIN de tecnología) y `v143`
+  (trigram de la búsqueda `q` plegada), escritas y sin aplicar.
+- **Tests:** `tests/conftest.py` clasificaba por ruta absoluta y en un checkout
+  con «performance» en el nombre `make test-unit` no seleccionaba ningún test.
+
+**Pendiente:** los cuatro ítems marcados «Rendimiento 2026-09» más abajo —el
+primero, aplicar `v142`/`v143` justo después de mergear: hasta entonces el smoke
+falla y `ml-scoring` no corre—, y comprobar tras el primer despliegue que
+`X-Vercel-Id` de `/login` dice `fra1`, que `?p=2` de un hub da
+`X-Vercel-Cache: HIT` a la segunda petición, que el log de la API muestra
+`ratelimit_redis_connected` y ningún `Exceeded concurrency limit`, y que el
+panel de Render no fija `UVICORN_LIMIT_CONCURRENCY` a mano.
+
 ## Plan de funcionalidades 2026-09 — ejecutado casi entero
 
 El plan y sus criterios de aceptación están en
@@ -214,6 +260,49 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P1 — Alta
 
+### [P1] [Rendimiento 2026-09] Aplicar en producción los índices de la búsqueda `q` y del filtro de tecnología
+- **Área:** db/alembic/versions (`v142_lic_tecnologia_tokens_gin`, `v143_lic_busqueda_plegada_trgm`); aplicar con `migrate.yml` es acción del usuario
+- **Problema:** la búsqueda `q` del listado y de los agregados es un `LIKE '%q%'` sobre cuatro columnas plegadas, y el filtro de tecnología un solapamiento de arrays; sin índice, cada búsqueda y cada filtro recorren ~1,64 M filas. El código ya emite las expresiones indexables y las dos migraciones están escritas (rama de rendimiento), pero `migrate.yml` es manual y el índice de `descripcion` de `v143` puede ocupar mucho disco.
+- **Acceptance criteria:**
+  - Antes de `v143`, medido el volumen de `descripcion` frente al trigram de `titulo` de `v50` (consultas en [la propuesta](plans/2026-09-indices-busqueda-propuestos.md)); si no cabe, una de las alternativas que describe.
+  - `v142` y `v143` aplicadas con `migrate.yml`, en una ventana sin ingesta, y los cinco índices con `pg_index.indisvalid = true`.
+  - `EXPLAIN` con plan genérico usando los índices, y su `idx_scan` en `pg_stat_user_indexes` tras un día de tráfico.
+- **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](plans/2026-09-indices-busqueda-propuestos.md), [tests/test_indices_busqueda.py](../tests/test_indices_busqueda.py)
+- **Riesgo:** medio — índices grandes creados en caliente (`CONCURRENTLY`, dos pasadas por la tabla por índice).
+
+### [P1] Mercado sin filtros: cada vista recorre la tabla entera (20-110 s o 500)
+- **Área:** db/repositories/aggregates.py, db/alembic (índice), scheduler/kpi_precompute
+- **Problema:** `licitaciones` tiene ~713k filas y ~870 MB de heap (97 % PSCP) en un
+  Supabase Micro (`shared_buffers` 256 MB, E/S limitada), y cada `GROUP BY` que la
+  recorre tarda ~15 s (medido el 2026-09-25: `geography_by_ccaa` sin filtros, 15,2 s,
+  87k páginas leídas de disco). Las vistas encadenan de 2 a 6 recorridos: en los logs
+  de Render, `/analytics/organos` y `/proyectos-modulos` dan 500 por `statement_timeout`
+  (30 s por sentencia), `/trends?group_by=month` tarda 20-72 s, `/trends-cpv` ~40 s,
+  `/geography` ~30 s. Con `?tecnologia=` quedó resuelto el 2026-09-25 (la guarda
+  `tecnologia IS NOT NULL` del filtro lleva las consultas al índice parcial
+  `idx_lic_tecnologia` aunque el GIN de la entrada anterior no esté aplicado: 72 ms
+  en caliente), igual que `/tecnologias`; lo que queda es el ámbito sin filtro de
+  tecnología, que es con el que se abre Mercado.
+- **Decisión pendiente (una o varias):**
+  - Índice cubriente `(fecha_publicacion) INCLUDE (importe, estado, ccaa, provincia,
+    cpv, tipo_contrato, organo_id, organo_contratacion, tecnologia)` (~100-130 MB):
+    toda agregación sin `q` pasaría a Index Only Scan. Referencias medidas: el total
+    por `idx_ccaa`, 1,6 s; el histograma por `idx_lic_importe`, 1,7 s. Migración
+    (requiere OK, AGENTS.md §6) y `migrate.yml` a mano. El 24 % de las filas cae en
+    páginas sin marcar en el visibility map: afinar el autovacuum de la tabla ayuda.
+  - Snapshot del ámbito por defecto de cada vista en `kpi_precompute`, como el overview
+    (ADR-026, camino 3). Hoy costaría ~5 min por pasada y el cierre ya va por 9-15 min
+    de sus 20 de `timeout-minutes`: solo cabe después del índice.
+  - Subir el cómputo de Supabase (con 4 GB la tabla cabe en caché): decisión de coste.
+  - Acotar la analítica al universo tecnológico: decisión de producto. El listado ya
+    enseña solo filas con `tecnologia`; la analítica cuenta además todo PSCP.
+- **Acceptance criteria:**
+  - Cada vista de Mercado sin filtros responde en < 3 s (p95 de `duration_ms` en los
+    logs `http_request` de Render).
+  - Siete días sin `QueryCanceled` en `/api/v1/analytics/*`.
+- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [db/repositories/kpi_snapshots.py](../db/repositories/kpi_snapshots.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py)
+- **Riesgo:** medio — el índice es aditivo, pero migra schema; el snapshot toca el cierre.
+
 ### [P1] Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó
 - **Área:** scraper/connectors/ted.py, services/dedupe.py (ADR-026, addendum 2026-09-24)
 - **Problema:** `detect_duplicados_por_referencia` solo empareja los avisos que el
@@ -335,6 +424,23 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — primera vez que salen correos y webhooks del outbox.
 
 ## P2 — Media
+
+### [P2] [Rendimiento 2026-09] Medir la analítica en producción y encender su techo de sentencia
+- **Área:** config/settings.py (`API_ANALYTICS_STATEMENT_TIMEOUT_MS`), variables de Render
+- **Problema:** el mecanismo existe (`api/techo_analitica.py`, `db.connection.techo_de_sentencia`) pero nace apagado: sin `pg_stat_statements` de producción no se sabe cuántas agregaciones filtradas tardan hoy entre 15 y 30 s y pasarían a fallar. Una consulta cancelada ya no se reintenta (503 `query-timeout`), así que encenderlo no multiplica la carga.
+- **Acceptance criteria:**
+  - Distribución de duraciones de las consultas de `/analytics` y `/competitive` medida (`pg_stat_statements` o `http_request_duration_seconds` por ruta), anotada con fecha.
+  - El valor elegido fijado en Render (o el default del setting cambiado) con el motivo; preferiblemente después del P1 de índices.
+- **Riesgo:** medio — un techo corto convierte consultas lentas en errores.
+
+### [P2] [Rendimiento 2026-09] El auto-marcado de tests excluye del gate los módulos con «download» en el nombre
+- **Área:** tests/conftest.py (`_LOAD_TOKENS`), scripts/check_agent_docs.py
+- **Problema:** `_infer_marker` busca `load` como subcadena de la ruta, así que `tests/test_bulk_downloader.py` y `tests/test_exports_download_session.py` quedan marcados `load` y fuera de `make check` y `make test-unit`, que corren `unit or integration`. Hallado al arreglar que la ruta se tomaba absoluta (rama de rendimiento); no se tocó porque incluirlos puede destapar fallos de tests que nunca se han ejecutado en el gate.
+- **Acceptance criteria:**
+  - El token de carga casa como palabra del nombre del módulo (`test_load_*`, `*_performance*`), no como subcadena, y `check_agent_docs` sigue en verde.
+  - Los dos módulos corren en el gate y pasan, o sus fallos quedan arreglados en el mismo cambio.
+- **Files de partida:** [tests/conftest.py](../tests/conftest.py)
+- **Riesgo:** bajo — solo cambia qué tests entran en el gate.
 
 ### [P2] Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23 dice que sí)
 - **Área:** db/repositories/licitaciones.py (`_base_filters`), db/repositories/aggregates.py
@@ -562,6 +668,18 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## P3 — Nice to have
+
+### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
+- **Área:** web/bundle-budget.json, .env.example (OK humano), varios
+- **Problema:** lo que la rama no pudo cerrar por falta de build, de permiso o de alcance:
+  - Los techos de `web/bundle-budget.json` no se han bajado: sin `next build` no se midió. Estimado: −200 a −570 KB sin comprimir según la ruta (/resumen la que más). Las rutas nuevas de `hub-paginado/` salen como «NUEVA».
+  - `.env.example` no declara `RATE_LIMIT_BACKEND=auto` (sigue diciendo `sqlite`), `DB_POOL_MIN_SIZE`, `DB_READ_POOL_MIN_SIZE`, `API_ANALYTICS_STATEMENT_TIMEOUT_MS` ni `UVICORN_LIMIT_CONCURRENCY` (tocar `.env*` pide OK; por eso `render.yaml` tampoco declara la última: `check_env_parity` exige que todo lo de `render.yaml` esté en `.env.example`).
+  - Siguen con E/S síncrona en handlers `async`: `_check_budget` de `api/routes/ask.py` (presupuesto LLM en Redis).
+  - La imagen Open Graph de la ficha pública (`opengraph-image.tsx`) sigue dinámica.
+  - El scoring de /detalle no manda `organization_id` y puntúa con los pesos de la organización personal; las renovaciones filtran tecnología por igualdad (`IN`) y `tecnologia_detalle_*` sigue con `unnest`.
+  - Si se activa `NUCLEO_TIPADO_LECTURA`, el listado por cursor pierde `idx_lic_cursor` (v134 solo crea índices simples).
+- **Acceptance criteria:** cada viñeta cerrada o convertida en su propio ítem; `python scripts/check_bundle_budget.py --update` tras el primer build de la rama mergeada.
+- **Riesgo:** bajo.
 
 ### [P3] Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)
 - **Área:** GitHub Security (acción del usuario), .github/dependabot.yml

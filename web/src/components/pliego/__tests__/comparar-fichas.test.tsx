@@ -6,7 +6,7 @@
  * desaparecen; los expedientes sin ficha se declaran; y la bandeja admite como
  * mucho tres expedientes, que es el tope del contrato.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -42,6 +42,13 @@ const COMPARACION = {
     },
   ],
 };
+
+// La pregunta cruzada del diálogo entra por `next/dynamic` y arrastra el hilo
+// de chat con react-markdown: su import en frío se paga aquí, con margen
+// propio, y no dentro del test del diálogo.
+beforeAll(async () => {
+  await import("@/components/pliego/pregunta-comparacion");
+}, 120_000);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -134,6 +141,9 @@ describe("bandeja de comparación", () => {
     fireEvent.click(screen.getByRole("button", { name: "Comparar fichas" }));
 
     expect(await screen.findByRole("dialog")).toHaveTextContent("Comparar fichas del pliego");
-    expect(await screen.findByText("Precio: 55 puntos")).toBeInTheDocument();
-  });
+    // La tabla y la pregunta cruzada entran por `next/dynamic` al abrirse el
+    // diálogo (la pregunta arrastra el hilo de chat): se esperan con margen.
+    expect(await screen.findByText("Precio: 55 puntos", {}, { timeout: 15_000 })).toBeInTheDocument();
+    expect(await screen.findByText(/Preguntar sobre estos 2 expedientes/, {}, { timeout: 15_000 })).toBeInTheDocument();
+  }, 30_000);
 });

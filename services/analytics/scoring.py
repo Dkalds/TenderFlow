@@ -36,13 +36,20 @@ aplica, porque ahí manda el listado.
 
 Total = suma dimensiones + riesgo, clamp [0, 100].
 Bandas: ≥75 Caliente / ≥50 Atractiva / ≥25 Tibia / Descarte.
+
+El cálculo es por columnas (``_puntuar``): todas las filas a la vez con numpy,
+y el modelo con su explicación solo para las que se devuelven.
 """
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from pydantic import BaseModel, Field
 
@@ -528,12 +535,43 @@ def _build_context(
 
 
 # ---------------------------------------------------------------------------
-# Scoring por fila
+# Scoring por columnas
 # ---------------------------------------------------------------------------
+#
+# El Radar puntuaba fila a fila: ``iterrows`` sobre las ~1,6 k candidatas, una
+# ``pd.Series`` por fila, una docena de ``row.get``/``pd.notna`` por fila y un
+# ``ScoredOpportunity`` con su explicación para cada una, aunque la respuesta
+# devuelve 24 o 50. En producción la API es un único proceso en 1 vCPU, así
+# que ese trabajo compite por el GIL con el event loop y retrasa todas las
+# demás peticiones; y como la caché del endpoint es por usuario, cada usuario
+# lo paga entero. Medido en local (2026-09-25, 2 k filas sintéticas, perfil con
+# afinidad, top-50): ~1,5 s → ~75 ms por request; ``score_dataframe`` sobre las
+# mismas filas, ~560 → ~22 ms.
+#
+# Ahora cada dimensión se calcula sobre la columna entera, y las banderas en
+# lista, el desglose en dict y la explicación se materializan solo para las
+# filas que se devuelven (``_Puntuaciones.fila``). El resultado tiene que ser
+# el mismo bit a bit que el del bucle por filas —``tests/test_scoring_por_columnas.py``
+# conserva aquel bucle como oráculo—, y eso fija tres cosas que parecen
+# detalles y deciden el entero final:
+#
+# - ``min``/``max`` de Python y no ``np.clip`` (NaN y cero negativo),
+# - ``round(x, 2)`` de Python y no ``np.round`` (valores a medio céntimo),
+# - la suma de dimensiones con el algoritmo de ``sum`` (compensada desde 3.12).
+#
+# Las búsquedas por clave (CPV-4, id) siguen siendo un bucle de Python sobre
+# listas planas: son ``dict.get`` y no hay nada que vectorizar en ellas. Lo
+# caro era construir una ``Series`` por fila, no consultar el diccionario.
+
+_Floats = npt.NDArray[np.float64]
+_Bools = npt.NDArray[np.bool_]
+
+#: ``sum`` de floats compensa el error de redondeo (Neumaier) desde CPython 3.12.
+_SUMA_COMPENSADA = sys.version_info >= (3, 12)
 
 
 class FilaPuntuada(NamedTuple):
-    """Lo que ``_score_row`` sabe de una fila.
+    """Lo que el scoring sabe de una fila.
 
     Era una tupla anónima de cuatro y F1.3 la dejó en cinco, que es donde una
     tupla posicional deja de leerse: ``_, _, flags, desglose, _`` no dice nada
@@ -548,6 +586,403 @@ class FilaPuntuada(NamedTuple):
     explicacion: list[str]
 
 
+def _acotar_01(x: _Floats) -> _Floats:
+    """``max(0.0, min(1.0, x))`` elemento a elemento, con la semántica de Python.
+
+    No es ``np.clip``: ``min`` y ``max`` de Python se quedan con el primer
+    argumento cuando la comparación es falsa, así que un NaN sale como 1.0 y
+    un -0.0 como 0.0, mientras que ``np.clip`` devuelve NaN y -0.0.
+    """
+    tope = np.where(x < 1.0, x, 1.0)
+    return np.where(tope > 0.0, tope, 0.0)
+
+
+def _redondear_2(x: _Floats) -> _Floats:
+    """``round(v, 2)`` de Python sobre una columna, bit a bit.
+
+    ``np.round`` redondea ``x * 100``, que ya lleva el error de la
+    multiplicación: a medio céntimo de un empate (``x,xx5``) puede ir hacia el
+    otro lado, porque Python redondea el valor exacto del ``float``. Lejos de
+    esa frontera los dos dan el mismo double (``rint`` redondea al par y la
+    división por 100 es exacta al double más cercano, igual que la cadena
+    decimal que reconstruye Python). En la frontera —y con valores no finitos o
+    enormes— se recalcula con ``round``.
+    """
+    with np.errstate(invalid="ignore", over="ignore"):
+        escalado = x * 100.0
+        redondeado: _Floats = np.rint(escalado) / 100.0
+        magnitud = np.abs(escalado)
+        frontera = (
+            ~np.isfinite(escalado)
+            | (magnitud >= 2.0**52)
+            | (np.abs(escalado - (np.floor(escalado) + 0.5)) <= 4 * np.spacing(magnitud))
+        )
+    if frontera.any():
+        indices = np.flatnonzero(frontera)
+        redondeado[indices] = [round(v, 2) for v in x[indices].tolist()]
+    return redondeado
+
+
+def _sumar_como_python(sumandos: list[_Floats]) -> _Floats:
+    """``sum(...)`` de Python fila a fila, con el mismo algoritmo que CPython.
+
+    El score es ``round(suma + riesgo)`` y, en una suma que cae en ``x,5``, un
+    ulp decide el entero. ``sum`` de floats es compensada desde 3.12
+    (``sum([0.1, 0.2, 0.3])`` da ``0.6``, no ``0.6000000000000001``) y sumar
+    las columnas en orden, como haría numpy, no compensa. No es teórico: en
+    60 000 filas aleatorias la suma en orden cambiaba el score de 78 (un
+    0,13 %), un par por petición en un Radar de 1,6 k candidatas. Se reproduce
+    ``builtin_sum_impl``: el arranque en el ``0`` entero, el término de
+    compensación de Neumaier y el ajuste final solo si es finito.
+    """
+    suma = 0.0 + sumandos[0]
+    if not _SUMA_COMPENSADA:
+        for sumando in sumandos[1:]:
+            suma = suma + sumando
+        return suma
+    compensacion = np.zeros_like(suma)
+    with np.errstate(invalid="ignore", over="ignore"):
+        for sumando in sumandos[1:]:
+            parcial = suma + sumando
+            compensacion = compensacion + np.where(
+                np.abs(suma) >= np.abs(sumando),
+                (suma - parcial) + sumando,
+                (sumando - parcial) + suma,
+            )
+            suma = parcial
+        ajustar = (compensacion != 0.0) & np.isfinite(compensacion)
+        return np.where(ajustar, suma + compensacion, suma)
+
+
+def _score_entero(total: _Floats) -> npt.NDArray[np.int64]:
+    """``max(0, min(round(total), 100))`` fila a fila.
+
+    ``np.rint`` redondea al par, igual que ``round`` de Python con un float. Un
+    total NaN o infinito no tiene entero: el bucle por filas lanzaba ahí
+    (``ValueError``/``OverflowError`` de ``round``) y se conserva ese error en
+    vez de devolver un entero basura. Pasa, por ejemplo, con un p50 de baja NaN
+    en ``predicciones_baja``.
+    """
+    if not np.isfinite(total).all():
+        return np.array([max(0, min(round(v), 100)) for v in total.tolist()], dtype=np.int64)
+    return np.clip(np.rint(total), 0, 100).astype(np.int64)
+
+
+def _valores(df: pd.DataFrame, columna: str, defecto: object = None) -> list[object]:
+    """Los valores crudos de una columna, como los daba ``row.get(columna, defecto)``."""
+    if columna in df.columns:
+        return df[columna].tolist()
+    return [defecto] * len(df)
+
+
+def _columna_float(df: pd.DataFrame, columna: str) -> tuple[_Floats, _Bools]:
+    """``(valores, presentes)`` con la semántica de ``pd.notna(v)`` y ``float(v)``.
+
+    Una columna numérica sale directa. Cualquier otra (objetos, extensiones) se
+    convierte valor a valor con ``float``, como hacía el bucle por filas: un
+    valor que no es un número lanza igual que antes, en vez de convertirse en
+    un NaN que puntuaría como «sin importe».
+    """
+    n = len(df)
+    if columna not in df.columns:
+        return np.full(n, np.nan), np.zeros(n, dtype=bool)
+    serie = df[columna]
+    presentes = serie.notna().to_numpy(dtype=bool)
+    if isinstance(serie.dtype, np.dtype) and serie.dtype.kind in "fiub":
+        return serie.to_numpy(dtype=np.float64), presentes
+    valores = [
+        float(valor) if presente else np.nan
+        for valor, presente in zip(serie.tolist(), presentes.tolist(), strict=True)
+    ]
+    return np.array(valores, dtype=np.float64), presentes
+
+
+def _dias_hasta_limite(df: pd.DataFrame, ahora: pd.Timestamp) -> tuple[_Floats, _Bools]:
+    """``((fecha_limite_dt - ahora).days, presentes)`` por fila.
+
+    ``Series.dt.days`` y ``Timedelta.days`` salen de la misma rutina de pandas
+    (redondeo hacia abajo: a -1 h quedan -1 días), así que la columna ya
+    convertida se resta de una vez. Una columna de objetos —la fila suelta de
+    ``_score_row`` o un llamante que no la convirtió— se resta valor a valor,
+    con la misma expresión y los mismos errores que el bucle por filas.
+    """
+    n = len(df)
+    if "fecha_limite_dt" not in df.columns:
+        return np.zeros(n), np.zeros(n, dtype=bool)
+    serie = df["fecha_limite_dt"]
+    if pd.api.types.is_datetime64_any_dtype(serie.dtype):
+        # `.dt.days` es entero sin NaT y float con NaT; se fija float64 (las
+        # filas sin fecha quedan NaN y las descarta la máscara).
+        dias = np.asarray(
+            (serie - ahora).dt.days.to_numpy(dtype=np.float64, na_value=np.nan), dtype=np.float64
+        )
+        return dias, serie.notna().to_numpy(dtype=bool)
+    valores = serie.tolist()
+    presentes = [bool(pd.notna(valor)) and valor is not None for valor in valores]
+    dias_lista = [
+        float((valor - ahora).days) if presente else np.nan
+        for valor, presente in zip(valores, presentes, strict=True)
+    ]
+    return np.array(dias_lista, dtype=np.float64), np.array(presentes, dtype=bool)
+
+
+def _opcionales(valores: Sequence[float | None]) -> tuple[_Floats, _Bools]:
+    """``(valores, presentes)`` de una lista con ``None`` donde no hay dato.
+
+    La máscara sale de ``is None`` y no de ``isnan``: una señal que existe y
+    vale NaN no es «sin dato», y el bucle por filas no la trataba como tal.
+    """
+    presentes = np.array([valor is not None for valor in valores], dtype=bool)
+    numeros = np.array([np.nan if valor is None else valor for valor in valores], dtype=np.float64)
+    return numeros, presentes
+
+
+def _media_ofertas(cpv4s: list[str | None], stats: CompetenciaStats) -> list[float | None]:
+    """Media de ofertas del CPV-4 de cada fila, o la global si el CPV no tiene."""
+    medias: list[float | None] = []
+    for cpv4 in cpv4s:
+        media = stats.media_por_cpv4.get(cpv4) if cpv4 is not None else None
+        medias.append(stats.media_global if media is None else media)
+    return medias
+
+
+def _baja_esperada(
+    ids: list[str], cpv4s: list[str | None], stats: MargenStats
+) -> list[float | None]:
+    """p50 de la licitación → baja media del CPV-4 → baja media global."""
+    bajas: list[float | None] = []
+    for id_externo, cpv4 in zip(ids, cpv4s, strict=True):
+        baja = stats.p50_por_licitacion.get(id_externo)
+        if baja is None and cpv4 is not None:
+            baja = stats.baja_media_por_cpv4.get(cpv4)
+        bajas.append(stats.baja_media_global if baja is None else baja)
+    return bajas
+
+
+def _organo_anula(
+    organos: list[object], cpvs: list[object], tasas: dict[tuple[str, str], tuple[int, int]]
+) -> _Bools:
+    """Filas cuyo órgano anula por encima del umbral (F1.4).
+
+    Memoizado por ``(órgano, cpv)``: el lote repite mucho órgano y cada consulta
+    son varias búsquedas y un ``pd.notna``. El tipo entra en la clave para que
+    ``1`` y ``1.0`` —iguales para un dict— no compartan resultado, porque
+    ``str`` los distingue.
+    """
+    memo: dict[tuple[type[object], object, type[object], object], bool] = {}
+    marcas: list[bool] = []
+    for organo, cpv in zip(organos, cpvs, strict=True):
+        clave = (type(organo), organo, type(cpv), cpv)
+        marca = memo.get(clave)
+        if marca is None:
+            medida = tasa_anulacion(organo, cpv, tasas)
+            marca = medida is not None and medida[0] >= ANULACION_UMBRAL
+            memo[clave] = marca
+        marcas.append(marca)
+    return np.array(marcas, dtype=bool)
+
+
+@dataclass(frozen=True)
+class _Puntuaciones:
+    """El score de un lote, dimensión a dimensión, en columnas.
+
+    Se calcula para todas las filas —ordenar y filtrar necesitan el score de
+    todas—, pero lo que solo sirve para presentar una fila (banderas en lista,
+    desglose en dict, explicación en frases) se materializa con :meth:`fila`
+    únicamente para las que se devuelven.
+    """
+
+    ids: list[str]
+    score: npt.NDArray[np.int64]
+    bandas: list[str]
+    #: Puntos por dimensión ya redondeados, en el orden del desglose y con
+    #: ``riesgo`` al final.
+    desglose: dict[str, _Floats]
+    #: Fracción del peso por dimensión y máscara de «hay fracción» (``None``
+    #: en ``HechosDeFila`` donde es falsa).
+    fraccion: dict[str, tuple[_Floats, _Bools]]
+    #: Una máscara por bandera, en el orden en que el scoring las emite.
+    flags: dict[str, _Bools]
+    media_ofertas: list[float | None]
+    baja_esperada: list[float | None]
+    margen_origen: str
+    afinidad_metodo: str
+
+    def fila(self, i: int, *, con_explicacion: bool = True) -> FilaPuntuada:
+        """La fila ``i`` (posición en el lote) como la devolvía el bucle por filas."""
+        score = int(self.score[i])
+        flags = [nombre for nombre, marca in self.flags.items() if marca[i]]
+        desglose = {dimension: float(puntos[i]) for dimension, puntos in self.desglose.items()}
+        explicacion = (
+            explicar(
+                HechosDeFila(
+                    score=score,
+                    fraccion={
+                        dimension: float(valores[i]) if hay[i] else None
+                        for dimension, (valores, hay) in self.fraccion.items()
+                    },
+                    media_ofertas=self.media_ofertas[i],
+                    baja_esperada=self.baja_esperada[i],
+                    margen_origen=self.margen_origen,
+                    afinidad_metodo=self.afinidad_metodo,
+                    risk_flags=tuple(flags),
+                )
+            )
+            if con_explicacion
+            else []
+        )
+        return FilaPuntuada(score, self.bandas[i], flags, desglose, explicacion)
+
+
+def _puntuar(df: pd.DataFrame, ctx: _ScoringContext) -> _Puntuaciones:
+    """Puntúa todas las filas de ``df`` a la vez.
+
+    Lee las columnas ``id_externo``, ``importe``, ``titulo``, ``cpv``,
+    ``fecha_limite_dt`` y ``organo_contratacion``; la que falte cuenta como
+    vacía en todas las filas, igual que ``row.get`` en el bucle por filas.
+    """
+    n = len(df)
+    w = ctx.weights
+    ids = [str(valor) for valor in _valores(df, "id_externo", "")]
+    cpvs = _valores(df, "cpv")
+    cpv4s = [_cpv4(valor) for valor in cpvs]
+    ninguna = np.zeros(n, dtype=bool)
+    desglose: dict[str, _Floats] = {}
+    fraccion: dict[str, tuple[_Floats, _Bools]] = {}
+    # Se rellenan en el orden en que el bucle por filas añadía cada bandera.
+    flags: dict[str, _Bools] = {}
+
+    # 1. Importe — sin importe → 50% neutral + flag (penaliza en riesgo, no aquí).
+    importe, hay_importe = _columna_float(df, "importe")
+    peso = w.get("importe", 0)
+    if ctx.imp_p90 > ctx.imp_p10:
+        con_rango = hay_importe
+        with np.errstate(invalid="ignore"):
+            ratio = _acotar_01((importe - ctx.imp_p10) / (ctx.imp_p90 - ctx.imp_p10))
+    else:
+        # Hay importe pero no percentiles con los que situarlo: neutral medido,
+        # y sin frase porque no se puede decir si es alto.
+        con_rango = ninguna
+        ratio = np.zeros(n)
+    desglose["importe"] = _redondear_2(np.where(con_rango, ratio * peso, peso * 0.5))
+    fraccion["importe"] = (ratio, con_rango)
+    flags["sin_importe"] = ~hay_importe
+
+    # 2. Plazo — sin fecha → 50% neutral + flag. Mismo orden que el if/elif
+    # de antes: `np.select` se queda con la primera condición cierta.
+    dias, hay_fecha = _dias_hasta_limite(df, ctx.now)
+    peso = w.get("plazo", 0)
+    escalon = np.select(
+        [
+            (dias >= 7) & (dias <= 90),
+            (dias >= 0) & (dias < 7),
+            (dias > 90) & (dias <= 180),
+            dias > 180,
+        ],
+        [1.0, 0.5, 0.7, 0.3],
+        default=0.0,  # vencido
+    )
+    desglose["plazo"] = _redondear_2(np.where(hay_fecha, float(peso) * escalon, peso * 0.5))
+    fraccion["plazo"] = (escalon, hay_fecha)
+    flags["sin_plazo"] = ~hay_fecha
+
+    # 3. Competencia — media de ofertas por CPV-4 en 24 meses; 1 oferta media =
+    # 100% (sin competencia), ≥10 = 0%.
+    medias = _media_ofertas(cpv4s, ctx.competencia_stats)
+    media, hay_media = _opcionales(medias)
+    peso = w.get("competencia", 0)
+    f_competencia = 1.0 - _acotar_01((media - 1.0) / 9.0)
+    desglose["competencia"] = _redondear_2(np.where(hay_media, f_competencia * peso, peso * 0.5))
+    fraccion["competencia"] = (f_competencia, hay_media)
+    flags["sin_historico_competencia"] = ~hay_media
+
+    # 4. Margen — baja esperada (≥40% = guerra de precios = 0). `min(q, 1.0)`
+    # de Python: 1.0 solo si `q > 1.0`, así que un NaN se queda NaN.
+    bajas = _baja_esperada(ids, cpv4s, ctx.margen_stats)
+    baja, hay_baja = _opcionales(bajas)
+    peso = w.get("margen", 0)
+    cociente = baja / 0.40
+    f_margen = 1.0 - np.where(cociente > 1.0, 1.0, cociente)
+    desglose["margen"] = _redondear_2(np.where(hay_baja, f_margen * peso, peso * 0.5))
+    fraccion["margen"] = (f_margen, hay_baja)
+    flags["sin_prediccion"] = ~hay_baja
+
+    # 5. Afinidad — similitud precalculada en lote. Sin portfolio, la key se
+    # omite del desglose (peso ya redistribuido).
+    if ctx.affinity_scores and "afinidad" in w:
+        afinidad = np.array(
+            [ctx.affinity_scores.get(id_externo, 0.0) for id_externo in ids], dtype=np.float64
+        )
+        desglose["afinidad"] = _redondear_2(afinidad * w["afinidad"])
+        fraccion["afinidad"] = (afinidad, np.ones(n, dtype=bool))
+
+    # 6. Señal técnica. Peso 0 o ausente (perfiles anteriores a la dimensión):
+    # key omitida, igual que afinidad — una barra a cero se lee como "sin señal".
+    if w.get("senal_tecnica", 0) > 0:
+        peso = w["senal_tecnica"]
+        if ctx.tech_signal is None:
+            # La consulta falló: neutral y sin flag por fila. No es un hueco de
+            # esta licitación, y la salud de la respuesta ya lo reporta.
+            d_tecnica = np.full(n, peso * 0.5)
+            fraccion["senal_tecnica"] = (np.zeros(n), ninguna)
+        else:
+            fuerza, hay_fuerza = _opcionales([ctx.tech_signal.get(i) for i in ids])
+            f_tecnica = _acotar_01(fuerza)
+            d_tecnica = np.where(hay_fuerza, f_tecnica * peso, peso * 0.5)
+            fraccion["senal_tecnica"] = (f_tecnica, hay_fuerza)
+            flags["sin_senal_tecnica"] = ~hay_fuerza
+        desglose["senal_tecnica"] = _redondear_2(d_tecnica)
+
+    # 7. Riesgo — penalización pura, fuera de la suma. Son enteros pequeños:
+    # restarlos en otro orden da el mismo double.
+    sin_titulo = np.array(
+        [not str(titulo or "").casefold().strip() for titulo in _valores(df, "titulo", "")],
+        dtype=bool,
+    )
+    flags["sin_titulo"] = sin_titulo
+    d_riesgo = np.zeros(n)
+    d_riesgo -= np.where(hay_importe, 0.0, 5.0)
+    d_riesgo -= np.where(sin_titulo, 3.0, 0.0)
+    d_riesgo -= np.where(hay_fecha, 0.0, 2.0)
+
+    # Importe fuera del rango del perfil de usuario (Feature B).
+    if ctx.importe_min is not None or ctx.importe_max is not None:
+        fuera = ninguna
+        if ctx.importe_min is not None:
+            fuera = fuera | (importe < ctx.importe_min)
+        if ctx.importe_max is not None:
+            fuera = fuera | (importe > ctx.importe_max)
+        fuera = fuera & hay_importe
+        d_riesgo -= np.where(fuera, 15.0, 0.0)
+        flags["fuera_de_rango"] = fuera
+
+    # F1.4 — órgano que anula o deja desiertos muchos expedientes. Solo con
+    # muestra suficiente y solo si la penalización pesa: con peso 0 el flag
+    # diría «penaliza» sin penalizar.
+    if ctx.penalizacion_anulacion > 0 and ctx.tasas_anulacion:
+        anula = _organo_anula(_valores(df, "organo_contratacion"), cpvs, ctx.tasas_anulacion)
+        d_riesgo -= np.where(anula, float(ctx.penalizacion_anulacion), 0.0)
+        flags[FLAG_ANULACION] = anula
+
+    # Total: suma de dimensiones (sin riesgo), ya redondeadas, más el riesgo.
+    suma = _sumar_como_python(list(desglose.values()))
+    desglose["riesgo"] = _redondear_2(d_riesgo)
+    score = _score_entero(suma + d_riesgo)
+    bandas_por_score = {valor: _band(valor) for valor in set(score.tolist())}
+    return _Puntuaciones(
+        ids=ids,
+        score=score,
+        bandas=[bandas_por_score[valor] for valor in score.tolist()],
+        desglose=desglose,
+        fraccion=fraccion,
+        flags=flags,
+        media_ofertas=medias,
+        baja_esperada=bajas,
+        margen_origen=ctx.margen_stats.origen,
+        afinidad_metodo=ctx.affinity_method,
+    )
+
+
 def _score_row(
     row: pd.Series,
     ctx: _ScoringContext,
@@ -556,194 +991,21 @@ def _score_row(
 ) -> FilaPuntuada:
     """Devuelve (score 0-100, band, risk_flags, desglose, explicacion) para una fila.
 
-    ``con_explicacion=False`` la omite (lista vacía) para el camino por lotes:
-    ``score_dataframe`` puntúa la ventana entera y descarta el texto, así que
-    componerlo era un ``HechosDeFila``, un dict y hasta ocho f-strings por fila
-    que nadie llegaba a leer.
+    Es el mismo motor que el lote, sobre un lote de una fila: no hay una
+    segunda implementación de la fórmula que mantener en paralelo, y los tests
+    que fijan cada dimensión a través de esta función fijan la que corre en
+    producción.
 
-    La explicación (F1.3) se arma **aquí** y no en un segundo paso sobre el
-    desglose: la media de ofertas del CPV y la baja esperada son hechos que
-    esta función tiene delante y que el desglose ya convirtió a puntos. Sin
-    ellos las frases tendrían que rehacer el cálculo hacia atrás —dividir los
-    puntos por el peso para adivinar el hecho—, que es la clase de derivación
-    que ADR-014 prohíbe justo porque nadie la revisa.
+    ``con_explicacion=False`` omite la explicación (lista vacía).
+
+    La explicación (F1.3) sale de los mismos hechos que el cálculo —la media de
+    ofertas del CPV y la baja esperada que el desglose ya convirtió a puntos—
+    y no de un segundo paso sobre el desglose: sin ellos las frases tendrían
+    que rehacer el cálculo hacia atrás —dividir los puntos por el peso para
+    adivinar el hecho—, que es la clase de derivación que ADR-014 prohíbe justo
+    porque nadie la revisa.
     """
-    flags: list[str] = []
-    desglose: dict[str, float] = {}
-    # Fracción del peso lograda por dimensión (0-1), para la explicación. Es
-    # lo mismo que `desglose[d] / w[d]` salvo que aquí no hay división por
-    # cero ni pesos redistribuidos que interpretar.
-    fraccion: dict[str, float | None] = {}
-    w = ctx.weights
-
-    # 1. Importe — sin importe → 50% neutral + flag (penaliza en riesgo, no aquí)
-    importe = row.get("importe")
-    if pd.notna(importe) and ctx.imp_p90 > ctx.imp_p10:
-        ratio = max(0.0, min(1.0, (float(importe) - ctx.imp_p10) / (ctx.imp_p90 - ctx.imp_p10)))
-        d_importe = ratio * w.get("importe", 0)
-        fraccion["importe"] = ratio
-    elif pd.notna(importe):
-        d_importe = w.get("importe", 0) * 0.5
-        # Hay importe pero no hay percentiles con los que situarlo: neutral
-        # medido, y sin frase (`None`) porque no se puede decir si es alto.
-        fraccion["importe"] = None
-    else:
-        d_importe = w.get("importe", 0) * 0.5  # neutral, no 0
-        flags.append("sin_importe")
-        fraccion["importe"] = None
-    desglose["importe"] = round(d_importe, 2)
-
-    # 2. Plazo — sin fecha → 50% neutral + flag
-    titulo = str(row.get("titulo", "") or "")
-    titulo_lower = titulo.casefold()
-
-    d_plazo = 0.0
-    fecha_limite = row.get("fecha_limite_dt") if "fecha_limite_dt" in row.index else None
-    if pd.notna(fecha_limite) and fecha_limite is not None:
-        days_left = (fecha_limite - ctx.now).days
-        escalon = 0.0
-        if 7 <= days_left <= 90:
-            escalon = 1.0
-        elif 0 <= days_left < 7:
-            escalon = 0.5
-        elif 90 < days_left <= 180:
-            escalon = 0.7
-        elif days_left > 180:
-            escalon = 0.3
-        # days_left < 0: vencido → 0.0
-        d_plazo = float(w.get("plazo", 0)) * escalon
-        fraccion["plazo"] = escalon
-    else:
-        d_plazo = w.get("plazo", 0) * 0.5  # neutral
-        flags.append("sin_plazo")
-        fraccion["plazo"] = None
-    desglose["plazo"] = round(d_plazo, 2)
-
-    # 3. Competencia — media de ofertas por CPV-4 en 24 meses
-    cpv4 = _cpv4(row.get("cpv"))
-    media_ofertas: float | None = None
-    if cpv4 is not None:
-        media_ofertas = ctx.competencia_stats.media_por_cpv4.get(cpv4)
-    if media_ofertas is None:
-        media_ofertas = ctx.competencia_stats.media_global
-
-    if media_ofertas is not None:
-        # 1 oferta media = 100% (sin competencia), ≥10 = 0%
-        f_competencia = 1.0 - max(0.0, min(1.0, (media_ofertas - 1.0) / 9.0))
-        d_competencia = f_competencia * w.get("competencia", 0)
-        fraccion["competencia"] = f_competencia
-    else:
-        d_competencia = w.get("competencia", 0) * 0.5  # neutral
-        flags.append("sin_historico_competencia")
-        fraccion["competencia"] = None
-    desglose["competencia"] = round(d_competencia, 2)
-
-    # 4. Margen — baja esperada (baja esperada ≥40% = guerra de precios = 0)
-    id_externo = str(row.get("id_externo", ""))
-    baja: float | None = ctx.margen_stats.p50_por_licitacion.get(id_externo)
-    if baja is None and cpv4 is not None:
-        baja = ctx.margen_stats.baja_media_por_cpv4.get(cpv4)
-    if baja is None:
-        baja = ctx.margen_stats.baja_media_global
-
-    if baja is not None:
-        fraccion_margen = 1.0 - min(baja / 0.40, 1.0)
-        d_margen = fraccion_margen * w.get("margen", 0)
-        fraccion["margen"] = fraccion_margen
-    else:
-        d_margen = w.get("margen", 0) * 0.5  # neutral
-        flags.append("sin_prediccion")
-        fraccion["margen"] = None
-    desglose["margen"] = round(d_margen, 2)
-
-    # 5. Afinidad — similitud semántica precalculada en lote; el servicio de
-    # afinidad conserva el fallback histórico determinista si no hay embeddings.
-    if ctx.affinity_scores and "afinidad" in w:
-        fraccion_af = ctx.affinity_scores.get(id_externo, 0.0)
-        d_afinidad = fraccion_af * w["afinidad"]
-        desglose["afinidad"] = round(d_afinidad, 2)
-        fraccion["afinidad"] = fraccion_af
-    # Sin portfolio, la key se omite del desglose (peso ya redistribuido).
-
-    # 6. Señal técnica — cuán confirmada está la tecnología en esta licitación,
-    # según el texto de los pliegos y el clasificador. Hasta ahora esa señal
-    # solo filtraba el universo: una licitación con SAP confirmado en el pliego
-    # puntuaba exactamente igual que una sin ninguna evidencia.
-    if w.get("senal_tecnica", 0) > 0:
-        if ctx.tech_signal is None:
-            # La consulta falló: neutral y sin flag por fila. No es un hueco de
-            # esta licitación, y la salud de la respuesta ya lo reporta.
-            d_tecnica = w["senal_tecnica"] * 0.5
-            fraccion["senal_tecnica"] = None
-        else:
-            fuerza = ctx.tech_signal.get(id_externo)
-            if fuerza is None:
-                d_tecnica = w["senal_tecnica"] * 0.5
-                flags.append("sin_senal_tecnica")
-                fraccion["senal_tecnica"] = None
-            else:
-                f_tecnica = max(0.0, min(1.0, float(fuerza)))
-                d_tecnica = f_tecnica * w["senal_tecnica"]
-                fraccion["senal_tecnica"] = f_tecnica
-        desglose["senal_tecnica"] = round(d_tecnica, 2)
-    # Peso 0 o ausente (perfiles anteriores a la dimensión): key omitida, igual
-    # que afinidad — una barra a cero en la UI se lee como "sin señal", que es
-    # justo lo contrario de "no la estás puntuando".
-
-    # 7. Riesgo — penalización pura (fuera de la suma, sin afectar datos de cobertura)
-    d_riesgo = 0.0
-    if "sin_importe" in flags:
-        d_riesgo -= 5.0
-    if not titulo_lower.strip():
-        d_riesgo -= 3.0
-        flags.append("sin_titulo")
-    if "sin_plazo" in flags:
-        d_riesgo -= 2.0
-
-    # Penalización por importe fuera del rango del perfil de usuario (Feature B)
-    importe_val = row.get("importe")
-    if pd.notna(importe_val) and (ctx.importe_min is not None or ctx.importe_max is not None):
-        imp_float = float(importe_val)
-        fuera_de_rango = (ctx.importe_min is not None and imp_float < ctx.importe_min) or (
-            ctx.importe_max is not None and imp_float > ctx.importe_max
-        )
-        if fuera_de_rango:
-            d_riesgo -= 15.0
-            flags.append("fuera_de_rango")
-
-    # F1.4 — órgano que anula o deja desiertos muchos expedientes. Solo con
-    # muestra suficiente (`tasa_anulacion` devuelve None por debajo) y solo
-    # si la penalización pesa: con peso 0 el flag diría «penaliza» sin
-    # penalizar, que es justo la frase que no puede mentir.
-    if ctx.penalizacion_anulacion > 0 and ctx.tasas_anulacion:
-        medida = tasa_anulacion(row.get("organo_contratacion"), row.get("cpv"), ctx.tasas_anulacion)
-        if medida is not None and medida[0] >= ANULACION_UMBRAL:
-            d_riesgo -= float(ctx.penalizacion_anulacion)
-            flags.append(FLAG_ANULACION)
-
-    desglose["riesgo"] = round(d_riesgo, 2)
-
-    # Total: suma de dimensiones (excepto riesgo) + riesgo
-    dim_sum = sum(v for k, v in desglose.items() if k != "riesgo")
-    total = dim_sum + d_riesgo
-    final = max(0, min(round(total), 100))
-
-    explicacion = (
-        explicar(
-            HechosDeFila(
-                score=final,
-                fraccion=fraccion,
-                media_ofertas=media_ofertas,
-                baja_esperada=baja,
-                margen_origen=ctx.margen_stats.origen,
-                afinidad_metodo=ctx.affinity_method,
-                risk_flags=tuple(flags),
-            )
-        )
-        if con_explicacion
-        else []
-    )
-    return FilaPuntuada(final, _band(final), flags, desglose, explicacion)
+    return _puntuar(row.to_frame().T, ctx).fila(0, con_explicacion=con_explicacion)
 
 
 def score_dataframe(
@@ -762,26 +1024,95 @@ def score_dataframe(
     Sin perfil de usuario: pensado para endpoints compartidos/cacheados donde
     el score no puede personalizarse por usuario (ver ``get_scoring`` para la
     variante personalizada). Requiere que ``target_df`` tenga las columnas que
-    ``_score_row`` lee (``importe``, ``titulo``, ``cpv``, ``fecha_limite_dt``,
+    ``_puntuar`` lee (``importe``, ``titulo``, ``cpv``, ``fecha_limite_dt``,
     ``id_externo``).
 
     Devuelve un DataFrame con columnas ``id_externo``, ``score``, ``band``.
+    Aquí no se compone ninguna explicación: solo se devuelve score y banda.
     """
     if target_df.empty:
         return pd.DataFrame(columns=["id_externo", "score", "band"])
 
     ctx = _build_context(base_df, importe_percentiles=importe_percentiles, tecnologia=tecnologia)
+    puntuaciones = _puntuar(target_df, ctx)
+    return pd.DataFrame(
+        {
+            "id_externo": puntuaciones.ids,
+            "score": puntuaciones.score.tolist(),
+            "band": puntuaciones.bandas,
+        }
+    )
 
-    ids: list[str] = []
-    scores: list[int] = []
-    bands: list[str] = []
-    for _, row in target_df.iterrows():
-        s, band, _flags, _desglose, _explicacion = _score_row(row, ctx, con_explicacion=False)
-        ids.append(str(row.get("id_externo", "")))
-        scores.append(s)
-        bands.append(band)
 
-    return pd.DataFrame({"id_externo": ids, "score": scores, "band": bands})
+def _oportunidades(
+    df: pd.DataFrame, puntuaciones: _Puntuaciones, seleccion: npt.NDArray[np.intp]
+) -> list[ScoredOpportunity]:
+    """Los ``ScoredOpportunity`` de las filas ``seleccion`` (posiciones), en ese orden.
+
+    La máscara de presencia es ``Series.notna``, que aplica a cada celda la
+    misma comprobación que ``pd.notna``. Es obligatoria: los NULL de Postgres
+    llegan como NaN de pandas, que Pydantic rechazaría contra ``str | None``.
+    """
+    posiciones: list[int] = seleccion.tolist()
+    filas = df.iloc[posiciones]
+
+    # Any: celdas crudas de pandas; el tipo lo valida Pydantic al construir el modelo.
+    def columna(nombre: str) -> tuple[list[Any], list[bool]]:
+        if nombre not in filas.columns:
+            return [None] * len(posiciones), [False] * len(posiciones)
+        serie = filas[nombre]
+        return serie.tolist(), serie.notna().tolist()
+
+    def texto(nombre: str) -> list[str | None]:
+        valores, presentes = columna(nombre)
+        return [
+            str(valor) if presente else None
+            for valor, presente in zip(valores, presentes, strict=True)
+        ]
+
+    titulos, hay_titulo = columna("titulo")
+    organos, hay_organo = columna("organo_contratacion")
+    importes, hay_importe = columna("importe")
+    fecha_limite = texto("fecha_limite")
+    tecnologia = texto("tecnologia")
+    fecha_publicacion = texto("fecha_publicacion")
+    cpv = texto("cpv")
+    ccaa = texto("ccaa")
+    ml_tech_principal = texto("ml_tech_principal")
+    url = texto("url")
+    fuente = texto("fuente")
+    estado = texto("estado")
+    procedimiento = texto("procedimiento")
+    tramitacion = texto("tramitacion")
+
+    oportunidades: list[ScoredOpportunity] = []
+    for k, i in enumerate(posiciones):
+        fila = puntuaciones.fila(i)
+        oportunidades.append(
+            ScoredOpportunity(
+                id_externo=puntuaciones.ids[i],
+                titulo=titulos[k] if hay_titulo[k] else None,
+                organo_contratacion=organos[k] if hay_organo[k] else None,
+                importe=float(importes[k]) if hay_importe[k] else None,
+                fecha_limite=fecha_limite[k],
+                tecnologia=tecnologia[k],
+                fecha_publicacion=fecha_publicacion[k],
+                cpv=cpv[k],
+                ccaa=ccaa[k],
+                ml_tech_principal=ml_tech_principal[k],
+                url=url[k],
+                fuente=fuente[k],
+                estado=estado[k],
+                procedimiento=procedimiento[k],
+                tramitacion=tramitacion[k],
+                score=fila.score,
+                band=fila.band,
+                risk_flags=fila.flags,
+                desglose=fila.desglose,
+                explicacion=fila.explicacion,
+            )
+        )
+    return oportunidades
 
 
 # ---------------------------------------------------------------------------
@@ -971,64 +1302,29 @@ def get_scoring(
         organization_id=organization_id,
     )
 
-    # Page-aligned mode: la restricción por ids ya viene aplicada desde SQL.
-    # min_score/band/limit no aplican en este modo.
-    id_filter = {str(i) for i in filters.ids} if filters.ids else None
-    work = df
+    # Todas las filas se puntúan de una vez; el modelo, solo las devueltas.
+    puntuaciones = _puntuar(df, ctx)
 
-    scored: list[ScoredOpportunity] = []
-    for _, row in work.iterrows():
-        s, band, flags, desglose, explicacion = _score_row(row, ctx)
-        if id_filter is None:
-            if s < filters.min_score:
-                continue
-            if filters.band and band != filters.band:
-                continue
-        scored.append(
-            ScoredOpportunity(
-                id_externo=str(row.get("id_externo", "")),
-                titulo=row.get("titulo") if pd.notna(row.get("titulo")) else None,
-                organo_contratacion=row.get("organo_contratacion")
-                if pd.notna(row.get("organo_contratacion"))
-                else None,
-                importe=float(row["importe"]) if pd.notna(row.get("importe")) else None,
-                # `pd.notna` es obligatorio: los NULL de Postgres llegan como
-                # NaN de pandas, que Pydantic rechazaría contra `str | None`.
-                fecha_limite=str(row["fecha_limite"])
-                if pd.notna(row.get("fecha_limite"))
-                else None,
-                tecnologia=str(row["tecnologia"]) if pd.notna(row.get("tecnologia")) else None,
-                fecha_publicacion=str(row["fecha_publicacion"])
-                if pd.notna(row.get("fecha_publicacion"))
-                else None,
-                cpv=str(row["cpv"]) if pd.notna(row.get("cpv")) else None,
-                ccaa=str(row["ccaa"]) if pd.notna(row.get("ccaa")) else None,
-                ml_tech_principal=str(row["ml_tech_principal"])
-                if pd.notna(row.get("ml_tech_principal"))
-                else None,
-                url=str(row["url"]) if pd.notna(row.get("url")) else None,
-                fuente=str(row["fuente"]) if pd.notna(row.get("fuente")) else None,
-                estado=str(row["estado"]) if pd.notna(row.get("estado")) else None,
-                procedimiento=str(row["procedimiento"])
-                if pd.notna(row.get("procedimiento"))
-                else None,
-                tramitacion=str(row["tramitacion"]) if pd.notna(row.get("tramitacion")) else None,
-                score=s,
-                band=band,
-                risk_flags=flags,
-                desglose=desglose,
-                explicacion=explicacion,
-            )
-        )
-
-    # Se cuenta ANTES de truncar: `total_scored` es cuántas oportunidades
-    # pasaron los filtros, no cuántas caben en la página. Con el conteo
-    # posterior al corte, un `limit=24` siempre reportaba 24 y no había forma
-    # de saber si detrás había 25 o 900.
-    total = len(scored)
-    if id_filter is None:
-        scored.sort(key=lambda x: x.score, reverse=True)
-        scored = scored[: filters.limit]
+    if filters.ids:
+        # Page-aligned mode: la restricción por ids ya viene aplicada desde
+        # SQL. min_score/band/limit no aplican en este modo.
+        seleccion = np.arange(len(df))
+        total = len(df)
+    else:
+        pasa = puntuaciones.score >= filters.min_score
+        if filters.band:
+            pasa &= np.array([banda == filters.band for banda in puntuaciones.bandas], dtype=bool)
+        candidatas = np.flatnonzero(pasa)
+        # Se cuenta ANTES de truncar: `total_scored` es cuántas oportunidades
+        # pasaron los filtros, no cuántas caben en la página. Con el conteo
+        # posterior al corte, un `limit=24` siempre reportaba 24 y no había
+        # forma de saber si detrás había 25 o 900.
+        total = int(candidatas.size)
+        # Orden estable por score descendente: a igual score, el orden de
+        # llegada, como el `sort(reverse=True)` de la lista de modelos.
+        orden = candidatas[np.argsort(-puntuaciones.score[candidatas], kind="stable")]
+        seleccion = orden[: filters.limit]
+    scored = _oportunidades(df, puntuaciones, seleccion)
 
     result = ScoringResult(
         opportunities=scored,
