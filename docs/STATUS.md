@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-21
+Generado: 2026-09-25
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -35,7 +35,7 @@ Generado: 2026-09-21
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
-**26 archivos** en whitelist (solo puede decrecer).
+**25 archivos** en whitelist (solo puede decrecer).
 
 - `scheduler/aggregates_precompute.py`
 - `scheduler/anomaly_alerts.py`
@@ -59,7 +59,6 @@ Generado: 2026-09-21
 - `services/deadline_reminders.py`
 - `services/dedupe.py`
 - `services/entity_resolution.py`
-- `services/ml/scoring.py`
 - `services/notifications.py`
 - `services/resoluciones.py`
 - `services/watchlist_rules.py`
