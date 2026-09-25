@@ -10,7 +10,7 @@
  */
 
 import { renderHook, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -24,6 +24,7 @@ vi.mock("@/lib/filters", () => ({
 
 // ─── Subject under test ────────────────────────────────────────────────────────
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { debeReintentar } from "@/lib/query-feedback";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -32,19 +33,12 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   });
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return React.createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      children,
-    );
+    return React.createElement(QueryClientProvider, { client: queryClient }, children);
   };
 }
 
 /** Build a minimal Response-like object for fetch mocks. */
-function makeResponse(
-  body: unknown,
-  status = 200,
-): Response {
+function makeResponse(body: unknown, status = 200): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
@@ -59,10 +53,7 @@ beforeEach(() => {
   mockUseFilterParams.mockReturnValue({});
 
   // Default: successful empty-object response
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<typeof fetch>().mockResolvedValue(makeResponse({})),
-  );
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(makeResponse({})));
 });
 
 afterEach(() => {
@@ -83,11 +74,7 @@ describe("useFilteredQuery", () => {
 
     // Simply render and verify the hook calls fetch with the correct query string
     // which implicitly proves the filter params are included in the query key
-    renderHook(
-      () =>
-        useFilteredQuery<unknown>(["licitaciones"], "/api/v1/licitaciones"),
-      { wrapper },
-    );
+    renderHook(() => useFilteredQuery<unknown>(["licitaciones"], "/api/v1/licitaciones"), { wrapper });
 
     const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
     await waitFor(() => expect(mockFetch).toHaveBeenCalled());
@@ -101,30 +88,17 @@ describe("useFilteredQuery", () => {
     mockUseFilterParams.mockReturnValue({ q: "first" });
     const wrapper = createWrapper();
 
-    const { rerender } = renderHook(
-      () => useFilteredQuery<unknown[]>(["items"], "/api/v1/items"),
-      { wrapper },
-    );
+    const { rerender } = renderHook(() => useFilteredQuery<unknown[]>(["items"], "/api/v1/items"), { wrapper });
 
     // Wait for the first fetch to complete
-    await waitFor(() =>
-      expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("q=first"),
-        expect.any(Object),
-      ),
-    );
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("q=first"), expect.any(Object)));
 
     // Simulate filter change
     mockUseFilterParams.mockReturnValue({ q: "second" });
     rerender();
 
     // A new fetch should be triggered with the updated param
-    await waitFor(() =>
-      expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("q=second"),
-        expect.any(Object),
-      ),
-    );
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("q=second"), expect.any(Object)));
   });
 
   // ── URL construction ──────────────────────────────────────────────────────────
@@ -133,15 +107,13 @@ describe("useFilteredQuery", () => {
     mockUseFilterParams.mockReturnValue({});
 
     const wrapper = createWrapper();
-    const { result } = renderHook(
-      () => useFilteredQuery<unknown>(["noop"], "/api/v1/noop"),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useFilteredQuery<unknown>(["noop"], "/api/v1/noop"), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/noop", {
       credentials: "include",
+      signal: expect.any(AbortSignal),
       headers: { "Content-Type": "application/json" },
     });
   });
@@ -150,10 +122,7 @@ describe("useFilteredQuery", () => {
     mockUseFilterParams.mockReturnValue({ q: "cloud", estado: "publicada" });
 
     const wrapper = createWrapper();
-    const { result } = renderHook(
-      () => useFilteredQuery<unknown>(["search"], "/api/v1/licitaciones"),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useFilteredQuery<unknown>(["search"], "/api/v1/licitaciones"), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -172,11 +141,7 @@ describe("useFilteredQuery", () => {
 
     const wrapper = createWrapper();
     const { result } = renderHook(
-      () =>
-        useFilteredQuery<unknown>(
-          ["analytics", "trends"],
-          "/api/v1/analytics/trends?group_by=month",
-        ),
+      () => useFilteredQuery<unknown>(["analytics", "trends"], "/api/v1/analytics/trends?group_by=month"),
       { wrapper },
     );
 
@@ -197,12 +162,9 @@ describe("useFilteredQuery", () => {
     const wrapper = createWrapper();
     const { result } = renderHook(
       () =>
-        useFilteredQuery<unknown>(
-          ["analytics", "trends"],
-          "/api/v1/analytics/trends?group_by=month",
-          undefined,
-          { group_by: "day" },
-        ),
+        useFilteredQuery<unknown>(["analytics", "trends"], "/api/v1/analytics/trends?group_by=month", undefined, {
+          group_by: "day",
+        }),
       { wrapper },
     );
 
@@ -247,13 +209,7 @@ describe("useFilteredQuery", () => {
 
     const wrapper = createWrapper();
     const { result } = renderHook(
-      () =>
-        useFilteredQuery<unknown>(
-          ["extra-only"],
-          "/api/v1/licitaciones",
-          undefined,
-          { page: "3", limit: "10" },
-        ),
+      () => useFilteredQuery<unknown>(["extra-only"], "/api/v1/licitaciones", undefined, { page: "3", limit: "10" }),
       { wrapper },
     );
 
@@ -269,26 +225,17 @@ describe("useFilteredQuery", () => {
 
   it("calls fetch with credentials: include", async () => {
     const wrapper = createWrapper();
-    const { result } = renderHook(
-      () => useFilteredQuery<unknown>(["creds"], "/api/v1/creds"),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useFilteredQuery<unknown>(["creds"], "/api/v1/creds"), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(fetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ credentials: "include" }),
-    );
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ credentials: "include" }));
   });
 
   // ── 401 redirect ─────────────────────────────────────────────────────────────
 
   it("redirects to /login on 401 response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(makeResponse(null, 401)),
-    );
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(makeResponse(null, 401)));
 
     // window.location.href is read-only in jsdom; replace the whole object.
     // pathname/search feed the ?redirect= deep-link the 401 handler now builds.
@@ -299,16 +246,11 @@ describe("useFilteredQuery", () => {
     window.location = { href: "", pathname: "/protected", search: "" } as Location;
 
     const wrapper = createWrapper();
-    const { result } = renderHook(
-      () => useFilteredQuery<unknown>(["auth"], "/api/v1/protected"),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useFilteredQuery<unknown>(["auth"], "/api/v1/protected"), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(window.location.href).toBe(
-      `/login?redirect=${encodeURIComponent("/protected")}`,
-    );
+    expect(window.location.href).toBe(`/login?redirect=${encodeURIComponent("/protected")}`);
 
     // Restore
     // @ts-expect-error – restoring original
@@ -324,10 +266,7 @@ describe("useFilteredQuery", () => {
     );
 
     const wrapper = createWrapper();
-    const { result } = renderHook(
-      () => useFilteredQuery<unknown>(["err503"], "/api/v1/down"),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useFilteredQuery<unknown>(["err503"], "/api/v1/down"), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
@@ -336,37 +275,94 @@ describe("useFilteredQuery", () => {
   });
 
   it("throws an Error with the HTTP status on 404 responses", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(makeResponse({ detail: "Not found" }, 404)),
-    );
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(makeResponse({ detail: "Not found" }, 404)));
 
     const wrapper = createWrapper();
-    const { result } = renderHook(
-      () => useFilteredQuery<unknown>(["err404"], "/api/v1/missing"),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useFilteredQuery<unknown>(["err404"], "/api/v1/missing"), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect((result.current.error as Error).message).toBe("Not found");
+  });
+
+  // ── cancelación ───────────────────────────────────────────────────────────────
+
+  /**
+   * Cambiar un filtro deja la consulta anterior sin observadores. Sin `signal`,
+   * su petición seguía hasta el final en la API (en Resumen, ~7 agregados por
+   * tecla); con él, React Query la aborta. Y el aborto no puede verse como un
+   * error: ni aviso, ni reintento, ni estado de error en el hook.
+   */
+  describe("cancelación de la petición obsoleta", () => {
+    /** `fetch` que sólo contesta a la segunda búsqueda; la primera espera hasta que la aborten. */
+    function fetchQueSoloContestaA(q: string) {
+      return vi.fn((url: string, init?: RequestInit) => {
+        if (String(url).includes(`q=${q}`)) return Promise.resolve(makeResponse({ q }));
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("The operation was aborted.", "AbortError")),
+          );
+        });
+      });
+    }
+
+    it("pasa el signal de React Query a fetch", async () => {
+      const wrapper = createWrapper();
+      const { result } = renderHook(() => useFilteredQuery<unknown>(["senal"], "/api/v1/senal"), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal?.aborted).toBe(false);
+    });
+
+    it("abortar la petición del filtro anterior no produce ningún error visible", async () => {
+      const fetchMock = fetchQueSoloContestaA("second");
+      vi.stubGlobal("fetch", fetchMock);
+      const onError = vi.fn();
+      // Con la política real de reintentos: un aborto no debe reintentarse.
+      const queryClient = new QueryClient({
+        queryCache: new QueryCache({ onError }),
+        defaultOptions: { queries: { retry: debeReintentar, retryDelay: 0 } },
+      });
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client: queryClient }, children);
+
+      mockUseFilterParams.mockReturnValue({ q: "first" });
+      const { result, rerender } = renderHook(() => useFilteredQuery<{ q: string }>(["busqueda"], "/api/v1/items"), {
+        wrapper,
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      const primera = fetchMock.mock.calls[0][1] as RequestInit;
+
+      mockUseFilterParams.mockReturnValue({ q: "second" });
+      rerender();
+
+      await waitFor(() => expect(result.current.data).toEqual({ q: "second" }));
+      // La petición de «first» se abortó…
+      expect(primera.signal?.aborted).toBe(true);
+      // …sin error en la caché (que es lo que dispara el aviso), sin reintento
+      // (una llamada por filtro) y sin error en el hook.
+      expect(onError).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.current.isError).toBe(false);
+      // La consulta abortada vuelve a su estado previo, no a `error`.
+      const abortada = queryClient
+        .getQueryCache()
+        .getAll()
+        .find((query) => JSON.stringify(query.queryKey).includes("first"));
+      expect(abortada?.state.status).not.toBe("error");
+    });
   });
 
   // ── happy path ────────────────────────────────────────────────────────────────
 
   it("returns data from a successful response", async () => {
     const payload = { id: 1, title: "Licitación test" };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(makeResponse(payload, 200)),
-    );
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(makeResponse(payload, 200)));
 
     const wrapper = createWrapper();
     const { result } = renderHook(
-      () =>
-        useFilteredQuery<typeof payload>(
-          ["licitacion", "1"],
-          "/api/v1/licitaciones/1",
-        ),
+      () => useFilteredQuery<typeof payload>(["licitacion", "1"], "/api/v1/licitaciones/1"),
       { wrapper },
     );
 

@@ -163,6 +163,17 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
   );
 }
 
+/**
+ * Ninguna ficha se genera en el build; cada una se genera y se cachea en su
+ * primera visita. Sin esta función la ruta se renderizaba en cada petición pese
+ * al `revalidate` de abajo: la lista vacía junto a `dynamicParams = true` es la
+ * forma documentada de pedir ISR para rutas dinámicas («All paths at runtime»
+ * en `generate-static-params.md`).
+ */
+export async function generateStaticParams(): Promise<Params[]> {
+  return [];
+}
+
 // Los `ccaa` y `slug` de la URL son decorativos: la referencia identifica el
 // expediente por sí sola. Se aceptan tal cual en vez de validarlos contra el
 // dato para no convertir un enlace con el slug antiguo en un 404 — el

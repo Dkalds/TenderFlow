@@ -22,6 +22,14 @@
  * `robots.txt`, el sitemap, las imágenes de metadatos) siguen en `proxy.ts`: no
  * son páginas, nadie las enlaza y no tienen nada que hacer en un sitemap. Ahí su
  * comentario explica por qué cada una está exenta.
+ *
+ * Tampoco el árbol interno de paginación de los hubs (`/hub-paginado/…`, en
+ * `lib/paginacion-hubs.ts`), y no por olvido: no es una página que se sirva por
+ * su URL. Solo la alcanza el rewrite que el proxy hace de `?p=N`, y quien la
+ * pide directamente recibe un 404. Su CSP es la de la URL pública reescrita
+ * —prerenderizada, sin nonce—, y declararla aquí la haría `esPaginaPublica`:
+ * servible por su propia URL, que es justo lo que no debe ser. Fuera de la
+ * lista, además, robots.txt la bloquea y el sitemap no la conoce sin tocar nada.
  */
 
 /** Frecuencias de cambio que admite el sitemap de Next. */

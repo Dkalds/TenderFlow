@@ -14,10 +14,17 @@ dual (ver ``db/repositories/watchlist.py``).
 
 from __future__ import annotations
 
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 
 #: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
 _IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+
+# Las dos lecturas de este módulo (`get_unread_ids`, `get_last_seen_ts`) van
+# por el pool de lectura. Iban por el de escritura —`BEGIN` + consulta +
+# `COMMIT` para un SELECT— y, además, así `GET /notifications` puede hacer todas
+# sus lecturas en una sola conexión con `db.connection.lecturas_agrupadas`, que
+# solo agrupa lo que pasa por `connect_read`. Leer lo que otra petición acaba de
+# confirmar por el pool de escritura no cambia: es la misma base de datos.
 
 
 def mark_read(user_key: str, notification_id: str, *, user_id: int | None = None) -> None:
@@ -54,7 +61,7 @@ def get_unread_ids(
     """Devuelve los IDs de ``candidate_ids`` que el usuario NO ha leído."""
     if not candidate_ids:
         return []
-    with connect() as c:
+    with connect_read() as c:
         placeholders = ",".join(["%s"] * len(candidate_ids))
         cur = c.execute(
             "SELECT notification_id FROM notification_reads "
@@ -72,7 +79,7 @@ def count_unread(user_key: str, candidate_ids: list[str], *, user_id: int | None
 
 def get_last_seen_ts(user_key: str, *, user_id: int | None = None) -> str | None:
     """Devuelve la fecha de la notificación más reciente leída, o None."""
-    with connect() as c:
+    with connect_read() as c:
         row = c.execute(
             f"SELECT MAX(read_at) FROM notification_reads WHERE {_IDENT}",
             (user_id, user_key, user_id),

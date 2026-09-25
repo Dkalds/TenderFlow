@@ -1,7 +1,7 @@
 import * as React from "react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import {
   pursuitKeys,
   useCreatePursuit,
@@ -21,11 +21,27 @@ vi.mock("@/lib/analytics", () => ({
 }));
 
 const pursuit = {
-  id: 1, organization_id: 1, licitacion_id: "lic-1", tender_title: "Servicio TI",
-  tender_deadline: null, responsible_user_id: null, responsible_name: null, status: "identified", decision: "pending",
-  decision_reason: null, offer_price_eur: null, outcome: "pending", awarded_amount_eur: null,
-  outcome_reason: null, identified_at: "2026-07-30T10:00:00Z", decision_at: null, submitted_at: null, closed_at: null,
-  created_at: "2026-07-30T10:00:00Z", updated_at: "2026-07-30T10:00:00Z", version: 1,
+  id: 1,
+  organization_id: 1,
+  licitacion_id: "lic-1",
+  tender_title: "Servicio TI",
+  tender_deadline: null,
+  responsible_user_id: null,
+  responsible_name: null,
+  status: "identified",
+  decision: "pending",
+  decision_reason: null,
+  offer_price_eur: null,
+  outcome: "pending",
+  awarded_amount_eur: null,
+  outcome_reason: null,
+  identified_at: "2026-07-30T10:00:00Z",
+  decision_at: null,
+  submitted_at: null,
+  closed_at: null,
+  created_at: "2026-07-30T10:00:00Z",
+  updated_at: "2026-07-30T10:00:00Z",
+  version: 1,
 } as const;
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -34,7 +50,12 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 afterEach(() => {
-  useOrganizationStore.setState({ activeOrganizationId: null });
+  // También la organización por defecto recordada: si se quedara de un test a
+  // otro, los que comprueban que se espera a `/organizations` no esperarían. Y
+  // desmontando antes: un hook aún montado la apuntaría otra vez al recibir su
+  // `/organizations` después de la limpieza.
+  cleanup();
+  useOrganizationStore.setState({ activeOrganizationId: null, ultimaPorDefecto: undefined });
   vi.unstubAllGlobals();
   vi.mocked(registrarEvento).mockClear();
   vi.mocked(primeraVez).mockClear();
@@ -42,15 +63,17 @@ afterEach(() => {
 
 describe("pursuit hooks", () => {
   it("loads a filtered opportunity list through the product contract", async () => {
-    const fetchMock = vi.fn().mockImplementation((...call: unknown[]) =>
-      Promise.resolve(
-        jsonResponse(
-          callUrl(call).includes("/organizations")
-            ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
-            : { items: [pursuit], total: 1 },
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((...call: unknown[]) =>
+        Promise.resolve(
+          jsonResponse(
+            callUrl(call).includes("/organizations")
+              ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+              : { items: [pursuit], total: 1 },
+          ),
         ),
-      ),
-    );
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() => usePursuits({ status: "identified" }), { wrapper });
@@ -63,15 +86,17 @@ describe("pursuit hooks", () => {
 
   it("creates an opportunity with the selected tender id", async () => {
     useOrganizationStore.setState({ activeOrganizationId: 1 });
-    const fetchMock = vi.fn().mockImplementation((...call: unknown[]) =>
-      Promise.resolve(
-        jsonResponse(
-          callUrl(call).includes("/organizations")
-            ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
-            : pursuit,
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((...call: unknown[]) =>
+        Promise.resolve(
+          jsonResponse(
+            callUrl(call).includes("/organizations")
+              ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+              : pursuit,
+          ),
         ),
-      ),
-    );
+      );
     vi.stubGlobal("fetch", fetchMock);
     const { result } = renderHook(() => useCreatePursuit(), { wrapper });
     await waitFor(() =>
@@ -100,15 +125,17 @@ describe("pursuit hooks", () => {
     const updated = { ...pursuit, status: "qualifying", version: 2 };
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((...call: unknown[]) =>
-        Promise.resolve(
-          jsonResponse(
-            callUrl(call).includes("/organizations")
-              ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
-              : updated,
+      vi
+        .fn()
+        .mockImplementation((...call: unknown[]) =>
+          Promise.resolve(
+            jsonResponse(
+              callUrl(call).includes("/organizations")
+                ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+                : updated,
+            ),
           ),
         ),
-      ),
     );
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -132,15 +159,17 @@ describe("pursuit hooks", () => {
     useOrganizationStore.setState({ activeOrganizationId: 1 });
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((...call: unknown[]) =>
-        Promise.resolve(
-          jsonResponse(
-            callUrl(call).includes("/organizations")
-              ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
-              : { ...pursuit, offer_price_eur: 1000, version: 2 },
+      vi
+        .fn()
+        .mockImplementation((...call: unknown[]) =>
+          Promise.resolve(
+            jsonResponse(
+              callUrl(call).includes("/organizations")
+                ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+                : { ...pursuit, offer_price_eur: 1000, version: 2 },
+            ),
           ),
         ),
-      ),
     );
 
     const { result } = renderHook(() => useUpdatePursuit(1), { wrapper });
@@ -169,23 +198,25 @@ const agenda = {
 } as const;
 
 const ORG = {
-  id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z",
+  id: 1,
+  name: "Equipo",
+  is_personal: true,
+  role: "owner",
+  created_at: "2026-07-30T10:00:00Z",
 } as const;
 
 function stubApi(organizations: unknown[]) {
-  const fetchMock = vi.fn().mockImplementation((...call: unknown[]) =>
-    Promise.resolve(
-      jsonResponse(callUrl(call).includes("/organizations") ? organizations : agenda),
-    ),
-  );
+  const fetchMock = vi
+    .fn()
+    .mockImplementation((...call: unknown[]) =>
+      Promise.resolve(jsonResponse(callUrl(call).includes("/organizations") ? organizations : agenda)),
+    );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
 
 function agendaUrls(fetchMock: ReturnType<typeof stubApi>): string[] {
-  return fetchMock.mock.calls
-    .map((call) => callUrl(call))
-    .filter((u) => u.includes("/pursuits/agenda"));
+  return fetchMock.mock.calls.map((call) => callUrl(call)).filter((u) => u.includes("/pursuits/agenda"));
 }
 
 describe("usePipelineAgenda", () => {
@@ -193,10 +224,9 @@ describe("usePipelineAgenda", () => {
     // Rama falsa de los cuatro condicionales y del ternario `query ? ... : ""`.
     const fetchMock = stubApi([]);
 
-    const { result } = renderHook(
-      () => usePipelineAgenda({ soloMios: false, tecnologia: null, ccaa: null }),
-      { wrapper },
-    );
+    const { result } = renderHook(() => usePipelineAgenda({ soloMios: false, tecnologia: null, ccaa: null }), {
+      wrapper,
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     const urls = agendaUrls(fetchMock);
@@ -210,10 +240,9 @@ describe("usePipelineAgenda", () => {
     useOrganizationStore.setState({ activeOrganizationId: 1 });
     const fetchMock = stubApi([ORG]);
 
-    const { result } = renderHook(
-      () => usePipelineAgenda({ soloMios: true, tecnologia: "SAP", ccaa: "MAD" }),
-      { wrapper },
-    );
+    const { result } = renderHook(() => usePipelineAgenda({ soloMios: true, tecnologia: "SAP", ccaa: "MAD" }), {
+      wrapper,
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     const url = agendaUrls(fetchMock).find((u) => u.includes("?"));
@@ -221,6 +250,38 @@ describe("usePipelineAgenda", () => {
     expect(url).toContain("solo_mios=true");
     expect(url).toContain("tecnologia=SAP");
     expect(url).toContain("ccaa=MAD");
+  });
+
+  it("cambiar un filtro conserva la agenda anterior mientras llega la nueva", async () => {
+    // Sin esto, alternar «sólo mías» o cambiar la tecnología del ámbito
+    // devolvía la Agenda al esqueleto en cada cambio.
+    useOrganizationStore.setState({ activeOrganizationId: 1 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((...call: unknown[]) => {
+        const url = callUrl(call);
+        if (url.includes("/organizations")) return Promise.resolve(jsonResponse([ORG]));
+        // La agenda filtrada no contesta: se mira qué se enseña mientras tanto.
+        if (url.includes("solo_mios=true")) return new Promise(() => {});
+        return Promise.resolve(jsonResponse(agenda));
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const localWrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const { result, rerender } = renderHook(
+      ({ soloMios }) => usePipelineAgenda({ soloMios, tecnologia: null, ccaa: null }),
+      { wrapper: localWrapper, initialProps: { soloMios: false } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const anterior = result.current.data;
+
+    rerender({ soloMios: true });
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data).toBe(anterior);
   });
 
   it("una mutación de pursuit invalida también la agenda", async () => {
@@ -259,11 +320,19 @@ describe("usePipelineAgenda", () => {
  * corregido medio segundo después por la petición buena.
  */
 const ORG_PERSONAL = {
-  id: 9, name: "Personal", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z",
+  id: 9,
+  name: "Personal",
+  is_personal: true,
+  role: "owner",
+  created_at: "2026-07-30T10:00:00Z",
 } as const;
 
 const ORG_EQUIPO = {
-  id: 21, name: "Equipo", is_personal: false, role: "owner", created_at: "2026-07-30T10:00:00Z",
+  id: 21,
+  name: "Equipo",
+  is_personal: false,
+  role: "owner",
+  created_at: "2026-07-30T10:00:00Z",
 } as const;
 
 /** Dobla al backend real: sin ámbito explícito responde por la personal. */
@@ -305,12 +374,43 @@ describe("usePursuit y la organización activa", () => {
     expect(urlsDeFicha(fetchMock)).toEqual(["/api/v1/pursuits/10?organization_id=21"]);
   });
 
+  it("con una organización por defecto ya confirmada no espera a /organizations", async () => {
+    // La carga completa ya no paga el viaje de ida y vuelta de `/organizations`
+    // antes de pedir la ficha: se adelanta la que confirmó la última vez.
+    useOrganizationStore.setState({ ultimaPorDefecto: 21 });
+    const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
+      const url = callUrl(call);
+      if (url.includes("/organizations")) return new Promise(() => {});
+      return Promise.resolve(jsonResponse(pursuit));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => usePursuit("10"), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(urlsDeFicha(fetchMock)).toEqual(["/api/v1/pursuits/10?organization_id=21"]);
+  });
+
+  it("si la adelantada ya no es la buena, la corrige en cuanto contesta /organizations", async () => {
+    // Recordaba el equipo 40, del que a la persona la sacaron: la ficha se pide
+    // con la buena (21) en cuanto se sabe cuál es.
+    useOrganizationStore.setState({ ultimaPorDefecto: 40 });
+    const fetchMock = stubFicha([ORG_PERSONAL, ORG_EQUIPO]);
+
+    const { result } = renderHook(() => usePursuit("10"), { wrapper });
+    await waitFor(() => expect(urlsDeFicha(fetchMock)).toContain("/api/v1/pursuits/10?organization_id=21"));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(useOrganizationStore.getState().ultimaPorDefecto).toBe(21);
+  });
+
   it("sin ninguna organización sí pregunta, y deja que el backend resuelva la personal", async () => {
     // El otro estado resuelto: omitir `organization_id` es aquí la respuesta
     // correcta, no un descuido, y la consulta no puede quedarse retenida.
-    const fetchMock = vi.fn().mockImplementation((...call: unknown[]) =>
-      Promise.resolve(jsonResponse(callUrl(call).includes("/organizations") ? [] : pursuit)),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((...call: unknown[]) =>
+        Promise.resolve(jsonResponse(callUrl(call).includes("/organizations") ? [] : pursuit)),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() => usePursuit("10"), { wrapper });

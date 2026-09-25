@@ -1,14 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { Panel, PanelError, PanelLoading, PanelTabs, PanelTitle } from "@/components/console/panel";
 import { useFiltrosIgnorados } from "./alcance";
 import { AvisoAlcance } from "./aviso-alcance";
 import { usePublicaciones } from "../_hooks/use-publicaciones";
-import { DispersionScatter } from "./publicaciones/dispersion-scatter";
 import { ImportesHistograma } from "./publicaciones/importes-histograma";
-import { RitmoChart } from "./publicaciones/ritmo-chart";
 import { ALTO, HINTS, TABS, type Corte } from "./publicaciones/publicaciones-data";
+
+// Ritmo y Dispersión dibujan con recharts (y recharts 3 trae redux): el chunk
+// más grande que solo usa /resumen. Entran bajo demanda, como los gráficos de
+// Mercado (`mercado/_components/*-graficos.tsx`), con el mismo hueco que la
+// carga del dato para que el panel no salte. Importes son barras de CSS y no
+// lo necesitan.
+const cargandoGrafico = () => <PanelLoading height={ALTO} />;
+const RitmoChart = dynamic(() => import("./publicaciones/ritmo-chart").then((modulo) => modulo.RitmoChart), {
+  ssr: false,
+  loading: cargandoGrafico,
+});
+const DispersionScatter = dynamic(
+  () => import("./publicaciones/dispersion-scatter").then((modulo) => modulo.DispersionScatter),
+  { ssr: false, loading: cargandoGrafico },
+);
 
 /**
  * Publicaciones del periodo — tres cortes del mismo periodo.
@@ -45,6 +59,13 @@ export function PublicacionesPanel() {
   const [corte, setCorte] = useState<Corte>("ritmo");
   const ignorados = useFiltrosIgnorados();
   const publicaciones = usePublicaciones(corte);
+
+  // El corte por defecto se pide ya, a la vez que su dato: `RitmoChart` no se
+  // monta hasta que llega la serie, y sin esto el gráfico empezaría a
+  // descargarse solo entonces.
+  useEffect(() => {
+    import("./publicaciones/ritmo-chart").catch(() => undefined);
+  }, []);
 
   return (
     <Panel>

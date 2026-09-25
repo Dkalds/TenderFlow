@@ -12,6 +12,7 @@ import {
 } from "@/components/console/panel";
 import { RadarQualityTabla } from "@/components/pursuits/radar-quality";
 import type { PursuitMetrics } from "@/hooks/use-pursuits";
+import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import { useMetricasPeriodo } from "../_hooks/use-metricas-periodo";
 import {
   etiquetaPeriodo,
@@ -41,8 +42,10 @@ import { ValorPonderado } from "./rendimiento/valor-ponderado";
  * **El periodo es del espacio, no del componente**: vive en `?periodo=` y se
  * escribe con `replace`, igual que `?vista=`. Así una ventana concreta se
  * comparte y sobrevive a la recarga, y el botón «atrás» no se llena de clics de
- * filtro. `rangoDePeriodo` sólo traduce la elección a `period_from`/`period_to`:
- * quien recorta el dataset es el backend (ADR-014).
+ * filtro. Tampoco pasa por el servidor (`lib/url-superficial.ts`): ningún
+ * Server Component lee `periodo`, y la consulta de la ventana nueva la lanza
+ * `useMetricasPeriodo` desde aquí. `rangoDePeriodo` sólo traduce la elección a
+ * `period_from`/`period_to`: quien recorta el dataset es el backend (ADR-014).
  *
  * Los cuatro paneles hablan **de la misma ventana** —el backend filtra las
  * mismas filas para todo— y por eso la ventana se declara una vez, arriba, y no
@@ -73,17 +76,14 @@ export default function RendimientoView() {
   const rango = rangoDePeriodo(periodo, new Date());
   const { data, isPending, error, refetch } = useMetricasPeriodo(rango);
 
-  const cambiarPeriodo = React.useCallback(
-    (siguiente: PeriodoClave) => {
-      const search = new URLSearchParams(params.toString());
-      // El histórico es el valor por defecto: se quita del enlace en vez de
-      // escribirlo, para que la URL canónica de la vista siga siendo la corta.
-      if (siguiente === PERIODO_POR_DEFECTO) search.delete("periodo");
-      else search.set("periodo", siguiente);
-      router.replace(`?${search.toString()}`, { scroll: false });
-    },
-    [params, router],
-  );
+  const cambiarPeriodo = React.useCallback((siguiente: PeriodoClave) => {
+    const search = queryActual();
+    // El histórico es el valor por defecto: se quita del enlace en vez de
+    // escribirlo, para que la URL canónica de la vista siga siendo la corta.
+    if (siguiente === PERIODO_POR_DEFECTO) search.delete("periodo");
+    else search.set("periodo", siguiente);
+    reemplazarQuery(search);
+  }, []);
 
   if (error) {
     return (

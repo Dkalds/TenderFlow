@@ -142,6 +142,25 @@ def problem_503(detail: str = "Servicio temporalmente no disponible.") -> Proble
     )
 
 
+#: Tipo del 503 de una consulta que Postgres canceló por ``statement_timeout``.
+#: El frontend lo lee para **no** reintentar (``web/src/lib/query-feedback.ts``):
+#: repetir la misma consulta la cortaría en el mismo punto, y cada intento
+#: ocupa otra vez una conexión del pool durante todo el techo.
+TIPO_CONSULTA_CANCELADA = "https://licitaciones-sap/errors/query-timeout"
+
+
+def problem_consulta_cancelada() -> ProblemDetail:
+    return ProblemDetail(
+        type=TIPO_CONSULTA_CANCELADA,
+        title="Query Timeout",
+        status=503,
+        detail=(
+            "La consulta tardó demasiado y se canceló. Acota los filtros "
+            "(periodo, tecnología, búsqueda) e inténtalo de nuevo."
+        ),
+    )
+
+
 # ── Deprecación de rutas (C8.1) ──────────────────────────────────────────────
 
 #: Ventana mínima entre anunciar la deprecación y apagar la ruta.
@@ -321,6 +340,29 @@ def register_exception_handlers(app: FastAPI) -> None:
         return problem_400(
             "La solicitud contiene un valor inválido.", _instance(request)
         ).response()
+
+    from psycopg.errors import QueryCanceled
+
+    @app.exception_handler(QueryCanceled)
+    async def query_canceled_handler(request: Request, exc: QueryCanceled) -> JSONResponse:
+        """``statement_timeout`` agotado: 503 con tipo propio en vez de un 500.
+
+        Como 500, el navegador lo trataba como fallo transitorio y lo reintentaba
+        cuatro veces con backoff: cinco consultas de hasta 30 s (el techo de la
+        sesión) contra el mismo pool por una pantalla que acabaría en error
+        igual. El tipo ``query-timeout`` le dice al cliente que no repita
+        (``web/src/lib/query-feedback.ts``), y el ``detail`` le dice a la persona
+        qué hacer. No es un bug del servidor, así que tampoco va como
+        ``unhandled_exception`` al log de errores.
+        """
+        from observability.logging import get_logger
+
+        get_logger(__name__).warning(
+            "consulta_cancelada_por_timeout",
+            path=str(request.url.path),
+            error=str(exc),
+        )
+        return problem_consulta_cancelada().response(**{"Retry-After": "30"})
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:

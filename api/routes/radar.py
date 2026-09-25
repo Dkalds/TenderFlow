@@ -34,7 +34,7 @@ from db.idempotency import scope as idem_scope
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from services.classification import ESTADOS_PRE_LICITACION
-from shared.cache import invalidate_user_scoped
+from shared.cache import ainvalidate_user_scoped
 from shared.dto import RadarBanda, SafeStr
 
 log = get_logger(__name__)
@@ -93,14 +93,16 @@ async def _resultado(user_key: str, user_id: int | None = None) -> RadarDismissa
     return RadarDismissalsResult(ids=[d.id_externo for d in detalle], detalle=detalle)
 
 
-def _invalidar_ranking(user_key: str) -> None:
+async def _invalidar_ranking(user_key: str) -> None:
     """Tira la caché del scoring de este usuario tras cambiar sus descartes.
 
     El Radar pide el ranking con ``exclude_dismissed=true`` y la respuesta se
     cachea 300 s: sin invalidar, descartar una señal la dejaría en pantalla
-    hasta que expirase el TTL, y el hueco no lo ocuparía la siguiente.
+    hasta que expirase el TTL, y el hueco no lo ocuparía la siguiente. Con
+    Redis la invalidación es un ``SCAN`` de varios viajes: va a un hilo porque
+    quien la llama es un handler ``async``.
     """
-    invalidate_user_scoped("analytics", "scoring", user_key)
+    await ainvalidate_user_scoped("analytics", "scoring", user_key)
 
 
 class RadarDismissalBody(BaseModel):
@@ -262,7 +264,7 @@ async def post_dismissal(
         accion=body.accion,
         dias=body.dias,
     )
-    _invalidar_ranking(user_key)
+    await _invalidar_ranking(user_key)
     return RadarDismissalsResult(**resultado)
 
 
@@ -286,7 +288,7 @@ async def delete_dismissal(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="La señal no estaba descartada.",
         )
-    _invalidar_ranking(_user_key(ctx))
+    await _invalidar_ranking(_user_key(ctx))
 
 
 # ── /radar/proximas — la bandeja «Próximas» (T5) ──────────────────────────

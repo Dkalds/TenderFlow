@@ -13,6 +13,13 @@ import { filteredQueryKey, filteredQueryUrl, mergeFilteredParams } from "@/lib/f
  * respuesta es el llamante vía `T`. Los call sites viven en `src/app/**` y
  * `src/components/**` — olas siguientes de la migración.
  *
+ * La petición lleva el `signal` de React Query. Cambiar un filtro deja la
+ * consulta anterior sin observadores y React Query la aborta: en Resumen son
+ * ~7 agregados sobre el histórico entero que, sin cancelar, la API seguía
+ * calculando para nadie. El aborto no llega a error visible (ni aviso, ni
+ * reintento): React Query devuelve la consulta cancelada a su estado previo en
+ * silencio, sin pasar por el `onError` de la caché.
+ *
  * @param baseKey - React Query cache key
  * @param url - API endpoint path (without query string)
  * @param options - Additional React Query options
@@ -38,7 +45,7 @@ export function useFilteredQuery<T>(
     // Clave y URL salen de `lib/filtered-query.ts`, el mismo módulo con el que
     // el prefetch en servidor construye las suyas.
     queryKey: filteredQueryKey(baseKey, url, merged),
-    queryFn: () => fetchWithAuth<T>(fullUrl),
+    queryFn: ({ signal }) => fetchWithAuth<T>(fullUrl, { signal }),
     ...(isRealtime ? {} : { placeholderData: keepPreviousData }),
     ...options,
   });

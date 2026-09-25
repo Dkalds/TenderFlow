@@ -15,6 +15,7 @@ from api.concurrency import run_db
 from api.dependencias_pipeline import paquete_del_pipeline_ausente
 from api.routes.dual_auth import require_any_auth
 from api.routes.dual_auth import require_any_auth as require_analytics_auth
+from api.techo_analitica import techo_sentencia_analitica
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.notifications import get_last_seen_ts, marcar_visita
 from observability.logging import get_logger
@@ -99,7 +100,13 @@ from shared.cache import cache_response
 
 log = get_logger(__name__)
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+# El techo de sentencia de la analítica vale para toda la petición: ver
+# `api/techo_analitica.py` (apagado mientras el setting valga 0).
+router = APIRouter(
+    prefix="/analytics",
+    tags=["analytics"],
+    dependencies=[Depends(techo_sentencia_analitica)],
+)
 
 
 @router.get("/overview", response_model=OverviewResult)

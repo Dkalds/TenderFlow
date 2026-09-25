@@ -1,14 +1,28 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Columns3, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { ComparacionFichasTabla } from "@/components/pliego/comparar-fichas";
-import { PreguntaComparacion } from "@/components/pliego/pregunta-comparacion";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useBandejaComparacion } from "@/hooks/use-comparacion";
 import { MAX_COMPARAR } from "@/hooks/use-comparar-fichas";
 import { truncate } from "@/lib/utils";
+
+// Lo de dentro del diálogo solo existe con el diálogo abierto, y es lo pesado
+// de este módulo: la pregunta cruzada arrastra el hilo de chat con
+// react-markdown. Como Radar, la watchlist y el inspector importan de aquí
+// `CompararBoton`, cargarlo en estático lo metía en el First Load de todas
+// esas rutas por un botón.
+const ComparacionFichasTabla = dynamic(
+  () => import("@/components/pliego/comparar-fichas").then((modulo) => modulo.ComparacionFichasTabla),
+  { ssr: false, loading: () => <Skeleton className="mt-4 h-[240px] w-full rounded-lg" /> },
+);
+const PreguntaComparacion = dynamic(
+  () => import("@/components/pliego/pregunta-comparacion").then((modulo) => modulo.PreguntaComparacion),
+  { ssr: false, loading: () => <Skeleton className="mt-6 h-[120px] w-full rounded-lg" /> },
+);
 
 /**
  * F2.8 — marcar expedientes para comparar desde donde se estén mirando.

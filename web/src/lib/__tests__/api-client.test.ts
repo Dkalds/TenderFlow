@@ -21,17 +21,13 @@ vi.mock("openapi-fetch", () => ({
 // @/generated/api is a type-only import (`import type { paths }`) and is
 // completely erased at runtime by esbuild/Vite — no mock needed.
 
-import { getCsrfToken, apiMutate, ApiError } from "@/lib/api-client";
+import { getCsrfToken, apiMutate, ApiError, esAborto, fetchWithAuth } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mockFetch(
-  status: number,
-  body: unknown,
-  ok = status >= 200 && status < 300,
-): ReturnType<typeof vi.fn> {
+function mockFetch(status: number, body: unknown, ok = status >= 200 && status < 300): ReturnType<typeof vi.fn> {
   const jsonFn = vi.fn().mockResolvedValue(body);
   const fetchMock = vi.fn().mockResolvedValue({
     ok,
@@ -156,6 +152,119 @@ describe("ApiError", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cancelación (fetchWithAuth + esAborto)
+// ---------------------------------------------------------------------------
+
+/**
+ * React Query aborta el `signal` de la consulta que se queda sin observadores
+ * —la del filtro anterior—. Para que eso libere la API, el `signal` tiene que
+ * llegar a `fetch`; y para que no se vea, la cancelación tiene que salir como
+ * `AbortError`, nunca normalizada a `ApiError`, que se reintentaría y avisaría.
+ */
+describe("ApiError — tipo del problem+json", () => {
+  it("fetchWithAuth conserva el `type` del cuerpo de error", async () => {
+    mockFetch(503, {
+      type: "https://licitaciones-sap/errors/query-timeout",
+      title: "Query Timeout",
+      detail: "La consulta tardó demasiado.",
+    });
+
+    const error = (await fetchWithAuth("/api/v1/analytics/overview").catch((e: unknown) => e)) as ApiError;
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(503);
+    expect(error.tipo).toBe("https://licitaciones-sap/errors/query-timeout");
+    expect(error.message).toBe("La consulta tardó demasiado.");
+  });
+
+  it("apiMutate también lo conserva", async () => {
+    mockFetch(503, { type: "https://licitaciones-sap/errors/query-timeout", detail: "x" });
+
+    const error = (await apiMutate("POST", "/api/v1/algo", {}).catch((e: unknown) => e)) as ApiError;
+
+    expect(error.tipo).toBe("https://licitaciones-sap/errors/query-timeout");
+  });
+
+  it("sin `type` (o con uno que no es texto) queda sin tipo", async () => {
+    mockFetch(500, { detail: "boom", type: 42 });
+
+    const error = (await fetchWithAuth("/api/v1/algo").catch((e: unknown) => e)) as ApiError;
+
+    expect(error.tipo).toBeUndefined();
+  });
+});
+
+describe("fetchWithAuth — cancelación", () => {
+  const abortado = () => new DOMException("The operation was aborted.", "AbortError");
+
+  it("pasa el signal a fetch", async () => {
+    const fetchMock = mockFetch(200, { ok: true });
+    const controller = new AbortController();
+
+    await fetchWithAuth("/api/v1/algo", { signal: controller.signal });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
+  });
+
+  it("una petición abortada en vuelo sale como AbortError, no como ApiError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(abortado()));
+
+    const error = await fetchWithAuth("/api/v1/algo", { signal: new AbortController().signal }).catch((e) => e);
+
+    expect(esAborto(error)).toBe(true);
+    expect(error).not.toBeInstanceOf(ApiError);
+  });
+
+  it("si se aborta mientras se lee el cuerpo de un error, gana la cancelación", async () => {
+    // El `catch` que rescata el cuerpo de un error se tragaba el AbortError y
+    // salía un ApiError(503): transitorio, así que se reintentaba y avisaba.
+    const controller = new AbortController();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        json: () => {
+          controller.abort();
+          return Promise.reject(abortado());
+        },
+      }),
+    );
+
+    const error = await fetchWithAuth("/api/v1/algo", { signal: controller.signal }).catch((e) => e);
+
+    expect(esAborto(error)).toBe(true);
+    expect(error).not.toBeInstanceOf(ApiError);
+  });
+
+  it("sin cancelación, un error sigue siendo un ApiError con su detalle", async () => {
+    mockFetch(503, { detail: "Mantenimiento" }, false);
+    await expect(fetchWithAuth("/api/v1/algo", { signal: new AbortController().signal })).rejects.toMatchObject({
+      status: 503,
+      message: "Mantenimiento",
+    });
+  });
+});
+
+describe("esAborto", () => {
+  it("reconoce la cancelación venga como DOMException o como Error", () => {
+    expect(esAborto(new DOMException("aborted", "AbortError"))).toBe(true);
+    const comoError = new Error("aborted");
+    comoError.name = "AbortError";
+    expect(esAborto(comoError)).toBe(true);
+  });
+
+  it("no confunde con una cancelación los fallos de verdad", () => {
+    expect(esAborto(new ApiError(500, "boom"))).toBe(false);
+    expect(esAborto(new TypeError("Failed to fetch"))).toBe(false);
+    expect(esAborto(null)).toBe(false);
+    expect(esAborto("AbortError")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // apiMutate
 // ---------------------------------------------------------------------------
 
@@ -182,9 +291,7 @@ describe("apiMutate", () => {
     const fetchMock = mockFetch(200, {});
     await apiMutate("POST", "/api/test");
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
-      "application/json",
-    );
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
   });
 
   it("sends credentials: 'include'", async () => {
@@ -217,18 +324,14 @@ describe("apiMutate", () => {
     const fetchMock = mockFetch(200, {});
     await apiMutate("POST", "/api/secure");
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe(
-      "mytoken",
-    );
+    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("mytoken");
   });
 
   it("omits X-CSRF-Token header when no csrf_token cookie", async () => {
     const fetchMock = mockFetch(200, {});
     await apiMutate("POST", "/api/open");
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(
-      (init.headers as Record<string, string>)["X-CSRF-Token"],
-    ).toBeUndefined();
+    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBeUndefined();
   });
 
   it("returns parsed JSON on successful response", async () => {
@@ -289,15 +392,11 @@ describe("apiMutate", () => {
 
     mockFetch(401, {}, false);
 
-    await expect(apiMutate("GET" as never, "/api/protected")).rejects.toMatchObject(
-      {
-        status: 401,
-        message: "Session expired",
-      },
-    );
+    await expect(apiMutate("GET" as never, "/api/protected")).rejects.toMatchObject({
+      status: 401,
+      message: "Session expired",
+    });
 
-    expect(locationMock.href).toBe(
-      `/login?redirect=${encodeURIComponent("/mi-watchlist")}`,
-    );
+    expect(locationMock.href).toBe(`/login?redirect=${encodeURIComponent("/mi-watchlist")}`);
   });
 });

@@ -25,11 +25,20 @@ import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from "@ta
  *    dependa de ella se hidrataría con la organización por defecto y quien
  *    eligió otra recibiría un HTML distinto del de su primer render — un
  *    desajuste de hidratación. Esas consultas se quedan en el cliente.
- * 3. **El prefetch nunca rompe ni bloquea la página.** Cada consulta tiene un
- *    presupuesto de {@link PRESUPUESTO_PREFETCH_MS} ms; `prefetchQuery` no
- *    lanza, y `dehydrate` sólo vuelca las que acabaron bien. Una API lenta o
+ * 3. **El prefetch nunca rompe la página, y la retiene poco.** Cada consulta
+ *    tiene un presupuesto de {@link PRESUPUESTO_PREFETCH_MS} ms; `prefetchQuery`
+ *    no lanza, y `dehydrate` sólo vuelca las que acabaron bien. Una API lenta o
  *    caída —Render free con spin-down— deja la página exactamente como estaba
  *    antes de este módulo: el hook pide el dato desde el navegador.
+ *
+ * **Las consultas pendientes no se deshidratan**, aunque TanStack Query (≥5.40)
+ * sabe mandar la promesa en vez de esperarla. Ese patrón está pensado para
+ * `useSuspenseQuery`, y las pantallas usan `useQuery`: al hidratar, `hydrate()`
+ * resuelve en síncrono una promesa que ya llegó (`tryResolveSync`) y crea la
+ * consulta en `success`, mientras el HTML del servidor se pintó con el
+ * esqueleto porque allí seguía pendiente. Sería un desajuste de hidratación
+ * que depende de cuánto tarde la API, así que el render espera, con un
+ * presupuesto corto.
  *
  * `force-dynamic` sigue en `(dashboard)/layout.tsx` por privacidad; ahora
  * además el render de servidor hace algo útil.
@@ -41,8 +50,19 @@ import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from "@ta
  * crece hay que darle a estas llamadas un bucket propio antes de añadir más.
  */
 
-/** Presupuesto por consulta. Pasado, la consulta se abandona y la pide el cliente. */
-export const PRESUPUESTO_PREFETCH_MS = 2_000;
+/**
+ * Presupuesto por consulta. Pasado, la consulta se abandona y la pide el
+ * cliente.
+ *
+ * Es corto a propósito: `PrefetchServidor` hace `await` antes de pintar, así
+ * que cada milisegundo de espera retrasa el HTML entero, y el cliente ya sabe
+ * pedir el dato solo. Con las funciones de Vercel en `fra1` (`web/vercel.json`)
+ * la API de Render está en Fráncfort, a ~2 ms, y la BD en París, a ~10: una
+ * consulta sana cabe de sobra. La que no cabe es una API lenta o fría, y
+ * esperarla 2 s —el presupuesto anterior— sólo retrasaba una pantalla que el
+ * navegador iba a completar de todos modos.
+ */
+export const PRESUPUESTO_PREFETCH_MS = 600;
 
 export interface ConsultaServidor {
   /** La misma clave que usa el hook del cliente. */

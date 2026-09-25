@@ -27,6 +27,12 @@ function destino(res: Response): string | null {
   return res.headers.get("location");
 }
 
+/** Ruta a la que el proxy reescribe la petición, o `null` si la deja pasar tal cual. */
+function reescritura(res: Response): string | null {
+  const url = res.headers.get("x-middleware-rewrite");
+  return url ? new URL(url).pathname : null;
+}
+
 describe("rutas públicas", () => {
   it.each([
     ["/", "la portada"],
@@ -61,14 +67,11 @@ describe("rutas públicas", () => {
 });
 
 describe("rutas privadas", () => {
-  it.each(["/resumen", "/radar", "/oportunidades", "/ops", "/mi-perfil"])(
-    "%s sin sesión redirige a /login",
-    (ruta) => {
-      const location = destino(proxy(peticion(ruta)));
-      expect(location).not.toBeNull();
-      expect(new URL(location!).pathname).toBe("/login");
-    },
-  );
+  it.each(["/resumen", "/radar", "/oportunidades", "/ops", "/mi-perfil"])("%s sin sesión redirige a /login", (ruta) => {
+    const location = destino(proxy(peticion(ruta)));
+    expect(location).not.toBeNull();
+    expect(new URL(location!).pathname).toBe("/login");
+  });
 
   it("conserva ruta y query en el parámetro de vuelta", () => {
     // El ámbito de una pantalla vive en la query: mandar solo el path devolvía
@@ -136,6 +139,109 @@ describe("CSP", () => {
     const a = csp(proxy(peticion("/resumen", { conSesion: true })));
     const b = csp(proxy(peticion("/resumen", { conSesion: true })));
     expect(a).not.toBe(b);
+  });
+});
+
+describe("paginación de los hubs", () => {
+  // Los hubs paginan con `?p=N`, y esa URL es la indexada. Leer la query en la
+  // página la sacaba de la caché ISR, así que el proxy la traduce a un segmento
+  // interno que la página recibe por `params` (ver `lib/paginacion-hubs.ts`).
+  it.each([
+    ["/licitaciones/cataluna?p=3", "/hub-paginado/licitaciones/cataluna/3"],
+    ["/licitaciones/organo/consejeria-de-sanidad?p=2", "/hub-paginado/licitaciones/organo/consejeria-de-sanidad/2"],
+    ["/cpv/72000000?p=12", "/hub-paginado/cpv/72000000/12"],
+  ])("%s se sirve desde la página interna", (ruta, interna) => {
+    const res = proxy(peticion(ruta));
+    expect(reescritura(res)).toBe(interna);
+    // Rewrite y no redirect: la URL del navegador, la indexada, no cambia.
+    expect(destino(res)).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it("el rewrite no arrastra la query", () => {
+    // La página interna no la lee, y fuera de la ruta no hay nada que deba
+    // formar parte de la clave de caché.
+    const res = proxy(peticion("/licitaciones/cataluna?p=3&utm_source=boletin"));
+    expect(new URL(res.headers.get("x-middleware-rewrite")!).search).toBe("");
+  });
+
+  it("también con sesión: la paginación no depende de quién la pida", () => {
+    const res = proxy(peticion("/cpv/72000000?p=2", { conSesion: true }));
+    expect(reescritura(res)).toBe("/hub-paginado/cpv/72000000/2");
+  });
+
+  it.each(["", "?p=1", "?p=0", "?p=-2", "?p=abc", "?p=2.5", "?p=", "?p=3&p=4", "?q=3"])(
+    "el hub con «%s» es la página 1: se sirve tal cual, como antes",
+    (query) => {
+      const res = proxy(peticion(`/licitaciones/cataluna${query}`));
+      expect(reescritura(res)).toBeNull();
+      expect(destino(res)).toBeNull();
+      expect(res.headers.get("x-middleware-next")).toBe("1");
+    },
+  );
+
+  it("normaliza el número con la regla de siempre: ?p=03 es la página 3", () => {
+    expect(reescritura(proxy(peticion("/licitaciones/cataluna?p=03")))).toBe("/hub-paginado/licitaciones/cataluna/3");
+  });
+
+  it.each([
+    "/licitaciones?p=2",
+    "/licitaciones/organo?p=2",
+    "/cpv?p=2",
+    "/licitaciones/cataluna/obras-de-x/EXP-1?p=2",
+    "/aviso-legal?p=2",
+  ])("%s no pagina: se sirve tal cual", (ruta) => {
+    const res = proxy(peticion(ruta));
+    expect(reescritura(res)).toBeNull();
+    expect(destino(res)).toBeNull();
+  });
+
+  it("una ruta privada con ?p= sigue exigiendo sesión", () => {
+    const res = proxy(peticion("/resumen?p=2"));
+    expect(reescritura(res)).toBeNull();
+    expect(new URL(destino(res)!).pathname).toBe("/login");
+  });
+
+  it("la página reescrita lleva la CSP de lo prerenderizado", () => {
+    // Su HTML sale de la caché ISR, horneado sin nonce: una CSP con nonce la
+    // dejaría en blanco. La decide la URL pública, no la interna.
+    const politica = proxy(peticion("/licitaciones/cataluna?p=3")).headers.get("content-security-policy") ?? "";
+    expect(politica).toContain("'unsafe-inline'");
+    expect(politica).not.toContain("nonce-");
+  });
+
+  describe("el árbol interno no es una URL pública", () => {
+    it.each([
+      "/hub-paginado/licitaciones/cataluna/3",
+      "/hub-paginado/licitaciones/organo/consejeria-de-sanidad/2",
+      "/hub-paginado/cpv/72000000/2",
+      "/hub-paginado",
+      // Next casa también la forma decodificada: la grafía codificada llegaría
+      // a la página interna igual, y una denegación tiene que cubrirla.
+      "/hub%2Dpaginado/licitaciones/cataluna/3",
+      "/HUB-PAGINADO/cpv/72000000/2",
+    ])("%s da 404, sin rewrite ni redirect", (ruta) => {
+      const res = proxy(peticion(ruta));
+      expect(res.status).toBe(404);
+      expect(reescritura(res)).toBeNull();
+      expect(destino(res)).toBeNull();
+    });
+
+    it("también con sesión: no es una pantalla del dashboard", () => {
+      expect(proxy(peticion("/hub-paginado/cpv/72000000/2", { conSesion: true })).status).toBe(404);
+    });
+
+    it("aunque traiga ?p=: no se reescribe dos veces", () => {
+      const res = proxy(peticion("/hub-paginado/licitaciones/cataluna/3?p=4"));
+      expect(res.status).toBe(404);
+      expect(reescritura(res)).toBeNull();
+    });
+
+    it("el 404 lleva las cabeceras de seguridad", () => {
+      const res = proxy(peticion("/hub-paginado/cpv/72000000/2"));
+      expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    });
   });
 });
 

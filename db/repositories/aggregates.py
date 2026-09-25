@@ -66,6 +66,7 @@ from db.sql_fragments import (
     nombre_organo_sql,
     normaliza_codigo,
     tecnologia_en_csv_sql,
+    tecnologia_tokens_sql,
 )
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS, abierta_sql, abierta_sql_marcadores
@@ -203,15 +204,20 @@ def build_licitaciones_where(
     explicable. Unificado en:
 
     - ``q``: título + descripción + órgano + id externo, **con plegado de
-      acentos** en los dos lados de la comparación.
-    - ``tecnologia``: siempre explode del CSV de la fila
-      (:func:`db.sql_fragments.tecnologia_en_csv_sql`), nunca igualdad.
+      acentos** en los dos lados de la comparación. La columna se pliega con
+      :func:`db.sql_fragments.fold_expr`, cuyas tablas de ``translate`` son
+      literales y no parámetros: es la condición para que un índice trigram
+      sobre esa misma expresión pueda usarse algún día.
+    - ``tecnologia``: pertenencia al CSV de la fila, nunca igualdad, como
+      solapamiento de arrays sobre la expresión normalizada
+      (:func:`db.sql_fragments.tecnologia_en_csv_sql`).
 
     Las dos implementaciones siguen siendo dos —unificarlas exigiría reescribir
     el listado o el agregado entero—, pero ``tests/test_s1_paridad_filtros.py``
     compara la semántica emitida (columnas tocadas y forma del predicado) para
-    los mismos filtros. Si una se mueve sin la otra, falla ahí y no en un
-    recuento que nadie cuadra.
+    los mismos filtros, y además que la expresión de cada columna sea **la
+    misma cadena** en los dos lados: un índice de expresión solo casa con una.
+    Si una se mueve sin la otra, falla ahí y no en un recuento que nadie cuadra.
 
     ``nucleo=True`` (T2) hace que los filtros de fecha de publicación e
     importe lean la columna que decide
@@ -910,6 +916,33 @@ class AggregateRepository:
     # :func:`db.sql_fragments.tecnologia_en_csv_sql`.
 
     _CON_TECNOLOGIA = "tecnologia IS NOT NULL"
+
+    def tecnologias_mas_frecuentes(self, n: int, *, conn: Any | None = None) -> list[str]:
+        """Los ``n`` códigos de tecnología con más expedientes en toda la tabla.
+
+        Lo usa el precálculo del overview para elegir de qué tecnologías deja
+        variantes en ``kpi_snapshots`` (``db/repositories/kpi_snapshots.py``):
+        precalcular todas costaría dos agregaciones por código en cada pasada,
+        y las que la gente filtra son las que más pesan en el corpus.
+
+        Explota el CSV con :func:`db.sql_fragments.tecnologia_tokens_sql`, la
+        misma normalización que usa el filtro, para que el código que sale de
+        aquí sea exactamente el que el filtro compara. Empate por nombre: el
+        conjunto elegido no puede cambiar entre dos pasadas sin que cambien
+        los datos. Un CSV con el mismo código repetido lo contaría dos veces;
+        para elegir un top da igual, y la ingesta no lo produce.
+        """
+        if n <= 0:
+            return []
+        sql = (
+            "SELECT t.codigo, COUNT(*) AS n "
+            f"FROM licitaciones, unnest({tecnologia_tokens_sql('tecnologia')}) AS t(codigo) "
+            f"WHERE {self._CON_TECNOLOGIA} AND t.codigo <> '' "
+            "GROUP BY t.codigo ORDER BY n DESC, t.codigo LIMIT %s"
+        )
+        with _lectura(conn) as c:
+            rows = c.execute(sql, [n]).fetchall()
+        return [str(r[0]) for r in rows]
 
     def tecnologias_total_y_sin_clasificar(self, filters: LicitacionesFilters) -> tuple[int, int]:
         """(total del ámbito, filas sin tecnología).

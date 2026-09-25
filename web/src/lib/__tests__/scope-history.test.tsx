@@ -9,7 +9,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act, cleanup, waitFor } from "@testing-library/react";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
-import { EMPTY_SCOPE, scopeKey, type ScopeSnapshot } from "@/lib/filters";
+import { useValorDiferido } from "@/hooks/use-valor-diferido";
+import { EMPTY_SCOPE, scopeKey, useFilters, type ScopeSnapshot } from "@/lib/filters";
 import { useScopeHistory, useScopeHistoryStore } from "@/lib/scope-history";
 
 const scope = (overrides: Partial<ScopeSnapshot> = {}): ScopeSnapshot => ({
@@ -205,9 +206,7 @@ describe("useScopeHistory", () => {
     });
 
     act(() => {
-      useScopeHistoryStore
-        .getState()
-        .record(scope({ q: "previo" }), useScopeHistoryStore.getState().lastKey!);
+      useScopeHistoryStore.getState().record(scope({ q: "previo" }), useScopeHistoryStore.getState().lastKey!);
     });
 
     await act(async () => {
@@ -236,6 +235,75 @@ describe("useScopeHistory", () => {
     await waitFor(() => expect(onUrlUpdate).toHaveBeenCalledTimes(1));
     expect(onUrlUpdate.mock.calls[0][0].searchParams.get("q")).toBe("rehecho");
     expect(useScopeHistoryStore.getState().future).toHaveLength(0);
+  });
+
+  describe("la búsqueda tecleada", () => {
+    /**
+     * El historial observa la URL, así que apila lo que llega a ella. La
+     * búsqueda de la barra escribía en cada tecla: «sap» eran tres entradas de
+     * deshacer. Con la espera de la barra (`useValorDiferido`) llega sólo el
+     * valor aplicado.
+     *
+     * Espera corta y relojes reales a propósito. Los 300 ms ya los fijan
+     * `use-valor-diferido.test.ts` y el test de la barra; aquí importa cuántas
+     * entradas se apilan. La cola con la que nuqs escribe la URL es global:
+     * cada test espera a que su última escritura llegue a la URL, porque un
+     * vaciado pendiente caería sobre los hooks del test siguiente.
+     */
+    const ESPERA_MS = 40;
+    const montar = (conEspera: boolean) => {
+      const alEscribirUrl = vi.fn();
+      const hook = renderHook(
+        () => {
+          const filters = useFilters();
+          const historial = useScopeHistory();
+          const busqueda = useValorDiferido(filters.q, filters.setQ, ESPERA_MS);
+          return { filters, historial, escribir: conEspera ? busqueda.cambiar : filters.setQ };
+        },
+        // Con memoria: sin ella el adaptador de pruebas vuelve a la URL inicial
+        // en cuanto nuqs vacía su cola, y el ámbito olvida lo escrito.
+        { wrapper: withNuqsTestingAdapter({ searchParams: "", hasMemory: true, onUrlUpdate: alEscribirUrl }) },
+      );
+      /** Espera a que `q` haya llegado a la URL, no sólo al estado. */
+      const enLaUrl = (q: string) =>
+        waitFor(() => expect(alEscribirUrl.mock.calls.at(-1)?.[0].searchParams.get("q")).toBe(q));
+      return { ...hook, enLaUrl };
+    };
+
+    /**
+     * Con cuerpo de bloque a propósito: el `setQ` de nuqs devuelve una promesa,
+     * y un `act` que la recibe se trata como asíncrono sin `await`, lo que deja
+     * el entorno de `act` roto para el resto del fichero.
+     */
+    const teclear = (escribir: (valor: string) => void, valor: string) =>
+      act(() => {
+        escribir(valor);
+      });
+
+    it("con la espera, «sap» tecleado de corrido es una sola entrada", async () => {
+      const { result, enLaUrl } = montar(true);
+
+      teclear(result.current.escribir, "s");
+      teclear(result.current.escribir, "sa");
+      teclear(result.current.escribir, "sap");
+      await enLaUrl("sap");
+
+      expect(result.current.filters.q).toBe("sap");
+      expect(useScopeHistoryStore.getState().past).toHaveLength(1);
+      // Deshacer vuelve al ámbito de antes de buscar, no a «sa».
+      expect(useScopeHistoryStore.getState().past[0].q).toBe("");
+    });
+
+    it("sin ella, cada tecla era una entrada (el comportamiento que se corrige)", async () => {
+      const { result, enLaUrl } = montar(false);
+
+      for (const valor of ["s", "sa", "sap"]) {
+        teclear(result.current.escribir, valor);
+        await enLaUrl(valor);
+      }
+
+      expect(useScopeHistoryStore.getState().past.map((entrada) => entrada.q)).toEqual(["", "s", "sa"]);
+    });
   });
 
   it("no re-apila el cambio que provocó el propio historial", () => {
