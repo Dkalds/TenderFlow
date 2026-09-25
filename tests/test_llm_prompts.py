@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+import pytest
 
 from llm.prompts import (
     MAX_CONTEXT_CHARS_GENERAL,
@@ -43,8 +46,21 @@ def test_system_prompts_drop_corpus_only_restriction() -> None:
 
 def test_system_general_with_corpus_mentions_citation() -> None:
     prompt = build_system_prompt("general", has_corpus_context=True)
-    assert "[EXP-2024-001]" in prompt
+    assert "entre corchetes" in prompt
     assert "conocimiento general" in prompt
+
+
+@pytest.mark.parametrize("mode", ["general", "comparacion"])
+def test_citation_prompts_carry_no_example_id(mode: str) -> None:
+    """Ningún prompt que pide citar expedientes trae un ID de ejemplo.
+
+    Con «ej: [EXP-2024-001]» en el prompt, nemotron-3-super citaba el ejemplo en
+    vez del expediente real (eval del 2026-09-25). Un token entre corchetes con
+    dígitos es un ID en potencia; los marcadores de pliego ``[doc:N p.M]`` no
+    cuentan, porque llevan «:».
+    """
+    prompt = build_system_prompt(mode, has_corpus_context=True)  # type: ignore[arg-type]
+    assert re.findall(r"\[[^\[\]\s:]*\d[^\[\]\s:]*\]", prompt) == []
 
 
 def test_system_general_without_corpus_flags_no_corpus() -> None:
@@ -219,7 +235,7 @@ def test_sanitize_history_empty() -> None:
 
 def test_build_messages_with_docs_has_context_and_question() -> None:
     system, messages = build_messages("¿Cuál es el importe?", DOCS, ["SAP"])
-    assert "[EXP-2024-001]" in system  # modo general con corpus
+    assert system == build_system_prompt("general", has_corpus_context=True)
     assert messages[-1]["role"] == "user"
     # El corpus externo se delimita para que sus instrucciones no prevalezcan
     # sobre el prompt del sistema ni sobre la pregunta real del usuario.
