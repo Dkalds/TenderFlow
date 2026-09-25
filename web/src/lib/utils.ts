@@ -1,5 +1,29 @@
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+/**
+ * `twMerge` con la escala tipográfica propia de `globals.css` (`--text-tf-*`).
+ *
+ * Sin configurar, tailwind-merge solo reconoce como tamaño los de Tailwind
+ * (`text-xs`, `text-sm`…) y toma cualquier otro `text-*` por un color. Veía
+ * `cn("text-tf-body", "text-muted-foreground")` como dos colores en conflicto y
+ * se quedaba con el último: el tamaño desaparecía y el texto heredaba el del
+ * padre. Le pasaba a todo sitio donde el tamaño compartía `cn()` con un color:
+ * el path de fases, las cifras de la ficha y de la tarjeta del tablero, las
+ * listas de /empresas. Declarados como tamaños, conviven con el color y se
+ * resuelven contra `text-sm` y compañía como cualquier otro tamaño: gana el
+ * último.
+ *
+ * Un paso nuevo de la escala tiene que entrar también aquí; el test de `cn`
+ * lee `globals.css` y falla si falta alguno.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ["tf-micro", "tf-meta", "tf-body", "tf-lede", "tf-title", "tf-hero"],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

@@ -65,9 +65,9 @@ def test_tecnologia_va_por_el_indice_parcial():
 
     Sin el GIN de la expresión, el ``&&`` a solas es un Seq Scan de ~870 MB por
     cada consulta del ámbito SAP; con la guarda, Postgres va por
-    ``idx_lic_tecnologia`` y evalúa el ``&&`` sobre las filas etiquetadas. Va
-    dentro del paréntesis para que el fragmento siga siendo una sola conjunción
-    allí donde se pegue.
+    ``idx_lic_tecnologia`` (o por el cubriente de ``v144``) y evalúa el ``&&``
+    sobre las filas etiquetadas. Va dentro del paréntesis para que el fragmento
+    siga siendo una sola conjunción allí donde se pegue.
     """
     where, _ = build_licitaciones_where(LicitacionesFilters(tecnologia="SAP"))
     assert "(tecnologia IS NOT NULL AND string_to_array(" in where

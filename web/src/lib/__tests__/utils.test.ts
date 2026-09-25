@@ -3,6 +3,10 @@
  *
  * Covers: cn, formatCurrency, formatNumber, formatPercent, formatDate, truncate
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, it, expect } from "vitest";
 import {
   EMPTY,
@@ -55,6 +59,48 @@ describe("cn", () => {
   it("preserves non-conflicting classes from both arguments", () => {
     const result = cn("flex items-center", "gap-2 text-sm");
     expect(result).toBe("flex items-center gap-2 text-sm");
+  });
+
+  describe("escala tipográfica tf-*", () => {
+    it("conserva el tamaño tf-* junto a un color de texto", () => {
+      // Regresión: tailwind-merge tomaba `text-tf-body` por un color y lo
+      // descartaba en favor del color que venía después. El path de fases y las
+      // cifras de la ficha de oportunidad se pintaban con el tamaño del padre.
+      expect(cn("text-tf-body", "text-muted-foreground")).toBe("text-tf-body text-muted-foreground");
+      // Y al revés: con el color primero, lo que desaparecía era el color.
+      expect(cn("text-muted-foreground", "text-tf-body")).toBe("text-muted-foreground text-tf-body");
+    });
+
+    it("conserva el tamaño cuando el color llega condicionado y arbitrario", () => {
+      // La forma real de la ficha y la tarjeta: el ámbar solo cuando falta el importe.
+      const sinImporte = true;
+      expect(cn("font-mono text-tf-lede leading-none", sinImporte && "text-[hsl(var(--warning))]")).toBe(
+        "font-mono text-tf-lede leading-none text-[hsl(var(--warning))]",
+      );
+    });
+
+    it("deduplica dos pasos de la escala (gana el último)", () => {
+      expect(cn("text-tf-meta", "text-tf-body")).toBe("text-tf-body");
+    });
+
+    it("resuelve un paso tf-* contra los tamaños de Tailwind como cualquier tamaño", () => {
+      expect(cn("text-sm", "text-tf-meta")).toBe("text-tf-meta");
+      expect(cn("text-tf-meta", "text-sm")).toBe("text-sm");
+    });
+
+    it("reconoce todos los pasos que declara globals.css", () => {
+      // Un paso nuevo en la hoja que no entre en la configuración de `cn`
+      // volvería a perderse junto a cualquier color, sin que nada avise.
+      const css = readFileSync(
+        path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../app/globals.css"),
+        "utf8",
+      );
+      const pasos = [...css.matchAll(/--text-(tf-[a-z]+):/g)].map((m) => m[1]);
+      expect(pasos.length).toBeGreaterThan(0);
+      for (const paso of pasos) {
+        expect(cn(`text-${paso}`, "text-foreground"), paso).toBe(`text-${paso} text-foreground`);
+      }
+    });
   });
 });
 
