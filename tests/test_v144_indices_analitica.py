@@ -1,4 +1,4 @@
-"""v142: los índices cubrientes de la analítica de Mercado y lo que tienen que cubrir.
+"""v144: los índices cubrientes de la analítica de Mercado y lo que tienen que cubrir.
 
 Dos bloques, los dos sin base de datos:
 
@@ -24,7 +24,7 @@ import pytest
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 
-_MIGRACION = "db.alembic.versions.v142_lic_indices_analitica"
+_MIGRACION = "db.alembic.versions.v144_lic_indices_analitica"
 _ESQUEMA = Path(__file__).resolve().parents[1] / "docs" / "database-schema.md"
 
 
@@ -52,8 +52,8 @@ def _sql_emitido(funcion: str, *, dialecto: str = "postgresql") -> list[str]:
 
 def test_cuelga_de_la_cabeza_anterior() -> None:
     modulo = _migracion()
-    assert modulo.revision == "v142_lic_indices_analitica"
-    assert modulo.down_revision == "v141_tasas_anulacion_organo"
+    assert modulo.revision == "v144_lic_indices_analitica"
+    assert modulo.down_revision == "v143_lic_busqueda_plegada_trgm"
 
 
 def test_upgrade_construye_sin_bloquear_y_sin_morir_por_timeout() -> None:

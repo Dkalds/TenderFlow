@@ -10,9 +10,10 @@ import type { RangoPeriodo } from "../_lib/periodo";
  * Lo que fija este suite:
  *
  * 1. **El periodo vive en la URL y llega al backend.** El selector escribe
- *    `?periodo=` con `replace` conservando el resto del ámbito, y la ventana
- *    que se le pide a `GET /pursuits/metrics` sale de ahí. El histórico —el
- *    valor por defecto— no ensucia el enlace y viaja sin `period_from`.
+ *    `?periodo=` sin navegar —ni router ni petición RSC— conservando el resto
+ *    del ámbito, y la ventana que se le pide a `GET /pursuits/metrics` sale de
+ *    ahí. El histórico —el valor por defecto— no ensucia el enlace y viaja sin
+ *    `period_from`.
  * 2. **La ventana la declara el payload**, no la elección: se pinta
  *    `period_from`/`period_to` tal como los devolvió el backend, que es lo
  *    único que dice de verdad sobre qué se calculó.
@@ -22,15 +23,9 @@ import type { RangoPeriodo } from "../_lib/periodo";
  *    el backend, en vez de un porcentaje sobre dos casos.
  */
 
-const navegacion = vi.hoisted(() => ({
-  replace: vi.fn(),
-  push: vi.fn(),
-  search: new URLSearchParams(),
-}));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: navegacion.replace, push: navegacion.push }),
-  useSearchParams: () => navegacion.search,
-}));
+// URL de jsdom y el doble de `next/navigation` que la lee como Next: el
+// periodo se escribe sin navegar y la vista tiene que enterarse igual.
+vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 
 const backend = vi.hoisted(() => ({
   data: undefined as unknown,
@@ -45,6 +40,11 @@ vi.mock("../_hooks/use-metricas-periodo", () => ({
 }));
 
 import Vista from "../_components/rendimiento-view";
+import { irA, router } from "@/test/navegacion-superficial";
+
+function query(): URLSearchParams {
+  return new URLSearchParams(window.location.search);
+}
 
 const METRICS: PursuitMetrics = {
   organization_id: 1,
@@ -98,7 +98,7 @@ const METRICS: PursuitMetrics = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  navegacion.search = new URLSearchParams("vista=rendimiento");
+  irA("/oportunidades?vista=rendimiento");
   backend.data = METRICS;
   backend.isPending = false;
   backend.rangos = [];
@@ -117,28 +117,35 @@ describe("RendimientoView · periodo", () => {
     expect(screen.getByText("Histórico completo de la organización activa")).toBeInTheDocument();
   });
 
-  it("elegir «Este año» lo escribe en la URL sin perder la vista", () => {
+  it("elegir «Este año» lo escribe en la URL sin navegar ni perder la vista", () => {
+    const entradas = window.history.length;
     render(<Vista />);
     fireEvent.click(screen.getByRole("button", { name: "Este año" }));
 
-    expect(navegacion.replace).toHaveBeenCalledTimes(1);
-    const destino = navegacion.replace.mock.calls[0][0] as string;
-    expect(destino).toContain("periodo=anio");
-    expect(destino).toContain("vista=rendimiento");
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
+    expect(query().get("periodo")).toBe("anio");
+    expect(query().get("vista")).toBe("rendimiento");
+    expect(window.history.length).toBe(entradas);
+    // `useSearchParams` ya la ve: el botón queda pulsado y la ventana nueva
+    // —desde el 1 de enero— es la que se le pide al backend.
+    expect(screen.getByRole("button", { name: "Este año" })).toHaveAttribute("aria-pressed", "true");
+    expect(backend.rangos.at(-1)?.desde).toMatch(/^\d{4}-01-01T00:00:00\.000Z$/);
   });
 
   it("volver al histórico quita el parámetro en vez de escribirlo", () => {
-    navegacion.search = new URLSearchParams("vista=rendimiento&periodo=anio");
+    irA("/oportunidades?vista=rendimiento&periodo=anio");
     render(<Vista />);
     fireEvent.click(screen.getByRole("button", { name: "Histórico" }));
 
-    const destino = navegacion.replace.mock.calls[0][0] as string;
-    expect(destino).not.toContain("periodo=");
-    expect(destino).toContain("vista=rendimiento");
+    expect(query().has("periodo")).toBe(false);
+    expect(query().get("vista")).toBe("rendimiento");
+    expect(screen.getByRole("button", { name: "Histórico" })).toHaveAttribute("aria-pressed", "true");
+    expect(backend.rangos.at(-1)).toEqual({ desde: null, hasta: null });
   });
 
   it("con `?periodo=12m` la ventana llega al backend y el botón queda pulsado", () => {
-    navegacion.search = new URLSearchParams("periodo=12m");
+    irA("/oportunidades?periodo=12m");
     render(<Vista />);
 
     const rango = backend.rangos.at(-1)!;
@@ -151,7 +158,7 @@ describe("RendimientoView · periodo", () => {
   });
 
   it("la ventana que se enseña es la que devolvió el backend", () => {
-    navegacion.search = new URLSearchParams("periodo=anio");
+    irA("/oportunidades?periodo=anio");
     backend.data = { ...METRICS, period_from: "2026-01-01T00:00:00Z", period_to: null };
     render(<Vista />);
 

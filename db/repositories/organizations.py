@@ -26,7 +26,23 @@ class OrganizationRepository:
     """Queries finas para el scope colaborativo."""
 
     def ensure_personal_organization(self, user_id: int) -> dict[str, Any]:
-        """Devuelve o crea la organización personal y su membresía owner."""
+        """Devuelve o crea la organización personal y su membresía owner.
+
+        **Camino rápido de solo lectura.** Se llama en cada petición que no
+        trae ``organization_id`` (el prefetch del servidor, o el cliente antes
+        de conocer su organización activa), y hasta 2026-09 abría siempre una
+        transacción de escritura con un ``INSERT … ON CONFLICT DO NOTHING``:
+        unos cinco viajes para, casi siempre, no escribir nada. Ahora primero
+        se lee la organización personal con su rol por el pool de lectura (un
+        viaje) y la escritura solo corre si falta algo. El resultado es el
+        mismo en los dos caminos: si la fila existe con membresía activa, la
+        escritura no habría cambiado nada y habría devuelto esa misma fila; si
+        no, se va a la escritura de siempre, que crea lo que falte o falla
+        igual que antes (membresía no activa).
+        """
+        personal = self.personal_organization_if_ready(user_id)
+        if personal is not None:
+            return personal
         now = now_utc_iso()
         with connect() as conn:
             existing = self._personal_for_user(conn, user_id)
@@ -151,6 +167,27 @@ class OrganizationRepository:
             rows = rows_to_dicts(cur)
         return rows[0] if rows else None
 
+    def personal_organization_if_ready(self, user_id: int) -> dict[str, Any] | None:
+        """La organización personal con el rol del usuario, si ya está lista.
+
+        "Lista" es que exista y que el usuario tenga en ella una membresía
+        **activa**: exactamente la fila que devolvería
+        :meth:`ensure_personal_organization` sin escribir nada (mismas
+        columnas que ``_organization_with_role``). ``None`` en cualquier otro
+        caso, y entonces hace falta el camino de escritura.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT o.id, o.name, o.is_personal, m.role, o.created_at "
+                "FROM organizations o JOIN organization_memberships m "
+                "ON m.organization_id = o.id "
+                "WHERE o.personal_owner_user_id = %s AND m.user_id = %s "
+                "AND m.status = 'active'",
+                (user_id, user_id),
+            )
+            rows = rows_to_dicts(cur)
+        return rows[0] if rows else None
+
     def list_for_user(self, user_id: int) -> list[dict[str, Any]]:
         with connect_read() as conn:
             cur = conn.execute(
@@ -162,6 +199,32 @@ class OrganizationRepository:
                 (user_id,),
             )
             return rows_to_dicts(cur)
+
+    def list_for_user_con_personal(self, user_id: int) -> tuple[list[dict[str, Any]], bool]:
+        """:meth:`list_for_user` y, en la misma consulta, si su personal ya está lista.
+
+        El segundo valor es ``True`` si entre las filas está la organización
+        personal **del propio usuario** (``personal_owner_user_id``), no solo
+        una con ``is_personal``: nada impide que alguien sea miembro de la
+        personal de otro. Las filas salen con las mismas columnas y el mismo
+        orden que ``list_for_user``.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT o.id, o.name, o.is_personal, m.role, o.created_at, "
+                "       (o.personal_owner_user_id IS NOT DISTINCT FROM %s) AS es_la_personal "
+                "FROM organization_memberships m "
+                "JOIN organizations o ON o.id = m.organization_id "
+                "WHERE m.user_id = %s AND m.status = 'active' "
+                "ORDER BY o.is_personal DESC, o.name, o.id",
+                (user_id, user_id),
+            )
+            filas = rows_to_dicts(cur)
+        tiene_personal = False
+        for fila in filas:
+            if fila.pop("es_la_personal", False):
+                tiene_personal = True
+        return filas, tiene_personal
 
     def get_for_user(self, organization_id: int, user_id: int) -> dict[str, Any] | None:
         with connect_read() as conn:

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.connection import lecturas_agrupadas
 from observability.logging import get_logger
 from services.analytics.resumen import ResumenHoyFilters, get_resumen_hoy, get_resumen_novedades
 from services.notifications import (
@@ -104,53 +105,62 @@ class MarkAlertsReadRequest(BaseModel):
 async def get_notifications(
     ctx: dict[str, Any] = Depends(require_organization()),
 ) -> NotificationsResult:
+    # Nota de implementación (fuera del docstring: FastAPI lo publica en el
+    # OpenAPI). Cada pestaña pide esta ruta al abrir y en cada evento SSE. Eran
+    # cinco `run_db` en serie, cada uno con su conexión y, con la organización
+    # fijada, su `BEGIN; SET LOCAL` + consulta + `ROLLBACK`: más de quince
+    # viajes y cinco saltos al threadpool. Ahora es un salto, y dentro
+    # `lecturas_agrupadas` hace que todas las lecturas compartan una conexión y
+    # un ámbito: un `BEGIN; SET LOCAL`, una consulta por lectura y un
+    # `ROLLBACK`. El SQL sigue en `db/` (ADR-022): aquí solo se agrupa.
     user_id = _user_id_int(ctx)
     user_key = _user_key(ctx)
     resolved_id = ctx["organization_id"]
 
-    novedades = await run_db(get_resumen_novedades, int(user_id)) if user_id is not None else None
-    hoy = await run_db(get_resumen_hoy, ResumenHoyFilters())
+    def _trabajo() -> NotificationsResult:
+        with lecturas_agrupadas():
+            novedades = get_resumen_novedades(int(user_id)) if user_id is not None else None
+            hoy = get_resumen_hoy(ResumenHoyFilters())
+            samples = novedades.sample if novedades else []
+            candidate_ids = [s.id_externo for s in samples]
+            unread_ids = set(get_unread_ids(user_key, candidate_ids, user_id=user_id))
+            # Alertas in-app (reglas + deadlines) -- Feature A
+            raw_alerts = get_user_alerts(user_key, 30, resolved_id, user_id=user_id)
+            alerts_unread = get_alerts_unread_count(user_key, resolved_id, user_id=user_id)
 
-    samples = novedades.sample if novedades else []
-    candidate_ids = [s.id_externo for s in samples]
-    unread_ids = set(await run_db(get_unread_ids, user_key, candidate_ids, user_id=user_id))
-
-    items = [
-        NotificationItem(
-            id=s.id_externo,
-            titulo=s.titulo,
-            importe=s.importe,
-            organo_contratacion=s.organo_contratacion,
-            read=s.id_externo not in unread_ids,
+        items = [
+            NotificationItem(
+                id=s.id_externo,
+                titulo=s.titulo,
+                importe=s.importe,
+                organo_contratacion=s.organo_contratacion,
+                read=s.id_externo not in unread_ids,
+            )
+            for s in samples
+        ]
+        alerts = [
+            AlertItem(
+                id=int(a["id"]),
+                created_at=a.get("created_at"),
+                type=str(a.get("type", "")),
+                title=a.get("title"),
+                body=a.get("body"),
+                licitacion_id=a.get("licitacion_id"),
+                rule_id=a.get("rule_id"),
+                pursuit_id=a.get("pursuit_id"),
+                read=a.get("read_at") is not None,
+            )
+            for a in raw_alerts
+        ]
+        return NotificationsResult(
+            items=items,
+            unread_count=len(unread_ids),
+            alerts=alerts,
+            alerts_unread_count=alerts_unread,
+            hoy=HoyCounters(**hoy.model_dump()),
         )
-        for s in samples
-    ]
 
-    # Alertas in-app (reglas + deadlines) -- Feature A
-    raw_alerts = await run_db(get_user_alerts, user_key, 30, resolved_id, user_id=user_id)
-    alerts = [
-        AlertItem(
-            id=int(a["id"]),
-            created_at=a.get("created_at"),
-            type=str(a.get("type", "")),
-            title=a.get("title"),
-            body=a.get("body"),
-            licitacion_id=a.get("licitacion_id"),
-            rule_id=a.get("rule_id"),
-            pursuit_id=a.get("pursuit_id"),
-            read=a.get("read_at") is not None,
-        )
-        for a in raw_alerts
-    ]
-    alerts_unread = await run_db(get_alerts_unread_count, user_key, resolved_id, user_id=user_id)
-
-    return NotificationsResult(
-        items=items,
-        unread_count=len(unread_ids),
-        alerts=alerts,
-        alerts_unread_count=alerts_unread,
-        hoy=HoyCounters(**hoy.model_dump()),
-    )
+    return await run_db(_trabajo)
 
 
 @router.post("/read", summary="Marcar novedades como leidas")

@@ -53,7 +53,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from config.settings import settings
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -220,6 +220,25 @@ def validate_session(token: str) -> dict[str, Any] | None:
     }
 
 
+def _revocar_caducada(token_hash: str, now: datetime) -> None:
+    """Revoca una sesión que superó su plazo, para que ninguna renovación la reviva."""
+    with connect() as c:
+        c.execute(
+            "UPDATE sessions SET revoked = 1, revoked_at = %s WHERE token_hash = %s",
+            (now.isoformat(), token_hash),
+        )
+
+
+def _renovar(token_hash: str, now: datetime, renewed: datetime) -> None:
+    """``last_seen_at`` + ``expires_at`` en un ``UPDATE`` que no revive revocadas."""
+    with connect() as c:
+        c.execute(
+            "UPDATE sessions SET last_seen_at = %s, expires_at = %s "
+            "WHERE token_hash = %s AND revoked = 0",
+            (now.isoformat(), renewed.isoformat(), token_hash),
+        )
+
+
 def validate_session_principal(token: str) -> dict[str, Any] | None:
     """Valida la sesión y devuelve sesión + usuario + estado MFA en UNA consulta.
 
@@ -230,16 +249,29 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
     varias décimas de segundo gastadas antes de empezar el trabajo real de la
     petición. Aquí es un SELECT con dos LEFT JOIN.
 
+    **La lectura va por el pool de lectura** (autocommit): un viaje. Hasta
+    2026-09 iba por el de escritura, con su ``BEGIN`` y su ``COMMIT``: tres
+    viajes en cada petición autenticada, aunque casi nunca hubiera nada que
+    escribir. Las dos escrituras posibles —revocar por caducidad y la
+    renovación con throttle— van aparte, al pool de escritura, **solo cuando
+    tocan**: como mucho una vez por minuto y sesión. Separarlas no cambia la
+    semántica: la lectura y el ``UPDATE`` nunca fueron atómicos (un ``SELECT``
+    sin ``FOR UPDATE`` en ``READ COMMITTED``), y lo que impide que la
+    renovación reviva una sesión revocada entre medias es el ``AND revoked =
+    0`` del propio ``UPDATE``, que se conserva. Los dos pools apuntan a la
+    misma base de datos, así que la lectura ve cualquier revocación ya
+    confirmada. No hay caché de sesiones en proceso a propósito: retrasaría la
+    revocación.
+
     Además lee ``totp_secrets.confirmed`` sin descifrar el secreto:
     ``is_totp_required`` pasaba por ``get_totp_secret``, que descifra el TOTP
     entero para acabar mirando un booleano.
 
     Devuelve ``None`` si la sesión no existe, está revocada, superó su plazo de
-    inactividad (``expires_at``) o el techo absoluto (en ambos casos la revoca
-    en la misma transacción, para que ninguna renovación posterior la reviva)
-    o su usuario está desactivado. El llamador no distingue entre esos casos a
-    propósito: todos son "sesión inválida" y detallarlos filtra si la cuenta
-    existe.
+    inactividad (``expires_at``) o el techo absoluto (en ambos casos la revoca,
+    para que ninguna renovación posterior la reviva) o su usuario está
+    desactivado. El llamador no distingue entre esos casos a propósito: todos
+    son "sesión inválida" y detallarlos filtra si la cuenta existe.
 
     Si la sesión es válida y pasó el throttle, renueva ``expires_at`` a
     ``min(now + ventana, techo)`` en el mismo ``UPDATE`` de ``last_seen_at``.
@@ -247,7 +279,7 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
     token_hash = _hash_token(token)
     now = datetime.now(UTC)
 
-    with connect() as c:
+    with connect_read() as c:
         row = c.execute(
             "SELECT s.user_id, s.created_at, s.expires_at, s.revoked, s.ip, "
             "       s.last_seen_at, s.mfa_verified_at, "
@@ -259,64 +291,55 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
             "WHERE s.token_hash = %s",
             (token_hash,),
         ).fetchone()
-        if row is None:
-            return None
+    if row is None:
+        return None
 
-        (
-            user_id,
-            created_at,
-            expires_at,
-            revoked,
-            ip,
-            last_seen_at,
-            mfa_verified_at,
-            u_id,
-            email,
-            display_name,
-            is_admin,
-            deactivated_at,
-            totp_confirmed,
-        ) = row
+    (
+        user_id,
+        created_at,
+        expires_at,
+        revoked,
+        ip,
+        last_seen_at,
+        mfa_verified_at,
+        u_id,
+        email,
+        display_name,
+        is_admin,
+        deactivated_at,
+        totp_confirmed,
+    ) = row
 
-        if revoked:
-            return None
+    if revoked:
+        return None
 
-        try:
-            created = _as_utc(created_at)
-            exp = _as_utc(expires_at)
-            last_seen = _as_utc(last_seen_at) if last_seen_at else None
-        except Exception:
-            # Camino de autenticación: un fallo al interpretar las marcas de
-            # tiempo se presenta como "sesión inválida", indistinguible para el
-            # usuario de un token caducado. Queda constancia en el log.
-            log.warning("session_validation_failed", exc_info=True)
-            return None
+    try:
+        created = _as_utc(created_at)
+        exp = _as_utc(expires_at)
+        last_seen = _as_utc(last_seen_at) if last_seen_at else None
+    except Exception:
+        # Camino de autenticación: un fallo al interpretar las marcas de
+        # tiempo se presenta como "sesión inválida", indistinguible para el
+        # usuario de un token caducado. Queda constancia en el log.
+        log.warning("session_validation_failed", exc_info=True)
+        return None
 
-        # Plazo de inactividad o techo absoluto: fuera, aunque el otro plazo
-        # siga vivo. Se revoca para que la fila no pueda volver a validarse
-        # nunca (una fecha se puede reescribir; la revocación es definitiva).
-        if now > exp or now > _absolute_ceiling(created):
-            c.execute(
-                "UPDATE sessions SET revoked = 1, revoked_at = %s WHERE token_hash = %s",
-                (now.isoformat(), token_hash),
-            )
-            return None
+    # Plazo de inactividad o techo absoluto: fuera, aunque el otro plazo
+    # siga vivo. Se revoca para que la fila no pueda volver a validarse
+    # nunca (una fecha se puede reescribir; la revocación es definitiva).
+    if now > exp or now > _absolute_ceiling(created):
+        _revocar_caducada(token_hash, now)
+        return None
 
-        # Usuario inexistente o desactivado: la sesión ya no vale.
-        if u_id is None or deactivated_at is not None:
-            return None
+    # Usuario inexistente o desactivado: la sesión ya no vale.
+    if u_id is None or deactivated_at is not None:
+        return None
 
-        stale = (
-            last_seen is None or (now - last_seen).total_seconds() >= _LAST_SEEN_THROTTLE_SECONDS
-        )
-        if stale:
-            renewed = _renewed_expiry(now, created, _window_in_effect(exp, last_seen))
-            c.execute(
-                "UPDATE sessions SET last_seen_at = %s, expires_at = %s "
-                "WHERE token_hash = %s AND revoked = 0",
-                (now.isoformat(), renewed.isoformat(), token_hash),
-            )
-            expires_at = renewed.isoformat()
+    stale = last_seen is None or (now - last_seen).total_seconds() >= _LAST_SEEN_THROTTLE_SECONDS
+    if stale:
+        renewed = _renewed_expiry(now, created, _window_in_effect(exp, last_seen))
+        _renovar(token_hash, now, renewed)
+        expires_at = renewed.isoformat()
 
     return {
         "user_id": user_id,

@@ -124,7 +124,7 @@ export async function apiMutate<T>(
       throw new ApiError(401, "Session expired");
     }
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, error.detail ?? error.title ?? "Unknown error");
+    throw new ApiError(res.status, error.detail ?? error.title ?? "Unknown error", tipoDeProblema(error));
   }
 
   return readJsonBody<T>(res);
@@ -142,6 +142,20 @@ async function readJsonBody<T>(res: Response): Promise<T> {
 }
 
 /**
+ * ¿El error es una petición cancelada con su `AbortSignal`, y no un fallo?
+ *
+ * React Query aborta el `signal` que entrega a cada `queryFn` cuando la
+ * consulta se queda sin observadores con la petición en vuelo —un filtro que
+ * cambia, una pantalla que se desmonta—, y `fetch` rechaza entonces con un
+ * `DOMException` de nombre `AbortError`. Nadie falló: quien lo reciba no debe
+ * avisar, ni reportar, ni reintentar. Se mira el nombre y no la clase porque
+ * `DOMException` no hereda de `Error` en todos los motores.
+ */
+export function esAborto(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "AbortError";
+}
+
+/**
  * Lightweight fetch wrapper that uses the same auth pattern as the typed client.
  * Use this for dynamic URLs that can't use the typed openapi-fetch client.
  * 401 handling is done centrally here — no need to duplicate in callers.
@@ -150,11 +164,15 @@ async function readJsonBody<T>(res: Response): Promise<T> {
  * adjunta `X-CSRF-Token` igual que `apiMutate` — hasta 2026-08 cualquier
  * mutación enrutada por aquí viajaba sin token y el backend la rechazaba (o
  * peor: pasaba solo por autenticarse con API key en vez de cookie).
+ *
+ * Cancelación: `options.signal` llega tal cual a `fetch`. Las consultas de
+ * React Query deben pasar el `signal` de su `queryFn`: sin él, una petición que
+ * ya nadie espera —la del filtro anterior— sigue ocupando la API hasta el
+ * final. Una cancelación se propaga siempre como `AbortError` (ver
+ * {@link esAborto}), nunca como `ApiError`. No hay timeout por defecto a
+ * propósito: los exports pueden tardar minutos.
  */
-export async function fetchWithAuth<T>(
-  url: string,
-  options?: RequestInit,
-): Promise<T> {
+export async function fetchWithAuth<T>(url: string, options?: RequestInit): Promise<T> {
   const method = (options?.method ?? "GET").toUpperCase();
   const isMutation = method !== "GET" && method !== "HEAD";
   const csrf = isMutation ? getCsrfToken() : null;
@@ -176,7 +194,11 @@ export async function fetchWithAuth<T>(
     // mensaje y `title` el genérico. Los cortes de middleware (429, 413) solo
     // garantizan `title`, así que se usa como respaldo.
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`);
+    // Si la cancelación llegó mientras se leía el cuerpo del error, el `catch`
+    // de arriba se la ha tragado: se relanza ella y no un `ApiError(5xx)`, que
+    // se reintentaría y acabaría en aviso por una respuesta que ya nadie quiere.
+    options?.signal?.throwIfAborted();
+    throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`, tipoDeProblema(body));
   }
 
   return readJsonBody<T>(res);
@@ -186,10 +208,23 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /**
+     * `type` del problem+json (RFC 7807) cuando la API lo manda. Distingue
+     * errores con el mismo status que piden reacciones distintas: un 503 por
+     * consulta cancelada no se reintenta y un 503 de arranque en frío sí
+     * (ver `lib/query-feedback.ts`).
+     */
+    public tipo?: string,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/** El `type` de un cuerpo problem+json, si lo trae y es texto. */
+function tipoDeProblema(cuerpo: unknown): string | undefined {
+  const tipo = typeof cuerpo === "object" && cuerpo !== null ? (cuerpo as { type?: unknown }).type : undefined;
+  return typeof tipo === "string" ? tipo : undefined;
 }
 
 /**
@@ -212,7 +247,7 @@ export async function fetchBlobWithAuth(url: string, options?: RequestInit): Pro
       redirectToLogin();
     }
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`);
+    throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`, tipoDeProblema(body));
   }
 
   return res.blob();
@@ -242,6 +277,9 @@ export type ApiGetPath = keyof {
  * Las llamadas con ruta dinámica (`/licitaciones/{id}`) siguen usando
  * `fetchWithAuth`; para esas, tipá el retorno con `components["schemas"][...]`
  * vía `@/lib/api-types`, nunca con una interfaz local.
+ *
+ * `init.signal` viaja en la `Request` que construye `openapi-fetch`: desde una
+ * `queryFn`, pasá el `signal` de React Query igual que con `fetchWithAuth`.
  *
  * Migración por olas: `src/hooks/**` ya está migrado; `src/app/**`,
  * `src/components/**` y `src/lib/**` siguen pendientes.
@@ -277,6 +315,7 @@ export async function apiGet<P extends ApiGetPath>(
     throw new ApiError(
       response.status,
       problem.detail ?? problem.title ?? `API error: ${response.status}`,
+      tipoDeProblema(error),
     );
   }
   return data as ApiGetResult<P>;

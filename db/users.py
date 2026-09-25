@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 
 
 def get_or_create_oauth_user(
@@ -72,8 +72,15 @@ def create_user(
 
 
 def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[str, Any] | None:
-    """Devuelve un dict con los datos del usuario o None."""
-    with connect() as c:
+    """Devuelve un dict con los datos del usuario o None.
+
+    Por el pool de lectura (autocommit: un viaje) y no por el de escritura
+    (BEGIN, SELECT y COMMIT: tres): lo llaman cada petición con API key
+    (``api/auth.py``) y ``/notifications``. ``connect()`` no es reentrante
+    —siempre abre su propia transacción—, así que antes tampoco veía escrituras
+    sin confirmar de quien lo llamara: lee exactamente lo mismo.
+    """
+    with connect_read() as c:
         sql = "SELECT * FROM users WHERE id = %s"
         if not include_deactivated:
             sql += " AND deactivated_at IS NULL"

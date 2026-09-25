@@ -46,26 +46,35 @@ def test_estado_multivalor_y_espacios_sobrantes():
 
 
 def test_tecnologia_casa_contra_el_csv_de_la_fila():
-    """No es ``=``: la columna guarda ``"SAP,SALESFORCE"`` en una sola fila."""
+    """No es ``=``: la columna guarda ``"SAP,SALESFORCE"`` en una sola fila.
+
+    Desde 2026-09 es solapamiento de arrays (``&&``) sobre la expresión
+    normalizada del CSV, no un ``unnest`` por fila: misma semántica, y una forma
+    que un índice GIN sobre esa expresión puede resolver.
+    """
     where, params = build_licitaciones_where(LicitacionesFilters(tecnologia="SAP"))
-    assert "unnest(string_to_array(" in where
-    assert "trim(_tec.code) IN (%s)" in where
+    assert "string_to_array(replace(COALESCE(tecnologia, ''), ' ', ''), ',')" in where
+    assert "&& ARRAY[%s]::text[]" in where
+    assert "unnest" not in where
+    assert "tecnologia = " not in where
     assert params == ["SAP"]
 
 
 def test_tecnologia_va_por_el_indice_parcial():
-    """La guarda ``IS NOT NULL`` es lo que deja usar ``idx_lic_tecnologia``.
+    """La guarda ``IS NOT NULL`` deja usar los índices btree de tecnología.
 
-    Con el ``EXISTS`` a solas Postgres lo evaluaba fila a fila sobre la tabla
-    entera: un Seq Scan de ~870 MB por cada consulta del ámbito SAP. La guarda va
-    dentro del paréntesis para que el fragmento siga siendo una sola conjunción
-    allí donde se pegue.
+    Sin el GIN de la expresión, el ``&&`` a solas es un Seq Scan de ~870 MB por
+    cada consulta del ámbito SAP; con la guarda, Postgres va por
+    ``idx_lic_tecnologia`` (o por el cubriente de ``v144``) y evalúa el ``&&``
+    sobre las filas etiquetadas. Va dentro del paréntesis para que el fragmento
+    siga siendo una sola conjunción allí donde se pegue.
     """
     where, _ = build_licitaciones_where(LicitacionesFilters(tecnologia="SAP"))
-    assert "(tecnologia IS NOT NULL AND EXISTS (" in where
+    assert "(tecnologia IS NOT NULL AND string_to_array(" in where
 
     where, _ = build_licitaciones_where(LicitacionesFilters(tecnologia="SAP,ORACLE"), alias="l")
-    assert "(l.tecnologia IS NOT NULL AND EXISTS (" in where
+    assert "(l.tecnologia IS NOT NULL AND string_to_array(" in where
+    assert where.endswith("&& ARRAY[%s,%s]::text[])")
 
 
 class _CursorVacio:
@@ -115,8 +124,17 @@ def _sql_de(llamada: Callable[[AggregateRepository], object], fila: tuple[int, .
         lambda r: r.tecnologias_evolucion(LicitacionesFilters(), top_techs=5),
         lambda r: r.tecnologia_detalle_items(LicitacionesFilters(), tech_codes=["SAP"], limit=5),
         lambda r: r.tecnologia_detalle_kpis(LicitacionesFilters(), tech_codes=["SAP"]),
+        lambda r: r.tecnologias_mas_frecuentes(5),
     ],
-    ids=["entries", "cross_organo", "cross_geo", "evolucion", "detalle_items", "detalle_kpis"],
+    ids=[
+        "entries",
+        "cross_organo",
+        "cross_geo",
+        "evolucion",
+        "detalle_items",
+        "detalle_kpis",
+        "mas_frecuentes",
+    ],
 )
 def test_los_explode_de_tecnologia_van_por_el_indice_parcial(llamada):
     """Sin filtro de tecnología no hay ``EXISTS`` que aporte la guarda: la pone

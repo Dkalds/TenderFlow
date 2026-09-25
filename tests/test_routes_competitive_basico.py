@@ -5,6 +5,19 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _cache_de_respuestas_vacia():
+    """Renovaciones, bajas, cuota y HHI se sirven de una caché de proceso
+    compartida entre usuarios que nadie vacía entre tests: sin esto, estos
+    tests de "BD vacía" podrían recibir la respuesta que otro módulo dejó con
+    datos para la misma URL. Se vacía también al salir."""
+    from shared.cache import reset_cache
+
+    reset_cache("analytics")
+    yield
+    reset_cache("analytics")
+
+
 @pytest.fixture()
 def api_key(api_db):
     """Override de conftest: vincula la key a un usuario real.

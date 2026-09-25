@@ -240,7 +240,10 @@ def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:
     # Mismo camino rápido que `/analytics/overview`: el P75 de importe y el
     # recuento de activas son globales y los deja precalculados el pipeline de
     # ingesta, así que sin filtros esta consulta deja de recorrer la tabla
-    # entera. Sin snapshot (o con filtros) se calcula en vivo como antes.
+    # entera. Sin snapshot (o con filtros) se calcula en vivo como antes. Con un
+    # filtro de solo una tecnología frecuente llega su variante precalculada,
+    # pero esa no trae P75 ni activas (son globales): valen `None` y se calculan
+    # en vivo igual que con cualquier otro filtro.
     snap = read_overview_snapshot_for(repo_filters)
     counts = _repo.overview_para_hoy(
         repo_filters,
@@ -256,10 +259,9 @@ def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:
         vencen_48h=counts["vencen_48h"],
         nuevas_24h=counts["nuevas_24h"],
         total_activas=counts["total_activas"],
-        # `snap` no es None exactamente cuando el ámbito es la tabla entera
-        # (`read_overview_snapshot_for` devuelve None con cualquier filtro), que
-        # es justo el caso en que el P75 del snapshot **es** el que usó el
-        # contador de arriba.
+        # El P75 del snapshot solo existe cuando el ámbito es la tabla entera (la
+        # variante por tecnología lo trae a `None`), que es justo el caso en
+        # que **es** el que usó el contador de arriba.
         importe_p75=snap.importe_p75 if snap is not None else None,
     )
     log.info("analytics_resumen_hoy_done")

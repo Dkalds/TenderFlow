@@ -4,30 +4,25 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ExternalLink, FileDown, X } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
-import { PursuitCommentsThread } from "@/components/pursuits/pursuit-comments";
-import { PursuitEditor } from "@/components/pursuits/pursuit-editor";
-import { PriceScenariosPanel } from "@/components/pursuits/price-scenarios";
 import { PursuitLoteBadge, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
-import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
-import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
-import { SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
-import { ExpedientePanel } from "@/components/pursuits/expediente-panel";
 import { PursuitActivity } from "@/components/pursuits/pursuit-activity";
 import { KitPresentacionPanel } from "@/components/pursuits/kit-presentacion";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { Panel, PanelError, PanelTabs, SectionTitle } from "@/components/console/panel";
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
-import { useOrganizationMembers } from "@/hooks/use-organization";
+import { useActiveOrganizationId, useOrganizationMembers } from "@/hooks/use-organization";
 import { usePursuit } from "@/hooks/use-pursuits";
 import { triggerDownload } from "@/lib/export";
 import { DecisionComite } from "./_components/decision-comite";
 import { FichaDatos } from "./_components/ficha-datos";
+import { FichaEsqueleto } from "./_components/ficha-esqueleto";
 import { PathFases } from "./_components/path-fases";
+import { PrecargaFicha, idDeRuta } from "./_components/precarga-ficha";
 import { ProximaAccion } from "./_components/proxima-accion";
 import { SalidaDeFase } from "./_components/salida-fase";
+import { EditorCompleto, PestanaDiferida, type TabKey } from "./_components/secciones-diferidas";
 
 /**
  * Ficha de la oportunidad — el path de fases primero.
@@ -48,26 +43,41 @@ import { SalidaDeFase } from "./_components/salida-fase";
  * `xl` la ficha se parte: a la izquierda lo que se trabaja, a la derecha los
  * datos y el historial. En móvil vuelve a ser una sola columna, en el orden
  * del diseño.
+ *
+ * Lo que no se ve al entrar (las otras pestañas y el editor completo) llega
+ * bajo demanda (`secciones-diferidas.tsx`), y lo que solo necesita el id de la
+ * URL se pide a la vez que el pursuit en vez de esperarlo (`precarga-ficha.tsx`).
  */
-
-type TabKey = "resumen" | "expediente" | "pliego" | "precio" | "conversacion";
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ id: string }>();
   const { data: pursuit, isPending, error, refetch } = usePursuit(params.id ?? null);
   const [tab, setTab] = React.useState<TabKey>("resumen");
-  // F1.6 — el id de la oportunidad es la clave del objeto etiquetable.
-  const objetoId = pursuit ? String(pursuit.id) : "";
+  const idUrl = idDeRuta(params.id);
+  // F1.6 — el id de la oportunidad es la clave del objeto etiquetable. Mientras
+  // llega el pursuit vale el de la URL, que es el mismo: la petición sale ya.
+  const objetoId = pursuit ? String(pursuit.id) : idUrl != null ? String(idUrl) : "";
   const etiquetas = useEtiquetasDe("oportunidad", objetoId ? [objetoId] : []);
   // El historial guarda ids de actor; los nombres son los de la organización,
-  // la misma lista que ya pide el editor de responsable.
-  const miembros = useOrganizationMembers(pursuit?.organization_id ?? null);
+  // la misma lista que ya pide el editor de responsable. Mientras llega el
+  // pursuit se piden los de la organización activa, que es con la que se
+  // pregunta por él: si fuese de otra, el backend responde 403.
+  const organizacionActiva = useActiveOrganizationId();
+  const miembros = useOrganizationMembers(pursuit?.organization_id ?? organizacionActiva);
+  // Va como primer hijo del `div` raíz en las tres salidas de abajo, y eso es
+  // lo que hace que React no lo desmonte al llegar el pursuit: sus consultas
+  // pasan a los componentes de «Resumen» sin quedarse un instante sin
+  // observador (React Query cancela la petición en vuelo de una consulta que se
+  // queda sin ninguno si su `queryFn` usa el `signal`).
+  const precarga = idUrl != null && (isPending || tab === "resumen") ? <PrecargaFicha pursuitId={idUrl} /> : null;
 
   if (isPending) {
+    // El mismo esqueleto que el `loading.tsx` de la ruta: la página enseña lo
+    // mismo mientras pide la oportunidad (ver `ficha-esqueleto.tsx`).
     return (
-      <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col gap-3 p-4">
-        <Skeleton className="h-24 w-full rounded-xl" />
-        <Skeleton className="h-[360px] w-full rounded-xl" />
+      <div className="contents">
+        {precarga}
+        <FichaEsqueleto />
       </div>
     );
   }
@@ -75,6 +85,7 @@ export default function OpportunityDetailPage() {
   if (error || !pursuit) {
     return (
       <div className="grid h-[calc(100vh-52px)] place-items-center p-10">
+        {precarga}
         <PanelError
           title="No se pudo abrir esta oportunidad"
           detail={error instanceof Error ? error.message : "No encontrada"}
@@ -89,6 +100,7 @@ export default function OpportunityDetailPage() {
 
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
+      {precarga}
       <header className="border-border/60 bg-card/40 flex-none border-b px-4 pt-3.5">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -211,31 +223,13 @@ export default function OpportunityDetailPage() {
               />
               <div className="mt-4">
                 <SectionTitle>Todos los campos</SectionTitle>
-                <PursuitEditor pursuit={pursuit} />
+                <EditorCompleto pursuit={pursuit} />
               </div>
             </div>
           </div>
         )}
 
-        {tab === "expediente" && <ExpedientePanel licitacionId={pursuit.licitacion_id} />}
-
-        {tab === "pliego" && (
-          <>
-            <TenderFactSheetPanel licitacionId={pursuit.licitacion_id} />
-            <GuionOfertaPanel licitacionId={pursuit.licitacion_id} />
-          </>
-        )}
-        {tab === "precio" && (
-          <>
-            <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />
-            <Panel className="mt-4">
-              <SimuladorPuntuacion licitacionId={pursuit.licitacion_id} />
-            </Panel>
-          </>
-        )}
-        {tab === "conversacion" && (
-          <PursuitCommentsThread pursuitId={pursuit.id} className="mx-auto h-full max-w-[760px]" />
-        )}
+        {tab !== "resumen" && <PestanaDiferida tab={tab} pursuit={pursuit} />}
       </div>
     </div>
   );

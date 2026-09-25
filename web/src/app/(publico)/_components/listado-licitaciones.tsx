@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import type { LicitacionPublica } from "@/lib/publico-api";
 import { estadoLabel } from "@/lib/estados";
 import { listaJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaLicitacion } from "@/lib/slug";
 import { formatCurrency } from "@/lib/utils";
+import { EnlacePrecargaIntencion } from "./enlace-precarga-intencion";
 import { plazoPresentacion } from "./plazo";
 
 /**
@@ -20,7 +20,9 @@ import { plazoPresentacion } from "./plazo";
  * La fila entera es el enlace (un rastreador y un dedo agradecen lo mismo:
  * un área de toque grande con un solo destino), y los metadatos del anuncio
  * van como chips en vez de un párrafo corrido — mismo lenguaje visual que la
- * landing. Los valores son los que da el endpoint, tal cual: aquí no se
+ * landing. El enlace se precarga solo ante una intención de abrirlo
+ * (`EnlacePrecargaIntencion`): las fichas son ISR y precargar las cincuenta de
+ * la página al pintarla costaría cincuenta renders en frío. Los valores son los que da el endpoint, tal cual: aquí no se
  * calcula ni se colorea nada (ADR-014).
  *
  * Lo único que se traduce es la **presentación**, que no es derivar dato: el
@@ -61,7 +63,7 @@ export function ListadoLicitaciones({
           const plazo = plazoPresentacion(lic.fecha_limite, ahora);
           return (
             <li key={lic.ref}>
-              <Link
+              <EnlacePrecargaIntencion
                 href={entradas[indice].ruta}
                 className="group focus-visible:ring-ring hover:bg-accent/40 -mx-3 flex items-start justify-between gap-4 rounded-lg px-3 py-4 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none sm:py-5"
               >
@@ -90,7 +92,7 @@ export function ListadoLicitaciones({
                   aria-hidden="true"
                   className="text-muted-foreground group-hover:text-primary mt-1 hidden h-4 w-4 shrink-0 transition-[transform,color] duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5 sm:block"
                 />
-              </Link>
+              </EnlacePrecargaIntencion>
             </li>
           );
         })}

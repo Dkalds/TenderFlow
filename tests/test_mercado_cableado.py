@@ -36,6 +36,21 @@ from services.competitive.mercado import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _cache_de_respuestas_vacia():
+    """``/competitive/hhi`` se sirve de una caché de proceso compartida entre usuarios.
+
+    Nadie la vacía entre tests, y cada test tiene su propio corpus: sin esto,
+    una respuesta que otro test dejó con los mismos filtros se serviría en lugar
+    de la de este. Se vacía también al salir, para no envenenar a los demás.
+    """
+    from shared.cache import reset_cache
+
+    reset_cache("analytics")
+    yield
+    reset_cache("analytics")
+
+
 def _hace(dias: int) -> str:
     return (datetime.now(UTC) - timedelta(days=dias)).strftime("%Y-%m-%d")
 

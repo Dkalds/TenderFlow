@@ -1,4 +1,4 @@
-"""v142: índices cubrientes para la analítica de Mercado y autovacuum de ``licitaciones``.
+"""v144: índices cubrientes para la analítica de Mercado y autovacuum de ``licitaciones``.
 
 Por qué
 -------
@@ -26,14 +26,17 @@ Qué crea
 - ``idx_lic_tecnologia_cubriente``: las mismas columnas para las ~10k filas
   con ``tecnologia``, con el predicado ``WHERE tecnologia IS NOT NULL`` que
   implica la guarda de :func:`db.sql_fragments.tecnologia_en_csv_sql`. Con
-  ``?tecnologia=SAP`` la consulta ya va por ``idx_lic_tecnologia``, pero lee
-  del heap una página por fila etiquetada, repartidas por toda la tabla: 4-7 s
-  cuando no están en caché. Con este índice ya no lee el heap para cada fila.
+  ``?tecnologia=SAP`` la consulta ya va por ``idx_lic_tecnologia`` —o por el
+  GIN de ``v142`` sobre la expresión del ``&&``—, pero lee del heap una página
+  por fila, repartidas por toda la tabla: 4-7 s cuando no están en caché. Con
+  este índice la expresión se evalúa sobre la propia entrada (``tecnologia`` es
+  clave) y no hace falta el heap para cada fila.
 
 ``idx_lic_tecnologia`` **no se toca**: en producción es ``(tecnologia,
 fecha_publicacion) WHERE tecnologia IS NOT NULL`` y la cadena de Alembic (v21)
 lo crea como ``(tecnologia)``, así que un reemplazo no tendría un estado
-anterior único al que volver. Queda como está; el planificador elige.
+anterior único al que volver. Queda como está, igual que el GIN de ``v142``; el
+planificador elige.
 
 Autovacuum
 ----------
@@ -57,15 +60,15 @@ construir sobre ~713k filas pasa de los 30 s del rol, como en ``v101``.
 ``v134``). Después de aplicar, comprobar ``pg_index.indisvalid`` de los dos
 índices y su tamaño con ``pg_relation_size``.
 
-``tests/test_v142_indices_analitica.py`` fija el DDL y comprueba que las
+``tests/test_v144_indices_analitica.py`` fija el DDL y comprueba que las
 agregaciones sin filtros de Mercado no leen ninguna columna fuera de
 :data:`COLUMNAS_CUBIERTAS`: una columna nueva en esas consultas devolvería el
 plan al Seq Scan sin que fallara nada.
 
 DIALECT-GUARDED: solo actúa en Postgres.
 
-Revision ID: v142_lic_indices_analitica
-Revises: v141_tasas_anulacion_organo
+Revision ID: v144_lic_indices_analitica
+Revises: v143_lic_busqueda_plegada_trgm
 Create Date: 2026-09-25
 """
 
@@ -75,8 +78,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "v142_lic_indices_analitica"
-down_revision: str | Sequence[str] | None = "v141_tasas_anulacion_organo"
+revision: str = "v144_lic_indices_analitica"
+down_revision: str | Sequence[str] | None = "v143_lic_busqueda_plegada_trgm"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

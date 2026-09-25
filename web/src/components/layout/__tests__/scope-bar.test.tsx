@@ -10,7 +10,7 @@
  * inertes, pero tampoco se calla si hay filtros activos que no aplican.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { act, render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const {
@@ -20,49 +20,53 @@ const {
   historyRef,
   overviewRef,
   overviewKeyRef,
+  metaEnabledRef,
+  campanaRef,
   setCommandOpen,
   undo,
   redo,
-} = vi.hoisted(
-  () => ({
-    pathnameRef: { current: "/mercado" },
-    filtersRef: {
-      current: {
-        q: "",
-        rango: { desde: null as string | null, hasta: null as string | null },
-        estados: [] as string[],
-        ccaas: [] as string[],
-        tecnologias: [] as string[],
-        importeMin: null as number | null,
-        soloAbiertas: false,
-        procedimientos: [] as string[],
-        provincias: [] as string[],
-        importeMax: null as number | null,
-        setProcedimientos: vi.fn(),
-        setProvincias: vi.fn(),
-        setImporteMax: vi.fn(),
-        setQ: vi.fn(),
-        setRango: vi.fn(),
-        setEstados: vi.fn(),
-        setCcaas: vi.fn(),
-        setTecnologias: vi.fn(),
-        setImporteMin: vi.fn(),
-        setSoloAbiertas: vi.fn(),
-        resetFilters: vi.fn(),
-      },
+} = vi.hoisted(() => ({
+  pathnameRef: { current: "/mercado" },
+  filtersRef: {
+    current: {
+      q: "",
+      rango: { desde: null as string | null, hasta: null as string | null },
+      estados: [] as string[],
+      ccaas: [] as string[],
+      tecnologias: [] as string[],
+      importeMin: null as number | null,
+      soloAbiertas: false,
+      procedimientos: [] as string[],
+      provincias: [] as string[],
+      importeMax: null as number | null,
+      setProcedimientos: vi.fn(),
+      setProvincias: vi.fn(),
+      setImporteMax: vi.fn(),
+      setQ: vi.fn(),
+      setRango: vi.fn(),
+      setEstados: vi.fn(),
+      setCcaas: vi.fn(),
+      setTecnologias: vi.fn(),
+      setImporteMin: vi.fn(),
+      setSoloAbiertas: vi.fn(),
+      resetFilters: vi.fn(),
     },
-    filterParamsRef: { current: {} as Record<string, string> },
-    historyRef: { current: { canUndo: false, canRedo: false } },
-    overviewRef: { current: { data: { total_licitaciones: 1234 }, isLoading: false } },
-    // Clave con la que se pidió el recuento. Su último elemento son los params,
-    // que es lo que hay que poder afirmar: la barra no puede contar con filtros
-    // que la pantalla no aplica.
-    overviewKeyRef: { current: [] as unknown[] },
-    setCommandOpen: vi.fn(),
-    undo: vi.fn(),
-    redo: vi.fn(),
-  }),
-);
+  },
+  filterParamsRef: { current: {} as Record<string, string> },
+  historyRef: { current: { canUndo: false, canRedo: false } },
+  overviewRef: { current: { data: { total_licitaciones: 1234 }, isLoading: false } },
+  // Clave con la que se pidió el recuento. Su último elemento son los params,
+  // que es lo que hay que poder afirmar: la barra no puede contar con filtros
+  // que la pantalla no aplica.
+  overviewKeyRef: { current: [] as unknown[] },
+  // `enabled` con el que se montó la consulta de `/meta/filters`.
+  metaEnabledRef: { current: undefined as boolean | undefined },
+  // Montajes y desmontajes de la campana: cada montaje abre un SSE.
+  campanaRef: { montajes: 0, desmontajes: 0 },
+  setCommandOpen: vi.fn(),
+  undo: vi.fn(),
+  redo: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({ usePathname: () => pathnameRef.current }));
 vi.mock("@/lib/filters", () => ({
@@ -98,8 +102,11 @@ vi.mock("@/lib/api-client", () => ({ fetchWithAuth: vi.fn() }));
 // `test_la_clave_canonica_de_meta_no_ha_cambiado` de abajo lo vigila.
 vi.mock("@tanstack/react-query", () => ({
   keepPreviousData: Symbol("keepPreviousData"),
-  useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
+  useQuery: ({ queryKey, enabled }: { queryKey: unknown[]; enabled?: boolean }) => {
     if (queryKey[0] === "meta") {
+      // Se devuelve el catálogo esté o no habilitada, como haría una caché ya
+      // caliente: lo que se afirma es cuándo se pide, vía `metaEnabledRef`.
+      metaEnabledRef.current = enabled;
       return { data: { estado: [], ccaa: ["Madrid"], tecnologia: ["SAP"], cpv: [] } };
     }
     overviewKeyRef.current = queryKey;
@@ -109,7 +116,20 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@/components/live-region", () => ({ useAnnounceOnChange: vi.fn() }));
 vi.mock("@/components/saved-views-menu", () => ({ SavedViewsMenu: () => null }));
 vi.mock("@/components/export-popover", () => ({ ExportPopover: () => null }));
-vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => null }));
+vi.mock("@/components/notification-bell", async () => {
+  const React = await import("react");
+  return {
+    NotificationBell: () => {
+      React.useEffect(() => {
+        campanaRef.montajes += 1;
+        return () => {
+          campanaRef.desmontajes += 1;
+        };
+      }, []);
+      return React.createElement("span", { "data-testid": "campana" });
+    },
+  };
+});
 
 import { ScopeBar } from "@/components/layout/scope-bar";
 import { marcarAmbitoIntroVista } from "@/components/onboarding/ambito-intro";
@@ -147,6 +167,9 @@ beforeEach(() => {
   historyRef.current = { canUndo: false, canRedo: false };
   overviewRef.current = { data: { total_licitaciones: 1234 }, isLoading: false };
   overviewKeyRef.current = [];
+  metaEnabledRef.current = undefined;
+  campanaRef.montajes = 0;
+  campanaRef.desmontajes = 0;
   filtersRef.current = {
     ...filtersRef.current,
     q: "",
@@ -163,6 +186,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("ScopeBar — filtros del listado (F1.1)", () => {
@@ -519,5 +543,160 @@ describe("ScopeBar — «Sólo abiertas»", () => {
   it("no pinta chip cuando está apagado", () => {
     renderBar();
     expect(screen.queryByText("Sólo abiertas")).not.toBeInTheDocument();
+  });
+});
+
+describe("ScopeBar — búsqueda con espera", () => {
+  /**
+   * La búsqueda escribía en la URL en cada tecla, y cada escritura cambia la
+   * clave de todas las consultas con filtros: en Resumen, siete peticiones por
+   * letra y una entrada de deshacer por letra.
+   */
+  const abrirEditor = () => {
+    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+    return within(screen.getByRole("dialog")).getByLabelText("Buscar licitaciones");
+  };
+
+  it("la búsqueda llega a la URL 300 ms después de la última tecla, no en cada una", () => {
+    renderBar();
+    const campo = abrirEditor();
+    // Sólo `setTimeout`: el popover de Radix ya está abierto y no se toca.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    fireEvent.change(campo, { target: { value: "s" } });
+    fireEvent.change(campo, { target: { value: "sa" } });
+    fireEvent.change(campo, { target: { value: "sap" } });
+    expect(campo).toHaveValue("sap");
+    expect(filtersRef.current.setQ).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(299));
+    expect(filtersRef.current.setQ).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(filtersRef.current.setQ).toHaveBeenCalledTimes(1);
+    expect(filtersRef.current.setQ).toHaveBeenCalledWith("sap");
+  });
+
+  it("Enter la aplica en el acto, sin esperar", () => {
+    renderBar();
+    const campo = abrirEditor();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    fireEvent.change(campo, { target: { value: "obras" } });
+    fireEvent.keyDown(campo, { key: "Enter" });
+    expect(filtersRef.current.setQ).toHaveBeenCalledWith("obras");
+
+    // Y no queda una segunda escritura pendiente.
+    act(() => vi.advanceTimersByTime(1000));
+    expect(filtersRef.current.setQ).toHaveBeenCalledTimes(1);
+  });
+
+  it("cerrar el editor antes de que venza la espera no pierde lo tecleado", () => {
+    renderBar();
+    const campo = abrirEditor();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    fireEvent.change(campo, { target: { value: "sap" } });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(filtersRef.current.setQ).toHaveBeenCalledWith("sap");
+  });
+
+  it("si la búsqueda cambia fuera (deshacer, limpiar, un enlace), el campo se pone a su altura", () => {
+    const { rerender } = renderBar();
+    const campo = abrirEditor();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    fireEvent.change(campo, { target: { value: "sap" } });
+    filtersRef.current = { ...filtersRef.current, q: "obras" };
+    rerender(
+      <TooltipProvider>
+        <ScopeBar />
+      </TooltipProvider>,
+    );
+    expect(within(screen.getByRole("dialog")).getByLabelText("Buscar licitaciones")).toHaveValue("obras");
+
+    // Lo que se estaba tecleando no pisa el valor que llegó de fuera.
+    act(() => vi.advanceTimersByTime(1000));
+    expect(filtersRef.current.setQ).not.toHaveBeenCalled();
+  });
+});
+
+describe("ScopeBar — la campana se monta una sola vez", () => {
+  /**
+   * Cada rama de la barra pintaba su propia campana. Al pasar de un espacio
+   * con ámbito a otro sin él, React la desmontaba: cerraba el SSE de
+   * `/licitaciones/stream`, abría otro y perdía el contador en vivo.
+   */
+  const conRuta = (ruta: string, rerender: (ui: React.ReactElement) => void) => {
+    pathnameRef.current = ruta;
+    rerender(
+      <TooltipProvider>
+        <ScopeBar />
+      </TooltipProvider>,
+    );
+  };
+
+  it("sobrevive al paso entre pantallas con y sin ámbito", () => {
+    const { rerender } = renderBar(); // /mercado: con ámbito
+    expect(screen.getByRole("button", { name: "+ Añadir" })).toBeInTheDocument();
+    const campana = screen.getByTestId("campana");
+
+    conRuta("/mi-perfil", rerender); // sin ámbito
+    expect(screen.queryByRole("button", { name: "+ Añadir" })).not.toBeInTheDocument();
+    conRuta("/mercado", rerender);
+    conRuta("/mi-perfil", rerender);
+
+    expect(campanaRef.montajes).toBe(1);
+    expect(campanaRef.desmontajes).toBe(0);
+    // Es el mismo nodo, no uno nuevo con el mismo aspecto.
+    expect(screen.getByTestId("campana")).toBe(campana);
+  });
+});
+
+describe("ScopeBar — catálogo de filtros bajo demanda", () => {
+  /**
+   * `/meta/filters` sólo lo usa el editor, que casi nunca se abre, y se pedía
+   * en cada carga de cada pantalla con ámbito.
+   */
+  it("no lo pide al montar la barra", () => {
+    renderBar();
+    expect(metaEnabledRef.current).toBe(false);
+  });
+
+  it("lo adelanta al acercar el puntero a «+ Añadir»", () => {
+    renderBar();
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "+ Añadir" }));
+    expect(metaEnabledRef.current).toBe(true);
+  });
+
+  it("lo adelanta al llegar con el teclado a «+ Añadir»", () => {
+    renderBar();
+    act(() => screen.getByRole("button", { name: "+ Añadir" }).focus());
+    expect(metaEnabledRef.current).toBe(true);
+  });
+
+  it("lo pide al abrir el editor, y queda pedido al cerrarlo", () => {
+    renderBar();
+    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+    expect(metaEnabledRef.current).toBe(true);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(metaEnabledRef.current).toBe(true);
+  });
+
+  it("lo pide ya si un chip de procedimiento necesita su etiqueta", () => {
+    // Sin el catálogo el chip enseñaría el código CODICE en vez del nombre.
+    pathnameRef.current = "/detalle";
+    filterParamsRef.current = { procedimiento: "1" };
+    filtersRef.current = { ...filtersRef.current, procedimientos: ["1"] };
+    renderBar();
+    expect(metaEnabledRef.current).toBe(true);
+  });
+
+  it("donde el ámbito no aplica no lo pide nunca", () => {
+    pathnameRef.current = "/mi-perfil";
+    renderBar();
+    expect(metaEnabledRef.current).toBe(false);
   });
 });

@@ -11,6 +11,8 @@ import {
   SERVER_SORT,
   buildQueryParams,
   buildScoreMap,
+  conTotalConocido,
+  conjuntoDelListado,
   mergeRows,
   type ScoringResponse,
 } from "../_hooks/detalle-table-model";
@@ -34,8 +36,28 @@ describe("buildQueryParams", () => {
       sorting: [],
       cursor: "abc",
     });
-    expect(cuarta).toEqual({ ccaa: "MD", limit: "25", with_total: "true", cursor: "abc" });
+    expect(cuarta).toEqual({ ccaa: "MD", limit: "25", cursor: "abc" });
     expect(cuarta.offset).toBeUndefined();
+  });
+
+  it("el total (un COUNT(*) sobre el histórico) sólo se pide en la primera página", () => {
+    // La API lo pide así (`with_total` en `listado.py`): contar en cada página
+    // repetía lo que ya se sabía desde la primera.
+    const conCursor = buildQueryParams({
+      filterParams: {},
+      pagination: { pageIndex: 1, pageSize: 25 },
+      sorting: [{ id: "importe", desc: true }],
+      cursor: "c1",
+    });
+    expect(conCursor).not.toHaveProperty("with_total");
+
+    const sinCursor = buildQueryParams({
+      filterParams: {},
+      pagination: { pageIndex: 0, pageSize: 25 },
+      sorting: [{ id: "importe", desc: true }],
+      cursor: null,
+    });
+    expect(sinCursor.with_total).toBe("true");
   });
 
   it("no manda `sort` sin orden activo", () => {
@@ -207,11 +229,7 @@ describe("mergeRows", () => {
   });
 
   it("manda los nulos al final sea cual sea el sentido", () => {
-    const items = [
-      row({ id_externo: "1" }),
-      row({ id_externo: "2", ccaa: "Madrid" }),
-      row({ id_externo: "3" }),
-    ];
+    const items = [row({ id_externo: "1" }), row({ id_externo: "2", ccaa: "Madrid" }), row({ id_externo: "3" })];
     const asc = mergeRows({
       items,
       scoreMap,
@@ -237,6 +255,68 @@ describe("mergeRows", () => {
   });
 });
 
+/* ── total de las páginas sin `with_total` ─────────────────────────── */
+
+describe("conjuntoDelListado", () => {
+  const params = (extra: Record<string, string>) =>
+    buildQueryParams({ filterParams: { ccaa: "MD" }, pagination: PAGINATION, sorting: [], ...extra });
+
+  it("las páginas de un mismo listado comparten conjunto", () => {
+    const primera = params({});
+    const tercera = buildQueryParams({
+      filterParams: { ccaa: "MD" },
+      pagination: { ...PAGINATION, pageIndex: 2 },
+      sorting: [],
+      cursor: "c2",
+    });
+    expect(conjuntoDelListado(primera)).toBe(conjuntoDelListado(tercera));
+  });
+
+  it("otros filtros u otro orden son otro conjunto", () => {
+    const base = conjuntoDelListado(params({}));
+    const otroFiltro = buildQueryParams({ filterParams: { ccaa: "CT" }, pagination: PAGINATION, sorting: [] });
+    const otroOrden = buildQueryParams({
+      filterParams: { ccaa: "MD" },
+      pagination: PAGINATION,
+      sorting: [{ id: "importe", desc: false }],
+    });
+    expect(conjuntoDelListado(otroFiltro)).not.toBe(base);
+    expect(conjuntoDelListado(otroOrden)).not.toBe(base);
+  });
+
+  it("no depende del orden de inserción de los parámetros", () => {
+    expect(conjuntoDelListado({ a: "1", b: "2" })).toBe(conjuntoDelListado({ b: "2", a: "1" }));
+  });
+});
+
+describe("conTotalConocido", () => {
+  const pagina = (total?: number | null) => ({ items: [], limit: 25, has_more: true, total });
+
+  it("respeta el total que trae la primera página", () => {
+    expect(conTotalConocido(pagina(812), "A", { conjunto: "A", total: 5 }, false)?.total).toBe(812);
+  });
+
+  it("completa las páginas siguientes con el total de su conjunto", () => {
+    expect(conTotalConocido(pagina(null), "A", { conjunto: "A", total: 812 }, false)?.total).toBe(812);
+    expect(conTotalConocido(pagina(undefined), "A", { conjunto: "A", total: 812 }, false)?.total).toBe(812);
+  });
+
+  it("no pega a una respuesta real el total de otro conjunto", () => {
+    expect(conTotalConocido(pagina(null), "B", { conjunto: "A", total: 812 }, false)?.total).toBeNull();
+  });
+
+  it("sobre datos de relleno conserva el «de N» que tenían", () => {
+    // Mientras llega la primera página de un filtro nuevo se sigue enseñando la
+    // página anterior: su total es el del conjunto anterior, como siempre.
+    expect(conTotalConocido(pagina(null), "B", { conjunto: "A", total: 812 }, true)?.total).toBe(812);
+  });
+
+  it("sin nada que completar devuelve la misma página", () => {
+    const sinTotal = pagina(null);
+    expect(conTotalConocido(sinTotal, "A", null, false)).toBe(sinTotal);
+    expect(conTotalConocido(undefined, "A", { conjunto: "A", total: 1 }, false)).toBeUndefined();
+  });
+});
 
 describe("buildQueryParams con ventana de cierre", () => {
   it("el recorte local viaja junto al ámbito global", () => {

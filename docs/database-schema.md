@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-09-25
 
-Revisión Alembic aplicada: `v142_lic_indices_analitica`.
+Revisión Alembic aplicada: `v144_lic_indices_analitica`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,7 +24,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 11 | 156 | 55 |
+| Licitaciones y fuente | 11 | 156 | 60 |
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 141 | 31 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 20 | 157 | 28 |
-| **Total** | **96** | **869** | **217** |
+| **Total** | **96** | **869** | **222** |
 
 ## Licitaciones y fuente
 
@@ -198,7 +198,7 @@ Claves: `PRIMARY KEY (source)`
 
 Claves: `PRIMARY KEY (id_externo)`
 
-Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_analitica`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_tecnologia`, `idx_lic_tecnologia_cubriente`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
+Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_analitica`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_descripcion_plegada_trgm`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_id_externo_plegado_trgm`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_organo_plegado_trgm`, `idx_lic_tecnologia`, `idx_lic_tecnologia_cubriente`, `idx_lic_tecnologia_tokens`, `idx_lic_titulo_plegado_trgm`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
 
 ### `licitaciones_duplicados`
 
