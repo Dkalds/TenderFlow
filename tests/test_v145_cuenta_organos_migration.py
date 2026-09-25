@@ -58,6 +58,25 @@ def _indice(emitido: list[str], fragmento: str) -> int:
     return next(i for i, sql in enumerate(emitido) if fragmento in sql)
 
 
+def test_cuelga_de_la_cabeza_anterior() -> None:
+    """v145 va detrás de v144 y v146 detrás de v145.
+
+    v144 (#348) y v145 se escribieron a la vez colgando las dos de v143: dos
+    cabezas, con las que ``alembic upgrade head`` falla y ``migrate.yml``
+    aplica una sola sin avisar. Si esto cambia, que sea a propósito.
+    """
+    modulo = _cargar()
+    assert modulo.revision == "v145_cuenta_organos"
+    assert modulo.down_revision == "v144_lic_indices_analitica"
+
+    ruta_indice = _RUTA.with_name("v146_lic_organo_norm_index.py")
+    spec = importlib.util.spec_from_file_location("v146_lic_organo_norm_index", ruta_indice)
+    assert spec is not None and spec.loader is not None
+    indice = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(indice)
+    assert indice.down_revision == "v145_cuenta_organos"
+
+
 def test_cuenta_organos_nace_con_la_proteccion_rls() -> None:
     emitido = _sql_emitido("upgrade")
 

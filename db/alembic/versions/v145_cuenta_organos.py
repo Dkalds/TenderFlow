@@ -1,7 +1,7 @@
 """v145: una cuenta objetivo agrupa uno o varios órganos (``cuenta_organos``).
 
 Revision ID: v145_cuenta_organos
-Revises: v143_lic_busqueda_plegada_trgm
+Revises: v144_lic_indices_analitica
 Create Date: 2026-09-25
 
 Qué falta hoy
@@ -75,7 +75,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "v145_cuenta_organos"
-down_revision: str | Sequence[str] | None = "v143_lic_busqueda_plegada_trgm"
+down_revision: str | Sequence[str] | None = "v144_lic_indices_analitica"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
