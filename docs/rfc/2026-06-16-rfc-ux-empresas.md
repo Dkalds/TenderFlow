@@ -138,3 +138,12 @@ y el maestro pide páginas por `offset` (`empresas/_hooks/use-maestro.ts`).
 mercado (`services/competitive/mercado.py::cuota_mercado`), pero el perfil de
 empresa no muestra cuota ni rank propios— y el #3, el drill-down de los
 desgloses a las adjudicaciones.
+
+*Actualización (2026-09-25):* la ficha de `/empresas` ya no pinta el perfil
+competitivo. Totales, trayectoria (#2) y desgloses por CPV, territorio y órgano
+viven en una sola ficha, la de Competencia (`/competencia/empresa/[id]`), que los
+pintaba igual (`CompanyYearTrend` y sus desgloses) y con cifras que no cuadraban
+con estas: allí se aplica el ámbito y se suman las identidades del grupo. Empresas
+se queda con la identidad, una línea de actividad y el enlace «Abrir ficha», que
+abre esa ficha en «Todo el histórico» (`?alcance=historico`): pide el mismo
+perfil sin filtros, así que las cifras son las mismas.

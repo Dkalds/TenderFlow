@@ -35,15 +35,6 @@ export interface EmpresasListResponse {
   total: number;
 }
 
-export interface EmpresaStats {
-  adjudicaciones_total: number;
-  adjudicaciones_enlazadas: number;
-  pct_filas: number;
-  pct_importe: number;
-  empresas: number;
-  revisiones_pendientes: number;
-}
-
 export interface EmpresaDetail {
   empresa_id: number;
   nombre_canonico: string;
@@ -56,30 +47,23 @@ export interface EmpresaDetail {
   participa_en_utes: { empresa_id: number; nombre_canonico: string }[];
 }
 
+/**
+ * Lo que la ficha del maestro lee del perfil competitivo: sólo los totales, para
+ * su línea de actividad. Trayectoria, rankings y cuotas son de la ficha de
+ * Competencia, que el enlace «Abrir ficha» abre en «Todo el histórico»: pide
+ * este mismo perfil sin filtros, así que las cifras coinciden.
+ */
 export interface PerfilEmpresa {
   totales: {
     contratos: number;
     importe_total: number;
-    ofertas_medias: number | null;
     primera_adjudicacion: string | null;
     ultima_adjudicacion: string | null;
   };
-  por_cpv: { cpv2: string; contratos: number; importe: number }[];
-  por_ccaa: { ccaa: string; contratos: number; importe: number }[];
-  organos_principales: { organo: string; contratos: number; importe: number }[];
-  por_anio?: { anio: number; contratos: number; importe: number }[];
 }
 
 /** Filas por página del maestro. */
 export const PAGE_SIZE = 12;
-
-export function useEmpresasStats() {
-  return useQuery<EmpresaStats>({
-    queryKey: empresasKeys.stats,
-    queryFn: () => fetchWithAuth("/api/v1/empresas/stats"),
-    staleTime: 5 * 60 * 1000,
-  });
-}
 
 export function useEmpresasList({
   search,

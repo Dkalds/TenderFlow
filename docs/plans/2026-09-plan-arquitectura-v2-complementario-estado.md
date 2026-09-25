@@ -364,7 +364,7 @@ documento de estado sin números es una opinión.
 | Métrica | Objetivo | Hoy | Comando |
 |---|---|---|---|
 | `title=` nativo en `.tsx` | 0, por olas | **36** (eran 39 al corregir el escaneo). *2026-09-19: **0** en 0 ficheros, techo 0* | `python scripts/check_title_attrs.py` |
-| Estilos inline en JSX | ratchet que solo baja | **94** (97 tras la fusión) | `python scripts/check_inline_styles.py` |
+| Estilos inline en JSX | ratchet que solo baja | **94** (97 tras la fusión). *2026-09-25: **92** en 43 ficheros, techo 92* | `python scripts/check_inline_styles.py` |
 | Ortografía de la UI | 0 | **0** | `python scripts/check_ortografia_ui.py` |
 | Operaciones de API opacas | 0 | **0** | `python scripts/check_openapi_contract.py` |
 | Cobertura de fixtures de contrato | ≥ 80 % | **82 %** (31/38) | `python scripts/check_contract_fixtures.py` |

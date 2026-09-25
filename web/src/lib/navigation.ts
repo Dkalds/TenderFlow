@@ -282,7 +282,7 @@ export const SECTIONS: NavSection[] = [
         label: "Empresas",
         slug: "empresas",
         description:
-          "Maestro de empresas canónicas: buscador, perfil competitivo, alias y vigilancia.",
+          "Maestro de empresas canónicas: buscador, identidad, alias, vigilancia y cola de revisión.",
         icon: Briefcase,
         usesGlobalFilters: false,
       },
