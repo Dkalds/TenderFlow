@@ -32,9 +32,11 @@ import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
  * izquierda y el contenido se quedaba con ~194px de los 375 de un móvil.
  *
  * `--alto-cromo` es el alto del cromo que queda por encima de `#main-content`:
- * 52px de la barra de ámbito, más los 48px de la barra móvil por debajo de
- * `md`. Las pantallas miden `100vh - var(--alto-cromo)`; con los 52px escritos
- * a mano, en móvil todas desbordaban el documento justo el alto de la barra.
+ * 52px de la barra de ámbito, más la barra móvil (`h-12`, 3rem) por debajo de
+ * `md`. Va en `rem` y no en 48px para seguir a la barra si el navegador tiene
+ * otra fuente base. Las pantallas miden `100vh - var(--alto-cromo)`; con los
+ * 52px escritos a mano, en móvil todas desbordaban el documento justo el alto
+ * de la barra.
  */
 export function ConsoleFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -42,7 +44,7 @@ export function ConsoleFrame({ children }: { children: React.ReactNode }) {
     // contenedor que scrollea (`DashboardShell`) y el cromo que dibuja el borde
     // (rail móvil y barra de ámbito) son hermanos, no antepasados.
     <ScrollEdgeProvider>
-      <div className="flex min-h-screen flex-col bg-background text-foreground [--alto-cromo:100px] md:flex-row md:[--alto-cromo:52px]">
+      <div className="flex min-h-screen flex-col bg-background text-foreground [--alto-cromo:calc(3rem+52px)] md:flex-row md:[--alto-cromo:52px]">
         <ConsoleRail />
 
         {/* `min-h-screen` solo en fila: apilada bajo la barra móvil, la
