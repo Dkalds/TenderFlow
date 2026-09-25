@@ -184,3 +184,11 @@ proactivas/"Movimientos" sobre watchlist (#4), y fechas crudas → `formatDate`
 sobre el segmento del usuario sale caro en vivo sin persistencia nueva) y la
 integración de estas señales en `notifications` (esa línea está en curso en
 otra rama).
+
+2026-09-25 — **El bloque de #4 pinta también la lista de vigiladas.** El endpoint
+ya devolvía cada empresa vigilada con su actividad en la ventana, pero la
+tarjeta sólo usaba el recuento y ninguna pantalla enseñaba la lista. Ahora cada
+empresa sale con lo que ha ganado en los 30 días y un enlace a su ficha, y la
+tarjeta pasa a llamarse «Competidores vigilados». Junto a los KPIs aparece el
+aviso de cobertura del maestro (menos del 95 % del importe resuelto), que antes
+sólo salía en Empresas.

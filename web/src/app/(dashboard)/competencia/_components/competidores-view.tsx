@@ -32,6 +32,7 @@ import { CompetidoresCortes, type CorteKey } from "./competidores-cortes";
 import { CompetidoresDossier } from "./competidores-dossier";
 import { CompetidoresKpis } from "./competidores-kpis";
 import { CompetidoresMovimientos } from "./competidores-movimientos";
+import { CompetidoresResolucion } from "./competidores-resolucion";
 import { CompetidoresTabla } from "./competidores-tabla";
 import { CompetidoresToolbar } from "./competidores-toolbar";
 
@@ -85,7 +86,11 @@ export default function CompetidoresView() {
         {/* Marcador del espacio: los cuatro KPIs del mercado competitivo. */}
         <CompetidoresKpis data={data} isLoading={isLoading} />
 
-        {/* Señales proactivas de la watchlist de empresas (RFC #4). */}
+        {/* Las cuotas de arriba y de la tabla sólo son fiables con el maestro
+            bien resuelto. Si no lo está, se avisa aquí, no sólo en Empresas. */}
+        <CompetidoresResolucion />
+
+        {/* Las empresas vigiladas y sus señales proactivas (RFC #4). */}
         <CompetidoresMovimientos />
 
         {/* La tabla gobierna los nueve cortes, así que va primero. Antes había

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAdmin } from "@/hooks/use-admin";
 import { useDebounce } from "@/hooks/use-debounce";
+import { UMBRAL_IMPORTE_RESUELTO, importeResueltoBajoUmbral, useEmpresasStats } from "@/hooks/use-empresas-stats";
 import { useEmpresasWatchlist } from "@/hooks/use-empresas-watchlist";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
@@ -15,20 +16,16 @@ import { ContextLine } from "./_components/context-line";
 import { EmpresaPerfil } from "./_components/empresa-perfil";
 import { MaestroList } from "./_components/maestro-list";
 import { ReviewQueue } from "./_components/review-queue";
-import {
-  useEmpresaDetail,
-  useEmpresaPerfil,
-  useEmpresasList,
-  useEmpresasStats,
-  type EmpresaSortKey,
-} from "./_hooks/use-maestro";
+import { useEmpresaDetail, useEmpresaPerfil, useEmpresasList, type EmpresaSortKey } from "./_hooks/use-maestro";
 import { UNDO_MS, useReviewQueue, type ConfidenceFilter } from "./_hooks/use-review-queue";
 
 /**
- * Empresas — maestro canónico, ficha y cola de revisión.
+ * Empresas — maestro canónico, identidad y cola de revisión.
  *
- * Dos vistas del mismo dato en `?vista=`: el maestro con su ficha al lado, y
- * la cola de matches dudosos. Tres decisiones gobiernan la pantalla:
+ * Dos vistas del mismo dato en `?vista=`: el maestro con la ficha de identidad
+ * al lado, y la cola de matches dudosos. La pregunta de la pantalla es «quién
+ * es quién»; cómo compite cada empresa lo cuenta su ficha de Competencia, a la
+ * que la de aquí enlaza. Tres decisiones gobiernan la pantalla:
  *
  * 1. **El orden y la paginación son del servidor.** Ordenar en cliente sobre
  *    la página traída reordena 12 filas de 1.284, que contesta a una pregunta
@@ -40,9 +37,6 @@ import { UNDO_MS, useReviewQueue, type ConfidenceFilter } from "./_hooks/use-rev
  *    distintos: que caiga uno no puede tumbar el otro.
  */
 
-/** Por debajo de este % de importe resuelto, las cuotas de Competencia mienten. */
-const UMBRAL_RESUELTO = 95;
-
 /** Las columnas de texto entran A→Z; las de cifra, de mayor a menor. */
 const SENTIDO_INICIAL = (key: EmpresaSortKey): "asc" | "desc" => (key === "nombre" || key === "nif" ? "asc" : "desc");
 
@@ -51,10 +45,11 @@ export default function EmpresasPage() {
   const { view, setView } = useSpaceView(space);
   const isAdmin = useAdmin();
 
-  // Deep-link externo: `?q=` desde la tabla de Competencia, que enlaza aquí el
-  // nombre de un competidor sin identidad en el maestro (`competidor-fila.tsx`).
-  // Se marca en el buscador mientras no se toque, para que se vea de dónde sale
-  // el filtro con el que se ha aterrizado.
+  // Deep-link externo: `?q=` desde Competencia, que enlaza aquí el nombre de un
+  // competidor sin identidad en el maestro (`competidor-fila.tsx`) y el NIF o
+  // el nombre de cada identidad de su ficha («Ver en el maestro»). Se marca en
+  // el buscador mientras no se toque, para que se vea de dónde sale el filtro
+  // con el que se ha aterrizado.
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(() => searchParams?.get("q") ?? "");
   const [fromDeepLink, setFromDeepLink] = useState(() => Boolean(searchParams?.get("q")));
@@ -69,7 +64,8 @@ export default function EmpresasPage() {
   const lista = useEmpresasList({ search: debouncedSearch, page, sort: sortKey, order: sortDir });
   // Solo para el recuento de «Vigiladas». Vigilar y dejar de vigilar lo hace
   // `SeguirBoton` (ADR-031 §C) en la fila y en la ficha, sobre esta misma
-  // consulta, así que el recuento se mueve con el botón.
+  // consulta, así que el recuento se mueve con el botón. La lista, con la
+  // actividad de cada una, está en Competencia.
   const { watchedIds } = useEmpresasWatchlist();
   const onCommitError = useCallback(() => toast.error("No se pudo guardar la decisión · la fila vuelve a la cola"), []);
   const revisiones = useReviewQueue({
@@ -130,7 +126,7 @@ export default function EmpresasPage() {
 
   const pendientes = stats.data?.revisiones_pendientes ?? 0;
   const pctImporte = stats.data?.pct_importe;
-  const bajoUmbral = pctImporte != null && pctImporte < UMBRAL_RESUELTO;
+  const bajoUmbral = importeResueltoBajoUmbral(stats.data);
 
   const contexto = [
     {
@@ -145,7 +141,7 @@ export default function EmpresasPage() {
       value: pctImporte != null ? formatPercent(pctImporte) : "…",
       warn: bajoUmbral,
       title: stats.data
-        ? `${formatNumber(stats.data.adjudicaciones_enlazadas, "es-ES", { agruparSiempre: true })} de ${formatNumber(stats.data.adjudicaciones_total, "es-ES", { agruparSiempre: true })} adjudicaciones enlazadas. Por debajo del ${UMBRAL_RESUELTO}% las cuotas de Competencia arrastran el error. Abre la cola de revisión`
+        ? `${formatNumber(stats.data.adjudicaciones_enlazadas, "es-ES", { agruparSiempre: true })} de ${formatNumber(stats.data.adjudicaciones_total, "es-ES", { agruparSiempre: true })} adjudicaciones enlazadas. Por debajo del ${UMBRAL_IMPORTE_RESUELTO}% las cuotas de Competencia arrastran el error. Abre la cola de revisión`
         : "Cobertura de la resolución de entidades",
       onClick: () => setView("revision"),
     },
@@ -153,7 +149,8 @@ export default function EmpresasPage() {
       key: "vigiladas",
       label: "Vigiladas",
       value: formatNumber(watchedIds.size),
-      title: "Empresas con alerta diaria",
+      title: "Empresas con alerta diaria · abre la lista en Competencia",
+      href: "/competencia?vista=competidores",
     },
     {
       key: "revisiones",
@@ -227,6 +224,7 @@ export default function EmpresasPage() {
               <EmpresaPerfil
                 detail={detail.data}
                 perfil={perfil.data}
+                perfilCargando={perfil.isLoading}
                 loading={lista.isLoading || detail.isLoading}
                 onWatchToggled={avisarVigilancia}
                 onOpenGrupo={onSearchChange}
