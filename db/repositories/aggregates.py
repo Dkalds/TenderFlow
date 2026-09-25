@@ -3,12 +3,23 @@
 Contrapartida SQL de los servicios ``services/analytics/{overview,tecnologias,
 competitors}.py``, que hasta ahora cargaban la tabla completa a pandas y
 agregaban en el proceso web (ver AGENTS.md / postmortem OOM en
-``services/_data_cache.py``). Postgres resuelve estos ``GROUP BY`` sobre las
-~47k filas de ``licitaciones`` en milisegundos; este módulo es el único lugar
-donde vive el SQL de esas agregaciones (ADR-022, invariante §3.10) — incluida
-la construcción del ``WHERE`` a partir de los filtros: los servicios de
-``services/analytics/*`` pasan valores (fechas, strings, floats), nunca
-fragmentos de SQL.
+``services/_data_cache.py``). Este módulo es el único lugar donde vive el SQL
+de esas agregaciones (ADR-022, invariante §3.10) — incluida la construcción del
+``WHERE`` a partir de los filtros: los servicios de ``services/analytics/*``
+pasan valores (fechas, strings, floats), nunca fragmentos de SQL.
+
+Coste: ya no son milisegundos. Cuando se escribió esto la tabla tenía ~47k
+filas; con la carga completa de PSCP pasó de 700k (~870 MB de heap) y un
+``GROUP BY`` que la recorre entera tarda ~15 s en producción (medido el
+2026-09-25), frente al ``statement_timeout`` de 30 s de la API. Antes de añadir
+una agregación, mirá por qué índice va a ir. Sin filtros, por el cubriente
+``idx_lic_analitica`` (``v144``), que solo sirve mientras la consulta no lea
+columnas fuera de su ``INCLUDE``: ``tests/test_v144_indices_analitica.py`` lo
+vigila para las de Mercado. Con filtro de tecnología, por
+``idx_lic_tecnologia_cubriente`` (ver
+:func:`db.sql_fragments.tecnologia_en_csv_sql` y ``_CON_TECNOLOGIA``). Y agrupá
+por hash antes de ordenar: con ``work_mem`` de 3,5 MB, ordenar la tabla es
+ordenarla en disco (ver la sección de órganos).
 
 Convenciones de fecha (importante, ver ``db/alembic/versions/
 v59_pg_date_format_checks.py``): las columnas de fecha (``fecha_publicacion``,
@@ -900,6 +911,17 @@ class AggregateRepository:
         return count, sample
 
     # ── Tecnologias ──────────────────────────────────────────────────────
+    #
+    # Todas las consultas que explotan el CSV de ``tecnologia`` llevan
+    # ``_CON_TECNOLOGIA``. No cambia el resultado —una fila sin tecnología no
+    # produce ningún ``code``—, pero es lo que deja a Postgres ir por un índice
+    # de tecnología (el parcial ``idx_lic_tecnologia_cubriente``, ``WHERE
+    # tecnologia IS NOT NULL``, o ``idx_lic_tecnologia``) en vez de recorrer la
+    # tabla entera, que es ~99 % filas sin etiqueta (casi todo PSCP): ~10k filas
+    # en lugar de ~713k. Misma guarda, y mismo motivo, que la de
+    # :func:`db.sql_fragments.tecnologia_en_csv_sql`.
+
+    _CON_TECNOLOGIA = "tecnologia IS NOT NULL"
 
     def tecnologias_mas_frecuentes(self, n: int, *, conn: Any | None = None) -> list[str]:
         """Los ``n`` códigos de tecnología con más expedientes en toda la tabla.
@@ -921,7 +943,7 @@ class AggregateRepository:
         sql = (
             "SELECT t.codigo, COUNT(*) AS n "
             f"FROM licitaciones, unnest({tecnologia_tokens_sql('tecnologia')}) AS t(codigo) "
-            "WHERE t.codigo <> '' "
+            f"WHERE {self._CON_TECNOLOGIA} AND t.codigo <> '' "
             "GROUP BY t.codigo ORDER BY n DESC, t.codigo LIMIT %s"
         )
         with _lectura(conn) as c:
@@ -929,18 +951,32 @@ class AggregateRepository:
         return [str(r[0]) for r in rows]
 
     def tecnologias_total_y_sin_clasificar(self, filters: LicitacionesFilters) -> tuple[int, int]:
+        """(total del ámbito, filas sin tecnología).
+
+        Dos subconsultas en una sola sentencia —una sola foto de la tabla— y no
+        un ``COUNT(*) FILTER`` sobre el mismo recorrido: el ``FILTER`` necesita
+        leer ``tecnologia`` de cada fila, y eso obligaba a un Seq Scan de la tabla
+        entera (~15 s en producción). Separadas, el total puede ir por un Index
+        Only Scan del índice más pequeño que sirva al ``WHERE`` y las
+        clasificadas por el índice parcial de tecnología: 1,6 s medido en
+        producción sin filtros (2026-09-25).
+
+        Las filas sin clasificar son el complemento exacto: toda fila cumple
+        ``tecnologia IS NULL OR trim(tecnologia) = ''`` o su negación, que es lo
+        que cuenta la segunda subconsulta.
+        """
         where, params = _build_where(filters)
         sql = (
-            "SELECT COUNT(*) AS total, "
-            "       COUNT(*) FILTER (WHERE tecnologia IS NULL OR trim(tecnologia) = '')"
-            "         AS sin_clasificar "
-            "FROM licitaciones WHERE " + where
+            f"SELECT (SELECT COUNT(*) FROM licitaciones WHERE {where}) AS total, "
+            f"       (SELECT COUNT(*) FROM licitaciones WHERE {where} "
+            f"          AND {self._CON_TECNOLOGIA} AND trim(tecnologia) != '') AS clasificadas"
         )
         with connect_read() as c:
-            row = c.execute(sql, params).fetchone()
+            row = c.execute(sql, [*params, *params]).fetchone()
         if row is None:
             return 0, 0
-        return int(row[0] or 0), int(row[1] or 0)
+        total = int(row[0] or 0)
+        return total, total - int(row[1] or 0)
 
     def tecnologias_entries(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
         """Explode de ``tecnologia`` (CSV) vía ``unnest(string_to_array(...))``.
@@ -958,7 +994,7 @@ class AggregateRepository:
             "       COUNT(*) FILTER (WHERE estado = 'ADJ') AS adjudicadas "
             "FROM licitaciones, "
             "     unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
-            "WHERE " + where + " AND trim(code) != '' "
+            f"WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) != '' "
             "GROUP BY trim(code)"
         )
         with connect_read() as c:
@@ -972,7 +1008,8 @@ class AggregateRepository:
             "WITH exploded AS ("
             "  SELECT organo_contratacion AS organo, trim(code) AS code "
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + " AND trim(code) != '' AND organo_contratacion IS NOT NULL"
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) != '' "
+            "    AND organo_contratacion IS NOT NULL"
             "), top_organos AS ("
             "  SELECT organo FROM exploded GROUP BY organo ORDER BY COUNT(*) DESC LIMIT %s"
             "), top_techs AS ("
@@ -995,7 +1032,7 @@ class AggregateRepository:
             "WITH exploded AS ("
             "  SELECT ccaa, trim(code) AS code "
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + " AND trim(code) != '' AND ccaa IS NOT NULL"
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) != '' AND ccaa IS NOT NULL"
             "), top_ccaa AS ("
             "  SELECT ccaa FROM exploded GROUP BY ccaa ORDER BY COUNT(*) DESC LIMIT %s"
             "), top_techs AS ("
@@ -1019,7 +1056,7 @@ class AggregateRepository:
             "WITH exploded AS ("
             "  SELECT substr(fecha_publicacion, 1, 7) AS mes, trim(code) AS code, importe "
             "  FROM licitaciones, unnest(string_to_array(COALESCE(tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + f" AND trim(code) != '' AND {guard}"
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) != '' AND {guard}"
             "), top_techs AS ("
             "  SELECT code FROM exploded GROUP BY code ORDER BY COUNT(*) DESC LIMIT %s"
             ") "
@@ -1067,7 +1104,7 @@ class AggregateRepository:
             "         l.estado, l.ccaa, l.fecha_publicacion "
             "  FROM licitaciones l, "
             "       unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + f" AND trim(code) IN ({placeholders}) "
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) IN ({placeholders}) "
             "  ORDER BY l.id_externo, l.importe DESC NULLS LAST"
             ") AS distintas "
             "ORDER BY distintas.importe DESC NULLS LAST, distintas.id_externo "
@@ -1305,6 +1342,17 @@ class AggregateRepository:
         }
 
     # ── Organos ──────────────────────────────────────────────────────────
+    #
+    # Las tres consultas agregan por hash y nunca ordenan la tabla. Sin filtros
+    # recorren las ~713k filas, y en el Supabase Micro de producción
+    # (``work_mem`` de 3,5 MB) un ``COUNT(DISTINCT ...)`` o un ``mode() WITHIN
+    # GROUP`` ordenaban todas esas filas en disco antes de agregar. Peor era el
+    # treemap: buscaba los 30 órganos mayores y luego leía sus filas una a una
+    # por ``idx_organo``, cientos de miles de lecturas sueltas, y era la
+    # sentencia que moría por ``statement_timeout`` (logs de Render del
+    # 2026-09-25). Agrupar primero deja unos miles de grupos en memoria, y lo
+    # que se ordena después es ese resultado, no la tabla: el treemap reescrito
+    # tarda 4,7 s sin filtros donde el anterior pasaba de 30.
 
     def _organos_where(self, filters: LicitacionesFilters, q: str | None) -> tuple[str, list[Any]]:
         """WHERE común de /organos: filtros estándar + búsqueda plegada en el nombre.
@@ -1329,10 +1377,17 @@ class AggregateRepository:
         # Si contara por texto crudo mientras el ranking agrupa por `organo_id`,
         # los porcentajes del ranking se calcularían contra otro denominador y
         # no sumarían 100.
+        #
+        # Un grupo por clave en vez de `COUNT(DISTINCT clave)`: el mismo
+        # resultado sin ordenar la tabla. Las filas sin órgano forman el grupo de
+        # clave NULL, que suma filas e importe y `COUNT(clave)` no cuenta como
+        # órgano, igual que hacía el `DISTINCT`.
         clave = clave_organo_sql("f")
         sql = (
-            f"SELECT COUNT(*), COUNT(DISTINCT {clave}), "
-            "COALESCE(SUM(f.importe), 0) FROM (SELECT * FROM licitaciones WHERE " + where + ") f"
+            "SELECT COALESCE(SUM(g.n), 0), COUNT(g.clave), COALESCE(SUM(g.importe), 0) "
+            f"FROM (SELECT {clave} AS clave, COUNT(*) AS n, SUM(f.importe) AS importe "
+            f"      FROM (SELECT * FROM licitaciones WHERE {where}) f "
+            "      GROUP BY 1) g"
         )
         with connect_read() as c:
             row = c.execute(sql, params).fetchone()
@@ -1345,8 +1400,12 @@ class AggregateRepository:
     ) -> list[dict[str, Any]]:
         """Ranking (count DESC) con la CCAA modal por órgano.
 
-        ``mode() WITHIN GROUP (ORDER BY ccaa)`` replica el ``mode().iloc[0]``
-        de pandas (empates → primera por orden alfabético) e ignora NULLs.
+        La CCAA modal replica el ``mode().iloc[0]`` de pandas: la más frecuente,
+        empates a la primera por orden alfabético, NULLs fuera. Es lo que hacía
+        ``mode() WITHIN GROUP (ORDER BY ccaa)``, que Postgres solo sabe calcular
+        ordenando las filas de cada grupo; aquí sale del ``DISTINCT ON`` de
+        ``moda``, que ordena el agregado por órgano y CCAA —unos miles de filas—
+        y no la tabla.
         """
         where, params = self._organos_where(filters, q_folded)
         # C1.2 — lectura dual: se agrupa por `organo_id` cuando el maestro lo
@@ -1359,20 +1418,34 @@ class AggregateRepository:
         # tiene una columna `ccaa`: unirlas al mismo nivel haría ambiguo cada
         # filtro por comunidad. La subconsulta conserva el contrato del builder
         # sin tocarlo.
+        #
+        # `clave` y `nombre` nunca son NULL en `por_ccaa` (hay órgano), así que
+        # el `JOIN` con `moda` por igualdad no pierde grupos.
         clave = clave_organo_sql("f")
         nombre = nombre_organo_sql("f", "o")
         sql = (
-            f"SELECT {nombre} AS organo_contratacion, COUNT(*) AS count, "
-            "       COALESCE(SUM(f.importe), 0) AS importe, "
-            "       mode() WITHIN GROUP (ORDER BY f.ccaa) AS ccaa_mode, "
-            "       MAX(o.organo_id) AS organo_id, "
-            "       MAX(o.dir3) AS dir3, "
-            "       MAX(o.url_perfil) AS url_perfil "
-            "FROM (SELECT * FROM licitaciones WHERE " + where + ") f "
-            "LEFT JOIN organos o ON o.organo_id = f.organo_id "
-            "WHERE f.organo_contratacion IS NOT NULL "
-            f"GROUP BY {clave}, {nombre} "
-            f"ORDER BY count DESC, {nombre} LIMIT %s"
+            "WITH por_ccaa AS ("
+            f"  SELECT {clave} AS clave, {nombre} AS nombre, f.ccaa, "
+            "         COUNT(*) AS n, SUM(f.importe) AS importe, "
+            "         MAX(o.organo_id) AS organo_id, MAX(o.dir3) AS dir3, "
+            "         MAX(o.url_perfil) AS url_perfil "
+            f"  FROM (SELECT * FROM licitaciones WHERE {where}) f "
+            "  LEFT JOIN organos o ON o.organo_id = f.organo_id "
+            "  WHERE f.organo_contratacion IS NOT NULL "
+            "  GROUP BY 1, 2, 3"
+            "), moda AS ("
+            "  SELECT DISTINCT ON (clave, nombre) clave, nombre, ccaa "
+            "  FROM por_ccaa WHERE ccaa IS NOT NULL "
+            "  ORDER BY clave, nombre, n DESC, ccaa"
+            ") "
+            "SELECT p.nombre AS organo_contratacion, SUM(p.n)::bigint AS count, "
+            "       COALESCE(SUM(p.importe), 0) AS importe, m.ccaa AS ccaa_mode, "
+            "       MAX(p.organo_id) AS organo_id, MAX(p.dir3) AS dir3, "
+            "       MAX(p.url_perfil) AS url_perfil "
+            "FROM por_ccaa p "
+            "LEFT JOIN moda m ON m.clave = p.clave AND m.nombre = p.nombre "
+            "GROUP BY p.clave, p.nombre, m.ccaa "
+            "ORDER BY count DESC, p.nombre LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, limit]))
@@ -1380,25 +1453,35 @@ class AggregateRepository:
     def organos_treemap(
         self, filters: LicitacionesFilters, *, q_folded: str | None, top_organos: int
     ) -> list[dict[str, Any]]:
-        """(organo, tipo_contrato, importe) para los top-N órganos por count."""
+        """(organo, tipo_contrato, importe) para los top-N órganos por count.
+
+        Un solo recorrido: ``por_tipo`` agrega por órgano y tipo, y de ese
+        agregado salen tanto los órganos mayores (la suma de sus grupos es su
+        número de filas) como su desglose. El importe de un grupo con tipo es el
+        que sumaba el filtro ``importe IS NOT NULL`` de antes —``SUM`` ya ignora
+        los NULL— y ``importe > 0`` hace de ``HAVING``. El nombre desempata a los
+        órganos con el mismo número de filas, que antes quedaban a merced del
+        plan.
+        """
         where, params = self._organos_where(filters, q_folded)
         sql = (
-            "WITH top_org AS ("
-            "  SELECT organo_contratacion FROM licitaciones "
-            "  WHERE " + where + " AND organo_contratacion IS NOT NULL "
-            "  GROUP BY organo_contratacion ORDER BY COUNT(*) DESC LIMIT %s"
+            "WITH por_tipo AS ("
+            "  SELECT organo_contratacion, tipo_contrato, COUNT(*) AS n, "
+            "         SUM(importe) AS importe "
+            f"  FROM licitaciones WHERE {where} AND organo_contratacion IS NOT NULL "
+            "  GROUP BY organo_contratacion, tipo_contrato"
+            "), top_org AS ("
+            "  SELECT organo_contratacion FROM por_tipo "
+            "  GROUP BY organo_contratacion "
+            "  ORDER BY SUM(n) DESC, organo_contratacion LIMIT %s"
             ") "
-            "SELECT l.organo_contratacion AS organo, l.tipo_contrato, "
-            "       SUM(l.importe) AS importe "
-            "FROM licitaciones l "
-            "WHERE " + where + " AND l.organo_contratacion IN "
-            "      (SELECT organo_contratacion FROM top_org) "
-            "  AND l.tipo_contrato IS NOT NULL AND l.importe IS NOT NULL "
-            "GROUP BY l.organo_contratacion, l.tipo_contrato "
-            "HAVING SUM(l.importe) > 0"
+            "SELECT p.organo_contratacion AS organo, p.tipo_contrato, p.importe "
+            "FROM por_tipo p "
+            "WHERE p.organo_contratacion IN (SELECT organo_contratacion FROM top_org) "
+            "  AND p.tipo_contrato IS NOT NULL AND p.importe > 0"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, top_organos, *params]))
+            return rows_to_dicts(c.execute(sql, [*params, top_organos]))
 
     # ── Resumen: sankey y top licitaciones ───────────────────────────────
 
@@ -2226,7 +2309,7 @@ class AggregateRepository:
             "  SELECT DISTINCT ON (l.id_externo) l.id_externo, l.importe "
             "  FROM licitaciones l, "
             "       unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
-            "  WHERE " + where + f" AND trim(code) IN ({placeholders}) "
+            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) IN ({placeholders}) "
             ") sub"
         )
         with connect_read() as c:

@@ -2,18 +2,27 @@ import { type ClassValue, clsx } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
 
 /**
- * tailwind-merge con los tamaños de letra propios de `globals.css`: la escala
- * `tf-*` y `campo`.
+ * `twMerge` con los tamaños propios de `globals.css`: la escala tipográfica
+ * (`--text-tf-*`) y el de los campos de formulario (`--text-campo`).
  *
- * No lee el CSS, y un `text-<nombre>` que no conoce lo toma por un color. Sin
- * esta lista `text-tf-meta` no sustituía a un `text-sm`, y un color de verdad lo
- * borraba: `cn("text-tf-micro text-muted-foreground")` dejaba solo el color. `lib/__tests__/utils.test.ts` la compara con los tokens
- * `--text-*` del CSS, así que un paso nuevo en la escala la pone en rojo.
+ * Sin configurar, tailwind-merge solo reconoce como tamaño los de Tailwind
+ * (`text-xs`, `text-sm`…) y toma cualquier otro `text-*` por un color. Veía
+ * `cn("text-tf-body", "text-muted-foreground")` como dos colores en conflicto y
+ * se quedaba con el último: el tamaño desaparecía y el texto heredaba el del
+ * padre. Le pasaba a todo sitio donde el tamaño compartía `cn()` con un color:
+ * el path de fases, las cifras de la ficha y de la tarjeta del tablero, las
+ * listas de /empresas. Declarados como tamaños, conviven con el color y se
+ * resuelven contra `text-sm` y compañía como cualquier otro tamaño: gana el
+ * último. Es lo que deja que el tamaño que un llamador pasa a `Input` o
+ * `Textarea` sustituya a su `text-campo`.
+ *
+ * Un tamaño nuevo en la hoja tiene que entrar también aquí; el test de `cn`
+ * lee `globals.css` y falla si falta alguno.
  */
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      text: ["campo", "tf-micro", "tf-meta", "tf-body", "tf-lede", "tf-title", "tf-hero"],
+      text: ["tf-micro", "tf-meta", "tf-body", "tf-lede", "tf-title", "tf-hero", "campo"],
     },
   },
 });

@@ -329,8 +329,9 @@
  * pantallas que todavía no están migradas siguen pintando igual. `/empresas`
  * es la primera que las usa; el resto se migran cuando se toquen.
  *
- * Un paso nuevo va también en la lista de `cn()` (`lib/utils.ts`): tailwind-merge
- * no lee este fichero y, sin ella, toma `text-tf-*` por un color.
+ * tailwind-merge no lee esta hoja: un paso nuevo se declara también en `cn()`
+ * (`src/lib/utils.ts`). Sin eso lo toma por un color y lo descarta en cuanto
+ * comparte `cn()` con otro color. El test de `cn` falla si falta alguno.
  */
 @theme {
   --text-tf-micro: 0.6875rem;
@@ -358,7 +359,8 @@
  * `text-base` pero dejaba `md:text-sm`, que en la hoja va detrás de las
  * utilidades sin variante y ganaba desde 768 px — el buscador del tablero pedía
  * 12 px y salía a 14. Quien quiera conservar los 16 px de móvil pasa su tamaño
- * solo desde `md` (`md:text-xs`).
+ * solo desde `md` (`md:text-xs`). Para que tailwind-merge lo trate como tamaño,
+ * `campo` está también en `cn()`, como los pasos de la escala.
  *
  * El cambio de `md` va en `@layer base` porque Tailwind emite `@theme` en
  * `@layer theme`, que va antes.

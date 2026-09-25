@@ -217,7 +217,8 @@ def test_el_export_y_la_agenda_emiten_el_mismo_fragmento(monkeypatch: pytest.Mon
     assert capturado["params"] == ["SAP", "ORACLE", 5]
 
     clausulas, params = ambito_agenda_sql("l", tecnologias=["SAP"], ccaas=None)
-    assert clausulas == [f"{tecnologia_tokens_sql('l.tecnologia')} && ARRAY[%s]::text[]"]
+    assert clausulas == [tecnologia_en_csv_sql("l.tecnologia", n=1)]
+    assert f"{tecnologia_tokens_sql('l.tecnologia')} && ARRAY[%s]::text[]" in clausulas[0]
     assert params == ["SAP"]
 
 

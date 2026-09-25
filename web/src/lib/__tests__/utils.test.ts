@@ -60,37 +60,52 @@ describe("cn", () => {
     const result = cn("flex items-center", "gap-2 text-sm");
     expect(result).toBe("flex items-center gap-2 text-sm");
   });
-});
 
-/**
- * Los tamaños de letra que declara `globals.css` (`--text-tf-meta`,
- * `--text-campo`…), leídos del propio fichero: tailwind-merge no lo lee, así
- * que `cn()` los tiene en una lista aparte y este test impide que se separen.
- * Sin la lista, `text-tf-micro` era un color para tailwind-merge y
- * `text-muted-foreground` lo borraba.
- */
-const TAMANOS_DEL_CSS = [
-  ...new Set(
-    [
-      ...readFileSync(
+  describe("escala tipográfica tf-*", () => {
+    it("conserva el tamaño tf-* junto a un color de texto", () => {
+      // Regresión: tailwind-merge tomaba `text-tf-body` por un color y lo
+      // descartaba en favor del color que venía después. El path de fases y las
+      // cifras de la ficha de oportunidad se pintaban con el tamaño del padre.
+      expect(cn("text-tf-body", "text-muted-foreground")).toBe("text-tf-body text-muted-foreground");
+      // Y al revés: con el color primero, lo que desaparecía era el color.
+      expect(cn("text-muted-foreground", "text-tf-body")).toBe("text-muted-foreground text-tf-body");
+    });
+
+    it("conserva el tamaño cuando el color llega condicionado y arbitrario", () => {
+      // La forma real de la ficha y la tarjeta: el ámbar solo cuando falta el importe.
+      const sinImporte = true;
+      expect(cn("font-mono text-tf-lede leading-none", sinImporte && "text-[hsl(var(--warning))]")).toBe(
+        "font-mono text-tf-lede leading-none text-[hsl(var(--warning))]",
+      );
+    });
+
+    it("deduplica dos pasos de la escala (gana el último)", () => {
+      expect(cn("text-tf-meta", "text-tf-body")).toBe("text-tf-body");
+    });
+
+    it("resuelve un paso tf-* contra los tamaños de Tailwind como cualquier tamaño", () => {
+      expect(cn("text-sm", "text-tf-meta")).toBe("text-tf-meta");
+      expect(cn("text-tf-meta", "text-sm")).toBe("text-sm");
+    });
+
+    it("reconoce todos los tamaños que declara globals.css", () => {
+      // Un tamaño nuevo en la hoja que no entre en la configuración de `cn`
+      // volvería a perderse junto a cualquier color, sin que nada avise. Lee
+      // todos los `--text-*`, no solo la escala: `--text-campo` también cuenta,
+      // porque el tamaño que un llamador pasa a `Input` tiene que sustituirlo.
+      const css = readFileSync(
         path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../app/globals.css"),
         "utf8",
-      ).matchAll(/--text-([\w-]+)\s*:/g),
-    ]
-      .map((m) => m[1])
-      // `--text-tf-meta--line-height` y compañía no son tamaños.
-      .filter((nombre) => !nombre.includes("--")),
-  ),
-];
-
-describe("cn — tamaños de letra de globals.css", () => {
-  it("encuentra la escala tf-* y el tamaño de campo", () => {
-    expect(TAMANOS_DEL_CSS).toEqual(expect.arrayContaining(["tf-micro", "tf-meta", "campo"]));
-  });
-
-  it.each(TAMANOS_DEL_CSS)("text-%s sustituye a otro tamaño y convive con un color", (nombre) => {
-    expect(cn("text-sm", `text-${nombre}`)).toBe(`text-${nombre}`);
-    expect(cn(`text-${nombre}`, "text-muted-foreground")).toBe(`text-${nombre} text-muted-foreground`);
+      );
+      const pasos = [...new Set([...css.matchAll(/--text-([a-z][\w-]*):/g)].map((m) => m[1]))]
+        // `--text-tf-meta--line-height` y compañía no son tamaños.
+        .filter((nombre) => !nombre.includes("--"));
+      expect(pasos).toEqual(expect.arrayContaining(["tf-meta", "campo"]));
+      for (const paso of pasos) {
+        expect(cn(`text-${paso}`, "text-foreground"), paso).toBe(`text-${paso} text-foreground`);
+        expect(cn("text-sm", `text-${paso}`), paso).toBe(`text-${paso}`);
+      }
+    });
   });
 });
 

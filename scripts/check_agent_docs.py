@@ -20,8 +20,8 @@ herramienta (`.claude/`, `.agents/`, `.codex/`, `.opencode/`):
    `.agents/skills/source-command-*/` no divergen.
 8. No quedan wikilinks de Obsidian anidados dentro de links markdown.
 9. Los hooks Claude/Codex son equivalentes y los plugins OpenCode existen.
-10. No se introducen markers pytest manuales de categoría fuera de las
-    excepciones históricas congeladas.
+10. No se introducen markers pytest manuales de categoría —ni como decorador
+    ni vía `pytestmark`— fuera de las excepciones históricas congeladas.
 
 Uso: python scripts/check_agent_docs.py [--verbose]
 """
@@ -35,6 +35,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -458,8 +459,8 @@ def check_nested_wikilinks() -> None:
                 )
 
 
-def _category_marker(decorator: ast.expr) -> str | None:
-    expression = decorator.func if isinstance(decorator, ast.Call) else decorator
+def _category_marker(node: ast.AST) -> str | None:
+    expression = node.func if isinstance(node, ast.Call) else node
     if not isinstance(expression, ast.Attribute) or expression.attr not in CATEGORY_MARKERS:
         return None
     mark = expression.value
@@ -468,6 +469,54 @@ def _category_marker(decorator: ast.expr) -> str | None:
     if not isinstance(mark.value, ast.Name) or mark.value.id != "pytest":
         return None
     return expression.attr
+
+
+def _sentencias_del_ambito(nodo: ast.AST) -> Iterator[ast.stmt]:
+    """Sentencias que se ejecutan en el ámbito de ``nodo``: el módulo o una clase.
+
+    Entra en los bloques ``if``/``try``/``with``/…, porque lo que se asigna ahí
+    sigue siendo un atributo del módulo o de la clase; no entra en funciones ni
+    en clases anidadas, que tienen su propio ámbito.
+    """
+    for hijo in ast.iter_child_nodes(nodo):
+        if isinstance(hijo, ast.stmt):
+            yield hijo
+        if not isinstance(hijo, (ast.expr, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            yield from _sentencias_del_ambito(hijo)
+
+
+def _markers_de_pytestmark(tree: ast.Module) -> Iterator[tuple[str, str]]:
+    """``(marker, ámbito)`` de cada marker de categoría asignado a ``pytestmark``.
+
+    Es la vía de marcar que no pasa por un decorador: pytest aplica lo que
+    contenga ``pytestmark`` a todos los tests del módulo o de la clase. Y rompe
+    lo mismo que el decorador: ``pytest_collection_modifyitems``
+    (``tests/conftest.py``) no infiere nada para un test que ya trae categoría,
+    así que un ``pytestmark = pytest.mark.unit`` deja en ``unit`` incluso al
+    test que abre Postgres, que el auto-marking habría pasado a ``integration``.
+
+    El ámbito es el nombre de la clase, o ``<module>`` para el módulo.
+    """
+    ambitos: list[tuple[str, ast.AST]] = [("<module>", tree)]
+    ambitos += [(node.name, node) for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    for ambito, nodo in ambitos:
+        for sentencia in _sentencias_del_ambito(nodo):
+            if isinstance(sentencia, ast.Assign):
+                destinos = sentencia.targets
+            elif isinstance(sentencia, (ast.AnnAssign, ast.AugAssign)):
+                destinos = [sentencia.target]
+            else:
+                continue
+            if sentencia.value is None or not any(
+                isinstance(destino, ast.Name) and destino.id == "pytestmark" for destino in destinos
+            ):
+                continue
+            # Toda la expresión y no solo sus elementos: además de un mark o una
+            # lista, `pytestmark` puede ser una concatenación (`[...] + COMUNES`).
+            for expresion in ast.walk(sentencia.value):
+                marker = _category_marker(expresion)
+                if marker is not None:
+                    yield marker, ambito
 
 
 def check_manual_test_markers() -> None:
@@ -489,6 +538,8 @@ def check_manual_test_markers() -> None:
                 marker = _category_marker(decorator)
                 if marker is not None:
                     found.add((rel, marker, node.name))
+        for marker, scope in _markers_de_pytestmark(tree):
+            found.add((rel, marker, scope))
 
     for rel, marker, scope in sorted(found - MANUAL_CATEGORY_MARKER_ALLOWLIST):
         fail(
