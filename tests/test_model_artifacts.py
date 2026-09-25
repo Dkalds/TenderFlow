@@ -150,10 +150,11 @@ def test_descarga_deja_el_checksum_colocado(tmp_db, tmp_path, cache_dir):
 def test_activar_otra_version_renueva_el_checksum_de_la_cache(tmp_db, tmp_path, cache_dir):
     """Regresión: la caché reciclaba el ``.sha256`` de la versión anterior.
 
-    Cada versión de ``baja_model``/``retencion_model`` se registra con el MISMO
-    basename (``services/ml/baja_model.py::_MODEL_PATH`` es una ruta fija), así
-    que la entrada de caché ``baja_model.pkl`` se reutiliza al activar una
-    versión nueva. El ``.pkl`` obsoleto sí se borraba; su ``.sha256`` no, y
+    Las versiones de ``baja_model``/``retencion_model`` registradas antes de los
+    nombres por contenido comparten basename (``_MODEL_PATH`` era una ruta
+    fija), igual que ``sap_classifier.pkl``, así que la entrada de caché
+    ``baja_model.pkl`` se reutiliza al activar otra de ellas. El ``.pkl``
+    obsoleto sí se borraba; su ``.sha256`` no, y
     ``_ensure_sidecar_checksum`` respetaba el sidecar existente — con lo que
     ``verify_model_integrity`` leía el hash de la versión vieja junto al
     artefacto nuevo y abortaba con «integridad comprometida» en ENV=prod.
@@ -457,20 +458,24 @@ def test_sin_bucket_configurado_el_camino_es_el_de_siempre(tmp_db, tmp_path, cac
 
 
 def test_la_descarga_de_la_release_delega_en_release_assets(tmp_path, monkeypatch):
-    """``_download_release_asset`` usa el transporte pinned, no ``requests``."""
+    """``_download_release_asset`` usa el transporte pinned, no ``requests``,
+    y localiza el asset empezando por la Release de tag fijo."""
     from shared import model_artifacts
+    from shared.release_assets import ML_MODELS_RELEASE_TAG, AssetLocalizado
 
     monkeypatch.setenv("GITHUB_TOKEN", "tok")
     dest = tmp_path / "baja_model.pkl"
     with (
         patch(
-            "shared.release_assets.fetch_latest_release",
-            return_value={"assets": [{"name": "baja_model.pkl", "id": 9}]},
-        ) as release,
+            "shared.release_assets.locate_release_asset",
+            return_value=AssetLocalizado({"tag_name": "ml-models"}, 9),
+        ) as localizar,
         patch("shared.release_assets.download_asset", return_value=True) as descarga,
     ):
         assert model_artifacts._download_release_asset("baja_model.pkl", dest) is True
-    release.assert_called_once_with("Dkalds/TenderFlow", token="tok")
+    localizar.assert_called_once_with(
+        "Dkalds/TenderFlow", "baja_model.pkl", token="tok", tag_fijo=ML_MODELS_RELEASE_TAG
+    )
     descarga.assert_called_once_with("Dkalds/TenderFlow", 9, dest, token="tok")
 
 
@@ -478,10 +483,7 @@ def test_la_release_sin_el_asset_no_intenta_descargar(tmp_path):
     from shared import model_artifacts
 
     with (
-        patch(
-            "shared.release_assets.fetch_latest_release",
-            return_value={"assets": [{"name": "otro.pkl", "id": 1}]},
-        ),
+        patch("shared.release_assets.locate_release_asset", return_value=None),
         patch("shared.release_assets.download_asset") as descarga,
     ):
         assert model_artifacts._download_release_asset("baja_model.pkl", tmp_path / "x") is False
@@ -489,23 +491,181 @@ def test_la_release_sin_el_asset_no_intenta_descargar(tmp_path):
 
 
 def test_la_release_inaccesible_devuelve_false(tmp_path):
+    """Sin red, las tres candidatas fallan y el resultado es False, sin excepción."""
+    import requests
+
     from shared import model_artifacts
 
-    with patch("shared.release_assets.fetch_latest_release", return_value=None):
+    with patch(
+        "shared.release_assets.pinned_https_request",
+        side_effect=requests.ConnectionError("sin red"),
+    ):
         assert model_artifacts._download_release_asset("baja_model.pkl", tmp_path / "x") is False
+    assert not (tmp_path / "x").exists()
 
 
 def test_una_descarga_fallida_devuelve_false(tmp_path):
     from shared import model_artifacts
+    from shared.release_assets import AssetLocalizado
 
     with (
         patch(
-            "shared.release_assets.fetch_latest_release",
-            return_value={"assets": [{"name": "baja_model.pkl", "id": 9}]},
+            "shared.release_assets.locate_release_asset",
+            return_value=AssetLocalizado({"tag_name": "ml-models"}, 9),
         ),
         patch("shared.release_assets.download_asset", return_value=False),
     ):
         assert model_artifacts._download_release_asset("baja_model.pkl", tmp_path / "x") is False
+
+
+# ── Resolución de punta a punta sin BD (2026-09) ────────────────────────────
+#
+# El registro se sustituye por `get_active` de mentira y la red por un GitHub
+# de mentira que responde por URL: lo que se ejerce es el camino real
+# `resolve_active_artifact` → `_download_release_asset` → `locate_release_asset`
+# → `download_asset`, con la verificación del sha256 al final.
+
+
+class _Respuesta:
+    """Doble mínimo de ``PinnedHttpsResponse`` (200 con cuerpo, o un status)."""
+
+    def __init__(self, status_code: int = 200, body: bytes = b"") -> None:
+        self.status_code = status_code
+        self.headers: dict[str, str] = {}
+        self._body = body
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 300:
+            raise RuntimeError(f"Pinned HTTPS response status {self.status_code}")
+
+    def iter_content(self, chunk_size: int = 8192):
+        yield self._body
+
+    def __enter__(self) -> _Respuesta:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+
+class _GitHubFalso:
+    """``pinned_https_request`` que responde por URL; lo no configurado es 404."""
+
+    def __init__(self, rutas: dict[str, object]) -> None:
+        self.rutas = rutas
+        self.urls: list[str] = []
+
+    def __call__(self, _method: str, url: str, **_kwargs: object) -> _Respuesta:
+        import json
+
+        self.urls.append(url)
+        respuesta = self.rutas.get(url)
+        if respuesta is None:
+            return _Respuesta(status_code=404)
+        if isinstance(respuesta, bytes):
+            return _Respuesta(body=respuesta)
+        return _Respuesta(body=json.dumps(respuesta).encode())
+
+
+_API = "https://api.github.com/repos/Dkalds/TenderFlow/releases"
+
+
+def _fila_activa(path: Path, contenido: bytes, version: int = 1) -> dict[str, object]:
+    return {"version": version, "path": str(path), "sha256": _sha(contenido)}
+
+
+def test_una_release_de_software_posterior_no_deja_sin_artefacto(tmp_path, cache_dir):
+    """El incidente de `release.yml`: *latest* pasa a ser una release sin assets.
+
+    El artefacto está en la Release de tag fijo, así que *latest* no llega ni
+    a consultarse.
+    """
+    registrado = tmp_path / "runner-que-entreno" / "baja_model-3fa9c1d2e4b5.pkl"
+    contenido = b"modelo-publicado-en-ml-models"
+    github = _GitHubFalso(
+        {
+            f"{_API}/tags/ml-models": {
+                "id": 1,
+                "tag_name": "ml-models",
+                "assets": [{"name": registrado.name, "id": 9}],
+            },
+            f"{_API}/latest": {"id": 2, "tag_name": "v2.0.0", "assets": []},
+            f"{_API}/assets/9": contenido,
+        }
+    )
+    with (
+        patch("db.model_registry.get_active", return_value=_fila_activa(registrado, contenido)),
+        patch("shared.model_artifacts._download_bucket_asset", return_value=False),
+        patch("shared.release_assets.pinned_https_request", side_effect=github),
+    ):
+        resuelto = resolve_active_artifact("baja_model")
+
+    assert resuelto == cache_dir / registrado.name
+    assert resuelto.read_bytes() == contenido
+    assert f"{_API}/latest" not in github.urls
+
+
+def test_una_fila_con_nombre_fijo_se_sigue_resolviendo(tmp_path, cache_dir):
+    """Compatibilidad: las filas anteriores registran ``baja_model.pkl``.
+
+    Su asset se subió a lo que entonces era *latest*; hoy *latest* es otra y
+    `ml-models` no lo tiene, así que se encuentra entre las recientes, por
+    nombre, y se verifica igual contra el sha256 registrado.
+    """
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
+    contenido = b"modelo-v2-con-nombre-fijo"
+    software = {"id": 3, "tag_name": "v1.5.0", "assets": []}
+    github = _GitHubFalso(
+        {
+            f"{_API}/latest": software,
+            f"{_API}?per_page=30": [
+                software,
+                {
+                    "id": 2,
+                    "tag_name": "v0.0.0-model",
+                    "assets": [{"name": "baja_model.pkl", "id": 5}],
+                },
+            ],
+            f"{_API}/assets/5": contenido,
+        }
+    )
+    with (
+        patch("db.model_registry.get_active", return_value=_fila_activa(registrado, contenido)),
+        patch("shared.model_artifacts._download_bucket_asset", return_value=False),
+        patch("shared.release_assets.pinned_https_request", side_effect=github),
+    ):
+        resuelto = resolve_active_artifact("baja_model")
+
+    assert resuelto == cache_dir / "baja_model.pkl"
+    assert resuelto.read_bytes() == contenido
+    assert (cache_dir / "baja_model.sha256").read_text(encoding="utf-8") == _sha(contenido)
+
+
+def test_dos_versiones_con_nombre_por_contenido_no_comparten_cache(tmp_path, cache_dir):
+    """Activar vN+1 ya no borra ni pisa la entrada de caché de vN.
+
+    Con el basename compartido, cada cambio de versión invalidaba la caché (y
+    su sidecar) de la anterior; con el hash en el nombre, cada versión tiene
+    la suya y volver atrás no obliga a descargar otra vez.
+    """
+    v1, v2 = b"modelo-v1", b"modelo-v2"
+    ruta_v1 = tmp_path / "runner" / f"baja_model-{_sha(v1)[:12]}.pkl"
+    ruta_v2 = tmp_path / "runner" / f"baja_model-{_sha(v2)[:12]}.pkl"
+
+    for ruta, contenido in ((ruta_v1, v1), (ruta_v2, v2)):
+        with (
+            patch("db.model_registry.get_active", return_value=_fila_activa(ruta, contenido)),
+            patch("shared.model_artifacts._download_bucket_asset", return_value=False),
+            patch(
+                "shared.model_artifacts._download_release_asset",
+                side_effect=_descarga_falsa(contenido),
+            ),
+        ):
+            assert resolve_active_artifact("baja_model") == cache_dir / ruta.name
+
+    assert (cache_dir / ruta_v1.name).read_bytes() == v1
+    assert (cache_dir / ruta_v2.name).read_bytes() == v2
+    assert (cache_dir / ruta_v1.name).with_suffix(".sha256").read_text(encoding="utf-8") == _sha(v1)
 
 
 def test_model_artifacts_no_usa_requests():

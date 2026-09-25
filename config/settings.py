@@ -197,15 +197,17 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # ML_MODEL_SHA256. Vacío = sin pin. Ver
     # scraper.tech_classifier.TechnologyClassifier.load.
     ML_TECH_MODEL_SHA256: str = ""
-    # Hash SHA256 fijado (out-of-band) para BajaModel
-    # (data/models/baja_model.pkl). Vacío = sin pin. Ver
+    # Hash SHA256 fijado (out-of-band) para el artefacto que cargue BajaModel
+    # (desde 2026-09-24 cada versión se publica como
+    # `baja_model-<sha256[:12]>.pkl`; `data/models/baja_model.pkl` es solo el
+    # default local de `save()`/`load()`). Vacío = sin pin. Ver
     # services.ml.baja_model.BajaModel.load.
     ML_BAJA_MODEL_SHA256: str = ""
-    # Mismo pin para el modelo de baja por lote (data/models/baja_model_lote.pkl).
+    # Mismo pin para el modelo de baja por lote (`baja_model_lote-<sha12>.pkl`).
     ML_BAJA_LOTE_MODEL_SHA256: str = ""
-    # Hash SHA256 fijado (out-of-band) para RetencionModel
-    # (data/models/retencion_model.pkl). Vacío = sin pin. Ver
-    # services.ml.retencion_model.RetencionModel.load.
+    # Hash SHA256 fijado (out-of-band) para el artefacto que cargue
+    # RetencionModel (`retencion_model-<sha256[:12]>.pkl` en las Releases).
+    # Vacío = sin pin. Ver services.ml.retencion_model.RetencionModel.load.
     ML_RETENCION_MODEL_SHA256: str = ""
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
@@ -232,6 +234,15 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # sirve hasta que `scripts/comparar_baja_por_lote.py` mida que el
     # `mae_p50` por lote mejora (backlog P2 «Modelo de baja por lote»).
     ML_BAJA_POR_LOTE: bool = False
+    # Excluye del scoring de retención los vencimientos cuya sucesora ya está
+    # adjudicada según la heurística del etiquetado (`retencion_labels._emparejar`).
+    # Apagado por defecto: esos casos se detectan y se cuentan siempre
+    # (`resueltos_detectados`), pero la heurística da falsos positivos en
+    # segmentos con mucha actividad, y excluir un contrato lo deja sin riesgo y
+    # lo esconde del orden «score» de Renovaciones. Encenderlo exige auditar
+    # antes una muestra a mano, como hace `scripts/audit_retencion.py` con los
+    # pares de entrenamiento. Ver services.ml.scoring._separar_resueltos.
+    ML_RETENCION_EXCLUIR_RESUELTOS: bool = False
 
     # ── DB / Upsert ──────────────────────────────────────────────────────
     # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk

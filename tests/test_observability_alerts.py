@@ -177,6 +177,113 @@ def test_send_smtp_logs_on_os_error(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Deduplicación con ventana de cooldown (dedup_key + cooldown_s)
+# ---------------------------------------------------------------------------
+#
+# La ventana es un lock de `db.job_locks` que no se libera, el truco de
+# `_run_periodic`. Aquí se sustituyen `acquire`/`release` por un doble: lo que
+# se fija es qué hace `notify` con su respuesta, no el SQL del lock (ese lo
+# cubre `tests/test_job_locks.py` contra Postgres).
+
+
+class _Ventanas:
+    """``acquire``/``release`` de ``db.job_locks`` sin Postgres, con registro."""
+
+    def __init__(self, adquirido: bool | Exception) -> None:
+        self.adquirido = adquirido
+        self.abiertas: list[tuple[str, int, str]] = []
+        self.soltadas: list[tuple[str, str]] = []
+
+    def acquire(self, name: str, ttl_seconds: int = 600, holder: str = "") -> bool:
+        self.abiertas.append((name, ttl_seconds, holder))
+        if isinstance(self.adquirido, Exception):
+            raise self.adquirido
+        return self.adquirido
+
+    def release(self, name: str, holder: str = "") -> bool:
+        self.soltadas.append((name, holder))
+        return True
+
+
+def _ventanas(monkeypatch, adquirido: bool | Exception = True) -> _Ventanas:
+    import db.job_locks as job_locks
+
+    doble = _Ventanas(adquirido)
+    monkeypatch.setattr(job_locks, "acquire", doble.acquire)
+    monkeypatch.setattr(job_locks, "release", doble.release)
+    return doble
+
+
+def test_notify_con_dedup_abre_la_ventana_y_envia(monkeypatch):
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="warn")
+    ventanas = _ventanas(monkeypatch, adquirido=True)
+    with patch("observability.alerts._send_smtp", return_value=True) as smtp:
+        resultado = notify("error", "t", "b", dedup_key="monitor:crit", cooldown_s=3600)
+    smtp.assert_called_once()
+    assert resultado == "enviada"
+    assert ventanas.abiertas == [("alert:monitor:crit", 3600, "observability.alerts")]
+    assert ventanas.soltadas == []  # el correo salió: la ventana se queda
+
+
+def test_notify_dentro_de_la_ventana_no_envia(monkeypatch):
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="warn")
+    _ventanas(monkeypatch, adquirido=False)
+    with (
+        patch("observability.alerts._send_smtp") as smtp,
+        patch("observability.alerts.log") as log,
+    ):
+        resultado = notify("error", "t", "b", dedup_key="monitor:crit", cooldown_s=3600)
+    smtp.assert_not_called()
+    assert resultado == "suprimida_cooldown"
+    assert log.info.call_args.args[0] == "alert_suppressed_cooldown"
+    log.log.assert_not_called()  # tampoco la línea "alert": suprimida en los dos canales
+
+
+def test_notify_si_la_tabla_de_locks_falla_envia_igual(monkeypatch):
+    """Fail-open: un aviso repetido es un fastidio, uno perdido es el fallo."""
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="warn")
+    _ventanas(monkeypatch, adquirido=RuntimeError("db caída"))
+    with (
+        patch("observability.alerts._send_smtp", return_value=True) as smtp,
+        patch("observability.alerts.log") as log,
+    ):
+        resultado = notify("error", "t", "b", dedup_key="monitor:crit", cooldown_s=3600)
+    smtp.assert_called_once()
+    assert resultado == "enviada"
+    assert log.warning.call_args.args[0] == "alert_cooldown_unavailable"
+
+
+def test_notify_bajo_el_nivel_minimo_no_gasta_la_ventana(monkeypatch):
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="error")
+    ventanas = _ventanas(monkeypatch)
+    with patch("observability.alerts._send_smtp") as smtp:
+        resultado = notify("warn", "t", "b", dedup_key="monitor:warn", cooldown_s=3600)
+    smtp.assert_not_called()
+    assert resultado == "suprimida_nivel"
+    assert ventanas.abiertas == []
+
+
+def test_notify_sin_los_dos_parametros_no_deduplica(monkeypatch):
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="warn")
+    ventanas = _ventanas(monkeypatch)
+    with patch("observability.alerts._send_smtp", return_value=True) as smtp:
+        assert notify("error", "t", "b") == "enviada"
+        assert notify("error", "t", "b", dedup_key="monitor:crit") == "enviada"
+    assert smtp.call_count == 2
+    assert ventanas.abiertas == []
+
+
+def test_notify_suelta_la_ventana_si_el_correo_no_sale(monkeypatch):
+    """Un SMTP caído un día no puede callar la alerta el resto de la semana."""
+    _patch_settings(monkeypatch, ALERT_MIN_LEVEL="warn")
+    ventanas = _ventanas(monkeypatch)
+    with patch("observability.alerts._send_smtp", return_value=False):
+        resultado = notify("error", "t", "b", dedup_key="monitor:crit", cooldown_s=3600)
+    assert resultado == "enviada"
+    assert ventanas.soltadas == [("alert:monitor:crit", "observability.alerts")]
+
+
+# ---------------------------------------------------------------------------
 # check_daily_lag
 # ---------------------------------------------------------------------------
 

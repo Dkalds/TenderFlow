@@ -26,6 +26,17 @@ después de la materialización y no dentro de ella, precisamente para que no
 pueda relajarse en uno solo. Si ninguno de los dos resuelve, se devuelve
 ``None`` y el llamante cae a su baseline.
 
+En la Release, el asset se busca por el basename del ``path`` registrado en
+la de tag fijo ``ml-models``, después en *latest* y después en las más
+recientes (``shared.release_assets.locate_release_asset``).
+
+Nombres por contenido (2026-09)
+-------------------------------
+``baja_model`` y ``retencion_model`` registran ``<stem>-<sha256[:12]>.pkl``
+(:func:`rename_to_content_address`), no una ruta fija: el asset de una versión
+ya no puede sobrescribirse con el de otra. Las filas anteriores, con nombre
+fijo, se siguen resolviendo igual, porque la búsqueda es por ``path.name``.
+
 Uso::
 
     from shared.model_artifacts import resolve_active_artifact
@@ -44,13 +55,20 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-# Repo cuya Release *latest* publica los artefactos (``train-predictivos.yml``).
+# Repo cuyas Releases publican los artefactos: la de tag fijo
+# (``train-predictivos.yml``) y *latest* (``train-model.yml``, ``train-tech.yml``).
 _RELEASE_REPO = "Dkalds/TenderFlow"
 _CHUNK = 1 << 20
 # Subcarpeta propia dentro del temp: los artefactos se nombran por el basename
-# del path registrado (``baja_model.pkl``), demasiado genérico para soltarlo en
-# la raíz de un directorio compartido.
+# del path registrado (``sap_classifier.pkl``, ``baja_model-3fa9c1d2e4b5.pkl``),
+# demasiado genérico para soltarlo en la raíz de un directorio compartido.
 _CACHE_SUBDIR = "tenderflow-models"
+# Caracteres del sha256 que lleva el nombre de un artefacto
+# (``baja_model-3fa9c1d2e4b5.pkl``): 48 bits. Con unas decenas de versiones
+# por modelo la probabilidad de colisión es despreciable, y el nombre sigue
+# siendo legible en ``gh release view``. Es un nombre, no una verificación:
+# el hash completo se coteja contra ``model_versions`` al resolver.
+_PREFIJO_SHA256 = 12
 
 
 def artifact_cache_dir() -> Path:
@@ -110,7 +128,14 @@ def _sha256(path: Path) -> str:
 
 
 def _download_release_asset(asset_name: str, dest: Path) -> bool:
-    """Descarga ``asset_name`` de la última Release a ``dest``. True si lo logró.
+    """Descarga ``asset_name`` de la primera Release que lo publique. True si lo logró.
+
+    Se busca por nombre exacto en la Release de tag fijo ``ml-models``, luego
+    en *latest* y luego en las más recientes
+    (``shared.release_assets.locate_release_asset``). Hasta 2026-09 solo se
+    miraba *latest*, y ``release.yml`` crea una *latest* nueva, sin assets de
+    modelo, con cada tag ``v*``: publicar una versión de software dejaba al
+    scoring sin artefactos hasta el siguiente reentrenamiento.
 
     El transporte es el de ``shared.release_assets`` —HTTPS con DNS pinning,
     allowlist por salto y sin reenviar el ``Authorization`` al CDN—, el mismo
@@ -121,23 +146,32 @@ def _download_release_asset(asset_name: str, dest: Path) -> bool:
 
     La verificación del sha256 contra ``model_versions`` NO vive aquí: la hace
     :func:`resolve_active_artifact` después de materializar, sea cual sea el
-    camino que haya funcionado. Nunca lanza: ``shared.release_assets`` ya
-    convierte cualquier fallo de red en ``None``/``False`` y borra el parcial.
+    camino —y la Release— que haya funcionado. Nunca lanza:
+    ``shared.release_assets`` ya convierte cualquier fallo de red en
+    ``None``/``False`` y borra el parcial.
     """
-    from shared.release_assets import download_asset, fetch_latest_release, find_asset_id
+    from shared.release_assets import (
+        ML_MODELS_RELEASE_TAG,
+        download_asset,
+        locate_release_asset,
+    )
 
     token = os.environ.get("GITHUB_TOKEN", "")
-    release = fetch_latest_release(_RELEASE_REPO, token=token)
-    if release is None:
-        return False
-    asset_id = find_asset_id(release, asset_name)
-    if asset_id is None:
+    localizado = locate_release_asset(
+        _RELEASE_REPO, asset_name, token=token, tag_fijo=ML_MODELS_RELEASE_TAG
+    )
+    if localizado is None:
         log.warning("model_artifact_asset_not_in_release", asset=asset_name)
         return False
-    if not download_asset(_RELEASE_REPO, asset_id, dest, token=token):
+    if not download_asset(_RELEASE_REPO, localizado.asset_id, dest, token=token):
         log.warning("model_artifact_download_failed", asset=asset_name)
         return False
-    log.info("model_artifact_downloaded", asset=asset_name, dest=str(dest))
+    log.info(
+        "model_artifact_downloaded",
+        asset=asset_name,
+        dest=str(dest),
+        release=localizado.release.get("tag_name"),
+    )
     return True
 
 
@@ -208,6 +242,41 @@ def publish_artifact_to_bucket(path: Path, *, asset_name: str | None = None) -> 
     return True
 
 
+def rename_to_content_address(path: Path) -> tuple[Path, str]:
+    """Renombra un artefacto recién guardado a ``<stem>-<sha256[:12]><suffix>``.
+
+    Devuelve ``(ruta_nueva, sha256)``. La ruta es la que se registra en
+    ``model_versions`` y la que ``train-predictivos.yml`` sube a la Release.
+
+    Con la ruta fija (``data/models/baja_model.pkl``) todas las versiones
+    compartían nombre de asset, y ``gh release upload --clobber`` hacía que el
+    reentrenamiento mensual —que registra vN+1 SIN activarla— pisara el asset
+    de la vN activa. El runner siguiente de ``ml-scoring`` bajaba vN+1 para
+    una fila vN, el sha256 no cuadraba y :class:`ModelArtifactMismatch` tumbaba
+    el scoring cada día hasta que alguien activara la nueva. Con el hash en el
+    nombre, un asset ya no cambia de contenido: ``--clobber`` solo puede
+    reescribir los mismos bytes.
+
+    El ``.sha256`` que dejó ``save()`` junto al nombre viejo se borra
+    —describiría un fichero que ya no está ahí— y se escribe el del nombre
+    nuevo con el hash recién calculado. Idempotente: un ``path`` que ya lleva
+    su prefijo no se vuelve a sufijar.
+    """
+    from shared.model_integrity import write_checksum
+
+    sha256 = _sha256(path)
+    sufijo = f"-{sha256[:_PREFIJO_SHA256]}"
+    destino = (
+        path if path.stem.endswith(sufijo) else path.with_name(f"{path.stem}{sufijo}{path.suffix}")
+    )
+    if destino != path:
+        path.replace(destino)
+        path.with_suffix(".sha256").unlink(missing_ok=True)
+    write_checksum(destino, sha256)
+    log.info("model_artifact_content_addressed", path=str(destino), sha256=sha256)
+    return destino, sha256
+
+
 def resolve_active_artifact(name: str) -> Path | None:
     """Path del artefacto de la versión activa de ``name``, verificado por sha256.
 
@@ -216,8 +285,9 @@ def resolve_active_artifact(name: str) -> Path | None:
       predicciones es peor que no servirlas).
     - Fichero ausente + sha256 registrado → se busca en la caché local
       (:func:`artifact_cache_dir`) y, si no está o no cuadra, se materializa
-      **en esa caché** desde el almacén de objetos y, si ahí no está, desde la
-      Release de GitHub. Se verifica igual venga de donde venga.
+      **en esa caché** desde el almacén de objetos y, si ahí no está, desde las
+      Releases de GitHub (tag fijo, *latest*, recientes). Se verifica igual
+      venga de donde venga.
     - Sin versión activa, o irresoluble sin hash → ``None`` (el caller decide
       su fallback — p. ej. el baseline histórico).
 
@@ -269,13 +339,15 @@ def resolve_active_artifact(name: str) -> Path | None:
         log.info("model_artifact_cache_obsoleta", model=name, path=str(local))
         local.unlink(missing_ok=True)
         # Y con él su checksum co-ubicado, que describía el fichero que se
-        # acaba de borrar. Cada versión de `baja_model`/`retencion_model` se
-        # registra con el MISMO basename (`services/ml/baja_model.py::_MODEL_PATH`
-        # es una ruta fija), así que la entrada de caché se reutiliza entre
-        # versiones: dejar el `.sha256` viejo junto al `.pkl` nuevo hacía que
-        # `verify_model_integrity` abortase la carga con «integridad
-        # comprometida» en ENV=prod — es decir, activar una versión rompía el
-        # servicio en vez de cambiarlo, justo lo que S3.2 vino a arreglar.
+        # acaba de borrar. Una entrada de caché se reutiliza entre versiones
+        # cuando comparten basename: `sap_classifier.pkl`/`tech_classifier.pkl`
+        # (nombre fijo publicado) y las filas de `baja_model`/`retencion_model`
+        # anteriores a los nombres por contenido (`rename_to_content_address`),
+        # registradas con la ruta fija de `_MODEL_PATH`. Dejar el `.sha256`
+        # viejo junto al `.pkl` nuevo hacía que `verify_model_integrity`
+        # abortase la carga con «integridad comprometida» en ENV=prod — es
+        # decir, activar una versión rompía el servicio en vez de cambiarlo,
+        # justo lo que S3.2 vino a arreglar.
         local.with_suffix(".sha256").unlink(missing_ok=True)
 
     if not expected:

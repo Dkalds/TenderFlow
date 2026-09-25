@@ -118,7 +118,11 @@ class TestSqlEnDb:
 
 
 class TestSeamDeDatos:
-    """``construir_pares`` se alimenta de dos —y solo dos— fuentes de datos."""
+    """``construir_pares`` se alimenta de dos —y solo dos— fuentes de datos.
+
+    Y las piezas del serving (población, etiquetas, features) de las mismas
+    dos, pero solo cuando nadie les pasa el histórico ya cargado.
+    """
 
     def test_usa_las_dos_consultas_y_nada_mas(self):
         with (
@@ -139,6 +143,34 @@ class TestSeamDeDatos:
 
         mock_adj.assert_called_once_with()
         mock_ev.assert_called_once_with()
+
+    def test_las_piezas_de_serving_no_consultan_nada_con_el_historico_dado(self):
+        """El scoring carga el histórico UNA vez y se lo pasa a todas las piezas.
+
+        Si alguna volviera a consultar por su cuenta, el batch cargaría otra vez
+        las ~698K adjudicaciones (2026-09-24: ~1 min por carga).
+        """
+        adjudicaciones = [
+            _adj("LIC-1", empresa_id=7, fecha_adj="2023-01-10", fecha_fin="2024-01-10"),
+            _adj("LIC-2", empresa_id=7, fecha_adj="2024-02-01"),
+        ]
+        with (
+            patch.object(rl, "_cargar_adjudicaciones", side_effect=AssertionError("recarga")),
+            patch.object(rl, "_eventos_por_licitacion", side_effect=AssertionError("eventos")),
+        ):
+            assert rl.vencimientos_proximos(adjudicaciones, months_ahead=12) == []
+            assert rl.etiquetas_por_segmento(adjudicaciones).pares == 1
+            assert rl.vencimientos_con_features(adjudicaciones, months_ahead=12) == []
+
+    def test_etiquetas_sin_historico_lo_cargan_una_vez_y_no_miran_eventos(self):
+        with (
+            patch.object(rl, "_cargar_adjudicaciones", return_value=[]) as mock_adj,
+            patch.object(rl, "_eventos_por_licitacion", return_value={}) as mock_ev,
+        ):
+            assert rl.etiquetas_por_segmento().conteos == {}
+
+        mock_adj.assert_called_once_with()
+        mock_ev.assert_not_called()
 
 
 class TestEtiquetadoConDatosInyectados:

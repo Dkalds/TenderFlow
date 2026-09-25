@@ -5,7 +5,10 @@ inferencia online por request. Idempotente: clave natural + upsert
 (``ON CONFLICT ... DO UPDATE``) — doble
 ejecución produce las mismas filas. En ``predicciones_baja`` la clave son los
 dos únicos parciales de v140 (expediente, o expediente + ``lote_numero``), y el
-upsert vive en ``PrediccionesRepository.guardar_baja``.
+upsert vive en ``PrediccionesRepository.guardar_baja``. En
+``predicciones_retencion`` la clave es el expediente, y
+``PrediccionesRepository.guardar_retencion`` purga además lo que la corrida no
+refrescó. El módulo no abre conexiones: todo su SQL vive en ``db/`` (ADR-022).
 
 Si no hay versión activa del modelo en ``model_versions`` (no entrenado aún,
 o el entrenamiento no batió al baseline — criterio de honestidad), se sirve
@@ -21,12 +24,16 @@ matemática split-conformal que usa el modelo.
 
 from __future__ import annotations
 
-from typing import Any
+from collections import Counter
+from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
-from db.database import connect, connect_read, now_utc_iso
+from db.database import now_utc_iso
 from db.repositories.predicciones import PrediccionesRepository
+from db.repositories.renovaciones import HORIZONTE_RENOVACIONES_MAX_MESES
 from observability.logging import get_logger
-from services.dedupe import exclude_duplicados_sql, normalize_organo
+from services.dedupe import normalize_organo
 from services.ml.baja_model import (
     MODEL_NAME,
     MODEL_NAME_LOTE,
@@ -35,7 +42,10 @@ from services.ml.baja_model import (
     Prediccion,
     predecir_baseline,
 )
-from services.ml.features import features_licitaciones_abiertas
+from services.ml.features import FilaDataset, features_licitaciones_abiertas
+
+if TYPE_CHECKING:
+    from services.ml.retencion_labels import EtiquetasPorSegmento, ParRetencion
 
 log = get_logger(__name__)
 
@@ -79,15 +89,23 @@ def _offset_baseline(*, por_lote: bool = False) -> float:
         return 0.0
 
 
-def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
+def score_predicciones_baja(
+    *, limit: int = 5000, filas: list[FilaDataset] | None = None
+) -> dict[str, Any]:
     """Puntúa las licitaciones abiertas y materializa ``predicciones_baja``.
 
     Escribe la fila **agregada** de cada expediente (``lote_numero`` NULL), que
     es la que se sirve por defecto. Las filas por lote las escribe
     :func:`score_predicciones_baja_por_lote`, aparte y solo con
     ``ML_BAJA_POR_LOTE``.
+
+    ``filas`` permite pasar las features ya construidas
+    (:func:`~services.ml.features.features_licitaciones_abiertas`): el job
+    nocturno las necesita también para el monitor de drift, y construirlas
+    dos veces era cargar dos veces el histórico entero. Sin ellas se
+    construyen aquí, con ``limit``.
     """
-    return _score_baja(limit=limit, por_lote=False)
+    return _score_baja(limit=limit, por_lote=False, filas=filas)
 
 
 def score_predicciones_baja_por_lote(*, limit: int = 5000) -> dict[str, Any]:
@@ -109,13 +127,16 @@ def score_predicciones_baja_por_lote(*, limit: int = 5000) -> dict[str, Any]:
     return _score_baja(limit=limit, por_lote=True)
 
 
-def _score_baja(*, limit: int, por_lote: bool) -> dict[str, Any]:
+def _score_baja(
+    *, limit: int, por_lote: bool, filas: list[FilaDataset] | None = None
+) -> dict[str, Any]:
     """Cuerpo común de los dos batches de baja; ver sus docstrings."""
-    filas = (
-        features_licitaciones_abiertas(limit=limit, por_lote=True)
-        if por_lote
-        else features_licitaciones_abiertas(limit=limit)
-    )
+    if filas is None:
+        filas = (
+            features_licitaciones_abiertas(limit=limit, por_lote=True)
+            if por_lote
+            else features_licitaciones_abiertas(limit=limit)
+        )
     granularidad = "lote" if por_lote else "expediente"
     if not filas:
         log.info("baja_scoring_skip", reason="sin_licitaciones_abiertas", granularidad=granularidad)
@@ -211,228 +232,312 @@ def _score_baja(*, limit: int, por_lote: bool) -> dict[str, Any]:
     }
 
 
-def _tasa_retencion_baseline() -> dict[tuple[str, str], float]:
-    """Tasa histórica de **retención** por ``(órgano normalizado, CPV-4)``.
+# ── Retención ─────────────────────────────────────────────────────────────
 
-    Hasta 2026-08 esta función medía otra cosa: contaba adjudicaciones con
-    ``empresa_id`` no nulo sobre el total del segmento —la tasa de vinculación
-    al maestro de empresas, ≈1 en cuanto la resolución de entidades funciona—
-    bajo un docstring que prometía "la fracción de los que fueron readjudicados
-    al mismo ganador". El resultado era un ``predicciones_retencion`` con un
-    riesgo de cambio constante y falsamente bajo, escrito cada noche.
+# Fuerza del shrinkage del baseline de retención: cuántos pares «pesa» la tasa
+# del nivel de arriba frente a los del propio nivel. Misma filosofía que
+# ``services.ml.features._SHRINKAGE_K_DEFECTO`` (el target encoding del modelo
+# de baja), pero constante propia: son dos estimadores distintos, y afinar uno
+# no debe mover el otro.
+_SHRINKAGE_K_RETENCION = 10.0
 
-    Ahora delega en ``retencion_labels.tasas_retencion_por_segmento``, que
-    agrega ``AVG(label)`` sobre los MISMOS pares vencimiento→sucesora con los
-    que se entrena el modelo de retención. Es el mismo criterio que aplica
-    :func:`_media_global_baja` con el target de baja: el baseline tiene que
-    medir la magnitud que sustituye, o compararlo con el modelo no significa
-    nada.
+# Probabilidad de retención que se sirve cuando no hay NINGÚN par etiquetado:
+# BD recién sembrada, o el emparejamiento falló (:func:`_etiquetas_retencion` es
+# fail-open). Es el «default conservador» que el baseline ya servía en ese
+# caso: sin pares no hay tasa global hacia la que encoger, y un 0.6 fijo
+# —riesgo de cambio 0.4 para todos— no ordena nada, pero tampoco se inventa un
+# segmento. Se conserva tal cual para no cambiar a la vez el caso degenerado.
+_PROB_RETENCION_SIN_PARES = 0.6
 
-    Efecto lateral buscado: la población pasa a ser la del etiquetado (todas
-    las adjudicaciones no duplicadas con fin efectivo) en vez del universo
-    ``technology_observed`` de la query anterior. La comparación baseline↔
-    modelo se hace sobre las mismas filas.
 
-    Fail-open, como antes: si el etiquetado falla, ``{}`` y el serving cae a la
-    media global.
+@dataclass(frozen=True)
+class _BaselineRetencion:
+    """Tasa de retención por nivel, con shrinkage jerárquico empirical-Bayes.
+
+    Tres niveles: global, CPV-4 y segmento ``(órgano normalizado, CPV-4)``. Cada
+    uno se encoge hacia el de arriba con fuerza ``k``
+    (:data:`_SHRINKAGE_K_RETENCION`), así que un segmento con pocos pares se
+    parece a su CPV-4 y uno con muchos, a sí mismo. Ver
+    :func:`_baseline_retencion`.
     """
-    from services.ml.retencion_labels import tasas_retencion_por_segmento
+
+    tasa_global: float
+    por_cpv4: dict[str, float]
+    por_segmento: dict[tuple[str, str], float]
+    pares: int
+
+    def tasa(self, organo_n: str | None, cpv4: str | None) -> tuple[float, str]:
+        """``(tasa, nivel)``: la del segmento si existe; si no, la del CPV-4; si no, la global."""
+        if organo_n and cpv4 and (organo_n, cpv4) in self.por_segmento:
+            return self.por_segmento[(organo_n, cpv4)], "segmento"
+        if cpv4 and cpv4 in self.por_cpv4:
+            return self.por_cpv4[cpv4], "cpv4"
+        return self.tasa_global, "global"
+
+
+def _baseline_retencion(
+    etiquetas: EtiquetasPorSegmento | None, *, k: float = _SHRINKAGE_K_RETENCION
+) -> _BaselineRetencion:
+    """Tasas del baseline a partir de los pares etiquetados, con shrinkage.
+
+    - global: ``p_g = Σ labels / N`` sobre TODOS los pares, agregada;
+    - CPV-4: ``p_c = (Σ_c + k·p_g) / (n_c + k)``;
+    - segmento: ``p_s = (Σ_s + k·p_c) / (n_s + k)``.
+
+    Sustituye al corte anterior: los segmentos con ``MIN_OBS_SEGMENTO`` pares o
+    más servían su tasa cruda y el resto una media **no ponderada** de las
+    tasas publicadas. Era un escalón —con 5 pares se pasaba de la media a un
+    0.0 o un 1.0— y la media pesaba igual un segmento de 5 pares que uno de
+    500. El 2026-09-24 dejaba fuera 1.076 segmentos frente a 208 publicados.
+
+    Caso degenerado, sin ningún par: :data:`_PROB_RETENCION_SIN_PARES` para
+    todos.
+    """
+    conteos = etiquetas.conteos if etiquetas is not None else {}
+    n_total = sum(n for _, n in conteos.values())
+    if n_total == 0:
+        log.info("retencion_baseline_estructura", pares=0, tasa_global=_PROB_RETENCION_SIN_PARES)
+        return _BaselineRetencion(
+            tasa_global=_PROB_RETENCION_SIN_PARES, por_cpv4={}, por_segmento={}, pares=0
+        )
+
+    tasa_global = sum(retenidos for retenidos, _ in conteos.values()) / n_total
+    retenidos_cpv4: Counter[str] = Counter()
+    pares_cpv4: Counter[str] = Counter()
+    for (_, cpv4), (retenidos, pares) in conteos.items():
+        retenidos_cpv4[cpv4] += retenidos
+        pares_cpv4[cpv4] += pares
+    por_cpv4 = {
+        cpv4: (retenidos_cpv4[cpv4] + k * tasa_global) / (n + k) for cpv4, n in pares_cpv4.items()
+    }
+    por_segmento = {
+        (organo_n, cpv4): (retenidos + k * por_cpv4[cpv4]) / (pares + k)
+        for (organo_n, cpv4), (retenidos, pares) in conteos.items()
+    }
+    log.info(
+        "retencion_baseline_estructura",
+        pares=n_total,
+        segmentos=len(por_segmento),
+        cpv4s=len(por_cpv4),
+        tasa_global=round(tasa_global, 4),
+        k=k,
+    )
+    return _BaselineRetencion(
+        tasa_global=tasa_global, por_cpv4=por_cpv4, por_segmento=por_segmento, pares=n_total
+    )
+
+
+def _etiquetas_retencion(adjudicaciones: list[dict[str, Any]]) -> EtiquetasPorSegmento | None:
+    """Emparejamiento del histórico (tasas del baseline y resueltos), fail-open.
+
+    Mide lo mismo que entrena el modelo: ``AVG(label)`` sobre los MISMOS pares
+    vencimiento→sucesora. Hasta 2026-08 el baseline contaba en su lugar
+    adjudicaciones con ``empresa_id`` no nulo sobre el total del segmento —la
+    tasa de vinculación al maestro de empresas, ≈1 en cuanto la resolución de
+    entidades funciona— bajo un docstring que prometía retención: un riesgo de
+    cambio constante y falsamente bajo, escrito cada noche. El baseline tiene
+    que medir la magnitud que sustituye, o compararlo con el modelo no
+    significa nada (el mismo criterio que :func:`_media_global_baja`).
+
+    Si el emparejamiento falla devuelve ``None``: el baseline cae a su caso
+    degenerado y los resueltos quedan sin detectar, en vez de no publicar nada.
+    """
+    from services.ml import retencion_labels
 
     try:
-        return tasas_retencion_por_segmento()
+        return retencion_labels.etiquetas_por_segmento(adjudicaciones)
     except Exception as exc:
         log.warning("retencion_baseline_error", error=str(exc))
-        return {}
+        return None
 
 
-def _media_global_retencion(tasas: dict[tuple[str, str], float]) -> float:
-    if not tasas:
-        return 0.6  # default conservador
-    return sum(tasas.values()) / len(tasas)
+def _separar_resueltos(
+    filas: list[ParRetencion], etiquetas: EtiquetasPorSegmento | None, *, excluir: bool
+) -> tuple[list[ParRetencion], int | None, int]:
+    """``(filas que se puntúan, resueltos detectados, excluidos)``.
 
+    Un vencimiento está **resuelto** si su sucesora ya está adjudicada según la
+    MISMA heurística que etiqueta los pares de entrenamiento
+    (``retencion_labels._emparejar``): su riesgo ya no es una predicción. Se
+    detectan y se cuentan siempre, y se excluyen solo con
+    ``ML_RETENCION_EXCLUIR_RESUELTOS``. La heurística da falsos positivos en
+    segmentos con mucha actividad (un contrato paralelo del mismo órgano y
+    CPV-4 pasa por sucesora), y excluir un contrato no es neutro: sin fila, su
+    ``riesgo_cambio`` es NULL y el orden «score» de Renovaciones lo manda al
+    fondo con score 0. Encender el flag exige antes auditar una muestra de los
+    resueltos a mano, como ``scripts/audit_retencion.py`` hace con los pares.
 
-def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
-    """Puntua el riesgo de cambio de manos en los vencimientos proximos.
-
-    Sin version activa del modelo, usa un baseline heuristico: tasa historica
-    de retencion observada por (organo normalizado, CPV-4) con fallback a la
-    media global (:func:`_tasa_retencion_baseline`).
-    Se materializa con model_version='baseline' para que la UI lo distinga.
+    ``None`` en detectados si el emparejamiento falló: no es lo mismo no haber
+    encontrado ninguno que no haber podido buscarlos.
     """
+    if etiquetas is None:
+        return filas, None, 0
+    resueltos = {f.licitacion_id for f in filas if f.licitacion_id in etiquetas.con_sucesora}
+    if not excluir:
+        return filas, len(resueltos), 0
+    return [f for f in filas if f.licitacion_id not in resueltos], len(resueltos), len(resueltos)
+
+
+def score_predicciones_retencion(
+    *, months_ahead: int = HORIZONTE_RENOVACIONES_MAX_MESES
+) -> dict[str, Any]:
+    """Puntúa el riesgo de cambio de manos de los contratos que vencen pronto.
+
+    Población: contratos con empresa del maestro cuyo fin efectivo cae en los
+    próximos ``months_ahead`` meses, con la misma ventana que la vista de
+    Renovaciones (``retencion_labels.ventana_vencimientos``). El default es
+    ``HORIZONTE_RENOVACIONES_MAX_MESES``, el tope que admite ``GET
+    /renovaciones``: hasta 2026-09 el batch puntuaba 12 meses y la ruta servía
+    hasta 60, así que más allá del año todo salía con ``riesgo_cambio`` NULL y
+    score 0 en el orden «score».
+
+    El histórico de adjudicaciones se carga **una vez** y lo comparten la
+    población, el emparejamiento (tasas y resueltos) y, con modelo, las
+    features. El 2026-09-24 se cargaba dos veces, y las features se calculaban
+    aunque no hubiera modelo que las leyera: ~10 min 40 s de un step de 1.049 s.
+
+    Con versión activa del modelo sirve el modelo, y solo entonces calcula
+    features. Sin ella, el **baseline**: la tasa histórica de retención del
+    segmento con shrinkage jerárquico (:func:`_baseline_retencion`). En la
+    tabla el baseline se escribe con ``model_version`` NULL, que es lo que la
+    UI distingue; en el dict de resultado sale ``model_version="baseline"``,
+    como siempre, para quien lo lee desde el CLI.
+
+    Los vencimientos ya resueltos se cuentan siempre y solo se excluyen con
+    ``ML_RETENCION_EXCLUIR_RESUELTOS`` (:func:`_separar_resueltos`). La
+    escritura (``PrediccionesRepository.guardar_retencion``) purga en la misma
+    transacción las filas que esta corrida no refrescó: ``purgadas``.
+    """
+    from config import settings
     from db.model_registry import get_active
+    from services.ml import retencion_labels
     from shared.model_artifacts import resolve_active_artifact
 
     activa = get_active("retencion_model")
     artefacto = resolve_active_artifact("retencion_model") if activa else None
-    # Ver la nota de `degradado` en score_predicciones_baja: el baseline por
-    # falta de modelo activo es el contrato del RFC; el baseline con modelo
-    # activo irresoluble es una avería que debe verse.
+    # Ver la nota de `degradado` en _score_baja: el baseline por falta de
+    # modelo activo es el contrato del RFC; el baseline con modelo activo
+    # irresoluble es una avería que debe verse.
     degradado: str | None = None
     if activa and artefacto is None:
         log.warning("retencion_model_artifact_unresolvable_fallback_baseline")
         degradado = "artefacto_irresoluble"
         activa = None
 
-    from services.ml.retencion_labels import features_para_vencimientos
-
-    filas = features_para_vencimientos(months_ahead=months_ahead)
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    desde, hasta = retencion_labels.ventana_vencimientos(months_ahead, hoy=hoy)
+    ventana = {"desde": desde, "hasta": hasta}
+    adjudicaciones = retencion_labels._cargar_adjudicaciones()
+    filas = (
+        retencion_labels.vencimientos_con_features(
+            adjudicaciones, months_ahead=months_ahead, hoy=hoy
+        )
+        if activa
+        else retencion_labels.vencimientos_proximos(
+            adjudicaciones, months_ahead=months_ahead, hoy=hoy
+        )
+    )
+    # El emparejamiento solo hace falta si hay algo que puntuar.
+    etiquetas = _etiquetas_retencion(adjudicaciones) if filas else None
+    filas, resueltos, excluidos = _separar_resueltos(
+        filas, etiquetas, excluir=settings.ML_RETENCION_EXCLUIR_RESUELTOS
+    )
     if not filas:
-        return {"status": "sin_vencimientos", "filas": 0, "degradado": degradado}
+        log.info(
+            "retencion_scoring_skip",
+            reason="sin_vencimientos",
+            horizonte_meses=months_ahead,
+            resueltos_detectados=resueltos,
+            excluidos=excluidos,
+        )
+        return {
+            "status": "sin_vencimientos",
+            "filas": 0,
+            "degradado": degradado,
+            "purgadas": 0,
+            "resueltos_detectados": resueltos,
+            "excluidos": excluidos,
+            "horizonte_meses": months_ahead,
+            "ventana": ventana,
+        }
 
+    version: int | None = None
+    baseline: _BaselineRetencion | None = None
+    niveles: Counter[str] = Counter()
     if activa:
         from services.ml.retencion_model import RetencionModel
 
         assert artefacto is not None
-        modelo = RetencionModel.load(artefacto)
-        probas = modelo.predict_proba_retencion(filas)
-        computed_at = now_utc_iso()
-        version_int: int | None = int(activa["version"])
-        model_version_str: str = str(version_int)
-        with connect() as c:
-            c.executemany(
-                "INSERT INTO predicciones_retencion "
-                "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
-                " model_version, computed_at) VALUES (%s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT(licitacion_id) DO UPDATE SET "
-                "empresa_id=excluded.empresa_id, prob_retencion=excluded.prob_retencion, "
-                "riesgo_cambio=excluded.riesgo_cambio, "
-                "model_version=excluded.model_version, computed_at=excluded.computed_at",
-                [
-                    (
-                        f.licitacion_id,
-                        f.empresa_id,
-                        round(p, 5),
-                        round(1 - p, 5),
-                        version_int,
-                        computed_at,
-                    )
-                    for f, p in zip(filas, probas, strict=True)
-                ],
-            )
-        log.info("retencion_scoring_done", filas=len(filas), model_version=version_int)
-        return {
-            "status": "ok",
-            "filas": len(filas),
-            "model_version": version_int,
-            "degradado": None,
-        }
+        probas = RetencionModel.load(artefacto).predict_proba_retencion(filas)
+        version = int(activa["version"])
     else:
-        # Baseline heuristico: tasa historica de retencion observada por segmento
         log.info("retencion_scoring_baseline", reason="sin_modelo_activo", filas=len(filas))
-        tasas = _tasa_retencion_baseline()
-        media_global = _media_global_retencion(tasas)
-        computed_at = now_utc_iso()
-        model_version_str = "baseline"
-        rows_to_insert = []
+        baseline = _baseline_retencion(etiquetas)
+        probas = []
         for f in filas:
-            # La clave tiene que ser la MISMA con la que se agregó la tasa:
-            # ``(normalize_organo(organo), cpv4)``. Antes se leían ``f.cpv`` y
-            # ``f.organo_contratacion`` con ``getattr(..., "")``, dos atributos
-            # que ``ParRetencion`` no tiene: los dos salían vacíos, la condición
-            # de abajo era siempre falsa y TODAS las filas recibían la media
-            # global — el lookup por segmento no se aplicaba nunca.
-            organo_n = normalize_organo(f.organo)
-            cpv4 = f.cpv4 or ""
-            tasa = tasas.get((organo_n, cpv4), media_global) if cpv4 and organo_n else media_global
-            prob = min(max(tasa, 0.0), 1.0)
-            rows_to_insert.append(
-                (
-                    f.licitacion_id,
-                    f.empresa_id,
-                    round(prob, 5),
-                    round(1 - prob, 5),
-                    None,
-                    computed_at,
-                )
-            )
-        with connect() as c:
-            c.executemany(
-                "INSERT INTO predicciones_retencion "
-                "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
-                " model_version, computed_at) VALUES (%s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT(licitacion_id) DO UPDATE SET "
-                "empresa_id=excluded.empresa_id, prob_retencion=excluded.prob_retencion, "
-                "riesgo_cambio=excluded.riesgo_cambio, "
-                "model_version=excluded.model_version, computed_at=excluded.computed_at",
-                rows_to_insert,
-            )
-        log.info("retencion_baseline_done", filas=len(rows_to_insert), degradado=degradado)
-        return {
-            "status": "baseline",
-            "filas": len(rows_to_insert),
-            "model_version": model_version_str,
-            "serving": "baseline",
-            "degradado": degradado,
-        }
+            # La clave tiene que ser la MISMA con la que se agregaron las tasas:
+            # ``(normalize_organo(organo), cpv4)``. Hasta 2026-08 se leían
+            # ``f.cpv`` y ``f.organo_contratacion`` con ``getattr(..., "")``,
+            # dos atributos que ``ParRetencion`` no tiene: los dos salían
+            # vacíos y TODAS las filas recibían la media global.
+            tasa, nivel = baseline.tasa(normalize_organo(f.organo), f.cpv4)
+            niveles[nivel] += 1
+            probas.append(min(max(tasa, 0.0), 1.0))
+
+    computed_at = now_utc_iso()
+    guardado = PrediccionesRepository().guardar_retencion(
+        [
+            (f.licitacion_id, f.empresa_id, round(p, 5), round(1 - p, 5), version, computed_at)
+            for f, p in zip(filas, probas, strict=True)
+        ],
+        computed_at=computed_at,
+    )
+    serving = "modelo" if version is not None else "baseline"
+    resultado: dict[str, Any] = {
+        "status": "ok" if version is not None else "baseline",
+        "filas": len(filas),
+        "model_version": version if version is not None else "baseline",
+        "serving": serving,
+        "degradado": degradado,
+        "purgadas": guardado["purgadas"],
+        "resueltos_detectados": resueltos,
+        "excluidos": excluidos,
+        "horizonte_meses": months_ahead,
+        "ventana": ventana,
+        "tasa_global": baseline.tasa_global if baseline is not None else None,
+        "niveles_baseline": dict(niveles) if baseline is not None else None,
+        "computed_at": computed_at,
+    }
+    log.info(
+        "retencion_scoring_done" if version is not None else "retencion_baseline_done",
+        **{clave: valor for clave, valor in resultado.items() if clave != "status"},
+    )
+    return resultado
 
 
-def _baja_real(c: Any, licitacion_id: str) -> tuple[float, float] | None:
+# ── Lectura de la predicción de baja ──────────────────────────────────────
+
+
+def _baja_real(repo: PrediccionesRepository, licitacion_id: str) -> tuple[float, float] | None:
     """Baja real ``(baja_pct, importe_adjudicado)`` si la licitación fue adjudicada.
 
-    Suma ``importe_adjudicado`` de todos los lotes de la licitación (una
-    licitación puede tener varias filas en ``adjudicaciones``) y lo divide
-    entre el **presupuesto efectivo** del expediente.
-
-    Ese denominador es la parte que estaba mal. El modelo aprende y
-    ``calibration.py`` mide contra la regla de
-    ``db.repositories.ml_dataset._sql_agregado``: si TODAS las adjudicaciones
-    del expediente tienen ``lote_id`` resuelto, el presupuesto es la suma de
-    los lotes **distintos** adjudicados (un lote ganado por dos empresas no
-    cuenta su presupuesto dos veces); si alguna no lo tiene (datos anteriores a
-    v65_lotes), ``licitaciones.importe``. Aquí se dividía siempre entre
-    ``licitaciones.importe``, así que un expediente de tres lotes con dos
-    adjudicados devolvía por el API una "baja real" del 61% al lado de un
-    intervalo entrenado contra el 22% de la porción adjudicada: la comparación
-    estimado-vs-real que justifica este endpoint enfrentaba dos magnitudes
-    distintas.
-
-    Lo que **no** se importa del dataset son sus filtros de validez (universo
-    ``technology_observed``, tolerancia de sobrecoste): seleccionan filas de
-    entrenamiento, no filas que enseñar. Aplicarlos aquí convertiría en 404
-    expedientes reales por no ser aptos para entrenar.
-
-    La regla vive duplicada porque ``MlDatasetRepository`` solo la expone sobre
-    el dataset completo y este es un GET por expediente; su sitio natural es un
-    método por id en ese repositorio (``db/``).
+    ``importe_adjudicado`` es la suma de todo lo adjudicado en el expediente, y
+    el denominador su **presupuesto efectivo**, con la regla del target de
+    entrenamiento y de ``calibration.py``: la de
+    ``PrediccionesRepository.baja_real_de_expediente``, cuyo docstring cuenta el
+    caso que la motivó (una «baja real» del 61% junto a un intervalo entrenado
+    contra el 22%). Aquí queda la división, que es dominio; el SQL vivía inline
+    en este módulo y bajó a ``db/`` (ADR-022), con lo que el módulo salió del
+    ratchet TID251. Gemela de :func:`_baja_real_lote`.
     """
-    sql = f"""
-        WITH adj AS (
-            SELECT SUM(a.importe_adjudicado) AS total_adjudicado,
-                   COUNT(*) AS n_adjudicaciones,
-                   COUNT(a.lote_id) AS n_con_lote
-            FROM adjudicaciones a
-            WHERE a.licitacion_id = %s
-              AND a.importe_adjudicado > 0
-              AND {exclude_duplicados_sql("a.licitacion_id")}
-        ),
-        lotes_adjudicados AS (
-            SELECT SUM(lo.importe) AS presupuesto_lotes
-            FROM (
-                SELECT DISTINCT licitacion_id, lote_id
-                FROM adjudicaciones
-                WHERE licitacion_id = %s
-                  AND lote_id IS NOT NULL
-                  AND importe_adjudicado > 0
-            ) d
-            JOIN lotes lo ON lo.id = d.lote_id
-            WHERE lo.importe > 0
-        )
-        SELECT CASE
-                   WHEN adj.n_adjudicaciones = adj.n_con_lote
-                        AND la.presupuesto_lotes > 0
-                   THEN la.presupuesto_lotes
-                   ELSE l.importe
-               END AS presupuesto_efectivo,
-               adj.total_adjudicado
-        FROM adj
-        JOIN licitaciones l ON l.id_externo = %s
-        LEFT JOIN lotes_adjudicados la ON TRUE
-        WHERE l.importe > 0 AND adj.total_adjudicado > 0
-    """  # noqa: S608 — exclude_duplicados_sql() es un fragmento constante
-    row = c.execute(sql, (licitacion_id, licitacion_id, licitacion_id)).fetchone()
-    if row is None or row[0] is None or row[1] is None:
+    fila = repo.baja_real_de_expediente(licitacion_id)
+    if fila is None:
         return None
-    presupuesto_efectivo, total_adjudicado = float(row[0]), float(row[1])
+    presupuesto = fila.get("presupuesto_efectivo")
+    adjudicado = fila.get("total_adjudicado")
+    if presupuesto is None or adjudicado is None:
+        return None
+    presupuesto_efectivo, total_adjudicado = float(presupuesto), float(adjudicado)
     if presupuesto_efectivo <= 0:
         return None
     return (presupuesto_efectivo - total_adjudicado) / presupuesto_efectivo, total_adjudicado
@@ -475,8 +580,7 @@ def prediccion_baja(licitacion_id: str, lote_id: int | None = None) -> dict[str,
     # contestaría con el intervalo de un lote cualquiera.
     pred = repo.prediccion_materializada(licitacion_id)
     desglose = repo.predicciones_por_lote(licitacion_id)
-    with connect_read() as c:
-        real = _baja_real(c, licitacion_id)
+    real = _baja_real(repo, licitacion_id)
 
     if pred is None and real is None and not desglose:
         return None

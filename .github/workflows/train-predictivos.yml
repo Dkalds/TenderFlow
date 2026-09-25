@@ -1,7 +1,7 @@
 name: Train & publish modelos predictivos
 
 # Re-entrenamiento mensual de los modelos predictivos (baja y retención,
-# RFC 20260611-2) **y publicación de sus artefactos en la Release**.
+# RFC 20260611-2) **y publicación de sus artefactos en la Release `ml-models`**.
 #
 # Por qué existe este workflow y no es un paso más de la pipeline canónica:
 # hasta 2026-08 `ml_retrain` vivía en `CANONICAL_STEPS` (dentro de
@@ -13,6 +13,22 @@ name: Train & publish modelos predictivos
 # baseline histórico indefinidamente, en verde. Publicar exige
 # `contents: write`, y ese permiso no debe estar en el job de ingesta.
 #
+# Dónde y con qué nombre se publica (2026-09): en la Release de tag fijo
+# `ml-models` (`shared.release_assets.ML_MODELS_RELEASE_TAG`), que nunca es
+# *latest*, y con el sha256 en el nombre (`baja_model-3fa9c1d2e4b5.pkl`, ver
+# `shared.model_artifacts.rename_to_content_address`). Antes subía con nombre
+# fijo a lo que fuera *latest*, y eso fallaba de dos maneras:
+#   - el reentrenamiento registra vN+1 SIN activarla, pero `--clobber` pisaba
+#     el asset de la vN activa: `ml-scoring` bajaba vN+1 para la fila vN, el
+#     sha256 no cuadraba y `ModelArtifactMismatch` tumbaba el scoring cada día
+#     hasta que alguien activara la nueva;
+#   - `release.yml` crea una *latest* nueva, sin assets de modelo, con cada
+#     tag `v*`: publicar una versión de software dejaba al scoring sin
+#     artefactos.
+# Las versiones registradas antes, con nombre fijo, se siguen resolviendo: el
+# resolvedor busca por nombre en `ml-models`, en *latest* y en las Releases
+# más recientes.
+#
 # La activación de la versión nueva sigue siendo decisión humana vía
 # `db.model_registry` (salvo `ML_PRED_AUTO_ACTIVATE`): este workflow deja el
 # artefacto disponible, no cambia lo que se sirve.
@@ -22,7 +38,9 @@ on:
     # Mensual, día 1 a las 03:00 UTC: misma cadencia que tenía el paso
     # `ml_retrain` (_SEGUNDOS_MES), fuera de la ventana del scrape (cada 4 h
     # desde las 00:23, 120 min de presupuesto: la de las 00:23 acaba como tarde
-    # a las 02:23) y antes del scoring diario de las 07:30.
+    # a las 02:23). El scoring diario ya no tiene hora fija: se encadena al
+    # final de las pasadas de `scrape-daily` (ver `ml-scoring.yml`), y el
+    # modelo nuevo no se sirve hasta que alguien lo activa.
     - cron: "0 3 1 * *"
   workflow_dispatch:
 
@@ -67,16 +85,35 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Emite `artefactos` (rutas separadas por espacio) por $GITHUB_OUTPUT.
-      # Sale vacío si ninguno de los dos modelos tenía histórico suficiente,
-      # que no es un fallo: se sigue sirviendo el baseline.
+      # Overrides de repositorio → $GITHUB_ENV, y SOLO si están definidos.
+      #
+      # Antes el step de reentrenamiento llevaba
+      # `ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}`. Ese literal no
+      # es un default: SUSTITUYE al de `config/settings.py` cuando la variable
+      # no está definida, que es el caso normal. Dos fuentes de verdad para el
+      # mismo valor, y gana la del YAML, que ningún test mira — el patrón ya
+      # costó dos incidentes (ver ml-scoring.yml). Así el default vigente es
+      # siempre el del código y la variable de repo lo pisa solo si alguien la
+      # define de verdad. Verificado por scripts/check_env_parity.py.
+      - name: Exportar overrides de repositorio definidos
+        env:
+          IN_ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL }}
+        run: |
+          set -u
+          if [ -n "${IN_ALERT_MIN_LEVEL:-}" ]; then
+            echo "ALERT_MIN_LEVEL=$IN_ALERT_MIN_LEVEL" >> "$GITHUB_ENV"
+          fi
+
+      # Emite `artefactos` (rutas separadas por espacio, ya con el sha256 en el
+      # nombre, más su `.sha256`) por $GITHUB_OUTPUT. Sale vacío si ninguno de
+      # los dos modelos tenía histórico suficiente, que no es un fallo: se
+      # sigue sirviendo el baseline.
       - name: Retrain predictive models
         id: retrain
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
         run: python -m scheduler.jobs.ml_predicciones retrain
 
       - name: Upload artifacts to release
@@ -84,17 +121,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ARTEFACTOS: ${{ steps.retrain.outputs.artefactos }}
+          # Mismo literal que `shared.release_assets.ML_MODELS_RELEASE_TAG`, la
+          # primera Release en la que busca shared/model_artifacts.py. Lo fija
+          # tests/test_unit_train_predictivos_workflow.py: si divergen, se
+          # publica donde nadie busca.
+          TAG: ml-models
         run: |
           set -euo pipefail
-          # `gh release view` sin argumentos resuelve la MISMA release que
-          # consulta shared/model_artifacts.py (`/releases/latest`): si se
-          # subieran los assets a otro tag, el scoring no los encontraría.
-          TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "")
-          if [ -z "$TAG" ]; then
-            TAG="v0.0.0-model"
-            echo "No hay releases publicadas; creando $TAG"
-            gh release create "$TAG" --title "ML Models" --notes "Artefactos de modelo"
+          # Tag fijo y nunca *latest* (`--latest=false`): una release de
+          # software no la desplaza, y ella no le quita el puesto a ninguna.
+          # La crea `github.token`, así que su evento `release: published` no
+          # dispara `release-sdk.yml`: GitHub no encadena workflows por
+          # eventos de ese token.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "No existe la Release $TAG; creándola"
+            gh release create "$TAG" --title "ML Models" \
+              --notes "Artefactos de los modelos predictivos (baja, retención) con el sha256 en el nombre. Los publica train-predictivos.yml; no es una release de software." \
+              --latest=false
           fi
+          # `--clobber` ya es inocuo: el nombre lleva el hash del contenido,
+          # así que solo puede reescribir los mismos bytes. Se conserva para
+          # que relanzar el workflow no falle por un asset que ya está.
           # shellcheck disable=SC2086 -- rutas sin espacios, split intencional
           gh release upload "$TAG" $ARTEFACTOS --clobber
           echo "Artefactos publicados en $TAG: $ARTEFACTOS"

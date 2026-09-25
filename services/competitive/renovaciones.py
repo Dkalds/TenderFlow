@@ -25,6 +25,11 @@ from pydantic import BaseModel, Field
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 
+# El mismo tope que `GET /renovaciones` y que el horizonte del scoring de
+# retención: un clamp propio aquí dejaría el resumen y el listado midiendo
+# ventanas distintas el día que alguien cambie uno.
+from db.repositories.renovaciones import HORIZONTE_RENOVACIONES_MAX_MESES
+
 # `proximas_renovaciones` se re-exporta: su SQL se movió a `db/` (ADR-022) pero
 # el nombre sigue importándose desde aquí en `services/pursuits.py`,
 # `scheduler/competitor_alerts.py` y la suite. Es un alias, no una capa
@@ -164,7 +169,7 @@ def resumen_renovaciones(
     Responde "¿qué cartera de cada competidor está en juego?": número de
     contratos e importe que vencen, con el vencimiento más próximo.
     """
-    months_ahead = max(1, min(int(months_ahead), 60))
+    months_ahead = max(1, min(int(months_ahead), HORIZONTE_RENOVACIONES_MAX_MESES))
     fecha_fin = fecha_fin_sql()
     sql = f"""
         SELECT a.empresa_id,
@@ -211,7 +216,7 @@ def totales_renovaciones(
     ADR-014: si hay más contratos que el tope, el usuario ve cifras
     silenciosamente bajas.
     """
-    months_ahead = max(1, min(int(months_ahead), 60))
+    months_ahead = max(1, min(int(months_ahead), HORIZONTE_RENOVACIONES_MAX_MESES))
     fecha_fin = fecha_fin_sql()
     dias_restantes = dias_restantes_sql(fecha_fin)
     sql = f"""

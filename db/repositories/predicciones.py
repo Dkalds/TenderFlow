@@ -1,15 +1,15 @@
-"""Repository de lectura (y purga) para las tablas de predicciones ML.
+"""Repository de las tablas de predicciones ML: escritura, lectura y purga.
 
-``predicciones_retencion`` la **escribe** ``services/ml/scoring.py``
-(whitelist TID251); ``predicciones_baja`` la escribe el mismo servicio a
-través de :meth:`PrediccionesRepository.guardar_baja` desde que v140 cambió su
-unicidad (agregada o por lote). Este repository cubre también las
-lecturas de verificación/reporting que antes vivían como SQL inline en los
-heredocs de ``.github/workflows/ml-scoring.yml``, la lectura que alimenta la
-señal de margen del scoring (antes inline en
-``services/analytics/scoring_signals.py``), las lecturas por lote que sirve
-``GET /licitaciones/{id}/prediccion-baja?lote_id=…`` (S3.1) y la purga por
-antigüedad.
+``services/ml/scoring.py`` escribe las dos tablas a través de este
+repository: ``predicciones_baja`` con :meth:`PrediccionesRepository.guardar_baja`
+(desde que v140 cambió su unicidad, agregada o por lote) y
+``predicciones_retencion`` con :meth:`PrediccionesRepository.guardar_retencion`,
+que además purga lo que la corrida no refrescó. Cubre también las lecturas de
+verificación/reporting que antes vivían como SQL inline en los heredocs de
+``.github/workflows/ml-scoring.yml``, la lectura que alimenta la señal de
+margen del scoring (antes inline en ``services/analytics/scoring_signals.py``),
+las bajas reales por expediente y por lote que sirve
+``GET /licitaciones/{id}/prediccion-baja`` (S3.1) y las purgas por antigüedad.
 """
 
 from __future__ import annotations
@@ -18,12 +18,19 @@ from typing import Any
 
 from db.database import connect, connect_read
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import exclude_duplicados_sql
+from db.sql_fragments import exclude_duplicados_sql, fecha_referencia_abierta_sql
 from shared.estados import ESTADOS_CERRADOS
 
 # Tablas de predicciones cuyo estado se puede consultar. Whitelist explícita:
 # el nombre se interpola en el SQL, así que nunca puede venir de fuera.
 _TABLAS = frozenset({"predicciones_baja", "predicciones_retencion"})
+
+# Tablas que admite :meth:`PrediccionesRepository.purgar_cerradas`. Solo la de
+# baja: las filas de ``predicciones_retencion`` son contratos YA adjudicados
+# —estado terminal, adjudicación de hace años—, así que el criterio «cerrado
+# hace más de N días» las borraría todas nada más escribirlas. Su purga es la
+# de :meth:`PrediccionesRepository.guardar_retencion`.
+_TABLAS_PURGABLES_POR_CIERRE = frozenset({"predicciones_baja"})
 
 
 class PrediccionesRepository:
@@ -131,6 +138,78 @@ class PrediccionesRepository:
                     por_lote,
                 )
         return len(filas)
+
+    def contar_baja_de_corrida(self, computed_at: str) -> int:
+        """Filas **agregadas** de ``predicciones_baja`` escritas por una corrida.
+
+        Es la verificación que :meth:`estado` no puede dar: «hay filas
+        recientes» no distingue la corrida de hoy de la de ayer cuando el cron
+        de Actions arranca con horas de retraso variable (entre las 08:05 y las
+        19:29 UTC con el mismo ``30 7 * * *``, 2026-08/09). Todas las filas de
+        una pasada comparten ``computed_at`` —``services.ml.scoring`` lo fija
+        una vez por batch—, así que contar por ese valor exacto dice si lo que
+        el batch reportó está de verdad en la BD.
+        """
+        with connect_read() as c:
+            row = c.execute(
+                "SELECT COUNT(*) FROM predicciones_baja "
+                "WHERE computed_at = %s AND lote_numero IS NULL",
+                (computed_at,),
+            ).fetchone()
+        return int(row[0] or 0) if row else 0
+
+    def guardar_retencion(
+        self,
+        filas: list[tuple[str, int, float, float, int | None, str]],
+        *,
+        computed_at: str,
+    ) -> dict[str, int]:
+        """Upsert de ``predicciones_retencion`` y purga de lo que la corrida no tocó.
+
+        Cada fila es ``(licitacion_id, empresa_id, prob_retencion,
+        riesgo_cambio, model_version, computed_at)``; ``model_version`` es
+        ``None`` cuando la sirve el baseline. ``computed_at`` es el de la
+        corrida, el mismo que llevan sus filas.
+
+        La purga va en la misma transacción que el upsert. El upsert nunca
+        borra, así que un vencimiento que salía de la población —venció, se le
+        movió la fecha de fin, o se dejó de puntuar— conservaba para siempre la
+        última cifra que se le calculó (el 2026-09-24 la tabla tenía 3.443 filas
+        para 3.003 vencimientos puntuados). Se borra todo lo que tenga
+        ``computed_at`` anterior al de esta corrida: lo vigente se acaba de
+        reescribir con el suyo.
+
+        Con ``filas`` vacía no se toca nada: una corrida que no produjo filas no
+        sabe qué sobra, y purgar ahí vaciaría la tabla.
+
+        Vive aquí y no en ``services.ml.scoring``, donde estaba el upsert
+        duplicado en las dos ramas (modelo y baseline): la purga es SQL nuevo,
+        y el SQL nuevo solo nace en ``db/`` (ADR-022).
+
+        Returns:
+            ``{"escritas": n, "purgadas": m}``.
+        """
+        if not filas:
+            return {"escritas": 0, "purgadas": 0}
+        with connect() as c:
+            c.executemany(
+                "INSERT INTO predicciones_retencion "
+                "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
+                " model_version, computed_at) VALUES (%s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (licitacion_id) DO UPDATE SET "
+                "empresa_id = excluded.empresa_id, "
+                "prob_retencion = excluded.prob_retencion, "
+                "riesgo_cambio = excluded.riesgo_cambio, "
+                "model_version = excluded.model_version, "
+                "computed_at = excluded.computed_at",
+                filas,
+            )
+            cur = c.execute(
+                "DELETE FROM predicciones_retencion WHERE computed_at < %s",
+                (computed_at,),
+            )
+            purgadas = int(getattr(cur, "rowcount", 0) or 0)
+        return {"escritas": len(filas), "purgadas": purgadas}
 
     # ── Lecturas por lote (S3.1) ─────────────────────────────────────────────
     # El expediente no es la unidad sobre la que se puja: el lote lo es
@@ -245,6 +324,70 @@ class PrediccionesRepository:
             rows = rows_to_dicts(c.execute(sql, (lote_id, licitacion_id)))
         return rows[0] if rows else None
 
+    def baja_real_de_expediente(self, licitacion_id: str) -> dict[str, Any] | None:
+        """``{presupuesto_efectivo, total_adjudicado}`` del expediente, o ``None``.
+
+        Gemela por expediente de :meth:`baja_real_de_lote`, y la regla de
+        denominador es la parte delicada. El modelo aprende y ``calibration.py``
+        mide contra la de ``db.repositories.ml_dataset._sql_agregado``: si TODAS
+        las adjudicaciones del expediente tienen ``lote_id`` resuelto, el
+        presupuesto es la suma de los lotes **distintos** adjudicados (un lote
+        ganado por dos empresas no cuenta su presupuesto dos veces); si alguna
+        no lo tiene (datos anteriores a v65_lotes), ``licitaciones.importe``.
+        Dividir siempre entre ``licitaciones.importe`` hacía que un expediente
+        de tres lotes con dos adjudicados enseñara una "baja real" del 61% junto
+        a un intervalo entrenado contra el 22% de la porción adjudicada.
+
+        Lo que **no** se importa del dataset son sus filtros de validez
+        (universo ``technology_observed``, tolerancia de sobrecoste):
+        seleccionan filas de entrenamiento, no filas que enseñar. Aplicarlos
+        aquí convertiría en 404 expedientes reales por no ser aptos para
+        entrenar.
+
+        Estaba inline en ``services.ml.scoring._baja_real`` (whitelist TID251);
+        la división sigue allí, que es lógica de dominio. ``None`` si el
+        expediente no existe, no tiene importe o no tiene nada adjudicado.
+        """
+        # S608 no aplica: el único fragmento interpolado es una constante de
+        # este mismo paquete; los valores viajan como parámetros.
+        sql = f"""
+            WITH adj AS (
+                SELECT SUM(a.importe_adjudicado) AS total_adjudicado,
+                       COUNT(*) AS n_adjudicaciones,
+                       COUNT(a.lote_id) AS n_con_lote
+                FROM adjudicaciones a
+                WHERE a.licitacion_id = %s
+                  AND a.importe_adjudicado > 0
+                  AND {exclude_duplicados_sql("a.licitacion_id")}
+            ),
+            lotes_adjudicados AS (
+                SELECT SUM(lo.importe) AS presupuesto_lotes
+                FROM (
+                    SELECT DISTINCT licitacion_id, lote_id
+                    FROM adjudicaciones
+                    WHERE licitacion_id = %s
+                      AND lote_id IS NOT NULL
+                      AND importe_adjudicado > 0
+                ) d
+                JOIN lotes lo ON lo.id = d.lote_id
+                WHERE lo.importe > 0
+            )
+            SELECT CASE
+                       WHEN adj.n_adjudicaciones = adj.n_con_lote
+                            AND la.presupuesto_lotes > 0
+                       THEN la.presupuesto_lotes
+                       ELSE l.importe
+                   END AS presupuesto_efectivo,
+                   adj.total_adjudicado
+            FROM adj
+            JOIN licitaciones l ON l.id_externo = %s
+            LEFT JOIN lotes_adjudicados la ON TRUE
+            WHERE l.importe > 0 AND adj.total_adjudicado > 0
+        """
+        with connect_read() as c:
+            rows = rows_to_dicts(c.execute(sql, (licitacion_id, licitacion_id, licitacion_id)))
+        return rows[0] if rows else None
+
     def purgar_cerradas(self, *, antes_de: str, tabla: str = "predicciones_baja") -> int:
         """Borra predicciones de expedientes cerrados antes de ``antes_de``.
 
@@ -263,16 +406,17 @@ class PrediccionesRepository:
 
         Args:
             antes_de: Corte ``YYYY-MM-DD``; se borra lo cerrado **antes**.
-            tabla: Una de las de :data:`_TABLAS`.
+            tabla: Una de las de :data:`_TABLAS_PURGABLES_POR_CIERRE` (hoy solo
+                ``predicciones_baja``; ver la constante para el motivo).
 
         Returns:
             Número de filas borradas.
 
         Raises:
-            ValueError: Si ``tabla`` no está en la whitelist.
+            ValueError: Si ``tabla`` no admite este criterio de purga.
         """
-        if tabla not in _TABLAS:
-            raise ValueError(f"Tabla no permitida: {tabla!r}")
+        if tabla not in _TABLAS_PURGABLES_POR_CIERRE:
+            raise ValueError(f"Tabla no purgable por cierre: {tabla!r}")
         marcadores = ", ".join(["%s"] * len(ESTADOS_CERRADOS))
         # Tabla y marcadores se generan aquí (whitelist + longitud de una
         # constante del módulo); los valores viajan como parámetros.
@@ -299,4 +443,51 @@ class PrediccionesRepository:
             cur = c.execute(sql, (*ESTADOS_CERRADOS, antes_de))
             borradas = int(getattr(cur, "rowcount", 0) or 0)
             c.commit()
+        return borradas
+
+    def purgar_sin_adjudicar(self, *, antes_de: str) -> int:
+        """Borra predicciones de baja de licitaciones muertas sin adjudicar.
+
+        Complementa a :meth:`purgar_cerradas`, que solo ve estados terminales.
+        Una licitación sin ninguna adjudicación y sin estado terminal cuya fecha
+        de referencia (plazo de ofertas o publicación,
+        ``db.sql_fragments.fecha_referencia_abierta_sql``) es anterior a
+        ``antes_de`` ya no entra en la población del batch
+        (``MlDatasetRepository.licitaciones_abiertas``), así que su fila no se
+        vuelve a refrescar nunca: sin esta purga se quedaba para siempre con la
+        cifra de la última noche en que contó como abierta, y la señal de margen
+        la seguía cargando entera.
+
+        Mismo criterio que el filtro de la población, en negativo: las filas sin
+        ninguna de las dos fechas no se tocan, porque el filtro tampoco las
+        excluye. Borra las agregadas y las de lote. No afecta a la calibración:
+        sin adjudicación no hay par predicción↔realidad que perder.
+
+        Args:
+            antes_de: Corte ``YYYY-MM-DD``; lo de :func:`services.ml.features.
+                corte_abiertas_vivas`, el mismo que fija la población.
+
+        Returns:
+            Número de filas borradas.
+        """
+        marcadores = ", ".join(["%s"] * len(ESTADOS_CERRADOS))
+        referencia = fecha_referencia_abierta_sql("l")
+        # Marcadores y fragmento se generan aquí (longitud de una constante del
+        # módulo y un fragmento constante); los valores viajan como parámetros.
+        sql = f"""
+            DELETE FROM predicciones_baja
+            WHERE licitacion_id IN (
+                SELECT p.licitacion_id
+                FROM predicciones_baja p
+                JOIN licitaciones l ON l.id_externo = p.licitacion_id
+                WHERE COALESCE(l.estado, '') NOT IN ({marcadores})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo
+                  )
+                  AND {referencia} < %s
+            )
+        """
+        with connect() as c:
+            cur = c.execute(sql, (*ESTADOS_CERRADOS, antes_de))
+            borradas = int(getattr(cur, "rowcount", 0) or 0)
         return borradas
