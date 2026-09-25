@@ -142,8 +142,8 @@ export function CompanyQuickView({
   const averageTicket = awardCount ? awardedAmount / awardCount : company.importe_medio;
   const fullProfileHref =
     groupIds && groupIds.length > 1
-      ? `/competidores/empresa/${empresaId}?ids=${groupIds.join(",")}`
-      : `/competidores/empresa/${empresaId}`;
+      ? `/competencia/empresa/${empresaId}?ids=${groupIds.join(",")}`
+      : `/competencia/empresa/${empresaId}`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

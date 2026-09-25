@@ -588,6 +588,13 @@ ellos» y «Perdimos» por separado según `resultado`; las filas sin
 `offer_price_eur` dicen «Sin precio registrado»; con `sin_nif_propio` avisa y
 manda a Equipo → Organización.
 
+*Actualización (2026-09-25):* la pestaña cruza todas las identidades del
+maestro que suma la ficha, no sólo la que la abre. La ruta acepta `empresa_ids`
+—el mismo grupo que el perfil y el listado—, la consulta compara la clave del
+adjudicatario con todas (`= ANY`) y una adjudicación a cualquiera de ellas
+cuenta como «Ganaron ellos». La respuesta declara en `claves` qué identidades
+cruzó, y la pestaña sólo dice que cruzó el grupo si el backend lo declara.
+
 #### F3.3 Socios de UTE sugeridos — P1
 
 **Para quién.** Quien no llega solo a la solvencia. **Qué.**

@@ -234,6 +234,24 @@ class TestPipelineStepReleasesTheWindow:
         ):
             _run_llm_tech_labeling()
 
+    def test_unavailable_model_reaches_the_step_message(self):
+        """Del 2026-09-21 al 2026-09-24 el email decía «respuesta vacía» ×200."""
+        from scheduler.pipeline_runs import _run_llm_tech_labeling
+
+        retirado = {
+            "scored": 0,
+            "no_signal": 0,
+            "error": 1,
+            "disabled": 0,
+            "modelo_no_disponible": "El proveedor no sirve el modelo m (HTTP 410)",
+        }
+        with (
+            patch("scheduler.jobs.llm_tech_labeling.run", return_value=retirado),
+            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+            pytest.raises(RuntimeError, match=r"HTTP 410"),
+        ):
+            _run_llm_tech_labeling()
+
 
 class TestRejectedKeyStopsTheBatch:
     """Con la key rechazada el lote se corta en el primer item y dice por qué.
@@ -269,6 +287,45 @@ class TestRejectedKeyStopsTheBatch:
         assert llm.call_count == 1
         assert counts["error"] == 1
         assert "HTTP 401" in counts["credencial_rechazada"]
+        repo.upsert_signals.assert_not_called()
+        assert batch_failed_systemically(counts) is True
+
+
+class TestUnavailableModelStopsTheBatch:
+    """Con el modelo retirado, el mismo corte que con la key, y con su nombre.
+
+    El run #795 de scrape-daily (2026-09-21) hizo 200 llamadas y las 200 dieron
+    410; como el paso fallaba, la ventana diaria no se consumía y cada pasada
+    repetía las 200.
+    """
+
+    def test_first_410_stops_the_batch_and_names_the_model(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from llm.providers import LLMModelUnavailableError
+        from scheduler.jobs.llm_tech_labeling import batch_failed_systemically, run
+
+        monkeypatch.setattr(settings, "LLM_TECH_LABELING_ENABLED", True, raising=False)
+        repo = MagicMock()
+        repo.list_metadata_pending_llm_signal.return_value = [
+            {"id_externo": f"EXP-M{i}", "titulo": "t", "descripcion": "d"} for i in range(3)
+        ]
+        retirado = LLMModelUnavailableError(model=settings.LLM_TECH_LABELING_MODEL, status_code=410)
+
+        with (
+            patch(
+                "db.repositories.tecnologia_pliego.TecnologiaPliegoRepository", return_value=repo
+            ),
+            patch("llm.budget.get_budget_guard"),
+            patch("observability.ops_events.record_event"),
+            patch("services.llm_tech_labeling.stream_llm_response", side_effect=retirado) as llm,
+        ):
+            counts = run()
+
+        assert llm.call_count == 1
+        assert counts["error"] == 1
+        assert "HTTP 410" in counts["modelo_no_disponible"]
+        assert "credencial_rechazada" not in counts
         repo.upsert_signals.assert_not_called()
         assert batch_failed_systemically(counts) is True
 

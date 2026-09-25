@@ -23,6 +23,12 @@
  * en el maestro; la pestaña lo dice y manda a declararlo en Equipo, porque sin
  * ese aviso un historial lleno de «perdimos» parecería un rival invencible.
  *
+ * Cuando la ficha suma varias identidades del maestro, la pestaña manda el
+ * grupo entero (`empresa_ids`), como el perfil y el listado: lo que gana
+ * cualquiera de ellas es una victoria de este competidor. Hasta 2026-09-25
+ * cruzaba sólo la identidad que abre la ficha. Que cruzó el grupo lo dice
+ * `claves`, que declara el backend: la pestaña no lo afirma por su cuenta.
+ *
  * Las bajas llegan en tanto por uno y `null` cuando falta un dato: una fila sin
  * nuestro precio lo dice en vez de dejar la celda en blanco.
  */
@@ -55,15 +61,18 @@ export const RESULTADO_BATALLA: Record<ResultadoBatalla, { label: string; classN
 /** Orden del resumen: lo que se puede afirmar de este rival, primero. */
 const ORDEN_RESULTADOS: ResultadoBatalla[] = ["ellos_ganaron", "perdimos", "ganamos", "sin_resolver"];
 
-export function useBatallasContraMi(empresaKey: string, meses: number) {
+export function useBatallasContraMi(empresaKey: string, meses: number, empresaIds: readonly number[] = []) {
   const organizationId = useActiveOrganizationId();
+  // Con una sola identidad no hay grupo que mandar: la ruta cruza la del path.
+  const grupo = empresaIds.length > 1 ? empresaIds.join(",") : null;
   return useQuery<BatallasContraMi>({
-    queryKey: competitiveKeys.contraMi(empresaKey, organizationId, meses),
+    queryKey: competitiveKeys.contraMi(empresaKey, organizationId, meses, grupo),
     // Ruta con parámetro de path: va por `fetchWithAuth` con el retorno tipado
     // desde el esquema generado (la regla de `apiGet` para rutas dinámicas).
     queryFn: () => {
       const query = new URLSearchParams({ meses: String(meses) });
       if (organizationId != null) query.set("organization_id", String(organizationId));
+      if (grupo) query.set("empresa_ids", grupo);
       return fetchWithAuth<BatallasContraMi>(
         `/api/v1/competitive/empresas/${encodeURIComponent(empresaKey)}/contra-mi?${query}`,
       );
@@ -79,9 +88,17 @@ function baja(valor: number | null | undefined): string {
   return valor == null ? EMPTY : formatPercent(valor * 100);
 }
 
-export function CompanyContraMi({ empresaKey }: { empresaKey: string }) {
+export function CompanyContraMi({
+  empresaKey,
+  empresaIds,
+}: {
+  empresaKey: string;
+  /** Todas las identidades que suma la ficha, la de `empresaKey` incluida. */
+  empresaIds?: readonly number[];
+}) {
   const [meses, setMeses] = React.useState<number>(24);
-  const { data, isPending, error, refetch } = useBatallasContraMi(empresaKey, meses);
+  const { data, isPending, error, refetch } = useBatallasContraMi(empresaKey, meses, empresaIds);
+  const identidades = data?.claves?.length ?? 0;
 
   const conteo = React.useMemo(() => {
     const porResultado: Partial<Record<ResultadoBatalla, number>> = {};
@@ -127,6 +144,12 @@ export function CompanyContraMi({ empresaKey }: { empresaKey: string }) {
         />
       ) : (
         <>
+          {identidades > 1 && (
+            <p className="text-muted-foreground text-[12px]">
+              Cruza las {identidades} identidades del maestro que suma esta ficha.
+            </p>
+          )}
+
           {data.sin_nif_propio && (
             <p
               role="note"

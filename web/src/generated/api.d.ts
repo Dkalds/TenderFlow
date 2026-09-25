@@ -1360,6 +1360,10 @@ export interface paths {
          *     perdimos», no «ellos ganaron contra nosotros»: la respuesta lo dice en
          *     `sin_nif_propio` para que la pantalla no haga parecer invencible a un rival
          *     que quizá ni se presentó.
+         *
+         *     `empresa_ids` es el mismo grupo que suman el perfil y el listado de la
+         *     ficha: sin él, «Contra mí» cruzaba sólo la identidad que abre la ficha. La
+         *     respuesta declara en `claves` qué identidades cruzó.
          */
         get: operations["get_batallas_api_v1_competitive_empresas__empresa_key__contra_mi_get"];
         put?: never;
@@ -5725,7 +5729,7 @@ export interface components {
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
-             * @default deepseek-ai/deepseek-v4-flash-0731
+             * @default nvidia/nemotron-3-super-120b-a12b
              */
             model: string;
             /**
@@ -5881,6 +5885,8 @@ export interface components {
         BatallasContraMi: {
             /** Batallas */
             batallas?: components["schemas"]["Batalla"][];
+            /** Claves */
+            claves?: string[];
             /**
              * Contradicciones
              * @default 0
@@ -12337,7 +12343,7 @@ export interface components {
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
-             * @default deepseek-ai/deepseek-v4-flash-0731
+             * @default nvidia/nemotron-3-super-120b-a12b
              */
             model: string;
         };
@@ -17034,6 +17040,8 @@ export interface operations {
                 organization_id?: number | null;
                 /** @description Ventana hacia atrás, en meses */
                 meses?: number;
+                /** @description IDs adicionales del grupo (separados por comas) para cruzar también sus adjudicaciones */
+                empresa_ids?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;

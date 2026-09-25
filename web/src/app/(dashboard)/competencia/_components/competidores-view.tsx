@@ -14,8 +14,9 @@
  * vistas de Mercado y las seis de Ops.
  *
  * Lo que preserva los enlaces guardados es el 308, no el fichero de ruta. El
- * dossier de empresa (`competidores/empresa/[empresaId]`) sí sigue siendo ruta:
- * el redirect es de path exacto y no lo tapa.
+ * dossier de empresa sí es ruta propia, `competencia/empresa/[empresaId]`; la
+ * de antes, `competidores/empresa/[empresaId]`, redirige allí
+ * (`SUBRUTAS_MOVIDAS` en `lib/space-views.ts`).
  *
  * Aquí sólo queda el orden de la pantalla. Las peticiones y el estado están en
  * `_hooks/use-competidores-data.ts`, las series en `_hooks/competidores-series.ts`
@@ -31,6 +32,7 @@ import { CompetidoresCortes, type CorteKey } from "./competidores-cortes";
 import { CompetidoresDossier } from "./competidores-dossier";
 import { CompetidoresKpis } from "./competidores-kpis";
 import { CompetidoresMovimientos } from "./competidores-movimientos";
+import { CompetidoresResolucion } from "./competidores-resolucion";
 import { CompetidoresTabla } from "./competidores-tabla";
 import { CompetidoresToolbar } from "./competidores-toolbar";
 
@@ -84,7 +86,11 @@ export default function CompetidoresView() {
         {/* Marcador del espacio: los cuatro KPIs del mercado competitivo. */}
         <CompetidoresKpis data={data} isLoading={isLoading} />
 
-        {/* Señales proactivas de la watchlist de empresas (RFC #4). */}
+        {/* Las cuotas de arriba y de la tabla sólo son fiables con el maestro
+            bien resuelto. Si no lo está, se avisa aquí, no sólo en Empresas. */}
+        <CompetidoresResolucion />
+
+        {/* Las empresas vigiladas y sus señales proactivas (RFC #4). */}
         <CompetidoresMovimientos />
 
         {/* La tabla gobierna los nueve cortes, así que va primero. Antes había

@@ -23,7 +23,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, bindparam, func, literal_column, or_, select, text
 
 from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
@@ -363,10 +363,20 @@ def _clausula_organo(organo_norm: str) -> Any:
     el ranking de órganos y el constructor de filtros del Resumen. Sin plegar
     los dos lados, «Ayuntamiento de Alcañiz» y «ayuntamiento de alcaniz» eran
     dos órganos distintos y la regla no disparaba nunca.
+
+    El plegado entra como ``literal_column`` y la comparación es el ``.like()``
+    de SA Core, no un ``text()`` montado con f-string: el fragmento es una
+    constante de ``db/sql_fragments`` y el needle ya viajaba como bind param,
+    pero Semgrep (``avoid-sqlalchemy-text``) no distingue una cosa de la otra y
+    su hallazgo dejaba en rojo el barrido semanal de ``security.yml``.
+
+    El ``bindparam`` lleva nombre propio a propósito: sin él, SA deriva el del
+    parámetro anónimo del texto de la columna —tildes y comillas incluidas— y
+    ``compile_query`` no lo encuentra al ordenar los posicionales.
     """
     patron = f"%{_escape_like(organo_norm).translate(FOLD_TABLE)}%"
-    return text(f"{fold_expr('licitaciones.organo_contratacion')} LIKE :wr_organo").bindparams(
-        wr_organo=patron
+    return literal_column(fold_expr("licitaciones.organo_contratacion")).like(
+        bindparam("wr_organo", patron, unique=True)
     )
 
 

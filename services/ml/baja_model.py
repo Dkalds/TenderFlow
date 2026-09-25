@@ -55,7 +55,6 @@ activación manual vía ``db.model_registry.activate_version`` o automática si
 
 from __future__ import annotations
 
-import hashlib
 import math
 import random
 from collections import Counter
@@ -89,6 +88,10 @@ MODEL_NAME_LOTE = "baja_model_lote"
 QUANTILES = (0.10, 0.50, 0.90)
 MIN_TRAIN_SAMPLES = 200
 _MIN_VALID_SAMPLES = 30
+# Rutas BASE de los artefactos. `entrenar` no publica aquí sino en
+# `<stem>-<sha256[:12]>.pkl` del mismo directorio (ver `rename_to_content_address`
+# en shared/model_artifacts.py); `save()`/`load()` sin ruta siguen usándolas tal
+# cual para el uso local.
 _MODEL_PATH = Path(__file__).parents[2] / "data" / "models" / "baja_model.pkl"
 _MODEL_PATH_LOTE = Path(__file__).parents[2] / "data" / "models" / "baja_model_lote.pkl"
 # Tope físico del target: una baja real vive en [0, 1); el clip evita que
@@ -806,6 +809,10 @@ def entrenar(
     son por lote y **no** son comparables con las del agregado (otra unidad,
     otro denominador): la comparación que decide si sustituirlo la hace
     ``scripts/comparar_baja_por_lote.py`` sobre los mismos pares.
+
+    ``model_path`` fija el directorio y el prefijo del artefacto, no su nombre
+    final: se publica como ``<stem>-<sha256[:12]>.pkl`` (con su ``.sha256``),
+    y esa ruta es la que se registra y la que devuelve ``resumen["path"]``.
     """
     import numpy as np
 
@@ -1032,8 +1039,12 @@ def entrenar(
             "granularidad": "lote" if por_lote else "expediente",
         },
     )
-    path = modelo.save(model_path)
-    sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    # Nombre por contenido: con la ruta fija, el reentrenamiento pisaba en la
+    # Release (`--clobber`) el asset de la versión activa y `ml-scoring` caía
+    # con `ModelArtifactMismatch` hasta que alguien activara la nueva.
+    from shared.model_artifacts import rename_to_content_address
+
+    path, sha256 = rename_to_content_address(modelo.save(model_path))
 
     from db.model_registry import register_version
 

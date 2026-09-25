@@ -103,8 +103,9 @@ class AskRequest(BaseModel):
         ),
     )
     model: str = Field(
-        # Mantener sincronizado con llm.client.DEFAULT_MODEL.
-        default="deepseek-ai/deepseek-v4-flash-0731",
+        # Mantener sincronizado con llm.client.DEFAULT_MODEL (lo comprueba
+        # tests/test_llm_client.py).
+        default="nvidia/nemotron-3-super-120b-a12b",
         description="Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.",
     )
     top_k: int = Field(
@@ -171,7 +172,9 @@ class ResumenRequest(BaseModel):
     """Cuerpo de la petición de resumen IA de una licitación."""
 
     model: str = Field(
-        default="deepseek-ai/deepseek-v4-flash-0731",
+        # Mantener sincronizado con llm.client.DEFAULT_MODEL (lo comprueba
+        # tests/test_llm_client.py).
+        default="nvidia/nemotron-3-super-120b-a12b",
         description="Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.",
     )
     force: bool = Field(

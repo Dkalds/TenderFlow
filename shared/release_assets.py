@@ -21,14 +21,26 @@ y este cambio, ``SAPClassifier.ensure_downloaded`` falló con ``Pinned HTTPS
 response status 302`` en todos los runners. Con él caían ``ml_scoring`` y
 ``ml_tecnologias`` de la pipeline canónica, que solo saben mirar si el fichero
 está en disco.
+
+En qué Release buscar (2026-09)
+-------------------------------
+Hasta 2026-09 solo se miraba la Release *latest*, y *latest* no es un sitio
+estable: ``release.yml`` crea una Release nueva —que pasa a ser *latest*, sin
+un solo asset de modelo— con cada tag ``v*``, así que publicar una versión de
+software dejaba a ``ml-scoring`` sin artefactos. :func:`locate_release_asset`
+busca por nombre exacto en la Release de tag fijo :data:`ML_MODELS_RELEASE_TAG`,
+después en *latest* y por último en las más recientes. Todas esas lecturas van
+a ``api.github.com`` con su allowlist; el único salto al CDN sigue siendo el de
+:func:`download_asset`.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from observability.logging import get_logger
 from shared.outbound_http import pinned_https_request
@@ -36,6 +48,26 @@ from shared.outbound_http import pinned_https_request
 log = get_logger(__name__)
 
 REPO_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+# El tag viaja en la RUTA de la URL de la API: sin ``/``, ``?``, ``#`` ni ``%``,
+# y empezando por alfanumérico para que no pueda ser ``.`` ni ``..``. Mismo
+# criterio que ``REPO_RE``: lo que no encaja no sale a la red.
+_TAG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+
+#: Tag de la Release **fija** donde ``train-predictivos.yml`` publica los
+#: artefactos de modelo. El workflow la crea con ``--latest=false``: una
+#: release de software no la desplaza y ella no desplaza a ninguna. El YAML
+#: repite el literal (``TAG``) y ``tests/test_unit_train_predictivos_workflow.py``
+#: los mantiene iguales: si divergen, se publica donde nadie busca.
+ML_MODELS_RELEASE_TAG = "ml-models"
+
+# Una página de la API: las 30 Releases más recientes por fecha de creación
+# (el ``per_page`` por defecto de GitHub). Es el último recurso, para assets
+# subidos a una *latest* que dejó de serlo —las filas de ``model_versions`` con
+# nombre fijo, anteriores al tag fijo—; más atrás no compensa paginar en cada
+# resolución.
+_RELEASES_RECIENTES = 30
+# Máximo de ``per_page`` que acepta la API de GitHub.
+_MAX_POR_PAGINA = 100
 
 _API_HOSTS = frozenset({"api.github.com"})
 # Hosts a los que GitHub redirige la descarga de un asset. El primero es el
@@ -55,49 +87,133 @@ _TIMEOUT_DESCARGA_SEGUNDOS = 120.0
 def fetch_latest_release(repo: str, *, token: str = "") -> dict[str, Any] | None:
     """Metadata de la Release marcada como *latest*, o ``None`` si no se pudo.
 
-    Es la MISMA release que resuelve ``shared.model_artifacts`` y la que
-    publica ``train-predictivos.yml`` vía ``gh release view``: si un workflow
-    subiera los assets a otro tag, nadie los encontraría.
+    Es donde siguen subiendo ``train-model.yml`` y ``train-tech.yml``, y la
+    que consultan directamente ``SAPClassifier.ensure_downloaded`` y
+    ``TechnologyClassifier.ensure_downloaded``. Para los artefactos de
+    ``model_versions`` ya no es el primer sitio: ver
+    :func:`locate_release_asset`.
     """
     if not REPO_RE.fullmatch(repo):
         log.warning("release_assets.invalid_repository", repository=repo)
         return None
-    url = f"https://api.github.com/repos/{repo}/releases/latest"
-    try:
-        with pinned_https_request(
-            "GET",
-            url,
-            headers=_headers("application/vnd.github+json", token=token),
-            timeout_seconds=_TIMEOUT_API_SEGUNDOS,
-            allowed_hosts=_API_HOSTS,
-        ) as response:
-            response.raise_for_status()
-            release = json.loads(b"".join(response.iter_content()))
-    except Exception as exc:
-        log.warning("release_assets.release_fetch_failed", repo=repo, error=str(exc))
+    datos = _get_api_json(f"https://api.github.com/repos/{repo}/releases/latest", repo, token=token)
+    return _como_release(datos, repo)
+
+
+def fetch_release_by_tag(repo: str, tag: str, *, token: str = "") -> dict[str, Any] | None:
+    """Metadata de la Release del tag ``tag``, o ``None`` si no existe o no se pudo."""
+    if not REPO_RE.fullmatch(repo):
+        log.warning("release_assets.invalid_repository", repository=repo)
         return None
-    if not isinstance(release, dict):
+    if not _TAG_RE.fullmatch(tag):
+        log.warning("release_assets.invalid_tag", tag=tag)
+        return None
+    datos = _get_api_json(
+        f"https://api.github.com/repos/{repo}/releases/tags/{tag}", repo, token=token
+    )
+    return _como_release(datos, repo)
+
+
+def fetch_recent_releases(
+    repo: str, *, token: str = "", limit: int = _RELEASES_RECIENTES
+) -> list[dict[str, Any]]:
+    """Las ``limit`` Releases más recientes por fecha de creación, o ``[]``.
+
+    Una sola página, sin seguir la paginación: es el último recurso de
+    :func:`locate_release_asset`, no un inventario del repositorio.
+    """
+    if not REPO_RE.fullmatch(repo):
+        log.warning("release_assets.invalid_repository", repository=repo)
+        return []
+    por_pagina = max(1, min(limit, _MAX_POR_PAGINA))
+    datos = _get_api_json(
+        f"https://api.github.com/repos/{repo}/releases?per_page={por_pagina}", repo, token=token
+    )
+    if datos is None:
+        return []
+    if not isinstance(datos, list):
         log.warning("release_assets.invalid_release_response", repo=repo)
-        return None
-    return release
+        return []
+    return [release for release in datos if isinstance(release, dict)]
 
 
 def find_asset_id(release: dict[str, Any], asset_name: str) -> int | None:
     """``id`` del asset llamado ``asset_name``, o ``None`` si no está."""
-    assets = release.get("assets", [])
-    if not isinstance(assets, list):
-        log.warning("release_assets.invalid_release_assets")
+    asset_id = _asset_id(release, asset_name)
+    if asset_id is None:
+        log.warning(
+            "release_assets.asset_not_found",
+            asset=asset_name,
+            release=release.get("tag_name"),
+        )
+    return asset_id
+
+
+class AssetLocalizado(NamedTuple):
+    """Dónde está un asset: la Release que lo publica y su ``id`` de descarga.
+
+    Se devuelve la Release entera porque el ``.sha256`` co-ubicado tiene que
+    salir de la MISMA (:func:`download_checksum_sidecar`), no de otra que
+    tenga un sidecar con el mismo nombre.
+    """
+
+    release: dict[str, Any]
+    asset_id: int
+
+
+def locate_release_asset(
+    repo: str,
+    asset_name: str,
+    *,
+    token: str = "",
+    tag_fijo: str | None = ML_MODELS_RELEASE_TAG,
+    recientes: int = _RELEASES_RECIENTES,
+) -> AssetLocalizado | None:
+    """Primera Release que publica un asset llamado exactamente ``asset_name``.
+
+    Orden: la Release de ``tag_fijo`` (donde publica ``train-predictivos.yml``),
+    *latest* (donde siguen subiendo ``train-model.yml`` y ``train-tech.yml``) y
+    las ``recientes`` más recientes, que es donde quedaron los assets subidos a
+    una *latest* que dejó de serlo: las filas de ``model_versions`` con nombre
+    fijo (``baja_model.pkl``), anteriores al tag fijo, se resuelven por aquí.
+    Gana la primera que lo tenga. Las lecturas se piden bajo demanda: si el
+    asset está en la Release fija no se toca ni *latest* ni el listado.
+
+    No verifica contenido: el sha256 lo coteja el llamante contra
+    ``model_versions`` (``shared.model_artifacts``), venga de la Release que
+    venga. Los borradores se saltan: un draft no está publicado.
+    """
+    if not REPO_RE.fullmatch(repo):
+        log.warning("release_assets.invalid_repository", repository=repo)
         return None
-    for asset in assets:
-        if isinstance(asset, dict) and asset.get("name") == asset_name:
-            candidate = asset.get("id")
-            if isinstance(candidate, int) and candidate > 0:
-                return candidate
-            break
+    vistas: set[int] = set()
+    revisadas = 0
+    for release in _releases_candidatas(repo, token=token, tag_fijo=tag_fijo, recientes=recientes):
+        # La Release fija y *latest* reaparecen en el listado de recientes: se
+        # revisan una vez.
+        release_id = release.get("id")
+        if isinstance(release_id, int):
+            if release_id in vistas:
+                continue
+            vistas.add(release_id)
+        if release.get("draft") is True:
+            continue
+        revisadas += 1
+        asset_id = _asset_id(release, asset_name)
+        if asset_id is not None:
+            log.info(
+                "release_assets.asset_located",
+                asset=asset_name,
+                release=release.get("tag_name"),
+                releases_revisadas=revisadas,
+            )
+            return AssetLocalizado(release, asset_id)
+    # Un solo aviso por búsqueda, no uno por Release revisada.
     log.warning(
         "release_assets.asset_not_found",
         asset=asset_name,
-        release=release.get("tag_name"),
+        repo=repo,
+        releases_revisadas=revisadas,
     )
     return None
 
@@ -190,6 +306,78 @@ def _descargar_desde_cdn(location: str, dest: Path) -> None:
         # caller degrada. Encadenar saltos es justo lo que este módulo evita.
         cdn_response.raise_for_status()
         _volcar(cdn_response, dest)
+
+
+def _releases_candidatas(
+    repo: str, *, token: str, tag_fijo: str | None, recientes: int
+) -> Iterator[dict[str, Any]]:
+    """Releases en el orden de :func:`locate_release_asset`, pedidas bajo demanda."""
+    if tag_fijo:
+        fija = fetch_release_by_tag(repo, tag_fijo, token=token)
+        if fija is not None:
+            yield fija
+    latest = fetch_latest_release(repo, token=token)
+    if latest is not None:
+        yield latest
+    if recientes > 0:
+        yield from fetch_recent_releases(repo, token=token, limit=recientes)
+
+
+def _get_api_json(url: str, repo: str, *, token: str) -> object | None:
+    """GET a ``api.github.com`` y JSON decodificado, o ``None`` si falla.
+
+    Un 404 no es una avería sino una Release que no existe —la de tag fijo
+    antes de su primera publicación, o un repositorio sin ninguna—, y la
+    búsqueda sigue con la siguiente candidata. Va a ``info`` para que el camino
+    normal de :func:`locate_release_asset` no llene el log de avisos.
+    """
+    try:
+        with pinned_https_request(
+            "GET",
+            url,
+            headers=_headers("application/vnd.github+json", token=token),
+            timeout_seconds=_TIMEOUT_API_SEGUNDOS,
+            allowed_hosts=_API_HOSTS,
+        ) as response:
+            if response.status_code == 404:
+                log.info("release_assets.release_not_found", repo=repo, url=url)
+                return None
+            response.raise_for_status()
+            datos: object = json.loads(b"".join(response.iter_content()))
+    except Exception as exc:
+        log.warning("release_assets.release_fetch_failed", repo=repo, error=str(exc))
+        return None
+    return datos
+
+
+def _como_release(datos: object, repo: str) -> dict[str, Any] | None:
+    """``datos`` si tiene forma de Release (un objeto JSON); si no, ``None``."""
+    if datos is None:
+        return None
+    if not isinstance(datos, dict):
+        log.warning("release_assets.invalid_release_response", repo=repo)
+        return None
+    return datos
+
+
+def _asset_id(release: dict[str, Any], asset_name: str) -> int | None:
+    """Como :func:`find_asset_id` pero sin avisar cuando no está.
+
+    :func:`locate_release_asset` recorre hasta una treintena de Releases y en
+    casi todas el asset no está, que es lo esperado: un aviso por cada una
+    enterraría el único que importa, el de no haberlo encontrado en ninguna.
+    """
+    assets = release.get("assets", [])
+    if not isinstance(assets, list):
+        log.warning("release_assets.invalid_release_assets")
+        return None
+    for asset in assets:
+        if isinstance(asset, dict) and asset.get("name") == asset_name:
+            candidate = asset.get("id")
+            if isinstance(candidate, int) and candidate > 0:
+                return candidate
+            break
+    return None
 
 
 def _volcar(response: Any, dest: Path) -> None:

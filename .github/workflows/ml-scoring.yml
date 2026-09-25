@@ -1,14 +1,28 @@
 name: ML scoring predicciones
 
 on:
+  # Encadenado al final de cada pasada del carril de ingesta. Hasta 2026-09 era
+  # un cron fijo (`30 7 * * *`) pensado para caer "entre scrapes", y no se
+  # cumplía: en 30 runs (2026-08-26 → 2026-09-24) arrancó entre las 08:05 y las
+  # 19:29 UTC, casi siempre hacia las 12-13 — encima de la pasada de las 12:00
+  # que decía esquivar. Y desde #335 la ingesta arranca en el minuto 23 con
+  # hasta 120 min de presupuesto, así que ninguna hora fija queda ya "entre
+  # scrapes". Tras el `completed` de `scrape-daily.yml` el scoring
+  # corre sobre datos recién ingeridos y nunca a la vez que la ingesta.
+  # `scrape-daily` corre seis veces al día: el guard (`debe-correr`) deja pasar
+  # solo la primera de cada día UTC y salta el resto en ~1 min.
+  workflow_run:
+    workflows: ["Scrape PLACSP diario (ATOM live feed + conectores)"]
+    types: [completed]
+  # Red de seguridad: si el carril de ingesta dejara de correr, el scoring y
+  # sus monitores (drift, calibración, purgas) se pararían con él en silencio.
+  # 06:47 cae, sobre el papel, en el hueco entre la pasada de las 04:23 (que
+  # acaba como tarde a las 06:23) y la de las 08:23; con los retrasos de
+  # Actions no se puede garantizar, y por eso no es el disparo principal. Si
+  # ese día ya hubo scoring, el guard lo salta.
   schedule:
-    # Diario a las 07:30 UTC. El carril de ingesta (`scrape-daily.yml`) corre
-    # cada 4 h (00, 04, 08, 12, 16, 20 UTC) con un presupuesto de 55 min, así
-    # que a las 07:30 la pasada de las 04:00 ya terminó y la de las 08:00 aún
-    # no ha empezado: se puntúa sobre datos recién ingeridos sin competir con
-    # el scrape. Replica el orden del scheduler local (ml_scoring_baja corre
-    # tras la ingesta).
-    - cron: "30 7 * * *"
+    - cron: "47 6 * * *"
+  # Manual: fuerza la corrida aunque ya se haya puntuado hoy.
   workflow_dispatch:
 
 permissions:
@@ -22,6 +36,12 @@ jobs:
   scoring:
     name: Score predicciones & verify
     runs-on: ubuntu-latest
+    # El 2026-09-20 el job usó 1.190 s de estos 1.200: ~11 min eran features
+    # de retención que la rama baseline calculaba y tiraba, más un minuto
+    # esperando hilos del pool que el CLI no cerraba. Sin ese trabajo el batch
+    # ronda los 5 min; el margen queda para cuando haya modelo activo. El
+    # desglose por fase sale en el resumen del job (`duraciones_s`) para ver
+    # venir el siguiente acercamiento al límite.
     timeout-minutes: 20
 
     env:
@@ -31,14 +51,16 @@ jobs:
       # el proceso HTTP (SIGNING_KEY, REDIS_URL, CORS): son ejes distintos.
       ENV: prod
       APP_PROFILE: scraper
+      # ADR-012: este workflow es parte del plano de orquestación activo.
+      SCHEDULER_PLANE: actions
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
       LOG_FORMAT: json
       # `data/models/` es efímero en el runner: shared/model_artifacts.py
-      # descarga el artefacto de la versión activa desde la Release. Sin token
-      # esa llamada va anónima contra api.github.com (60 req/h por IP, y las
-      # IPs de los runners son compartidas), así que el artefacto se quedaba
-      # sin resolver y el batch degradaba a baseline. Mismo patrón que
+      # descarga el artefacto de la versión activa desde las Releases. Sin
+      # token esa llamada va anónima contra api.github.com (60 req/h por IP, y
+      # las IPs de los runners son compartidas), así que el artefacto se
+      # quedaba sin resolver y el batch degradaba a baseline. Mismo patrón que
       # scrape-daily.yml.
       GITHUB_TOKEN: ${{ github.token }}
 
@@ -78,21 +100,60 @@ jobs:
             echo "ALERT_MIN_LEVEL=$IN_ALERT_MIN_LEVEL" >> "$GITHUB_ENV"
           fi
 
+      # Una corrida al día (UTC), dispare lo que dispare el workflow. Mira el
+      # `computed_at` más reciente de `predicciones_baja`; el dispatch manual
+      # fuerza. Si no puede leer la BD deja pasar: los steps reales harán
+      # visible el error en vez de saltarse el día en silencio.
+      - name: ¿Toca puntuar hoy?
+        id: guard
+        env:
+          ML_SCORING_FORZAR: ${{ github.event_name == 'workflow_dispatch' }}
+        run: python -m scheduler.jobs.ml_predicciones debe-correr
+
+      - name: Scoring saltado
+        if: steps.guard.outputs.correr != 'true'
+        env:
+          MOTIVO: ${{ steps.guard.outputs.motivo }}
+        run: |
+          echo "Scoring saltado (${MOTIVO:-sin motivo}): una corrida al día UTC." >> "$GITHUB_STEP_SUMMARY"
+
+      # Código y schema se despliegan con disparadores distintos (`migrate.yml`
+      # es manual). El 2026-09-19 el batch reventó a mitad con
+      # `UndefinedColumn: lote_numero`: código de v140 contra una BD sin v140.
+      # Mismo criterio que `/health/ready`; si la BD va por detrás, el job
+      # falla aquí, antes de escribir nada, diciendo qué hacer.
+      # La conexión del preflight no lleva `statement_timeout` (es la misma
+      # receta que `/health/ready`); un SELECT sobre `alembic_version` no se
+      # bloquea, pero el límite del step es un seguro barato.
+      - name: Preflight de schema
+        if: steps.guard.outputs.correr == 'true'
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
       # El batch calcula drift (PSI por feature) y calibración, y ambos avisan
       # por `observability.alerts.notify` (paso 7 del RFC 20260611-2). El canal
       # es opcional por diseño —si no está configurado la alerta solo se
       # loguea— así que sin estos secretos las alertas de deriva se quedaban en
-      # el runner y morían con él.
+      # el runner y morían con él. Escribe en $GITHUB_OUTPUT el `computed_at` y
+      # las filas del batch agregado de baja (los usa el verify) y el resumen
+      # de la corrida en $GITHUB_STEP_SUMMARY.
       - name: Run scoring batch
+        id: scoring
+        if: steps.guard.outputs.correr == 'true'
+        timeout-minutes: 15
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
         run: python -m scheduler.jobs.ml_predicciones scoring
 
-      # Verifica filas Y frescura: el upsert de predicciones_baja no purga, así
-      # que las filas de ayer sobreviven a un batch que no escribió ninguna.
-      # Si la ventana de 26 h salta sin que el scoring haya fallado, mirá el
-      # log `baja_scoring_skip` — significa que no hubo licitaciones abiertas.
+      # Verifica las filas de ESTA corrida, no "algo reciente": cuenta las
+      # filas agregadas con el `computed_at` exacto que reportó el batch. La
+      # ventana de 26 h que usaba antes dependía de que el cron arrancara a la
+      # misma hora cada día, y arrancaba con hasta ~10 h de diferencia.
       - name: Verify predicciones materialized
+        if: steps.guard.outputs.correr == 'true'
+        env:
+          ML_VERIFY_COMPUTED_AT: ${{ steps.scoring.outputs.baja_computed_at }}
+          ML_VERIFY_FILAS: ${{ steps.scoring.outputs.baja_filas }}
         run: python -m scheduler.jobs.ml_predicciones verify

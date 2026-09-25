@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from pypdf import PdfReader
 
 from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
@@ -98,3 +99,42 @@ class TestValoresDificiles:
         assert pdf.startswith(b"%PDF-")
         # Recortado, no impreso entero.
         assert "x" * 300 not in _texto(pdf)
+
+
+class TestMarcado:
+    """Regresión de seguridad: `Paragraph` interpreta mini-XML y el título es de la fuente.
+
+    El título de la ficha es el de la licitación, así que lo escribe quien
+    publica el expediente, no el equipo. Sin escapar, `<b>` sin cerrar tumbaba
+    la exportación, `<img src=...>` hacía que reportlab abriera ese fichero del
+    servidor y `<a href=...>` dejaba un enlace activo en el PDF.
+    """
+
+    @pytest.mark.parametrize(
+        "titulo",
+        [
+            "Suministro <b>urgente",
+            'Obras <img src="/etc/passwd"/>',
+            '<a href="https://x.example">pliego</a>',
+            "Luz & gas",
+        ],
+    )
+    def test_el_titulo_se_imprime_tal_cual(self, titulo: str) -> None:
+        pdf = construir_pdf(FichaOportunidad(titulo=titulo, subtitulo="x", bloques=[]))
+        assert titulo in _texto(pdf)
+
+    def test_un_enlace_en_el_titulo_no_queda_activo(self) -> None:
+        pdf = construir_pdf(
+            FichaOportunidad(
+                titulo='<a href="https://x.example">pliego</a>', subtitulo="x", bloques=[]
+            )
+        )
+        anotaciones = [a for p in PdfReader(io.BytesIO(pdf)).pages for a in p.get("/Annots") or []]
+        assert anotaciones == []
+
+    def test_las_celdas_de_la_tabla_no_se_escapan(self) -> None:
+        """`Table` pinta la cadena tal cual: escaparla imprimiría `&amp;`."""
+        pdf = _pdf(BloqueFicha(titulo="Expediente", filas=[("Órgano", "Obras & Servicios <S.A.>")]))
+        texto = _texto(pdf)
+        assert "Obras & Servicios <S.A.>" in texto
+        assert "&amp;" not in texto

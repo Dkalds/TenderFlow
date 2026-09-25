@@ -11,10 +11,7 @@ from __future__ import annotations
 import os
 import shutil
 import time
-from collections.abc import Collection
 from datetime import UTC, datetime
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -23,6 +20,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api.concurrency import run_probe
+from db.schema_revision import database_url as _database_url
+from db.schema_revision import diagnosticar
+from db.schema_revision import revisiones_aplicadas as _applied_revisions
+from db.schema_revision import revisiones_repo as _repo_revisions
 from observability.logging import get_logger
 from services.health import check_db
 from shared.outbound_http import pinned_https_request
@@ -55,7 +56,14 @@ _DEFAULT_CHECK_TIMEOUT = 5.0
 # gate de arranque: publica `degraded` con un detalle legible y deja que el
 # operador (o `smoke_prod.py` / `deploy.yml`) decida. Un fallo suyo nunca puede
 # tumbar el proceso ni degradar el estado — devuelve `unknown` y sigue.
-_ALEMBIC_DIR = Path(__file__).resolve().parents[2] / "db" / "alembic"
+#
+# La comparación vive en `db/schema_revision.py` desde 2026-09: la comparte con
+# el preflight de los workflows de datos (`python -m db.schema_revision`), de
+# modo que el endpoint y los jobs no pueden discrepar sobre qué es un desfase.
+# Aquí queda lo que es solo del endpoint: la caché, el techo de tiempo y el
+# efecto sobre `status`. Los alias con los nombres de siempre (`_database_url`,
+# `_repo_revisions`, `_applied_revisions`) se conservan como las fuentes que
+# `_check_schema` le pasa a `diagnosticar`.
 
 # El resultado se cachea: `alembic_version` solo cambia cuando corre una
 # migración, y las cabezas del repo no cambian en la vida del proceso. Sin TTL
@@ -127,125 +135,6 @@ def _check_db() -> str:
     return check_db()
 
 
-def _abreviar(revisiones: Collection[str]) -> str:
-    """Rinde un conjunto de revisiones en algo legible en una línea."""
-    if not revisiones:
-        return "ninguna"
-    return ",".join(sorted(revisiones))
-
-
-def _comparar_revisiones(
-    aplicadas: Collection[str],
-    cabezas: Collection[str],
-    conocidas: Collection[str],
-) -> str:
-    """Traduce (aplicadas, cabezas, conocidas) al vocabulario del payload.
-
-    Función **pura**: es la que los tests ejercitan inyectando las revisiones,
-    sin BD y sin repo. ``conocidas`` es el conjunto de todas las revisiones que
-    este checkout conoce; sirve para distinguir los dos desalineamientos, que se
-    arreglan de forma opuesta:
-
-    - ``behind``: la BD va por detrás. El código desplegado exige columnas que
-      todavía no existen → hay que correr ``migrate.yml`` (mode=apply).
-    - ``ahead``: la BD tiene revisiones que este checkout no conoce, o sea que
-      el código desplegado es MÁS VIEJO que el schema. Migrar no arregla nada;
-      lo que toca es desplegar el código correcto (o revisar un rollback).
-    """
-    aplicadas_set = set(aplicadas)
-    cabezas_set = set(cabezas)
-    if not cabezas_set:
-        return "unknown"
-    if aplicadas_set == cabezas_set:
-        return f"ok ({_abreviar(cabezas_set)})"
-    if aplicadas_set - set(conocidas):
-        return f"ahead ({_abreviar(aplicadas_set)} > {_abreviar(cabezas_set)})"
-    return f"behind ({_abreviar(aplicadas_set)} < {_abreviar(cabezas_set)})"
-
-
-@lru_cache(maxsize=1)
-def _repo_revisions() -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Devuelve ``(cabezas, todas las revisiones)`` según este checkout.
-
-    Import diferido: alembic ya es dependencia (lo instala ``requirements.txt``
-    y lo usa ``migrate.yml``), pero no tiene por qué cargarse en el arranque de
-    la API solo para que exista un endpoint de salud. ``lru_cache`` porque el
-    árbol de revisiones no cambia dentro de un proceso y construirlo importa
-    ~100 módulos de migración.
-    """
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-
-    cfg = Config()
-    # `script_location` explícito en vez de leer `alembic.ini`: el fichero no
-    # tiene por qué existir en la imagen ni en el cwd del proceso, y aquí solo
-    # se necesita el árbol de versiones.
-    cfg.set_main_option("script_location", str(_ALEMBIC_DIR))
-    script = ScriptDirectory.from_config(cfg)
-    cabezas = tuple(sorted(script.get_heads()))
-    todas = tuple(sorted(rev.revision for rev in script.walk_revisions()))
-    return cabezas, todas
-
-
-def _database_url() -> str:
-    """DSN de Postgres, tolerante a que ``DATABASE_URL`` no sea un ``SecretStr``.
-
-    ``tests/conftest.py`` blanquea el atributo con la cadena vacía (``monkeypatch
-    .setattr(settings, "DATABASE_URL", "")``) para que un DSN real de ``.env`` no
-    contamine los tests unitarios. Sin esta tolerancia, un ``.get_secret_value()``
-    a secas lanzaría ``AttributeError`` en cada petición de salud de la suite y
-    este sondeo se pasaría el CI entero reportando ``unknown`` por el motivo
-    equivocado.
-    """
-    from config import settings
-
-    raw: Any = settings.DATABASE_URL
-    if hasattr(raw, "get_secret_value"):
-        valor: str = raw.get_secret_value()
-        return valor
-    return str(raw or "")
-
-
-def _applied_revisions() -> tuple[str, ...]:
-    """Lee ``alembic_version`` de la BD vía la API de alembic (sin SQL propio).
-
-    No usa el pool de ``db/``: ADR-022 y el ratchet TID251 reservan
-    ``db.connection.connect``/``connect_read`` para el interior de ``db/``, y
-    escribir aquí un ``SELECT`` rompería "todo el SQL vive en ``db/``". La
-    consulta la emite ``MigrationContext`` de alembic, con una conexión propia
-    ``NullPool`` que se cierra al salir — la misma receta que
-    ``db/alembic/env.py``, incluidos ``sslrootcert`` y ``connect_timeout``.
-    """
-    from alembic.migration import MigrationContext
-    from sqlalchemy import create_engine, pool
-
-    from config import settings
-
-    url = _database_url()
-    if not url:
-        raise RuntimeError("DATABASE_URL vacía")
-    # SQLAlchemy resuelve "postgresql://" a psycopg2, que este proyecto no
-    # declara: se fuerza el dialecto psycopg (v3), igual que en env.py.
-    for prefijo in ("postgresql://", "postgres://"):
-        if url.startswith(prefijo):
-            url = "postgresql+psycopg://" + url[len(prefijo) :]
-            break
-
-    connect_args: dict[str, Any] = {}
-    ssl_root_cert = settings.DATABASE_SSL_ROOT_CERT.strip()
-    if ssl_root_cert:
-        connect_args["sslrootcert"] = ssl_root_cert
-    if settings.DB_CONNECT_TIMEOUT > 0:
-        connect_args["connect_timeout"] = int(settings.DB_CONNECT_TIMEOUT)
-
-    engine = create_engine(url, poolclass=pool.NullPool, connect_args=connect_args)
-    try:
-        with engine.connect() as conn:
-            return tuple(sorted(MigrationContext.configure(conn).get_current_heads()))
-    finally:
-        engine.dispose()
-
-
 def _check_schema() -> str:
     """Compara la revisión aplicada con las cabezas del repo. Nunca propaga.
 
@@ -262,15 +151,15 @@ def _check_schema() -> str:
     if cache is not None and ttl > 0 and (ahora - cache[0]) < ttl:
         return cache[1]
 
-    try:
-        if not _database_url():
-            resultado = "unconfigured"
-        else:
-            cabezas, conocidas = _repo_revisions()
-            resultado = _comparar_revisiones(_applied_revisions(), cabezas, conocidas)
-    except Exception as exc:
-        log.warning("health_schema_check_failed", error=str(exc))
-        resultado = "unknown"
+    # Se pasan los alias de este módulo, resueltos en cada llamada, y no las
+    # fuentes por defecto de `db.schema_revision`: así sustituirlos aquí (lo
+    # hace `tests/test_s6_health_schema.py`) tiene efecto.
+    diagnostico = diagnosticar(
+        url=_database_url, repo=_repo_revisions, aplicadas=_applied_revisions
+    )
+    if diagnostico.error is not None:
+        log.warning("health_schema_check_failed", error=diagnostico.error)
+    resultado = diagnostico.estado
 
     _schema_cache = (ahora, resultado)
     return resultado

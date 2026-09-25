@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Search, Star, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Search, X } from "lucide-react";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PanelError } from "@/components/console/panel";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pista } from "@/components/ui/pista";
+import { SeguirBoton } from "@/components/seguir-boton";
 import { PAGE_SIZE, type EmpresaRow, type EmpresaSortKey } from "../_hooks/use-maestro";
 
 /** Rejilla compartida por la cabecera y las filas: una sola definición. */
@@ -22,7 +23,7 @@ const COLUMNAS: { key: EmpresaSortKey; label: string; right?: boolean }[] = [
 export interface MaestroListProps {
   search: string;
   onSearchChange: (value: string) => void;
-  /** La búsqueda llegó por `?q=` desde un grafo, no la ha escrito el usuario. */
+  /** La búsqueda llegó en el enlace (`?q=`), no la ha escrito el usuario. */
   fromDeepLink: boolean;
   rows: EmpresaRow[];
   total: number;
@@ -33,10 +34,11 @@ export interface MaestroListProps {
   onSort: (key: EmpresaSortKey) => void;
   selectedId: number | null;
   onSelect: (empresaId: number) => void;
-  watchedIds: Set<number>;
-  onToggleWatch: (empresaId: number, watched: boolean) => void;
-  /** Hay un alta o baja de vigilancia en vuelo: no se aceptan más clics. */
-  watchPending: boolean;
+  /**
+   * Tras vigilar o dejar de vigilar desde la estrella, con el estado nuevo. El
+   * cambio lo hace `SeguirBoton`; esto es sólo para que la pantalla avise.
+   */
+  onWatchToggled?: (ahoraVigila: boolean) => void;
   loading: boolean;
   error: boolean;
   errorDetail?: string;
@@ -56,9 +58,7 @@ export function MaestroList({
   onSort,
   selectedId,
   onSelect,
-  watchedIds,
-  onToggleWatch,
-  watchPending,
+  onWatchToggled,
   loading,
   error,
   errorDetail,
@@ -85,9 +85,9 @@ export function MaestroList({
             className="text-tf-body text-foreground placeholder:text-muted-foreground h-6 min-w-0 flex-1 border-0 bg-transparent outline-none"
           />
           {fromDeepLink && (
-            <Pista contenido="Búsqueda recibida por ?q= desde un grafo">
+            <Pista contenido="La búsqueda venía en el enlace (?q=)">
               <span className="bg-primary/12 text-tf-micro text-primary flex h-5 flex-none items-center rounded px-1.5 font-mono font-medium">
-                desde grafo
+                desde enlace
               </span>
             </Pista>
           )}
@@ -156,7 +156,6 @@ export function MaestroList({
             ) : (
               rows.map((row) => {
                 const on = row.empresa_id === selectedId;
-                const watched = watchedIds.has(row.empresa_id);
                 // UTE y PYME en gris y sin cápsula: eran dos chips de color
                 // (violeta y verde) que sólo existían en esta pantalla y
                 // competían con la selección por la atención de la fila.
@@ -197,22 +196,24 @@ export function MaestroList({
                     <span className="tf-tnum text-tf-meta text-foreground text-right font-mono font-medium">
                       {formatCurrency(row.importe_total)}
                     </span>
-                    {/* Sin `title` y sin `Tooltip`: el `aria-label` ya dice
-                        vigilar o dejar de vigilar, y un Tooltip por fila
-                        repetiría lo mismo con un portal más por fila. */}
-                    <button
-                      type="button"
-                      onClick={() => onToggleWatch(row.empresa_id, watched)}
-                      disabled={watchPending}
-                      aria-label={watched ? "Dejar de vigilar" : "Vigilar empresa"}
-                      aria-pressed={watched}
-                      className={cn(
-                        "tf-pressable grid h-7 w-7 place-items-center justify-self-end rounded-md transition-colors duration-140 ease-out",
-                        watched ? "text-primary" : "text-muted-foreground/60 hover:text-foreground",
-                      )}
-                    >
-                      <Star className="h-3.5 w-3.5" fill={watched ? "currentColor" : "none"} aria-hidden="true" />
-                    </button>
+                    {/* El control único de ADR-031 §C con la piel de siempre de
+                        esta columna. Sin `title` y sin `Tooltip`: el
+                        `aria-label` ya dice vigilar o dejar de vigilar, y un
+                        Tooltip por fila repetiría lo mismo con un portal más
+                        por fila. */}
+                    <SeguirBoton
+                      targetType="empresa"
+                      targetId={String(row.empresa_id)}
+                      variante="icono"
+                      icono="estrella"
+                      nombreAccesible={{ seguir: "Vigilar empresa", dejar: "Dejar de vigilar" }}
+                      clases={{
+                        base: "tf-pressable grid h-7 w-7 place-items-center justify-self-end rounded-md transition-colors duration-140 ease-out",
+                        activo: "text-primary",
+                        inactivo: "text-muted-foreground/60 hover:text-foreground",
+                      }}
+                      onAlternar={onWatchToggled}
+                    />
                   </div>
                 );
               })

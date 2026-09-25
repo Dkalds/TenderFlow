@@ -211,6 +211,50 @@ def test_llm_tech_labeling_model_is_available():
     assert settings.LLM_TECH_LABELING_MODEL in AVAILABLE_MODELS
 
 
+def test_llm_model_settings_follow_default_model():
+    """Los modelos de settings repiten DEFAULT_MODEL como literal, y se cambian juntos.
+
+    Estar en ``AVAILABLE_MODELS`` no basta: con el EOL de
+    deepseek-v4-flash-0731 (2026-09-21) había que tocar seis literales en cuatro
+    ficheros, y uno olvidado deja una ruta en el modelo viejo. El del resumen
+    además tiene que ser el que pide la UI, porque el modelo forma parte de la
+    clave de caché y pre-generar con otro no calienta nada.
+    """
+    from api.routes.ask import ResumenRequest
+    from config import settings
+    from llm.client import DEFAULT_MODEL
+
+    assert settings.PLIEGO_FACTS_MODEL == DEFAULT_MODEL
+    assert settings.LLM_TECH_LABELING_MODEL == DEFAULT_MODEL
+    assert ResumenRequest.model_fields["model"].default == settings.RESUMEN_PREGEN_MODEL
+
+
+def test_retired_models_are_not_offered():
+    """Ningún modelo que NVIDIA ya retiró vuelve a la oferta ni a un default.
+
+    Cada uno dejó algo roto en su día (ver el comentario de ``AVAILABLE_MODELS``).
+    El canary lo detecta en producción al día siguiente; esto, en CI.
+    """
+    from config import settings
+    from llm.client import AVAILABLE_MODELS, DEFAULT_MODEL, FALLBACK_MODELS
+
+    retirados = {
+        "deepseek-ai/deepseek-v4-pro",
+        "deepseek-ai/deepseek-v4-flash-0731",
+        "z-ai/glm-5.2",
+        "minimaxai/minimax-m3",
+    }
+    en_uso = {
+        *AVAILABLE_MODELS,
+        *FALLBACK_MODELS,
+        DEFAULT_MODEL,
+        settings.PLIEGO_FACTS_MODEL,
+        settings.LLM_TECH_LABELING_MODEL,
+        settings.RESUMEN_PREGEN_MODEL,
+    }
+    assert not retirados & en_uso
+
+
 # ---------------------------------------------------------------------------
 # stream_llm_response — despacho correcto
 # ---------------------------------------------------------------------------
@@ -266,7 +310,7 @@ def test_stream_llm_response_dispatches_to_nvidia(monkeypatch):
 
         result = list(
             stream_llm_response(
-                "pregunta de prueba", [], model="deepseek-ai/deepseek-v4-flash-0731", keywords=[]
+                "pregunta de prueba", [], model="nvidia/nemotron-3-super-120b-a12b", keywords=[]
             )
         )
 
@@ -615,13 +659,70 @@ def test_rejected_key_skips_the_rest_of_its_provider(monkeypatch):
         patch("llm.providers.openai_provider.stream", rejected_key),
         patch("llm.providers.anthropic_provider.stream", working_anthropic),
     ):
-        from llm.client import DEFAULT_MODEL, stream_llm_response
+        from llm.client import DEFAULT_MODEL, FALLBACK_MODELS, provider_for, stream_llm_response
 
         result = list(stream_llm_response("pregunta de prueba", [], DEFAULT_MODEL, []))
 
+    otros_nim = [m for m in FALLBACK_MODELS if provider_for(m) == "nvidia" and m != DEFAULT_MODEL]
+    assert otros_nim, "la cadena necesita un segundo NIM para que este test diga algo"
     assert result == ["rescatado"]
     assert DEFAULT_MODEL in intentados
-    assert "nvidia/nemotron-3-super-120b-a12b" not in intentados
+    assert not set(otros_nim) & set(intentados)
+
+
+def test_unavailable_model_falls_back_within_its_provider(monkeypatch):
+    """Un modelo retirado no invalida la key: el segundo NIM sí se intenta.
+
+    Es la diferencia con ``LLMAuthError``. El 410 de un modelo retirado es de
+    ese modelo; saltarse el proveedor entero dejaría sin respaldo a un
+    despliegue que solo tiene NVIDIA_API_KEY.
+    """
+    from llm.providers import LLMModelUnavailableError
+
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")  # pragma: allowlist secret
+    intentados: list[str] = []
+    fallbacks: list[tuple[str, str]] = []
+
+    from llm.client import DEFAULT_MODEL, stream_llm_response
+
+    def nim(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        intentados.append(model)
+        if model == DEFAULT_MODEL:
+            raise LLMModelUnavailableError(model=model, status_code=410)
+        yield "rescatado por otro NIM"
+
+    with (
+        patch("llm.providers.openai_provider.stream", nim),
+        patch("llm.client._note_fallback", lambda m, r: fallbacks.append((m, r))),
+    ):
+        result = list(stream_llm_response("pregunta de prueba", [], DEFAULT_MODEL, []))
+
+    assert result == ["rescatado por otro NIM"]
+    assert intentados[0] == DEFAULT_MODEL
+    assert len(intentados) == 2
+    assert fallbacks == [(DEFAULT_MODEL, "unavailable")]
+
+
+def test_unavailable_model_without_fallback_names_the_model(monkeypatch):
+    """Sin fallback (ficha, etiquetado, guion), quien llama recibe el 410 con el
+    nombre del modelo, no un stream vacío que acaba en «no devolvió JSON»."""
+    import pytest
+
+    from llm.providers import LLMModelUnavailableError
+
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")  # pragma: allowlist secret
+
+    def retirado(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        raise LLMModelUnavailableError(model=model, status_code=410)
+        yield  # pragma: no cover
+
+    with patch("llm.providers.openai_provider.stream", retirado):
+        from llm.client import DEFAULT_MODEL, stream_llm_response
+
+        with pytest.raises(LLMModelUnavailableError, match="HTTP 410"):
+            list(stream_llm_response("pregunta de prueba", [], DEFAULT_MODEL, [], fallback=False))
 
 
 def test_stop_is_forwarded_to_provider():

@@ -197,15 +197,17 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # ML_MODEL_SHA256. Vacío = sin pin. Ver
     # scraper.tech_classifier.TechnologyClassifier.load.
     ML_TECH_MODEL_SHA256: str = ""
-    # Hash SHA256 fijado (out-of-band) para BajaModel
-    # (data/models/baja_model.pkl). Vacío = sin pin. Ver
+    # Hash SHA256 fijado (out-of-band) para el artefacto que cargue BajaModel
+    # (desde 2026-09-24 cada versión se publica como
+    # `baja_model-<sha256[:12]>.pkl`; `data/models/baja_model.pkl` es solo el
+    # default local de `save()`/`load()`). Vacío = sin pin. Ver
     # services.ml.baja_model.BajaModel.load.
     ML_BAJA_MODEL_SHA256: str = ""
-    # Mismo pin para el modelo de baja por lote (data/models/baja_model_lote.pkl).
+    # Mismo pin para el modelo de baja por lote (`baja_model_lote-<sha12>.pkl`).
     ML_BAJA_LOTE_MODEL_SHA256: str = ""
-    # Hash SHA256 fijado (out-of-band) para RetencionModel
-    # (data/models/retencion_model.pkl). Vacío = sin pin. Ver
-    # services.ml.retencion_model.RetencionModel.load.
+    # Hash SHA256 fijado (out-of-band) para el artefacto que cargue
+    # RetencionModel (`retencion_model-<sha256[:12]>.pkl` en las Releases).
+    # Vacío = sin pin. Ver services.ml.retencion_model.RetencionModel.load.
     ML_RETENCION_MODEL_SHA256: str = ""
 
     # ── Modelos predictivos (Fase 6, RFC 20260611-2) ─────────────────────
@@ -232,6 +234,15 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # sirve hasta que `scripts/comparar_baja_por_lote.py` mida que el
     # `mae_p50` por lote mejora (backlog P2 «Modelo de baja por lote»).
     ML_BAJA_POR_LOTE: bool = False
+    # Excluye del scoring de retención los vencimientos cuya sucesora ya está
+    # adjudicada según la heurística del etiquetado (`retencion_labels._emparejar`).
+    # Apagado por defecto: esos casos se detectan y se cuentan siempre
+    # (`resueltos_detectados`), pero la heurística da falsos positivos en
+    # segmentos con mucha actividad, y excluir un contrato lo deja sin riesgo y
+    # lo esconde del orden «score» de Renovaciones. Encenderlo exige auditar
+    # antes una muestra a mano, como hace `scripts/audit_retencion.py` con los
+    # pares de entrenamiento. Ver services.ml.scoring._separar_resueltos.
+    ML_RETENCION_EXCLUIR_RESUELTOS: bool = False
 
     # ── DB / Upsert ──────────────────────────────────────────────────────
     # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk
@@ -639,9 +650,12 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # Pliego hoy. Gasto acotado a un LLM por pursuit nuevo, y sólo si no había
     # ficha; se apaga sin tocar el job nocturno.
     PLIEGO_FACTS_ON_PURSUIT: bool = True
-    # Mantener sincronizado con llm.client.DEFAULT_MODEL: el valor anterior
-    # (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devolvía 410.
-    PLIEGO_FACTS_MODEL: str = "deepseek-ai/deepseek-v4-flash-0731"
+    # Mantener sincronizado con llm.client.DEFAULT_MODEL (lo comprueba
+    # tests/test_llm_client.py). Los dos valores anteriores acabaron en 410 al
+    # retirarlos NVIDIA: deepseek-v4-pro el 2026-08-07 y deepseek-v4-flash-0731
+    # el 2026-09-21. La variable de repo del mismo nombre, si existe, pisa este
+    # default en pliegos.yml: al cambiarlo, revisar también `gh variable list`.
+    PLIEGO_FACTS_MODEL: str = "nvidia/nemotron-3-super-120b-a12b"
     # Tamaños de lote por fase del job scheduler/jobs/documentos_embeddings.py.
     # pliegos.yml propaga REDIS_URL desde el secret del mismo nombre; si el
     # secret no está definido, el gate de presupuesto LLM arranca de 0 en cada
@@ -650,6 +664,17 @@ class Settings(ResumenPregenSettings, BaseSettings):
     PLIEGO_FETCH_BATCH: int = 300
     PLIEGO_EMBED_BATCH: int = 100
     PLIEGO_FACTS_BATCH: int = 25
+    # Tope de reloj por fase del mismo job, en segundos (0 = sin tope). El lote
+    # por número no acota la duración: 300 documentos tardaron de 17 a 37 min
+    # en septiembre de 2026 y 100 embeddings de 15 a más de 25, así que del run
+    # #65 (2026-09-15) al #73 (2026-09-23) pliegos.yml se canceló nueve noches
+    # seguidas por su `timeout-minutes` sin llegar a las fichas, a tech_signal
+    # ni a la alerta de `run_cli`. Lo que no cabe en el tope se queda para el
+    # lote siguiente (`aplazados` en el resumen) y las fases de después corren
+    # siempre.
+    PLIEGO_FETCH_MAX_SECONDS: int = 1200
+    PLIEGO_EMBED_MAX_SECONDS: int = 900
+    PLIEGO_FACTS_MAX_SECONDS: int = 600
     # Tamaño del lote de licitaciones puntuadas por corrida de la fase de
     # señal de tecnología (keywords sobre el texto del pliego).
     PLIEGO_TECH_SIGNAL_BATCH: int = 500
@@ -670,9 +695,12 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # así que cubre todo el universo y no la minoría con documentos. Off por
     # defecto: genera gasto, se activa de forma explícita como PLIEGO_FACTS.
     LLM_TECH_LABELING_ENABLED: bool = False
-    # Mantener sincronizado con llm.client.DEFAULT_MODEL: el valor anterior
-    # (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devolvía 410.
-    LLM_TECH_LABELING_MODEL: str = "deepseek-ai/deepseek-v4-flash-0731"
+    # Mantener sincronizado con llm.client.DEFAULT_MODEL (lo comprueba
+    # tests/test_llm_client.py): deepseek-v4-pro y deepseek-v4-flash-0731
+    # acabaron en 410 (EOL en NVIDIA el 2026-08-07 y el 2026-09-21). El modelo
+    # entra en `signal_version`, así que cambiarlo vuelve a etiquetar el corpus
+    # desde lo más reciente, a razón de LLM_TECH_LABELING_BATCH por corrida.
+    LLM_TECH_LABELING_MODEL: str = "nvidia/nemotron-3-super-120b-a12b"
     # Licitaciones clasificadas por corrida. Mismo caveat que PLIEGO_*_BATCH:
     # sin REDIS_URL en el runner, el presupuesto LLM arranca de 0 en cada
     # corrida y el tope real de gasto es este tamaño de lote (~$0.07 por 200).

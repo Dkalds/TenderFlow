@@ -22,6 +22,25 @@ from scheduler.jobs import ml_training_run as training_job
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def sin_entorno_actions(monkeypatch):
+    """Quita del entorno lo que el CLI de ml_predicciones lee o escribe.
+
+    La suite corre dentro de GitHub Actions, donde ``GITHUB_OUTPUT`` y
+    ``GITHUB_STEP_SUMMARY`` existen: sin esto, cada test del CLI de scoring
+    escribiría sus outputs y su resumen en el step de CI que ejecuta pytest.
+    """
+    for nombre in (
+        "GITHUB_OUTPUT",
+        "GITHUB_STEP_SUMMARY",
+        "ML_VERIFY_COMPUTED_AT",
+        "ML_VERIFY_FILAS",
+        "ML_SCORING_FORZAR",
+    ):
+        monkeypatch.delenv(nombre, raising=False)
+
+
+@pytest.mark.usefixtures("sin_entorno_actions")
 @pytest.mark.parametrize("status", ["ok", "sin_abiertas"])
 def test_scoring_cli_ok_statuses_exit_zero(status):
     """``sin_abiertas`` no es un fallo: no hay licitaciones que puntuar."""
@@ -33,6 +52,7 @@ def test_scoring_cli_ok_statuses_exit_zero(status):
         assert ml_job.run_scoring_cli() == 0
 
 
+@pytest.mark.usefixtures("sin_entorno_actions")
 @pytest.mark.parametrize("status", ["error", "modelo_ausente", None])
 def test_scoring_cli_failure_statuses_exit_nonzero(status):
     resumen = {"baja": {"status": status}, "retencion": {}, "drift": {}, "calibracion": {}}
@@ -43,6 +63,7 @@ def test_scoring_cli_failure_statuses_exit_nonzero(status):
         assert ml_job.run_scoring_cli() == 1
 
 
+@pytest.mark.usefixtures("sin_entorno_actions")
 def test_scoring_cli_ok_when_baseline_sin_modelo_activo():
     """Baseline SIN versión activa es el contrato del RFC, no una avería."""
     resumen = {
@@ -58,6 +79,7 @@ def test_scoring_cli_ok_when_baseline_sin_modelo_activo():
         assert ml_job.run_scoring_cli() == 0
 
 
+@pytest.mark.usefixtures("sin_entorno_actions")
 @pytest.mark.parametrize("motivo", ["artefacto_irresoluble", "feature_schema_mismatch"])
 def test_scoring_cli_fails_when_serving_degradado(motivo):
     """Modelo activo que no llega a servirse: job en rojo + alerta.
@@ -81,6 +103,7 @@ def test_scoring_cli_fails_when_serving_degradado(motivo):
     assert notify.call_args.kwargs["baja"] == motivo
 
 
+@pytest.mark.usefixtures("sin_entorno_actions")
 def test_scoring_cli_fails_when_only_retencion_degradado():
     resumen = {
         "baja": {"status": "ok", "degradado": None},
@@ -101,48 +124,135 @@ def test_scoring_cli_fails_when_only_retencion_degradado():
 # ---------------------------------------------------------------------------
 
 
+_REPO_PREDICCIONES = "db.repositories.predicciones.PrediccionesRepository"
+_COMPUTED_AT = "2026-09-24T10:03:12.345678+00:00"
+
+
 def _ahora_iso(horas_atras: float = 0.0) -> str:
     from datetime import UTC, datetime, timedelta
 
     return (datetime.now(UTC) - timedelta(hours=horas_atras)).isoformat()
 
 
+# Sin ML_VERIFY_COMPUTED_AT en el entorno (uso manual, plano local): la
+# comprobación de frescura de siempre.
+
+
+@pytest.mark.usefixtures("sin_entorno_actions")
 def test_verify_cli_fails_when_table_empty():
     estado = {"filas": 0, "ultimo_computed_at": None}
-    with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
+    with patch(f"{_REPO_PREDICCIONES}.estado", return_value=estado):
         assert ml_job.verify_predicciones_cli() == 1
 
 
+@pytest.mark.usefixtures("sin_entorno_actions")
 def test_verify_cli_ok_when_rows_are_fresh():
     estado = {"filas": 42, "ultimo_computed_at": _ahora_iso(1)}
-    with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
+    with patch(f"{_REPO_PREDICCIONES}.estado", return_value=estado):
         assert ml_job.verify_predicciones_cli() == 0
 
 
+@pytest.mark.usefixtures("sin_entorno_actions")
 def test_verify_cli_fails_when_rows_are_stale():
     """Filas de una corrida vieja: el upsert no purga, así que sobreviven a un
     batch que no escribió ninguna y hacían pasar la verificación."""
     estado = {"filas": 42, "ultimo_computed_at": _ahora_iso(72)}
-    with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
+    with patch(f"{_REPO_PREDICCIONES}.estado", return_value=estado):
         assert ml_job.verify_predicciones_cli() == 1
 
 
+@pytest.mark.usefixtures("sin_entorno_actions")
 @pytest.mark.parametrize("valor", [None, "", "no-es-una-fecha"])
 def test_verify_cli_fails_when_timestamp_unusable(valor):
     """Con filas pero sin timestamp legible no se puede afirmar frescura."""
     estado = {"filas": 42, "ultimo_computed_at": valor}
-    with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
+    with patch(f"{_REPO_PREDICCIONES}.estado", return_value=estado):
         assert ml_job.verify_predicciones_cli() == 1
 
 
+@pytest.mark.usefixtures("sin_entorno_actions")
 def test_verify_cli_accepts_naive_timestamp():
     """Un ``computed_at`` sin tz se interpreta como UTC, no como local."""
     from datetime import UTC, datetime, timedelta
 
     naive = (datetime.now(UTC) - timedelta(hours=2)).replace(tzinfo=None).isoformat()
     estado = {"filas": 7, "ultimo_computed_at": naive}
-    with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
+    with patch(f"{_REPO_PREDICCIONES}.estado", return_value=estado):
         assert ml_job.verify_predicciones_cli() == 0
+
+
+# Con los outputs del step de scoring (ml-scoring.yml los pasa siempre, vacíos
+# si el scoring no pudo escribirlos): se verifican las filas de ESA corrida.
+
+
+def _verify_con_outputs(monkeypatch, computed_at, filas, *, escritas=0, estado=None):
+    """Corre el verify con los outputs del scoring; ``filas=None`` = ausente."""
+    monkeypatch.setenv("ML_VERIFY_COMPUTED_AT", computed_at)
+    if filas is not None:
+        monkeypatch.setenv("ML_VERIFY_FILAS", filas)
+    estado = estado or {"filas": 0, "ultimo_computed_at": None}
+    with (
+        patch(f"{_REPO_PREDICCIONES}.contar_baja_de_corrida", return_value=escritas) as contar,
+        patch(f"{_REPO_PREDICCIONES}.estado", return_value=estado),
+    ):
+        codigo = ml_job.verify_predicciones_cli()
+    return codigo, contar
+
+
+@pytest.mark.usefixtures("sin_entorno_actions")
+def test_verify_cli_exacto_ok_si_la_corrida_escribio_lo_que_reporto(monkeypatch):
+    codigo, contar = _verify_con_outputs(monkeypatch, _COMPUTED_AT, "42", escritas=42)
+    assert codigo == 0
+    contar.assert_called_once_with(_COMPUTED_AT)
+
+
+@pytest.mark.usefixtures("sin_entorno_actions")
+@pytest.mark.parametrize("escritas", [0, 41, 43])
+def test_verify_cli_exacto_falla_si_no_cuadra(monkeypatch, escritas):
+    """Filas frescas de otra corrida no cuentan: con el cron arrancando a horas
+    distintas cada día, "reciente" no distinguía la corrida de hoy de la de ayer."""
+    fresca = {"filas": 500, "ultimo_computed_at": _ahora_iso(1)}
+    codigo, _ = _verify_con_outputs(
+        monkeypatch, _COMPUTED_AT, "42", escritas=escritas, estado=fresca
+    )
+    assert codigo == 1
+
+
+@pytest.mark.usefixtures("sin_entorno_actions")
+def test_verify_cli_exacto_falla_con_cero_filas_reportadas(monkeypatch):
+    """Un ``ok`` escribe una fila por abierta: con ``computed_at`` y 0 filas algo va mal."""
+    codigo, _ = _verify_con_outputs(monkeypatch, _COMPUTED_AT, "0", escritas=0)
+    assert codigo == 1
+
+
+@pytest.mark.usefixtures("sin_entorno_actions")
+@pytest.mark.parametrize("filas", ["", "muchas", None])
+def test_verify_cli_exacto_falla_con_filas_ilegibles(monkeypatch, filas):
+    codigo, contar = _verify_con_outputs(monkeypatch, _COMPUTED_AT, filas, escritas=42)
+    assert codigo == 1
+    contar.assert_not_called()
+
+
+@pytest.mark.usefixtures("sin_entorno_actions")
+def test_verify_cli_sin_abiertas_sale_verde_sin_mirar_la_tabla(monkeypatch):
+    """``sin_abiertas`` es legítimo; con la tabla vacía la frescura habría fallado."""
+    codigo, contar = _verify_con_outputs(monkeypatch, "", "0")
+    assert codigo == 0
+    contar.assert_not_called()
+
+
+@pytest.mark.usefixtures("sin_entorno_actions")
+@pytest.mark.parametrize("filas", ["", None, "12"])
+def test_verify_cli_sin_outputs_cae_a_la_frescura(monkeypatch, filas):
+    """Outputs vacíos (el scoring no pudo escribirlos) no son por sí solos un fallo."""
+    fresca = {"filas": 42, "ultimo_computed_at": _ahora_iso(1)}
+    codigo, contar = _verify_con_outputs(monkeypatch, "", filas, estado=fresca)
+    assert codigo == 0
+    contar.assert_not_called()
+
+    rancia = {"filas": 42, "ultimo_computed_at": _ahora_iso(72)}
+    codigo, _ = _verify_con_outputs(monkeypatch, "", filas, estado=rancia)
+    assert codigo == 1
 
 
 # ---------------------------------------------------------------------------

@@ -43,8 +43,9 @@ jobs:
   bulk:
     runs-on: ubuntu-latest
     # Un mes de PLACSP son varios ZIP de miles de avisos, y el step reintenta
-    # hasta dos veces: el bulk necesita bastante más presupuesto que el carril
-    # diario (55 min). Al ser manual, un job largo no bloquea ninguna cadencia.
+    # hasta dos veces: el bulk necesita un único step largo, mientras que el
+    # carril diario reparte sus 120 min entre la ingesta (45), seis conectores
+    # y el cierre (20). Al ser manual, un job largo no bloquea ninguna cadencia.
     timeout-minutes: 120
 
     env:

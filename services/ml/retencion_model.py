@@ -28,7 +28,6 @@ temporal— así que se mide el PR-AUC por **bloques contiguos** de esa ventana
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -43,6 +42,9 @@ log = get_logger(__name__)
 
 MODEL_NAME = "retencion_model"
 MIN_TRAIN_SAMPLES = 150
+# Ruta BASE del artefacto: `entrenar` publica `<stem>-<sha256[:12]>.pkl` en el
+# mismo directorio (como `baja_model`); `save()`/`load()` sin ruta la usan tal
+# cual para el uso local.
 _MODEL_PATH = Path(__file__).parents[2] / "data" / "models" / "retencion_model.pkl"
 PR_AUC_MARGEN = 0.15
 ECE_MAX = 0.08
@@ -222,7 +224,12 @@ def entrenar(
     activar: bool | None = None,
     model_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Entrena, valida temporalmente (último 20% por fecha de sucesor) y registra."""
+    """Entrena, valida temporalmente (último 20% por fecha de sucesor) y registra.
+
+    ``model_path`` fija el directorio y el prefijo del artefacto; el registrado
+    (y ``resumen["path"]``) es ``<stem>-<sha256[:12]>.pkl``, como en
+    ``baja_model.entrenar``.
+    """
     import numpy as np
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.ensemble import HistGradientBoostingClassifier
@@ -307,8 +314,11 @@ def entrenar(
     modelo = RetencionModel(
         clf, metadata={"feature_columns": list(FEATURE_COLUMNS_RETENCION), "metrics": metricas}
     )
-    path = modelo.save(model_path)
-    sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    # Nombre por contenido, por lo mismo que en `baja_model.entrenar`: el
+    # asset de la versión activa no puede quedar pisado por el de la nueva.
+    from shared.model_artifacts import rename_to_content_address
+
+    path, sha256 = rename_to_content_address(modelo.save(model_path))
 
     from db.model_registry import register_version
 

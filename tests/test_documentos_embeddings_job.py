@@ -109,7 +109,13 @@ class TestRunFetchPhase:
         ):
             counts = _run_fetch_phase()
 
-        assert counts == {"extracted": 1, "error": 1, "skipped": 0, "unsupported": 0}
+        assert counts == {
+            "extracted": 1,
+            "error": 1,
+            "skipped": 0,
+            "unsupported": 0,
+            "aplazados": 0,
+        }
 
     def test_no_pending_returns_zero_counts(self, repo):
         assert _run_fetch_phase() == {
@@ -117,6 +123,10 @@ class TestRunFetchPhase:
             "error": 0,
             "skipped": 0,
             "unsupported": 0,
+            # Documentos que no cupieron en el tope de reloj de la fase
+            # (PLIEGO_FETCH_MAX_SECONDS). Sin tope, siempre 0, pero la clave
+            # está para que el informe tenga siempre la misma forma.
+            "aplazados": 0,
         }
 
     def test_skipped_no_consume_la_fila(self, repo):
@@ -127,7 +137,13 @@ class TestRunFetchPhase:
         with patch("scraper.document_fetcher.fetch_and_extract", side_effect=["skipped"]):
             counts = _run_fetch_phase()
 
-        assert counts == {"extracted": 0, "error": 0, "skipped": 1, "unsupported": 0}
+        assert counts == {
+            "extracted": 0,
+            "error": 0,
+            "skipped": 1,
+            "unsupported": 0,
+            "aplazados": 0,
+        }
         assert len(repo.list_pendientes()) == 1
 
     def test_unsupported_se_cuenta_aparte_del_error(self, repo):
@@ -144,15 +160,27 @@ class TestRunFetchPhase:
         with patch("scraper.document_fetcher.fetch_and_extract", side_effect=["unsupported"]):
             counts = _run_fetch_phase()
 
-        assert counts == {"extracted": 0, "error": 0, "skipped": 0, "unsupported": 1}
+        assert counts == {
+            "extracted": 0,
+            "error": 0,
+            "skipped": 0,
+            "unsupported": 1,
+            "aplazados": 0,
+        }
 
     def test_unexpected_exception_counts_as_error(self, repo):
-        _seed_pending(repo, "EXP-F3")
+        doc = _seed_pending(repo, "EXP-F3")
 
         with patch("scraper.document_fetcher.fetch_and_extract", side_effect=RuntimeError("boom")):
             counts = _run_fetch_phase()
 
         assert counts["error"] == 1
+        # Y sale de `pending`: hasta 2026-09 se quedaba ahí y se reintentaba
+        # cada noche (64 documentos con bytes NUL ocupando huecos del lote).
+        assert repo.list_pendientes() == []
+        fila = repo.get(doc["id"])
+        assert fila["status"] == "error"
+        assert "boom" in fila["error_detail"]
 
     def test_increments_prometheus_metric(self, repo):
         etiquetas = {"status": "extracted"}
@@ -203,6 +231,8 @@ class TestRunEmbedPhase:
             # tiene que estar: un job de re-embedding sin contador es un job sin
             # progreso observable, que es lo que el ítem vino a arreglar.
             "reembebidos": 0,
+            # Documentos que no cupieron en PLIEGO_EMBED_MAX_SECONDS.
+            "aplazados": 0,
         }
 
     def test_second_run_is_idempotent_noop(self, repo):
@@ -230,6 +260,7 @@ class TestRunEmbedPhase:
             # tiene que estar: un job de re-embedding sin contador es un job sin
             # progreso observable, que es lo que el ítem vino a arreglar.
             "reembebidos": 0,
+            "aplazados": 0,
         }
         mock_encode.assert_called_once()  # la segunda corrida no reembebe nada
 
@@ -348,8 +379,10 @@ def test_run_passes_batch_sizes_from_settings(repo):
     ):
         run()
 
-    fetch.assert_called_once_with(limit=7)
-    embed.assert_called_once_with(limit=3)
-    facts.assert_called_once_with(limit=2)
+    # Los topes de reloj también salen de settings (ver
+    # test_unit_documentos_embeddings_presupuesto.py); aquí, sus defaults.
+    fetch.assert_called_once_with(limit=7, max_seconds=settings.PLIEGO_FETCH_MAX_SECONDS)
+    embed.assert_called_once_with(limit=3, max_seconds=settings.PLIEGO_EMBED_MAX_SECONDS)
+    facts.assert_called_once_with(limit=2, max_seconds=settings.PLIEGO_FACTS_MAX_SECONDS)
     tech_signal.assert_called_once_with(limit=9)
     resumen_pregen.assert_called_once_with(limit=4)

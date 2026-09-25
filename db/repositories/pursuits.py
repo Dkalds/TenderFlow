@@ -864,7 +864,12 @@ class PursuitRepository:
             return bool(getattr(cur, "rowcount", 0))
 
     def cruces_con_competidor(
-        self, organization_id: int, empresa_key: str, *, desde_iso: str, limit: int = 100
+        self,
+        organization_id: int,
+        empresa_keys: Sequence[str],
+        *,
+        desde_iso: str,
+        limit: int = 100,
     ) -> list[dict[str, Any]]:
         """F3.2 — expedientes donde coincidimos con un competidor.
 
@@ -876,7 +881,13 @@ class PursuitRepository:
 
         Sólo oportunidades **presentadas** (`submitted_at` no nulo): sin haber
         ofertado no hubo cruce, sólo dos empresas mirando el mismo anuncio.
+
+        ``empresa_keys`` son todas las claves del competidor: la de la ficha y
+        las de las identidades del maestro que Competencia suma con ella. Con
+        una sola, un grupo con dos ids sólo cruzaba las adjudicaciones de uno.
         """
+        if not empresa_keys:
+            return []
         with connect_read() as conn:
             # La clave del competidor se **calcula** sobre la fila de
             # `adjudicaciones`: `empresas` no tiene ninguna columna que la
@@ -901,12 +912,12 @@ class PursuitRepository:
                 "WHERE p.organization_id = %s "
                 "  AND p.submitted_at IS NOT NULL "
                 "  AND p.identified_at >= %s "
-                f"  AND ({clave} = %s OR EXISTS ("
+                f"  AND ({clave} = ANY(%s) OR EXISTS ("
                 "        SELECT 1 FROM adjudicaciones a2 "
-                f"       WHERE a2.licitacion_id = p.licitacion_id AND {clave2} = %s"
+                f"       WHERE a2.licitacion_id = p.licitacion_id AND {clave2} = ANY(%s)"
                 "  )) "
                 "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, p.id DESC "
                 "LIMIT %s",
-                (organization_id, desde_iso, empresa_key, empresa_key, limit),
+                (organization_id, desde_iso, list(empresa_keys), list(empresa_keys), limit),
             )
             return rows_to_dicts(cur)

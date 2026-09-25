@@ -516,6 +516,12 @@ describe("las fábricas parametrizadas", () => {
     expect(conA()).not.toEqual(conB());
   });
 
+  it("«Contra mí» distingue la ficha agrupada de la de una sola identidad", () => {
+    // La tabla de arriba prueba la ventana; esto, el grupo. Con la misma clave,
+    // la ficha agrupada serviría los cruces de una sola identidad.
+    expect(competitiveKeys.contraMi("42", 21, 24, "42,43")).not.toEqual(competitiveKeys.contraMi("42", 21, 24));
+  });
+
   it("el hilo de comentarios normaliza el id a texto", () => {
     // `pursuitCommentKeys.thread` hace `String(pursuitId)` a propósito: la
     // página pasa el número y el hilo la cadena. Sin normalizar serían dos

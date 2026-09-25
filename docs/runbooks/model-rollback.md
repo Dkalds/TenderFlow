@@ -51,6 +51,19 @@ criterio escrito es este, y no la intuición de quien mire el número:
   **no gatea** — está para que quien active vea si el modelo aporta algo sobre
   un `ORDER BY`.
 
+**Artefactos de los predictivos (desde 2026-09-24).** Cada versión de
+`baja_model`/`retencion_model` se publica con un nombre derivado de su
+contenido (`baja_model-<sha256[:12]>.pkl`) en la Release de tag fijo
+`ml-models`, que nunca pasa a *latest*. Revertir o activar es, por tanto, solo
+`activate_version`: el fichero de cada versión sigue en su sitio y ninguna
+otra lo pisa. Antes todas se llamaban `baja_model.pkl` y el reentrenamiento
+mensual subía con `--clobber`, así que con vN activa el siguiente
+entrenamiento pisaba su asset y el scoring caía por `ModelArtifactMismatch`.
+Las filas anteriores a ese cambio, con nombre fijo, se siguen resolviendo por
+nombre entre las 30 Releases más recientes. **No crees la Release `ml-models` a
+mano** (UI o token personal): dispararía `release-sdk.yml`. La crea
+`train-predictivos.yml` con su propio token.
+
 Cada versión guarda el veredicto y su número en `notes` y en `metrics_json`
 (`promotion_reason`, `mejora_sobre_baseline`, `dispersion_entre_folds`,
 `margen_exigido`). Para leerlo:

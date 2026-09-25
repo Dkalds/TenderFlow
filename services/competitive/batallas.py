@@ -23,6 +23,7 @@ mínimo: el mismo criterio que el resto del producto.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -110,6 +111,11 @@ class BatallasContraMi(BaseModel):
     #: nuestro NIF. Se cuentan aparte para que la pantalla pueda decir «revisa
     #: estos cierres» en vez de sumarlos a las derrotas.
     contradicciones: int = Field(default=0, ge=0)
+    #: Claves del competidor cruzadas: `empresa_key` y las de las identidades
+    #: del maestro que Competencia suma con ella, sin repetir. Declara el
+    #: alcance (ADR-014): con más de una, la pantalla puede decir que cruzó el
+    #: grupo entero, y un backend que no lo haga no la deja afirmarlo.
+    claves: list[str] = Field(default_factory=list)
 
 
 def _baja(importe: float | None, adjudicado: float | None) -> float | None:
@@ -119,12 +125,21 @@ def _baja(importe: float | None, adjudicado: float | None) -> float | None:
     return round(1 - (adjudicado / importe), 4)
 
 
+def _claves(empresa_key: str, grupo: Iterable[str]) -> tuple[str, ...]:
+    """La clave pedida y las de su grupo, en ese orden y sin repetir.
+
+    Una clave vacía no identifica a nadie, así que no entra.
+    """
+    return tuple(dict.fromkeys(clave for clave in (empresa_key, *grupo) if clave))
+
+
 def construir_batallas(
     empresa_key: str,
     cruces: list[dict[str, Any]],
     *,
     nif_propio: str | None = None,
     identidad: IdentidadFiscal | None = None,
+    grupo: Iterable[str] = (),
 ) -> BatallasContraMi:
     """Convierte los cruces en el historial contra un competidor.
 
@@ -144,7 +159,13 @@ def construir_batallas(
     el adjudicatario somos nosotros»: antes contaba como derrota en silencio,
     y un historial que apunta como derrota lo que ganamos es exactamente el
     error que hace dudar del resto de la pantalla.
+
+    ``grupo`` son las claves de las otras identidades del maestro que
+    Competencia cuenta como este mismo competidor. Una adjudicación a
+    cualquiera de ellas es una victoria **suya**: con sólo la de la ficha, lo
+    que ganaba la otra identidad salía como «perdimos» a secas.
     """
+    claves = _claves(empresa_key, grupo)
     batallas: list[Batalla] = []
     for fila in cruces:
         importe = fila.get("importe")
@@ -162,9 +183,10 @@ def construir_batallas(
             resultado: ResultadoBatalla = "ganamos"
         elif outcome != "lost" or contradiccion:
             resultado = "sin_resolver"
-        elif adjudicatario and adjudicatario == empresa_key:
+        elif adjudicatario and adjudicatario in claves:
             # Sólo aquí se puede afirmar que ganaron ellos: el adjudicatario
-            # observado es este competidor, no un tercero.
+            # observado es este competidor —alguna de sus identidades—, no un
+            # tercero.
             resultado = "ellos_ganaron"
         else:
             resultado = "perdimos"
@@ -196,6 +218,7 @@ def construir_batallas(
         n=len(batallas),
         sin_nif_propio=nif_propio is None,
         contradicciones=contradicciones,
+        claves=list(claves),
     )
 
 
@@ -300,6 +323,7 @@ def batallas_de_usuario(
     *,
     organization_id: int | None = None,
     meses: int = 24,
+    grupo: Sequence[str] = (),
 ) -> BatallasContraMi:
     """El historial de cruces con un competidor, con el ámbito ya resuelto.
 
@@ -314,6 +338,9 @@ def batallas_de_usuario(
     pantalla decía «no sabemos cuál es tu empresa» aunque la organización
     tuviera su NIF puesto: el aviso salía siempre, y un aviso que sale siempre
     deja de leerse.
+
+    ``grupo`` son las claves de las otras identidades del competidor (ver
+    :func:`construir_batallas`); la consulta cruza todas.
     """
     from datetime import UTC, datetime, timedelta
 
@@ -322,11 +349,13 @@ def batallas_de_usuario(
 
     with alcance_resuelto(user_id, organization_id) as (resuelta, _rol):
         desde = (datetime.now(UTC) - timedelta(days=30 * meses)).isoformat()
-        cruces = PursuitRepository().cruces_con_competidor(resuelta, empresa_key, desde_iso=desde)
+        cruces = PursuitRepository().cruces_con_competidor(
+            resuelta, _claves(empresa_key, grupo), desde_iso=desde
+        )
         identidad = _identidad_propia(resuelta)
         nif_propio = next(iter(sorted(identidad.nifs)), None) if identidad else None
         resultado = construir_batallas(
-            empresa_key, cruces, nif_propio=nif_propio, identidad=identidad
+            empresa_key, cruces, nif_propio=nif_propio, identidad=identidad, grupo=grupo
         )
         return resultado.model_copy(update={"ventana": f"últimos {meses} meses"})
 

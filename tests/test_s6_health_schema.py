@@ -10,16 +10,27 @@ los gates salían verdes. Es literalmente el incidente que motivó crear
 exist`` en los runs de scrape del 31-jul/1-ago.
 
 Estos tests corren **sin base de datos**: inyectan las dos revisiones (la
-aplicada y la del repo) en la función pura ``_comparar_revisiones`` y sustituyen
+aplicada y la del repo) en la función pura ``comparar_revisiones`` y sustituyen
 los sondeos por dobles. Lo único que toca disco es el test que lee las cabezas
 del propio checkout, que es lectura de ``db/alembic/versions``.
+
+Desde 2026-09 la comparación vive en ``db/schema_revision.py``, compartida con
+el preflight de los workflows de datos (``python -m db.schema_revision``, cuyo
+contrato fija ``tests/test_unit_schema_revision.py``). Aquí se sigue fijando lo
+que es del endpoint: que publica el mismo vocabulario, que solo ``behind`` y
+``ahead`` degradan, que un fallo nunca propaga y la caché.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
+from unittest.mock import MagicMock
+
 import pytest
 
 from api.routes import health
+from db import schema_revision
 
 _CABEZA = "v98_mv_canonicas_universo_tecnologico"
 _ANTERIOR = "v97_pursuit_comments"
@@ -32,18 +43,20 @@ _CONOCIDAS = (_ANTERIOR, _CABEZA)
 
 
 def test_revision_aplicada_igual_a_la_cabeza_es_ok() -> None:
-    assert health._comparar_revisiones([_CABEZA], [_CABEZA], _CONOCIDAS) == f"ok ({_CABEZA})"
+    assert (
+        schema_revision.comparar_revisiones([_CABEZA], [_CABEZA], _CONOCIDAS) == f"ok ({_CABEZA})"
+    )
 
 
 def test_revision_por_detras_es_behind_con_las_dos_revisiones() -> None:
     """El detalle tiene que nombrar ambas: sin ellas nadie sabe qué aplicar."""
-    detalle = health._comparar_revisiones([_ANTERIOR], [_CABEZA], _CONOCIDAS)
+    detalle = schema_revision.comparar_revisiones([_ANTERIOR], [_CABEZA], _CONOCIDAS)
     assert detalle == f"behind ({_ANTERIOR} < {_CABEZA})"
 
 
 def test_base_sin_migrar_es_behind_y_no_un_crash() -> None:
     """``alembic_version`` vacía es el caso de una BD nueva, no un error."""
-    detalle = health._comparar_revisiones([], [_CABEZA], _CONOCIDAS)
+    detalle = schema_revision.comparar_revisiones([], [_CABEZA], _CONOCIDAS)
     assert detalle == f"behind (ninguna < {_CABEZA})"
 
 
@@ -54,20 +67,20 @@ def test_revision_desconocida_es_ahead_y_no_behind() -> None:
     desplegado es MÁS VIEJO que el schema, así que migrar no arregla nada — hay
     que desplegar el código correcto.
     """
-    detalle = health._comparar_revisiones(["v99_futura"], [_CABEZA], _CONOCIDAS)
+    detalle = schema_revision.comparar_revisiones(["v99_futura"], [_CABEZA], _CONOCIDAS)
     assert detalle.startswith("ahead (")
     assert "v99_futura" in detalle
 
 
 def test_sin_cabezas_no_se_afirma_nada() -> None:
     """Un repo del que no se pudieron leer cabezas no autoriza a decir 'behind'."""
-    assert health._comparar_revisiones([_ANTERIOR], [], _CONOCIDAS) == "unknown"
+    assert schema_revision.comparar_revisiones([_ANTERIOR], [], _CONOCIDAS) == "unknown"
 
 
 def test_orden_de_las_revisiones_no_altera_el_resultado() -> None:
     """Múltiples cabezas (merge alembic) se comparan como conjunto ordenado."""
-    a = health._comparar_revisiones([_ANTERIOR, _CABEZA], [_CABEZA, _ANTERIOR], _CONOCIDAS)
-    b = health._comparar_revisiones([_CABEZA, _ANTERIOR], [_ANTERIOR, _CABEZA], _CONOCIDAS)
+    a = schema_revision.comparar_revisiones([_ANTERIOR, _CABEZA], [_CABEZA, _ANTERIOR], _CONOCIDAS)
+    b = schema_revision.comparar_revisiones([_CABEZA, _ANTERIOR], [_ANTERIOR, _CABEZA], _CONOCIDAS)
     assert a == b
     assert a.startswith("ok (")
 
@@ -181,6 +194,83 @@ def test_ttl_cero_desactiva_la_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     health._check_schema()
 
     assert len(llamadas) == 2
+
+
+def test_un_fallo_del_sondeo_se_loguea_con_el_evento_de_siempre_y_sin_credenciales(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``health_schema_check_failed`` sobrevive a la mudanza de la lógica a ``db/``.
+
+    Y su ``error`` llega sin la contraseña, también en la forma
+    ``postgresql+psycopg://`` que construye el sondeo y que ``redact_dsn`` no
+    reconoce.
+    """
+    registro = MagicMock()
+    monkeypatch.setattr(health, "log", registro)
+    monkeypatch.setattr(health, "_database_url", lambda: "postgresql://x/y")
+    monkeypatch.setattr(health, "_repo_revisions", lambda: ((_CABEZA,), _CONOCIDAS))
+
+    def _revienta() -> tuple[str, ...]:
+        raise RuntimeError(
+            "no conecta: postgresql+psycopg://app:secreta@db.example/tf"  # pragma: allowlist secret
+        )
+
+    monkeypatch.setattr(health, "_applied_revisions", _revienta)
+
+    assert health._check_schema() == "unknown"
+    registro.warning.assert_called_once()
+    argumentos, campos = registro.warning.call_args
+    assert argumentos == ("health_schema_check_failed",)
+    assert campos["error"].startswith("RuntimeError: no conecta")
+    assert "secreta" not in campos["error"]
+
+
+# ---------------------------------------------------------------------------
+# El endpoint entero, y el mismo criterio que el preflight de los jobs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("aplicadas", "schema", "status"),
+    [
+        ((_CABEZA,), f"ok ({_CABEZA})", "ok"),
+        ((_ANTERIOR,), f"behind ({_ANTERIOR} < {_CABEZA})", "degraded"),
+        (("v99_futura",), f"ahead (v99_futura > {_CABEZA})", "degraded"),
+    ],
+)
+def test_readiness_publica_el_schema_y_solo_el_desfase_degrada(
+    monkeypatch: pytest.MonkeyPatch, aplicadas: tuple[str, ...], schema: str, status: str
+) -> None:
+    """``/health/ready`` sin BD: el mismo payload y el mismo 200 de siempre.
+
+    Un schema desalineado tiñe ``status`` de ``degraded`` pero no toca el
+    código HTTP: el 503 sigue reservado a la BD caída.
+    """
+    monkeypatch.setattr(health, "_check_db", lambda: "ok")
+    monkeypatch.setattr(health, "_check_redis", lambda: "unconfigured")
+    monkeypatch.setattr(health, "_check_disk", lambda: "ok")
+    monkeypatch.setattr(health, "_database_url", lambda: "postgresql://x/y")
+    monkeypatch.setattr(health, "_repo_revisions", lambda: ((_CABEZA,), _CONOCIDAS))
+    monkeypatch.setattr(health, "_applied_revisions", lambda: aplicadas)
+
+    respuesta = asyncio.run(health.readiness())
+
+    assert respuesta.status_code == 200
+    cuerpo = json.loads(respuesta.body)
+    assert cuerpo["schema_revision"] == schema
+    assert cuerpo["status"] == status
+
+
+def test_endpoint_y_preflight_comparten_las_fuentes() -> None:
+    """Los alias de este módulo son las funciones de ``db.schema_revision``.
+
+    Una copia reescrita aquí podría discrepar del preflight de los jobs sobre
+    qué es un desfase: el deploy saldría verde con un job que bloquea, o al
+    revés.
+    """
+    assert health._database_url is schema_revision.database_url
+    assert health._repo_revisions is schema_revision.revisiones_repo
+    assert health._applied_revisions is schema_revision.revisiones_aplicadas
 
 
 # ---------------------------------------------------------------------------

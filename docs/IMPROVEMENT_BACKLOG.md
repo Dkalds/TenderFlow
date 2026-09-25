@@ -141,7 +141,7 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P2] Remediación axe: 4 reglas desactivadas | **Cerrado y movido** el 2026-09-19 a _Cerrados_ — `nested-interactive` (C7.1), las tres restantes el 2026-09-18 y los rojos que destapó el E2E en `8a424967` y `0fd5082c`; sin `disableRules` ni `fixme` |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
 | [P3] Unificar la definición de «Calientes» | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — se mantiene la heurística de importe como «Grandes en plazo», documentada en los DTOs |
-| [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub |
+| [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub; 33 descartados el 2026-08-30 y 8 nuevos desde entonces (2026-09-24) |
 
 Ítems **nuevos** que salen del plan y no estaban aquí: partir las páginas
 monolito del dashboard (S5.2), el prefetch en servidor con hidratación (S5.1) y
@@ -202,6 +202,35 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P0 — Urgente
 
+### [P0] El feed ATOM de PLACSP está congelado desde el 2026-09-08 y nada lo avisa
+- **Área:** scraper/atom_live.py, scheduler/healthcheck.py, .github/workflows/scrape-daily.yml
+- **Problema:** medido el 2026-09-24. La cabecera de
+  `licitacionesPerfilesContratanteCompleto3.atom` se regeneró el 2026-09-23
+  (`Last-Modified`), pero su entrada más reciente es del 2026-09-08 22:31 y las
+  páginas `next` siguen hacia atrás desde ahí. El cursor `placsp` está en ese
+  mismo instante, así que cada pasada lee una entrada, para con
+  `stopped=cursor_reached` e ingiere 0 avisos (run 35978335055) — en verde. El
+  healthcheck da PLACSP por «fresca» (`lag_hours: 0.4`) porque mide cuándo acabó
+  el último run, no la antigüedad del dato. El ZIP mensual
+  `..._202609.zip` sí se regeneró el 2026-09-24 04:01 GMT.
+- **Acceptance criteria:**
+  - Recuperar el hueco: `scrape-bulk.yml` con `months=1` (acción del usuario:
+    escribe en producción) y comprobar que el corpus PLACSP del 09-08 en adelante
+    aparece. *Lanzado el 2026-09-25 (run 36127626642); falta comprobar el
+    corpus.* `months=1` procesa el mes en curso (`meses_a_procesar`). No cubre
+    `placsp_watched_company_awards`, que lee el mismo ATOM y sigue parado.
+  - ~~El healthcheck avisa cuando el `last_seen_updated` de una fuente con cursor
+    de dato (PLACSP, TED) supera un umbral propio, además de `last_success_at`.~~
+    **Hecho el 2026-09-25:** `RegisteredSource.max_antiguedad_dato_hours` (48 h
+    PLACSP, 168 h TED) y el estado `sin_datos_nuevos` en
+    `comprobar_frescura_fuentes`, con aviso `fuente_sin_datos_nuevos:<fuente>`.
+    Mientras el ATOM siga congelado avisará en cada healthcheck: es la señal
+    que faltaba, no ruido.
+  - Decidir si el carril diario cae al ZIP del mes en curso cuando el ATOM no
+    avanza durante N pasadas.
+- **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
+- **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
+
 ### [P0] Verificar en GitHub el backup remoto cifrado y su restore drill
 - **Área:** .github/workflows/backup.yml, .github/workflows/restore-drill.yml, GitHub Settings (acción del usuario)
 - **Problema:** verificado el 2026-09-01 que `BACKUP_ENCRYPTION_KEY` existe y
@@ -225,15 +254,50 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P1 — Alta
 
-### [P1] [Rendimiento 2026-09] Aplicar los índices de la búsqueda `q` y del filtro de tecnología
-- **Área:** db/alembic/versions (migración, OK humano de AGENTS.md §6), db/sql_fragments.py
-- **Problema:** la búsqueda `q` del listado y de los agregados es un `LIKE '%q%'` sobre cuatro columnas plegadas sin índice utilizable, y el filtro de tecnología no tenía expresión indexable: cada búsqueda y cada filtro recorren ~1,64 M filas. La rama de rendimiento dejó el código listo —tablas de plegado como literales, idénticas en listado y agregados; tecnología con `&&` sobre una sola expresión—, pero crear los índices es una migración y quedó pendiente de OK.
+### [P1] [Rendimiento 2026-09] Aplicar en producción los índices de la búsqueda `q` y del filtro de tecnología
+- **Área:** db/alembic/versions (`v142_lic_tecnologia_tokens_gin`, `v143_lic_busqueda_plegada_trgm`); aplicar con `migrate.yml` es acción del usuario
+- **Problema:** la búsqueda `q` del listado y de los agregados es un `LIKE '%q%'` sobre cuatro columnas plegadas, y el filtro de tecnología un solapamiento de arrays; sin índice, cada búsqueda y cada filtro recorren ~1,64 M filas. El código ya emite las expresiones indexables y las dos migraciones están escritas (rama de rendimiento), pero `migrate.yml` es manual y el índice de `descripcion` de `v143` puede ocupar mucho disco.
 - **Acceptance criteria:**
-  - `v142` (GIN de tecnología) y `v143` (cuatro trigram sobre las expresiones plegadas) según [la propuesta](plans/2026-09-indices-busqueda-propuestos.md), con su test de DDL.
-  - Medido antes de `v143` el tamaño de `descripcion` (consultas en la propuesta); si el índice no cabe, la alternativa que la propuesta describe.
-  - `EXPLAIN` con plan genérico usando los índices, tras aplicar con `migrate.yml`.
-- **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](plans/2026-09-indices-busqueda-propuestos.md), [db/sql_fragments.py](../db/sql_fragments.py)
-- **Riesgo:** medio — índices grandes creados en caliente (`CONCURRENTLY`); el de `descripcion` puede ocupar mucho.
+  - Antes de `v143`, medido el volumen de `descripcion` frente al trigram de `titulo` de `v50` (consultas en [la propuesta](plans/2026-09-indices-busqueda-propuestos.md)); si no cabe, una de las alternativas que describe.
+  - `v142` y `v143` aplicadas con `migrate.yml`, en una ventana sin ingesta, y los cinco índices con `pg_index.indisvalid = true`.
+  - `EXPLAIN` con plan genérico usando los índices, y su `idx_scan` en `pg_stat_user_indexes` tras un día de tráfico.
+- **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](plans/2026-09-indices-busqueda-propuestos.md), [tests/test_indices_busqueda.py](../tests/test_indices_busqueda.py)
+- **Riesgo:** medio — índices grandes creados en caliente (`CONCURRENTLY`, dos pasadas por la tabla por índice).
+
+### [P1] Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó
+- **Área:** scraper/connectors/ted.py, services/dedupe.py (ADR-026, addendum 2026-09-24)
+- **Problema:** `detect_duplicados_por_referencia` solo empareja los avisos que el
+  conector re-lee (ventana de 14 días): BT-22 y el `idEvl` no son columnas. Lo ya
+  ingerido conserva además el título con el prefijo «España – {CPV} – » y la
+  etiqueta `DESARROLLO` que ese prefijo le ponía (17 % de una muestra de 300).
+- **Acceptance criteria:**
+  - `python -m scraper.connectors.ted --desde 20250101` ejecutado en producción
+    (acción con escritura: la lanza el usuario o un `workflow_dispatch`).
+  - Log `dedupe_referencias_detected` con el recuento, y
+    `SELECT COUNT(*) FROM licitaciones_duplicados WHERE clave_match LIKE 'idEvl:%' OR clave_match LIKE 'expediente:%'`
+    anotado aquí junto al total de filas `ted`.
+  - Ninguna fila `ted` con título que empiece por `España –`.
+- **Files de partida:** [scraper/connectors/ted.py](../scraper/connectors/ted.py), [services/dedupe.py](../services/dedupe.py)
+- **Riesgo:** bajo — el upsert es idempotente y las marcas `confirmed` automáticas no pisan lo que un humano resolvió.
+
+### [P1] La vista canónica todavía puede preferir TED, y el bulk no cuenta como PLACSP
+- **Área:** db/sql_fragments.py (`_criterios_canonicos_sql`), services/dedupe.py (`_rango_canonico`), db/alembic
+- **Problema:** el orden de canónica es `fuente <> 'placsp'`, fecha de publicación,
+  primera extracción e id. Dos defectos: TED no pierde frente a las demás fuentes
+  cuando un par colapsa por clave sin referencia explícita (gana la más antigua),
+  y las filas que refrescó el carril bulk llevan `fuente = 'bulk_YYYYMM'` —el
+  upsert reescribe `fuente`—, así que pierden la preferencia de PLACSP. El
+  dedupe por referencia ya aplica «TED nunca canónica» y cuenta el bulk como
+  PLACSP; la vista no.
+- **Acceptance criteria:**
+  - `_criterios_canonicos_sql` y su gemelo `_rango_canonico` ordenan PLACSP (con
+    `bulk_%`) → resto → TED, y `tests/test_dedupe_publico.py` fija la paridad.
+  - Migración nueva que reconstruye `licitaciones_canonicas` por permuta, como
+    `v102` (requiere OK: AGENTS.md §6), y `tests/test_mv_canonicas_definicion.py`
+    apuntando a ella.
+  - Delta medido en producción: cuántas canónicas cambian de fila (y de URL).
+- **Files de partida:** [db/sql_fragments.py](../db/sql_fragments.py), [db/alembic/versions/v102_mv_canonicas_clave_inmutable.py](../db/alembic/versions/v102_mv_canonicas_clave_inmutable.py), [services/dedupe.py](../services/dedupe.py)
+- **Riesgo:** alto — reconstruye la vista de la superficie pública y mueve URLs del sitemap.
 
 ### [P1] Ampliar el golden set del clasificador SAP a 300-500 ejemplos etiquetados a mano
 - **Área:** tests/fixtures/golden_set.jsonl, tests/fixtures/golden_set_tech.jsonl, scripts/sample_golden_candidates.py (acción del usuario: etiquetar)
@@ -322,15 +386,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P2 — Media
 
-### [P2] [Rendimiento 2026-09] Subir el `--limit-concurrency` de uvicorn (20)
-- **Área:** docker/docker-entrypoint-api.sh, render.yaml, servicio de Render (acción del usuario)
-- **Problema:** uvicorn responde 503 en cuanto las conexiones abiertas —keep-alive ociosas incluidas— o las tareas llegan a 20, y cada pestaña del dashboard mantiene un SSE (`/licitaciones/stream`, hasta 5 min). Con una decena de pestañas y una ráfaga de carga salen 503 que el navegador reintenta con backoff: se percibe como lentitud. La rama de rendimiento ya cierra el SSE con la pestaña oculta y lo monta una sola vez, pero el techo sigue en 20; subirlo es configuración de despliegue y quedó pendiente de OK.
-- **Acceptance criteria:**
-  - Default de `UVICORN_LIMIT_CONCURRENCY` a 200 en el entrypoint (los límites reales son el threadpool de 24 y los pools) y la variable documentada en `render.yaml`.
-  - Comprobado en el panel de Render que no hay un valor explícito que lo pise, y sin `Exceeded concurrency limit` en los logs tras desplegar.
-- **Files de partida:** [docker/docker-entrypoint-api.sh](../docker/docker-entrypoint-api.sh)
-- **Riesgo:** bajo — el techo que protege de verdad (hilos y conexiones) no cambia.
-
 ### [P2] [Rendimiento 2026-09] Medir la analítica en producción y encender su techo de sentencia
 - **Área:** config/settings.py (`API_ANALYTICS_STATEMENT_TIMEOUT_MS`), variables de Render
 - **Problema:** el mecanismo existe (`api/techo_analitica.py`, `db.connection.techo_de_sentencia`) pero nace apagado: sin `pg_stat_statements` de producción no se sabe cuántas agregaciones filtradas tardan hoy entre 15 y 30 s y pasarían a fallar. Una consulta cancelada ya no se reintenta (503 `query-timeout`), así que encenderlo no multiplica la carga.
@@ -347,6 +402,21 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Los dos módulos corren en el gate y pasan, o sus fallos quedan arreglados en el mismo cambio.
 - **Files de partida:** [tests/conftest.py](../tests/conftest.py)
 - **Riesgo:** bajo — solo cambia qué tests entran en el gate.
+
+### [P2] Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23 dice que sí)
+- **Área:** db/repositories/licitaciones.py (`_base_filters`), db/repositories/aggregates.py
+- **Problema:** D23 fija «Radar, listados: esconde `pending` y `confirmed`», pero
+  `_base_filters` —listado, cursor y export— no excluye ningún duplicado, y el
+  guardrail de dedupe lo exime como «CRUD por diseño». El Radar sí los esconde.
+  Con las marcas de TED de 2026-09-24, el Radar deja de enseñar la copia TED y el
+  listado la sigue enseñando.
+- **Acceptance criteria:**
+  - Decisión escrita (en ADR-026 o en el guardrail) sobre cuál de las dos reglas manda.
+  - Si se esconden: `exclude_duplicados_presentacion_sql` en `_base_filters` y en
+    la rama FTS, y los contadores de `/resumen` que abren el listado miden lo mismo
+    (hoy los fija un test de paridad).
+- **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [tests/test_dedup_guardrail.py](../tests/test_dedup_guardrail.py)
+- **Riesgo:** medio — cambia el universo del listado, el cursor y el export a la vez.
 
 ### [P2] La portada cita el tamaño del censo bajo un titular que promete lo contrario
 - **Área:** producción (acción del usuario) + web/src/app/(publico)/_components/franja-datos.tsx
@@ -478,6 +548,36 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [db/model_registry.py](../db/model_registry.py), [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/promotion.py](../services/ml/promotion.py) (el gate del SAP, como referencia), [.github/workflows/train-predictivos.yml](../.github/workflows/train-predictivos.yml)
 - **Riesgo:** medio — activar cambia lo que sirve `predicciones_baja` sin red que lo detecte.
 - **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — los dos primeros criterios ya estaban en código; queda solo la decisión humana.** Comprobado contra el código: el criterio escrito existe desde #274 (v2 S6.4) — `services.ml.promotion.evaluar_promocion_predictiva`: una versión solo es promocionable si su mejora sobre el baseline mide al menos `MIN_IMPROVEMENT_OVER_FOLD_DISPERSION` (1.0) veces la dispersión de la métrica entre folds, sin dispersión medida no se promociona, y los criterios del RFC entran como motivos extra. `baja_model.entrenar` y `retencion_model.entrenar` lo aplican y dejan el veredicto en `notes` (`promotion_reason`); retención registra `pr_auc_baseline` (prevalencia) y `pr_auc_std_folds` (bloques contiguos de validación). Tests en `tests/test_ml_promocion_predictiva.py`; el runbook `model-rollback.md` lo cita. Esta rama añade a retención el rival de antigüedad que pedía el criterio: `pr_auc_baseline_antiguedad` (ordenar por `antiguedad_relacion_meses`), **informativo, no gatea**. Aplicado a los números de arriba, baja v2 sale «indistinguible de ruido» (0.005 < 0.0129). **Falta (humano):** relanzar `train-predictivos.yml` para que retención tenga dispersión y rival registrados —v1 es anterior al gate—, y decidir activar o descartar con el `promotion_reason` delante.
+- **Progreso (2026-09-24, rama `claude/ml-scoring-improvements-da84e5`) — activar ya no rompe el scoring al mes siguiente.** Hasta hoy todas las versiones se publicaban como `baja_model.pkl`/`retencion_model.pkl` con `--clobber`: activar vN y dejar que el reentrenamiento mensual registrara vN+1 sin activar pisaba el asset de vN, y `ml-scoring.yml` caía cada día por `ModelArtifactMismatch` hasta activar vN+1. Ahora cada versión nueva lleva un nombre derivado de su contenido (`baja_model-<sha12>.pkl`) en la Release fija `ml-models`. La resolución busca por nombre en `ml-models` → *latest* → las 30 Releases más recientes, así que las filas actuales (v2 y v1, de nombre fijo) se siguen encontrando. La decisión pendiente es solo la de arriba.
+
+### [P2] ml-scoring: verificar en producción el arreglo del 2026-09-24 y cerrar sus flecos
+- **Área:** services/ml/, scheduler/jobs/ml_predicciones.py, .github/workflows/ml-scoring.yml, shared/release_assets.py
+- **Problema:** El job estaba al borde de su `timeout-minutes: 20`: el 2026-09-20 consumió 1.190 de los 1.200 s. Unos 11 minutos se iban en features de retención que la rama baseline calculaba y tiraba, y otro minuto en hilos del pool que no se cerraban. La rama `claude/ml-scoring-improvements-da84e5` corrige eso y nueve puntos más:
+  - disparo tras la ingesta, con un guard de una corrida al día;
+  - preflight de schema;
+  - verify por `computed_at`;
+  - artefactos con nombre por contenido;
+  - drift que solo alerta según el régimen servido;
+  - dedup de alertas;
+  - población sin zombis;
+  - baseline de retención con shrinkage jerárquico;
+  - purga de filas viejas.
+
+  Falta medirlo en producción y cerrar lo que no entró.
+- **Acceptance criteria:**
+  - En los primeros runs tras el merge:
+    - el step de scoring tarda menos de 6 min (`duraciones_s` en el resumen del job);
+    - hay una sola corrida por día UTC (las demás salen con `ya_puntuado_hoy`);
+    - el preflight sale verde;
+    - el verify corre en modo `corrida`.
+  - Medir cuántas filas borra `purgar_sin_adjudicar` en su primera pasada y cómo cambia el PSI del drift con la población viva. Antes, la mediana de `n_obs_organo` era 3 en scoring y 1.293 en la referencia.
+  - Decidir `ML_RETENCION_EXCLUIR_RESUELTOS` tras auditar una muestra de `resueltos_detectados`. Hoy está apagado: la heurística órgano + CPV-4 da falsos positivos en segmentos con mucha actividad, y excluir un contrato lo esconde del orden «score». `scripts/audit_retencion.py` solo audita pares de entrenamiento; hay que añadirle un modo `--resueltos`.
+  - Que el entrenamiento de retención deje de ser cuadrático. `construir_pares` llama a `_features_historicas` por cada par (~5,5K pares × ~698K adjudicaciones × 2), y `_emparejar` es O(Σ n²) por segmento. Solución: índices por clave más bisect, con paridad contra la referencia como en `tests/test_ml_retencion_serving.py`.
+  - Resolver la clave de `predicciones_retencion` **antes de activar `retencion_model`**; exige migración. La tabla guarda un riesgo por expediente (`licitacion_id` es la PK), pero Renovaciones pinta una fila por empresa adjudicataria. Con el modelo, que sí depende de la empresa, un expediente con varios adjudicatarios mostraría a todos el riesgo del primero.
+  - Pasar a `locate_release_asset` y a una Release fija lo que aún publica y busca solo en *latest*: `ensure_downloaded` de `scraper/ml_classifier.py` y de `scraper/tech_classifier.py`, más `train-model.yml` y `train-tech.yml`.
+  - Arreglar `observability/logging.py::redact_dsn`, que no redacta la contraseña de los DSN con driver (`postgresql+psycopg://…`). Hoy `db/schema_revision.py` lo cubre con su propia regex.
+- **Files de partida:** [scheduler/jobs/ml_predicciones.py](../scheduler/jobs/ml_predicciones.py), [services/ml/retencion_labels.py](../services/ml/retencion_labels.py), [shared/release_assets.py](../shared/release_assets.py), [.github/workflows/ml-scoring.yml](../.github/workflows/ml-scoring.yml)
+- **Riesgo:** bajo para las verificaciones; medio para la clave de `predicciones_retencion`, que exige migración.
 
 ### [P3] Las 47 adjudicaciones con fecha imposible siguen anclando filas de entrenamiento
 - **Área:** services/ml/features.py, db/repositories/ml_dataset.py, scraper/connectors/pscp.py
@@ -547,6 +647,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Problema:** 37 de los 38 avisos abiertos apuntan a un `uv.lock` que se borró de `master` en `cc096fb` (2026-05-31). El grafo de dependencias de GitHub conservó una instantánea de ese fichero y **sigue emitiendo avisos nuevos contra ella** — los abiertos van del 2026-07-13 al 2026-08-07, todos posteriores al borrado. La prueba está en el SBOM, que lista a la vez los pines vivos y sus fantasmas (`pillow@12.3.0` ×2 junto a `pillow@12.2.0`; `cryptography@50.0.0` ×2 junto a `46.0.7`), y en el trío del 2026-08-03 sobre `GHSA-g6cj-pr64-35w5`: #82 y #83 (manifiestos vivos) se cerraron el mismo día; #87 (`uv.lock`) sigue abierto y no puede cerrarse nunca.
 - **Cómo triar (corregido 2026-08-30):** **no** basta con filtrar por `manifest_path`, y sobre todo no debe convertirse en una regla de auto-descarte. GitHub atribuye mal ese campo: los tres avisos de `cryptography` (#87–#89) salen etiquetados como `uv.lock` pese a que ese paquete **nunca** estuvo en ese fichero. Una regla que descarte por `manifest_path: uv.lock` acabaría tapando en silencio un aviso real de `requirements.txt`. El criterio que sí decide es el pin vivo: comparar `first_patched_version` contra `requirements.txt` / `requirements-dev.txt` / `web/package-lock.json`, aviso por aviso.
 - **Acceptance criteria:** los 37 descartados con motivo (`not_used` los 18 de GitPython, que no está en ningún manifiesto; `inaccurate` el resto, cuyo pin vivo ya está parcheado); el listado refleja solo manifiestos reales. La cura de fondo —que el grafo deje de ver `uv.lock`— exige forzar un re-parse del path o abrir ticket a GitHub Support; el toggle del dependency graph no existe en repos públicos.
+- **Progreso (2026-09-24):** el 2026-08-30 se descartaron 33 con el criterio de arriba (17 `inaccurate`, 16 `not_used`). El fantasma **sigue emitiendo**: desde entonces han llegado 8 más, todos contra `uv.lock` y ninguno con pin vivo vulnerable — #113 y #114 (`anyio` < 4.14.2: los cuatro `requirements*.txt` fijan 4.14.2), #108–#112 (`GitPython` ≤ 3.1.58: no está en ningún manifiesto) y #105 (`transformers` < 5.10.0: sin pin, entra por los extras `ml`/`ml-embeddings`; la última ejecución de `pliegos.yml` resolvió 5.17.0 y el código no llama a `save_pretrained`). Descartar a mano es un goteo sin fin: el ítem no se cierra hasta aplicar la cura de fondo.
 - **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
 - **Riesgo:** bajo — no toca código; el cuidado está en verificar cada aviso contra el pin vivo en vez de contra el nombre del manifiesto.
 
@@ -592,6 +693,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Dos efectos colaterales que esta migración tiene y nadie había registrado** (descubiertos el 2026-08-18 al ejecutar la ola):
   1. **Erosiona el guardrail de dedupe.** `tests/test_dedup_guardrail.py` escaneaba solo `services/`; mover SQL analítico a `db/` lo sacaba de su radio en silencio. Ya está corregido (el escáner tiene ahora una lista explícita de módulos de `db/`), pero **cada ola futura debe añadir a `_SCANNED_FILES` el módulo de `db/` que crea**, en el mismo cambio. Lo que destapó al ampliarlo es un ítem P1 propio.
   2. **Tienta a invertir las capas.** Al mover una query se mueven con ella los fragmentos SQL que interpola, y el reflejo es importarlos de `services/` — que ADR-024 prohíbe (`db/` no depende de `services/`). El destino correcto es `db/sql_fragments.py`, creado el 2026-08-18 con `FECHA_FIN_SQL`, `TECHNOLOGY_OBSERVED_SQL` y `exclude_duplicados_sql`; `services/` los reexporta.
+- **Progreso 2026-09-24 — 26 → 25:** `services/ml/scoring.py` sale. El upsert de retención, duplicado en las ramas de modelo y de baseline, y la baja real por expediente (`_baja_real`) pasan a `db/repositories/predicciones.py` (`guardar_retencion`, `baja_real_de_expediente`); la división sigue en services. `db/repositories/predicciones.py` entra en `_SCANNED_FILES` del guardrail de dedupe en el mismo cambio, con sus dos purgas como exentas por diseño.
 - **Progreso 2026-09-16 — 28 → 26:** `scheduler/kpi_precompute.py` pasa a `db/kpi_precompute.py` (no a `db/repositories/kpi_snapshots.py`, que es de las métricas `ov_*` y advierte que no se mezclen) y `services/competitive/mercado.py` pasa a `db/repositories/mercado.py`, con el `WHERE` construido por `alcance_sql` en vez de interpolación suelta — el candidato «aparte» de más abajo queda cerrado. Equivalencia verificada con un arnés que compara SQL y parámetros contra `HEAD`; `db/repositories/mercado.py` entra en `_SCANNED_FILES` del guardrail de dedupe en el mismo cambio.
 - Siguientes candidatos por coste (conteo de `connect(`+`execute(`): `services/ml/calibration.py` (1), `services/entity_resolution.py` (1), `services/competitive/bajas.py` (2), `services/ml/features.py` (2).
 - **~~Candidato aparte~~ — hecho el 2026-09-16 (ver progreso arriba).** `services/competitive/mercado.py` concentraba ~12 de los ~30 `# noqa: S608` del repo (conteo del 2026-08-18). Cada supresión está justificada una por una y el idioma de fragmentos constantes está documentado en `services/sql_fragments.py`, así que no es un bug — pero es la mayor densidad de SQL interpolado del proyecto en un solo fichero, y cada filtro nuevo que se añade ahí es otra oportunidad de que un valor entre por concatenación sin que nadie lo note. Al moverlo a `db/`, hacerlo con un builder de `WHERE` testeado en lugar de arrastrar la interpolación tal cual (patrón de `tests/test_adjudicaciones_dedupe_sql.py`, que verifica que los `%s` siguen cuadrando con los parámetros).

@@ -26,7 +26,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from llm.prompts import ChatMessage, PromptMode, build_messages
-from llm.providers import LLMAuthError
+from llm.providers import LLMAuthError, LLMModelUnavailableError
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -38,7 +38,7 @@ _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-")
 _ANTHROPIC_PREFIXES = ("claude-",)
 
 # NVIDIA NIM expone una API compatible con OpenAI. Los modelos llegan con formato
-# "namespace/modelo" (p. ej. "deepseek-ai/deepseek-v4-flash-0731"), y el "/" en
+# "namespace/modelo" (p. ej. "nvidia/nemotron-3-super-120b-a12b"), y el "/" en
 # el nombre actúa como discriminador frente a los modelos OpenAI/Anthropic.
 # El endpoint es configurable vía NVIDIA_BASE_URL para apuntar a un gateway propio.
 _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
@@ -47,7 +47,7 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 #
 # Los modelos NVIDIA NIM se validaron contra el catálogo vivo
 # (GET https://integrate.api.nvidia.com/v1/models, público, sin auth) el
-# 2026-09-10. NVIDIA retira modelos sin aviso: `deepseek-ai/deepseek-v4-pro` —
+# 2026-09-24. NVIDIA retira modelos sin aviso: `deepseek-ai/deepseek-v4-pro` —
 # el default anterior — llegó a su end-of-life el 2026-08-07T09:00Z y desde
 # entonces devuelve 410, lo que dejó la IA caída seis días en silencio. Antes de
 # tocar esta lista, verificá contra ese endpoint que el id sigue existiendo.
@@ -61,6 +61,16 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 # catálogo el 2026-09-10 (el 2026-09-05 seguía; tampoco queda otro MiniMax). No
 # estaba en `FALLBACK_MODELS`, así que solo sale de la oferta.
 #
+# Cuarto, y esta vez se llevó el default: `deepseek-ai/deepseek-v4-flash-0731`
+# llegó a su EOL el 2026-09-21T08:00Z y desde entonces devuelve 410. `/ask`
+# tiene `FALLBACK_MODELS` y pasa al eslabón siguiente, pero la ficha del
+# pliego, el etiquetado de tecnologías y el guion de oferta van sin fallback
+# (persisten el modelo que los generó) y fallaron en todas las llamadas. Su
+# sucesor en el catálogo, `deepseek-ai/deepseek-v4.1-flash`, no devolvió ni las
+# cabeceras en 150 s en dos intentos del 2026-09-24, así que no entra en la
+# oferta hasta que responda: un modelo colgado es peor que uno retirado, que al
+# menos falla rápido.
+#
 # Los dos modelos NIM marcados abajo como "razonamiento" generan una traza de
 # reasoning ANTES de la respuesta final, y esa traza consume el presupuesto de
 # `max_tokens` del provider (900 en /ask, 1500 en /resumen). Si la traza se lo
@@ -69,9 +79,6 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 # envía desde 2026-09-06 (ver `REASONING_TEMPLATE_KWARGS` más abajo).
 AVAILABLE_MODELS: list[str] = [
     # ── NVIDIA NIM (free tier: sin coste, limitado por RPM/créditos de la key) ─
-    # 284B totales / 13B activos. Tier "flash": el de menor coste computacional
-    # por token de la lista y por eso el de mejor relación velocidad/calidad.
-    "deepseek-ai/deepseek-v4-flash-0731",
     # 120B / 12B activos, 1M contexto, español soportado. Razonamiento.
     "nvidia/nemotron-3-super-120b-a12b",
     # 550B / 55B activos, 1M contexto. Razonamiento. El más lento del lote.
@@ -85,11 +92,18 @@ AVAILABLE_MODELS: list[str] = [
 ]
 
 # Modelo por defecto cuando el cliente no especifica uno.
-# Criterio: mejor relación velocidad/calidad. Con 13B de parámetros activos es
-# el más rápido por token de la lista, y los foros de NVIDIA lo reportan por
-# encima del V4 Pro (1.6T) que sustituye. Además es de la misma familia contra
-# la que están afinados los prompts de `llm/prompts.py`.
-DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
+# Criterio: el NIM más rápido de los que responden. `nemotron-3-super` (12B
+# activos) dio el primer token en 0,5 s el 2026-09-24, pedido sin traza de
+# razonamiento (`REASONING_TEMPLATE_KWARGS`), y ya estaba en `FALLBACK_MODELS`
+# desde el 2026-09-02. Sustituye a `deepseek-ai/deepseek-v4-flash-0731`, que
+# NVIDIA retiró (ver arriba). Los prompts de `llm/prompts.py` se afinaron
+# contra DeepSeek: la calidad con este modelo se mide con `make eval-llm`, no
+# se da por hecha.
+#
+# `config/settings.py` (PLIEGO_FACTS_MODEL, LLM_TECH_LABELING_MODEL),
+# `config/settings_resumen.py` y `api/routes/ask.py` repiten este valor como
+# literal; `tests/test_llm_client.py` comprueba que no se desincronizan.
+DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
 # Cadena de fallback cuando el modelo pedido falla ANTES de emitir el primer
 # token (excepción del provider o stream vacío — el síntoma exacto del EOL de
@@ -99,17 +113,18 @@ DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
 # error se propaga tal cual. El orden es coste ascendente dentro de "fiable":
 # segundo NIM gratuito primero, después los proveedores de pago baratos.
 #
-# Ese segundo eslabón era `z-ai/glm-5.2` hasta que salió del catálogo
-# (2026-09-02). Su reemplazo es el NIM de menor coste computacional que queda,
-# pero SÍ es de razonamiento sin modo non-thinking explícito: si la traza se
-# come el `max_tokens`, devuelve stream vacío. Eso no rompe la cadena — un
-# candidato vacío cuenta como fallo y se pasa al siguiente — pero es la razón
-# de que siga por delante de los de pago y no al revés: en un despliegue con
-# solo NVIDIA_API_KEY es el único respaldo posible, y en uno con claves de pago
-# lo peor que hace es costar un intento antes de gpt-4o-mini.
+# El segundo eslabón ha cambiado dos veces: fue `z-ai/glm-5.2` hasta que salió
+# del catálogo (2026-09-02), después `nemotron-3-super` hasta que pasó a ser el
+# default (2026-09-24), y ahora es `nemotron-3-ultra`, el otro NIM que queda en
+# la oferta. Es más lento (primer token en 2,4 s frente a 0,5 s el 2026-09-24)
+# y, como el default, es de razonamiento: se pide sin traza, y aun así un
+# candidato que devuelva vacío cuenta como fallo y se pasa al siguiente. Va por
+# delante de los de pago porque en un despliegue con solo NVIDIA_API_KEY es el
+# único respaldo posible, y en uno con claves de pago lo peor que hace es
+# costar un intento antes de gpt-4o-mini.
 FALLBACK_MODELS: list[str] = [
     DEFAULT_MODEL,
-    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3-ultra-550b-a55b",
     "gpt-4o-mini",
     "claude-haiku-4-5",
 ]
@@ -144,7 +159,6 @@ REASONING_TEMPLATE_KWARGS: dict[str, dict[str, Any]] = {
 # cobertura pueda distinguir "decidido que no lo es" de "nadie lo miró".
 NON_REASONING_MODELS: frozenset[str] = frozenset(
     {
-        "deepseek-ai/deepseek-v4-flash-0731",
         "gpt-4o-mini",
         "gpt-4o",
         "gpt-3.5-turbo",
@@ -193,7 +207,6 @@ _PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
     # dejaría el breaker de coste sin contar nada; y si algún día se pasa a un
     # plan de pago el control ya está puesto. Son estimaciones por clase de
     # modelo, no tarifas publicadas: ajustar al plan real que se contrate.
-    "deepseek-ai/deepseek-v4-flash-0731": (0.10, 0.40),
     "nvidia/nemotron-3-super-120b-a12b": (0.20, 0.80),
     "nvidia/nemotron-3-ultra-550b-a55b": (0.90, 3.60),
     "gpt-4o-mini": (0.15, 0.60),
@@ -536,7 +549,8 @@ def stream_llm_response(
             primer token (excepción o stream vacío) se intentan en orden los
             ``FALLBACK_MODELS`` cuyo proveedor tenga API key. Nunca se cambia
             de modelo con tokens ya emitidos. Tras un ``LLMAuthError`` se
-            saltan los demás modelos de ese proveedor: comparten la key.
+            saltan los demás modelos de ese proveedor: comparten la key. Un
+            ``LLMModelUnavailableError`` solo descarta ese modelo.
         stop: Señal de parada del consumidor (``/ask`` la activa al vencer su
             timeout o desconectarse el cliente). Con ella activa no se arranca
             ningún intento nuevo del provider ni candidato nuevo del fallback,
@@ -557,6 +571,10 @@ def stream_llm_response(
                     ``LLM_BUDGET_MODE=enforce`` (RFC llm-dependencia-gestionada).
         LLMAuthError: Si el proveedor rechazó la key (401/403) y ningún
                     candidato posterior emitió nada.
+        LLMModelUnavailableError: Si el proveedor ya no sirve el modelo
+                    (404/410) y ningún candidato posterior emitió nada. Con
+                    ``fallback=False`` es lo que ve quien llama: el nombre del
+                    modelo retirado en vez de una respuesta vacía.
     """
     _validate_request(question, docs, model, history, mode)
 
@@ -600,6 +618,10 @@ def stream_llm_response(
             if isinstance(exc, LLMAuthError):
                 rechazados.add(proveedor)
                 reason = "auth"
+            elif isinstance(exc, LLMModelUnavailableError):
+                # A diferencia de la key, el retiro es de ese modelo: los demás
+                # del mismo proveedor siguen siendo candidatos.
+                reason = "unavailable"
             else:
                 reason = "error"
         else:

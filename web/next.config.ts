@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
-import { legacyRedirects } from "./src/lib/space-views";
+import { legacyRedirects, SUBRUTAS_MOVIDAS } from "./src/lib/space-views";
 // Ruta relativa y no alias `@/`: los `paths` de tsconfig no se aplican al
 // cargar este fichero, igual que con `space-views` de arriba.
 import { esValorLegalPlaceholder } from "./src/lib/legal-placeholder";
@@ -67,9 +67,12 @@ const nextConfig: NextConfig = {
    * va a volver, y así los marcadores y los buscadores se actualizan solos.
    * Next arrastra la query entrante, de modo que un enlace con filtros llega
    * al espacio con su ámbito intacto.
+   *
+   * Detrás van las subrutas que cambiaron de espacio con su parámetro
+   * (`SUBRUTAS_MOVIDAS`, hoy la ficha de empresa), con la misma regla.
    */
   async redirects() {
-    return legacyRedirects().map((redirect) => ({ ...redirect, permanent: true }));
+    return [...legacyRedirects(), ...SUBRUTAS_MOVIDAS].map((redirect) => ({ ...redirect, permanent: true }));
   },
 
   /**

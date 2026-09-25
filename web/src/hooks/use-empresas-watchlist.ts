@@ -71,6 +71,10 @@ export function useToggleEmpresaWatch() {
               }),
         ),
       ),
+    // El aviso de error es el global de mutaciones, con este título. Era un
+    // `toast.error` propio de `/empresas`, que además se sumaba al global: dos
+    // avisos del mismo fallo en esa pantalla y ninguno específico en las demás.
+    meta: { errorTitle: "No se pudo cambiar la vigilancia" },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: watchlistKeys.empresas });
     },

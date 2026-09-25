@@ -6,7 +6,9 @@ CPV configurables (por defecto 48 software y 72 servicios TI).
 
 Mapeo eForms → modelo canónico:
 - ``id_externo`` = ``ted:{publication-number}`` (namespacing ADR-009).
-- Campos multilingües (notice-title, buyer-name…): preferencia spa → eng →
+- ``titulo`` = BT-21 (``title-proc``), el título que publicó el comprador, y
+  no el ``notice-title`` que compone TED. Ver ``_titulo``.
+- Campos multilingües (title-proc, buyer-name…): preferencia spa → eng →
   primer idioma disponible.
 - ``notice-type``: cn-* (convocatoria) → estado PUB; can-* (adjudicación/
   resultado) → RES, con Adjudicacion si trae winner-name; pin-* → PRE.
@@ -14,6 +16,12 @@ Mapeo eForms → modelo canónico:
   shared.geo.
 - ``url``: enlace de acceso a los pliegos del comprador (BT-15/BT-615) cuando
   lleva a algún sitio concreto; si no, el PDF del anuncio en TED.
+
+Dedupe: casi todo lo que publica TED es un contrato que el comprador ya publicó
+en PLACSP o PSCP. El conector no puede saberlo al parsear, pero sí recoge lo que
+el aviso dice del expediente original —BT-22 y el ``idEvl`` del deeplink de
+PLACSP— y lo expone con ``referencias_cruzadas()``; el runner se lo pasa a
+``services.dedupe.detect_duplicados_por_referencia`` tras persistir el lote.
 
 Cursor: ``last_seen_updated`` guarda el máximo ``publication-date`` visto, pero
 cada run consulta desde ``watermark - _OVERLAP_DAYS``. Sin ese solapamiento, lo
@@ -38,6 +46,7 @@ from db.upsert import Adjudicacion, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
+from services.dedupe import ReferenciaCruzada, id_evl_de_url
 from shared.geo import nuts_to_ccaa
 
 if TYPE_CHECKING:
@@ -87,6 +96,10 @@ _OVERLAP_DAYS = 14
 _FIELDS = [
     "publication-number",
     "notice-title",
+    # BT-21: el título del procedimiento. Ver _titulo.
+    "title-proc",
+    # BT-22: el expediente en la plataforma del comprador. Ver referencias_cruzadas.
+    "internal-identifier-proc",
     "description-proc",
     "buyer-name",
     "classification-cpv",
@@ -153,6 +166,69 @@ def _first_lang(value: Any) -> str | None:
                 return _first_lang(value[lang])
         for v in value.values():
             return _first_lang(v)
+    return None
+
+
+#: Separador de los tramos del ``notice-title``: «España \u2013 {CPV} \u2013 {BT-21}». Es
+#: un guion largo (U+2013) entre espacios; el corto aparece dentro de títulos
+#: reales («Servicio de X - Lote 1») y cortar por él mutilaría el título.
+_SEPARADOR_NOTICE_TITLE = " \u2013 "
+
+
+def _titulo(notice: dict[str, Any], natural_id: str) -> str:
+    """Título del procedimiento (BT-21), sin el prefijo que TED le pone delante.
+
+    ``notice-title`` no es un campo del comprador: lo compone TED como
+    «España \u2013 {etiqueta del CPV} \u2013 {BT-21}». Medido el 2026-09-24 sobre 300
+    avisos (ESP, CPV 48/72): prefijo en el 100 %, y el tercer tramo es BT-21
+    byte a byte. Guardarlo entero tenía dos efectos:
+
+    - la fila TED no podía colapsar nunca con la de PLACSP o PSCP del mismo
+      contrato —la clave canónica compara el título—, así que la superficie
+      pública servía los dos;
+    - la etiqueta del CPV entraba en el filtro de tecnología: la de 72000000
+      dice «desarrollo de software», y 52 de esos 300 avisos (17 %) salían
+      etiquetados ``DESARROLLO`` solo por ella.
+
+    ``title-proc`` venía en todos los avisos medidos; si faltara, se recorta el
+    prefijo del ``notice-title``, y solo si tampoco se reconoce se guarda tal
+    cual.
+    """
+    propio = (_first_lang(notice.get("title-proc")) or "").strip()
+    if propio:
+        return propio
+    compuesto = (_first_lang(notice.get("notice-title")) or "").strip()
+    tramos = compuesto.split(_SEPARADOR_NOTICE_TITLE, 2)
+    if len(tramos) == 3 and tramos[2].strip():
+        return tramos[2].strip()
+    return compuesto or f"TED {natural_id}"
+
+
+def _expediente(notice: dict[str, Any]) -> str | None:
+    """BT-22 limpio, o ``None``. La API lo sirve como cadena o como lista de una."""
+    valor = notice.get("internal-identifier-proc")
+    if isinstance(valor, list):
+        valor = valor[0] if valor else None
+    if not isinstance(valor, str):
+        return None
+    return valor.strip() or None
+
+
+def _id_evl(notice: dict[str, Any]) -> str | None:
+    """``idEvl`` del primer deeplink de PLACSP entre los enlaces de pliegos del aviso.
+
+    Se mira en todos los candidatos de BT-15/BT-615 y no solo en el que acaba
+    en ``url``: aunque hoy ``_documents_url`` prefiere el deeplink, el
+    emparejamiento no debe depender de esa preferencia de presentación.
+    """
+    for campo in ("document-url-lot", "document-restricted-url-lot"):
+        valor = notice.get(campo)
+        candidatos = [valor] if isinstance(valor, str) else valor
+        if not isinstance(candidatos, list):
+            continue
+        for candidato in candidatos:
+            if isinstance(candidato, str) and (evl := id_evl_de_url(candidato)):
+                return evl
     return None
 
 
@@ -258,6 +334,7 @@ class TedConnector:
         self.overlap_days = overlap_days
         self._session = session or requests.Session()
         self._max_pub_date: str | None = None
+        self._referencias: dict[str, ReferenciaCruzada] = {}
 
     # ── fetch ────────────────────────────────────────────────────────────
 
@@ -349,7 +426,7 @@ class TedConnector:
         if estado is None:
             return None  # tipos no relevantes (sanciones, perfiles, etc.)
 
-        titulo = _first_lang(n.get("notice-title")) or f"TED {raw.natural_id}"
+        titulo = _titulo(n, raw.natural_id)
         descripcion = _first_lang(n.get("description-proc"))
         organo = _first_lang(n.get("buyer-name"))
         cpvs = n.get("classification-cpv") or []
@@ -419,7 +496,22 @@ class TedConnector:
                     ccaa=lic.ccaa,
                 )
             )
+
+        referencia = ReferenciaCruzada(expediente=_expediente(n), id_evl=_id_evl(n))
+        if not referencia.vacia:
+            self._referencias[lic.id_externo] = referencia
         return ParsedTender(licitacion=lic, adjudicaciones=adjudicaciones)
+
+    # ── dedupe ───────────────────────────────────────────────────────────
+
+    def referencias_cruzadas(self) -> dict[str, ReferenciaCruzada]:
+        """BT-22 e ``idEvl`` de cada aviso parseado en esta pasada, por ``id_externo``.
+
+        No son columnas de ``licitaciones``: solo existen mientras el aviso está
+        en memoria, y por eso las recoge el conector y no una consulta. Las
+        consume ``scraper.connectors.base._post_ingestion``.
+        """
+        return dict(self._referencias)
 
     # ── cursor ───────────────────────────────────────────────────────────
 

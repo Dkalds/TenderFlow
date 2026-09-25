@@ -13,9 +13,11 @@ camino manual del P2 «Modelo de baja por lote»: el batch nocturno solo lo corr
 con ``ML_BAJA_POR_LOTE``, y encenderlo es la decisión que informa
 ``scripts/comparar_baja_por_lote.py``.
 
-La columna "Riesgo de cambio" de Renovaciones solo se puebla con un modelo
-de retención ACTIVO: entrenar (--train --model retencion), auditar los pares
-(scripts/audit_retencion.py) y activar (--activate o model_registry).
+Sin modelo de retención ACTIVO, la columna "Riesgo de cambio" de Renovaciones
+la puebla el baseline histórico (tasa de retención del segmento con shrinkage,
+``model_version`` NULL en la tabla). Para servir el modelo: entrenar (--train
+--model retencion), auditar los pares (scripts/audit_retencion.py) y activar
+(--activate o model_registry).
 """
 
 from __future__ import annotations
@@ -74,7 +76,7 @@ def main() -> int:
             if resumen.get("status") == "ok" and not resumen.get("activado"):
                 print(
                     "  ⚠ Versión registrada SIN activar. La columna 'Riesgo de cambio' "
-                    "seguirá vacía hasta activarla:\n"
+                    "seguirá sirviendo el baseline histórico hasta activarla:\n"
                     "    1) auditá los pares: python scripts/audit_retencion.py\n"
                     "    2) activá: python scripts/score_predicciones.py --train "
                     "--model retencion --activate\n"
@@ -102,15 +104,22 @@ def main() -> int:
         from services.ml.scoring import score_predicciones_retencion
 
         stats = score_predicciones_retencion()
-        if stats["status"] == "sin_modelo":
+        # Sin modelo activo se sirve el baseline (status "baseline"); el estado
+        # "sin_modelo" que miraba antes este script no lo devolvía nadie.
+        if stats["status"] == "sin_vencimientos":
             print(
-                "Scoring retención: OMITIDO — no hay modelo activo "
-                "(entrenar con --train --model retencion y activar tras la auditoría)."
+                f"Scoring retención: sin vencimientos en {stats.get('horizonte_meses')} meses "
+                f"· resueltos={stats.get('resueltos_detectados')} "
+                f"· excluidos={stats.get('excluidos')}"
             )
         else:
             print(
                 f"Scoring retención: {stats['filas']} filas "
-                f"· model_version={stats.get('model_version')} · status={stats['status']}"
+                f"· serving={stats.get('serving')} "
+                f"· model_version={stats.get('model_version')} · status={stats['status']} "
+                f"· purgadas={stats.get('purgadas')} "
+                f"· resueltos={stats.get('resueltos_detectados')} "
+                f"· excluidos={stats.get('excluidos')}"
             )
     return 1 if fallo else 0
 

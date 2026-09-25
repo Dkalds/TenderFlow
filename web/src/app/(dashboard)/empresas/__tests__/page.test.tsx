@@ -1,9 +1,10 @@
 /**
  * La pantalla completa: qué pide al servidor y qué enseña sin que se lo pidan.
  *
- * Las dos reglas que fija: el orden y la página viajan en la petición (no se
- * reordena lo ya traído), y la ficha entra con la primera empresa cargada en
- * vez de con un panel que dice que no hay ninguna seleccionada.
+ * Las reglas que fija: el orden y la página viajan en la petición (no se
+ * reordena lo ya traído), la ficha entra con la primera empresa cargada en vez
+ * de con un panel que dice que no hay ninguna seleccionada, y esa ficha es de
+ * identidad: el análisis está en la de Competencia, a la que enlaza.
  */
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +41,7 @@ vi.mock("@/components/layout/space-shell", () => ({
   ),
 }));
 
+import { toast } from "sonner";
 import EmpresasPage from "@/app/(dashboard)/empresas/page";
 
 const LISTA = {
@@ -117,6 +119,11 @@ const PERFIL = {
   ],
 };
 
+/** Peticiones hechas hasta ahora, en orden. */
+function urlsPedidas(): string[] {
+  return fetchWithAuth.mock.calls.map(([url]) => url as string);
+}
+
 function ruta(url: string): unknown {
   if (url.startsWith("/api/v1/empresas/stats")) return STATS;
   if (url.startsWith("/api/v1/empresas/reviews")) return { items: [] };
@@ -179,21 +186,65 @@ describe("Empresas", () => {
     expect(screen.queryByText("Ninguna empresa coincide con la búsqueda")).not.toBeInTheDocument();
   });
 
-  it("la ficha enseña totales, trayectoria, rankings, UTEs y aliases", async () => {
+  it("la ficha es de identidad: UTEs, aliases y una línea de actividad", async () => {
     render(<EmpresasPage />, { wrapper: Wrapper });
     await screen.findByRole("heading", { name: "Indra Sistemas, S.A." });
 
-    expect(screen.getByText("Contratos adjudicados")).toBeInTheDocument();
-    expect(screen.getByText("Ofertas medias por licitación")).toBeInTheDocument();
-    expect(screen.getByText("Trayectoria por año")).toBeInTheDocument();
-    // Año completo, no «21»: abreviarlo no ahorraba ni el ancho de una barra.
-    expect(screen.getByText("2021")).toBeInTheDocument();
-    expect(screen.getByText("Por familia CPV")).toBeInTheDocument();
-    expect(screen.getByText("Órganos principales")).toBeInTheDocument();
-    // El nombre del órgano va entero: en tres columnas se cortaba a mano.
-    expect(screen.getByText("Agencia Estatal de Administración Tributaria")).toBeInTheDocument();
     expect(screen.getByText("Participa en UTEs")).toBeInTheDocument();
     expect(screen.getByText(/Aliases vistos en fuente \(2\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/148 contratos/)).toBeInTheDocument();
+    expect(screen.getByText(/activa 2019-03 → 2026-07/)).toBeInTheDocument();
+    // El análisis tiene una sola ficha, la de Competencia: aquí no se repite
+    // con otras cifras.
+    for (const pieza of ["Trayectoria por año", "Por familia CPV", "Órganos principales", "Contratos adjudicados"]) {
+      expect(screen.queryByText(pieza)).not.toBeInTheDocument();
+    }
+  });
+
+  it("«Abrir ficha» lleva a la de Competencia en todo el histórico, con las mismas cifras", async () => {
+    render(<EmpresasPage />, { wrapper: Wrapper });
+    const enlace = await screen.findByRole("link", { name: "Abrir ficha" });
+
+    // Sin `alcance=historico`, la ficha aplicaría el ámbito de la barra y no
+    // enseñaría las cifras de esta línea.
+    expect(enlace).toHaveAttribute("href", "/competencia/empresa/1?alcance=historico");
+    // Y esta línea pide el perfil igual que esa ficha en el histórico: sin
+    // filtros, así que las dos cifras salen de la misma petición.
+    await waitFor(() => expect(urlsPedidas()).toContain("/api/v1/competitive/empresas/1/perfil"));
+  });
+
+  it("si el perfil falla, la ficha lo dice y sigue ofreciendo la de Competencia", async () => {
+    fetchWithAuth.mockImplementation((url: string) =>
+      url.startsWith("/api/v1/competitive/empresas/") ? Promise.reject(new Error("500")) : Promise.resolve(ruta(url)),
+    );
+    render(<EmpresasPage />, { wrapper: Wrapper });
+
+    expect(await screen.findByText("No se pudo cargar la actividad.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Abrir ficha" })).toBeInTheDocument();
+  });
+
+  it("«Vigilar» de la ficha es el control único y avisa de la alerta diaria", async () => {
+    render(<EmpresasPage />, { wrapper: Wrapper });
+    // Nombre exacto: el de la ficha es su texto visible; los de las filas
+    // dicen «Vigilar empresa».
+    const vigilar = await screen.findByRole("button", { name: "Vigilar" });
+    // Un botón propio que imitara al control volvería a ser dos controles.
+    expect(vigilar).toHaveAttribute("data-slot", "seguir-boton");
+    // Deshabilitado hasta saber qué se vigila: alternar a ciegas podría pedir
+    // el alta de una empresa que ya estaba vigilada.
+    await waitFor(() => expect(vigilar).toBeEnabled());
+
+    fireEvent.click(vigilar);
+
+    expect(toast).toHaveBeenCalledWith("Añadida a la vigilancia · alerta diaria");
+    // Por el camino de `SeguirBoton` para empresas: el endpoint de siempre,
+    // que escribe su tabla y `follows` (ADR-031 §B).
+    await waitFor(() =>
+      expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/competitive/watchlist", {
+        empresa_id: 1,
+        frequency: "daily",
+      }),
+    );
   });
 
   it("el grupo de la ficha filtra el maestro", async () => {
@@ -213,6 +264,14 @@ describe("Empresas", () => {
 
     fireEvent.click(screen.getByText("Revisiones"));
     expect(setView).toHaveBeenCalledWith("revision");
+  });
+
+  it("«Vigiladas» lleva a la lista, que está en Competencia", async () => {
+    render(<EmpresasPage />, { wrapper: Wrapper });
+    await screen.findByRole("heading", { name: "Indra Sistemas, S.A." });
+
+    // Un enlace y no un botón: sale de la pantalla, y así se puede abrir aparte.
+    expect(screen.getByRole("link", { name: /Vigiladas/ })).toHaveAttribute("href", "/competencia?vista=competidores");
   });
 
   it("los cuatro datos de contexto siguen estando, ya sin cuatro tarjetas", async () => {

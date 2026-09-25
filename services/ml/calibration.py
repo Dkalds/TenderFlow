@@ -205,13 +205,19 @@ def comprobar_calibracion_baja(granularidad: Granularidad = GRANULARIDAD_SERVIDA
         if severity != "ok" and granularidad == GRANULARIDAD_SERVIDA:
             log.warning("ml_calibracion_degradada", **resultado)
             try:
-                from observability.alerts import notify
+                from observability.alerts import COOLDOWN_MONITOR_DIARIO_S, notify
 
                 notify(
                     "warn" if severity == "warn" else "error",
                     f"Calibración degradada: {_ETIQUETA_REGIMEN[juzgado]} cubre "
                     f"{cobertura_juzgada:.0%} vs {_COBERTURA_NOMINAL:.0%} nominal",
                     f"n={n} mae_p50={mae} sesgo_p50={sesgo} regimen_servido={regimen}",
+                    # La misma cobertura baja de ayer era un WARN diario. La
+                    # clave lleva lo que cambia el diagnóstico —severidad,
+                    # régimen servido y régimen juzgado— para que una escalada
+                    # o activar un modelo avisen al momento.
+                    dedup_key=f"ml_calibracion_baja:{severity}:{regimen or 'na'}:{juzgado}",
+                    cooldown_s=COOLDOWN_MONITOR_DIARIO_S,
                 )
             except Exception:  # canal de alertas opcional
                 log.debug("ml_calibracion_alert_channel_unavailable")

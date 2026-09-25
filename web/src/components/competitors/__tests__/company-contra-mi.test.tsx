@@ -3,8 +3,9 @@
  *
  * Lo que fija: la petición lleva la organización activa y la ventana; «ganaron
  * ellos» y «perdimos» se pintan como cosas distintas (que es todo el sentido de
- * `resultado`); una fila sin nuestro precio lo dice; y sin NIF propio la
- * pestaña avisa de lo que no se puede afirmar.
+ * `resultado`); una fila sin nuestro precio lo dice; sin NIF propio la
+ * pestaña avisa de lo que no se puede afirmar; y una ficha agrupada cruza todas
+ * sus identidades, lo que la pestaña sólo afirma si el backend lo declara.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -22,11 +23,11 @@ vi.mock("@/hooks/use-organization", () => ({
 
 import { CompanyContraMi } from "../company-contra-mi";
 
-function renderPestana() {
+function renderPestana(empresaIds?: number[]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
-      <CompanyContraMi empresaKey="42" />
+      <CompanyContraMi empresaKey="42" empresaIds={empresaIds} />
     </QueryClientProvider>,
   );
 }
@@ -118,6 +119,37 @@ describe("CompanyContraMi", () => {
     expect(await screen.findByRole("note")).toHaveTextContent(/aparece adjudicado a vuestro NIF/);
     expect(screen.getByText("Cerrado perdido, adjudicado a vosotros")).toBeInTheDocument();
     expect(screen.getByText("Sin resolver")).toBeInTheDocument();
+  });
+
+  it("una ficha agrupada manda el grupo y dice que cruza todas sus identidades", async () => {
+    fetchWithAuth.mockResolvedValue({ ...BATALLAS, claves: ["42", "43"] });
+    renderPestana([42, 43]);
+
+    expect(await screen.findByText("Cruza las 2 identidades del maestro que suma esta ficha.")).toBeInTheDocument();
+    const url = new URL(fetchWithAuth.mock.calls[0][0] as string, "http://x");
+    expect(url.pathname).toBe("/api/v1/competitive/empresas/42/contra-mi");
+    expect(url.searchParams.get("empresa_ids")).toBe("42,43");
+  });
+
+  it("si el backend no declara el grupo, la pestaña no lo afirma", async () => {
+    // Un backend anterior a `claves` ignora `empresa_ids`: decir que cruzó dos
+    // identidades sería inventárselo.
+    fetchWithAuth.mockResolvedValue(BATALLAS);
+    renderPestana([42, 43]);
+
+    expect(await screen.findByText("Soporte SAP S/4HANA")).toBeInTheDocument();
+    expect(screen.queryByText(/identidades del maestro/)).not.toBeInTheDocument();
+  });
+
+  it("con una sola identidad no manda grupo", async () => {
+    fetchWithAuth.mockResolvedValue({ ...BATALLAS, claves: ["42"] });
+    renderPestana([42]);
+
+    expect(await screen.findByText("Soporte SAP S/4HANA")).toBeInTheDocument();
+    expect(fetchWithAuth).toHaveBeenCalledWith(
+      "/api/v1/competitive/empresas/42/contra-mi?meses=24&organization_id=21",
+    );
+    expect(screen.queryByText(/identidades del maestro/)).not.toBeInTheDocument();
   });
 
   it("sin cruces lo dice con la ventana, y cambiar la ventana vuelve a pedir", async () => {

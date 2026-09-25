@@ -27,16 +27,46 @@ estacionaria por diseño (:data:`_FEATURES_CALENDARIO`,
 ``psi_informativo``. Los contadores tienen además su propio control, asimétrico
 a propósito: que suban es el sistema funcionando, que se desplomen es el
 histórico dejando de acumularse.
+
+**Solo alerta cuando lo que se sirve es el modelo.** El PSI pregunta si las
+filas que se puntúan hoy se parecen a las que vio el modelo al entrenar, y esa
+pregunta solo tiene destinatario si hay un modelo sirviendo: el baseline no
+aprendió de esa distribución, lee la media histórica del segmento, y lo que lo
+vigila es la calibración de su intervalo (``services.ml.calibration``). El run
+de ``ml-scoring.yml`` del 2026-09-24 servía el baseline en los dos modelos —no
+había versión activa— y aun así este monitor mandó, como cada día, un correo
+ERROR: "baja_media_organo PSI 5.92 (3 bins sin cobertura), nulos -53% en
+duracion_meses". Con ``regimen="baseline"`` se calcula y se devuelve todo
+igual, pero va al log a nivel info y no sale correo: el mismo principio que
+``calibration._regimen_a_juzgar``, se juzga lo que se sirve hoy.
+
+Lo que ese correo medía, además, no era deriva sino **otra población**. La
+mediana de ``n_obs_organo`` era 1.293 en la referencia y 3 en scoring; la de
+``n_obs_organo_cpv4``, 243 frente a 0: la mitad de lo abierto hoy es de
+órganos con tres adjudicaciones o menos en los 24 meses previos. Un modelo
+entrenado sobre lo adjudicado extrapolaría ahí, y por eso la alerta sí importa
+cuando se sirve modelo. Y la ventana de referencia arrancaba el 2019-11-15
+porque al menos el 5% de las 4.414 «abiertas» era de 2019 o antes: expedientes
+zombi, sin adjudicación, que nadie cierra. Esos ya no entran en la población
+de scoring (``services.ml.features.corte_abiertas_vivas``).
+
+Una condición que persiste tampoco merece un correo diario: el mismo aviso cada
+mañana enseña a no leerlo. La alerta sale con ``dedup_key`` y la ventana de
+``observability.alerts.COOLDOWN_MONITOR_DIARIO_S`` (siete días); la clave lleva
+la severidad, así que una escalada warn→crit avisa al momento.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
 from services.ml.thresholds import PSI_CRIT, PSI_WARN
+
+if TYPE_CHECKING:
+    from services.ml.features import FilaDataset
 
 log = get_logger(__name__)
 
@@ -63,8 +93,13 @@ _MISSING_DELTA_CRIT = 0.50
 
 # Cuantil de las anclas de scoring que fija el inicio de la ventana de
 # referencia. No se usa el mínimo: basta una licitación abierta publicada hace
-# años --las hay, nadie las cierra formalmente-- para que la ventana vuelva a
-# ser el histórico entero, y con ella el falso positivo permanente.
+# años para que la ventana vuelva a ser el histórico entero, y con ella el
+# falso positivo permanente. El cuantil solo no bastó: el 2026-09-24 los
+# zombis de 2019 o antes pasaban del 5% de las abiertas y la ventana arrancaba
+# el 2019-11-15. Desde entonces la población de scoring los deja fuera en origen
+# (``services.ml.features.corte_abiertas_vivas``), y el cuantil queda para lo
+# que ese corte no ve: una abierta con el plazo de ofertas reciente pero
+# publicada hace años, que se ancla en su publicación.
 _CUANTIL_VENTANA = 0.05
 
 # Por debajo de estas filas la ventana no da una referencia utilizable y se
@@ -214,19 +249,68 @@ def _ventana_referencia(
     return recientes, corte
 
 
-def comprobar_drift_baja() -> dict[str, Any]:
+def _resolver_regimen(regimen: str | None) -> str | None:
+    """Lo que se está sirviendo: lo que diga el llamador o, si no lo sabe, la tabla.
+
+    El job nocturno lo pasa (el ``serving`` del batch que acaba de escribir).
+    Un llamador que no lo sabe lo resuelve con ``regimen_servido()``, la misma
+    fuente que usa la calibración. Si esa lectura falla devuelve ``None`` y se
+    alerta como siempre (fail-open): callar el monitor porque no se pudo
+    averiguar qué se sirve sería perder la alerta por un fallo ajeno a ella.
+    """
+    if regimen is not None:
+        return regimen
+    try:
+        from db.repositories.ml_dataset import MlDatasetRepository
+
+        return MlDatasetRepository().regimen_servido()
+    except Exception as exc:
+        log.warning("ml_drift_regimen_no_resuelto", error=str(exc))
+        return None
+
+
+def comprobar_drift_baja(
+    *, scoring: list[FilaDataset] | None = None, regimen: str | None = None
+) -> dict[str, Any]:
     """PSI de las features de scoring de hoy vs el tramo comparable del dataset.
+
+    ``scoring`` son las filas que el batch acaba de puntuar
+    (:func:`~services.ml.features.features_licitaciones_abiertas`). El job
+    nocturno las pasa para no construirlas dos veces —cada construcción carga
+    el histórico entero, ~1 min—; sin ellas se construyen aquí.
+
+    ``regimen`` es lo que se está sirviendo (``"modelo"``/``"baseline"``, el
+    ``serving`` del batch) y decide si una deriva alerta (ver la cabecera del
+    módulo). Sin él se resuelve con :func:`_resolver_regimen`.
+
+    El resultado lleva ``regimen_servido`` y ``alerta``: ``"no_aplica"`` (nada
+    que avisar), ``"suprimida_regimen"`` (hay deriva, pero lo servido es el
+    baseline), lo que devolvió ``notify`` (``"enviada"``,
+    ``"suprimida_cooldown"`` o ``"suprimida_nivel"``) o ``"fallida"`` si el
+    canal lanzó.
 
     Fail-open: cualquier error se loguea y devuelve estado desconocido (el
     scoring no se bloquea por el monitor).
     """
+    regimen_servido = regimen
     try:
         from services.ml.features import construir_dataset_baja, features_licitaciones_abiertas
 
+        if scoring is None:
+            scoring = features_licitaciones_abiertas()
+        regimen_servido = _resolver_regimen(regimen)
+        sin_datos: dict[str, Any] = {
+            "status": "sin_datos",
+            "regimen_servido": regimen_servido,
+            "alerta": "no_aplica",
+        }
+        # Sin abiertas ni se construye el dataset de entrenamiento: es lo más
+        # caro del monitor y no habría nada con qué compararlo.
+        if not scoring:
+            return sin_datos
         entrenamiento, _ = construir_dataset_baja()
-        scoring = features_licitaciones_abiertas()
-        if not entrenamiento or not scoring:
-            return {"status": "sin_datos"}
+        if not entrenamiento:
+            return sin_datos
 
         referencia, corte = _ventana_referencia(entrenamiento, scoring)
 
@@ -278,36 +362,51 @@ def comprobar_drift_baja() -> dict[str, Any]:
             severity = "ok"
 
         ventana = corte or "histórico completo"
+        alerta = "no_aplica"
         if severity != "ok":
-            log.warning(
-                "ml_drift_detected",
-                severity=severity,
-                ventana_ref=ventana,
-                n_ref=len(referencia),
-                n_scoring=len(scoring),
-                psi=psi_por_feature,
-                psi_informativo=psi_informativo,
-                bins_vacios=bins_vacios,
-                missing_delta=missing_por_feature,
-                contadores=contadores,
-                sin_resolucion=sin_resolucion,
-            )
-            try:
-                from observability.alerts import notify
+            contexto: dict[str, Any] = {
+                "severity": severity,
+                "regimen_servido": regimen_servido,
+                "ventana_ref": ventana,
+                "n_ref": len(referencia),
+                "n_scoring": len(scoring),
+                "psi": psi_por_feature,
+                "psi_informativo": psi_informativo,
+                "bins_vacios": bins_vacios,
+                "missing_delta": missing_por_feature,
+                "contadores": contadores,
+                "sin_resolucion": sin_resolucion,
+            }
+            if regimen_servido == "baseline":
+                # Se mide y se deja dicho, pero no despierta a nadie: no hay
+                # modelo al que esta deriva pueda estar descolocando.
+                log.info("ml_drift_detected_no_servido", **contexto)
+                alerta = "suprimida_regimen"
+            else:
+                log.warning("ml_drift_detected", **contexto)
+                try:
+                    from observability.alerts import COOLDOWN_MONITOR_DIARIO_S, notify
 
-                notify(
-                    "warn" if severity == "warn" else "error",
-                    f"Drift en features del modelo de baja: "
-                    f"{peor_col or 'n/a'} PSI {peor:.2f} "
-                    f"({bins_vacios.get(peor_col, 0)} bins sin cobertura), "
-                    f"nulos {peor_missing:+.0%} en {peor_missing_col or 'n/a'}",
-                    f"referencia={ventana} (n={len(referencia)}) scoring n={len(scoring)} "
-                    f"psi={psi_por_feature} informativo={psi_informativo} "
-                    f"missing_delta={missing_por_feature} contadores={contadores} "
-                    f"sin_resolucion={sin_resolucion}",
-                )
-            except Exception:  # canal de alertas opcional
-                log.debug("ml_drift_alert_channel_unavailable")
+                    alerta = notify(
+                        "warn" if severity == "warn" else "error",
+                        f"Drift en features del modelo de baja: "
+                        f"{peor_col or 'n/a'} PSI {peor:.2f} "
+                        f"({bins_vacios.get(peor_col, 0)} bins sin cobertura), "
+                        f"nulos {peor_missing:+.0%} en {peor_missing_col or 'n/a'}",
+                        f"referencia={ventana} (n={len(referencia)}) scoring n={len(scoring)} "
+                        f"regimen_servido={regimen_servido} "
+                        f"psi={psi_por_feature} informativo={psi_informativo} "
+                        f"missing_delta={missing_por_feature} contadores={contadores} "
+                        f"sin_resolucion={sin_resolucion}",
+                        # Clave por severidad: la deriva de ayer calla durante
+                        # la ventana; una escalada warn→crit cambia de clave y
+                        # sale al momento.
+                        dedup_key=f"ml_drift_baja:{severity}",
+                        cooldown_s=COOLDOWN_MONITOR_DIARIO_S,
+                    )
+                except Exception:  # canal de alertas opcional
+                    log.debug("ml_drift_alert_channel_unavailable")
+                    alerta = "fallida"
         return {
             "status": severity,
             "psi": psi_por_feature,
@@ -322,7 +421,14 @@ def comprobar_drift_baja() -> dict[str, Any]:
             "ventana_ref": corte,
             "n_ref": len(referencia),
             "n_scoring": len(scoring),
+            "regimen_servido": regimen_servido,
+            "alerta": alerta,
         }
     except Exception as e:
         log.warning("ml_drift_check_failed", error=str(e))
-        return {"status": "error", "error": str(e)}
+        return {
+            "status": "error",
+            "error": str(e),
+            "regimen_servido": regimen_servido,
+            "alerta": "no_aplica",
+        }
