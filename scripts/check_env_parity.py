@@ -99,14 +99,14 @@ WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 # La forma correcta es exportar la variable a `$GITHUB_ENV` SOLO si está
 # definida, de modo que el default vigente sea siempre el del código.
 #
-# Whitelist congelada: solo se QUITAN entradas, nunca se añaden. Las tres son
+# Whitelist congelada: solo se QUITAN entradas, nunca se añaden. Las dos son
 # trabajo pendiente, no excepciones permanentes:
 #   - backup.yml / restore-drill.yml: fuera del alcance de S6 por decisión
 #     explícita del responsable (tocan la cadena de copias y su restauración).
-#   - train-predictivos.yml: lo lleva otro stream de trabajo; editarlo desde
-#     aquí sería pisarle el fichero. Su caso es `ALERT_MIN_LEVEL`, el mismo
-#     patrón que ya se corrigió en los otros seis workflows.
-_ENV_FALLBACK_PENDIENTE = frozenset({"backup.yml", "restore-drill.yml", "train-predictivos.yml"})
+#
+# train-predictivos.yml salió el 2026-09-24: su `ALERT_MIN_LEVEL` pasó al step
+# «Exportar overrides de repositorio definidos», como en los otros seis.
+_ENV_FALLBACK_PENDIENTE = frozenset({"backup.yml", "restore-drill.yml"})
 
 # `${{ ... || 'literal' }}`. Solo el fallback a literal entrecomillado: un
 # `a || b` entre dos expresiones no inventa un valor que compita con el default

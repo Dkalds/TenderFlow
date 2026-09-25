@@ -32,9 +32,14 @@ from db.sql_fragments import round_sql as round_sql
 # atribuidos). Asume alias ``l`` (licitaciones) y ``a`` (adjudicaciones).
 #
 # Úsese solo cuando la comparación es AGREGADA por licitación (sumar todas
-# las adjudicaciones del expediente y comparar contra l.importe, patrón de
-# services/ml/calibration.py y services/ml/scoring.py::_baja_real) — ahí
+# las adjudicaciones del expediente y comparar contra l.importe) — ahí
 # l.importe es el denominador correcto porque ya se sumó todo lo adjudicado.
+# Los dos ejemplos que citaba este comentario ya no siguen ese patrón: la
+# calibración y la baja real del API (antes
+# ``services/ml/scoring.py::_baja_real``) dividen entre el presupuesto efectivo
+# del expediente —la suma de los lotes adjudicados cuando todos están
+# resueltos— de ``db/repositories/ml_dataset.py`` y
+# ``PrediccionesRepository.baja_real_de_expediente``.
 # Para comparar UNA fila de adjudicación contra su presupuesto real (v65_lotes:
 # el de su lote, si lo tiene) usar VALID_PAIR_LOTE + EFFECTIVE_BUDGET_SQL.
 VALID_PAIR = (

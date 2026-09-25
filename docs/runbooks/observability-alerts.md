@@ -47,6 +47,29 @@ configurado o un SMTP caído no tumban el job — pero tampoco se notaban. Desde
 (`observability/alerts.py::_contar_fallo_entrega`), así que deja rastro
 agregable; ver §4, incluida su limitación.
 
+**Deduplicación opcional (desde 2026-09-24).** `notify(..., dedup_key=...,
+cooldown_s=...)` envía la primera alerta con esa clave y calla las repeticiones
+durante `cooldown_s`. La ventana es un lock de `db.job_locks` llamado
+`alert:<clave>`, con holder `observability.alerts`: el mismo truco que
+`_run_periodic`, sin tabla nueva. La usan los monitores diarios de
+`services/ml/drift.py` y `services/ml/calibration.py`, con siete días
+(`COOLDOWN_MONITOR_DIARIO_S`) y una clave que incluye la severidad, así que
+una escalada warn→crit avisa al momento. Antes mandaban el mismo correo cada
+mañana: el de drift, un ERROR sobre un modelo que ni siquiera se servía.
+
+- **Si quieres que vuelva a avisar ya**: borra el lock con
+  `db.job_locks.force_release("alert:<clave>")`. Los vigentes aparecen en el
+  listado de locks de `scheduler/healthcheck.py`.
+- **Si una alerta dedup no llega**: busca `alert_suppressed_cooldown` en el
+  log del job. La ventana se abre después del filtro de `ALERT_MIN_LEVEL` y se
+  suelta si el correo no llega a salir, así que ni un nivel filtrado ni un SMTP
+  caído gastan la semana.
+- **Si la tabla de locks falla**: la alerta sale igual (fail-open).
+
+El drift del modelo de baja, además, **solo envía correo cuando lo que se sirve
+es el modelo**. Con el baseline se mide y se loguea
+(`ml_drift_detected_no_servido`) sin despertar a nadie.
+
 ### Plano B — Prometheus + Alertmanager
 
 Lo emite `observability/alert_rules.yml`, evaluado cada 30 s por el Prometheus

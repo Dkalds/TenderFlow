@@ -65,6 +65,7 @@ from db.sql_fragments import (
     TECHNOLOGY_OBSERVED_SQL,
     UNIVERSOS_TECNOLOGICOS,
     exclude_duplicados_sql,
+    fecha_referencia_abierta_sql,
 )
 from shared.dates import ANIO_MINIMO_PLAUSIBLE
 
@@ -111,6 +112,22 @@ def _filtro_fecha_adj(columna: str, hasta: str | None) -> tuple[str, list[Any]]:
         sql += f" AND {columna} <= %s"
         params.append(hasta)
     return sql, params
+
+
+def _filtro_abiertas_vivas(desde: str | None) -> tuple[str, list[Any]]:
+    """Cláusula ``AND`` que deja fuera las abiertas muertas antes de ``desde``.
+
+    Compara la fecha de referencia de la licitación (fin del plazo de ofertas
+    o, si falta, publicación: :func:`db.sql_fragments.fecha_referencia_abierta_sql`)
+    con el corte. Las que no traen ninguna de las dos fechas **se quedan**: es
+    el complemento exacto de ``PrediccionesRepository.purgar_sin_adjudicar``,
+    que tampoco las toca, y una población que las descartara dejaría sus filas
+    de predicción sin refrescar y sin purgar. Sin ``desde``, cadena vacía.
+    """
+    if not desde:
+        return "", []
+    referencia = fecha_referencia_abierta_sql("l")
+    return f" AND ({referencia} IS NULL OR {referencia} >= %s)", [desde]
 
 
 def _sql_agregado(hasta: str | None) -> tuple[str, list[Any]]:
@@ -434,7 +451,11 @@ class MlDatasetRepository:
             return rows_to_dicts(c.execute(sql, params))
 
     def licitaciones_abiertas(
-        self, *, estados_cerrados: tuple[str, ...], limit: int = 5000
+        self,
+        *,
+        estados_cerrados: tuple[str, ...],
+        limit: int = 5000,
+        desde: str | None = None,
     ) -> list[dict[str, Any]]:
         """Licitaciones sin adjudicación, para el batch de scoring.
 
@@ -442,8 +463,15 @@ class MlDatasetRepository:
         conocer antes de adjudicar (fechas, duración, lotes publicados,
         provincia): el camino de scoring tiene que poder construir exactamente
         las mismas features que el de entrenamiento.
+
+        ``desde`` (``YYYY-MM-DD``) deja fuera los expedientes zombi: sin
+        adjudicación ni estado terminal, pero con la fecha de referencia
+        anterior al corte (:func:`_filtro_abiertas_vivas`). El 2026-09-24 al
+        menos el 5% de las 4.414 «abiertas» era de 2019 o antes. Sin ``desde``,
+        la población de siempre.
         """
         marcadores = ", ".join(["%s"] * len(estados_cerrados))
+        vivas, params_vivas = _filtro_abiertas_vivas(desde)
         sql = f"""
             SELECT l.id_externo, l.organo_contratacion AS organo,
                    l.cpv, l.ccaa, l.provincia, l.tipo_contrato, l.fuente, l.importe,
@@ -462,32 +490,42 @@ class MlDatasetRepository:
               AND NOT EXISTS (
                   SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo
               )
-              AND {exclude_duplicados_sql("l.id_externo")}
+              AND {exclude_duplicados_sql("l.id_externo")}{vivas}
             ORDER BY l.fecha_publicacion DESC
             LIMIT %s
-        """  # Los marcadores se generan aquí; los valores van con %s.
+        """  # Marcadores y fragmentos se generan aquí; los valores van con %s.
         with connect_read() as c:
             return rows_to_dicts(
-                c.execute(sql, (*estados_cerrados, max(1, min(int(limit), 50_000))))
+                c.execute(
+                    sql,
+                    (*estados_cerrados, *params_vivas, max(1, min(int(limit), 50_000))),
+                )
             )
 
     def licitaciones_abiertas_por_lote(
-        self, *, estados_cerrados: tuple[str, ...], limit: int = 5000
+        self,
+        *,
+        estados_cerrados: tuple[str, ...],
+        limit: int = 5000,
+        desde: str | None = None,
     ) -> list[dict[str, Any]]:
         """Un **lote** por fila de las licitaciones abiertas, para el batch por lote.
 
         Misma población que :meth:`licitaciones_abiertas` (mismos filtros de
-        estado, universo y duplicados; ``limit`` acota **expedientes**, no
-        lotes, para que activar el batch por lote no cambie qué expedientes se
-        puntúan) y mismas columnas que :meth:`pares_baja_por_lote` puede
-        conocer antes de adjudicar: ``cpv`` resuelto al del lote e
-        ``importe_lote``.
+        estado, universo, duplicados y, con ``desde``, zombis; ``limit`` acota
+        **expedientes**, no lotes, para que activar el batch por lote no cambie
+        qué expedientes se puntúan) y mismas columnas que
+        :meth:`pares_baja_por_lote` puede conocer antes de adjudicar: ``cpv``
+        resuelto al del lote e ``importe_lote``.
 
         Solo lotes con ``importe > 0``: es la condición con la que un lote
         entra en el dataset de entrenamiento por lote (sin presupuesto propio no
         hay denominador), y puntuar lo que el modelo nunca vio sería extrapolar.
         """
         marcadores = ", ".join(["%s"] * len(estados_cerrados))
+        # Dentro de la CTE, antes de su LIMIT: fuera de ella el corte no
+        # cambiaría qué expedientes entran, solo cuántos lotes quedan de ellos.
+        vivas, params_vivas = _filtro_abiertas_vivas(desde)
         sql = f"""
             WITH abiertas AS (
                 SELECT l.id_externo
@@ -498,7 +536,7 @@ class MlDatasetRepository:
                   AND NOT EXISTS (
                       SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo
                   )
-                  AND {exclude_duplicados_sql("l.id_externo")}
+                  AND {exclude_duplicados_sql("l.id_externo")}{vivas}
                 ORDER BY l.fecha_publicacion DESC
                 LIMIT %s
             )
@@ -516,10 +554,13 @@ class MlDatasetRepository:
             JOIN lotes lo ON lo.licitacion_id = l.id_externo
             WHERE lo.importe > 0
             ORDER BY l.fecha_publicacion DESC, l.id_externo, lo.numero
-        """  # Los marcadores se generan aquí; los valores van con %s.
+        """  # Marcadores y fragmentos se generan aquí; los valores van con %s.
         with connect_read() as c:
             return rows_to_dicts(
-                c.execute(sql, (*estados_cerrados, max(1, min(int(limit), 50_000))))
+                c.execute(
+                    sql,
+                    (*estados_cerrados, *params_vivas, max(1, min(int(limit), 50_000))),
+                )
             )
 
     def media_global_baja(self, defecto: float = 0.12, *, por_lote: bool = False) -> float:

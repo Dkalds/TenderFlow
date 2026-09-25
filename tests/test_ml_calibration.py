@@ -427,3 +427,66 @@ def test_dto_sin_datos_no_inventa_desglose(db):
     assert dto.estado == "insuficiente"
     assert dto.modelo is None and dto.baseline is None
     assert dto.regimen_servido == "modelo"
+
+
+# ---------------------------------------------------------------------------
+# Deduplicación de la alerta (sin BD)
+# ---------------------------------------------------------------------------
+
+
+def _repo_degradado(regimen: str, cobertura: float) -> type:
+    """Repositorio que mide ``cobertura`` sobre 200 pares servidos por ``regimen``."""
+    bloque = {"n": 200, "cobertura": cobertura, "mae": 0.30, "sesgo": 0.20}
+
+    class _Repo:
+        def calibracion_baja(self) -> dict[str, object]:
+            return {**bloque, "por_regimen": {regimen: bloque}}
+
+        def regimen_servido(self) -> str | None:
+            return regimen
+
+    return _Repo
+
+
+def _capturar_alertas(monkeypatch) -> list[tuple[str, dict[str, object]]]:
+    import observability.alerts as alerts_mod
+
+    alertas: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        alerts_mod,
+        "notify",
+        lambda level, title, body="", **kw: alertas.append((level, kw)) or "enviada",
+    )
+    return alertas
+
+
+def test_la_alerta_de_calibracion_va_deduplicada(monkeypatch):
+    """La misma cobertura baja era un WARN cada mañana (2026-09-24)."""
+    import observability.alerts as alerts_mod
+    import services.ml.calibration as cal_mod
+
+    alertas = _capturar_alertas(monkeypatch)
+    monkeypatch.setattr(cal_mod, "MlDatasetRepository", _repo_degradado("baseline", 0.10))
+
+    assert comprobar_calibracion_baja()["status"] == "crit"
+
+    [(level, kw)] = alertas
+    assert level == "error"
+    assert kw["dedup_key"] == "ml_calibracion_baja:crit:baseline:baseline"
+    assert kw["cooldown_s"] == alerts_mod.COOLDOWN_MONITOR_DIARIO_S
+
+
+def test_la_clave_cambia_con_la_severidad_y_con_lo_servido(monkeypatch):
+    """Una escalada o un modelo recién activado no esperan a que caduque la ventana."""
+    import services.ml.calibration as cal_mod
+
+    alertas = _capturar_alertas(monkeypatch)
+    for regimen, cobertura in (("baseline", 0.60), ("baseline", 0.10), ("modelo", 0.10)):
+        monkeypatch.setattr(cal_mod, "MlDatasetRepository", _repo_degradado(regimen, cobertura))
+        comprobar_calibracion_baja()
+
+    assert [kw["dedup_key"] for _, kw in alertas] == [
+        "ml_calibracion_baja:warn:baseline:baseline",
+        "ml_calibracion_baja:crit:baseline:baseline",
+        "ml_calibracion_baja:crit:modelo:modelo",
+    ]

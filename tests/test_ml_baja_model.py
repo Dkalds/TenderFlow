@@ -55,11 +55,16 @@ def _sembrar_historico(c, n_meses=14, por_mes=8):
 
 
 def _insertar_abierta(c, lic_id="ABIERTA", organo="Organo A"):
+    # Plazo de ofertas en 2099: con la publicación fija y sin plazo, el corte de
+    # zombis (`corte_abiertas_vivas`, doce meses hacia atrás desde hoy) sacaría
+    # esta abierta de la población a partir de 2027-05. Queda fuera del rango
+    # de `plazo_dias`, así que esa feature sigue a None, como sin plazo.
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
-        " importe, estado, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
+        " importe, estado, tipo_contrato, fuente, fecha_publicacion, fecha_limite, "
+        " fecha_extraccion) "
         "VALUES (%s, 'Nueva', %s, '72000000', 'Madrid', 300000, 'PUB', 'Servicios', "
-        " 'placsp', '2026-06-01', CURRENT_TIMESTAMP)",
+        " 'placsp', '2026-06-01', '2099-12-31', CURRENT_TIMESTAMP)",
         (lic_id, organo),
     )
 
@@ -809,8 +814,11 @@ def test_scoring_degrada_a_baseline_si_el_layout_no_coincide(db, monkeypatch, tm
         _sembrar_historico(c)
         _insertar_abierta(c)
 
-    model_path = tmp_path / "baja.pkl"
-    entrenar(activar=False, model_path=model_path)
+    from pathlib import Path
+
+    # `entrenar` publica con el sha256 en el nombre (`baja-<sha[:12]>.pkl`):
+    # la ruta del artefacto es la que devuelve, no la base que recibe.
+    model_path = Path(entrenar(activar=False, model_path=tmp_path / "baja.pkl")["path"])
     activate_version(MODEL_NAME, list_versions(MODEL_NAME)[0]["version"])
 
     # Se manipula la metadata del artefacto para simular un layout anterior.

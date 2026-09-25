@@ -20,7 +20,7 @@ from api.tenancy import require_organization, resolve_organization_ctx
 from db.idempotency import cached_response, store_response
 from db.idempotency import scope as idem_scope
 from db.repositories.adjudicaciones import AdjudicacionRepository
-from db.repositories.renovaciones import proximas_renovaciones
+from db.repositories.renovaciones import HORIZONTE_RENOVACIONES_MAX_MESES, proximas_renovaciones
 from db.watchlist_empresas import (
     WatchlistEmpresaEntry,
     add_entry,
@@ -93,7 +93,11 @@ def _split_int_filter(value: str | None) -> list[int] | None:
 
 @router.get("/renovaciones", summary="Contratos que vencen próximamente")
 async def get_renovaciones(
-    months: int = Query(6, ge=1, le=60, description="Horizonte en meses"),
+    # El tope es el mismo horizonte que puntúa el batch de retención: más allá,
+    # `riesgo_cambio` saldría NULL y el orden «score» los mandaría al fondo.
+    months: int = Query(
+        6, ge=1, le=HORIZONTE_RENOVACIONES_MAX_MESES, description="Horizonte en meses"
+    ),
     empresa_id: int | None = Query(None),
     ccaa: str | None = Query(None, max_length=50),
     tecnologia: str | None = Query(
@@ -154,7 +158,7 @@ async def get_renovaciones(
 
 @router.get("/renovaciones/resumen", summary="Cartera en juego por empresa")
 async def get_renovaciones_resumen(
-    months: int = Query(12, ge=1, le=60),
+    months: int = Query(12, ge=1, le=HORIZONTE_RENOVACIONES_MAX_MESES),
     tecnologia: str | None = Query(
         None,
         max_length=200,

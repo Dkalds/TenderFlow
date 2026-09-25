@@ -64,10 +64,11 @@ def _dia(offset_dias: int) -> str:
 
     Todo lo que se siembre para las pruebas de **vencimientos** tiene que salir
     de aquí, nunca de una fecha escrita a mano. ``features_para_vencimientos``
-    filtra por una ventana anclada en el reloj —``hoy <= fin <= hoy +
-    months_ahead * 30 días``—, así que una constante solo es correcta hasta que
-    el calendario la deja fuera, y entonces el test falla en todas las ramas a
-    la vez sin que nadie haya tocado el código.
+    (y el batch) filtran por una ventana anclada en el reloj —``hoy <= fin <=
+    hoy + months_ahead`` meses de calendario más un margen de días, ver
+    ``retencion_labels.ventana_vencimientos``—, así que una constante solo es
+    correcta hasta que el calendario la deja fuera, y entonces el test falla en
+    todas las ramas a la vez sin que nadie haya tocado el código.
 
     No es hipotético: ``fecha_fin="2026-09-01"`` estuvo entrando por el borde
     exacto de la ventana hasta el 2026-09-01 y tumbó CI el día 2. En el mismo

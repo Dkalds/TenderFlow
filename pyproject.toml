@@ -162,6 +162,9 @@ ignore = [
 # Ya no queda ninguna ruta de la API aquí: `api/**` está limpio de TID251.
 # 2026-09-16: salen `scheduler/kpi_precompute.py` y `services/competitive/mercado.py`;
 # su SQL vive en `db/kpi_precompute.py` y `db/repositories/mercado.py`. 28 → 26.
+# 2026-09-24: sale `services/ml/scoring.py`. La baja real por expediente y el
+# upsert de `predicciones_retencion` (con su purga) viven en
+# `db/repositories/predicciones.py`. 26 → 25.
 "scheduler/aggregates_precompute.py" = ["TID251"]
 "scheduler/anomaly_alerts.py" = ["TID251"]
 "scheduler/competitor_alerts.py" = ["TID251"]
@@ -184,7 +187,6 @@ ignore = [
 "services/deadline_reminders.py" = ["TID251"]
 "services/dedupe.py" = ["TID251"]
 "services/entity_resolution.py" = ["TID251"]
-"services/ml/scoring.py" = ["TID251"]
 "services/notifications.py" = ["TID251"]
 "services/resoluciones.py" = ["TID251"]
 "services/watchlist_rules.py" = ["TID251"]

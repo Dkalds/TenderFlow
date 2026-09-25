@@ -68,6 +68,16 @@ _SHRINKAGE_K_DEFECTO = 10.0
 # (fecha límite anterior a la publicación, o plazos de años).
 _PLAZO_MAX_DIAS = 400
 
+# Cuánto sigue contando como «abierta» una licitación sin adjudicar, medido
+# desde su fecha de referencia (fin del plazo de ofertas o, si falta, la
+# publicación: ``db.sql_fragments.fecha_referencia_abierta_sql``). Pasado ese
+# margen es un expediente que nadie va a adjudicar ya en nuestros datos: el
+# 2026-09-24 al menos el 5% de las 4.414 «abiertas» que se puntuaban era de
+# 2019 o antes. Doce meses cubren con holgura la demora habitual entre el fin
+# del plazo y la adjudicación. :func:`corte_abiertas_vivas` convierte el margen
+# en fecha para la población del scoring y para la purga de sus filas.
+MESES_MAX_SIN_ADJUDICAR = 12
+
 # Unidades de duración de CODICE a meses (mismo mapeo que FECHA_FIN_SQL).
 _UNIDAD_A_MESES = {"ANN": 12.0, "MON": 1.0, "DAY": 1.0 / 30.0}
 
@@ -232,6 +242,21 @@ def _fecha_opt(fecha: Any) -> datetime | None:
     except ValueError:
         return None
     return parseada if parseada.year >= _ANIO_MINIMO else None
+
+
+def corte_abiertas_vivas(ahora: str | None = None) -> str:
+    """Fecha ``YYYY-MM-DD`` por debajo de la cual una abierta se da por muerta.
+
+    Es :data:`MESES_MAX_SIN_ADJUDICAR` hacia atrás desde ``ahora`` (hoy si no
+    se pasa), en meses de 30 días como el resto del módulo. Una sola función
+    para los dos usos —la población del batch y la purga de sus filas en
+    ``scheduler.jobs.ml_predicciones``— porque con dos cortes distintos habría
+    expedientes que ni se puntúan ni se purgan.
+
+    ``ahora`` admite el mismo texto que :func:`features_licitaciones_abiertas`.
+    """
+    base = _fecha_opt(ahora) or datetime.now()
+    return (base - timedelta(days=MESES_MAX_SIN_ADJUDICAR * 30)).date().isoformat()
 
 
 def fecha_valida(fecha: Any) -> bool:
@@ -686,19 +711,32 @@ def features_licitaciones_abiertas(
     de cada licitación abierta, con los acumuladores alimentados por el
     histórico **por lote**: la misma construcción que
     ``construir_dataset_baja(por_lote=True)``.
+
+    **Solo las abiertas vivas.** Sin adjudicación y sin estado terminal no
+    significa abierta: el 2026-09-24 al menos el 5% de las 4.414 «abiertas»
+    era de 2019 o antes, expedientes zombi que nadie cierra y que ninguna
+    fuente va a adjudicar ya. Se puntuaban cada noche y anclaban en 2019-11-15
+    la ventana de referencia del monitor de drift. Quedan fuera las que tienen
+    la fecha de referencia (fin del plazo de ofertas o, si falta, publicación)
+    anterior a :func:`corte_abiertas_vivas` de ``ahora``, el mismo corte con
+    el que el job purga sus predicciones; las que no traen ninguna de las dos
+    fechas se quedan, porque sin fecha no se puede afirmar que estén muertas.
     """
     repo = MlDatasetRepository()
+    desde = corte_abiertas_vivas(ahora)
     if por_lote:
         pares = [_como_lote(r) for r in repo.pares_baja_por_lote(ahora)]
         abiertas = [
             _como_lote(r)
             for r in repo.licitaciones_abiertas_por_lote(
-                estados_cerrados=ESTADOS_CERRADOS, limit=limit
+                estados_cerrados=ESTADOS_CERRADOS, limit=limit, desde=desde
             )
         ]
     else:
         pares = repo.pares_baja_agregada(ahora)
-        abiertas = repo.licitaciones_abiertas(estados_cerrados=ESTADOS_CERRADOS, limit=limit)
+        abiertas = repo.licitaciones_abiertas(
+            estados_cerrados=ESTADOS_CERRADOS, limit=limit, desde=desde
+        )
     cuotas = _cuotas_de_rows(repo.adjudicaciones_por_empresa(ahora))
     eventos = _eventos_de_pares(pares)
     defecto = _fecha_opt(ahora) or datetime.now()

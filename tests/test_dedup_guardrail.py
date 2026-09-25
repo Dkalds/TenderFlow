@@ -63,6 +63,9 @@ _SCANNED_FILES = (
     "db/repositories/adjudicaciones.py",
     "db/repositories/ml_dataset.py",
     "db/repositories/mercado.py",
+    # 2026-09-24: recibe la baja real por expediente que estaba inline en
+    # `services/ml/scoring.py::_baja_real` (salida de la whitelist TID251).
+    "db/repositories/predicciones.py",
 )
 
 # Referencia a las tablas canónicas en cláusulas FROM/JOIN.
@@ -115,6 +118,18 @@ _ALLOWLIST: dict[str, str] = {
         "ficha. Es la misma consulta que ya corria inline en "
         "scraper/ml_training.py (fuera del escaner) hasta que T3 la movio a db/ "
         "el 2026-09-18; la dedupe se aplica al agregar, no al etiquetar."
+    ),
+    "predicciones.purgar_cerradas": (
+        "Purga de predicciones, no analitica: borra filas de "
+        "`predicciones_baja` de expedientes cerrados hace mas de N dias. Un "
+        "expediente marcado como duplicado tambien tiene que perder su fila "
+        "vieja; excluirlo dejaria sus predicciones para siempre en la tabla "
+        "que la senal de margen carga entera."
+    ),
+    "predicciones.purgar_sin_adjudicar": (
+        "Purga de predicciones de licitaciones muertas sin adjudicar "
+        "(2026-09-24), gemela de purgar_cerradas: mismo motivo. Solo mira "
+        "`adjudicaciones` para saber si existe alguna, no agrega nada."
     ),
     # --- Auditadas y corregidas el 2026-08-18 ------------------------------
     # Al ampliar el escaner a db/ aparecieron 7 funciones sin la clausula. Se

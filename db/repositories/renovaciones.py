@@ -48,9 +48,17 @@ OrderBy = Literal["fecha", "score"]
 # estable.
 DIAS_POR_MES = 30
 
-# Ventana máxima admitida (5 años). Acota el parámetro antes de que llegue al
-# SQL; el valor viaja siempre como placeholder, este clamp es de dominio.
-MAX_MESES = 60
+# Horizonte máximo de Renovaciones, en meses (5 años). Una sola constante para
+# tres usos que tienen que coincidir: el tope que admite ``GET /renovaciones``
+# (el ``le=`` de ``api/routes/competitive.py``), el clamp de dominio de
+# :func:`proximas_renovaciones` —el valor viaja siempre como placeholder— y el
+# horizonte por defecto con el que ``services.ml.scoring`` puntúa
+# ``predicciones_retencion``. Si la vista admitiera más meses de los que el
+# batch puntúa, lo que quedara fuera saldría con ``riesgo_cambio`` NULL y score
+# 0 en el orden «score»: pasó hasta 2026-09, con el batch en 12 meses y la ruta
+# en 60. La ventana del batch replica :func:`rango_vencimiento_sql`
+# (``services.ml.retencion_labels.ventana_vencimientos``).
+HORIZONTE_RENOVACIONES_MAX_MESES = 60
 MAX_LIMIT = 1000
 
 
@@ -167,7 +175,7 @@ def proximas_renovaciones(
     ``LIMIT``. El score no empeora eso —``fecha_fin_efectiva`` ya era una
     expresión— y a cambio el llamador puede pedir 200 filas en vez de 1000.
     """
-    months_ahead = max(1, min(int(months_ahead), MAX_MESES))
+    months_ahead = max(1, min(int(months_ahead), HORIZONTE_RENOVACIONES_MAX_MESES))
     fecha_fin = fecha_fin_sql()
     # `fecha_fin_origen` dice de qué rama salió la fecha (real o estimada), y
     # viaja siempre: es una etiqueta corta y la UI deja de presentar el 94% de

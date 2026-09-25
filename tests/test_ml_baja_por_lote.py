@@ -213,7 +213,6 @@ class _RepoLectura:
 def _prediccion_expediente(desglose: list[dict[str, Any]]) -> dict[str, Any] | None:
     with (
         patch.object(scoring, "PrediccionesRepository", return_value=_RepoLectura(desglose)),
-        patch.object(scoring, "connect_read", return_value=MagicMock()),
         patch.object(scoring, "_baja_real", return_value=None),
     ):
         return scoring.prediccion_baja("E1")

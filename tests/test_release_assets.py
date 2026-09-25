@@ -143,6 +143,9 @@ def test_repositorio_invalido_no_sale_a_la_red(repo: str, tmp_path) -> None:
     """El repo no puede inyectar rutas ni query en la URL de la GitHub API."""
     with patch.object(release_assets, "pinned_https_request") as request:
         assert release_assets.fetch_latest_release(repo) is None
+        assert release_assets.fetch_release_by_tag(repo, "ml-models") is None
+        assert release_assets.fetch_recent_releases(repo) == []
+        assert release_assets.locate_release_asset(repo, "m.pkl") is None
         assert release_assets.download_asset(repo, 42, tmp_path / "m.pkl") is False
 
     request.assert_not_called()
@@ -178,3 +181,172 @@ def test_download_checksum_sidecar_usa_el_nombre_co_ubicado(tmp_path) -> None:
         )
 
     assert (tmp_path / "tech_classifier.sha256").read_bytes() == b"deadbeef"
+
+
+# ── Localizar el asset entre Releases (2026-09) ─────────────────────────────
+#
+# Solo se miraba *latest*, y `release.yml` crea una *latest* nueva —sin assets
+# de modelo— con cada tag `v*`: publicar software dejaba al scoring sin
+# artefactos. Orden vigente: tag fijo `ml-models` → *latest* → recientes.
+
+_API = "https://api.github.com/repos/Dkalds/TenderFlow/releases"
+_URL_TAG = f"{_API}/tags/{release_assets.ML_MODELS_RELEASE_TAG}"
+_URL_LATEST = f"{_API}/latest"
+_URL_RECIENTES = f"{_API}?per_page=30"
+
+
+def _json(datos: object) -> _FakeResponse:
+    return _FakeResponse(body=json.dumps(datos).encode())
+
+
+def _rel(
+    release_id: int, tag: str, *assets: tuple[str, int], draft: bool = False
+) -> dict[str, Any]:
+    return {
+        "id": release_id,
+        "tag_name": tag,
+        "draft": draft,
+        "assets": [{"name": nombre, "id": asset_id} for nombre, asset_id in assets],
+    }
+
+
+class _GitHubFalso:
+    """``pinned_https_request`` que responde por URL; lo no configurado es 404.
+
+    Un valor ``Exception`` se lanza, como haría el transporte ante un fallo
+    de red. Registra las URLs y los kwargs de cada petición.
+    """
+
+    def __init__(self, rutas: dict[str, object]) -> None:
+        self.rutas = rutas
+        self.urls: list[str] = []
+        self.kwargs: list[dict[str, Any]] = []
+
+    def __call__(self, _method: str, url: str, **kwargs: Any) -> _FakeResponse:
+        self.urls.append(url)
+        self.kwargs.append(kwargs)
+        respuesta = self.rutas.get(url)
+        if isinstance(respuesta, Exception):
+            raise respuesta
+        if respuesta is None:
+            return _FakeResponse(status_code=404)
+        return _json(respuesta)
+
+
+def _localizar(rutas: dict[str, object], nombre: str) -> tuple[Any, _GitHubFalso]:
+    github = _GitHubFalso(rutas)
+    with patch.object(release_assets, "pinned_https_request", side_effect=github):
+        encontrado = release_assets.locate_release_asset("Dkalds/TenderFlow", nombre, token="t")
+    return encontrado, github
+
+
+def test_la_release_de_tag_fijo_gana_y_no_se_pide_nada_mas() -> None:
+    """Si está en `ml-models`, ni *latest* ni el listado llegan a pedirse."""
+    encontrado, github = _localizar(
+        {
+            _URL_TAG: _rel(1, "ml-models", ("baja_model-3fa9c1d2e4b5.pkl", 11)),
+            _URL_LATEST: _rel(2, "v2.0.0", ("baja_model-3fa9c1d2e4b5.pkl", 22)),
+        },
+        "baja_model-3fa9c1d2e4b5.pkl",
+    )
+
+    assert encontrado is not None
+    assert encontrado.asset_id == 11
+    assert encontrado.release["tag_name"] == "ml-models"
+    assert github.urls == [_URL_TAG]
+
+
+def test_sin_release_fija_todavia_cae_a_latest() -> None:
+    """Hasta la primera publicación en `ml-models`, el tag responde 404."""
+    encontrado, github = _localizar(
+        {_URL_LATEST: _rel(2, "v0.0.0-model", ("sap_classifier.pkl", 7))},
+        "sap_classifier.pkl",
+    )
+
+    assert encontrado is not None and encontrado.asset_id == 7
+    assert github.urls == [_URL_TAG, _URL_LATEST]
+
+
+def test_un_asset_viejo_se_encuentra_aunque_su_release_ya_no_sea_latest() -> None:
+    """El caso de `release.yml`: una release de software pasa a *latest*.
+
+    Es también la compatibilidad con las filas de nombre fijo: su
+    ``baja_model.pkl`` se subió a lo que entonces era *latest* y se sigue
+    encontrando entre las recientes.
+    """
+    software = _rel(3, "v1.5.0")
+    encontrado, github = _localizar(
+        {
+            _URL_LATEST: software,
+            _URL_RECIENTES: [software, _rel(2, "v0.0.0-model", ("baja_model.pkl", 5))],
+        },
+        "baja_model.pkl",
+    )
+
+    assert encontrado is not None
+    assert encontrado.asset_id == 5
+    assert encontrado.release["tag_name"] == "v0.0.0-model"
+    assert github.urls == [_URL_TAG, _URL_LATEST, _URL_RECIENTES]
+
+
+def test_si_no_esta_en_ninguna_devuelve_none() -> None:
+    encontrado, github = _localizar(
+        {
+            _URL_TAG: _rel(1, "ml-models", ("retencion_model-aaaaaaaaaaaa.pkl", 1)),
+            _URL_LATEST: _rel(2, "v2.0.0"),
+            _URL_RECIENTES: [_rel(2, "v2.0.0"), _rel(1, "ml-models")],
+        },
+        "baja_model-3fa9c1d2e4b5.pkl",
+    )
+
+    assert encontrado is None
+    # Todas las lecturas fueron a la API, con su allowlist y su token: el CDN
+    # solo aparece en el salto de `download_asset`.
+    assert github.urls == [_URL_TAG, _URL_LATEST, _URL_RECIENTES]
+    assert all(kw["allowed_hosts"] == frozenset({"api.github.com"}) for kw in github.kwargs)
+    assert all(kw["headers"]["Authorization"] == "Bearer t" for kw in github.kwargs)
+
+
+def test_un_fallo_de_red_en_una_candidata_no_corta_la_busqueda() -> None:
+    encontrado, _github = _localizar(
+        {
+            _URL_TAG: requests.ConnectionError("reset"),
+            _URL_LATEST: _rel(2, "v0.0.0-model", ("baja_model.pkl", 5)),
+        },
+        "baja_model.pkl",
+    )
+
+    assert encontrado is not None and encontrado.asset_id == 5
+
+
+def test_los_borradores_no_cuentan_como_publicados() -> None:
+    encontrado, _github = _localizar(
+        {
+            _URL_RECIENTES: [
+                _rel(4, "v9.9.9", ("baja_model.pkl", 99), draft=True),
+                _rel(2, "v0.0.0-model", ("baja_model.pkl", 5)),
+            ],
+        },
+        "baja_model.pkl",
+    )
+
+    assert encontrado is not None and encontrado.asset_id == 5
+
+
+@pytest.mark.parametrize("tag", ["../latest", "a/b", "ml-models?per_page=1", "", "..", "%2e%2e"])
+def test_un_tag_invalido_no_sale_a_la_red(tag: str) -> None:
+    """El tag va en la ruta de la URL: no puede inyectar segmentos ni query."""
+    with patch.object(release_assets, "pinned_https_request") as request:
+        assert release_assets.fetch_release_by_tag("Dkalds/TenderFlow", tag) is None
+
+    request.assert_not_called()
+
+
+def test_las_recientes_son_una_pagina_y_se_descarta_lo_que_no_es_release() -> None:
+    github = _GitHubFalso({f"{_API}?per_page=100": [{"id": 1}, "basura", 3]})
+    with patch.object(release_assets, "pinned_https_request", side_effect=github):
+        # GitHub no sirve más de 100 por página: pedir más no puede romper la URL.
+        recientes = release_assets.fetch_recent_releases("Dkalds/TenderFlow", limit=500)
+
+    assert recientes == [{"id": 1}]
+    assert github.urls == [f"{_API}?per_page=100"]

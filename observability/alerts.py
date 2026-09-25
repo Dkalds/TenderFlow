@@ -5,6 +5,8 @@ El transporte vive en :mod:`observability.mailer` (``EMAIL_BACKEND``: ``smtp``,
 ``docs/runbooks/correo-transaccional.md``). Este módulo conserva la API que
 usan los llamantes —:func:`notify`, :func:`enviar_email_transaccional`,
 :func:`_send_smtp`— y el contrato de fallo, el log y la métrica de entrega.
+:func:`notify` admite además deduplicación opcional por clave con ventana de
+cooldown (``dedup_key``/``cooldown_s``), apoyada en ``db.job_locks``.
 
 Variables de entorno necesarias para el backend ``smtp`` (el default):
 
@@ -31,11 +33,37 @@ import textwrap
 from collections.abc import Sequence
 from datetime import UTC
 from enum import IntEnum
-from typing import Any
+from typing import Any, Final, Literal
 
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+#: Qué pasó con una llamada a :func:`notify`. ``"enviada"`` es que pasó los
+#: filtros y salió al canal, no que el correo llegara: eso lo cuentan el log de
+#: :func:`_entregar_email` y ``alert_delivery_failed_total``.
+ResultadoAlerta = Literal["enviada", "suprimida_nivel", "suprimida_cooldown"]
+
+# Deduplicación de ``notify(dedup_key=..., cooldown_s=...)`` sin tabla nueva:
+# reutiliza ``db.job_locks`` con el truco de
+# ``scheduler/pipeline_runs.py::_run_periodic`` —un lock que no se libera es una
+# ventana temporal—. Un solo holder para todas las claves basta porque
+# ``acquire`` no mira el holder mientras el lock está vigente: su ``ON CONFLICT
+# … WHERE expires_at <= now`` solo cede un lock caducado, así que el mismo
+# holder reintentando dentro del TTL recibe ``False``, que es la supresión. El
+# prefijo separa estas ventanas de los locks de jobs en el listado de
+# ``scheduler/healthcheck.py``.
+_COOLDOWN_HOLDER = "observability.alerts"
+_COOLDOWN_PREFIJO = "alert:"
+
+#: Ventana de silencio de un monitor diario cuya condición persiste. El de
+#: drift del modelo de baja mandaba el mismo correo ERROR cada día (run de
+#: ``ml-scoring.yml`` del 2026-09-24) y el de calibración un WARN diario: el
+#: mismo aviso cada mañana enseña a no leerlo, y el día que diga algo nuevo
+#: tampoco se lee. Siete días lo dejan en recordatorio semanal mientras dure;
+#: las claves de esos monitores llevan la severidad, así que una escalada
+#: warn→crit sale al momento.
+COOLDOWN_MONITOR_DIARIO_S: Final = 7 * 24 * 60 * 60
 
 
 class AlertLevel(IntEnum):
@@ -271,7 +299,7 @@ def _send_smtp(
     context: dict[str, Any],
     *,
     to_addr: str | None = None,
-) -> None:
+) -> bool:
     """Envía la alerta por el backend de correo configurado (``EMAIL_BACKEND``).
 
     Conserva el nombre histórico: es lo que parchean los tests y lo que buscan
@@ -280,15 +308,34 @@ def _send_smtp(
 
     ``to_addr`` sobreescribe la variable de entorno ``ALERT_EMAIL_TO``
     cuando se especifica (útil para notificaciones por destinatario).
+
+    Devuelve si el correo salió (el booleano de :func:`_entregar_email`):
+    :func:`notify` lo usa para no gastar una ventana de cooldown en un envío
+    que no llegó a salir.
     """
     from config import settings
 
-    _entregar_email(
+    return _entregar_email(
         recipient=(to_addr or settings.ALERT_EMAIL_TO or ""),
         subject=f"[TenderFlow] [{level.name}] {title}",
         texto=body,
         html=_build_html(level, title, body, context),
     )
+
+
+def _soltar_ventana(nombre: str) -> None:
+    """Devuelve la ventana de cooldown de una alerta cuyo correo no salió.
+
+    Mismo motivo por el que ``_run_periodic`` suelta su lock cuando el paso
+    falla: un SMTP caído un día no puede callar la alerta el resto de la semana.
+    Nunca propaga, como todo lo que cuelga de :func:`notify`.
+    """
+    try:
+        from db.job_locks import release
+
+        release(nombre, holder=_COOLDOWN_HOLDER)
+    except Exception as exc:
+        log.warning("alert_cooldown_release_failed", lock=nombre, error=str(exc))
 
 
 def notify(
@@ -297,20 +344,63 @@ def notify(
     body: str = "",
     *,
     to_addr: str | None = None,
+    dedup_key: str | None = None,
+    cooldown_s: int | None = None,
     **context: Any,
-) -> None:
+) -> ResultadoAlerta:
     """Envía una alerta. Seguro de llamar sin configuración (solo loguea).
 
     ``level`` puede ser un enum ``AlertLevel`` o cadena (``info``/``warn``/
     ``error``/``critical``).
 
     ``to_addr`` sobreescribe el destinatario de ``ALERT_EMAIL_TO`` del entorno.
+
+    ``dedup_key`` y ``cooldown_s``, **los dos**, callan las repeticiones: la
+    primera alerta con esa clave sale y abre una ventana de ``cooldown_s``
+    segundos en ``db.job_locks``; las siguientes con la misma clave se
+    descartan hasta que caduque (log ``alert_suppressed_cooldown``). Es para
+    monitores que evalúan a diario una condición que persiste. La clave tiene
+    que cambiar cuando cambia lo que la alerta dice —p. ej. llevar la
+    severidad, para que una escalada salga al momento— y no incluye el
+    destinatario: si ``to_addr`` varía, va en la clave. Sin alguno de los dos,
+    el comportamiento de siempre.
+
+    La ventana se abre **después** del filtro de ``ALERT_MIN_LEVEL``: una
+    alerta que no iba a salir no puede gastar la ventana de la que sí. Se
+    suelta si el correo no llega a salir (:func:`_soltar_ventana`); sin correo
+    configurado eso es siempre, y está bien: sin buzón no hay nada que saturar.
+    Y si la tabla de locks no responde, la alerta sale igual y lo deja en un
+    warning (fail-open): un aviso repetido es un fastidio, uno perdido es el
+    fallo que este módulo existe para evitar.
+
+    Devuelve lo que pasó (:data:`ResultadoAlerta`). Los llamantes de siempre lo
+    ignoran; los monitores lo publican en su resultado.
     """
     if isinstance(level, str):
         level = _LEVEL_NAMES.get(level.lower(), AlertLevel.WARN)
 
     if level < _min_level():
-        return
+        return "suprimida_nivel"
+
+    ventana: str | None = None
+    if dedup_key and cooldown_s:
+        nombre = f"{_COOLDOWN_PREFIJO}{dedup_key}"
+        try:
+            from db.job_locks import acquire
+
+            abierta = acquire(nombre, ttl_seconds=cooldown_s, holder=_COOLDOWN_HOLDER)
+        except Exception as exc:
+            log.warning("alert_cooldown_unavailable", dedup_key=dedup_key, error=str(exc))
+        else:
+            if not abierta:
+                log.info(
+                    "alert_suppressed_cooldown",
+                    dedup_key=dedup_key,
+                    cooldown_s=cooldown_s,
+                    alert_title=title,
+                )
+                return "suprimida_cooldown"
+            ventana = nombre
 
     log.log(
         {
@@ -325,7 +415,10 @@ def notify(
         **context,
     )
 
-    _send_smtp(level, title, body, context, to_addr=to_addr)
+    entregada = _send_smtp(level, title, body, context, to_addr=to_addr)
+    if ventana is not None and not entregada:
+        _soltar_ventana(ventana)
+    return "enviada"
 
 
 # ---------------------------------------------------------------------------

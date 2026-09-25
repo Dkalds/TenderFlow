@@ -219,6 +219,29 @@ def fecha_fin_origen_sql() -> str:
     return FECHA_FIN_ORIGEN_SQL
 
 
+def fecha_referencia_abierta_sql(alias: str = "l") -> str:
+    """Fecha ``YYYY-MM-DD`` desde la que se mide si una licitación sigue viva.
+
+    Sin adjudicación y sin estado terminal no significa abierta: hay
+    expedientes de 2019 que nadie cierra formalmente y que ninguna fuente va a
+    adjudicar ya. El batch de baja los puntuaba cada noche, y además anclaban
+    la ventana de referencia del monitor de drift en 2019 (run del
+    2026-09-24): el PSI comparaba el histórico entero contra una foto que no era
+    la de lo que de verdad está abierto.
+
+    La referencia es el fin del plazo de ofertas y, si falta, la publicación.
+    Texto recortado a diez caracteres: la misma comparación lexicográfica sobre
+    ISO que usa ``PrediccionesRepository.purgar_cerradas``. ``NULL`` si faltan
+    las dos: sin fecha no se puede afirmar que un expediente esté muerto, y
+    quien usa el fragmento decide qué hacer con él. El corte lo fija
+    ``services.ml.features.corte_abiertas_vivas``, que es quien lo comparte
+    entre la población del scoring y su purga.
+    """
+    return (
+        f"COALESCE(substr({alias}.fecha_limite, 1, 10), substr({alias}.fecha_publicacion, 1, 10))"
+    )
+
+
 def round_sql(expr: str, ndigits: int) -> str:
     """``ROUND`` para expresiones sobre columnas de coma flotante.
 
