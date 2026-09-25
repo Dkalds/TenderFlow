@@ -541,7 +541,7 @@ export function ScopeBar() {
     <>
       {/* La barra scrollea en horizontal, así que el borde no puede vivir dentro
           (lo recortaría el `overflow`): va como hermano, con alto cero. */}
-      <header className={CABECERA}>
+      <header data-slot="barra-ambito" className={CABECERA}>
         {filtersApply ? (
           <BarraConAmbito
             chips={chips}
@@ -635,7 +635,13 @@ function BarraSinAmbito({
       {activeCount > 0 ? (
         <>
           <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span className="text-muted-foreground text-xs">
+          {/* Por debajo de `md`, en una línea: encogido hasta su palabra más
+              larga ocupaba cuatro (144 px) en una barra de 52 que las recortaba,
+              y a 375 px solo se leía «no aplica en esta». Desde `md` la barra
+              mide unos 700 px o más y el aviso, como mucho, se parte en dos
+              líneas que caben: mejor eso que sacar Buscar y Exportar de la
+              vista. */}
+          <span className="text-muted-foreground min-w-max text-xs md:min-w-auto">
             El ámbito global no aplica en esta pantalla ({activeCount}{" "}
             {activeCount === 1 ? "filtro activo" : "filtros activos"}).
           </span>
@@ -736,7 +742,13 @@ function BarraConAmbito({
         Ámbito
       </span>
 
-      <div className="flex min-w-0 items-center gap-1.5">
+      {/* Nunca más estrecho que sus chips (`min-w-max`): si la barra no cabe
+          —a 375 px siempre; en escritorio, con varios chips o con uno y el
+          aviso de filtros que no aplican—, se desplaza ella. Con `min-w-0` era
+          el único hijo que cedía ancho (sus hermanos son `flex-none`) y los
+          chips se le salían por encima del aviso y del recuento: el `truncate`
+          de cada chip solo corta valores de más de 160 px, no los estrecha. */}
+      <div data-slot="ambito-chips" className="flex min-w-max items-center gap-1.5">
         {chips.map((chip) => (
           <ScopeChip key={`${chip.key}-${chip.value}`} chip={chip} />
         ))}
