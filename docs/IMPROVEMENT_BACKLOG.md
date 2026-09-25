@@ -301,7 +301,9 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   módulos SAP) y no cabe en el índice; `/competitive/renovaciones` sin tecnología
   (8-31 s) va por otro SQL. Si el índice no basta: snapshot del ámbito por defecto en
   `kpi_precompute` (ADR-026, camino 3; el cierre ya usa 9-15 de sus 20 minutos) o
-  subir el cómputo de Supabase (con 4 GB la tabla cabría en caché).
+  subir el cómputo de Supabase (con 4 GB la tabla cabría en caché). Sigue abierta una
+  decisión de producto: acotar la analítica al universo tecnológico. El listado ya
+  enseña solo filas con `tecnologia`; la analítica cuenta además todo PSCP.
 - **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates.py](../db/repositories/aggregates.py), [tests/test_v144_indices_analitica.py](../tests/test_v144_indices_analitica.py)
 - **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
   y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
