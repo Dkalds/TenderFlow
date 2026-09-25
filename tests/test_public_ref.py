@@ -17,9 +17,6 @@ import pytest
 
 from shared.public_ref import codificar_ref, decodificar_ref
 
-pytestmark = pytest.mark.unit
-
-
 # `PA-S 2026/000058` es un id real de PLACSP, el mismo que usa
 # `tests/test_ask_route.py` para el caso de las barras. Los espacios y la barra
 # son justamente lo que hace inviable meter el id crudo en una URL.
