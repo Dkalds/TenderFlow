@@ -234,7 +234,9 @@ def test_el_cli_del_workflow_sube_el_pkl_y_su_sidecar_por_contenido(tmp_path, mo
     ):
         assert ml_predicciones.run_retrain_cli() == 0
 
-    linea = salida.read_text(encoding="utf-8").strip()
-    assert linea.startswith("artefactos=")
-    nombres = [Path(p).name for p in linea.removeprefix("artefactos=").split()]
-    assert nombres == [f"baja_model-{sha256[:12]}.pkl", f"baja_model-{sha256[:12]}.sha256"]
+    # La línea entera y no `split()`: el workflow sí la parte por espacios (las
+    # rutas del runner no los llevan), pero `tmp_path` puede llevarlos
+    # (`C:\Users\Nombre Apellido\...`) y el test fallaba fuera de CI.
+    pkl = tmp_path / f"baja_model-{sha256[:12]}.pkl"
+    sidecar = tmp_path / f"baja_model-{sha256[:12]}.sha256"
+    assert salida.read_text(encoding="utf-8").strip() == f"artefactos={pkl} {sidecar}"
