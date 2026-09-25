@@ -9,7 +9,9 @@ Comprueba:
        entera— se refrescó hace poco y no ha encogido.
     6. Cada fuente registrada (`scraper.connectors.REGISTERED_SOURCES`) tuvo un
        run exitoso dentro de su propio `max_lag_hours`, distinguiendo «apagada
-       a propósito» de «muerta».
+       a propósito» de «muerta» — y, si declara `max_antiguedad_dato_hours`,
+       que su cursor siga avanzando: un run exitoso con la fuente congelada no
+       es una fuente fresca.
 
 Salida:
   exit 0 → healthy
@@ -201,6 +203,15 @@ def comprobar_frescura_fuentes(
     - ``sin_registro``: no hay fila. Avisa salvo que la fuente sea
       ``opcional``: repetir cada seis horas que algo nunca se configuró es el
       ruido que acaba desactivando el check.
+    - ``sin_datos_nuevos``: los runs terminan bien, pero el cursor de la fuente
+      —el ``last_seen_updated`` de ``ingestion_cursors``— lleva más horas
+      parado que su ``max_antiguedad_dato_hours``. **Avisa.** Es el caso que
+      ``atrasada`` no puede ver: desde el 2026-09-08 el feed ATOM de PLACSP no
+      publicó ni una entrada nueva, cada pasada terminó en ``success`` con 0
+      avisos y la fuente figuró como «fresca» durante 16 días. Solo se mide en
+      las fuentes que declaran el umbral; un cursor ausente no se mide (aún no
+      hay dato que envejecer) y uno ilegible cuenta como parado, por lo mismo
+      que en :func:`_lag_horas`.
 
     Las fuentes con ``estado == "fuera_de_alcance"`` (T7/D16) no se miden ni
     aparecen en el detalle: están declaradas fuera del producto en
@@ -213,8 +224,9 @@ def comprobar_frescura_fuentes(
         ahora: Momento de referencia (UTC). Inyectable por lo mismo.
 
     Returns:
-        Dict con ``atrasadas``, ``apagadas``, ``sin_registro`` y ``fuentes``
-        (detalle por fuente: umbral, lag medido y estado reportado).
+        Dict con ``atrasadas``, ``apagadas``, ``sin_registro``,
+        ``sin_datos_nuevos`` y ``fuentes`` (detalle por fuente: umbrales, lags
+        medidos y estado reportado).
     """
     from scraper.connectors import REGISTERED_SOURCES
 
@@ -229,6 +241,7 @@ def comprobar_frescura_fuentes(
     atrasadas: list[str] = []
     apagadas: list[str] = []
     sin_registro: list[str] = []
+    sin_datos_nuevos: list[str] = []
     detalle: dict[str, Any] = {}
 
     for fuente in REGISTERED_SOURCES:
@@ -258,15 +271,32 @@ def comprobar_frescura_fuentes(
         lag = _lag_horas(fila.get("last_success_at"), momento)
         entrada["lag_hours"] = None if lag is None else round(lag, 1)
         if lag is None or lag > fuente.max_lag_hours:
+            # Un run que no termina tapa cualquier otra lectura: es lo primero
+            # que hay que arreglar, y medir el dato encima sería ruido.
             entrada["estado"] = "atrasada"
             atrasadas.append(fuente.source_id)
-        else:
-            entrada["estado"] = "fresca"
+            continue
+
+        umbral_dato = fuente.max_antiguedad_dato_hours
+        # `last_seen_updated` es el cursor vivo; `cursor_value`, la foto que dejó
+        # el último run al terminar. Coinciden salvo carrera con un run en curso.
+        cursor = fila.get("last_seen_updated") or fila.get("cursor_value")
+        if umbral_dato is not None and cursor:
+            antiguedad = _lag_horas(cursor, momento)
+            entrada["max_antiguedad_dato_hours"] = umbral_dato
+            entrada["antiguedad_dato_hours"] = None if antiguedad is None else round(antiguedad, 1)
+            if antiguedad is None or antiguedad > umbral_dato:
+                entrada["estado"] = "sin_datos_nuevos"
+                sin_datos_nuevos.append(fuente.source_id)
+                continue
+
+        entrada["estado"] = "fresca"
 
     return {
         "atrasadas": atrasadas,
         "apagadas": apagadas,
         "sin_registro": sin_registro,
+        "sin_datos_nuevos": sin_datos_nuevos,
         "fuentes": detalle,
     }
 
@@ -290,12 +320,21 @@ def _incorporar_frescura_fuentes(
         return
 
     info["fuentes_frescura"] = resultado
-    problemas = [*resultado["atrasadas"], *resultado["sin_registro"]]
+    # `.get`: quien sustituya `comprobar_frescura_fuentes` (un test, un doble)
+    # puede no traer la clave, y un check secundario no tumba el informe.
+    sin_datos_nuevos = list(resultado.get("sin_datos_nuevos", []))
+    problemas = [*resultado["atrasadas"], *resultado["sin_registro"], *sin_datos_nuevos]
     warnings.extend(f"fuente_atrasada:{s}" for s in resultado["atrasadas"])
     warnings.extend(f"fuente_sin_registro:{s}" for s in resultado["sin_registro"])
+    warnings.extend(f"fuente_sin_datos_nuevos:{s}" for s in sin_datos_nuevos)
     checks.append({"name": "fuentes_frescas", "ok": not problemas})
 
     if problemas:
+        congeladas = (
+            f" Sin datos nuevos aunque el run termine bien: {', '.join(sin_datos_nuevos)}."
+            if sin_datos_nuevos
+            else ""
+        )
         try:
             notify(
                 AlertLevel.WARN,
@@ -303,10 +342,11 @@ def _incorporar_frescura_fuentes(
                 body=(
                     "Fuentes fuera de su SLA de frescura (umbrales en "
                     "scraper/connectors/REGISTERED_SOURCES): "
-                    f"{', '.join(problemas)}."
+                    f"{', '.join(problemas)}.{congeladas}"
                 ),
                 atrasadas=resultado["atrasadas"],
                 sin_registro=resultado["sin_registro"],
+                sin_datos_nuevos=sin_datos_nuevos,
                 apagadas=resultado["apagadas"],
             )
         except Exception:
