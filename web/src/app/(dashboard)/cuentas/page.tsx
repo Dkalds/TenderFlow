@@ -1,184 +1,37 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Loader2, Plus, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+import { Building2, Plus } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
-import { apiGet, apiMutate } from "@/lib/api-client";
-import { registrarEvento } from "@/lib/analytics";
-import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
-import { useEtiquetasDe } from "@/hooks/use-etiquetas";
+import { usePuedeEscribir, useRolActivo } from "@/hooks/use-organization";
+
+import { ListaCuentas } from "./_components/lista-cuentas";
+import { NuevaCuentaDialog } from "./_components/nueva-cuenta-dialog";
 
 /**
  * F1.5 — Cuentas objetivo.
  *
- * `Mercado → Órganos` es un corte analítico sin acción: enseña cuánto licita
- * un órgano y no deja hacer nada al respecto. Este espacio añade lo que
- * faltaba —seguirlo, y ver qué tiene el equipo con él— y **absorbe** aquella
- * vista como `?vista=mercado`, sin eliminarla: consolidar no quita
- * funcionalidad.
+ * `Mercado → Órganos` era un corte analítico sin acción: enseñaba cuánto
+ * licita un órgano y no dejaba hacer nada al respecto. Este espacio añade lo
+ * que faltaba: seguir a un cliente —con todos sus órganos de contratación— y
+ * ver qué pasa con él y qué tiene el equipo con él, en la lista y en la ficha
+ * de cada cuenta (`/cuentas/[id]`).
  *
- * Todo el estado es del servidor. El listado, el alta y la baja pasan por
- * `/cuentas`, que resuelve la organización y el permiso: un `viewer` recibe
- * 403 de la API, no un botón escondido.
+ * La pestaña «Todos los órganos» (`?vista=mercado`) **no** incrusta aquella
+ * vista: enlaza a ella, que sigue viviendo en Mercado con todos sus filtros. Lo
+ * que une las dos pantallas es la acción: el botón «Seguir» del panel de órgano
+ * de Mercado crea o completa una cuenta de esta lista (`useSeguimiento` enruta
+ * los órganos a `/cuentas`).
+ *
+ * Todo el estado es del servidor y de la **organización activa**. La API
+ * decide el permiso —un `viewer` recibe 403—, y la pantalla además le esconde
+ * lo que no puede hacer, en vez de ofrecerle botones que siempre fallan.
  */
-
-type Cuenta = {
-  id: number;
-  organo_nombre: string;
-  organo_norm: string;
-  nota?: string | null;
-  created_at: string;
-};
-
-const CUENTAS_KEY = ["cuentas"] as const;
-
-function useCuentas() {
-  return useQuery({
-    queryKey: CUENTAS_KEY,
-    queryFn: () => apiGet("/api/v1/cuentas" as never) as Promise<Cuenta[]>,
-  });
-}
-
-function SeguirOrgano() {
-  const [organo, setOrgano] = React.useState("");
-  const qc = useQueryClient();
-  const seguir = useMutation({
-    mutationFn: (nombre: string) =>
-      apiMutate("POST", "/api/v1/cuentas", { organo: nombre }),
-    onSuccess: () => {
-      // Se mide la acción confirmada por el servidor, no la optimista: el
-      // órgano no viaja —sería un identificador, y además revelaría a quién
-      // persigue la organización.
-      registrarEvento("organo_seguido", { accion: "seguir" });
-      void qc.invalidateQueries({ queryKey: CUENTAS_KEY });
-      setOrgano("");
-      toast.success("Órgano añadido a tus cuentas");
-    },
-    onError: (error: unknown) =>
-      toast.error(error instanceof Error ? error.message : "No se pudo seguir el órgano"),
-  });
-
-  return (
-    <form
-      className="flex flex-wrap items-end gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const nombre = organo.trim();
-        if (nombre) seguir.mutate(nombre);
-      }}
-    >
-      <label className="min-w-64 flex-1 space-y-1.5 text-sm font-medium" htmlFor="nuevo-organo">
-        Seguir un órgano
-        <Input
-          id="nuevo-organo"
-          value={organo}
-          onChange={(event) => setOrgano(event.target.value)}
-          placeholder="Ayuntamiento de…"
-          maxLength={500}
-        />
-      </label>
-      <Button type="submit" disabled={!organo.trim() || seguir.isPending}>
-        {seguir.isPending ? (
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        ) : (
-          <Plus className="size-4" aria-hidden="true" />
-        )}
-        Seguir
-      </Button>
-    </form>
-  );
-}
-
-function ListaCuentas() {
-  const { data, isLoading, isError } = useCuentas();
-  const qc = useQueryClient();
-  // F1.6 — etiquetas de todas las cuentas en una sola petición.
-  const etiquetas =
-    useEtiquetasDe("cuenta", (data ?? []).map((cuenta) => String(cuenta.id))).data ?? {};
-  const dejar = useMutation({
-    mutationFn: (id: number) => apiMutate("DELETE", `/api/v1/cuentas/${id}` as never),
-    onSuccess: () => {
-      registrarEvento("organo_seguido", { accion: "dejar_de_seguir" });
-      void qc.invalidateQueries({ queryKey: CUENTAS_KEY });
-    },
-    onError: () => toast.error("No se pudo dejar de seguir"),
-  });
-
-  if (isLoading) return <Skeleton className="h-40 w-full" />;
-  if (isError) {
-    return (
-      <EmptyState
-        title="No se pudieron cargar tus cuentas"
-        hint="Vuelve a intentarlo en un momento."
-      />
-    );
-  }
-
-  const cuentas = data ?? [];
-  if (cuentas.length === 0) {
-    // Vacío declarado y con la acción al lado: una tabla en blanco se lee como
-    // que la pantalla está rota, no como que todavía no hay nada.
-    return (
-      <EmptyState
-        icon={Building2}
-        title="Todavía no sigues ningún órgano"
-        hint="Sigue los órganos con los que trabajas para ver sus publicaciones y sus vencimientos sin buscarlos."
-      />
-    );
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Órgano</TableHead>
-          <TableHead>Nota</TableHead>
-          <TableHead>Etiquetas</TableHead>
-          <TableHead className="w-24 text-right">Acciones</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {cuentas.map((cuenta) => (
-          <TableRow key={cuenta.id}>
-            <TableCell className="font-medium">{cuenta.organo_nombre}</TableCell>
-            <TableCell className="text-muted-foreground">{cuenta.nota ?? "—"}</TableCell>
-            <TableCell>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <EtiquetaChips etiquetas={etiquetas[String(cuenta.id)]} />
-                <EtiquetasEditor
-                  objetoTipo="cuenta"
-                  objetoId={String(cuenta.id)}
-                  aplicadas={etiquetas[String(cuenta.id)]}
-                  descripcion={cuenta.organo_nombre}
-                />
-              </div>
-            </TableCell>
-            <TableCell className="text-right">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => dejar.mutate(cuenta.id)}
-                disabled={dejar.isPending}
-              >
-                <Trash2 className="size-4" aria-hidden="true" />
-                <span className="sr-only">Dejar de seguir {cuenta.organo_nombre}</span>
-              </Button>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "cuentas")!;
 
@@ -188,21 +41,51 @@ export default function CuentasPage() {
   // `useState` el deep-link que documenta `space-views.ts` aterrizaba
   // siempre en la primera vista y la URL nunca cambiaba.
   const { view: vista, setView: setVista } = useSpaceView(SPACE);
+  const router = useRouter();
+  const puedeEscribir = usePuedeEscribir();
+  const soloLectura = useRolActivo() === "viewer";
+  const [creando, setCreando] = React.useState(false);
 
   return (
-    <SpaceShell spaceKey="cuentas" view={vista} onViewChange={setVista}>
+    <SpaceShell
+      spaceKey="cuentas"
+      view={vista}
+      onViewChange={setVista}
+      actions={
+        vista !== "mercado" && puedeEscribir ? (
+          <Button size="sm" onClick={() => setCreando(true)}>
+            <Plus aria-hidden="true" />
+            Nueva cuenta
+          </Button>
+        ) : undefined
+      }
+    >
       {vista === "mercado" ? (
+        // Un enlace y no una copia de la vista: el ranking de órganos, con sus
+        // filtros de ámbito, es de Mercado. Hasta 2026-09-25 esto era un vacío
+        // que remitía a Mercado sin forma de llegar.
         <EmptyState
           icon={Building2}
           title="El análisis de órganos vive en Mercado"
-          hint="Mercado → Órganos sigue siendo el corte analítico completo. Este espacio añade la acción: seguir un órgano y ver qué tiene tu equipo con él."
+          hint="Mercado → Órganos es el corte analítico completo. Sigue un órgano desde su panel y aparecerá aquí, en las cuentas de tu organización."
+          actionLabel="Abrir Mercado → Órganos"
+          onAction={() => router.push("/mercado?vista=organos")}
         />
       ) : (
-        <div className="flex flex-col gap-6">
-          <SeguirOrgano />
-          <ListaCuentas />
+        <div className="flex flex-col gap-4">
+          {soloLectura && (
+            <p className="text-xs text-muted-foreground">
+              Tu rol en esta organización es de solo lectura: ves las cuentas del equipo, pero no
+              puedes crearlas ni cambiarlas.
+            </p>
+          )}
+          <ListaCuentas
+            puedeEscribir={puedeEscribir}
+            onNueva={puedeEscribir ? () => setCreando(true) : undefined}
+          />
         </div>
       )}
+      <NuevaCuentaDialog open={creando} onOpenChange={setCreando} />
     </SpaceShell>
   );
 }

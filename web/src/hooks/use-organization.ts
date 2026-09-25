@@ -112,6 +112,34 @@ export function organizacionResuelta(organizationId: OrganizacionActiva): boolea
   return organizationId !== undefined;
 }
 
+/**
+ * Rol de la persona en la organización activa; `undefined` mientras no se sabe.
+ *
+ * Sirve para **esconder** lo que el rol no puede hacer, no para impedirlo: el
+ * permiso lo decide la API, y un `viewer` que escribe recibe 403 igual. Sin
+ * esto la pantalla le ofrece botones que siempre fallan.
+ *
+ * Sin organización (`null`) el backend resuelve la personal, que es de quien
+ * pregunta: ahí se es `owner`.
+ */
+export function useRolActivo(): OrganizationRole | undefined {
+  const organizationId = useActiveOrganizationId();
+  const organizations = useOrganizations();
+  if (organizationId === undefined) return undefined;
+  if (organizationId === null) return "owner";
+  return organizations.data?.find((organization) => organization.id === organizationId)?.role;
+}
+
+/**
+ * ¿Puede escribir en la organización activa? `false` mientras no se sabe: un
+ * botón que aparece al cargar es menos grave que uno que un `viewer` alcanza a
+ * pulsar antes de que desaparezca.
+ */
+export function usePuedeEscribir(): boolean {
+  const rol = useRolActivo();
+  return rol !== undefined && rol !== "viewer";
+}
+
 export function useOrganizationMembers(organizationId: OrganizacionActiva) {
   return useQuery({
     queryKey: organizationKeys.members(organizationId),

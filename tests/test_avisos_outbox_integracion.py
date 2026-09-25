@@ -302,3 +302,52 @@ def test_vencimiento_a_seis_meses_de_una_cuenta_una_sola_vez(cuenta):
     evento = _eventos("cuenta.vencimiento_proximo")[0]
     assert evento["payload"]["id_externo"] == "G1-CTA-FIN"
     assert evento["payload"]["fecha_fin"] == fin
+
+
+def test_una_cuenta_de_varios_organos_avisa_de_todos_y_nombra_al_cliente(tmp_db):
+    """v142: el aviso sale por cualquier órgano de la cuenta, una vez.
+
+    El titular nombra al cliente —la cuenta— y ``organo`` sigue diciendo qué
+    órgano publicó: «Área de Gobierno de Economía… del Ayuntamiento de Madrid»
+    no es lo que el comercial reconoce, «Ayuntamiento de Madrid» sí.
+    """
+    from db.repositories.cuentas import CuentasRepository
+
+    user_id, org_id, _ = _usuario("g1-cliente@example.test")
+    CuentasRepository().crear(
+        organization_id=org_id,
+        nombre="Ayuntamiento de Madrid",
+        organos=[
+            "Área de Gobierno de Economía del Ayuntamiento de Madrid",
+            "Organismo Autónomo Informática del Ayuntamiento de Madrid",
+        ],
+        user_id=user_id,
+    )
+    ahora = datetime.now(UTC)
+    ayer = (ahora - timedelta(days=1)).isoformat()
+    set_cursor(
+        avisos_outbox.CURSOR_CUENTAS, last_seen_updated=(ahora - timedelta(days=5)).isoformat()
+    )
+    _lic(
+        "G1-MAD-1",
+        organo="Organismo Autónomo Informática del Ayuntamiento de Madrid",
+        primera_extraccion=ayer,
+    )
+    _lic(
+        "G1-MAD-2",
+        organo="ÁREA DE GOBIERNO DE ECONOMÍA DEL AYUNTAMIENTO DE MADRID",
+        primera_extraccion=ayer,
+    )
+    # Un órgano que no es de la cuenta aunque se le parezca.
+    _lic("G1-MAD-3", organo="Alcaldía del Ayuntamiento de Madridejos", primera_extraccion=ayer)
+
+    assert avisos_outbox.emitir_avisos_de_cuentas() == 2
+
+    eventos = {
+        e["payload"]["id_externo"]: e["payload"] for e in _eventos("cuenta.publicacion_nueva")
+    }
+    assert set(eventos) == {"G1-MAD-1", "G1-MAD-2"}
+    payload = eventos["G1-MAD-1"]
+    assert payload["aviso_titulo"] == "Publicación nueva de Ayuntamiento de Madrid"
+    assert payload["cuenta_nombre"] == "Ayuntamiento de Madrid"
+    assert payload["organo"] == "Organismo Autónomo Informática del Ayuntamiento de Madrid"

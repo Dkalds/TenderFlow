@@ -75,6 +75,7 @@ _REVISIONES_CON_TABLAS: tuple[str, ...] = (
     "v128_rls_tenant_policies",
     "v130_follows",
     "v132_informes_programados",
+    "v142_cuenta_organos",
 )
 
 

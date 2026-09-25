@@ -1525,18 +1525,85 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Órganos que la organización sigue como cuenta */
+        /** Cuentas de la organización, con sus órganos */
         get: operations["get_cuentas_api_v1_cuentas_get"];
         put?: never;
         /**
-         * Seguir un órgano como cuenta objetivo
-         * @description Idempotente: seguir dos veces el mismo órgano no crea dos cuentas.
+         * Seguir un órgano, o crear una cuenta con varios órganos
+         * @description Con ``organo``: idempotente, seguir dos veces el mismo órgano no crea dos
+         *     cuentas. Con ``organos``: una cuenta nueva con todos, todo o nada.
          *
-         *     Devuelve 201 también cuando ya se seguía. Distinguirlo con un 200 obligaría
-         *     al cliente a tratar dos casos que para el usuario son el mismo —«ya lo
-         *     sigo»— y el estado final es idéntico.
+         *     Devuelve 201 también cuando el órgano ya se seguía. Distinguirlo con un 200
+         *     obligaría al cliente a tratar dos casos que para el usuario son el mismo
+         *     —«ya lo sigo»— y el estado final es idéntico.
          */
         post: operations["post_cuenta_api_v1_cuentas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cuentas/buscar-organos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Órganos para el alta de una cuenta, y de qué cuenta es ya cada uno
+         * @description Un término de menos de tres caracteres devuelve lista vacía, no un 422:
+         *     el campo pregunta en cada tecla, como la paleta de búsqueda.
+         */
+        get: operations["get_buscar_organos_api_v1_cuentas_buscar_organos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cuentas/por-organo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Dejar de seguir un órgano: lo quita de su cuenta, o la cuenta si era el único
+         * @description La inversa de ``POST /cuentas`` con ``organo``: la estrella de Mercado.
+         *
+         *     Por nombre y no por id porque el nombre del botón es la grafía del
+         *     expediente, y casarla con el órgano de la cuenta exige plegar, que es cosa
+         *     del servidor.
+         */
+        delete: operations["delete_organo_seguido_api_v1_cuentas_por_organo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cuentas/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Qué pasa hoy en cada cuenta, en cuatro números
+         * @description Abiertas hoy, última publicación, contratos que vencen y oportunidades
+         *     activas de cada cuenta, con el universo y la ventana de cada cifra.
+         */
+        get: operations["get_cuentas_resumen_api_v1_cuentas_resumen_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1550,11 +1617,57 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Ficha de una cuenta: sus órganos, publicaciones, vencimientos y oportunidades */
+        get: operations["get_ficha_cuenta_api_v1_cuentas__cuenta_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Dejar de seguir una cuenta
+         * @description Se lleva sus órganos y las etiquetas aplicadas a la cuenta.
+         */
+        delete: operations["delete_cuenta_api_v1_cuentas__cuenta_id__delete"];
+        options?: never;
+        head?: never;
+        /** Renombrar una cuenta o cambiar su nota */
+        patch: operations["patch_cuenta_api_v1_cuentas__cuenta_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cuentas/{cuenta_id}/organos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Añadir órganos a una cuenta
+         * @description Todo o nada, e idempotente para los órganos que ya eran de esta cuenta.
+         */
+        post: operations["post_organos_de_cuenta_api_v1_cuentas__cuenta_id__organos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cuentas/{cuenta_id}/organos/{cuenta_organo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         get?: never;
         put?: never;
         post?: never;
-        /** Dejar de seguir un órgano */
-        delete: operations["delete_cuenta_api_v1_cuentas__cuenta_id__delete"];
+        /**
+         * Quitar un órgano de una cuenta
+         * @description Devuelve la cuenta como queda. Quitar el último órgano es un 409: una
+         *     cuenta sin órganos no avisaría de nada, y para eso se deja de seguir.
+         */
+        delete: operations["delete_organo_de_cuenta_api_v1_cuentas__cuenta_id__organos__cuenta_organo_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5594,6 +5707,19 @@ export interface components {
             type: string;
         };
         /**
+         * AmbitoCifra
+         * @description Qué cuenta una cifra (ADR-014): sobre qué universo y en qué ventana.
+         *
+         *     Viaja con el dato y no escrito en el cliente: si la consulta cambia de
+         *     universo, la explicación cambia con ella.
+         */
+        AmbitoCifra: {
+            /** Universo */
+            universo: string;
+            /** Ventana */
+            ventana: string;
+        };
+        /**
          * AmbitoFueraDeAlcance
          * @description Un ámbito declarado fuera del producto, con su fecha y su decisión.
          */
@@ -5909,6 +6035,39 @@ export interface components {
              * @default últimos 24 meses
              */
             ventana: string;
+        };
+        /**
+         * BloqueOportunidadesCuenta
+         * @description Lo que el equipo tiene con la cuenta.
+         */
+        BloqueOportunidadesCuenta: {
+            /** Activas */
+            activas: number;
+            ambito: components["schemas"]["AmbitoCifra"];
+            /** Items */
+            items?: components["schemas"]["OportunidadCuenta"][];
+        };
+        /**
+         * BloquePublicacionesCuenta
+         * @description Publicaciones recientes de la cuenta.
+         */
+        BloquePublicacionesCuenta: {
+            ambito: components["schemas"]["AmbitoCifra"];
+            /** Items */
+            items?: components["schemas"]["PublicacionCuenta"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * BloqueVencimientosCuenta
+         * @description Contratos de la cuenta que vencen en la ventana.
+         */
+        BloqueVencimientosCuenta: {
+            ambito: components["schemas"]["AmbitoCifra"];
+            /** Items */
+            items?: components["schemas"]["VencimientoCuenta"][];
+            /** Total */
+            total: number;
         };
         /** Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post */
         Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post: {
@@ -7194,11 +7353,17 @@ export interface components {
         };
         /**
          * CuentaObjetivo
-         * @description Un órgano que la organización sigue como cuenta.
+         * @description Una cuenta de la organización: un cliente y sus órganos de contratación.
          *
-         *     ``organo_id`` nace vacío: el maestro de órganos (C1.2) todavía no existe y
-         *     la identidad va por el nombre normalizado. El campo está en el contrato
-         *     desde ahora para que ese maestro no obligue a cambiarlo.
+         *     Hasta v142 una cuenta **era** un órgano. Desde entonces tiene nombre propio
+         *     y uno o varios órganos (``organos``), porque un cliente no publica con un
+         *     solo nombre: el Ayuntamiento de Madrid contrata a través de seis órganos y
+         *     ninguno se llama así.
+         *
+         *     ``organo_nombre``, ``organo_norm`` y ``organo_id`` son el contrato anterior
+         *     y se conservan por compatibilidad: dicen el **primer** órgano de la cuenta,
+         *     que en una cuenta de un solo órgano es exactamente lo que decían. Para una
+         *     cuenta de varios, usa ``organos``.
          */
         CuentaObjetivo: {
             /** Created At */
@@ -7207,6 +7372,8 @@ export interface components {
             created_by_user_id?: number | null;
             /** Id */
             id: number;
+            /** Nombre */
+            nombre: string;
             /** Nota */
             nota?: string | null;
             /** Organization Id */
@@ -7217,16 +7384,90 @@ export interface components {
             organo_nombre: string;
             /** Organo Norm */
             organo_norm: string;
+            /** Organos */
+            organos?: components["schemas"]["CuentaOrgano"][];
         };
         /**
          * CuentaObjetivoCreate
-         * @description Seguir un órgano como cuenta objetivo.
+         * @description Alta de una cuenta: un órgano (``organo``) o un cliente con varios (``organos``).
+         *
+         *     ``organo`` es el contrato de siempre —seguir un órgano, un clic— y conserva
+         *     su semántica: si el órgano ya es de una cuenta, devuelve esa. ``organos``
+         *     crea una cuenta nueva con todos, todo o nada. Va uno de los dos, no ambos.
          */
         CuentaObjetivoCreate: {
+            /** Nombre */
+            nombre?: string | null;
             /** Nota */
             nota?: string | null;
             /** Organo */
-            organo: string;
+            organo?: string | null;
+            /** Organos */
+            organos?: string[] | null;
+        };
+        /**
+         * CuentaObjetivoUpdate
+         * @description Renombrar una cuenta o cambiar su nota.
+         *
+         *     Un campo ausente no se toca; ``nota: null`` la borra. Es la diferencia que
+         *     ``POST /cuentas`` no puede expresar: allí una nota vacía significa «no
+         *     cambies la que hay».
+         */
+        CuentaObjetivoUpdate: {
+            /** Nombre */
+            nombre?: string | null;
+            /** Nota */
+            nota?: string | null;
+        };
+        /**
+         * CuentaOrgano
+         * @description Un órgano de contratación de una cuenta (v142).
+         */
+        CuentaOrgano: {
+            /** Id */
+            id: number;
+            /** Organo Id */
+            organo_id?: number | null;
+            /** Organo Nombre */
+            organo_nombre: string;
+            /** Organo Norm */
+            organo_norm: string;
+        };
+        /**
+         * CuentaOrganosAdd
+         * @description Añadir órganos a una cuenta que ya existe.
+         */
+        CuentaOrganosAdd: {
+            /** Organos */
+            organos: string[];
+        };
+        /**
+         * CuentaResumen
+         * @description Lo que pasa hoy en una cuenta, en cuatro números.
+         */
+        CuentaResumen: {
+            /** Abiertas */
+            abiertas: number;
+            /** Cuenta Id */
+            cuenta_id: number;
+            /** Oportunidades Activas */
+            oportunidades_activas: number;
+            /** Ultima Publicacion */
+            ultima_publicacion?: string | null;
+            /** Vencen */
+            vencen: number;
+        };
+        /**
+         * CuentasResumen
+         * @description El resumen de todas las cuentas de la organización, con su ámbito.
+         */
+        CuentasResumen: {
+            ambito_abiertas: components["schemas"]["AmbitoCifra"];
+            ambito_oportunidades: components["schemas"]["AmbitoCifra"];
+            ambito_ultima_publicacion: components["schemas"]["AmbitoCifra"];
+            ambito_vencen: components["schemas"]["AmbitoCifra"];
+            /** Filas */
+            filas?: components["schemas"]["CuentaResumen"][];
         };
         /** CuotaEmpresa */
         CuotaEmpresa: {
@@ -8165,6 +8406,16 @@ export interface components {
             positivos: number | null;
             /** Total */
             total: number;
+        };
+        /**
+         * FichaCuenta
+         * @description La ficha de una cuenta: el cliente, sus órganos y qué pasa con él.
+         */
+        FichaCuenta: {
+            cuenta: components["schemas"]["CuentaObjetivo"];
+            oportunidades: components["schemas"]["BloqueOportunidadesCuenta"];
+            publicaciones: components["schemas"]["BloquePublicacionesCuenta"];
+            vencimientos: components["schemas"]["BloqueVencimientosCuenta"];
         };
         /**
          * FilaComparacion
@@ -9639,6 +9890,30 @@ export interface components {
             etiqueta: string;
         };
         /**
+         * OportunidadCuenta
+         * @description Una oportunidad del equipo sobre un expediente de la cuenta.
+         */
+        OportunidadCuenta: {
+            /** Activa */
+            activa: boolean;
+            /** Id */
+            id: number;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Next Action */
+            next_action?: string | null;
+            /** Next Action Due */
+            next_action_due?: string | null;
+            /** Responsable */
+            responsable?: string | null;
+            /** Status */
+            status: string;
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
          * OrganizationCapabilities
          * @description Perfil de capacidad de la organización: con qué puede acreditarse.
          *
@@ -10066,6 +10341,22 @@ export interface components {
             n: number;
             /** Organo Contratacion */
             organo_contratacion: string;
+        };
+        /**
+         * OrganoCandidato
+         * @description Un órgano que el buscador del alta propone, y si ya es de una cuenta.
+         */
+        OrganoCandidato: {
+            /** Cuenta Id */
+            cuenta_id?: number | null;
+            /** Cuenta Nombre */
+            cuenta_nombre?: string | null;
+            /** Expedientes */
+            expedientes: number;
+            /** Organo Nombre */
+            organo_nombre: string;
+            /** Organo Norm */
+            organo_norm: string;
         };
         /** OrganoDetailResult */
         OrganoDetailResult: {
@@ -11074,6 +11365,35 @@ export interface components {
              * @default 0
              */
             total_clasificados: number;
+        };
+        /**
+         * PublicacionCuenta
+         * @description Un expediente de un órgano de la cuenta.
+         */
+        PublicacionCuenta: {
+            /**
+             * Abierta
+             * @default false
+             */
+            abierta: boolean;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe?: number | null;
+            /** Importe Tipo */
+            importe_tipo?: string | null;
+            /** Organo */
+            organo?: string | null;
+            /** Primera Extraccion */
+            primera_extraccion?: string | null;
+            /** Titulo */
+            titulo?: string | null;
+            /** Url */
+            url?: string | null;
         };
         /**
          * PuntoGuion
@@ -13896,6 +14216,28 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * VencimientoCuenta
+         * @description Un contrato de la cuenta que vence, con quien lo tiene.
+         */
+        VencimientoCuenta: {
+            /** Empresa */
+            empresa?: string | null;
+            /** Empresa Id */
+            empresa_id?: number | null;
+            /** Fecha Fin */
+            fecha_fin: string;
+            /** Fecha Fin Origen */
+            fecha_fin_origen: string;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Organo */
+            organo?: string | null;
+            /** Titulo */
+            titulo?: string | null;
         };
         /**
          * VencimientoDia
@@ -17401,6 +17743,8 @@ export interface operations {
         parameters: {
             query?: {
                 organization_id?: number | null;
+                /** @description Sólo la cuenta que contiene este órgano (cero o una). Se compara por el nombre plegado, así que la grafía del expediente encuentra la cuenta aunque el órgano se añadiera escrito de otra forma. */
+                organo?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -17467,6 +17811,170 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Un órgano ya es de otra cuenta, o el nombre ya existe */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_buscar_organos_api_v1_cuentas_buscar_organos_get: {
+        parameters: {
+            query: {
+                /** @description Parte del nombre del órgano */
+                q: string;
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganoCandidato"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_organo_seguido_api_v1_cuentas_por_organo_delete: {
+        parameters: {
+            query: {
+                organo: string;
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ninguna cuenta de la organización tiene ese órgano */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cuentas_resumen_api_v1_cuentas_resumen_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuentasResumen"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ficha_cuenta_api_v1_cuentas__cuenta_id__get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cuenta_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FichaCuenta"];
+                };
+            };
+            /** @description La cuenta no es de tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -17497,6 +18005,168 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_cuenta_api_v1_cuentas__cuenta_id__patch: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cuenta_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuentaObjetivoUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuentaObjetivo"];
+                };
+            };
+            /** @description La cuenta no es de tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Otra cuenta ya se llama así */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_organos_de_cuenta_api_v1_cuentas__cuenta_id__organos_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cuenta_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuentaOrganosAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuentaObjetivo"];
+                };
+            };
+            /** @description La cuenta no es de tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Algún órgano ya es de otra cuenta */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_organo_de_cuenta_api_v1_cuentas__cuenta_id__organos__cuenta_organo_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cuenta_id: number;
+                cuenta_organo_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuentaObjetivo"];
+                };
+            };
+            /** @description La cuenta o el órgano no son de tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Es el único órgano de la cuenta */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

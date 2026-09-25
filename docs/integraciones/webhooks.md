@@ -197,9 +197,16 @@ vigila.
 | `licitacion.cambiada` | Cambia estado, importe, plazo, fin, duración, CPV o URL de un expediente seguido (favorito u oportunidad abierta). | `id_externo`, `changed_fields`, `valores` (`{campo: {antes, despues}}`), `history_id`, `subtipo`, `aviso_titulo` |
 | `licitacion.documento_nuevo` | Aparece un adjunto nuevo en un expediente seguido. El mismo pliego con el token de la URL rotado **no** cuenta (identidad por `source_hash`). | `id_externo`, `documento_id`, `tipo` (`legal`, `technical`, `additional`), `filename` |
 | `licitacion.recurso` | Se publica una resolución de recurso (TACRC) enlazada a un expediente seguido. | `id_externo`, `resolucion_id`, `sentido` (`estimado`, `desestimado`, `inadmitido` o `null`), `tribunal`, `numero_resolucion` |
-| `competidor.adjudicacion_en_mi_segmento` | Una empresa que alguien de la organización vigila gana en un órgano que la organización sigue como cuenta, o en un CPV (4 dígitos) donde tiene oportunidades abiertas. Uno por organización, empresa y expediente. | `id_externo`, `empresa_id`, `empresa`, `motivo` (`cuenta` u `oportunidad_abierta`), `referencia` |
-| `cuenta.publicacion_nueva` | Entra en el corpus un expediente de un órgano que la organización sigue como cuenta objetivo. | `id_externo`, `organo`, `cuenta_id` |
-| `cuenta.vencimiento_proximo` | Un contrato adjudicado de una cuenta seguida entra en los seis meses previos a su fecha de fin (fin publicado o estimado por duración). Una vez por fecha de fin: una prórroga vuelve a avisar. | `id_externo`, `organo`, `cuenta_id`, `fecha_fin` |
+| `competidor.adjudicacion_en_mi_segmento` | Una empresa que alguien de la organización vigila gana en un órgano de una de las cuentas de la organización, o en un CPV (4 dígitos) donde tiene oportunidades abiertas. Uno por organización, empresa y expediente. Con `motivo=cuenta`, `referencia` es el nombre de la cuenta. | `id_externo`, `empresa_id`, `empresa`, `motivo` (`cuenta` u `oportunidad_abierta`), `referencia` |
+| `cuenta.publicacion_nueva` | Entra en el corpus un expediente de cualquiera de los órganos de una cuenta objetivo de la organización. | `id_externo`, `organo`, `cuenta_id`, `cuenta_nombre` |
+| `cuenta.vencimiento_proximo` | Un contrato adjudicado de un órgano de una cuenta entra en los seis meses previos a su fecha de fin (fin publicado o estimado por duración). Una vez por fecha de fin: una prórroga vuelve a avisar. | `id_externo`, `organo`, `cuenta_id`, `cuenta_nombre`, `fecha_fin` |
+
+**Cuentas de varios órganos.** Desde 2026-09-25 una cuenta es un cliente con
+uno o varios órganos de contratación (el Ayuntamiento de Madrid contrata a
+través de seis). En los avisos de cuenta, `organo` es el órgano que publicó y
+`cuenta_nombre` el cliente al que pertenece; en una cuenta de un solo órgano
+son el mismo nombre. `cuenta_nombre` es un campo **añadido**: el resto del
+payload no cambia de forma.
 
 **`subtipo` y `aviso_titulo`.** Los avisos de `licitacion.*` traen el nombre
 de lo que pasó, calculado por `services/avisos.py`: `subtipo` es uno de

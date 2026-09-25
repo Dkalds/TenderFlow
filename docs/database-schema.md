@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-09-18
+Generado: 2026-09-25
 
-Revisión Alembic aplicada: `v141_tasas_anulacion_organo`.
+Revisión Alembic aplicada: `v143_lic_organo_norm_index`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,7 +24,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 11 | 156 | 53 |
+| Licitaciones y fuente | 11 | 156 | 54 |
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 141 | 31 |
@@ -32,8 +32,8 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Seguimiento y notificaciones | 12 | 132 | 35 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 20 | 157 | 28 |
-| **Total** | **96** | **869** | **215** |
+| Otras | 21 | 167 | 31 |
+| **Total** | **97** | **879** | **219** |
 
 ## Licitaciones y fuente
 
@@ -198,7 +198,7 @@ Claves: `PRIMARY KEY (source)`
 
 Claves: `PRIMARY KEY (id_externo)`
 
-Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_tecnologia`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
+Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_organo_norm`, `idx_lic_tecnologia`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
 
 ### `licitaciones_duplicados`
 
@@ -1485,20 +1485,41 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (pursuit_id)`
 
 Índices: `idx_cartera_org_fin`
 
+### `cuenta_organos`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `cuenta_id` | `integer` | no |
+| `organo_nombre` | `text` | no |
+| `organo_norm` | `text` | no |
+| `organo_id` | `integer` | sí |
+| `created_by_user_id` | `integer` | sí |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, organo_norm)`
+
+Índices: `idx_cuenta_organos_cuenta`, `idx_cuenta_organos_organo`
+
 ### `cuentas_objetivo`
 
 | Columna | Tipo | Nulo |
 |---|---|---|
 | `id` | `integer` | no |
 | `organization_id` | `integer` | no |
-| `organo_nombre` | `text` | no |
-| `organo_norm` | `text` | no |
+| `organo_nombre` | `text` | sí |
+| `organo_norm` | `text` | sí |
 | `organo_id` | `integer` | sí |
 | `created_by_user_id` | `integer` | sí |
 | `created_at` | `text` | no |
 | `nota` | `text` | sí |
+| `nombre` | `text` | sí |
+| `nombre_norm` | `text` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, organo_norm)`
+
+Índices: `uq_cuentas_objetivo_org_nombre` (único)
 
 ### `domain_event_dispatches`
 

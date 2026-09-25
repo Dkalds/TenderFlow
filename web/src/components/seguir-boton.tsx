@@ -14,7 +14,9 @@
  * A qué endpoint va cada tipo lo decide `useSeguimiento` (ver su cabecera):
  * mientras dura la fase de escritura doble de ADR-031 §B, un favorito sigue
  * entrando por `/watchlist/items` y una empresa por `/competitive/watchlist`,
- * que escriben su tabla y `follows`. El componente no lo sabe ni lo necesita.
+ * que escriben su tabla y `follows`; un órgano entra por `/cuentas`, porque el
+ * seguimiento de órgano con efectos es la cuenta objetivo de la organización
+ * (F1.5). El componente no lo sabe ni lo necesita.
  *
  * Decisiones de comportamiento, que son el motivo de que esto sea un componente
  * y no cinco:
@@ -132,11 +134,13 @@ export function SeguirBoton({
   onClick,
   ...nativo
 }: SeguirBotonProps) {
-  const seguimiento = useSeguimiento(targetType, kind);
   const objetivo = React.useMemo(
     () => (equivalentes && equivalentes.length > 0 ? equivalentes : [targetId]),
     [equivalentes, targetId],
   );
+  // El objetivo viaja porque la fuente de órganos (cuentas) pregunta por él
+  // en vez de listar; las demás lo ignoran.
+  const seguimiento = useSeguimiento(targetType, kind, objetivo);
 
   const sigue = seguimiento.sigue(objetivo);
   const { enVuelo, alternar: alternarSeguimiento } = seguimiento;

@@ -367,6 +367,29 @@ export const pursuitKeys = {
 };
 
 /**
+ * Cuentas objetivo de la organización (F1.5). `deOrgano` es la pregunta del
+ * botón «Seguir» del panel de órgano de Mercado —¿este órgano ya es de una
+ * cuenta?—, que contesta el servidor porque es quien pliega el nombre. `all` es
+ * prefijo de todas: seguir desde Mercado refresca la lista, el resumen y la
+ * ficha de /cuentas, y cualquier cambio en /cuentas refresca el botón.
+ *
+ * `buscarOrganos` lleva el término: cada tecla es otra respuesta, y con la
+ * misma clave el buscador enseñaría los candidatos del término anterior.
+ */
+export const cuentaKeys = {
+  all: ["cuentas"] as const,
+  lista: (organizationId: OrganizacionDeClave) => ["cuentas", "lista", organizationId] as const,
+  resumen: (organizationId: OrganizacionDeClave) =>
+    ["cuentas", "resumen", organizationId] as const,
+  ficha: (organizationId: OrganizacionDeClave, cuentaId: number) =>
+    ["cuentas", "ficha", organizationId, cuentaId] as const,
+  deOrgano: (organizationId: OrganizacionDeClave, organo: string) =>
+    ["cuentas", "de-organo", organizationId, organo] as const,
+  buscarOrganos: (organizationId: OrganizacionDeClave, termino: string) =>
+    ["cuentas", "buscar-organos", organizationId, termino] as const,
+};
+
+/**
  * Etiquetas de organización (F1.6). `porObjeto` lleva los ids pedidos porque
  * la respuesta sólo trae los objetos de esa página; `all` es prefijo de todo y
  * es lo que invalidan las mutaciones.
