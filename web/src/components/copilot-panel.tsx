@@ -1,15 +1,43 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { Sparkles, Send, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { ChatThread } from "@/components/chat-thread";
 import { useChat } from "@/hooks/use-ask";
 import { useUiStore } from "@/lib/ui-store";
+
+// El hilo es lo único pesado del copiloto: pinta Markdown con react-markdown y
+// remark-gfm. Entra bajo demanda para que no lo lleven en el First Load ni el
+// layout del dashboard ni /resumen, que importa de aquí `CopilotBar`. El panel
+// —cabecera, ejemplos, caja de texto— se abre sin esperarlo, y la primera
+// pregunta sale a la red mientras el hilo termina de llegar.
+const ChatThread = dynamic(() => import("@/components/chat-thread").then((modulo) => modulo.ChatThread), {
+  ssr: false,
+  // Solo se monta cuando ya hay conversación, así que lo que se espera es una
+  // respuesta: el mismo esqueleto que pinta el hilo antes del primer token.
+  loading: () => (
+    <div className="space-y-2" aria-busy="true">
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-5/6" />
+    </div>
+  ),
+});
+
+/**
+ * Adelanta la descarga del hilo en cuanto hay intención de preguntar: al abrir
+ * el panel o al enfocar la barra. Para cuando llega la primera pregunta, ya
+ * está. Un fallo se ignora: `ChatThread` lo reintenta al montarse.
+ */
+function precargarHilo(): void {
+  import("@/components/chat-thread").catch(() => undefined);
+}
 
 const EXAMPLE_QUESTIONS = [
   "¿Cuáles son las licitaciones más recientes?",
@@ -32,6 +60,8 @@ interface CopilotPanelProps {
 export function CopilotPanel({ open, onOpenChange, seedQuestion, seedKey = 0, idExterno }: CopilotPanelProps) {
   const { messages, streaming, loading, error, send, stop, reset } = useChat({ idExterno });
   const [input, setInput] = React.useState("");
+
+  React.useEffect(() => precargarHilo(), []);
 
   // Run the seeded question each time the launcher submits a new one.
   React.useEffect(() => {
@@ -91,7 +121,7 @@ export function CopilotPanel({ open, onOpenChange, seedQuestion, seedKey = 0, id
             </div>
           )}
 
-          <ChatThread messages={messages} streaming={streaming} loading={loading} error={error} />
+          {hasConversation && <ChatThread messages={messages} streaming={streaming} loading={loading} error={error} />}
         </div>
 
         <div className="border-border mt-3 space-y-2 border-t pt-3">
@@ -168,6 +198,9 @@ export function CopilotBar({ className }: { className?: string }) {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            // Quien enfoca la barra va a preguntar: el hilo se pide ya.
+            onFocus={precargarHilo}
+            onPointerEnter={precargarHilo}
             placeholder="Pregúntale a tus licitaciones…"
             aria-label="Pregunta al copiloto"
             className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none"

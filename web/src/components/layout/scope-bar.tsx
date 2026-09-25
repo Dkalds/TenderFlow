@@ -18,6 +18,7 @@ import { ExportPopover } from "@/components/export-popover";
 import { NotificationBell } from "@/components/notification-bell";
 import { useAnnounceOnChange } from "@/components/live-region";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useValorDiferido, type ValorDiferido } from "@/hooks/use-valor-diferido";
 import { useDataFreshness } from "@/hooks/use-data-freshness";
 import { fetchWithAuth } from "@/lib/api-client";
 import { estadoLabel } from "@/lib/estados";
@@ -118,6 +119,17 @@ const IMPORTE_PRESETS = [
   { label: "> 1M", value: 1_000_000 },
 ];
 
+/**
+ * Espera de la búsqueda antes de tocar la URL. Cada escritura cambia la clave
+ * de todas las consultas con filtros —en Resumen, ~7 agregados sobre el
+ * histórico entero— y apila una entrada de deshacer: por tecla eran siete
+ * peticiones y una entrada por letra.
+ */
+const RETRASO_BUSQUEDA_MS = 300;
+
+const CABECERA =
+  "tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden";
+
 interface Chip {
   key: string;
   value: string;
@@ -153,10 +165,16 @@ function ScopeEditor({
   meta,
   shows,
   singleTecnologia,
+  busqueda,
 }: {
   meta: MetaFilters | undefined;
   shows: (key: GlobalFilterKey) => boolean;
   singleTecnologia: boolean;
+  /**
+   * El texto de búsqueda vive en la barra y no aquí: el editor se desmonta al
+   * cerrarse, y cerrarlo antes de que venza la espera perdería lo tecleado.
+   */
+  busqueda: ValorDiferido<string>;
 }) {
   const filters = useFilters();
   const { history, addToHistory } = useSearchHistory();
@@ -186,13 +204,19 @@ function ScopeEditor({
       {shows("q") && (
         <div>
           <span className={label}>Búsqueda</span>
+          {/* Cada tecla cambia sólo el campo; la URL recibe el valor cuando se
+              deja de teclear (`RETRASO_BUSQUEDA_MS`), o en el acto con Enter o
+              al elegir una búsqueda reciente. */}
           <SearchAutocomplete
             aria-label="Buscar licitaciones"
             inputClassName="h-8 rounded-md bg-background/70 pl-8 text-xs"
             placeholder="Licitaciones, órganos, empresas…"
-            value={filters.q}
-            onChange={filters.setQ}
-            onSubmit={addToHistory}
+            value={busqueda.valor}
+            onChange={busqueda.cambiar}
+            onSubmit={(valor) => {
+              busqueda.aplicarYa(valor);
+              addToHistory(valor);
+            }}
             recentSearches={history}
             leftIcon={<Search className="h-3.5 w-3.5" />}
           />
@@ -342,6 +366,9 @@ export function ScopeBar() {
   const { relative } = useDataFreshness();
   const { canUndo, canRedo, undo, redo } = useScopeHistory();
   const [editorOpen, setEditorOpen] = React.useState(false);
+  // La búsqueda se teclea aquí y llega a la URL con retraso. Vive en la barra,
+  // que no se desmonta al navegar, y no en el editor, que sí al cerrarse.
+  const busqueda = useValorDiferido(filters.q, filters.setQ, RETRASO_BUSQUEDA_MS);
   // El separador con el contenido no es fijo: aparece sólo cuando hay algo
   // desplazado por debajo de la barra (ver `scroll-edge.tsx`).
   const scrolled = useScrollEdgeState();
@@ -366,7 +393,21 @@ export function ScopeBar() {
       : null,
   );
 
-  const { data: meta } = useMetaFilters(filtersApply);
+  // `/meta/filters` (los catálogos de CCAA, tecnología, estado y
+  // procedimiento) sólo lo usa el editor, que casi nunca se abre: se pedía en
+  // cada carga de cada pantalla con ámbito. Ahora se pide al acercarse a
+  // «+ Añadir» (puntero o foco, para que al abrir ya esté) o al abrirlo, y se
+  // queda pedido. La única excepción es el primer render que ya lo necesita:
+  // un chip de procedimiento se rotula con la etiqueta del catálogo, y sin él
+  // enseñaría el código CODICE.
+  const [catalogoPedido, setCatalogoPedido] = React.useState(false);
+  const chipsSinEtiqueta = shows("procedimiento") && filters.procedimientos.length > 0;
+  const { data: meta } = useMetaFilters(filtersApply && (catalogoPedido || chipsSinEtiqueta));
+  const pedirCatalogo = React.useCallback(() => setCatalogoPedido(true), []);
+  const onEditorOpenChange = React.useCallback((open: boolean) => {
+    setEditorOpen(open);
+    if (open) setCatalogoPedido(true);
+  }, []);
 
   // Params con los que se pide el recuento: SOLO los del subconjunto que la
   // pantalla aplica de verdad.
@@ -410,10 +451,11 @@ export function ScopeBar() {
   // completo, que es justo lo que aquí hay que recortar.
   const { data: overview, isLoading: countLoading } = useQuery<OverviewData>({
     queryKey: analyticsKeys.overview(scopedParams),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const search = new URLSearchParams(scopedParams).toString();
       return fetchWithAuth<OverviewData>(
         search ? `/api/v1/analytics/overview?${search}` : "/api/v1/analytics/overview",
+        { signal },
       );
     },
     staleTime: 60_000,
@@ -489,186 +531,69 @@ export function ScopeBar() {
 
   // Contrato de filtros por página: donde no aplican, no se pintan chips que no
   // filtran nada. Si además hay filtros activos, se dice.
-  if (!filtersApply) {
-    return (
-      <>
-        {/* `overflow-x-auto` como la barra con ámbito. Sin él, a 375 px el
-            rótulo «Ámbito · no aplica…» más las utilidades medían ~650 px y
-            empujaban el documento entero: era el desborde de 274 px de Mi
-            Watchlist y de la Agenda (`/mi-pipeline`) en `responsive.spec.ts`, que no son
-            pantallas con ámbito. El rótulo, además, se oculta en móvil. */}
-        <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden">
-          {activeCount > 0 ? (
-            <>
-              <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span className="text-muted-foreground text-xs">
-                El ámbito global no aplica en esta pantalla ({activeCount}{" "}
-                {activeCount === 1 ? "filtro activo" : "filtros activos"}).
-              </span>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={filters.resetFilters}>
-                <RotateCcw className="h-3 w-3" />
-                Limpiar
-              </Button>
-            </>
-          ) : (
-            <span className="text-muted-foreground hidden flex-none font-mono text-[9px] font-semibold tracking-[0.14em] uppercase sm:inline">
-              Ámbito · no aplica en esta pantalla
-            </span>
-          )}
-          <div className="flex-1" />
-          <ScopeUtilities onSearch={() => setCommandOpen(true)} relative={relative} />
-        </header>
-        <ScrollEdge active={scrolled} />
-      </>
-    );
-  }
-
+  //
+  // Las dos ramas comparten cabecera y el hueco del final (exportar y campana),
+  // en la misma posición del árbol; sólo cambia el contenido de la izquierda.
+  // Antes cada rama pintaba su propia `NotificationBell`: al pasar de un
+  // espacio con ámbito a otro sin él, React la desmontaba, cerraba el SSE de
+  // `/licitaciones/stream`, abría otro y perdía el contador en vivo.
   return (
     <>
       {/* La barra scrollea en horizontal, así que el borde no puede vivir dentro
           (lo recortaría el `overflow`): va como hermano, con alto cero. */}
-      <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden">
-        <div className="border-border/70 flex flex-none items-center gap-1.5 border-r pr-2.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={undo}
-                disabled={!canUndo}
-                aria-label="Deshacer cambio de ámbito"
-                className={cn(
-                  NAV_BUTTON,
-                  canUndo
-                    ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
-                    : "border-border/40 text-muted-foreground/40 cursor-default",
+      <header className={CABECERA}>
+        {filtersApply ? (
+          <BarraConAmbito
+            chips={chips}
+            editor={
+              <>
+                <ScopeEditor
+                  meta={meta}
+                  shows={shows}
+                  singleTecnologia={singleValueKeys.includes("tecnologia")}
+                  busqueda={busqueda}
+                />
+                {activeCount > 0 && (
+                  <div className="border-border/70 mt-1 border-t pt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-full justify-start px-2 text-xs"
+                      onClick={filters.resetFilters}
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Limpiar el ámbito
+                    </Button>
+                  </div>
                 )}
-              >
-                <Undo2 className="h-3 w-3" aria-hidden="true" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Deshacer cambio de ámbito</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={redo}
-                disabled={!canRedo}
-                aria-label="Rehacer cambio de ámbito"
-                className={cn(
-                  NAV_BUTTON,
-                  canRedo
-                    ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
-                    : "border-border/40 text-muted-foreground/40 cursor-default",
-                )}
-              >
-                <Redo2 className="h-3 w-3" aria-hidden="true" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Rehacer cambio de ámbito</TooltipContent>
-          </Tooltip>
-        </div>
-
-        <span className="text-muted-foreground flex-none font-mono text-[9px] leading-none font-semibold tracking-[0.14em] uppercase">
-          Ámbito
-        </span>
-
-        <div className="flex min-w-0 items-center gap-1.5">
-          {chips.map((chip) => (
-            <ScopeChip key={`${chip.key}-${chip.value}`} chip={chip} />
-          ))}
-
-          <Popover open={editorOpen} onOpenChange={setEditorOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-haspopup="dialog"
-                className="border-border text-muted-foreground hover:border-primary/50 hover:text-foreground inline-flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 text-xs font-medium transition-colors duration-140 ease-out"
-              >
-                + Añadir
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-80">
-              <ScopeEditor meta={meta} shows={shows} singleTecnologia={singleValueKeys.includes("tecnologia")} />
-              {activeCount > 0 && (
-                <div className="border-border/70 mt-1 border-t pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-full justify-start px-2 text-xs"
-                    onClick={filters.resetFilters}
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    Limpiar el ámbito
-                  </Button>
-                </div>
-              )}
-            </PopoverContent>
-          </Popover>
-        </div>
-
-        {/* El caso subconjunto también merece el aviso. Antes solo se decía «el
-            ámbito global no aplica» cuando NO aplicaba nada; con una pantalla
-            que aplica parte del ámbito —Radar, que filtra por tecnología y por
-            nada más— los filtros restantes quedaban activos, visibles en la URL
-            y sin efecto, sin que nada lo dijera. Se ofrece quitarlos por
-            separado: «Limpiar el ámbito» se llevaría por delante los que sí
-            filtran esta pantalla. */}
-        {outOfScopeCount > 0 && (
-          <div className="flex flex-none items-center gap-1.5">
-            <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span className="text-muted-foreground text-xs">
-              {outOfScopeCount === 1
-                ? "1 filtro activo no aplica en esta pantalla"
-                : `${outOfScopeCount} filtros activos no aplican en esta pantalla`}
-            </span>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearOutOfScope}>
-              <RotateCcw className="h-3 w-3" />
-              {outOfScopeCount === 1 ? "Quitarlo" : "Quitarlos"}
-            </Button>
-          </div>
+              </>
+            }
+            editorOpen={editorOpen}
+            onEditorOpenChange={onEditorOpenChange}
+            onAcercarseAlEditor={pedirCatalogo}
+            historial={{ canUndo, canRedo, undo, redo }}
+            outOfScopeCount={outOfScopeCount}
+            onClearOutOfScope={clearOutOfScope}
+            recuento={countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
+            relative={relative}
+            onSearch={() => setCommandOpen(true)}
+          />
+        ) : (
+          <BarraSinAmbito
+            activeCount={activeCount}
+            onReset={filters.resetFilters}
+            relative={relative}
+            onSearch={() => setCommandOpen(true)}
+          />
         )}
-
-        <div className="flex-1" />
-
-        <div className="text-muted-foreground flex flex-none items-center gap-[7px] text-[11px]">
-          <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-            <span className="absolute inset-0 rounded-full bg-[hsl(var(--success))] opacity-60 motion-safe:animate-ping" />
-            <span className="relative h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" />
-          </span>
-          <span className="tf-tnum">
-            {countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
-          </span>
-          <span aria-hidden="true">
-            ·
-          </span>
-          <span>{relative ? `sync ${relative}` : "sin registro de sync"}</span>
-        </div>
-
-        <SavedViewsMenu />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={() => setCommandOpen(true)}
-              aria-label="Abrir búsqueda y comandos"
-              className="border-border/80 text-muted-foreground hover:text-foreground inline-flex h-7 flex-none cursor-pointer items-center gap-1.5 rounded-md border bg-transparent px-2.5 text-xs transition-colors duration-140 ease-out"
-            >
-              Buscar
-              <span className="border-border/70 rounded border px-1 py-0.5 font-mono text-[9px] leading-none">⌘K</span>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Buscar licitaciones, órganos, empresas…</TooltipContent>
-        </Tooltip>
-
         <div className="border-border/70 flex flex-none items-center gap-1 border-l pl-2.5">
           {/* «Exportar ámbito», no «Exportar» a secas: varias pantallas tienen su
               propia exportación con el corte de esa sección, y dos botones con la
               misma etiqueta a cuatro dedos de distancia no se distinguen. Este
-              saca lo que gobierna esta barra — el ámbito activo. */}
+              saca lo que gobierna esta barra — el ámbito activo. Sin ámbito, el
+              rótulo de siempre. */}
           <ExportPopover
-            label="Exportar ámbito"
+            label={filtersApply ? "Exportar ámbito" : undefined}
             className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs"
           />
           <NotificationBell />
@@ -677,31 +602,208 @@ export function ScopeBar() {
       <ScrollEdge active={scrolled} />
       {/* Primer uso: qué es esta barra. Solo en la rama con ámbito, que es
           donde hay algo que explicar; se cierra una vez por navegador. */}
-      <AmbitoIntro />
+      {filtersApply && <AmbitoIntro />}
     </>
   );
 }
 
-/** Cluster de utilidades para las pantallas sin ámbito (mismo alineado). */
-function ScopeUtilities({ onSearch, relative }: { onSearch: () => void; relative: string | null }) {
+const BOTON_BUSCAR =
+  "border-border/80 text-muted-foreground hover:text-foreground inline-flex h-7 flex-none cursor-pointer items-center gap-1.5 rounded-md border bg-transparent px-2.5 text-xs transition-colors duration-140 ease-out";
+
+const ATAJO_BUSCAR = "border-border/70 rounded border px-1 py-0.5 font-mono text-[9px] leading-none";
+
+/**
+ * Contenido de la barra en las pantallas que no aplican el ámbito. Comparte la
+ * cabecera con scroll horizontal de la otra rama: sin él, a 375 px el rótulo
+ * «Ámbito · no aplica…» más las utilidades medían ~650 px y empujaban el
+ * documento entero (el desborde de 274 px de Mi Watchlist y de la Agenda en
+ * `responsive.spec.ts`). El rótulo, además, se oculta en móvil.
+ */
+function BarraSinAmbito({
+  activeCount,
+  onReset,
+  relative,
+  onSearch,
+}: {
+  activeCount: number;
+  onReset: () => void;
+  relative: string | null;
+  onSearch: () => void;
+}) {
   return (
     <>
+      {activeCount > 0 ? (
+        <>
+          <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="text-muted-foreground text-xs">
+            El ámbito global no aplica en esta pantalla ({activeCount}{" "}
+            {activeCount === 1 ? "filtro activo" : "filtros activos"}).
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onReset}>
+            <RotateCcw className="h-3 w-3" />
+            Limpiar
+          </Button>
+        </>
+      ) : (
+        <span className="text-muted-foreground hidden flex-none font-mono text-[9px] font-semibold tracking-[0.14em] uppercase sm:inline">
+          Ámbito · no aplica en esta pantalla
+        </span>
+      )}
+      <div className="flex-1" />
       <span className="text-muted-foreground hidden flex-none text-[11px] sm:inline">
         {relative ? `sync ${relative}` : "sin registro de sync"}
       </span>
-      <button
-        type="button"
-        onClick={onSearch}
-        aria-label="Abrir búsqueda y comandos"
-        className="border-border/80 text-muted-foreground hover:text-foreground inline-flex h-7 flex-none cursor-pointer items-center gap-1.5 rounded-md border bg-transparent px-2.5 text-xs transition-colors duration-140 ease-out"
-      >
+      <button type="button" onClick={onSearch} aria-label="Abrir búsqueda y comandos" className={BOTON_BUSCAR}>
         Buscar
-        <span className="border-border/70 rounded border px-1 py-0.5 font-mono text-[9px] leading-none">⌘K</span>
+        <span className={ATAJO_BUSCAR}>⌘K</span>
       </button>
-      <div className="border-border/70 flex flex-none items-center gap-1 border-l pl-2.5">
-        <ExportPopover className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs" />
-        <NotificationBell />
+    </>
+  );
+}
+
+/** Contenido de la barra en las pantallas que aplican el ámbito (todo o parte). */
+function BarraConAmbito({
+  chips,
+  editor,
+  editorOpen,
+  onEditorOpenChange,
+  onAcercarseAlEditor,
+  historial,
+  outOfScopeCount,
+  onClearOutOfScope,
+  recuento,
+  relative,
+  onSearch,
+}: {
+  chips: Chip[];
+  editor: React.ReactNode;
+  editorOpen: boolean;
+  onEditorOpenChange: (open: boolean) => void;
+  /** Puntero o foco sobre «+ Añadir»: el editor está a punto de abrirse. */
+  onAcercarseAlEditor: () => void;
+  historial: { canUndo: boolean; canRedo: boolean; undo: () => void; redo: () => void };
+  outOfScopeCount: number;
+  onClearOutOfScope: () => void;
+  recuento: string;
+  relative: string | null;
+  onSearch: () => void;
+}) {
+  const { canUndo, canRedo, undo, redo } = historial;
+  return (
+    <>
+      <div className="border-border/70 flex flex-none items-center gap-1.5 border-r pr-2.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!canUndo}
+              aria-label="Deshacer cambio de ámbito"
+              className={cn(
+                NAV_BUTTON,
+                canUndo
+                  ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
+                  : "border-border/40 text-muted-foreground/40 cursor-default",
+              )}
+            >
+              <Undo2 className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Deshacer cambio de ámbito</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!canRedo}
+              aria-label="Rehacer cambio de ámbito"
+              className={cn(
+                NAV_BUTTON,
+                canRedo
+                  ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
+                  : "border-border/40 text-muted-foreground/40 cursor-default",
+              )}
+            >
+              <Redo2 className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Rehacer cambio de ámbito</TooltipContent>
+        </Tooltip>
       </div>
+
+      <span className="text-muted-foreground flex-none font-mono text-[9px] leading-none font-semibold tracking-[0.14em] uppercase">
+        Ámbito
+      </span>
+
+      <div className="flex min-w-0 items-center gap-1.5">
+        {chips.map((chip) => (
+          <ScopeChip key={`${chip.key}-${chip.value}`} chip={chip} />
+        ))}
+
+        <Popover open={editorOpen} onOpenChange={onEditorOpenChange}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              onPointerEnter={onAcercarseAlEditor}
+              onFocus={onAcercarseAlEditor}
+              className="border-border text-muted-foreground hover:border-primary/50 hover:text-foreground inline-flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 text-xs font-medium transition-colors duration-140 ease-out"
+            >
+              + Añadir
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-80">
+            {editor}
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      {/* El caso subconjunto también merece el aviso. Antes solo se decía «el
+            ámbito global no aplica» cuando NO aplicaba nada; con una pantalla
+            que aplica parte del ámbito —Radar, que filtra por tecnología y por
+            nada más— los filtros restantes quedaban activos, visibles en la URL
+            y sin efecto, sin que nada lo dijera. Se ofrece quitarlos por
+            separado: «Limpiar el ámbito» se llevaría por delante los que sí
+            filtran esta pantalla. */}
+      {outOfScopeCount > 0 && (
+        <div className="flex flex-none items-center gap-1.5">
+          <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="text-muted-foreground text-xs">
+            {outOfScopeCount === 1
+              ? "1 filtro activo no aplica en esta pantalla"
+              : `${outOfScopeCount} filtros activos no aplican en esta pantalla`}
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onClearOutOfScope}>
+            <RotateCcw className="h-3 w-3" />
+            {outOfScopeCount === 1 ? "Quitarlo" : "Quitarlos"}
+          </Button>
+        </div>
+      )}
+
+      <div className="flex-1" />
+
+      <div className="text-muted-foreground flex flex-none items-center gap-[7px] text-[11px]">
+        <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+          <span className="absolute inset-0 rounded-full bg-[hsl(var(--success))] opacity-60 motion-safe:animate-ping" />
+          <span className="relative h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" />
+        </span>
+        <span className="tf-tnum">{recuento}</span>
+        <span aria-hidden="true">·</span>
+        <span>{relative ? `sync ${relative}` : "sin registro de sync"}</span>
+      </div>
+
+      <SavedViewsMenu />
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" onClick={onSearch} aria-label="Abrir búsqueda y comandos" className={BOTON_BUSCAR}>
+            Buscar
+            <span className={ATAJO_BUSCAR}>⌘K</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Buscar licitaciones, órganos, empresas…</TooltipContent>
+      </Tooltip>
     </>
   );
 }

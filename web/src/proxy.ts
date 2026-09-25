@@ -1,6 +1,10 @@
-/** Proxy de borde: sesión de dashboard y CSP (con nonce salvo en lo prerenderizado). */
+/**
+ * Proxy de borde: sesión de dashboard, CSP (con nonce salvo en lo
+ * prerenderizado) y la paginación de los hubs públicos desde caché.
+ */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { destinoPaginaInterna, esRutaPaginacionInterna } from "@/lib/paginacion-hubs";
 import { esPaginaPrerenderizada, esPaginaPublica } from "@/lib/rutas-publicas";
 
 // Los recursos técnicos que viajan sin sesión. Las **páginas** públicas no
@@ -116,27 +120,37 @@ function withSecurityHeaders(response: NextResponse, csp: string) {
 }
 
 /**
- * Deja pasar la request. Con nonce hay que reenviarlo en las cabeceras de la
- * **request**: Next lo lee de ahí (no sólo de la respuesta) para auto-estampar
- * sus propios scripts inline de hidratación y RSC. Sin ese reenvío, ninguno
- * llevaría nonce y `strict-dynamic` los bloquearía todos — página en blanco,
- * porque React nunca hidrata.
+ * Deja pasar la request, o la reescribe a `destino` si se da. Con nonce hay que
+ * reenviarlo en las cabeceras de la **request**: Next lo lee de ahí (no sólo
+ * de la respuesta) para auto-estampar sus propios scripts inline de hidratación
+ * y RSC. Sin ese reenvío, ninguno llevaría nonce y `strict-dynamic` los
+ * bloquearía todos — página en blanco, porque React nunca hidrata.
  *
- * En la rama sin nonce se devuelve un `next()` pelado: tocar las cabeceras de
- * la request no aporta nada y el HTML ya viene horneado del build.
+ * En la rama sin nonce se devuelve un `next()` (o un `rewrite()`) pelado: tocar
+ * las cabeceras de la request no aporta nada y el HTML ya viene horneado del
+ * build.
  */
-function continuar(request: NextRequest, nonce: string | null, csp: string) {
-  if (!nonce) return NextResponse.next();
+function continuar(request: NextRequest, nonce: string | null, csp: string, destino?: URL) {
+  if (!nonce) return destino ? NextResponse.rewrite(destino) : NextResponse.next();
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  const init = { request: { headers: requestHeaders } };
+  return destino ? NextResponse.rewrite(destino, init) : NextResponse.next(init);
 }
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const nonce = esPaginaPrerenderizada(pathname) ? null : btoa(crypto.randomUUID());
   const csp = buildCsp(nonce);
+
+  // Las páginas internas de paginación sólo se alcanzan por el rewrite de más
+  // abajo, que no vuelve a pasar por aquí. Lo que llega con su prefijo es un
+  // acceso directo, y servirlo publicaría cada página de un hub bajo una segunda
+  // URL: no existe, con sesión o sin ella (ver `lib/paginacion-hubs.ts`).
+  if (esRutaPaginacionInterna(pathname)) {
+    return withSecurityHeaders(new NextResponse(null, { status: 404 }), csp);
+  }
 
   // La portada pasó de ser un `redirect("/resumen")` a servir la landing
   // pública, que es la única página que un buscador puede indexar. Quien ya
@@ -147,7 +161,14 @@ export function proxy(request: NextRequest) {
   }
 
   if (esRutaPublica(pathname)) {
-    return withSecurityHeaders(continuar(request, nonce, csp), csp);
+    // `?p=N` de un hub se sirve desde un segmento interno para que cada página
+    // tenga su entrada en la caché ISR. Es un rewrite, no un redirect: la URL
+    // del navegador —la indexada— no cambia.
+    const destino = destinoPaginaInterna(pathname, request.nextUrl.searchParams);
+    return withSecurityHeaders(
+      continuar(request, nonce, csp, destino ? new URL(destino, request.url) : undefined),
+      csp,
+    );
   }
 
   if (!request.cookies.get("session")) {

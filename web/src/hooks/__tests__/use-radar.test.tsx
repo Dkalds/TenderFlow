@@ -6,6 +6,11 @@ import { useDismissRadarTender, useRadar, useRadarDismissals, useRestoreRadarTen
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 import { registrarEvento } from "@/lib/analytics";
 
+// La organización activa se puede cambiar a mitad de test (ver «datos previos»).
+const { organizacionRef } = vi.hoisted(() => ({
+  organizacionRef: { current: 7 as number | null | undefined },
+}));
+
 // La telemetría se dobla entera: aquí se fija *qué* evento sale del triaje, no
 // que la librería de Vercel funcione.
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
@@ -13,7 +18,7 @@ vi.mock("@/hooks/use-organization", () => ({
   // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
   // ninguna», que sí es una respuesta y deja pasar la consulta.
   organizacionResuelta: (id: unknown) => id !== undefined,
-  useActiveOrganizationId: () => 7,
+  useActiveOrganizationId: () => organizacionRef.current,
 }));
 
 /**
@@ -68,6 +73,7 @@ function scoringUrl(fetchMock: ReturnType<typeof stubApi>): string | undefined {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.mocked(registrarEvento).mockClear();
+  organizacionRef.current = 7;
 });
 
 describe("useRadar", () => {
@@ -148,6 +154,91 @@ describe("useRadar", () => {
     await waitFor(() => expect(result.current.data).toBeDefined());
 
     expect(scoringUrl(fetchMock)).not.toContain("tecnologia=");
+  });
+
+  it("pasa el signal: la petición se aborta si nadie la espera ya", async () => {
+    // Un ranking sobre todo el corpus abierto que ya no se va a pintar no debe
+    // seguir ocupando la API.
+    const pedidas: Request[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((request: Request) => {
+        pedidas.push(request);
+        return new Promise(() => {});
+      }),
+    );
+
+    const { unmount } = renderHook(() => useRadar(), { wrapper });
+    await waitFor(() => expect(pedidas).toHaveLength(1));
+    expect(pedidas[0].signal.aborted).toBe(false);
+
+    unmount();
+    await waitFor(() => expect(pedidas[0].signal.aborted).toBe(true));
+  });
+});
+
+describe("useRadar — datos previos al cambiar un filtro", () => {
+  /**
+   * Un solo `QueryClient` para todo el test: el `wrapper` de arriba crea uno
+   * por render, y con `rerender` cada render empezaría con la caché vacía.
+   */
+  function wrapperEstable() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return function ConClienteEstable({ children }: { children: React.ReactNode }) {
+      return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    };
+  }
+
+  /** Ranking por tecnología; la de `pendiente` no contesta hasta que se libere. */
+  function stubPorTecnologia(pendiente: string) {
+    let liberar: () => void = () => {};
+    const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
+      const url = callUrl(call);
+      const respuesta = () =>
+        jsonResponse({ opportunities: [scored(url.includes("tecnologia=") ? "FILTRADA" : "GLOBAL", 60)] });
+      if (url.includes(`tecnologia=${pendiente}`)) {
+        return new Promise((resolve) => {
+          liberar = () => resolve(respuesta());
+        });
+      }
+      return Promise.resolve(respuesta());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return { liberar: () => liberar() };
+  }
+
+  it("cambiar la tecnología conserva el ranking anterior en vez de volver al esqueleto", async () => {
+    const api = stubPorTecnologia("SAP");
+    const { result, rerender } = renderHook(({ tecnologia }) => useRadar(tecnologia), {
+      wrapper: wrapperEstable(),
+      initialProps: { tecnologia: null as string | null },
+    });
+    await waitFor(() => expect(result.current.data?.items[0].id_externo).toBe("GLOBAL"));
+
+    rerender({ tecnologia: "SAP" });
+    // Mientras llega el nuevo, la bandeja sigue con el anterior: sin esqueleto.
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data?.items[0].id_externo).toBe("GLOBAL");
+
+    api.liberar();
+    await waitFor(() => expect(result.current.data?.items[0].id_externo).toBe("FILTRADA"));
+  });
+
+  it("no conserva el ranking de otra organización", async () => {
+    // El de otro equipo no es «el dato de antes»: pintarlo bajo éste mentiría.
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(() => useRadar(), { wrapper: wrapperEstable() });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise(() => {})),
+    );
+    organizacionRef.current = 8;
+    rerender();
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.data).toBeUndefined();
   });
 });
 

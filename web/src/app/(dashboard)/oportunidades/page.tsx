@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { VistaEsqueleto } from "@/components/layout/space-shell-esqueleto";
 import { TODAS_LAS_ETIQUETAS } from "@/components/etiquetas/filtro-etiqueta";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { TableroFiltros } from "./_components/tablero-filtros";
@@ -33,12 +33,9 @@ import TableroView from "./_components/tablero-view";
  * que sólo se monta cuando el tablero es la vista activa.
  */
 
-const loading = () => (
-  <div className="space-y-4">
-    <Skeleton className="h-24 w-full rounded-xl" />
-    <Skeleton className="h-[320px] w-full rounded-xl" />
-  </div>
-);
+// El mismo esqueleto que pinta `loading.tsx` de la ruta: la vista aparece donde
+// estaba, sin un segundo salto al llegar su chunk.
+const loading = () => <VistaEsqueleto />;
 
 const VIEWS: Record<string, React.ComponentType> = {
   cartera: dynamic(() => import("./_components/cartera-view"), { loading }),

@@ -28,6 +28,7 @@ comandos
 comercial
 commitees
 componentes
+compresion
 conector
 confirmacion
 confirmas
@@ -54,6 +55,7 @@ elegible
 elipsis
 envrionment
 excede
+expresion
 extensiones
 falso
 fase
@@ -99,6 +101,7 @@ mata
 medias
 mis
 momento
+montajes
 nd
 negociable
 normales

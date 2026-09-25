@@ -168,7 +168,9 @@ const filtersStub = {
 };
 vi.mock("@/lib/filters", () => ({ useFilters: () => filtersStub }));
 
-import RadarPage from "@/app/(dashboard)/radar/page";
+// La pantalla es `RadarView`; `page.tsx` solo la envuelve en servidor con el
+// prefetch, que en jsdom no tiene cabeceras de petición que leer.
+import { RadarView as RadarPage } from "@/app/(dashboard)/radar/_components/radar-view";
 
 function renderRadar() {
   const client = new QueryClient({

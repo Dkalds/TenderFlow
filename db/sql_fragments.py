@@ -323,6 +323,41 @@ FOLD_DST = "aaaaeeeeiiiioooouuuuncAAAAEEEEIIIIOOOOUUUUNC"
 FOLD_TABLE = str.maketrans(FOLD_SRC, FOLD_DST)
 
 
+def _literal_constante_sql(valor: str) -> str:
+    """``valor`` entre comillas simples, para interpolarlo como literal SQL.
+
+    **Solo para constantes de este módulo**, nunca para nada que venga de fuera:
+    no escapa, rechaza. Los tres caracteres prohibidos son los que harían que
+    el mismo literal dijera cosas distintas según por dónde viaje la sentencia:
+    la comilla cerraría el literal; la barra invertida sería un escape con
+    ``standard_conforming_strings`` apagado; y el ``%`` lo interpreta psycopg
+    como marcador en una sentencia con parámetros mientras SQLAlchemy lo dobla
+    por su cuenta, así que el texto crudo y el compilado dejarían de coincidir.
+    Como el valor es una constante, el fallo salta al importar el módulo, no en
+    una petición.
+    """
+    prohibidos = sorted({"'", "\\", "%"} & set(valor))
+    if prohibidos:
+        raise ValueError(f"literal SQL con caracteres no admitidos: {prohibidos!r}")
+    return f"'{valor}'"
+
+
+#: Los dos argumentos de ``translate()`` **ya como literales SQL**, y la única
+#: fuente de su texto: el plegado de ``aggregates`` (texto) y el del listado
+#: (SQLAlchemy) los interpolan desde aquí.
+#:
+#: Que sean literales y no parámetros ligados no es estética. Un índice de
+#: expresión solo se usa si la expresión de la consulta coincide con la del
+#: índice, y ``translate(titulo, $1, $2)`` no coincide con
+#: ``translate(titulo, 'áà…', 'aa…')``: con psycopg 3 los parámetros viajan
+#: aparte (*server-side binding*), y en cuanto Postgres pasa a plan genérico
+#: —sentencia preparada tras varias ejecuciones— los ``$n`` ya no se pliegan a
+#: constantes y el índice deja de valer sin que falle nada. Son constantes de
+#: código, así que interpolarlas no abre ninguna inyección.
+FOLD_SRC_SQL = _literal_constante_sql(FOLD_SRC)
+FOLD_DST_SQL = _literal_constante_sql(FOLD_DST)
+
+
 def fold_expr(column: str) -> str:
     """Expresión SQL que pliega tildes y mayúsculas de ``column``.
 
@@ -336,8 +371,37 @@ def fold_expr(column: str) -> str:
     necesitan —el constructor de filtros de ``aggregates``, la clave canónica
     de este mismo fichero y el ranking de órganos— y la versión de
     ``aggregates`` era privada, así que los otros dos la re-tecleaban.
+
+    El texto emitido es **el mismo carácter a carácter** que antes de que las
+    dos tablas pasaran a :data:`FOLD_SRC_SQL`/:data:`FOLD_DST_SQL`: forma parte
+    de la clave canónica, y el índice de ``v101`` congela esa expresión
+    (``tests/test_clave_canonica_index.py``). También es la expresión que
+    indexarían los GIN trigram propuestos para la búsqueda ``q``
+    (``docs/plans/2026-09-indices-busqueda-propuestos.md``).
     """
-    return f"lower(translate({column}, '{FOLD_SRC}', '{FOLD_DST}'))"
+    return f"lower(translate({column}, {FOLD_SRC_SQL}, {FOLD_DST_SQL}))"
+
+
+def tecnologia_tokens_sql(col: str) -> str:
+    """Los códigos de tecnología de la fila como ``text[]``, sin espacios.
+
+    ``licitaciones.tecnologia`` guarda un CSV (``"SAP,SALESFORCE"``). Esta es
+    **la** expresión normalizada de ese CSV: la comparten el filtro de los
+    agregados, el del listado (SQLAlchemy) y el índice GIN propuesto en
+    ``docs/plans/2026-09-indices-busqueda-propuestos.md``, y por eso tiene que
+    seguir siendo una sola. Un índice de expresión solo se usa si la consulta
+    repite su expresión; una grafía distinta —otro orden de ``replace`` y
+    ``COALESCE``, un ``trim`` por elemento— no rompe ningún resultado, solo
+    devuelve la consulta al escaneo secuencial en silencio.
+
+    ``replace`` quita **todos** los espacios, no solo los de los bordes: era la
+    normalización del listado, y la del agregado (``trim`` de cada código tras
+    explotar el CSV) solo se distinguía en un código con un espacio *dentro*,
+    que la ingesta no produce (``",".join`` de claves de
+    ``config.keywords.TECHNOLOGY_KEYWORDS``, todas sin espacios). ``COALESCE``
+    convierte el ``NULL`` en la lista vacía, que no solapa con nada.
+    """
+    return f"string_to_array(replace(COALESCE({col}, ''), ' ', ''), ',')"
 
 
 def tecnologia_en_csv_sql(col: str, *, n: int, marcador: str = "%s") -> str:
@@ -350,22 +414,25 @@ def tecnologia_en_csv_sql(col: str, *, n: int, marcador: str = "%s") -> str:
     qué superficie entrara: el listado y los agregados explotaban el CSV,
     ``load_for_competitors`` comparaba por igualdad.
 
-    Coste: el explode no puede usar ``idx_lic_tecnologia`` (btree de igualdad,
-    v21), así que las consultas **con** filtro de tecnología pasan a secuencial.
-    Las que no lo llevan no cambian, porque no se añade cláusula. Un índice GIN
-    sobre ``string_to_array(tecnologia, ',')`` lo devolvería a indexado, pero
-    exige migración y va aparte.
+    **Solapamiento de arrays** (``&&``) contra :func:`tecnologia_tokens_sql`, y
+    no el ``EXISTS (… unnest …)`` que hubo hasta 2026-09. La semántica es la
+    misma —casa un código **entero** del CSV, nunca una subcadena: ``SAP`` no
+    trae ``SAPHANA``; distingue mayúsculas, como antes; y con varios códigos
+    basta uno—, pero la forma cambia lo que el planificador puede hacer: el
+    ``unnest`` era un subplan por fila sin índice posible, y ``&&`` sobre una
+    expresión fija es un operador que un GIN (``array_ops``) sobre esa misma
+    expresión resuelve. Sin el índice sigue siendo secuencial, pero sin
+    desplegar una lista por fila.
 
-    Los ``n`` valores van con marcadores; el llamante los pasa en su sitio.
+    Los ``n`` valores van con marcadores —uno por código, como siempre, para no
+    cambiar lo que los llamantes pasan en ``params``— y el ``::text[]`` fija el
+    tipo del array: psycopg manda los ``str`` como ``unknown`` y así la
+    resolución del operador no depende de eso.
     """
     if n <= 0:
         raise ValueError("tecnologia_en_csv_sql necesita al menos un código")
     marcadores = ",".join([marcador] * n)
-    return (
-        "EXISTS (SELECT 1 FROM unnest(string_to_array("
-        f"COALESCE({col}, ''), ',')) AS _tec(code) "
-        f"WHERE trim(_tec.code) IN ({marcadores}))"
-    )
+    return f"{tecnologia_tokens_sql(col)} && ARRAY[{marcadores}]::text[]"
 
 
 # ── Guarda de fecha bien formada ──────────────────────────────────────────

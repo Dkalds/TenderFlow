@@ -17,7 +17,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FeedbackButtons } from "@/components/chat-thread";
+// Del módulo de los pulgares, no de `chat-thread`: importarlos de allí metía
+// el hilo de chat entero (react-markdown incluido) en la pestaña Pliego.
+import { FeedbackButtons } from "@/components/feedback-buttons";
 import {
   type AnyFact,
   type EvidenceRef,

@@ -55,7 +55,7 @@ export function useRadar(tecnologia: string | null = null) {
   const organizationId = useActiveOrganizationId();
   const scoring = useQuery({
     queryKey: radarKeys.scopedScoring(organizationId, tecnologia),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiGet("/api/v1/analytics/scoring", {
         params: {
           query: {
@@ -67,11 +67,22 @@ export function useRadar(tecnologia: string | null = null) {
             organization_id: organizationId ?? undefined,
           },
         },
+        signal,
       }),
     // El ranking se puntúa con los pesos del perfil de la organización activa:
     // pedirlo antes de saber cuál es devuelve el orden de la personal.
     enabled: organizacionResuelta(organizationId),
     staleTime: 5 * 60_000,
+    // La tecnología es un filtro del ámbito: cambiarla dejaba la bandeja en
+    // esqueleto hasta que llegaba el ranking nuevo. Se mantiene el anterior
+    // mientras tanto (`isLoading` sigue en falso) — `keepPreviousData`, pero
+    // sólo dentro de la misma organización (posición 2 de la clave). El ranking
+    // de otra no es «el dato de antes»: es el de otro equipo, y pintarlo bajo
+    // éste es el parpadeo que `OrganizacionActiva` existe para evitar. Pasa al
+    // cambiar de organización y cuando `/organizations` corrige la que
+    // `useActiveOrganizationId` había adelantado.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === organizationId ? previous : undefined,
   });
 
   const items: RadarTender[] = scoring.data?.opportunities ?? [];
@@ -101,7 +112,7 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
   const visibles = ids.slice(0, MAX_DESCARTADAS_HIDRATADAS);
   const query = useQuery({
     queryKey: radarKeys.dismissed(organizationId, visibles),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiGet("/api/v1/analytics/scoring", {
         params: {
           query: {
@@ -109,6 +120,7 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
             organization_id: organizationId ?? undefined,
           },
         },
+        signal,
       }),
     enabled: enabled && visibles.length > 0 && organizacionResuelta(organizationId),
     staleTime: 5 * 60_000,
@@ -125,7 +137,7 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
 export function useRadarDismissals() {
   return useQuery({
     queryKey: DISMISSALS_KEY,
-    queryFn: () => apiGet("/api/v1/radar/dismissals").then((response) => response.ids),
+    queryFn: ({ signal }) => apiGet("/api/v1/radar/dismissals", { signal }).then((response) => response.ids),
     staleTime: 60_000,
   });
 }

@@ -1,12 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import { analyticsKeys, licitacionKeys, licitacionesKeys } from "@/lib/query-keys";
 import type { LicitacionesCursorPage } from "@/lib/api-types";
 import type { LicitacionDetail } from "@/components/detail-panel";
-import { pageIdsOf, type ScoringItem, type ScoringResponse } from "./detalle-table-model";
+import {
+  conTotalConocido,
+  conjuntoDelListado,
+  pageIdsOf,
+  type ScoringItem,
+  type ScoringResponse,
+  type TotalConocido,
+} from "./detalle-table-model";
 
 /**
  * Las tres consultas de /detalle, en un sitio.
@@ -20,12 +27,16 @@ import { pageIdsOf, type ScoringItem, type ScoringResponse } from "./detalle-tab
 /**
  * Página del listado por cursor (`GET /licitaciones/cursor`). Sustituye al
  * listado por offset, que se retira (RFC 2026-09-06): mismos filtros y mismos
- * órdenes, `next_cursor` en vez de `offset` y `total` porque se pide
- * `with_total`.
+ * órdenes, `next_cursor` en vez de `offset` y `total` porque la primera página
+ * pide `with_total`.
  */
 export type LicitacionesResponse = LicitacionesCursorPage;
 
 export interface DetalleQueries {
+  /**
+   * La página visible. Su `total` es el de la primera página de su conjunto de
+   * filtros y orden, aunque ésta no lo haya pedido (ver `buildQueryParams`).
+   */
   data: LicitacionesResponse | undefined;
   isLoading: boolean;
   isFetching: boolean;
@@ -51,27 +62,46 @@ export function useDetalleQueries({
   const { data, isLoading, error, isFetching, isPlaceholderData, refetch } = useQuery({
     queryKey: licitacionesKeys.list(queryParams),
     queryFn: ({ signal }) =>
-      fetchWithAuth<LicitacionesResponse>(
-        `/api/v1/licitaciones/cursor?${new URLSearchParams(queryParams)}`,
-        { signal },
-      ),
+      fetchWithAuth<LicitacionesResponse>(`/api/v1/licitaciones/cursor?${new URLSearchParams(queryParams)}`, {
+        signal,
+      }),
     staleTime: 30_000,
     placeholderData: (previous) => previous,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   });
 
+  // Sólo la primera página trae `total`; se recuerda por conjunto para el «de
+  // N» de las siguientes. Ajuste durante el render, el patrón que React
+  // documenta para derivar estado de lo recibido: no pinta un pie sin total
+  // para corregirlo después. Nunca desde datos de relleno, que pueden ser de
+  // otro conjunto.
+  const conjunto = conjuntoDelListado(queryParams);
+  const [conocido, setConocido] = useState<TotalConocido | null>(null);
+  const totalRecibido = isPlaceholderData ? null : data?.total;
+  if (totalRecibido != null && (conocido?.conjunto !== conjunto || conocido.total !== totalRecibido)) {
+    setConocido({ conjunto, total: totalRecibido });
+  }
+  const pagina = useMemo(
+    () => conTotalConocido(data, conjunto, conocido, isPlaceholderData),
+    [data, conjunto, conocido, isPlaceholderData],
+  );
+
   // Scoring alineado a la página: se pide el score exacto de las filas visibles
   // (sus id_externo), no un top-500 global disjunto del orden y del filtro.
+  //
+  // Va detrás del listado y no en paralelo porque depende de él: el modo
+  // alineado de `GET /analytics/scoring` sólo acepta `ids`, no los filtros ni
+  // el cursor del listado, y sin ellos lo único que ofrece es un top-N por
+  // score, que no es esta página ni este orden.
   const pageIds = useMemo(() => pageIdsOf(data?.items), [data]);
 
   const { data: scoring } = useQuery({
     queryKey: analyticsKeys.scoringBatch(pageIds),
     queryFn: ({ signal }) =>
-      fetchWithAuth<ScoringResponse>(
-        `/api/v1/analytics/scoring?${new URLSearchParams({ ids: pageIds.join(",") })}`,
-        { signal },
-      ),
+      fetchWithAuth<ScoringResponse>(`/api/v1/analytics/scoring?${new URLSearchParams({ ids: pageIds.join(",") })}`, {
+        signal,
+      }),
     enabled: pageIds.length > 0,
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
@@ -79,12 +109,12 @@ export function useDetalleQueries({
 
   const { data: detailData } = useQuery({
     queryKey: licitacionKeys.detail(detailId ?? ""),
-    queryFn: () =>
-      fetchWithAuth<LicitacionDetail>(`/api/v1/licitaciones/${encodeURIComponent(detailId!)}`),
+    queryFn: ({ signal }) =>
+      fetchWithAuth<LicitacionDetail>(`/api/v1/licitaciones/${encodeURIComponent(detailId!)}`, { signal }),
     enabled: !!detailId,
   });
 
-  return { data, isLoading, isFetching, isPlaceholderData, error, refetch, scoring, detailData };
+  return { data: pagina, isLoading, isFetching, isPlaceholderData, error, refetch, scoring, detailData };
 }
 
 /**

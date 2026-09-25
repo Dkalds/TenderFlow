@@ -1,16 +1,46 @@
 """Middlewares ASGI personalizados para la API REST.
 
-* :class:`SecurityHeadersMiddleware` — Añade cabeceras de seguridad OWASP (ASGI puro).
-* :class:`RateLimitMiddleware`       — Rate limiting por IP; el almacén lo elige
-  ``services.rate_limiting.get_rate_limiter`` (Redis o tabla ``rate_limits``).
-* :class:`CostTrackingMiddleware`    — Estima coste por request (Prometheus).
-* :class:`AccessLogMiddleware`       — Access log estructurado con métricas RED.
+* :class:`SecurityHeadersMiddleware` — Añade cabeceras de seguridad OWASP.
+* :class:`ObservabilityMiddleware`   — ``X-Correlation-Id``, access log estructurado
+  y coste estimado por request (Prometheus), en una sola capa.
+* :class:`RateLimitMiddleware`       — Rate limiting por IP o API key; el almacén lo
+  elige ``services.rate_limiting.get_rate_limiter`` (Redis o tabla ``rate_limits``)
+  y la comprobación corre en un hilo, nunca en el event loop.
 * :class:`ETagMiddleware`            — ETag/304 para respuestas GET JSON.
-* :class:`_MaxBodyMiddleware`        — Rechaza bodies > 1 MB (ASGI puro).
+* :class:`_MaxBodyMiddleware`        — Rechaza bodies > 1 MB.
 * :class:`_RejectNulMiddleware`      — Rechaza el byte NUL en path/query.
-* :func:`correlation_id_middleware`  — Propaga ``X-Correlation-Id``.
 
-Todos diseñados para ser idempotentes y "fail-open" ante errores de infra.
+Todos diseñados para ser idempotentes y "fail-open" ante errores de infra, salvo
+el rate limit, que ante un error de la BD deniega (``services.rate_limiting``).
+
+Por qué todos son ASGI puro
+---------------------------
+Hasta 2026-09 cinco capas eran ``BaseHTTPMiddleware`` (rate limit, coste, access
+log, ETag y correlation id). Cada una crea por petición un task group y un memory
+stream y re-emite el cuerpo: todo lo que salía de la app atravesaba cinco relés,
+los streams SSE incluidos. La API es **un solo proceso uvicorn** con un solo event
+loop, así que ese coste lo paga cada petición de todas las demás.
+
+Lo que ve el cliente no cambia, salvo en lo que era artefacto de esos relés:
+
+* **Excepción antes de empezar a responder:** igual que antes. Sube intacta hasta
+  el ``ServerErrorMiddleware`` de Starlette, que responde el 500 ``problem+json``
+  por fuera de todo el stack (sin CORS ni correlation id, como siempre) y la
+  relanza al servidor. El access log la registra como 500.
+* **Excepción con la respuesta ya empezada** (un stream que revienta a medias):
+  ``BaseHTTPMiddleware`` cerraba el cuerpo como si hubiera terminado bien y
+  relanzaba después, así que el cliente recibía un cuerpo truncado con aspecto de
+  completo. Ahora la excepción sube sin ese cierre y el servidor corta la
+  conexión: el truncado se ve.
+* **Troceado del cuerpo:** cada relé re-emitía la respuesta como stream
+  (``more_body=True`` y un mensaje final vacío). La compresión, que va por fuera
+  del ETag, trataba por eso *toda* respuesta como stream: comprimía también las
+  menores que su ``minimum_size`` y quitaba ``Content-Length``. Ahora una
+  respuesta de un solo mensaje le llega entera: las pequeñas salen sin comprimir
+  y con ``Content-Length``, que es lo que dice su configuración.
+* **contextvars:** ``call_next`` corría la app en otra task, con copia del
+  contexto; ahora todo corre en la task de la petición. El correlation id se ve
+  igual que antes en handlers, hilos del threadpool y logs.
 """
 
 from __future__ import annotations
@@ -20,16 +50,18 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Awaitable, Callable
 
-from fastapi import Request, status
-from starlette.middleware.base import BaseHTTPMiddleware
+from anyio import CapacityLimiter, to_thread
+from starlette import status
+from starlette.datastructures import Headers, MutableHeaders
+from starlette.requests import HTTPConnection
 from starlette.responses import RedirectResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
+from shared.etag import coincide_if_none_match, etag_debil
 
 log = get_logger(__name__)
 
@@ -111,7 +143,7 @@ class SecurityHeadersMiddleware:
 # ───────────────────────────── Rate limiting ────────────────────────────────
 
 
-def _trusted_client_ip(request: Request) -> str:
+def _trusted_client_ip(request: HTTPConnection) -> str:
     """Extrae la IP real del cliente validando proxies de confianza.
 
     Solo honra ``X-Forwarded-For`` si la conexión TCP directa viene de una IP
@@ -178,7 +210,7 @@ def _trusted_client_ip(request: Request) -> str:
         return "unknown"
 
 
-def _client_key(request: Request) -> str:
+def _client_key(request: HTTPConnection) -> str:
     """Identifica al cliente **solo** por IP verificada, nunca por API-Key.
 
     Un bucket por API-Key permitiría eludir el límite rotando claves (crearlas
@@ -206,7 +238,7 @@ _HEAVY_ENDPOINT_LIMITS: dict[str, int] = {
     "/api/v1/ask/models": 30,
 }
 
-# Rutas pesadas **con** path params. ``BaseHTTPMiddleware`` corre antes del
+# Rutas pesadas **con** path params. El middleware corre antes del
 # routing, así que aquí solo se ve el path crudo y nunca el template: indexar
 # por literal exacto hacía que estas dos entradas no matchearan jamás y
 # corrieran al límite por defecto. Los patrones van anclados a ambos extremos
@@ -263,7 +295,7 @@ PUBLIC_MAX_CALLS = 600
 # Al agotarse la cuota este path **no** responde `problem+json` como el resto de
 # la API: quien lo consume es un navegador siguiendo un `<form method="post">`,
 # así que se le redirige a la página de gracias con el estado de límite. Ver el
-# caso propio en `RateLimitMiddleware.dispatch`.
+# caso propio en `RateLimitMiddleware._respuesta_429`.
 SOLICITUDES_PATH = "/api/v1/publico/solicitudes-acceso"
 SOLICITUDES_MAX_CALLS = 5
 
@@ -318,7 +350,7 @@ def reset_tier_cache() -> None:
         _tier_cache.clear()
 
 
-def _tier_bucket(request: Request, client: str) -> tuple[str, int | None] | None:
+def _tier_bucket(request: HTTPConnection, client: str) -> tuple[str, int | None] | None:
     """Bucket y tope de una request con API key, o `None` si no la lleva.
 
     El bucket va por **clave**, no por IP: dos claves detrás del mismo NAT no
@@ -359,9 +391,9 @@ def _regla_pesada(path: str) -> tuple[str, int] | None:
 
     La **etiqueta** identifica la regla, no la petición: es el path exacto de la
     tabla o el patrón que casó. Sirve para que cada regla tenga su propio cubo
-    (ver `dispatch`) sin reintroducir el bypass por path params que el cubo por
-    cliente evita — dos ids distintos de `/explain` casan el mismo patrón y por
-    tanto comparten cubo.
+    (ver `RateLimitMiddleware._consultar_cuota`) sin reintroducir el bypass por
+    path params que el cubo por cliente evita — dos ids distintos de `/explain`
+    casan el mismo patrón y por tanto comparten cubo.
     """
     reglas: list[tuple[str, int]] = [
         (pattern.pattern, limit)
@@ -380,8 +412,27 @@ def _effective_max_calls(path: str, default: int) -> int:
     return regla[1] if regla else default
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Rate limiting global por IP sobre la API REST.
+#: Hilos que la comprobación de cuota puede ocupar a la vez (ver
+#: :class:`RateLimitMiddleware`). Con Redis cada comprobación dura ~1 ms, así
+#: que cuatro sobran para lo que despacha un proceso de 1 vCPU. Con la BD de
+#: respaldo son ~50 ms y cada hilo retiene una conexión del pool de escritura
+#: (12 en producción): cuatro dejan el resto para las escrituras de los
+#: handlers, y aun así cuadruplican lo que daba la comprobación serializada en
+#: el event loop.
+_HILOS_CUOTA = 4
+_hilos_cuota: CapacityLimiter | None = None
+
+
+def _limitador_de_hilos_cuota() -> CapacityLimiter:
+    """``CapacityLimiter`` propio de la comprobación de cuota (lazy singleton)."""
+    global _hilos_cuota
+    if _hilos_cuota is None:
+        _hilos_cuota = CapacityLimiter(_HILOS_CUOTA)
+    return _hilos_cuota
+
+
+class RateLimitMiddleware:
+    """Rate limiting global por IP (o por API key) sobre la API REST.
 
     Usa :func:`services.rate_limiting.get_rate_limiter` como backend (Redis o
     la tabla ``rate_limits``, según configuración).
@@ -391,6 +442,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     Los endpoints pesados (inferencia ML, exports) tienen un límite inferior;
     ver :func:`_effective_max_calls`.
+
+    **La comprobación corre en un hilo, nunca en el event loop.** ``check()`` es
+    síncrono: con Redis es un viaje de red; con la BD, un checkout del pool de
+    escritura y cinco viajes (BEGIN, DELETE, SELECT COUNT, INSERT, COMMIT).
+    Hasta 2026-09 se llamaba directamente desde el ``dispatch`` async, así que
+    en **cada** petición el único event loop del proceso se quedaba parado unos
+    50 ms, y todas las peticiones se contaban en serie. Lo mismo el tier de la
+    API key, que en un fallo de caché consulta la BD.
+
+    Se despacha con ``anyio.to_thread.run_sync`` y no con un cliente Redis
+    asíncrono porque: el backend de BD es síncrono (psycopg) y habría que
+    llevarlo a un hilo igualmente, así que sería un segundo camino; el
+    protocolo ``RateLimiter`` es síncrono y lo usan otros consumidores que ya lo
+    despachan con ``run_db``; un cliente ``redis.asyncio`` queda atado al loop
+    que lo creó y exigiría abrir y cerrar su pool en el lifespan; y el salto a un
+    hilo cuesta décimas de milisegundo, frente al milisegundo de Redis o los
+    ~50 ms de la BD. Lo que había que evitar era parar el loop, no el hilo.
+
+    El hilo sale de un ``CapacityLimiter`` propio (:data:`_HILOS_CUOTA`), no del
+    threadpool general: con este lleno de handlers lentos, una petición trivial
+    no debe esperar un hilo solo para contarse, y con la BD de respaldo acota las
+    conexiones de escritura que el limitador puede retener a la vez.
 
     Args:
         app: Aplicación ASGI a envolver.
@@ -413,25 +486,55 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             "/api/openapi.json",
         ),
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._max = max_calls
         self._window = window_seconds
         self._exclude = frozenset(exclude_paths)
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        path = request.url.path
-        if path in self._exclude or path.startswith(("/api/docs", "/api/redoc")):
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        client = _client_key(request)
-        # BaseHTTPMiddleware se ejecuta antes del routing: un bucket por
+        # `scope["path"]` y no `request.url.path`: es lo que enruta Starlette.
+        # La URL reconstruida corta en un `?` que llegue codificado en el path
+        # (`/licitaciones/X%3F/explain`), y con ella el patrón de `/explain` no
+        # casaba y la petición corría con el tope por defecto.
+        path: str = scope["path"]
+        if path in self._exclude or path.startswith(("/api/docs", "/api/redoc")):
+            await self.app(scope, receive, send)
+            return
+
+        conexion = HTTPConnection(scope)
+        client = _client_key(conexion)
+        allowed, effective_max = await to_thread.run_sync(
+            self._consultar_cuota,
+            conexion,
+            path,
+            client,
+            limiter=_limitador_de_hilos_cuota(),
+        )
+        if allowed:
+            await self.app(scope, receive, send)
+            return
+
+        log.warning("rate_limit_exceeded", client=client, path=path)
+        respuesta = self._respuesta_429(path, effective_max)
+        await respuesta(scope, receive, send)
+
+    def _consultar_cuota(
+        self, conexion: HTTPConnection, path: str, client: str
+    ) -> tuple[bool, int]:
+        """Decide si la petición cabe en su cuota. Corre en un hilo: hace E/S.
+
+        Devuelve ``(permitida, tope_aplicado)``.
+        """
+        # El middleware se ejecuta antes del routing: un bucket por
         # cliente evita el bypass por path params variables. La superficie
         # pública lleva el suyo aparte (ver `_rate_bucket`).
         # C2.3 — una request con API key se limita por SU clave y por el
         # tier que declara `api_key_tiers`, no por la IP compartida.
-        por_clave = _tier_bucket(request, client)
+        por_clave = _tier_bucket(conexion, client)
         rate_key, tope_propio = por_clave or _rate_bucket(path, client)
         # Endpoints pesados (ML inference, exports): límite inferior **y cubo
         # propio**.
@@ -459,53 +562,100 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             max_calls=effective_max,
             window_seconds=self._window,
         )
-        if not allowed:
-            log.warning("rate_limit_exceeded", client=client, path=path)
+        return allowed, effective_max
 
-            # El formulario de la landing lo rellena una persona en un
-            # navegador, no un cliente de API: aquí un `problem+json` es JSON
-            # crudo en pantalla, y `api/routes/publico_solicitudes.py` está
-            # escrito entero para que eso no pase en ningún camino de error.
-            # El corte por cuota ocurre antes del router, así que la excepción
-            # tiene que vivir aquí. Import perezoso por el mismo motivo que el
-            # de `problem_429`: no arrastrar el árbol de rutas al importar el
-            # middleware.
-            if path == SOLICITUDES_PATH:
-                from api.routes.publico_solicitudes import ESTADO_LIMITE, destino_error
+    def _respuesta_429(self, path: str, effective_max: int) -> Response:
+        """Respuesta de cuota agotada: ``problem+json``, o la redirección del formulario."""
+        # El formulario de la landing lo rellena una persona en un
+        # navegador, no un cliente de API: aquí un `problem+json` es JSON
+        # crudo en pantalla, y `api/routes/publico_solicitudes.py` está
+        # escrito entero para que eso no pase en ningún camino de error.
+        # El corte por cuota ocurre antes del router, así que la excepción
+        # tiene que vivir aquí. Import perezoso por el mismo motivo que el
+        # de `problem_429`: no arrastrar el árbol de rutas al importar el
+        # middleware.
+        if path == SOLICITUDES_PATH:
+            from api.routes.publico_solicitudes import ESTADO_LIMITE, destino_error
 
-                return RedirectResponse(
-                    destino_error(ESTADO_LIMITE),
-                    status_code=status.HTTP_303_SEE_OTHER,
-                    headers={"Retry-After": str(int(self._window))},
-                )
-
-            # `application/problem+json` como el resto de la API (RFC 7807). El
-            # 429 cortocircuita antes del router, así que se construye aquí en
-            # vez de en un exception handler; `problem_429` ya existía sin uso.
-            from api.errors import problem_429
-
-            return problem_429(effective_max, int(self._window)).response(
-                **{
-                    "Retry-After": str(int(self._window)),
-                    "X-RateLimit-Limit": str(effective_max),
-                    "X-RateLimit-Window": str(int(self._window)),
-                }
+            return RedirectResponse(
+                destino_error(ESTADO_LIMITE),
+                status_code=status.HTTP_303_SEE_OTHER,
+                headers={"Retry-After": str(int(self._window))},
             )
-        return await call_next(request)
+
+        # `application/problem+json` como el resto de la API (RFC 7807). El
+        # 429 cortocircuita antes del router, así que se construye aquí en
+        # vez de en un exception handler; `problem_429` ya existía sin uso.
+        from api.errors import problem_429
+
+        return problem_429(effective_max, int(self._window)).response(
+            **{
+                "Retry-After": str(int(self._window)),
+                "X-RateLimit-Limit": str(effective_max),
+                "X-RateLimit-Window": str(int(self._window)),
+            }
+        )
 
 
-# ───────────────────── Cost tracking (E7) ───────────────────────────────
+# ─────────────── Correlation-ID + access log + coste (E7) ────────────────
 
 
-class CostTrackingMiddleware(BaseHTTPMiddleware):
-    """Estima coste por request y lo acumula como counter Prometheus.
+def _registrar_acceso(conexion: HTTPConnection, scope: Scope, status_code: int, dt: float) -> None:
+    """Línea ``http_request`` del access log."""
+    # Usar el path template de la ruta (e.g. "/licitaciones/{id}") en lugar
+    # del path crudo ("/licitaciones/123") para evitar cardinalidad explosiva
+    # en métricas Prometheus cuando los IDs forman parte de la URL.
+    route = scope.get("route")
+    path = getattr(route, "path", None) or scope["path"]
+    # Usar hash prefix en lugar de los primeros caracteres del API key
+    # para evitar reducir el espacio de brute-force en los logs.
+    raw_key = conexion.headers.get("x-api-key") or ""
+    key_prefix = hashlib.sha256(raw_key.encode()).hexdigest()[:12] if raw_key else "-"
 
-    Modelo simple: cada request tiene un coste base de 0.0001 USD + un
-    factor proporcional a la duración (CPU/IO). Esto permite a Finance ver
-    de un vistazo qué endpoints son los más caros.
+    log.info(
+        "http_request",
+        method=scope["method"],
+        path=path,
+        status=status_code,
+        duration_ms=round(dt * 1000, 1),
+        key_prefix=key_prefix,
+        client_ip=_trusted_client_ip(conexion),
+    )
 
-    El coste se publica como ``api_cost_estimate_total{operation}`` en
-    micros (USD * 1e6) para evitar problemas de precisión float en el TSDB.
+
+class ObservabilityMiddleware:
+    """Correlation-ID, access log y coste estimado de cada request, en una capa.
+
+    Eran tres ``BaseHTTPMiddleware`` contiguos (``correlation_id_middleware`` →
+    ``AccessLogMiddleware`` → ``CostTrackingMiddleware``), cada uno con su task
+    group y su relé del cuerpo. Hacían tres cosas en el mismo instante de la
+    misma petición; juntas ocupan el mismo sitio del stack y el orden efectivo
+    no cambia (ver ``api.app.register_middlewares``).
+
+    **Correlation-ID.** Toma ``X-Correlation-Id`` de la petición o genera un
+    uuid4, limpia los contextvars de structlog y lo vincula: lo llevan los logs
+    de toda la petición —los de los handlers y los de los hilos del threadpool,
+    que heredan el contexto— y vuelve en la cabecera de la respuesta.
+
+    **Access log** (``http_request``): método, path (la plantilla de la ruta, no
+    el path crudo), status, duración en ms, prefijo del hash de la API key y la
+    IP que decide :func:`_trusted_client_ip`. Las métricas RED las gestiona
+    ``prometheus-fastapi-instrumentator`` (inicializado en ``api.app``).
+
+    **Coste** (``api_cost_estimate_total{operation}``): un coste base de 0.0001
+    USD más un factor proporcional a la duración, publicado en micros (USD *
+    1e6) para evitar problemas de precisión float en el TSDB. Permite a Finance
+    ver de un vistazo qué endpoints son los más caros.
+
+    **Cuándo se mide.** Al salir ``http.response.start``, no al terminar el
+    cuerpo: es lo que medía ``BaseHTTPMiddleware``, cuyo ``call_next`` vuelve en
+    cuanto llegan las cabeceras. En un SSE es el tiempo hasta la primera
+    respuesta; medir hasta el final daría duraciones de horas y retrasaría la
+    línea de log hasta que el cliente cerrara.
+
+    **Excepciones.** Si la app lanza antes de empezar a responder se registra un
+    500 y la excepción sigue hacia arriba intacta (la convierte en respuesta el
+    ``ServerErrorMiddleware`` de Starlette, como antes).
     """
 
     def __init__(
@@ -515,103 +665,70 @@ class CostTrackingMiddleware(BaseHTTPMiddleware):
         base_usd: float = 0.0001,
         per_second_usd: float = 0.001,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._base = base_usd
         self._per_s = per_second_usd
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        import time
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        conexion = HTTPConnection(scope)
+        correlation_id = conexion.headers.get("x-correlation-id") or str(uuid.uuid4())
+        # Limpiar y bindear variables de contexto structlog para esta request
+        clear_contextvars()
+        bind_contextvars(correlation_id=correlation_id)
 
         t0 = time.monotonic()
-        try:
-            response = await call_next(request)
-        finally:
+        registrada = False
+
+        def registrar(status_code: int) -> None:
+            nonlocal registrada
+            if registrada:
+                return
+            registrada = True
             dt = time.monotonic() - t0
-            usd = self._base + (dt * self._per_s)
-            try:
-                from observability.runtime_metrics import api_cost_estimate_total
+            self._registrar_coste(scope, dt)
+            _registrar_acceso(conexion, scope, status_code, dt)
 
-                # Usar route template para evitar cardinalidad explosiva
-                route = request.scope.get("route")
-                op = getattr(route, "path", None) or "unmatched"
-                api_cost_estimate_total.labels(operation=op).inc(int(usd * 1e6))
-            except Exception:
-                pass
-        return response
+        async def enviar(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                registrar(int(message["status"]))
+                # Sobre una copia: la lista puede ser la `raw_headers` de un
+                # objeto `Response` que alguien reutilice entre peticiones.
+                cabeceras = MutableHeaders(raw=list(message.get("headers", [])))
+                cabeceras["X-Correlation-Id"] = correlation_id
+                message = {**message, "headers": cabeceras.raw}
+            await send(message)
 
-
-# ───────────────────── Access log + métricas RED ──────────────────────────
-
-
-class AccessLogMiddleware(BaseHTTPMiddleware):
-    """Access log estructurado por request.
-
-    Registra por request:
-    - método, path, status, duración en ms
-    - key_hash_prefix (8 chars — para correlación sin exponer el token)
-    - correlation_id (si está en contextvars)
-    - client IP
-
-    Las métricas RED (Rate, Errors, Duration) las gestiona
-    ``prometheus-fastapi-instrumentator`` (inicializado en ``api.app``).
-    """
-
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        import time
-
-        t0 = time.monotonic()
-        status_code = 500
         try:
-            response = await call_next(request)
-            status_code = response.status_code
-        except Exception:
-            raise
+            await self.app(scope, receive, enviar)
         finally:
-            dt_ms = (time.monotonic() - t0) * 1000
-            # Usar el path template de la ruta (e.g. "/licitaciones/{id}") en lugar
-            # del path crudo ("/licitaciones/123") para evitar cardinalidad explosiva
-            # en métricas Prometheus cuando los IDs forman parte de la URL.
-            route = request.scope.get("route")
-            path = getattr(route, "path", None) or request.url.path.split("?")[0]
-            method = request.method
-            # Usar hash prefix en lugar de los primeros caracteres del API key
-            # para evitar reducir el espacio de brute-force en los logs.
-            raw_key = request.headers.get("X-API-Key") or ""
-            key_prefix = hashlib.sha256(raw_key.encode()).hexdigest()[:12] if raw_key else "-"
-            client_ip = _trusted_client_ip(request)
+            # Solo cuenta si la app salió sin empezar a responder: lanzó, o
+            # volvió sin respuesta. Es el status que registraba el access log.
+            registrar(500)
 
-            log.info(
-                "http_request",
-                method=method,
-                path=path,
-                status=status_code,
-                duration_ms=round(dt_ms, 1),
-                key_prefix=key_prefix,
-                client_ip=client_ip,
-            )
+    def _registrar_coste(self, scope: Scope, dt: float) -> None:
+        usd = self._base + (dt * self._per_s)
+        try:
+            from observability.runtime_metrics import api_cost_estimate_total
 
-        return response
-
-
-# ───────────────────────────── ETag caching ──────────────────────────────────
-
-# RFC 7232 §4.1: un 304 debe repetir las cabeceras que habrían acompañado al
-# 200 y que el cliente necesita para interpretar la respuesta cacheada.
-_NOT_MODIFIED_PRESERVED_HEADERS = frozenset(
-    {"vary", "x-request-id", "x-correlation-id", "content-language"}
-)
+            # Usar route template para evitar cardinalidad explosiva
+            route = scope.get("route")
+            op = getattr(route, "path", None) or "unmatched"
+            api_cost_estimate_total.labels(operation=op).inc(int(usd * 1e6))
+        except Exception:
+            pass
 
 
 # ────────────────── Límite de body y saneo de la request line ──────────────
 #
-# Los tres de abajo vivían en ``api/app.py``, que llegó a 706 líneas siendo a
-# la vez fábrica de la app, registro de routers, definición de middlewares y
-# handler de /metrics. No hay nada distinto en ellos: son middlewares, y este
-# es el módulo de los middlewares.
+# Los de abajo vivían en ``api/app.py`` (con el correlation id, hoy dentro de
+# ``ObservabilityMiddleware``), que llegó a 706 líneas siendo a la vez fábrica
+# de la app, registro de routers, definición de middlewares y handler de
+# /metrics. No hay nada distinto en ellos: son middlewares, y este es el módulo
+# de los middlewares.
 
 
 class _BodyTooLargeError(Exception):
@@ -776,30 +893,94 @@ class _RejectNulMiddleware:
         await send({"type": "http.response.body", "body": self._400_BODY})
 
 
-async def correlation_id_middleware(
-    request: Request,
-    call_next: Callable[[Request], Awaitable[Response]],
+# ───────────────────────────── ETag caching ──────────────────────────────────
+
+# RFC 7232 §4.1: un 304 debe repetir las cabeceras que habrían acompañado al
+# 200 y que el cliente necesita para interpretar la respuesta cacheada.
+_NOT_MODIFIED_PRESERVED_HEADERS = frozenset(
+    {"vary", "x-request-id", "x-correlation-id", "content-language"}
+)
+
+# `Vary` no es opcional desde el momento en que el middleware decide el
+# `Cache-Control` leyendo cabeceras de la **petición**: sin declararlo, un CDN
+# o un proxy intermedio no sabe que la respuesta depende de ellas y puede
+# servirle a un visitante anónimo la copia cacheada de uno autenticado. Se
+# emite siempre, también en el 304, porque la dependencia existe igualmente en
+# ese camino.
+_VARY = "Cookie, X-API-Key"
+
+
+def _cabeceras_etiquetadas(
+    crudas: list[tuple[bytes, bytes]], *, etag: str | None, cache_control: str | None
+) -> dict[str, str]:
+    """Cabeceras del 200 etiquetado, como las componía la versión anterior.
+
+    Parte de ``dict(response.headers)`` —una entrada por nombre, en minúsculas—
+    y le añade ``ETag`` (si hay que ponerla), ``Cache-Control`` y ``Vary`` con
+    clave capitalizada. Como las del handler quedaron en minúscula, las nuevas
+    son claves **aparte**: si el handler fijó su propio ``Cache-Control`` (la
+    superficie ``/publico/*`` pone ``public, max-age=300, …``), la respuesta
+    sale con los dos y, por RFC 9111 §4.2.1, manda el más restrictivo. La
+    versión anterior hacía exactamente eso —su ``headers.get("Cache-Control",
+    …)`` nunca encontraba la clave del handler— y aquí se conserva tal cual:
+    cambiarlo decide la cacheabilidad de la superficie pública en el CDN, y eso
+    no es una optimización de rendimiento.
+    """
+    cabeceras = dict(Headers(raw=crudas))
+    if etag is not None:
+        cabeceras["ETag"] = etag
+    # Para el JSON que sí lleva ETag, `private` mantiene fuera a los cachés
+    # compartidos y `no-cache` obliga a revalidar en cada uso — el 304 sigue
+    # siendo válido, y es justo el punto de haber calculado el ETag.
+    cabeceras["Cache-Control"] = cache_control or "no-cache"
+    cabeceras["Vary"] = _VARY
+    return cabeceras
+
+
+def _a_crudas(cabeceras: dict[str, str]) -> list[tuple[bytes, bytes]]:
+    """``dict`` de cabeceras a la lista ASGI, igual que ``Response.init_headers``."""
+    return [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in cabeceras.items()]
+
+
+def _no_modificado(
+    crudas: list[tuple[bytes, bytes]], *, etag: str, cache_control: str | None
 ) -> Response:
-    """Propaga X-Correlation-Id entre cliente, logs y respuesta."""
-    correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
+    """El 304 que corresponde a una respuesta cuya ETag nombra el cliente."""
+    # El 304 conserva las cabeceras de correlación/seguridad de la
+    # respuesta original: son las mismas que el cliente habría recibido
+    # con un 200, y perderlas rompía el rastro de la petición.
+    not_modified = {
+        k: v for k, v in Headers(raw=crudas).items() if k.lower() in _NOT_MODIFIED_PRESERVED_HEADERS
+    }
+    not_modified["ETag"] = etag
+    not_modified["Cache-Control"] = cache_control or "no-cache"
+    not_modified["Vary"] = _VARY
+    return Response(status_code=304, headers=not_modified)
 
-    # Limpiar y bindear variables de contexto structlog para esta request
-    clear_contextvars()
-    bind_contextvars(correlation_id=correlation_id)
 
-    response = await call_next(request)
-
-    response.headers["X-Correlation-Id"] = correlation_id
-    return response
-
-
-class ETagMiddleware(BaseHTTPMiddleware):
+class ETagMiddleware:
     """Añade ``ETag`` a respuestas GET 200 y responde 304 si ``If-None-Match`` coincide.
 
-    Sólo actúa sobre respuestas con ``Content-Type: application/json`` y
-    tamaño < ``max_bytes`` para no bloquear streams ni ficheros grandes.
+    Sólo actúa sobre respuestas ``Content-Type: application/json``. La etiqueta
+    es débil (``W/"…"``) y la calcula :func:`shared.etag.etag_debil`.
 
-    El ETag es un hash SHA-256 del cuerpo (truncado), prefijado con ``W/`` (weak).
+    **Respuestas que ya traen ``ETag``** (contrato con ``shared/cache.py``): la
+    caché de respuestas adjunta la etiqueta calculada al guardar la entrada. Se
+    respeta tal cual: el cuerpo no se retiene ni se hashea; si ``If-None-Match``
+    la nombra se responde 304 (mismas cabeceras que el 304 de siempre) y, si no,
+    la respuesta pasa con las cabeceras de caché de este middleware.
+
+    **Respuestas sin ``ETag``**: se hashea el cuerpo, igual que antes. Solo si
+    llega en **un único mensaje** —lo que emite un ``JSONResponse``— y no pasa de
+    ``max_bytes``; un cuerpo mayor pasa intacto, sin ETag.
+
+    **Streams:** nunca se retienen. Lo que no es JSON (SSE, exports CSV/XLSX/PDF,
+    zip) pasa en cuanto llega, y un JSON troceado (``more_body=True`` en el
+    primer mensaje) se trata como stream, sin ETag. La versión con
+    ``BaseHTTPMiddleware`` acumulaba hasta 512 KB de cualquier GET JSON antes de
+    soltar un byte; ahora lo único que se retiene es el ``http.response.start``
+    hasta que llega el primer trozo del cuerpo, que en un ``JSONResponse`` es el
+    mensaje siguiente.
 
     **Tráfico autenticado.** Hasta 2026-08 una petición con cookie o API key
     salía por un atajo que ponía ``private, no-store`` y devolvía la respuesta
@@ -817,83 +998,127 @@ class ETagMiddleware(BaseHTTPMiddleware):
         *,
         max_bytes: int = 512 * 1024,  # 512 KB
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._max_bytes = max_bytes
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        import hashlib
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("method") != "GET":
+            await self.app(scope, receive, send)
+            return
 
-        if request.method != "GET":
-            return await call_next(request)
-
-        response = await call_next(request)
-
+        peticion = Headers(scope=scope)
         # Una respuesta solicitada con cookie o API key puede contener estado
         # personalizado; ningún cache compartido debe conservarla.
-        is_authenticated = bool(request.headers.get("cookie") or request.headers.get("x-api-key"))
+        autenticada = bool(peticion.get("cookie") or peticion.get("x-api-key"))
+        cache_control = "private, no-cache" if autenticada else None
+        if_none_match = peticion.get("if-none-match", "")
 
-        # `Vary` no es opcional desde el momento en que la línea de arriba
-        # decide el `Cache-Control` leyendo cabeceras de la **petición**: sin
-        # declararlo, un CDN o un proxy intermedio no sabe que la respuesta
-        # depende de ellas y puede servirle a un visitante anónimo la copia
-        # cacheada de uno autenticado. Se emite siempre, también en el 304,
-        # porque la dependencia existe igualmente en ese camino.
-        vary = "Cookie, X-API-Key"
+        # Estado de la respuesta que sale de la app:
+        retenido: Message | None = None  # `http.response.start` a la espera del cuerpo
+        paso = False  # decidido: lo que llegue se reenvía tal cual
+        descartar = False  # sustituida por un 304: el cuerpo de la app no sale
 
-        # Lo que este middleware NO va a etiquetar con ETag (no-200, streams,
-        # descargas) conserva el `private, no-store` de siempre: sin
-        # revalidación posible, lo correcto es no guardarlo en ningún sitio.
-        es_json = "application/json" in response.headers.get("content-type", "")
-        if response.status_code != 200 or not es_json:
-            if is_authenticated:
-                response.headers["Cache-Control"] = "private, no-store"
-            response.headers["Vary"] = vary
-            return response
+        async def enviar(message: Message) -> None:
+            nonlocal retenido, paso, descartar
+            if paso:
+                await send(message)
+                return
+            if descartar:
+                return
+            tipo = message["type"]
 
-        # Para el JSON que sí lleva ETag, `private` mantiene fuera a los cachés
-        # compartidos y `no-cache` obliga a revalidar en cada uso — el 304 sigue
-        # siendo válido, y es justo el punto de haber calculado el ETag.
-        cache_control = "private, no-cache" if is_authenticated else None
+            if tipo == "http.response.start":
+                crudas = list(message.get("headers", []))
+                cabeceras = Headers(raw=crudas)
+                es_json = "application/json" in cabeceras.get("content-type", "")
+                if message["status"] != 200 or not es_json:
+                    paso = True
+                    await send(self._sin_etiqueta(message, crudas, autenticada))
+                    return
+                etag_previa = cabeceras.get("etag")
+                if etag_previa is not None:
+                    if coincide_if_none_match(etag_previa, if_none_match):
+                        descartar = True
+                        await _no_modificado(crudas, etag=etag_previa, cache_control=cache_control)(
+                            scope, receive, send
+                        )
+                        return
+                    paso = True
+                    etiquetadas = _cabeceras_etiquetadas(
+                        crudas, etag=None, cache_control=cache_control
+                    )
+                    await send({**message, "headers": _a_crudas(etiquetadas)})
+                    return
+                retenido = message
+                return
 
-        # Leer el cuerpo completo (sólo si es razonable en tamaño)
-        body = b""
-        async for chunk in response.body_iterator:  # type: ignore[attr-defined]  # call_next se anota como Response, pero BaseHTTPMiddleware entrega un _StreamingResponse, que sí lo tiene
-            body += chunk
-            if len(body) > self._max_bytes:
-                # Demasiado grande: devolver sin ETag (reconstruir la respuesta)
-                return Response(
-                    content=body,
-                    status_code=response.status_code,
-                    headers=dict(response.headers),
-                    media_type=response.media_type,
+            if tipo == "http.response.body" and retenido is not None:
+                inicio, retenido = retenido, None
+                await self._responder_con_cuerpo(
+                    inicio, message, autenticada, cache_control, if_none_match, scope, receive, send
                 )
+                # Tras un cuerpo completo la app no debería mandar nada más; si
+                # era un stream, el resto se reenvía sin tocar.
+                paso = True
+                return
 
-        etag = 'W/"' + hashlib.sha256(body).hexdigest()[:24] + '"'
-        if_none_match = request.headers.get("if-none-match", "")
-        # RFC 7232: If-None-Match can contain multiple ETags separated by commas
-        if if_none_match and etag in {t.strip() for t in if_none_match.split(",")}:
-            # El 304 conserva las cabeceras de correlación/seguridad de la
-            # respuesta original: son las mismas que el cliente habría recibido
-            # con un 200, y perderlas rompía el rastro de la petición.
-            not_modified = {
-                k: v
-                for k, v in response.headers.items()
-                if k.lower() in _NOT_MODIFIED_PRESERVED_HEADERS
-            }
-            not_modified["ETag"] = etag
-            not_modified["Cache-Control"] = cache_control or "no-cache"
-            not_modified["Vary"] = vary
-            return Response(status_code=304, headers=not_modified)
+            await send(message)
 
-        headers = dict(response.headers)
-        headers["ETag"] = etag
-        headers["Cache-Control"] = cache_control or headers.get("Cache-Control", "no-cache")
-        headers["Vary"] = vary
-        return Response(
-            content=body,
-            status_code=response.status_code,
-            headers=headers,
-            media_type=response.media_type,
+        await self.app(scope, receive, enviar)
+
+    async def _responder_con_cuerpo(
+        self,
+        inicio: Message,
+        primero: Message,
+        autenticada: bool,
+        cache_control: str | None,
+        if_none_match: str,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        """Decide qué sale para un GET 200 JSON sin ETag previa, ya con su primer trozo."""
+        crudas = list(inicio.get("headers", []))
+        cuerpo: bytes = primero.get("body", b"")
+
+        if primero.get("more_body", False):
+            # Un stream: se suelta ya y no se etiqueta.
+            await send(self._sin_etiqueta(inicio, crudas, autenticada))
+            await send(primero)
+            return
+
+        if len(cuerpo) > self._max_bytes:
+            # Demasiado grande: pasa sin ETag y con sus cabeceras tal cual,
+            # igual que antes (entonces sin `Vary` ni `Cache-Control` propios).
+            await send(inicio)
+            await send(primero)
+            return
+
+        etag = etag_debil(cuerpo)
+        if coincide_if_none_match(etag, if_none_match):
+            await _no_modificado(crudas, etag=etag, cache_control=cache_control)(
+                scope, receive, send
+            )
+            return
+
+        etiquetada = Response(
+            content=cuerpo,
+            status_code=200,
+            headers=_cabeceras_etiquetadas(crudas, etag=etag, cache_control=cache_control),
         )
+        await etiquetada(scope, receive, send)
+
+    @staticmethod
+    def _sin_etiqueta(
+        inicio: Message, crudas: list[tuple[bytes, bytes]], autenticada: bool
+    ) -> Message:
+        """``http.response.start`` de lo que no lleva ETag (no-200, no-JSON, streams).
+
+        Conserva el ``private, no-store`` de siempre: sin revalidación posible,
+        lo correcto es no guardarlo en ningún sitio.
+        """
+        cabeceras = MutableHeaders(raw=crudas)
+        if autenticada:
+            cabeceras["Cache-Control"] = "private, no-store"
+        cabeceras["Vary"] = _VARY
+        return {**inicio, "headers": cabeceras.raw}

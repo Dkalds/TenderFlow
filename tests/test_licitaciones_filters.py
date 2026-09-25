@@ -101,11 +101,18 @@ def test_base_filters_multivalor_genera_in():
 
 
 def test_base_filters_tecnologia_casa_contra_el_csv():
-    sql = _compiled_where(tecnologia="SAP")
-    assert "LIKE %s" in sql
-    assert "replace(coalesce(licitaciones.tecnologia" in sql
-    # Sin cláusula ESCAPE: el dialecto se compila sin conexión y la doblaría.
-    assert "ESCAPE" not in sql
+    """El listado solapa arrays sobre la misma expresión que los agregados.
+
+    Hasta 2026-09 eran cuatro ``LIKE`` por código sobre el CSV sin espacios;
+    ahora es ``&&`` contra ``tecnologia_tokens_sql``, que es también la
+    expresión del índice GIN propuesto. La columna va literal —no como
+    parámetros ligados— para que la expresión coincida con la del índice.
+    """
+    sql, params = _compiled_where_params(tecnologia="SAP,ORACLE")
+    assert "string_to_array(replace(COALESCE(licitaciones.tecnologia, ''), ' ', ''), ',')" in sql
+    assert "&& CAST(ARRAY[%s, %s] AS TEXT[])" in sql
+    assert "LIKE" not in sql
+    assert params == ["SAP", "ORACLE"]
 
 
 def test_listado_multivalor_y_multitecnologia(tmp_db):

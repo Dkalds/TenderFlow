@@ -75,6 +75,9 @@ def resolve_organization(
     context manager y por tanto lo cierra.
     """
     if organization_id is None:
+        # Camino rápido de solo lectura dentro del repositorio: un viaje si la
+        # personal ya existe, que es casi siempre (ver
+        # `OrganizationRepository.ensure_personal_organization`).
         personal = _repo.ensure_personal_organization(user_id)
         return int(personal["id"]), str(personal["role"])
 
@@ -124,9 +127,19 @@ def require_active_member(organization_id: int, user_id: int) -> None:
 
 
 def list_organizations(user_id: int) -> list[OrganizationSummary]:
-    """Lista scopes activos; garantiza que el personal exista."""
-    _repo.ensure_personal_organization(user_id)
-    return [OrganizationSummary.model_validate(row) for row in _repo.list_for_user(user_id)]
+    """Lista scopes activos; garantiza que el personal exista.
+
+    Una sola lectura en el caso normal: el listado dice además si la personal
+    del usuario ya está entre sus organizaciones activas, y solo si falta se
+    pasa por la escritura (y se vuelve a listar). Antes cada llamada abría la
+    transacción de escritura de ``ensure_personal_organization`` y luego
+    listaba.
+    """
+    filas, tiene_personal = _repo.list_for_user_con_personal(user_id)
+    if not tiene_personal:
+        _repo.ensure_personal_organization(user_id)
+        filas, _ = _repo.list_for_user_con_personal(user_id)
+    return [OrganizationSummary.model_validate(row) for row in filas]
 
 
 def create_organization(user_id: int, name: str) -> OrganizationSummary:

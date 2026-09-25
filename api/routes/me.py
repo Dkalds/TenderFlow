@@ -66,7 +66,7 @@ from shared.audit_events import (
     GDPR_DELETE,
     GDPR_EXPORT,
 )
-from shared.cache import invalidate_organization_scoped, invalidate_user_scoped
+from shared.cache import ainvalidate_organization_scoped, ainvalidate_user_scoped
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
 from shared.scoring_weights import validate_scoring_weights
 
@@ -104,11 +104,15 @@ def _user_key(ctx: dict[str, Any]) -> str:
     return str(ctx["user_key"])
 
 
-def _invalidate_profile_scoring(user_key: str, *organization_ids: int | None) -> None:
-    """Invalida el ranking propio y el de las organizaciones afectadas."""
-    invalidate_user_scoped("analytics", "scoring", user_key)
+async def _invalidate_profile_scoring(user_key: str, *organization_ids: int | None) -> None:
+    """Invalida el ranking propio y el de las organizaciones afectadas.
+
+    Con Redis cada invalidación es un ``SCAN`` de varios viajes: va a un hilo
+    porque quien la llama es un handler ``async``.
+    """
+    await ainvalidate_user_scoped("analytics", "scoring", user_key)
     for organization_id in {value for value in organization_ids if value is not None}:
-        invalidate_organization_scoped("analytics", "scoring", organization_id)
+        await ainvalidate_organization_scoped("analytics", "scoring", organization_id)
 
 
 def _actor_key(ctx: dict[str, Any]) -> str:
@@ -915,7 +919,7 @@ async def put_profile(
         body.visibility,
         user_id=user_id,
     )
-    _invalidate_profile_scoring(
+    await _invalidate_profile_scoring(
         user_key,
         previous.get("organization_id") if previous else None,
         int(ctx["organization_id"]),
@@ -936,7 +940,7 @@ async def delete_profile(
     # para invalidar su caché, y esa es justo la que no se conoce aquí.
     previous = await run_db(get_own_user_profile, user_key, user_id=user_id)
     await run_db(delete_user_profile, user_key, user_id=user_id)
-    _invalidate_profile_scoring(
+    await _invalidate_profile_scoring(
         user_key,
         previous.get("organization_id") if previous else None,
     )
