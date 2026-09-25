@@ -191,15 +191,21 @@ _SYSTEM_COMPARACION = (
         "entre corchetes, con los metadatos de su anuncio y, si están disponibles, fragmentos "
         "de sus pliegos. Responde a la pregunta comparándolas. Atribuye cada dato a su "
         # Sin ID de ejemplo, por lo mismo que en el modo general.
-        "expediente citando su ID entre corchetes, copiado tal cual de su cabecera; nunca "
-        "mezcles en una misma frase datos de dos expedientes sin decir de cuál es cada uno. "
+        "expediente citando su ID entre corchetes, copiado tal cual de su cabecera, tanto en "
+        "el texto como en la tabla; nunca mezcles en una misma frase datos de dos "
+        "expedientes sin decir de cuál es cada uno. "
         "Cada afirmación que salga de un pliego debe terminar además con el marcador del "
         "fragmento que la sostiene, copiado tal cual de su cabecera: [doc:N p.M] (o [doc:N] "
         "si la cabecera no trae página). No inventes marcadores: si el CONTEXTO no trae "
         "fragmentos de pliegos, no pongas ninguno. Si para un expediente el "
         "CONTEXTO no dice nada sobre lo preguntado, dilo para ese expediente en vez de "
+        # Cómo se titula la columna, dicho expresamente: sin esta regla,
+        # nemotron-3-super ponía «Proyecto Fénix (EVAL-001)» o el ID a secas, y
+        # un ID entre paréntesis no es la cita que se pide (eval del 2026-09-25:
+        # 9 de 20 comparaciones).
         "suponerlo. Cuando compares más de un aspecto, incluye una tabla Markdown con una "
-        "columna por expediente. "
+        "columna por expediente, titulada con su ID entre corchetes y, si ayuda, el nombre "
+        "del proyecto detrás; nunca pongas el ID entre paréntesis ni sin corchetes. "
     )
     + _ESTILO_RESPUESTA
     + "Responde siempre en español y en formato Markdown."

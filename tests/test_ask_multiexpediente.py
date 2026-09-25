@@ -177,6 +177,13 @@ class TestPromptYCitas:
         assert "expediente" in texto and "[doc:N p.M]" in texto
         assert prompt_version("comparacion") != prompt_version("licitacion")
 
+    def test_la_tabla_titula_cada_columna_con_el_id_entre_corchetes(self) -> None:
+        """Sin esta regla, el modelo titulaba «Proyecto Fénix (EVAL-001)»: un ID
+        entre paréntesis no es la cita que se pide (eval del 2026-09-25, 9 de 20)."""
+        texto = build_system_prompt("comparacion", has_corpus_context=True)
+        assert "titulada con su ID entre corchetes" in texto
+        assert "nunca pongas el ID entre paréntesis" in texto
+
     def test_las_citas_dicen_de_que_expediente_son(self) -> None:
         from services.rag.citas import evento_sources
 
