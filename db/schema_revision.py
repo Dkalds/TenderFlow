@@ -64,6 +64,12 @@ from observability.logging import configure_logging, get_logger, redact_dsn
 # ``__main__`` y sus eventos saldrían firmados con ese nombre.
 _LOGGER = "db.schema_revision"
 
+# Logger de módulo solo para el punto de observación de :func:`diagnosticar`.
+# Los eventos del CLI y del endpoint se piden con `get_logger(_LOGGER)` en cada
+# llamada, que es lo que sus tests sustituyen; este no pasa por ahí, así que no
+# se cuela en esas aserciones.
+_log = get_logger(_LOGGER)
+
 ALEMBIC_DIR = Path(__file__).resolve().parent / "alembic"
 
 # `redact_dsn` redacta la contraseña de un DSN `postgresql://`, pero no la de la
@@ -266,7 +272,14 @@ def diagnosticar(
         cabezas, conocidas = leer_repo()
         return Diagnostico(comparar_revisiones(leer_aplicadas(), cabezas, conocidas))
     except Exception as exc:
-        return Diagnostico("unknown", error=_describir(exc))
+        error = _describir(exc)
+        # El aviso lo emite quien llama (`schema_preflight_failed`,
+        # `health_schema_check_failed`, `schema_revision_check_failed`) con este
+        # mismo `error`; aquí queda el punto de observación del propio sondeo.
+        # Sin `exc_info`: la traza puede arrastrar el DSN con la contraseña, y
+        # `_describir` ya lo deja redactado.
+        _log.debug("schema_revision_sondeo_fallido", error=error)
+        return Diagnostico("unknown", error=error)
 
 
 def estado_schema() -> str:
