@@ -37,6 +37,16 @@ describe("Textarea", () => {
     expect(screen.getByRole("textbox")).toHaveClass("my-textarea");
   });
 
+  // Mismo caso que en input.test.tsx: con `text-base md:text-sm` en el primitivo,
+  // el `md:text-sm` sobrevivía al tamaño del llamador y ganaba desde 768 px.
+  it("a caller's font size replaces the field size at every width", () => {
+    render(<Textarea aria-label="t" className="text-[12.5px]" />);
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveClass("text-[12.5px]");
+    expect(textarea).not.toHaveClass("text-campo");
+    expect(textarea.className).not.toMatch(/(^|\s)md:text-/);
+  });
+
   it("forwards ref to the textarea element", () => {
     const ref = { current: null as HTMLTextAreaElement | null };
     render(<Textarea ref={ref} aria-label="t" />);

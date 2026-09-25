@@ -3,6 +3,10 @@
  *
  * Covers: cn, formatCurrency, formatNumber, formatPercent, formatDate, truncate
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, it, expect } from "vitest";
 import {
   EMPTY,
@@ -55,6 +59,38 @@ describe("cn", () => {
   it("preserves non-conflicting classes from both arguments", () => {
     const result = cn("flex items-center", "gap-2 text-sm");
     expect(result).toBe("flex items-center gap-2 text-sm");
+  });
+});
+
+/**
+ * Los tamaños de letra que declara `globals.css` (`--text-tf-meta`,
+ * `--text-campo`…), leídos del propio fichero: tailwind-merge no lo lee, así
+ * que `cn()` los tiene en una lista aparte y este test impide que se separen.
+ * Sin la lista, `text-tf-micro` era un color para tailwind-merge y
+ * `text-muted-foreground` lo borraba.
+ */
+const TAMANOS_DEL_CSS = [
+  ...new Set(
+    [
+      ...readFileSync(
+        path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../app/globals.css"),
+        "utf8",
+      ).matchAll(/--text-([\w-]+)\s*:/g),
+    ]
+      .map((m) => m[1])
+      // `--text-tf-meta--line-height` y compañía no son tamaños.
+      .filter((nombre) => !nombre.includes("--")),
+  ),
+];
+
+describe("cn — tamaños de letra de globals.css", () => {
+  it("encuentra la escala tf-* y el tamaño de campo", () => {
+    expect(TAMANOS_DEL_CSS).toEqual(expect.arrayContaining(["tf-micro", "tf-meta", "campo"]));
+  });
+
+  it.each(TAMANOS_DEL_CSS)("text-%s sustituye a otro tamaño y convive con un color", (nombre) => {
+    expect(cn("text-sm", `text-${nombre}`)).toBe(`text-${nombre}`);
+    expect(cn(`text-${nombre}`, "text-muted-foreground")).toBe(`text-${nombre} text-muted-foreground`);
   });
 });
 

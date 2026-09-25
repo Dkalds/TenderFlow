@@ -1,5 +1,22 @@
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+/**
+ * tailwind-merge con los tamaños de letra propios de `globals.css`: la escala
+ * `tf-*` y `campo`.
+ *
+ * No lee el CSS, y un `text-<nombre>` que no conoce lo toma por un color. Sin
+ * esta lista `text-tf-meta` no sustituía a un `text-sm`, y un color de verdad lo
+ * borraba: `cn("text-tf-micro text-muted-foreground")` dejaba solo el color. `lib/__tests__/utils.test.ts` la compara con los tokens
+ * `--text-*` del CSS, así que un paso nuevo en la escala la pone en rojo.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ["campo", "tf-micro", "tf-meta", "tf-body", "tf-lede", "tf-title", "tf-hero"],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
