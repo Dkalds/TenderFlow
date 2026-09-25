@@ -328,6 +328,10 @@
  * tamaño. Son **aditivos**: no pisan `text-xs`/`text-sm`, así que las
  * pantallas que todavía no están migradas siguen pintando igual. `/empresas`
  * es la primera que las usa; el resto se migran cuando se toquen.
+ *
+ * tailwind-merge no lee esta hoja: un paso nuevo se declara también en `cn()`
+ * (`src/lib/utils.ts`). Sin eso lo toma por un color y lo descarta en cuanto
+ * comparte `cn()` con otro color. El test de `cn` falla si falta alguno.
  */
 @theme {
   --text-tf-micro: 0.6875rem;
