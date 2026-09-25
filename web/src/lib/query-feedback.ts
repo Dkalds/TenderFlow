@@ -28,6 +28,9 @@ export interface QueryFeedbackMeta extends Record<string, unknown> {
 /** Human-friendly message for any thrown error. */
 export function getErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    // La consulta cancelada por tiempo no es «inténtalo en unos segundos»: su
+    // `detail` dice lo que sí sirve, que es acotar los filtros.
+    if (error.tipo === TIPO_CONSULTA_CANCELADA && error.message) return error.message;
     if (error.status >= 500) return "Error del servidor. Inténtalo de nuevo en unos segundos.";
     return error.message || "No se pudo completar la solicitud.";
   }
@@ -52,6 +55,13 @@ function isAuthError(error: unknown): boolean {
 const MENSAJES_DE_RED = ["failed to fetch", "networkerror", "load failed", "fetch failed"];
 
 /**
+ * `type` del 503 que la API devuelve cuando Postgres cancela una consulta por
+ * `statement_timeout` (`TIPO_CONSULTA_CANCELADA` en `api/errors.py`). Es un
+ * identificador del contrato de errores, no una URL que se pida.
+ */
+export const TIPO_CONSULTA_CANCELADA = "https://licitaciones-sap/errors/query-timeout";
+
+/**
  * ¿El error significa "no hubo respuesta" en vez de "la respuesta fue que no"?
  *
  * La API corre en Render con spin-down (plan free, ver `render.yaml`): tras un
@@ -64,6 +74,10 @@ const MENSAJES_DE_RED = ["failed to fetch", "networkerror", "load failed", "fetc
  */
 export function esErrorTransitorio(error: unknown): boolean {
   if (error instanceof ApiError) {
+    // Una consulta que Postgres canceló por tiempo se cortaría otra vez en el
+    // mismo punto: repetirla solo ocupa de nuevo una conexión del pool durante
+    // todo el techo, cuatro veces, para acabar en el mismo error.
+    if (error.tipo === TIPO_CONSULTA_CANCELADA) return false;
     // 429 queda fuera a propósito: es el rate-limit del middleware diciendo
     // "menos peticiones", y reintentar es lo contrario de obedecerlo.
     return error.status === 408 || error.status >= 500;

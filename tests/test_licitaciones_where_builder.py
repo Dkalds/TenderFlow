@@ -43,10 +43,17 @@ def test_estado_multivalor_y_espacios_sobrantes():
 
 
 def test_tecnologia_casa_contra_el_csv_de_la_fila():
-    """No es ``=``: la columna guarda ``"SAP,SALESFORCE"`` en una sola fila."""
+    """No es ``=``: la columna guarda ``"SAP,SALESFORCE"`` en una sola fila.
+
+    Desde 2026-09 es solapamiento de arrays (``&&``) sobre la expresión
+    normalizada del CSV, no un ``unnest`` por fila: misma semántica, y una forma
+    que un índice GIN sobre esa expresión puede resolver.
+    """
     where, params = build_licitaciones_where(LicitacionesFilters(tecnologia="SAP"))
-    assert "unnest(string_to_array(" in where
-    assert "trim(_tec.code) IN (%s)" in where
+    assert "string_to_array(replace(COALESCE(tecnologia, ''), ' ', ''), ',')" in where
+    assert "&& ARRAY[%s]::text[]" in where
+    assert "unnest" not in where
+    assert "tecnologia = " not in where
     assert params == ["SAP"]
 
 

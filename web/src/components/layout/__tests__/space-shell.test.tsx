@@ -4,29 +4,38 @@
  * La regla que fijan: la vista vive en `?vista=`, no en el path. De ahí sale
  * todo lo demás — cambiar de corte no navega, así que el ámbito y la selección
  * sobreviven, y el botón "atrás" no se llena de cortes.
+ *
+ * Y no navega de verdad: `?vista=` se escribe con `history.replaceState` y no
+ * con el router, que en un dashboard `force-dynamic` pedía un RSC al servidor
+ * por clic. `next/navigation` es aquí el doble de `test/navegacion-superficial`,
+ * que reproduce cómo Next lleva ese cambio a `useSearchParams`: los tests
+ * comprueban la URL, que la pantalla se entera y que el router no se toca.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup, renderHook, fireEvent } from "@testing-library/react";
+import { act, render, screen, cleanup, renderHook, fireEvent } from "@testing-library/react";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { SPACE_VIEWS } from "@/lib/space-views";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { irA, router } from "@/test/navegacion-superficial";
 
-const { replace, searchParamsRef } = vi.hoisted(() => ({
-  replace: vi.fn(),
-  searchParamsRef: { current: new URLSearchParams() },
-}));
+vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
-  useSearchParams: () => searchParamsRef.current,
+const { registrarEvento } = vi.hoisted(() => ({ registrarEvento: vi.fn() }));
+vi.mock("@/lib/analytics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/analytics")>()),
+  registrarEvento,
 }));
 
 const mercado = CONSOLE_SPACES.find((space) => space.key === "mercado")!;
 const resumen = CONSOLE_SPACES.find((space) => space.key === "resumen")!;
 
+function query(): URLSearchParams {
+  return new URLSearchParams(window.location.search);
+}
+
 beforeEach(() => {
-  replace.mockClear();
-  searchParamsRef.current = new URLSearchParams();
+  vi.clearAllMocks();
+  irA("/mercado");
 });
 afterEach(() => {
   cleanup();
@@ -39,14 +48,14 @@ describe("useSpaceView", () => {
   });
 
   it("respeta la vista pedida si existe en el espacio", () => {
-    searchParamsRef.current = new URLSearchParams("vista=geografia");
+    irA("/mercado?vista=geografia");
     const { result } = renderHook(() => useSpaceView(mercado));
     expect(result.current.view).toBe("geografia");
   });
 
   it("cae a la primera vista si la pedida no existe", () => {
     // Un `?vista=` inventado no puede dejar el espacio en blanco.
-    searchParamsRef.current = new URLSearchParams("vista=no-existe");
+    irA("/mercado?vista=no-existe");
     const { result } = renderHook(() => useSpaceView(mercado));
     expect(result.current.view).toBe("tiempo");
   });
@@ -56,20 +65,51 @@ describe("useSpaceView", () => {
     expect(result.current.view).toBe("");
   });
 
-  it("cambia de corte con replace y sin scroll, conservando el ámbito de la URL", () => {
-    // `replace` y no `push`: cambiar de corte no es navegar. Y el resto de la
-    // query sobrevive, que es lo que mantiene vivo el ámbito.
-    searchParamsRef.current = new URLSearchParams("ccaa=MD&vista=tiempo");
+  it("cambia de corte sin navegar: la URL y `useSearchParams` llevan la vista, y el ámbito sobrevive", () => {
+    irA("/mercado?ccaa=MD&vista=tiempo");
+    const entradas = window.history.length;
     const { result } = renderHook(() => useSpaceView(mercado));
 
-    result.current.setView("organos");
+    act(() => result.current.setView("organos"));
 
-    expect(replace).toHaveBeenCalledTimes(1);
-    const [url, options] = replace.mock.calls[0];
-    const query = new URLSearchParams(url.replace(/^\?/, ""));
-    expect(query.get("vista")).toBe("organos");
-    expect(query.get("ccaa")).toBe("MD");
-    expect(options).toEqual({ scroll: false });
+    // Ni `replace` ni `push` del router: ninguna petición RSC por clic.
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
+    // La URL cambia en su sitio: mismo path, el resto de la query intacto (es
+    // lo que mantiene vivo el ámbito) y sin una entrada de historial más.
+    expect(window.location.pathname).toBe("/mercado");
+    expect(query().get("vista")).toBe("organos");
+    expect(query().get("ccaa")).toBe("MD");
+    expect(window.history.length).toBe(entradas);
+    // Y `useSearchParams` la devuelve: el hook ya está en el corte nuevo.
+    expect(result.current.view).toBe("organos");
+  });
+
+  it("sigue registrando qué corte se abre", () => {
+    const { result } = renderHook(() => useSpaceView(mercado));
+
+    act(() => result.current.setView("cpv"));
+
+    expect(registrarEvento).toHaveBeenCalledWith("espacio_abierto", {
+      espacio: "mercado",
+      origen: "conmutador",
+      vista: "cpv",
+    });
+  });
+
+  it("parte de la URL viva: no pisa un parámetro escrito justo antes", () => {
+    irA("/mercado?vista=tiempo");
+    const { result } = renderHook(() => useSpaceView(mercado));
+
+    act(() => {
+      // Así escribe `nuqs` el ámbito. En la app Next lo aplica en una
+      // transición, y el `useSearchParams` del hook todavía no lo ha visto.
+      window.history.replaceState(null, "", "/mercado?vista=tiempo&tecnologia=SAP");
+      result.current.setView("cpv");
+    });
+
+    expect(query().get("tecnologia")).toBe("SAP");
+    expect(query().get("vista")).toBe("cpv");
   });
 });
 
@@ -115,6 +155,26 @@ describe("SpaceShell", () => {
     // está en validación.
     fireEvent.click(screen.getByRole("tab", { name: /Clusters/ }));
     expect(onViewChange).toHaveBeenCalledWith("clusters");
+  });
+
+  it("pulsar una pestaña la activa sin navegar: URL → `useSearchParams` → conmutador", () => {
+    function Espacio() {
+      const { view, setView } = useSpaceView(mercado);
+      return (
+        <SpaceShell spaceKey="mercado" view={view} onViewChange={setView}>
+          <p>vista {view}</p>
+        </SpaceShell>
+      );
+    }
+    render(<Espacio />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "CPV" }));
+
+    expect(screen.getByRole("tab", { name: "CPV" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("vista cpv")).toBeInTheDocument();
+    expect(query().get("vista")).toBe("cpv");
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
   });
 
   it("no revienta si nadie escucha el cambio de vista", () => {

@@ -342,7 +342,7 @@ async def descargar_export_encolado(
     motivo que en ``GET /jobs/{id}``: un 403 confirmaría que ese id existe.
     """
     from services.exports import get_export_filename
-    from shared.cache import get_cache
+    from shared.cache import aget_cache
     from shared.jobs import CACHE_EXPORTS, TIPO_EXPORT_PDF, clave_cache_export, obtener
 
     job = await run_db(obtener, job_id)
@@ -360,7 +360,9 @@ async def descargar_export_encolado(
             detail=f"El trabajo {job_id} está en estado '{job.estado}'; todavía no hay fichero.",
         )
 
-    contenido = get_cache(CACHE_EXPORTS).get(clave_cache_export(job_id))
+    # `aget`: el fichero entero viaja desde Redis, y este handler es `async`;
+    # con `get` el event loop se quedaba parado lo que durara la transferencia.
+    contenido = await (await aget_cache(CACHE_EXPORTS)).aget(clave_cache_export(job_id))
     if not isinstance(contenido, bytes):
         raise HTTPException(
             status_code=status.HTTP_410_GONE,

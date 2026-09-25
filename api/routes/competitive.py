@@ -2,6 +2,20 @@
 
 Renovaciones (contratos que vencen), análisis de bajas, cuota de mercado,
 concentración HHI, perfil de competidor y watchlist por empresa.
+
+Caché de los agregados globales
+-------------------------------
+Renovaciones, bajas, cuota y HHI agregan ``adjudicaciones`` enteras y se
+recalculaban en cada petición, aunque su resultado no depende de quién
+pregunta: solo de los filtros. Se cachean igual que la analítica global de
+``/analytics/*`` (``/analytics/competitors`` es la hermana directa): 300 s,
+una entrada compartida por todos los usuarios (``user_scoped=False``) con los
+filtros en la clave, y sin invalidación explícita tras la ingesta — expiran
+por TTL, que es la política de ``shared/cache.py`` para las respuestas de
+endpoint. La autenticación (``_ctx``) se sigue resolviendo antes de mirar la
+caché; solo queda fuera de la clave. Lo que depende del usuario (watchlist,
+batallas, socios) o de una empresa concreta (perfil, adjudicaciones) no se
+cachea aquí.
 """
 
 from __future__ import annotations
@@ -16,6 +30,7 @@ from pydantic import BaseModel, Field
 from api.concurrency import run_db
 from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth
+from api.techo_analitica import techo_sentencia_analitica
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.idempotency import cached_response, store_response
 from db.idempotency import scope as idem_scope
@@ -48,6 +63,7 @@ from services.competitive.renovaciones import (
 )
 from services.competitive.socios import SugerenciaSocios, socios_del_segmento
 from services.organizations import OrganizationAccessError
+from shared.cache import cache_response
 from shared.dto import (
     MAX_PAGE_LIMIT,
     CompetitiveCompanyAwardsDTO,
@@ -57,7 +73,13 @@ from shared.metric_scope import MetricScope
 
 log = get_logger(__name__)
 
-router = APIRouter(prefix="/competitive", tags=["competitive"])
+# El techo de sentencia de la analítica vale para toda la petición: ver
+# `api/techo_analitica.py` (apagado mientras el setting valga 0).
+router = APIRouter(
+    prefix="/competitive",
+    tags=["competitive"],
+    dependencies=[Depends(techo_sentencia_analitica)],
+)
 
 _adj_repo = AdjudicacionRepository()
 
@@ -92,6 +114,7 @@ def _split_int_filter(value: str | None) -> list[int] | None:
 
 
 @router.get("/renovaciones", summary="Contratos que vencen próximamente")
+@cache_response(ttl=300, user_scoped=False)
 async def get_renovaciones(
     # El tope es el mismo horizonte que puntúa el batch de retención: más allá,
     # `riesgo_cambio` saldría NULL y el orden «score» los mandaría al fondo.
@@ -157,6 +180,7 @@ async def get_renovaciones(
 
 
 @router.get("/renovaciones/resumen", summary="Cartera en juego por empresa")
+@cache_response(ttl=300, user_scoped=False)
 async def get_renovaciones_resumen(
     months: int = Query(12, ge=1, le=HORIZONTE_RENOVACIONES_MAX_MESES),
     tecnologia: str | None = Query(
@@ -289,6 +313,7 @@ class WatchlistEmpresaStatus(BaseModel):
 
 
 @router.get("/bajas", summary="Baja media por empresa, órgano, CPV o CCAA")
+@cache_response(ttl=300, user_scoped=False)
 async def get_bajas(
     group_by: str = Query("empresa", pattern="^(empresa|organo|cpv|ccaa)$"),
     min_contratos: int = Query(3, ge=1, le=100),
@@ -333,6 +358,7 @@ async def get_bajas(
 
 
 @router.get("/bajas/referencia", summary="Baja de referencia para un segmento")
+@cache_response(ttl=300, user_scoped=False)
 async def get_baja_referencia(
     organo: str | None = Query(None, max_length=300),
     cpv: str | None = Query(None, max_length=8),
@@ -360,6 +386,7 @@ async def get_baja_referencia(
 
 
 @router.get("/cuota", summary="Cuota de mercado por empresa")
+@cache_response(ttl=300, user_scoped=False)
 async def get_cuota(
     cpv: str | None = Query(None, max_length=8),
     ccaa: str | None = Query(None, max_length=50),
@@ -373,6 +400,7 @@ async def get_cuota(
 
 
 @router.get("/hhi", summary="Concentración HHI por segmento")
+@cache_response(ttl=300, user_scoped=False)
 async def get_hhi(
     segment_by: str = Query("cpv", pattern="^(cpv|ccaa|organo|tecnologia)$"),
     min_contratos: int = Query(5, ge=1, le=100),

@@ -17,11 +17,12 @@ import type { ConsultaServidor } from "@/lib/server-prefetch";
 export const LIMITE_PROXIMAS = 100;
 
 /**
- * Lo que `radar/layout.tsx` pide en servidor: las consultas del Radar que **no**
+ * Lo que `radar/page.tsx` pide en servidor: las consultas del Radar que **no**
  * dependen de la organización activa (ver `lib/server-prefetch.ts`, regla 2).
  * El ranking (`GET /analytics/scoring`) sí depende de ella y se queda en el
- * cliente. Tampoco dependen de la URL, y por eso el prefetch puede vivir en el
- * layout de la ruta y no en `page.tsx`.
+ * cliente. Tampoco dependen de la URL, pero el prefetch vive en la página y no
+ * en el layout por lo que explica `web/AGENTS.md` (S7.1): así el Radar tiene su
+ * `loading.tsx` y el prefetch del enlace del rail no las pide.
  *
  * Cada `transformar` replica el `queryFn` de su hook: `useRadarDismissals`
  * cachea `response.ids`, no la respuesta entera.

@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { registrarEvento } from "@/lib/analytics";
 import { CONSOLE_SPACES, type ConsoleSpace } from "@/lib/console-spaces";
+import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import {
   ScrollEdgeDelProveedor,
   ScrollEdgeProvider,
@@ -19,6 +20,11 @@ import {
  * que **el ámbito y la selección sobrevivan al cambio de corte**: cambiar de
  * vista no navega a otra página, sólo cambia qué se pinta con el mismo ámbito.
  *
+ * Y no navega de verdad: `?vista=` se escribe sin pasar por el servidor
+ * (`lib/url-superficial.ts`). Ninguna página ni layout de los espacios lee
+ * `vista` en servidor —todas las páginas son `"use client"`—, así que la ida y
+ * vuelta RSC que costaba cada clic sólo devolvía lo que ya estaba pintado.
+ *
  * Las rutas antiguas siguen funcionando: redirigen aquí con su `?vista=`
  * (ver `next.config.ts`), así que ningún marcador se rompe.
  */
@@ -27,7 +33,6 @@ export function useSpaceView(space: ConsoleSpace): {
   view: string;
   setView: (view: string) => void;
 } {
-  const router = useRouter();
   const params = useSearchParams();
   const views = space.views ?? [];
   const requested = params.get("vista");
@@ -37,16 +42,18 @@ export function useSpaceView(space: ConsoleSpace): {
 
   const setView = React.useCallback(
     (next: string) => {
-      const search = new URLSearchParams(params.toString());
+      const search = queryActual();
       search.set("vista", next);
       // Qué corte se mira, no sólo qué espacio: es el dato que permite fusionar
       // o retirar vistas con uso medido en vez de por intuición.
       registrarEvento("espacio_abierto", { espacio: space.key, origen: "conmutador", vista: next });
-      // `replace`, no `push`: cambiar de corte no es navegar, y llenar el
-      // historial de vistas convierte el botón "atrás" en algo inútil.
-      router.replace(`?${search.toString()}`, { scroll: false });
+      // `replace` y sin navegar: cambiar de corte no es ir a otra página, y
+      // llenar el historial de vistas convierte el botón "atrás" en algo
+      // inútil. Sin navegación el router tampoco toca el scroll, que es lo que
+      // antes había que pedirle con `scroll: false`.
+      reemplazarQuery(search);
     },
-    [params, router, space.key],
+    [space.key],
   );
 
   return { view, setView };

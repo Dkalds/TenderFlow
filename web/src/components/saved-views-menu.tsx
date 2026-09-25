@@ -20,15 +20,24 @@ import {
   useDeleteView,
   useSavedViews,
   useSaveView,
+  type SavedView,
 } from "@/lib/saved-views";
 
+/**
+ * `/saved-filters` no se pide al montar la barra, sino al abrir el menú: el
+ * botón no enseña ningún contador, así que el primer render no lo necesita y se
+ * pedía en cada carga de cada pantalla con ámbito para un menú que casi nunca
+ * se abre. Al acercarse al botón (puntero o foco) se adelanta la petición, para
+ * que al abrir la lista ya esté.
+ */
 export function SavedViewsMenu() {
   const filters = useFilters();
   const open = useUiStore((s) => s.savedViewsOpen);
   const setOpen = useUiStore((s) => s.setSavedViewsOpen);
   const [name, setName] = React.useState("");
+  const [precargar, setPrecargar] = React.useState(false);
+  const adelantar = React.useCallback(() => setPrecargar(true), []);
 
-  const { data: views = [], isLoading } = useSavedViews();
   const saveView = useSaveView();
   const deleteView = useDeleteView();
 
@@ -36,22 +45,22 @@ export function SavedViewsMenu() {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    saveView.mutate(
-      { name: trimmed, filters_json: snapshotFilters(filters) },
-      { onSuccess: () => setName("") },
-    );
+    saveView.mutate({ name: trimmed, filters_json: snapshotFilters(filters) }, { onSuccess: () => setName("") });
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
+      {precargar && <PrecargaVistas />}
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
           className="h-8 gap-1.5 px-2 text-xs"
           aria-haspopup="dialog"
+          onPointerEnter={adelantar}
+          onFocus={adelantar}
         >
-          <Bookmark className="h-3.5 w-3.5 text-primary" />
+          <Bookmark className="text-primary h-3.5 w-3.5" />
           Vistas
         </Button>
       </PopoverTrigger>
@@ -75,50 +84,74 @@ export function SavedViewsMenu() {
           </Button>
         </form>
 
-        <div className="my-1 h-px bg-border/60" />
+        <div className="bg-border/60 my-1 h-px" />
 
-        <div className="max-h-64 overflow-y-auto">
-          {isLoading ? (
-            <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-              Cargando…
-            </p>
-          ) : views.length === 0 ? (
-            <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-              No tienes vistas guardadas.
-            </p>
-          ) : (
-            <ul className="space-y-0.5">
-              {views.map((view) => (
-                <li
-                  key={view.id}
-                  className="group flex items-center gap-1 rounded-md px-1"
-                >
-                  <button
-                    type="button"
-                    className="tf-pressable flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
-                    onClick={() => {
-                      applySnapshot(filters, view.filters_json);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check className="h-3.5 w-3.5 text-primary opacity-0 group-hover:opacity-60" />
-                    <span className="truncate">{view.name}</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Eliminar vista ${view.name}`}
-                    className="tf-pressable rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => deleteView.mutate(view.id)}
-                    disabled={deleteView.isPending}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <ListaDeVistas
+          onAplicar={(view) => {
+            applySnapshot(filters, view.filters_json);
+            setOpen(false);
+          }}
+          onEliminar={(view) => deleteView.mutate(view.id)}
+          eliminando={deleteView.isPending}
+        />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * Observador sin interfaz: arranca la consulta de `useSavedViews` —misma clave
+ * y misma `queryFn`, así que no hay una segunda petición al abrir— antes de que
+ * el menú se abra.
+ */
+function PrecargaVistas() {
+  useSavedViews();
+  return null;
+}
+
+/** La lista vive dentro del contenido del popover, que sólo se monta abierto. */
+function ListaDeVistas({
+  onAplicar,
+  onEliminar,
+  eliminando,
+}: {
+  onAplicar: (view: SavedView) => void;
+  onEliminar: (view: SavedView) => void;
+  eliminando: boolean;
+}) {
+  const { data: views = [], isLoading } = useSavedViews();
+
+  return (
+    <div className="max-h-64 overflow-y-auto">
+      {isLoading ? (
+        <p className="text-muted-foreground px-2 py-3 text-center text-xs">Cargando…</p>
+      ) : views.length === 0 ? (
+        <p className="text-muted-foreground px-2 py-3 text-center text-xs">No tienes vistas guardadas.</p>
+      ) : (
+        <ul className="space-y-0.5">
+          {views.map((view) => (
+            <li key={view.id} className="group flex items-center gap-1 rounded-md px-1">
+              <button
+                type="button"
+                className="tf-pressable hover:bg-accent flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
+                onClick={() => onAplicar(view)}
+              >
+                <Check className="text-primary h-3.5 w-3.5 opacity-0 group-hover:opacity-60" />
+                <span className="truncate">{view.name}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={`Eliminar vista ${view.name}`}
+                className="tf-pressable text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md p-1.5"
+                onClick={() => onEliminar(view)}
+                disabled={eliminando}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

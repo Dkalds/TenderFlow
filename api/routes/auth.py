@@ -239,10 +239,11 @@ def _login_client_key(request: Request, email: str) -> str:
 def _session_principal(session: str | None) -> dict[str, Any]:
     """Resuelve el principal de la cookie de sesión, sin gate de MFA.
 
-    Síncrona a propósito: hace tres viajes a BD (``validate_session``,
-    ``get_user_by_id``, ``is_totp_required``) y es la dependencia de casi toda
-    la API autenticada por cookie. Sus dos llamadores async la despachan con un
-    único ``run_db`` para que ese trabajo no corra sobre el event loop.
+    Síncrona a propósito: va a BD (``validate_session_principal``: una lectura
+    por el pool de lectura, más el ``UPDATE`` de renovación como mucho una vez
+    por minuto) y es la dependencia de casi toda la API autenticada por cookie.
+    Sus dos llamadores async la despachan con un único ``run_db`` para que ese
+    trabajo no corra sobre el event loop.
 
     Raises 401 if the session is missing, invalid, or expired.
 

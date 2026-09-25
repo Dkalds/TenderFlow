@@ -13,13 +13,18 @@
  * tengo sin triar»), y un estado que sólo existe en memoria convierte ese
  * enlace en «la agenda, pero por donde tú entres». Se escriben con `replace`
  * porque cambiar de carril no es navegar: llenar el historial de carriles deja
- * el botón «atrás» inservible.
+ * el botón «atrás» inservible. Y se escriben sin pasar por el servidor
+ * (`lib/url-superficial.ts`): la página es `"use client"` y ningún Server
+ * Component lee `carril` ni `mios`. El carril filtra la respuesta de
+ * `/pursuits/agenda` que ya está en caché, y el cambio de `mios` lo pide el
+ * propio `usePipelineAgenda` a la API.
  */
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useFilters } from "@/lib/filters";
+import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { useDismissRadarTender, useRestoreRadarTender } from "@/hooks/use-radar";
 import { useActualizarTarea } from "@/hooks/use-pursuit-tasks";
@@ -86,15 +91,12 @@ export function useAgenda() {
    */
   const [focoAccion, setFocoAccion] = React.useState<{ clave: string; n: number } | null>(null);
 
-  const escribirParam = React.useCallback(
-    (clave: string, valor: string | null) => {
-      const search = new URLSearchParams(params.toString());
-      if (valor) search.set(clave, valor);
-      else search.delete(clave);
-      router.replace(`?${search.toString()}`, { scroll: false });
-    },
-    [params, router],
-  );
+  const escribirParam = React.useCallback((clave: string, valor: string | null) => {
+    const search = queryActual();
+    if (valor) search.set(clave, valor);
+    else search.delete(clave);
+    reemplazarQuery(search);
+  }, []);
 
   const setCarril = React.useCallback(
     (next: Carril) => {

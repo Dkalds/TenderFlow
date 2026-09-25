@@ -48,8 +48,8 @@ las carga de `.claude/skills/`, el resto de herramientas de `.agents/skills/`).
 
 Las pantallas del dashboard son `"use client"`, pero su primer dato puede
 pedirse en servidor y llegar hidratado al `QueryClient` del navegador. Patrón
-de referencia: `resumen` (en `page.tsx`, porque sus consultas dependen del
-ámbito de la URL) y `radar` (en `layout.tsx`, porque las suyas no). Piezas:
+de referencia: `resumen` (con el ámbito de la URL) y `radar` (sin él); en los
+dos, una `page.tsx` de servidor envuelve la vista cliente. Piezas:
 `web/src/lib/server-prefetch.ts` (reglas y límites),
 `web/src/components/prefetch-servidor.tsx` y un módulo `_lib/prefetch` por ruta con
 sus consultas.
@@ -62,13 +62,24 @@ sus consultas.
 2. **Nada que dependa de la organización activa**: vive en `localStorage` y el
    servidor no la ve. Prefetchearla daría un HTML distinto del primer render
    del cliente para quien eligió otra organización.
-3. **El prefetch nunca bloquea ni rompe**: presupuesto por consulta, y lo que
-   falla no se hidrata, así que la pantalla cae al comportamiento de siempre.
+3. **El prefetch nunca rompe y retiene poco**: el render lo espera, así que
+   cada consulta tiene un presupuesto corto (`PRESUPUESTO_PREFETCH_MS`, pensado
+   para funciones en `fra1`, junto a la API), y lo que falla o no llega a tiempo
+   no se hidrata: la pantalla cae al comportamiento de siempre y el hook lo pide
+   desde el navegador. Las consultas pendientes no se deshidratan: con
+   `useQuery` desajustarían la hidratación (el porqué, en `server-prefetch.ts`).
 4. **Pocas consultas por ruta**: salen de la IP del servidor de Next y cuentan
    contra el rate-limit por IP de la API.
 
-Para extenderlo a otra ruta: su módulo `_lib/prefetch`, la página (o el layout, si
-no depende de la URL) envuelta en `PrefetchServidor`, y su test de paridad.
+Para extenderlo a otra ruta: su módulo `_lib/prefetch`, la página envuelta en
+`PrefetchServidor`, y su test de paridad. **En la página, no en el layout**,
+aunque las consultas no dependan de la URL: el `loading.tsx` de un segmento
+envuelve su página pero no su layout, así que un `await` en el layout deja la
+navegación en el esqueleto genérico del padre; y si el segmento tiene
+`loading.tsx`, cada prefetch de un `<Link>` —el rail enlaza todos los
+espacios— ejecuta el layout y sus consultas. Radar lo hizo en el layout hasta
+2026-09 y por eso no tenía `loading.tsx` propio; hoy vive en su página, como
+en Resumen.
 
 Los providers, el `Toaster` y el nonce de la CSP de las tres superficies con
 sesión (dashboard, login y restablecer contraseña) se montan en

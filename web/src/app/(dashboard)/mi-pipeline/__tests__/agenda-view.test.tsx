@@ -10,15 +10,11 @@ import type { PipelineAgenda } from "@/hooks/use-pursuits";
  * llaman a las mutaciones correctas.
  */
 
-const push = vi.fn();
-const replace = vi.fn();
-const { searchParamsRef } = vi.hoisted(() => ({
-  searchParamsRef: { current: new URLSearchParams() },
-}));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push, replace }),
-  useSearchParams: () => searchParamsRef.current,
-}));
+// La URL es la de jsdom y `next/navigation` el doble que la lee como lo hace
+// Next: el carril y `?mios=` se escriben sin navegar, y la agenda tiene que
+// enterarse igual. `router.push` sigue siendo el espía de las navegaciones de
+// verdad (abrir una ficha, ir al Radar).
+vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 // El botón de suscripción al calendario pide su enlace con react-query, y esta
 // suite renderiza la agenda sin QueryClientProvider a propósito (mockea los
 // hooks de datos uno a uno). Se stubea el hook, no el componente: así el botón
@@ -100,6 +96,9 @@ vi.mock("@/lib/density", () => ({
 }));
 
 import AgendaView from "../_components/agenda-view";
+import { irA, router } from "@/test/navegacion-superficial";
+
+const { push } = router;
 
 type AgendaItem = NonNullable<PipelineAgenda["items"]>[number];
 
@@ -244,7 +243,7 @@ function inspector(): HTMLElement {
 
 /** La agenda arranca en Compromisos; el triaje vive en `?carril=triaje`. */
 function enCarril(carril: "compromisos" | "triaje") {
-  searchParamsRef.current = new URLSearchParams(carril === "triaje" ? "carril=triaje" : "");
+  irA(carril === "triaje" ? "/mi-pipeline?carril=triaje" : "/mi-pipeline");
 }
 
 beforeEach(() => {
@@ -275,13 +274,21 @@ describe("AgendaView — carriles", () => {
     expect(screen.getByText(/4 en este carril/)).toBeInTheDocument();
   });
 
-  it("el carril activo va a la URL con `replace`, no con `push`", () => {
+  it("el carril activo va a la URL sin navegar, y la agenda lo pinta", () => {
+    const entradas = window.history.length;
     render(<AgendaView />);
 
     fireEvent.click(screen.getByRole("tab", { name: /Por triar/ }));
 
-    expect(replace).toHaveBeenCalledWith("?carril=triaje", { scroll: false });
+    // Ni `replace` ni `push` del router: cambiar de carril no pide nada al
+    // servidor. La URL cambia en su sitio, sin una entrada de historial más.
+    expect(router.replace).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
+    expect(window.location.search).toBe("?carril=triaje");
+    expect(window.history.length).toBe(entradas);
+    // `useSearchParams` ya la ve: el carril activo y la lista son los del triaje.
+    expect(screen.getByRole("tab", { name: /Por triar/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(lista()).getByText("Rollout SuccessFactors")).toBeInTheDocument();
   });
 
   it("con `?carril=triaje` enseña las señales y no los compromisos", () => {
@@ -292,15 +299,20 @@ describe("AgendaView — carriles", () => {
     expect(within(lista()).queryByText("Mantenimiento S/4")).toBeNull();
   });
 
-  it("`solo_mios` también es enlazable (`?mios=1`)", () => {
+  it("`solo_mios` va a la URL sin navegar y la consulta sale ya filtrada", () => {
     render(<AgendaView />);
 
     fireEvent.click(screen.getByRole("button", { name: "Solo míos" }));
-    expect(replace).toHaveBeenCalledWith("?mios=1", { scroll: false });
 
-    vi.clearAllMocks();
-    searchParamsRef.current = new URLSearchParams("mios=1");
+    expect(window.location.search).toBe("?mios=1");
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(agendaArgs).toHaveBeenLastCalledWith(expect.objectContaining({ soloMios: true }));
+  });
+
+  it("`solo_mios` también es enlazable: entrar con `?mios=1` pide sólo lo mío", () => {
+    irA("/mi-pipeline?mios=1");
     render(<AgendaView />);
+
     expect(agendaArgs).toHaveBeenCalledWith(expect.objectContaining({ soloMios: true }));
   });
 });

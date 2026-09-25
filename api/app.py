@@ -23,7 +23,14 @@ Los tres endpoints de export asíncrono (``POST /exports``, ``GET`` y
 
 Arrancar el servidor::
 
-    uvicorn api.app:app --host 0.0.0.0 --port 8080 --workers 2
+    uvicorn api.app:app --host 0.0.0.0 --port 8080 --workers 1
+
+Producción corre **un solo proceso uvicorn** (asyncio + h11): el comando real
+está en ``docker/docker-entrypoint-api.sh``, con ``--workers 1`` desde el
+``CMD`` de ``docker/Dockerfile.api``. Hay un único event loop para toda la API,
+así que cualquier E/S síncrona dentro de un middleware o de un handler
+``async`` para todas las peticiones a la vez, no solo la suya: va a un hilo
+(``api.concurrency.run_db`` y compañía).
 """
 
 from __future__ import annotations
@@ -35,18 +42,15 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator as _PFI
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.errors import register_exception_handlers
 from api.middleware import (
-    AccessLogMiddleware,
-    CostTrackingMiddleware,
     ETagMiddleware,
+    ObservabilityMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
     _MaxBodyMiddleware,
     _RejectNulMiddleware,
-    correlation_id_middleware,
 )
 from api.routes.admin_dlq import router as admin_dlq_router
 from api.routes.admin_solicitudes import router as admin_solicitudes_router
@@ -353,8 +357,19 @@ def register_middlewares(target: FastAPI, *, cors_origins: list[str]) -> None:
 
     Orden de ejecución resultante, de fuera hacia dentro::
 
-        CORS → SecurityHeaders → CorrelationId → AccessLog → CostTracking
-             → RateLimit → compresión → MaxBody → RejectNul → ETag → router
+        CORS → SecurityHeaders → Observability → RateLimit → compresión
+             → MaxBody → RejectNul → ETag → [Prometheus] → router
+
+    ``Observability`` es la fusión de los tres ``BaseHTTPMiddleware`` que
+    ocupaban ese hueco (correlation id → access log → coste): al ser contiguos,
+    fusionarlos no mueve nada respecto a los demás. El correlation id sigue por
+    fuera del rate limit, así que un 429 también es correlacionable con su
+    entrada de log. ``[Prometheus]`` es el middleware del instrumentator, que
+    ``_PFI(...).instrument(app)`` registra antes de llamar a esta función y por
+    eso queda el más interno; no está en las apps que monten solo este bloque.
+
+    Todos son ASGI puro: ninguno es ``BaseHTTPMiddleware`` (ver el docstring de
+    ``api/middleware.py``). Lo fija ``tests/test_unit_middleware_asgi.py``.
     """
     # ETag para respuestas GET JSON (cache condicional, F4)
     target.add_middleware(ETagMiddleware)
@@ -386,22 +401,17 @@ def register_middlewares(target: FastAPI, *, cors_origins: list[str]) -> None:
         target.add_middleware(GZipMiddleware, minimum_size=1024)
         log.info("gzip_compression_enabled_brotli_unavailable")
 
-    # Rate limiting por IP
+    # Rate limiting por IP (o por API key). La comprobación va a un hilo.
     target.add_middleware(
         RateLimitMiddleware,
         max_calls=int(getattr(settings, "API_RATE_LIMIT_MAX_CALLS", 120)),
         window_seconds=float(getattr(settings, "API_RATE_LIMIT_WINDOW_SECONDS", 60)),
     )
 
-    # Cost tracking — métrica Prometheus por endpoint
-    target.add_middleware(CostTrackingMiddleware)
-
-    # Access log estructurado (request/response)
-    target.add_middleware(AccessLogMiddleware)
-
-    # Correlation-ID: por fuera del rate limit para que un 429 también sea
-    # correlacionable con su entrada de log.
-    target.add_middleware(BaseHTTPMiddleware, dispatch=correlation_id_middleware)
+    # Correlation-ID + access log + coste por endpoint, en una sola capa. Por
+    # fuera del rate limit para que un 429 también sea correlacionable con su
+    # entrada de log.
+    target.add_middleware(ObservabilityMiddleware)
 
     # Security headers OWASP — por fuera de todo lo que puede cortocircuitar.
     target.add_middleware(SecurityHeadersMiddleware)
