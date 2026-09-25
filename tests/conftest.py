@@ -30,7 +30,8 @@ _E2E_TOKENS = ("_e2e", "visual_regression", "dashboard_smoke", "dashboard_pages"
 # integration) and not slow"` de `make check` -- fuera del gate sin que nadie
 # lo notara. Los módulos que sí son load/property-testing llevan el token en
 # su propio nombre de archivo (`test_performance.py`, `test_property_based.py`,
-# `test_load_scraper_placsp.py`, …), así que la ruta basta como señal.
+# `test_load_scraper_placsp.py`, …), así que la ruta basta como señal — la
+# ruta DENTRO del repo, nunca la absoluta (ver `_ruta_relativa`).
 _LOAD_TOKENS = ("performance", "load")
 _PROPERTY_TOKENS = ("property", "properties", "property_based")
 
@@ -44,7 +45,11 @@ _PG_FIXTURES = frozenset({"tmp_db", "api_db"})
 
 
 def _infer_marker(path: str, name: str) -> str:
-    """Infer the pytest marker for a test item based on path/name conventions."""
+    """Infiere el marker de categoría de un test por convención de ruta y nombre.
+
+    ``path`` es la ruta del módulo relativa a la raíz del repo (la que devuelve
+    `_ruta_relativa`), nunca la absoluta.
+    """
     p = path.lower().replace("\\", "/")
     n = name.lower()
     for token in _E2E_TOKENS:
@@ -90,11 +95,18 @@ def _ruta_relativa(item: pytest.Item, raiz: Path) -> str:
     ``load`` la suite entera, y ``-m "unit and not slow"`` no seleccionaba
     ningún test y salía con exit 0 — un verde sin suite (detectado el
     2026-09-24). Solo la parte del repo describe al test.
+
+    Si el módulo cae fuera de ``raiz`` (un ``--rootdir`` que apunta a otro
+    sitio), se clasifica solo por el nombre del fichero: volver a la ruta
+    absoluta reabriría el mismo fallo. ``raiz`` es ``config.rootpath`` y no
+    ``Path(__file__).resolve()``: pytest construye la raíz y las rutas de los
+    items de la misma forma, sin resolver enlaces, así que un checkout detrás
+    de un symlink o una junction sigue quedando dentro.
     """
     try:
         return item.path.relative_to(raiz).as_posix()
     except ValueError:
-        return str(item.path)
+        return item.path.name
 
 
 def pytest_collection_modifyitems(config, items):
