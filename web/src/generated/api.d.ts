@@ -5725,7 +5725,7 @@ export interface components {
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
-             * @default deepseek-ai/deepseek-v4-flash-0731
+             * @default nvidia/nemotron-3-super-120b-a12b
              */
             model: string;
             /**
@@ -12337,7 +12337,7 @@ export interface components {
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
-             * @default deepseek-ai/deepseek-v4-flash-0731
+             * @default nvidia/nemotron-3-super-120b-a12b
              */
             model: string;
         };

@@ -62,7 +62,7 @@ export function destinoResultado(resultado: ResultadoBusqueda): string {
     case "expediente":
       return `/detalle?lic=${encodeURIComponent(resultado.id)}`;
     case "empresa":
-      return `/competidores/empresa/${encodeURIComponent(resultado.id)}`;
+      return `/competencia/empresa/${encodeURIComponent(resultado.id)}`;
     case "organo":
       return `/mercado?vista=organos&organo_q=${encodeURIComponent(resultado.titulo)}`;
     case "oportunidad":

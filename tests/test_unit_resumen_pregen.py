@@ -226,6 +226,25 @@ class TestFaseResumenPregen:
         assert counts["error"] == 1
         assert "401" in counts["credencial_rechazada"]
 
+    def test_modelo_retirado_corta_el_lote(
+        self, monkeypatch: pytest.MonkeyPatch, fase: dict[str, Any]
+    ) -> None:
+        from llm.providers import LLMModelUnavailableError
+
+        intentos: list[str] = []
+
+        def _pregenerar(id_externo: str, *, model: str) -> str:
+            intentos.append(id_externo)
+            raise LLMModelUnavailableError(model=model, status_code=410)
+
+        monkeypatch.setattr("services.rag.resumen.pregenerar_resumen", _pregenerar)
+
+        counts = job._run_resumen_pregen_phase()
+
+        assert intentos == ["A"]
+        assert counts["error"] == 1
+        assert "410" in counts["modelo_no_disponible"]
+
     def test_un_fallo_suelto_no_para_el_resto(
         self, monkeypatch: pytest.MonkeyPatch, fase: dict[str, Any]
     ) -> None:

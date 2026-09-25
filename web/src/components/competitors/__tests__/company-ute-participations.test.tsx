@@ -44,7 +44,7 @@ describe("CompanyUteParticipations", () => {
 
     expect(screen.getByRole("link", { name: "UTE Ejemplo Digital - Sistemas Beta" })).toHaveAttribute(
       "href",
-      "/competidores/empresa/42",
+      "/competencia/empresa/42",
     );
   });
 

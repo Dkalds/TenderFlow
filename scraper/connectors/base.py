@@ -42,9 +42,10 @@ from db.dlq import record_failure
 from observability import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
+    from services.dedupe import ReferenciaCruzada
 
 log = get_logger(__name__)
 
@@ -323,8 +324,31 @@ def _contar_dedupe_fallido(source_id: str) -> None:
         log.debug("connector_dedupe_metric_failed", source=source_id, exc_info=True)
 
 
-def _post_ingestion(source_id: str) -> None:
-    """Resolución de empresas + dedupe + eventos de contrato + caché. Fail-open."""
+def _referencias_de(connector: Connector) -> Mapping[str, ReferenciaCruzada]:
+    """Las referencias cruzadas que expone el conector, si expone alguna.
+
+    Opt-in por atributo, como ``contadores_de_descarte``: hoy solo TED las
+    tiene. Un fallo al leerlas no puede tumbar una ingesta ya persistida.
+    """
+    referencias = getattr(connector, "referencias_cruzadas", None)
+    if not callable(referencias):
+        return {}
+    try:
+        return dict(referencias())
+    except Exception:
+        log.warning("connector_referencias_fallaron", source=connector.source_id, exc_info=True)
+        return {}
+
+
+def _post_ingestion(
+    source_id: str, *, referencias: Mapping[str, ReferenciaCruzada] | None = None
+) -> None:
+    """Resolución de empresas + dedupe + eventos de contrato + caché. Fail-open.
+
+    ``referencias`` son las del conector (ver :func:`_referencias_de`). Con
+    ellas corre además el dedupe por referencia explícita, que es el único que
+    ve una fila TED como copia de la de PLACSP o PSCP.
+    """
     try:
         from services.entity_resolution import HOOK_TIME_BUDGET_S, resolve_all_unlinked
 
@@ -358,6 +382,15 @@ def _post_ingestion(source_id: str) -> None:
         # serie temporal donde se viera. El contador es lo alertable.
         _contar_dedupe_fallido(source_id)
         log.warning("connector_dedupe_failed", source=source_id, error=str(e))
+    if referencias:
+        try:
+            from services.dedupe import detect_duplicados_por_referencia
+
+            detect_duplicados_por_referencia(fuente=source_id, referencias=referencias)
+        except Exception as e:
+            # Mismo trato que el dedupe de arriba: fail-open, pero contado.
+            _contar_dedupe_fallido(source_id)
+            log.warning("connector_dedupe_referencias_failed", source=source_id, error=str(e))
     try:
         from services.contract_events import derive_new_events
 
@@ -561,7 +594,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         set_cursor(source_id, **final_cursor)
 
     if result.parsed or result.adjudicaciones:
-        _post_ingestion(source_id)
+        _post_ingestion(source_id, referencias=_referencias_de(connector))
 
     # Contadores por motivo del conector, si los expone (C4.1, C4.4). El
     # `getattr` evita obligar a todos los conectores a declararlo en el Protocol,

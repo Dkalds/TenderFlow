@@ -32,6 +32,13 @@ materializaba entero como lista de dicts en **cada** ingesta. Su índice se acot
 por expediente natural —ver :func:`iter_filas_de_otras_fuentes_por_expediente`—
 y no por órgano, porque ahí el emparejamiento sí exige expediente idéntico y
 acotar por él no puede perder ningún par.
+
+El tercero, el de referencias explícitas de TED
+(``detect_duplicados_por_referencia``), acota sus candidatas por BT-22 o por el
+``idEvl`` de PLACSP y vuelve al invariante de arriba con un filtro más: la fila
+que salga se queda como canónica y la de TED se esconde, así que tiene que ser
+publicable **y** no estar marcada ya como duplicada de nada. Ver
+:func:`iter_candidatas_por_referencia`.
 """
 
 from __future__ import annotations
@@ -47,7 +54,7 @@ from db.repositories.base import rows_to_dicts
 # dice temer: el día que el umbral cambie en un sitio y no en el otro, el
 # detector volvería a proponer canónicas que la superficie no publica.
 from db.repositories.publico import _publicable_sql
-from db.sql_fragments import organo_normalizado_sql
+from db.sql_fragments import exclude_duplicados_presentacion_sql, organo_normalizado_sql
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -78,6 +85,29 @@ _EXPEDIENTE_NATURAL_SQL = (
     "THEN substr(l.id_externo, position(':' in l.id_externo) + 1) "
     "ELSE l.id_externo END"
 )
+
+
+def _deshacer_escape(expr: str, escape: str, decodificado: str) -> str:
+    """``replace`` de un escape ``%XX`` en sus dos capitalizaciones.
+
+    ``chr(37)`` es el ``%``: escrito literal habría que duplicarlo para psycopg
+    en cualquier consulta con parámetros, y uno sin duplicar no da un resultado
+    raro, rompe la consulta entera.
+    """
+    for hexa in (escape.upper(), escape.lower()):
+        expr = f"replace({expr}, chr(37) || '{hexa}', '{decodificado}')"
+    return expr
+
+
+#: ``idEvl`` del deeplink de PLACSP guardado en ``l.url``, con los tres escapes
+#: que puede llevar un valor base64 (``/``, ``+``, ``=``) deshechos. Gemelo SQL
+#: de ``services.dedupe.id_evl_de_url`` para los valores que emite PLACSP: el
+#: mismo expediente llega como ``%2F`` en su feed y a veces como ``%2f`` en el
+#: aviso TED que lo copia. Un escape fuera de esos tres deja el valor sin
+#: decodificar y el par sin emparejar, que es el lado barato del error.
+_ID_EVL_SQL = "substring(l.url from '[?&][iI][dD][eE][vV][lL]=([^&#]+)')"
+for _escape, _decodificado in (("2F", "/"), ("2B", "+"), ("3D", "=")):
+    _ID_EVL_SQL = _deshacer_escape(_ID_EVL_SQL, _escape, _decodificado)
 
 
 def _iter_dicts(sql: str, params: tuple[Any, ...]) -> Iterator[dict[str, Any]]:
@@ -205,11 +235,98 @@ def marcar_duplicados(marcas: Sequence[tuple[str, str, str, float, str]]) -> int
     return len(marcas)
 
 
+def filas_por_id(ids: Sequence[str]) -> list[dict[str, Any]]:
+    """Las filas de ``ids``, con las columnas del matching. Orden estable por id."""
+    if not ids:
+        return []
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                f"SELECT {_COLUMNAS} FROM licitaciones l "
+                "WHERE l.id_externo = ANY(%s) ORDER BY l.id_externo",
+                (list(ids),),
+            )
+        )
+
+
+def iter_candidatas_por_referencia(
+    fuente: str, expedientes: Sequence[str], id_evls: Sequence[str]
+) -> Iterator[dict[str, Any]]:
+    """Filas de **otras** fuentes que un aviso TED puede estar republicando.
+
+    Entran por cualquiera de las dos referencias que publica el aviso: el
+    expediente natural (BT-22 frente al ``ContractFolderID`` de PLACSP o el
+    ``codi_expedient`` de PSCP) o el ``idEvl`` del deeplink de PLACSP. El
+    emparejamiento fino —órgano o título para BT-22— lo hace
+    ``services.dedupe``; aquí solo se acota, y sin pérdida: una fila que el
+    ``OR`` deja fuera no comparte ninguna de las dos referencias.
+
+    **Solo filas que siguen visibles**: publicables con el mismo predicado que
+    la superficie pública, y sin marca de duplicado ni ``confirmed`` ni
+    ``pending``. La fila que salga de aquí va a quedarse como canónica y la de
+    TED se va a esconder; si la canónica ya estuviera escondida —o no se
+    publicara—, el contrato desaparecería entero. Es el mismo invariante que
+    el índice de :func:`iter_filas_publicables_de_organos`, con un filtro más:
+    el de presentación, que es el que evita ciclos de dos filas escondiéndose
+    mutuamente.
+
+    Coste: como :func:`iter_filas_de_otras_fuentes_por_expediente`, un
+    recorrido de la tabla sin índice sobre las dos expresiones. Corre una vez
+    por pasada de TED, con los ~400 avisos de su ventana de solapamiento.
+    """
+    condiciones: list[str] = []
+    params: list[Any] = [fuente]
+    if expedientes:
+        condiciones.append(f"{_EXPEDIENTE_NATURAL_SQL} = ANY(%s)")
+        params.append(list(expedientes))
+    if id_evls:
+        condiciones.append(f"{_ID_EVL_SQL} = ANY(%s)")
+        params.append(list(id_evls))
+    if not condiciones:
+        return
+    sql = (
+        f"SELECT {_COLUMNAS}, l.url FROM licitaciones l "
+        f"WHERE l.fuente <> %s AND ({' OR '.join(condiciones)}) "
+        f"AND {_publicable_sql('l')} "
+        f"AND {exclude_duplicados_presentacion_sql('l.id_externo')}"
+    )
+    yield from _iter_dicts(sql, tuple(params))
+
+
+def marcar_duplicados_por_referencia(marcas: Sequence[tuple[str, str, str, float, str]]) -> int:
+    """Como :func:`marcar_duplicados`, pero promueve una marca ``pending`` sin resolver.
+
+    La referencia explícita (``idEvl``, BT-22) es más fuerte que la clave de
+    reemisión que deja las marcas ``pending``, así que las sustituye. Lo que
+    **no** se toca es lo que alguien ya resolvió —``resolved_at`` puesto, sea
+    ``confirmed`` o ``rejected``— ni una marca ``confirmed`` automática: la
+    primera evidencia fuerte sigue mandando, y reejecutar no reescribe nada.
+    """
+    if not marcas:
+        return 0
+    with connect() as c:
+        c.executemany(
+            "INSERT INTO licitaciones_duplicados "
+            "(licitacion_id, canonical_id, clave_match, confianza, status) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT(licitacion_id) DO UPDATE SET "
+            "canonical_id = excluded.canonical_id, clave_match = excluded.clave_match, "
+            "confianza = excluded.confianza, status = excluded.status "
+            "WHERE licitaciones_duplicados.status = 'pending' "
+            "AND licitaciones_duplicados.resolved_at IS NULL",
+            list(marcas),
+        )
+    return len(marcas)
+
+
 __all__ = [
     "filas_nuevas_de_fuente",
+    "filas_por_id",
+    "iter_candidatas_por_referencia",
     "iter_filas_de_otras_fuentes_por_expediente",
     "iter_filas_publicables_de_organos",
     "marcar_duplicados",
+    "marcar_duplicados_por_referencia",
 ]
 
 

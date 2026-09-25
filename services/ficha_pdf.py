@@ -28,6 +28,7 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from html import escape
 from typing import Any
 
 __all__ = ["BloqueFicha", "FichaOportunidad", "construir_pdf"]
@@ -79,6 +80,22 @@ def _texto(valor: Any) -> str:
     return texto if len(texto) <= _MAX_CELDA else texto[: _MAX_CELDA - 1] + "…"
 
 
+def _parrafo(valor: Any) -> str:
+    """Como :func:`_texto`, pero escapado para `Paragraph`, que **no** recibe texto plano.
+
+    `Paragraph` interpreta mini-XML, y el título de la ficha es el de la
+    licitación: texto de la fuente, no nuestro. Sin escapar, un título con
+    `<b>` sin cerrar tumbaba la exportación, uno con `<img src="..."/>` hacía
+    que reportlab abriera ese fichero del servidor, y uno con `<a href="...">`
+    dejaba un enlace activo en el papel que se lleva a dirección. Es el mismo
+    fallo que `services/pdf_tabular._texto` ya corrigió para los informes.
+
+    Las celdas de la tabla **no** pasan por aquí: `Table` pinta sus cadenas
+    tal cual, así que escaparlas imprimiría `&amp;` en vez de `&`.
+    """
+    return escape(_texto(valor), quote=False)
+
+
 def construir_pdf(ficha: FichaOportunidad) -> bytes:
     """Renderiza el one-pager. ``reportlab`` ya es dependencia del proyecto.
 
@@ -126,8 +143,8 @@ def construir_pdf(ficha: FichaOportunidad) -> bytes:
     )
 
     story: list[Any] = [
-        Paragraph(_texto(ficha.titulo), base["Title"]),
-        Paragraph(_texto(ficha.subtitulo), base["Normal"]),
+        Paragraph(_parrafo(ficha.titulo), base["Title"]),
+        Paragraph(_parrafo(ficha.subtitulo), base["Normal"]),
         Paragraph(
             datetime.now(UTC).strftime("Generado el %Y-%m-%d a las %H:%M UTC"),
             estilo_procedencia,
@@ -136,13 +153,13 @@ def construir_pdf(ficha: FichaOportunidad) -> bytes:
     ]
 
     for bloque in ficha.bloques:
-        partes: list[Any] = [Paragraph(_texto(bloque.titulo), estilo_seccion)]
+        partes: list[Any] = [Paragraph(_parrafo(bloque.titulo), estilo_seccion)]
         if bloque.vacio:
             # La nota es el contenido del bloque, no un pie: es lo que impide
             # que el lector interprete el hueco como un cero.
             partes.append(
                 Paragraph(
-                    _texto(bloque.nota_vacio or "Sin datos suficientes para este bloque."),
+                    _parrafo(bloque.nota_vacio or "Sin datos suficientes para este bloque."),
                     estilo_procedencia,
                 )
             )
@@ -165,7 +182,7 @@ def construir_pdf(ficha: FichaOportunidad) -> bytes:
             )
             partes.append(tabla)
             if bloque.procedencia:
-                partes.append(Paragraph(_texto(bloque.procedencia), estilo_procedencia))
+                partes.append(Paragraph(_parrafo(bloque.procedencia), estilo_procedencia))
         partes.append(Spacer(1, 9))
         # `KeepTogether`: un bloque partido entre páginas deja su procedencia
         # huérfana en la siguiente, que es justo la línea que no puede

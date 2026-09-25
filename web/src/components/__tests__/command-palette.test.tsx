@@ -232,7 +232,7 @@ describe("CommandPalette — búsqueda global (F1.2)", () => {
     expect(screen.getByText("Oportunidades de tu equipo")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Indra Soluciones"));
-    expect(push).toHaveBeenCalledWith("/competidores/empresa/42");
+    expect(push).toHaveBeenCalledWith("/competencia/empresa/42");
     expect(registrarEvento).toHaveBeenCalledWith("busqueda_realizada", {
       superficie: "paleta",
       con_resultados: "si",
@@ -269,7 +269,7 @@ describe("CommandPalette — búsqueda global (F1.2)", () => {
     renderPalette();
     teclear("A28599033");
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/competidores/empresa/42"));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/competencia/empresa/42"));
     expect(useUiStore.getState().commandOpen).toBe(false);
   });
 

@@ -5,7 +5,9 @@ on:
   # un cron fijo (`30 7 * * *`) pensado para caer "entre scrapes", y no se
   # cumplía: en 30 runs (2026-08-26 → 2026-09-24) arrancó entre las 08:05 y las
   # 19:29 UTC, casi siempre hacia las 12-13 — encima de la pasada de las 12:00
-  # que decía esquivar. Tras el `completed` de `scrape-daily.yml` el scoring
+  # que decía esquivar. Y desde #335 la ingesta arranca en el minuto 23 con
+  # hasta 120 min de presupuesto, así que ninguna hora fija queda ya "entre
+  # scrapes". Tras el `completed` de `scrape-daily.yml` el scoring
   # corre sobre datos recién ingeridos y nunca a la vez que la ingesta.
   # `scrape-daily` corre seis veces al día: el guard (`debe-correr`) deja pasar
   # solo la primera de cada día UTC y salta el resto en ~1 min.
@@ -14,10 +16,12 @@ on:
     types: [completed]
   # Red de seguridad: si el carril de ingesta dejara de correr, el scoring y
   # sus monitores (drift, calibración, purgas) se pararían con él en silencio.
-  # Minuto fuera de la hora en punto, que es cuando más retrasa Actions sus
-  # crons. Si ese día ya hubo scoring, el guard lo salta.
+  # 06:47 cae, sobre el papel, en el hueco entre la pasada de las 04:23 (que
+  # acaba como tarde a las 06:23) y la de las 08:23; con los retrasos de
+  # Actions no se puede garantizar, y por eso no es el disparo principal. Si
+  # ese día ya hubo scoring, el guard lo salta.
   schedule:
-    - cron: "17 9 * * *"
+    - cron: "47 6 * * *"
   # Manual: fuerza la corrida aunque ya se haya puntuado hoy.
   workflow_dispatch:
 

@@ -36,8 +36,11 @@ name: Train & publish modelos predictivos
 on:
   schedule:
     # Mensual, día 1 a las 03:00 UTC: misma cadencia que tenía el paso
-    # `ml_retrain` (_SEGUNDOS_MES), fuera de la ventana del scrape (cada 4 h,
-    # 55 min de presupuesto) y antes del scoring diario de las 07:30.
+    # `ml_retrain` (_SEGUNDOS_MES), fuera de la ventana del scrape (cada 4 h
+    # desde las 00:23, 120 min de presupuesto: la de las 00:23 acaba como tarde
+    # a las 02:23). El scoring diario ya no tiene hora fija: se encadena al
+    # final de las pasadas de `scrape-daily` (ver `ml-scoring.yml`), y el
+    # modelo nuevo no se sirve hasta que alguien lo activa.
     - cron: "0 3 1 * *"
   workflow_dispatch:
 

@@ -101,7 +101,7 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P2] Remediación axe: 4 reglas desactivadas | **Cerrado y movido** el 2026-09-19 a _Cerrados_ — `nested-interactive` (C7.1), las tres restantes el 2026-09-18 y los rojos que destapó el E2E en `8a424967` y `0fd5082c`; sin `disableRules` ni `fixme` |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
 | [P3] Unificar la definición de «Calientes» | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — se mantiene la heurística de importe como «Grandes en plazo», documentada en los DTOs |
-| [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub |
+| [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub; 33 descartados el 2026-08-30 y 8 nuevos desde entonces (2026-09-24) |
 
 Ítems **nuevos** que salen del plan y no estaban aquí: partir las páginas
 monolito del dashboard (S5.2), el prefetch en servidor con hidratación (S5.1) y
@@ -162,6 +162,28 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P0 — Urgente
 
+### [P0] El feed ATOM de PLACSP está congelado desde el 2026-09-08 y nada lo avisa
+- **Área:** scraper/atom_live.py, scheduler/healthcheck.py, .github/workflows/scrape-daily.yml
+- **Problema:** medido el 2026-09-24. La cabecera de
+  `licitacionesPerfilesContratanteCompleto3.atom` se regeneró el 2026-09-23
+  (`Last-Modified`), pero su entrada más reciente es del 2026-09-08 22:31 y las
+  páginas `next` siguen hacia atrás desde ahí. El cursor `placsp` está en ese
+  mismo instante, así que cada pasada lee una entrada, para con
+  `stopped=cursor_reached` e ingiere 0 avisos (run 35978335055) — en verde. El
+  healthcheck da PLACSP por «fresca» (`lag_hours: 0.4`) porque mide cuándo acabó
+  el último run, no la antigüedad del dato. El ZIP mensual
+  `..._202609.zip` sí se regeneró el 2026-09-24 04:01 GMT.
+- **Acceptance criteria:**
+  - Recuperar el hueco: `scrape-bulk.yml` con `months=1` (acción del usuario:
+    escribe en producción) y comprobar que el corpus PLACSP del 09-08 en adelante
+    aparece.
+  - El healthcheck avisa cuando el `last_seen_updated` de una fuente con cursor
+    de dato (PLACSP, TED) supera un umbral propio, además de `last_success_at`.
+  - Decidir si el carril diario cae al ZIP del mes en curso cuando el ATOM no
+    avanza durante N pasadas.
+- **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
+- **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
+
 ### [P0] Verificar en GitHub el backup remoto cifrado y su restore drill
 - **Área:** .github/workflows/backup.yml, .github/workflows/restore-drill.yml, GitHub Settings (acción del usuario)
 - **Problema:** verificado el 2026-09-01 que `BACKUP_ENCRYPTION_KEY` existe y
@@ -184,6 +206,41 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## P1 — Alta
+
+### [P1] Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó
+- **Área:** scraper/connectors/ted.py, services/dedupe.py (ADR-026, addendum 2026-09-24)
+- **Problema:** `detect_duplicados_por_referencia` solo empareja los avisos que el
+  conector re-lee (ventana de 14 días): BT-22 y el `idEvl` no son columnas. Lo ya
+  ingerido conserva además el título con el prefijo «España – {CPV} – » y la
+  etiqueta `DESARROLLO` que ese prefijo le ponía (17 % de una muestra de 300).
+- **Acceptance criteria:**
+  - `python -m scraper.connectors.ted --desde 20250101` ejecutado en producción
+    (acción con escritura: la lanza el usuario o un `workflow_dispatch`).
+  - Log `dedupe_referencias_detected` con el recuento, y
+    `SELECT COUNT(*) FROM licitaciones_duplicados WHERE clave_match LIKE 'idEvl:%' OR clave_match LIKE 'expediente:%'`
+    anotado aquí junto al total de filas `ted`.
+  - Ninguna fila `ted` con título que empiece por `España –`.
+- **Files de partida:** [scraper/connectors/ted.py](../scraper/connectors/ted.py), [services/dedupe.py](../services/dedupe.py)
+- **Riesgo:** bajo — el upsert es idempotente y las marcas `confirmed` automáticas no pisan lo que un humano resolvió.
+
+### [P1] La vista canónica todavía puede preferir TED, y el bulk no cuenta como PLACSP
+- **Área:** db/sql_fragments.py (`_criterios_canonicos_sql`), services/dedupe.py (`_rango_canonico`), db/alembic
+- **Problema:** el orden de canónica es `fuente <> 'placsp'`, fecha de publicación,
+  primera extracción e id. Dos defectos: TED no pierde frente a las demás fuentes
+  cuando un par colapsa por clave sin referencia explícita (gana la más antigua),
+  y las filas que refrescó el carril bulk llevan `fuente = 'bulk_YYYYMM'` —el
+  upsert reescribe `fuente`—, así que pierden la preferencia de PLACSP. El
+  dedupe por referencia ya aplica «TED nunca canónica» y cuenta el bulk como
+  PLACSP; la vista no.
+- **Acceptance criteria:**
+  - `_criterios_canonicos_sql` y su gemelo `_rango_canonico` ordenan PLACSP (con
+    `bulk_%`) → resto → TED, y `tests/test_dedupe_publico.py` fija la paridad.
+  - Migración nueva que reconstruye `licitaciones_canonicas` por permuta, como
+    `v102` (requiere OK: AGENTS.md §6), y `tests/test_mv_canonicas_definicion.py`
+    apuntando a ella.
+  - Delta medido en producción: cuántas canónicas cambian de fila (y de URL).
+- **Files de partida:** [db/sql_fragments.py](../db/sql_fragments.py), [db/alembic/versions/v102_mv_canonicas_clave_inmutable.py](../db/alembic/versions/v102_mv_canonicas_clave_inmutable.py), [services/dedupe.py](../services/dedupe.py)
+- **Riesgo:** alto — reconstruye la vista de la superficie pública y mueve URLs del sitemap.
 
 ### [P1] Ampliar el golden set del clasificador SAP a 300-500 ejemplos etiquetados a mano
 - **Área:** tests/fixtures/golden_set.jsonl, tests/fixtures/golden_set_tech.jsonl, scripts/sample_golden_candidates.py (acción del usuario: etiquetar)
@@ -271,6 +328,21 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — primera vez que salen correos y webhooks del outbox.
 
 ## P2 — Media
+
+### [P2] Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23 dice que sí)
+- **Área:** db/repositories/licitaciones.py (`_base_filters`), db/repositories/aggregates.py
+- **Problema:** D23 fija «Radar, listados: esconde `pending` y `confirmed`», pero
+  `_base_filters` —listado, cursor y export— no excluye ningún duplicado, y el
+  guardrail de dedupe lo exime como «CRUD por diseño». El Radar sí los esconde.
+  Con las marcas de TED de 2026-09-24, el Radar deja de enseñar la copia TED y el
+  listado la sigue enseñando.
+- **Acceptance criteria:**
+  - Decisión escrita (en ADR-026 o en el guardrail) sobre cuál de las dos reglas manda.
+  - Si se esconden: `exclude_duplicados_presentacion_sql` en `_base_filters` y en
+    la rama FTS, y los contadores de `/resumen` que abren el listado miden lo mismo
+    (hoy los fija un test de paridad).
+- **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [tests/test_dedup_guardrail.py](../tests/test_dedup_guardrail.py)
+- **Riesgo:** medio — cambia el universo del listado, el cursor y el export a la vez.
 
 ### [P2] La portada cita el tamaño del censo bajo un titular que promete lo contrario
 - **Área:** producción (acción del usuario) + web/src/app/(publico)/_components/franja-datos.tsx
@@ -489,6 +561,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Problema:** 37 de los 38 avisos abiertos apuntan a un `uv.lock` que se borró de `master` en `cc096fb` (2026-05-31). El grafo de dependencias de GitHub conservó una instantánea de ese fichero y **sigue emitiendo avisos nuevos contra ella** — los abiertos van del 2026-07-13 al 2026-08-07, todos posteriores al borrado. La prueba está en el SBOM, que lista a la vez los pines vivos y sus fantasmas (`pillow@12.3.0` ×2 junto a `pillow@12.2.0`; `cryptography@50.0.0` ×2 junto a `46.0.7`), y en el trío del 2026-08-03 sobre `GHSA-g6cj-pr64-35w5`: #82 y #83 (manifiestos vivos) se cerraron el mismo día; #87 (`uv.lock`) sigue abierto y no puede cerrarse nunca.
 - **Cómo triar (corregido 2026-08-30):** **no** basta con filtrar por `manifest_path`, y sobre todo no debe convertirse en una regla de auto-descarte. GitHub atribuye mal ese campo: los tres avisos de `cryptography` (#87–#89) salen etiquetados como `uv.lock` pese a que ese paquete **nunca** estuvo en ese fichero. Una regla que descarte por `manifest_path: uv.lock` acabaría tapando en silencio un aviso real de `requirements.txt`. El criterio que sí decide es el pin vivo: comparar `first_patched_version` contra `requirements.txt` / `requirements-dev.txt` / `web/package-lock.json`, aviso por aviso.
 - **Acceptance criteria:** los 37 descartados con motivo (`not_used` los 18 de GitPython, que no está en ningún manifiesto; `inaccurate` el resto, cuyo pin vivo ya está parcheado); el listado refleja solo manifiestos reales. La cura de fondo —que el grafo deje de ver `uv.lock`— exige forzar un re-parse del path o abrir ticket a GitHub Support; el toggle del dependency graph no existe en repos públicos.
+- **Progreso (2026-09-24):** el 2026-08-30 se descartaron 33 con el criterio de arriba (17 `inaccurate`, 16 `not_used`). El fantasma **sigue emitiendo**: desde entonces han llegado 8 más, todos contra `uv.lock` y ninguno con pin vivo vulnerable — #113 y #114 (`anyio` < 4.14.2: los cuatro `requirements*.txt` fijan 4.14.2), #108–#112 (`GitPython` ≤ 3.1.58: no está en ningún manifiesto) y #105 (`transformers` < 5.10.0: sin pin, entra por los extras `ml`/`ml-embeddings`; la última ejecución de `pliegos.yml` resolvió 5.17.0 y el código no llama a `save_pretrained`). Descartar a mano es un goteo sin fin: el ítem no se cierra hasta aplicar la cura de fondo.
 - **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
 - **Riesgo:** bajo — no toca código; el cuidado está en verificar cada aviso contra el pin vivo en vez de contra el nombre del manifiesto.
 

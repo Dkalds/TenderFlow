@@ -121,7 +121,7 @@ test-unit:  ## Tests unitarios rápidos (sin BD real)
 test-e2e:  ## Tests end-to-end
 	pytest tests/ -m e2e
 
-eval-llm:  ## Eval manual de generación RAG contra un LLM real (fuera de CI, requiere credenciales)
+eval-llm:  ## Eval manual de generación RAG con un LLM real (sin BD, fuera de CI; requiere la API key del LLM)
 	python scripts/eval_rag_generation.py
 
 test-property:  ## Tests basados en propiedades (hypothesis)

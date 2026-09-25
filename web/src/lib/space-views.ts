@@ -164,6 +164,26 @@ export interface LegacyRedirect {
  * construidos. Next.js arrastra la query entrante, así que un enlace con
  * filtros (`/tendencias?ccaa=Madrid`) llega al espacio con su ámbito intacto.
  */
+/**
+ * Subrutas que cambiaron de sitio y conservan su parámetro.
+ *
+ * No son vistas de un espacio —no caben en `SPACE_VIEWS` ni en
+ * `legacyRedirects()`—: son páginas con identidad propia que pasaron a colgar
+ * de otro espacio. `next.config.ts` las emite junto a aquéllos, también como
+ * 308, y Next arrastra la query entrante igual que en las vistas.
+ *
+ * - `/competidores/empresa/[empresaId]` → `/competencia/empresa/[empresaId]`
+ *   (2026-09-24): la ficha de empresa pasa a vivir en el espacio que el rail
+ *   marca; `/competidores` era un slug heredado que no era espacio de nadie.
+ *   No choca con el redirect de `/competidores`, que es de path exacto.
+ */
+export const SUBRUTAS_MOVIDAS: readonly LegacyRedirect[] = [
+  {
+    source: "/competidores/empresa/:empresaId",
+    destination: "/competencia/empresa/:empresaId",
+  },
+];
+
 export function legacyRedirects(): LegacyRedirect[] {
   return Object.entries(SPACE_VIEWS)
     .filter(([slug]) => BUILT_SPACE_ROUTES.includes(slug))

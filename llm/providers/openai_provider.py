@@ -15,7 +15,9 @@ Hardening (B11):
       persistente cuesta 3 peticiones y no 9 (peor caso ≈ 93 s).
     - Log de tokens estimados pre-request y error detallado post-failure.
     - Una key rechazada (HTTP 401/403) **lanza** ``LLMAuthError`` sin reintentar,
-      en vez de acabar en stream vacío como el resto de fallos.
+      en vez de acabar en stream vacío como el resto de fallos. Un modelo que
+      el endpoint ya no sirve (HTTP 404/410: NVIDIA responde 410 al retirar
+      uno) lanza ``LLMModelUnavailableError``, por lo mismo.
     - Señal de parada (``stop``): con ella activa no se abre ningún intento
       nuevo y el backoff se corta.
 """
@@ -27,7 +29,14 @@ from collections.abc import Iterator, MutableMapping
 from typing import Any
 
 from llm.prompts import ChatMessage
-from llm.providers import AUTH_HTTP_CODES, LLMAuthError, backoff_wait, stop_requested
+from llm.providers import (
+    AUTH_HTTP_CODES,
+    MODEL_UNAVAILABLE_HTTP_CODES,
+    LLMAuthError,
+    LLMModelUnavailableError,
+    backoff_wait,
+    stop_requested,
+)
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -220,6 +229,11 @@ def stream(
                 # devolver vacío escondería la causa.
                 log.error("llm_openai.auth_rejected", model=model, status_code=status_code)
                 raise LLMAuthError(model=model, status_code=int(status_code)) from exc
+            if status_code in MODEL_UNAVAILABLE_HTTP_CODES:
+                # Ver `LLMModelUnavailableError`: el 410 de un modelo retirado
+                # acababa en stream vacío y el consumidor no veía la causa.
+                log.error("llm_openai.model_unavailable", model=model, status_code=status_code)
+                raise LLMModelUnavailableError(model=model, status_code=int(status_code)) from exc
             if attempt < max_attempts and _is_retryable(exc):
                 wait = 2 ** (attempt - 1)  # 1s, 2s
                 log.warning(

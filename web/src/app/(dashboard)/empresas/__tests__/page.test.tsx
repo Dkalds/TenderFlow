@@ -40,6 +40,7 @@ vi.mock("@/components/layout/space-shell", () => ({
   ),
 }));
 
+import { toast } from "sonner";
 import EmpresasPage from "@/app/(dashboard)/empresas/page";
 
 const LISTA = {
@@ -194,6 +195,30 @@ describe("Empresas", () => {
     expect(screen.getByText("Agencia Estatal de Administración Tributaria")).toBeInTheDocument();
     expect(screen.getByText("Participa en UTEs")).toBeInTheDocument();
     expect(screen.getByText(/Aliases vistos en fuente \(2\)/)).toBeInTheDocument();
+  });
+
+  it("«Vigilar» de la ficha es el control único y avisa de la alerta diaria", async () => {
+    render(<EmpresasPage />, { wrapper: Wrapper });
+    // Nombre exacto: el de la ficha es su texto visible; los de las filas
+    // dicen «Vigilar empresa».
+    const vigilar = await screen.findByRole("button", { name: "Vigilar" });
+    // Un botón propio que imitara al control volvería a ser dos controles.
+    expect(vigilar).toHaveAttribute("data-slot", "seguir-boton");
+    // Deshabilitado hasta saber qué se vigila: alternar a ciegas podría pedir
+    // el alta de una empresa que ya estaba vigilada.
+    await waitFor(() => expect(vigilar).toBeEnabled());
+
+    fireEvent.click(vigilar);
+
+    expect(toast).toHaveBeenCalledWith("Añadida a la vigilancia · alerta diaria");
+    // Por el camino de `SeguirBoton` para empresas: el endpoint de siempre,
+    // que escribe su tabla y `follows` (ADR-031 §B).
+    await waitFor(() =>
+      expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/competitive/watchlist", {
+        empresa_id: 1,
+        frequency: "daily",
+      }),
+    );
   });
 
   it("el grupo de la ficha filtra el maestro", async () => {

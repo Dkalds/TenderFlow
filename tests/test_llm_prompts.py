@@ -101,6 +101,32 @@ def test_context_block_optional_fields_only_when_present() -> None:
     assert "URL:" not in block
 
 
+def test_context_block_omits_missing_core_fields() -> None:
+    """Órgano, importe y estado vacíos no llegan al modelo como «—».
+
+    Con los Nemotron de NVIDIA (2026-09-24) la raya disparaba volcados del
+    bloque («Importe: —») y comentarios sobre datos que nadie había preguntado.
+    Un 0 sí es un valor y se imprime.
+    """
+    sin_datos = build_context_block(
+        [{"id_externo": "X-1", "titulo": "T", "descripcion": "d"}],
+        [],
+        max_chars=MAX_CONTEXT_CHARS_GENERAL,
+    )
+    assert "—" not in sin_datos
+    for etiqueta in ("Órgano:", "Importe:", "Estado:"):
+        assert etiqueta not in sin_datos
+
+    con_datos = build_context_block(
+        [{"id_externo": "X-2", "organo_contratacion": "Ayto", "importe": 0, "estado": "PUB"}],
+        [],
+        max_chars=MAX_CONTEXT_CHARS_GENERAL,
+    )
+    assert "Órgano: Ayto" in con_datos
+    assert "Importe: 0" in con_datos
+    assert "Estado: PUB" in con_datos
+
+
 def test_context_block_includes_pliego_chunks() -> None:
     doc = dict(
         DOCS[0],
