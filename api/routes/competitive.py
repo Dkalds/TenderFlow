@@ -535,6 +535,11 @@ async def get_batallas(
     empresa_key: str,
     organization_id: int | None = Query(default=None, ge=1),
     meses: int = Query(24, ge=1, le=120, description="Ventana hacia atrás, en meses"),
+    empresa_ids: str | None = Query(
+        None,
+        max_length=500,
+        description="IDs adicionales del grupo (separados por comas) para cruzar también sus adjudicaciones",
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> BatallasContraMi:
     """El historial de cruces, con el límite de lo afirmable declarado.
@@ -543,7 +548,12 @@ async def get_batallas(
     perdimos», no «ellos ganaron contra nosotros»: la respuesta lo dice en
     `sin_nif_propio` para que la pantalla no haga parecer invencible a un rival
     que quizá ni se presentó.
+
+    `empresa_ids` es el mismo grupo que suman el perfil y el listado de la
+    ficha: sin él, «Contra mí» cruzaba sólo la identidad que abre la ficha. La
+    respuesta declara en `claves` qué identidades cruzó.
     """
+    grupo = [str(empresa_id) for empresa_id in _split_int_filter(empresa_ids) or []]
 
     try:
         return await run_db(
@@ -552,6 +562,7 @@ async def get_batallas(
             empresa_key,
             organization_id=organization_id,
             meses=meses,
+            grupo=grupo,
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

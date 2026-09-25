@@ -253,10 +253,12 @@ export const competitiveKeys = {
     ["competitive-company-awards", empresaId, params] as const,
   /**
    * Cruces con un competidor (`GET /competitive/empresas/{key}/contra-mi`,
-   * F3.2). Lleva la organización: son las oportunidades de ese equipo.
+   * F3.2). Lleva la organización: son las oportunidades de ese equipo. Y el
+   * grupo que se manda en `empresa_ids`, o `null` sin él: la ficha de una
+   * identidad y la del grupo que la contiene son respuestas distintas.
    */
-  contraMi: (empresaKey: string, organizationId: OrganizacionDeClave, meses: number) =>
-    ["competitive", "contra-mi", empresaKey, organizationId, meses] as const,
+  contraMi: (empresaKey: string, organizationId: OrganizacionDeClave, meses: number, grupo: string | null = null) =>
+    ["competitive", "contra-mi", empresaKey, organizationId, meses, grupo] as const,
   /** Socios de UTE de un segmento (`GET /competitive/partners`, F3.3). */
   partners: (cpv: string | null, ccaa: string | null) =>
     ["competitive", "partners", cpv, ccaa] as const,
