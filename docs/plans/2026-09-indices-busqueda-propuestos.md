@@ -2,12 +2,16 @@
 tags: [plan, rendimiento, migraciones, propuesta]
 ---
 
-# Índices para la búsqueda `q` y el filtro de tecnología — propuestos, sin escribir
+# Índices para la búsqueda `q` y el filtro de tecnología
 
-**Estado: PROPUESTO el 2026-09-24. Ninguna de estas revisiones existe.** No hay
-ningún fichero nuevo en `db/alembic/versions/`. Tocar `db/alembic/` requiere OK
-explícito (AGENTS.md §6); este documento es lo que hay que leer antes de
-escribirlas.
+**Estado: ESCRITAS el 2026-09-25, pendientes de aplicar.** Con el OK del
+usuario (AGENTS.md §6) existen `v142_lic_tecnologia_tokens_gin` y
+`v143_lic_busqueda_plegada_trgm` tal como se describen abajo, con su test en
+`tests/test_indices_busqueda.py`. Se aplican a mano con `migrate.yml`, y hasta
+entonces `/health/ready` informa `schema_revision: behind`, el smoke falla y el
+preflight de `ml-scoring` no deja correr el job: **aplicarlas justo después de
+mergear**. Antes de `v143`, medir `descripcion` (sección «Riesgo principal»); si
+no cabe, sacar `v143` y elegir una de las alternativas.
 
 La cabeza del repo, comprobada recorriendo `down_revision` el 2026-09-24, es
 **`v141_tasas_anulacion_organo`**:

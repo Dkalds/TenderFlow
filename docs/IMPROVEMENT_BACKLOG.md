@@ -36,18 +36,24 @@ event loop y `--limit-concurrency 20`.
   una colisión entre parámetros) y ETag calculado al guardar (ADR-035); sesión y
   organización personal con menos viajes; `/notifications` en una conexión;
   SSE con una consulta por señal; pools con conexiones mínimas verificadas;
-  consulta cancelada como 503 que el navegador no reintenta.
+  consulta cancelada como 503 que el navegador no reintenta; el
+  `--limit-concurrency` de uvicorn pasa de 20 a 200 (cada pestaña ocupaba una
+  plaza con su SSE).
 - **Analítica:** `adj_indicadores` del snapshot aunque haya filtro; consultas
   del overview en paralelo acotado; variantes precalculadas para las cinco
   tecnologías más frecuentes; scoring del Radar por columnas (×15-20);
-  `/competitive/*` cacheado.
+  `/competitive/*` cacheado; migraciones `v142` (GIN de tecnología) y `v143`
+  (trigram de la búsqueda `q` plegada), escritas y sin aplicar.
 - **Tests:** `tests/conftest.py` clasificaba por ruta absoluta y en un checkout
   con «performance» en el nombre `make test-unit` no seleccionaba ningún test.
 
-**Pendiente:** los cinco ítems marcados «Rendimiento 2026-09» más abajo, y
-comprobar tras el primer despliegue que `X-Vercel-Id` de `/login` dice `fra1`,
-que `?p=2` de un hub da `X-Vercel-Cache: HIT` a la segunda petición y que el log
-de la API muestra `ratelimit_redis_connected`.
+**Pendiente:** los cuatro ítems marcados «Rendimiento 2026-09» más abajo —el
+primero, aplicar `v142`/`v143` justo después de mergear: hasta entonces el smoke
+falla y `ml-scoring` no corre—, y comprobar tras el primer despliegue que
+`X-Vercel-Id` de `/login` dice `fra1`, que `?p=2` de un hub da
+`X-Vercel-Cache: HIT` a la segunda petición, que el log de la API muestra
+`ratelimit_redis_connected` y ningún `Exceeded concurrency limit`, y que el
+panel de Render no fija `UVICORN_LIMIT_CONCURRENCY` a mano.
 
 ## Plan de funcionalidades 2026-09 — ejecutado casi entero
 
@@ -634,7 +640,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios
 - **Problema:** lo que la rama no pudo cerrar por falta de build, de permiso o de alcance:
   - Los techos de `web/bundle-budget.json` no se han bajado: sin `next build` no se midió. Estimado: −200 a −570 KB sin comprimir según la ruta (/resumen la que más). Las rutas nuevas de `hub-paginado/` salen como «NUEVA».
-  - `.env.example` no declara `RATE_LIMIT_BACKEND=auto` (sigue diciendo `sqlite`), `DB_POOL_MIN_SIZE`, `DB_READ_POOL_MIN_SIZE` ni `API_ANALYTICS_STATEMENT_TIMEOUT_MS`.
+  - `.env.example` no declara `RATE_LIMIT_BACKEND=auto` (sigue diciendo `sqlite`), `DB_POOL_MIN_SIZE`, `DB_READ_POOL_MIN_SIZE`, `API_ANALYTICS_STATEMENT_TIMEOUT_MS` ni `UVICORN_LIMIT_CONCURRENCY` (tocar `.env*` pide OK; por eso `render.yaml` tampoco declara la última: `check_env_parity` exige que todo lo de `render.yaml` esté en `.env.example`).
   - Siguen con E/S síncrona en handlers `async`: `_check_budget` de `api/routes/ask.py` (presupuesto LLM en Redis).
   - La imagen Open Graph de la ficha pública (`opengraph-image.tsx`) sigue dinámica.
   - El scoring de /detalle no manda `organization_id` y puntúa con los pesos de la organización personal; las renovaciones filtran tecnología por igualdad (`IN`) y `tecnologia_detalle_*` sigue con `unnest`.
