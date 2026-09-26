@@ -203,8 +203,13 @@ test.describe("Móvil (375×812)", () => {
     // cuerpo con scroll colgaban del viewport: a 375×812 el documento medía
     // 29 px de más. Se espera a una fila real del seed: sin filas no hay nada
     // que desborde y la medida daría verde en falso.
+    //
+    // `toBeAttached` y no `toBeVisible`: a 375 px la columna del título de la
+    // tabla de publicaciones mide 0 px (es `table-fixed` y las otras seis
+    // columnas, fijas, suman 672), así que Playwright da el enlace por oculto.
+    // Aquí basta con que las filas existan.
     await page.goto("/resumen");
-    await expect(page.locator(`a[href^="/detalle?lic=${SEED_PREFIX}"]`).first()).toBeVisible({
+    await expect(page.locator(`a[href^="/detalle?lic=${SEED_PREFIX}"]`).first()).toBeAttached({
       timeout: 20_000,
     });
 
