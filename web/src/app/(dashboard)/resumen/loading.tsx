@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 export default function ResumenLoading() {
   return (
-    <div className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="border-border/60 flex h-11 flex-none items-center border-b px-4">
         <Skeleton className="h-4 w-24 rounded" />
       </div>

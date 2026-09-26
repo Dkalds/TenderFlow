@@ -32,7 +32,6 @@ import {
   routeSlug,
   spaceAbsorbing,
 } from "@/lib/console-spaces";
-import { ScrollEdgeUnder, useScrollEdgeState } from "@/components/layout/scroll-edge";
 import { useAdmin } from "@/hooks/use-admin";
 import { useWithFilters } from "@/lib/filters";
 import { useDensity, initDensity } from "@/lib/density";
@@ -196,9 +195,6 @@ export function ConsoleRail() {
   const isAdmin = useAdmin();
   const withFilters = useWithFilters();
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  // La barra móvil es translúcida y se apoya sobre el contenido: su separador
-  // sólo existe cuando hay algo desplazado debajo (ver `scroll-edge.tsx`).
-  const scrolled = useScrollEdgeState();
 
   const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, isAdmin));
 
@@ -260,7 +256,12 @@ export function ConsoleRail() {
       </nav>
 
       {/* Móvil: el rail se pliega en un cajón. El diseño es de escritorio, pero
-          plegarlo a nada dejaría el producto sin navegación en pantalla pequeña. */}
+          plegarlo a nada dejaría el producto sin navegación en pantalla pequeña.
+
+          Sin borde de scroll propio: debajo de esta barra va la de ámbito, no
+          el contenido, y el corte con el contenido lo marca el borde de
+          aquélla. Con los dos, el de ésta (12px bajo su borde inferior) se
+          pintaba encima de la barra de ámbito: dos bordes para un único corte. */}
       <div className="tf-glass sticky top-0 z-40 flex h-12 items-center gap-2 px-3 md:hidden">
         <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} aria-label="Abrir navegación">
           <Menu className="h-5 w-5" />
@@ -271,9 +272,6 @@ export function ConsoleRail() {
         <span className="ml-auto">
           <AccountMenu />
         </span>
-        {/* Dentro de la barra —y no como hermano— porque `sticky` ya la deja
-            posicionada y aquí no hay `overflow` que recorte. */}
-        <ScrollEdgeUnder active={scrolled} />
       </div>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

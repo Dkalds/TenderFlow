@@ -599,10 +599,12 @@ export function ScopeBar() {
           <NotificationBell />
         </div>
       </header>
-      <ScrollEdge active={scrolled} />
       {/* Primer uso: qué es esta barra. Solo en la rama con ámbito, que es
           donde hay algo que explicar; se cierra una vez por navegador. */}
       {filtersApply && <AmbitoIntro />}
+      {/* Detrás de la franja: el borde separa el cromo de lo que se desplaza
+          en `#main-content`, y mientras la franja se ve el cromo acaba en ella. */}
+      <ScrollEdge active={scrolled} />
     </>
   );
 }

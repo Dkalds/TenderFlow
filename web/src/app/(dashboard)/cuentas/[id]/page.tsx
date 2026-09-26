@@ -51,7 +51,7 @@ export default function FichaCuentaPage() {
 
   if (cuentaId == null) {
     return (
-      <div className="grid h-[calc(100vh-52px)] place-items-center p-10">
+      <div className="grid h-full place-items-center p-10">
         <PanelError title="Esa cuenta no existe" detail="El enlace no es de ninguna cuenta." />
       </div>
     );
@@ -59,7 +59,7 @@ export default function FichaCuentaPage() {
 
   if (isPending) {
     return (
-      <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col gap-3 p-4">
+      <div className="flex h-full min-h-0 flex-col gap-3 p-4">
         <Skeleton className="h-24 w-full rounded-xl" />
         <Skeleton className="h-[360px] w-full rounded-xl" />
       </div>
@@ -68,7 +68,7 @@ export default function FichaCuentaPage() {
 
   if (error || !ficha) {
     return (
-      <div className="grid h-[calc(100vh-52px)] place-items-center p-10">
+      <div className="grid h-full place-items-center p-10">
         <PanelError
           title="No se pudo abrir esta cuenta"
           detail={error instanceof Error ? error.message : "No encontrada"}
@@ -82,7 +82,7 @@ export default function FichaCuentaPage() {
   const aplicadas = etiquetas.data?.[objetoId];
 
   return (
-    <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <header className="flex-none border-b border-border/60 bg-card/40 px-4 py-3.5">
         {/* `flex-wrap`: en una pantalla estrecha las acciones bajan de línea
             en vez de salirse por la derecha. */}
@@ -148,7 +148,11 @@ export default function FichaCuentaPage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-8">
+      {/* `relative`, como el cuerpo de `SpaceShell`: el «Quitar» de cada órgano
+          lleva un `sr-only` absoluto que, sin él, colgaría de `#main-content` y
+          no de esta caja; con muchos órganos, `#main-content` scrollearía
+          también. */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-8">
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="flex min-w-0 flex-col gap-3.5">
             <BloquePublicaciones bloque={ficha.publicaciones} />

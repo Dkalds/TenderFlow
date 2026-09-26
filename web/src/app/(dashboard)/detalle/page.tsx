@@ -182,7 +182,7 @@ export default function DetallePage() {
     : "—";
 
   return (
-    <div className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0">
+    <div className="flex h-full min-h-0">
       <section className="flex min-w-0 flex-1 flex-col border-r border-border/70">
         <DetalleBarra
           cierreLabel={cierre.label}

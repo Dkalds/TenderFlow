@@ -98,7 +98,7 @@ export function SpaceShell({
   // y el cuerpo del espacio; la barra de ámbito sigue leyendo el del marco.
   return (
     <ScrollEdgeProvider>
-      <div className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0 flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         {/* Borde duro solo con `bleed`: ahí el cuerpo no scrollea (cada columna
             lleva su scroll) y la línea separa la cabecera de una tabla pegada a
             ella, no anuncia contenido oculto. Sin `bleed` el separador es el

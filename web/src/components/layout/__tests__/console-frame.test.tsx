@@ -4,8 +4,10 @@
  * Desde la retirada del cromo heredado (2026-08, con los 14 espacios
  * construidos) el marco monta una única superficie: rail + barra de ámbito +
  * shell, sin depender de la ruta. Estos tests fijan que ninguna banda del
- * cromo viejo (KPI bar / breadcrumb / pestañas) reaparezca, y que en móvil la
- * barra superior del rail quede encima del contenido y no a su lado.
+ * cromo viejo (KPI bar / breadcrumb / pestañas) reaparezca, que en móvil la
+ * barra superior del rail quede encima del contenido y no a su lado, y que el
+ * marco mida la pantalla para que `#main-content` se quede con lo que deja el
+ * cromo.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
@@ -85,23 +87,41 @@ describe("ConsoleFrame — móvil", () => {
     expect(contenedor).not.toHaveClass("flex-row");
   });
 
-  it("reserva el alto de pantalla a la columna sólo en fila", () => {
-    // En columna la barra móvil ya ocupa sus 48px encima: con `min-h-screen`
-    // también aquí, el documento mediría siempre 48px más que la ventana.
+});
+
+describe("ConsoleFrame — alto", () => {
+  // Las pantallas miden `h-full` de `#main-content`, que se queda con lo que
+  // deja el cromo. Eso solo vale si el marco mide la pantalla y la columna
+  // puede encoger: con alto mínimo, `#main-content` crecía con su contenido,
+  // se desplazaba el documento y cada pantalla tenía que restar a mano el cromo
+  // que conocía. La franja de primer uso del ámbito no entraba en esa cuenta y
+  // alargaba el documento 84px a 1366×768. La medida real, con la franja
+  // visible, la cubre `e2e/responsive.spec.ts`.
+  const montar = () =>
+    render(
+      <ConsoleFrame>
+        <p>contenido</p>
+      </ConsoleFrame>,
+    );
+
+  it("el marco mide la pantalla, no un mínimo", () => {
+    montar();
+    const marco = screen.getByTestId("barra-movil").parentElement!;
+
+    expect(marco).toHaveClass("h-screen");
+    expect(marco).not.toHaveClass("min-h-screen");
+  });
+
+  it("la columna se queda con lo que deja la barra móvil y encoge por debajo de su contenido", () => {
+    // Apilada bajo la barra móvil la columna es un hijo flex del marco en su
+    // eje: sin `min-h-0` no bajaría del alto de su contenido, y una página
+    // larga estiraría el marco en vez de desplazarse dentro de `#main-content`.
     montar();
     const columna = screen.getByTestId("shell").parentElement!;
 
-    expect(columna).toHaveClass("flex-1", "md:min-h-screen");
+    expect(columna).toHaveClass("flex", "flex-col", "flex-1", "min-h-0");
+    // Por separado: `not.toHaveClass(a, b)` pasa en cuanto falta una de las dos.
     expect(columna).not.toHaveClass("min-h-screen");
-  });
-
-  it("publica el alto del cromo que las pantallas descuentan de la ventana", () => {
-    // Las pantallas de alto fijo miden `calc(100vh - var(--alto-cromo))`. Sin
-    // la variable, ese `calc` es inválido y su alto cae a `auto`; con 52px
-    // también en móvil, desbordarían los 48px de la barra superior.
-    montar();
-    const contenedor = screen.getByTestId("barra-movil").parentElement!;
-
-    expect(contenedor).toHaveClass("[--alto-cromo:calc(3rem+52px)]", "md:[--alto-cromo:52px]");
+    expect(columna).not.toHaveClass("md:min-h-screen");
   });
 });

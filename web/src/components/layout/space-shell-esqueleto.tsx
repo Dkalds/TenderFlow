@@ -26,7 +26,7 @@ export function SpaceShellEsqueleto({
 }) {
   const vistas = SPACE_VIEWS[spaceKey] ?? [];
   return (
-    <div data-slot="space-shell-esqueleto" className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0 flex-col">
+    <div data-slot="space-shell-esqueleto" className="flex h-full min-h-0 flex-col">
       <div
         className={cn(
           "flex h-11 flex-none items-center gap-2.5 overflow-hidden px-4",
