@@ -142,6 +142,12 @@ esa regla a `senal_tecnologica` antes del `--apply`, o reingerirlas después.
 
 ## Procedimiento
 
+Todo se ejecuta desde el workflow manual `.github/workflows/purga-pscp.yml`
+(`DATABASE_URL` de producción, `concurrency.group: scrape` para no solaparse
+con la ingesta): sin marcar `apply` es el dry-run del paso 1, y con `apply` y
+`reingerir_desde` hace los pasos 4 y 5 en el mismo job. Desde una máquina con
+acceso a la BD valen los mismos comandos:
+
 1. `python scripts/purgar_pscp_sin_tecnologia.py` (dry-run): balance por acción
    y motivo, protegidas y ejemplos por clase. No escribe nada.
 2. Revisar el balance y los ejemplos; decidir la pregunta abierta.
