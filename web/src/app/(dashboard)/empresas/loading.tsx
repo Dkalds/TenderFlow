@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 export default function EmpresasLoading() {
   return (
-    <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
+    <div className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0 flex-col">
       <div className="border-border/60 flex h-11 flex-none items-center gap-3 border-b px-4">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-4 w-40" />
