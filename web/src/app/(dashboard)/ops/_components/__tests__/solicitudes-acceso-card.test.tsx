@@ -43,6 +43,7 @@ vi.mock("@/lib/api-client", () => ({
 }));
 
 import { SolicitudesAccesoCard } from "@/app/(dashboard)/ops/_components/solicitudes-acceso-card";
+import type { OpcionesSolicitudesAcceso } from "@/app/(dashboard)/ops/_hooks/use-solicitudes-acceso";
 import { apiMutate } from "@/lib/api-client";
 
 const mutar = vi.mocked(apiMutate);
@@ -96,11 +97,11 @@ function instalarFetch() {
   );
 }
 
-function renderCard() {
+function renderCard(opciones: OpcionesSolicitudesAcceso = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
-      <SolicitudesAccesoCard />
+      <SolicitudesAccesoCard {...opciones} />
     </QueryClientProvider>,
   );
 }
@@ -178,11 +179,34 @@ describe("SolicitudesAccesoCard", () => {
   });
 
   it("cuando la respuesta llega al tope lo dice, en vez de dar un número redondo", async () => {
-    cola.push(...Array.from({ length: 500 }, (_, i) => solicitud(i + 1, "pendiente")));
-    renderCard();
+    // Con un tope de 3 y no con el de verdad. Llegar a 500 obligaba a pintar
+    // 500 filas completas en jsdom, y con la suite entera en paralelo el caso
+    // pasaba de los 5 s del timeout (5188 ms el 2026-09-26; aislado, ~400 ms).
+    // Lo que se fija no depende del número: el backend de mentira recorta con
+    // el `limit` de la URL, así que la tarjeta que pida un tope y cuente con
+    // otro, o que vuelva a dar la cifra redonda, pone esto en rojo. Que el
+    // tope de verdad es 500 lo fija el test siguiente.
+    cola.push(...Array.from({ length: 5 }, (_, i) => solicitud(i + 1, "pendiente")));
+    renderCard({ limite: 3 });
 
-    expect(await screen.findByText("500+ pendientes")).toBeInTheDocument();
-    expect(screen.getByText(/Se muestran las 500 más recientes/)).toBeInTheDocument();
+    expect(await screen.findByText("3+ pendientes")).toBeInTheDocument();
+    expect(screen.getByText(/Se muestran las 3 más recientes/)).toBeInTheDocument();
+  });
+
+  it("pide el máximo que admite el endpoint, y no su defecto de 100", async () => {
+    // Sin `limit`, el servidor cortaría en 100 y la tarjeta, que compara con
+    // su propio tope, daría «100 pendientes» como si fueran todas.
+    cola.push(solicitud(1, "pendiente"), solicitud(2, "atendida"));
+    renderCard();
+    await screen.findByText("alguien-1@empresa.es");
+    fireEvent.click(screen.getByRole("button", { name: "Todas" }));
+    await screen.findByText("alguien-2@empresa.es");
+
+    // 500 es el `le=500` del endpoint: por encima responde 422.
+    const limiteDe = (url: string | undefined) =>
+      new URLSearchParams(url?.split("?")[1] ?? "").get("limit");
+    expect(limiteDe(queryDe("pendiente"))).toBe("500");
+    expect(limiteDe(queryDe("historico"))).toBe("500");
   });
 
   it("sin pendientes no dice «no ha llegado ninguna solicitud»", async () => {

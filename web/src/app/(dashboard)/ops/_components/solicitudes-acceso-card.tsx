@@ -31,11 +31,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LIMITE, useSolicitudesAcceso } from "../_hooks/use-solicitudes-acceso";
+import { useSolicitudesAcceso } from "../_hooks/use-solicitudes-acceso";
+import type { OpcionesSolicitudesAcceso } from "../_hooks/use-solicitudes-acceso";
 import { AccesosDinamicos } from "./solicitudes-acceso/accesos-dinamicos";
 import { SolicitudItem } from "./solicitudes-acceso/solicitud-item";
 
-export function SolicitudesAccesoCard() {
+/** Las opciones son las del hook; la app no pasa ninguna. */
+export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
   const {
     vista,
     setVista,
@@ -43,13 +45,14 @@ export function SolicitudesAccesoCard() {
     isLoading,
     error,
     pendientes,
+    limite,
     truncada,
     pendientesTruncado,
     grants,
     grantsLoading,
     cambiarEstado,
     revocar,
-  } = useSolicitudesAcceso();
+  } = useSolicitudesAcceso(opciones);
 
   return (
     <Card>
@@ -107,7 +110,7 @@ export function SolicitudesAccesoCard() {
         )}
         {!isLoading && !error && truncada && (
           <p className="text-muted-foreground mb-3 text-xs">
-            Se muestran las {LIMITE} más recientes: hay más de las que caben en una respuesta. Usa
+            Se muestran las {limite} más recientes: hay más de las que caben en una respuesta. Usa
             «Pendientes» para no perder ninguna sin atender.
           </p>
         )}
