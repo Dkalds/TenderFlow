@@ -450,12 +450,16 @@ test.describe("Escritorio (1440×900)", () => {
   // el ámbito. Cada test comprueba que la franja está: sin ella pasaría en vacío.
   const franjaDePrimerUso = (page: import("@playwright/test").Page) =>
     page.locator('[data-slot="ambito-intro"]');
+  // Que existan las filas del seed, no que se vean: la columna del título de
+  // la tabla de publicaciones puede medir 0 px (ver el Resumen móvil).
+  const filasDelResumen = (page: import("@playwright/test").Page) =>
+    expect(page.locator(`a[href^="/detalle?lic=${SEED_PREFIX}"]`).first()).toBeAttached({
+      timeout: 20_000,
+    });
 
   test("el Resumen llena el alto que le deja la franja de primer uso", async ({ page }) => {
     await page.goto("/resumen");
-    await expect(page.locator(`a[href^="/detalle?lic=${SEED_PREFIX}"]`).first()).toBeVisible({
-      timeout: 20_000,
-    });
+    await filasDelResumen(page);
     await expect(franjaDePrimerUso(page)).toBeVisible();
 
     await expectPantallaLlenaElAlto(page);
@@ -481,9 +485,7 @@ test.describe("Escritorio (1440×900)", () => {
     // Lo que demuestra que la pantalla ocupa lo que queda y no un alto
     // calculado aparte: crece lo que medía la franja, ni más ni menos.
     await page.goto("/resumen");
-    await expect(page.locator(`a[href^="/detalle?lic=${SEED_PREFIX}"]`).first()).toBeVisible({
-      timeout: 20_000,
-    });
+    await filasDelResumen(page);
     const franja = franjaDePrimerUso(page);
     const altoDe = async (locator: import("@playwright/test").Locator) => (await locator.boundingBox())!.height;
     const altoFranja = await altoDe(franja);
