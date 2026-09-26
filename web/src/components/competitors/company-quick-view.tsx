@@ -165,7 +165,7 @@ export function CompanyQuickView({
         </p>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 md:px-6">
+      <div className="relative min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 md:px-6">
         {isLoadingProfile ? (
           <>
             <Skeleton className="h-24 w-full rounded-lg" />

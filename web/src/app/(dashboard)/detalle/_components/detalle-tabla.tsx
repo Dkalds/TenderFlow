@@ -107,7 +107,7 @@ export function DetalleTabla(props: DetalleTablaProps) {
   const { rows, isLoading, error, vacia } = props;
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
+    <div className="relative min-h-0 flex-1 overflow-auto">
       <div style={{ minWidth: TABLE_MIN_WIDTH }}>
         <table className="w-full table-fixed border-collapse">
           <colgroup>

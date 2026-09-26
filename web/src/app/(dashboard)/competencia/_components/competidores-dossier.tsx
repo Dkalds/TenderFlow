@@ -89,7 +89,7 @@ export function CompetidoresDossier({
           />
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         {companyId != null && pestana === "contra_mi" ? (
           <div className="p-3">
             <CompanyContraMi empresaKey={String(companyId)} empresaIds={groupIds} />

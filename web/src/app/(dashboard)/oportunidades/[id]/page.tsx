@@ -217,7 +217,11 @@ export default function OpportunityDetailPage() {
         </div>
       </header>
 
-      <div className="px-4 pt-4 pb-8 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+      {/* En `xl` la que scrollea es la pestaña, así que el `relative` que la
+          caja raíz deja en `xl:static` pasa aquí. Sin él, los `<select>` ocultos
+          del editor volvían a colgar del viewport y el documento medía 1356 px a
+          1366×768; en la caja raíz solo movería el desborde a `#main-content`. */}
+      <div className="px-4 pt-4 pb-8 xl:relative xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
         {tab === "resumen" && (
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex flex-col gap-3.5">

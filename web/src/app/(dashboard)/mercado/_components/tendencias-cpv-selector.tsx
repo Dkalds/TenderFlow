@@ -36,7 +36,7 @@ export function TendenciasCpvSelector({
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : (
-          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+          <div className="relative flex flex-wrap gap-2 max-h-48 overflow-y-auto">
             {allCpvs.map((cpvItem, idx) => {
               const isSelected = effectiveCpvs.has(cpvItem.cpv);
               return (

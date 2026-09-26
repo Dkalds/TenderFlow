@@ -116,7 +116,7 @@ export function MaestroList({
         </div>
       ) : (
         <>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="relative min-h-0 flex-1 overflow-y-auto">
             <div className={cn(GRID, "border-border/70 bg-background sticky top-0 z-10 h-[34px] border-b")}>
               {COLUMNAS.map((columna) => {
                 const on = columna.key === sortKey;

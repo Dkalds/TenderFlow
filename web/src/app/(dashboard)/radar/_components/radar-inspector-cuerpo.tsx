@@ -36,7 +36,7 @@ export function InspectorCuerpo({ tender }: { tender: RadarTender }) {
       aria-label="Detalle de la señal"
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- región con scroll sin controles: WCAG 2.1.1 exige que el teclado pueda desplazarla (axe scrollable-region-focusable)
       tabIndex={0}
-      className="min-h-0 flex-1 overflow-y-auto px-4.5 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="relative min-h-0 flex-1 overflow-y-auto px-4.5 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-[9px] border border-border/60 bg-border/60">
         <Fact label="Órgano" value={tender.organo_contratacion ?? "—"} />

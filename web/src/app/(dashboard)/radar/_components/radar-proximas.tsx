@@ -208,7 +208,7 @@ export function RadarProximas({ consola }: { consola: RadarProximasConsola }) {
   return (
     <>
       <ProximasCabecera consola={consola} />
-      <div data-slot="radar-proximas" className="min-h-0 flex-1 overflow-y-auto">
+      <div data-slot="radar-proximas" className="relative min-h-0 flex-1 overflow-y-auto">
         {error ? (
           <ProximasError error={error as Error} onRetry={refetch} />
         ) : isLoading ? (

@@ -62,7 +62,7 @@ export function OrganoDetalle({
           <X className="h-3 w-3" aria-hidden="true" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3.5 pb-4">
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-3.5 pb-4">
         {isLoading ? (
           <div className="mt-6 space-y-4">
             {Array.from({ length: 4 }).map((_, i) => (

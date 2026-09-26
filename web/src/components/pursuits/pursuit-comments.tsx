@@ -291,7 +291,7 @@ export function PursuitCommentsThread({
     <div className={cn("flex min-h-0 flex-col", className)}>
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto pb-3"
+        className="relative min-h-0 flex-1 overflow-y-auto pb-3"
         aria-busy={thread.isPending || undefined}
       >
         {thread.isPending ? (

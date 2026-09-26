@@ -222,6 +222,27 @@ describe("SpaceShell", () => {
     expect(cuerpo()).toHaveClass("overflow-y-auto");
   });
 
+  it("el cuerpo es el bloque contenedor de sus absolutos, con bleed y sin él", () => {
+    // Sin `relative`, los `sr-only` y los `<select>` ocultos de Radix de dentro
+    // cuelgan del viewport: ni se recortan ni scrollean con el cuerpo, y
+    // alargan el documento. jsdom no mide nada, así que aquí se fija la clase;
+    // el alto real lo comprueba `e2e/responsive.spec.ts`.
+    const { container, rerender } = render(
+      <SpaceShell spaceKey="mercado" view="tiempo" bleed>
+        <p>contenido</p>
+      </SpaceShell>,
+    );
+    const cuerpo = () => container.querySelector("[data-slot=\"space-shell-cuerpo\"]")!;
+    expect(cuerpo()).toHaveClass("relative");
+
+    rerender(
+      <SpaceShell spaceKey="mercado" view="tiempo">
+        <p>contenido</p>
+      </SpaceShell>,
+    );
+    expect(cuerpo()).toHaveClass("relative");
+  });
+
   it("sin bleed no hay borde duro: el separador es el borde de scroll, apagado en el tope", () => {
     // apple-design §12: en el tope la cabecera y el cuerpo son la misma
     // superficie y una línea fija anunciaría una profundidad que no existe.
