@@ -84,9 +84,12 @@ Lo que **no** se hizo, y por qué:
 Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
 (no hay outbox de eventos, ni maestro de órganos, ni invitaciones de v2):
 
-- **F1.5** guarda la cuenta objetivo en tabla propia con el nombre plegado del
-  órgano, que es lo que el plan prevé hasta que llegue C1.2. La columna
-  `organo_id` nace ya, nullable, para que ese maestro la rellene sin migración.
+- **F1.5** guarda la cuenta objetivo en tabla propia y, desde v145, sus
+  órganos en `cuenta_organos`, cada uno con su nombre plegado, que es lo que el
+  plan prevé hasta que llegue C1.2. La columna `organo_id` existe, nullable,
+  para que ese maestro la rellene sin migración; en 2026-09 el maestro tenía
+  248 órganos y no cubría ni los del Ayuntamiento de Madrid. Estado completo
+  en el plan.
 - **F5.1–F5.4, F3.4 y F4.3** entregan por los jobs y la campana que ya existen,
   no por el outbox. El catálogo de subtipos de aviso está escrito una sola vez
   (`services/avisos.py`), así que enchufarlo al outbox cuando exista es cambiar

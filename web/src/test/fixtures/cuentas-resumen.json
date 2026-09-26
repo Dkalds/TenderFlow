@@ -1,0 +1,27 @@
+{
+  "filas": [
+    {
+      "cuenta_id": 7,
+      "abiertas": 3,
+      "ultima_publicacion": "2026-09-24T06:00:00+00:00",
+      "vencen": 2,
+      "oportunidades_activas": 1
+    }
+  ],
+  "ambito_abiertas": {
+    "universo": "Licitaciones tecnológicas de los órganos de la cuenta, sin duplicados confirmados. No suma las fuentes regionales que publican el censo completo de su comunidad.",
+    "ventana": "Plazo de ofertas abierto hoy y expediente no cerrado."
+  },
+  "ambito_ultima_publicacion": {
+    "universo": "Licitaciones tecnológicas de los órganos de la cuenta, sin duplicados confirmados. No suma las fuentes regionales que publican el censo completo de su comunidad.",
+    "ventana": "Día en que se vio por primera vez el expediente más reciente."
+  },
+  "ambito_vencen": {
+    "universo": "Contratos adjudicados de los órganos de la cuenta, en el mismo universo que las licitaciones. Un contrato con varios adjudicatarios cuenta una vez.",
+    "ventana": "Fecha de fin entre hoy y dentro de 12 meses. La mayoría se estima con la duración del contrato."
+  },
+  "ambito_oportunidades": {
+    "universo": "Oportunidades de tu organización sobre expedientes de los órganos de la cuenta.",
+    "ventana": "Las que no están ganadas, perdidas ni retiradas."
+  }
+}

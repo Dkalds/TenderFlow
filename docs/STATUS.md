@@ -75,7 +75,7 @@ Generado: 2026-09-25
 
 ## Superficie de la API
 
-**279 endpoints** expuestos.
+**286 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -158,7 +158,14 @@ Generado: 2026-09-25
 | DELETE | `/api/v1/competitive/watchlist/{empresa_id}` |
 | GET | `/api/v1/cuentas` |
 | POST | `/api/v1/cuentas` |
+| GET | `/api/v1/cuentas/buscar-organos` |
+| DELETE | `/api/v1/cuentas/por-organo` |
+| GET | `/api/v1/cuentas/resumen` |
 | DELETE | `/api/v1/cuentas/{cuenta_id}` |
+| GET | `/api/v1/cuentas/{cuenta_id}` |
+| PATCH | `/api/v1/cuentas/{cuenta_id}` |
+| POST | `/api/v1/cuentas/{cuenta_id}/organos` |
+| DELETE | `/api/v1/cuentas/{cuenta_id}/organos/{cuenta_organo_id}` |
 | GET | `/api/v1/empresas` |
 | GET | `/api/v1/empresas/reviews` |
 | POST | `/api/v1/empresas/reviews/{review_id}` |

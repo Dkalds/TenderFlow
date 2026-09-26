@@ -330,6 +330,12 @@ export interface EventosProducto {
    * publique nada», y es lo que separa a un comercial de cuentas de alguien
    * que tría la bandeja. El órgano **no** viaja: sería un identificador y,
    * peor, revelaría a quién persigue la organización.
+   *
+   * Lo emite sólo `hooks/use-cuentas.ts`, tras la respuesta de `/cuentas`: es
+   * el único seguimiento de órgano con efectos, y el que usan tanto el
+   * formulario de Cuentas como el botón del panel de órgano de Mercado. Hasta
+   * 2026-09-25 ese botón escribía en `follows`, no avisaba a nadie y también
+   * contaba aquí.
    */
   organo_seguido: { accion: "seguir" | "dejar_de_seguir" };
   /**

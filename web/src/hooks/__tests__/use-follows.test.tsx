@@ -10,9 +10,11 @@
  * 2. **El alta y la baja son optimistas y reversibles.** El estado cambia en el
  *    frame del clic y vuelve solo si el servidor dice que no. Sin la vuelta
  *    atrás, un fallo de red deja el control mintiendo.
- * 3. **La telemetría se emite después del 200, no antes** — el mismo error que
- *    ya se corrigió en las descargas, donde cada intento fallido contaba como
- *    exportación.
+ * 3. **Sin telemetría propia.** Hasta 2026-09-25 emitía `organo_seguido` con
+ *    cualquier alta —también un CPV—, y ese evento mide si se trabaja por
+ *    cuentas: lo emite `use-cuentas`, que es donde seguir un órgano tiene
+ *    efecto. Los órganos ya no pasan por aquí (ver `use-seguimiento`), así que
+ *    estos tests usan un CPV y un lote, que sí.
  * 4. **El control dice su estado con texto y con `aria-pressed`**, no sólo con
  *    color: es un alternador y tiene que leerse sin ver.
  */
@@ -23,6 +25,14 @@ import * as React from "react";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
+// `SeguirBoton` instancia también la fuente de cuentas, que pregunta por la
+// organización activa: en blanco, para que las respuestas en orden de este
+// fichero sigan siendo las de `/follows` (las cuentas tienen su propio test).
+vi.mock("@/hooks/use-cuentas", () => ({
+  useCuentaDeOrgano: () => ({ data: undefined, isPending: false }),
+  useSeguirCuenta: () => ({ mutate: vi.fn(), isPending: false }),
+  useDejarDeSeguirOrgano: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 
 import { toast } from "sonner";
 import { registrarEvento } from "@/lib/analytics";
@@ -30,10 +40,10 @@ import { useFollows, useSeguir, useDejarDeSeguir, type Follow } from "@/hooks/us
 import { SeguirBoton } from "@/components/seguir-boton";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 
-const ORGANO: Follow = {
+const CPV: Follow = {
   id: 1,
-  target_type: "organo",
-  target_id: "Ayuntamiento de Madrid",
+  target_type: "cpv",
+  target_id: "72260000",
   kind: "seguir",
   visibility: "private",
   created_at: "2026-09-01T00:00:00Z",
@@ -79,17 +89,17 @@ afterEach(() => {
 
 describe("useFollows", () => {
   it("pide sólo el tipo que le interesa a la pantalla", async () => {
-    const fetchMock = respuestas([{ items: [ORGANO], total: 1 }, 200]);
+    const fetchMock = respuestas([{ items: [CPV], total: 1 }, 200]);
     vi.stubGlobal("fetch", fetchMock);
     const qc = crearCliente();
 
-    const { result } = renderHook(() => useFollows("organo"), { wrapper: envoltorio(qc) });
+    const { result } = renderHook(() => useFollows("cpv"), { wrapper: envoltorio(qc) });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data).toEqual([ORGANO]);
+    expect(result.current.data).toEqual([CPV]);
     const url = callUrl(fetchMock.mock.calls[0]);
     expect(url.startsWith("/api/v1/follows")).toBe(true);
-    expect(url).toContain("target_type=organo");
+    expect(url).toContain("target_type=cpv");
     // Sin `kind` el backend devolvería también los descartes, que en esta
     // pantalla no son seguimientos sino lo contrario.
     expect(url).toContain("kind=seguir");
@@ -100,45 +110,45 @@ describe("useFollows", () => {
     const qc = crearCliente();
 
     const { result } = renderHook(
-      () => ({ organos: useFollows("organo"), empresas: useFollows("empresa") }),
+      () => ({ cpvs: useFollows("cpv"), empresas: useFollows("empresa") }),
       { wrapper: envoltorio(qc) },
     );
-    await waitFor(() => expect(result.current.organos.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.cpvs.isSuccess).toBe(true));
     await waitFor(() => expect(result.current.empresas.isSuccess).toBe(true));
 
-    expect(qc.getQueryData(["follows", "organo", "seguir"])).toEqual([]);
+    expect(qc.getQueryData(["follows", "cpv", "seguir"])).toEqual([]);
     expect(qc.getQueryData(["follows", "empresa", "seguir"])).toEqual([]);
   });
 });
 
 describe("useSeguir", () => {
-  it("marca en el acto y mide después del 200", async () => {
-    vi.stubGlobal("fetch", respuestas([ORGANO, 201]));
+  it("marca en el acto y no mide nada por su cuenta", async () => {
+    vi.stubGlobal("fetch", respuestas([CPV, 201]));
     const qc = crearCliente();
-    qc.setQueryData(["follows", "organo", "seguir"], []);
+    qc.setQueryData(["follows", "cpv", "seguir"], []);
 
-    const { result } = renderHook(() => useSeguir("organo"), { wrapper: envoltorio(qc) });
+    const { result } = renderHook(() => useSeguir("cpv"), { wrapper: envoltorio(qc) });
     await act(async () => {
-      await result.current.mutateAsync("Ayuntamiento de Madrid");
+      await result.current.mutateAsync("72260000");
     });
 
-    expect(registrarEvento).toHaveBeenCalledWith("organo_seguido", { accion: "seguir" });
+    // `organo_seguido` mide el trabajo por cuentas y lo emite `use-cuentas`;
+    // seguir un CPV no es eso.
+    expect(registrarEvento).not.toHaveBeenCalled();
   });
 
   it("deshace el optimismo y avisa si el servidor dice que no", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const qc = crearCliente();
-    qc.setQueryData(["follows", "organo", "seguir"], []);
+    qc.setQueryData(["follows", "cpv", "seguir"], []);
 
-    const { result } = renderHook(() => useSeguir("organo"), { wrapper: envoltorio(qc) });
+    const { result } = renderHook(() => useSeguir("cpv"), { wrapper: envoltorio(qc) });
     await act(async () => {
       await result.current.mutateAsync("X").catch(() => undefined);
     });
 
-    expect(qc.getQueryData(["follows", "organo", "seguir"])).toEqual([]);
+    expect(qc.getQueryData(["follows", "cpv", "seguir"])).toEqual([]);
     expect(toast.error).toHaveBeenCalled();
-    // Un intento fallido no es uso del producto.
-    expect(registrarEvento).not.toHaveBeenCalled();
   });
 });
 
@@ -147,25 +157,25 @@ describe("useDejarDeSeguir", () => {
     const fetchMock = respuestas([{}, 200]);
     vi.stubGlobal("fetch", fetchMock);
     const qc = crearCliente();
-    qc.setQueryData(["follows", "organo", "seguir"], [ORGANO]);
+    qc.setQueryData(["follows", "lote", "seguir"], []);
 
-    const { result } = renderHook(() => useDejarDeSeguir("organo"), { wrapper: envoltorio(qc) });
+    const { result } = renderHook(() => useDejarDeSeguir("lote"), { wrapper: envoltorio(qc) });
     await act(async () => {
-      await result.current.mutateAsync("Ayuntamiento de Madrid");
+      await result.current.mutateAsync("PA-S 2026/000058#2");
     });
 
     expect(callMethod(fetchMock.mock.calls[0])).toBe("DELETE");
-    // Los espacios (y en licitaciones, las barras de PLACSP) tienen que viajar
-    // escapados o el router no casa la ruta.
+    // Los espacios y las barras de PLACSP tienen que viajar escapados o el
+    // router no casa la ruta.
     expect(callUrl(fetchMock.mock.calls[0])).toContain(
-      "/api/v1/follows/organo/Ayuntamiento%20de%20Madrid",
+      "/api/v1/follows/lote/PA-S%202026%2F000058%232",
     );
   });
 });
 
 describe("SeguirBoton", () => {
   it("dice su estado con texto y con aria-pressed", async () => {
-    vi.stubGlobal("fetch", respuestas([{ items: [ORGANO], total: 1 }, 200]));
+    vi.stubGlobal("fetch", respuestas([{ items: [CPV], total: 1 }, 200]));
     const qc = crearCliente();
 
     render(
@@ -173,16 +183,16 @@ describe("SeguirBoton", () => {
         QueryClientProvider,
         { client: qc },
         React.createElement(SeguirBoton, {
-          targetType: "organo",
-          targetId: "Ayuntamiento de Madrid",
-          etiqueta: "el órgano X",
+          targetType: "cpv",
+          targetId: "72260000",
+          etiqueta: "el CPV 72260000",
         }),
       ),
     );
 
     await waitFor(() => expect(screen.getByRole("button")).toHaveAttribute("aria-pressed", "true"));
     expect(screen.getByRole("button")).toHaveTextContent("Siguiendo");
-    expect(screen.getByRole("button")).toHaveAccessibleName("Dejar de seguir el órgano X");
+    expect(screen.getByRole("button")).toHaveAccessibleName("Dejar de seguir el CPV 72260000");
   });
 
   it("alterna al hacer clic sobre algo que no se sigue", async () => {
@@ -192,8 +202,8 @@ describe("SeguirBoton", () => {
     // acabaría leyendo basura — que es peor que un test en rojo.
     const fetchMock = respuestas(
       [{ items: [], total: 0 }, 200],
-      [ORGANO, 201],
-      [{ items: [ORGANO], total: 1 }, 200],
+      [CPV, 201],
+      [{ items: [CPV], total: 1 }, 200],
     );
     vi.stubGlobal("fetch", fetchMock);
     const qc = crearCliente();
@@ -203,8 +213,8 @@ describe("SeguirBoton", () => {
         QueryClientProvider,
         { client: qc },
         React.createElement(SeguirBoton, {
-          targetType: "organo",
-          targetId: "Ayuntamiento de Madrid",
+          targetType: "cpv",
+          targetId: "72260000",
         }),
       ),
     );
