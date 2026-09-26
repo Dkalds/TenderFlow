@@ -377,10 +377,18 @@ test.describe("Portátil (1366×768)", () => {
     expect(lineasAbrir).toBe(1);
 
     // La fila «Más tarde», en una línea: «Posponer» caía solo a la siguiente,
-    // lejos del plazo que manda.
-    const silenciar = await acciones.getByRole("button", { name: /^Silenciar/ }).boundingBox();
-    const posponer = await acciones.getByRole("button", { name: "Posponer" }).boundingBox();
-    expect(Math.abs(posponer!.y - silenciar!.y)).toBeLessThanOrEqual(0.5);
+    // lejos del plazo que manda. El mensaje lleva los anchos porque el margen
+    // lo decide este Chromium de Linux, que redondea cada glifo a píxel entero:
+    // a 12 px la fila cabía en Windows y aquí no.
+    const masTarde = acciones.getByRole("group", { name: "Más tarde" });
+    const silenciar = await masTarde.getByRole("button", { name: /^Silenciar/ }).boundingBox();
+    const posponer = await masTarde.getByRole("button", { name: "Posponer" }).boundingBox();
+    const anchos = await masTarde.evaluate((el) =>
+      [...el.querySelectorAll("button, label, select")]
+        .map((hijo) => hijo.getBoundingClientRect().width.toFixed(1))
+        .join(" + "),
+    );
+    expect(Math.abs(posponer!.y - silenciar!.y), `«Más tarde» mide ${anchos} px, más los huecos`).toBeLessThanOrEqual(0.5);
 
     const desbordeMain = await page
       .locator("#main-content")

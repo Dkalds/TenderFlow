@@ -59,24 +59,27 @@ export function InspectorAcciones({
 
   return (
     <div data-slot="radar-inspector-acciones" className="flex-none border-t border-border/60 bg-card/80">
+    {/* A la escala de las acciones secundarias de /detalle (11,5 px, iconos
+        de 12). A 12 px la fila cabía en Windows con 4 px de aire, pero no en el
+        Chromium de Linux del E2E, que redondea el avance de cada glifo a píxel
+        entero y la ensanchaba unos 6 px. */}
     <div
       role="group"
       aria-label="Más tarde"
-      className="flex flex-wrap items-center gap-[7px] border-b border-border/40 px-4.5 py-2 text-[12px]"
+      className="flex flex-wrap items-center gap-[7px] border-b border-border/40 px-4.5 py-2 text-[11.5px]"
     >
       <button
         type="button"
         onClick={() => onAplazar("silenciar", DIAS_SILENCIO)}
         className="tf-pressable inline-flex h-[28px] items-center gap-1.5 rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
-        <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
+        <BellOff className="h-3 w-3" aria-hidden="true" />
         Silenciar {DIAS_SILENCIO} días
       </button>
       {/* `ml-auto` y no un hueco `flex-1`: con `gap`, el hueco cuenta como un
-          hijo más y suma 7 px aunque mida 0, justo los que faltaban para que
-          la fila cupiera en 432 px. «Posponer» caía solo a una segunda línea,
-          lejos de su plazo. Y el plazo va con su botón: si algún día no caben,
-          baja el grupo entero. */}
+          hijo más y suma 7 px aunque mida 0. «Posponer» caía solo a una
+          segunda línea, lejos de su plazo. Y el plazo va con su botón: si algún
+          día no caben, baja el grupo entero. */}
       <div className="ml-auto flex items-center gap-[7px]">
         <label htmlFor={selectId} className="text-muted-foreground">
           Recordar en
@@ -85,7 +88,7 @@ export function InspectorAcciones({
           id={selectId}
           value={plazo}
           onChange={(event) => setPlazo(Number(event.target.value))}
-          className="h-[28px] rounded-md border border-border/80 bg-card px-1.5 text-[12px]"
+          className="h-[28px] rounded-md border border-border/80 bg-card px-1.5 text-[11.5px]"
         >
           {PLAZOS_RECORDATORIO.map((dias) => (
             <option key={dias} value={dias}>
@@ -98,7 +101,7 @@ export function InspectorAcciones({
           onClick={() => onAplazar("posponer", plazo)}
           className="tf-pressable inline-flex h-[28px] items-center gap-1.5 rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+          <Clock className="h-3 w-3" aria-hidden="true" />
           Posponer
         </button>
       </div>
