@@ -39,6 +39,16 @@ describe("DashboardShell", () => {
     expect(container.querySelector("main")).toHaveAttribute("data-density", "compact");
   });
 
+  it("es la caja con scroll del marco: se queda con lo que deja el cromo", () => {
+    // El marco mide la pantalla y `main` ocupa el resto de su columna, así que
+    // las pantallas miden `h-full` y una página larga se desplaza aquí dentro,
+    // no en el documento. `relative` para que un absoluto sin ancestro
+    // posicionado (un `sr-only`) no cuelgue del viewport y lo alargue.
+    const { container } = render(<DashboardShell>contenido</DashboardShell>);
+
+    expect(container.querySelector("main")).toHaveClass("relative", "min-h-0", "flex-1", "overflow-auto");
+  });
+
   it("abre el contenedor con scroll con el centinela del borde", () => {
     // El cromo de arriba decide si dibuja separador mirando este centinela, y
     // sólo mide lo que debe si es el primer hijo del elemento que scrollea.

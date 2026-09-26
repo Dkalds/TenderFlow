@@ -83,7 +83,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       // `.container` no se usa en ningún sitio del proyecto: el toggle sólo
       // cambiaba un `text-sm` global que casi todos los hijos sobrescriben.
       data-density={compact ? "compact" : "normal"}
-      className="flex-1 overflow-auto"
+      // La caja con scroll del marco: la columna mide el alto de la pantalla y
+      // `main` se queda con lo que deja el cromo (`console-frame.tsx`), así que
+      // las pantallas miden `h-full`. `relative`, como toda caja con scroll del
+      // dashboard: un absoluto sin ancestro posicionado —un `sr-only`— tomaría
+      // el viewport como bloque contenedor, `main` no lo recortaría y alargaría
+      // el documento.
+      className="relative min-h-0 flex-1 overflow-auto"
     >
       {/* Primero de todo: es el centinela que decide si el cromo de arriba
           dibuja su borde. Tiene que ser el primer hijo del contenedor con

@@ -31,12 +31,14 @@ import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
  * todos los anchos, así que la barra quedaba como una columna de ~181px a la
  * izquierda y el contenido se quedaba con ~194px de los 375 de un móvil.
  *
- * `--alto-cromo` es el alto del cromo que queda por encima de `#main-content`:
- * 52px de la barra de ámbito, más la barra móvil (`h-12`, 3rem) por debajo de
- * `md`. Va en `rem` y no en 48px para seguir a la barra si el navegador tiene
- * otra fuente base. Las pantallas miden `100vh - var(--alto-cromo)`; con los
- * 52px escritos a mano, en móvil todas desbordaban el documento justo el alto
- * de la barra.
+ * El marco mide la pantalla y el que se desplaza es `#main-content`, que se
+ * queda con el alto que deja el cromo: las pantallas miden `h-full` y no
+ * descuentan nada a mano. Antes el marco solo tenía alto mínimo, así que
+ * `#main-content` crecía con su contenido y lo que se desplazaba era el
+ * documento; cada pantalla medía `100vh` menos el cromo que conocía (52px,
+ * luego una variable `--alto-cromo`), y lo que la cuenta no sabía alargaba el
+ * documento: la franja de primer uso del ámbito (`ambito-intro.tsx`), 84px a
+ * 1366×768 en toda pantalla con ámbito, y en móvil la barra superior, 48px.
  */
 export function ConsoleFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -44,13 +46,13 @@ export function ConsoleFrame({ children }: { children: React.ReactNode }) {
     // contenedor que scrollea (`DashboardShell`) y el cromo que dibuja el borde
     // (rail móvil y barra de ámbito) son hermanos, no antepasados.
     <ScrollEdgeProvider>
-      <div className="flex min-h-screen flex-col bg-background text-foreground [--alto-cromo:calc(3rem+52px)] md:flex-row md:[--alto-cromo:52px]">
+      <div className="flex h-screen flex-col bg-background text-foreground md:flex-row">
         <ConsoleRail />
 
-        {/* `min-h-screen` solo en fila: apilada bajo la barra móvil, la
-            columna ocupa el resto del marco con `flex-1`, y con el alto de
-            pantalla entero empujaría el documento 48px más abajo. */}
-        <div className="flex min-w-0 flex-1 flex-col md:min-h-screen">
+        {/* `min-h-0`: apilada bajo la barra móvil, la columna es un hijo flex
+            del marco en su eje y no encogería por debajo de su contenido: una
+            página larga estiraría el marco y volvería a desplazar el documento. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* El hueco de carga tampoco lleva borde: el estado inicial es "en el
               tope", y ahí no hay nada debajo que separar. */}
           <Suspense fallback={<div className="h-[52px] flex-none" />}>

@@ -56,6 +56,31 @@ async function expectDocumentFitsVertically(page: import("@playwright/test").Pag
 }
 
 /**
+ * La pantalla llena el alto que le deja el cromo, y nada más.
+ *
+ * `#main-content` se queda con lo que dejan la barra de ámbito y, en las
+ * pantallas con ámbito, la franja de primer uso (`ambito-intro.tsx`), que el
+ * E2E no cierra. Una pantalla más alta ya no alarga el documento: desplaza
+ * `#main-content`, así que se miden los dos. Y tiene que llegar abajo del todo:
+ * con un alto propio más corto dejaría un hueco en blanco bajo ella.
+ *
+ * El alto de `main` se toma de `clientHeight` y no de su caja: una barra
+ * horizontal suya (las acciones del inspector del Radar desde `xl`) es otro
+ * desborde, y no de esta medida.
+ */
+async function expectPantallaLlenaElAlto(page: import("@playwright/test").Page) {
+  await expectDocumentFitsVertically(page);
+  const medida = await page.locator("#main-content").evaluate((main) => ({
+    sobrante: main.scrollHeight - main.clientHeight,
+    hueco: main.clientHeight - (main.lastElementChild as HTMLElement).offsetHeight,
+    finVentana: window.innerHeight - main.getBoundingClientRect().bottom,
+  }));
+  expect(medida.sobrante).toBeLessThanOrEqual(1);
+  expect(Math.abs(medida.hueco)).toBeLessThanOrEqual(1);
+  expect(Math.abs(medida.finVentana)).toBeLessThanOrEqual(1);
+}
+
+/**
  * Con la barra de ámbito llena, lo que se desplaza es la barra: el contenedor
  * de chips no encoge por debajo de su contenido. Con `min-w-0` era el único
  * hijo que cedía ancho (sus hermanos son `flex-none`), y los chips y
@@ -163,9 +188,9 @@ test.describe("Móvil (375×812)", () => {
     expect(contenido!.x).toBeLessThanOrEqual(1);
     expect(contenido!.width).toBeGreaterThanOrEqual(MOVIL.width - 1);
     expect(contenido!.y).toBeGreaterThanOrEqual(hamburguesa!.y + hamburguesa!.height);
-    // Las pantallas miden `100vh - var(--alto-cromo)`, que por debajo de `md`
-    // cuenta también los 48px de la barra móvil: sin ellos, cada pantalla
-    // acababa esos 48px por debajo del pliegue.
+    // `#main-content` se queda con lo que dejan las dos barras. Cuando cada
+    // pantalla restaba a mano los 52px de la de ámbito, en móvil acababa los
+    // 48px de la barra superior por debajo del pliegue.
     expect(contenido!.y + contenido!.height).toBeLessThanOrEqual(MOVIL.height + 1);
     // Que `#main-content` quepa no basta: un absoluto de la lista que cuelgue
     // del viewport alarga el documento sin mover ninguna caja.
@@ -328,10 +353,6 @@ test.describe("Móvil (375×812)", () => {
  * pliegue y el documento scrolleaba (605 px a 1280×600 con los 16 espacios de
  * un administrador). El usuario demo ve 14; con el mismo espaciado, su último
  * rótulo queda hacia y=541, bajo los 520 de este viewport.
- *
- * Se mide en Mi Watchlist porque no aplica el ámbito. En las pantallas que sí,
- * la franja de primer uso de la barra (`ambito-intro.tsx`), que el E2E no
- * cierra, suma su alto al documento: es otro desborde, y no de un absoluto.
  */
 test.describe("Poco alto (1100×520)", () => {
   test.use({ viewport: { width: 1100, height: 520 } });
@@ -413,5 +434,63 @@ test.describe("Escritorio (1440×900)", () => {
     await page.goto(`/resumen?${ambito}`);
     await expectChipsDelAmbitoSinSolape(page);
     await expectDocumentFits(page);
+  });
+
+  // La franja de primer uso del ámbito sale en toda pantalla con ámbito hasta
+  // que se cierra, y el E2E no la cierra. Mientras las pantallas medían `100vh`
+  // menos el cromo que conocían, la franja no entraba en la cuenta y alargaba
+  // el documento su alto (84px a 1366×768 en Resumen y Radar): la rueda sobre
+  // la cabecera o el rail bajaba la página entera en la primera visita. Por eso
+  // las medidas de alto de escritorio se hacían en Mi Watchlist, que no aplica
+  // el ámbito. Cada test comprueba que la franja está: sin ella pasaría en vacío.
+  const franjaDePrimerUso = (page: import("@playwright/test").Page) =>
+    page.locator('[data-slot="ambito-intro"]');
+
+  test("el Resumen llena el alto que le deja la franja de primer uso", async ({ page }) => {
+    await page.goto("/resumen");
+    await expect(page.locator(`a[href^="/detalle?lic=${SEED_PREFIX}"]`).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(franjaDePrimerUso(page)).toBeVisible();
+
+    await expectPantallaLlenaElAlto(page);
+  });
+
+  test("el Detalle llena el alto que le deja la franja de primer uso", async ({ page }) => {
+    await page.goto(`/detalle?lic=${SEED_LICITACION.id}`);
+    await expect(page.getByText(SEED_LICITACION.titulo).first()).toBeVisible({ timeout: 20_000 });
+    await expect(franjaDePrimerUso(page)).toBeVisible();
+
+    await expectPantallaLlenaElAlto(page);
+  });
+
+  test("el Radar llena el alto que le deja la franja de primer uso", async ({ page }) => {
+    await page.goto("/radar");
+    await expect(page.getByText(SEED_LICITACION.tituloRadar).first()).toBeVisible({ timeout: 20_000 });
+    await expect(franjaDePrimerUso(page)).toBeVisible();
+
+    await expectPantallaLlenaElAlto(page);
+  });
+
+  test("al cerrar la franja, la pantalla gana exactamente su alto", async ({ page }) => {
+    // Lo que demuestra que la pantalla ocupa lo que queda y no un alto
+    // calculado aparte: crece lo que medía la franja, ni más ni menos.
+    await page.goto("/resumen");
+    await expect(page.locator(`a[href^="/detalle?lic=${SEED_PREFIX}"]`).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    const franja = franjaDePrimerUso(page);
+    const altoDe = async (locator: import("@playwright/test").Locator) => (await locator.boundingBox())!.height;
+    const altoFranja = await altoDe(franja);
+    const antes = await altoDe(page.locator("#main-content"));
+    expect(altoFranja).toBeGreaterThan(0);
+
+    // Cerrarla solo escribe `localStorage`, y el contexto del test lo descarta.
+    await franja.getByRole("button", { name: "Entendido, no volver a mostrar" }).click();
+    await expect(franja).toBeHidden();
+
+    const despues = await altoDe(page.locator("#main-content"));
+    expect(Math.abs(despues - antes - altoFranja)).toBeLessThanOrEqual(1);
+    await expectPantallaLlenaElAlto(page);
   });
 });

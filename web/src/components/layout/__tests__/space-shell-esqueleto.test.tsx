@@ -55,9 +55,11 @@ describe("SpaceShellEsqueleto", () => {
       ).container,
     );
 
-    const alto = "h-[calc(100vh-var(--alto-cromo))]";
-    expect(esqueleto.raiz).toHaveClass(alto);
-    expect(Array.from(shell.querySelectorAll("div")).some((nodo) => nodo.classList.contains(alto))).toBe(true);
+    // Los dos llenan `#main-content`, que se queda con lo que deja el cromo.
+    for (const clase of ["h-full", "min-h-0"]) {
+      expect(esqueleto.raiz).toHaveClass(clase);
+      expect(shell.firstElementChild).toHaveClass(clase);
+    }
     for (const clase of ["h-11", "px-4"]) {
       expect(shell.querySelector("header")).toHaveClass(clase);
       expect(esqueleto.cabecera).toHaveClass(clase);

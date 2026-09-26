@@ -7,20 +7,21 @@ import { cn } from "@/lib/utils";
  * Scroll edge effect — el separador del cromo flotante sólo existe cuando hay
  * contenido debajo (apple-design §12).
  *
- * La barra de ámbito y la barra móvil son superficies translúcidas apoyadas
- * sobre el contenedor con scroll. Con un `border-b` fijo el resultado era una
- * línea dura permanente: en el tope de la página separa dos superficies del
- * mismo color y anuncia una profundidad que no existe. Aquí el separador es un
- * gradiente que se desvanece y **sólo aparece cuando el contenido se ha
- * desplazado por debajo**, así que deja de ser decoración y pasa a decir algo:
- * hay contenido oculto arriba.
+ * La barra de ámbito es una superficie translúcida apoyada sobre el contenedor
+ * con scroll. Con un `border-b` fijo el resultado era una línea dura
+ * permanente: en el tope de la página separa dos superficies del mismo color y
+ * anuncia una profundidad que no existe. Aquí el separador es un gradiente que
+ * se desvanece y **sólo aparece cuando el contenido se ha desplazado por
+ * debajo**, así que deja de ser decoración y pasa a decir algo: hay contenido
+ * oculto arriba.
  *
  * La detección es un `IntersectionObserver` sobre un centinela de 1px colocado
  * al principio del contenedor con scroll — ni un listener de `scroll` ni
  * trabajo por frame. El estado viaja por contexto porque quien scrollea
  * (`#main-content`, en `dashboard-shell.tsx`) y quien pinta el borde
- * (`scope-bar.tsx` y la barra móvil de `console-rail.tsx`) son componentes
- * distintos del mismo marco.
+ * (`scope-bar.tsx`) son componentes distintos del mismo marco. La barra móvil
+ * de `console-rail.tsx` no pinta el suyo: debajo tiene la barra de ámbito, no
+ * el contenido.
  *
  * Movimiento (docs/frontend-motion.md): se anima **sólo `opacity`**, entrada
  * 260ms con `cubic-bezier(.21,1.02,.73,1)` y salida más rápida (170ms) — el

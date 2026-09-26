@@ -75,7 +75,7 @@ export function ResumenView() {
   // proveedor y en el tope no hay línea.
   return (
     <ScrollEdgeProvider>
-      <div className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0 flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         <header className="flex h-11 flex-none items-center gap-2.5 px-4">
           <h1 className="font-display text-[13px] font-semibold">Resumen</h1>
           <span className="text-muted-foreground hidden truncate text-[11.5px] lg:inline">

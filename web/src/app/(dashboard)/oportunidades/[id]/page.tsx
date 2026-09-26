@@ -91,7 +91,7 @@ export default function OpportunityDetailPage() {
 
   if (error || !pursuit) {
     return (
-      <div className="grid h-[calc(100vh-var(--alto-cromo))] place-items-center p-10">
+      <div className="grid h-full place-items-center p-10">
         {precarga}
         <PanelError
           title="No se pudo abrir esta oportunidad"
@@ -113,7 +113,7 @@ export default function OpportunityDetailPage() {
     // ocultos de Radix y los `sr-only` del editor, que son absolutos, scrolleen
     // con la caja en vez de estirar el documento. En `xl` vuelve a ser la
     // columna de siempre: cabecera fija y scroll en la pestaña.
-    <div className="relative h-[calc(100vh-var(--alto-cromo))] min-h-0 overflow-y-auto xl:static xl:flex xl:flex-col xl:overflow-visible">
+    <div className="relative h-full min-h-0 overflow-y-auto xl:static xl:flex xl:flex-col xl:overflow-visible">
       {precarga}
       {/* Borde de scroll propio, como `SpaceShell`: por debajo de `xl` scrollea
           esta caja y no `#main-content`, así que el centinela del marco no se
