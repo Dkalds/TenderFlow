@@ -104,7 +104,7 @@ export function RadarLista({
   const showEmpty = !isLoading && !error && rows.length === 0;
 
   return (
-    <div data-slot="radar-lista" ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+    <div data-slot="radar-lista" ref={listRef} className="relative min-h-0 flex-1 overflow-y-auto">
       {error ? (
         <RadarError error={error as Error} onRetry={onRetry} />
       ) : isLoading ? (

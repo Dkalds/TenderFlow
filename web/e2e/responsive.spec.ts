@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { SEED_LICITACION } from "./fixtures";
+import { SEED_LICITACION, SEED_PREFIX } from "./fixtures";
 
 /**
  * Navegación móvil real (cierra el [P1] de docs/IMPROVEMENT_BACKLOG.md).
@@ -30,6 +30,29 @@ async function expectDocumentFits(page: import("@playwright/test").Page) {
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(1);
+}
+
+/**
+ * En el dashboard el documento no scrollea nunca en alto: el marco mide el
+ * viewport y cada pantalla desplaza su propia caja.
+ *
+ * Lo rompe un `absolute` sin ancestro posicionado dentro de esa caja —un
+ * `sr-only`, los `<select>` nativos que Radix pinta en los formularios—: su
+ * bloque contenedor pasa a ser el viewport, la caja no lo recorta y alarga el
+ * documento. La rueda sobre la cabecera o el rail bajaba entonces la página
+ * entera hacia una franja en blanco (la ficha de oportunidad llegó a medir
+ * 1356 px a 1366×768). De ahí el `relative` de cada caja con scroll; ver
+ * `space-shell.tsx`.
+ *
+ * Va aparte de `expectDocumentFits` porque las páginas públicas son largas a
+ * propósito. La ficha de oportunidad, donde más se notaba, no se mide aquí:
+ * la semilla E2E no crea ninguna.
+ */
+async function expectDocumentFitsVertically(page: import("@playwright/test").Page) {
+  const sobrante = await page.evaluate(
+    () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+  );
+  expect(sobrante).toBeLessThanOrEqual(1);
 }
 
 /**
@@ -144,6 +167,28 @@ test.describe("Móvil (375×812)", () => {
     // cuenta también los 48px de la barra móvil: sin ellos, cada pantalla
     // acababa esos 48px por debajo del pliegue.
     expect(contenido!.y + contenido!.height).toBeLessThanOrEqual(MOVIL.height + 1);
+    // Que `#main-content` quepa no basta: un absoluto de la lista que cuelgue
+    // del viewport alarga el documento sin mover ninguna caja.
+    await expectDocumentFitsVertically(page);
+  });
+
+  test("el Resumen no alarga el documento con los `sr-only` de sus filas", async ({ page }) => {
+    // Las filas del Resumen llevan texto `sr-only` («Nueva desde tu última
+    // visita.», «Oportunidad · Plazo de presentación:»). Sin `relative` en el
+    // cuerpo con scroll colgaban del viewport: a 375×812 el documento medía
+    // 29 px de más. Se espera a una fila real del seed: sin filas no hay nada
+    // que desborde y la medida daría verde en falso.
+    //
+    // `toBeAttached` y no `toBeVisible`: a 375 px la columna del título de la
+    // tabla de publicaciones mide 0 px (es `table-fixed` y las otras seis
+    // columnas, fijas, suman 672), así que Playwright da el enlace por oculto.
+    // Aquí basta con que las filas existan.
+    await page.goto("/resumen");
+    await expect(page.locator(`a[href^="/detalle?lic=${SEED_PREFIX}"]`).first()).toBeAttached({
+      timeout: 20_000,
+    });
+
+    await expectDocumentFitsVertically(page);
   });
 
   test("el Radar cabe a lo ancho: ni la lista ni la página desbordan", async ({ page }) => {
@@ -209,6 +254,7 @@ test.describe("Móvil (375×812)", () => {
     await expect(page.getByText(SEED_LICITACION.titulo).first()).toBeVisible({ timeout: 20_000 });
 
     await expectDocumentFits(page);
+    await expectDocumentFitsVertically(page);
   });
 
   test("watchlist mantiene visibles sus dos modos de trabajo", async ({ page }) => {
@@ -227,6 +273,7 @@ test.describe("Móvil (375×812)", () => {
       expect(box!.height).toBeGreaterThanOrEqual(24);
     }
     await expectDocumentFits(page);
+    await expectDocumentFitsVertically(page);
   });
 
   test("la agenda usa fichas móviles y no desborda el documento", async ({ page }) => {
@@ -252,6 +299,7 @@ test.describe("Móvil (375×812)", () => {
     });
 
     await expectDocumentFits(page);
+    await expectDocumentFitsVertically(page);
   });
 
   test("la barra de ámbito se desplaza sin que los chips encojan ni pisen lo siguiente", async ({ page }) => {
@@ -275,6 +323,30 @@ test.describe("Móvil (375×812)", () => {
     const desbordeVertical = await barra.evaluate((el) => el.scrollHeight - el.clientHeight);
     expect(desbordeVertical).toBeLessThanOrEqual(1);
     await expectDocumentFits(page);
+  });
+});
+
+/**
+ * Poco alto: un portátil de 1366×768 con el escalado de Windows al 125 % deja
+ * un viewport de ~1093×520. El rail entra en scroll, y el rótulo `sr-only` de
+ * cada destino colgaba del `<nav>` y no de esa caja: los últimos caían bajo el
+ * pliegue y el documento scrolleaba (605 px a 1280×600 con los 16 espacios de
+ * un administrador). El usuario demo ve 14; con el mismo espaciado, su último
+ * rótulo queda hacia y=541, bajo los 520 de este viewport.
+ *
+ * Se mide en Mi Watchlist porque no aplica el ámbito. En las pantallas que sí,
+ * la franja de primer uso de la barra (`ambito-intro.tsx`), que el E2E no
+ * cierra, suma su alto al documento: es otro desborde, y no de un absoluto.
+ */
+test.describe("Poco alto (1100×520)", () => {
+  test.use({ viewport: { width: 1100, height: 520 } });
+
+  test("los rótulos del rail no alargan el documento", async ({ page }) => {
+    await page.goto("/mi-watchlist");
+    await expect(page.getByRole("navigation", { name: "Espacios" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Reglas" })).toBeVisible({ timeout: 20_000 });
+
+    await expectDocumentFitsVertically(page);
   });
 });
 

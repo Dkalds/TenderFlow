@@ -245,8 +245,12 @@ export default function OpportunityDetailPage() {
       </header>
 
       {/* Solo en `xl` es esta la caja con scroll, y solo ahí la columna de
-          datos es `sticky`: por debajo scrollea la raíz, cabecera incluida. */}
-      <div className="px-4 pt-4 pb-8 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+          datos es `sticky`: por debajo scrollea la raíz, cabecera incluida.
+          Por eso el `relative` que la raíz deja en `xl:static` pasa aquí en
+          `xl`: sin él, los `<select>` ocultos del editor colgaban del viewport
+          y el documento medía 1356 px a 1366×768. En la raíz solo movería el
+          desborde a `#main-content`. */}
+      <div className="px-4 pt-4 pb-8 xl:relative xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
         <div {...panelDePestana("ficha", tab)} className="rounded-lg">
           {tab === "resumen" ? (
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">

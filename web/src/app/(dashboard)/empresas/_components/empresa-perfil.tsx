@@ -110,7 +110,7 @@ export function EmpresaPerfil({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">
         <Actividad empresaId={detail.empresa_id} perfil={perfil} cargando={perfilCargando} />
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-4">

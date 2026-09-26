@@ -173,10 +173,17 @@ export function SpaceShell({
             su `overflow` recortaría un gradiente colgado dentro. */}
         {!bleed && <ScrollEdgeDelProveedor />}
 
+        {/* `relative` en las dos variantes. Sin un ancestro posicionado, los
+            absolutos de dentro —los `sr-only` y los `<select>` nativos ocultos
+            que Radix pinta en los formularios— toman el viewport como bloque
+            contenedor, y ni `overflow-y-auto` ni `overflow-hidden` los recortan:
+            no se desplazan con el cuerpo y, si caen bajo el pliegue, alargan el
+            scroll del documento. Lo mismo vale para cualquier caja con scroll
+            del dashboard; `e2e/responsive.spec.ts` mide el alto del documento. */}
         <div
           data-slot="space-shell-cuerpo"
           className={cn(
-            "min-h-0 flex-1",
+            "relative min-h-0 flex-1",
             bleed ? "overflow-hidden" : "overflow-y-auto px-4 pb-6 pt-4",
           )}
         >

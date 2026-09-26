@@ -86,10 +86,13 @@ export function ResumenView() {
         </header>
         <ScrollEdgeDelProveedor />
 
+        {/* `relative`, como el cuerpo de `SpaceShell`: el `sr-only` de cada fila
+            («Oportunidad · Plazo de presentación:») es absoluto y sin él colgaba
+            del viewport; a 375×812 el último estiraba el documento 29 px. */}
         <div
           ref={contenidoRef}
           tabIndex={-1}
-          className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
+          className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
         >
           <ScrollEdgeSentinel />
           <CopilotBar className="mb-4 max-w-[720px]" />

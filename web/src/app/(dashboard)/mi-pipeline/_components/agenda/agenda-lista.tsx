@@ -114,7 +114,7 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
       <div
         data-slot="agenda-filas"
         ref={listRef}
-        className="max-h-[70vh] min-h-[240px] overflow-y-auto md:max-h-[calc(100vh-320px)]"
+        className="relative max-h-[70vh] min-h-[240px] overflow-y-auto md:max-h-[calc(100vh-320px)]"
       >
         {isLoading ? (
           <div className="flex flex-col gap-2.5 p-3.5">
