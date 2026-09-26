@@ -139,15 +139,20 @@ describe("ConsoleRail", () => {
     ).toHaveAttribute("href", "/resumen");
   });
 
-  it("la barra móvil separa con el borde de scroll, no con una línea fija", () => {
-    // Es cromo translúcido apoyado sobre el contenido: el `border-b` que tenía
-    // pintaba la línea también en el tope, donde no hay nada que separar.
+  it("la barra móvil no dibuja separador: el corte con el contenido es de la barra de ámbito", () => {
+    // Debajo de esta barra va la de ámbito, no el contenido. Su borde de scroll
+    // (12px bajo su borde inferior) se pintaba encima de la barra de ámbito,
+    // que ya dibuja el del corte: dos bordes para uno. Y el `border-b` fijo que
+    // tuvo antes pintaba la línea también en el tope, donde no separa nada.
+    //
+    // Sin ningún `[data-scroll-edge]` vale para cualquier estado del scroll: el
+    // gradiente se monta siempre y sólo cambia de opacidad.
     const { container } = renderRail("/resumen");
-    const barraMovil = container.querySelector("[data-scroll-edge]")!.parentElement!;
+    const barraMovil = screen.getByRole("button", { name: "Abrir navegación" }).parentElement!;
 
-    expect(barraMovil.className).toContain("md:hidden");
+    expect(barraMovil).toHaveClass("md:hidden");
     expect(barraMovil.className).not.toContain("border-b");
-    expect(container.querySelector("[data-scroll-edge]")).toHaveAttribute("data-scroll-edge", "off");
+    expect(container.querySelector("[data-scroll-edge]")).toBeNull();
   });
 
   it("arranca la densidad al montar el menú de cuenta", () => {

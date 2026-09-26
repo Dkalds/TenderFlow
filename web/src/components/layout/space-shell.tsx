@@ -92,7 +92,7 @@ export function SpaceShell({
   const views = space?.views ?? [];
 
   // Proveedor propio del borde de scroll. El shell ocupa el alto entero bajo la
-  // barra de ámbito y el que scrollea es su cuerpo, no `#main-content`: el
+  // barra de ámbito y el que scrollea es su cuerpo, no el documento: el
   // centinela del marco no sale nunca de vista en estas pantallas, así que el
   // borde tiene que medirse aquí. El proveedor anidado solo lo ven la cabecera
   // y el cuerpo del espacio; la barra de ámbito sigue leyendo el del marco.

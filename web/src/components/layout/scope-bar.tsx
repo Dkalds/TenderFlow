@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AmbitoIntro } from "@/components/layout/ambito-intro";
-import { ScrollEdge, useScrollEdgeState } from "@/components/layout/scroll-edge";
+import { ScrollEdgeUnder, useScrollEdgeState } from "@/components/layout/scroll-edge";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { ExportPopover } from "@/components/export-popover";
 import { NotificationBell } from "@/components/notification-bell";
@@ -127,8 +127,17 @@ const IMPORTE_PRESETS = [
  */
 const RETRASO_BUSQUEDA_MS = 300;
 
+/**
+ * La caja que se queda pegada arriba lleva la cabecera **y** su borde de
+ * scroll. Con el `sticky` en la cabecera y el borde como hermano suelto, al
+ * desplazar el documento la barra se quedaba y el borde se iba con el
+ * contenido: medido a 1440×900 con 600px de scroll, el gradiente estaba en
+ * y=−548.
+ */
+const CROMO_FIJO = "sticky top-0 z-30 flex-none";
+
 const CABECERA =
-  "tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden";
+  "tf-glass flex h-[52px] [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden";
 
 interface Chip {
   key: string;
@@ -539,67 +548,70 @@ export function ScopeBar() {
   // `/licitaciones/stream`, abría otro y perdía el contador en vivo.
   return (
     <>
-      {/* La barra scrollea en horizontal, así que el borde no puede vivir dentro
-          (lo recortaría el `overflow`): va como hermano, con alto cero. */}
-      <header className={CABECERA}>
-        {filtersApply ? (
-          <BarraConAmbito
-            chips={chips}
-            editor={
-              <>
-                <ScopeEditor
-                  meta={meta}
-                  shows={shows}
-                  singleTecnologia={singleValueKeys.includes("tecnologia")}
-                  busqueda={busqueda}
-                />
-                {activeCount > 0 && (
-                  <div className="border-border/70 mt-1 border-t pt-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-full justify-start px-2 text-xs"
-                      onClick={filters.resetFilters}
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                      Limpiar el ámbito
-                    </Button>
-                  </div>
-                )}
-              </>
-            }
-            editorOpen={editorOpen}
-            onEditorOpenChange={onEditorOpenChange}
-            onAcercarseAlEditor={pedirCatalogo}
-            historial={{ canUndo, canRedo, undo, redo }}
-            outOfScopeCount={outOfScopeCount}
-            onClearOutOfScope={clearOutOfScope}
-            recuento={countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
-            relative={relative}
-            onSearch={() => setCommandOpen(true)}
-          />
-        ) : (
-          <BarraSinAmbito
-            activeCount={activeCount}
-            onReset={filters.resetFilters}
-            relative={relative}
-            onSearch={() => setCommandOpen(true)}
-          />
-        )}
-        <div className="border-border/70 flex flex-none items-center gap-1 border-l pl-2.5">
-          {/* «Exportar ámbito», no «Exportar» a secas: varias pantallas tienen su
-              propia exportación con el corte de esa sección, y dos botones con la
-              misma etiqueta a cuatro dedos de distancia no se distinguen. Este
-              saca lo que gobierna esta barra — el ámbito activo. Sin ámbito, el
-              rótulo de siempre. */}
-          <ExportPopover
-            label={filtersApply ? "Exportar ámbito" : undefined}
-            className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs"
-          />
-          <NotificationBell />
-        </div>
-      </header>
-      <ScrollEdge active={scrolled} />
+      <div className={CROMO_FIJO}>
+        <header className={CABECERA}>
+          {filtersApply ? (
+            <BarraConAmbito
+              chips={chips}
+              editor={
+                <>
+                  <ScopeEditor
+                    meta={meta}
+                    shows={shows}
+                    singleTecnologia={singleValueKeys.includes("tecnologia")}
+                    busqueda={busqueda}
+                  />
+                  {activeCount > 0 && (
+                    <div className="border-border/70 mt-1 border-t pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-full justify-start px-2 text-xs"
+                        onClick={filters.resetFilters}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Limpiar el ámbito
+                      </Button>
+                    </div>
+                  )}
+                </>
+              }
+              editorOpen={editorOpen}
+              onEditorOpenChange={onEditorOpenChange}
+              onAcercarseAlEditor={pedirCatalogo}
+              historial={{ canUndo, canRedo, undo, redo }}
+              outOfScopeCount={outOfScopeCount}
+              onClearOutOfScope={clearOutOfScope}
+              recuento={countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
+              relative={relative}
+              onSearch={() => setCommandOpen(true)}
+            />
+          ) : (
+            <BarraSinAmbito
+              activeCount={activeCount}
+              onReset={filters.resetFilters}
+              relative={relative}
+              onSearch={() => setCommandOpen(true)}
+            />
+          )}
+          <div className="border-border/70 flex flex-none items-center gap-1 border-l pl-2.5">
+            {/* «Exportar ámbito», no «Exportar» a secas: varias pantallas tienen su
+                propia exportación con el corte de esa sección, y dos botones con la
+                misma etiqueta a cuatro dedos de distancia no se distinguen. Este
+                saca lo que gobierna esta barra — el ámbito activo. Sin ámbito, el
+                rótulo de siempre. */}
+            <ExportPopover
+              label={filtersApply ? "Exportar ámbito" : undefined}
+              className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs"
+            />
+            <NotificationBell />
+          </div>
+        </header>
+        {/* Fuera de la cabecera, que scrollea en horizontal y lo recortaría con
+            su `overflow`, pero dentro de la caja `sticky`, que no recorta: el
+            borde cuelga de ella y se queda con la barra. */}
+        <ScrollEdgeUnder active={scrolled} />
+      </div>
       {/* Primer uso: qué es esta barra. Solo en la rama con ámbito, que es
           donde hay algo que explicar; se cierra una vez por navegador. */}
       {filtersApply && <AmbitoIntro />}

@@ -453,6 +453,23 @@ describe("ScopeBar — separador con el contenido", () => {
     const { container } = renderBar();
     expect(container.querySelector("[data-scroll-edge]")).toHaveAttribute("data-scroll-edge", "off");
   });
+
+  it("el borde va en la misma caja `sticky` que la barra, fuera de la cabecera", () => {
+    // Con el `sticky` en la cabecera y el borde como hermano suelto, al
+    // desplazar el documento la barra se quedaba y el borde se iba con el
+    // contenido (a 1440×900 con 600px de scroll, en y=−548). Dentro de la
+    // cabecera, en cambio, lo recortaría su `overflow-x-auto`.
+    const { container } = renderBar();
+    const cabecera = container.querySelector("header")!;
+    const caja = cabecera.parentElement!;
+    const borde = container.querySelector("[data-scroll-edge]")!;
+
+    expect(caja).toHaveClass("sticky", "top-0");
+    expect(cabecera).not.toHaveClass("sticky");
+    expect(caja).toContainElement(borde as HTMLElement);
+    expect(cabecera).not.toContainElement(borde as HTMLElement);
+    expect(borde).toHaveClass("top-full");
+  });
 });
 
 describe("ScopeBar — utilidades", () => {

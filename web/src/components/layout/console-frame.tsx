@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ConsoleRail } from "@/components/layout/console-rail";
 import { ScopeBar } from "@/components/layout/scope-bar";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
+import { ScrollEdgeProvider, ScrollEdgeSentinel } from "@/components/layout/scroll-edge";
 
 /**
  * Marco del dashboard — rail de 56px + barra de ámbito de 52px.
@@ -28,10 +28,15 @@ import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
  */
 export function ConsoleFrame({ children }: { children: React.ReactNode }) {
   return (
-    // El proveedor del borde de scroll envuelve el marco entero porque el
-    // contenedor que scrollea (`DashboardShell`) y el cromo que dibuja el borde
-    // (rail móvil y barra de ámbito) son hermanos, no antepasados.
+    // El proveedor del borde de scroll envuelve el marco entero porque lo que
+    // se desplaza es el documento, no `DashboardShell`: su columna tiene alto
+    // mínimo y no fijo, así que `#main-content` crece con el contenido y nunca
+    // desborda en vertical.
     <ScrollEdgeProvider>
+      {/* Antes del marco y fuera de su flex: así queda en el tope del
+          documento, a todo el ancho, sea el marco fila o columna. Mientras se
+          ve, el cromo pegado arriba no tiene nada debajo. */}
+      <ScrollEdgeSentinel contenedor="documento" />
       <div className="flex min-h-screen bg-background text-foreground">
         <ConsoleRail />
 

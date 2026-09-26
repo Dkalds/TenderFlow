@@ -6,6 +6,9 @@
  * "sólo cuando hay algo debajo" es todo el punto del efecto — con el `border-b`
  * fijo anterior la línea estaba siempre, informara o no.
  *
+ * Y contra qué se mide: un cuerpo con scroll propio, contra sí mismo; el marco,
+ * cuyo `<main>` crece con el contenido y no desborda, contra el viewport.
+ *
  * También fijan el contrato de movimiento de `docs/frontend-motion.md`: se
  * anima sólo `opacity`, la entrada es más lenta que la salida, y jamás
  * `transform`/`width`/`height`.
@@ -70,7 +73,10 @@ function Cromo() {
   return <ScrollEdge active={useScrollEdgeState()} />;
 }
 
-/** El marco mínimo: cromo arriba, centinela dentro del contenedor con scroll. */
+/**
+ * Una pantalla de alto fijo (`SpaceShell`, Resumen): cromo arriba, centinela
+ * como primer hijo del cuerpo con scroll.
+ */
 function Marco() {
   return (
     <ScrollEdgeProvider>
@@ -79,6 +85,24 @@ function Marco() {
         <ScrollEdgeSentinel />
         <p>contenido</p>
       </main>
+    </ScrollEdgeProvider>
+  );
+}
+
+/**
+ * El marco del dashboard: se desplaza el documento, así que el centinela va
+ * antes del marco y fuera de `<main>`.
+ */
+function MarcoDelDocumento() {
+  return (
+    <ScrollEdgeProvider>
+      <ScrollEdgeSentinel contenedor="documento" />
+      <div data-testid="marco">
+        <Cromo />
+        <main>
+          <p>contenido</p>
+        </main>
+      </div>
     </ScrollEdgeProvider>
   );
 }
@@ -125,13 +149,13 @@ describe("ScrollEdge — cuándo existe el borde", () => {
 });
 
 describe("ScrollEdgeSentinel", () => {
-  it("observa el contenedor con scroll, no el viewport", () => {
-    // Con `root: null` el centinela nunca saldría de vista: el marco scrollea
-    // dentro de `<main>`, no en la ventana.
+  it("por defecto observa a su padre, el cuerpo con scroll, no el viewport", () => {
+    // En `SpaceShell` y Resumen el documento no se mueve: se desplaza el cuerpo
+    // de la pantalla. Contra el viewport el centinela no saldría nunca de vista.
     render(<Marco />);
     const observado = observados[observados.length - 1];
     expect(observado.root).toBe(screen.getByTestId("scroller"));
-    expect(observado.target).toBe(document.querySelector("[data-scroll-edge-sentinel]"));
+    expect(observado.target).toBe(document.querySelector('[data-scroll-edge-sentinel="padre"]'));
   });
 
   it("no ocupa espacio: 1px compensado con -1px de margen", () => {
@@ -154,6 +178,40 @@ describe("ScrollEdgeSentinel", () => {
     vi.stubGlobal("IntersectionObserver", undefined);
     expect(() => render(<Marco />)).not.toThrow();
     expect(borde()).toHaveAttribute("data-scroll-edge", "off");
+  });
+});
+
+describe("ScrollEdgeSentinel — contra el documento", () => {
+  it("observa el viewport, no a su padre", () => {
+    // El `<main>` del marco lleva `overflow-auto`, pero su columna tiene alto
+    // mínimo y no fijo: crece con el contenido. Medido a 1440×900 con 3000px de
+    // relleno, `scrollHeight === clientHeight` (3512) y el documento desbordaba
+    // 2664px. Con `main` de root el centinela no salía nunca de vista, y el
+    // borde del marco se quedaba apagado en todas las pantallas.
+    render(<MarcoDelDocumento />);
+    const observado = observados[observados.length - 1];
+    expect(observado.target).toBe(document.querySelector('[data-scroll-edge-sentinel="documento"]'));
+    expect(observado.root).toBeNull();
+  });
+
+  it("enciende el borde al salir de la ventana y lo apaga al volver al tope", () => {
+    render(<MarcoDelDocumento />);
+    expect(borde()).toHaveAttribute("data-scroll-edge", "off");
+
+    intersecta(false);
+    expect(borde()).toHaveAttribute("data-scroll-edge", "on");
+
+    intersecta(true);
+    expect(borde()).toHaveAttribute("data-scroll-edge", "off");
+  });
+
+  it("no ocupa espacio antes del marco", () => {
+    // Va delante del marco, en flujo: con alto real empujaría el marco 1px y
+    // el documento mediría 1px más que la ventana en las pantallas de alto fijo.
+    render(<MarcoDelDocumento />);
+    const sentinela = document.querySelector('[data-scroll-edge-sentinel="documento"]')!;
+    expect(sentinela.nextElementSibling).toBe(screen.getByTestId("marco"));
+    expect(sentinela).toHaveClass("h-px", "-mb-px");
   });
 });
 

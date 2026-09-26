@@ -787,6 +787,14 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## Cerrados
 
+- [2026-09-26] **P3: El borde de scroll del marco no llegaba a encenderse** — el del
+  2026-09-18 (abajo) medía `#main-content`, que crece con su contenido (su columna
+  tiene alto mínimo, no fijo) y no desborda: lo que se desplaza es el documento.
+  Y el borde de la barra de ámbito era un hermano sin `sticky`, así que se iba
+  con el contenido. Ahora el centinela del marco va antes del marco y se mide
+  contra el viewport, la barra de ámbito lleva cabecera y borde en la misma caja
+  `sticky`, y la barra móvil deja de dibujar el suyo, que con el marco apilado
+  caía encima de la de ámbito.
 - [2026-09-19] **P2: Remediación axe — reactivar las reglas desactivadas del E2E de accesibilidad** — sin `disableRules` ni `fixme`; últimos rojos en `8a424967` y `0fd5082c`. Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [2026-09-19] **P2: La experiencia móvil existe pero nadie la diseñó** — los cuatro criterios cumplidos; los rojos móviles del E2E, en `8a424967`. Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [2026-09-18] **P2: La consola no tiene primer uso** (rama worktree-agent-a37b58d577faad267) — la barra de

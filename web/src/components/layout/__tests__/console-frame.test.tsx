@@ -51,4 +51,22 @@ describe("ConsoleFrame", () => {
     expect(screen.queryByTestId("breadcrumb")).not.toBeInTheDocument();
     expect(screen.queryByTestId("page-tabs")).not.toBeInTheDocument();
   });
+
+  it("mide el scroll del documento con un centinela justo antes del marco", () => {
+    // Lo que se desplaza es el documento, no el shell: su columna tiene alto
+    // mínimo y no fijo, así que `#main-content` crece con el contenido. Antes
+    // del contenedor del marco y fuera de su flex, el centinela queda en el tope
+    // y a todo el ancho tanto si el marco es fila (escritorio) como columna.
+    const { container } = render(
+      <ConsoleFrame>
+        <p>contenido</p>
+      </ConsoleFrame>,
+    );
+    const sentinela = container.firstElementChild!;
+    const marco = sentinela.nextElementSibling!;
+
+    expect(sentinela).toHaveAttribute("data-scroll-edge-sentinel", "documento");
+    expect(marco).toContainElement(screen.getByTestId("rail"));
+    expect(marco).toContainElement(screen.getByTestId("shell"));
+  });
 });

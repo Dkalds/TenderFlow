@@ -71,7 +71,7 @@ export function ResumenView() {
   }, []);
 
   // Borde de scroll y no `border-b` fijo (apple-design §12): quien scrollea es
-  // el cuerpo de la pantalla, no `#main-content`, así que lleva su propio
+  // el cuerpo de la pantalla, no el documento, así que lleva su propio
   // proveedor y en el tope no hay línea.
   return (
     <ScrollEdgeProvider>

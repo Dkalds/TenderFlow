@@ -39,13 +39,15 @@ describe("DashboardShell", () => {
     expect(container.querySelector("main")).toHaveAttribute("data-density", "compact");
   });
 
-  it("abre el contenedor con scroll con el centinela del borde", () => {
-    // El cromo de arriba decide si dibuja separador mirando este centinela, y
-    // sólo mide lo que debe si es el primer hijo del elemento que scrollea.
+  it("no lleva el centinela del borde: `main` no es el que se desplaza", () => {
+    // Tiene `overflow-auto`, pero su columna tiene alto mínimo y no fijo: crece
+    // con el contenido y lo que se desplaza es el documento. Aquí dentro el
+    // centinela no salía nunca de vista y el borde de la barra de ámbito no se
+    // encendía; el del marco va antes del marco (`console-frame.tsx`).
     const { container } = render(<DashboardShell>contenido</DashboardShell>);
     const main = container.querySelector("main")!;
 
-    expect(main.firstElementChild).toHaveAttribute("data-scroll-edge-sentinel");
+    expect(main.querySelector("[data-scroll-edge-sentinel]")).toBeNull();
   });
 
   it("no longer relies on the unused .container selector", () => {
