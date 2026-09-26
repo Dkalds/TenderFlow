@@ -241,7 +241,7 @@ test.describe("Móvil (375×812)", () => {
 
   test("el aviso de «no aplica» cabe en la barra en una sola línea", async ({ page }) => {
     // Con un filtro activo en una pantalla que no lo aplica, el aviso encogía
-    // hasta su palabra más larga: cuatro líneas (144 px) en una barra de 52,
+    // hasta su palabra más larga: nueve líneas (144 px) en una barra de 52,
     // que las recortaba —se leía «no aplica en esta»— y se desplazaba en
     // vertical.
     await page.goto("/mi-watchlist?ccaa=Madrid");

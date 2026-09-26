@@ -636,11 +636,11 @@ function BarraSinAmbito({
         <>
           <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {/* Por debajo de `md`, en una línea: encogido hasta su palabra más
-              larga ocupaba cuatro (144 px) en una barra de 52 que las recortaba,
-              y a 375 px solo se leía «no aplica en esta». Desde `md` la barra
-              mide unos 700 px o más y el aviso, como mucho, se parte en dos
-              líneas que caben: mejor eso que sacar Buscar y Exportar de la
-              vista. */}
+              larga ocupaba nueve líneas (144 px) en una barra de 52 que las
+              recortaba, y a 375 px solo se leía «no aplica en esta». Desde
+              `md` la barra mide unos 700 px o más y el aviso, como mucho, se
+              parte en dos líneas que caben: mejor eso que sacar Buscar y
+              Exportar de la vista. */}
           <span className="text-muted-foreground min-w-max text-xs md:min-w-auto">
             El ámbito global no aplica en esta pantalla ({activeCount}{" "}
             {activeCount === 1 ? "filtro activo" : "filtros activos"}).
