@@ -1,26 +1,28 @@
 "use client";
 
 import type * as React from "react";
-import { Check, CircleDollarSign, Loader2, Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { useForm, useWatch, type PathValue } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type * as z from "zod/mini";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { type Pursuit, type PursuitDecision, type PursuitOutcome, useUpdatePursuit } from "@/hooks/use-pursuits";
+import { esTerminal, type Pursuit, type PursuitDecision, useUpdatePursuit } from "@/hooks/use-pursuits";
 import { useOrganizationMembers } from "@/hooks/use-organization";
-import { PursuitDecisionBadge, PursuitOutcomeBadge } from "@/components/pursuits/pursuit-presenters";
+import { decisionLabel, outcomeLabel } from "@/components/pursuits/pursuit-presenters";
 import { MOTIVOS_PERDIDA, errorDeCierre, esMotivoPerdida, pideCodificar } from "@/lib/motivos-perdida";
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { oportunidad } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
+import { cn } from "@/lib/utils";
 
 /** Valores del formulario: claves de `PursuitUpdate`, del esquema de S7.2. */
 type FormState = z.input<typeof oportunidad.esquema>;
+
+const TODAS: readonly PursuitDecision[] = ["pending", "go", "no_go"];
 
 function formFrom(pursuit: Pursuit): FormState {
   return {
@@ -36,13 +38,41 @@ function formFrom(pursuit: Pursuit): FormState {
   };
 }
 
-
-/** The operational form keeps the canonical business dimensions visibly separate. */
-export function PursuitEditor({ pursuit }: { pursuit: Pursuit }) {
-  return <PursuitEditorForm key={`${pursuit.id}:${pursuit.version}`} pursuit={pursuit} />;
+/**
+ * «Editar todos los campos»: el formulario entero de la oportunidad.
+ *
+ * Es el sitio de las correcciones, no el del día a día —avanzar, decidir, la
+ * oferta y la próxima acción tienen su control arriba—, así que solo ofrece lo
+ * que el backend acepta en la fase en que está la oportunidad:
+ *
+ * - `decisiones` son las que el PATCH admite sin mover la fase (la ficha las
+ *   saca de `_lib/flujo.ts`). Antes el desplegable ofrecía un NO-GO en
+ *   «Identificada» que acababa en un 422.
+ * - El cierre (resultado, importe adjudicado, motivo, nota) solo aparece con la
+ *   oportunidad cerrada, para completarlo. Cerrar se hace con «Registrar
+ *   resultado» o «Retirar…»: aquí elegir «Ganada» desde «Identificada» era otro
+ *   422, y el resultado de una cerrada ya no cambia.
+ * - «Guardar cambios» solo se activa, y solo se queda fijo al pie, cuando hay
+ *   algo que guardar: fijo y naranja sin cambios competía con la acción de la
+ *   fase.
+ */
+export function PursuitEditor({
+  pursuit,
+  decisiones = TODAS,
+}: {
+  pursuit: Pursuit;
+  decisiones?: readonly PursuitDecision[];
+}) {
+  return <PursuitEditorForm key={`${pursuit.id}:${pursuit.version}`} pursuit={pursuit} decisiones={decisiones} />;
 }
 
-function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
+function PursuitEditorForm({
+  pursuit,
+  decisiones,
+}: {
+  pursuit: Pursuit;
+  decisiones: readonly PursuitDecision[];
+}) {
   const update = useUpdatePursuit(pursuit.id);
   const members = useOrganizationMembers(pursuit.organization_id).data ?? [];
   // react-hook-form + esquema de `PursuitUpdate` (S7.2): un importe ilegible
@@ -50,9 +80,15 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
   const formulario = useForm<FormState>({ resolver: zodResolver(oportunidad.esquema), defaultValues: formFrom(pursuit) });
   const form = useWatch({ control: formulario.control }) as FormState;
   const errores = formulario.formState.errors;
+  const sucio = formulario.formState.isDirty;
   // F3.1: la regla del motivo cruza campos, así que va aparte del esquema.
   const intentado = formulario.formState.isSubmitted;
   const errorMotivo = errorDeCierre(form.outcome, form.outcome_reason_code, form.outcome_reason);
+  const cerrada = esTerminal(pursuit.status);
+  // La que tiene siempre se enseña, aunque la regla ya no la admita: el
+  // desplegable no puede mostrar vacío el dato guardado.
+  const opcionesDecision = TODAS.filter((opcion) => decisiones.includes(opcion) || opcion === pursuit.decision);
+  const decisionFija = decisiones.length === 1;
 
   const guardar = async (form: FormState) => {
     const error = errorDeCierre(form.outcome, form.outcome_reason_code, form.outcome_reason);
@@ -62,10 +98,9 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
     }
     try {
       await update.mutateAsync({
-        // Sin control propio desde que la fase vive en el path de la ficha:
-        // viaja el valor que ya tenía, y `expected_version` corta si alguien la
-        // movió. Elegir un resultado sí la fija, porque el backend deriva el
-        // estado terminal del `outcome`.
+        // Sin control propio: la fase se mueve desde «Para salir de…» y el
+        // resultado de una cerrada ya no cambia. Viaja el valor que ya tenía,
+        // y `expected_version` corta si alguien la movió.
         status: form.status,
         responsible_user_id: form.responsible_user_id.trim() ? Number(form.responsible_user_id) : null,
         decision: form.decision,
@@ -74,8 +109,8 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
         outcome: form.outcome,
         awarded_amount_eur: numeroDeTexto(form.awarded_amount_eur),
         outcome_reason: form.outcome_reason.trim() || null,
-        // Sólo viaja al cerrar (o completar) una pérdida: en cualquier otro
-        // resultado el código no significa nada y no se toca.
+        // Sólo viaja al completar una pérdida: en cualquier otro resultado el
+        // código no significa nada y no se toca.
         ...(form.outcome === "lost" && form.outcome_reason_code
           ? { outcome_reason_code: form.outcome_reason_code }
           : {}),
@@ -94,20 +129,29 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
       shouldValidate: formulario.formState.isSubmitted,
     });
   const inputId = (name: string) => `pursuit-${pursuit.id}-${name}`;
+  const etiqueta = "block space-y-1.5 text-tf-meta font-medium";
+  const ayuda = "block text-tf-micro font-normal text-muted-foreground";
 
   return (
-    <form onSubmit={save} noValidate className="space-y-4">
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-          <div><CardTitle className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" />Decisión y responsable</CardTitle><p className="mt-1 text-sm text-muted-foreground">La fase se cambia en el path de la cabecera; esto es la decisión de negocio.</p></div>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("owner")}>Responsable
+    <form onSubmit={save} noValidate className="flex flex-col gap-5">
+      <fieldset>
+        <legend className="text-muted-foreground mb-1 font-mono text-tf-micro font-semibold tracking-wider uppercase">
+          Decisión y responsable
+        </legend>
+        <p className={cn(ayuda, "mb-3")}>
+          La fase se cambia desde «Para salir de…», arriba. Aquí se corrigen los datos de la
+          oportunidad.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className={etiqueta} htmlFor={inputId("owner")}>
+            Responsable
             <Select
               value={form.responsible_user_id || "unassigned"}
               onValueChange={(value) => set("responsible_user_id", value === "unassigned" ? "" : value)}
             >
-              <SelectTrigger id={inputId("owner")}><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+              <SelectTrigger id={inputId("owner")}>
+                <SelectValue placeholder="Sin asignar" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="unassigned">Sin asignar</SelectItem>
                 {members.map((member) => (
@@ -117,43 +161,98 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
                 ))}
               </SelectContent>
             </Select>
-            <span className="block text-xs font-normal text-muted-foreground">Asigna una persona de tu organización.</span>
+            <span className={ayuda}>Asigna una persona de tu organización.</span>
           </label>
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("decision")}>Decisión
-            <Select value={form.decision} onValueChange={(value) => set("decision", value as PursuitDecision)}><SelectTrigger id={inputId("decision")}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Pendiente</SelectItem><SelectItem value="go">GO</SelectItem><SelectItem value="no_go">NO-GO</SelectItem></SelectContent></Select>
-            <PursuitDecisionBadge decision={form.decision} />
+          <label className={etiqueta} htmlFor={inputId("decision")}>
+            Decisión
+            <Select
+              value={form.decision}
+              disabled={decisionFija}
+              onValueChange={(value) => set("decision", value as PursuitDecision)}
+            >
+              <SelectTrigger id={inputId("decision")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {opcionesDecision.map((opcion) => (
+                  <SelectItem key={opcion} value={opcion}>
+                    {decisionLabel(opcion)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className={ayuda}>
+              {decisionFija
+                ? "Con la oferta en marcha la decisión es GO. Para abandonarla, retírala."
+                : decisiones.includes("no_go")
+                  ? "El GO y el NO-GO exigen motivo."
+                  : "El NO-GO se toma en la fase «Decisión»."}
+            </span>
           </label>
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("decision-reason")}>Motivo
-            <Textarea id={inputId("decision-reason")} value={form.decision_reason} onChange={(event) => set("decision_reason", event.target.value)} placeholder="Qué evidencia sostiene la decisión" {...ariaCampo(inputId("decision-reason"), errores.decision_reason?.message)} />
+          <label className={cn(etiqueta, "sm:col-span-2")} htmlFor={inputId("decision-reason")}>
+            Motivo de la decisión
+            <Textarea
+              id={inputId("decision-reason")}
+              value={form.decision_reason}
+              onChange={(event) => set("decision_reason", event.target.value)}
+              placeholder="Qué evidencia sostiene la decisión"
+              {...ariaCampo(inputId("decision-reason"), errores.decision_reason?.message)}
+            />
             <CampoError enLabel campoId={inputId("decision-reason")} mensaje={errores.decision_reason?.message} />
           </label>
-        </CardContent>
-      </Card>
+        </div>
+      </fieldset>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0"><div><CardTitle className="flex items-center gap-2"><CircleDollarSign className="h-4 w-4 text-primary" />Oferta y resultado</CardTitle><p className="mt-1 text-sm text-muted-foreground">Separamos importe ofertado, resultado y adjudicación.</p></div><PursuitOutcomeBadge outcome={form.outcome} /></CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("offer-price")}>Precio ofertado (€)
-            <Input id={inputId("offer-price")} inputMode="decimal" value={form.offer_price_eur} onChange={(event) => set("offer_price_eur", event.target.value)} placeholder="Ej. 125000" {...ariaCampo(inputId("offer-price"), errores.offer_price_eur?.message)} />
+      <fieldset>
+        <legend className="text-muted-foreground mb-3 font-mono text-tf-micro font-semibold tracking-wider uppercase">
+          {cerrada ? "Oferta y cierre" : "Oferta"}
+        </legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className={etiqueta} htmlFor={inputId("offer-price")}>
+            Oferta prevista (€)
+            <Input
+              id={inputId("offer-price")}
+              inputMode="decimal"
+              value={form.offer_price_eur}
+              onChange={(event) => set("offer_price_eur", event.target.value)}
+              placeholder="Ej. 125000"
+              {...ariaCampo(inputId("offer-price"), errores.offer_price_eur?.message)}
+            />
             <CampoError enLabel campoId={inputId("offer-price")} mensaje={errores.offer_price_eur?.message} />
           </label>
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("outcome")}>Resultado
-            <Select value={form.outcome} onValueChange={(value) => {
-              const outcome = value as PursuitOutcome;
-              set("outcome", outcome);
-              if (outcome === "won" || outcome === "lost") set("status", outcome);
-              if (outcome === "cancelled") set("status", "withdrawn");
-            }}><SelectTrigger id={inputId("outcome")}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Sin cerrar</SelectItem><SelectItem value="won">Ganada</SelectItem><SelectItem value="lost">Perdida</SelectItem><SelectItem value="cancelled">Cancelada</SelectItem></SelectContent></Select>
-          </label>
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("awarded-price")}>Importe adjudicado (€)
-            <Input id={inputId("awarded-price")} inputMode="decimal" value={form.awarded_amount_eur} onChange={(event) => set("awarded_amount_eur", event.target.value)} placeholder="Solo si se conoce" {...ariaCampo(inputId("awarded-price"), errores.awarded_amount_eur?.message)} />
-            <CampoError enLabel campoId={inputId("awarded-price")} mensaje={errores.awarded_amount_eur?.message} />
-          </label>
-          {form.outcome === "lost" && (
-            <div className="space-y-1.5 text-sm font-medium sm:col-span-2">
+
+          {cerrada ? (
+            <div className={etiqueta}>
+              <span>Resultado</span>
+              <p className="text-tf-body font-semibold">{outcomeLabel(pursuit.outcome)}</p>
+              <span className={ayuda}>Una oportunidad cerrada ya no cambia de resultado.</span>
+            </div>
+          ) : null}
+
+          {cerrada && pursuit.outcome === "won" ? (
+            <label className={etiqueta} htmlFor={inputId("awarded-price")}>
+              Importe adjudicado (€)
+              <Input
+                id={inputId("awarded-price")}
+                inputMode="decimal"
+                value={form.awarded_amount_eur}
+                onChange={(event) => set("awarded_amount_eur", event.target.value)}
+                placeholder="Solo si se conoce"
+                {...ariaCampo(inputId("awarded-price"), errores.awarded_amount_eur?.message)}
+              />
+              <CampoError enLabel campoId={inputId("awarded-price")} mensaje={errores.awarded_amount_eur?.message} />
+            </label>
+          ) : null}
+
+          {cerrada && form.outcome === "lost" ? (
+            <div className={cn(etiqueta, "sm:col-span-2")}>
               {pideCodificar(pursuit) && !form.outcome_reason_code ? (
-                <p role="status" className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs font-normal text-muted-foreground">
-                  Este cierre es anterior a los motivos codificados y cuenta como «sin codificar» en el reparto de pérdidas. Elige el motivo para completarlo.
+                <p
+                  role="status"
+                  className="border-border/70 bg-muted/40 text-muted-foreground rounded-md border px-3 py-2 text-tf-micro font-normal"
+                >
+                  Este cierre es anterior a los motivos codificados y cuenta como «sin codificar» en el
+                  reparto de pérdidas. Elige el motivo para completarlo.
                 </p>
               ) : null}
               <label htmlFor={inputId("outcome-reason-code")}>Motivo de la pérdida</label>
@@ -171,27 +270,48 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
                 </SelectTrigger>
                 <SelectContent>
                   {MOTIVOS_PERDIDA.map((motivo) => (
-                    <SelectItem key={motivo.codigo} value={motivo.codigo}>{motivo.etiqueta}</SelectItem>
+                    <SelectItem key={motivo.codigo} value={motivo.codigo}>
+                      {motivo.etiqueta}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <span id={inputId("outcome-reason-code-ayuda")} className="block text-xs font-normal text-muted-foreground">
+              <span id={inputId("outcome-reason-code-ayuda")} className={ayuda}>
                 {MOTIVOS_PERDIDA.find((motivo) => motivo.codigo === form.outcome_reason_code)?.ayuda ??
                   "Obligatorio al cerrar como perdida: es lo que permite saber por qué se pierde."}
               </span>
               {intentado && errorMotivo ? (
-                <span role="alert" className="block text-xs font-normal text-destructive">{errorMotivo}</span>
+                <span role="alert" className="text-destructive block text-tf-micro font-normal">
+                  {errorMotivo}
+                </span>
               ) : null}
             </div>
-          )}
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("outcome-reason")}>
-            {form.outcome === "lost" && form.outcome_reason_code === "otro" ? "Nota de cierre (obligatoria con «Otro»)" : "Nota de cierre"}
-            <Textarea id={inputId("outcome-reason")} value={form.outcome_reason} onChange={(event) => set("outcome_reason", event.target.value)} placeholder="Contexto del resultado o ausencia de importe" {...ariaCampo(inputId("outcome-reason"), errores.outcome_reason?.message)} />
-            <CampoError enLabel campoId={inputId("outcome-reason")} mensaje={errores.outcome_reason?.message} />
-          </label>
-        </CardContent>
-      </Card>
-      <div className="sticky bottom-4 z-10 flex justify-end"><Button type="submit" disabled={update.isPending}>{update.isPending ? <Loader2 className="animate-spin" /> : <Save />}Guardar cambios</Button></div>
+          ) : null}
+
+          {cerrada ? (
+            <label className={cn(etiqueta, "sm:col-span-2")} htmlFor={inputId("outcome-reason")}>
+              {form.outcome === "lost" && form.outcome_reason_code === "otro"
+                ? "Nota de cierre (obligatoria con «Otro»)"
+                : "Nota de cierre"}
+              <Textarea
+                id={inputId("outcome-reason")}
+                value={form.outcome_reason}
+                onChange={(event) => set("outcome_reason", event.target.value)}
+                placeholder="Contexto del resultado o ausencia de importe"
+                {...ariaCampo(inputId("outcome-reason"), errores.outcome_reason?.message)}
+              />
+              <CampoError enLabel campoId={inputId("outcome-reason")} mensaje={errores.outcome_reason?.message} />
+            </label>
+          ) : null}
+        </div>
+      </fieldset>
+
+      <div className={cn("flex items-center justify-end gap-3", sucio && "sticky bottom-4 z-10")}>
+        {!sucio ? <p className="text-muted-foreground text-tf-micro">Sin cambios que guardar.</p> : null}
+        <Button type="submit" disabled={!sucio || update.isPending}>
+          {update.isPending ? <Loader2 className="animate-spin" /> : <Save />}Guardar cambios
+        </Button>
+      </div>
     </form>
   );
 }

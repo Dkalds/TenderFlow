@@ -58,6 +58,18 @@ export interface AccessGrant {
  */
 export const LIMITE = 500;
 
+export interface OpcionesSolicitudesAcceso {
+  /**
+   * Filas por respuesta. Por defecto `LIMITE`, y nunca por encima: el endpoint
+   * responde 422 a más de 500.
+   *
+   * La app no lo pasa. Existe para que un test pueda llegar al tope con tres
+   * filas: con el de verdad tiene que pintar 500 filas completas en jsdom, y
+   * con la suite entera en paralelo ese render pasaba de los 5 s del timeout.
+   */
+  limite?: number;
+}
+
 /** Qué mitad de la cola se está mirando. */
 export type Vista = "pendiente" | "historico";
 
@@ -72,24 +84,28 @@ async function cargarSolicitudes(query: string): Promise<SolicitudAcceso[]> {
   return fetchWithAuth<SolicitudAcceso[]>(`/api/v1/admin/solicitudes-acceso?${query}`);
 }
 
-export function useSolicitudesAcceso() {
+export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcceso = {}) {
   const queryClient = useQueryClient();
   const [vista, setVista] = useState<Vista>("pendiente");
 
   // Dos consultas y no una lista filtrada en cliente. Filtrar aquí es
   // exactamente lo que fallaba: el recorte del servidor ya se había llevado por
   // delante las pendientes viejas antes de que llegaran a este componente.
+  //
+  // El tope va en la clave porque cambia la respuesta: con otro tope no se
+  // puede reutilizar la misma caché. Va detrás de la clave de la fábrica, así
+  // que invalidar `adminKeys.solicitudes.all` sigue alcanzando a las dos.
   const pendientesQuery = useQuery<SolicitudAcceso[]>({
-    queryKey: adminKeys.solicitudes.vista("pendiente"),
-    queryFn: () => cargarSolicitudes(`estado=pendiente&limit=${LIMITE}`),
+    queryKey: [...adminKeys.solicitudes.vista("pendiente"), limite],
+    queryFn: () => cargarSolicitudes(`estado=pendiente&limit=${limite}`),
   });
 
   // El histórico sólo se pide si alguien lo abre: es la vista de consulta, no
   // la de trabajo, y no tiene por qué costar una petición a cada apertura del
   // panel.
   const historicoQuery = useQuery<SolicitudAcceso[]>({
-    queryKey: adminKeys.solicitudes.vista("historico"),
-    queryFn: () => cargarSolicitudes(`limit=${LIMITE}`),
+    queryKey: [...adminKeys.solicitudes.vista("historico"), limite],
+    queryFn: () => cargarSolicitudes(`limit=${limite}`),
     enabled: vista === "historico",
   });
 
@@ -150,10 +166,11 @@ export function useSolicitudesAcceso() {
     isLoading: activa.isLoading,
     error: activa.error,
     pendientes,
+    limite,
     // Una lista que llega justo al tope no es "N": es "al menos N". Decirlo con
     // un `+` es la diferencia entre un número y una promesa que no se sostiene.
-    truncada: solicitudes.length >= LIMITE,
-    pendientesTruncado: pendientes !== undefined && pendientes >= LIMITE,
+    truncada: solicitudes.length >= limite,
+    pendientesTruncado: pendientes !== undefined && pendientes >= limite,
     grants: grantsQuery.data,
     grantsLoading: grantsQuery.isLoading,
     cambiarEstado,

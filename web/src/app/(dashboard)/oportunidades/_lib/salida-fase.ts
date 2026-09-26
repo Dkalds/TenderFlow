@@ -30,6 +30,14 @@ import { statusLabel } from "@/components/pursuits/pursuit-presenters";
 import { esTerminal, type Pursuit, type PursuitStatus } from "@/hooks/use-pursuits";
 import { motivoBloqueo, siguienteFase } from "./flujo";
 
+/**
+ * **Cada hueco dice dónde se completa**, y la ficha lo convierte en un clic: la
+ * lista enumeraba lo que faltaba y había que buscar el control (el precio vivía
+ * al final de «Todos los campos»). Sin lugar, el dato depende de fuera: el
+ * plazo lo publica el órgano y la adjudicación la detecta la ingesta.
+ */
+export type LugarPaso = "responsable" | "proxima" | "oferta" | "contraste" | "kit" | "decision" | "campos";
+
 export interface PasoSalida {
   /** El campo del contrato del que sale, que es también su identidad. */
   clave: string;
@@ -40,6 +48,8 @@ export interface PasoSalida {
   requerido?: boolean;
   /** Una línea con el porqué, cuando el dato lo tiene. */
   detalle?: string;
+  /** Dónde se completa, si se completa desde la ficha. */
+  lugar?: LugarPaso;
 }
 
 export type AccionSalida =
@@ -55,38 +65,41 @@ export interface SalidaFase {
   nota: string;
 }
 
-/** Lo que el kit y el contraste aportan, cuando ya han llegado. */
+/**
+ * Lo que el kit y el contraste aportan, cuando ya han llegado. Del contraste,
+ * solo lo extraído: `total_requisitos` cuenta un aviso por familia sin hechos.
+ */
 export interface ContextoSalida {
   kit?: { listos: number; total: number };
-  contraste?: { total_requisitos: number; desconocido: number };
+  contraste?: { requisitos_extraidos: number; desconocido_extraidos: number };
 }
 
 const NOTA_EVENTO = "Avanzar de fase escribe un evento en el historial, con quién y cuándo.";
 const NOTA_CERRADA =
-  "Una oportunidad cerrada ya no cambia de fase. Lo que falte se completa en «Todos los campos».";
+  "Una oportunidad cerrada ya no cambia de fase. Lo que falte se completa en «Editar todos los campos».";
 
 function conTexto(valor: string | null | undefined): boolean {
   return Boolean(valor && valor.trim());
 }
 
 function pasoContraste(contraste: ContextoSalida["contraste"]): PasoSalida {
-  const base = { clave: "contraste", texto: "Requisitos del pliego contrastados" };
+  const base = { clave: "contraste", texto: "Requisitos del pliego contrastados", lugar: "contraste" } as const;
   if (!contraste) return { ...base, hecho: null };
-  if (contraste.total_requisitos === 0) {
+  if (contraste.requisitos_extraidos === 0) {
     return { ...base, hecho: null, detalle: "El pliego no tiene requisitos extraídos" };
   }
   return {
     ...base,
-    hecho: contraste.desconocido === 0,
+    hecho: contraste.desconocido_extraidos === 0,
     detalle:
-      contraste.desconocido > 0
-        ? `${contraste.desconocido} de ${contraste.total_requisitos} sin contrastar`
-        : `${contraste.total_requisitos} requisitos con veredicto`,
+      contraste.desconocido_extraidos > 0
+        ? `${contraste.desconocido_extraidos} de ${contraste.requisitos_extraidos} sin contrastar`
+        : `${contraste.requisitos_extraidos} requisitos con veredicto`,
   };
 }
 
 function pasoKit(kit: ContextoSalida["kit"]): PasoSalida {
-  const base = { clave: "kit", texto: "Documentación del kit lista" };
+  const base = { clave: "kit", texto: "Documentación del kit lista", lugar: "kit" } as const;
   if (!kit) return { ...base, hecho: null };
   if (kit.total === 0) {
     return { ...base, hecho: null, detalle: "El pliego no tiene documentos extraídos" };
@@ -105,6 +118,7 @@ function pasosDeCierre(pursuit: Pursuit): PasoSalida[] {
       clave: "motivo",
       texto: "Motivo del cierre anotado",
       hecho: conTexto(pursuit.outcome_reason_code) || conTexto(pursuit.outcome_reason),
+      lugar: "campos",
     },
   ];
   // Solo si se ganó: en una pérdida el importe es de otro y retirarla no
@@ -114,9 +128,15 @@ function pasosDeCierre(pursuit: Pursuit): PasoSalida[] {
       clave: "importe",
       texto: "Importe adjudicado anotado",
       hecho: pursuit.awarded_amount_eur != null,
+      lugar: "campos",
     });
   }
   return pasos;
+}
+
+/** Un solo campo, un solo nombre en toda la ficha; cambia lo que se espera de él. */
+function pasoOferta(pursuit: Pursuit, texto: string): PasoSalida {
+  return { clave: "oferta", texto, hecho: pursuit.offer_price_eur != null, lugar: "oferta" };
 }
 
 function pasosDeFase(fase: PursuitStatus, pursuit: Pursuit, contexto: ContextoSalida): PasoSalida[] {
@@ -127,6 +147,7 @@ function pasosDeFase(fase: PursuitStatus, pursuit: Pursuit, contexto: ContextoSa
           clave: "responsable",
           texto: "Responsable asignado",
           hecho: pursuit.responsible_user_id != null,
+          lugar: "responsable",
         },
         {
           clave: "plazo",
@@ -137,17 +158,11 @@ function pasosDeFase(fase: PursuitStatus, pursuit: Pursuit, contexto: ContextoSa
           clave: "proxima",
           texto: "Próxima acción planificada",
           hecho: conTexto(pursuit.next_action),
+          lugar: "proxima",
         },
       ];
     case "qualifying":
-      return [
-        pasoContraste(contexto.contraste),
-        {
-          clave: "oferta",
-          texto: "Oferta prevista estimada",
-          hecho: pursuit.offer_price_eur != null,
-        },
-      ];
+      return [pasoContraste(contexto.contraste), pasoOferta(pursuit, "Oferta prevista estimada")];
     case "go_no_go":
       // Con el NO-GO ya tomado, de esta fase no se avanza: se retira. Lo que
       // queda por comprobar es que el motivo esté escrito, que es lo que
@@ -159,43 +174,36 @@ function pasosDeFase(fase: PursuitStatus, pursuit: Pursuit, contexto: ContextoSa
             clave: "motivo",
             texto: "Motivo de la decisión anotado",
             hecho: conTexto(pursuit.decision_reason),
+            lugar: "decision",
           },
         ];
       }
       return [
-        {
-          clave: "oferta",
-          texto: "Oferta prevista fijada",
-          hecho: pursuit.offer_price_eur != null,
-        },
+        pasoOferta(pursuit, "Oferta prevista fijada"),
         {
           clave: "decision",
           texto: "Decisión registrada: GO",
           hecho: pursuit.decision === "go",
           requerido: true,
+          lugar: "decision",
         },
         {
           clave: "motivo",
           texto: "Motivo de la decisión anotado",
           hecho: conTexto(pursuit.decision_reason),
           requerido: true,
+          lugar: "decision",
         },
       ];
     case "preparing":
-      return [
-        pasoKit(contexto.kit),
-        {
-          clave: "oferta",
-          texto: "Precio de la oferta fijado",
-          hecho: pursuit.offer_price_eur != null,
-        },
-      ];
+      return [pasoKit(contexto.kit), pasoOferta(pursuit, "Oferta prevista con el precio final")];
     case "submitted":
       return [
         {
           clave: "proxima",
           texto: "Seguimiento de la mesa planificado",
           hecho: conTexto(pursuit.next_action),
+          lugar: "proxima",
         },
         {
           clave: "adjudicacion",

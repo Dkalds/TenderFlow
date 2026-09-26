@@ -23,7 +23,10 @@ const outcomeCopy: Record<PursuitOutcome, string> = {
   pending: "Sin cerrar",
   won: "Ganada",
   lost: "Perdida",
-  cancelled: "Cancelada",
+  // El backend casa `cancelled` con el estado `withdrawn` uno a uno
+  // (`_TERMINAL_OUTCOME`): es la misma cosa, y la acción que la produce se
+  // llama «Retirar». «Cancelada» junto a una fase «Retirada» parecían dos.
+  cancelled: "Retirada",
 };
 
 export function statusLabel(status: PursuitStatus): string {

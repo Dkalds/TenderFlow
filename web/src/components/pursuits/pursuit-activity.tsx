@@ -58,13 +58,17 @@ const TIPO_LEGIBLE: Record<string, string> = {
   checklist_evaluated: "Pliego contrastado con la capacidad",
 };
 
+/** Lo escribe `db/repositories/pursuits.py::KIT_EVENT_TYPE` al marcar o asignar. */
+const KIT_MARCADO = "kit_item_marcado";
+
 /** Etiquetas de los campos que el editor puede cambiar. */
 const CAMPO_LEGIBLE: Record<string, string> = {
   status: "Estado",
   decision: "Decisión",
   decision_reason: "Motivo de la decisión",
   responsible_user_id: "Responsable",
-  offer_price_eur: "Precio ofertado",
+  // El mismo nombre que en toda la ficha: un solo campo, un solo nombre.
+  offer_price_eur: "Oferta prevista",
   outcome: "Resultado",
   awarded_amount_eur: "Importe adjudicado",
   outcome_reason: "Nota de cierre",
@@ -130,22 +134,52 @@ function valorLegible(campo: string, valor: unknown, miembros: readonly ActorCon
 /**
  * El sello del contraste no trae cambios, sino conteos: se leen uno a uno, y
  * si no están, la entrada se queda con su titular y su fecha.
+ *
+ * Los sellos nuevos traen además los requisitos que la ficha sacó del pliego
+ * (`requisitos_extraidos`): con ellos, un pliego del que no se extrajo nada
+ * dice eso, y no «4 sin dato». Los antiguos no los llevan y se leen como antes.
  */
 function resumenContraste(evento: PursuitEvent): string | null {
   if (evento.event_type !== "checklist_evaluated") return null;
   const payload = evento.payload as Record<string, unknown> | undefined;
   const numero = (clave: string): number | null =>
     typeof payload?.[clave] === "number" ? (payload[clave] as number) : null;
+  const extraidos = numero("requisitos_extraidos");
+  if (extraidos === 0) return "Sin requisitos extraídos del pliego";
   const partes = [
     [numero("cumple"), "cumple"],
     [numero("no_cumple"), "no cumple"],
-    [numero("desconocido"), "sin dato"],
+    [extraidos != null ? numero("desconocido_extraidos") : numero("desconocido"), "sin dato"],
   ] as const;
   const texto = partes
     .filter(([valor]) => valor != null)
     .map(([valor, etiqueta]) => `${valor} ${etiqueta}`)
     .join(" · ");
   return texto || null;
+}
+
+/**
+ * Un marcado del kit: el payload trae la `clave` del documento y, según el
+ * gesto, `listo` (marcar o desmarcar) o `tarea_id` (asignar). El nombre del
+ * documento no viaja en el evento; sale del kit de la oportunidad, y sin él la
+ * entrada se queda en el titular.
+ */
+function kitDe(
+  evento: PursuitEvent,
+  kitNombres: ReadonlyMap<string, string>,
+): { titulo: string; documento: string | null } | null {
+  if (evento.event_type !== KIT_MARCADO) return null;
+  const payload = evento.payload as Record<string, unknown> | undefined;
+  const clave = typeof payload?.clave === "string" ? payload.clave : null;
+  const documento = clave ? (kitNombres.get(clave) ?? null) : null;
+  if (typeof payload?.listo === "boolean") {
+    return {
+      titulo: payload.listo ? "Documento del kit listo" : "Documento del kit desmarcado",
+      documento,
+    };
+  }
+  if (payload?.tarea_id != null) return { titulo: "Documento del kit asignado", documento };
+  return { titulo: "Kit de presentación actualizado", documento };
 }
 
 /** El titular de la entrada: el cambio de fase manda sobre el tipo de evento. */
@@ -157,12 +191,17 @@ function tituloDe(evento: PursuitEvent, cambios: Cambio[]): string {
   return TIPO_LEGIBLE[evento.event_type] ?? evento.event_type;
 }
 
+const SIN_NOMBRES: ReadonlyMap<string, string> = new Map();
+
 export function PursuitActivity({
   events,
   miembros = [],
+  kitNombres = SIN_NOMBRES,
 }: {
   events: PursuitDetail["events"];
   miembros?: readonly ActorConocido[];
+  /** Nombre de cada documento del kit por su `clave`, para los marcados. */
+  kitNombres?: ReadonlyMap<string, string>;
 }) {
   // Más reciente arriba. Se copia antes de ordenar: el array llega del caché
   // de react-query y mutarlo en sitio reordenaría el dato compartido.
@@ -184,7 +223,8 @@ export function PursuitActivity({
     <ol className="flex flex-col gap-2.5">
       {ordenados.map((evento, indice) => {
         const cambios = cambiosDe(evento);
-        const titulo = tituloDe(evento, cambios);
+        const kit = kitDe(evento, kitNombres);
+        const titulo = kit?.titulo ?? tituloDe(evento, cambios);
         // El estado ya va en el titular: repetirlo debajo sería decir dos veces
         // lo mismo en la entrada más frecuente del historial.
         const resto = titulo.startsWith("Pasa a")
@@ -208,6 +248,9 @@ export function PursuitActivity({
                 <p className="text-muted-foreground mt-0.5 text-tf-micro">
                   {resumenContraste(evento)}
                 </p>
+              ) : null}
+              {kit?.documento ? (
+                <p className="text-muted-foreground mt-0.5 text-tf-micro">«{kit.documento}»</p>
               ) : null}
               {resto.length > 0 && (
                 <ul className="mt-1 flex flex-col gap-0.5">

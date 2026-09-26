@@ -15,8 +15,16 @@
  * - Declara sobre qué ficha se evaluó: `extraction_version` y su fecha. Un
  *   veredicto sin decir de qué versión del pliego sale no es verificable.
  *
- * Los conteos (`cumple`, `no_cumple`, `desconocido`, `total_requisitos`) vienen
- * de la respuesta; aquí no se suma nada (ADR-014).
+ * Los conteos (`cumple`, `no_cumple`, `requisitos_extraidos`,
+ * `desconocido_extraidos`) vienen de la respuesta; aquí no se suma nada
+ * (ADR-014).
+ *
+ * **Una familia sin hechos no es un requisito.** El backend manda para cada
+ * familia de la que la ficha no sacó nada un ítem que lo avisa; pintado como
+ * requisito, un pliego sin requisitos extraídos salía como «De 4 requisitos
+ * extraídos» y cuatro tarjetas iguales con el mismo enlace al perfil de
+ * capacidad, que no arregla nada: lo que falta ahí es el pliego, no el perfil.
+ * Esas familias van en una línea (`sin_hechos`).
  */
 
 import { Panel, PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel";
@@ -26,6 +34,16 @@ import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
 import type { DocumentoSummary } from "@/lib/api-types";
 import { formatDate } from "@/lib/utils";
 import { ChecklistFamilia } from "./checklist-familia";
+
+/** «A», «B» y «C» o, en negativa, «A», «B» ni «C». */
+function enumerar(etiquetas: string[], ultimo: "y" | "ni"): string {
+  const citadas = etiquetas.map((etiqueta) => `«${etiqueta}»`);
+  if (citadas.length <= 1) return citadas.join("");
+  return `${citadas.slice(0, -1).join(", ")} ${ultimo} ${citadas[citadas.length - 1]}`;
+}
+
+/** Ancla y foco de la ficha: el paso «Requisitos del pliego contrastados» lleva aquí. */
+const ANCLA = "ficha-requisitos";
 
 /** Qué ficha se evaluó. Sin esto el veredicto no se puede volver a comprobar. */
 function Procedencia({
@@ -46,9 +64,12 @@ function Procedencia({
 export function ChecklistGoNoGo({
   pursuitId,
   licitacionId,
+  onAbrirPliego,
 }: {
   pursuitId: number | string;
   licitacionId: string;
+  /** Lleva a la pestaña «Pliego», donde se extrae o se revisa la ficha. */
+  onAbrirPliego?: () => void;
 }) {
   const { data, isPending, error, refetch } = usePursuitChecklist(pursuitId);
   // Los mismos documentos que ya carga la pestaña Pliego: comparten clave de
@@ -60,7 +81,7 @@ export function ChecklistGoNoGo({
 
   if (isPending) {
     return (
-      <Panel className="mt-3.5">
+      <Panel id={ANCLA}>
         <SectionTitle>Requisitos del pliego</SectionTitle>
         <Skeleton className="h-[132px] w-full rounded-lg" />
       </Panel>
@@ -69,7 +90,7 @@ export function ChecklistGoNoGo({
 
   if (error || !data) {
     return (
-      <Panel className="mt-3.5">
+      <Panel id={ANCLA}>
         <SectionTitle>Requisitos del pliego</SectionTitle>
         <PanelError
           title="No se pudo contrastar el pliego con tu capacidad"
@@ -81,9 +102,20 @@ export function ChecklistGoNoGo({
   }
 
   const familias = data.familias ?? [];
+  const conHechos = familias.filter((familia) => !familia.sin_hechos);
+  const sinHechos = familias.filter((familia) => familia.sin_hechos).map((familia) => familia.etiqueta);
+  const irAPliego = onAbrirPliego ? (
+    <button
+      type="button"
+      onClick={onAbrirPliego}
+      className="text-primary font-medium hover:underline"
+    >
+      Abrir la pestaña «Pliego»
+    </button>
+  ) : null;
 
   return (
-    <Panel className="mt-3.5">
+    <Panel id={ANCLA} tabIndex={-1} className="outline-none">
       <SectionTitle
         aside={
           <Procedencia
@@ -96,31 +128,50 @@ export function ChecklistGoNoGo({
       </SectionTitle>
 
       {data.ficha_estado == null ? (
-        <PanelEmpty message="Todavía no hay ficha del pliego extraída, así que no hay nada contra lo que contrastar tu capacidad. La extracción se lanza desde la pestaña «Pliego»." />
+        <PanelEmpty
+          message="Todavía no hay ficha del pliego extraída, así que no hay nada contra lo que contrastar tu capacidad. La extracción se lanza desde la pestaña «Pliego»."
+          action={irAPliego ?? undefined}
+        />
+      ) : data.requisitos_extraidos === 0 ? (
+        <p role="status" className="text-muted-foreground text-tf-meta leading-relaxed">
+          La ficha del pliego no extrajo ningún requisito de {enumerar(sinHechos, "ni")}, así que no
+          hay nada que contrastar con tu capacidad: lo que falta es el pliego, no tu perfil.{" "}
+          {irAPliego ?? "Revísalo en la pestaña «Pliego»."}
+        </p>
       ) : (
         <>
-          <p className="mb-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
-            De {data.total_requisitos} requisito{data.total_requisitos === 1 ? "" : "s"} extraído
-            {data.total_requisitos === 1 ? "" : "s"} del pliego:{" "}
-            <span className="tf-tnum font-medium text-foreground">{data.cumple}</span> «cumple» ·{" "}
-            <span className="tf-tnum font-medium text-foreground">{data.no_cumple}</span> «no
+          <p className="text-muted-foreground mb-2.5 text-tf-meta leading-relaxed">
+            De {data.requisitos_extraidos} requisito{data.requisitos_extraidos === 1 ? "" : "s"} extraído
+            {data.requisitos_extraidos === 1 ? "" : "s"} del pliego:{" "}
+            <span className="tf-tnum text-foreground font-medium">{data.cumple}</span> «cumple» ·{" "}
+            <span className="tf-tnum text-foreground font-medium">{data.no_cumple}</span> «no
             cumple» ·{" "}
-            <span className="tf-tnum font-medium text-foreground">{data.desconocido}</span>{" "}
+            <span className="tf-tnum text-foreground font-medium">{data.desconocido_extraidos}</span>{" "}
             «desconocido».
           </p>
 
           <div className="space-y-2">
-            {familias.map((familia) => (
+            {conHechos.map((familia) => (
               <ChecklistFamilia key={familia.familia} familia={familia} docsById={docsById} />
             ))}
           </div>
+
+          {sinHechos.length > 0 ? (
+            <p className="text-muted-foreground mt-2.5 text-tf-micro leading-relaxed">
+              Sin requisitos extraídos del pliego: {enumerar(sinHechos, "y")}.
+            </p>
+          ) : null}
         </>
       )}
 
-      <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-        Esto no decide el go/no-go: lo propone. La decisión se marca a mano en «Decisión del
-        comité», arriba, y un «desconocido» es una pregunta abierta, no un no.
-      </p>
+      {/* Solo cuando hay veredictos: sin nada contrastado, advertir de que un
+          veredicto no decide es una frase más que leer sin nada debajo. */}
+      {data.ficha_estado != null && data.requisitos_extraidos > 0 ? (
+        <p className="text-muted-foreground mt-3 text-tf-micro leading-relaxed">
+          Esto no decide el go/no-go: lo propone. La decisión se marca a mano en «Decisión del
+          comité», arriba, y un «desconocido» es una pregunta abierta, no un no.
+        </p>
+      ) : null}
     </Panel>
   );
 }

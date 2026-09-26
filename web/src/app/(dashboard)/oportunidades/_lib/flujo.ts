@@ -14,7 +14,7 @@
  */
 
 import { statusLabel } from "@/components/pursuits/pursuit-presenters";
-import { esTerminal, type Pursuit, type PursuitStatus } from "@/hooks/use-pursuits";
+import { esTerminal, type Pursuit, type PursuitDecision, type PursuitStatus } from "@/hooks/use-pursuits";
 import type { FaseKey } from "./fases";
 
 /** Los tres estados terminales, que son también los tres resultados de cerrar. */
@@ -67,6 +67,19 @@ export function motivoBloqueo(pursuit: EstadoFlujo, destino: PursuitStatus): str
     return "Con la decisión NO-GO solo cabe retirarla.";
   }
   return null;
+}
+
+/**
+ * Las decisiones que el backend acepta sin mover la fase: de «Preparando
+ * oferta» en adelante la decisión tiene que ser GO, y un NO-GO solo cabe en
+ * «Decisión» o en una oportunidad retirada. Es la otra mitad de
+ * `_normalize_and_validate_update`; el formulario completo la usa para no
+ * ofrecer un NO-GO que el PATCH va a rechazar.
+ */
+export function decisionesPermitidas(pursuit: EstadoFlujo): PursuitDecision[] {
+  if (EXIGEN_GO.includes(pursuit.status)) return ["go"];
+  if (pursuit.status === "go_no_go" || pursuit.status === "withdrawn") return ["pending", "go", "no_go"];
+  return ["pending", "go"];
 }
 
 /** Los resultados con los que se puede cerrar ahora mismo. */

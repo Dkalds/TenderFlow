@@ -158,3 +158,59 @@ def test_los_totales_cuadran_con_los_items() -> None:
     total = checklist.cumple + checklist.no_cumple + checklist.desconocido
     assert total == checklist.total_requisitos
     assert checklist.total_requisitos == sum(len(f.items) for f in checklist.familias)
+
+
+def test_una_familia_sin_hechos_no_cuenta_como_requisito_extraido() -> None:
+    """El aviso de familia vacía es un ítem, pero no un requisito del pliego."""
+    checklist = evaluate(
+        licitacion_id="EXP-5",
+        organization_id=3,
+        record=_record({}),
+        capabilities=OrganizationCapabilities(),
+        hoy=date(2026, 9, 7),
+    )
+    assert all(familia.sin_hechos for familia in checklist.familias)
+    assert checklist.requisitos_extraidos == 0
+    assert checklist.desconocido_extraidos == 0
+    # Los conteos de siempre conservan su significado: un aviso por familia.
+    assert checklist.total_requisitos == len(checklist.familias)
+    assert checklist.desconocido == len(checklist.familias)
+
+
+def test_los_extraidos_cuentan_solo_las_familias_con_hechos() -> None:
+    facts = {
+        "team_requirements": [
+            {
+                "description": "Jefe de proyecto",
+                "role": "Jefe de proyecto",
+                "minimum_years": 3,
+                "confidence": 0.9,
+                "evidence": [{"documento_id": 1, "page_number": 1, "quote": "Jefe de proyecto"}],
+            },
+            {
+                "description": "Arquitecto",
+                "role": "Arquitecto",
+                "minimum_years": 10,
+                "confidence": 0.9,
+                "evidence": [{"documento_id": 1, "page_number": 1, "quote": "Arquitecto"}],
+            },
+        ]
+    }
+    checklist = evaluate(
+        licitacion_id="EXP-6",
+        organization_id=3,
+        record=_record(facts),
+        capabilities=OrganizationCapabilities(),
+        hoy=date(2026, 9, 7),
+    )
+    equipo = next(f for f in checklist.familias if f.familia == "team_requirements")
+    assert not equipo.sin_hechos
+    assert [f.familia for f in checklist.familias if f.sin_hechos] == [
+        "certifications",
+        "economic_solvency",
+        "technical_solvency",
+    ]
+    assert checklist.requisitos_extraidos == len(equipo.items) == 2
+    assert checklist.desconocido_extraidos == sum(
+        1 for item in equipo.items if item.veredicto == "desconocido"
+    )
