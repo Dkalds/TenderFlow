@@ -123,6 +123,11 @@ class ChecklistFamiliaResultado(BaseModel):
     #: familia con un requisito incumplido no es «casi cumple».
     veredicto: ChecklistVeredicto
     items: list[ChecklistItem] = Field(default_factory=list)
+    #: La ficha no extrajo ningún requisito de esta familia. Su único ítem es
+    #: entonces el aviso que lo dice, no un requisito del pliego, y la pantalla
+    #: lo agrupa en una línea en vez de pintarlo como un requisito sin
+    #: contrastar.
+    sin_hechos: bool = False
 
 
 class GoNoGoChecklist(BaseModel):
@@ -147,6 +152,14 @@ class GoNoGoChecklist(BaseModel):
     cumple: int = Field(default=0, ge=0)
     no_cumple: int = Field(default=0, ge=0)
     desconocido: int = Field(default=0, ge=0)
+    #: Los requisitos que la ficha sacó del pliego. ``total_requisitos`` cuenta
+    #: además el aviso de cada familia sin hechos —un ítem ``desconocido`` por
+    #: familia—, así que de un pliego del que no se extrajo nada decía «4
+    #: requisitos» donde no había ninguno. Son campos aditivos: los cuatro de
+    #: arriba conservan su significado.
+    requisitos_extraidos: int = Field(default=0, ge=0)
+    #: De ``requisitos_extraidos``, los que quedaron en ``desconocido``.
+    desconocido_extraidos: int = Field(default=0, ge=0)
 
 
 class ChecklistNotFoundError(LookupError):
@@ -661,10 +674,12 @@ def evaluate(
                 etiqueta=_ETIQUETAS[familia],
                 veredicto=_veredicto_familia(por_familia[familia]),
                 items=items,
+                sin_hechos=not por_familia[familia],
             )
         )
 
     todos = [item for resultado in familias for item in resultado.items]
+    extraidos = [item for items in por_familia.values() for item in items]
     return GoNoGoChecklist(
         licitacion_id=licitacion_id,
         organization_id=organization_id,
@@ -676,6 +691,8 @@ def evaluate(
         cumple=sum(1 for item in todos if item.veredicto == "cumple"),
         no_cumple=sum(1 for item in todos if item.veredicto == "no_cumple"),
         desconocido=sum(1 for item in todos if item.veredicto == "desconocido"),
+        requisitos_extraidos=len(extraidos),
+        desconocido_extraidos=sum(1 for item in extraidos if item.veredicto == "desconocido"),
     )
 
 
@@ -727,6 +744,8 @@ def build_checklist(
                 "cumple": checklist.cumple,
                 "no_cumple": checklist.no_cumple,
                 "desconocido": checklist.desconocido,
+                "requisitos_extraidos": checklist.requisitos_extraidos,
+                "desconocido_extraidos": checklist.desconocido_extraidos,
                 "familias": {
                     resultado.familia: resultado.veredicto for resultado in checklist.familias
                 },

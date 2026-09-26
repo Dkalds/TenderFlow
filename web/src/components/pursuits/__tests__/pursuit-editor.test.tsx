@@ -82,10 +82,66 @@ describe("PursuitEditor responsible-person selector", () => {
     membersRef.current = [{ user_id: 5, display_name: "Ana Gómez", email: "ana@example.test" }];
     render(<PursuitEditor pursuit={{ ...basePursuit, responsible_user_id: 5 }} />);
 
+    // Sin cambios no hay nada que guardar: se toca otro campo.
+    fireEvent.change(screen.getByLabelText("Oferta prevista (€)"), { target: { value: "90000" } });
     fireEvent.click(screen.getByRole("button", { name: /Guardar cambios/ }));
 
     await vi.waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ responsible_user_id: 5 })),
     );
+  });
+});
+
+describe("PursuitEditor — solo lo que la fase admite", () => {
+  it("guardar solo se activa con cambios", () => {
+    render(<PursuitEditor pursuit={basePursuit} />);
+    const guardar = screen.getByRole("button", { name: /Guardar cambios/ });
+    expect(guardar).toBeDisabled();
+    expect(screen.getByText("Sin cambios que guardar.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Oferta prevista (€)"), { target: { value: "90000" } });
+    expect(guardar).toBeEnabled();
+  });
+
+  it("abierta, no ofrece campos de cierre ni un NO-GO que el backend rechaza", () => {
+    render(<PursuitEditor pursuit={basePursuit} decisiones={["pending", "go"]} />);
+
+    expect(screen.queryByLabelText("Importe adjudicado (€)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Nota de cierre/)).not.toBeInTheDocument();
+    // El `<select>` nativo que Radix monta para el formulario trae una opción
+    // por cada una que se ofrece.
+    expect(screen.queryByText("NO-GO", { selector: "option" })).not.toBeInTheDocument();
+    expect(screen.getByText("GO", { selector: "option" })).toBeInTheDocument();
+    expect(screen.getByText("El NO-GO se toma en la fase «Decisión».")).toBeInTheDocument();
+  });
+
+  it("no manda a cambiar la fase a un sitio que no la cambia", () => {
+    render(<PursuitEditor pursuit={basePursuit} />);
+    expect(screen.queryByText(/path de la cabecera/)).not.toBeInTheDocument();
+    expect(screen.getByText(/La fase se cambia desde «Para salir de…», arriba/)).toBeInTheDocument();
+  });
+
+  it("con la oferta en marcha la decisión es GO y no se puede cambiar", () => {
+    render(
+      <PursuitEditor
+        pursuit={{ ...basePursuit, status: "preparing", decision: "go", decision_reason: "Encaja" }}
+        decisiones={["go"]}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: /Decisión/ })).toBeDisabled();
+    expect(screen.getByText(/la decisión es GO\. Para abandonarla, retírala\./)).toBeInTheDocument();
+  });
+
+  it("cerrada, enseña el resultado fijo y deja completar el cierre", () => {
+    render(
+      <PursuitEditor
+        pursuit={{ ...basePursuit, status: "won", decision: "go", decision_reason: "Encaja", outcome: "won" }}
+        decisiones={["go"]}
+      />,
+    );
+    expect(screen.getByText("Ganada")).toBeInTheDocument();
+    expect(screen.getByText("Una oportunidad cerrada ya no cambia de resultado.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Importe adjudicado (€)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nota de cierre")).toBeInTheDocument();
   });
 });

@@ -17,14 +17,30 @@ import { cn } from "@/lib/utils";
  * otra pantalla para apuntar el siguiente paso. La banda roja no es decoración:
  * sale de la misma rampa `--urgency-*` que el plazo de la tarjeta, y aparece
  * cuando vence hoy o mañana.
+ *
+ * Si está en edición lo decide la ficha (`editando`), porque también la abre el
+ * paso «Próxima acción planificada» del bloque de salida, que vive en la otra
+ * columna. Al abrirse, el foco va al primer campo.
  */
-export function ProximaAccion({ pursuit }: { pursuit: Pursuit }) {
+export function ProximaAccion({
+  pursuit,
+  editando,
+  onEditar,
+}: {
+  pursuit: Pursuit;
+  editando: boolean;
+  onEditar: (abierto: boolean) => void;
+}) {
   const actualizar = useUpdatePursuit(pursuit.id);
-  const [editando, setEditando] = React.useState(false);
   const [accion, setAccion] = React.useState(pursuit.next_action ?? "");
   const [vence, setVence] = React.useState(pursuit.next_action_due ?? "");
   const accionId = React.useId();
   const venceId = React.useId();
+  const primerCampo = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (editando) primerCampo.current?.focus();
+  }, [editando]);
 
   const plazo = plazoVisual(pursuit.next_action_due);
   const urgente = plazo != null && plazo.dias <= 1;
@@ -39,6 +55,15 @@ export function ProximaAccion({ pursuit }: { pursuit: Pursuit }) {
           ? "Vence hoy"
           : `Vence en ${plazo.dias} d`;
 
+  const cancelar = () => {
+    setAccion(pursuit.next_action ?? "");
+    setVence(pursuit.next_action_due ?? "");
+    onEditar(false);
+  };
+  const alEscape = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") cancelar();
+  };
+
   const guardar = () => {
     actualizar.mutate(
       {
@@ -48,7 +73,7 @@ export function ProximaAccion({ pursuit }: { pursuit: Pursuit }) {
       },
       {
         onSuccess: () => {
-          setEditando(false);
+          onEditar(false);
           toast.success("Próxima acción guardada");
         },
         onError: (error) =>
@@ -64,6 +89,7 @@ export function ProximaAccion({ pursuit }: { pursuit: Pursuit }) {
 
   return (
     <section
+      id="ficha-proxima-accion"
       aria-label="Próxima acción"
       className={cn(
         "rounded-xl border px-4 py-3",
@@ -73,16 +99,24 @@ export function ProximaAccion({ pursuit }: { pursuit: Pursuit }) {
       )}
     >
       {editando ? (
-        <div className="flex flex-col gap-2">
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            guardar();
+          }}
+        >
           <div>
             <label htmlFor={accionId} className="text-muted-foreground mb-1 block text-tf-micro">
               Qué toca hacer
             </label>
             <Input
+              ref={primerCampo}
               id={accionId}
               value={accion}
               maxLength={300}
               onChange={(event) => setAccion(event.target.value)}
+              onKeyDown={alEscape}
               placeholder="Ej. Convocar el comité de GO/NO-GO"
             />
           </div>
@@ -95,26 +129,19 @@ export function ProximaAccion({ pursuit }: { pursuit: Pursuit }) {
               type="date"
               value={vence}
               onChange={(event) => setVence(event.target.value)}
+              onKeyDown={alEscape}
             />
           </div>
           <div className="flex items-center gap-2">
             <div className="flex-1" />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setAccion(pursuit.next_action ?? "");
-                setVence(pursuit.next_action_due ?? "");
-                setEditando(false);
-              }}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={cancelar}>
               Cancelar
             </Button>
-            <Button size="sm" disabled={actualizar.isPending} onClick={guardar}>
+            <Button type="submit" size="sm" disabled={actualizar.isPending}>
               Guardar
             </Button>
           </div>
-        </div>
+        </form>
       ) : (
         <div className="flex items-center gap-2.5">
           <span
@@ -138,7 +165,7 @@ export function ProximaAccion({ pursuit }: { pursuit: Pursuit }) {
               </p>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={() => setEditando(true)}>
+          <Button variant="outline" size="sm" onClick={() => onEditar(true)}>
             {pursuit.next_action ? "Editar" : "Añadir"}
           </Button>
         </div>

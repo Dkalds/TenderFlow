@@ -11,8 +11,11 @@
  */
 
 import dynamic from "next/dynamic";
+import { toast } from "sonner";
 import { Panel, PanelLoading } from "@/components/console/panel";
-import type { Pursuit } from "@/hooks/use-pursuits";
+import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
+import { ApiError } from "@/lib/api-client";
+import { formatCurrency } from "@/lib/utils";
 
 export type TabKey = "resumen" | "expediente" | "pliego" | "precio" | "conversacion";
 
@@ -43,11 +46,53 @@ const PursuitCommentsThread = dynamic(
   { loading: cargando },
 );
 
-/** «Todos los campos»: el formulario entero, al final de la pestaña Resumen. */
+/**
+ * «Editar todos los campos»: el formulario entero. Va plegado al final de la
+ * pestaña Resumen y no se descarga hasta que se despliega.
+ */
 export const EditorCompleto = dynamic(
   () => import("@/components/pursuits/pursuit-editor").then((modulo) => modulo.PursuitEditor),
   { loading: () => <PanelLoading height={420} /> },
 );
+
+/**
+ * La pestaña Precio: los escenarios, que ahora fijan la oferta prevista con un
+ * clic, y el simulador de puntuación. El lote va explícito desde el pursuit
+ * que la ficha ya tiene, en vez de que el panel lo vuelva a resolver por ruta.
+ */
+function PestanaPrecio({ pursuit }: { pursuit: Pursuit }) {
+  const actualizar = useUpdatePursuit(pursuit.id);
+  const usar = (precio: number) =>
+    actualizar.mutate(
+      { offer_price_eur: precio, expected_version: pursuit.version },
+      {
+        onSuccess: () => toast.success(`Oferta prevista: ${formatCurrency(precio)}`),
+        onError: (error) =>
+          toast.error(
+            error instanceof ApiError && error.status === 409
+              ? "Alguien del equipo la cambió mientras la tenías abierta"
+              : "No se pudo guardar la oferta prevista",
+            { description: error instanceof Error ? error.message : undefined },
+          ),
+      },
+    );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PriceScenariosPanel
+        licitacionId={pursuit.licitacion_id}
+        loteId={pursuit.lote_id ?? null}
+        loteNumero={pursuit.lote_numero ?? null}
+        ofertaPrevista={pursuit.offer_price_eur ?? null}
+        onUsarPrecio={usar}
+        usando={actualizar.isPending}
+      />
+      <Panel>
+        <SimuladorPuntuacion licitacionId={pursuit.licitacion_id} />
+      </Panel>
+    </div>
+  );
+}
 
 /** El contenido de las pestañas que no son la inicial. */
 export function PestanaDiferida({ tab, pursuit }: { tab: Exclude<TabKey, "resumen">; pursuit: Pursuit }) {
@@ -62,14 +107,7 @@ export function PestanaDiferida({ tab, pursuit }: { tab: Exclude<TabKey, "resume
         </>
       );
     case "precio":
-      return (
-        <>
-          <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />
-          <Panel className="mt-4">
-            <SimuladorPuntuacion licitacionId={pursuit.licitacion_id} />
-          </Panel>
-        </>
-      );
+      return <PestanaPrecio pursuit={pursuit} />;
     case "conversacion":
       return <PursuitCommentsThread pursuitId={pursuit.id} className="mx-auto h-full max-w-[760px]" />;
   }

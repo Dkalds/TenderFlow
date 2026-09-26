@@ -48,7 +48,7 @@ afterEach(() => mutateAsync.mockClear());
 describe("PursuitEditor — esquema", () => {
   it("un precio ilegible no se guarda y el error queda enlazado sin entrar en el nombre", async () => {
     render(<PursuitEditor pursuit={PURSUIT} />);
-    const precio = screen.getByLabelText("Precio ofertado (€)");
+    const precio = screen.getByLabelText("Oferta prevista (€)");
 
     fireEvent.change(precio, { target: { value: "12k" } });
     fireEvent.click(screen.getByRole("button", { name: /Guardar cambios/ }));
@@ -59,7 +59,7 @@ describe("PursuitEditor — esquema", () => {
     expect(precio).toHaveAttribute("aria-describedby", "pursuit-1-offer-price-error");
     // El nombre accesible (el que calcula el lector, no el texto del
     // `<label>`) sigue siendo solo la etiqueta: el error va `aria-hidden`.
-    expect(screen.getByRole("textbox", { name: "Precio ofertado (€)" })).toBe(precio);
+    expect(screen.getByRole("textbox", { name: "Oferta prevista (€)" })).toBe(precio);
     expect(mutateAsync).not.toHaveBeenCalled();
 
     // Corregido, se revalida al escribir y se guarda.
@@ -74,7 +74,13 @@ describe("PursuitEditor — esquema", () => {
   });
 
   it("un importe adjudicado negativo se para en cliente", async () => {
-    render(<PursuitEditor pursuit={PURSUIT} />);
+    // El importe adjudicado solo se edita con la oportunidad ganada: abierta,
+    // el cierre va por «Registrar resultado».
+    render(
+      <PursuitEditor
+        pursuit={{ ...PURSUIT, status: "won", decision: "go", decision_reason: "Encaja", outcome: "won" }}
+      />,
+    );
 
     fireEvent.change(screen.getByLabelText("Importe adjudicado (€)"), { target: { value: "-10" } });
     fireEvent.click(screen.getByRole("button", { name: /Guardar cambios/ }));

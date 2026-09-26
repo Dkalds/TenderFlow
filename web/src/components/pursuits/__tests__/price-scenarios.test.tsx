@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
@@ -55,7 +56,7 @@ const escenarios = {
   disclaimer: "Estos escenarios NO son una P(ganar) causal.",
 };
 
-function renderPanel(props: { licitacionId: string; loteId?: number | null }) {
+function renderPanel(props: ComponentProps<typeof PriceScenariosPanel>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -111,6 +112,42 @@ describe("PriceScenariosPanel", () => {
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalled());
     expect(url()).toBe("/api/v1/licitaciones/LIC-1/escenarios-precio");
     expect(await screen.findByText(/ya no figura publicado/)).toBeInTheDocument();
+  });
+});
+
+describe("PriceScenariosPanel — de escenario a oferta prevista", () => {
+  it("un escenario se fija como oferta prevista, en euros enteros", async () => {
+    fetchWithAuth.mockResolvedValue({
+      ...escenarios,
+      scenarios: [{ ...escenarios.scenarios[0], price_eur: 32000.4 }],
+    });
+    const onUsarPrecio = vi.fn();
+    renderPanel({ licitacionId: "LIC-1", loteId: null, ofertaPrevista: null, onUsarPrecio });
+
+    fireEvent.click(await screen.findByRole("button", { name: /como oferta prevista/ }));
+    expect(onUsarPrecio).toHaveBeenCalledWith(32000);
+  });
+
+  it("marca el escenario que ya es la oferta prevista, sin volver a ofrecerlo", async () => {
+    renderPanel({ licitacionId: "LIC-1", loteId: null, ofertaPrevista: 32000, onUsarPrecio: vi.fn() });
+
+    expect(await screen.findByText("Es la oferta prevista")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /como oferta prevista/ })).not.toBeInTheDocument();
+  });
+
+  it("sin a quién avisar no ofrece fijar nada", async () => {
+    renderPanel({ licitacionId: "LIC-1", loteId: null });
+    await screen.findByText("Central");
+    expect(screen.queryByRole("button", { name: /como oferta prevista/ })).not.toBeInTheDocument();
+  });
+
+  it("dice la cohorte y el cerrojo de la probabilidad sin jerga", async () => {
+    renderPanel({ licitacionId: "LIC-1", loteId: null });
+
+    expect(await screen.findByText("Comparables por: mismo CPV (4 dígitos) · importe parecido")).toBeInTheDocument();
+    expect(screen.getByText("Muestra de 12 adjudicaciones")).toBeInTheDocument();
+    expect(screen.getByText(/Todavía no calculamos la probabilidad de ganar/)).toBeInTheDocument();
+    expect(screen.queryByText(/outcomes|calibración|cpv4/)).not.toBeInTheDocument();
   });
 });
 

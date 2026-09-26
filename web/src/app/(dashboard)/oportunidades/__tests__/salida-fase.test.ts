@@ -86,8 +86,10 @@ describe("salidaDeFase", () => {
   });
 
   it("un pliego sin requisitos extraídos no se cuenta como contraste pendiente", () => {
+    // Lo que manda el backend para un pliego vacío: cuatro avisos de familia
+    // en `total_requisitos`, ninguno en `requisitos_extraidos`.
     const vacio = salidaDeFase(en({ status: "qualifying" }), {
-      contraste: { total_requisitos: 0, desconocido: 0 },
+      contraste: { requisitos_extraidos: 0, desconocido_extraidos: 0 },
     });
     expect(paso(vacio, "contraste")).toMatchObject({
       hecho: null,
@@ -95,12 +97,47 @@ describe("salidaDeFase", () => {
     });
 
     const conDudas = salidaDeFase(en({ status: "qualifying" }), {
-      contraste: { total_requisitos: 12, desconocido: 3 },
+      contraste: { requisitos_extraidos: 12, desconocido_extraidos: 3 },
     });
     expect(paso(conDudas, "contraste")).toMatchObject({
       hecho: false,
       detalle: "3 de 12 sin contrastar",
     });
+  });
+
+  it("cada hueco dice dónde se completa, y lo que depende de fuera no", () => {
+    const identificada = salidaDeFase(en({ status: "identified" }));
+    expect(paso(identificada, "responsable")?.lugar).toBe("responsable");
+    expect(paso(identificada, "proxima")?.lugar).toBe("proxima");
+    // El plazo lo publica el órgano: no hay nada que abrir en la ficha.
+    expect(paso(identificada, "plazo")?.lugar).toBeUndefined();
+
+    const decision = salidaDeFase(en({ status: "go_no_go" }));
+    expect(paso(decision, "oferta")?.lugar).toBe("oferta");
+    expect(paso(decision, "decision")?.lugar).toBe("decision");
+    expect(paso(decision, "motivo")?.lugar).toBe("decision");
+
+    const presentada = salidaDeFase(en({ status: "submitted", decision: "go" }));
+    expect(paso(presentada, "adjudicacion")?.lugar).toBeUndefined();
+
+    const ganada = salidaDeFase(en({ status: "won", decision: "go", outcome: "won" }));
+    expect(paso(ganada, "motivo")?.lugar).toBe("campos");
+    expect(paso(ganada, "importe")?.lugar).toBe("campos");
+
+    // Arrastrado desde una fase anterior, conserva su lugar.
+    const preparando = salidaDeFase(en({ status: "preparing", decision: "go", decision_reason: "Encaja" }));
+    expect(paso(preparando, "responsable")).toMatchObject({ hecho: false, lugar: "responsable" });
+  });
+
+  it("la oferta se llama igual en todas las fases", () => {
+    const textos = (["qualifying", "go_no_go", "preparing"] as const).map(
+      (status) => paso(salidaDeFase(en({ status, decision: "go" })), "oferta")?.texto,
+    );
+    expect(textos).toEqual([
+      "Oferta prevista estimada",
+      "Oferta prevista fijada",
+      "Oferta prevista con el precio final",
+    ]);
   });
 
   it("arrastra los huecos de las fases anteriores, diciendo de dónde vienen", () => {

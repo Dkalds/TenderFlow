@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { fireEvent, render, screen, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
@@ -52,6 +52,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
         familia: "certifications",
         etiqueta: "Certificaciones",
         veredicto: "cumple",
+        sin_hechos: false,
         items: [
           {
             familia: "certifications",
@@ -67,6 +68,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
         familia: "economic_solvency",
         etiqueta: "Solvencia económica",
         veredicto: "desconocido",
+        sin_hechos: false,
         items: [
           {
             familia: "economic_solvency",
@@ -89,6 +91,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
         familia: "technical_solvency",
         etiqueta: "Solvencia técnica",
         veredicto: "no_cumple",
+        sin_hechos: false,
         items: [
           {
             familia: "technical_solvency",
@@ -114,6 +117,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
         familia: "team_requirements",
         etiqueta: "Equipo requerido",
         veredicto: "cumple",
+        sin_hechos: false,
         items: [
           {
             familia: "team_requirements",
@@ -130,7 +134,30 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
     cumple: 2,
     no_cumple: 1,
     desconocido: 1,
+    requisitos_extraidos: 4,
+    desconocido_extraidos: 1,
     ...overrides,
+  };
+}
+
+type Familia = NonNullable<GoNoGoChecklist["familias"]>[number];
+
+/** El aviso que manda el backend por cada familia de la que no se sacó nada. */
+function familiaSinHechos(familia: Familia): Familia {
+  return {
+    ...familia,
+    veredicto: "desconocido",
+    sin_hechos: true,
+    items: [
+      {
+        familia: familia.familia,
+        requisito: familia.etiqueta,
+        veredicto: "desconocido",
+        motivo: `La ficha del pliego no extrajo ningún requisito de «${familia.etiqueta}».`,
+        evidencia: [],
+        dato_organizacion: null,
+      },
+    ],
   };
 }
 
@@ -239,6 +266,8 @@ describe("checklist go/no-go en la pestaña Decisión", () => {
         cumple: 0,
         no_cumple: 0,
         desconocido: 0,
+        requisitos_extraidos: 0,
+        desconocido_extraidos: 0,
       }),
     );
 
@@ -260,5 +289,74 @@ describe("checklist go/no-go en la pestaña Decisión", () => {
 
     await screen.findByText("Certificaciones");
     expect(fetchWithAuth).toHaveBeenCalledWith("/api/v1/pursuits/3/checklist?organization_id=7");
+  });
+});
+
+describe("checklist go/no-go — familias de las que la ficha no sacó nada", () => {
+  it("sin ningún requisito extraído lo dice en una línea: ni cuatro tarjetas ni el perfil", async () => {
+    const base = checklist();
+    renderChecklist(
+      checklist({
+        familias: (base.familias ?? []).map(familiaSinHechos),
+        total_requisitos: 4,
+        cumple: 0,
+        no_cumple: 0,
+        desconocido: 4,
+        requisitos_extraidos: 0,
+        desconocido_extraidos: 0,
+      }),
+    );
+
+    expect(
+      await screen.findByText(/no extrajo ningún requisito de «Certificaciones», «Solvencia económica», «Solvencia técnica» ni «Equipo requerido»/),
+    ).toBeInTheDocument();
+    // Los cuatro avisos del backend no son requisitos: ni recuento ni tarjetas.
+    expect(screen.queryByText(/requisitos extraídos del pliego:/)).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("group")).toHaveLength(0);
+    // Completar el perfil no arregla un pliego vacío: el enlace no se ofrece.
+    expect(screen.queryByRole("link", { name: /Completar el perfil de capacidad/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Esto no decide el go\/no-go/)).not.toBeInTheDocument();
+  });
+
+  it("con parte extraída, las familias vacías van en una línea aparte", async () => {
+    const base = checklist();
+    const [certificaciones, ...resto] = base.familias ?? [];
+    renderChecklist(
+      checklist({
+        familias: [familiaSinHechos(certificaciones), ...resto],
+        requisitos_extraidos: 3,
+        desconocido_extraidos: 1,
+      }),
+    );
+
+    expect(await screen.findByText(/De 3 requisitos extraídos del pliego/)).toBeInTheDocument();
+    expect(screen.getByText("Sin requisitos extraídos del pliego: «Certificaciones».")).toBeInTheDocument();
+    // La familia vacía no tiene tarjeta: su etiqueta solo sale en esa línea.
+    expect(screen.queryByText("Certificaciones", { selector: "summary span" })).not.toBeInTheDocument();
+    expect(screen.getByText("Solvencia económica", { selector: "summary span" })).toBeInTheDocument();
+  });
+
+  it("lleva a la pestaña Pliego cuando la ficha puede dar a dónde ir", async () => {
+    const base = checklist();
+    const onAbrirPliego = vi.fn();
+    fetchWithAuth.mockImplementation((url: string) =>
+      respuesta(
+        url,
+        checklist({
+          familias: (base.familias ?? []).map(familiaSinHechos),
+          requisitos_extraidos: 0,
+          desconocido_extraidos: 0,
+        }),
+      ),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChecklistGoNoGo pursuitId={3} licitacionId="LIC-1" onAbrirPliego={onAbrirPliego} />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir la pestaña «Pliego»" }));
+    expect(onAbrirPliego).toHaveBeenCalledTimes(1);
   });
 });

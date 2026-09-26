@@ -81,6 +81,29 @@ describe("SalidaDeFase", () => {
     );
   });
 
+  it("cada paso pendiente lleva a donde se completa; los hechos y los de fuera, no", () => {
+    const onCompletar = vi.fn();
+    render(
+      <SalidaDeFase
+        pursuit={en({ status: "identified", tender_deadline: null } as Partial<Pursuit>)}
+        onCompletar={onCompletar}
+      />,
+    );
+
+    // El nombre empieza por el verbo visible y dice de qué paso es.
+    fireEvent.click(screen.getByRole("button", { name: "Asignar: Responsable asignado" }));
+    expect(onCompletar).toHaveBeenLastCalledWith("responsable");
+    fireEvent.click(screen.getByRole("button", { name: "Añadir: Próxima acción planificada" }));
+    expect(onCompletar).toHaveBeenLastCalledWith("proxima");
+    // La fecha límite la publica el órgano: pendiente, pero sin botón.
+    expect(screen.queryByRole("button", { name: /Fecha límite conocida/ })).not.toBeInTheDocument();
+  });
+
+  it("sin a quién avisar no pinta botones de completar", () => {
+    render(<SalidaDeFase pursuit={en({ status: "identified" })} />);
+    expect(screen.queryByRole("button", { name: /^Asignar/ })).not.toBeInTheDocument();
+  });
+
   // El diálogo se carga bajo demanda (`next/dynamic`), para no meter el
   // `Dialog` de Radix en el First Load de la ruta: por eso se espera.
   it("desde Presentada, la salida es registrar el resultado y abre el diálogo", async () => {
