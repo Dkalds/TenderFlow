@@ -1,0 +1,87 @@
+{
+  "cuenta": {
+    "id": 7,
+    "organization_id": 21,
+    "nombre": "Ayuntamiento de Madrid",
+    "organo_nombre": "Área de Gobierno de Economía, Innovación y Hacienda del Ayuntamiento de Madrid",
+    "organo_norm": "area de gobierno de economia, innovacion y hacienda del ayuntamiento de madrid",
+    "organo_id": null,
+    "organos": [
+      {
+        "id": 70,
+        "organo_nombre": "Área de Gobierno de Economía, Innovación y Hacienda del Ayuntamiento de Madrid",
+        "organo_norm": "area de gobierno de economia, innovacion y hacienda del ayuntamiento de madrid",
+        "organo_id": null
+      },
+      {
+        "id": 71,
+        "organo_nombre": "Organismo Autónomo Informática del Ayuntamiento de Madrid",
+        "organo_norm": "organismo autonomo informatica del ayuntamiento de madrid",
+        "organo_id": null
+      }
+    ],
+    "created_by_user_id": 1,
+    "created_at": "2026-09-25T10:00:00+00:00",
+    "nota": "Renueva el mantenimiento en marzo"
+  },
+  "publicaciones": {
+    "ambito": {
+      "universo": "Licitaciones tecnológicas de los órganos de la cuenta, sin duplicados confirmados. No suma las fuentes regionales que publican el censo completo de su comunidad.",
+      "ventana": "Vistas por primera vez en los últimos 90 días."
+    },
+    "total": 1,
+    "items": [
+      {
+        "id_externo": "3561/2026",
+        "titulo": "Soporte y evolución de SAP S/4HANA",
+        "organo": "Organismo Autónomo Informática del Ayuntamiento de Madrid",
+        "importe": 480000.0,
+        "importe_tipo": "sin_iva",
+        "fecha_publicacion": "2026-09-20",
+        "fecha_limite": "2026-10-15",
+        "primera_extraccion": "2026-09-20T06:00:00+00:00",
+        "url": "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=ejemplo",
+        "abierta": true
+      }
+    ]
+  },
+  "vencimientos": {
+    "ambito": {
+      "universo": "Contratos adjudicados de los órganos de la cuenta, en el mismo universo que las licitaciones. Un contrato con varios adjudicatarios cuenta una vez.",
+      "ventana": "Fecha de fin entre hoy y dentro de 12 meses. La mayoría se estima con la duración del contrato."
+    },
+    "total": 1,
+    "items": [
+      {
+        "licitacion_id": "118/2023",
+        "titulo": "Mantenimiento del ERP municipal",
+        "organo": "Área de Gobierno de Economía, Innovación y Hacienda del Ayuntamiento de Madrid",
+        "empresa_id": 4410,
+        "empresa": "Consultora Ejemplo SA",
+        "importe_adjudicado": 350000.0,
+        "fecha_fin": "2027-03-31",
+        "fecha_fin_origen": "estimada_inicio"
+      }
+    ]
+  },
+  "oportunidades": {
+    "ambito": {
+      "universo": "Oportunidades de tu organización sobre expedientes de los órganos de la cuenta.",
+      "ventana": "Todas: primero las activas, por la próxima acción que antes vence."
+    },
+    "activas": 1,
+    "items": [
+      {
+        "id": 12,
+        "licitacion_id": "3561/2026",
+        "lote_numero": null,
+        "titulo": "Soporte y evolución de SAP S/4HANA",
+        "status": "qualifying",
+        "activa": true,
+        "next_action": "Pedir reunión con la jefa de servicio",
+        "next_action_due": "2026-09-30",
+        "responsable": "Ana"
+      }
+    ]
+  }
+}

@@ -18,10 +18,17 @@
  * cada pantalla sigue leyendo de su tabla. Mover la lectura antes convertiría
  * un fallo del backfill en favoritos que desaparecen.
  *
- * Así que hoy esto sirve para lo que antes no se podía hacer —seguir un órgano
- * y un CPV—, y mañana, con la paridad medida, será también el camino de las
- * otras tres. Por eso el hook ya se escribe genérico en `target_type` en vez de
- * uno por tipo: el día de la migración no hay que reescribirlo.
+ * Así que hoy esto sirve para lo que antes no se podía hacer —seguir un CPV—, y
+ * mañana, con la paridad medida, será también el camino de las otras tres. Por
+ * eso el hook ya se escribe genérico en `target_type` en vez de uno por tipo:
+ * el día de la migración no hay que reescribirlo.
+ *
+ * Los **órganos** no pasan por aquí desde la interfaz, aunque `organo` sea un
+ * `target_type` válido. El seguimiento de órgano con efectos es la cuenta
+ * objetivo de la organización (`use-cuentas.ts`, F1.5); una fila `organo` de
+ * `follows` es personal y nada la lee. Hasta 2026-09-25 el botón del panel de
+ * órgano de Mercado escribía aquí, no avisaba a nadie y aun así contaba como
+ * `organo_seguido`.
  */
 "use client";
 
@@ -29,7 +36,6 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { toast } from "sonner";
 
 import { apiGet, apiMutate } from "@/lib/api-client";
-import { registrarEvento } from "@/lib/analytics";
 
 /** Enumeración cerrada de ADR-031 §A; la base la valida con un `CHECK`. */
 export type TargetType = "licitacion" | "lote" | "empresa" | "organo" | "cpv";
@@ -130,15 +136,10 @@ export function useSeguir(tipo: TargetType, kind: FollowKind = "seguir") {
       qc.setQueryData(clave, ctx?.previo);
       toast.error("No se pudo guardar el seguimiento");
     },
-    onSuccess: () => {
-      // El evento se emite tras el 200 y no antes: contar los intentos
-      // fallidos como uso es el error que ya se corrigió en las descargas.
-      // `organo_seguido` es el evento de F1.5 y su vocabulario es cerrado:
-      // seguir / dejar_de_seguir. Un descarte NO es «dejar de seguir», así que
-      // no se mide aquí — cuando el radar pase por este hook necesitará su
-      // propio valor, y eso es una decisión de telemetría, no de plumbing.
-      if (kind === "seguir") registrarEvento("organo_seguido", { accion: "seguir" });
-    },
+    // Sin telemetría. Emitía `organo_seguido` con cualquier `kind: "seguir"`
+    // —también con un CPV—, y ese evento mide si se trabaja por cuentas: lo
+    // emite `use-cuentas.ts`, que es donde seguir un órgano tiene efecto. Si un
+    // tipo de aquí necesita medirse, será con su propio evento.
     onSettled: () => void qc.invalidateQueries({ queryKey: clave }),
   });
 }
@@ -163,9 +164,6 @@ export function useDejarDeSeguir(tipo: TargetType, kind: FollowKind = "seguir") 
     onError: (_err, _targetId, ctx) => {
       qc.setQueryData(clave, ctx?.previo);
       toast.error("No se pudo dejar de seguir");
-    },
-    onSuccess: () => {
-      if (kind === "seguir") registrarEvento("organo_seguido", { accion: "dejar_de_seguir" });
     },
     onSettled: () => void qc.invalidateQueries({ queryKey: clave }),
   });

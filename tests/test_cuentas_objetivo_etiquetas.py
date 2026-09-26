@@ -26,7 +26,7 @@ aislamiento apuntan a uno: los de unicidad por organización y el de
 o revocada, a ``resolve_organization``. Los que intentan borrar o escribir sin
 permiso comprueban después, desde el dueño, que nada cambió: un 404 que en
 realidad borró algo es el peor fallo posible de estas rutas, porque la
-respuesta dice que no pasó nada. La excepción son los ``xfail`` del 403 del
+respuesta dice que no pasó nada. La excepción son los tests del 403 del
 viewer, que sólo miran el código de estado; que el viewer no escribió nada lo
 fija ``test_un_viewer_no_puede_escribir_nada_en_la_cartera``.
 
@@ -36,17 +36,18 @@ la carrera de ``crear_etiqueta``, que con ``monkeypatch`` hacen que la búsqueda
 por nombre no vea una etiqueta que sí está en la base: es el orden de lecturas
 que produce la concurrencia real, sin hilos. Lo que se rechaza antes de llegar
 al servicio (401 y 422) está en ``test_cuentas_objetivo_rechazos.py``, sin
-base; aquí sólo queda el byte NUL, que hoy no se rechaza y llega a Postgres.
+base; aquí queda el byte NUL, que se fija contra Postgres porque hasta
+2026-09-25 llegaba a él.
 
-Los ``xfail`` estrictos fijan tres bugs abiertos. Los que abarcan varios campos
-o rutas van un caso por parámetro: si se arregla sólo uno, su XPASS estricto
-obliga a quitar esa marca aunque los demás sigan rotos. Siembran por
-repositorio y comprueban sus precondiciones con ``pytest.fail``, no con
-``assert``: un fallo preparando los datos tiene que salir como fallo, no quedar
-absorbido como XFAIL por ``raises=AssertionError``. Por lo mismo, antes de su
-``assert`` final descartan con ``pytest.fail`` cualquier resultado que no sea
-ni el correcto ni el del bug documentado: un viewer que recibe un 201 es otro
-fallo, y no puede pasar por el XFAIL del 500.
+Este fichero tuvo tres ``xfail`` estrictos, arreglados los tres el 2026-09-25:
+el 500 del viewer que escribe, las etiquetas huérfanas al dejar de seguir una
+cuenta y el byte NUL que salía como 500. Los tests que los fijaban siguen aquí,
+ya sin marca. Siembran por repositorio y comprueban sus precondiciones con
+``pytest.fail``, no con ``assert``: un fallo preparando los datos tiene que
+salir como fallo y no confundirse con el que el test vigila.
+
+Las cuentas de varios órganos (v145), su ficha y el buscador del alta están en
+``test_cuentas_organos.py``.
 """
 
 from __future__ import annotations
@@ -243,7 +244,7 @@ def _por_objeto(
     return dict(resp.json()["por_objeto"])
 
 
-# ── Siembra sin HTTP, para los xfail ────────────────────────────────────────
+# ── Siembra sin HTTP ────────────────────────────────────────────────────────
 
 
 def _etiqueta_en_bd(organization_id: int, nombre: str, autor: int) -> int:
@@ -272,18 +273,12 @@ def _sembrar_cartera(e: Equipos) -> tuple[int, int]:
     return int(cuenta["id"]), etiqueta_id
 
 
-def _solo_el_fallo_documentado(resp: Respuesta, *, correcto: int, del_bug: int) -> None:
-    """Acota lo que el ``assert`` de un xfail puede absorber al bug que documenta.
-
-    ``raises=AssertionError`` convierte en XFAIL cualquier ``assert`` fallido.
-    Un código que no es ni el correcto ni el del bug es un fallo distinto, y
-    sale como fallo.
-    """
-    if resp.status_code not in (correcto, del_bug):
-        pytest.fail(
-            f"ni {correcto} (arreglado) ni {del_bug} (el bug del xfail): "
-            f"{resp.status_code} {resp.text}"
-        )
+def _primer_organo(organization_id: int, cuenta_id: int) -> int:
+    """Id en ``cuenta_organos`` del primer órgano de una cuenta sembrada."""
+    cuenta = CuentasRepository().get(organization_id, cuenta_id)
+    if cuenta is None or not cuenta["organos"]:
+        pytest.fail(f"siembra: la cuenta {cuenta_id} no tiene órganos")
+    return int(cuenta["organos"][0]["id"])
 
 
 # ── Cuentas objetivo: camino feliz ──────────────────────────────────────────
@@ -342,6 +337,31 @@ def test_las_cuentas_se_listan_por_nombre(como: Como) -> None:
     ]
 
 
+def test_filtrar_por_organo_encuentra_la_cuenta_escrita_de_otra_forma(como: Como) -> None:
+    """La pregunta del botón «Seguir» de Mercado: ¿este órgano ya es cuenta?
+
+    El panel pregunta con la grafía del expediente, y la cuenta pudo crearse
+    tecleando otra en /cuentas: tiene que casar el nombre plegado, que es la
+    clave de la cuenta. Y sólo en la organización pedida: que la B siga un
+    órgano no hace que la A lo siga. Pregunta el viewer porque es una lectura;
+    el botón también le tiene que decir en qué estado está.
+    """
+    e = _equipos()
+    cuenta = _seguir(como(e.owner_a), e.org_a, "Ayuntamiento de Alcalá")
+    _seguir(como(e.owner_a), e.org_a, "Ayuntamiento de Burgos")
+    _seguir(como(e.owner_b), e.org_b, "Ayuntamiento de Getafe")
+    http = como(e.viewer_a)
+
+    def _de_organo(organo: str) -> list[dict[str, Any]]:
+        resp = http.get(_CUENTAS, params={**_org(e.org_a), "organo": organo})
+        assert resp.status_code == 200, resp.text
+        return list(resp.json())
+
+    assert [c["id"] for c in _de_organo("  AYUNTAMIENTO DE ALCALA ")] == [cuenta["id"]]
+    assert _de_organo("Ayuntamiento de Getafe") == []
+    assert _de_organo("Ayuntamiento de Soria") == []
+
+
 def test_dejar_de_seguir_borra_la_cuenta_y_repetirlo_es_404(como: Como) -> None:
     e = _equipos()
     cuenta = _seguir(como(e.owner_a), e.org_a, "Ayuntamiento de Getafe")
@@ -358,30 +378,19 @@ def test_dejar_de_seguir_borra_la_cuenta_y_repetirlo_es_404(como: Como) -> None:
     assert otra_vez.status_code == 404
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "etiquetas_aplicadas no tiene FK al objeto (v105), así que ninguna "
-        "cascada de la base limpia sus aplicaciones, y "
-        "services.cuentas.dejar_de_seguir sólo llama a CuentasRepository.unfollow, "
-        "que borra de cuentas_objetivo: las aplicaciones con objeto_tipo='cuenta' "
-        "de esa cuenta quedan huérfanas."
-    ),
-)
 def test_dejar_de_seguir_una_cuenta_se_lleva_sus_etiquetas(como: Como) -> None:
     """Etiquetar una cuenta usa su id como ``objeto_id``, sin FK que limpie.
 
     ``shared/dto.py`` lo avisa junto a ``ObjetoEtiquetable``: añadir un tipo
     exige decidir cómo se limpia al borrar el objeto. Para ``cuenta`` no se
-    hizo, y ``objetos_con_etiqueta`` —el filtro «por etiqueta» del
-    repositorio— sigue devolviendo el id de la cuenta borrada.
+    hizo hasta 2026-09-25, y ``objetos_con_etiqueta`` —el filtro «por
+    etiqueta» del repositorio— seguía devolviendo el id de la cuenta borrada.
+    Ahora ``CuentasRepository.unfollow`` las borra en la misma transacción.
 
     También fija el alcance del arreglo. La misma etiqueta va aplicada a otra
     cuenta y a una oportunidad con el mismo ``objeto_id`` que la borrada: un
     borrado que no filtre por ``objeto_tipo`` o por ``objeto_id`` se las
-    llevaría, y eso sale como fallo por ``pytest.fail``, no como el XPASS del
-    arreglo correcto.
+    llevaría.
     """
     e = _equipos()
     etiquetas = EtiquetasRepository()
@@ -416,10 +425,6 @@ def test_dejar_de_seguir_una_cuenta_se_lleva_sus_etiquetas(como: Como) -> None:
     if oportunidades != [borrada_id]:
         pytest.fail(f"se borró la etiqueta de la oportunidad con el mismo id: {oportunidades}")
     cuentas_etiquetadas = set(etiquetas.objetos_con_etiqueta(e.org_a, etiqueta_id, "cuenta"))
-    if otra_id not in cuentas_etiquetadas:
-        pytest.fail(f"se borró la etiqueta de otra cuenta: {sorted(cuentas_etiquetadas)}")
-    if cuentas_etiquetadas not in ({otra_id}, {otra_id, borrada_id}):
-        pytest.fail(f"ni limpio ni la huérfana del bug: {sorted(cuentas_etiquetadas)}")
     assert cuentas_etiquetadas == {otra_id}
 
 
@@ -677,59 +682,33 @@ def test_aplicar_una_etiqueta_que_no_existe_no_cambia_nada(como: Como) -> None:
 _NUL = "EXP" + chr(0) + "1"
 
 
-def _xfail_nul(campo: str) -> pytest.MarkDecorator:
-    return pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason=(
-            f"{campo} es `str` y no `SafeStr` en shared/dto.py: el NUL llega a "
-            "psycopg y sale como 500 (DataError)."
-        ),
-    )
-
-
 @pytest.mark.parametrize(
     ("ruta", "cuerpo"),
     [
-        pytest.param(
-            _CUENTAS,
-            {"organo": _NUL},
-            id="organo",
-            marks=_xfail_nul("CuentaObjetivoCreate.organo"),
-        ),
-        pytest.param(
-            _CUENTAS,
-            {"organo": "Ayuntamiento de Soria", "nota": _NUL},
-            id="nota",
-            marks=_xfail_nul("CuentaObjetivoCreate.nota"),
-        ),
-        pytest.param(
-            _ETIQUETAS,
-            {"nombre": _NUL},
-            id="nombre",
-            marks=_xfail_nul("EtiquetaCreate.nombre"),
-        ),
+        pytest.param(_CUENTAS, {"organo": _NUL}, id="organo"),
+        pytest.param(_CUENTAS, {"organo": "Ayuntamiento de Soria", "nota": _NUL}, id="nota"),
+        pytest.param(_CUENTAS, {"organos": ["Ayuntamiento de Soria", _NUL]}, id="organos"),
+        pytest.param(_ETIQUETAS, {"nombre": _NUL}, id="nombre"),
         pytest.param(
             f"{_ETIQUETAS}/aplicar",
             {"objeto_tipo": "oportunidad", "objeto_id": _NUL},
             id="aplicar-objeto_id",
-            marks=_xfail_nul("EtiquetaAplicacion.objeto_id"),
         ),
         pytest.param(
             f"{_ETIQUETAS}/quitar",
             {"objeto_tipo": "oportunidad", "objeto_id": _NUL},
             id="quitar-objeto_id",
-            marks=_xfail_nul("EtiquetaAplicacion.objeto_id"),
         ),
     ],
 )
 def test_un_byte_nul_en_un_texto_del_cuerpo_es_422(
     como: Como, sin_relanzar: TestClient, ruta: str, cuerpo: dict[str, Any]
 ) -> None:
-    """Lo mismo que ``por-objeto`` ya resuelve con ``SafeStr``, campo a campo.
+    """Lo mismo que ``por-objeto`` ya resolvía con ``SafeStr``, campo a campo.
 
-    Aplicar y quitar usan una etiqueta que existe, para que el NUL sea lo único
-    anómalo de la petición.
+    Hasta 2026-09-25 estos campos eran ``str`` y el NUL llegaba a psycopg y
+    salía como 500 (``DataError``). Aplicar y quitar usan una etiqueta que
+    existe, para que el NUL sea lo único anómalo de la petición.
     """
     e = _equipos()
     if "objeto_id" in cuerpo:
@@ -738,7 +717,6 @@ def test_un_byte_nul_en_un_texto_del_cuerpo_es_422(
 
     resp = sin_relanzar.post(ruta, params=_org(e.org_a), json=cuerpo)
 
-    _solo_el_fallo_documentado(resp, correcto=422, del_bug=500)
     assert resp.status_code == 422, resp.text
 
 
@@ -1000,10 +978,14 @@ def test_un_viewer_lee_la_cartera_del_equipo(como: Como) -> None:
     assert list(_por_objeto(viewer, e.org_a, ["17"])) == ["17"]
 
 
-#: Las seis escrituras de la cartera, por nombre para poder parametrizarlas
-#: antes de que existan los ids de la cuenta y la etiqueta.
+#: Las nueve escrituras de la cartera, por nombre para poder parametrizarlas
+#: antes de que existan los ids de la cuenta, su órgano y la etiqueta.
 _ESCRITURAS = (
     "POST-cuentas",
+    "POST-cuenta-varios-organos",
+    "PATCH-cuenta",
+    "POST-organos",
+    "DELETE-organo",
     "DELETE-cuenta",
     "POST-etiquetas",
     "DELETE-etiqueta",
@@ -1013,11 +995,20 @@ _ESCRITURAS = (
 
 
 def _escrituras_del_viewer(
-    cuenta_id: int, etiqueta_id: int
+    cuenta_id: int, etiqueta_id: int, organo_id: int
 ) -> dict[str, tuple[str, str, dict[str, Any] | None]]:
+    cuenta = f"{_CUENTAS}/{cuenta_id}"
     return {
         "POST-cuentas": ("post", _CUENTAS, {"organo": "Ayuntamiento de Viewer"}),
-        "DELETE-cuenta": ("delete", f"{_CUENTAS}/{cuenta_id}", None),
+        "POST-cuenta-varios-organos": (
+            "post",
+            _CUENTAS,
+            {"nombre": "Cliente del viewer", "organos": ["Órgano del viewer"]},
+        ),
+        "PATCH-cuenta": ("patch", cuenta, {"nota": "Del viewer"}),
+        "POST-organos": ("post", f"{cuenta}/organos", {"organos": ["Otro órgano"]}),
+        "DELETE-organo": ("delete", f"{cuenta}/organos/{organo_id}", None),
+        "DELETE-cuenta": ("delete", cuenta, None),
         "POST-etiquetas": ("post", _ETIQUETAS, {"nombre": "Del viewer"}),
         "DELETE-etiqueta": ("delete", f"{_ETIQUETAS}/{etiqueta_id}", None),
         "POST-aplicar": ("post", f"{_ETIQUETAS}/aplicar", _aplicacion(etiqueta_id, "99")),
@@ -1030,14 +1021,17 @@ def test_un_viewer_no_puede_escribir_nada_en_la_cartera(
 ) -> None:
     """Lo que no puede pasar, se traduzca el rechazo como se traduzca.
 
-    El servicio resuelve con ``write=True`` en las seis escrituras; si alguna
+    El servicio resuelve con ``write=True`` en todas las escrituras; si alguna
     se quedara en lectura, un viewer podría borrar la cartera del equipo.
     """
     e = _equipos()
     cuenta_id, etiqueta_id = _sembrar_cartera(e)
+    organo_id = _primer_organo(e.org_a, cuenta_id)
+    antes = _cuentas(como(e.owner_a), e.org_a)
 
     como(e.viewer_a)
-    for nombre, (metodo, ruta, cuerpo) in _escrituras_del_viewer(cuenta_id, etiqueta_id).items():
+    escrituras = _escrituras_del_viewer(cuenta_id, etiqueta_id, organo_id)
+    for nombre, (metodo, ruta, cuerpo) in escrituras.items():
         resp = sin_relanzar.request(metodo.upper(), ruta, params=_org(e.org_a), json=cuerpo)
         assert not resp.is_success, f"{nombre} -> {resp.status_code}"
         # Un 404 o un `cambiado: false` también serían «no hice nada», pero
@@ -1045,35 +1039,32 @@ def test_un_viewer_no_puede_escribir_nada_en_la_cartera(
         assert resp.status_code not in (404, 422), nombre
 
     owner = como(e.owner_a)
-    assert [c["id"] for c in _cuentas(owner, e.org_a)] == [cuenta_id]
+    # La cuenta entera —nombre, nota y órganos—, no sólo que siga existiendo.
+    assert _cuentas(owner, e.org_a) == antes
     assert [x["id"] for x in _etiquetas(owner, e.org_a)] == [etiqueta_id]
     assert list(_por_objeto(owner, e.org_a, ["17", "99"])) == ["17"]
 
 
-_XFAIL_VIEWER = pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "api/routes/cuentas.py sólo captura OrganizationAccessError; el "
-        "OrganizationPermissionError del viewer sale por el handler genérico "
-        "como 500 en vez del 403 que la propia ruta documenta."
-    ),
-)
-
-
-@pytest.mark.parametrize(
-    "escritura", [pytest.param(nombre, marks=_XFAIL_VIEWER) for nombre in _ESCRITURAS]
-)
+@pytest.mark.parametrize("escritura", _ESCRITURAS)
 def test_un_viewer_que_intenta_escribir_recibe_403(
     como: Como, sin_relanzar: TestClient, escritura: str
 ) -> None:
-    """Un caso por ruta: si se arreglan sólo algunas, su XPASS estricto lo dice."""
+    """Un caso por ruta, contra Postgres y con la membresía de verdad.
+
+    Hasta 2026-09-25 las seis salían como 500 (eran ``xfail`` estrictos): las
+    rutas sólo capturaban ``OrganizationAccessError`` y el viewer lanza su
+    hermano ``OrganizationPermissionError``. Importa más desde que el botón
+    «Seguir» del panel de órgano de Mercado escribe en /cuentas: el viewer que
+    lo pulse tiene que leer que su rol es de sólo lectura, no un error del
+    servidor. La traducción, ruta a ruta y sin base, está en
+    ``test_cuentas_objetivo_rechazos.py``.
+    """
     e = _equipos()
     cuenta_id, etiqueta_id = _sembrar_cartera(e)
-    metodo, ruta, cuerpo = _escrituras_del_viewer(cuenta_id, etiqueta_id)[escritura]
+    organo_id = _primer_organo(e.org_a, cuenta_id)
+    metodo, ruta, cuerpo = _escrituras_del_viewer(cuenta_id, etiqueta_id, organo_id)[escritura]
     como(e.viewer_a)
 
     resp = sin_relanzar.request(metodo.upper(), ruta, params=_org(e.org_a), json=cuerpo)
 
-    _solo_el_fallo_documentado(resp, correcto=403, del_bug=500)
     assert resp.status_code == 403, resp.text

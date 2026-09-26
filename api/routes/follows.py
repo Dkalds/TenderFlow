@@ -8,6 +8,19 @@ que el producto pide desde hace meses no existían **porque habrían necesitado
 una cuarta y una quinta tabla**: seguir un órgano de contratación y seguir un
 CPV. Aquí son una fila.
 
+Órganos: la interfaz no escribe aquí
+------------------------------------
+El «seguir un órgano» con efectos es la **cuenta objetivo** de la organización
+(`/cuentas`, F1.5): avisa a todo el equipo de publicaciones nuevas y de
+vencimientos, y entra en el cruce de las alertas de competidores. Una fila
+`organo` de esta tabla es personal y ningún productor de avisos la lee, así que
+el botón «Seguir» del panel de órgano de Mercado va a `/cuentas` (ver
+`web/src/hooks/use-seguimiento.ts`). Este endpoint sigue aceptando `organo`
+porque el tipo está en la enumeración de ADR-031 §A y en el contrato público,
+pero hasta que `follows` sepa guardar un seguimiento de organización —que es lo
+que T1 necesita para absorber `cuentas_objetivo`— seguir un órgano por aquí no
+avisa de nada.
+
 Qué NO hace todavía
 -------------------
 No sustituye a los tres juegos de endpoints antiguos. Está en la fase aditiva

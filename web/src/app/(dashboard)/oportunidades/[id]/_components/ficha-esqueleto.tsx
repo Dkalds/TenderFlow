@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 export function FichaEsqueleto() {
   return (
-    <div data-slot="ficha-esqueleto" className="flex h-[calc(100vh-52px)] min-h-0 flex-col gap-3 p-4">
+    <div data-slot="ficha-esqueleto" className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0 flex-col gap-3 p-4">
       <Skeleton className="h-24 w-full rounded-xl" />
       <Skeleton className="h-[360px] w-full rounded-xl" />
     </div>

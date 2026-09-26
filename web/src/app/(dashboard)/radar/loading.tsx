@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 export default function RadarLoading() {
   return (
-    <div className="flex h-[calc(100vh-52px)] min-h-0">
+    <div className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0">
       <section className="xl:border-border/70 flex min-w-0 flex-1 flex-col xl:border-r">
         <div className="border-border/60 flex min-h-11 flex-none items-center gap-2 border-b px-3 py-2 md:px-3.5 lg:h-11 lg:py-0">
           {Array.from({ length: 4 }, (_, index) => (

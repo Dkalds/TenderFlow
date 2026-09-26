@@ -277,6 +277,11 @@ def emitir_avisos_de_cuentas(ahora: datetime | None = None) -> int:
         organization_id = int(fila["organization_id"])
         id_externo = str(fila["id_externo"])
         organo = str(fila.get("organo_nombre") or "")
+        # El titular nombra al cliente, no al órgano: en una cuenta de varios
+        # órganos (v145) «Área de Gobierno de Economía… del Ayuntamiento de
+        # Madrid» dice menos que «Ayuntamiento de Madrid». En una de uno solo
+        # son el mismo nombre.
+        cuenta = str(fila.get("cuenta_nombre") or organo)
         append_domain_event(
             "cuenta.publicacion_nueva",
             id_externo,
@@ -287,9 +292,10 @@ def emitir_avisos_de_cuentas(ahora: datetime | None = None) -> int:
                 "titulo": fila.get("titulo"),
                 "organo": organo,
                 "cuenta_id": int(fila["cuenta_id"]),
+                "cuenta_nombre": cuenta or None,
                 "importe": fila.get("importe"),
                 "fecha_limite": fila.get("fecha_limite"),
-                "aviso_titulo": f"Publicación nueva de {organo}" if organo else None,
+                "aviso_titulo": f"Publicación nueva de {cuenta}" if cuenta else None,
                 "organization_id": organization_id,
                 "seguidores": _miembros(organization_id, miembros),
             },
@@ -326,6 +332,7 @@ def emitir_vencimientos_de_cuentas() -> int:
         if any((ev.get("payload") or {}).get("fecha_fin") == fecha_fin for ev in previos):
             continue
         organo = str(fila.get("organo_nombre") or "")
+        cuenta = str(fila.get("cuenta_nombre") or organo)
         append_domain_event(
             "cuenta.vencimiento_proximo",
             agregado,
@@ -336,8 +343,9 @@ def emitir_vencimientos_de_cuentas() -> int:
                 "titulo": fila.get("titulo"),
                 "organo": organo,
                 "cuenta_id": cuenta_id,
+                "cuenta_nombre": cuenta or None,
                 "fecha_fin": fecha_fin,
-                "aviso_titulo": f"Vence en seis meses un contrato de {organo}" if organo else None,
+                "aviso_titulo": f"Vence en seis meses un contrato de {cuenta}" if cuenta else None,
                 "aviso_detalle": f"Fin previsto el {fecha_fin}.",
                 "organization_id": organization_id,
                 "seguidores": _miembros(organization_id, miembros),
