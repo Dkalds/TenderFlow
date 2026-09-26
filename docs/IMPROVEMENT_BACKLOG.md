@@ -275,8 +275,9 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   (RFC [2026-09-26](rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md)); falta
   ejecutarla, y eso lo decide el propietario.
 - **Acceptance criteria:**
-  - Dry-run revisado, con la pregunta abierta del RFC decidida: las ~30.500 filas
-    con CPV 48/72 sin keyword se borran (D24 tal cual) o se conservan.
+  - ~~Dry-run revisado y pregunta abierta decidida~~ (2026-09-26): primer dry-run en
+    producción hecho; lo que es TI solo por CPV 48/72 **se conserva** (RFC). Falta
+    repetir el dry-run con la regla ampliada.
   - `--apply` ejecutado y PSCP reingerida entera (`--desde 2000-01-01`) para
     refrescar las etiquetas desactualizadas; balance y delta de
     `make audit-truth-check` anotados en el RFC, que pasa a `implemented`.

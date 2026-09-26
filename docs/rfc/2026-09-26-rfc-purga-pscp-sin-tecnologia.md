@@ -64,9 +64,13 @@ PSCP es tecnología:
    diccionario vigente. («desenvolupament d’aplicacions», con U+2019, es como
    escribe la PSCP; el diccionario usa el apóstrofo recto y no casaba nunca).
 2. Si **todo** lo que casó son keywords ambiguas y el CPV existe sin ningún
-   código 48/72, se descarta. Sin CPV, o con una sola keyword no ambigua, entra
-   como antes: los contratos menores traen CPV absurdos (licencias de Office 365
-   codificadas como obra de puentes) y una keyword de fabricante es mejor señal.
+   código que las corrobore, se descarta. Sin CPV, o con una sola keyword no
+   ambigua, entra como antes: los contratos menores traen CPV absurdos
+   (licencias de Office 365 codificadas como obra de puentes) y una keyword de
+   fabricante es mejor señal. Qué CPV corrobora se amplió tras el primer
+   dry-run (ver «Decisión sobre lo que es TI solo por CPV»).
+3. Sin keyword, entra sin etiquetas si algún CPV es 48/72 (añadida tras el
+   primer dry-run, misma sección).
 
 El conector la aplica en `parse` y cuenta el descarte nuevo
 (`pscp_keyword_ambigua_sin_cpv_ti`) junto a `pscp_sin_senal_tecnologica` en el
@@ -130,15 +134,40 @@ reingiere desde cualquier fecha, y la reingesta pasa por la misma puerta. Lo que
 no vuelve igual es lo derivado (historial de cambios, eventos de contrato,
 enlaces de dedupe), que se recalcula al reingerir.
 
-## Pregunta abierta para el propietario
+## Decisión sobre lo que es TI solo por CPV (2026-09-26, tras el primer dry-run)
 
-Unas **30.500 filas** de PSCP sin keyword tienen CPV 48/72 (software y servicios
-TI): licencias de STATA o Autodesk, renovaciones de dominio, pero también «Servei
-consultoria implantació CRM» o «Manteniment aplicacions informàtiques». Con D24
-tal cual, **se borran** (salvo las que el diccionario de hoy reconoce). PLACSP
-las conserva como `cpv_ti_universe`. El dry-run las cuenta aparte
-(«de ellas con CPV 48/72») con ejemplos; si se prefiere conservarlas, es añadir
-esa regla a `senal_tecnologica` antes del `--apply`, o reingerirlas después.
+El primer dry-run en producción (run `36270752847`, solo lectura) dio:
+
+| | Filas |
+|---|---:|
+| Filas de PSCP | 685.501 |
+| Se conservaban | 8.324 (6.800 con etiquetas desactualizadas) |
+| Se borraban | 677.177 |
+| · sin señal | 675.534 |
+| · keyword ambigua con CPV que la contradice | 1.643 |
+| · de las borradas, con CPV 48/72 | 27.116 |
+| Protegidas | 0 |
+
+Entre las 27.116 con CPV 48/72 había software real: licencias de Google
+Workspace, Factorial, Xen Orchestra, el mantenimiento de una plataforma de
+gestión documental. Y entre las ambiguas descartadas, equipo informático:
+«Ampliació Cabina Backup del CPD» (302), «Manteniment equipament hardware del
+CPD» (50312610).
+
+El propietario elige **conservarlas**, y la puerta cambia en consecuencia (en
+el conector, no solo en la purga, para que la base de datos siga siendo lo que
+el conector admitiría):
+
+- **Sin keyword y con algún CPV 48/72, entra**, sin `tecnologia` y con
+  `inclusion_reason = 'cpv_ti_universe'`, el mismo valor que PLACSP. Queda
+  fuera del universo tecnológico —Radar, analítica, superficie pública—, así
+  que no es ruido visible; sí la ven la búsqueda y las reglas.
+- **Una keyword ambigua también la corrobora el equipo informático** (302) y su
+  mantenimiento (50312, 5032), salvo `sap` y `lightning`, que siguen exigiendo
+  48/72: con 302 casan con los ordenadores que el ICS compra con su «CODI SAP» y
+  con cables de Apple.
+
+Antes del `--apply` se repite el dry-run con esta regla.
 
 ## Procedimiento
 

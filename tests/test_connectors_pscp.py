@@ -373,8 +373,10 @@ def test_ninguna_fila_persistida_queda_sin_tecnologia() -> None:
     """El criterio de aceptación de C4.1, sobre el parser.
 
     «Filas nuevas de PSCP con `tecnologia IS NULL` = 0» se mide contra la BD
-    tras el siguiente run; aquí se fija el invariante que lo hace cierto: el
-    parser no puede devolver una licitación sin `tecnologia`.
+    tras el siguiente run; aquí se fija el invariante que lo hace cierto: sin
+    CPV de TI, el parser no puede devolver una licitación sin `tecnologia`. La
+    única excepción, desde el 2026-09-26, es la que trae CPV 48/72
+    (`cpv_ti_universe`, ver los tests de la puerta más abajo).
     """
     conector = _conector()
     titulos = [
@@ -540,6 +542,80 @@ def test_el_conector_corrobora_con_cualquier_cpv_de_la_lista() -> None:
     )
     assert parsed is not None
     assert parsed.licitacion.tecnologia == "SAP"
+
+
+@pytest.mark.parametrize(
+    ("titulo", "cpv"),
+    [
+        # Casos reales que el dry-run de la purga del 2026-09-26 iba a borrar:
+        # la keyword es ambigua, pero el CPV es de equipo informático o de su
+        # mantenimiento.
+        ("Ampliació Cabina Backup del CPD de Cerdanyola", "30200000-1"),
+        (
+            "Manteniment equipament hardware del CPD de l'ajuntament Barcelona",
+            "50312610-4",
+        ),
+    ],
+)
+def test_el_equipo_informatico_corrobora_una_keyword_ambigua(titulo: str, cpv: str) -> None:
+    from scraper.connectors.pscp import MOTIVO_ADMITIDA, senal_tecnologica
+
+    senal = senal_tecnologica(titulo, cpv)
+    assert senal.motivo == MOTIVO_ADMITIDA
+    assert "CLOUD_INFRA" in senal.tecnologias
+
+
+def test_sap_no_se_corrobora_con_material_informatico() -> None:
+    """El ICS compra ordenadores con su «CODI SAP»: para `sap` solo vale 48/72."""
+    from scraper.connectors.pscp import MOTIVO_AMBIGUA_SIN_CPV_TI, senal_tecnologica
+
+    senal = senal_tecnologica("ORDINADOR PORTÀTIL CODI SAP 7104412", "30213100-6")
+    assert senal.motivo == MOTIVO_AMBIGUA_SIN_CPV_TI
+
+
+@pytest.mark.parametrize(
+    ("titulo", "cpv"),
+    [
+        # Reales, del mismo dry-run: TI por CPV que no casa con el diccionario.
+        ("Business starter anual i google workspace", "48218000-9"),
+        ("Programari factorial de l'1 de març a 1 d'abril", "48900000-7"),
+        ("MANTENIMENT LLIC XEN ORCHESTRA", "72267000-4"),
+        # El 48/72 puede no ir primero en la lista.
+        ("Renovació anual", "30200000-1||72267000-4"),
+    ],
+)
+def test_sin_keyword_entra_por_cpv_ti_y_sin_etiquetas(titulo: str, cpv: str) -> None:
+    from scraper.connectors.pscp import MOTIVO_CPV_TI, senal_tecnologica
+
+    senal = senal_tecnologica(titulo, cpv)
+    assert senal.admitida
+    assert senal.motivo == MOTIVO_CPV_TI
+    assert senal.tecnologias == ()
+    assert senal.keywords == ()
+
+
+@pytest.mark.parametrize(
+    "cpv",
+    [None, "90910000-9", "30213100-6"],  # sin CPV, limpieza, un portátil
+)
+def test_sin_keyword_ni_cpv_48_72_no_entra(cpv: str | None) -> None:
+    from scraper.connectors.pscp import MOTIVO_SIN_SENAL, senal_tecnologica
+
+    assert senal_tecnologica("Subministrament diversos", cpv).motivo == MOTIVO_SIN_SENAL
+
+
+def test_el_conector_persiste_lo_de_cpv_ti_como_en_placsp() -> None:
+    """Sin `tecnologia` y con el `inclusion_reason` de PLACSP: fuera del Radar."""
+    conector = _conector()
+    parsed = conector.parse(
+        _aviso(objecte_contracte="Llicències Google Workspace", codi_cpv="48218000-9")
+    )
+    assert parsed is not None
+    assert parsed.licitacion.tecnologia is None
+    assert parsed.licitacion.raw_keywords is None
+    assert parsed.licitacion.inclusion_reason == "cpv_ti_universe"
+    assert parsed.licitacion.analysis_universe == "pscp_observed"
+    assert conector.contadores_de_descarte()["pscp_sin_senal_tecnologica"] == 0
 
 
 def test_cada_keyword_ambigua_existe_en_la_semilla() -> None:

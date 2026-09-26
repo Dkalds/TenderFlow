@@ -150,6 +150,16 @@ def _sembrar(db_mod: Any) -> None:
             "lightning",
             "pscp_observed",
         ),
+        # TI sin keyword: el CPV 48/72 la conserva, sin etiquetas.
+        (
+            "pscp:WORKSPACE",
+            "pscp",
+            "Business starter anual i google workspace",
+            "48218000-9",
+            None,
+            None,
+            "pscp_observed",
+        ),
         # Otra fuente, sin señal: la purga de PSCP no puede tocarla.
         ("placsp:NETEJA", "placsp", "Servicio de limpieza", "90910000-9", None, None, None),
     ]
@@ -213,8 +223,9 @@ def test_el_dry_run_mide_y_no_toca_nada(tmp_db: Any) -> None:
     balance = recorrer(aplicar=False, lote_lectura=100, lote_borrado=100, ejemplos=3)
 
     assert _estado(db_mod) == antes
-    assert balance.leidas == 5  # solo PSCP
-    assert balance.acciones == {BORRAR: 3, CONSERVAR: 2}
+    assert balance.leidas == 6  # solo PSCP
+    assert balance.acciones == {BORRAR: 3, CONSERVAR: 3}
+    assert balance.motivos_conservadas == {"keyword": 2, "cpv_ti": 1}
     assert balance.desactualizadas == 1
     assert balance.motivos_borrado == {"sin_senal_tecnologica": 2, "keyword_ambigua_sin_cpv_ti": 1}
     assert balance.protegidas == 1
@@ -237,6 +248,7 @@ def test_la_purga_deja_solo_lo_que_el_conector_admitiria(tmp_db: Any) -> None:
     assert estado["pscp:SAP"] == ("SAP", "s/4hana,sap", "pscp_observed")
     assert "pscp:REACTIUS" in estado
     assert "placsp:NETEJA" in estado
+    assert estado["pscp:WORKSPACE"] == (None, None, "pscp_observed")
 
     assert balance.borradas["licitaciones"] == 2
     assert balance.borradas["user_notifications"] == 1
