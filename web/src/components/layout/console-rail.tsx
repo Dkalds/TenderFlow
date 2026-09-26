@@ -237,7 +237,10 @@ export function ConsoleRail() {
           </svg>
         </Link>
 
-        <div className="flex min-h-0 flex-1 [scrollbar-width:none] flex-col items-center gap-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        {/* `relative`: el rótulo de cada destino es un `sr-only` absoluto que,
+            sin él, colgaba del `<nav>` y no de este scroll. Con poco alto
+            (1280×600) el último caía bajo el pliegue y el documento scrolleaba. */}
+        <div className="relative flex min-h-0 flex-1 [scrollbar-width:none] flex-col items-center gap-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
           {groups.map((entry, index) => (
             <React.Fragment key={entry.group}>
               {index > 0 && <span className="bg-border/70 my-1.5 h-px w-6" aria-hidden="true" />}

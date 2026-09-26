@@ -25,6 +25,18 @@ import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
  * retiró al quedar construidos los 14 espacios (`BUILT_SPACE_ROUTES`): toda
  * ruta renderizable es superficie de consola — las heredadas redirigen por
  * `next.config` a su `?vista=` y nunca llegan a pintar cromo.
+ *
+ * Por debajo de `md` el rail no existe y en su lugar va la barra móvil
+ * (48px), que se apila **encima** de la columna. El marco era una fila en
+ * todos los anchos, así que la barra quedaba como una columna de ~181px a la
+ * izquierda y el contenido se quedaba con ~194px de los 375 de un móvil.
+ *
+ * `--alto-cromo` es el alto del cromo que queda por encima de `#main-content`:
+ * 52px de la barra de ámbito, más la barra móvil (`h-12`, 3rem) por debajo de
+ * `md`. Va en `rem` y no en 48px para seguir a la barra si el navegador tiene
+ * otra fuente base. Las pantallas miden `100vh - var(--alto-cromo)`; con los
+ * 52px escritos a mano, en móvil todas desbordaban el documento justo el alto
+ * de la barra.
  */
 export function ConsoleFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -32,10 +44,13 @@ export function ConsoleFrame({ children }: { children: React.ReactNode }) {
     // contenedor que scrollea (`DashboardShell`) y el cromo que dibuja el borde
     // (rail móvil y barra de ámbito) son hermanos, no antepasados.
     <ScrollEdgeProvider>
-      <div className="flex min-h-screen bg-background text-foreground">
+      <div className="flex min-h-screen flex-col bg-background text-foreground [--alto-cromo:calc(3rem+52px)] md:flex-row md:[--alto-cromo:52px]">
         <ConsoleRail />
 
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        {/* `min-h-screen` solo en fila: apilada bajo la barra móvil, la
+            columna ocupa el resto del marco con `flex-1`, y con el alto de
+            pantalla entero empujaría el documento 48px más abajo. */}
+        <div className="flex min-w-0 flex-1 flex-col md:min-h-screen">
           {/* El hueco de carga tampoco lleva borde: el estado inicial es "en el
               tope", y ahí no hay nada debajo que separar. */}
           <Suspense fallback={<div className="h-[52px] flex-none" />}>

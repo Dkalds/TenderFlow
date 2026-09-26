@@ -75,7 +75,7 @@ export function ResumenView() {
   // proveedor y en el tope no hay línea.
   return (
     <ScrollEdgeProvider>
-      <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
+      <div className="flex h-[calc(100vh-var(--alto-cromo))] min-h-0 flex-col">
         <header className="flex h-11 flex-none items-center gap-2.5 px-4">
           <h1 className="font-display text-[13px] font-semibold">Resumen</h1>
           <span className="text-muted-foreground hidden truncate text-[11.5px] lg:inline">
@@ -86,10 +86,13 @@ export function ResumenView() {
         </header>
         <ScrollEdgeDelProveedor />
 
+        {/* `relative`, como el cuerpo de `SpaceShell`: el `sr-only` de cada fila
+            («Oportunidad · Plazo de presentación:») es absoluto y sin él colgaba
+            del viewport; a 375×812 el último estiraba el documento 29 px. */}
         <div
           ref={contenidoRef}
           tabIndex={-1}
-          className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
+          className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
         >
           <ScrollEdgeSentinel />
           <CopilotBar className="mb-4 max-w-[720px]" />
