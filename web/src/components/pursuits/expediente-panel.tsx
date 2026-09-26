@@ -21,6 +21,7 @@
  */
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { CodigoLegible } from "@/components/codigo-legible";
 import { DocumentosBlock } from "@/components/documentos-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { ResolucionesBlock } from "@/components/resoluciones-block";
@@ -33,15 +34,26 @@ import { useLicitacion } from "@/hooks/use-licitacion";
 import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 
+/** La celda de la rejilla, con la misma tipografía que los datos del Resumen. */
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="bg-card px-3 py-2">
-      <div className="mb-0.5 font-mono text-[9.5px] uppercase tracking-[0.1em] text-muted-foreground">
+      <div className="text-muted-foreground mb-0.5 font-mono text-tf-micro font-semibold tracking-wider uppercase">
         {label}
       </div>
-      <div className="text-[12.5px] leading-[1.35]">{value || EMPTY}</div>
+      <div className="text-tf-body leading-[1.35]">{value || EMPTY}</div>
     </div>
   );
+}
+
+/**
+ * ¿Es la descripción el resumen automático de PLACSP? Hay anuncios cuya
+ * «descripción» es solo «Id licitación: …; Órgano de Contratación: …; Importe:
+ * …; Estado: PUB»: ninguna palabra que la rejilla de arriba no diga ya, y el
+ * estado en su código crudo. Se omite; cualquier otra descripción se enseña.
+ */
+function esResumenDeMetadatos(descripcion: string): boolean {
+  return /^\s*Id licitaci[oó]n:/i.test(descripcion);
 }
 
 export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
@@ -73,11 +85,20 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
           </SectionTitle>
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[9px] border border-border/60 bg-border/60">
             <Fact label="Órgano" value={l.organo_contratacion} />
-            <Fact label="Importe" value={l.importe != null ? formatCurrency(l.importe) : null} />
+            <Fact label="Importe de licitación" value={l.importe != null ? formatCurrency(l.importe) : null} />
             <Fact label="CCAA" value={l.ccaa} />
             <Fact label="Provincia" value={l.provincia} />
             <Fact label="CPV" value={l.cpv} />
-            <Fact label="Tipo de contrato" value={l.tipo_contrato} />
+            {/* El código CODICE («1») con su etiqueta del catálogo de
+                `/meta/filters`, como en el inspector de Detalle. */}
+            <Fact
+              label="Tipo de contrato"
+              value={
+                l.tipo_contrato ? (
+                  <CodigoLegible familia="tipo_contrato" codigo={l.tipo_contrato} conAyuda={false} />
+                ) : null
+              }
+            />
             <Fact label="Tecnología" value={l.tecnologia} />
             <Fact label="Publicación" value={formatDate(l.fecha_publicacion)} />
             <Fact label="Fecha límite" value={formatDate(l.fecha_limite)} />
@@ -85,10 +106,10 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
             <Fact label="Fin" value={formatDate(l.fecha_fin)} />
           </div>
 
-          {l.descripcion && (
+          {l.descripcion && !esResumenDeMetadatos(l.descripcion) && (
             <div className="mt-4">
               <SectionTitle>Descripción</SectionTitle>
-              <p className="whitespace-pre-wrap text-[12.5px] leading-[1.6] text-pretty text-muted-foreground">
+              <p className="text-muted-foreground whitespace-pre-wrap text-tf-body leading-[1.6] text-pretty">
                 {l.descripcion}
               </p>
             </div>
@@ -100,7 +121,7 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
                 href={l.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium"
+                className="inline-flex items-center gap-1.5 text-tf-body font-medium"
               >
                 {fuenteLinkLabel(l.fuente, l.url)}
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -108,7 +129,7 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
             )}
             <Link
               href={`/detalle?lic=${encodeURIComponent(licitacionId)}`}
-              className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-tf-body font-medium"
             >
               Abrir en Detalle
             </Link>
@@ -146,7 +167,7 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
               TACRC, que es el caso normal: el rótulo se queda con el vacío
               declarado debajo. */}
           <ResolucionesBlock licitacionId={licitacionId} />
-          <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
+          <p className="text-muted-foreground text-tf-meta leading-[1.5]">
             Solo aparecen aquí las resoluciones del TACRC publicadas para este expediente.
           </p>
         </Panel>

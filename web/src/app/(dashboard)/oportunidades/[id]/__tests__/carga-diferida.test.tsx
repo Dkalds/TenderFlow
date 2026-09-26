@@ -21,7 +21,13 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ useParams: () => h.params }));
-vi.mock("@/hooks/use-pursuits", () => ({ usePursuit: () => h.pursuit }));
+// El resto del módulo (reglas como `esTerminal`) es el real: lo usan el
+// desplegable del formulario y la pestaña Precio.
+vi.mock("@/hooks/use-pursuits", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/use-pursuits")>()),
+  usePursuit: () => h.pursuit,
+  useUpdatePursuit: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock("@/hooks/use-organization", () => ({
   useActiveOrganizationId: () => 7,
   useOrganizationMembers: vi.fn(() => ({ data: [] })),
@@ -31,7 +37,7 @@ vi.mock("@/hooks/use-etiquetas", () => ({
   useEtiquetas: vi.fn(),
 }));
 vi.mock("@/hooks/use-pursuit-checklist", () => ({ usePursuitChecklist: vi.fn() }));
-vi.mock("@/hooks/use-pursuit-kit", () => ({ usePursuitKit: vi.fn() }));
+vi.mock("@/hooks/use-pursuit-kit", () => ({ usePursuitKit: vi.fn(() => ({ data: undefined })) }));
 vi.mock("@/lib/export", () => ({ triggerDownload: vi.fn() }));
 
 // Lo que se pinta de entrada: estático, doblado a lo mínimo.
@@ -95,6 +101,8 @@ const PURSUIT = {
   responsible_name: null,
   comments_count: 0,
   events: [],
+  status: "identified",
+  decision: "pending",
   version: 4,
 };
 
@@ -120,12 +128,30 @@ beforeEach(() => {
 });
 
 describe("ficha de la oportunidad — pestañas bajo demanda", TEST_LENTO, () => {
-  it("Resumen se pinta al entrar y el editor completo llega después", async () => {
+  it("Resumen se pinta al entrar; el editor completo, plegado, llega al desplegarlo", async () => {
     render(<OpportunityDetailPage />);
 
     expect(screen.getByText("contraste")).toBeInTheDocument();
+    const desplegar = screen.getByRole("button", { name: /Editar todos los campos/ });
+    expect(desplegar).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("todos los campos")).toBeNull();
+
+    fireEvent.click(desplegar);
+
+    expect(desplegar).toHaveAttribute("aria-expanded", "true");
     expect(await screen.findByText("todos los campos", {}, DESCARGA)).toBeInTheDocument();
     expect(h.descargados.has("editor")).toBe(true);
+  });
+
+  it("el contenido es el panel de su pestaña, y la pestaña apunta a él", () => {
+    render(<OpportunityDetailPage />);
+
+    const pestana = screen.getByRole("tab", { name: "Resumen" });
+    const panel = screen.getByRole("tabpanel", { name: "Resumen" });
+    expect(pestana).toHaveAttribute("aria-controls", panel.id);
+    // Solo la activa está en el orden de tabulación.
+    expect(pestana).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("tab", { name: "Pliego" })).toHaveAttribute("tabindex", "-1");
   });
 
   // Cada pestaña es la única que importa sus módulos, así que «no descargado

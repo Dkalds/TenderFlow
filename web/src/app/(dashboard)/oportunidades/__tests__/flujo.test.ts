@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CERRADA_NO_CAMBIA,
   bloqueoDeFase,
+  decisionesPermitidas,
   motivoBloqueo,
   resultadosPermitidos,
   siguienteFase,
@@ -72,5 +73,17 @@ describe("flujo de una oportunidad", () => {
     expect(bloqueoDeFase(en("identified"), "cerrada")).toBeNull();
     expect(bloqueoDeFase(en("identified"), "qualifying")).toBeNull();
     expect(bloqueoDeFase(en("identified"), "go_no_go")).not.toBeNull();
+  });
+
+  it("solo ofrece las decisiones que el PATCH acepta sin mover la fase", () => {
+    // El NO-GO solo cabe en «Decisión» o en una retirada…
+    expect(decisionesPermitidas(en("identified"))).toEqual(["pending", "go"]);
+    expect(decisionesPermitidas(en("qualifying"))).toEqual(["pending", "go"]);
+    expect(decisionesPermitidas(en("go_no_go"))).toEqual(["pending", "go", "no_go"]);
+    expect(decisionesPermitidas(en("withdrawn"))).toEqual(["pending", "go", "no_go"]);
+    // …y con la oferta en marcha, o cerrada con resultado, la decisión es GO.
+    for (const status of ["preparing", "submitted", "won", "lost"] as const) {
+      expect(decisionesPermitidas(en(status, "go"))).toEqual(["go"]);
+    }
   });
 });
