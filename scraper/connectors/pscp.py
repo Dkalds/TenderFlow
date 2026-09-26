@@ -24,11 +24,12 @@ from __future__ import annotations
 
 import re
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import requests
 
-from config import settings
+from config import CPV_PREFIXES_TI, settings
 from db.upsert import Adjudicacion, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
@@ -102,6 +103,166 @@ _FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
     "nuts": ("codi_nuts",),
     "n_ofertas": ("ofertes_rebudes",),
 }
+
+
+# ── Puerta tecnológica (C4.1 / D24, endurecida 2026-09-26) ──────────────────
+#
+# El conector solo persiste lo que casa con el diccionario de tecnologías. Con
+# eso solo, en producción seguían entrando falsos positivos que un vistazo a la
+# fila delata: medido el 2026-09-26, de 3.268 filas de PSCP con `tecnologia`,
+# 1.318 no traían ningún CPV 48/72, y la mitad larga eran estas.
+
+#: Keywords que en la contratación catalana casan **fuera** de TI. Cada una con
+#: el falso positivo que la mete aquí, observado en filas reales de producción:
+#: una keyword entra en esta lista por un ejemplo, no por sospecha.
+#:
+#: Una fila cuya ÚNICA señal son keywords de esta lista necesita que el CPV lo
+#: corrobore (:func:`senal_tecnologica`). Una sola keyword fuera de la lista
+#: basta, como siempre: «Llicències SAP S/4HANA» entra por `s/4hana` tenga el
+#: CPV que tenga, porque los contratos menores traen CPV absurdos a menudo
+#: (licencias de Office 365 codificadas como obra de puentes, 45221119).
+#:
+#: Se comparan con `casefold()` contra lo que devuelve `matches_technology`,
+#: que es el texto casado en minúsculas; `tests/test_connectors_pscp.py` exige
+#: que cada una siga existiendo en la semilla del diccionario, para que un
+#: renombrado no deje aquí una entrada muerta.
+KEYWORDS_AMBIGUAS: frozenset[str] = frozenset(
+    {
+        # 609 filas con CPV ajeno a TI: códigos de material del ICS en compras
+        # menores («CODI SAP 7107067», «SAP 30053588 MAQUINETA RASURAT»), el
+        # Servei d'Atenció Primària («SAP CENTRE»), un «servei d'assessorament
+        # psicològic (SAP)».
+        "sap",
+        # Cables y adaptadores Apple Lightning, AirPods; kits de anticuerpos
+        # «Lightning-Link». Casa incluso con CPV de material informático (302),
+        # por eso la corroboración es 48/72 y no «cualquier cosa informática».
+        "lightning",
+        # Galerías API de bioMérieux para identificar bacterias («API 20
+        # enterobacterias», CPV 33696500 de reactivos).
+        "api",
+        "apis",
+        # Centre de Recerca Matemàtica (inscripciones «barccsyn (CRM)»),
+        # estaciones «LMT i CRM» de mantenimiento de puertas.
+        "crm",
+        # Obras, climatización, SAI y extintores de la sala del CPD.
+        "cpd",
+        # Policloruro de aluminio para potabilizar agua (CPV 24312123).
+        "pacs",
+        # Electrodiálisis reversible de las potabilizadoras (ETAP Llobregat).
+        "edr",
+        # Reglamento de productos sanitarios (Medical Device Regulation).
+        "mdr",
+        # Planes de alquiler de impresoras, líneas 5G de respaldo.
+        "backup",
+        # Nombres de hotel (CPV 55).
+        "sopra",
+        # Telones cortafuegos textiles; franjas cortafuegos forestales.
+        "tallafocs",
+        "cortafuegos",
+        # Ascensores, alumbrado, grupos electrógenos, carpintería, pintura...
+        "manteniment correctiu",
+        "mantenimiento correctivo",
+        "mantemento correctivo",
+        "mantentze zuzentzailea",
+        # Carpetas portafirmas físicas (CPV 30197000, material de oficina).
+        "portasignatures",
+        "portafirmas",
+        "portasinaturas",
+        # Sistemas de gestión ISO (calidad y medio ambiente): auditorías y
+        # consultoría de certificación, no software.
+        "sistema integrat de gestió",
+        "sistema de gestió integrat",
+        "sistema integrado de gestión",
+        "sistema de gestión integrado",
+        "sistema integrado de xestión",
+        "sistema de xestión integrado",
+        "kudeaketa sistema integratua",
+        # Seguridad física del perímetro: vallas, CCTV, vigilancia.
+        "seguretat perimetral",
+        "seguridad perimetral",
+        "seguridade perimetral",
+        "segurtasun perimetrala",
+        # Cuadros eléctricos de mando y protección del alumbrado público.
+        "quadre de comandament",
+        "quadres de comandament",
+        "cuadro de mando",
+        "cuadros de mando",
+        "cadro de mando",
+        "cadros de mando",
+    }
+)
+
+#: Un CPV de 8 cifras, con o sin dígito de control y con cualquier separador:
+#: PSCP publica `codi_cpv` como `72267000-4||72262000-9`.
+_CPV_CODIGO = re.compile(r"(?<!\d)\d{8}(?!\d)")
+
+#: Apóstrofos tipográficos que la PSCP usa tanto como el recto. El diccionario
+#: escribe `d'aplicacions` con el recto, así que «desenvolupament d'aplicacions»
+#: con la comilla curva (U+2019) —la forma más habitual en los títulos de la
+#: PSCP— no casaba nunca. Van como escapes porque son justo los
+#: caracteres que un editor confunde con el recto.
+_APOSTROFOS = str.maketrans({"\u2019": "'", "\u2018": "'", "\u02bc": "'", "\u00b4": "'", "`": "'"})
+
+#: Motivos del veredicto. Los dos de descarte son también los contadores del
+#: resumen del run (ver `PscpConnector.contadores_de_descarte`).
+MOTIVO_ADMITIDA = "keyword"
+MOTIVO_SIN_SENAL = "sin_senal_tecnologica"
+MOTIVO_AMBIGUA_SIN_CPV_TI = "keyword_ambigua_sin_cpv_ti"
+
+
+@dataclass(frozen=True, slots=True)
+class SenalTecnologica:
+    """Veredicto de la puerta sobre un aviso: si entra y con qué etiquetas."""
+
+    motivo: str
+    tecnologias: tuple[str, ...] = ()
+    keywords: tuple[str, ...] = ()
+
+    @property
+    def admitida(self) -> bool:
+        return self.motivo == MOTIVO_ADMITIDA
+
+
+def codigos_cpv(cpv: str | None) -> list[str]:
+    """Los códigos CPV de 8 cifras de un campo, sin dígito de control."""
+    return _CPV_CODIGO.findall(cpv or "")
+
+
+def _cpv_contradice(cpv: str | None) -> bool:
+    """El CPV existe y ninguno de sus códigos es de TI (48/72).
+
+    Sin CPV no hay contradicción: la fila conserva el beneficio de la duda,
+    como antes de esta regla. La corroboración es solo 48/72 —software y
+    servicios TI, la misma definición que `CPV_PREFIXES_TI` usa en PLACSP— y no
+    el material informático (302): un cable Lightning lleva CPV 302.
+    """
+    codigos = codigos_cpv(cpv)
+    return bool(codigos) and not any(c.startswith(tuple(CPV_PREFIXES_TI)) for c in codigos)
+
+
+def senal_tecnologica(titulo: str | None, cpv: str | None) -> SenalTecnologica:
+    """Decide si un aviso de PSCP es tecnología. La usan el conector y la purga.
+
+    Es **la misma función** en los dos sitios a propósito: la purga del censo
+    histórico (`scripts/purgar_pscp_sin_tecnologia.py`) deja en la base de datos
+    exactamente lo que el conector admitiría hoy, ni una fila más ni una menos.
+
+    Reglas, en orden:
+
+    1. El título tiene que casar con el diccionario vigente
+       (`matches_technology`), con los apóstrofos tipográficos normalizados.
+    2. Si todo lo que casó está en :data:`KEYWORDS_AMBIGUAS` y el CPV existe
+       sin ningún código 48/72, se descarta: el CPV contradice a la keyword.
+    """
+    texto = (titulo or "").translate(_APOSTROFOS)
+    _, coincidencias = matches_technology(texto, None)
+    if not coincidencias:
+        return SenalTecnologica(MOTIVO_SIN_SENAL)
+    keywords = tuple(sorted({kw for kws in coincidencias.values() for kw in kws}))
+    solo_ambiguas = all(kw.casefold() in KEYWORDS_AMBIGUAS for kw in keywords)
+    if solo_ambiguas and _cpv_contradice(cpv):
+        return SenalTecnologica(MOTIVO_AMBIGUA_SIN_CPV_TI, keywords=keywords)
+    return SenalTecnologica(MOTIVO_ADMITIDA, tuple(sorted(coincidencias)), keywords)
 
 
 def _field(record: dict[str, Any], concept: str) -> Any:
@@ -263,6 +424,9 @@ class PscpConnector:
         #: El framework ya cuenta `descartadas` en total; este contador dice
         #: **por qué**, que es lo que hace accionable la cifra.
         self._sin_senal_tecnologica = 0
+        #: Avisos cuya única señal era una keyword ambigua y el CPV la
+        #: contradecía (:data:`KEYWORDS_AMBIGUAS`).
+        self._ambigua_sin_cpv_ti = 0
 
     # ── fetch ────────────────────────────────────────────────────────────
 
@@ -402,7 +566,8 @@ class PscpConnector:
 
         organo = _text(record, "organo")
         estado = _fase_to_estado(_text(record, "fase"))
-        cpv = _text(record, "cpv")
+        cpv_crudo = _text(record, "cpv")
+        cpv = cpv_crudo
         if cpv:
             cpv = cpv.split(",")[0].split(";")[0].strip() or None
         importes = _importes(record)
@@ -422,17 +587,21 @@ class PscpConnector:
         # Se pasa `titulo` solo porque el dataset de la Generalitat no trae una
         # descripción aparte: `descripcio` ya entra como el segundo candidato del
         # concepto `titulo` en `_FIELD_CANDIDATES`. Si algún día trae una, va
-        # aquí como segundo argumento.
-        _, tech_matches = matches_technology(titulo, None)
-        if not tech_matches:
-            self._sin_senal_tecnologica += 1
-            log.debug(
-                "pscp_descartado_sin_senal_tecnologica",
-                expediente=raw.natural_id,
-            )
+        # también a `senal_tecnologica`.
+        #
+        # La puerta recibe el CPV **crudo**, con todos sus códigos: la
+        # corroboración de las keywords ambiguas mira si alguno es de TI, y
+        # quedarse con el primero la haría depender del orden de la lista.
+        senal = senal_tecnologica(titulo, cpv_crudo)
+        if not senal.admitida:
+            if senal.motivo == MOTIVO_AMBIGUA_SIN_CPV_TI:
+                self._ambigua_sin_cpv_ti += 1
+            else:
+                self._sin_senal_tecnologica += 1
+            log.debug("pscp_descartado", motivo=senal.motivo, expediente=raw.natural_id)
             return None
-        tecnologias = sorted(tech_matches)
-        keywords = sorted({kw for kws in tech_matches.values() for kw in kws})
+        tecnologias = senal.tecnologias
+        keywords = senal.keywords
 
         nuts = (_text(record, "nuts") or _NUTS_CATALUNYA).upper()
         ccaa = nuts_to_ccaa(nuts) or nuts_to_ccaa(_NUTS_CATALUNYA)
@@ -526,6 +695,7 @@ class PscpConnector:
         """
         return {
             "pscp_sin_senal_tecnologica": self._sin_senal_tecnologica,
+            "pscp_keyword_ambigua_sin_cpv_ti": self._ambigua_sin_cpv_ti,
             "pscp_fechas_implausibles": self._fechas_implausibles,
         }
 

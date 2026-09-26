@@ -17,6 +17,7 @@ autor
 auxiliar
 avance
 barrer
+bateries
 caracteres
 certificat
 clases
@@ -84,6 +85,7 @@ informacion
 inicial
 inmutable
 inmutables
+instal
 instruccion
 integrat
 intelectual
