@@ -394,6 +394,88 @@ test.describe("Tableta horizontal (1024×768)", () => {
   });
 });
 
+/**
+ * El portátil donde se midió: 1366 ya es `xl`, y ahí el inspector del Radar va
+ * anclado en una columna de 432 px fijos. Con sus cinco acciones en una fila
+ * (desde que entró «Comparar», #317) la barra pedía 460 px: «Abrir
+ * oportunidad» se partía en dos líneas, el enlace a la fuente quedaba fuera, y
+ * la barra horizontal que eso abría en `#main-content` sumaba 10 px al alto
+ * del documento (778 de 768), así que la rueda desplazaba la página entera.
+ */
+test.describe("Portátil (1366×768)", () => {
+  test.use({ viewport: { width: 1366, height: 768 } });
+
+  test("las acciones del inspector del Radar caben en su columna y no alargan el documento", async ({ page }) => {
+    await page.goto("/radar");
+    // La franja de primer uso del ámbito (`ambito-intro.tsx`) suma su propio
+    // alto al documento en escritorio, y el `storageState` del setup no trae
+    // `localStorage`, así que sale siempre. Se cierra como lo haría una
+    // persona: si no, el alto del documento no dice nada del inspector.
+    await page.getByRole("button", { name: "Entendido, no volver a mostrar" }).click();
+
+    const fila = page.locator("[data-active]").filter({ hasText: SEED_LICITACION.tituloRadar }).first();
+    await expect(fila).toBeVisible({ timeout: 20_000 });
+    await fila.locator('[data-slot="radar-fila-seleccion"]').click();
+    await expect(fila).toHaveAttribute("data-active", "true");
+
+    const acciones = page.locator('[data-slot="radar-inspector-acciones"]');
+    // El seed no trae `url`, y sin el enlace de 34 px la fila de antes cabía
+    // (386 de 396 px útiles): solo la delataba «Abrir oportunidad» partido.
+    // «En comparación» es la etiqueta más ancha que se alcanza sin escribir en
+    // la BD —la bandeja de comparación vive en memoria— y con ella la fila de
+    // antes se salía de la columna también aquí.
+    await acciones.getByRole("button", { name: "Comparar" }).click();
+    await expect(acciones.getByRole("button", { name: "En comparación" })).toBeVisible();
+
+    const columna = await acciones.boundingBox();
+    expect(columna).not.toBeNull();
+    for (const control of await acciones.locator("button, a, select").all()) {
+      const caja = await control.boundingBox();
+      expect(caja).not.toBeNull();
+      expect(caja!.x).toBeGreaterThanOrEqual(columna!.x - 0.5);
+      expect(caja!.x + caja!.width).toBeLessThanOrEqual(columna!.x + columna!.width + 0.5);
+    }
+
+    // Que quepa no puede ser a costa de partir la acción principal: con 95 px
+    // su texto iba en dos líneas dentro de un botón de 34 de alto.
+    const lineasAbrir = await acciones
+      .getByRole("button", { name: "Abrir oportunidad" })
+      .evaluate((el) => {
+        const texto = [...el.childNodes].find((nodo) => nodo.nodeType === Node.TEXT_NODE && nodo.textContent?.trim());
+        const rango = document.createRange();
+        rango.selectNodeContents(texto!);
+        return rango.getClientRects().length;
+      });
+    expect(lineasAbrir).toBe(1);
+
+    // La fila «Más tarde», en una línea: «Posponer» caía solo a la siguiente,
+    // lejos del plazo que manda. El mensaje lleva los anchos porque el margen
+    // lo decide este Chromium de Linux, que redondea cada glifo a píxel entero:
+    // a 12 px la fila cabía en Windows y aquí no.
+    const masTarde = acciones.getByRole("group", { name: "Más tarde" });
+    const silenciar = await masTarde.getByRole("button", { name: /^Silenciar/ }).boundingBox();
+    const posponer = await masTarde.getByRole("button", { name: "Posponer" }).boundingBox();
+    const anchos = await masTarde.evaluate((el) =>
+      [...el.querySelectorAll("button, label, select")]
+        .map((hijo) => hijo.getBoundingClientRect().width.toFixed(1))
+        .join(" + "),
+    );
+    expect(Math.abs(posponer!.y - silenciar!.y), `«Más tarde» mide ${anchos} px, más los huecos`).toBeLessThanOrEqual(0.5);
+
+    const desbordeMain = await page
+      .locator("#main-content")
+      .evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(desbordeMain).toBeLessThanOrEqual(1);
+
+    const documento = await page.evaluate(() => ({
+      ancho: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      alto: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+    }));
+    expect(documento.ancho).toBeLessThanOrEqual(1);
+    expect(documento.alto).toBeLessThanOrEqual(1);
+  });
+});
+
 test.describe("Escritorio (1440×900)", () => {
   test.use({ viewport: ESCRITORIO });
 
