@@ -20,8 +20,10 @@ escribió con el diccionario de su día: antes del 2026-09-14 no había término
 en catalán, y «desenvolupament de programari» salía sin etiqueta. Borrar por la
 columna tiraría expedientes de TI reales.
 
-- **Admitida** → se conserva. Si sus etiquetas guardadas no son las que la
-  puerta le pondría hoy, se cuenta como *desactualizada*; no se reescribe aquí,
+- **Admitida** → se conserva: por keyword, o sin keyword pero con CPV 48/72
+  (TI sin familia, como el `cpv_ti_universe` de PLACSP). Si sus etiquetas
+  guardadas no son las que la puerta le pondría hoy, se cuenta como
+  *desactualizada*; no se reescribe aquí,
   porque `tecnologia` solo la escribe el upsert de ingesta
   (`tests/test_dedup_guardrail.py` lo exige). La reingesta la corrige.
 - **No admitida** → se borra, con sus dependientes (`ON DELETE CASCADE`) y sus
@@ -57,12 +59,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from config import CPV_PREFIXES_TI  # noqa: E402
 from db.repositories import purga_licitaciones as repo  # noqa: E402
 from observability.logging import get_logger  # noqa: E402
 from scraper.connectors.pscp import (  # noqa: E402
+    MOTIVO_CPV_TI,
     SOURCE_ID,
-    codigos_cpv,
     senal_tecnologica,
 )
 
@@ -103,10 +104,6 @@ def decidir(fila: dict[str, Any]) -> Decision:
     return Decision(CONSERVAR, senal.motivo, tecnologia, raw_keywords, desactualizada)
 
 
-def _cpv_ti(cpv: str | None) -> bool:
-    return any(c.startswith(tuple(CPV_PREFIXES_TI)) for c in codigos_cpv(cpv))
-
-
 @dataclass
 class Balance:
     """Lo que la purga hizo (o haría, en dry-run)."""
@@ -114,11 +111,10 @@ class Balance:
     leidas: int = 0
     acciones: Counter[str] = field(default_factory=Counter)
     motivos_borrado: Counter[str] = field(default_factory=Counter)
+    #: Por qué se conserva: por keyword o solo por CPV 48/72 (sin etiquetas).
+    motivos_conservadas: Counter[str] = field(default_factory=Counter)
     #: Conservadas cuyas etiquetas no son las de hoy: las arregla la reingesta.
     desactualizadas: int = 0
-    #: Filas a borrar con algún CPV 48/72. No casan con el diccionario, pero el
-    #: CPV dice TI: es la cifra que hay que mirar antes de `--apply` (RFC).
-    borrables_con_cpv_ti: int = 0
     protegidas: int = 0
     #: Filas borradas por tabla (`licitaciones` y las referencias blandas).
     borradas: Counter[str] = field(default_factory=Counter)
@@ -153,10 +149,11 @@ def recorrer(*, aplicar: bool, lote_lectura: int, lote_borrado: int, ejemplos: i
                 borrables.append(str(fila["id_externo"]))
                 balance.motivos_borrado[d.motivo] += 1
                 balance.ejemplo(f"borrar · {d.motivo}", etiqueta, ejemplos)
-                if _cpv_ti(fila.get("cpv")):
-                    balance.borrables_con_cpv_ti += 1
-                    balance.ejemplo("borrar · con CPV 48/72", etiqueta, ejemplos)
-            elif d.desactualizada:
+                continue
+            balance.motivos_conservadas[d.motivo] += 1
+            if d.motivo == MOTIVO_CPV_TI:
+                balance.ejemplo("conservar · solo por CPV 48/72", etiqueta, ejemplos)
+            if d.desactualizada:
                 balance.desactualizadas += 1
                 balance.ejemplo(
                     "conservar · etiquetas desactualizadas",
@@ -192,11 +189,12 @@ def _imprime_balance(b: Balance, *, aplicar: bool) -> None:
     print(f"\nBALANCE{'' if aplicar else ' (dry-run: lo que se haría)'}")
     print(f"  leídas:                              {b.leidas:>9,}")
     print(f"  se conservan (pasan la puerta):      {b.acciones[CONSERVAR]:>9,}")
+    for motivo, n in b.motivos_conservadas.most_common():
+        print(f"    · {motivo:<33} {n:>9,}")
     print(f"    · con etiquetas desactualizadas:   {b.desactualizadas:>9,}")
     print(f"  no pasan la puerta:                  {b.acciones[BORRAR]:>9,}")
     for motivo, n in b.motivos_borrado.most_common():
         print(f"    · {motivo:<33} {n:>9,}")
-    print(f"    · de ellas con CPV 48/72:          {b.borrables_con_cpv_ti:>9,}")
     print(f"    · protegidas por trabajo de usuario (no se borran): {b.protegidas:,}")
     for tabla, n in sorted(b.borradas.items()):
         print(f"  filas borradas en `{tabla}`: {n:,}")

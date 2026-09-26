@@ -203,11 +203,33 @@ _CPV_CODIGO = re.compile(r"(?<!\d)\d{8}(?!\d)")
 #: caracteres que un editor confunde con el recto.
 _APOSTROFOS = str.maketrans({"\u2019": "'", "\u2018": "'", "\u02bc": "'", "\u00b4": "'", "`": "'"})
 
+#: Corroboración de una keyword ambigua: software y servicios TI
+#: (`CPV_PREFIXES_TI`, 48/72), equipo informático (302) y su mantenimiento
+#: (50312, 5032). Sin los tres últimos, el dry-run de la purga del 2026-09-26
+#: descartaba «Ampliació Cabina Backup del CPD» (302) o «Manteniment
+#: equipament hardware del CPD» (50312610).
+_CPV_CORROBORA_AMBIGUA: tuple[str, ...] = (*CPV_PREFIXES_TI, "302", "50312", "5032")
+
+#: Ambiguas que solo corrobora un CPV 48/72: casan con compras de material
+#: informático que no son la tecnología que nombran. Con 302 volverían los
+#: cables Lightning (Salesforce) y los ordenadores que el ICS compra con su
+#: «CODI SAP».
+_AMBIGUAS_ESTRICTAS: frozenset[str] = frozenset({"sap", "lightning"})
+
 #: Motivos del veredicto. Los dos de descarte son también los contadores del
 #: resumen del run (ver `PscpConnector.contadores_de_descarte`).
 MOTIVO_ADMITIDA = "keyword"
+#: Sin keyword, pero con CPV de software o servicios TI (48/72). Es la regla que
+#: PLACSP aplica desde 2026-09 (`cpv_ti_universe`): la LCSP limita nombrar
+#: marcas en los pliegos, así que «Llicències Google Workspace» o «Programari
+#: Factorial» no casan con el diccionario y son TI. Entran sin `tecnologia`, es
+#: decir, fuera del universo que enseñan el Radar y la analítica.
+MOTIVO_CPV_TI = "cpv_ti"
 MOTIVO_SIN_SENAL = "sin_senal_tecnologica"
 MOTIVO_AMBIGUA_SIN_CPV_TI = "keyword_ambigua_sin_cpv_ti"
+
+#: `inclusion_reason` de lo que entra por CPV: el mismo valor que PLACSP.
+INCLUSION_CPV_TI = "cpv_ti_universe"
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,7 +242,7 @@ class SenalTecnologica:
 
     @property
     def admitida(self) -> bool:
-        return self.motivo == MOTIVO_ADMITIDA
+        return self.motivo in (MOTIVO_ADMITIDA, MOTIVO_CPV_TI)
 
 
 def codigos_cpv(cpv: str | None) -> list[str]:
@@ -228,16 +250,22 @@ def codigos_cpv(cpv: str | None) -> list[str]:
     return _CPV_CODIGO.findall(cpv or "")
 
 
-def _cpv_contradice(cpv: str | None) -> bool:
-    """El CPV existe y ninguno de sus códigos es de TI (48/72).
+def _algun_cpv_con(cpv: str | None, prefijos: tuple[str, ...]) -> bool:
+    return any(c.startswith(prefijos) for c in codigos_cpv(cpv))
+
+
+def _cpv_contradice(cpv: str | None, keywords: tuple[str, ...]) -> bool:
+    """El CPV existe y ninguno de sus códigos corrobora estas keywords ambiguas.
 
     Sin CPV no hay contradicción: la fila conserva el beneficio de la duda,
-    como antes de esta regla. La corroboración es solo 48/72 —software y
-    servicios TI, la misma definición que `CPV_PREFIXES_TI` usa en PLACSP— y no
-    el material informático (302): un cable Lightning lleva CPV 302.
+    como antes de esta regla. Qué corrobora depende de la keyword: ver
+    :data:`_CPV_CORROBORA_AMBIGUA` y :data:`_AMBIGUAS_ESTRICTAS`.
     """
-    codigos = codigos_cpv(cpv)
-    return bool(codigos) and not any(c.startswith(tuple(CPV_PREFIXES_TI)) for c in codigos)
+    if not codigos_cpv(cpv):
+        return False
+    estricta = any(kw.casefold() in _AMBIGUAS_ESTRICTAS for kw in keywords)
+    prefijos = tuple(CPV_PREFIXES_TI) if estricta else _CPV_CORROBORA_AMBIGUA
+    return not _algun_cpv_con(cpv, prefijos)
 
 
 def senal_tecnologica(titulo: str | None, cpv: str | None) -> SenalTecnologica:
@@ -249,18 +277,22 @@ def senal_tecnologica(titulo: str | None, cpv: str | None) -> SenalTecnologica:
 
     Reglas, en orden:
 
-    1. El título tiene que casar con el diccionario vigente
-       (`matches_technology`), con los apóstrofos tipográficos normalizados.
-    2. Si todo lo que casó está en :data:`KEYWORDS_AMBIGUAS` y el CPV existe
-       sin ningún código 48/72, se descarta: el CPV contradice a la keyword.
+    1. Si el título casa con el diccionario vigente (`matches_technology`, con
+       los apóstrofos tipográficos normalizados), entra con sus etiquetas…
+    2. …salvo que todo lo que casó esté en :data:`KEYWORDS_AMBIGUAS` y el CPV
+       la contradiga (:func:`_cpv_contradice`).
+    3. Si no casa nada, entra **sin etiquetas** cuando algún CPV es 48/72
+       (:data:`MOTIVO_CPV_TI`); si tampoco, se descarta.
     """
     texto = (titulo or "").translate(_APOSTROFOS)
     _, coincidencias = matches_technology(texto, None)
     if not coincidencias:
+        if _algun_cpv_con(cpv, tuple(CPV_PREFIXES_TI)):
+            return SenalTecnologica(MOTIVO_CPV_TI)
         return SenalTecnologica(MOTIVO_SIN_SENAL)
     keywords = tuple(sorted({kw for kws in coincidencias.values() for kw in kws}))
     solo_ambiguas = all(kw.casefold() in KEYWORDS_AMBIGUAS for kw in keywords)
-    if solo_ambiguas and _cpv_contradice(cpv):
+    if solo_ambiguas and _cpv_contradice(cpv, keywords):
         return SenalTecnologica(MOTIVO_AMBIGUA_SIN_CPV_TI, keywords=keywords)
     return SenalTecnologica(MOTIVO_ADMITIDA, tuple(sorted(coincidencias)), keywords)
 
@@ -592,6 +624,10 @@ class PscpConnector:
         # La puerta recibe el CPV **crudo**, con todos sus códigos: la
         # corroboración de las keywords ambiguas mira si alguno es de TI, y
         # quedarse con el primero la haría depender del orden de la lista.
+        #
+        # Desde el 2026-09-26 entra también lo que no casa con el diccionario
+        # pero trae CPV 48/72 (`MOTIVO_CPV_TI`), sin `tecnologia`: TI sin
+        # familia, como el `cpv_ti_universe` de PLACSP.
         senal = senal_tecnologica(titulo, cpv_crudo)
         if not senal.admitida:
             if senal.motivo == MOTIVO_AMBIGUA_SIN_CPV_TI:
@@ -627,7 +663,9 @@ class PscpConnector:
             tecnologia=",".join(tecnologias) or None,
             nuts_code=nuts,
             ccaa=ccaa,
-            inclusion_reason="regional_source_record",
+            inclusion_reason=(
+                INCLUSION_CPV_TI if senal.motivo == MOTIVO_CPV_TI else "regional_source_record"
+            ),
             analysis_universe="pscp_observed",
             fuente=SOURCE_ID,
         )
