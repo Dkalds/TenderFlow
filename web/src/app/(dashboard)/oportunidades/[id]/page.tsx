@@ -7,22 +7,24 @@ import { ExternalLink, FileDown, X } from "lucide-react";
 import { PursuitLoteBadge, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
-import { PursuitActivity } from "@/components/pursuits/pursuit-activity";
 import { KitPresentacionPanel } from "@/components/pursuits/kit-presentacion";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
-import { Panel, PanelError, PanelTabs, SectionTitle } from "@/components/console/panel";
+import { PanelError, PanelTabs, panelDePestana } from "@/components/console/panel";
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { useActiveOrganizationId, useOrganizationMembers } from "@/hooks/use-organization";
 import { usePursuit } from "@/hooks/use-pursuits";
 import { triggerDownload } from "@/lib/export";
+import { llevarA } from "../_lib/llevar-a";
+import type { LugarPaso } from "../_lib/salida-fase";
+import { ANCLA_CAMPOS, CamposCompletos } from "./_components/campos-completos";
+import { ColumnaDatos, type Editable } from "./_components/columna-datos";
 import { DecisionComite } from "./_components/decision-comite";
-import { FichaDatos } from "./_components/ficha-datos";
 import { FichaEsqueleto } from "./_components/ficha-esqueleto";
+import { HistorialFicha } from "./_components/historial-ficha";
 import { PathFases } from "./_components/path-fases";
 import { PrecargaFicha, idDeRuta } from "./_components/precarga-ficha";
-import { ProximaAccion } from "./_components/proxima-accion";
 import { SalidaDeFase } from "./_components/salida-fase";
-import { EditorCompleto, PestanaDiferida, type TabKey } from "./_components/secciones-diferidas";
+import { PestanaDiferida, type TabKey } from "./_components/secciones-diferidas";
 
 /**
  * Ficha de la oportunidad — el path de fases primero.
@@ -41,8 +43,12 @@ import { EditorCompleto, PestanaDiferida, type TabKey } from "./_components/secc
  *
  * Las tres columnas del diseño no caben en una pantalla de consola, así que en
  * `xl` la ficha se parte: a la izquierda lo que se trabaja, a la derecha los
- * datos y el historial. En móvil vuelve a ser una sola columna, en el orden
- * del diseño.
+ * datos y la próxima acción, fijos. En móvil vuelve a ser una sola columna, en
+ * el orden del diseño.
+ *
+ * Cada paso pendiente del bloque de salida lleva a donde se completa
+ * (`completar`): los datos se editan en su celda y el resto de huecos tienen su
+ * panel en esta misma pestaña. El formulario entero va plegado al final.
  *
  * Lo que no se ve al entrar (las otras pestañas y el editor completo) llega
  * bajo demanda (`secciones-diferidas.tsx`), y lo que solo necesita el id de la
@@ -53,6 +59,8 @@ export default function OpportunityDetailPage() {
   const params = useParams<{ id: string }>();
   const { data: pursuit, isPending, error, refetch } = usePursuit(params.id ?? null);
   const [tab, setTab] = React.useState<TabKey>("resumen");
+  const [editando, setEditando] = React.useState<Editable | null>(null);
+  const [camposAbiertos, setCamposAbiertos] = React.useState(false);
   const idUrl = idDeRuta(params.id);
   // F1.6 — el id de la oportunidad es la clave del objeto etiquetable. Mientras
   // llega el pursuit vale el de la URL, que es el mismo: la petición sale ya.
@@ -97,6 +105,33 @@ export default function OpportunityDetailPage() {
 
   const alcance = loteEtiqueta(pursuit);
   const version = `${pursuit.id}:${pursuit.version}`;
+
+  const completar = (lugar: LugarPaso) => {
+    switch (lugar) {
+      case "oferta":
+      case "responsable":
+      case "proxima":
+        // El editor se abre en su celda y se lleva el foco; enfocarlo lo trae
+        // a la vista si la columna de datos estaba fuera.
+        setEditando(lugar);
+        return;
+      case "campos":
+        setCamposAbiertos(true);
+        // Al siguiente fotograma, con el cuerpo ya montado.
+        requestAnimationFrame(() => llevarA(ANCLA_CAMPOS));
+        return;
+      case "decision":
+        llevarA("ficha-decision");
+        return;
+      case "contraste":
+        llevarA("ficha-requisitos");
+        return;
+      case "kit":
+        llevarA("ficha-kit");
+        return;
+    }
+  };
+  const columnaDatos = <ColumnaDatos pursuit={pursuit} editando={editando} onEditar={setEditando} />;
 
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
@@ -166,6 +201,7 @@ export default function OpportunityDetailPage() {
         <div className="mt-3">
           <PanelTabs
             label="Secciones de la oportunidad"
+            idBase="ficha"
             value={tab}
             onChange={setTab}
             tabs={[
@@ -187,49 +223,48 @@ export default function OpportunityDetailPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-8">
-        {tab === "resumen" && (
-          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="flex flex-col gap-3.5">
-              {/* Cierre asistido: sólo aparece cuando la ingesta ya conoce una
-                  adjudicación de este expediente. */}
-              <AdjudicacionDetectada pursuit={pursuit} />
-              <SalidaDeFase pursuit={pursuit} />
-              <DecisionComite key={version} pursuit={pursuit} />
-            </div>
+        <div {...panelDePestana("ficha", tab)} className="rounded-lg">
+          {tab === "resumen" ? (
+            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="flex min-w-0 flex-col gap-3.5">
+                {/* Cierre asistido: sólo aparece cuando la ingesta ya conoce una
+                    adjudicación de este expediente. */}
+                <AdjudicacionDetectada pursuit={pursuit} />
+                <SalidaDeFase pursuit={pursuit} onCompletar={completar} />
+                <DecisionComite key={version} pursuit={pursuit} />
+              </div>
 
-            <aside className="flex flex-col gap-3.5 xl:col-start-2 xl:row-span-2 xl:row-start-1">
-              <FichaDatos pursuit={pursuit} />
-              <ProximaAccion key={version} pursuit={pursuit} />
-              <Panel>
-                {/* El ledger `pursuit_events` se persistía desde v61 y no lo
-                    pintaba ninguna pantalla: en un espacio compartido nadie
-                    veía quién había movido qué. */}
-                <SectionTitle>Historial</SectionTitle>
-                <PursuitActivity events={pursuit.events} miembros={miembros.data ?? []} />
-              </Panel>
-              <p className="text-muted-foreground px-1 text-tf-micro leading-relaxed">
-                Los escenarios se basan en el universo observado. La decisión y el precio final
-                siguen siendo responsabilidad del equipo.
-              </p>
-            </aside>
+              {columnaDatos}
 
-            {/* Lo que sostiene la decisión y el trabajo de la oferta. Cada panel
-                trae su propio margen superior, así que aquí no hay `gap`. */}
-            <div className="xl:col-start-1">
-              <ChecklistGoNoGo pursuitId={pursuit.id} licitacionId={pursuit.licitacion_id} />
-              <KitPresentacionPanel
-                pursuitId={pursuit.id}
-                organizationId={pursuit.organization_id}
-              />
-              <div className="mt-4">
-                <SectionTitle>Todos los campos</SectionTitle>
-                <EditorCompleto pursuit={pursuit} />
+              {/* Lo que sostiene la decisión y el trabajo de la oferta, lo que
+                  ha pasado y, plegado, el formulario entero. */}
+              <div className="flex min-w-0 flex-col gap-3.5 xl:col-start-1">
+                <ChecklistGoNoGo
+                  pursuitId={pursuit.id}
+                  licitacionId={pursuit.licitacion_id}
+                  onAbrirPliego={() => {
+                    setTab("pliego");
+                    // El enlace desaparece con la pestaña: el foco va a la
+                    // pestaña de destino en vez de caer al `body`.
+                    requestAnimationFrame(() => document.getElementById("ficha-tab-pliego")?.focus());
+                  }}
+                />
+                <KitPresentacionPanel pursuitId={pursuit.id} organizationId={pursuit.organization_id} />
+                <HistorialFicha pursuit={pursuit} miembros={miembros.data ?? []} />
+                <CamposCompletos pursuit={pursuit} abierto={camposAbiertos} onAlternar={setCamposAbiertos} />
               </div>
             </div>
-          </div>
-        )}
-
-        {tab !== "resumen" && <PestanaDiferida tab={tab} pursuit={pursuit} />}
+          ) : tab === "pliego" || tab === "precio" ? (
+            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="min-w-0">
+                <PestanaDiferida tab={tab} pursuit={pursuit} />
+              </div>
+              {columnaDatos}
+            </div>
+          ) : (
+            <PestanaDiferida tab={tab} pursuit={pursuit} />
+          )}
+        </div>
       </div>
     </div>
   );

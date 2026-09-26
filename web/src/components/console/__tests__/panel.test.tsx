@@ -18,6 +18,7 @@ import {
   SectionTitle,
   StatCell,
   StatStrip,
+  panelDePestana,
 } from "@/components/console/panel";
 
 afterEach(() => {
@@ -246,5 +247,49 @@ describe("PanelTabs", () => {
       />,
     );
     expect(screen.getByText("0")).toBeInTheDocument();
+  });
+
+  it("solo la activa está en el orden de tabulación", () => {
+    render(<PanelTabs tabs={tabs} value="dos" onChange={vi.fn()} label="Cortes" />);
+    expect(screen.getByRole("tab", { name: /Uno/ })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("tab", { name: /Dos/ })).toHaveAttribute("tabindex", "0");
+  });
+
+  it("las flechas, Inicio y Fin mueven entre pestañas y las activan", () => {
+    const tres = [...tabs, { key: "tres", label: "Tres" }];
+    const onChange = vi.fn();
+    render(<PanelTabs tabs={tres} value="uno" onChange={onChange} label="Cortes" />);
+    // Controlado y sin volver a pintar: la activa sigue siendo «Uno».
+    const activa = screen.getByRole("tab", { name: /Uno/ });
+
+    fireEvent.keyDown(activa, { key: "ArrowRight" });
+    expect(onChange).toHaveBeenLastCalledWith("dos");
+    expect(screen.getByRole("tab", { name: /Dos/ })).toHaveFocus();
+    // Da la vuelta por los extremos.
+    fireEvent.keyDown(activa, { key: "ArrowLeft" });
+    expect(onChange).toHaveBeenLastCalledWith("tres");
+    fireEvent.keyDown(activa, { key: "End" });
+    expect(onChange).toHaveBeenLastCalledWith("tres");
+    fireEvent.keyDown(activa, { key: "Home" });
+    expect(onChange).toHaveBeenLastCalledWith("uno");
+    // Cualquier otra tecla no es suya.
+    onChange.mockClear();
+    fireEvent.keyDown(activa, { key: "a" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("con idBase, la activa apunta a su panel y el panel se nombra por ella", () => {
+    render(
+      <>
+        <PanelTabs tabs={tabs} value="uno" onChange={vi.fn()} label="Cortes" idBase="cortes" />
+        <div {...panelDePestana("cortes", "uno")}>contenido</div>
+      </>,
+    );
+    const activa = screen.getByRole("tab", { name: /Uno/ });
+    expect(activa).toHaveAttribute("id", "cortes-tab-uno");
+    expect(activa).toHaveAttribute("aria-controls", "cortes-panel-uno");
+    // La inactiva no apunta a un panel que no está montado.
+    expect(screen.getByRole("tab", { name: /Dos/ })).not.toHaveAttribute("aria-controls");
+    expect(screen.getByRole("tabpanel", { name: "Uno" })).toHaveTextContent("contenido");
   });
 });

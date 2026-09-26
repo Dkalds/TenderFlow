@@ -97,15 +97,15 @@ function ChecklistItemRow({
   return (
     <li className="rounded-lg border border-border/60 bg-background/40 p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="min-w-0 text-[12.5px] font-medium leading-snug">{item.requisito}</p>
+        <p className="min-w-0 text-tf-body font-medium leading-snug">{item.requisito}</p>
         <VeredictoBadge veredicto={veredicto} />
       </div>
 
-      <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">
+      <p className="mt-1.5 text-tf-meta leading-relaxed text-muted-foreground">
         {degradado ? SIN_CITA : item.motivo}
       </p>
 
-      <p className="mt-1.5 text-[11.5px] leading-relaxed">
+      <p className="mt-1.5 text-tf-meta leading-relaxed">
         <span className="text-muted-foreground">Dato de la organización: </span>
         {item.dato_organizacion ? (
           <span className="font-medium">{item.dato_organizacion}</span>
@@ -117,14 +117,14 @@ function ChecklistItemRow({
       {faltaDatoPropio && (
         <Link
           href="/equipo"
-          className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-primary hover:underline"
+          className="mt-1.5 inline-flex items-center gap-1 text-tf-meta font-medium text-primary hover:underline"
         >
           Completar el perfil de capacidad (Equipo → Organización)
         </Link>
       )}
 
       {evidencia.length > 0 ? (
-        <details className="mt-2 text-[11.5px]">
+        <details className="mt-2 text-tf-meta">
           <summary className="cursor-pointer font-medium text-primary hover:underline">
             {evidencia.length} cita{evidencia.length === 1 ? "" : "s"} del pliego
           </summary>
@@ -155,7 +155,7 @@ function ChecklistItemRow({
           </ul>
         </details>
       ) : (
-        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/85">
+        <p className="mt-2 text-tf-micro leading-relaxed text-muted-foreground">
           Sin cita del pliego para este requisito.
         </p>
       )}
@@ -181,8 +181,8 @@ export function ChecklistFamilia({
     // van plegadas, como en la pestaña Pliego.
     <details open className="rounded-[10px] border border-border/60 bg-card/40 px-3 py-2.5">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2.5">
-        <span className="min-w-0 flex-1 text-[12.5px] font-semibold">{familia.etiqueta}</span>
-        <span className="tf-tnum flex-none text-[10.5px] text-muted-foreground">
+        <span className="min-w-0 flex-1 text-tf-body font-semibold">{familia.etiqueta}</span>
+        <span className="tf-tnum flex-none text-tf-micro text-muted-foreground">
           {items.length} requisito{items.length === 1 ? "" : "s"}
         </span>
         <VeredictoBadge veredicto={veredicto} />

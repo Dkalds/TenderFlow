@@ -6229,6 +6229,11 @@ export interface components {
             /** Items */
             items?: components["schemas"]["ChecklistItem"][];
             /**
+             * Sin Hechos
+             * @default false
+             */
+            sin_hechos: boolean;
+            /**
              * Veredicto
              * @enum {string}
              */
@@ -8428,6 +8433,11 @@ export interface components {
              * @default 0
              */
             desconocido: number;
+            /**
+             * Desconocido Extraidos
+             * @default 0
+             */
+            desconocido_extraidos: number;
             /** Extraction Version */
             extraction_version?: string | null;
             /** Familias */
@@ -8445,6 +8455,11 @@ export interface components {
             no_cumple: number;
             /** Organization Id */
             organization_id: number;
+            /**
+             * Requisitos Extraidos
+             * @default 0
+             */
+            requisitos_extraidos: number;
             /**
              * Total Requisitos
              * @default 0

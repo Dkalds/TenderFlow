@@ -25,9 +25,15 @@ const OPCIONES: readonly PursuitDecision[] = ["go", "no_go"];
  * El motivo no es opcional: el backend rechaza una decisión sin él, y es lo
  * único que explica en el historial por qué se fue o no se fue a esta
  * licitación.
+ *
+ * Antes de llegar a «Decisión», y sin decisión tomada, es una sola línea: un
+ * bloque entero que solo decía «todavía no» ocupaba el segundo puesto de la
+ * ficha en las dos fases en que no se puede hacer nada con él.
  */
 export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
   const editable = pursuit.status === "go_no_go";
+  const todaviaNo =
+    pursuit.decision === "pending" && (pursuit.status === "identified" || pursuit.status === "qualifying");
   const actualizar = useUpdatePursuit(pursuit.id);
   const [decision, setDecision] = React.useState<PursuitDecision>(pursuit.decision);
   const [motivo, setMotivo] = React.useState(pursuit.decision_reason ?? "");
@@ -64,10 +70,30 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
     );
   };
 
+  if (todaviaNo) {
+    return (
+      <section
+        id="ficha-decision"
+        tabIndex={-1}
+        aria-label="Decisión del comité"
+        className="border-border/60 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 rounded-xl border border-dashed px-4 py-2.5 outline-none"
+      >
+        <h4 className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider uppercase">
+          Decisión del comité
+        </h4>
+        <p className="text-muted-foreground text-tf-micro">
+          Se toma en la fase «Decisión». Hasta entonces, sin decidir.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section
+      id="ficha-decision"
+      tabIndex={-1}
       aria-label="Decisión del comité"
-      className="border-border/60 bg-card/70 rounded-xl border px-4 py-3.5"
+      className="border-border/60 bg-card/70 rounded-xl border px-4 py-3.5 outline-none"
     >
       <SectionTitle aside={estado}>Decisión del comité</SectionTitle>
 
@@ -130,7 +156,7 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
           <p className="text-muted-foreground mt-1.5 text-tf-micro leading-[1.4]">
             {pursuit.status === "identified" || pursuit.status === "qualifying"
               ? "Se registra al llegar a la fase «Decisión»."
-              : "Corregirla ahora se hace en «Todos los campos»."}
+              : "Corregirla ahora se hace en «Editar todos los campos»."}
           </p>
         </>
       )}

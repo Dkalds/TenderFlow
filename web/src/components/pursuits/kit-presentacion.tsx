@@ -2,7 +2,8 @@
 
 /**
  * F2.3 — Kit de presentación: qué documentos exige el pliego, en qué sobre, y
- * cuáles están listos. Va en la pestaña Decisión, que es donde el plan lo pone.
+ * cuáles están listos. Va en el Resumen de la ficha, debajo del contraste del
+ * pliego: lo que se decide y con qué se presenta, en la misma columna.
  *
  * El responsable de cada documento es el de su **tarea** (C6.1): elegir a
  * alguien crea la tarea «Kit: …» o reasigna la que ya había. Así el reparto
@@ -14,11 +15,10 @@
  * darían por leídos del pliego).
  */
 import * as React from "react";
-import { ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Panel, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
+import { Panel, PanelError, PanelLoading, SectionTitle } from "@/components/console/panel";
 import { formatDate } from "@/components/pursuits/pursuit-presenters";
 import { useOrganizationMembers } from "@/hooks/use-organization";
 import {
@@ -71,14 +71,14 @@ export function KitPresentacionPanel({
 
   if (isPending) {
     return (
-      <Panel className="mt-4">
+      <Panel id="ficha-kit">
         <PanelLoading height={160} />
       </Panel>
     );
   }
   if (error || !kit) {
     return (
-      <div className="mt-4">
+      <div id="ficha-kit">
         <PanelError
           title="No se pudo cargar el kit de presentación"
           detail={error instanceof Error ? error.message : undefined}
@@ -91,18 +91,16 @@ export function KitPresentacionPanel({
   const { listos, total } = resumenKit(kit);
 
   return (
-    <Panel className="mt-4" aria-labelledby={`kit-${pursuitId}`}>
-      <PanelTitle
-        title={
-          <span id={`kit-${pursuitId}`} className="inline-flex items-center gap-1.5">
-            <ClipboardCheck className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-            Kit de presentación
-          </span>
-        }
-        hint={total ? `${listos} de ${total} documentos listos` : "Documentos que exige el pliego"}
-      />
+    // El mismo rótulo que el resto de paneles de la ficha; el panel se nombra
+    // por él y es el destino del paso «Documentación del kit lista».
+    <Panel id="ficha-kit" tabIndex={-1} className="outline-none" aria-labelledby={`kit-${pursuitId}`}>
+      <SectionTitle
+        aside={total ? `${listos} de ${total} documentos listos` : "Documentos que exige el pliego"}
+      >
+        <span id={`kit-${pursuitId}`}>Kit de presentación</span>
+      </SectionTitle>
       {kit.sin_extraccion || total === 0 ? (
-        <p role="status" className="text-[12px] leading-[1.55] text-muted-foreground">
+        <p role="status" className="text-tf-meta leading-[1.55] text-muted-foreground">
           No se han extraído documentos exigidos del pliego de este expediente. El kit no propone
           una lista genérica: revisa el pliego en la pestaña «Pliego» antes de dar la oferta por
           completa.
@@ -114,9 +112,9 @@ export function KitPresentacionPanel({
             if (items.length === 0) return null;
             return (
               <section key={sobre.key} aria-label={sobre.titulo}>
-                <h4 className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <h5 className="mb-1.5 font-mono text-tf-micro font-semibold uppercase tracking-wider text-muted-foreground">
                   {sobre.titulo}
-                </h4>
+                </h5>
                 <ul className="divide-y divide-border/50">
                   {items.map((item) => {
                     const checkId = `kit-${pursuitId}-${item.clave}`;
@@ -142,11 +140,11 @@ export function KitPresentacionPanel({
                           <div className="min-w-0">
                             <label
                               htmlFor={checkId}
-                              className="text-[12.5px] leading-snug font-medium"
+                              className="text-tf-body leading-snug font-medium"
                             >
                               {item.nombre}
                             </label>
-                            <p className="text-[10.5px] text-muted-foreground">
+                            <p className="text-tf-micro text-muted-foreground">
                               {item.subsanable === true ? "Subsanable · " : null}
                               {item.listo && item.marcado_en
                                 ? `Listo desde ${formatDate(item.marcado_en)}`
@@ -176,7 +174,7 @@ export function KitPresentacionPanel({
                               );
                             }}
                           >
-                            <SelectTrigger id={selectId} className="h-8 text-xs">
+                            <SelectTrigger id={selectId} className="h-8 text-tf-meta">
                               <SelectValue placeholder="Sin responsable" />
                             </SelectTrigger>
                             <SelectContent>
@@ -198,7 +196,7 @@ export function KitPresentacionPanel({
               </section>
             );
           })}
-          <p className="text-[10.5px] leading-[1.5] text-muted-foreground">
+          <p className="text-tf-micro leading-[1.5] text-muted-foreground">
             Asignar un documento crea una tarea con su nombre. Si la tarea se borra, el documento
             vuelve a quedar sin responsable.
           </p>

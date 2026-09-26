@@ -301,36 +301,86 @@ export function PanelError({
   );
 }
 
+/** Los ids que unen una pestaña con su panel (`aria-controls`/`aria-labelledby`). */
+function idsDePestana(idBase: string, key: string) {
+  return { tab: `${idBase}-tab-${key}`, panel: `${idBase}-panel-${key}` };
+}
+
+/**
+ * Los atributos del panel de la pestaña activa, cuando `PanelTabs` recibe
+ * `idBase`: el lector de pantalla anuncia de qué pestaña es el contenido y
+ * `aria-controls` tiene adónde apuntar.
+ */
+export function panelDePestana(idBase: string, key: string) {
+  const ids = idsDePestana(idBase, key);
+  return { role: "tabpanel", id: ids.panel, "aria-labelledby": ids.tab, tabIndex: 0 } as const;
+}
+
 /**
  * Cortes de un panel: las pestañas que sustituyen a apilar nueve gráficos uno
  * debajo de otro. Mismo gesto que el conmutador de vistas del espacio, un nivel
  * más abajo.
+ *
+ * Teclado del patrón de pestañas de WAI-ARIA: solo la activa está en el orden
+ * de tabulación, y las flechas, Inicio y Fin mueven entre ellas y la activan.
+ * Antes cada pestaña era una parada de Tab más camino del contenido.
  */
 export function PanelTabs<T extends string>({
   tabs,
   value,
   onChange,
   label,
+  idBase,
 }: {
   tabs: { key: T; label: string; badge?: React.ReactNode }[];
   value: T;
   onChange: (next: T) => void;
   label: string;
+  /** Con él, cada pestaña apunta a su panel (`panelDePestana`). */
+  idBase?: string;
 }) {
+  const lista = React.useRef<HTMLDivElement>(null);
+
+  const mover = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const actual = tabs.findIndex((tab) => tab.key === value);
+    const destino =
+      event.key === "ArrowRight"
+        ? (actual + 1) % tabs.length
+        : event.key === "ArrowLeft"
+          ? (actual - 1 + tabs.length) % tabs.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? tabs.length - 1
+              : null;
+    if (destino == null || tabs.length === 0) return;
+    event.preventDefault();
+    onChange(tabs[destino].key);
+    lista.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[destino]?.focus();
+  };
+
   return (
     <div
+      ref={lista}
       role="tablist"
       aria-label={label}
       className="flex flex-wrap items-center gap-0.5 border-b border-border/50 pb-2"
     >
       {tabs.map((tab) => {
         const on = tab.key === value;
+        const ids = idBase ? idsDePestana(idBase, tab.key) : null;
         return (
           <button
             key={tab.key}
             type="button"
             role="tab"
+            id={ids?.tab}
+            // Solo la activa: las otras no tienen panel montado, y un
+            // `aria-controls` que apunta a un id inexistente es un error.
+            aria-controls={on ? ids?.panel : undefined}
             aria-selected={on}
+            tabIndex={on ? 0 : -1}
+            onKeyDown={mover}
             onClick={() => onChange(tab.key)}
             className={cn(
               "tf-pressable inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 text-[12px] font-medium transition-colors duration-150 ease-out",

@@ -70,7 +70,8 @@ describe("PursuitActivity", () => {
     );
     expect(screen.getByText("Decisión:")).toBeInTheDocument();
     expect(screen.getByText("GO")).toBeInTheDocument();
-    expect(screen.getByText("Precio ofertado:")).toBeInTheDocument();
+    // El mismo nombre que el campo tiene en toda la ficha.
+    expect(screen.getByText("Oferta prevista:")).toBeInTheDocument();
     expect(screen.getByText(/2,\d\s?M/)).toBeInTheDocument();
   });
 
@@ -88,6 +89,49 @@ describe("PursuitActivity", () => {
     );
     expect(screen.getByText("Pliego contrastado con la capacidad")).toBeInTheDocument();
     expect(screen.getByText("12 cumple · 3 no cumple · 4 sin dato")).toBeInTheDocument();
+  });
+
+  it("con los conteos nuevos, cuenta solo lo extraído y dice cuándo no se extrajo nada", () => {
+    render(
+      <PursuitActivity
+        events={[
+          evento({
+            id: 6,
+            event_type: "checklist_evaluated",
+            payload: { cumple: 2, no_cumple: 0, desconocido: 4, requisitos_extraidos: 3, desconocido_extraidos: 1 },
+          }),
+          evento({
+            id: 7,
+            event_type: "checklist_evaluated",
+            payload: { cumple: 0, no_cumple: 0, desconocido: 4, requisitos_extraidos: 0, desconocido_extraidos: 0 },
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("2 cumple · 0 no cumple · 1 sin dato")).toBeInTheDocument();
+    expect(screen.getByText("Sin requisitos extraídos del pliego")).toBeInTheDocument();
+    expect(screen.queryByText(/4 sin dato/)).not.toBeInTheDocument();
+  });
+
+  it("traduce los marcados del kit y nombra el documento", () => {
+    const kitNombres = new Map([["deuc_c", "Sección C del DEUC"]]);
+    render(
+      <PursuitActivity
+        kitNombres={kitNombres}
+        events={[
+          evento({ id: 8, event_type: "kit_item_marcado", payload: { clave: "deuc_c", listo: true } }),
+          evento({ id: 9, event_type: "kit_item_marcado", payload: { clave: "deuc_c", listo: false } }),
+          evento({ id: 10, event_type: "kit_item_marcado", payload: { clave: "deuc_c", tarea_id: 4 } }),
+          evento({ id: 11, event_type: "kit_item_marcado", payload: { clave: "otro", listo: true } }),
+        ]}
+      />,
+    );
+    expect(screen.queryByText("kit_item_marcado")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Documento del kit listo")).toHaveLength(2);
+    expect(screen.getByText("Documento del kit desmarcado")).toBeInTheDocument();
+    expect(screen.getByText("Documento del kit asignado")).toBeInTheDocument();
+    // Tres con nombre conocido; el cuarto se queda en el titular.
+    expect(screen.getAllByText("«Sección C del DEUC»")).toHaveLength(3);
   });
 
   it("nombra al actor cuando conoce al miembro", () => {

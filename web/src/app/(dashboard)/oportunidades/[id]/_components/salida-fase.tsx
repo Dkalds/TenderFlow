@@ -22,7 +22,18 @@ const DialogoCierre = dynamic(
   { ssr: false },
 );
 import { resultadosPermitidos } from "../../_lib/flujo";
-import { salidaDeFase } from "../../_lib/salida-fase";
+import { salidaDeFase, type LugarPaso } from "../../_lib/salida-fase";
+
+/** El verbo de cada lugar: qué pasa al pulsar junto a un paso pendiente. */
+const VERBO_DE_LUGAR: Record<LugarPaso, string> = {
+  responsable: "Asignar",
+  proxima: "Añadir",
+  oferta: "Anotar",
+  contraste: "Ver requisitos",
+  kit: "Ver el kit",
+  decision: "Ir a la decisión",
+  campos: "Completar",
+};
 
 /**
  * Lo que falta para salir de la fase actual, y el único botón que la mueve.
@@ -31,11 +42,21 @@ import { salidaDeFase } from "../../_lib/salida-fase";
  * contraste del pliego se piden con los mismos hooks que sus paneles de esta
  * misma pestaña, así que comparten caché y no añaden una petición.
  *
+ * Cada paso pendiente que se completa desde la ficha lleva su botón, y
+ * `onCompletar` dice a la ficha adónde llevar: la lista decía qué faltaba y
+ * había que ir a buscar dónde se arreglaba.
+ *
  * Avanzar es un PATCH de `status` con `expected_version`, igual que arrastrar
  * en el tablero: si alguien del equipo la movió mientras la ficha estaba
  * abierta, el 409 lo dice en vez de pisar su cambio.
  */
-export function SalidaDeFase({ pursuit }: { pursuit: Pursuit }) {
+export function SalidaDeFase({
+  pursuit,
+  onCompletar,
+}: {
+  pursuit: Pursuit;
+  onCompletar?: (lugar: LugarPaso) => void;
+}) {
   const kit = usePursuitKit(pursuit.id);
   const contraste = usePursuitChecklist(pursuit.id);
   const actualizar = useUpdatePursuit(pursuit.id);
@@ -46,8 +67,8 @@ export function SalidaDeFase({ pursuit }: { pursuit: Pursuit }) {
     kit: kit.data ? resumenKit(kit.data) : undefined,
     contraste: contraste.data
       ? {
-          total_requisitos: contraste.data.total_requisitos,
-          desconocido: contraste.data.desconocido,
+          requisitos_extraidos: contraste.data.requisitos_extraidos,
+          desconocido_extraidos: contraste.data.desconocido_extraidos,
         }
       : undefined,
   });
@@ -120,6 +141,19 @@ export function SalidaDeFase({ pursuit }: { pursuit: Pursuit }) {
                 </span>
               ) : null}
             </span>
+            {paso.hecho === false && paso.lugar && onCompletar ? (
+              <button
+                type="button"
+                // El nombre accesible empieza por el texto visible (WCAG
+                // 2.5.3) y dice de qué paso es: diez «Añadir» sueltos no
+                // distinguen nada para quien navega por controles.
+                aria-label={`${VERBO_DE_LUGAR[paso.lugar]}: ${paso.texto}`}
+                onClick={() => paso.lugar && onCompletar(paso.lugar)}
+                className="tf-pressable text-primary hover:bg-primary/10 -my-0.5 inline-flex min-h-6 flex-none items-center rounded-md px-1.5 text-tf-micro font-semibold transition-colors"
+              >
+                {VERBO_DE_LUGAR[paso.lugar]}
+              </button>
+            ) : null}
           </li>
         ))}
       </ul>
