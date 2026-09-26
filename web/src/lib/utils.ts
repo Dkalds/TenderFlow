@@ -2,7 +2,8 @@ import { type ClassValue, clsx } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
 
 /**
- * `twMerge` con la escala tipográfica propia de `globals.css` (`--text-tf-*`).
+ * `twMerge` con los tamaños propios de `globals.css`: la escala tipográfica
+ * (`--text-tf-*`) y el de los campos de formulario (`--text-campo`).
  *
  * Sin configurar, tailwind-merge solo reconoce como tamaño los de Tailwind
  * (`text-xs`, `text-sm`…) y toma cualquier otro `text-*` por un color. Veía
@@ -12,15 +13,16 @@ import { extendTailwindMerge } from "tailwind-merge";
  * el path de fases, las cifras de la ficha y de la tarjeta del tablero, las
  * listas de /empresas. Declarados como tamaños, conviven con el color y se
  * resuelven contra `text-sm` y compañía como cualquier otro tamaño: gana el
- * último.
+ * último. Es lo que deja que el tamaño que un llamador pasa a `Input` o
+ * `Textarea` sustituya a su `text-campo`.
  *
- * Un paso nuevo de la escala tiene que entrar también aquí; el test de `cn`
+ * Un tamaño nuevo en la hoja tiene que entrar también aquí; el test de `cn`
  * lee `globals.css` y falla si falta alguno.
  */
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      text: ["tf-micro", "tf-meta", "tf-body", "tf-lede", "tf-title", "tf-hero"],
+      text: ["tf-micro", "tf-meta", "tf-body", "tf-lede", "tf-title", "tf-hero", "campo"],
     },
   },
 });

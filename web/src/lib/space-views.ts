@@ -79,11 +79,13 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
   // `pipeline` es un alias de la agenda; `embudo`, `cartera`, `horizonte` y
   // `renovaciones` reenvían al espacio donde vive hoy cada vista.
   "mi-pipeline": [{ key: "agenda", label: "Agenda", from: "pipeline-alertas" }],
-  // F1.5: Cuentas absorbe `Mercado → Órganos` como `?vista=mercado`.
-  // Consolidar no elimina: el corte analítico sigue estando, y lo que se añade
-  // encima es lo que faltaba —poder seguir un órgano y ver qué tiene el equipo
-  // con él—. Órganos sigue además accesible desde Mercado, porque quien
-  // analiza el mercado no está trabajando cuentas.
+  // F1.5: `?vista=mercado` **enlaza** a `Mercado → Órganos`, no la incrusta:
+  // el corte analítico sigue viviendo en Mercado, con sus filtros de ámbito,
+  // porque quien analiza el mercado no está trabajando cuentas. Lo que une las
+  // dos pantallas es la acción: el botón «Seguir» del panel de órgano de
+  // Mercado crea una cuenta de este espacio (`useSeguimiento` enruta los
+  // órganos a `/cuentas`). Por eso esta vista no lleva `from`: no absorbe
+  // ninguna ruta.
   cuentas: [
     { key: "seguidas", label: "Cuentas seguidas" },
     { key: "mercado", label: "Todos los órganos" },

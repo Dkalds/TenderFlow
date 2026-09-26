@@ -24,6 +24,15 @@ vi.mock("@/lib/filters", () => ({
   useFilterParams: () => mockFilterParams(),
 }));
 
+// El control «Seguir» del panel tampoco es el sujeto: pregunta por la
+// organización activa y por la cuenta del órgano, dos peticiones más que el
+// `fetch` falso de este fichero —respuestas sin cabeceras, pensadas para el
+// ranking y el drill-down— no sabe contestar. Se prueba en `use-seguimiento`.
+vi.mock("@/hooks/use-organization", () => ({ usePuedeEscribir: () => false }));
+vi.mock("@/hooks/use-cuentas", () => ({
+  useCuentaDeOrgano: () => ({ data: null, isPending: false }),
+}));
+
 // Los gráficos no son el sujeto: recharts en jsdom sólo añade ruido y tiempo.
 vi.mock("@/components/charts/organos-charts", () => ({
   OrganosRankingChart: () => null,

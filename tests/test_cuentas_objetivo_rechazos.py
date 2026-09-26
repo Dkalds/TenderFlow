@@ -16,6 +16,10 @@ llegar a conectar con la ``DATABASE_URL`` que tenga la máquina.
 el mismo cliente y un cuerpo válido, cada ruta tiene que tropezar con él. Sin
 ese control, un guardia apuntado a nombres equivocados dejaría pasar en verde
 todos los demás tests sin probar nada.
+
+Al final van dos cosas que sí pasan por el servicio, con el servicio sustituido
+por uno que responde lo justo: la traducción a 403 de los dos rechazos de la
+organización y el filtro ``organo`` de ``GET /cuentas``. Tampoco abren base.
 """
 
 from __future__ import annotations
@@ -23,11 +27,13 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from types import FunctionType
 from typing import Any, NoReturn, Protocol
+from urllib.parse import parse_qsl
 
 import pytest
 from fastapi.testclient import TestClient
 
 from api.routes.dual_auth import require_any_auth
+from services.organizations import OrganizationAccessError, OrganizationPermissionError
 
 _CUENTAS = "/api/v1/cuentas"
 _ETIQUETAS = "/api/v1/etiquetas"
@@ -115,7 +121,31 @@ def autenticado(servicios_vigilados: list[str]) -> Iterator[TestClient]:
 _PETICIONES_VALIDAS = [
     pytest.param("get", _CUENTAS, None, "listar_cuentas", id="GET-cuentas"),
     pytest.param(
-        "post", _CUENTAS, {"organo": "Ayuntamiento de Soria"}, "seguir_organo", id="POST-cuentas"
+        "post", _CUENTAS, {"organo": "Ayuntamiento de Soria"}, "crear_cuenta", id="POST-cuentas"
+    ),
+    pytest.param(
+        "post",
+        _CUENTAS,
+        {"nombre": "Ayuntamiento de Madrid", "organos": ["Área de Gobierno de Economía"]},
+        "crear_cuenta",
+        id="POST-cuenta-varios-organos",
+    ),
+    pytest.param("get", f"{_CUENTAS}/resumen", None, "resumen_cuentas", id="GET-resumen"),
+    pytest.param(
+        "get", f"{_CUENTAS}/buscar-organos?q=madrid", None, "buscar_organos", id="GET-buscar"
+    ),
+    pytest.param("get", f"{_CUENTAS}/7", None, "ficha_cuenta", id="GET-ficha"),
+    pytest.param("patch", f"{_CUENTAS}/7", {"nota": "Renueva"}, "editar_cuenta", id="PATCH-cuenta"),
+    pytest.param(
+        "post", f"{_CUENTAS}/7/organos", {"organos": ["Pleno"]}, "anadir_organos", id="POST-organos"
+    ),
+    pytest.param("delete", f"{_CUENTAS}/7/organos/3", None, "quitar_organo", id="DELETE-organo"),
+    pytest.param(
+        "delete",
+        f"{_CUENTAS}/por-organo?organo=Pleno",
+        None,
+        "dejar_de_seguir_organo",
+        id="DELETE-por-organo",
     ),
     pytest.param("delete", f"{_CUENTAS}/7", None, "dejar_de_seguir", id="DELETE-cuenta"),
     pytest.param("get", _ETIQUETAS, None, "listar_etiquetas", id="GET-etiquetas"),
@@ -148,7 +178,15 @@ _PETICIONES_VALIDAS = [
 def _pedir(
     http: TestClient, metodo: str, ruta: str, cuerpo: dict[str, Any] | None, **params: int
 ) -> Respuesta:
-    return http.request(metodo.upper(), ruta, params=params, json=cuerpo)
+    """La query escrita en la ruta (``?q=madrid``) se suma a ``params``.
+
+    Pasarla tal cual no basta: ``httpx`` sustituye la query de la URL por la
+    de ``params`` en vez de sumarlas, y la ruta llegaría sin su ``q``.
+    """
+    camino, _, consulta = ruta.partition("?")
+    query: dict[str, Any] = dict(parse_qsl(consulta))
+    query.update(params)
+    return http.request(metodo.upper(), camino, params=query, json=cuerpo)
 
 
 @pytest.mark.parametrize(("metodo", "ruta", "cuerpo", "servicio"), _PETICIONES_VALIDAS)
@@ -216,6 +254,8 @@ def test_seguir_con_un_cuerpo_invalido_es_422(
     ("metodo", "ruta", "params"),
     [
         ("get", _CUENTAS, {"organization_id": 0}),
+        ("get", _CUENTAS, {"organo": ""}),
+        ("get", _CUENTAS, {"organo": "x" * 501}),
         ("post", _CUENTAS, {"organization_id": -3}),
         ("delete", f"{_CUENTAS}/no-es-un-id", {}),
         ("get", _ETIQUETAS, {"organization_id": 0}),
@@ -296,3 +336,330 @@ def test_por_objeto_con_cuerpo_invalido_es_422(
     resp = autenticado.post(f"{_ETIQUETAS}/por-objeto", params={"organization_id": 1}, json=cuerpo)
 
     assert resp.status_code == 422, resp.text
+
+
+# ── 403: los dos rechazos de la organización ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "rechazo",
+    [OrganizationAccessError, OrganizationPermissionError],
+    ids=["sin-membresia", "viewer"],
+)
+@pytest.mark.parametrize(("metodo", "ruta", "cuerpo", "servicio"), _PETICIONES_VALIDAS)
+def test_un_rechazo_de_la_organizacion_es_403_con_su_motivo(
+    autenticado: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    metodo: str,
+    ruta: str,
+    cuerpo: dict[str, Any] | None,
+    servicio: str,
+    rechazo: type[PermissionError],
+) -> None:
+    """Las nueve rutas traducen los dos rechazos de ``resolve_organization``.
+
+    Son hermanos, no padre e hijo, y las rutas sólo capturaban el de «no eres
+    miembro»: el del viewer que escribe salía como 500. Desde que el botón
+    «Seguir» del panel de órgano de Mercado escribe en /cuentas, ese viewer es
+    cualquiera que lo pulse. Con ``raise_server_exceptions=True`` una excepción
+    sin traducir revienta aquí con su nombre, no como un código que interpretar.
+    """
+    import api.routes.cuentas as rutas
+
+    def _rechaza(*_args: Any, **_kwargs: Any) -> NoReturn:
+        raise rechazo("El rol viewer es de solo lectura.")
+
+    monkeypatch.setattr(rutas, servicio, _rechaza)
+
+    resp = _pedir(autenticado, metodo, ruta, cuerpo, organization_id=1)
+
+    assert resp.status_code == 403, f"{servicio}: {resp.status_code} {resp.text}"
+    # El aviso del frontend enseña `detail`: tiene que decir por qué.
+    assert resp.json()["detail"] == "El rol viewer es de solo lectura."
+
+
+# ── GET /cuentas?organo= ─────────────────────────────────────────────────────
+
+
+def test_el_filtro_por_organo_llega_entero_al_servicio(
+    autenticado: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """La pregunta del botón «Seguir» de Mercado viaja tal cual hasta el servicio.
+
+    Tal cual, sin plegar: el plegado es de ``db/`` (``clave_de_organo``), y si
+    la ruta lo hiciera por su cuenta habría dos sitios que tienen que coincidir.
+    Sin ``organo`` llega ``None``, que es la cartera entera de /cuentas. Que el
+    plegado case contra la base lo fija ``test_cuentas_objetivo_etiquetas.py``.
+    """
+    import api.routes.cuentas as rutas
+
+    llamadas: list[dict[str, Any]] = []
+
+    def _listar(user_id: int, **kwargs: Any) -> list[Any]:
+        llamadas.append({"user_id": user_id, **kwargs})
+        return []
+
+    monkeypatch.setattr(rutas, "listar_cuentas", _listar)
+
+    con_organo = autenticado.get(
+        _CUENTAS, params={"organization_id": 1, "organo": " AYUNTAMIENTO DE SORIA"}
+    )
+    sin_organo = autenticado.get(_CUENTAS, params={"organization_id": 1})
+
+    assert con_organo.status_code == sin_organo.status_code == 200
+    assert con_organo.json() == []
+    assert llamadas == [
+        {"user_id": 5, "organization_id": 1, "organo": " AYUNTAMIENTO DE SORIA"},
+        {"user_id": 5, "organization_id": 1, "organo": None},
+    ]
+
+
+# ── Cuentas de varios órganos (v145): cuerpos y parámetros ──────────────────
+
+_NUL = "EXP" + chr(0) + "1"
+
+
+@pytest.mark.parametrize(
+    "cuerpo",
+    [
+        {"organo": "Ayuntamiento de Soria", "organos": ["Pleno del Ayuntamiento de Soria"]},
+        {"organos": []},
+        {"organos": ["x" * 501]},
+        {"organos": [f"Órgano {n}" for n in range(51)]},
+        {"organos": ["   "]},
+        {"organos": [_NUL]},
+        {"nombre": "   ", "organos": ["Pleno del Ayuntamiento de Soria"]},
+        {"nombre": _NUL, "organos": ["Pleno del Ayuntamiento de Soria"]},
+        {"nombre": "Cliente sin órganos"},
+    ],
+    ids=[
+        "organo-y-organos",
+        "lista-vacia",
+        "organo-largo",
+        "mas-de-50",
+        "organo-en-blanco",
+        "organo-nul",
+        "nombre-en-blanco",
+        "nombre-nul",
+        "nombre-sin-organos",
+    ],
+)
+def test_crear_una_cuenta_con_un_cuerpo_invalido_es_422(
+    autenticado: TestClient, cuerpo: dict[str, Any]
+) -> None:
+    """Uno de los dos caminos, nunca los dos ni ninguno: con los dos a la vez no
+    habría forma de saber si el cliente pedía seguir un órgano o crear un
+    cliente con varios."""
+    resp = autenticado.post(_CUENTAS, params={"organization_id": 1}, json=cuerpo)
+
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.parametrize(
+    "cuerpo",
+    [
+        {},
+        {"nombre": None},
+        {"nombre": "   "},
+        {"nombre": "x" * 501},
+        {"nota": "x" * 2001},
+        {"nombre": _NUL},
+        {"nota": _NUL},
+        {"nota": "Renueva", "organization_id": 1},
+    ],
+    ids=[
+        "vacio",
+        "nombre-nulo",
+        "nombre-en-blanco",
+        "nombre-largo",
+        "nota-larga",
+        "nombre-nul",
+        "nota-nul",
+        "campo-extra",
+    ],
+)
+def test_editar_una_cuenta_con_un_cuerpo_invalido_es_422(
+    autenticado: TestClient, cuerpo: dict[str, Any]
+) -> None:
+    """Un PATCH sin nada que cambiar no es un éxito silencioso, y una cuenta no
+    puede quedarse sin nombre: ``nombre: null`` no es «bórralo»."""
+    resp = autenticado.patch(f"{_CUENTAS}/7", params={"organization_id": 1}, json=cuerpo)
+
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.parametrize(
+    "cuerpo",
+    [{}, {"organos": []}, {"organos": [_NUL]}, {"organos": ["Pleno"], "extra": 1}],
+    ids=["vacio", "lista-vacia", "organo-nul", "campo-extra"],
+)
+def test_anadir_organos_con_un_cuerpo_invalido_es_422(
+    autenticado: TestClient, cuerpo: dict[str, Any]
+) -> None:
+    resp = autenticado.post(f"{_CUENTAS}/7/organos", params={"organization_id": 1}, json=cuerpo)
+
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.parametrize(
+    ("metodo", "ruta", "params"),
+    [
+        ("get", f"{_CUENTAS}/buscar-organos", {}),
+        ("get", f"{_CUENTAS}/buscar-organos", {"q": "x" * 201}),
+        ("get", f"{_CUENTAS}/no-es-un-id", {}),
+        ("patch", f"{_CUENTAS}/no-es-un-id", {}),
+        ("delete", f"{_CUENTAS}/7/organos/no-es-un-id", {}),
+        ("get", f"{_CUENTAS}/resumen", {"organization_id": 0}),
+        ("delete", f"{_CUENTAS}/por-organo", {}),
+        ("delete", f"{_CUENTAS}/por-organo", {"organo": "x" * 501}),
+    ],
+    ids=[
+        "buscar-sin-q",
+        "buscar-q-larga",
+        "ficha-id-invalido",
+        "patch-id-invalido",
+        "organo-id-invalido",
+        "resumen-organizacion-cero",
+        "dejar-organo-sin-organo",
+        "dejar-organo-largo",
+    ],
+)
+def test_parametros_invalidos_de_las_rutas_nuevas_son_422(
+    autenticado: TestClient, metodo: str, ruta: str, params: dict[str, Any]
+) -> None:
+    """El byte NUL en la *query* no está aquí: lo corta antes el middleware con
+    un 400 para cualquier ruta, sin llegar a la validación."""
+    cuerpo = {"nota": "Renueva"} if metodo == "patch" else None
+
+    resp = autenticado.request(metodo.upper(), ruta, params=params, json=cuerpo)
+
+    assert resp.status_code == 422, resp.text
+
+
+# ── 409 y 404: la traducción de lo que el servicio responde ─────────────────
+
+#: Las rutas que pueden chocar con el resto de la cartera, con su servicio.
+_ESCRITURAS_CON_CONFLICTO = [
+    pytest.param(
+        "post",
+        _CUENTAS,
+        {"nombre": "Ayuntamiento de Madrid", "organos": ["Pleno"]},
+        "crear_cuenta",
+        id="POST-cuentas",
+    ),
+    pytest.param("patch", f"{_CUENTAS}/7", {"nombre": "Otro"}, "editar_cuenta", id="PATCH-cuenta"),
+    pytest.param(
+        "post", f"{_CUENTAS}/7/organos", {"organos": ["Pleno"]}, "anadir_organos", id="POST-organos"
+    ),
+    pytest.param("delete", f"{_CUENTAS}/7/organos/3", None, "quitar_organo", id="DELETE-organo"),
+]
+
+
+@pytest.mark.parametrize(
+    "conflicto",
+    ["OrganoEnOtraCuentaError", "CuentaNombreOcupadoError", "UltimoOrganoError"],
+)
+@pytest.mark.parametrize(("metodo", "ruta", "cuerpo", "servicio"), _ESCRITURAS_CON_CONFLICTO)
+def test_un_conflicto_con_la_cartera_es_409_con_su_motivo(
+    autenticado: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    metodo: str,
+    ruta: str,
+    cuerpo: dict[str, Any] | None,
+    servicio: str,
+    conflicto: str,
+) -> None:
+    """El mensaje del servicio nombra el conflicto («ya está en la cuenta X») y
+    es lo que el aviso del frontend enseña: la ruta lo pasa tal cual."""
+    import api.routes.cuentas as rutas
+    import services.cuentas as svc
+
+    error = getattr(svc, conflicto)
+
+    def _choca(*_args: Any, **_kwargs: Any) -> NoReturn:
+        raise error("«Pleno» ya está en la cuenta «Ayuntamiento de Madrid».")
+
+    monkeypatch.setattr(rutas, servicio, _choca)
+
+    resp = _pedir(autenticado, metodo, ruta, cuerpo, organization_id=1)
+
+    assert resp.status_code == 409, f"{servicio}: {resp.status_code} {resp.text}"
+    assert resp.json()["detail"] == "«Pleno» ya está en la cuenta «Ayuntamiento de Madrid»."
+
+
+@pytest.mark.parametrize(
+    ("metodo", "ruta", "cuerpo", "servicio"),
+    [
+        pytest.param("get", f"{_CUENTAS}/7", None, "ficha_cuenta", id="GET-ficha"),
+        pytest.param(
+            "patch", f"{_CUENTAS}/7", {"nota": "Renueva"}, "editar_cuenta", id="PATCH-cuenta"
+        ),
+        pytest.param(
+            "post",
+            f"{_CUENTAS}/7/organos",
+            {"organos": ["Pleno"]},
+            "anadir_organos",
+            id="POST-organos",
+        ),
+        pytest.param(
+            "delete", f"{_CUENTAS}/7/organos/3", None, "quitar_organo", id="DELETE-organo"
+        ),
+        pytest.param(
+            "delete",
+            f"{_CUENTAS}/por-organo?organo=Pleno",
+            None,
+            "dejar_de_seguir_organo",
+            id="DELETE-por-organo",
+        ),
+    ],
+)
+def test_una_cuenta_que_no_es_de_la_organizacion_es_404(
+    autenticado: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    metodo: str,
+    ruta: str,
+    cuerpo: dict[str, Any] | None,
+    servicio: str,
+) -> None:
+    """``None`` del servicio es «no está en tu organización», no un 200 vacío."""
+    import api.routes.cuentas as rutas
+
+    monkeypatch.setattr(rutas, servicio, lambda *_a, **_k: None)
+
+    resp = _pedir(autenticado, metodo, ruta, cuerpo, organization_id=1)
+
+    assert resp.status_code == 404, f"{servicio}: {resp.status_code} {resp.text}"
+
+
+@pytest.mark.parametrize(
+    ("cuerpo", "esperado"),
+    [
+        ({"nota": None}, {"nombre": None, "nota": None, "cambiar_nota": True}),
+        ({"nota": "Renueva"}, {"nombre": None, "nota": "Renueva", "cambiar_nota": True}),
+        ({"nombre": " Madrid "}, {"nombre": "Madrid", "nota": None, "cambiar_nota": False}),
+    ],
+    ids=["borra-la-nota", "cambia-la-nota", "solo-renombra"],
+)
+def test_editar_distingue_no_tocar_la_nota_de_borrarla(
+    autenticado: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cuerpo: dict[str, Any],
+    esperado: dict[str, Any],
+) -> None:
+    """Las dos llegan como ``nota=None``; lo que las separa es si el campo vino.
+
+    Renombrar sin mandar ``nota`` no puede borrar la que hubiera, que es lo que
+    haría leer sólo el valor.
+    """
+    import api.routes.cuentas as rutas
+
+    llamadas: list[dict[str, Any]] = []
+
+    def _editar(_user_id: int, _cuenta_id: int, **kwargs: Any) -> None:
+        llamadas.append({k: kwargs[k] for k in ("nombre", "nota", "cambiar_nota")})
+
+    monkeypatch.setattr(rutas, "editar_cuenta", _editar)
+
+    autenticado.patch(f"{_CUENTAS}/7", params={"organization_id": 1}, json=cuerpo)
+
+    assert llamadas == [esperado]

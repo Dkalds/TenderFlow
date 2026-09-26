@@ -88,17 +88,22 @@ describe("cn", () => {
       expect(cn("text-tf-meta", "text-sm")).toBe("text-sm");
     });
 
-    it("reconoce todos los pasos que declara globals.css", () => {
-      // Un paso nuevo en la hoja que no entre en la configuración de `cn`
-      // volvería a perderse junto a cualquier color, sin que nada avise.
+    it("reconoce todos los tamaños que declara globals.css", () => {
+      // Un tamaño nuevo en la hoja que no entre en la configuración de `cn`
+      // volvería a perderse junto a cualquier color, sin que nada avise. Lee
+      // todos los `--text-*`, no solo la escala: `--text-campo` también cuenta,
+      // porque el tamaño que un llamador pasa a `Input` tiene que sustituirlo.
       const css = readFileSync(
         path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../app/globals.css"),
         "utf8",
       );
-      const pasos = [...css.matchAll(/--text-(tf-[a-z]+):/g)].map((m) => m[1]);
-      expect(pasos.length).toBeGreaterThan(0);
+      const pasos = [...new Set([...css.matchAll(/--text-([a-z][\w-]*):/g)].map((m) => m[1]))]
+        // `--text-tf-meta--line-height` y compañía no son tamaños.
+        .filter((nombre) => !nombre.includes("--"));
+      expect(pasos).toEqual(expect.arrayContaining(["tf-meta", "campo"]));
       for (const paso of pasos) {
         expect(cn(`text-${paso}`, "text-foreground"), paso).toBe(`text-${paso} text-foreground`);
+        expect(cn("text-sm", `text-${paso}`), paso).toBe(`text-${paso}`);
       }
     });
   });

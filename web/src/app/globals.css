@@ -348,6 +348,37 @@
   --text-tf-hero--line-height: 1.05;
 }
 
+/*
+ * Tamaño de letra de los campos de formulario (`Input`, `Textarea`): 16 px en
+ * móvil y 14 desde `md`. Los 16 px no son estética: iOS amplía la página al
+ * enfocar un campo de menos de 16 px.
+ *
+ * Es un solo token, y no `text-base md:text-sm` en el primitivo, para que el
+ * tamaño que traiga el llamador lo sustituya en todos los anchos. tailwind-merge
+ * solo ve en conflicto dos tamaños con la misma variante: un `text-xs` quitaba
+ * `text-base` pero dejaba `md:text-sm`, que en la hoja va detrás de las
+ * utilidades sin variante y ganaba desde 768 px — el buscador del tablero pedía
+ * 12 px y salía a 14. Quien quiera conservar los 16 px de móvil pasa su tamaño
+ * solo desde `md` (`md:text-xs`). Para que tailwind-merge lo trate como tamaño,
+ * `campo` está también en `cn()`, como los pasos de la escala.
+ *
+ * El cambio de `md` va en `@layer base` porque Tailwind emite `@theme` en
+ * `@layer theme`, que va antes.
+ */
+@theme {
+  --text-campo: var(--text-base);
+  --text-campo--line-height: var(--text-base--line-height);
+}
+
+@layer base {
+  :root {
+    @variant md {
+      --text-campo: var(--text-sm);
+      --text-campo--line-height: var(--text-sm--line-height);
+    }
+  }
+}
+
 @utility tf-display {
   font-family: var(--font-display);
   font-size: 2.25rem;
