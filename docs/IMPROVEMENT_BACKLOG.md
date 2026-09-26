@@ -263,6 +263,29 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P1 — Alta
 
+### [P1] Ejecutar en producción la purga de PSCP sin tecnología
+- **Área:** scripts/purgar_pscp_sin_tecnologia.py, db/repositories/purga_licitaciones.py (acción del usuario: borrado irreversible)
+- **Problema:** de ~685.500 filas de PSCP solo 3.268 llevan `tecnologia` (medido el
+  2026-09-26). Las otras son el censo catalán entero —limpieza, obras, reactivos—
+  y 100.421 tienen `analysis_universe` NULL, que cuenta como `technology_observed`:
+  salen en el Radar, en las cifras de cuentas y en los avisos (hay notificaciones
+  enviadas sobre «Missatges WhatsApp Business»). Son además el 97 % del heap de
+  `licitaciones`, que es lo que hace lentas las vistas de Mercado sin filtros.
+  El código de la purga y la puerta endurecida del conector están hechos
+  (RFC [2026-09-26](rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md)); falta
+  ejecutarla, y eso lo decide el propietario.
+- **Acceptance criteria:**
+  - Dry-run revisado, con la pregunta abierta del RFC decidida: las ~30.500 filas
+    con CPV 48/72 sin keyword se borran (D24 tal cual) o se conservan.
+  - `--apply` ejecutado y PSCP reingerida entera (`--desde 2000-01-01`) para
+    refrescar las etiquetas desactualizadas; balance y delta de
+    `make audit-truth-check` anotados en el RFC, que pasa a `implemented`.
+  - Tras el `VACUUM (ANALYZE)`, `pg_relation_size('licitaciones')` anotado aquí.
+- **Files de partida:** [.github/workflows/purga-pscp.yml](../.github/workflows/purga-pscp.yml) (dry-run por defecto; `apply` + `reingerir_desde`), [scripts/purgar_pscp_sin_tecnologia.py](../scripts/purgar_pscp_sin_tecnologia.py), [db/repositories/purga_licitaciones.py](../db/repositories/purga_licitaciones.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py) (`senal_tecnologica`)
+- **Riesgo:** alto — borra ~680.000 filas y sus dependientes. Mitigado: reevalúa con la
+  misma puerta que el conector, conserva las filas con trabajo de usuario, es
+  reanudable, y el dato es público y reingestable (`--desde`).
+
 ### [P1] [Rendimiento 2026-09] Aplicar en producción los índices de la búsqueda `q` y del filtro de tecnología
 - **Área:** db/alembic/versions (`v142_lic_tecnologia_tokens_gin`, `v143_lic_busqueda_plegada_trgm`); aplicar con `migrate.yml` es acción del usuario
 - **Problema:** la búsqueda `q` del listado y de los agregados es un `LIKE '%q%'` sobre cuatro columnas plegadas, y el filtro de tecnología un solapamiento de arrays; sin índice, cada búsqueda y cada filtro recorren ~1,64 M filas. El código ya emite las expresiones indexables y las dos migraciones están escritas (rama de rendimiento), pero `migrate.yml` es manual y el índice de `descripcion` de `v143` puede ocupar mucho disco.
@@ -307,6 +330,10 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   subir el cómputo de Supabase (con 4 GB la tabla cabría en caché). Sigue abierta una
   decisión de producto: acotar la analítica al universo tecnológico. El listado ya
   enseña solo filas con `tecnologia`; la analítica cuenta además todo PSCP.
+  **(2026-09-26)** Esa decisión la resuelve en la base de datos el P1 «Ejecutar en
+  producción la purga de PSCP»: el 97 % del heap es el censo de PSCP que se borra.
+  Medir de nuevo estas vistas después de la purga, antes de invertir en snapshots o
+  en más cómputo.
 - **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates.py](../db/repositories/aggregates.py), [tests/test_v144_indices_analitica.py](../tests/test_v144_indices_analitica.py)
 - **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
   y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
@@ -579,6 +606,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Relación:** bloquea el P1 del golden set (ampliarlo no sirve de nada si el dataset de entrenamiento está ahogado) y explica por qué `model_versions` no tiene ninguna fila de `sap_classifier`.
 - **Riesgo:** medio — cambiar la población de entrenamiento cambia qué aprende el clasificador que decide el rescate ML en ingesta.
 - **Progreso parcial (2026-09-14, Ola 1 · Taxonomía):** parte del 0,46 % era vocabulario, no población: el diccionario solo tenía castellano y la PSCP publica en catalán. `config/keywords.py` añade nueve categorías de TI con formas en catalán, euskera y gallego ([docs/taxonomia-tecnologica.md](taxonomia-tecnologica.md)); tras resembrar, la tasa de positivos de PSCP hay que volver a medirla antes de decidir la bifurcación. No toca la población de entrenamiento ni `validate_training_data`.
+- *Estado (2026-09-26):* medido contra producción, las 683k filas de PSCP **no** eran un bug de etiquetado: son el censo catalán entero (0 filas se llegaron a marcar `pscp_censo`). El RFC [2026-09-26](rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md) las purga reevaluando cada fila con la puerta del conector —conserva las que el diccionario de hoy sí reconoce, y la reingesta posterior las reetiqueta—; queda pendiente de ejecutar (P1 «Ejecutar en producción la purga de PSCP»). Tras ella, la población de entrenamiento deja de depender del acotado.
 - *Estado (2026-09-19):* **la bifurcación ya se tomó en código, por la opción 1**, y el ítem no lo decía. Desde S6.1 del plan v2 (`#274`, 2026-09-08) `train_from_db` (`scraper/ml_training.py:374-418`) no lee `licitaciones` entera: entrena sobre `db.repositories.ml_dataset.filas_entrenamiento_sap`, acotada por `poblacion_clasificador_sql` (universo tecnológico observado, no un filtro por nombre de fuente, y sin duplicados confirmados), pasa `validate_training_data` en ese mismo camino y registra la población como `train_population`. Lo que sigue abierto es la consecuencia que la propia opción 1 anunciaba —el modelo puntúa una población distinta de la que aprende— y la medida: `domain-truth.yml` seguía dando `ml_proba > 0,7` en el 72,9 % de lo puntuado del 12 al 18/09 (ver el P2 de `importe_tipo`). No se comprobó aquí si hay ya una versión de `sap_classifier` entrenada con esa población.
 
 ### [P2] `baja_model` v2 y `retencion_model` v1 están entrenados y publicados, pero nadie puede decidir si activarlos

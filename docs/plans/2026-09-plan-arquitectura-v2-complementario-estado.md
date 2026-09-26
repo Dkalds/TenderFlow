@@ -293,7 +293,7 @@ Todo en `70b3c37` (v116–v119) salvo lo indicado.
 
 | Ítem | Estado |
 |---|---|
-| C4.1 PSCP acotado (D24) | **Hecho** (`8d2f0b7`). 684 374 filas, 0,46 % con tecnología, el 96,9 % del corpus. Se **marca** (`analysis_universe='pscp_censo'`), no se purga. |
+| C4.1 PSCP acotado (D24) | **Hecho** (`8d2f0b7`). 684 374 filas, 0,46 % con tecnología, el 96,9 % del corpus. Se iba a **marcar** (`analysis_universe='pscp_censo'`), pero el marcado no se aplicó nunca (0 filas el 2026-09-26). **Revisado el 2026-09-26** a petición del propietario: se **purga**, reevaluando cada fila con la puerta del conector, que además exige CPV 48/72 a las keywords ambiguas; el script de marcado sale del árbol. Ver [RFC 2026-09-26](../rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md). |
 | C4.2 Republicaciones (D23) | **Hecho.** Regla en ADR-026: presentación esconde, métrica cuenta, la ficha avisa. |
 | C4.3 Euskadi y Galicia por API | **No hecho.** Exige integrar dos APIs vivas y validar cobertura contra una muestra manual de 50 expedientes por fuente. |
 | C4.4 Fechas imposibles | **Hecho.** 50 adjudicaciones anteriores a 1990, la mayoría `1899-12-30` (cero de la epoch de Excel). |
