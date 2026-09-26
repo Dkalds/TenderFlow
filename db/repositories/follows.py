@@ -20,9 +20,12 @@ Fase **aditiva**, la primera de tres:
    (`docs/rfc/2026-09-19-rfc-retirada-endpoints-watchlist.md`).
 
 Lo que este módulo **sí** sirve hoy en producción es lo que antes no existía:
-seguir órganos y CPV (que no tenían tabla) y la pregunta inversa —«¿quién
-sigue esto?»— que ADR-031 §D le pide al despachador de eventos, y que con tres
-tablas había que hacer tres veces.
+seguir CPV (que no tenía tabla) y la pregunta inversa —«¿quién sigue esto?»—
+que ADR-031 §D le pide al despachador de eventos, y que con tres tablas había
+que hacer tres veces. Los órganos **no** entran por aquí desde la interfaz: el
+seguimiento con efectos es la cuenta objetivo de la organización
+(`cuentas_objetivo`, ver `services/cuentas.py`), y una fila `organo` de esta
+tabla es personal y no la lee ningún productor de avisos.
 
 Identidad dual
 --------------

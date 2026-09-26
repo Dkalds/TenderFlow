@@ -364,6 +364,62 @@
       "path": "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto",
       "kind": "response",
       "status": "200"
+    },
+    {
+      "fixture": "cuentas-list.json",
+      "method": "GET",
+      "path": "/api/v1/cuentas",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "cuenta-crear.json",
+      "method": "POST",
+      "path": "/api/v1/cuentas",
+      "kind": "response",
+      "status": "201"
+    },
+    {
+      "fixture": "cuentas-resumen.json",
+      "method": "GET",
+      "path": "/api/v1/cuentas/resumen",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "cuentas-buscar-organos.json",
+      "method": "GET",
+      "path": "/api/v1/cuentas/buscar-organos",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "cuenta-ficha.json",
+      "method": "GET",
+      "path": "/api/v1/cuentas/{cuenta_id}",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "cuenta-editar.json",
+      "method": "PATCH",
+      "path": "/api/v1/cuentas/{cuenta_id}",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "cuenta-organos-anadir.json",
+      "method": "POST",
+      "path": "/api/v1/cuentas/{cuenta_id}/organos",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "cuenta-organo-quitar.json",
+      "method": "DELETE",
+      "path": "/api/v1/cuentas/{cuenta_id}/organos/{cuenta_organo_id}",
+      "kind": "response",
+      "status": "200"
     }
   ]
 }

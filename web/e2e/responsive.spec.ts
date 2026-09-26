@@ -56,6 +56,31 @@ async function expectDocumentFitsVertically(page: import("@playwright/test").Pag
 }
 
 /**
+ * Con la barra de ámbito llena, lo que se desplaza es la barra: el contenedor
+ * de chips no encoge por debajo de su contenido. Con `min-w-0` era el único
+ * hijo que cedía ancho (sus hermanos son `flex-none`), y los chips y
+ * «+ Añadir» se le salían por encima de lo que venía detrás.
+ */
+async function expectChipsDelAmbitoSinSolape(page: import("@playwright/test").Page) {
+  const barra = page.locator('[data-slot="barra-ambito"]');
+  const chips = barra.locator('[data-slot="ambito-chips"]');
+  await expect(chips.getByRole("button", { name: "+ Añadir" })).toBeVisible();
+
+  const { recorte, solape } = await chips.evaluate((el) => {
+    const anadir = [...el.querySelectorAll("button")].at(-1)!.getBoundingClientRect();
+    const siguiente = el.nextElementSibling!.getBoundingClientRect();
+    return { recorte: el.scrollWidth - el.clientWidth, solape: anadir.right - siguiente.left };
+  });
+  expect(recorte).toBeLessThanOrEqual(1);
+  expect(solape).toBeLessThanOrEqual(0.5);
+
+  // Y la barra se desplaza de verdad: si cupiera, no habría nada que encoger y
+  // lo de arriba pasaría en vacío.
+  const desplazamiento = await barra.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(desplazamiento).toBeGreaterThan(0);
+}
+
+/**
  * La superficie pública, a los tres anchos.
  *
  * No estaba cubierta: los tests de abajo miden el dashboard, que es donde vive
@@ -271,6 +296,29 @@ test.describe("Móvil (375×812)", () => {
     await expectDocumentFits(page);
     await expectDocumentFitsVertically(page);
   });
+
+  test("la barra de ámbito se desplaza sin que los chips encojan ni pisen lo siguiente", async ({ page }) => {
+    // A 375 px la barra no cabe ni sin chips: el contenedor caía a 0 px y
+    // «+ Añadir» se pintaba encima del aviso y del recuento. El chip y el
+    // filtro que el Radar no aplica salen de la URL, no del seed.
+    await page.goto("/radar?tecnologia=SAP&ccaa=Madrid");
+    await expectChipsDelAmbitoSinSolape(page);
+    await expectDocumentFits(page);
+  });
+
+  test("el aviso de «no aplica» cabe en la barra en una sola línea", async ({ page }) => {
+    // Con un filtro activo en una pantalla que no lo aplica, el aviso encogía
+    // hasta su palabra más larga: nueve líneas (144 px) en una barra de 52,
+    // que las recortaba —se leía «no aplica en esta»— y se desplazaba en
+    // vertical.
+    await page.goto("/mi-watchlist?ccaa=Madrid");
+    const barra = page.locator('[data-slot="barra-ambito"]');
+    await expect(barra.getByText(/El ámbito global no aplica en esta pantalla/)).toBeVisible();
+
+    const desbordeVertical = await barra.evaluate((el) => el.scrollHeight - el.clientHeight);
+    expect(desbordeVertical).toBeLessThanOrEqual(1);
+    await expectDocumentFits(page);
+  });
 });
 
 /**
@@ -349,5 +397,21 @@ test.describe("Escritorio (1440×900)", () => {
 
     await expect(page.getByRole("navigation", { name: "Espacios" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Abrir navegación" })).toBeHidden();
+  });
+
+  test("con el ámbito lleno, la barra se desplaza en vez de montar los chips encima", async ({ page }) => {
+    // También en escritorio: con cinco chips en Resumen el contenedor encogía y
+    // los chips tapaban el recuento, «Vistas» y parte de «Buscar». Van seis, y
+    // salen de la URL, no del seed: sobra margen para que la barra no quepa
+    // aunque el recuento y el «sync» midan distinto con otros datos.
+    const ambito = new URLSearchParams({
+      q: "mantenimiento evolutivo del ERP",
+      ccaa: "Madrid,Galicia,Cantabria",
+      tecnologia: "SAP",
+      importe_min: "100000",
+    });
+    await page.goto(`/resumen?${ambito}`);
+    await expectChipsDelAmbitoSinSolape(page);
+    await expectDocumentFits(page);
   });
 });

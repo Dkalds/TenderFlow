@@ -53,6 +53,14 @@ const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
   useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
 }));
+// `useSeguimiento` instancia también la fuente de cuentas (deshabilitada para
+// una licitación), que lee la organización activa: en blanco, como el resto de
+// fuentes que el Radar no usa.
+vi.mock("@/hooks/use-cuentas", () => ({
+  useCuentaDeOrgano: () => ({ data: undefined, isPending: false }),
+  useSeguirCuenta: () => ({ mutate: vi.fn(), isPending: false }),
+  useDejarDeSeguirOrgano: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 // F1.6 — sin etiquetas en la organización el filtro no se pinta ni filtra.
 vi.mock("@/hooks/use-etiquetas", () => ({
   useEtiquetas: () => ({ data: [] }),

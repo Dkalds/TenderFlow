@@ -67,12 +67,17 @@ vi.mock("@/hooks/use-watchlist-items", () => ({
   useAddWatchlistItem: () => ({ mutate: addWatchlist }),
   useRemoveWatchlistItem: () => ({ mutate: removeWatchlist }),
 }));
-// `useSeguimiento` instancia también las fuentes de empresas y de `follows`
-// (deshabilitadas para una licitación). Sin `QueryClient` en este test, van
-// en blanco: lo que se prueba es que el Radar sigue por los favoritos.
+// `useSeguimiento` instancia también las fuentes de empresas, de cuentas y de
+// `follows` (deshabilitadas para una licitación). Sin `QueryClient` en este
+// test, van en blanco: lo que se prueba es que el Radar sigue por los favoritos.
 vi.mock("@/hooks/use-empresas-watchlist", () => ({
   useEmpresasWatchlist: () => ({ watchedIds: new Set<number>(), isLoading: false }),
   useToggleEmpresaWatch: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+vi.mock("@/hooks/use-cuentas", () => ({
+  useCuentaDeOrgano: () => ({ data: undefined, isPending: false }),
+  useSeguirCuenta: () => ({ mutate: vi.fn(), isPending: false }),
+  useDejarDeSeguirOrgano: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock("@/hooks/use-follows", () => ({
   useFollows: () => ({ data: undefined, isLoading: false }),

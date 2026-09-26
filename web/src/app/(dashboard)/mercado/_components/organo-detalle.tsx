@@ -17,13 +17,31 @@ import { KpiCard } from "@/components/charts/kpi-card";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { X, Hash, Trophy, Clock, Users, TrendingUp } from "lucide-react";
 
+import Link from "next/link";
+
 import { SeguirBoton } from "@/components/seguir-boton";
+import { useCuentaDeOrgano } from "@/hooks/use-cuentas";
+import { usePuedeEscribir } from "@/hooks/use-organization";
 
 import type { OrganoDetailResponse } from "../_hooks/use-organos-view";
 import { OrganoTopScored } from "./organo-top-scored";
 
 const OrganosAdjudicatariosChart = dynamic(() => import("@/components/charts/organos-charts").then(m => ({ default: m.OrganosAdjudicatariosChart })), { ssr: false, loading: () => <Skeleton className="h-[280px] w-full rounded-md" /> });
 const OrganosEstacionalidadChart = dynamic(() => import("@/components/charts/organos-charts").then(m => ({ default: m.OrganosEstacionalidadChart })), { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> });
+
+/** Lo que ve un `viewer` en lugar de la campana: de qué cuenta es el órgano. */
+function CuentaSoloLectura({ organo }: { organo: string }) {
+  const { data: cuenta } = useCuentaDeOrgano(organo);
+  if (!cuenta) return null;
+  return (
+    <Link
+      href={`/cuentas/${cuenta.id}`}
+      className="max-w-[10rem] flex-none truncate rounded-md border border-border/70 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+    >
+      Cuenta: {cuenta.nombre}
+    </Link>
+  );
+}
 
 export function OrganoDetalle({
   organo,
@@ -36,6 +54,7 @@ export function OrganoDetalle({
   isLoading: boolean;
   onClose: () => void;
 }) {
+  const puedeEscribir = usePuedeEscribir();
   return (
     <aside
       aria-label={`Detalle de ${organo}`}
@@ -43,16 +62,23 @@ export function OrganoDetalle({
     >
       <div className="flex flex-none items-start gap-2 border-b border-border/60 px-3.5 py-2.5">
         <h2 className="min-w-0 flex-1 text-[13px] font-semibold leading-tight">{organo}</h2>
-        {/* F1.5 / ADR-031 §C — seguir un órgano no existía: habría hecho falta
-            una cuarta tabla de seguimiento. Es la primera acción que declara
-            «este cliente me interesa aunque hoy no publique nada». */}
-        <SeguirBoton
-          targetType="organo"
-          targetId={organo}
-          etiqueta={`el órgano ${organo}`}
-          variante="icono"
-          className="flex-none"
-        />
+        {/* F1.5 / ADR-031 §C — el control único «Seguir», que para un órgano
+            crea o completa la cuenta objetivo de la organización activa
+            (`/cuentas`), con sus avisos de publicación y de vencimiento para
+            todo el equipo. Es la acción que declara «este cliente me interesa
+            aunque hoy no publique nada». Un `viewer` no puede seguir: en vez
+            de un botón que siempre le fallaría, ve de qué cuenta es. */}
+        {puedeEscribir ? (
+          <SeguirBoton
+            targetType="organo"
+            targetId={organo}
+            etiqueta={`el órgano ${organo}`}
+            variante="icono"
+            className="flex-none"
+          />
+        ) : (
+          <CuentaSoloLectura organo={organo} />
+        )}
         <button
           type="button"
           aria-label="Cerrar detalle del órgano"

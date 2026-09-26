@@ -223,6 +223,72 @@ class AgentDocsCheckerTests(unittest.TestCase):
             ],
         )
 
+    def test_manual_markers_reject_pytestmark_in_module_and_class(self) -> None:
+        _write(
+            self.root / "tests/test_example.py",
+            "import pytest\n\n"
+            "pytestmark = pytest.mark.unit\n\n\n"
+            "class TestExample:\n"
+            "    pytestmark = [pytest.mark.slow, pytest.mark.integration]\n\n"
+            "    def test_example(self):\n"
+            "        pass\n",
+        )
+
+        with patch.object(check_agent_docs, "MANUAL_CATEGORY_MARKER_ALLOWLIST", frozenset()):
+            check_agent_docs.check_manual_test_markers()
+
+        self.assertEqual(
+            check_agent_docs.errors,
+            [
+                "tests/test_example.py: TestExample introduce `pytest.mark.integration` manual; "
+                "renombrá el test para usar auto-marking",
+                "tests/test_example.py: <module> introduce `pytest.mark.unit` manual; "
+                "renombrá el test para usar auto-marking",
+            ],
+        )
+
+    def test_manual_markers_reject_every_way_of_assigning_pytestmark(self) -> None:
+        assignments = {
+            "tuple": "pytestmark = (pytest.mark.unit,)",
+            "annotated": "pytestmark: list[pytest.MarkDecorator] = [pytest.mark.unit]",
+            "augmented": "pytestmark = []\npytestmark += [pytest.mark.unit]",
+            "concatenated": "pytestmark = [pytest.mark.unit] + COMMON",
+            "unpacked": "pytestmark = [*COMMON, pytest.mark.unit]",
+            "called": "pytestmark = pytest.mark.unit()",
+            "conditional": "if CONDITION:\n    pytestmark = pytest.mark.unit",
+        }
+
+        with patch.object(check_agent_docs, "MANUAL_CATEGORY_MARKER_ALLOWLIST", frozenset()):
+            for label, assignment in assignments.items():
+                with self.subTest(label):
+                    check_agent_docs.errors.clear()
+                    _write(self.root / "tests/test_example.py", f"import pytest\n\n{assignment}\n")
+
+                    check_agent_docs.check_manual_test_markers()
+
+                    self.assertEqual(
+                        check_agent_docs.errors,
+                        [
+                            "tests/test_example.py: <module> introduce `pytest.mark.unit` manual; "
+                            "renombrá el test para usar auto-marking"
+                        ],
+                    )
+
+    def test_manual_markers_accept_pytestmark_without_category(self) -> None:
+        _write(
+            self.root / "tests/test_example.py",
+            "import pytest\n\n"
+            'pytestmark = [pytest.mark.usefixtures("tmp_db"), pytest.mark.slow]\n\n\n'
+            "def test_example():\n"
+            # Variable local: pytest solo lee el `pytestmark` del módulo y de las clases.
+            "    pytestmark = pytest.mark.unit\n",
+        )
+
+        with patch.object(check_agent_docs, "MANUAL_CATEGORY_MARKER_ALLOWLIST", frozenset()):
+            check_agent_docs.check_manual_test_markers()
+
+        self.assertEqual(check_agent_docs.errors, [])
+
 
 class AgentHookTests(unittest.TestCase):
     def setUp(self) -> None:

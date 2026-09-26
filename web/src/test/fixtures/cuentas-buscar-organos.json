@@ -1,0 +1,16 @@
+[
+  {
+    "organo_nombre": "Organismo Autónomo Informática del Ayuntamiento de Madrid",
+    "organo_norm": "organismo autonomo informatica del ayuntamiento de madrid",
+    "expedientes": 73,
+    "cuenta_id": 7,
+    "cuenta_nombre": "Ayuntamiento de Madrid"
+  },
+  {
+    "organo_nombre": "Alcaldía del Ayuntamiento de Madridejos",
+    "organo_norm": "alcaldia del ayuntamiento de madridejos",
+    "expedientes": 1,
+    "cuenta_id": null,
+    "cuenta_nombre": null
+  }
+]
