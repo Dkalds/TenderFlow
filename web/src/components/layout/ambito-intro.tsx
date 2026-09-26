@@ -37,8 +37,8 @@ export function AmbitoIntro() {
 
   return (
     // Solo desde `md`. A 375 px el párrafo ocupa nueve líneas (~200 px) encima
-    // de cada pantalla, y las del dashboard miden `100vh - 52px` contando solo
-    // con la barra: en el Radar empujaba «Abrir» y «Descartar» de la primera
+    // de cada pantalla, y las del dashboard miden `100vh - var(--alto-cromo)`,
+    // que no la cuenta: en el Radar empujaba «Abrir» y «Descartar» de la primera
     // ficha por debajo del pliegue (E2E `responsive.spec.ts`). Móvil es
     // consulta y triaje (decisión 2026-09-01, `docs/UX_AUDIT.md`): la primera
     // pantalla es para la señal, no para aprender a configurar el filtro, y

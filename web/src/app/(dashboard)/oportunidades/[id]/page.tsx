@@ -11,6 +11,11 @@ import { PursuitActivity } from "@/components/pursuits/pursuit-activity";
 import { KitPresentacionPanel } from "@/components/pursuits/kit-presentacion";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { Panel, PanelError, PanelTabs, SectionTitle } from "@/components/console/panel";
+import {
+  ScrollEdgeDelProveedor,
+  ScrollEdgeProvider,
+  ScrollEdgeSentinel,
+} from "@/components/layout/scroll-edge";
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { useActiveOrganizationId, useOrganizationMembers } from "@/hooks/use-organization";
 import { usePursuit } from "@/hooks/use-pursuits";
@@ -41,8 +46,10 @@ import { EditorCompleto, PestanaDiferida, type TabKey } from "./_components/secc
  *
  * Las tres columnas del diseño no caben en una pantalla de consola, así que en
  * `xl` la ficha se parte: a la izquierda lo que se trabaja, a la derecha los
- * datos y el historial. En móvil vuelve a ser una sola columna, en el orden
- * del diseño.
+ * datos y el historial, con la cabecera fija y el scroll en la pestaña. Por
+ * debajo de `xl` es una sola columna, en el orden del diseño, y la cabecera
+ * scrollea con el contenido; por debajo de `md` las acciones bajan bajo el
+ * título.
  *
  * Lo que no se ve al entrar (las otras pestañas y el editor completo) llega
  * bajo demanda (`secciones-diferidas.tsx`), y lo que solo necesita el id de la
@@ -84,7 +91,7 @@ export default function OpportunityDetailPage() {
 
   if (error || !pursuit) {
     return (
-      <div className="grid h-[calc(100vh-52px)] place-items-center p-10">
+      <div className="grid h-[calc(100vh-var(--alto-cromo))] place-items-center p-10">
         {precarga}
         <PanelError
           title="No se pudo abrir esta oportunidad"
@@ -99,10 +106,31 @@ export default function OpportunityDetailPage() {
   const version = `${pursuit.id}:${pursuit.version}`;
 
   return (
-    <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
+    // Por debajo de `xl` la cabecera scrollea con el contenido: con título,
+    // path y pestañas mide más que la pantalla de un móvil, y fija dejaba a la
+    // pestaña una caja de scroll de ~48px. Es un bloque y no un flex para que
+    // el centinela no encoja a 0px. `relative` para que los `<select>` nativos
+    // ocultos de Radix y los `sr-only` del editor, que son absolutos, scrolleen
+    // con la caja en vez de estirar el documento. En `xl` vuelve a ser la
+    // columna de siempre: cabecera fija y scroll en la pestaña.
+    <div className="relative h-[calc(100vh-var(--alto-cromo))] min-h-0 overflow-y-auto xl:static xl:flex xl:flex-col xl:overflow-visible">
       {precarga}
+      {/* Borde de scroll propio, como `SpaceShell`: por debajo de `xl` scrollea
+          esta caja y no `#main-content`, así que el centinela del marco no se
+          entera. El borde va `sticky` dentro de la caja para que ella siga
+          siendo la raíz del `precarga` de arriba; en `xl` no scrollea y el
+          borde no aparece nunca. `PrecargaFicha` no pinta nada, así que el
+          centinela sigue siendo el primer elemento de la caja. */}
+      <ScrollEdgeProvider>
+        <ScrollEdgeSentinel />
+        <div className="pointer-events-none sticky top-0 z-30 h-0">
+          <ScrollEdgeDelProveedor />
+        </div>
+      </ScrollEdgeProvider>
       <header className="border-border/60 bg-card/40 flex-none border-b px-4 pt-3.5">
-        <div className="flex items-start gap-3">
+        {/* Bajo `md` las acciones van debajo del título: en la misma fila sus
+            ~290px dejaban el título a una palabra por línea. */}
+        <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-3">
           <div className="min-w-0 flex-1">
             <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
               <span className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider uppercase">
@@ -151,10 +179,13 @@ export default function OpportunityDetailPage() {
             >
               Ver anuncio original <ExternalLink className="h-3 w-3" aria-hidden="true" />
             </Link>
+            {/* `ml-auto`: bajo el título, el cierre queda en el extremo derecho
+                de la fila. Al lado del título el grupo mide lo que su contenido
+                y el margen no mueve nada. */}
             <Link
               href="/oportunidades"
               aria-label="Cerrar la ficha"
-              className="border-border/60 text-muted-foreground hover:text-foreground grid h-8 w-8 flex-none place-items-center rounded-lg border transition-colors"
+              className="border-border/60 text-muted-foreground hover:text-foreground ml-auto grid h-8 w-8 flex-none place-items-center rounded-lg border transition-colors"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </Link>
@@ -186,7 +217,7 @@ export default function OpportunityDetailPage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-8">
+      <div className="px-4 pt-4 pb-8 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
         {tab === "resumen" && (
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex flex-col gap-3.5">
