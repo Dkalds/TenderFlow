@@ -18,6 +18,11 @@ Guía para ejecutar, escribir y entender los tests del proyecto.
 Prioridad de evaluación: e2e > load > property > integration (nombre) >
 integration (fixture PG) > unit.
 
+Los tokens de ruta se buscan en la ruta del módulo **relativa a la raíz del
+repo** (`tests/test_performance.py`), no en la absoluta: los directorios padre
+del checkout —un worktree `…-performance-…`, `~/Downloads`— no cambian la
+categoría de nada.
+
 La regla por fixture (2026-08) hace la taxonomía **real**: un test que abre un
 schema Postgres — directamente (`tmp_db`, `api_db`) o transitivamente
 (`client`, `api_key`, `auth`…, que declaran `api_db` en su cierre) — queda

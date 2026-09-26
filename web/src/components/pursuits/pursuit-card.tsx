@@ -106,16 +106,19 @@ export function PursuitCard({
         {!enExpediente && lote ? <PursuitLoteBadge pursuit={pursuit} /> : null}
       </div>
 
-      <div className="flex items-baseline gap-1.5">
+      {/* «Sin importe» a `tf-title` ocupa casi todo el ancho de una columna del
+          tablero en un portátil: el rótulo baja entero a la línea de abajo en
+          vez de partir las dos piezas por la mitad. */}
+      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
         <span
           className={cn(
-            "tf-tnum font-mono text-tf-title leading-none font-semibold",
+            "tf-tnum font-mono text-tf-title leading-none font-semibold whitespace-nowrap",
             sinImporte && !cerrada && "text-[hsl(var(--warning))]",
           )}
         >
           {sinImporte && !cerrada ? "Sin importe" : formatCompactCurrency(importe)}
         </span>
-        <span className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider uppercase">
+        <span className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider whitespace-nowrap uppercase">
           {sinImporte && !cerrada ? "a completar" : cerrada ? "adjudicado" : "oferta"}
         </span>
       </div>
