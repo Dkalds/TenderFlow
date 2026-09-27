@@ -100,3 +100,14 @@ def test_la_revision_se_guarda_como_revision_ti(
     viejas (`human`) significaban «es SAP» y no se mezclan con las nuevas."""
     sesion_admin.post(RUTA, json=_CUERPO)
     assert escrituras[0]["source"] == "revision_ti"
+
+
+def test_el_contrato_dice_que_relevante_es_es_ti() -> None:
+    """La descripción del campo es contrato (OpenAPI → ``api.d.ts``): decía
+    «relevante», que era «es SAP» hasta el plan de tres niveles."""
+    from api.app import app
+
+    campo = app.openapi()["components"]["schemas"]["FeedbackRequest"]["properties"]["relevante"]
+
+    assert "es TI" in campo["description"]
+    assert "es relevante" not in campo["description"]

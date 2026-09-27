@@ -2193,11 +2193,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Cola de active learning (uncertainty sampling)
+         * Cola de etiquetado: desacuerdo, incertidumbre o aleatoria
          * @description Devuelve licitaciones priorizadas para etiquetado.
          *
-         *     - ``desacuerdo``: primero las que reglas, LLM y modelo no ven igual, con el
-         *       ``motivo`` y la propuesta del LLM (``llm``); nunca las ya revisadas.
+         *     - ``desacuerdo``: primero las que reglas, LLM y modelo no ven igual; después
+         *       las etiquetas heredadas (motivo ``legado``: su ``relevante`` decía «es
+         *       SAP» y hay que volver a revisarlas), y al final las que el modelo duda.
+         *       Cada una con su ``motivo`` y la propuesta del LLM (``llm``); nunca las ya
+         *       revisadas.
          *     - ``uncertainty``: prioriza las que el modelo clasifica con menor confianza.
          *     - ``random``: muestra aleatoria (baseline).
          *
@@ -2226,6 +2229,32 @@ export interface paths {
          * @description Devuelve estadísticas agregadas del feedback recogido.
          */
         get: operations["feedback_stats_api_v1_feedback_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/taxonomia": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Taxonomía de tecnologías para el formulario de revisión
+         * @description Todas las etiquetas que acepta ``POST /feedback`` en ``tecnologia`` y
+         *     ``tecnologias_secundarias``, con su nombre legible y su nivel: ``categoria``
+         *     (familia, nivel 2) o ``fabricante`` (nivel 3).
+         *
+         *     Es lo que el formulario de revisión de ``/ops`` ofrece para elegir familias
+         *     y fabricantes: la web no lleva una copia de la taxonomía. Sale de
+         *     ``config/keywords.py``, sin consultar la base de datos.
+         */
+        get: operations["feedback_taxonomia_api_v1_feedback_taxonomia_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8105,6 +8134,21 @@ export interface components {
             nombre: string;
         };
         /**
+         * EtiquetaTaxonomia
+         * @description Una etiqueta de tecnología: su código, su nombre legible y su nivel.
+         */
+        EtiquetaTaxonomia: {
+            /** Codigo */
+            codigo: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "fabricante" | "categoria";
+        };
+        /**
          * EtiquetasPorObjeto
          * @description Las etiquetas de varios objetos, indexadas por objeto.
          */
@@ -8379,7 +8423,7 @@ export interface components {
             nota: string;
             /**
              * Relevante
-             * @description True si la licitación es relevante.
+             * @description True si la licitación es TI. Solo eso: no dice si encaja con un fabricante ni con un perfil; eso lo dicen tecnologia y tecnologias_secundarias.
              * @example true
              */
             relevante: boolean;
@@ -12098,6 +12142,11 @@ export interface components {
             es_ti: boolean | null;
             /** Familias */
             familias: string[];
+            /**
+             * Sin Evidencia
+             * @default false
+             */
+            sin_evidencia: boolean;
         };
         /**
          * QueueModelBlock
@@ -13501,6 +13550,14 @@ export interface components {
             universo: string;
             /** Valor */
             valor?: number | null;
+        };
+        /**
+         * TaxonomiaResult
+         * @description La taxonomía entera, en el orden de ``config/keywords.py``.
+         */
+        TaxonomiaResult: {
+            /** Etiquetas */
+            etiquetas: components["schemas"]["EtiquetaTaxonomia"][];
         };
         /**
          * TeamRequirement
@@ -19332,6 +19389,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedbackStats"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feedback_taxonomia_api_v1_feedback_taxonomia_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxonomiaResult"];
                 };
             };
             /** @description API key inválida */

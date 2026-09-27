@@ -5,15 +5,24 @@ Una etiqueta humana informa donde las fuentes no coinciden. Las reglas son
 familias de `llm_metadata`; el modelo, `ml_proba`. Lo que ya revisó una
 persona con `revision_ti` no vuelve.
 
+Las filas humanas anteriores al plan (`source='human'`, su `relevante` era
+«es SAP») vuelven a la cola con el motivo `legado` hasta que alguien las
+revise con `revision_ti` (spec §3.3), tengan o no señal del LLM.
+
 Dos consultas, porque una sola pasada recorría `licitaciones` entera (5,98 s
 medidos en producción el 2026-09-27) y esta es la vista por defecto:
 
-- **Fase A**, los cuatro motivos del LLM: parte de las filas `llm_metadata` de
-  `licitacion_tecnologia_pliego` (~9k) y llega a `licitaciones` por su clave
+- **Fase A**, los cuatro motivos del LLM y `legado`: parte de las filas
+  `llm_metadata` de `licitacion_tecnologia_pliego` (~9k) y de las filas
+  `human` de `ml_feedback` (59), y llega a `licitaciones` por su clave
   primaria.
 - **Fase B**, `modelo_dudoso`: solo si A no llena el cupo, sin repetir lo que A
   ya trajo y solo lo publicado en los últimos `VENTANA_DUDOSO_DIAS` días, que
   baja por `idx_fecha_pub`.
+
+La propuesta del LLM avisa con `llm_sin_evidencia` si sus filas vigentes
+traen `__sin_evidencia__`: afirmó familias sin una cita verificable, y esa
+respuesta no entrena. El motivo no cambia.
 """
 
 from __future__ import annotations
@@ -24,14 +33,21 @@ from typing import Any  # filas psycopg heterogéneas, como el resto de db/repos
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
-from db.repositories.feedback import FUENTE_REVISION_TI
-from db.repositories.tecnologia_pliego import ES_TI_SENTINEL, NO_ES_TI_SENTINEL, SENTINELS
+from db.repositories.feedback import FUENTE_LEGADO, FUENTE_REVISION_TI
+from db.repositories.tecnologia_pliego import (
+    ES_TI_SENTINEL,
+    NO_ES_TI_SENTINEL,
+    SENTINELS,
+    SIN_EVIDENCIA_SENTINEL,
+)
 
+#: En orden de gravedad: el de una licitación que casa con varios es el primero.
 MOTIVOS: tuple[str, ...] = (
     "llm_no_reglas_si",
     "llm_si_reglas_no",
     "llm_no_cpv_si",
     "familias_distintas",
+    "legado",
     "modelo_dudoso",
 )
 
@@ -41,7 +57,8 @@ VENTANA_DUDOSO_DIAS = 90
 #: Algún código CPV 48/72 en el campo, con cualquier separador (PSCP une con `||`).
 _CPV_TI_SQL = "coalesce(l.cpv, '') ~ '(^|[^0-9])(48|72)[0-9]{6}'"
 
-#: Fase A: los cuatro motivos del LLM, desde las licitaciones con señal del LLM.
+#: Fase A: los cuatro motivos del LLM y `legado`, desde las licitaciones con
+#: señal del LLM o con una fila humana heredada.
 _SQL_DESACUERDO_LLM = f"""
 WITH es_ti AS (
     SELECT DISTINCT ON (licitacion_id) licitacion_id, tecnologia AS marcador, evidence_json
@@ -53,34 +70,53 @@ WITH es_ti AS (
     FROM licitacion_tecnologia_pliego
     WHERE method = 'llm_metadata' AND tecnologia <> ALL(%(sentinels)s) AND score >= %(min_score)s
     GROUP BY licitacion_id
+), sin_evidencia AS (
+    SELECT DISTINCT licitacion_id
+    FROM licitacion_tecnologia_pliego
+    WHERE method = 'llm_metadata' AND tecnologia = %(sin_evidencia)s
 ), senal AS (
     SELECT coalesce(e.licitacion_id, f.licitacion_id) AS licitacion_id,
            e.marcador, e.evidence_json, f.llm_familias
     FROM es_ti e
     FULL JOIN familias f ON f.licitacion_id = e.licitacion_id
+), legado AS (
+    -- Las ~59 filas `human` de antes del plan: su `relevante` era «es SAP».
+    SELECT DISTINCT expediente AS licitacion_id
+    FROM ml_feedback
+    WHERE source = %(legado)s
+), universo AS (
+    SELECT coalesce(s.licitacion_id, g.licitacion_id) AS licitacion_id,
+           s.marcador, s.evidence_json, s.llm_familias,
+           g.licitacion_id IS NOT NULL AS es_legado
+    FROM senal s
+    FULL JOIN legado g ON g.licitacion_id = s.licitacion_id
 ), candidatos AS (
     SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, l.organo_contratacion,
            l.ccaa, l.fecha_publicacion, l.url, l.tecnologia, l.ml_tecnologias,
            l.ml_proba_max, l.ml_tech_principal, l.ml_proba,
-           s.marcador, s.evidence_json AS llm_evidencia, s.llm_familias,
+           u.marcador, u.evidence_json AS llm_evidencia, u.llm_familias,
+           se.licitacion_id IS NOT NULL AS llm_sin_evidencia,
            CASE
-             WHEN s.marcador = %(no_es_ti)s AND coalesce(l.tecnologia, '') <> ''
+             WHEN u.marcador = %(no_es_ti)s AND coalesce(l.tecnologia, '') <> ''
                THEN 'llm_no_reglas_si'
-             WHEN s.marcador = %(es_ti)s AND coalesce(l.tecnologia, '') = '' AND NOT ({_CPV_TI_SQL})
+             WHEN u.marcador = %(es_ti)s AND coalesce(l.tecnologia, '') = '' AND NOT ({_CPV_TI_SQL})
                THEN 'llm_si_reglas_no'
-             WHEN s.marcador = %(no_es_ti)s AND {_CPV_TI_SQL}
+             WHEN u.marcador = %(no_es_ti)s AND {_CPV_TI_SQL}
                THEN 'llm_no_cpv_si'
-             WHEN s.llm_familias IS NOT NULL AND coalesce(l.tecnologia, '') <> ''
-                  AND NOT (s.llm_familias && string_to_array(replace(l.tecnologia, ' ', ''), ','))
+             WHEN u.llm_familias IS NOT NULL AND coalesce(l.tecnologia, '') <> ''
+                  AND NOT (u.llm_familias && string_to_array(replace(l.tecnologia, ' ', ''), ','))
                THEN 'familias_distintas'
+             WHEN u.es_legado
+               THEN 'legado'
            END AS motivo
-    FROM senal s
-    -- Una sonda por clave primaria por licitación con señal. El OFFSET 0 impide
-    -- que el planificador aplane la subconsulta y cambie las sondas por un
-    -- recorrido entero de licitaciones, cuyo heap ocupa 872 MB.
+    FROM universo u
+    -- Una sonda por clave primaria por licitación con señal o heredada. El
+    -- OFFSET 0 impide que el planificador aplane la subconsulta y cambie las
+    -- sondas por un recorrido entero de licitaciones, cuyo heap ocupa 872 MB.
     CROSS JOIN LATERAL (
-        SELECT * FROM licitaciones x WHERE x.id_externo = s.licitacion_id OFFSET 0
+        SELECT * FROM licitaciones x WHERE x.id_externo = u.licitacion_id OFFSET 0
     ) l
+    LEFT JOIN sin_evidencia se ON se.licitacion_id = u.licitacion_id
     WHERE NOT EXISTS (
         SELECT 1 FROM ml_feedback r
         WHERE r.expediente = l.id_externo AND r.source = %(revision)s
@@ -110,6 +146,11 @@ WITH dudosas AS (
     LIMIT %(faltan)s
 )
 SELECT d.*, e.marcador, e.evidence_json AS llm_evidencia, f.llm_familias,
+       EXISTS (
+           SELECT 1 FROM licitacion_tecnologia_pliego p
+           WHERE p.licitacion_id = d.id_externo AND p.method = 'llm_metadata'
+             AND p.tecnologia = %(sin_evidencia)s
+       ) AS llm_sin_evidencia,
        'modelo_dudoso' AS motivo
 FROM dudosas d
 LEFT JOIN LATERAL (
@@ -140,11 +181,15 @@ def candidatos_desacuerdo(limit: int) -> list[dict[str, Any]]:
         "min_score": settings.PLIEGO_TECH_MIN_SCORE,
         "es_ti": ES_TI_SENTINEL,
         "no_es_ti": NO_ES_TI_SENTINEL,
+        "sin_evidencia": SIN_EVIDENCIA_SENTINEL,
         "revision": FUENTE_REVISION_TI,
     }
     with connect_read() as c:
         filas = rows_to_dicts(
-            c.execute(_SQL_DESACUERDO_LLM, {**comunes, "motivos": list(MOTIVOS), "limit": tope})
+            c.execute(
+                _SQL_DESACUERDO_LLM,
+                {**comunes, "legado": FUENTE_LEGADO, "motivos": list(MOTIVOS), "limit": tope},
+            )
         )
         faltan = tope - len(filas)
         if faltan > 0:
@@ -170,6 +215,7 @@ def candidatos_desacuerdo(limit: int) -> list[dict[str, Any]]:
             fila["llm_es_ti"] = None
         fila["llm_confianza_es_ti"] = _confianza(fila.pop("llm_evidencia", None))
         fila["llm_familias"] = list(fila.get("llm_familias") or [])
+        fila["llm_sin_evidencia"] = bool(fila.get("llm_sin_evidencia"))
     return filas
 
 

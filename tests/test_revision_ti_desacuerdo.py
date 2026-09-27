@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from db.repositories.feedback import FUENTE_REVISION_TI
+from db.repositories.feedback import FUENTE_LEGADO, FUENTE_REVISION_TI
 from db.repositories.revision_ti import VENTANA_DUDOSO_DIAS, candidatos_desacuerdo
 from db.repositories.tecnologia_pliego import (
     ES_TI_SENTINEL,
@@ -89,10 +89,18 @@ def _marcador(es_ti: bool, confianza: float) -> dict[str, TechSignal]:
 
 
 def _senal_llm(
-    repo: TecnologiaPliegoRepository, licitacion_id: str, scores: dict[str, TechSignal]
+    repo: TecnologiaPliegoRepository,
+    licitacion_id: str,
+    scores: dict[str, TechSignal],
+    *,
+    sin_evidencia: bool = False,
 ) -> None:
     repo.upsert_signals(
-        licitacion_id, method="llm_metadata", signal_version=_VERSION, scores=scores
+        licitacion_id,
+        method="llm_metadata",
+        signal_version=_VERSION,
+        scores=scores,
+        sin_evidencia=sin_evidencia,
     )
 
 
@@ -176,7 +184,82 @@ def test_una_fila_heredada_sola_no_saca_la_licitacion_de_la_cola(
     _senal_llm(tech_repo, "EXP-H", _marcador(False, 0.8))
     _insert_feedback("EXP-H", source="human")
 
-    assert [f["id_externo"] for f in candidatos_desacuerdo(10)] == ["EXP-H"]
+    filas = candidatos_desacuerdo(10)
+
+    # Una sola vez, con el motivo más grave de los dos que tiene.
+    assert [(f["id_externo"], f["motivo"]) for f in filas] == [("EXP-H", "llm_no_reglas_si")]
+
+
+def test_una_fila_heredada_vuelve_a_la_cola_hasta_que_se_revisa(
+    tech_repo: TecnologiaPliegoRepository,
+) -> None:
+    """Spec §3.3: las filas ``human`` antiguas «se marcan como legado y se
+    vuelven a revisar en la cola». Sin señal del LLM también: entran por el
+    expediente de la fila heredada, no por ``licitacion_tecnologia_pliego``."""
+    _insert_licitacion("EXP-L", tecnologia="SAP", cpv="72000000-5")
+    _insert_feedback("EXP-L", source=FUENTE_LEGADO)
+
+    (fila,) = candidatos_desacuerdo(10)
+
+    assert fila["id_externo"] == "EXP-L"
+    assert fila["motivo"] == "legado"
+    assert fila["llm_es_ti"] is None
+    assert fila["llm_familias"] == []
+    assert fila["llm_sin_evidencia"] is False
+
+    _insert_feedback("EXP-L", source=FUENTE_REVISION_TI)
+
+    assert candidatos_desacuerdo(10) == []
+
+
+def test_el_legado_va_tras_el_llm_y_delante_de_la_zona_dudosa(
+    tech_repo: TecnologiaPliegoRepository,
+) -> None:
+    # A: desacuerdo del LLM (reglas ERP, el LLM dice que no es TI).
+    _insert_licitacion("EXP-A", tecnologia="ERP")
+    _senal_llm(tech_repo, "EXP-A", _marcador(False, 0.8))
+    # L: fila heredada; reglas y LLM de acuerdo, así que solo es `legado`, y
+    # la propuesta del LLM viaja igual.
+    _insert_licitacion("EXP-L", tecnologia="SAP", cpv="72000000-5")
+    _senal_llm(tech_repo, "EXP-L", {"SAP": TechSignal(score=0.9), **_marcador(True, 0.9)})
+    _insert_feedback("EXP-L", source=FUENTE_LEGADO)
+    # F: el modelo duda y es reciente.
+    _insert_licitacion("EXP-F", tecnologia="SAP", ml_proba=0.5, fecha=_RECIENTE)
+
+    filas = candidatos_desacuerdo(10)
+
+    assert [(f["id_externo"], f["motivo"]) for f in filas] == [
+        ("EXP-A", "llm_no_reglas_si"),
+        ("EXP-L", "legado"),
+        ("EXP-F", "modelo_dudoso"),
+    ]
+    heredada = _por_id(filas)["EXP-L"]
+    assert heredada["llm_es_ti"] is True
+    assert heredada["llm_confianza_es_ti"] == pytest.approx(0.9)
+    assert heredada["llm_familias"] == ["SAP"]
+
+
+def test_la_propuesta_avisa_si_el_llm_no_sostuvo_sus_citas(
+    tech_repo: TecnologiaPliegoRepository,
+) -> None:
+    """Forma v3: «es TI» con familias cuyas citas no se sostienen escribe el
+    marcador y ``__sin_evidencia__`` juntos. El motivo no cambia (el LLM sí
+    dijo que es TI); la propuesta lleva ``llm_sin_evidencia``. Por las dos
+    fases."""
+    # S: el LLM dice TI; ni reglas ni CPV lo ven (fase A).
+    _insert_licitacion("EXP-S", cpv="79000000-4")
+    _senal_llm(tech_repo, "EXP-S", _marcador(True, 0.9), sin_evidencia=True)
+    # D: reglas y LLM de acuerdo, el modelo duda y es reciente (fase B).
+    _insert_licitacion("EXP-D", tecnologia="SAP", ml_proba=0.5, fecha=_RECIENTE)
+    _senal_llm(tech_repo, "EXP-D", {"SAP": TechSignal(score=0.9)}, sin_evidencia=True)
+
+    por_id = _por_id(candidatos_desacuerdo(10))
+
+    assert por_id["EXP-S"]["motivo"] == "llm_si_reglas_no"
+    assert por_id["EXP-S"]["llm_es_ti"] is True
+    assert por_id["EXP-S"]["llm_sin_evidencia"] is True
+    assert por_id["EXP-D"]["motivo"] == "modelo_dudoso"
+    assert por_id["EXP-D"]["llm_sin_evidencia"] is True
 
 
 def test_sin_desacuerdo_no_hay_candidato(tech_repo: TecnologiaPliegoRepository) -> None:

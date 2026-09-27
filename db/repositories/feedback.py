@@ -14,8 +14,12 @@ log = get_logger(__name__)
 #: niveles (2026-09-27): `relevante` = «es TI». Las filas `human` anteriores
 #: significaban «es SAP» y se conservan como histórico.
 FUENTE_REVISION_TI = "revision_ti"
+#: Las filas humanas anteriores a ese plan: su `relevante` era «es SAP». La
+#: cola de revisión (`db/repositories/revision_ti.py`, motivo `legado`) las
+#: vuelve a pedir hasta que tengan una fila `revision_ti`.
+FUENTE_LEGADO = "human"
 #: Las dos fuentes de etiqueta humana de familia (tecnologia/secundarias).
-FUENTES_HUMANAS: tuple[str, ...] = ("human", FUENTE_REVISION_TI)
+FUENTES_HUMANAS: tuple[str, ...] = (FUENTE_LEGADO, FUENTE_REVISION_TI)
 
 
 class FeedbackRepository:

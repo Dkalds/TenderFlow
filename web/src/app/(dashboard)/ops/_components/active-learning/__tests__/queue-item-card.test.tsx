@@ -16,7 +16,7 @@ const ITEM: QueueItem = {
   id_externo: "EXP-1",
   titulo: "Mantenimiento de la sede electrónica",
   motivo: "familias_distintas",
-  llm: { es_ti: true, confianza_es_ti: 0.9, familias: ["DESARROLLO"] },
+  llm: { es_ti: true, confianza_es_ti: 0.9, familias: ["DESARROLLO"], sin_evidencia: false },
 };
 
 function pintar(cambios: Partial<Props> = {}): Props {
@@ -103,7 +103,7 @@ describe("QueueItemCard — cola por desacuerdo", () => {
   });
 
   it("si el LLM dijo que no es TI, la propuesta lo dice", () => {
-    pintar({ item: { ...ITEM, llm: { es_ti: false, confianza_es_ti: 0.7, familias: [] } } });
+    pintar({ item: { ...ITEM, llm: { es_ti: false, confianza_es_ti: 0.7, familias: [], sin_evidencia: false } } });
 
     expect(screen.getByText("Propuesta del LLM: no es TI")).toBeInTheDocument();
   });
@@ -126,7 +126,7 @@ describe("QueueItemCard — cola por desacuerdo", () => {
   it("si el LLM no dijo si es TI, enseña sus familias y no ofrece aceptar", () => {
     // Las respuestas anteriores al prompt v3 traen familias y no el marcador:
     // aceptar no tendría qué enviar como `relevante`.
-    pintar({ item: { ...ITEM, llm: { es_ti: null, confianza_es_ti: null, familias: ["SAP"] } } });
+    pintar({ item: { ...ITEM, llm: { es_ti: null, confianza_es_ti: null, familias: ["SAP"], sin_evidencia: false } } });
 
     expect(screen.getByText("Familias del LLM: SAP")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Aceptar propuesta" })).toBeNull();

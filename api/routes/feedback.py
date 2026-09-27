@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_admin, require_any_auth
-from config.keywords import TECH_LABELS
+from config.keywords import TECH_CATEGORIAS, TECH_LABEL_TIPO, TECH_LABELS, TipoLabel
 from db.audit import log_event
 from db.repositories.feedback import FUENTE_REVISION_TI, FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
@@ -73,6 +73,24 @@ class QueueLlmBlock(BaseModel):
     es_ti: bool | None
     confianza_es_ti: float | None
     familias: list[str]
+    # True cuando la respuesta vigente del LLM trae `__sin_evidencia__`: afirmó
+    # familias sin una cita que se sostenga en el anuncio, y esa respuesta no
+    # entrena. La tarjeta no ofrece aceptarla de un clic.
+    sin_evidencia: bool = False
+
+
+class EtiquetaTaxonomia(BaseModel):
+    """Una etiqueta de tecnología: su código, su nombre legible y su nivel."""
+
+    codigo: str
+    etiqueta: str
+    tipo: TipoLabel
+
+
+class TaxonomiaResult(BaseModel):
+    """La taxonomía entera, en el orden de ``config/keywords.py``."""
+
+    etiquetas: list[EtiquetaTaxonomia]
 
 
 class FeedbackQueueItem(BaseModel):
@@ -217,7 +235,10 @@ class FeedbackRequest(BaseModel):
     relevante: bool = Field(
         ...,
         examples=[True],
-        description="True si la licitación es relevante.",
+        description=(
+            "True si la licitación es TI. Solo eso: no dice si encaja con un fabricante "
+            "ni con un perfil; eso lo dicen tecnologia y tecnologias_secundarias."
+        ),
     )
     nota: str = Field(
         default="",
@@ -393,8 +414,34 @@ async def feedback_model_info(
 
 
 @router.get(
+    "/taxonomia",
+    summary="Taxonomía de tecnologías para el formulario de revisión",
+    responses={401: {"description": "API key inválida"}},
+)
+async def feedback_taxonomia(
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> TaxonomiaResult:
+    """Todas las etiquetas que acepta ``POST /feedback`` en ``tecnologia`` y
+    ``tecnologias_secundarias``, con su nombre legible y su nivel: ``categoria``
+    (familia, nivel 2) o ``fabricante`` (nivel 3).
+
+    Es lo que el formulario de revisión de ``/ops`` ofrece para elegir familias
+    y fabricantes: la web no lleva una copia de la taxonomía. Sale de
+    ``config/keywords.py``, sin consultar la base de datos.
+    """
+    return TaxonomiaResult(
+        etiquetas=[
+            EtiquetaTaxonomia(
+                codigo=codigo, etiqueta=TECH_CATEGORIAS[codigo], tipo=TECH_LABEL_TIPO[codigo]
+            )
+            for codigo in TECH_LABELS
+        ]
+    )
+
+
+@router.get(
     "/queue",
-    summary="Cola de active learning (uncertainty sampling)",
+    summary="Cola de etiquetado: desacuerdo, incertidumbre o aleatoria",
     responses={401: {"description": "API key inválida"}},
 )
 async def feedback_queue(
@@ -404,8 +451,11 @@ async def feedback_queue(
 ) -> FeedbackQueueResult:
     """Devuelve licitaciones priorizadas para etiquetado.
 
-    - ``desacuerdo``: primero las que reglas, LLM y modelo no ven igual, con el
-      ``motivo`` y la propuesta del LLM (``llm``); nunca las ya revisadas.
+    - ``desacuerdo``: primero las que reglas, LLM y modelo no ven igual; después
+      las etiquetas heredadas (motivo ``legado``: su ``relevante`` decía «es
+      SAP» y hay que volver a revisarlas), y al final las que el modelo duda.
+      Cada una con su ``motivo`` y la propuesta del LLM (``llm``); nunca las ya
+      revisadas.
     - ``uncertainty``: prioriza las que el modelo clasifica con menor confianza.
     - ``random``: muestra aleatoria (baseline).
 
@@ -435,6 +485,7 @@ async def feedback_queue(
                 "es_ti": c["llm_es_ti"],
                 "confianza_es_ti": c["llm_confianza_es_ti"],
                 "familias": c["llm_familias"],
+                "sin_evidencia": c["llm_sin_evidencia"],
             }
             item["sin_confianza"] = c.get("ml_proba") is None
         return FeedbackQueueResult(

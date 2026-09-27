@@ -20,7 +20,8 @@ from typing import Any
 import pytest
 
 from db.repositories import revision_ti
-from db.repositories.tecnologia_pliego import ES_TI_SENTINEL
+from db.repositories.feedback import FUENTE_LEGADO
+from db.repositories.tecnologia_pliego import ES_TI_SENTINEL, SIN_EVIDENCIA_SENTINEL
 
 _COLUMNAS = (
     "id_externo",
@@ -40,6 +41,7 @@ _COLUMNAS = (
     "marcador",
     "llm_evidencia",
     "llm_familias",
+    "llm_sin_evidencia",
     "motivo",
 )
 
@@ -140,5 +142,60 @@ def test_la_zona_dudosa_trae_tambien_la_propuesta_del_llm(monkeypatch: pytest.Mo
     assert fila["llm_es_ti"] is True
     assert fila["llm_confianza_es_ti"] == pytest.approx(0.9)
     assert fila["llm_familias"] == ["SAP"]
+    assert fila["llm_sin_evidencia"] is False
     assert "marcador" not in fila
     assert "llm_evidencia" not in fila
+
+
+def test_el_legado_va_tras_los_motivos_del_llm_y_antes_de_la_zona_dudosa(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Las filas ``human`` anteriores al plan (su ``relevante`` era «es SAP»)
+    vuelven a la cola con su propio motivo. Entran por la fase A aunque no
+    tengan señal del LLM, van detrás de los cuatro motivos del LLM, y la fase
+    B no las repite."""
+    bd = _conectar(
+        monkeypatch,
+        [_fila("A", "llm_no_reglas_si"), _fila("H", "legado")],
+        [_fila("F", "modelo_dudoso", ml_proba=0.5)],
+    )
+
+    filas = revision_ti.candidatos_desacuerdo(5)
+
+    assert [(f["id_externo"], f["motivo"]) for f in filas] == [
+        ("A", "llm_no_reglas_si"),
+        ("H", "legado"),
+        ("F", "modelo_dudoso"),
+    ]
+    fase_a = bd.parametros[0]
+    assert fase_a["legado"] == FUENTE_LEGADO == "human"
+    assert fase_a["motivos"] == [
+        "llm_no_reglas_si",
+        "llm_si_reglas_no",
+        "llm_no_cpv_si",
+        "familias_distintas",
+        "legado",
+        "modelo_dudoso",
+    ]
+    assert bd.parametros[1]["excluir"] == ["A", "H"]
+    heredada = filas[1]
+    assert heredada["llm_es_ti"] is None
+    assert heredada["llm_familias"] == []
+    assert heredada["llm_sin_evidencia"] is False
+
+
+def test_la_propuesta_dice_si_el_llm_no_sostuvo_sus_citas(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``__sin_evidencia__`` en la respuesta vigente: el LLM afirmó familias
+    sin una cita verificable. El motivo no cambia; la propuesta lo avisa."""
+    bd = _conectar(
+        monkeypatch,
+        [_fila("S", "llm_si_reglas_no", marcador=ES_TI_SENTINEL, llm_sin_evidencia=True)],
+        [],
+    )
+
+    (fila,) = revision_ti.candidatos_desacuerdo(5)
+
+    assert fila["motivo"] == "llm_si_reglas_no"
+    assert fila["llm_es_ti"] is True
+    assert fila["llm_sin_evidencia"] is True
+    assert bd.parametros[0]["sin_evidencia"] == SIN_EVIDENCIA_SENTINEL

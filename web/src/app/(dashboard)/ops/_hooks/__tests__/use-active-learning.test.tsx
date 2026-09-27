@@ -15,17 +15,17 @@ const COLA: QueueItem[] = [
   {
     id_externo: "EXP-SI",
     motivo: "familias_distintas",
-    llm: { es_ti: true, confianza_es_ti: 0.9, familias: ["DESARROLLO", "SAP"] },
+    llm: { es_ti: true, confianza_es_ti: 0.9, familias: ["DESARROLLO", "SAP"], sin_evidencia: false },
   },
   {
     id_externo: "EXP-NO",
     motivo: "llm_no_reglas_si",
-    llm: { es_ti: false, confianza_es_ti: 0.8, familias: [] },
+    llm: { es_ti: false, confianza_es_ti: 0.8, familias: [], sin_evidencia: false },
   },
   {
     id_externo: "EXP-SIN-RESPUESTA",
     motivo: "familias_distintas",
-    llm: { es_ti: null, confianza_es_ti: null, familias: ["ORACLE"] },
+    llm: { es_ti: null, confianza_es_ti: null, familias: ["ORACLE"], sin_evidencia: false },
   },
 ];
 
