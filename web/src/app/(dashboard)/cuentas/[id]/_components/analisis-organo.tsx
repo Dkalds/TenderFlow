@@ -1,28 +1,36 @@
 "use client";
 
 /**
- * El análisis de Mercado → Órganos, órgano a órgano, dentro de la ficha.
+ * El análisis de Mercado › Órganos, órgano a órgano, dentro de la ficha.
  *
  * F1.5 pedía en la ficha el lead-time medio «ya calculado» y la estacionalidad:
  * los calcula el detalle de órgano de Mercado (`GET /analytics/organos/{organo}`)
  * y aquí se pide exactamente ese, con la misma clave de caché que usa Mercado,
  * en vez de sumar en el cliente las cifras de varios órganos —que sería
- * fabricar un agregado que el backend no dio (ADR-014)—. Por eso va de uno en
+ * fabricar un agregado que la API no dio (ADR-014)—. Por eso va de uno en
  * uno, con un selector cuando la cuenta tiene varios.
  */
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { Clock, Hash, TrendingUp, Trophy } from "lucide-react";
 
-import { KpiCard } from "@/components/charts/kpi-card";
-import { Panel, PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel";
+import {
+  EnlaceIr,
+  Panel,
+  PanelEmpty,
+  PanelError,
+  PanelTitle,
+  SectionTitle,
+  StatCell,
+  StatStrip,
+} from "@/components/console/panel";
+import { Field } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import type { Schemas } from "@/lib/api-types";
 import type { CuentaOrgano } from "@/hooks/use-cuentas";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 const OrganosAdjudicatariosChart = dynamic(
   () => import("@/components/charts/organos-charts").then((m) => ({ default: m.OrganosAdjudicatariosChart })),
@@ -43,10 +51,10 @@ export function AnalisisOrgano({ organos }: { organos: readonly CuentaOrgano[] }
     ? elegido
     : (organos[0]?.organo_nombre ?? "");
 
-  const { data, isLoading, isError, refetch } = useFilteredQuery<DetalleOrgano>(
+  const { data, isLoading, error, refetch } = useFilteredQuery<DetalleOrgano>(
     ["analytics", "organo-detail", organo],
     `/api/v1/analytics/organos/${encodeURIComponent(organo)}`,
-    { enabled: Boolean(organo), staleTime: 5 * 60 * 1000 },
+    { enabled: Boolean(organo), staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     undefined,
     true,
   );
@@ -54,35 +62,29 @@ export function AnalisisOrgano({ organos }: { organos: readonly CuentaOrgano[] }
 
   return (
     <Panel>
-      <SectionTitle
-        aside={
+      <PanelTitle
+        as="h2"
+        title="Análisis por órgano"
+        actions={
           organo ? (
-            <Link
-              href={`/mercado?vista=organos&organo_q=${encodeURIComponent(organo)}`}
-              className="text-tf-micro text-muted-foreground hover:text-foreground hover:underline"
-            >
+            <EnlaceIr href={`/mercado?vista=organos&organo_q=${encodeURIComponent(organo)}`}>
               Abrir en Mercado
-            </Link>
+            </EnlaceIr>
           ) : undefined
         }
-      >
-        Análisis por órgano
-      </SectionTitle>
-      <p className="-mt-1 mb-3 text-tf-micro leading-relaxed text-muted-foreground">
-        Las cifras de Mercado → Órganos para un órgano, sin filtros de ámbito. No se suman entre
+      />
+      <p className="-mt-1.5 mb-3 text-tf-meta text-muted-foreground">
+        Las cifras de Mercado › Órganos para un órgano, sin filtros de ámbito. No se suman entre
         órganos: cada uno se mide sobre su propio histórico.
       </p>
 
       {organos.length > 1 && (
-        <div className="mb-3 flex flex-col gap-1.5">
-          <label htmlFor={`${id}-organo`} className="text-xs font-medium">
-            Órgano
-          </label>
+        <Field htmlFor={`${id}-organo`} label="Órgano" className="mb-3">
           <select
             id={`${id}-organo`}
             value={organo}
             onChange={(event) => setElegido(event.target.value)}
-            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-tf-body"
           >
             {organos.map((o) => (
               <option key={o.id} value={o.organo_nombre}>
@@ -90,60 +92,63 @@ export function AnalisisOrgano({ organos }: { organos: readonly CuentaOrgano[] }
               </option>
             ))}
           </select>
-        </div>
+        </Field>
       )}
 
-      {isLoading ? (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
-        </div>
-      ) : isError ? (
+      {error ? (
         <PanelError
           title="No se pudo cargar el análisis del órgano"
+          error={error}
           onRetry={() => void refetch()}
           height={120}
         />
-      ) : !kpis || kpis.total_licitaciones === 0 ? (
-        <PanelEmpty message="Mercado no tiene histórico de este órgano." height={96} />
+      ) : !isLoading && (!kpis || kpis.total_licitaciones === 0) ? (
+        <PanelEmpty size="sm" hint="Mercado no tiene histórico de este órgano." />
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard title="Licitaciones" value={formatNumber(kpis.total_licitaciones)} icon={Hash} />
-            <KpiCard
-              title="Importe total"
-              value={formatCurrency(kpis.importe_total)}
-              subtitle={kpis.importe_medio > 0 ? `medio ${formatCurrency(kpis.importe_medio)}` : undefined}
-              icon={TrendingUp}
+          {/* La tira sale ya con sus rótulos mientras llegan las cifras: el
+              esqueleto tiene la forma del dato y la ficha no salta. */}
+          <StatStrip columns={4}>
+            <StatCell
+              label="Licitaciones"
+              value={kpis ? formatNumber(kpis.total_licitaciones) : EMPTY}
+              loading={isLoading}
             />
-            <KpiCard
-              title="% adjudicado"
-              value={formatPercent(kpis.pct_adjudicado)}
-              subtitle="del total del órgano"
-              icon={Trophy}
+            <StatCell
+              label="Importe total"
+              value={kpis ? formatCurrency(kpis.importe_total) : EMPTY}
+              hint={kpis && kpis.importe_medio > 0 ? `Medio: ${formatCurrency(kpis.importe_medio)}` : undefined}
+              loading={isLoading}
             />
-            <KpiCard
-              title="Lead time mediano"
-              value={kpis.lead_time_medio != null ? `${Math.round(kpis.lead_time_medio)} días` : "— d"}
-              subtitle="de la publicación a la adjudicación"
-              icon={Clock}
+            <StatCell
+              label="Adjudicado"
+              value={kpis ? formatPercent(kpis.pct_adjudicado) : EMPTY}
+              hint="De las licitaciones del órgano"
+              loading={isLoading}
             />
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {(data?.top_adjudicatarios?.length ?? 0) > 0 && (
-              <div>
-                <p className="mb-1 text-xs font-medium">Quién gana aquí</p>
-                <OrganosAdjudicatariosChart data={data?.top_adjudicatarios ?? []} />
-              </div>
-            )}
-            {(data?.estacionalidad?.length ?? 0) > 0 && (
-              <div>
-                <p className="mb-1 text-xs font-medium">Cuándo publica</p>
-                <OrganosEstacionalidadChart data={data?.estacionalidad ?? []} />
-              </div>
-            )}
-          </div>
+            <StatCell
+              label="Días hasta adjudicar (mediana)"
+              value={kpis?.lead_time_medio != null ? `${Math.round(kpis.lead_time_medio)} días` : EMPTY}
+              hint="De la publicación a la adjudicación"
+              loading={isLoading}
+            />
+          </StatStrip>
+          {!isLoading && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {(data?.top_adjudicatarios?.length ?? 0) > 0 && (
+                <section>
+                  <SectionTitle as="h3">Quién gana aquí</SectionTitle>
+                  <OrganosAdjudicatariosChart data={data?.top_adjudicatarios ?? []} />
+                </section>
+              )}
+              {(data?.estacionalidad?.length ?? 0) > 0 && (
+                <section>
+                  <SectionTitle as="h3">Cuándo publica</SectionTitle>
+                  <OrganosEstacionalidadChart data={data?.estacionalidad ?? []} />
+                </section>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Panel>

@@ -10,55 +10,46 @@
  * exactamente lo que ADR-014 prohíbe.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PanelTitle } from "@/components/console/panel";
 import { Pista } from "@/components/ui/pista";
 import { formatNumber, formatPercent } from "@/lib/utils";
 import { valorOEmpty } from "@/lib/cobertura";
-import { TrendingDown } from "lucide-react";
 
 import type { BajasModel } from "../_hooks/competidores-series";
 
 export function CompetidoresBajas({ bajas }: { bajas: BajasModel }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <TrendingDown className="h-4 w-4" />
-          Empresas mas agresivas en precio (baja media)
-        </CardTitle>
-        <p className="text-muted-foreground mt-1 text-xs">
-          Ámbito: respeta CCAA, fechas (de adjudicación) e importe mínimo; no aplica estado,
-          tecnología ni búsqueda.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-1.5">
-          {bajas.rows.map((b) => (
-            <div key={b.grupo_id ?? b.grupo} className="flex items-center gap-2 text-sm">
-              <Pista contenido={b.grupo}>
-                <span className="w-48 truncate">{b.grupo}</span>
-              </Pista>
-              <div className="bg-muted h-4 flex-1 overflow-hidden rounded-full">
-                <div
-                  className="bg-primary h-full rounded-full"
-                  // fdi-allow:nulo-a-cero — ancho de la barra: sin dato no se dibuja.
-                  style={{ width: `${((b.baja_media_pct ?? 0) / bajas.maxBaja) * 100}%` }}
-                />
-              </div>
-              <span className="w-14 text-right text-xs tabular-nums">
-                {valorOEmpty(b.baja_media_pct, formatPercent)}
-              </span>
-              <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
-                {formatNumber(b.contratos)}
-              </span>
+    <>
+      <PanelTitle title="Empresas más agresivas en precio" className="mb-1" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Respeta CCAA, fechas de adjudicación e importe mínimo; no aplica estado, tecnología ni búsqueda.
+      </p>
+      <ul className="space-y-1.5">
+        {bajas.rows.map((b) => (
+          <li key={b.grupo_id ?? b.grupo} className="flex items-center gap-2 text-tf-body">
+            <Pista contenido={b.grupo}>
+              <span className="w-48 truncate">{b.grupo}</span>
+            </Pista>
+            {/* Proporción sin transición: es una medida, no algo que se mueva. */}
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+              <div
+                className="h-full rounded-full bg-primary"
+                // fdi-allow:nulo-a-cero — ancho de la barra: sin dato no se dibuja.
+                style={{ width: `${((b.baja_media_pct ?? 0) / bajas.maxBaja) * 100}%` }}
+              />
             </div>
-          ))}
-        </div>
-        <p className="text-muted-foreground mt-3 text-xs">
-          Baja media = (presupuesto − adjudicado) / presupuesto, sobre empresas con ≥ 5 contratos. La cifra gris es
-          el nº de contratos.
-        </p>
-      </CardContent>
-    </Card>
+            <span className="w-14 text-right text-tf-meta font-medium">
+              {valorOEmpty(b.baja_media_pct, formatPercent)}
+            </span>
+            <span className="w-24 text-right text-tf-meta text-muted-foreground">
+              {formatNumber(b.contratos)} {b.contratos === 1 ? "contrato" : "contratos"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-tf-meta text-muted-foreground">
+        Baja media: cuánto por debajo del presupuesto se adjudicó, en empresas con 5 contratos o más.
+      </p>
+    </>
   );
 }

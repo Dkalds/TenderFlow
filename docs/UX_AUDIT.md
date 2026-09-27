@@ -10,7 +10,9 @@ auditar `web/` entero y sólo miraba la consola autenticada: los cinco problemas
 estructurales, las tres olas y el continuo son todos del dashboard. La superficie
 pública —la portada, los índices, las fichas y las páginas de evidencia— no había
 pasado nunca por aquí, pese a ser lo único que ve alguien que no ha entrado. Su
-revisión está al final, en «Superficie pública».
+revisión está al final, en «Superficie pública». Detrás va la tercera, del
+2026-09-26, que no mira el flujo sino el aspecto: «Aspecto de plantilla en la
+consola».
 
 **Tamaño, medido el 2026-08-27:** 43 `page.tsx` y **57.438 líneas** de TS/TSX en
 `web/src` excluyendo `src/generated/api.d.ts` (14.109 líneas más, generadas por
@@ -176,7 +178,10 @@ Los dos mecanismos que debían compensarlo estaban rotos o ausentes:
 - **`PageHeader` era código muerto**: componente completo, con test propio, y
   **ningún fichero lo importaba**. De ahí la divergencia visual — `radar`,
   `oportunidades` y `login` con `tf-display` y secciones hero; el resto con
-  `tf-h1` plano. Dos lenguajes por omisión, no por decisión.
+  `tf-h1` plano. Dos lenguajes por omisión, no por decisión. *(2026-09-26:
+  `tf-display` y `tf-h1` ya no existen; el titular de espacio es `font-display
+  text-tf-lede` y una clase retirada no pasa el lint. Ver «Aspecto de plantilla
+  en la consola».)*
 - **La GlobalFilterBar hacía `flex-wrap`** con hasta 8 controles más un chip por
   filtro activo, en una barra `sticky`.
 
@@ -333,6 +338,12 @@ titulares **sólo** en la superficie pública —el dashboard conserva la suya, 
 snake_case, y `e2e/capturas-landing.spec.ts` regenera las imágenes desde el seed
 en vez de tomarlas a mano.
 
+*Estado (2026-09-26):* la consola dejó Space Grotesk y Fraunces pasó a ser la
+fuente de titulares de toda la aplicación, declarada una vez en
+`lib/tipografia.ts`. La frontera ya no es la superficie sino el tamaño:
+`font-display` solo a partir de 15 px (D1 en «Aspecto de plantilla en la
+consola»).
+
 ### El cambio de fondo
 
 El hero enseñaba una **foto** del producto con datos de demostración. Ahora
@@ -356,3 +367,360 @@ en las tres páginas de evidencia, enlazadas desde el cuerpo y desde el pie.
 - **Identidad publicada.** Razón social, NIF, domicilio y un buzón de contacto
   del dominio son variables de entorno que sólo el responsable puede rellenar.
 - **Dominio propio.** El sitio se sirve desde `*.vercel.app`.
+
+---
+
+## Aspecto de plantilla en la consola (2026-09-26)
+
+La tercera revisión, y la primera que no mira el flujo sino el aspecto: si la
+consola se lee como UI generada por plantilla («vibecodeada»). Se hizo con
+capturas de cada espacio en claro y en oscuro, contrastadas con las skills de
+diseño del repo (`frontend-design`, `emil-design-eng`, `apple-design`,
+`ui-ux-pro-max`, `web-design-guidelines` y `accessibility`): **55 hallazgos**
+(F01–F55) en ocho temas —identidad, tipografía, ornamento, color y forma,
+primitivos, voz, movimiento y puerta de entrada—, cada uno verificado después
+contra el código. Se implementó el 2026-09-26/27 en la rama
+`claude/app-appearance-improvement-5c04d4`: primero tokens, fuente, primitivos y
+cromo (`46b6ab10`), después las pantallas, área por área.
+
+**Denominador de las cifras de esta sección:** los `.ts`/`.tsx` de `web/src`
+sin tests ni `src/generated/`, 679 ficheros en `28a624f8` (la base, antes de la
+rama) y 697 hoy. Se cuentan con `git grep` sobre el ref y sobre el árbol, con
+el bloque de comandos de «Qué se hizo». El grep también cuenta comentarios:
+donde «hoy» no es cero por eso, se dice.
+
+### Diagnóstico
+
+TenderFlow no parecía vibecodeado por sus valores de base. El papel cálido, la
+tinta y el naranja quemado estaban fijados por contraste y con test, la escala
+`tf-*` bien pensada, los paneles planos y el movimiento con tokens. Lo que lo
+delataba es que **nadie hacía cumplir esas decisiones**. La superficie pública
+ya se había rediseñado con intención (sección anterior); sesión adentro, la
+consola seguía con los valores del andamiaje:
+
+- **La misma pieza, dibujada de 2 a 6 maneras**: vacío, error, KPI, conmutador
+  de vista, chip y rótulo. El `Card` de shadcn —deprecado en un comentario que
+  prometía una regla de lint nunca escrita— estaba en 106 ficheros, frente a 56
+  con `Panel`; el vacío con baldosa tintada (`EmptyState`), en 28; el KPI con
+  icono (`KpiCard`), en 14.
+- **Una escala tipográfica que no mandaba**: 451 tamaños escritos a mano en 18
+  valores (`text-[8.5px]`, `text-[10.5px]`…), 53 rótulos con la receta «mono +
+  versal» a 8-10 px, la mono en cifras, fechas y palabras (216 usos), Space
+  Grotesk de titular y el `h1` del espacio a 13 px, por debajo del botón
+  «Exportar».
+- **Color y forma ajustados sitio a sitio**: 29 opacidades distintas del
+  naranja, 171 clases de la paleta cruda de Tailwind al margen de los tokens
+  medidos por contraste, 19 radios fuera de escala más 90 `rounded` de 4 px, y
+  44 paneles translúcidos (`bg-card/70`) sobre un fondo plano.
+- **Los adornos que la portada ya había retirado**: el halo con ✨ del
+  copiloto y Sparkles como comodín para «IA», «nuevo» y «buscar» (7 ficheros);
+  un punto verde con `animate-ping` «en vivo» junto a datos de hace horas;
+  emojis como iconos en la ficha de órgano; códigos de rail de tres letras en
+  inglés; un login con red de partículas, retícula y tarjeta de cristal;
+  NProgress; y los toasts con la paleta de demostración de Sonner.
+- **Una voz sin dueño**: la interfaz narraba su arquitectura («calculada en
+  backend», «sale de otro endpoint», «no se pinta»: 36 veces en 28 ficheros de
+  la consola), los errores enseñaban rutas de API (19 `PanelError` con el
+  `error.message` crudo) y convivían tuteo, voseo y vosotros (31 formas en 12
+  ficheros), a veces en la misma frase.
+
+### Decisiones del dueño (2026-09-26)
+
+| # | Tema | Decisión |
+|---|---|---|
+| D1 | Titulares | Fraunces como `--font-display` de toda la aplicación, declarada una vez en `lib/tipografia.ts`, y **solo a 15 px o más**; por debajo, sans. Space Grotesk, fuera |
+| D2 | Rótulos de dato | Sans, en frase, a 11 px (`ROTULO_DATO`), sin mono, sin versal y sin tracking. La versal queda solo en las cabeceras de columna (`CABECERA_COLUMNA`) |
+| D3 | Rail | Palabra completa en castellano bajo cada icono, rail de ~72 px, un icono distinto por espacio |
+| D4 | Puerta | Login, restablecer contraseña y 404 en el lenguaje de la portada: composición editorial a la izquierda y el formulario en un panel sólido; sin partículas, retícula, halo, cristal ni sombra |
+| D5 | IA | Sparkles, fuera de todo el código: la IA se nombra, no se adorna |
+| D6 | Errores | Mensaje humano, «Detalle técnico» plegado y Reintentar. **Un solo aviso por fallo**: lo que se pinta en línea no lanza además un toast |
+| D7 | Cifra KPI | 20 px en sans con cifras tabulares; `StatStrip`/`StatCell` es el KPI canónico |
+| D8 | Vocabulario | Se quedan «Score», «Pipeline», «Watchlist» y «Go/No-Go»; se traducen sync, win rate, dashboard, owner/admin, lead time, secret y API keys |
+
+Y cuatro menores: la cabecera de cada espacio conserva su descripción, reescrita
+como el trabajo que resuelve (F15); «ir a» es `EnlaceIr`, con hover solo de
+color, porque lo que se ve decenas de veces al día no se desplaza (F35); el
+rótulo público es uno, `KICKER` (F46); y NProgress se retira (F52). **No** se
+hizo la portada del día (F27) ni se eligió el naranja de marca (F19).
+
+### Las reglas de la casa
+
+Lo que se aplicó a cada fichero, y lo que una pantalla nueva tiene que cumplir.
+Los trinquetes de abajo y los comentarios de `web/eslint.config.mjs` citan estos
+números.
+
+1. **Tamaños**: la escala de `globals.css` y nada de `text-[Npx]`. De 8 a 11 px
+   → `text-tf-micro`; 11,5-12 → `text-tf-meta`; 12,5-13,5 → `text-tf-body`; 14 →
+   `text-sm`; 15 → `text-tf-lede`; 16-22 → `text-tf-title`; 24 o más →
+   `text-tf-hero` o `text-tf-title`, según el papel.
+2. **Mono** solo para identificadores y código: expediente, CPV, id externo,
+   claves, hashes, `<code>`, `<kbd>` y atajos. Cifras, importes, fechas y
+   palabras, en sans (las cifras tabulares ya son globales).
+3. **Rótulos** con `ROTULO_DATO`, `SectionTitle`, `Fact` o `StatCell` de
+   `console/panel`, y `CABECERA_COLUMNA` de `ui/table`; nada de recetas a mano.
+4. **Titulares**: `font-display` solo a 15 px o más; títulos de panel
+   `text-tf-body font-semibold`; en frase, sin Title Case inglés, y el título
+   dice lo que se ve, no el tipo de gráfico.
+5. **Superficies**: paneles en `bg-card` opaco; sin degradados decorativos;
+   sombra solo en lo que flota (`shadow-md` en popover y menú, `shadow-lg` en
+   modal); `tf-glass` solo donde de verdad pasa contenido por debajo.
+6. **Tintes**: `primary` y los tonos semánticos en /5 (hover), /10
+   (seleccionado, chip, fila activa) y /15 (énfasis; nunca más de /16 detrás de
+   texto del mismo color, lo mide `contraste-tokens.test.ts`); bordes tintados
+   en /30 o /50. Nada de la paleta cruda de Tailwind.
+7. **Radios**: `rounded-md` en controles, chips y badges; `rounded-xl` en
+   paneles; `rounded-full` en puntos y avatares. Nada de `rounded-2xl`,
+   `rounded-[Npx]` ni `rounded` a secas.
+8. **Iconos**: solo lucide, a `h-3`, `h-3.5` o `h-4`; sin icono decorativo
+   delante de un título; nunca Sparkles, emojis ni un dólar para euros; un
+   icono, un concepto (`lib/iconos.ts`).
+9. **«Ir a»**: `EnlaceIr`; `ArrowUpRight`/`ExternalLink` solo para salir de
+   TenderFlow; filas enlazadas enteras, sin flecha; «→» solo para rangos y
+   cambios, y «›» para rutas («Mercado › Órganos»).
+10. **Vacíos**: `PanelEmpty` con título y pista concretos; sin baldosa de icono
+    ni caja de borde discontinuo.
+11. **Errores**: `PanelError` con `error`; nunca rutas de API, códigos HTTP ni
+    `error.message` crudos a la vista; y la consulta cuyo error se pinta en
+    línea no lanza además un toast (`META_ERROR_EN_LINEA`).
+12. **Avisos**: `Aviso` para las bandas info, warning, danger y success.
+13. **Botones y conmutadores**: `Button` (`size="sm"` en la consola) y `Badge`;
+    `PanelTabs` si hay panel, `Segmented` si es un filtro o un modo.
+14. **Movimiento**: nada de stagger ni fundidos de entrada en lo que se
+    consulta a diario; hover de filas y celdas solo de color; barras de
+    puntuación sin transición; ≤ 200 ms en la UI operativa; sin pulsos
+    infinitos decorativos.
+15. **Voz**: castellano peninsular con tuteo, y la interfaz no narra su
+    implementación. La honestidad de ADR-014 se dice en lenguaje de usuario
+    («estimación», «parcial: solo las N primeras», «sin datos suficientes»),
+    mejor en el pie o en una pista que en cada título.
+
+### Qué se hizo
+
+| Métrica | `28a624f8` | Hoy |
+|---|---|---|
+| Tamaños de letra a mano | **451**, en 18 valores | **0** |
+| Rótulos «mono + versal» (líneas) | **53** | **0** |
+| `uppercase` | 76 | 4: `CABECERA_COLUMNA`, el `KICKER` público y las dos imágenes OG |
+| `font-mono` | 216 | 73, identificadores y código |
+| Ficheros que importan `ui/card` · `ui/empty-state` · `charts/kpi-card` | 106 · 28 · 14 | **0 · 0 · 0** |
+| Ficheros que importan `console/panel` | 56 | 246 |
+| Ficheros con Sparkles | 7 | 0 (el grep da 1: un comentario de `lib/iconos.ts`) |
+| Clases de la paleta cruda de Tailwind | 171 | 0 (el grep da 2: un comentario que cuenta cuáles se quitaron) |
+| Opacidades distintas de `primary` | 29, en 181 usos | 12, en 143: los tintes de fondo van en /5, /10 o /15 (87 de 102 `bg-primary/N`) y los bordes en /30 o /50 (36 de 37) |
+| `rounded-2xl`, `-3xl` o `-[Npx]` · `rounded` desnudo | 19 · 90 | 0 · 0 |
+| Paneles translúcidos `bg-card/N` | 44 | 1: el aviso de reconexión, una capa `fixed` sobre contenido, justificada en su línea |
+| `transition-[…transform…]`, que en Tailwind v4 no anima `scale-*` | 23 | 0 (el grep da 1: un comentario) |
+| `animate-ping` · emojis | 1 · 6 | 0 · 0 |
+| `PanelError` con `detail={….message}` | 19 | 1: el límite de error de los gráficos, plegado en «Detalle técnico» |
+| Voseo o vosotros en texto visible · narración de la implementación en la consola | 31 en 12 ficheros · 36 en 28 | 0 · 0 |
+| Rutas del dashboard con `loading.tsx` propio | 9 | 17: los 16 espacios y la ficha de oportunidad. El genérico solo cubre ya `/licitadores`, que es una redirección |
+
+En la consola —`app/(dashboard)`, `components` y `app/login`— los tamaños
+pasaron de `text-xs` ×372, `text-sm` ×362, `text-base` ×83 y `text-lg` a
+`text-3xl` ×34, junto a 174 pasos `tf-*`, a 914 pasos `tf-*`, 20 `text-xs` o
+`text-sm` y ningún `text-base` o mayor. Los primitivos ganaron el terreno que
+dejaron las copias a mano: `PanelEmpty` en 94 ficheros (eran 16), `PanelError`
+en 91 (23), con `META_ERROR_EN_LINEA` en 69 para no avisar dos veces, `Aviso` en
+37, `Field` en 27, `StatStrip` en 26 (8), `CABECERA_COLUMNA` en 24, `EnlaceIr`
+en 17, `Segmented` en 14 y `ChipBanda` —un solo chip de banda de puntuación— en
+3.
+
+Para volver a medirlo (bash, desde la raíz del repo; cada línea imprime
+`antes -> hoy`):
+
+```sh
+# Denominador: 679 -> 697
+git ls-tree -r --name-only 28a624f8 web/src | grep -E '\.tsx?$' | grep -vE '__tests__|\.test\.|/generated/' | wc -l
+git ls-files --cached --others --exclude-standard web/src | grep -E '\.tsx?$' | grep -vE '__tests__|\.test\.|/generated/' | wc -l
+
+P=(-- 'web/src/*.ts' 'web/src/*.tsx' ':(exclude)web/src/**/__tests__/**' ':(exclude)web/src/**/*.test.*' ':(exclude)web/src/generated/**')
+n() { echo "$(git grep -ohE "$1" 28a624f8 "${P[@]}" | wc -l) -> $(git grep --untracked -ohE "$1" "${P[@]}" | wc -l)"; }  # apariciones
+f() { echo "$(git grep -lE "$1" 28a624f8 "${P[@]}" | wc -l) -> $(git grep --untracked -lE "$1" "${P[@]}" | wc -l)"; }    # ficheros
+n 'text-\[[0-9.][^]]*\]'
+n 'font-mono[^"`]*uppercase|uppercase[^"`]*font-mono'
+n '(^|[^a-z-])uppercase([^a-z-]|$)'
+n 'font-mono'
+f 'from "@/components/ui/card"'        # ídem ui/empty-state, charts/kpi-card, console/panel
+f '(^|[^A-Za-z])Sparkles([^A-Za-z]|$)'
+n '(bg|text|border|ring|fill|stroke|from|via|to|divide|outline)-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]{2,3}'
+n '(bg|border|text|ring|from|via|to)-primary/([0-9]+|\[[^]]*\])'   # | sed 's|.*/||' | sort -u, para los valores distintos
+n 'rounded-(2xl|3xl|\[)'
+n '(^|[ "`:])rounded([ "`]|$)'
+n 'bg-card/[0-9]'
+n 'transition-\[[^]]*transform'
+n 'animate-ping'
+n 'detail=\{[^}]*\.message'
+git grep -ohP '[\x{1F300}-\x{1FAFF}]' 28a624f8 "${P[@]}" | wc -l      # emojis
+```
+
+La voz no se cuenta con grep, porque un comentario que cita el texto antiguo
+también casa: sale del escáner del test de voz (abajo), y la cifra de
+`28a624f8` es ese mismo test con `SRC` apuntando a un `git archive 28a624f8
+web/src`.
+
+Lo que no cabe en una cifra:
+
+- **Tipografía**: Geist, Geist Mono y Fraunces con eje óptico en
+  `lib/tipografia.ts`. `text-tf-lede`, `-title` y `-hero` traen su peso y su
+  tracking en el token, y salieron las utilidades muertas (`tf-display`,
+  `tf-h1`, `tf-h2`, `tf-kpi`, `tf-caption`, `tf-card-shadow`,
+  `tf-sidebar-surface`, `tf-hero-grid` y `tf-fill-enter`).
+- **Cromo**: rail con palabras e iconos del mapa de `lib/iconos.ts` (un icono,
+  un concepto); `h1` de espacio en `font-display text-tf-lede`; la frescura dice
+  «Actualizado hace…», sin punto que late; barras sólidas.
+- **Marca**: `lib/marca.ts` con el trazo TF y los hex actuales, del que beben el
+  logo, las dos OG y `global-error`; el logo, sin halo.
+- **Puerta** (D4): login, restablecer y 404 editoriales, y `/login` con la
+  sesión abierta ofrece continuar (F55).
+- **Movimiento**: duración y curva por defecto en `@theme`, `tf-pressable` que
+  de verdad anima la escala, pulsación con tinte instantáneo en filas y tarjetas
+  (F53), barras de puntuación sin transición (F37), y fuera el stagger de los
+  KPIs, NProgress y `richColors` (`docs/frontend-motion.md`).
+- **Errores y vacíos**: mensaje por estado en castellano (`lib/query-feedback.ts`),
+  «Detalle técnico» plegado con la ruta para soporte, y vacíos con título y pista
+  concretos.
+
+### Trinquetes
+
+Que lo conseguido se quede no puede depender de la revisión: la regla que
+`ui/card.tsx` prometía desde su comentario nunca se escribió, y mientras tanto
+la deuda de tamaños creció el doble de rápido que su migración. Cuatro
+controles, los cuatro en el job `frontend` de CI (`npm run lint` y
+`npm run test:coverage`) y en local con `npm run lint` y `npm run test`:
+
+| Trinquete | Dónde | Qué impide | Allowlist |
+|---|---|---|---|
+| Primitivos retirados | `web/eslint.config.mjs`, `no-restricted-imports` (`importacionesRetiradas`) | Importar `ui/card`, `ui/empty-state` o `charts/kpi-card` fuera de sus tests | `deudaCard`: vacía desde que se escribió; solo encoge |
+| Iconos retirados | La misma regla, con `importNames` de `lucide-react` | Sparkles y las varitas (D5); `DollarSign` y `CircleDollarSign` en un producto en euros; `AlertTriangle`, el nombre viejo de `TriangleAlert` | Ninguna |
+| Aspecto | `web/eslint.config.mjs`, `no-restricted-syntax` (`restriccionesDeAspecto`), en todo `src` menos los tests, `src/lib` incluido | Tamaños a mano; la receta «mono + versal»; las clases retiradas de `globals.css`; la paleta cruda; radios fuera de escala; `bg-card/N`; `transition-[…transform…]`; `animate-ping` y `animate-bounce`; emojis y glifos (✓ ✕ ● ○) como iconos | Ninguna. Un caso legítimo se justifica en su línea (`eslint-disable-next-line no-restricted-syntax -- motivo`), como el aviso de reconexión |
+| Voz | `web/src/__tests__/voz-de-la-interfaz.test.ts` (vitest, con el AST de TypeScript) | Voseo y vosotros en todo `src`; en la consola —todo menos `lib/` y `app/(publico)/`— «backend», «frontend», «endpoint», «servidor», «corpus», «fixture», «payload», «se pinta», «denominador», «renderiza»… | `EXCEPCIONES`: vacía; el test falla si una entrada deja de hacer falta |
+
+Por qué así:
+
+- **Solo miran lo que se pinta.** Las reglas de ESLint leen cadenas,
+  plantillas y texto JSX; el test de voz, los nodos que pueden llegar a pantalla,
+  sin comentarios, rutas de import, tipos, claves de objeto ni lo que va a
+  `console.*`. Un comentario que cita la clase retirada para explicar por qué se
+  fue no cuenta; el grep de la tabla de arriba sí, y por eso algunas cifras de
+  «hoy» no son cero.
+- **ESLint para clases e imports, un test para el texto.** ESLint se ve en el
+  editor y en `npx eslint <fichero>`, que es como se verifica un cambio suelto.
+  La voz necesita más: el voseo vivía también en toasts de hooks `.ts` y en
+  texto JSX de varias líneas, que `scripts/check_ortografia_ui.py` —una regex por
+  línea, sobre los `.tsx`— no ve; y la narración solo se prohíbe en la consola.
+  Fuera quedan, a propósito, `lib/` (el contrato de mensajes de error dice «Error
+  del servidor. Vuelve a intentarlo…», y `"corpus"` es el nombre de un ámbito
+  que no se enseña) y `(publico)`, donde el aviso legal y la página de seguridad
+  hablan del servidor porque es el dato exacto que tienen que dar.
+- **En flat config, el último bloque que declara una regla la gana entera.**
+  `restriccionesDeAspecto` se repite por referencia en los dos bloques de
+  `no-restricted-syntax` que ya había y en uno nuevo para `src/lib`: añadir una
+  restricción es añadirla a la constante.
+- **Cada control se probó con un positivo conocido.** El test de voz empieza
+  por una muestra con infracciones sabidas y comprueba que las encuentra, en la
+  línea exacta (un escáner que no ve nada pasa siempre). Las reglas de ESLint se
+  comprobaron igual, con un fichero de muestra por `--stdin` en
+  `src/components`, `src/lib`, `app/(dashboard)` y un test (que queda fuera).
+- **Lo que no se hizo trinquete, y por qué.** `role="tablist"` escrito a mano
+  (F12): los tres que quedan son `PanelTabs`, la cabecera de espacio y el login,
+  que comparten `useTeclasPestanas`, y el defecto de F12 eran conmutadores que
+  *parecían* pestañas sin serlo, que una regla sobre el atributo no ve.
+  `text-base` o mayor en la consola: hoy 0, pero la superficie pública los usa y
+  la regla pediría un bloque por superficie. Las opacidades y los bordes de F10,
+  que esperan a que la escala tenga nombre.
+
+Comandos: `cd web && npm run lint` (0 errores) y `npx vitest run
+src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
+
+### Lo que queda
+
+**Deuda medida:**
+
+- **Borrar los primitivos retirados.** `ui/card.tsx`, `ui/empty-state.tsx` y
+  `charts/kpi-card.tsx` ya solo los importan sus tests. Con ellos pueden irse
+  `ExportPopover.className` (deprecado y sin llamadores) y `NavPage.icon` /
+  `NavSection.icon` de `lib/navigation.ts`, que ya no se pintan.
+- **Una escala de tintes con nombre (F10).** Quedan 12 opacidades de `primary`
+  en 143 usos. Faltan los tokens (`primary-hover`, `-selected`, `-soft`) y un
+  trinquete de opacidades sueltas. Los bordes, igual: `border-border/N` en 266
+  usos de 152 ficheros, con siete valores de /25 a /80; un `--divider` solo puede
+  entrar con el cambio de todos a la vez, o cada borde relativo se aclara un 30 %.
+- **D6 en las mutaciones.** Muchas llevan el toast global del `MutationCache` y,
+  además, su `onError` o su `catch` con otro toast (claves de API, cola de
+  errores, usuarios, RGPD, formularios de equipo, etiquetas, oportunidades,
+  tareas, comentarios…). Pide una decisión de conjunto —pasar el título local a
+  `meta.errorTitle` o silenciar el global— y no es mecánico, porque los tests
+  renderizan sin el `MutationCache`. Aparte, `useOrganizationMembers` tiene seis
+  consumidores y solo `/equipo` pinta su error: silenciarla dejaría mudos cinco
+  selectores.
+- **Ortografía de reserva.** `CCAA_FALLBACK`
+  (`mi-watchlist/_hooks/watchlist-rule-options.ts`: «Andalucia»,
+  «Cataluna»…) se enseña tal cual si `/meta/filters` falla. Son valores que
+  viajan al filtro: hace falta un mapa valor → etiqueta, como el de
+  `spain-map.tsx`, no un reemplazo de texto.
+- **El gate de tildes lee texto JSX de una sola línea.** Medido con el AST, hoy
+  no esconde nada; pero el hueco existe (lo dice el propio script).
+- `animate-pulse` queda en dos sitios, a propósito: el cursor que parpadea
+  mientras se emite una respuesta (`chat-thread.tsx`, `licitacion-ai.tsx`),
+  `motion-safe` y `aria-hidden`. Y ▲/▼ en Ops › Active learning es el signo de
+  una tendencia junto a su cifra, no un icono.
+
+**Hallazgos no hechos, o a medias:**
+
+- **F27, la portada del día.** No se hizo, por decisión: `text-tf-hero` tiene 0
+  usos en la consola y el Resumen sigue sin un titular del día.
+- **F19, el naranja de marca.** Sin elegir entre #E8823E (el del favicon),
+  #F39349 (el del tema oscuro y la OG) y #9A4513 (el óxido del tema claro). Está
+  hecha la parte que no depende de él: `lib/marca.ts`, el logo sin halo y la OG
+  con los textos de su fuente. Faltan los tokens `--brand`/`--brand-ink`, iguales
+  en los dos temas y medidos por contraste, el favicon y un lockup con Fraunces
+  local para Satori.
+- **F24, el sello de puntuación** (cifra, banda y mecha en un solo dibujo). Está
+  el chip de banda único, `ChipBanda`; el sello entero no cabe en la columna de
+  46 px del Radar sin ensanchar la rejilla.
+- **D8, «Ops y Admin»** (`lib/console-spaces.ts`, `ops/layout.tsx` y
+  `ops/__tests__/views-shared.test.tsx`). El rail acabó en 84 px, no en ~72: a
+  76 «Oportunidades» (77 px a 11 px) salía «Oportunidad…», y a 84 quedan 81 px
+  de nombre. «Administración» cabría; «Ops y administración», no. Pendiente del
+  dueño; si cambia, en los tres sitios a la vez.
+- ~~**El Radar a 768 px desborda `#main-content` en horizontal.**~~ ✅
+  **Resuelto el 2026-09-27.** La rejilla de la tabla (`RADAR_GRID`) suma ~766 px
+  fijos antes del título y, con el rail de 84, a 768 px quedan 684: había 133 px
+  de scroll lateral dentro de `main` (ya pasaba en master con el rail de 56). La
+  tabla empieza ahora en `lg` (1024 px, donde al título le quedan ~164 px,
+  descontada la barra de la lista); entre `md` y `lg` el Radar usa la ficha de
+  móvil, con «Ver ficha» y el inspector como `Sheet`, y «Abrir» a su ancho de
+  contenido. El umbral de JS (`MQ_TABLA_RADAR`, del que sale el `inert` de las
+  acciones ocultas) es el mismo que el prefijo de Tailwind **y en su unidad**:
+  los tres umbrales de `use-media-query.ts` pasaron de px a rem, porque el rem
+  de una media query sigue la letra del navegador y, con la «Grande» de Chrome,
+  `lg` son 1280 px; en px quedaban fichas visibles con las acciones `inert`.
+  **Y a 1280 px el título medía 0.** Desde `xl` el inspector va anclado con
+  432 px: con el rail de 84, a la tabla le quedan 764 y las siete columnas
+  piden ~766 antes del título (con el rail de 56 ya estaba en ~16 px). Lo cazó
+  el E2E de navegación, que corre a 1280. Desde `xl` la tabla no lleva columna
+  de Tecnología —va en la línea secundaria del título, como en la ficha, y el
+  inspector la repite— y Órgano cede 20 px: el título tiene ~150 px a 1280 y
+  ~235 a 1366. `radar-grid.test.ts` hace esa cuenta con el rail y el inspector. Lo fijan `radar-grid.test.ts` (la cuenta a
+  768 y a 1024), `page.test.tsx` y el E2E «Tableta vertical (768×1024)» de
+  `responsive.spec.ts`. Detalle no cambia.
+- `equipo/_components/anadir-miembro-form.tsx` conserva una caja de borde
+  discontinuo. La regla 10 de la casa solo lo prohíbe en los vacíos; queda a
+  criterio del dueño.
+- **F55**: `mfa_required` en `AuthUser` solo si el backend lo manda en
+  `/auth/me`.
+
+**Sin verificar en la rama** (hacen falta una build o un backend sembrado):
+
+- `next build` y `scripts/check_bundle_budget.py`.
+- Los E2E: `accessibility` (toasts en `/ops?vista=webhooks` y en `/login`),
+  `visual` (cambió la máscara de la franja de cifras), `responsive` (el rail a
+  1280, 1366 y 1440 px con sesión de administración; y la fila del Radar ya no
+  anima al pulsar J/K, así que la espera de `getAnimations` sobra), `login`,
+  `seo`, `admin-guard`, `ajustes` y `pagina-cita`.
+- Las capturas `.webp` de la portada (`npm run capturas:landing`), tomadas con
+  la consola aún en Space Grotesk.
+- `/graph-refresh`: se borraron `components/motion.tsx`, `route-progress.tsx`,
+  `layout/particle-field.tsx` y `radar-inspector-piezas.tsx`, y se añadieron
+  `lib/tipografia.ts`, `lib/marca.ts`, `lib/iconos.ts`, `ui/field.tsx` y
+  `console/chip-banda.tsx`.

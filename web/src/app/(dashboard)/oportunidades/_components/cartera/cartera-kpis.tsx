@@ -6,7 +6,7 @@
  * Las cuatro cifras vienen de `GET /pursuits/cartera/resumen` y **no** de
  * sumar las filas de la tabla (ADR-014). La diferencia no es teórica: la tabla
  * se recorta por tecnología y por órgano, así que un total sumado en cliente
- * diría «contratos vivos» mientras enseña los de un filtro. El backend además
+ * diría «contratos vivos» mientras enseña los de un filtro. La API además
  * sabe qué es un contrato vivo —sin fecha de fin o con ella por delante—, que
  * es una regla de dominio y no una resta de fechas en la pantalla.
  *
@@ -29,10 +29,7 @@ export function CarteraKpis({
   const sinRenovacion = resumen?.sin_renovacion_preparada ?? 0;
 
   return (
-    <StatStrip
-      columns={4}
-      className="lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]"
-    >
+    <StatStrip columns={4}>
       <StatCell
         label="Contratos vivos"
         loading={cargando}
@@ -59,7 +56,7 @@ export function CarteraKpis({
         value={resumen ? formatNumber(sinRenovacion) : EMPTY}
         // Ámbar sólo cuando hay alguno: es lo único de la franja sobre lo que
         // se puede actuar hoy, y en cero no hay nada que avisar.
-        accent={sinRenovacion > 0 ? "hsl(var(--warning))" : undefined}
+        tono={sinRenovacion > 0 ? "warning" : undefined}
         hint="De los que vencen en 6 meses"
       />
     </StatStrip>

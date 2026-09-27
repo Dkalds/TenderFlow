@@ -89,8 +89,8 @@ export function PursuitDecisionBadge({ decision }: { decision: PursuitDecision }
  * lote, con precio, responsable y decisión propios. Sin esta etiqueta, dos
  * tarjetas del mismo expediente son indistinguibles en el tablero.
  *
- * `lote_numero` es el dato duradero; `lote_id` y `lote_titulo` los resuelve el
- * backend contra `lotes` en cada lectura y vienen vacíos si el pliego dejó de
+ * `lote_numero` es el dato duradero; `lote_id` y `lote_titulo` los resuelve la
+ * API contra `lotes` en cada lectura y vienen vacíos si el pliego dejó de
  * publicar ese lote — la oportunidad sigue diciendo para cuál se abrió.
  */
 export function loteEtiqueta(pursuit: PursuitConLote): string | null {
@@ -108,7 +108,7 @@ export function PursuitLoteBadge({ pursuit }: { pursuit: PursuitConLote }) {
   const etiqueta = loteEtiqueta(pursuit);
   if (!etiqueta) return null;
   return (
-    <Badge variant="outline" className="font-mono text-[10px] font-medium">
+    <Badge variant="outline" size="sm">
       {etiqueta}
     </Badge>
   );

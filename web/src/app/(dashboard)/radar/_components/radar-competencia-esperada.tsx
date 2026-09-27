@@ -1,10 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { PanelError, SectionTitle } from "@/components/console/panel";
 import { fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { radarKeys } from "@/lib/query-keys";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SectionTitle } from "./radar-inspector-piezas";
 
 interface TopAdjudicatario {
   nombre: string;
@@ -19,7 +20,7 @@ interface OrganoDetailResult {
 
 /** Adjudicatarios habituales del órgano — la competencia que cabe esperar. */
 export function ExpectedCompetition({ organo }: { organo: string | null | undefined }) {
-  const { data, isLoading } = useQuery<OrganoDetailResult>({
+  const { data, isLoading, error, refetch } = useQuery<OrganoDetailResult>({
     queryKey: radarKeys.organo(organo),
     queryFn: () =>
       fetchWithAuth<OrganoDetailResult>(
@@ -27,6 +28,8 @@ export function ExpectedCompetition({ organo }: { organo: string | null | undefi
       ),
     enabled: Boolean(organo),
     staleTime: 5 * 60_000,
+    // El fallo se dice en el bloque: sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   if (!organo) return null;
@@ -38,11 +41,7 @@ export function ExpectedCompetition({ organo }: { organo: string | null | undefi
 
   return (
     <>
-      <SectionTitle
-        aside={
-          <span className="text-[10.5px] text-muted-foreground">histórico del órgano</span>
-        }
-      >
+      <SectionTitle as="h3" hint="histórico del órgano">
         Competencia esperada
       </SectionTitle>
       <div className="flex flex-col gap-1.5 pb-5">
@@ -52,8 +51,17 @@ export function ExpectedCompetition({ organo }: { organo: string | null | undefi
             <Skeleton className="h-9 rounded-md" />
             <Skeleton className="h-9 rounded-md" />
           </>
+        ) : error ? (
+          // Sin esto, un fallo se leía «Sin adjudicaciones registradas»: un
+          // vacío falso sobre justo el dato que se vino a mirar.
+          <PanelError
+            variant="inline"
+            title="No se pudo cargar el histórico del órgano"
+            error={error}
+            onRetry={() => void refetch()}
+          />
         ) : rivals.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-tf-meta text-muted-foreground">
             Sin adjudicaciones registradas para este órgano.
           </p>
         ) : (
@@ -69,11 +77,15 @@ export function ExpectedCompetition({ organo }: { organo: string | null | undefi
                 key={rival.nombre}
                 className="flex items-center gap-2.5 rounded-md border border-border/60 bg-card px-2.5 py-2"
               >
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded border border-primary/25 bg-primary/12 font-mono text-[9px] font-semibold text-primary">
+                {/* Avatar neutro: el naranja queda para acción y selección. */}
+                <span
+                  className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-border/70 bg-secondary text-tf-micro font-semibold text-muted-foreground"
+                  aria-hidden="true"
+                >
                   {initials}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-xs">{rival.nombre}</span>
-                <span className="tf-tnum shrink-0 font-mono text-[11px] text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate text-tf-meta">{rival.nombre}</span>
+                <span className="tf-tnum shrink-0 text-tf-micro text-muted-foreground">
                   {share != null ? `${share}%` : `${rival.count} adj.`}
                 </span>
               </div>

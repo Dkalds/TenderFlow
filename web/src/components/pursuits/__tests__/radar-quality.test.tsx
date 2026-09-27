@@ -85,7 +85,7 @@ describe("calidad del Radar", () => {
   it("el resumen declara la ventana y la cobertura", () => {
     render(<RadarQualityResumen calidad={calidad()} />);
 
-    expect(screen.getByText(/Ventana 2026-06-01 → 2026-08-31/)).toBeInTheDocument();
+    expect(screen.getByText(/Ventana 1 jun 2026 → 31 ago 2026/)).toBeInTheDocument();
     expect(screen.getByText(/21 de 40 oportunidades guardan la banda/)).toBeInTheDocument();
   });
 

@@ -36,13 +36,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Info } from "lucide-react";
-import { PanelEmpty, PanelError, PanelLoading } from "@/components/console/panel";
+import { Aviso, EnlaceIr, PanelEmpty, PanelError, PanelLoading, ROTULO_DATO, Segmented } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { competitiveKeys } from "@/lib/query-keys";
-import { cn, EMPTY, formatCurrency, formatDate, formatPercent, truncate } from "@/lib/utils";
+import { EMPTY, formatCurrency, formatDate, formatPercent, truncate } from "@/lib/utils";
 
 type BatallasContraMi = Schemas["BatallasContraMi"];
 type Batalla = Schemas["Batalla"];
@@ -51,12 +53,18 @@ type ResultadoBatalla = Batalla["resultado"];
 /** Ventanas ofrecidas. El backend admite 1-120 meses; 24 es su defecto. */
 const VENTANAS = [12, 24, 36] as const;
 
-export const RESULTADO_BATALLA: Record<ResultadoBatalla, { label: string; className: string }> = {
-  ganamos: { label: "Ganamos", className: "bg-[hsl(var(--success)/0.14)] text-[hsl(var(--success))]" },
-  ellos_ganaron: { label: "Ganaron ellos", className: "bg-destructive/12 text-destructive" },
-  perdimos: { label: "Perdimos", className: "bg-[hsl(var(--warning)/0.15)] text-[hsl(var(--warning))]" },
-  sin_resolver: { label: "Sin resolver", className: "bg-muted text-muted-foreground" },
+/** Etiqueta y tono de cada resultado: los tintes /10 de la casa, vía `Badge`. */
+export const RESULTADO_BATALLA: Record<
+  ResultadoBatalla,
+  { label: string; variant: "success" | "destructive" | "warning" | "neutral" }
+> = {
+  ganamos: { label: "Ganamos", variant: "success" },
+  ellos_ganaron: { label: "Ganaron ellos", variant: "destructive" },
+  perdimos: { label: "Perdimos", variant: "warning" },
+  sin_resolver: { label: "Sin resolver", variant: "neutral" },
 };
+
+const OPCIONES_VENTANA = VENTANAS.map((valor) => ({ value: String(valor), label: `${valor} meses` }));
 
 /** Orden del resumen: lo que se puede afirmar de este rival, primero. */
 const ORDEN_RESULTADOS: ResultadoBatalla[] = ["ellos_ganaron", "perdimos", "ganamos", "sin_resolver"];
@@ -81,6 +89,8 @@ export function useBatallasContraMi(empresaKey: string, meses: number, empresaId
     // comparación saldría contra la personal, que no ha competido con nadie.
     enabled: empresaKey.length > 0 && organizacionResuelta(organizationId),
     staleTime: 5 * 60_000,
+    // El fallo se dice en la pestaña (PanelError): sin toast además.
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -112,25 +122,15 @@ export function CompanyContraMi({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-muted-foreground text-[11px] font-semibold tracking-[0.1em] uppercase">Ventana</span>
-        <div role="group" aria-label="Ventana hacia atrás" className="flex gap-1">
-          {VENTANAS.map((valor) => (
-            <button
-              key={valor}
-              type="button"
-              aria-pressed={meses === valor}
-              onClick={() => setMeses(valor)}
-              className={cn(
-                "tf-pressable h-7 rounded-md border px-2.5 text-[12px] font-medium transition-colors",
-                meses === valor
-                  ? "border-border/70 bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground border-transparent",
-              )}
-            >
-              {valor} meses
-            </button>
-          ))}
-        </div>
+        <span className={ROTULO_DATO} aria-hidden="true">
+          Ventana
+        </span>
+        <Segmented
+          aria-label="Ventana hacia atrás"
+          value={String(meses)}
+          onChange={(valor) => setMeses(Number(valor))}
+          options={OPCIONES_VENTANA}
+        />
       </div>
 
       {isPending ? (
@@ -138,56 +138,46 @@ export function CompanyContraMi({
       ) : error || !data ? (
         <PanelError
           title="No se pudo cargar el historial contra este competidor"
-          detail={error instanceof Error ? error.message : undefined}
+          error={error ?? undefined}
           onRetry={() => void refetch()}
           height={200}
         />
       ) : (
         <>
           {identidades > 1 && (
-            <p className="text-muted-foreground text-[12px]">
+            <p className="text-tf-meta text-muted-foreground">
               Cruza las {identidades} identidades del maestro que suma esta ficha.
             </p>
           )}
 
           {data.sin_nif_propio && (
-            <p
+            <Aviso
+              tone="info"
               role="note"
-              className="border-border/60 bg-muted/30 flex gap-2 rounded-lg border px-3 py-2 text-[12px] leading-[1.5]"
+              action={<EnlaceIr href="/equipo">Declararlo en Equipo › Organización</EnlaceIr>}
             >
-              <Info className="text-muted-foreground mt-0.5 h-3.5 w-3.5 flex-none" aria-hidden="true" />
-              <span>
-                Tu organización no ha declarado su NIF, así que no sabemos cuál es tu empresa entre los
-                adjudicatarios: de un cierre perdido sólo se puede afirmar que perdisteis, no quién ganó.{" "}
-                <Link href="/equipo" className="font-medium underline-offset-2 hover:underline">
-                  Declararlo en Equipo → Organización
-                </Link>
-              </span>
-            </p>
+              Tu organización no ha declarado su NIF, así que no sabemos cuál es tu empresa entre los
+              adjudicatarios: de un cierre perdido solo se puede afirmar que tu equipo perdió, no quién ganó.
+            </Aviso>
           )}
 
           {(data.contradicciones ?? 0) > 0 && (
-            <p
-              role="note"
-              className="flex gap-2 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] px-3 py-2 text-[12px] leading-[1.5]"
-            >
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none text-[hsl(var(--warning))]" aria-hidden="true" />
-              <span>
-                {data.contradicciones === 1
-                  ? "Un expediente cerrado como perdido aparece adjudicado a vuestro NIF."
-                  : `${data.contradicciones} expedientes cerrados como perdidos aparecen adjudicados a vuestro NIF.`}{" "}
-                No se cuentan como derrota: revisad el cierre de la oportunidad o la adjudicación publicada.
-              </span>
-            </p>
+            <Aviso tone="warning" role="note">
+              {data.contradicciones === 1
+                ? "Un expediente cerrado como perdido aparece adjudicado al NIF de tu organización."
+                : `${data.contradicciones} expedientes cerrados como perdidos aparecen adjudicados al NIF de tu organización.`}{" "}
+              No se cuentan como derrota: revisa el cierre de la oportunidad o la adjudicación publicada.
+            </Aviso>
           )}
 
           {data.n === 0 ? (
             <PanelEmpty
-              message={`Ningún expediente en los ${data.ventana} en el que tu equipo presentara oferta y este competidor aparezca como adjudicatario.`}
+              title={`Ningún expediente en los ${data.ventana}`}
+              hint="Tu equipo no presentó oferta en ninguno en el que este competidor aparezca como adjudicatario."
             />
           ) : (
             <>
-              <p className="text-[12.5px]">
+              <p className="text-tf-body">
                 <span className="font-semibold">{data.n}</span>{" "}
                 {data.n === 1 ? "expediente" : "expedientes"} en común en los {data.ventana}
                 {ORDEN_RESULTADOS.filter((resultado) => conteo[resultado]).map((resultado) => (
@@ -198,67 +188,62 @@ export function CompanyContraMi({
                 ))}
                 {sinPrecio > 0 && (
                   <span className="text-muted-foreground">
-                    {" · "}en {sinPrecio} no registrasteis vuestro precio
+                    {" · "}en {sinPrecio} tu equipo no registró su precio
                   </span>
                 )}
               </p>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-[12px]">
-                  <caption className="sr-only">Expedientes en los que coincidimos con este competidor</caption>
-                  <thead className="text-muted-foreground text-[10.5px] uppercase">
-                    <tr className="border-border/60 border-b">
-                      <th scope="col" className="py-1.5 pr-3 font-medium">Expediente</th>
-                      <th scope="col" className="py-1.5 pr-3 font-medium">Resultado</th>
-                      <th scope="col" className="py-1.5 pr-3 text-right font-medium">Nuestra baja</th>
-                      <th scope="col" className="py-1.5 pr-3 text-right font-medium">Baja ganadora</th>
-                      <th scope="col" className="py-1.5 text-right font-medium">Adjudicación</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.batallas?.map((batalla) => (
-                      <tr key={batalla.licitacion_id} className="border-border/40 border-b align-top">
-                        <td className="py-2 pr-3">
-                          <Link
-                            href={`/detalle?lic=${encodeURIComponent(batalla.licitacion_id)}`}
-                            className="font-medium hover:underline"
-                          >
-                            {truncate(batalla.titulo ?? batalla.licitacion_id, 80)}
-                          </Link>
-                          <span className="text-muted-foreground block text-[11px]">
-                            {batalla.organo_contratacion ?? EMPTY}
-                            {batalla.importe != null && ` · ${formatCurrency(batalla.importe)}`}
+              <Table>
+                <caption className="sr-only">Expedientes en los que coincidimos con este competidor</caption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Expediente</TableHead>
+                    <TableHead>Resultado</TableHead>
+                    <TableHead className="text-right">Nuestra baja</TableHead>
+                    <TableHead className="text-right">Baja ganadora</TableHead>
+                    <TableHead className="text-right">Adjudicación</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.batallas?.map((batalla) => (
+                    <TableRow key={batalla.licitacion_id} className="align-top">
+                      <TableCell>
+                        <Link
+                          href={`/detalle?lic=${encodeURIComponent(batalla.licitacion_id)}`}
+                          className="font-medium transition-colors hover:text-primary"
+                        >
+                          {truncate(batalla.titulo ?? batalla.licitacion_id, 80)}
+                        </Link>
+                        <span className="block text-tf-meta text-muted-foreground">
+                          {batalla.organo_contratacion ?? EMPTY}
+                          {batalla.importe != null && ` · ${formatCurrency(batalla.importe)}`}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={RESULTADO_BATALLA[batalla.resultado].variant} size="sm" className="whitespace-nowrap">
+                          {RESULTADO_BATALLA[batalla.resultado].label}
+                        </Badge>
+                        {batalla.contradiccion && (
+                          <span className="mt-1 block text-tf-micro font-medium text-warning">
+                            Cerrado perdido, adjudicado a tu organización
                           </span>
-                        </td>
-                        <td className="py-2 pr-3">
-                          <span
-                            className={cn(
-                              "rounded px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap",
-                              RESULTADO_BATALLA[batalla.resultado].className,
-                            )}
-                          >
-                            {RESULTADO_BATALLA[batalla.resultado].label}
-                          </span>
-                          {batalla.contradiccion && (
-                            <span className="mt-1 block text-[10.5px] font-medium text-[hsl(var(--warning))]">
-                              Cerrado perdido, adjudicado a vosotros
-                            </span>
-                          )}
-                        </td>
-                        <td className="tf-tnum py-2 pr-3 text-right">
-                          {batalla.nuestra_baja == null ? (
-                            <span className="text-muted-foreground text-[11px]">Sin precio registrado</span>
-                          ) : (
-                            baja(batalla.nuestra_baja)
-                          )}
-                        </td>
-                        <td className="tf-tnum py-2 pr-3 text-right">{baja(batalla.baja_ganadora)}</td>
-                        <td className="py-2 text-right whitespace-nowrap">{formatDate(batalla.fecha)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        )}
+                      </TableCell>
+                      <TableCell numeric>
+                        {batalla.nuestra_baja == null ? (
+                          <span className="text-tf-meta text-muted-foreground">Sin precio registrado</span>
+                        ) : (
+                          baja(batalla.nuestra_baja)
+                        )}
+                      </TableCell>
+                      <TableCell numeric>{baja(batalla.baja_ganadora)}</TableCell>
+                      <TableCell numeric className="whitespace-nowrap">
+                        {formatDate(batalla.fecha)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </>
           )}
         </>

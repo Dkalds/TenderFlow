@@ -41,13 +41,13 @@ _WEB_SRC = _REPO_ROOT / "web" / "src"
 #: nonce sí puede cubrir y no es lo que bloquea el endurecimiento.
 _STYLE_ATTR = re.compile(r"style=\{\{")
 
-#: Techo vigente. Medido el 2026-09-06 (94) y bajado el 2026-09-25 (92), al
-#: salir de la ficha de Empresas la trayectoria y los rankings. **Solo puede
-#: bajar.**
+#: Techo vigente. Medido el 2026-09-06 (94), bajado el 2026-09-25 (92), al
+#: salir de la ficha de Empresas la trayectoria y los rankings, y el 2026-09-27
+#: (76), al pasar la consola a tokens y primitivos. **Solo puede bajar.**
 #:
 #: Bajarlo es el trabajo que desbloquea C2.8; subirlo es declarar que se acepta
 #: seguir con `'unsafe-inline'` en `style-src`, y eso no se hace de pasada.
-MAX_ESTILOS_INLINE = 92
+MAX_ESTILOS_INLINE = 76
 
 
 def contar() -> dict[str, int]:

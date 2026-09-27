@@ -17,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { organizacionResuelta, type OrganizacionActiva } from "@/hooks/use-organization";
 import { type WebhookOut } from "@/hooks/use-webhooks";
 import { fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { webhookKeys } from "@/lib/query-keys";
 
 /**
@@ -50,7 +51,7 @@ export function useWebhooksDeEquipo(organizationId: OrganizacionActiva) {
       ),
     enabled: organizacionResuelta(organizationId),
     // Mismo motivo que la global: el error ya lo dice `Listado` en su sitio.
-    meta: { silent: true },
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -62,6 +63,6 @@ export function useWebhooksGlobales() {
     // `Listado` ya pinta el fallo en su sitio (`role="alert"`). El toast global
     // lo duplicaba, y para quien no es administrador —el 403 esperado de esta
     // ruta— era un error rojo por visitar una vista que solo puede leer.
-    meta: { silent: true },
+    meta: META_ERROR_EN_LINEA,
   });
 }

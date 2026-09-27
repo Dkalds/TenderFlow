@@ -172,11 +172,11 @@ export function SeguirBoton({
   const piel = clases
     ? cn(clases.base, sigue ? clases.activo : clases.inactivo)
     : cn(
-        "tf-pressable inline-flex items-center gap-1.5 rounded-md border text-xs font-medium",
-        "transition-colors disabled:pointer-events-none disabled:opacity-60",
-        variante === "texto" ? "px-2.5 py-1.5" : "h-7 w-7 justify-center",
+        "tf-pressable inline-flex items-center gap-1.5 rounded-md border text-tf-meta font-medium",
+        "disabled:pointer-events-none disabled:opacity-60",
+        variante === "texto" ? "h-8 px-2.5 md:h-7" : "h-7 w-7 justify-center",
         sigue
-          ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+          ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
           : "border-border/70 text-muted-foreground hover:text-foreground",
       );
 

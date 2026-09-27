@@ -11,7 +11,9 @@
  * dispara con teclado: la explicación es dato, no decoración, y tiene que
  * alcanzarse tabulando.
  */
+import { badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { origenFin } from "@/lib/cartera";
 
 export function OrigenFin({ origen }: { origen: string | null | undefined }) {
@@ -23,7 +25,7 @@ export function OrigenFin({ origen }: { origen: string | null | undefined }) {
         <button
           type="button"
           aria-label={`Fecha de fin ${info.texto}: ${info.explicacion}`}
-          className="ml-1.5 inline-flex h-[18px] items-center rounded-sm border border-border/70 bg-muted/60 px-1.5 text-[10px] font-medium text-muted-foreground"
+          className={cn(badgeVariants({ size: "sm" }), "tf-pressable ml-1.5 hover:text-foreground")}
         >
           {info.texto}
         </button>

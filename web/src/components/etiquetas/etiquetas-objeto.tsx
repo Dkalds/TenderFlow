@@ -11,8 +11,10 @@
 import * as React from "react";
 import { Loader2, Plus, Tag } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -24,18 +26,21 @@ import {
   useCrearEtiqueta,
   useEtiquetas,
 } from "@/hooks/use-etiquetas";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 
 export function EtiquetaChip({ etiqueta }: { etiqueta: Pick<EtiquetaAplicada, "nombre" | "color"> }) {
   return (
-    <span className="inline-flex h-5 max-w-[14rem] items-center gap-1 rounded-full border border-border/70 bg-background px-2 text-[10.5px] font-medium">
+    // El `Badge` de contorno de la consola; el punto de color va a 6 px, no a
+    // los 12 de un icono de chip.
+    <Badge variant="outline" size="sm" className="max-w-[14rem] bg-background [&_svg]:size-1.5">
       {/* `fill` es un atributo de presentación SVG, no un estilo inline: la CSP
           (`style-src`, C2.8) no lo gobierna y el color sigue viniendo del dato. */}
-      <svg aria-hidden="true" viewBox="0 0 6 6" className="h-1.5 w-1.5 flex-none">
+      <svg aria-hidden="true" viewBox="0 0 6 6">
         <circle cx="3" cy="3" r="3" fill={etiqueta.color} />
       </svg>
       <span className="truncate">{etiqueta.nombre}</span>
-    </span>
+    </Badge>
   );
 }
 
@@ -91,7 +96,7 @@ export function EtiquetasEditor({
       { etiquetaId, objetoTipo, objetoId, aplicar },
       {
         onError: (err) =>
-          toast.error(err instanceof Error ? err.message : "No se pudo cambiar la etiqueta"),
+          toast.error("No se pudo cambiar la etiqueta", { description: getErrorMessage(err, "accion") }),
       },
     );
 
@@ -104,31 +109,25 @@ export function EtiquetasEditor({
       setNombre("");
       alternar(etiqueta.id, true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo crear la etiqueta");
+      toast.error("No se pudo crear la etiqueta", { description: getErrorMessage(err, "accion") });
     }
   };
 
   return (
     <Popover open={abierto} onOpenChange={setAbierto}>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 px-2 text-xs"
-          aria-label={`Etiquetas de ${descripcion}`}
-        >
-          <Tag className="h-3.5 w-3.5" aria-hidden="true" />
+        <Button type="button" variant="ghost" size="sm" aria-label={`Etiquetas de ${descripcion}`}>
+          <Tag aria-hidden="true" />
           Etiquetas
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-3">
         <fieldset>
-          <legend className="mb-2 text-xs font-semibold">Etiquetas del equipo</legend>
+          <legend className="mb-2 text-tf-meta font-semibold">Etiquetas del equipo</legend>
           {etiquetas.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-label="Cargando etiquetas" />
           ) : todas.length === 0 ? (
-            <p className="text-[11.5px] text-muted-foreground">
+            <p className="text-tf-meta text-muted-foreground">
               Tu organización aún no tiene etiquetas. Crea la primera abajo.
             </p>
           ) : (
@@ -154,7 +153,7 @@ export function EtiquetasEditor({
         </fieldset>
 
         <form onSubmit={crearYAplicar} className="mt-3 space-y-2 border-t border-border/60 pt-3">
-          <label htmlFor={`${baseId}-nueva`} className="block text-xs font-medium">
+          <label htmlFor={`${baseId}-nueva`} className={ETIQUETA_CAMPO}>
             Nueva etiqueta
           </label>
           <div className="flex gap-1.5">
@@ -164,8 +163,8 @@ export function EtiquetasEditor({
               maxLength={40}
               disabled={llena}
               onChange={(event) => setNombre(event.target.value)}
-              placeholder="Q4, prioridad…"
-              className="h-8 text-xs"
+              placeholder="p. ej. Q4, prioridad…"
+              className="h-8 text-tf-meta"
             />
             <Button
               type="submit"
@@ -173,7 +172,7 @@ export function EtiquetasEditor({
               className="h-8"
               disabled={llena || !nombre.trim() || crear.isPending}
             >
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              <Plus aria-hidden="true" />
               <span className="sr-only">Crear y aplicar</span>
             </Button>
           </div>
@@ -198,7 +197,7 @@ export function EtiquetasEditor({
             ))}
           </div>
           {llena ? (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-tf-micro text-muted-foreground">
               Tu organización tiene {MAX_ETIQUETAS} etiquetas, el máximo. Borra alguna para crear
               otra.
             </p>

@@ -14,7 +14,7 @@ import {
   Legend,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 import { chartClickField } from "@/lib/chart-interaction";
 
@@ -116,7 +116,7 @@ export function GeografiaPieChart({
               name?: string;
               percent?: number;
             }) =>
-              `${name ?? ""} (${((percent ?? 0) * 100).toFixed(1)}%)`
+              `${name ?? ""} (${formatPercent((percent ?? 0) * 100)})`
             }
             labelLine={{ strokeWidth: 1 }}
           >

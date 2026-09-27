@@ -10,20 +10,17 @@
 
 import dynamic from "next/dynamic";
 
-import { EmptyState } from "@/components/ui/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { FolderKanban } from "lucide-react";
+import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
 
 import type { Schemas } from "@/lib/api-types";
 
 import type { TipoEstadoRow, TipoProyectoRow } from "../_hooks/use-proyectos-modulos-view";
 
-const ModulosBarChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.ModulosBarChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-const TiposPieChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TiposPieChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-const ModulosTreemap = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.ModulosTreemap })), { ssr: false, loading: () => <Skeleton className="h-[350px] w-full rounded-md" /> });
-const TiposTreemap = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TiposTreemap })), { ssr: false, loading: () => <Skeleton className="h-[350px] w-full rounded-md" /> });
-const TipoEstadoStackedChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TipoEstadoStackedChart })), { ssr: false, loading: () => <Skeleton className="h-[360px] w-full rounded-md" /> });
+const ModulosBarChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.ModulosBarChart })), { ssr: false, loading: () => <PanelLoading height={400} /> });
+const TiposPieChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TiposPieChart })), { ssr: false, loading: () => <PanelLoading height={400} /> });
+const ModulosTreemap = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.ModulosTreemap })), { ssr: false, loading: () => <PanelLoading height={350} /> });
+const TiposTreemap = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TiposTreemap })), { ssr: false, loading: () => <PanelLoading height={350} /> });
+const TipoEstadoStackedChart = dynamic(() => import("@/components/charts/proyectos-modulos-charts").then(m => ({ default: m.TipoEstadoStackedChart })), { ssr: false, loading: () => <PanelLoading height={360} /> });
 
 /**
  * Nodo de treemap. La firma de índice la exige `recharts` (su `Treemap` acepta
@@ -34,6 +31,9 @@ export interface TreemapEntry {
   size: number;
   [key: string]: string | number;
 }
+
+const SIN_MODULOS = "Ninguna licitación del ámbito actual menciona un módulo SAP.";
+const SIN_TIPOS = "Ninguna licitación del ámbito actual tiene tipo de proyecto identificado.";
 
 export function ProyectosGraficos({
   modulosSorted,
@@ -54,95 +54,64 @@ export function ProyectosGraficos({
 }) {
   return (
     <>
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Bar Chart: SAP Modules */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FolderKanban className="h-4 w-4" />
-              Módulos SAP por Cantidad
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : modulosSorted.length > 0 ? (
-              <ModulosBarChart data={modulosSorted} />
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Pie Chart: Project Types */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Tipos de Proyecto</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : tiposPie.length > 0 ? (
-              <TiposPieChart data={tiposPie} />
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Treemaps: Modulos + Tipos side by side */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Módulos por Importe (Treemap)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[350px] w-full" />
-            ) : modulosTreemap.length > 0 ? (
-              <ModulosTreemap data={modulosTreemap} />
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Tipos Proyecto por Importe (Treemap)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[350px] w-full" />
-            ) : tiposTreemap.length > 0 ? (
-              <TiposTreemap data={tiposTreemap} />
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tipo de proyecto x Estado (stacked) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Tipo de proyecto x Estado</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel>
+          <PanelTitle title="Licitaciones por módulo SAP" />
           {isLoading ? (
-            <Skeleton className="h-[360px] w-full" />
-          ) : tipoEstadoData.length > 0 ? (
-            <TipoEstadoStackedChart data={tipoEstadoData} estados={tipoEstadoEstados} />
+            <PanelLoading height={400} />
+          ) : modulosSorted.length > 0 ? (
+            <ModulosBarChart data={modulosSorted} />
           ) : (
-            <EmptyState />
+            <PanelEmpty title="Ningún módulo" hint={SIN_MODULOS} height={400} />
           )}
-        </CardContent>
-      </Card>
+        </Panel>
+
+        <Panel>
+          <PanelTitle title="Reparto por tipo de proyecto" />
+          {isLoading ? (
+            <PanelLoading height={400} />
+          ) : tiposPie.length > 0 ? (
+            <TiposPieChart data={tiposPie} />
+          ) : (
+            <PanelEmpty title="Ningún tipo de proyecto" hint={SIN_TIPOS} height={400} />
+          )}
+        </Panel>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel>
+          <PanelTitle title="Importe por módulo" />
+          {isLoading ? (
+            <PanelLoading height={350} />
+          ) : modulosTreemap.length > 0 ? (
+            <ModulosTreemap data={modulosTreemap} />
+          ) : (
+            <PanelEmpty title="Sin importes" hint={SIN_MODULOS} height={350} />
+          )}
+        </Panel>
+
+        <Panel>
+          <PanelTitle title="Importe por tipo de proyecto" />
+          {isLoading ? (
+            <PanelLoading height={350} />
+          ) : tiposTreemap.length > 0 ? (
+            <TiposTreemap data={tiposTreemap} />
+          ) : (
+            <PanelEmpty title="Sin importes" hint={SIN_TIPOS} height={350} />
+          )}
+        </Panel>
+      </div>
+
+      <Panel>
+        <PanelTitle title="Tipo de proyecto por estado" />
+        {isLoading ? (
+          <PanelLoading height={360} />
+        ) : tipoEstadoData.length > 0 ? (
+          <TipoEstadoStackedChart data={tipoEstadoData} estados={tipoEstadoEstados} />
+        ) : (
+          <PanelEmpty title="Ningún tipo de proyecto" hint={SIN_TIPOS} height={360} />
+        )}
+      </Panel>
     </>
   );
 }

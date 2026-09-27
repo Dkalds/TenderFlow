@@ -40,11 +40,11 @@ import { SecretNotice } from "./webhooks/secret-notice";
  */
 export function WebhooksEquipoView() {
   const organizationId = useActiveOrganizationId();
-  const { data, isPending, error } = useWebhooksDeEquipo(organizationId);
+  const { data, isPending, error, refetch } = useWebhooksDeEquipo(organizationId);
   const [newSecret, setNewSecret] = React.useState<string | null>(null);
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4 p-4">
+    <div className="mx-auto w-full max-w-4xl space-y-4">
       {newSecret && <SecretNotice secret={newSecret} onDismiss={() => setNewSecret(null)} />}
 
       {/* El formulario conserva su contrato de dos estados: crear sin ámbito
@@ -55,8 +55,9 @@ export function WebhooksEquipoView() {
         webhooks={data}
         isPending={isPending}
         error={error}
+        onRetry={() => void refetch()}
         editable
-        vacio="Creá uno para recibir en Slack, en Teams o en tus propios sistemas lo que pasa en vuestras oportunidades."
+        vacio="Crea uno para recibir en Slack, en Teams o en tus propios sistemas lo que pasa en las oportunidades de tu equipo."
       />
     </div>
   );
@@ -73,20 +74,21 @@ export function WebhooksEquipoView() {
  * entrega de todo el conjunto.
  */
 export default function WebhooksView() {
-  const { data, isPending, error } = useWebhooksGlobales();
+  const { data, isPending, error, refetch } = useWebhooksGlobales();
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4 p-4">
-      <p className="text-muted-foreground text-xs">
-        Vista global de la instancia, en solo lectura. Cada equipo gestiona los suyos desde <strong>Equipo →
-        Integraciones</strong>; aquí aparecen además los que no tienen organización, heredados de antes de que los
-        webhooks tuvieran dueño.
+    <div className="mx-auto w-full max-w-4xl space-y-4">
+      <p className="text-muted-foreground text-tf-meta">
+        Vista global de la instancia, en solo lectura. Cada equipo gestiona los suyos desde{" "}
+        <strong className="font-medium text-foreground">Equipo › Integraciones</strong>; aquí aparecen además los que
+        no tienen organización, heredados de antes de que los webhooks tuvieran dueño.
       </p>
 
       <Listado
         webhooks={data}
         isPending={isPending}
         error={error}
+        onRetry={() => void refetch()}
         editable={false}
         vacio="No hay ningún webhook registrado en la instancia."
       />

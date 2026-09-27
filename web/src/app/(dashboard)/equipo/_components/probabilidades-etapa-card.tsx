@@ -13,17 +13,17 @@
  *   el backend manda con la configuración. Una etapa nueva aparece sola.
  * - **Los defaults no se copian**: un campo vacío es «el valor por defecto» y
  *   no viaja en el PUT. El placeholder enseña cuál es, leído de la respuesta.
- * - **El permiso lo decide el backend** (403 si no eres owner/admin); la
- *   pantalla sólo evita ofrecer lo que va a fallar.
+ * - **El permiso lo decide el backend** (403 si no eres propietario ni
+ *   administrador); la pantalla sólo evita ofrecer lo que va a fallar.
  */
 
 import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Percent, Save } from "lucide-react";
 import { toast } from "sonner";
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -31,10 +31,10 @@ import {
   useUpdateOrganizationSettings,
 } from "@/hooks/use-organization-settings";
 import type { OrganizationSettingsOut } from "@/lib/api-types";
-import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { probabilidadesEtapa } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
 import { etiquetaEtapa, ordenarEtapas } from "@/lib/pipeline-ponderado";
+import { getErrorMessage } from "@/lib/query-feedback";
 
 interface ValoresProbabilidades {
   probabilidades_etapa: Record<string, string>;
@@ -67,38 +67,33 @@ export function ProbabilidadesEtapaCard({
   organizationId: number;
   canManage: boolean;
 }) {
-  const { data, isLoading, isError } = useOrganizationSettings(organizationId);
+  const { data, isLoading, error, refetch } = useOrganizationSettings(organizationId);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Percent className="h-4 w-4 text-primary" aria-hidden="true" />
-          Probabilidad de cierre por etapa
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Con estos porcentajes se pondera el valor del pipeline en Oportunidades → Rendimiento: cada
-          oportunidad abierta cuenta su importe por la probabilidad de su etapa. Un campo vacío
-          usa el valor por defecto.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : isError || !data ? (
-          <p role="alert" className="text-sm text-destructive">
-            No se pudo cargar la configuración de la organización.
-          </p>
-        ) : (
-          <FormularioProbabilidades
-            key={JSON.stringify(data.probabilidades_etapa ?? {})}
-            organizationId={organizationId}
-            ajustes={data}
-            canManage={canManage}
-          />
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Probabilidad de cierre por etapa" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Con estos porcentajes se pondera el valor del Pipeline en Oportunidades › Rendimiento: cada oportunidad
+        abierta cuenta su importe por la probabilidad de su etapa. Un campo vacío usa el valor por defecto.
+      </p>
+      {isLoading ? (
+        <Skeleton className="h-40 w-full" />
+      ) : error || !data ? (
+        <PanelError
+          variant="inline"
+          title="No se pudo cargar la configuración de la organización"
+          error={error ?? undefined}
+          onRetry={() => void refetch()}
+        />
+      ) : (
+        <FormularioProbabilidades
+          key={JSON.stringify(data.probabilidades_etapa ?? {})}
+          organizationId={organizationId}
+          ajustes={data}
+          canManage={canManage}
+        />
+      )}
+    </Panel>
   );
 }
 
@@ -125,15 +120,13 @@ function FormularioProbabilidades({
       await guardar.mutateAsync({ probabilidades_etapa: probabilidadesDeValores(valores) });
       toast.success("Probabilidades guardadas. El valor ponderado ya las usa.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudieron guardar");
+      toast.error(getErrorMessage(error, "accion"));
     }
   });
 
   if (etapas.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        El servidor no ha enviado las etapas del pipeline.
-      </p>
+      <p className="text-tf-meta text-muted-foreground">No hay etapas del Pipeline que ponderar.</p>
     );
   }
 
@@ -144,39 +137,29 @@ function FormularioProbabilidades({
           const id = `probabilidad-${organizationId}-${etapa}`;
           const mensaje = errores?.[etapa]?.message;
           return (
-            <div key={etapa} className="space-y-1">
-              <label htmlFor={id} className="text-xs font-medium">
-                {etiquetaEtapa(etapa)} (%)
-              </label>
+            <Field key={etapa} label={`${etiquetaEtapa(etapa)} (%)`} htmlFor={id} error={mensaje}>
               <Input
                 id={id}
                 inputMode="numeric"
                 disabled={!canManage}
                 placeholder={`${defaults[etapa]} (por defecto)`}
                 {...formulario.register(`probabilidades_etapa.${etapa}`)}
-                {...ariaCampo(id, mensaje)}
               />
-              <CampoError campoId={id} mensaje={mensaje} />
-            </div>
+            </Field>
           );
         })}
       </div>
       {canManage ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" size="sm" disabled={guardar.isPending}>
-            {guardar.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Save className="h-4 w-4" aria-hidden="true" />
-            )}
-            Guardar probabilidades
+            {guardar.isPending ? "Guardando…" : "Guardar probabilidades"}
           </Button>
-          <span className="text-xs text-muted-foreground">
-            Enteros de 0 a 100. Ganadas y perdidas no se ponderan: ya no son pipeline.
+          <span className="text-tf-meta text-muted-foreground">
+            Enteros de 0 a 100. Ganadas y perdidas no se ponderan: ya no están en el Pipeline.
           </span>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">Solo owner o admin pueden cambiarlas.</p>
+        <p className="text-tf-meta text-muted-foreground">Solo un propietario o un administrador puede cambiarlas.</p>
       )}
     </form>
   );

@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ETIQUETA_CAMPO, Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -22,17 +23,9 @@ import type { Pursuit, PursuitStatus, UpdatePursuitInput } from "@/hooks/use-pur
 import type { Resultado } from "../_lib/flujo";
 
 const RESULTADOS: { key: Resultado; etiqueta: string; clase: string }[] = [
-  { key: "won", etiqueta: "Ganada", clase: "border-[hsl(var(--success))] bg-success/14 text-success" },
-  {
-    key: "lost",
-    etiqueta: "Perdida",
-    clase: "border-destructive bg-destructive/12 text-destructive",
-  },
-  {
-    key: "withdrawn",
-    etiqueta: "Retirada",
-    clase: "border-[hsl(var(--warning))] bg-warning/14 text-warning",
-  },
+  { key: "won", etiqueta: "Ganada", clase: "border-success/50 bg-success/10 text-success" },
+  { key: "lost", etiqueta: "Perdida", clase: "border-destructive/50 bg-destructive/10 text-destructive" },
+  { key: "withdrawn", etiqueta: "Retirada", clase: "border-warning/50 bg-warning/10 text-warning" },
 ];
 
 const TODOS: readonly Resultado[] = ["won", "lost", "withdrawn"];
@@ -57,10 +50,10 @@ const MOTIVOS = [
  * preguntar obligaría a elegir uno por el usuario, y el que se eligiera sería
  * el que ensuciaría el informe.
  *
- * `resultados` son los que el backend acepta desde el estado actual
+ * `resultados` son los que la API acepta desde el estado actual
  * (`_lib/flujo.ts`): «Ganada» y «Perdida» solo salen de «Presentada», así que
  * desde cualquier otra fase lo único que se ofrece es retirarla. «Ganada» pide
- * el importe adjudicado y no un motivo: el backend exige importe o
+ * el importe adjudicado y no un motivo: la API exige importe o
  * justificación, y la lista de D37 son causas de pérdida.
  */
 export function DialogoCierre({
@@ -121,15 +114,13 @@ export function DialogoCierre({
         </DialogDescription>
 
         {soloRetirar ? (
-          <p className="text-muted-foreground mb-4 text-tf-meta leading-[1.45]">
+          <p className="text-muted-foreground mb-4 text-tf-meta">
             «Ganada» y «Perdida» solo se registran desde «Presentada». Desde esta fase, cerrar es
             retirarla.
           </p>
         ) : (
           <fieldset className="mb-4">
-            <legend className="text-muted-foreground mb-1.5 font-mono text-tf-micro font-semibold tracking-wider uppercase">
-              Resultado
-            </legend>
+            <legend className={cn("mb-1.5", ETIQUETA_CAMPO)}>Resultado</legend>
             <div className="flex gap-1.5">
               {opciones.map((opcion) => (
                 <button
@@ -138,7 +129,7 @@ export function DialogoCierre({
                   aria-pressed={resultado === opcion.key}
                   onClick={() => setResultado(opcion.key)}
                   className={cn(
-                    "h-8 flex-1 rounded-md border text-tf-body font-semibold transition-colors",
+                    "tf-pressable h-8 flex-1 rounded-md border text-tf-body font-semibold",
                     resultado === opcion.key
                       ? opcion.clase
                       : "border-input text-muted-foreground hover:text-foreground",
@@ -152,29 +143,21 @@ export function DialogoCierre({
         )}
 
         {resultado === "won" ? (
-          <div className="mb-4">
-            <label
-              htmlFor={importeId}
-              className="text-muted-foreground mb-1.5 block font-mono text-tf-micro font-semibold tracking-wider uppercase"
-            >
-              Importe adjudicado (€)
-            </label>
+          <Field label="Importe adjudicado (€)" htmlFor={importeId} className="mb-4">
             <Input
               id={importeId}
               inputMode="decimal"
               value={importe}
               onChange={(event) => setImporte(event.target.value)}
-              placeholder="Ej. 2080000"
+              placeholder="p. ej. 2080000"
             />
-          </div>
+          </Field>
         ) : (
           // Un `<label>` aquí no tendría control nativo que envolver: el
           // disparador de Radix es un botón, así que el nombre accesible va en
           // él y esto es sólo el rótulo visible.
           <div className="mb-4">
-            <span className="text-muted-foreground mb-1.5 block font-mono text-tf-micro font-semibold tracking-wider uppercase">
-              Motivo
-            </span>
+            <span className={cn("mb-1.5", ETIQUETA_CAMPO)}>Motivo</span>
             <Select value={motivo} onValueChange={setMotivo}>
               <SelectTrigger aria-label="Motivo del cierre">
                 <SelectValue placeholder="Elige un motivo" />
@@ -191,7 +174,7 @@ export function DialogoCierre({
         )}
 
         <div className="flex items-center gap-2">
-          <p className="text-muted-foreground flex-1 text-tf-micro leading-[1.4]">
+          <p className="text-muted-foreground flex-1 text-tf-meta">
             {resultado === "won"
               ? "Sin importe, lo ganado no suma en el valor adjudicado."
               : "El motivo alimenta el informe de pérdidas por causa."}

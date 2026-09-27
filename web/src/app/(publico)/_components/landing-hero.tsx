@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { CONTENIDO } from "../_content/landing";
 import { CtaAcceso } from "./landing-cta";
-import { CTA_SECUNDARIO, ENTRADA_HERO, KICKER } from "./landing-piel";
+import { ENTRADA_HERO } from "./landing-piel";
+import { CTA_SECUNDARIO, KICKER } from "./piel-publica";
 import { UltimosPublicados } from "./ultimos-publicados";
 
 /**

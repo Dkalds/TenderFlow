@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import { ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -20,7 +21,7 @@ import type { MetaFilters } from "@/lib/api-types";
 import type { FiltersState } from "@/lib/filters";
 import type { GlobalFilterKey } from "@/lib/navigation";
 import { resolverCodigo } from "@/lib/procedimientos";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 interface ChipListado {
   key: string;
@@ -64,7 +65,8 @@ export function chipsListado(
   return list;
 }
 
-const LABEL = "mb-1.5 block font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground";
+/** La etiqueta de campo de la casa, la misma que el resto del editor del ámbito. */
+const LABEL = cn(ETIQUETA_CAMPO, "mb-1.5");
 
 export function FiltrosListadoEditor({
   filters,
@@ -105,7 +107,7 @@ export function FiltrosListadoEditor({
           </label>
           <Input
             id="scope-provincia"
-            className="bg-background/70 h-8 w-full rounded-md text-xs"
+            className="bg-background h-8 w-full text-xs"
             placeholder="Escribe una provincia y pulsa Intro"
             value={provincia}
             onChange={(event) => setProvincia(event.target.value)}
@@ -150,7 +152,7 @@ function ImporteMaximo({ filters }: { filters: FiltersState }) {
         id="scope-importe-max"
         type="number"
         min={0}
-        className="bg-background/70 h-8 w-full rounded-md text-xs"
+        className="bg-background h-8 w-full text-xs"
         placeholder="Sin máximo"
         value={valor}
         onChange={(event) => setValor(event.target.value ? Number(event.target.value) : "")}

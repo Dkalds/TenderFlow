@@ -121,10 +121,18 @@ function interpolateColor(t: number, scale: "blue" | "green" | "orange", mode: "
   return `hsl(${h} ${sat}% ${l}%)`;
 }
 
+/**
+ * Cifra abreviada para la etiqueta de cada comunidad, con las abreviaturas
+ * castellanas («1,5 mil M», «2,3 M», «4,5 mil») y la coma de `formatNumber`.
+ * La versión anterior ponía «1.5B»: una «B» que en castellano se lee como
+ * billón (10¹²) y un punto decimal al lado de los puntos de millar del resto
+ * de la pantalla.
+ */
 function formatCompact(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  const unDecimal = (x: number) => formatNumber(Math.round(x * 10) / 10);
+  if (n >= 1_000_000_000) return `${unDecimal(n / 1_000_000_000)} mil M`;
+  if (n >= 1_000_000) return `${unDecimal(n / 1_000_000)} M`;
+  if (n >= 1_000) return `${unDecimal(n / 1_000)} mil`;
   return formatNumber(n);
 }
 
@@ -272,10 +280,10 @@ export const SpainMap = React.memo(function SpainMap({
   if (!geoData) {
     return (
       <div
-        className={cn("border-border bg-muted/30 flex items-center justify-center rounded-md border", className)}
+        className={cn("border-border bg-card flex items-center justify-center rounded-md border", className)}
         style={{ height }}
       >
-        <span className="text-muted-foreground text-sm">{geoError ? "Error cargando mapa" : "Cargando mapa…"}</span>
+        <span className="text-muted-foreground text-tf-meta">{geoError ? "No se pudo cargar el mapa" : "Cargando mapa…"}</span>
       </div>
     );
   }
@@ -315,7 +323,7 @@ export const SpainMap = React.memo(function SpainMap({
       {hoveredCcaa && (
         <div
           role="tooltip"
-          className="border-border bg-popover text-popover-foreground pointer-events-none absolute z-[1000] -translate-x-1/2 -translate-y-full rounded border px-2.5 py-1.5 text-xs shadow-md"
+          className="border-border bg-popover text-popover-foreground pointer-events-none absolute z-[1000] -translate-x-1/2 -translate-y-full rounded-md border px-2.5 py-1.5 text-tf-meta shadow-md"
           style={{ left: tooltipPos.x, top: tooltipPos.y - 12 }}
         >
           <p className="font-semibold">{hoveredCcaa}</p>

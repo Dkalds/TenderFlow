@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Administración — DLQ, usuarios, claves API y webhooks.
+ * Administración — cola de errores, usuarios, claves de API y webhooks.
  *
  * Vista compartida por la ruta `/administracion` y por `?vista=administracion`
  * del espacio Ops. La guarda de administrador viaja **con la vista**, no con el
@@ -33,7 +33,9 @@ function AdministracionContent() {
     <div className="space-y-6">
       <div>
         <h1 className="sr-only">Administración</h1>
-        <p className="text-muted-foreground">Gestión de DLQ, usuarios y claves API.</p>
+        <p className="text-tf-meta text-muted-foreground">
+          Solicitudes de acceso, cola de errores, usuarios, claves de API y webhooks de la instancia.
+        </p>
       </div>
 
       {/* Cola de solicitudes de acceso llegadas desde la landing pública. Va

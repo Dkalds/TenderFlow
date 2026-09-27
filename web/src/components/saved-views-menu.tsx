@@ -9,6 +9,7 @@
 
 import * as React from "react";
 import { Bookmark, Check, Plus, Trash2 } from "lucide-react";
+import { PanelEmpty } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -55,12 +56,11 @@ export function SavedViewsMenu() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 px-2 text-xs"
           aria-haspopup="dialog"
           onPointerEnter={adelantar}
           onFocus={adelantar}
         >
-          <Bookmark className="text-primary h-3.5 w-3.5" />
+          <Bookmark className="text-primary" aria-hidden="true" />
           Vistas
         </Button>
       </PopoverTrigger>
@@ -71,16 +71,16 @@ export function SavedViewsMenu() {
             onChange={(e) => setName(e.target.value)}
             placeholder="Nombre de la vista…"
             aria-label="Nombre de la vista"
-            className="h-8 text-xs"
+            className="h-8 text-tf-meta"
           />
           <Button
             type="submit"
-            size="icon"
-            className="h-8 w-8 shrink-0"
+            size="icon-sm"
+            className="shrink-0 md:size-8"
             disabled={!name.trim() || saveView.isPending}
             aria-label="Guardar vista actual"
           >
-            <Plus className="h-4 w-4" />
+            <Plus aria-hidden="true" />
           </Button>
         </form>
 
@@ -124,19 +124,24 @@ function ListaDeVistas({
   return (
     <div className="max-h-64 overflow-y-auto">
       {isLoading ? (
-        <p className="text-muted-foreground px-2 py-3 text-center text-xs">Cargando…</p>
+        <p className="text-muted-foreground px-2 py-3 text-center text-tf-meta">Cargando…</p>
       ) : views.length === 0 ? (
-        <p className="text-muted-foreground px-2 py-3 text-center text-xs">No tienes vistas guardadas.</p>
+        <PanelEmpty
+          size="sm"
+          className="px-2"
+          title="No tienes vistas guardadas"
+          hint="Escribe un nombre arriba para guardar el ámbito de ahora."
+        />
       ) : (
         <ul className="space-y-0.5">
           {views.map((view) => (
             <li key={view.id} className="group flex items-center gap-1 rounded-md px-1">
               <button
                 type="button"
-                className="tf-pressable hover:bg-accent flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
+                className="tf-pressable hover:bg-accent flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-tf-body"
                 onClick={() => onAplicar(view)}
               >
-                <Check className="text-primary h-3.5 w-3.5 opacity-0 group-hover:opacity-60" />
+                <Check className="text-primary h-3.5 w-3.5 opacity-0 group-hover:opacity-60" aria-hidden="true" />
                 <span className="truncate">{view.name}</span>
               </button>
               <button
@@ -146,7 +151,7 @@ function ListaDeVistas({
                 onClick={() => onEliminar(view)}
                 disabled={eliminando}
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             </li>
           ))}

@@ -11,7 +11,7 @@ const DATA = [
 describe("WaterfallChart", () => {
   it("shows an empty-state message when data is empty", () => {
     render(<WaterfallChart data={[]} />);
-    expect(screen.getByText("Sin datos disponibles")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("No hay meses que comparar");
   });
 
   it("renders an accessible chart container when data is provided", () => {

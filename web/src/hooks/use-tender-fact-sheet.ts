@@ -19,6 +19,7 @@ import type {
   WeightedCriterion,
 } from "@/lib/api-types";
 import { documentosKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 /**
  * Tipos derivados del esquema OpenAPI, no escritos a mano.
@@ -76,6 +77,7 @@ export function useTenderFactSheet(licitacionId: string | null) {
     // A missing sheet is expected before the first explicit extraction, not an
     // application error.  The component renders that state as an actionable CTA.
     retry: (attempt, error) => !(error instanceof ApiError && error.status === 404) && attempt < 2,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

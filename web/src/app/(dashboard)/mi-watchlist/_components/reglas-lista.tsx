@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * Listado de reglas con sus tres estados: cargando, vacío y con datos.
+ * Listado de reglas con sus cuatro estados: cargando, fallo, vacío y con datos.
  *
  * El estado vacío apunta al formulario de arriba en vez de repetir un botón:
  * el alta ya está en pantalla y un segundo CTA que hace scroll a otro sitio
  * fue justo lo que se retiró del resto de pantallas del dash.
+ *
+ * El fallo va antes que el vacío: sin él, una carga fallida se leía como «No
+ * tienes reglas», que es justo lo que no se sabe.
  */
 
-import { Eye } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiRule, RuleBody } from "../_hooks/watchlist-rule-types";
 import { ReglaCard } from "./regla-card";
@@ -17,63 +19,44 @@ import { ReglaCard } from "./regla-card";
 export function ReglasLista({
   rules,
   loading,
+  error,
+  onRetry,
   onUpdate,
   onEdit,
   onDelete,
 }: {
   rules: ApiRule[] | undefined;
   loading: boolean;
+  error?: unknown;
+  onRetry?: () => void;
   onUpdate: (id: number, body: RuleBody) => void;
   onEdit: (rule: ApiRule) => void;
   onDelete: (id: number) => void;
 }) {
   const ruleCount = rules?.length ?? 0;
+  const hayError = error != null && !rules;
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-        <Eye className="h-5 w-5" />
-        Reglas ({ruleCount})
-      </h2>
+      <PanelTitle as="h2" title={hayError ? "Reglas" : `Reglas (${ruleCount})`} />
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2].map((i) => (
-            <Card key={i}>
-              <CardContent className="pt-6">
-                <Skeleton className="h-6 w-32 mb-2" />
-                <Skeleton className="h-4 w-48" />
-              </CardContent>
-            </Card>
+            <Skeleton key={i} className="h-36 w-full rounded-xl" />
           ))}
         </div>
+      ) : hayError ? (
+        <PanelError title="No se pudieron cargar tus reglas" error={error} onRetry={onRetry} />
       ) : ruleCount === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Eye className="h-12 w-12 text-muted-foreground/50 mb-4" aria-hidden="true" />
-            <p className="text-lg font-medium text-muted-foreground">
-              No tienes reglas de seguimiento configuradas
-            </p>
-            {/* Qué hace una regla antes de pedir que se cree (C7.3). Es lo
-                que ya dice la nota de la página: conteo real sobre todo el
-                dataset y avisos por frecuencia desde el servidor. */}
-            <p className="text-sm text-muted-foreground mt-1 max-w-[56ch]">
-              Una regla guarda unos criterios (palabra clave, CPV, importe mínimo, CCAA) y cuenta
-              cuántas licitaciones los cumplen; con frecuencia de aviso, el servidor te escribe
-              cuando entran nuevas. Crea la primera con «Nueva regla de seguimiento», arriba.
-            </p>
-          </CardContent>
-        </Card>
+        <PanelEmpty
+          title="No tienes reglas de seguimiento configuradas"
+          hint="Crea una regla y recibirás un aviso, con la frecuencia que elijas, cuando entren licitaciones que la cumplan. Empieza con «Nueva regla de seguimiento», arriba."
+        />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {(rules ?? []).map((rule) => (
-            <ReglaCard
-              key={rule.id}
-              rule={rule}
-              onUpdate={onUpdate}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
+            <ReglaCard key={rule.id} rule={rule} onUpdate={onUpdate} onEdit={onEdit} onDelete={onDelete} />
           ))}
         </div>
       )}

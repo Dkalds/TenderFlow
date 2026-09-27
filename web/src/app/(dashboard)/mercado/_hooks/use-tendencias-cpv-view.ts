@@ -16,6 +16,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 import {
   splitForecastSeries,
@@ -85,10 +86,11 @@ export function useTendenciasCpvView() {
   const [selectedCpvs, setSelectedCpvs] = useState<Set<string>>(new Set());
   const [showForecast, setShowForecast] = useState(false);
 
-  const { data: cpvData, isLoading, error } = useFilteredQuery<TrendsCpvResponse>(
+  const { data: cpvData, isLoading, error, refetch } = useFilteredQuery<TrendsCpvResponse>(
     ["analytics", "trends-cpv"],
     "/api/v1/analytics/trends-cpv",
-    { staleTime: 5 * 60_000 },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 5 * 60_000, meta: META_ERROR_EN_LINEA },
   );
 
   const allCpvs = useMemo(() => cpvData?.series_by_cpv ?? [], [cpvData]);
@@ -180,5 +182,7 @@ export function useTendenciasCpvView() {
     cpvTableData,
     isLoading,
     error,
+    /** El «Reintentar» del error. */
+    refetch: () => void refetch(),
   };
 }

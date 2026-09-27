@@ -84,6 +84,25 @@ describe("CommandPalette", () => {
     expect(screen.getByText(/Cambiar tema/)).toBeInTheDocument();
   });
 
+  it("es una capa modal opaca, con la lupa del buscador y sin destellos", () => {
+    useUiStore.setState({ commandOpen: true });
+    renderPalette();
+    const dialogo = screen.getByRole("dialog", { name: "Paleta de comandos" });
+    // El campo de ⌘K es un buscador: Search, no Sparkles (que decía «IA»).
+    expect(dialogo.querySelector(".lucide-sparkles")).toBeNull();
+    expect(dialogo.querySelector(".lucide-search")).not.toBeNull();
+    // Superficie opaca con la sombra de lo modal, como el diálogo; sin vidrio.
+    expect(dialogo.innerHTML).not.toMatch(/tf-glass|shadow-2xl|backdrop-blur/);
+    expect(dialogo.querySelector(".bg-popover")).toHaveClass("shadow-lg");
+  });
+
+  it("encuentra un espacio por sus términos de oficio aunque la descripción no los nombre", () => {
+    useUiStore.setState({ commandOpen: true });
+    renderPalette();
+    fireEvent.change(screen.getByPlaceholderText(/Buscar páginas/), { target: { value: "scoring" } });
+    expect(screen.getByText("Mi perfil")).toBeInTheDocument();
+  });
+
   it("navigates when a section page item is selected", () => {
     useUiStore.setState({ commandOpen: true });
     renderPalette();

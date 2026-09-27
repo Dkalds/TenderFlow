@@ -3,10 +3,12 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { plazoVisual } from "@/components/pursuits/pursuit-presenters";
 import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
 import { ApiError } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,9 +16,10 @@ import { cn } from "@/lib/utils";
  *
  * Es el dato que hace medible el abandono, y hasta ahora sólo se editaba desde
  * la Agenda (`/mi-pipeline`): quien abría la ficha para decidir tenía que salir a
- * otra pantalla para apuntar el siguiente paso. La banda roja no es decoración:
+ * otra pantalla para apuntar el siguiente paso. El borde rojo no es decoración:
  * sale de la misma rampa `--urgency-*` que el plazo de la tarjeta, y aparece
- * cuando vence hoy o mañana.
+ * cuando vence hoy o mañana. Es solo el borde, sobre la superficie de siempre:
+ * el énfasis de un panel nunca es un relleno de color.
  *
  * Si está en edición lo decide la ficha (`editando`), porque también la abre el
  * paso «Próxima acción planificada» del bloque de salida, que vive en la otra
@@ -81,7 +84,7 @@ export function ProximaAccion({
             error instanceof ApiError && error.status === 409
               ? "Alguien del equipo la cambió mientras la tenías abierta"
               : "No se pudo guardar la próxima acción",
-            { description: error instanceof Error ? error.message : undefined },
+            { description: getErrorMessage(error, "accion") },
           ),
       },
     );
@@ -92,10 +95,8 @@ export function ProximaAccion({
       id="ficha-proxima-accion"
       aria-label="Próxima acción"
       className={cn(
-        "rounded-xl border px-4 py-3",
-        urgente
-          ? "border-[hsl(var(--urgency-critical)/0.3)] bg-[hsl(var(--urgency-critical)/0.06)]"
-          : "border-border/60 bg-card/70",
+        "bg-card rounded-xl border px-4 py-3",
+        urgente ? "border-[hsl(var(--urgency-critical)/0.5)]" : "border-border/60",
       )}
     >
       {editando ? (
@@ -106,10 +107,7 @@ export function ProximaAccion({
             guardar();
           }}
         >
-          <div>
-            <label htmlFor={accionId} className="text-muted-foreground mb-1 block text-tf-micro">
-              Qué toca hacer
-            </label>
+          <Field label="Qué toca hacer" htmlFor={accionId}>
             <Input
               ref={primerCampo}
               id={accionId}
@@ -117,13 +115,10 @@ export function ProximaAccion({
               maxLength={300}
               onChange={(event) => setAccion(event.target.value)}
               onKeyDown={alEscape}
-              placeholder="Ej. Convocar el comité de GO/NO-GO"
+              placeholder="p. ej. convocar el comité de Go/No-Go"
             />
-          </div>
-          <div>
-            <label htmlFor={venceId} className="text-muted-foreground mb-1 block text-tf-micro">
-              Cuándo vence
-            </label>
+          </Field>
+          <Field label="Cuándo vence" htmlFor={venceId}>
             <Input
               id={venceId}
               type="date"
@@ -131,7 +126,7 @@ export function ProximaAccion({
               onChange={(event) => setVence(event.target.value)}
               onKeyDown={alEscape}
             />
-          </div>
+          </Field>
           <div className="flex items-center gap-2">
             <div className="flex-1" />
             <Button type="button" variant="outline" size="sm" onClick={cancelar}>

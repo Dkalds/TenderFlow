@@ -102,7 +102,7 @@ export const OG_IMAGE_COMPARTIDA: Pick<NonNullable<Metadata["openGraph"]>, "imag
       url: "/opengraph-image",
       width: 1200,
       height: 630,
-      alt: `${SITE_NAME} — Radar de licitaciones TI del sector público español`,
+      alt: `${SITE_NAME} — ${CONTENIDO.h1}`,
     },
   ],
 };

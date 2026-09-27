@@ -60,18 +60,16 @@ export function CompetidoresDossier({
   return (
     <aside
       aria-label="Dossier de empresa"
-      className="hidden w-[420px] flex-none flex-col overflow-hidden rounded-xl border border-border/60 bg-card/40 xl:flex"
+      className="hidden w-[420px] flex-none flex-col overflow-hidden rounded-xl border border-border/60 bg-card xl:flex"
     >
       <div className="flex h-9 flex-none items-center gap-2 border-b border-border/60 px-3">
-        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          Dossier
-        </span>
+        <span className="text-tf-meta font-semibold text-muted-foreground">Dossier de empresa</span>
         <div className="flex-1" />
         <button
           type="button"
           aria-label="Cerrar dossier"
           onClick={onClose}
-          className="tf-pressable grid h-6 w-6 place-items-center rounded-md border border-border/70 text-muted-foreground transition-colors hover:text-foreground"
+          className="tf-pressable grid h-6 w-6 place-items-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground"
         >
           <X className="h-3 w-3" aria-hidden="true" />
         </button>

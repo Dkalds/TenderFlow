@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { VistaEsqueleto } from "@/components/layout/space-shell-esqueleto";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 
 /**
@@ -22,12 +22,9 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
  * Quien preserva los enlaces guardados es el redirect, no el fichero.
  */
 
-const loading = () => (
-  <div className="space-y-4">
-    <Skeleton className="h-24 w-full rounded-xl" />
-    <Skeleton className="h-[320px] w-full rounded-xl" />
-  </div>
-);
+// El mismo esqueleto que pinta `loading.tsx` de la ruta: la vista aparece donde
+// estaba, sin un segundo salto al llegar su chunk.
+const loading = () => <VistaEsqueleto />;
 
 const VIEWS: Record<string, React.ComponentType> = {
   competidores: dynamic(() => import("./_components/competidores-view"), { loading }),

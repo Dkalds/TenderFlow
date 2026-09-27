@@ -4,12 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { usePrediccionBaja } from "@/hooks/use-prediccion-baja";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import type { Schemas } from "@/lib/api-types";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate, formatPercent } from "@/lib/utils";
 
 type PrediccionBajaLote = Schemas["PrediccionBajaLote"];
 
+/** Fracción → «15,0%»: la coma decimal de la casa (`formatPercent`), no el punto de `toFixed`. */
 function pct(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
+  return formatPercent(v * 100);
 }
 
 /** Estimación propia de cada lote, junto a la cifra del expediente.
@@ -18,8 +19,8 @@ function pct(v: number): string {
 function DesgloseLotes({ lotes }: { lotes: PrediccionBajaLote[] }) {
   return (
     <div className="space-y-1 pt-2">
-      <h4 className="text-xs font-medium text-muted-foreground">Por lote</h4>
-      <ul className="space-y-0.5 text-xs">
+      <h4 className="text-tf-meta font-semibold text-muted-foreground">Por lote</h4>
+      <ul className="space-y-0.5 text-tf-meta">
         {lotes.map((l) => (
           <li key={l.lote_id} className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-medium">Lote {l.lote_numero}</span>
@@ -53,12 +54,12 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
     return (
       <div className="mt-6 space-y-2">
         <div className="flex items-center gap-1.5">
-          <h3 className="text-sm font-medium text-muted-foreground">
+          <h3 className="text-tf-meta font-semibold text-muted-foreground">
             Baja {tieneEstimacion ? "estimada vs. real" : "real"}
           </h3>
           <GlosarioHint termino="baja" />
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-tf-body">
           {tieneEstimacion && (
             <span>
               Estimada <span className="font-semibold">{pct(data.p50!)}</span>
@@ -68,19 +69,19 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
             Real <span className="font-semibold">{pct(data.baja_real)}</span>
           </span>
           {delta != null && (
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline" className="tf-tnum">
               {delta >= 0 ? "+" : ""}
               {pct(delta)} vs. estimado
             </Badge>
           )}
         </div>
         {data.importe_adjudicado != null && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-tf-meta text-muted-foreground">
             Importe adjudicado: {formatCurrency(data.importe_adjudicado)}
           </p>
         )}
         {!tieneEstimacion && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-tf-meta text-muted-foreground">
             Sin estimación del modelo previa a la adjudicación.
           </p>
         )}
@@ -103,15 +104,14 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
   return (
     <div className="mt-6 space-y-2">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-medium text-muted-foreground">Baja esperada</h3>
+        <h3 className="text-tf-meta font-semibold text-muted-foreground">Baja esperada</h3>
         <GlosarioHint termino="baja" />
-        <Badge variant={data.serving === "modelo" ? "default" : "outline"} className="text-xs">
-          {data.serving === "modelo"
-            ? `modelo v${data.model_version}`
-            : "estimación histórica"}
+        <Badge variant={data.serving === "modelo" ? "neutral" : "outline"} size="sm">
+          {/* En frase, como todo chip: «Modelo v3», no «modelo v3». */}
+          {data.serving === "modelo" ? `Modelo v${data.model_version}` : "Estimación histórica"}
         </Badge>
       </div>
-      <p className="text-sm">
+      <p className="text-tf-body">
         Mediana <span className="font-semibold">{pct(p50)}</span>
         <span className="text-muted-foreground">
           {" "}· intervalo 80%: {pct(p10)} – {pct(p90)}
@@ -123,13 +123,13 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
           style={{ left: `${left}%`, width: `${width}%` }}
         />
         <div
-          className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded bg-primary"
+          className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-sm bg-primary"
           style={{ left: `${mediana}%` }}
         />
       </div>
-      <p className="text-xs text-muted-foreground">
-        Calculado {data.computed_at?.slice(0, 10)} · descripción del mercado, no una
-        recomendación de puja.
+      <p className="text-tf-meta text-muted-foreground">
+        {data.computed_at ? `Calculado el ${formatDate(data.computed_at)} · ` : ""}estimación que describe el
+        mercado, no una recomendación de puja.
       </p>
       {data.lotes && data.lotes.length > 0 && <DesgloseLotes lotes={data.lotes} />}
     </div>

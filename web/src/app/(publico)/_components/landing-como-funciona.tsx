@@ -1,6 +1,6 @@
 import { CONTENIDO } from "../_content/landing";
 import { CapturaProducto } from "./landing-captura";
-import { KICKER } from "./landing-piel";
+import { KICKER } from "./piel-publica";
 import { MarcoCaptura } from "./marco-captura";
 
 /**

@@ -72,7 +72,7 @@ describe("SavedViewsMenu", () => {
     );
     renderMenu({ views: [] });
     fireEvent.click(screen.getByRole("button", { name: /Vistas/ }));
-    expect(screen.getByText("No tienes vistas guardadas.")).toBeInTheDocument();
+    expect(screen.getByText("No tienes vistas guardadas")).toBeInTheDocument();
   });
 
   it("shows a loading state while the query is pending", () => {

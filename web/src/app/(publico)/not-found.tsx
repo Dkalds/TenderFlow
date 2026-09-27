@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { EnlaceIrPublico } from "./_components/enlace-ir";
+import { KICKER, TITULO_PAGINA } from "./_components/piel-publica";
 
 /**
  * 404 de la superficie pública.
@@ -29,23 +31,18 @@ const DESTINOS = [
 export default function PublicoNotFound() {
   return (
     <section className="mx-auto w-full max-w-2xl px-6 py-24">
-      <p className="text-muted-foreground font-mono text-xs tracking-widest uppercase">Error 404</p>
-      <h1 className="font-display mt-3 text-3xl font-semibold tracking-[-0.02em] text-balance md:text-4xl">
-        Esta página no existe
-      </h1>
+      <p className={KICKER}>Error 404</p>
+      <h1 className={cn(TITULO_PAGINA, "mt-3")}>Esta página no existe</h1>
       <p className="text-muted-foreground mt-4 max-w-[58ch] text-base leading-relaxed">
-        Puede que el anuncio ya no esté publicado, o que la dirección esté mal escrita. El corpus
-        público se puede recorrer entero desde los índices por comunidad autónoma y por código CPV.
+        Puede que el anuncio ya no esté publicado, o que la dirección esté mal escrita. Los anuncios públicos se pueden
+        recorrer enteros desde los índices por comunidad autónoma y por código CPV.
       </p>
-      <ul className="mt-8 space-y-2">
+      <ul className="mt-8 space-y-3">
         {DESTINOS.map((destino) => (
           <li key={destino.href}>
-            <Link
-              href={destino.href}
-              className="text-primary focus-visible:ring-ring inline-flex rounded-sm text-base font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:outline-none"
-            >
+            <EnlaceIrPublico href={destino.href} className="text-base">
               {destino.texto}
-            </Link>
+            </EnlaceIrPublico>
           </li>
         ))}
       </ul>

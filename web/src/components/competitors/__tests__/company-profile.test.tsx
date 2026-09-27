@@ -153,7 +153,8 @@ describe("company profile presentation helpers", () => {
     expect(summary).toContain("Servicios TI y consultoría tecnológica");
     expect(summary).toContain("Madrid");
     expect(summary).toContain("Ministerio de Ejemplo");
-    expect(summary).toContain("crece un 25.0%");
+    // Con coma decimal, como el resto de cifras de la consola.
+    expect(summary).toContain("crece un 25,0%");
   });
 
   it("marks the current year as partial instead of presenting a misleading annual delta", () => {

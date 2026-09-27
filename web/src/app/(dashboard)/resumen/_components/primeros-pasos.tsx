@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
-import { ArrowRight, Check, Users } from "lucide-react";
+import { Check } from "lucide-react";
+import { EnlaceIr, PanelTitle, SUPERFICIE_PANEL } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   estaDescartado,
@@ -42,14 +44,13 @@ import { useSenalesOnboarding } from "@/components/onboarding/use-estado-onboard
  * lo recoja — el foco no puede caerse al `body` sin más.
  */
 
-// Texto a plena tinta (`text-foreground`) en los chips tintados: a 10px,
-// `text-primary` sobre `bg-primary/12` y el verde sobre su tinte quedaban por
-// debajo del 4.5:1 que exige el E2E de accesibilidad. El estado nunca dependió
-// del color (viaja en el texto y en el icono ✓), así que la semántica queda en
-// el fondo tintado.
+// Texto a plena tinta (`text-foreground`) en los chips tintados: a 11 px,
+// `text-primary` sobre su tinte y el verde sobre el suyo quedaban por debajo del
+// 4,5:1 que exige el E2E de accesibilidad. El estado nunca dependió del color
+// (viaja en el texto y en el icono ✓), así que la semántica queda en el fondo.
 const CHIP: Record<EstadoPaso, string> = {
-  hecho: "bg-[hsl(var(--success)/0.14)] text-foreground",
-  pendiente: "bg-primary/12 text-foreground",
+  hecho: "bg-success/10 text-foreground",
+  pendiente: "bg-primary/10 text-foreground",
   cargando: "bg-secondary text-muted-foreground",
   desconocido: "bg-secondary text-muted-foreground",
 };
@@ -73,35 +74,32 @@ function ContenidoFila({ paso }: { paso: PasoDerivado }) {
     <>
       <span
         className={cn(
-          "w-[84px] flex-none rounded px-1.5 py-0.5 text-center text-[10px] font-semibold",
+          "w-[84px] flex-none rounded-sm px-1.5 py-0.5 text-center text-tf-micro font-semibold",
           CHIP[paso.estado],
         )}
       >
         {ETIQUETA[paso.estado]}
       </span>
       {paso.estado === "hecho" ? (
-        <Check className="h-3.5 w-3.5 flex-none text-[hsl(var(--success))]" aria-hidden="true" />
+        <Check className="h-3.5 w-3.5 flex-none text-success" aria-hidden="true" />
       ) : (
-        <Icon className="text-muted-foreground h-3.5 w-3.5 flex-none" aria-hidden="true" />
+        <Icon className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
       )}
       <span
         className={cn(
-          "flex-none text-[11.5px] font-medium",
+          "flex-none text-tf-meta font-medium",
           paso.estado === "hecho" && "text-muted-foreground",
         )}
       >
         {paso.titulo}
       </span>
-      <span className="text-muted-foreground min-w-0 flex-1 truncate text-[10.5px]">
-        {paso.gana}
-      </span>
+      <span className="min-w-0 flex-1 truncate text-tf-micro text-muted-foreground">{paso.gana}</span>
+      {/* La fila entera es el enlace: la llamada a la acción va en texto, sin
+          flecha detrás. */}
       {paso.estado === "pendiente" && (
-        <>
-          <span className="text-primary hidden flex-none whitespace-nowrap text-[11px] font-medium md:inline">
-            {paso.cta}
-          </span>
-          <ArrowRight className="text-muted-foreground h-3 w-3 flex-none" aria-hidden="true" />
-        </>
+        <span className="hidden flex-none whitespace-nowrap text-tf-micro font-medium text-primary md:inline">
+          {paso.cta}
+        </span>
       )}
     </>
   );
@@ -141,31 +139,36 @@ export function PrimerosPasos({ onDescartar }: { onDescartar?: () => void }) {
 
   return (
     <section aria-labelledby="resumen-primeros-pasos" className="mb-5.5">
-      <div className="mb-2.5 flex items-baseline gap-2.5">
-        <h2 id="resumen-primeros-pasos" className="text-xs font-semibold">
-          Primeros pasos
-        </h2>
-        <span className="text-muted-foreground min-w-0 flex-1 truncate text-[10.5px]">
-          <span>{etiquetaProgreso(progreso)}</span>
-          {" · sin esto el Radar y Tu día no hablan de tu negocio"}
-        </span>
-        <button
-          type="button"
-          onClick={ocultar}
-          aria-label="Ocultar los primeros pasos"
-          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex-none whitespace-nowrap rounded text-[11px] font-medium transition-colors duration-140 ease-out focus-visible:outline-none focus-visible:ring-2"
-        >
-          Ocultar
-        </button>
-      </div>
+      <PanelTitle
+        as="h2"
+        id="resumen-primeros-pasos"
+        title="Primeros pasos"
+        hint={<span>{etiquetaProgreso(progreso)}</span>}
+        actions={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={ocultar}
+            aria-label="Ocultar los primeros pasos"
+            className="text-muted-foreground"
+          >
+            Ocultar
+          </Button>
+        }
+        className="mb-2.5"
+      />
 
-      <ol className="border-border/60 bg-card/70 overflow-hidden rounded-xl border">
+      <ol className={cn(SUPERFICIE_PANEL, "overflow-hidden")}>
         {pasos.map((paso) => (
-          <li key={paso.id} className="border-border/25 border-b last:border-b-0">
+          <li key={paso.id} className="border-b border-border/25 last:border-b-0">
             {paso.estado === "pendiente" ? (
               <Link
                 href={paso.href}
-                className={cn(FILA, "hover:bg-primary/4 transition-colors duration-140 ease-out")}
+                className={cn(
+                  FILA,
+                  "transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0",
+                )}
               >
                 <ContenidoFila paso={paso} />
               </Link>
@@ -180,14 +183,13 @@ export function PrimerosPasos({ onDescartar }: { onDescartar?: () => void }) {
 
       {/* El equipo no es un paso: quien trabaja solo no lo hará nunca y la banda
           no podría apagarse. Va como nota, y no cuenta en el progreso. */}
-      <p className="text-muted-foreground mt-2 flex items-center gap-2 px-1 text-[10.5px]">
-        <Users className="h-3 w-3 flex-none" aria-hidden="true" />
+      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-tf-micro text-muted-foreground">
         <span className="min-w-0 flex-1">
-          Las reglas, los pursuits y las decisiones pertenecen a la organización, no a tu usuario.
+          Las reglas, las oportunidades y las decisiones son de la organización, no de tu usuario.
         </span>
-        <Link href="/equipo" className="text-primary flex-none whitespace-nowrap hover:underline">
-          Gestionar el equipo →
-        </Link>
+        <EnlaceIr href="/equipo" className="flex-none text-tf-micro">
+          Gestionar el equipo
+        </EnlaceIr>
       </p>
     </section>
   );

@@ -5,9 +5,8 @@
  * interanuales y el mes pico que publica el backend.
  */
 
-import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
-import { CalendarDays, DollarSign, Hash, TrendingDown, TrendingUp } from "lucide-react";
+import { StatCell, StatStrip } from "@/components/console/panel";
+import { EMPTY, formatCurrency, formatMonth, formatNumber, formatPercent } from "@/lib/utils";
 
 import type { MesPico } from "../_hooks/use-tendencias-view";
 
@@ -28,35 +27,33 @@ export function TendenciasKpis({
   isLoading: boolean;
 }) {
   return (
-    <KpiStrip columns={5}>
-      <KpiCard title="Total Licitaciones" value={isLoading ? undefined : formatNumber(totalCount)} icon={Hash} loading={isLoading} />
-      <KpiCard title="Importe Total" value={isLoading ? undefined : formatCurrency(totalImporte)} icon={DollarSign} loading={isLoading} />
-      <KpiCard
-        title="Var. YoY (cantidad)"
-        value={isLoading ? undefined : yoyCount != null ? formatPercent(yoyCount) : "-"}
-        icon={yoyCount != null && yoyCount >= 0 ? TrendingUp : TrendingDown}
-        trend={yoyCount ?? undefined}
+    <StatStrip columns={5}>
+      <StatCell label="Licitaciones" value={formatNumber(totalCount)} loading={isLoading} />
+      <StatCell label="Importe total" value={formatCurrency(totalImporte)} loading={isLoading} />
+      <StatCell
+        label="Variación interanual (licitaciones)"
+        value={yoyCount != null ? `${yoyCount >= 0 ? "+" : ""}${formatPercent(yoyCount)}` : EMPTY}
+        tono={yoyCount == null ? undefined : yoyCount >= 0 ? "success" : "destructive"}
+        hint={yoyCount == null ? "Hacen falta dos años completos" : undefined}
         loading={isLoading}
       />
-      <KpiCard
-        title="Var. YoY (importe)"
-        value={isLoading ? undefined : yoyImporte != null ? formatPercent(yoyImporte) : "-"}
-        icon={yoyImporte != null && yoyImporte >= 0 ? TrendingUp : TrendingDown}
-        trend={yoyImporte ?? undefined}
+      <StatCell
+        label="Variación interanual (importe)"
+        value={yoyImporte != null ? `${yoyImporte >= 0 ? "+" : ""}${formatPercent(yoyImporte)}` : EMPTY}
+        tono={yoyImporte == null ? undefined : yoyImporte >= 0 ? "success" : "destructive"}
+        hint={yoyImporte == null ? "Hacen falta dos años completos" : undefined}
         loading={isLoading}
       />
-      {/* Mes Pico KPI */}
-      <KpiCard
-        title="Mes Pico"
-        value={isLoading ? undefined : mesPico ? mesPico.mes : "-"}
-        subtitle={
+      <StatCell
+        label="Mes con más importe"
+        value={mesPico ? formatMonth(mesPico.mes, true) : EMPTY}
+        hint={
           mesPico
-            ? `${formatCurrency(mesPico.importe)} · ${formatNumber(mesPico.count)} lic.`
+            ? `${formatCurrency(mesPico.importe)} · ${formatNumber(mesPico.count)} licitaciones`
             : undefined
         }
-        icon={CalendarDays}
         loading={isLoading}
       />
-    </KpiStrip>
+    </StatStrip>
   );
 }

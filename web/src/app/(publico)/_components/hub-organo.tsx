@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Landmark } from "lucide-react";
 import { listarLicitaciones, obtenerHubs } from "@/lib/publico-api";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaPublicaDePagina } from "@/lib/paginacion-hubs";
@@ -10,6 +9,7 @@ import { esSlugOrgano, rutaHubOrgano } from "@/lib/slug";
 import { ListadoLicitaciones } from "./listado-licitaciones";
 import { Paginacion } from "./paginacion";
 import { CierrePublico } from "./cierre-publico";
+import { KICKER, TITULO_PAGINA } from "./piel-publica";
 
 /**
  * Hub público por órgano de contratación (F6.5).
@@ -89,19 +89,13 @@ export async function paginaHubOrgano(slug: string, pagina: number) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializarJsonLd(migasJsonLd(migas)) }} />
 
       <div className="mx-auto w-full max-w-5xl px-6 py-12">
-        <p className="text-primary flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-xs tracking-widest uppercase">
-          <span className="flex items-center gap-2">
-            <Landmark className="h-4 w-4" aria-hidden="true" />
-            Por órgano de contratación
-          </span>
-          {/* El total lo da el endpoint del listado: aquí no se cuenta nada. */}
-          <span className="text-muted-foreground border-border/60 bg-card/60 rounded-full border px-2.5 py-0.5 font-sans text-xs font-medium tracking-normal normal-case">
-            {formatNumber(total)} publicadas
-          </span>
+        {/* El rótulo de toda la superficie pública, con el total al lado: sin
+            icono ni píldora. El total lo da el endpoint del listado; aquí no
+            se cuenta nada. */}
+        <p className={KICKER}>
+          Por órgano de contratación · <span className="tf-tnum">{formatNumber(total)}</span> publicadas
         </p>
-        <h1 className="font-display mt-3 text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
-          Licitaciones de {hub.nombre}
-        </h1>
+        <h1 className={cn(TITULO_PAGINA, "mt-3")}>Licitaciones de {hub.nombre}</h1>
         <p className="text-muted-foreground mt-4 max-w-[62ch] text-base leading-relaxed">
           Concursos públicos con componente de tecnología enterprise publicados por {hub.nombre}. Cada ficha enlaza al
           anuncio original del perfil del contratante.

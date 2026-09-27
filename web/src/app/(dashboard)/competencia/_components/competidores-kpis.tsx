@@ -10,11 +10,10 @@
  * abstenerse.
  */
 
-import { KpiCard } from "@/components/charts/kpi-card";
-import { Stagger } from "@/components/motion";
-import { formatNumber, truncate } from "@/lib/utils";
+import { StatCell, StatStrip } from "@/components/console/panel";
+import { GlosarioHint } from "@/components/ui/glosario-hint";
+import { EMPTY, formatNumber, truncate } from "@/lib/utils";
 import { celdaSaludPorPct } from "@/lib/cobertura";
-import { Hash, Target, AlertTriangle, Crown } from "lucide-react";
 
 import type { CompetitorsData } from "../_hooks/use-competidores-data";
 
@@ -37,46 +36,31 @@ export function CompetidoresKpis({
     "licitaciones con un solo ofertante",
   );
 
+  // Tira quieta: las cifras aparecen a la vez, sin entrada escalonada. Es una
+  // tira que se consulta a diario, y escalonarla animaba justo el dato que se
+  // vino a leer.
   return (
-    <Stagger className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60 lg:grid-cols-4 [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-card">
-      <Stagger.Item>
-        <KpiCard
-          title="Total Adjudicaciones"
-          value={isLoading ? undefined : formatNumber(data?.total_adjudicaciones)}
-          icon={Hash}
-          loading={isLoading}
-        />
-      </Stagger.Item>
-      <Stagger.Item>
-        <KpiCard
-          title="HHI Concentración"
-          value={isLoading ? undefined : formatNumber(data?.hhi)}
-          subtitle={data?.hhi != null ? etiquetaHhi(data.hhi) : undefined}
-          icon={Target}
-          loading={isLoading}
-        />
-      </Stagger.Item>
-      <Stagger.Item>
-        <KpiCard
-          title="% Oferta Única"
-          value={isLoading ? undefined : ofertaUnica.value}
-          subtitle={isLoading ? undefined : ofertaUnica.hint}
-          icon={AlertTriangle}
-          loading={isLoading}
-        />
-      </Stagger.Item>
-      <Stagger.Item>
-        <KpiCard
-          title="Top Competidor"
-          value={
-            isLoading
-              ? undefined
-              : truncate(data?.top_competidor ?? data?.competitors?.[0]?.nombre ?? "-", 30)
-          }
-          icon={Crown}
-          loading={isLoading}
-        />
-      </Stagger.Item>
-    </Stagger>
+    <StatStrip columns={4}>
+      <StatCell label="Adjudicaciones" value={formatNumber(data?.total_adjudicaciones)} loading={isLoading} />
+      <StatCell
+        label="Concentración (HHI)"
+        badge={<GlosarioHint termino="hhi" />}
+        value={formatNumber(data?.hhi)}
+        hint={data?.hhi != null ? etiquetaHhi(data.hhi) : undefined}
+        loading={isLoading}
+      />
+      <StatCell
+        label="Oferta única"
+        badge={<GlosarioHint termino="oferta_unica" />}
+        value={ofertaUnica.value}
+        hint={ofertaUnica.hint}
+        loading={isLoading}
+      />
+      <StatCell
+        label="Competidor principal"
+        value={truncate(data?.top_competidor ?? data?.competitors?.[0]?.nombre ?? EMPTY, 30)}
+        loading={isLoading}
+      />
+    </StatStrip>
   );
 }

@@ -18,6 +18,7 @@ import {
 } from "@/hooks/use-organization";
 import { pursuitKeys } from "@/lib/query-keys";
 import { registrarEvento, tramoDeItems } from "@/lib/analytics";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type KitPresentacion = Schemas["KitPresentacion"];
 export type ItemKit = Schemas["ItemKit"];
@@ -36,6 +37,7 @@ export function usePursuitKit(pursuitId: number) {
     // saber cuál es lo busca en la personal y responde 404.
     enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

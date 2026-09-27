@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * Los cuatro KPIs de Geografía. La concentración declara su denominador en el
- * subtítulo («del total»), que es el total de licitaciones de la misma
- * respuesta del endpoint, no de una muestra (ADR-014).
+ * Los cuatro KPIs de Geografía. La concentración dice sobre qué total se mide
+ * («del total de licitaciones»): el de la misma respuesta, no una muestra
+ * (ADR-014).
  */
 
-import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
+import { StatCell, StatStrip } from "@/components/console/panel";
 import { formatNumber, formatPercent } from "@/lib/utils";
-import { DollarSign, Hash, MapPin, Trophy } from "lucide-react";
 
 export function GeografiaKpis({
   topCcaa,
@@ -25,33 +24,21 @@ export function GeografiaKpis({
   isLoading: boolean;
 }) {
   return (
-    <KpiStrip columns={4}>
-      <KpiCard
-        title="CCAA Más Activa"
-        value={isLoading ? undefined : topCcaa}
-        icon={Trophy}
+    <StatStrip columns={4}>
+      <StatCell label="CCAA más activa" value={topCcaa} loading={isLoading} />
+      <StatCell
+        label="Concentración en las 3 primeras"
+        value={formatPercent(top3Concentration)}
+        hint="Del total de licitaciones"
         loading={isLoading}
       />
-      <KpiCard
-        title="Concentración Top 3"
-        value={isLoading ? undefined : formatPercent(top3Concentration)}
-        subtitle="del total"
-        icon={MapPin}
+      <StatCell label="CCAA con licitaciones" value={formatNumber(totalCcaas)} loading={isLoading} />
+      <StatCell
+        label="Mayor importe medio"
+        value={ccaaMayorTicket}
+        hint="CCAA con más importe por licitación"
         loading={isLoading}
       />
-      <KpiCard
-        title="Total CCAAs"
-        value={isLoading ? undefined : formatNumber(totalCcaas)}
-        icon={Hash}
-        loading={isLoading}
-      />
-      <KpiCard
-        title="Mayor Ticket Medio"
-        value={isLoading ? undefined : ccaaMayorTicket}
-        subtitle="CCAA con mayor importe/licitación"
-        icon={DollarSign}
-        loading={isLoading}
-      />
-    </KpiStrip>
+    </StatStrip>
   );
 }

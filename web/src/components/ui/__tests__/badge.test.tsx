@@ -48,8 +48,32 @@ describe("Badge", () => {
     expect(container.firstChild).toHaveClass("custom-class");
   });
 
-  it("renders as a div element", () => {
+  it("es un span: puede ir dentro de un párrafo", () => {
+    // Un `div` dentro de un `<p>` es HTML inválido y React avisa al hidratar.
     const { container } = render(<Badge>test</Badge>);
-    expect(container.firstChild?.nodeName).toBe("DIV");
+    expect(container.firstChild?.nodeName).toBe("SPAN");
+  });
+
+  it("no finge ser interactivo: sin hover, foco, transición ni sombra", () => {
+    const { container } = render(<Badge>x</Badge>);
+    const clases = (container.firstChild as HTMLElement).className;
+    expect(clases).not.toMatch(/hover:|focus:|transition|shadow/);
+  });
+
+  it("por defecto es neutral, no el primario macizo de shadcn", () => {
+    const { container } = render(<Badge>x</Badge>);
+    const clases = (container.firstChild as HTMLElement).className;
+    expect(clases).toContain("bg-muted-foreground/10");
+    expect(clases).not.toContain("bg-primary ");
+  });
+
+  it("los tonos son un tinte al 10 % con el texto del tono", () => {
+    const { container } = render(<Badge variant="warning">w</Badge>);
+    expect(container.firstChild).toHaveClass("bg-warning/10", "text-warning", "border-warning/30");
+  });
+
+  it("la talla sm baja a 11 px", () => {
+    const { container } = render(<Badge size="sm">x</Badge>);
+    expect(container.firstChild).toHaveClass("text-tf-micro", "h-5");
   });
 });

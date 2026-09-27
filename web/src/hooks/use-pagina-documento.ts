@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ApiError, fetchWithAuth } from "@/lib/api-client";
 import type { PaginaDocumento } from "@/lib/api-types";
 import { paginaKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type { PaginaDocumento };
 
@@ -49,5 +50,6 @@ export function usePaginaDocumento(licitacionId: string, solicitud: PaginaSolici
     staleTime: 10 * 60_000,
     retry: (intento, error) => !(error instanceof ApiError && error.status === 404) && intento < 2,
     placeholderData: (anterior) => anterior,
+    meta: META_ERROR_EN_LINEA,
   });
 }

@@ -47,7 +47,7 @@ export default function RenovacionesView() {
     return (
       <PanelError
         title="No se pudieron cargar las renovaciones"
-        detail={(renovaciones.error as Error).message}
+        error={renovaciones.error}
         onRetry={renovaciones.recargar}
         height={320}
       />
@@ -57,12 +57,12 @@ export default function RenovacionesView() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="max-w-[70ch] text-[11.5px] leading-[1.5] text-muted-foreground">
+        <p className="max-w-[70ch] text-tf-meta text-muted-foreground">
           Contratos adjudicados que vencen pronto: o los defiende el adjudicatario actual o se los disputa
-          quien llegue primero. Los tuyos se preparan desde Oportunidades → Cartera.
+          quien llegue primero. Los tuyos se preparan desde Oportunidades › Cartera.
         </p>
         <Select value={renovaciones.meses} onValueChange={renovaciones.setMeses}>
-          <SelectTrigger className="h-7 w-[132px] flex-none text-xs" aria-label="Horizonte de vencimiento">
+          <SelectTrigger className="h-8 w-[132px] flex-none text-tf-meta md:h-7" aria-label="Horizonte de vencimiento">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

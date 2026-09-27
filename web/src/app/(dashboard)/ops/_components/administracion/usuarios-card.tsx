@@ -1,23 +1,22 @@
 "use client";
 
-/** Usuarios de la instancia: rol, estado y último acceso, con el alta/baja de admin. */
+/** Usuarios de la instancia: rol, estado y último acceso, con el alta/baja de administrador. */
 
 import { useMemo } from "react";
-import { Info, Shield, Users } from "lucide-react";
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumnDef } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { useAdminUsers, type UserRow } from "../../_hooks/use-admin-users";
 
 export function UsuariosCard() {
-  const { users, isLoading, error, toggleAdmin } = useAdminUsers();
+  const { users, isLoading, error, refetch, toggleAdmin } = useAdminUsers();
 
   const userColumns = useMemo<DataTableColumnDef<UserRow>[]>(
     () => [
-      { accessorKey: "email", header: "Email" },
+      { accessorKey: "email", header: "Correo" },
       { accessorKey: "display_name", header: "Nombre" },
       {
         id: "rol",
@@ -25,12 +24,13 @@ export function UsuariosCard() {
         header: "Rol",
         cell: ({ getValue }) =>
           getValue<boolean>() ? (
-            <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-              <Shield className="mr-1 h-3 w-3" />
-              Admin
+            <Badge variant="outline" size="sm">
+              Administrador
             </Badge>
           ) : (
-            <Badge variant="secondary">Usuario</Badge>
+            <Badge variant="secondary" size="sm">
+              Usuario
+            </Badge>
           ),
       },
       {
@@ -40,10 +40,7 @@ export function UsuariosCard() {
         cell: ({ getValue }) => {
           const active = getValue<boolean>();
           return (
-            <Badge
-              variant={active ? "default" : "secondary"}
-              className={cn(active && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200")}
-            >
+            <Badge variant={active ? "success" : "secondary"} size="sm">
               {active ? "Activo" : "Inactivo"}
             </Badge>
           );
@@ -51,7 +48,7 @@ export function UsuariosCard() {
       },
       {
         accessorKey: "last_login",
-        header: "Último login",
+        header: "Último acceso",
         cell: ({ getValue }) => {
           const v = getValue<string | null>();
           return <span className="text-muted-foreground">{v ? formatDate(v) : "—"}</span>;
@@ -73,7 +70,7 @@ export function UsuariosCard() {
                 })
               }
             >
-              {row.original.is_admin ? "Quitar admin" : "Hacer admin"}
+              {row.original.is_admin ? "Quitar administrador" : "Hacer administrador"}
             </Button>
           </div>
         ),
@@ -84,30 +81,24 @@ export function UsuariosCard() {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" />
-          Usuarios
-        </CardTitle>
-        <CardDescription>Gestión de usuarios y permisos</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : error ? (
-          <div className="text-muted-foreground bg-muted/50 flex items-center gap-2 rounded-md p-3 text-sm">
-            <Info className="h-4 w-4 shrink-0" />
-            <span>{(error as Error).message}</span>
-          </div>
-        ) : (
-          <DataTable columns={userColumns} data={users} initialSorting={[{ id: "email", desc: false }]} />
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Usuarios" hint="Rol, estado y último acceso de cada persona" />
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      ) : error ? (
+        <PanelError variant="inline" title="No se pudieron cargar los usuarios" error={error} onRetry={refetch} />
+      ) : (
+        <DataTable
+          columns={userColumns}
+          data={users}
+          initialSorting={[{ id: "email", desc: false }]}
+          emptyMessage="Aún no hay usuarios en esta instancia."
+        />
+      )}
+    </Panel>
   );
 }

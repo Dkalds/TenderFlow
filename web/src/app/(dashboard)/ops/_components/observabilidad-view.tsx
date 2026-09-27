@@ -15,11 +15,9 @@
  * puede probar sin montar nada— en `observabilidad/health-checks.ts`.
  */
 
-import Link from "next/link";
-import { RefreshCw } from "lucide-react";
+import { EnlaceIr } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
 import { useObservabilidad } from "../_hooks/use-observabilidad";
 import { ComponentesGrid } from "./observabilidad/componentes-grid";
 import { DlqPanel } from "./observabilidad/dlq-panel";
@@ -40,6 +38,7 @@ export default function ObservabilidadView() {
     estado,
     checks,
     dlqCount,
+    dlqLoading,
   } = useObservabilidad();
 
   return (
@@ -47,16 +46,12 @@ export default function ObservabilidadView() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="sr-only">Observabilidad</h1>
-          <p className="text-muted-foreground">
-            Salud de infraestructura y servicios (SRE). Para la integridad del
-            dato (completitud, DLQ, drops de escritura) ve a{" "}
-            <Link
-              href="/calidad-datos"
-              className="font-medium underline underline-offset-2 hover:text-foreground"
-            >
-              Calidad de Datos
-            </Link>
-            .
+          <p className="text-tf-meta text-muted-foreground">
+            Si la API y sus servicios responden. La integridad del dato (completitud, cola de errores,
+            escrituras perdidas) está en{" "}
+            <EnlaceIr href="/ops?vista=calidad" className="inline-flex">
+              Calidad de datos
+            </EnlaceIr>
           </p>
         </div>
         <Button
@@ -64,10 +59,8 @@ export default function ObservabilidadView() {
           size="sm"
           onClick={refetch}
           disabled={isFetching}
-          aria-label="Refrescar estado del sistema"
         >
-          <RefreshCw className={cn("mr-2 h-4 w-4", isFetching && "animate-spin")} />
-          Refrescar
+          {isFetching ? "Refrescando…" : "Refrescar"}
         </Button>
       </div>
 
@@ -92,7 +85,7 @@ export default function ObservabilidadView() {
         isOnline={isOnline}
       />
 
-      <DlqPanel dlqCount={dlqCount} />
+      <DlqPanel dlqCount={dlqCount} isLoading={dlqLoading} />
 
       <GrafanaCard />
     </div>

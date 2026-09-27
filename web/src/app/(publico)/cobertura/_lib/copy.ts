@@ -35,10 +35,10 @@ export const SECCIONES: SeccionEvidencia[] = [
     titulo: "Un mercado acotado, no toda la contratación pública",
     texto: [
       "TenderFlow incluye expedientes con señal de tecnología enterprise. El corte combina coincidencias del diccionario, el universo íntegro de servicios TI y software (CPV 48 y 72) de PLACSP y TED, y el clasificador que decide qué familia tecnológica lleva cada uno. Cada expediente conserva el motivo por el que entró.",
-      "Ese alcance hace comparables el precio y la competencia dentro de un mercado concreto. Si el negocio principal es obra pública, sanidad o suministro general, el corpus no representa ese mercado.",
+      "Ese alcance hace comparables el precio y la competencia dentro de un mercado concreto. Si el negocio principal es obra pública, sanidad o suministro general, estos datos no representan ese mercado.",
     ],
     puntos: [
-      "El corpus público aplica además un umbral de contenido antes de publicar una ficha.",
+      "La parte pública aplica además un umbral de contenido antes de publicar una ficha.",
       "Los expedientes terminales no ocupan la bandeja de oportunidades abiertas.",
       "Una empresa vigilada abre un carril específico para conservar sus adjudicaciones desde el alta.",
     ],
@@ -46,7 +46,7 @@ export const SECCIONES: SeccionEvidencia[] = [
   {
     titulo: "De dónde sale el dato",
     texto: [
-      "La lista de fuentes que hay más abajo no está escrita en esta página. La sirve la API desde el mismo inventario que vigila la frescura de la ingesta, así que una fuente que cambie de estado cambia aquí sin que nadie reescriba un párrafo.",
+      "La lista de fuentes de más abajo se genera sola a partir del inventario que vigila la frescura de cada una: si una fuente cambia de estado, cambia aquí.",
       "Cada fuente declara su propio alcance y el margen de frescura que se le exige. Son universos distintos y no se suman: un feed autonómico de descubrimiento no es un censo del mercado, y esta página no lo presenta como si lo fuera.",
     ],
     puntos: [
@@ -67,7 +67,7 @@ export const SECCIONES: SeccionEvidencia[] = [
     puntos: [
       "La señal tecnológica distingue título, clasificador y pliegos cuando están disponibles.",
       "Los pliegos se procesan por lotes; la interfaz dice que un pliego aún no se ha leído en vez de improvisar un resumen.",
-      "Los agregados analíticos se calculan en backend sobre el universo declarado, no sobre la página visible.",
+      "Los agregados se calculan sobre el universo declarado completo, no sobre la página visible.",
     ],
   },
 ];
@@ -76,7 +76,7 @@ export const SECCIONES: SeccionEvidencia[] = [
 export const FUENTES = {
   titulo: "Fuentes declaradas",
   introduccion:
-    "Cada fila sale del inventario de conectores. El identificador es el que aparece en una alerta de ingesta, así que sirve para hablar de una fuente concreta con soporte.",
+    "Cada fila sale del inventario que vigila la ingesta. El identificador es el que aparece en sus alertas, así que sirve para hablar de una fuente concreta con soporte.",
   /**
    * La frase que la página escribe *en lugar* de un número agregado.
    *

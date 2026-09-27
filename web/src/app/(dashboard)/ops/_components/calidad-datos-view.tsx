@@ -13,7 +13,7 @@
  * bloque en su fichero de `calidad-datos/`.
  */
 
-import { Card, CardContent } from "@/components/ui/card";
+import { PanelError } from "@/components/console/panel";
 import { Separator } from "@/components/ui/separator";
 import { CalibracionBajaBlock } from "@/components/calibracion-baja";
 import { SourceFreshnessPanel } from "@/components/source-freshness-panel";
@@ -27,57 +27,52 @@ import { ReportesCard } from "./calidad-datos/reportes-card";
 import { TendenciaCompletitudCard } from "./calidad-datos/tendencia-completitud-card";
 
 export default function CalidadDatosView() {
-  const { data, isLoading, isError, hoursAgo, freshness, chartData, dlqCount, fechasNoIso } =
+  const { data, isLoading, error, refetch, hoursAgo, freshness, chartData, dlqCount, fechasNoIso } =
     useCalidadDatos();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="sr-only">Calidad de Datos</h1>
-        <p className="text-muted-foreground">
-          Completitud y consistencia del dataset.
-        </p>
+        <h1 className="sr-only">Calidad de datos</h1>
+        <p className="text-tf-meta text-muted-foreground">Completitud y consistencia del dato que entra.</p>
       </div>
 
-      {isError && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6 text-destructive">
-            Error al cargar métricas de calidad. Verifica que la API esté activa.
-          </CardContent>
-        </Card>
+      {/* Con la consulta caída, los paneles de calidad no se pintan: sus ceros
+          por defecto («0 registros en cola») afirmarían algo que nadie midió. */}
+      {error ? (
+        <PanelError
+          title="No se pudieron cargar las métricas de calidad"
+          error={error}
+          onRetry={refetch}
+        />
+      ) : (
+        <CalidadKpis data={data} isLoading={isLoading} hoursAgo={hoursAgo} freshness={freshness} />
       )}
-
-      <CalidadKpis
-        data={data}
-        isLoading={isLoading}
-        hoursAgo={hoursAgo}
-        freshness={freshness}
-      />
 
       <Separator />
 
       <SourceFreshnessPanel />
 
-      <CompletitudCard data={chartData} isLoading={isLoading} />
+      {!error && (
+        <>
+          <CompletitudCard data={chartData} isLoading={isLoading} />
 
-      <TendenciaCompletitudCard serie={data?.tendencia_completitud} isLoading={isLoading} />
+          <TendenciaCompletitudCard serie={data?.tendencia_completitud} isLoading={isLoading} />
 
-      <FormatoFechaCard
-        pctIso={data?.pct_fecha_iso}
-        fechasNoIso={fechasNoIso}
-        isLoading={isLoading}
-      />
+          <FormatoFechaCard pctIso={data?.pct_fecha_iso} fechasNoIso={fechasNoIso} isLoading={isLoading} />
 
-      <DlqFrescuraCards
-        dlqCount={dlqCount}
-        hoursAgo={hoursAgo}
-        freshness={freshness}
-        isLoading={isLoading}
-      />
+          <DlqFrescuraCards
+            dlqCount={dlqCount}
+            hoursAgo={hoursAgo}
+            freshness={freshness}
+            isLoading={isLoading}
+          />
 
-      <ReportesCard reportes={data?.reportes_por_tipo} isLoading={isLoading} />
+          <ReportesCard reportes={data?.reportes_por_tipo} isLoading={isLoading} />
 
-      <PipelineCard totalRecords={data?.total_records} isLoading={isLoading} />
+          <PipelineCard totalRecords={data?.total_records} isLoading={isLoading} />
+        </>
+      )}
 
       {/* Calibración del modelo de baja — closed loop predicción vs. realidad */}
       <CalibracionBajaBlock />

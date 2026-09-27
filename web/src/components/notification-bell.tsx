@@ -11,7 +11,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { buttonVariants } from "@/components/ui/button";
 import { registrarEvento } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 import { fetchWithAuth, apiMutate } from "@/lib/api-client";
 import { pursuitKeys, radarKeys } from "@/lib/query-keys";
 import { reportError } from "@/lib/report-error";
@@ -251,27 +253,33 @@ export function NotificationBell({ className: _className }: NotificationBellProp
 
   return (
     <DropdownMenu>
+      {/* La talla de la barra de ámbito (`icon-sm`), junto a «Exportar» y
+          «Buscar». El recuento es la señal de «hay algo nuevo», no un error:
+          va en el primario, no en rojo. */}
       <DropdownMenuTrigger
-        className="relative rounded-md p-2 hover:bg-accent transition-colors"
+        className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "relative")}
         aria-label={`Notificaciones${unreadCount > 0 ? ` (${unreadCount} sin leer)` : ""}`}
         onClick={markAllRead}
       >
-        <Bell className="h-5 w-5" />
+        <Bell aria-hidden="true" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold text-destructive-foreground">
+          <span
+            aria-hidden="true"
+            className="tf-tnum absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-tf-micro leading-none font-semibold text-primary-foreground"
+          >
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80 p-2">
-        <h4 className="mb-2 px-2 text-xs font-semibold text-muted-foreground">Notificaciones</h4>
+        <h4 className="mb-2 px-2 text-tf-meta font-semibold text-muted-foreground">Notificaciones</h4>
 
         {hoy && (hoy.nuevas_24h > 0 || hoy.vencen_48h > 0 || hoy.calientes > 0) && (
           <div className="mb-2 grid grid-cols-3 gap-1 px-1">
             <HoyStat label="Nuevas 24h" value={hoy.nuevas_24h} />
             <HoyStat label="Vencen 48h" value={hoy.vencen_48h} accent />
             {/* Importe ≥ P75 y en plazo — no la banda "Caliente" del score. */}
-            <HoyStat label="Grandes" value={hoy.calientes} />
+            <HoyStat label="Grandes en plazo" value={hoy.calientes} />
           </div>
         )}
 
@@ -285,7 +293,7 @@ export function NotificationBell({ className: _className }: NotificationBellProp
               // only plays once per item, on its own mount.
               <li
                 key={n.id}
-                className="animate-in fade-in-0 slide-in-from-top-2 rounded-sm bg-primary/5 px-2 py-1.5 text-sm"
+                className="animate-in fade-in-0 slide-in-from-top-2 rounded-sm bg-primary/5 px-2 py-1.5 text-tf-body"
               >
                 <p>{n.message}</p>
               </li>
@@ -294,14 +302,12 @@ export function NotificationBell({ className: _className }: NotificationBellProp
         )}
 
         {items.length === 0 && liveItems.length === 0 && alerts.length === 0 ? (
-          <p className="px-2 py-4 text-center text-sm text-muted-foreground">
-            Sin notificaciones
-          </p>
+          <p className="px-2 py-4 text-center text-tf-body text-muted-foreground">Sin notificaciones</p>
         ) : (
           <>
             {alerts.length > 0 && (
               <>
-                <h5 className="mb-1 mt-2 px-2 text-xs font-semibold text-muted-foreground">Alertas</h5>
+                <h5 className="mt-2 mb-1 px-2 text-tf-meta font-semibold text-muted-foreground">Alertas</h5>
                 <ul className="mb-2 space-y-0.5">
                   {alerts.slice(0, 5).map((a) => (
                     <li key={a.id} className="flex flex-col">
@@ -315,14 +321,14 @@ export function NotificationBell({ className: _className }: NotificationBellProp
                         // con las flechas, y un botón plano no sería alcanzable.
                         <div className="order-last flex flex-wrap gap-1 pl-5">
                           <DropdownMenuItem
-                            className="h-6 px-1.5 py-0 text-[11px] text-muted-foreground"
+                            className="h-6 px-1.5 py-0 text-tf-micro text-muted-foreground"
                             aria-label={`Ocultar del Radar 30 días: ${a.title ?? a.type}`}
                             onSelect={() => void aplazar(a.licitacion_id!, "silenciar", 30)}
                           >
                             Ocultar del Radar 30 días
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            className="h-6 px-1.5 py-0 text-[11px] text-muted-foreground"
+                            className="h-6 px-1.5 py-0 text-tf-micro text-muted-foreground"
                             aria-label={`Recordármelo en 7 días: ${a.title ?? a.type}`}
                             onSelect={() => void aplazar(a.licitacion_id!, "posponer", 7)}
                           >
@@ -337,7 +343,7 @@ export function NotificationBell({ className: _className }: NotificationBellProp
                               ? `/oportunidades/${a.pursuit_id}`
                               : `/detalle?lic=${encodeURIComponent(a.licitacion_id!)}`
                           }
-                          className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                          className="block rounded-sm px-2 py-1.5 text-tf-body transition-colors hover:bg-accent"
                         >
                           <span className="flex items-center gap-2">
                             {!a.read && (
@@ -347,7 +353,7 @@ export function NotificationBell({ className: _className }: NotificationBellProp
                           </span>
                         </Link>
                       ) : (
-                        <div className="rounded-sm px-2 py-1.5 text-sm">
+                        <div className="rounded-sm px-2 py-1.5 text-tf-body">
                           <span className="flex items-center gap-2">
                             {!a.read && (
                               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
@@ -366,7 +372,7 @@ export function NotificationBell({ className: _className }: NotificationBellProp
                 <li key={n.id}>
                   <Link
                     href={`/detalle?lic=${encodeURIComponent(n.id)}`}
-                    className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                    className="block rounded-sm px-2 py-1.5 text-tf-body transition-colors hover:bg-accent"
                   >
                     <span className="flex items-center gap-2">
                       {!n.read && (
@@ -375,7 +381,7 @@ export function NotificationBell({ className: _className }: NotificationBellProp
                       <span className="truncate">{n.titulo ?? n.id}</span>
                     </span>
                     {n.organo_contratacion && (
-                      <span className="block truncate pl-3.5 text-xs text-muted-foreground">
+                      <span className="block truncate pl-3.5 text-tf-meta text-muted-foreground">
                         {n.organo_contratacion}
                       </span>
                     )}
@@ -387,7 +393,7 @@ export function NotificationBell({ className: _className }: NotificationBellProp
         )}
 
         {!connected && (
-          <p className="mt-2 px-2 text-xs text-muted-foreground">Sin conexión en vivo</p>
+          <p className="mt-2 px-2 text-tf-meta text-muted-foreground">Sin conexión en vivo</p>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -396,11 +402,11 @@ export function NotificationBell({ className: _className }: NotificationBellProp
 
 function HoyStat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
-    <div className="rounded-md border border-border/60 bg-background/50 px-2 py-1.5 text-center">
-      <div className={`text-sm font-semibold ${accent ? "text-destructive" : "text-foreground"}`}>
+    <div className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-center">
+      <div className={cn("tf-tnum text-tf-body font-semibold", accent ? "text-destructive" : "text-foreground")}>
         {value}
       </div>
-      <div className="text-[10px] leading-tight text-muted-foreground">{label}</div>
+      <div className="text-tf-micro text-muted-foreground">{label}</div>
     </div>
   );
 }

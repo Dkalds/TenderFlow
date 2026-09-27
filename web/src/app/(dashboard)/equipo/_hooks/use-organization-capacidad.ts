@@ -18,6 +18,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { organizationKeys } from "@/lib/query-keys";
 
 export type OrganizationNifs = Schemas["OrganizationNifsOut"];
@@ -43,6 +44,8 @@ export function useOrganizationNifs(organizationId: number | null, enabled: bool
       fetchWithAuth<OrganizationNifs>(`/api/v1/organizations/${organizationId}/nifs`),
     enabled: organizationId != null && enabled,
     staleTime: 30_000,
+    // Las dos tarjetas pintan su fallo en línea: sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -72,6 +75,7 @@ export function useOrganizationCapabilities(organizationId: number | null) {
       ),
     enabled: organizationId != null,
     staleTime: 30_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

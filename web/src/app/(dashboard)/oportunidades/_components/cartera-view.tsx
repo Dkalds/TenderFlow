@@ -34,10 +34,8 @@
  */
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Briefcase } from "lucide-react";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Panel, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
+import { Panel, PanelEmpty, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { useCartera, useCarteraResumen } from "@/hooks/use-cartera";
 import { registrarEvento } from "@/lib/analytics";
 import { filtrarCartera, opcionesCartera } from "@/lib/cartera";
@@ -72,7 +70,7 @@ export default function CarteraView() {
     return (
       <PanelError
         title="No se pudo cargar la cartera"
-        detail={(error as Error).message}
+        error={error}
         onRetry={() => void refetch()}
         height={320}
       />
@@ -83,8 +81,7 @@ export default function CarteraView() {
   const contratos = data ?? [];
   if (contratos.length === 0) {
     return (
-      <EmptyState
-        icon={Briefcase}
+      <PanelEmpty
         title="Todavía no hay contratos en cartera"
         hint="Cuando una oportunidad se cierra como ganada pasa aquí, con su fecha de fin y la ventana de relicitación."
       />
@@ -118,9 +115,7 @@ export default function CarteraView() {
             }
           />
           {visibles.length === 0 ? (
-            <p role="status" className="py-6 text-center text-[11.5px] text-muted-foreground">
-              Ningún contrato con esos filtros.
-            </p>
+            <PanelEmpty size="sm" hint="Ningún contrato con esos filtros. Quita el de tecnología u órgano." />
           ) : (
             <Table>
               <TableHeader>

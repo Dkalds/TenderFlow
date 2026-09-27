@@ -14,11 +14,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { cn, formatCurrency, formatMonth, formatNumber } from "@/lib/utils";
+import { PanelError, SectionTitle } from "@/components/console/panel";
 import { SeguirBoton } from "@/components/seguir-boton";
+import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { EmpresaDetail, PerfilEmpresa } from "../_hooks/use-maestro";
-import { Relacionadas, Separador, SubTitulo } from "./empresa-perfil-piezas";
+import { Relacionadas, Separador } from "./empresa-perfil-piezas";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface EmpresaPerfilProps {
@@ -27,6 +29,9 @@ export interface EmpresaPerfilProps {
   /** El perfil aún no ha llegado. Sin perfil y sin carga, es que falló. */
   perfilCargando: boolean;
   loading: boolean;
+  /** El fallo de la identidad de la empresa: se dice, no se queda en esqueleto. */
+  error?: unknown;
+  onRetry?: () => void;
   /**
    * Tras vigilar o dejar de vigilar, con el estado nuevo. El cambio lo hace
    * `SeguirBoton`; esto es sólo para que la pantalla avise.
@@ -43,10 +48,20 @@ export function EmpresaPerfil({
   perfil,
   perfilCargando,
   loading,
+  error,
+  onRetry,
   onWatchToggled,
   onOpenGrupo,
   onOpenEmpresa,
 }: EmpresaPerfilProps) {
+  if (!loading && !detail && error) {
+    return (
+      <div className="px-5 py-4">
+        <PanelError title="No se pudo abrir la empresa" error={error} onRetry={onRetry} />
+      </div>
+    );
+  }
+
   if (loading || !detail) {
     // El esqueleto también en la carga global. Antes sólo aparecía al cambiar
     // de fila: mientras cargaba la pantalla entera, este panel decía «ninguna
@@ -54,7 +69,7 @@ export function EmpresaPerfil({
     return (
       <div className="flex flex-1 flex-col gap-3 px-5 py-4">
         {[72, 64, 120].map((height) => (
-          <Skeleton key={height} className="w-full rounded-[10px]" style={{ height }} />
+          <Skeleton key={height} className="w-full rounded-xl" style={{ height }} />
         ))}
       </div>
     );
@@ -64,7 +79,7 @@ export function EmpresaPerfil({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-border/60 flex-none border-b px-5 py-4">
         <div className="mb-1.5 flex items-center gap-2.5">
-          <h2 className="font-display text-tf-title font-semibold tracking-[-0.01em]">{detail.nombre_canonico}</h2>
+          <h2 className="font-display text-tf-title font-semibold">{detail.nombre_canonico}</h2>
           <div className="flex-1" />
           {/* El control único de ADR-031 §C, el mismo de la fila del maestro
               y del dossier de Competencia, con la piel de esta cabecera. */}
@@ -75,9 +90,9 @@ export function EmpresaPerfil({
             nombreAccesible="visible"
             textos={{ seguir: "Vigilar", siguiendo: "En vigilancia" }}
             clases={{
-              base: "tf-pressable text-tf-meta inline-flex h-[30px] flex-none items-center gap-1.5 rounded-md border px-3 font-medium transition-colors duration-140 ease-out",
-              activo: "border-primary/50 bg-primary/12 text-primary",
-              inactivo: "border-border/70 text-foreground hover:border-primary/40",
+              base: "tf-pressable text-tf-meta inline-flex h-8 flex-none items-center gap-1.5 rounded-md border px-2.5 font-medium md:h-7",
+              activo: "border-primary/30 bg-primary/10 text-primary",
+              inactivo: "border-border/70 text-foreground hover:border-primary/50",
               icono: "h-3 w-3",
             }}
             onAlternar={onWatchToggled}
@@ -86,8 +101,8 @@ export function EmpresaPerfil({
         {/* Identidad en una línea de texto neutro: NIF y marcas. El grupo es lo
             único que lleva a algún sitio, así que es lo único que se pinta
             como enlace. */}
-        <div className="text-tf-meta text-muted-foreground flex flex-wrap items-center gap-2 font-mono">
-          <span>{detail.nif_canonico ?? "Sin NIF canónico"}</span>
+        <div className="text-tf-meta text-muted-foreground flex flex-wrap items-center gap-2">
+          <span className={cn(detail.nif_canonico && "font-mono")}>{detail.nif_canonico ?? "Sin NIF canónico"}</span>
           {detail.es_ute ? <Separador text="UTE" /> : null}
           {detail.es_pyme ? <Separador text="PYME" /> : null}
           {detail.grupo && (
@@ -98,7 +113,7 @@ export function EmpresaPerfil({
                   <button
                     type="button"
                     onClick={() => onOpenGrupo(detail.grupo!)}
-                    className="text-tf-meta text-primary font-sans font-medium hover:underline"
+                    className="text-tf-meta text-primary font-medium hover:underline"
                   >
                     Grupo {detail.grupo}
                   </button>
@@ -122,12 +137,12 @@ export function EmpresaPerfil({
           )}
           {detail.aliases.length > 1 && (
             <div className="col-span-2 min-w-0">
-              <SubTitulo>Aliases vistos en fuente ({detail.aliases.length})</SubTitulo>
+              <SectionTitle as="h3">Alias vistos en fuente ({detail.aliases.length})</SectionTitle>
               <div className="flex flex-wrap items-center gap-1.5">
                 {detail.aliases.slice(0, 12).map((alias, i) => (
                   <span
                     key={`${alias.alias_normalizado}-${i}`}
-                    className="bg-muted-foreground/8 text-tf-meta text-muted-foreground inline-flex h-6 items-center rounded px-2 font-mono"
+                    className="bg-muted text-tf-meta text-muted-foreground inline-flex h-6 items-center rounded-md px-2"
                   >
                     {alias.alias_normalizado}
                   </span>
@@ -161,9 +176,9 @@ function Actividad({
 }) {
   const totales = perfil?.totales;
   return (
-    <div className="border-border/60 mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] border px-3.5 py-3">
+    <div className="border-border/60 mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-3.5 py-3">
       <div className="min-w-0 flex-1">
-        <SubTitulo>Actividad en todo el histórico</SubTitulo>
+        <SectionTitle as="h3">Actividad en todo el histórico</SectionTitle>
         {cargando ? (
           <Skeleton className="h-5 w-64 max-w-full" />
         ) : !totales ? (
@@ -177,8 +192,8 @@ function Actividad({
             {totales.primera_adjudicacion && (
               <span className="text-muted-foreground">
                 {" "}
-                · activa {totales.primera_adjudicacion.slice(0, 7)} →{" "}
-                {totales.ultima_adjudicacion?.slice(0, 7) ?? "hoy"}
+                · activa {formatMonth(totales.primera_adjudicacion.slice(0, 7), true)} →{" "}
+                {totales.ultima_adjudicacion ? formatMonth(totales.ultima_adjudicacion.slice(0, 7), true) : "hoy"}
               </span>
             )}
           </p>
@@ -186,10 +201,10 @@ function Actividad({
       </div>
       <Link
         href={`/competencia/empresa/${empresaId}?alcance=historico`}
-        className="tf-pressable border-border/70 text-tf-meta text-foreground hover:border-primary/50 inline-flex h-[30px] flex-none items-center gap-1.5 rounded-md border px-3 font-medium transition-colors duration-140 ease-out"
+        className={buttonVariants({ variant: "outline", size: "sm", className: "flex-none" })}
       >
         Abrir ficha
-        <ArrowRight className="h-3 w-3" aria-hidden="true" />
+        <ArrowRight aria-hidden="true" />
       </Link>
     </div>
   );

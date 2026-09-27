@@ -26,7 +26,8 @@ import { esTerminal, type Pursuit } from "@/hooks/use-pursuits";
  *    del plazo, que sale de la rampa `--urgency-*`, y el ámbar del importe que
  *    falta. Una tarjeta roja es una tarjeta que vence.
  * 2. **El importe manda.** Es el dato que se compara entre tarjetas de una
- *    columna y el que suma la cabecera, así que va en mono tabular y grande.
+ *    columna y el que suma la cabecera, así que va grande y con cifras
+ *    tabulares (sans: la mono es para identificadores).
  *    Sin `offer_price_eur` la tarjeta lo dice en ámbar en vez de callarlo: esa
  *    oportunidad queda fuera del valor del pipeline y el usuario tiene que
  *    poder verlo desde el tablero.
@@ -81,9 +82,11 @@ export function PursuitCard({
       }}
       onDragEnd={() => onSoltar?.()}
       className={cn(
-        "border-border/60 bg-card flex flex-col gap-1.5 rounded-xl border p-2.5 transition-[border-color,box-shadow] duration-150 ease-out",
+        "border-border/60 bg-card flex flex-col gap-1.5 rounded-xl border p-2.5 transition-colors",
         onArrastrar && "cursor-grab active:cursor-grabbing",
-        "hover:border-primary/30 hover:shadow-md",
+        // Hover solo de borde: la sombra es de las capas flotantes, no de una
+        // tarjeta que se ve decenas de veces al día.
+        "hover:border-primary/30",
         arrastrando && "opacity-45",
       )}
     >
@@ -112,13 +115,13 @@ export function PursuitCard({
       <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
         <span
           className={cn(
-            "tf-tnum font-mono text-tf-title leading-none font-semibold whitespace-nowrap",
-            sinImporte && !cerrada && "text-[hsl(var(--warning))]",
+            "tf-tnum text-tf-title leading-none font-semibold whitespace-nowrap",
+            sinImporte && !cerrada && "text-warning",
           )}
         >
           {sinImporte && !cerrada ? "Sin importe" : formatCompactCurrency(importe)}
         </span>
-        <span className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider whitespace-nowrap uppercase">
+        <span className="text-muted-foreground text-tf-micro font-medium whitespace-nowrap">
           {sinImporte && !cerrada ? "a completar" : cerrada ? "adjudicado" : "oferta"}
         </span>
       </div>
@@ -132,9 +135,9 @@ export function PursuitCard({
       <div className="border-border/40 flex items-center gap-1.5 border-t pt-1.5">
         <span
           className={cn(
-            "grid h-5 w-5 flex-none place-items-center rounded-full font-mono text-tf-micro font-semibold",
+            "grid h-5 w-5 flex-none place-items-center rounded-full text-tf-micro font-semibold",
             pursuit.responsible_name
-              ? "bg-primary/14 text-primary"
+              ? "bg-primary/10 text-primary"
               : "border-border/60 text-muted-foreground border border-dashed",
           )}
           aria-hidden="true"
@@ -189,7 +192,7 @@ function PursuitProximaAccion({ accion, vence }: { accion: string; vence?: strin
       {plazo ? (
         <span
           className={cn(
-            "tf-tnum flex-none font-mono text-tf-micro font-semibold",
+            "tf-tnum flex-none text-tf-micro font-semibold",
             urgente ? "text-[hsl(var(--urgency-critical))]" : "text-muted-foreground",
           )}
         >

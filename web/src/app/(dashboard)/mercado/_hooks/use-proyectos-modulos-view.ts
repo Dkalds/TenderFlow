@@ -13,6 +13,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import type { Schemas } from "@/lib/api-types";
 
 /**
@@ -52,10 +53,11 @@ export function useProyectosModulosView() {
   const [modSortKey, setModSortKey] = useState<ModSortKey>("count");
   const [modSortDir, setModSortDir] = useState<"asc" | "desc">("desc");
 
-  const { data, isLoading, error } = useFilteredQuery<ProyectosModulosResponse>(
+  const { data, isLoading, error, refetch } = useFilteredQuery<ProyectosModulosResponse>(
     ["analytics", "proyectos-modulos"],
     "/api/v1/analytics/proyectos-modulos",
-    { staleTime: 5 * 60 * 1000 },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
 
   const modulos = useMemo(() => data?.modulos ?? [], [data]);
@@ -179,8 +181,12 @@ export function useProyectosModulosView() {
     tipoEstadoEstados,
     tipoEstadoData,
     sortedModulosAvg,
+    modSortKey,
+    modSortDir,
     toggleModSort,
     isLoading,
     error,
+    /** El «Reintentar» del error. */
+    refetch: () => void refetch(),
   };
 }

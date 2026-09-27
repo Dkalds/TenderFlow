@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { TenderFlowLogo, TenderFlowIcon } from "@/components/layout/tenderflow-logo";
+import { TenderFlowLogo, TenderFlowIcon, TFMark } from "@/components/layout/tenderflow-logo";
+import { TF_MARK_PATHS } from "@/lib/marca";
 
 describe("TenderFlowLogo", () => {
   it("renders the wordmark by default", () => {
@@ -36,6 +37,34 @@ describe("TenderFlowLogo", () => {
   it("marks the svg as aria-hidden (decorative)", () => {
     const { container } = render(<TenderFlowLogo />);
     expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("dibuja el trazo de lib/marca, no una copia propia", () => {
+    const { container } = render(<TenderFlowLogo />);
+    const trazos = Array.from(container.querySelectorAll("path")).map((p) => p.getAttribute("d"));
+    expect(trazos).toEqual([...TF_MARK_PATHS]);
+  });
+
+  it("la caja de la marca va plana: sin halo de color ni sombra", () => {
+    const { container } = render(<TenderFlowLogo />);
+    const caja = container.querySelector("svg")?.parentElement;
+    expect(caja?.className).not.toMatch(/shadow/);
+  });
+
+  it("el wordmark va en la fuente display y la línea de sector en frase, sin versal", () => {
+    render(<TenderFlowLogo />);
+    expect(screen.getByText("TenderFlow")).toHaveClass("font-display");
+    const sector = screen.getByText("Sector público");
+    expect(sector.className).not.toMatch(/uppercase|tracking-/);
+  });
+});
+
+describe("TFMark", () => {
+  it("se puede montar suelto (rail, barra móvil) con su tamaño", () => {
+    const { container } = render(<TFMark size={18} />);
+    const svg = container.querySelector("svg");
+    expect(svg).toHaveAttribute("width", "18");
+    expect(svg).toHaveAttribute("aria-hidden", "true");
   });
 });
 

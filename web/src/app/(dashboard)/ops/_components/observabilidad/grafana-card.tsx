@@ -9,13 +9,7 @@
  */
 
 import { ExternalLink } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { getGrafanaUrl } from "@/lib/runtime-config";
 
@@ -23,32 +17,22 @@ export function GrafanaCard() {
   const grafanaUrl = getGrafanaUrl();
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ExternalLink className="h-5 w-5" />
-          Métricas Prometheus / Grafana
-        </CardTitle>
-        <CardDescription>Métricas detalladas disponibles en Grafana</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {grafanaUrl ? (
-          <Button asChild>
-            <a href={grafanaUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Abrir Grafana
-            </a>
-          </Button>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            URL de Grafana no configurada. Define{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">
-              NEXT_PUBLIC_GRAFANA_URL
-            </code>{" "}
-            en el entorno del frontend para habilitar el enlace.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Métricas en Grafana" hint="Las series de Prometheus, con más detalle" />
+      {grafanaUrl ? (
+        <Button asChild size="sm">
+          <a href={grafanaUrl} target="_blank" rel="noopener noreferrer">
+            Abrir Grafana
+            <ExternalLink aria-hidden="true" />
+          </a>
+        </Button>
+      ) : (
+        <p className="text-tf-meta text-muted-foreground">
+          La URL de Grafana no está configurada. Define{" "}
+          <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-tf-micro">NEXT_PUBLIC_GRAFANA_URL</code>{" "}
+          en las variables de entorno de la web para activar el enlace.
+        </p>
+      )}
+    </Panel>
   );
 }

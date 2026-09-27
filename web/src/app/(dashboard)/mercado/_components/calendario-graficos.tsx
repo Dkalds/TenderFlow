@@ -11,14 +11,12 @@
 
 import dynamic from "next/dynamic";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
 
 import type { DowPoint, MonthlyPoint } from "../_hooks/use-calendario-view";
 
-const CalendarioMonthlyChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioMonthlyChart })), { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> });
-const CalendarioDowChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioDowChart })), { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> });
+const CalendarioMonthlyChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioMonthlyChart })), { ssr: false, loading: () => <PanelLoading height={300} /> });
+const CalendarioDowChart = dynamic(() => import("@/components/charts/calendario-charts").then(m => ({ default: m.CalendarioDowChart })), { ssr: false, loading: () => <PanelLoading height={200} /> });
 
 export function CalendarioMensual({
   data,
@@ -33,22 +31,20 @@ export function CalendarioMensual({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {etiqueta} por Mes — {selectedYear}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[300px] w-full" />
-        ) : data.length > 0 ? (
-          <CalendarioMonthlyChart data={data} etiqueta={etiqueta} />
-        ) : (
-          <EmptyState />
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title={`${etiqueta} por mes — ${selectedYear}`} />
+      {isLoading ? (
+        <PanelLoading height={300} />
+      ) : data.length > 0 ? (
+        <CalendarioMonthlyChart data={data} etiqueta={etiqueta} />
+      ) : (
+        <PanelEmpty
+          title={`Sin ${etiqueta.toLowerCase()} en ${selectedYear}`}
+          hint="Prueba con otro año o amplía el ámbito."
+          height={300}
+        />
+      )}
+    </Panel>
   );
 }
 
@@ -62,19 +58,19 @@ export function CalendarioDiaSemana({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Distribución por Día de la Semana — {selectedYear}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[200px] w-full" />
-        ) : data.some((d) => d.promedio > 0) ? (
-          <CalendarioDowChart data={data} />
-        ) : (
-          <EmptyState />
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title={`Distribución por día de la semana — ${selectedYear}`} />
+      {isLoading ? (
+        <PanelLoading height={200} />
+      ) : data.some((d) => d.promedio > 0) ? (
+        <CalendarioDowChart data={data} />
+      ) : (
+        <PanelEmpty
+          title={`Sin actividad en ${selectedYear}`}
+          hint="No hay días con licitaciones en este año y ámbito."
+          height={200}
+        />
+      )}
+    </Panel>
   );
 }

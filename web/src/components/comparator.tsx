@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { CardHeader, CardContent } from "@/components/ui/card";
+import { PanelEmpty } from "@/components/console/panel";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ComparacionFichasTabla } from "@/components/pliego/comparar-fichas";
 import { MAX_COMPARAR } from "@/hooks/use-comparar-fichas";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
+import { cn, EMPTY, formatCurrency, formatDate } from "@/lib/utils";
 import type { LicitacionDetail } from "@/components/detail-panel";
 
 interface ComparatorProps {
@@ -30,7 +31,7 @@ const COMPARE_FIELDS: { key: keyof LicitacionDetail; label: string }[] = [
 ];
 
 function formatValue(key: string, value: unknown): string {
-  if (value == null) return "-";
+  if (value == null) return EMPTY;
   if (key === "importe") return formatCurrency(value as number);
   if (key.startsWith("fecha")) return formatDate(value as string);
   return String(value);
@@ -47,54 +48,64 @@ export function Comparator({ items, onClose, className }: ComparatorProps) {
     // center rather than the trigger-anchored origin used by Sheet/DropdownMenu/
     // Popover (apple-design §7 / emil-design-eng: modals are exempt).
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className={cn("w-full max-w-6xl max-h-[90vh] overflow-auto mx-4", className)}>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <DialogTitle>Comparar licitaciones</DialogTitle>
-        </CardHeader>
-        <CardContent>
+      <DialogContent className={cn("mx-4 max-h-[90vh] w-full max-w-6xl overflow-auto", className)}>
+        <DialogTitle>Comparar licitaciones</DialogTitle>
+        <div>
           {items.length === 0 ? (
-            <p>No hay licitaciones para comparar.</p>
+            <PanelEmpty size="sm" hint="No hay licitaciones para comparar." />
           ) : (
-          <table className="w-full text-sm">
-            <caption className="sr-only">Comparación de licitaciones</caption>
-            <thead>
-              <tr className="border-b border-border">
-                <th className="py-2 pr-4 text-left font-medium text-muted-foreground w-40">Campo</th>
-                {items.map((item) => (
-                  <th key={item.id_externo} className="py-2 px-2 text-left font-medium">
-                    {item.id_externo}
+            <table className="text-tf-body w-full">
+              <caption className="sr-only">Comparación de licitaciones</caption>
+              <thead>
+                <tr className="border-border border-b">
+                  <th scope="col" className={cn(CABECERA_COLUMNA, "w-40 py-2 pr-4 text-left")}>
+                    Campo
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARE_FIELDS.map(({ key, label }) => {
-                const values = items.map((item) => formatValue(key, item[key]));
-                const allSame = values.every((v) => v === values[0]);
+                  {items.map((item) => (
+                    <th
+                      key={item.id_externo}
+                      scope="col"
+                      className="text-tf-meta px-2 py-2 text-left font-mono font-medium"
+                    >
+                      {item.id_externo}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {COMPARE_FIELDS.map(({ key, label }) => {
+                  const values = items.map((item) => formatValue(key, item[key]));
+                  const allSame = values.every((v) => v === values[0]);
 
-                return (
-                  <tr key={key} className="border-b border-border last:border-b-0">
-                    <td className="py-2 pr-4 text-muted-foreground font-medium">{label}</td>
-                    {values.map((val, i) => (
-                      <td
-                        key={i}
-                        className={cn("py-2 px-2", !allSame && "bg-yellow-500/10")}
-                      >
-                        {key === "estado" ? (
-                          <Badge variant="outline">{val}</Badge>
-                        ) : (
-                          val
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  return (
+                    <tr key={key} className="border-border border-b last:border-b-0">
+                      <th scope="row" className="text-muted-foreground py-2 pr-4 text-left font-medium">
+                        {label}
+                      </th>
+                      {values.map((val, i) => (
+                        <td
+                          key={i}
+                          // Las celdas que difieren entre expedientes, con el tinte
+                          // de aviso: es lo que hay que mirar.
+                          className={cn("px-2 py-2", !allSame && "bg-warning/10", key === "cpv" && "font-mono")}
+                        >
+                          {key === "estado" ? (
+                            <Badge size="sm" variant="outline">
+                              {val}
+                            </Badge>
+                          ) : (
+                            val
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
           {puedeFichas && (
-            <section className="mt-6 border-t border-border pt-4" aria-label="Fichas del pliego">
+            <section className="border-border mt-6 border-t pt-4" aria-label="Fichas del pliego">
               {conFichas ? (
                 // Cabeceras por id, como la tabla de arriba: las dos se leen
                 // columna contra columna.
@@ -106,7 +117,7 @@ export function Comparator({ items, onClose, className }: ComparatorProps) {
               )}
             </section>
           )}
-        </CardContent>
+        </div>
       </DialogContent>
     </Dialog>
   );

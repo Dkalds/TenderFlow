@@ -2,31 +2,29 @@
 
 import { cn } from "@/lib/utils";
 import { estadoLabel } from "@/lib/estados";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { ChipBanda } from "@/components/console/chip-banda";
 import {
-  CheckCircle2,
+  CircleCheck,
+  CircleX,
   Clock,
-  XCircle,
-  AlertTriangle,
   FileCheck,
   Timer,
-  Flame,
-  ThermometerSun,
-  Snowflake,
-  Ban,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 
-/* ── Token-based variants ──────────────────────────────────────────── */
+/* ── Tonos ─────────────────────────────────────────────────────────── */
 
 type Variant = "info" | "success" | "warning" | "destructive" | "neutral";
 
-/* Static class strings so Tailwind's JIT can detect them. */
-const VARIANT_CLASS: Record<Variant, string> = {
-  info: "border-info/25 bg-info/12 text-info",
-  success: "border-success/25 bg-success/12 text-success",
-  warning: "border-warning/30 bg-warning/15 text-warning",
-  destructive: "border-destructive/25 bg-destructive/12 text-destructive",
-  neutral: "border-muted-foreground/20 bg-muted-foreground/10 text-muted-foreground",
+/** El tono de la chapa es una variante de `Badge`: un solo dibujo de chip. */
+const VARIANTE_BADGE: Record<Variant, NonNullable<BadgeProps["variant"]>> = {
+  info: "info",
+  success: "success",
+  warning: "warning",
+  destructive: "destructive",
+  neutral: "neutral",
 };
 
 /* ── Estado (tender state) ─────────────────────────────────────────── */
@@ -40,10 +38,10 @@ const VARIANT_CLASS: Record<Variant, string> = {
 const ESTADO_STYLES: Record<string, { variant: Variant; icon: LucideIcon }> = {
   Publicada: { variant: "info", icon: Clock },
   "Evaluación": { variant: "info", icon: Timer },
-  Adjudicada: { variant: "success", icon: CheckCircle2 },
+  Adjudicada: { variant: "success", icon: CircleCheck },
   Resuelta: { variant: "success", icon: FileCheck },
-  Desierta: { variant: "neutral", icon: AlertTriangle },
-  Anulada: { variant: "destructive", icon: XCircle },
+  Desierta: { variant: "neutral", icon: TriangleAlert },
+  Anulada: { variant: "destructive", icon: CircleX },
   "Anuncio previo": { variant: "neutral", icon: Clock },
   Creada: { variant: "neutral", icon: Clock },
   "En plazo": { variant: "info", icon: Timer },
@@ -52,17 +50,8 @@ const ESTADO_STYLES: Record<string, { variant: Variant; icon: LucideIcon }> = {
   // agregado recoge contratos ya celebrados y `En ejecución` ya está
   // adjudicado. `Consulta preliminar` sí es previa a la licitación.
   "Publicación agregada": { variant: "neutral", icon: FileCheck },
-  "En ejecución": { variant: "success", icon: CheckCircle2 },
+  "En ejecución": { variant: "success", icon: CircleCheck },
   "Consulta preliminar": { variant: "neutral", icon: Clock },
-};
-
-/* ── Band (scoring band) ───────────────────────────────────────────── */
-
-const BAND_STYLES: Record<string, { variant: Variant; icon: LucideIcon }> = {
-  Caliente: { variant: "destructive", icon: Flame },
-  Atractiva: { variant: "warning", icon: ThermometerSun },
-  Tibia: { variant: "info", icon: Snowflake },
-  Descarte: { variant: "neutral", icon: Ban },
 };
 
 /* ── Component ─────────────────────────────────────────────────────── */
@@ -72,10 +61,20 @@ export type StatusKind = "estado" | "band";
 export interface StatusBadgeProps {
   value: string | null | undefined;
   kind?: StatusKind;
+  /** Solo para `kind="estado"`: icono del estado en vez del punto. */
   showIcon?: boolean;
   className?: string;
 }
 
+/**
+ * Chapa de estado de una licitación, o de su banda de puntuación.
+ *
+ * - `kind="estado"`: un `Badge` del tono del estado con un punto (o su icono,
+ *   con `showIcon`).
+ * - `kind="band"`: delega en `ChipBanda` (`@/components/console/panel`), el
+ *   chip único de banda sobre los tokens `--score-*`. Sin iconos del tiempo ni
+ *   la variante de error para «Caliente»: una banda alta no es un fallo.
+ */
 export function StatusBadge({
   value,
   kind = "estado",
@@ -84,27 +83,27 @@ export function StatusBadge({
 }: StatusBadgeProps) {
   if (!value) return <span className="text-muted-foreground">-</span>;
 
-  const styles = kind === "estado" ? ESTADO_STYLES : BAND_STYLES;
-  const text = kind === "estado" ? estadoLabel(value) : value;
-  const entry = styles[text];
+  if (kind === "band") {
+    return <ChipBanda banda={value} className={className} aria-label={`Puntuación: ${value}`} />;
+  }
+
+  const text = estadoLabel(value);
+  const entry = ESTADO_STYLES[text];
   const variant: Variant = entry?.variant ?? "neutral";
   const Icon = entry?.icon;
 
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
-        VARIANT_CLASS[variant],
-        className,
-      )}
-      aria-label={`${kind === "estado" ? "Estado" : "Puntuación"}: ${text}`}
+    <Badge
+      variant={VARIANTE_BADGE[variant]}
+      className={cn("gap-1.5", className)}
+      aria-label={`Estado: ${text}`}
     >
       {showIcon && Icon ? (
-        <Icon className="h-3 w-3" aria-hidden="true" />
+        <Icon aria-hidden="true" />
       ) : (
         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden="true" />
       )}
       {text}
-    </span>
+    </Badge>
   );
 }

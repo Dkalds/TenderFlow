@@ -2,8 +2,7 @@
 
 /** Cierre de la pantalla: el universo sobre el que van todos los porcentajes. */
 
-import { Database } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumber } from "@/lib/utils";
 
@@ -14,27 +13,16 @@ export interface PipelineCardProps {
 
 export function PipelineCard({ totalRecords, isLoading }: PipelineCardProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Database className="h-4 w-4" />
-          Resumen del pipeline
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-8 w-32" />
-        ) : (
-          <div className="flex items-center gap-4">
-            <div>
-              <p className="text-2xl font-bold">{formatNumber(totalRecords)}</p>
-              <p className="text-sm text-muted-foreground">
-                registros totales en el sistema
-              </p>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Resumen de la ingesta" hint="La base de todos los porcentajes de esta pantalla" />
+      {isLoading ? (
+        <Skeleton className="h-8 w-32" />
+      ) : (
+        <div>
+          <p className="tf-tnum text-tf-title font-semibold">{formatNumber(totalRecords)}</p>
+          <p className="text-tf-meta text-muted-foreground">registros en total</p>
+        </div>
+      )}
+    </Panel>
   );
 }

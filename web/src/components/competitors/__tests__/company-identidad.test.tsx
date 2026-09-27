@@ -7,14 +7,20 @@
  */
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import type { Schemas } from "@/lib/api-types";
 
 const { fetchWithAuth } = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
-vi.mock("@/lib/api-client", () => ({ fetchWithAuth }));
+// El resto del módulo es el real: `PanelError` distingue un `ApiError` para
+// dar el mensaje humano y plegar la ruta en el «Detalle técnico».
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  fetchWithAuth,
+}));
 
+import { ApiError } from "@/lib/api-client";
 import { CompanyIdentidad } from "../company-identidad";
 
 type Detalle = Schemas["EmpresaDetail"];
@@ -80,7 +86,8 @@ describe("CompanyIdentidad", () => {
     expect(screen.getByText("NIF-7B")).toBeInTheDocument();
     expect(screen.getByText("Grupo")).toBeInTheDocument();
     // Doce a la vista y el resto contado, no escondido sin decirlo.
-    expect(screen.getByText("Alias vistos en fuente (14)")).toBeInTheDocument();
+    const rotuloAlias = screen.getByRole("heading", { name: "Alias vistos en fuente" });
+    expect(within(rotuloAlias.parentElement!).getByText("14")).toBeInTheDocument();
     expect(screen.getByText("+2 más")).toBeInTheDocument();
     // Cada UTE lleva a su propia ficha, en la ruta nueva.
     expect(screen.getByRole("link", { name: "UTE Ejemplo-Norte" })).toHaveAttribute("href", "/competencia/empresa/30");
@@ -108,11 +115,16 @@ describe("CompanyIdentidad", () => {
   it("el fallo de una identidad es suyo: las demás se siguen viendo", async () => {
     renderIdentidad([7, 8], {
       7: detalle({ empresa_id: 7, nombre_canonico: "Ejemplo Digital" }),
-      8: new Error("404"),
+      8: new ApiError(404, "Not Found", undefined, "GET /api/v1/empresas/8"),
     });
 
     expect(await screen.findByRole("heading", { name: "Ejemplo Digital" })).toBeInTheDocument();
-    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo cargar esta identidad");
-    expect(screen.getByText("GET /api/v1/empresas/8")).toBeInTheDocument();
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("No se pudo cargar esta identidad");
+    // Mensaje humano a la vista; la ruta, sólo en el detalle plegado.
+    expect(alerta).toHaveTextContent("No existe o ya no está disponible.");
+    const detalleTecnico = screen.getByText(/404 · GET \/api\/v1\/empresas\/8/);
+    expect(detalleTecnico.closest("details")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Reintentar/ })).toBeInTheDocument();
   });
 });

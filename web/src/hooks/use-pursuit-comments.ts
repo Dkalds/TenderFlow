@@ -35,6 +35,7 @@ import type {
   PursuitCommentOut,
 } from "@/lib/api-types";
 import { pursuitCommentKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type PursuitComment = PursuitCommentOut;
 export type PursuitCommentList = PursuitCommentListResponse;
@@ -94,6 +95,7 @@ export function usePursuitComments(
     enabled: pursuitId != null && (options.enabled ?? true) && organizacionResuelta(organizationId),
     refetchInterval: COMMENTS_REFETCH_MS,
     staleTime: 5_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

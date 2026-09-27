@@ -1,36 +1,45 @@
 "use client";
-import { useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { AlertTriangle } from "lucide-react";
 
+import { useEffect } from "react";
+import { PanelError } from "@/components/console/panel";
+import { reportError } from "@/lib/report-error";
+
+/**
+ * Fallo al pintar una pantalla de la consola. El marco (rail, barra de ámbito)
+ * sigue en pie: este límite solo sustituye el contenido.
+ *
+ * Es un `PanelError` como cualquier otro fallo de la consola (decisión D6):
+ * mensaje humano, «Reintentar» y el detalle técnico plegado, con el `digest`
+ * —el mismo que viaja en el reporte— para que un «Código: 1a2b3c» en un correo
+ * de soporte se cruce con la línea del log. El mensaje crudo del error va
+ * también plegado: es para soporte, no para quien estaba trabajando.
+ *
+ * Antes era una tarjeta con «Error» a secas, un triángulo y «Por favor,
+ * inténtalo de nuevo», y el fallo se quedaba en la consola del navegador; ahora
+ * se reporta como los de `global-error`.
+ */
 export default function DashboardError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  /** Vuelve a pedir y a pintar lo que falló (Next 16.3; `reset` solo repinta). */
+  retry: () => void;
 }) {
   useEffect(() => {
-    console.error("Dashboard error:", error);
+    reportError("DashboardError", error);
   }, [error]);
 
+  const detalle = [error.digest ? `Código: ${error.digest}` : null, error.message || null].filter(Boolean).join(" · ");
+
   return (
-    <div className="flex items-center justify-center min-h-[50vh]">
-      <Card className="w-full max-w-md border-destructive">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="h-5 w-5" />
-            Error
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Se ha producido un error al cargar esta página. Por favor, inténtalo de nuevo.
-          </p>
-          <Button onClick={reset}>Reintentar</Button>
-        </CardContent>
-      </Card>
+    <div className="mx-auto w-full max-w-2xl px-6 py-12">
+      <PanelError
+        title="No se ha podido cargar esta pantalla"
+        message="Vuelve a intentarlo. Si se repite, avísanos con el código del detalle técnico."
+        detail={detalle || undefined}
+        onRetry={retry}
+      />
     </div>
   );
 }

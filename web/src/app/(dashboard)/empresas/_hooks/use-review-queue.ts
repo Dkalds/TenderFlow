@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { empresasKeys } from "@/lib/query-keys";
 
 /**
@@ -60,6 +61,8 @@ export function useReviewQueue({
     queryKey: empresasKeys.reviews,
     queryFn: () => fetchWithAuth("/api/v1/empresas/reviews?limit=100"),
     enabled,
+    // El fallo se dice en la propia cola (PanelError): sin toast además.
+    meta: META_ERROR_EN_LINEA,
   });
 
   /** Ids ya decididos en esta sesión: fuera de la lista, aún sin escribir. */

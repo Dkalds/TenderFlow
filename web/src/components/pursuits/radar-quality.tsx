@@ -1,4 +1,6 @@
 import type { PursuitMetrics } from "@/hooks/use-pursuits";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
+import { cn, formatDate } from "@/lib/utils";
 
 /**
  * Calidad del Radar: ¿lo que puso arriba es lo que el equipo ganó?
@@ -50,7 +52,7 @@ export function RadarQualityNota({
   if (!datos) return null;
 
   return (
-    <p className={className ?? "text-[11px] leading-relaxed text-muted-foreground"}>
+    <p className={className ?? "text-tf-micro leading-relaxed text-muted-foreground"}>
       {datos.precision === null || datos.precision === undefined ? (
         <>
           Precisión de la banda {banda} en tu organización:{" "}
@@ -73,20 +75,20 @@ export function RadarQualityNota({
 /** Lo que se dice cuando no hay ni una oportunidad con banda sellada. */
 function SinBandaSellada() {
   return (
-    <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+    <p className="text-tf-meta leading-relaxed text-muted-foreground">
       Todavía no se puede medir si el Radar prioriza bien: ninguna oportunidad guarda la banda con
       la que se abrió. Se guarda al convertir una señal del Radar en oportunidad.
     </p>
   );
 }
 
-/** «8 de 12 desde el 2026-01-01»: el universo del que habla el cuadro. */
+/** «Ventana 1 ene 2026 → 31 mar 2026»: el universo del que habla el cuadro. */
 function CoberturaRadar({ calidad }: { calidad: RadarQuality }) {
   const desde = calidad.ventana_desde?.slice(0, 10);
   const hasta = calidad.ventana_hasta?.slice(0, 10);
   return (
-    <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
-      {desde && hasta ? `Ventana ${desde} → ${hasta}. ` : null}
+    <p className="mt-2 text-tf-micro leading-relaxed text-muted-foreground">
+      {desde && hasta ? `Ventana ${formatDate(desde)} → ${formatDate(hasta)}. ` : null}
       {calidad.pursuits_con_banda} de {calidad.pursuits_total} oportunidades guardan la banda con
       la que se abrieron; el resto es anterior a que se empezara a guardar.
     </p>
@@ -115,7 +117,7 @@ export function RadarQualityResumen({
     <div className={className}>
       <ul className="space-y-1.5">
         {bandas.map((banda) => (
-          <li key={banda.banda} className="flex items-baseline justify-between gap-3 text-xs">
+          <li key={banda.banda} className="flex items-baseline justify-between gap-3 text-tf-meta">
             <span className="font-medium">{banda.banda}</span>
             <span className="tf-tnum text-muted-foreground">
               {banda.precision === null || banda.precision === undefined
@@ -132,12 +134,12 @@ export function RadarQualityResumen({
 
 /**
  * El mismo dato en tabla, para la vista que lo tiene como panel propio
- * (Oportunidades → Rendimiento) y no como nota al pie de otra cosa.
+ * (Oportunidades › Rendimiento) y no como nota al pie de otra cosa.
  *
  * Una fila por banda con las cuatro cifras que responden «¿el Radar ordena
  * bien?»: cuántas oportunidades salieron de esa banda, cuántas acabaron,
  * cuántas se ganaron y el acierto. El acierto es el único porcentaje, y por
- * debajo del mínimo que declara el backend enseña **el hueco** —«aún no» con
+ * debajo del mínimo que declara la API enseña **el hueco** —«aún no» con
  * las resueltas que hay sobre las que hacen falta— en vez de un número: un
  * 100 % sobre dos cierres no mide el Radar.
  */
@@ -155,26 +157,26 @@ export function RadarQualityTabla({
 
   return (
     <div className={className}>
-      <table className="w-full text-[11.5px]">
+      <table className="w-full text-tf-meta">
         <caption className="sr-only">
           Calidad del Radar por banda de entrada: oportunidades seguidas, cerradas, ganadas y
           acierto
         </caption>
         <thead>
-          <tr className="text-left text-[10.5px] text-muted-foreground">
-            <th scope="col" className="pb-1.5 font-medium">
+          <tr className="text-left">
+            <th scope="col" className={cn(CABECERA_COLUMNA, "pb-1.5")}>
               Banda
             </th>
-            <th scope="col" className="pb-1.5 text-right font-medium">
+            <th scope="col" className={cn(CABECERA_COLUMNA, "pb-1.5 text-right")}>
               Seguidas
             </th>
-            <th scope="col" className="pb-1.5 text-right font-medium">
+            <th scope="col" className={cn(CABECERA_COLUMNA, "pb-1.5 text-right")}>
               Cerradas
             </th>
-            <th scope="col" className="pb-1.5 text-right font-medium">
+            <th scope="col" className={cn(CABECERA_COLUMNA, "pb-1.5 text-right")}>
               Ganadas
             </th>
-            <th scope="col" className="pb-1.5 text-right font-medium">
+            <th scope="col" className={cn(CABECERA_COLUMNA, "pb-1.5 text-right")}>
               Acierto
             </th>
           </tr>
@@ -185,10 +187,10 @@ export function RadarQualityTabla({
               <th scope="row" className="py-1.5 text-left font-medium">
                 {banda.banda}
               </th>
-              <td className="tf-tnum py-1.5 text-right font-mono">{banda.abiertas}</td>
-              <td className="tf-tnum py-1.5 text-right font-mono">{banda.cerradas}</td>
-              <td className="tf-tnum py-1.5 text-right font-mono">{banda.ganadas}</td>
-              <td className="tf-tnum py-1.5 text-right font-mono">
+              <td className="tf-tnum py-1.5 text-right">{banda.abiertas}</td>
+              <td className="tf-tnum py-1.5 text-right">{banda.cerradas}</td>
+              <td className="tf-tnum py-1.5 text-right">{banda.ganadas}</td>
+              <td className="tf-tnum py-1.5 text-right">
                 {banda.precision === null || banda.precision === undefined ? (
                   <span className="text-muted-foreground">
                     aún no · {banda.resueltas}/{calidad.minimo_por_banda}
@@ -201,7 +203,7 @@ export function RadarQualityTabla({
           ))}
         </tbody>
       </table>
-      <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
+      <p className="mt-2 text-tf-micro leading-relaxed text-muted-foreground">
         «Seguidas» son las oportunidades abiertas desde esa banda; el acierto es ganadas sobre
         resueltas (ganadas + perdidas), porque una retirada no dice si el Radar acertó.
       </p>

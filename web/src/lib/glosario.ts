@@ -173,6 +173,18 @@ const CONCEPTOS: Record<string, EntradaGlosario> = {
       "Los mínimos económicos y técnicos que hay que acreditar para poder presentarse: facturación, contratos parecidos, titulaciones del equipo.",
     ancla: "solvencia",
   },
+  hhi: {
+    termino: "Concentración (HHI)",
+    definicion:
+      "Índice de Herfindahl-Hirschman: suma los cuadrados de la cuota de cada adjudicatario y va de 0 a 10.000. Por debajo de 1.500 el mercado es competitivo; por encima de 2.500, está concentrado en pocas empresas.",
+    ancla: "concentracion",
+  },
+  oferta_unica: {
+    termino: "Oferta única",
+    definicion:
+      "Porcentaje de licitaciones adjudicadas a la única empresa que se presentó. Mucha oferta única suele indicar pliegos a medida o poca competencia real.",
+    ancla: "competencia",
+  },
   deuc: {
     termino: "DEUC",
     definicion:

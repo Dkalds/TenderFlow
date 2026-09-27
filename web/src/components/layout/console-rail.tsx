@@ -4,9 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { AlignJustify, LayoutGrid, LogOut, Menu, Moon, Sun, User } from "lucide-react";
+import { AlignJustify, LayoutGrid, LogOut, Menu, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -39,17 +40,33 @@ import { useActiveOrganizationId, useOrganizations, useOrganizationStore } from 
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
 import { registrarEvento } from "@/lib/analytics";
+import { ICONO_ENTIDAD, ICONO_ESPACIO } from "@/lib/iconos";
+import { ROLE_LABELS } from "@/app/(dashboard)/equipo/_lib/etiquetas";
 
 /**
- * Rail de espacios — 56px, el único cromo permanente a la izquierda.
+ * Rail de espacios, el único cromo permanente a la izquierda.
  *
  * Sustituye a la sidebar de 248px con sus once secciones desplegables. La
- * navegación no se pierde: las 25 rutas del dashboard viven ahora en los 14
+ * navegación no se pierde: las 25 rutas del dashboard viven ahora en los
  * espacios de `lib/console-spaces.ts`, y las absorbidas siguen siendo
  * alcanzables como `?vista=` (y por redirect desde su URL antigua).
+ *
+ * Cada destino es su icono y, debajo, su nombre entero en castellano. Hasta
+ * 2026-09 el rail medía 56 px y bajo el icono iba un código de tres letras en
+ * mono de 8 px (RES, MKT, OPS frente a OPX…) que había que aprenderse, y el
+ * nombre real solo existía en un `sr-only`: el nombre accesible salía pegado
+ * («RESResumen»). Ahora el texto que se ve es el nombre accesible entero.
+ *
+ * El marcador de activo es la pastilla detrás del icono y no una caja del
+ * ancho del rail: así el nombre dispone de todo el ancho del enlace. El nombre
+ * más largo, «Oportunidades», mide 77 px a 11 px en Windows (medido en
+ * /radar a 1440 px); a 76 px de rail quedaban 73 y salía «Oportunidad…». A
+ * 84 quedan 81, con margen para el ~1,5 % que ensancha el texto el Chromium
+ * de Linux de la CI. El `truncate` se queda como red, no como plan.
  */
 
-const RAIL_WIDTH = 56;
+/** Exportado para las cuentas de ancho que dependen de él (`radar-grid.test.ts`). */
+export const RAIL_WIDTH = 84;
 
 /** Activo también cuando estás en una ruta heredada que este espacio absorbió. */
 function useActiveSpaceKey(): string | undefined {
@@ -74,25 +91,33 @@ function RailButton({ space, active, href }: { space: ConsoleSpace; active: bool
           onClick={() => registrarEvento("espacio_abierto", { espacio: space.key, origen: "rail" })}
           aria-current={active ? "page" : undefined}
           className={cn(
-            "tf-pressable flex h-10 w-10 flex-col items-center justify-center gap-0.5 rounded-[9px] border",
-            "transition-colors duration-150 ease-out",
-            active
-              ? "border-primary/30 bg-primary/12 text-primary"
-              : "text-muted-foreground hover:text-foreground border-transparent",
+            "group flex w-full flex-none flex-col items-center gap-0.5 rounded-md px-px py-1 transition-colors focus-visible:-outline-offset-2",
+            active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <Icon className="h-4 w-4" aria-hidden="true" />
-          <span className="font-mono text-[8px] leading-none font-medium tracking-[0.04em]">{space.short}</span>
-          <span className="sr-only">{space.label}</span>
+          <span
+            aria-hidden="true"
+            className={cn(
+              "grid h-6 w-10 place-items-center rounded-md transition-colors",
+              active ? "bg-primary/10 text-primary" : "group-hover:bg-primary/5",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+          <span className="w-full truncate text-center text-tf-micro font-medium">{space.label}</span>
         </Link>
       </TooltipTrigger>
       <TooltipContent side="right">
         <span className="font-medium">{space.label}</span>
-        <span className="text-muted-foreground block max-w-56 text-[11px]">{space.description}</span>
+        <span className="block max-w-56 text-tf-meta text-muted-foreground">{space.description}</span>
       </TooltipContent>
     </Tooltip>
   );
 }
+
+/** Tú (la cuenta) y tu equipo: los glifos de persona y equipo del mapa de iconos. */
+const IconoCuenta = ICONO_ENTIDAD.persona;
+const IconoEquipo = ICONO_ESPACIO.equipo;
 
 /** Menú de cuenta: lo que vivía en el extremo derecho del TopNav. */
 function AccountMenu() {
@@ -124,15 +149,15 @@ function AccountMenu() {
         <button
           type="button"
           aria-label="Menú de cuenta"
-          className="tf-pressable border-primary/30 bg-primary/15 text-primary grid h-7 w-7 place-items-center rounded-full border font-mono text-[10px] font-semibold"
+          // Neutro: el naranja es de la acción y del destino activo, no de un
+          // avatar que está siempre ahí.
+          className="tf-pressable grid h-8 w-8 place-items-center rounded-full border border-border/70 bg-secondary text-muted-foreground hover:text-foreground"
         >
-          <User className="h-3.5 w-3.5" aria-hidden="true" />
+          <IconoCuenta className="h-4 w-4" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="end" className="w-60">
-        <p className="text-muted-foreground px-2 pt-1 pb-1.5 text-[10px] font-semibold tracking-[0.12em] uppercase">
-          Organización activa
-        </p>
+        <p className="px-2 pt-1 pb-1.5 text-tf-micro font-medium text-muted-foreground">Organización activa</p>
         <div className="px-2 pb-2">
           <Select
             aria-label="Organización activa"
@@ -140,7 +165,7 @@ function AccountMenu() {
             onValueChange={(value) => setActiveOrganizationId(value === "personal" ? null : Number(value))}
             disabled={organizations.isLoading || !organizations.data?.length}
           >
-            <SelectTrigger className="h-8 text-xs font-medium" aria-label="Organización activa">
+            <SelectTrigger className="h-8 text-tf-meta font-medium" aria-label="Organización activa">
               <SelectValue placeholder="Organización personal" />
             </SelectTrigger>
             <SelectContent>
@@ -149,7 +174,7 @@ function AccountMenu() {
               )}
               {organizations.data?.map((organization) => (
                 <SelectItem key={organization.id} value={String(organization.id)}>
-                  {organization.name} · {organization.role}
+                  {organization.name} · {ROLE_LABELS[organization.role]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -158,7 +183,7 @@ function AccountMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/equipo">
-            <User className="h-4 w-4" />
+            <IconoEquipo className="h-4 w-4" aria-hidden="true" />
             Gestionar equipo
           </Link>
         </DropdownMenuItem>
@@ -168,7 +193,11 @@ function AccountMenu() {
             toggleCompact();
           }}
         >
-          {compact ? <LayoutGrid className="h-4 w-4" /> : <AlignJustify className="h-4 w-4" />}
+          {compact ? (
+            <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <AlignJustify className="h-4 w-4" aria-hidden="true" />
+          )}
           {compact ? "Densidad cómoda" : "Densidad compacta"}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -177,13 +206,17 @@ function AccountMenu() {
             setTheme(resolvedTheme === "dark" ? "light" : "dark");
           }}
         >
-          {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {resolvedTheme === "dark" ? (
+            <Sun className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Moon className="h-4 w-4" aria-hidden="true" />
+          )}
           {resolvedTheme === "dark" ? "Modo claro" : "Modo oscuro"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => handleLogout()} className="text-destructive focus:text-destructive">
-          <LogOut className="h-4 w-4" />
-          {"Cerrar sesión"}
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          Cerrar sesión
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -208,38 +241,19 @@ export function ConsoleRail() {
       <nav
         aria-label="Espacios"
         style={{ width: RAIL_WIDTH }}
-        className="border-border/80 sticky top-0 hidden h-screen shrink-0 flex-col items-center gap-1 border-r bg-[linear-gradient(180deg,hsl(var(--card)/0.9),hsl(var(--background)/0.8))] py-3 md:flex"
+        className="sticky top-0 hidden h-screen shrink-0 flex-col items-center gap-1 border-r border-border bg-card py-3 md:flex"
       >
-        <Link
-          href={withFilters("/resumen")}
-          aria-label="TenderFlow · ir al resumen"
-          className="bg-primary text-primary-foreground mb-3.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg shadow-[0_8px_18px_-10px_hsl(var(--primary)/0.7)]"
-        >
-          {/* Monograma TF real del repo (`tenderflow-logo.tsx`), no un glifo. */}
-          <svg
-            width={19}
-            height={19}
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.7}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3.5 6 H20.5" />
-            <path d="M12 6 V19" />
-            <path d="M12 12 H18.5" />
-          </svg>
+        <Link href={withFilters("/resumen")} aria-label="TenderFlow · ir al resumen" className="mb-3 shrink-0 rounded-md">
+          <TenderFlowLogo showText={false} boxSize={32} />
         </Link>
 
-        {/* `relative`: el rótulo de cada destino es un `sr-only` absoluto que,
-            sin él, colgaba del `<nav>` y no de este scroll. Con poco alto
-            (1280×600) el último caía bajo el pliegue y el documento scrolleaba. */}
-        <div className="relative flex min-h-0 flex-1 [scrollbar-width:none] flex-col items-center gap-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        {/* `relative`, como toda caja con scroll del dashboard: un absoluto de
+            dentro (el `sr-only` que llevó cada destino) colgaba del `<nav>` y no
+            de este scroll, y con poco alto (1280×600) alargaba el documento. */}
+        <div className="relative flex min-h-0 w-full flex-1 [scrollbar-width:none] flex-col items-center overflow-y-auto [&::-webkit-scrollbar]:hidden">
           {groups.map((entry, index) => (
             <React.Fragment key={entry.group}>
-              {index > 0 && <span className="bg-border/70 my-1.5 h-px w-6" aria-hidden="true" />}
+              {index > 0 && <span className="my-1.5 h-px w-8 flex-none bg-border/70" aria-hidden="true" />}
               {entry.items.map((space) => (
                 <RailButton
                   key={space.key}
@@ -261,13 +275,18 @@ export function ConsoleRail() {
           Sin borde de scroll propio: debajo de esta barra va la de ámbito, no
           el contenido, y el corte con el contenido lo marca el borde de
           aquélla. Con los dos, el de ésta (12px bajo su borde inferior) se
-          pintaba encima de la barra de ámbito: dos bordes para un único corte. */}
-      <div className="tf-glass sticky top-0 z-40 flex h-12 items-center gap-2 px-3 md:hidden">
+          pintaba encima de la barra de ámbito: dos bordes para un único corte.
+
+          Fondo sólido y no vidrio: la barra va encima de la columna, no encima
+          del contenido, así que por debajo no pasa nada que dejar ver. Y el
+          logotipo es el de la marca (`TenderFlowLogo`), con el wordmark en la
+          display a 15 px: a 14 px en negrita era una cara más del nombre. */}
+      <div className="sticky top-0 z-40 flex h-12 items-center gap-2 bg-background px-3 md:hidden">
         <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} aria-label="Abrir navegación">
-          <Menu className="h-5 w-5" />
+          <Menu aria-hidden="true" />
         </Button>
-        <Link href={withFilters("/resumen")} className="font-display text-sm font-bold">
-          TenderFlow
+        <Link href={withFilters("/resumen")} className="min-w-0 rounded-md">
+          <TenderFlowLogo boxSize={28} />
         </Link>
         <span className="ml-auto">
           <AccountMenu />
@@ -276,9 +295,7 @@ export function ConsoleRail() {
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-72 overflow-y-auto p-3 md:hidden">
-          <SheetTitle className="text-muted-foreground px-2 pb-2 text-[10px] font-semibold tracking-[0.14em] uppercase">
-            Espacios
-          </SheetTitle>
+          <SheetTitle className="px-2 pb-2 text-tf-meta font-semibold text-muted-foreground">Espacios</SheetTitle>
           <nav aria-label="Navegación móvil" className="space-y-0.5">
             {groups.map((entry, index) => (
               <React.Fragment key={entry.group}>
@@ -302,13 +319,13 @@ export function ConsoleRail() {
                       }}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-colors",
+                        "flex items-center gap-2.5 rounded-md px-3 py-2 text-tf-body font-medium transition-colors",
                         active
                           ? "bg-primary/10 text-foreground"
                           : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
                       )}
                     >
-                      <Icon className={cn("h-4 w-4 shrink-0", active && "text-primary")} />
+                      <Icon className={cn("h-4 w-4 shrink-0", active && "text-primary")} aria-hidden="true" />
                       {space.label}
                     </Link>
                   );

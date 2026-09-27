@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  detalleTecnico,
   esErrorTransitorio,
   getErrorMessage,
+  META_ERROR_EN_LINEA,
   notifyQueryError,
   notifyMutationError,
   notifyMutationSuccess,
@@ -38,12 +40,31 @@ describe("consulta cancelada por statement_timeout (503 query-timeout)", () => {
 describe("getErrorMessage", () => {
   it("returns a server error message for ApiError 5xx", () => {
     const err = new ApiError(500, "Internal");
-    expect(getErrorMessage(err)).toBe("Error del servidor. Inténtalo de nuevo en unos segundos.");
+    expect(getErrorMessage(err)).toBe("Error del servidor. Vuelve a intentarlo en unos segundos.");
   });
 
-  it("returns the error message for ApiError 4xx with message", () => {
-    const err = new ApiError(404, "Not found");
-    expect(getErrorMessage(err)).toBe("Not found");
+  it("al leer, 403/404/422 se cuentan con el mensaje de su estado, no con el detail", () => {
+    expect(getErrorMessage(new ApiError(403, "Acceso denegado. Scope insuficiente."))).toBe(
+      "No tienes permiso para ver esto.",
+    );
+    expect(getErrorMessage(new ApiError(404, "Not Found"))).toBe("No existe o ya no está disponible.");
+    expect(getErrorMessage(new ApiError(422, "La solicitud contiene datos inválidos."))).toBe(
+      "Algún filtro no es válido; revísalo.",
+    );
+  });
+
+  it("al actuar, el detail de la API explica qué falló de lo pedido", () => {
+    const err = new ApiError(409, "Ya existe una regla con ese nombre.");
+    expect(getErrorMessage(err, "accion")).toBe("Ya existe una regla con ese nombre.");
+    expect(getErrorMessage(new ApiError(404, "Oportunidad no encontrada."), "accion")).toBe(
+      "Oportunidad no encontrada.",
+    );
+  });
+
+  it("otros 4xx enseñan el detail de la API", () => {
+    expect(getErrorMessage(new ApiError(400, "El rango de fechas está invertido."))).toBe(
+      "El rango de fechas está invertido.",
+    );
   });
 
   it("returns fallback for ApiError 4xx without message", () => {
@@ -51,9 +72,10 @@ describe("getErrorMessage", () => {
     expect(getErrorMessage(err)).toBe("No se pudo completar la solicitud.");
   });
 
-  it("returns 'Sin conexión' for Failed to fetch error", () => {
-    const err = new Error("Failed to fetch");
-    expect(getErrorMessage(err)).toBe("Sin conexión con el servidor.");
+  it("un fallo de red, en cualquier motor, es «Sin conexión»", () => {
+    for (const mensaje of ["Failed to fetch", "NetworkError when attempting to fetch resource.", "Load failed"]) {
+      expect(getErrorMessage(new Error(mensaje))).toBe("Sin conexión. Vuelve a intentarlo.");
+    }
   });
 
   it("returns the message for a generic Error", () => {
@@ -64,6 +86,42 @@ describe("getErrorMessage", () => {
     expect(getErrorMessage("string error")).toBe("Ocurrió un error inesperado.");
     expect(getErrorMessage(null)).toBe("Ocurrió un error inesperado.");
     expect(getErrorMessage(42)).toBe("Ocurrió un error inesperado.");
+  });
+});
+
+describe("detalleTecnico", () => {
+  it("un ApiError da estado, método y ruta, y el detail original si no es el visible", () => {
+    const err = new ApiError(404, "Recurso no encontrado.", undefined, "GET /api/v1/empresas/8");
+    expect(detalleTecnico(err)).toBe("404 · GET /api/v1/empresas/8 — Recurso no encontrado.");
+  });
+
+  it("no repite el mensaje que ya se enseña", () => {
+    const err = new ApiError(400, "El rango de fechas está invertido.", undefined, "GET /api/v1/detalle");
+    expect(detalleTecnico(err)).toBe("400 · GET /api/v1/detalle");
+  });
+
+  it("sin ruta, al menos el estado", () => {
+    expect(detalleTecnico(new ApiError(500, "Internal"))).toBe("500 — Internal");
+  });
+
+  it("un fallo de red conserva el mensaje del navegador", () => {
+    expect(detalleTecnico(new Error("Failed to fetch"))).toBe("Failed to fetch");
+  });
+
+  it("un Error cuyo mensaje ya es el visible no añade nada", () => {
+    expect(detalleTecnico(new Error("backend caído"))).toBeUndefined();
+    expect(detalleTecnico(null)).toBeUndefined();
+  });
+});
+
+describe("META_ERROR_EN_LINEA", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("silencia el toast: el error ya se pinta en el panel", () => {
+    notifyQueryError(new Error("oops"), META_ERROR_EN_LINEA);
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
 

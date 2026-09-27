@@ -77,3 +77,16 @@ describe("SkeletonCard", () => {
     expect(container.firstChild).toHaveClass("custom-card");
   });
 });
+
+describe("Skeleton — manija estable", () => {
+  it("lleva data-slot=skeleton además del barrido", () => {
+    const { container } = render(<Skeleton />);
+    expect(container.firstChild).toHaveAttribute("data-slot", "skeleton");
+    expect(container.firstChild).toHaveClass("tf-shimmer");
+  });
+
+  it("SkeletonCard tiene la forma de un Panel", () => {
+    const { container } = render(<SkeletonCard />);
+    expect(container.firstChild).toHaveClass("rounded-xl", "bg-card");
+  });
+});

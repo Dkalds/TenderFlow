@@ -15,11 +15,14 @@
  * exacto en el mensaje, sea cual sea el HSL nuevo. Se comprueban los dos temas
  * (`:root` y `.dark`) porque la regresión puede entrar por cualquiera.
  *
- * La superficie de referencia es `--card`: estos tokens se pintan como texto
- * (`text-warning`, `style={{ color: bandColor(...) }}`) dentro de tarjetas,
- * tablas y listas, nunca como relleno sólido — no hay un solo `bg-warning`
- * opaco en el árbol. El fondo de página se comprueba aparte para la rampa
- * corregida, por ser la superficie opaca más oscura del tema claro.
+ * La superficie de referencia es `--card`: estos tokens se pintan sobre todo
+ * como texto (`text-warning`, `style={{ color: bandColor(...) }}`) dentro de
+ * tarjetas, tablas y listas. Como relleno sólido solo van en puntos y barras de
+ * estado (`bg-success`, `bg-warning`…), que son objeto gráfico: les basta el
+ * 3:1 de 1.4.11, y lo cumplen de sobra al pasar el 4,5:1 del texto. Detrás de
+ * texto solo van como tinte, y eso se mide aparte («texto sobre su propio
+ * tinte»). El fondo de página se comprueba aparte para la rampa corregida, por
+ * ser la superficie opaca más oscura del tema claro.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";

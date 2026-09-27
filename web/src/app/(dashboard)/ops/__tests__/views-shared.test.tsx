@@ -144,8 +144,8 @@ afterEach(() => {
 
 describe("guarda de administrador de las vistas de Ops", () => {
   const GUARDED: [string, React.ComponentType, string][] = [
-    ["administracion", AdministracionView, "Gestión de DLQ"],
-    ["feature-flags", FeatureFlagsView, "Toggles de funcionalidades"],
+    ["administracion", AdministracionView, "Cola de errores"],
+    ["feature-flags", FeatureFlagsView, "Activa o desactiva funcionalidades"],
     ["active-learning", ActiveLearningView, "Cola de etiquetado"],
   ];
 

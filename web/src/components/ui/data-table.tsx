@@ -50,6 +50,40 @@ export const dataTableFeatures = tableFeatures({
 
 export type DataTableFeatures = typeof dataTableFeatures;
 
+/**
+ * Flecha de orden de una cabecera de columna. `aria-hidden`: el estado de orden
+ * lo anuncia el `aria-sort` del `<th>`, no el icono.
+ *
+ * La columna activa enseña su sentido (`ArrowUp`/`ArrowDown`) en el color del
+ * texto. Las demás no enseñan nada en reposo —«↑↓» detrás de las once
+ * cabeceras a la vez era ruido— y la doble flecha aparece al pasar el ratón o
+ * al enfocar la cabecera (la cabecera lleva `group`). En táctil, sin hover, se
+ * queda visible y tenue: si no, nada diría que la columna se puede ordenar.
+ */
+export function IndicadorOrden({
+  direccion,
+  className,
+}: {
+  direccion: "asc" | "desc" | false | null | undefined;
+  className?: string;
+}) {
+  if (direccion === "asc") {
+    return <ArrowUp className={cn("h-3 w-3 flex-none text-foreground", className)} aria-hidden="true" />;
+  }
+  if (direccion === "desc") {
+    return <ArrowDown className={cn("h-3 w-3 flex-none text-foreground", className)} aria-hidden="true" />;
+  }
+  return (
+    <ArrowUpDown
+      className={cn(
+        "h-3 w-3 flex-none opacity-0 transition-opacity group-hover:opacity-60 group-focus-visible:opacity-60 pointer-coarse:opacity-40",
+        className,
+      )}
+      aria-hidden="true"
+    />
+  );
+}
+
 /** `ColumnDef` ya ligado a las features de esta tabla. */
 export type DataTableColumnDef<TData extends RowData, TValue = unknown> =
   ColumnDef<DataTableFeatures, TData, TValue>;
@@ -126,7 +160,7 @@ export function DataTable<TData extends RowData, TValue>({
                     }
                     className={cn(
                       canSort &&
-                        "cursor-pointer select-none hover:text-foreground transition-colors",
+                        "group cursor-pointer select-none transition-colors hover:text-foreground",
                     )}
                     onClick={header.column.getToggleSortingHandler()}
                     onKeyDown={(e) => {
@@ -143,14 +177,7 @@ export function DataTable<TData extends RowData, TValue>({
                           header.column.columnDef.header,
                           header.getContext(),
                         )}
-                        {canSort &&
-                          (sorted === "asc" ? (
-                            <ArrowUp className="h-3.5 w-3.5 shrink-0 text-primary" />
-                          ) : sorted === "desc" ? (
-                            <ArrowDown className="h-3.5 w-3.5 shrink-0 text-primary" />
-                          ) : (
-                            <ArrowUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                          ))}
+                        {canSort && <IndicadorOrden direccion={sorted} />}
                       </span>
                     )}
                   </TableHead>
@@ -174,7 +201,7 @@ export function DataTable<TData extends RowData, TValue>({
             <TableRow>
               <TableCell
                 colSpan={columns.length}
-                className="py-8 text-center text-muted-foreground"
+                className="py-8 text-center text-tf-meta text-muted-foreground"
               >
                 {emptyMessage}
               </TableCell>

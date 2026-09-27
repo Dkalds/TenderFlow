@@ -4,16 +4,18 @@
  * Lista de usuarios de la instancia y cambio de rol.
  *
  * `fetchWithAuth` propaga el `detail` que manda la API, y el de la guarda de
- * admin viene en inglés («Admin required.»). Esta lista lo pinta tal cual en
- * pantalla, así que el 403 —y solo el 403— se reescribe al mensaje castellano
- * que la vista ya mostraba. El resto de códigos conservan el `detail` real, que
- * es más informativo que el `Error <status>` de antes.
+ * admin viene en inglés («Admin required.»). El panel pinta el fallo con
+ * `PanelError` (mensaje humano por estado y el `detail` plegado en «Detalle
+ * técnico»), así que el 403 —y solo el 403— se reescribe a castellano para que
+ * tampoco el detalle lo diga en inglés. El resto de códigos conservan el
+ * `detail` real, que es más informativo que el `Error <status>` de antes.
  */
 
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ApiError, apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys } from "@/lib/query-keys";
 
 interface ApiUser {
@@ -39,7 +41,7 @@ async function cargarComoAdmin<T>(url: string): Promise<T> {
     return await fetchWithAuth<T>(url);
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {
-      throw new ApiError(403, "Requiere permisos de admin");
+      throw new ApiError(403, "Hace falta ser administrador");
     }
     throw error;
   }
@@ -52,9 +54,12 @@ export function useAdminUsers() {
     data: usersData,
     isLoading,
     error,
+    refetch,
   } = useQuery<ApiUser[]>({
     queryKey: adminKeys.users,
     queryFn: () => cargarComoAdmin<ApiUser[]>("/api/v1/admin/users"),
+    // El fallo se pinta en el panel: sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const users = useMemo<UserRow[]>(
@@ -79,8 +84,8 @@ export function useAdminUsers() {
       queryClient.invalidateQueries({ queryKey: adminKeys.users });
       toast.success("Rol actualizado");
     },
-    onError: () => toast.error("No se pudo cambiar el rol (¿eres admin?)"),
+    onError: () => toast.error("No se pudo cambiar el rol. ¿Tienes permisos de administrador?"),
   });
 
-  return { users, isLoading, error, toggleAdmin };
+  return { users, isLoading, error, refetch: () => void refetch(), toggleAdmin };
 }

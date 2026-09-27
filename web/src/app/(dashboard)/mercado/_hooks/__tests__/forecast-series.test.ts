@@ -52,7 +52,7 @@ describe("splitForecastSeries", () => {
 describe("modeloLabel", () => {
   it("traduce los dos motores conocidos", () => {
     expect(modeloLabel("holt-winters")).toBe("Holt-Winters (suavizado exponencial)");
-    expect(modeloLabel("regresion-lineal")).toBe("regresión lineal (fallback)");
+    expect(modeloLabel("regresion-lineal")).toBe("regresión lineal (de respaldo)");
   });
 
   it("devuelve el crudo si el backend añade otro motor", () => {

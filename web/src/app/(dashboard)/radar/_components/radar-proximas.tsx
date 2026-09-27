@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CalendarClock } from "lucide-react";
+import { PanelEmpty, PanelError, ROTULO_DATO } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { estadoLabel } from "@/lib/estados";
 import { formatDate, cn } from "@/lib/utils";
@@ -40,38 +41,29 @@ import { shortEur } from "./radar-shared";
 /** La fecha prevista, o el hueco declarado. Nunca una estimación. */
 function FechaPrevista({ iso }: { iso: string | null | undefined }) {
   if (!iso) {
-    return (
-      <span className="tf-tnum font-mono text-[11px] font-medium text-muted-foreground">
-        Sin fecha
-      </span>
-    );
+    return <span className="text-tf-micro font-medium text-muted-foreground">Sin fecha</span>;
   }
-  return (
-    <span className="tf-tnum font-mono text-[11.5px] font-semibold text-foreground">
-      {formatDate(iso)}
-    </span>
-  );
+  return <span className="tf-tnum text-tf-meta font-semibold text-foreground">{formatDate(iso)}</span>;
 }
 
 function ProximaFila({ item }: { item: RadarProxima }) {
   const codigo = item.estado?.trim() ?? "";
-  const meta = [item.id_externo, item.cpv ? `CPV ${item.cpv}` : null, item.ccaa]
-    .filter(Boolean)
-    .join(" · ");
+  // La mono solo para los códigos (expediente y CPV); la comunidad es una palabra.
+  const codigos = [item.id_externo, item.cpv ? `CPV ${item.cpv}` : null].filter(Boolean).join(" · ");
 
   return (
     <Link
       href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
       className={cn(
-        "flex flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-110 ease-out",
-        "hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none",
-        "md:grid md:grid-cols-[132px_1fr_176px_108px_120px] md:items-center md:gap-3 md:px-3.5 md:py-2.5",
+        "flex flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors md:px-3.5",
+        "hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none active:bg-primary/10 active:duration-0",
+        "lg:grid lg:grid-cols-[132px_1fr_176px_108px_120px] lg:items-center lg:gap-3 lg:px-3.5 lg:py-2.5",
       )}
     >
       <span className="flex flex-none items-center gap-1.5">
-        <span className="rounded-[5px] border border-[hsl(var(--info)/0.26)] bg-[hsl(var(--info)/0.1)] px-1.5 py-0.5 text-[11px] font-medium text-[hsl(var(--info))]">
+        <Badge variant="info" size="sm">
           {estadoLabel(codigo) || "—"}
-        </span>
+        </Badge>
         {/* La etiqueta dice el nombre; el glosario dice si puedes hacer algo
             con ella. «Consulta preliminar» no le explica a nadie que
             participar no compromete a ofertar. */}
@@ -79,26 +71,23 @@ function ProximaFila({ item }: { item: RadarProxima }) {
       </span>
 
       <span className="min-w-0">
-        <span className="block line-clamp-2 text-[13px] font-medium leading-[1.35] tracking-[-0.005em] md:line-clamp-1">
+        <span className="block line-clamp-2 text-tf-body font-medium lg:line-clamp-1">
           {item.titulo ?? "—"}
         </span>
-        <span className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground">
-          {meta}
+        <span className="mt-0.5 block truncate text-tf-micro text-muted-foreground">
+          <span className="font-mono">{codigos}</span>
+          {item.ccaa ? <> · {item.ccaa}</> : null}
         </span>
       </span>
 
-      <span className="min-w-0 truncate text-xs leading-[1.35] text-muted-foreground">
+      <span className="min-w-0 truncate text-tf-meta text-muted-foreground">
         {item.organo_contratacion ?? "—"}
       </span>
 
-      <span className="tf-tnum font-mono text-[13px] font-semibold md:text-right">
-        {shortEur(item.importe)}
-      </span>
+      <span className="tf-tnum text-tf-body font-semibold lg:text-right">{shortEur(item.importe)}</span>
 
-      <span className="flex items-baseline gap-1.5 md:flex-col md:items-end md:gap-0.5">
-        <span className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">
-          Prevista
-        </span>
+      <span className="flex items-baseline gap-1.5 lg:flex-col lg:items-end lg:gap-0.5">
+        <span className={ROTULO_DATO}>Prevista</span>
         <FechaPrevista iso={item.fecha_prevista} />
       </span>
     </Link>
@@ -117,33 +106,33 @@ function ProximasCabecera({ consola }: { consola: RadarProximasConsola }) {
   const { total, conFechaPrevista, truncadas, estados } = consola;
 
   return (
-    <div className="flex-none border-b border-border/60 bg-card/40 px-3 py-2 md:px-3.5">
-      <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+    <div className="flex-none border-b border-border/60 bg-card px-3 py-2 md:px-3.5">
+      <p className="text-tf-meta text-muted-foreground">
         Compras que el órgano ya ha anunciado y que <strong className="font-semibold">todavía
-        no han salido a licitación</strong>. Aquí no hay plazo al que presentarse; sirve para
+        no han salido a licitación</strong>: aún no hay plazo al que presentarse, pero sirve para
         llegar antes al pliego.
-        {/* Los estados que definen la bandeja los declara el servidor y se
-            enseñan tal cual llegan: la pantalla no da por hecho cuáles son. Si
-            el universo cambia en backend, esta línea cambia con él. */}
+        {/* Los estados que definen la bandeja llegan con la respuesta y se
+            enseñan tal cual: la pantalla no da por hecho cuáles son, y si
+            cambian, esta línea cambia con ellos. */}
         {estados.length > 0 && (
           <>
             {" "}
-            Universo:{" "}
+            Estados:{" "}
             <span className="font-medium text-foreground">
               {estados.map((codigo) => estadoLabel(codigo)).join(" · ")}
             </span>
-            , abiertos.
+            , solo abiertos.
           </>
         )}
       </p>
       {total != null && total > 0 && conFechaPrevista != null && (
-        <p className="mt-1 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-tf-micro text-muted-foreground">
           <span className="tf-tnum">
             {conFechaPrevista} de {total}
           </span>{" "}
-          traen fecha prevista publicada; el resto se listan como «sin fecha». La fecha es la de
-          inicio previsto del contrato — la única que la fuente publica antes del pliego, y no se
-          estima cuando falta.
+          traen fecha prevista publicada; el resto salen «sin fecha». Es la fecha de inicio
+          previsto del contrato, la única que se publica antes del pliego, y no se estima cuando
+          falta.
           {truncadas > 0 && <> Se muestran las {total - truncadas} primeras.</>}
         </p>
       )}
@@ -162,43 +151,11 @@ function ProximasCabecera({ consola }: { consola: RadarProximasConsola }) {
  */
 function ProximasVacia() {
   return (
-    <div className="px-5 py-20 text-center">
-      <CalendarClock className="mx-auto mb-3 h-6 w-6 text-muted-foreground" aria-hidden="true" />
-      <div className="mb-1.5 font-display text-[15px] font-semibold leading-[1.3]">
-        Ninguna compra anunciada por ahora
-      </div>
-      <p className="mx-auto max-w-[460px] text-[13px] leading-[1.55] text-muted-foreground">
-        Publicar un anuncio previo es potestativo para el órgano, y la consulta preliminar apenas
-        entra por la sindicación de PLACSP — llega sobre todo de las plataformas autonómicas. Que
-        esta bandeja esté vacía es lo habitual, no un fallo de carga.
-      </p>
-    </div>
-  );
-}
-
-function ProximasError({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  return (
-    <div
-      role="alert"
-      className="mx-auto my-10 max-w-[560px] rounded-xl border border-destructive/40 bg-destructive/8 px-6 py-5"
-    >
-      <div className="mb-2 flex items-center gap-2.5">
-        <span className="grid h-5.5 w-5.5 flex-none place-items-center rounded-full border border-destructive/50 text-[12px] font-semibold text-destructive">
-          !
-        </span>
-        <span className="text-[13.5px] font-semibold text-destructive">
-          Error al cargar las próximas
-        </span>
-      </div>
-      <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">{error.message}</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="tf-pressable h-[30px] rounded-md border border-border/80 px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        ↻ Reintentar
-      </button>
-    </div>
+    <PanelEmpty
+      className="py-16"
+      title="Ninguna compra anunciada por ahora"
+      hint="Anunciar una compra antes del pliego es voluntario para el órgano, y las consultas preliminares llegan sobre todo de las plataformas autonómicas. Que esta bandeja esté vacía es lo habitual, no un fallo de carga."
+    />
   );
 }
 
@@ -210,7 +167,12 @@ export function RadarProximas({ consola }: { consola: RadarProximasConsola }) {
       <ProximasCabecera consola={consola} />
       <div data-slot="radar-proximas" className="relative min-h-0 flex-1 overflow-y-auto">
         {error ? (
-          <ProximasError error={error as Error} onRetry={refetch} />
+          <PanelError
+            title="No se pudieron cargar las próximas"
+            error={error}
+            onRetry={refetch}
+            className="mx-auto my-10 max-w-[560px]"
+          />
         ) : isLoading ? (
           <RadarEsqueleto barras={5} />
         ) : items.length === 0 ? (

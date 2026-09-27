@@ -16,7 +16,7 @@ import {
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { TreemapContent } from "@/components/charts/treemap-content";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -105,7 +105,7 @@ export function TiposPieChart({ data }: { data: TipoPieEntry[] }) {
               name?: string;
               percent?: number;
             }) =>
-              `${name ?? ""} (${((percent ?? 0) * 100).toFixed(1)}%)`
+              `${name ?? ""} (${formatPercent((percent ?? 0) * 100)})`
             }
             labelLine={{ strokeWidth: 1 }}
           >

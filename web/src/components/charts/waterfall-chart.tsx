@@ -10,8 +10,8 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { cn } from "@/lib/utils";
-import { formatNumber } from "@/lib/utils";
+import { PanelEmpty } from "@/components/console/panel";
+import { cn, formatNumber } from "@/lib/utils";
 import { ChartTooltip } from "@/components/charts/chart-tooltip";
 
 interface WaterfallPoint {
@@ -24,6 +24,8 @@ interface WaterfallChartProps {
   data: WaterfallPoint[];
   height?: number;
   className?: string;
+  /** Qué mide el gráfico, para el lector de pantalla (no el tipo de gráfico). */
+  "aria-label"?: string;
 }
 
 interface TransformedPoint {
@@ -34,7 +36,12 @@ interface TransformedPoint {
   isPositive: boolean;
 }
 
-export function WaterfallChart({ data, height = 300, className }: WaterfallChartProps) {
+export function WaterfallChart({
+  data,
+  height = 300,
+  className,
+  "aria-label": ariaLabel = "Gráfico de cascada",
+}: WaterfallChartProps) {
   const transformed = React.useMemo<TransformedPoint[]>(() => {
     if (!data || data.length === 0) return [];
     return data.map((d) => {
@@ -50,11 +57,11 @@ export function WaterfallChart({ data, height = 300, className }: WaterfallChart
   }, [data]);
 
   if (!data || data.length === 0) {
-    return <p className="text-sm text-muted-foreground text-center py-8">Sin datos disponibles</p>;
+    return <PanelEmpty size="sm" hint="No hay meses que comparar con el ámbito actual." />;
   }
 
   return (
-    <div role="img" aria-label="Gráfico de cascada" className={cn("w-full", className)}>
+    <div role="img" aria-label={ariaLabel} className={cn("w-full", className)}>
       <ResponsiveContainer width="100%" height={height}>
         <BarChart accessibilityLayer data={transformed} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <XAxis dataKey="period" tick={{ fontSize: 12 }} />

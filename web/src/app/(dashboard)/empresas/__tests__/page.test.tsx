@@ -186,14 +186,14 @@ describe("Empresas", () => {
     expect(screen.queryByText("Ninguna empresa coincide con la búsqueda")).not.toBeInTheDocument();
   });
 
-  it("la ficha es de identidad: UTEs, aliases y una línea de actividad", async () => {
+  it("la ficha es de identidad: UTEs, alias y una línea de actividad", async () => {
     render(<EmpresasPage />, { wrapper: Wrapper });
     await screen.findByRole("heading", { name: "Indra Sistemas, S.A." });
 
     expect(screen.getByText("Participa en UTEs")).toBeInTheDocument();
-    expect(screen.getByText(/Aliases vistos en fuente \(2\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Alias vistos en fuente \(2\)/)).toBeInTheDocument();
     expect(await screen.findByText(/148 contratos/)).toBeInTheDocument();
-    expect(screen.getByText(/activa 2019-03 → 2026-07/)).toBeInTheDocument();
+    expect(screen.getByText(/activa mar 2019 → jul 2026/)).toBeInTheDocument();
     // El análisis tiene una sola ficha, la de Competencia: aquí no se repite
     // con otras cifras.
     for (const pieza of ["Trayectoria por año", "Por familia CPV", "Órganos principales", "Contratos adjudicados"]) {

@@ -1,10 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { Building2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
-import { EmptyState } from "@/components/ui/empty-state";
+import { EnlaceIr, PanelEmpty } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
@@ -16,7 +15,7 @@ import { NuevaCuentaDialog } from "./_components/nueva-cuenta-dialog";
 /**
  * F1.5 — Cuentas objetivo.
  *
- * `Mercado → Órganos` era un corte analítico sin acción: enseñaba cuánto
+ * `Mercado › Órganos` era un corte analítico sin acción: enseñaba cuánto
  * licita un órgano y no dejaba hacer nada al respecto. Este espacio añade lo
  * que faltaba: seguir a un cliente —con todos sus órganos de contratación— y
  * ver qué pasa con él y qué tiene el equipo con él, en la lista y en la ficha
@@ -41,7 +40,6 @@ export default function CuentasPage() {
   // `useState` el deep-link que documenta `space-views.ts` aterrizaba
   // siempre en la primera vista y la URL nunca cambiaba.
   const { view: vista, setView: setVista } = useSpaceView(SPACE);
-  const router = useRouter();
   const puedeEscribir = usePuedeEscribir();
   const soloLectura = useRolActivo() === "viewer";
   const [creando, setCreando] = React.useState(false);
@@ -64,17 +62,15 @@ export default function CuentasPage() {
         // Un enlace y no una copia de la vista: el ranking de órganos, con sus
         // filtros de ámbito, es de Mercado. Hasta 2026-09-25 esto era un vacío
         // que remitía a Mercado sin forma de llegar.
-        <EmptyState
-          icon={Building2}
-          title="El análisis de órganos vive en Mercado"
-          hint="Mercado → Órganos es el corte analítico completo. Sigue un órgano desde su panel y aparecerá aquí, en las cuentas de tu organización."
-          actionLabel="Abrir Mercado → Órganos"
-          onAction={() => router.push("/mercado?vista=organos")}
+        <PanelEmpty
+          title="El análisis de órganos está en Mercado"
+          hint="Mercado › Órganos tiene el ranking completo con los filtros del ámbito. Sigue un órgano desde su panel y aparecerá aquí, en las cuentas de tu organización."
+          action={<EnlaceIr href="/mercado?vista=organos">Abrir Mercado › Órganos</EnlaceIr>}
         />
       ) : (
         <div className="flex flex-col gap-4">
           {soloLectura && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-tf-meta text-muted-foreground">
               Tu rol en esta organización es de solo lectura: ves las cuentas del equipo, pero no
               puedes crearlas ni cambiarlas.
             </p>

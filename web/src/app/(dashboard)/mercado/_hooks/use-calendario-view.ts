@@ -22,6 +22,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import type { Schemas, TrendPoint } from "@/lib/api-types";
 
 interface TrendsResponse {
@@ -203,14 +204,15 @@ export function useCalendarioView() {
   const vencimientos = useFilteredQuery<VencimientosResponse>(
     ["analytics", "calendario-vencimientos", String(selectedYear)],
     "/api/v1/analytics/calendario/vencimientos",
-    { staleTime: 5 * 60 * 1000, enabled: modo === "vencimientos" },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 5 * 60 * 1000, enabled: modo === "vencimientos", meta: META_ERROR_EN_LINEA },
     { desde: `${selectedYear}-01-01`, hasta: `${selectedYear}-12-31` },
   );
 
   const publicaciones = useFilteredQuery<TrendsResponse>(
     ["analytics", "trends", "day"],
     "/api/v1/analytics/trends?group_by=day",
-    { staleTime: 5 * 60 * 1000, enabled: modo === "publicaciones" },
+    { staleTime: 5 * 60 * 1000, enabled: modo === "publicaciones", meta: META_ERROR_EN_LINEA },
   );
 
   const activa = modo === "vencimientos" ? vencimientos : publicaciones;
@@ -262,5 +264,7 @@ export function useCalendarioView() {
     vencimientos: vencimientos.data,
     isLoading: activa.isLoading,
     error: activa.error,
+    /** Reintenta la consulta de la métrica activa (el «Reintentar» del error). */
+    refetch: () => void activa.refetch(),
   };
 }

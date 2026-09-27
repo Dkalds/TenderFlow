@@ -5,7 +5,8 @@
  * dashboard en 13 espacios navegables. Este módulo es la única fuente de
  * verdad de esa consolidación y gobierna tres cosas a la vez:
  *
- * 1. El rail de 56px (`components/layout/console-rail.tsx`).
+ * 1. El rail (`components/layout/console-rail.tsx`): icono y nombre de cada
+ *    espacio, en castellano y sin abreviar.
  * 2. Qué rutas visten el chrome nuevo (rail + barra de ámbito) y cuáles siguen
  *    con el chrome heredado (breadcrumb + pestañas + barra de filtros clásica),
  *    mientras se migran por lotes.
@@ -16,22 +17,8 @@
  * ruta absorbida se convierte en `?vista=` del espacio, jamás desaparece.
  */
 
-import {
-  Binoculars,
-  Briefcase,
-  Building2,
-  type LucideIcon,
-  LayoutDashboard,
-  ListChecks,
-  RadioTower,
-  Settings2,
-  ShieldCheck,
-  Sparkles,
-  Star,
-  Table2,
-  Trophy,
-  Users,
-} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { ICONO_ESPACIO } from "@/lib/iconos";
 import { BUILT_SPACE_ROUTES, SPACE_VIEWS, type SpaceView } from "@/lib/space-views";
 
 /** Agrupación visual del rail. Separadores, no navegación. */
@@ -40,12 +27,28 @@ export type ConsoleGroup = "trabajo" | "analisis" | "personal" | "organizacion";
 export interface ConsoleSpace {
   /** Identificador estable, usado en tests y telemetría. */
   key: string;
+  /**
+   * Nombre del espacio. Es también la palabra que el rail pinta bajo el icono:
+   * sin códigos de tres letras que hubiera que aprenderse (RES, MKT, OPX…), y
+   * el nombre accesible del enlace es el mismo texto que se ve (WCAG 2.5.3).
+   */
   label: string;
-  /** Etiqueta de 3 letras bajo el icono del rail (mono, 8px). */
-  short: string;
   /** Ruta raíz del espacio, sin barra inicial. */
   slug: string;
+  /**
+   * El trabajo que resuelve el espacio, en una frase y en lenguaje de quien lo
+   * usa: no cómo está hecha la pantalla («tabla con inspector», «nueve
+   * cortes»). Sale junto al título del espacio, en el tooltip del rail y en la
+   * paleta ⌘K.
+   */
   description: string;
+  /**
+   * Palabras con las que la paleta ⌘K encuentra también el espacio, sin
+   * pintarse en ningún sitio: los términos de oficio («CPV», «scoring»,
+   * «alias») que la descripción ya no nombra.
+   */
+  terminos?: string;
+  /** De `ICONO_ESPACIO` (`lib/iconos.ts`): uno distinto por espacio. */
   icon: LucideIcon;
   group: ConsoleGroup;
   /**
@@ -77,67 +80,65 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
   {
     key: "resumen",
     label: "Resumen",
-    short: "RES",
     slug: "resumen",
-    description: "La entrada: qué ha cambiado y qué exige atención hoy.",
-    icon: LayoutDashboard,
+    description: "Qué tienes que hacer hoy y qué ha cambiado desde tu última visita.",
+    icon: ICONO_ESPACIO.resumen,
     group: "trabajo",
   },
   {
     key: "radar",
     label: "Radar",
-    short: "RAD",
     slug: "radar",
-    description: "Consola de decisión diaria: seguir, descartar, abrir.",
-    icon: RadioTower,
+    description: "Licitaciones que encajan con tu perfil, para decidir cuáles seguir.",
+    terminos: "puntuación score scoring señales",
+    icon: ICONO_ESPACIO.radar,
     group: "trabajo",
   },
   {
     key: "detalle",
     label: "Detalle",
-    short: "DET",
     slug: "detalle",
-    description: "Tabla de trabajo con inspector en el mismo plano.",
-    icon: Table2,
+    description: "Todas las licitaciones, con filtros y exportación.",
+    terminos: "listado tabla buscar expediente excel csv",
+    icon: ICONO_ESPACIO.detalle,
     group: "trabajo",
   },
   {
     key: "oportunidades",
     label: "Oportunidades",
-    short: "OPS",
     slug: "oportunidades",
-    description: "Espacio de ejecución: tablero por fases, cartera y rendimiento.",
-    icon: Briefcase,
+    description: "Las licitaciones que persigue tu equipo, de la decisión al contrato.",
+    terminos: "pipeline tablero fases cartera rendimiento go no-go pursuits",
+    icon: ICONO_ESPACIO.oportunidades,
     group: "trabajo",
     views: SPACE_VIEWS.oportunidades,
   },
   {
     key: "mercado",
     label: "Mercado",
-    short: "MKT",
     slug: "mercado",
-    description: "Nueve cortes del mercado sobre una superficie, renovaciones incluidas.",
-    icon: Binoculars,
+    description: "Cuánto se licita, dónde y quién compra.",
+    terminos: "CPV geografía tecnologías calendario renovaciones tendencias",
+    icon: ICONO_ESPACIO.mercado,
     group: "analisis",
     views: SPACE_VIEWS.mercado,
   },
   {
     key: "cuentas",
     label: "Cuentas",
-    short: "CTA",
     slug: "cuentas",
-    description: "Órganos que el equipo trabaja como cuenta, con acción y no solo análisis.",
-    icon: Building2,
+    description: "Los órganos que tu equipo trabaja como clientes.",
+    terminos: "clientes organismos seguidas",
+    icon: ICONO_ESPACIO.cuentas,
     group: "trabajo",
     views: SPACE_VIEWS.cuentas,
   },
   {
     key: "direccion",
     label: "Dirección",
-    short: "DIR",
     slug: "direccion",
-    description: "Resultado y actividad del equipo. Solo owner y admin.",
-    icon: LayoutDashboard,
+    description: "Resultados y actividad del equipo.",
+    icon: ICONO_ESPACIO.direccion,
     group: "organizacion",
     // `admin` aquí es un filtro de **navegación**: la autorización real la
     // impone `GET /pursuits/direccion`, que devuelve 403 a un `member` aunque
@@ -149,20 +150,20 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
   {
     key: "competencia",
     label: "Competencia",
-    short: "CMP",
     slug: "competencia",
-    description: "Tabla de competidores y nueve cortes con pestañas.",
-    icon: Trophy,
+    description: "Quién gana, cuánto y contra quién.",
+    terminos: "competidores UTE adjudicatarios",
+    icon: ICONO_ESPACIO.competencia,
     group: "analisis",
     views: SPACE_VIEWS.competencia,
   },
   {
     key: "investigador",
     label: "Investigador",
-    short: "IA",
     slug: "investigador",
-    description: "Búsqueda semántica y conversación sobre el corpus.",
-    icon: Sparkles,
+    description: "Pregunta o busca dentro de las licitaciones y sus pliegos.",
+    terminos: "IA copiloto semántica preguntar",
+    icon: ICONO_ESPACIO.investigador,
     group: "analisis",
   },
   {
@@ -172,29 +173,29 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     // `/pipeline-alertas` y la serie histórica de `espacio_abierto`.
     key: "mi-pipeline",
     label: "Agenda",
-    short: "AGE",
     slug: "mi-pipeline",
-    description: "Tus compromisos, ordenados por lo que vence.",
-    icon: ListChecks,
+    description: "Lo que vence pronto y lo que tienes pendiente.",
+    terminos: "plazos agenda vencimientos",
+    icon: ICONO_ESPACIO["mi-pipeline"],
     group: "personal",
     views: SPACE_VIEWS["mi-pipeline"],
   },
   {
     key: "mi-watchlist",
     label: "Mi Watchlist",
-    short: "WLS",
     slug: "mi-watchlist",
-    description: "Reglas de seguimiento por CPV, keyword e importe.",
-    icon: Star,
+    description: "Avisos de las licitaciones que cumplen tus reglas.",
+    terminos: "reglas alertas vigilancia CPV keywords",
+    icon: ICONO_ESPACIO["mi-watchlist"],
     group: "personal",
   },
   {
     key: "mi-perfil",
     label: "Mi perfil",
-    short: "PRF",
     slug: "mi-perfil",
-    description: "Pesos de scoring, keywords y rango de importe.",
-    icon: Settings2,
+    description: "Qué te interesa y cuánto pesa cada criterio.",
+    terminos: "scoring pesos keywords afinidad importe",
+    icon: ICONO_ESPACIO["mi-perfil"],
     group: "personal",
   },
   {
@@ -204,39 +205,39 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     // cuenta» vivía en `/mi-cuenta`, que este espacio absorbe.
     key: "ajustes",
     label: "Ajustes",
-    short: "AJU",
     slug: "ajustes",
-    description: "Sesiones, claves de API, notificaciones y tus datos.",
-    icon: ShieldCheck,
+    description: "Tus sesiones, claves de API, avisos y datos de cuenta.",
+    terminos: "API keys webhooks notificaciones cuenta",
+    icon: ICONO_ESPACIO.ajustes,
     group: "personal",
     views: SPACE_VIEWS.ajustes,
   },
   {
     key: "empresas",
     label: "Empresas",
-    short: "EMP",
     slug: "empresas",
-    description: "Maestro canónico, alias y cola de revisión.",
-    icon: Building2,
+    description: "Fichas de empresa y alias por revisar.",
+    terminos: "maestro NIF alias revisión",
+    icon: ICONO_ESPACIO.empresas,
     group: "organizacion",
     views: SPACE_VIEWS.empresas,
   },
   {
     key: "equipo",
     label: "Equipo",
-    short: "EQU",
     slug: "equipo",
-    description: "Organizaciones, miembros y matriz de permisos.",
-    icon: Users,
+    description: "Quién está en tu organización y qué puede hacer.",
+    terminos: "miembros roles permisos invitaciones",
+    icon: ICONO_ESPACIO.equipo,
     group: "organizacion",
   },
   {
     key: "ops",
     label: "Ops y Admin",
-    short: "OPX",
     slug: "ops",
-    description: "Observabilidad, calidad del dato y administración.",
-    icon: ShieldCheck,
+    description: "Estado del sistema, calidad de los datos y administración.",
+    terminos: "observabilidad feature flags webhooks administración",
+    icon: ICONO_ESPACIO.ops,
     group: "organizacion",
     visibility: "admin",
     views: SPACE_VIEWS.ops,

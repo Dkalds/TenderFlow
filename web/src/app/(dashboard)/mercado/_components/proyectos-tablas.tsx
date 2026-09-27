@@ -8,103 +8,117 @@
  * `onSort`: las otras dos llegan ya ordenadas por el llamante.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+import { Panel, PanelTitle } from "@/components/console/panel";
+import { IndicadorOrden } from "@/components/ui/data-table";
 import { Pista } from "@/components/ui/pista";
-import { formatCurrency, formatNumber } from "@/lib/utils";
-import { ArrowUpDown } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  CABECERA_COLUMNA,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 
 import type { Schemas } from "@/lib/api-types";
 import type { ModSortKey, ModuloConMedia, TipoProyectoRow } from "../_hooks/use-proyectos-modulos-view";
-
-const TH = "pb-2 pr-4 font-medium text-muted-foreground";
 
 function FilasCargando({ rows = 5 }: { rows?: number }) {
   return (
     <div className="space-y-2">
       {Array.from({ length: rows }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full" />
+        <Skeleton key={i} className="h-9 w-full" />
       ))}
     </div>
   );
 }
 
+/** Fila de «no hay nada» dentro de una tabla. */
+function FilaVacia({ columnas, children }: { columnas: number; children: React.ReactNode }) {
+  return (
+    <TableRow>
+      <TableCell colSpan={columnas} className="py-8 text-center text-muted-foreground">
+        {children}
+      </TableCell>
+    </TableRow>
+  );
+}
+
 const COLUMNAS_MODULO: [ModSortKey, string][] = [
   ["modulo", "Módulo"],
-  ["count", "Cantidad"],
-  ["importe", "Importe Total"],
-  ["importe_medio", "Importe Medio"],
+  ["count", "Licitaciones"],
+  ["importe", "Importe total"],
+  ["importe_medio", "Importe medio"],
 ];
 
 export function ProyectosModulosTabla({
   filas,
   isLoading,
+  sortKey,
+  sortDir,
   onSort,
 }: {
   filas: ModuloConMedia[];
   isLoading: boolean;
+  /** Columna y sentido del orden activo: la cabecera los anuncia (`aria-sort`). */
+  sortKey: ModSortKey;
+  sortDir: "asc" | "desc";
   onSort: (key: ModSortKey) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Importe Medio por Módulo SAP</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <FilasCargando />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  {COLUMNAS_MODULO.map(([key, label]) => (
-                    <th
-                      key={key}
-                      className={`${TH} ${key !== "modulo" ? "text-right" : ""}`}
+    <Panel>
+      <PanelTitle title="Importe medio por módulo SAP" />
+      {isLoading ? (
+        <FilasCargando />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {COLUMNAS_MODULO.map(([key, label]) => {
+                const activa = sortKey === key;
+                return (
+                  <TableHead
+                    key={key}
+                    aria-sort={activa ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                    className={cn(key !== "modulo" && "text-right")}
+                  >
+                    {/* La versal va en el botón: el navegador no se la hereda. */}
+                    <button
+                      type="button"
+                      onClick={() => onSort(key)}
+                      className={cn(
+                        CABECERA_COLUMNA,
+                        "group inline-flex items-center gap-1 transition-colors hover:text-foreground",
+                        activa && "text-foreground",
+                      )}
                     >
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto p-0 font-medium text-muted-foreground hover:text-foreground"
-                        onClick={() => onSort(key)}
-                      >
-                        {label}
-                        <ArrowUpDown className="ml-1 h-3 w-3" />
-                      </Button>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((item, idx) => (
-                  <tr key={idx} className="border-b border-border/50 hover:bg-muted/50">
-                    <td className="py-2 pr-4 font-medium">{item.modulo}</td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {formatNumber(item.count)}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {formatCurrency(item.importe)}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {formatCurrency(item.importe_medio)}
-                    </td>
-                  </tr>
-                ))}
-                {filas.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-8 text-center text-muted-foreground">
-                      Sin datos
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                      {label}
+                      <IndicadorOrden direccion={activa ? sortDir : null} />
+                    </button>
+                  </TableHead>
+                );
+              })}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filas.map((item, idx) => (
+              <TableRow key={idx}>
+                <TableCell className="font-medium">{item.modulo}</TableCell>
+                <TableCell numeric>{formatNumber(item.count)}</TableCell>
+                <TableCell numeric>{formatCurrency(item.importe)}</TableCell>
+                <TableCell numeric>{formatCurrency(item.importe_medio)}</TableCell>
+              </TableRow>
+            ))}
+            {filas.length === 0 && (
+              <FilaVacia columnas={4}>Ninguna licitación del ámbito actual menciona un módulo SAP.</FilaVacia>
+            )}
+          </TableBody>
+        </Table>
+      )}
+    </Panel>
   );
 }
 
@@ -116,50 +130,38 @@ export function ProyectosTiposTabla({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Tipos de Proyecto</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <FilasCargando />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className={TH}>Tipo</th>
-                  <th className={`${TH} text-right`}>Cantidad</th>
-                  <th className="pb-2 font-medium text-muted-foreground text-right">Importe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...tipos]
-                  .sort((a, b) => b.count - a.count)
-                  .map((item, idx) => (
-                    <tr key={idx} className="border-b border-border/50 hover:bg-muted/50">
-                      <td className="py-2 pr-4 font-medium">{item.tipo}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">
-                        {formatNumber(item.count)}
-                      </td>
-                      <td className="py-2 text-right tabular-nums">
-                        {formatCurrency(item.importe)}
-                      </td>
-                    </tr>
-                  ))}
-                {tipos.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-8 text-center text-muted-foreground">
-                      Sin datos
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Tipos de proyecto" />
+      {isLoading ? (
+        <FilasCargando />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Tipo</TableHead>
+              <TableHead className="text-right">Licitaciones</TableHead>
+              <TableHead className="text-right">Importe</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {[...tipos]
+              .sort((a, b) => b.count - a.count)
+              .map((item, idx) => (
+                <TableRow key={idx}>
+                  <TableCell className="font-medium">{item.tipo}</TableCell>
+                  <TableCell numeric>{formatNumber(item.count)}</TableCell>
+                  <TableCell numeric>{formatCurrency(item.importe)}</TableCell>
+                </TableRow>
+              ))}
+            {tipos.length === 0 && (
+              <FilaVacia columnas={3}>
+                Ninguna licitación del ámbito actual tiene tipo de proyecto identificado.
+              </FilaVacia>
+            )}
+          </TableBody>
+        </Table>
+      )}
+    </Panel>
   );
 }
 
@@ -171,51 +173,37 @@ export function ProyectosCpvTabla({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Top códigos CPV</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <FilasCargando />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className={TH}>CPV</th>
-                  <th className={`${TH} text-right`}>Licitaciones</th>
-                  <th className="pb-2 text-right font-medium text-muted-foreground">Importe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((item) => (
-                  <tr key={item.cpv} className="border-b border-border/50 hover:bg-muted/50">
-                    <td className="py-2 pr-4">
-                      <Pista contenido={item.cpv_desc}>
-                        <span className="block max-w-md truncate">{item.cpv_desc}</span>
-                      </Pista>
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {formatNumber(item.count)}
-                    </td>
-                    <td className="py-2 text-right tabular-nums">
-                      {formatCurrency(item.importe)}
-                    </td>
-                  </tr>
-                ))}
-                {filas.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-8 text-center text-muted-foreground">
-                      Sin datos
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Códigos CPV con más licitaciones" />
+      {isLoading ? (
+        <FilasCargando />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>CPV</TableHead>
+              <TableHead className="text-right">Licitaciones</TableHead>
+              <TableHead className="text-right">Importe</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filas.map((item) => (
+              <TableRow key={item.cpv}>
+                <TableCell>
+                  <Pista contenido={item.cpv_desc}>
+                    <span className="block max-w-md truncate">{item.cpv_desc}</span>
+                  </Pista>
+                </TableCell>
+                <TableCell numeric>{formatNumber(item.count)}</TableCell>
+                <TableCell numeric>{formatCurrency(item.importe)}</TableCell>
+              </TableRow>
+            ))}
+            {filas.length === 0 && (
+              <FilaVacia columnas={3}>Ningún CPV con licitaciones en el ámbito actual.</FilaVacia>
+            )}
+          </TableBody>
+        </Table>
+      )}
+    </Panel>
   );
 }

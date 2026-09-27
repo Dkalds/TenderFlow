@@ -13,11 +13,15 @@
  * servidor no respondió" frente a "el servidor respondió que no".
  */
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
 
 /** Meta flags recognized by the global query/mutation feedback handlers. */
 export interface QueryFeedbackMeta extends Record<string, unknown> {
-  /** Suppress the automatic error toast for this query/mutation. */
+  /**
+   * No lanzar el toast de error. **Obligatorio en toda consulta cuyo error se
+   * pinta en línea** (`PanelError`): un fallo es un solo aviso, y si el panel
+   * ya lo dice, el toast lo repite. Usa `META_ERROR_EN_LINEA`.
+   */
   silent?: boolean;
   /** Headline for the error toast (e.g. "No se pudo guardar el filtro"). */
   errorTitle?: string;
@@ -25,20 +29,73 @@ export interface QueryFeedbackMeta extends Record<string, unknown> {
   successMessage?: string;
 }
 
-/** Human-friendly message for any thrown error. */
-export function getErrorMessage(error: unknown): string {
+/**
+ * `meta` de una consulta cuyo error se pinta en línea con `PanelError`:
+ * `useQuery({ …, meta: META_ERROR_EN_LINEA })`. Un fallo, un aviso. El toast
+ * global queda para mutaciones y para fallos sin superficie donde pintarse.
+ */
+export const META_ERROR_EN_LINEA = { silent: true } as const satisfies QueryFeedbackMeta;
+
+/**
+ * Estados con mensaje propio al leer datos. El `detail` que manda la API para
+ * ellos es técnico o genérico («Recurso no encontrado.», «La solicitud
+ * contiene datos inválidos.»); lo que sirve es decir qué pasa en la pantalla.
+ * El `detail` original no se pierde: va a `detalleTecnico`.
+ */
+const ESTADOS_CON_MENSAJE_PROPIO = new Set([403, 404, 422]);
+
+/**
+ * Mensaje humano, en castellano, para cualquier error lanzado.
+ *
+ * `uso` distingue leer de actuar. Al leer (`"consulta"`, por defecto) un 403,
+ * 404 o 422 se cuentan con el mensaje de su estado; al actuar (`"accion"`, lo
+ * que usan los avisos de mutación) se enseña el `detail` de la API, que ahí
+ * explica qué falló de lo que el usuario acaba de pedir («Ya existe una regla
+ * con ese nombre»).
+ *
+ * Nunca devuelve la ruta ni el código: eso es `detalleTecnico`.
+ */
+export function getErrorMessage(error: unknown, uso: "consulta" | "accion" = "consulta"): string {
   if (error instanceof ApiError) {
     // La consulta cancelada por tiempo no es «inténtalo en unos segundos»: su
     // `detail` dice lo que sí sirve, que es acotar los filtros.
     if (error.tipo === TIPO_CONSULTA_CANCELADA && error.message) return error.message;
-    if (error.status >= 500) return "Error del servidor. Inténtalo de nuevo en unos segundos.";
-    return error.message || "No se pudo completar la solicitud.";
+    if (error.status >= 500) return mensajePorEstado(error.status);
+    if (uso === "consulta" && ESTADOS_CON_MENSAJE_PROPIO.has(error.status)) return mensajePorEstado(error.status);
+    return error.message || mensajePorEstado(error.status);
   }
   if (error instanceof Error) {
-    if (error.message === "Failed to fetch") return "Sin conexión con el servidor.";
-    return error.message;
+    if (esFalloDeRed(error)) return MENSAJE_SIN_CONEXION;
+    return error.message || "Ocurrió un error inesperado.";
   }
   return "Ocurrió un error inesperado.";
+}
+
+/**
+ * Lo que va al «Detalle técnico» plegado de `PanelError`: estado, método y
+ * ruta, y el texto original de la API si no es el que ya se enseña. Es lo que
+ * sirve para reportarlo a soporte, y por eso no va en el texto visible.
+ * Devuelve `undefined` si no hay nada que añadir al mensaje humano.
+ */
+export function detalleTecnico(error: unknown): string | undefined {
+  if (error instanceof ApiError) {
+    const partes = [String(error.status), error.ruta].filter(Boolean).join(" · ");
+    const original = error.message && error.message !== getErrorMessage(error) ? error.message : null;
+    return original ? `${partes} — ${original}` : partes;
+  }
+  if (error instanceof Error) {
+    const humano = getErrorMessage(error);
+    if (error.message && error.message !== humano) return error.message;
+    return undefined;
+  }
+  if (typeof error === "string" && error.trim() !== "") return error;
+  return undefined;
+}
+
+/** ¿El navegador reporta que la petición ni llegó a tener respuesta? */
+function esFalloDeRed(error: Error): boolean {
+  const mensaje = error.message.toLowerCase();
+  return MENSAJES_DE_RED.some((fragmento) => mensaje.includes(fragmento));
 }
 
 /** Errors already resolved by a redirect (auth expiry) — no toast needed. */
@@ -213,7 +270,7 @@ export function notifyQueryError(error: unknown, meta?: QueryFeedbackMeta): void
 export function notifyMutationError(error: unknown, meta?: QueryFeedbackMeta): void {
   if (meta?.silent || isAuthError(error)) return;
   toast.error(meta?.errorTitle ?? "La acción no se pudo completar", {
-    description: getErrorMessage(error),
+    description: getErrorMessage(error, "accion"),
   });
 }
 

@@ -7,16 +7,13 @@ import { cn } from "@/lib/utils"
 const DropdownMenuPortal = DropdownMenuPrimitive.Portal
 
 /**
- * Thin wrapper around the Radix Root. The hand-rolled implementation this
- * replaces rendered a positioning `<div>` here and accepted a `className`
- * for it; Radix's Root renders no DOM (positioning is handled by the Popper
- * inside `DropdownMenuContent`), so `className` is accepted for backwards
- * compatibility with existing call sites but has no effect.
+ * Envoltorio fino del `Root` de Radix, que no pinta DOM (la posición la lleva
+ * el Popper de `DropdownMenuContent`). No acepta `className`: la versión hecha
+ * a mano a la que sustituyó sí lo aceptaba, y durante un mes se le pasaron
+ * selectores (`[&>button]:h-7`) contra un DOM que ya no existía. Ahora
+ * TypeScript lo rechaza en vez de callarlo: el estilo va en el disparador.
  */
-function DropdownMenu({
-  className: _className,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root> & { className?: string }) {
+function DropdownMenu(props: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root>) {
   return <DropdownMenuPrimitive.Root {...props} />
 }
 

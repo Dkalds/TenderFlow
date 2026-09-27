@@ -28,6 +28,7 @@
 import * as React from "react";
 import { FlaskConical } from "lucide-react";
 
+import { Aviso, Panel, PanelEmpty } from "@/components/console/panel";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { registrarEvento } from "@/lib/analytics";
 
@@ -60,31 +61,28 @@ export function VistaExperimental({
 
   if (!enabled) {
     return (
-      <div
-        role="status"
-        className="rounded-xl border border-border/60 bg-card/40 p-6 text-center"
-      >
-        <FlaskConical className="mx-auto h-5 w-5 text-muted-foreground" aria-hidden="true" />
-        <p className="mt-2 text-sm font-medium">Vista desactivada</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Esta vista experimental está apagada para tu organización. Se enciende
-          desde Ops → Feature flags (<span className="font-mono">{flag}</span>).
-        </p>
-      </div>
+      <Panel>
+        <PanelEmpty
+          icon={FlaskConical}
+          title="Vista desactivada"
+          hint={
+            <>
+              Esta vista experimental está apagada para tu organización. Se enciende
+              en Ops › Feature flags (<code className="font-mono">{flag}</code>).
+            </>
+          }
+        />
+      </Panel>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
-        <FlaskConical className="mt-0.5 h-3.5 w-3.5 flex-none text-warning" aria-hidden="true" />
-        <div className="min-w-0">
-          <p className="text-[12px] font-semibold text-warning">Vista experimental</p>
-          <p className="text-[11.5px] text-muted-foreground">
-            {descripcion} En validación: puede cambiar o desaparecer.
-          </p>
-        </div>
-      </div>
+      {/* `note` y no `status`: es una marca fija de la vista, no un cambio de
+          estado que el lector tenga que anunciar al montarse. */}
+      <Aviso tone="warning" icon={FlaskConical} role="note" title="Vista experimental">
+        {descripcion} En validación: puede cambiar o desaparecer.
+      </Aviso>
       {children}
     </div>
   );

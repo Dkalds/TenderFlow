@@ -8,16 +8,18 @@
  * campo en vez de volver del backend como 422 en un toast.
  */
 
-import { Loader2, UserPlus } from "lucide-react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { AYUDA_CAMPO, Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAddOrganizationMember } from "@/hooks/use-organization";
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { invitacion } from "@/lib/forms/esquemas";
+import { getErrorMessage } from "@/lib/query-feedback";
+import { cn } from "@/lib/utils";
 
 const CAMPO_CORREO = "member-email";
 
@@ -40,7 +42,7 @@ export function AnadirMiembroForm({ organizationId }: { organizationId: number }
       toast.success(invitado ? "Invitación enviada por correo" : "Miembro añadido");
       form.reset();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo invitar a esa persona.");
+      toast.error(getErrorMessage(error, "accion"));
     }
   });
 
@@ -48,10 +50,9 @@ export function AnadirMiembroForm({ organizationId }: { organizationId: number }
     <form
       onSubmit={submit}
       noValidate
-      className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-border p-3"
+      className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border/60 p-3"
     >
-      <label className="min-w-56 flex-1 space-y-1.5 text-sm font-medium" htmlFor={CAMPO_CORREO}>
-        Correo de la persona
+      <Field label="Correo de la persona" htmlFor={CAMPO_CORREO} className="min-w-56 flex-1">
         <Input
           id={CAMPO_CORREO}
           type="email"
@@ -59,9 +60,8 @@ export function AnadirMiembroForm({ organizationId }: { organizationId: number }
           {...form.register("email")}
           {...ariaCampo(CAMPO_CORREO, error)}
         />
-      </label>
-      <label className="space-y-1.5 text-sm font-medium" htmlFor="member-role">
-        Rol
+      </Field>
+      <Field label="Rol" htmlFor="member-role">
         <Controller
           control={form.control}
           name="role"
@@ -78,20 +78,20 @@ export function AnadirMiembroForm({ organizationId }: { organizationId: number }
             </Select>
           )}
         />
-      </label>
-      <Button type="submit" size="sm" disabled={addMember.isPending || vacio}>
-        {addMember.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-        Añadir
+      </Field>
+      <Button type="submit" disabled={addMember.isPending || vacio}>
+        {addMember.isPending ? "Añadiendo…" : "Añadir"}
       </Button>
-      {/* Fuera del `<label>` para no entrar en el nombre accesible del campo. */}
+      {/* Fuera del `Field` para que el botón siga alineado con el campo; el
+          enlace accesible lo pone `ariaCampo`. */}
       {error && (
         <div className="w-full">
           <CampoError campoId={CAMPO_CORREO} mensaje={error} />
         </div>
       )}
-      <p className="w-full text-xs text-muted-foreground">
-        Si la persona ya tiene cuenta, entra al equipo en el acto. Si no, recibe una invitación por
-        correo que caduca a los 7 días.
+      <p className={cn("w-full", AYUDA_CAMPO)}>
+        Si la persona ya tiene cuenta, entra al equipo en el acto. Si no, recibe una invitación por correo que
+        caduca a los 7 días.
       </p>
     </form>
   );

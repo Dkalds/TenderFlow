@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { EscenarioPuntos, SimulacionPrecio } from "@/lib/api-types";
 import { simuladorKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type { EscenarioPuntos, SimulacionPrecio };
 
@@ -38,5 +39,6 @@ export function useSimuladorPrecio(
     // Mientras se teclea otra baja, la tabla anterior sigue visible en vez de
     // parpadear a un esqueleto en cada pulsación.
     placeholderData: (anterior) => anterior,
+    meta: META_ERROR_EN_LINEA,
   });
 }

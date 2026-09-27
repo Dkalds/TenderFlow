@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
-import { ChevronDown, ChevronRight, Cpu } from "lucide-react";
+import { ChevronRight, Cpu } from "lucide-react";
+import { SectionTitle } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
 import { tecnologiasKeys } from "@/lib/query-keys";
+import { cn } from "@/lib/utils";
 
 interface EvidenceRef {
   documento_id: number;
@@ -60,34 +63,32 @@ function TecnologiaRow({ item }: { item: TecnologiaDetalle }) {
         aria-expanded={expandable ? expanded : undefined}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="truncate text-sm font-medium">{item.tecnologia}</span>
+          <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="truncate text-tf-body font-medium">{item.tecnologia}</span>
           <div className="flex shrink-0 gap-1">
             {origenes(item).map((o) => (
-              <span
-                key={o}
-                className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-              >
+              <Badge key={o} size="sm">
                 {o}
-              </span>
+              </Badge>
             ))}
           </div>
         </div>
-        {expandable &&
-          (expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          ))}
+        {expandable && (
+          // `rotate-90` escribe `rotate`, no `transform`: la transición nombra esa.
+          <ChevronRight
+            aria-hidden="true"
+            className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-[rotate]", expanded && "rotate-90")}
+          />
+        )}
       </button>
       {expanded && (
-        <div className="mt-2 space-y-1.5 pl-6 text-xs text-muted-foreground">
+        <div className="mt-2 space-y-1.5 pl-6 text-tf-meta text-muted-foreground">
           {item.pliego_keywords_terms && item.pliego_keywords_terms.length > 0 && (
             <p>Detectada en pliego por palabras clave: {item.pliego_keywords_terms.join(", ")}</p>
           )}
           {item.pliego_llm_evidence?.map((ev) => (
             <p key={`${ev.documento_id}-${ev.page_number}-${ev.quote}`}>
-              Detectada en pliego (pág. {ev.page_number}): &ldquo;{ev.quote}&rdquo;
+              Detectada en pliego (pág. {ev.page_number}): «{ev.quote}»
             </p>
           ))}
         </div>
@@ -117,7 +118,7 @@ export function TecnologiasBlock({ licitacionId }: { licitacionId: string }) {
 
   return (
     <div className="mt-6 space-y-3">
-      <h3 className="text-sm font-medium text-muted-foreground">Tecnologías</h3>
+      <SectionTitle as="h3">Tecnologías</SectionTitle>
       <ul className="space-y-2">
         {items.map((item) => (
           <TecnologiaRow key={item.tecnologia} item={item} />

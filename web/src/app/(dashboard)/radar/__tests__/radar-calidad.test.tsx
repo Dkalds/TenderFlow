@@ -110,7 +110,7 @@ describe("franja de calidad del Radar", () => {
     const boton = screen.getByRole("button", { name: /Ver todas las bandas/ });
     expect(boton).toHaveAttribute("aria-expanded", "false");
     // La ventana y la cobertura viven en el resumen: plegado, no se leen.
-    expect(screen.getByText(/Ventana 2026-06-01 → 2026-08-31/)).not.toBeVisible();
+    expect(screen.getByText(/Ventana 1 jun 2026 → 31 ago 2026/)).not.toBeVisible();
 
     fireEvent.click(boton);
 
@@ -118,7 +118,7 @@ describe("franja de calidad del Radar", () => {
       "aria-expanded",
       "true",
     );
-    expect(screen.getByText(/Ventana 2026-06-01 → 2026-08-31/)).toBeVisible();
+    expect(screen.getByText(/Ventana 1 jun 2026 → 31 ago 2026/)).toBeVisible();
     expect(screen.getByText(/21 de 40 oportunidades guardan la banda/)).toBeVisible();
   });
 });

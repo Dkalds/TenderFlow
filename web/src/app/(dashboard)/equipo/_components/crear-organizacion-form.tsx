@@ -1,22 +1,25 @@
 "use client";
 
 /**
- * Alta de un espacio compartido. Salió de `page.tsx` en el troceado de S7.
+ * Alta de una organización compartida. Salió de `page.tsx` en el troceado de
+ * S7.
  *
  * Validado con el esquema de `OrganizationCreate` (S7.2): el nombre en blanco
  * sigue sin poder enviarse —el botón se apaga igual que antes— y el que pasa
  * de 200 caracteres se explica debajo del campo en vez de volver como 422.
  */
 
-import { Loader2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useCreateOrganization } from "@/hooks/use-organization";
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { organizacion } from "@/lib/forms/esquemas";
+import { getErrorMessage } from "@/lib/query-feedback";
 
 const CAMPO = "new-org-name";
 
@@ -32,22 +35,22 @@ export function CrearOrganizacionForm() {
       toast.success("Organización creada");
       form.reset();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo crear la organización");
+      toast.error(getErrorMessage(error, "accion"));
     }
   });
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-wrap items-end gap-2">
-      <label className="min-w-56 flex-1 space-y-1.5 text-sm font-medium" htmlFor={CAMPO}>
-        Nombre del espacio
-        <Input id={CAMPO} placeholder="Ej. Equipo Comercial" {...form.register("name")} {...ariaCampo(CAMPO, error)} />
-      </label>
-      <Button type="submit" size="sm" disabled={createOrganization.isPending || vacio}>
-        {createOrganization.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-        Crear espacio
+      <Field label="Nombre de la organización" htmlFor={CAMPO} className="min-w-56 flex-1">
+        <Input id={CAMPO} placeholder="p. ej. Equipo comercial" {...form.register("name")} {...ariaCampo(CAMPO, error)} />
+      </Field>
+      <Button type="submit" disabled={createOrganization.isPending || vacio}>
+        <Plus aria-hidden="true" />
+        {createOrganization.isPending ? "Creando…" : "Crear organización"}
       </Button>
-      {/* Fuera del `<label>`: dentro, el error pasaría a formar parte del
-          nombre accesible del campo. `w-full` lo baja a su propia línea. */}
+      {/* Fuera del `Field`: dentro, el error empujaría el campo y el botón
+          dejaría de alinear con él. `w-full` lo baja a su propia línea; el
+          enlace con el campo lo pone `ariaCampo`. */}
       {error && (
         <div className="w-full">
           <CampoError campoId={CAMPO} mensaje={error} />

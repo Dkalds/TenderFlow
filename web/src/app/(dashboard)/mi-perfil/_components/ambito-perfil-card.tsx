@@ -7,8 +7,9 @@
  * badge de «heredado» dice cuándo lo que se está viendo viene de ahí.
  */
 
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AYUDA_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 
 export function AmbitoPerfilCard({
@@ -21,20 +22,18 @@ export function AmbitoPerfilCard({
   onSharedChange: (checked: boolean) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Ámbito del perfil</CardTitle>
-        <CardDescription>
-          El Radar usa el perfil del ámbito activo. Un perfil compartido sirve como
-          referencia para los miembros que no tengan uno propio.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Panel>
+      <PanelTitle title="Ámbito del perfil" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        El Radar usa el perfil del ámbito activo. Un perfil compartido sirve de referencia a los miembros que no
+        tengan uno propio.
+      </p>
+      <div className="space-y-3">
         {inherited && <Badge variant="secondary">Perfil heredado de la organización</Badge>}
         <div className="flex items-center justify-between gap-4">
           <label htmlFor="profile-visibility" className="space-y-1">
-            <span className="block text-sm font-medium">Compartir con la organización</span>
-            <span className="block text-xs text-muted-foreground">
+            <span className={ETIQUETA_CAMPO}>Compartir con la organización</span>
+            <span className={`block ${AYUDA_CAMPO}`}>
               Los demás miembros podrán usar estos pesos si no han creado un perfil propio.
             </span>
           </label>
@@ -45,7 +44,7 @@ export function AmbitoPerfilCard({
             aria-label="Compartir perfil con la organización"
           />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

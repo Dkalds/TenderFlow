@@ -3,7 +3,7 @@
 /**
  * F4.5 — Actividad del equipo, en Dirección y en Equipo → Actividad.
  *
- * Equipo lo monta para todos los roles: un `member` no entra en Dirección, y
+ * Equipo lo monta para todos los roles: un miembro no entra en Dirección, y
  * el backend ya le quita los eventos de administración, así que el componente
  * no filtra nada por rol.
  *
@@ -19,10 +19,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { History } from "lucide-react";
 
+import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -32,6 +31,7 @@ import {
 } from "@/hooks/use-organization";
 import { apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { pursuitKeys } from "@/lib/query-keys";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils";
 
@@ -59,7 +59,7 @@ export function verboDeEvento(evento: string): string {
 function FilaActividad({ item }: { item: ItemActividad }) {
   return (
     <li className="border-border/60 flex flex-col gap-0.5 border-b py-2.5 last:border-b-0">
-      <p className="text-sm leading-snug">
+      <p className="text-tf-body leading-snug">
         {/* `actor` es null cuando la cuenta se dio de baja: el ledger es
             inmutable y se dice quién fue sin inventar un nombre. */}
         <span className="font-medium">{item.actor ?? "Alguien del equipo"}</span>{" "}
@@ -70,7 +70,7 @@ function FilaActividad({ item }: { item: ItemActividad }) {
       </p>
       {/* La fecha absoluta va visible y no en `title`: el tooltip nativo no
           existe para teclado ni táctil, y «hace 8 días» solo no sitúa el evento. */}
-      <time dateTime={item.cuando} className="text-muted-foreground text-xs">
+      <time dateTime={item.cuando} className="text-muted-foreground text-tf-meta">
         {formatRelativeTime(item.cuando)} · {formatDateTime(item.cuando)}
       </time>
     </li>
@@ -99,6 +99,8 @@ export function ActividadEquipo({ organizationId }: { organizationId: Organizaci
     // La actividad es la del equipo: sin saber de cuál, el feed sale con la de
     // la organización personal y se reemplaza a la vista del usuario.
     enabled: organizacionResuelta(organizationId),
+    // El fallo se pinta en el feed (`PanelError`): sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const items = feed.data?.pages.flatMap((pagina) => pagina.items ?? []) ?? [];
@@ -107,16 +109,15 @@ export function ActividadEquipo({ organizationId }: { organizationId: Organizaci
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-xs">
-          Quién abrió, actualizó y evaluó cada oportunidad del equipo, de lo más reciente a lo más
-          antiguo.
+        <p className="text-muted-foreground text-tf-meta">
+          Quién abrió, actualizó y evaluó cada oportunidad del equipo, de lo más reciente a lo más antiguo.
         </p>
         {activos.length > 1 && (
           <Select
             value={usuario != null ? String(usuario) : TODOS}
             onValueChange={(valor) => setUsuario(valor === TODOS ? null : Number(valor))}
           >
-            <SelectTrigger className="h-8 w-56 text-xs" aria-label="Filtrar por persona">
+            <SelectTrigger className="h-8 w-56 text-tf-meta" aria-label="Filtrar por persona">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -132,16 +133,15 @@ export function ActividadEquipo({ organizationId }: { organizationId: Organizaci
       </div>
 
       {feed.isPending ? (
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-64 w-full rounded-xl" />
       ) : feed.isError ? (
-        <EmptyState
-          icon={History}
+        <PanelError
           title="No se ha podido cargar la actividad"
-          hint={feed.error instanceof Error ? feed.error.message : "Vuelve a intentarlo en unos segundos."}
+          error={feed.error}
+          onRetry={() => void feed.refetch()}
         />
       ) : items.length === 0 ? (
-        <EmptyState
-          icon={History}
+        <PanelEmpty
           title="Sin actividad"
           hint={
             usuario != null
@@ -167,7 +167,7 @@ export function ActividadEquipo({ organizationId }: { organizationId: Organizaci
               {feed.isFetchingNextPage ? "Cargando…" : "Cargar más"}
             </Button>
           ) : (
-            <p className="text-muted-foreground text-xs">No hay actividad anterior.</p>
+            <p className="text-muted-foreground text-tf-meta">No hay actividad anterior.</p>
           )}
         </>
       )}

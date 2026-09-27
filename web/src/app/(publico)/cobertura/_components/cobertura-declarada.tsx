@@ -1,4 +1,5 @@
 import { formatDate, ZONA_ES } from "@/lib/utils";
+import { TITULO_SECCION } from "../../_components/piel-publica";
 import { obtenerCobertura, type EstadoCobertura } from "../_lib/cobertura-api";
 import { ESTADOS, EXCLUSIONES, FUENTES, SIN_INVENTARIO } from "../_lib/copy";
 
@@ -20,9 +21,12 @@ import { ESTADOS, EXCLUSIONES, FUENTES, SIN_INVENTARIO } from "../_lib/copy";
 
 const ORDEN_ESTADOS: readonly EstadoCobertura[] = ["activa", "opcional", "fuera_de_alcance"];
 
-function Badge({ estado }: { estado: EstadoCobertura }) {
+/* Estado de una fuente: una palabra («Activa», «Opcional»), así que va en sans
+ * y con la forma de todo chip de la casa (`rounded-md`). El identificador de la
+ * fuente, que sí es un código, conserva la monoespaciada más abajo. */
+function EstadoFuente({ estado }: { estado: EstadoCobertura }) {
   return (
-    <span className="border-border/70 bg-background text-muted-foreground rounded-full border px-2.5 py-0.5 font-mono text-xs font-medium">
+    <span className="border-border/70 text-muted-foreground text-tf-meta rounded-md border px-2 py-0.5 font-medium">
       {ESTADOS[estado].etiqueta}
     </span>
   );
@@ -36,9 +40,9 @@ export async function CoberturaDeclarada() {
   // página declara el hueco y la primera revalidación con backend lo rellena.
   if (!cobertura) {
     return (
-      <section className="border-border/60 bg-card/40 border-t">
+      <section className="border-border/60 bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
-          <h2 className="font-display text-2xl font-semibold tracking-normal">{FUENTES.titulo}</h2>
+          <h2 className={TITULO_SECCION}>{FUENTES.titulo}</h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">{SIN_INVENTARIO}</p>
         </div>
       </section>
@@ -51,9 +55,9 @@ export async function CoberturaDeclarada() {
 
   return (
     <>
-      <section aria-labelledby="fuentes-declaradas" className="border-border/60 bg-card/40 border-t">
+      <section aria-labelledby="fuentes-declaradas" className="border-border/60 bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
-          <h2 id="fuentes-declaradas" className="font-display text-2xl font-semibold tracking-normal">
+          <h2 id="fuentes-declaradas" className={TITULO_SECCION}>
             {FUENTES.titulo}
           </h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">
@@ -65,7 +69,7 @@ export async function CoberturaDeclarada() {
               <li key={fuente.source_id} className="border-border/60 border-t py-5 first:border-t-0 first:pt-0">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <h3 className="font-display text-base font-semibold tracking-normal">{fuente.nombre}</h3>
-                  <Badge estado={fuente.estado} />
+                  <EstadoFuente estado={fuente.estado} />
                 </div>
                 <p className="text-muted-foreground mt-2 max-w-[68ch] text-sm leading-relaxed">{fuente.alcance}</p>
                 <p className="text-muted-foreground mt-2 text-xs">
@@ -81,7 +85,7 @@ export async function CoberturaDeclarada() {
           <dl className="border-border/60 mt-8 grid gap-2 border-t pt-6 text-xs sm:grid-cols-3">
             {estadosPresentes.map((estado) => (
               <div key={estado}>
-                <dt className="font-mono font-medium">{ESTADOS[estado].etiqueta}</dt>
+                <dt className="font-medium">{ESTADOS[estado].etiqueta}</dt>
                 <dd className="text-muted-foreground mt-1 leading-relaxed">{ESTADOS[estado].glosa}</dd>
               </div>
             ))}
@@ -93,7 +97,7 @@ export async function CoberturaDeclarada() {
 
       <section aria-labelledby="fuera-de-alcance" className="border-border/60 border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
-          <h2 id="fuera-de-alcance" className="font-display text-2xl font-semibold tracking-normal">
+          <h2 id="fuera-de-alcance" className={TITULO_SECCION}>
             {EXCLUSIONES.titulo}
           </h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">

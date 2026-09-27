@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Loader2, MessageSquare, SendHorizontal, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -23,6 +24,7 @@ import {
 } from "@/hooks/use-pursuit-comments";
 import type { Pursuit } from "@/hooks/use-pursuits";
 import { useSession } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { cn, formatDateTime, formatRelativeTime } from "@/lib/utils";
 
 /**
@@ -36,7 +38,7 @@ import { cn, formatDateTime, formatRelativeTime } from "@/lib/utils";
  * salir de `/oportunidades`.
  *
  * Lo que aquí NO se decide: quién puede borrar. Viene por comentario en
- * `can_delete` (autor, o owner/admin del espacio) y el botón solo se pinta
+ * `can_delete` (autor, o propietario/administrador del espacio) y el botón solo se pinta
  * cuando la API lo permite.
  */
 
@@ -69,10 +71,8 @@ function CommentAvatar({ comment }: { comment: PursuitComment }) {
     <span
       aria-hidden="true"
       className={cn(
-        "grid h-7 w-7 flex-none place-items-center rounded-full font-mono text-[10px] font-semibold",
-        anonymous
-          ? "bg-muted-foreground/12 text-muted-foreground"
-          : "bg-primary/12 text-primary",
+        "grid h-7 w-7 flex-none place-items-center rounded-full text-tf-micro font-semibold",
+        anonymous ? "bg-muted-foreground/10 text-muted-foreground" : "bg-primary/10 text-primary",
       )}
     >
       {anonymous ? <UserRound className="h-3.5 w-3.5" /> : initials(authorLabel(comment))}
@@ -101,17 +101,17 @@ function CommentItem({
       <CommentAvatar comment={comment} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="truncate text-[12px] font-semibold">{name}</span>
+          <span className="truncate text-tf-meta font-semibold">{name}</span>
           {mine && (
-            <span className="rounded bg-primary/12 px-1 py-px font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-primary">
-              tú
-            </span>
+            <Badge variant="default" size="sm">
+              Tú
+            </Badge>
           )}
           <Tooltip>
             <TooltipTrigger asChild>
               <time
                 dateTime={comment.created_at}
-                className="text-[10.5px] text-muted-foreground"
+                className="text-tf-micro text-muted-foreground"
               >
                 {formatRelativeTime(comment.created_at)}
               </time>
@@ -125,27 +125,26 @@ function CommentItem({
               onClick={() => setConfirming(true)}
               disabled={deleting}
               aria-label="Borrar comentario"
-              className="tf-pressable grid h-6 w-6 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+              className="tf-pressable grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           )}
         </div>
-        <p className="mt-0.5 whitespace-pre-wrap break-words text-[12.5px] leading-[1.55]">
+        <p className="mt-0.5 whitespace-pre-wrap break-words text-tf-body leading-normal">
           {comment.body}
         </p>
         {confirming && (
           <div
             role="group"
             aria-label="Confirmar borrado"
-            className="mt-1.5 flex items-center gap-1.5 text-[11px]"
+            className="mt-1.5 flex items-center gap-1.5 text-tf-meta"
           >
             <span className="text-muted-foreground">¿Borrar este comentario?</span>
             <Button
               type="button"
               size="sm"
               variant="destructive"
-              className="h-6 px-2 text-[11px]"
               disabled={deleting}
               onClick={() => {
                 setConfirming(false);
@@ -154,13 +153,7 @@ function CommentItem({
             >
               Borrar
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-[11px]"
-              onClick={() => setConfirming(false)}
-            >
+            <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)}>
               Cancelar
             </Button>
           </div>
@@ -189,7 +182,7 @@ function CommentComposer({ pursuitId, onSent }: { pursuitId: number; onSent?: ()
       keyRef.current = newIdempotencyKey();
       onSent?.();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo publicar el comentario");
+      toast.error("No se pudo publicar el comentario", { description: getErrorMessage(error, "accion") });
     }
   };
 
@@ -199,7 +192,7 @@ function CommentComposer({ pursuitId, onSent }: { pursuitId: number; onSent?: ()
         event.preventDefault();
         void send();
       }}
-      className="flex-none border-t border-border/60 bg-background/95 pt-3"
+      className="flex-none border-t border-border/60 pt-3"
     >
       <label className="sr-only" htmlFor={inputId}>
         Escribe un comentario para el equipo
@@ -217,16 +210,16 @@ function CommentComposer({ pursuitId, onSent }: { pursuitId: number; onSent?: ()
         }}
         placeholder="Escribe un comentario para el equipo…"
         aria-invalid={tooLong || undefined}
-        className="min-h-[56px] resize-y text-[12.5px]"
+        className="min-h-[56px] resize-y text-tf-body"
       />
       <div className="mt-2 flex items-center gap-3">
-        <span className="text-[10.5px] text-muted-foreground">
-          Ctrl + Intro para publicar
+        <span className="text-tf-micro text-muted-foreground">
+          <kbd className="font-mono">Ctrl</kbd> + <kbd className="font-mono">Intro</kbd> para publicar
         </span>
         {trimmed.length > COMMENT_MAX_CHARS * 0.8 && (
           <span
             className={cn(
-              "tf-tnum font-mono text-[10.5px]",
+              "tf-tnum text-tf-micro",
               tooLong ? "text-destructive" : "text-muted-foreground",
             )}
           >
@@ -283,7 +276,7 @@ export function PursuitCommentsThread({
     try {
       await remove.mutateAsync(commentId);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo borrar el comentario");
+      toast.error("No se pudo borrar el comentario", { description: getErrorMessage(error, "accion") });
     }
   };
 
@@ -296,22 +289,25 @@ export function PursuitCommentsThread({
       >
         {thread.isPending ? (
           <div className="space-y-3 px-1 py-2" aria-hidden="true">
-            <Skeleton className="h-10 w-3/4 rounded-lg" />
-            <Skeleton className="h-10 w-2/3 rounded-lg" />
-            <Skeleton className="h-10 w-4/5 rounded-lg" />
+            <Skeleton className="h-10 w-3/4 rounded-md" />
+            <Skeleton className="h-10 w-2/3 rounded-md" />
+            <Skeleton className="h-10 w-4/5 rounded-md" />
           </div>
         ) : thread.error ? (
           <PanelError
             title="No se pudo cargar la conversación"
-            detail={(thread.error as Error).message}
+            error={thread.error}
             onRetry={() => void thread.refetch()}
           />
         ) : items.length === 0 ? (
-          <PanelEmpty message="Todavía no hay comentarios. Deja aquí lo que el equipo tiene que saber de esta oportunidad." />
+          <PanelEmpty
+            title="Todavía no hay comentarios"
+            hint="Deja aquí lo que el equipo tiene que saber de esta oportunidad."
+          />
         ) : (
           <>
             {hidden > 0 && (
-              <p className="px-1 pb-1 text-[10.5px] text-muted-foreground">
+              <p className="px-1 pb-1 text-tf-micro text-muted-foreground">
                 Se muestran los {items.length} comentarios más recientes de {thread.data?.total}.
               </p>
             )}
@@ -348,10 +344,10 @@ export function PursuitCommentsSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
         <SheetHeader className="flex-none border-b border-border/60 px-4 pb-3 pt-4 text-left">
-          <SheetTitle className="pr-8 text-[14px] leading-snug text-pretty">
+          <SheetTitle className="pr-8 text-tf-body font-semibold text-pretty">
             {pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`}
           </SheetTitle>
-          <SheetDescription className="text-[11px]">
+          <SheetDescription className="text-tf-meta">
             Conversación del equipo · Referencia{" "}
             <span className="font-mono text-foreground/80">{pursuit.licitacion_id}</span>
           </SheetDescription>
@@ -385,7 +381,7 @@ export function PursuitCommentsButton({ pursuit }: { pursuit: Pursuit }) {
         onClick={() => setOpen(true)}
         aria-label={`Abrir la conversación del equipo (${label})`}
         className={cn(
-          "tf-pressable inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs font-medium transition-colors",
+          "tf-pressable inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-tf-meta font-medium",
           count > 0
             ? "text-primary hover:bg-primary/10"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",

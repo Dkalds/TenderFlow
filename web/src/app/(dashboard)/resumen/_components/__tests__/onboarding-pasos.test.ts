@@ -10,6 +10,7 @@ import {
 } from "@/components/onboarding/pasos";
 import { hayReglaActiva, perfilConfigurado, tienePursuits } from "@/components/onboarding/senales";
 import type { Schemas, WatchlistRuleOut } from "@/lib/api-types";
+import { findConsoleSpace } from "@/lib/console-spaces";
 
 /**
  * La regla que estos tests protegen es una sola, y es la que hace que la banda
@@ -138,5 +139,13 @@ describe("tienePursuits", () => {
   it("usa el total del backend, no la longitud de la página devuelta", () => {
     expect(tienePursuits({ total: 0 })).toBe(false);
     expect(tienePursuits({ total: 1 })).toBe(true);
+  });
+});
+
+describe("PASOS — iconos", () => {
+  it("cada paso lleva el icono que su espacio de destino lleva en el rail", () => {
+    for (const paso of PASOS) {
+      expect(paso.icon, paso.id).toBe(findConsoleSpace(paso.href)?.icon);
+    }
   });
 });

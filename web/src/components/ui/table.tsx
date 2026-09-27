@@ -1,6 +1,19 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+/**
+ * Cabecera de columna de tabla: el único rótulo de la consola que va en
+ * versal. Sans, 11 px, seminegrita, con un tracking corto (0,04em) que abre la
+ * versal lo justo. Es `TableHead`, y lo usan también las tablas hechas a mano
+ * (`<th className={CABECERA_COLUMNA}>`) y las cabeceras de lista que imitan una
+ * tabla. Si la cabecera es un `<button>` (ordenable), la clase va en el botón:
+ * el navegador pone `text-transform: none` a los botones y no la heredan.
+ *
+ * Antes era mono a 9 px con 0,1em, por debajo del suelo de 11 px de la escala.
+ */
+export const CABECERA_COLUMNA =
+  "text-tf-micro font-semibold uppercase tracking-[0.04em] text-muted-foreground"
+
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
@@ -8,10 +21,10 @@ const Table = React.forwardRef<
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
-      // 12.5px, no 14: la tabla de la consola es densa y tabular. Bajar el
-      // cuerpo un punto y medio es lo que mete cuatro filas más en pantalla sin
-      // tocar la legibilidad.
-      className={cn("w-full caption-bottom text-[12.5px]", className)}
+      // 13 px (tf-body), no 14: la tabla de la consola es densa y tabular, y un
+      // punto menos es lo que mete cuatro filas más en pantalla sin tocar la
+      // legibilidad.
+      className={cn("w-full caption-bottom text-tf-body", className)}
       {...props}
     />
   </div>
@@ -60,7 +73,10 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b border-border/30 transition-colors duration-110 hover:bg-primary/[0.05] data-[state=selected]:bg-primary/[0.06]",
+      // Tintes de la escala: /5 al pasar, /10 la fila seleccionada. 110 ms,
+      // solo color: una fila se cruza con el ratón decenas de veces por minuto
+      // (docs/frontend-motion.md).
+      "border-b border-border/30 transition-colors duration-110 hover:bg-primary/5 data-[state=selected]:bg-primary/10",
       className
     )}
     {...props}
@@ -76,8 +92,8 @@ const TableHead = React.forwardRef<
     ref={ref}
     data-slot="table-head"
     className={cn(
-      // Cabecera mono en versalitas, como el resto de rótulos de columna.
-      "h-8 px-2 text-left align-middle font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      "h-8 px-2 text-left align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      CABECERA_COLUMNA,
       className
     )}
     {...props}
@@ -87,8 +103,11 @@ TableHead.displayName = "TableHead"
 
 const TableCell = React.forwardRef<
   HTMLTableCellElement,
-  React.TdHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
+  React.TdHTMLAttributes<HTMLTableCellElement> & {
+    /** Columna de cifras: alineada a la derecha (las cifras ya son tabulares). */
+    numeric?: boolean
+  }
+>(({ className, numeric, ...props }, ref) => (
   <td
     ref={ref}
     data-slot="table-cell"
@@ -97,6 +116,7 @@ const TableCell = React.forwardRef<
       // cambiar de página y se pierde la comparación vertical, que es para lo
       // que existe una tabla.
       "px-2 py-1.5 align-middle tabular-nums [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      numeric && "text-right",
       className
     )}
     {...props}
@@ -110,7 +130,7 @@ const TableCaption = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <caption
     ref={ref}
-    className={cn("mt-4 text-sm text-muted-foreground", className)}
+    className={cn("mt-4 text-tf-meta text-muted-foreground", className)}
     {...props}
   />
 ))

@@ -5,21 +5,24 @@
  * relevancia, extracto con la consulta resaltada e importe.
  */
 
+import Link from "next/link";
+import { Panel } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency, truncate } from "@/lib/utils";
+import { formatCurrency, formatPercent, truncate } from "@/lib/utils";
 import { highlightQuery } from "../_lib/highlight";
 import type { SearchResult } from "../_lib/types";
 
 /**
  * Relevancia en tres tramos. El score es el del backend; los cortes (0.8/0.5)
  * son de presentación y solo agrupan lo que ya se pinta en porcentaje al lado.
+ * Tonos de la casa (antes verde y amarillo crudos, con texto blanco sobre el
+ * amarillo a ~2:1).
  */
 function relevanceBadge(score: number | undefined) {
   if (score == null) return null;
-  if (score >= 0.8) return <Badge className="bg-green-600 text-white hover:bg-green-700">Alta</Badge>;
-  if (score >= 0.5) return <Badge className="bg-yellow-500 text-white hover:bg-yellow-600">Media</Badge>;
-  return <Badge variant="secondary">Baja</Badge>;
+  if (score >= 0.8) return <Badge variant="success">Alta</Badge>;
+  if (score >= 0.5) return <Badge variant="warning">Media</Badge>;
+  return <Badge variant="neutral">Baja</Badge>;
 }
 
 interface Props {
@@ -32,33 +35,30 @@ export function InvestigadorResultCard({ result, query }: Props) {
   const organo = result.organo_contratacion ?? result.organo ?? "";
   const texto = result.descripcion ?? result.description;
   const excerpt = texto ? truncate(texto, 200) : null;
+  const id = result.id_externo ?? result.id ?? result.expediente ?? "";
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-4">
-          <CardTitle className="text-base leading-snug">
-            <a
-              href={`/detalle?lic=${result.id_externo ?? result.id ?? result.expediente ?? ""}`}
-              className="hover:underline"
-            >
-              {result.titulo ?? "Sin título"}
-            </a>
-          </CardTitle>
-          <div className="flex shrink-0 items-center gap-2">
-            {relevanceBadge(result.score)}
-            {result.score != null && <Badge variant="outline">{(result.score * 100).toFixed(1)}%</Badge>}
-          </div>
+    <Panel>
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="min-w-0 text-tf-body font-semibold">
+          <Link href={`/detalle?lic=${encodeURIComponent(String(id))}`} className="hover:underline">
+            {result.titulo ?? "Sin título"}
+          </Link>
+        </h3>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {relevanceBadge(result.score)}
+          {result.score != null && (
+            <Badge variant="outline" className="tf-tnum">
+              {formatPercent(result.score * 100)}
+            </Badge>
+          )}
         </div>
-        {organo && <CardDescription>{organo}</CardDescription>}
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {/* Context excerpt */}
-        {excerpt && <p className="text-muted-foreground text-sm">{highlightQuery(excerpt, query)}</p>}
-        <div className="flex items-center gap-4">
-          {result.importe != null && <Badge variant="secondary">{formatCurrency(result.importe)}</Badge>}
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+      {organo && <p className="mt-0.5 text-tf-meta text-muted-foreground">{organo}</p>}
+      {excerpt && <p className="mt-2 text-tf-body text-muted-foreground">{highlightQuery(excerpt, query)}</p>}
+      {result.importe != null && (
+        <p className="tf-tnum mt-2 text-tf-meta font-medium">{formatCurrency(result.importe)}</p>
+      )}
+    </Panel>
   );
 }

@@ -10,12 +10,13 @@
  * `mercado`, `ops` y `mi-pipeline`.
  *
  * Las dos pestañas no son rutas: el ámbito y las queries en caché sobreviven al
- * cambio de pestaña porque cambiar de pestaña no navega.
+ * cambio de pestaña porque cambiar de pestaña no navega. Son `PanelTabs`, con
+ * el teclado del patrón de pestañas y el cuerpo como su `tabpanel`.
  */
 
+import { PanelTabs, panelDePestana } from "@/components/console/panel";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
 import { EditRuleSheet } from "./_components/edit-rule-sheet";
 import { FavoritosPanel } from "./_components/favoritos-panel";
 import { NuevaReglaCard } from "./_components/nueva-regla-card";
@@ -34,74 +35,47 @@ export default function MiWatchlistPage() {
   return (
     <SpaceShell spaceKey="mi-watchlist">
       <div className="space-y-6">
-        {/* El nombre lo pone la cabecera del espacio; queda la nota que explica
-            de dónde sale el conteo, que no es evidente y sí importa. */}
-        <p className="max-w-[80ch] text-xs text-muted-foreground">
-          Reglas de seguimiento guardadas en tu cuenta: el conteo de coincidencias
-          es real (sobre todo el dataset) y las alertas por frecuencia se envían
-          desde el servidor.
-        </p>
+        {/* Reglas de criterio frente a licitaciones marcadas una a una. */}
+        <PanelTabs tabs={TABS} value={w.tab} onChange={w.setTab} label="Reglas o favoritos" idBase="watchlist" />
 
-        {/* Tabs: reglas de criterio vs. licitaciones individuales marcadas */}
-        <div className="inline-flex rounded-lg border border-border/70 p-1" role="tablist">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={w.tab === t.key}
-              onClick={() => w.setTab(t.key)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                w.tab === t.key
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {w.tab === "favoritos" ? (
-          <FavoritosPanel />
-        ) : (
-          <>
-            <NuevaReglaCard
-              form={w.nueva}
-              ccaaList={w.ccaaList}
-              open={w.formOpen}
-              onToggle={() => w.setFormOpen((o) => !o)}
-            />
-
-            <Separator />
-
-            <ReglasLista
-              rules={w.rules}
-              loading={w.rulesLoading}
-              onUpdate={w.updateRule}
-              onEdit={w.setEditingRule}
-              onDelete={w.deleteRule}
-            />
-
-            <EditRuleSheet
-              key={w.editingRule?.id ?? "none"}
-              rule={w.editingRule}
-              ccaaList={w.ccaaList}
-              tecnologiaList={w.tecnologiaList}
-              onClose={() => w.setEditingRule(null)}
-              onSave={w.saveEdit}
-              saving={w.savingEdit}
-            />
-
-            {w.activeRules.length > 0 && (
-              <ResultadosCombinados
-                combined={w.combined}
-                loading={w.matchesLoading}
+        <div {...panelDePestana("watchlist", w.tab)} className="space-y-6 rounded-md">
+          {w.tab === "favoritos" ? (
+            <FavoritosPanel />
+          ) : (
+            <>
+              <NuevaReglaCard
+                form={w.nueva}
+                ccaaList={w.ccaaList}
+                open={w.formOpen}
+                onToggle={() => w.setFormOpen((o) => !o)}
               />
-            )}
-          </>
-        )}
+
+              <Separator />
+
+              <ReglasLista
+                rules={w.rules}
+                loading={w.rulesLoading}
+                error={w.rulesError}
+                onRetry={w.refetchRules}
+                onUpdate={w.updateRule}
+                onEdit={w.setEditingRule}
+                onDelete={w.deleteRule}
+              />
+
+              <EditRuleSheet
+                key={w.editingRule?.id ?? "none"}
+                rule={w.editingRule}
+                ccaaList={w.ccaaList}
+                tecnologiaList={w.tecnologiaList}
+                onClose={() => w.setEditingRule(null)}
+                onSave={w.saveEdit}
+                saving={w.savingEdit}
+              />
+
+              {w.activeRules.length > 0 && <ResultadosCombinados combined={w.combined} loading={w.matchesLoading} />}
+            </>
+          )}
+        </div>
       </div>
     </SpaceShell>
   );
