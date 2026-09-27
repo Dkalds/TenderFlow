@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Active learning — cola de etiquetado de las muestras con más incertidumbre.
+ * Active learning — cola de etiquetado; por defecto, por desacuerdo entre
+ * reglas, LLM y modelo.
  *
  * Vista compartida por la ruta `/active-learning` y por `?vista=etiquetado` del
  * espacio Ops. La guarda de administrador viaja con la vista (ver la nota en
@@ -36,7 +37,7 @@ function ActiveLearningContent() {
       <div>
         <h1 className="sr-only">Active Learning</h1>
         <p className="text-muted-foreground">
-          Etiquetado de muestras con alta incertidumbre del modelo ML.
+          Revisión humana de si cada licitación es TI y de qué familia.
         </p>
       </div>
 
@@ -45,12 +46,12 @@ function ActiveLearningContent() {
         <CardContent className="pt-4 flex items-start gap-2 text-sm">
           <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
           <span>
-            Etiquetado humano de licitaciones en la zona de incertidumbre del
-            modelo ML para mejorar la precisión del clasificador. Las
-            oportunidades se seleccionan mediante muestreo por incertidumbre
-            (uncertainty sampling). Selecciona la tecnología principal haciendo
-            click en el chip; usa shift-click para marcar tecnologías
-            secundarias.
+            Por defecto la cola pone delante las licitaciones en las que
+            reglas, LLM y modelo no coinciden (desacuerdo), con el motivo y la
+            propuesta del LLM, que se acepta de un clic; también puedes
+            muestrear por incertidumbre del modelo o al azar. Para etiquetar a
+            mano, selecciona la tecnología principal haciendo click en el chip;
+            usa shift-click para marcar tecnologías secundarias.
           </span>
         </CardContent>
       </Card>

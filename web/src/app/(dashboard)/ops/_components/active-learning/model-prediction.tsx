@@ -8,7 +8,7 @@
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatDate } from "@/lib/utils";
-import type { ModelVersionInfo, QueueItem, TechModel } from "../../_hooks/use-active-learning";
+import type { ModelVersionInfo, QueueItem, TechModel } from "../../_lib/active-learning";
 
 function ConfianzaBinaria({ prob }: { prob: number }) {
   return (

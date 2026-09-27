@@ -8,7 +8,7 @@
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { QueueItem } from "../../_hooks/use-active-learning";
+import type { QueueItem } from "../../_lib/active-learning";
 
 export function QueueItemHeader({
   item,

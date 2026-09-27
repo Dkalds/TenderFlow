@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { cn, formatDate, formatDateTime, formatNumber, formatPercent } from "@/lib/utils";
 import type { FeedbackStats } from "@/hooks/use-feedback";
-import type { HeadlineMetric, ModelVersionInfo } from "../../_hooks/use-active-learning";
+import type { HeadlineMetric, ModelVersionInfo } from "../../_lib/active-learning";
 
 export function ModelInfoCard({
   stats,

@@ -8,73 +8,25 @@
  * componentes de `_components/active-learning/` solo pintan lo que este hook
  * devuelve. La selección de tecnologías es por expediente: un `Record` indexado
  * por `id_externo`, no un estado por tarjeta, porque la confirmación manda
- * principal y secundarias juntas.
+ * principal y secundarias juntas. Las formas (ítem, modelo, estrategia) viven
+ * en `_lib/active-learning.ts`.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { feedbackKeys } from "@/lib/query-keys";
 import { useFeedbackStats, type FeedbackStats } from "@/hooks/use-feedback";
-
-export interface TechModel {
-  tech_scores: Record<string, number>;
-  tech_predicted: string[];
-  tech_principal: string | null;
-  tech_max_proba: number;
-  tech_thresholds: Record<string, number>;
-}
-
-export interface QueueItem {
-  id_externo: string;
-  titulo?: string;
-  descripcion?: string;
-  cpv?: string | null;
-  importe?: number | null;
-  organo?: string | null;
-  ccaa?: string | null;
-  fecha_publicacion?: string | null;
-  url_origen?: string | null;
-  confidence?: number;
-  uncertainty?: number;
-  tecnologia?: string | null;
-  model?: TechModel | null;
-  [key: string]: unknown;
-}
-
-interface QueueResponse {
-  items?: QueueItem[];
-  total?: number;
-}
-
-export interface ModelVersionInfo {
-  version: number;
-  trained_at: string | null;
-  metrics: Record<string, number>;
-  trained_on_n_feedbacks?: number | null;
-}
-
-export interface ModelInfo {
-  active: ModelVersionInfo | null;
-  feedbacks_since_train: number;
-  history: { version: number; trained_at: string | null; metrics: Record<string, number> }[];
-}
-
-export type Strategy = "uncertainty" | "random";
-
-/** Métrica destacada del modelo activo, en el orden de preferencia histórico. */
-export interface HeadlineMetric {
-  label: string;
-  value: number;
-}
-
-function headlineMetric(metrics: Record<string, number>): HeadlineMetric | null {
-  for (const key of ["pr_auc", "f1", "accuracy", "precision", "recall"]) {
-    if (typeof metrics[key] === "number") return { label: key, value: metrics[key] };
-  }
-  return null;
-}
+import {
+  headlineMetric,
+  type HeadlineMetric,
+  type ModelInfo,
+  type ModelVersionInfo,
+  type QueueItem,
+  type QueueResponse,
+  type Strategy,
+} from "../_lib/active-learning";
 
 export interface ActiveLearning {
   items: QueueItem[];
@@ -106,6 +58,9 @@ export interface ActiveLearning {
   clearSelection: (expediente: string) => void;
   confirmLabel: (expediente: string) => void;
   markNotRelevant: (expediente: string) => void;
+  /** Envía la propuesta del LLM tal cual; no hace nada si no dijo si es TI. */
+  acceptLlmProposal: (expediente: string) => void;
+  markTiWithoutFamily: (expediente: string) => void;
   skip: (expediente: string) => void;
 }
 
@@ -115,7 +70,7 @@ export function useActiveLearning(): ActiveLearning {
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [expandedDesc, setExpandedDesc] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [strategy, setStrategy] = useState<Strategy>("uncertainty");
+  const [strategy, setStrategy] = useState<Strategy>("desacuerdo");
   const [selectedTech, setSelectedTech] = useState<Record<string, string | null>>({});
   const [secondaryTechs, setSecondaryTechs] = useState<Record<string, Set<string>>>({});
 
@@ -158,7 +113,7 @@ export function useActiveLearning(): ActiveLearning {
     },
   });
 
-  const items = queue?.items ?? [];
+  const items = useMemo(() => queue?.items ?? [], [queue]);
   const pendingItems = items.filter((it) => !dismissed.has(it.id_externo));
   const queueSize = queue?.total ?? items.length;
 
@@ -201,6 +156,35 @@ export function useActiveLearning(): ActiveLearning {
       submitFeedback.mutate({
         expediente,
         relevante: false,
+        nota: notes[expediente],
+        tecnologia: null,
+        tecnologias_secundarias: [],
+      });
+    },
+    [notes, submitFeedback],
+  );
+
+  const acceptLlmProposal = useCallback(
+    (expediente: string) => {
+      const llm = items.find((it) => it.id_externo === expediente)?.llm;
+      // Sin respuesta sobre si es TI no hay `relevante` que enviar.
+      if (llm == null || llm.es_ti == null) return;
+      submitFeedback.mutate({
+        expediente,
+        relevante: llm.es_ti,
+        nota: notes[expediente],
+        tecnologia: llm.familias[0] ?? null,
+        tecnologias_secundarias: llm.familias.slice(1),
+      });
+    },
+    [items, notes, submitFeedback],
+  );
+
+  const markTiWithoutFamily = useCallback(
+    (expediente: string) => {
+      submitFeedback.mutate({
+        expediente,
+        relevante: true,
         nota: notes[expediente],
         tecnologia: null,
         tecnologias_secundarias: [],
@@ -294,6 +278,8 @@ export function useActiveLearning(): ActiveLearning {
     clearSelection,
     confirmLabel,
     markNotRelevant,
+    acceptLlmProposal,
+    markTiWithoutFamily,
     skip,
   };
 }

@@ -69,6 +69,13 @@ export function LabelingQueue({ estado }: { estado: ActiveLearning }) {
           <span className="mr-1 text-xs text-muted-foreground">Estrategia:</span>
           <Button
             size="sm"
+            variant={strategy === "desacuerdo" ? "default" : "outline"}
+            onClick={() => estado.setStrategy("desacuerdo")}
+          >
+            Desacuerdo
+          </Button>
+          <Button
+            size="sm"
             variant={strategy === "uncertainty" ? "default" : "outline"}
             onClick={() => estado.setStrategy("uncertainty")}
           >
@@ -139,6 +146,8 @@ export function LabelingQueue({ estado }: { estado: ActiveLearning }) {
               onNoteChange={(value) => estado.setNote(item.id_externo, value)}
               onConfirm={() => estado.confirmLabel(item.id_externo)}
               onNotRelevant={() => estado.markNotRelevant(item.id_externo)}
+              onAcceptLlm={() => estado.acceptLlmProposal(item.id_externo)}
+              onTiWithoutFamily={() => estado.markTiWithoutFamily(item.id_externo)}
               onSkip={() => estado.skip(item.id_externo)}
             />
           ))}
