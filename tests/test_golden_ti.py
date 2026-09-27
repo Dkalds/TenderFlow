@@ -16,11 +16,15 @@ import pytest
 
 from services.ml import golden_ti
 from services.ml.golden_ti import (
+    PREFIJO_CORTE_HOLDOUT,
     EjemploGoldenTi,
     a_linea,
     asignar_splits,
     cargar_golden_ti,
+    corte_mediano,
     ejemplo_desde_fila,
+    leer_corte_holdout,
+    repartir,
 )
 
 
@@ -46,6 +50,110 @@ def test_el_holdout_es_la_mitad_mas_reciente() -> None:
     ejemplos = [_ejemplo(f"E{i}", f"2026-0{i}-01") for i in range(1, 5)]
     splits = {e.id_externo: e.split for e in asignar_splits(ejemplos)}
     assert splits == {"E1": "tune", "E2": "tune", "E3": "holdout", "E4": "holdout"}
+
+
+def _fila(expediente: str, fecha_publicacion: str | None) -> dict[str, object]:
+    return {
+        "expediente": expediente,
+        "fuente": "placsp",
+        "fecha_publicacion": fecha_publicacion,
+        "titulo": "t",
+        "descripcion": "",
+        "cpv": None,
+        "relevante": 1,
+        "tecnologia": None,
+        "tecnologias_secundarias": None,
+        "created_at": "2026-09-28T10:00:00+00:00",
+    }
+
+
+def test_la_primera_exportacion_fija_el_corte_en_la_mediana(tmp_path: Path) -> None:
+    """Sin corte en el fichero, el corte es la fecha que deja en holdout la
+    mitad más reciente: con seis fechas distintas, las tres últimas."""
+    ejemplos = [_ejemplo(f"E{i}", f"2026-0{i}-15") for i in range(1, 7)]
+
+    repartidos, corte = repartir(ejemplos, tmp_path / "golden.jsonl")
+
+    assert corte == corte_mediano(ejemplos) == "2026-04-15"
+    assert [e.split for e in repartidos] == ["tune"] * 3 + ["holdout"] * 3
+
+
+def test_un_ejemplo_antiguo_anadido_despues_no_mueve_los_existentes(tmp_path: Path) -> None:
+    """El reparto es temporal y fijo: el corte de la primera exportación se
+    guarda en la cabecera y las siguientes reparten contra él. Recalcular la
+    mediana con el ejemplo nuevo pasaría E2 de tune a holdout."""
+    ruta = tmp_path / "golden.jsonl"
+    originales = [_ejemplo(f"E{i}", f"2026-0{i}-01") for i in range(1, 5)]
+    primera, corte = repartir(originales, ruta)
+    ruta.write_text(f"# cabecera\n{PREFIJO_CORTE_HOLDOUT}{corte}\n", encoding="utf-8")
+
+    segunda, corte_segunda = repartir([*originales, _ejemplo("E0", "2025-12-01")], ruta)
+
+    assert corte_segunda == corte == "2026-03-01"
+    antes = {e.id_externo: e.split for e in primera}
+    despues = {e.id_externo: e.split for e in segunda}
+    assert {id_: despues[id_] for id_ in antes} == antes
+    assert despues["E0"] == "tune"
+
+
+def test_sin_fecha_de_publicacion_va_a_tune_con_aviso(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Una licitación sin ``fecha_publicacion`` no puede ser «de las más
+    recientes»: va a tune y se avisa. Antes llegaba como la cadena "None", que
+    ordena detrás de cualquier fecha y caía en holdout."""
+    log = MagicMock()
+    monkeypatch.setattr(golden_ti, "log", log)
+    sin_fecha = ejemplo_desde_fila(_fila("EXP-SIN-FECHA", None))
+    fechadas = [ejemplo_desde_fila(_fila(f"EXP-{i}", f"2026-0{i}-01")) for i in range(1, 5)]
+
+    assert sin_fecha.fecha == ""
+    splits = {e.id_externo: e.split for e in asignar_splits([*fechadas, sin_fecha])}
+
+    assert splits["EXP-SIN-FECHA"] == "tune"
+    assert [splits[f"EXP-{i}"] for i in range(1, 5)] == ["tune", "tune", "holdout", "holdout"]
+    assert log.warning.call_args.args[0] == "golden_ti.sin_fecha"
+    assert log.warning.call_args.kwargs["id_externo"] == "EXP-SIN-FECHA"
+
+
+def test_el_exportador_congela_el_corte_entre_exportaciones(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """De punta a punta, sin BD: la primera exportación escribe el corte en la
+    cabecera y la segunda, con un expediente antiguo revisado después, lo
+    respeta."""
+    import scripts.exportar_golden_ti as exportador
+
+    filas = [_fila(f"EXP-{i}", f"2026-0{i}-01") for i in range(1, 5)]
+    monkeypatch.setattr("db.database.init_db", lambda: None)
+    monkeypatch.setattr(
+        "db.repositories.feedback.FeedbackRepository.filas_revision_ti",
+        lambda _self: list(filas),
+    )
+    ruta = tmp_path / "golden.jsonl"
+
+    assert exportador.main(["--salida", str(ruta)]) == 0
+    primera = {e.id_externo: e.split for e in cargar_golden_ti(ruta)}
+    filas.append(_fila("EXP-0", "2025-12-01"))
+    assert exportador.main(["--salida", str(ruta)]) == 0
+    segunda = {e.id_externo: e.split for e in cargar_golden_ti(ruta)}
+
+    assert leer_corte_holdout(ruta) == "2026-03-01"
+    assert primera == {"EXP-1": "tune", "EXP-2": "tune", "EXP-3": "holdout", "EXP-4": "holdout"}
+    assert {id_: segunda[id_] for id_ in primera} == primera
+    assert segunda["EXP-0"] == "tune"
+
+
+def test_el_corte_se_lee_de_la_cabecera(tmp_path: Path) -> None:
+    ruta = tmp_path / "golden.jsonl"
+    ruta.write_text(
+        f"# cabecera\n{PREFIJO_CORTE_HOLDOUT}2026-05-01\n"
+        + a_linea(_ejemplo("E1", "2026-06-01", split="holdout"))
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert leer_corte_holdout(ruta) == "2026-05-01"
+    assert [e.id_externo for e in cargar_golden_ti(ruta)] == ["E1"]
+    assert leer_corte_holdout(tmp_path / "no_existe.jsonl") is None
 
 
 def test_una_fila_de_revision_separa_familias_de_fabricantes() -> None:
@@ -126,5 +234,7 @@ def test_una_etiqueta_fuera_del_vocabulario_es_un_error(tmp_path: Path) -> None:
 
 
 def test_el_fichero_del_repo_carga() -> None:
-    """Hoy solo tiene la cabecera: vacío es válido, roto no."""
+    """Hoy solo tiene la cabecera: vacío es válido, roto no. Sin ejemplos
+    tampoco hay corte: lo fija la primera exportación con revisión humana."""
     assert isinstance(cargar_golden_ti(), list)
+    assert leer_corte_holdout() is None

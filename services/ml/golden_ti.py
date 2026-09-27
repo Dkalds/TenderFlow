@@ -9,12 +9,15 @@ vigente en producción (``ml_feedback``, ``source='revision_ti'`` — ver
 lo que el equipo ya revisó, sin una campaña de etiquetado aparte.
 
 Cada ejemplo lleva de dónde salió (``fuente``), cuándo se publicó la
-licitación (``fecha``) y quién y cuándo lo etiquetó. El holdout es el 50% más
-reciente por ``fecha``, fijo (:func:`asignar_splits`): igual que
-``services.ml_eval.asignar_splits`` evita elegir el umbral donde se reporta,
-pero aquí el criterio es temporal en vez de por hash, porque "el 50% más
-reciente" es una propiedad que sí se puede pedir cuando cada ejemplo lleva
-fecha de publicación.
+licitación (``fecha``) y quién y cuándo lo etiquetó. El reparto es temporal y
+fijo (spec: «reparto temporal fijo», holdout = el 50 % más reciente): la
+primera exportación fija un corte, la fecha mediana (:func:`corte_mediano`), y
+lo guarda en la cabecera del fichero (:data:`PREFIJO_CORTE_HOLDOUT`); cada
+exportación posterior reparte contra ese corte (:func:`repartir`), así que
+revisar después una licitación antigua no mueve un ejemplo de tune a holdout.
+Igual que ``services.ml_eval.asignar_splits`` evita elegir el umbral donde se
+reporta, pero aquí el criterio es temporal en vez de por hash, porque cada
+ejemplo lleva fecha de publicación.
 
 La Tarea 6 (informe de acuerdo LLM↔humano) construye su comparación sobre
 :class:`EjemploGoldenTi`.
@@ -22,10 +25,10 @@ La Tarea 6 (informe de acuerdo LLM↔humano) construye su comparación sobre
 Uso típico::
 
     from db.repositories.feedback import FeedbackRepository
-    from services.ml.golden_ti import asignar_splits, ejemplo_desde_fila
+    from services.ml.golden_ti import RUTA_GOLDEN_TI, ejemplo_desde_fila, repartir
 
     filas = FeedbackRepository().filas_revision_ti()
-    ejemplos = asignar_splits([ejemplo_desde_fila(f) for f in filas])
+    ejemplos, corte = repartir([ejemplo_desde_fila(f) for f in filas], RUTA_GOLDEN_TI)
 """
 
 from __future__ import annotations
@@ -47,6 +50,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 #: humana (Tarea 4) todavía no ha corrido en producción. Lo regenera
 #: ``scripts/exportar_golden_ti.py``.
 RUTA_GOLDEN_TI: Path = _REPO_ROOT / "tests" / "fixtures" / "golden_ti.jsonl"
+
+#: Línea de la cabecera que guarda el corte congelado del holdout: ``# corte_holdout:
+#: AAAA-MM-DD``. Empieza por ``#``, así que :func:`cargar_golden_ti` la ignora
+#: como cualquier comentario; la lee :func:`leer_corte_holdout`.
+PREFIJO_CORTE_HOLDOUT = "# corte_holdout: "
 
 _VALID_LABELS: frozenset[str] = frozenset(TECH_LABELS)
 _SPLITS: frozenset[str] = frozenset({"tune", "holdout"})
@@ -74,7 +82,9 @@ class EjemploGoldenTi:
         fuente: Fuente del anuncio (``licitaciones.fuente``): ``placsp``,
             ``pscp``…
         fecha: Fecha de publicación de la licitación (``fecha_publicacion``).
-            Es la que ordena :func:`asignar_splits`, no la del etiquetado.
+            Es la que reparte :func:`asignar_splits`, no la del etiquetado.
+            Cadena vacía si la licitación no la tiene: ese ejemplo va a
+            ``tune``.
         titulo: Título de la licitación.
         descripcion: Descripción / objeto del contrato. Cadena vacía si la
             licitación no tiene descripción (no es "sin dato": el humano la
@@ -162,10 +172,13 @@ def ejemplo_desde_fila(fila: dict[str, Any]) -> EjemploGoldenTi:
                 expediente=expediente,
                 tecnologia=tecnologia,
             )
+    fecha_publicacion = fila.get("fecha_publicacion")
     return EjemploGoldenTi(
         id_externo=expediente,
         fuente=str(fila["fuente"]),
-        fecha=str(fila["fecha_publicacion"]),
+        # Sin fecha, cadena vacía y no «None»: esa cadena ordena detrás de
+        # cualquier fecha y metía el ejemplo en el holdout.
+        fecha=str(fecha_publicacion) if fecha_publicacion is not None else "",
         titulo=str(fila["titulo"]),
         descripcion=str(fila.get("descripcion") or ""),
         cpv=str(fila["cpv"]) if fila.get("cpv") is not None else None,
@@ -178,31 +191,91 @@ def ejemplo_desde_fila(fila: dict[str, Any]) -> EjemploGoldenTi:
     )
 
 
-def asignar_splits(ejemplos: list[EjemploGoldenTi]) -> list[EjemploGoldenTi]:
-    """Reparte el golden set en ``tune``/``holdout`` por fecha, de forma fija.
+def _dia(fecha: str) -> str:
+    """``AAAA-MM-DD`` de una fecha ISO, con hora o sin ella: el corte es un día."""
+    return fecha[:10]
 
-    Ordena por ``(fecha, id_externo)`` y asigna la primera mitad (redondeando
-    hacia abajo) a ``tune``; el resto —la mitad más reciente— a ``holdout``.
-    El umbral se elige en el pasado y se reporta en el futuro más próximo, no
-    al revés.
+
+def corte_mediano(ejemplos: list[EjemploGoldenTi]) -> str | None:
+    """El corte de la primera exportación: el día que deja en ``holdout`` la
+    mitad más reciente de los ejemplos con fecha.
+
+    Es el día del ejemplo que queda en la posición ``n // 2`` al ordenar por
+    ``(fecha, id_externo)``: con fechas distintas, ``holdout`` son las
+    ``n - n // 2`` más recientes (la mitad, o la mitad más uno con ``n``
+    impar). Con varios ejemplos en el día del corte, van todos a ``holdout``:
+    el corte es una fecha, no una posición. ``None`` si ningún ejemplo tiene
+    fecha.
+    """
+    fechadas = sorted((e.fecha, e.id_externo) for e in ejemplos if e.fecha)
+    if not fechadas:
+        return None
+    return _dia(fechadas[len(fechadas) // 2][0])
+
+
+def asignar_splits(
+    ejemplos: list[EjemploGoldenTi], corte: str | None = None
+) -> list[EjemploGoldenTi]:
+    """Reparte el golden set en ``tune``/``holdout`` contra un corte de fecha.
+
+    ``holdout`` es todo ejemplo publicado el día ``corte`` o después; el resto
+    va a ``tune``. El umbral se elige en el pasado y se reporta en el futuro
+    más próximo, no al revés. Sin ``corte``, se usa el de
+    :func:`corte_mediano` (el de una primera exportación); para las
+    siguientes, el corte congelado lo da :func:`repartir`.
+
+    Un ejemplo sin fecha no puede ser «de los más recientes»: va a ``tune``, y
+    se avisa porque es un hueco del dato, no una decisión.
 
     A diferencia de ``services.ml_eval.asignar_splits`` (que reparte por hash
     del id para no reasignar ejemplos existentes al crecer el set a mano),
-    aquí el reparto es posicional: cada exportación recalcula las dos mitades
-    sobre el conjunto vigente, que es justo lo que hace falta para que "el
-    50% más reciente" sea una propiedad del fichero y no del momento en que
-    se generó.
+    aquí el criterio es temporal; lo que evita reasignar es que el corte no
+    se recalcula.
 
     Devuelve una lista nueva, ordenada por ``(fecha, id_externo)`` — el orden
     en el que ``scripts/exportar_golden_ti.py`` escribe el fichero.
     """
-    ordenados = sorted(ejemplos, key=lambda e: (e.fecha, e.id_externo))
-    corte = len(ordenados) // 2
+    corte_vigente = corte if corte is not None else corte_mediano(ejemplos)
     resultado: list[EjemploGoldenTi] = []
-    for i, ejemplo in enumerate(ordenados):
-        split: Literal["tune", "holdout"] = "tune" if i < corte else "holdout"
+    for ejemplo in sorted(ejemplos, key=lambda e: (e.fecha, e.id_externo)):
+        split: Literal["tune", "holdout"] = "tune"
+        if not ejemplo.fecha:
+            log.warning("golden_ti.sin_fecha", id_externo=ejemplo.id_externo)
+        elif corte_vigente is not None and _dia(ejemplo.fecha) >= corte_vigente:
+            split = "holdout"
         resultado.append(replace(ejemplo, split=split))
     return resultado
+
+
+def leer_corte_holdout(path: Path | None = None) -> str | None:
+    """El corte congelado en la cabecera del golden, o ``None`` si el fichero
+    no existe o todavía no lo trae (nunca se exportó con ejemplos).
+
+    Args:
+        path: Ruta al JSONL. Si es ``None``, :data:`RUTA_GOLDEN_TI`.
+    """
+    target = path if path is not None else RUTA_GOLDEN_TI
+    if not target.exists():
+        return None
+    for linea in target.read_text(encoding="utf-8").splitlines():
+        if linea.startswith(PREFIJO_CORTE_HOLDOUT):
+            corte = linea[len(PREFIJO_CORTE_HOLDOUT) :].strip()
+            return corte or None
+    return None
+
+
+def repartir(
+    ejemplos: list[EjemploGoldenTi], path: Path | None = None
+) -> tuple[list[EjemploGoldenTi], str | None]:
+    """Reparte con el corte congelado en ``path`` o, si aún no hay ninguno, con
+    uno nuevo en la mediana (:func:`corte_mediano`).
+
+    Devuelve los ejemplos repartidos (ver :func:`asignar_splits`) y el corte
+    usado, que el exportador escribe en la cabecera
+    (:data:`PREFIJO_CORTE_HOLDOUT`) para la siguiente exportación.
+    """
+    corte = leer_corte_holdout(path) or corte_mediano(ejemplos)
+    return asignar_splits(ejemplos, corte), corte
 
 
 def a_linea(ejemplo: EjemploGoldenTi) -> str:
@@ -268,7 +341,7 @@ def cargar_golden_ti(path: Path | None = None) -> list[EjemploGoldenTi]:
             EjemploGoldenTi(
                 id_externo=str(obj["id_externo"]),
                 fuente=str(obj["fuente"]),
-                fecha=str(obj["fecha"]),
+                fecha=str(obj["fecha"] or ""),
                 titulo=str(obj["titulo"]),
                 descripcion=str(obj["descripcion"]),
                 cpv=str(obj["cpv"]) if obj.get("cpv") is not None else None,
@@ -285,10 +358,14 @@ def cargar_golden_ti(path: Path | None = None) -> list[EjemploGoldenTi]:
 
 
 __all__ = [
+    "PREFIJO_CORTE_HOLDOUT",
     "RUTA_GOLDEN_TI",
     "EjemploGoldenTi",
     "a_linea",
     "asignar_splits",
     "cargar_golden_ti",
+    "corte_mediano",
     "ejemplo_desde_fila",
+    "leer_corte_holdout",
+    "repartir",
 ]

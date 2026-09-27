@@ -17,9 +17,12 @@ Qué hace
    reciente, ya unida con lo que hace falta de ``licitaciones``).
 2. La convierte en :class:`~services.ml.golden_ti.EjemploGoldenTi`
    (``ejemplo_desde_fila``) y reparte tune/holdout por fecha, fijo
-   (``asignar_splits``: el 50% más reciente es el holdout).
-3. Escribe el JSONL con cabecera y una línea por ejemplo, ordenadas por
-   fecha de publicación.
+   (``repartir``): contra el corte que ya guarda la cabecera del fichero de
+   destino o, en la primera exportación, contra la mediana, de modo que el
+   holdout es el 50% más reciente. El corte no se recalcula después: revisar
+   más tarde una licitación antigua no mueve ningún ejemplo de tune a holdout.
+3. Escribe el JSONL con cabecera, la línea del corte y una línea por
+   ejemplo, ordenadas por fecha de publicación.
 
 Uso::
 
@@ -48,8 +51,9 @@ _CABECERA = """# Golden set real de «¿es TI?» y familias/fabricantes (plan de
 # en tres niveles, F2). Sustituye a los 27 ejemplos de golden_set.jsonl como
 # gate del binario `es_ti`: sale de la revisión humana (`ml_feedback`,
 # `source='revision_ti'`), lleva fuente, fecha de publicación, quién etiquetó
-# y cuándo, y su holdout es el 50% más reciente por fecha, fijo
-# (`services.ml.golden_ti.asignar_splits`).
+# y cuándo, y su holdout es el 50% más reciente por fecha, fijo: la primera
+# exportación congela el corte en la línea `corte_holdout` y las siguientes
+# reparten contra él (`services.ml.golden_ti.repartir`).
 #
 # Formato JSONL: una línea por ejemplo (ver `services.ml.golden_ti.EjemploGoldenTi`
 # para los campos); las líneas vacías y las que empiezan por '#' se ignoran.
@@ -74,20 +78,28 @@ def main(argv: list[str] | None = None) -> int:
 
     from db.database import init_db
     from db.repositories.feedback import FeedbackRepository
-    from services.ml.golden_ti import RUTA_GOLDEN_TI, a_linea, asignar_splits, ejemplo_desde_fila
+    from services.ml.golden_ti import (
+        PREFIJO_CORTE_HOLDOUT,
+        RUTA_GOLDEN_TI,
+        a_linea,
+        ejemplo_desde_fila,
+        repartir,
+    )
 
     init_db()
 
-    filas = FeedbackRepository().filas_revision_ti()
-    # `asignar_splits` ya devuelve la lista ordenada por (fecha, id_externo):
-    # es el mismo orden en el que se escribe el fichero, así que no hace
-    # falta un segundo `sort`.
-    ejemplos = asignar_splits([ejemplo_desde_fila(f) for f in filas])
-
     destino = salida if salida is not None else RUTA_GOLDEN_TI
+    filas = FeedbackRepository().filas_revision_ti()
+    # El corte se lee del fichero que se va a reescribir, antes de abrirlo
+    # para escribir. `repartir` ya devuelve la lista ordenada por
+    # (fecha, id_externo): es el orden en el que se escribe el fichero.
+    ejemplos, corte = repartir([ejemplo_desde_fila(f) for f in filas], destino)
+
     destino.parent.mkdir(parents=True, exist_ok=True)
     with destino.open("w", encoding="utf-8", newline="\n") as fh:
         fh.write(_CABECERA)
+        if corte is not None:
+            fh.write(f"{PREFIJO_CORTE_HOLDOUT}{corte}\n")
         for ejemplo in ejemplos:
             fh.write(a_linea(ejemplo) + "\n")
 
@@ -96,7 +108,10 @@ def main(argv: list[str] | None = None) -> int:
     n_tune = sum(1 for e in ejemplos if e.split == "tune")
     n_holdout = n - n_tune
     print(f"Golden TI exportado a {destino}")
-    print(f"  n={n} · positivos={positivos} · tune={n_tune} · holdout={n_holdout}")
+    print(
+        f"  n={n} · positivos={positivos} · tune={n_tune} · holdout={n_holdout} · "
+        f"corte={corte or 'sin fijar'}"
+    )
     log.info(
         "exportar_golden_ti.done",
         path=str(destino),
@@ -104,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         positivos=positivos,
         n_tune=n_tune,
         n_holdout=n_holdout,
+        corte_holdout=corte,
     )
     return 0
 
