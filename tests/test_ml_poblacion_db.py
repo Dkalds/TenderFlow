@@ -114,6 +114,70 @@ def test_una_cita_inverificable_del_llm_no_mete_la_fila_en_el_dataset(db) -> Non
     assert _ids(filas_entrenamiento_tecnologia()) == {"PSCP-SIN-TECNOLOGIA"}
 
 
+def _marcador_es_ti() -> dict[str, Any]:
+    """La fila de nivel 1 tal como la escribe ``scheduler/jobs/llm_tech_labeling.py``."""
+    from db.repositories.tecnologia_pliego import ES_TI_SENTINEL, TechSignal
+
+    return {
+        ES_TI_SENTINEL: TechSignal(
+            score=0.0, evidence=[{"es_ti": True, "confianza": 0.9, "otros_fabricantes": []}]
+        )
+    }
+
+
+def test_el_marcador_no_reabre_la_puerta_a_una_respuesta_sin_evidencia(db) -> None:
+    """Forma v3: un «es TI» cuyas citas de familia no se sostuvieron escribe el
+    marcador y ``__sin_evidencia__`` en la misma llamada. El lector de etiquetas
+    descarta ese grupo entero; si el marcador abriera la puerta, la fila de
+    fuera de la población entraría sin etiqueta y entrenaría como negativo de
+    todas las familias. El marcador solo sí es una respuesta: «ninguna familia»."""
+    from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+
+    _insertar("PSCP-ES-TI-SIN-EVIDENCIA", universo="pscp_observed")
+    _insertar("PSCP-SOLO-MARCADOR", universo="pscp_observed")
+    repo = TecnologiaPliegoRepository()
+    repo.upsert_signals(
+        "PSCP-ES-TI-SIN-EVIDENCIA",
+        method="llm_metadata",
+        signal_version="llm-meta-v3/m",
+        scores=_marcador_es_ti(),
+        sin_evidencia=True,
+    )
+    repo.upsert_signals(
+        "PSCP-SOLO-MARCADOR",
+        method="llm_metadata",
+        signal_version="llm-meta-v3/m",
+        scores=_marcador_es_ti(),
+    )
+
+    assert _ids(filas_entrenamiento_tecnologia()) == {"PSCP-SOLO-MARCADOR"}
+
+
+def test_sin_evidencia_solo_cierra_su_propio_method(db) -> None:
+    """El grupo es ``(licitación, method)``, como en el lector de etiquetas: un
+    ``__sin_evidencia__`` de ``llm_metadata`` no tapa lo que dijo la ficha del
+    pliego (``llm``) de la misma licitación."""
+    from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
+
+    _insertar("PSCP-DOS-CARRILES", universo="pscp_observed")
+    repo = TecnologiaPliegoRepository()
+    repo.upsert_signals(
+        "PSCP-DOS-CARRILES",
+        method="llm_metadata",
+        signal_version="llm-meta-v3/m",
+        scores=_marcador_es_ti(),
+        sin_evidencia=True,
+    )
+    repo.upsert_signals(
+        "PSCP-DOS-CARRILES",
+        method="llm",
+        signal_version="tender-facts-v2",
+        scores={"SAP": TechSignal(score=0.9, evidence=[])},
+    )
+
+    assert _ids(filas_entrenamiento_tecnologia()) == {"PSCP-DOS-CARRILES"}
+
+
 def test_el_scoring_sirve_la_misma_poblacion_que_el_entrenamiento(db) -> None:
     _insertar("PLACSP-1", universo="technology_observed")
     _insertar("PSCP-1", universo="pscp_observed")

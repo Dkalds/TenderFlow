@@ -919,10 +919,19 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
     ``tecnologia`` viaja como etiqueta de último recurso; las no circulares las
     aporta ``LicitacionRepository.etiquetas_tecnologia_no_circulares`` (S6.2),
     que es también quien define qué cuenta como pronunciamiento — este SQL
-    replica su criterio de fuente/método, no lo amplía. Por eso excluye
-    ``SIN_EVIDENCIA_SENTINEL``: el LLM no se pronunció, y una fila de fuera de
-    la población que entrara solo por él lo haría sin etiqueta, es decir, como
-    negativo.
+    replica su criterio de fuente/método, no lo amplía. Por eso mira grupos
+    ``(licitación, method)``, igual que el lector: un grupo con
+    ``SIN_EVIDENCIA_SENTINEL`` no admite nada, ni siquiera por el marcador de
+    nivel 1 que viaja en la misma llamada (desde el prompt v3, un «es TI» cuyas
+    citas de familia no se sostuvieron escribe ``__es_ti__`` y
+    ``__sin_evidencia__`` juntos). El lector descarta ese grupo entero, así que
+    una fila de fuera de la población que entrara por él lo haría sin etiqueta,
+    es decir, como negativo de todas las familias. Un grupo con solo el
+    marcador (o con ``__no_signal__``) sí admite: es una respuesta real,
+    «ninguna familia». El lector se queda con la versión vigente del grupo y
+    este predicado mira todas sus filas: con dos versiones conviviendo (un
+    backfill) puede dejar fuera una fila que sí tendría etiqueta, nunca meter
+    una que no la tenga.
 
     La condición humana es ``f.source = ANY(FUENTES_HUMANAS)``: incluye tanto
     ``revision_ti`` (el plan de tres niveles) como ``human`` (histórico). Que
@@ -944,7 +953,12 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
                   SELECT 1 FROM licitacion_tecnologia_pliego p
                   WHERE p.licitacion_id = l.id_externo
                     AND p.method IN ('llm_metadata', 'llm')
-                    AND p.tecnologia <> %s
+                    AND NOT EXISTS (
+                        SELECT 1 FROM licitacion_tecnologia_pliego s
+                        WHERE s.licitacion_id = p.licitacion_id
+                          AND s.method = p.method
+                          AND s.tecnologia = %s
+                    )
               )
     """  # Interpola solo el predicado constante del módulo; fuentes y sentinel van como parámetro.
     with connect_read() as c:
