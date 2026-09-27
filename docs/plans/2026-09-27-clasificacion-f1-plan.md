@@ -13,9 +13,25 @@
 
 **Architecture:** no hay migraciones (spec §6).
 
-- La salida «¿es TI?» del LLM se guarda como fila marcador en
-  `licitacion_tecnologia_pliego`, con `method='llm_es_ti'`, score 0 y la
-  confianza en `evidence_json`.
+- La salida «¿es TI?» del LLM se guarda como fila sentinel (`__es_ti__` o
+  `__no_es_ti__`) dentro de `method='llm_metadata'` de
+  `licitacion_tecnologia_pliego`, con score 0 y la confianza en
+  `evidence_json`. Se escribe en la misma llamada a `upsert_signals` que las
+  familias.
+
+> **Corrección del 2026-09-27, durante la ejecución.** La primera versión de
+> este plan guardaba el marcador en un `method` propio, `llm_es_ti`. La tabla
+> tiene `CHECK ck_lic_tec_pliego_method` (`method IN ('keywords','llm','llm_metadata')`,
+> migración v81, comprobado en producción), así que cada escritura habría
+> fallado. Se corrigió como pedía la spec (§3.1, «sentinel, sin migración»):
+> - `METHOD_ES_TI` no existe;
+> - el marcador es un sentinel más de `llm_metadata`, en la misma llamada a
+>   `upsert_signals` que las familias (commit `eda60019`);
+> - el lector de etiquetas trata el marcador como `__no_signal__` y agrupa
+>   por `(licitación, method)`.
+>
+> Las tareas 4 y 6 de abajo ya leen el marcador desde `llm_metadata`. En la
+> Tarea 2, los fragmentos que citan `METHOD_ES_TI` son la versión sustituida.
 - El feedback humano nuevo va a `ml_feedback` con `source='revision_ti'`, y ahí
   `relevante` = es TI.
 - La cola por desacuerdo es una consulta en `db/`, que la ruta
@@ -734,7 +750,7 @@ Expected: PASS. Busca con `grep -rn "feedback_humano_sap"` que no quede ningún 
 
 **Interfaces:**
 - Consumes:
-  - `ES_TI_SENTINEL`, `NO_ES_TI_SENTINEL`, `SENTINELS` y `METHOD_ES_TI` (Tarea 2);
+  - `ES_TI_SENTINEL`, `NO_ES_TI_SENTINEL` y `SENTINELS` (Tarea 2; el marcador vive en `method='llm_metadata'`);
   - `FUENTE_REVISION_TI` (Tarea 3);
   - `settings.PLIEGO_TECH_MIN_SCORE`.
 - Produces:
@@ -847,7 +863,7 @@ Expected: FAIL (`ModuleNotFoundError: db.repositories.revision_ti`; el texto «P
    """Candidatos de la revisión humana por desacuerdo (plan de tres niveles, F1).
 
    Una etiqueta humana informa donde las fuentes no coinciden. Las reglas son
-   `licitaciones.tecnologia` y el CPV; el LLM, el marcador de `llm_es_ti` y las
+   `licitaciones.tecnologia` y el CPV; el LLM, el marcador de es_ti y las
    familias de `llm_metadata`; el modelo, `ml_proba`. Lo que ya revisó una
    persona con `revision_ti` no vuelve.
    """
@@ -859,12 +875,7 @@ Expected: FAIL (`ModuleNotFoundError: db.repositories.revision_ti`; el texto «P
    from db.database import connect_read
    from db.repositories.base import rows_to_dicts
    from db.repositories.feedback import FUENTE_REVISION_TI
-   from db.repositories.tecnologia_pliego import (
-       ES_TI_SENTINEL,
-       METHOD_ES_TI,
-       NO_ES_TI_SENTINEL,
-       SENTINELS,
-   )
+   from db.repositories.tecnologia_pliego import ES_TI_SENTINEL, NO_ES_TI_SENTINEL, SENTINELS
 
    MOTIVOS: tuple[str, ...] = (
        "llm_no_reglas_si",
@@ -881,7 +892,7 @@ Expected: FAIL (`ModuleNotFoundError: db.repositories.revision_ti`; el texto «P
    WITH es_ti AS (
        SELECT DISTINCT ON (licitacion_id) licitacion_id, tecnologia AS marcador, evidence_json
        FROM licitacion_tecnologia_pliego
-       WHERE method = %(method_es_ti)s
+       WHERE method = 'llm_metadata' AND tecnologia IN (%(es_ti)s, %(no_es_ti)s)
        ORDER BY licitacion_id, computed_at DESC
    ), familias AS (
        SELECT licitacion_id, array_agg(tecnologia ORDER BY tecnologia) AS llm_familias
@@ -930,7 +941,6 @@ Expected: FAIL (`ModuleNotFoundError: db.repositories.revision_ti`; el texto «P
                c.execute(
                    _SQL,
                    {
-                       "method_es_ti": METHOD_ES_TI,
                        "sentinels": list(SENTINELS),
                        "min_score": settings.PLIEGO_TECH_MIN_SCORE,
                        "es_ti": ES_TI_SENTINEL,
@@ -1193,7 +1203,7 @@ Expected: PASS.
 - Test: `tests/test_acuerdo_llm.py` (unit) y un test de integración en `tests/test_tech_signal_db.py`.
 
 **Interfaces:**
-- Consumes: `EjemploGoldenTi` y `cargar_golden_ti` (Tarea 5); `METHOD_ES_TI` y los sentinels (Tarea 2).
+- Consumes: `EjemploGoldenTi` y `cargar_golden_ti` (Tarea 5); los sentinels `ES_TI_SENTINEL`/`NO_ES_TI_SENTINEL`/`SENTINELS` (Tarea 2; el marcador vive en `method='llm_metadata'`).
 - Produces:
   - `services.ml.acuerdo_llm.RespuestaLlm(NamedTuple)`: `es_ti: bool | None`, `familias: frozenset[str]`.
   - `AcuerdoLlm(NamedTuple)`: `n_comparables: int`, `acuerdo_es_ti: float | None`, `f1_por_familia: dict[str, float]`, `sin_soporte: tuple[str, ...]`, `apto: bool`, `motivos: tuple[str, ...]`.
@@ -1274,7 +1284,7 @@ def test_sin_respuesta_del_llm_no_cuenta() -> None:
 Añade a `tests/test_tech_signal_db.py` (integración) un test que siembre, para una licitación:
 - `llm_metadata` v2 con `ORACLE`, más antigua;
 - `llm_metadata` v3 con `DESARROLLO`;
-- `llm_es_ti` v3 con `__es_ti__`.
+- `llm_metadata` v3 con `__es_ti__` (el marcador), en la misma versión que `DESARROLLO`.
 
 Comprueba que `respuestas_llm_vigentes([id])` da `{"es_ti": True, "familias": ["DESARROLLO"]}`.
 
@@ -1292,7 +1302,7 @@ Expected: FAIL (`ModuleNotFoundError: services.ml.acuerdo_llm`).
   - `apto` exige `acuerdo_es_ti` no `None` y `>= ACUERDO_MIN_ES_TI`, y todas las evaluadas `>= F1_MIN_FAMILIA`.
   - `motivos` explica cada incumplimiento, p. ej. `"es_ti 0.80 < 0.90"` y `"DESARROLLO f1 0.62 < 0.80"`.
 - `TecnologiaPliegoRepository.respuestas_llm_vigentes`:
-  - Por licitación, la versión vigente (la de la fila más reciente por `computed_at`, con la versión como desempate) de `llm_metadata` y de `llm_es_ti`, con la misma ventana `FIRST_VALUE … OVER (PARTITION BY licitacion_id, method …)` que `etiquetas_tecnologia_no_circulares`.
+  - Por licitación, la versión vigente (la de la fila más reciente por `computed_at`, con la versión como desempate) de `llm_metadata`, con la misma ventana `FIRST_VALUE … OVER (PARTITION BY licitacion_id, method …)` que `etiquetas_tecnologia_no_circulares`; el marcador es una fila más de esa versión.
   - `es_ti` sale del marcador; `familias`, de las filas de `llm_metadata` no sentinel con `score >= settings.PLIEGO_TECH_MIN_SCORE`.
 - `scripts/medir_acuerdo_llm.py`:
   - Carga el golden, pide `respuestas_llm_vigentes` de sus ids y convierte a `RespuestaLlm`.
