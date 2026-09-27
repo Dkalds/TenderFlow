@@ -1227,13 +1227,93 @@ TECH_LABEL_TIPO: dict[str, TipoLabel] = {
     "ADMIN_ELECTRONICA": "categoria",
 }
 
-# Los tres mapas describen el mismo conjunto: un label sin etiqueta legible o
-# sin tipo se rompería en la UI sin que ningún test de dominio lo viera. Se
-# comprueba al importar (y no solo en tests) porque la semilla se vuelca en
-# base de datos: un label huérfano aquí sería un label huérfano en producción.
-if not (set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO)):
+# Qué cubre cada label, en una frase. Viaja en la pregunta del etiquetado por LLM
+# (``services.llm_tech_labeling.build_question``): con solo el nombre, el
+# modelo lee «DESARROLLO» como desarrollo nuevo y deja sin etiqueta el
+# mantenimiento de una aplicación a medida, que sus keywords sí cubren. Cada
+# definición resume su lista de ``TECHNOLOGY_KEYWORDS`` y la tabla de
+# ``docs/taxonomia-tecnologica.md``; si una cambia, cambian las tres. Los
+# fabricantes se definen por sus productos: el anuncio tiene que nombrarlos.
+TECH_DEFINICIONES: dict[str, str] = {
+    "SAP": (
+        "Productos de SAP: S/4HANA, ECC y sus módulos (FI/CO, MM, SD, HCM…), BW, "
+        "BusinessObjects, BTP, SuccessFactors, Ariba o Concur."
+    ),
+    "SALESFORCE": (
+        "Plataforma Salesforce: Sales, Service o Marketing Cloud, MuleSoft, Tableau CRM, Heroku."
+    ),
+    "ORACLE": (
+        "Productos de Oracle: base de datos, E-Business Suite, Fusion, PeopleSoft, "
+        "JD Edwards, NetSuite, WebLogic, Siebel, PL/SQL."
+    ),
+    "MICROSOFT": (
+        "Microsoft como plataforma: Dynamics 365 (NAV, AX, Business Central), Power "
+        "Platform y Power BI, Azure, SharePoint, SQL Server, .NET, licencias Microsoft 365."
+    ),
+    "SERVICENOW": "Plataforma ServiceNow: ITSM, ITOM, HRSD o CSM.",
+    "WORKDAY": "Workday: HCM, Financials, Adaptive Planning o Prism.",
+    "IBM": (
+        "Productos de IBM: Maximo, Cognos, WebSphere, DB2, FileNet, Watson, IBM Cloud, "
+        "AS/400 o iSeries, Lotus Notes."
+    ),
+    "OPENTEXT": "Gestión documental y ECM de OpenText: Documentum, Content Server, Extended ECM.",
+    "UNIT4": "ERP de Unit4: Agresso, Unit4 Financials.",
+    "META4": "Nóminas y RRHH de Meta4 (PeopleNet); también Cezanne HR.",
+    "SOPRA": (
+        "Soluciones de Sopra: Sopra HR (HR Access) y Sopra Banking; también Sopra Steria "
+        "nombrada en el anuncio."
+    ),
+    "SAGE": "ERP de Sage: X3, 200, 50, Murano o Despachos.",
+    "INFOR": "ERP de Infor: LN, M3, CloudSuite, Infor OS o Baan.",
+    "ERP": (
+        "Sistema de gestión integrado sin fabricante nombrado: gestión económico-financiera, "
+        "contabilidad presupuestaria, gestión tributaria, nóminas o RRHH."
+    ),
+    "CRM": (
+        "Relación con clientes o ciudadanía sin fabricante nombrado: CRM, plataforma de "
+        "atención ciudadana, contact center, automatización de marketing."
+    ),
+    "CLOUD_INFRA": (
+        "Nube (IaaS, PaaS, SaaS), contenedores, virtualización, CPD o centro de datos, "
+        "hosting, almacenamiento, copias de seguridad y servidores."
+    ),
+    "CIBERSEGURIDAD": (
+        "Seguridad de la información: ENS, SOC, SIEM, EDR, cortafuegos, auditorías de "
+        "seguridad, pentest, gestión de identidades, respuesta a incidentes."
+    ),
+    "DATOS_IA": (
+        "BI y cuadros de mando, data warehouse o data lake, big data, datos abiertos, "
+        "inteligencia artificial, aprendizaje automático, chatbots, visión artificial."
+    ),
+    "DESARROLLO": (
+        "Software a medida: su desarrollo y su mantenimiento evolutivo, correctivo o "
+        "adaptativo; aplicaciones web o móviles, APIs, microservicios, factoría de "
+        "software, DevOps, pruebas."
+    ),
+    "GIS": (
+        "Información geográfica: SIG/GIS, IDE, geoportal, visores cartográficos, "
+        "cartografía digital, georreferenciación."
+    ),
+    "SANIDAD_DIGITAL": (
+        "Sistemas de información sanitaria: historia clínica y receta electrónicas, "
+        "HIS, PACS, telemedicina, cita previa, gestión de pacientes."
+    ),
+    "ADMIN_ELECTRONICA": (
+        "Administración electrónica: sede, registro y firma electrónicos, tramitación, "
+        "gestor de expedientes o documental, interoperabilidad, notificaciones, factura "
+        "electrónica."
+    ),
+}
+
+# Los cuatro mapas describen el mismo conjunto: un label sin etiqueta legible,
+# sin tipo o sin definición se rompería en la UI o llegaría al LLM sin acotar
+# sin que ningún test de dominio lo viera. Se comprueba al importar (y no solo
+# en tests) porque la semilla se vuelca en base de datos: un label huérfano aquí
+# sería un label huérfano en producción.
+if not (set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO) == set(TECH_DEFINICIONES)):
     raise ValueError(
-        "TECHNOLOGY_KEYWORDS, TECH_CATEGORIAS y TECH_LABEL_TIPO deben declarar los mismos labels"
+        "TECHNOLOGY_KEYWORDS, TECH_CATEGORIAS, TECH_LABEL_TIPO y TECH_DEFINICIONES deben "
+        "declarar los mismos labels"
     )
 
 

@@ -28,14 +28,34 @@ from services.llm_tech_labeling import (
 
 class TestBuildQuestion:
     def test_fits_client_validation_limits(self):
-        """``llm.client._validate_request`` rechaza preguntas > 2000 chars."""
-        question = build_question()
-        assert 3 <= len(question) <= 2000
+        """El validador real del cliente acepta la pregunta en su modo.
 
-    def test_lists_every_known_label(self):
+        ``clasificacion`` es plantilla interna: su tope es
+        ``MAX_INTERNAL_QUESTION_LEN`` y no los 2000 caracteres de /ask, que la
+        pregunta supera desde que lleva una definición por etiqueta.
+        """
+        from llm.client import _validate_request
+
+        _validate_request(
+            build_question(),
+            build_docs({"id_externo": "EXP-1", "titulo": "t", "descripcion": "d"}),
+            settings.LLM_TECH_LABELING_MODEL,
+            mode="clasificacion",
+        )
+
+    def test_lists_every_label_with_its_definition(self):
+        """Sin definición, «DESARROLLO» se lee como desarrollo nuevo y el
+        mantenimiento de una aplicación a medida se queda sin etiqueta."""
+        from config.keywords import TECH_DEFINICIONES
+
         question = build_question()
         for label in TECH_LABELS:
-            assert label in question
+            assert f"- {label}: {TECH_DEFINICIONES[label]}" in question
+
+    def test_generic_it_work_goes_to_the_category_whose_definition_covers_it(self):
+        question = build_question()
+        assert "cuya definición lo cubre" in question
+        assert "Si ninguna definición lo cubre" in question
 
     def test_declares_the_empty_case(self):
         """Sin instrucción explícita el modelo fuerza la etiqueta más parecida."""

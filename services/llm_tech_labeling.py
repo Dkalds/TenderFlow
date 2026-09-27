@@ -29,7 +29,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from config.keywords import TECH_LABELS
+from config.keywords import TECH_DEFINICIONES, TECH_LABELS
 from db.repositories.tecnologia_pliego import TechSignal
 from llm.client import stream_llm_response
 from llm.json_utils import extract_json_object
@@ -72,8 +72,11 @@ _MAX_DESC_CHARS = 3_000
 _MAX_OUTPUT_TOKENS = 500
 
 _QUESTION_TEMPLATE = """
-Clasifica esta licitación por tecnología. Etiquetas permitidas (vocabulario cerrado):
-{labels}
+Clasifica esta licitación por tecnología con un vocabulario cerrado. Cada etiqueta significa lo que dice su definición, no lo que sugiere su nombre:
+{definiciones}
+Reglas:
+- Un fabricante exige que el anuncio lo nombre a él o a uno de sus productos; una categoría describe qué se compra sin decir de quién.
+- El trabajo TI genérico sin fabricante (p. ej. el mantenimiento de una aplicación a medida) lleva la categoría cuya definición lo cubre aunque su nombre no lo sugiera: ahí, DESARROLLO. Si ninguna definición lo cubre, no fuerces la más parecida.
 Formato de salida (JSON, sin Markdown):
 {{"tecnologias": [{{"tecnologia": "<ETIQUETA>", "confidence": 0.0-1.0, "evidencia": "<cita breve del anuncio>"}}]}}
 Si el anuncio no corresponde a ninguna etiqueta, devuelve {{"tecnologias": []}}.
@@ -86,16 +89,18 @@ def signal_version(model: str) -> str:
 
 
 def build_question() -> str:
-    """Instrucción + vocabulario cerrado + esquema de salida.
+    """Instrucción + vocabulario cerrado con su definición + esquema de salida.
 
     El vocabulario viaja aquí y no en el system prompt para que
-    ``llm/prompts.py`` siga sin depender de ``config``. Cabe de sobra en el
-    tope interno de plantilla (``MAX_INTERNAL_QUESTION_LEN``) que
-    ``llm.client._validate_request`` aplica al modo ``clasificacion``: son unas
-    pocas decenas de etiquetas cortas (fabricantes y categorías de
-    ``config/keywords.py``), no un vocabulario libre.
+    ``llm/prompts.py`` siga sin depender de ``config``. Cada etiqueta va con su
+    definición (``config.keywords.TECH_DEFINICIONES``): con el nombre solo, el
+    modelo decide por lo que el nombre sugiere y no por lo que la taxonomía
+    cubre. Con las definiciones la pregunta pasa de los 2000 caracteres de
+    /ask, pero el modo ``clasificacion`` es plantilla interna y
+    ``llm.client._validate_request`` le aplica ``MAX_INTERNAL_QUESTION_LEN``.
     """
-    return _QUESTION_TEMPLATE.format(labels=", ".join(TECH_LABELS))
+    definiciones = "\n".join(f"- {label}: {TECH_DEFINICIONES[label]}" for label in TECH_LABELS)
+    return _QUESTION_TEMPLATE.format(definiciones=definiciones)
 
 
 def build_docs(lic: dict[str, Any]) -> list[dict[str, Any]]:
