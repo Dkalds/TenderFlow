@@ -10,8 +10,13 @@ sesgo.
 
 La regla (spec §3.5): las etiquetas del LLM solo entrenan si su acuerdo con
 los humanos en el golden es ``>= ACUERDO_MIN_ES_TI`` en ``es_ti`` y
-``>= F1_MIN_FAMILIA`` de F1 en cada familia con soporte humano suficiente
-(``>= SOPORTE_MIN_FAMILIA`` positivos en el golden comparable).
+``>= F1_MIN_FAMILIA`` de F1 en cada familia con soporte suficiente. El soporte
+de una familia son sus aciertos y errores (``tp + fp + fn``) sobre los
+comparables que el humano dice TI, es decir, los positivos del humano **o**
+del LLM: una familia que el LLM afirma y ningún humano confirma también se
+juzga. Por debajo de ``SOPORTE_MIN_FAMILIA`` casos la familia no decide y se
+lista en ``sin_soporte``. Familia es nivel 2 (``TECH_LABEL_TIPO ==
+"categoria"``): los fabricantes que el LLM nombra no entran en esta cuenta.
 :func:`medir_acuerdo` es la función pura que aplica esa regla;
 :meth:`db.repositories.tecnologia_pliego.TecnologiaPliegoRepository.
 respuestas_llm_vigentes` trae la respuesta vigente del LLM por licitación, y
@@ -37,15 +42,18 @@ Uso típico::
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
 from typing import NamedTuple
 
+from config.keywords import TECH_LABEL_TIPO
 from services.ml.golden_ti import EjemploGoldenTi
 
 #: Acuerdo mínimo en «¿es TI?» (nivel 1) para que las etiquetas del LLM entrenen.
 ACUERDO_MIN_ES_TI = 0.90
 #: F1 mínima por familia (nivel 2) con soporte suficiente en el golden.
 F1_MIN_FAMILIA = 0.80
-#: Soporte humano mínimo (positivos en el golden comparable) para evaluar una familia.
+#: Casos mínimos (``tp + fp + fn`` sobre los comparables que el humano dice TI)
+#: para evaluar una familia.
 SOPORTE_MIN_FAMILIA = 10
 
 
@@ -64,10 +72,12 @@ class RespuestaLlm(NamedTuple):
             marcador -- ver
             :func:`~db.repositories.tecnologia_pliego.
             _respuesta_desde_filas_vigentes`.
-        familias: Las familias (nivel 2) que el LLM afirmó. Sin score:
+        familias: Las etiquetas que el LLM afirmó. Sin score:
             :meth:`~db.repositories.tecnologia_pliego.
             TecnologiaPliegoRepository.respuestas_llm_vigentes` ya filtró por
-            ``PLIEGO_TECH_MIN_SCORE`` antes de construir esta tupla.
+            ``PLIEGO_TECH_MIN_SCORE`` antes de construir esta tupla. Ese
+            lector no separa niveles, así que puede traer también fabricantes;
+            :func:`medir_acuerdo` se queda solo con las categorías.
     """
 
     es_ti: bool | None
@@ -85,9 +95,12 @@ class AcuerdoLlm(NamedTuple):
         acuerdo_es_ti: Fracción de ``n_comparables`` en la que el LLM coincide
             con el humano en ``es_ti``. ``None`` si ``n_comparables == 0``.
         f1_por_familia: F1 de cada familia con soporte suficiente, sobre los
-            ejemplos comparables cuyo golden dice ``es_ti=True``.
-        sin_soporte: Familias del golden comparable sin soporte suficiente
-            (``< SOPORTE_MIN_FAMILIA`` positivos humanos), ordenadas.
+            ejemplos comparables cuyo golden dice ``es_ti=True``. Soporte son
+            los casos ``tp + fp + fn`` de la familia ahí: positivos del humano
+            o del LLM.
+        sin_soporte: Familias con algún caso pero menos de
+            ``SOPORTE_MIN_FAMILIA``, incluidas las que solo afirma el LLM,
+            ordenadas. Una familia sin ningún caso no aparece.
         apto: Si las etiquetas del LLM pasan la regla de la spec entera.
         motivos: Un texto por cada incumplimiento (vacío si ``apto``).
     """
@@ -106,6 +119,11 @@ def _f1(tp: int, fp: int, fn: int) -> float:
     if tp == 0 and fp == 0 and fn == 0:
         return 1.0
     return 2 * tp / (2 * tp + fp + fn)
+
+
+def _solo_familias(etiquetas: Iterable[str]) -> frozenset[str]:
+    """Las etiquetas de nivel 2 (categorías): el fabricante es nivel 3."""
+    return frozenset(e for e in etiquetas if TECH_LABEL_TIPO.get(e) == "categoria")
 
 
 def medir_acuerdo(golden: list[EjemploGoldenTi], respuestas: dict[str, RespuestaLlm]) -> AcuerdoLlm:
@@ -137,33 +155,29 @@ def medir_acuerdo(golden: list[EjemploGoldenTi], respuestas: dict[str, Respuesta
     aciertos = sum(1 for ejemplo, respuesta in comparables if respuesta.es_ti == ejemplo.es_ti)
     acuerdo_es_ti = aciertos / n_comparables if n_comparables else None
 
-    # Soporte humano de cada familia: positivos (es_ti=True) del golden
-    # comparable que la marcan. Una familia que nunca aparece ahí no se
-    # evalúa ni va a `sin_soporte` -- no hay con qué juzgarla.
-    soporte: Counter[str] = Counter()
-    for ejemplo, _respuesta in comparables:
-        if ejemplo.es_ti:
-            soporte.update(ejemplo.familias)
+    # Casos de cada familia sobre los comparables que el humano dice TI:
+    # aciertos (tp) y errores de los dos lados (fp, fn). El soporte es su suma,
+    # no solo los positivos humanos: con esos, una familia que el LLM afirma
+    # y ningún humano confirma nunca se evaluaría ni saldría en `sin_soporte`.
+    tp: Counter[str] = Counter()
+    fp: Counter[str] = Counter()
+    fn: Counter[str] = Counter()
+    for ejemplo, respuesta in comparables:
+        if not ejemplo.es_ti:
+            continue
+        humanas = _solo_familias(ejemplo.familias)
+        del_llm = _solo_familias(respuesta.familias)
+        tp.update(humanas & del_llm)
+        fp.update(del_llm - humanas)
+        fn.update(humanas - del_llm)
 
     f1_por_familia: dict[str, float] = {}
     sin_soporte: list[str] = []
-    for familia in sorted(soporte):
-        if soporte[familia] < SOPORTE_MIN_FAMILIA:
+    for familia in sorted(tp.keys() | fp.keys() | fn.keys()):
+        if tp[familia] + fp[familia] + fn[familia] < SOPORTE_MIN_FAMILIA:
             sin_soporte.append(familia)
             continue
-        tp = fp = fn = 0
-        for ejemplo, respuesta in comparables:
-            if not ejemplo.es_ti:
-                continue
-            humano_dice = familia in ejemplo.familias
-            llm_dice = familia in respuesta.familias
-            if humano_dice and llm_dice:
-                tp += 1
-            elif llm_dice:
-                fp += 1
-            elif humano_dice:
-                fn += 1
-        f1_por_familia[familia] = _f1(tp, fp, fn)
+        f1_por_familia[familia] = _f1(tp[familia], fp[familia], fn[familia])
 
     motivos: list[str] = []
     if acuerdo_es_ti is None:

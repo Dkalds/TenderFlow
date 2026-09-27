@@ -96,8 +96,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if acuerdo.sin_soporte:
         print(
-            f"Sin soporte suficiente (< {SOPORTE_MIN_FAMILIA} positivos): "
-            f"{', '.join(acuerdo.sin_soporte)}"
+            f"Sin soporte suficiente (< {SOPORTE_MIN_FAMILIA} aciertos + errores "
+            f"sobre los TI humanos): {', '.join(acuerdo.sin_soporte)}"
         )
 
     veredicto = "APTO" if acuerdo.apto else "NO APTO"

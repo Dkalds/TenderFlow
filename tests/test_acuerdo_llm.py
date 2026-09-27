@@ -10,7 +10,12 @@ from services.ml.acuerdo_llm import RespuestaLlm, medir_acuerdo
 from services.ml.golden_ti import EjemploGoldenTi
 
 
-def _golden(id_: str, es_ti: bool, familias: tuple[str, ...] = ()) -> EjemploGoldenTi:
+def _golden(
+    id_: str,
+    es_ti: bool,
+    familias: tuple[str, ...] = (),
+    fabricantes: tuple[str, ...] = (),
+) -> EjemploGoldenTi:
     return EjemploGoldenTi(
         id_externo=id_,
         fuente="pscp",
@@ -20,7 +25,7 @@ def _golden(id_: str, es_ti: bool, familias: tuple[str, ...] = ()) -> EjemploGol
         cpv=None,
         es_ti=es_ti,
         familias=familias,
-        fabricantes=(),
+        fabricantes=fabricantes,
         etiquetado_por="humano",
         etiquetado_at="2026-09-28",
         split="holdout",
@@ -59,3 +64,51 @@ def test_sin_respuesta_del_llm_no_cuenta() -> None:
     respuestas = {"G0": RespuestaLlm(True, frozenset()), "G1": RespuestaLlm(None, frozenset())}
     acuerdo = medir_acuerdo(golden, respuestas)
     assert acuerdo.n_comparables == 1
+
+
+def test_una_familia_que_solo_afirma_el_llm_tambien_se_juzga() -> None:
+    """El soporte cuenta aciertos y errores (tp + fp + fn), no solo los
+    positivos humanos: si no, una familia que el LLM afirma y ningún humano
+    confirma nunca se evaluaría y el informe la certificaría sin mirarla."""
+    golden = [_golden(f"G{i}", True) for i in range(20)]
+    respuestas = {
+        g.id_externo: RespuestaLlm(True, frozenset({"GIS"} if i < 15 else set()))
+        for i, g in enumerate(golden)
+    }
+
+    acuerdo = medir_acuerdo(golden, respuestas)
+
+    assert acuerdo.acuerdo_es_ti == 1.0
+    assert acuerdo.f1_por_familia == {"GIS": 0.0}
+    assert acuerdo.sin_soporte == ()
+    assert acuerdo.apto is False
+    assert acuerdo.motivos == ("GIS f1 0.00 < 0.80",)
+
+
+def test_una_familia_del_llm_con_pocos_casos_va_a_sin_soporte() -> None:
+    golden = [_golden(f"G{i}", True) for i in range(20)]
+    respuestas = {
+        g.id_externo: RespuestaLlm(True, frozenset({"GIS"} if i < 3 else set()))
+        for i, g in enumerate(golden)
+    }
+
+    acuerdo = medir_acuerdo(golden, respuestas)
+
+    assert acuerdo.sin_soporte == ("GIS",)
+    assert acuerdo.f1_por_familia == {}
+    assert acuerdo.apto is True
+
+
+def test_un_fabricante_no_es_una_familia() -> None:
+    """La F1 por familia es del nivel 2, las categorías. El LLM nombra también
+    fabricantes (nivel 3, que se detecta por diccionario) y el golden los
+    guarda aparte, en ``fabricantes``: contarlos aquí suspendería al LLM por
+    acertar el fabricante."""
+    golden = [_golden(f"G{i}", True, fabricantes=("SAP",)) for i in range(15)]
+    respuestas = {g.id_externo: RespuestaLlm(True, frozenset({"SAP"})) for g in golden}
+
+    acuerdo = medir_acuerdo(golden, respuestas)
+
+    assert acuerdo.f1_por_familia == {}
+    assert acuerdo.sin_soporte == ()
+    assert acuerdo.apto is True
