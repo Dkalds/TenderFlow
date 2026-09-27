@@ -903,6 +903,17 @@ def feedback_humano_es_ti() -> list[dict[str, Any]]:
         )
 
 
+#: ``tecnologias_secundarias`` de una fila humana nombra alguna tecnología: una
+#: cadena JSON no vacía dentro del texto. Decide lo mismo que
+#: :func:`db.repositories.licitaciones.etiqueta_humana` para lo que escribe
+#: ``FeedbackRepository.insert`` (una lista de códigos) y para lo vacío o roto
+#: (``[]``, ``[""]``, ``null``, texto sin JSON), sin parsear JSON en SQL. Solo
+#: difiere en una entrada no textual (``[1]``), que ese escritor no produce. Es
+#: POSIX: se escribe igual en Postgres que en ``re`` (ver
+#: ``tests/test_ml_poblacion_entrenamiento.py``).
+PATRON_SECUNDARIAS_CON_TECNOLOGIA = '"[^"]+"'
+
+
 def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
     """Filas que entrenan el clasificador multi-tecnología.
 
@@ -933,10 +944,17 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
     backfill) puede dejar fuera una fila que sí tendría etiqueta, nunca meter
     una que no la tenga.
 
-    La condición humana es ``f.source = ANY(FUENTES_HUMANAS)``: incluye tanto
-    ``revision_ti`` (el plan de tres niveles) como ``human`` (histórico). Que
-    una fila entre aquí no dice todavía qué etiqueta aporta -- eso lo decide
-    :func:`db.repositories.licitaciones.etiqueta_humana` en el consumidor.
+    La condición humana replica igual a
+    :func:`db.repositories.licitaciones.etiqueta_humana`, sobre la fila humana
+    más reciente del expediente (``revision_ti`` o ``human``, el mismo
+    ``DISTINCT ON`` que el lector): entra si esa fila se pronuncia, es decir,
+    si es ``revision_ti`` (con tecnología o sin ella: «ninguna familia») o si
+    es ``human`` heredada y nombra alguna tecnología, en ``tecnologia`` o en
+    ``tecnologias_secundarias``. Una ``human`` sin tecnología no se pronuncia
+    (su ``relevante`` era «es SAP»), así que la licitación entraría sin
+    etiqueta humana y caería a la de keywords. Las secundarias son JSON en
+    texto: se miran con :data:`PATRON_SECUNDARIAS_CON_TECNOLOGIA` y no se
+    parsean, para que un JSON roto no tumbe el dataset.
     """
     from db.repositories.tecnologia_pliego import SIN_EVIDENCIA_SENTINEL
 
@@ -945,9 +963,17 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
                l.fecha_publicacion, l.tecnologia, l.raw_keywords
         FROM licitaciones l
         WHERE {poblacion_clasificador_sql()}
-           OR EXISTS (
-                  SELECT 1 FROM ml_feedback f
-                  WHERE f.expediente = l.id_externo AND f.source = ANY(%s)
+           OR l.id_externo IN (
+                  SELECT h.expediente FROM (
+                      SELECT DISTINCT ON (f.expediente) f.expediente, f.source,
+                             f.tecnologia, f.tecnologias_secundarias
+                      FROM ml_feedback f
+                      WHERE f.source = ANY(%s)
+                      ORDER BY f.expediente, f.created_at DESC, f.id DESC
+                  ) h
+                  WHERE h.source = %s
+                     OR coalesce(h.tecnologia, '') <> ''
+                     OR coalesce(h.tecnologias_secundarias, '') ~ %s
               )
            OR EXISTS (
                   SELECT 1 FROM licitacion_tecnologia_pliego p
@@ -960,9 +986,15 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
                           AND s.tecnologia = %s
                     )
               )
-    """  # Interpola solo el predicado constante del módulo; fuentes y sentinel van como parámetro.
+    """  # Interpola solo el predicado constante del módulo; el resto va como parámetro.
+    params = (
+        list(FUENTES_HUMANAS),
+        FUENTE_REVISION_TI,
+        PATRON_SECUNDARIAS_CON_TECNOLOGIA,
+        SIN_EVIDENCIA_SENTINEL,
+    )
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, (list(FUENTES_HUMANAS), SIN_EVIDENCIA_SENTINEL)))
+        return rows_to_dicts(c.execute(sql, params))
 
 
 def filas_pendientes_ml_proba(*, force: bool = False) -> list[dict[str, Any]]:
