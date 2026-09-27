@@ -43,6 +43,7 @@
  * arquitectura v2).
  */
 
+import { FAMILIAS_LANDING } from "./landing-familias";
 import type { ContenidoLanding } from "./landing-tipos";
 
 export const CONTENIDO: ContenidoLanding = {
@@ -127,33 +128,7 @@ export const CONTENIDO: ContenidoLanding = {
     "Solo entra el expediente con señal de tecnología: trece familias de fabricante y doce " +
     "categorías de TI —también en catalán, euskera y gallego—, más los servicios TI y " +
     "software (CPV 48 y 72) de PLACSP y TED.",
-  familias: [
-    "SAP",
-    "Salesforce",
-    "Oracle",
-    "Microsoft",
-    "ServiceNow",
-    "Workday",
-    "IBM",
-    "OpenText",
-    "Unit4",
-    "Meta4",
-    "Sopra",
-    "Sage",
-    "Infor",
-    "ERP",
-    "CRM",
-    "Infraestructura, cloud y redes",
-    "Ciberseguridad",
-    "Datos e IA",
-    "Desarrollo de software",
-    "GIS y geoinformación",
-    "Sanidad digital",
-    "Administración electrónica",
-    "RRHH y nómina",
-    "Gestión documental",
-    "Puesto de trabajo y soporte",
-  ],
+  familias: FAMILIAS_LANDING,
 
   capturaTitulo: "La bandeja de cada mañana",
   capturaTexto:
