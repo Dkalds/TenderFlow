@@ -358,6 +358,11 @@ class TestSignalVersion:
         """Cambiar de modelo debe dejar pendiente al universo entero."""
         assert signal_version("deepseek-ai/deepseek-v4-pro") != signal_version("gpt-4o-mini")
 
+    def test_the_prompt_with_definitions_and_checked_quotes_is_v2(self):
+        """Definiciones y cita verificada son otro prompt: el corpus clasificado
+        con el v1 vuelve a la cola en vez de mezclarse con el nuevo."""
+        assert signal_version("nvidia/modelo") == "llm-meta-v2/nvidia/modelo"
+
 
 class TestBatchFailedSystemically:
     """Decide si la corrida fue un fallo de infraestructura o trabajo normal."""

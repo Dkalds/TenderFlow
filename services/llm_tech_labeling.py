@@ -79,8 +79,13 @@ class Clasificacion(NamedTuple):
 # ``method`` de la señal y versión del prompt. La ``signal_version`` incluye el
 # modelo: cambiar de modelo (o bumpear PROMPT_VERSION) deja pendiente de nuevo
 # a todo el universo, que es justo lo que se quiere para reprocesar.
+#
+# v2 (2026-09-27): definición por etiqueta y cita literal verificada contra el
+# anuncio. Hasta que una licitación se reclasifica, su respuesta v1 sigue siendo
+# la vigente para el entrenamiento; al reclasificarla, ``upsert_signals``
+# sustituye las filas v1 de este method.
 METHOD = "llm_metadata"
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 # Por debajo de esta confianza la etiqueta es ruido y no se persiste. No se
 # confunde con ``PLIEGO_TECH_MIN_SCORE`` (0.5), que decide qué entra al merge:
