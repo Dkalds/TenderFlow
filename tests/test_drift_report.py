@@ -420,6 +420,36 @@ class TestComputeF1Drop:
                     result = compute_f1_drop(min_labelled=5)
         assert result > 0.0  # there should be a drop since predictions are all wrong
 
+    def test_cuenta_una_revision_por_expediente_la_mas_reciente(self):
+        """Con correcciones hay varias filas ``revision_ti`` por expediente: la
+        etiqueta es la última, y contarlas todas pesaba doble el expediente
+        corregido (y con su etiqueta vieja)."""
+        from scheduler.drift_report import compute_f1_drop
+
+        mock_connect = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchall.return_value = [
+            ("exp", 1, "titulo", "desc", "cpv", 100)
+        ] * 25
+        mock_connect.__enter__ = MagicMock(return_value=mock_conn)
+        mock_connect.__exit__ = MagicMock(return_value=False)
+        mock_clf = MagicMock()
+        mock_clf.predict.return_value = (1, 0.9)
+        mock_clf_cls = MagicMock()
+        mock_clf_cls.load.return_value = mock_clf
+
+        with patch(
+            "db.model_registry.get_active",
+            return_value={"metrics": {"golden_holdout_f1": 0.9}, "path": "model.pkl"},
+        ):
+            with patch("db.database.connect", return_value=mock_connect):
+                with patch("scraper.ml_classifier.SAPClassifier", mock_clf_cls):
+                    compute_f1_drop(min_labelled=5)
+
+        sql = " ".join(mock_conn.execute.call_args.args[0].split())
+        assert "SELECT DISTINCT ON (f.expediente)" in sql
+        assert "ORDER BY f.expediente, f.created_at DESC, f.id DESC" in sql
+
     def test_sin_referencia_humana_no_alerta(self):
         """Una versión registrada antes del gate unificado no dispara alertas.
 

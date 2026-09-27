@@ -1392,6 +1392,82 @@ class TestTrainingIgnoresAutomaticFeedback:
         fila = df[df["id_externo"] == "EXP-T2B"].iloc[0]
         assert fila["es_relevante"] == 0
 
+    def test_una_correccion_manda_sobre_la_revision_anterior(self, tmp_db):
+        """Con correcciones, la etiqueta es la revisión más reciente por
+        expediente. La corrección se inserta primero a propósito: leída sin
+        ``DISTINCT ON … ORDER BY created_at DESC``, el dict se quedaba con la
+        última fila que devolviera el SELECT, que en orden físico es la vieja."""
+        from db.database import connect
+        from db.repositories.feedback import FUENTE_REVISION_TI
+        from scheduler.concept_drift import _fetch_training_dataframe
+
+        _insert_licitacion("EXP-T3")
+        with connect() as c:
+            for relevante, created_at in (
+                (1, "2026-09-20T10:00:00+00:00"),
+                (0, "2026-09-01T10:00:00+00:00"),
+            ):
+                c.execute(
+                    "INSERT INTO ml_feedback (expediente, relevante, source, created_at) "
+                    "VALUES (%s, %s, %s, %s)",
+                    ("EXP-T3", relevante, FUENTE_REVISION_TI, created_at),
+                )
+
+        df = _fetch_training_dataframe()
+
+        fila = df[df["id_externo"] == "EXP-T3"].iloc[0]
+        assert fila["es_relevante"] == 1
+
+    def test_la_etiqueta_sale_de_la_revision_vigente_sin_bd(self, monkeypatch):
+        """Sin BD: la etiqueta sale de ``feedback_humano_es_ti`` (una fila por
+        expediente, la más reciente). La conexión falsa sirve la licitación y,
+        a quien vuelva a leer ``ml_feedback`` a mano, la revisión vigente
+        seguida de la vieja que la contradice: lo que un SELECT sin orden
+        puede devolver."""
+        import scheduler.concept_drift as concept_drift
+
+        columnas_lic = [
+            "id_externo",
+            "titulo",
+            "descripcion",
+            "raw_keywords",
+            "cpv",
+            "importe",
+            "fecha_publicacion",
+            "tecnologia",
+        ]
+
+        class _Cursor:
+            def __init__(self, filas: list[tuple[object, ...]], columnas: list[str]) -> None:
+                self._filas = filas
+                self.description = [(c,) for c in columnas]
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return self._filas
+
+        class _Conexion:
+            def execute(self, sql: str, params: object = None) -> _Cursor:
+                if "FROM licitaciones" in sql:
+                    fila = ("EXP-K", "t", "d", None, None, None, "2026-06-01", None)
+                    return _Cursor([fila], columnas_lic)
+                return _Cursor([("EXP-K", 1), ("EXP-K", 0)], ["expediente", "relevante"])
+
+            def __enter__(self) -> _Conexion:
+                return self
+
+            def __exit__(self, *_exc: object) -> None:
+                return None
+
+        monkeypatch.setattr(concept_drift, "connect", lambda: _Conexion())
+        monkeypatch.setattr(
+            "db.repositories.ml_dataset.feedback_humano_es_ti",
+            lambda: [{"expediente": "EXP-K", "relevante": 1}],
+        )
+
+        df = concept_drift._fetch_training_dataframe()
+
+        assert df[df["id_externo"] == "EXP-K"].iloc[0]["es_relevante"] == 1
+
     def test_retrain_counter_ignores_automatic_feedback(self, tmp_db):
         """Un lote del LLM no puede disparar el reentrenamiento semanal."""
         from db.model_registry import feedbacks_since_last_train

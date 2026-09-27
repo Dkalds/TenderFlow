@@ -424,11 +424,15 @@ def compute_f1_drop(
                 # etiquetado por LLM son predicciones, no ground truth.
                 # Usarlas aquí medía el acuerdo entre dos modelos y lo
                 # reportaba como degradación frente a la realidad.
-                "SELECT f.expediente, f.relevante, l.titulo, l.descripcion, "
-                "l.cpv, l.importe "
+                # Una fila por expediente, la más reciente: con correcciones
+                # hay varias, y contarlas todas pesaba doble el expediente
+                # corregido, también con su etiqueta vieja.
+                "SELECT DISTINCT ON (f.expediente) f.expediente, f.relevante, "
+                "l.titulo, l.descripcion, l.cpv, l.importe "
                 "FROM ml_feedback f "
                 "JOIN licitaciones l ON l.id_externo = f.expediente "
-                "WHERE f.created_at >= %s AND f.source = %s",
+                "WHERE f.created_at >= %s AND f.source = %s "
+                "ORDER BY f.expediente, f.created_at DESC, f.id DESC",
                 (since, FUENTE_REVISION_TI),
             ).fetchall()
     except Exception as exc:

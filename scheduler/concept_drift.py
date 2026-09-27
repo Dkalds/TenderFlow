@@ -15,7 +15,6 @@ from typing import Any
 
 from config import SAP_KEYWORDS
 from db.database import connect
-from db.repositories.feedback import FUENTE_REVISION_TI
 from observability import AlertLevel, get_logger, notify
 
 log = get_logger(__name__)
@@ -410,6 +409,8 @@ def _fetch_training_dataframe() -> Any:
     except ImportError:
         return None
 
+    from db.repositories.ml_dataset import feedback_humano_es_ti
+
     with connect() as c:
         lic_cur = c.execute(
             "SELECT id_externo, titulo, descripcion, raw_keywords, cpv, "
@@ -418,22 +419,18 @@ def _fetch_training_dataframe() -> Any:
         )
         lic_rows = lic_cur.fetchall()
         lic_cols = [d[0] for d in lic_cur.description]
-        # Solo ``revision_ti``: las filas ``human`` anteriores al plan de tres
-        # niveles significaban «es SAP», no «es TI», y este ``relevante`` se
-        # usa tal cual como etiqueta del binario. Las automáticas
-        # (source='llm_batch') son predicciones, y entrenar sobre ellas es
-        # enseñarle al modelo lo que ya cree -- el override de abajo es duro y
-        # sin pesos, así que una etiqueta del LLM pisaría la señal de keywords
-        # con su propia salida.
-        fb_cur = c.execute(
-            "SELECT expediente, relevante FROM ml_feedback WHERE source = %s",
-            (FUENTE_REVISION_TI,),
-        )
-        fb_rows = fb_cur.fetchall()
-        fb_cols = [d[0] for d in fb_cur.description]
 
+    # Solo ``revision_ti``: las filas ``human`` anteriores al plan de tres
+    # niveles significaban «es SAP», no «es TI», y este ``relevante`` se usa
+    # tal cual como etiqueta del binario. Las automáticas (source='llm_batch')
+    # son predicciones, y entrenar sobre ellas es enseñarle al modelo lo que
+    # ya cree -- el override de abajo es duro y sin pesos, así que una
+    # etiqueta del LLM pisaría la señal de keywords con su propia salida. Y
+    # una fila por expediente, la más reciente: con correcciones hay varias, y
+    # sin ese orden el dict de abajo se quedaba con la que el SELECT
+    # devolviera la última. Es la misma lectura que ``scraper.ml_training``.
     lic = pd.DataFrame(lic_rows, columns=lic_cols)
-    fb = pd.DataFrame(fb_rows, columns=fb_cols)
+    fb = pd.DataFrame(feedback_humano_es_ti(), columns=["expediente", "relevante"])
     if lic.empty:
         return None
 
