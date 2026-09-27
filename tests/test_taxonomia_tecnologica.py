@@ -67,6 +67,9 @@ CATEGORIAS = frozenset(
         "GIS",
         "SANIDAD_DIGITAL",
         "ADMIN_ELECTRONICA",
+        "RRHH_NOMINA",
+        "GESTION_DOCUMENTAL",
+        "PUESTO_TRABAJO",
     }
 )
 
@@ -93,7 +96,7 @@ def _detectadas(*textos: str) -> set[str]:
 
 
 class TestForma:
-    def test_los_labels_son_los_trece_fabricantes_y_las_nueve_categorias(self) -> None:
+    def test_los_labels_son_los_trece_fabricantes_y_las_doce_categorias(self) -> None:
         assert set(TECH_LABELS) == FABRICANTES | CATEGORIAS
         assert {k for k, t in TECH_LABEL_TIPO.items() if t == "fabricante"} == FABRICANTES
         assert {k for k, t in TECH_LABEL_TIPO.items() if t == "categoria"} == CATEGORIAS
@@ -149,7 +152,7 @@ class TestForma:
             # Lo que el nombre del label no dice y la definición sí: el
             # mantenimiento de software a medida es DESARROLLO.
             ("DESARROLLO", "mantenimiento"),
-            ("ERP", "nóminas"),
+            ("RRHH_NOMINA", "nóminas"),
             ("CRM", "atención ciudadana"),
             ("CLOUD_INFRA", "copias de seguridad"),
             ("CIBERSEGURIDAD", "ENS"),
@@ -158,6 +161,9 @@ class TestForma:
             ("ADMIN_ELECTRONICA", "sede"),
             ("META4", "PeopleNet"),
             ("UNIT4", "Agresso"),
+            ("GESTION_DOCUMENTAL", "gestor documental"),
+            ("PUESTO_TRABAJO", "microinformática"),
+            ("CLOUD_INFRA", "cableado estructurado"),
         ],
     )
     def test_la_definicion_cubre_lo_que_cubren_sus_keywords(self, label: str, termino: str) -> None:
@@ -486,3 +492,50 @@ class TestFabricantesIntactos:
     )
     def test_los_fabricantes_siguen_casando(self, titulo: str, fabricante: str) -> None:
         assert fabricante in _detectadas(titulo)
+
+
+# ── 6. Familias nuevas (D2, 2026-09-27) ─────────────────────────────────────
+
+FAMILIAS_NUEVAS = frozenset({"RRHH_NOMINA", "GESTION_DOCUMENTAL", "PUESTO_TRABAJO"})
+
+TITULOS_FAMILIAS_NUEVAS: list[tuple[str, set[str]]] = [
+    ("Implantación de un nuevo sistema de nóminas para el Ayuntamiento", {"RRHH_NOMINA"}),
+    ("Subministrament del programari de nòmines i portal de l'empleat", {"RRHH_NOMINA"}),
+    ("Mantenimiento del gestor documental corporativo", {"GESTION_DOCUMENTAL"}),
+    ("Subscripció al programari de gestió documental Alfresco", {"GESTION_DOCUMENTAL"}),
+    ("Suministro de ordenadores portátiles para el personal", {"PUESTO_TRABAJO"}),
+    ("Servicio de centro de atención a usuarios y soporte microinformático", {"PUESTO_TRABAJO"}),
+    ("Suministro de electrónica de red y cableado estructurado", {"CLOUD_INFRA"}),
+]
+
+
+class TestFamiliasNuevas:
+    @pytest.mark.parametrize(("titulo", "esperadas"), TITULOS_FAMILIAS_NUEVAS)
+    def test_detecta_la_familia(self, titulo: str, esperadas: set[str]) -> None:
+        assert esperadas <= _detectadas(titulo), titulo
+
+    def test_las_nominas_ya_no_son_erp(self) -> None:
+        """La keyword se mudó de familia: si siguiera en las dos, el test de
+        duplicados lo diría; si siguiera solo en ERP, esto."""
+        assert "ERP" not in _detectadas("Implantación de un nuevo sistema de nóminas")
+
+    def test_el_gestor_documental_ya_no_es_admin_electronica(self) -> None:
+        assert "ADMIN_ELECTRONICA" not in _detectadas("Mantenimiento del gestor documental")
+
+    @pytest.mark.parametrize(
+        "texto",
+        [
+            "Valoración de puestos de trabajo del personal municipal",
+            "Curso de formación en ofimática para empleados",
+            "Servicio de custodia y gestión documental de archivos en papel",
+        ],
+    )
+    def test_no_disparan_donde_la_palabra_significa_otra_cosa(self, texto: str) -> None:
+        assert not (_detectadas(texto) & FAMILIAS_NUEVAS), texto
+
+    def test_la_etiqueta_antigua_de_cloud_sigue_resolviendo(self) -> None:
+        """Los enlaces guardados a la analítica llevan el texto de la etiqueta."""
+        from services.analytics.tecnologias import _codes_for_label
+
+        assert "CLOUD_INFRA" in _codes_for_label("Cloud e infraestructura")
+        assert "CLOUD_INFRA" in _codes_for_label("Infraestructura, cloud y redes")

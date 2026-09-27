@@ -8,7 +8,8 @@ Dos tipos de etiqueta (2026-09-14, plan de arquitectura v2, «no salir de TI»)
   lista nombra productos y módulos de un vendor concreto.
 * **Categoría** (``ERP``, ``CRM``, ``CLOUD_INFRA``, ``CIBERSEGURIDAD``,
   ``DATOS_IA``, ``DESARROLLO``, ``GIS``, ``SANIDAD_DIGITAL``,
-  ``ADMIN_ELECTRONICA``): qué se compra, sin decir de quién. Ensanchan la
+  ``ADMIN_ELECTRONICA``, ``RRHH_NOMINA``, ``GESTION_DOCUMENTAL``,
+  ``PUESTO_TRABAJO``): qué se compra, sin decir de quién. Ensanchan la
   taxonomía **dentro** de TI: un integrador vende «un ERP» o «un SOC» tanto
   como vende SAP.
 
@@ -347,10 +348,6 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "sistema de gestión contable",
         "sistema contable",
         "sistema de gestión tributaria",
-        "sistema de nóminas",
-        "software de nóminas",
-        "sistema de gestión de recursos humanos",
-        "sistema de información de recursos humanos",
         # ca
         "planificació de recursos empresarials",
         "sistema de gestió integrat",
@@ -362,9 +359,6 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "sistema de gestió comptable",
         "sistema comptable",
         "sistema de gestió tributària",
-        "sistema de nòmines",
-        "programari de nòmines",
-        "sistema de gestió de recursos humans",
         # eu
         "enpresa baliabideen plangintza",
         "kudeaketa sistema integratua",
@@ -373,8 +367,6 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "aurrekontu kontabilitatea",
         "kontabilitate sistema",
         "zerga kudeaketako sistema",
-        "nominen sistema",
-        "nominen softwarea",
         "giza baliabideen kudeaketa sistema",
         # gl
         "planificación de recursos empresariais",
@@ -386,7 +378,6 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "contabilidade orzamentaria",
         "sistema de xestión contable",
         "sistema de xestión tributaria",
-        "sistema de xestión de recursos humanos",
     ],
     "CRM": [
         # es
@@ -547,6 +538,22 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "copia de seguranza",
         "subministración de servidores",
         "servidores virtuais",
+        # Redes de datos (D2, 2026-09-27): CLOUD_INFRA es «infraestructura, cloud y
+        # redes». Solo sintagmas: «red» a secas casa con saneamiento y agua.
+        "electrónica de red",
+        "electrònica de xarxa",
+        "cableado estructurado",
+        "cablejat estructurat",
+        "cableado estruturado",
+        "red de área local",
+        "xarxa d'àrea local",
+        "sd-wan",
+        "red corporativa",
+        "xarxa corporativa",
+        "rede corporativa",
+        "red wifi",
+        "xarxa wifi",
+        "rede wifi",
     ],
     "CIBERSEGURIDAD": [
         # es
@@ -1071,8 +1078,6 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "gestor de expedientes",
         "gestión de expedientes",
         "expediente electrónico",
-        "gestor documental",
-        "sistema de gestión documental",
         "archivo electrónico",
         "notificación electrónica",
         "notificaciones electrónicas",
@@ -1100,7 +1105,6 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "gestor d'expedients",
         "gestió d'expedients",
         "expedient electrònic",
-        "sistema de gestió documental",
         "arxiu electrònic",
         "notificació electrònica",
         "notificacions electròniques",
@@ -1153,12 +1157,82 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "esquema nacional de interoperabilidade",
         "xestor de expedientes",
         "xestión de expedientes",
-        "xestor documental",
-        "sistema de xestión documental",
         "arquivo electrónico",
         "notificacións electrónicas",
         "carpeta cidadá",
         "portal do cidadán",
+    ],
+    # ── Familias de D2 (plan de clasificación en tres niveles, 2026-09-27) ──
+    "RRHH_NOMINA": [
+        # Movidas desde ERP: una nómina no es un ERP, y quien las busca no
+        # quiere que se le mezclen con la gestión económico-financiera.
+        "sistema de nóminas",
+        "software de nóminas",
+        "sistema de gestión de recursos humanos",
+        "sistema de información de recursos humanos",
+        "sistema de nòmines",
+        "programari de nòmines",
+        "sistema de gestió de recursos humans",
+        "nominen sistema",
+        "nominen softwarea",
+        "sistema de xestión de recursos humanos",
+        # Nuevas: siempre sobre el software, nunca sobre el servicio (la
+        # «gestión de nóminas» externalizada es una gestoría, no TI).
+        "aplicación de nóminas",
+        "aplicació de nòmines",
+        "portal del empleado",
+        "portal de l'empleat",
+        "portal do empregado",
+        "software de recursos humanos",
+        "programari de recursos humans",
+        "giza baliabideen kudeaketa",
+    ],
+    "GESTION_DOCUMENTAL": [
+        # Movidas desde ADMIN_ELECTRONICA.
+        "gestor documental",
+        "sistema de gestión documental",
+        "sistema de gestió documental",
+        "xestor documental",
+        "sistema de xestión documental",
+        # Nuevas. «gestión documental» a secas no: es también la custodia de
+        # archivos en papel.
+        "software de gestión documental",
+        "programari de gestió documental",
+        "plataforma de gestión documental",
+        "plataforma de gestió documental",
+        "gestión de contenidos empresariales",
+        "alfresco",
+        "nuxeo",
+        "dokumentu-kudeaketa",
+    ],
+    "PUESTO_TRABAJO": [
+        # Hardware y soporte del usuario. Ni «puesto de trabajo» (es también el
+        # puesto de la plantilla) ni «ofimática» a secas (casa con cursos, que
+        # D1 deja fuera de TI).
+        "ordenadores personales",
+        "ordenadores de sobremesa",
+        "ordenadores portátiles",
+        "equipos informáticos",
+        "material informático",
+        "microinformática",
+        "soporte microinformático",
+        "centro de atención a usuarios",
+        "soporte a usuarios",
+        "service desk",
+        "help desk",
+        "licencias de ofimática",
+        "paquete ofimático",
+        "suite ofimática",
+        "ordinadors personals",
+        "ordinadors portàtils",
+        "equips informàtics",
+        "material informàtic",
+        "microinformàtica",
+        "centre d'atenció a l'usuari",
+        "llicències d'ofimàtica",
+        "ordenadores persoais",
+        "ordenagailu eramangarriak",
+        "ekipamendu informatikoa",
     ],
 }
 
@@ -1188,13 +1262,16 @@ TECH_CATEGORIAS: dict[str, str] = {
     "INFOR": "Infor",
     "ERP": "ERP (genérico)",
     "CRM": "CRM (genérico)",
-    "CLOUD_INFRA": "Cloud e infraestructura",
+    "CLOUD_INFRA": "Infraestructura, cloud y redes",
     "CIBERSEGURIDAD": "Ciberseguridad",
     "DATOS_IA": "Datos e IA",
     "DESARROLLO": "Desarrollo de software",
     "GIS": "GIS y geoinformación",
     "SANIDAD_DIGITAL": "Sanidad digital",
     "ADMIN_ELECTRONICA": "Administración electrónica",
+    "RRHH_NOMINA": "RRHH y nómina",
+    "GESTION_DOCUMENTAL": "Gestión documental",
+    "PUESTO_TRABAJO": "Puesto de trabajo y soporte",
 }
 
 TipoLabel = Literal["fabricante", "categoria"]
@@ -1225,6 +1302,9 @@ TECH_LABEL_TIPO: dict[str, TipoLabel] = {
     "GIS": "categoria",
     "SANIDAD_DIGITAL": "categoria",
     "ADMIN_ELECTRONICA": "categoria",
+    "RRHH_NOMINA": "categoria",
+    "GESTION_DOCUMENTAL": "categoria",
+    "PUESTO_TRABAJO": "categoria",
 }
 
 # Qué cubre cada label, en una frase. Viaja en la pregunta del etiquetado por LLM
@@ -1266,16 +1346,17 @@ TECH_DEFINICIONES: dict[str, str] = {
     "SAGE": "ERP de Sage: X3, 200, 50, Murano o Despachos.",
     "INFOR": "ERP de Infor: LN, M3, CloudSuite, Infor OS o Baan.",
     "ERP": (
-        "Sistema de gestión integrado sin fabricante nombrado: gestión económico-financiera, "
-        "contabilidad presupuestaria, gestión tributaria, nóminas o RRHH."
+        "Sistema de gestión integrado sin fabricante nombrado: gestión "
+        "económico-financiera, contabilidad presupuestaria o gestión tributaria."
     ),
     "CRM": (
         "Relación con clientes o ciudadanía sin fabricante nombrado: CRM, plataforma de "
         "atención ciudadana, contact center, automatización de marketing."
     ),
     "CLOUD_INFRA": (
-        "Nube (IaaS, PaaS, SaaS), contenedores, virtualización, CPD o centro de datos, "
-        "hosting, almacenamiento, copias de seguridad y servidores."
+        "Nube (IaaS, PaaS, SaaS), contenedores, virtualización, CPD, hosting, "
+        "almacenamiento, copias de seguridad, servidores y redes de datos "
+        "(electrónica de red, cableado estructurado, wifi)."
     ),
     "CIBERSEGURIDAD": (
         "Seguridad de la información: ENS, SOC, SIEM, EDR, cortafuegos, auditorías de "
@@ -1299,9 +1380,22 @@ TECH_DEFINICIONES: dict[str, str] = {
         "HIS, PACS, telemedicina, cita previa, gestión de pacientes."
     ),
     "ADMIN_ELECTRONICA": (
-        "Administración electrónica: sede, registro y firma electrónicos, tramitación, "
-        "gestor de expedientes o documental, interoperabilidad, notificaciones, factura "
-        "electrónica."
+        "Administración electrónica: sede, registro y firma electrónicos, "
+        "tramitación, gestor de expedientes, archivo electrónico, "
+        "interoperabilidad, notificaciones, factura electrónica."
+    ),
+    "RRHH_NOMINA": (
+        "Software de recursos humanos y nómina sin fabricante nombrado: sistema o "
+        "aplicación de nóminas, gestión de recursos humanos, portal del empleado."
+    ),
+    "GESTION_DOCUMENTAL": (
+        "Gestión documental y de contenidos sin fabricante nombrado: gestor "
+        "documental, sistema o plataforma de gestión documental, ECM, Alfresco o Nuxeo."
+    ),
+    "PUESTO_TRABAJO": (
+        "Puesto de trabajo del usuario: ordenadores de sobremesa y portátiles, "
+        "equipos y material informático, microinformática, centro de atención a "
+        "usuarios (CAU), service desk, ofimática."
     ),
 }
 

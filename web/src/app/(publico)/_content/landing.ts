@@ -143,7 +143,7 @@ export const CONTENIDO: ContenidoLanding = {
     "Infor",
     "ERP",
     "CRM",
-    "Cloud e infraestructura",
+    "Infraestructura, cloud y redes",
     "Ciberseguridad",
     "Datos e IA",
     "Desarrollo de software",
