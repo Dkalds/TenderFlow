@@ -7,7 +7,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
 
 /**
- * Marco del dashboard — rail de 76 px (icono y nombre de cada espacio) + barra
+ * Marco del dashboard — rail de 84 px (icono y nombre de cada espacio) + barra
  * de ámbito de 52 px.
  *
  * Antes se apilaban seis bandas de cromo antes de la primera fila de dato

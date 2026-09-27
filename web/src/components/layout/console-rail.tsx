@@ -58,13 +58,14 @@ import { ROLE_LABELS } from "@/app/(dashboard)/equipo/_lib/etiquetas";
  * («RESResumen»). Ahora el texto que se ve es el nombre accesible entero.
  *
  * El marcador de activo es la pastilla detrás del icono y no una caja del
- * ancho del rail: así el nombre dispone de todo el ancho (unos 72 px de texto
- * a 11 px), que es lo que miden «Competencia» o «Investigador». Solo
- * «Oportunidades» no cabe y se corta con elipsis; el nombre entero está en el
- * tooltip y en el nombre accesible.
+ * ancho del rail: así el nombre dispone de todo el ancho del enlace. El nombre
+ * más largo, «Oportunidades», mide 77 px a 11 px en Windows (medido en
+ * /radar a 1440 px); a 76 px de rail quedaban 73 y salía «Oportunidad…». A
+ * 84 quedan 81, con margen para el ~1,5 % que ensancha el texto el Chromium
+ * de Linux de la CI. El `truncate` se queda como red, no como plan.
  */
 
-const RAIL_WIDTH = 76;
+const RAIL_WIDTH = 84;
 
 /** Activo también cuando estás en una ruta heredada que este espacio absorbió. */
 function useActiveSpaceKey(): string | undefined {
