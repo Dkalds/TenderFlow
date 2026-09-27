@@ -21,6 +21,7 @@ import pytest
 from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.tecnologia_pliego import (
     NO_SIGNAL_SENTINEL,
+    SIN_EVIDENCIA_SENTINEL,
     TechSignal,
     TecnologiaPliegoRepository,
 )
@@ -222,3 +223,57 @@ def test_una_version_nueva_sin_tecnologia_anula_la_vieja(repos) -> None:
     )
 
     assert lic_repo.etiquetas_tecnologia_no_circulares()["EXP-NV"]["tecnologia_llm"] == ""
+
+
+# ── Etiquetas descartadas por falta de cita ────────────────────────────────
+
+
+def test_sin_evidencia_no_es_un_pronunciamiento(repos) -> None:
+    """El LLM afirmó una tecnología y no la sostuvo con una cita: eso no es
+    «ninguna tecnología». Si contara como ``""`` entrenaría un negativo falso."""
+    lic_repo, tech_repo = repos
+    _insert_licitacion("EXP-SE")
+    tech_repo.upsert_signals(
+        "EXP-SE", method="llm_metadata", signal_version="v2", scores={}, sin_evidencia=True
+    )
+
+    assert "EXP-SE" not in lic_repo.etiquetas_tecnologia_no_circulares()
+
+
+def test_sin_evidencia_no_tapa_lo_que_dijo_otro_carril(repos) -> None:
+    lic_repo, tech_repo = repos
+    _insert_licitacion("EXP-SE2")
+    tech_repo.upsert_signals(
+        "EXP-SE2", method="llm_metadata", signal_version="v2", scores={}, sin_evidencia=True
+    )
+    tech_repo.upsert_signals(
+        "EXP-SE2", method="llm", signal_version="ficha-v3", scores={"SAP": TechSignal(score=0.8)}
+    )
+
+    assert lic_repo.etiquetas_tecnologia_no_circulares()["EXP-SE2"]["tecnologia_llm"] == (
+        "SAP:0.8000"
+    )
+
+
+def test_una_version_nueva_sin_evidencia_retira_la_vieja_sin_pronunciarse(repos) -> None:
+    """La versión vigente manda aunque no se pronuncie: el SAP del prompt
+    anterior no vuelve por la puerta de atrás."""
+    lic_repo, _ = repos
+    _insert_licitacion("EXP-SE3")
+    _insert_senal(
+        "EXP-SE3",
+        "SAP",
+        method="llm_metadata",
+        signal_version="llm-meta-v1/m",
+        computed_at="2026-09-01T10:00:00+00:00",
+    )
+    _insert_senal(
+        "EXP-SE3",
+        SIN_EVIDENCIA_SENTINEL,
+        method="llm_metadata",
+        signal_version="llm-meta-v2/m",
+        computed_at="2026-09-20T10:00:00+00:00",
+        score=0.0,
+    )
+
+    assert "EXP-SE3" not in lic_repo.etiquetas_tecnologia_no_circulares()

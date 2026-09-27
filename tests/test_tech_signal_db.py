@@ -76,6 +76,46 @@ class TestUpsertSignals:
         # pero SÍ cuenta como "ya puntuada" para list_licitaciones_pending_signal
         assert repo.list_licitaciones_pending_signal(signal_version="v1") == []
 
+    def test_sin_evidencia_persists_its_own_sentinel_invisible_to_reads(self, repo):
+        """Etiquetas del LLM descartadas por no tener cita: procesada para esta
+        versión, pero con un sentinel distinto del «sin tecnología»."""
+        from db.repositories.tecnologia_pliego import SIN_EVIDENCIA_SENTINEL
+
+        _insert_licitacion("SIG-SE")
+        n = repo.upsert_signals(
+            "SIG-SE", method="llm_metadata", signal_version="v1", scores={}, sin_evidencia=True
+        )
+
+        assert n == 0
+        assert repo.list_for_licitacion("SIG-SE") == []
+        assert repo.list_metadata_pending_llm_signal(signal_version="v1") == []
+        with connect() as c:
+            filas = c.execute(
+                "SELECT tecnologia, score FROM licitacion_tecnologia_pliego "
+                "WHERE licitacion_id = %s",
+                ("SIG-SE",),
+            ).fetchall()
+        assert [(f[0], float(f[1])) for f in filas] == [(SIN_EVIDENCIA_SENTINEL, 0.0)]
+
+    def test_a_later_run_replaces_one_sentinel_with_the_other(self, repo):
+        """Como cualquier otra señal del method: la corrida nueva borra lo que
+        ya no detecta, sentinels incluidos."""
+        from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
+
+        _insert_licitacion("SIG-SE2")
+        repo.upsert_signals(
+            "SIG-SE2", method="llm_metadata", signal_version="v1", scores={}, sin_evidencia=True
+        )
+        repo.upsert_signals("SIG-SE2", method="llm_metadata", signal_version="v2", scores={})
+
+        with connect() as c:
+            filas = c.execute(
+                "SELECT tecnologia, signal_version FROM licitacion_tecnologia_pliego "
+                "WHERE licitacion_id = %s",
+                ("SIG-SE2",),
+            ).fetchall()
+        assert [tuple(f) for f in filas] == [(NO_SIGNAL_SENTINEL, "v2")]
+
     def test_keywords_and_llm_coexist_for_the_same_licitacion(self, repo):
         _insert_licitacion("SIG-3")
         repo.upsert_signals(
@@ -744,3 +784,42 @@ class TestTecnologiasEndpoint:
         r = client.get("/api/v1/licitaciones/EP-3/tecnologias", headers=auth)
         assert r.status_code == 200
         assert r.json()["items"] == []
+
+    def test_sentinels_never_show_up_as_technologies(self, client, auth):
+        """Ni el «sin tecnología» ni el «sin evidencia» son una tecnología: la
+        ruta crea una entrada por cada fila que le llega."""
+        _insert_licitacion("EP-4")
+        repo = TecnologiaPliegoRepository()
+        repo.upsert_signals("EP-4", method="keywords", signal_version="v1", scores={})
+        repo.upsert_signals(
+            "EP-4", method="llm_metadata", signal_version="v2", scores={}, sin_evidencia=True
+        )
+
+        r = client.get("/api/v1/licitaciones/EP-4/tecnologias", headers=auth)
+
+        assert r.status_code == 200
+        assert r.json()["items"] == []
+
+
+class TestFuerzaDeLaSenalTecnica:
+    """``AggregateRepository.tech_signal_by_ids``: la fuerza que usa el Radar."""
+
+    def test_sentinels_do_not_count_as_signal(self, repo):
+        from db.repositories.aggregates import AggregateRepository
+
+        _insert_licitacion("FZ-1")
+        _insert_licitacion("FZ-2")
+        repo.upsert_signals("FZ-1", method="keywords", signal_version="v1", scores={})
+        repo.upsert_signals(
+            "FZ-1", method="llm_metadata", signal_version="v2", scores={}, sin_evidencia=True
+        )
+        repo.upsert_signals(
+            "FZ-2",
+            method="llm_metadata",
+            signal_version="v2",
+            scores={"SAP": TechSignal(score=0.8)},
+        )
+
+        fuerza = AggregateRepository().tech_signal_by_ids(["FZ-1", "FZ-2"])
+
+        assert fuerza == {"FZ-2": 0.8}

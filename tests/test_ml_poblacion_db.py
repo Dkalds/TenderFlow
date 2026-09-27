@@ -91,6 +91,29 @@ def test_una_etiqueta_humana_entra_aunque_su_fuente_quede_fuera(db) -> None:
     assert _ids(filas_entrenamiento_sap()) == set()
 
 
+def test_una_cita_inverificable_del_llm_no_mete_la_fila_en_el_dataset(db) -> None:
+    """``__sin_evidencia__`` es «el LLM no se pronunció»: si abriera la puerta
+    del dataset, la fila de fuera de la población entraría sin etiqueta y
+    entrenaría como negativo. El «sin tecnología» sí es un pronunciamiento."""
+    from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+
+    _insertar("PSCP-SIN-EVIDENCIA", universo="pscp_observed")
+    _insertar("PSCP-SIN-TECNOLOGIA", universo="pscp_observed")
+    repo = TecnologiaPliegoRepository()
+    repo.upsert_signals(
+        "PSCP-SIN-EVIDENCIA",
+        method="llm_metadata",
+        signal_version="v2",
+        scores={},
+        sin_evidencia=True,
+    )
+    repo.upsert_signals(
+        "PSCP-SIN-TECNOLOGIA", method="llm_metadata", signal_version="v2", scores={}
+    )
+
+    assert _ids(filas_entrenamiento_tecnologia()) == {"PSCP-SIN-TECNOLOGIA"}
+
+
 def test_el_scoring_sirve_la_misma_poblacion_que_el_entrenamiento(db) -> None:
     _insertar("PLACSP-1", universo="technology_observed")
     _insertar("PSCP-1", universo="pscp_observed")

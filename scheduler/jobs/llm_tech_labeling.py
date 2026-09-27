@@ -11,6 +11,13 @@ Contratos de fallo (importantes para no corromper el estado):
 - Un error de clasificación **no** persiste señal, así que la licitación
   vuelve a salir pendiente en la siguiente corrida. Solo una respuesta válida
   con lista vacía escribe el sentinel "sin tecnología".
+- Una etiqueta cuya cita no aparece en el anuncio se descarta
+  (``services.llm_tech_labeling.parse_labels``) y se cuenta en
+  ``etiquetas_sin_evidencia``. Si el modelo afirmó tecnologías y **ninguna**
+  sostuvo su cita, se escribe ``SIN_EVIDENCIA_SENTINEL`` y no el «sin
+  tecnología»: la licitación queda procesada para esta versión (cuenta en
+  ``sin_evidencia``) sin convertirse en un negativo falso, ni en el
+  entrenamiento ni en ``ml_feedback``.
 - El presupuesto se comprueba de forma *eager* antes de cada llamada: el
   ``check()`` que hace ``llm/client.py`` vive dentro del generador y no se
   evalúa hasta consumir el stream, lo que en un batch significaría descubrir
@@ -124,8 +131,12 @@ def batch_failed_systemically(counts: dict[str, Any]) -> bool:
     la API key, la red está caída o el proveedor devuelve basura. Los dos
     entrypoints lo usan para decir "esto no ha funcionado" en vez de reportar
     una corrida limpia de cero resultados.
+
+    Una licitación cuyas etiquetas no sostuvieron su cita (``sin_evidencia``)
+    también es progreso: el proveedor respondió y quedó procesada.
     """
-    return bool(counts["error"]) and not counts["scored"] and not counts["no_signal"]
+    procesadas = counts["scored"] or counts["no_signal"] or counts.get("sin_evidencia", 0)
+    return bool(counts["error"]) and not procesadas
 
 
 def run() -> dict[str, Any]:
@@ -135,6 +146,10 @@ def run() -> dict[str, Any]:
     counts: dict[str, Any] = {
         "scored": 0,
         "no_signal": 0,
+        # Licitaciones: todas sus etiquetas cayeron por falta de cita.
+        "sin_evidencia": 0,
+        # Etiquetas: descartadas por falta de cita, en cualquier licitación.
+        "etiquetas_sin_evidencia": 0,
         "error": 0,
         "disabled": 0,
         "budget_exhausted": 0,
@@ -178,8 +193,20 @@ def run() -> dict[str, Any]:
             )
             break
         try:
-            scores = classify_licitacion(lic, model=model)
-            repo.upsert_signals(licitacion_id, method=METHOD, signal_version=version, scores=scores)
+            clasificacion = classify_licitacion(lic, model=model)
+            if clasificacion.scores:
+                status = "scored"
+            elif clasificacion.sin_evidencia:
+                status = "sin_evidencia"
+            else:
+                status = "no_signal"
+            repo.upsert_signals(
+                licitacion_id,
+                method=METHOD,
+                signal_version=version,
+                scores=clasificacion.scores,
+                sin_evidencia=status == "sin_evidencia",
+            )
         except LLMAuthError as exc:
             # La key rechazada lo será igual para todo lo que queda del lote:
             # seguir solo repetiría la misma llamada fallida (el run
@@ -214,9 +241,12 @@ def run() -> dict[str, Any]:
             log.warning("llm_tech_labeling_failed", licitacion_id=licitacion_id, error=str(exc))
             continue
         procesadas.append(licitacion_id)
-        clasificadas[licitacion_id] = scores
-        status = "scored" if scores else "no_signal"
+        # Una licitación sin evidencia no va al feedback: su lista vacía no es
+        # un «no relevante», es justo lo dudoso que merece ojos humanos.
+        if status != "sin_evidencia":
+            clasificadas[licitacion_id] = clasificacion.scores
         counts[status] += 1
+        counts["etiquetas_sin_evidencia"] += len(clasificacion.sin_evidencia)
         pliego_tech_signal_total.labels(method=METHOD, status=status).inc()
 
     if procesadas:

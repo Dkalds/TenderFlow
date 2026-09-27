@@ -1239,7 +1239,9 @@ class LicitacionRepository:
         Convención de ausencia, que es la parte que importa para no inventar
         etiquetas:
 
-        - ``None`` → esa fuente **no se pronunció** sobre la licitación.
+        - ``None`` → esa fuente **no se pronunció** sobre la licitación. Para
+          el LLM incluye el sentinel ``__sin_evidencia__``: afirmó tecnologías
+          y ninguna sostuvo su cita, así que no hay respuesta que creer.
         - ``""`` (cadena vacía) → la fuente la revisó y declaró que no tiene
           ninguna tecnología. Es un negativo de verdad, no un desconocido. Para
           el LLM eso son las filas con el sentinel ``__no_signal__``; para el
@@ -1251,7 +1253,7 @@ class LicitacionRepository:
         """
         import json
 
-        from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
+        from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL, SIN_EVIDENCIA_SENTINEL
 
         salida: dict[str, dict[str, str | None]] = {}
         with connect_read() as c:
@@ -1314,6 +1316,10 @@ class LicitacionRepository:
             revisadas: set[str] = set()
             for id_externo, tecnologia, score in cur.fetchall():
                 clave = str(id_externo)
+                # Después de elegir la versión vigente y no antes: si la
+                # vigente no se sostuvo, la anterior tampoco cuenta.
+                if str(tecnologia) == SIN_EVIDENCIA_SENTINEL:
+                    continue
                 revisadas.add(clave)
                 if str(tecnologia) == NO_SIGNAL_SENTINEL:
                     continue
