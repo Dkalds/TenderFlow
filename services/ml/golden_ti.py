@@ -267,16 +267,23 @@ def leer_corte_holdout(path: Path | None = None) -> str | None:
 
 
 def repartir(
-    ejemplos: list[EjemploGoldenTi], path: Path | None = None
+    ejemplos: list[EjemploGoldenTi], *rutas: Path
 ) -> tuple[list[EjemploGoldenTi], str | None]:
-    """Reparte con el corte congelado en ``path`` o, si aún no hay ninguno, con
-    uno nuevo en la mediana (:func:`corte_mediano`).
+    """Reparte con el primer corte congelado que encuentre en ``rutas``, en
+    orden (sin rutas, :data:`RUTA_GOLDEN_TI`), o, si ninguna trae uno, con uno
+    nuevo en la mediana (:func:`corte_mediano`).
 
     Devuelve los ejemplos repartidos (ver :func:`asignar_splits`) y el corte
     usado, que el exportador escribe en la cabecera
     (:data:`PREFIJO_CORTE_HOLDOUT`) para la siguiente exportación.
     """
-    corte = leer_corte_holdout(path) or corte_mediano(ejemplos)
+    corte: str | None = None
+    for ruta in rutas or (RUTA_GOLDEN_TI,):
+        corte = leer_corte_holdout(ruta)
+        if corte is not None:
+            break
+    else:
+        corte = corte_mediano(ejemplos)
     return asignar_splits(ejemplos, corte), corte
 
 

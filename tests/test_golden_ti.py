@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
@@ -114,21 +115,31 @@ def test_sin_fecha_de_publicacion_va_a_tune_con_aviso(monkeypatch: pytest.Monkey
     assert log.warning.call_args.kwargs["id_externo"] == "EXP-SIN-FECHA"
 
 
+def _exportador_sin_bd(
+    monkeypatch: pytest.MonkeyPatch, filas: list[dict[str, object]], golden_del_repo: Path
+) -> ModuleType:
+    """El script de exportación con la BD sustituida por ``filas`` y el golden
+    del repo apuntando a ``golden_del_repo`` (el test no lee el fichero real)."""
+    import scripts.exportar_golden_ti as exportador
+
+    monkeypatch.setattr("db.database.init_db", lambda: None)
+    monkeypatch.setattr(
+        "db.repositories.feedback.FeedbackRepository.filas_revision_ti",
+        lambda _self: list(filas),
+    )
+    monkeypatch.setattr(golden_ti, "RUTA_GOLDEN_TI", golden_del_repo)
+    return exportador
+
+
 def test_el_exportador_congela_el_corte_entre_exportaciones(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """De punta a punta, sin BD: la primera exportación escribe el corte en la
     cabecera y la segunda, con un expediente antiguo revisado después, lo
     respeta."""
-    import scripts.exportar_golden_ti as exportador
-
     filas = [_fila(f"EXP-{i}", f"2026-0{i}-01") for i in range(1, 5)]
-    monkeypatch.setattr("db.database.init_db", lambda: None)
-    monkeypatch.setattr(
-        "db.repositories.feedback.FeedbackRepository.filas_revision_ti",
-        lambda _self: list(filas),
-    )
     ruta = tmp_path / "golden.jsonl"
+    exportador = _exportador_sin_bd(monkeypatch, filas, golden_del_repo=ruta)
 
     assert exportador.main(["--salida", str(ruta)]) == 0
     primera = {e.id_externo: e.split for e in cargar_golden_ti(ruta)}
@@ -140,6 +151,29 @@ def test_el_exportador_congela_el_corte_entre_exportaciones(
     assert primera == {"EXP-1": "tune", "EXP-2": "tune", "EXP-3": "holdout", "EXP-4": "holdout"}
     assert {id_: segunda[id_] for id_ in primera} == primera
     assert segunda["EXP-0"] == "tune"
+
+
+def test_una_salida_nueva_reutiliza_el_corte_del_golden_del_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--salida`` a una ruta sin corte no calcula una mediana propia si el
+    golden del repo ya tiene uno: copiar esa salida encima del golden movería
+    el corte sin que nada lo avisara. Aquí la mediana sería 2026-03-01."""
+    golden_del_repo = tmp_path / "golden_del_repo.jsonl"
+    golden_del_repo.write_text(f"# cabecera\n{PREFIJO_CORTE_HOLDOUT}2026-02-01\n", encoding="utf-8")
+    filas = [_fila(f"EXP-{i}", f"2026-0{i}-01") for i in range(1, 5)]
+    exportador = _exportador_sin_bd(monkeypatch, filas, golden_del_repo=golden_del_repo)
+    salida = tmp_path / "otra" / "golden.jsonl"
+
+    assert exportador.main(["--salida", str(salida)]) == 0
+
+    assert leer_corte_holdout(salida) == "2026-02-01"
+    assert {e.id_externo: e.split for e in cargar_golden_ti(salida)} == {
+        "EXP-1": "tune",
+        "EXP-2": "holdout",
+        "EXP-3": "holdout",
+        "EXP-4": "holdout",
+    }
 
 
 def test_el_corte_se_lee_de_la_cabecera(tmp_path: Path) -> None:
@@ -234,7 +268,14 @@ def test_una_etiqueta_fuera_del_vocabulario_es_un_error(tmp_path: Path) -> None:
 
 
 def test_el_fichero_del_repo_carga() -> None:
-    """Hoy solo tiene la cabecera: vacío es válido, roto no. Sin ejemplos
-    tampoco hay corte: lo fija la primera exportación con revisión humana."""
-    assert isinstance(cargar_golden_ti(), list)
-    assert leer_corte_holdout() is None
+    """Vacío es válido, roto no. Con ejemplos, el fichero trae su corte y sus
+    ejemplos están repartidos contra él (hoy solo tiene la cabecera: ni
+    ejemplos ni corte, que fija la primera exportación con revisión humana)."""
+    ejemplos = cargar_golden_ti()
+    corte = leer_corte_holdout()
+
+    if not ejemplos:
+        return
+    assert corte is not None
+    en_el_fichero = sorted(ejemplos, key=lambda e: (e.fecha, e.id_externo))
+    assert asignar_splits(ejemplos, corte) == en_el_fichero

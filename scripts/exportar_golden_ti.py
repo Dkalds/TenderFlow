@@ -18,9 +18,11 @@ Qué hace
 2. La convierte en :class:`~services.ml.golden_ti.EjemploGoldenTi`
    (``ejemplo_desde_fila``) y reparte tune/holdout por fecha, fijo
    (``repartir``): contra el corte que ya guarda la cabecera del fichero de
-   destino o, en la primera exportación, contra la mediana, de modo que el
-   holdout es el 50% más reciente. El corte no se recalcula después: revisar
-   más tarde una licitación antigua no mueve ningún ejemplo de tune a holdout.
+   destino; si ese no lo trae (una ``--salida`` nueva), contra el del golden
+   del repo; y solo en la primera exportación, contra la mediana, de modo que
+   el holdout es el 50% más reciente. El corte no se recalcula después:
+   revisar más tarde una licitación antigua no mueve ningún ejemplo de tune a
+   holdout, y copiar una ``--salida`` encima del golden no mueve el corte.
 3. Escribe el JSONL con cabecera, la línea del corte y una línea por
    ejemplo, ordenadas por fecha de publicación.
 
@@ -90,10 +92,11 @@ def main(argv: list[str] | None = None) -> int:
 
     destino = salida if salida is not None else RUTA_GOLDEN_TI
     filas = FeedbackRepository().filas_revision_ti()
-    # El corte se lee del fichero que se va a reescribir, antes de abrirlo
-    # para escribir. `repartir` ya devuelve la lista ordenada por
-    # (fecha, id_externo): es el orden en el que se escribe el fichero.
-    ejemplos, corte = repartir([ejemplo_desde_fila(f) for f in filas], destino)
+    # El corte se lee antes de abrir el destino para escribir: primero el del
+    # propio destino y, si no trae ninguno, el del golden del repo, para que
+    # una `--salida` nueva no fije una mediana propia. `repartir` ya devuelve
+    # la lista ordenada por (fecha, id_externo): el orden en que se escribe.
+    ejemplos, corte = repartir([ejemplo_desde_fila(f) for f in filas], destino, RUTA_GOLDEN_TI)
 
     destino.parent.mkdir(parents=True, exist_ok=True)
     with destino.open("w", encoding="utf-8", newline="\n") as fh:
