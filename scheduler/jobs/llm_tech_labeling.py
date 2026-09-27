@@ -185,7 +185,7 @@ def run() -> dict[str, Any]:
     from llm.providers import LLMAuthError, LLMModelUnavailableError
     from observability.ops_events import record_event
     from observability.runtime_metrics import pliego_tech_signal_total
-    from services.llm_tech_labeling import METHOD, METHOD_ES_TI, classify_licitacion, signal_version
+    from services.llm_tech_labeling import METHOD, classify_licitacion, signal_version
     from services.tech_signal import merge_doc_signals
 
     model = settings.LLM_TECH_LABELING_MODEL
@@ -219,37 +219,30 @@ def run() -> dict[str, Any]:
                 status = "sin_evidencia"
             else:
                 status = "no_signal"
-            # El marcador de nivel 1 va antes que la fila de familias: quien
-            # decide "pendiente" es la fila ``method=METHOD`` de esta versión
-            # (``list_metadata_pending_llm_signal``), así que si esa fila
-            # fallara después, la licitación seguiría pendiente y la próxima
-            # corrida reescribiría el marcador sin perderlo -- al revés, un
-            # marcador escrito después de un fallo de familias no se
-            # escribiría nunca.
+            # Familias y marcador de nivel 1 van en la MISMA llamada, en el
+            # MISMO ``method=METHOD`` (``llm_metadata``): la CHECK
+            # ``ck_lic_tec_pliego_method`` de la tabla no admite un
+            # ``method`` propio para el marcador sin migración (F5), y
+            # ``upsert_signals`` borra por ``method`` -- dos llamadas se
+            # pisarían la una a la otra en vez de sumarse.
+            filas: dict[str, TechSignal] = dict(clasificacion.scores)
             if clasificacion.es_ti is not None:
                 marcador = ES_TI_SENTINEL if clasificacion.es_ti else NO_ES_TI_SENTINEL
-                repo.upsert_signals(
-                    licitacion_id,
-                    method=METHOD_ES_TI,
-                    signal_version=version,
-                    scores={
-                        marcador: TechSignal(
-                            score=0.0,
-                            evidence=[
-                                {
-                                    "es_ti": clasificacion.es_ti,
-                                    "confianza": clasificacion.confianza_es_ti,
-                                    "otros_fabricantes": list(clasificacion.otros_fabricantes),
-                                }
-                            ],
-                        )
-                    },
+                filas[marcador] = TechSignal(
+                    score=0.0,
+                    evidence=[
+                        {
+                            "es_ti": clasificacion.es_ti,
+                            "confianza": clasificacion.confianza_es_ti,
+                            "otros_fabricantes": list(clasificacion.otros_fabricantes),
+                        }
+                    ],
                 )
             repo.upsert_signals(
                 licitacion_id,
                 method=METHOD,
                 signal_version=version,
-                scores=clasificacion.scores,
+                scores=filas,
                 sin_evidencia=status == "sin_evidencia",
             )
         except LLMAuthError as exc:

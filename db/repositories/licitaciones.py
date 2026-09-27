@@ -1272,26 +1272,50 @@ class LicitacionRepository:
           method)`` —la ``signal_version`` de su fila más reciente por
           ``computed_at``—: un cambio de prompt o de modelo no puede mezclar
           respuestas viejas y nuevas en la misma etiqueta.
+        - El marcador de nivel 1 (``__es_ti__``/``__no_es_ti__``, plan de
+          clasificación en tres niveles) vive DENTRO de ese mismo
+          ``method='llm_metadata'`` -- junto a las familias, en la misma
+          fila de ``scores`` de ``upsert_signals`` -- porque la CHECK
+          ``ck_lic_tec_pliego_method`` de la tabla no admite un ``method``
+          propio sin migración (F5). Cuenta como pronunciamiento (igual que
+          ``__no_signal__``) pero nunca como etiqueta de familia: contestar
+          si el contrato es TI no es nombrar una tecnología. Si la MISMA
+          versión vigente de ese ``method`` también trae
+          ``__sin_evidencia__``, el grupo entero (licitación, method) NO se
+          pronuncia aunque el marcador esté ahí -- son respuestas
+          independientes, pero «sin evidencia» manda dentro de su propio
+          ``method``; el agrupado es por ``(licitación, method)`` y no solo
+          por licitación precisamente para que esto no tape lo que diga
+          OTRO ``method`` de la misma licitación (p. ej. la ficha de pliego,
+          ``llm``).
 
         Convención de ausencia, que es la parte que importa para no inventar
         etiquetas:
 
         - ``None`` → esa fuente **no se pronunció** sobre la licitación. Para
           el LLM incluye el sentinel ``__sin_evidencia__``: afirmó tecnologías
-          y ninguna sostuvo su cita, así que no hay respuesta que creer. Para
-          el humano, una fila heredada sin tecnología (ver
+          y ninguna sostuvo su cita, así que no hay respuesta que creer (y
+          arrastra consigo el marcador de nivel 1 si lo hubiera, ver arriba).
+          Para el humano, una fila heredada sin tecnología (ver
           :func:`etiqueta_humana`) — ausente del dict, no con valor ``None``.
         - ``""`` (cadena vacía) → la fuente la revisó y declaró que no tiene
-          ninguna tecnología. Es un negativo de verdad, no un desconocido. Para
-          el LLM eso son las filas con el sentinel ``__no_signal__``; para el
-          humano, únicamente una fila ``revision_ti`` sin tecnología —nunca
-          una ``human`` heredada, sea cual sea su ``relevante``.
+          ninguna tecnología. Es un negativo de verdad, no un desconocido.
+          Para el LLM eso son las filas con el sentinel ``__no_signal__`` --
+          y, sin más familias en su misma versión vigente, también las del
+          marcador de nivel 1 solo (``__es_ti__``/``__no_es_ti__``) --; para
+          el humano, únicamente una fila ``revision_ti`` sin tecnología
+          —nunca una ``human`` heredada, sea cual sea su ``relevante``.
 
         Returns:
             ``{id_externo: {"tecnologia_humana": ..., "tecnologia_llm": ...}}``
             con solo las licitaciones sobre las que alguna fuente se pronunció.
         """
-        from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL, SIN_EVIDENCIA_SENTINEL
+        from db.repositories.tecnologia_pliego import (
+            ES_TI_SENTINEL,
+            NO_ES_TI_SENTINEL,
+            NO_SIGNAL_SENTINEL,
+            SIN_EVIDENCIA_SENTINEL,
+        )
 
         salida: dict[str, dict[str, str | None]] = {}
         with connect_read() as c:
@@ -1333,10 +1357,15 @@ class LicitacionRepository:
             # (`llm_metadata`) son carriles independientes. `computed_at` es
             # texto ISO 8601 en UTC (`now_utc_iso`), así que ordena igual que el
             # instante; la versión desempata para que el resultado no dependa
-            # del plan.
+            # del plan. Se trae `method` (no solo `licitacion_id`) porque el
+            # agrupado de abajo es por `(licitación, method)`: el marcador de
+            # nivel 1 y `__sin_evidencia__` pueden convivir en la misma
+            # versión vigente del MISMO `method` (van en la misma llamada de
+            # `upsert_signals`, ver su docstring), y "sin evidencia" tiene que
+            # ganar ahí sin tapar lo que diga el OTRO `method`.
             cur = c.execute(
-                "SELECT licitacion_id, tecnologia, score FROM ("
-                "  SELECT p.licitacion_id, p.tecnologia, p.score, p.signal_version, "
+                "SELECT licitacion_id, method, tecnologia, score FROM ("
+                "  SELECT p.licitacion_id, p.method, p.tecnologia, p.score, p.signal_version, "
                 "         FIRST_VALUE(p.signal_version) OVER ("
                 "           PARTITION BY p.licitacion_id, p.method "
                 "           ORDER BY p.computed_at DESC, p.signal_version DESC"
@@ -1346,23 +1375,33 @@ class LicitacionRepository:
                 ") vigentes "
                 "WHERE signal_version = version_vigente"
             )
+            grupos: dict[tuple[str, str], list[tuple[str, float]]] = {}
+            for id_externo, method, tecnologia, score in cur.fetchall():
+                clave = (str(id_externo), str(method))
+                grupos.setdefault(clave, []).append((str(tecnologia), float(score or 0.0)))
+
             por_licitacion: dict[str, list[str]] = {}
             revisadas: set[str] = set()
-            for id_externo, tecnologia, score in cur.fetchall():
-                clave = str(id_externo)
-                # Después de elegir la versión vigente y no antes: si la
-                # vigente no se sostuvo, la anterior tampoco cuenta.
-                if str(tecnologia) == SIN_EVIDENCIA_SENTINEL:
+            for (id_externo, _method), filas_grupo in grupos.items():
+                tecnologias = {tech for tech, _ in filas_grupo}
+                # "Sin evidencia" gana dentro de SU (licitación, method): si
+                # este grupo trae `__sin_evidencia__`, no se pronuncia entero
+                # -- ni aunque también traiga el marcador de nivel 1, que
+                # vive en el mismo method por la CHECK de la tabla (ver
+                # arriba). Un `method` distinto de la MISMA licitación (otro
+                # grupo) sigue contando aparte.
+                if SIN_EVIDENCIA_SENTINEL in tecnologias:
                     continue
-                revisadas.add(clave)
-                if str(tecnologia) == NO_SIGNAL_SENTINEL:
-                    continue
-                por_licitacion.setdefault(clave, []).append(
-                    f"{str(tecnologia).strip().upper()}:{float(score or 0.0):.4f}"
-                )
-            for clave in revisadas:
-                salida.setdefault(clave, {})["tecnologia_llm"] = ",".join(
-                    por_licitacion.get(clave, [])
+                revisadas.add(id_externo)
+                for tech, score in filas_grupo:
+                    if tech in (NO_SIGNAL_SENTINEL, ES_TI_SENTINEL, NO_ES_TI_SENTINEL):
+                        continue
+                    por_licitacion.setdefault(id_externo, []).append(
+                        f"{tech.strip().upper()}:{score:.4f}"
+                    )
+            for licitacion_id in revisadas:
+                salida.setdefault(licitacion_id, {})["tecnologia_llm"] = ",".join(
+                    por_licitacion.get(licitacion_id, [])
                 )
 
         log.info(

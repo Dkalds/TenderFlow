@@ -2,7 +2,10 @@
 repositorio, fase del job de scheduler y endpoint HTTP.
 
 La aritmética pura del merge (sin BD, repo mockeado) vive en
-``tests/test_tech_signal.py``.
+``tests/test_tech_signal.py``. Excepción: ``TestFilasAEscribir`` de aquí
+abajo, que prueba directamente ``_filas_a_escribir`` -- pura, sin BD --
+porque es la pieza de ``TecnologiaPliegoRepository.upsert_signals`` que este
+mismo fichero ejercita end-to-end más abajo.
 """
 
 from __future__ import annotations
@@ -11,8 +14,53 @@ import pytest
 
 from db.database import DocumentoReferencia, connect
 from db.repositories.documentos import DocumentosRepository
-from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
+from db.repositories.tecnologia_pliego import (
+    ES_TI_SENTINEL,
+    NO_SIGNAL_SENTINEL,
+    SIN_EVIDENCIA_SENTINEL,
+    TechSignal,
+    TecnologiaPliegoRepository,
+    _filas_a_escribir,
+)
 from services.tech_signal import _build_merge_result, merge_doc_signals
+
+
+class TestFilasAEscribir:
+    """``_filas_a_escribir`` decide qué filas persiste ``upsert_signals`` a
+    partir de ``scores`` y ``sin_evidencia`` -- pura, sin BD (ver el
+    docstring del módulo)."""
+
+    def test_scores_no_vacio_se_devuelve_tal_cual(self):
+        scores = {"SAP": TechSignal(score=0.9)}
+
+        assert _filas_a_escribir(scores, sin_evidencia=False) == scores
+
+    def test_scores_vacio_sin_sin_evidencia_anade_no_signal(self):
+        filas = _filas_a_escribir({}, sin_evidencia=False)
+
+        assert set(filas) == {NO_SIGNAL_SENTINEL}
+        assert filas[NO_SIGNAL_SENTINEL].score == 0.0
+
+    def test_sin_evidencia_anade_su_sentinel_aunque_scores_traiga_el_marcador(self):
+        """El marcador de nivel 1 (``es_ti``) no tapa ``sin_evidencia``: son
+        respuestas independientes -- las familias no sostuvieron su cita,
+        pero el nivel 1 sí contestó -- así que las dos filas se escriben."""
+        marcador = {ES_TI_SENTINEL: TechSignal(score=0.0, evidence=[{"es_ti": True}])}
+
+        filas = _filas_a_escribir(marcador, sin_evidencia=True)
+
+        assert set(filas) == {ES_TI_SENTINEL, SIN_EVIDENCIA_SENTINEL}
+        assert filas[ES_TI_SENTINEL] == marcador[ES_TI_SENTINEL]
+
+    def test_marcador_solo_no_dispara_no_signal(self):
+        """Con el marcador ya presente, ``scores`` no está vacío: no hace
+        falta (ni se añade) ``NO_SIGNAL_SENTINEL``."""
+        marcador = {"__no_es_ti__": TechSignal(score=0.0)}
+
+        filas = _filas_a_escribir(marcador, sin_evidencia=False)
+
+        assert filas == marcador
+        assert NO_SIGNAL_SENTINEL not in filas
 
 
 def _insert_licitacion(

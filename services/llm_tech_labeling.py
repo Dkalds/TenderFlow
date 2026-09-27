@@ -35,7 +35,6 @@ from typing import Any, NamedTuple
 from pydantic import BaseModel, Field, ValidationError
 
 from config.keywords import TECH_DEFINICIONES, TECH_LABELS
-from db.repositories.tecnologia_pliego import METHOD_ES_TI as METHOD_ES_TI
 from db.repositories.tecnologia_pliego import TechSignal
 from llm.client import stream_llm_response
 from llm.json_utils import extract_json_object

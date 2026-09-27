@@ -55,10 +55,19 @@ _NO_SIGNAL_SENTINEL = NO_SIGNAL_SENTINEL
 SIN_EVIDENCIA_SENTINEL = "__sin_evidencia__"
 
 # Marcadores del nivel 1 («¿es TI?», plan de clasificación en tres niveles).
-# Viven en su propio ``method`` (``llm_es_ti``) para que ni el merge ni la
-# resolución de etiquetas de familia los vean; con score 0 nunca pasan el
-# umbral del merge. La confianza viaja en ``evidence_json``.
-METHOD_ES_TI = "llm_es_ti"
+# Viven DENTRO de ``method='llm_metadata'`` -- junto a las familias, como una
+# fila más de ``scores`` -- y no en un ``method`` propio: la CHECK
+# ``ck_lic_tec_pliego_method`` de la tabla (``v81``) solo admite
+# ``'keywords','llm','llm_metadata'`` y hasta F5 no hay migraciones
+# (AGENTS.md), así que un ``method`` nuevo (p. ej. ``'llm_es_ti'``) revienta
+# cada INSERT con ``CheckViolation`` -- la fila de familias nunca llegaría a
+# escribirse y la licitación se reintentaría (y facturaría) en cada corrida.
+# Con score 0 nunca pasan el umbral del merge ni el de ningún agregado
+# (``PLIEGO_TECH_MIN_SCORE`` nunca es <= 0). La confianza viaja en
+# ``evidence_json``. Ver ``TecnologiaPliegoRepository.upsert_signals`` para
+# cómo conviven con las familias en la misma fila de ``scores``/misma
+# llamada, y ``LicitacionRepository.etiquetas_tecnologia_no_circulares`` para
+# cómo un lector los distingue de una tecnología real.
 ES_TI_SENTINEL = "__es_ti__"
 NO_ES_TI_SENTINEL = "__no_es_ti__"
 
@@ -104,6 +113,33 @@ _MERGE_CHUNK_SIZE = 200
 _MERGE_LOCK_KEY = "tenderflow.tech_signal_merge"
 
 
+def _filas_a_escribir(
+    scores: dict[str, TechSignal], *, sin_evidencia: bool
+) -> dict[str, TechSignal]:
+    """Qué filas persiste ``upsert_signals`` para una corrida: ``scores`` tal
+    cual -- familias y, si el llamador lo metió ahí, el marcador de nivel 1
+    (``ES_TI_SENTINEL``/``NO_ES_TI_SENTINEL``) -- más el sentinel que
+    corresponda cuando hace falta uno. Pura a propósito: es la pieza que
+    decide qué se escribe, separada de cómo se escribe, y se puede probar
+    sin BD.
+
+    ``sin_evidencia`` añade ``SIN_EVIDENCIA_SENTINEL`` **además** de lo que
+    ya traiga ``scores``: el marcador de nivel 1, si lo hay, no lo tapa --
+    son respuestas independientes (una sobre si las familias sostuvieron su
+    cita, otra sobre si el contrato es TI). Sin ``sin_evidencia`` y con
+    ``scores`` vacío del todo (ni familias ni marcador) se añade
+    ``NO_SIGNAL_SENTINEL``: el comportamiento heredado de "esta licitación
+    no tiene nada que reportar". Con cualquier fila ya presente, familia o
+    marcador, no hace falta ``NO_SIGNAL_SENTINEL`` y no se añade.
+    """
+    filas = dict(scores)
+    if sin_evidencia:
+        filas[SIN_EVIDENCIA_SENTINEL] = TechSignal(score=0.0)
+    elif not filas:
+        filas[_NO_SIGNAL_SENTINEL] = TechSignal(score=0.0)
+    return filas
+
+
 class TecnologiaPliegoRepository:
     def upsert_signals(
         self,
@@ -125,17 +161,19 @@ class TecnologiaPliegoRepository:
         tecnologías que esta corrida YA NO detecta, para no acumular
         obsoletas.
 
-        ``scores`` vacío persiste el sentinel ``_NO_SIGNAL_SENTINEL`` para que
-        ``list_licitaciones_pending_signal`` no vuelva a seleccionar esta
-        licitación en cada corrida mientras ``signal_version`` no cambie. Con
-        ``sin_evidencia`` el sentinel es ``SIN_EVIDENCIA_SENTINEL``: el LLM
-        afirmó tecnologías y ninguna sostuvo su cita, que no es lo mismo que
-        «ninguna tecnología». Con ``scores`` no vacío, ``sin_evidencia`` no
-        cambia nada.
+        ``scores`` puede traer, además de las familias, el marcador de nivel
+        1 (``ES_TI_SENTINEL``/``NO_ES_TI_SENTINEL``, plan de clasificación en
+        tres niveles) que ``scheduler/jobs/llm_tech_labeling.py`` mete en el
+        mismo dict antes de llamar: viven en este ``method`` porque la CHECK
+        ``ck_lic_tec_pliego_method`` no admite uno propio sin migración
+        (F5), y el DELETE de arriba borra por ``method`` -- familias y
+        marcador tienen que ir en la MISMA llamada o la del marcador
+        borraría la de familias (o al revés). Ver :func:`_filas_a_escribir`
+        para el resto de vacío/``sin_evidencia``.
         """
         now = now_utc_iso()
-        sentinel = SIN_EVIDENCIA_SENTINEL if sin_evidencia else _NO_SIGNAL_SENTINEL
-        techs = list(scores.keys()) or [sentinel]
+        filas = _filas_a_escribir(scores, sin_evidencia=sin_evidencia)
+        techs = list(filas.keys())
         rows: list[tuple[str, str, str, float, str | None, str | None, str, str]] = [
             (
                 licitacion_id,
@@ -151,8 +189,8 @@ class TecnologiaPliegoRepository:
                 signal_version,
                 now,
             )
-            for tech, signal in scores.items()
-        ] or [(licitacion_id, sentinel, method, 0.0, None, None, signal_version, now)]
+            for tech, signal in filas.items()
+        ]
 
         with connect() as c:
             placeholders = ",".join("%s" for _ in techs)

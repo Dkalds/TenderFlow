@@ -480,7 +480,7 @@ class TestSinEvidenciaEnElJob:
     """
 
     @staticmethod
-    def _run_with(raw: str, monkeypatch, *, configure_repo=None):
+    def _run_with(raw: str, monkeypatch):
         from unittest.mock import MagicMock
 
         from scheduler.jobs.llm_tech_labeling import run
@@ -495,8 +495,6 @@ class TestSinEvidenciaEnElJob:
                 "descripcion": "Mantenimiento evolutivo de la aplicación de nóminas.",
             }
         ]
-        if configure_repo is not None:
-            configure_repo(repo)
         with (
             patch(
                 "db.repositories.tecnologia_pliego.TecnologiaPliegoRepository", return_value=repo
@@ -558,17 +556,20 @@ class TestSinEvidenciaEnElJob:
         assert counts["sin_evidencia"] == 0
         assert counts["etiquetas_sin_evidencia"] == 1
 
-    def test_escribe_la_fila_de_es_ti_con_su_confianza(self, monkeypatch):
+    def test_escribe_el_marcador_de_es_ti_en_la_fila_de_familias(self, monkeypatch):
+        """El marcador vive en ``method=METHOD`` (``llm_metadata``) -- la
+        CHECK ``ck_lic_tec_pliego_method`` de la tabla no admite un
+        ``method`` propio sin migración (F5) -- así que va en la MISMA
+        llamada que las familias, no en una aparte."""
         from db.repositories.tecnologia_pliego import NO_ES_TI_SENTINEL, TechSignal
-        from services.llm_tech_labeling import METHOD_ES_TI
 
         raw = '{"es_ti": false, "confianza_es_ti": 0.85, "tecnologias": []}'
         counts, repo, _feedback = self._run_with(raw, monkeypatch)
 
         version = signal_version(settings.LLM_TECH_LABELING_MODEL)
-        repo.upsert_signals.assert_any_call(
+        repo.upsert_signals.assert_called_once_with(
             "EXP-E1",
-            method=METHOD_ES_TI,
+            method=METHOD,
             signal_version=version,
             scores={
                 NO_ES_TI_SENTINEL: TechSignal(
@@ -576,51 +577,41 @@ class TestSinEvidenciaEnElJob:
                     evidence=[{"es_ti": False, "confianza": 0.85, "otros_fabricantes": []}],
                 )
             },
+            sin_evidencia=False,
         )
         assert counts["es_ti_no"] == 1
 
-    def test_sin_es_ti_no_escribe_fila_de_es_ti(self, monkeypatch):
-        from services.llm_tech_labeling import METHOD_ES_TI
+    def test_sin_es_ti_la_fila_no_lleva_marcador(self, monkeypatch):
+        from db.repositories.tecnologia_pliego import ES_TI_SENTINEL, NO_ES_TI_SENTINEL
 
         raw = '{"tecnologias": []}'
         counts, repo, _feedback = self._run_with(raw, monkeypatch)
 
-        metodos = [c.kwargs["method"] for c in repo.upsert_signals.call_args_list]
-        assert METHOD_ES_TI not in metodos
+        scores = repo.upsert_signals.call_args.kwargs["scores"]
+        assert ES_TI_SENTINEL not in scores
+        assert NO_ES_TI_SENTINEL not in scores
         assert counts["es_ti_sin_respuesta"] == 1
 
-    def test_el_marcador_de_es_ti_se_escribe_antes_que_la_fila_de_familias(self, monkeypatch):
-        """Si la fila de familias (``method=METHOD``) falla, la licitación
-        sigue pendiente -- es esa fila la que decide "pendiente", no la del
-        marcador -- así que la siguiente corrida reescribe el marcador de
-        nivel 1 sin perderlo. Eso solo es cierto si el marcador se escribe
-        primero: si se escribiera después del fallo de familias, no se
-        escribiría nunca."""
-        from services.llm_tech_labeling import METHOD_ES_TI
+    def test_una_sola_llamada_lleva_familias_y_marcador_juntos(self, monkeypatch):
+        """Familias y marcador van en la MISMA llamada: dos llamadas al
+        mismo ``method`` se pisarían la una a la otra (``upsert_signals``
+        borra lo que el ``method`` de la corrida en curso ya no detecta),
+        en vez de sumarse."""
+        from db.repositories.tecnologia_pliego import ES_TI_SENTINEL
 
-        def _falla_en_familias(repo):
-            def _side_effect(*_args, **kwargs):
-                if kwargs.get("method") == METHOD:
-                    raise RuntimeError("boom de familias")
-                return None
-
-            repo.upsert_signals.side_effect = _side_effect
-
-        raw = '{"es_ti": true, "confianza_es_ti": 0.9, "tecnologias": []}'
-        counts, repo, _feedback = self._run_with(
-            raw, monkeypatch, configure_repo=_falla_en_familias
+        raw = (
+            '{"es_ti": true, "confianza_es_ti": 0.9, "tecnologias": '
+            '[{"tecnologia": "SAP", "confidence": 0.9, '
+            '"evidencia": "Mantenimiento evolutivo de la aplicación de nóminas"}]}'
         )
+        counts, repo, _feedback = self._run_with(raw, monkeypatch)
 
-        metodos = [c.kwargs["method"] for c in repo.upsert_signals.call_args_list]
-        assert METHOD_ES_TI in metodos, "el marcador de nivel 1 nunca se escribió"
-        assert metodos.index(METHOD_ES_TI) < metodos.index(METHOD)
-        assert counts["error"] == 1
-        assert counts["scored"] == 0
-        assert counts["no_signal"] == 0
-        assert counts["sin_evidencia"] == 0
-        assert counts["es_ti_si"] == 0
-        assert counts["es_ti_no"] == 0
-        assert counts["es_ti_sin_respuesta"] == 0
+        assert repo.upsert_signals.call_count == 1
+        scores = repo.upsert_signals.call_args.kwargs["scores"]
+        assert set(scores) == {"SAP", ES_TI_SENTINEL}
+        assert scores[ES_TI_SENTINEL].score == 0.0
+        assert counts["scored"] == 1
+        assert counts["es_ti_si"] == 1
 
 
 class TestPipelineStepReleasesTheWindow:
