@@ -184,6 +184,20 @@ describe("useActiveLearning — cola por desacuerdo", () => {
     });
   });
 
+  it("dos cambios seguidos, antes de volver a pintar, se suman", async () => {
+    // Cada cambio parte del estado que dejó el anterior (actualización
+    // funcional), no de la selección que había al pintar.
+    const { hook } = montar();
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+
+    act(() => {
+      hook.result.current.toggleTech("EXP-NO", "RRHH_NOMINA");
+      hook.result.current.toggleTech("EXP-NO", "SAP");
+    });
+
+    expect(hook.result.current.seleccionDe("EXP-NO")).toEqual(["RRHH_NOMINA", "SAP"]);
+  });
+
   it("el clic en un chip del modelo pone esa etiqueta de principal", async () => {
     const { hook } = montar();
     await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
