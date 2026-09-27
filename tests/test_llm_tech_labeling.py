@@ -774,6 +774,93 @@ class TestUnavailableModelStopsTheBatch:
         assert batch_failed_systemically(counts) is True
 
 
+class TestWriteFeedbackSinBD:
+    """``_write_feedback`` unitario, sin BD (``FeedbackRepository`` mockeado
+    como en ``TestSinEvidenciaEnElJob._run_with``): ejercita directamente lo
+    que ``TestWriteFeedback`` (que exige ``tmp_db`` y no corre en este
+    entorno) no puede probar aquí.
+
+    Quitar la puerta «familias sin confianza -> se omite» (ver el commit que
+    introdujo ``es_ti``, cuando ``relevante`` dejó de derivarse de
+    ``clasificacion.scores`` para ser ``clasificacion.es_ti`` tal cual) abrió
+    un camino nuevo: ``es_ti=True`` con ``scores`` vacío o con todas las
+    familias por debajo del umbral ahora SÍ escribe una fila (``relevante``
+    es una respuesta del nivel 1, independiente de si el nivel 2 encontró
+    algo confiado). Antes de esta tarea esa combinación se omitía.
+    """
+
+    @staticmethod
+    def _call(clasificadas: dict[str, Clasificacion], monkeypatch, *, version: str = "v-test"):
+        from scheduler.jobs.llm_tech_labeling import _write_feedback
+
+        monkeypatch.setattr(settings, "LLM_TECH_FEEDBACK_ENABLED", True, raising=False)
+        monkeypatch.setattr(settings, "LLM_TECH_FEEDBACK_MIN_CONF", 0.9, raising=False)
+        with patch("db.repositories.feedback.FeedbackRepository") as feedback:
+            feedback.return_value.existing_expedientes.return_value = set()
+            counts = _write_feedback(clasificadas, version=version)
+        return counts, feedback.return_value
+
+    def test_es_ti_sin_ninguna_familia_escribe_relevante_sin_tecnologia(self, monkeypatch):
+        """``scores`` vacío (nivel 2 no vio nada) no bloquea la fila: el
+        nivel 1 ya contestó que sí es TI."""
+        from scheduler.jobs.llm_tech_labeling import FEEDBACK_SOURCE
+
+        clasificacion = Clasificacion(scores={}, es_ti=True, confianza_es_ti=0.9)
+        counts, repo = self._call({"EXP-U1": clasificacion}, monkeypatch)
+
+        repo.insert.assert_called_once_with(
+            expediente="EXP-U1",
+            relevante=True,
+            nota=f"{FEEDBACK_SOURCE}:v-test",
+            tecnologia=None,
+            tecnologias_secundarias=[],
+            source=FEEDBACK_SOURCE,
+        )
+        assert counts == {"feedback_escrito": 1, "feedback_omitido": 0}
+
+    def test_es_ti_con_familias_por_debajo_del_umbral_escribe_igual(self, monkeypatch):
+        """Hay familias, pero ninguna llega a ``LLM_TECH_FEEDBACK_MIN_CONF``:
+        la fila se escribe igual (``relevante`` no depende de ellas), solo
+        que sin tecnología principal ni secundarias."""
+        from db.repositories.tecnologia_pliego import TechSignal
+        from scheduler.jobs.llm_tech_labeling import FEEDBACK_SOURCE
+
+        clasificacion = Clasificacion(
+            scores={"SAP": TechSignal(score=0.5), "ORACLE": TechSignal(score=0.3)},
+            es_ti=True,
+            confianza_es_ti=0.9,
+        )
+        counts, repo = self._call({"EXP-U2": clasificacion}, monkeypatch)
+
+        repo.insert.assert_called_once_with(
+            expediente="EXP-U2",
+            relevante=True,
+            nota=f"{FEEDBACK_SOURCE}:v-test",
+            tecnologia=None,
+            tecnologias_secundarias=[],
+            source=FEEDBACK_SOURCE,
+        )
+        assert counts == {"feedback_escrito": 1, "feedback_omitido": 0}
+
+    def test_es_ti_false_con_scores_vacio_escribe_no_relevante(self, monkeypatch):
+        """Simétrico: ``es_ti=False`` (``scores`` ya viene vacío por diseño
+        de ``parse_labels``) escribe ``relevante=False``."""
+        from scheduler.jobs.llm_tech_labeling import FEEDBACK_SOURCE
+
+        clasificacion = Clasificacion(scores={}, es_ti=False, confianza_es_ti=0.8)
+        counts, repo = self._call({"EXP-U3": clasificacion}, monkeypatch)
+
+        repo.insert.assert_called_once_with(
+            expediente="EXP-U3",
+            relevante=False,
+            nota=f"{FEEDBACK_SOURCE}:v-test",
+            tecnologia=None,
+            tecnologias_secundarias=[],
+            source=FEEDBACK_SOURCE,
+        )
+        assert counts == {"feedback_escrito": 1, "feedback_omitido": 0}
+
+
 # ── Selección de pendientes y job (requieren Postgres) ────────────────────
 
 
