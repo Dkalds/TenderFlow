@@ -233,11 +233,27 @@ def test_ml_scoring_reporta_ok_cuando_si_hay_modelo() -> None:
         assert _run_ml_scoring() == "ok"
 
 
+def _settings_que_lee_el_pipeline():
+    """El objeto que `_run_ml_tecnologias` lee con `from config import settings`.
+
+    No vale `patch("config.settings.ML_TECH_ENABLED")`: `mock` resuelve la ruta
+    con `pkgutil.resolve_name`, que importa el **módulo** `config.settings`,
+    mientras que `config/__init__.py` reexporta el **objeto** `settings` con ese
+    mismo nombre. El parche caía en el módulo (con `create=True`, sin avisar) y
+    el pipeline seguía leyendo el flag real: el test solo pasaba si otro test
+    del mismo worker había reimportado `config.settings` antes, y con xdist
+    fallaba según el reparto (y siempre, ejecutado solo).
+    """
+    import config
+
+    return config.settings
+
+
 def test_ml_tecnologias_reporta_skipped_sin_modelo() -> None:
     from scheduler.pipeline_runs import _run_ml_tecnologias
 
     with (
-        patch("config.settings.ML_TECH_ENABLED", True, create=True),
+        patch.object(_settings_que_lee_el_pipeline(), "ML_TECH_ENABLED", True, create=True),
         patch(
             "scraper.ml_training.precompute_ml_tecnologias",
             return_value={"updated": 0, "scores_inserted": 0, "skipped_no_model": True},
@@ -249,7 +265,7 @@ def test_ml_tecnologias_reporta_skipped_sin_modelo() -> None:
 def test_ml_tecnologias_reporta_skipped_con_el_flag_apagado() -> None:
     from scheduler.pipeline_runs import _run_ml_tecnologias
 
-    with patch("config.settings.ML_TECH_ENABLED", False, create=True):
+    with patch.object(_settings_que_lee_el_pipeline(), "ML_TECH_ENABLED", False, create=True):
         assert _run_ml_tecnologias() == "skipped"
 
 

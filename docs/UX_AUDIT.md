@@ -694,7 +694,14 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   acciones ocultas) es el mismo que el prefijo de Tailwind **y en su unidad**:
   los tres umbrales de `use-media-query.ts` pasaron de px a rem, porque el rem
   de una media query sigue la letra del navegador y, con la «Grande» de Chrome,
-  `lg` son 1280 px; en px quedaban fichas visibles con las acciones `inert`. Lo fijan `radar-grid.test.ts` (la cuenta a
+  `lg` son 1280 px; en px quedaban fichas visibles con las acciones `inert`.
+  **Y a 1280 px el título medía 0.** Desde `xl` el inspector va anclado con
+  432 px: con el rail de 84, a la tabla le quedan 764 y las siete columnas
+  piden ~766 antes del título (con el rail de 56 ya estaba en ~16 px). Lo cazó
+  el E2E de navegación, que corre a 1280. Desde `xl` la tabla no lleva columna
+  de Tecnología —va en la línea secundaria del título, como en la ficha, y el
+  inspector la repite— y Órgano cede 20 px: el título tiene ~150 px a 1280 y
+  ~235 a 1366. `radar-grid.test.ts` hace esa cuenta con el rail y el inspector. Lo fijan `radar-grid.test.ts` (la cuenta a
   768 y a 1024), `page.test.tsx` y el E2E «Tableta vertical (768×1024)» de
   `responsive.spec.ts`. Detalle no cambia.
 - `equipo/_components/anadir-miembro-form.tsx` conserva una caja de borde

@@ -25,7 +25,8 @@ export function RadarCabecera() {
       <span>Score</span>
       <span>Licitación</span>
       <span>Órgano</span>
-      <span>Tecnología</span>
+      {/* Desde `xl` la tecnología va bajo el título: ver `RADAR_GRID`. */}
+      <span className="xl:hidden">Tecnología</span>
       <span className="text-right">Importe</span>
       <span className="text-right">Plazo</span>
       <span className="text-right">Acción</span>

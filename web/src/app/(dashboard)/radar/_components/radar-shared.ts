@@ -47,11 +47,18 @@
  * y se montaba sobre Plazo. El E2E de accesibilidad corre a 1280, donde solo
  * hay tres, y no lo veía. En esa franja la columna pasa a 148 px y los 32 salen
  * de Órgano, que ya trunca, no de Licitación: el `1fr` del título queda igual.
- * A partir de `xl` vuelve el reparto de siempre.
  * `responsive.spec.ts` lo mide a 1024 px.
+ *
+ * **A partir de `xl` la tabla no lleva columna de Tecnología.** Ahí el inspector
+ * va anclado y se come 432 px: a 1280, con el rail de 84, a la tabla le quedan
+ * 764, y las siete columnas piden ~766 antes del título. El título se quedaba
+ * en 0 px (ya estaba en ~16 con el rail de 56). La tecnología pasa a la línea
+ * secundaria del título, como en la ficha, y el inspector la repite para la
+ * fila activa. Órgano cede además 20 px (ya trunca): el título es lo que se
+ * lee en el Radar. A 1280 le quedan ~150 px y a 1366, ~235.
  */
 export const RADAR_GRID =
-  "lg:grid-cols-[52px_1fr_138px_132px_100px_96px_148px] xl:grid-cols-[52px_1fr_170px_132px_100px_96px_116px] lg:gap-3 lg:px-3.5";
+  "lg:grid-cols-[52px_1fr_138px_132px_100px_96px_148px] xl:grid-cols-[52px_1fr_150px_100px_96px_116px] lg:gap-3 lg:px-3.5";
 
 /** Banda de scoring que devuelve el backend (`Caliente|Atractiva|Tibia|Descarte`). */
 export const BAND_TOKEN: Record<string, string> = {

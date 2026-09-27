@@ -27,8 +27,13 @@ const MARGEN_FILA = 2 * 14;
  * el título se quedaba en 164 px, no en los 174 que salen sin contarla.
  */
 const BARRA_SCROLL = 10;
-/** Lo mínimo que tiene que quedarle al título (`1fr`) para leerse en una línea. */
-const TITULO_MINIMO = 160;
+/**
+ * Lo mínimo que tiene que quedarle al título (`1fr`): unos 17 caracteres a
+ * 13 px. El título entero lo repite el inspector para la fila activa.
+ */
+const TITULO_MINIMO = 120;
+/** La columna del inspector anclado (`w-[432px]` en radar-inspector-panel.tsx), desde `xl`. */
+const INSPECTOR_ANCLADO = 432;
 /** La letra por defecto del navegador, contra la que se resuelve el rem de una media query. */
 const LETRA_BASE = 16;
 
@@ -64,13 +69,20 @@ describe("RADAR_GRID", () => {
     expect(px(columnas("xl").at(-1)!)).toBeGreaterThanOrEqual(acciones(2));
   });
 
-  it("las dos franjas tienen las mismas columnas y el mismo ancho fijo: el título no pierde", () => {
+  it("desde xl la rejilla es la de lg sin la columna de Tecnología", () => {
+    // Con el inspector anclado no caben siete columnas: Tecnología pasa a la
+    // línea del título (`radar-fila.tsx`) y su rótulo se oculta en la cabecera.
     const lg = columnas("lg");
     const xl = columnas("xl");
-    expect(lg).toHaveLength(xl.length);
+    expect(xl).toHaveLength(lg.length - 1);
     expect(lg[1]).toBe("1fr");
     expect(xl[1]).toBe("1fr");
-    expect(fijas(lg)).toBe(fijas(xl));
+  });
+
+  it("a 1280, con el rail y el inspector anclado, al título le queda sitio", () => {
+    // El E2E corre a 1280: con siete columnas el título medía 0 px y no se veía.
+    const disponible = aPx(minWidth(MQ_INSPECTOR_ANCLADO)) - RAIL_WIDTH - INSPECTOR_ANCLADO;
+    expect(disponible - anchoSinTitulo(columnas("xl"))).toBeGreaterThanOrEqual(TITULO_MINIMO);
   });
 
   it("la tabla empieza donde cabe con el rail y la barra de la lista", () => {

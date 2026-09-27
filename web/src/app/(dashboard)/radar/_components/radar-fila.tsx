@@ -222,6 +222,9 @@ export function RadarFila({
               {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null].filter(Boolean).join(" · ")}
             </span>
             {tender.ccaa ? <> · {tender.ccaa}</> : null}
+            {/* Desde `xl` la tecnología no tiene columna (el inspector anclado
+                se come el ancho, ver `RADAR_GRID`): va aquí, en texto. */}
+            {tech ? <span className="hidden xl:inline"> · {tech}</span> : null}
           </div>
         </div>
       </div>
@@ -234,16 +237,18 @@ export function RadarFila({
           {tender.organo_contratacion ?? "—"}
         </span>
 
+        {/* `xl:hidden`: desde `xl` la rejilla no tiene esta columna y la
+            tecnología va en la línea del título. */}
         {tech ? (
           <Badge
             variant="info"
             size="sm"
-            className="block max-w-[46%] flex-none justify-self-start truncate leading-5 lg:max-w-full"
+            className="block max-w-[46%] flex-none justify-self-start truncate leading-5 lg:max-w-full xl:hidden"
           >
             {tech}
           </Badge>
         ) : (
-          <span className="flex-none text-tf-micro text-muted-foreground">—</span>
+          <span className="flex-none text-tf-micro text-muted-foreground xl:hidden">—</span>
         )}
       </div>
 
