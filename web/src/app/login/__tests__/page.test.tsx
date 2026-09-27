@@ -158,14 +158,15 @@ describe("acceso con contraseña", () => {
 });
 
 describe("lo que trae la URL", () => {
-  it("«?mfa=required» abre el gate del segundo factor en vez del formulario", () => {
+  it("«?mfa=required» abre el gate del segundo factor en vez del formulario", async () => {
     // El callback de OAuth vuelve así cuando la cuenta tiene TOTP: la sesión ya
     // existe pero está pendiente, y ofrecer el formulario de acceso aquí
     // mandaría al usuario a repetir un login que ya hizo.
     query.actual = "mfa=required";
     render(<LoginPage />);
 
-    expect(screen.getByLabelText("Código de verificación")).toBeInTheDocument();
+    // El gate llega en su propio trozo (React.lazy): se espera a que aparezca.
+    expect(await screen.findByLabelText("Código de verificación")).toBeInTheDocument();
     expect(screen.queryByLabelText(/correo electrónico/i)).toBeNull();
     expect(screen.getByRole("button", { name: /Verificar/ })).toBeInTheDocument();
   });
@@ -203,17 +204,17 @@ describe("gate del segundo factor", () => {
     query.actual = "mfa=required";
   });
 
-  it("no se puede verificar sin código", () => {
+  it("no se puede verificar sin código", async () => {
     render(<LoginPage />);
 
-    expect(screen.getByRole("button", { name: /Verificar/ })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: /Verificar/ })).toBeDisabled();
   });
 
   it("un código incorrecto se distingue de un bloqueo por intentos", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respuestaError(401, "invalid code")));
     render(<LoginPage />);
 
-    fireEvent.change(screen.getByLabelText("Código de verificación"), {
+    fireEvent.change(await screen.findByLabelText("Código de verificación"), {
       target: { value: "000000" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Verificar/ }));
@@ -227,7 +228,7 @@ describe("gate del segundo factor", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respuestaError(429, "rate limited")));
     render(<LoginPage />);
 
-    fireEvent.change(screen.getByLabelText("Código de verificación"), {
+    fireEvent.change(await screen.findByLabelText("Código de verificación"), {
       target: { value: "123456" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Verificar/ }));
@@ -239,22 +240,23 @@ describe("gate del segundo factor", () => {
 });
 
 describe("con la sesión ya abierta (F55)", () => {
-  it("ofrece seguir en vez de volver a pedir la contraseña", () => {
+  it("ofrece seguir en vez de volver a pedir la contraseña", async () => {
     sesion.actual = { user: USUARIO, isLoading: false };
     render(<LoginPage />);
 
-    expect(screen.getByText(/Ya has entrado como/)).toHaveTextContent("persona@example.test");
+    // La rama llega en su propio trozo (React.lazy): se espera a que aparezca.
+    expect(await screen.findByText(/Ya has entrado como/)).toHaveTextContent("persona@example.test");
     expect(screen.getByRole("link", { name: "Ir a Resumen" })).toHaveAttribute("href", "/resumen");
     expect(screen.getByRole("button", { name: "Entrar con otra cuenta" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/correo electrónico/i)).toBeNull();
   });
 
-  it("el botón lleva al destino del «?redirect=» saneado", () => {
+  it("el botón lleva al destino del «?redirect=» saneado", async () => {
     sesion.actual = { user: USUARIO, isLoading: false };
     query.actual = "redirect=%2Fradar";
     render(<LoginPage />);
 
-    expect(screen.getByRole("link", { name: "Continuar" })).toHaveAttribute("href", "/radar");
+    expect(await screen.findByRole("link", { name: "Continuar" })).toHaveAttribute("href", "/radar");
   });
 
   it("mientras la sesión no ha respondido se enseña el formulario", () => {

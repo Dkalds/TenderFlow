@@ -9,7 +9,7 @@
  * sustituyen a esto entero.
  */
 
-import { Aviso } from "@/components/console/panel";
+import { Aviso } from "@/components/console/aviso";
 import { solicitarAccesoHref } from "@/lib/contacto";
 import type { LoginForm } from "../_hooks/use-login-form";
 import { ALTA_ABIERTA } from "./auth-mode-tabs";

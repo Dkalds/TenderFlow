@@ -10,7 +10,7 @@
  */
 
 import { ShieldCheck } from "lucide-react";
-import { Aviso } from "@/components/console/panel";
+import { Aviso } from "@/components/console/aviso";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";

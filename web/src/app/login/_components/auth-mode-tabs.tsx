@@ -15,7 +15,7 @@
  * tabulación. Era un segmentado propio con sombra en la pestaña activa.
  */
 
-import { clasePestana, useTeclasPestanas } from "@/components/console/panel";
+import { clasePestana, useTeclasPestanas } from "@/components/console/pestanas";
 import type { Mode } from "../_hooks/use-login-form";
 
 /**

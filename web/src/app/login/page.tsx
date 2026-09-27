@@ -16,14 +16,22 @@
  * cristal centrada se fueron con ella; el porqué, en `puerta.tsx`.
  */
 
-import { Suspense } from "react";
+import { lazy, Suspense } from "react";
 import { Puerta } from "@/app/(publico)/_components/puerta";
 import { useSession } from "@/lib/auth";
 import { AccessPanel } from "./_components/access-panel";
 import { ALTA_ABIERTA, AuthModeTabs } from "./_components/auth-mode-tabs";
-import { MfaForm } from "./_components/mfa-form";
-import { SesionAbierta } from "./_components/sesion-abierta";
 import { useLoginForm } from "./_hooks/use-login-form";
+
+// Las dos ramas que casi nadie ve al llegar —el gate del segundo factor y la
+// sesión ya abierta— se cargan cuando hacen falta: `/login` tiene techo en
+// `bundle-budget.json` y el primer render solo necesita el formulario.
+// `React.lazy` y no `next/dynamic`, que añade a esta ruta su propio cargador
+// (medido: +2,5 KB, más de lo que ahorra).
+const MfaForm = lazy(() => import("./_components/mfa-form").then((m) => ({ default: m.MfaForm })));
+const SesionAbierta = lazy(() =>
+  import("./_components/sesion-abierta").then((m) => ({ default: m.SesionAbierta })),
+);
 
 export default function LoginPage() {
   return (
@@ -48,11 +56,21 @@ function LoginPageContent() {
   const sesionAbierta =
     !isLoading && user !== null && !conMfa && !login.mfaPending && !login.invitacion && !login.error;
 
+  // Cada rama perezosa lleva su propio `Suspense`: sin él suspendería el de
+  // toda la página y la puerta entera parpadearía mientras llega el trozo.
   let panel: React.ReactNode;
   if (sesionAbierta && user) {
-    panel = <SesionAbierta email={user.email} destino={login.destino} onCambiarCuenta={login.cerrarSesion} />;
+    panel = (
+      <Suspense fallback={null}>
+        <SesionAbierta email={user.email} destino={login.destino} onCambiarCuenta={login.cerrarSesion} />
+      </Suspense>
+    );
   } else if (login.mfaPending) {
-    panel = <MfaForm login={login} />;
+    panel = (
+      <Suspense fallback={null}>
+        <MfaForm login={login} />
+      </Suspense>
+    );
   } else {
     panel = (
       <>

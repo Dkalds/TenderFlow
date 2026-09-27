@@ -2,21 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  ArrowRight,
-  CircleAlert,
-  CircleCheck,
-  Info,
-  RotateCcw,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowRight, CircleAlert, RotateCcw, type LucideIcon } from "lucide-react";
 import { cn, EMPTY, formatPercent } from "@/lib/utils";
 import { detalleTecnico, getErrorMessage } from "@/lib/query-feedback";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { clasePestana, claseContador, useTeclasPestanas } from "./pestanas";
 
 export { ChipBanda, esBandaConocida, type BandaPuntuacion, type ChipBandaProps } from "./chip-banda";
+export { Aviso, type TonoAviso } from "./aviso";
+export { clasePestana, claseContador, useTeclasPestanas } from "./pestanas";
 
 /**
  * Vocabulario de panel de la consola.
@@ -537,68 +532,7 @@ export function PanelError({
   );
 }
 
-/* ── Avisos ───────────────────────────────────────────────────────────── */
-
-export type TonoAviso = "info" | "warning" | "danger" | "success";
-
-const TONO_AVISO: Record<TonoAviso, { caja: string; icono: string; Icono: LucideIcon }> = {
-  info: { caja: "border-info/30 bg-info/5", icono: "text-info", Icono: Info },
-  warning: { caja: "border-warning/30 bg-warning/5", icono: "text-warning", Icono: TriangleAlert },
-  danger: { caja: "border-destructive/30 bg-destructive/5", icono: "text-destructive", Icono: CircleAlert },
-  success: { caja: "border-success/30 bg-success/5", icono: "text-success", Icono: CircleCheck },
-};
-
-/**
- * Banda de aviso: info, aviso, peligro o éxito. Una sola receta (borde /30,
- * fondo /5 del tono, icono de contorno del tono y texto en `foreground`) en vez
- * de las ~17 bandas escritas a mano con doce opacidades distintas.
- *
- * `role` por defecto: `alert` para `danger`, `status` para el resto; se puede
- * cambiar (`note` para una nota que no es un cambio de estado).
- * `variant="banda"` va a todo el ancho, sin radio y con solo el borde inferior
- * (debajo de una barra de herramientas).
- */
-export function Aviso({
-  tone = "info",
-  title,
-  children,
-  action,
-  icon,
-  role,
-  variant = "bloque",
-  className,
-}: {
-  tone?: TonoAviso;
-  title?: React.ReactNode;
-  children?: React.ReactNode;
-  action?: React.ReactNode;
-  /** Otro icono de contorno si el del tono no dice lo bastante. */
-  icon?: LucideIcon;
-  role?: "status" | "alert" | "note";
-  variant?: "bloque" | "banda";
-  className?: string;
-}) {
-  const estilo = TONO_AVISO[tone];
-  const Icono = icon ?? estilo.Icono;
-  return (
-    <div
-      role={role ?? (tone === "danger" ? "alert" : "status")}
-      className={cn(
-        "flex items-start gap-2 px-3 py-2 text-tf-meta text-foreground",
-        variant === "banda" ? "border-b" : "rounded-md border",
-        estilo.caja,
-        className,
-      )}
-    >
-      <Icono className={cn("mt-px h-3.5 w-3.5 flex-none", estilo.icono)} aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        {title && <p className="font-semibold">{title}</p>}
-        {children != null && <div className={cn(title && "mt-0.5")}>{children}</div>}
-      </div>
-      {action && <div className="flex-none self-center">{action}</div>}
-    </div>
-  );
-}
+/* ── Avisos: `Aviso` vive en `./aviso` (ver allí por qué) y se reexporta arriba. ── */
 
 /* ── Enlace «ir a» ────────────────────────────────────────────────────── */
 
@@ -630,65 +564,8 @@ export function EnlaceIr({ children, className, ...props }: EnlaceIrProps) {
 
 /* ── Pestañas y conmutadores ──────────────────────────────────────────── */
 
-/**
- * Piel de una pestaña o de un segmento de la consola. Exportada para los
- * conmutadores que no pueden ser `PanelTabs` ni `Segmented` (la cabecera del
- * espacio, el login): una sola geometría para «cambiar de vista».
- */
-export function clasePestana(on: boolean): string {
-  return cn(
-    "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 text-tf-meta font-medium transition-colors md:h-7",
-    "disabled:pointer-events-none disabled:opacity-50 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:flex-none",
-    on ? "border-border/70 bg-secondary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-  );
-}
-
-/**
- * Contador de una pestaña o segmento. Tinte /10 sobre `secondary`: el /16 que
- * llevaba daba 4,28:1 en axe (radar-controles); el /10 lo mide
- * `contraste-tokens.test.ts`. Cifra en sans: no es un identificador.
- */
-export function claseContador(on: boolean): string {
-  return cn(
-    "tf-tnum rounded-sm px-1 text-tf-micro font-medium",
-    on ? "bg-primary/10 text-primary" : "bg-muted-foreground/10 text-muted-foreground",
-  );
-}
-
-/**
- * Teclado del patrón de pestañas de WAI-ARIA para un `tablist` propio: flechas,
- * Inicio y Fin mueven entre pestañas y las activan. `ref` va en el contenedor
- * con `role="tablist"` y `onKeyDown` en cada pestaña; la activa lleva
- * `tabIndex={0}` y las demás `-1`.
- */
-export function useTeclasPestanas<T extends string>(
-  claves: readonly T[],
-  valor: T,
-  onChange: (siguiente: T) => void,
-) {
-  const ref = React.useRef<HTMLDivElement>(null);
-  const onKeyDown = React.useCallback(
-    (event: React.KeyboardEvent<HTMLElement>) => {
-      const actual = claves.indexOf(valor);
-      const destino =
-        event.key === "ArrowRight"
-          ? (actual + 1) % claves.length
-          : event.key === "ArrowLeft"
-            ? (actual - 1 + claves.length) % claves.length
-            : event.key === "Home"
-              ? 0
-              : event.key === "End"
-                ? claves.length - 1
-                : null;
-      if (destino == null || claves.length === 0) return;
-      event.preventDefault();
-      onChange(claves[destino]);
-      ref.current?.querySelectorAll<HTMLElement>('[role="tab"]')[destino]?.focus();
-    },
-    [claves, valor, onChange],
-  );
-  return { ref, onKeyDown };
-}
+// `clasePestana`, `claseContador` y `useTeclasPestanas` viven en `./pestanas` y se
+// reexportan arriba: el login los usa sin cargar el resto de este módulo.
 
 /** Los ids que unen una pestaña con su panel (`aria-controls`/`aria-labelledby`). */
 function idsDePestana(idBase: string, key: string) {
