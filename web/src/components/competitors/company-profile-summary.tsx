@@ -1,10 +1,15 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight, Building2, MapPinned, Shapes, Target } from "lucide-react";
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Panel,
+  PanelTitle,
+  SUPERFICIE_PANEL,
+  StatCell,
+  StatStrip,
+  TONO_PANEL,
+} from "@/components/console/panel";
 import { Pista } from "@/components/ui/pista";
-import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { cn, EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 import { CompanyCortes } from "./company-cortes";
 import { CompanyUteParticipations } from "./company-ute-participations";
@@ -12,62 +17,10 @@ import { CompanyYearTrend } from "./company-year-trend";
 import {
   buildExecutiveSummary,
   cpvFamilyLabel,
+  variacionFrenteAnterior,
   type CompanyBreakdown,
   type CompanyProfileData,
 } from "./company-profile-types";
-
-function MetricCell({
-  label,
-  value,
-  detail,
-  delta,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  delta?: number | null;
-}) {
-  const DeltaIcon = delta != null && delta < 0 ? ArrowDownRight : ArrowUpRight;
-
-  return (
-    <div className="min-w-0 p-4 md:p-5">
-      <dt className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">{label}</dt>
-      <Pista contenido={value}>
-        <dd className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">{value}</dd>
-      </Pista>
-      <p className="text-muted-foreground mt-1.5 min-h-5 text-xs leading-5">
-        {delta == null ? (
-          detail
-        ) : (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 font-medium",
-              delta >= 0 ? "text-primary" : "text-amber-700 dark:text-amber-300",
-            )}
-          >
-            <DeltaIcon className="h-3.5 w-3.5" aria-hidden="true" />
-            {delta >= 0 ? "+" : ""}
-            {formatPercent(delta)} vs. periodo anterior
-          </span>
-        )}
-      </p>
-    </div>
-  );
-}
-
-function FootprintItem({ icon: Icon, value, label }: { icon: typeof Building2; value: string; label: string }) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-3.5 md:px-5">
-      <span className="bg-primary/10 text-primary grid h-9 w-9 shrink-0 place-items-center rounded-md">
-        <Icon className="h-4 w-4" aria-hidden="true" />
-      </span>
-      <div>
-        <p className="font-semibold tabular-nums">{value}</p>
-        <p className="text-muted-foreground text-xs">{label}</p>
-      </div>
-    </div>
-  );
-}
 
 function BreakdownColumn({
   title,
@@ -83,30 +36,30 @@ function BreakdownColumn({
   cpv?: boolean;
 }) {
   return (
-    <section className="min-w-0 p-5" aria-label={title}>
-      <h3 className="font-semibold">{title}</h3>
-      <p className="text-muted-foreground mt-0.5 text-xs">{description}</p>
+    <section className="min-w-0 p-4" aria-label={title}>
+      <h3 className="text-tf-body font-semibold">{title}</h3>
+      <p className="mt-0.5 text-tf-meta text-muted-foreground">{description}</p>
       {rows.length ? (
-        <div className="mt-5 space-y-4">
+        <div className="mt-4 space-y-4">
           {rows.slice(0, 5).map((row, index) => {
             const label = cpv ? cpvFamilyLabel(row.codigo) : row.label;
             return (
               <div key={`${row.codigo ?? row.label}-${index}`} className="space-y-1.5">
-                <div className="flex items-start justify-between gap-3 text-sm">
+                <div className="flex items-start justify-between gap-3 text-tf-body">
                   <div className="min-w-0">
                     <Pista contenido={label}>
                       <p className="truncate font-medium">{label}</p>
                     </Pista>
-                    <p className="text-muted-foreground text-xs">{formatNumber(row.contratos)} adjudicaciones</p>
+                    <p className="text-tf-meta text-muted-foreground">{formatNumber(row.contratos)} adjudicaciones</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="font-medium tabular-nums">{formatCurrency(row.importe)}</p>
-                    <p className="text-muted-foreground text-xs">{formatPercent(row.cuota_empresa_pct, 0)}</p>
+                    <p className="font-medium">{formatCurrency(row.importe)}</p>
+                    <p className="text-tf-meta text-muted-foreground">{formatPercent(row.cuota_empresa_pct, 0)}</p>
                   </div>
                 </div>
-                <div className="bg-muted h-1.5 overflow-hidden rounded-full">
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
                   <div
-                    className="bg-primary/75 h-full rounded-full"
+                    className="h-full rounded-full bg-primary"
                     style={{ width: `${Math.max(2, row.cuota_empresa_pct)}%` }}
                   />
                 </div>
@@ -115,17 +68,18 @@ function BreakdownColumn({
           })}
         </div>
       ) : (
-        <p className="text-muted-foreground py-10 text-center text-sm">{empty}</p>
+        <p className="py-10 text-center text-tf-meta text-muted-foreground">{empty}</p>
       )}
     </section>
   );
 }
 
-function toneBorder(tone: string): string {
-  if (tone === "positive") return "border-l-emerald-500";
-  if (tone === "warning") return "border-l-amber-500";
-  if (tone === "negative") return "border-l-destructive";
-  return "border-l-border";
+/** Punto de tono de un movimiento: el tono es información, así que se queda. */
+function tonoPunto(tone: string): string {
+  if (tone === "positive") return "bg-success";
+  if (tone === "warning") return "bg-warning";
+  if (tone === "negative") return "bg-destructive";
+  return "bg-muted-foreground/40";
 }
 
 export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData }) {
@@ -134,163 +88,152 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
   const comparison = profile.comparacion;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <section
-        className="border-primary/55 bg-card rounded-lg border border-l-4 px-5 py-4"
+        className={cn(SUPERFICIE_PANEL, TONO_PANEL.accent, "px-5 py-4")}
         aria-labelledby="profile-reading-title"
       >
-        <p id="profile-reading-title" className="text-xs font-semibold tracking-[0.14em] uppercase">
+        <h2 id="profile-reading-title" className="text-tf-body font-semibold">
           Perfil operativo
-        </p>
-        <p className="text-muted-foreground mt-1.5 max-w-5xl text-sm leading-6">{buildExecutiveSummary(profile)}</p>
+        </h2>
+        <p className="mt-1.5 max-w-5xl text-tf-body text-muted-foreground">{buildExecutiveSummary(profile)}</p>
       </section>
 
       <section aria-labelledby="profile-kpis-title">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <h2 id="profile-kpis-title" className="text-lg font-semibold">
+            <h2 id="profile-kpis-title" className="text-tf-lede">
               Operativa en cifras
             </h2>
-            <p className="text-muted-foreground mt-0.5 text-sm">Tamaño, ritmo, posición y presión competitiva</p>
+            <p className="mt-0.5 text-tf-meta text-muted-foreground">Tamaño, ritmo, posición y presión competitiva</p>
           </div>
-          <p className="text-muted-foreground text-xs">Datos del periodo seleccionado</p>
+          <p className="text-tf-meta text-muted-foreground">Datos del periodo seleccionado</p>
         </div>
 
-        <div className="bg-card overflow-hidden rounded-xl border">
-          <dl className="grid sm:grid-cols-2 xl:grid-cols-3 [&>*]:border-r [&>*]:border-b sm:[&>*:nth-child(2n)]:border-r-0 xl:[&>*:nth-child(2n)]:border-r xl:[&>*:nth-child(3n)]:border-r-0 [&>*:nth-last-child(-n+1)]:border-b-0 sm:[&>*:nth-last-child(-n+2)]:border-b-0 xl:[&>*:nth-last-child(-n+3)]:border-b-0">
-            <MetricCell
-              label="Importe adjudicado"
-              value={formatCurrency(totals.importe_total)}
-              detail="Volumen acumulado"
-              delta={comparison.variacion_importe_pct}
-            />
-            <MetricCell
-              label="Adjudicaciones"
-              value={formatNumber(totals.contratos)}
-              detail="Expedientes ganados"
-              delta={comparison.variacion_contratos_pct}
-            />
-            <MetricCell
-              label="Cuota y posición"
-              value={`${formatPercent(position.cuota_pct)}${position.rank ? ` · #${position.rank}` : ""}`}
-              detail={position.rank ? `entre ${formatNumber(position.empresas)} empresas` : "Sin posición calculable"}
-            />
-            <MetricCell
-              label="Contrato típico"
-              value={formatCurrency(totals.importe_mediano)}
-              detail="Mediana adjudicada; reduce el efecto de extremos"
-            />
-            <MetricCell
-              label="Baja media"
-              value={formatPercent(totals.baja_media_pct)}
-              detail="Descuento sobre el presupuesto de licitación"
-            />
-            <MetricCell
-              label="Presión competitiva"
-              value={totals.ofertas_medias == null ? "-" : `${totals.ofertas_medias.toFixed(1)} ofertas`}
-              detail={`Cobertura del dato: ${formatPercent(totals.cobertura_ofertas_pct, 0)}`}
-            />
-          </dl>
+        <StatStrip columns={3}>
+          <StatCell
+            label="Importe adjudicado"
+            value={formatCurrency(totals.importe_total)}
+            hint={variacionFrenteAnterior(comparison.variacion_importe_pct, "Volumen acumulado")}
+          />
+          <StatCell
+            label="Adjudicaciones"
+            value={formatNumber(totals.contratos)}
+            hint={variacionFrenteAnterior(comparison.variacion_contratos_pct, "Expedientes ganados")}
+          />
+          <StatCell
+            label="Cuota y posición"
+            value={`${formatPercent(position.cuota_pct)}${position.rank ? ` · #${position.rank}` : ""}`}
+            hint={position.rank ? `Entre ${formatNumber(position.empresas)} empresas` : "Sin posición calculable"}
+          />
+          <StatCell
+            label="Contrato típico"
+            value={formatCurrency(totals.importe_mediano)}
+            hint="Mediana adjudicada: pesa menos lo extremo"
+          />
+          <StatCell
+            label="Baja media"
+            value={formatPercent(totals.baja_media_pct)}
+            hint="Descuento sobre el presupuesto de licitación"
+          />
+          <StatCell
+            label="Presión competitiva"
+            value={
+              totals.ofertas_medias == null
+                ? EMPTY
+                : `${totals.ofertas_medias.toFixed(1).replace(".", ",")} ofertas`
+            }
+            hint={`Cobertura del dato: ${formatPercent(totals.cobertura_ofertas_pct, 0)}`}
+          />
+        </StatStrip>
 
-          <div className="bg-muted/20 grid border-t sm:grid-cols-2 xl:grid-cols-4 xl:divide-x">
-            <FootprintItem icon={Building2} value={formatNumber(totals.organos)} label="clientes públicos" />
-            <FootprintItem icon={MapPinned} value={formatNumber(totals.territorios)} label="territorios" />
-            <FootprintItem icon={Shapes} value={formatNumber(totals.familias_cpv)} label="familias CPV" />
-            <FootprintItem
-              icon={Target}
-              value={formatPercent(totals.pct_oferta_unica)}
-              label="adjudicaciones con oferta única"
-            />
-          </div>
-        </div>
+        <StatStrip columns={4} className="mt-3">
+          <StatCell label="Clientes públicos" value={formatNumber(totals.organos)} />
+          <StatCell label="Territorios" value={formatNumber(totals.territorios)} />
+          <StatCell label="Familias CPV" value={formatNumber(totals.familias_cpv)} />
+          <StatCell label="Adjudicaciones con oferta única" value={formatPercent(totals.pct_oferta_unica)} />
+        </StatStrip>
       </section>
 
       <CompanyUteParticipations participations={profile.participaciones_ute} companyName={profile.empresa.nombre} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Progreso anual</CardTitle>
-          <CardDescription>Importe adjudicado y contratos ganados por ejercicio</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CompanyYearTrend rows={profile.por_anio} />
-        </CardContent>
-      </Card>
+      <Panel>
+        <PanelTitle title="Progreso anual" hint="Importe adjudicado y contratos ganados por ejercicio" />
+        <CompanyYearTrend rows={profile.por_anio} />
+      </Panel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Dónde y para quién opera</CardTitle>
-          <CardDescription>Especialización, compradores recurrentes y huella territorial</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="grid divide-y xl:grid-cols-3 xl:divide-x xl:divide-y-0">
-            <BreakdownColumn
-              title="Especialización"
-              description="Familias CPV por peso económico"
-              rows={profile.por_cpv}
-              empty="Sin CPV clasificado"
-              cpv
-            />
-            <BreakdownColumn
-              title="Clientes principales"
-              description={`Top 3: ${formatPercent(profile.concentracion_clientes.top3_importe_pct, 0)} del importe`}
-              rows={profile.organos_principales}
-              empty="Sin órgano identificado"
-            />
-            <BreakdownColumn
-              title="Huella territorial"
-              description="Distribución por comunidad autónoma"
-              rows={profile.por_ccaa}
-              empty="Sin territorio identificado"
-            />
-          </div>
-          <p className="text-muted-foreground border-t px-5 py-3 text-xs">
-            Dependencia del primer cliente: {formatPercent(profile.concentracion_clientes.top1_importe_pct)} del
-            importe. La cobertura del número de ofertas es del {formatPercent(totals.cobertura_ofertas_pct)}.
-          </p>
-        </CardContent>
-      </Card>
+      <Panel className="p-0">
+        <PanelTitle
+          className="mb-0 px-4 pt-3.5"
+          title="Dónde y para quién opera"
+          hint="Especialización, compradores recurrentes y huella territorial"
+        />
+        <div className="grid divide-y divide-border/60 xl:grid-cols-3 xl:divide-x xl:divide-y-0">
+          <BreakdownColumn
+            title="Especialización"
+            description="Familias CPV por peso económico"
+            rows={profile.por_cpv}
+            empty="Sin CPV clasificado"
+            cpv
+          />
+          <BreakdownColumn
+            title="Clientes principales"
+            description={`Los 3 primeros: ${formatPercent(profile.concentracion_clientes.top3_importe_pct, 0)} del importe`}
+            rows={profile.organos_principales}
+            empty="Sin órgano identificado"
+          />
+          <BreakdownColumn
+            title="Huella territorial"
+            description="Distribución por comunidad autónoma"
+            rows={profile.por_ccaa}
+            empty="Sin territorio identificado"
+          />
+        </div>
+        <p className="border-t border-border/60 px-4 py-3 text-tf-meta text-muted-foreground">
+          Dependencia del primer cliente: {formatPercent(profile.concentracion_clientes.top1_importe_pct)} del
+          importe. La cobertura del número de ofertas es del {formatPercent(totals.cobertura_ofertas_pct)}.
+        </p>
+      </Panel>
 
       {(profile.por_procedimiento?.length ?? 0) + (profile.por_tramo_importe?.length ?? 0) > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Procedimiento y tamaño</CardTitle>
-            <CardDescription>
-              Dónde gana y con qué baja. Sin media por debajo de {profile.corte_min_n ?? 5} adjudicaciones por celda.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <CompanyCortes
-              porProcedimiento={profile.por_procedimiento ?? []}
-              porTramo={profile.por_tramo_importe ?? []}
-              minimo={profile.corte_min_n ?? 5}
-            />
-          </CardContent>
-        </Card>
+        <Panel className="p-0">
+          <PanelTitle
+            className="mb-0 px-4 pt-3.5"
+            title="Procedimiento y tamaño"
+            hint={`Dónde gana y con qué baja. Sin media por debajo de ${profile.corte_min_n ?? 5} adjudicaciones por celda.`}
+          />
+          <CompanyCortes
+            porProcedimiento={profile.por_procedimiento ?? []}
+            porTramo={profile.por_tramo_importe ?? []}
+            minimo={profile.corte_min_n ?? 5}
+          />
+        </Panel>
       ) : null}
 
       {profile.movimientos.length ? (
         <section aria-labelledby="movements-title">
-          <div className="mb-3 flex items-center gap-2">
-            <Target className="text-primary h-4 w-4" aria-hidden="true" />
-            <div>
-              <h2 id="movements-title" className="font-semibold">
-                Cambios relevantes
-              </h2>
-              <p className="text-muted-foreground text-xs">Señales que ayudan a interpretar el progreso reciente</p>
-            </div>
+          <div className="mb-3">
+            <h2 id="movements-title" className="text-tf-lede">
+              Cambios relevantes
+            </h2>
+            <p className="mt-0.5 text-tf-meta text-muted-foreground">
+              Señales que ayudan a interpretar el progreso reciente
+            </p>
           </div>
-          <div className="bg-card divide-y overflow-hidden rounded-lg border">
+          <ul className={cn(SUPERFICIE_PANEL, "divide-y divide-border/60 overflow-hidden")}>
             {profile.movimientos.slice(0, 4).map((movement, index) => (
-              <div
-                key={`${movement.kind}-${index}`}
-                className={cn("border-l-4 px-4 py-3.5", toneBorder(movement.tone))}
-              >
-                <p className="text-sm font-medium">{movement.title}</p>
-                <p className="text-muted-foreground mt-0.5 text-sm leading-5">{movement.detail}</p>
-              </div>
+              <li key={`${movement.kind}-${index}`} className="flex gap-2.5 px-4 py-3.5">
+                <span
+                  aria-hidden="true"
+                  className={cn("mt-1.5 size-2 flex-none rounded-full", tonoPunto(movement.tone))}
+                />
+                <div className="min-w-0">
+                  <p className="text-tf-body font-medium">{movement.title}</p>
+                  <p className="mt-0.5 text-tf-body text-muted-foreground">{movement.detail}</p>
+                </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       ) : null}
     </div>

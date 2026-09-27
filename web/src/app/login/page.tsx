@@ -3,20 +3,26 @@
 /**
  * Puerta de entrada al producto.
  *
- * Aquí solo queda el armazón: fondo, tarjeta y la decisión de qué cuerpo se
- * monta —el gate de segundo factor o el panel de acceso normal—. Los cinco
+ * Aquí solo queda el armazón: la carcasa de la puerta
+ * (`(publico)/_components/puerta.tsx`, la misma de restablecer contraseña y del
+ * 404 raíz) y la decisión de qué cuerpo se monta en su panel —la sesión ya
+ * abierta, el gate de segundo factor o el panel de acceso normal—. Los cinco
  * caminos de entrada y sus errores viven en `_hooks/use-login-form.ts`, y cada
- * bloque de la tarjeta en `_components/`. Ningún texto, ningún estado de error
- * y ningún flujo cambió al repartirlos.
+ * bloque del panel en `_components/`.
+ *
+ * La composición es la de la portada (decisión D4, 2026-09-26): texto a la
+ * izquierda, formulario en un panel sólido a la derecha y el logo enlazado a
+ * `/`. El fondo animado de partículas, la retícula, el halo y la tarjeta de
+ * cristal centrada se fueron con ella; el porqué, en `puerta.tsx`.
  */
 
 import { Suspense } from "react";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
-import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
-import { ParticleField } from "@/components/layout/particle-field";
+import { Puerta } from "@/app/(publico)/_components/puerta";
+import { useSession } from "@/lib/auth";
 import { AccessPanel } from "./_components/access-panel";
 import { ALTA_ABIERTA, AuthModeTabs } from "./_components/auth-mode-tabs";
 import { MfaForm } from "./_components/mfa-form";
+import { SesionAbierta } from "./_components/sesion-abierta";
 import { useLoginForm } from "./_hooks/use-login-form";
 
 export default function LoginPage() {
@@ -29,52 +35,37 @@ export default function LoginPage() {
 
 function LoginPageContent() {
   const login = useLoginForm();
+  const { user, isLoading } = useSession();
 
+  // Con la sesión ya abierta no se vuelve a pedir la contraseña (F55), salvo
+  // que la URL traiga algo que solo resuelve el formulario: una invitación
+  // (se canjea al entrar), un error del callback o el gate del segundo factor.
+  // `/auth/me` responde 200 también a una sesión con el segundo factor
+  // pendiente y no dice si ya se verificó, así que a las cuentas con MFA se les
+  // sigue enseñando el formulario, como antes; mientras `/auth/me` no ha
+  // contestado, también.
+  const conMfa = user !== null && "mfa_required" in user && user.mfa_required === true;
+  const sesionAbierta =
+    !isLoading && user !== null && !conMfa && !login.mfaPending && !login.invitacion && !login.error;
+
+  let panel: React.ReactNode;
+  if (sesionAbierta && user) {
+    panel = <SesionAbierta email={user.email} destino={login.destino} onCambiarCuenta={login.cerrarSesion} />;
+  } else if (login.mfaPending) {
+    panel = <MfaForm login={login} />;
+  } else {
+    panel = (
+      <>
+        {ALTA_ABIERTA && <AuthModeTabs mode={login.mode} onChange={login.switchMode} />}
+        <AccessPanel login={login} />
+      </>
+    );
+  }
+
+  // Sin "tiempo real" en el lede: la ingesta es cada cuatro horas y el propio
+  // FAQ de la portada lo dice; el copy público no promete lo que el producto no
+  // hace.
   return (
-    <div className="bg-background relative flex min-h-screen items-center justify-center overflow-hidden p-4">
-      {/* Animated particle backdrop, sobre la misma retícula fina que el hero
-          de la landing: la puerta de entrada y la portada comparten fondo. */}
-      <div aria-hidden="true" className="tf-hero-grid absolute inset-0 z-0" />
-      <ParticleField className="z-0" />
-      {/* Soft radial halo to calm the area behind the card and keep contrast */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 [background:radial-gradient(closest-side,hsl(var(--background)/0.85),transparent_70%)]"
-      />
-
-      {/* Landmark `main` con el mismo id que en el dashboard: el skip link del
-          layout raíz se renderiza en todas las rutas y aquí apuntaba a un
-          ancla inexistente. */}
-      <main id="main-content" tabIndex={-1} className="relative z-10 w-full max-w-md space-y-8">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <TenderFlowLogo showText={false} boxSize={48} />
-          <div>
-            <h1 className="tf-display text-foreground">TenderFlow</h1>
-            {/* Sin "tiempo real": la ingesta es cada cuatro horas y el propio
-                FAQ de la landing lo dice — el copy público no promete lo que
-                el producto no hace. */}
-            <p className="text-muted-foreground mt-1 text-sm">Radar de licitaciones TI del sector público español</p>
-          </div>
-        </div>
-
-        {/* Rare, first-load-only screen: the only place a delight-tier
-            entrance is warranted (find-animation-opportunities — occasional
-            frequency, "delight" purpose). */}
-        <Card className="border-border/70 animate-in fade-in-0 slide-in-from-bottom-2 anim-duration-200 shadow-xl backdrop-blur-sm">
-          <CardHeader className="space-y-4">
-            {ALTA_ABIERTA && <AuthModeTabs mode={login.mode} onChange={login.switchMode} />}
-            <CardDescription>
-              {login.isRegister
-                ? "Crea tu cuenta con correo y contraseña"
-                : "Accede con tu cuenta para ver el dashboard"}
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent>
-            {login.mfaPending ? <MfaForm login={login} /> : <AccessPanel login={login} />}
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+    <Puerta titulo="Entra en TenderFlow" lede="El radar de licitaciones TI del sector público español." panel={panel} />
   );
 }

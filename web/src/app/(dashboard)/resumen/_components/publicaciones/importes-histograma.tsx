@@ -13,7 +13,7 @@
 
 import { PanelEmpty } from "@/components/console/panel";
 import { getSeriesColor } from "@/lib/chart-colors";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, formatPercent } from "@/lib/utils";
 import type { HistogramBin } from "@/lib/api-types";
 import { ALTO } from "./publicaciones-data";
 
@@ -28,7 +28,11 @@ export interface ImportesHistogramaProps {
 export function ImportesHistograma({ histograma, total, maximo }: ImportesHistogramaProps) {
   if (histograma.length === 0) {
     return (
-      <PanelEmpty message="Ningún expediente del periodo declara importe." height={ALTO} />
+      <PanelEmpty
+        title="Ningún expediente del periodo declara importe"
+        hint="Amplía las fechas del ámbito para ver cómo se reparten los importes."
+        height={ALTO}
+      />
     );
   }
 
@@ -40,20 +44,18 @@ export function ImportesHistograma({ histograma, total, maximo }: ImportesHistog
           return (
             <div key={bin.bin_label} className="px-1 py-1.5">
               <span className="flex items-baseline gap-2">
-                <span className="tf-tnum w-[76px] flex-none font-mono text-[11px]">
-                  {bin.bin_label}
-                </span>
+                <span className="tf-tnum w-[76px] flex-none text-tf-micro">{bin.bin_label}</span>
                 <span className="flex-1" />
-                <span className="text-muted-foreground tf-tnum flex-none font-mono text-[10px]">
-                  {pct.toFixed(1).replace(".", ",")}%
+                <span className="tf-tnum flex-none text-tf-micro text-muted-foreground">
+                  {formatPercent(pct)}
                 </span>
-                <span className="tf-tnum flex-none font-mono text-[11px] font-semibold">
+                <span className="tf-tnum flex-none text-tf-micro font-semibold">
                   {formatNumber(bin.count)}
                 </span>
               </span>
-              <span className="bg-border/40 mt-1 block h-1.5 overflow-hidden rounded-full">
+              <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-border/40">
                 <span
-                  className="block h-full rounded-full transition-[width] duration-200 ease-out"
+                  className="block h-full rounded-full"
                   style={{
                     width: `${maximo ? Math.max(1, (bin.count / maximo) * 100) : 0}%`,
                     background: getSeriesColor(indice),
@@ -64,9 +66,9 @@ export function ImportesHistograma({ histograma, total, maximo }: ImportesHistog
           );
         })}
       </div>
-      <p className="text-muted-foreground mt-2 text-[10.5px] leading-[1.45]">
-        {formatNumber(total)} expedientes con importe declarado. Los tramos son logarítmicos y
-        los calcula el backend sobre el periodo completo.
+      <p className="mt-2 text-tf-micro text-muted-foreground">
+        {formatNumber(total)} expedientes con importe declarado en todo el periodo, en tramos de
+        escala logarítmica.
       </p>
     </>
   );

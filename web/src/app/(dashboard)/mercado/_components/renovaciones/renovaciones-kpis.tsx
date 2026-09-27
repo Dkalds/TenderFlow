@@ -17,7 +17,7 @@ import type { Renovaciones } from "../../_hooks/use-renovaciones";
  */
 export function RenovacionesKpis({ totales }: { totales: Renovaciones["totales"] }) {
   return (
-    <StatStrip columns={4} className="lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]">
+    <StatStrip columns={4}>
       <StatCell
         label="Contratos venciendo"
         value={totales ? formatNumber(totales.contratos_venciendo) : "…"}

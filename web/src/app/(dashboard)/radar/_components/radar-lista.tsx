@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { RadioTower } from "lucide-react";
+import { PanelEmpty, PanelError } from "@/components/console/panel";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { RadarTender } from "@/hooks/use-radar";
 import { RadarEsqueleto } from "./radar-esqueleto";
@@ -19,10 +20,7 @@ export function RadarCabecera() {
   return (
     <div
       data-slot="radar-cabecera"
-      className={cn(
-        "hidden h-[30px] flex-none items-center border-b border-border/70 bg-card/50 font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground md:grid",
-        RADAR_GRID,
-      )}
+      className={cn("hidden h-[30px] flex-none items-center border-b border-border/70 bg-card md:grid", CABECERA_COLUMNA, RADAR_GRID)}
     >
       <span>Score</span>
       <span>Licitación</span>
@@ -31,32 +29,6 @@ export function RadarCabecera() {
       <span className="text-right">Importe</span>
       <span className="text-right">Plazo</span>
       <span className="text-right">Acción</span>
-    </div>
-  );
-}
-
-function RadarError({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  return (
-    <div
-      role="alert"
-      className="mx-auto my-10 max-w-[560px] rounded-xl border border-destructive/40 bg-destructive/8 px-6 py-5"
-    >
-      <div className="mb-2 flex items-center gap-2.5">
-        <span className="grid h-5.5 w-5.5 flex-none place-items-center rounded-full border border-destructive/50 text-[12px] font-semibold text-destructive">
-          !
-        </span>
-        <span className="text-[13.5px] font-semibold text-destructive">
-          Error al cargar la bandeja del radar
-        </span>
-      </div>
-      <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">{error.message}</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="tf-pressable h-[30px] rounded-md border border-border/80 px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        ↻ Reintentar
-      </button>
     </div>
   );
 }
@@ -106,30 +78,35 @@ export function RadarLista({
   return (
     <div data-slot="radar-lista" ref={listRef} className="relative min-h-0 flex-1 overflow-y-auto">
       {error ? (
-        <RadarError error={error as Error} onRetry={onRetry} />
+        // `useRadar` no es de esta pantalla: el `meta` que calla el toast lo
+        // tiene que poner el hook (ver el handoff de la fase 2).
+        <PanelError
+          title="No se pudo cargar la bandeja del Radar"
+          error={error}
+          onRetry={onRetry}
+          className="mx-auto my-10 max-w-[560px]"
+        />
       ) : isLoading ? (
         <RadarEsqueleto barras={9} />
       ) : showEmpty ? (
-        <div className="px-5 py-20 text-center">
-          <RadioTower className="mx-auto mb-3 h-6 w-6 text-muted-foreground/60" aria-hidden="true" />
-          <div className="mb-1.5 font-display text-[15px] font-semibold leading-[1.3]">
-            Bandeja al día
-          </div>
-          <p className="text-[13px] leading-[1.5] text-muted-foreground">
-            No quedan señales con el ámbito actual.
-          </p>
-          {/* Un vacío que dice qué hacer (C7.3). Las dos salidas existen: el
-              Radar aplica la tecnología del ámbito, y las reglas de Mi
-              Watchlist avisan desde el servidor según su frecuencia. */}
-          <p className="mx-auto mt-2 max-w-[44ch] text-[12px] leading-[1.5] text-muted-foreground">
-            Si has acotado la tecnología en la barra de ámbito, quítala para ver el resto. Para
-            enterarte de lo que se publique sin volver aquí, crea una regla en{" "}
-            <Link href="/mi-watchlist" className="text-primary font-medium hover:underline">
-              Mi Watchlist
-            </Link>
-            .
-          </p>
-        </div>
+        // Un vacío que dice qué hacer (C7.3). Las dos salidas existen: el Radar
+        // aplica la tecnología del ámbito, y las reglas de Mi Watchlist avisan
+        // desde el servidor según su frecuencia.
+        <PanelEmpty
+          className="py-16"
+          title="Bandeja al día"
+          hint={
+            <>
+              No quedan señales con el ámbito actual. Si has acotado la tecnología en la barra de
+              ámbito, quítala para ver el resto. Para enterarte de lo que se publique sin volver
+              aquí, crea una regla en{" "}
+              <Link href="/mi-watchlist" className="font-medium text-primary hover:underline">
+                Mi Watchlist
+              </Link>
+              .
+            </>
+          }
+        />
       ) : (
         rows.map((tender, index) => {
           const publicado = tender.fecha_publicacion

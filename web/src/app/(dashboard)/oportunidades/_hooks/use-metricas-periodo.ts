@@ -16,6 +16,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { pursuitKeys } from "@/lib/query-keys";
 import type { RangoPeriodo } from "../_lib/periodo";
@@ -39,5 +40,7 @@ export function useMetricasPeriodo(rango: RangoPeriodo) {
       }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 60_000,
+    // Rendimiento pinta el fallo en línea (`PanelError`): sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 }

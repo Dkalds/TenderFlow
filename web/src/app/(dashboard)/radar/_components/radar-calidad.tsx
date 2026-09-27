@@ -21,6 +21,7 @@
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
 import { RadarQualityNota, RadarQualityResumen } from "@/components/pursuits/radar-quality";
+import { Button } from "@/components/ui/button";
 import { usePursuitMetrics } from "@/hooks/use-pursuits";
 import { cn } from "@/lib/utils";
 
@@ -38,33 +39,34 @@ export function RadarCalidad() {
   const hayCaliente = bandas.some((banda) => banda.banda === "Caliente");
 
   return (
-    <div className="flex-none border-b border-border/60 bg-card/40 px-3 py-1.5 md:px-3.5">
+    <div className="flex-none border-b border-border/60 bg-card px-3 py-1.5 md:px-3.5">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {hayCaliente ? (
           <RadarQualityNota
             calidad={calidad}
             banda="Caliente"
-            className="min-w-0 flex-1 text-[11px] leading-relaxed text-muted-foreground"
+            className="min-w-0 flex-1 text-tf-micro text-muted-foreground"
           />
         ) : (
-          <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-muted-foreground">
+          <p className="min-w-0 flex-1 text-tf-micro text-muted-foreground">
             Ninguna oportunidad abierta desde la banda Caliente ha llegado todavía a un cierre con
             veredicto.
           </p>
         )}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setAbierto((previo) => !previo)}
           aria-expanded={abierto}
           aria-controls="radar-calidad-bandas"
-          className="tf-pressable inline-flex h-6 flex-none items-center gap-1 rounded-md border border-transparent px-1.5 text-[11px] font-medium text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground"
+          className="flex-none text-muted-foreground"
         >
           {abierto ? "Ocultar bandas" : "Ver todas las bandas"}
-          <ChevronDown
-            className={cn("h-3 w-3 transition-transform duration-150 ease-out", abierto && "rotate-180")}
-            aria-hidden="true"
-          />
-        </button>
+          {/* `rotate-*` escribe `rotate:`, no `transform:`: la transición
+              tiene que nombrarlo o no anima. */}
+          <ChevronDown className={cn("transition-[rotate]", abierto && "rotate-180")} aria-hidden="true" />
+        </Button>
       </div>
       <div id="radar-calidad-bandas" hidden={!abierto}>
         <RadarQualityResumen calidad={calidad} className="mt-2 max-w-[520px]" />

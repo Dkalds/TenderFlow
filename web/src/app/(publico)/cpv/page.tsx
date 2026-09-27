@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight, Hash } from "lucide-react";
 import { obtenerHubs } from "@/lib/publico-api";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { listaJsonLd, migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCpv } from "@/lib/slug";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { KICKER, TITULO_PAGINA } from "../_components/piel-publica";
 
 /**
  * Índice por código CPV.
@@ -17,7 +17,7 @@ import { formatNumber } from "@/lib/utils";
  * 404 como para que los hubs por código reciban enlaces internos.
  *
  * Los totales por código vienen del endpoint de hubs (ADR-014: aquí no se
- * agrega nada); las cards comparten lenguaje visual con la landing.
+ * agrega nada); las tarjetas comparten lenguaje visual con la landing.
  */
 
 export const metadata: Metadata = {
@@ -39,6 +39,12 @@ export const metadata: Metadata = {
 };
 
 export const revalidate = 3600;
+
+/* Tarjeta de un índice: la tarjeta entera es el enlace, así que no lleva
+ * flecha; al pasar el ratón cambian el filete y el color del nombre, nada se
+ * desplaza ni gana sombra. */
+const TARJETA_INDICE =
+  "group border-border/70 bg-card focus-visible:ring-ring hover:border-primary/50 block rounded-xl border px-5 py-4 transition-colors focus-visible:ring-2 focus-visible:outline-none";
 
 export default async function IndiceCpv() {
   const { cpv } = await obtenerHubs();
@@ -65,35 +71,25 @@ export default async function IndiceCpv() {
       />
 
       <div className="mx-auto w-full max-w-6xl px-6 py-12">
-        <p className="text-primary flex items-center gap-2 font-mono text-xs tracking-widest uppercase">
-          <Hash className="h-4 w-4" aria-hidden="true" />
-          Por código CPV
-        </p>
-        <h1 className="font-display mt-3 text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
-          Licitaciones por código CPV
-        </h1>
+        <p className={KICKER}>Por código CPV</p>
+        <h1 className={cn(TITULO_PAGINA, "mt-3")}>Licitaciones por código CPV</h1>
         <p className="text-muted-foreground mt-4 max-w-[62ch] text-base leading-relaxed">
           El CPV (Common Procurement Vocabulary) es la clasificación con la que la administración identifica el objeto
-          de cada contrato. Estos son los códigos con actividad en el corpus, ordenados por volumen.
+          de cada contrato. Estos son los códigos con actividad en TenderFlow, ordenados por volumen.
         </p>
 
         <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {cpv.map((hub) => (
             <li key={hub.codigo}>
-              <Link
-                href={rutaHubCpv(hub.codigo)}
-                className="group border-border/70 bg-card focus-visible:ring-ring hover:border-primary/40 flex items-center justify-between gap-3 rounded-xl border px-5 py-4 transition-[transform,border-color,box-shadow] duration-200 ease-out hover:shadow-md focus-visible:ring-2 focus-visible:outline-none active:scale-[0.99]"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate font-mono text-sm font-semibold">{hub.codigo}</span>
-                  <span className="text-muted-foreground tf-tnum mt-0.5 block text-xs">
+              <Link href={rutaHubCpv(hub.codigo)} className={TARJETA_INDICE}>
+                <span className="block min-w-0">
+                  <span className="group-hover:text-primary block truncate font-mono text-sm font-semibold transition-colors">
+                    {hub.codigo}
+                  </span>
+                  <span className="text-muted-foreground tf-tnum text-tf-meta mt-0.5 block">
                     {formatNumber(hub.total)} licitaciones
                   </span>
                 </span>
-                <ArrowUpRight
-                  aria-hidden="true"
-                  className="text-muted-foreground group-hover:text-primary h-4 w-4 shrink-0 transition-[transform,color] duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                />
               </Link>
             </li>
           ))}

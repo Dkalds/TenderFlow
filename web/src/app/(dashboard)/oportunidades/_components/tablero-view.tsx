@@ -47,7 +47,7 @@ import { bloqueoDeFase, resultadosPermitidos } from "../_lib/flujo";
  * Arrastrar no es la única forma de mover: cada tarjeta lleva su menú «Mover
  * a», que es la vía de teclado y de lector de pantalla. Soltar en «Cerradas»
  * abre el diálogo de resultado y motivo en vez de elegir uno por el usuario.
- * Las dos vías respetan el flujo del backend (`_lib/flujo.ts`): mientras se
+ * Las dos vías respetan el flujo de estados (`_lib/flujo.ts`): mientras se
  * arrastra, solo aceptan la tarjeta la fase siguiente, «Cerradas» y la suya.
  *
  * La unidad sigue siendo la **oportunidad**, no el expediente: un expediente
@@ -86,7 +86,7 @@ export default function TableroView({
           <div className="grid flex-1 place-items-center p-10">
             <PanelError
               title="No se pudieron cargar las oportunidades"
-              detail={(pursuits.error as Error).message}
+              error={pursuits.error}
               onRetry={() => void pursuits.refetch()}
             />
           </div>

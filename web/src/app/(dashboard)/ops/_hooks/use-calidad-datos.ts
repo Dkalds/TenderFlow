@@ -11,6 +11,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { analyticsKeys } from "@/lib/query-keys";
 import {
   completitudSeries,
@@ -24,6 +25,8 @@ export interface CalidadDatos {
   data: QualityData | undefined;
   isLoading: boolean;
   isError: boolean;
+  error: unknown;
+  refetch: () => void;
   /** Horas desde la última ingesta, o `null` si el backend no las mide. */
   hoursAgo: number | null;
   freshness: Frescura;
@@ -33,9 +36,11 @@ export interface CalidadDatos {
 }
 
 export function useCalidadDatos(): CalidadDatos {
-  const { data, isLoading, isError } = useQuery<QualityData>({
+  const { data, isLoading, isError, error, refetch } = useQuery<QualityData>({
     queryKey: analyticsKeys.quality,
     queryFn: () => fetchWithAuth<QualityData>("/api/v1/analytics/quality"),
+    // El fallo se pinta en la pantalla (`PanelError`): sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const hoursAgo = data?.last_scrape_hours_ago ?? null;
@@ -44,6 +49,8 @@ export function useCalidadDatos(): CalidadDatos {
     data,
     isLoading,
     isError,
+    error,
+    refetch: () => void refetch(),
     hoursAgo,
     freshness: freshnessInfo(hoursAgo),
     chartData: completitudSeries(data),

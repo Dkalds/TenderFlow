@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { type FiltroEtiqueta, useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { useCreatePursuit } from "@/hooks/use-pursuits";
 import { useSeguimiento } from "@/hooks/use-seguimiento";
@@ -260,7 +261,9 @@ export function useRadarConsola(): RadarConsola {
         toast.success("Oportunidad abierta para el equipo");
         router.push(`/oportunidades/${pursuit.id}`);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "No se pudo abrir la oportunidad");
+        // Mensaje humano y no `err.message` crudo (D6): el texto de la API va de
+        // descripción, que al actuar sí explica qué falló de lo pedido.
+        toast.error("No se pudo abrir la oportunidad", { description: getErrorMessage(err, "accion") });
       }
     },
     [createPursuit, router, setActiveOrganizationId],

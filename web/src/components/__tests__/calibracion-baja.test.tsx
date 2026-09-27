@@ -55,10 +55,10 @@ describe("CalibracionBajaBlock", () => {
       n_evaluadas: 57,
     });
     expect(screen.getByText("Bien calibrado")).toBeInTheDocument();
-    expect(screen.getByText("82.0%")).toBeInTheDocument();
-    expect(screen.getByText(/nominal 80.0%/)).toBeInTheDocument();
-    expect(screen.getByText(/MAE p50: 4.5%/)).toBeInTheDocument();
-    expect(screen.getByText(/Sesgo p50: \+1.0%/)).toBeInTheDocument();
+    expect(screen.getByText("82,0%")).toBeInTheDocument();
+    expect(screen.getByText(/nominal 80,0%/)).toBeInTheDocument();
+    expect(screen.getByText(/MAE p50: 4,5%/)).toBeInTheDocument();
+    expect(screen.getByText(/Sesgo p50: \+1,0%/)).toBeInTheDocument();
     expect(screen.getByText("57 licitaciones evaluadas")).toBeInTheDocument();
   });
 
@@ -72,8 +72,8 @@ describe("CalibracionBajaBlock", () => {
       n_evaluadas: 41,
     });
     expect(screen.getByText("Calibración degradada")).toBeInTheDocument();
-    expect(screen.getByText("42.0%")).toBeInTheDocument();
-    expect(screen.getByText(/Sesgo p50: -8.0%/)).toBeInTheDocument();
+    expect(screen.getByText("42,0%")).toBeInTheDocument();
+    expect(screen.getByText(/Sesgo p50: -8,0%/)).toBeInTheDocument();
     expect(
       screen.getByText(/menos fiables de lo que indican/),
     ).toBeInTheDocument();

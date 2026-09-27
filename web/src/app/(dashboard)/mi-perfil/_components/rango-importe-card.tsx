@@ -4,12 +4,14 @@
  * Rango de importe ejecutable: fuera de él, el scoring penaliza con −15 puntos.
  *
  * Los errores llegan del esquema de `UserProfileBody` (S7.2) y cada uno va
- * debajo de su campo, enlazado por `aria-describedby`.
+ * debajo de su campo, enlazado por `aria-describedby` (`Field`). El importe
+ * formateado va fuera del campo: es un eco de lo escrito, no una pista, y no
+ * tiene que leerse como descripción del control.
  */
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelTitle } from "@/components/console/panel";
+import { AYUDA_CAMPO, Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { formatCurrency } from "@/lib/utils";
 
 export function RangoImporteCard({
@@ -26,20 +28,14 @@ export function RangoImporteCard({
   errores?: { importe_min?: string; importe_max?: string };
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Rango de importe ejecutable</CardTitle>
-        <CardDescription>
-          Los contratos fuera de este rango reciben una penalización de −15 puntos
-          (flag <code>fuera_de_rango</code>). Deja en blanco para no aplicar restricción.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label htmlFor="mp-importe-min" className="text-sm font-medium">
-              Mínimo (€)
-            </label>
+    <Panel>
+      <PanelTitle title="Rango de importe ejecutable" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Los contratos fuera de este rango restan 15 puntos. Déjalo en blanco para no aplicar ningún límite.
+      </p>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Field label="Mínimo (€)" htmlFor="mp-importe-min" error={errores.importe_min}>
             <Input
               id="mp-importe-min"
               type="number"
@@ -47,17 +43,14 @@ export function RangoImporteCard({
               placeholder="Sin mínimo"
               value={importeMin}
               onChange={(e) => onImporteMinChange(e.target.value)}
-              {...ariaCampo("mp-importe-min", errores.importe_min)}
             />
-            <CampoError campoId="mp-importe-min" mensaje={errores.importe_min} />
-            {importeMin !== "" && !isNaN(Number(importeMin)) && (
-              <p className="text-xs text-muted-foreground">{formatCurrency(Number(importeMin))}</p>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="mp-importe-max" className="text-sm font-medium">
-              Máximo (€)
-            </label>
+          </Field>
+          {importeMin !== "" && !isNaN(Number(importeMin)) && (
+            <p className={AYUDA_CAMPO}>{formatCurrency(Number(importeMin))}</p>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <Field label="Máximo (€)" htmlFor="mp-importe-max" error={errores.importe_max}>
             <Input
               id="mp-importe-max"
               type="number"
@@ -65,15 +58,13 @@ export function RangoImporteCard({
               placeholder="Sin máximo"
               value={importeMax}
               onChange={(e) => onImporteMaxChange(e.target.value)}
-              {...ariaCampo("mp-importe-max", errores.importe_max)}
             />
-            <CampoError campoId="mp-importe-max" mensaje={errores.importe_max} />
-            {importeMax !== "" && !isNaN(Number(importeMax)) && (
-              <p className="text-xs text-muted-foreground">{formatCurrency(Number(importeMax))}</p>
-            )}
-          </div>
+          </Field>
+          {importeMax !== "" && !isNaN(Number(importeMax)) && (
+            <p className={AYUDA_CAMPO}>{formatCurrency(Number(importeMax))}</p>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

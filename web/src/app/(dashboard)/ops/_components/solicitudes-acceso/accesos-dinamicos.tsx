@@ -9,6 +9,7 @@
  * vacío lo dice en vez de callarse.
  */
 
+import { SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,11 +30,13 @@ export function AccesosDinamicos({
 }: AccesosDinamicosProps) {
   return (
     <div className="border-border/60 mt-5 border-t pt-4">
-      <h3 className="text-sm font-semibold">Accesos dinámicos activos</h3>
+      <SectionTitle as="h3" className="mb-0">
+        Accesos dinámicos activos
+      </SectionTitle>
       {isLoading ? (
         <Skeleton className="mt-3 h-12 w-full" />
       ) : (grants?.length ?? 0) === 0 ? (
-        <p className="text-muted-foreground mt-2 text-xs">
+        <p className="text-muted-foreground mt-2 text-tf-meta">
           No hay concesiones dinámicas; pueden seguir aplicando las variables de entorno.
         </p>
       ) : (
@@ -41,9 +44,9 @@ export function AccesosDinamicos({
           {grants?.map((grant) => (
             <li key={grant.id} className="flex items-center justify-between gap-3 py-2">
               <div className="min-w-0">
-                <span className="text-xs font-medium">{grant.value}</span>
-                <Badge variant="outline" className="ml-2">
-                  {grant.kind === "email" ? "Email" : "Dominio"}
+                <span className="text-tf-body font-medium">{grant.value}</span>
+                <Badge variant="outline" size="sm" className="ml-2">
+                  {grant.kind === "email" ? "Correo" : "Dominio"}
                 </Badge>
               </div>
               <Button

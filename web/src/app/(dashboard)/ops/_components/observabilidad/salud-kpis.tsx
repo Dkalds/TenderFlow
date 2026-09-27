@@ -1,10 +1,9 @@
 "use client";
 
-/** Las tres tarjetas de cabecera: si la API responde, cuándo y qué versión. */
+/** La tira de cabecera: si la API responde, cuándo y qué versión. */
 
-import { Activity, Server } from "lucide-react";
-import { KpiCard } from "@/components/charts/kpi-card";
-import { cn, formatDate, formatTime } from "@/lib/utils";
+import { StatCell, StatStrip } from "@/components/console/panel";
+import { formatDate, formatTime } from "@/lib/utils";
 
 export interface SaludKpisProps {
   isLoading: boolean;
@@ -17,37 +16,21 @@ export interface SaludKpisProps {
 
 export function SaludKpis({ isLoading, isError, isOnline, lastCheck, version }: SaludKpisProps) {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <KpiCard
-        title="Estado API"
-        value={isLoading ? undefined : isOnline ? "Online" : "Offline"}
-        subtitle={
-          isOnline
-            ? "Todos los servicios operativos"
-            : isError
-              ? "Error de conexión"
-              : undefined
-        }
-        icon={Activity}
-        loading={isLoading}
-        className={cn(
-          !isLoading && isOnline && "border-green-200 dark:border-green-800",
-          !isLoading && !isOnline && "border-red-200 dark:border-red-800",
-        )}
-      />
-      <KpiCard
-        title="Último health check"
-        value={lastCheck ? formatTime(lastCheck) : undefined}
-        subtitle={lastCheck ? formatDate(lastCheck) : undefined}
-        icon={Server}
+    <StatStrip columns={3}>
+      <StatCell
+        label="Estado de la API"
+        value={isOnline ? "En línea" : "Sin conexión"}
+        hint={isOnline ? "Todos los servicios responden" : isError ? "Error de conexión" : undefined}
+        tono={isLoading ? undefined : isOnline ? "success" : "destructive"}
         loading={isLoading}
       />
-      <KpiCard
-        title="Versión API"
-        value={isLoading ? undefined : version ?? "N/A"}
-        icon={Server}
+      <StatCell
+        label="Último chequeo"
+        value={lastCheck ? formatTime(lastCheck) : "—"}
+        hint={lastCheck ? formatDate(lastCheck) : undefined}
         loading={isLoading}
       />
-    </div>
+      <StatCell label="Versión de la API" value={version ?? "—"} loading={isLoading} />
+    </StatStrip>
   );
 }

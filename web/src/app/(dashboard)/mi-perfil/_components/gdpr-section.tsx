@@ -9,10 +9,10 @@
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Download, ShieldAlert, Trash2 } from "lucide-react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiMutate, fetchBlobWithAuth } from "@/lib/api-client";
 
 export function GdprSection() {
@@ -34,11 +34,14 @@ export function GdprSection() {
       URL.revokeObjectURL(url);
       toast.success("Descarga iniciada.");
     },
-    onError: () => toast.error("No se pudo exportar tus datos."),
+    onError: () => toast.error("No se pudieron exportar tus datos."),
   });
 
   const deleteMut = useMutation({
-    mutationFn: () => apiMutate("DELETE", "/api/v1/me"),
+    // `DELETE /me` exige el cuerpo `{"confirmation": "DELETE"}`
+    // (`DeleteMyDataRequest`, `api/routes/me.py`), como en Ajustes › Datos y
+    // cuenta: sin él la API responde 422 y no se borra nada.
+    mutationFn: () => apiMutate("DELETE", "/api/v1/me", { confirmation: "DELETE" }),
     onSuccess: () => {
       toast.success("Datos eliminados. Cerrando sesión…");
       setTimeout(() => {
@@ -60,37 +63,25 @@ export function GdprSection() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ShieldAlert className="h-5 w-5" />
-          Mis datos (RGPD)
-        </CardTitle>
-        <CardDescription>
-          Exporta una copia de todos tus datos o elimínalos permanentemente (derecho de
-          portabilidad y al olvido, Art. 15/17 RGPD). Cubre tu watchlist, reglas de
-          seguimiento, perfil de scoring, notificaciones, claves API y feedback.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-3">
-        <Button
-          variant="outline"
-          onClick={() => exportMut.mutate()}
-          disabled={exportMut.isPending}
-          className="gap-1.5"
-        >
-          <Download className="h-4 w-4" />
+    <Panel>
+      <PanelTitle title="Mis datos (RGPD)" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Exporta una copia de todos tus datos o elimínalos para siempre (derechos de portabilidad y de supresión,
+        artículos 15 y 17 del RGPD). Incluye tu Watchlist, reglas de seguimiento, perfil, notificaciones, claves
+        de API y valoraciones.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="outline" onClick={() => exportMut.mutate()} disabled={exportMut.isPending}>
+          <Download aria-hidden="true" />
           {exportMut.isPending ? "Exportando…" : "Exportar mis datos"}
         </Button>
         <Button
+          size="sm"
           variant={confirmDelete ? "destructive" : "outline"}
           onClick={handleDeleteClick}
           disabled={deleteMut.isPending}
-          className={
-            confirmDelete ? "gap-1.5" : "gap-1.5 text-destructive hover:bg-destructive/10"
-          }
+          className={confirmDelete ? undefined : "text-destructive hover:bg-destructive/10"}
         >
-          <Trash2 className="h-4 w-4" />
           {deleteMut.isPending
             ? "Eliminando…"
             : confirmDelete
@@ -102,7 +93,7 @@ export function GdprSection() {
             Cancelar
           </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

@@ -1,22 +1,25 @@
 "use client";
 
 /**
- * Mi perfil de scoring — cómo se puntúan las oportunidades para este usuario.
+ * Mi perfil — cómo se puntúan las oportunidades para este usuario.
  *
  * El estado y las llamadas viven en `_hooks/use-perfil-scoring.ts`; cada bloque
  * del formulario, en `_components/`. Aquí queda el orden de la página, el
  * esqueleto de carga y las dos acciones finales.
+ *
+ * El esqueleto va **dentro** de `SpaceShell` y es el mismo que pinta el
+ * `loading.tsx` de la ruta: con él fuera, la cabecera del espacio aparecía, se
+ * iba mientras llegaba el perfil y volvía.
  */
 
-import { Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { formatDateTime } from "@/lib/utils";
 import { usePerfilScoring } from "./_hooks/use-perfil-scoring";
 import { AmbitoPerfilCard } from "./_components/ambito-perfil-card";
 import { CpvsInteresCard, KeywordsAfinidadCard } from "./_components/afinidad-cards";
 import { GdprSection } from "./_components/gdpr-section";
+import { PerfilEsqueleto } from "./_components/perfil-esqueleto";
 import { InformeSemanalCard } from "./_components/informe-semanal-card";
 import { PesosPropuestosCard } from "./_components/pesos-propuestos-card";
 import { PesosScoringCard } from "./_components/pesos-scoring-card";
@@ -29,11 +32,9 @@ export default function MiPerfilPage() {
 
   if (perfil.isLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-48 w-full" />
-      </div>
+      <SpaceShell spaceKey="mi-perfil">
+        <PerfilEsqueleto />
+      </SpaceShell>
     );
   }
 
@@ -41,15 +42,13 @@ export default function MiPerfilPage() {
     <SpaceShell spaceKey="mi-perfil">
       <div className="max-w-2xl space-y-6">
         <div>
-          <h1 className="sr-only">Mi perfil de scoring</h1>
-          <p className="text-muted-foreground mt-1">
-            Personaliza cómo se puntúan las oportunidades. Los cambios aplican en el panel de
-            detalle, el Radar y los rankings analíticos.
+          <p className="text-tf-meta text-muted-foreground">
+            Personaliza cómo se puntúan las oportunidades. Los cambios se aplican en el Radar, en el detalle de
+            cada licitación y en los rankings de análisis.
           </p>
           {perfil.hasProfile && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Última actualización:{" "}
-              {data?.updated_at ? formatDateTime(data.updated_at) : "—"}
+            <p className="mt-1 text-tf-meta text-muted-foreground">
+              Última actualización: {data?.updated_at ? formatDateTime(data.updated_at) : "—"}
             </p>
           )}
         </div>
@@ -108,12 +107,7 @@ export default function MiPerfilPage() {
 
         {/* Acciones */}
         <div className="flex items-center gap-3 pb-6">
-          <Button
-            onClick={perfil.guardar}
-            disabled={!perfil.dirty || !perfil.weightsValid || saveMut.isPending}
-            className="gap-1.5"
-          >
-            <Save className="h-4 w-4" />
+          <Button onClick={perfil.guardar} disabled={!perfil.dirty || !perfil.weightsValid || saveMut.isPending}>
             {saveMut.isPending ? "Guardando…" : "Guardar perfil"}
           </Button>
           {perfil.hasProfile && !data?.inherited && (
@@ -121,14 +115,13 @@ export default function MiPerfilPage() {
               variant="outline"
               onClick={() => deleteMut.mutate()}
               disabled={deleteMut.isPending}
-              className="gap-1.5 text-destructive hover:bg-destructive/10"
+              className="text-destructive hover:bg-destructive/10"
             >
-              <Trash2 className="h-4 w-4" />
               {deleteMut.isPending ? "Eliminando…" : "Eliminar perfil"}
             </Button>
           )}
           {perfil.dirty && !perfil.weightsValid && (
-            <p className="text-sm text-destructive">Los pesos deben sumar 100 para guardar.</p>
+            <p className="text-tf-meta text-destructive">Los pesos deben sumar 100 para guardar.</p>
           )}
         </div>
       </div>

@@ -11,6 +11,7 @@
  * que declararle un NIF o un perfil de solvencia no sirve para nada.
  */
 
+import { Aviso, PanelEmpty } from "@/components/console/panel";
 import { type OrganizacionActiva } from "@/hooks/use-organization";
 import { OrganizacionCapacidadCard } from "./organizacion-capacidad-card";
 import { OrganizacionNifsCard } from "./organizacion-nifs-card";
@@ -28,17 +29,18 @@ export function OrganizacionTab({
 }) {
   if (organizationId == null) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Selecciona una organización para declarar su identidad fiscal y su capacidad.
-      </p>
+      <PanelEmpty
+        title="Ninguna organización seleccionada"
+        hint="Elige una en «Miembros» para declarar su identidad fiscal y su capacidad."
+      />
     );
   }
   if (isPersonal) {
     return (
-      <p className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        Tu organización personal no concurre a licitaciones: la identidad fiscal y el perfil de
-        capacidad se declaran en un espacio compartido.
-      </p>
+      <Aviso tone="info" role="note">
+        Tu organización personal no concurre a licitaciones: la identidad fiscal y el perfil de capacidad se
+        declaran en una organización compartida.
+      </Aviso>
     );
   }
   return (

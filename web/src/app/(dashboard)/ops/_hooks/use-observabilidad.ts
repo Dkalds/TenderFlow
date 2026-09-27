@@ -12,6 +12,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys, analyticsKeys } from "@/lib/query-keys";
 import {
   extraerChecks,
@@ -50,6 +51,9 @@ export function useObservabilidad(): Observabilidad {
     queryKey: adminKeys.health,
     queryFn: () => fetchWithAuth<HealthResponse>("/api/v1/health"),
     refetchInterval: REFRESCO_MS,
+    // La caída se pinta en la pantalla (tira de salud y «Estado del sistema»):
+    // sin esto, con la API caída saltaba un toast cada 30 s.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const { data: quality } = useQuery<QualityData>({

@@ -1,5 +1,6 @@
 "use client";
 
+import { Aviso } from "@/components/console/panel";
 import type { ScoringSignals } from "@/hooks/use-radar";
 
 /**
@@ -32,17 +33,17 @@ export function signalWarnings(signals: ScoringSignals | null | undefined): stri
   return avisos;
 }
 
-/** Franja de aviso: sin señales degradadas no se renderiza nada. */
+/**
+ * Banda de aviso bajo los controles, a todo el ancho (`Aviso` en su variante
+ * `banda`): sin señales degradadas no se renderiza nada.
+ */
 export function RadarAvisoSenales({ signals }: { signals: ScoringSignals | null | undefined }) {
   const avisos = signalWarnings(signals);
   if (avisos.length === 0) return null;
 
   return (
-    <div
-      role="status"
-      className="flex-none border-b border-amber-500/25 bg-amber-500/8 px-3 py-1.5 text-[11.5px] leading-[1.45] text-amber-800 dark:text-amber-300 md:px-3.5"
-    >
-      <span className="font-medium">Score degradado</span> — {avisos.join(" · ")}.
-    </div>
+    <Aviso tone="warning" variant="banda" className="flex-none md:px-3.5">
+      <span className="font-semibold">Score degradado:</span> {avisos.join(" · ")}.
+    </Aviso>
   );
 }

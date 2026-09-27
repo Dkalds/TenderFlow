@@ -10,7 +10,8 @@
  * en tanto por uno.
  */
 
-import { EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
+import { cn, EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 import type { CompanyCorte } from "./company-profile-types";
 
@@ -26,24 +27,24 @@ function TablaCorte({
   minimo: number;
 }) {
   return (
-    <section className="min-w-0 p-5" aria-label={titulo}>
-      <h3 className="font-semibold">{titulo}</h3>
-      <p className="text-muted-foreground mt-0.5 text-xs">{descripcion}</p>
+    <section className="min-w-0 p-4" aria-label={titulo}>
+      <h3 className="text-tf-body font-semibold">{titulo}</h3>
+      <p className="mt-0.5 text-tf-meta text-muted-foreground">{descripcion}</p>
       {celdas.length ? (
-        <table className="mt-4 w-full text-left text-[12.5px]">
+        <table className="mt-4 w-full text-left text-tf-body">
           <caption className="sr-only">{titulo}</caption>
-          <thead className="text-muted-foreground text-[10.5px] uppercase">
-            <tr className="border-b">
-              <th scope="col" className="py-1.5 pr-3 font-medium">
+          <thead>
+            <tr className="border-b border-border/60">
+              <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3")}>
                 Corte
               </th>
-              <th scope="col" className="py-1.5 pr-3 text-right font-medium">
-                n
+              <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>
+                Adjudicaciones
               </th>
-              <th scope="col" className="py-1.5 pr-3 text-right font-medium">
+              <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>
                 Baja media
               </th>
-              <th scope="col" className="py-1.5 text-right font-medium">
+              <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 text-right")}>
                 Adjudicado
               </th>
             </tr>
@@ -52,19 +53,19 @@ function TablaCorte({
             {celdas.map((celda) => {
               const insuficiente = celda.n < minimo;
               return (
-                <tr key={celda.clave} className="border-b last:border-b-0">
+                <tr key={celda.clave} className="border-b border-border/30 last:border-b-0">
                   <td className="py-2 pr-3 font-medium">{celda.clave}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">{formatNumber(celda.n)}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">
+                  <td className="py-2 pr-3 text-right">{formatNumber(celda.n)}</td>
+                  <td className="py-2 pr-3 text-right">
                     {insuficiente ? (
-                      <span className="text-muted-foreground text-[11px]">menos de {minimo}</span>
+                      <span className="text-tf-meta text-muted-foreground">menos de {minimo}</span>
                     ) : celda.baja_media == null ? (
                       EMPTY
                     ) : (
                       formatPercent(celda.baja_media * 100)
                     )}
                   </td>
-                  <td className="py-2 text-right tabular-nums">
+                  <td className="py-2 text-right">
                     {celda.importe_total == null ? EMPTY : formatCurrency(celda.importe_total)}
                   </td>
                 </tr>
@@ -73,7 +74,7 @@ function TablaCorte({
           </tbody>
         </table>
       ) : (
-        <p className="text-muted-foreground py-8 text-center text-sm">Sin datos para este corte</p>
+        <p className="py-8 text-center text-tf-meta text-muted-foreground">Sin datos para este corte</p>
       )}
     </section>
   );
@@ -89,7 +90,7 @@ export function CompanyCortes({
   minimo: number;
 }) {
   return (
-    <div className="grid divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+    <div className="grid divide-y divide-border/60 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
       <TablaCorte
         titulo="Por procedimiento"
         descripcion="Adjudicaciones y baja media según el tipo de procedimiento"

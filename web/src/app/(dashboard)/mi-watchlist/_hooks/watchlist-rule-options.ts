@@ -61,7 +61,7 @@ export const FREQ_OPTIONS: { value: Frequency; label: string }[] = [
  * plazo—, que es el conjunto sobre el que el Radar calcula esa banda.
  */
 export const BANDA_OPTIONS: { value: string; label: string }[] = [
-  { value: "__any__", label: "— Cualquiera —" },
+  { value: "__any__", label: "Cualquiera" },
   { value: "Tibia", label: "Tibia o mejor" },
   { value: "Atractiva", label: "Atractiva o mejor" },
   { value: "Caliente", label: "Solo Caliente" },
@@ -86,7 +86,7 @@ export const FREQ_NOTE =
 
 /**
  * Lista de CCAA del selector: las de `meta/filters` si llegaron, y si no el
- * fallback local. La opción «— Todas —` (`__all__`) va siempre delante.
+ * fallback local. La opción «Todas» (`__all__`) va siempre delante.
  */
 export function ccaaOptions(metaCcaas: string[] | undefined): string[] {
   return metaCcaas && metaCcaas.length > 0 ? ["__all__", ...metaCcaas] : CCAA_FALLBACK;

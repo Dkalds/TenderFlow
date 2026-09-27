@@ -6,6 +6,7 @@
  * en el `page.tsx` de la ruta.
  */
 
+import { PanelError } from "@/components/console/panel";
 import { ExportPopover } from "@/components/export-popover";
 
 import { useGeografiaView } from "../_hooks/use-geografia-view";
@@ -37,29 +38,23 @@ export default function GeografiaView() {
     toggleCcaa,
     isLoading,
     error,
+    refetch,
   } = useGeografiaView();
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">Error: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudo cargar la geografía" error={error} onRetry={refetch} />;
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="sr-only">Geografía</h1>
-          <p className="text-muted-foreground">
-            Distribución geográfica por Comunidad Autónoma.
+          <p className="text-tf-meta text-muted-foreground">
+            Dónde se licita: reparto por comunidad autónoma y provincia.
           </p>
         </div>
-        <ExportPopover
-          endpoint="/api/v1/exports/download"
-          extraParams={{ section: "geografia" }}
-        />
+        <ExportPopover extraParams={{ section: "geografia" }} label="Exportar geografía" />
       </div>
 
       <GeografiaKpis

@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Formulario de cuenta local: sirve al acceso y al alta con los mismos campos.
+ * Formulario de correo y contraseña: sirve al acceso y al alta con los mismos
+ * campos.
  *
  * Los `id` son parte del contrato de accesibilidad y de los E2E: `#email`,
  * `#password`, `#confirm-password` y el `login-error` al que apuntan los
@@ -10,55 +11,46 @@
  *
  * Los valores los lleva react-hook-form con el esquema de `LoginRequest` o
  * `RegisterRequest` (S7.2). `noValidate` apaga los globos nativos del
- * navegador: el error de cada campo sale debajo de él, en `<id>-error`, y el
- * campo lo enlaza por `aria-describedby` delante del error general.
+ * navegador: cada campo es un `Field`, que pinta su error debajo en
+ * `<id>-error` y lo enlaza por `aria-describedby`; el control añade detrás el
+ * error general del formulario.
+ *
+ * Sin cascada de entrada: el panel entero entra una vez (`Puerta`). Solo se
+ * animan los dos campos que el alta revela, porque aparecen al cambiar de
+ * pestaña, y el aviso de error.
  */
 
-import { AlertCircle, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
+import Link from "next/link";
+import { LogIn, UserPlus } from "lucide-react";
+import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import type { LoginForm } from "../_hooks/use-login-form";
+import { CampoContrasena } from "./campo-contrasena";
+
+const REVELADO = "animate-in fade-in-0 slide-in-from-bottom-2";
 
 export function CredentialsForm({ login }: { login: LoginForm }) {
   const { error, loading, isRegister, showPassword } = login;
   const { register } = login.form;
   const errores = login.form.formState.errors;
-  const errorId = error ? "login-error" : undefined;
-  /** ARIA de un campo: su propio error primero, luego el general. */
-  const aria = (campoId: string, mensaje: string | undefined, ...otros: Array<string | null>) => {
-    const propios = ariaCampo(campoId, mensaje, ...otros, errorId);
-    return { ...propios, "aria-invalid": error ? true : propios["aria-invalid"] };
-  };
+  /** Lo que cada control añade al suyo propio: el error general del formulario. */
+  const general = {
+    "aria-describedby": error ? "login-error" : undefined,
+    "aria-invalid": error ? true : undefined,
+  } as const;
 
   return (
-    /* tf-stagger cascades each direct child's entrance (reusing the app's one
-       stagger token instead of hand-tuning a one-off value —
-       review-animations: consolidate near-identical timing instead of
-       fragmenting it). Only ever seen once per session, so the brief cascade is
-       delight, not friction. */
-    <form
-      onSubmit={isRegister ? login.handleRegister : login.handleLogin}
-      noValidate
-      className="tf-stagger space-y-4"
-    >
+    <form onSubmit={isRegister ? login.handleRegister : login.handleLogin} noValidate className="space-y-4">
       {error && (
-        <div
-          id="login-error"
-          role="alert"
-          aria-live="polite"
-          className="animate-in fade-in-0 slide-in-from-bottom-2 bg-destructive/10 text-destructive flex items-center gap-2 rounded-md p-3 text-sm"
-        >
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
+        <div id="login-error" className={REVELADO}>
+          <Aviso tone="danger">{error}</Aviso>
         </div>
       )}
 
       {isRegister && (
-        <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
-          <label htmlFor="name" className="text-foreground text-sm font-medium">
-            {"Nombre"}
-          </label>
+        <Field label="Nombre" htmlFor="name" className={REVELADO}>
           <Input
             id="name"
             type="text"
@@ -67,90 +59,92 @@ export function CredentialsForm({ login }: { login: LoginForm }) {
             autoComplete="name"
             disabled={loading}
           />
-        </div>
+        </Field>
       )}
 
-      <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
-        <label htmlFor="email" className="text-foreground text-sm font-medium">
-          {"Correo electrónico"}
-          <Obligatorio />
-        </label>
+      <Field
+        label={
+          <>
+            Correo electrónico
+            <Obligatorio />
+          </>
+        }
+        htmlFor="email"
+        error={errores.email?.message}
+      >
         <Input
           id="email"
           type="email"
-          placeholder="tu@email.com"
+          placeholder="nombre@empresa.es"
           {...register("email")}
           required
           autoComplete="email"
-          {...aria("email", errores.email?.message)}
+          {...general}
           disabled={loading}
         />
-        <CampoError campoId="email" mensaje={errores.email?.message} />
-      </div>
+      </Field>
 
-      <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
-        <label htmlFor="password" className="text-foreground text-sm font-medium">
-          {"Contraseña"}
-          <Obligatorio />
-        </label>
-        <div className="relative">
-          <Input
+      <div className="space-y-2">
+        <Field
+          label={
+            <>
+              Contraseña
+              <Obligatorio />
+            </>
+          }
+          htmlFor="password"
+          hint={isRegister ? "Mínimo 10 caracteres, con mayúsculas, minúsculas y un número." : undefined}
+          error={errores.password?.message}
+        >
+          <CampoContrasena
             id="password"
-            type={showPassword ? "text" : "password"}
+            visible={showPassword}
+            onAlternar={login.toggleShowPassword}
             {...register("password")}
             required
             minLength={isRegister ? 10 : undefined}
             autoComplete={isRegister ? "new-password" : "current-password"}
-            {...aria("password", errores.password?.message, isRegister ? "password-hint" : null)}
+            {...general}
             disabled={loading}
           />
-          <button
-            type="button"
-            aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-            onClick={login.toggleShowPassword}
-            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute top-1/2 right-0.5 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-md focus-visible:ring-2 focus-visible:outline-none"
-          >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
-        </div>
-        <CampoError campoId="password" mensaje={errores.password?.message} />
-        {isRegister && (
-          <p id="password-hint" className="text-muted-foreground text-xs">
-            {"Mínimo 10 caracteres, con mayúsculas, minúsculas y un número"}
-          </p>
-        )}
+        </Field>
         {!isRegister && (
-          <a
+          <Link
             href="/restablecer-contrasena"
-            className="inline-block text-xs font-medium text-foreground underline-offset-4 hover:underline"
+            className="text-foreground text-tf-meta focus-visible:ring-ring inline-block rounded-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:outline-none"
           >
             ¿Has olvidado tu contraseña?
-          </a>
+          </Link>
         )}
       </div>
 
       {isRegister && (
-        <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
-          <label htmlFor="confirm-password" className="text-foreground text-sm font-medium">
-            {"Confirmar contraseña"}
-            <Obligatorio />
-          </label>
+        <Field
+          label={
+            <>
+              Confirmar contraseña
+              <Obligatorio />
+            </>
+          }
+          htmlFor="confirm-password"
+          error={errores.confirm_password?.message}
+          className={REVELADO}
+        >
           <Input
             id="confirm-password"
             type={showPassword ? "text" : "password"}
             {...register("confirm_password")}
             required
             autoComplete="new-password"
-            {...aria("confirm-password", errores.confirm_password?.message)}
+            {...general}
             disabled={loading}
           />
-          <CampoError campoId="confirm-password" mensaje={errores.confirm_password?.message} />
-        </div>
+        </Field>
       )}
 
-      <Button type="submit" className="animate-in fade-in-0 slide-in-from-bottom-2 w-full" disabled={loading}>
-        {isRegister ? <UserPlus className="mr-2 h-4 w-4" /> : <LogIn className="mr-2 h-4 w-4" />}
-        {loading ? "Cargando…" : isRegister ? "Crear cuenta" : "Iniciar sesión"}
+      <Button type="submit" className="w-full" disabled={loading}>
+        {isRegister ? <UserPlus aria-hidden="true" /> : <LogIn aria-hidden="true" />}
+        {loading ? (isRegister ? "Creando cuenta…" : "Entrando…") : isRegister ? "Crear cuenta" : "Iniciar sesión"}
       </Button>
     </form>
   );

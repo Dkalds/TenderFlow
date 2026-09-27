@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Check, Clock } from "lucide-react";
+import { Check } from "lucide-react";
+import { EnlaceIr, PanelError, SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { LicitacionSummary, LicitacionesCursorPage } from "@/lib/api-types";
 import { useFiltrosDeResumen } from "./alcance";
@@ -134,6 +136,8 @@ export function ColaCierre({
     // Sin cola que desglosar la petición no aporta nada: la tarjeta ya sabe que
     // va a pintar el estado resuelto.
     enabled: hayCola,
+    // El fallo del desglose se dice dentro de la tarjeta: sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const filas = useMemo(() => {
@@ -147,29 +151,22 @@ export function ColaCierre({
   return (
     <div
       className={cn(
-        "flex flex-col rounded-xl border px-3.5 py-3",
-        hayCola ? "border-destructive/50 bg-destructive/[0.04]" : "border-border/60 bg-card/70",
+        SUPERFICIE_PANEL,
+        "flex flex-col px-3.5 py-3",
+        // Con cola, el borde avisa; la cifra en rojo dice cuánto. Sin baldosa
+        // de icono ni relleno tintado: el énfasis de un panel es su borde.
+        hayCola && TONO_PANEL.danger,
         className,
       )}
     >
-      <div className="mb-3 flex items-center gap-2.5">
-        <span
-          className={cn(
-            "grid h-6 w-6 flex-none place-items-center rounded-md",
-            hayCola
-              ? "bg-destructive/14 text-destructive"
-              : "bg-muted-foreground/12 text-muted-foreground",
-          )}
-        >
-          <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-        </span>
-        <span className="text-[11.5px] font-semibold">Vencen en 48 horas</span>
+      <div className="mb-3 flex items-baseline gap-2.5">
+        <span className="text-tf-meta font-medium">Vencen en 48 horas</span>
         {loading ? (
-          <Skeleton className="h-5 w-8 rounded" />
+          <Skeleton className="h-5 w-8 self-center rounded-sm" />
         ) : (
           <span
             className={cn(
-              "tf-tnum font-mono text-[19px] leading-none font-semibold",
+              "tf-tnum text-tf-title font-semibold leading-none",
               hayCola ? "text-destructive" : "text-foreground",
             )}
           >
@@ -177,54 +174,41 @@ export function ColaCierre({
           </span>
         )}
         <div className="flex-1" />
-        <Link
-          href={href}
-          className="text-primary hover:bg-primary/10 group inline-flex h-6 flex-none items-center gap-1.5 rounded-md px-2 text-[11.5px] font-medium transition-colors duration-140 ease-out"
-        >
+        <EnlaceIr href={href} className="flex-none">
           Ver la cola de cierre
-          <ArrowRight
-            className="h-3 w-3 transition-transform duration-140 ease-out group-hover:translate-x-0.5"
-            aria-hidden="true"
-          />
-        </Link>
+        </EnlaceIr>
       </div>
 
       {!hayCola && !loading && (
         <div className="flex items-center gap-2 py-3">
-          <Check className="h-3.5 w-3.5 flex-none text-[hsl(var(--success))]" aria-hidden="true" />
-          <span className="text-muted-foreground text-[11.5px]">
-            Nada vence en las próximas 48 horas
-          </span>
+          <Check className="h-3.5 w-3.5 flex-none text-success" aria-hidden="true" />
+          <span className="text-tf-meta text-muted-foreground">Nada vence en las próximas 48 horas</span>
         </div>
       )}
 
       {cargandoFilas &&
         Array.from({ length: VISIBLES }, (_, index) => (
-          <Skeleton key={index} className="border-border/40 mt-0 h-10 w-full rounded-none border-t" />
+          <Skeleton key={index} className="mt-0 h-10 w-full rounded-none border-t border-border/40" />
         ))}
 
-      {hayCola && !cola.isLoading && (
+      {hayCola && !cola.isLoading && !cola.error && (
         <ul className="flex flex-col">
           {filas.map((fila) => (
             <li key={fila.id}>
               <Link
                 href={`/detalle?lic=${encodeURIComponent(fila.id)}`}
-                className="border-border/40 hover:bg-foreground/[0.04] -mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t px-1.5 transition-colors duration-140 ease-out"
+                className="-mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t border-border/40 px-1.5 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-[11.5px] leading-[1.3] font-medium">
-                    {fila.titulo}
-                  </span>
-                  <span className="text-muted-foreground block truncate text-[10px] leading-[1.3]">
-                    {fila.organo}
-                  </span>
+                  <span className="block truncate text-tf-meta font-medium">{fila.titulo}</span>
+                  <span className="block truncate text-tf-micro text-muted-foreground">{fila.organo}</span>
                 </span>
-                <span className="tf-tnum truncate text-right font-mono text-[11px] font-medium">
+                <span className="tf-tnum truncate text-right text-tf-meta font-medium">
                   {formatCompactCurrency(fila.importe)}
                 </span>
                 <span
                   className={cn(
-                    "tf-tnum text-right font-mono text-[11.5px] font-semibold",
+                    "tf-tnum text-right text-tf-meta font-semibold",
                     fila.horas <= 24 ? "text-destructive" : "text-foreground",
                   )}
                 >
@@ -239,23 +223,25 @@ export function ColaCierre({
       {/* El desglose no puede prometer que son «las cuatro más próximas» si no
           se trajo la ventana entera: se dice, y el enlace de arriba sigue
           abriendo la cola completa. */}
-      {hayCola && !cola.isLoading && recortada && (
-        <p className="text-muted-foreground mt-2 text-[10px] leading-[1.4]">
+      {hayCola && !cola.isLoading && !cola.error && recortada && (
+        <p className="mt-2 text-tf-micro text-muted-foreground">
           Ordenadas sobre las {formatNumber(cola.data?.items.length)} primeras de{" "}
           {formatNumber(cola.data?.total)}: puede quedar fuera alguna que cierre antes.
         </p>
       )}
 
       {hayCola && cola.error && (
-        <p className="text-muted-foreground mt-2 text-[10px] leading-[1.4]">
-          El recuento es correcto, pero no se pudo cargar el desglose.
-        </p>
+        <PanelError
+          variant="inline"
+          title="No se pudo cargar el desglose"
+          message="El recuento de arriba es correcto; lo que falta es la lista."
+          error={cola.error}
+          onRetry={() => void cola.refetch()}
+        />
       )}
 
-      <div className="border-border/40 mt-auto flex items-center gap-1.5 border-t pt-2">
-        <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[10.5px]">
-          {target}
-        </span>
+      <div className="mt-auto flex items-center gap-1.5 border-t border-border/40 pt-2">
+        <span className="min-w-0 flex-1 truncate text-tf-micro text-muted-foreground">{target}</span>
       </div>
     </div>
   );

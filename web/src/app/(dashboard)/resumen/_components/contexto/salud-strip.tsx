@@ -23,15 +23,15 @@
  *    —sin tocar este fichero— el día que `db/repositories` cuente esas claves.
  *
  * Los indicadores que el backend calcula **sin filtros** lo declaran en su pie
- * con `GLOBAL`: en una pantalla con chips activos, un número global sin marcar
- * es un número que miente.
+ * con `GLOBAL` («sin tu ámbito»): en una pantalla con chips
+ * activos, un número global sin marcar es un número que miente.
  */
 
-import { StatCell, StatStrip } from "@/components/console/panel";
+import { PanelTitle, StatCell, StatStrip } from "@/components/console/panel";
 import { celdaSalud, coberturaSinMedir, type CoberturaMetrica } from "@/lib/cobertura";
 import { EMPTY, formatNumber, formatPercent } from "@/lib/utils";
 import type { AnalyticsOverview } from "@/lib/api-types";
-import { GLOBAL, STRIP_LG } from "./tiras";
+import { GLOBAL } from "./tiras";
 
 /**
  * `overview` con la cobertura que acompaña a los dos porcentajes de salud.
@@ -75,18 +75,10 @@ export function SaludStrip({ data, loading }: SaludStripProps) {
 
   return (
     <section aria-labelledby="resumen-salud" className="mb-5.5">
-      <div className="mb-2.5 flex items-baseline gap-2.5">
-        <h2 id="resumen-salud" className="text-xs font-semibold">
-          Salud competitiva
-        </h2>
-        <span className="text-muted-foreground text-[10.5px]">
-          el pie de cada celda dice si va sobre el corpus entero o sobre el ámbito · un porcentaje
-          sin cobertura suficiente no se pinta
-        </span>
-      </div>
-      <StatStrip columns={COLUMNAS_COMPLETAS - retenidas.length} className={STRIP_LG}>
+      <PanelTitle as="h2" id="resumen-salud" title="Salud competitiva" className="mb-2.5" />
+      <StatStrip columns={COLUMNAS_COMPLETAS - retenidas.length}>
         <StatCell
-          label="HHI adjudicatarios"
+          label="Concentración (HHI)"
           loading={loading}
           value={data ? formatNumber(Math.round(data.hhi)) : EMPTY}
           hint={`0–10.000 · ${GLOBAL}`}
@@ -103,10 +95,10 @@ export function SaludStrip({ data, loading }: SaludStripProps) {
           <StatCell label="PYME adjudicataria" loading={loading} value={pyme.value} hint={pyme.hint} />
         )}
         <StatCell
-          label="Lead time medio"
+          label="Días hasta adjudicar"
           loading={loading}
           value={data?.lead_time_medio != null ? `${formatNumber(data.lead_time_medio)} d` : EMPTY}
-          hint={`publicación → adjudicación · ${GLOBAL}`}
+          hint={`media · ${GLOBAL}`}
         />
         <StatCell
           label="Top-10 órganos"
@@ -126,10 +118,9 @@ export function SaludStrip({ data, loading }: SaludStripProps) {
           `lib/navigation.ts` promete y no sabría si es un fallo o una
           decisión. */}
       {!loading && retenidas.length > 0 && (
-        <p className="text-muted-foreground mt-2 text-[10.5px] leading-relaxed">
-          {retenidas.join(" y ")} {retenidas.length > 1 ? "no se publican" : "no se publica"}{" "}
-          todavía: el backend aún no cuenta sobre cuántas adjudicaciones se calcularían, y un
-          porcentaje sin denominador describe la fuente y no el mercado.
+        <p className="mt-2 text-tf-micro text-muted-foreground">
+          {retenidas.join(" y ")} todavía no {retenidas.length > 1 ? "se muestran" : "se muestra"}: no
+          sabemos cuántas adjudicaciones traen ese dato, y sin saberlo el porcentaje no sería fiable.
         </p>
       )}
     </section>

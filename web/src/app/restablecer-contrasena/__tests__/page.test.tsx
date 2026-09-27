@@ -28,9 +28,46 @@ describe("PasswordResetPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Enviar enlace de recuperación" }));
 
-    expect(
-      await screen.findByText(/Si existe una cuenta local activa/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/te llegará un enlace/)).toBeInTheDocument();
+  });
+
+  it("ofrece volver al login antes de enviar nada, y un solo enlace después", async () => {
+    // Antes la única salida aparecía tras enviar: quien llegaba por error desde
+    // «¿Has olvidado tu contraseña?» no tenía forma de volver.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "ok" }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    render(<PasswordResetPage />);
+
+    expect(await screen.findByRole("link", { name: "Volver a iniciar sesión" })).toHaveAttribute("href", "/login");
+    expect(screen.getByRole("heading", { level: 1, name: "Restablecer contraseña" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Correo electrónico"), {
+      target: { value: "persona@example.test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar enlace de recuperación" }));
+
+    await screen.findByText(/te llegará un enlace/);
+    expect(screen.getAllByRole("link", { name: "Volver a iniciar sesión" })).toHaveLength(1);
+  });
+
+  it("la contraseña nueva se puede mostrar, y la confirmación con ella", async () => {
+    window.history.replaceState({}, "", `/restablecer-contrasena#token=${"x".repeat(43)}`);
+    render(<PasswordResetPage />);
+
+    const nueva = await screen.findByLabelText("Nueva contraseña");
+    expect(nueva).toHaveAttribute("type", "password");
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar contraseña" }));
+    expect(nueva).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("Confirmar contraseña")).toHaveAttribute("type", "text");
+    // La pista de la política va enlazada al campo, no suelta debajo.
+    expect(nueva.getAttribute("aria-describedby")).toContain("new-password-ayuda");
   });
 
   it("rechaza dos contraseñas distintas sin enviar el token", async () => {

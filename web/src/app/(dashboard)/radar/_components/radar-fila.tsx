@@ -1,12 +1,20 @@
 "use client";
 
 import * as React from "react";
+import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScoreDesglose } from "@/components/score-desglose";
 import { cn } from "@/lib/utils";
 import type { RadarTender } from "@/hooks/use-radar";
 import { RadarAcciones } from "./radar-acciones";
-import { RADAR_GRID, bandColor, daysLeft, shortEur, urgency } from "./radar-shared";
+import {
+  RADAR_GRID,
+  claseFondoBanda,
+  claseTextoBanda,
+  daysLeft,
+  shortEur,
+  urgency,
+} from "./radar-shared";
 
 /**
  * Una señal del Radar: fila de la tabla a partir de `md`, ficha en columna por
@@ -16,6 +24,11 @@ import { RADAR_GRID, bandColor, daysLeft, shortEur, urgency } from "./radar-shar
  * y se disuelven con `md:contents`: a partir de `md` sus hijos caen directos en
  * la rejilla, en el mismo orden que rotula la cabecera. Es lo que permite que
  * ficha y fila no puedan divergir — una segunda lista `md:hidden` sí podría.
+ *
+ * **La selección no se anima.** J/K es la acción más repetida del Radar: la
+ * fila que entra y la que sale cambian de fondo al instante, y la banda lateral
+ * también. Solo el hover funde al entrar (la transición existe mientras dura el
+ * hover), y el pulsado del botón en capa tiñe la fila en el mismo frame.
  */
 export function RadarFila({
   tender,
@@ -69,10 +82,14 @@ export function RadarFila({
       // ocupa dos líneas y recortarla a 44 px la dejaría sin nada.
       style={{ "--tf-radar-fila": `${rowHeight}px` } as React.CSSProperties}
       className={cn(
-        "relative flex flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-110 ease-out",
+        "relative flex flex-col gap-2 border-b border-border/40 px-3 py-3",
         "md:grid md:h-[var(--tf-radar-fila)] md:items-center md:py-0",
         RADAR_GRID,
-        isActive ? "bg-primary/9" : "hover:bg-primary/5",
+        // `/9` y no `/10` en la fila activa: es el tinte que mide
+        // `contraste-tokens.test.ts` con las cifras de banda encima.
+        isActive
+          ? "bg-primary/9"
+          : "hover:bg-primary/5 hover:transition-colors hover:duration-110 has-[[data-slot=radar-fila-seleccion]:active]:bg-primary/9",
       )}
     >
       {/* Seleccionar la fila es un botón EN CAPA, hermano de las
@@ -111,8 +128,10 @@ export function RadarFila({
 
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-0 w-0.5 transition-colors duration-110 ease-out"
-        style={{ background: isActive ? bandColor(tender.band) : "transparent" }}
+        className={cn(
+          "pointer-events-none absolute inset-y-0 left-0 w-0.5",
+          isActive ? claseFondoBanda(tender.band) : "bg-transparent",
+        )}
       />
 
       <div className="flex min-w-0 items-center gap-3 md:contents">
@@ -135,28 +154,29 @@ export function RadarFila({
               className="focus-visible:ring-ring relative z-10 flex flex-none cursor-pointer flex-col items-start gap-0.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
             >
               <span
-                className="tf-tnum font-mono text-[15px] font-semibold leading-none"
-                style={{ color: bandColor(tender.band) }}
+                className={cn("tf-tnum text-tf-lede font-semibold leading-none", claseTextoBanda(tender.band))}
               >
                 {tender.score != null ? Math.round(tender.score) : "—"}
               </span>
-              {/* "s/p" era un código que nadie fuera del equipo
-                  podía descifrar, en mono de 8 px. */}
-              <span className="text-muted-foreground font-mono text-[8px] font-medium uppercase leading-none tracking-[0.04em]">
-                {tender.band ?? "sin puntuar"}
+              {/* La banda en frase y a 11 px, como el chip del inspector. Fue
+                  «s/p» y luego un rótulo en versal de 8 px: un código que nadie
+                  fuera del equipo podía leer. Con score y sin banda no se
+                  inventa una: sin score, se dice. */}
+              <span className="text-tf-micro font-medium leading-none text-muted-foreground">
+                {tender.score == null ? "Sin puntuar" : tender.band || null}
               </span>
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-[300px]" onClick={(e) => e.stopPropagation()}>
-            <p className="mb-2.5 text-[11.5px] font-semibold">Cómo se compone esta puntuación</p>
+            <p className="mb-2.5 text-tf-meta font-semibold">Cómo se compone esta puntuación</p>
             <ScoreDesglose
               desglose={tender.desglose}
               riesgos={tender.risk_flags}
               explicacion={tender.explicacion}
               afinidadOrigen={afinidadOrigen}
             />
-            <p className="text-muted-foreground mt-2.5 text-[10.5px] leading-relaxed">
-              Ordena el Radar sobre el corpus abierto. No es una recomendación comercial: mide
+            <p className="mt-2.5 text-tf-micro text-muted-foreground">
+              Ordena las licitaciones abiertas del Radar. No es una recomendación comercial: mide
               encaje con tu perfil, no probabilidad de ganar.
             </p>
           </PopoverContent>
@@ -165,9 +185,9 @@ export function RadarFila({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-[7px]">
             {isNew && (
-              <span className="flex-none rounded border border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.12)] px-1 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--success))]">
+              <Badge variant="success" size="sm" className="flex-none">
                 Nueva
-              </span>
+              </Badge>
             )}
             {/* Dos líneas en móvil, una en la tabla. Un título del
                 TED ronda los 120 caracteres y empieza por el
@@ -181,8 +201,7 @@ export function RadarFila({
                 distintas que escriben `display`. */}
             <span
               className={cn(
-                "min-w-0 line-clamp-2 text-[13px] leading-[1.35] tracking-[-0.005em]",
-                "md:line-clamp-1 md:leading-[1.3]",
+                "min-w-0 line-clamp-2 text-tf-body md:line-clamp-1",
                 isActive ? "font-semibold text-foreground" : "font-medium",
               )}
             >
@@ -190,11 +209,13 @@ export function RadarFila({
             </span>
           </div>
           {/* Flujo inline, no flex: `text-overflow` se ignora en un
-              contenedor flex y la línea se cortaría a medias. */}
-          <div className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground">
-            {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null, tender.ccaa]
-              .filter(Boolean)
-              .join(" · ")}
+              contenedor flex y la línea se cortaría a medias. La mono solo
+              para los códigos (expediente y CPV); la comunidad es una palabra. */}
+          <div className="mt-0.5 block truncate text-tf-micro text-muted-foreground">
+            <span className="font-mono">
+              {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null].filter(Boolean).join(" · ")}
+            </span>
+            {tender.ccaa ? <> · {tender.ccaa}</> : null}
           </div>
         </div>
       </div>
@@ -203,36 +224,34 @@ export function RadarFila({
           en móvil: siguen ahí, en una línea secundaria bajo el
           título, en vez de competir con score, plazo e importe. */}
       <div className="flex min-w-0 items-center justify-between gap-2 md:contents">
-        <span className="min-w-0 flex-1 truncate text-xs leading-[1.35] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-tf-meta text-muted-foreground">
           {tender.organo_contratacion ?? "—"}
         </span>
 
         {tech ? (
-          <span className="max-w-[46%] flex-none justify-self-start truncate rounded-[5px] border border-[hsl(var(--info)/0.26)] bg-[hsl(var(--info)/0.1)] px-1.5 py-1 text-[11px] font-medium text-[hsl(var(--info))] md:max-w-full">
+          <Badge
+            variant="info"
+            size="sm"
+            className="block max-w-[46%] flex-none justify-self-start truncate leading-5 md:max-w-full"
+          >
             {tech}
-          </span>
+          </Badge>
         ) : (
-          <span className="flex-none text-[11px] text-muted-foreground">—</span>
+          <span className="flex-none text-tf-micro text-muted-foreground">—</span>
         )}
       </div>
 
       <div className="flex items-center justify-between gap-3 md:contents">
-        <span className="tf-tnum font-mono text-[13px] font-semibold md:text-right">
-          {shortEur(tender.importe)}
-        </span>
+        <span className="tf-tnum text-tf-body font-semibold md:text-right">{shortEur(tender.importe)}</span>
 
         <div className="flex flex-none flex-col items-end gap-1.5">
-          <span
-            className="tf-tnum font-mono text-xs font-semibold leading-none"
-            style={{ color: urg.color }}
-          >
+          <span className={cn("tf-tnum text-tf-meta font-semibold leading-none", urg.texto)}>
             {days != null ? `${days} d` : "—"}
           </span>
+          {/* La mecha se pinta ya en su valor: una transición entre dos
+              expedientes diría que uno de ellos cambió. */}
           <span className="block h-0.5 w-14 overflow-hidden rounded-sm bg-muted-foreground/20">
-            <span
-              className="block h-full w-full origin-left transition-transform duration-[420ms] ease-out"
-              style={{ background: urg.color, transform: `scaleX(${urg.ratio})` }}
-            />
+            <span className={cn("block h-full", urg.fondo, urg.ancho)} />
           </span>
         </div>
       </div>

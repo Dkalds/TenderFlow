@@ -113,7 +113,7 @@ describe("MiWatchlistPage — edición de reglas", () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByText("user@example.com")).toBeInTheDocument());
-    expect(screen.getByText("Solo notificaciones in-app")).toBeInTheDocument();
+    expect(screen.getByText("Solo notificaciones en TenderFlow")).toBeInTheDocument();
   });
 
   it("opens the edit sheet pre-filled with the rule's current values", async () => {
@@ -173,7 +173,9 @@ describe("MiWatchlistPage — edición de reglas", () => {
     // F5.5 — la serie va en una tabla para el lector y el aviso lo decide el servidor.
     const tabla = screen.getByRole("table", { name: "Coincidencias por semana" });
     expect(within(tabla).getAllByRole("row")).toHaveLength(1 + 8 + 1);
-    expect(screen.getByRole("status")).toHaveTextContent(/esta regla va a hacer ruido/);
+    // Dentro del panel de edición: detrás puede haber otro `status` (el vacío
+    // de «Resultados combinados», que también se anuncia).
+    expect(within(screen.getByRole("dialog")).getByRole("status")).toHaveTextContent(/esta regla va a hacer ruido/);
     expect(onPut).not.toHaveBeenCalled();
   });
 });
@@ -185,9 +187,11 @@ describe("MiWatchlistPage — alta con vista previa de ruido (F5.5)", () => {
 
     fireEvent.change(await screen.findByLabelText(/Palabra clave/), { target: { value: "ERP" } });
     fireEvent.click(screen.getByRole("button", { name: /Ver cuántas alertas daría/ }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/va a hacer ruido/);
+    // El aviso es un `status`; no el único de la página (el vacío de
+    // «Resultados combinados» también se anuncia), así que se busca por texto.
+    expect((await screen.findByText(/va a hacer ruido/)).closest('[role="status"]')).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /Agregar regla/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Añadir regla/ }));
     await waitFor(() =>
       expect(registrarEvento).toHaveBeenCalledWith(
         "regla_creada",
@@ -197,7 +201,7 @@ describe("MiWatchlistPage — alta con vista previa de ruido (F5.5)", () => {
 
     registrarEvento.mockClear();
     fireEvent.change(screen.getByLabelText(/Palabra clave/), { target: { value: "CRM" } });
-    fireEvent.click(screen.getByRole("button", { name: /Agregar regla/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Añadir regla/ }));
     await waitFor(() => expect(registrarEvento).toHaveBeenCalledWith("regla_creada", expect.anything()));
     expect(registrarEvento.mock.calls[0][1]).not.toHaveProperty("ruido_avisado");
   });

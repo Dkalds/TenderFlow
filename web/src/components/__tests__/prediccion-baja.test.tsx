@@ -36,7 +36,7 @@ describe("PrediccionBajaBlock", () => {
     expect(screen.getByText("Baja esperada")).toBeInTheDocument();
     expect(screen.getByText("modelo v3")).toBeInTheDocument();
     // Median formatted as a percentage.
-    expect(screen.getByText("15.0%")).toBeInTheDocument();
+    expect(screen.getByText("15,0%")).toBeInTheDocument();
   });
 
   it("renders the baseline label when serving is baseline", () => {
@@ -65,9 +65,9 @@ describe("PrediccionBajaBlock", () => {
       importe_adjudicado: 82000,
     });
     expect(screen.getByText("Baja estimada vs. real")).toBeInTheDocument();
-    expect(screen.getByText("12.0%")).toBeInTheDocument();
-    expect(screen.getByText("18.0%")).toBeInTheDocument();
-    expect(screen.getByText("+6.0% vs. estimado")).toBeInTheDocument();
+    expect(screen.getByText("12,0%")).toBeInTheDocument();
+    expect(screen.getByText("18,0%")).toBeInTheDocument();
+    expect(screen.getByText("+6,0% vs. estimado")).toBeInTheDocument();
   });
 
   it("shows the per-lot breakdown next to the aggregate when lots were scored", () => {
@@ -93,10 +93,10 @@ describe("PrediccionBajaBlock", () => {
       ],
     });
     // La cifra del expediente sigue siendo la principal.
-    expect(screen.getByText("15.0%")).toBeInTheDocument();
+    expect(screen.getByText("15,0%")).toBeInTheDocument();
     expect(screen.getByText("Por lote")).toBeInTheDocument();
     expect(screen.getByText("Lote 1")).toBeInTheDocument();
-    expect(screen.getByText("28.0%")).toBeInTheDocument();
+    expect(screen.getByText("28,0%")).toBeInTheDocument();
   });
 
   it("omits the per-lot block when no lot has its own estimate", () => {
@@ -115,7 +115,7 @@ describe("PrediccionBajaBlock", () => {
   it("renders only the real baja for an awarded tender with no prior estimate", () => {
     renderWithData("L4", { licitacion_id: "L4", baja_real: 0.2, importe_adjudicado: 40000 });
     expect(screen.getByText("Baja real")).toBeInTheDocument();
-    expect(screen.getByText("20.0%")).toBeInTheDocument();
+    expect(screen.getByText("20,0%")).toBeInTheDocument();
     expect(
       screen.getByText("Sin estimación del modelo previa a la adjudicación."),
     ).toBeInTheDocument();

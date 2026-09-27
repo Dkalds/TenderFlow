@@ -3,13 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ExternalLink, FileDown, X } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { PursuitLoteBadge, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
 import { KitPresentacionPanel } from "@/components/pursuits/kit-presentacion";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { PanelError, PanelTabs, panelDePestana } from "@/components/console/panel";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   ScrollEdgeDelProveedor,
   ScrollEdgeProvider,
@@ -79,7 +80,7 @@ export default function OpportunityDetailPage() {
   // El historial guarda ids de actor; los nombres son los de la organización,
   // la misma lista que ya pide el editor de responsable. Mientras llega el
   // pursuit se piden los de la organización activa, que es con la que se
-  // pregunta por él: si fuese de otra, el backend responde 403.
+  // pregunta por él: si fuese de otra, la API responde 403.
   const organizacionActiva = useActiveOrganizationId();
   const miembros = useOrganizationMembers(pursuit?.organization_id ?? organizacionActiva);
   // Va como primer hijo del `div` raíz en las tres salidas de abajo, y eso es
@@ -106,7 +107,8 @@ export default function OpportunityDetailPage() {
         {precarga}
         <PanelError
           title="No se pudo abrir esta oportunidad"
-          detail={error instanceof Error ? error.message : "No encontrada"}
+          error={error}
+          message={error ? undefined : "No existe o ya no está disponible."}
           onRetry={() => void refetch()}
         />
       </div>
@@ -153,15 +155,13 @@ export default function OpportunityDetailPage() {
           <ScrollEdgeDelProveedor />
         </div>
       </ScrollEdgeProvider>
-      <header className="border-border/60 bg-card/40 flex-none border-b px-4 pt-3.5">
+      <header className="border-border/60 bg-card flex-none border-b px-4 pt-3.5">
         {/* Bajo `md` las acciones van debajo del título: en la misma fila sus
             ~290px dejaban el título a una palabra por línea. */}
         <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-3">
           <div className="min-w-0 flex-1">
             <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider uppercase">
-                {pursuit.licitacion_id}
-              </span>
+              <span className="text-muted-foreground font-mono text-tf-micro">{pursuit.licitacion_id}</span>
               {/* El lote va aquí y no en el título: dos oportunidades del mismo
                   expediente comparten título y sólo el lote las separa. */}
               {alcance ? (
@@ -178,7 +178,7 @@ export default function OpportunityDetailPage() {
               />
             </div>
 
-            <h1 className="font-display max-w-[74ch] text-tf-title leading-[1.2] font-semibold tracking-[-0.015em] text-pretty">
+            <h1 className="font-display max-w-[74ch] text-tf-title font-semibold text-pretty">
               {pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`}
             </h1>
 
@@ -188,22 +188,25 @@ export default function OpportunityDetailPage() {
             </p>
           </div>
 
-          <div className="flex flex-none items-center gap-3">
-            {/* F2.7 — el one-pager para dirección. El backend lo servía desde
+          <div className="flex flex-none items-center gap-2">
+            {/* F2.7 — el one-pager para dirección. La API lo servía desde
                 `GET /pursuits/{id}/ficha.pdf` y ninguna pantalla lo pedía. */}
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => void triggerDownload(`/api/v1/pursuits/${pursuit.id}/ficha.pdf`)}
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-tf-meta font-medium"
             >
-              <FileDown className="h-3 w-3" aria-hidden="true" />
+              <Download aria-hidden="true" />
               Descargar PDF
-            </button>
+            </Button>
+            {/* A la ficha del expediente en Detalle: es un destino de
+                TenderFlow, así que sin icono de «salir». */}
             <Link
               href={`/detalle?lic=${encodeURIComponent(pursuit.licitacion_id)}`}
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-tf-meta font-medium"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
             >
-              Ver anuncio original <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              Ver en Detalle
             </Link>
             {/* `ml-auto`: bajo el título, el cierre queda en el extremo derecho
                 de la fila. Al lado del título el grupo mide lo que su contenido
@@ -211,9 +214,13 @@ export default function OpportunityDetailPage() {
             <Link
               href="/oportunidades"
               aria-label="Cerrar la ficha"
-              className="border-border/60 text-muted-foreground hover:text-foreground ml-auto grid h-8 w-8 flex-none place-items-center rounded-lg border transition-colors"
+              className={buttonVariants({
+                variant: "ghost",
+                size: "icon-sm",
+                className: "text-muted-foreground ml-auto flex-none",
+              })}
             >
-              <X className="h-4 w-4" aria-hidden="true" />
+              <X aria-hidden="true" />
             </Link>
           </div>
         </div>
@@ -251,7 +258,7 @@ export default function OpportunityDetailPage() {
           y el documento medía 1356 px a 1366×768. En la raíz solo movería el
           desborde a `#main-content`. */}
       <div className="px-4 pt-4 pb-8 xl:relative xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-        <div {...panelDePestana("ficha", tab)} className="rounded-lg">
+        <div {...panelDePestana("ficha", tab)} className="rounded-md">
           {tab === "resumen" ? (
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className="flex min-w-0 flex-col gap-3.5">

@@ -3,7 +3,7 @@
 /**
  * Los dos filtros de la Cartera: tecnología y órgano.
  *
- * Recortan la **tabla**, no la franja de KPIs: el endpoint devuelve la cartera
+ * Recortan la **tabla**, no la franja de KPIs: la API devuelve la cartera
  * entera (decenas de filas, sin paginar), así que filtrar aquí no esconde nada
  * que el usuario no pueda volver a ver. Los totales de arriba siguen hablando
  * de la cartera completa y lo dicen (ADR-014).
@@ -35,7 +35,7 @@ export function CarteraFiltros({
   return (
     <>
       <Select value={tecnologia} onValueChange={onTecnologia}>
-        <SelectTrigger className="h-7 w-40 text-xs" aria-label="Filtrar por tecnología">
+        <SelectTrigger className="h-7 w-40 text-tf-meta" aria-label="Filtrar por tecnología">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -48,7 +48,7 @@ export function CarteraFiltros({
         </SelectContent>
       </Select>
       <Select value={organo} onValueChange={onOrgano}>
-        <SelectTrigger className="h-7 w-48 text-xs" aria-label="Filtrar por órgano">
+        <SelectTrigger className="h-7 w-48 text-tf-meta" aria-label="Filtrar por órgano">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

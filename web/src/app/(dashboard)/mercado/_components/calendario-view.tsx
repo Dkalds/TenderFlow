@@ -9,17 +9,19 @@
  * ux-calendario #2-#4); la de publicaciones se conserva como conmutador.
  */
 
-import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+
+import { PanelError, Segmented } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
 
 import { useCalendarioView, type CalendarioModo } from "../_hooks/use-calendario-view";
 import { CalendarioDiaSemana, CalendarioMensual } from "./calendario-graficos";
 import { CalendarioHeatmap } from "./calendario-heatmap";
 import { CalendarioVencimientosKpis, ProximosSieteDias } from "./calendario-vencimientos-kpis";
 
-const MODOS: { valor: CalendarioModo; etiqueta: string }[] = [
-  { valor: "vencimientos", etiqueta: "Vencimientos" },
-  { valor: "publicaciones", etiqueta: "Publicaciones" },
+const MODOS: { value: CalendarioModo; label: string }[] = [
+  { value: "vencimientos", label: "Vencimientos" },
+  { value: "publicaciones", label: "Publicaciones" },
 ];
 
 export default function CalendarioView() {
@@ -36,16 +38,11 @@ export default function CalendarioView() {
     vencimientos,
     isLoading,
     error,
+    refetch,
   } = useCalendarioView();
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">
-          {"Error"}: {(error as Error).message}
-        </p>
-      </div>
-    );
+    return <PanelError title="No se pudo cargar el calendario" error={error} onRetry={refetch} />;
   }
 
   const esVencimientos = modo === "vencimientos";
@@ -53,33 +50,21 @@ export default function CalendarioView() {
   const ultimoAnio = availableYears[availableYears.length - 1];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="sr-only">Calendario</h1>
-          <p className="text-muted-foreground">
+          <p className="text-tf-meta text-muted-foreground">
             {esVencimientos
               ? "Qué licitaciones cierran su plazo de presentación, y cuándo."
-              : "Heatmap de publicaciones por fecha."}
+              : "Cuántas licitaciones se publican cada día."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Conmutador de métrica. `aria-pressed` porque son dos botones de
               estado, no navegación: el lector anuncia cuál está activo. */}
-          <div className="flex items-center gap-1" role="group" aria-label="Métrica del calendario">
-            {MODOS.map((m) => (
-              <Button
-                key={m.valor}
-                variant={modo === m.valor ? "default" : "outline"}
-                size="sm"
-                aria-pressed={modo === m.valor}
-                onClick={() => setModo(m.valor)}
-              >
-                {m.etiqueta}
-              </Button>
-            ))}
-          </div>
+          <Segmented value={modo} onChange={setModo} options={MODOS} aria-label="Métrica del calendario" />
 
           {/* Selector de año. Los dos botones son icon-only: el SVG de lucide no
               aporta texto, así que sin `aria-label` el lector anuncia «botón» a
@@ -89,24 +74,22 @@ export default function CalendarioView() {
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
-              size="icon"
-              className="h-8 w-8"
+              size="icon-sm"
               aria-label="Año anterior"
               onClick={() => setSelectedYear((y) => Math.max(primerAnio, y - 1))}
               disabled={selectedYear <= primerAnio}
             >
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              <ChevronLeft aria-hidden="true" />
             </Button>
-            <span className="px-3 text-sm font-medium tabular-nums">{selectedYear}</span>
+            <span className="px-2 text-tf-body font-medium">{selectedYear}</span>
             <Button
               variant="outline"
-              size="icon"
-              className="h-8 w-8"
+              size="icon-sm"
               aria-label="Año siguiente"
               onClick={() => setSelectedYear((y) => Math.min(ultimoAnio, y + 1))}
               disabled={selectedYear >= ultimoAnio}
             >
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              <ChevronRight aria-hidden="true" />
             </Button>
           </div>
         </div>

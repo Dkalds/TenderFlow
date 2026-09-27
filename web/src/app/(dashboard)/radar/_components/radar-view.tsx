@@ -24,7 +24,7 @@ import { useRadarTeclado } from "../_hooks/use-radar-teclado";
  * descartar (X) no mueve nada más que la fila.
  *
  * Alcance real de la lista (`hooks/use-radar.ts`): es el **top-24 por potencial
- * comercial de todo el corpus abierto**, calculado en backend
+ * comercial de todo el mercado abierto**, calculado en backend
  * (`GET /analytics/scoring?limit=24`). Hasta que `ScoredOpportunity` incluyó
  * `fecha_limite` y `tecnologia` esto no se podía consumir, y la lista eran las
  * 24 abiertas más recientes reordenadas por score — una ventana cronológica
@@ -87,14 +87,14 @@ export function RadarView() {
 
   const statusLine = enProximas
     ? consola.proximas.error
-      ? "Sin conexión con la API"
+      ? "Sin conexión"
       : consola.proximas.total == null
         ? "Cargando próximas…"
         : `${formatNumber(consola.proximas.total)} anunciadas · ${consola.proximas.conFechaPrevista ?? 0} con fecha prevista`
     : consola.isLoading
       ? "Cargando ámbito…"
       : consola.error
-        ? "Sin conexión con la API"
+        ? "Sin conexión"
         : `${formatNumber(consola.rows.length)} filas · ${consola.counts.bandeja} por revisar · ${consola.counts.siguiendo} en seguimiento`;
 
   return (

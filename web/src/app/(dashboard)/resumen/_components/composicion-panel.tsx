@@ -1,8 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Panel, PanelEmpty, PanelLoading, PanelTabs, PanelTitle } from "@/components/console/panel";
+import {
+  Panel,
+  PanelEmpty,
+  PanelError,
+  PanelLoading,
+  PanelTabs,
+  PanelTitle,
+} from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { getEstadoChartColor, getSeriesColor } from "@/lib/chart-colors";
 import { estadoLabel } from "@/lib/estados";
 import { useFilters } from "@/lib/filters";
@@ -33,7 +41,7 @@ type Corte = "estado" | "organos";
 
 const TABS: { key: Corte; label: string }[] = [
   { key: "estado", label: "Por estado" },
-  { key: "organos", label: "Top órganos" },
+  { key: "organos", label: "Por órgano" },
 ];
 
 const ALTO = 232;
@@ -62,21 +70,16 @@ function Barra({
   const contenido = (
     <>
       <span className="flex items-baseline gap-2">
-        <span className={cn("min-w-0 flex-1 truncate text-[11.5px]", active && "font-semibold")}>
+        <span className={cn("min-w-0 flex-1 truncate text-tf-meta", active && "font-semibold")}>
           {label}
         </span>
-        {hint && (
-          <span className="text-muted-foreground tf-tnum flex-none font-mono text-[10px]">
-            {hint}
-          </span>
-        )}
-        <span className="tf-tnum flex-none font-mono text-[11px] font-semibold">{valueLabel}</span>
+        {hint && <span className="tf-tnum flex-none text-tf-micro text-muted-foreground">{hint}</span>}
+        <span className="tf-tnum flex-none text-tf-micro font-semibold">{valueLabel}</span>
       </span>
-      <span className="bg-border/40 mt-1 block h-1.5 overflow-hidden rounded-full">
-        <span
-          className="block h-full rounded-full transition-[width] duration-200 ease-out"
-          style={{ width: `${pct}%`, background: color }}
-        />
+      {/* Sin transición: al cambiar el ámbito la barra está ya en su valor. Un
+          deslizamiento entre dos ámbitos se lee como que el dato cambió. */}
+      <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-border/40">
+        <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
       </span>
     </>
   );
@@ -89,7 +92,7 @@ function Barra({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="hover:bg-primary/5 block w-full rounded px-1 py-1.5 text-left transition-colors duration-140 ease-out"
+      className="block w-full rounded-sm px-1 py-1.5 text-left transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
     >
       {contenido}
     </button>
@@ -103,7 +106,9 @@ export function ComposicionPanel() {
   const overview = useFilteredQuery<AnalyticsOverview>(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
-    { staleTime: 5 * 60 * 1000 },
+    // Misma consulta y mismas opciones que la tira de contexto: el fallo se
+    // pinta en el panel, sin toast encima.
+    { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
 
   const porEstado = useMemo(
@@ -141,11 +146,25 @@ export function ComposicionPanel() {
         <PanelTabs tabs={TABS} value={corte} onChange={setCorte} label="Corte de la composición" />
       </div>
 
-      {overview.isLoading ? (
+      {overview.error ? (
+        // Sin esto, un fallo pintaba «Sin expedientes en el ámbito»: un vacío
+        // falso que se lee como dato.
+        <PanelError
+          variant="inline"
+          title="No se pudo cargar la composición"
+          error={overview.error}
+          onRetry={() => void overview.refetch()}
+          height={ALTO}
+        />
+      ) : overview.isLoading ? (
         <PanelLoading height={ALTO} />
       ) : corte === "estado" ? (
         porEstado.length === 0 ? (
-          <PanelEmpty message="Sin expedientes en el ámbito seleccionado." height={ALTO} />
+          <PanelEmpty
+            title="Sin expedientes en el ámbito"
+            hint="Quita algún filtro del ámbito o amplía las fechas."
+            height={ALTO}
+          />
         ) : (
           <div className="min-h-[232px]">
             {porEstado.map((estado) => (
@@ -168,7 +187,11 @@ export function ComposicionPanel() {
           </div>
         )
       ) : topOrganos.length === 0 ? (
-        <PanelEmpty message="Sin órganos en el ámbito seleccionado." height={ALTO} />
+        <PanelEmpty
+          title="Sin órganos en el ámbito"
+          hint="Quita algún filtro del ámbito o amplía las fechas."
+          height={ALTO}
+        />
       ) : (
         <div className="min-h-[232px]">
           {topOrganos.map((organo, indice) => (

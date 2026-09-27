@@ -27,7 +27,7 @@ export const MARCA_PROPIA: Record<MarcaPropia, { texto: string; explicacion: str
   cartera: {
     texto: "En tu cartera",
     explicacion:
-      "Lo tiene adjudicado tu organización. Su renovación se prepara en Oportunidades → Cartera, con la ventana de relicitación delante.",
+      "Lo tiene adjudicado tu organización. Su renovación se prepara en Oportunidades › Cartera, con la ventana de relicitación delante.",
   },
   anticipada: {
     texto: "Anticipada",
@@ -65,7 +65,7 @@ export function CeldasRenovacion({
     <>
       <TableCell className="whitespace-nowrap">
         <div className="flex flex-col gap-1">
-          <span className="flex items-center gap-1.5 text-sm">
+          <span className="flex items-center gap-1.5">
             {fila.fecha_fin_efectiva ?? "—"}
             {/* Sólo el ~6% de estas fechas las publica la fuente;
                 el resto sale de la duración del contrato. */}
@@ -75,7 +75,7 @@ export function CeldasRenovacion({
             {fila.dias_restantes != null ? `${fila.dias_restantes} días` : "—"}
           </Badge>
           {fila.prorroga_meses != null && (
-            <span className="text-[10.5px] leading-tight text-muted-foreground">
+            <span className="text-tf-micro text-muted-foreground">
               +{fila.prorroga_meses} meses de prórroga
               {fila.fecha_fin_con_prorroga ? ` → ${fila.fecha_fin_con_prorroga}` : ""}
             </span>
@@ -84,57 +84,63 @@ export function CeldasRenovacion({
       </TableCell>
       <TableCell className="max-w-[320px]">
         <div className="flex items-start gap-1.5">
-          <span className="text-sm leading-snug">{truncate(fila.titulo ?? fila.licitacion_id, 90)}</span>
+          <span className="leading-snug">{truncate(fila.titulo ?? fila.licitacion_id, 90)}</span>
           {fila.url && (
             <a
               href={fila.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+              className="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
               aria-label="Abrir anuncio original"
               onClick={(e) => e.stopPropagation()}
             >
-              <ExternalLink className="h-3.5 w-3.5" />
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </a>
           )}
         </div>
       </TableCell>
       <TableCell className="max-w-[220px]">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm">{fila.empresa ?? "—"}</span>
-          {fila.es_ute ? <Badge variant="outline">UTE</Badge> : null}
+          <span className="truncate">{fila.empresa ?? "—"}</span>
+          {fila.es_ute ? (
+            <Badge variant="outline" size="sm">
+              UTE
+            </Badge>
+          ) : null}
         </div>
       </TableCell>
-      <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground">
+      <TableCell className="max-w-[220px] truncate text-muted-foreground">
         {fila.organo_contratacion ?? "—"}
       </TableCell>
-      <TableCell className="text-right text-sm font-medium whitespace-nowrap">
+      <TableCell className="text-right font-medium whitespace-nowrap">
         {fila.importe_adjudicado != null ? formatCurrency(fila.importe_adjudicado) : "—"}
       </TableCell>
       <TableCell className="text-right whitespace-nowrap">
         {fila.riesgo_cambio != null ? (
-          <Badge
-            variant={
-              fila.riesgo_cambio >= 0.6 ? "destructive" : fila.riesgo_cambio >= 0.35 ? "secondary" : "outline"
-            }
-            title={`Modelo de retención v${fila.retencion_model_version ?? "?"}`}
-          >
-            {(fila.riesgo_cambio * 100).toFixed(0)}%
-          </Badge>
+          // `Pista` y no `title`: se abre también en táctil, y dice que la
+          // cifra es una estimación del modelo, no un dato publicado.
+          <Pista contenido={`Estimación del modelo de retención (v${fila.retencion_model_version ?? "?"})`}>
+            <Badge
+              variant={
+                fila.riesgo_cambio >= 0.6 ? "destructive" : fila.riesgo_cambio >= 0.35 ? "secondary" : "outline"
+              }
+            >
+              {(fila.riesgo_cambio * 100).toFixed(0)}%
+            </Badge>
+          </Pista>
         ) : (
-          <span className="text-xs text-muted-foreground">—</span>
+          <span className="text-tf-meta text-muted-foreground">—</span>
         )}
       </TableCell>
       <TableCell className="text-right whitespace-nowrap">
         {fila._score > 0 ? (
-          <Badge
-            variant={relativo >= 66 ? "default" : relativo >= 33 ? "secondary" : "outline"}
-            title="Riesgo × importe × urgencia (relativo al máximo del top servido)"
-          >
-            {relativo}
-          </Badge>
+          <Pista contenido="Riesgo × importe × urgencia, sobre 100 respecto al primero de la lista">
+            <Badge variant={relativo >= 66 ? "default" : relativo >= 33 ? "secondary" : "outline"}>
+              {relativo}
+            </Badge>
+          </Pista>
         ) : (
-          <span className="text-xs text-muted-foreground">—</span>
+          <span className="text-tf-meta text-muted-foreground">—</span>
         )}
       </TableCell>
       <TableCell className="text-right whitespace-nowrap">
@@ -145,7 +151,7 @@ export function CeldasRenovacion({
           // ni al táctil— y su disparador no es focusable, así que la tabla no
           // gana doscientas paradas de tabulación.
           <Pista contenido={propio.explicacion}>
-            <span className="inline-flex h-6 items-center rounded-md border border-border/70 bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
+            <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-muted px-2 text-tf-micro font-medium text-muted-foreground">
               {propio.texto}
             </span>
           </Pista>
@@ -160,7 +166,7 @@ export function CeldasRenovacion({
               e.stopPropagation();
               onAnticipar(fila.licitacion_id);
             }}
-            className="tf-pressable h-6 rounded-md border border-primary/30 bg-primary/8 px-2 text-[11px] font-medium text-primary"
+            className="tf-pressable h-6 rounded-md border border-primary/30 bg-primary/10 px-2 text-tf-micro font-medium text-primary hover:bg-primary/15"
           >
             Anticipar
           </button>

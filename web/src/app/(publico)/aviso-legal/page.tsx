@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TriangleAlert } from "lucide-react";
 import { SITE_NAME } from "@/lib/site";
 import { CONTACT_EMAIL } from "@/lib/contacto";
 import {
@@ -9,6 +10,7 @@ import {
   identificacionCompleta,
   lagunasLegales,
 } from "@/lib/legal";
+import { TITULO_PAGINA } from "../_components/piel-publica";
 
 /**
  * Aviso legal de la superficie pública.
@@ -50,7 +52,7 @@ export default function AvisoLegal() {
 
   return (
     <article className="mx-auto w-full max-w-3xl px-6 py-14">
-      <h1 className="font-display text-3xl font-bold tracking-[-0.025em] md:text-4xl">Aviso legal</h1>
+      <h1 className={TITULO_PAGINA}>Aviso legal</h1>
 
       <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Origen de los datos</h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
@@ -168,9 +170,9 @@ export default function AvisoLegal() {
         en este aviso, y se aplican de forma automática.
       </p>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
-        Si sos una organización que usa la plataforma para trabajar con datos personales propios, nosotros
+        Si eres una organización que usa la plataforma para trabajar con datos personales propios, nosotros
         actuamos como <strong className="text-foreground">encargados del tratamiento</strong> sobre ese
-        contenido y vos como responsable. El anexo de encargo del artículo 28, con las medidas técnicas y la
+        contenido y tú, como responsable. El anexo de encargo del artículo 28, con las medidas técnicas y la
         lista de subencargados, está disponible bajo petición en la dirección de contacto.
       </p>
 
@@ -198,10 +200,22 @@ export default function AvisoLegal() {
       ) : null}
       {/* El recuadro enumeraba siempre las mismas tres lagunas aunque alguna
           estuviera resuelta, y un aviso que no distingue lo pendiente de lo
-          hecho se deja de leer. Ahora solo aparece si de verdad falta algo. */}
+          hecho se deja de leer. Ahora solo aparece si de verdad falta algo.
+
+          Es la receta del `Aviso` de la consola en tono de advertencia (filete
+          /30, fondo /5, icono de contorno), escrita aquí porque aquel vive en
+          un módulo cliente que esta página de servidor no debe cargar (ver
+          `_components/piel-publica.ts`). Antes era una caja de borde
+          discontinuo, el gesto de «hueco por rellenar» de las plantillas. */}
       {pendientes.length > 0 ? (
-        <p className="border-border text-muted-foreground mt-6 rounded-lg border border-dashed p-4 text-sm">
-          <strong className="text-foreground">Pendiente de completar:</strong> {pendientes.join(", ")}.
+        <p
+          role="note"
+          className="border-warning/30 bg-warning/5 mt-6 flex items-start gap-2.5 rounded-md border p-4 text-sm"
+        >
+          <TriangleAlert className="text-warning mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
+          <span>
+            <strong className="font-semibold">Pendiente de completar:</strong> {pendientes.join(", ")}.
+          </span>
         </p>
       ) : null}
       <p className="text-muted-foreground mt-6 text-sm">

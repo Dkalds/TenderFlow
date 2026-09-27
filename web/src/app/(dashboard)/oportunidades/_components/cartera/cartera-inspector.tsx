@@ -19,7 +19,7 @@
  */
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
-import { SectionTitle } from "@/components/console/panel";
+import { PanelEmpty, SectionTitle } from "@/components/console/panel";
 import { fechaCorta } from "@/lib/adjudicacion-prevista";
 import type { ContratoCartera } from "@/lib/cartera";
 import { plazoRestante, urgenciaCartera } from "@/lib/cartera";
@@ -32,29 +32,27 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
   return (
     <aside
       aria-label="Detalle del contrato seleccionado"
-      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card/70 p-4 xl:sticky xl:top-0 xl:block"
+      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card p-4 xl:sticky xl:top-0 xl:block"
     >
       {!contrato ? (
-        <p className="py-8 text-center text-[11.5px] text-muted-foreground">
-          Selecciona un contrato para ver su detalle y su cronología.
-        </p>
+        <PanelEmpty size="sm" hint="Selecciona un contrato para ver su detalle y su cronología." />
       ) : (
         <div className="space-y-4">
           <div>
-            <h3 className="text-[13px] font-semibold leading-[1.4]">
+            <h3 className="text-tf-body font-semibold">
               {contrato.titulo ?? contrato.licitacion_id}
             </h3>
-            <p className="mt-1 truncate text-[11px] text-muted-foreground">
+            <p className="mt-1 truncate text-tf-micro text-muted-foreground">
               {contrato.organo_contratacion ?? "Órgano sin publicar"}
               {contrato.tecnologia ? ` · ${contrato.tecnologia}` : null}
             </p>
           </div>
 
-          <dl className="space-y-1.5 text-[11.5px]">
+          <dl className="space-y-1.5 text-tf-meta">
             <div className="flex items-baseline justify-between gap-3">
               <dt className="flex-none text-muted-foreground">Fin efectivo</dt>
               <dd className="flex items-center gap-0.5 text-right">
-                <span className="tf-tnum font-mono">
+                <span className="tf-tnum">
                   {contrato.fecha_fin_efectiva ? fechaCorta(contrato.fecha_fin_efectiva) : EMPTY}
                 </span>
                 <OrigenFin origen={contrato.fecha_fin_origen} />
@@ -66,7 +64,7 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
                 className={cn(
                   "text-right",
                   urgenciaCartera(contrato) === "vencido" || urgenciaCartera(contrato) === "pronto"
-                    ? "font-medium text-[hsl(var(--warning))]"
+                    ? "font-medium text-warning"
                     : null,
                 )}
               >
@@ -75,13 +73,13 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Inicio</dt>
-              <dd className="tf-tnum text-right font-mono">
+              <dd className="tf-tnum text-right">
                 {contrato.fecha_inicio ? fechaCorta(contrato.fecha_inicio) : EMPTY}
               </dd>
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Adjudicado</dt>
-              <dd className="tf-tnum text-right font-mono">
+              <dd className="tf-tnum text-right">
                 {contrato.importe_adjudicado != null
                   ? formatCompactCurrency(contrato.importe_adjudicado)
                   : EMPTY}
@@ -89,7 +87,7 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Prórrogas</dt>
-              <dd className="tf-tnum text-right font-mono">
+              <dd className="tf-tnum text-right">
                 {formatNumber(contrato.prorrogas_aplicadas)}
               </dd>
             </div>
@@ -98,14 +96,14 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
               <dd className="text-right">
                 {contrato.relicitacion_desde && contrato.relicitacion_hasta ? (
                   <>
-                    <span className="tf-tnum font-mono">
+                    <span className="tf-tnum">
                       {fechaCorta(contrato.relicitacion_desde)} –{" "}
                       {fechaCorta(contrato.relicitacion_hasta)}
                     </span>
                     {/* La ventana es una estimación de dominio (6 a 3 meses
                         antes del fin) y se dice cada vez que se enseña: sin el
                         matiz se lee como una fecha publicada. */}
-                    <span className="block text-[10.5px] text-muted-foreground">
+                    <span className="block text-tf-micro text-muted-foreground">
                       Estimación: 6 a 3 meses antes del fin
                     </span>
                   </>
@@ -124,13 +122,13 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
                     href={contrato.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 truncate font-mono text-[11px] hover:underline"
+                    className="inline-flex items-center gap-1 truncate font-mono text-tf-micro hover:underline"
                   >
                     {contrato.licitacion_id}
                     <ExternalLink className="h-3 w-3 flex-none" aria-hidden="true" />
                   </a>
                 ) : (
-                  <span className="truncate font-mono text-[11px]">{contrato.licitacion_id}</span>
+                  <span className="truncate font-mono text-tf-micro">{contrato.licitacion_id}</span>
                 )}
               </dd>
             </div>
@@ -149,13 +147,13 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
             {contrato.renovacion_pursuit_id ? (
               <Link
                 href={`/oportunidades/${contrato.renovacion_pursuit_id}`}
-                className="text-[11.5px] font-medium text-primary hover:underline"
+                className="text-tf-meta font-medium text-primary hover:underline"
               >
                 Abrir la oportunidad de renovación
               </Link>
             ) : (
               <>
-                <p className="text-[11px] leading-[1.5] text-muted-foreground">
+                <p className="text-tf-meta text-muted-foreground">
                   Este contrato todavía no tiene oportunidad de relicitación.
                 </p>
                 <PrepararRenovacion

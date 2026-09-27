@@ -1,17 +1,34 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, FileText, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Aviso, PanelError } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
 import type { ChatTurn } from "@/hooks/use-ask";
 import type { AskMeta, DegradedInfo, FuenteDocumento, SourcesInfo } from "@/lib/ask-stream";
 
-/** Collapsible block with the pliego/corpus citations of one assistant turn. */
+/**
+ * Mensaje humano para el fallo de una llamada del asistente. `ask-stream` lanza
+ * `Error("Error 503")` con el estado HTTP, o el error de red del navegador: ni
+ * uno ni otro se enseñan tal cual (D6). El texto original va al «Detalle
+ * técnico» plegado de `PanelError`.
+ */
+export function mensajeDeFalloIA(texto: string): string {
+  const estado = /^Error (\d{3})$/.exec(texto.trim());
+  if (estado) return mensajePorEstado(Number(estado[1]));
+  if (/failed to fetch|networkerror|load failed/i.test(texto)) return MENSAJE_SIN_CONEXION;
+  return "El asistente no pudo responder. Vuelve a intentarlo en unos segundos.";
+}
+
+/** Bloque plegable con los fragmentos del pliego que se mandaron al modelo en un turno. */
 function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
   const [open, setOpen] = React.useState(false);
+  const idFuentes = React.useId();
   const totalChunks = fuentes.reduce((n, f) => n + (f.chunks?.length ?? 0), 0);
   if (totalChunks === 0) return null;
 
@@ -20,15 +37,18 @@ function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs font-medium"
+        aria-expanded={open}
+        aria-controls={idFuentes}
+        className="flex items-center gap-1 rounded-sm text-tf-meta font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <FileText className="h-3 w-3" />
+        <ChevronRight className={cn("h-3 w-3 transition-[rotate]", open && "rotate-90")} aria-hidden="true" />
         Fuentes del pliego ({totalChunks})
       </button>
       {/* Grid-rows trick: animates height without measuring it, and stays
           interruptible if the user toggles again mid-transition. */}
       <div
+        id={idFuentes}
+        inert={!open}
         className={cn(
           "grid transition-[grid-template-rows] duration-200 ease-out",
           open ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"
@@ -37,17 +57,20 @@ function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
         <div className="overflow-hidden">
           <div className="space-y-2">
             {fuentes.map((f, i) => (
-              <div key={`${f.id_externo}-${i}`} className="border-border bg-muted/40 rounded-md border p-2">
-                <div className="mb-1 text-xs font-medium">
+              <div key={`${f.id_externo}-${i}`} className="rounded-md border border-border bg-muted/40 p-2">
+                <div className="mb-1 text-tf-meta font-medium">
                   {f.id_externo ? (
-                    <a href={`/detalle?lic=${f.id_externo}`} className="text-primary hover:underline">
+                    <Link
+                      href={`/detalle?lic=${encodeURIComponent(f.id_externo)}`}
+                      className="font-mono text-primary hover:underline"
+                    >
                       {f.id_externo}
-                    </a>
+                    </Link>
                   ) : null}
                   {f.titulo ? <span className="text-muted-foreground"> — {f.titulo}</span> : null}
                 </div>
                 {f.chunks?.map((c, j) => (
-                  <blockquote key={j} className="border-primary/40 text-muted-foreground mt-1 border-l-2 pl-2 text-xs">
+                  <blockquote key={j} className="mt-1 border-l-2 border-border pl-2 text-tf-meta text-muted-foreground">
                     {(c.tipo || c.filename) && (
                       <span className="font-medium">[{[c.tipo, c.filename].filter(Boolean).join(" · ")}] </span>
                     )}
@@ -75,13 +98,13 @@ function CitasBlock({ info }: { info: SourcesInfo }) {
   if (info.sources.length === 0) return null;
   return (
     <div className="mt-2 space-y-1">
-      <p className="text-muted-foreground text-xs font-medium">
+      <p className="text-tf-meta font-medium text-muted-foreground">
         Citado del pliego ({info.sources.length})
       </p>
       {info.sources.map((f, i) => (
         <blockquote
           key={`${f.documento_id}-${f.page_number ?? "s"}-${i}`}
-          className="border-primary/40 text-muted-foreground border-l-2 pl-2 text-xs"
+          className="border-l-2 border-border pl-2 text-tf-meta text-muted-foreground"
         >
           <span className="text-foreground font-medium">
             {f.id_externo ? `${f.id_externo} · ` : ""}
@@ -105,7 +128,7 @@ function CitasBlock({ info }: { info: SourcesInfo }) {
  */
 function SinFuentesNotice() {
   return (
-    <p className="text-muted-foreground mt-2 flex items-start gap-1.5 text-xs">
+    <p className="mt-2 flex items-start gap-1.5 text-tf-meta text-muted-foreground">
       <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
       <span>Sin fuentes en el pliego: esta respuesta no cita ningún fragmento de los documentos.</span>
     </p>
@@ -113,20 +136,14 @@ function SinFuentesNotice() {
 }
 
 /** Aviso: se pidió contexto de una licitación pero la respuesta salió del
- *  corpus general (el backend no pudo cargar el expediente). Sin esto el
+ *  resto de licitaciones (no se pudo cargar el expediente). Sin esto el
  *  fallback era silencioso y la respuesta se leía como si fuera del pliego. */
 function ScopeFallbackNotice() {
   return (
-    <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 text-xs" role="status">
-      <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
-        <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
-        Respuesta sin el contexto de este expediente
-      </p>
-      <p className="text-muted-foreground mt-0.5">
-        No se pudo cargar la licitación (o sus pliegos), así que esta respuesta se basa en el corpus
-        general y conocimiento común.
-      </p>
-    </div>
+    <Aviso tone="warning" title="Respuesta sin el contexto de este expediente" className="mt-2">
+      No se pudo cargar la licitación (o sus pliegos), así que esta respuesta se basa en el resto de
+      licitaciones y en conocimiento general.
+    </Aviso>
   );
 }
 
@@ -146,51 +163,41 @@ function ComparacionNotice({ meta }: { meta: AskMeta }) {
     .map((e) => e.id_externo);
   if (ausentes.length === 0 && recortados.length === 0 && sinPliego.length === 0) return null;
   return (
-    <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 text-xs" role="status">
-      <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
-        <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
-        Comparación incompleta
-      </p>
-      {ausentes.length > 0 && (
-        <p className="text-muted-foreground mt-0.5">No se pudo cargar: {ausentes.join(", ")}.</p>
-      )}
-      {sinPliego.length > 0 && (
-        <p className="text-muted-foreground mt-0.5">Solo con el anuncio, sin pliegos: {sinPliego.join(", ")}.</p>
-      )}
-      {recortados.length > 0 && (
-        <p className="text-muted-foreground mt-0.5">
-          Pliego recortado para que quepan todos: {recortados.join(", ")}.
-        </p>
-      )}
-    </div>
+    <Aviso tone="warning" title="Comparación incompleta" className="mt-2">
+      {ausentes.length > 0 && <p>No se pudo cargar: {ausentes.join(", ")}.</p>}
+      {sinPliego.length > 0 && <p>Solo con el anuncio, sin pliegos: {sinPliego.join(", ")}.</p>}
+      {recortados.length > 0 && <p>Pliego recortado para que quepan todos: {recortados.join(", ")}.</p>}
+    </Aviso>
   );
 }
 
-/** Amber notice shown when the backend degraded (no LLM synthesis). */
+/** Aviso cuando el asistente no pudo sintetizar respuesta (modo degradado). */
 function DegradedNotice({ degraded }: { degraded: DegradedInfo }) {
   const docs = degraded.docs ?? [];
   return (
-    <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2.5 text-xs" role="status">
-      <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
-        <TriangleAlert className="h-3.5 w-3.5" />
-        El asistente no está disponible ahora mismo
-        {degraded.reason === "timeout" ? " (tiempo de espera agotado)" : ""}.
-      </p>
+    <Aviso
+      tone="warning"
+      className="mt-2"
+      title={`El asistente no está disponible ahora mismo${degraded.reason === "timeout" ? " (tardó demasiado en responder)" : ""}.`}
+    >
       {docs.length > 0 && (
-        <div className="text-muted-foreground mt-1.5 space-y-1">
+        <div className="space-y-1">
           <p>Licitaciones encontradas para tu consulta:</p>
           <ul className="list-disc space-y-0.5 pl-4">
             {docs.map((d, i) => (
               <li key={i}>
-                <a href={`/detalle?lic=${String(d.id_externo ?? "")}`} className="text-primary hover:underline">
+                <Link
+                  href={`/detalle?lic=${encodeURIComponent(String(d.id_externo ?? ""))}`}
+                  className="text-primary hover:underline"
+                >
                   {String(d.titulo ?? d.id_externo ?? "Licitación")}
-                </a>
+                </Link>
               </li>
             ))}
           </ul>
         </div>
       )}
-    </div>
+    </Aviso>
   );
 }
 
@@ -202,8 +209,8 @@ export interface ChatThreadProps {
   className?: string;
   /**
    * True cuando este hilo pidió contexto de una licitación concreta
-   * (`idExterno`): habilita el aviso de fallback si el backend respondió con
-   * el corpus general en su lugar.
+   * (`idExterno`): habilita el aviso de fallback si la respuesta salió del
+   * resto de licitaciones en su lugar.
    */
   expectLicitacionContext?: boolean;
 }
@@ -237,7 +244,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
   expectLicitacionContext,
 }: TurnoAsistenteProps) {
   return (
-    <div className="text-sm">
+    <div className="text-tf-body">
       {turno.content ? (
         <MarkdownAnswer text={turno.content} />
       ) : esperandoPrimerToken ? (
@@ -297,7 +304,7 @@ export function ChatThread({
         if (m.role === "user") {
           return (
             <div key={i} className="flex justify-end">
-              <div className="bg-muted max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap">{m.content}</div>
+              <div className="max-w-[85%] rounded-xl bg-muted px-3 py-2 text-tf-body whitespace-pre-wrap">{m.content}</div>
             </div>
           );
         }
@@ -315,13 +322,15 @@ export function ChatThread({
         );
       })}
 
+      {/* Un solo aviso: el hilo no pasa por React Query, así que no hay toast
+          que callar. Mensaje humano; el texto original, plegado. */}
       {error && (
-        <div
-          className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border p-3 text-sm"
-          role="alert"
-        >
-          {error}
-        </div>
+        <PanelError
+          variant="inline"
+          title="No se pudo obtener la respuesta"
+          message={mensajeDeFalloIA(error)}
+          detail={error}
+        />
       )}
       <div ref={bottomRef} />
     </div>

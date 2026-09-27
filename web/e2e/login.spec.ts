@@ -42,6 +42,12 @@ test.describe("Formulario de acceso", () => {
     expect(googleComesFirst).toBe(true);
   });
 
+  test("el logo de la cabecera lleva a la portada", async ({ page }) => {
+    // La puerta no era un callejón sin salida solo por el formulario: el logo
+    // era decoración y no había forma de volver a la portada.
+    await expect(page.getByRole("link", { name: "TenderFlow — inicio" })).toHaveAttribute("href", "/");
+  });
+
   test("el control de mostrar contraseña tiene objetivo táctil accesible", async ({ page }) => {
     const toggle = page.getByRole("button", { name: "Mostrar contraseña" });
     const box = await toggle.boundingBox();

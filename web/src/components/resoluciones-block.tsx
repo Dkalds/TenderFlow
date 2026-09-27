@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import { SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
@@ -49,35 +50,31 @@ export function ResolucionesBlock({ licitacionId }: { licitacionId: string }) {
 
   return (
     <div className="mt-6 space-y-3">
-      <h3 className="text-sm font-medium text-muted-foreground">Recursos</h3>
+      <SectionTitle as="h3">Recursos</SectionTitle>
       <ul className="space-y-3">
         {items.map((r) => (
           <li key={r.id} className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant={SENTIDO_VARIANTS[r.sentido ?? ""] ?? "outline"}
-                className="text-xs"
-              >
+              <Badge variant={SENTIDO_VARIANTS[r.sentido ?? ""] ?? "outline"} size="sm">
                 {SENTIDO_LABELS[r.sentido ?? ""] ?? r.sentido ?? "Resolución"}
               </Badge>
-              <span className="text-sm font-medium">
+              {/* El tribunal es una sigla (TACRC): la versal es la suya, no un estilo. */}
+              <span className="text-tf-body font-medium">
                 {r.tribunal.toUpperCase()} {r.numero_resolucion}
               </span>
-              {r.fecha && (
-                <span className="text-xs text-muted-foreground">{formatDate(r.fecha)}</span>
-              )}
+              {r.fecha && <span className="tf-tnum text-tf-meta text-muted-foreground">{formatDate(r.fecha)}</span>}
             </div>
             {r.numero_recurso && (
-              <p className="text-xs text-muted-foreground">Recurso nº {r.numero_recurso}</p>
+              <p className="text-tf-meta text-muted-foreground">Recurso nº {r.numero_recurso}</p>
             )}
             {r.url_pdf && (
               <a
                 href={r.url_pdf}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                className="inline-flex items-center gap-1 text-tf-meta text-primary hover:underline"
               >
-                Ver resolución <ExternalLink className="h-3 w-3" />
+                Ver resolución <ExternalLink className="h-3 w-3" aria-hidden="true" />
               </a>
             )}
           </li>

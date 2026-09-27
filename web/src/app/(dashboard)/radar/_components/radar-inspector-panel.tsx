@@ -64,10 +64,10 @@ export function RadarInspectorPanel({
 
   return (
     <>
-      <aside className="hidden w-[432px] flex-none flex-col bg-card/40 xl:flex">
+      <aside className="hidden w-[432px] flex-none flex-col bg-card xl:flex">
         {contenido ?? (
           <div className="flex flex-1 items-center justify-center px-8 text-center">
-            <p className="text-[13px] leading-[1.5] text-muted-foreground">
+            <p className="text-tf-body text-muted-foreground">
               Selecciona una señal para ver su desglose de score, sus fechas y quién suele ganar en
               ese órgano.
             </p>

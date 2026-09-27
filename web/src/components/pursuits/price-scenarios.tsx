@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { Check, ShieldAlert } from "lucide-react";
-import { Panel, PanelEmpty, SectionTitle } from "@/components/console/panel";
+import { Aviso, Panel, PanelEmpty, ROTULO_DATO, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -86,7 +86,11 @@ export function PriceScenariosPanel({
     return (
       <Panel>
         <SectionTitle>Escenarios de precio</SectionTitle>
-        <PanelEmpty message="Los escenarios de precio no están disponibles para esta licitación." />
+        <PanelEmpty
+          size="sm"
+          title="Sin escenarios de precio"
+          hint="No están disponibles para esta licitación: no hay adjudicaciones comparables con las que calcularlos."
+        />
       </Panel>
     );
   }
@@ -101,13 +105,13 @@ export function PriceScenariosPanel({
       ? "success"
       : data.sample_quality === "indicativa"
         ? "warning"
-        : "secondary";
+        : "neutral";
   const criterios = (data.cohort ?? []).map((clave) => CRITERIO_COHORTE[clave] ?? clave);
 
   return (
     <Panel>
       <SectionTitle
-        aside={
+        hint={
           <span className="flex flex-wrap items-center gap-1.5">
             {lote != null && <Badge variant="outline">Lote {numero ?? lote}</Badge>}
             <Badge variant={qualityVariant}>Muestra {data.sample_quality}</Badge>
@@ -116,7 +120,7 @@ export function PriceScenariosPanel({
       >
         Escenarios de precio
       </SectionTitle>
-      <p className="text-muted-foreground mb-3 text-tf-meta leading-relaxed">
+      <p className="text-muted-foreground mb-3 text-tf-meta">
         {lote != null
           ? `Cuantiles de bajas observadas, sobre el presupuesto del lote ${numero ?? lote}.`
           : "Cuantiles de bajas observadas en adjudicaciones comparables."}
@@ -124,13 +128,13 @@ export function PriceScenariosPanel({
 
       <div className="space-y-3.5">
         {/* El lote se abrió, pero el pliego ya no lo publica: el `lote_id` que
-            resuelve el backend viene NULL y sólo sobrevive su número (v110).
+            resuelve la API viene NULL y sólo sobrevive su número (v110).
             Los escenarios son entonces los del expediente, y decirlo es más
             barato que dejar que alguien fije un precio creyendo otra cosa. */}
         {lote == null && numero != null && (
-          <p className="border-border/60 text-muted-foreground rounded-lg border border-dashed p-3 text-tf-meta">
+          <Aviso tone="info" role="note">
             El lote {numero} ya no figura publicado; estos escenarios son del expediente completo.
-          </p>
+          </Aviso>
         )}
         {data.scenarios?.length ? (
           <div className="grid gap-3 md:grid-cols-3">
@@ -140,14 +144,12 @@ export function PriceScenariosPanel({
               const precio = Math.round(scenario.price_eur);
               const esLaPrevista = ofertaPrevista != null && Math.abs(ofertaPrevista - precio) < 1;
               return (
-                <div key={scenario.name} className="border-border/60 bg-background/40 rounded-lg border p-3.5">
-                  <p className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider uppercase">
-                    {names[scenario.name]}
-                  </p>
-                  <p className="tf-tnum mt-1.5 font-mono text-tf-title font-semibold">{eur(scenario.price_eur)}</p>
+                <div key={scenario.name} className="border-border/60 bg-background rounded-xl border p-3.5">
+                  <p className={ROTULO_DATO}>{names[scenario.name]}</p>
+                  <p className="tf-tnum mt-1.5 text-tf-title font-semibold">{eur(scenario.price_eur)}</p>
                   <p className="text-primary mt-1 text-tf-meta font-medium">Baja {percent(scenario.discount)}</p>
                   {/* F2.4 — sólo cuando el pliego publica tarifas y horas; el
-                      backend lo calcula y declara la fuente. */}
+                      la API lo calcula y declara la fuente. */}
                   {scenario.margen_implicito && (
                     <p className="mt-2 text-tf-meta">
                       Margen techo{" "}
@@ -160,7 +162,7 @@ export function PriceScenariosPanel({
                       )}
                     </p>
                   )}
-                  <p className="text-muted-foreground mt-1.5 text-tf-micro leading-relaxed">{scenario.basis}</p>
+                  <p className="text-muted-foreground mt-1.5 text-tf-micro">{scenario.basis}</p>
                   {onUsarPrecio ? (
                     esLaPrevista ? (
                       <p className="text-success mt-2.5 inline-flex items-center gap-1 text-tf-micro font-semibold">
@@ -186,10 +188,14 @@ export function PriceScenariosPanel({
             })}
           </div>
         ) : (
-          <PanelEmpty message="No hay comparables suficientes para proponer escenarios." />
+          <PanelEmpty
+            size="sm"
+            title="Sin comparables suficientes"
+            hint="Hacen falta más adjudicaciones parecidas para proponer escenarios de precio."
+          />
         )}
         {margen && (
-          <p className="text-muted-foreground text-tf-micro leading-relaxed">
+          <p className="text-muted-foreground text-tf-micro">
             Coste estimado {eur(margen.coste_estimado_eur)} con {margen.perfiles} perfil
             {margen.perfiles === 1 ? "" : "es"}. {margen.fuente}
           </p>
@@ -201,18 +207,15 @@ export function PriceScenariosPanel({
             {criterios.length ? `Comparables por: ${criterios.join(" · ")}` : "Sin cohorte comparable"}
           </span>
         </div>
-        <div className="border-warning/30 bg-warning/10 text-warning flex gap-2 rounded-lg border p-3 text-tf-micro leading-relaxed">
-          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <div>
-            <p>{data.disclaimer}</p>
-            {!data.win_probability_gate?.available && (
-              <p className="mt-1 font-medium">
-                Todavía no calculamos la probabilidad de ganar: hace falta un histórico de resultados
-                propios y comprobar que acierta antes de publicarla.
-              </p>
-            )}
-          </div>
-        </div>
+        <Aviso tone="warning" icon={ShieldAlert} role="note">
+          <p>{data.disclaimer}</p>
+          {!data.win_probability_gate?.available && (
+            <p className="mt-1 font-medium">
+              Todavía no calculamos la probabilidad de ganar: hace falta un histórico de resultados
+              propios y comprobar que acierta antes de publicarla.
+            </p>
+          )}
+        </Aviso>
       </div>
     </Panel>
   );

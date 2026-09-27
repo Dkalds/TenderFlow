@@ -17,9 +17,8 @@
  */
 
 import * as React from "react";
-import { Bell } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
+import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
+import { Field } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -47,7 +46,7 @@ const FRECUENCIAS = [
 ] as const;
 
 export default function NotificacionesView() {
-  const { data, isLoading, isError } = usePreferencias();
+  const { data, isLoading, error, refetch } = usePreferencias();
   const guardar = useGuardarPreferencias();
 
   const tipos = data?.tipos ?? [];
@@ -77,43 +76,36 @@ export default function NotificacionesView() {
   };
 
   if (isLoading) return <Skeleton className="h-64 w-full rounded-xl" />;
-  if (isError) {
+  if (error) {
     return (
-      <EmptyState
+      <PanelError
         title="No se pudieron cargar tus preferencias"
-        hint="Volvé a intentarlo en un momento."
+        error={error}
+        onRetry={() => void refetch()}
       />
     );
   }
   if (tipos.length === 0) {
     return (
-      <EmptyState
+      <PanelEmpty
         title="No hay avisos configurables"
-        hint="El catálogo de avisos lo publica el backend; si está vacío, todavía no hay ninguno."
+        hint="Cuando haya un tipo de aviso disponible, aparecerá aquí con sus canales."
       />
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Bell className="h-4 w-4" aria-hidden="true" />
-          Qué avisos quieres recibir
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Panel>
+      <PanelTitle title="Qué avisos quieres recibir" />
+      <ul className="space-y-3">
         {tipos.map((t) => (
-          <div key={t.tipo} className="border-border rounded-lg border p-3">
-            <p className="text-sm font-medium">{t.label}</p>
+          <li key={t.tipo} className="rounded-md border border-border/60 p-3">
+            <p className="text-tf-body font-medium">{t.label}</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
               {CANALES.map(({ canal, label }) => {
                 const id = `${t.tipo}-${canal}`;
                 return (
-                  <div key={canal}>
-                    <label htmlFor={id} className="text-muted-foreground mb-1 block text-xs">
-                      {label}
-                    </label>
+                  <Field key={canal} label={label} htmlFor={id}>
                     <Select
                       value={frecuenciaDe(t.tipo, canal)}
                       disabled={guardar.isPending}
@@ -130,13 +122,13 @@ export default function NotificacionesView() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
+                  </Field>
                 );
               })}
             </div>
-          </div>
+          </li>
         ))}
-      </CardContent>
-    </Card>
+      </ul>
+    </Panel>
   );
 }

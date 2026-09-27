@@ -105,7 +105,7 @@ describe("AdjudicacionDetectada", () => {
     // o sin NIF publicado del adjudicatario— y la tarjeta se comporta igual.
     render(<AdjudicacionDetectada pursuit={base} />);
     expect(screen.queryByRole("radio")).toBeNull();
-    expect(screen.getByText(/el sistema no sabe cuál de estas empresas sois/)).toBeInTheDocument();
+    expect(screen.getByText(/TenderFlow no sabe cuál de estas empresas es la tuya/)).toBeInTheDocument();
   });
 
   describe("con resultado sugerido por NIF (S2.1)", () => {

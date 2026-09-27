@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRight, BellOff, Clock, ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { SeguirBoton } from "@/components/seguir-boton";
 import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
+import { Button } from "@/components/ui/button";
 import type { AccionAplazar, RadarTender } from "@/hooks/use-radar";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 
@@ -31,6 +32,11 @@ import { fuenteLinkLabel } from "@/lib/fuentes";
  * la devuelve a la bandeja al vencer; **recordar en N días** hace lo mismo y
  * además deja un aviso ese día en la campana. Son distintas de «Descartar»,
  * que no caduca, y por eso no comparten botón.
+ *
+ * Los botones con texto no llevan icono (la regla de la consola): el texto ya
+ * dice la acción, y «Abrir oportunidad» no sale de TenderFlow, así que tampoco
+ * lleva la flecha de salida. Sin degradado en la acción principal: primario
+ * plano, como cualquier otro `Button`.
  */
 
 /** Plazo de «silenciar», el que fija el plan (F5.6). */
@@ -58,22 +64,21 @@ export function InspectorAcciones({
   const selectId = React.useId();
 
   return (
-    <div data-slot="radar-inspector-acciones" className="flex-none border-t border-border/60 bg-card/80">
-    {/* A la escala de las acciones secundarias de /detalle (11,5 px, iconos
-        de 12). A 12 px la fila cabía en Windows con 4 px de aire, pero no en el
-        Chromium de Linux del E2E, que redondea el avance de cada glifo a píxel
-        entero y la ensanchaba unos 6 px. */}
+    <div data-slot="radar-inspector-acciones" className="flex-none border-t border-border/60 bg-card">
+    {/* A 11 px y sin iconos: a 12 px la fila cabía en Windows con 4 px de
+        aire, pero no en el Chromium de Linux del E2E, que redondea el avance de
+        cada glifo a píxel entero y la ensanchaba unos 6 px. Por eso no son
+        `Button size="sm"` (12 px). */}
     <div
       role="group"
       aria-label="Más tarde"
-      className="flex flex-wrap items-center gap-[7px] border-b border-border/40 px-4.5 py-2 text-[11.5px]"
+      className="flex flex-wrap items-center gap-[7px] border-b border-border/40 px-4.5 py-2 text-tf-micro"
     >
       <button
         type="button"
         onClick={() => onAplazar("silenciar", DIAS_SILENCIO)}
-        className="tf-pressable inline-flex h-[28px] items-center gap-1.5 rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
+        className="tf-pressable inline-flex h-7 items-center rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground hover:text-foreground"
       >
-        <BellOff className="h-3 w-3" aria-hidden="true" />
         Silenciar {DIAS_SILENCIO} días
       </button>
       {/* `ml-auto` y no un hueco `flex-1`: con `gap`, el hueco cuenta como un
@@ -88,7 +93,7 @@ export function InspectorAcciones({
           id={selectId}
           value={plazo}
           onChange={(event) => setPlazo(Number(event.target.value))}
-          className="h-[28px] rounded-md border border-border/80 bg-card px-1.5 text-[11.5px]"
+          className="h-7 rounded-md border border-border/80 bg-card px-1.5 text-tf-micro"
         >
           {PLAZOS_RECORDATORIO.map((dias) => (
             <option key={dias} value={dias}>
@@ -99,9 +104,8 @@ export function InspectorAcciones({
         <button
           type="button"
           onClick={() => onAplazar("posponer", plazo)}
-          className="tf-pressable inline-flex h-[28px] items-center gap-1.5 rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className="tf-pressable inline-flex h-7 items-center rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground hover:text-foreground"
         >
-          <Clock className="h-3 w-3" aria-hidden="true" />
           Posponer
         </button>
       </div>
@@ -111,7 +115,7 @@ export function InspectorAcciones({
         <button
           type="button"
           onClick={onDismiss}
-          className="tf-pressable h-[34px] flex-none rounded-lg border border-border/80 px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
+          className="tf-pressable h-8.5 flex-none rounded-md border border-border/80 px-3 text-tf-body font-medium text-muted-foreground hover:border-destructive/50 hover:text-destructive"
         >
           Descartar
         </button>
@@ -123,8 +127,8 @@ export function InspectorAcciones({
           icono="estrella"
           nombreAccesible="visible"
           clases={{
-            base: "tf-pressable inline-flex h-[34px] flex-none items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-medium transition-colors",
-            activo: "border-primary/50 bg-primary/14 text-primary",
+            base: "tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border px-3 text-tf-body font-medium",
+            activo: "border-primary/50 bg-primary/15 text-primary",
             inactivo: "border-border/80 text-muted-foreground hover:text-foreground",
           }}
           onAlternar={onFollowed}
@@ -134,32 +138,28 @@ export function InspectorAcciones({
         <CompararBoton
           id={tender.id_externo}
           titulo={tender.titulo}
-          className="tf-pressable inline-flex h-[34px] flex-none items-center gap-1.5 rounded-lg border border-border/80 px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary/50 aria-pressed:bg-primary/14 aria-pressed:text-primary"
+          className="tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border border-border/80 px-3 text-tf-body font-medium text-muted-foreground hover:text-foreground aria-pressed:border-primary/50 aria-pressed:bg-primary/15 aria-pressed:text-primary"
         />
       </div>
       <div className="flex items-center gap-[7px]">
-        <button
+        <Button
           type="button"
           onClick={onOpenPursuit}
           disabled={opening}
-          className="tf-pressable inline-flex h-[34px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-linear-to-b from-primary to-[hsl(20_84%_55%)] text-[12.5px] font-semibold text-primary-foreground disabled:opacity-60"
+          className="h-8.5 flex-1 gap-1.5 text-tf-body font-semibold [&_svg]:size-3.5"
         >
-          {opening ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          ) : (
-            <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-          )}
+          {opening && <Loader2 className="animate-spin" aria-hidden="true" />}
           Abrir oportunidad
-        </button>
+        </Button>
         {tender.url && (
           <a
             href={tender.url}
             target="_blank"
             rel="noreferrer"
             aria-label={fuenteLinkLabel(tender.fuente, tender.url)}
-            className="tf-pressable grid h-[34px] w-[34px] flex-none place-items-center rounded-lg border border-border/80 text-muted-foreground transition-colors hover:text-foreground"
+            className="tf-pressable grid size-8.5 flex-none place-items-center rounded-md border border-border/80 text-muted-foreground hover:text-foreground"
           >
-            <ExternalLink className="h-3.5 w-3.5" />
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
         )}
       </div>

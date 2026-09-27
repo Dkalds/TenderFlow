@@ -3,12 +3,12 @@
 import dynamic from "next/dynamic";
 import { Columns3, X } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBandejaComparacion } from "@/hooks/use-comparacion";
 import { MAX_COMPARAR } from "@/hooks/use-comparar-fichas";
-import { truncate } from "@/lib/utils";
+import { cn, truncate } from "@/lib/utils";
 
 // Lo de dentro del diálogo solo existe con el diálogo abierto, y es lo pesado
 // de este módulo: la pregunta cruzada arrastra el hilo de chat con
@@ -30,7 +30,15 @@ const PreguntaComparacion = dynamic(
  * El comparador de Detalle exige tener las filas en la misma tabla; con la
  * bandeja se elige uno en el Radar, otro en la watchlist y un tercero en su
  * ficha, y se comparan las fichas del pliego al final.
+ *
+ * Sin `className` es un `Button` outline `sm` de la consola; marcado, el tinte
+ * primario /10 de «seleccionado».
  */
+const CLASE_COMPARAR = cn(
+  buttonVariants({ variant: "outline", size: "sm" }),
+  "aria-pressed:border-primary/50 aria-pressed:bg-primary/10 aria-pressed:text-primary",
+);
+
 export function CompararBoton({
   id,
   titulo,
@@ -54,7 +62,7 @@ export function CompararBoton({
           );
         }
       }}
-      className={className}
+      className={className ?? CLASE_COMPARAR}
     >
       <Columns3 className="h-3 w-3 shrink-0" aria-hidden="true" />
       {marcado ? "En comparación" : "Comparar"}
@@ -74,16 +82,16 @@ export function BandejaComparacion() {
       <div
         role="region"
         aria-label="Expedientes para comparar"
-        className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur"
+        className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-border bg-popover px-3 py-2 shadow-md"
       >
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className="text-tf-meta font-medium text-muted-foreground">
           Comparar {items.length}/{MAX_COMPARAR}
         </span>
         <ul className="flex flex-wrap gap-1.5">
           {items.map((item) => (
             <li
               key={item.id}
-              className="inline-flex max-w-52 items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-0.5 text-xs"
+              className="inline-flex max-w-52 items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-0.5 text-tf-meta"
             >
               <span className="truncate">
                 {item.titulo ? truncate(item.titulo, 40) : item.id}
@@ -92,7 +100,7 @@ export function BandejaComparacion() {
                 type="button"
                 onClick={() => quitar(item.id)}
                 aria-label={`Quitar ${item.titulo ?? item.id} de la comparación`}
-                className="grid h-5 w-5 place-items-center rounded text-muted-foreground hover:text-foreground"
+                className="tf-pressable grid h-5 w-5 place-items-center rounded-sm text-muted-foreground hover:text-foreground"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </button>
@@ -111,7 +119,7 @@ export function BandejaComparacion() {
         <DialogContent className="mx-4 max-h-[90vh] w-full max-w-6xl overflow-auto">
           <DialogTitle>Comparar fichas del pliego</DialogTitle>
           <DialogDescription>
-            Lo que cada pliego dice de cada familia, tal como se extrajo. Sin síntesis: la comparación
+            Lo que cada pliego dice de cada familia, tal como se extrajo, sin resumir: la comparación
             la haces tú. Debajo puedes preguntar sobre los expedientes a la vez.
           </DialogDescription>
           {abierta && <ComparacionFichasTabla ids={ids} etiquetas={etiquetas} />}

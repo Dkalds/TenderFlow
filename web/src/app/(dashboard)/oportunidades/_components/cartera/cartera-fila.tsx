@@ -39,14 +39,14 @@ export function CarteraFila({
         >
           {nombre}
         </Link>
-        <p className="truncate text-[10.5px] text-muted-foreground">
+        <p className="truncate text-tf-micro text-muted-foreground">
           {contrato.organo_contratacion ?? "Órgano sin publicar"}
           {contrato.tecnologia ? ` · ${contrato.tecnologia}` : null}
         </p>
         {contrato.renovacion_pursuit_id ? (
           <Link
             href={`/oportunidades/${contrato.renovacion_pursuit_id}`}
-            className="text-[10.5px] font-medium text-primary hover:underline"
+            className="text-tf-micro font-medium text-primary hover:underline"
           >
             Ver oportunidad de renovación
           </Link>
@@ -65,9 +65,9 @@ export function CarteraFila({
         <OrigenFin origen={contrato.fecha_fin_origen} />
         <p
           className={cn(
-            "text-[10.5px]",
+            "text-tf-micro",
             urgencia === "vencido" || urgencia === "pronto"
-              ? "font-medium text-[hsl(var(--warning))]"
+              ? "font-medium text-warning"
               : "text-muted-foreground",
           )}
         >
@@ -81,7 +81,7 @@ export function CarteraFila({
             <span className="tf-tnum whitespace-nowrap">
               {fechaCorta(contrato.relicitacion_desde)} – {fechaCorta(contrato.relicitacion_hasta)}
             </span>
-            <p className="text-[10.5px] text-muted-foreground">
+            <p className="text-tf-micro text-muted-foreground">
               Estimación: 6 a 3 meses antes del fin
             </p>
           </>
@@ -105,9 +105,9 @@ export function CarteraFila({
           aria-current={activo ? "true" : undefined}
           onClick={onSeleccionar}
           className={cn(
-            "tf-pressable h-6 rounded-md border px-2 text-[10.5px] font-medium transition-colors duration-110",
+            "tf-pressable h-6 rounded-md border px-2 text-tf-micro font-medium",
             activo
-              ? "border-primary/40 bg-primary/10 text-primary"
+              ? "border-primary/30 bg-primary/10 text-primary"
               : "border-border/70 text-muted-foreground hover:text-foreground",
           )}
         >

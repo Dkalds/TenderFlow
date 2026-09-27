@@ -1,5 +1,6 @@
 import type { LicitacionPublica } from "@/lib/publico-api";
-import { formatCurrency } from "@/lib/utils";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
+import { cn, formatCurrency } from "@/lib/utils";
 
 /**
  * Lotes del anuncio, tal y como los publica la fuente.
@@ -25,11 +26,19 @@ export function LotesLicitacion({ lotes }: { lotes: NonNullable<LicitacionPublic
       >
         <table className="w-full min-w-[32rem] text-sm">
           <thead>
-            <tr className="border-border/60 text-muted-foreground border-b text-left text-[11px] tracking-wide uppercase">
-              <th className="py-2.5 pr-4 font-medium">Nº</th>
-              <th className="py-2.5 pr-4 font-medium">Objeto</th>
-              <th className="py-2.5 pr-4 font-medium">CPV</th>
-              <th className="py-2.5 font-medium">Importe</th>
+            <tr className={cn("border-border/60 border-b text-left", CABECERA_COLUMNA)}>
+              <th scope="col" className="py-2.5 pr-4">
+                Nº
+              </th>
+              <th scope="col" className="py-2.5 pr-4">
+                Objeto
+              </th>
+              <th scope="col" className="py-2.5 pr-4">
+                CPV
+              </th>
+              <th scope="col" className="py-2.5 text-right">
+                Importe
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -38,7 +47,7 @@ export function LotesLicitacion({ lotes }: { lotes: NonNullable<LicitacionPublic
                 <td className="py-2.5 pr-4 font-mono text-xs">{lote.numero}</td>
                 <td className="py-2.5 pr-4">{lote.titulo ?? "—"}</td>
                 <td className="py-2.5 pr-4 font-mono text-xs">{lote.cpv ?? "—"}</td>
-                <td className="tf-tnum py-2.5">{formatCurrency(lote.importe)}</td>
+                <td className="tf-tnum py-2.5 text-right">{formatCurrency(lote.importe)}</td>
               </tr>
             ))}
           </tbody>

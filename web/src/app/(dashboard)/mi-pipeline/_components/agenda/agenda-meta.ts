@@ -27,16 +27,16 @@ export const GRID = "md:grid-cols-[72px_26px_1fr_110px_150px] md:gap-3 md:px-3.5
 export const BANDAS: { key: AgendaUrgencia; label: string; tone: string }[] = [
   { key: "vencida", label: "Vencidas", tone: "text-destructive" },
   { key: "hoy", label: "Hoy", tone: "text-destructive" },
-  { key: "semana", label: "Próximos 7 días", tone: "text-[hsl(var(--warning))]" },
+  { key: "semana", label: "Próximos 7 días", tone: "text-warning" },
   { key: "mes", label: "Próximos 30 días", tone: "text-muted-foreground" },
   { key: "despues", label: "Más adelante", tone: "text-muted-foreground" },
   { key: "sin_fecha", label: "Sin fecha", tone: "text-muted-foreground" },
 ];
 
 export const CHIP_POR_BANDA: Record<AgendaUrgencia, string> = {
-  vencida: "bg-destructive/12 text-destructive",
-  hoy: "bg-destructive/12 text-destructive",
-  semana: "bg-[hsl(var(--warning)/0.15)] text-[hsl(var(--warning))]",
+  vencida: "bg-destructive/10 text-destructive",
+  hoy: "bg-destructive/10 text-destructive",
+  semana: "bg-warning/10 text-warning",
   mes: "bg-secondary text-foreground/80",
   despues: "bg-muted-foreground/10 text-muted-foreground",
   sin_fecha: "bg-muted-foreground/10 text-muted-foreground",

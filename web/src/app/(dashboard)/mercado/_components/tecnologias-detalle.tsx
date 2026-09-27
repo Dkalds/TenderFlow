@@ -7,20 +7,23 @@
  * Sin selección no se pide nada ni se pinta una tabla vacía: se dice qué hacer.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Panel,
+  PanelEmpty,
+  PanelError,
+  PanelTitle,
+  StatCell,
+  StatStrip,
+} from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { KpiCard } from "@/components/charts/kpi-card";
 import { Pista } from "@/components/ui/pista";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
+import { EMPTY, formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import { valorOEmpty } from "@/lib/cobertura";
-import { Filter, Hash, DollarSign, TrendingUp } from "lucide-react";
 
 import type { DetalleResponse, TecnologiaItem } from "../_hooks/use-tecnologias-view";
-
-const TH = "pb-2 pr-4 font-medium text-muted-foreground";
 
 export function TecnologiasDetalle({
   items,
@@ -28,118 +31,108 @@ export function TecnologiasDetalle({
   onSelectTech,
   detalle,
   isLoading,
+  error,
+  onRetry,
 }: {
   items: TecnologiaItem[];
   selectedTech: string;
   onSelectTech: (tecnologia: string) => void;
   detalle: DetalleResponse | undefined;
   isLoading: boolean;
+  /** El fallo de la consulta del detalle: se dice, no se pinta una tabla vacía. */
+  error?: unknown;
+  onRetry?: () => void;
 }) {
+  const filas = detalle?.items ?? [];
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Filter className="h-4 w-4" />
-          Detalle por tecnología
-        </CardTitle>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <Select
-            value={selectedTech || "__all__"}
-            onValueChange={(v) => onSelectTech(v === "__all__" ? "" : v)}
-          >
-            <SelectTrigger className="w-56 text-sm">
-              <SelectValue placeholder="Selecciona una tecnología" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Selecciona una tecnología</SelectItem>
-              {items.map((t) => (
-                <SelectItem key={t.tecnologia} value={t.tecnologia}>
-                  {t.tecnologia}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedTech && (
-            <Button variant="ghost" size="sm" onClick={() => onSelectTech("")}>
-              Limpiar
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {!selectedTech ? (
-          <p className="py-8 text-center text-muted-foreground">
-            Selecciona una tecnología para ver sus licitaciones.
-          </p>
-        ) : isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
+    <Panel>
+      <PanelTitle title="Detalle por tecnología" />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Select
+          value={selectedTech || "__all__"}
+          onValueChange={(v) => onSelectTech(v === "__all__" ? "" : v)}
+        >
+          <SelectTrigger className="w-56" aria-label="Tecnología">
+            <SelectValue placeholder="Elige una tecnología" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Elige una tecnología</SelectItem>
+            {items.map((t) => (
+              <SelectItem key={t.tecnologia} value={t.tecnologia}>
+                {t.tecnologia}
+              </SelectItem>
             ))}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <KpiCard title="Licitaciones" value={formatNumber(detalle?.n ?? 0)} icon={Hash} />
-              <KpiCard
-                title="Importe total"
-                value={valorOEmpty(detalle?.importe_total, formatCurrency)}
-                icon={DollarSign}
-              />
-              <KpiCard
-                title="Importe medio"
-                value={valorOEmpty(detalle?.importe_medio, formatCurrency)}
-                icon={TrendingUp}
-              />
-            </div>
-            <div className="overflow-x-auto">
-              <Table className="w-full text-sm">
-                <TableHeader>
-                  <TableRow className="border-b text-left">
-                    <TableHead className={TH}>Título</TableHead>
-                    <TableHead className={TH}>Órgano</TableHead>
-                    <TableHead className={`${TH} text-right`}>Importe</TableHead>
-                    <TableHead className={TH}>Estado</TableHead>
-                    <TableHead className={TH}>CCAA</TableHead>
-                    <TableHead className="pb-2 font-medium text-muted-foreground">Publicación</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(detalle?.items ?? []).map((it) => (
-                    <TableRow key={it.id_externo} className="border-b border-border/50 hover:bg-muted/50">
-                      <TableCell className="max-w-sm py-2 pr-4 font-medium">
-                        <Pista contenido={it.titulo}>
-                          <span className="line-clamp-2">{it.titulo ?? "-"}</span>
-                        </Pista>
-                      </TableCell>
-                      <TableCell className="max-w-[12rem] py-2 pr-4">
-                        <Pista contenido={it.organo_contratacion}>
-                          <span className="block truncate">{it.organo_contratacion ?? "-"}</span>
-                        </Pista>
-                      </TableCell>
-                      <TableCell className="py-2 pr-4 text-right tabular-nums">
-                        {it.importe != null ? formatCurrency(it.importe) : "-"}
-                      </TableCell>
-                      <TableCell className="py-2 pr-4">{it.estado ?? "-"}</TableCell>
-                      <TableCell className="py-2 pr-4">{it.ccaa ?? "-"}</TableCell>
-                      <TableCell className="py-2 tabular-nums">
-                        {it.fecha_publicacion ? formatDate(it.fecha_publicacion) : "-"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {(detalle?.items ?? []).length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                        Sin licitaciones
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
+          </SelectContent>
+        </Select>
+        {selectedTech && (
+          <Button variant="ghost" size="sm" onClick={() => onSelectTech("")}>
+            Limpiar
+          </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+      {!selectedTech ? (
+        <PanelEmpty
+          title="Ninguna tecnología elegida"
+          hint="Elige una arriba para ver sus cifras y sus licitaciones."
+        />
+      ) : isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-full" />
+          ))}
+        </div>
+      ) : error ? (
+        <PanelError title={`No se pudo cargar el detalle de ${selectedTech}`} error={error} onRetry={onRetry} />
+      ) : (
+        <div className="space-y-4">
+          <StatStrip columns={3}>
+            <StatCell label="Licitaciones" value={formatNumber(detalle?.n ?? 0)} />
+            <StatCell label="Importe total" value={valorOEmpty(detalle?.importe_total, formatCurrency)} />
+            <StatCell label="Importe medio" value={valorOEmpty(detalle?.importe_medio, formatCurrency)} />
+          </StatStrip>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Título</TableHead>
+                <TableHead>Órgano</TableHead>
+                <TableHead className="text-right">Importe</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>CCAA</TableHead>
+                <TableHead>Publicación</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filas.map((it) => (
+                <TableRow key={it.id_externo}>
+                  <TableCell className="max-w-sm font-medium">
+                    <Pista contenido={it.titulo}>
+                      <span className="line-clamp-2">{it.titulo ?? EMPTY}</span>
+                    </Pista>
+                  </TableCell>
+                  <TableCell className="max-w-[12rem]">
+                    <Pista contenido={it.organo_contratacion}>
+                      <span className="block truncate">{it.organo_contratacion ?? EMPTY}</span>
+                    </Pista>
+                  </TableCell>
+                  <TableCell numeric>{it.importe != null ? formatCurrency(it.importe) : EMPTY}</TableCell>
+                  <TableCell>{it.estado ?? EMPTY}</TableCell>
+                  <TableCell>{it.ccaa ?? EMPTY}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {it.fecha_publicacion ? formatDate(it.fecha_publicacion) : EMPTY}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {filas.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    {selectedTech} no tiene licitaciones en el ámbito actual.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </Panel>
   );
 }

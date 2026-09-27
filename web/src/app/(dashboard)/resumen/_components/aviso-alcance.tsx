@@ -1,24 +1,32 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { Aviso } from "@/components/console/panel";
+import { cn } from "@/lib/utils";
 import { enumerar } from "./alcance";
 
 /**
  * Aviso de ámbito parcial. Va pegado al panel que no aplica todos los chips,
  * no en la cabecera de la página: el problema es de ese panel y de ningún otro.
+ *
+ * `sujeto="activas"` es la variante de la tira de contexto, donde solo la
+ * celda «Activas» sale del recuento parcial y sus vecinas aplican el ámbito
+ * entero: avisar de «estas cifras» ahí señalaría siete celdas por una.
  */
-export function AvisoAlcance({ ignorados }: { ignorados: string[] }) {
+export function AvisoAlcance({
+  ignorados,
+  sujeto = "cifras",
+  className,
+}: {
+  ignorados: string[];
+  sujeto?: "cifras" | "activas";
+  className?: string;
+}) {
   if (ignorados.length === 0) return null;
   return (
-    <p
-      role="status"
-      className="mb-2.5 flex items-start gap-1.5 rounded-lg border border-[hsl(var(--warning)/0.28)] bg-[hsl(var(--warning)/0.08)] px-2.5 py-1.5 text-[10.5px] leading-[1.45] text-[hsl(var(--warning))]"
-    >
-      <AlertTriangle className="mt-px h-3 w-3 flex-none" aria-hidden="true" />
-      <span>
-        Estas cifras no aplican {enumerar(ignorados)}: el endpoint sólo filtra por fecha, CCAA y
-        tecnología.
-      </span>
-    </p>
+    <Aviso tone="warning" className={cn("mb-2.5", className)}>
+      {sujeto === "activas"
+        ? `«Activas» no aplica ${enumerar(ignorados)}: solo filtra por fecha, CCAA y tecnología.`
+        : `Estas cifras no aplican ${enumerar(ignorados)}: solo filtran por fecha, CCAA y tecnología.`}
+    </Aviso>
   );
 }

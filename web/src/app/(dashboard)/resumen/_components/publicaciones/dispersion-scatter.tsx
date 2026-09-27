@@ -50,7 +50,13 @@ export function DispersionScatter({
   const router = useRouter();
 
   if (puntos.length === 0) {
-    return <PanelEmpty message="Sin publicaciones con importe en la ventana." height={ALTO} />;
+    return (
+      <PanelEmpty
+        title="Sin publicaciones con importe en la ventana"
+        hint="Amplía las fechas del ámbito para ver la nube."
+        height={ALTO}
+      />
+    );
   }
 
   return (
@@ -89,9 +95,9 @@ export function DispersionScatter({
                 if (!payload?.[0]) return null;
                 const punto = payload[0].payload as PuntoScatter;
                 return (
-                  <div className="border-border bg-popover rounded-md border p-2 text-xs shadow">
+                  <div className="rounded-md border border-border bg-popover p-2 text-tf-meta shadow-md">
                     <p className="font-medium">{truncate(punto.titulo, 50)}</p>
-                    <p className="tf-tnum font-mono">{formatCurrency(punto.y)}</p>
+                    <p className="tf-tnum">{formatCurrency(punto.y)}</p>
                     <p className="text-muted-foreground">{estadoLabel(punto.estado)}</p>
                   </div>
                 );
@@ -124,18 +130,17 @@ export function DispersionScatter({
               style={{ background: color }}
               aria-hidden="true"
             />
-            <span className="text-muted-foreground text-[10.5px]">{estadoLabel(codigo)}</span>
+            <span className="text-tf-micro text-muted-foreground">{estadoLabel(codigo)}</span>
           </li>
         ))}
       </ul>
 
-      <p className="text-muted-foreground mt-2 text-[10.5px] leading-[1.45]">
+      <p className="mt-2 text-tf-micro text-muted-foreground">
         {muestreado ? (
           <>
             Muestra de <strong className="font-semibold">{formatNumber(puntos.length)}</strong> de{" "}
-            {formatNumber(totalVentana)} publicaciones, repartida por toda la ventana {ventana}: el
-            endpoint dibuja como mucho {formatNumber(TIMELINE_MAX)} puntos, y se toma uno de cada N
-            en vez de sólo los más recientes.
+            {formatNumber(totalVentana)} publicaciones, repartida por toda la ventana {ventana}: se
+            dibujan como mucho {formatNumber(TIMELINE_MAX)} puntos.
           </>
         ) : (
           <>

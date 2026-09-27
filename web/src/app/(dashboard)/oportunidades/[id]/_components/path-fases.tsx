@@ -10,7 +10,7 @@ import { FASES, faseDe } from "../../_lib/fases";
  * El path: en qué punto del workflow está esta oportunidad.
  *
  * Es una lista, no una botonera. En el diseño cada casilla se pulsaba para
- * saltar a su fase; el flujo del backend es lineal y sin vuelta atrás
+ * saltar a su fase; el flujo de estados es lineal y sin vuelta atrás
  * (`_lib/flujo.ts`), así que de las seis casillas cinco serían siempre un 409.
  * Lo que mueve la oportunidad es la acción del bloque de abajo, que ofrece el
  * único paso posible y dice qué falta para darlo.
@@ -46,7 +46,7 @@ export function PathFases({ pursuit, className }: { pursuit: Pursuit; className?
                 actual
                   ? "bg-primary text-primary-foreground font-semibold"
                   : hecha
-                    ? "bg-primary/18 text-primary font-medium"
+                    ? "bg-primary/15 text-primary font-medium"
                     : "bg-muted text-muted-foreground font-medium",
               )}
             >

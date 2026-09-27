@@ -5,7 +5,7 @@
  *
  * Todo lo que puede dejar a alguien fuera del producto está aquí y no en el
  * marcado: los cinco caminos de entrada (contraseña, segundo factor, alta
- * local, OAuth y el atajo de desarrollo), qué error se enseña para cada fallo
+ * con correo, OAuth y el atajo de desarrollo), qué error se enseña para cada fallo
  * y el canje de la invitación. `page.tsx` y sus piezas solo pintan lo que este
  * hook decide.
  *
@@ -38,7 +38,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 const ERROR_CONEXION = "Error de conexión. Inténtalo de nuevo.";
 
 /**
- * Campos de la cuenta local, con los nombres de `LoginRequest` y
+ * Campos del acceso con correo y contraseña, con los nombres de `LoginRequest` y
  * `RegisterRequest` más la confirmación del alta.
  */
 export interface CredencialesValores {
@@ -140,7 +140,7 @@ export function useLoginForm() {
       window.location.href = destino();
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.status === 401 ? "Credenciales incorrectas" : err.message);
+        setError(err.status === 401 ? "Credenciales incorrectas." : err.message);
       } else {
         setError(ERROR_CONEXION);
       }
@@ -208,7 +208,7 @@ export function useLoginForm() {
     } catch (err) {
       if (err instanceof ApiError) {
         // 409: email ya registrado · 400: contrasena no cumple la politica
-        setError(err.status === 409 ? "Este correo ya está registrado" : err.message);
+        setError(err.status === 409 ? "Este correo ya está registrado." : err.message);
       } else {
         setError(ERROR_CONEXION);
       }
@@ -248,7 +248,7 @@ export function useLoginForm() {
       await apiMutate("POST", "/api/v1/auth/dev-login");
       window.location.href = "/resumen";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dev login failed");
+      setError(err instanceof Error ? err.message : "No se pudo entrar con el acceso de desarrollo.");
     } finally {
       setLoading(false);
     }
@@ -275,6 +275,10 @@ export function useLoginForm() {
     cancelarMfa,
     handleOAuthLogin,
     handleDevLogin,
+    /** Adónde lleva la entrada: el `?redirect=` saneado, o `/resumen`. */
+    destino: destino(),
+    /** Cierra la sesión abierta y vuelve a `/login` (misma revocación que el MFA). */
+    cerrarSesion: cancelarMfa,
   };
 }
 

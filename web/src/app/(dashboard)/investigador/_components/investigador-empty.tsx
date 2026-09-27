@@ -2,58 +2,43 @@
 
 /**
  * Los dos bloques que solo se ven cuando la consola está en blanco: las
- * preguntas de ejemplo (arriba) y el cartel que explica los dos modos (abajo).
+ * preguntas de ejemplo (arriba) y el vacío que explica los dos modos (abajo).
+ *
+ * Sin adorno de «IA»: la función se nombra, no se decora. Las preguntas son
+ * botones de verdad (antes `Badge` con `role="button"`), y el vacío es el de la
+ * consola, sin la caja discontinua ni la lupa de 48 px.
  */
 
-import { Search, Sparkles } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { PanelEmpty } from "@/components/console/panel";
 import { EXAMPLE_QUESTIONS } from "../_lib/config-storage";
 
 export function PreguntasEjemplo({ onPick }: { onPick: (question: string) => void }) {
   return (
-    <div>
-      <div className="mb-3 flex items-center gap-2">
-        <Sparkles className="text-muted-foreground h-4 w-4" />
-        <span className="text-muted-foreground text-sm font-medium">Preguntas de ejemplo</span>
-      </div>
+    <section aria-labelledby="investigador-ejemplos">
+      <h2 id="investigador-ejemplos" className="mb-2 text-tf-meta font-semibold text-muted-foreground">
+        Preguntas de ejemplo
+      </h2>
       <div className="flex flex-wrap gap-2">
         {EXAMPLE_QUESTIONS.map((eq) => (
-          <Badge
+          <button
             key={eq}
-            variant="outline"
-            className="hover:bg-accent cursor-pointer px-3 py-1.5 text-sm"
-            role="button"
-            tabIndex={0}
+            type="button"
             onClick={() => onPick(eq)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onPick(eq);
-              }
-            }}
+            className="tf-pressable rounded-md border border-border/70 bg-card px-3 py-1.5 text-left text-tf-meta hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             {eq}
-          </Badge>
+          </button>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
 export function MensajeVacio() {
   return (
-    <Card className="border-dashed">
-      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-        <Search className="text-muted-foreground/50 mb-4 h-12 w-12" />
-        <p className="text-muted-foreground text-lg font-medium">
-          Introduce una consulta para buscar en el corpus de licitaciones
-        </p>
-        <p className="text-muted-foreground/70 mt-1 text-sm">
-          Usa el modo &quot;Búsqueda&quot; para resultados semánticos o &quot;Preguntar&quot; para conversar con el
-          asistente (corpus + conocimiento general).
-        </p>
-      </CardContent>
-    </Card>
+    <PanelEmpty
+      title="Busca o pregunta sobre las licitaciones"
+      hint="En «Búsqueda» ves expedientes parecidos a lo que describes; en «Preguntar» el asistente responde y cita los expedientes que usa."
+    />
   );
 }

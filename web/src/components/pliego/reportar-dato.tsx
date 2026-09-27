@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { Flag, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PanelError } from "@/components/console/panel";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DESTINO_COLA,
@@ -17,7 +18,9 @@ import {
   type TipoReporte,
   useReportarDato,
 } from "@/hooks/use-reportar-dato";
-import { formatDateTime } from "@/lib/utils";
+import { ETIQUETA_CAMPO } from "@/components/ui/field";
+import { getErrorMessage } from "@/lib/query-feedback";
+import { cn, formatDateTime } from "@/lib/utils";
 
 /**
  * F6.2 — «este dato está mal», desde la ficha.
@@ -41,7 +44,7 @@ export function ReportarDatoBoton({
       <button
         type="button"
         onClick={() => setAbierto(true)}
-        className={className}
+        className={className ?? buttonVariants({ variant: "outline", size: "sm" })}
         aria-haspopup="dialog"
       >
         <Flag className="h-3 w-3" aria-hidden="true" />
@@ -81,7 +84,7 @@ export function ReportarDatoDialog({
       <DialogContent className="mx-4 w-full max-w-md">
         <DialogTitle>Reportar un dato incorrecto</DialogTitle>
         {acuse ? (
-          <div role="status" className="space-y-3 text-sm">
+          <div role="status" className="space-y-3 text-tf-body">
             <p>
               Reporte recibido: <strong>{TIPOS_REPORTE[acuse.tipo as TipoReporte] ?? acuse.tipo}</strong>.
             </p>
@@ -99,9 +102,9 @@ export function ReportarDatoDialog({
               Dinos qué está mal en este expediente. Cada tipo llega a la revisión que le corresponde.
             </DialogDescription>
             <fieldset className="space-y-1.5">
-              <legend className="mb-1.5 text-sm font-medium">Qué dato está mal</legend>
+              <legend className={cn("mb-1.5", ETIQUETA_CAMPO)}>Qué dato está mal</legend>
               {(Object.entries(TIPOS_REPORTE) as [TipoReporte, string][]).map(([valor, etiqueta]) => (
-                <label key={valor} className="flex cursor-pointer items-center gap-2 text-sm">
+                <label key={valor} className="flex cursor-pointer items-center gap-2 text-tf-body">
                   <input
                     type="radio"
                     name="tipo-reporte"
@@ -119,7 +122,7 @@ export function ReportarDatoDialog({
               ))}
             </fieldset>
             <div className="space-y-1.5">
-              <label htmlFor={idComentario} className="text-sm font-medium">
+              <label htmlFor={idComentario} className={ETIQUETA_CAMPO}>
                 Comentario <span className="font-normal text-muted-foreground">(opcional)</span>
               </label>
               <Textarea
@@ -132,9 +135,13 @@ export function ReportarDatoDialog({
               />
             </div>
             {reportar.error && (
-              <p role="alert" className="text-sm text-destructive">
-                No se pudo enviar el reporte. {(reportar.error as Error).message}
-              </p>
+              <PanelError
+                variant="inline"
+                title="No se pudo enviar el reporte"
+                error={reportar.error}
+                message={getErrorMessage(reportar.error, "accion")}
+                className="py-0"
+              />
             )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={onClose}>

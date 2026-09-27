@@ -11,6 +11,7 @@
 
 import * as React from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { SectionTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,8 +38,10 @@ function Campo({
   children: React.ReactNode;
 }) {
   return (
-    <label className={`${ancho} space-y-1.5 text-sm font-medium`}>
-      {etiqueta}
+    // La etiqueta envuelve el control (nombre implícito): son filas repetidas
+    // sin id propio. Misma voz que `Field`: 12 px, por debajo del título.
+    <label className={`${ancho} space-y-1.5 text-tf-meta font-medium`}>
+      <span className="block">{etiqueta}</span>
       {children}
     </label>
   );
@@ -65,12 +68,12 @@ export function Seccion<T>({
   return (
     <section className="space-y-2">
       <div>
-        <h3 className="text-sm font-semibold">{titulo}</h3>
-        <p className="text-xs text-muted-foreground">{ayuda}</p>
+        <SectionTitle as="h3" className="mb-0.5">
+          {titulo}
+        </SectionTitle>
+        <p className="text-tf-meta text-muted-foreground">{ayuda}</p>
       </div>
-      {filas.length === 0 && (
-        <p className="text-sm text-muted-foreground">Sin datos declarados.</p>
-      )}
+      {filas.length === 0 && <p className="text-tf-meta text-muted-foreground">Sin datos declarados.</p>}
       {filas.map((fila, indice) => (
         <div key={indice} className="flex flex-wrap items-end gap-2">
           {render(fila, (cambio) =>
@@ -79,12 +82,12 @@ export function Seccion<T>({
           {editable && (
             <Button
               type="button"
-              size="sm"
+              size="icon"
               variant="ghost"
               aria-label={`Quitar fila ${indice + 1} de ${titulo}`}
               onClick={() => onChange(filas.filter((_, i) => i !== indice))}
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 aria-hidden="true" />
             </Button>
           )}
         </div>
@@ -96,7 +99,7 @@ export function Seccion<T>({
           variant="outline"
           onClick={() => onChange([...filas, nueva()])}
         >
-          <Plus className="h-4 w-4" />
+          <Plus aria-hidden="true" />
           Añadir
         </Button>
       )}

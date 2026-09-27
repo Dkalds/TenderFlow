@@ -8,7 +8,7 @@
  * marcarlo y desmarcarlo, y coincide con el de su línea en el gráfico.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSeriesColor } from "@/lib/chart-colors";
@@ -28,11 +28,9 @@ export function TendenciasCpvSelector({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Seleccionar CPVs</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <Panel>
+      <PanelTitle title="CPV en el gráfico" hint="Marca los que quieras comparar" />
+      <div>
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : (
@@ -42,16 +40,16 @@ export function TendenciasCpvSelector({
               return (
                 <label
                   key={cpvItem.cpv}
-                  className="inline-flex items-center gap-1.5 cursor-pointer rounded-md border px-2.5 py-1.5 text-sm transition-colors hover:bg-muted"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5 text-tf-meta transition-colors hover:bg-primary/5"
                   style={isSelected ? { borderColor: getSeriesColor(idx) } : undefined}
                 >
                   <Checkbox
-                    className="h-5 w-5"
                     checked={isSelected}
                     onCheckedChange={() => onToggle(cpvItem.cpv)}
                   />
                   <span
-                    className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                    aria-hidden="true"
+                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: getSeriesColor(idx) }}
                   />
                   <span>{cpvItem.label || cpvItem.cpv}</span>
@@ -60,7 +58,7 @@ export function TendenciasCpvSelector({
             })}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

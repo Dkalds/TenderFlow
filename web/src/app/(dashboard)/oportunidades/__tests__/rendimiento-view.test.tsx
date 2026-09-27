@@ -179,7 +179,7 @@ describe("RendimientoView · funnel", () => {
     render(<Vista />);
 
     expect(screen.queryByText(/de las identificadas/)).not.toBeInTheDocument();
-    expect(screen.getByText("Todavía no hay pursuits")).toBeInTheDocument();
+    expect(screen.getByText("Todavía no hay oportunidades")).toBeInTheDocument();
     // Y sin embudo tampoco hay paneles de detalle que sostener.
     expect(screen.queryByText("Calidad del Radar")).not.toBeInTheDocument();
   });

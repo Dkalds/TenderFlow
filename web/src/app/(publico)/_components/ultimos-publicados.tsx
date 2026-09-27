@@ -4,6 +4,7 @@ import { estadoLabel } from "@/lib/estados";
 import { rutaLicitacion } from "@/lib/slug";
 import { formatCurrency, formatDate, ZONA_ES } from "@/lib/utils";
 import { CONTENIDO } from "../_content/landing";
+import { EnlaceIrPublico } from "./enlace-ir";
 import { plazoPresentacion } from "./plazo";
 
 /**
@@ -91,12 +92,9 @@ export async function UltimosPublicados() {
         })}
       </ul>
 
-      <Link
-        href="/licitaciones"
-        className="text-primary focus-visible:ring-ring mt-3 inline-flex rounded-sm text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:outline-none"
-      >
+      <EnlaceIrPublico href="/licitaciones" className="mt-3">
         {CONTENIDO.ultimosEnlace}
-      </Link>
+      </EnlaceIrPublico>
     </section>
   );
 }

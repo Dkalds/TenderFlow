@@ -33,15 +33,17 @@
 import * as React from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCheck, ChevronRight, History } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { SUPERFICIE_PANEL } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { registrarEvento } from "@/lib/analytics";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { analyticsKeys } from "@/lib/query-keys";
-import { formatDateTime, formatRelativeTime, truncate } from "@/lib/utils";
+import { cn, formatDateTime, formatRelativeTime, truncate } from "@/lib/utils";
 
 type NovedadesDesdeUltimaVisita = Schemas["NovedadesDesdeUltimaVisita"];
 type Novedad = Schemas["Novedad"];
@@ -79,16 +81,13 @@ function LineaNovedad({ novedad }: { novedad: Novedad }) {
   const contenido = (
     <>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12px] leading-[1.4] font-medium">{truncate(novedad.titulo, 110)}</span>
+        <span className="block truncate text-tf-meta font-medium">{truncate(novedad.titulo, 110)}</span>
         {novedad.detalle && (
-          <span className="text-muted-foreground block truncate text-[11px] leading-[1.4]">{novedad.detalle}</span>
+          <span className="block truncate text-tf-micro text-muted-foreground">{novedad.detalle}</span>
         )}
       </span>
       {novedad.cuando && (
-        <time
-          dateTime={novedad.cuando}
-          className="text-muted-foreground flex-none text-[10.5px] whitespace-nowrap"
-        >
+        <time dateTime={novedad.cuando} className="flex-none whitespace-nowrap text-tf-micro text-muted-foreground">
           {formatRelativeTime(novedad.cuando)}
         </time>
       )}
@@ -99,7 +98,7 @@ function LineaNovedad({ novedad }: { novedad: Novedad }) {
       {novedad.licitacion_id ? (
         <Link
           href={`/detalle?lic=${encodeURIComponent(novedad.licitacion_id)}`}
-          className="hover:bg-muted/40 flex items-baseline gap-3 rounded-md px-1.5 py-1 transition-colors"
+          className="flex items-baseline gap-3 rounded-md px-1.5 py-1 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
         >
           {contenido}
         </Link>
@@ -131,38 +130,33 @@ export function DesdeUltimaVisita() {
 
   const items = data.items ?? [];
   const desde = formatDateTime(data.desde);
-  const recorte = data.ventana_recortada ? " (tu última visita es anterior; no se mira más atrás)" : "";
 
   return (
-    <section
-      aria-labelledby="desde-ultima-visita-titulo"
-      className="border-border/60 bg-card/60 mb-3.5 rounded-xl border px-3.5 py-2.5"
-    >
-      <div className="flex items-center gap-2">
-        <h2
-          id="desde-ultima-visita-titulo"
-          className="flex min-w-0 flex-1 items-center gap-2 text-[12px] leading-[1.4] font-semibold"
-        >
-          <History className="text-primary h-3.5 w-3.5 flex-none" aria-hidden="true" />
+    <section aria-labelledby="desde-ultima-visita-titulo" className={cn(SUPERFICIE_PANEL, "mb-3.5 px-3.5 py-2.5")}>
+      <div className="flex items-center gap-2.5">
+        <h2 id="desde-ultima-visita-titulo" className="min-w-0 text-tf-body font-semibold">
           {items.length > 0
             ? `${items.length} ${items.length === 1 ? "cambio" : "cambios"} en lo que sigues desde el ${desde}`
             : `Sin cambios en lo que sigues desde el ${desde}`}
-          <span className="text-muted-foreground text-[10.5px] font-normal">
-            expedientes seguidos, sus pliegos y recursos, y las oportunidades de tu equipo{recorte}
-          </span>
         </h2>
         {items.length > 0 && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => marcarVisto.mutate()}
             disabled={marcarVisto.isPending}
-            className="text-muted-foreground hover:text-foreground inline-flex min-h-6 flex-none items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition-colors disabled:opacity-60"
+            className="ml-auto flex-none text-muted-foreground"
           >
-            <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
             {marcarVisto.isPending ? "Marcando…" : "Marcar todo como visto"}
-          </button>
+          </Button>
         )}
       </div>
+      {data.ventana_recortada && (
+        <p className="mt-0.5 text-tf-micro text-muted-foreground">
+          Tu última visita es anterior a esa fecha: no se mira más atrás.
+        </p>
+      )}
 
       {items.length > 0 && (
         <ul className="mt-1.5 flex flex-col">
@@ -174,8 +168,8 @@ export function DesdeUltimaVisita() {
 
       {items.length > VISIBLES && (
         <details className="group">
-          <summary className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer list-none items-center gap-1 py-1 text-[11px] transition-colors">
-            <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" aria-hidden="true" />
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 py-1 text-tf-micro text-muted-foreground transition-colors hover:text-foreground">
+            <ChevronRight className="h-3 w-3 transition-[rotate] group-open:rotate-90" aria-hidden="true" />
             Ver {items.length - VISIBLES} más
           </summary>
           <ul className="flex flex-col">

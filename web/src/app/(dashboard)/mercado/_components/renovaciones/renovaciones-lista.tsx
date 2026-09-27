@@ -28,7 +28,7 @@ interface RenovacionesRowContext {
  * per-render data (the navigate callback) is passed via `context` instead.
  */
 function VirtuosoTable(props: React.ComponentProps<"table">) {
-  return <table {...props} className="w-full caption-bottom text-sm" />;
+  return <table {...props} className="w-full caption-bottom text-tf-body" />;
 }
 
 function VirtuosoTableRow({
@@ -40,7 +40,7 @@ function VirtuosoTableRow({
     <TableRow
       {...props}
       tabIndex={0}
-      className="cursor-pointer hover:bg-muted/50"
+      className="cursor-pointer"
       onClick={() => context?.onRowActivate(item.licitacion_id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") context?.onRowActivate(item.licitacion_id);
@@ -100,7 +100,7 @@ export function RenovacionesLista({
         // contratos que vencen».
         hint={empresaSearch ? `${formatNumber(items.length)} coinciden con el filtro` : undefined}
         actions={
-          <div className="flex h-7 w-56 items-center gap-1.5 rounded-md border border-border/70 bg-card px-2 focus-within:border-primary/50">
+          <div className="flex h-8 w-56 items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 focus-within:border-primary/50 md:h-7">
             <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
             <input
               type="search"
@@ -108,15 +108,14 @@ export function RenovacionesLista({
               onChange={(e) => onEmpresaSearchChange(e.target.value)}
               placeholder="Empresa, órgano o título…"
               aria-label="Filtrar los contratos servidos por empresa, órgano o título"
-              className="h-6 min-w-0 flex-1 border-0 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground"
+              className="h-6 min-w-0 flex-1 border-0 bg-transparent text-tf-meta text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
         }
       />
-      <p className="-mt-1.5 mb-3 max-w-[78ch] text-[10.5px] leading-[1.45] text-pretty text-muted-foreground">
-        Top {formatNumber(TOP_OPORTUNIDADES)} por oportunidad (riesgo × importe × urgencia). El orden y
-        el recorte los hace el servidor sobre el dataset completo, así que esto no son todos los
-        contratos que vencen en la ventana: son los {formatNumber(TOP_OPORTUNIDADES)} más accionables.
+      <p className="-mt-1.5 mb-3 max-w-[78ch] text-pretty text-tf-meta text-muted-foreground">
+        Los {formatNumber(TOP_OPORTUNIDADES)} contratos más accionables de la ventana, ordenados por
+        riesgo × importe × urgencia. No son todos los que vencen: el resto queda fuera de esta lista.
       </p>
       {isLoading ? (
         <PanelLoading height={ALTO} />
@@ -124,7 +123,7 @@ export function RenovacionesLista({
         <PanelEmpty
           message={
             empresaSearch
-              ? "Ningún contrato del top servido coincide con el filtro."
+              ? "Ningún contrato de la lista coincide con el filtro."
               : "Ningún contrato vence en esta ventana. Amplía el horizonte para ver más."
           }
           height={ALTO}

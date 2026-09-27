@@ -13,11 +13,10 @@
  */
 
 import * as React from "react";
-import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { Aviso, Panel, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -26,6 +25,7 @@ import {
   useOrganizationCapabilities,
   useSaveOrganizationCapabilities,
 } from "../_hooks/use-organization-capacidad";
+import { getErrorMessage } from "@/lib/query-feedback";
 import {
   type Certificacion,
   type Facturacion,
@@ -85,37 +85,33 @@ export function OrganizacionCapacidadCard({
       setBorrador(null);
       toast.success("Perfil de capacidad guardado");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar el perfil");
+      toast.error(getErrorMessage(error, "accion"));
     }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Perfil de capacidad</CardTitle>
-        <CardDescription>
-          Con qué puede acreditarse la organización. Es lo que el checklist de cada oportunidad
-          contrasta contra el pliego, así que lo que no esté aquí saldrá allí como «desconocido».
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <Panel>
+      <PanelTitle title="Perfil de capacidad" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Con qué puede acreditarse la organización. Es lo que el checklist de cada oportunidad contrasta con el
+        pliego, así que lo que no esté aquí saldrá allí como «desconocido».
+      </p>
+      <div className="space-y-5">
         {capacidad.isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : (
           <>
             {faltan.length > 0 && (
-              <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/30 p-3">
-                <p className="text-sm text-muted-foreground">
-                  El go/no-go responderá «desconocido» en estas familias hasta que las rellenéis:
-                </p>
-                <div className="flex flex-wrap gap-1.5">
+              <Aviso tone="warning" role="note">
+                <p>El go/no-go responderá «desconocido» en estas familias hasta que las rellenes:</p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {faltan.map((campo) => (
-                    <Badge key={campo} variant="outline">
+                    <Badge key={campo} variant="outline" size="sm">
                       {CAMPO_LABELS[campo]}
                     </Badge>
                   ))}
                 </div>
-              </div>
+              </Aviso>
             )}
 
             <Seccion<Certificacion>
@@ -169,22 +165,17 @@ export function OrganizacionCapacidadCard({
 
             {canManage && sucio && (
               <Button type="button" size="sm" onClick={submit} disabled={guardar.isPending}>
-                {guardar.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                Guardar perfil
+                {guardar.isPending ? "Guardando…" : "Guardar perfil"}
               </Button>
             )}
             {!canManage && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-tf-meta text-muted-foreground">
                 Solo el propietario o un administrador pueden cambiar el perfil.
               </p>
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

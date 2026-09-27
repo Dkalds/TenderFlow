@@ -7,7 +7,7 @@
  * unifique.
  */
 
-/** Los dos modos de la consola: búsqueda semántica o conversación con el LLM. */
+/** Los dos modos de la consola: búsqueda («Búsqueda») o conversación con el asistente («Preguntar»). */
 export type Mode = "search" | "ask";
 
 export interface SearchResult {
@@ -26,7 +26,7 @@ export interface SearchResult {
 /** Ajustes que el usuario persiste en `localStorage`, no en el servidor. */
 export interface InvestigadorConfig {
   topK: number;
-  /** Peso semántico de la fusión RRF; viaja al backend como `alpha`. */
+  /** «Tipo de coincidencia»: cuánto pesa el significado frente a las palabras exactas en la fusión; viaja al backend como `alpha`. */
   alpha: number;
   model: string;
   useGlobalFilters: boolean;

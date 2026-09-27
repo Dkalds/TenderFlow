@@ -2,7 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO } from "../_content/landing";
 import { EnlaceSolicitarAcceso } from "./enlace-solicitar-acceso";
-import { CTA_PRIMARIO } from "./landing-piel";
+import { CTA_PRIMARIO } from "./piel-publica";
 
 /* CTA de acceso. El destino lo decide `solicitarAccesoHref` (lib/contacto) y
  * hoy es siempre el ancla del formulario de esta misma página: sus dos

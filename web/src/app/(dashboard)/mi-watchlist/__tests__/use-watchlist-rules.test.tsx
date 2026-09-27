@@ -258,7 +258,7 @@ describe("ccaaOptions", () => {
     expect(ccaaOptions([])).toBe(CCAA_FALLBACK);
   });
 
-  it("usa las del servidor con «— Todas —» delante", () => {
+  it("usa las del servidor con «Todas» delante", () => {
     expect(ccaaOptions(["Madrid", "Galicia"])).toEqual([
       "__all__",
       "Madrid",

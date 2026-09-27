@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Una familia del checklist go/no-go y los requisitos que la componen (S2.3).
+ * Una familia del checklist Go/No-Go y los requisitos que la componen (S2.3).
  *
- * Todo lo que se pinta aquí viene resuelto del backend: el veredicto, el motivo
+ * Todo lo que se pinta aquí viene resuelto de la API: el veredicto, el motivo
  * en castellano, la cita del pliego y el dato de la organización que se usó
  * (`services/go_no_go.py`). Este componente no compara nada ni completa huecos
  * — sólo hay una regla propia, y es defensiva: **un `cumple` sin cita no se
@@ -12,8 +12,8 @@
  * que el módulo de dominio hace con ese caso.
  */
 
-import Link from "next/link";
 import { ExternalLink } from "lucide-react";
+import { EnlaceIr } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import type {
   ChecklistFamiliaResultado,
@@ -24,11 +24,11 @@ import type { DocumentoSummary } from "@/lib/api-types";
 
 const VEREDICTO_BADGE: Record<
   ChecklistVeredicto,
-  { label: string; variant: "success" | "destructive" | "secondary" }
+  { label: string; variant: "success" | "destructive" | "neutral" }
 > = {
   cumple: { label: "Cumple", variant: "success" },
   no_cumple: { label: "No cumple", variant: "destructive" },
-  desconocido: { label: "Desconocido", variant: "secondary" },
+  desconocido: { label: "Desconocido", variant: "neutral" },
 };
 
 const SIN_CITA =
@@ -95,7 +95,7 @@ function ChecklistItemRow({
   const faltaDatoPropio = veredicto === "desconocido" && !item.dato_organizacion;
 
   return (
-    <li className="rounded-lg border border-border/60 bg-background/40 p-3">
+    <li className="rounded-md border border-border/60 bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 text-tf-body font-medium leading-snug">{item.requisito}</p>
         <VeredictoBadge veredicto={veredicto} />
@@ -115,12 +115,9 @@ function ChecklistItemRow({
       </p>
 
       {faltaDatoPropio && (
-        <Link
-          href="/equipo"
-          className="mt-1.5 inline-flex items-center gap-1 text-tf-meta font-medium text-primary hover:underline"
-        >
-          Completar el perfil de capacidad (Equipo → Organización)
-        </Link>
+        <EnlaceIr href="/equipo" className="mt-1.5">
+          Completar el perfil de capacidad (Equipo › Organización)
+        </EnlaceIr>
       )}
 
       {evidencia.length > 0 ? (
@@ -128,7 +125,7 @@ function ChecklistItemRow({
           <summary className="cursor-pointer font-medium text-primary hover:underline">
             {evidencia.length} cita{evidencia.length === 1 ? "" : "s"} del pliego
           </summary>
-          <ul className="mt-2 space-y-2 border-l-2 border-primary/25 pl-3">
+          <ul className="mt-2 space-y-2 border-l-2 border-primary/30 pl-3">
             {evidencia.map((cita, index) => {
               const fuente = citaPresentation(cita.documento_id, cita.page_number, docsById);
               return (
@@ -179,7 +176,7 @@ export function ChecklistFamilia({
     // etiquetas de colores. `open` es constante, así que React no vuelve a
     // tocar el atributo y plegarla a mano se respeta. Las citas del pliego sí
     // van plegadas, como en la pestaña Pliego.
-    <details open className="rounded-[10px] border border-border/60 bg-card/40 px-3 py-2.5">
+    <details open className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2.5">
         <span className="min-w-0 flex-1 text-tf-body font-semibold">{familia.etiqueta}</span>
         <span className="tf-tnum flex-none text-tf-micro text-muted-foreground">

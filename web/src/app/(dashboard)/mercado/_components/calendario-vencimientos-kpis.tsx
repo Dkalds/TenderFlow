@@ -11,12 +11,10 @@
  */
 
 import Link from "next/link";
-import { AlarmClock, CalendarClock, CalendarRange, Flame } from "lucide-react";
 
-import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelTitle, StatCell, StatStrip } from "@/components/console/panel";
 import { useScopedHref } from "@/lib/filters";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { EMPTY, formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 
 import type { CalendarWeek, VencimientosResponse } from "../_hooks/use-calendario-view";
 
@@ -50,43 +48,39 @@ export function CalendarioVencimientosKpis({
   const cargando = isLoading || !kpis;
 
   return (
-    <KpiStrip columns={4}>
-      <KpiCard
-        title="Vencen hoy"
-        value={cargando ? undefined : formatNumber(kpis?.vencen_hoy ?? 0)}
-        icon={AlarmClock}
+    <StatStrip columns={4}>
+      <StatCell
+        label="Vencen hoy"
+        value={formatNumber(kpis?.vencen_hoy ?? 0)}
         href={hoy ? scopedHref(cierreHref(hoy, hoy)) : undefined}
         loading={cargando}
       />
-      <KpiCard
-        title="Vencen en 7 días"
-        subtitle="Hoy y los seis siguientes"
-        value={cargando ? undefined : formatNumber(kpis?.vencen_7d ?? 0)}
-        icon={CalendarClock}
+      <StatCell
+        label="Vencen en 7 días"
+        hint="Hoy y los seis siguientes"
+        value={formatNumber(kpis?.vencen_7d ?? 0)}
         href={hoy ? scopedHref(cierreHref(hoy, sumarDias(hoy, 6))) : undefined}
         loading={cargando}
       />
-      <KpiCard
-        title="Vencen este mes"
-        subtitle="De hoy a fin de mes"
-        value={cargando ? undefined : formatNumber(kpis?.vencen_resto_mes ?? 0)}
-        icon={CalendarRange}
+      <StatCell
+        label="Vencen este mes"
+        hint="De hoy a fin de mes"
+        value={formatNumber(kpis?.vencen_resto_mes ?? 0)}
         href={hoy ? scopedHref(cierreHref(hoy, finDeMes(hoy))) : undefined}
         loading={cargando}
       />
-      <KpiCard
-        title="Día pico de cierres"
-        value={cargando ? undefined : pico ? pico.fecha : "-"}
-        subtitle={
+      <StatCell
+        label="Día con más cierres"
+        value={pico ? formatDate(pico.fecha) : EMPTY}
+        hint={
           pico
             ? `${formatNumber(pico.count)} cierres · ${formatCurrency(pico.importe)}`
             : "Sin cierres en el año elegido"
         }
-        icon={Flame}
         href={pico ? scopedHref(cierreHref(pico.fecha, pico.fecha)) : undefined}
         loading={cargando}
       />
-    </KpiStrip>
+    </StatStrip>
   );
 }
 
@@ -101,35 +95,30 @@ export function ProximosSieteDias({ weeks }: { weeks: CalendarWeek[] }) {
   if (dias.length === 0) return null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Próximos 7 días</CardTitle>
-        <CardDescription>Cierres de plazo de hoy y los seis días siguientes.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-          {dias.map((d) => {
-            const texto = `${d.esHoy ? "Hoy" : d.dateStr.slice(5)}: ${formatNumber(d.count)}`;
-            return (
-              <li key={d.dateStr}>
-                {d.count > 0 ? (
-                  <Link
-                    href={scopedHref(cierreHref(d.dateStr, d.dateStr))}
-                    aria-label={`${d.dateStr}: ${d.count} cierres. Ver licitaciones`}
-                    className="flex min-h-11 items-center justify-center rounded-md border px-2 text-sm font-medium tabular-nums hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {texto}
-                  </Link>
-                ) : (
-                  <span className="flex min-h-11 items-center justify-center rounded-md border border-dashed px-2 text-sm text-muted-foreground tabular-nums">
-                    {texto}
-                  </span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Próximos 7 días" hint="Cierres de plazo de hoy y los seis días siguientes." />
+      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        {dias.map((d) => {
+          const texto = `${d.esHoy ? "Hoy" : d.dateStr.slice(5)}: ${formatNumber(d.count)}`;
+          return (
+            <li key={d.dateStr}>
+              {d.count > 0 ? (
+                <Link
+                  href={scopedHref(cierreHref(d.dateStr, d.dateStr))}
+                  aria-label={`${d.dateStr}: ${d.count} cierres. Ver licitaciones`}
+                  className="flex min-h-11 items-center justify-center rounded-md border border-border/60 px-2 text-tf-body font-medium transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {texto}
+                </Link>
+              ) : (
+                <span className="flex min-h-11 items-center justify-center rounded-md border border-border/40 px-2 text-tf-body text-muted-foreground">
+                  {texto}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
   );
 }

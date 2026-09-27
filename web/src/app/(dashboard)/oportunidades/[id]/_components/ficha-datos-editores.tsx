@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useOrganizationMembers } from "@/hooks/use-organization";
 import { useUpdatePursuit, type Pursuit, type UpdatePursuitInput } from "@/hooks/use-pursuits";
 import { ApiError } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { numeroDeTexto } from "@/lib/forms/valores";
 import { formatCompactCurrency } from "@/lib/utils";
 
@@ -39,9 +40,7 @@ function useGuardarDato(pursuit: Pursuit, onCerrar: () => void) {
           toast.success(exito);
         },
         onError: (error) =>
-          toast.error(mensajeDeError(error, fallo), {
-            description: error instanceof Error ? error.message : undefined,
-          }),
+          toast.error(mensajeDeError(error, fallo), { description: getErrorMessage(error, "accion") }),
       },
     );
   return { guardar, guardando: actualizar.isPending };
@@ -90,13 +89,13 @@ export function EditorOferta({ pursuit, onCerrar }: { pursuit: Pursuit; onCerrar
         onKeyDown={(event) => {
           if (event.key === "Escape") onCerrar();
         }}
-        placeholder="Ej. 170000"
+        placeholder="p. ej. 170000"
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
-        className="h-8 font-mono"
+        className="h-8"
       />
       {error ? (
-        <p id={errorId} role="alert" className="text-destructive text-tf-micro leading-[1.35]">
+        <p id={errorId} role="alert" className="text-destructive text-tf-meta">
           {error}
         </p>
       ) : null}
@@ -169,7 +168,7 @@ export function BotonEditar({ etiqueta, onClick }: { etiqueta: string; onClick: 
       aria-label={etiqueta}
       onClick={onClick}
       // 24×24 de diana (WCAG 2.5.8) con margen negativo: el rótulo no se mueve.
-      className="tf-pressable text-muted-foreground hover:text-foreground hover:bg-muted -my-1 -mr-1 grid size-6 flex-none place-items-center rounded-md transition-colors"
+      className="tf-pressable text-muted-foreground hover:text-foreground hover:bg-muted -my-1 -mr-1 grid size-6 flex-none place-items-center rounded-md"
     >
       <Pencil className="h-3 w-3" aria-hidden="true" />
     </button>

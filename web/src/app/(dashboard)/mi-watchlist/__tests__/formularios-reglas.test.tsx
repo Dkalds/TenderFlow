@@ -63,7 +63,7 @@ describe("Nueva regla", () => {
     fireEvent.change(screen.getByLabelText("Palabra clave *"), { target: { value: "SAP" } });
     const importe = screen.getByLabelText("Importe mínimo");
     fireEvent.change(importe, { target: { value: "-5" } });
-    fireEvent.click(screen.getByRole("button", { name: /Agregar regla/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Añadir regla/ }));
 
     const error = await screen.findByText(/Escribe un importe en euros/);
     expect(error).toHaveAttribute("id", "wl-importe-error");
@@ -86,7 +86,7 @@ describe("Nueva regla", () => {
     const keyword = screen.getByLabelText("Palabra clave *");
     fireEvent.change(keyword, { target: { value: " SAP " } });
     fireEvent.change(screen.getByLabelText("Importe mínimo"), { target: { value: "1500.5" } });
-    fireEvent.click(screen.getByRole("button", { name: /Agregar regla/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Añadir regla/ }));
 
     await waitFor(() => expect(peticiones).toHaveLength(1));
     expect(peticiones[0]).toMatchObject({
@@ -117,13 +117,13 @@ describe("Editar regla", { timeout: 20_000 }, () => {
       "id",
       "edit-wl-plazo-error",
     );
-    expect(plazo).toHaveAttribute("aria-describedby", "edit-wl-plazo-error edit-wl-plazo-note");
+    expect(plazo).toHaveAttribute("aria-describedby", "edit-wl-plazo-error edit-wl-plazo-ayuda");
     expect(peticiones).toEqual([]);
 
     // Tras el primer intento revalida al escribir: corregirlo quita el error.
     fireEvent.change(plazo, { target: { value: "15" } });
     await waitFor(() => expect(dialogo.queryByText(/número entero entre 0 y 365/)).toBeNull());
-    expect(plazo).toHaveAttribute("aria-describedby", "edit-wl-plazo-note");
+    expect(plazo).toHaveAttribute("aria-describedby", "edit-wl-plazo-ayuda");
 
     fireEvent.click(dialogo.getByRole("button", { name: "Guardar cambios" }));
     await waitFor(() => expect(peticiones).toHaveLength(1));

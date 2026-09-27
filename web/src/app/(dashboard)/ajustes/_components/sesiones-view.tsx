@@ -14,11 +14,9 @@
  */
 
 import * as React from "react";
-import { Laptop, ShieldCheck } from "lucide-react";
+import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRevocarSesion, useSesiones } from "@/hooks/use-ajustes";
 import { formatDateTime } from "@/lib/utils";
@@ -51,7 +49,7 @@ function dispositivo(ua: string | null | undefined): string {
 }
 
 export default function SesionesView() {
-  const { data, isLoading, isError } = useSesiones();
+  const { data, isLoading, error, refetch } = useSesiones();
   const revocar = useRevocarSesion();
   const sesiones = data?.items ?? [];
 
@@ -64,11 +62,12 @@ export default function SesionesView() {
     );
   }
 
-  if (isError) {
+  if (error) {
     return (
-      <EmptyState
+      <PanelError
         title="No se pudieron cargar tus sesiones"
-        hint="Volvé a intentarlo en un momento. Si el problema sigue, cerrá todas las sesiones desde el menú de usuario."
+        error={error}
+        onRetry={() => void refetch()}
       />
     );
   }
@@ -77,7 +76,7 @@ export default function SesionesView() {
     // No debería pasar —quien lee esta pantalla tiene al menos su sesión— pero
     // un estado vacío mudo sería peor que uno que dice qué significa.
     return (
-      <EmptyState
+      <PanelEmpty
         title="Sin sesiones activas"
         hint="Solo aparecen las sesiones abiertas y sin caducar."
       />
@@ -85,37 +84,31 @@ export default function SesionesView() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-          Sesiones activas ({sesiones.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
+    <Panel>
+      <PanelTitle title={`Sesiones activas (${sesiones.length})`} />
+      <ul className="space-y-2">
         {sesiones.map((sesion) => (
-          <div
+          <li
             key={sesion.id}
-            className="border-border flex items-start justify-between gap-3 rounded-lg border p-3"
+            className="flex items-start justify-between gap-3 rounded-md border border-border/60 p-3"
           >
             <div className="min-w-0">
-              <p className="flex items-center gap-2 text-sm font-medium">
-                <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <p className="flex flex-wrap items-center gap-2 text-tf-body font-medium">
                 {dispositivo(sesion.user_agent)}
                 {sesion.actual ? (
-                  <Badge variant="secondary" className="text-[10px]">
+                  <Badge variant="secondary" size="sm">
                     Esta sesión
                   </Badge>
                 ) : null}
               </p>
-              <p className="text-muted-foreground mt-1 text-xs">
+              <p className="text-muted-foreground mt-1 text-tf-meta">
                 {sesion.ip ? `Desde ${sesion.ip} · ` : ""}
                 Iniciada {fecha(sesion.created_at)} · Caduca {fecha(sesion.expires_at)}
               </p>
             </div>
             {sesion.actual ? (
-              <span className="text-muted-foreground shrink-0 text-xs">
-                Cerrá sesión desde el menú
+              <span className="text-muted-foreground shrink-0 text-tf-meta">
+                Cierra sesión desde el menú
               </span>
             ) : (
               <Button
@@ -127,9 +120,9 @@ export default function SesionesView() {
                 Cerrar
               </Button>
             )}
-          </div>
+          </li>
         ))}
-      </CardContent>
-    </Card>
+      </ul>
+    </Panel>
   );
 }

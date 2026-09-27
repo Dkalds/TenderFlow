@@ -9,7 +9,7 @@
  * nadie lo encendería — «infraestructura sin consumidor».
  *
  * Vive junto a `TecnologiasOrganizacionCard` porque es lo mismo: un ajuste de
- * organización, no del usuario, editable sólo por owner/admin.
+ * organización, no del usuario, editable sólo por propietarios y administradores.
  *
  * La hora se guarda en **UTC** (el scheduler razona en UTC de punta a punta,
  * ADR-033) y aquí se traduce al enseñarla. La traducción se calcula sobre la
@@ -19,8 +19,9 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -28,10 +29,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveOrganizationId, useOrganizations } from "@/hooks/use-organization";
 import { DIAS, useGuardarReportSchedule, useReportSchedule } from "@/hooks/use-report-schedule";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { formatDateTime, formatDiaYHora } from "@/lib/utils";
 
 /** Tope de la lista explícita. Espejo de `ReportSchedule.destinatarios` (DTO). */
@@ -64,12 +67,12 @@ function explicarEstado(estado: string): string {
   if (estado.startsWith("enviado:")) {
     const [salieron, total] = estado.slice("enviado:".length).split("/");
     return salieron === total
-      ? `Enviado a ${total} destinatario(s)`
-      : `Enviado a ${salieron} de ${total}; el resto lo rechazó el transporte`;
+      ? `Enviado a ${total} ${total === "1" ? "destinatario" : "destinatarios"}`
+      : `Enviado a ${salieron} de ${total}; los demás correos se rechazaron`;
   }
   if (estado === "vacio") return "No se envió: esa semana no había nada que contar";
-  if (estado === "sin_destinatarios") return "No se envió: nadie con correo y el informe encendido";
-  if (estado === "fallido") return "No salió ninguno: fallo del proveedor de correo";
+  if (estado === "sin_destinatarios") return "No se envió: no había ningún destinatario con correo";
+  if (estado === "fallido") return "No salió ninguno: falló el proveedor de correo";
   return estado;
 }
 
@@ -139,29 +142,25 @@ export function InformeSemanalCard() {
         toast.success(
           activo
             ? `Informe programado: ${DIAS[diaSemana]} a las ${String(horaUtc).padStart(2, "0")}:00 UTC.`
-            : "Informe semanal apagado.",
+            : "Informe semanal desactivado.",
         );
       })
-      .catch((error: unknown) =>
-        toast.error(error instanceof Error ? error.message : "No se pudo guardar"),
-      );
+      .catch((error: unknown) => toast.error(getErrorMessage(error, "accion")));
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Informe semanal por correo</CardTitle>
-        <CardDescription>
-          El cuadro de Dirección —embudo abierto, plazos a catorce días, ganadas y perdidas de la
-          semana— entregado por correo, con el mismo contenido en un PDF adjunto. Nace apagado.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Panel>
+      <PanelTitle title="Informe semanal por correo" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        El resumen semanal de Dirección (embudo abierto, plazos a catorce días, ganadas y perdidas) por correo, con
+        el mismo contenido en PDF. Está desactivado hasta que lo actives.
+      </p>
+      <div className="space-y-4">
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Cargando programación…</p>
+          <Skeleton className="h-24 w-full" />
         ) : (
           <>
-            <label className="flex items-center gap-3 text-sm">
+            <label className="flex items-center gap-3 text-tf-body">
               <Switch
                 checked={activo}
                 onCheckedChange={(valor) => {
@@ -174,10 +173,7 @@ export function InformeSemanalCard() {
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <label htmlFor="informe-dia" className="text-sm font-medium">
-                  Día
-                </label>
+              <Field label="Día" htmlFor="informe-dia">
                 <Select
                   value={String(diaSemana)}
                   onValueChange={(valor) => {
@@ -196,12 +192,9 @@ export function InformeSemanalCard() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </Field>
 
-              <div className="space-y-1.5">
-                <label htmlFor="informe-hora" className="text-sm font-medium">
-                  Hora (UTC)
-                </label>
+              <Field label="Hora (UTC)" htmlFor="informe-hora">
                 <Select
                   value={String(horaUtc)}
                   onValueChange={(valor) => {
@@ -220,42 +213,38 @@ export function InformeSemanalCard() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </Field>
             </div>
 
             {/* La pipeline corre cada cuatro horas: la hora programada es el
                 momento a partir del cual sale, no el minuto exacto. Decirlo
                 aquí evita el parte de incidencias de las 07:05. */}
-            <p className="text-xs text-muted-foreground">
-              En tu horario: <strong>{formatDiaYHora(proxima)}</strong>. Sale en la primera pasada
-              posterior a esa hora, no en punto.
+            <p className="text-tf-meta text-muted-foreground">
+              En tu horario: <strong className="font-medium text-foreground">{formatDiaYHora(proxima)}</strong>. Se
+              envía a partir de esa hora y puede tardar hasta cuatro horas.
             </p>
 
-            <div className="space-y-1.5">
-              <label htmlFor="informe-destinatarios" className="text-sm font-medium">
-                Destinatarios
-              </label>
+            <Field
+              label="Destinatarios"
+              htmlFor="informe-destinatarios"
+              hint="Uno por línea. Déjalo vacío para que llegue a los propietarios y administradores que haya en cada envío. Si escribes direcciones, solo se envía a esas, aunque no sean cuentas de TenderFlow."
+            >
               <Textarea
                 id="informe-destinatarios"
                 rows={3}
                 value={destinatarios}
-                placeholder="Vacío = todos los owner y admin de la organización"
+                placeholder="Vacío = todos los propietarios y administradores de la organización"
                 onChange={(e) => {
                   setDestinatarios(e.target.value);
                   setDirty(true);
                 }}
               />
-              <p className="text-xs text-muted-foreground">
-                Uno por línea. Déjalo vacío para que vaya a los owner y admin vigentes en cada
-                envío —así dar de alta a un administrador nuevo no obliga a volver aquí—. Una lista
-                explícita los sustituye y admite buzones que no son cuentas de la aplicación.
-              </p>
-            </div>
+            </Field>
 
             {data?.ultimo_envio_at && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-tf-meta text-muted-foreground">
                 Último envío: {formatDateTime(data.ultimo_envio_at)}
-                {data.ultimo_estado ? ` — ${explicarEstado(data.ultimo_estado)}` : ""}
+                {data.ultimo_estado ? ` · ${explicarEstado(data.ultimo_estado)}` : ""}
               </p>
             )}
 
@@ -264,7 +253,7 @@ export function InformeSemanalCard() {
             </Button>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

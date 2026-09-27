@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Recuento de la cola de errores, con la salida hacia Calidad de Datos.
+ * Recuento de la cola de errores, con la salida hacia Calidad de datos.
  *
  * Aquí sólo se cuenta. La inspección entrada a entrada y el reencolado viven en
  * Administración (`DlqCard`, sobre `/admin/dlq`); este panel enlaza allí en vez
@@ -10,52 +10,35 @@
  */
 
 import Link from "next/link";
-import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Aviso, Panel, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { cn, formatNumber } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 
 export function DlqPanel({ dlqCount }: { dlqCount: number }) {
   const hayCola = dlqCount > 0;
 
   return (
-    <Card
-      className={cn(hayCola && "border-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20")}
-    >
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <AlertTriangle
-            className={cn("h-4 w-4", hayCola ? "text-yellow-600" : "text-muted-foreground")}
-          />
-          Dead Letter Queue (DLQ)
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex items-center justify-between">
+    <Panel>
+      <PanelTitle title="Cola de errores (DLQ)" />
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-2xl font-bold">{formatNumber(dlqCount)}</p>
-          <p className="text-sm text-muted-foreground">registros en cola de errores</p>
-          {hayCola && (
-            <Badge variant="destructive" className="mt-2">
-              Requiere atención
-            </Badge>
-          )}
+          <p className="tf-tnum text-tf-title font-semibold">{formatNumber(dlqCount)}</p>
+          <p className="text-tf-meta text-muted-foreground">registros pendientes de reprocesar</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline">
-            <Link href="/calidad-datos">
-              <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />
-              Calidad de datos
-            </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/ops?vista=calidad">Calidad de datos</Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="/ops?vista=administracion">
-              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-              Inspeccionar y reencolar
-            </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/ops?vista=administracion">Inspeccionar y reencolar</Link>
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+      {hayCola && (
+        <Aviso tone="warning" className="mt-3">
+          Hay registros en la cola: revísalos y reencólalos desde Administración.
+        </Aviso>
+      )}
+    </Panel>
   );
 }

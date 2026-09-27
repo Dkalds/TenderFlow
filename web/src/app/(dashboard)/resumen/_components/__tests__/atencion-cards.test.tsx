@@ -122,15 +122,15 @@ describe("AtencionCards", () => {
     const href = hrefDe("Ver la cola de cierre");
     expect(href).toMatch(/cierre_desde=\d{4}-\d{2}-\d{2}/);
     expect(href).toMatch(/cierre_hasta=\d{4}-\d{2}-\d{2}/);
-    expect(screen.getByText("/detalle · cierra en 48h")).toBeInTheDocument();
-    expect(screen.queryByText(/≈ \/detalle · cierra en 48h/)).not.toBeInTheDocument();
+    expect(screen.getByText("Abre Detalle: cierran en 48 h")).toBeInTheDocument();
+    expect(screen.queryByText(/Aprox\. · Abre Detalle: cierran/)).not.toBeInTheDocument();
   });
 
   it("«Grandes en plazo» corta por el P75 que publica el endpoint", () => {
     renderCards();
     expect(hrefDe("Grandes en plazo")).toContain("importe_min=250000");
     expect(hrefDe("Grandes en plazo")).toContain("solo_abiertas=true");
-    expect(screen.getByText("/detalle abiertas · importe ≥ P75")).toBeInTheDocument();
+    expect(screen.getByText("Abre Detalle: abiertas del 25 % de mayor importe")).toBeInTheDocument();
   });
 
   it("sin P75 publicado, «Grandes en plazo» vuelve a declararse aproximada", () => {
@@ -139,7 +139,9 @@ describe("AtencionCards", () => {
     // que no es el que produjo la cifra.
     renderCards({ ...HOY, importe_p75: null });
     expect(hrefDe("Grandes en plazo")).not.toContain("importe_min");
-    expect(screen.getByText(/≈ \/detalle abiertas · sin el corte P75/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Aprox\. · Abre Detalle: todas las abiertas, sin el umbral de importe/),
+    ).toBeInTheDocument();
   });
 
   it("sin nada que vencer, la cola se resuelve en verde y no pide el desglose", () => {

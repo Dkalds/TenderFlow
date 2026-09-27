@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { CONTENIDO } from "../_content/landing";
 import { FILA_EXPLORAR } from "./landing-piel";
 
@@ -10,6 +10,10 @@ import { FILA_EXPLORAR } from "./landing-piel";
  * —la página con más autoridad del sitio— hacia la superficie indexable. Sin
  * él, los hubs y las fichas quedan colgando solo del sitemap, que los hace
  * rastreables pero no les transmite relevancia.
+ *
+ * La flecha es `ArrowRight`: los dos destinos son páginas del propio sitio, y
+ * la diagonal (`ArrowUpRight`) se reserva para salir de TenderFlow. Al pasar el
+ * ratón solo cambia de color.
  */
 export function ExplorarLanding() {
   return (
@@ -26,8 +30,8 @@ export function ExplorarLanding() {
                 <span className="font-display block text-lg font-semibold tracking-[-0.01em]">{destino.titulo}</span>
                 <span className="text-muted-foreground mt-1 block text-sm leading-relaxed">{destino.texto}</span>
               </span>
-              <ArrowUpRight
-                className="text-muted-foreground group-hover:text-primary h-5 w-5 shrink-0 transition-[transform,color] duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+              <ArrowRight
+                className="text-muted-foreground group-hover:text-primary h-4 w-4 shrink-0 transition-colors"
                 aria-hidden="true"
               />
             </Link>

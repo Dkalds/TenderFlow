@@ -142,7 +142,12 @@ vi.mock("@/hooks/use-radar", () => ({
 
 // El inspector consulta el histórico del órgano; en jsdom no hay backend, así
 // que se devuelve vacío y el panel enseña su estado "sin adjudicaciones".
-vi.mock("@/lib/api-client", () => ({ fetchWithAuth: vi.fn().mockResolvedValue({}) }));
+// El resto del módulo (ApiError, los mensajes por estado) es el real: los
+// errores se cuentan con `getErrorMessage`, que los necesita.
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  fetchWithAuth: vi.fn().mockResolvedValue({}),
+}));
 
 // RadarPage lee `filters.tecnologias` vía el hook nuqs-backed `useFilters`;
 // se stubea igual que en saved-views-menu.test.tsx para no requerir un
@@ -241,6 +246,9 @@ describe("RadarPage", () => {
     renderRadar();
 
     expect(screen.getAllByText("61").length).toBeGreaterThan(0);
+    // Puntuada sin banda legible no es «sin puntuar»: ni la fila ni el
+    // inspector se inventan una banda.
+    expect(screen.queryByText("Sin puntuar")).not.toBeInTheDocument();
   });
 
   it("only says 'Sin puntuar' when the tender really has no score", () => {
@@ -250,7 +258,9 @@ describe("RadarPage", () => {
     radarState.data = { items: [tender({ score: undefined, band: undefined })] };
     renderRadar();
 
-    expect(screen.getByText("Sin puntuar")).toBeInTheDocument();
+    // Lo dicen la fila (bajo la raya del score) y el chip del inspector, los
+    // dos en frase: ya no hay un rótulo en versal que distinga uno de otro.
+    expect(screen.getAllByText("Sin puntuar").length).toBeGreaterThan(0);
   });
 
   it("no tiene un estado intermedio en el que el orden no sea el final", () => {
@@ -308,7 +318,12 @@ describe("RadarPage", () => {
     renderRadar();
     fireEvent.click(screen.getByRole("button", { name: /Abrir oportunidad/ }));
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith("403"));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "No se pudo abrir la oportunidad",
+        expect.objectContaining({ description: "403" }),
+      ),
+    );
     expect(push).not.toHaveBeenCalled();
   });
 

@@ -2,10 +2,8 @@
 
 /** Rejilla de componentes del health: uno por cada `check` que trae la API. */
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Panel } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
 import { detalleComponente, estadoComponente } from "./health-checks";
 
 export interface ComponentesGridProps {
@@ -18,35 +16,26 @@ export function ComponentesGrid({ checks }: ComponentesGridProps) {
   if (entradas.length === 0) return null;
 
   return (
-    <>
-      <h2 className="text-xl font-semibold">Componentes</h2>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <section aria-labelledby="ops-componentes" className="space-y-3">
+      <h2 id="ops-componentes" className="text-tf-body font-semibold">
+        Componentes
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {entradas.map(([key, value]) => {
           const estado = estadoComponente(value);
           return (
-            <Card key={key}>
-              <CardContent className="pt-5">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="font-medium capitalize">{key}</span>
-                  <Badge
-                    variant={estado === "ok" ? "default" : "destructive"}
-                    className={cn(
-                      estado === "ok" &&
-                        "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-                    )}
-                  >
-                    {estado === "ok" ? "OK" : "Error"}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {detalleComponente(key, value)}
-                </p>
-              </CardContent>
-            </Card>
+            <Panel key={key}>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-tf-body font-medium capitalize">{key}</span>
+                <Badge variant={estado === "ok" ? "success" : "destructive"} size="sm">
+                  {estado === "ok" ? "OK" : "Error"}
+                </Badge>
+              </div>
+              <p className="text-tf-meta text-muted-foreground">{detalleComponente(key, value)}</p>
+            </Panel>
           );
         })}
       </div>
-      <Separator />
-    </>
+    </section>
   );
 }

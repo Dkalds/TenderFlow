@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { Aviso, EnlaceIr } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { formatCurrency, truncate } from "@/lib/utils";
+import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
 import type { ResumenNovedadesResult } from "@/lib/api-types";
 
 /**
@@ -22,9 +23,9 @@ import type { ResumenNovedadesResult } from "@/lib/api-types";
  * la tabla no llega a enseñar; ésas sólo se ven aquí.
  *
  * `GET /analytics/resumen/novedades` no acepta **ningún** filtro: cuenta contra
- * `last_login` sobre el corpus entero. Estaba en una pantalla llena de chips de
- * ámbito sin decirlo, así que el rótulo lo declara — la misma regla que el
- * aviso de alcance de los paneles vecinos.
+ * `last_login` sobre todo el mercado. Estaba en una pantalla llena de chips de
+ * ámbito sin decirlo, así que la línea lo declara («sin tu ámbito») — la misma
+ * regla que el aviso de alcance de los paneles vecinos.
  */
 
 /**
@@ -54,28 +55,19 @@ export function NovedadesBanner({
 
   if (data.count > 0) {
     return (
-      <div className="mb-3.5 rounded-xl border border-[hsl(var(--info)/0.28)] bg-[hsl(var(--info)/0.05)] px-3.5 py-2">
-        <div className="flex items-center gap-2.5">
-          <span
-            className="h-1.5 w-1.5 flex-none rounded-full bg-[hsl(var(--info))]"
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 text-[11.5px] leading-[1.4] font-semibold text-[hsl(var(--info))]">
-            {data.count} nuevas licitaciones desde tu última visita
-            <span className="text-muted-foreground ml-1.5 text-[10.5px] font-normal">
-              en todo el corpus, sin el ámbito · las que aparezcan en la tabla van marcadas
-            </span>
-          </span>
-          <Link href="/detalle" className="flex-none text-[11.5px] font-medium whitespace-nowrap">
-            Ver todas →
-          </Link>
-        </div>
+      <Aviso
+        tone="info"
+        className="mb-3.5"
+        title={`${formatNumber(data.count)} nuevas licitaciones desde tu última visita`}
+        action={<EnlaceIr href="/detalle">Ver todas</EnlaceIr>}
+      >
+        <span className="text-muted-foreground">En todo el mercado, sin tu ámbito · en la tabla van marcadas.</span>
 
         {(data.sample ?? []).length > 0 && (
           <details className="group mt-0.5">
-            <summary className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer list-none items-center gap-1 py-1 text-[10.5px] transition-colors duration-140 ease-out">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1 py-1 text-tf-micro text-muted-foreground transition-colors hover:text-foreground">
               <ChevronRight
-                className="h-3 w-3 transition-transform duration-140 ease-out group-open:rotate-90"
+                className="h-3 w-3 transition-[rotate] group-open:rotate-90"
                 aria-hidden="true"
               />
               Ver una muestra
@@ -85,29 +77,25 @@ export function NovedadesBanner({
                 <li key={item.id_externo} className="flex min-w-0 items-baseline gap-3.5">
                   <Link
                     href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
-                    className="min-w-0 flex-1 truncate text-[11.5px] leading-[1.4] text-[hsl(var(--info))] hover:underline"
+                    className="min-w-0 flex-1 truncate hover:underline"
                   >
                     {truncate(item.titulo, 80)}
                   </Link>
                   {item.importe != null && (
-                    <span className="tf-tnum flex-none font-mono text-[11px] leading-[1.4] font-semibold text-[hsl(var(--info))]">
-                      {formatCurrency(item.importe)}
-                    </span>
+                    <span className="tf-tnum flex-none font-semibold">{formatCurrency(item.importe)}</span>
                   )}
                 </li>
               ))}
             </ul>
           </details>
         )}
-      </div>
+      </Aviso>
     );
   }
 
   return (
-    <div className="mb-3.5 flex items-center gap-2.5 rounded-xl border border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.05)] px-3.5 py-2">
-      <span className="text-[11.5px] font-semibold text-[hsl(var(--success))]">
-        Todo al día · sin novedades desde tu última visita
-      </span>
-    </div>
+    <Aviso tone="success" className="mb-3.5">
+      Todo al día: sin novedades desde tu última visita.
+    </Aviso>
   );
 }

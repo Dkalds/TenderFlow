@@ -9,8 +9,10 @@
  * la sesión en vez de limitarse a volver atrás.
  */
 
-import { AlertCircle, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
+import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { LoginForm } from "../_hooks/use-login-form";
 
@@ -20,21 +22,16 @@ export function MfaForm({ login }: { login: LoginForm }) {
   return (
     <form onSubmit={login.handleVerifyMfa} className="space-y-4">
       {error && (
-        <div
-          id="mfa-error"
-          role="alert"
-          aria-live="polite"
-          className="animate-in fade-in-0 slide-in-from-bottom-2 bg-destructive/10 text-destructive flex items-center gap-2 rounded-md p-3 text-sm"
-        >
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
+        <div id="mfa-error" className="animate-in fade-in-0 slide-in-from-bottom-2">
+          <Aviso tone="danger">{error}</Aviso>
         </div>
       )}
 
-      <div className="space-y-2">
-        <label htmlFor="mfa-code" className="text-foreground text-sm font-medium">
-          Código de verificación
-        </label>
+      <Field
+        label="Código de verificación"
+        htmlFor="mfa-code"
+        hint="Introduce el código de seis dígitos de tu app de autenticación. También puedes usar uno de tus códigos de recuperación."
+      >
         <Input
           id="mfa-code"
           type="text"
@@ -45,18 +42,14 @@ export function MfaForm({ login }: { login: LoginForm }) {
           required
           autoComplete="one-time-code"
           aria-invalid={error ? true : undefined}
-          aria-describedby={error ? "mfa-hint mfa-error" : "mfa-hint"}
+          aria-describedby={error ? "mfa-error" : undefined}
           disabled={loading}
         />
-        <p id="mfa-hint" className="text-muted-foreground text-xs">
-          Introduce el código de seis dígitos de tu app de autenticación. También puedes usar uno de tus códigos de
-          recuperación.
-        </p>
-      </div>
+      </Field>
 
       <Button type="submit" className="w-full" disabled={loading || !mfaCode.trim()}>
-        <ShieldCheck className="mr-2 h-4 w-4" />
-        {loading ? "Cargando…" : "Verificar"}
+        <ShieldCheck aria-hidden="true" />
+        {loading ? "Comprobando…" : "Verificar"}
       </Button>
 
       <Button

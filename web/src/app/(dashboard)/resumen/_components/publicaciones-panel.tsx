@@ -78,7 +78,7 @@ export function PublicacionesPanel() {
       {publicaciones.error ? (
         <PanelError
           title="No se pudieron cargar las publicaciones"
-          detail={(publicaciones.error as Error).message}
+          error={publicaciones.error}
           onRetry={publicaciones.refetch}
           height={ALTO}
         />

@@ -84,6 +84,6 @@ describe("PublicacionesPanel", { timeout: 30_000 }, () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Importes" }));
 
-    expect(screen.getByText("Ningún expediente del periodo declara importe.")).toBeInTheDocument();
+    expect(screen.getByText("Ningún expediente del periodo declara importe")).toBeInTheDocument();
   });
 });

@@ -10,9 +10,10 @@
  * entregarla.
  */
 import * as React from "react";
-import { CalendarPlus, Check, Copy } from "lucide-react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { PanelError } from "@/components/console/panel";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useCalendarioEnlace } from "@/hooks/use-calendario";
 
@@ -49,20 +50,17 @@ export function CalendarioSuscripcion() {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm">
-          <CalendarPlus aria-hidden="true" />
           Calendario
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[360px] space-y-2.5">
-        <h3 className="text-[13px] font-semibold">Suscríbete a tus plazos</h3>
+        <h3 className="text-tf-body font-semibold">Suscríbete a tus plazos</h3>
 
         {error ? (
-          <p className="text-[11.5px] leading-[1.5] text-destructive">
-            No se pudo generar el enlace del calendario.
-          </p>
+          <PanelError variant="inline" className="py-0" title="No se pudo generar el enlace del calendario" error={error} />
         ) : (
           <>
-            <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
+            <p className="text-tf-meta text-muted-foreground">
               Añade esta URL en Google Calendar, Apple Calendar u Outlook: los plazos de tus
               oportunidades abiertas y de tus favoritos se actualizan solos.
               {data && ` Hoy contiene ${data.eventos} evento${data.eventos === 1 ? "" : "s"}.`}
@@ -73,7 +71,7 @@ export function CalendarioSuscripcion() {
                 readOnly
                 aria-label="URL de suscripción al calendario"
                 value={isLoading ? "Generando enlace…" : urlAbsoluta}
-                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-[11px]"
+                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-tf-micro"
                 onFocus={(event) => event.currentTarget.select()}
               />
               <Button
@@ -82,12 +80,11 @@ export function CalendarioSuscripcion() {
                 disabled={!urlAbsoluta}
                 onClick={() => void copiar()}
               >
-                {copiado ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
                 {copiado ? "Copiado" : "Copiar"}
               </Button>
             </div>
 
-            <p className="text-[10.5px] leading-[1.45] text-muted-foreground">
+            <p className="text-tf-micro text-muted-foreground">
               El enlace lleva una firma personal: quien lo tenga ve tus plazos. Si se filtra, pide
               una rotación de claves.
             </p>
@@ -97,8 +94,9 @@ export function CalendarioSuscripcion() {
                 href={data.path}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-block text-[11.5px] font-medium"
+                className={buttonVariants({ variant: "outline", size: "sm" })}
               >
+                <Download aria-hidden="true" />
                 Descargar .ics
               </a>
             )}

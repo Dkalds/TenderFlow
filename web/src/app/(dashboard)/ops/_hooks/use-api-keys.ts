@@ -45,7 +45,7 @@ export function useApiKeys() {
       queryClient.invalidateQueries({ queryKey: adminKeys.apiKeys });
     },
     onError: () => {
-      toast.error("Error al generar clave. Intenta de nuevo.");
+      toast.error("No se pudo generar la clave. Vuelve a intentarlo.");
     },
   });
 

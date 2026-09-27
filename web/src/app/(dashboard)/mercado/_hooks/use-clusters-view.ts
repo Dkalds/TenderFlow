@@ -11,6 +11,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import type { BoxDatum } from "@/components/charts/clusters-charts";
 import { getSeriesColor } from "@/lib/chart-colors";
 import { truncate } from "@/lib/utils";
@@ -66,7 +67,8 @@ export function useClustersView() {
   const { data, isLoading, isFetching, error, refetch } = useFilteredQuery<ClustersResponse>(
     ["analytics", "clusters", String(appliedK), String(autoK)],
     "/api/v1/analytics/clusters",
-    { staleTime: 30 * 60 * 1000 },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 30 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     { n_clusters: String(appliedK), auto_k: String(autoK) },
   );
 
@@ -131,5 +133,7 @@ export function useClustersView() {
     isLoading,
     isFetching,
     error,
+    /** El «Reintentar» del error. */
+    refetch: () => void refetch(),
   };
 }

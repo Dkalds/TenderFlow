@@ -20,6 +20,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys } from "@/lib/query-keys";
 
 export interface SolicitudAcceso {
@@ -98,6 +99,8 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
   const pendientesQuery = useQuery<SolicitudAcceso[]>({
     queryKey: [...adminKeys.solicitudes.vista("pendiente"), limite],
     queryFn: () => cargarSolicitudes(`estado=pendiente&limit=${limite}`),
+    // Las dos listas pintan su fallo en el panel (`PanelError`): sin toast.
+    meta: META_ERROR_EN_LINEA,
   });
 
   // El histórico sólo se pide si alguien lo abre: es la vista de consulta, no
@@ -107,6 +110,7 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
     queryKey: [...adminKeys.solicitudes.vista("historico"), limite],
     queryFn: () => cargarSolicitudes(`limit=${limite}`),
     enabled: vista === "historico",
+    meta: META_ERROR_EN_LINEA,
   });
 
   const grantsQuery = useQuery<AccessGrant[]>({
@@ -165,6 +169,7 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
     solicitudes,
     isLoading: activa.isLoading,
     error: activa.error,
+    reintentar: () => void activa.refetch(),
     pendientes,
     limite,
     // Una lista que llega justo al tope no es "N": es "al menos N". Decirlo con

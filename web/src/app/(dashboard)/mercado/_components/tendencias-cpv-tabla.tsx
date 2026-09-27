@@ -5,8 +5,7 @@
  * marcar o desmarcar ese CPV en el multilínea de arriba.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
+import { Panel, PanelEmpty, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getSeriesColor } from "@/lib/chart-colors";
@@ -24,59 +23,58 @@ export function TendenciasCpvTabla({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Top CPVs</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <Panel>
+      <PanelTitle title="CPV con más importe" hint="Pulsa una fila para mostrarlo u ocultarlo en el gráfico" />
+      <div>
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
+              <Skeleton key={i} className="h-9 w-full" />
             ))}
           </div>
         ) : filas.length > 0 ? (
-          <div className="overflow-x-auto">
-            <Table className="w-full text-sm">
+          <div>
+            <Table>
               <TableHeader>
-                <TableRow className="border-b">
-                  <TableHead className="text-left py-2 pr-4 font-medium text-muted-foreground">#</TableHead>
-                  <TableHead className="text-left py-2 pr-4 font-medium text-muted-foreground">CPV</TableHead>
-                  <TableHead className="text-right py-2 pr-4 font-medium text-muted-foreground">Licitaciones</TableHead>
-                  <TableHead className="text-right py-2 font-medium text-muted-foreground">Importe Total</TableHead>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>CPV</TableHead>
+                  <TableHead className="text-right">Licitaciones</TableHead>
+                  <TableHead className="text-right">Importe total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filas.map((row) => (
                   <TableRow
                     key={row.cpv}
-                    className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
+                    className="cursor-pointer"
                     tabIndex={0}
                     role="row"
                     onClick={() => onToggle(row.cpv)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggle(row.cpv); }}
                   >
-                    <TableCell className="py-2 pr-4 tabular-nums text-muted-foreground">{row.rank}</TableCell>
-                    <TableCell className="py-2 pr-4">
+                    <TableCell className="text-muted-foreground">{row.rank}</TableCell>
+                    <TableCell className="font-mono">
                       <div className="flex items-center gap-2">
                         <div
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          aria-hidden="true"
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
                           style={{ backgroundColor: getSeriesColor(row.rank - 1) }}
                         />
                         {row.cpv}
                       </div>
                     </TableCell>
-                    <TableCell className="py-2 pr-4 text-right tabular-nums">{formatNumber(row.count)}</TableCell>
-                    <TableCell className="py-2 text-right tabular-nums">{formatCurrency(row.importe)}</TableCell>
+                    <TableCell numeric>{formatNumber(row.count)}</TableCell>
+                    <TableCell numeric>{formatCurrency(row.importe)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
         ) : (
-          <EmptyState />
+          <PanelEmpty title="Ningún CPV" hint="Ningún CPV con licitaciones en el ámbito actual. Amplía las fechas o quita filtros." />
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

@@ -427,7 +427,7 @@ describe("AgendaView — franja y ámbito", () => {
 
     expect(screen.getByText("Plazos de presentación ≤ 7 días")).toBeInTheDocument();
     expect(screen.getByText("Acciones hoy o vencidas")).toBeInTheDocument();
-    expect(screen.getByText("Go/No-go pendientes")).toBeInTheDocument();
+    expect(screen.getByText("Go/No-Go pendientes")).toBeInTheDocument();
     expect(screen.getByText("Sin próxima acción")).toBeInTheDocument();
   });
 
@@ -471,9 +471,9 @@ describe("AgendaView — inspector", () => {
     const panel = inspector();
     expect(within(panel).getByText("Fechas")).toBeInTheDocument();
     expect(within(panel).getByText("Presentación")).toBeInTheDocument();
-    expect(within(panel).getByText("externo")).toBeInTheDocument();
+    expect(within(panel).getByText("Externo")).toBeInTheDocument();
     expect(within(panel).getByText("Próxima acción")).toBeInTheDocument();
-    expect(within(panel).getByText("interna")).toBeInTheDocument();
+    expect(within(panel).getByText("Interna")).toBeInTheDocument();
 
     expect(within(panel).getByText("Tareas")).toBeInTheDocument();
     const casillas = within(panel).getAllByRole("checkbox");

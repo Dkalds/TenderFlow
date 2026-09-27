@@ -1,6 +1,7 @@
 "use client";
 
-import { EMPTY } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { cn, EMPTY } from "@/lib/utils";
 import { riesgoLabel } from "@/lib/riesgos";
 
 /**
@@ -56,7 +57,7 @@ const ORDEN = Object.keys(DESGLOSE_LABELS);
 const AFINIDAD_ORIGEN_TEXTO: Record<string, string> = {
   perfil: "Afinidad medida contra tu perfil personal.",
   organizacion: "Afinidad medida contra la capacidad declarada de tu organización.",
-  ninguno: "Ni tu perfil ni tu organización declaran a qué os dedicáis: la afinidad no mide encaje.",
+  ninguno: "Ni tu perfil ni tu organización declaran a qué se dedica tu equipo: la afinidad no mide encaje.",
 };
 
 function ordenar(desglose: Record<string, number>): [string, number][] {
@@ -112,7 +113,7 @@ export function ScoreDesglose({
     // "Sin desglose" y no una lista vacía: el hueco silencioso se lee como que
     // la pieza está rota, no como que este expediente no tiene detalle.
     return (
-      <p className="text-muted-foreground text-[11.5px]">
+      <p className="text-tf-meta text-muted-foreground">
         {EMPTY} Este expediente no trae desglose de puntuación.
       </p>
     );
@@ -122,10 +123,10 @@ export function ScoreDesglose({
     <div className="flex flex-col gap-[7px]">
       {frases.length > 0 && (
         <ul
-          className={
-            "text-foreground/85 flex flex-col gap-1 text-[11.5px] leading-snug" +
-            (filas.length > 0 ? " border-border/60 mb-1 border-b pb-2" : "")
-          }
+          className={cn(
+            "flex flex-col gap-1 text-tf-meta leading-snug text-foreground/85",
+            filas.length > 0 && "mb-1 border-b border-border/60 pb-2",
+          )}
         >
           {frases.map((frase) => (
             <li key={frase}>{frase}</li>
@@ -135,24 +136,24 @@ export function ScoreDesglose({
 
       {filas.map(([dim, valor]) => (
         <div key={dim} className="grid grid-cols-[96px_1fr_30px] items-center gap-2.5">
-          <span className="text-muted-foreground text-[11.5px]">
-            {DESGLOSE_LABELS[dim] ?? dim}
-          </span>
+          <span className="text-tf-meta text-muted-foreground">{DESGLOSE_LABELS[dim] ?? dim}</span>
           <span
             role="progressbar"
             aria-valuenow={Math.min(100, valor)}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label={`Puntuación ${DESGLOSE_LABELS[dim] ?? dim}`}
-            className="bg-muted-foreground/15 block h-[5px] overflow-hidden rounded-[3px]"
+            className="block h-[5px] overflow-hidden rounded-full bg-muted-foreground/15"
           >
+            {/* Sin transición: el popover se monta cada vez que se abre, y la
+                barra tiene que estar ya en su valor. */}
             <span
-              className="from-primary/55 to-primary block h-full w-full origin-left bg-linear-to-r transition-transform duration-[420ms] ease-out"
+              className="block h-full w-full origin-left bg-primary"
               style={{ transform: `scaleX(${Math.min(100, valor) / 100})` }}
             />
           </span>
-          <span className="tf-tnum text-right font-mono text-[11px] font-medium">
-            {valor.toFixed(1)}
+          <span className="tf-tnum text-right text-tf-micro font-medium">
+            {valor.toFixed(1).replace(".", ",")}
           </span>
         </div>
       ))}
@@ -160,7 +161,7 @@ export function ScoreDesglose({
       {origenTexto && (
         // Bajo las barras y antes de los avisos: es una nota sobre una de las
         // dimensiones, no una dimensión más ni una alerta.
-        <p data-slot="afinidad-origen" className="text-muted-foreground text-[10.5px] leading-snug">
+        <p data-slot="afinidad-origen" className="text-tf-micro leading-snug text-muted-foreground">
           {origenTexto}
         </p>
       )}
@@ -168,12 +169,9 @@ export function ScoreDesglose({
       {riesgos && riesgos.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1.5">
           {riesgos.map((flag) => (
-            <span
-              key={flag}
-              className="border-destructive/32 bg-destructive/12 text-destructive inline-flex h-[20px] items-center rounded-md border px-1.5 text-[10.5px] font-medium"
-            >
+            <Badge key={flag} variant="destructive" size="sm">
               {riesgoLabel(flag)}
-            </span>
+            </Badge>
           ))}
         </div>
       )}

@@ -9,8 +9,8 @@
  * a la ficha, y sin outcomes fiables la fase de precio calibrado no puede
  * empezar.
  *
- * Lo que este componente **no** hace es decidir quién ganó. Desde S2.1 el
- * backend sí propone un resultado (`resultado_sugerido`, cruzando los NIFs que
+ * Lo que este componente **no** hace es decidir quién ganó. Desde S2.1 la
+ * API sí propone un resultado (`resultado_sugerido`, cruzando los NIFs que
  * la organización declaró con los de los adjudicatarios publicados), y la ficha
  * lo trae **preseleccionado**: el atajo se lo lleva el caso normal, que es que
  * la propuesta acierte. Pero preseleccionar no es cerrar — la opción se puede
@@ -23,11 +23,12 @@
  * S2.1: dos botones y ninguna preselección. `null` es «no lo sé», no «no ganó».
  */
 import { useState } from "react";
-import { CircleCheck, Trophy } from "lucide-react";
 import { toast } from "sonner";
+import { SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
-import { EMPTY, formatCurrency } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/query-feedback";
+import { cn, EMPTY, formatCurrency } from "@/lib/utils";
 import { formatDate } from "@/components/pursuits/pursuit-presenters";
 
 type Resultado = "won" | "lost";
@@ -70,7 +71,7 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
       });
       toast.success(outcome === "won" ? "Oportunidad cerrada como ganada" : "Oportunidad cerrada como perdida");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo cerrar la oportunidad");
+      toast.error("No se pudo cerrar la oportunidad", { description: getErrorMessage(error, "accion") });
     }
   };
 
@@ -79,25 +80,24 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
       await update.mutateAsync({ status: "withdrawn", expected_version: pursuit.version });
       toast.success("Oportunidad retirada");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo retirar la oportunidad");
+      toast.error("No se pudo retirar la oportunidad", { description: getErrorMessage(error, "accion") });
     }
   };
 
   return (
+    // El énfasis es el borde primario sobre la superficie de siempre, no un
+    // relleno de color (regla de superficies de `console/panel`).
     <section
-      className="mb-4 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-3.5"
+      className={cn(SUPERFICIE_PANEL, TONO_PANEL.accent, "mb-4 px-4 py-3.5")}
       aria-labelledby="adjudicacion-detectada-titulo"
     >
-      <div className="mb-2.5 flex items-center gap-2">
-        <Trophy className="h-4 w-4 flex-none text-primary" aria-hidden="true" />
-        <h3 id="adjudicacion-detectada-titulo" className="text-[13px] font-semibold">
-          Este expediente ya se adjudicó
-        </h3>
-      </div>
+      <h3 id="adjudicacion-detectada-titulo" className="mb-2.5 text-tf-body font-semibold">
+        Este expediente ya se adjudicó
+      </h3>
 
       <ul className="mb-3 space-y-1.5">
         {adjudicatarios.map((a, indice) => (
-          <li key={`${a.nif ?? a.nombre}-${indice}`} className="text-[12.5px] leading-[1.45]">
+          <li key={`${a.nif ?? a.nombre}-${indice}`} className="text-tf-body">
             <span className="font-medium">{a.nombre}</span>
             <span className="text-muted-foreground">
               {" · "}
@@ -110,7 +110,7 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
       </ul>
 
       {adjudicacion.importe_total != null && adjudicatarios.length > 1 && (
-        <p className="mb-3 text-[12px]">
+        <p className="mb-3 text-tf-meta">
           Importe total adjudicado:{" "}
           <span className="font-semibold">{formatCurrency(adjudicacion.importe_total)}</span>
         </p>
@@ -119,7 +119,7 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
       {puedeCerrar && sugerido ? (
         <div className="space-y-2.5">
           <fieldset className="border-0 p-0">
-            <legend className="mb-1.5 text-[11.5px] leading-[1.5] text-muted-foreground">
+            <legend className="mb-1.5 text-tf-meta text-muted-foreground">
               Por el NIF de tu organización, esto parece una oportunidad{" "}
               <span className="font-medium text-foreground">
                 {sugerido === "won" ? "ganada" : "perdida"}
@@ -128,7 +128,7 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
             </legend>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
               {(["won", "lost"] as const).map((opcion) => (
-                <label key={opcion} className="flex items-center gap-1.5 text-[12.5px]">
+                <label key={opcion} className="flex items-center gap-1.5 text-tf-body">
                   <input
                     type="radio"
                     name={`adjudicacion-resultado-${pursuit.id}`}
@@ -150,14 +150,12 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
             </div>
           </fieldset>
           <Button size="sm" disabled={update.isPending} onClick={() => void cerrar(seleccion)}>
-            <CircleCheck aria-hidden="true" />
             {seleccion === "won" ? "Confirmar como ganada" : "Confirmar como perdida"}
           </Button>
         </div>
       ) : puedeCerrar ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" disabled={update.isPending} onClick={() => void cerrar("won")}>
-            <CircleCheck aria-hidden="true" />
             Cerrar como ganada
           </Button>
           <Button
@@ -168,13 +166,13 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
           >
             Cerrar como perdida
           </Button>
-          <span className="text-[11px] text-muted-foreground">
-            El resultado lo decides tú: el sistema no sabe cuál de estas empresas sois.
+          <span className="text-tf-micro text-muted-foreground">
+            El resultado lo decides tú: TenderFlow no sabe cuál de estas empresas es la tuya.
           </span>
         </div>
       ) : adjudicacion.cierre_pendiente ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
+          <p className="text-tf-meta text-muted-foreground">
             Para cerrar con resultado hay que registrar antes la oferta presentada (estado «Oferta
             presentada»), o retirar la oportunidad.
           </p>
@@ -188,7 +186,7 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
           </Button>
         </div>
       ) : (
-        <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
+        <p className="text-tf-meta text-muted-foreground">
           Esta oportunidad ya está cerrada. La adjudicación se muestra como contexto.
         </p>
       )}

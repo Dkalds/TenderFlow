@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 
 export function EtiquetaChip({ etiqueta }: { etiqueta: Pick<EtiquetaAplicada, "nombre" | "color"> }) {
   return (
-    <span className="inline-flex h-5 max-w-[14rem] items-center gap-1 rounded-full border border-border/70 bg-background px-2 text-[10.5px] font-medium">
+    <span className="inline-flex h-5 max-w-[14rem] items-center gap-1 rounded-full border border-border/70 bg-background px-2 text-tf-micro font-medium">
       {/* `fill` es un atributo de presentación SVG, no un estilo inline: la CSP
           (`style-src`, C2.8) no lo gobierna y el color sigue viniendo del dato. */}
       <svg aria-hidden="true" viewBox="0 0 6 6" className="h-1.5 w-1.5 flex-none">
@@ -128,7 +128,7 @@ export function EtiquetasEditor({
           {etiquetas.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-label="Cargando etiquetas" />
           ) : todas.length === 0 ? (
-            <p className="text-[11.5px] text-muted-foreground">
+            <p className="text-tf-meta text-muted-foreground">
               Tu organización aún no tiene etiquetas. Crea la primera abajo.
             </p>
           ) : (
@@ -198,7 +198,7 @@ export function EtiquetasEditor({
             ))}
           </div>
           {llena ? (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-tf-micro text-muted-foreground">
               Tu organización tiene {MAX_ETIQUETAS} etiquetas, el máximo. Borra alguna para crear
               otra.
             </p>

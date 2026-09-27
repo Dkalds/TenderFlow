@@ -1,6 +1,7 @@
 import type { LicitacionPublica } from "@/lib/publico-api";
 import { formatCurrency } from "@/lib/utils";
 import { fechaOpcional } from "./ficha-formato";
+import { ROTULO } from "./piel-publica";
 import { plazoPresentacion } from "./plazo";
 
 /** Par etiqueta/valor; `null` en el valor significa "la fuente no lo publica". */
@@ -14,6 +15,9 @@ type Par = [string, string | null];
  * es la que dio el endpoint y lo que se corrige es la promesa que la envolvía.
  * Un «Fecha límite» sobre un plazo vencido se lee como una convocatoria
  * abierta, y esta ficha es lo primero que ve quien llega desde un buscador.
+ *
+ * Las etiquetas van en frase y a 11 px (`ROTULO`, decisión D2), no en versal:
+ * la versal queda para las cabeceras de columna de tabla.
  */
 export function destacadosDeAnuncio(lic: LicitacionPublica): Par[] {
   const plazo = plazoPresentacion(lic.fecha_limite);
@@ -58,8 +62,8 @@ export function DatosDelAnuncio({ lic }: { lic: LicitacionPublica }) {
         <dl className="mt-8 grid gap-3 sm:grid-cols-3">
           {destacados.map(([etiqueta, valor]) => (
             <div key={etiqueta} className="border-border/70 bg-card rounded-xl border p-4">
-              <dt className="text-muted-foreground text-[11px] tracking-wide uppercase">{etiqueta}</dt>
-              <dd className="font-display tf-tnum mt-1 text-xl font-semibold tracking-[-0.01em]">{valor}</dd>
+              <dt className={ROTULO}>{etiqueta}</dt>
+              <dd className="font-display text-tf-title tf-tnum mt-1">{valor}</dd>
             </div>
           ))}
         </dl>
@@ -69,7 +73,7 @@ export function DatosDelAnuncio({ lic }: { lic: LicitacionPublica }) {
       <dl className="border-border/70 bg-card mt-5 grid gap-x-10 gap-y-4 rounded-xl border p-6 sm:grid-cols-2">
         {datos.map(([etiqueta, valor]) => (
           <div key={etiqueta}>
-            <dt className="text-muted-foreground text-[11px] tracking-wide uppercase">{etiqueta}</dt>
+            <dt className={ROTULO}>{etiqueta}</dt>
             <dd className="mt-0.5 text-sm font-medium">{valor}</dd>
           </div>
         ))}
