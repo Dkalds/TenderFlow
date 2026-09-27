@@ -75,7 +75,9 @@ def _write_feedback(clasificadas: dict[str, Clasificacion], *, version: str) -> 
     query es un anti-join), así que ``relevante`` tiene que ser una respuesta
     real y no una inferencia: es ``clasificacion.es_ti`` tal cual, que desde
     esta tarea es lo único que ``relevante`` significa (spec §3.3) -- antes se
-    derivaba de si «SAP» estaba entre las familias confiadas.
+    derivaba de si «SAP» estaba entre las familias confiadas. Así que el
+    ``relevante`` de las filas ``llm_batch`` mezcla los significados de v2 y v3
+    y NO es una etiqueta de entrenamiento.
 
     Sin ``es_ti`` (``None``: el modelo no contestó el nivel 1, p. ej. una
     respuesta que se quedó en el prompt v2) no se escribe fila: es justo lo

@@ -1,6 +1,7 @@
 # Clasificación de licitaciones en tres niveles, con etiquetas que no salgan de las reglas
 
-**Estado:** propuesta, 2026-09-27. Pendiente de revisión del propietario (§7).
+**Estado:** aprobada por el propietario el 2026-09-27, con D1 y D2 tal como
+se proponen en §7. F1 hecha (§6).
 **Alcance:** qué entra en el corpus como TI, con qué familia y de qué fabricante,
 y cómo se entrenan, evalúan y sirven los modelos que lo deciden. Fuera de
 alcance: la ficha del pliego, los modelos de baja y de retención.
@@ -179,7 +180,7 @@ Hoy fabricantes y categorías van en la misma lista, y por eso unos «funcionan�
 | Fase | Qué | Necesita |
 |---|---|---|
 | F0 | Arreglos rápidos (§1) | hecho |
-| F1 | Política de frontera y familias nuevas; prompt v3 (`es_ti`); esquema del golden; formulario y cola por desacuerdo en `/ops`; `relevante` = `es_ti` | decisiones D1, D2 |
+| F1 | Política de frontera y familias nuevas; prompt v3 (`es_ti`); esquema del golden; formulario y cola por desacuerdo en `/ops`; `relevante` = `es_ti` | hecho (rama `claude/clasificacion-f1-tres-niveles`) |
 | F2 | Muestra LLM en producción + revisión humana → `golden_ti.jsonl` | OK a lanzar el LLM; tu tiempo |
 | F3 | Modelo de nivel 1 con baselines, gate y sombra | — |
 | F4 | Modelo de nivel 2 | — |
@@ -192,6 +193,20 @@ Hoy fabricantes y categorías van en la misma lista, y por eso unos «funcionan�
 - **Hasta F5 no hay migraciones.** `ml_proba` guarda P(es TI),
   `licitacion_tecnologia_pliego` guarda la salida del LLM (sentinels
   incluidos) y `ml_feedback` guarda la humana.
+- **Despliegue de F1.** Tras el merge, el paso diario del LLM vuelve a
+  etiquetar con el prompt v3 (la `signal_version` cambia), de lo más nuevo a lo
+  más viejo, a razón de `LLM_TECH_LABELING_BATCH` licitaciones por corrida y
+  dentro de `LLM_BUDGET_USD_DAILY`.
+- **Lo que queda de F2:**
+  - un OK explícito para lanzar el LLM sobre la muestra, que necesita antes un
+    modo de selección estratificada (hoy el job solo recorre de lo más nuevo a
+    lo más viejo);
+  - la revisión humana en `/ops?vista=etiquetado`;
+  - `scripts/exportar_golden_ti.py` y, después, `scripts/medir_acuerdo_llm.py`.
+- **Nota para F3.** El lector de nivel 1 que entrene el modelo tiene que tratar
+  también `__sin_evidencia__` como «no se pronunció», aunque la misma versión
+  traiga el marcador de es_ti: es la regla que ya aplican el lector de familias
+  y el informe de acuerdo.
 
 ## 7. Decisiones pendientes (del propietario)
 
