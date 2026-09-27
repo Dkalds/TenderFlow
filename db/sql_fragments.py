@@ -80,9 +80,11 @@ WATCHED_COMPANY_AWARDS_SQL = "l.analysis_universe = 'watched_company_awards_obse
 #: Universos que llegan filtrados por señal tecnológica **antes** de persistir:
 #: PLACSP/TED (``technology_observed``) y los RSS autonómicos, cuyo conector
 #: descarta lo que no casa con el diccionario. Lo que NO está aquí es
-#: ``pscp_observed``: ese conector guarda la plataforma catalana entera
-#: (reactivos, obras, limpieza) y sólo etiqueta ``tecnologia`` cuando el título
-#: casa con el diccionario.
+#: ``pscp_observed``: ese conector guardaba la plataforma catalana entera
+#: (reactivos, obras, limpieza) hasta el 2026-09-09, y ese censo sigue en la base
+#: de datos hasta que se ejecute la purga del RFC 2026-09-26
+#: (``scripts/purgar_pscp_sin_tecnologia.py``). Sus filas de tecnología entran
+#: igualmente, por el disyunto de ``tecnologia``.
 UNIVERSOS_TECNOLOGICOS: tuple[str, ...] = (
     "technology_observed",
     "galicia_rss_recent_technology_observed",

@@ -1,0 +1,99 @@
+name: Purga de PSCP sin tecnología (manual)
+
+# Ejecuta `scripts/purgar_pscp_sin_tecnologia.py` contra la BD de producción
+# (RFC docs/rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md).
+#
+# **Sin `schedule` a propósito**: es una operación de una vez. Por defecto es un
+# dry-run —mide, enseña ejemplos y no escribe nada—; el balance queda en el
+# resumen del run. Con `apply` borra, y es reanudable: si el job se corta,
+# relanzarlo continúa donde quedó.
+#
+# `reingerir_desde` encadena, tras el borrado, una reingesta completa de PSCP
+# (`python -m scraper.connectors.pscp --desde …`). Es lo que refresca las
+# etiquetas de las filas que la purga conserva pero que se guardaron con un
+# diccionario viejo: `tecnologia` solo la escribe el upsert de ingesta.
+#
+# Comparte `concurrency.group: scrape` con los carriles de ingesta (ADR-012: un
+# solo plano activo contra la misma BD), así que nunca corre a la vez que
+# `scrape-daily.yml`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Borrar de verdad (sin marcar, dry-run)"
+        type: boolean
+        default: false
+        required: false
+      lote_borrado:
+        description: "Licitaciones por transacción de borrado"
+        default: "500"
+        required: false
+      reingerir_desde:
+        description: "Solo con apply: reingerir PSCP desde esta fecha (AAAA-MM-DD). Vacío = no reingerir"
+        default: ""
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  purga:
+    runs-on: ubuntu-latest
+    # El borrado recorre ~685k filas y la reingesta completa pagina ~1,9 M de
+    # la API Socrata: holgura hasta el máximo de un runner alojado.
+    timeout-minutes: 350
+
+    env:
+      # Mismo perfil que los carriles de ingesta: escribe en la BD de
+      # producción, con los validators de datos activos.
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Purga (dry-run salvo apply)
+        shell: bash
+        env:
+          APPLY: ${{ inputs.apply }}
+          LOTE_BORRADO: ${{ inputs.lote_borrado }}
+        run: |
+          ARGS=(--lote-borrado "$LOTE_BORRADO")
+          if [ "$APPLY" = "true" ]; then
+            ARGS+=(--apply)
+          fi
+          echo "Args: ${ARGS[*]}"
+          {
+            echo '```'
+            python -m scripts.purgar_pscp_sin_tecnologia "${ARGS[@]}"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Reingesta completa de PSCP
+        if: ${{ inputs.apply && inputs.reingerir_desde != '' }}
+        env:
+          PSCP_DATASET_ID: ${{ vars.PSCP_DATASET_ID }}
+          PSCP_APP_TOKEN: ${{ secrets.PSCP_APP_TOKEN }}
+          DESDE: ${{ inputs.reingerir_desde }}
+        run: python -m scraper.connectors.pscp --desde "$DESDE"

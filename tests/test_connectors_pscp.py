@@ -373,8 +373,10 @@ def test_ninguna_fila_persistida_queda_sin_tecnologia() -> None:
     """El criterio de aceptación de C4.1, sobre el parser.
 
     «Filas nuevas de PSCP con `tecnologia IS NULL` = 0» se mide contra la BD
-    tras el siguiente run; aquí se fija el invariante que lo hace cierto: el
-    parser no puede devolver una licitación sin `tecnologia`.
+    tras el siguiente run; aquí se fija el invariante que lo hace cierto: sin
+    CPV de TI, el parser no puede devolver una licitación sin `tecnologia`. La
+    única excepción, desde el 2026-09-26, es la que trae CPV 48/72
+    (`cpv_ti_universe`, ver los tests de la puerta más abajo).
     """
     conector = _conector()
     titulos = [
@@ -442,4 +444,184 @@ def test_los_contadores_llegan_al_resumen_del_run() -> None:
     resumen = resultado.as_dict()
     assert resumen["descartadas"] == 8
     assert "pscp_sin_senal_tecnologica" in resumen
+    assert "pscp_keyword_ambigua_sin_cpv_ti" in resumen
     assert "pscp_fechas_implausibles" in resumen
+
+
+# ── Puerta endurecida (2026-09-26): keywords ambiguas y apóstrofos ──────────
+#
+# Cada caso es un título real de producción que el filtro de keywords a secas
+# admitía (o, en los de apóstrofo, rechazaba) con el CPV con el que llegó.
+
+_FALSOS_POSITIVOS_REALES = [
+    (
+        "Contracte del servei de manteniment correctiu i preventiu dels ascensors",
+        "50750000-7",
+    ),
+    ("COMPRA DE MATERIAL DE FERRETERIA PER A LA GERÈCNIA APICCC. CODI SAP 7107067", "44316000-8"),
+    ("SAP 30053588 MAQUINETA RASURAT 2 FULLA N/ESTÈRIL 1 ÚS", "33140000-3"),
+    ("CABLE APPLE LIGHTNING USB-A 1m BLANC", "32000000-3"),
+    # CPV de material informático (302): la corroboración es 48/72, no «algo
+    # informático», precisamente por esto.
+    ("Nou Apartat | Apple USB-C to Lightning Cable (1M) | Gastos de envio", "30230000-0"),
+    (
+        "Subministrament i instal·lació d'un teló (cortina) tallafocs tèxtil",
+        "44480000-8||45343000-3",
+    ),
+    ("Subministrament a doll de PACS per al tractament de potabilització", "24312123-2"),
+    ("api 20 enterobacterias.", "33696500-0"),
+    ("Subministrament i posada en servei de bateries per ampliar el SAI del CPD", "31440000-2"),
+    ("Subministrament de dos portasignatures corporatius per l'ICF", "30197000-6"),
+]
+
+
+@pytest.mark.parametrize(("titulo", "cpv"), _FALSOS_POSITIVOS_REALES)
+def test_la_keyword_ambigua_con_cpv_ajeno_a_ti_no_entra(titulo: str, cpv: str) -> None:
+    from scraper.connectors.pscp import MOTIVO_AMBIGUA_SIN_CPV_TI, senal_tecnologica
+
+    senal = senal_tecnologica(titulo, cpv)
+    assert not senal.admitida
+    assert senal.motivo == MOTIVO_AMBIGUA_SIN_CPV_TI
+
+
+@pytest.mark.parametrize(
+    ("titulo", "cpv"),
+    [
+        # La misma keyword ambigua, corroborada por un CPV 48/72 en cualquier
+        # posición de la lista.
+        ("Servei manteniment mòduls Finances SAP", "72265000-0"),
+        ("Manteniment correctiu i evolutiu de l'aplicatiu d'inscripcions", "72212000-4"),
+        (
+            "Subministrament de quatre tallafocs de nova generació FortiGate",
+            "30200000-1||30237130-9||48900000-7",
+        ),
+        # Sin CPV no hay contradicción: conserva el beneficio de la duda.
+        ("Manteniment SAP", None),
+        # Una keyword no ambigua basta aunque el CPV sea absurdo (licencias de
+        # Office codificadas como obra de puentes, real).
+        ("renovació de subscripcions a Microsoft Office 365", "45221119-9"),
+        # `hana` no es ambigua: arrastra a `sap` con ella.
+        ("Renovació emmagatzematge SAP HANA 2025", "30233180-6"),
+    ],
+)
+def test_la_senal_legitima_sigue_entrando(titulo: str, cpv: str | None) -> None:
+    from scraper.connectors.pscp import senal_tecnologica
+
+    senal = senal_tecnologica(titulo, cpv)
+    assert senal.admitida, senal
+    assert senal.tecnologias
+    assert senal.keywords
+
+
+def test_el_apostrofo_tipografico_ya_no_esconde_la_keyword() -> None:
+    """El apóstrofo curvo (U+2019) es como escribe la PSCP; el diccionario usa el recto."""
+    from scraper.connectors.pscp import senal_tecnologica
+
+    senal = senal_tecnologica("Servei de desenvolupament d\u2019aplicacions", "79000000-4")
+    assert senal.admitida
+    assert "DESARROLLO" in senal.tecnologias
+    assert "desenvolupament d'aplicacions" in senal.keywords
+
+
+def test_el_conector_cuenta_el_descarte_por_keyword_ambigua() -> None:
+    conector = _conector()
+    parsed = conector.parse(
+        _aviso(objecte_contracte="CABLE APPLE LIGHTNING USB-A 1m", codi_cpv="32000000-3")
+    )
+    assert parsed is None
+    contadores = conector.contadores_de_descarte()
+    assert contadores["pscp_keyword_ambigua_sin_cpv_ti"] == 1
+    assert contadores["pscp_sin_senal_tecnologica"] == 0
+
+
+def test_el_conector_corrobora_con_cualquier_cpv_de_la_lista() -> None:
+    """Se guarda el primer CPV, pero la puerta mira todos: el orden no decide."""
+    conector = _conector()
+    parsed = conector.parse(
+        _aviso(objecte_contracte="Manteniment SAP", codi_cpv="50000000-5||72267000-4")
+    )
+    assert parsed is not None
+    assert parsed.licitacion.tecnologia == "SAP"
+
+
+@pytest.mark.parametrize(
+    ("titulo", "cpv"),
+    [
+        # Casos reales que el dry-run de la purga del 2026-09-26 iba a borrar:
+        # la keyword es ambigua, pero el CPV es de equipo informático o de su
+        # mantenimiento.
+        ("Ampliació Cabina Backup del CPD de Cerdanyola", "30200000-1"),
+        (
+            "Manteniment equipament hardware del CPD de l'ajuntament Barcelona",
+            "50312610-4",
+        ),
+    ],
+)
+def test_el_equipo_informatico_corrobora_una_keyword_ambigua(titulo: str, cpv: str) -> None:
+    from scraper.connectors.pscp import MOTIVO_ADMITIDA, senal_tecnologica
+
+    senal = senal_tecnologica(titulo, cpv)
+    assert senal.motivo == MOTIVO_ADMITIDA
+    assert "CLOUD_INFRA" in senal.tecnologias
+
+
+def test_sap_no_se_corrobora_con_material_informatico() -> None:
+    """El ICS compra ordenadores con su «CODI SAP»: para `sap` solo vale 48/72."""
+    from scraper.connectors.pscp import MOTIVO_AMBIGUA_SIN_CPV_TI, senal_tecnologica
+
+    senal = senal_tecnologica("ORDINADOR PORTÀTIL CODI SAP 7104412", "30213100-6")
+    assert senal.motivo == MOTIVO_AMBIGUA_SIN_CPV_TI
+
+
+@pytest.mark.parametrize(
+    ("titulo", "cpv"),
+    [
+        # Reales, del mismo dry-run: TI por CPV que no casa con el diccionario.
+        ("Business starter anual i google workspace", "48218000-9"),
+        ("Programari factorial de l'1 de març a 1 d'abril", "48900000-7"),
+        ("MANTENIMENT LLIC XEN ORCHESTRA", "72267000-4"),
+        # El 48/72 puede no ir primero en la lista.
+        ("Renovació anual", "30200000-1||72267000-4"),
+    ],
+)
+def test_sin_keyword_entra_por_cpv_ti_y_sin_etiquetas(titulo: str, cpv: str) -> None:
+    from scraper.connectors.pscp import MOTIVO_CPV_TI, senal_tecnologica
+
+    senal = senal_tecnologica(titulo, cpv)
+    assert senal.admitida
+    assert senal.motivo == MOTIVO_CPV_TI
+    assert senal.tecnologias == ()
+    assert senal.keywords == ()
+
+
+@pytest.mark.parametrize(
+    "cpv",
+    [None, "90910000-9", "30213100-6"],  # sin CPV, limpieza, un portátil
+)
+def test_sin_keyword_ni_cpv_48_72_no_entra(cpv: str | None) -> None:
+    from scraper.connectors.pscp import MOTIVO_SIN_SENAL, senal_tecnologica
+
+    assert senal_tecnologica("Subministrament diversos", cpv).motivo == MOTIVO_SIN_SENAL
+
+
+def test_el_conector_persiste_lo_de_cpv_ti_como_en_placsp() -> None:
+    """Sin `tecnologia` y con el `inclusion_reason` de PLACSP: fuera del Radar."""
+    conector = _conector()
+    parsed = conector.parse(
+        _aviso(objecte_contracte="Llicències Google Workspace", codi_cpv="48218000-9")
+    )
+    assert parsed is not None
+    assert parsed.licitacion.tecnologia is None
+    assert parsed.licitacion.raw_keywords is None
+    assert parsed.licitacion.inclusion_reason == "cpv_ti_universe"
+    assert parsed.licitacion.analysis_universe == "pscp_observed"
+    assert conector.contadores_de_descarte()["pscp_sin_senal_tecnologica"] == 0
+
+
+def test_cada_keyword_ambigua_existe_en_la_semilla() -> None:
+    """Una keyword renombrada en el diccionario dejaría aquí una entrada muerta."""
+    from config.keywords import TECHNOLOGY_KEYWORDS
+    from scraper.connectors.pscp import KEYWORDS_AMBIGUAS
+
+    semilla = {kw.casefold() for kws in TECHNOLOGY_KEYWORDS.values() for kw in kws}
+    assert not KEYWORDS_AMBIGUAS - semilla
