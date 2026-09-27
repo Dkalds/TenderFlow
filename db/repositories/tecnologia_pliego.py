@@ -364,6 +364,75 @@ class TecnologiaPliegoRepository:
             )
             return rows_to_dicts(cur)
 
+    def respuestas_llm_vigentes(self, licitacion_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """La respuesta vigente del LLM (nivel 1 + familias) por licitación,
+        para el informe de acuerdo LLM↔humanos (Tarea 6, spec §3.5 --
+        ``services.ml.acuerdo_llm.medir_acuerdo``).
+
+        Vigente = las filas de la versión más reciente (por ``computed_at``,
+        con ``signal_version`` como desempate) de ``method='llm_metadata'``
+        de cada licitación -- misma ventana ``FIRST_VALUE ... OVER
+        (PARTITION BY licitacion_id, method ...)`` que
+        ``LicitacionRepository.etiquetas_tecnologia_no_circulares``: un
+        backfill o un escritor nuevo bastan para que convivan dos versiones,
+        y la lectura no se apoya en que ``upsert_signals`` ya haya limpiado
+        la vieja. El marcador de nivel 1 (``ES_TI_SENTINEL``/
+        ``NO_ES_TI_SENTINEL``) es una fila más de esa misma versión (ver el
+        docstring de :meth:`upsert_signals`).
+
+        Args:
+            licitacion_ids: Expedientes a consultar. Los que no tengan
+                ninguna fila ``llm_metadata`` no aparecen en el resultado --
+                ausencia, no un negativo: el LLM no se pronunció sobre ellos.
+
+        Returns:
+            ``{licitacion_id: {"es_ti": bool | None, "familias": list[str]}}``.
+            ``es_ti`` sale del marcador (``None`` si la versión vigente no lo
+            trae). ``familias``, de las filas no-sentinel de esa versión con
+            ``score >= settings.PLIEGO_TECH_MIN_SCORE``, ordenadas.
+        """
+        from config import settings
+
+        if not licitacion_ids:
+            return {}
+
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT licitacion_id, tecnologia, score FROM ("
+                "  SELECT p.licitacion_id, p.tecnologia, p.score, p.signal_version, "
+                "         FIRST_VALUE(p.signal_version) OVER ("
+                "           PARTITION BY p.licitacion_id, p.method "
+                "           ORDER BY p.computed_at DESC, p.signal_version DESC"
+                "         ) AS version_vigente "
+                "  FROM licitacion_tecnologia_pliego p "
+                "  WHERE p.method = 'llm_metadata' AND p.licitacion_id = ANY(%s)"
+                ") vigentes "
+                "WHERE signal_version = version_vigente",
+                (list(licitacion_ids),),
+            )
+            filas = cur.fetchall()
+
+        min_score = settings.PLIEGO_TECH_MIN_SCORE
+        por_licitacion: dict[str, list[tuple[str, float]]] = {}
+        for licitacion_id, tecnologia, score in filas:
+            por_licitacion.setdefault(str(licitacion_id), []).append(
+                (str(tecnologia), float(score))
+            )
+
+        salida: dict[str, dict[str, Any]] = {}
+        for licitacion_id, filas_lic in por_licitacion.items():
+            es_ti: bool | None = None
+            familias: list[str] = []
+            for tecnologia, score in filas_lic:
+                if tecnologia == ES_TI_SENTINEL:
+                    es_ti = True
+                elif tecnologia == NO_ES_TI_SENTINEL:
+                    es_ti = False
+                elif tecnologia not in SENTINELS and score >= min_score:
+                    familias.append(tecnologia)
+            salida[licitacion_id] = {"es_ti": es_ti, "familias": sorted(familias)}
+        return salida
+
     def merge_many_with_lock(
         self,
         licitacion_ids: list[str],

@@ -871,3 +871,60 @@ class TestFuerzaDeLaSenalTecnica:
         fuerza = AggregateRepository().tech_signal_by_ids(["FZ-1", "FZ-2"])
 
         assert fuerza == {"FZ-2": 0.8}
+
+
+def _insert_tech_row(
+    licitacion_id: str,
+    tecnologia: str,
+    *,
+    signal_version: str,
+    computed_at: str,
+    score: float = 0.9,
+    method: str = "llm_metadata",
+) -> None:
+    """Fila directa de ``licitacion_tecnologia_pliego``, sin pasar por
+    ``upsert_signals`` -- su DELETE reemplaza TODAS las tecnologías vigentes
+    de un ``(licitacion_id, method)`` en cada llamada (ver su docstring), así
+    que no puede dejar coexistir dos ``signal_version`` distintas del mismo
+    method a propósito. Aquí sí hace falta: ``respuestas_llm_vigentes`` tiene
+    que ignorar una versión vieja que aún no se limpió (backfill, escritor
+    nuevo -- ver ``LicitacionRepository.etiquetas_tecnologia_no_circulares``)."""
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitacion_tecnologia_pliego "
+            "(licitacion_id, tecnologia, method, score, matched_terms, "
+            "evidence_json, signal_version, computed_at) "
+            "VALUES (%s, %s, %s, %s, NULL, NULL, %s, %s)",
+            (licitacion_id, tecnologia, method, score, signal_version, computed_at),
+        )
+
+
+class TestRespuestasLlmVigentes:
+    """``respuestas_llm_vigentes``: la respuesta vigente del LLM (nivel 1 +
+    familias) por licitación, para el informe de acuerdo LLM↔humanos (Tarea 6,
+    spec §3.5, ``services.ml.acuerdo_llm.medir_acuerdo``)."""
+
+    def test_toma_la_version_vigente_e_ignora_la_version_vieja(self, repo):
+        _insert_licitacion("RLV-1")
+        # v2 (más antigua): ORACLE -- no debe aparecer en el resultado.
+        _insert_tech_row(
+            "RLV-1", "ORACLE", signal_version="v2", computed_at="2026-09-01T00:00:00+00:00"
+        )
+        # v3 (vigente): DESARROLLO + el marcador de nivel 1, misma versión.
+        _insert_tech_row(
+            "RLV-1",
+            "DESARROLLO",
+            signal_version="v3",
+            computed_at="2026-09-15T00:00:00+00:00",
+        )
+        _insert_tech_row(
+            "RLV-1",
+            ES_TI_SENTINEL,
+            signal_version="v3",
+            computed_at="2026-09-15T00:00:00+00:00",
+            score=0.0,
+        )
+
+        assert TecnologiaPliegoRepository().respuestas_llm_vigentes(["RLV-1"]) == {
+            "RLV-1": {"es_ti": True, "familias": ["DESARROLLO"]}
+        }
