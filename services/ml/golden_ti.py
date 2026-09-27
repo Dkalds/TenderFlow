@@ -50,6 +50,19 @@ RUTA_GOLDEN_TI: Path = _REPO_ROOT / "tests" / "fixtures" / "golden_ti.jsonl"
 
 _VALID_LABELS: frozenset[str] = frozenset(TECH_LABELS)
 _SPLITS: frozenset[str] = frozenset({"tune", "holdout"})
+#: Campos que toda línea necesita para construir un ``EjemploGoldenTi``.
+#: ``cpv`` queda fuera (nullable, vía ``.get``); ``familias``/``fabricantes``
+#: y ``split`` tienen su propia validación más abajo.
+_CAMPOS_REQUERIDOS: tuple[str, ...] = (
+    "id_externo",
+    "fuente",
+    "fecha",
+    "titulo",
+    "descripcion",
+    "es_ti",
+    "etiquetado_por",
+    "etiquetado_at",
+)
 
 
 @dataclass(frozen=True)
@@ -127,20 +140,38 @@ def ejemplo_desde_fila(fila: dict[str, Any]) -> EjemploGoldenTi:
     ``"tune"`` como placeholder: el reparto real en tune/holdout lo hace
     :func:`asignar_splits`, que necesita ver el conjunto entero para partirlo
     por fecha.
+
+    Una tecnología que no esté en :data:`TECH_LABEL_TIPO` (un label retirado
+    o un dato legacy corrupto) no entra en ninguna de las dos tuplas, pero no
+    desaparece en silencio: se loguea con el expediente y el valor, igual que
+    :func:`cargar_golden_ti` falla en vez de tragarse una etiqueta mala.
     """
+    expediente = str(fila["expediente"])
     combinadas = _tecnologias_de_fila(fila)
-    familias = tuple(t for t in combinadas if TECH_LABEL_TIPO.get(t) == "categoria")
-    fabricantes = tuple(t for t in combinadas if TECH_LABEL_TIPO.get(t) == "fabricante")
+    familias: list[str] = []
+    fabricantes: list[str] = []
+    for tecnologia in combinadas:
+        tipo = TECH_LABEL_TIPO.get(tecnologia)
+        if tipo == "categoria":
+            familias.append(tecnologia)
+        elif tipo == "fabricante":
+            fabricantes.append(tecnologia)
+        else:
+            log.warning(
+                "golden_ti.tecnologia_desconocida",
+                expediente=expediente,
+                tecnologia=tecnologia,
+            )
     return EjemploGoldenTi(
-        id_externo=str(fila["expediente"]),
+        id_externo=expediente,
         fuente=str(fila["fuente"]),
         fecha=str(fila["fecha_publicacion"]),
         titulo=str(fila["titulo"]),
         descripcion=str(fila.get("descripcion") or ""),
         cpv=str(fila["cpv"]) if fila.get("cpv") is not None else None,
         es_ti=bool(fila["relevante"]),
-        familias=familias,
-        fabricantes=fabricantes,
+        familias=tuple(familias),
+        fabricantes=tuple(fabricantes),
         etiquetado_por="humano",
         etiquetado_at=str(fila["created_at"]),
         split="tune",
@@ -193,10 +224,10 @@ def cargar_golden_ti(path: Path | None = None) -> list[EjemploGoldenTi]:
         el fichero no existe o solo tiene cabecera.
 
     Raises:
-        ValueError: JSON inválido, ``split`` fuera de ``{"tune", "holdout"}``,
-            o una familia/fabricante fuera de :data:`TECH_LABELS` — nombra el
-            valor malo, para que una etiqueta mal escrita no se cuele como un
-            negativo silencioso.
+        ValueError: JSON inválido, falta alguno de :data:`_CAMPOS_REQUERIDOS`,
+            ``split`` fuera de ``{"tune", "holdout"}``, o una familia/fabricante
+            fuera de :data:`TECH_LABELS` — nombra el campo o valor malo, para
+            que una línea rota no se cuele como un negativo silencioso.
     """
     target = path if path is not None else RUTA_GOLDEN_TI
     if not target.exists():
@@ -212,6 +243,10 @@ def cargar_golden_ti(path: Path | None = None) -> list[EjemploGoldenTi]:
             obj = json.loads(line)
         except json.JSONDecodeError as exc:
             raise ValueError(f"Golden TI: JSON inválido en línea {lineno}: {exc}") from exc
+
+        faltantes = [campo for campo in _CAMPOS_REQUERIDOS if campo not in obj]
+        if faltantes:
+            raise ValueError(f"Golden TI: faltan campos {faltantes} en línea {lineno}")
 
         split_raw = obj.get("split")
         if split_raw not in _SPLITS:

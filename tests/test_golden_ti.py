@@ -7,11 +7,14 @@ fecha, y su holdout es el 50 % más reciente, fijo.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
+from services.ml import golden_ti
 from services.ml.golden_ti import (
     EjemploGoldenTi,
     a_linea,
@@ -63,6 +66,47 @@ def test_una_fila_de_revision_separa_familias_de_fabricantes() -> None:
     assert ejemplo.familias == ("ERP",)
     assert ejemplo.fabricantes == ("SAP",)
     assert ejemplo.descripcion == ""
+
+
+def test_una_tecnologia_desconocida_se_descarta_con_aviso(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Una tecnología que no está en TECH_LABEL_TIPO no se cuela como negativo
+    silencioso: se descarta (no entra en familias ni en fabricantes) y queda
+    rastro -- un aviso estructurado con el expediente y el valor malo -- para
+    que un label retirado o un dato legacy corrupto no desaparezca sin dejar
+    huella, tal y como ya exige `cargar_golden_ti` para el fichero."""
+    log = MagicMock()
+    monkeypatch.setattr(golden_ti, "log", log)
+    fila = {
+        "expediente": "EXP-9",
+        "fuente": "placsp",
+        "fecha_publicacion": "2026-09-01",
+        "titulo": "t",
+        "descripcion": "",
+        "cpv": None,
+        "relevante": 1,
+        "tecnologia": "NO_EXISTE",
+        "tecnologias_secundarias": '["SAP"]',
+        "created_at": "2026-09-28T10:00:00+00:00",
+    }
+
+    ejemplo = ejemplo_desde_fila(fila)
+
+    assert ejemplo.familias == ()
+    assert ejemplo.fabricantes == ("SAP",)  # la conocida se conserva
+    assert log.warning.call_args.args[0] == "golden_ti.tecnologia_desconocida"
+    assert log.warning.call_args.kwargs["expediente"] == "EXP-9"
+    assert log.warning.call_args.kwargs["tecnologia"] == "NO_EXISTE"
+
+
+def test_un_campo_obligatorio_ausente_es_un_error_claro(tmp_path: Path) -> None:
+    ruta = tmp_path / "golden.jsonl"
+    incompleto = json.loads(a_linea(_ejemplo("E1", "2026-09-01")))
+    del incompleto["titulo"]
+    ruta.write_text(json.dumps(incompleto), encoding="utf-8")
+    with pytest.raises(ValueError, match="titulo"):
+        cargar_golden_ti(ruta)
 
 
 def test_ida_y_vuelta_por_el_fichero(tmp_path: Path) -> None:
