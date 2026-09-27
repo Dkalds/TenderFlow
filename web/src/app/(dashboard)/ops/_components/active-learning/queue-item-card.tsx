@@ -18,9 +18,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatPercent } from "@/lib/utils";
-import type { LlmProposal, ModelVersionInfo, QueueItem } from "../../_lib/active-learning";
+import type {
+  EtiquetaTaxonomia,
+  LlmProposal,
+  ModelVersionInfo,
+  QueueItem,
+} from "../../_lib/active-learning";
 import { ModelPrediction } from "./model-prediction";
 import { QueueItemHeader } from "./queue-item-header";
+import { SelectorTaxonomia } from "./selector-taxonomia";
 
 /** Por qué está un expediente en la cola por desacuerdo (`db/repositories/revision_ti.py`). */
 const MOTIVO_LEGIBLE: Record<string, string> = {
@@ -28,6 +34,7 @@ const MOTIVO_LEGIBLE: Record<string, string> = {
   llm_si_reglas_no: "El LLM dice que es TI; ni las reglas ni el CPV lo ven",
   llm_no_cpv_si: "El CPV es de informática; el LLM dice que no es TI",
   familias_distintas: "El LLM y las reglas ven familias distintas",
+  legado: "Etiqueta heredada: decía «es SAP», hay que revisarla como «es TI»",
   modelo_dudoso: "El modelo no está seguro",
 };
 
@@ -66,16 +73,25 @@ function PropuestaLlm({
           </span>
         )}
       </p>
-      <Button
-        size="sm"
-        variant="secondary"
-        className="ml-auto"
-        onClick={onAccept}
-        disabled={isSubmitting}
-      >
-        <Check className="mr-1 h-4 w-4" aria-hidden="true" />
-        Aceptar propuesta
-      </Button>
+      {llm.sin_evidencia ? (
+        // Afirmó familias sin cita que se sostenga: esa respuesta no entrena,
+        // así que aceptarla de un clic guardaría una etiqueta que el LLM no
+        // respaldó. Se decide con el formulario de abajo.
+        <p className="w-full text-xs text-muted-foreground">
+          Sin «Aceptar»: el LLM nombró familias sin una cita del anuncio que las sostenga.
+        </p>
+      ) : (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="ml-auto"
+          onClick={onAccept}
+          disabled={isSubmitting}
+        >
+          <Check className="mr-1 h-4 w-4" aria-hidden="true" />
+          Aceptar propuesta
+        </Button>
+      )}
     </div>
   );
 }
@@ -83,13 +99,14 @@ function PropuestaLlm({
 export function QueueItemCard({
   item,
   activeModel,
-  chosenTech,
-  chosenSecs,
+  taxonomia,
+  seleccion,
   note,
   noteExpanded,
   descExpanded,
   isSubmitting,
   onSelectTech,
+  onToggleTech,
   onClearSelection,
   onToggleNote,
   onToggleDesc,
@@ -102,13 +119,16 @@ export function QueueItemCard({
 }: {
   item: QueueItem;
   activeModel: ModelVersionInfo | null;
-  chosenTech: string | null;
-  chosenSecs: Set<string>;
+  /** La taxonomía entera que ofrece el selector (`GET /feedback/taxonomia`). */
+  taxonomia: EtiquetaTaxonomia[];
+  /** Familias y fabricantes marcados: el primero es la principal. */
+  seleccion: string[];
   note: string;
   noteExpanded: boolean;
   descExpanded: boolean;
   isSubmitting: boolean;
   onSelectTech: (tech: string, shiftKey: boolean) => void;
+  onToggleTech: (codigo: string) => void;
   onClearSelection: () => void;
   onToggleNote: () => void;
   onToggleDesc: () => void;
@@ -119,7 +139,10 @@ export function QueueItemCard({
   onTiWithoutFamily: () => void;
   onSkip: () => void;
 }) {
-  const hasSelection = chosenTech != null;
+  const [principal, ...secundarias] = seleccion;
+  const hasSelection = principal != null;
+  const nombre = (codigo: string) =>
+    taxonomia.find((etiqueta) => etiqueta.codigo === codigo)?.etiqueta ?? codigo;
 
   return (
     <Card>
@@ -141,10 +164,12 @@ export function QueueItemCard({
         <ModelPrediction
           item={item}
           activeModel={activeModel}
-          chosenTech={chosenTech}
-          chosenSecs={chosenSecs}
+          chosenTech={principal ?? null}
+          chosenSecs={new Set(secundarias)}
           onSelectTech={onSelectTech}
         />
+
+        <SelectorTaxonomia taxonomia={taxonomia} seleccion={seleccion} onToggle={onToggleTech} />
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -162,18 +187,16 @@ export function QueueItemCard({
                   disabled={isSubmitting || !hasSelection}
                 >
                   <ThumbsUp className="mr-1 h-4 w-4" aria-hidden="true" />
-                  {hasSelection ? `Es TI: ${chosenTech}` : "Es TI: elige familia"}
+                  {hasSelection ? `Es TI: ${nombre(principal)}` : "Es TI: elige familia"}
                 </Button>
               </span>
             </TooltipTrigger>
             <TooltipContent>
               {hasSelection
-                ? `Es TI: ${chosenTech}${
-                    chosenSecs.size
-                      ? ` + ${Array.from(chosenSecs).join(", ")}`
-                      : ""
+                ? `Es TI: ${nombre(principal)}${
+                    secundarias.length ? ` + ${secundarias.map(nombre).join(", ")}` : ""
                   }`
-                : "Selecciona una tecnología primero"}
+                : "Marca al menos una familia o un fabricante"}
             </TooltipContent>
           </Tooltip>
           <Tooltip>
@@ -212,7 +235,7 @@ export function QueueItemCard({
             <SkipForward className="mr-1 h-4 w-4" />
             Saltar
           </Button>
-          {chosenTech && (
+          {hasSelection && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

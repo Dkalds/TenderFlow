@@ -437,6 +437,8 @@ export const feedbackKeys = {
   stats: ["feedback-stats"] as const,
   modelInfo: ["feedback-model-info"] as const,
   queue: (strategy: string) => ["feedback-queue", strategy] as const,
+  /** La taxonomía del formulario de revisión (`GET /feedback/taxonomia`). */
+  taxonomia: ["feedback", "taxonomia"] as const,
 };
 
 export const webhookKeys = {

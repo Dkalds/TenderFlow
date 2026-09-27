@@ -1,14 +1,16 @@
 /**
  * Las acciones de la cola por desacuerdo (plan de clasificación en tres
  * niveles, F1), vistas desde lo que llega a `POST /api/v1/feedback`: aceptar
- * la propuesta del LLM de un clic y marcar «es TI» sin familia.
+ * la propuesta del LLM de un clic, marcar «es TI» sin familia, y elegir
+ * familias y fabricantes de la taxonomía entera, que llega de la API y arranca
+ * con la propuesta del LLM.
  */
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
-import type { QueueItem } from "../../_lib/active-learning";
+import type { EtiquetaTaxonomia, QueueItem } from "../../_lib/active-learning";
 import { useActiveLearning } from "../use-active-learning";
 
 const COLA: QueueItem[] = [
@@ -29,10 +31,20 @@ const COLA: QueueItem[] = [
   },
 ];
 
+const TAXONOMIA: EtiquetaTaxonomia[] = [
+  { codigo: "SAP", etiqueta: "SAP", tipo: "fabricante" },
+  { codigo: "CLOUD_INFRA", etiqueta: "Infraestructura, cloud y redes", tipo: "categoria" },
+  { codigo: "DESARROLLO", etiqueta: "Desarrollo de software", tipo: "categoria" },
+  { codigo: "RRHH_NOMINA", etiqueta: "RRHH y nómina", tipo: "categoria" },
+];
+
 function montar() {
   const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
     const url = callUrl(call);
     if (url.startsWith("/api/v1/feedback/queue")) return Promise.resolve(jsonResponse({ items: COLA }));
+    if (url === "/api/v1/feedback/taxonomia") {
+      return Promise.resolve(jsonResponse({ etiquetas: TAXONOMIA }));
+    }
     if (url === "/api/v1/feedback/model-info") {
       return Promise.resolve(jsonResponse({ active: null, feedbacks_since_train: 0, history: [] }));
     }
@@ -120,5 +132,73 @@ describe("useActiveLearning — cola por desacuerdo", () => {
 
     await waitFor(() => expect(envios(fetchMock)).toHaveLength(1));
     expect(envios(fetchMock)[0]).toEqual({ expediente: "EXP-SIN-RESPUESTA", relevante: true });
+  });
+
+  it("la taxonomía del selector llega de la API", async () => {
+    const { fetchMock, hook } = montar();
+
+    await waitFor(() => expect(hook.result.current.taxonomia).toHaveLength(4));
+
+    expect(hook.result.current.taxonomia).toEqual(TAXONOMIA);
+    expect(fetchMock.mock.calls.map((call) => callUrl(call))).toContain("/api/v1/feedback/taxonomia");
+  });
+
+  it("la selección arranca con la propuesta del LLM", async () => {
+    const { hook } = montar();
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+
+    expect(hook.result.current.seleccionDe("EXP-SI")).toEqual(["DESARROLLO", "SAP"]);
+    expect(hook.result.current.seleccionDe("EXP-NO")).toEqual([]);
+  });
+
+  it("editar la propuesta y confirmar manda la primera de principal y el resto de secundarias", async () => {
+    const { fetchMock, hook } = montar();
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+
+    act(() => hook.result.current.toggleTech("EXP-SI", "SAP"));
+    act(() => hook.result.current.toggleTech("EXP-SI", "CLOUD_INFRA"));
+    expect(hook.result.current.seleccionDe("EXP-SI")).toEqual(["DESARROLLO", "CLOUD_INFRA"]);
+    act(() => hook.result.current.confirmLabel("EXP-SI"));
+
+    await waitFor(() => expect(envios(fetchMock)).toHaveLength(1));
+    expect(envios(fetchMock)[0]).toEqual({
+      expediente: "EXP-SI",
+      relevante: true,
+      tecnologia: "DESARROLLO",
+      tecnologias_secundarias: ["CLOUD_INFRA"],
+    });
+  });
+
+  it("sin propuesta, la familia se elige de la taxonomía", async () => {
+    const { fetchMock, hook } = montar();
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+
+    act(() => hook.result.current.toggleTech("EXP-NO", "RRHH_NOMINA"));
+    act(() => hook.result.current.confirmLabel("EXP-NO"));
+
+    await waitFor(() => expect(envios(fetchMock)).toHaveLength(1));
+    expect(envios(fetchMock)[0]).toEqual({
+      expediente: "EXP-NO",
+      relevante: true,
+      tecnologia: "RRHH_NOMINA",
+    });
+  });
+
+  it("el clic en un chip del modelo pone esa etiqueta de principal", async () => {
+    const { hook } = montar();
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+
+    act(() => hook.result.current.selectTech("EXP-SI", "SAP", false));
+
+    expect(hook.result.current.seleccionDe("EXP-SI")).toEqual(["SAP", "DESARROLLO"]);
+  });
+
+  it("limpiar deja la selección vacía, no vuelve a la propuesta", async () => {
+    const { hook } = montar();
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+
+    act(() => hook.result.current.clearSelection("EXP-SI"));
+
+    expect(hook.result.current.seleccionDe("EXP-SI")).toEqual([]);
   });
 });

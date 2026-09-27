@@ -6,10 +6,12 @@
  * Todo lo que la vista necesita saber (cola, modelo activo, estadísticas) y
  * todo lo que sabe hacer (etiquetar, descartar, saltar, anotar) vive aquí; los
  * componentes de `_components/active-learning/` solo pintan lo que este hook
- * devuelve. La selección de tecnologías es por expediente: un `Record` indexado
- * por `id_externo`, no un estado por tarjeta, porque la confirmación manda
- * principal y secundarias juntas. Las formas (ítem, modelo, estrategia) viven
- * en `_lib/active-learning.ts`.
+ * devuelve. La selección de familias y fabricantes es por expediente: una lista
+ * ordenada indexada por `id_externo` (la primera es la principal), no un estado
+ * por tarjeta, porque la confirmación manda principal y secundarias juntas.
+ * Mientras nadie la toca, es la propuesta del LLM. Las formas (ítem, modelo,
+ * estrategia) y las operaciones sobre la selección viven en
+ * `_lib/active-learning.ts`.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -17,9 +19,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { feedbackKeys } from "@/lib/query-keys";
-import { useFeedbackStats, type FeedbackStats } from "@/hooks/use-feedback";
+import { useFeedbackStats, useTaxonomiaTecnologias, type FeedbackStats } from "@/hooks/use-feedback";
 import {
+  alternarEtiqueta,
+  hacerPrincipal,
   headlineMetric,
+  seleccionInicial,
+  type EtiquetaTaxonomia,
   type HeadlineMetric,
   type ModelInfo,
   type ModelVersionInfo,
@@ -48,13 +54,18 @@ export interface ActiveLearning {
   notes: Record<string, string>;
   expandedNotes: Set<string>;
   expandedDesc: Set<string>;
-  selectedTech: Record<string, string | null>;
-  secondaryTechs: Record<string, Set<string>>;
+  /** Familias y fabricantes que se pueden elegir (la taxonomía entera). */
+  taxonomia: EtiquetaTaxonomia[];
+  /** Selección vigente de un expediente: la primera es la principal. */
+  seleccionDe: (expediente: string) => string[];
   isSubmitting: boolean;
   setNote: (expediente: string, value: string) => void;
   toggleNote: (expediente: string) => void;
   toggleDesc: (expediente: string) => void;
+  /** El clic en un chip del modelo: principal, o secundaria con shift. */
   selectTech: (expediente: string, tech: string, shiftKey: boolean) => void;
+  /** Marca o desmarca una etiqueta del selector de la taxonomía. */
+  toggleTech: (expediente: string, codigo: string) => void;
   clearSelection: (expediente: string) => void;
   confirmLabel: (expediente: string) => void;
   markNotRelevant: (expediente: string) => void;
@@ -71,8 +82,8 @@ export function useActiveLearning(): ActiveLearning {
   const [expandedDesc, setExpandedDesc] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [strategy, setStrategy] = useState<Strategy>("desacuerdo");
-  const [selectedTech, setSelectedTech] = useState<Record<string, string | null>>({});
-  const [secondaryTechs, setSecondaryTechs] = useState<Record<string, Set<string>>>({});
+  // Solo las selecciones que alguien ha editado; el resto es la propuesta.
+  const [seleccion, setSeleccion] = useState<Record<string, string[]>>({});
 
   const { data: queue, isLoading: queueLoading, isError: queueError } = useQuery<QueueResponse>({
     queryKey: feedbackKeys.queue(strategy),
@@ -86,6 +97,7 @@ export function useActiveLearning(): ActiveLearning {
   });
 
   const { data: stats, isLoading: statsLoading } = useFeedbackStats();
+  const { data: taxonomiaData } = useTaxonomiaTecnologias();
 
   const submitFeedback = useMutation({
     mutationFn: (vars: {
@@ -134,21 +146,29 @@ export function useActiveLearning(): ActiveLearning {
   const metricTrend =
     metric && typeof prevMetric === "number" ? metric.value - prevMetric : null;
 
+  const seleccionDe = useCallback(
+    (expediente: string) => seleccion[expediente] ?? seleccionInicial(items.find((it) => it.id_externo === expediente)),
+    [seleccion, items],
+  );
+
+  const editarSeleccion = useCallback(
+    (expediente: string, editar: (actual: string[]) => string[]) =>
+      setSeleccion((prev) => ({ ...prev, [expediente]: editar(seleccionDe(expediente)) })),
+    [seleccionDe],
+  );
+
   const confirmLabel = useCallback(
     (expediente: string) => {
-      const tech = selectedTech[expediente] ?? null;
-      const secs = secondaryTechs[expediente]
-        ? Array.from(secondaryTechs[expediente]!)
-        : [];
+      const [principal, ...secundarias] = seleccionDe(expediente);
       submitFeedback.mutate({
         expediente,
         relevante: true,
         nota: notes[expediente],
-        tecnologia: tech,
-        tecnologias_secundarias: secs,
+        tecnologia: principal ?? null,
+        tecnologias_secundarias: secundarias,
       });
     },
-    [selectedTech, secondaryTechs, notes, submitFeedback],
+    [seleccionDe, notes, submitFeedback],
   );
 
   const markNotRelevant = useCallback(
@@ -219,33 +239,21 @@ export function useActiveLearning(): ActiveLearning {
     setNotes((prev) => ({ ...prev, [expediente]: value }));
   }, []);
 
-  const selectTech = useCallback((expediente: string, tech: string, shiftKey: boolean) => {
-    if (shiftKey) {
-      setSecondaryTechs((prev) => {
-        const current = new Set(prev[expediente] ?? []);
-        if (current.has(tech)) current.delete(tech);
-        else current.add(tech);
-        return { ...prev, [expediente]: current };
-      });
-    } else {
-      setSelectedTech((prev) => {
-        const current = prev[expediente];
-        if (current === tech) {
-          return { ...prev, [expediente]: null };
-        }
-        return { ...prev, [expediente]: tech };
-      });
-      setSecondaryTechs((prev) => {
-        const s = prev[expediente] ?? new Set();
-        s.delete(tech);
-        return { ...prev, [expediente]: s };
-      });
-    }
-  }, []);
+  const selectTech = useCallback(
+    (expediente: string, tech: string, shiftKey: boolean) =>
+      editarSeleccion(expediente, (actual) =>
+        shiftKey ? alternarEtiqueta(actual, tech) : hacerPrincipal(actual, tech),
+      ),
+    [editarSeleccion],
+  );
+
+  const toggleTech = useCallback(
+    (expediente: string, codigo: string) => editarSeleccion(expediente, (actual) => alternarEtiqueta(actual, codigo)),
+    [editarSeleccion],
+  );
 
   const clearSelection = useCallback((expediente: string) => {
-    setSelectedTech((prev) => ({ ...prev, [expediente]: null }));
-    setSecondaryTechs((prev) => ({ ...prev, [expediente]: new Set() }));
+    setSeleccion((prev) => ({ ...prev, [expediente]: [] }));
   }, []);
 
   return {
@@ -268,13 +276,14 @@ export function useActiveLearning(): ActiveLearning {
     notes,
     expandedNotes,
     expandedDesc,
-    selectedTech,
-    secondaryTechs,
+    taxonomia: taxonomiaData?.etiquetas ?? [],
+    seleccionDe,
     isSubmitting: submitFeedback.isPending,
     setNote,
     toggleNote,
     toggleDesc,
     selectTech,
+    toggleTech,
     clearSelection,
     confirmLabel,
     markNotRelevant,

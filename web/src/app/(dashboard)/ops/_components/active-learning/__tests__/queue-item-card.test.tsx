@@ -1,13 +1,14 @@
 /**
  * La tarjeta de la cola por desacuerdo (plan de clasificación en tres niveles,
- * F1): por qué está el expediente en la cola, qué propone el LLM y el atajo
- * para aceptarlo de un clic.
+ * F1): por qué está el expediente en la cola, qué propone el LLM, el atajo
+ * para aceptarlo de un clic y el formulario de familias y fabricantes sobre la
+ * taxonomía entera (spec §3.3), que no depende de que haya modelo.
  */
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import type { QueueItem } from "../../../_lib/active-learning";
+import type { EtiquetaTaxonomia, QueueItem } from "../../../_lib/active-learning";
 import { QueueItemCard } from "../queue-item-card";
 
 type Props = ComponentProps<typeof QueueItemCard>;
@@ -19,17 +20,26 @@ const ITEM: QueueItem = {
   llm: { es_ti: true, confianza_es_ti: 0.9, familias: ["DESARROLLO"], sin_evidencia: false },
 };
 
+const TAXONOMIA: EtiquetaTaxonomia[] = [
+  { codigo: "SAP", etiqueta: "SAP", tipo: "fabricante" },
+  { codigo: "ORACLE", etiqueta: "Oracle", tipo: "fabricante" },
+  { codigo: "CLOUD_INFRA", etiqueta: "Infraestructura, cloud y redes", tipo: "categoria" },
+  { codigo: "DESARROLLO", etiqueta: "Desarrollo de software", tipo: "categoria" },
+  { codigo: "RRHH_NOMINA", etiqueta: "RRHH y nómina", tipo: "categoria" },
+];
+
 function pintar(cambios: Partial<Props> = {}): Props {
   const props: Props = {
     item: ITEM,
     activeModel: null,
-    chosenTech: null,
-    chosenSecs: new Set<string>(),
+    taxonomia: TAXONOMIA,
+    seleccion: [],
     note: "",
     noteExpanded: false,
     descExpanded: false,
     isSubmitting: false,
     onSelectTech: vi.fn(),
+    onToggleTech: vi.fn(),
     onClearSelection: vi.fn(),
     onToggleNote: vi.fn(),
     onToggleDesc: vi.fn(),
@@ -130,5 +140,75 @@ describe("QueueItemCard — cola por desacuerdo", () => {
 
     expect(screen.getByText("Familias del LLM: SAP")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Aceptar propuesta" })).toBeNull();
+  });
+
+  it("un motivo legado dice que es una etiqueta heredada", () => {
+    pintar({ item: { ...ITEM, motivo: "legado", llm: null } });
+
+    expect(screen.getByText(/Etiqueta heredada/)).toBeInTheDocument();
+  });
+
+  it("si el LLM no sostuvo sus citas, no ofrece aceptar y dice por qué", () => {
+    pintar({
+      item: {
+        ...ITEM,
+        motivo: "llm_si_reglas_no",
+        llm: { es_ti: true, confianza_es_ti: 0.9, familias: [], sin_evidencia: true },
+      },
+    });
+
+    expect(screen.getByText("Propuesta del LLM: es TI")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aceptar propuesta" })).toBeNull();
+    expect(screen.getByText(/sin una cita del anuncio/)).toBeInTheDocument();
+  });
+});
+
+describe("QueueItemCard — familias y fabricantes", () => {
+  it("ofrece la taxonomía entera, agrupada y con sus nombres, aunque no haya modelo", () => {
+    pintar({ item: { ...ITEM, model: null } });
+
+    const familias = screen.getByRole("group", { name: "Familias" });
+    const fabricantes = screen.getByRole("group", { name: "Fabricantes" });
+    expect(
+      within(familias)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Infraestructura, cloud y redes", "Desarrollo de software", "RRHH y nómina"]);
+    expect(
+      within(fabricantes)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["SAP", "Oracle"]);
+  });
+
+  it("marcar una etiqueta llama a onToggleTech con su código", () => {
+    const props = pintar();
+
+    fireEvent.click(screen.getByRole("button", { name: "RRHH y nómina" }));
+
+    expect(props.onToggleTech).toHaveBeenCalledWith("RRHH_NOMINA");
+  });
+
+  it("la selección se ve marcada, y la primera es la principal", () => {
+    pintar({ seleccion: ["DESARROLLO", "SAP"] });
+
+    const principal = screen.getByRole("button", { name: "Desarrollo de software (principal)" });
+    expect(principal).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "SAP" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Oracle" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("«Es TI» confirma la selección con el nombre de la principal", () => {
+    const props = pintar({ seleccion: ["DESARROLLO", "SAP"] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Es TI: Desarrollo de software" }));
+
+    expect(props.onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin selección, «Es TI» pide elegir y no se puede pulsar", () => {
+    pintar({ seleccion: [] });
+
+    expect(screen.getByRole("button", { name: "Es TI: elige familia" })).toBeDisabled();
   });
 });

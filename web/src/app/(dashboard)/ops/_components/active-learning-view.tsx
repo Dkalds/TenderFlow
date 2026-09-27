@@ -47,11 +47,13 @@ function ActiveLearningContent() {
           <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
           <span>
             Por defecto la cola pone delante las licitaciones en las que
-            reglas, LLM y modelo no coinciden (desacuerdo), con el motivo y la
+            reglas, LLM y modelo no coinciden (desacuerdo), después las
+            etiquetas heredadas que decían «es SAP», con el motivo y la
             propuesta del LLM, que se acepta de un clic; también puedes
             muestrear por incertidumbre del modelo o al azar. Para etiquetar a
-            mano, selecciona la tecnología principal haciendo click en el chip;
-            usa shift-click para marcar tecnologías secundarias.
+            mano, marca familias y fabricantes en la lista de cada tarjeta,
+            que arranca con la propuesta del LLM: la primera que marques es la
+            principal.
           </span>
         </CardContent>
       </Card>

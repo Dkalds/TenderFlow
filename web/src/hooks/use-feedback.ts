@@ -31,3 +31,19 @@ export function useFeedbackStats() {
     staleTime: 5 * 60_000,
   });
 }
+
+export type TaxonomiaTecnologias = Schemas["TaxonomiaResult"];
+
+/**
+ * La taxonomía entera (familias y fabricantes, con su nombre legible), para el
+ * formulario de revisión de `/ops` (`GET /feedback/taxonomia`). El frontend no
+ * lleva una copia: sale de `config/keywords.py` y solo cambia con un
+ * despliegue, así que no caduca en la sesión.
+ */
+export function useTaxonomiaTecnologias() {
+  return useQuery<TaxonomiaTecnologias>({
+    queryKey: feedbackKeys.taxonomia,
+    queryFn: () => fetchWithAuth<TaxonomiaTecnologias>("/api/v1/feedback/taxonomia"),
+    staleTime: Infinity,
+  });
+}

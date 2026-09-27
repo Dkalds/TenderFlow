@@ -280,6 +280,7 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "feedbackKeys.stats", clave: feedbackKeys.stats },
       { nombre: "feedbackKeys.modelInfo", clave: feedbackKeys.modelInfo },
       { nombre: "feedbackKeys.queue", clave: feedbackKeys.queue("uncertainty") },
+      { nombre: "feedbackKeys.taxonomia", clave: feedbackKeys.taxonomia },
     ],
   },
   {
