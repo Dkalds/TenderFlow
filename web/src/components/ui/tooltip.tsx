@@ -36,7 +36,7 @@ const TooltipContent = React.forwardRef<
     ref={ref}
     sideOffset={sideOffset}
     className={cn(
-      "tf-glass-strong z-50 overflow-hidden rounded-md border border-border px-2.5 py-1.5 text-xs text-popover-foreground shadow-md",
+      "z-50 overflow-hidden rounded-md border border-border bg-popover px-2.5 py-1.5 text-tf-meta text-popover-foreground shadow-md",
       // Scale from the trigger, not center (apple-design §7 / emil-design-eng).
       "origin-[var(--radix-tooltip-content-transform-origin)]",
       "data-[state=delayed-open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=delayed-open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=delayed-open]:zoom-in-95",

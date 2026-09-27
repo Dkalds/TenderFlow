@@ -62,7 +62,7 @@ export function CampoError({
     <span
       id={idError(campoId)}
       aria-hidden={enLabel || undefined}
-      className="text-destructive block text-xs font-normal"
+      className="text-destructive block text-tf-meta font-normal"
     >
       {mensaje}
     </span>

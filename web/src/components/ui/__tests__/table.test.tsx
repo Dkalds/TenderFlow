@@ -9,6 +9,7 @@ import {
   TableRow,
   TableCell,
   TableCaption,
+  CABECERA_COLUMNA,
 } from "@/components/ui/table";
 
 describe("Table components", () => {
@@ -122,5 +123,45 @@ describe("Table components", () => {
     const ref = { current: null as HTMLTableElement | null };
     render(<Table ref={ref} />);
     expect(ref.current?.tagName).toBe("TABLE");
+  });
+});
+
+describe("CABECERA_COLUMNA", () => {
+  it("TableHead la usa: sans en versal a 11 px, sin mono", () => {
+    render(
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Órgano</TableHead>
+          </TableRow>
+        </TableHeader>
+      </Table>,
+    );
+    const th = screen.getByText("Órgano");
+    for (const clase of CABECERA_COLUMNA.split(" ")) expect(th).toHaveClass(clase);
+    expect(th.className).not.toMatch(/font-mono|text-\[/);
+  });
+
+  it("es la única versal: sans, 11 px y un tracking corto", () => {
+    expect(CABECERA_COLUMNA).toContain("uppercase");
+    expect(CABECERA_COLUMNA).toContain("text-tf-micro");
+    expect(CABECERA_COLUMNA).not.toContain("font-mono");
+  });
+});
+
+describe("TableCell numeric", () => {
+  it("alinea a la derecha las columnas de cifras sin pasar la prop al DOM", () => {
+    render(
+      <Table>
+        <TableBody>
+          <TableRow>
+            <TableCell numeric>1.000 €</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    const td = screen.getByText("1.000 €");
+    expect(td).toHaveClass("text-right");
+    expect(td).not.toHaveAttribute("numeric");
   });
 });

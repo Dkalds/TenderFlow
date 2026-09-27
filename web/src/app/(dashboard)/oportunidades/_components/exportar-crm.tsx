@@ -11,12 +11,13 @@
  */
 
 import * as React from "react";
-import { Share2 } from "lucide-react";
+import { Download } from "lucide-react";
 import {
   organizacionResuelta,
   useActiveOrganizationId,
   type OrganizacionActiva,
 } from "@/hooks/use-organization";
+import { Button } from "@/components/ui/button";
 import { triggerDownload } from "@/lib/export";
 
 export function urlExportCrm(organizationId: OrganizacionActiva): string {
@@ -40,17 +41,19 @@ export function ExportarCrm() {
   };
 
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="sm"
+      className="flex-none"
       onClick={() => void exportar()}
       // Hasta que no se sabe la organización, el botón no exporta: aquí el
       // ámbito equivocado no es un parpadeo que se corrige solo, es un CSV que
       // el usuario se lleva a su CRM. Son milisegundos al cargar la pantalla.
       disabled={descargando || !organizacionResuelta(organizationId)}
-      className="border-border/70 text-muted-foreground hover:text-foreground inline-flex h-7 flex-none items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:opacity-60"
     >
-      <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
+      <Download aria-hidden="true" />
       {descargando ? "Exportando…" : "Exportar a CRM"}
-    </button>
+    </Button>
   );
 }

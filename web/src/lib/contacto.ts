@@ -3,11 +3,12 @@
  *
  * El acceso a TenderFlow es por invitación (`ALLOW_SELF_REGISTRATION` apagado
  * en producción), así que el CTA "Solicita acceso" necesita un destino real o
- * es un fondo de saco: /login solo deja entrar a quien ya tiene cuenta. La
- * dirección la pone el responsable vía entorno —ADR-014: sin hardcode que el
- * entorno debe proveer, y el aviso legal es explícito en que aquí no se
- * inventa un buzón que nadie lea—. Sin la variable, todo degrada al
- * comportamiento anterior (enlazar a /login) sin romper nada.
+ * es un fondo de saco: /login solo deja entrar a quien ya tiene cuenta. El
+ * destino es siempre el formulario de la portada (`solicitarAccesoHref`).
+ * `CONTACT_EMAIL` ya no decide nada del embudo: es solo la dirección del pie y
+ * del aviso legal, y la pone el responsable vía entorno —ADR-014: sin hardcode
+ * que el entorno debe proveer, y el aviso legal es explícito en que aquí no se
+ * inventa un buzón que nadie lea—. Sin la variable, esos dos sitios la omiten.
  *
  * Vive en su propio módulo, y no en `lib/site.ts`, porque lo importan también
  * componentes cliente (/login): así el bundle de cliente no arrastra la

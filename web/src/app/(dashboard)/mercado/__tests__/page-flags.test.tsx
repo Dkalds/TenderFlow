@@ -25,7 +25,6 @@ vi.mock("@/components/layout/space-shell", () => ({
     return <p>shell</p>;
   },
 }));
-vi.mock("@/components/export-popover", () => ({ ExportPopover: () => null }));
 
 import MercadoPage from "@/app/(dashboard)/mercado/page";
 

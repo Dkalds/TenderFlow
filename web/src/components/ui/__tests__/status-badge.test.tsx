@@ -142,3 +142,25 @@ describe("StatusBadge — showIcon", () => {
     expect(container.firstChild).toHaveClass("extra-class");
   });
 });
+
+describe("StatusBadge — la banda es el chip único de banda", () => {
+  it("delega en ChipBanda, sobre los tokens de puntuación", () => {
+    const { container } = render(<StatusBadge value="Caliente" kind="band" />);
+    const chip = container.querySelector('[data-slot="chip-banda"]');
+    expect(chip).not.toBeNull();
+    expect(chip?.className).toContain("--score-hot");
+    // Una banda alta no es un error: sin la variante destructiva.
+    expect(chip?.className).not.toMatch(/destructive/);
+  });
+
+  it("sin iconos del tiempo, ni siquiera con showIcon", () => {
+    const { container } = render(<StatusBadge value="Tibia" kind="band" showIcon />);
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
+  it("el estado es un Badge (span) del tono del estado", () => {
+    const { container } = render(<StatusBadge value="Adjudicada" />);
+    expect(container.firstChild?.nodeName).toBe("SPAN");
+    expect(container.firstChild).toHaveClass("text-success");
+  });
+});

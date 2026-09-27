@@ -17,6 +17,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { toggleValue } from "@/lib/chart-interaction";
 import { useFilters } from "@/lib/filters";
 
@@ -54,10 +55,11 @@ export function useGeografiaView() {
   const activeCcaa = useMemo(() => new Set(ccaas), [ccaas]);
   const toggleCcaa = (ccaa: string) => setCcaas(toggleValue(ccaa, ccaas));
 
-  const { data, isLoading, error } = useFilteredQuery<GeographyResponse>(
+  const { data, isLoading, error, refetch } = useFilteredQuery<GeographyResponse>(
     ["analytics", "geography"],
     "/api/v1/analytics/geography",
-    { staleTime: 5 * 60 * 1000 },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
 
   const items = useMemo(() => data?.by_ccaa ?? [], [data]);
@@ -184,5 +186,7 @@ export function useGeografiaView() {
     toggleCcaa,
     isLoading,
     error,
+    /** El «Reintentar» del error. */
+    refetch: () => void refetch(),
   };
 }

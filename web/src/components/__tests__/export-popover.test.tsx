@@ -98,3 +98,16 @@ describe("ExportPopover", () => {
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledTimes(1));
   });
 });
+
+describe("ExportPopover — disparador", () => {
+  it("es un botón de la talla de la consola que nombra su objeto", () => {
+    render(<ExportPopover label="Exportar órganos" />);
+    const boton = screen.getByRole("button", { name: "Exportar órganos" });
+    expect(boton).toHaveClass("h-8", "md:h-7", "text-tf-meta");
+  });
+
+  it("admite la talla default", () => {
+    render(<ExportPopover size="default" />);
+    expect(screen.getByRole("button", { name: "Exportar" })).toHaveClass("h-9");
+  });
+});

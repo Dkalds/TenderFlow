@@ -74,3 +74,23 @@ describe("Card", () => {
     expect(screen.getByText("inner")).toBeInTheDocument();
   });
 });
+
+describe("Card — dibuja como Panel", () => {
+  it("superficie opaca y sin hover: un bloque que no se pulsa no reacciona", () => {
+    const { container } = render(<Card />);
+    const card = container.firstChild as HTMLElement;
+    expect(card).toHaveClass("bg-card");
+    expect(card.className).not.toMatch(/hover:|bg-card\//);
+  });
+
+  it("título a 13 px y descripción a 12, en la escala", () => {
+    render(
+      <>
+        <CardTitle>Título</CardTitle>
+        <CardDescription>Descripción</CardDescription>
+      </>,
+    );
+    expect(screen.getByText("Título")).toHaveClass("text-tf-body");
+    expect(screen.getByText("Descripción")).toHaveClass("text-tf-meta");
+  });
+});

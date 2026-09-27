@@ -101,6 +101,18 @@ function volcarBlob(nombre: string, blob: Blob): void {
 }
 
 /**
+ * Qué decirle a quien pidió la descarga según el estado de la respuesta. En
+ * castellano y sin el código: el aviso es un toast, que no tiene «Detalle
+ * técnico» plegado donde meterlo, y un «respondió 422» no le dice qué hacer.
+ */
+export function motivoDeFallo(status: number): string {
+  if (status === 401 || status === 403) return "Tu sesión caducó. Vuelve a entrar y repite la exportación.";
+  if (status === 422) return "Algún filtro no es válido: revísalo y repite la exportación.";
+  if (status >= 500) return "Error del servidor. Vuelve a intentarlo en unos segundos.";
+  return "Prueba con menos filas o, si se repite, avisa a soporte.";
+}
+
+/**
  * Descarga `url` y la entrega al usuario como fichero.
  *
  * Antes esto era un `<a download>` a ciegas: el navegador se llevaba la
@@ -123,18 +135,13 @@ export async function triggerDownload(url: string): Promise<void> {
     respuesta = await fetch(url, { credentials: "include" });
   } catch {
     toast.error("No se pudo descargar el fichero", {
-      description: "Sin conexión con el servidor. Revisá la red y volvé a intentarlo.",
+      description: "Sin conexión. Revisa la red y vuelve a intentarlo.",
     });
     return;
   }
 
   if (!respuesta.ok) {
-    toast.error("No se pudo descargar el fichero", {
-      description:
-        respuesta.status === 401 || respuesta.status === 403
-          ? "Tu sesión caducó. Volvé a entrar y repetí la exportación."
-          : `El servidor respondió ${respuesta.status}. Probá con menos filas o avisá a soporte.`,
-    });
+    toast.error("No se pudo descargar el fichero", { description: motivoDeFallo(respuesta.status) });
     return;
   }
 

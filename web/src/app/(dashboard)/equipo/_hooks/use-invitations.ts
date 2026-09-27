@@ -11,6 +11,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { organizationKeys } from "@/lib/query-keys";
 
 export type OrganizationInvitation = Schemas["OrganizationInvitationOut"];
@@ -33,6 +34,8 @@ export function useOrganizationInvitations(organizationId: number | null, enable
     // cada carga de la pantalla, ruido sin ninguna información nueva.
     enabled: organizationId != null && enabled,
     staleTime: 30_000,
+    // El fallo lo pinta la tarjeta (`PanelError`), no un toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

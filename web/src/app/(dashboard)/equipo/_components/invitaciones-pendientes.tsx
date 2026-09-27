@@ -11,13 +11,13 @@
  * Salió de `page.tsx` en el troceado de S7 (allowlist de `max-lines`).
  */
 
-import { MailWarning, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Panel, PanelTitle } from "@/components/console/panel";
+import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { formatDate } from "@/lib/utils";
 import {
   type OrganizationInvitation,
@@ -45,7 +45,7 @@ export function InvitacionesPendientes({
       await resend.mutateAsync(invitation.id);
       toast.success("Invitación reenviada");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo reenviar la invitación");
+      toast.error(getErrorMessage(error, "accion"));
     }
   };
 
@@ -54,7 +54,7 @@ export function InvitacionesPendientes({
       await revoke.mutateAsync(invitation.id);
       toast.success("Invitación revocada");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo revocar la invitación");
+      toast.error(getErrorMessage(error, "accion"));
     }
   };
 
@@ -62,17 +62,22 @@ export function InvitacionesPendientes({
 
   return (
     <Panel>
-      <PanelTitle
-        title="Invitaciones pendientes"
-        hint="personas sin cuenta a las que se ha enviado un enlace"
-      />
+      <PanelTitle title="Invitaciones pendientes" hint="personas sin cuenta a las que se ha enviado un enlace" />
       {invitations.isLoading ? (
         <Skeleton className="h-10 w-full" />
+      ) : invitations.error ? (
+        <PanelError
+          variant="inline"
+          title="No se pudieron cargar las invitaciones"
+          error={invitations.error}
+          onRetry={() => void invitations.refetch()}
+        />
       ) : rows.length === 0 ? (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <MailWarning className="h-4 w-4" aria-hidden="true" />
-          No hay invitaciones pendientes.
-        </p>
+        <PanelEmpty
+          size="sm"
+          title="No hay invitaciones pendientes"
+          hint="Cuando invites a alguien sin cuenta, aparecerá aquí hasta que acepte o caduque la invitación."
+        />
       ) : (
         <Table>
           <TableHeader>
@@ -91,7 +96,7 @@ export function InvitacionesPendientes({
                 <TableCell>{ROLE_LABELS[invitation.role]}</TableCell>
                 <TableCell>{formatDate(invitation.expires_at)}</TableCell>
                 <TableCell>
-                  <Badge variant={invitation.status === "invited" ? "secondary" : "outline"}>
+                  <Badge variant={invitation.status === "invited" ? "secondary" : "outline"} size="sm">
                     {INVITATION_STATUS_LABELS[invitation.status]}
                   </Badge>
                 </TableCell>
@@ -102,7 +107,6 @@ export function InvitacionesPendientes({
                     disabled={resend.isPending}
                     onClick={() => void reenviar(invitation)}
                   >
-                    <RotateCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
                     Reenviar
                   </Button>
                   <Button
@@ -111,7 +115,6 @@ export function InvitacionesPendientes({
                     disabled={revoke.isPending}
                     onClick={() => void revocar(invitation)}
                   >
-                    <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
                     Revocar
                   </Button>
                 </TableCell>

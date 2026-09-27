@@ -79,7 +79,7 @@ export function GlosarioHint({ termino, entrada, className }: GlosarioHintProps)
       <TooltipContent className="max-w-[18rem] text-pretty leading-relaxed">
         <p className="font-medium">{definicion.termino}</p>
         <p className="mt-1 text-muted-foreground">{definicion.definicion}</p>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">Más en Metodología</p>
+        <p className="mt-1.5 text-tf-micro text-muted-foreground">Más en Metodología</p>
       </TooltipContent>
     </Tooltip>
   )

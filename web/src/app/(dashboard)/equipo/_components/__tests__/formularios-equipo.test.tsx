@@ -1,5 +1,5 @@
 /**
- * Los dos formularios de `/equipo` con esquema (S7.2): alta de espacio
+ * Los dos formularios de `/equipo` con esquema (S7.2): alta de organización
  * (`OrganizationCreate`) e invitación de miembro (`OrganizationMemberInvite`).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,19 +27,19 @@ afterEach(() => {
 describe("CrearOrganizacionForm", () => {
   it("sin nombre el botón sigue apagado, como antes del esquema", () => {
     render(<CrearOrganizacionForm />);
-    expect(screen.getByRole("button", { name: /Crear espacio/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Crear organización/ })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Nombre del espacio"), { target: { value: "   " } });
-    expect(screen.getByRole("button", { name: /Crear espacio/ })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Nombre de la organización"), { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: /Crear organización/ })).toBeDisabled();
   });
 
   it("manda el nombre recortado y vacía el campo al crear", async () => {
     crear.mockResolvedValue({});
     render(<CrearOrganizacionForm />);
-    const campo = screen.getByLabelText("Nombre del espacio");
+    const campo = screen.getByLabelText("Nombre de la organización");
 
     fireEvent.change(campo, { target: { value: "  Equipo Comercial " } });
-    fireEvent.click(screen.getByRole("button", { name: /Crear espacio/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Crear organización/ }));
 
     await waitFor(() => expect(crear).toHaveBeenCalledWith("Equipo Comercial"));
     await waitFor(() => expect(campo).toHaveValue(""));
@@ -48,17 +48,17 @@ describe("CrearOrganizacionForm", () => {
 
   it("un nombre de más de 200 caracteres se explica debajo del campo", async () => {
     render(<CrearOrganizacionForm />);
-    const campo = screen.getByLabelText("Nombre del espacio");
+    const campo = screen.getByLabelText("Nombre de la organización");
 
     fireEvent.change(campo, { target: { value: "x".repeat(201) } });
-    fireEvent.click(screen.getByRole("button", { name: /Crear espacio/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Crear organización/ }));
 
     const error = await screen.findByText("Máximo 200 caracteres.");
     expect(error).toHaveAttribute("id", "new-org-name-error");
     expect(campo).toHaveAttribute("aria-invalid", "true");
     expect(campo).toHaveAttribute("aria-describedby", "new-org-name-error");
     // El error no se cuela en el nombre accesible del campo.
-    expect(screen.getByLabelText("Nombre del espacio")).toBe(campo);
+    expect(screen.getByLabelText("Nombre de la organización")).toBe(campo);
     expect(crear).not.toHaveBeenCalled();
   });
 });

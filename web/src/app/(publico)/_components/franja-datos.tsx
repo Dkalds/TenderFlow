@@ -76,7 +76,7 @@ export async function FranjaDatos() {
   ];
 
   return (
-    <section aria-label="El corpus en cifras" className="border-border/60 bg-card/40 border-y">
+    <section aria-label="Los datos públicos en cifras" className="border-border/60 bg-card border-y">
       <div className="mx-auto w-full max-w-6xl px-6 py-8">
         <dl className="grid gap-6 sm:grid-cols-3">
           {cifras.map((cifra) => (

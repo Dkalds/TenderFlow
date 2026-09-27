@@ -41,7 +41,8 @@ function moverCache(queries: QueryObservable[]): void {
   });
 }
 
-const TEXTO = /Reconectando con el servidor/;
+// Dice qué pasa en lenguaje de quien espera, sin hablar del servidor.
+const TEXTO = /Reconectando… puede tardar unos segundos/;
 
 beforeEach(() => {
   queriesDelCache = [];
@@ -108,6 +109,8 @@ describe("ConnectionBanner", () => {
     expect(texto).toMatch(TEXTO);
     expect(texto).toMatch(/puede tardar unos segundos/);
     expect(texto).not.toMatch(/en breve|enseguida|volverá|resuelto/i);
+    // Y no narra la implementación: ni «servidor» ni «inactividad».
+    expect(texto).not.toMatch(/servidor|inactividad/i);
   });
 
   it("no anima en bucle: la entrada es un enter puntual del repo", () => {

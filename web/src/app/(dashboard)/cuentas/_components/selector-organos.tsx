@@ -5,7 +5,7 @@
  *
  * Sustituye al campo de texto libre de la primera versión de /cuentas, que
  * guardaba lo que se tecleara: «Ayuntamiento de Madrid» no es el nombre de
- * ningún órgano del corpus —Madrid contrata a través de seis—, y una cuenta
+ * ningún órgano de la base —Madrid contrata a través de seis—, y una cuenta
  * con ese nombre no casaba con ninguna licitación ni avisaba de nada, sin que
  * nada lo dijera. Aquí sólo se puede elegir un órgano que existe, con sus
  * expedientes a la vista, y varios a la vez: un cliente son todos sus órganos.
@@ -27,6 +27,7 @@
 import * as React from "react";
 import { Check, Loader2, Search, X } from "lucide-react";
 
+import { AYUDA_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { MIN_LONGITUD_BUSQUEDA } from "@/hooks/use-busqueda-global";
 import { useBuscarOrganos, type OrganoCandidato } from "@/hooks/use-cuentas";
@@ -105,7 +106,7 @@ export function SelectorOrganos({
 
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={`${id}-campo`} className="text-sm font-medium">
+      <label htmlFor={`${id}-campo`} className={ETIQUETA_CAMPO}>
         {etiqueta}
       </label>
 
@@ -114,13 +115,13 @@ export function SelectorOrganos({
           {seleccionados.map((nombre) => (
             <li
               key={nombre}
-              className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/30 bg-primary/8 py-0.5 pr-0.5 pl-2 text-xs"
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/30 bg-primary/10 py-0.5 pr-0.5 pl-2 text-tf-meta"
             >
               <span className="truncate">{nombre}</span>
               <button
                 type="button"
                 onClick={() => onChange(seleccionados.filter((n) => n !== nombre))}
-                className="grid h-5 w-5 flex-none place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="grid h-5 w-5 flex-none place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
                 <span className="sr-only">Quitar {nombre}</span>
@@ -159,7 +160,7 @@ export function SelectorOrganos({
         )}
       </div>
 
-      <p id={`${id}-estado`} aria-live="polite" className="text-xs text-muted-foreground">
+      <p id={`${id}-estado`} aria-live="polite" className={AYUDA_CAMPO}>
         {estado}
       </p>
 
@@ -190,14 +191,14 @@ export function SelectorOrganos({
                 }}
                 onMouseEnter={() => setActivo(() => indice)}
                 className={cn(
-                  "flex cursor-pointer items-start gap-2 border-b border-border/40 px-2.5 py-2 text-sm last:border-b-0",
+                  "flex cursor-pointer items-start gap-2 border-b border-border/40 px-2.5 py-2 text-tf-body last:border-b-0",
                   indice === activo && "bg-accent",
                   bloqueado && "cursor-not-allowed opacity-60",
                 )}
               >
                 <span
                   className={cn(
-                    "mt-0.5 grid h-4 w-4 flex-none place-items-center rounded border",
+                    "mt-0.5 grid h-4 w-4 flex-none place-items-center rounded-sm border",
                     marcado ? "border-primary bg-primary text-primary-foreground" : "border-border",
                   )}
                   aria-hidden="true"
@@ -206,7 +207,7 @@ export function SelectorOrganos({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block leading-tight">{candidato.organo_nombre}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                  <span className="mt-0.5 block text-tf-meta text-muted-foreground">
                     {formatNumber(candidato.expedientes)} expedientes
                     {deEstaCuenta(candidato) && " · ya está en esta cuenta"}
                     {deOtraCuenta(candidato) &&

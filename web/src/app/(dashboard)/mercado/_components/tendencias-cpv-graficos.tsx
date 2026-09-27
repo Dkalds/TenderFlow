@@ -20,16 +20,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { BarChart3 } from "lucide-react";
 
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
+import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 
 import type { ForecastRow } from "../_hooks/forecast-series";
 import type {
@@ -37,6 +34,8 @@ import type {
   CpvSeries,
   TopCpv,
 } from "../_hooks/use-tendencias-cpv-view";
+
+const VACIO_CPV = "Ningún CPV con licitaciones en el ámbito actual. Amplía las fechas o quita filtros.";
 
 export function TendenciasCpvSeries({
   allCpvs,
@@ -54,28 +53,25 @@ export function TendenciasCpvSeries({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">
-          Importe por Periodo
-          {effectiveCpvs.size > 0 && (
-            <Badge variant="secondary" className="ml-2 text-xs">{effectiveCpvs.size} CPVs</Badge>
-          )}
-        </CardTitle>
-        <Button
-          variant={showForecast ? "default" : "outline"}
-          size="sm"
-          onClick={onToggleForecast}
-        >
-          <BarChart3 className="h-4 w-4 mr-1" />
-          Previsión
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[350px] w-full" />
-        ) : data.length > 0 ? (
-          <ChartErrorBoundary>
+    <Panel>
+      <PanelTitle
+        title="Importe por periodo"
+        hint={effectiveCpvs.size > 0 ? `${formatNumber(effectiveCpvs.size)} CPV` : undefined}
+        actions={
+          <Button
+            variant={showForecast ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={showForecast}
+            onClick={onToggleForecast}
+          >
+            Previsión
+          </Button>
+        }
+      />
+      {isLoading ? (
+        <PanelLoading height={350} />
+      ) : data.length > 0 ? (
+        <ChartErrorBoundary>
           <ResponsiveContainer width="100%" height={350}>
             <LineChart accessibilityLayer data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -98,12 +94,11 @@ export function TendenciasCpvSeries({
                 ))}
             </LineChart>
           </ResponsiveContainer>
-            </ChartErrorBoundary>
-        ) : (
-          <EmptyState />
-        )}
-      </CardContent>
-    </Card>
+        </ChartErrorBoundary>
+      ) : (
+        <PanelEmpty title="Sin serie" hint={VACIO_CPV} height={350} />
+      )}
+    </Panel>
   );
 }
 
@@ -127,69 +122,74 @@ export function TendenciasCpvForecast({
   const esGlobal = cpvRespuesta == null;
   const etiquetaCpv = opciones.find((o) => o.cpv === cpvRespuesta)?.label ?? cpvRespuesta;
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-base">Previsión nº de licitaciones (6 meses)</CardTitle>
-            <Badge variant="outline" className={esGlobal ? "text-amber-600 border-amber-400" : undefined}>
-              {esGlobal ? "Global del mercado" : `CPV ${cpvRespuesta}`}
+    <Panel>
+      <PanelTitle
+        title="Previsión de licitaciones a 6 meses"
+        className="mb-1"
+        actions={
+          <>
+            <Badge variant={esGlobal ? "warning" : "outline"} size="sm">
+              {esGlobal ? "Todo el mercado" : `CPV ${cpvRespuesta}`}
             </Badge>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Prever</span>
-            <select
-              className="h-9 rounded-md border bg-background px-2 text-sm"
-              value={cpv ?? ""}
-              onChange={(e) => onCpvChange(e.target.value === "" ? null : e.target.value)}
-            >
-              {opciones.map((o) => (
-                <option key={o.cpv} value={o.cpv}>
-                  {o.cpv}
-                  {o.label && o.label !== o.cpv ? ` — ${o.label}` : ""}
-                </option>
-              ))}
-              <option value="">Mercado entero</option>
-            </select>
-          </label>
-        </div>
-        <CardDescription>
-          {esGlobal ? (
-            <>
-              Previsión del volumen <strong>global</strong>, no de un CPV concreto.
-            </>
-          ) : (
-            <>
-              Previsión de licitaciones publicadas del CPV <strong>{etiquetaCpv}</strong>,
-              calculada sobre su propia serie mensual.
-            </>
-          )}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[300px] w-full" />
-        ) : data.length > 0 ? (
-          <ChartErrorBoundary>
+            <label className="flex items-center gap-2 text-tf-meta">
+              <span className="text-muted-foreground">Prever</span>
+              <select
+                className="h-8 rounded-md border border-border/60 bg-card px-2 text-tf-meta md:h-7"
+                value={cpv ?? ""}
+                onChange={(e) => onCpvChange(e.target.value === "" ? null : e.target.value)}
+              >
+                {opciones.map((o) => (
+                  <option key={o.cpv} value={o.cpv}>
+                    {o.cpv}
+                    {o.label && o.label !== o.cpv ? ` — ${o.label}` : ""}
+                  </option>
+                ))}
+                <option value="">Mercado entero</option>
+              </select>
+            </label>
+          </>
+        }
+      />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        {esGlobal ? (
+          <>
+            Estimación del volumen de <strong className="font-semibold text-foreground">todo el mercado</strong>,
+            no de un CPV concreto.
+          </>
+        ) : (
+          <>
+            Estimación de las licitaciones del CPV{" "}
+            <strong className="font-semibold text-foreground">{etiquetaCpv}</strong>, sobre su propia serie
+            mensual.
+          </>
+        )}
+      </p>
+      {isLoading ? (
+        <PanelLoading height={300} />
+      ) : data.length > 0 ? (
+        <ChartErrorBoundary>
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart accessibilityLayer data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis dataKey="mes" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip />
-              <Area type="monotone" dataKey="upper" stroke="none" fill={CHART_SERIES[0]} fillOpacity={0.1} />
+              <Area type="monotone" dataKey="upper" stroke="none" fill={CHART_SERIES[0]} fillOpacity={0.1} name="Banda (máximo)" />
               {/* Goma theme-safe: token de fondo de la card, no blanco (rompía en dark mode). */}
-              <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(var(--card))" fillOpacity={1} />
-              <Line type="monotone" dataKey="historico" stroke={CHART_SERIES[0]} strokeWidth={2} dot={{ r: 2 }} />
-              <Line type="monotone" dataKey="forecast_val" stroke={CHART_SERIES[0]} strokeWidth={2} strokeDasharray="6 3" dot={{ r: 2 }} />
+              <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(var(--card))" fillOpacity={1} name="Banda (mínimo)" />
+              <Line type="monotone" dataKey="historico" stroke={CHART_SERIES[0]} strokeWidth={2} dot={{ r: 2 }} name="Histórico" />
+              <Line type="monotone" dataKey="forecast_val" stroke={CHART_SERIES[0]} strokeWidth={2} strokeDasharray="6 3" dot={{ r: 2 }} name="Previsión" />
             </AreaChart>
           </ResponsiveContainer>
-            </ChartErrorBoundary>
-        ) : (
-          <EmptyState />
-        )}
-      </CardContent>
-    </Card>
+        </ChartErrorBoundary>
+      ) : (
+        <PanelEmpty
+          title="Sin previsión"
+          hint="La serie de este CPV es demasiado corta para prever. Prueba con otro o con el mercado entero."
+          height={300}
+        />
+      )}
+    </Panel>
   );
 }
 
@@ -201,15 +201,12 @@ export function TendenciasCpvTop({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Top 15 CPV por Importe</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[400px] w-full" />
-        ) : topCpvs.length > 0 ? (
-          <ChartErrorBoundary>
+    <Panel>
+      <PanelTitle title="Los 15 CPV con más importe" />
+      {isLoading ? (
+        <PanelLoading height={400} />
+      ) : topCpvs.length > 0 ? (
+        <ChartErrorBoundary>
           <ResponsiveContainer width="100%" height={Math.max(300, topCpvs.length * 30)}>
             <BarChart accessibilityLayer data={topCpvs} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -219,11 +216,10 @@ export function TendenciasCpvTop({
               <Bar dataKey="importe_total" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} name="Importe" />
             </BarChart>
           </ResponsiveContainer>
-            </ChartErrorBoundary>
-        ) : (
-          <EmptyState />
-        )}
-      </CardContent>
-    </Card>
+        </ChartErrorBoundary>
+      ) : (
+        <PanelEmpty title="Ningún CPV" hint={VACIO_CPV} height={400} />
+      )}
+    </Panel>
   );
 }

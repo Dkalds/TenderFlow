@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { CeldaComparacion, ComparacionFichas, FilaComparacion } from "@/lib/api-types";
 import { comparacionKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type { CeldaComparacion, ComparacionFichas, FilaComparacion };
 
@@ -29,5 +30,6 @@ export function useCompararFichas(ids: readonly string[]) {
       }),
     enabled: validos,
     staleTime: 5 * 60_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }

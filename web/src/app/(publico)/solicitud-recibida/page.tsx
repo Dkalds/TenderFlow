@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CircleAlert, CircleCheck } from "lucide-react";
 import { ANCLA_SOLICITUD } from "@/lib/contacto";
+import { cn } from "@/lib/utils";
 import { EventoSolicitud } from "../_components/evento-solicitud";
+import { CTA_SECUNDARIO, KICKER, TITULO_PAGINA } from "../_components/piel-publica";
 
 /**
  * Destino del 303 con el que responde `POST /publico/solicitudes-acceso`.
@@ -21,6 +22,11 @@ import { EventoSolicitud } from "../_components/evento-solicitud";
  * un formulario que ya ha perdido lo escrito y encima no sabe en qué se
  * equivocó, no lo reescribe. Lo que no vuelve son los datos: el email es un
  * dato personal y no viaja en una query string (ver el módulo de la ruta).
+ *
+ * Composición del resto de la superficie pública (2026-09-26): alineada a la
+ * izquierda, con el rótulo de la casa y el titular en Fraunces. Era un bloque
+ * centrado con el icono en un círculo tintado, la pantalla de «¡hecho!» de las
+ * plantillas; el titular ya dice si salió bien o qué falló.
  */
 export const metadata: Metadata = {
   title: "Solicitud recibida",
@@ -47,7 +53,7 @@ const FALLOS: Record<string, { titulo: string; texto: string }> = {
   limite: {
     titulo: "Demasiados envíos desde tu conexión",
     texto:
-      "El formulario admite unos pocos envíos por minuto y por conexión —en una oficina lo compartís todos—. Espera un minuto y vuelve a intentarlo; no se ha perdido nada.",
+      "El formulario admite unos pocos envíos por minuto y por conexión —en una oficina la comparte todo el mundo—. Espera un minuto y vuelve a intentarlo; no se ha perdido nada.",
   },
   error: {
     titulo: "No hemos podido registrar la solicitud",
@@ -61,33 +67,18 @@ export default async function SolicitudRecibida({ searchParams }: { searchParams
   const fallo = estado ? (FALLOS[estado] ?? FALLOS.error) : null;
 
   return (
-    <section className="mx-auto w-full max-w-2xl px-6 py-24 text-center">
+    <section className="mx-auto w-full max-w-2xl px-6 py-24">
       {/* Único punto del embudo que sabe si el POST prosperó. */}
       <EventoSolicitud estado={fallo ? (estado ?? "error") : "ok"} />
 
-      <span
-        className={`inline-flex h-12 w-12 items-center justify-center rounded-full ${
-          fallo ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
-        }`}
-      >
-        {fallo ? (
-          <CircleAlert className="h-6 w-6" aria-hidden="true" />
-        ) : (
-          <CircleCheck className="h-6 w-6" aria-hidden="true" />
-        )}
-      </span>
-      <h1 className="font-display mt-6 text-3xl font-semibold tracking-[-0.02em] text-balance">
-        {fallo ? fallo.titulo : "Solicitud recibida"}
-      </h1>
-      <p className="text-muted-foreground mx-auto mt-4 max-w-[52ch] text-base leading-relaxed">
+      <p className={KICKER}>{fallo ? "Solicitud no enviada" : "Solicitud de acceso"}</p>
+      <h1 className={cn(TITULO_PAGINA, "mt-3")}>{fallo ? fallo.titulo : "Solicitud recibida"}</h1>
+      <p className="text-muted-foreground mt-4 max-w-[58ch] text-base leading-relaxed">
         {fallo
           ? fallo.texto
           : "Queda anotada. El acceso se habilita a mano, con tu email o el dominio de tu empresa, así que la respuesta llega por correo y no es inmediata."}
       </p>
-      <Link
-        href={fallo ? `/#${ANCLA_SOLICITUD}` : "/"}
-        className="border-input bg-background/60 hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring focus-visible:ring-offset-background mt-8 inline-flex h-11 items-center justify-center rounded-md border px-6 text-sm font-medium transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
-      >
+      <Link href={fallo ? `/#${ANCLA_SOLICITUD}` : "/"} className={cn(CTA_SECUNDARIO, "mt-8")}>
         {fallo ? "Volver al formulario" : "Volver a la portada"}
       </Link>
     </section>

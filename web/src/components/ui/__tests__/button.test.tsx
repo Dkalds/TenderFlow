@@ -105,3 +105,38 @@ describe("Button", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
+
+describe("Button — talla de la consola", () => {
+  it("sm: 28 px desde md (32 en móvil), 12 px de letra e iconos a 14 px", () => {
+    render(<Button size="sm">Guardar</Button>);
+    const boton = screen.getByRole("button");
+    expect(boton).toHaveClass("h-8", "md:h-7", "text-tf-meta", "[&_svg]:size-3.5");
+    // La talla pisa de verdad el tamaño base (pasa por cn()).
+    expect(boton).not.toHaveClass("text-sm");
+  });
+
+  it("es plano: sin la sombra de shadcn en ninguna variante", () => {
+    for (const variant of ["default", "destructive", "outline", "secondary", "ghost", "link"] as const) {
+      const { unmount } = render(<Button variant={variant}>x</Button>);
+      expect(screen.getByRole("button").className).not.toMatch(/(^|\s)shadow/);
+      unmount();
+    }
+  });
+
+  it("la pulsación anima `scale` (la propiedad que escribe Tailwind 4)", () => {
+    render(<Button>x</Button>);
+    const clases = screen.getByRole("button").className;
+    expect(clases).toContain("active:scale-[0.97]");
+    expect(clases).toContain("scale]");
+    expect(clases).toContain("motion-reduce:active:scale-100");
+  });
+
+  it("icon-sm es el botón de solo icono de la consola", () => {
+    render(
+      <Button size="icon-sm" aria-label="Cerrar">
+        <svg />
+      </Button>,
+    );
+    expect(screen.getByRole("button", { name: "Cerrar" })).toHaveClass("size-8", "md:size-7");
+  });
+});

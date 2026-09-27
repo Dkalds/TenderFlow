@@ -23,6 +23,12 @@ vi.mock("@/lib/analytics", () => ({
   primeraVez: vi.fn(),
 }));
 
+// Sin sesión: la página pregunta a `useSession` si ya hay alguien dentro, y el
+// hook real exige un `SessionProvider`.
+vi.mock("@/lib/auth", () => ({
+  useSession: () => ({ user: null, isLoading: false, isAuthenticated: false, isAdmin: false, refresh: async () => {} }),
+}));
+
 import LoginPage from "@/app/login/page";
 
 describe("acceso con Microsoft", () => {

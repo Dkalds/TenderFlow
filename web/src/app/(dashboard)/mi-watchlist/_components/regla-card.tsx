@@ -10,16 +10,27 @@
  * precisamente por esto.
  */
 
+import type * as React from "react";
 import { Eye, Mail, Pencil, Trash2 } from "lucide-react";
+import { Panel } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatCurrency } from "@/lib/utils";
 import { ruleToBody } from "../_hooks/use-watchlist-rules";
 import { formatMatchCount } from "../_hooks/watchlist-matches";
 import { FREQ_LABEL } from "../_hooks/watchlist-rule-options";
 import type { ApiRule, RuleBody } from "../_hooks/watchlist-rule-types";
+
+/** Un criterio de la regla: rótulo y valor, en la misma línea. */
+function Criterio({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <dt className="flex-none text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 truncate">{children}</dd>
+    </div>
+  );
+}
 
 export function ReglaCard({
   rule,
@@ -33,59 +44,36 @@ export function ReglaCard({
   onDelete: (id: number) => void;
 }) {
   return (
-    <Card className={cn(!rule.active && "opacity-50")}>
-      <CardHeader className="flex flex-row items-start justify-between pb-2">
+    <Panel className={cn(!rule.active && "opacity-50")}>
+      <div className="mb-2.5 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-base truncate">
-              {rule.nombre || rule.keyword || "Regla"}
-            </CardTitle>
-            {/* El conteo del listado viene acotado por el backend
-                (subselect con LIMIT, para no barrer 1,6M filas por
-                regla): al tope se pinta «999+», no un falso exacto. */}
-            <Badge
-              variant="default"
-              className="shrink-0"
-              title={`${formatMatchCount(rule.match_count)} coincidencias`}
-            >
-              {formatMatchCount(rule.match_count)}
-            </Badge>
-          </div>
+          <h3 className="truncate text-tf-body font-semibold">{rule.nombre || rule.keyword || "Regla"}</h3>
+          {/* El conteo del listado viene acotado por la API (para no barrer
+              1,6M filas por regla): al tope se pinta «999+», no un falso
+              exacto. */}
+          <p className="tf-tnum text-tf-meta text-muted-foreground">
+            {formatMatchCount(rule.match_count)} coincidencias
+          </p>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex flex-none items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-9 w-9"
+                size="icon-sm"
                 aria-label={rule.active ? "Desactivar regla" : "Activar regla"}
                 aria-pressed={rule.active}
-                onClick={() =>
-                  onUpdate(rule.id, ruleToBody(rule, { active: !rule.active }))
-                }
+                onClick={() => onUpdate(rule.id, ruleToBody(rule, { active: !rule.active }))}
               >
-                <Eye
-                  aria-hidden="true"
-                  className={cn(
-                    "h-4 w-4",
-                    rule.active ? "text-primary" : "text-muted-foreground",
-                  )}
-                />
+                <Eye aria-hidden="true" className={rule.active ? "text-primary" : "text-muted-foreground"} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>{rule.active ? "Desactivar" : "Activar"}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9"
-                aria-label="Editar regla"
-                onClick={() => onEdit(rule)}
-              >
-                <Pencil className="h-4 w-4" aria-hidden="true" />
+              <Button variant="ghost" size="icon-sm" aria-label="Editar regla" onClick={() => onEdit(rule)}>
+                <Pencil aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Editar regla</TooltipContent>
@@ -94,54 +82,43 @@ export function ReglaCard({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-9 w-9 text-destructive"
+                size="icon-sm"
+                className="text-destructive"
                 aria-label="Eliminar regla"
                 onClick={() => onDelete(rule.id)}
               >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                <Trash2 aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Eliminar</TooltipContent>
           </Tooltip>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-2">
+      </div>
+      <dl className="space-y-1.5 text-tf-meta">
         {rule.keyword && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Keyword:</span>
-            <Badge variant="outline">{rule.keyword}</Badge>
-          </div>
+          <Criterio label="Palabra clave">
+            <Badge size="sm" variant="outline">
+              {rule.keyword}
+            </Badge>
+          </Criterio>
         )}
         {rule.cpv && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">CPV:</span>
-            <Badge variant="outline">{rule.cpv}</Badge>
-          </div>
+          <Criterio label="CPV">
+            <span className="font-mono">{rule.cpv}</span>
+          </Criterio>
         )}
         {rule.min_importe != null && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Min:</span>
-            <Badge variant="secondary">{formatCurrency(rule.min_importe)}</Badge>
-          </div>
+          <Criterio label="Importe mínimo">
+            <span className="tf-tnum">{formatCurrency(rule.min_importe)}</span>
+          </Criterio>
         )}
-        {rule.ccaa && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">CCAA:</span>
-            <Badge variant="outline">{rule.ccaa}</Badge>
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Frecuencia:</span>
-          <span className="text-sm">{FREQ_LABEL[rule.frequency]}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-xs text-muted-foreground truncate">
-            {rule.email ? rule.email : "Solo notificaciones in-app"}
-          </span>
-        </div>
-      </CardContent>
-    </Card>
+        {rule.ccaa && <Criterio label="CCAA">{rule.ccaa}</Criterio>}
+        <Criterio label="Frecuencia">{FREQ_LABEL[rule.frequency]}</Criterio>
+      </dl>
+      <p className="mt-2 flex items-center gap-1.5 text-tf-meta text-muted-foreground">
+        <Mail className="h-3 w-3 flex-none" aria-hidden="true" />
+        <span className="truncate">{rule.email ? rule.email : "Solo notificaciones en TenderFlow"}</span>
+      </p>
+    </Panel>
   );
 }

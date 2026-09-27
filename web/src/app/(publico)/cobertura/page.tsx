@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { EnlaceIrPublico } from "../_components/enlace-ir";
+import { TITULO_SECCION } from "../_components/piel-publica";
 import { PaginaEvidencia } from "../_components/pagina-evidencia";
 import { CONTENIDO } from "../_content/landing";
 import { CoberturaDeclarada } from "./_components/cobertura-declarada";
@@ -39,9 +40,9 @@ export default function CoberturaPage() {
         secciones={SECCIONES}
       />
       <CoberturaDeclarada />
-      <section className="border-border/60 bg-card/40 border-t">
+      <section className="border-border/60 bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
-          <h2 className="font-display text-2xl font-semibold tracking-normal">Familias observadas</h2>
+          <h2 className={TITULO_SECCION}>Familias observadas</h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">
             {CONTENIDO.familiasTitulo}
           </p>
@@ -52,13 +53,9 @@ export default function CoberturaPage() {
               </li>
             ))}
           </ul>
-          <div className="mt-8 flex flex-wrap gap-x-5 gap-y-3 text-sm font-medium">
-            <Link href="/licitaciones" className="text-primary underline-offset-4 hover:underline">
-              Explorar por comunidad autónoma
-            </Link>
-            <Link href="/cpv" className="text-primary underline-offset-4 hover:underline">
-              Explorar por código CPV
-            </Link>
+          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3">
+            <EnlaceIrPublico href="/licitaciones">Explorar por comunidad autónoma</EnlaceIrPublico>
+            <EnlaceIrPublico href="/cpv">Explorar por código CPV</EnlaceIrPublico>
           </div>
         </div>
       </section>

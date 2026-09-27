@@ -138,7 +138,9 @@ describe("agrupación de avisos", () => {
     notifyQueryError(new ApiError(404, "No encontrado"));
     expect(toast.error).toHaveBeenCalledTimes(1);
     expect(toast.error).toHaveBeenCalledWith("Error al cargar datos", expect.any(Object));
-    expect(opcionesDelToast(0).description).toBe("No encontrado");
+    // Al leer, un 404 se cuenta con el mensaje de su estado (`mensajePorEstado`),
+    // no con el `detail` de la API.
+    expect(opcionesDelToast(0).description).toBe("No existe o ya no está disponible.");
     expect(opcionesDelToast(0).description).not.toContain("peticiones afectadas");
   });
 

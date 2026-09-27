@@ -11,12 +11,10 @@
 
 import Link from "next/link";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Panel, ROTULO_DATO, StatCell, StatStrip } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
-import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { cn, EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { valorOEmpty } from "@/lib/cobertura";
-import { Cpu, Trophy, DollarSign, Percent, ListChecks } from "lucide-react";
 
 import type { TecnologiasResponse } from "../_hooks/use-tecnologias-view";
 
@@ -28,39 +26,31 @@ export function TecnologiasKpis({
   isLoading: boolean;
 }) {
   return (
-    <KpiStrip columns={4}>
-      <KpiCard
-        title="Tecnologías detectadas"
-        value={isLoading ? undefined : formatNumber(data?.n_tecnologias ?? 0)}
-        subtitle={`${formatNumber(data?.sin_clasificar ?? 0)} sin clasificar`}
-        icon={Cpu}
+    <StatStrip columns={4}>
+      <StatCell
+        label="Tecnologías detectadas"
+        value={formatNumber(data?.n_tecnologias ?? 0)}
+        hint={`${formatNumber(data?.sin_clasificar ?? 0)} licitaciones sin clasificar`}
         loading={isLoading}
       />
-      <KpiCard
-        title="Tecnología líder"
-        value={isLoading ? undefined : (data?.tecnologia_lider ?? "-")}
-        subtitle={
-          data?.lider_count
-            ? `${formatNumber(data.lider_count)} licitaciones`
-            : undefined
-        }
-        icon={Trophy}
+      <StatCell
+        label="Tecnología líder"
+        value={data?.tecnologia_lider ?? EMPTY}
+        hint={data?.lider_count ? `${formatNumber(data.lider_count)} licitaciones` : undefined}
         loading={isLoading}
       />
-      <KpiCard
-        title="Importe medio / tech"
-        value={isLoading ? undefined : valorOEmpty(data?.importe_medio_global, formatCurrency)}
-        icon={DollarSign}
+      <StatCell
+        label="Importe medio por tecnología"
+        value={valorOEmpty(data?.importe_medio_global, formatCurrency)}
         loading={isLoading}
       />
-      <KpiCard
-        title="Tasa adjudicación"
-        value={isLoading ? undefined : valorOEmpty(data?.tasa_adjudicacion_media, formatPercent)}
-        subtitle="media por tecnología"
-        icon={Percent}
+      <StatCell
+        label="Tasa de adjudicación"
+        value={valorOEmpty(data?.tasa_adjudicacion_media, formatPercent)}
+        hint="Media por tecnología"
         loading={isLoading}
       />
-    </KpiStrip>
+    </StatStrip>
   );
 }
 
@@ -77,24 +67,25 @@ export function TecnologiasCobertura({
   const low = total > 0 && pctClasificado < 70;
 
   return (
-    <Card className={cn(low && "border-amber-400 bg-amber-50/40 dark:bg-amber-950/20")}>
-      <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Cobertura del clasificador</p>
-          <p className="text-2xl font-bold">
-            {isLoading ? "…" : `${pctClasificado.toFixed(1)}% clasificado`}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {formatNumber(sin)} sin clasificar de {formatNumber(total)} licitaciones
-          </p>
-        </div>
-        <Button asChild variant={low ? "default" : "outline"}>
-          <Link href="/active-learning">
-            <ListChecks className="mr-2 h-4 w-4" />
-            Revisar sin clasificar
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
+    <Panel
+      className={cn(
+        "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+        low && "border-warning/50",
+      )}
+    >
+      <div>
+        <p className={ROTULO_DATO}>Licitaciones con tecnología identificada</p>
+        <p className={cn("mt-1 text-tf-title font-semibold", low && "text-warning")}>
+          {isLoading ? "…" : formatPercent(pctClasificado)}
+        </p>
+        <p className="mt-0.5 text-tf-meta text-muted-foreground">
+          {formatNumber(sin)} sin clasificar de {formatNumber(total)} licitaciones
+          {low && ". Por debajo del 70 %, las cifras de esta vista se quedan cortas."}
+        </p>
+      </div>
+      <Button asChild size="sm" variant={low ? "default" : "outline"}>
+        <Link href="/active-learning">Revisar sin clasificar</Link>
+      </Button>
+    </Panel>
   );
 }

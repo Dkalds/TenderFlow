@@ -6,7 +6,7 @@
  * Dos carriles sobre una misma cronología: **Compromisos** (plazos de
  * presentación, acciones propias y contratos de la cartera) y **Por triar**
  * (las señales de tus reglas). Dentro de cada uno, las filas van agrupadas por
- * las bandas de urgencia que ya vienen del backend (`GET /pursuits/agenda`): el
+ * las bandas de urgencia que ya vienen de la API (`GET /pursuits/agenda`): el
  * frontend no fusiona, no ordena y no clasifica (ADR-014).
  *
  * Gestos: J/K recorren, S sigue, X descarta, C completa la tarea activa, ⏎
@@ -32,7 +32,7 @@ export default function AgendaView() {
     return (
       <PanelError
         title="No se pudo cargar la agenda"
-        detail={(agenda.error as Error).message}
+        error={agenda.error}
         onRetry={() => void agenda.refetch()}
         height={320}
       />

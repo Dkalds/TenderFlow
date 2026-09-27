@@ -1,6 +1,8 @@
 import { solicitarAccesoHref } from "@/lib/contacto";
+import { cn } from "@/lib/utils";
 import { CONTENIDO } from "../_content/landing";
 import { EnlaceSolicitarAcceso } from "./enlace-solicitar-acceso";
+import { CTA_PRIMARIO } from "./piel-publica";
 
 /**
  * Cierre de los hubs públicos.
@@ -23,7 +25,7 @@ import { EnlaceSolicitarAcceso } from "./enlace-solicitar-acceso";
  */
 export function CierrePublico({ ubicacion }: { ubicacion: string }) {
   return (
-    <aside className="border-border/60 bg-card/40 mt-14 rounded-xl border p-6 sm:flex sm:items-center sm:justify-between sm:gap-8">
+    <aside className="border-border/60 bg-card mt-14 rounded-xl border p-6 sm:flex sm:items-center sm:justify-between sm:gap-8">
       <div className="max-w-[52ch]">
         <p className="font-display text-lg font-semibold tracking-[-0.01em]">{CONTENIDO.publicoCierreTitulo}</p>
         <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">{CONTENIDO.publicoCierreTexto}</p>
@@ -31,7 +33,7 @@ export function CierrePublico({ ubicacion }: { ubicacion: string }) {
       <EnlaceSolicitarAcceso
         href={solicitarAccesoHref()}
         ubicacion={ubicacion}
-        className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background mt-5 inline-flex h-11 shrink-0 items-center justify-center rounded-md px-6 text-sm font-semibold shadow-md transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97] sm:mt-0"
+        className={cn(CTA_PRIMARIO, "mt-5 shrink-0 sm:mt-0")}
       >
         {CONTENIDO.ctaPrimario}
       </EnlaceSolicitarAcceso>

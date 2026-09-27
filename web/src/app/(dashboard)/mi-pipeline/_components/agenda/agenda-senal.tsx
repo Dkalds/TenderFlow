@@ -14,11 +14,9 @@
 
 import { EMPTY, truncate } from "@/lib/utils";
 import { SectionTitle } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
 import { DIAS_POSPONER } from "./agenda-meta";
-
-const BOTON =
-  "tf-pressable h-7 rounded-md border px-2.5 text-[11.5px] font-medium transition-colors";
 
 export function AgendaSenal({
   item,
@@ -34,7 +32,7 @@ export function AgendaSenal({
   return (
     <div>
       <SectionTitle>Por qué está en la bandeja</SectionTitle>
-      <p className="text-[11.5px]">
+      <p className="text-tf-meta">
         {item.rule_nombre ? (
           <>
             La trajo tu regla <strong className="font-semibold">«{truncate(item.rule_nombre, 48)}»</strong>{" "}
@@ -46,27 +44,27 @@ export function AgendaSenal({
       </p>
 
       <div className="mt-2.5 flex flex-wrap gap-1.5">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onSeguir}
-          className={`${BOTON} flex-1 border-primary/30 bg-primary/10 text-primary`}
+          className="flex-1 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
         >
           Seguir
-        </button>
-        <button
-          type="button"
-          onClick={onPosponer}
-          className={`${BOTON} border-border/70 text-muted-foreground hover:text-foreground`}
-        >
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onPosponer} className="text-muted-foreground">
           Posponer {DIAS_POSPONER} d
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onDescartar}
-          className={`${BOTON} border-border/70 text-muted-foreground hover:text-destructive`}
+          className="text-muted-foreground hover:text-destructive"
         >
           Descartar
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -90,7 +90,7 @@ describe("CompanyContraMi", () => {
     expect(screen.getByText("Ganamos")).toBeInTheDocument();
     // La fila sin nuestro precio lo dice, y el resumen lo cuenta.
     expect(screen.getByText("Sin precio registrado")).toBeInTheDocument();
-    expect(screen.getByText(/en 1 no registrasteis vuestro precio/)).toBeInTheDocument();
+    expect(screen.getByText(/en 1 tu equipo no registró su precio/)).toBeInTheDocument();
     // Bajas en tanto por uno → porcentaje.
     expect(screen.getByText("10,0%")).toBeInTheDocument();
     expect(screen.getByText("15,0%")).toBeInTheDocument();
@@ -116,8 +116,8 @@ describe("CompanyContraMi", () => {
     });
     renderPestana();
 
-    expect(await screen.findByRole("note")).toHaveTextContent(/aparece adjudicado a vuestro NIF/);
-    expect(screen.getByText("Cerrado perdido, adjudicado a vosotros")).toBeInTheDocument();
+    expect(await screen.findByRole("note")).toHaveTextContent(/aparece adjudicado al NIF de tu organización/);
+    expect(screen.getByText("Cerrado perdido, adjudicado a tu organización")).toBeInTheDocument();
     expect(screen.getByText("Sin resolver")).toBeInTheDocument();
   });
 

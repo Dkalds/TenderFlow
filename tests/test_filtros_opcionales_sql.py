@@ -40,7 +40,7 @@ def test_proximas_renovaciones_con_todos_sus_filtros(tmp_db):
 
 
 def test_proximas_renovaciones_descarta_tecnologias_vacias(tmp_db):
-    """El filtro limpia `''` antes de armar el `IN`: sin eso quedaría `IN ()`."""
+    """El filtro limpia `''` y `None` antes de armar el fragmento: no son códigos."""
     filas = renov_mod.proximas_renovaciones(tecnologias=["", None])  # type: ignore[list-item]
 
     assert filas == []

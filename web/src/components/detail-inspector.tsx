@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, Link2, MessageSquare, X } from "lucide-react";
+import { ExternalLink, Link2, MessageSquareText, X } from "lucide-react";
 import { toast } from "sonner";
 import { LicitacionAI } from "@/components/licitacion-ai";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
@@ -15,6 +15,9 @@ import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
 import { ReportarDatoBoton } from "@/components/pliego/reportar-dato";
 import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import { RecurridoBadge, ResolucionesBlock, useResoluciones } from "@/components/resoluciones-block";
+import { Fact, PanelEmpty, PanelTabs, SectionTitle, panelDePestana } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -38,6 +41,9 @@ import type { LicitacionDetail } from "@/components/detail-panel";
  * certificaciones citables), Pliegos (documentos parseados) y Recursos
  * (resoluciones del TACRC). La cabecera conserva estado, badge de recurrida,
  * importe y copiar enlace.
+ *
+ * Rótulos y datos con los primitivos de la consola (`SectionTitle`, `Fact`):
+ * sans y en frase, mono solo para el expediente y el CPV.
  */
 
 // Las etiquetas viven en `components/score-desglose.tsx` desde que el Radar
@@ -49,37 +55,12 @@ import { riesgoLabel } from "@/lib/riesgos";
 
 type TabKey = "resumen" | "ia" | "pliegos" | "recursos";
 
-/** Botón secundario de la cabecera: mismo tamaño que «Copiar enlace». */
-const ACCION_SECUNDARIA =
-  "tf-pressable inline-flex h-6.5 items-center gap-1.5 rounded-md border border-border/80 px-2.5 text-[11.5px] font-medium text-muted-foreground transition-colors duration-140 ease-out hover:border-primary/45 hover:text-foreground aria-pressed:border-primary/50 aria-pressed:text-primary";
-
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
   { key: "ia", label: "IA" },
   { key: "pliegos", label: "Pliegos" },
   { key: "recursos", label: "Recursos" },
 ];
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="mb-2.5 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-      {children}
-    </h3>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="bg-card px-2.5 py-2">
-      <div className="mb-1 font-mono text-[8.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-        {label}
-      </div>
-      <div className="text-[12px] font-medium leading-snug">
-        {value ?? <span className="text-muted-foreground">—</span>}
-      </div>
-    </div>
-  );
-}
 
 export function DetailInspector({
   licitacion: l,
@@ -94,11 +75,14 @@ export function DetailInspector({
   // Bump para activar la pestaña «Preguntar» del asistente desde la cabecera.
   const [askSignal, setAskSignal] = React.useState(0);
   const { data: resoluciones } = useResoluciones(l.id_externo);
+  const idPestanas = React.useId();
 
   // Al cambiar de licitación se vuelve a Resumen: dejar abierta la pestaña de
-  // Pliegos de la fila anterior invita a leer el pliego equivocado. Se deriva
-  // durante el render (patrón recomendado por React para un valor externo) en
-  // vez de con un efecto, que provocaría un render en cascada.
+  // Pliegos de la fila anterior invita a leer el pliego equivocado. /detalle ya
+  // monta una ficha por expediente (`key`); esto cubre a quien la reutilice
+  // sin `key`. Se deriva durante el render (patrón recomendado por React para
+  // un valor externo) en vez de con un efecto, que provocaría un render en
+  // cascada.
   const [prevId, setPrevId] = React.useState(l.id_externo);
   if (prevId !== l.id_externo) {
     setPrevId(l.id_externo);
@@ -121,110 +105,77 @@ export function DetailInspector({
   };
 
   const resolucionesCount = resoluciones?.items?.length ?? 0;
-  // Sólo se pinta el badge de lo que se puede contar sin pedir un dato extra.
-  // Un contador inventado en una pestaña es peor que ningún contador.
-  const badges: Partial<Record<TabKey, number>> = { recursos: resolucionesCount };
+  // Sólo se cuenta lo que se puede contar sin pedir un dato extra. Un contador
+  // inventado en una pestaña es peor que ningún contador.
+  const pestanas = TABS.map((item) =>
+    item.key === "recursos" && resolucionesCount > 0 ? { ...item, badge: resolucionesCount } : item,
+  );
 
   return (
-    <aside
-      aria-label="Ficha de la licitación"
-      className={cn("flex min-h-0 flex-1 flex-col bg-card/40", className)}
-    >
+    <aside aria-label="Ficha de la licitación" className={cn("flex min-h-0 flex-1 flex-col bg-card", className)}>
       <div className="flex-none border-b border-border/60 px-4 pt-3.5">
-        <div className="mb-2.5 flex items-center gap-[7px]">
+        <div className="mb-2.5 flex items-center gap-2">
           <StatusBadge value={l.estado} kind="estado" showIcon />
           {/* F1.8 — «Evaluación» no dice que ya no se puede presentar. */}
           <GlosarioHint termino={l.estado ?? undefined} />
           <RecurridoBadge licitacionId={l.id_externo} />
-          <span className="font-mono text-[10.5px] text-muted-foreground">{l.id_externo}</span>
+          <span className="font-mono text-tf-micro text-muted-foreground">{l.id_externo}</span>
           <div className="flex-1" />
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-sm"
                 onClick={onClose}
                 aria-label="Cerrar ficha"
-                className="tf-pressable grid h-6 w-6 place-items-center rounded-md border border-border/60 text-muted-foreground transition-colors duration-140 ease-out hover:border-border hover:text-foreground"
+                className="text-muted-foreground"
               >
-                <X className="h-3 w-3" aria-hidden="true" />
-              </button>
+                <X aria-hidden="true" />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>Cerrar · Esc</TooltipContent>
           </Tooltip>
         </div>
 
-        <h2 className="mb-2.5 font-display text-[15px] font-semibold leading-[1.35] tracking-[-0.01em] text-pretty">
-          {l.titulo ?? l.id_externo}
-        </h2>
+        <h2 className="mb-2.5 font-display text-tf-lede font-semibold text-pretty">{l.titulo ?? l.id_externo}</h2>
 
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="tf-tnum font-mono text-[17px] font-semibold leading-none">
-            {formatCurrency(l.importe)}
-          </span>
+          <span className="tf-tnum text-tf-title font-semibold leading-none">{formatCurrency(l.importe)}</span>
           <div className="flex-1" />
-          <CompararBoton id={l.id_externo} titulo={l.titulo} className={ACCION_SECUNDARIA} />
-          <ReportarDatoBoton licitacionId={l.id_externo} className={ACCION_SECUNDARIA} />
+          <CompararBoton id={l.id_externo} titulo={l.titulo} />
+          <ReportarDatoBoton licitacionId={l.id_externo} />
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => void copyLink()}
-                className="tf-pressable inline-flex h-6.5 items-center gap-1.5 rounded-md border border-border/80 px-2.5 text-[11.5px] font-medium text-muted-foreground transition-colors duration-140 ease-out hover:border-primary/45 hover:text-foreground"
-              >
-                <Link2 className="h-3 w-3" aria-hidden="true" />
+              <Button type="button" variant="outline" size="sm" onClick={() => void copyLink()}>
+                <Link2 aria-hidden="true" />
                 Copiar enlace
-              </button>
+              </Button>
             </TooltipTrigger>
-            <TooltipContent>Copiar enlace ?lic=</TooltipContent>
+            <TooltipContent>Enlace directo a esta ficha</TooltipContent>
           </Tooltip>
-          <button
-            type="button"
-            onClick={askAI}
-            className="tf-pressable inline-flex h-6.5 items-center gap-1.5 rounded-md border border-primary/35 bg-primary/13 px-2.5 text-[11.5px] font-semibold text-primary transition-colors duration-140 ease-out hover:bg-primary/22"
-          >
-            <MessageSquare className="h-3 w-3" aria-hidden="true" />
+          <Button type="button" variant="outline" size="sm" onClick={askAI}>
+            <MessageSquareText aria-hidden="true" />
             Preguntar a la IA
-          </button>
+          </Button>
         </div>
 
-        <div role="tablist" aria-label="Secciones de la ficha" className="flex items-center gap-0.5">
-          {TABS.map((item) => {
-            const on = tab === item.key;
-            const badge = badges[item.key];
-            return (
-              <button
-                key={item.key}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                onClick={() => setTab(item.key)}
-                className={cn(
-                  "relative inline-flex h-8 items-center gap-1.5 rounded-t-md px-2.5 text-[12px] font-medium transition-colors duration-140 ease-out",
-                  on
-                    ? "text-foreground after:absolute after:inset-x-1.5 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {item.label}
-                {badge != null && badge > 0 && (
-                  <span className="tf-tnum rounded bg-muted-foreground/12 px-1 py-0.5 font-mono text-[9px] font-medium text-muted-foreground">
-                    {badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <PanelTabs
+          tabs={pestanas}
+          value={tab}
+          onChange={setTab}
+          label="Secciones de la ficha"
+          idBase={idPestanas}
+          className="border-b-0 pb-2.5"
+        />
       </div>
 
-      {/* Región con foco propio (axe `scrollable-region-focusable`): la
-          pestaña «Resumen» puede no tener ningún control dentro, y sin foco
-          el teclado no puede desplazar lo que no cabe. */}
+      {/* El panel de la pestaña activa lleva foco propio (el `tabIndex` de
+          `panelDePestana`; axe `scrollable-region-focusable`): «Resumen» puede
+          no tener ningún control dentro, y sin foco el teclado no puede
+          desplazar lo que no cabe. */}
       <div
-        role="region"
-        aria-label="Contenido de la ficha"
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- región con scroll sin controles: WCAG 2.1.1 exige que el teclado pueda desplazarla (axe scrollable-region-focusable)
-        tabIndex={0}
+        {...panelDePestana(idPestanas, tab)}
         className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {tab === "resumen" && (
@@ -232,25 +183,25 @@ export function DetailInspector({
             {l.score != null && (
               <>
                 <div className="mb-2.5 flex items-center gap-2.5">
-                  <SectionTitle>Puntuación</SectionTitle>
-                  <div className="flex-1" />
-                  <span className="tf-tnum mb-2.5 font-mono text-[15px] font-semibold leading-none">
-                    {l.score.toFixed(1)}
-                  </span>
-                  <span className="mb-2.5">
-                    <StatusBadge value={l.band ?? null} kind="band" />
-                  </span>
+                  <SectionTitle as="h3" className="mb-0 flex-1">
+                    Puntuación
+                  </SectionTitle>
+                  <span className="tf-tnum text-tf-lede leading-none">{l.score.toFixed(1)}</span>
+                  <StatusBadge value={l.band ?? null} kind="band" />
                 </div>
+                {/* Las barras se pintan ya en su valor, sin transición: entre
+                    dos expedientes una barra que se desliza dice que el dato
+                    cambió (docs/frontend-motion.md, «Qué NO animar»). */}
                 <div
                   role="progressbar"
                   aria-valuenow={Math.min(100, l.score)}
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-label="Puntuación"
-                  className="mb-3.5 block h-1.5 overflow-hidden rounded-[3px] bg-muted-foreground/15"
+                  className="mb-3.5 block h-1.5 overflow-hidden rounded-full bg-muted-foreground/15"
                 >
                   <span
-                    className="block h-full w-full origin-left rounded-[3px] bg-primary transition-transform duration-[420ms] ease-out"
+                    className="block h-full w-full origin-left rounded-full bg-primary"
                     style={{ transform: `scaleX(${Math.min(100, l.score) / 100})` }}
                   />
                 </div>
@@ -258,28 +209,24 @@ export function DetailInspector({
             )}
 
             {l.score_desglose && (
-              <div className="mb-4.5 flex flex-col gap-[7px]">
+              <div className="mb-4.5 flex flex-col gap-2">
                 {Object.entries(l.score_desglose).map(([dim, value]) => (
                   <div key={dim} className="grid grid-cols-[96px_1fr_30px] items-center gap-2.5">
-                    <span className="text-[11.5px] text-muted-foreground">
-                      {DESGLOSE_LABELS[dim] ?? dim}
-                    </span>
+                    <span className="text-tf-meta text-muted-foreground">{DESGLOSE_LABELS[dim] ?? dim}</span>
                     <span
                       role="progressbar"
                       aria-valuenow={Math.min(100, value)}
                       aria-valuemin={0}
                       aria-valuemax={100}
                       aria-label={`Puntuación ${dim}`}
-                      className="block h-[5px] overflow-hidden rounded-[3px] bg-muted-foreground/15"
+                      className="block h-[5px] overflow-hidden rounded-full bg-muted-foreground/15"
                     >
                       <span
-                        className="block h-full w-full origin-left bg-linear-to-r from-primary/55 to-primary transition-transform duration-[420ms] ease-out"
+                        className="block h-full w-full origin-left rounded-full bg-primary/70"
                         style={{ transform: `scaleX(${Math.min(100, value) / 100})` }}
                       />
                     </span>
-                    <span className="tf-tnum text-right font-mono text-[11px] font-medium">
-                      {value.toFixed(1)}
-                    </span>
+                    <span className="tf-tnum text-right text-tf-micro font-medium">{value.toFixed(1)}</span>
                   </div>
                 ))}
               </div>
@@ -287,15 +234,12 @@ export function DetailInspector({
 
             {l.risk_flags && l.risk_flags.length > 0 && (
               <div className="mb-4.5">
-                <SectionTitle>Alertas</SectionTitle>
+                <SectionTitle as="h3">Alertas</SectionTitle>
                 <div className="flex flex-wrap gap-1.5">
                   {l.risk_flags.map((flag) => (
-                    <span
-                      key={flag}
-                      className="inline-flex h-[22px] items-center rounded-md border border-destructive/32 bg-destructive/12 px-2 text-[11px] font-medium text-destructive"
-                    >
+                    <Badge key={flag} variant="destructive" size="sm">
                       {riesgoLabel(flag)}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -311,36 +255,24 @@ export function DetailInspector({
               <SimuladorPuntuacion licitacionId={l.id_externo} />
             </div>
 
-            <SectionTitle>Ficha</SectionTitle>
-            <div className="mb-4.5 grid grid-cols-2 gap-px overflow-hidden rounded-[9px] border border-border/60 bg-border/60">
+            <SectionTitle as="h3">Ficha</SectionTitle>
+            <div className="mb-4.5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60">
               <Fact label="Órgano" value={l.organo_contratacion} />
               <Fact label="CCAA" value={l.ccaa} />
               <Fact label="Provincia" value={l.provincia} />
-              <Fact label="CPV" value={l.cpv} />
+              <Fact label="CPV" value={l.cpv} variant="codigo" />
               <Fact
                 label="Tipo de contrato"
-                value={
-                  l.tipo_contrato ? (
-                    <CodigoLegible familia="tipo_contrato" codigo={l.tipo_contrato} />
-                  ) : null
-                }
+                value={l.tipo_contrato ? <CodigoLegible familia="tipo_contrato" codigo={l.tipo_contrato} /> : null}
               />
               {/* F1.7 — etiqueta legible y definición desde `/meta/filters`. */}
               <Fact
                 label="Procedimiento"
-                value={
-                  l.procedimiento ? (
-                    <CodigoLegible familia="procedimiento" codigo={l.procedimiento} />
-                  ) : null
-                }
+                value={l.procedimiento ? <CodigoLegible familia="procedimiento" codigo={l.procedimiento} /> : null}
               />
               <Fact
                 label="Tramitación"
-                value={
-                  l.tramitacion ? (
-                    <CodigoLegible familia="tramitacion" codigo={l.tramitacion} />
-                  ) : null
-                }
+                value={l.tramitacion ? <CodigoLegible familia="tramitacion" codigo={l.tramitacion} /> : null}
               />
               <Fact label="Tecnología" value={l.tecnologia} />
               <Fact label="Publicación" value={formatDate(l.fecha_publicacion)} />
@@ -353,8 +285,8 @@ export function DetailInspector({
 
             {l.descripcion && (
               <>
-                <SectionTitle>Descripción</SectionTitle>
-                <p className="mb-4 whitespace-pre-wrap text-[12.5px] leading-[1.6] text-muted-foreground text-pretty">
+                <SectionTitle as="h3">Descripción</SectionTitle>
+                <p className="mb-4 whitespace-pre-wrap text-tf-body leading-relaxed text-muted-foreground text-pretty">
                   {l.descripcion}
                 </p>
               </>
@@ -368,10 +300,9 @@ export function DetailInspector({
                 // `flex w-fit` en vez de `inline-flex`: el margen inferior de una
                 // caja en línea no separa de lo que viene detrás, y detrás hay
                 // ahora la cronología.
-                className="mb-5 flex w-fit items-center gap-1.5 text-[12.5px] font-medium"
+                className="mb-5 flex w-fit items-center gap-1.5 text-tf-body font-medium"
               >
-                {fuenteLinkLabel(l.fuente, l.url)}{" "}
-                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
               </a>
             )}
 
@@ -383,7 +314,7 @@ export function DetailInspector({
                 modificación. `EventosTimeline` trae su propio estado de carga,
                 de error y de vacío. */}
             <div className="border-t border-border/50 pt-4">
-              <SectionTitle>Eventos</SectionTitle>
+              <SectionTitle as="h3">Eventos</SectionTitle>
               <EventosTimeline licitacionId={l.id_externo} />
             </div>
           </div>
@@ -416,14 +347,10 @@ export function DetailInspector({
             {resolucionesCount > 0 ? (
               <ResolucionesBlock licitacionId={l.id_externo} />
             ) : (
-              <div className="rounded-[10px] border border-dashed border-border/60 px-4 py-11 text-center">
-                <div className="mb-1.5 text-[13px] font-medium leading-[1.3]">
-                  Sin recursos registrados
-                </div>
-                <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
-                  No consta ninguna resolución del TACRC para este expediente.
-                </p>
-              </div>
+              <PanelEmpty
+                title="Sin recursos registrados"
+                hint="No consta ninguna resolución del TACRC para este expediente."
+              />
             )}
           </div>
         )}

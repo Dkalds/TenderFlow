@@ -10,11 +10,10 @@
  */
 
 import * as React from "react";
-import { Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,6 +24,7 @@ import {
   useOrganizationMembers,
   useUpdateOrganizationMember,
 } from "@/hooks/use-organization";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { ROLE_LABELS, STATUS_LABELS, type RolAsignable } from "../_lib/etiquetas";
 import { AnadirMiembroForm } from "./anadir-miembro-form";
 
@@ -44,7 +44,7 @@ function MemberRow({
     try {
       await updateMember.mutateAsync({ user_id: member.user_id, role, status: member.status });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo cambiar el rol");
+      toast.error(getErrorMessage(error, "accion"));
     }
   };
 
@@ -53,7 +53,7 @@ function MemberRow({
       await updateMember.mutateAsync({ user_id: member.user_id, role: member.role, status });
       toast.success(status === "active" ? "Miembro reactivado" : "Miembro revocado");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el estado");
+      toast.error(getErrorMessage(error, "accion"));
     }
   };
 
@@ -61,13 +61,13 @@ function MemberRow({
     <TableRow>
       <TableCell>
         <div className="font-medium">{member.display_name ?? `Usuario ${member.user_id}`}</div>
-        <div className="text-xs text-muted-foreground">{member.email ?? "—"}</div>
+        <div className="text-tf-meta text-muted-foreground">{member.email ?? "—"}</div>
       </TableCell>
       <TableCell>
         {canManage && !isOwner ? (
           <Select value={member.role} onValueChange={(value) => void changeRole(value as RolAsignable)}>
             <SelectTrigger
-              className="h-8 w-36 text-xs"
+              className="h-8 w-36 text-tf-meta"
               aria-label={`Rol de ${member.display_name ?? member.email ?? `Usuario ${member.user_id}`}`}
             >
               <SelectValue />
@@ -79,11 +79,15 @@ function MemberRow({
             </SelectContent>
           </Select>
         ) : (
-          <Badge variant={isOwner ? "default" : "secondary"}>{ROLE_LABELS[member.role]}</Badge>
+          <Badge variant={isOwner ? "outline" : "secondary"} size="sm">
+            {ROLE_LABELS[member.role]}
+          </Badge>
         )}
       </TableCell>
       <TableCell>
-        <Badge variant={member.status === "active" ? "success" : "outline"}>{STATUS_LABELS[member.status]}</Badge>
+        <Badge variant={member.status === "active" ? "success" : "outline"} size="sm">
+          {STATUS_LABELS[member.status]}
+        </Badge>
       </TableCell>
       <TableCell className="text-right">
         {canManage && !isOwner && (
@@ -118,38 +122,37 @@ export function MiembrosCard({
   const rows = members.data ?? [];
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-        <CardTitle className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-primary" />
-          Organización activa
-        </CardTitle>
-        <Select
-          value={activeOrganizationId ? String(activeOrganizationId) : ""}
-          onValueChange={(value) => onSelectOrganization(value ? Number(value) : null)}
-        >
-          {/* Un combobox se nombra por lo que elige, no por lo que tiene
-              elegido: sin `aria-label` su nombre era el valor, y con una
-              organización activa que aún no está en la lista (la carga llega
-              después), ni eso — axe `button-name`, crítico. */}
-          <SelectTrigger className="w-56" aria-label="Organización activa">
-            <SelectValue placeholder="Selecciona una organización" />
-          </SelectTrigger>
-          <SelectContent>
-            {organizations.map((organization) => (
-              <SelectItem key={organization.id} value={String(organization.id)}>
-                {organization.name} · {ROLE_LABELS[organization.role]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Panel>
+      <PanelTitle
+        title="Organización activa"
+        actions={
+          <Select
+            value={activeOrganizationId ? String(activeOrganizationId) : ""}
+            onValueChange={(value) => onSelectOrganization(value ? Number(value) : null)}
+          >
+            {/* Un combobox se nombra por lo que elige, no por lo que tiene
+                elegido: sin `aria-label` su nombre era el valor, y con una
+                organización activa que aún no está en la lista (la carga llega
+                después), ni eso — axe `button-name`, crítico. */}
+            <SelectTrigger className="w-56" aria-label="Organización activa">
+              <SelectValue placeholder="Selecciona una organización" />
+            </SelectTrigger>
+            <SelectContent>
+              {organizations.map((organization) => (
+                <SelectItem key={organization.id} value={String(organization.id)}>
+                  {organization.name} · {ROLE_LABELS[organization.role]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      />
+      <div className="space-y-4">
         {activeOrganization?.is_personal ? (
-          <p className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            Esta es tu organización personal: no admite miembros adicionales. Crea un espacio compartido arriba para
+          <Aviso tone="info" role="note">
+            Esta es tu organización personal: no admite más miembros. Crea una organización compartida arriba para
             trabajar en equipo.
-          </p>
+          </Aviso>
         ) : (
           <>
             {canManage && activeOrganizationId != null && <AnadirMiembroForm organizationId={activeOrganizationId} />}
@@ -158,8 +161,23 @@ export function MiembrosCard({
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
               </div>
+            ) : members.error ? (
+              <PanelError
+                variant="inline"
+                title="No se pudieron cargar los miembros"
+                error={members.error}
+                onRetry={() => void members.refetch()}
+              />
             ) : rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Todavía no hay miembros en esta organización.</p>
+              <PanelEmpty
+                size="sm"
+                title="Todavía no hay miembros en esta organización"
+                hint={
+                  canManage
+                    ? "Añade el primero con su correo."
+                    : "Quien administre la organización puede añadir miembros."
+                }
+              />
             ) : (
               <Table>
                 <TableHeader>
@@ -184,7 +202,7 @@ export function MiembrosCard({
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

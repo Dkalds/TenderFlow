@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Check } from "lucide-react";
+import { Check, CircleHelp } from "lucide-react";
 import { cn, formatNumber } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PanelError } from "@/components/console/panel";
+import { Aviso, PanelEmpty, PanelError, Segmented } from "@/components/console/panel";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   filtrarPorConfianza,
@@ -16,17 +18,20 @@ import {
 
 const GRID = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_140px_150px] items-center gap-4 px-5";
 
-const FILTROS: { key: ConfidenceFilter; label: string }[] = [
-  { key: "all", label: "Todos" },
-  { key: "safe", label: "≥ 90 %" },
-  { key: "doubt", label: "< 90 %" },
+const FILTROS: { value: ConfidenceFilter; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "safe", label: "≥ 90 %" },
+  { value: "doubt", label: "< 90 %" },
 ];
 
 export interface ReviewQueueProps {
   items: ReviewItem[];
   loading: boolean;
-  error: boolean;
-  errorDetail?: string;
+  /**
+   * El fallo de la consulta, si lo hubo. Da el mensaje y el detalle técnico
+   * (estado y ruta, plegados) de `PanelError`.
+   */
+  error?: unknown;
   onRetry: () => void;
   filtro: ConfidenceFilter;
   onFiltroChange: (filtro: ConfidenceFilter) => void;
@@ -37,7 +42,6 @@ export function ReviewQueue({
   items,
   loading,
   error,
-  errorDetail,
   onRetry,
   filtro,
   onFiltroChange,
@@ -53,11 +57,7 @@ export function ReviewQueue({
   if (error) {
     return (
       <div className="p-5">
-        <PanelError
-          title="No se pudo cargar la cola de revisión"
-          detail={errorDetail ?? "GET /api/v1/empresas/reviews"}
-          onRetry={onRetry}
-        />
+        <PanelError title="No se pudo cargar la cola de revisión" error={error} onRetry={onRetry} />
       </div>
     );
   }
@@ -67,14 +67,19 @@ export function ReviewQueue({
       <div className="border-border/60 flex flex-none items-center gap-2 border-b px-5 py-3">
         <span className="text-tf-body text-muted-foreground">
           {items.length === 0
-            ? "Sin matches pendientes"
-            : `${formatNumber(visibles.length)} de ${formatNumber(items.length)} matches dudosos`}
+            ? "Sin coincidencias pendientes"
+            : `${formatNumber(visibles.length)} de ${formatNumber(items.length)} coincidencias dudosas`}
         </span>
+        {/* Un botón de verdad: el «?» era un `span` que solo abría con el
+            ratón, y la explicación de qué hace cada botón tiene que llegar
+            también con teclado. */}
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="border-border/70 text-tf-micro text-muted-foreground grid h-4 w-4 cursor-help place-items-center rounded-full border font-semibold">
-              ?
-            </span>
+          <TooltipTrigger
+            type="button"
+            className="text-muted-foreground/70 hover:text-foreground -m-1 inline-flex size-6 items-center justify-center rounded-full transition-colors"
+          >
+            <CircleHelp className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">Qué hacen Unir y Nueva</span>
           </TooltipTrigger>
           <TooltipContent className="max-w-[320px]">
             «Unir» enlaza el nombre visto en fuente al candidato existente. «Nueva» crea una empresa distinta. Cada
@@ -84,32 +89,18 @@ export function ReviewQueue({
 
         <div className="flex-1" />
 
-        <div className="border-border/60 flex items-center gap-0.5 rounded-md border p-0.5">
-          {FILTROS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => onFiltroChange(item.key)}
-              aria-pressed={filtro === item.key}
-              className={cn(
-                "tf-pressable text-tf-meta h-6 rounded px-2.5 font-medium transition-colors duration-140 ease-out",
-                filtro === item.key ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          aria-label="Filtrar por similitud"
+          value={filtro}
+          onChange={onFiltroChange}
+          options={FILTROS}
+        />
 
         {seguros.length > 0 && !mostrarConfirmacion && (
-          <button
-            type="button"
-            onClick={() => setConfirmando(true)}
-            className="tf-pressable border-border/70 text-tf-meta text-foreground hover:border-primary/50 inline-flex h-[30px] items-center gap-1.5 rounded-md border px-3 font-medium transition-colors"
-          >
-            <Check className="h-3 w-3" aria-hidden="true" />
+          <Button type="button" variant="outline" size="sm" onClick={() => setConfirmando(true)}>
+            <Check aria-hidden="true" />
             Unir los ≥ 90 % ({seguros.length})
-          </button>
+          </Button>
         )}
       </div>
 
@@ -117,41 +108,45 @@ export function ReviewQueue({
           desde el toast, pero unir veinte de golpe reescribe una parte del
           maestro de una vez, y eso se pregunta antes. */}
       {mostrarConfirmacion && (
-        <div className="border-primary/30 bg-primary/8 flex flex-none items-center gap-3 border-b px-5 py-2.5">
+        <Aviso
+          variant="banda"
+          tone="info"
+          className="flex-none px-5 py-2.5"
+          action={
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setConfirmando(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setConfirmando(false);
+                  onDecidir(
+                    seguros.map((item) => item.id),
+                    true,
+                    `${seguros.length} coincidencias unidas · importe resuelto recalculado`,
+                  );
+                }}
+              >
+                Unir todos
+              </Button>
+            </div>
+          }
+        >
           <span className="text-tf-body font-medium">
-            Unir {seguros.length} matches con similitud ≥ 90 % a sus candidatos. Se recalculan importe resuelto y
+            Unir {seguros.length} coincidencias con similitud ≥ 90 % a sus candidatos. Se recalculan importe resuelto y
             cuotas.
           </span>
-          <div className="flex-1" />
-          <button
-            type="button"
-            onClick={() => setConfirmando(false)}
-            className="tf-pressable border-border/70 text-tf-meta text-muted-foreground hover:text-foreground h-7 rounded-md border px-3 font-medium"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setConfirmando(false);
-              onDecidir(
-                seguros.map((item) => item.id),
-                true,
-                `${seguros.length} matches unidos · importe resuelto recalculado`,
-              );
-            }}
-            className="tf-pressable bg-primary text-tf-meta text-primary-foreground h-7 rounded-md px-3 font-semibold"
-          >
-            Unir todos
-          </button>
-        </div>
+        </Aviso>
       )}
 
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         <div
           className={cn(
             GRID,
-            "border-border/70 bg-background text-tf-micro text-muted-foreground sticky top-0 z-10 h-[34px] border-b font-medium",
+            CABECERA_COLUMNA,
+            "border-border/70 bg-background sticky top-0 z-10 h-[34px] border-b",
           )}
         >
           <span>Visto en fuente</span>
@@ -167,27 +162,25 @@ export function ReviewQueue({
             ))}
           </div>
         ) : visibles.length === 0 ? (
-          <div className="px-6 py-20 text-center">
-            <Check className="mx-auto mb-3 h-5 w-5 text-[hsl(var(--success))]" aria-hidden="true" />
-            <p className="text-tf-body text-foreground mb-1.5 font-medium">
-              {items.length === 0 ? "Cola vacía" : "Nada en este filtro"}
-            </p>
-            <p className="text-tf-meta text-muted-foreground mx-auto max-w-[44ch]">
-              {items.length === 0
+          <PanelEmpty
+            className="py-20"
+            title={items.length === 0 ? "Cola vacía" : "Nada en este filtro"}
+            hint={
+              items.length === 0
                 ? "Todo adjudicatario nuevo se ha resuelto automáticamente a una entidad del maestro."
-                : "Cambia el filtro de confianza para ver el resto de la cola."}
-            </p>
-          </div>
+                : "Cambia el filtro de similitud para ver el resto de la cola."
+            }
+          />
         ) : (
           visibles.map((item) => {
             const conflicto = nifEnConflicto(item);
             const score = Math.round((item.score ?? 0) * 100);
             return (
-              <div key={item.id} className={cn(GRID, "border-border/25 hover:bg-muted-foreground/5 h-[52px] border-b")}>
+              <div key={item.id} className={cn(GRID, "border-border/30 hover:bg-primary/5 h-[52px] border-b transition-colors")}>
                 <div className="min-w-0">
                   <div className="text-tf-body text-foreground truncate font-medium">{item.nombre_original ?? "—"}</div>
-                  <div className="text-tf-meta text-muted-foreground mt-0.5 font-mono">
-                    {item.nif ?? "sin NIF en fuente"}
+                  <div className={cn("text-tf-meta text-muted-foreground mt-0.5", item.nif && "font-mono")}>
+                    {item.nif ?? "Sin NIF en fuente"}
                   </div>
                 </div>
                 <div className="min-w-0">
@@ -208,7 +201,7 @@ export function ReviewQueue({
                   <span className="bg-muted-foreground/15 block h-1 flex-1 overflow-hidden rounded-sm">
                     <span className="bg-muted-foreground/60 block h-full" style={{ width: `${score}%` }} />
                   </span>
-                  <span className="tf-tnum text-tf-meta text-muted-foreground w-8 text-right font-mono font-medium">
+                  <span className="tf-tnum text-tf-meta text-muted-foreground w-8 text-right font-medium">
                     {score}%
                   </span>
                 </div>
@@ -218,22 +211,26 @@ export function ReviewQueue({
                       depender de dejar el ratón quieto encima. */}
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() =>
                           onDecidir([item.id], true, `Unida a «${item.candidato_nombre ?? "—"}»`)
                         }
-                        className="tf-pressable border-border/70 text-tf-meta text-foreground hover:border-primary/50 h-7 rounded-md border px-2.5 font-medium transition-colors"
                       >
                         Unir
-                      </button>
+                      </Button>
                     </TooltipTrigger>
                     <TooltipContent>Misma empresa: unir al candidato</TooltipContent>
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground"
                         onClick={() =>
                           onDecidir(
                             [item.id],
@@ -241,10 +238,9 @@ export function ReviewQueue({
                             `Creada como empresa nueva · «${item.nombre_original ?? "—"}»`
                           )
                         }
-                        className="tf-pressable text-tf-meta text-muted-foreground hover:border-border/70 hover:text-foreground h-7 rounded-md border border-transparent px-2.5 font-medium transition-colors"
                       >
                         Nueva
-                      </button>
+                      </Button>
                     </TooltipTrigger>
                     <TooltipContent>Empresa distinta: crear nueva</TooltipContent>
                   </Tooltip>

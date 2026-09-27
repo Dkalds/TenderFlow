@@ -111,7 +111,10 @@ describe("AdminGuard", () => {
       </AdminGuard>,
       { wrapper: createWrapper() },
     );
-    const skeletons = container.querySelectorAll(".animate-pulse");
+    // El esqueleto de la casa (`Skeleton`), no el `animate-pulse` de shadcn:
+    // un solo lenguaje de carga en toda la consola.
+    const skeletons = container.querySelectorAll('[data-slot="skeleton"]');
     expect(skeletons.length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(0);
   });
 });

@@ -1,13 +1,13 @@
 import type { MetadataRoute } from "next";
+import { MARCA_HEX } from "@/lib/marca";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 
 /**
  * Web App Manifest.
  *
- * Los colores replican los `themeColor` declarados en el `viewport` de
- * `app/layout.tsx` (`#090E11` oscuro / `#F7F5F3` claro): el manifest no puede
- * leerlos de las variables CSS, así que si cambia la paleta hay que tocar los
- * dos sitios.
+ * El color es la tinta de la marca (`lib/marca.ts`), el mismo `#090E11` del
+ * `themeColor` oscuro que declara el `viewport` de `app/layout.tsx`: el
+ * manifest no puede leer variables CSS, y la marca tiene un solo sitio.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -16,8 +16,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: SITE_DESCRIPTION,
     start_url: "/",
     display: "standalone",
-    background_color: "#090E11",
-    theme_color: "#090E11",
+    background_color: MARCA_HEX.tinta,
+    theme_color: MARCA_HEX.tinta,
     lang: "es-ES",
     icons: [
       { src: "/favicon.svg", type: "image/svg+xml", sizes: "any" },

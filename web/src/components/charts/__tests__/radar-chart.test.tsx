@@ -11,7 +11,7 @@ const DATA = [
 describe("RadarChart", () => {
   it("shows an empty-state message when data is empty", () => {
     render(<RadarChart data={[]} />);
-    expect(screen.getByText("Sin datos disponibles")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("No hay dimensiones que comparar");
   });
 
   it("renders an accessible chart container when data is provided", () => {

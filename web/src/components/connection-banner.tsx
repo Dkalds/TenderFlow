@@ -44,6 +44,9 @@ export function hayReintentosEnVuelo(queries: readonly QueryObservable[]): boole
  * inserta en el DOM a la vez que su texto no se anuncia de forma fiable en
  * varios lectores de pantalla.
  *
+ * El texto no habla de servidores ni de arranques en frío: dice qué pasa y
+ * cuánto puede durar, en lenguaje de quien espera.
+ *
  * Movimiento: entrada de 150ms con fade + 2px de desplazamiento (el primitivo
  * `animate-in` del repo, `docs/frontend-motion.md`). Sin spinner ni pulso
  * infinitos — nada que compita por la atención mientras el usuario sigue
@@ -68,12 +71,15 @@ export function ConnectionBanner() {
       {reconectando ? (
         <div
           data-testid="connection-banner"
-          className="animate-in fade-in-0 slide-in-from-top-2 border-border/60 bg-card/95 text-muted-foreground flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] leading-none shadow-sm"
+          // Capa flotante anclada arriba: `bg-card/95` y la sombra de lo
+          // flotante (`shadow-md`); el punto es el tono de aviso, sin pulso.
+          // eslint-disable-next-line no-restricted-syntax -- capa `fixed` sobre el contenido que se desplaza: aquí la translucidez sí deja ver algo detrás (regla 5)
+          className="animate-in fade-in-0 slide-in-from-top-2 border-border/60 bg-card/95 text-tf-micro text-muted-foreground flex items-center gap-2 rounded-full border px-3 py-1.5 leading-none shadow-md"
         >
-          <span aria-hidden="true" className="size-1.5 rounded-full bg-amber-500" />
+          <span aria-hidden="true" className="bg-warning size-1.5 rounded-full" />
           <span>
-            Reconectando con el servidor…{" "}
-            <span className="text-muted-foreground/70">puede tardar unos segundos tras un rato de inactividad</span>
+            <span className="text-foreground">Reconectando…</span> puede tardar unos segundos si llevabas un rato sin
+            usarlo
           </span>
         </div>
       ) : null}

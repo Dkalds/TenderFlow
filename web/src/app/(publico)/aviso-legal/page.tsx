@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TriangleAlert } from "lucide-react";
 import { SITE_NAME } from "@/lib/site";
 import { CONTACT_EMAIL } from "@/lib/contacto";
 import {
@@ -9,6 +10,8 @@ import {
   identificacionCompleta,
   lagunasLegales,
 } from "@/lib/legal";
+import { cn } from "@/lib/utils";
+import { TITULO_BLOQUE, TITULO_PAGINA } from "../_components/piel-publica";
 
 /**
  * Aviso legal de la superficie pública.
@@ -50,16 +53,16 @@ export default function AvisoLegal() {
 
   return (
     <article className="mx-auto w-full max-w-3xl px-6 py-14">
-      <h1 className="font-display text-3xl font-bold tracking-[-0.025em] md:text-4xl">Aviso legal</h1>
+      <h1 className={TITULO_PAGINA}>Aviso legal</h1>
 
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Origen de los datos</h2>
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>Origen de los datos</h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
         Las licitaciones que se publican en este sitio proceden de fuentes oficiales: la Plataforma de Contratación del
         Sector Público del Ministerio de Hacienda y la base de datos TED de la Unión Europea. Cada ficha indica su
         fuente, la fecha de la última actualización del dato y un enlace al anuncio original.
       </p>
 
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Marco de reutilización</h2>
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>Marco de reutilización</h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
         La información se reutiliza al amparo de la Ley 37/2007, de 16 de noviembre, sobre reutilización de la
         información del sector público, y de su normativa de desarrollo. La reutilización no implica que las
@@ -70,7 +73,7 @@ export default function AvisoLegal() {
         fuente: el dato se actualiza de forma periódica, no en tiempo real.
       </p>
 
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>
         No sustituye al perfil del contratante
       </h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
@@ -79,7 +82,7 @@ export default function AvisoLegal() {
         condiciones. No asumimos responsabilidad por decisiones tomadas a partir de la información aquí mostrada.
       </p>
 
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Datos de adjudicatarios</h2>
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>Datos de adjudicatarios</h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
         Las páginas públicas de este sitio muestran únicamente el anuncio de licitación. No se publican datos de las
         empresas o personas adjudicatarias —ni su denominación, ni su número de identificación fiscal, ni los importes
@@ -99,7 +102,7 @@ export default function AvisoLegal() {
           tres estados de la cola son los de `ESTADOS`. La conservación se
           describe como lo que hoy hace el código —no hay borrado automático— en
           vez de prometer un plazo que ningún job cumple. */}
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>
         Datos que nos facilitas al solicitar acceso
       </h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
@@ -123,7 +126,7 @@ export default function AvisoLegal() {
         consentimiento sin que ello afecte a la licitud del tratamiento anterior.
       </p>
 
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Medición de uso</h2>
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>Medición de uso</h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
         Este sitio mide su propio uso con Vercel Analytics y Vercel Speed Insights: páginas vistas, rendimiento de
         carga y qué botón de solicitar acceso se pulsa. La medición es{" "}
@@ -132,7 +135,7 @@ export default function AvisoLegal() {
         y los eventos de solicitud registran únicamente desde qué punto de la página se pulsó, nunca lo que escribiste.
       </p>
 
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>
         Responsable del tratamiento
       </h2>
       {/* Los tres datos llegan por entorno (`lib/legal`): son datos societarios
@@ -151,7 +154,7 @@ export default function AvisoLegal() {
         </p>
       )}
 
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>
         Registro de tratamientos y encargo
       </h2>
       {/* C9.4. El registro del art. 30 RGPD es un documento interno: hay que
@@ -168,13 +171,13 @@ export default function AvisoLegal() {
         en este aviso, y se aplican de forma automática.
       </p>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
-        Si sos una organización que usa la plataforma para trabajar con datos personales propios, nosotros
+        Si eres una organización que usa la plataforma para trabajar con datos personales propios, nosotros
         actuamos como <strong className="text-foreground">encargados del tratamiento</strong> sobre ese
-        contenido y vos como responsable. El anexo de encargo del artículo 28, con las medidas técnicas y la
+        contenido y tú, como responsable. El anexo de encargo del artículo 28, con las medidas técnicas y la
         lista de subencargados, está disponible bajo petición en la dirección de contacto.
       </p>
 
-      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Contacto</h2>
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>Contacto</h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
         Para solicitar la rectificación o la retirada de un contenido concreto de este sitio, escríbenos indicando el
         número de expediente afectado y el motivo. Atendemos las solicitudes relativas a datos personales conforme al
@@ -198,10 +201,22 @@ export default function AvisoLegal() {
       ) : null}
       {/* El recuadro enumeraba siempre las mismas tres lagunas aunque alguna
           estuviera resuelta, y un aviso que no distingue lo pendiente de lo
-          hecho se deja de leer. Ahora solo aparece si de verdad falta algo. */}
+          hecho se deja de leer. Ahora solo aparece si de verdad falta algo.
+
+          Es la receta del `Aviso` de la consola en tono de advertencia (filete
+          /30, fondo /5, icono de contorno), escrita aquí porque aquel vive en
+          un módulo cliente que esta página de servidor no debe cargar (ver
+          `_components/piel-publica.ts`). Antes era una caja de borde
+          discontinuo, el gesto de «hueco por rellenar» de las plantillas. */}
       {pendientes.length > 0 ? (
-        <p className="border-border text-muted-foreground mt-6 rounded-lg border border-dashed p-4 text-sm">
-          <strong className="text-foreground">Pendiente de completar:</strong> {pendientes.join(", ")}.
+        <p
+          role="note"
+          className="border-warning/30 bg-warning/5 mt-6 flex items-start gap-2.5 rounded-md border p-4 text-sm"
+        >
+          <TriangleAlert className="text-warning mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
+          <span>
+            <strong className="font-semibold">Pendiente de completar:</strong> {pendientes.join(", ")}.
+          </span>
         </p>
       ) : null}
       <p className="text-muted-foreground mt-6 text-sm">

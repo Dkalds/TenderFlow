@@ -1,46 +1,47 @@
-import { cn } from "@/lib/utils";
-import { Inbox, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PanelEmpty } from "@/components/console/panel";
 
 export interface EmptyStateProps {
+  /** Icono pequeño y gris en línea con el título (nunca una baldosa). */
   icon?: LucideIcon;
+  /** Qué falta, en una línea. Pásalo siempre: no hay título por defecto. */
   title?: string;
+  /** Por qué o qué hacer, concreto para esta pantalla. Pásalo siempre. */
   hint?: string;
   actionLabel?: string;
   onAction?: () => void;
   className?: string;
 }
 
-export function EmptyState({
-  icon: Icon = Inbox,
-  title = "Sin datos",
-  hint = "No hay información disponible para el ámbito actual.",
-  actionLabel,
-  onAction,
-  className,
-}: EmptyStateProps) {
+/**
+ * Vacío heredado: ahora es un envoltorio de `PanelEmpty`, así que se dibuja
+ * igual que el resto de la consola (sin la baldosa de icono tintada de 56 px).
+ *
+ * Ya no hay valores por defecto: el «Sin datos» con el icono de bandeja salía
+ * idéntico en decenas de paneles y no decía qué faltaba. Cada llamada pasa su
+ * `title` y su `hint` («Ningún CPV con adjudicaciones en el ámbito actual.»,
+ * «Amplía las fechas o quita filtros.»).
+ *
+ * Sin importadores desde el 2026-09-27 (eran 28): `no-restricted-imports` de
+ * `eslint.config.mjs` impide volver a usarlo fuera de su test.
+ *
+ * @deprecated Usa `PanelEmpty` de `@/components/console/panel`.
+ */
+export function EmptyState({ icon, title, hint, actionLabel, onAction, className }: EmptyStateProps) {
   return (
-    <div
-      className={cn(
-        // Sustituye a un skeleton de carga (cambio de estado esporádico):
-        // fade-in para evitar que el contenido aparezca de golpe.
-        "flex flex-col items-center justify-center gap-3 py-12 text-center animate-in fade-in-0",
-        className,
-      )}
-      role="status"
-    >
-      <span className="grid h-14 w-14 place-items-center rounded-2xl border border-primary/15 bg-primary/8 text-primary">
-        <Icon className="h-6 w-6" aria-hidden="true" />
-      </span>
-      <p className="text-sm font-semibold text-foreground">{title}</p>
-      {hint && (
-        <p className="max-w-sm text-xs text-muted-foreground">{hint}</p>
-      )}
-      {actionLabel && onAction && (
-        <Button variant="outline" size="sm" onClick={onAction} className="mt-1">
-          {actionLabel}
-        </Button>
-      )}
-    </div>
+    <PanelEmpty
+      title={title}
+      hint={hint}
+      icon={icon}
+      className={className}
+      action={
+        actionLabel && onAction ? (
+          <Button variant="outline" size="sm" onClick={onAction}>
+            {actionLabel}
+          </Button>
+        ) : undefined
+      }
+    />
   );
 }

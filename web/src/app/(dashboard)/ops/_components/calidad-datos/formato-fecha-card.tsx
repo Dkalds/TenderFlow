@@ -5,17 +5,10 @@
  *
  * Mide **formato**, no completitud: una fecha presente pero en DD/MM/YYYY
  * cuenta como completa en el gráfico de arriba y como no-ISO aquí. Son dos
- * cifras distintas sobre el mismo campo y por eso viven en tarjetas distintas.
+ * cifras distintas sobre el mismo campo y por eso viven en paneles distintos.
  */
 
-import { CalendarClock } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatNumber, formatPercent } from "@/lib/utils";
@@ -31,41 +24,32 @@ export function FormatoFechaCard({ pctIso, fechasNoIso, isLoading }: FormatoFech
   const hayNoIso = fechasNoIso > 0;
 
   return (
-    <Card
-      className={cn(hayNoIso && "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20")}
-    >
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <CalendarClock
-            className={cn("h-4 w-4", hayNoIso ? "text-amber-600" : "text-muted-foreground")}
-          />
-          Consistencia de formato de fecha
-        </CardTitle>
-        <CardDescription>
-          Fechas de publicación en ISO-8601 (mide formato, no completitud)
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-8 w-24" />
-        ) : (
-          <>
-            <p className={cn("text-2xl font-bold", hayNoIso && "text-amber-600")}>
-              {pctIso != null ? formatPercent(pctIso) : "N/A"}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {hayNoIso
-                ? `${formatNumber(fechasNoIso)} fecha(s) en formato no-ISO (p. ej. DD/MM/YYYY)`
-                : "Todas las fechas presentes en formato ISO"}
-            </p>
-            {hayNoIso && (
-              <Badge variant="secondary" className="mt-2">
-                Revisar normalización
-              </Badge>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle
+        title="Formato de las fechas"
+        hint="Fechas de publicación en ISO-8601: mide el formato, no si faltan"
+      />
+      {isLoading ? (
+        <Skeleton className="h-8 w-24" />
+      ) : (
+        <>
+          <p className={cn("tf-tnum text-tf-title font-semibold", hayNoIso && "text-warning")}>
+            {pctIso != null ? formatPercent(pctIso) : "—"}
+          </p>
+          <p className="text-tf-meta text-muted-foreground">
+            {pctIso == null
+              ? "Sin medir"
+              : hayNoIso
+                ? `${formatNumber(fechasNoIso)} fechas en otro formato (p. ej. DD/MM/AAAA)`
+                : "Todas las fechas presentes están en ISO-8601"}
+          </p>
+          {hayNoIso && (
+            <Badge variant="warning" size="sm" className="mt-2">
+              Revisar la normalización
+            </Badge>
+          )}
+        </>
+      )}
+    </Panel>
   );
 }

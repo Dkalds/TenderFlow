@@ -3,8 +3,8 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { VistaEsqueleto } from "@/components/layout/space-shell-esqueleto";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 
 /**
@@ -13,9 +13,9 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
  * Reestructura 2026-09-20, «un espacio, una pregunta»: el espacio se llama
  * Agenda y tiene una sola vista —pursuits abiertos, señales sin triar y
  * renovaciones próximas en una cronología por bandas de urgencia, con la
- * fusión y el orden en backend—. Las otras tres vistas que tuvo se fueron a
- * donde vive su pregunta: el embudo a Oportunidades → Rendimiento, la cartera
- * a Oportunidades → Cartera y el horizonte de renovaciones a Mercado →
+ * fusión y el orden en la API—. Las otras tres vistas que tuvo se fueron a
+ * donde vive su pregunta: el embudo a Oportunidades › Rendimiento, la cartera
+ * a Oportunidades › Cartera y el horizonte de renovaciones a Mercado ›
  * Renovaciones. Ninguna perdió nada al moverse; el inventario de funciones y
  * el destino de cada una está en `docs/redesign/mi-pipeline-inventario.md`.
  *
@@ -24,12 +24,9 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
  * `espacio_abierto`.
  */
 
-const Loading = () => (
-  <div className="space-y-4">
-    <Skeleton className="h-24 w-full rounded-xl" />
-    <Skeleton className="h-[320px] w-full rounded-xl" />
-  </div>
-);
+// El mismo esqueleto que pinta `loading.tsx` de la ruta: la vista aparece donde
+// estaba, sin un segundo salto al llegar su chunk.
+const Loading = () => <VistaEsqueleto />;
 
 const VIEWS: Record<string, React.ComponentType> = {
   agenda: dynamic(() => import("./_components/agenda-view"), { loading: Loading }),

@@ -26,6 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { META_ERROR_EN_LINEA, getErrorMessage } from "@/lib/query-feedback";
 import { useCreatePursuit, usePursuits } from "@/hooks/use-pursuits";
 import { useCartera } from "@/hooks/use-cartera";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -141,10 +142,10 @@ export function useRenovaciones() {
       try {
         const pursuit = await createPursuit.mutateAsync({ licitacion_id: licitacionId });
         setActiveOrganizationId(pursuit.organization_id);
-        toast.success("Renovación anticipada como pursuit");
+        toast.success("Renovación anticipada como oportunidad");
         router.push(`/oportunidades/${pursuit.id}`);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "No se pudo anticipar la renovación");
+        toast.error("No se pudo anticipar la renovación", { description: getErrorMessage(err, "accion") });
       }
     },
     [createPursuit, router, setActiveOrganizationId],
@@ -179,6 +180,8 @@ export function useRenovaciones() {
           `&limit=${TOP_OPORTUNIDADES}${tecnologiaQs}`,
       ),
     staleTime: 5 * 60 * 1000,
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const { data: resumen, refetch: recargarResumen } = useQuery<RenovacionesResumenResult>({

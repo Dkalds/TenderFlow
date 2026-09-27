@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { analyticsKeys } from "@/lib/query-keys";
 import { useFeedbackStats } from "@/hooks/use-feedback";
 import { useDataFreshness } from "@/hooks/use-data-freshness";
@@ -34,6 +35,8 @@ export function OpsHealthStrip() {
     queryKey: analyticsKeys.quality,
     queryFn: () => fetchWithAuth<QualityMetrics>("/api/v1/analytics/quality"),
     staleTime: 60_000,
+    // Su fallo se pinta en la celda («sin dato»): sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const feedback = useFeedbackStats();
@@ -41,15 +44,23 @@ export function OpsHealthStrip() {
   const healthy = sources.data?.healthy_sources;
   const total = sources.data?.total_sources;
   const sourcesDegraded = healthy != null && total != null && healthy < total;
-  const dlq = quality.data?.dlq_count ?? 0;
+  // Sin respuesta no hay recuento: pintar «0 · vacía» afirmaría una cola que
+  // nadie ha medido.
+  const dlq = quality.data ? (quality.data.dlq_count ?? 0) : null;
 
   return (
     <StatStrip className="mb-4">
       <StatCell
         label="Fuentes al día"
         value={healthy != null && total != null ? `${healthy} de ${total}` : "—"}
-        hint={sourcesDegraded ? "alguna fuente degradada" : "todas responden"}
-        accent={sourcesDegraded ? "hsl(var(--warning))" : undefined}
+        hint={
+          healthy == null || total == null
+            ? "sin dato"
+            : sourcesDegraded
+              ? "alguna fuente degradada"
+              : "todas responden"
+        }
+        tono={sourcesDegraded ? "warning" : undefined}
         loading={sources.isLoading}
       />
       <StatCell
@@ -59,10 +70,10 @@ export function OpsHealthStrip() {
         loading={!relative && sources.isLoading}
       />
       <StatCell
-        label="Cola DLQ"
-        value={formatNumber(dlq)}
-        hint={dlq > 0 ? "hay mensajes sin procesar" : "vacía"}
-        accent={dlq > 0 ? "hsl(var(--destructive))" : undefined}
+        label="Cola de errores"
+        value={dlq == null ? "—" : formatNumber(dlq)}
+        hint={dlq == null ? "sin dato" : dlq > 0 ? "hay registros sin procesar" : "vacía"}
+        tono={dlq != null && dlq > 0 ? "destructive" : undefined}
         loading={quality.isLoading}
       />
       <StatCell

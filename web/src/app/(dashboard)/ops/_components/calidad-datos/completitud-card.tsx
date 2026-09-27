@@ -9,14 +9,7 @@
  */
 
 import dynamic from "next/dynamic";
-import { ShieldCheck } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ColumnCompleteness } from "./quality-data";
 
@@ -35,25 +28,17 @@ export interface CompletitudCardProps {
 
 export function CompletitudCard({ data, isLoading }: CompletitudCardProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5" />
-          Completitud por columna
-        </CardTitle>
-        <CardDescription>Porcentaje de registros con campos completos</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-6 w-full" />
-            ))}
-          </div>
-        ) : (
-          <CalidadCompletenessChart data={data} />
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Completitud por columna" hint="Porcentaje de registros con cada campo informado" />
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-6 w-full" />
+          ))}
+        </div>
+      ) : (
+        <CalidadCompletenessChart data={data} />
+      )}
+    </Panel>
   );
 }

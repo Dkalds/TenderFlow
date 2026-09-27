@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Lista de resultados de la búsqueda semántica, con la fuente real que devolvió
- * el backend y la exportación de lo que hay en pantalla.
+ * Lista de resultados de la búsqueda, con la fuente real que devolvió el
+ * backend y la exportación de lo que hay en pantalla.
  */
 
 import { Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { PanelEmpty } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { exportCSV } from "../_lib/export-csv";
 import { sourceHint, sourceLabel } from "../_lib/source-label";
 import type { SearchResult } from "../_lib/types";
@@ -26,38 +26,40 @@ export function InvestigadorResults({ results, source, query }: Props) {
   const pista = sourceHint(source);
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold">{results.length} resultados encontrados</h2>
-          {/* La fuente que se pinta es la que devolvió el backend: si no
-              hay pliegos embebidos, esto dice «Texto completo» aunque el
-              deslizador semántico esté al máximo. */}
+    <section aria-labelledby="investigador-resultados" className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h2 id="investigador-resultados" className="text-tf-body font-semibold">
+            {results.length} {results.length === 1 ? "resultado" : "resultados"}
+          </h2>
+          {/* La fuente que se pinta es la que devolvió la búsqueda: si no hay
+              pliegos indexados, dice «Texto completo» aunque «Tipo de
+              coincidencia» esté en «Por significado». La explicación va
+              debajo, en texto: un `title` no se lee con el teclado. */}
           {etiqueta && (
-            <Badge variant="outline" className="text-xs" title={pista ?? undefined}>
+            <Badge variant="outline" size="sm">
               {etiqueta}
             </Badge>
           )}
         </div>
         {results.length > 0 && (
           <Button variant="outline" size="sm" onClick={() => exportCSV(results, source)}>
-            <Download className="mr-2 h-4 w-4" />
+            <Download aria-hidden="true" />
             Exportar CSV
           </Button>
         )}
       </div>
-      {pista && <p className="text-muted-foreground text-xs">{pista}</p>}
+      {pista && <p className="text-tf-meta text-muted-foreground">{pista}</p>}
       {results.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="text-muted-foreground py-8 text-center">
-            No se encontraron resultados para tu búsqueda.
-          </CardContent>
-        </Card>
+        <PanelEmpty
+          title="Sin resultados"
+          hint="Prueba con otras palabras, acerca «Tipo de coincidencia» a «Por significado» o quita el ámbito en «Opciones avanzadas»."
+        />
       ) : (
         results.map((r, i) => (
           <InvestigadorResultCard key={r.id_externo ?? r.id ?? String(i)} result={r} query={query} />
         ))
       )}
-    </div>
+    </section>
   );
 }

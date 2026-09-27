@@ -24,10 +24,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { PanelEmpty, PanelError, PanelLoading } from "@/components/console/panel";
+import { PanelEmpty, PanelError, PanelLoading, SectionTitle } from "@/components/console/panel";
 import { registrarEvento } from "@/lib/analytics";
 import { apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { competitiveKeys } from "@/lib/query-keys";
 import { formatCompactCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
@@ -62,6 +63,8 @@ export function useSociosUte(cpv: string | null, ccaa: string | null) {
       }),
     enabled: cpv != null,
     staleTime: 10 * 60_000,
+    // El fallo se dice en el panel (PanelError): sin toast además.
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -69,7 +72,7 @@ export function useSociosUte(cpv: string | null, ccaa: string | null) {
 function Empresa({ nombre, clave }: { nombre: string; clave: string }) {
   if (/^\d+$/.test(clave)) {
     return (
-      <Link href={`/competencia/empresa/${clave}`} className="font-medium hover:underline">
+      <Link href={`/competencia/empresa/${clave}`} className="font-medium transition-colors hover:text-primary">
         {nombre}
       </Link>
     );
@@ -90,14 +93,20 @@ export function SociosUte({ cpv, ccaa }: { cpv: string | null | undefined; ccaa:
   }, [data]);
 
   if (prefijo == null) {
-    return <PanelEmpty message="El expediente no trae CPV: sin segmento no hay socios que sugerir." />;
+    return (
+      <PanelEmpty
+        size="sm"
+        title="Sin socios que sugerir"
+        hint="El expediente no trae CPV: sin segmento no hay socios que sugerir."
+      />
+    );
   }
   if (isLoading) return <PanelLoading height={160} />;
   if (error || !data) {
     return (
       <PanelError
         title="No se pudieron cargar los socios sugeridos"
-        detail={error instanceof Error ? error.message : undefined}
+        error={error ?? undefined}
         onRetry={() => void refetch()}
       />
     );
@@ -108,24 +117,24 @@ export function SociosUte({ cpv, ccaa }: { cpv: string | null | undefined; ccaa:
   const segmento = `CPV ${prefijo}${region ? ` · ${region}` : ""}`;
 
   return (
-    <div className="space-y-3 text-[12px]">
-      <p className="text-muted-foreground text-[11px] leading-[1.5]">
+    <div className="space-y-3 text-tf-meta">
+      <p className="text-tf-micro text-muted-foreground">
         Segmento {segmento} · sobre {formatNumber(data.n_adjudicaciones)} adjudicaciones
       </p>
 
       {socios.length === 0 ? (
-        <PanelEmpty message={data.sin_resultados ?? "Sin empresas que sugerir en este segmento."} />
+        <PanelEmpty size="sm" hint={data.sin_resultados ?? "Sin empresas que sugerir en este segmento."} />
       ) : (
         <ul className="flex flex-col gap-2.5" aria-label="Socios sugeridos">
           {socios.map((socio) => (
-            <li key={socio.empresa_key} className="border-border/50 rounded-lg border px-2.5 py-2">
+            <li key={socio.empresa_key} className="rounded-md border border-border/60 px-2.5 py-2">
               <div className="flex items-baseline justify-between gap-2">
                 <Empresa nombre={socio.empresa} clave={socio.empresa_key} />
-                <span className="text-muted-foreground flex-none text-[11px]">
+                <span className="flex-none text-tf-micro text-muted-foreground">
                   {formatNumber(socio.n_contratos)} contratos
                 </span>
               </div>
-              <ul className="text-muted-foreground mt-1 list-disc space-y-0.5 pl-4 text-[11.5px] leading-[1.45]">
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-tf-meta text-muted-foreground">
                 {socio.motivos.map((motivo) => (
                   <li key={motivo}>{motivo}</li>
                 ))}
@@ -137,15 +146,15 @@ export function SociosUte({ cpv, ccaa }: { cpv: string | null | undefined; ccaa:
 
       {lideres.length > 0 && (
         <div>
-          <p className="mb-1 text-[11px] font-semibold">Quién manda en el segmento</p>
-          <p className="text-muted-foreground mb-1.5 text-[11px] leading-[1.45]">
+          <SectionTitle className="mb-1">Quién manda en el segmento</SectionTitle>
+          <p className="mb-1.5 text-tf-micro text-muted-foreground">
             No son socios sugeridos: son contra quién se compite.
           </p>
           <ul className="flex flex-col gap-1" aria-label="Líderes del segmento">
             {lideres.map((lider) => (
               <li key={lider.empresa_key} className="flex items-baseline justify-between gap-2">
                 <Empresa nombre={lider.empresa} clave={lider.empresa_key} />
-                <span className="text-muted-foreground tf-tnum flex-none text-[11px]">
+                <span className="flex-none text-tf-micro text-muted-foreground">
                   {formatPercent(lider.cuota_pct)} · {formatCompactCurrency(lider.importe_total)}
                 </span>
               </li>

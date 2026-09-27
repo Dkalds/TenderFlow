@@ -46,6 +46,8 @@ export function useGuionOferta(licitacionId: string) {
         registrarEvento("guion_generado", { criterios: tramoDeCriterios(criterios.length) });
       }
     },
+    // El fallo lo dice el panel del guion, con el motivo del 429 si lo hay.
+    meta: { silent: true },
   });
 
   return { guion: guion.data ?? null, generar };

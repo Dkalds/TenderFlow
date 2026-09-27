@@ -478,6 +478,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [tests/conftest.py](../tests/conftest.py)
 - **Riesgo:** bajo — solo cambia qué tests entran en el gate.
 
+### [P2] Impedir que un test unitario salga a la red
+- **Área:** tests/conftest.py, shared/release_assets.py, scraper/tech_classifier.py
+- **Problema:** Nada impide que un test `unit` llegue a la red, y cuando llega no se nota. El 2026-09-27 la Release *latest* empezó a publicar `tech_classifier.pkl`, y `test_s2_step_tiers.py::test_ml_tecnologias_reporta_skipped_con_el_flag_apagado` —cuyo parche del flag no llegaba a la instancia de `settings`— pasó de «sin modelo» a bajar 11,5 MB de GitHub y acabar en la BD: CI en rojo en el PR #366 sin ningún cambio de código. El test se arregló ese mismo día, pero el mecanismo sigue: cualquier test que llegue sin mocks a `TechnologyClassifier.resolve_artifact()` o `ensure_downloaded()` descarga del repo público sin token y deja el fichero en `data/models/` del checkout (`_MODEL_PATH` es fijo), donde sigue para los tests siguientes y para la próxima pasada. Medido ese día con una sonda de pytest que registra `getaddrinfo`/`connect` por test sobre `-m "unit and not slow"` (6.293 tests): con el arreglo ningún test contacta GitHub; solo `tests/test_ssrf.py` (tres tests) y `tests/test_ola3_security.py::test_ssrf_allows_public_url` resuelven `example.com` con DNS real, y sin red fallarían. Aparte, algún test unitario escribe `data/models/registry.json` (`scraper/ml_training.py::_REGISTRY_PATH`).
+- **Acceptance criteria:**
+  - Un fixture autouse de `tests/conftest.py` hace **fallar** con `pytest.fail` —que es `BaseException`— toda conexión o resolución DNS hacia un host no local desde un test `unit`. Que falle, no que simule «sin red»: `shared/release_assets.py` se traga cualquier `Exception`, y un stub silencioso habría hecho pasar el test de arriba por accidente, escondiendo el parche roto.
+  - Los cuatro tests SSRF resuelven contra un `getaddrinfo` falso.
+  - `make test-unit` da el mismo resultado con la red cortada.
+- **Files de partida:** [tests/conftest.py](../tests/conftest.py), [tests/test_ssrf.py](../tests/test_ssrf.py), [tests/test_ola3_security.py](../tests/test_ola3_security.py), [shared/release_assets.py](../shared/release_assets.py)
+- **Riesgo:** bajo — solo toca tests; extender el guard a `integration` puede destapar más dependencias de red.
+
 ### [P2] Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23 dice que sí)
 - **Área:** db/repositories/licitaciones.py (`_base_filters`), db/repositories/aggregates.py
 - **Problema:** D23 fija «Radar, listados: esconde `pending` y `confirmed`», pero

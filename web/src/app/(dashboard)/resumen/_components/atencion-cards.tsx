@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { ArrowRight, Flame, type LucideIcon, Sparkles } from "lucide-react";
-import { PanelError } from "@/components/console/panel";
+import {
+  PanelError,
+  PanelTitle,
+  PULSABLE_SOBRE_TARJETA,
+  SUPERFICIE_PANEL,
+} from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnnounceOnChange } from "@/components/live-region";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, formatNumber } from "@/lib/utils";
 import type { ResumenHoyResult } from "@/lib/api-types";
 import { ColaCierre } from "./cola-cierre";
@@ -15,7 +20,7 @@ import { useFiltrosIgnorados } from "./alcance";
 import { AvisoAlcance } from "./aviso-alcance";
 
 /**
- * Mercado abierto — lo que exige mirar hoy en el corpus.
+ * Mercado abierto — lo que exige mirar hoy en el mercado.
  *
  * Tres cosas siguen siendo verdad desde la versión anterior, y conviene no
  * perderlas de vista al leer el layout:
@@ -23,10 +28,10 @@ import { AvisoAlcance } from "./aviso-alcance";
  * 1. **El enlace arrastra el ámbito.** Todo destino pasa por `useScopedHref`,
  *    que fusiona ámbito activo y recorte propio: con un chip de CCAA puesto, la
  *    tarjeta contaba Madrid y abría España.
- * 2. **El destino dice si es exacto.** El `≈` marca el único caso que no puede
- *    serlo: con ámbito activo el P75 se recalcula sobre el subconjunto filtrado
- *    y `/resumen/hoy` no lo publica, así que «Grandes en plazo» abre un listado
- *    más ancho que su cifra y lo declara.
+ * 2. **El destino dice si es exacto.** «Aprox.» marca el único caso que no
+ *    puede serlo: con ámbito activo el P75 se recalcula sobre el subconjunto
+ *    filtrado y `/resumen/hoy` no lo publica, así que «Grandes en plazo» abre un
+ *    listado más ancho que su cifra y lo declara (ADR-014).
  * 3. **El alcance del endpoint se declara.** `/analytics/resumen/hoy` sólo
  *    aplica fecha, CCAA y tecnología (ver `alcance.ts`).
  *
@@ -37,20 +42,17 @@ import { AvisoAlcance } from "./aviso-alcance";
  * pasada se apilan en el tercio restante con su deep-link intacto; y «Total
  * activas», que no exige ninguna acción hoy, baja a la tira de contexto, que es
  * donde vive el resto de la foto del ámbito.
+ *
+ * Las tarjetas no llevan baldosa de icono ni color propio en la cifra: la
+ * cifra es el dato (20 px, como un `StatCell`) y el color queda para lo que
+ * tiene plazo, que es la cola de cierre.
  */
-
-const ACCENT = {
-  warm: "var(--score-warm)",
-  cold: "var(--score-cold)",
-} as const;
 
 interface Tarjeta {
   key: string;
   title: string;
   value: number | undefined;
   subtitle: string;
-  icon: LucideIcon;
-  accent: keyof typeof ACCENT;
   /** Path con su propio recorte; el ámbito activo se fusiona encima. */
   href: string;
   /** Qué abre de verdad. `exacto: false` ⇒ el listado es más ancho que la cifra. */
@@ -60,49 +62,33 @@ interface Tarjeta {
 
 function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
   const scopedHref = useScopedHref();
-  const color = `hsl(${ACCENT[card.accent]})`;
-  const Icon = card.icon;
 
   return (
     <Link
       href={scopedHref(card.href)}
       className={cn(
-        "group bg-card/70 border-border/60 flex flex-col rounded-xl border px-3.5 py-3 text-left",
-        "hover:border-primary/45 transition-[transform,border-color] duration-140 ease-out hover:-translate-y-px",
+        SUPERFICIE_PANEL,
+        "flex flex-col px-3.5 py-3 text-left transition-colors hover:border-primary/50 active:duration-0",
+        PULSABLE_SOBRE_TARJETA,
       )}
     >
-      <div className="mb-2 flex items-center gap-2.5">
-        <span
-          className="grid h-6 w-6 flex-none place-items-center rounded-md"
-          style={{ background: `hsl(${ACCENT[card.accent]} / 0.14)`, color }}
-        >
-          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-        </span>
-        <span className="text-[11.5px] font-semibold">{card.title}</span>
-        <div className="flex-1" />
-        <ArrowRight
-          className="text-primary h-3 w-3 flex-none transition-transform duration-140 ease-out group-hover:translate-x-0.5"
-          aria-hidden="true"
-        />
-      </div>
+      <span className="mb-1.5 text-tf-meta font-medium">{card.title}</span>
       {loading ? (
-        <Skeleton className="h-7 w-16 rounded" />
+        <Skeleton className="h-6 w-16 rounded-sm" />
       ) : (
-        <div className="tf-tnum font-mono text-[26px] leading-none font-semibold" style={{ color }}>
-          {formatNumber(card.value)}
-        </div>
+        <span className="tf-tnum text-tf-title font-semibold">{formatNumber(card.value)}</span>
       )}
-      <div className="text-muted-foreground mt-1.5 text-[11px] leading-[1.45]">{card.subtitle}</div>
-      <div className="border-border/40 mt-auto flex items-center gap-1.5 border-t pt-2">
+      <span className="mt-1 text-tf-meta text-muted-foreground">{card.subtitle}</span>
+      <span className="mt-auto flex items-center gap-1.5 border-t border-border/40 pt-2">
         <span
           className={cn(
-            "min-w-0 flex-1 truncate font-mono text-[10.5px]",
-            card.exacto ? "text-muted-foreground" : "text-[hsl(var(--warning))]",
+            "min-w-0 flex-1 truncate text-tf-micro",
+            card.exacto ? "text-muted-foreground" : "text-warning",
           )}
         >
-          {card.exacto ? card.target : `≈ ${card.target}`}
+          {card.exacto ? card.target : `Aprox. · ${card.target}`}
         </span>
-      </div>
+      </span>
     </Link>
   );
 }
@@ -111,10 +97,12 @@ export function AtencionCards() {
   const ignorados = useFiltrosIgnorados();
   const scopedHref = useScopedHref();
 
+  // El fallo se pinta aquí mismo (`PanelError`): sin toast encima. Misma
+  // clave y mismas opciones en `contexto-strip.tsx`, que lee «Activas».
   const hoy = useFilteredQuery<ResumenHoyResult>(
     ["analytics", "resumen", "hoy"],
     "/api/v1/analytics/resumen/hoy",
-    { staleTime: 2 * 60 * 1000 },
+    { staleTime: 2 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     undefined,
     true,
   );
@@ -163,12 +151,13 @@ export function AtencionCards() {
       key: "grandes",
       title: "Grandes en plazo",
       value: data?.calientes,
-      subtitle: "Importe ≥ P75, abiertas y en plazo",
-      icon: Flame,
-      accent: "warm",
+      subtitle: "Del 25 % de mayor importe, abiertas y en plazo",
       href:
         p75 !== null ? `/detalle?solo_abiertas=true&importe_min=${p75}` : "/detalle?solo_abiertas=true",
-      target: p75 !== null ? "/detalle abiertas · importe ≥ P75" : "/detalle abiertas · sin el corte P75",
+      target:
+        p75 !== null
+          ? "Abre Detalle: abiertas del 25 % de mayor importe"
+          : "Abre Detalle: todas las abiertas, sin el umbral de importe",
       exacto: p75 !== null,
     },
     {
@@ -176,31 +165,22 @@ export function AtencionCards() {
       title: "Nuevas 24h",
       value: data?.nuevas_24h,
       subtitle: "Publicadas hoy",
-      icon: Sparkles,
-      accent: "cold",
       href: nuevasHref,
-      target: "/detalle desde ayer",
+      target: "Abre Detalle: publicadas desde ayer",
       exacto: true,
     },
   ];
 
   return (
     <section aria-labelledby="resumen-atencion" className="mb-5.5">
-      <div className="mb-2.5 flex items-baseline gap-2.5">
-        <h2 id="resumen-atencion" className="text-xs font-semibold">
-          Mercado abierto
-        </h2>
-        <span className="text-muted-foreground text-[10.5px]">
-          hoy · el pie de cada tarjeta dice qué listado abre
-        </span>
-      </div>
+      <PanelTitle as="h2" id="resumen-atencion" title="Mercado abierto" hint="hoy" className="mb-2.5" />
 
       <AvisoAlcance ignorados={ignorados} />
 
       {hoy.error ? (
         <PanelError
           title="No se pudo cargar el estado de hoy"
-          detail={(hoy.error as Error).message}
+          error={hoy.error}
           onRetry={() => void hoy.refetch()}
         />
       ) : (
@@ -210,7 +190,7 @@ export function AtencionCards() {
             total={data?.vencen_48h}
             loading={hoy.isLoading}
             href={scopedHref(vencenHref)}
-            target="/detalle · cierra en 48h"
+            target="Abre Detalle: cierran en 48 h"
           />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             {cards.map((card) => (

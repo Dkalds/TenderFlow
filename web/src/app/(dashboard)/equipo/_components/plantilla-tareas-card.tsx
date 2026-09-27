@@ -4,15 +4,16 @@
  * F4.6 — plantilla de tareas por etapa, en Equipo → Organización.
  *
  * Las tareas se crean **una vez** cuando una oportunidad pasa a «preparando
- * oferta», con el plazo contado hacia atrás desde la fecha límite. Owner y
- * admin la editan; el resto la ve en sólo lectura (`puede_editar` lo decide
- * el backend, no el rol que crea tener la pantalla).
+ * oferta», con el plazo contado hacia atrás desde la fecha límite. El
+ * propietario y los administradores la editan; el resto la ve en sólo lectura
+ * (`puede_editar` lo decide el backend, no el rol que crea tener la pantalla).
  */
 import * as React from "react";
-import { ListChecks, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -23,36 +24,33 @@ import {
   useGuardarPlantillaTareas,
   usePlantillaTareas,
 } from "@/hooks/use-plantilla-tareas";
+import { getErrorMessage } from "@/lib/query-feedback";
 
 export function PlantillaTareasCard({ organizationId }: { organizationId: number }) {
-  const { data, isLoading, isError } = usePlantillaTareas(organizationId);
+  const { data, isLoading, error, refetch } = usePlantillaTareas(organizationId);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ListChecks className="h-4 w-4 text-primary" aria-hidden="true" />
-          Tareas al preparar una oferta
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Cuando una oportunidad pasa a «Preparando oferta» se crean estas tareas, una sola vez.
-          El plazo se cuenta en días antes de la fecha límite del expediente.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-32 w-full" />
-        ) : isError || !data ? (
-          <p role="alert" className="text-sm text-destructive">
-            No se pudo cargar la plantilla de tareas.
-          </p>
-        ) : data.puede_editar ? (
-          <EditorPlantilla key={JSON.stringify(data.tareas)} organizationId={organizationId} plantilla={data} />
-        ) : (
-          <LecturaPlantilla plantilla={data} />
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Tareas al preparar una oferta" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Cuando una oportunidad pasa a «Preparando oferta» se crean estas tareas, una sola vez. El plazo se cuenta
+        en días antes de la fecha límite del expediente.
+      </p>
+      {isLoading ? (
+        <Skeleton className="h-32 w-full" />
+      ) : error || !data ? (
+        <PanelError
+          variant="inline"
+          title="No se pudo cargar la plantilla de tareas"
+          error={error ?? undefined}
+          onRetry={() => void refetch()}
+        />
+      ) : data.puede_editar ? (
+        <EditorPlantilla key={JSON.stringify(data.tareas)} organizationId={organizationId} plantilla={data} />
+      ) : (
+        <LecturaPlantilla plantilla={data} />
+      )}
+    </Panel>
   );
 }
 
@@ -60,13 +58,13 @@ function LecturaPlantilla({ plantilla }: { plantilla: PlantillaTareas }) {
   const tareas = plantilla.tareas ?? [];
   if (tareas.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Tu organización no tiene plantilla. Un owner o admin puede crearla.
+      <p className="text-tf-meta text-muted-foreground">
+        Tu organización no tiene plantilla. Un propietario o un administrador puede crearla.
       </p>
     );
   }
   return (
-    <ol className="list-decimal space-y-1 pl-5 text-sm">
+    <ol className="list-decimal space-y-1 pl-5 text-tf-body">
       {tareas.map((tarea, i) => (
         <li key={`${i}-${tarea.titulo}`}>
           {tarea.titulo}
@@ -108,38 +106,30 @@ function EditorPlantilla({
       await guardar.mutateAsync(resultado.tareas);
       toast.success("Plantilla de tareas guardada");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo guardar la plantilla");
+      toast.error(getErrorMessage(err, "accion"));
     }
   };
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       {filas.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-tf-meta text-muted-foreground">
           Sin tareas: las oportunidades que pasen a «Preparando oferta» no recibirán ninguna.
         </p>
       ) : (
         <ol className="space-y-2">
           {filas.map((fila, i) => (
             <li key={i} className="flex flex-wrap items-end gap-2">
-              <label
-                htmlFor={`plantilla-${organizationId}-${i}-titulo`}
-                className="min-w-56 flex-1 space-y-1 text-xs font-medium"
-              >
-                Tarea {i + 1}
+              <Field label={`Tarea ${i + 1}`} htmlFor={`plantilla-${organizationId}-${i}-titulo`} className="min-w-56 flex-1">
                 <Input
                   id={`plantilla-${organizationId}-${i}-titulo`}
                   value={fila.titulo}
                   maxLength={300}
                   onChange={(event) => cambiar(i, "titulo", event.target.value)}
-                  placeholder="Revisión legal del pliego"
+                  placeholder="p. ej. Revisión legal del pliego"
                 />
-              </label>
-              <label
-                htmlFor={`plantilla-${organizationId}-${i}-dias`}
-                className="w-40 space-y-1 text-xs font-medium"
-              >
-                Días antes del límite
+              </Field>
+              <Field label="Días antes del límite" htmlFor={`plantilla-${organizationId}-${i}-dias`} className="w-40">
                 <Input
                   id={`plantilla-${organizationId}-${i}-dias`}
                   value={fila.dias}
@@ -147,7 +137,7 @@ function EditorPlantilla({
                   onChange={(event) => cambiar(i, "dias", event.target.value)}
                   placeholder="Sin plazo"
                 />
-              </label>
+              </Field>
               <Button
                 type="button"
                 variant="ghost"
@@ -155,14 +145,14 @@ function EditorPlantilla({
                 aria-label={`Quitar tarea ${i + 1}`}
                 onClick={() => setFilas((actuales) => actuales.filter((_, j) => j !== i))}
               >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                <Trash2 aria-hidden="true" />
               </Button>
             </li>
           ))}
         </ol>
       )}
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-tf-meta text-destructive">
           {error}
         </p>
       ) : null}
@@ -174,18 +164,13 @@ function EditorPlantilla({
           disabled={filas.length >= max}
           onClick={() => setFilas((actuales) => [...actuales, { titulo: "", dias: "" }])}
         >
-          <Plus className="h-4 w-4" aria-hidden="true" />
+          <Plus aria-hidden="true" />
           Añadir tarea
         </Button>
         <Button type="submit" size="sm" disabled={guardar.isPending}>
-          {guardar.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          ) : (
-            <Save className="h-4 w-4" aria-hidden="true" />
-          )}
-          Guardar plantilla
+          {guardar.isPending ? "Guardando…" : "Guardar plantilla"}
         </Button>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-tf-meta text-muted-foreground">
           {filas.length} de {max} tareas. Cambiarla no toca las tareas ya creadas.
         </span>
       </div>

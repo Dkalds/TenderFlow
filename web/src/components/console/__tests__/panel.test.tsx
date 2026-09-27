@@ -8,18 +8,27 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { Star } from "lucide-react";
 import {
+  Aviso,
+  ChipBanda,
+  EnlaceIr,
+  Fact,
   Panel,
   PanelEmpty,
   PanelError,
   PanelLoading,
   PanelTabs,
   PanelTitle,
+  ROTULO_DATO,
   SectionTitle,
+  Segmented,
   StatCell,
   StatStrip,
+  TONO_PANEL,
   panelDePestana,
 } from "@/components/console/panel";
+import { ApiError } from "@/lib/api-client";
 
 afterEach(() => {
   cleanup();
@@ -36,6 +45,21 @@ describe("Panel", () => {
     expect(panel).toHaveTextContent("contenido");
     expect(panel).toHaveClass("mi-clase");
     expect(panel).toHaveAttribute("aria-label", "Panel de prueba");
+  });
+
+  it("es una superficie opaca, sin translucidez", () => {
+    render(<Panel data-testid="panel" />);
+    const panel = screen.getByTestId("panel");
+    expect(panel).toHaveClass("bg-card");
+    expect(panel.className).not.toMatch(/bg-card[/]/);
+  });
+
+  it("el tono solo cambia el color del borde y no llega al DOM", () => {
+    render(<Panel tono="accent" data-testid="panel" />);
+    const panel = screen.getByTestId("panel");
+    expect(panel).toHaveClass(TONO_PANEL.accent);
+    expect(panel.className).not.toMatch(/bg-primary/);
+    expect(panel).not.toHaveAttribute("tono");
   });
 });
 
@@ -73,6 +97,55 @@ describe("SectionTitle", () => {
   it("sin aside no pinta el hueco", () => {
     render(<SectionTitle>Resumen</SectionTitle>);
     expect(screen.queryByText("12 filas")).not.toBeInTheDocument();
+  });
+
+  it("admite el nivel del encabezado y la pista con `hint`", () => {
+    render(
+      <SectionTitle as="h3" hint="3 plazos">
+        Próximos hitos
+      </SectionTitle>,
+    );
+    expect(screen.getByRole("heading", { level: 3, name: "Próximos hitos" })).toBeInTheDocument();
+    expect(screen.getByText("3 plazos")).toBeInTheDocument();
+  });
+
+  it("es un rótulo en frase: sin mono, sin versal, sin tracking", () => {
+    render(<SectionTitle>Resumen</SectionTitle>);
+    const rotulo = screen.getByRole("heading", { name: "Resumen" });
+    expect(rotulo).toHaveClass("text-tf-meta");
+    expect(rotulo.className).not.toMatch(/font-mono|uppercase|tracking-/);
+  });
+});
+
+describe("Fact", () => {
+  it("pinta rótulo y valor, con la raya de vacío si no hay valor", () => {
+    const { rerender } = render(<Fact label="Órgano" value="Ayuntamiento de Teruel" />);
+    expect(screen.getByText("Órgano")).toBeInTheDocument();
+    expect(screen.getByText("Ayuntamiento de Teruel")).toBeInTheDocument();
+    rerender(<Fact label="Órgano" value={null} />);
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("el rótulo es el de la casa: sans, en frase, a 11 px", () => {
+    render(<Fact label="Importe" value="1.000 €" />);
+    expect(screen.getByText("Importe").className).toBe(`mb-1 ${ROTULO_DATO}`);
+  });
+
+  it("la mono es solo para códigos: una cifra va en sans", () => {
+    const { rerender } = render(<Fact label="Importe" value="1.000 €" variant="cifra" />);
+    expect(screen.getByText("1.000 €").className).not.toMatch(/font-mono/);
+    rerender(<Fact label="CPV" value="72000000" variant="codigo" />);
+    expect(screen.getByText("72000000")).toHaveClass("font-mono");
+  });
+
+  it("acepta los nombres antiguos de variante (text y mono)", () => {
+    render(<Fact label="CPV" value="72000000" variant="mono" />);
+    expect(screen.getByText("72000000")).toHaveClass("font-mono");
+  });
+
+  it("colorea el valor con `tono`", () => {
+    render(<Fact label="Plazo" value="Vencido" tono="destructive" />);
+    expect(screen.getByText("Vencido")).toHaveClass("text-destructive");
   });
 });
 
@@ -135,6 +208,30 @@ describe("StatCell", () => {
     rerender(<StatCell label="CCAA" value="Madrid" />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  it("la cifra va a 20 px en sans y el rótulo en frase a 11 px", () => {
+    render(<StatCell label="Importe total" value="1.234 €" />);
+    const cifra = screen.getByText("1.234 €");
+    expect(cifra).toHaveClass("text-tf-title", "font-semibold");
+    expect(cifra.className).not.toMatch(/font-mono/);
+    const rotulo = screen.getByText("Importe total");
+    expect(rotulo).toHaveClass("text-tf-micro");
+    expect(rotulo.className).not.toMatch(/uppercase|font-mono|tracking-/);
+  });
+
+  it("colorea la cifra con `tono`", () => {
+    render(<StatCell label="API" value="Offline" tono="destructive" />);
+    expect(screen.getByText("Offline")).toHaveClass("text-destructive");
+  });
+
+  it("con href es un enlace que responde al pulsar", () => {
+    render(<StatCell label="Vencen 48 h" value="3" href="/mi-pipeline" aria-label="Vencen 48 h: ver detalle" />);
+    const enlace = screen.getByRole("link", { name: "Vencen 48 h: ver detalle" });
+    expect(enlace).toHaveAttribute("href", "/mi-pipeline");
+    // Tinte /5 al pasar y /10 al pulsar, mezclados con la tarjeta.
+    expect(enlace.className).toMatch(/hover:bg-\[color-mix\(in_oklab,hsl\(var\(--primary\)\)_5%/);
+    expect(enlace.className).toMatch(/active:bg-\[color-mix\(in_oklab,hsl\(var\(--primary\)\)_10%/);
+  });
 });
 
 describe("StatStrip", () => {
@@ -154,6 +251,17 @@ describe("StatStrip", () => {
       </StatStrip>,
     );
     expect(container.firstElementChild).toHaveStyle({ "--console-stat-columns": "4" });
+  });
+
+  it("aplica ella misma las columnas desde lg: el llamador no tiene que acordarse", () => {
+    const { container } = render(
+      <StatStrip columns={4}>
+        <StatCell label="a" value="1" />
+      </StatStrip>,
+    );
+    expect(container.firstElementChild?.className).toContain(
+      "lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]",
+    );
   });
 });
 
@@ -181,6 +289,25 @@ describe("PanelEmpty", () => {
     rerender(<PanelEmpty message="Sin datos" />);
     expect(container.firstElementChild?.getAttribute("style")).toBeFalsy();
   });
+
+  it("dice qué falta (título) y por qué (pista), como estado", () => {
+    render(<PanelEmpty title="Bandeja al día" hint="No quedan señales con el ámbito actual." />);
+    const estado = screen.getByRole("status");
+    expect(estado).toHaveTextContent("Bandeja al día");
+    expect(estado).toHaveTextContent("No quedan señales con el ámbito actual.");
+  });
+
+  it("sin caja discontinua ni baldosa tintada; el icono, pequeño y gris", () => {
+    const { container } = render(<PanelEmpty title="Sin favoritos" hint="Marca una." icon={Star} />);
+    const raiz = container.firstElementChild as HTMLElement;
+    expect(raiz.className).not.toMatch(/border-dashed|bg-primary/);
+    expect(container.querySelector("svg")).toHaveClass("h-4", "w-4", "text-muted-foreground");
+  });
+
+  it("acepta className en la raíz", () => {
+    render(<PanelEmpty hint="Nada" className="m-5" />);
+    expect(screen.getByRole("status")).toHaveClass("m-5");
+  });
 });
 
 describe("PanelError", () => {
@@ -206,6 +333,135 @@ describe("PanelError", () => {
     rerender(<PanelError />);
     expect(screen.queryByRole("button", { name: /reintentar/i })).not.toBeInTheDocument();
   });
+
+  it("con `error`, enseña el mensaje humano y pliega el detalle técnico", () => {
+    const error = new ApiError(404, "Recurso no encontrado.", undefined, "GET /api/v1/empresas/8");
+    render(<PanelError title="No se pudieron cargar las empresas" error={error} onRetry={vi.fn()} />);
+    const alerta = screen.getByRole("alert");
+    expect(alerta).toHaveTextContent("No existe o ya no está disponible.");
+    // La ruta y el código no van en el texto visible: van en un <details>
+    // plegado, que es lo que sirve para reportarlo a soporte.
+    const detalle = alerta.querySelector("details");
+    expect(detalle).not.toBeNull();
+    expect(detalle).not.toHaveAttribute("open");
+    expect(detalle?.querySelector("summary")).toHaveTextContent("Detalle técnico");
+    expect(detalle).toHaveTextContent("404 · GET /api/v1/empresas/8");
+  });
+
+  it("el `detail` de los llamadores antiguos va plegado, no en el texto visible", () => {
+    render(<PanelError title="No se pudo cargar" detail="500 · /api/v1/algo" />);
+    const detalle = screen.getByRole("alert").querySelector("details");
+    expect(detalle).toHaveTextContent("500 · /api/v1/algo");
+  });
+
+  it("un mensaje propio sustituye al derivado del error", () => {
+    render(<PanelError error={new Error("x")} message="Prueba con menos filtros." />);
+    expect(screen.getByText("Prueba con menos filtros.")).toBeInTheDocument();
+  });
+
+  it("es una caja con borde rojo sobre la tarjeta, no un bloque rojo lavado", () => {
+    render(<PanelError />);
+    const alerta = screen.getByRole("alert");
+    expect(alerta).toHaveClass("bg-card", "border-destructive/40");
+    expect(alerta.className).not.toMatch(/bg-destructive/);
+  });
+
+  it("la variante inline va sin caja (dentro de un Panel) y acepta className", () => {
+    render(<PanelError variant="inline" className="custom-eb" />);
+    const alerta = screen.getByRole("alert");
+    expect(alerta).toHaveClass("custom-eb");
+    expect(alerta.className).not.toMatch(/border|rounded/);
+  });
+});
+
+describe("Aviso", () => {
+  it("se anuncia como estado por defecto y como alerta si es de peligro", () => {
+    const { rerender } = render(<Aviso tone="warning">La agenda está recortada.</Aviso>);
+    expect(screen.getByRole("status")).toHaveTextContent("La agenda está recortada.");
+    rerender(<Aviso tone="danger">No se pudo guardar.</Aviso>);
+    expect(screen.getByRole("alert")).toHaveTextContent("No se pudo guardar.");
+  });
+
+  it("admite otro rol (nota) y un título", () => {
+    render(
+      <Aviso tone="info" role="note" title="Guarda esta clave ahora">
+        No se puede volver a ver.
+      </Aviso>,
+    );
+    const nota = screen.getByRole("note");
+    expect(nota).toHaveTextContent("Guarda esta clave ahora");
+    expect(nota).toHaveTextContent("No se puede volver a ver.");
+  });
+
+  it("una sola receta: borde /30 y fondo /5 del tono, icono decorativo", () => {
+    const { container } = render(<Aviso tone="warning">x</Aviso>);
+    const raiz = container.firstElementChild as HTMLElement;
+    expect(raiz).toHaveClass("border-warning/30", "bg-warning/5");
+    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("pinta la acción cuando se pasa", () => {
+    render(<Aviso action={<button type="button">Revisar</button>}>x</Aviso>);
+    expect(screen.getByRole("button", { name: "Revisar" })).toBeInTheDocument();
+  });
+});
+
+describe("EnlaceIr", () => {
+  it("es un enlace con la flecha como icono, no como texto", () => {
+    const { container } = render(<EnlaceIr href="/mi-pipeline?vista=agenda">Abrir agenda</EnlaceIr>);
+    const enlace = screen.getByRole("link", { name: "Abrir agenda" });
+    expect(enlace).toHaveAttribute("href", "/mi-pipeline?vista=agenda");
+    expect(enlace.textContent).not.toContain("→");
+    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("el hover solo cambia el color: nada se desplaza", () => {
+    render(<EnlaceIr href="/radar">Ir al Radar</EnlaceIr>);
+    const enlace = screen.getByRole("link", { name: "Ir al Radar" });
+    expect(enlace.outerHTML).not.toMatch(/translate/);
+  });
+});
+
+describe("Segmented", () => {
+  const opciones = [
+    { value: "comoda", label: "Cómoda" },
+    { value: "compacta", label: "Compacta", count: 3 },
+  ] as const;
+
+  it("es un grupo con nombre de botones con aria-pressed", () => {
+    render(<Segmented aria-label="Densidad" value="comoda" onChange={vi.fn()} options={opciones} />);
+    expect(screen.getByRole("group", { name: "Densidad" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cómoda" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Compacta 3" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("emite el valor al pulsar", () => {
+    const onChange = vi.fn();
+    render(<Segmented aria-label="Densidad" value="comoda" onChange={onChange} options={opciones} />);
+    fireEvent.click(screen.getByRole("button", { name: "Compacta 3" }));
+    expect(onChange).toHaveBeenCalledWith("compacta");
+  });
+
+  it("el contador es una cifra en sans con el tinte /10", () => {
+    render(<Segmented aria-label="Densidad" value="compacta" onChange={vi.fn()} options={opciones} />);
+    const contador = screen.getByText("3");
+    expect(contador).toHaveClass("bg-primary/10", "text-primary");
+    expect(contador.className).not.toMatch(/font-mono/);
+  });
+});
+
+describe("ChipBanda", () => {
+  it("pinta la banda sobre los tokens de puntuación, sin estilo inline", () => {
+    render(<ChipBanda banda="Caliente" />);
+    const chip = screen.getByText("Caliente");
+    expect(chip.className).toContain("--score-hot");
+    expect(chip).not.toHaveAttribute("style");
+  });
+
+  it("sin banda dice «Sin puntuar»", () => {
+    render(<ChipBanda banda={null} />);
+    expect(screen.getByText("Sin puntuar")).toBeInTheDocument();
+  });
 });
 
 describe("PanelTabs", () => {
@@ -228,6 +484,13 @@ describe("PanelTabs", () => {
   it("pinta el badge sólo en la pestaña que lo trae", () => {
     render(<PanelTabs tabs={tabs} value="uno" onChange={vi.fn()} label="Cortes" />);
     expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
+  it("el contador de la activa usa el tinte /10 que pasa axe, en sans", () => {
+    render(<PanelTabs tabs={tabs} value="dos" onChange={vi.fn()} label="Cortes" />);
+    const contador = screen.getByText("12");
+    expect(contador).toHaveClass("bg-primary/10", "text-primary", "text-tf-micro");
+    expect(contador.className).not.toMatch(/font-mono|primary[/]16/);
   });
 
   it("emite la clave del corte al pulsar", () => {

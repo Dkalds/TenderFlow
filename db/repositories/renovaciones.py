@@ -35,6 +35,7 @@ from db.sql_fragments import (
     exclude_duplicados_sql,
     fecha_fin_origen_sql,
     fecha_fin_sql,
+    tecnologia_en_csv_sql,
 )
 
 OrderBy = Literal["fecha", "score"]
@@ -230,8 +231,10 @@ def proximas_renovaciones(
         params.append(ccaa)
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
-        placeholders = ",".join("%s" for _ in tecnologias)
-        sql += f" AND l.tecnologia IN ({placeholders})"
+        # En el CSV de la fila, no con `IN`: «ERP,SAP» también es SAP. El
+        # resumen y los totales de `services/competitive/renovaciones.py`
+        # filtran con el mismo fragmento.
+        sql += f" AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tecnologias))}"
         params.extend(tecnologias)
     if min_importe is not None:
         sql += " AND a.importe_adjudicado >= %s"

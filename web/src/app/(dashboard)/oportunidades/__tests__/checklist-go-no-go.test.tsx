@@ -281,7 +281,7 @@ describe("checklist go/no-go en la pestaña Decisión", () => {
   it("no decide: lo dice en su pie y no toca la decisión", async () => {
     renderChecklist();
 
-    expect(await screen.findByText(/Esto no decide el go\/no-go: lo propone/)).toBeInTheDocument();
+    expect(await screen.findByText(/Esto no decide el Go\/No-Go: lo propone/)).toBeInTheDocument();
   });
 
   it("contrasta contra la organización activa", async () => {
@@ -315,7 +315,7 @@ describe("checklist go/no-go — familias de las que la ficha no sacó nada", ()
     expect(screen.queryAllByRole("group")).toHaveLength(0);
     // Completar el perfil no arregla un pliego vacío: el enlace no se ofrece.
     expect(screen.queryByRole("link", { name: /Completar el perfil de capacidad/ })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Esto no decide el go\/no-go/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Esto no decide el Go\/No-Go/)).not.toBeInTheDocument();
   });
 
   it("con parte extraída, las familias vacías van en una línea aparte", async () => {

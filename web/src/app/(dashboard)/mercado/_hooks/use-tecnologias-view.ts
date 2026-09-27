@@ -14,6 +14,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export interface TecnologiaItem {
   tecnologia: string;
@@ -123,10 +124,11 @@ export function useTecnologiasView() {
   const [selectedTech, setSelectedTech] = useState<string>("");
   const [trendMetric, setTrendMetric] = useState<TrendMetric>("count");
 
-  const { data, isLoading, error } = useFilteredQuery<TecnologiasResponse>(
+  const { data, isLoading, error, refetch } = useFilteredQuery<TecnologiasResponse>(
     ["analytics", "tecnologias"],
     "/api/v1/analytics/tecnologias",
-    { staleTime: 5 * 60 * 1000 },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
 
   // Detalle de la tecnología elegida en la vista (sólo si hay una elegida).
@@ -138,10 +140,15 @@ export function useTecnologiasView() {
   // va como `overrideParams` (gana al ámbito) y no como `extraParams` (pierde).
   // El resto del ámbito (CCAA, fechas…) sí se aplica, y el agregado de arriba
   // sigue acotado por la tecnología de la URL.
-  const { data: detalle, isLoading: detalleLoading } = useFilteredQuery<DetalleResponse>(
+  const {
+    data: detalle,
+    isLoading: detalleLoading,
+    error: detalleError,
+    refetch: refetchDetalle,
+  } = useFilteredQuery<DetalleResponse>(
     ["analytics", "tecnologias", "detail", selectedTech],
     "/api/v1/analytics/tecnologias/detail",
-    { enabled: !!selectedTech, staleTime: 5 * 60 * 1000 },
+    { enabled: !!selectedTech, staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     undefined,
     undefined,
     selectedTech ? { tecnologia: selectedTech } : undefined,
@@ -275,6 +282,9 @@ export function useTecnologiasView() {
     geoTechs,
     detalle,
     detalleLoading,
+    /** El fallo del detalle: se dice en su panel, no como una tabla vacía. */
+    detalleError,
+    refetchDetalle: () => void refetchDetalle(),
     scoredItems: scoringData?.opportunities ?? [],
     filter,
     setFilter,
@@ -284,5 +294,7 @@ export function useTecnologiasView() {
     setTrendMetric,
     isLoading,
     error,
+    /** El «Reintentar» del error. */
+    refetch: () => void refetch(),
   };
 }

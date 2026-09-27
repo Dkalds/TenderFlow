@@ -5,11 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * cada caso necesita su propio módulo recién evaluado: no basta con cambiar
  * `process.env` y volver a leer la constante.
  *
- * Lo que se fija aquí es el contrato del embudo de acceso: sin variable de
- * entorno el CTA degrada a /login con atribución UTM (y nunca a un mailto
- * inventado); con ella, el mailto lleva asunto y cuerpo prellenados y bien
- * escapados. Una regresión silenciosa en cualquiera de las dos ramas deja el
- * CTA principal roto o sin medir.
+ * Lo que se fija aquí es el contrato del embudo de acceso: el CTA va siempre
+ * al formulario de la portada, haya o no buzón en el entorno, y
+ * `CONTACT_EMAIL` solo es la dirección que enseñan el pie y el aviso legal.
+ * Una regresión silenciosa deja el CTA principal roto o sin medir.
  */
 
 const ENTORNO_ORIGINAL = { ...process.env };

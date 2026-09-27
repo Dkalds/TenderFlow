@@ -3,11 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Download, Search } from "lucide-react";
+import { Download, Search } from "lucide-react";
 
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,7 +16,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useDebounce } from "@/hooks/use-debounce";
 import { fetchWithAuth } from "@/lib/api-client";
 import { descargarBlob } from "@/lib/export";
-import { formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { EMPTY, formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
 
 import type { CompanyAward, CompanyAwardsData } from "./company-profile-types";
 import { competitiveKeys } from "@/lib/query-keys";
@@ -51,10 +52,12 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
     return next.toString();
   }, [debouncedOrgan, debouncedSearch, offset, scopeQuery, sort]);
 
-  const { data, isLoading } = useQuery<CompanyAwardsData>({
+  const { data, isLoading, error, refetch } = useQuery<CompanyAwardsData>({
     queryKey: competitiveKeys.companyAwards(empresaId, params),
     queryFn: () => fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/adjudicaciones?${params}`),
     placeholderData: keepPreviousData,
+    // El fallo se dice en la tabla (PanelError), no como «no hay adjudicaciones».
+    meta: META_ERROR_EN_LINEA,
   });
 
   function updateSearch(value: string) {
@@ -137,30 +140,27 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
   }
 
   return (
-    <Card>
-      <CardHeader className="gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <CardTitle>Histórico de adjudicaciones</CardTitle>
-          <CardDescription>
-            {formatNumber(data?.total ?? 0)} resultados · abre una fila para ver el expediente
-          </CardDescription>
-        </div>
-        <Button variant="outline" className="min-h-10" onClick={exportAwards} disabled={isExporting || !data?.total}>
-          <Download aria-hidden="true" />
-          {isExporting ? "Preparando CSV…" : "Exportar CSV"}
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_1fr_220px]">
+    <Panel>
+      <PanelTitle
+        title="Histórico de adjudicaciones"
+        hint={`${formatNumber(data?.total ?? 0)} resultados`}
+        actions={
+          <Button variant="outline" size="sm" onClick={exportAwards} disabled={isExporting || !data?.total}>
+            <Download aria-hidden="true" />
+            {isExporting ? "Preparando CSV…" : "Exportar CSV"}
+          </Button>
+        }
+      />
+        <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_1fr_220px]">
           <label className="relative" htmlFor="company-awards-search">
             <span className="sr-only">Buscar adjudicaciones</span>
             <Search
-              className="text-muted-foreground pointer-events-none absolute top-3 left-3 h-4 w-4"
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
             />
             <Input
               id="company-awards-search"
-              className="min-h-10 pl-9"
+              className="pl-8"
               value={search}
               onChange={(event) => updateSearch(event.target.value)}
               placeholder="Título o identificador"
@@ -170,14 +170,13 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
             <span className="sr-only">Filtrar por órgano</span>
             <Input
               id="company-awards-organ"
-              className="min-h-10"
               value={organ}
               onChange={(event) => updateOrgan(event.target.value)}
               placeholder="Órgano de contratación"
             />
           </label>
           <Select value={sort} onValueChange={updateSort}>
-            <SelectTrigger className="min-h-10" aria-label="Ordenar adjudicaciones">
+            <SelectTrigger aria-label="Ordenar adjudicaciones">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -189,7 +188,14 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
           </Select>
         </div>
 
-        <div className="overflow-x-auto rounded-lg border">
+        {error ? (
+          <PanelError
+            title="No se pudieron cargar las adjudicaciones"
+            error={error}
+            onRetry={() => void refetch()}
+            height={200}
+          />
+        ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -206,13 +212,13 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
                 Array.from({ length: 5 }, (_, index) => (
                   <TableRow key={index}>
                     <TableCell colSpan={6}>
-                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-9 w-full" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : !data?.items.length ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground h-28 text-center">
+                  <TableCell colSpan={6} className="h-28 text-center text-muted-foreground">
                     No hay adjudicaciones que coincidan con estos filtros.
                   </TableCell>
                 </TableRow>
@@ -222,36 +228,42 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
                     <TableCell className="min-w-72">
                       <Link
                         href={`/detalle?lic=${encodeURIComponent(award.licitacion_id)}`}
-                        className="hover:text-primary font-medium hover:underline"
+                        className="font-medium transition-colors hover:text-primary"
                       >
                         {truncate(award.titulo ?? award.licitacion_id, 82)}
                       </Link>
-                      <p className="text-muted-foreground mt-1 text-xs">{formatDate(award.fecha_adjudicacion)}</p>
+                      <p className="mt-1 text-tf-meta text-muted-foreground">{formatDate(award.fecha_adjudicacion)}</p>
                     </TableCell>
                     <TableCell className="max-w-64">
                       {/* Entero en el DOM y recortado por CSS: el lector lo lee
                           completo y la `Pista` lo enseña al puntero sin sumar
                           una parada de tabulación por fila. */}
                       <Pista contenido={award.organo_contratacion}>
-                        <span className="block truncate">{award.organo_contratacion || "-"}</span>
+                        <span className="block truncate">{award.organo_contratacion || EMPTY}</span>
                       </Pista>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {award.ccaa ? <Badge variant="outline">{award.ccaa}</Badge> : null}
-                        {award.cpv ? <Badge variant="secondary">{award.cpv.slice(0, 2)}</Badge> : null}
+                        {award.ccaa ? (
+                          <Badge variant="outline" size="sm">
+                            {award.ccaa}
+                          </Badge>
+                        ) : null}
+                        {award.cpv ? (
+                          <Badge variant="secondary" size="sm" className="font-mono">
+                            {award.cpv.slice(0, 2)}
+                          </Badge>
+                        ) : null}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(award.presupuesto_licitacion)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
+                    <TableCell numeric>{formatCurrency(award.presupuesto_licitacion)}</TableCell>
+                    <TableCell numeric className="font-medium">
                       {formatCurrency(award.importe_adjudicado)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <p className="tabular-nums">{formatPercent(award.baja_pct)}</p>
-                      <p className="text-muted-foreground text-xs">
-                        {award.n_ofertas_recibidas == null ? "Ofertas: -" : `${award.n_ofertas_recibidas} ofertas`}
+                    <TableCell numeric>
+                      <p>{formatPercent(award.baja_pct)}</p>
+                      <p className="text-tf-meta text-muted-foreground">
+                        {award.n_ofertas_recibidas == null ? `Ofertas: ${EMPTY}` : `${award.n_ofertas_recibidas} ofertas`}
                       </p>
                     </TableCell>
                   </TableRow>
@@ -259,37 +271,27 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
               )}
             </TableBody>
           </Table>
-        </div>
+        )}
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-muted-foreground text-xs">
+          <p className="text-tf-meta text-muted-foreground">
             Mostrando {data?.total ? offset + 1 : 0}–{Math.min(offset + 25, data?.total ?? 0)} de{" "}
             {formatNumber(data?.total ?? 0)}
           </p>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-9"
-              disabled={!offset}
-              onClick={() => setOffset(Math.max(0, offset - 25))}
-            >
-              <ArrowLeft aria-hidden="true" />
+            <Button variant="outline" size="sm" disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 25))}>
               Anterior
             </Button>
             <Button
               variant="outline"
               size="sm"
-              className="min-h-9"
               disabled={offset + 25 >= (data?.total ?? 0)}
               onClick={() => setOffset(offset + 25)}
             >
               Siguiente
-              <ArrowRight aria-hidden="true" />
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+    </Panel>
   );
 }

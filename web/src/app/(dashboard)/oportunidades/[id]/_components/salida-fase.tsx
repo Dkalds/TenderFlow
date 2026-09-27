@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { ArrowRight, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { toast } from "sonner";
+import { SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { statusLabel } from "@/components/pursuits/pursuit-presenters";
 import { usePursuitChecklist } from "@/hooks/use-pursuit-checklist";
@@ -15,6 +16,7 @@ import {
   type UpdatePursuitInput,
 } from "@/hooks/use-pursuits";
 import { ApiError } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 /** Mismo motivo que en el tablero: sólo pesa cuando se va a cerrar de verdad. */
 const DialogoCierre = dynamic(
@@ -81,7 +83,7 @@ export function SalidaDeFase({
           error instanceof ApiError && error.status === 409
             ? "Alguien del equipo la cambió mientras la tenías abierta"
             : "No se pudo mover la oportunidad",
-          { description: error instanceof Error ? error.message : undefined },
+          { description: getErrorMessage(error, "accion") },
         ),
     });
   };
@@ -93,16 +95,15 @@ export function SalidaDeFase({
   const retirarAparte = accion?.tipo === "avanzar" && resultadosPermitidos(pursuit).length > 0;
 
   return (
-    <section
-      aria-labelledby={tituloId}
-      className="border-primary/30 bg-primary/[0.05] rounded-xl border px-4 py-3.5"
-    >
+    // El énfasis es el borde primario sobre la superficie de siempre, no un
+    // relleno de color (regla de superficies de `console/panel`).
+    <section aria-labelledby={tituloId} className={cn(SUPERFICIE_PANEL, TONO_PANEL.accent, "px-4 py-3.5")}>
       <div className="mb-2.5 flex items-baseline gap-2.5">
         <h2 id={tituloId} className="text-tf-body font-semibold">
           {salida.titulo}
         </h2>
         <div className="flex-1" />
-        <span className="tf-tnum text-muted-foreground font-mono text-tf-micro font-medium">
+        <span className="tf-tnum text-muted-foreground text-tf-meta font-medium">
           {salida.hechos} de {salida.pasos.length}
         </span>
       </div>
@@ -126,7 +127,7 @@ export function SalidaDeFase({
             <span className="min-w-0 flex-1">
               <span
                 className={cn(
-                  "text-tf-body leading-[1.4]",
+                  "text-tf-body",
                   paso.hecho === true && "text-muted-foreground line-through",
                 )}
               >
@@ -136,7 +137,7 @@ export function SalidaDeFase({
                 <span className="text-muted-foreground text-tf-micro"> · obligatorio</span>
               ) : null}
               {paso.detalle ? (
-                <span className="text-muted-foreground block text-tf-micro leading-[1.35]">
+                <span className="text-muted-foreground block text-tf-micro">
                   {paso.detalle}
                 </span>
               ) : null}
@@ -149,7 +150,7 @@ export function SalidaDeFase({
                 // distinguen nada para quien navega por controles.
                 aria-label={`${VERBO_DE_LUGAR[paso.lugar]}: ${paso.texto}`}
                 onClick={() => paso.lugar && onCompletar(paso.lugar)}
-                className="tf-pressable text-primary hover:bg-primary/10 -my-0.5 inline-flex min-h-6 flex-none items-center rounded-md px-1.5 text-tf-micro font-semibold transition-colors"
+                className="tf-pressable text-primary hover:bg-primary/10 -my-0.5 inline-flex min-h-6 flex-none items-center rounded-md px-1.5 text-tf-micro font-semibold"
               >
                 {VERBO_DE_LUGAR[paso.lugar]}
               </button>
@@ -169,9 +170,6 @@ export function SalidaDeFase({
                 : aplicar({ status: accion.destino, expected_version: pursuit.version })
             }
           >
-            {accion.tipo === "avanzar" ? (
-              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-            ) : null}
             {accion.etiqueta}
           </Button>
         ) : null}
@@ -180,7 +178,7 @@ export function SalidaDeFase({
             Retirar…
           </Button>
         ) : null}
-        <p className="text-muted-foreground min-w-[14rem] flex-1 text-tf-micro leading-[1.4]">
+        <p className="text-muted-foreground min-w-[14rem] flex-1 text-tf-micro">
           {bloqueo ?? salida.nota}
         </p>
       </div>

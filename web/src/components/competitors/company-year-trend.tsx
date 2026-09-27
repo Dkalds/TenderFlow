@@ -1,10 +1,9 @@
 "use client";
 
-import { Minus, TrendingDown, TrendingUp } from "lucide-react";
-
+import { ROTULO_DATO } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Pista } from "@/components/ui/pista";
-import { cn, formatCurrency, formatNumber } from "@/lib/utils";
+import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 import type { CompanyYear } from "./company-profile-types";
 
@@ -25,9 +24,9 @@ export function CompanyYearTrend({ rows, compact = false }: CompanyYearTrendProp
 
   if (sorted.length === 0) {
     return (
-      <div className="text-muted-foreground rounded-lg border border-dashed p-6 text-center text-sm">
+      <p role="status" className="py-6 text-center text-tf-meta text-muted-foreground">
         No hay años con actividad dentro del periodo seleccionado.
-      </div>
+      </p>
     );
   }
 
@@ -38,20 +37,17 @@ export function CompanyYearTrend({ rows, compact = false }: CompanyYearTrendProp
   const previousCompleted = completedIndex > 0 ? sorted[completedIndex - 1] : null;
   const delta =
     latestCompleted && previousCompleted ? amountDelta(latestCompleted.importe, previousCompleted.importe) : null;
-  const DeltaIcon = delta == null ? Minus : delta >= 0 ? TrendingUp : TrendingDown;
 
   return (
     <div className="space-y-5">
       {!compact ? (
-        <div className="bg-muted/35 grid gap-3 rounded-lg px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
+        <div className="grid gap-3 rounded-md bg-muted/40 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
           <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
             {latestCompleted ? (
               <div>
-                <p className="text-muted-foreground text-xs font-medium tracking-[0.12em] uppercase">
-                  Último ejercicio completo · {latestCompleted.anio}
-                </p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">{formatCurrency(latestCompleted.importe)}</p>
-                <p className="text-muted-foreground text-xs">
+                <p className={ROTULO_DATO}>Último ejercicio completo · {latestCompleted.anio}</p>
+                <p className="mt-1 text-tf-title font-semibold">{formatCurrency(latestCompleted.importe)}</p>
+                <p className="text-tf-meta text-muted-foreground">
                   {formatNumber(latestCompleted.contratos)} adjudicaciones
                 </p>
               </div>
@@ -59,24 +55,19 @@ export function CompanyYearTrend({ rows, compact = false }: CompanyYearTrendProp
             {currentPartial ? (
               <div>
                 <Badge variant="secondary">Año en curso · dato parcial</Badge>
-                <p className="mt-1.5 text-sm font-semibold tabular-nums">
-                  {formatCurrency(currentPartial.importe)} · {formatNumber(currentPartial.contratos)} adj.
+                <p className="mt-1.5 text-tf-body font-semibold">
+                  {formatCurrency(currentPartial.importe)} · {formatNumber(currentPartial.contratos)} adjudicaciones
                 </p>
               </div>
             ) : null}
           </div>
           {latestCompleted && previousCompleted ? (
-            <Badge
-              variant="outline"
-              className={cn(
-                "w-fit gap-1",
-                delta != null && delta >= 0
-                  ? "border-primary/30 text-primary"
-                  : "border-amber-500/30 text-amber-700 dark:text-amber-300",
-              )}
-            >
-              <DeltaIcon className="h-3.5 w-3.5" aria-hidden="true" />
-              {delta == null ? "Sin base comparable" : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}% interanual`}
+            // Neutro: que un competidor crezca no es ni bueno ni malo para
+            // quien lo mira.
+            <Badge variant="outline" className="w-fit">
+              {delta == null
+                ? "Sin base comparable"
+                : `${delta >= 0 ? "+" : ""}${formatPercent(delta)} interanual`}
             </Badge>
           ) : null}
         </div>
@@ -108,16 +99,18 @@ export function CompanyYearTrend({ rows, compact = false }: CompanyYearTrendProp
               >
                 <li className="group flex h-full min-w-0 flex-col justify-end gap-2 rounded-sm">
                   {!compact ? (
-                    <div className="text-center text-xs font-medium tabular-nums opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                    <div className="text-center text-tf-micro font-medium opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                       {formatCurrency(row.importe)}
                     </div>
                   ) : null}
-                  <div className="bg-muted/55 relative flex min-h-0 flex-1 items-end rounded-md">
+                  <div className="relative flex min-h-0 flex-1 items-end rounded-sm bg-muted">
+                    {/* Sin transición de altura: es una medida, no algo que
+                        se mueva al cambiar de periodo. */}
                     <div
                       className={cn(
-                        "w-full rounded-md transition-[height,background-color]",
+                        "w-full rounded-sm transition-colors",
                         isCurrentPartial
-                          ? "bg-primary/45 ring-primary/50 ring-1 ring-inset"
+                          ? "bg-primary/30 ring-1 ring-inset ring-primary/50"
                           : "bg-primary/80 group-hover:bg-primary",
                       )}
                       style={{ height: `${height}%` }}
@@ -125,8 +118,8 @@ export function CompanyYearTrend({ rows, compact = false }: CompanyYearTrendProp
                     />
                   </div>
                   <div className="text-center">
-                    <p className="text-xs font-semibold tabular-nums">{row.anio}</p>
-                    <p className="text-muted-foreground mt-0.5 text-[11px]">{formatNumber(row.contratos)} adj.</p>
+                    <p className="text-tf-meta font-semibold">{row.anio}</p>
+                    <p className="mt-0.5 text-tf-micro text-muted-foreground">{formatNumber(row.contratos)} adj.</p>
                   </div>
                 </li>
               </Pista>

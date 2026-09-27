@@ -28,8 +28,8 @@ export function DetalleSeleccion({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[68px] z-40 flex justify-center">
-      <div className="tf-glass-strong pointer-events-auto flex items-center gap-2 rounded-xl border border-border/70 px-3.5 py-2.5 shadow-xl animate-in fade-in-0 slide-in-from-bottom-2 duration-[260ms]">
-        <span className="tf-tnum text-[12.5px] font-semibold">{seleccionadas} seleccionadas</span>
+      <div className="tf-glass-strong pointer-events-auto flex items-center gap-2 rounded-xl border border-border/70 px-3.5 py-2.5 shadow-md animate-in fade-in-0 slide-in-from-bottom-2">
+        <span className="tf-tnum text-tf-body font-semibold">{seleccionadas} seleccionadas</span>
         <span className="h-4.5 w-px bg-border/70" aria-hidden="true" />
         <Tooltip>
           {/* El disparador es el `span`, no el `Button`: cuando el botón
@@ -41,33 +41,26 @@ export function DetalleSeleccion({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2.5 text-xs"
                 onClick={onComparar}
                 disabled={seleccionadas < 2 || seleccionadas > 3}
               >
-                <GitCompareArrows className="h-3.5 w-3.5" />
+                <GitCompareArrows aria-hidden="true" />
                 Comparar ({seleccionadas})
               </Button>
             </span>
           </TooltipTrigger>
           <TooltipContent>Comparar 2 o 3 licitaciones</TooltipContent>
         </Tooltip>
-        <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={onExportar}>
-          <Download className="h-3.5 w-3.5" />
+        <Button variant="outline" size="sm" onClick={onExportar}>
+          <Download aria-hidden="true" />
           Exportar selección
         </Button>
-        <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={onSeguir}>
-          <Star className="h-3.5 w-3.5" />
+        <Button variant="outline" size="sm" onClick={onSeguir}>
+          <Star aria-hidden="true" />
           Seguir
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 px-0"
-          aria-label="Limpiar selección"
-          onClick={onLimpiar}
-        >
-          <X className="h-3.5 w-3.5" />
+        <Button variant="ghost" size="icon-sm" aria-label="Limpiar selección" onClick={onLimpiar}>
+          <X aria-hidden="true" />
         </Button>
       </div>
     </div>

@@ -11,6 +11,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 import {
   buildComparativaRows,
@@ -21,10 +22,11 @@ import {
 import type { UTEsData } from "./utes-types";
 
 export function useUtesData() {
-  const { data, isLoading, error } = useFilteredQuery<UTEsData>(
+  const { data, isLoading, error, refetch } = useFilteredQuery<UTEsData>(
     ["analytics", "utes"],
     "/api/v1/analytics/utes",
-    { staleTime: 5 * 60 * 1000 },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
 
   const [memberSearch, setMemberSearch] = useState("");
@@ -50,6 +52,8 @@ export function useUtesData() {
     data,
     isLoading,
     error,
+    /** El «Reintentar» del error. */
+    refetch: () => void refetch(),
     memberSearch,
     setMemberSearch,
     comparativaRows,

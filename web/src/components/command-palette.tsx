@@ -20,25 +20,9 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
 import { toast } from "sonner";
-import {
-  ArrowRight,
-  AlignJustify,
-  Bookmark,
-  Briefcase,
-  Building2,
-  FileSpreadsheet,
-  FileText,
-  Landmark,
-  LayoutGrid,
-  Link2,
-  Moon,
-  Search,
-  Sparkles,
-  Star,
-  Sun,
-  type LucideIcon,
-} from "lucide-react";
+import { AlignJustify, Bookmark, LayoutGrid, Link2, Moon, Sun, type LucideIcon } from "lucide-react";
 import { isSpaceVisible, CONSOLE_GROUP_ORDER, CONSOLE_SPACES, type ConsoleGroup } from "@/lib/console-spaces";
+import { ICONO_CONCEPTO, ICONO_ENTIDAD } from "@/lib/iconos";
 
 /** Encabezados de los grupos del rail, en la paleta. */
 const GROUP_LABELS: Record<ConsoleGroup, string> = {
@@ -67,12 +51,30 @@ import { statusLabel } from "@/components/pursuits/pursuit-presenters";
 /** Orden de los grupos de resultados: el de `TIPOS_RESULTADO` del backend. */
 const TIPOS_ORDEN: TipoResultado[] = ["expediente", "empresa", "organo", "oportunidad"];
 
+/** El icono de cada entidad es el de `lib/iconos.ts`: el mismo que en el rail y las fichas. */
 const ICONO_TIPO: Record<TipoResultado, LucideIcon> = {
-  expediente: FileText,
-  empresa: Building2,
-  organo: Landmark,
-  oportunidad: Briefcase,
+  expediente: ICONO_ENTIDAD.expediente,
+  empresa: ICONO_ENTIDAD.empresa,
+  organo: ICONO_ENTIDAD.organo,
+  oportunidad: ICONO_ENTIDAD.oportunidad,
 };
+
+/**
+ * Piel de los grupos y de las filas de la paleta, una vez: el encabezado de
+ * grupo es un rótulo de dato (sans a 11 px, en frase) y cada fila un destino.
+ */
+const GRUPO =
+  "px-1 text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-tf-micro [&_[cmdk-group-heading]]:font-medium";
+const FILA =
+  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-tf-body text-foreground aria-selected:bg-accent aria-selected:text-accent-foreground";
+/** Icono de fila: gris. El naranja es de la acción y la selección, no de la decoración. */
+const ICONO_FILA = "h-4 w-4 flex-none text-muted-foreground";
+
+const IconoBuscar = ICONO_CONCEPTO.buscar;
+const IconoIr = ICONO_CONCEPTO.ir;
+const IconoIa = ICONO_CONCEPTO.ia;
+const IconoExportar = ICONO_CONCEPTO.exportar;
+const IconoSeguir = ICONO_CONCEPTO.seguir;
 
 /** Encabezado de cada grupo de resultados. */
 const GRUPO_TIPO: Record<TipoResultado, string> = {
@@ -160,7 +162,9 @@ function CommandPaletteInner() {
             icon: space.icon,
             href: `/${space.slug}`,
             label: space.label,
-            value: `${space.label} ${space.description}`,
+            // La descripción dice el trabajo que resuelve el espacio; los
+            // términos de oficio («CPV», «scoring») van aparte y no se pintan.
+            value: `${space.label} ${space.description} ${space.terminos ?? ""}`.trim(),
             hint: undefined as string | undefined,
           };
           if (!space.views || space.views.length < 2) return [base];
@@ -240,12 +244,15 @@ function CommandPaletteInner() {
         // Sin animación a propósito: toggle vía atajo de teclado (⌘K), acción
         // de alta frecuencia para power users. Raycast/Spotlight no animan su
         // apertura y esa es la referencia (find-animation-opportunities).
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        // El mismo velo que el diálogo y el panel lateral, sin desenfoque.
+        className="absolute inset-0 bg-black/50"
         onClick={() => setOpen(false)}
       />
       <Command
         label="Paleta de comandos"
-        className="tf-glass-strong border-border/70 relative z-10 w-full max-w-xl overflow-hidden rounded-xl border shadow-2xl"
+        // Capa modal: superficie opaca (el velo ya la aísla) y la sombra de lo
+        // modal, `shadow-lg`, igual que el diálogo.
+        className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg"
         loop
         onKeyDown={(e) => {
           if (e.key === "Escape") {
@@ -255,35 +262,36 @@ function CommandPaletteInner() {
         }}
       >
         <div className="border-border/60 flex items-center gap-2 border-b px-3">
-          <Sparkles className="text-primary h-4 w-4 shrink-0" />
+          {/* Es un buscador: lupa, no destello. */}
+          <IconoBuscar className={ICONO_FILA} aria-hidden="true" />
           <Command.Input
             ref={inputRef}
             value={search}
             onValueChange={setSearch}
             placeholder="Buscar páginas, acciones o id de licitación…"
-            className="placeholder:text-muted-foreground h-12 w-full bg-transparent text-sm outline-none"
+            className="h-12 w-full bg-transparent text-campo outline-none placeholder:text-muted-foreground focus-visible:outline-none"
           />
-          <kbd className="border-border/70 text-muted-foreground hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline">
+          <kbd className="hidden rounded-sm border border-border/70 px-1.5 py-0.5 font-mono text-tf-micro text-muted-foreground sm:inline">
             Esc
           </kbd>
         </div>
 
         <Command.List className="max-h-[min(60vh,420px)] overflow-y-auto p-2">
-          <Command.Empty className="text-muted-foreground py-6 text-center text-sm">Sin resultados.</Command.Empty>
+          <Command.Empty className="py-6 text-center text-tf-body text-muted-foreground">Sin resultados.</Command.Empty>
 
           {(showJump || showSearch) && (
             <Command.Group
               heading="Saltar a"
-              className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+              className={GRUPO}
             >
               {showJump && (
                 <Command.Item
                   value={`licitacion ${idQuery}`}
                   onSelect={() => run(() => router.push(`/detalle?lic=${encodeURIComponent(idQuery)}`))}
-                  className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                  className={FILA}
                 >
-                  <ArrowRight className="text-primary h-4 w-4" />
-                  Ir a licitación <span className="font-mono text-xs">{idQuery}</span>
+                  <IconoIr className={ICONO_FILA} aria-hidden="true" />
+                  Ir a licitación <span className="font-mono text-tf-meta">{idQuery}</span>
                 </Command.Item>
               )}
               {showSearch && (
@@ -295,10 +303,11 @@ function CommandPaletteInner() {
                     }
                     run(() => router.push(`/detalle?q=${encodeURIComponent(idQuery)}`));
                   }}
-                  className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                  className={FILA}
                 >
-                  <Search className="text-primary h-4 w-4" />
-                  Buscar <span className="font-mono text-xs">&quot;{idQuery}&quot;</span> en licitaciones
+                  <IconoBuscar className={ICONO_FILA} aria-hidden="true" />
+                  {/* Texto libre, no un código: en sans y entre comillas latinas. */}
+                  Buscar <span className="font-medium">«{idQuery}»</span> en licitaciones
                 </Command.Item>
               )}
             </Command.Group>
@@ -309,14 +318,14 @@ function CommandPaletteInner() {
               el «Buscar en licitaciones» de arriba, que manda el texto a
               Detalle. */}
           {sinCoincidencias && busqueda.data && (
-            <p role="status" className="text-muted-foreground px-3 py-2 text-[12px]">
+            <p role="status" className="px-3 py-2 text-tf-meta text-muted-foreground">
               Sin coincidencias para «{busqueda.q}» en {listaTipos(busqueda.data.tipos_buscados ?? [])}.
               {!(busqueda.data.tipos_buscados ?? []).includes("oportunidad") &&
                 " Sin organización activa no se buscan oportunidades."}
             </p>
           )}
           {busqueda.isError && (
-            <p role="status" className="text-muted-foreground px-3 py-2 text-[12px]">
+            <p role="status" className="px-3 py-2 text-tf-meta text-muted-foreground">
               La búsqueda de expedientes, empresas y órganos no respondió. Puedes buscar el texto en licitaciones.
             </p>
           )}
@@ -326,7 +335,7 @@ function CommandPaletteInner() {
               <Command.Group
                 key={grupo.tipo}
                 heading={GRUPO_TIPO[grupo.tipo]}
-                className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+                className={GRUPO}
               >
                 {grupo.items.map((resultado) => (
                   <Command.Item
@@ -337,12 +346,12 @@ function CommandPaletteInner() {
                     value={`${resultado.tipo}:${resultado.id}`}
                     keywords={[idQuery, resultado.titulo]}
                     onSelect={() => abrirResultado(resultado)}
-                    className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                    className={FILA}
                   >
-                    <Icon className="text-primary h-4 w-4 flex-none" aria-hidden="true" />
+                    <Icon className={ICONO_FILA} aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate">{resultado.titulo}</span>
                     {resultado.subtitulo && (
-                      <span className="text-muted-foreground ml-auto max-w-[40%] truncate text-[11px]">
+                      <span className="ml-auto max-w-[40%] truncate text-tf-micro text-muted-foreground">
                         {subtituloResultado(resultado)}
                       </span>
                     )}
@@ -355,30 +364,38 @@ function CommandPaletteInner() {
 
           <Command.Group
             heading="Acciones"
-            className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+            className={GRUPO}
           >
             <Command.Item
               value="copiloto preguntar ask ia"
               onSelect={() => run(() => openCopilot())}
-              className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+              className={FILA}
             >
-              <Sparkles className="text-primary h-4 w-4" />
+              <IconoIa className={ICONO_FILA} aria-hidden="true" />
               Abrir copiloto
             </Command.Item>
             <Command.Item
               value="tema theme oscuro claro dark light"
               onSelect={() => run(() => setTheme(resolvedTheme === "dark" ? "light" : "dark"))}
-              className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+              className={FILA}
             >
-              {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {resolvedTheme === "dark" ? (
+                <Sun className={ICONO_FILA} aria-hidden="true" />
+              ) : (
+                <Moon className={ICONO_FILA} aria-hidden="true" />
+              )}
               Cambiar tema ({resolvedTheme === "dark" ? "claro" : "oscuro"})
             </Command.Item>
             <Command.Item
               value="densidad compacta normal density"
               onSelect={() => run(() => toggleCompact())}
-              className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+              className={FILA}
             >
-              {compact ? <LayoutGrid className="h-4 w-4" /> : <AlignJustify className="h-4 w-4" />}
+              {compact ? (
+                <LayoutGrid className={ICONO_FILA} aria-hidden="true" />
+              ) : (
+                <AlignJustify className={ICONO_FILA} aria-hidden="true" />
+              )}
               Densidad {compact ? "normal" : "compacta"}
             </Command.Item>
           </Command.Group>
@@ -386,14 +403,14 @@ function CommandPaletteInner() {
           {hasActiveFilters && (
             <Command.Group
               heading="Acciones con filtros"
-              className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+              className={GRUPO}
             >
               <Command.Item
                 value="guardar vista actual saved view"
                 onSelect={() => run(() => openSavedViews())}
-                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                className={FILA}
               >
-                <Bookmark className="text-primary h-4 w-4" />
+                <Bookmark className={ICONO_FILA} aria-hidden="true" />
                 Guardar vista actual
               </Command.Item>
               <Command.Item
@@ -401,9 +418,9 @@ function CommandPaletteInner() {
                 onSelect={() =>
                   run(() => router.push(`/mi-watchlist?prefill=${encodeURIComponent(JSON.stringify(filterParams))}`))
                 }
-                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                className={FILA}
               >
-                <Star className="text-primary h-4 w-4" />
+                <IconoSeguir className={ICONO_FILA} aria-hidden="true" />
                 Crear regla de watchlist con estos filtros
               </Command.Item>
               <Command.Item
@@ -411,9 +428,9 @@ function CommandPaletteInner() {
                 onSelect={() =>
                   run(() => void triggerDownload(buildExportUrl("/api/v1/exports/download", "csv", filterParams)))
                 }
-                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                className={FILA}
               >
-                <FileText className="text-primary h-4 w-4" />
+                <IconoExportar className={ICONO_FILA} aria-hidden="true" />
                 Exportar CSV (vista actual)
               </Command.Item>
               <Command.Item
@@ -423,9 +440,9 @@ function CommandPaletteInner() {
                   // extensión del fichero y devolvía un 422.
                   run(() => void triggerDownload(buildExportUrl("/api/v1/exports/download", "excel", filterParams)))
                 }
-                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                className={FILA}
               >
-                <FileSpreadsheet className="text-primary h-4 w-4" />
+                <IconoExportar className={ICONO_FILA} aria-hidden="true" />
                 Exportar Excel (vista actual)
               </Command.Item>
               <Command.Item
@@ -436,9 +453,9 @@ function CommandPaletteInner() {
                     toast.success("Enlace copiado");
                   })
                 }
-                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                className={FILA}
               >
-                <Link2 className="text-primary h-4 w-4" />
+                <Link2 className={ICONO_FILA} aria-hidden="true" />
                 Copiar enlace con filtros
               </Command.Item>
             </Command.Group>
@@ -451,7 +468,7 @@ function CommandPaletteInner() {
             <Command.Group
               key={group.label}
               heading={group.label}
-              className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+              className={GRUPO}
             >
               {group.items.map((item) => {
                 const Icon = item.icon;
@@ -460,11 +477,11 @@ function CommandPaletteInner() {
                     key={item.href}
                     value={item.value}
                     onSelect={() => run(() => router.push(withFilters(item.href)))}
-                    className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                    className={FILA}
                   >
-                    <Icon className="text-muted-foreground h-4 w-4" />
+                    <Icon className={ICONO_FILA} aria-hidden="true" />
                     {item.label}
-                    {item.hint && <span className="text-muted-foreground ml-auto text-[11px]">{item.hint}</span>}
+                    {item.hint && <span className="ml-auto text-tf-micro text-muted-foreground">{item.hint}</span>}
                   </Command.Item>
                 );
               })}

@@ -18,7 +18,15 @@ describe("AmbitoIntro", () => {
   it("se muestra a quien no la ha cerrado nunca", () => {
     render(<AmbitoIntro />);
     expect(franja()).toBeInTheDocument();
-    expect(screen.getByText(/filtro común de la consola/)).toBeInTheDocument();
+    expect(screen.getByText("El ámbito filtra todas las pantallas.")).toBeInTheDocument();
+  });
+
+  it("habla en lenguaje de usuario, no de cómo está hecha la barra", () => {
+    render(<AmbitoIntro />);
+    // Fuera «vive en la dirección de la página» y la lista de los seis
+    // controles: basta con qué hace, cómo se añade y qué pasa al compartirlo.
+    expect(franja()).toHaveTextContent(/Si compartes el enlace, compartes el ámbito\./);
+    expect(franja()).not.toHaveTextContent(/dirección de la página/);
   });
 
   it("al cerrarla desaparece y se recuerda", () => {

@@ -9,6 +9,8 @@
  * publicado se enseña como fecha. Sin base, «Sin estimación» — nunca una
  * fecha con asterisco (ADR-014).
  */
+import { ROTULO_DATO } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
 import type { AdjudicacionPrevista } from "@/lib/adjudicacion-prevista";
 import { textoAdjudicacion } from "@/lib/adjudicacion-prevista";
 
@@ -20,18 +22,16 @@ export function AdjudicacionPrevistaDato({
   const texto = textoAdjudicacion(prevista);
   return (
     <div>
-      <dt className="text-[10.5px] text-muted-foreground">Adjudicación prevista</dt>
+      <dt className={ROTULO_DATO}>Adjudicación prevista</dt>
       <dd className="font-semibold">
         {texto.valor}
         {texto.metodo === "estimacion" ? (
-          <span className="ml-1.5 inline-flex h-[18px] items-center rounded-sm border border-border/70 bg-muted/60 px-1.5 align-middle text-[10px] font-medium text-muted-foreground">
-            estimación
-          </span>
+          <Badge size="sm" className="ml-1.5 align-middle">
+            Estimación
+          </Badge>
         ) : null}
       </dd>
-      <dd className="mt-0.5 text-[10.5px] leading-[1.45] font-normal text-muted-foreground">
-        {texto.base}
-      </dd>
+      <dd className="mt-0.5 text-tf-micro font-normal text-muted-foreground">{texto.base}</dd>
     </div>
   );
 }

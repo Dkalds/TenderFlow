@@ -9,6 +9,7 @@
  */
 
 import { ExportPopover } from "@/components/export-popover";
+import { Badge } from "@/components/ui/badge";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Search } from "lucide-react";
 
@@ -30,19 +31,16 @@ export function CompetidoresToolbar({
         value={search}
         onChange={onSearchChange}
         suggestions={suggestions}
-        leftIcon={<Search className="h-4 w-4" />}
-        inputClassName="h-8 pl-9 text-xs"
+        leftIcon={<Search className="h-3.5 w-3.5" aria-hidden="true" />}
+        inputClassName="h-8 pl-8 text-tf-meta md:h-7"
       />
       {search.trim() && (
-        <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-1 text-[10.5px] font-medium text-primary">
-          filtra la tabla y los 9 cortes
-        </span>
+        <Badge variant="default" size="sm">
+          Filtra la tabla y los 9 cortes
+        </Badge>
       )}
       <div className="flex-1" />
-      <ExportPopover
-        extraParams={{ section: "competitors" }}
-        className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
-      />
+      <ExportPopover extraParams={{ section: "competitors" }} label="Exportar competidores" />
     </div>
   );
 }

@@ -13,27 +13,35 @@
  *    métrica, periodo y etiqueta equivocados en el mismo número de 11 px.
  *
  * El badge de anomalía es la única cifra derivada en cliente de toda la
- * pantalla, y va etiquetado como tal en su propio tooltip — la salida que el
- * invariante 1 de `frontend-data-invariants.md` permite.
+ * pantalla, y va etiquetado como tal en su propio tooltip («aviso
+ * orientativo») — la salida que el invariante 1 de
+ * `frontend-data-invariants.md` permite.
  */
 
-import { StatCell, StatStrip } from "@/components/console/panel";
+import { PanelTitle, StatCell, StatStrip } from "@/components/console/panel";
+import { badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatCompactCurrency, formatNumber } from "@/lib/utils";
+import { cn, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { AnalyticsOverview } from "@/lib/api-types";
+import { AvisoAlcance } from "../aviso-alcance";
 import type { ComparativaMensual } from "./comparativa-mensual";
-import { STRIP_LG } from "./tiras";
 
+/**
+ * «Anomalía», con su explicación a un tooltip. El disparador es un botón de
+ * verdad: un `span` con tooltip no se alcanza con el teclado, y aquí el
+ * tooltip es lo que dice que la marca es orientativa.
+ */
 function BadgeAnomalia({ meses }: { meses: number }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex h-4 flex-none items-center rounded border border-[hsl(var(--warning)/0.38)] bg-[hsl(var(--warning)/0.14)] px-1 font-mono text-[8.5px] font-semibold tracking-[0.04em] text-[hsl(var(--warning))]">
-          ANOMALÍA
-        </span>
+      <TooltipTrigger
+        type="button"
+        className={cn(badgeVariants({ variant: "warning", size: "sm" }), "flex-none cursor-help")}
+      >
+        Anomalía
       </TooltipTrigger>
       <TooltipContent className="max-w-xs">
-        {`El último mes cerrado se aleja 2σ o más de la media de los ${meses} meses anteriores del ámbito. Señal calculada en el navegador sobre la serie mensual, no un dato del backend.`}
+        {`El último mes cerrado se sale de lo habitual: se aleja 2σ o más de la media de los ${meses} meses anteriores del ámbito. Es un aviso orientativo, no un dato oficial.`}
       </TooltipContent>
     </Tooltip>
   );
@@ -54,6 +62,12 @@ export interface MercadoStripProps {
   activas: number | null | undefined;
   activasLoading: boolean;
   activasHref: string;
+  /**
+   * Filtros del ámbito que «Activas» no aplica (`useFiltrosIgnorados`): sale de
+   * `/resumen/hoy`, que solo filtra por fecha, CCAA y tecnología, mientras sus
+   * seis vecinas aplican el ámbito entero. Vacío = mide lo mismo que ellas.
+   */
+  activasIgnoran?: string[];
 }
 
 export function MercadoStrip({
@@ -64,21 +78,15 @@ export function MercadoStrip({
   activas,
   activasLoading,
   activasHref,
+  activasIgnoran = [],
 }: MercadoStripProps) {
   const pieDelta = comparativa.etiqueta || "sin dos meses cerrados que comparar";
 
   return (
     <section aria-labelledby="resumen-contexto" className="mb-5.5">
-      <div className="mb-2.5 flex items-baseline gap-2.5">
-        <h2 id="resumen-contexto" className="text-xs font-semibold">
-          Contexto de mercado
-        </h2>
-        <span className="text-muted-foreground text-[10.5px]">
-          del ámbito activo · deltas entre meses cerrados · «Activas» sale de otro endpoint y no
-          aplica búsqueda, estado ni importe
-        </span>
-      </div>
-      <StatStrip columns={7} className={STRIP_LG}>
+      <PanelTitle as="h2" id="resumen-contexto" title="Contexto de mercado" hint="del ámbito" className="mb-2.5" />
+      <AvisoAlcance ignorados={activasIgnoran} sujeto="activas" />
+      <StatStrip columns={7}>
         <StatCell
           label="Activas"
           loading={activasLoading}

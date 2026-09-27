@@ -13,11 +13,11 @@
  */
 
 import * as React from "react";
-import { Check, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -25,6 +25,7 @@ import {
   useOrganizationNifs,
   useSaveOrganizationNifs,
 } from "../_hooks/use-organization-capacidad";
+import { getErrorMessage } from "@/lib/query-feedback";
 
 function aBorrador(nifs: OrganizationNifIn[]): OrganizationNifIn[] {
   return nifs.map((fila) => ({
@@ -73,124 +74,111 @@ export function OrganizacionNifsCard({
       setBorrador(null);
       toast.success("Identidad fiscal guardada");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudieron guardar los NIFs");
+      toast.error(getErrorMessage(error, "accion"));
     }
   };
 
   if (!canManage) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Identidad fiscal</CardTitle>
-          <CardDescription>
-            Solo el propietario o un administrador pueden ver y editar los NIFs con los que la
-            organización concurre.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <Panel>
+        <PanelTitle title="Identidad fiscal" />
+        <p className="text-tf-meta text-muted-foreground">
+          Solo el propietario o un administrador pueden ver y editar los NIF con los que la organización concurre.
+        </p>
+      </Panel>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Identidad fiscal</CardTitle>
-        <CardDescription>
-          Los NIFs con los que la organización se presenta. Con ellos, la ficha de una oportunidad
-          propone si la ganasteis vosotros y el análisis de competencia deja de contaros como
-          competidores de vosotros mismos.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Panel>
+      <PanelTitle title="Identidad fiscal" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Los NIF con los que la organización se presenta. Con ellos, la ficha de una oportunidad propone si la ganó
+        tu organización y el análisis de competencia deja de contarla como competidora de sí misma.
+      </p>
+      <div className="space-y-3">
         {nifs.isLoading ? (
           <Skeleton className="h-10 w-full" />
+        ) : nifs.error ? (
+          // Sin esto, un fallo al leer se pintaba como «ningún NIF declarado» y
+          // el formulario invitaba a declarar de nuevo lo que ya estaba.
+          <PanelError
+            variant="inline"
+            title="No se pudo cargar la identidad fiscal"
+            error={nifs.error}
+            onRetry={() => void nifs.refetch()}
+          />
         ) : (
           <>
             {filas.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Todavía no hay ningún NIF declarado: el cierre de las oportunidades se seguirá
-                marcando a mano.
+              <p className="text-tf-meta text-muted-foreground">
+                Todavía no hay ningún NIF declarado: el cierre de las oportunidades se seguirá marcando a mano.
               </p>
             )}
             {filas.map((fila, indice) => (
               <div key={indice} className="flex flex-wrap items-end gap-2">
-                <label
-                  className="min-w-40 flex-1 space-y-1.5 text-sm font-medium"
-                  htmlFor={`nif-${indice}`}
-                >
-                  NIF / CIF
+                <Field label="NIF / CIF" htmlFor={`nif-${indice}`} className="min-w-40 flex-1">
                   <Input
                     id={`nif-${indice}`}
                     value={fila.nif}
+                    className="font-mono"
                     // Formato de ejemplo de un CIF español, no una credencial:
                     // detect-secrets lo lee como cadena hexadecimal.
                     placeholder="B12345678" // pragma: allowlist secret
                     onChange={(event) => actualizar(indice, { nif: event.target.value })}
                   />
-                </label>
-                <label
-                  className="min-w-56 flex-[2] space-y-1.5 text-sm font-medium"
-                  htmlFor={`razon-social-${indice}`}
-                >
-                  Razón social
+                </Field>
+                <Field label="Razón social" htmlFor={`razon-social-${indice}`} className="min-w-56 flex-[2]">
                   <Input
                     id={`razon-social-${indice}`}
                     value={fila.razon_social ?? ""}
                     placeholder="Acme Consulting SL"
                     onChange={(event) => actualizar(indice, { razon_social: event.target.value })}
                   />
-                </label>
+                </Field>
                 <Button
                   type="button"
-                  size="sm"
                   variant={fila.principal ? "default" : "outline"}
+                  aria-pressed={fila.principal}
                   onClick={() => marcarPrincipal(indice)}
                 >
-                  {fila.principal ? <Check className="h-4 w-4" /> : null}
                   Principal
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
+                  size="icon"
                   variant="ghost"
                   aria-label={`Quitar ${fila.nif || "el NIF"}`}
                   onClick={() => setBorrador(filas.filter((_, i) => i !== indice))}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 aria-hidden="true" />
                 </Button>
               </div>
             ))}
             {(nifs.data?.nifs ?? []).some((fila) => fila.empresa_id != null) && (
-              <Badge variant="secondary">
-                Enlazado con el maestro de empresas: se excluye de «contra quién»
-              </Badge>
+              <p className="text-tf-meta text-muted-foreground">
+                Enlazado con el maestro de empresas: tu organización ya no sale como competidora en «contra quién».
+              </p>
             )}
             <div className="flex gap-2 pt-1">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() =>
-                  setBorrador([...filas, { nif: "", razon_social: "", principal: false }])
-                }
+                onClick={() => setBorrador([...filas, { nif: "", razon_social: "", principal: false }])}
               >
-                <Plus className="h-4 w-4" />
+                <Plus aria-hidden="true" />
                 Añadir NIF
               </Button>
               {sucio && (
                 <Button type="button" size="sm" onClick={submit} disabled={guardar.isPending}>
-                  {guardar.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  Guardar
+                  {guardar.isPending ? "Guardando…" : "Guardar"}
                 </Button>
               )}
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

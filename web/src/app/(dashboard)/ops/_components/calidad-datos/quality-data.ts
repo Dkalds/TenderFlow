@@ -51,21 +51,20 @@ export interface CompletitudMes {
 
 export interface Frescura {
   label: string;
-  color: string;
-  badge: "default" | "secondary" | "destructive";
+  /** Tono semántico del estado; sin medir no tiene. */
+  tono?: "success" | "warning" | "destructive";
+  badge: "success" | "warning" | "destructive" | "secondary";
 }
 
-/** Umbrales de frescura del scraping, en horas desde la última ingesta. */
+/** Umbrales de frescura de la ingesta, en horas desde la última. */
 export const FRESCURA_OK_H = 6;
 export const FRESCURA_LIMITE_H = 24;
 
 export function freshnessInfo(hours: number | null | undefined): Frescura {
-  if (hours == null) return { label: "N/A", color: "", badge: "secondary" };
-  if (hours < FRESCURA_OK_H)
-    return { label: "Actualizado", color: "text-green-700", badge: "default" };
-  if (hours <= FRESCURA_LIMITE_H)
-    return { label: "Pendiente", color: "text-yellow-700", badge: "secondary" };
-  return { label: "Obsoleto", color: "text-red-700", badge: "destructive" };
+  if (hours == null) return { label: "Sin medir", badge: "secondary" };
+  if (hours < FRESCURA_OK_H) return { label: "Al día", tono: "success", badge: "success" };
+  if (hours <= FRESCURA_LIMITE_H) return { label: "Con retraso", tono: "warning", badge: "warning" };
+  return { label: "Desfasada", tono: "destructive", badge: "destructive" };
 }
 
 /**

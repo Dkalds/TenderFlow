@@ -9,8 +9,7 @@
  * la rejilla en ruido y no añade información que el color no dé.
  */
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Grid3x3 } from "lucide-react";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Pista } from "@/components/ui/pista";
 
 import type { HeatmapMatrix } from "../_hooks/use-tecnologias-view";
@@ -27,15 +26,9 @@ export function TecnologiasHeatmap({ heatmap }: { heatmap: HeatmapMatrix }) {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Grid3x3 className="h-4 w-4" />
-          Top órganos por tecnología
-        </CardTitle>
-        <CardDescription>Nº de licitaciones</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <Panel>
+      <PanelTitle title="Licitaciones por tecnología y órgano" hint="Los órganos con más licitaciones" />
+      <div>
         <div className="overflow-x-auto">
           <div className="inline-block min-w-full">
             <div className="grid gap-px" style={columnas}>
@@ -45,21 +38,21 @@ export function TecnologiasHeatmap({ heatmap }: { heatmap: HeatmapMatrix }) {
                   órgano va entero en el DOM y lo recorta el CSS. */}
               {heatmap.organos.map((org) => (
                 <Pista key={org} contenido={org}>
-                  <div className="truncate p-1 text-center text-xs font-medium text-muted-foreground">{org}</div>
+                  <div className="truncate p-1 text-center text-tf-micro font-medium text-muted-foreground">{org}</div>
                 </Pista>
               ))}
             </div>
             {heatmap.techs.map((tech) => (
               <div key={tech} className="grid gap-px" style={columnas}>
                 <Pista contenido={tech}>
-                  <div className="truncate p-1 text-xs font-medium">{tech}</div>
+                  <div className="truncate p-1 text-tf-micro font-medium">{tech}</div>
                 </Pista>
                 {heatmap.organos.map((org) => {
                   const val = heatmap.cell.get(`${tech}||${org}`) ?? 0;
                   return (
-                    <Pista key={org} contenido={`${tech} x ${org}: ${val}`}>
+                    <Pista key={org} contenido={`${tech} · ${org}: ${val} licitaciones`}>
                       <div
-                        className="flex items-center justify-center rounded p-1 text-xs tabular-nums"
+                        className="flex items-center justify-center rounded-sm p-1 text-tf-micro"
                         style={{
                           backgroundColor: heatColor(val, heatmap.maxVal),
                           color: val > heatmap.maxVal * 0.5 ? "hsl(var(--primary-foreground))" : "inherit",
@@ -74,7 +67,7 @@ export function TecnologiasHeatmap({ heatmap }: { heatmap: HeatmapMatrix }) {
             ))}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

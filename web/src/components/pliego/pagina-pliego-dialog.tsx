@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { Aviso, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,7 +35,7 @@ export const MOTIVOS_SIN_RESALTADO: Record<string, string> = {
 
 /**
  * Parte el texto en antes / cita / después. `null` si los índices no sirven:
- * la página se pinta entera antes que marcar el trozo equivocado.
+ * la página se enseña entera antes que marcar el trozo equivocado.
  */
 export function trocearResaltado(
   texto: string,
@@ -118,31 +119,25 @@ export function PaginaPliegoDialog({
     <Dialog open={cita != null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="mx-4 flex max-h-[90vh] w-full max-w-3xl flex-col gap-3">
         <div className="pr-8">
-          <DialogTitle className="text-base">
+          <DialogTitle>
             {nombre} · página {pagina}
             {total != null && ` de ${total}`}
           </DialogTitle>
-          <DialogDescription className="mt-1 text-xs">
+          <DialogDescription className="mt-1 text-tf-meta">
             Texto extraído de la página del pliego
             {trozos ? ", con la cita resaltada." : "."}
           </DialogDescription>
         </div>
 
         {sinResaltado && (
-          <p
-            role="status"
-            className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning"
-          >
-            <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span>{sinResaltado} Se muestra la página completa sin resaltar.</span>
-          </p>
+          <Aviso tone="warning">{sinResaltado} Se muestra la página completa sin resaltar.</Aviso>
         )}
 
         <div
           // Sin `tabIndex`: jsx-a11y lo prohíbe en un elemento no interactivo,
           // y los navegadores actuales ya hacen enfocable con teclado una
           // región con scroll que no contiene nada enfocable.
-          className="min-h-40 flex-1 overflow-y-auto rounded-lg border border-border/60 bg-background/60 p-3 text-sm leading-relaxed whitespace-pre-wrap"
+          className="min-h-40 flex-1 overflow-y-auto rounded-md border border-border/60 bg-background p-3 text-tf-body leading-relaxed whitespace-pre-wrap"
         >
           {consulta.isLoading ? (
             <div className="space-y-2">
@@ -153,14 +148,18 @@ export function PaginaPliegoDialog({
           ) : noExiste ? (
             <p className="text-muted-foreground">No hay texto extraído para esta página.</p>
           ) : consulta.error ? (
-            <p role="alert" className="text-destructive">
-              No se pudo cargar la página. {(consulta.error as Error).message}
-            </p>
+            <PanelError
+              variant="inline"
+              className="whitespace-normal py-0"
+              title="No se pudo cargar la página"
+              error={consulta.error}
+              onRetry={() => void consulta.refetch()}
+            />
           ) : data ? (
             trozos ? (
               <>
                 {trozos.antes}
-                <mark ref={marca} className="rounded-sm bg-primary/25 px-0.5 text-foreground">
+                <mark ref={marca} className="rounded-sm bg-primary/15 px-0.5 text-foreground">
                   {trozos.cita}
                 </mark>
                 {trozos.despues}
@@ -201,7 +200,7 @@ export function PaginaPliegoDialog({
               href={`${data.uri}#page=${pagina}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              className="inline-flex items-center gap-1 text-tf-meta font-medium text-primary hover:underline"
             >
               Abrir el documento original
               <ExternalLink className="h-3 w-3" aria-hidden="true" />

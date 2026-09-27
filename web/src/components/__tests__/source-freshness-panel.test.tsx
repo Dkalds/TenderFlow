@@ -18,10 +18,17 @@ vi.mock("@/hooks/use-source-freshness", () => ({
 }));
 
 import { SourceFreshnessPanel } from "@/components/source-freshness-panel";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 describe("SourceFreshnessPanel", () => {
   it("makes a degraded source visible alongside its SLA measurements", () => {
-    render(<SourceFreshnessPanel />);
+    // El «Actualizar» lleva `Tooltip`, y en la app el proveedor lo pone
+    // `components/providers.tsx`: aquí hay que ponerlo a mano.
+    render(
+      <TooltipProvider>
+        <SourceFreshnessPanel />
+      </TooltipProvider>,
+    );
     expect(screen.getByText(/1 fuente degradada/)).toBeInTheDocument();
     expect(screen.getByText("PLACSP")).toBeInTheDocument();
     expect(screen.getByText("TED")).toBeInTheDocument();

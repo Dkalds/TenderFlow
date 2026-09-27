@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import { SectionTitle } from "@/components/console/panel";
 
 export function Separador({ text }: { text: string }) {
   return (
@@ -20,16 +21,6 @@ export function Separador({ text }: { text: string }) {
       <span className="text-muted-foreground/60">·</span>
       <span>{text}</span>
     </>
-  );
-}
-
-export function SubTitulo({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-2.5 flex items-center gap-2.5">
-      <h3 className="text-tf-micro text-muted-foreground font-mono font-semibold tracking-[0.1em] uppercase">
-        {children}
-      </h3>
-    </div>
   );
 }
 
@@ -44,14 +35,14 @@ export function Relacionadas({
 }) {
   return (
     <div className="min-w-0">
-      <SubTitulo>{title}</SubTitulo>
+      <SectionTitle as="h3">{title}</SectionTitle>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
           <button
             key={item.empresa_id}
             type="button"
             onClick={() => onOpen(item.empresa_id)}
-            className="tf-pressable border-border/70 text-tf-meta text-foreground hover:border-primary/50 inline-flex h-6.5 items-center rounded-md border px-2.5 font-medium transition-colors"
+            className="tf-pressable border-border/70 text-tf-meta text-foreground hover:border-primary/50 inline-flex h-6.5 items-center rounded-md border px-2.5 font-medium"
           >
             {item.nombre_canonico}
           </button>

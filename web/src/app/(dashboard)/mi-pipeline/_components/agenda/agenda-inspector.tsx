@@ -22,6 +22,8 @@ import type { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { cn, EMPTY, formatCompactCurrency, formatDate, truncate } from "@/lib/utils";
 import { statusLabel } from "@/components/pursuits/pursuit-presenters";
+import { PanelEmpty, ROTULO_DATO } from "@/components/console/panel";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
 import type { Agenda } from "../../_hooks/use-agenda";
 import { AgendaContrato } from "./agenda-contrato";
@@ -45,18 +47,16 @@ function Cabecera({ item }: { item: PipelineAgendaItem }) {
       <div className="mb-1.5 flex items-center gap-1.5">
         <span
           className={cn(
-            "inline-flex h-5 items-center rounded-full px-2 font-mono text-[10px] font-semibold",
+            "tf-tnum inline-flex h-5 items-center rounded-full px-2 text-tf-micro font-semibold",
             CHIP_POR_BANDA[item.urgencia],
           )}
         >
           {plazoChip(item)}
         </span>
-        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-          {etiquetaKind(item)}
-        </span>
+        <span className={ROTULO_DATO}>{etiquetaKind(item)}</span>
       </div>
-      <h3 className="text-[13px] font-semibold leading-[1.4]">{tituloDe(item)}</h3>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <h3 className="text-tf-body font-semibold">{tituloDe(item)}</h3>
+      <p className="mt-1 text-tf-micro text-muted-foreground">
         {tipoDeFecha(item)}
         {item.due_date ? ` · ${formatDate(item.due_date)}` : " · sin fecha"}
       </p>
@@ -71,22 +71,20 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
   return (
     <aside
       aria-label="Detalle del compromiso"
-      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card/70 p-4 xl:sticky xl:top-0 xl:block"
+      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card p-4 xl:sticky xl:top-0 xl:block"
     >
       {!item ? (
-        <p className="py-8 text-center text-[11.5px] text-muted-foreground">
-          Selecciona un compromiso para ver su detalle.
-        </p>
+        <PanelEmpty size="sm" hint="Selecciona un compromiso para ver su detalle." />
       ) : (
         <div className="space-y-4">
           <Cabecera item={item} />
 
-          <dl className="space-y-1.5 text-[11.5px]">
+          <dl className="space-y-1.5 text-tf-meta">
             {item.organo && <Dato label="Órgano" valor={truncate(item.organo, 40)} />}
             <Dato
               label="Importe"
               valor={
-                <span className="tf-tnum font-mono">
+                <span className="tf-tnum">
                   {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
                 </span>
               }
@@ -101,7 +99,7 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
               <Dato
                 label="Riesgo de cambio"
                 valor={
-                  <span className="tf-tnum font-mono">
+                  <span className="tf-tnum">
                     {Math.round(item.riesgo_cambio * 100)}%
                   </span>
                 }
@@ -133,13 +131,15 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
 
           <div className="flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
             {item.kind !== "senal" && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => agenda.abrir(item)}
-                className="tf-pressable h-7 flex-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 text-[11.5px] font-medium text-primary"
+                className="flex-1 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
               >
-                {item.kind === "renovacion" ? "Anticipar pursuit" : "Abrir ficha"}
-              </button>
+                {item.kind === "renovacion" ? "Anticipar oportunidad" : "Abrir ficha"}
+              </Button>
             )}
             {item.url && (
               // Enlace a la página del expediente en PLACSP, nunca al documento:
@@ -148,10 +148,14 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="tf-pressable inline-flex h-7 items-center gap-1 rounded-md border border-border/70 px-2.5 text-[11.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                className={buttonVariants({
+                  variant: "outline",
+                  size: "sm",
+                  className: "text-muted-foreground hover:text-foreground",
+                })}
               >
                 PLACSP
-                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                <ExternalLink aria-hidden="true" />
               </a>
             )}
           </div>

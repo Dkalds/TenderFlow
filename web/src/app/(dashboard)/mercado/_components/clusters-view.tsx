@@ -12,25 +12,22 @@
 
 import dynamic from "next/dynamic";
 
-import { EmptyState } from "@/components/ui/empty-state";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart3 } from "lucide-react";
+import { Aviso, Panel, PanelEmpty, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
 
 import { useClustersView } from "../_hooks/use-clusters-view";
 import { ClustersControles, ClustersKpis } from "./clusters-controles";
 import { ClusterDetalleTabla, ClustersResumenTabla } from "./clusters-tablas";
 import { VistaExperimental } from "./vista-experimental";
 
-const ClustersBarChart = dynamic(() => import("@/components/charts/clusters-charts").then(m => ({ default: m.ClustersBarChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
-const ClustersBoxChart = dynamic(() => import("@/components/charts/clusters-charts").then(m => ({ default: m.ClustersBoxChart })), { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> });
+const ClustersBarChart = dynamic(() => import("@/components/charts/clusters-charts").then(m => ({ default: m.ClustersBarChart })), { ssr: false, loading: () => <PanelLoading height={400} /> });
+const ClustersBoxChart = dynamic(() => import("@/components/charts/clusters-charts").then(m => ({ default: m.ClustersBoxChart })), { ssr: false, loading: () => <PanelLoading height={400} /> });
 
 export default function ClustersView() {
   return (
     <VistaExperimental
       flag="mercado_clusters"
       vista="clusters"
-      descripcion="Agrupación semántica de licitaciones por similitud de título (KMeans)."
+      descripcion="Licitaciones agrupadas por el parecido de sus títulos."
     >
       <ClustersContenido />
     </VistaExperimental>
@@ -53,24 +50,16 @@ function ClustersContenido() {
     isLoading,
     isFetching,
     error,
+    refetch,
   } = useClustersView();
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">Error: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudieron cargar los clusters" error={error} onRetry={refetch} />;
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="sr-only">Clusters</h1>
-        <p className="text-muted-foreground">
-          Agrupación semántica de licitaciones por similitud de título (KMeans).
-        </p>
-      </div>
+    <div className="space-y-4">
+      <h1 className="sr-only">Clusters</h1>
 
       <ClustersControles
         kDraft={kDraft}
@@ -84,49 +73,44 @@ function ClustersContenido() {
       <ClustersKpis data={data} clusters={clusters} autoK={autoK} isLoading={isLoading} />
 
       {data && data.total > 0 && clusters.length === 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50/50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-300">
-          No se pudieron generar clusters para el conjunto filtrado (datos insuficientes).
-        </div>
+        <Aviso tone="warning">
+          No hay licitaciones suficientes en el ámbito actual para formar grupos. Amplía las fechas o quita filtros.
+        </Aviso>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Per-cluster bar */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <BarChart3 className="h-4 w-4" />
-              Licitaciones por cluster
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : barData.length > 0 ? (
-              <ClustersBarChart data={barData} />
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel>
+          <PanelTitle title="Licitaciones por cluster" />
+          {isLoading ? (
+            <PanelLoading height={400} />
+          ) : barData.length > 0 ? (
+            <ClustersBarChart data={barData} />
+          ) : (
+            <PanelEmpty
+              title="Ningún cluster"
+              hint="No hay licitaciones agrupadas con el ámbito actual."
+              height={400}
+            />
+          )}
+        </Panel>
 
-        {/* Importe distribution box plot */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Distribución de importe por cluster</CardTitle>
-            <CardDescription>
-              Banda = rango (mín-máx), núcleo = rango intercuartílico (Q1-Q3)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-[400px] w-full" />
-            ) : boxData.length > 0 ? (
-              <ClustersBoxChart data={boxData} />
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
+        <Panel>
+          <PanelTitle title="Importe por cluster" className="mb-1" />
+          <p className="mb-3 text-tf-meta text-muted-foreground">
+            La banda va del mínimo al máximo; el núcleo, del primer al tercer cuartil.
+          </p>
+          {isLoading ? (
+            <PanelLoading height={400} />
+          ) : boxData.length > 0 ? (
+            <ClustersBoxChart data={boxData} />
+          ) : (
+            <PanelEmpty
+              title="Sin importes"
+              hint="Ningún cluster tiene licitaciones con importe publicado."
+              height={400}
+            />
+          )}
+        </Panel>
       </div>
 
       <ClustersResumenTabla

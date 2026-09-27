@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import { ExportPopover } from "@/components/export-popover";
 import {
   ScrollEdgeDelProveedor,
   ScrollEdgeProvider,
   ScrollEdgeSentinel,
 } from "@/components/layout/scroll-edge";
 import { CopilotBar } from "@/components/copilot-panel";
+import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { TuDia } from "./tu-dia";
 import { DesdeUltimaVisita } from "./desde-ultima-visita";
 import { PrimerosPasos } from "./primeros-pasos";
@@ -57,6 +57,9 @@ import { AtajosAnalisis } from "./atajos-analisis";
  * lo que caía también lo que sí había cargado — y en la pantalla de entrada
  * eso se lee como «la aplicación está rota», no como «un panel no responde».
  */
+/** Qué trabajo resuelve la pantalla: la misma frase del rail y de la paleta. */
+const DESCRIPCION = CONSOLE_SPACES.find((space) => space.key === "resumen")?.description;
+
 export function ResumenView() {
   const contenidoRef = useRef<HTMLDivElement>(null);
 
@@ -73,16 +76,19 @@ export function ResumenView() {
   // Borde de scroll y no `border-b` fijo (apple-design §12): quien scrollea es
   // el cuerpo de la pantalla, no `#main-content`, así que lleva su propio
   // proveedor y en el tope no hay línea.
+  //
+  // La cabecera es la de `SpaceShell`: título en la display a 15 px y la
+  // descripción del espacio en tono meta. Sin «Exportar»: la barra de ámbito
+  // ya lleva «Exportar ámbito», con el mismo endpoint y los mismos filtros, y
+  // dos botones iguales a un palmo no se distinguen.
   return (
     <ScrollEdgeProvider>
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex h-11 flex-none items-center gap-2.5 px-4">
-          <h1 className="font-display text-[13px] font-semibold">Resumen</h1>
-          <span className="text-muted-foreground hidden truncate text-[11.5px] lg:inline">
-            qué tienes que hacer hoy y qué se ha movido en el mercado
-          </span>
-          <div className="flex-1" />
-          <ExportPopover className="[&>button]:h-7 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs" />
+          <h1 className="flex-none font-display text-tf-lede font-semibold">Resumen</h1>
+          {DESCRIPCION && (
+            <span className="hidden truncate text-tf-meta text-muted-foreground lg:inline">{DESCRIPCION}</span>
+          )}
         </header>
         <ScrollEdgeDelProveedor />
 

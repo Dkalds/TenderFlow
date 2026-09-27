@@ -2,8 +2,16 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { ArrowRight } from "lucide-react";
-import { PanelError, StatCell, StatStrip } from "@/components/console/panel";
+import {
+  Aviso,
+  EnlaceIr,
+  PanelEmpty,
+  PanelError,
+  PanelTitle,
+  StatCell,
+  StatStrip,
+  SUPERFICIE_PANEL,
+} from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilters } from "@/lib/filters";
 import { cn, EMPTY, formatCompactCurrency, formatNumber, truncate } from "@/lib/utils";
@@ -52,38 +60,39 @@ const MAX_FILAS = 4;
 
 function FilaTuDia({ item }: { item: PipelineAgendaItem }) {
   const Icono = ICONOS[claseDeIcono(item)];
+  // La fila entera es el enlace: sin flecha detrás, que dice lo mismo que el
+  // hover y el cursor.
   return (
     <li>
       <Link
         href={destinoDe(item)}
-        className="border-border/25 hover:bg-primary/4 flex items-center gap-2.5 border-b px-3.5 py-2 transition-colors duration-140 ease-out last:border-b-0"
+        className="flex items-center gap-2.5 border-b border-border/25 px-3.5 py-2 transition-colors last:border-b-0 hover:bg-primary/5 active:bg-primary/10 active:duration-0"
       >
         <span
           className={cn(
-            "tf-tnum w-[54px] flex-none rounded px-1.5 py-0.5 text-center font-mono text-[10.5px] font-semibold",
+            "tf-tnum w-[54px] flex-none rounded-sm px-1.5 py-0.5 text-center text-tf-micro font-semibold",
             CHIP_POR_BANDA[item.urgencia],
           )}
         >
           {plazoChip(item)}
         </span>
-        <Icono className="text-muted-foreground h-3.5 w-3.5 flex-none" aria-hidden="true" />
+        <Icono className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
         <span className="sr-only">
           {etiquetaKind(item)} · {tipoDeFecha(item)}:
         </span>
-        <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium">{tituloDe(item)}</span>
+        <span className="min-w-0 flex-1 truncate text-tf-meta font-medium">{tituloDe(item)}</span>
         {/* Qué clase de fecha es la del chip. Sin esto, «3 d» podía ser el
             plazo del pliego, una tarea propia o la ventana de una renovación:
             tres relojes distintos pintados igual. */}
-        <span className="text-muted-foreground hidden flex-none text-[10.5px] lg:inline">
+        <span className="hidden flex-none text-tf-micro text-muted-foreground lg:inline">
           {tipoDeFecha(item)}
         </span>
-        <span className="text-muted-foreground hidden min-w-0 max-w-[180px] truncate text-[10.5px] xl:inline">
+        <span className="hidden min-w-0 max-w-[180px] truncate text-tf-micro text-muted-foreground xl:inline">
           {item.organo ? truncate(item.organo, 36) : ""}
         </span>
-        <span className="tf-tnum flex-none font-mono text-[11px] font-semibold">
+        <span className="tf-tnum flex-none text-tf-meta font-semibold">
           {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
         </span>
-        <ArrowRight className="text-muted-foreground h-3 w-3 flex-none" aria-hidden="true" />
       </Link>
     </li>
   );
@@ -110,38 +119,31 @@ export function TuDia() {
 
   return (
     <section aria-labelledby="resumen-tu-dia" className="mb-5.5">
-      <div className="mb-2.5 flex items-baseline gap-2.5">
-        <h2 id="resumen-tu-dia" className="text-xs font-semibold">
-          Tu día
-        </h2>
-        <span className="text-muted-foreground min-w-0 flex-1 truncate text-[10.5px]">
-          compromisos de tu organización
-        </span>
-        <Link
-          href="/mi-pipeline?vista=agenda"
-          className="text-primary flex-none whitespace-nowrap text-[11px] font-medium hover:underline"
-        >
-          Abrir agenda →
-        </Link>
-      </div>
+      <PanelTitle
+        as="h2"
+        id="resumen-tu-dia"
+        title="Tu día"
+        hint="de tu organización"
+        actions={<EnlaceIr href="/mi-pipeline?vista=agenda">Abrir agenda</EnlaceIr>}
+        className="mb-2.5"
+      />
 
       {error ? (
+        // Un solo aviso por fallo (D6): el toast lo calla el `meta` de la
+        // consulta, que vive en `usePipelineAgenda` (`hooks/use-pursuits.ts`).
         <PanelError
           title="No se pudo cargar tu agenda"
-          detail={(error as Error).message}
+          error={error}
           onRetry={() => void refetch()}
         />
       ) : (
         <>
-          <StatStrip
-            columns={4}
-            className="lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]"
-          >
+          <StatStrip columns={4}>
             <StatCell
               label="Plazos ≤ 7 días"
               loading={isPending}
               value={kpis ? formatNumber(kpis.vence_semana) : EMPTY}
-              accent={kpis && kpis.vence_semana > 0 ? "hsl(var(--score-hot))" : undefined}
+              tono={kpis && kpis.vence_semana > 0 ? "destructive" : undefined}
               hint={
                 kpis && kpis.vence_semana > 0
                   ? `${formatCompactCurrency(kpis.vence_semana_importe_eur)} en juego`
@@ -155,7 +157,7 @@ export function TuDia() {
               hint="Tareas propias con fecha pasada o de hoy"
             />
             <StatCell
-              label="Go/No-go pendientes"
+              label="Go/No-Go pendientes"
               loading={isPending}
               value={kpis ? formatNumber(kpis.go_no_go_pendientes) : EMPTY}
               hint="Sin decisión tomada"
@@ -164,37 +166,34 @@ export function TuDia() {
               label="Sin próxima acción"
               loading={isPending}
               value={kpis ? formatNumber(kpis.sin_proxima_accion) : EMPTY}
-              accent={kpis && kpis.sin_proxima_accion > 0 ? "hsl(var(--warning))" : undefined}
+              tono={kpis && kpis.sin_proxima_accion > 0 ? "warning" : undefined}
               hint="Oportunidades sin tarea abierta"
             />
           </StatStrip>
 
-          {/* El recorte de la agenda es del backend y se declara: unos KPIs
+          {/* La lista tiene un tope y se declara: unos contadores
               silenciosamente bajos se leen como «no tengo trabajo». */}
           {recortada && (
-            <p
-              role="status"
-              className="mt-2 rounded-lg border border-[hsl(var(--warning)/0.28)] bg-[hsl(var(--warning)/0.08)] px-2.5 py-1.5 text-[10.5px] text-[hsl(var(--warning))]"
-            >
-              La agenda está recortada por el tope del backend — los contadores describen sólo lo
-              listado.
-            </p>
+            <Aviso tone="warning" className="mt-2">
+              Hay más compromisos de los que caben en la lista: los contadores solo cuentan los que
+              aparecen.
+            </Aviso>
           )}
 
-          <div className="border-border/60 bg-card/70 mt-2.5 overflow-hidden rounded-xl border">
+          <div className={cn(SUPERFICIE_PANEL, "mt-2.5 overflow-hidden")}>
             {isPending ? (
               <div className="flex flex-col gap-2 p-3">
                 {Array.from({ length: 3 }, (_, index) => (
-                  <Skeleton key={index} className="h-6 w-full rounded" />
+                  <Skeleton key={index} className="h-6 w-full rounded-sm" />
                 ))}
               </div>
             ) : urgentes.length === 0 ? (
-              <div className="flex flex-wrap items-baseline justify-center gap-2 px-4 py-5 text-center">
-                <span className="text-[11.5px] font-medium">Sin compromisos con plazo.</span>
-                <Link href="/radar" className="text-primary text-[11.5px] hover:underline">
-                  Buscar oportunidades en el Radar →
-                </Link>
-              </div>
+              <PanelEmpty
+                size="sm"
+                title="Nada vence esta semana"
+                hint="Aquí salen los plazos, las tareas y las renovaciones de los próximos siete días."
+                action={<EnlaceIr href="/radar">Buscar oportunidades en el Radar</EnlaceIr>}
+              />
             ) : (
               <ul>
                 {urgentes.map((item) => (

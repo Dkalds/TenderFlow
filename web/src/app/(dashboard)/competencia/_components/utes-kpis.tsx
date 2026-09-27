@@ -5,9 +5,8 @@
  * comparan entre sí y cuántas empresas distintas participan.
  */
 
-import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
+import { StatCell, StatStrip } from "@/components/console/panel";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import { Handshake, TrendingUp, Users } from "lucide-react";
 
 import type { UTEsKpis } from "../_hooks/utes-types";
 
@@ -19,35 +18,16 @@ export function UtesKpis({
   isLoading: boolean;
 }) {
   return (
-    <KpiStrip columns={5}>
-      <KpiCard
-        title="Total UTEs"
-        value={isLoading ? undefined : formatNumber(kpis?.total_ute)}
-        icon={Handshake}
+    <StatStrip columns={5}>
+      <StatCell label="UTE" value={formatNumber(kpis?.total_ute)} loading={isLoading} />
+      <StatCell label="Importe en UTE" value={formatCurrency(kpis?.importe_ute)} loading={isLoading} />
+      <StatCell label="Importe medio en UTE" value={formatCurrency(kpis?.ticket_medio_ute)} loading={isLoading} />
+      <StatCell
+        label="Importe medio en solitario"
+        value={formatCurrency(kpis?.ticket_medio_individual)}
         loading={isLoading}
       />
-      <KpiCard
-        title="Importe UTEs"
-        value={isLoading ? undefined : formatCurrency(kpis?.importe_ute)}
-        icon={TrendingUp}
-        loading={isLoading}
-      />
-      <KpiCard
-        title="Ticket Medio UTE"
-        value={isLoading ? undefined : formatCurrency(kpis?.ticket_medio_ute)}
-        loading={isLoading}
-      />
-      <KpiCard
-        title="Ticket Medio Individual"
-        value={isLoading ? undefined : formatCurrency(kpis?.ticket_medio_individual)}
-        loading={isLoading}
-      />
-      <KpiCard
-        title="Empresas Distintas"
-        value={isLoading ? undefined : formatNumber(kpis?.empresas_distintas)}
-        icon={Users}
-        loading={isLoading}
-      />
-    </KpiStrip>
+      <StatCell label="Empresas distintas" value={formatNumber(kpis?.empresas_distintas)} loading={isLoading} />
+    </StatStrip>
   );
 }
