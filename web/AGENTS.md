@@ -78,6 +78,18 @@ sus consultas.
    `useQuery` desajustarían la hidratación (el porqué, en `server-prefetch.ts`).
 4. **Pocas consultas por ruta**: salen de la IP del servidor de Next y cuentan
    contra el rate-limit por IP de la API.
+5. **Ningún contexto por encima de las pantallas cambia de valor al cargar.**
+   El cuerpo de la vista llega en streaming después del esqueleto de
+   `loading.tsx`, y React no lo revela en el acto: lo deja en cola (`$~`) hasta
+   el siguiente frame o 300 ms después de la revelación anterior. Si en esa
+   ventana cambia el valor de un proveedor que lo envuelve, React no puede
+   hidratarlo: tira su HTML, lo pinta en el cliente y la copia del servidor
+   queda oculta en un `<div hidden id="S:n">` hasta la revelación —la pantalla
+   dos veces y sus IDs duplicados—. Le pasó a /resumen con `SessionProvider`,
+   que metía en el contexto la respuesta de `/auth/me`. Lo que cambia tras
+   hidratar va en un almacén que se lee con `useSyncExternalStore`, y el valor
+   del contexto es estable (patrón y test: `web/src/lib/auth.tsx`,
+   `web/src/lib/__tests__/auth-streaming.test.tsx`).
 
 Para extenderlo a otra ruta: su módulo `_lib/prefetch`, la página envuelta en
 `PrefetchServidor`, y su test de paridad. **En la página, no en el layout**,
