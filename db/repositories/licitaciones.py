@@ -1231,7 +1231,10 @@ class LicitacionRepository:
           ``tecnologia`` y el JSON de ``tecnologias_secundarias``.
         - ``tecnologia_llm``: CSV ``TECNOLOGIA:score`` desde
           ``licitacion_tecnologia_pliego`` con ``method IN ('llm_metadata',
-          'llm')``.
+          'llm')``. Solo la **versión vigente** de cada ``(licitación,
+          method)`` —la ``signal_version`` de su fila más reciente por
+          ``computed_at``—: un cambio de prompt o de modelo no puede mezclar
+          respuestas viejas y nuevas en la misma etiqueta.
 
         Convención de ausencia, que es la parte que importa para no inventar
         etiquetas:
@@ -1285,10 +1288,27 @@ class LicitacionRepository:
             # cada llamada; `train_from_db` lo capturaba y degradaba a
             # etiquetas circulares con un warning, así que el fallo nunca se
             # vio como fallo — solo como un clasificador que imitaba el regex.
+            #
+            # Versión vigente por (licitación, method): `upsert_signals`
+            # reescribe todas las filas de un method con la versión nueva, pero
+            # la lectura no se apoya en eso — un backfill o un escritor nuevo
+            # bastan para que convivan dos prompts. Por method y no por
+            # licitación: la ficha de pliego (`llm`) y la metadata
+            # (`llm_metadata`) son carriles independientes. `computed_at` es
+            # texto ISO 8601 en UTC (`now_utc_iso`), así que ordena igual que el
+            # instante; la versión desempata para que el resultado no dependa
+            # del plan.
             cur = c.execute(
-                "SELECT p.licitacion_id, p.tecnologia, p.score "
-                "FROM licitacion_tecnologia_pliego p "
-                "WHERE p.method IN ('llm_metadata', 'llm')"
+                "SELECT licitacion_id, tecnologia, score FROM ("
+                "  SELECT p.licitacion_id, p.tecnologia, p.score, p.signal_version, "
+                "         FIRST_VALUE(p.signal_version) OVER ("
+                "           PARTITION BY p.licitacion_id, p.method "
+                "           ORDER BY p.computed_at DESC, p.signal_version DESC"
+                "         ) AS version_vigente "
+                "  FROM licitacion_tecnologia_pliego p "
+                "  WHERE p.method IN ('llm_metadata', 'llm')"
+                ") vigentes "
+                "WHERE signal_version = version_vigente"
             )
             por_licitacion: dict[str, list[str]] = {}
             revisadas: set[str] = set()
