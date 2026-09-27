@@ -45,14 +45,20 @@ def _insert_licitacion(id_externo: str) -> None:
         )
 
 
-def _insert_feedback_humano(expediente: str, tecnologia: str | None) -> None:
+def _insert_feedback_humano(
+    expediente: str,
+    tecnologia: str | None,
+    *,
+    relevante: int = 1,
+    source: str = "human",
+) -> None:
     from db.database import connect
 
     with connect() as c:
         c.execute(
             "INSERT INTO ml_feedback (expediente, relevante, tecnologia, source, created_at) "
-            "VALUES (%s, 1, %s, 'human', CURRENT_TIMESTAMP)",
-            (expediente, tecnologia),
+            "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
+            (expediente, relevante, tecnologia, source),
         )
 
 
@@ -277,3 +283,26 @@ def test_una_version_nueva_sin_evidencia_retira_la_vieja_sin_pronunciarse(repos)
     )
 
     assert "EXP-SE3" not in lic_repo.etiquetas_tecnologia_no_circulares()
+
+
+# ── Un solo significado para el feedback humano (2026-09-27) ──────────────
+
+
+def test_una_fila_human_heredada_sin_tecnologia_no_se_pronuncia(repos) -> None:
+    """`relevante` significó «es SAP» hasta el plan de tres niveles. Una fila
+    `human` con `relevante=0` y sin tecnología no dice «ninguna familia»: dice
+    «no es SAP», y no puede entrenar como negativo de todas las familias.
+
+    `revision_ti`, en cambio, sí se pronuncia siempre: su `relevante` es «es
+    TI» y una fila con tecnología puesta da esa tecnología como etiqueta.
+    """
+    lic_repo, _ = repos
+    _insert_licitacion("EXP-H0")
+    _insert_feedback_humano("EXP-H0", None, relevante=0, source="human")
+    _insert_licitacion("EXP-RTI")
+    _insert_feedback_humano("EXP-RTI", "ERP", relevante=1, source="revision_ti")
+
+    externas = lic_repo.etiquetas_tecnologia_no_circulares()
+
+    assert "EXP-H0" not in externas
+    assert externas["EXP-RTI"]["tecnologia_humana"] == "ERP"

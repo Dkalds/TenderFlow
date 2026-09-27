@@ -61,6 +61,7 @@ from typing import Any
 
 from db.database import connect, connect_read
 from db.repositories.base import rows_to_dicts
+from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.sql_fragments import (
     TECHNOLOGY_OBSERVED_SQL,
     UNIVERSOS_TECNOLOGICOS,
@@ -882,12 +883,11 @@ def filas_entrenamiento_sap() -> list[dict[str, Any]]:
         return rows_to_dicts(c.execute(sql))
 
 
-def feedback_humano_sap() -> list[dict[str, Any]]:
-    """Feedback **humano** de relevancia SAP, por expediente.
+def feedback_humano_es_ti() -> list[dict[str, Any]]:
+    """Revisión humana de «¿es TI?», la más reciente por expediente.
 
-    ``source = 'human'`` por el mismo motivo que en
-    ``scheduler/concept_drift.py::_fetch_training_dataframe``: el feedback
-    automático del etiquetado por LLM no puede realimentar al modelo.
+    Solo ``revision_ti``: las filas ``human`` anteriores al plan de tres
+    niveles significaban «es SAP», y el binario aprende «es TI».
 
     No se filtra por población: un expediente sobre el que un humano se
     pronunció es información que no sobra, y si queda fuera del universo la
@@ -895,7 +895,11 @@ def feedback_humano_sap() -> list[dict[str, Any]]:
     """
     with connect_read() as c:
         return rows_to_dicts(
-            c.execute("SELECT expediente, relevante FROM ml_feedback WHERE source = 'human'")
+            c.execute(
+                "SELECT DISTINCT ON (expediente) expediente, relevante FROM ml_feedback "
+                "WHERE source = %s ORDER BY expediente, created_at DESC, id DESC",
+                (FUENTE_REVISION_TI,),
+            )
         )
 
 
@@ -919,6 +923,11 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
     ``SIN_EVIDENCIA_SENTINEL``: el LLM no se pronunció, y una fila de fuera de
     la población que entrara solo por él lo haría sin etiqueta, es decir, como
     negativo.
+
+    La condición humana es ``f.source = ANY(FUENTES_HUMANAS)``: incluye tanto
+    ``revision_ti`` (el plan de tres niveles) como ``human`` (histórico). Que
+    una fila entre aquí no dice todavía qué etiqueta aporta -- eso lo decide
+    :func:`db.repositories.licitaciones.etiqueta_humana` en el consumidor.
     """
     from db.repositories.tecnologia_pliego import SIN_EVIDENCIA_SENTINEL
 
@@ -929,7 +938,7 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
         WHERE {poblacion_clasificador_sql()}
            OR EXISTS (
                   SELECT 1 FROM ml_feedback f
-                  WHERE f.expediente = l.id_externo AND f.source = 'human'
+                  WHERE f.expediente = l.id_externo AND f.source = ANY(%s)
               )
            OR EXISTS (
                   SELECT 1 FROM licitacion_tecnologia_pliego p
@@ -937,9 +946,9 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
                     AND p.method IN ('llm_metadata', 'llm')
                     AND p.tecnologia <> %s
               )
-    """  # Interpola solo el predicado constante del módulo; el sentinel va como parámetro.
+    """  # Interpola solo el predicado constante del módulo; fuentes y sentinel van como parámetro.
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, (SIN_EVIDENCIA_SENTINEL,)))
+        return rows_to_dicts(c.execute(sql, (list(FUENTES_HUMANAS), SIN_EVIDENCIA_SENTINEL)))
 
 
 def filas_pendientes_ml_proba(*, force: bool = False) -> list[dict[str, Any]]:

@@ -1302,17 +1302,38 @@ class TestTrainingIgnoresAutomaticFeedback:
         fila = df[df["id_externo"] == "EXP-T1"].iloc[0]
         assert fila["es_relevante"] == 0
 
-    def test_human_feedback_still_overrides(self, tmp_db):
-        from db.repositories.feedback import FeedbackRepository
+    def test_revision_ti_feedback_still_overrides(self, tmp_db):
+        """Solo `revision_ti` pisa la etiqueta base: es la fuente cuyo
+        `relevante` significa «es TI», lo mismo que entrena el binario. Una
+        fila `human` (histórica, «es SAP») ya no participa aquí -- lo cubre
+        `test_human_feedback_no_longer_overrides` más abajo."""
+        from db.repositories.feedback import FUENTE_REVISION_TI, FeedbackRepository
         from scheduler.concept_drift import _fetch_training_dataframe
 
         _insert_licitacion("EXP-T2")
-        FeedbackRepository().insert(expediente="EXP-T2", relevante=True, nota="a mano")
+        FeedbackRepository().insert(
+            expediente="EXP-T2", relevante=True, nota="a mano", source=FUENTE_REVISION_TI
+        )
 
         df = _fetch_training_dataframe()
 
         fila = df[df["id_externo"] == "EXP-T2"].iloc[0]
         assert fila["es_relevante"] == 1
+
+    def test_human_feedback_no_longer_overrides(self, tmp_db):
+        """Una fila `human` (histórica) significaba «es SAP», no «es TI»: desde
+        el plan de clasificación en tres niveles ya no puede pisar la etiqueta
+        base de este entrenamiento, que es «es TI»."""
+        from db.repositories.feedback import FeedbackRepository
+        from scheduler.concept_drift import _fetch_training_dataframe
+
+        _insert_licitacion("EXP-T2B")
+        FeedbackRepository().insert(expediente="EXP-T2B", relevante=True, nota="a mano")
+
+        df = _fetch_training_dataframe()
+
+        fila = df[df["id_externo"] == "EXP-T2B"].iloc[0]
+        assert fila["es_relevante"] == 0
 
     def test_retrain_counter_ignores_automatic_feedback(self, tmp_db):
         """Un lote del LLM no puede disparar el reentrenamiento semanal."""

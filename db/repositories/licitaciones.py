@@ -6,6 +6,7 @@ Las queries complejas usan SQLAlchemy Core para construcción type-safe
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
@@ -17,6 +18,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, array
 from db.database import connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
 from db.repositories.base import csv_values, loose_distinct_strings, rows_to_dicts
+from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.sql_fragments import (
     FOLD_DST_SQL,
     FOLD_SRC_SQL,
@@ -351,6 +353,30 @@ _DEFAULT_SORT = "fecha_publicacion DESC"
 #: (F6.2). Vive aquí y no en ``services/`` porque quien tiene que conocerlo es el
 #: SQL que decide qué sigue sin etiquetar; ``services.reportes_dato`` lo importa.
 PREFIJO_REPORTE: Final = "reporte:"
+
+
+def etiqueta_humana(
+    source: str, relevante: int | None, tecnologia: str | None, secundarias: str | None
+) -> str | None:
+    """CSV de familias de una fila humana, o ``None`` si no se pronuncia.
+
+    ``""`` es un negativo de verdad. Una fila heredada (``human``) con
+    ``relevante=0`` y sin tecnología no lo es: `relevante` significaba
+    «es SAP», no «es TI».
+    """
+    etiquetas: list[str] = []
+    if tecnologia:
+        etiquetas.append(tecnologia.strip().upper())
+    if secundarias:
+        try:
+            extra = json.loads(secundarias)
+        except (TypeError, ValueError):
+            extra = []
+        if isinstance(extra, list):
+            etiquetas.extend(str(t).strip().upper() for t in extra if t)
+    if not etiquetas and source != FUENTE_REVISION_TI and not relevante:
+        return None
+    return ",".join(dict.fromkeys(e for e in etiquetas if e))
 
 
 class LicitacionRepository:
@@ -1227,8 +1253,14 @@ class LicitacionRepository:
         las keywords:
 
         - ``tecnologia_humana``: CSV desde el feedback humano más reciente de
-          cada expediente (``ml_feedback`` con ``source='human'``), uniendo
-          ``tecnologia`` y el JSON de ``tecnologias_secundarias``.
+          cada expediente (``ml_feedback`` con ``source`` en
+          :data:`db.repositories.feedback.FUENTES_HUMANAS` — ``revision_ti``
+          desde el plan de clasificación en tres niveles, y ``human``,
+          histórico), uniendo ``tecnologia`` y el JSON de
+          ``tecnologias_secundarias`` vía :func:`etiqueta_humana`. Una fila
+          ``human`` con ``relevante=0`` y sin tecnología **no** se pronuncia:
+          `relevante` significaba «es SAP», no «es TI», así que esa fila no
+          dice nada sobre las familias.
         - ``tecnologia_llm``: CSV ``TECNOLOGIA:score`` desde
           ``licitacion_tecnologia_pliego`` con ``method IN ('llm_metadata',
           'llm')``. Solo la **versión vigente** de cada ``(licitación,
@@ -1241,18 +1273,19 @@ class LicitacionRepository:
 
         - ``None`` → esa fuente **no se pronunció** sobre la licitación. Para
           el LLM incluye el sentinel ``__sin_evidencia__``: afirmó tecnologías
-          y ninguna sostuvo su cita, así que no hay respuesta que creer.
+          y ninguna sostuvo su cita, así que no hay respuesta que creer. Para
+          el humano, una fila heredada sin tecnología (ver
+          :func:`etiqueta_humana`) — ausente del dict, no con valor ``None``.
         - ``""`` (cadena vacía) → la fuente la revisó y declaró que no tiene
           ninguna tecnología. Es un negativo de verdad, no un desconocido. Para
           el LLM eso son las filas con el sentinel ``__no_signal__``; para el
-          humano, un feedback sin tecnología.
+          humano, una fila ``revision_ti`` sin tecnología, o una ``human`` con
+          ``relevante`` verdadero y sin tecnología.
 
         Returns:
             ``{id_externo: {"tecnologia_humana": ..., "tecnologia_llm": ...}}``
             con solo las licitaciones sobre las que alguna fuente se pronunció.
         """
-        import json
-
         from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL, SIN_EVIDENCIA_SENTINEL
 
         salida: dict[str, dict[str, str | None]] = {}
@@ -1261,26 +1294,22 @@ class LicitacionRepository:
             # no tiene unique por expediente, así que sin el DISTINCT ON la
             # etiqueta dependería del orden de filas — no determinista.
             cur = c.execute(
-                "SELECT DISTINCT ON (expediente) expediente, tecnologia, "
-                "tecnologias_secundarias "
-                "FROM ml_feedback WHERE source = 'human' "
-                "ORDER BY expediente, created_at DESC, id DESC"
+                "SELECT DISTINCT ON (expediente) expediente, source, relevante, "
+                "tecnologia, tecnologias_secundarias "
+                "FROM ml_feedback WHERE source = ANY(%s) "
+                "ORDER BY expediente, created_at DESC, id DESC",
+                (list(FUENTES_HUMANAS),),
             )
-            for expediente, tecnologia, secundarias in cur.fetchall():
-                etiquetas: list[str] = []
-                if tecnologia:
-                    etiquetas.append(str(tecnologia).strip().upper())
-                if secundarias:
-                    try:
-                        extra = json.loads(str(secundarias))
-                    except (TypeError, ValueError):
-                        extra = []
-                    if isinstance(extra, list):
-                        etiquetas.extend(str(t).strip().upper() for t in extra if t)
-                # Cadena vacía y no None: el humano revisó y no marcó nada.
-                salida.setdefault(str(expediente), {})["tecnologia_humana"] = ",".join(
-                    dict.fromkeys(e for e in etiquetas if e)
+            for expediente, source, relevante, tecnologia, secundarias in cur.fetchall():
+                etiqueta = etiqueta_humana(
+                    str(source),
+                    relevante,
+                    str(tecnologia) if tecnologia is not None else None,
+                    str(secundarias) if secundarias is not None else None,
                 )
+                if etiqueta is None:
+                    continue
+                salida.setdefault(str(expediente), {})["tecnologia_humana"] = etiqueta
 
             # Señal LLM por pliego, con su score para que el consumidor filtre.
             # Sin JOIN: `licitacion_tecnologia_pliego.licitacion_id` ES el

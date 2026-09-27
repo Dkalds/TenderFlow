@@ -10,6 +10,13 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+#: Etiqueta de la revisión humana desde el plan de clasificación en tres
+#: niveles (2026-09-27): `relevante` = «es TI». Las filas `human` anteriores
+#: significaban «es SAP» y se conservan como histórico.
+FUENTE_REVISION_TI = "revision_ti"
+#: Las dos fuentes de etiqueta humana de familia (tecnologia/secundarias).
+FUENTES_HUMANAS: tuple[str, ...] = ("human", FUENTE_REVISION_TI)
+
 
 class FeedbackRepository:
     def insert(
@@ -26,10 +33,13 @@ class FeedbackRepository:
     ) -> str:
         """Inserta feedback y devuelve el timestamp de creación.
 
-        ``source`` distingue la etiqueta puesta por una persona (``'human'``,
-        el default, que es lo que era todo antes de v80) de la automática del
-        etiquetado por LLM (``'llm_batch'``). El entrenamiento y el contador de
-        reentrenamiento solo miran las humanas: ver el docstring de la
+        ``source`` distingue la etiqueta puesta por una persona
+        (:data:`FUENTES_HUMANAS`: ``'human'``, el default -- lo que era todo
+        antes de v80 --, y ``'revision_ti'`` desde el plan de clasificación en
+        tres niveles, que es lo que escribe ``POST /api/v1/feedback``) de la
+        automática del etiquetado por LLM (``'llm_batch'``). El entrenamiento
+        del binario mira solo ``revision_ti`` (su `relevante` es «es TI»); el
+        contador de reentrenamiento mira las dos. Ver el docstring de la
         migración ``v80_ml_feedback_source``.
         """
         import json

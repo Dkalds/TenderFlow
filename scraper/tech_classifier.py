@@ -30,8 +30,10 @@ valer 0.98 con un modelo que no aporta absolutamente nada sobre las keywords.
 Para romperla, :meth:`TechnologyClassifier.train` prefiere una etiqueta
 **independiente del texto**, en este orden por licitación:
 
-  1. ``tecnologia_humana`` — feedback humano (``ml_feedback`` con
-     ``source='human'``: columnas ``tecnologia`` + ``tecnologias_secundarias``).
+  1. ``tecnologia_humana`` — feedback humano (``ml_feedback`` con ``source``
+     en ``FUENTES_HUMANAS``: ``revision_ti`` desde el plan de clasificación en
+     tres niveles y ``human``, histórico; columnas ``tecnologia`` +
+     ``tecnologias_secundarias``).
   2. ``tecnologia_llm``    — etiquetado LLM (``licitacion_tecnologia_pliego``
      con ``method IN ('llm_metadata','llm')`` y ``score`` sobre umbral).
   3. ``tecnologia``        — keywords. **Último recurso**: si el DataFrame no

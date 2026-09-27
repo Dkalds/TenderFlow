@@ -11,7 +11,7 @@ from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_admin, require_any_auth
 from config.keywords import TECH_LABELS
 from db.audit import log_event
-from db.repositories.feedback import FeedbackRepository
+from db.repositories.feedback import FUENTE_REVISION_TI, FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from shared.audit_events import FEEDBACK_SUBMITTED
@@ -285,6 +285,11 @@ async def submit_feedback(
             tecnologia=body.tecnologia,
             tecnologias_secundarias=body.tecnologias_secundarias or None,
             user_id=int(ctx["user_id"]),
+            # Desde el plan de clasificación en tres niveles (2026-09-27):
+            # `relevante` pasa a significar «es TI», no «es SAP». Las filas
+            # `source='human'` anteriores se conservan como histórico con su
+            # significado viejo; esta ruta ya no las escribe.
+            source=FUENTE_REVISION_TI,
         )
     except Exception as exc:
         log.error("feedback_store_error", expediente=body.expediente, error=str(exc))

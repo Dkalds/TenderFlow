@@ -61,7 +61,8 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 # Etiqueta del feedback automático en ``ml_feedback.source``. El entrenamiento
-# del SAPClassifier filtra por ``source = 'human'``, así que estas filas (su
+# del SAPClassifier filtra por ``source = 'revision_ti'`` (el plan de
+# clasificación en tres niveles; antes ``'human'``), así que estas filas (su
 # ``relevante`` es ``es_ti``, no una tecnología concreta) vacían la cola de
 # active learning sin realimentar al modelo con sus propias predicciones.
 FEEDBACK_SOURCE = "llm_batch"

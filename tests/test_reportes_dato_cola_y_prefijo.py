@@ -116,8 +116,9 @@ def test_el_prefijo_del_servicio_es_el_del_sql_que_filtra():
 
 @pytest.mark.parametrize("tipo", sorted(_COLA_ESPERADA))
 def test_el_source_de_cada_tipo_nunca_parece_una_etiqueta(tipo):
-    """Los consumidores de ML filtran por ``source = 'human'``: un reporte con
-    otro source no puede convertirse en etiqueta de entrenamiento."""
+    """Los consumidores de ML filtran por ``revision_ti`` o por
+    ``FUENTES_HUMANAS``: un reporte con otro source no puede convertirse en
+    etiqueta de entrenamiento."""
     assert source_de(tipo) == f"reporte:{tipo}"
 
 
