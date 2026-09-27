@@ -88,8 +88,8 @@ sus consultas.
    dos veces y sus IDs duplicados—. Le pasó a /resumen con `SessionProvider`,
    que metía en el contexto la respuesta de `/auth/me`. Lo que cambia tras
    hidratar va en un almacén que se lee con `useSyncExternalStore`, y el valor
-   del contexto es estable (patrón y test: `lib/auth.tsx`,
-   `lib/__tests__/auth-streaming.test.tsx`).
+   del contexto es estable (patrón y test: `web/src/lib/auth.tsx`,
+   `web/src/lib/__tests__/auth-streaming.test.tsx`).
 
 Para extenderlo a otra ruta: su módulo `_lib/prefetch`, la página envuelta en
 `PrefetchServidor`, y su test de paridad. **En la página, no en el layout**,
