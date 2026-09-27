@@ -124,7 +124,7 @@ export const CONTENIDO: ContenidoLanding = {
 
   // Única enumeración de las familias en toda la página (canon: config/keywords.py).
   familiasTitulo:
-    "Solo entra el expediente con señal de tecnología: trece familias de fabricante y nueve " +
+    "Solo entra el expediente con señal de tecnología: trece familias de fabricante y doce " +
     "categorías de TI —también en catalán, euskera y gallego—, más los servicios TI y " +
     "software (CPV 48 y 72) de PLACSP y TED.",
   familias: [
@@ -150,6 +150,9 @@ export const CONTENIDO: ContenidoLanding = {
     "GIS y geoinformación",
     "Sanidad digital",
     "Administración electrónica",
+    "RRHH y nómina",
+    "Gestión documental",
+    "Puesto de trabajo y soporte",
   ],
 
   capturaTitulo: "La bandeja de cada mañana",
