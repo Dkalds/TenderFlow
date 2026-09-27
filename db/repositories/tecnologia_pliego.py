@@ -344,8 +344,13 @@ class TecnologiaPliegoRepository:
         candidata, no solo la fila pendiente: el merge recalcula el resumen
         de la licitación entera, y con una fila de menos daría un CSV distinto
         al del barrido completo. Un solo viaje a la BD en ambos caminos.
+
+        Los ``SENTINELS`` se excluyen explícitamente en los dos caminos, y no
+        solo por su score 0: un ``PLIEGO_TECH_MIN_SCORE=0`` por entorno
+        bastaría para fusionar ``__es_ti__`` en ``ml_tecnologias``.
         """
-        params: list[Any] = [min_score]
+        sentinels = list(SENTINELS)
+        params: list[Any] = [min_score, sentinels]
         if licitacion_ids:
             placeholders = ",".join("%s" for _ in licitacion_ids)
             extra = f" AND p.licitacion_id IN ({placeholders})"
@@ -359,7 +364,7 @@ class TecnologiaPliegoRepository:
                 " AND p.licitacion_id IN ("
                 "  SELECT q.licitacion_id FROM licitacion_tecnologia_pliego q"
                 "  JOIN licitaciones l ON l.id_externo = q.licitacion_id"
-                "  WHERE q.score >= %s AND ("
+                "  WHERE q.score >= %s AND q.tecnologia <> ALL(%s) AND ("
                 "    q.merged_at IS NULL"
                 "    OR l.ml_tecnologias IS NULL"
                 "    OR l.ml_proba_max IS NULL"
@@ -368,12 +373,13 @@ class TecnologiaPliegoRepository:
                 "  )"
                 ")"
             )
-            params.append(min_score)
+            params.extend([min_score, sentinels])
         with connect_read() as c:
             cur = c.execute(
                 "SELECT p.licitacion_id, p.tecnologia, p.method, p.score, p.matched_terms, "
                 "p.evidence_json, p.signal_version, p.merged_at "
-                f"FROM licitacion_tecnologia_pliego p WHERE p.score >= %s{extra} "
+                "FROM licitacion_tecnologia_pliego p "
+                f"WHERE p.score >= %s AND p.tecnologia <> ALL(%s){extra} "
                 "ORDER BY p.licitacion_id",
                 params,
             )

@@ -689,6 +689,28 @@ class TestListSignalsForMerge:
             ("SAP", "llm"),
         }
 
+    def test_los_sentinels_no_entran_al_merge_aunque_pasen_el_umbral(self, repo):
+        """Hasta ahora solo el umbral los dejaba fuera (score 0): con
+        ``PLIEGO_TECH_MIN_SCORE=0`` el marcador de nivel 1 o ``__no_signal__``
+        habrían acabado en ``ml_tecnologias``. Por los dos caminos."""
+        _insert_licitacion("MRG-SENT")
+        repo.upsert_signals(
+            "MRG-SENT",
+            method="llm_metadata",
+            signal_version="llm-meta-v3/m",
+            scores={
+                "SAP": TechSignal(score=0.9),
+                ES_TI_SENTINEL: TechSignal(score=0.0, evidence=[{"es_ti": True}]),
+            },
+        )
+        repo.upsert_signals("MRG-SENT", method="keywords", signal_version="v1", scores={})
+
+        con_ids = repo.list_signals_for_merge(min_score=0.0, licitacion_ids=["MRG-SENT"])
+        sin_ids = repo.list_signals_for_merge(min_score=0.0)
+
+        assert {r["tecnologia"] for r in con_ids} == {"SAP"}
+        assert {r["tecnologia"] for r in sin_ids} == {"SAP"}
+
     def test_without_ids_reselects_a_merged_signal_missing_from_the_summary(self, repo):
         """Un ``precompute_ml_tecnologias(force=True)`` reescribe el CSV sin la
         señal del pliego aunque ``merged_at`` esté puesto: la candidata se
