@@ -218,13 +218,13 @@ def run() -> dict[str, Any]:
                 status = "sin_evidencia"
             else:
                 status = "no_signal"
-            repo.upsert_signals(
-                licitacion_id,
-                method=METHOD,
-                signal_version=version,
-                scores=clasificacion.scores,
-                sin_evidencia=status == "sin_evidencia",
-            )
+            # El marcador de nivel 1 va antes que la fila de familias: quien
+            # decide "pendiente" es la fila ``method=METHOD`` de esta versión
+            # (``list_metadata_pending_llm_signal``), así que si esa fila
+            # fallara después, la licitación seguiría pendiente y la próxima
+            # corrida reescribiría el marcador sin perderlo -- al revés, un
+            # marcador escrito después de un fallo de familias no se
+            # escribiría nunca.
             if clasificacion.es_ti is not None:
                 marcador = ES_TI_SENTINEL if clasificacion.es_ti else NO_ES_TI_SENTINEL
                 repo.upsert_signals(
@@ -244,6 +244,13 @@ def run() -> dict[str, Any]:
                         )
                     },
                 )
+            repo.upsert_signals(
+                licitacion_id,
+                method=METHOD,
+                signal_version=version,
+                scores=clasificacion.scores,
+                sin_evidencia=status == "sin_evidencia",
+            )
         except LLMAuthError as exc:
             # La key rechazada lo será igual para todo lo que queda del lote:
             # seguir solo repetiría la misma llamada fallida (el run

@@ -480,7 +480,7 @@ class TestSinEvidenciaEnElJob:
     """
 
     @staticmethod
-    def _run_with(raw: str, monkeypatch):
+    def _run_with(raw: str, monkeypatch, *, configure_repo=None):
         from unittest.mock import MagicMock
 
         from scheduler.jobs.llm_tech_labeling import run
@@ -495,6 +495,8 @@ class TestSinEvidenciaEnElJob:
                 "descripcion": "Mantenimiento evolutivo de la aplicación de nóminas.",
             }
         ]
+        if configure_repo is not None:
+            configure_repo(repo)
         with (
             patch(
                 "db.repositories.tecnologia_pliego.TecnologiaPliegoRepository", return_value=repo
@@ -586,6 +588,39 @@ class TestSinEvidenciaEnElJob:
         metodos = [c.kwargs["method"] for c in repo.upsert_signals.call_args_list]
         assert METHOD_ES_TI not in metodos
         assert counts["es_ti_sin_respuesta"] == 1
+
+    def test_el_marcador_de_es_ti_se_escribe_antes_que_la_fila_de_familias(self, monkeypatch):
+        """Si la fila de familias (``method=METHOD``) falla, la licitación
+        sigue pendiente -- es esa fila la que decide "pendiente", no la del
+        marcador -- así que la siguiente corrida reescribe el marcador de
+        nivel 1 sin perderlo. Eso solo es cierto si el marcador se escribe
+        primero: si se escribiera después del fallo de familias, no se
+        escribiría nunca."""
+        from services.llm_tech_labeling import METHOD_ES_TI
+
+        def _falla_en_familias(repo):
+            def _side_effect(*_args, **kwargs):
+                if kwargs.get("method") == METHOD:
+                    raise RuntimeError("boom de familias")
+                return None
+
+            repo.upsert_signals.side_effect = _side_effect
+
+        raw = '{"es_ti": true, "confianza_es_ti": 0.9, "tecnologias": []}'
+        counts, repo, _feedback = self._run_with(
+            raw, monkeypatch, configure_repo=_falla_en_familias
+        )
+
+        metodos = [c.kwargs["method"] for c in repo.upsert_signals.call_args_list]
+        assert METHOD_ES_TI in metodos, "el marcador de nivel 1 nunca se escribió"
+        assert metodos.index(METHOD_ES_TI) < metodos.index(METHOD)
+        assert counts["error"] == 1
+        assert counts["scored"] == 0
+        assert counts["no_signal"] == 0
+        assert counts["sin_evidencia"] == 0
+        assert counts["es_ti_si"] == 0
+        assert counts["es_ti_no"] == 0
+        assert counts["es_ti_sin_respuesta"] == 0
 
 
 class TestPipelineStepReleasesTheWindow:
