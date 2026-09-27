@@ -14,6 +14,7 @@ import json
 import pytest
 
 from db.search_backend import RRF_K, PgTsBackend, _to_pg_vector_literal, rrf_score
+from db.sql_fragments import tecnologia_en_csv_sql
 
 # ── RRF: fórmula pura ────────────────────────────────────────────────────
 
@@ -161,7 +162,24 @@ class TestHybridSearchDocsQueryConstruction:
 
         assert conn.last_params[:4] == ["q", "q", "Madrid", "SAP"]
         assert "l.ccaa = %s" in conn.last_sql
-        assert "l.tecnologia = %s" in conn.last_sql
+        # El CSV de la fila, no igualdad: «ERP,SAP» también es SAP.
+        assert tecnologia_en_csv_sql("l.tecnologia", n=1) in conn.last_sql
+        assert "l.tecnologia = " not in conn.last_sql
+
+    def test_tecnologia_csv_is_split_like_the_fts_fallback(self):
+        """``/ask`` pasa el mismo ``tecnologia`` al híbrido y a ``search_fts_docs``.
+
+        El FTS al que cae ``search_for_ask`` trocea el CSV con ``csv_values``;
+        si el híbrido no lo hiciera, ``"SAP, ORACLE"`` sería un único código que
+        no casa con ninguna fila. Un parámetro por código, en el sitio del
+        filtro.
+        """
+        conn = _FakeConn(rows=[])
+        PgTsBackend().hybrid_search_docs(conn, "q", [0.1], tecnologia="SAP, ORACLE")
+
+        assert conn.last_params[:4] == ["q", "q", "SAP", "ORACLE"]
+        assert tecnologia_en_csv_sql("l.tecnologia", n=2) in conn.last_sql
+        assert conn.last_sql.count("%s") == len(conn.last_params)
 
     def test_returns_docs_with_parsed_dict_chunks(self):
         chunks = [{"chunk_id": 1, "chunk_index": 0, "texto": "fragmento"}]

@@ -7,7 +7,8 @@ Tests de INTEGRACIÓN: exigen Postgres con pgvector (fixtures ``api_db`` /
 * con chunks embebidos responde ``source=rrf``;
 * ``alpha`` gobierna de verdad el peso de las dos listas de la fusión;
 * el default de ``hybrid_search_docs`` (``alpha=None``) sigue produciendo el
-  RRF sin ponderar que consume el RAG.
+  RRF sin ponderar que consume el RAG;
+* el filtro ``tecnologia`` de la lista FTS busca el código en el CSV de la fila.
 
 El modelo de embeddings se simula (``encode_texts``): lo que se prueba es la
 fusión, no la calidad del modelo, y la suite no puede depender de que el extra
@@ -250,3 +251,37 @@ class TestFiltrosSobreLaFusion:
         data = _buscar(search_client, ccaa=["Galicia"])
         assert data["source"] == "rrf"
         assert [h["id_externo"] for h in data["hits"]] == ["L-OTRA"]
+
+    def test_la_tecnologia_encuentra_los_expedientes_multi_tecnologia(self, api_db):
+        """``tecnologia`` guarda un CSV: «ERP,SAP» también es SAP.
+
+        La lista FTS de la fusión comparaba ``l.tecnologia = %s`` y el RAG
+        filtrado por SAP perdía los expedientes multi-tecnología. Sin chunks
+        la fusión es solo el FTS, así que nada más puede traer la fila.
+        """
+        from db.database import connect_read
+        from db.search_backend import PgTsBackend
+        from db.upsert import Licitacion, upsert_licitaciones
+
+        upsert_licitaciones(
+            [
+                Licitacion(
+                    id_externo="L-ERP-SAP",
+                    titulo="Servicios SAP para la sede",
+                    tecnologia="ERP,SAP",
+                ),
+                # Casa con "sap" por FTS, pero su tecnología es otra.
+                Licitacion(
+                    id_externo="L-ORACLE",
+                    titulo="Servicios SAP sobre Oracle",
+                    tecnologia="ORACLE",
+                ),
+            ]
+        )
+
+        with connect_read() as conn:
+            docs = PgTsBackend().hybrid_search_docs(
+                conn, "sap", _vec(0), tecnologia="SAP", limit=10
+            )
+
+        assert [d["id_externo"] for d in docs] == ["L-ERP-SAP"]

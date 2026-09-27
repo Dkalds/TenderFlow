@@ -12,10 +12,12 @@ duplicados y ``round_sql``. Son las mismas definiciones que ``services/`` sigue
 importando a través de los reexports de ``services/sql_fragments.py`` y
 ``services/dedupe.py``, y la grafía ``l2`` sale del mismo helper que usaba el
 servicio, así que el SQL no cambia ni un carácter respecto a cuando se armaba
-allí. El servicio no pasa
-fragmentos sueltos: el universo llega por nombre y se traduce aquí, y lo único
-que llega ya armado es un :class:`Alcance`, que arma :func:`alcance_sql` de este
-mismo módulo.
+allí. La excepción es el filtro por tecnologías: :func:`alcance_sql` lo arma con
+:func:`db.sql_fragments.tecnologia_en_csv_sql`, porque la columna guarda un CSV
+y el ``IN`` que heredó del servicio perdía los expedientes multi-tecnología.
+El servicio no pasa fragmentos sueltos: el universo llega por nombre y se
+traduce aquí, y lo único que llega ya armado es un :class:`Alcance`, que arma
+:func:`alcance_sql` de este mismo módulo.
 
 **Dedupe.** Toda consulta sobre ``licitaciones``/``adjudicaciones`` de este
 módulo excluye los duplicados cross-fuente con ``exclude_duplicados_sql()``:
@@ -53,6 +55,7 @@ from db.sql_fragments import (
     exclude_duplicados_sql,
     round_sql,
     technology_observed_sql,
+    tecnologia_en_csv_sql,
 )
 
 # Las tres tablas que traducen una elección del llamador a SQL son privadas y de
@@ -376,8 +379,8 @@ def alcance_sql(
         clauses.append(f"l.ccaa IN ({placeholders})")
         params.extend(ccaas)
     if tecnologias:
-        placeholders = ", ".join("%s" for _ in tecnologias)
-        clauses.append(f"l.tecnologia IN ({placeholders})")
+        # En el CSV de la fila, no con `IN`: «ERP,SAP» también es SAP.
+        clauses.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
         params.extend(tecnologias)
     if importe_min is not None:
         clauses.append("l.importe >= %s")
