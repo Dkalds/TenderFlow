@@ -22,6 +22,9 @@ const NOMBRE_METRICA: Record<string, string> = {
 
 const REJILLA = "grid gap-px overflow-hidden rounded-md border border-border/60 bg-border/60";
 
+/** Métrica de 0 a 1 con tres decimales y coma decimal (0,874). */
+const tresDecimales = (valor: number) => valor.toFixed(3).replace(".", ",");
+
 export function ModelInfoCard({
   stats,
   activeModel,
@@ -61,7 +64,7 @@ export function ModelInfoCard({
             value={
               metric ? (
                 <>
-                  {metric.value.toFixed(3)}
+                  {tresDecimales(metric.value)}
                   {metricTrend != null && metricTrend !== 0 && (
                     <span
                       className={cn(
@@ -69,7 +72,7 @@ export function ModelInfoCard({
                         metricTrend > 0 ? "text-success" : "text-destructive",
                       )}
                     >
-                      {metricTrend > 0 ? "▲" : "▼"} {Math.abs(metricTrend).toFixed(3)}
+                      {metricTrend > 0 ? "▲" : "▼"} {tresDecimales(Math.abs(metricTrend))}
                     </span>
                   )}
                 </>

@@ -222,11 +222,13 @@ export function ColaCierre({
 
       {/* El desglose no puede prometer que son «las cuatro más próximas» si no
           se trajo la ventana entera: se dice, y el enlace de arriba sigue
-          abriendo la cola completa. */}
+          abriendo la cola completa. Sin «de N»: la petición va sin
+          `with_total`, así que el total del cursor llega vacío y el recuento
+          autoritativo ya está en la cabecera. */}
       {hayCola && !cola.isLoading && !cola.error && recortada && (
         <p className="mt-2 text-tf-micro text-muted-foreground">
-          Ordenadas sobre las {formatNumber(cola.data?.items.length)} primeras de{" "}
-          {formatNumber(cola.data?.total)}: puede quedar fuera alguna que cierre antes.
+          Ordenadas sobre las {formatNumber(cola.data?.items.length)} primeras: puede quedar fuera
+          alguna que cierre antes.
         </p>
       )}
 

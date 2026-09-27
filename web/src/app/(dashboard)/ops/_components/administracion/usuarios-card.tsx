@@ -92,7 +92,12 @@ export function UsuariosCard() {
       ) : error ? (
         <PanelError variant="inline" title="No se pudieron cargar los usuarios" error={error} onRetry={refetch} />
       ) : (
-        <DataTable columns={userColumns} data={users} initialSorting={[{ id: "email", desc: false }]} />
+        <DataTable
+          columns={userColumns}
+          data={users}
+          initialSorting={[{ id: "email", desc: false }]}
+          emptyMessage="Aún no hay usuarios en esta instancia."
+        />
       )}
     </Panel>
   );

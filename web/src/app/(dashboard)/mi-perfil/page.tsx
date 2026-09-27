@@ -107,15 +107,16 @@ export default function MiPerfilPage() {
 
         {/* Acciones */}
         <div className="flex items-center gap-3 pb-6">
-          <Button onClick={perfil.guardar} disabled={!perfil.dirty || !perfil.weightsValid || saveMut.isPending}>
+          <Button size="sm" onClick={perfil.guardar} disabled={!perfil.dirty || !perfil.weightsValid || saveMut.isPending}>
             {saveMut.isPending ? "Guardando…" : "Guardar perfil"}
           </Button>
           {perfil.hasProfile && !data?.inherited && (
             <Button
+              size="sm"
               variant="outline"
               onClick={() => deleteMut.mutate()}
               disabled={deleteMut.isPending}
-              className="text-destructive hover:bg-destructive/10"
+              className="text-destructive hover:bg-destructive/5"
             >
               {deleteMut.isPending ? "Eliminando…" : "Eliminar perfil"}
             </Button>

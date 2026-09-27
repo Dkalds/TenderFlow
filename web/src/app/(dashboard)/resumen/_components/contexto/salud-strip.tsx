@@ -28,6 +28,7 @@
  */
 
 import { PanelTitle, StatCell, StatStrip } from "@/components/console/panel";
+import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { celdaSalud, coberturaSinMedir, type CoberturaMetrica } from "@/lib/cobertura";
 import { EMPTY, formatNumber, formatPercent } from "@/lib/utils";
 import type { AnalyticsOverview } from "@/lib/api-types";
@@ -79,6 +80,7 @@ export function SaludStrip({ data, loading }: SaludStripProps) {
       <StatStrip columns={COLUMNAS_COMPLETAS - retenidas.length}>
         <StatCell
           label="Concentración (HHI)"
+          badge={<GlosarioHint termino="hhi" />}
           loading={loading}
           value={data ? formatNumber(Math.round(data.hhi)) : EMPTY}
           hint={`0–10.000 · ${GLOBAL}`}
@@ -86,13 +88,20 @@ export function SaludStrip({ data, loading }: SaludStripProps) {
         {mostrarOfertaUnica && (
           <StatCell
             label="Oferta única"
+            badge={<GlosarioHint termino="oferta_unica" />}
             loading={loading}
             value={ofertaUnica.value}
             hint={ofertaUnica.hint}
           />
         )}
         {mostrarPyme && (
-          <StatCell label="PYME adjudicataria" loading={loading} value={pyme.value} hint={pyme.hint} />
+          <StatCell
+            label="PYME adjudicataria"
+            badge={<GlosarioHint termino="pyme" />}
+            loading={loading}
+            value={pyme.value}
+            hint={pyme.hint}
+          />
         )}
         <StatCell
           label="Días hasta adjudicar"
@@ -101,7 +110,7 @@ export function SaludStrip({ data, loading }: SaludStripProps) {
           hint={`media · ${GLOBAL}`}
         />
         <StatCell
-          label="Top-10 órganos"
+          label="Diez mayores órganos"
           loading={loading}
           value={formatPercent(data?.concentracion_top10)}
           hint="del importe del ámbito"

@@ -104,7 +104,7 @@ test.describe("Regresión visual de la portada", () => {
       // La franja de cifras trae tres números del corpus y la fecha del último
       // expediente: cambian con la ingesta y no son diseño. Enmascararlos es lo
       // que hace que este baseline dure más de un día.
-      mask: [page.getByLabel("El corpus en cifras")],
+      mask: [page.getByLabel("Los datos públicos en cifras")],
       animations: "disabled",
     });
   });

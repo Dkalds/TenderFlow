@@ -265,6 +265,7 @@ export function CompetidoresCortes({
                 compareData={radarData.dataB}
                 compareName={truncate(radarData.nameB, 20)}
                 height={400}
+                aria-label={`Comparación de ${radarData.nameA} y ${radarData.nameB}`}
               />
             </>
           ) : (

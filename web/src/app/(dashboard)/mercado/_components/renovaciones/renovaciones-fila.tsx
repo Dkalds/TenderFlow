@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Pista } from "@/components/ui/pista";
 import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
-import { formatCurrency, truncate } from "@/lib/utils";
+import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 import type { MarcaPropia, RenovacionRow } from "../../_hooks/use-renovaciones";
 
 /** Semáforo del plazo: los mismos cortes de urgencia que usa el resto del producto. */
@@ -66,7 +66,7 @@ export function CeldasRenovacion({
       <TableCell className="whitespace-nowrap">
         <div className="flex flex-col gap-1">
           <span className="flex items-center gap-1.5">
-            {fila.fecha_fin_efectiva ?? "—"}
+            {formatDate(fila.fecha_fin_efectiva)}
             {/* Sólo el ~6% de estas fechas las publica la fuente;
                 el resto sale de la duración del contrato. */}
             <FechaFinOrigenBadge origen={fila.fecha_fin_origen} />
@@ -77,7 +77,7 @@ export function CeldasRenovacion({
           {fila.prorroga_meses != null && (
             <span className="text-tf-micro text-muted-foreground">
               +{fila.prorroga_meses} meses de prórroga
-              {fila.fecha_fin_con_prorroga ? ` → ${fila.fecha_fin_con_prorroga}` : ""}
+              {fila.fecha_fin_con_prorroga ? ` → ${formatDate(fila.fecha_fin_con_prorroga)}` : ""}
             </span>
           )}
         </div>

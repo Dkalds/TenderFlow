@@ -18,14 +18,15 @@ import { cn } from "@/lib/utils"
  * gráficos (color de serie por índice, «Otros» en `chart-8`, nunca dos ejes Y
  * en un panel). `Card` es un `div` con borde: no sabe nada de eso.
  *
- * Este módulo NO se borra ni se migra de golpe: lo importan decenas de ficheros
- * y un big-bang de esa talla es una regresión visual esperando a ocurrir. Para
- * código nuevo —y al reescribir uno de los que lo importan— usa
- * `@/components/console/panel`. (La regla `no-restricted-imports` con la lista
- * de importadores que solo puede encoger está pendiente en `eslint.config.mjs`:
- * hasta que exista, el freno es este comentario y la revisión.)
+ * La migración terminó el 2026-09-27: los 106 ficheros que lo importaban
+ * pasaron a `@/components/console/panel`, área por área y con revisión, no de
+ * golpe. Desde entonces `no-restricted-imports` (`importacionesRetiradas` en
+ * `eslint.config.mjs`) impide importarlo fuera de los tests, con `deudaCard`
+ * —la lista de importadores que solo puede encoger— vacía desde el día que se
+ * escribió. El módulo se conserva, deprecado, porque su test fija cómo pinta;
+ * borrarlo es el paso siguiente.
  *
- * Mientras tanto dibuja igual que `Panel` en lo que comparten: superficie
+ * Dibuja igual que `Panel` en lo que comparten: superficie
  * opaca, sin hover (un bloque que no se pulsa no reacciona al ratón), título a
  * 13 px y descripción a 12, por encima de la etiqueta de un campo y no por
  * debajo.

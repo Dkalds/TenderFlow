@@ -48,6 +48,8 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
     pendientesTruncado,
     grants,
     grantsLoading,
+    grantsError,
+    reintentarGrants,
     cambiarEstado,
     revocar,
   } = useSolicitudesAcceso(opciones);
@@ -95,10 +97,14 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
           size="sm"
           title={
             vista === "pendiente"
-              ? "No queda ninguna solicitud pendiente."
-              : "Todavía no ha llegado ninguna solicitud."
+              ? "No queda ninguna solicitud pendiente"
+              : "Todavía no ha llegado ninguna solicitud"
           }
-          hint={vista === "pendiente" ? "En «Todas» está el histórico." : undefined}
+          hint={
+            vista === "pendiente"
+              ? "En «Todas» está el histórico."
+              : "Aparecerán aquí las que se envíen desde la web pública."
+          }
         />
       )}
       {!isLoading && !error && truncada && (
@@ -122,6 +128,8 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
       <AccesosDinamicos
         grants={grants}
         isLoading={grantsLoading}
+        error={grantsError}
+        onRetry={reintentarGrants}
         revocando={revocar.isPending}
         onRevocar={revocar.mutate}
       />

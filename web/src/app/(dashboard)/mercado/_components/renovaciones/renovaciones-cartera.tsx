@@ -32,13 +32,14 @@ export function RenovacionesCartera({
     <Panel>
       <PanelTitle
         title="Cartera en juego por empresa"
-        hint={`Top 10 por importe que vence en ${meses} meses`}
+        hint={`Las 10 con más importe que vence en ${meses} meses`}
       />
       {isLoading ? (
         <PanelLoading height={ALTO} />
       ) : topCartera.length === 0 ? (
         <PanelEmpty
-          message="Ningún contrato vence en esta ventana. Amplía el horizonte para ver más."
+          title="Ningún contrato vence en esta ventana"
+          hint="Amplía el horizonte para ver más."
           height={ALTO}
         />
       ) : (

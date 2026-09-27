@@ -281,7 +281,7 @@ describe("RadarPage", () => {
     // `GET /analytics/scoring?limit=24`, el top-24 del corpus abierto.
     renderRadar();
 
-    expect(screen.getByText(/top 24 del mercado abierto por potencial comercial/)).toBeInTheDocument();
+    expect(screen.getByText(/las 24 abiertas que mejor encajan con tu perfil/)).toBeInTheDocument();
   });
 
   it("renders the countdown to the deadline the API now returns", () => {
@@ -408,7 +408,7 @@ describe("RadarPage", () => {
 
     renderRadar();
 
-    expect(screen.getByRole("status")).toHaveTextContent(/Score degradado/);
+    expect(screen.getByRole("status")).toHaveTextContent(/Score incompleto/);
     expect(screen.getByRole("status")).toHaveTextContent(/sin predicción de baja/);
   });
 

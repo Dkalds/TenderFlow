@@ -14,6 +14,7 @@ import { primeraVez, registrarEvento } from "@/lib/analytics";
 import type { RenovacionPreparada, Schemas } from "@/lib/api-types";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { pursuitKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type { RenovacionPreparada };
 export type CarteraResumen = Schemas["CarteraResumen"];
@@ -29,6 +30,7 @@ export function useCartera() {
       }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 60_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -81,6 +83,7 @@ export function useCarteraEventos(carteraId: number | null) {
     },
     enabled: carteraId != null && organizacionResuelta(organizationId),
     staleTime: 60_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -111,5 +114,7 @@ export function usePrepararRenovacion() {
       // y en la Agenda.
       return queryClient.invalidateQueries({ queryKey: pursuitKeys.all });
     },
+    // El fallo lo dice el diálogo, junto al campo del expediente.
+    meta: { silent: true },
   });
 }

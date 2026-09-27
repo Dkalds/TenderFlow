@@ -109,9 +109,9 @@ export const SECTIONS: NavSection[] = [
         slug: "radar",
         // Ni "recientes" ni "por afinidad": es el top del mercado abierto por
         // score, y la afinidad es una dimensión de seis que además suele estar
-        // desactivada. La descripción prometía el ranking que el P0 del
-        // UX_AUDIT corrigió en la página y que aquí quedó sin actualizar.
-        description: "Top del mercado abierto por potencial comercial.",
+        // desactivada. «Encajan con tu perfil» es el perfil de scoring entero
+        // (sus pesos), como dicen el pie del Radar y `console-spaces.ts`.
+        description: "Las licitaciones abiertas que mejor encajan con tu perfil.",
         icon: ICONO_ESPACIO.radar,
         usesGlobalFilters: false,
         globalFilterKeys: ["tecnologia"],
@@ -341,7 +341,7 @@ export const SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: "Admin",
+    label: "Administración",
     icon: ICONO_ADMIN,
     adminOnly: true,
     pages: [

@@ -3,7 +3,9 @@ import { CONTENIDO } from "@/app/(publico)/_content/landing";
 import { MARCA_HEX, TF_MARK_PATHS, TF_MARK_STROKE, TF_MARK_VIEWBOX } from "@/lib/marca";
 import { SITE_NAME } from "@/lib/site";
 
-export const alt = `${SITE_NAME} — Radar de licitaciones TI del sector público español`;
+/* El texto alternativo dice lo que se ve: la marca y el titular del hero, de su
+ * misma fuente. */
+export const alt = `${SITE_NAME} — ${CONTENIDO.h1}`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

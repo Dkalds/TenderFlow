@@ -23,8 +23,9 @@ import {
 } from "recharts";
 import * as React from "react";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
+import { CAJA_TOOLTIP } from "@/components/charts/chart-tooltip";
 import { TreemapContent } from "@/components/charts/treemap-content";
-import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -104,7 +105,7 @@ export const CompetitorsPieChart = React.memo(function CompetitorsPieChart({ dat
             cy="50%"
             outerRadius={140}
             label={({ name, percent }: { name?: string; percent?: number }) =>
-              `${name ?? ""}: ${((percent ?? 0) * 100).toFixed(1)}%`
+              `${name ?? ""}: ${formatPercent((percent ?? 0) * 100)}`
             }
             labelLine={{ strokeWidth: 1 }}
           >
@@ -134,14 +135,14 @@ export const CompetitorsScatterChart = React.memo(function CompetitorsScatterCha
           <XAxis
             type="number"
             dataKey="ticket_medio"
-            name="Ticket Medio"
+            name="Importe medio"
             tick={{ fontSize: 11 }}
             tickFormatter={(v: number) => formatCurrency(v)}
           >
-            <Label value="Ticket Medio" position="bottom" offset={0} style={{ fontSize: 12 }} />
+            <Label value="Importe medio" position="bottom" offset={0} style={{ fontSize: 12 }} />
           </XAxis>
-          <YAxis type="number" dataKey="n_organos" name="Organos" tick={{ fontSize: 11 }}>
-            <Label value="N. Organos" angle={-90} position="left" offset={0} style={{ fontSize: 12 }} />
+          <YAxis type="number" dataKey="n_organos" name="Órganos" tick={{ fontSize: 11 }}>
+            <Label value="Órganos distintos" angle={-90} position="left" offset={0} style={{ fontSize: 12 }} />
           </YAxis>
           <ZAxis range={[40, 400]} />
           <Tooltip
@@ -150,10 +151,10 @@ export const CompetitorsScatterChart = React.memo(function CompetitorsScatterCha
               if (!active || !payload?.length) return null;
               const d = payload[0].payload as ScatterPoint;
               return (
-                <div className="rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md">
-                  <p className="font-medium">{d.nombre}</p>
-                  <p>Ticket medio: {formatCurrency(d.ticket_medio)}</p>
-                  <p>Organos: {formatNumber(d.n_organos)}</p>
+                <div className={CAJA_TOOLTIP}>
+                  <p className="font-semibold">{d.nombre}</p>
+                  <p>Importe medio: {formatCurrency(d.ticket_medio)}</p>
+                  <p>Órganos: {formatNumber(d.n_organos)}</p>
                 </div>
               );
             }}
@@ -212,8 +213,8 @@ export const CompetitorsTreemap = React.memo(function CompetitorsTreemap({ data 
               if (!active || !payload?.length) return null;
               const d = payload[0].payload;
               return (
-                <div className="rounded-md border bg-popover px-3 py-2 text-sm shadow-md">
-                  <p className="font-medium">{d.name}</p>
+                <div className={CAJA_TOOLTIP}>
+                  <p className="font-semibold">{d.name}</p>
                   <p>Importe: {formatCurrency(d.size)}</p>
                   <p>Adjudicaciones: {formatNumber(d.count)}</p>
                 </div>
@@ -239,23 +240,23 @@ export const CompetitorsPositioningChart = React.memo(function CompetitorsPositi
           <XAxis
             type="number"
             dataKey="baja_media"
-            name="Baja Media"
+            name="Baja media"
             tick={{ fontSize: 11 }}
-            tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+            tickFormatter={(v: number) => formatPercent(v, 0)}
           >
-            <Label value="Baja Media %" position="bottom" offset={10} style={{ fontSize: 12 }} />
+            <Label value="Baja media (%)" position="bottom" offset={10} style={{ fontSize: 12 }} />
           </XAxis>
           <YAxis
             type="number"
             dataKey="importe_medio"
-            name="Importe Medio"
+            name="Importe medio"
             tick={{ fontSize: 11 }}
             scale="log"
             domain={["auto", "auto"]}
             tickFormatter={(v: number) => formatCurrency(v)}
           >
             <Label
-              value="Importe Medio (log)"
+              value="Importe medio (escala logarítmica)"
               angle={-90}
               position="left"
               offset={0}
@@ -269,17 +270,17 @@ export const CompetitorsPositioningChart = React.memo(function CompetitorsPositi
               if (!active || !payload?.length) return null;
               const d = payload[0].payload as PositioningEntry;
               return (
-                <div className="rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md">
-                  <p className="font-medium">{d.nombre}</p>
-                  <p>Baja media: {d.baja_media.toFixed(1)}%</p>
+                <div className={CAJA_TOOLTIP}>
+                  <p className="font-semibold">{d.nombre}</p>
+                  <p>Baja media: {formatPercent(d.baja_media)}</p>
                   <p>Importe medio: {formatCurrency(d.importe_medio)}</p>
                   <p>Contratos: {formatNumber(d.count)}</p>
                   {/* Sin dato de ofertantes no hay porcentaje que dar: un
                       «0,0 %» aquí se lee como «nunca gana sin competencia»,
                       que es lo contrario de «no lo sabemos». */}
                   <p>
-                    % Monopolio:{" "}
-                    {d.pct_monopolio == null ? "sin dato de ofertantes" : `${d.pct_monopolio.toFixed(1)}%`}
+                    Oferta única:{" "}
+                    {d.pct_monopolio == null ? "sin dato de ofertantes" : formatPercent(d.pct_monopolio)}
                   </p>
                 </div>
               );

@@ -8,6 +8,7 @@ import type {
   PriceScenariosResult,
 } from "@/lib/api-types";
 import { prediccionKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type { HistoricalDistribution, PriceScenario, PriceScenariosResult };
 
@@ -44,5 +45,6 @@ export function usePriceScenarios(
       ),
     enabled: Boolean(licitacionId) && (options?.enabled ?? true),
     staleTime: 5 * 60_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }

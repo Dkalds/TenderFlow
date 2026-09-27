@@ -23,6 +23,9 @@ export interface EmptyStateProps {
  * `title` y su `hint` («Ningún CPV con adjudicaciones en el ámbito actual.»,
  * «Amplía las fechas o quita filtros.»).
  *
+ * Sin importadores desde el 2026-09-27 (eran 28): `no-restricted-imports` de
+ * `eslint.config.mjs` impide volver a usarlo fuera de su test.
+ *
  * @deprecated Usa `PanelEmpty` de `@/components/console/panel`.
  */
 export function EmptyState({ icon, title, hint, actionLabel, onAction, className }: EmptyStateProps) {

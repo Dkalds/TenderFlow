@@ -11,6 +11,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useCrearCuenta } from "@/hooks/use-cuentas";
@@ -66,27 +67,32 @@ export function NuevaCuentaDialog({
         >
           <SelectorOrganos seleccionados={organos} onChange={setOrganos} />
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={`${id}-nombre`} className="text-sm font-medium">
-              Nombre de la cuenta <span className="font-normal text-muted-foreground">(opcional)</span>
-            </label>
+          <Field
+            htmlFor={`${id}-nombre`}
+            label={
+              <>
+                Nombre de la cuenta <span className="font-normal text-muted-foreground">(opcional)</span>
+              </>
+            }
+            hint="Si lo dejas vacío, la cuenta se llamará como su primer órgano."
+          >
             <Input
               id={`${id}-nombre`}
               value={nombre}
               onChange={(event) => setNombre(event.target.value)}
               placeholder={organos[0] ?? "Ayuntamiento de…"}
               maxLength={500}
-              aria-describedby={`${id}-nombre-pista`}
             />
-            <p id={`${id}-nombre-pista`} className="text-xs text-muted-foreground">
-              Si lo dejas vacío, la cuenta se llamará como su primer órgano.
-            </p>
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={`${id}-nota`} className="text-sm font-medium">
-              Nota <span className="font-normal text-muted-foreground">(opcional)</span>
-            </label>
+          <Field
+            htmlFor={`${id}-nota`}
+            label={
+              <>
+                Nota <span className="font-normal text-muted-foreground">(opcional)</span>
+              </>
+            }
+          >
             <Textarea
               id={`${id}-nota`}
               value={nota}
@@ -95,7 +101,7 @@ export function NuevaCuentaDialog({
               maxLength={2000}
               rows={2}
             />
-          </div>
+          </Field>
 
           <div className="flex justify-end gap-2">
             <DialogClose asChild>

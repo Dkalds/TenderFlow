@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { cn, EMPTY } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { riesgoLabel } from "@/lib/riesgos";
 
 /**
@@ -114,13 +114,13 @@ export function ScoreDesglose({
     // la pieza está rota, no como que este expediente no tiene detalle.
     return (
       <p className="text-tf-meta text-muted-foreground">
-        {EMPTY} Este expediente no trae desglose de puntuación.
+        Este expediente no trae desglose de puntuación.
       </p>
     );
   }
 
   return (
-    <div className="flex flex-col gap-[7px]">
+    <div className="flex flex-col gap-1.5">
       {frases.length > 0 && (
         <ul
           className={cn(
@@ -169,7 +169,9 @@ export function ScoreDesglose({
       {riesgos && riesgos.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1.5">
           {riesgos.map((flag) => (
-            <Badge key={flag} variant="destructive" size="sm">
+            // Aviso y no alarma, como en la cabecera del inspector: un riesgo
+            // es algo que leer antes de decidir, no un fallo.
+            <Badge key={flag} variant="warning" size="sm">
               {riesgoLabel(flag)}
             </Badge>
           ))}

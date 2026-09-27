@@ -24,9 +24,9 @@ export const TABS: { key: Corte; label: string }[] = [
 export const ALTO = 288;
 
 export const HINTS: Record<Corte, string> = {
-  ritmo: "publicaciones por día · pulsa una barra para acotar el ámbito a ese día",
-  importes: "cuántas licitaciones caen en cada tramo de importe",
-  dispersion: "fecha × importe (escala logarítmica) · color por estado",
+  ritmo: "por día · pulsa una barra para acotar el ámbito a ese día",
+  importes: "por tramo de importe",
+  dispersion: "fecha e importe (escala logarítmica) · color por estado",
 };
 
 /** «desde el 27 jul 2026» / «entre el 1 jul y el 31 jul de 2026». */

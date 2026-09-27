@@ -20,7 +20,8 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod/mini";
 import { acceso, registroFormulario } from "@/lib/forms/esquemas";
-import { apiMutate, ApiError, fetchWithAuth } from "@/lib/api-client";
+import { apiMutate, ApiError, fetchWithAuth, MENSAJE_SIN_CONEXION } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { registrarEvento } from "@/lib/analytics";
 import { olvidarOrganizacionPorDefecto } from "@/hooks/use-organization";
@@ -35,7 +36,11 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   email_not_allowed: "Tu cuenta no tiene acceso a TenderFlow.",
 };
 
-const ERROR_CONEXION = "Error de conexión. Inténtalo de nuevo.";
+/* El mismo texto que el resto de la aplicación para el mismo fallo. El resto
+ * de errores de la API pasan por `getErrorMessage(…, "accion")`: el `detail`
+ * cuando explica qué falló de lo pedido, y un mensaje humano en los 5xx en vez
+ * del texto crudo del servidor. */
+const ERROR_CONEXION = MENSAJE_SIN_CONEXION;
 
 /**
  * Campos del acceso con correo y contraseña, con los nombres de `LoginRequest` y
@@ -140,7 +145,7 @@ export function useLoginForm() {
       window.location.href = destino();
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.status === 401 ? "Credenciales incorrectas." : err.message);
+        setError(err.status === 401 ? "Credenciales incorrectas." : getErrorMessage(err, "accion"));
       } else {
         setError(ERROR_CONEXION);
       }
@@ -170,7 +175,7 @@ export function useLoginForm() {
             ? "Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo."
             : err.status === 401
               ? "Código incorrecto. Revisa tu app de autenticación."
-              : err.message,
+              : getErrorMessage(err, "accion"),
         );
       } else {
         setError(ERROR_CONEXION);
@@ -208,7 +213,7 @@ export function useLoginForm() {
     } catch (err) {
       if (err instanceof ApiError) {
         // 409: email ya registrado · 400: contrasena no cumple la politica
-        setError(err.status === 409 ? "Este correo ya está registrado." : err.message);
+        setError(err.status === 409 ? "Este correo ya está registrado." : getErrorMessage(err, "accion"));
       } else {
         setError(ERROR_CONEXION);
       }
@@ -233,7 +238,7 @@ export function useLoginForm() {
       );
       window.location.href = authorization_url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Error al conectar con ${nombre}`);
+      setError(err instanceof Error ? getErrorMessage(err, "accion") : `No se pudo conectar con ${nombre}.`);
       setLoading(false);
     }
   }

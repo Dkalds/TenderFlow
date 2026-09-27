@@ -109,19 +109,19 @@ function ProximasCabecera({ consola }: { consola: RadarProximasConsola }) {
     <div className="flex-none border-b border-border/60 bg-card px-3 py-2 md:px-3.5">
       <p className="text-tf-meta text-muted-foreground">
         Compras que el órgano ya ha anunciado y que <strong className="font-semibold">todavía
-        no han salido a licitación</strong>. Aquí no hay plazo al que presentarse; sirve para
+        no han salido a licitación</strong>: aún no hay plazo al que presentarse, pero sirve para
         llegar antes al pliego.
-        {/* Los estados que definen la bandeja los declara el servidor y se
-            enseñan tal cual llegan: la pantalla no da por hecho cuáles son. Si
-            el universo cambia en backend, esta línea cambia con él. */}
+        {/* Los estados que definen la bandeja llegan con la respuesta y se
+            enseñan tal cual: la pantalla no da por hecho cuáles son, y si
+            cambian, esta línea cambia con ellos. */}
         {estados.length > 0 && (
           <>
             {" "}
-            Universo:{" "}
+            Estados:{" "}
             <span className="font-medium text-foreground">
               {estados.map((codigo) => estadoLabel(codigo)).join(" · ")}
             </span>
-            , abiertos.
+            , solo abiertos.
           </>
         )}
       </p>
@@ -130,9 +130,9 @@ function ProximasCabecera({ consola }: { consola: RadarProximasConsola }) {
           <span className="tf-tnum">
             {conFechaPrevista} de {total}
           </span>{" "}
-          traen fecha prevista publicada; el resto se listan como «sin fecha». La fecha es la de
-          inicio previsto del contrato — la única que la fuente publica antes del pliego, y no se
-          estima cuando falta.
+          traen fecha prevista publicada; el resto salen «sin fecha». Es la fecha de inicio
+          previsto del contrato, la única que se publica antes del pliego, y no se estima cuando
+          falta.
           {truncadas > 0 && <> Se muestran las {total - truncadas} primeras.</>}
         </p>
       )}
@@ -154,7 +154,7 @@ function ProximasVacia() {
     <PanelEmpty
       className="py-16"
       title="Ninguna compra anunciada por ahora"
-      hint="Publicar un anuncio previo es potestativo para el órgano, y la consulta preliminar apenas entra por la sindicación de PLACSP: llega sobre todo de las plataformas autonómicas. Que esta bandeja esté vacía es lo habitual, no un fallo de carga."
+      hint="Anunciar una compra antes del pliego es voluntario para el órgano, y las consultas preliminares llegan sobre todo de las plataformas autonómicas. Que esta bandeja esté vacía es lo habitual, no un fallo de carga."
     />
   );
 }

@@ -14,7 +14,7 @@
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Panel, PanelEmpty, PanelTitle } from "@/components/console/panel";
+import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getErrorMessage } from "@/lib/query-feedback";
@@ -65,10 +65,17 @@ export function InvitacionesPendientes({
       <PanelTitle title="Invitaciones pendientes" hint="personas sin cuenta a las que se ha enviado un enlace" />
       {invitations.isLoading ? (
         <Skeleton className="h-10 w-full" />
+      ) : invitations.error ? (
+        <PanelError
+          variant="inline"
+          title="No se pudieron cargar las invitaciones"
+          error={invitations.error}
+          onRetry={() => void invitations.refetch()}
+        />
       ) : rows.length === 0 ? (
         <PanelEmpty
           size="sm"
-          title="No hay invitaciones pendientes."
+          title="No hay invitaciones pendientes"
           hint="Cuando invites a alguien sin cuenta, aparecerá aquí hasta que acepte o caduque la invitación."
         />
       ) : (

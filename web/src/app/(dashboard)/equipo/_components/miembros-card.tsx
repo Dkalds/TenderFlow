@@ -11,7 +11,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Aviso, Panel, PanelEmpty, PanelTitle } from "@/components/console/panel";
+import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -161,11 +161,22 @@ export function MiembrosCard({
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
               </div>
+            ) : members.error ? (
+              <PanelError
+                variant="inline"
+                title="No se pudieron cargar los miembros"
+                error={members.error}
+                onRetry={() => void members.refetch()}
+              />
             ) : rows.length === 0 ? (
               <PanelEmpty
                 size="sm"
-                title="Todavía no hay miembros en esta organización."
-                hint={canManage ? "Añade el primero con su correo." : undefined}
+                title="Todavía no hay miembros en esta organización"
+                hint={
+                  canManage
+                    ? "Añade el primero con su correo."
+                    : "Quien administre la organización puede añadir miembros."
+                }
               />
             ) : (
               <Table>

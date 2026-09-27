@@ -1,7 +1,7 @@
 import type { LicitacionPublica } from "@/lib/publico-api";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { fechaOpcional } from "./ficha-formato";
-import { ROTULO } from "./piel-publica";
+import { ROTULO, TITULO_BLOQUE } from "./piel-publica";
 import { plazoPresentacion } from "./plazo";
 
 /** Par etiqueta/valor; `null` en el valor significa "la fuente no lo publica". */
@@ -17,7 +17,10 @@ type Par = [string, string | null];
  * abierta, y esta ficha es lo primero que ve quien llega desde un buscador.
  *
  * Las etiquetas van en frase y a 11 px (`ROTULO`, decisión D2), no en versal:
- * la versal queda para las cabeceras de columna de tabla.
+ * la versal queda para las cabeceras de columna de tabla. Las cifras de los
+ * destacados, en la sans a 20 px con cifras tabulares, como la cifra de un KPI
+ * en la consola (D7): el mismo importe se lee igual dentro y fuera. La serif es
+ * para titulares, no para datos.
  */
 export function destacadosDeAnuncio(lic: LicitacionPublica): Par[] {
   const plazo = plazoPresentacion(lic.fecha_limite);
@@ -63,13 +66,13 @@ export function DatosDelAnuncio({ lic }: { lic: LicitacionPublica }) {
           {destacados.map(([etiqueta, valor]) => (
             <div key={etiqueta} className="border-border/70 bg-card rounded-xl border p-4">
               <dt className={ROTULO}>{etiqueta}</dt>
-              <dd className="font-display text-tf-title tf-tnum mt-1">{valor}</dd>
+              <dd className="text-tf-title tf-tnum mt-1">{valor}</dd>
             </div>
           ))}
         </dl>
       )}
 
-      <h2 className="font-display mt-12 text-xl font-semibold tracking-[-0.02em]">Datos del anuncio</h2>
+      <h2 className={cn(TITULO_BLOQUE, "mt-12")}>Datos del anuncio</h2>
       <dl className="border-border/70 bg-card mt-5 grid gap-x-10 gap-y-4 rounded-xl border p-6 sm:grid-cols-2">
         {datos.map(([etiqueta, valor]) => (
           <div key={etiqueta}>

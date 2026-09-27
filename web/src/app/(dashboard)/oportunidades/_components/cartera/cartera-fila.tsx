@@ -10,6 +10,7 @@
  * dónde pintarlo, y un control que no hace nada es peor que su ausencia.
  */
 import Link from "next/link";
+import { EnlaceIr } from "@/components/console/panel";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { fechaCorta } from "@/lib/adjudicacion-prevista";
 import type { ContratoCartera } from "@/lib/cartera";
@@ -44,12 +45,9 @@ export function CarteraFila({
           {contrato.tecnologia ? ` · ${contrato.tecnologia}` : null}
         </p>
         {contrato.renovacion_pursuit_id ? (
-          <Link
-            href={`/oportunidades/${contrato.renovacion_pursuit_id}`}
-            className="text-tf-micro font-medium text-primary hover:underline"
-          >
+          <EnlaceIr href={`/oportunidades/${contrato.renovacion_pursuit_id}`} className="text-tf-micro">
             Ver oportunidad de renovación
-          </Link>
+          </EnlaceIr>
         ) : (
           <PrepararRenovacion
             carteraId={contrato.id}

@@ -35,6 +35,14 @@ queda: [`docs/UX_AUDIT.md`](../docs/UX_AUDIT.md). Antes de rediseñar navegació
 cabeceras o formato de datos, leelo — varias de esas piezas ya tienen una
 decisión tomada y un test que la fija.
 
+Antes de escribir UI de la consola, su apartado «Aspecto de plantilla en la
+consola» trae las decisiones del dueño (D1–D8) y las reglas de la casa:
+escala `tf-*` sin `text-[Npx]`, rótulos con `ROTULO_DATO`, primitivos de
+`@/components/console/panel` (no `Card`, `EmptyState` ni `KpiCard`), sin
+Sparkles ni emojis, tuteo y una interfaz que no narra su implementación. Lo
+vigilan `npm run lint` (`importacionesRetiradas` y `restriccionesDeAspecto` en
+`web/eslint.config.mjs`) y `web/src/__tests__/voz-de-la-interfaz.test.ts`.
+
 # Motion (Emil Kowalski design engineering)
 
 Tokens de easing, duraciones por tipo de elemento, primitivos enter/exit,

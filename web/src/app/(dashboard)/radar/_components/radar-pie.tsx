@@ -12,7 +12,9 @@ export function RadarPie({ statusLine }: { statusLine: string }) {
   return (
     <div className="flex h-[34px] min-w-0 flex-none items-center gap-3.5 border-t border-border/70 bg-card px-3 text-tf-micro text-muted-foreground md:px-3.5">
       <span className="tf-tnum truncate">{statusLine}</span>
-      <span className="hidden lg:inline">· top 24 del mercado abierto por potencial comercial</span>
+      {/* Qué lista es: las 24 abiertas que mejor puntúan con tu perfil, no
+          todas las abiertas. */}
+      <span className="hidden lg:inline">· las 24 abiertas que mejor encajan con tu perfil</span>
       <div className="flex-1" />
       {SHORTCUTS.map((shortcut) => (
         <span key={shortcut.key} className="hidden items-center gap-1.5 md:inline-flex">

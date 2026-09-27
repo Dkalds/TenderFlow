@@ -11,6 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { PanelEmpty } from "@/components/console/panel";
 import { cn } from "@/lib/utils";
 import { CHART_SERIES } from "@/lib/chart-colors";
 
@@ -34,6 +35,8 @@ interface RadarChartProps {
   compareName?: string;
   height?: number;
   className?: string;
+  /** Qué compara el gráfico, para el lector de pantalla (no el tipo de gráfico). */
+  "aria-label"?: string;
 }
 
 export const RadarChart = React.memo(function RadarChart({
@@ -43,6 +46,7 @@ export const RadarChart = React.memo(function RadarChart({
   compareName = "Comparación",
   height = 350,
   className,
+  "aria-label": ariaLabel = "Gráfico de radar",
 }: RadarChartProps) {
   const merged = React.useMemo(() => {
     return data.map((d, i) => ({
@@ -54,11 +58,11 @@ export const RadarChart = React.memo(function RadarChart({
   }, [data, compareData]);
 
   if (!data || data.length === 0) {
-    return <p className="text-sm text-muted-foreground text-center py-8">Sin datos disponibles</p>;
+    return <PanelEmpty size="sm" hint="No hay dimensiones que comparar con el ámbito actual." />;
   }
 
   return (
-    <div role="img" aria-label="Gráfico de radar" className={cn("w-full", className)}>
+    <div role="img" aria-label={ariaLabel} className={cn("w-full", className)}>
       <ResponsiveContainer width="100%" height={height}>
         <RechartsRadarChart data={merged} cx="50%" cy="50%" outerRadius="80%">
           <PolarGrid stroke="hsl(var(--border))" />

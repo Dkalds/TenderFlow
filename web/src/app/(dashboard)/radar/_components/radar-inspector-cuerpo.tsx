@@ -86,7 +86,7 @@ export function InspectorCuerpo({ tender }: { tender: RadarTender }) {
       <SectionTitle as="h3" hint={<GlosarioHint termino="score" />}>
         Desglose de score
       </SectionTitle>
-      <div className="mb-5.5 flex flex-col gap-[7px]">
+      <div className="mb-5.5 flex flex-col gap-1.5">
         {desglose.length === 0 ? (
           <p className="text-tf-meta text-muted-foreground">
             Aún no hay desglose de la puntuación de esta licitación.
@@ -118,7 +118,7 @@ export function InspectorCuerpo({ tender }: { tender: RadarTender }) {
               <span
                 className={cn(
                   "mt-1 h-[7px] w-[7px] shrink-0 rounded-full",
-                  index === 0 ? "bg-primary" : "bg-muted-foreground/35",
+                  index === 0 ? "bg-foreground" : "bg-muted-foreground/40",
                 )}
               />
               {index < events.length - 1 && <span className="w-px flex-1 bg-muted-foreground/20" />}

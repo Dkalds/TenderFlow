@@ -70,7 +70,7 @@ export function DispersionScatter({
               type="number"
               domain={["dataMin", "dataMax"]}
               tickFormatter={(value: number) => formatDate(new Date(value))}
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 11 }}
               name="Fecha"
             />
             {/* Logarítmico: con el 71 % de los importes por debajo de 1.000 €
@@ -86,7 +86,7 @@ export function DispersionScatter({
               domain={["dataMin", "dataMax"]}
               allowDataOverflow
               tickFormatter={(value: number) => formatCompactCurrency(value)}
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 11 }}
               name="Importe"
               width={64}
             />

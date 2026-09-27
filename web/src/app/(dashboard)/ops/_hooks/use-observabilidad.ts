@@ -36,7 +36,9 @@ export interface Observabilidad {
   lastCheck: Date | null;
   estado: EstadoGlobalSalud;
   checks: Record<string, unknown>;
-  dlqCount: number;
+  /** Registros en la cola de errores; `null` si no se ha podido leer. */
+  dlqCount: number | null;
+  dlqLoading: boolean;
 }
 
 export function useObservabilidad(): Observabilidad {
@@ -56,10 +58,12 @@ export function useObservabilidad(): Observabilidad {
     meta: META_ERROR_EN_LINEA,
   });
 
-  const { data: quality } = useQuery<QualityData>({
+  const { data: quality, isLoading: dlqLoading } = useQuery<QualityData>({
     queryKey: analyticsKeys.quality,
     queryFn: () => fetchWithAuth<QualityData>("/api/v1/analytics/quality"),
     refetchInterval: REFRESCO_MS,
+    // Su fallo lo dice el panel de la cola («sin dato»): sin toast cada 30 s.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const isOnline = !!health && !isError;
@@ -74,6 +78,9 @@ export function useObservabilidad(): Observabilidad {
     lastCheck: dataUpdatedAt ? new Date(dataUpdatedAt) : null,
     estado: isLoading ? "warn" : isOnline ? "ok" : "error",
     checks: extraerChecks(health),
-    dlqCount: quality?.dlq_count ?? 0,
+    // Sin respuesta no hay recuento: un «0» afirmaría una cola vacía que
+    // nadie ha medido (la misma regla que la tira de salud de Ops).
+    dlqCount: quality ? (quality.dlq_count ?? 0) : null,
+    dlqLoading,
   };
 }

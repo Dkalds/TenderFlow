@@ -17,11 +17,11 @@ import { cn, truncate } from "@/lib/utils";
 // esas rutas por un botón.
 const ComparacionFichasTabla = dynamic(
   () => import("@/components/pliego/comparar-fichas").then((modulo) => modulo.ComparacionFichasTabla),
-  { ssr: false, loading: () => <Skeleton className="mt-4 h-[240px] w-full rounded-lg" /> },
+  { ssr: false, loading: () => <Skeleton className="mt-4 h-[240px] w-full rounded-md" /> },
 );
 const PreguntaComparacion = dynamic(
   () => import("@/components/pliego/pregunta-comparacion").then((modulo) => modulo.PreguntaComparacion),
-  { ssr: false, loading: () => <Skeleton className="mt-6 h-[120px] w-full rounded-lg" /> },
+  { ssr: false, loading: () => <Skeleton className="mt-6 h-[120px] w-full rounded-md" /> },
 );
 
 /**

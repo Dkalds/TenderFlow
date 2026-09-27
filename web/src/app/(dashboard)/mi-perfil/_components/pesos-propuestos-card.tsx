@@ -84,7 +84,7 @@ function Insuficiente({ propuesta }: { propuesta: PesosPropuestos }) {
 }
 
 export function PesosPropuestosCard() {
-  const { data, isPending, error } = useWeightsProposal();
+  const { data, isPending, error, refetch } = useWeightsProposal();
   const aplicar = useApplyWeightsProposal();
   const [confirmando, setConfirmando] = useState(false);
 
@@ -116,7 +116,12 @@ export function PesosPropuestosCard() {
         {isPending && <p className="text-tf-meta text-muted-foreground">Calculando la propuesta…</p>}
 
         {!isPending && (error || !data) && (
-          <PanelError variant="inline" title="No se pudo calcular la propuesta de pesos" error={error ?? undefined} />
+          <PanelError
+            variant="inline"
+            title="No se pudo calcular la propuesta de pesos"
+            error={error ?? undefined}
+            onRetry={() => void refetch()}
+          />
         )}
 
         {data && data.estado === "insuficiente" && <Insuficiente propuesta={data} />}

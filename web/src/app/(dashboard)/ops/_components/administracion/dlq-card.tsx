@@ -24,7 +24,7 @@ import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { META_ERROR_EN_LINEA, getErrorMessage } from "@/lib/query-feedback";
 import { analyticsKeys } from "@/lib/query-keys";
 import { formatDate, formatNumber } from "@/lib/utils";
 
@@ -67,7 +67,7 @@ export function DlqCard() {
       void queryClient.invalidateQueries({ queryKey: analyticsKeys.quality });
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof Error ? e.message : "No se pudo reencolar la entrada");
+      toast.error("No se pudo reencolar la entrada", { description: getErrorMessage(e, "accion") });
     },
     onSettled: () => setConfirmando(null),
   });

@@ -93,7 +93,14 @@ export function EventosTimeline({ licitacionId }: { licitacionId: string }) {
 
   const items = data?.items ?? [];
   if (items.length === 0) {
-    return <PanelEmpty size="sm" className="py-0 text-left" hint="Sin eventos registrados." />;
+    return (
+      <PanelEmpty
+        size="sm"
+        className="py-0"
+        title="Sin eventos registrados"
+        hint="No consta ninguna adjudicación, modificación, prórroga ni recurso de este contrato."
+      />
+    );
   }
 
   return (

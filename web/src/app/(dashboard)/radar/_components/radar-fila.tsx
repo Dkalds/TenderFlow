@@ -89,7 +89,13 @@ export function RadarFila({
         // `contraste-tokens.test.ts` con las cifras de banda encima.
         isActive
           ? "bg-primary/9"
-          : "hover:bg-primary/5 hover:transition-colors hover:duration-110 has-[[data-slot=radar-fila-seleccion]:active]:bg-primary/9",
+          : cn(
+              "hover:bg-primary/5 hover:transition-colors hover:duration-110",
+              // Pulsado: el tinte de la fila activa en el mismo frame, sin el
+              // fundido del hover. Solo el botón en capa, no «Seguir» ni
+              // «Descartar»: `:active` sube a los ancestros.
+              "has-[[data-slot=radar-fila-seleccion]:active]:bg-primary/9 has-[[data-slot=radar-fila-seleccion]:active]:duration-0",
+            ),
       )}
     >
       {/* Seleccionar la fila es un botón EN CAPA, hermano de las
@@ -183,7 +189,7 @@ export function RadarFila({
         </Popover>
 
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-[7px]">
+          <div className="flex min-w-0 items-center gap-1.5">
             {isNew && (
               <Badge variant="success" size="sm" className="flex-none">
                 Nueva

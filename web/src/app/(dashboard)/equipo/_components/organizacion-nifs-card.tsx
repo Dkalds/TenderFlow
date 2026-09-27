@@ -15,8 +15,7 @@
 import * as React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Panel, PanelTitle } from "@/components/console/panel";
-import { Badge } from "@/components/ui/badge";
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -100,6 +99,15 @@ export function OrganizacionNifsCard({
       <div className="space-y-3">
         {nifs.isLoading ? (
           <Skeleton className="h-10 w-full" />
+        ) : nifs.error ? (
+          // Sin esto, un fallo al leer se pintaba como «ningún NIF declarado» y
+          // el formulario invitaba a declarar de nuevo lo que ya estaba.
+          <PanelError
+            variant="inline"
+            title="No se pudo cargar la identidad fiscal"
+            error={nifs.error}
+            onRetry={() => void nifs.refetch()}
+          />
         ) : (
           <>
             {filas.length === 0 && (
@@ -148,7 +156,9 @@ export function OrganizacionNifsCard({
               </div>
             ))}
             {(nifs.data?.nifs ?? []).some((fila) => fila.empresa_id != null) && (
-              <Badge variant="secondary">Enlazado con el maestro de empresas: se excluye de «contra quién»</Badge>
+              <p className="text-tf-meta text-muted-foreground">
+                Enlazado con el maestro de empresas: tu organización ya no sale como competidora en «contra quién».
+              </p>
             )}
             <div className="flex gap-2 pt-1">
               <Button

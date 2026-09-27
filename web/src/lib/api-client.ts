@@ -344,7 +344,7 @@ export type ApiGetPath = keyof {
  * vía `@/lib/api-types`, nunca con una interfaz local.
  *
  * `init.signal` viaja en la `Request` que construye `openapi-fetch`: desde una
- * `queryFn`, pasá el `signal` de React Query igual que con `fetchWithAuth`.
+ * `queryFn`, pasa el `signal` de React Query igual que con `fetchWithAuth`.
  *
  * Migración por olas: `src/hooks/**` ya está migrado; `src/app/**`,
  * `src/components/**` y `src/lib/**` siguen pendientes.

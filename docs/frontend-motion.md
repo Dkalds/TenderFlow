@@ -38,15 +38,18 @@ propiedades CSS `scale` y `translate`, así que una lista
 `transition-[transform,…]` no las anima y la pulsación salta sin transición.
 En `transition-[…]` se nombran (`transition-[scale,background-color]`,
 `transition-[translate,color]`) o se usa `transition-transform`, que ya las
-incluye.
+incluye. Había 23; hoy una lista con `transform` no pasa `npm run lint`
+(`restriccionesDeAspecto` en `web/eslint.config.mjs`).
 
 ## Duración por tipo de elemento
 
 | Elemento | Duración | Dónde |
 | --- | --- | --- |
 | Hover y cambio de estado (color, borde, fondo) | 150ms, curva de la casa (por defecto) | `@theme` de `globals.css` |
-| Filas de tabla y de lista (hover, fila activa) | 110ms, solo color | `ui/table.tsx` y filas propias |
-| Pulsación (`tf-pressable`, `Button` `active:`) | 150ms, `scale: 0.97` | `globals.css`, `ui/button.tsx` |
+| Filas de tabla y de lista (hover) | 110ms, solo color | `ui/table.tsx` y filas propias |
+| Fila activa del Radar al moverse con J/K | instantánea: la transición de color va solo en `hover:` | `radar-fila.tsx` |
+| Pulsación de controles (`tf-pressable`, `Button` `active:`) | 150ms, `scale: 0.97` | `globals.css`, `ui/button.tsx` |
+| Pulsación de superficies grandes (filas enlazadas, celdas de la tira de KPIs, tarjetas enlace) | tinte instantáneo: `active:bg-primary/10 active:duration-0`, sin escala | `PULSABLE_SOBRE_TARJETA` de `console/panel.tsx` y filas propias |
 | Tooltips | 150ms enter (skip en repetición) | `ui/tooltip.tsx` |
 | Dropdown / Select / Popover | 150ms | `@utility animate-in/out` |
 | Sheet / Dialog | 300ms enter / 200ms exit (asimétrico) | `anim-duration-300`/`-200` |
@@ -94,11 +97,11 @@ el 2026-09-26 con su único consumidor, la tira de KPIs de Competencia.
 
 | Regla | Aplicación en el repo |
 | --- | --- |
-| Nunca animar acciones de teclado (100+/día) | `command-palette.tsx` — sin animación, deliberado |
+| Nunca animar acciones de teclado (100+/día) | `command-palette.tsx` — sin animación, deliberado. Y J/K en el Radar: la fila activa cambia de color al instante y sus acciones no vuelven a entrar deslizándose en cada tecla, como hacían hasta el 2026-09-26 |
 | Nunca animar navegación (100+/día) | Sin fade de ruta entre páginas y sin barra de progreso: la navegación la señalan los `loading.tsx` de cada segmento, que pintan al instante. NProgress se retiró el 2026-09-26: solo se encendía con clics en `<a>`, así que las navegaciones por `router.push` (paleta ⌘K, atajos G+X, Agenda, Renovaciones) no daban ninguna señal, y su «peg» luminoso era la firma del ejemplo `with-nprogress` |
-| Nunca animar datos que el usuario vino a leer | `KpiCard`/`StatCell` renderizan el valor directo, sin count-up ni entrada escalonada |
+| Nunca animar datos que el usuario vino a leer | `StatCell` pinta el valor directo, sin count-up ni entrada escalonada. Las barras de puntuación y de plazo, igual: el ancho se pinta sin transición. Con los 420 ms que llevaban no llegaban a verse en cuatro sitios, y en la ficha de /detalle interpolaban la puntuación de una licitación hasta la de la siguiente |
 | Cambio de pestaña | `PanelTabs` y `TabsContent` cambian el contenido al instante: se cambian con flechas (teclado) y muchas veces por sesión |
-| Hover en la consola: solo color u opacidad | Filas, celdas, tarjetas y enlaces «ir a» (`EnlaceIr`) no se desplazan al pasar el ratón: lo que se ve decenas de veces al día no se mueve. Sin `translate` de hover ni `animate-ping`/pulsos infinitos decorativos |
+| Hover en la consola: solo color u opacidad | Filas, celdas, tarjetas y enlaces «ir a» (`EnlaceIr`) no se desplazan al pasar el ratón: lo que se ve decenas de veces al día no se mueve. Sin `translate` de hover ni `animate-ping`/pulsos infinitos decorativos (`animate-ping` y `animate-bounce` no pasan el lint). El único parpadeo que queda es el cursor mientras se emite una respuesta del chat, `motion-safe` y `aria-hidden` |
 | Nada de fondos animados a pantalla completa | El login tuvo una red de partículas en canvas (un bucle `requestAnimationFrame` perpetuo) sobre una retícula con máscara; se retiró con la retícula (`.tf-hero-grid`) el 2026-09-26 (apple-design §14; WCAG 2.2.2) |
 | CSS gana a JS bajo carga | `motion`/Framer Motion salió del bundle: `MotionProvider`, `FadeIn`, `PageTransition` y `AnimatedNumber` se eliminaron; `Stagger` se reescribió en CSS puro y después se retiró |
 
@@ -170,7 +173,8 @@ transición, tal como pide la skill).
 Cualquier componente que use `<Tooltip>` necesita un ancestro
 `TooltipProvider` — si un test renderiza el componente de forma aislada
 (fuera del árbol de `Providers`), hay que envolverlo explícitamente (ver
-`global-filter-bar.test.tsx`, `top-nav.test.tsx`, `kpi-card.test.tsx`).
+`empresas/__tests__/maestro-list.test.tsx` o
+`mercado/_components/__tests__/renovaciones-view.test.tsx`).
 
 **Migración de `title=` nativos**: cerrada el 2026-09-18 (techo 0 en
 `scripts/check_title_attrs.py`, `deudaTitleNativo` vacía). Dos herramientas:
@@ -189,7 +193,8 @@ Cualquier componente que use `<Tooltip>` necesita un ancestro
 
 `components/ui/table.tsx` sigue siendo el primitivo para tablas cortas.
 Para listas largas (renovaciones, hasta 1000 filas), usar `TableVirtuoso` de
-`react-virtuoso` (ver `app/(dashboard)/renovaciones/page.tsx`): compone con
+`react-virtuoso` (ver
+`app/(dashboard)/mercado/_components/renovaciones/renovaciones-lista.tsx`): compone con
 los mismos `TableHead`/`TableBody`/`TableCell`/`TableRow` de
 `ui/table.tsx` vía el prop `components`, pero **sin** el `<div
 overflow-auto>` que envuelve `Table` normalmente — Virtuoso es dueño del

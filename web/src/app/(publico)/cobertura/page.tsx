@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { EnlaceIrPublico } from "../_components/enlace-ir";
+import { TITULO_SECCION } from "../_components/piel-publica";
 import { PaginaEvidencia } from "../_components/pagina-evidencia";
 import { CONTENIDO } from "../_content/landing";
 import { CoberturaDeclarada } from "./_components/cobertura-declarada";
@@ -41,7 +42,7 @@ export default function CoberturaPage() {
       <CoberturaDeclarada />
       <section className="border-border/60 bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
-          <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">Familias observadas</h2>
+          <h2 className={TITULO_SECCION}>Familias observadas</h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">
             {CONTENIDO.familiasTitulo}
           </p>

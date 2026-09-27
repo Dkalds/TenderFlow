@@ -55,13 +55,13 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
             <XAxis
               dataKey="period"
               tickFormatter={(value: string) => formatDate(value)}
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 11 }}
               interval="preserveStartEnd"
               minTickGap={24}
             />
             <YAxis
               tickFormatter={(value: number) => formatNumber(value)}
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 11 }}
               width={52}
             />
             <Tooltip

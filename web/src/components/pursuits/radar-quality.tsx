@@ -1,6 +1,6 @@
 import type { PursuitMetrics } from "@/hooks/use-pursuits";
 import { CABECERA_COLUMNA } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 /**
  * Calidad del Radar: ¿lo que puso arriba es lo que el equipo ganó?
@@ -82,13 +82,13 @@ function SinBandaSellada() {
   );
 }
 
-/** «8 de 12 desde el 2026-01-01»: el universo del que habla el cuadro. */
+/** «Ventana 1 ene 2026 → 31 mar 2026»: el universo del que habla el cuadro. */
 function CoberturaRadar({ calidad }: { calidad: RadarQuality }) {
   const desde = calidad.ventana_desde?.slice(0, 10);
   const hasta = calidad.ventana_hasta?.slice(0, 10);
   return (
     <p className="mt-2 text-tf-micro leading-relaxed text-muted-foreground">
-      {desde && hasta ? `Ventana ${desde} → ${hasta}. ` : null}
+      {desde && hasta ? `Ventana ${formatDate(desde)} → ${formatDate(hasta)}. ` : null}
       {calidad.pursuits_con_banda} de {calidad.pursuits_total} oportunidades guardan la banda con
       la que se abrieron; el resto es anterior a que se empezara a guardar.
     </p>

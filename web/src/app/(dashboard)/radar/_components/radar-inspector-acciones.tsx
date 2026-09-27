@@ -65,105 +65,105 @@ export function InspectorAcciones({
 
   return (
     <div data-slot="radar-inspector-acciones" className="flex-none border-t border-border/60 bg-card">
-    {/* A 11 px y sin iconos: a 12 px la fila cabía en Windows con 4 px de
-        aire, pero no en el Chromium de Linux del E2E, que redondea el avance de
-        cada glifo a píxel entero y la ensanchaba unos 6 px. Por eso no son
-        `Button size="sm"` (12 px). */}
-    <div
-      role="group"
-      aria-label="Más tarde"
-      className="flex flex-wrap items-center gap-[7px] border-b border-border/40 px-4.5 py-2 text-tf-micro"
-    >
-      <button
-        type="button"
-        onClick={() => onAplazar("silenciar", DIAS_SILENCIO)}
-        className="tf-pressable inline-flex h-7 items-center rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground hover:text-foreground"
+      {/* A 11 px y sin iconos: a 12 px la fila cabía en Windows con 4 px de
+          aire, pero no en el Chromium de Linux del E2E, que redondea el avance de
+          cada glifo a píxel entero y la ensanchaba unos 6 px. Por eso no son
+          `Button size="sm"` (12 px). */}
+      <div
+        role="group"
+        aria-label="Más tarde"
+        className="flex flex-wrap items-center gap-[7px] border-b border-border/40 px-4.5 py-2 text-tf-micro"
       >
-        Silenciar {DIAS_SILENCIO} días
-      </button>
-      {/* `ml-auto` y no un hueco `flex-1`: con `gap`, el hueco cuenta como un
-          hijo más y suma 7 px aunque mida 0. «Posponer» caía solo a una
-          segunda línea, lejos de su plazo. Y el plazo va con su botón: si algún
-          día no caben, baja el grupo entero. */}
-      <div className="ml-auto flex items-center gap-[7px]">
-        <label htmlFor={selectId} className="text-muted-foreground">
-          Recordar en
-        </label>
-        <select
-          id={selectId}
-          value={plazo}
-          onChange={(event) => setPlazo(Number(event.target.value))}
-          className="h-7 rounded-md border border-border/80 bg-card px-1.5 text-tf-micro"
-        >
-          {PLAZOS_RECORDATORIO.map((dias) => (
-            <option key={dias} value={dias}>
-              {dias} días
-            </option>
-          ))}
-        </select>
         <button
           type="button"
-          onClick={() => onAplazar("posponer", plazo)}
+          onClick={() => onAplazar("silenciar", DIAS_SILENCIO)}
           className="tf-pressable inline-flex h-7 items-center rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground hover:text-foreground"
         >
-          Posponer
+          Silenciar {DIAS_SILENCIO} días
         </button>
-      </div>
-    </div>
-    <div className="flex flex-col gap-[7px] px-4.5 py-3">
-      <div className="flex items-center gap-[7px]">
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="tf-pressable h-8.5 flex-none rounded-md border border-border/80 px-3 text-tf-body font-medium text-muted-foreground hover:border-destructive/50 hover:text-destructive"
-        >
-          Descartar
-        </button>
-        {/* El control único (ADR-031 §C). Nombre accesible = el texto visible,
-            como antes: «Seguir» / «Siguiendo». */}
-        <SeguirBoton
-          targetType="licitacion"
-          targetId={tender.id_externo}
-          icono="estrella"
-          nombreAccesible="visible"
-          clases={{
-            base: "tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border px-3 text-tf-body font-medium",
-            activo: "border-primary/50 bg-primary/15 text-primary",
-            inactivo: "border-border/80 text-muted-foreground hover:text-foreground",
-          }}
-          onAlternar={onFollowed}
-        />
-        {/* F2.8 — a la bandeja de comparación, que sigue abierta al pasar a la
-            watchlist o a Detalle. */}
-        <CompararBoton
-          id={tender.id_externo}
-          titulo={tender.titulo}
-          className="tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border border-border/80 px-3 text-tf-body font-medium text-muted-foreground hover:text-foreground aria-pressed:border-primary/50 aria-pressed:bg-primary/15 aria-pressed:text-primary"
-        />
-      </div>
-      <div className="flex items-center gap-[7px]">
-        <Button
-          type="button"
-          onClick={onOpenPursuit}
-          disabled={opening}
-          className="h-8.5 flex-1 gap-1.5 text-tf-body font-semibold [&_svg]:size-3.5"
-        >
-          {opening && <Loader2 className="animate-spin" aria-hidden="true" />}
-          Abrir oportunidad
-        </Button>
-        {tender.url && (
-          <a
-            href={tender.url}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={fuenteLinkLabel(tender.fuente, tender.url)}
-            className="tf-pressable grid size-8.5 flex-none place-items-center rounded-md border border-border/80 text-muted-foreground hover:text-foreground"
+        {/* `ml-auto` y no un hueco `flex-1`: con `gap`, el hueco cuenta como un
+            hijo más y suma 7 px aunque mida 0. «Posponer» caía solo a una
+            segunda línea, lejos de su plazo. Y el plazo va con su botón: si algún
+            día no caben, baja el grupo entero. */}
+        <div className="ml-auto flex items-center gap-[7px]">
+          <label htmlFor={selectId} className="text-muted-foreground">
+            Recordar en
+          </label>
+          <select
+            id={selectId}
+            value={plazo}
+            onChange={(event) => setPlazo(Number(event.target.value))}
+            className="h-7 rounded-md border border-border/80 bg-card px-1.5 text-tf-micro"
           >
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-          </a>
-        )}
+            {PLAZOS_RECORDATORIO.map((dias) => (
+              <option key={dias} value={dias}>
+                {dias} días
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => onAplazar("posponer", plazo)}
+            className="tf-pressable inline-flex h-7 items-center rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground hover:text-foreground"
+          >
+            Posponer
+          </button>
+        </div>
       </div>
-    </div>
+      <div className="flex flex-col gap-[7px] px-4.5 py-3">
+        <div className="flex items-center gap-[7px]">
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="tf-pressable h-8.5 flex-none rounded-md border border-border/80 px-3 text-tf-body font-medium text-muted-foreground hover:border-destructive/50 hover:text-destructive"
+          >
+            Descartar
+          </button>
+          {/* El control único (ADR-031 §C). Nombre accesible = el texto visible,
+              como antes: «Seguir» / «Siguiendo». */}
+          <SeguirBoton
+            targetType="licitacion"
+            targetId={tender.id_externo}
+            icono="estrella"
+            nombreAccesible="visible"
+            clases={{
+              base: "tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border px-3 text-tf-body font-medium",
+              activo: "border-primary/50 bg-primary/15 text-primary",
+              inactivo: "border-border/80 text-muted-foreground hover:text-foreground",
+            }}
+            onAlternar={onFollowed}
+          />
+          {/* F2.8 — a la bandeja de comparación, que sigue abierta al pasar a la
+              watchlist o a Detalle. */}
+          <CompararBoton
+            id={tender.id_externo}
+            titulo={tender.titulo}
+            className="tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border border-border/80 px-3 text-tf-body font-medium text-muted-foreground hover:text-foreground aria-pressed:border-primary/50 aria-pressed:bg-primary/15 aria-pressed:text-primary"
+          />
+        </div>
+        <div className="flex items-center gap-[7px]">
+          <Button
+            type="button"
+            onClick={onOpenPursuit}
+            disabled={opening}
+            className="h-8.5 flex-1 gap-1.5 text-tf-body font-semibold [&_svg]:size-3.5"
+          >
+            {opening && <Loader2 className="animate-spin" aria-hidden="true" />}
+            Abrir oportunidad
+          </Button>
+          {tender.url && (
+            <a
+              href={tender.url}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={fuenteLinkLabel(tender.fuente, tender.url)}
+              className="tf-pressable grid size-8.5 flex-none place-items-center rounded-md border border-border/80 text-muted-foreground hover:text-foreground"
+            >
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

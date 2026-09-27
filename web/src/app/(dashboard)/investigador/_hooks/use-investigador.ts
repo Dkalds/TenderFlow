@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithAuth } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 import { useFilters } from "@/lib/filters";
+import { formatDate } from "@/lib/utils";
 import { useAskModels, useChat, type UseChatResult } from "@/hooks/use-ask";
 import {
   DEFAULT_CONFIG,
@@ -77,9 +78,9 @@ export function useInvestigador(): UseInvestigadorResult {
   const activeSearchFilters = useMemo(() => {
     if (!config.useGlobalFilters) return [] as string[];
     const chips = [...globalFilters.ccaas, ...globalFilters.tecnologias];
-    if (globalFilters.rango.desde || globalFilters.rango.hasta) {
-      chips.push(`${globalFilters.rango.desde ?? "…"} → ${globalFilters.rango.hasta ?? "…"}`);
-    }
+    const { desde, hasta } = globalFilters.rango;
+    // Fechas en la forma de la casa («1 jul 2026»), no en ISO: el chip se lee.
+    if (desde || hasta) chips.push(`${desde ? formatDate(desde) : "…"} → ${hasta ? formatDate(hasta) : "…"}`);
     return chips;
   }, [config.useGlobalFilters, globalFilters]);
 

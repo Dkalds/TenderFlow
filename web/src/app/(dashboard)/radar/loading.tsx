@@ -28,7 +28,7 @@ export default function RadarLoading() {
           <Skeleton className="h-3 w-48 rounded-sm" />
         </div>
       </section>
-      <aside className="hidden w-[432px] flex-none flex-col gap-3 p-4 xl:flex">
+      <aside className="hidden w-[432px] flex-none flex-col gap-3 bg-card p-4 xl:flex">
         <Skeleton className="h-5 w-3/4 rounded-sm" />
         <Skeleton className="h-4 w-1/2 rounded-sm" />
         <Skeleton className="h-40 w-full rounded-xl" />

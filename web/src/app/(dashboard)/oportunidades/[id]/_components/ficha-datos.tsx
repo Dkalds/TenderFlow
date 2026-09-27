@@ -166,7 +166,7 @@ export function FichaDatos({
  * (ADR-032): por eso la etiqueta no afirma «sin IVA».
  */
 function ImporteLicitacion({ pursuit }: { pursuit: Pursuit }) {
-  const { data: licitacion, isPending } = useLicitacion(pursuit.licitacion_id);
+  const { data: licitacion, isPending, isError } = useLicitacion(pursuit.licitacion_id);
   const lote = pursuit.lote_numero
     ? licitacion?.lotes?.find((candidato) => candidato.numero === pursuit.lote_numero)
     : undefined;
@@ -184,6 +184,10 @@ function ImporteLicitacion({ pursuit }: { pursuit: Pursuit }) {
     <Celda etiqueta={etiqueta}>
       {isPending ? (
         <Skeleton className="h-[15px] w-20 rounded-sm" />
+      ) : isError ? (
+        // Un fallo no es «sin importe»: la pestaña «Expediente» lo dice con
+        // Reintentar (la consulta es la misma y no lanza toast).
+        <span className="text-muted-foreground text-tf-body">No se pudo cargar</span>
       ) : importe != null ? (
         <span className="tf-tnum text-tf-lede leading-none font-semibold">
           {formatCompactCurrency(importe)}

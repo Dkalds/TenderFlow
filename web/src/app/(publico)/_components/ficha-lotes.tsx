@@ -1,6 +1,7 @@
 import type { LicitacionPublica } from "@/lib/publico-api";
 import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { cn, formatCurrency } from "@/lib/utils";
+import { TITULO_BLOQUE } from "./piel-publica";
 
 /**
  * Lotes del anuncio, tal y como los publica la fuente.
@@ -8,13 +9,16 @@ import { cn, formatCurrency } from "@/lib/utils";
  * `lotes` es opcional en el esquema generado: Pydantic lo declara con
  * `default_factory`, así que no sale como requerido en el OpenAPI. Sin lotes no
  * se pinta nada — ni el título ni la tabla vacía.
+ *
+ * Solo el CPV va en monoespaciada, porque es un código; el número de lote es
+ * un ordinal y va en la sans, con cifras tabulares como el importe.
  */
 export function LotesLicitacion({ lotes }: { lotes: NonNullable<LicitacionPublica["lotes"]> }) {
   if (lotes.length === 0) return null;
 
   return (
     <>
-      <h2 className="font-display mt-12 text-xl font-semibold tracking-[-0.02em]">Lotes ({lotes.length})</h2>
+      <h2 className={cn(TITULO_BLOQUE, "mt-12")}>Lotes ({lotes.length})</h2>
       {/* Foco propio: en móvil la tabla de lotes scrollea en horizontal y no
           tiene controles dentro (axe `scrollable-region-focusable`). */}
       <div
@@ -44,7 +48,7 @@ export function LotesLicitacion({ lotes }: { lotes: NonNullable<LicitacionPublic
           <tbody>
             {lotes.map((lote) => (
               <tr key={lote.numero} className="border-border/30 border-b last:border-b-0">
-                <td className="py-2.5 pr-4 font-mono text-xs">{lote.numero}</td>
+                <td className="tf-tnum py-2.5 pr-4">{lote.numero}</td>
                 <td className="py-2.5 pr-4">{lote.titulo ?? "—"}</td>
                 <td className="py-2.5 pr-4 font-mono text-xs">{lote.cpv ?? "—"}</td>
                 <td className="tf-tnum py-2.5 text-right">{formatCurrency(lote.importe)}</td>

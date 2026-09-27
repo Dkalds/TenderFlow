@@ -154,7 +154,12 @@ export function WebhooksCard() {
             <Skeleton className="h-5 w-3/4" />
           </div>
         ) : form.error ? (
-          <PanelError variant="inline" title="No se pudieron cargar los webhooks" error={form.error} />
+          <PanelError
+            variant="inline"
+            title="No se pudieron cargar los webhooks"
+            error={form.error}
+            onRetry={form.reintentar}
+          />
         ) : !form.webhooks || form.webhooks.length === 0 ? (
           <PanelEmpty
             size="sm"

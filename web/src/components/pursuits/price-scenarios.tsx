@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { Check, ShieldAlert } from "lucide-react";
-import { Aviso, Panel, PanelEmpty, ROTULO_DATO, SectionTitle } from "@/components/console/panel";
+import { Aviso, Panel, PanelEmpty, PanelError, ROTULO_DATO, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -86,10 +86,13 @@ export function PriceScenariosPanel({
     return (
       <Panel>
         <SectionTitle>Escenarios de precio</SectionTitle>
-        <PanelEmpty
-          size="sm"
-          title="Sin escenarios de precio"
-          hint="No están disponibles para esta licitación: no hay adjudicaciones comparables con las que calcularlos."
+        {/* Un fallo no es «sin comparables»: eso llega como una lista vacía y
+            tiene su propio vacío más abajo. */}
+        <PanelError
+          variant="inline"
+          title="No se pudieron cargar los escenarios de precio"
+          error={query.error}
+          onRetry={() => void query.refetch()}
         />
       </Panel>
     );
@@ -148,8 +151,8 @@ export function PriceScenariosPanel({
                   <p className={ROTULO_DATO}>{names[scenario.name]}</p>
                   <p className="tf-tnum mt-1.5 text-tf-title font-semibold">{eur(scenario.price_eur)}</p>
                   <p className="text-primary mt-1 text-tf-meta font-medium">Baja {percent(scenario.discount)}</p>
-                  {/* F2.4 — sólo cuando el pliego publica tarifas y horas; el
-                      la API lo calcula y declara la fuente. */}
+                  {/* F2.4 — sólo cuando el pliego publica tarifas y horas; la
+                      API lo calcula y declara la fuente. */}
                   {scenario.margen_implicito && (
                     <p className="mt-2 text-tf-meta">
                       Margen techo{" "}

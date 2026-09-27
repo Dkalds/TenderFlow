@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChatThread, mensajeDeFalloIA } from "@/components/chat-thread";
+import { AVISO_GENERADO, ChatThread, mensajeDeFalloIA } from "@/components/chat-thread";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
 import { useChat } from "@/hooks/use-ask";
@@ -178,9 +178,7 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
                   ▌
                 </span>
               ) : (
-                <p className="mt-2 text-tf-micro text-muted-foreground">
-                  Generado automáticamente · revisa el pliego
-                </p>
+                <p className="mt-2 text-tf-micro text-muted-foreground">{AVISO_GENERADO}</p>
               )}
             </div>
           ) : null}

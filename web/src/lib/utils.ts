@@ -199,7 +199,7 @@ export const ZONA_ES = "Europe/Madrid";
  *
  * Faltaba en este módulo, y por eso media docena de componentes se escribían su
  * propio `Intl.DateTimeFormat`/`toLocaleString` con estilos distintos: la misma
- * marca temporal se veía diferente según la pantalla. Para fecha sin hora usá
+ * marca temporal se veía diferente según la pantalla. Para fecha sin hora usa
  * `formatDate`; para "hace X", `formatRelativeTime`.
  */
 export function formatDateTime(

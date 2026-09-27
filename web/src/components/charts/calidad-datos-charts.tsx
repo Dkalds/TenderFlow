@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CHART_SERIES, URGENCY_COLORS } from "@/lib/chart-colors";
+import { formatPercent } from "@/lib/utils";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -49,7 +50,7 @@ export function CalidadCompletenessChart({ data }: { data: ColumnCompleteness[] 
             tick={{ fontSize: 12 }}
           />
           <Tooltip
-            formatter={(value) => [`${Number(value).toFixed(1)}%`, "Completitud"]}
+            formatter={(value) => [formatPercent(Number(value)), "Completitud"]}
           />
           <Bar dataKey="pct" radius={[0, 4, 4, 0]} barSize={20}>
             {data.map((entry, idx) => (
@@ -87,7 +88,7 @@ export function CalidadTendenciaChart({ data }: { data: CompletitudMesEntry[] })
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
           <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 12 }} />
-          <Tooltip formatter={(value, name) => [`${Number(value).toFixed(1)}%`, name]} />
+          <Tooltip formatter={(value, name) => [formatPercent(Number(value)), name]} />
           <Legend />
           {TENDENCIA_SERIES.map((s, i) => (
             <Line

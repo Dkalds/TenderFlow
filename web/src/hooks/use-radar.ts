@@ -12,6 +12,7 @@ import type {
   ScoringSignalsHealth,
 } from "@/lib/api-types";
 import { pursuitKeys, radarKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 /**
  * Proyección que renderiza el Radar.
@@ -83,6 +84,7 @@ export function useRadar(tecnologia: string | null = null) {
     // `useActiveOrganizationId` había adelantado.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[2] === organizationId ? previous : undefined,
+    meta: META_ERROR_EN_LINEA,
   });
 
   const items: RadarTender[] = scoring.data?.opportunities ?? [];

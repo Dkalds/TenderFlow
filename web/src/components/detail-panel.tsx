@@ -4,6 +4,7 @@ import * as React from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { LicitacionAI } from "@/components/licitacion-ai";
 import { DocumentosBlock } from "@/components/documentos-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
@@ -53,7 +54,7 @@ interface DetailPanelProps {
 }
 
 /** Labels presentacionales para las keys del desglose de scoring.
- *  Cualquier key no mapeada muestra la key raw (no rompe si el backend añade dimensiones).
+ *  Cualquier key no mapeada muestra la key raw (no rompe si la API añade dimensiones).
  */
 const DESGLOSE_LABELS: Record<string, string> = {
   importe: "Importe",
@@ -63,15 +64,6 @@ const DESGLOSE_LABELS: Record<string, string> = {
   afinidad: "Afinidad",
   senal_tecnica: "Señal técnica",
   riesgo: "Riesgo",
-};
-
-const ESTADO_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  Adjudicada: "default",
-  Resuelta: "default",
-  "En plazo": "secondary",
-  Evaluación: "secondary",
-  Anulada: "destructive",
-  Desierta: "destructive",
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -109,11 +101,8 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
 
         {/* Estado + importe */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
-          {l.estado && (
-            <Badge size="sm" variant={ESTADO_VARIANTS[l.estado] ?? "outline"}>
-              {l.estado}
-            </Badge>
-          )}
+          {/* El mismo chip de estado que el inspector de Detalle. */}
+          {l.estado && <StatusBadge value={l.estado} kind="estado" />}
           <RecurridoBadge licitacionId={l.id_externo} />
           {l.importe != null && (
             <span className="tf-tnum text-tf-title font-semibold leading-none">{formatCurrency(l.importe)}</span>

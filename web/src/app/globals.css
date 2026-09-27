@@ -352,12 +352,15 @@
  * | tf-title | 20 | 600 · -0.015em  | encabezado de ficha, cifra KPI              |
  * | tf-hero  | 32 | 650 · -0.02em   | titular de la puerta, cifra única           |
  *
- * Tamaños sueltos que quedan por migrar: de 8 a 11 px → micro; 11,5 y 12 →
- * meta; de 12,5 a 13,5 → body; 14 → `text-sm`; 15 → lede; de 16 a 22 → title
- * (salvo que el papel pida otro); 24 o más → hero o title, según el papel. Nada
- * por debajo de 11 px: a 8,5 la cabecera de una tabla deja de leerse en un
- * monitor normal, y era el tamaño de las cabeceras de media consola. Con el
- * tamaño viejo se van los `leading-[…]` y `tracking-[…]` que lo acompañaban.
+ * Los 451 tamaños sueltos se migraron el 2026-09-27 con este mapa, y quedan
+ * cero: de 8 a 11 px → micro; 11,5 y 12 → meta; de 12,5 a 13,5 → body; 14 →
+ * `text-sm`; 15 → lede; de 16 a 22 → title (salvo que el papel pida otro); 24 o
+ * más → hero o title, según el papel. Nada por debajo de 11 px: a 8,5 la
+ * cabecera de una tabla deja de leerse en un monitor normal, y era el tamaño de
+ * las cabeceras de media consola. Con el tamaño viejo se fueron los
+ * `leading-[…]` y `tracking-[…]` que lo acompañaban. Un `text-[Npx]` nuevo lo
+ * para `npm run lint` (`restriccionesDeAspecto` en `eslint.config.mjs`), igual
+ * que la receta de rótulo en mono versal.
  *
  * Tres familias, cada una con un papel (se declaran en `lib/tipografia.ts`):
  * - `font-sans` (Geist, la del body): todo el texto, cifras incluidas. El body

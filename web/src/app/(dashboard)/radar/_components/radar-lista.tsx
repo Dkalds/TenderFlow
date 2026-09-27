@@ -78,8 +78,8 @@ export function RadarLista({
   return (
     <div data-slot="radar-lista" ref={listRef} className="relative min-h-0 flex-1 overflow-y-auto">
       {error ? (
-        // `useRadar` no es de esta pantalla: el `meta` que calla el toast lo
-        // tiene que poner el hook (ver el handoff de la fase 2).
+        // Un solo aviso por fallo (D6): el toast lo calla el `meta` de la
+        // consulta, que vive en `useRadar` (`hooks/use-radar.ts`).
         <PanelError
           title="No se pudo cargar la bandeja del Radar"
           error={error}

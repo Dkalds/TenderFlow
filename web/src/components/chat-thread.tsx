@@ -25,6 +25,15 @@ export function mensajeDeFalloIA(texto: string): string {
   return "El asistente no pudo responder. Vuelve a intentarlo en unos segundos.";
 }
 
+/**
+ * Etiqueta de lo que escribe el asistente (F07, ADR-014): una respuesta de
+ * modelo no es un dato del expediente, y se dice debajo de cada una. En la
+ * ficha de una licitación hay un pliego al que remitir; en el Investigador y
+ * el copiloto, los de los expedientes citados.
+ */
+export const AVISO_GENERADO = "Generado automáticamente · revisa el pliego";
+const AVISO_GENERADO_VARIOS = "Generado automáticamente · revisa los pliegos citados";
+
 /** Bloque plegable con los fragmentos del pliego que se mandaron al modelo en un turno. */
 function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
   const [open, setOpen] = React.useState(false);
@@ -267,7 +276,14 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
       {turno.sources ? <CitasBlock info={turno.sources} /> : null}
       {turno.sources?.sinFuentes ? <SinFuentesNotice /> : null}
       {turno.fuentes && turno.fuentes.length > 0 ? <FuentesBlock fuentes={turno.fuentes} /> : null}
-      {turno.content && !turno.degraded && !enCurso ? <FeedbackButtons modo="pregunta" pregunta={pregunta} /> : null}
+      {turno.content && !turno.degraded && !enCurso ? (
+        <>
+          <p className="mt-2 text-tf-micro text-muted-foreground">
+            {expectLicitacionContext ? AVISO_GENERADO : AVISO_GENERADO_VARIOS}
+          </p>
+          <FeedbackButtons modo="pregunta" pregunta={pregunta} />
+        </>
+      ) : null}
     </div>
   );
 });

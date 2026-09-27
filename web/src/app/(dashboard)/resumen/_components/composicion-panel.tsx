@@ -8,13 +8,14 @@ import {
   PanelLoading,
   PanelTabs,
   PanelTitle,
+  panelDePestana,
 } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { getEstadoChartColor, getSeriesColor } from "@/lib/chart-colors";
 import { estadoLabel } from "@/lib/estados";
 import { useFilters } from "@/lib/filters";
-import { cn, formatCompactCurrency, formatNumber, truncate } from "@/lib/utils";
+import { cn, formatCompactCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
 import type { AnalyticsOverview } from "@/lib/api-types";
 
 /**
@@ -143,70 +144,74 @@ export function ComposicionPanel() {
         }
       />
       <div className="mb-2.5">
-        <PanelTabs tabs={TABS} value={corte} onChange={setCorte} label="Corte de la composición" />
+        <PanelTabs
+          tabs={TABS}
+          value={corte}
+          onChange={setCorte}
+          label="Corte de la composición"
+          idBase="resumen-composicion"
+        />
       </div>
 
-      {overview.error ? (
-        // Sin esto, un fallo pintaba «Sin expedientes en el ámbito»: un vacío
-        // falso que se lee como dato.
-        <PanelError
-          variant="inline"
-          title="No se pudo cargar la composición"
-          error={overview.error}
-          onRetry={() => void overview.refetch()}
-          height={ALTO}
-        />
-      ) : overview.isLoading ? (
-        <PanelLoading height={ALTO} />
-      ) : corte === "estado" ? (
-        porEstado.length === 0 ? (
+      <div {...panelDePestana("resumen-composicion", corte)}>
+        {overview.error ? (
+          // Sin esto, un fallo pintaba «Sin expedientes en el ámbito»: un vacío
+          // falso que se lee como dato.
+          <PanelError
+            variant="inline"
+            title="No se pudo cargar la composición"
+            error={overview.error}
+            onRetry={() => void overview.refetch()}
+            height={ALTO}
+          />
+        ) : overview.isLoading ? (
+          <PanelLoading height={ALTO} />
+        ) : corte === "estado" ? (
+          porEstado.length === 0 ? (
+            <PanelEmpty
+              title="Sin expedientes en el ámbito"
+              hint="Quita algún filtro del ámbito o amplía las fechas."
+              height={ALTO}
+            />
+          ) : (
+            <div className="min-h-[232px]">
+              {porEstado.map((estado) => (
+                <Barra
+                  key={estado.estado}
+                  label={estadoLabel(estado.estado)}
+                  value={estado.n}
+                  valueLabel={formatNumber(estado.n)}
+                  hint={totalEstado ? formatPercent((estado.n / totalEstado) * 100) : undefined}
+                  max={maxEstado}
+                  color={getEstadoChartColor(estado.estado)}
+                  active={estados.includes(estado.estado)}
+                  onClick={() => alternarEstado(estado.estado)}
+                />
+              ))}
+            </div>
+          )
+        ) : topOrganos.length === 0 ? (
           <PanelEmpty
-            title="Sin expedientes en el ámbito"
+            title="Sin órganos en el ámbito"
             hint="Quita algún filtro del ámbito o amplía las fechas."
             height={ALTO}
           />
         ) : (
           <div className="min-h-[232px]">
-            {porEstado.map((estado) => (
+            {topOrganos.map((organo, indice) => (
               <Barra
-                key={estado.estado}
-                label={estadoLabel(estado.estado)}
-                value={estado.n}
-                valueLabel={formatNumber(estado.n)}
-                hint={
-                  totalEstado
-                    ? `${((estado.n / totalEstado) * 100).toFixed(1).replace(".", ",")}%`
-                    : undefined
-                }
-                max={maxEstado}
-                color={getEstadoChartColor(estado.estado)}
-                active={estados.includes(estado.estado)}
-                onClick={() => alternarEstado(estado.estado)}
+                key={organo.organo_contratacion}
+                label={truncate(organo.organo_contratacion, 58)}
+                value={organo.n}
+                valueLabel={formatNumber(organo.n)}
+                hint={formatCompactCurrency(organo.importe)}
+                max={maxOrgano}
+                color={getSeriesColor(indice)}
               />
             ))}
           </div>
-        )
-      ) : topOrganos.length === 0 ? (
-        <PanelEmpty
-          title="Sin órganos en el ámbito"
-          hint="Quita algún filtro del ámbito o amplía las fechas."
-          height={ALTO}
-        />
-      ) : (
-        <div className="min-h-[232px]">
-          {topOrganos.map((organo, indice) => (
-            <Barra
-              key={organo.organo_contratacion}
-              label={truncate(organo.organo_contratacion, 58)}
-              value={organo.n}
-              valueLabel={formatNumber(organo.n)}
-              hint={formatCompactCurrency(organo.importe)}
-              max={maxOrgano}
-              color={getSeriesColor(indice)}
-            />
-          ))}
-        </div>
-      )}
+        )}
+      </div>
     </Panel>
   );
 }

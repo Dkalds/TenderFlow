@@ -116,6 +116,8 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
   const grantsQuery = useQuery<AccessGrant[]>({
     queryKey: adminKeys.accessGrants,
     queryFn: () => fetchWithAuth<AccessGrant[]>("/api/v1/admin/solicitudes-acceso/grants"),
+    // También se pinta en el panel: un fallo aquí no es «no hay concesiones».
+    meta: META_ERROR_EN_LINEA,
   });
 
   const activa = vista === "pendiente" ? pendientesQuery : historicoQuery;
@@ -178,6 +180,8 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
     pendientesTruncado: pendientes !== undefined && pendientes >= limite,
     grants: grantsQuery.data,
     grantsLoading: grantsQuery.isLoading,
+    grantsError: grantsQuery.error,
+    reintentarGrants: () => void grantsQuery.refetch(),
     cambiarEstado,
     revocar,
   };

@@ -12,6 +12,15 @@ import { cn } from "@/lib/utils";
  * component is the explicit choice for tooltips that need custom rows,
  * formatters, or labels.
  */
+/**
+ * La caja de todo tooltip de gráfico: superficie de popover, borde de token,
+ * `shadow-md` (capa flotante) y texto a 12 px con cifras tabulares. La usan
+ * también los tooltips hechos a medida (`content={...}`), para que ninguno
+ * tenga su propio tamaño de letra.
+ */
+export const CAJA_TOOLTIP =
+  "tf-tnum min-w-[10rem] rounded-md border border-border bg-popover px-3 py-2 text-tf-meta text-popover-foreground shadow-md";
+
 export interface ChartTooltipRow {
   /** Series label (e.g. "Importe") */
   name?: React.ReactNode;
@@ -77,15 +86,10 @@ export function ChartTooltip({
   return (
     <div
       role="tooltip"
-      className={cn(
-        "min-w-[10rem] rounded-md border border-border bg-popover px-3 py-2",
-        "text-xs text-popover-foreground shadow-md",
-        "tf-tnum",
-        className,
-      )}
+      className={cn(CAJA_TOOLTIP, className)}
     >
       {renderedLabel != null && renderedLabel !== "" && (
-        <p className="mb-1 text-xs font-semibold text-foreground">{renderedLabel}</p>
+        <p className="mb-1 font-semibold text-foreground">{renderedLabel}</p>
       )}
       <ul className="space-y-0.5">
         {rows.map((row, i) => (

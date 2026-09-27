@@ -130,7 +130,7 @@ export function ReportarDatoDialog({
                 value={comentario}
                 maxLength={MAX_COMENTARIO}
                 onChange={(e) => setComentario(e.target.value)}
-                placeholder="Por ejemplo: la CCAA correcta es Galicia."
+                placeholder="p. ej. la CCAA correcta es Galicia…"
                 rows={3}
               />
             </div>

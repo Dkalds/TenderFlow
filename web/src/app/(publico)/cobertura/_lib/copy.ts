@@ -76,7 +76,7 @@ export const SECCIONES: SeccionEvidencia[] = [
 export const FUENTES = {
   titulo: "Fuentes declaradas",
   introduccion:
-    "Cada fila sale del inventario de conectores. El identificador es el que aparece en una alerta de ingesta, así que sirve para hablar de una fuente concreta con soporte.",
+    "Cada fila sale del inventario que vigila la ingesta. El identificador es el que aparece en sus alertas, así que sirve para hablar de una fuente concreta con soporte.",
   /**
    * La frase que la página escribe *en lugar* de un número agregado.
    *

@@ -48,6 +48,9 @@ export interface KpiCardProps {
  * Suelto lleva su propio marco; dentro de una `StatStrip` (o `KpiStrip`) lo
  * pierde y la rejilla de 1 px hace de marco.
  *
+ * Sin importadores desde el 2026-09-27 (eran 14): `no-restricted-imports` de
+ * `eslint.config.mjs` impide volver a usarlo fuera de su test.
+ *
  * @deprecated Usa `StatCell` dentro de `StatStrip` (`@/components/console/panel`).
  */
 export const KpiCard = React.memo(function KpiCard({

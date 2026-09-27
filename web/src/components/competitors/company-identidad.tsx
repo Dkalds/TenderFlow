@@ -105,7 +105,7 @@ function IdentidadTarjeta({ consulta }: { consulta: UseQueryResult<EmpresaDetall
         </div>
         <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-tf-body">
           <dt className="text-muted-foreground">NIF</dt>
-          <dd className="font-mono">{empresa.nif_canonico ?? "Sin NIF canónico"}</dd>
+          <dd className={cn(empresa.nif_canonico && "font-mono")}>{empresa.nif_canonico ?? "Sin NIF canónico"}</dd>
           {otrosNif.length > 0 && (
             <>
               <dt className="text-muted-foreground">Otros NIF en fuente</dt>
@@ -132,7 +132,7 @@ function IdentidadTarjeta({ consulta }: { consulta: UseQueryResult<EmpresaDetall
             {empresa.aliases.slice(0, ALIAS_VISIBLES).map((alias, indice) => (
               <li
                 key={`${alias.alias_normalizado}-${indice}`}
-                className="rounded-md bg-muted px-2 py-0.5 font-mono text-tf-meta text-muted-foreground"
+                className="rounded-md bg-muted px-2 py-0.5 text-tf-meta text-muted-foreground"
               >
                 {alias.alias_normalizado}
               </li>

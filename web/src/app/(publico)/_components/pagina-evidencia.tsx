@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { ANCLA_SOLICITUD } from "@/lib/contacto";
 import { cn } from "@/lib/utils";
 import { CONTENIDO } from "../_content/landing";
-import { CTA_PRIMARIO, KICKER } from "./piel-publica";
+import { CTA_PRIMARIO, KICKER, TITULO_SECCION } from "./piel-publica";
 
 export interface SeccionEvidencia {
   titulo: string;
@@ -54,7 +54,7 @@ export function PaginaEvidencia({
         {secciones.map((seccion) => (
           <section key={seccion.titulo} className="border-border/60 border-t py-9">
             <div className="max-w-[68ch]">
-              <h2 className="font-display text-2xl font-semibold tracking-[-0.02em] text-balance">{seccion.titulo}</h2>
+              <h2 className={TITULO_SECCION}>{seccion.titulo}</h2>
               {seccion.texto.map((parrafo) => (
                 <p key={parrafo} className="text-muted-foreground mt-4 text-base leading-relaxed">
                   {parrafo}
@@ -75,9 +75,7 @@ export function PaginaEvidencia({
       </div>
 
       <footer className="border-border/60 mt-4 border-t pt-10">
-        <p className="font-display max-w-[34ch] text-2xl font-semibold tracking-[-0.02em] text-balance">
-          Contrasta estas reglas con tus propios expedientes.
-        </p>
+        <p className={cn(TITULO_SECCION, "max-w-[34ch]")}>Contrasta estas reglas con tus propios expedientes.</p>
         {/* Misma etiqueta que los otros cuatro CTA del sitio. Decía «Solicitar
             revisión», que nombraba una acción distinta de la que ocurre y
             rompía el recuento del test que exige que todos los botones de

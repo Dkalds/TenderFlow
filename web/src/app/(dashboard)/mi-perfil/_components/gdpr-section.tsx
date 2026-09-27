@@ -80,7 +80,7 @@ export function GdprSection() {
           variant={confirmDelete ? "destructive" : "outline"}
           onClick={handleDeleteClick}
           disabled={deleteMut.isPending}
-          className={confirmDelete ? undefined : "text-destructive hover:bg-destructive/10"}
+          className={confirmDelete ? undefined : "text-destructive hover:bg-destructive/5"}
         >
           {deleteMut.isPending
             ? "Eliminando…"

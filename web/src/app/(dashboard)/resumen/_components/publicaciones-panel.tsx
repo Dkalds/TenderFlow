@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { Panel, PanelError, PanelLoading, PanelTabs, PanelTitle } from "@/components/console/panel";
+import {
+  Panel,
+  PanelError,
+  PanelLoading,
+  PanelTabs,
+  PanelTitle,
+  panelDePestana,
+} from "@/components/console/panel";
 import { useFiltrosIgnorados } from "./alcance";
 import { AvisoAlcance } from "./aviso-alcance";
 import { usePublicaciones } from "../_hooks/use-publicaciones";
@@ -72,41 +79,50 @@ export function PublicacionesPanel() {
       <PanelTitle title="Publicaciones en el periodo" hint={HINTS[corte]} />
       <AvisoAlcance ignorados={ignorados} />
       <div className="mb-2.5">
-        <PanelTabs tabs={TABS} value={corte} onChange={setCorte} label="Corte de las publicaciones" />
+        <PanelTabs
+          tabs={TABS}
+          value={corte}
+          onChange={setCorte}
+          label="Corte de las publicaciones"
+          idBase="resumen-publicaciones"
+        />
       </div>
 
-      {publicaciones.error ? (
-        <PanelError
-          title="No se pudieron cargar las publicaciones"
-          error={publicaciones.error}
-          onRetry={publicaciones.refetch}
-          height={ALTO}
-        />
-      ) : publicaciones.cargando ? (
-        <PanelLoading height={ALTO} />
-      ) : corte === "ritmo" ? (
-        <RitmoChart
-          serie={publicaciones.serie}
-          serieTruncada={publicaciones.serieTruncada}
-          ventana={publicaciones.ventana}
-          onDia={publicaciones.acotarADia}
-        />
-      ) : corte === "importes" ? (
-        <ImportesHistograma
-          histograma={publicaciones.histograma}
-          total={publicaciones.totalHistograma}
-          maximo={publicaciones.maxHistograma}
-        />
-      ) : (
-        <DispersionScatter
-          puntos={publicaciones.scatterData}
-          leyenda={publicaciones.leyenda}
-          muestreado={publicaciones.muestreado}
-          totalVentana={publicaciones.totalVentana}
-          sinImporte={publicaciones.sinImporte}
-          ventana={publicaciones.ventana}
-        />
-      )}
+      <div {...panelDePestana("resumen-publicaciones", corte)}>
+        {publicaciones.error ? (
+          <PanelError
+            variant="inline"
+            title="No se pudieron cargar las publicaciones"
+            error={publicaciones.error}
+            onRetry={publicaciones.refetch}
+            height={ALTO}
+          />
+        ) : publicaciones.cargando ? (
+          <PanelLoading height={ALTO} />
+        ) : corte === "ritmo" ? (
+          <RitmoChart
+            serie={publicaciones.serie}
+            serieTruncada={publicaciones.serieTruncada}
+            ventana={publicaciones.ventana}
+            onDia={publicaciones.acotarADia}
+          />
+        ) : corte === "importes" ? (
+          <ImportesHistograma
+            histograma={publicaciones.histograma}
+            total={publicaciones.totalHistograma}
+            maximo={publicaciones.maxHistograma}
+          />
+        ) : (
+          <DispersionScatter
+            puntos={publicaciones.scatterData}
+            leyenda={publicaciones.leyenda}
+            muestreado={publicaciones.muestreado}
+            totalVentana={publicaciones.totalVentana}
+            sinImporte={publicaciones.sinImporte}
+            ventana={publicaciones.ventana}
+          />
+        )}
+      </div>
     </Panel>
   );
 }

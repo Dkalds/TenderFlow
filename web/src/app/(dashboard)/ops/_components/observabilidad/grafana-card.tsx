@@ -30,7 +30,7 @@ export function GrafanaCard() {
         <p className="text-tf-meta text-muted-foreground">
           La URL de Grafana no está configurada. Define{" "}
           <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-tf-micro">NEXT_PUBLIC_GRAFANA_URL</code>{" "}
-          en el entorno del frontend para activar el enlace.
+          en las variables de entorno de la web para activar el enlace.
         </p>
       )}
     </Panel>

@@ -261,8 +261,7 @@ export function useRadarConsola(): RadarConsola {
         toast.success("Oportunidad abierta para el equipo");
         router.push(`/oportunidades/${pursuit.id}`);
       } catch (err) {
-        // Mensaje humano y no `err.message` crudo (D6): el texto de la API va de
-        // descripción, que al actuar sí explica qué falló de lo pedido.
+        // Mensaje humano, no `err.message` crudo (D6); al actuar, el porqué va de descripción.
         toast.error("No se pudo abrir la oportunidad", { description: getErrorMessage(err, "accion") });
       }
     },

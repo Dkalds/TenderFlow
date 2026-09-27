@@ -66,10 +66,10 @@ export function CalibracionBajaBlock() {
 
   return (
     <Panel tono={data?.estado === "degradado" ? "danger" : undefined}>
-      <PanelTitle title="Calibración del intervalo de baja" className="mb-1" />
-      <p className="mb-3 text-tf-meta text-muted-foreground">
-        Cobertura real del intervalo p10-p90 frente a las bajas adjudicadas observadas.
-      </p>
+      <PanelTitle
+        title="Calibración del intervalo de baja"
+        hint="cobertura real del p10-p90 frente a las bajas adjudicadas"
+      />
       {isLoading ? (
         <Skeleton className="h-16 w-full" />
       ) : isError || !data ? (
@@ -118,7 +118,7 @@ export function CalibracionBajaBlock() {
             )}
             <span>{data.n_evaluadas} licitaciones evaluadas</span>
             {data.regimen_servido && (
-              <span>Sirviendo: {REGIMEN_INFO[data.regimen_servido].etiqueta}</span>
+              <span>Origen: {REGIMEN_INFO[data.regimen_servido].etiqueta}</span>
             )}
           </div>
           <Badge variant={info!.badge}>{info!.label}</Badge>

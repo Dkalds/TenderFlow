@@ -8,9 +8,9 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { UMBRAL_IMPORTE_RESUELTO, importeResueltoBajoUmbral, useEmpresasStats } from "@/hooks/use-empresas-stats";
 import { useEmpresasWatchlist } from "@/hooks/use-empresas-watchlist";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
+import { PanelEmpty } from "@/components/console/panel";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
-import { ApiError } from "@/lib/api-client";
 import { formatNumber, formatPercent } from "@/lib/utils";
 import { ContextLine } from "./_components/context-line";
 import { EmpresaPerfil } from "./_components/empresa-perfil";
@@ -33,8 +33,9 @@ import { UNDO_MS, useReviewQueue, type ConfidenceFilter } from "./_hooks/use-rev
  * 2. **Una sola alarma por fila.** En la cola, el NIF divergente; la similitud
  *    es una barra neutra. Dos códigos de color sobre la misma fila no dicen
  *    dos cosas, dicen ninguna.
- * 3. **El error es por bloque.** El maestro y la cola vienen de endpoints
- *    distintos: que caiga uno no puede tumbar el otro.
+ * 3. **El error es por bloque.** El maestro y la cola vienen de consultas
+ *    distintas: que caiga una no puede tumbar la otra. El error se dice en
+ *    su bloque (`PanelError`, con el detalle técnico plegado) y sin toast.
  */
 
 /** Las columnas de texto entran A→Z; las de cifra, de mayor a menor. */
@@ -156,7 +157,7 @@ export default function EmpresasPage() {
       key: "revisiones",
       label: "Revisiones",
       value: stats.data ? formatNumber(pendientes) : "…",
-      title: "Matches dudosos pendientes · abre la cola",
+      title: "Coincidencias dudosas pendientes · abre la cola",
       onClick: () => setView("revision"),
     },
   ];
@@ -175,8 +176,7 @@ export default function EmpresasPage() {
           <ReviewQueue
             items={revisiones.items}
             loading={revisiones.isLoading}
-            error={revisiones.isError}
-            errorDetail={detalleDeError(revisiones.error, "/api/v1/empresas/reviews")}
+            error={revisiones.error}
             onRetry={() => void revisiones.refetch()}
             filtro={filtroConfianza}
             onFiltroChange={setFiltroConfianza}
@@ -186,13 +186,11 @@ export default function EmpresasPage() {
           // La cola reescribe el maestro para toda la organización, así que la
           // API la reserva a administradores. Se dice, en lugar de dejar que
           // el 403 se pinte como un fallo de carga.
-          <div className="px-6 py-20 text-center">
-            <p className="text-tf-body text-foreground mb-1.5 font-medium">Cola reservada a administradores</p>
-            <p className="text-tf-meta text-muted-foreground mx-auto max-w-[46ch]">
-              Resolver un match dudoso reescribe el maestro canónico y recalcula las cuotas de Competencia para todos.
-              Hay {formatNumber(pendientes)} pendientes.
-            </p>
-          </div>
+          <PanelEmpty
+            className="py-20"
+            title="Cola reservada a administradores"
+            hint={`Resolver una coincidencia dudosa reescribe el maestro canónico y recalcula las cuotas de Competencia para todos. Hay ${formatNumber(pendientes)} pendientes.`}
+          />
         )
       ) : (
         <div className="flex h-full min-h-0">
@@ -211,14 +209,18 @@ export default function EmpresasPage() {
             onSelect={setSelectedId}
             onWatchToggled={avisarVigilancia}
             loading={lista.isLoading}
-            error={lista.isError}
-            errorDetail={detalleDeError(lista.error, "/api/v1/empresas")}
+            error={lista.error}
             onRetry={() => void lista.refetch()}
           />
-          <div className="bg-card/40 flex min-w-0 flex-1 flex-col">
-            {activeId == null && !lista.isLoading ? (
+          <div className="bg-card flex min-w-0 flex-1 flex-col">
+            {lista.isError ? null : activeId == null && !lista.isLoading ? (
+              // Con la lista en error, el maestro ya lo dice a la izquierda: aquí
+              // no se pinta un «ninguna coincide» que no es verdad.
               <div className="grid flex-1 place-items-center p-10">
-                <p className="text-tf-body text-muted-foreground">Ninguna empresa coincide con la búsqueda</p>
+                <PanelEmpty
+                  title="Ninguna empresa coincide con la búsqueda"
+                  hint="Prueba con otro nombre, un alias o el NIF."
+                />
               </div>
             ) : (
               <EmpresaPerfil
@@ -226,6 +228,8 @@ export default function EmpresasPage() {
                 perfil={perfil.data}
                 perfilCargando={perfil.isLoading}
                 loading={lista.isLoading || detail.isLoading}
+                error={detail.error}
+                onRetry={() => void detail.refetch()}
                 onWatchToggled={avisarVigilancia}
                 onOpenGrupo={onSearchChange}
                 onOpenEmpresa={setSelectedId}
@@ -236,9 +240,4 @@ export default function EmpresasPage() {
       )}
     </SpaceShell>
   );
-}
-
-/** Código y ruta del fallo, que es lo que sirve para reportarlo. */
-function detalleDeError(error: unknown, ruta: string): string {
-  return error instanceof ApiError ? `${error.status} · ${ruta}` : ruta;
 }

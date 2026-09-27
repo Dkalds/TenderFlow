@@ -73,6 +73,7 @@ export function ConnectionBanner() {
           data-testid="connection-banner"
           // Capa flotante anclada arriba: `bg-card/95` y la sombra de lo
           // flotante (`shadow-md`); el punto es el tono de aviso, sin pulso.
+          // eslint-disable-next-line no-restricted-syntax -- capa `fixed` sobre el contenido que se desplaza: aquí la translucidez sí deja ver algo detrás (regla 5)
           className="animate-in fade-in-0 slide-in-from-top-2 border-border/60 bg-card/95 text-tf-micro text-muted-foreground flex items-center gap-2 rounded-full border px-3 py-1.5 leading-none shadow-md"
         >
           <span aria-hidden="true" className="bg-warning size-1.5 rounded-full" />

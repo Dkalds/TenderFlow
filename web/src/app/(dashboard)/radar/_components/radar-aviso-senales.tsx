@@ -4,7 +4,7 @@ import { Aviso } from "@/components/console/panel";
 import type { ScoringSignals } from "@/hooks/use-radar";
 
 /**
- * Qué se le dice al usuario cuando el backend avisa de que el score va cojo.
+ * Qué se le dice al usuario cuando el ranking avisa de que el score va cojo.
  *
  * No es decoración: una señal caída puntúa igual que una sin datos —todas las
  * filas neutrales en esa dimensión— y el ranking sigue pareciendo sano. La
@@ -43,7 +43,7 @@ export function RadarAvisoSenales({ signals }: { signals: ScoringSignals | null 
 
   return (
     <Aviso tone="warning" variant="banda" className="flex-none md:px-3.5">
-      <span className="font-semibold">Score degradado:</span> {avisos.join(" · ")}.
+      <span className="font-semibold">Score incompleto:</span> {avisos.join(" · ")}.
     </Aviso>
   );
 }

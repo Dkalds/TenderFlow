@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { apiMutate } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { CampoContrasena } from "@/app/login/_components/campo-contrasena";
 
 const GENERIC_MESSAGE = "Si ese correo entra en TenderFlow con contraseña, te llegará un enlace para cambiarla.";
@@ -84,7 +85,9 @@ function PasswordResetContent() {
       setPassword("");
       setConfirmation("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudo actualizar la contraseña.");
+      // El `detail` de la API cuando dice qué falló («El enlace ha caducado»);
+      // un mensaje humano si es la red o un 5xx, nunca el texto crudo.
+      setError(caught instanceof Error ? getErrorMessage(caught, "accion") : "No se pudo actualizar la contraseña.");
     } finally {
       setLoading(false);
     }
@@ -150,7 +153,11 @@ function PasswordResetContent() {
             </Field>
           </>
         ) : (
-          <Field label="Correo electrónico" htmlFor="reset-email">
+          <Field
+            label="Correo electrónico"
+            htmlFor="reset-email"
+            hint="Solo para quien entra con correo y contraseña; con Google o Microsoft no hace falta."
+          >
             <Input
               id="reset-email"
               type="email"
@@ -184,7 +191,7 @@ function PasswordResetContent() {
         ready
           ? token
             ? "Elige una contraseña nueva."
-            : "Te enviaremos un enlace para elegir una contraseña nueva. Solo sirve si entras con correo y contraseña, no con Google o Microsoft."
+            : "Te enviaremos un enlace para elegir una contraseña nueva."
           : undefined
       }
       panel={panel}

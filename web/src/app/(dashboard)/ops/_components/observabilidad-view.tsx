@@ -38,6 +38,7 @@ export default function ObservabilidadView() {
     estado,
     checks,
     dlqCount,
+    dlqLoading,
   } = useObservabilidad();
 
   return (
@@ -84,7 +85,7 @@ export default function ObservabilidadView() {
         isOnline={isOnline}
       />
 
-      <DlqPanel dlqCount={dlqCount} />
+      <DlqPanel dlqCount={dlqCount} isLoading={dlqLoading} />
 
       <GrafanaCard />
     </div>

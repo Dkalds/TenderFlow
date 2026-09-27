@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { CONTENIDO } from "@/app/(publico)/_content/landing";
 import { MARCA_HEX, TF_MARK_PATHS, TF_MARK_STROKE, TF_MARK_VIEWBOX } from "@/lib/marca";
 import { obtenerLicitacion } from "@/lib/publico-api";
 import { SITE_NAME } from "@/lib/site";
@@ -22,6 +23,11 @@ export const revalidate = 3600;
  * variables CSS ni Tailwind, y dos copias a mano del mismo naranja ya habían
  * divergido. Mismas reglas de Satori: flexbox sí, grid no, `display: "flex"`
  * explícito en todo contenedor con más de un hijo.
+ *
+ * Sin anuncio (404 confirmado) la tarjeta cae al titular y al rótulo de la
+ * portada, leídos de `CONTENIDO` como en la OG raíz: una copia a mano de ese
+ * texto ya se había quedado atrás una vez. Los chips con el radio de todo chip
+ * de la casa, no en píldora.
  */
 
 const TINTA = MARCA_HEX.papel;
@@ -36,7 +42,7 @@ function Chip({ texto }: { texto: string }) {
         display: "flex",
         alignItems: "center",
         border: "1.5px solid #2A343B",
-        borderRadius: 999,
+        borderRadius: 10,
         padding: "8px 20px",
         fontSize: 24,
         color: GRIS,
@@ -149,7 +155,7 @@ export default async function Image({ params }: { params: Promise<{ ref: string 
             maxWidth: 1040,
           }}
         >
-          {titulo ?? "Licitaciones públicas de tecnología en España"}
+          {titulo ?? CONTENIDO.h1}
         </div>
         {organo && (
           <div style={{ display: "flex", fontSize: 28, color: GRIS, marginTop: 22, maxWidth: 1000 }}>{organo}</div>
@@ -161,9 +167,7 @@ export default async function Image({ params }: { params: Promise<{ ref: string 
         {chips.length > 0 ? (
           chips.map((chip) => <Chip key={chip} texto={chip} />)
         ) : (
-          <div style={{ display: "flex", fontSize: 26, color: GRIS }}>
-            Radar de licitaciones TI del sector público español
-          </div>
+          <div style={{ display: "flex", fontSize: 26, color: GRIS }}>{CONTENIDO.eyebrow}</div>
         )}
       </div>
     </div>,

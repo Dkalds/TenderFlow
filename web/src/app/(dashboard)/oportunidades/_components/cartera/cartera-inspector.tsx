@@ -17,9 +17,8 @@
  * por debajo de `xl`: un control que no hace nada visible es peor que su
  * ausencia.
  */
-import Link from "next/link";
 import { ExternalLink } from "lucide-react";
-import { PanelEmpty, SectionTitle } from "@/components/console/panel";
+import { EnlaceIr, PanelEmpty, SectionTitle } from "@/components/console/panel";
 import { fechaCorta } from "@/lib/adjudicacion-prevista";
 import type { ContratoCartera } from "@/lib/cartera";
 import { plazoRestante, urgenciaCartera } from "@/lib/cartera";
@@ -145,12 +144,9 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
           <div className="border-t border-border/50 pt-3">
             <SectionTitle>Renovación</SectionTitle>
             {contrato.renovacion_pursuit_id ? (
-              <Link
-                href={`/oportunidades/${contrato.renovacion_pursuit_id}`}
-                className="text-tf-meta font-medium text-primary hover:underline"
-              >
+              <EnlaceIr href={`/oportunidades/${contrato.renovacion_pursuit_id}`}>
                 Abrir la oportunidad de renovación
-              </Link>
+              </EnlaceIr>
             ) : (
               <>
                 <p className="text-tf-meta text-muted-foreground">

@@ -107,9 +107,8 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
         <h3 className="text-tf-meta font-semibold text-muted-foreground">Baja esperada</h3>
         <GlosarioHint termino="baja" />
         <Badge variant={data.serving === "modelo" ? "neutral" : "outline"} size="sm">
-          {data.serving === "modelo"
-            ? `modelo v${data.model_version}`
-            : "estimación histórica"}
+          {/* En frase, como todo chip: «Modelo v3», no «modelo v3». */}
+          {data.serving === "modelo" ? `Modelo v${data.model_version}` : "Estimación histórica"}
         </Badge>
       </div>
       <p className="text-tf-body">

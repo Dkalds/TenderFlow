@@ -14,7 +14,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Aviso, Panel, PanelTitle } from "@/components/console/panel";
+import { Aviso, Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -99,6 +99,15 @@ export function OrganizacionCapacidadCard({
       <div className="space-y-5">
         {capacidad.isLoading ? (
           <Skeleton className="h-24 w-full" />
+        ) : capacidad.error ? (
+          // Con la lectura caída, las secciones vacías dirían «sin datos
+          // declarados» de algo que quizá sí está declarado.
+          <PanelError
+            variant="inline"
+            title="No se pudo cargar el perfil de capacidad"
+            error={capacidad.error}
+            onRetry={() => void capacidad.refetch()}
+          />
         ) : (
           <>
             {faltan.length > 0 && (

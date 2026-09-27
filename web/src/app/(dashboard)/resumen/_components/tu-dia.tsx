@@ -129,8 +129,8 @@ export function TuDia() {
       />
 
       {error ? (
-        // `usePipelineAgenda` no es de esta pantalla: el `meta` que calla el
-        // toast lo tiene que poner el hook (ver handoff de la fase 2).
+        // Un solo aviso por fallo (D6): el toast lo calla el `meta` de la
+        // consulta, que vive en `usePipelineAgenda` (`hooks/use-pursuits.ts`).
         <PanelError
           title="No se pudo cargar tu agenda"
           error={error}

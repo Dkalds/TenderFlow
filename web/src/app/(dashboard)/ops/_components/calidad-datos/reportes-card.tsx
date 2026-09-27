@@ -34,7 +34,7 @@ export function ReportesCard({ reportes, isLoading }: ReportesCardProps) {
       ) : filas.length === 0 ? (
         <PanelEmpty
           size="sm"
-          title="Ningún reporte abierto."
+          title="Ningún reporte abierto"
           hint="Lo que alguien marque como erróneo desde la ficha de una licitación aparecerá aquí, por tipo."
         />
       ) : (

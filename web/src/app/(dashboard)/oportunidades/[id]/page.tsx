@@ -50,16 +50,12 @@ const ANCLA_DE_LUGAR = { decision: "ficha-decision", contraste: "ficha-requisito
  * ahora un clic desde arriba, y cada uno manda su propio PATCH con
  * `expected_version`.
  *
- * Las tres columnas del diseño no caben en una pantalla de consola, así que en
- * `xl` la ficha se parte: a la izquierda lo que se trabaja, a la derecha los
+ * En `xl` la ficha se parte: a la izquierda lo que se trabaja, a la derecha los
  * datos y la próxima acción, fijos, con la cabecera fija y el scroll en la
- * pestaña. Por debajo de `xl` es una sola columna, en el orden del diseño, y la
- * cabecera scrollea con el contenido; por debajo de `md` las acciones bajan
- * bajo el título.
+ * pestaña. Por debajo, una sola columna en el orden del diseño.
  *
  * Cada paso pendiente del bloque de salida lleva a donde se completa
- * (`completar`): los datos se editan en su celda y el resto de huecos tienen su
- * panel en esta misma pestaña. El formulario entero va plegado al final.
+ * (`completar`); el formulario entero va plegado al final.
  *
  * Lo que no se ve al entrar (las otras pestañas y el editor completo) llega
  * bajo demanda (`secciones-diferidas.tsx`), y lo que solo necesita el id de la
@@ -200,8 +196,7 @@ export default function OpportunityDetailPage() {
               <Download aria-hidden="true" />
               Descargar PDF
             </Button>
-            {/* A la ficha del expediente en Detalle: es un destino de
-                TenderFlow, así que sin icono de «salir». */}
+            {/* Destino de TenderFlow: sin icono de «salir». */}
             <Link
               href={`/detalle?lic=${encodeURIComponent(pursuit.licitacion_id)}`}
               className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -209,8 +204,7 @@ export default function OpportunityDetailPage() {
               Ver en Detalle
             </Link>
             {/* `ml-auto`: bajo el título, el cierre queda en el extremo derecho
-                de la fila. Al lado del título el grupo mide lo que su contenido
-                y el margen no mueve nada. */}
+                de la fila; al lado del título el margen no mueve nada. */}
             <Link
               href="/oportunidades"
               aria-label="Cerrar la ficha"

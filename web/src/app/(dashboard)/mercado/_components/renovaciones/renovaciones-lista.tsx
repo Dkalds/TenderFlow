@@ -121,11 +121,12 @@ export function RenovacionesLista({
         <PanelLoading height={ALTO} />
       ) : items.length === 0 ? (
         <PanelEmpty
-          message={
+          title={
             empresaSearch
-              ? "Ningún contrato de la lista coincide con el filtro."
-              : "Ningún contrato vence en esta ventana. Amplía el horizonte para ver más."
+              ? "Ningún contrato de la lista coincide con el filtro"
+              : "Ningún contrato vence en esta ventana"
           }
+          hint={empresaSearch ? "Prueba con otro nombre de empresa." : "Amplía el horizonte para ver más."}
           height={ALTO}
         />
       ) : (

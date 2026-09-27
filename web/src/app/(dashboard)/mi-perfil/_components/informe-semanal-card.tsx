@@ -19,7 +19,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Panel, PanelTitle } from "@/components/console/panel";
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import {
@@ -93,7 +93,7 @@ export function InformeSemanalCard() {
   // Sólo Dirección puede leer esto (el backend responde 403 al resto): se pasa
   // `null` para no gastar una petición que se sabe rechazada.
   const organizationId = puedeEditar ? activeOrganizationId : null;
-  const { data, isLoading } = useReportSchedule(organizationId);
+  const { data, isLoading, error, refetch } = useReportSchedule(organizationId);
   const guardar = useGuardarReportSchedule(organizationId);
 
   const [activo, setActivo] = useState(false);
@@ -141,7 +141,7 @@ export function InformeSemanalCard() {
         setDirty(false);
         toast.success(
           activo
-            ? `Informe programado: ${DIAS[diaSemana]} a las ${String(horaUtc).padStart(2, "0")}:00 UTC.`
+            ? `Informe programado. Próximo envío: ${formatDiaYHora(proxima)}.`
             : "Informe semanal desactivado.",
         );
       })
@@ -158,6 +158,15 @@ export function InformeSemanalCard() {
       <div className="space-y-4">
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
+        ) : error ? (
+          // Sin la programación leída, el formulario enseñaría «No se envía» y
+          // los valores por defecto como si fueran los guardados.
+          <PanelError
+            variant="inline"
+            title="No se pudo leer la programación del informe"
+            error={error}
+            onRetry={() => void refetch()}
+          />
         ) : (
           <>
             <label className="flex items-center gap-3 text-tf-body">

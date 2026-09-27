@@ -6,7 +6,7 @@ import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { listaJsonLd, migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubOrgano } from "@/lib/slug";
 import { cn, formatNumber } from "@/lib/utils";
-import { KICKER, TITULO_PAGINA } from "../../_components/piel-publica";
+import { KICKER, TARJETA_INDICE, TITULO_PAGINA } from "../../_components/piel-publica";
 
 /**
  * Índice de hubs por órgano de contratación (F6.5).
@@ -30,12 +30,6 @@ export const metadata: Metadata = {
 };
 
 export const revalidate = 3600;
-
-/* Tarjeta de un índice: la tarjeta entera es el enlace, así que no lleva
- * flecha; al pasar el ratón cambian el filete y el color del nombre, nada se
- * desplaza ni gana sombra. */
-const TARJETA_INDICE =
-  "group border-border/70 bg-card focus-visible:ring-ring hover:border-primary/50 block rounded-xl border px-5 py-4 transition-colors focus-visible:ring-2 focus-visible:outline-none";
 
 export default async function IndiceOrganos() {
   const organos = hubsOrganoAnunciables(await obtenerHubs());

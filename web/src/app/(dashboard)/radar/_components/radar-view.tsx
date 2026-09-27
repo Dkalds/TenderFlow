@@ -87,14 +87,14 @@ export function RadarView() {
 
   const statusLine = enProximas
     ? consola.proximas.error
-      ? "Sin conexión"
+      ? "No se pudo cargar"
       : consola.proximas.total == null
         ? "Cargando próximas…"
         : `${formatNumber(consola.proximas.total)} anunciadas · ${consola.proximas.conFechaPrevista ?? 0} con fecha prevista`
     : consola.isLoading
       ? "Cargando ámbito…"
       : consola.error
-        ? "Sin conexión"
+        ? "No se pudo cargar"
         : `${formatNumber(consola.rows.length)} filas · ${consola.counts.bandeja} por revisar · ${consola.counts.siguiendo} en seguimiento`;
 
   return (

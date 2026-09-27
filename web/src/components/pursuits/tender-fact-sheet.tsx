@@ -157,7 +157,7 @@ function FactRow({
             {evidence.length} cita{evidence.length === 1 ? "" : "s"} verificable
             {evidence.length === 1 ? "" : "s"}
           </summary>
-          <ul className="mt-2 space-y-2 border-l-2 border-primary/30 pl-3">
+          <ul className="mt-2 space-y-2 border-l border-border/60 pl-3">
             {evidence.map((cita, index) => {
               const fuente = citaPresentation(cita.documento_id, cita.page_number, docsById);
               return (

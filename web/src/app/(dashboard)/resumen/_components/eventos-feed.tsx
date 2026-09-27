@@ -103,24 +103,13 @@ export function EventosFeed() {
   const items = data?.items ?? [];
   const visibles = items.slice(0, MAX_FILAS);
 
-  if (error) {
-    return (
-      <PanelError
-        title="No se pudieron cargar los movimientos"
-        error={error}
-        onRetry={() => void refetch()}
-        height={220}
-      />
-    );
-  }
-
   return (
     <Panel className="mb-5.5">
       <PanelTitle
         title="Movimientos del mercado"
         hint={`${ventanaLabel(rango.desde, rango.hasta)} · del ámbito`}
         actions={
-          items.length > visibles.length ? (
+          !error && items.length > visibles.length ? (
             <span className="tf-tnum text-tf-micro text-muted-foreground">
               {visibles.length} de {items.length}
             </span>
@@ -128,7 +117,17 @@ export function EventosFeed() {
         }
       />
 
-      {isLoading ? (
+      {/* El fallo va dentro del panel, bajo su título: la sección no pierde
+          su nombre ni su sitio en la página. */}
+      {error ? (
+        <PanelError
+          variant="inline"
+          title="No se pudieron cargar los movimientos"
+          error={error}
+          onRetry={() => void refetch()}
+          height={180}
+        />
+      ) : isLoading ? (
         <div className="flex flex-col gap-1.5">
           {Array.from({ length: 5 }, (_, index) => (
             <Skeleton key={index} className="h-7 w-full rounded-sm" />
@@ -149,10 +148,7 @@ export function EventosFeed() {
                   href={`/detalle?lic=${encodeURIComponent(evento.licitacion_id)}`}
                   className="flex items-center gap-2.5 border-b border-border/25 px-1 py-1.5 transition-colors last:border-b-0 hover:bg-primary/5 active:bg-primary/10 active:duration-0"
                 >
-                  <Icon
-                    className="text-muted-foreground h-3.5 w-3.5 flex-none"
-                    aria-hidden="true"
-                  />
+                  <Icon className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
                   <span className="w-[104px] flex-none truncate text-tf-micro font-semibold">
                     {TIPO_LABEL[evento.tipo] ?? evento.tipo}
                   </span>

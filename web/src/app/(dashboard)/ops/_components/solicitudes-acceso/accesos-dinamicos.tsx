@@ -9,7 +9,7 @@
  * vacío lo dice en vez de callarse.
  */
 
-import { SectionTitle } from "@/components/console/panel";
+import { PanelError, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +18,8 @@ import type { AccessGrant } from "../../_hooks/use-solicitudes-acceso";
 export interface AccesosDinamicosProps {
   grants: AccessGrant[] | undefined;
   isLoading: boolean;
+  error?: unknown;
+  onRetry?: () => void;
   revocando: boolean;
   onRevocar: (grantId: number) => void;
 }
@@ -25,6 +27,8 @@ export interface AccesosDinamicosProps {
 export function AccesosDinamicos({
   grants,
   isLoading,
+  error,
+  onRetry,
   revocando,
   onRevocar,
 }: AccesosDinamicosProps) {
@@ -35,6 +39,14 @@ export function AccesosDinamicos({
       </SectionTitle>
       {isLoading ? (
         <Skeleton className="mt-3 h-12 w-full" />
+      ) : error ? (
+        <PanelError
+          variant="inline"
+          className="mt-2"
+          title="No se pudieron cargar los accesos concedidos"
+          error={error}
+          onRetry={onRetry}
+        />
       ) : (grants?.length ?? 0) === 0 ? (
         <p className="text-muted-foreground mt-2 text-tf-meta">
           No hay concesiones dinámicas; pueden seguir aplicando las variables de entorno.

@@ -131,7 +131,11 @@ export function TendenciasWaterfall({ data }: { data: WaterfallPoint[] }) {
   return (
     <Panel>
       <PanelTitle title="Variación mensual del número de licitaciones" />
-      <WaterfallChart data={data} height={320} />
+      <WaterfallChart
+        data={data}
+        height={320}
+        aria-label="Variación mensual del número de licitaciones"
+      />
     </Panel>
   );
 }

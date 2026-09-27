@@ -1,4 +1,5 @@
 import { formatDate, ZONA_ES } from "@/lib/utils";
+import { TITULO_SECCION } from "../../_components/piel-publica";
 import { obtenerCobertura, type EstadoCobertura } from "../_lib/cobertura-api";
 import { ESTADOS, EXCLUSIONES, FUENTES, SIN_INVENTARIO } from "../_lib/copy";
 
@@ -41,7 +42,7 @@ export async function CoberturaDeclarada() {
     return (
       <section className="border-border/60 bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
-          <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">{FUENTES.titulo}</h2>
+          <h2 className={TITULO_SECCION}>{FUENTES.titulo}</h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">{SIN_INVENTARIO}</p>
         </div>
       </section>
@@ -56,7 +57,7 @@ export async function CoberturaDeclarada() {
     <>
       <section aria-labelledby="fuentes-declaradas" className="border-border/60 bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
-          <h2 id="fuentes-declaradas" className="font-display text-2xl font-semibold tracking-[-0.02em]">
+          <h2 id="fuentes-declaradas" className={TITULO_SECCION}>
             {FUENTES.titulo}
           </h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">
@@ -96,7 +97,7 @@ export async function CoberturaDeclarada() {
 
       <section aria-labelledby="fuera-de-alcance" className="border-border/60 border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
-          <h2 id="fuera-de-alcance" className="font-display text-2xl font-semibold tracking-[-0.02em]">
+          <h2 id="fuera-de-alcance" className={TITULO_SECCION}>
             {EXCLUSIONES.titulo}
           </h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">

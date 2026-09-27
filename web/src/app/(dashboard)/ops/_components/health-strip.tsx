@@ -53,7 +53,13 @@ export function OpsHealthStrip() {
       <StatCell
         label="Fuentes al día"
         value={healthy != null && total != null ? `${healthy} de ${total}` : "—"}
-        hint={sourcesDegraded ? "alguna fuente degradada" : "todas responden"}
+        hint={
+          healthy == null || total == null
+            ? "sin dato"
+            : sourcesDegraded
+              ? "alguna fuente degradada"
+              : "todas responden"
+        }
         tono={sourcesDegraded ? "warning" : undefined}
         loading={sources.isLoading}
       />

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { PanelEmpty } from "@/components/console/panel";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import type { AccionAplazar, RadarTender } from "@/hooks/use-radar";
 import type { ModoInspector } from "../_hooks/use-media-query";
@@ -66,12 +67,11 @@ export function RadarInspectorPanel({
     <>
       <aside className="hidden w-[432px] flex-none flex-col bg-card xl:flex">
         {contenido ?? (
-          <div className="flex flex-1 items-center justify-center px-8 text-center">
-            <p className="text-tf-body text-muted-foreground">
-              Selecciona una señal para ver su desglose de score, sus fechas y quién suele ganar en
-              ese órgano.
-            </p>
-          </div>
+          <PanelEmpty
+            className="flex-1 px-8"
+            title="Ninguna señal seleccionada"
+            hint="Selecciona una señal para ver su desglose de score, sus fechas y quién suele ganar en ese órgano."
+          />
         )}
       </aside>
 

@@ -11,6 +11,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditarCuenta, type Cuenta, type EdicionDeCuenta } from "@/hooks/use-cuentas";
@@ -67,10 +68,7 @@ function FormularioEdicion({ cuenta, onHecho }: { cuenta: Cuenta; onHecho: () =>
         editar.mutate(cambios, { onSuccess: onHecho });
       }}
     >
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${id}-nombre`} className="text-sm font-medium">
-          Nombre de la cuenta
-        </label>
+      <Field htmlFor={`${id}-nombre`} label="Nombre de la cuenta">
         <Input
           id={`${id}-nombre`}
           value={nombre}
@@ -78,11 +76,8 @@ function FormularioEdicion({ cuenta, onHecho }: { cuenta: Cuenta; onHecho: () =>
           maxLength={500}
           required
         />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${id}-nota`} className="text-sm font-medium">
-          Nota
-        </label>
+      </Field>
+      <Field htmlFor={`${id}-nota`} label="Nota">
         <Textarea
           id={`${id}-nota`}
           value={nota}
@@ -90,7 +85,7 @@ function FormularioEdicion({ cuenta, onHecho }: { cuenta: Cuenta; onHecho: () =>
           maxLength={2000}
           rows={3}
         />
-      </div>
+      </Field>
       <div className="flex justify-end gap-2">
         <DialogClose asChild>
           <Button type="button" variant="ghost">

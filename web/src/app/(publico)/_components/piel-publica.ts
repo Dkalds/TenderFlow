@@ -36,6 +36,22 @@ export const ROTULO = "text-tf-micro font-medium text-muted-foreground";
  * la página. */
 export const TITULO_PAGINA = "font-display text-3xl font-semibold tracking-[-0.02em] text-balance md:text-4xl";
 
+/* Titular de sección dentro de una página (las de evidencia, la cobertura
+ * declarada): un escalón por debajo del de página. */
+export const TITULO_SECCION = "font-display text-2xl font-semibold tracking-[-0.02em] text-balance";
+
+/* Titular de bloque en una página de lectura seguida (aviso legal, la ficha):
+ * lo justo para partir el texto sin competir con el titular de la página. */
+export const TITULO_BLOQUE = "font-display text-xl font-semibold tracking-[-0.02em]";
+
+/* Tarjeta de un índice (por comunidad, por CPV, por órgano): la tarjeta entera
+ * es el enlace, así que no lleva flecha; al pasar el ratón cambian el filete y
+ * el color del nombre (`group-hover:text-primary` en el hijo), nada se desplaza
+ * ni gana sombra. Estaba copiada en los tres índices. */
+export const TARJETA_INDICE =
+  "group border-border/70 bg-card focus-visible:ring-ring hover:border-primary/50 block rounded-xl border px-5 py-4 " +
+  "transition-colors focus-visible:ring-2 focus-visible:outline-none";
+
 const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
   "focus-visible:ring-offset-2 focus-visible:ring-offset-background";

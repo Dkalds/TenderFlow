@@ -34,7 +34,7 @@ describe("PrediccionBajaBlock", () => {
       serving: "modelo",
     });
     expect(screen.getByText("Baja esperada")).toBeInTheDocument();
-    expect(screen.getByText("modelo v3")).toBeInTheDocument();
+    expect(screen.getByText("Modelo v3")).toBeInTheDocument();
     // Median formatted as a percentage.
     expect(screen.getByText("15,0%")).toBeInTheDocument();
   });
@@ -49,7 +49,7 @@ describe("PrediccionBajaBlock", () => {
       computed_at: "2025-02-01T10:00:00Z",
       serving: "baseline",
     });
-    expect(screen.getByText("estimación histórica")).toBeInTheDocument();
+    expect(screen.getByText("Estimación histórica")).toBeInTheDocument();
   });
 
   it("compares estimated vs real baja for an awarded tender with prior estimate", () => {

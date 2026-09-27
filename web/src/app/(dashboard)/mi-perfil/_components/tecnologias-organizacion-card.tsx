@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Panel, PanelTitle } from "@/components/console/panel";
+import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,7 +29,7 @@ import { getErrorMessage } from "@/lib/query-feedback";
 export function TecnologiasOrganizacionCard() {
   const activeOrganizationId = useActiveOrganizationId();
   const organizations = useOrganizations();
-  const { data, isLoading } = useOrganizationSettings(activeOrganizationId);
+  const { data, isLoading, error, refetch } = useOrganizationSettings(activeOrganizationId);
   const update = useUpdateOrganizationSettings(activeOrganizationId);
 
   const [seleccion, setSeleccion] = useState<string[]>([]);
@@ -56,13 +56,24 @@ export function TecnologiasOrganizacionCard() {
     <Panel>
       <PanelTitle title="Tecnologías de tu organización" />
       <p className="mb-3 text-tf-meta text-muted-foreground">
-        El Radar acota su universo a estas familias cuando no filtras por tecnología a mano. Vacío significa todas.
+        El Radar solo puntúa licitaciones de estas familias cuando no filtras por tecnología a mano. Vacío significa todas.
       </p>
       <div className="space-y-3">
         {isLoading ? (
           <Skeleton className="h-10 w-full" />
+        ) : error ? (
+          <PanelError
+            variant="inline"
+            title="No se pudieron cargar las familias de tecnología"
+            error={error}
+            onRetry={() => void refetch()}
+          />
         ) : disponibles.length === 0 ? (
-          <p className="text-tf-meta text-muted-foreground">No se pudieron cargar las familias de tecnología.</p>
+          <PanelEmpty
+            size="sm"
+            title="Sin familias de tecnología"
+            hint="El Radar puntúa todas las licitaciones mientras no haya familias entre las que elegir."
+          />
         ) : (
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             {disponibles.map((familia) => (
@@ -79,13 +90,13 @@ export function TecnologiasOrganizacionCard() {
           </div>
         )}
 
-        {!puedeEditar && !isLoading && (
+        {!puedeEditar && !isLoading && !error && (
           <p className="text-tf-meta text-muted-foreground">
             Solo un propietario o un administrador puede cambiarlas.
           </p>
         )}
 
-        {puedeEditar && (
+        {puedeEditar && !error && disponibles.length > 0 && (
           <Button
             size="sm"
             disabled={!dirty || update.isPending}

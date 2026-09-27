@@ -7,7 +7,7 @@
  */
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import type { Schemas } from "@/lib/api-types";
@@ -86,7 +86,8 @@ describe("CompanyIdentidad", () => {
     expect(screen.getByText("NIF-7B")).toBeInTheDocument();
     expect(screen.getByText("Grupo")).toBeInTheDocument();
     // Doce a la vista y el resto contado, no escondido sin decirlo.
-    expect(screen.getByText("Alias vistos en fuente (14)")).toBeInTheDocument();
+    const rotuloAlias = screen.getByRole("heading", { name: "Alias vistos en fuente" });
+    expect(within(rotuloAlias.parentElement!).getByText("14")).toBeInTheDocument();
     expect(screen.getByText("+2 más")).toBeInTheDocument();
     // Cada UTE lleva a su propia ficha, en la ruta nueva.
     expect(screen.getByRole("link", { name: "UTE Ejemplo-Norte" })).toHaveAttribute("href", "/competencia/empresa/30");

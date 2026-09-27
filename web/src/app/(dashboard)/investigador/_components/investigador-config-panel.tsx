@@ -58,8 +58,11 @@ export function InvestigadorConfigPanel({ config, onChange, models }: Props) {
       <div id={idPanel} hidden={!abierto} className="mt-3 pb-1">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
-            <p id={idResultados} className={ETIQUETA_CAMPO}>
-              Resultados: <span className="tf-tnum">{config.topK}</span>
+            {/* El nombre del deslizador es solo «Resultados»: la cifra ya la
+                anuncia su valor, y repetirla en el nombre la leería dos veces. */}
+            <p className={cn(ETIQUETA_CAMPO, "flex items-baseline justify-between gap-2")}>
+              <span id={idResultados}>Resultados</span>
+              <span className="tf-tnum text-muted-foreground">{config.topK}</span>
             </p>
             <Slider
               value={[config.topK]}

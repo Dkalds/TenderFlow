@@ -85,7 +85,8 @@ export function PerdidasDireccion({ cuadro }: { cuadro: Cuadro }) {
       {filas.length === 0 ? (
         <PanelEmpty
           size="sm"
-          hint={`Sin base: el reparto se publica a partir de ${cuadro.perdidas_n_minimo} pérdidas cerradas.`}
+          title="Aún sin reparto"
+          hint={`Se publica a partir de ${cuadro.perdidas_n_minimo} pérdidas cerradas: con menos, diría más del azar que del motivo.`}
         />
       ) : (
         <table className="w-full text-tf-body">

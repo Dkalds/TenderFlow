@@ -91,7 +91,7 @@ describe("CalibracionBajaBlock", () => {
       n_evaluadas: 406,
       regimen_servido: "baseline",
     });
-    expect(screen.getByText(/Sirviendo: estimación histórica/)).toBeInTheDocument();
+    expect(screen.getByText(/Origen: estimación histórica/)).toBeInTheDocument();
     expect(screen.getByText(/No hay modelo activo/)).toBeInTheDocument();
   });
 
@@ -105,7 +105,7 @@ describe("CalibracionBajaBlock", () => {
       n_evaluadas: 57,
       regimen_servido: "modelo",
     });
-    expect(screen.getByText(/Sirviendo: modelo entrenado/)).toBeInTheDocument();
+    expect(screen.getByText(/Origen: modelo entrenado/)).toBeInTheDocument();
     expect(screen.queryByText(/No hay modelo activo/)).not.toBeInTheDocument();
   });
 
