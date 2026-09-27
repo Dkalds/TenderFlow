@@ -56,7 +56,14 @@ class RespuestaLlm(NamedTuple):
 
     Attributes:
         es_ti: Lo que dijo el marcador de nivel 1, o ``None`` si el LLM no se
-            pronunció (sin fila del marcador en su versión vigente).
+            pronunció -- sin fila del marcador en su versión vigente, o con
+            ``SIN_EVIDENCIA_SENTINEL`` en ella: las familias no sostuvieron
+            su cita, y esa respuesta entera no entrena
+            (``scheduler/jobs/llm_tech_labeling.py`` no escribe feedback para
+            esas licitaciones), aunque la misma versión también traiga el
+            marcador -- ver
+            :func:`~db.repositories.tecnologia_pliego.
+            _respuesta_desde_filas_vigentes`.
         familias: Las familias (nivel 2) que el LLM afirmó. Sin score:
             :meth:`~db.repositories.tecnologia_pliego.
             TecnologiaPliegoRepository.respuestas_llm_vigentes` ya filtró por

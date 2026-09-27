@@ -140,6 +140,53 @@ def _filas_a_escribir(
     return filas
 
 
+def _respuesta_desde_filas_vigentes(
+    filas: list[tuple[str, float]], *, min_score: float
+) -> dict[str, Any]:
+    """Post-procesa las filas ``(tecnologia, score)`` de la versión vigente
+    de ``llm_metadata`` de UNA licitación en la respuesta que compara
+    :func:`services.ml.acuerdo_llm.medir_acuerdo`. Pura -- sin BD -- para
+    poder probarla sin Postgres; es la pieza que
+    :meth:`TecnologiaPliegoRepository.respuestas_llm_vigentes` aplica por
+    licitación.
+
+    Regla de ``SIN_EVIDENCIA_SENTINEL``: si esa versión lo trae, el LLM no
+    se pronunció en NINGÚN nivel para esta llamada -- ``es_ti`` sale
+    ``None`` y ``familias`` queda vacía, aunque la misma versión también
+    traiga el marcador de nivel 1 o una familia con score suficiente. Es la
+    misma regla que ``LicitacionRepository.etiquetas_tecnologia_no_circulares``
+    aplica para las etiquetas de entrenamiento del clasificador: el informe
+    de acuerdo certifica las etiquetas que el entrenamiento usa de verdad, y
+    ``scheduler/jobs/llm_tech_labeling.py`` no escribe feedback para las
+    licitaciones ``sin_evidencia`` (las excluye de ``clasificadas``) -- si
+    esta función las contara igual, certificaría un acuerdo sobre etiquetas
+    que el entrenamiento nunca usa. ``_filas_a_escribir`` documenta que el
+    marcador "no tapa" a ``sin_evidencia`` desde el punto de vista de quién
+    escribe (son respuestas independientes ahí); esta función no puede
+    apoyarse en que hoy nunca convivan con una familia real -- por diseño,
+    pueden.
+
+    Sin ``SIN_EVIDENCIA_SENTINEL``: ``es_ti`` sale del marcador
+    (``ES_TI_SENTINEL``/``NO_ES_TI_SENTINEL``, ``None`` si ninguno está en
+    ``filas``); ``familias``, de las filas no-sentinel con
+    ``score >= min_score``, ordenadas.
+    """
+    tecnologias_presentes = {tecnologia for tecnologia, _score in filas}
+    if SIN_EVIDENCIA_SENTINEL in tecnologias_presentes:
+        return {"es_ti": None, "familias": []}
+
+    es_ti: bool | None = None
+    familias: list[str] = []
+    for tecnologia, score in filas:
+        if tecnologia == ES_TI_SENTINEL:
+            es_ti = True
+        elif tecnologia == NO_ES_TI_SENTINEL:
+            es_ti = False
+        elif tecnologia not in SENTINELS and score >= min_score:
+            familias.append(tecnologia)
+    return {"es_ti": es_ti, "familias": sorted(familias)}
+
+
 class TecnologiaPliegoRepository:
     def upsert_signals(
         self,
@@ -389,7 +436,12 @@ class TecnologiaPliegoRepository:
             ``{licitacion_id: {"es_ti": bool | None, "familias": list[str]}}``.
             ``es_ti`` sale del marcador (``None`` si la versión vigente no lo
             trae). ``familias``, de las filas no-sentinel de esa versión con
-            ``score >= settings.PLIEGO_TECH_MIN_SCORE``, ordenadas.
+            ``score >= settings.PLIEGO_TECH_MIN_SCORE``, ordenadas. ``es_ti``
+            también es ``None`` (y ``familias`` queda vacía) cuando esa
+            versión trae ``SIN_EVIDENCIA_SENTINEL``, aunque también traiga el
+            marcador o una familia con score suficiente: misma regla que
+            ``LicitacionRepository.etiquetas_tecnologia_no_circulares`` --
+            ver :func:`_respuesta_desde_filas_vigentes` para el porqué.
         """
         from config import settings
 
@@ -419,19 +471,10 @@ class TecnologiaPliegoRepository:
                 (str(tecnologia), float(score))
             )
 
-        salida: dict[str, dict[str, Any]] = {}
-        for licitacion_id, filas_lic in por_licitacion.items():
-            es_ti: bool | None = None
-            familias: list[str] = []
-            for tecnologia, score in filas_lic:
-                if tecnologia == ES_TI_SENTINEL:
-                    es_ti = True
-                elif tecnologia == NO_ES_TI_SENTINEL:
-                    es_ti = False
-                elif tecnologia not in SENTINELS and score >= min_score:
-                    familias.append(tecnologia)
-            salida[licitacion_id] = {"es_ti": es_ti, "familias": sorted(familias)}
-        return salida
+        return {
+            licitacion_id: _respuesta_desde_filas_vigentes(filas_lic, min_score=min_score)
+            for licitacion_id, filas_lic in por_licitacion.items()
+        }
 
     def merge_many_with_lock(
         self,
