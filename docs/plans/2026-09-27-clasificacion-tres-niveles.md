@@ -208,7 +208,7 @@ Hoy fabricantes y categorías van en la misma lista, y por eso unos «funcionan�
   traiga el marcador de es_ti: es la regla que ya aplican el lector de familias
   y el informe de acuerdo.
 
-## 7. Decisiones pendientes (del propietario)
+## 7. Decisiones del propietario: D1 y D2 aprobadas; D3 (OK a la muestra del LLM) y D4 (revisión humana), pendientes
 
 - **D1. Frontera de «TI».** Propuesta:
   - Dentro: software (licencias, SaaS, desarrollo, mantenimiento de
