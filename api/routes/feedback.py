@@ -256,6 +256,19 @@ async def submit_feedback(
     misma clave devuelven la respuesta original sin insertar duplicados.
     El cache tiene TTL de 24h.
     """
+    # Una fila de aquí manda sobre las keywords al entrenar los clasificadores
+    # (prioridad humano > LLM > keywords), así que con sesión solo la escribe un
+    # admin: la única pantalla que la usa, el etiquetado de `/ops`, ya lo es. Una
+    # API key no pasa por esta regla porque el núcleo de validación ya le exige
+    # el scope `feedback:write` (`api/scopes.py`), que es una concesión
+    # explícita. (Va en comentario y no en el docstring: el docstring es parte
+    # del contrato OpenAPI y moverlo obliga a regenerar `api.d.ts`.)
+    if ctx.get("auth_method") == "session" and not ctx.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un administrador puede etiquetar licitaciones.",
+        )
+
     # -- Idempotency check --
     if idempotency_key:
         cached = await run_db(_repo.exists_idempotency, idempotency_key)
