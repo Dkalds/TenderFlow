@@ -1,4 +1,5 @@
-import { RadioTower, Settings2, Star, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { ICONO_ESPACIO } from "@/lib/iconos";
 
 /**
  * Primeros pasos — qué cuenta como «configurado» y qué se puede afirmar.
@@ -61,15 +62,15 @@ export const PASOS: readonly DefinicionPaso[] = [
     gana: "el Radar puntúa con pesos genéricos hasta que pongas los tuyos",
     href: "/mi-perfil",
     cta: "Definir pesos y keywords",
-    icon: Settings2,
+    icon: ICONO_ESPACIO["mi-perfil"],
   },
   {
     id: "reglas",
     titulo: "Crea una regla de vigilancia",
-    gana: "una regla vigila el corpus por ti y sus matches llegan a Tu día",
+    gana: "una regla vigila las licitaciones por ti y lo que encuentra llega a Tu día",
     href: "/mi-watchlist",
     cta: "Crear la primera regla",
-    icon: Star,
+    icon: ICONO_ESPACIO["mi-watchlist"],
   },
   {
     id: "pursuit",
@@ -77,7 +78,7 @@ export const PASOS: readonly DefinicionPaso[] = [
     gana: "es lo que da plazo, decisión Go/No-go y próximo paso a un expediente",
     href: "/radar",
     cta: "Elegir una en el Radar",
-    icon: RadioTower,
+    icon: ICONO_ESPACIO.radar,
   },
 ];
 

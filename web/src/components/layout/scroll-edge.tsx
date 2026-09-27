@@ -24,8 +24,9 @@ import { cn } from "@/lib/utils";
  * el contenido.
  *
  * Movimiento (docs/frontend-motion.md): se anima **sólo `opacity`**, entrada
- * 260ms con `cubic-bezier(.21,1.02,.73,1)` y salida más rápida (170ms) — el
- * sistema responde rápido, el usuario decide despacio. No lleva un
+ * en 200ms y salida más rápida (150ms), con la curva de la casa (`ease-out`).
+ * Se ve cada vez que se desplaza una pantalla, así que no pasa de los 200ms
+ * de la UI operativa (antes entraba en 260ms con una curva propia). No lleva un
  * `motion-reduce:` propio a propósito: la regla global de `globals.css` recorta
  * las transiciones a 150ms bajo `prefers-reduced-motion: reduce` y conserva
  * justamente las de `opacity`, que aquí es la única que hay. Neutralizarla
@@ -118,9 +119,7 @@ function EdgeGradient({ active, className }: { active: boolean; className?: stri
         "pointer-events-none absolute inset-x-0 h-3",
         "bg-[linear-gradient(to_bottom,hsl(var(--border)),transparent)]",
         "transition-opacity",
-        active
-          ? "opacity-100 duration-[260ms] ease-[cubic-bezier(.21,1.02,.73,1)]"
-          : "opacity-0 duration-[170ms] ease-out",
+        active ? "opacity-100 duration-200 ease-out" : "opacity-0 duration-150 ease-out",
         className,
       )}
     />

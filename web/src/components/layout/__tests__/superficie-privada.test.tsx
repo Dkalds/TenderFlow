@@ -20,20 +20,19 @@ vi.mock("@/components/providers", () => ({
     return <div data-testid="providers">{children}</div>;
   },
 }));
-vi.mock("@/components/route-progress", () => ({ RouteProgress: () => <span>progreso</span> }));
 vi.mock("@/components/toaster", () => ({ Toaster: () => <span>toaster</span> }));
 vi.mock("@/components/live-region", () => ({ LiveRegion: () => <span>region-viva</span> }));
 
 import { SuperficiePrivada } from "@/components/layout/superficie-privada";
 
 describe("SuperficiePrivada", () => {
-  it("monta providers, progreso, Toaster y región viva alrededor del contenido", async () => {
+  it("monta providers, Toaster y región viva alrededor del contenido", async () => {
     cabeceras.actual = new Headers({ "x-nonce": "n0nce" });
 
     render(await SuperficiePrivada({ children: <p>contenido</p> }));
 
     const providers = screen.getByTestId("providers");
-    for (const texto of ["progreso", "contenido", "toaster", "region-viva"]) {
+    for (const texto of ["contenido", "toaster", "region-viva"]) {
       expect(providers).toContainElement(screen.getByText(texto));
     }
     expect(nonces.at(-1)).toBe("n0nce");

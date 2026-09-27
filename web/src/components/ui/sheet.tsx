@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const Sheet = DialogPrimitive.Root
@@ -16,7 +17,7 @@ const SheetOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 anim-duration-300 data-[state=closed]:anim-duration-200",
+      "fixed inset-0 z-50 bg-black/50 anim-duration-300 data-[state=closed]:anim-duration-200",
       "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
@@ -52,7 +53,7 @@ const SheetContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "tf-glass-strong fixed z-50 gap-4 p-6 shadow-lg anim-duration-300 data-[state=closed]:anim-duration-200 focus:outline-none",
+        "fixed z-50 gap-4 bg-popover p-6 text-popover-foreground shadow-lg anim-duration-300 data-[state=closed]:anim-duration-200 focus:outline-none",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         SIDE_TRANSITIONS[side],
         side === "right" && "inset-y-0 right-0 h-full w-3/4 border-l border-border sm:max-w-sm",
@@ -65,11 +66,8 @@ const SheetContent = React.forwardRef<
     >
       {children}
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M18 6 6 18" />
-          <path d="m6 6 12 12" />
-        </svg>
-        <span className="sr-only">Close</span>
+        <X className="h-4 w-4" aria-hidden="true" />
+        <span className="sr-only">Cerrar</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </SheetPortal>
@@ -87,7 +85,7 @@ const SheetTitle = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold text-foreground", className)}
+    className={cn("text-tf-lede font-semibold text-foreground", className)}
     {...props}
   >
     {children}

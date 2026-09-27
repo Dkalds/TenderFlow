@@ -1,30 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import { ClientErrorListener } from "@/components/client-error-listener";
+import { VARIABLES_FUENTES } from "@/lib/tipografia";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-// `preload: false` en la monoespaciada: son 22 KB que se precargaban en cada
-// página para kickers, chips y etiquetas de 10-12 px. Nada de eso es el primer
-// render crítico, y el preload competía con la fuente del `h1` y con la imagen
-// del hero, que sí lo son. Se sigue usando; sólo deja de bloquear la cola.
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  preload: false,
-});
-
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-display",
-  subsets: ["latin"],
-});
 
 export const viewport: Viewport = {
   themeColor: [
@@ -102,6 +82,10 @@ export const metadata: Metadata = {
  * de Leaflet y disparaba un `GET /auth/me` por visita anónima. Ahora los monta
  * `components/layout/superficie-privada.tsx`, que usan los tres layouts con
  * sesión; la superficie pública sólo necesita el tema.
+ *
+ * Las tres familias (sans, mono y la de titulares) se declaran en
+ * `lib/tipografia.ts` y sus variables van aquí, en `<html>`, para toda la
+ * aplicación: la portada y la consola comparten tipografía de titulares.
  */
 export default function RootLayout({
   children,
@@ -109,11 +93,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="es"
-      suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable}`}
-    >
+    <html lang="es" suppressHydrationWarning className={VARIABLES_FUENTES}>
       <body className="bg-background min-h-screen font-sans antialiased" suppressHydrationWarning>
         <a href="#main-content" className="skip-link">
           Saltar al contenido principal

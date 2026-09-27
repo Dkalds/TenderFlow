@@ -54,11 +54,12 @@ const renderRail = (pathname = "/resumen", admin = true) => {
 const railNav = () => screen.getByRole("navigation", { name: "Espacios" });
 
 /**
- * En el rail el nombre accesible de un espacio es su código de 3 letras
- * (texto visible bajo el icono) seguido de la etiqueta en un `sr-only`.
+ * En el rail el nombre accesible de un espacio es su nombre, que es también el
+ * texto visible bajo el icono (WCAG 2.5.3). Antes era un código de 3 letras
+ * seguido de la etiqueta en un `sr-only` («RESResumen»).
  */
-const railName = (space: { short: string; label: string }) => `${space.short}${space.label}`;
-const railLink = (space: { short: string; label: string }) =>
+const railName = (space: { label: string }) => space.label;
+const railLink = (space: { label: string }) =>
   within(railNav()).getByRole("link", { name: railName(space) });
 const bySlug = (key: string) => CONSOLE_SPACES.find((space) => space.key === key)!;
 
@@ -70,7 +71,7 @@ afterEach(() => {
 });
 
 describe("ConsoleRail", () => {
-  it("enlaza los 14 espacios cuando eres admin", () => {
+  it("enlaza todos los espacios cuando eres admin", () => {
     renderRail("/resumen", true);
     const links = within(railNav()).getAllByRole("link");
     // 14 espacios + el monograma que lleva al resumen.
@@ -97,6 +98,18 @@ describe("ConsoleRail", () => {
     expect(within(railNav()).getAllByRole("link")).toHaveLength(
       CONSOLE_SPACES.length - ADMIN_ONLY_SPACES.size + 1,
     );
+  });
+
+  it("pinta el nombre de cada espacio bajo su icono, sin códigos ni texto oculto", () => {
+    renderRail("/resumen", true);
+    for (const space of CONSOLE_SPACES) {
+      const enlace = railLink(space);
+      // Lo que se ve es el nombre entero: el nombre accesible no añade nada
+      // que no esté en pantalla, y no queda ningún `sr-only` de apoyo.
+      expect(enlace).toHaveTextContent(new RegExp(`^${space.label}$`));
+      expect(enlace.querySelector(".sr-only")).toBeNull();
+      expect(enlace.querySelector(".font-mono")).toBeNull();
+    }
   });
 
   it("marca activo el espacio de la ruta actual", () => {
@@ -137,6 +150,33 @@ describe("ConsoleRail", () => {
     expect(
       within(railNav()).getByRole("link", { name: "TenderFlow · ir al resumen" }),
     ).toHaveAttribute("href", "/resumen");
+  });
+
+  it("el rail es una superficie sólida, sin degradado, y su marca no lleva halo", () => {
+    renderRail("/resumen");
+    const nav = railNav();
+    expect(nav).toHaveClass("bg-card");
+    expect(nav.className).not.toMatch(/gradient/);
+    const marca = within(nav).getByRole("link", { name: "TenderFlow · ir al resumen" });
+    // La marca es la de `TenderFlowLogo`, no una copia en línea del trazo.
+    expect(marca.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(marca.innerHTML).not.toMatch(/shadow/);
+  });
+
+  it("la barra móvil lleva la marca con su wordmark, sin vidrio", () => {
+    renderRail("/resumen");
+    const barraMovil = screen.getByRole("button", { name: "Abrir navegación" }).parentElement!;
+    expect(barraMovil).toHaveClass("bg-background");
+    expect(barraMovil.className).not.toContain("tf-glass");
+    expect(within(barraMovil).getByText("TenderFlow")).toHaveClass("font-display", "text-tf-lede");
+  });
+
+  it("nombra el rol de la organización en castellano", () => {
+    renderRail("/resumen");
+    fireEvent.pointerDown(screen.getAllByRole("button", { name: "Menú de cuenta" })[0]);
+    expect(screen.getByRole("combobox", { name: "Organización activa" })).toHaveTextContent(
+      "Acme · Administrador",
+    );
   });
 
   it("la barra móvil no dibuja separador: el corte con el contenido es de la barra de ámbito", () => {

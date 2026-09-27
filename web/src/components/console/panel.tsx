@@ -2,9 +2,21 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { RotateCcw } from "lucide-react";
-import { cn, formatPercent } from "@/lib/utils";
+import {
+  ArrowRight,
+  CircleAlert,
+  CircleCheck,
+  Info,
+  RotateCcw,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
+import { cn, EMPTY, formatPercent } from "@/lib/utils";
+import { detalleTecnico, getErrorMessage } from "@/lib/query-feedback";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+
+export { ChipBanda, esBandaConocida, type BandaPuntuacion, type ChipBandaProps } from "./chip-banda";
 
 /**
  * Vocabulario de panel de la consola.
@@ -20,18 +32,81 @@ import { Skeleton } from "@/components/ui/skeleton";
  * - «Otros» siempre en `chart-8`.
  * - Nunca dos ejes Y en un panel: dos paneles apilados compartiendo eje X.
  * - Clic en una marca = filtrar el ámbito, no navegar.
+ *
+ * Reglas de dibujo (las que estos primitivos fijan para toda la consola):
+ * - **Rótulos de dato** en sans, en frase y a 11 px (`ROTULO_DATO`). Sin mono,
+ *   sin versal, sin tracking. La versal queda solo en las cabeceras de columna
+ *   de tabla (`CABECERA_COLUMNA` de `@/components/ui/table`).
+ * - **Mono** solo para identificadores y código (expediente, CPV, NIF, claves,
+ *   rutas): `Fact variant="codigo"`. Cifras, importes, fechas y palabras en
+ *   sans; el `tnum` ya viene del body.
+ * - **Cifra de KPI** a 20 px (`text-tf-title font-semibold`) en `StatCell`,
+ *   que es el KPI canónico. `KpiCard` es un adaptador deprecado.
+ * - **Superficies** opacas (`bg-card`), sin degradados ni sombra. El énfasis de
+ *   un panel es su borde (`tono`), nunca un relleno de color.
+ * - **Tintes**: `/5` hover, `/10` seleccionado o chip, `/15` énfasis fuerte;
+ *   bordes tintados `/30` o `/40`.
+ * - **Iconos**: los títulos de panel, tarjeta, sección y hoja no llevan icono
+ *   (salvo el chevron de un desplegable, a la derecha). Un botón con texto no
+ *   lleva icono salvo `Download` = exportar, `Plus` = crear, `RotateCcw` =
+ *   reintentar, y `ExternalLink` detrás del texto cuando sale de TenderFlow. Un
+ *   botón solo-icono lleva `aria-label` y `Tooltip`. El mapa entidad → icono
+ *   está en `lib/iconos.ts`.
+ * - **Vacíos** con `PanelEmpty`, **errores** con `PanelError`, **avisos** con
+ *   `Aviso`, **«ir a»** con `EnlaceIr`, **conmutadores** con `PanelTabs`
+ *   (pestañas con panel) o `Segmented` (filtros y modos con `aria-pressed`).
  */
+
+/* ── Rótulos ──────────────────────────────────────────────────────────── */
+
+/**
+ * Rótulo de un dato (etiqueta de KPI, de `Fact`, de un par clave-valor): sans,
+ * en frase, a 11 px. Una sola receta para toda la consola; antes había ~29
+ * combinaciones de mono, versal y tracking para el mismo papel.
+ */
+export const ROTULO_DATO = "text-tf-micro font-medium text-muted-foreground";
+
+/* ── Tonos ────────────────────────────────────────────────────────────── */
+
+/** Tono semántico del texto de un dato. */
+export type TonoDato = "success" | "destructive" | "warning" | "primary" | "muted";
+
+const TEXTO_TONO: Record<TonoDato, string> = {
+  success: "text-success",
+  destructive: "text-destructive",
+  warning: "text-warning",
+  primary: "text-primary",
+  muted: "text-muted-foreground",
+};
+
+/* ── Panel ────────────────────────────────────────────────────────────── */
+
+/**
+ * Énfasis de un panel: solo el color del borde, sobre la misma superficie
+ * opaca. Exportado para las superficies que no son un `Panel` (un `<section>`
+ * con su propio `aria-labelledby`): `cn(SUPERFICIE_PANEL, TONO_PANEL.accent)`.
+ */
+export const TONO_PANEL = {
+  accent: "border-primary/40",
+  danger: "border-destructive/40",
+} as const;
+
+export type TonoPanel = keyof typeof TONO_PANEL;
+
+/** La superficie de un panel, para elementos que no pueden ser un `Panel`. */
+export const SUPERFICIE_PANEL = "rounded-xl border border-border/60 bg-card";
 
 export function Panel({
   className,
+  tono,
   children,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.HTMLAttributes<HTMLDivElement> & {
+  /** Énfasis del panel: borde primario (`accent`) o destructivo (`danger`). */
+  tono?: TonoPanel;
+}) {
   return (
-    <div
-      className={cn("rounded-xl border border-border/60 bg-card/70 px-4 py-3.5", className)}
-      {...props}
-    >
+    <div className={cn(SUPERFICIE_PANEL, "px-4 py-3.5", tono && TONO_PANEL[tono], className)} {...props}>
       {children}
     </div>
   );
@@ -42,51 +117,132 @@ export function PanelTitle({
   title,
   hint,
   actions,
+  as: Nivel = "h3",
+  id,
   className,
 }: {
   title: React.ReactNode;
   hint?: React.ReactNode;
   actions?: React.ReactNode;
+  /** Nivel del encabezado; `h2` cuando el panel es una sección de la página. */
+  as?: "h2" | "h3";
+  /** Para el `aria-labelledby` de la sección que lo contiene. */
+  id?: string;
   className?: string;
 }) {
   return (
     <div className={cn("mb-3 flex items-baseline gap-2.5", className)}>
-      <h3 className="flex-none text-[12.5px] font-semibold">{title}</h3>
-      {hint && <span className="truncate text-[10.5px] text-muted-foreground">{hint}</span>}
-      {actions && (
-        <>
-          <div className="flex-1" />
-          <div className="flex flex-none items-center gap-1.5">{actions}</div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** Rótulo de sección dentro de un panel o de un inspector. */
-export function SectionTitle({
-  children,
-  aside,
-  className,
-}: {
-  children: React.ReactNode;
-  aside?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("mb-2.5 flex items-baseline justify-between gap-2", className)}>
-      <h4 className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        {children}
-      </h4>
-      {aside && <span className="text-[10.5px] text-muted-foreground">{aside}</span>}
+      <Nivel id={id} className="flex-none text-tf-body font-semibold">
+        {title}
+      </Nivel>
+      {hint && <span className="min-w-0 truncate text-tf-meta text-muted-foreground">{hint}</span>}
+      {actions && <div className="ml-auto flex flex-none items-center gap-1.5">{actions}</div>}
     </div>
   );
 }
 
 /**
- * Celda de una tira de estadísticas. Los KPIs de la consola van pegados en una
- * rejilla de 1px, no en cuatro tarjetas separadas: leen como una sola fila de
- * dato en vez de como cuatro objetos que compiten.
+ * Rótulo de sección dentro de un panel o de un inspector: en frase, a 12 px,
+ * semibold y en gris. `hint` va a la derecha (un recuento, una fecha).
+ */
+export function SectionTitle({
+  as: Nivel = "h4",
+  children,
+  hint,
+  aside,
+  id,
+  className,
+}: {
+  as?: "h3" | "h4";
+  children: React.ReactNode;
+  hint?: React.ReactNode;
+  /** @deprecated Usa `hint`. */
+  aside?: React.ReactNode;
+  id?: string;
+  className?: string;
+}) {
+  const pista = hint ?? aside;
+  return (
+    <div className={cn("mb-2.5 flex items-baseline justify-between gap-2", className)}>
+      <Nivel id={id} className="text-tf-meta font-semibold text-muted-foreground">
+        {children}
+      </Nivel>
+      {pista != null && pista !== false && <span className="text-tf-meta text-muted-foreground">{pista}</span>}
+    </div>
+  );
+}
+
+/* ── Dato suelto ──────────────────────────────────────────────────────── */
+
+/** Cómo se lee el valor de un `Fact`. */
+export type VarianteFact = "texto" | "cifra" | "codigo";
+
+const VALOR_FACT: Record<VarianteFact, string> = {
+  texto: "text-tf-body font-medium",
+  cifra: "tf-tnum text-tf-body font-medium",
+  codigo: "font-mono text-tf-body",
+};
+
+/**
+ * Un dato suelto con su rótulo: la celda de las rejillas de ficha e inspector
+ * (van en una rejilla de 1 px: `grid gap-px bg-border/60`, como `StatStrip`).
+ *
+ * `variant`: `texto` (por defecto), `cifra` (importe, días, score: sans con
+ * cifras tabulares) o `codigo` (expediente, CPV, NIF: mono). La mono es para
+ * identificadores, nunca para cifras ni palabras.
+ */
+export function Fact({
+  label,
+  value,
+  variant = "texto",
+  tono,
+  color,
+  className,
+}: {
+  label: React.ReactNode;
+  /** Sin valor (`null`/`undefined`) pinta la raya de vacío de la casa. */
+  value: React.ReactNode;
+  /** `"text"` y `"mono"` son los nombres antiguos (`texto` y `codigo`). */
+  variant?: VarianteFact | "text" | "mono";
+  tono?: TonoDato;
+  /** @deprecated Usa `tono`. Color CSS libre, solo para el score por banda. */
+  color?: string;
+  className?: string;
+}) {
+  const v: VarianteFact = variant === "text" ? "texto" : variant === "mono" ? "codigo" : variant;
+  return (
+    <div className={cn("min-w-0 bg-card px-3 py-2.5", className)}>
+      <div className={cn("mb-1", ROTULO_DATO)}>{label}</div>
+      <div
+        className={cn(VALOR_FACT[v], "leading-snug", tono && TEXTO_TONO[tono])}
+        style={color ? { color } : undefined}
+      >
+        {value ?? <span className="text-muted-foreground">{EMPTY}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ── KPI ──────────────────────────────────────────────────────────────── */
+
+/**
+ * Tinte de una superficie pulsable que se apoya en otra (la celda de una tira
+ * sobre la rejilla de 1 px): /5 al pasar y /10 al pulsar, mezclados con la
+ * tarjeta y no transparentes, porque un `bg-primary/5` dejaba ver el gris de
+ * la rejilla y el hover salía sucio. El pulsado va sin transición (responde en
+ * el mismo frame del pointer-down) y vuelve con la del elemento.
+ */
+export const PULSABLE_SOBRE_TARJETA =
+  "hover:bg-[color-mix(in_oklab,hsl(var(--primary))_5%,hsl(var(--card)))] active:bg-[color-mix(in_oklab,hsl(var(--primary))_10%,hsl(var(--card)))]";
+
+/**
+ * Celda de una tira de estadísticas: **el KPI canónico de la consola**. Los KPIs
+ * van pegados en una rejilla de 1 px (`StatStrip`), no en cuatro tarjetas
+ * separadas: leen como una sola fila de dato en vez de como cuatro objetos que
+ * compiten.
+ *
+ * La cifra va a 20 px (`text-tf-title`), sans y seminegrita, con cifras
+ * tabulares; el rótulo, a 11 px en frase (`ROTULO_DATO`).
  */
 export function StatCell({
   label,
@@ -98,19 +254,20 @@ export function StatCell({
   loading,
   onClick,
   href,
+  tono,
   accent,
+  className,
+  "aria-label": ariaLabel,
 }: {
-  label: string;
+  label: React.ReactNode;
   value: React.ReactNode;
   hint?: React.ReactNode;
   trend?: number;
   /**
    * Sube el delta al cuerpo del valor y lo pinta en ámbar. Es para la celda que
-   * ya viene marcada como anómala: con el delta a 11 px, la desviación que la
+   * ya viene marcada como anómala: con el delta pequeño, la desviación que la
    * etiqueta anunciaba había que ir a buscarla — el ojo aterrizaba en el valor
-   * absoluto, que es justo el número que **no** ha cambiado. El signo y el
-   * color siguen saliendo del propio delta, así que una anomalía a la baja se
-   * lee roja igual que antes; lo único que cambia es el tamaño.
+   * absoluto, que es justo el número que **no** ha cambiado.
    */
   trendAlert?: boolean;
   badge?: React.ReactNode;
@@ -123,23 +280,27 @@ export function StatCell({
    * nueva» y el destino en la barra de estado — tres cosas que ya tenía.
    */
   href?: string;
+  /** Color semántico de la cifra (un estado, no decoración). */
+  tono?: "success" | "destructive" | "warning";
+  /** @deprecated Usa `tono`. Color CSS libre de la cifra. */
   accent?: string;
+  className?: string;
+  /** Nombre accesible del enlace o botón, cuando el contenido no basta. */
+  "aria-label"?: string;
 }) {
   const up = (trend ?? 0) >= 0;
   const body = (
     <>
-      <div className="mb-1.5 flex items-center gap-1.5">
-        <span className="truncate font-mono text-[8.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-          {label}
-        </span>
+      <div className="mb-1 flex min-w-0 items-center gap-1.5">
+        <span className={cn("truncate", ROTULO_DATO)}>{label}</span>
         {badge}
       </div>
       {loading ? (
-        <Skeleton className="h-4 w-24 rounded" />
+        <Skeleton className="h-6 w-24 rounded-sm" />
       ) : (
         <div className="flex min-w-0 items-baseline gap-2">
           <span
-            className="tf-tnum truncate font-mono text-base font-semibold leading-none"
+            className={cn("tf-tnum truncate text-tf-title font-semibold", tono && TEXTO_TONO[tono])}
             style={accent ? { color: accent } : undefined}
           >
             {value}
@@ -147,40 +308,31 @@ export function StatCell({
           {trend != null && (
             <span
               className={cn(
-                "tf-tnum flex-none font-mono leading-none",
+                "tf-tnum flex-none",
                 trendAlert
-                  ? "text-base font-semibold text-[hsl(var(--warning))]"
-                  : cn(
-                      "text-[11px] font-medium",
-                      up ? "text-[hsl(var(--success))]" : "text-destructive",
-                    ),
+                  ? "text-tf-title font-semibold text-warning"
+                  : cn("text-tf-meta font-medium", up ? "text-success" : "text-destructive"),
               )}
             >
               {/* `formatPercent` y no `toFixed`: éste emite siempre el punto
-                  decimal, así que la tira sacaba «+768.9%» pegado a un
-                  «93,1%» del panel de al lado — el mismo carácter con dos
-                  significados a 40 px de distancia que ya señaló el hallazgo 3
-                  de la auditoría UX para el KPI bar. */}
+                  decimal, y la tira sacaba «+768.9%» pegado a un «93,1%» del
+                  panel de al lado. */}
               {up ? "+" : ""}
               {formatPercent(trend)}
             </span>
           )}
         </div>
       )}
-      {hint && (
-        // Sin el /80: a 10px la opacidad dejaba el hint por debajo de 4.5:1
-        // sobre bg-card (violación color-contrast del E2E de accesibilidad).
-        <div className="mt-1 truncate text-[10px] leading-[1.3] text-muted-foreground">{hint}</div>
-      )}
+      {hint && <div className="mt-1 truncate text-tf-meta text-muted-foreground">{hint}</div>}
     </>
   );
 
+  const base = cn("min-w-0 bg-card px-3.5 py-2.5", className);
+  const pulsable = cn("text-left transition-colors active:duration-0", PULSABLE_SOBRE_TARJETA);
+
   if (href) {
     return (
-      <Link
-        href={href}
-        className="min-w-0 bg-card px-3.5 py-2.5 text-left transition-colors duration-140 ease-out hover:bg-primary/5"
-      >
+      <Link href={href} data-slot="stat-cell" aria-label={ariaLabel} className={cn(pulsable, base)}>
         {body}
       </Link>
     );
@@ -189,17 +341,26 @@ export function StatCell({
     return (
       <button
         type="button"
+        data-slot="stat-cell"
+        aria-label={ariaLabel}
         onClick={onClick}
-        className="min-w-0 bg-card px-3.5 py-2.5 text-left transition-colors duration-140 ease-out hover:bg-primary/5"
+        className={cn(pulsable, base)}
       >
         {body}
       </button>
     );
   }
-  return <div className="min-w-0 bg-card px-3.5 py-2.5">{body}</div>;
+  return (
+    <div data-slot="stat-cell" className={base}>
+      {body}
+    </div>
+  );
 }
 
-/** Contenedor de una tira de `StatCell`, con la rejilla de 1px del sistema. */
+/**
+ * Contenedor de una tira de `StatCell`, con la rejilla de 1 px del sistema: dos
+ * columnas por debajo de `lg` y las que pida `columns` a partir de ahí.
+ */
 export function StatStrip({
   columns = 4,
   className,
@@ -212,10 +373,13 @@ export function StatStrip({
   return (
     <div
       className={cn(
-        // Dos columnas por debajo de `lg` y las que pida el llamante a partir
-        // de ahí: apretar seis KPIs en una pantalla de portátil los vuelve
-        // ilegibles antes que compactos.
+        // Apretar seis KPIs en una pantalla de portátil los vuelve ilegibles
+        // antes que compactos: dos columnas hasta `lg`.
         "grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60",
+        "lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]",
+        // Una celda que trae su propio marco (`KpiCard` suelto) lo pierde dentro
+        // de la tira: aquí el marco es la rejilla.
+        "[&_[data-slot=stat-cell]]:rounded-none [&_[data-slot=stat-cell]]:border-0",
         className,
       )}
       style={{ ["--console-stat-columns" as string]: String(columns) }}
@@ -225,80 +389,305 @@ export function StatStrip({
   );
 }
 
+/* ── Estados: carga, vacío, error ─────────────────────────────────────── */
+
 /**
  * Los tres estados de un panel de datos, con el alto del contenido real para
  * que la página no salte cuando llega el dato.
  */
-export function PanelLoading({ height = 260 }: { height?: number }) {
-  return <Skeleton className="w-full rounded-lg" style={{ height }} />;
+export function PanelLoading({ height = 260, className }: { height?: number; className?: string }) {
+  return <Skeleton className={cn("w-full rounded-md", className)} style={{ height }} />;
 }
 
+/**
+ * «No hay nada»: qué falta y, si ayuda, qué hacer. Sin baldosa de icono
+ * tintada ni caja de borde discontinuo; si hace falta un icono, pequeño, gris y
+ * en línea con el título.
+ *
+ * El texto tiene que ser concreto («Ningún CPV con adjudicaciones en el ámbito
+ * actual. Amplía las fechas.»), no «Sin datos».
+ */
 export function PanelEmpty({
+  title,
+  hint,
   message,
+  icon: Icono,
   action,
+  size = "md",
   height,
+  className,
 }: {
-  message: string;
+  /** Qué falta, en una línea. */
+  title?: React.ReactNode;
+  /** Por qué, o qué hacer. */
+  hint?: React.ReactNode;
+  /** @deprecated Usa `hint` (y `title` para la primera línea). */
+  message?: React.ReactNode;
+  icon?: LucideIcon;
+  /** Un `Button` (outline `sm`; primario solo si es el primer paso). */
   action?: React.ReactNode;
+  /** `md` (por defecto) para un panel o una página; `sm` dentro de una lista. */
+  size?: "sm" | "md";
   height?: number;
+  className?: string;
 }) {
+  const pista = hint ?? message;
+  const icono = Icono ? <Icono className="h-4 w-4 flex-none text-muted-foreground" aria-hidden="true" /> : null;
   return (
     <div
       // `status` y no un div mudo: pasar de «cargando» a «no hay nada» es un
-      // cambio de estado que el lector de pantalla tiene que oír, y era
-      // silencioso en toda la consola (hallazgo 5 de la auditoría UX).
+      // cambio de estado que el lector de pantalla tiene que oír.
       role="status"
-      className="grid place-items-center rounded-[10px] border border-dashed border-border/60 px-4 py-9 text-center"
+      className={cn("grid place-items-center px-4 text-center", size === "sm" ? "py-5" : "py-9", className)}
       style={height ? { minHeight: height } : undefined}
     >
-      <div>
-        <p className="text-[11.5px] leading-[1.5] text-muted-foreground">{message}</p>
-        {action && <div className="mt-3">{action}</div>}
+      <div className="max-w-[420px]">
+        {title && (
+          <p className="inline-flex items-center gap-1.5 text-tf-body font-medium text-foreground">
+            {icono}
+            {title}
+          </p>
+        )}
+        {pista && (
+          <p
+            className={cn(
+              "text-tf-meta text-muted-foreground",
+              title && "mt-1",
+              !title && icono && "inline-flex items-center gap-1.5",
+            )}
+          >
+            {!title && icono}
+            {pista}
+          </p>
+        )}
+        {action && <div className="mt-3 flex justify-center">{action}</div>}
       </div>
     </div>
   );
 }
 
+/**
+ * Un fallo en línea: mensaje humano, «Reintentar» y el «Detalle técnico»
+ * plegado. **Un solo aviso por fallo**: la consulta cuyo error se pinta aquí
+ * lleva `meta: META_ERROR_EN_LINEA` (`lib/query-feedback`) para no lanzar
+ * además el toast.
+ *
+ * - `error`: lo que lanzó la consulta. Da el mensaje visible
+ *   (`getErrorMessage`) y el detalle técnico (estado, método y ruta).
+ * - `message`: el mensaje visible, si el llamador tiene uno mejor.
+ * - `detail`: el detalle técnico explícito. Nunca se enseña abierto: rutas,
+ *   códigos y `error.message` crudos van plegados, para soporte.
+ * - `variant="inline"`: sin caja, para cuando ya está dentro de un `Panel`.
+ */
 export function PanelError({
   title = "No se pudo cargar",
+  error,
+  message,
   detail,
   onRetry,
+  variant = "bloque",
   height,
+  className,
 }: {
-  title?: string;
-  detail?: string;
+  title?: React.ReactNode;
+  error?: unknown;
+  message?: React.ReactNode;
+  detail?: React.ReactNode;
   onRetry?: () => void;
+  variant?: "bloque" | "inline";
   height?: number;
+  className?: string;
 }) {
+  const hayError = error !== undefined && error !== null;
+  const texto = message ?? (hayError ? getErrorMessage(error) : undefined);
+  const tecnico = detail ?? (hayError ? detalleTecnico(error) : undefined);
   return (
     <div
       role="alert"
-      className="grid place-items-center rounded-xl border border-destructive/40 bg-destructive/8 px-6 py-5"
+      className={cn(
+        variant === "inline" ? "py-3" : "grid place-items-center rounded-xl border border-destructive/40 bg-card px-6 py-5",
+        className,
+      )}
       style={height ? { minHeight: height } : undefined}
     >
-      <div className="max-w-[520px]">
-        <div className="mb-2 flex items-center gap-2.5">
-          <span className="grid h-5.5 w-5.5 flex-none place-items-center rounded-full border border-destructive/50 text-[12px] font-semibold text-destructive">
-            !
-          </span>
-          <span className="text-[13.5px] font-semibold text-destructive">{title}</span>
+      <div className="min-w-0 max-w-[520px]">
+        <div className="flex items-start gap-2">
+          <CircleAlert className="mt-px h-4 w-4 flex-none text-destructive" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-tf-body font-semibold text-foreground">{title}</p>
+            {texto && <p className="mt-0.5 text-tf-meta text-muted-foreground">{texto}</p>}
+          </div>
         </div>
-        {detail && (
-          <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">{detail}</p>
-        )}
         {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="tf-pressable inline-flex h-[30px] items-center gap-1.5 rounded-md border border-border/80 px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <RotateCcw className="h-3 w-3" aria-hidden="true" />
+          <Button type="button" variant="outline" size="sm" onClick={onRetry} className="ml-6 mt-3">
+            <RotateCcw aria-hidden="true" />
             Reintentar
-          </button>
+          </Button>
+        )}
+        {tecnico && (
+          <details className="ml-6 mt-2.5 text-tf-meta text-muted-foreground">
+            <summary className="w-fit cursor-pointer select-none rounded-sm hover:text-foreground">
+              Detalle técnico
+            </summary>
+            <p className="mt-1.5 break-all font-mono text-tf-micro">{tecnico}</p>
+          </details>
         )}
       </div>
     </div>
   );
+}
+
+/* ── Avisos ───────────────────────────────────────────────────────────── */
+
+export type TonoAviso = "info" | "warning" | "danger" | "success";
+
+const TONO_AVISO: Record<TonoAviso, { caja: string; icono: string; Icono: LucideIcon }> = {
+  info: { caja: "border-info/30 bg-info/5", icono: "text-info", Icono: Info },
+  warning: { caja: "border-warning/30 bg-warning/5", icono: "text-warning", Icono: TriangleAlert },
+  danger: { caja: "border-destructive/30 bg-destructive/5", icono: "text-destructive", Icono: CircleAlert },
+  success: { caja: "border-success/30 bg-success/5", icono: "text-success", Icono: CircleCheck },
+};
+
+/**
+ * Banda de aviso: info, aviso, peligro o éxito. Una sola receta (borde /30,
+ * fondo /5 del tono, icono de contorno del tono y texto en `foreground`) en vez
+ * de las ~17 bandas escritas a mano con doce opacidades distintas.
+ *
+ * `role` por defecto: `alert` para `danger`, `status` para el resto; se puede
+ * cambiar (`note` para una nota que no es un cambio de estado).
+ * `variant="banda"` va a todo el ancho, sin radio y con solo el borde inferior
+ * (debajo de una barra de herramientas).
+ */
+export function Aviso({
+  tone = "info",
+  title,
+  children,
+  action,
+  icon,
+  role,
+  variant = "bloque",
+  className,
+}: {
+  tone?: TonoAviso;
+  title?: React.ReactNode;
+  children?: React.ReactNode;
+  action?: React.ReactNode;
+  /** Otro icono de contorno si el del tono no dice lo bastante. */
+  icon?: LucideIcon;
+  role?: "status" | "alert" | "note";
+  variant?: "bloque" | "banda";
+  className?: string;
+}) {
+  const estilo = TONO_AVISO[tone];
+  const Icono = icon ?? estilo.Icono;
+  return (
+    <div
+      role={role ?? (tone === "danger" ? "alert" : "status")}
+      className={cn(
+        "flex items-start gap-2 px-3 py-2 text-tf-meta text-foreground",
+        variant === "banda" ? "border-b" : "rounded-md border",
+        estilo.caja,
+        className,
+      )}
+    >
+      <Icono className={cn("mt-px h-3.5 w-3.5 flex-none", estilo.icono)} aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        {title && <p className="font-semibold">{title}</p>}
+        {children != null && <div className={cn(title && "mt-0.5")}>{children}</div>}
+      </div>
+      {action && <div className="flex-none self-center">{action}</div>}
+    </div>
+  );
+}
+
+/* ── Enlace «ir a» ────────────────────────────────────────────────────── */
+
+type EnlaceIrProps = Omit<React.ComponentProps<typeof Link>, "children" | "className"> & {
+  children: React.ReactNode;
+  className?: string;
+};
+
+/**
+ * «Ir a» dentro de TenderFlow: texto en primario con `ArrowRight` detrás. El
+ * hover solo cambia el color (se ve decenas de veces al día: no se desplaza
+ * nada). La flecha es un icono con `aria-hidden`; nunca un «→» en el texto, que
+ * el lector de pantalla leería. Para salir de la app, `ExternalLink`.
+ */
+export function EnlaceIr({ children, className, ...props }: EnlaceIrProps) {
+  return (
+    <Link
+      {...props}
+      className={cn(
+        "inline-flex items-center gap-1 text-tf-meta font-medium text-primary transition-colors hover:text-foreground",
+        className,
+      )}
+    >
+      {children}
+      <ArrowRight className="h-3.5 w-3.5 flex-none" aria-hidden="true" />
+    </Link>
+  );
+}
+
+/* ── Pestañas y conmutadores ──────────────────────────────────────────── */
+
+/**
+ * Piel de una pestaña o de un segmento de la consola. Exportada para los
+ * conmutadores que no pueden ser `PanelTabs` ni `Segmented` (la cabecera del
+ * espacio, el login): una sola geometría para «cambiar de vista».
+ */
+export function clasePestana(on: boolean): string {
+  return cn(
+    "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 text-tf-meta font-medium transition-colors md:h-7",
+    "disabled:pointer-events-none disabled:opacity-50 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:flex-none",
+    on ? "border-border/70 bg-secondary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+  );
+}
+
+/**
+ * Contador de una pestaña o segmento. Tinte /10 sobre `secondary`: el /16 que
+ * llevaba daba 4,28:1 en axe (radar-controles); el /10 lo mide
+ * `contraste-tokens.test.ts`. Cifra en sans: no es un identificador.
+ */
+export function claseContador(on: boolean): string {
+  return cn(
+    "tf-tnum rounded-sm px-1 text-tf-micro font-medium",
+    on ? "bg-primary/10 text-primary" : "bg-muted-foreground/10 text-muted-foreground",
+  );
+}
+
+/**
+ * Teclado del patrón de pestañas de WAI-ARIA para un `tablist` propio: flechas,
+ * Inicio y Fin mueven entre pestañas y las activan. `ref` va en el contenedor
+ * con `role="tablist"` y `onKeyDown` en cada pestaña; la activa lleva
+ * `tabIndex={0}` y las demás `-1`.
+ */
+export function useTeclasPestanas<T extends string>(
+  claves: readonly T[],
+  valor: T,
+  onChange: (siguiente: T) => void,
+) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const onKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      const actual = claves.indexOf(valor);
+      const destino =
+        event.key === "ArrowRight"
+          ? (actual + 1) % claves.length
+          : event.key === "ArrowLeft"
+            ? (actual - 1 + claves.length) % claves.length
+            : event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? claves.length - 1
+                : null;
+      if (destino == null || claves.length === 0) return;
+      event.preventDefault();
+      onChange(claves[destino]);
+      ref.current?.querySelectorAll<HTMLElement>('[role="tab"]')[destino]?.focus();
+    },
+    [claves, valor, onChange],
+  );
+  return { ref, onKeyDown };
 }
 
 /** Los ids que unen una pestaña con su panel (`aria-controls`/`aria-labelledby`). */
@@ -323,7 +712,6 @@ export function panelDePestana(idBase: string, key: string) {
  *
  * Teclado del patrón de pestañas de WAI-ARIA: solo la activa está en el orden
  * de tabulación, y las flechas, Inicio y Fin mueven entre ellas y la activan.
- * Antes cada pestaña era una parada de Tab más camino del contenido.
  */
 export function PanelTabs<T extends string>({
   tabs,
@@ -331,6 +719,7 @@ export function PanelTabs<T extends string>({
   onChange,
   label,
   idBase,
+  className,
 }: {
   tabs: { key: T; label: string; badge?: React.ReactNode }[];
   value: T;
@@ -338,33 +727,17 @@ export function PanelTabs<T extends string>({
   label: string;
   /** Con él, cada pestaña apunta a su panel (`panelDePestana`). */
   idBase?: string;
+  className?: string;
 }) {
-  const lista = React.useRef<HTMLDivElement>(null);
-
-  const mover = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    const actual = tabs.findIndex((tab) => tab.key === value);
-    const destino =
-      event.key === "ArrowRight"
-        ? (actual + 1) % tabs.length
-        : event.key === "ArrowLeft"
-          ? (actual - 1 + tabs.length) % tabs.length
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? tabs.length - 1
-              : null;
-    if (destino == null || tabs.length === 0) return;
-    event.preventDefault();
-    onChange(tabs[destino].key);
-    lista.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[destino]?.focus();
-  };
+  const claves = React.useMemo(() => tabs.map((tab) => tab.key), [tabs]);
+  const { ref, onKeyDown } = useTeclasPestanas(claves, value, onChange);
 
   return (
     <div
-      ref={lista}
+      ref={ref}
       role="tablist"
       aria-label={label}
-      className="flex flex-wrap items-center gap-0.5 border-b border-border/50 pb-2"
+      className={cn("flex flex-wrap items-center gap-0.5 border-b border-border/60 pb-2", className)}
     >
       {tabs.map((tab) => {
         const on = tab.key === value;
@@ -380,25 +753,79 @@ export function PanelTabs<T extends string>({
             aria-controls={on ? ids?.panel : undefined}
             aria-selected={on}
             tabIndex={on ? 0 : -1}
-            onKeyDown={mover}
+            onKeyDown={onKeyDown}
             onClick={() => onChange(tab.key)}
-            className={cn(
-              "tf-pressable inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 text-[12px] font-medium transition-colors duration-150 ease-out",
-              on
-                ? "border-border/70 bg-secondary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
+            className={clasePestana(on)}
           >
             {tab.label}
+            {/* El espacio separa etiqueta y recuento en el nombre accesible
+                («Cola 3», no «Cola3»); en un flex no ocupa sitio. */}
             {tab.badge != null && (
-              <span
-                className={cn(
-                  "tf-tnum rounded px-1 py-0.5 font-mono text-[9px] font-medium",
-                  on ? "bg-primary/16 text-primary" : "bg-muted-foreground/12 text-muted-foreground",
-                )}
-              >
-                {tab.badge}
-              </span>
+              <>
+                {" "}
+                <span className={claseContador(on)}>{tab.badge}</span>
+              </>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Una opción de `Segmented`. */
+export interface OpcionSegmented<T extends string> {
+  value: T;
+  label: React.ReactNode;
+  /** Recuento junto a la etiqueta; forma parte del nombre accesible. */
+  count?: number | string;
+  icon?: LucideIcon;
+  disabled?: boolean;
+}
+
+/**
+ * Conmutador de modo o filtro (Cómoda/Compacta, Búsqueda/Preguntar, los
+ * segmentos del Radar): botones con `aria-pressed` y la misma piel que
+ * `PanelTabs`. Para pestañas con panel, `PanelTabs`; esto no promete el
+ * teclado de un `tablist`, cada opción es una parada de Tab.
+ */
+export function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  "aria-label": ariaLabel,
+  size = "sm",
+  className,
+}: {
+  value: T;
+  onChange: (next: T) => void;
+  options: readonly OpcionSegmented<T>[];
+  "aria-label": string;
+  /** `sm` (28 px en escritorio, por defecto) o `xs` (24 px, barras densas). */
+  size?: "sm" | "xs";
+  className?: string;
+}) {
+  return (
+    <div role="group" aria-label={ariaLabel} className={cn("inline-flex flex-wrap items-center gap-0.5", className)}>
+      {options.map((opcion) => {
+        const on = opcion.value === value;
+        const Icono = opcion.icon;
+        return (
+          <button
+            key={opcion.value}
+            type="button"
+            aria-pressed={on}
+            disabled={opcion.disabled}
+            onClick={() => onChange(opcion.value)}
+            className={cn(clasePestana(on), size === "xs" && "h-6 px-2 text-tf-micro md:h-6")}
+          >
+            {Icono && <Icono aria-hidden="true" />}
+            {opcion.label}
+            {opcion.count != null && (
+              <>
+                {" "}
+                <span className={claseContador(on)}>{opcion.count}</span>
+              </>
             )}
           </button>
         );

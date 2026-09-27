@@ -7,7 +7,8 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
 
 /**
- * Marco del dashboard — rail de 56px + barra de ámbito de 52px.
+ * Marco del dashboard — rail de 76 px (icono y nombre de cada espacio) + barra
+ * de ámbito de 52 px.
  *
  * Antes se apilaban seis bandas de cromo antes de la primera fila de dato
  * (TopNav + KpiBar + FilterBar + Breadcrumb + PageTabs + PageHeader). Ahora
@@ -46,7 +47,11 @@ export function ConsoleFrame({ children }: { children: React.ReactNode }) {
     // contenedor que scrollea (`DashboardShell`) y el cromo que dibuja el borde
     // (rail móvil y barra de ámbito) son hermanos, no antepasados.
     <ScrollEdgeProvider>
-      <div className="flex h-screen flex-col bg-background text-foreground md:flex-row">
+      {/* `text-tf-body`: el texto sin clase de la consola hereda los 13 px de
+          la escala y no los 14 del `body`, que son los de la superficie
+          pública. Va en el marco que ya existía, no en un div nuevo que
+          rompería la cadena de alturas. */}
+      <div className="flex h-screen flex-col bg-background text-tf-body text-foreground md:flex-row">
         <ConsoleRail />
 
         {/* `min-h-0`: apilada bajo la barra móvil, la columna es un hijo flex

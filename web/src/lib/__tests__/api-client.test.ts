@@ -21,7 +21,7 @@ vi.mock("openapi-fetch", () => ({
 // @/generated/api is a type-only import (`import type { paths }`) and is
 // completely erased at runtime by esbuild/Vite — no mock needed.
 
-import { getCsrfToken, apiMutate, ApiError, esAborto, fetchWithAuth } from "@/lib/api-client";
+import { getCsrfToken, apiMutate, ApiError, esAborto, fetchWithAuth, mensajePorEstado } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -191,6 +191,37 @@ describe("ApiError — tipo del problem+json", () => {
     const error = (await fetchWithAuth("/api/v1/algo").catch((e: unknown) => e)) as ApiError;
 
     expect(error.tipo).toBeUndefined();
+  });
+
+  it("fetchWithAuth guarda la ruta sin origen ni query", async () => {
+    mockFetch(404, {});
+
+    const error = (await fetchWithAuth("http://localhost:3000/api/v1/empresas?q=x").catch(
+      (e: unknown) => e,
+    )) as ApiError;
+
+    expect(error.ruta).toBe("GET /api/v1/empresas");
+    expect(error.message).toBe("No existe o ya no está disponible.");
+  });
+});
+
+describe("mensajePorEstado", () => {
+  it.each([
+    [403, "No tienes permiso para ver esto."],
+    [404, "No existe o ya no está disponible."],
+    [422, "Algún filtro no es válido; revísalo."],
+    [500, "Error del servidor. Vuelve a intentarlo en unos segundos."],
+    [503, "Error del servidor. Vuelve a intentarlo en unos segundos."],
+  ])("%i → %s", (status, esperado) => {
+    expect(mensajePorEstado(status)).toBe(esperado);
+  });
+
+  it("nunca devuelve jerga ni inglés («API error», statusText)", () => {
+    for (const status of [400, 401, 403, 404, 408, 409, 413, 418, 422, 429, 500, 502, 503, 504]) {
+      const mensaje = mensajePorEstado(status);
+      expect(mensaje).not.toMatch(/API|error:|Unknown|Not Found|Service/);
+      expect(mensaje.endsWith(".")).toBe(true);
+    }
   });
 });
 
@@ -362,15 +393,24 @@ describe("apiMutate", () => {
     });
   });
 
-  it("ApiError uses 'Unknown error' when response has no detail field", async () => {
+  it("sin `detail`, el mensaje es el de reserva en castellano del estado", async () => {
+    // Antes: «Unknown error». Es el texto que acaba en el panel de error.
     mockFetch(500, {}, false);
     await expect(apiMutate("POST", "/api/boom")).rejects.toMatchObject({
       status: 500,
-      message: "Unknown error",
+      message: mensajePorEstado(500),
     });
   });
 
-  it("ApiError falls back to statusText when json() rejects", async () => {
+  it("no usa el `title` genérico en inglés del problem+json", async () => {
+    mockFetch(429, { title: "Too Many Requests" }, false);
+    await expect(apiMutate("POST", "/api/v1/algo")).rejects.toMatchObject({
+      status: 429,
+      message: mensajePorEstado(429),
+    });
+  });
+
+  it("si el cuerpo no es JSON, usa el mensaje de reserva y no el statusText", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
       status: 503,
@@ -380,8 +420,15 @@ describe("apiMutate", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(apiMutate("POST", "/api/down")).rejects.toMatchObject({
       status: 503,
-      message: "Service Unavailable",
+      message: "Error del servidor. Vuelve a intentarlo en unos segundos.",
     });
+  });
+
+  it("guarda método y ruta (sin query) para el detalle técnico", async () => {
+    mockFetch(404, { detail: "Empresa no encontrada." }, false);
+    const error = (await apiMutate("DELETE", "/api/v1/empresas/8?org=3").catch((e: unknown) => e)) as ApiError;
+    expect(error.ruta).toBe("DELETE /api/v1/empresas/8");
+    expect(error.message).toBe("Empresa no encontrada.");
   });
 
   it("redirects to /login (preserving the deep-link) and throws ApiError on 401", async () => {

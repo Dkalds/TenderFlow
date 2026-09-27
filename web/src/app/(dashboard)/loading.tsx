@@ -1,22 +1,18 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { SpaceShellEsqueleto, VistaEsqueleto } from "@/components/layout/space-shell-esqueleto";
 
+/**
+ * Esqueleto genérico del dashboard, para los espacios sin `loading.tsx` propio.
+ *
+ * Tenía la forma de una plantilla de dashboard —un título de 32 px, cuatro
+ * tarjetas KPI y dos gráficos, pegados al borde— que no se parecía a ninguna
+ * pantalla: al llegar la página todo saltaba. Ahora es la cabecera de
+ * `SpaceShell` (h-11, título a 15 px) y el cuerpo con su relleno, las mismas
+ * cotas que la pantalla real. Sin pestañas: aquí no se sabe de qué espacio es.
+ */
 export default function DashboardLoading() {
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-72" />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Skeleton className="h-28" />
-        <Skeleton className="h-28" />
-        <Skeleton className="h-28" />
-        <Skeleton className="h-28" />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Skeleton className="h-64" />
-        <Skeleton className="h-64" />
-      </div>
-    </div>
+    <SpaceShellEsqueleto spaceKey="">
+      <VistaEsqueleto />
+    </SpaceShellEsqueleto>
   );
 }

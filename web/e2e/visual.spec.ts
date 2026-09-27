@@ -60,9 +60,10 @@ test.describe("Regresión visual", () => {
         fullPage: true,
         // Tolerancia para el antialiasing de texto entre ejecuciones.
         maxDiffPixelRatio: 0.02,
-        // La barra de ámbito muestra "sync hace N minutos": cambia en cada
-        // ejecución y haría fallar la comparación por un dato que no es diseño.
-        mask: [page.getByText(/sync hace/i)],
+        // La barra de ámbito muestra «Actualizado hace N minutos»: cambia en
+        // cada ejecución y haría fallar la comparación por un dato que no es
+        // diseño.
+        mask: [page.getByText(/Actualizado hace/i)],
         animations: "disabled",
       });
     });

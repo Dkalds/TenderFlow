@@ -123,8 +123,13 @@ export async function apiMutate<T>(
       redirectToLogin();
       throw new ApiError(401, "Session expired");
     }
-    const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, error.detail ?? error.title ?? "Unknown error", tipoDeProblema(error));
+    const error = await res.json().catch(() => ({}));
+    throw new ApiError(
+      res.status,
+      detalleDeProblema(error) ?? mensajePorEstado(res.status),
+      tipoDeProblema(error),
+      `${method} ${rutaDe(url)}`,
+    );
   }
 
   return readJsonBody<T>(res);
@@ -191,14 +196,21 @@ export async function fetchWithAuth<T>(url: string, options?: RequestInit): Prom
       redirectToLogin();
     }
     // La API responde `application/problem+json` (RFC 7807): `detail` es el
-    // mensaje y `title` el genérico. Los cortes de middleware (429, 413) solo
-    // garantizan `title`, así que se usa como respaldo.
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    // mensaje. `title` es el genérico en inglés («Not Found», «Too Many
+    // Requests»), y los cortes de middleware (429, 413) solo traen ése: el
+    // respaldo es el mensaje en castellano de `mensajePorEstado`, no `title`
+    // ni el `statusText` del navegador.
+    const body = await res.json().catch(() => ({}));
     // Si la cancelación llegó mientras se leía el cuerpo del error, el `catch`
     // de arriba se la ha tragado: se relanza ella y no un `ApiError(5xx)`, que
     // se reintentaría y acabaría en aviso por una respuesta que ya nadie quiere.
     options?.signal?.throwIfAborted();
-    throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`, tipoDeProblema(body));
+    throw new ApiError(
+      res.status,
+      detalleDeProblema(body) ?? mensajePorEstado(res.status),
+      tipoDeProblema(body),
+      `${method} ${rutaDe(url)}`,
+    );
   }
 
   return readJsonBody<T>(res);
@@ -215,16 +227,64 @@ export class ApiError extends Error {
      * (ver `lib/query-feedback.ts`).
      */
     public tipo?: string,
+    /**
+     * Método y ruta de la petición que falló («GET /api/v1/empresas/8»), sin
+     * query. No se enseña en el texto del error: va al «Detalle técnico»
+     * plegado de `PanelError`, que es lo que sirve para reportarlo a soporte.
+     */
+    public ruta?: string,
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
+/**
+ * Mensaje de reserva para un estado HTTP, cuando la respuesta de error no
+ * trae un `detail` propio.
+ *
+ * Antes el respaldo era `API error: 404`, `Unknown error` o el `statusText`
+ * del navegador («Service Unavailable»): inglés y jerga de desarrollador en el
+ * texto que lee un comercial. Aquí hablan del efecto y de qué hacer, en
+ * castellano y con tuteo.
+ */
+export function mensajePorEstado(status: number): string {
+  if (status === 403) return "No tienes permiso para ver esto.";
+  if (status === 404) return "No existe o ya no está disponible.";
+  if (status === 408) return "La respuesta tardó demasiado. Vuelve a intentarlo.";
+  if (status === 409) return "Otro cambio se ha cruzado con este. Recarga y vuelve a intentarlo.";
+  if (status === 413) return "La petición es demasiado grande. Acota los filtros.";
+  if (status === 422) return "Algún filtro no es válido; revísalo.";
+  if (status === 429) return "Demasiadas peticiones seguidas. Espera unos segundos.";
+  if (status >= 500) return "Error del servidor. Vuelve a intentarlo en unos segundos.";
+  return "No se pudo completar la solicitud.";
+}
+
+/** Mensaje cuando la petición ni siquiera llegó a tener respuesta. */
+export const MENSAJE_SIN_CONEXION = "Sin conexión. Vuelve a intentarlo.";
+
 /** El `type` de un cuerpo problem+json, si lo trae y es texto. */
 function tipoDeProblema(cuerpo: unknown): string | undefined {
   const tipo = typeof cuerpo === "object" && cuerpo !== null ? (cuerpo as { type?: unknown }).type : undefined;
   return typeof tipo === "string" ? tipo : undefined;
+}
+
+/**
+ * El `detail` de un cuerpo problem+json, si lo trae y no está vacío. `title`
+ * no se usa: es el nombre genérico del estado en inglés.
+ */
+function detalleDeProblema(cuerpo: unknown): string | undefined {
+  const detalle = typeof cuerpo === "object" && cuerpo !== null ? (cuerpo as { detail?: unknown }).detail : undefined;
+  return typeof detalle === "string" && detalle.trim() !== "" ? detalle : undefined;
+}
+
+/** Ruta de una URL, sin origen ni query: lo justo para identificar el endpoint. */
+function rutaDe(url: string): string {
+  try {
+    return new URL(url, "http://ruta.invalid").pathname;
+  } catch {
+    return url.split("?")[0];
+  }
 }
 
 /**
@@ -246,8 +306,13 @@ export async function fetchBlobWithAuth(url: string, options?: RequestInit): Pro
     if (res.status === 401 && typeof window !== "undefined") {
       redirectToLogin();
     }
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`, tipoDeProblema(body));
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(
+      res.status,
+      detalleDeProblema(body) ?? mensajePorEstado(res.status),
+      tipoDeProblema(body),
+      `GET ${rutaDe(url)}`,
+    );
   }
 
   return res.blob();
@@ -311,11 +376,11 @@ export async function apiGet<P extends ApiGetPath>(
   )(path, { params: init?.params, signal: init?.signal });
 
   if (error !== undefined || !response.ok) {
-    const problem = (error ?? {}) as { detail?: string; title?: string };
     throw new ApiError(
       response.status,
-      problem.detail ?? problem.title ?? `API error: ${response.status}`,
+      detalleDeProblema(error) ?? mensajePorEstado(response.status),
       tipoDeProblema(error),
+      `GET ${path}`,
     );
   }
   return data as ApiGetResult<P>;

@@ -11,7 +11,6 @@
  */
 
 import { KpiCard } from "@/components/charts/kpi-card";
-import { Stagger } from "@/components/motion";
 import { formatNumber, truncate } from "@/lib/utils";
 import { celdaSaludPorPct } from "@/lib/cobertura";
 import { Hash, Target, AlertTriangle, Crown } from "lucide-react";
@@ -37,46 +36,41 @@ export function CompetidoresKpis({
     "licitaciones con un solo ofertante",
   );
 
+  // Rejilla quieta: las cifras aparecen a la vez, sin entrada escalonada. Es
+  // una tira que se consulta a diario, y escalonarla animaba justo el dato que
+  // se vino a leer.
   return (
-    <Stagger className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60 lg:grid-cols-4 [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-card">
-      <Stagger.Item>
-        <KpiCard
-          title="Total Adjudicaciones"
-          value={isLoading ? undefined : formatNumber(data?.total_adjudicaciones)}
-          icon={Hash}
-          loading={isLoading}
-        />
-      </Stagger.Item>
-      <Stagger.Item>
-        <KpiCard
-          title="HHI Concentración"
-          value={isLoading ? undefined : formatNumber(data?.hhi)}
-          subtitle={data?.hhi != null ? etiquetaHhi(data.hhi) : undefined}
-          icon={Target}
-          loading={isLoading}
-        />
-      </Stagger.Item>
-      <Stagger.Item>
-        <KpiCard
-          title="% Oferta Única"
-          value={isLoading ? undefined : ofertaUnica.value}
-          subtitle={isLoading ? undefined : ofertaUnica.hint}
-          icon={AlertTriangle}
-          loading={isLoading}
-        />
-      </Stagger.Item>
-      <Stagger.Item>
-        <KpiCard
-          title="Top Competidor"
-          value={
-            isLoading
-              ? undefined
-              : truncate(data?.top_competidor ?? data?.competitors?.[0]?.nombre ?? "-", 30)
-          }
-          icon={Crown}
-          loading={isLoading}
-        />
-      </Stagger.Item>
-    </Stagger>
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60 lg:grid-cols-4 [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-card">
+      <KpiCard
+        title="Total Adjudicaciones"
+        value={isLoading ? undefined : formatNumber(data?.total_adjudicaciones)}
+        icon={Hash}
+        loading={isLoading}
+      />
+      <KpiCard
+        title="HHI Concentración"
+        value={isLoading ? undefined : formatNumber(data?.hhi)}
+        subtitle={data?.hhi != null ? etiquetaHhi(data.hhi) : undefined}
+        icon={Target}
+        loading={isLoading}
+      />
+      <KpiCard
+        title="% Oferta Única"
+        value={isLoading ? undefined : ofertaUnica.value}
+        subtitle={isLoading ? undefined : ofertaUnica.hint}
+        icon={AlertTriangle}
+        loading={isLoading}
+      />
+      <KpiCard
+        title="Top Competidor"
+        value={
+          isLoading
+            ? undefined
+            : truncate(data?.top_competidor ?? data?.competitors?.[0]?.nombre ?? "-", 30)
+        }
+        icon={Crown}
+        loading={isLoading}
+      />
+    </div>
   );
 }

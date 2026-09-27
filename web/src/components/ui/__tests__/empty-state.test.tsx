@@ -4,12 +4,19 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Star } from "lucide-react";
 
 describe("EmptyState", () => {
-  it("renders with default title and hint", () => {
+  it("no inventa un título ni una pista genéricos", () => {
+    // El «Sin datos» con bandeja salía idéntico en decenas de paneles y no
+    // decía qué faltaba: cada llamada pasa los suyos.
     render(<EmptyState />);
-    expect(screen.getByText("Sin datos")).toBeInTheDocument();
-    expect(
-      screen.getByText("No hay información disponible para el ámbito actual."),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Sin datos")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No hay información disponible/)).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("delega en PanelEmpty: sin baldosa de icono tintada", () => {
+    const { container } = render(<EmptyState title="Sin favoritos" hint="Marca una licitación con la estrella." />);
+    expect(container.querySelector(".rounded-2xl")).toBeNull();
+    expect(container.innerHTML).not.toMatch(/bg-primary/);
   });
 
   it("renders custom title", () => {
@@ -22,9 +29,11 @@ describe("EmptyState", () => {
     expect(screen.getByText("Prueba con otros filtros")).toBeInTheDocument();
   });
 
-  it("renders a custom icon", () => {
-    const { container } = render(<EmptyState icon={Star} />);
-    expect(container.querySelector("svg")).toBeInTheDocument();
+  it("renders a custom icon, small and inline with the title", () => {
+    const { container } = render(<EmptyState icon={Star} title="Sin favoritos" hint="Marca una con la estrella." />);
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+    expect(svg).toHaveClass("h-4", "w-4", "text-muted-foreground");
   });
 
   it("renders an action button when actionLabel and onAction are provided", () => {

@@ -165,13 +165,15 @@ describe("ScrollEdge — contrato de movimiento", () => {
     expect(borde().className).not.toContain("translate");
   });
 
-  it("entra en 260ms y sale más rápido, en 170ms", () => {
+  it("entra en 200ms y sale más rápido, en 150ms, con la curva de la casa", () => {
+    // Se ve en cada desplazamiento: no pasa de los 200ms de la UI operativa.
     render(<Marco />);
-    expect(borde().className).toContain("duration-[170ms]");
+    expect(borde().className).toContain("duration-150");
 
     intersecta(false);
-    expect(borde().className).toContain("duration-[260ms]");
-    expect(borde().className).toContain("ease-[cubic-bezier(.21,1.02,.73,1)]");
+    expect(borde().className).toContain("duration-200");
+    expect(borde().className).toContain("ease-out");
+    expect(borde().className).not.toMatch(/duration-\[|cubic-bezier/);
   });
 });
 

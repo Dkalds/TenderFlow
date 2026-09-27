@@ -2,11 +2,11 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { Sparkles, Send, Square } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { ICONO_CONCEPTO } from "@/lib/iconos";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { useChat } from "@/hooks/use-ask";
@@ -56,7 +56,10 @@ interface CopilotPanelProps {
   idExterno?: string;
 }
 
-/** Slide-over copilot: multi-turn chat over the AI endpoint (streams answers). */
+/**
+ * Copiloto: conversación de varios turnos sobre las licitaciones, en un panel
+ * lateral. La IA se nombra, no se adorna: título en texto, sin destellos.
+ */
 export function CopilotPanel({ open, onOpenChange, seedQuestion, seedKey = 0, idExterno }: CopilotPanelProps) {
   const { messages, streaming, loading, error, send, stop, reset } = useChat({ idExterno });
   const [input, setInput] = React.useState("");
@@ -84,12 +87,9 @@ export function CopilotPanel({ open, onOpenChange, seedQuestion, seedKey = 0, id
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col sm:max-w-lg">
         <SheetHeader className="text-left">
-          <SheetTitle className="flex items-center gap-2">
-            <Sparkles className="text-primary h-5 w-5" />
-            Copiloto
-          </SheetTitle>
+          <SheetTitle>Copiloto</SheetTitle>
           <SheetDescription>
-            Pregunta lo que quieras: usa el corpus cuando hay expedientes relevantes (y los cita); si no, responde con
+            Pregunta lo que quieras. Si hay licitaciones que vengan al caso, responde con ellas y las cita; si no, con
             conocimiento general.
           </SheetDescription>
         </SheetHeader>
@@ -97,25 +97,22 @@ export function CopilotPanel({ open, onOpenChange, seedQuestion, seedKey = 0, id
         <div className="mt-4 flex-1 overflow-y-auto pr-1">
           {!hasConversation && (
             <div className="space-y-2">
-              <p className="text-muted-foreground text-xs font-medium">Preguntas de ejemplo</p>
+              <p className="text-tf-meta text-muted-foreground font-medium">Preguntas de ejemplo</p>
+              {/* Botones de verdad y no insignias con `role="button"`: el
+                  teclado (Intro y Espacio) y el foco vienen de serie. */}
               <div className="flex flex-wrap gap-2">
                 {EXAMPLE_QUESTIONS.map((q) => (
-                  <Badge
+                  <button
                     key={q}
-                    variant="outline"
-                    role="button"
-                    tabIndex={0}
-                    className="hover:bg-accent cursor-pointer px-3 py-1.5 text-xs"
+                    type="button"
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                      "h-auto min-h-8 py-1.5 text-left whitespace-normal md:h-auto",
+                    )}
                     onClick={() => send(q)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        send(q);
-                      }
-                    }}
                   >
                     {q}
-                  </Badge>
+                  </button>
                 ))}
               </div>
             </div>
@@ -137,11 +134,11 @@ export function CopilotPanel({ open, onOpenChange, seedQuestion, seedKey = 0, id
             />
             {streaming || loading ? (
               <Button onClick={stop} size="icon" variant="outline" aria-label="Detener">
-                <Square className="h-4 w-4" />
+                <Square aria-hidden="true" />
               </Button>
             ) : (
               <Button onClick={submit} disabled={!input.trim()} size="icon" aria-label="Enviar">
-                <Send className="h-4 w-4" />
+                <Send aria-hidden="true" />
               </Button>
             )}
           </div>
@@ -164,8 +161,9 @@ export function CopilotPanel({ open, onOpenChange, seedQuestion, seedKey = 0, id
 }
 
 /**
- * Single global CopilotPanel mounted once in the dashboard layout. Driven by the
- * UI store so the hero ask-bar, command palette and shortcuts share one panel.
+ * El único `CopilotPanel`, montado una vez en el layout del dashboard. Lo
+ * gobierna el store de UI, así que la barra del Resumen, la paleta y los atajos
+ * abren el mismo panel.
  */
 export function GlobalCopilot() {
   const open = useUiStore((s) => s.copilotOpen);
@@ -174,10 +172,19 @@ export function GlobalCopilot() {
   return <CopilotPanel open={open} onOpenChange={setOpen} seedQuestion={seed.q} seedKey={seed.key} />;
 }
 
-/** Premium hero ask-bar that launches the global CopilotPanel via the UI store. */
+/**
+ * Campo de pregunta del Resumen: abre el copiloto global con lo escrito.
+ *
+ * Es un campo más de la consola. Tuvo un halo en degradado difuminado detrás,
+ * sombra propia, fondo translúcido y un destello naranja: la firma de los
+ * SaaS generados, y el único objeto con elevación de una pantalla plana. Ahora
+ * es un campo con borde sobre la superficie opaca, el glifo de la IA en gris y
+ * el botón «Preguntar» como único acento, porque es la acción.
+ */
 export function CopilotBar({ className }: { className?: string }) {
   const [input, setInput] = React.useState("");
   const openCopilot = useUiStore((s) => s.openCopilot);
+  const IconoIa = ICONO_CONCEPTO.ia;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,29 +194,29 @@ export function CopilotBar({ className }: { className?: string }) {
   };
 
   return (
-    <>
-      <form onSubmit={submit} className={cn("relative", className)}>
-        <div
-          aria-hidden="true"
-          className="from-primary/40 via-primary/15 pointer-events-none absolute -inset-px rounded-xl bg-gradient-to-r to-transparent opacity-70 blur-[6px]"
-        />
-        <div className="tf-card-shadow border-border bg-card/80 relative flex items-center gap-2 rounded-xl border p-2 pl-3">
-          <Sparkles className="text-primary h-5 w-5 shrink-0" />
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            // Quien enfoca la barra va a preguntar: el hilo se pide ya.
-            onFocus={precargarHilo}
-            onPointerEnter={precargarHilo}
-            placeholder="Pregúntale a tus licitaciones…"
-            aria-label="Pregunta al copiloto"
-            className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none"
-          />
-          <Button type="submit" size="sm" className="shrink-0">
-            Preguntar
-          </Button>
-        </div>
-      </form>
-    </>
+    <form
+      onSubmit={submit}
+      // El foco se ve en el contenedor (el input no dibuja el suyo): el mismo
+      // anillo que `Input`.
+      className={cn(
+        "border-border/60 bg-card focus-within:border-ring focus-within:ring-ring flex h-10 items-center gap-2 rounded-md border pr-1 pl-3 transition-colors focus-within:ring-1",
+        className,
+      )}
+    >
+      <IconoIa className="text-muted-foreground h-4 w-4 shrink-0" aria-hidden="true" />
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        // Quien enfoca la barra va a preguntar: el hilo se pide ya.
+        onFocus={precargarHilo}
+        onPointerEnter={precargarHilo}
+        placeholder="Pregúntale a tus licitaciones…"
+        aria-label="Pregunta al copiloto"
+        className="text-campo placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent outline-none focus-visible:outline-none"
+      />
+      <Button type="submit" size="sm" className="shrink-0">
+        Preguntar
+      </Button>
+    </form>
   );
 }

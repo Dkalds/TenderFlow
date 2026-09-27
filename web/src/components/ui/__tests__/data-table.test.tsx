@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { DataTable, type DataTableColumnDef } from "@/components/ui/data-table";
+import { DataTable, IndicadorOrden, type DataTableColumnDef } from "@/components/ui/data-table";
 
 interface Row {
   name: string;
@@ -61,5 +61,34 @@ describe("DataTable", () => {
     );
     expect(container.querySelector(".tbl")).not.toBeNull();
     expect(container.querySelector(".is-beta")).not.toBeNull();
+  });
+});
+
+describe("IndicadorOrden", () => {
+  it("la columna activa enseña su sentido, en el color del texto", () => {
+    const { container, rerender } = render(<IndicadorOrden direccion="asc" />);
+    const svg = container.querySelector("svg");
+    expect(svg).toHaveAttribute("aria-hidden", "true");
+    expect(svg).toHaveClass("text-foreground", "h-3", "w-3");
+    rerender(<IndicadorOrden direccion="desc" />);
+    expect(container.querySelector("svg")).toHaveClass("text-foreground");
+  });
+
+  it("en reposo no se ve con ratón, aparece al pasar o enfocar y se queda tenue en táctil", () => {
+    const { container } = render(<IndicadorOrden direccion={false} />);
+    const svg = container.querySelector("svg");
+    expect(svg).toHaveClass(
+      "opacity-0",
+      "group-hover:opacity-60",
+      "group-focus-visible:opacity-60",
+      "pointer-coarse:opacity-40",
+    );
+  });
+
+  it("el orden lo anuncia el aria-sort del th, no el icono", () => {
+    render(<DataTable columns={columns} data={data} />);
+    const header = screen.getByText("Nombre").closest("th")!;
+    expect(header).toHaveClass("group");
+    expect(header.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
   });
 });

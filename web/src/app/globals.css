@@ -28,11 +28,14 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * TenderFlow design tokens.
- * Premium market-intelligence dashboard: neutral warm base, burnt-orange accent
- * (`--primary`), layered surfaces, refined elevation, and consistent chart
- * colors. Decía "indigo accent" y no lo es desde hace meses — un comentario que
- * describe otra paleta manda a buscar el token equivocado.
+ * Tokens de TenderFlow.
+ *
+ * Base neutra cálida, un único acento naranja tostado (`--primary`, lo que se
+ * puede hacer), superficies opacas (la página `--background` y, encima, las
+ * tarjetas `--card`), una rampa semántica y una paleta de series con el
+ * contraste medido. Si cambia la paleta, cambia también este párrafo: un
+ * comentario que describe otra paleta manda a buscar el token equivocado (decía
+ * «indigo accent» meses después de que dejara de serlo).
  */
 
 @layer base {
@@ -62,12 +65,15 @@
     --destructive-foreground: 0 0% 98%;
     /*
      * Rampa semántica del TEMA CLARO — luminosidades fijadas por contraste, no
-     * por gusto. Estos tokens no se usan nunca como relleno sólido: se pintan
-     * como texto (`text-warning`, `text-success`, `text-info`) sobre `--card` o
-     * sobre el fondo de página, así que su L la manda WCAG 1.4.3 (4,5:1), y la
-     * paleta original —pensada en oscuro, donde estos mismos valores dan 7-12:1—
-     * se quedaba en 2,9-4,4:1 en claro. Ratios recalculados (antes -> ahora),
-     * sobre tarjeta `0 0% 100%` y sobre página `40 22% 96%`:
+     * por gusto. Estos tokens se pintan sobre todo como texto (`text-warning`,
+     * `text-success`, `text-info`) sobre `--card` o sobre el fondo de página,
+     * así que su L la manda WCAG 1.4.3 (4,5:1). Como relleno sólido solo van en
+     * puntos y barras de estado, que son objeto gráfico (1.4.11, 3:1) y ya
+     * cumplen al pasar el 4,5:1 del texto; detrás de texto, solo como tinte (de
+     * /5 a /15, ver más abajo). La paleta original —pensada en oscuro, donde
+     * estos mismos valores dan 7-12:1— se quedaba en 2,9-4,4:1 en claro.
+     * Ratios recalculados (antes -> ahora), sobre tarjeta `0 0% 100%` y sobre
+     * página `40 22% 96%`:
      *
      *   --warning / --score-warm  40% -> 29%   card 2,91 -> 5,13 · page 2,68 -> 4,73
      *   --urgency-medium          38% -> 28%   card 2,96 -> 5,08 · page 2,73 -> 4,68
@@ -110,7 +116,14 @@
 
     --shadow-ink: 204 30% 10%;
 
-    /* Elevation scale (premium, soft, layered) */
+    /* Escala de elevación. La sombra dice «esto flota», así que solo la llevan
+     * las capas que flotan: lo anclado a un control (popover, menú, select,
+     * tooltip, toast, barra de selección) va con `shadow-md`, y lo modal
+     * (diálogo, sheet, paleta) con `shadow-lg`. Lo que vive en la página
+     * —paneles, tarjetas, botones, campos, badges— no lleva ninguna: la
+     * separación la hacen el borde y el cambio de superficie. `shadow-sm` y
+     * `shadow` quedan para piezas dentro de un control (el pulgar del switch).
+     * `shadow-xl`/`shadow-2xl` apuntan a la de modal (ver `@theme inline`). */
     --tf-shadow-sm: 0 1px 2px hsl(var(--shadow-ink) / 0.06), 0 1px 1px hsl(var(--shadow-ink) / 0.04);
     --tf-shadow-md: 0 2px 4px hsl(var(--shadow-ink) / 0.05), 0 8px 20px -10px hsl(var(--shadow-ink) / 0.18);
     --tf-shadow-lg: 0 1px 0 hsl(0 0% 100% / 0.6) inset, 0 12px 36px -12px hsl(var(--shadow-ink) / 0.22);
@@ -228,11 +241,13 @@
     color-scheme: dark;
   }
 
+  /* Fondo liso. Llevaba dos resplandores radiales (el naranja de marca arriba a
+   * la izquierda y el cian de `--chart-2`), el acabado por defecto de los
+   * dashboards generados, y además no se veían: cada superficie los tapa con su
+   * propio `bg-background` opaco. Si algún día hace falta atmósfera, que sea una
+   * decisión, no un resto. */
   body {
-    background:
-      radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 28rem),
-      radial-gradient(circle at 85% -10%, hsl(var(--chart-2) / 0.05), transparent 24rem),
-      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)) 100%);
+    background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     font-family: var(--font-geist-sans), system-ui, sans-serif;
     font-feature-settings:
@@ -280,28 +295,46 @@
   --shadow: var(--tf-shadow-sm);
   --shadow-md: var(--tf-shadow-md);
   --shadow-lg: var(--tf-shadow-lg);
+  /* Sin estas dos, `shadow-xl` y `shadow-2xl` caían a las sombras negras por
+   * defecto de Tailwind, fuera de la escala y más densas que la de un diálogo.
+   * No hay un nivel por encima del modal: las dos son la de modal. */
+  --shadow-xl: var(--tf-shadow-lg);
+  --shadow-2xl: var(--tf-shadow-lg);
 
+  /* Las variables las pone `next/font` en `<html>` (lib/tipografia.ts). La de
+   * titulares se llama igual que el token a propósito: la clase de `next/font`
+   * no tiene capa y gana a la copia de `@layer theme`, así que `font-display`
+   * resuelve a Fraunces en toda la aplicación. */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-display);
 }
 
 /*
- * House motion curves (emil-design-eng: built-in CSS easings are too weak
- * for deliberate UI motion). Declared as real theme values (not `inline`) so
- * `--ease-out`/`--ease-in-out` override Tailwind's default `ease-out`/
- * `ease-in-out` utilities repo-wide, and so the `@utility animate-in/out`
- * keyframes below and any `ease-[var(--ease-*)]` usage can read them as
- * plain CSS custom properties.
+ * Curvas de movimiento de la casa (emil-design-eng: las curvas que trae CSS son
+ * demasiado flojas para un movimiento deliberado). Van en un `@theme` normal,
+ * no `inline`, para que `--ease-out`/`--ease-in-out` sustituyan a las utilidades
+ * `ease-out`/`ease-in-out` de Tailwind en todo el repo, y para que los
+ * keyframes de `animate-in/out` y cualquier `ease-[var(--ease-*)]` las lean
+ * como propiedades CSS normales.
+ *
+ * Duración y curva por defecto: las de cualquier `transition-*` que no fije las
+ * suyas. Sin estas dos líneas, la mitad de los `transition-colors` del árbol
+ * (los que van sin `duration-*` ni `ease-*`) usaban la curva estándar de
+ * Tailwind, justo la débil que este bloque sustituye. 150 ms es el paso de UI
+ * operativa: hover, cambio de estado, pulsación (docs/frontend-motion.md).
  */
 @theme {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: var(--ease-out);
 }
 
 /*
- * Escala tipográfica de la consola — seis pasos, ningún medio píxel.
+ * Escala tipográfica — seis pasos, ningún medio píxel. Es la escala de toda la
+ * consola: nada de `text-[Npx]`.
  *
  * La consola llegó a usar dieciocho tamaños distintos en valores arbitrarios
  * (`text-[8.5px]`, `text-[10.5px]`, `text-[12.5px]`…). Trece de ellos separados
@@ -310,24 +343,61 @@
  * que dos textos del mismo rango se pintan distinto según qué pantalla los
  * dibuje. Seis pasos separados lo suficiente como para distinguirse:
  *
- * | paso     | px | para qué                                              |
- * | -------- | -- | ----------------------------------------------------- |
- * | tf-micro | 11 | rótulos mono en versal, cabeceras de tabla, badges    |
- * | tf-meta  | 12 | dato secundario, etiquetas de KPI, botones pequeños   |
- * | tf-body  | 13 | texto por defecto: filas, controles, párrafos cortos  |
- * | tf-lede  | 15 | título de espacio y valores de la línea de contexto   |
- * | tf-title | 20 | encabezado de ficha y cifras de un panel de totales   |
- * | tf-hero  | 32 | la cifra única de una pantalla de entrada             |
+ * | paso     | px | peso · tracking | para qué                                    |
+ * | -------- | -- | --------------- | ------------------------------------------- |
+ * | tf-micro | 11 | los del padre   | rótulo de dato, cabecera de columna, badge  |
+ * | tf-meta  | 12 | los del padre   | dato secundario, pista, botón `sm`          |
+ * | tf-body  | 13 | los del padre   | cuerpo: filas, celdas, controles, párrafos  |
+ * | tf-lede  | 15 | 600 · -0.005em  | título de espacio, título de ficha lateral  |
+ * | tf-title | 20 | 600 · -0.015em  | encabezado de ficha, cifra KPI              |
+ * | tf-hero  | 32 | 650 · -0.02em   | titular de la puerta, cifra única           |
  *
- * Nada por debajo de 11px: a 8,5 la cabecera de una tabla deja de leerse en un
- * monitor normal, y era el tamaño de las cabeceras de media consola.
+ * Tamaños sueltos que quedan por migrar: de 8 a 11 px → micro; 11,5 y 12 →
+ * meta; de 12,5 a 13,5 → body; 14 → `text-sm`; 15 → lede; de 16 a 22 → title
+ * (salvo que el papel pida otro); 24 o más → hero o title, según el papel. Nada
+ * por debajo de 11 px: a 8,5 la cabecera de una tabla deja de leerse en un
+ * monitor normal, y era el tamaño de las cabeceras de media consola. Con el
+ * tamaño viejo se van los `leading-[…]` y `tracking-[…]` que lo acompañaban.
+ *
+ * Tres familias, cada una con un papel (se declaran en `lib/tipografia.ts`):
+ * - `font-sans` (Geist, la del body): todo el texto, cifras incluidas. El body
+ *   ya activa las cifras tabulares (`tnum`), así que importes, fechas, plazos y
+ *   porcentajes se alinean sin monoespaciada.
+ * - `font-mono` (Geist Mono): solo identificadores y código — expediente o
+ *   referencia, CPV, id externo, claves, hashes, `<code>`, `<kbd>` y atajos.
+ *   Nunca cifras, importes, fechas ni palabras.
+ * - `font-display` (Fraunces): solo titulares de 15 px o más (lede, title, hero
+ *   y los titulares de la portada). Por debajo, sans: una serif a 13 px se lee
+ *   peor y no aporta jerarquía. Lleva eje óptico, así que el corte se ajusta
+ *   solo al tamaño.
+ *
+ * Rótulos de dato (la etiqueta encima o al lado de un valor): sans, en frase,
+ * a 11 px (`ROTULO_DATO` de `console/panel`), sin versal, sin mono y sin
+ * tracking. La versal queda solo para las cabeceras de columna de tabla
+ * (`CABECERA_COLUMNA` de `ui/table`: sans, 11 px, `tracking-[0.04em]`). Un
+ * texto fuente escrito EN MAYÚSCULAS se reescribe en frase; no se disfraza.
+ *
+ * Iconos (lucide) emparejados con la escala: `h-3 w-3` junto a micro y meta,
+ * `h-3.5 w-3.5` en botón `sm` y en línea con meta, `h-4 w-4` por defecto. Más
+ * grandes, solo en el vacío de una página entera.
+ *
+ * Peso y tracking viajan con el tamaño en los tres pasos altos: Tailwind los
+ * emite como `var(--tw-font-weight, …)` y `var(--tw-tracking, …)`, así que un
+ * `font-*` o `tracking-*` explícito sigue ganando (un párrafo de entrada a
+ * 15 px, que no es un título, lleva `font-normal`). Los tres pasos bajos no los
+ * llevan a propósito: en el token pisarían el peso que cientos de textos
+ * heredan hoy del padre, y a 11-13 px el papel lo marcan el peso y el color de
+ * cada sitio (rótulo en gris medio, dato en tinta, título en seminegrita).
+ *
+ * `tf-body` (13) es el cuerpo de la consola. El body global sigue a 14 px
+ * (0.875rem, más abajo) para la superficie pública, que trabaja con
+ * `text-sm`/`text-base`, y para lo que aún no se ha migrado.
  *
  * Se declaran como tokens `--text-*` y no como `@utility`, así que Tailwind
  * genera `text-tf-body`, `text-tf-micro`… con su interlineado emparejado, y se
  * componen con variantes (`sm:text-tf-lede`) como cualquier utilidad de
- * tamaño. Son **aditivos**: no pisan `text-xs`/`text-sm`, así que las
- * pantallas que todavía no están migradas siguen pintando igual. `/empresas`
- * es la primera que las usa; el resto se migran cuando se toquen.
+ * tamaño. No pisan `text-xs`/`text-sm`: una pantalla sin migrar sigue
+ * pintando igual.
  *
  * tailwind-merge no lee esta hoja: un paso nuevo se declara también en `cn()`
  * (`src/lib/utils.ts`). Sin eso lo toma por un color y lo descarta en cuanto
@@ -342,10 +412,16 @@
   --text-tf-body--line-height: 1.4;
   --text-tf-lede: 0.9375rem;
   --text-tf-lede--line-height: 1.3;
+  --text-tf-lede--letter-spacing: -0.005em;
+  --text-tf-lede--font-weight: 600;
   --text-tf-title: 1.25rem;
   --text-tf-title--line-height: 1.2;
+  --text-tf-title--letter-spacing: -0.015em;
+  --text-tf-title--font-weight: 600;
   --text-tf-hero: 2rem;
   --text-tf-hero--line-height: 1.05;
+  --text-tf-hero--letter-spacing: -0.02em;
+  --text-tf-hero--font-weight: 650;
 }
 
 /*
@@ -379,46 +455,6 @@
   }
 }
 
-@utility tf-display {
-  font-family: var(--font-display);
-  font-size: 2.25rem;
-  line-height: 1.1;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-@utility tf-h1 {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  line-height: 1.2;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-}
-
-@utility tf-h2 {
-  font-family: var(--font-display);
-  font-size: 1.0625rem;
-  line-height: 1.3;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-@utility tf-kpi {
-  font-family: var(--font-display);
-  font-size: 1.75rem;
-  line-height: 1;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
-}
-
-@utility tf-caption {
-  font-size: 0.75rem;
-  line-height: 1.4;
-  color: hsl(var(--muted-foreground));
-}
-
 /*
  * Enter/exit animation primitives for Radix-driven overlays (dropdown menu,
  * select, sheet). Tailwind v4 ships no built-in equivalent to the
@@ -426,7 +462,7 @@
  * custom-property pattern directly instead of adding a new dependency —
  * `@utility` makes each name a real Tailwind utility, so variants like
  * `data-[state=open]:animate-in` and `data-[side=bottom]:slide-in-from-top-2`
- * compose correctly. `--tf-ease-out` mirrors the emil-design-eng house curve.
+ * compose correctly. They run on the house curve (`--ease-out`, above).
  */
 @keyframes tf-enter {
   from {
@@ -477,20 +513,6 @@
  * landing pública—, nunca para UI operativa, que se queda bajo 300ms. */
 @utility anim-duration-500 {
   animation-duration: 500ms;
-}
-
-/* Llenado one-shot de una barra decorativa al montarse: scaleX 0→1 vía
- * @starting-style, sin JavaScript. `transform` y no `width` para no tocar
- * layout, con la curva de la casa y un delay que deja aterrizar primero a la
- * tarjeta que lo contiene. Bajo prefers-reduced-motion el bloque global
- * restringe transition-property a opacity/color, así que la barra aparece ya
- * llena en vez de animarse; en navegadores sin @starting-style, igual. */
-@utility tf-fill-enter {
-  transform-origin: left;
-  transition: transform 600ms var(--ease-out) 350ms;
-  @starting-style {
-    transform: scaleX(0);
-  }
 }
 
 @utility fade-in-0 {
@@ -547,27 +569,43 @@
 }
 
 /*
- * Press feedback for any pressable element (emil-design-eng: "buttons must
- * feel responsive" — subtle scale on `:active`, applies to any pressable
- * element, not just `<button>`). `Button` already has its own `active:` via
- * cva; this utility covers hand-rolled pressables (icon buttons, `Badge
- * role="button"`, menu items) that don't go through it.
+ * Pulsación de cualquier pulsable hecho a mano: botones de icono, `Badge
+ * role="button"`, ítems de menú (emil-design-eng: un botón tiene que responder
+ * al pulsarlo). `Button` trae la suya (`active:scale-[0.97]`); esta es la misma
+ * escala, 0,97, para lo que no pasa por él.
+ *
+ * Es una clase sin capa y no una `@utility`, a propósito. Casi todos sus usos
+ * la combinan con `transition-colors`, y como utilidades las dos escribían
+ * `transition-property`: la de colores iba después en la hoja y se quedaba con
+ * la lista, así que la escala saltaba sin transición en 60 de sus 73 usos. Sin
+ * capa gana a cualquier utilidad, y por eso declara ella misma los colores:
+ * el `transition-colors` de al lado sobra, pero no estorba. La duración y la
+ * curva salen de `duration-*`/`ease-*` si el elemento las trae y, si no, de las
+ * de la casa. Anima `scale`, la propiedad que escriben `active:scale-*` y
+ * `Button`, no `transform`. Con reduced-motion el bloque global le quita la
+ * transición de la escala y deja la de color.
  */
-@utility tf-pressable {
-  transition: transform 160ms var(--ease-out);
-  &:active {
-    transform: scale(0.97);
-  }
+.tf-pressable {
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, opacity, box-shadow,
+    scale;
+  transition-duration: var(--tw-duration, var(--default-transition-duration, 150ms));
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function, var(--ease-out)));
+}
+.tf-pressable:active:not(:disabled, [aria-disabled="true"]) {
+  scale: 0.97;
 }
 
 /*
- * CSS-only group-entrance stagger (components/motion.tsx `Stagger`). Direct
- * children (`Stagger.Item`, using `animate-in fade-in-0 slide-in-from-bottom-2`)
- * get a cascading delay, 60ms apart — inside the skill's 30–80ms range —
- * capped at 6 items; a stagger beyond that reads as slow, not natural.
- * Pure CSS instead of JS `staggerChildren` (emil-design-eng: "CSS beats JS
- * under load") — this is what let `motion`/Framer Motion come out of the
- * bundle entirely.
+ * Entrada escalonada en CSS puro, para lo que se ve una vez por visita: el
+ * hero de la portada (`(publico)/_components/landing-hero.tsx`). Los hijos
+ * directos llevan `animate-in fade-in-0 slide-in-from-bottom-2` y reciben un
+ * retardo en cascada de 60 ms —dentro del rango de 30-80 ms de la skill—, con
+ * un tope de 6: más allá, la cascada se lee lenta, no natural.
+ *
+ * Nunca en la consola: escalonar KPIs, tarjetas o filas que se consultan a
+ * diario anima justo el dato que se vino a leer (el `Stagger` de los KPIs de
+ * Competencia, su último uso en el dashboard, se retiró por eso).
  */
 @utility tf-stagger {
   & > *:nth-child(1) {
@@ -697,48 +735,18 @@ body {
   background-clip: content-box;
 }
 
-.tf-sidebar-surface {
-  background: linear-gradient(180deg, hsl(var(--card) / 0.85), hsl(var(--background) / 0.72));
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
-  backdrop-filter: blur(12px) saturate(1.4);
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .tf-sidebar-surface {
-    background: linear-gradient(180deg, hsl(var(--card)), hsl(var(--background)));
-  }
-}
-
 /*
- * apple-design §14: prefers-reduced-transparency asks for frostier/solid
- * surfaces (raise opacity, drop the blur), independent from reduced motion.
- * Reuses the same solid backgrounds as the `@supports not (backdrop-filter)`
- * fallback above rather than inventing new values.
+ * Vidrio: solo donde de verdad pasa contenido por debajo. Sobre un fondo plano
+ * la translucidez no deja ver nada; solo produce un segundo blanco, algo más
+ * sucio que el de al lado.
+ * - `tf-glass`: la cabecera sticky de la superficie pública, bajo la que se
+ *   desplaza la página.
+ * - `tf-glass-strong`: capas flotantes no modales (popover, menú, barra de
+ *   selección), que se abren sobre contenido vivo. Un modal (diálogo, sheet,
+ *   paleta) va en `bg-popover` sólido: el velo ya lo separa de lo de atrás.
+ * Sin `backdrop-filter`, o con reduced-transparency o más contraste pedidos,
+ * las dos caen a fondo sólido.
  */
-@media (prefers-reduced-transparency: reduce) {
-  .tf-sidebar-surface {
-    background: linear-gradient(180deg, hsl(var(--card)), hsl(var(--background)));
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
-
-.tf-card-shadow {
-  box-shadow:
-    inset 0 1px 0 hsl(0 0% 100% / 0.05),
-    0 1px 2px hsl(var(--shadow-ink) / 0.4),
-    0 18px 40px -22px hsl(var(--shadow-ink) / 0.7);
-}
-
-.light .tf-card-shadow {
-  box-shadow:
-    inset 0 1px 0 hsl(0 0% 100% / 0.7),
-    0 1px 2px hsl(var(--shadow-ink) / 0.05),
-    0 18px 38px -24px hsl(var(--shadow-ink) / 0.2);
-}
-
-/* Glass surfaces — frosted chrome for shell + overlays.
-   Falls back to a solid surface where backdrop-filter is unsupported. */
 .tf-glass {
   background: hsl(var(--card) / 0.7);
   -webkit-backdrop-filter: blur(12px) saturate(1.4);
@@ -782,8 +790,7 @@ body {
  */
 @media (prefers-contrast: more) {
   .tf-glass,
-  .tf-glass-strong,
-  .tf-sidebar-surface {
+  .tf-glass-strong {
     background: hsl(var(--background));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -791,22 +798,8 @@ body {
   }
 }
 
-/*
- * Retícula de fondo del hero de la landing pública: líneas finas de la tinta
- * del tema, desvanecidas radialmente para que solo "sujeten" la parte alta.
- * Estática a propósito (la landing se sirve sin JS de cliente y el fondo no
- * es información): funciona igual en claro y oscuro porque usa --foreground.
- */
-.tf-hero-grid {
-  background-image:
-    linear-gradient(hsl(var(--foreground) / 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(var(--foreground) / 0.06) 1px, transparent 1px);
-  background-size: 44px 44px;
-  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 25%, transparent 78%);
-  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 25%, transparent 78%);
-}
-
-/* Tabular figures for large numeric displays (KPIs, metrics) */
+/* Cifras tabulares para una cifra grande (KPI, total). El body ya activa `tnum`;
+ * esto añade el tracking ligeramente negativo de una cifra de titular. */
 .tf-tnum {
   font-feature-settings:
     "tnum" 1,
@@ -816,7 +809,13 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Premium shimmer skeleton */
+/*
+ * Esqueleto de carga (`Skeleton`): un bloque gris con un barrido de luz que lo
+ * cruza. El barrido es un movimiento continuo, así que va en `linear`
+ * (emil-design-eng: la curva por defecto, `ease`, lo hacía acelerar y frenar en
+ * cada pasada). Con reduced-motion se queda quieto. Es el único lenguaje de
+ * carga de la aplicación: nada de `animate-pulse` suelto.
+ */
 .tf-shimmer {
   position: relative;
   overflow: hidden;
@@ -828,7 +827,7 @@ body {
   inset: 0;
   transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, hsl(var(--muted-foreground) / 0.08), transparent);
-  animation: tf-shimmer 1.6s infinite;
+  animation: tf-shimmer 1.2s linear infinite;
 }
 @keyframes tf-shimmer {
   100% {
@@ -841,25 +840,8 @@ body {
   }
 }
 
-/*
- * NProgress bar — match primary color. NProgress sets `transition: all
- * {speed}ms {ease}` as an inline style via JS (only `transform` actually
- * moves), so pin it to just `transform` here — animating `all` is always a
- * finding (emil-design-eng), and `!important` is required to beat the
- * inline style.
- */
-#nprogress .bar {
-  background: hsl(var(--primary)) !important;
-  height: 3px !important;
-  transition: transform 200ms linear !important;
-}
-#nprogress .peg {
-  box-shadow:
-    0 0 10px hsl(var(--primary)),
-    0 0 5px hsl(var(--primary)) !important;
-}
-
-/* Branded Recharts tooltips — theme-aware surface for every default tooltip */
+/* Tooltips de Recharts con la superficie de la app: capa flotante (`--popover`,
+ * borde, sombra md), como el resto de tooltips. */
 .recharts-default-tooltip {
   background: hsl(var(--popover)) !important;
   border: 1px solid hsl(var(--border)) !important;
@@ -885,14 +867,16 @@ body {
   fill: hsl(var(--muted-foreground));
 }
 
-/* Permanent CCAA labels on choropleth map */
+/* Rótulos fijos de las CCAA en el mapa de coropletas: la tinta del tema con un
+ * halo del color de fondo para que se lean sobre cualquier relleno. Con los
+ * tokens y no con HSL copiados a mano, que ya se habían separado de la paleta. */
 .ccaa-label {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
   pointer-events: none;
-  color: hsl(204 35% 12%);
+  color: hsl(var(--foreground));
   text-shadow:
     0 0 3px hsl(var(--card)),
     0 0 6px hsl(var(--card)),
@@ -902,30 +886,55 @@ body {
   display: none !important;
 }
 .dark .ccaa-label {
-  color: hsl(36 12% 92%);
   text-shadow:
-    0 0 3px hsl(200 32% 5%),
-    0 0 6px hsl(200 32% 5%),
+    0 0 3px hsl(var(--background)),
+    0 0 6px hsl(var(--background)),
     0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 /*
- * Sonner con `richColors` en tema claro (2026-09-19, axe `color-contrast` en
- * /ops?vista=webhooks). La paleta de la librería pinta el texto de cada tipo
- * sobre su propio fondo pastel a 3,1-4,4:1 —el aviso de error de una consulta
- * fallida, justo el que hay que poder leer, daba 4,36—. Se oscurece solo el
- * texto; fondos y bordes siguen siendo los de Sonner. Ratios (antes -> ahora):
+ * Toasts (Sonner) con la piel de la app y sin `richColors`. Las cajas pastel
+ * roja, verde y ámbar con su disco relleno son la demo de Sonner que se ve en
+ * cientos de apps; aquí la caja es una capa flotante de la consola (`--card`,
+ * borde, sombra md, radio de panel, la sans de la app) y el tipo lo dicen la
+ * forma y el color del icono de contorno, que pone `components/toaster.tsx`.
+ * Esto sustituye al parche de 2026-09-19, que solo oscurecía el texto de
+ * `richColors` para pasar axe en /ops?vista=webhooks.
  *
- *   success  4,29 -> 5,96    info     4,35 -> 5,71
- *   warning  3,07 -> 6,10    error    4,36 -> 5,76
+ * Sonner pinta con sus variables (`--normal-bg`, `--normal-border`,
+ * `--normal-text`), declaradas en `[data-sonner-toaster][data-sonner-theme=…]`,
+ * y su hoja llega inyectada en tiempo de ejecución, sin capa y después de
+ * esta. El `html` delante de cada selector sube la especificidad para ganarle.
+ * Las clases de `toastOptions.classNames` no sirven para lo mismo: son
+ * utilidades de `@layer utilities`, y una hoja sin capa les gana siempre.
  *
- * El tema oscuro de Sonner ya pasa (6,6-12,3:1) y no se toca. El `html`
- * delante sube la especificidad por encima de la hoja que Sonner inyecta en
- * tiempo de ejecución, que llega después de esta y ganaría el empate.
+ * Contraste: el texto (`--card-foreground`) y la descripción
+ * (`--muted-foreground`) van sobre `--card`, pares que ya mide
+ * `contraste-tokens.test.ts`; el botón de acción los invierte (tinta sobre
+ * tarjeta). El foco vuelve a ser el anillo de la casa: Sonner lo quita
+ * (`outline: 0`) y deja una sombra negra al 20 % que en el tema oscuro no se ve.
  */
-html [data-sonner-toaster][data-sonner-theme="light"] {
-  --success-text: hsl(140, 100%, 22%);
-  --info-text: hsl(210, 92%, 38%);
-  --warning-text: hsl(31, 92%, 30%);
-  --error-text: hsl(360, 100%, 38%);
+html [data-sonner-toaster][data-sonner-theme] {
+  --normal-bg: hsl(var(--card));
+  --normal-bg-hover: hsl(var(--muted));
+  --normal-border: hsl(var(--border));
+  --normal-border-hover: hsl(var(--border));
+  --normal-text: hsl(var(--card-foreground));
+  --border-radius: calc(var(--radius) + 4px);
+  font-family: inherit;
+}
+html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  box-shadow: var(--tf-shadow-md);
+}
+html [data-sonner-toaster] [data-sonner-toast] [data-description] {
+  color: hsl(var(--muted-foreground));
+}
+/* El botón de acción («Deshacer») con el radio de un control, como `Button`. */
+html [data-sonner-toaster] [data-sonner-toast] [data-button] {
+  border-radius: calc(var(--radius) - 2px);
+}
+html [data-sonner-toaster] [data-sonner-toast]:focus-visible,
+html [data-sonner-toaster] [data-sonner-toast] :is([data-button], [data-close-button]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
 }
