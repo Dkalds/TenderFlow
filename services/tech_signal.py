@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from typing import Any
 
 from db.database import now_utc_iso
@@ -68,7 +69,9 @@ def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
     matched: dict[str, set[str]] = {tech: set() for tech in _tech_patterns()}
 
     for page in pages:
-        text = str(page.get("texto") or "")
+        # NFC: el texto extraído de un PDF llega a menudo con la tilde como
+        # signo aparte, y el patrón compila las letras precompuestas.
+        text = unicodedata.normalize("NFC", str(page.get("texto") or ""))
         if not text:
             continue
         weight = _DOC_TYPE_WEIGHT.get(str(page.get("tipo") or ""), _DEFAULT_DOC_WEIGHT)

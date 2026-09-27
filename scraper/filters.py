@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from config import SAP_KEYWORDS
 from config.keywords import keywords_presentes, patron_de_keywords
@@ -36,6 +37,16 @@ def _tech_patterns() -> dict[str, re.Pattern[str]]:
     return patrones()
 
 
+def _normalizados(texts: tuple[str | None, ...]) -> list[str]:
+    """Los textos no vacíos, en NFC.
+
+    El patrón compila cada letra con sus variantes precompuestas («ó»), y el
+    texto extraído de un PDF llega a menudo en NFD («o» + tilde aparte): sin
+    esto la comprobación previa de cada label no casaría.
+    """
+    return [unicodedata.normalize("NFC", t) for t in texts if t]
+
+
 def _keywords_por_tecnologia() -> dict[str, list[str]]:
     """Las keywords del diccionario vigente, para devolverlas en su forma canónica."""
     from services.tecnologias_diccionario import vigente
@@ -49,7 +60,7 @@ def matches_sap(*texts: str | None) -> tuple[bool, list[str]]:
     Returns:
         (coincide, lista_de_keywords_encontradas), en la forma del diccionario.
     """
-    textos = [t for t in texts if t]
+    textos = _normalizados(texts)
     if not any(_SAP_PATTERN.search(t) for t in textos):
         return False, []
     found = keywords_presentes(textos, SAP_KEYWORDS)
@@ -70,7 +81,7 @@ def matches_technology(
     Returns:
         (coincide, {tecnología: [keywords_encontradas]})
     """
-    textos = [t for t in texts if t]
+    textos = _normalizados(texts)
     if not textos:
         return False, {}
     keywords = _keywords_por_tecnologia()

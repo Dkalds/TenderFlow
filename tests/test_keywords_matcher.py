@@ -24,6 +24,7 @@ Lo que fija este módulo:
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterator
 
 import pytest
@@ -127,8 +128,28 @@ class TestMatchesTechnology:
     def test_sin_texto_no_casa(self) -> None:
         assert matches_technology(None, "") == (False, {})
 
+    def test_texto_con_tildes_descompuestas(self) -> None:
+        """El texto extraído de un PDF llega a menudo en NFD (la tilde como signo
+        aparte): la comprobación previa del label tampoco puede fallar ahí."""
+        texto = unicodedata.normalize("NFD", "Implantación de la administración electrónica")
+        _, por_tec = matches_technology(texto)
+        assert "administración electrónica" in por_tec["ADMIN_ELECTRONICA"]
+
+
+class TestSenalDePliegos:
+    def test_texto_de_pdf_con_tildes_descompuestas(self) -> None:
+        from services.tech_signal import score_documents
+
+        texto = unicodedata.normalize("NFD", "Implantación de la administración electrónica.")
+        paginas = [{"texto": texto, "tipo": "technical"}, {"texto": texto, "tipo": "technical"}]
+        assert "ADMIN_ELECTRONICA" in score_documents(paginas)
+
 
 class TestMatchesSap:
+    def test_texto_con_tildes_descompuestas(self) -> None:
+        _, kws = matches_sap(unicodedata.normalize("NFD", "Migración SAP"))
+        assert "migración sap" in kws
+
     def test_devuelve_la_forma_canonica_sin_tildes_en_el_texto(self) -> None:
         found, kws = matches_sap("MIGRACION SAP AL NUEVO ENTORNO")
         assert found
