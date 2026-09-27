@@ -679,9 +679,16 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   el chip de banda único, `ChipBanda`; el sello entero no cabe en la columna de
   46 px del Radar sin ensanchar la rejilla.
 - **D8, «Ops y Admin»** (`lib/console-spaces.ts`, `ops/layout.tsx` y
-  `ops/__tests__/views-shared.test.tsx`): «administración» se corta con elipsis
-  en el rail de ~72 px, como ya le pasa a «Oportunidades». Pendiente del dueño;
-  si cambia, en los tres sitios a la vez.
+  `ops/__tests__/views-shared.test.tsx`). El rail acabó en 84 px, no en ~72: a
+  76 «Oportunidades» (77 px a 11 px) salía «Oportunidad…», y a 84 quedan 81 px
+  de nombre. «Administración» cabría; «Ops y administración», no. Pendiente del
+  dueño; si cambia, en los tres sitios a la vez.
+- **El Radar a 768 px desborda `#main-content` en horizontal.** La rejilla de la
+  tabla (`RADAR_GRID`, desde `md`) suma ~766 px fijos y el rail se lleva 84: hay
+  133 px de scroll dentro de `main` (el documento no desborda). Ya pasaba en
+  master con el rail de 56 px, porque la suma de la rejilla no cambió en esta
+  rama; el rail más ancho le añade 28 px. Desde 1024 px no pasa. Arreglo
+  posible: tabla desde `lg`, o una rejilla de `md` sin la columna Tecnología.
 - `equipo/_components/anadir-miembro-form.tsx` conserva una caja de borde
   discontinuo. La regla 10 de la casa solo lo prohíbe en los vacíos; queda a
   criterio del dueño.
