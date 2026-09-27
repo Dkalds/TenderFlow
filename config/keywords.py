@@ -367,7 +367,6 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "aurrekontu kontabilitatea",
         "kontabilitate sistema",
         "zerga kudeaketako sistema",
-        "giza baliabideen kudeaketa sistema",
         # gl
         "planificación de recursos empresariais",
         "sistema de xestión integrado",
@@ -548,9 +547,11 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "red de área local",
         "xarxa d'àrea local",
         "sd-wan",
-        "red corporativa",
-        "xarxa corporativa",
-        "rede corporativa",
+        # «de datos» y no la red a secas: la «red corporativa de voz» es
+        # telefonía, que D1 deja fuera de TI.
+        "red corporativa de datos",
+        "xarxa corporativa de dades",
+        "rede corporativa de datos",
         "red wifi",
         "xarxa wifi",
         "rede wifi",
@@ -1175,6 +1176,7 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "sistema de gestió de recursos humans",
         "nominen sistema",
         "nominen softwarea",
+        "giza baliabideen kudeaketa sistema",
         "sistema de xestión de recursos humanos",
         # Nuevas: siempre sobre el software, nunca sobre el servicio (la
         # «gestión de nóminas» externalizada es una gestoría, no TI).
@@ -1185,7 +1187,6 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "portal do empregado",
         "software de recursos humanos",
         "programari de recursos humans",
-        "giza baliabideen kudeaketa",
     ],
     "GESTION_DOCUMENTAL": [
         # Movidas desde ADMIN_ELECTRONICA.
@@ -1216,7 +1217,9 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "material informático",
         "microinformática",
         "soporte microinformático",
-        "centro de atención a usuarios",
+        # Con el acrónimo: sin él, el «centro de atención a usuarios» es también
+        # el de un servicio público (transporte, tributos).
+        "centro de atención a usuarios (cau)",
         "soporte a usuarios",
         "service desk",
         "help desk",
@@ -1228,7 +1231,7 @@ TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
         "equips informàtics",
         "material informàtic",
         "microinformàtica",
-        "centre d'atenció a l'usuari",
+        "centre d'atenció a l'usuari (cau)",
         "llicències d'ofimàtica",
         "ordenadores persoais",
         "ordenagailu eramangarriak",

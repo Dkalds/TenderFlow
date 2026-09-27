@@ -533,6 +533,47 @@ class TestFamiliasNuevas:
     def test_no_disparan_donde_la_palabra_significa_otra_cosa(self, texto: str) -> None:
         assert not (_detectadas(texto) & FAMILIAS_NUEVAS), texto
 
+    def test_el_sistema_de_rrhh_en_euskera_es_rrhh_nomina_y_no_erp(self) -> None:
+        """Su equivalente en castellano, catalán y gallego ya se mudó de ERP."""
+        detectadas = _detectadas("Giza baliabideen kudeaketa sistema berria ezartzea")
+        assert "RRHH_NOMINA" in detectadas
+        assert "ERP" not in detectadas
+
+    def test_la_gestion_de_rrhh_sin_software_no_es_rrhh_nomina(self) -> None:
+        """«Software, nunca el servicio»: sin «sistema» es la gestión de personal."""
+        assert "RRHH_NOMINA" not in _detectadas("Giza baliabideen kudeaketa zerbitzua")
+
+    @pytest.mark.parametrize(
+        "texto",
+        [
+            # Atención al público de un servicio, no soporte informático.
+            "Servicio de centro de atención a usuarios del transporte urbano",
+            "Servei de centre d'atenció a l'usuari del transport públic",
+            # Telefonía de voz: D1 la deja fuera de TI.
+            "Servicios de telecomunicaciones de la red corporativa de voz",
+            "Serveis de telecomunicacions de la xarxa corporativa de veu",
+            "Servizos de telecomunicacións da rede corporativa de voz",
+        ],
+    )
+    def test_cau_y_red_corporativa_sin_sentido_ti_no_dan_familia(self, texto: str) -> None:
+        assert _detectadas(texto) == set(), texto
+
+    @pytest.mark.parametrize(
+        ("titulo", "esperada"),
+        [
+            ("Servicio de centro de atención a usuarios (CAU) informático", "PUESTO_TRABAJO"),
+            ("Servei de centre d'atenció a l'usuari (CAU) informàtic", "PUESTO_TRABAJO"),
+            ("Suministro de electrónica de red para la red corporativa de datos", "CLOUD_INFRA"),
+            ("Ampliación de la red corporativa de datos del Ayuntamiento", "CLOUD_INFRA"),
+            ("Ampliació de la xarxa corporativa de dades de l'Ajuntament", "CLOUD_INFRA"),
+            ("Ampliación da rede corporativa de datos do Concello", "CLOUD_INFRA"),
+        ],
+    )
+    def test_cau_y_red_corporativa_de_ti_conservan_su_familia(
+        self, titulo: str, esperada: str
+    ) -> None:
+        assert esperada in _detectadas(titulo), titulo
+
     def test_la_etiqueta_antigua_de_cloud_sigue_resolviendo(self) -> None:
         """Los enlaces guardados a la analítica llevan el texto de la etiqueta."""
         from services.analytics.tecnologias import _codes_for_label
