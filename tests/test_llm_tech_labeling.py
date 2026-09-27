@@ -250,6 +250,72 @@ class TestEsTi:
         assert signal_version("m").startswith("llm-meta-v3/")
 
 
+def _respuesta_v3(**informativos: object) -> str:
+    """Una respuesta v3 válida (TI, ERP con cita) con los campos informativos dados."""
+    return json.dumps(
+        {
+            "es_ti": True,
+            "tecnologias": [
+                {
+                    "tecnologia": "ERP",
+                    "confidence": 0.8,
+                    "evidencia": "mantenimiento evolutivo del ERP",
+                }
+            ],
+            **informativos,
+        }
+    )
+
+
+class TestCamposInformativosSeDegradan:
+    """``otros_fabricantes`` y ``confianza_es_ti`` son informativos: uno mal
+    formado no puede anular la respuesta entera. Si la anulara, la licitación
+    seguiría pendiente y se volvería a mandar (y a pagar) en cada corrida, y
+    como la cola va de lo más nuevo a lo más viejo, también frenaría el
+    backlog. ``es_ti``, las familias y su evidencia se validan como siempre."""
+
+    @staticmethod
+    def _sigue_valiendo(resultado: Clasificacion) -> None:
+        assert resultado.es_ti is True
+        assert set(resultado.scores) == {"ERP"}
+
+    def test_otros_fabricantes_null_es_lista_vacia(self):
+        resultado = _parse(_respuesta_v3(otros_fabricantes=None))
+        self._sigue_valiendo(resultado)
+        assert resultado.otros_fabricantes == ()
+
+    def test_otros_fabricantes_que_no_es_lista_es_lista_vacia(self):
+        resultado = _parse(_respuesta_v3(otros_fabricantes="Qlik"))
+        self._sigue_valiendo(resultado)
+        assert resultado.otros_fabricantes == ()
+
+    def test_las_entradas_de_otros_fabricantes_que_no_son_texto_se_descartan(self):
+        resultado = _parse(_respuesta_v3(otros_fabricantes=["Qlik", 3, None, {"n": "x"}, "SUSE"]))
+        self._sigue_valiendo(resultado)
+        assert resultado.otros_fabricantes == ("Qlik", "SUSE")
+
+    @pytest.mark.parametrize("confianza", [1.5, -0.1])
+    def test_confianza_es_ti_fuera_de_rango_es_none(self, confianza: float):
+        resultado = _parse(_respuesta_v3(confianza_es_ti=confianza))
+        self._sigue_valiendo(resultado)
+        assert resultado.confianza_es_ti is None
+
+    @pytest.mark.parametrize("confianza", ["alta", True, [0.9]])
+    def test_confianza_es_ti_que_no_es_un_numero_es_none(self, confianza: object):
+        """Un booleano tampoco: ``true`` no es una confianza, aunque pydantic
+        lo convertiría en 1.0."""
+        resultado = _parse(_respuesta_v3(confianza_es_ti=confianza))
+        self._sigue_valiendo(resultado)
+        assert resultado.confianza_es_ti is None
+
+    def test_una_confianza_valida_se_conserva(self):
+        assert _parse(_respuesta_v3(confianza_es_ti=0.85)).confianza_es_ti == 0.85
+
+    def test_es_ti_sigue_validandose_estricto(self):
+        with pytest.raises(ValueError):
+            _parse(json.dumps({"es_ti": "puede", "tecnologias": []}))
+
+
 class TestEvidencia:
     """Una etiqueta vale lo que su cita: si no está en el texto que el modelo
     recibió, no se persiste."""

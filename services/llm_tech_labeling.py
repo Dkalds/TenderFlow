@@ -32,7 +32,13 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+)
 
 from config.keywords import TECH_DEFINICIONES, TECH_LABELS
 from db.repositories.tecnologia_pliego import TechSignal
@@ -56,12 +62,43 @@ class _LlmTechLabel(BaseModel):
 
 
 class _LlmTechResponse(BaseModel):
-    """Envoltorio de la respuesta; sin tecnologías es una respuesta válida."""
+    """Envoltorio de la respuesta; sin tecnologías es una respuesta válida.
+
+    ``es_ti``, las tecnologías y su evidencia se validan estrictos: un valor
+    malo ahí invalida la respuesta. ``confianza_es_ti`` y ``otros_fabricantes``
+    son informativos y un valor malo se degrada (``None``, lista sin las
+    entradas que no son texto) en vez de invalidarla: una respuesta inválida
+    deja la licitación pendiente, y se volvería a mandar (y a pagar) en cada
+    corrida por un campo que nada decide.
+    """
 
     tecnologias: list[_LlmTechLabel] = []
     es_ti: bool | None = None
     confianza_es_ti: float | None = Field(default=None, ge=0.0, le=1.0)
     otros_fabricantes: list[str] = []
+
+    @field_validator("confianza_es_ti", mode="wrap")
+    @classmethod
+    def _confianza_invalida_es_none(
+        cls, valor: object, handler: ValidatorFunctionWrapHandler
+    ) -> float | None:
+        """Fuera de ``[0, 1]`` o no numérica, ``None``. Un booleano tampoco es
+        una confianza, aunque pydantic lo convertiría en 1.0."""
+        if isinstance(valor, bool):
+            return None
+        try:
+            confianza: float | None = handler(valor)
+        except ValidationError:
+            return None
+        return confianza
+
+    @field_validator("otros_fabricantes", mode="before")
+    @classmethod
+    def _solo_textos(cls, valor: object) -> list[str]:
+        """``null`` o algo que no es una lista, vacía; y solo las entradas de texto."""
+        if not isinstance(valor, list):
+            return []
+        return [nombre for nombre in valor if isinstance(nombre, str)]
 
 
 class Clasificacion(NamedTuple):
