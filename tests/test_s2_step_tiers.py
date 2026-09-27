@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from config import settings
 from scheduler.pipeline_runs import (
     CANONICAL_STEPS,
     STEP_TIER,
@@ -233,40 +234,49 @@ def test_ml_scoring_reporta_ok_cuando_si_hay_modelo() -> None:
         assert _run_ml_scoring() == "ok"
 
 
-def _settings_que_lee_el_pipeline():
-    """El objeto que `_run_ml_tecnologias` lee con `from config import settings`.
+# El flag se parchea en la instancia que lee el paso (``from config import
+# settings``). ``patch("config.settings.ML_TECH_ENABLED", create=True)`` no la
+# tocaba: ``mock`` resuelve ese destino con ``pkgutil.resolve_name``, que
+# devuelve el *módulo* ``config.settings`` y no el singleton al que
+# ``config/__init__.py`` reasigna ese nombre, y ``create=True`` le creaba al
+# módulo un atributo que nadie lee. El test del flag apagado pasaba solo
+# mientras no había modelo que bajar; desde que la Release publica
+# ``tech_classifier.pkl`` (2026-09-27) lo descargaba y acababa en la BD. Sin
+# ``raising=False`` a propósito: si el setting cambia de nombre, que rompa aquí.
 
-    No vale `patch("config.settings.ML_TECH_ENABLED")`: `mock` resuelve la ruta
-    con `pkgutil.resolve_name`, que importa el **módulo** `config.settings`,
-    mientras que `config/__init__.py` reexporta el **objeto** `settings` con ese
-    mismo nombre. El parche caía en el módulo (con `create=True`, sin avisar) y
-    el pipeline seguía leyendo el flag real: el test solo pasaba si otro test
-    del mismo worker había reimportado `config.settings` antes, y con xdist
-    fallaba según el reparto (y siempre, ejecutado solo).
+
+def test_ml_tecnologias_reporta_skipped_sin_modelo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Con el flag encendido, el ``skipped`` sale del precompute, no del flag."""
+    from scheduler.pipeline_runs import _run_ml_tecnologias
+
+    monkeypatch.setattr(settings, "ML_TECH_ENABLED", True)
+    with patch(
+        "scraper.ml_training.precompute_ml_tecnologias",
+        return_value={"updated": 0, "scores_inserted": 0, "skipped_no_model": True},
+    ) as precompute:
+        assert _run_ml_tecnologias() == "skipped"
+
+    precompute.assert_called_once_with(force=False)
+
+
+def test_ml_tecnologias_reporta_skipped_con_el_flag_apagado(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Con el flag apagado el paso ni pregunta por el modelo.
+
+    El precompute devolvería un ``ok``: si el paso lo llamara, el ``skipped``
+    ya no podría salir.
     """
-    import config
-
-    return config.settings
-
-
-def test_ml_tecnologias_reporta_skipped_sin_modelo() -> None:
     from scheduler.pipeline_runs import _run_ml_tecnologias
 
-    with (
-        patch.object(_settings_que_lee_el_pipeline(), "ML_TECH_ENABLED", True, create=True),
-        patch(
-            "scraper.ml_training.precompute_ml_tecnologias",
-            return_value={"updated": 0, "scores_inserted": 0, "skipped_no_model": True},
-        ),
-    ):
+    monkeypatch.setattr(settings, "ML_TECH_ENABLED", False)
+    with patch(
+        "scraper.ml_training.precompute_ml_tecnologias",
+        return_value={"updated": 3, "scores_inserted": 12, "skipped_no_model": False},
+    ) as precompute:
         assert _run_ml_tecnologias() == "skipped"
 
-
-def test_ml_tecnologias_reporta_skipped_con_el_flag_apagado() -> None:
-    from scheduler.pipeline_runs import _run_ml_tecnologias
-
-    with patch.object(_settings_que_lee_el_pipeline(), "ML_TECH_ENABLED", False, create=True):
-        assert _run_ml_tecnologias() == "skipped"
+    precompute.assert_not_called()
 
 
 def test_el_resumen_del_cierre_propaga_el_skipped_de_ml_scoring() -> None:
