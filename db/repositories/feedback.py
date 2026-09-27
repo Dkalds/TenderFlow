@@ -163,6 +163,28 @@ class FeedbackRepository:
             cur = c.execute("DELETE FROM ml_feedback WHERE user_id = %s", (user_id,))
             return int(cur.rowcount or 0)
 
+    def filas_revision_ti(self) -> list[dict[str, Any]]:
+        """La revisión humana vigente por expediente, con lo que hace falta del anuncio.
+
+        Una fila por expediente (la más reciente, ``DISTINCT ON``): un mismo
+        expediente puede llevar varias revisiones (correcciones), y solo la
+        última cuenta. Alimenta a ``services.ml.golden_ti`` para construir el
+        golden set real de «¿es TI?» — de ahí el JOIN con ``licitaciones``,
+        que trae lo que el golden set necesita del anuncio y que
+        ``ml_feedback`` no duplica (fuente, fecha de publicación, título,
+        descripción, CPV).
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT DISTINCT ON (f.expediente) f.expediente, f.relevante, f.tecnologia, "
+                "f.tecnologias_secundarias, f.created_at, l.fuente, l.fecha_publicacion, "
+                "l.titulo, l.descripcion, l.cpv "
+                "FROM ml_feedback f JOIN licitaciones l ON l.id_externo = f.expediente "
+                "WHERE f.source = %s ORDER BY f.expediente, f.created_at DESC, f.id DESC",
+                (FUENTE_REVISION_TI,),
+            )
+            return rows_to_dicts(cur)
+
     def reportes_abiertos_por_tipo(self, *, prefijo: str) -> dict[str, int]:
         """``{tipo: nº de reportes}`` de los reportes de dato de F6.2.
 

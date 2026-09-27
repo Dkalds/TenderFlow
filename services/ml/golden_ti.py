@@ -1,0 +1,259 @@
+"""El golden set real de «¿es TI?» y familias (plan de tres niveles, F2).
+
+Sustituye a los 27 ejemplos de ``tests/fixtures/golden_set.jsonl``
+(``services.ml_eval``, el binario SAP legacy) como gate del binario ``es_ti``
+del plan de clasificación en tres niveles. La diferencia de fondo con aquel
+golden set escrito a mano es la procedencia: este sale de la revisión humana
+vigente en producción (``ml_feedback``, ``source='revision_ti'`` — ver
+:data:`db.repositories.feedback.FUENTE_REVISION_TI`), así que crece solo con
+lo que el equipo ya revisó, sin una campaña de etiquetado aparte.
+
+Cada ejemplo lleva de dónde salió (``fuente``), cuándo se publicó la
+licitación (``fecha``) y quién y cuándo lo etiquetó. El holdout es el 50% más
+reciente por ``fecha``, fijo (:func:`asignar_splits`): igual que
+``services.ml_eval.asignar_splits`` evita elegir el umbral donde se reporta,
+pero aquí el criterio es temporal en vez de por hash, porque "el 50% más
+reciente" es una propiedad que sí se puede pedir cuando cada ejemplo lleva
+fecha de publicación.
+
+La Tarea 6 (informe de acuerdo LLM↔humano) construye su comparación sobre
+:class:`EjemploGoldenTi`.
+
+Uso típico::
+
+    from db.repositories.feedback import FeedbackRepository
+    from services.ml.golden_ti import asignar_splits, ejemplo_desde_fila
+
+    filas = FeedbackRepository().filas_revision_ti()
+    ejemplos = asignar_splits([ejemplo_desde_fila(f) for f in filas])
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
+from typing import Any, Literal
+
+from config.keywords import TECH_LABEL_TIPO, TECH_LABELS
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
+# Raíz del repo (este archivo vive en services/ml/).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: Fichero real del golden set. Hoy solo tiene la cabecera: la revisión
+#: humana (Tarea 4) todavía no ha corrido en producción. Lo regenera
+#: ``scripts/exportar_golden_ti.py``.
+RUTA_GOLDEN_TI: Path = _REPO_ROOT / "tests" / "fixtures" / "golden_ti.jsonl"
+
+_VALID_LABELS: frozenset[str] = frozenset(TECH_LABELS)
+_SPLITS: frozenset[str] = frozenset({"tune", "holdout"})
+
+
+@dataclass(frozen=True)
+class EjemploGoldenTi:
+    """Un ejemplo del golden set real de «¿es TI?», con procedencia humana.
+
+    Attributes:
+        id_externo: Expediente de la licitación (``licitaciones.id_externo``).
+        fuente: Fuente del anuncio (``licitaciones.fuente``): ``placsp``,
+            ``pscp``…
+        fecha: Fecha de publicación de la licitación (``fecha_publicacion``).
+            Es la que ordena :func:`asignar_splits`, no la del etiquetado.
+        titulo: Título de la licitación.
+        descripcion: Descripción / objeto del contrato. Cadena vacía si la
+            licitación no tiene descripción (no es "sin dato": el humano la
+            vio igual y decidió con lo que había).
+        cpv: CPV de la licitación, si consta.
+        es_ti: Si el humano dice que es TI (D1). Es lo único que significa
+            ``ml_feedback.relevante`` desde el plan de tres niveles.
+        familias: Etiquetas de categoría (``TECH_LABEL_TIPO == "categoria"``)
+            que el humano marcó, sin repetidos y en el orden en que las
+            escribió.
+        fabricantes: Etiquetas de fabricante (``TECH_LABEL_TIPO ==
+            "fabricante"``) que el humano marcó, sin repetidos y en el orden
+            en que las escribió.
+        etiquetado_por: Quién puso la etiqueta. Siempre ``"humano"``: el
+            golden set es, por definición, juicio humano.
+        etiquetado_at: Cuándo se etiquetó (``ml_feedback.created_at`` de la
+            fila vigente para ese expediente).
+        split: ``"tune"`` (elegir el umbral) u ``"holdout"`` (reportar). Lo
+            asigna :func:`asignar_splits`; un ejemplo construido a mano (p.
+            ej. en un test) lo declara explícitamente.
+    """
+
+    id_externo: str
+    fuente: str
+    fecha: str
+    titulo: str
+    descripcion: str
+    cpv: str | None
+    es_ti: bool
+    familias: tuple[str, ...]
+    fabricantes: tuple[str, ...]
+    etiquetado_por: str
+    etiquetado_at: str
+    split: Literal["tune", "holdout"]
+
+
+def _tecnologias_de_fila(fila: dict[str, Any]) -> list[str]:
+    """Tecnología principal + secundarias de una fila, sin repetidos y en orden.
+
+    ``tecnologias_secundarias`` llega como JSON (lo escribe
+    ``FeedbackRepository.insert``); ``None`` o cadena vacía cuentan como
+    "ninguna", igual que ``tecnologia`` a ``None``.
+    """
+    combinadas: list[str] = []
+    principal = fila.get("tecnologia")
+    if principal:
+        combinadas.append(str(principal))
+    secundarias_raw = fila.get("tecnologias_secundarias")
+    if secundarias_raw:
+        for tecnologia in json.loads(secundarias_raw):
+            texto = str(tecnologia)
+            if texto not in combinadas:
+                combinadas.append(texto)
+    return combinadas
+
+
+def ejemplo_desde_fila(fila: dict[str, Any]) -> EjemploGoldenTi:
+    """Construye un ejemplo a partir de una fila de
+    ``FeedbackRepository.filas_revision_ti``.
+
+    Reparte ``tecnologia``/``tecnologias_secundarias`` en familias (categoría)
+    y fabricantes según :data:`TECH_LABEL_TIPO`. El ``split`` se deja en
+    ``"tune"`` como placeholder: el reparto real en tune/holdout lo hace
+    :func:`asignar_splits`, que necesita ver el conjunto entero para partirlo
+    por fecha.
+    """
+    combinadas = _tecnologias_de_fila(fila)
+    familias = tuple(t for t in combinadas if TECH_LABEL_TIPO.get(t) == "categoria")
+    fabricantes = tuple(t for t in combinadas if TECH_LABEL_TIPO.get(t) == "fabricante")
+    return EjemploGoldenTi(
+        id_externo=str(fila["expediente"]),
+        fuente=str(fila["fuente"]),
+        fecha=str(fila["fecha_publicacion"]),
+        titulo=str(fila["titulo"]),
+        descripcion=str(fila.get("descripcion") or ""),
+        cpv=str(fila["cpv"]) if fila.get("cpv") is not None else None,
+        es_ti=bool(fila["relevante"]),
+        familias=familias,
+        fabricantes=fabricantes,
+        etiquetado_por="humano",
+        etiquetado_at=str(fila["created_at"]),
+        split="tune",
+    )
+
+
+def asignar_splits(ejemplos: list[EjemploGoldenTi]) -> list[EjemploGoldenTi]:
+    """Reparte el golden set en ``tune``/``holdout`` por fecha, de forma fija.
+
+    Ordena por ``(fecha, id_externo)`` y asigna la primera mitad (redondeando
+    hacia abajo) a ``tune``; el resto —la mitad más reciente— a ``holdout``.
+    El umbral se elige en el pasado y se reporta en el futuro más próximo, no
+    al revés.
+
+    A diferencia de ``services.ml_eval.asignar_splits`` (que reparte por hash
+    del id para no reasignar ejemplos existentes al crecer el set a mano),
+    aquí el reparto es posicional: cada exportación recalcula las dos mitades
+    sobre el conjunto vigente, que es justo lo que hace falta para que "el
+    50% más reciente" sea una propiedad del fichero y no del momento en que
+    se generó.
+
+    Devuelve una lista nueva, ordenada por ``(fecha, id_externo)`` — el orden
+    en el que ``scripts/exportar_golden_ti.py`` escribe el fichero.
+    """
+    ordenados = sorted(ejemplos, key=lambda e: (e.fecha, e.id_externo))
+    corte = len(ordenados) // 2
+    resultado: list[EjemploGoldenTi] = []
+    for i, ejemplo in enumerate(ordenados):
+        split: Literal["tune", "holdout"] = "tune" if i < corte else "holdout"
+        resultado.append(replace(ejemplo, split=split))
+    return resultado
+
+
+def a_linea(ejemplo: EjemploGoldenTi) -> str:
+    """Serializa un ejemplo a una línea JSON, con claves en orden estable."""
+    datos = asdict(ejemplo)
+    datos["familias"] = list(datos["familias"])
+    datos["fabricantes"] = list(datos["fabricantes"])
+    return json.dumps(datos, ensure_ascii=False, sort_keys=True)
+
+
+def cargar_golden_ti(path: Path | None = None) -> list[EjemploGoldenTi]:
+    """Carga el golden set real. Tolera líneas vacías y comentarios (``#``).
+
+    Args:
+        path: Ruta al JSONL. Si es ``None``, :data:`RUTA_GOLDEN_TI`.
+
+    Returns:
+        Lista de :class:`EjemploGoldenTi`, en el orden del fichero. Vacía si
+        el fichero no existe o solo tiene cabecera.
+
+    Raises:
+        ValueError: JSON inválido, ``split`` fuera de ``{"tune", "holdout"}``,
+            o una familia/fabricante fuera de :data:`TECH_LABELS` — nombra el
+            valor malo, para que una etiqueta mal escrita no se cuele como un
+            negativo silencioso.
+    """
+    target = path if path is not None else RUTA_GOLDEN_TI
+    if not target.exists():
+        log.warning("golden_ti.fichero_no_existe", path=str(target))
+        return []
+
+    ejemplos: list[EjemploGoldenTi] = []
+    for lineno, raw_line in enumerate(target.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Golden TI: JSON inválido en línea {lineno}: {exc}") from exc
+
+        split_raw = obj.get("split")
+        if split_raw not in _SPLITS:
+            raise ValueError(
+                f"Golden TI: split inválido {split_raw!r} en línea {lineno}. "
+                f"Válidos: {sorted(_SPLITS)}"
+            )
+
+        familias = tuple(str(t) for t in (obj.get("familias") or ()))
+        fabricantes = tuple(str(t) for t in (obj.get("fabricantes") or ()))
+        for etiqueta in (*familias, *fabricantes):
+            if etiqueta not in _VALID_LABELS:
+                raise ValueError(
+                    f"Golden TI: etiqueta desconocida '{etiqueta}' en línea {lineno}. "
+                    f"Válidas: {sorted(_VALID_LABELS)}"
+                )
+
+        ejemplos.append(
+            EjemploGoldenTi(
+                id_externo=str(obj["id_externo"]),
+                fuente=str(obj["fuente"]),
+                fecha=str(obj["fecha"]),
+                titulo=str(obj["titulo"]),
+                descripcion=str(obj["descripcion"]),
+                cpv=str(obj["cpv"]) if obj.get("cpv") is not None else None,
+                es_ti=bool(obj["es_ti"]),
+                familias=familias,
+                fabricantes=fabricantes,
+                etiquetado_por=str(obj["etiquetado_por"]),
+                etiquetado_at=str(obj["etiquetado_at"]),
+                split=split_raw,
+            )
+        )
+    log.info("golden_ti.cargado", path=str(target), n=len(ejemplos))
+    return ejemplos
+
+
+__all__ = [
+    "RUTA_GOLDEN_TI",
+    "EjemploGoldenTi",
+    "a_linea",
+    "asignar_splits",
+    "cargar_golden_ti",
+    "ejemplo_desde_fila",
+]
