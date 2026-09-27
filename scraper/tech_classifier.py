@@ -38,6 +38,10 @@ Para romperla, :meth:`TechnologyClassifier.train` prefiere una etiqueta
      trae ninguna de las dos anteriores, el entrenamiento es circular y se
      emite ``log.warning("tech_classifier.circular_labels")``.
 
+Si quien decide es el LLM, no ve ninguna tecnología y las keywords de esa fila
+sí, la fila **no** entrena como negativo: se excluye y se cuenta como
+``conflicto`` (ver :func:`_resolver_label_column`).
+
 :func:`train_from_db` trae las tres: la base desde
 ``db.repositories.ml_dataset.filas_entrenamiento_tecnologia`` y las dos
 independientes desde
@@ -90,6 +94,7 @@ from scraper.ml_pipeline import (
     _build_multilabel_dataset,
     _keyword_fallback_score,
     _make_tech_pipeline,
+    _parse_tecnologia_csv,
 )
 from shared.model_integrity import verify_model_integrity, write_checksum
 
@@ -156,7 +161,9 @@ class LabelResolution(NamedTuple):
             "ninguna etiqueta independiente", es "ninguna cantidad de etiquetas
             independientes capaz de mover una tecnología al tier ``ml_ready``".
         counts: Filas resueltas por cada origen (``human``/``llm``/``keywords``/
-            ``sin_etiqueta``).
+            ``sin_etiqueta``) más ``conflicto``: filas **excluidas** del
+            entrenamiento porque el LLM no vio ninguna tecnología y las keywords
+            sí (ver :func:`_resolver_label_column`). No están en ``df``.
     """
 
     df: pd.DataFrame
@@ -274,6 +281,16 @@ def _clean_llm_csv(value: Any, min_score: float) -> str:  # Any: celda cruda de 
     return ",".join(out)
 
 
+def _keywords_con_etiqueta(value: Any) -> bool:  # Any: celda cruda de pandas
+    """¿Daría la columna de keywords algún positivo en la matriz de etiquetas?
+
+    Mismo parser que ``_build_multilabel_dataset``: una etiqueta que el modelo
+    no conoce no produciría ningún positivo, así que no hay nada que el LLM
+    contradiga.
+    """
+    return bool(_parse_tecnologia_csv(value))
+
+
 def _resolver_label_column(df: pd.DataFrame) -> LabelResolution:
     """Elige la columna de etiquetas menos circular que traiga el DataFrame.
 
@@ -289,6 +306,15 @@ def _resolver_label_column(df: pd.DataFrame) -> LabelResolution:
     emitió. Para prioridad real por tecnología haría falta que la query trajera
     una fila por ``(licitacion, tecnologia, method)``; ver
     :func:`train_from_db`.
+
+    **Conflicto = abstención, no negativo.** Si quien decide la fila es el LLM,
+    su respuesta (ya filtrada por score) está vacía y las keywords de esa misma
+    fila sí traen etiqueta, las dos fuentes se contradicen. Antes ganaba el LLM
+    y la fila entrenaba como negativo de **todas** las tecnologías, incluida la
+    que el regex había visto; ahora se excluye del entrenamiento y se cuenta en
+    ``counts["conflicto"]``. No es etiqueta independiente ni de keywords, así
+    que :func:`_es_circular` no la ve. Si el humano se pronunció, gana él y no
+    hay conflicto; LLM vacío con keywords vacías sigue siendo un negativo.
 
     Returns:
         :class:`LabelResolution`. ``column`` vacío si no hay ninguna fuente.
@@ -317,28 +343,56 @@ def _resolver_label_column(df: pd.DataFrame) -> LabelResolution:
             df=df,
             column=_LABEL_COL_KEYWORDS,
             circular=True,
-            counts={"human": 0, "llm": 0, "keywords": n, "sin_etiqueta": len(df) - n},
+            counts={
+                "human": 0,
+                "llm": 0,
+                "keywords": n,
+                "sin_etiqueta": len(df) - n,
+                "conflicto": 0,
+            },
         )
 
     min_score = _llm_min_score()
-    counts: dict[str, int] = {"human": 0, "llm": 0, "keywords": 0, "sin_etiqueta": 0}
-    resueltas: list[str] = []
+    counts: dict[str, int] = {
+        "human": 0,
+        "llm": 0,
+        "keywords": 0,
+        "sin_etiqueta": 0,
+        "conflicto": 0,
+    }
+    # ``None`` = fila excluida por conflicto LLM/keywords (ver docstring).
+    resueltas: list[str | None] = []
     for row in df.to_dict("records"):
         for col, origen in presentes:
             raw = row.get(col)
             if not _tiene_etiqueta(raw):
                 continue
-            resueltas.append(_clean_llm_csv(raw, min_score) if origen == "llm" else str(raw))
+            etiqueta = _clean_llm_csv(raw, min_score) if origen == "llm" else str(raw)
+            if (
+                origen == "llm"
+                and not etiqueta
+                and _keywords_con_etiqueta(row.get(_LABEL_COL_KEYWORDS))
+            ):
+                resueltas.append(None)
+                counts["conflicto"] += 1
+                break
+            resueltas.append(etiqueta)
             counts[origen] += 1
             break
         else:
             resueltas.append("")
             counts["sin_etiqueta"] += 1
 
-    # Copia superficial: añadir una columna nueva no toca el DataFrame del
-    # llamador, y no se duplican los datos de las que ya existían.
-    out = df.copy(deep=False)
-    out[_LABEL_COL_RESOLVED] = resueltas
+    if counts["conflicto"]:
+        # Las filas en conflicto salen de verdad: ``_build_multilabel_dataset``
+        # convierte en fila de la matriz todo lo que reciba, y con la etiqueta
+        # vacía volverían a ser el negativo que esto evita.
+        out = df.loc[[r is not None for r in resueltas]].copy(deep=False)
+    else:
+        # Copia superficial: añadir una columna nueva no toca el DataFrame del
+        # llamador, y no se duplican los datos de las que ya existían.
+        out = df.copy(deep=False)
+    out[_LABEL_COL_RESOLVED] = [r for r in resueltas if r is not None]
 
     circular = _es_circular(counts)
     if circular:
@@ -358,7 +412,8 @@ def _resolver_label_column(df: pd.DataFrame) -> LabelResolution:
             "tech_classifier.partially_circular_labels",
             label_column=_LABEL_COL_RESOLVED,
             counts=counts,
-            pct_keywords=round(counts["keywords"] / max(len(df), 1) * 100, 1),
+            # Sobre las filas que entrenan: las excluidas por conflicto no pesan.
+            pct_keywords=round(counts["keywords"] / max(len(out), 1) * 100, 1),
         )
     else:
         log.info("tech_classifier.labels_resolved", label_column=_LABEL_COL_RESOLVED, counts=counts)
