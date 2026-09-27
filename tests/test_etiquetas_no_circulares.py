@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pytest
 
+from db.repositories.feedback import FUENTE_REVISION_TI
 from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.tecnologia_pliego import (
     NO_SIGNAL_SENTINEL,
@@ -127,11 +128,14 @@ def test_la_señal_de_keywords_no_cuenta_como_independiente(repos) -> None:
 
 
 def test_el_feedback_humano_sin_tecnologia_es_un_pronunciamiento(repos) -> None:
-    """Cadena vacía, no ausencia: el humano revisó y descartó, y eso es un
-    negativo verdadero que el entrenamiento necesita."""
+    """Cadena vacía, no ausencia: `revision_ti` revisó y descartó, y eso es un
+    negativo verdadero que el entrenamiento necesita. Una fila `human`
+    heredada sin tecnología, en cambio, no se pronuncia sea cual sea su
+    `relevante` -- eso lo cubre la suite de `etiqueta_humana` y el test de más
+    abajo sobre esta misma función."""
     lic_repo, _ = repos
     _insert_licitacion("EXP-H")
-    _insert_feedback_humano("EXP-H", None)
+    _insert_feedback_humano("EXP-H", None, source=FUENTE_REVISION_TI)
 
     externas = lic_repo.etiquetas_tecnologia_no_circulares()
 
@@ -290,8 +294,12 @@ def test_una_version_nueva_sin_evidencia_retira_la_vieja_sin_pronunciarse(repos)
 
 def test_una_fila_human_heredada_sin_tecnologia_no_se_pronuncia(repos) -> None:
     """`relevante` significó «es SAP» hasta el plan de tres niveles. Una fila
-    `human` con `relevante=0` y sin tecnología no dice «ninguna familia»: dice
-    «no es SAP», y no puede entrenar como negativo de todas las familias.
+    `human` sin tecnología no dice «ninguna familia» sea cual sea su
+    `relevante`: ni `relevante=0` («no es SAP») ni `relevante=1` («es SAP»,
+    pero de cuál no consta) pueden entrenar como negativo de todas las
+    familias. El caso `relevante=1` es el hallazgo de la ronda de revisión de
+    Tarea 3 (2026-09-27): 14 filas así en producción se etiquetaban como
+    negativo de todas las familias por error.
 
     `revision_ti`, en cambio, sí se pronuncia siempre: su `relevante` es «es
     TI» y una fila con tecnología puesta da esa tecnología como etiqueta.
@@ -299,10 +307,13 @@ def test_una_fila_human_heredada_sin_tecnologia_no_se_pronuncia(repos) -> None:
     lic_repo, _ = repos
     _insert_licitacion("EXP-H0")
     _insert_feedback_humano("EXP-H0", None, relevante=0, source="human")
+    _insert_licitacion("EXP-H1")
+    _insert_feedback_humano("EXP-H1", None, relevante=1, source="human")
     _insert_licitacion("EXP-RTI")
-    _insert_feedback_humano("EXP-RTI", "ERP", relevante=1, source="revision_ti")
+    _insert_feedback_humano("EXP-RTI", "ERP", relevante=1, source=FUENTE_REVISION_TI)
 
     externas = lic_repo.etiquetas_tecnologia_no_circulares()
 
     assert "EXP-H0" not in externas
+    assert "EXP-H1" not in externas
     assert externas["EXP-RTI"]["tecnologia_humana"] == "ERP"

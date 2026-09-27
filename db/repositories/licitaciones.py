@@ -360,9 +360,14 @@ def etiqueta_humana(
 ) -> str | None:
     """CSV de familias de una fila humana, o ``None`` si no se pronuncia.
 
-    ``""`` es un negativo de verdad. Una fila heredada (``human``) con
-    ``relevante=0`` y sin tecnología no lo es: `relevante` significaba
-    «es SAP», no «es TI».
+    ``""`` es un negativo de verdad, y solo la produce ``revision_ti``: su
+    `relevante` es «es TI», así que una fila suya sin tecnología sí es un
+    pronunciamiento genuino (ninguna familia). Una fila heredada (cualquier
+    ``source`` distinto de ``revision_ti``) sin tecnología **nunca** se
+    pronuncia, sea cual sea su `relevante`: antes del plan de tres niveles
+    `relevante` significaba «es SAP», no «es TI», así que ni un
+    `relevante=0` ni un `relevante=1` sin tecnología dicen nada sobre las
+    familias -- de ahí que `relevante` no entre en la condición de abajo.
     """
     etiquetas: list[str] = []
     if tecnologia:
@@ -374,7 +379,7 @@ def etiqueta_humana(
             extra = []
         if isinstance(extra, list):
             etiquetas.extend(str(t).strip().upper() for t in extra if t)
-    if not etiquetas and source != FUENTE_REVISION_TI and not relevante:
+    if not etiquetas and source != FUENTE_REVISION_TI:
         return None
     return ",".join(dict.fromkeys(e for e in etiquetas if e))
 
@@ -1258,9 +1263,9 @@ class LicitacionRepository:
           desde el plan de clasificación en tres niveles, y ``human``,
           histórico), uniendo ``tecnologia`` y el JSON de
           ``tecnologias_secundarias`` vía :func:`etiqueta_humana`. Una fila
-          ``human`` con ``relevante=0`` y sin tecnología **no** se pronuncia:
-          `relevante` significaba «es SAP», no «es TI», así que esa fila no
-          dice nada sobre las familias.
+          ``human`` sin tecnología **no** se pronuncia, sea cual sea su
+          ``relevante`` (0 o 1): `relevante` significaba «es SAP», no «es
+          TI», así que esa fila no dice nada sobre las familias.
         - ``tecnologia_llm``: CSV ``TECNOLOGIA:score`` desde
           ``licitacion_tecnologia_pliego`` con ``method IN ('llm_metadata',
           'llm')``. Solo la **versión vigente** de cada ``(licitación,
@@ -1279,8 +1284,8 @@ class LicitacionRepository:
         - ``""`` (cadena vacía) → la fuente la revisó y declaró que no tiene
           ninguna tecnología. Es un negativo de verdad, no un desconocido. Para
           el LLM eso son las filas con el sentinel ``__no_signal__``; para el
-          humano, una fila ``revision_ti`` sin tecnología, o una ``human`` con
-          ``relevante`` verdadero y sin tecnología.
+          humano, únicamente una fila ``revision_ti`` sin tecnología —nunca
+          una ``human`` heredada, sea cual sea su ``relevante``.
 
         Returns:
             ``{id_externo: {"tecnologia_humana": ..., "tecnologia_llm": ...}}``
