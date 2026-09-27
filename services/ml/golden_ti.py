@@ -34,9 +34,10 @@ Uso típico::
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from config.keywords import TECH_LABEL_TIPO, TECH_LABELS
 from observability.logging import get_logger
@@ -121,7 +122,7 @@ class EjemploGoldenTi:
     split: Literal["tune", "holdout"]
 
 
-def _tecnologias_de_fila(fila: dict[str, Any]) -> list[str]:
+def _tecnologias_de_fila(fila: Mapping[str, object]) -> list[str]:
     """Tecnología principal + secundarias de una fila, sin repetidos y en orden.
 
     ``tecnologias_secundarias`` llega como JSON (lo escribe
@@ -134,16 +135,17 @@ def _tecnologias_de_fila(fila: dict[str, Any]) -> list[str]:
         combinadas.append(str(principal))
     secundarias_raw = fila.get("tecnologias_secundarias")
     if secundarias_raw:
-        for tecnologia in json.loads(secundarias_raw):
+        for tecnologia in json.loads(str(secundarias_raw)):
             texto = str(tecnologia)
             if texto not in combinadas:
                 combinadas.append(texto)
     return combinadas
 
 
-def ejemplo_desde_fila(fila: dict[str, Any]) -> EjemploGoldenTi:
+def ejemplo_desde_fila(fila: Mapping[str, object]) -> EjemploGoldenTi:
     """Construye un ejemplo a partir de una fila de
-    ``FeedbackRepository.filas_revision_ti``.
+    ``FeedbackRepository.filas_revision_ti``. Cada columna se convierte aquí
+    a su tipo, así que la fila basta con que sea un mapping.
 
     Reparte ``tecnologia``/``tecnologias_secundarias`` en familias (categoría)
     y fabricantes según :data:`TECH_LABEL_TIPO`. El ``split`` se deja en

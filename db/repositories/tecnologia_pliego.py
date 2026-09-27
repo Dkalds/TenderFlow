@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -89,6 +89,15 @@ class TechSignal(NamedTuple):
     evidence: list[dict[str, Any]] | None = None
 
 
+class RespuestaLlmVigente(TypedDict):
+    """La respuesta vigente del LLM para una licitación, tal como la lee
+    :meth:`TecnologiaPliegoRepository.respuestas_llm_vigentes`: el nivel 1
+    (``None`` si no se pronunció) y las etiquetas afirmadas, ordenadas."""
+
+    es_ti: bool | None
+    familias: list[str]
+
+
 class MergeOutcome(NamedTuple):
     """Salida de ``merge_many_with_lock``: lo escrito y lo que falló.
 
@@ -142,7 +151,7 @@ def _filas_a_escribir(
 
 def _respuesta_desde_filas_vigentes(
     filas: list[tuple[str, float]], *, min_score: float
-) -> dict[str, Any]:
+) -> RespuestaLlmVigente:
     """Post-procesa las filas ``(tecnologia, score)`` de la versión vigente
     de ``llm_metadata`` de UNA licitación en la respuesta que compara
     :func:`services.ml.acuerdo_llm.medir_acuerdo`. Pura -- sin BD -- para
@@ -417,7 +426,7 @@ class TecnologiaPliegoRepository:
             )
             return rows_to_dicts(cur)
 
-    def respuestas_llm_vigentes(self, licitacion_ids: list[str]) -> dict[str, dict[str, Any]]:
+    def respuestas_llm_vigentes(self, licitacion_ids: list[str]) -> dict[str, RespuestaLlmVigente]:
         """La respuesta vigente del LLM (nivel 1 + familias) por licitación,
         para el informe de acuerdo LLM↔humanos (Tarea 6, spec §3.5 --
         ``services.ml.acuerdo_llm.medir_acuerdo``).
@@ -439,7 +448,7 @@ class TecnologiaPliegoRepository:
                 ausencia, no un negativo: el LLM no se pronunció sobre ellos.
 
         Returns:
-            ``{licitacion_id: {"es_ti": bool | None, "familias": list[str]}}``.
+            ``{licitacion_id: RespuestaLlmVigente}``.
             ``es_ti`` sale del marcador (``None`` si la versión vigente no lo
             trae). ``familias``, de las filas no-sentinel de esa versión con
             ``score >= settings.PLIEGO_TECH_MIN_SCORE``, ordenadas. ``es_ti``

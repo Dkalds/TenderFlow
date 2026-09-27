@@ -163,7 +163,7 @@ class FeedbackRepository:
             cur = c.execute("DELETE FROM ml_feedback WHERE user_id = %s", (user_id,))
             return int(cur.rowcount or 0)
 
-    def filas_revision_ti(self) -> list[dict[str, Any]]:
+    def filas_revision_ti(self) -> list[dict[str, Any]]:  # Any: fila psycopg heterogénea
         """La revisión humana vigente por expediente, con lo que hace falta del anuncio.
 
         Una fila por expediente (la más reciente, ``DISTINCT ON``): un mismo
