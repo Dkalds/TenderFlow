@@ -683,12 +683,20 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   76 «Oportunidades» (77 px a 11 px) salía «Oportunidad…», y a 84 quedan 81 px
   de nombre. «Administración» cabría; «Ops y administración», no. Pendiente del
   dueño; si cambia, en los tres sitios a la vez.
-- **El Radar a 768 px desborda `#main-content` en horizontal.** La rejilla de la
-  tabla (`RADAR_GRID`, desde `md`) suma ~766 px fijos y el rail se lleva 84: hay
-  133 px de scroll dentro de `main` (el documento no desborda). Ya pasaba en
-  master con el rail de 56 px, porque la suma de la rejilla no cambió en esta
-  rama; el rail más ancho le añade 28 px. Desde 1024 px no pasa. Arreglo
-  posible: tabla desde `lg`, o una rejilla de `md` sin la columna Tecnología.
+- ~~**El Radar a 768 px desborda `#main-content` en horizontal.**~~ ✅
+  **Resuelto el 2026-09-27.** La rejilla de la tabla (`RADAR_GRID`) suma ~766 px
+  fijos antes del título y, con el rail de 84, a 768 px quedan 684: había 133 px
+  de scroll lateral dentro de `main` (ya pasaba en master con el rail de 56). La
+  tabla empieza ahora en `lg` (1024 px, donde al título le quedan ~164 px,
+  descontada la barra de la lista); entre `md` y `lg` el Radar usa la ficha de
+  móvil, con «Ver ficha» y el inspector como `Sheet`, y «Abrir» a su ancho de
+  contenido. El umbral de JS (`MQ_TABLA_RADAR`, del que sale el `inert` de las
+  acciones ocultas) es el mismo que el prefijo de Tailwind **y en su unidad**:
+  los tres umbrales de `use-media-query.ts` pasaron de px a rem, porque el rem
+  de una media query sigue la letra del navegador y, con la «Grande» de Chrome,
+  `lg` son 1280 px; en px quedaban fichas visibles con las acciones `inert`. Lo fijan `radar-grid.test.ts` (la cuenta a
+  768 y a 1024), `page.test.tsx` y el E2E «Tableta vertical (768×1024)» de
+  `responsive.spec.ts`. Detalle no cambia.
 - `equipo/_components/anadir-miembro-form.tsx` conserva una caja de borde
   discontinuo. La regla 10 de la casa solo lo prohíbe en los vacíos; queda a
   criterio del dueño.

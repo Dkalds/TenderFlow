@@ -11,7 +11,7 @@ import { RadarFila } from "./radar-fila";
 import { RADAR_GRID } from "./radar-shared";
 
 /**
- * Cabecera de columnas. Decisión escrita: por debajo de `md` no se renderiza
+ * Cabecera de columnas. Decisión escrita: por debajo de `lg` no se renderiza
  * porque no hay columnas que rotular — en la ficha cada dato lleva su propia
  * forma (color de banda, «d» del plazo, «€» del importe) y un rótulo por celda
  * sería ruido, no ayuda.
@@ -20,7 +20,7 @@ export function RadarCabecera() {
   return (
     <div
       data-slot="radar-cabecera"
-      className={cn("hidden h-[30px] flex-none items-center border-b border-border/70 bg-card md:grid", CABECERA_COLUMNA, RADAR_GRID)}
+      className={cn("hidden h-[30px] flex-none items-center border-b border-border/70 bg-card lg:grid", CABECERA_COLUMNA, RADAR_GRID)}
     >
       <span>Score</span>
       <span>Licitación</span>

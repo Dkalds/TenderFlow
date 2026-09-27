@@ -12,9 +12,16 @@
  */
 
 /**
- * Rejilla de la tabla — solo a partir de `md`. Por debajo no hay rejilla: la
+ * Rejilla de la tabla — solo a partir de `lg`. Por debajo no hay rejilla: la
  * fila es una ficha en columna (ver `radar-fila.tsx`), y la cabecera de columnas
  * desaparece porque no habría columnas que rotular.
+ *
+ * Fue `md` hasta el 2026-09-27. Las columnas fijas y los huecos suman ~766 px
+ * antes del título; a 768 px de pantalla, con el rail de 84, quedan 684, y
+ * `#main-content` desbordaba 133 px en horizontal. A 1024 quedan 940, menos los
+ * 10 de la barra de la lista: el título se lleva ~164 (medido). El umbral de
+ * JS (`MQ_TABLA_RADAR`) tiene que ser el mismo `lg`, en rem como el de
+ * Tailwind, y `radar-grid.test.ts` hace la cuenta.
  *
  * Vive aquí y no en uno de los dos componentes que la usan porque cabecera y
  * fila tienen que compartir exactamente el mismo reparto: si divergen, los
@@ -31,9 +38,10 @@
  * quedaba por debajo de los 24 px de WCAG 2.5.8 (axe `target-size`, /radar).
  * Ahora los botones de icono son `flex-none` y la columna los aloja enteros.
  *
- * **Entre `md` y `xl` hay un cuarto botón**: «Ver ficha», porque ahí el
+ * **Entre `lg` y `xl` hay un cuarto botón**: «Ver ficha», porque ahí el
  * inspector es un `Sheet` y no hay otro disparador (`conFicha`, que sale de
- * `useModoInspector()` con los mismos 768/1280 que `md`/`xl`). Son 3 × 26 +
+ * `useModoInspector()`: `Sheet` desde 768 y anclado desde 1280; entre 768 y
+ * 1024 el botón va en la ficha, no en la tabla). Son 3 × 26 +
  * «Abrir» + 3 huecos de 6 ≈ 143 px: en 116 los botones no encogen (son
  * `flex-none`), así que la fila desbordaba por la izquierda —`justify-end`—
  * y se montaba sobre Plazo. El E2E de accesibilidad corre a 1280, donde solo
@@ -43,7 +51,7 @@
  * `responsive.spec.ts` lo mide a 1024 px.
  */
 export const RADAR_GRID =
-  "md:grid-cols-[52px_1fr_138px_132px_100px_96px_148px] xl:grid-cols-[52px_1fr_170px_132px_100px_96px_116px] md:gap-3 md:px-3.5";
+  "lg:grid-cols-[52px_1fr_138px_132px_100px_96px_148px] xl:grid-cols-[52px_1fr_170px_132px_100px_96px_116px] lg:gap-3 lg:px-3.5";
 
 /** Banda de scoring que devuelve el backend (`Caliente|Atractiva|Tibia|Descarte`). */
 export const BAND_TOKEN: Record<string, string> = {

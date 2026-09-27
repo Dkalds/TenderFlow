@@ -55,9 +55,9 @@ function ProximaFila({ item }: { item: RadarProxima }) {
     <Link
       href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
       className={cn(
-        "flex flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors",
+        "flex flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors md:px-3.5",
         "hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none active:bg-primary/10 active:duration-0",
-        "md:grid md:grid-cols-[132px_1fr_176px_108px_120px] md:items-center md:gap-3 md:px-3.5 md:py-2.5",
+        "lg:grid lg:grid-cols-[132px_1fr_176px_108px_120px] lg:items-center lg:gap-3 lg:px-3.5 lg:py-2.5",
       )}
     >
       <span className="flex flex-none items-center gap-1.5">
@@ -71,7 +71,7 @@ function ProximaFila({ item }: { item: RadarProxima }) {
       </span>
 
       <span className="min-w-0">
-        <span className="block line-clamp-2 text-tf-body font-medium md:line-clamp-1">
+        <span className="block line-clamp-2 text-tf-body font-medium lg:line-clamp-1">
           {item.titulo ?? "—"}
         </span>
         <span className="mt-0.5 block truncate text-tf-micro text-muted-foreground">
@@ -84,9 +84,9 @@ function ProximaFila({ item }: { item: RadarProxima }) {
         {item.organo_contratacion ?? "—"}
       </span>
 
-      <span className="tf-tnum text-tf-body font-semibold md:text-right">{shortEur(item.importe)}</span>
+      <span className="tf-tnum text-tf-body font-semibold lg:text-right">{shortEur(item.importe)}</span>
 
-      <span className="flex items-baseline gap-1.5 md:flex-col md:items-end md:gap-0.5">
+      <span className="flex items-baseline gap-1.5 lg:flex-col lg:items-end lg:gap-0.5">
         <span className={ROTULO_DATO}>Prevista</span>
         <FechaPrevista iso={item.fecha_prevista} />
       </span>

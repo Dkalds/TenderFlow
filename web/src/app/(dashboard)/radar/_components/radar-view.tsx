@@ -40,13 +40,16 @@ import { useRadarTeclado } from "../_hooks/use-radar-teclado";
  * sin plazo y sin triaje, porque un expediente sin pliego no tiene ninguna de
  * las tres cosas. Ocupa el ancho entero y la pinta `radar-proximas.tsx`.
  *
- * **Por debajo de `md` esto deja de ser una tabla.** Las siete columnas miden
- * 666 px de ancho mínimo: a 375 px la acción quedaba a dos pantallazos de
- * scroll horizontal del título, y el caso de uso móvil real —un comercial
- * mirando el Radar en una visita— es justo decidir en cinco segundos. La
- * conversión no duplica el árbol: los mismos nodos se agrupan en envoltorios
- * que a partir de `md` se disuelven con `display: contents` y vuelven a caer
- * en sus columnas. Una sola fuente de datos, de lógica y de marcado.
+ * **Por debajo de `lg` esto deja de ser una tabla.** Las siete columnas miden
+ * 666 px de ancho mínimo (~766 con huecos y márgenes): a 375 px la acción
+ * quedaba a dos pantallazos de scroll horizontal del título, y el caso de uso
+ * móvil real —un comercial mirando el Radar en una visita— es justo decidir en
+ * cinco segundos. Hasta el 2026-09-27 la tabla empezaba en `md`, y a 768 px,
+ * con el rail, desbordaba 133 px: entre `md` y `lg` va ya la ficha, con el
+ * inspector en `Sheet`. La conversión no duplica el árbol: los mismos nodos se
+ * agrupan en envoltorios que a partir de `lg` se disuelven con
+ * `display: contents` y vuelven a caer en sus columnas. Una sola fuente de
+ * datos, de lógica y de marcado.
  *
  * La pantalla es la composición; el estado y las escrituras viven en
  * `_hooks/use-radar-consola.ts` y cada bloque de UI en `_components/`. La

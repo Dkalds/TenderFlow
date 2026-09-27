@@ -17,13 +17,13 @@ import {
 } from "./radar-shared";
 
 /**
- * Una señal del Radar: fila de la tabla a partir de `md`, ficha en columna por
+ * Una señal del Radar: fila de la tabla a partir de `lg`, ficha en columna por
  * debajo.
  *
  * **Es un solo árbol.** Los cuatro envoltorios de dentro agrupan la ficha móvil
- * y se disuelven con `md:contents`: a partir de `md` sus hijos caen directos en
+ * y se disuelven con `lg:contents`: a partir de `lg` sus hijos caen directos en
  * la rejilla, en el mismo orden que rotula la cabecera. Es lo que permite que
- * ficha y fila no puedan divergir — una segunda lista `md:hidden` sí podría.
+ * ficha y fila no puedan divergir — una segunda lista `lg:hidden` sí podría.
  *
  * **La selección no se anima.** J/K es la acción más repetida del Radar: la
  * fila que entra y la que sale cambian de fondo al instante, y la banda lateral
@@ -58,7 +58,7 @@ export function RadarFila({
    * que aún no lo mande.
    */
   afinidadOrigen?: string | null;
-  /** A partir de `md` las acciones ocultas salen del orden de tabulación. */
+  /** A partir de `lg` las acciones ocultas salen del orden de tabulación. */
   enTabla: boolean;
   conFicha: boolean;
   onSelect: (index: number) => void;
@@ -82,8 +82,8 @@ export function RadarFila({
       // ocupa dos líneas y recortarla a 44 px la dejaría sin nada.
       style={{ "--tf-radar-fila": `${rowHeight}px` } as React.CSSProperties}
       className={cn(
-        "relative flex flex-col gap-2 border-b border-border/40 px-3 py-3",
-        "md:grid md:h-[var(--tf-radar-fila)] md:items-center md:py-0",
+        "relative flex flex-col gap-2 border-b border-border/40 px-3 py-3 md:px-3.5",
+        "lg:grid lg:h-[var(--tf-radar-fila)] lg:items-center lg:py-0",
         RADAR_GRID,
         // `/9` y no `/10` en la fila activa: es el tinte que mide
         // `contraste-tokens.test.ts` con las cifras de banda encima.
@@ -140,7 +140,7 @@ export function RadarFila({
         )}
       />
 
-      <div className="flex min-w-0 items-center gap-3 md:contents">
+      <div className="flex min-w-0 items-center gap-3 lg:contents">
         {/* El score abre su propio desglose. Es un `Popover` y no
             un `title` nativo por dos razones: el `title` no se
             dispara con teclado y aquí el contenido no es una
@@ -202,12 +202,12 @@ export function RadarFila({
                 único por lo que se mira el Radar.
                 `line-clamp-1` y no `truncate` para la tabla: son la
                 misma utilidad en las dos anchuras, así que el orden
-                en cascada lo decide el prefijo `md:` y no la
+                en cascada lo decide el prefijo `lg:` y no la
                 ordenación interna de Tailwind entre dos familias
                 distintas que escriben `display`. */}
             <span
               className={cn(
-                "min-w-0 line-clamp-2 text-tf-body md:line-clamp-1",
+                "min-w-0 line-clamp-2 text-tf-body lg:line-clamp-1",
                 isActive ? "font-semibold text-foreground" : "font-medium",
               )}
             >
@@ -229,7 +229,7 @@ export function RadarFila({
       {/* Órgano y tecnología son las dos columnas que se subordinan
           en móvil: siguen ahí, en una línea secundaria bajo el
           título, en vez de competir con score, plazo e importe. */}
-      <div className="flex min-w-0 items-center justify-between gap-2 md:contents">
+      <div className="flex min-w-0 items-center justify-between gap-2 lg:contents">
         <span className="min-w-0 flex-1 truncate text-tf-meta text-muted-foreground">
           {tender.organo_contratacion ?? "—"}
         </span>
@@ -238,7 +238,7 @@ export function RadarFila({
           <Badge
             variant="info"
             size="sm"
-            className="block max-w-[46%] flex-none justify-self-start truncate leading-5 md:max-w-full"
+            className="block max-w-[46%] flex-none justify-self-start truncate leading-5 lg:max-w-full"
           >
             {tech}
           </Badge>
@@ -247,8 +247,8 @@ export function RadarFila({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 md:contents">
-        <span className="tf-tnum text-tf-body font-semibold md:text-right">{shortEur(tender.importe)}</span>
+      <div className="flex items-center justify-between gap-3 lg:contents">
+        <span className="tf-tnum text-tf-body font-semibold lg:text-right">{shortEur(tender.importe)}</span>
 
         <div className="flex flex-none flex-col items-end gap-1.5">
           <span className={cn("tf-tnum text-tf-meta font-semibold leading-none", urg.texto)}>

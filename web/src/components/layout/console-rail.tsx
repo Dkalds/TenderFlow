@@ -65,7 +65,8 @@ import { ROLE_LABELS } from "@/app/(dashboard)/equipo/_lib/etiquetas";
  * de Linux de la CI. El `truncate` se queda como red, no como plan.
  */
 
-const RAIL_WIDTH = 84;
+/** Exportado para las cuentas de ancho que dependen de él (`radar-grid.test.ts`). */
+export const RAIL_WIDTH = 84;
 
 /** Activo también cuando estás en una ruta heredada que este espacio absorbió. */
 function useActiveSpaceKey(): string | undefined {

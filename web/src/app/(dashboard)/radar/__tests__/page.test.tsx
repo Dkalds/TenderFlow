@@ -533,19 +533,33 @@ describe("RadarPage — foco y teclado", () => {
   }
 
   /**
-   * Simula el ancho `md` (la tabla). jsdom no evalúa media queries y el stub de
-   * `src/test/setup.ts` responde "no match" a todo, que en esta página significa
-   * ficha móvil; la página consulta `matchMedia` porque `inert` es un atributo y
-   * no se puede condicionar con un prefijo responsive de Tailwind.
+   * Simula el ancho `lg` (la tabla del Radar, `MQ_TABLA_RADAR`). jsdom no evalúa
+   * media queries y el stub de `src/test/setup.ts` responde "no match" a todo,
+   * que en esta página significa ficha móvil; la página consulta `matchMedia`
+   * porque `inert` es un atributo y no se puede condicionar con un prefijo
+   * responsive de Tailwind.
    *
-   * Ojo: este ancho es `md` **pero no `xl`**, así que es exactamente la franja
+   * Ojo: este ancho es `lg` **pero no `xl`**, así que es exactamente la franja
    * en la que el inspector se abre como `Sheet` y la fila activa gana el
    * disparador «Ver ficha».
    */
   function conAnchoDeTabla(): () => void {
+    return conAnchoDePantalla(1024);
+  }
+
+  /**
+   * Simula una pantalla de `ancho` px: cada `(min-width: N)` casa si el ancho
+   * llega. Así un test dice el ancho que mira y no qué consultas responden. Los
+   * umbrales van en rem (como los de Tailwind), a 16 px la letra por defecto.
+   */
+  function conAnchoDePantalla(ancho: number): () => void {
     const original = window.matchMedia;
+    const umbral = (query: string) => {
+      const m = /min-width:\s*([\d.]+)(px|rem)/.exec(query);
+      return m ? Number(m[1]) * (m[2] === "rem" ? 16 : 1) : Infinity;
+    };
     window.matchMedia = ((query: string) => ({
-      matches: query.includes("min-width: 768px"),
+      matches: umbral(query) <= ancho,
       media: query,
       onchange: null,
       addEventListener: () => {},
@@ -615,7 +629,7 @@ describe("RadarPage — foco y teclado", () => {
 
   it("las acciones ocultas de la tabla no son paradas de tabulación invisibles", () => {
     // 23 filas inactivas × 3 botones = 69 paradas sin foco visible (WCAG 2.4.7).
-    // `md:opacity-0` las esconde de la vista pero no del orden de tabulación.
+    // `lg:opacity-0` las esconde de la vista pero no del orden de tabulación.
     const restaurarAncho = conAnchoDeTabla();
     try {
       tresFilas();
@@ -685,8 +699,28 @@ describe("RadarPage — foco y teclado", () => {
     }
   });
 
+  it("entre md y lg es ficha, con «Ver ficha» en cada una y todas sus acciones alcanzables", async () => {
+    // A 768 px, con el rail, la tabla no cabe (desbordaba 133 px): ahí va la
+    // ficha. Pero el inspector sigue siendo un `Sheet`, así que la ficha gana el
+    // disparador; y como sus acciones están a la vista, ninguna es `inert`.
+    const restaurarAncho = conAnchoDePantalla(768);
+    try {
+      tresFilas();
+      const { container } = renderRadar();
+      const lista = container.querySelector('[data-slot="radar-lista"]')!;
+
+      expect(lista.querySelector("[inert]")).toBeNull();
+      expect(screen.getAllByRole("button", { name: /^Ver ficha de / })).toHaveLength(3);
+
+      fireEvent.click(screen.getAllByRole("button", { name: /^Ver ficha de / })[2]);
+      expect(await screen.findByRole("dialog")).toHaveTextContent("Fila tres");
+    } finally {
+      restaurarAncho();
+    }
+  });
+
   it("en la ficha móvil las acciones de toda fila siguen siendo alcanzables", () => {
-    // El bloque es visible por debajo de `md` por decisión escrita: inertizarlo
+    // El bloque es visible por debajo de `lg` por decisión escrita: inertizarlo
     // ahí dejaría descartar y seguir fuera del alcance del teclado.
     tresFilas();
     const { container } = renderRadar();
@@ -715,8 +749,8 @@ describe("RadarPage — foco y teclado", () => {
  * Lo que sí se puede fijar aquí, y es lo que de verdad se rompe con el tiempo,
  * es la **forma**: que la ficha y la fila sigan siendo un solo árbol (nadie ha
  * duplicado la lista en dos ramas que puedan divergir), que las clases táctiles
- * existan en la base y no solo tras `md:`, y que lo que se oculta esté oculto a
- * partir de `md` y no al revés. Son aserciones sobre clases, con todo lo que
+ * existan en la base y no solo tras `lg:`, y que lo que se oculta esté oculto a
+ * partir de `lg` (donde empieza la tabla) y no al revés. Son aserciones sobre clases, con todo lo que
  * eso tiene de proxy; se declaran como tal en vez de disfrazarse de test de
  * comportamiento.
  */
@@ -733,8 +767,8 @@ describe("RadarPage en móvil", () => {
 
     const { container } = renderRadar();
 
-    // Si alguien resuelve el móvil con una segunda lista (`md:hidden` + `hidden
-    // md:block`), aquí saldrían seis: la ficha y la fila dejan de tener una
+    // Si alguien resuelve el móvil con una segunda lista (`lg:hidden` + `hidden
+    // lg:block`), aquí saldrían seis: la ficha y la fila dejan de tener una
     // única fuente y empiezan a divergir en silencio.
     expect(container.querySelectorAll("[data-active]")).toHaveLength(3);
     expect(container.querySelectorAll('[data-slot="radar-acciones"]')).toHaveLength(3);
@@ -742,7 +776,7 @@ describe("RadarPage en móvil", () => {
 
   it("las acciones de una fila no dependen de haberla seleccionado antes", () => {
     // En escritorio se revelan al seleccionar/hover, que en táctil convierte
-    // descartar en dos toques. La ocultación tiene que vivir tras `md:`.
+    // descartar en dos toques. La ocultación tiene que vivir tras `lg:`, donde empieza la tabla.
     radarState.data = {
       items: [tender({ id_externo: "LIC-1" }), tender({ id_externo: "LIC-2" })],
       signals: SIGNALS_SANAS,
@@ -752,8 +786,8 @@ describe("RadarPage en móvil", () => {
     const acciones = container.querySelectorAll('[data-slot="radar-acciones"]');
     const inactiva = acciones[1];
 
-    expect(clases(inactiva)).toContain("md:opacity-0");
-    expect(clases(inactiva)).toContain("md:pointer-events-none");
+    expect(clases(inactiva)).toContain("lg:opacity-0");
+    expect(clases(inactiva)).toContain("lg:pointer-events-none");
     expect(clases(inactiva)).not.toContain("opacity-0");
     expect(clases(inactiva)).not.toContain("pointer-events-none");
   });
@@ -761,16 +795,16 @@ describe("RadarPage en móvil", () => {
   it("el descarte y el «Abrir» se dimensionan para el pulgar antes de encogerse", () => {
     renderRadar();
 
-    // 36×36 en la base; los 26 px de la consola quedan tras `md:`. El mínimo de
+    // 36×36 en la base; los 26 px de la consola quedan tras `lg:`. El mínimo de
     // WCAG 2.5.8 son 24×24, que se cumple en ambos, pero se falla con el dedo.
     const descartar = screen.getByRole("button", { name: "Descartar Mantenimiento SAP" });
-    expect(clases(descartar)).toEqual(expect.arrayContaining(["h-9", "w-9", "md:h-6.5", "md:w-6.5"]));
+    expect(clases(descartar)).toEqual(expect.arrayContaining(["h-9", "w-9", "lg:h-6.5", "lg:w-6.5"]));
 
     const seguir = screen.getByRole("button", { name: "Seguir Mantenimiento SAP" });
-    expect(clases(seguir)).toEqual(expect.arrayContaining(["h-9", "w-9", "md:h-6.5", "md:w-6.5"]));
+    expect(clases(seguir)).toEqual(expect.arrayContaining(["h-9", "w-9", "lg:h-6.5", "lg:w-6.5"]));
 
     const abrir = screen.getByRole("button", { name: "Abrir" });
-    expect(clases(abrir)).toEqual(expect.arrayContaining(["h-9", "md:h-6.5"]));
+    expect(clases(abrir)).toEqual(expect.arrayContaining(["h-9", "lg:h-6.5"]));
   });
 
   it("la cabecera de columnas no se cuela en la ficha, donde no hay columnas", () => {
@@ -779,7 +813,7 @@ describe("RadarPage en móvil", () => {
 
     expect(cabecera).not.toBeNull();
     expect(clases(cabecera!)).toContain("hidden");
-    expect(clases(cabecera!)).toContain("md:grid");
+    expect(clases(cabecera!)).toContain("lg:grid");
     // La rejilla entera es de escritorio: ni una columna sin prefijo.
     expect(clases(cabecera!).filter((c) => c.startsWith("grid-cols-"))).toHaveLength(0);
   });
