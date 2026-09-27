@@ -40,7 +40,9 @@ porque el filtro compila con límites de palabra (véase
 
 from __future__ import annotations
 
+import functools
 import re
+import unicodedata
 from collections.abc import Iterable
 from typing import Literal
 
@@ -1251,14 +1253,89 @@ if not (set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO)):
 # relaja sólo en el extremo donde el término no empieza ni acaba en carácter de
 # palabra. El punto se excluye a la izquierda a propósito: así `.net` sigue sin
 # casar dentro de `asp.net`, que es un producto distinto con su propia entrada.
+#
+# ── Cómo se escribe un título de verdad (2026-09-27) ────────────────────────
+#
+# Medido ese día en producción: el 16 % de los títulos de PSCP va en mayúsculas
+# y sin tildes, y el diccionario escribe con tildes. Con el patrón literal,
+# «ADMINISTRACION ELECTRONICA» no casaba con «administración electrónica», ni
+# «firewalls» con «firewall», ni «copia  de\nseguridad» (doble espacio, salto
+# de línea del XML) con «copia de seguridad». Ahora cada keyword se pliega (sin
+# tildes) y se compila con las variantes de cada letra, un plural opcional por
+# palabra y separadores tolerantes. El patrón sigue casando sobre el texto tal
+# cual llega: ningún consumidor tiene que plegar nada antes de llamar a
+# `search`, y el test que compila cada keyword contra sí misma sigue valiendo.
+
+#: Versión de la forma de casar. Entra en el hash de `filter_version`
+#: (`services.tecnologias_diccionario._hash_de`): dos filas filtradas con el
+#: mismo diccionario pero con matchers distintos no se filtraron igual, y el
+#: linaje tiene que poder decirlo. Se cambia a mano cuando cambia `con_limites`.
+VERSION_MATCHER = "2026-09-27-plegado-plurales"
+
+#: Letras que un título escribe con o sin diacrítico. La keyword se pliega
+#: antes, y cada una de estas letras se convierte en la clase con sus variantes.
+_VARIANTES: dict[str, str] = {
+    "a": "[aàáâäã]",
+    "e": "[eèéêë]",
+    "i": "[iìíîï]",
+    "o": "[oòóôöõ]",
+    "u": "[uùúûü]",
+    "n": "[nñ]",
+    "c": "[cç]",
+}
+
+#: Separadores que en un título real valen lo mismo que el de la keyword.
+_SEPARADORES: dict[str, str] = {
+    # Dobles espacios y saltos de línea del XML.
+    " ": r"\s+",
+    # «económico-financiera» y «económico financiera».
+    "-": r"[\s\-]?",
+    # El apóstrofo recto del diccionario y los tipográficos de los títulos.
+    "'": "['\u2019\u2018\u02bc\u00b4`]",
+    # «intel·ligència», «intel.ligència» e «intelligència» (el guion, al final de la clase, es literal).
+    "\u00b7": "[\u00b7.-]?",
+}
+
+#: Plural opcional al final de cada palabra de tres letras o más: «firewalls»,
+#: «servidores», «copias de seguridad», «sedes electrónicas». Las palabras más
+#: cortas (de, la, el, y, i) no lo llevan: «des» o «les» no son su plural.
+_PLURAL = "(?:e?s)?"
+_MIN_LETRAS_PLURAL = 3
+
+#: Un patrón que no casa con nada: lo que compila una lista sin keywords. Un
+#: `re.compile("")` casaría con cualquier texto y metería el censo entero.
+_NUNCA = "(?!)"
+
+
+def plegar(texto: str) -> str:
+    """Quita los diacríticos: «Administración» → «Administracion»."""
+    descompuesto = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in descompuesto if not unicodedata.combining(c))
+
+
+def _cuerpo(keyword: str) -> str:
+    """El centro del patrón: letras con sus variantes, separadores y plurales."""
+    partes: list[str] = []
+    letras_seguidas = 0
+    for signo in plegar(keyword):
+        if signo.isalpha():
+            letras_seguidas += 1
+            partes.append(_VARIANTES.get(signo.lower(), re.escape(signo)))
+            continue
+        if signo in (" ", "-") and letras_seguidas >= _MIN_LETRAS_PLURAL:
+            partes.append(_PLURAL)
+        letras_seguidas = 0
+        partes.append(_SEPARADORES.get(signo, re.escape(signo)))
+    if letras_seguidas >= _MIN_LETRAS_PLURAL:
+        partes.append(_PLURAL)
+    return "".join(partes)
 
 
 def con_limites(keyword: str) -> str:
     """Fragmento de regex para ``keyword`` con el límite correcto a cada lado."""
-    escapada = re.escape(keyword)
     izquierda = r"\b" if keyword[:1].isalnum() or keyword[:1] == "_" else r"(?<![\w.])"
     derecha = r"\b" if keyword[-1:].isalnum() or keyword[-1:] == "_" else r"(?!\w)"
-    return f"{izquierda}{escapada}{derecha}"
+    return f"{izquierda}{_cuerpo(keyword)}{derecha}"
 
 
 def patron_de_keywords(keywords: Iterable[str], *, flags: int = re.IGNORECASE) -> re.Pattern[str]:
@@ -1267,5 +1344,41 @@ def patron_de_keywords(keywords: Iterable[str], *, flags: int = re.IGNORECASE) -
     Fuente única del criterio: `services/tecnologias_diccionario.patrones`,
     `scraper/filters` y los tests compilan por aquí, de modo que arreglar un
     caso como `.net` lo arregla en los tres a la vez.
+
+    Las keywords van de la más larga a la más corta: la alternancia se queda
+    con la primera que casa en cada posición, y así «SAP FI/CO» es `sap fi/co`
+    y no `sap` (que es lo que devuelve `findall`, p. ej. para la señal de
+    pliegos). Qué keywords **están** en un texto lo dice
+    :func:`keywords_presentes`, que no depende de ese orden.
     """
-    return re.compile("|".join(con_limites(k) for k in keywords if k), flags=flags)
+    unicas = [k for k in dict.fromkeys(keywords) if k]
+    if not unicas:
+        return re.compile(_NUNCA)
+    ordenadas = sorted(unicas, key=lambda k: len(plegar(k)), reverse=True)
+    return re.compile("|".join(con_limites(k) for k in ordenadas), flags=flags)
+
+
+@functools.lru_cache(maxsize=8192)
+def patron_de_keyword(keyword: str) -> re.Pattern[str]:
+    """El patrón de una sola keyword, memoizado: lo piden a cada texto."""
+    return patron_de_keywords([keyword])
+
+
+def keywords_presentes(textos: Iterable[str | None], keywords: Iterable[str]) -> list[str]:
+    """Las keywords que aparecen en alguno de los textos, en su forma canónica.
+
+    Forma canónica es la del diccionario en minúsculas, no la del texto: la
+    puerta de PSCP compara lo casado con `KEYWORDS_AMBIGUAS`, y si volviera
+    «gestio» o «firewalls» ninguna ambigua se reconocería. Y son **todas** las
+    que aparecen, no la primera de la alternancia: con esa, «Suport SAP FI/CO i
+    SAP MM» se quedaba en `sap`, que es ambigua.
+    """
+    normalizados = [unicodedata.normalize("NFC", t) for t in textos if t]
+    if not normalizados:
+        return []
+    presentes = {
+        kw.lower()
+        for kw in keywords
+        if kw and any(patron_de_keyword(kw).search(t) for t in normalizados)
+    }
+    return sorted(presentes)
