@@ -4,12 +4,15 @@
  * Ficha del clasificador: el estado del etiquetado y, si ya hay un modelo
  * registrado, su versión, su métrica destacada y la deriva contra el reentreno
  * anterior. Sin modelo la tarjeta lo dice en vez de pintar guiones.
+ *
+ * Sin «precisión estimada (% relevante)»: leía un `pct_relevant` que la API no
+ * sirve (ver `labeling-stats.tsx`, que explica por qué tampoco se calcula aquí).
  */
 
 import { Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { cn, formatDate, formatDateTime, formatNumber, formatPercent } from "@/lib/utils";
+import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { FeedbackStats } from "@/hooks/use-feedback";
 import type { HeadlineMetric, ModelVersionInfo } from "../../_lib/active-learning";
 
@@ -35,28 +38,18 @@ export function ModelInfoCard({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 sm:grid-cols-3 text-sm">
+        <div className="grid gap-4 sm:grid-cols-2 text-sm">
           <div>
             <p className="text-muted-foreground">Total etiquetas</p>
             <p className="font-medium">
-              {formatNumber(stats?.total_labels)}
-            </p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">
-              Precision estimada (% relevante)
-            </p>
-            <p className="font-medium">
-              {stats?.pct_relevant != null
-                ? formatPercent(stats.pct_relevant)
-                : "—"}
+              {formatNumber(stats?.total)}
             </p>
           </div>
           <div>
             <p className="text-muted-foreground">Última actualización</p>
             <p className="font-medium">
-              {stats?.last_updated
-                ? formatDateTime(stats.last_updated)
+              {stats?.last_feedback_at
+                ? formatDateTime(stats.last_feedback_at)
                 : "—"}
             </p>
           </div>

@@ -36,16 +36,22 @@ afterEach(() => {
 
 describe("useFeedbackStats", () => {
   it("pide las estadísticas a /feedback/stats", async () => {
-    const fetchMock = stub({ total_labels: 120, pct_relevant: 0.42, last_updated: "2026-09-01" });
+    const fetchMock = stub({
+      total: 120,
+      positivos: 70,
+      negativos: 50,
+      last_feedback_at: "2026-09-01",
+    });
     const { wrapper } = crearEntorno();
 
     const { result } = renderHook(() => useFeedbackStats(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual({
-      total_labels: 120,
-      pct_relevant: 0.42,
-      last_updated: "2026-09-01",
+      total: 120,
+      positivos: 70,
+      negativos: 50,
+      last_feedback_at: "2026-09-01",
     });
     expect(fetchMock.mock.calls.map(callUrl)).toEqual(["/api/v1/feedback/stats"]);
   });
@@ -55,7 +61,7 @@ describe("useFeedbackStats", () => {
     // montan juntas. Con la clave del registro comparten entrada de caché; con
     // dos literales iguales pero dos `queryFn` distintas —lo que había—
     // compartirían caché y no contrato, y ganaría la que montara primero.
-    const fetchMock = stub({ total_labels: 5 });
+    const fetchMock = stub({ total: 5 });
     const { client, wrapper } = crearEntorno();
 
     const { result } = renderHook(
@@ -72,20 +78,17 @@ describe("useFeedbackStats", () => {
   });
 
   it("un campo ausente llega como ausente, no como cero", async () => {
-    // `GET /feedback/stats` devuelve un `dict` sin DTO en el backend, así que
-    // el esquema generado no lo describe y todos los campos son opcionales a
-    // propósito. La pantalla distingue «sin dato» de «cero»: rellenar el hueco
-    // con 0 aquí haría que un backend que aún no calcula el porcentaje se
-    // mostrara como 0% de relevantes, que es una afirmación falsa.
-    stub({ total_labels: 0 });
+    // El hook no rellena huecos: la pantalla distingue «sin dato» de «cero», y
+    // un `positivos` a 0 inventado aquí sería una afirmación falsa.
+    stub({ total: 0 });
     const { wrapper } = crearEntorno();
 
     const { result } = renderHook(() => useFeedbackStats(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data?.total_labels).toBe(0);
-    expect(result.current.data?.pct_relevant).toBeUndefined();
-    expect(result.current.data?.last_updated).toBeUndefined();
+    expect(result.current.data?.total).toBe(0);
+    expect(result.current.data?.positivos).toBeUndefined();
+    expect(result.current.data?.last_feedback_at).toBeUndefined();
   });
 
   it("un fallo del endpoint se propaga como error, sin dato a medias", async () => {
