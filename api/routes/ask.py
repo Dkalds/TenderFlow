@@ -39,7 +39,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
@@ -116,8 +116,32 @@ class AskRequest(BaseModel):
             "Número de licitaciones a recuperar como contexto. Se ignora si se envía id_externo."
         ),
     )
-    ccaa: str | None = Field(default=None, description="Filtrar licitaciones por CCAA")
-    tecnologia: str | None = Field(default=None, description="Filtrar licitaciones por tecnología")
+    # Los cuatro filtros tienen la forma de los de `SemanticSearchRequest`: el
+    # Investigador manda el mismo objeto a sus dos modos, y con `str | None`
+    # aquí preguntar con una CCAA o una tecnología marcadas era un 422.
+    ccaa: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Filtra el contexto del corpus por CCAA (multi-valor). Solo aplica sin "
+            "id_externo/ids_externos. Por compatibilidad acepta también una cadena, "
+            "que se lee como CSV."
+        ),
+    )
+    tecnologia: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Filtra el contexto del corpus por tecnología (multi-valor): el código se "
+            "busca entre las tecnologías de cada licitación. Solo aplica sin "
+            "id_externo/ids_externos. Por compatibilidad acepta también una cadena, "
+            "que se lee como CSV."
+        ),
+    )
+    fecha_desde: str | None = Field(
+        default=None, description="Fecha de publicación desde (YYYY-MM-DD)"
+    )
+    fecha_hasta: str | None = Field(
+        default=None, description="Fecha de publicación hasta (YYYY-MM-DD)"
+    )
     id_externo: str | None = Field(
         default=None,
         description=(
@@ -144,6 +168,22 @@ class AskRequest(BaseModel):
             "no el modo por defecto."
         ),
     )
+
+    @field_validator("ccaa", "tecnologia", mode="before")
+    @classmethod
+    def _cadena_como_lista(cls, value: object) -> object:
+        """La forma anterior del contrato (``str | None``) sigue valiendo.
+
+        El OpenAPI la publicó así, y un cliente con API key que manda
+        ``"ccaa": "Madrid"`` o ``null`` no puede empezar a recibir 422. La
+        cadena se lee como CSV —la codificación multi-valor del resto de la
+        API— y ``null`` como «sin filtro». Cualquier otra cosa la valida el tipo.
+        """
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
+        return value
 
     @model_validator(mode="after")
     def _limitar_expedientes(self) -> AskRequest:
@@ -255,8 +295,11 @@ def _validate_model(model: str) -> None:
 def _retrieve_docs(
     question: str,
     top_k: int,
-    ccaa: str | None,
-    tecnologia: str | None,
+    *,
+    ccaa: list[str],
+    tecnologia: list[str],
+    fecha_desde: str | None,
+    fecha_hasta: str | None,
 ) -> list[dict[str, Any]]:
     """Recupera documentos relevantes usando FTS5 con LIKE fallback.
 
@@ -266,7 +309,14 @@ def _retrieve_docs(
     try:
         from services.licitaciones import search_for_ask
 
-        return search_for_ask(question, top_k, ccaa=ccaa, tecnologia=tecnologia)
+        return search_for_ask(
+            question,
+            top_k,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+        )
     except Exception as exc:
         log.warning("ask.retrieve_docs_failed", error=str(exc))
         return []
@@ -579,6 +629,8 @@ def _prepare_ask_context(
             top_k=request.top_k,
             ccaa=request.ccaa,
             tecnologia=request.tecnologia,
+            fecha_desde=request.fecha_desde,
+            fecha_hasta=request.fecha_hasta,
         )
         mode = "general"
 

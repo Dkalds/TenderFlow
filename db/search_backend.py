@@ -17,13 +17,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from db.sql_fragments import tecnologia_en_csv_sql
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
 if TYPE_CHECKING:
-    pass
+    from collections.abc import Sequence
 
 # Constante estándar de Reciprocal Rank Fusion (Cormack et al. 2009) — el
 # valor 60 es el usado en la literatura y en la mayoría de motores híbridos
@@ -348,8 +347,10 @@ class PgTsBackend:
         query: str,
         query_embedding: list[float],
         *,
-        ccaa: str | None = None,
-        tecnologia: str | None = None,
+        ccaa: str | Sequence[str] | None = None,
+        tecnologia: str | Sequence[str] | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
         limit: int = 20,
         candidate_k: int = 50,
         alpha: float | None = None,
@@ -370,6 +371,11 @@ class PgTsBackend:
         ``search_vector`` (v50) y ``documento_chunks``/pgvector (v56).
         Fail-open: cualquier error (extensión ausente, tabla vacía) devuelve
         lista vacía, igual que ``_ts_search``.
+
+        Los filtros (``ccaa``, ``tecnologia``, ``fecha_desde``/``fecha_hasta``;
+        ver ``db.repositories.base.ambito_busqueda_sql``) acotan las **dos**
+        listas antes de fusionar, así que el ranking de cada una se cuenta ya
+        dentro del ámbito y ningún fragmento de fuera llega a ``chunks``.
         """
         w_fts, w_vec = fusion_weights(alpha)
         # Con ``alpha=None`` la consulta es, carácter a carácter, la de siempre:
@@ -387,22 +393,33 @@ class PgTsBackend:
         # ponderar, todos los sumandos son positivos y el filtro sobra.
         filtro_positivos = "WHERE f.rrf_score > 0\n            " if ponderada else ""
 
-        conditions = ["l.search_vector @@ websearch_to_tsquery('spanish', %s)"]
-        fts_params: list[Any] = [query]
-        if ccaa:
-            conditions.append("l.ccaa = %s")
-            fts_params.append(ccaa)
-        # Cada código se busca en el CSV de la fila (con igualdad, SAP perdía
-        # los expedientes «ERP,SAP»), y el filtro se trocea como en
-        # `search_fts_docs`, el FTS al que cae `search_for_ask` con el mismo
-        # valor. Import local, como `connect_read`: importar este módulo no
-        # carga el paquete de repositories.
-        from db.repositories.base import csv_values
+        # Import local, como `connect_read`: importar este módulo no carga el
+        # paquete de repositories.
+        from db.repositories.base import ambito_busqueda_sql
 
-        if tecnologias := csv_values(tecnologia):
-            conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
-            fts_params.extend(tecnologias)
-        fts_where = " AND ".join(conditions)
+        # Las mismas cláusulas que el FTS y el LIKE a los que cae
+        # `search_for_ask`: la tecnología se busca en el CSV de la fila («ERP,SAP»
+        # también es SAP) y un CSV de varios códigos se trocea.
+        ambito, ambito_params = ambito_busqueda_sql(
+            "l", ccaa=ccaa, tecnologia=tecnologia, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+        )
+        fts_where = " AND ".join(
+            ["l.search_vector @@ websearch_to_tsquery('spanish', %s)", *ambito]
+        )
+        # El mismo ámbito en la lista vectorial. Sin él, `vec_ranked` traía los
+        # fragmentos más cercanos de cualquier licitación, y la fusión los
+        # devolvía con sus `chunks`: una respuesta filtrada por SAP citaba el
+        # pliego de otra tecnología. Sin filtros no hay JOIN y la consulta es la
+        # de siempre. Con ellos, si el plan usa el índice HNSW, el filtro se
+        # aplica sobre los `hnsw.ef_search` vecinos que devuelve: un ámbito muy
+        # estrecho puede dejar menos de `candidate_k` fragmentos, nunca uno de
+        # fuera.
+        vec_ambito = (
+            "\n                JOIN licitaciones l ON l.id_externo = d.licitacion_id"
+            f"\n                WHERE {' AND '.join(ambito)}"
+            if ambito
+            else ""
+        )
         qvec = _to_pg_vector_literal(query_embedding)
 
         sql = f"""
@@ -420,7 +437,7 @@ class PgTsBackend:
                        dc.texto AS chunk_texto,
                        {w_col}ROW_NUMBER() OVER (ORDER BY dc.embedding <=> %s::vector) AS rnk
                 FROM documento_chunks dc
-                JOIN documentos d ON d.id = dc.documento_id
+                JOIN documentos d ON d.id = dc.documento_id{vec_ambito}
                 ORDER BY dc.embedding <=> %s::vector
                 LIMIT %s
             ),
@@ -455,10 +472,12 @@ class PgTsBackend:
         exec_params = [
             *([w_fts] if ponderada else []),
             query,
-            *fts_params,
+            query,
+            *ambito_params,
             candidate_k,
             *([w_vec] if ponderada else []),
             qvec,
+            *ambito_params,
             qvec,
             candidate_k,
             RRF_K,
@@ -536,8 +555,10 @@ def hybrid_search_docs(
     query: str,
     query_embedding: list[float],
     *,
-    ccaa: str | None = None,
-    tecnologia: str | None = None,
+    ccaa: str | Sequence[str] | None = None,
+    tecnologia: str | Sequence[str] | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
     limit: int = 20,
     candidate_k: int = 50,
     alpha: float | None = None,
@@ -563,6 +584,8 @@ def hybrid_search_docs(
             query_embedding,
             ccaa=ccaa,
             tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
             limit=limit,
             candidate_k=candidate_k,
             alpha=alpha,

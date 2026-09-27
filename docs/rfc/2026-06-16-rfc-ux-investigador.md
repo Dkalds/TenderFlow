@@ -146,3 +146,20 @@ sigue ignorándolos. El historial sigue en `localStorage` (menor, #4).
   — `POST /feedback/asistente` (`v121_asistente_feedback`), votado desde
   `components/chat-thread.tsx`. **Falta** el feedback de relevancia sobre los
   resultados de búsqueda.
+
+*Estado (2026-09-27):* los filtros en `/ask` quedan cerrados; sigue **parcial**
+solo por el feedback de relevancia sobre los resultados de búsqueda.
+- **Contrato.** El código de respuesta era **422**: `AskRequest` rechazaba las
+  listas con `string_type`. Ahora toma `ccaa`/`tecnologia` como listas y
+  `fecha_desde`/`fecha_hasta`, la forma de `SemanticSearchRequest`, así que el
+  mismo objeto vale para los dos modos. Una cadena sigue valiendo (se lee como
+  CSV) para no romper a clientes con API key. En el cliente, `FiltrosCorpus`
+  (`web/src/lib/api-types.ts`) deriva ese objeto de los dos esquemas y `tsc`
+  delata si dejan de casar.
+- **Retrieval.** La fusión híbrida, el FTS y el LIKE acotan con el mismo
+  `db.repositories.base.ambito_busqueda_sql`, y la fusión lo aplica también a
+  su lista **vectorial**: antes solo acotaba la lista FTS, y en cuanto hubiera
+  pliegos embebidos una respuesta filtrada por SAP podía citar el pliego de
+  otra tecnología o CCAA. El LIKE ignoraba además la tecnología. Tests:
+  `tests/test_ask_filtros.py`, `tests/test_search_backend_hybrid.py` y, contra
+  Postgres + pgvector, `tests/test_search_semantic_hybrid.py`.

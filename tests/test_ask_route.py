@@ -325,21 +325,34 @@ class TestAskStreaming:
         assert "[DONE]" in resp.text
 
     def test_ask_with_ccaa_filter_passes_filter_to_retrieve(self, ask_client):
-        """El filtro ccaa se pasa correctamente a _retrieve_docs."""
+        """Los filtros del Investigador (listas + fechas) llegan a _retrieve_docs.
+
+        Es el cuerpo del modo «Preguntar» con los filtros globales activos: con
+        ``ccaa: str | None`` era un 422 y las fechas se ignoraban.
+        """
         received: list[dict] = []
 
-        def _capture_retrieve(question, top_k, ccaa, tecnologia, id_externo=None):
-            received.append({"ccaa": ccaa, "tecnologia": tecnologia, "id_externo": id_externo})
+        def _capture_retrieve(question, top_k, **filtros):
+            received.append(filtros)
             return []
 
         with patch("api.routes.ask._retrieve_docs", _capture_retrieve):
-            ask_client.post(
+            resp = ask_client.post(
                 "/api/v1/ask",
-                json={"question": "Licitaciones SAP en Madrid", "ccaa": "Madrid"},
+                json={
+                    "question": "Licitaciones SAP en Madrid",
+                    "ccaa": ["Galicia", "Madrid"],
+                    "fecha_desde": "2026-01-01",
+                },
             )
 
-        assert received[0]["ccaa"] == "Madrid"
-        assert received[0]["tecnologia"] is None
+        assert resp.status_code == 200
+        assert received[0] == {
+            "ccaa": ["Galicia", "Madrid"],
+            "tecnologia": [],
+            "fecha_desde": "2026-01-01",
+            "fecha_hasta": None,
+        }
 
     def test_ask_emits_fuentes_documentos_when_docs_carry_chunks(self, ask_client):
         """Plan Pliegos+RAG F9: cuando el retrieval devuelve docs con `chunks`
@@ -385,20 +398,23 @@ class TestAskStreaming:
         assert "fuentes_documentos" not in resp.text
 
     def test_ask_with_tecnologia_filter(self, ask_client):
-        """El filtro tecnologia se pasa correctamente a _retrieve_docs."""
+        """Una cadena —la forma anterior del contrato— sigue valiendo y llega
+        a _retrieve_docs como lista."""
         received: list[dict] = []
 
-        def _capture_retrieve(question, top_k, ccaa, tecnologia, id_externo=None):
-            received.append({"ccaa": ccaa, "tecnologia": tecnologia})
+        def _capture_retrieve(question, top_k, **filtros):
+            received.append(filtros)
             return []
 
         with patch("api.routes.ask._retrieve_docs", _capture_retrieve):
-            ask_client.post(
+            resp = ask_client.post(
                 "/api/v1/ask",
                 json={"question": "SAP S/4HANA Oracle", "tecnologia": "SAP"},
             )
 
-        assert received[0]["tecnologia"] == "SAP"
+        assert resp.status_code == 200
+        assert received[0]["tecnologia"] == ["SAP"]
+        assert received[0]["ccaa"] == []
 
 
 # ── Historial multi-turno (messages) ──────────────────────────────────────────

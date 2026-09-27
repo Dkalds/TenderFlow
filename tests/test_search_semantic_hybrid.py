@@ -236,6 +236,122 @@ class TestDefaultDelRag:
         assert por_id["L-FTS"]["chunks"] == []
 
 
+class TestFiltrosDelLadoVectorial:
+    """Los filtros de ``/ask`` acotan también los fragmentos de pliego.
+
+    ``vec_ranked`` no filtraba: el fragmento más cercano de **cualquier**
+    licitación entraba en la fusión con sus ``chunks``, y una respuesta filtrada
+    por SAP citaba el pliego de otra tecnología. Aquí el fragmento idéntico al
+    vector de la consulta es de una licitación que el filtro deja fuera —la
+    que la versión anterior ponía primera—, y ninguna de las dos casa por FTS:
+    lo que devuelva la fusión sale del lado vectorial.
+    """
+
+    @staticmethod
+    def _sembrar() -> None:
+        from db.upsert import Licitacion, upsert_licitaciones
+
+        upsert_licitaciones(
+            [
+                Licitacion(
+                    id_externo="L-PLIEGO-SAP",
+                    titulo="Gestión documental corporativa",
+                    tecnologia="ERP,SAP",
+                    ccaa="Madrid",
+                    fecha_publicacion="2026-03-01",
+                ),
+                Licitacion(
+                    id_externo="L-PLIEGO-ORACLE",
+                    titulo="Digitalización del archivo histórico",
+                    tecnologia="ORACLE",
+                    ccaa="Galicia",
+                    fecha_publicacion="2025-03-01",
+                ),
+            ]
+        )
+        _seed_chunk("L-PLIEGO-ORACLE", _vec(0))  # el más cercano a la consulta
+        _seed_chunk("L-PLIEGO-SAP", _vec(1))
+
+    @staticmethod
+    def _fusion(**filtros: Any) -> list[dict[str, Any]]:
+        from db.database import connect_read
+        from db.search_backend import PgTsBackend
+
+        with connect_read() as conn:
+            docs: list[dict[str, Any]] = PgTsBackend().hybrid_search_docs(
+                conn, "sap", _vec(0), limit=10, **filtros
+            )
+        return docs
+
+    def test_la_tecnologia_deja_fuera_el_pliego_de_otra(self, api_db):
+        self._sembrar()
+        # Control: sin filtro el pliego de ORACLE es el primero de la fusión.
+        assert [d["id_externo"] for d in self._fusion()] == ["L-PLIEGO-ORACLE", "L-PLIEGO-SAP"]
+
+        docs = self._fusion(tecnologia=["SAP"])
+
+        assert [d["id_externo"] for d in docs] == ["L-PLIEGO-SAP"]
+        assert docs[0]["chunks"], "la licitación del ámbito conserva sus fragmentos"
+
+    def test_la_ccaa_acota_el_lado_vectorial(self, api_db):
+        self._sembrar()
+
+        assert [d["id_externo"] for d in self._fusion(ccaa=["Madrid"])] == ["L-PLIEGO-SAP"]
+        assert [d["id_externo"] for d in self._fusion(ccaa=["Galicia"])] == ["L-PLIEGO-ORACLE"]
+        assert {d["id_externo"] for d in self._fusion(ccaa=["Galicia", "Madrid"])} == {
+            "L-PLIEGO-SAP",
+            "L-PLIEGO-ORACLE",
+        }
+
+    def test_las_fechas_acotan_el_lado_vectorial(self, api_db):
+        self._sembrar()
+
+        desde = self._fusion(fecha_desde="2026-01-01")
+        hasta = self._fusion(fecha_hasta="2025-12-31")
+
+        assert [d["id_externo"] for d in desde] == ["L-PLIEGO-SAP"]
+        assert [d["id_externo"] for d in hasta] == ["L-PLIEGO-ORACLE"]
+
+    def test_ask_con_los_filtros_del_investigador_no_cita_pliegos_de_fuera(
+        self, search_client, embeddings_simulados, monkeypatch
+    ):
+        """De punta a punta: el cuerpo que manda el Investigador ya no es un
+        422, y las fuentes citables se quedan dentro del ámbito."""
+        import json
+
+        from config import settings
+
+        monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", True, raising=False)
+        self._sembrar()
+
+        def _respuesta(*_args: Any, **_kwargs: Any) -> Any:
+            yield "Respuesta"
+
+        monkeypatch.setattr("llm.client.stream_llm_response", _respuesta)
+        resp = search_client.post(
+            "/api/v1/ask",
+            json={
+                # No casa por FTS con ninguna: solo responde el lado vectorial.
+                "question": "¿Qué exige el pliego?",
+                "ccaa": ["Madrid"],
+                "tecnologia": ["SAP"],
+                "fecha_desde": "2026-01-01",
+                "fecha_hasta": "2026-12-31",
+                "force": True,
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        eventos = [
+            json.loads(linea[len("data: ") :])
+            for linea in resp.text.splitlines()
+            if linea.startswith("data: {")
+        ]
+        fuentes = [e["fuentes_documentos"] for e in eventos if "fuentes_documentos" in e]
+        assert len(fuentes) == 1
+        assert [f["id_externo"] for f in fuentes[0]] == ["L-PLIEGO-SAP"]
+
+
 class TestFiltrosSobreLaFusion:
     def test_los_filtros_globales_acotan_tambien_el_rrf(self, search_client, embeddings_simulados):
         """El filtrado sigue siendo del backend (allowed_ids), también cuando

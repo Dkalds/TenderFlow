@@ -187,3 +187,12 @@ export type CeldaComparacion = Schemas["CeldaComparacion"];
 export type ReporteDatoBody = Schemas["ReporteDatoBody"];
 export type ReporteDatoResult = Schemas["ReporteDatoResult"];
 export type TipoReporte = ReporteDatoBody["tipo"];
+
+// Filtros globales que el Investigador aplica al corpus: el mismo objeto va a
+// `POST /search/semantic` y a `POST /ask`. Es la intersección de los dos
+// esquemas, así que `npm run typecheck` falla si uno de los contratos deja de
+// aceptarlo. Con `Record<string, unknown>` las listas llegaban a un `ccaa` de
+// `/ask` que era `str | None`, y preguntar con filtros daba 422.
+type CampoFiltroCorpus = "ccaa" | "tecnologia" | "fecha_desde" | "fecha_hasta";
+export type FiltrosCorpus = Pick<Schemas["AskRequest"], CampoFiltroCorpus> &
+  Pick<Schemas["SemanticSearchRequest"], CampoFiltroCorpus>;

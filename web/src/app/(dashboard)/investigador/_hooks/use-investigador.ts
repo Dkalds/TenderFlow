@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithAuth } from "@/lib/api-client";
+import type { FiltrosCorpus } from "@/lib/api-types";
 import { registrarEvento } from "@/lib/analytics";
 import { useFilters } from "@/lib/filters";
 import { formatDate } from "@/lib/utils";
@@ -115,7 +116,7 @@ export function useInvestigador(): UseInvestigadorResult {
   }, []);
 
   const runSearch = useCallback(
-    async (q: string, filterExtras: Record<string, unknown>) => {
+    async (q: string, filterExtras: FiltrosCorpus) => {
       abortRef.current?.abort();
       const abort = new AbortController();
       abortRef.current = abort;
@@ -169,8 +170,9 @@ export function useInvestigador(): UseInvestigadorResult {
       // Filtros globales → se mandan TODOS los valores (no solo el primero) y el
       // backend restringe los resultados (allowed_ids). Antes se enviaba
       // ccaas[0]/tecnologias[0] a un endpoint inexistente (/api/v1/search): falsa
-      // sensacion de filtrado y, de hecho, busqueda rota (ADR-014).
-      const filterExtras: Record<string, unknown> = {};
+      // sensacion de filtrado y, de hecho, busqueda rota (ADR-014). El mismo
+      // objeto va a los dos modos: `FiltrosCorpus` lo ata a los dos contratos.
+      const filterExtras: FiltrosCorpus = {};
       if (config.useGlobalFilters) {
         if (globalFilters.ccaas.length > 0) filterExtras.ccaa = globalFilters.ccaas;
         if (globalFilters.tecnologias.length > 0) filterExtras.tecnologia = globalFilters.tecnologias;
