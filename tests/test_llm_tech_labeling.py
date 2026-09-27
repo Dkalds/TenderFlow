@@ -73,8 +73,9 @@ class TestBuildQuestion:
         assert "Si ninguna definición lo cubre" in question
 
     def test_declares_the_empty_case(self):
-        """Sin instrucción explícita el modelo fuerza la etiqueta más parecida."""
-        assert '{"tecnologias": []}' in build_question()
+        """El formato de salida para «no es TI» ya declara la lista vacía; sin
+        eso el modelo fuerza la etiqueta más parecida."""
+        assert '"tecnologias": []' in build_question()
 
     def test_asks_for_a_literal_quote_and_says_it_is_checked(self):
         """La cita se verifica contra el anuncio: el modelo tiene que saberlo
@@ -186,6 +187,67 @@ class TestParseLabels:
     def test_rejects_text_without_json(self):
         with pytest.raises(ValueError):
             _parse("No he podido clasificar esta licitación.")
+
+
+class TestEsTi:
+    def test_es_ti_con_familias(self):
+        raw = json.dumps(
+            {
+                "es_ti": True,
+                "confianza_es_ti": 0.9,
+                "tecnologias": [
+                    {
+                        "tecnologia": "ERP",
+                        "confidence": 0.8,
+                        "evidencia": "mantenimiento evolutivo del ERP",
+                    }
+                ],
+                "otros_fabricantes": [],
+            }
+        )
+        resultado = _parse(raw)
+        assert resultado.es_ti is True
+        assert resultado.confianza_es_ti == 0.9
+        assert set(resultado.scores) == {"ERP"}
+
+    def test_si_no_es_ti_se_descartan_las_familias(self):
+        """Una familia en un contrato que no es TI es una contradicción del
+        modelo: gana el «no es TI», que es la pregunta de nivel 1."""
+        raw = json.dumps(
+            {
+                "es_ti": False,
+                "confianza_es_ti": 0.8,
+                "tecnologias": [
+                    {
+                        "tecnologia": "ERP",
+                        "confidence": 0.7,
+                        "evidencia": "mantenimiento evolutivo del ERP",
+                    }
+                ],
+            }
+        )
+        resultado = _parse(raw)
+        assert resultado.es_ti is False
+        assert resultado.scores == {}
+
+    def test_sin_es_ti_la_respuesta_sigue_valiendo(self):
+        raw = '{"tecnologias": [{"tecnologia": "SAP", "confidence": 0.9, "evidencia": "S/4HANA"}]}'
+        resultado = _parse(raw)
+        assert resultado.es_ti is None
+        assert set(resultado.scores) == {"SAP"}
+
+    def test_otros_fabricantes_se_limpian(self):
+        raw = json.dumps(
+            {
+                "es_ti": True,
+                "tecnologias": [],
+                "otros_fabricantes": [" Qlik ", "qlik", "", "Z" * 90],
+            }
+        )
+        assert _parse(raw).otros_fabricantes == ("Qlik", "Z" * 60)
+
+    def test_la_version_del_prompt_es_v3(self):
+        assert signal_version("m").startswith("llm-meta-v3/")
 
 
 class TestEvidencia:
@@ -358,10 +420,11 @@ class TestSignalVersion:
         """Cambiar de modelo debe dejar pendiente al universo entero."""
         assert signal_version("deepseek-ai/deepseek-v4-pro") != signal_version("gpt-4o-mini")
 
-    def test_the_prompt_with_definitions_and_checked_quotes_is_v2(self):
-        """Definiciones y cita verificada son otro prompt: el corpus clasificado
-        con el v1 vuelve a la cola en vez de mezclarse con el nuevo."""
-        assert signal_version("nvidia/modelo") == "llm-meta-v2/nvidia/modelo"
+    def test_the_prompt_with_the_level_1_question_is_v3(self):
+        """La pregunta de nivel 1 (``es_ti``) es otro prompt: el corpus
+        clasificado con el v2 vuelve a la cola en vez de mezclarse con el
+        nuevo."""
+        assert signal_version("nvidia/modelo") == "llm-meta-v3/nvidia/modelo"
 
 
 class TestBatchFailedSystemically:
@@ -492,6 +555,37 @@ class TestSinEvidenciaEnElJob:
         assert counts["scored"] == 1
         assert counts["sin_evidencia"] == 0
         assert counts["etiquetas_sin_evidencia"] == 1
+
+    def test_escribe_la_fila_de_es_ti_con_su_confianza(self, monkeypatch):
+        from db.repositories.tecnologia_pliego import NO_ES_TI_SENTINEL, TechSignal
+        from services.llm_tech_labeling import METHOD_ES_TI
+
+        raw = '{"es_ti": false, "confianza_es_ti": 0.85, "tecnologias": []}'
+        counts, repo, _feedback = self._run_with(raw, monkeypatch)
+
+        version = signal_version(settings.LLM_TECH_LABELING_MODEL)
+        repo.upsert_signals.assert_any_call(
+            "EXP-E1",
+            method=METHOD_ES_TI,
+            signal_version=version,
+            scores={
+                NO_ES_TI_SENTINEL: TechSignal(
+                    score=0.0,
+                    evidence=[{"es_ti": False, "confianza": 0.85, "otros_fabricantes": []}],
+                )
+            },
+        )
+        assert counts["es_ti_no"] == 1
+
+    def test_sin_es_ti_no_escribe_fila_de_es_ti(self, monkeypatch):
+        from services.llm_tech_labeling import METHOD_ES_TI
+
+        raw = '{"tecnologias": []}'
+        counts, repo, _feedback = self._run_with(raw, monkeypatch)
+
+        metodos = [c.kwargs["method"] for c in repo.upsert_signals.call_args_list]
+        assert METHOD_ES_TI not in metodos
+        assert counts["es_ti_sin_respuesta"] == 1
 
 
 class TestPipelineStepReleasesTheWindow:
@@ -658,16 +752,24 @@ def repo(tmp_db):
 _CITA_SEMBRADA = "Mantenimiento del ERP"
 
 
-def _respuesta(*etiquetas: tuple[str, float], evidencia: str = _CITA_SEMBRADA) -> str:
-    """Respuesta del LLM cuya cita se verifica contra el anuncio sembrado."""
-    return json.dumps(
-        {
-            "tecnologias": [
-                {"tecnologia": tecnologia, "confidence": confianza, "evidencia": evidencia}
-                for tecnologia, confianza in etiquetas
-            ]
-        }
-    )
+def _respuesta(
+    *etiquetas: tuple[str, float], evidencia: str = _CITA_SEMBRADA, es_ti: bool | None = None
+) -> str:
+    """Respuesta del LLM cuya cita se verifica contra el anuncio sembrado.
+
+    ``es_ti`` se omite del JSON por defecto (``None``): los tests que no lo
+    necesitan siguen viendo la misma respuesta que antes de la pregunta de
+    nivel 1.
+    """
+    payload = {
+        "tecnologias": [
+            {"tecnologia": tecnologia, "confidence": confianza, "evidencia": evidencia}
+            for tecnologia, confianza in etiquetas
+        ]
+    }
+    if es_ti is not None:
+        payload["es_ti"] = es_ti
+    return json.dumps(payload)
 
 
 def _insert_licitacion(id_externo: str, fecha: str = "2026-06-01") -> None:
@@ -977,31 +1079,37 @@ class TestWriteFeedback:
     def test_confident_label_is_written_as_llm_batch(self, repo):
         _insert_licitacion("EXP-F1")
 
-        counts = self._run_with(_respuesta(("SAP", 0.97)))
+        counts = self._run_with(_respuesta(("SAP", 0.97), es_ti=True))
 
         assert counts["feedback_escrito"] == 1
         assert self._feedback_rows("EXP-F1") == [(1, "SAP", "llm_batch")]
 
-    def test_non_sap_technology_is_not_relevante(self, repo):
+    def test_relevante_no_longer_depends_on_the_specific_technology(self, repo):
+        """``relevante`` es ahora ``es_ti`` y no «es SAP»: cualquier familia
+        con ``es_ti=True`` cuenta como relevante, no solo SAP (spec §3.3)."""
         _insert_licitacion("EXP-F2")
 
-        self._run_with(_respuesta(("ORACLE", 0.95)))
+        self._run_with(_respuesta(("ORACLE", 0.95), es_ti=True))
 
-        assert self._feedback_rows("EXP-F2") == [(0, "ORACLE", "llm_batch")]
+        assert self._feedback_rows("EXP-F2") == [(1, "ORACLE", "llm_batch")]
 
-    def test_no_technology_empties_the_queue_as_not_relevant(self, repo):
+    def test_not_it_empties_the_queue_as_not_relevant(self, repo):
+        """«No es TI» sigue siendo la respuesta masiva y de bajo riesgo: vacía
+        la cola humana como «no relevante»."""
         _insert_licitacion("EXP-F3")
 
-        counts = self._run_with('{"tecnologias": []}')
+        counts = self._run_with(_respuesta(es_ti=False))
 
         assert counts["feedback_escrito"] == 1
         assert self._feedback_rows("EXP-F3") == [(0, None, "llm_batch")]
 
-    def test_uncertain_label_is_left_for_a_human(self, repo):
-        """Lo dudoso no se escribe: sigue saliendo en la cola de etiquetado."""
+    def test_no_answer_to_the_level_1_question_is_left_for_a_human(self, repo):
+        """Sin ``es_ti`` -- una respuesta que no contestó el nivel 1 -- la
+        licitación se deja para un humano en vez de arriesgar un
+        ``relevante`` inventado, aunque la familia sea de alta confianza."""
         _insert_licitacion("EXP-F4")
 
-        counts = self._run_with(_respuesta(("SAP", 0.55)))
+        counts = self._run_with(_respuesta(("SAP", 0.97)))
 
         assert counts["feedback_escrito"] == 0
         assert counts["feedback_omitido"] == 1
@@ -1049,7 +1157,7 @@ class TestWriteFeedback:
         antes = LicitacionRepository().get_unlabelled_candidates(10)
         assert "EXP-F7" in [c["id_externo"] for c in antes]
 
-        self._run_with(_respuesta(("SAP", 0.99)))
+        self._run_with(_respuesta(("SAP", 0.99), es_ti=True))
 
         despues = LicitacionRepository().get_unlabelled_candidates(10)
         assert "EXP-F7" not in [c["id_externo"] for c in despues]

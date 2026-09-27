@@ -54,9 +54,22 @@ _NO_SIGNAL_SENTINEL = NO_SIGNAL_SENTINEL
 # convertiría una etiqueta inverificable en un negativo falso.
 SIN_EVIDENCIA_SENTINEL = "__sin_evidencia__"
 
+# Marcadores del nivel 1 («¿es TI?», plan de clasificación en tres niveles).
+# Viven en su propio ``method`` (``llm_es_ti``) para que ni el merge ni la
+# resolución de etiquetas de familia los vean; con score 0 nunca pasan el
+# umbral del merge. La confianza viaja en ``evidence_json``.
+METHOD_ES_TI = "llm_es_ti"
+ES_TI_SENTINEL = "__es_ti__"
+NO_ES_TI_SENTINEL = "__no_es_ti__"
+
 #: Filas que marcan «procesada» y no son una tecnología. Toda lectura que
-#: exponga o agregue tecnologías excluye las dos.
-SENTINELS: tuple[str, ...] = (NO_SIGNAL_SENTINEL, SIN_EVIDENCIA_SENTINEL)
+#: exponga o agregue tecnologías excluye las cuatro.
+SENTINELS: tuple[str, ...] = (
+    NO_SIGNAL_SENTINEL,
+    SIN_EVIDENCIA_SENTINEL,
+    ES_TI_SENTINEL,
+    NO_ES_TI_SENTINEL,
+)
 
 
 class TechSignal(NamedTuple):

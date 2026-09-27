@@ -35,6 +35,7 @@ from typing import Any, NamedTuple
 from pydantic import BaseModel, Field, ValidationError
 
 from config.keywords import TECH_DEFINICIONES, TECH_LABELS
+from db.repositories.tecnologia_pliego import METHOD_ES_TI as METHOD_ES_TI
 from db.repositories.tecnologia_pliego import TechSignal
 from llm.client import stream_llm_response
 from llm.json_utils import extract_json_object
@@ -59,6 +60,9 @@ class _LlmTechResponse(BaseModel):
     """Envoltorio de la respuesta; sin tecnologías es una respuesta válida."""
 
     tecnologias: list[_LlmTechLabel] = []
+    es_ti: bool | None = None
+    confianza_es_ti: float | None = Field(default=None, ge=0.0, le=1.0)
+    otros_fabricantes: list[str] = []
 
 
 class Clasificacion(NamedTuple):
@@ -70,10 +74,20 @@ class Clasificacion(NamedTuple):
         sin_evidencia: Etiquetas que el modelo afirmó (vocabulario y confianza
             válidos) y se descartaron porque su cita estaba vacía o no aparece
             en ese texto, sin que otra entrada con cita válida las recuperase.
+        es_ti: Respuesta a la pregunta de nivel 1. ``None`` si el modelo no la
+            contestó (p. ej. una respuesta v2 sin el campo): sigue siendo una
+            respuesta válida, no un «no es TI» -- eso es ``False`` explícito.
+        confianza_es_ti: Confianza del modelo en ``es_ti``, si la dio.
+        otros_fabricantes: Fabricantes que el anuncio nombra y no están en el
+            vocabulario cerrado, limpios de vacíos y duplicados
+            (:func:`_limpiar_fabricantes`).
     """
 
     scores: dict[str, TechSignal]
     sin_evidencia: tuple[str, ...] = ()
+    es_ti: bool | None = None
+    confianza_es_ti: float | None = None
+    otros_fabricantes: tuple[str, ...] = ()
 
 
 # ``method`` de la señal y versión del prompt. La ``signal_version`` incluye el
@@ -84,8 +98,11 @@ class Clasificacion(NamedTuple):
 # anuncio. Hasta que una licitación se reclasifica, su respuesta v1 sigue siendo
 # la vigente para el entrenamiento; al reclasificarla, ``upsert_signals``
 # sustituye las filas v1 de este method.
+#
+# v3 (2026-09-27): pregunta de nivel 1 (``es_ti``) con la frontera de D1 y
+# fabricantes fuera del vocabulario.
 METHOD = "llm_metadata"
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 
 # Por debajo de esta confianza la etiqueta es ruido y no se persiste. No se
 # confunde con ``PLIEGO_TECH_MIN_SCORE`` (0.5), que decide qué entra al merge:
@@ -106,15 +123,18 @@ _MAX_OUTPUT_TOKENS = 500
 _MODE: PromptMode = "clasificacion"
 
 _QUESTION_TEMPLATE = """
-Clasifica esta licitación por tecnología con un vocabulario cerrado. Cada etiqueta significa lo que dice su definición, no lo que sugiere su nombre:
+Primero decide si el contrato es de TI (es_ti).
+- Es TI: software (licencias, suscripciones, desarrollo o mantenimiento de aplicaciones), servicios TI (soporte, CAU, outsourcing, consultoría TI), infraestructura (cloud, hosting, CPD, redes de datos, virtualización, servidores, almacenamiento, copias de seguridad), ciberseguridad, datos, BI e IA, administración electrónica, sanidad digital, GIS y hardware del puesto de trabajo. Un contrato menor ya adjudicado también puede serlo.
+- No es TI: la formación sobre herramientas (salvo dentro de una implantación), las suscripciones a contenidos (revistas, bases de datos bibliográficas o clínicas), la telefonía de voz, la publicidad y los eventos, la obra civil o la climatización (aunque sean de un CPD), ni nada que no adquiera lo anterior aunque su CPV sea de informática.
+Después, solo si es TI, clasifícalo con un vocabulario cerrado. Cada etiqueta significa lo que dice su definición, no lo que sugiere su nombre:
 {definiciones}
 Reglas:
 - Un fabricante exige que el anuncio lo nombre a él o a uno de sus productos; una categoría describe qué se compra sin decir de quién.
 - El trabajo TI genérico sin fabricante (p. ej. el mantenimiento de una aplicación a medida) lleva la categoría cuya definición lo cubre aunque su nombre no lo sugiera: ahí, DESARROLLO. Si ninguna definición lo cubre, no fuerces la más parecida.
 - evidencia es una cita literal del anuncio, copiada tal cual y sin puntos suspensivos, que justifica la etiqueta. Se comprueba contra el anuncio: una etiqueta sin cita que aparezca en él se descarta.
 Formato de salida (JSON, sin Markdown):
-{{"tecnologias": [{{"tecnologia": "<ETIQUETA>", "confidence": 0.0-1.0, "evidencia": "<cita literal del anuncio>"}}]}}
-Si el anuncio no corresponde a ninguna etiqueta, devuelve {{"tecnologias": []}}.
+{{"es_ti": true, "confianza_es_ti": 0.0-1.0, "tecnologias": [{{"tecnologia": "<ETIQUETA>", "confidence": 0.0-1.0, "evidencia": "<cita literal del anuncio>"}}], "otros_fabricantes": ["<fabricante que el anuncio nombra y no está en la lista>"]}}
+Si no es TI: {{"es_ti": false, "confianza_es_ti": 0.0-1.0, "tecnologias": [], "otros_fabricantes": []}}.
 """.strip()
 
 # Variantes tipográficas que un modelo reescribe al citar: comillas y
@@ -233,6 +253,23 @@ def cita_verificable(cita: str, texto_normalizado: str) -> bool:
     return aguja in texto_normalizado
 
 
+# Cuántos fabricantes fuera del vocabulario se persisten y cuánto se recorta
+# cada uno. El modelo los cita libremente (no son un vocabulario cerrado), así
+# que sin tope una respuesta ruidosa podría inflar ``evidence_json``.
+_MAX_OTROS_FABRICANTES = 5
+_MAX_LARGO_FABRICANTE = 60
+
+
+def _limpiar_fabricantes(nombres: list[str]) -> tuple[str, ...]:
+    """Recorta, quita vacíos y repetidos (sin distinguir mayúsculas)."""
+    vistos: dict[str, str] = {}
+    for nombre in nombres:
+        limpio = nombre.strip()[:_MAX_LARGO_FABRICANTE]
+        if limpio and limpio.casefold() not in vistos:
+            vistos[limpio.casefold()] = limpio
+    return tuple(vistos.values())[:_MAX_OTROS_FABRICANTES]
+
+
 def parse_labels(raw: str, *, texto: str, licitacion_id: str = "") -> Clasificacion:
     """Valida la respuesta del LLM y la convierte en señales persistibles.
 
@@ -249,12 +286,28 @@ def parse_labels(raw: str, *, texto: str, licitacion_id: str = "") -> Clasificac
     más confianza de cada etiqueta: si el modelo la repite, basta con que una
     de sus citas se sostenga. Las etiquetas por debajo de ``_MIN_PERSIST_CONF``
     son ruido y no cuentan como descartadas por falta de cita.
+
+    Nivel 1: si ``es_ti`` es ``False``, la respuesta se corta ahí y ni
+    siquiera se verifican las citas -- una familia junto a un «no es TI» es
+    una contradicción del modelo, y la familia de algo que no es TI no
+    existe. Con ``es_ti`` en ``True`` o ausente (``None``, una respuesta que
+    no contestó el nivel 1) el resto de esta función sigue igual que antes.
     """
     payload = extract_json_object(raw)
     try:
         parsed = _LlmTechResponse.model_validate(payload)
     except ValidationError as exc:
         raise ValueError(f"Respuesta de clasificación inválida: {exc}") from exc
+
+    if parsed.es_ti is False:
+        # Nivel 1 manda: un «no es TI» con familias es una contradicción del
+        # modelo, y la familia de algo que no es TI no existe.
+        return Clasificacion(
+            scores={},
+            es_ti=False,
+            confianza_es_ti=parsed.confianza_es_ti,
+            otros_fabricantes=_limpiar_fabricantes(parsed.otros_fabricantes),
+        )
 
     texto_normalizado = normalizar_cita(texto)
     scores: dict[str, TechSignal] = {}
@@ -281,7 +334,13 @@ def parse_labels(raw: str, *, texto: str, licitacion_id: str = "") -> Clasificac
         if existing is None or label.confidence > existing.score:
             scores[tech] = TechSignal(score=round(label.confidence, 4), evidence=evidence)
     sin_evidencia = tuple(t for t in dict.fromkeys(descartadas) if t not in scores)
-    return Clasificacion(scores=scores, sin_evidencia=sin_evidencia)
+    return Clasificacion(
+        scores=scores,
+        sin_evidencia=sin_evidencia,
+        es_ti=parsed.es_ti,
+        confianza_es_ti=parsed.confianza_es_ti,
+        otros_fabricantes=_limpiar_fabricantes(parsed.otros_fabricantes),
+    )
 
 
 def classify_licitacion(lic: dict[str, Any], *, model: str) -> Clasificacion:

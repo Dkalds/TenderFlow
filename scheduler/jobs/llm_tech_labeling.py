@@ -56,31 +56,37 @@ from typing import TYPE_CHECKING, Any
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
-    from db.repositories.tecnologia_pliego import TechSignal
+    from services.llm_tech_labeling import Clasificacion
 
 log = get_logger(__name__)
 
 # Etiqueta del feedback automático en ``ml_feedback.source``. El entrenamiento
-# del SAPClassifier filtra por ``source = 'human'``, así que estas filas vacían
-# la cola de active learning sin realimentar al modelo con sus predicciones.
+# del SAPClassifier filtra por ``source = 'human'``, así que estas filas (su
+# ``relevante`` es ``es_ti``, no una tecnología concreta) vacían la cola de
+# active learning sin realimentar al modelo con sus propias predicciones.
 FEEDBACK_SOURCE = "llm_batch"
 
 
-def _write_feedback(
-    clasificadas: dict[str, dict[str, TechSignal]], *, version: str
-) -> dict[str, int]:
-    """Vuelca a ``ml_feedback`` las etiquetas lo bastante seguras.
+def _write_feedback(clasificadas: dict[str, Clasificacion], *, version: str) -> dict[str, int]:
+    """Vuelca a ``ml_feedback`` la respuesta de nivel 1 (``es_ti``).
 
     Una fila de feedback saca la licitación de la cola humana para siempre (la
-    query es un anti-join), así que solo se escriben los casos claros:
+    query es un anti-join), así que ``relevante`` tiene que ser una respuesta
+    real y no una inferencia: es ``clasificacion.es_ti`` tal cual, que desde
+    esta tarea es lo único que ``relevante`` significa (spec §3.3) -- antes se
+    derivaba de si «SAP» estaba entre las familias confiadas.
 
-    - el LLM devolvió tecnologías y la principal supera
-      ``LLM_TECH_FEEDBACK_MIN_CONF``;
-    - o el LLM no vio ninguna tecnología, que en un corpus donde la mayoría de
-      los anuncios no son de TI es la respuesta masiva y de bajo riesgo.
+    Sin ``es_ti`` (``None``: el modelo no contestó el nivel 1, p. ej. una
+    respuesta que se quedó en el prompt v2) no se escribe fila: es justo lo
+    dudoso que merece un par de ojos humanos, no un ``relevante`` inventado.
 
-    Lo dudoso (tecnologías por debajo del umbral) se deja sin fila: es
-    exactamente lo que merece un par de ojos humanos.
+    La tecnología principal y las secundarias siguen saliendo de
+    ``clasificacion.scores`` con el mismo umbral de siempre
+    (``LLM_TECH_FEEDBACK_MIN_CONF``): con ``es_ti=False`` ``scores`` ya llega
+    vacío (nivel 1 lo fuerza en ``parse_labels``), y con familias por debajo
+    del umbral ``tecnologia`` queda en ``None`` sin que eso bloquee la fila --
+    a diferencia de antes, la confianza de la familia ya no decide si se
+    escribe, solo qué principal lleva.
     """
     from config import settings
     from db.repositories.feedback import FeedbackRepository
@@ -95,19 +101,20 @@ def _write_feedback(
     ya_etiquetadas = repo.existing_expedientes(list(clasificadas))
     umbral = settings.LLM_TECH_FEEDBACK_MIN_CONF
 
-    for licitacion_id, scores in clasificadas.items():
+    for licitacion_id, clasificacion in clasificadas.items():
         if licitacion_id in ya_etiquetadas:
             counts["feedback_omitido"] += 1
             continue
-        seguras = {tech: s.score for tech, s in scores.items() if s.score >= umbral}
-        if scores and not seguras:
+        if clasificacion.es_ti is None:
             counts["feedback_omitido"] += 1
             continue
+        es_ti: bool = clasificacion.es_ti
+        seguras = {tech: s.score for tech, s in clasificacion.scores.items() if s.score >= umbral}
         principal = max(seguras, key=lambda t: seguras[t]) if seguras else None
         try:
             repo.insert(
                 expediente=licitacion_id,
-                relevante="SAP" in seguras,
+                relevante=es_ti,
                 nota=f"{FEEDBACK_SOURCE}:{version}",
                 tecnologia=principal,
                 tecnologias_secundarias=sorted(t for t in seguras if t != principal),
@@ -156,17 +163,28 @@ def run() -> dict[str, Any]:
         "merged": 0,
         "feedback_escrito": 0,
         "feedback_omitido": 0,
+        # Respuesta a la pregunta de nivel 1 (``es_ti``), aparte del recuento
+        # de familias de arriba: ``es_ti_sin_respuesta`` es una respuesta v2
+        # (o cualquiera sin el campo), no un error.
+        "es_ti_si": 0,
+        "es_ti_no": 0,
+        "es_ti_sin_respuesta": 0,
     }
     if not settings.LLM_TECH_LABELING_ENABLED:
         counts["disabled"] = 1
         return counts
 
-    from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+    from db.repositories.tecnologia_pliego import (
+        ES_TI_SENTINEL,
+        NO_ES_TI_SENTINEL,
+        TechSignal,
+        TecnologiaPliegoRepository,
+    )
     from llm.budget import LLMBudgetExceeded, get_budget_guard
     from llm.providers import LLMAuthError, LLMModelUnavailableError
     from observability.ops_events import record_event
     from observability.runtime_metrics import pliego_tech_signal_total
-    from services.llm_tech_labeling import METHOD, classify_licitacion, signal_version
+    from services.llm_tech_labeling import METHOD, METHOD_ES_TI, classify_licitacion, signal_version
     from services.tech_signal import merge_doc_signals
 
     model = settings.LLM_TECH_LABELING_MODEL
@@ -178,7 +196,7 @@ def run() -> dict[str, Any]:
         signal_version=version, method=METHOD, limit=settings.LLM_TECH_LABELING_BATCH
     )
     procesadas: list[str] = []
-    clasificadas: dict[str, dict[str, TechSignal]] = {}
+    clasificadas: dict[str, Clasificacion] = {}
 
     for lic in pendientes:
         licitacion_id = str(lic["id_externo"])
@@ -207,6 +225,25 @@ def run() -> dict[str, Any]:
                 scores=clasificacion.scores,
                 sin_evidencia=status == "sin_evidencia",
             )
+            if clasificacion.es_ti is not None:
+                marcador = ES_TI_SENTINEL if clasificacion.es_ti else NO_ES_TI_SENTINEL
+                repo.upsert_signals(
+                    licitacion_id,
+                    method=METHOD_ES_TI,
+                    signal_version=version,
+                    scores={
+                        marcador: TechSignal(
+                            score=0.0,
+                            evidence=[
+                                {
+                                    "es_ti": clasificacion.es_ti,
+                                    "confianza": clasificacion.confianza_es_ti,
+                                    "otros_fabricantes": list(clasificacion.otros_fabricantes),
+                                }
+                            ],
+                        )
+                    },
+                )
         except LLMAuthError as exc:
             # La key rechazada lo será igual para todo lo que queda del lote:
             # seguir solo repetiría la misma llamada fallida (el run
@@ -244,9 +281,15 @@ def run() -> dict[str, Any]:
         # Una licitación sin evidencia no va al feedback: su lista vacía no es
         # un «no relevante», es justo lo dudoso que merece ojos humanos.
         if status != "sin_evidencia":
-            clasificadas[licitacion_id] = clasificacion.scores
+            clasificadas[licitacion_id] = clasificacion
         counts[status] += 1
         counts["etiquetas_sin_evidencia"] += len(clasificacion.sin_evidencia)
+        if clasificacion.es_ti is True:
+            counts["es_ti_si"] += 1
+        elif clasificacion.es_ti is False:
+            counts["es_ti_no"] += 1
+        else:
+            counts["es_ti_sin_respuesta"] += 1
         pliego_tech_signal_total.labels(method=METHOD, status=status).inc()
 
     if procesadas:
