@@ -4,11 +4,22 @@ Una etiqueta humana informa donde las fuentes no coinciden. Las reglas son
 `licitaciones.tecnologia` y el CPV; el LLM, el marcador de es_ti y las
 familias de `llm_metadata`; el modelo, `ml_proba`. Lo que ya revisó una
 persona con `revision_ti` no vuelve.
+
+Dos consultas, porque una sola pasada recorría `licitaciones` entera (5,98 s
+medidos en producción el 2026-09-27) y esta es la vista por defecto:
+
+- **Fase A**, los cuatro motivos del LLM: parte de las filas `llm_metadata` de
+  `licitacion_tecnologia_pliego` (~9k) y llega a `licitaciones` por su clave
+  primaria.
+- **Fase B**, `modelo_dudoso`: solo si A no llena el cupo, sin repetir lo que A
+  ya trajo y solo lo publicado en los últimos `VENTANA_DUDOSO_DIAS` días, que
+  baja por `idx_fecha_pub`.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any  # filas psycopg heterogéneas, como el resto de db/repositories
 
 from db.database import connect_read
@@ -24,10 +35,14 @@ MOTIVOS: tuple[str, ...] = (
     "modelo_dudoso",
 )
 
+#: Heap de 872 MB: recorrer `licitaciones` entera cuesta ~6 s; la fase B se queda en lo reciente.
+VENTANA_DUDOSO_DIAS = 90
+
 #: Algún código CPV 48/72 en el campo, con cualquier separador (PSCP une con `||`).
 _CPV_TI_SQL = "coalesce(l.cpv, '') ~ '(^|[^0-9])(48|72)[0-9]{6}'"
 
-_SQL = f"""
+#: Fase A: los cuatro motivos del LLM, desde las licitaciones con señal del LLM.
+_SQL_DESACUERDO_LLM = f"""
 WITH es_ti AS (
     SELECT DISTINCT ON (licitacion_id) licitacion_id, tecnologia AS marcador, evidence_json
     FROM licitacion_tecnologia_pliego
@@ -38,27 +53,34 @@ WITH es_ti AS (
     FROM licitacion_tecnologia_pliego
     WHERE method = 'llm_metadata' AND tecnologia <> ALL(%(sentinels)s) AND score >= %(min_score)s
     GROUP BY licitacion_id
+), senal AS (
+    SELECT coalesce(e.licitacion_id, f.licitacion_id) AS licitacion_id,
+           e.marcador, e.evidence_json, f.llm_familias
+    FROM es_ti e
+    FULL JOIN familias f ON f.licitacion_id = e.licitacion_id
 ), candidatos AS (
     SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, l.organo_contratacion,
            l.ccaa, l.fecha_publicacion, l.url, l.tecnologia, l.ml_tecnologias,
            l.ml_proba_max, l.ml_tech_principal, l.ml_proba,
-           e.marcador, e.evidence_json AS llm_evidencia, f.llm_familias,
+           s.marcador, s.evidence_json AS llm_evidencia, s.llm_familias,
            CASE
-             WHEN e.marcador = %(no_es_ti)s AND coalesce(l.tecnologia, '') <> ''
+             WHEN s.marcador = %(no_es_ti)s AND coalesce(l.tecnologia, '') <> ''
                THEN 'llm_no_reglas_si'
-             WHEN e.marcador = %(es_ti)s AND coalesce(l.tecnologia, '') = '' AND NOT ({_CPV_TI_SQL})
+             WHEN s.marcador = %(es_ti)s AND coalesce(l.tecnologia, '') = '' AND NOT ({_CPV_TI_SQL})
                THEN 'llm_si_reglas_no'
-             WHEN e.marcador = %(no_es_ti)s AND {_CPV_TI_SQL}
+             WHEN s.marcador = %(no_es_ti)s AND {_CPV_TI_SQL}
                THEN 'llm_no_cpv_si'
-             WHEN f.llm_familias IS NOT NULL AND coalesce(l.tecnologia, '') <> ''
-                  AND NOT (f.llm_familias && string_to_array(replace(l.tecnologia, ' ', ''), ','))
+             WHEN s.llm_familias IS NOT NULL AND coalesce(l.tecnologia, '') <> ''
+                  AND NOT (s.llm_familias && string_to_array(replace(l.tecnologia, ' ', ''), ','))
                THEN 'familias_distintas'
-             WHEN l.ml_proba BETWEEN 0.3 AND 0.7
-               THEN 'modelo_dudoso'
            END AS motivo
-    FROM licitaciones l
-    LEFT JOIN es_ti e ON e.licitacion_id = l.id_externo
-    LEFT JOIN familias f ON f.licitacion_id = l.id_externo
+    FROM senal s
+    -- Una sonda por clave primaria por licitación con señal. El OFFSET 0 impide
+    -- que el planificador aplane la subconsulta y cambie las sondas por un
+    -- recorrido entero de licitaciones, cuyo heap ocupa 872 MB.
+    CROSS JOIN LATERAL (
+        SELECT * FROM licitaciones x WHERE x.id_externo = s.licitacion_id OFFSET 0
+    ) l
     WHERE NOT EXISTS (
         SELECT 1 FROM ml_feedback r
         WHERE r.expediente = l.id_externo AND r.source = %(revision)s
@@ -70,26 +92,74 @@ ORDER BY array_position(%(motivos)s::text[], motivo), fecha_publicacion DESC NUL
 LIMIT %(limit)s
 """  # Interpola solo el predicado constante del módulo.
 
+#: Fase B: `modelo_dudoso` en lo reciente, con la propuesta del LLM si la hay.
+_SQL_MODELO_DUDOSO = """
+WITH dudosas AS (
+    SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, l.organo_contratacion,
+           l.ccaa, l.fecha_publicacion, l.url, l.tecnologia, l.ml_tecnologias,
+           l.ml_proba_max, l.ml_tech_principal, l.ml_proba
+    FROM licitaciones l
+    WHERE l.fecha_publicacion >= %(desde)s
+      AND l.ml_proba BETWEEN 0.3 AND 0.7
+      AND l.id_externo <> ALL(%(excluir)s::text[])
+      AND NOT EXISTS (
+          SELECT 1 FROM ml_feedback r
+          WHERE r.expediente = l.id_externo AND r.source = %(revision)s
+      )
+    ORDER BY l.fecha_publicacion DESC
+    LIMIT %(faltan)s
+)
+SELECT d.*, e.marcador, e.evidence_json AS llm_evidencia, f.llm_familias,
+       'modelo_dudoso' AS motivo
+FROM dudosas d
+LEFT JOIN LATERAL (
+    SELECT p.tecnologia AS marcador, p.evidence_json
+    FROM licitacion_tecnologia_pliego p
+    WHERE p.licitacion_id = d.id_externo AND p.method = 'llm_metadata'
+      AND p.tecnologia IN (%(es_ti)s, %(no_es_ti)s)
+    ORDER BY p.computed_at DESC
+    LIMIT 1
+) e ON true
+LEFT JOIN LATERAL (
+    SELECT array_agg(p.tecnologia ORDER BY p.tecnologia) AS llm_familias
+    FROM licitacion_tecnologia_pliego p
+    WHERE p.licitacion_id = d.id_externo AND p.method = 'llm_metadata'
+      AND p.tecnologia <> ALL(%(sentinels)s) AND p.score >= %(min_score)s
+) f ON true
+ORDER BY d.fecha_publicacion DESC
+"""
+
 
 def candidatos_desacuerdo(limit: int) -> list[dict[str, Any]]:
     """Hasta ``limit`` licitaciones sin revisar, primero las de desacuerdo más grave."""
     from config import settings
 
+    tope = max(1, min(int(limit), 200))
+    comunes: dict[str, Any] = {
+        "sentinels": list(SENTINELS),
+        "min_score": settings.PLIEGO_TECH_MIN_SCORE,
+        "es_ti": ES_TI_SENTINEL,
+        "no_es_ti": NO_ES_TI_SENTINEL,
+        "revision": FUENTE_REVISION_TI,
+    }
     with connect_read() as c:
         filas = rows_to_dicts(
-            c.execute(
-                _SQL,
-                {
-                    "sentinels": list(SENTINELS),
-                    "min_score": settings.PLIEGO_TECH_MIN_SCORE,
-                    "es_ti": ES_TI_SENTINEL,
-                    "no_es_ti": NO_ES_TI_SENTINEL,
-                    "revision": FUENTE_REVISION_TI,
-                    "motivos": list(MOTIVOS),
-                    "limit": max(1, min(int(limit), 200)),
-                },
-            )
+            c.execute(_SQL_DESACUERDO_LLM, {**comunes, "motivos": list(MOTIVOS), "limit": tope})
         )
+        faltan = tope - len(filas)
+        if faltan > 0:
+            hace = datetime.now(UTC) - timedelta(days=VENTANA_DUDOSO_DIAS)
+            filas += rows_to_dicts(
+                c.execute(
+                    _SQL_MODELO_DUDOSO,
+                    {
+                        **comunes,
+                        "desde": hace.date().isoformat(),
+                        "excluir": [str(f["id_externo"]) for f in filas],
+                        "faltan": faltan,
+                    },
+                )
+            )
     for fila in filas:
         marcador = fila.pop("marcador", None)
         if marcador == ES_TI_SENTINEL:

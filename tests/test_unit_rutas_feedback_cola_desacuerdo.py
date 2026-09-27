@@ -59,3 +59,24 @@ def test_la_cola_por_desacuerdo_trae_el_motivo_y_la_propuesta_del_llm(client: Te
     assert item["motivo"] == "llm_no_reglas_si"
     assert item["llm"] == {"es_ti": False, "confianza_es_ti": 0.7, "familias": []}
     assert item["confidence"] == pytest.approx(0.97)
+    assert item["sin_confianza"] is False
+
+
+def test_sin_ml_proba_la_cola_no_inventa_confianza(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un modelo que no puntuó la licitación no tiene confianza que enseñar.
+    ``confidence`` es obligatorio y ``float`` en el contrato (cambiarle el tipo
+    lo rompería), así que lleva un 0,5 de relleno y ``sin_confianza`` avisa de
+    que no es un dato."""
+    import db.repositories.revision_ti as revision
+
+    monkeypatch.setattr(
+        revision, "candidatos_desacuerdo", lambda limit: [{**_CANDIDATO, "ml_proba": None}]
+    )
+
+    item = client.get("/api/v1/feedback/queue?strategy=desacuerdo&limit=5").json()["items"][0]
+
+    assert item["sin_confianza"] is True
+    assert item["confidence"] == pytest.approx(0.5)
+    assert item["uncertainty"] == pytest.approx(0.0)

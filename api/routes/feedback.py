@@ -95,6 +95,10 @@ class FeedbackQueueItem(BaseModel):
     # por qué está el candidato en la cola y qué propone el LLM.
     motivo: str | None = None
     llm: QueueLlmBlock | None = None
+    # True cuando el modelo no puntuó la licitación: `confidence`/`uncertainty`
+    # llevan entonces un relleno (0.5/0.0) y no un dato. Campo aparte porque
+    # volver `confidence` opcional cambiaría su tipo, y eso rompe el contrato.
+    sin_confianza: bool = False
 
 
 class FeedbackQueueResult(BaseModel):
@@ -420,6 +424,7 @@ async def feedback_queue(
         candidatos = await run_db(candidatos_desacuerdo, limit)
         # La confianza que pinta la tarjeta es la del modelo guardada en la
         # fila (`ml_proba`); `_build_queue_items` la toma de estas dos claves.
+        # Sin `ml_proba` el 0.5 es relleno, y `sin_confianza` lo dice.
         for c in candidatos:
             p = float(c["ml_proba"]) if c.get("ml_proba") is not None else 0.5
             c["confidence"], c["uncertainty"] = p, abs(p - 0.5)
@@ -431,6 +436,7 @@ async def feedback_queue(
                 "confianza_es_ti": c["llm_confianza_es_ti"],
                 "familias": c["llm_familias"],
             }
+            item["sin_confianza"] = c.get("ml_proba") is None
         return FeedbackQueueResult(
             items=[FeedbackQueueItem(**item) for item in items],
             strategy=strategy,

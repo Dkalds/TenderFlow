@@ -8339,6 +8339,11 @@ export interface components {
             motivo?: string | null;
             /** Organo */
             organo: string | null;
+            /**
+             * Sin Confianza
+             * @default false
+             */
+            sin_confianza: boolean;
             /** Tecnologia */
             tecnologia: string | null;
             /** Titulo */

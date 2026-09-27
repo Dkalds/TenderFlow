@@ -158,7 +158,9 @@ export function ModelPrediction({
   chosenSecs: Set<string>;
   onSelectTech: (tech: string, shiftKey: boolean) => void;
 }) {
-  const prob = item.confidence ?? null;
+  // Sin puntuación del modelo, `confidence` es un relleno del contrato: se
+  // trata como ausente para no pintar una confianza que nadie calculó.
+  const prob = item.sin_confianza ? null : (item.confidence ?? null);
   const model = item.model;
   const sortedScores = model
     ? Object.entries(model.tech_scores).sort(([, a], [, b]) => b - a)

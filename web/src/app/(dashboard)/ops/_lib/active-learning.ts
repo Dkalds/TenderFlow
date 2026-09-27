@@ -37,6 +37,8 @@ export interface QueueItem {
   motivo?: string | null;
   /** Solo en la cola por desacuerdo: la propuesta del LLM. */
   llm?: LlmProposal | null;
+  /** El modelo no puntuó la licitación: `confidence` es relleno, no un dato. */
+  sin_confianza?: boolean;
   [key: string]: unknown;
 }
 

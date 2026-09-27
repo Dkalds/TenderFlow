@@ -7,16 +7,22 @@ CPV), el LLM (el marcador de es_ti y las familias, filas de
 (``ml_proba``). Por eso las señales del LLM se siembran con
 ``upsert_signals``, el mismo escritor que usa el job: si el marcador cambia de
 forma al escribirse, esta suite lo ve.
+
+Son dos consultas: la fase A (los cuatro motivos del LLM) y la fase B
+(``modelo_dudoso``, solo lo publicado en los últimos ``VENTANA_DUDOSO_DIAS``
+días), que rellena el cupo que A deja libre. Las fechas de la fase B se
+siembran relativas a hoy para que la suite no caduque.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 
 from db.repositories.feedback import FUENTE_REVISION_TI
-from db.repositories.revision_ti import candidatos_desacuerdo
+from db.repositories.revision_ti import VENTANA_DUDOSO_DIAS, candidatos_desacuerdo
 from db.repositories.tecnologia_pliego import (
     ES_TI_SENTINEL,
     NO_ES_TI_SENTINEL,
@@ -27,6 +33,14 @@ from db.repositories.tecnologia_pliego import (
 _VERSION = "llm-meta-v3/m"
 
 
+def _hace(dias: int) -> str:
+    return (datetime.now(UTC) - timedelta(days=dias)).date().isoformat()
+
+
+_RECIENTE = _hace(10)
+_ANTIGUA = _hace(VENTANA_DUDOSO_DIAS + 30)
+
+
 @pytest.fixture()
 def tech_repo(tmp_db) -> TecnologiaPliegoRepository:
     _db_mod, _ = tmp_db
@@ -34,16 +48,22 @@ def tech_repo(tmp_db) -> TecnologiaPliegoRepository:
 
 
 def _insert_licitacion(
-    id_externo: str, *, tecnologia: str | None = None, cpv: str | None = None
+    id_externo: str,
+    *,
+    tecnologia: str | None = None,
+    cpv: str | None = None,
+    ml_proba: float | None = None,
+    fecha: str = "2026-09-01",
 ) -> None:
     from db.database import connect
 
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones "
-            "(id_externo, titulo, cpv, tecnologia, fuente, fecha_publicacion, fecha_extraccion) "
-            "VALUES (%s, %s, %s, %s, 'placsp', '2026-09-01', CURRENT_TIMESTAMP)",
-            (id_externo, f"Contrato {id_externo}", cpv, tecnologia),
+            "(id_externo, titulo, cpv, tecnologia, ml_proba, fuente, fecha_publicacion, "
+            "fecha_extraccion) "
+            "VALUES (%s, %s, %s, %s, %s, 'placsp', %s, CURRENT_TIMESTAMP)",
+            (id_externo, f"Contrato {id_externo}", cpv, tecnologia, ml_proba, fecha),
         )
 
 
@@ -83,8 +103,9 @@ def _por_id(filas: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 def test_ordena_por_la_gravedad_del_desacuerdo_y_excluye_lo_revisado(
     tech_repo: TecnologiaPliegoRepository,
 ) -> None:
-    # A: las reglas ven ERP; el LLM dice que no es TI.
-    _insert_licitacion("EXP-A", tecnologia="ERP")
+    # A: las reglas ven ERP; el LLM dice que no es TI. Además es reciente y
+    # el modelo duda: vale para las dos fases y tiene que salir una sola vez.
+    _insert_licitacion("EXP-A", tecnologia="ERP", ml_proba=0.5, fecha=_RECIENTE)
     _senal_llm(tech_repo, "EXP-A", _marcador(False, 0.8))
     # B: el LLM dice que es TI; ni las reglas ni el CPV (79, servicios) lo ven.
     _insert_licitacion("EXP-B", cpv="79000000-4")
@@ -100,17 +121,39 @@ def test_ordena_por_la_gravedad_del_desacuerdo_y_excluye_lo_revisado(
     _senal_llm(tech_repo, "EXP-E", _marcador(False, 0.8))
     _insert_feedback("EXP-E", source="human")
     _insert_feedback("EXP-E", source=FUENTE_REVISION_TI)
+    # F: reglas y LLM coinciden (SAP), pero el modelo duda y es reciente: solo
+    # entra por la fase B, detrás de las cuatro de la fase A.
+    _insert_licitacion("EXP-F", tecnologia="SAP", ml_proba=0.5, fecha=_RECIENTE)
+    _senal_llm(tech_repo, "EXP-F", {"SAP": TechSignal(score=0.9), **_marcador(True, 0.9)})
+    # G: el modelo duda, pero se publicó fuera de la ventana de la fase B.
+    _insert_licitacion("EXP-G", ml_proba=0.5, fecha=_ANTIGUA)
+    # R: el modelo duda y es reciente, pero ya está revisada.
+    _insert_licitacion("EXP-R", ml_proba=0.5, fecha=_RECIENTE)
+    _insert_feedback("EXP-R", source=FUENTE_REVISION_TI)
 
     filas = candidatos_desacuerdo(10)
 
-    assert [f["id_externo"] for f in filas] == ["EXP-A", "EXP-B", "EXP-C", "EXP-D"]
+    assert [f["id_externo"] for f in filas] == ["EXP-A", "EXP-B", "EXP-C", "EXP-D", "EXP-F"]
     assert [f["motivo"] for f in filas] == [
         "llm_no_reglas_si",
         "llm_si_reglas_no",
         "llm_no_cpv_si",
         "familias_distintas",
+        "modelo_dudoso",
+    ]
+    # Con el cupo lleno por la fase A, la B no llega a correr.
+    assert [f["id_externo"] for f in candidatos_desacuerdo(4)] == [
+        "EXP-A",
+        "EXP-B",
+        "EXP-C",
+        "EXP-D",
     ]
     por_id = _por_id(filas)
+    # La fila de la fase B trae también la propuesta del LLM.
+    assert por_id["EXP-F"]["llm_es_ti"] is True
+    assert por_id["EXP-F"]["llm_confianza_es_ti"] == pytest.approx(0.9)
+    assert por_id["EXP-F"]["llm_familias"] == ["SAP"]
+    assert por_id["EXP-F"]["ml_proba"] == pytest.approx(0.5)
     # La propuesta del LLM llega descodificada: el marcador como bool, la
     # confianza desde su evidencia y las familias sin sentinels.
     assert por_id["EXP-A"]["llm_es_ti"] is False

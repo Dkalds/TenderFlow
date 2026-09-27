@@ -108,6 +108,21 @@ describe("QueueItemCard — cola por desacuerdo", () => {
     expect(screen.getByText("Propuesta del LLM: no es TI")).toBeInTheDocument();
   });
 
+  it("sin ml_proba no enseña una confianza inventada", () => {
+    // `confidence` es un 0,5 de relleno (el contrato lo exige `float`);
+    // `sin_confianza` dice que no es un dato.
+    pintar({ item: { ...ITEM, confidence: 0.5, uncertainty: 0, sin_confianza: true } });
+
+    expect(screen.queryByText(/Confianza SAP/)).toBeNull();
+    expect(screen.getByText("Sin predicción del modelo disponible.")).toBeInTheDocument();
+  });
+
+  it("con ml_proba enseña la confianza del modelo", () => {
+    pintar({ item: { ...ITEM, confidence: 0.97, uncertainty: 0.47, sin_confianza: false } });
+
+    expect(screen.getByText(/Confianza SAP/)).toBeInTheDocument();
+  });
+
   it("si el LLM no dijo si es TI, enseña sus familias y no ofrece aceptar", () => {
     // Las respuestas anteriores al prompt v3 traen familias y no el marcador:
     // aceptar no tendría qué enviar como `relevante`.
