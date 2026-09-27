@@ -41,6 +41,7 @@ from db.repositories.renovaciones import (
 from db.repositories.renovaciones import (
     rango_vencimiento_sql as rango_vencimiento_sql,
 )
+from db.sql_fragments import tecnologia_en_csv_sql
 from services.dedupe import exclude_duplicados_sql
 
 # FECHA_FIN_SQL se re-exporta por compatibilidad con imports externos.
@@ -187,8 +188,8 @@ def resumen_renovaciones(
     params: list[Any] = [months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
-        placeholders = ",".join("%s" for _ in tecnologias)
-        sql += f" AND l.tecnologia IN ({placeholders})"
+        # El fragmento del listado (`proximas_renovaciones`): «ERP,SAP» es SAP.
+        sql += f" AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tecnologias))}"
         params.extend(tecnologias)
     sql += """
         GROUP BY a.empresa_id, empresa
@@ -238,8 +239,8 @@ def totales_renovaciones(
     params: list[Any] = [RIESGO_ALTO, RIESGO_ALTO, DIAS_CALIENTE, months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
-        placeholders = ",".join("%s" for _ in tecnologias)
-        sql += f" AND l.tecnologia IN ({placeholders})"
+        # El fragmento del listado (`proximas_renovaciones`): «ERP,SAP» es SAP.
+        sql += f" AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tecnologias))}"
         params.extend(tecnologias)
     with connect_read() as c:
         rows = rows_to_dicts(c.execute(sql, params))

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from db.sql_fragments import tecnologia_en_csv_sql
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -391,9 +392,16 @@ class PgTsBackend:
         if ccaa:
             conditions.append("l.ccaa = %s")
             fts_params.append(ccaa)
-        if tecnologia:
-            conditions.append("l.tecnologia = %s")
-            fts_params.append(tecnologia)
+        # Cada código se busca en el CSV de la fila (con igualdad, SAP perdía
+        # los expedientes «ERP,SAP»), y el filtro se trocea como en
+        # `search_fts_docs`, el FTS al que cae `search_for_ask` con el mismo
+        # valor. Import local, como `connect_read`: importar este módulo no
+        # carga el paquete de repositories.
+        from db.repositories.base import csv_values
+
+        if tecnologias := csv_values(tecnologia):
+            conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
+            fts_params.extend(tecnologias)
         fts_where = " AND ".join(conditions)
         qvec = _to_pg_vector_literal(query_embedding)
 
