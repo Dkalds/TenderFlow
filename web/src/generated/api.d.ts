@@ -2196,6 +2196,8 @@ export interface paths {
          * Cola de active learning (uncertainty sampling)
          * @description Devuelve licitaciones priorizadas para etiquetado.
          *
+         *     - ``desacuerdo``: primero las que reglas, LLM y modelo no ven igual, con el
+         *       ``motivo`` y la propuesta del LLM (``llm``); nunca las ya revisadas.
          *     - ``uncertainty``: prioriza las que el modelo clasifica con menor confianza.
          *     - ``random``: muestra aleatoria (baseline).
          *
@@ -8331,7 +8333,10 @@ export interface components {
             id_externo: string;
             /** Importe */
             importe: number | null;
+            llm?: components["schemas"]["QueueLlmBlock"] | null;
             model: components["schemas"]["QueueModelBlock"] | null;
+            /** Motivo */
+            motivo?: string | null;
             /** Organo */
             organo: string | null;
             /** Tecnologia */
@@ -12076,6 +12081,18 @@ export interface components {
              * @default 0
              */
             total_records: number;
+        };
+        /**
+         * QueueLlmBlock
+         * @description Propuesta del LLM para un candidato de la cola por desacuerdo.
+         */
+        QueueLlmBlock: {
+            /** Confianza Es Ti */
+            confianza_es_ti: number | null;
+            /** Es Ti */
+            es_ti: boolean | null;
+            /** Familias */
+            familias: string[];
         };
         /**
          * QueueModelBlock
@@ -19249,7 +19266,7 @@ export interface operations {
     feedback_queue_api_v1_feedback_queue_get: {
         parameters: {
             query?: {
-                /** @description uncertainty | random */
+                /** @description desacuerdo | uncertainty | random */
                 strategy?: string;
                 limit?: number;
             };
