@@ -5828,9 +5828,19 @@ export interface components {
         AskRequest: {
             /**
              * Ccaa
-             * @description Filtrar licitaciones por CCAA
+             * @description Filtra el contexto del corpus por CCAA (multi-valor). Solo aplica sin id_externo/ids_externos. Por compatibilidad acepta también una cadena, que se lee como CSV.
              */
-            ccaa?: string | null;
+            ccaa?: string[];
+            /**
+             * Fecha Desde
+             * @description Fecha de publicación desde (YYYY-MM-DD)
+             */
+            fecha_desde?: string | null;
+            /**
+             * Fecha Hasta
+             * @description Fecha de publicación hasta (YYYY-MM-DD)
+             */
+            fecha_hasta?: string | null;
             /**
              * Force
              * @description Salta la caché de respuestas y vuelve a preguntar al proveedor. Consume presupuesto: es para cuando la respuesta cacheada se sospecha mala, no el modo por defecto.
@@ -5865,9 +5875,9 @@ export interface components {
             question: string;
             /**
              * Tecnologia
-             * @description Filtrar licitaciones por tecnología
+             * @description Filtra el contexto del corpus por tecnología (multi-valor): el código se busca entre las tecnologías de cada licitación. Solo aplica sin id_externo/ids_externos. Por compatibilidad acepta también una cadena, que se lee como CSV.
              */
-            tecnologia?: string | null;
+            tecnologia?: string[];
             /**
              * Top K
              * @description Número de licitaciones a recuperar como contexto. Se ignora si se envía id_externo.

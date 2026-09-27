@@ -14,6 +14,7 @@ import json
 import pytest
 
 from db.search_backend import RRF_K, PgTsBackend, _to_pg_vector_literal, rrf_score
+from db.sql_fragments import tecnologia_en_csv_sql
 
 # ── RRF: fórmula pura ────────────────────────────────────────────────────
 
@@ -161,7 +162,24 @@ class TestHybridSearchDocsQueryConstruction:
 
         assert conn.last_params[:4] == ["q", "q", "Madrid", "SAP"]
         assert "l.ccaa = %s" in conn.last_sql
-        assert "l.tecnologia = %s" in conn.last_sql
+        # El CSV de la fila, no igualdad: «ERP,SAP» también es SAP.
+        assert tecnologia_en_csv_sql("l.tecnologia", n=1) in conn.last_sql
+        assert "l.tecnologia = " not in conn.last_sql
+
+    def test_tecnologia_csv_is_split_like_the_fts_fallback(self):
+        """``/ask`` pasa el mismo ``tecnologia`` al híbrido y a ``search_fts_docs``.
+
+        El FTS al que cae ``search_for_ask`` trocea el CSV con ``csv_values``;
+        si el híbrido no lo hiciera, ``"SAP, ORACLE"`` sería un único código que
+        no casa con ninguna fila. Un parámetro por código, en el sitio del
+        filtro.
+        """
+        conn = _FakeConn(rows=[])
+        PgTsBackend().hybrid_search_docs(conn, "q", [0.1], tecnologia="SAP, ORACLE")
+
+        assert conn.last_params[:4] == ["q", "q", "SAP", "ORACLE"]
+        assert tecnologia_en_csv_sql("l.tecnologia", n=2) in conn.last_sql
+        assert conn.last_sql.count("%s") == len(conn.last_params)
 
     def test_returns_docs_with_parsed_dict_chunks(self):
         chunks = [{"chunk_id": 1, "chunk_index": 0, "texto": "fragmento"}]
@@ -204,3 +222,122 @@ class TestHybridSearchDocsQueryConstruction:
         conn = _FakeConn(rows=[_row("EXP-A", 0.05, None), _row("EXP-B", 0.03, None)])
         docs = PgTsBackend().hybrid_search_docs(conn, "q", [0.1])
         assert [d["id_externo"] for d in docs] == ["EXP-A", "EXP-B"]
+
+
+# ── hybrid_search_docs: los filtros acotan las DOS listas de la fusión ──
+
+
+def _cte(sql: str, nombre: str) -> str:
+    """Cuerpo del CTE ``nombre``, hasta su paréntesis de cierre."""
+    inicio = sql.index(f"{nombre} AS (") + len(f"{nombre} AS (")
+    nivel = 1
+    for i in range(inicio, len(sql)):
+        if sql[i] == "(":
+            nivel += 1
+        elif sql[i] == ")":
+            nivel -= 1
+            if nivel == 0:
+                return sql[inicio:i]
+    raise AssertionError(f"el CTE {nombre} no se cierra")
+
+
+#: Lo que manda el Investigador con los filtros globales activos.
+_FILTROS = {
+    "ccaa": ["Galicia", "Madrid"],
+    "tecnologia": ["SAP"],
+    "fecha_desde": "2026-01-01",
+    "fecha_hasta": "2026-06-30",
+}
+
+
+class TestFiltrosEnLasDosListas:
+    """Los filtros iban solo en ``fts_ranked``.
+
+    ``vec_ranked`` traía los fragmentos más cercanos de **cualquier**
+    licitación, y la fusión los devolvía con sus ``chunks``: en cuanto hubiera
+    pliegos embebidos, una respuesta de ``/ask`` filtrada por SAP podía citar
+    pliegos de otra tecnología o de otra CCAA.
+    """
+
+    def test_el_lado_vectorial_aplica_los_mismos_filtros(self):
+        from db.repositories.base import ambito_busqueda_sql
+
+        conn = _FakeConn(rows=[])
+        PgTsBackend().hybrid_search_docs(conn, "q", [0.1], **_FILTROS)
+
+        clausulas, _ = ambito_busqueda_sql("l", **_FILTROS)
+        fts = _cte(conn.last_sql, "fts_ranked")
+        vec = _cte(conn.last_sql, "vec_ranked")
+        assert "JOIN licitaciones l ON l.id_externo = d.licitacion_id" in vec
+        for clausula in clausulas:
+            assert clausula in fts, clausula
+            assert clausula in vec, clausula
+
+    def test_sin_filtros_el_lado_vectorial_no_toca_licitaciones(self):
+        """Sin filtros la consulta es la de siempre: ni un JOIN de más."""
+        conn = _FakeConn(rows=[])
+        PgTsBackend().hybrid_search_docs(conn, "q", [0.1])
+
+        assert "licitaciones" not in _cte(conn.last_sql, "vec_ranked")
+
+    def test_orden_de_parametros_con_filtros(self):
+        conn = _FakeConn(rows=[])
+        embedding = [0.1, 0.2]
+        PgTsBackend().hybrid_search_docs(
+            conn, "q", embedding, ccaa=["Madrid"], tecnologia=["SAP"], limit=5, candidate_k=20
+        )
+
+        qvec = _to_pg_vector_literal(embedding)
+        assert conn.last_params == [
+            "q",  # ts_rank_cd ORDER BY
+            "q",  # WHERE @@ match
+            "Madrid",  # fts_ranked: l.ccaa
+            "SAP",  # fts_ranked: l.tecnologia
+            20,  # fts_ranked LIMIT
+            qvec,  # vec_ranked ROW_NUMBER ORDER BY
+            "Madrid",  # vec_ranked: l.ccaa
+            "SAP",  # vec_ranked: l.tecnologia
+            qvec,  # vec_ranked ORDER BY
+            20,  # vec_ranked LIMIT
+            RRF_K,
+            5,  # LIMIT final
+        ]
+        assert conn.last_sql.count("%s") == len(conn.last_params)
+
+    def test_orden_de_parametros_con_filtros_y_alpha(self):
+        from db.search_backend import fusion_weights
+
+        conn = _FakeConn(rows=[])
+        embedding = [0.1, 0.2]
+        PgTsBackend().hybrid_search_docs(
+            conn, "q", embedding, tecnologia=["SAP"], limit=5, candidate_k=20, alpha=0.7
+        )
+
+        w_fts, w_vec = fusion_weights(0.7)
+        qvec = _to_pg_vector_literal(embedding)
+        assert conn.last_params == [
+            w_fts,
+            "q",
+            "q",
+            "SAP",
+            20,
+            w_vec,
+            qvec,
+            "SAP",
+            qvec,
+            20,
+            RRF_K,
+            5,
+        ]
+        assert conn.last_sql.count("%s") == len(conn.last_params)
+
+    def test_el_csv_y_la_lista_dan_la_misma_consulta(self):
+        """``/ask`` manda listas; otros llamantes, el CSV de la barra de ámbito."""
+        csv, lista = _FakeConn(rows=[]), _FakeConn(rows=[])
+        PgTsBackend().hybrid_search_docs(csv, "q", [0.1], ccaa="Madrid", tecnologia="SAP, ORACLE")
+        PgTsBackend().hybrid_search_docs(
+            lista, "q", [0.1], ccaa=["Madrid"], tecnologia=["SAP", "ORACLE"]
+        )
+
+        assert csv.last_sql == lista.last_sql
+        assert csv.last_params == lista.last_params
