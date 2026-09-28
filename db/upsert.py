@@ -7,7 +7,6 @@ pre-computadas, y todas las funciones de upsert, historial y FTS.
 from __future__ import annotations
 
 import json
-import sqlite3
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any
@@ -23,11 +22,8 @@ from shared.numeric import values_equal
 _log = get_logger(__name__)
 
 
-# Constraint violations llegan como `sqlite3.IntegrityError` con sqlite3 stdlib.
-# Llevan el mensaje canónico de SQLite ("UNIQUE constraint failed: ...", etc.),
-# así que se pueden clasificar igual por el texto.
 def _constraint_exc_types() -> tuple[type[BaseException], ...]:
-    """Excepciones que representan una violación de constraint, por driver.
+    """Excepciones que representan una violación de constraint.
 
     psycopg3 señala las violaciones con ``psycopg.errors.IntegrityError``, que
     **no** deriva de ``ValueError``. Sin incluirla, el ``except`` de
@@ -36,7 +32,7 @@ def _constraint_exc_types() -> tuple[type[BaseException], ...]:
     transacción ya envenenada por Postgres. La suite no lo veía porque corría
     sobre SQLite (ADR-018).
     """
-    types: list[type[BaseException]] = [sqlite3.IntegrityError, ValueError]
+    types: list[type[BaseException]] = []
     try:
         import psycopg
 
@@ -533,9 +529,8 @@ def _insert_adj_rowwise(
         except _CONSTRAINT_EXC as exc:
             c.execute("ROLLBACK TO SAVEPOINT adj_sp")
             c.execute("RELEASE SAVEPOINT adj_sp")
-            # libsql mapea constraint violations a ValueError; descartamos
-            # cualquier ValueError que no sea de constraint para no
-            # tragarnos bugs genuinos.
+            # Solo constraint violations; cualquier otra IntegrityError se
+            # propaga para no tragarnos bugs genuinos.
             if "constraint" not in str(exc).lower():
                 raise
             kind = _classify_integrity_error(exc)

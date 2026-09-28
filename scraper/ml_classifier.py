@@ -1036,11 +1036,9 @@ class SAPClassifier:
         return _MODEL_PATH if cls.ensure_downloaded() else None
 
 
-# ── Re-exportaciones de utilidades ───────────────────────────────────────────
-# Mantenidas para retrocompatibilidad con importadores externos.
+# ── Utilidades de entrenamiento que usan este módulo y su CLI ────────────────
 from scraper.ml_training import (
     _append_to_registry,
-    read_registry,  # noqa: F401  # re-export for external importers
     seed_negatives,
     train_from_db,
 )

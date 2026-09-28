@@ -397,7 +397,7 @@ def generate_pkce_pair() -> tuple[str, str]:
 
     Uso:
         verifier, challenge = generate_pkce_pair()
-        # Guarda verifier en st.session_state['pkce_verifier']
+        # Guarda verifier en el estado de la sesión OAuth
         # Añade a la URL: &code_challenge=<challenge>&code_challenge_method=S256
     """
     verifier_bytes = os.urandom(32)
@@ -405,19 +405,6 @@ def generate_pkce_pair() -> tuple[str, str]:
     digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
     code_challenge = _base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
     return code_verifier, code_challenge
-
-
-def verify_pkce(code_verifier: str, code_challenge: str) -> bool:
-    """Verifica que *code_verifier* corresponde a *code_challenge* (S256).
-
-    Returns True si SHA-256(base64url(code_verifier)) == code_challenge.
-    Uso en el servidor al recibir el token de intercambio.
-    """
-    if not code_verifier or not code_challenge:
-        return False
-    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
-    expected = _base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-    return hmac.compare_digest(expected, code_challenge)
 
 
 # ---------------------------------------------------------------------------

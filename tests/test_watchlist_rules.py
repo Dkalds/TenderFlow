@@ -18,7 +18,6 @@ from services.watchlist_rules import (
     list_matches,
     list_rules,
     matches_since,
-    set_active,
     update_rule,
 )
 
@@ -77,14 +76,6 @@ def test_update_de_otro_usuario_no_aplica(db):
     ok = update_rule("user-b", rid, WatchlistRule(keyword="HACKED"))
     assert ok is False
     assert list_rules("user-a")[0].keyword == "SAP"
-
-
-def test_set_active_pausa_y_reactiva(db):
-    rid = create_rule("user-a", WatchlistRule(keyword="SAP"))
-    assert set_active("user-a", rid, active=False) is True
-    assert list_rules("user-a")[0].active is False
-    assert set_active("user-a", rid, active=True) is True
-    assert list_rules("user-a")[0].active is True
 
 
 def test_delete_remueve_solo_la_propia(db):

@@ -22,10 +22,6 @@ def test_prefiere_el_primer_origen_cors(monkeypatch: pytest.MonkeyPatch) -> None
     )
     assert app_urls.frontend_base_url() == "https://app.example"
     assert app_urls.url_absoluta("mi-watchlist") == "https://app.example/mi-watchlist"
-    assert (
-        app_urls.url_de_detalle("PA-S 2026/1") == "https://app.example/detalle?lic=PA-S%202026%2F1"
-    )
-    assert app_urls.url_de_oportunidad(42) == "https://app.example/oportunidades/42"
 
 
 def test_cae_al_origen_del_callback_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -42,4 +38,3 @@ def test_cae_al_origen_del_callback_oauth(monkeypatch: pytest.MonkeyPatch) -> No
 def test_sin_configuracion_no_hay_enlace(sin_origenes: None) -> None:
     assert app_urls.frontend_base_url() is None
     assert app_urls.url_absoluta("/login") is None
-    assert app_urls.url_de_oportunidad(1) is None

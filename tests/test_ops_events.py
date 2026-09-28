@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from unittest.mock import patch
 
 import pytest
 
@@ -43,40 +42,6 @@ def test_ops_events_record_event_no_fail_on_error():
             oe.record_event("crash_test")
         except Exception:
             pass  # si falla internamente, ese es el bug; lo capturamos sin fail
-    finally:
-        oe._buffer = original_buffer
-
-
-def test_ops_events_flush_swallow_sin_tabla(tmp_path):
-    """flush_events descarta silenciosamente si la tabla no existe."""
-    import observability.ops_events as oe
-
-    # Forzar un evento en el buffer
-    original_buffer = oe._buffer
-    oe._buffer = deque(maxlen=200)
-    oe._buffer.append(
-        {
-            "ts": "2026-01-01T00:00:00+00:00",
-            "event_type": "test_no_table",
-            "value": None,
-            "plane": None,
-            "pid": 1,
-            "detail": None,
-        }
-    )
-    try:
-        db_path = tmp_path / "no_table.db"
-        db_path.touch()  # archivo vacio sin tablas
-
-        class _FakeSettings:
-            DB_PATH = db_path
-            DATA_DIR = tmp_path
-
-        with patch("config.settings", _FakeSettings()):
-            # No debe lanzar excepcion
-            oe.flush_events()
-        # Buffer se limpio aunque fallara
-        assert len(oe._buffer) == 0
     finally:
         oe._buffer = original_buffer
 
@@ -139,23 +104,23 @@ def test_ops_events_writers_high_not_emitted_below_threshold():
 
 
 def test_healthcheck_ops_events_check_warn(tmp_db):
-    """run_check marca warning si hay >=10 sqlite_busy en las ultimas 6h."""
+    """run_check marca warning si hay >=20 write_slow en las ultimas 6h."""
     from datetime import UTC, datetime, timedelta
 
     import db.database as db_mod
     from scheduler.healthcheck import run_check
 
-    # Seed ops_events con 15 sqlite_busy recientes
+    # Seed ops_events con 25 write_slow recientes
     with db_mod.connect() as c:
         cutoff = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
-        for _ in range(15):
+        for _ in range(25):
             c.execute(
                 "INSERT INTO ops_events (ts, event_type, detail) VALUES (%s,%s,%s)",
-                (cutoff, "sqlite_busy", "test"),
+                (cutoff, "write_slow", "test"),
             )
 
     result = run_check(freshness_hours=9999, dlq_threshold=9999)
-    assert any("sqlite_busy_high" in w for w in result["warnings"])
+    assert any("write_slow_high" in w for w in result["warnings"])
 
 
 def test_healthcheck_ops_events_check_ok(tmp_db):
@@ -163,8 +128,7 @@ def test_healthcheck_ops_events_check_ok(tmp_db):
     from scheduler.healthcheck import run_check
 
     result = run_check(freshness_hours=9999, dlq_threshold=9999)
-    assert not any("sqlite_busy" in w for w in result["warnings"])
-    assert not any("sqlite_busy" in e for e in result["errors"])
+    assert not any("write_slow" in w or "writers_high" in w for w in result["warnings"])
 
 
 @pytest.mark.schema_propio  # tira `ops_events`

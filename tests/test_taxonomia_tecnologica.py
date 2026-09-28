@@ -398,8 +398,7 @@ def _patrones_solo_fabricantes() -> dict[str, re.Pattern[str]]:
 def _golden_textos() -> list[tuple[str, str, str]]:
     filas = []
     for linea in _GOLDEN.read_text(encoding="utf-8").splitlines():
-        # Mismo criterio que `services.ml.eval_tech.load_golden_tech_set`:
-        # líneas vacías y comentarios `#` se ignoran.
+        # Líneas vacías y comentarios `#` se ignoran.
         if not linea.strip() or linea.lstrip().startswith("#"):
             continue
         fila = json.loads(linea)

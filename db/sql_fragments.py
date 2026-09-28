@@ -991,21 +991,9 @@ def fila_canonica_sql(*, alias: str = "l", gemelo: str = "l2", filtro_gemelo: st
 # resultados distintos porque cada uno los volvía a escribir: el SQL con sus
 # cuatro fragmentos y el detector con `republicacion_key`, que compone
 # `plegar_organo` + `_cpv4` (suyo) + `normalize_titulo` (suyo) + el año-mes.
-# Los dos bloques de abajo son ese punto único: la tupla SQL y su gemela
-# Python, y un test de paridad que los compara componente a componente
-# (`tests/test_s1_clave_republicacion.py`).
-
-
-#: Nombres de las cuatro componentes, en el orden en que se comparan y se
-#: concatenan. Sirve para que el test de paridad no tenga que reordenar nada y
-#: para que un quinto componente futuro no se cuele sin tocar este nombre.
-COMPONENTES_REPUBLICACION: tuple[str, str, str, str] = ("organo", "cpv4", "periodo", "titulo")
-
-#: Separador de las componentes. ``chr(31)`` (*unit separator*) y no ``'|'``:
-#: un título con una barra vertical dentro puede fingir un corrimiento entre
-#: componentes y colapsar dos contratos distintos. Es el mismo que usa
-#: :func:`clave_canonica_sql` para su md5.
-SEPARADOR_REPUBLICACION = chr(31)
+# El bloque de abajo es ese punto único. Su gemela Python
+# (`componentes_republicacion`/`clave_republicacion`) solo la usaba
+# `scripts/detectar_republicaciones.py` y se retiró con él el 2026-09-28.
 
 
 def componentes_republicacion_sql(alias: str = "l") -> tuple[str, str, str, str]:
@@ -1025,18 +1013,6 @@ def componentes_republicacion_sql(alias: str = "l") -> tuple[str, str, str, str]
     )
 
 
-def plegar_titulo(valor: str | None) -> str | None:
-    """Gemelo Python de :func:`titulo_normalizado_sql`. ``None`` si no hay título.
-
-    Misma asimetría aceptada que :func:`plegar_organo`: ``str.strip()`` retira
-    también tabuladores y saltos de línea y ``btrim`` de Postgres sólo espacios,
-    así que Python pliega un pelo más y puede proponer a revisión un par que el
-    SQL no colapsa. El error caro es el contrario.
-    """
-    plegado = (valor or "").strip().lower()
-    return plegado or None
-
-
 def cpv4(valor: str | None) -> str:
     """Gemelo Python de :func:`cpv4_sql`. Cadena vacía si no hay CPV utilizable.
 
@@ -1048,88 +1024,6 @@ def cpv4(valor: str | None) -> str:
     """
     texto = valor or ""
     return texto[:4] if texto[:4].isdigit() and texto[:4].isascii() else ""
-
-
-def componentes_republicacion(
-    *,
-    organo_contratacion: str | None,
-    cpv: str | None,
-    titulo: str | None,
-    fecha_publicacion: str | None,
-    fecha_extraccion: str | None,
-    primera_extraccion: str | None = None,
-) -> tuple[str, str, str, str] | None:
-    """Gemelo Python de :func:`componentes_republicacion_sql`.
-
-    Devuelve ``None`` cuando falta órgano o título, que es lo que hace el SQL
-    por otra vía: ``organo_normalizado_sql`` y ``titulo_normalizado_sql``
-    devuelven ``NULL``, ``NULL = NULL`` no es cierto y la fila no colapsa contra
-    ninguna. Un ``None`` aquí significa exactamente eso — "esta fila es su
-    propio grupo"— y el llamante no debe sustituirlo por una clave vacía.
-    """
-    organo = plegar_organo(organo_contratacion)
-    titulo_norm = plegar_titulo(titulo)
-    if organo is None or titulo_norm is None:
-        return None
-    periodo = periodo_canonico(
-        fecha_publicacion, fecha_extraccion, primera_extraccion=primera_extraccion
-    )
-    return (organo, cpv4(cpv), periodo, titulo_norm)
-
-
-def clave_republicacion(
-    *,
-    organo_contratacion: str | None,
-    cpv: str | None,
-    titulo: str | None,
-    fecha_publicacion: str | None,
-    fecha_extraccion: str | None,
-    primera_extraccion: str | None = None,
-) -> str | None:
-    """Las cuatro componentes unidas por :data:`SEPARADOR_REPUBLICACION`.
-
-    Equivalente Python de lo que :func:`clave_canonica_sql` mete en el ``md5``.
-    Es la clave con la que un detector debe agrupar para agrupar igual que la
-    proyección.
-
-    **Qué pasa hoy con una republicación ``pending``** (la pregunta que este
-    helper existe para dejar escrita). Son dos mecanismos con criterios
-    distintos y no coinciden:
-
-    - :func:`exclude_duplicados_sql` sólo excluye los ``confirmed``. Un par que
-      ``detect_republicaciones`` acaba de encolar como ``pending`` **sigue
-      contando** en las métricas competitivas, en el HHI y en el dataset de ML.
-    - :func:`fila_canonica_sql` no mira ``licitaciones_duplicados``: colapsa por
-      clave. Así que esa misma fila **ya está escondida** de la superficie
-      pública, sin esperar a que nadie la revise.
-
-    O sea que entre el encolado y la revisión humana el mismo contrato está
-    fuera del listado público y dentro de la cuota de mercado. No es una
-    contradicción accidental: es deliberada y va en la dirección barata de cada
-    lado —la superficie prefiere no enseñar un duplicado, la analítica prefiere
-    no borrar una adjudicación real por una sospecha—, pero significa que
-    ``contar`` y el HHI no describen el mismo universo mientras haya cola.
-
-    **Resolución propuesta, no aplicada**: que las agregaciones dejen de
-    depender del ``status`` y pasen a agrupar por esta clave, igual que la
-    proyección — es decir, extender ``clave_canonica_agrupable_sql`` a las
-    consultas analíticas y quedarse con la canónica de cada grupo. Eso alinea
-    los dos universos sin necesidad de que nadie revise nada, que es la parte
-    que hoy no escala (PSCP aporta ~566k filas a la primera pasada). No se
-    aplica en este cambio porque mueve cifras publicadas —cuota, HHI,
-    renovaciones— y el delta sólo se puede medir contra la BD real.
-    """
-    componentes = componentes_republicacion(
-        organo_contratacion=organo_contratacion,
-        cpv=cpv,
-        titulo=titulo,
-        fecha_publicacion=fecha_publicacion,
-        fecha_extraccion=fecha_extraccion,
-        primera_extraccion=primera_extraccion,
-    )
-    if componentes is None:
-        return None
-    return SEPARADOR_REPUBLICACION.join(componentes)
 
 
 def clave_organo_sql(alias: str = "f") -> str:

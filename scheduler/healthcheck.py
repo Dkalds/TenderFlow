@@ -551,14 +551,6 @@ def run_check(
             ops_counts: dict[str, int] = {r[0]: int(r[1]) for r in rows}
             info["ops_events_6h"] = ops_counts
 
-            # sqlite_busy: >=10 warn, >=60 error
-            n_busy = ops_counts.get("sqlite_busy", 0)
-            if n_busy >= 60:
-                errors.append(f"sqlite_busy_critical:{n_busy}")
-            elif n_busy >= 10:
-                warnings.append(f"sqlite_busy_high:{n_busy}")
-            checks.append({"name": "ops_events_busy", "ok": n_busy < 10})
-
             # write_slow: >=20 warn
             n_slow = ops_counts.get("write_slow", 0)
             if n_slow >= 20:
@@ -580,20 +572,13 @@ def run_check(
 
         except Exception as exc:
             exc_msg = str(exc).lower()
-            # Cada motor redacta el error a su manera: SQLite dice "no such
-            # table", Postgres dice 'relation "ops_events" does not exist'.
-            # Sin la variante de Postgres, este check nunca se activaba en
-            # producción tras el cutover (ADR-016): el error se clasificaba
-            # como genérico y la tabla ausente pasaba desapercibida.
+            # Postgres dice 'relation "ops_events" does not exist' (o su
+            # traducción, según `lc_messages`).
             tabla_ausente = (
-                "no such table" in exc_msg
-                or "no existe" in exc_msg
-                or "does not exist" in exc_msg
-                or "undefinedtable" in exc_msg
+                "no existe" in exc_msg or "does not exist" in exc_msg or "undefinedtable" in exc_msg
             )
             if tabla_ausente:
                 info["ops_events_missing"] = True
-                checks.append({"name": "ops_events_busy", "ok": True})
                 checks.append({"name": "ops_events_write_slow", "ok": True})
                 checks.append({"name": "ops_events_writers_high", "ok": True})
             else:

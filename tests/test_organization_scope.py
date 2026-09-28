@@ -74,7 +74,7 @@ def test_legacy_rows_are_claimed_by_personal_organization(tmp_db):
     opcional siguen en la base y son **invisibles** para la consulta con
     ámbito — para su dueño, sus vistas guardadas simplemente no están. Ese
     estado es el que inventaría ``db/tenancy_backfill.contar_huerfanos`` y el
-    que repara ``scripts/asignar_organizacion_huerfanos.py`` (dry-run por
+    que reparaba el backfill de tenencia (retirado) (dry-run por
     defecto) reutilizando este mismo ``claim_legacy_scope``.
 
     Por eso la fila legacy se siembra por SQL directo: es la única forma que

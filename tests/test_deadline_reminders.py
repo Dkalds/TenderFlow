@@ -236,7 +236,7 @@ def test_un_favorito_legacy_sin_organizacion_no_genera_un_aviso_invisible(seeded
     """Un favorito anterior al ámbito no produce una alerta huérfana.
 
     Esas filas existen: se escribieron cuando ``organization_id`` era opcional
-    y por eso hay un backfill (``scripts/asignar_organizacion_huerfanos.py``).
+    y por eso hubo un backfill de tenencia (ya ejecutado y retirado).
     Avisar sobre ellas escribiría una notificación que nadie ve y que además
     quema la clave ``UNIQUE(user_key, licitacion_id, type)``; saltarlas es
     reversible: en cuanto el backfill adjudica el favorito, la siguiente pasada

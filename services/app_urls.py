@@ -38,15 +38,3 @@ def url_absoluta(path: str) -> str | None:
     if base is None:
         return None
     return f"{base}{path if path.startswith('/') else '/' + path}"
-
-
-def url_de_detalle(licitacion_id: str) -> str | None:
-    """Ficha del expediente en la consola (inspector de Detalle)."""
-    from urllib.parse import quote
-
-    return url_absoluta(f"/detalle?lic={quote(licitacion_id, safe='')}")
-
-
-def url_de_oportunidad(pursuit_id: int) -> str | None:
-    """Ficha de la oportunidad."""
-    return url_absoluta(f"/oportunidades/{int(pursuit_id)}")

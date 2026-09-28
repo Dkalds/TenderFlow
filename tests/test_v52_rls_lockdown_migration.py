@@ -3,7 +3,7 @@
 No requiere una BD Postgres real: mockea ``op.get_bind()``/``op.execute()`` para
 verificar el guard de dialecto y qué SQL se ejecuta en cada rama. La aplicación
 real de este SQL contra un Postgres vivo se valida por separado (ver
-``docs/runbooks/migracion-persistencia.md``), no por esta suite unitaria.
+``docs/archive/runbooks/migracion-persistencia.md``), no por esta suite unitaria.
 """
 
 from __future__ import annotations

@@ -182,7 +182,7 @@ groups:
           description: >
             db_pool_acquire_timeout_total sube >3 en 5 minutos. El pool está
             saturado. Considera aumentar DB_POOL_SIZE o revisar conexiones lentas.
-            Runbook: docs/runbooks/migracion-persistencia.md
+            Runbook: docs/runbooks/persistence-tripwires.md
 
       - alert: PgWriteLatencyHigh
         # p99 de escritura en Postgres >1s (threshold más permisivo que SQLite

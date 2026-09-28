@@ -10,7 +10,7 @@ Este módulo solo **cuenta**. La asignación la hace
 ``OrganizationRepository.claim_legacy_rows``, que ya existía y adjudica las
 filas huérfanas de un usuario a su organización personal (nunca a una
 compartida). El consumidor de ambos es
-``scripts/asignar_organizacion_huerfanos.py``.
+``scripts/asignar_organizacion_huerfanos.py`` (ejecutado y retirado).
 
 ADR-022: el SQL vive en ``db/``. El script no abre conexiones ni escribe SQL.
 """

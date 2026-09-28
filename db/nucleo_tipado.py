@@ -306,7 +306,7 @@ def rellenar_lote(
     Una transacción por lote. Sólo reescribe las filas cuya sombra **diverge**
     de su columna vieja, así que es idempotente y reanudable: repetirlo sobre
     un rango ya rellenado no escribe nada, y una fila que otro escritor tocó
-    después del primer pase (``scripts/fix_dates_adjudicaciones.py``, un
+    después del primer pase (``scripts/fix_dates_adjudicaciones.py``, ya retirado, un
     ``UPDATE`` a mano) se corrige en el siguiente.
 
     ``lock_timeout`` corto a propósito: si el lote choca con los locks de fila

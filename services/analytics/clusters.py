@@ -1,7 +1,6 @@
 """Clusters analytics — real semantic clustering for the API layer.
 
-Server-side implementation of the pure sklearn clustering logic in
-``services.clustering_engine`` (KMeans / MiniBatchKMeans over TF-IDF
+Server-side sklearn clustering (KMeans / MiniBatchKMeans over TF-IDF
 embeddings with c-TF-IDF keyword labels). Returns per-cluster summaries,
 importe box-plot statistics and a bounded sample of tenders for drill-down.
 
@@ -118,7 +117,7 @@ class ClustersResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Pure clustering helpers shared with services.clustering_engine
+# Pure clustering helpers
 # ---------------------------------------------------------------------------
 
 

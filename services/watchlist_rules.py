@@ -240,16 +240,6 @@ def update_rule(
         return bool(cur.rowcount > 0)
 
 
-def set_active(user_key: str, rule_id: int, active: bool, *, user_id: int | None = None) -> bool:
-    """Activa o pausa una regla propia."""
-    with connect() as c:
-        cur = c.execute(
-            f"UPDATE watchlist_rules SET active = %s WHERE id = %s AND {_IDENT}",  # noqa: S608
-            (1 if active else 0, rule_id, user_id, user_key, user_id),
-        )
-        return bool(cur.rowcount > 0)
-
-
 def delete_rule(
     user_key: str,
     rule_id: int,

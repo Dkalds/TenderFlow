@@ -49,8 +49,8 @@ def _get_watchlist_items(user_key: str, user_id: int | None = None) -> dict[str,
     ``None`` hasta la escritura. Crear la alerta huérfana sería peor que no
     crearla: gasta la clave ``UNIQUE(user_key, licitacion_id, type)`` con una
     fila que el usuario no ve. Descartarlas se cura solo: en cuanto
-    ``scripts/asignar_organizacion_huerfanos.py`` adjudica el favorito a la
-    organización personal de su dueño, la siguiente pasada del job lo avisa.
+    el favorito pasa a la organización personal de su dueño (lo hizo el
+    backfill de tenencia, ya ejecutado), la siguiente pasada del job lo avisa.
     """
     with connect_read() as c:
         cur = c.execute(

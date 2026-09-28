@@ -2,7 +2,7 @@
 
 Usado exclusivamente para **construcción de queries** (compiler-only): las
 expresiones SA se compilan a SQL paramétrico y se ejecutan sobre la conexión
-``libsql`` existente. No se usa SA Engine ni Session.
+psycopg existente. No se usa SA Engine ni Session.
 
 Patrón de uso::
 
@@ -19,7 +19,7 @@ Patrón de uso::
         .limit(50)
     )
 
-    # Compilar a SQLite dialect
+    # Compilar a SQL paramétrico (dialecto Postgres)
     from db.models import compile_query
     sql, params = compile_query(stmt)
     rows = conn.execute(sql, params).fetchall()

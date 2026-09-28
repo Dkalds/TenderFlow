@@ -1,6 +1,6 @@
 """Feature flags endpoints (RFC UX Feature Flags).
 
-La lista de flags la dirige el **backend** (`services.feature_flags`), no una
+La lista de flags la dirige el **backend** (`db.feature_flags`), no una
 constante hardcodeada en el frontend. GET para cualquier usuario autenticado;
 PUT (toggle/rollout) solo admin, con auditoría.
 """
@@ -14,8 +14,8 @@ from pydantic import BaseModel
 
 from api.routes.dual_auth import require_admin, require_any_auth
 from db.audit import log_event
+from db.feature_flags import list_flags, set_flag
 from observability.logging import get_logger
-from services.feature_flags import list_flags, set_flag
 from shared.audit_events import FEATURE_FLAG_SET
 from shared.dto import SafeStr, StatusOk
 

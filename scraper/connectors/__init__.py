@@ -281,27 +281,6 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
 )
 
 
-def dominios_documentos_por_defecto() -> tuple[str, ...]:
-    """Allowlist de hosts de documentos que se deriva del inventario.
-
-    Une los ``dominios_documentos`` de toda fuente que no esté
-    ``fuera_de_alcance``, sin duplicados y en orden estable. Es la única
-    fuente de verdad de ``DOCUMENT_ALLOWED_HOSTS`` por defecto: ``config/``
-    no importa ``scraper/`` (rompería la capa), así que el literal de settings
-    se mantiene a mano y ``tests/test_cobertura_solape_integration.py`` exige
-    que ambos coincidan. Una fuente nueva que enlace pliegos y no aparezca en
-    la allowlist falla ahí, no en producción con un ``Host no incluido``.
-    """
-    vistos: list[str] = []
-    for fuente in REGISTERED_SOURCES:
-        if fuente.estado == "fuera_de_alcance":
-            continue
-        for dominio in fuente.dominios_documentos:
-            if dominio not in vistos:
-                vistos.append(dominio)
-    return tuple(vistos)
-
-
 #: Índice por nombre canónico, que es como llegan las filas de
 #: ``source_ingestion_health``.
 REGISTERED_SOURCES_BY_ID: dict[str, RegisteredSource] = {s.source_id: s for s in REGISTERED_SOURCES}

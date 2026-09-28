@@ -72,11 +72,6 @@ def get_unread_ids(
     return [nid for nid in candidate_ids if nid not in read_ids]
 
 
-def count_unread(user_key: str, candidate_ids: list[str], *, user_id: int | None = None) -> int:
-    """Devuelve el número de notificaciones no leídas."""
-    return len(get_unread_ids(user_key, candidate_ids, user_id=user_id))
-
-
 def get_last_seen_ts(user_key: str, *, user_id: int | None = None) -> str | None:
     """Devuelve la fecha de la notificación más reciente leída, o None."""
     with connect_read() as c:

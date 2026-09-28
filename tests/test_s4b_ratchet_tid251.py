@@ -39,9 +39,11 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 #: el 2026-09-03 al sacar `api/routes/` (empresas, eventos, exports,
 #: watchlist_rules) y a 26 el 2026-09-16 al sacar
 #: `scheduler/kpi_precompute.py` y `services/competitive/mercado.py`, y a 25 el
-#: 2026-09-24 al sacar `services/ml/scoring.py`.
-#: El objetivo del plan de arquitectura de septiembre es ≤ 24.
-MAX_ENTRADAS_WHITELIST = 25
+#: 2026-09-24 al sacar `services/ml/scoring.py`, y a 22 el 2026-09-28 al
+#: borrar tres scripts de un solo uso (`dedupe_licitaciones`,
+#: `fix_dates_adjudicaciones`, `retrain`).
+#: El objetivo del plan de arquitectura de septiembre (≤ 24) queda cumplido.
+MAX_ENTRADAS_WHITELIST = 22
 
 #: Las cuatro rutas liberadas en esta ola. Su SQL vive ahora en
 #: ``db/repositories/{empresas,licitaciones,watchlist,watchlist_rules}.py``.

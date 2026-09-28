@@ -1,6 +1,6 @@
-"""Capa de servicios — orquesta lógica de negocio entre pages y repositorios.
+"""Capa de servicios — reglas y transformaciones de dominio.
 
-Los módulos de este paquete exponen funciones puras ``(filters, pagination) → DataFrame|DTO``
-que delegan en ``db/repositories/`` para acceso a datos. Las pages del dashboard sólo
-deben importar desde ``services/`` (nunca SQL directo).
+Los módulos de este paquete encapsulan lógica de negocio sobre ``db/`` (que
+posee todo el SQL, ADR-022). No son una frontera obligatoria: el CRUD simple
+llama a ``db.*`` directamente, también desde ``api/routes/`` (ADR-024).
 """
