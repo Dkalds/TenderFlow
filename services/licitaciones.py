@@ -11,6 +11,7 @@ bloqueaba.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
@@ -180,8 +181,10 @@ def fetch_for_pdf(
 def search_for_ask(
     question: str,
     top_k: int,
-    ccaa: str | None = None,
-    tecnologia: str | None = None,
+    ccaa: str | Sequence[str] | None = None,
+    tecnologia: str | Sequence[str] | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
 ) -> list[dict[str, Any]]:
     """Búsqueda para el endpoint ``/ask`` (RAG).
 
@@ -193,17 +196,41 @@ def search_for_ask(
     FTS5/search_vector + LIKE fallback, **idéntico** al comportamiento
     histórico (plan Pliegos+RAG F9 — con el flag off este código no cambia
     de camino en absoluto).
+
+    Los filtros viajan iguales a los tres caminos, que los traducen con
+    ``db.repositories.base.ambito_busqueda_sql``: el que responda acota igual.
     """
     from config import settings
 
     if settings.RAG_HYBRID_ENABLED:
-        hybrid_docs = _try_hybrid_search(question, top_k, ccaa=ccaa, tecnologia=tecnologia)
+        hybrid_docs = _try_hybrid_search(
+            question,
+            top_k,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+        )
         if hybrid_docs:
             return hybrid_docs
 
-    docs = _repo.search_fts_docs(question, ccaa=ccaa, tecnologia=tecnologia, limit=top_k)
+    docs = _repo.search_fts_docs(
+        question,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        limit=top_k,
+    )
     if not docs:
-        docs = _repo.search_like_for_ask(question, ccaa=ccaa, limit=top_k)
+        docs = _repo.search_like_for_ask(
+            question,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            limit=top_k,
+        )
     return docs
 
 
@@ -211,8 +238,10 @@ def _try_hybrid_search(
     question: str,
     top_k: int,
     *,
-    ccaa: str | None,
-    tecnologia: str | None,
+    ccaa: str | Sequence[str] | None,
+    tecnologia: str | Sequence[str] | None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
 ) -> list[dict[str, Any]] | None:
     """Intenta el retrieval híbrido; ``None`` si no aplica (sin modelo de
     embeddings, o error) — el llamador cae al FTS puro."""
@@ -235,6 +264,8 @@ def _try_hybrid_search(
             query_embedding,
             ccaa=ccaa,
             tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
             limit=top_k,
         )
     except Exception as e:

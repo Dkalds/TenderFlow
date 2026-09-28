@@ -23,6 +23,7 @@ import type {
   WebhookUpdate,
 } from "@/lib/api-types";
 import { webhookKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type { WebhookCreateResponse, WebhookDelivery, WebhookOut, WebhookPingResult };
 
@@ -47,6 +48,7 @@ export function useWebhooks() {
   return useQuery({
     queryKey: WEBHOOKS_KEY,
     queryFn: () => fetchWithAuth<WebhookOut[]>("/api/v1/webhooks"),
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -65,6 +67,7 @@ export function useWebhookDeliveries(webhookId: number | null) {
     queryKey: webhookKeys.deliveries(webhookId),
     queryFn: () => fetchWithAuth<WebhookDelivery[]>(`/api/v1/webhooks/${webhookId}/deliveries`),
     enabled: webhookId !== null,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

@@ -60,9 +60,10 @@ test.describe("Regresión visual", () => {
         fullPage: true,
         // Tolerancia para el antialiasing de texto entre ejecuciones.
         maxDiffPixelRatio: 0.02,
-        // La barra de ámbito muestra "sync hace N minutos": cambia en cada
-        // ejecución y haría fallar la comparación por un dato que no es diseño.
-        mask: [page.getByText(/sync hace/i)],
+        // La barra de ámbito muestra «Actualizado hace N minutos»: cambia en
+        // cada ejecución y haría fallar la comparación por un dato que no es
+        // diseño.
+        mask: [page.getByText(/Actualizado hace/i)],
         animations: "disabled",
       });
     });
@@ -103,7 +104,7 @@ test.describe("Regresión visual de la portada", () => {
       // La franja de cifras trae tres números del corpus y la fecha del último
       // expediente: cambian con la ingesta y no son diseño. Enmascararlos es lo
       // que hace que este baseline dure más de un día.
-      mask: [page.getByLabel("El corpus en cifras")],
+      mask: [page.getByLabel("Los datos públicos en cifras")],
       animations: "disabled",
     });
   });

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { radarKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { LIMITE_PROXIMAS } from "../_lib/prefetch";
 
 /**
@@ -57,6 +58,8 @@ export function useRadarProximas(): RadarProximasConsola {
     queryKey: radarKeys.proximas(LIMITE_PROXIMAS),
     queryFn: () => fetchWithAuth(`/api/v1/radar/proximas?limit=${LIMITE_PROXIMAS}`),
     staleTime: 5 * 60_000,
+    // El fallo lo pinta la bandeja (`PanelError`): sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const items = query.data?.items ?? [];

@@ -105,6 +105,29 @@ describe("OrganizacionTab", () => {
     ).toBeInTheDocument();
   });
 
+  it("con la lectura caída no afirma huecos ni NIFs que no ha leído", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/capabilities") || url.endsWith("/nifs")) {
+          return new Response(JSON.stringify({ detail: "boom" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        throw new Error(`URL no esperada: ${url}`);
+      }),
+    );
+    renderTab({ canManage: true });
+
+    expect(await screen.findByText("No se pudo cargar el perfil de capacidad")).toBeInTheDocument();
+    expect(await screen.findByText("No se pudo cargar la identidad fiscal")).toBeInTheDocument();
+    // Ni el aviso de familias vacías ni la invitación a declarar el primer NIF:
+    // las dos cosas serían la lectura contraria de un fallo.
+    expect(screen.queryByText(/responderá «desconocido»/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Todavía no hay ningún NIF declarado/)).not.toBeInTheDocument();
+  });
+
   it("la organización personal no declara identidad fiscal", () => {
     stubFetch(CAPACIDAD_VACIA);
     renderTab({ canManage: true, isPersonal: true });

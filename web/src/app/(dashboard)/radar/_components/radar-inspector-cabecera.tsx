@@ -1,16 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, X } from "lucide-react";
+import { TriangleAlert, X } from "lucide-react";
+import { ChipBanda, esBandaConocida } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import type { RadarTender } from "@/hooks/use-radar";
 import { estadoLabel } from "@/lib/estados";
 import { riesgoLabel } from "@/lib/riesgos";
-import { bandColor, bandColorAlpha, daysLeft } from "./radar-shared";
+import { daysLeft } from "./radar-shared";
 
 /**
  * Cabecera del inspector: banda, referencia, score, título y la línea que
  * resume por qué mirar esta señal.
+ *
+ * La banda es el chip único de la consola (`ChipBanda`, sobre `--score-*`), el
+ * mismo que el inspector de Detalle: antes cada inspector la pintaba a su
+ * manera, y este con un `style` en línea. Sin score se dice «Sin puntuar»; con
+ * score y una banda que no es de las cuatro no se pinta chip, en vez de
+ * inventar una. El score va a 20 px en sans, como la cifra de un KPI.
  *
  * Los avisos de riesgo desplazan a esa línea y no se suman a ella: si el
  * scoring marcó algo (plazo imposible, criterio subjetivo…), eso es lo que hay
@@ -24,37 +33,31 @@ import { bandColor, bandColorAlpha, daysLeft } from "./radar-shared";
 export function InspectorCabecera({ tender, onClose }: { tender: RadarTender; onClose?: () => void }) {
   const days = daysLeft(tender.fecha_limite);
   const band = tender.band ?? null;
+  const sinPuntuar = tender.score == null;
 
   return (
     <div className="flex-none border-b border-border/60 px-4.5 pb-3.5 pt-4">
       <div className="mb-2.5 flex items-center gap-2">
-        <span
-          className="inline-flex h-[22px] items-center rounded-md border px-2 text-[10.5px] font-semibold tracking-[0.02em]"
-          style={{
-            borderColor: bandColorAlpha(band, 0.34),
-            background: bandColorAlpha(band, 0.14),
-            color: bandColor(band),
-          }}
-        >
-          {band ?? "Sin puntuar"}
-        </span>
-        <span className="font-mono text-[11px] text-muted-foreground">{tender.id_externo}</span>
+        {(sinPuntuar || esBandaConocida(band)) && <ChipBanda banda={sinPuntuar ? null : band} size="md" />}
+        <span className="font-mono text-tf-micro text-muted-foreground">{tender.id_externo}</span>
         <div className="flex-1" />
-        <span className="tf-tnum font-mono text-[22px] font-semibold leading-none">
-          {tender.score != null ? Math.round(tender.score) : "—"}
+        <span className="tf-tnum text-tf-title font-semibold leading-none">
+          {sinPuntuar ? "—" : Math.round(tender.score!)}
         </span>
         {onClose && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="icon-sm"
             onClick={onClose}
             aria-label="Cerrar inspector"
-            className="tf-pressable ml-1 grid h-6 w-6 place-items-center rounded-md border border-border/70 text-muted-foreground transition-colors hover:text-foreground"
+            className="ml-1"
           >
-            <X className="h-3 w-3" />
-          </button>
+            <X aria-hidden="true" />
+          </Button>
         )}
       </div>
-      <h2 className="mb-2 font-display text-[15px] font-semibold leading-[1.35] tracking-[-0.01em] text-pretty">
+      <h2 className="mb-2 font-display text-tf-lede font-semibold text-pretty">
         <Link href={`/detalle?lic=${encodeURIComponent(tender.id_externo)}`} className="hover:underline">
           {tender.titulo}
         </Link>
@@ -62,17 +65,16 @@ export function InspectorCabecera({ tender, onClose }: { tender: RadarTender; on
       {tender.risk_flags?.length ? (
         <ul className="flex flex-wrap gap-1.5">
           {tender.risk_flags.map((flag) => (
-            <li
-              key={flag}
-              className="inline-flex items-center gap-1 rounded border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.12)] px-1.5 py-1 text-[10.5px] text-[hsl(var(--warning))]"
-            >
-              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-              {riesgoLabel(flag)}
+            <li key={flag}>
+              <Badge variant="warning" size="sm">
+                <TriangleAlert aria-hidden="true" />
+                {riesgoLabel(flag)}
+              </Badge>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-[12.5px] leading-[1.55] text-muted-foreground text-pretty">
+        <p className="text-tf-body text-muted-foreground text-pretty">
           {tender.estado ? (
             <>
               {/* F1.8 — la etiqueta y no el código crudo (`PUB`), con su ayuda. */}

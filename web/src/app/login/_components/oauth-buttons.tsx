@@ -31,14 +31,14 @@ export function OAuthButtons({
 }) {
   return (
     <>
-      <p className="mb-2 text-xs font-medium text-muted-foreground">Acceso recomendado</p>
+      <p className="text-muted-foreground text-tf-meta mb-2 font-medium">Acceso recomendado</p>
       <Button
         variant="outline"
         className="w-full"
         onClick={() => void onLogin("google", "Google")}
         disabled={disabled}
       >
-        <svg aria-hidden="true" className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
           <path
             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
             fill="#4285F4"
@@ -67,7 +67,7 @@ export function OAuthButtons({
           disabled={disabled}
         >
           {/* Logo de Microsoft: los cuatro cuadrados de su marca. */}
-          <svg aria-hidden="true" className="mr-2 h-4 w-4" viewBox="0 0 23 23">
+          <svg aria-hidden="true" viewBox="0 0 23 23">
             <path d="M1 1h10v10H1z" fill="#F25022" />
             <path d="M12 1h10v10H12z" fill="#7FBA00" />
             <path d="M1 12h10v10H1z" fill="#00A4EF" />

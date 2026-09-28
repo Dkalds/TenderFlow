@@ -146,7 +146,7 @@ describe("PursuitCommentsThread", () => {
     expect(screen.getByText("Ana Gómez")).toBeInTheDocument();
     expect(screen.getByText("Luis")).toBeInTheDocument();
     expect(screen.getByText("Antiguo miembro")).toBeInTheDocument();
-    expect(screen.getAllByText("tú")).toHaveLength(1);
+    expect(screen.getAllByText("Tú")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Borrar comentario" })).toHaveLength(1);
   });
 

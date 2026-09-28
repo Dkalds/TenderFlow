@@ -37,7 +37,7 @@ describe("ChartErrorBoundary", () => {
       </ChartErrorBoundary>,
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("button")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Reintentar/ })).toBeInTheDocument();
   });
 
   it("resets error state when the retry button is clicked", () => {
@@ -50,7 +50,7 @@ describe("ChartErrorBoundary", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
     // Once the underlying cause is gone, clicking retry re-renders the children.
     shouldThrow = false;
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: /Reintentar/ }));
     expect(screen.getByText("recovered")).toBeInTheDocument();
   });
 

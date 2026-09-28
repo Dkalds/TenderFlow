@@ -93,6 +93,8 @@ SCAN_TARGETS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("web/src/lib/publico-api.ts", (".ts",)),
     ("web/src/lib/slug.ts", (".ts",)),
     ("web/src/lib/site.ts", (".ts",)),
+    # La marca (trazo y hex) que pintan las imágenes OG y `global-error`.
+    ("web/src/lib/marca.ts", (".ts",)),
 )
 
 # Dentro de api/routes/ solo son públicos los módulos con este prefijo. El

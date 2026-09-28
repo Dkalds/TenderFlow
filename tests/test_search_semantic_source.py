@@ -87,12 +87,17 @@ class TestEtiquetaDelInvestigador:
         """FAISS (2026-07) y FTS5 de SQLite (ADR-021) están retirados; el
         deslizador seguía nombrándolos en su etiqueta visible.
 
+        Después se llamó «Peso semántico» con su cifra, que seguía siendo el
+        nombre del motor y no el de quien busca: hoy es «Tipo de coincidencia»,
+        entre «Palabras exactas» y «Por significado» (y sigue mandando
+        ``alpha``, ver ``test_la_pantalla_envia_alpha``).
+
         Se mira el código sin comentarios: la historia de por qué se renombró
         sí puede (y debe) citar el nombre viejo.
         """
         codigo = _sin_comentarios(_codigo_del_investigador())
         assert "FAISS" not in codigo
-        assert "Peso semántico" in codigo
+        assert "Tipo de coincidencia" in codigo
 
     def test_la_pantalla_pinta_la_fuente_de_la_respuesta(self) -> None:
         """La cadena entera: la fuente sale del cuerpo de la respuesta, se

@@ -75,6 +75,22 @@ describe("ChatThread mientras se emite una respuesta", () => {
     expect(parseados).toEqual([]);
   });
 
+  it("cada respuesta cerrada dice que es generada; la que se emite, todavía no", () => {
+    // F07 (ADR-014): lo que escribe el modelo no es un dato del expediente.
+    const turnos = [pregunta1, respuesta1, pregunta2, { role: "assistant", content: "Un 5 %" } as ChatTurn];
+    const { rerender } = render(hilo(turnos));
+    expect(screen.getAllByText(/^Generado automáticamente/)).toHaveLength(1);
+
+    rerender(hilo(turnos, false));
+    expect(screen.getAllByText("Generado automáticamente · revisa los pliegos citados")).toHaveLength(2);
+
+    // Con el contexto de una licitación hay un pliego concreto al que remitir.
+    rerender(
+      <ChatThread messages={turnos} streaming={false} loading={false} error={null} expectLicitacionContext />,
+    );
+    expect(screen.getAllByText("Generado automáticamente · revisa el pliego")).toHaveLength(2);
+  });
+
   it("pide como mucho un scroll por frame", () => {
     const frames = new Map<number, FrameRequestCallback>();
     let siguiente = 1;
@@ -103,7 +119,7 @@ describe("FeedbackButtons", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Respuesta útil" }));
 
-    expect(screen.getByText("Gracias por el feedback.")).toBeInTheDocument();
+    expect(screen.getByText("Gracias por tu valoración.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Respuesta no útil" })).toBeNull();
     expect(registrarEvento).toHaveBeenCalledWith("asistente_feedback", { modo: "pregunta", util: "si" });
     expect(apiMutate).toHaveBeenCalledTimes(1);

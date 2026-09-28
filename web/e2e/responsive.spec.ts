@@ -372,9 +372,51 @@ test.describe("Poco alto (1100×520)", () => {
 });
 
 /**
- * La franja `md`–`xl`, donde el inspector es un `Sheet` y cada fila lleva un
- * cuarto botón («Ver ficha»). El E2E de accesibilidad corre a 1280, que ya es
- * `xl` y enseña tres: el desborde de esta franja no lo veía nadie.
+ * La tableta en vertical, el primer ancho con rail. La tabla del Radar empezaba
+ * en `md`: sus columnas y huecos suman ~766 px, y con el rail de 84 quedan 684,
+ * así que `#main-content` desbordaba 133 px en horizontal —la cabecera, la
+ * barra de controles y la lista se desplazaban de lado juntas—. Desde el
+ * 2026-09-27 la tabla empieza en `lg` y aquí va la ficha; el inspector sigue
+ * siendo un `Sheet`, con «Ver ficha» en cada una.
+ */
+test.describe("Tableta vertical (768×1024)", () => {
+  test.use({ viewport: { width: 768, height: 1024 } });
+
+  test("el Radar es ficha, no desborda de lado y abre el inspector como panel", async ({ page }) => {
+    await page.goto("/radar");
+    const fila = page.locator("[data-active]").filter({ hasText: SEED_LICITACION.tituloRadar }).first();
+    await expect(fila).toBeVisible({ timeout: 20_000 });
+
+    // Sin cabecera de columnas: es la ficha, no la tabla. Montada pero oculta;
+    // sin el `toHaveCount`, un `data-slot` renombrado pasaría en vacío.
+    const cabecera = page.locator('[data-slot="radar-cabecera"]');
+    await expect(cabecera).toHaveCount(1);
+    await expect(cabecera).toBeHidden();
+
+    // La lista primero, como en móvil: es `overflow-y-auto`, así que lo que
+    // desborde dentro se queda ahí y `#main-content` no lo vería.
+    const lista = await page
+      .locator('[data-slot="radar-lista"]')
+      .evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(lista).toBeLessThanOrEqual(1);
+    const main = await page
+      .locator("#main-content")
+      .evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(main).toBeLessThanOrEqual(1);
+    await expectDocumentFits(page);
+
+    // En la ficha las acciones están a la vista en todas las filas, y la
+    // lectura sin salir de la consola sigue siendo el `Sheet`.
+    await fila.getByRole("button", { name: /^Ver ficha de / }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+  });
+});
+
+/**
+ * La franja `lg`–`xl`, donde la tabla ya está pero el inspector sigue siendo un
+ * `Sheet` y cada fila lleva un cuarto botón («Ver ficha»). El E2E de
+ * accesibilidad corre a 1280, que ya es `xl` y enseña tres: el desborde de esta
+ * franja no lo veía nadie.
  */
 test.describe("Tableta horizontal (1024×768)", () => {
   test.use({ viewport: { width: 1024, height: 768 } });

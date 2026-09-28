@@ -29,7 +29,7 @@
  * consumo y deliberados para ésta: el producto se vende explicando qué mide y
  * qué no, y una portada de cuatro frases obligaría a prometer en vez de
  * demostrar. Lo que se recortó fue jerga y repetición, no argumento. Antes de
- * añadir un párrafo, mirá si su sitio es una de las tres páginas de evidencia.
+ * añadir un párrafo, mira si su sitio es una de las tres páginas de evidencia.
  *
  * TERCERA: **una sola voz**. Se tutea al lector de principio a fin. El texto
  * anterior alternaba «si tu negocio» con «vuestros concursos» y «¿qué queréis
@@ -161,7 +161,7 @@ export const CONTENIDO: ContenidoLanding = {
     "Radar de TenderFlow: bandeja de triaje ordenada por score, con banda, órgano, " +
     "tecnología, importe y plazo por expediente, y el panel de detalle con el " +
     "desglose de las seis dimensiones que componen la puntuación.",
-  capturaEtiqueta: "radar · triaje diario",
+  capturaEtiqueta: "Radar · triaje diario",
   capturaNota: "Interfaz real del producto. Los expedientes de la imagen son datos de demostración.",
 
   franjaExpedientes: "Expedientes publicables ahora mismo",
@@ -169,7 +169,7 @@ export const CONTENIDO: ContenidoLanding = {
   franjaCpv: "Códigos CPV con volumen suficiente",
   franjaActualizado: "Último expediente incorporado",
   franjaNota:
-    "Cifras del corpus público, servidas por la API al generar esta página. No es " +
+    "Cifras de la parte pública, con hasta una hora de retraso. No es " +
     "toda la contratación pública: es lo que ha entrado en el radar tecnológico y " +
     "supera el umbral de contenido para publicarse.",
 
@@ -190,7 +190,7 @@ export const CONTENIDO: ContenidoLanding = {
         "Si vigilas una empresa se conservan sus adjudicaciones desde que la das de alta, aunque el expediente no dé señal tecnológica.",
       ],
       enlaces: [
-        { texto: "Qué entra en el corpus y qué queda fuera", href: "/cobertura" },
+        { texto: "Qué entra en TenderFlow y qué queda fuera", href: "/cobertura" },
         { texto: "Explora las licitaciones por código CPV", href: "/cpv" },
         { texto: "Ver los anuncios publicados, por comunidad autónoma", href: "/licitaciones" },
       ],
@@ -256,7 +256,7 @@ export const CONTENIDO: ContenidoLanding = {
         "No hay precio publicado. No existe alta self-service, ni pasarela de pago, ni planes: el acceso se concede uno a uno, y las condiciones se hablan en la conversación que abre la solicitud. Poner mientras tanto un «desde X €» sería inventarse el dato.",
     },
     {
-      pregunta: "¿Cuánto tardáis en responder?",
+      pregunta: "¿Cuánto tarda la respuesta?",
       respuesta:
         "No hay plazo comprometido, porque ningún automatismo lo sostendría: la solicitud entra en una cola que revisa una persona, y el acceso se habilita a mano. Si tienes una fecha de presentación encima, dilo en el mensaje.",
     },
@@ -264,7 +264,7 @@ export const CONTENIDO: ContenidoLanding = {
 
   explorarTitulo: "Explora los concursos publicados",
   explorarTexto:
-    "Una parte del corpus es pública y no necesita cuenta: los anuncios ya " +
+    "Una parte de los datos es pública y no necesita cuenta: los anuncios ya " +
     "publicados, agrupados por comunidad autónoma y por código CPV.",
   explorar: [
     {
@@ -275,7 +275,7 @@ export const CONTENIDO: ContenidoLanding = {
     },
     {
       titulo: "Por código CPV",
-      texto: "El mismo corpus agrupado por el código de clasificación del contrato.",
+      texto: "Los mismos anuncios, agrupados por el código de clasificación del contrato.",
       href: "/cpv",
       icono: "scoring",
     },

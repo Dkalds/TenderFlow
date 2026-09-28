@@ -37,7 +37,7 @@ function ProcedimientoCelda({
     .join(" · ");
   return (
     <Pista contenido={pista || null}>
-      <span className="block truncate text-[11.5px] text-muted-foreground">{texto}</span>
+      <span className="block truncate text-tf-meta text-muted-foreground">{texto}</span>
     </Pista>
   );
 }
@@ -98,8 +98,12 @@ export function DetalleFila({
       className={cn(
         "relative cursor-pointer border-b border-border/30 transition-colors duration-110 ease-out",
         atenuada && "opacity-60",
-        open ? "bg-primary/9" : picked ? "bg-primary/4" : "hover:bg-primary/5",
-        isCursor && !open && "ring-1 ring-inset ring-primary/25",
+        open ? "bg-primary/10" : picked ? "bg-primary/5" : "hover:bg-primary/5",
+        // Pulsado de la fila, salvo cuando lo pulsado es la casilla, «Seguir» o
+        // un filtro: `:active` sube a los ancestros. Llega sin transición y se
+        // va con la de la fila.
+        !open && "[&:active:not(:has(button:active))]:bg-primary/10 [&:active:not(:has(button:active))]:duration-0",
+        isCursor && !open && "ring-1 ring-inset ring-primary/30",
       )}
     >
       <td className="relative px-1 pl-3.5">
@@ -122,7 +126,7 @@ export function DetalleFila({
             la `Pista` lo enseña al puntero, sin sumar una parada por fila. */}
         {row.isNew && (
           <Pista contenido="Publicada desde tu última visita">
-            <span className="block h-1.5 w-1.5 rounded-full bg-[hsl(var(--info))]">
+            <span className="block h-1.5 w-1.5 rounded-full bg-info">
               <span className="sr-only">Publicada desde tu última visita</span>
             </span>
           </Pista>
@@ -144,13 +148,13 @@ export function DetalleFila({
           icono="estrella"
           nombreAccesible={{ seguir: "Añadir a favoritos", dejar: "Quitar de favoritos" }}
           clases={{
-            base: "tf-pressable grid h-6 w-6 place-items-center rounded transition-colors duration-140 ease-out",
+            base: "tf-pressable grid h-6 w-6 place-items-center rounded-md",
             activo: "text-primary",
             inactivo: "text-muted-foreground/45",
           }}
         />
       </td>
-      <td className="truncate px-1 font-mono text-[10.5px] text-muted-foreground">
+      <td className="truncate px-1 font-mono text-tf-micro text-muted-foreground">
         {row.id_externo.replace("PLACSP-", "")}
       </td>
       {/* Título y órgano: el texto entero va en el DOM (lo recorta el CSS, así
@@ -161,7 +165,7 @@ export function DetalleFila({
         <Pista contenido={row.titulo}>
           <span
             className={cn(
-              "block truncate text-[12.5px] leading-[1.3] tracking-[-0.005em]",
+              "block truncate text-tf-body",
               open ? "font-semibold text-foreground" : "font-medium",
             )}
           >
@@ -171,16 +175,16 @@ export function DetalleFila({
       </td>
       <td className="px-1">
         <Pista contenido={row.organo_contratacion}>
-          <span className="block truncate text-xs leading-[1.3] text-muted-foreground">
+          <span className="block truncate text-tf-meta text-muted-foreground">
             {row.organo_contratacion ?? ""}
           </span>
         </Pista>
       </td>
-      <td className="tf-tnum px-1 text-right font-mono text-xs font-semibold">
+      <td className="tf-tnum px-1 text-right text-tf-meta font-semibold">
         {compact ? shortEur(row.importe) : formatCurrency(row.importe)}
       </td>
       <td className="px-1">
-        <StatusBadge value={row.estado} kind="estado" className="text-[10.5px]" />
+        <StatusBadge value={row.estado} kind="estado" className="text-tf-micro" />
       </td>
       <td className="px-1">
         <ProcedimientoCelda procedimiento={row.procedimiento} tramitacion={row.tramitacion} />
@@ -191,12 +195,12 @@ export function DetalleFila({
           style={{ background: bandColor(row.band) }}
           aria-hidden="true"
         />
-        <span className="tf-tnum mr-1.5 font-mono text-xs font-semibold">
+        <span className="tf-tnum mr-1.5 text-tf-meta font-semibold">
           {row.score != null ? Math.round(row.score) : "—"}
         </span>
-        <span className="font-mono text-[9.5px] text-muted-foreground">{row.band ?? ""}</span>
+        <span className="text-tf-micro text-muted-foreground">{row.band ?? ""}</span>
       </td>
-      <td className="tf-tnum px-1 text-right font-mono text-[10.5px] text-muted-foreground">
+      <td className="tf-tnum px-1 text-right text-tf-micro text-muted-foreground">
         {formatDate(row.fecha_publicacion)}
       </td>
       <td className="px-1">
@@ -212,9 +216,9 @@ export function DetalleFila({
                   onToggleCcaa(row.ccaa!);
                 }}
                 className={cn(
-                  "block max-w-full truncate rounded px-1.5 py-0.5 text-left text-[11.5px] transition-colors duration-140 ease-out",
+                  "block max-w-full truncate rounded-md px-1.5 py-0.5 text-left text-tf-meta transition-colors",
                   ccaaOn
-                    ? "border border-primary/40 bg-primary/14 font-semibold text-primary"
+                    ? "border border-primary/30 bg-primary/10 font-medium text-primary"
                     : "border border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -227,7 +231,7 @@ export function DetalleFila({
           <span className="text-muted-foreground">—</span>
         )}
       </td>
-      <td className="truncate px-1 font-mono text-[10.5px] text-muted-foreground">
+      <td className="truncate px-1 font-mono text-tf-micro text-muted-foreground">
         {row.cpv ?? "—"}
       </td>
       <td className="px-1 pr-3.5">
@@ -243,10 +247,8 @@ export function DetalleFila({
                   onToggleTecnologia(row.tecnologia!);
                 }}
                 className={cn(
-                  "block max-w-full truncate rounded border px-1.5 py-0.5 text-left text-[10.5px] font-medium transition-colors duration-140 ease-out",
-                  tecOn
-                    ? "border-[hsl(var(--info)/0.5)] bg-[hsl(var(--info)/0.2)] text-[hsl(var(--info))]"
-                    : "border-[hsl(var(--info)/0.22)] bg-[hsl(var(--info)/0.08)] text-[hsl(var(--info))]",
+                  "block max-w-full truncate rounded-md border px-1.5 py-0.5 text-left text-tf-micro font-medium text-info transition-colors",
+                  tecOn ? "border-info/50 bg-info/15" : "border-info/30 bg-info/10",
                 )}
               >
                 {row.tecnologia}

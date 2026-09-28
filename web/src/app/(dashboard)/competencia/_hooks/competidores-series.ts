@@ -32,8 +32,8 @@ export const RADAR_DIMENSIONS = [
   "Contratos",
   "Importe",
   "Cuota",
-  "Contratos/Año",
-  "Importe Medio",
+  "Contratos/año",
+  "Importe medio",
   "Agresividad baja",
 ] as const;
 

@@ -14,6 +14,7 @@ import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { OrganizationSettings, OrganizationSettingsOut } from "@/lib/api-types";
 import { type OrganizacionActiva } from "@/hooks/use-organization";
 import { organizationKeys, pursuitKeys, radarKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 /** Alias histórico; la fábrica canónica es `organizationKeys` de `lib/query-keys`. */
 export const organizationSettingsKeys = {
@@ -27,6 +28,7 @@ export function useOrganizationSettings(organizationId: OrganizacionActiva) {
       fetchWithAuth<OrganizationSettingsOut>(`/api/v1/organizations/${organizationId}/settings`),
     enabled: organizationId != null,
     staleTime: 60_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

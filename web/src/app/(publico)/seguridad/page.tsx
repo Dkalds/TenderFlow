@@ -3,7 +3,7 @@ import { PaginaEvidencia, type SeccionEvidencia } from "../_components/pagina-ev
 
 export const metadata: Metadata = {
   title: "Seguridad",
-  description: "Controles de identidad, sesión, segundo factor, aislamiento y credenciales API implementados en TenderFlow.",
+  description: "Controles de identidad, sesión, segundo factor, aislamiento y claves de API implementados en TenderFlow.",
   alternates: { canonical: "/seguridad" },
 };
 
@@ -16,7 +16,7 @@ const SECCIONES: SeccionEvidencia[] = [
     puntos: [
       "La sesión del navegador usa cookie HttpOnly, Secure en HTTPS y SameSite=Lax.",
       "Las mutaciones autenticadas por cookie exigen un token CSRF firmado.",
-      "Las contraseñas locales, cuando existen, se almacenan con Argon2id y fallback bcrypt.",
+      "Las contraseñas de quien entra con correo y contraseña se guardan con Argon2id, o con bcrypt si Argon2 no está disponible.",
     ],
   },
   {
@@ -27,13 +27,13 @@ const SECCIONES: SeccionEvidencia[] = [
     puntos: [
       "Los intentos fallidos de MFA tienen ventana y límite configurables.",
       "Las operaciones irreversibles exigen autenticación reciente y, si la cuenta usa MFA, elevación reciente del segundo factor.",
-      "Cerrar o eliminar una cuenta revoca sesiones y claves API asociadas.",
+      "Cerrar o eliminar una cuenta revoca sus sesiones y sus claves de API.",
     ],
   },
   {
     titulo: "Datos de usuario y organización",
     texto: [
-      "El perfil de scoring, reglas de vigilancia, favoritos, vistas y oportunidades se asocian al usuario y a su organización. El frontend no accede directamente a la base de datos: consume contratos HTTP tipados de la API.",
+      "El perfil de scoring, reglas de vigilancia, favoritos, vistas y oportunidades se asocian al usuario y a su organización. La aplicación web no accede directamente a la base de datos: consume contratos HTTP tipados de la API.",
     ],
     puntos: [
       "La cuenta permite exportar sus datos y solicitar su eliminación con confirmación explícita.",
@@ -42,7 +42,7 @@ const SECCIONES: SeccionEvidencia[] = [
     ],
   },
   {
-    titulo: "Claves API",
+    titulo: "Claves de API",
     texto: [
       "Las claves se almacenan como hash HMAC-SHA256 cuando existe secreto de servidor. Cada petición vuelve a comprobar la clave en tiempo constante, su propietario, expiración y ámbito requerido por la ruta.",
     ],

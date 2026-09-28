@@ -310,6 +310,19 @@ describe("CopilotPanel", { timeout: 30_000 }, () => {
     expect(mockSend).toHaveBeenCalledWith("¿Qué es un PCAP y qué contiene?");
   });
 
+  it("las preguntas de ejemplo son botones de verdad, con su nombre", () => {
+    render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
+    const boton = screen.getByRole("button", { name: "¿Qué es un PCAP y qué contiene?" });
+    expect(boton.tagName).toBe("BUTTON");
+    expect(boton).toHaveAttribute("type", "button");
+  });
+
+  it("el título del panel nombra la IA sin adornarla", () => {
+    render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
+    const titulo = screen.getByText("Copiloto");
+    expect(titulo.querySelector("svg")).toBeNull();
+  });
+
   it("runs the seedQuestion when seedKey > 0", () => {
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} seedQuestion="pregunta semilla" seedKey={1} />);
 
@@ -373,5 +386,19 @@ describe("CopilotBar", () => {
   it("applies custom className to the form", () => {
     const { container } = render(<CopilotBar className="my-custom-class" />);
     expect(container.querySelector("form.my-custom-class")).toBeInTheDocument();
+  });
+
+  it("es un campo más de la consola: superficie opaca, sin halo, sombra ni destello", () => {
+    // Tuvo un halo en degradado difuminado, `tf-card-shadow`, `bg-card/80` y
+    // Sparkles: la firma de un SaaS generado. La IA se nombra, no se adorna.
+    const { container } = render(<CopilotBar />);
+    const form = container.querySelector("form")!;
+    expect(form).toHaveClass("bg-card");
+    expect(container.innerHTML).not.toMatch(/gradient|blur-|tf-card-shadow|shadow-|bg-card\//);
+    expect(container.querySelector(".lucide-sparkles")).toBeNull();
+    // El glifo de la IA es decorativo y va en gris: el acento es «Preguntar».
+    const glifo = form.querySelector("svg")!;
+    expect(glifo).toHaveAttribute("aria-hidden", "true");
+    expect(glifo).toHaveClass("text-muted-foreground");
   });
 });

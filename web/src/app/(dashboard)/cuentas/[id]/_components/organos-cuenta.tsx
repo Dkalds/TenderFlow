@@ -21,7 +21,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Panel, SectionTitle } from "@/components/console/panel";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { useAnadirOrganos, useQuitarOrgano, type Cuenta } from "@/hooks/use-cuentas";
 
 import { SelectorOrganos } from "../../_components/selector-organos";
@@ -87,8 +87,10 @@ export function OrganosCuenta({ cuenta, puedeEscribir }: { cuenta: Cuenta; puede
 
   return (
     <Panel>
-      <SectionTitle
-        aside={
+      <PanelTitle
+        as="h2"
+        title={organos.length === 1 ? "Órgano de contratación" : `${organos.length} órganos de contratación`}
+        actions={
           puedeEscribir ? (
             <Button variant="ghost" size="sm" onClick={() => setAnadiendo(true)}>
               <Plus aria-hidden="true" />
@@ -96,12 +98,10 @@ export function OrganosCuenta({ cuenta, puedeEscribir }: { cuenta: Cuenta; puede
             </Button>
           ) : undefined
         }
-      >
-        {organos.length === 1 ? "Órgano de contratación" : `${organos.length} órganos de contratación`}
-      </SectionTitle>
+      />
       <ul className="flex flex-col gap-1.5">
         {organos.map((organo) => (
-          <li key={organo.id} className="flex items-start gap-2 text-sm">
+          <li key={organo.id} className="flex items-start gap-2 text-tf-body">
             <Link
               href={`/mercado?vista=organos&organo_q=${encodeURIComponent(organo.organo_nombre)}`}
               className="min-w-0 flex-1 leading-tight hover:underline"
@@ -113,7 +113,7 @@ export function OrganosCuenta({ cuenta, puedeEscribir }: { cuenta: Cuenta; puede
                 type="button"
                 onClick={() => quitar.mutate({ cuentaId: cuenta.id, cuentaOrganoId: organo.id })}
                 disabled={quitar.isPending}
-                className="grid h-6 w-6 flex-none place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                className="grid h-6 w-6 flex-none place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
                 <span className="sr-only">Quitar {organo.organo_nombre} de la cuenta</span>

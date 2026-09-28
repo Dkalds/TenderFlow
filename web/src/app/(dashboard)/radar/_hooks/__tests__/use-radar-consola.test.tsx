@@ -296,7 +296,10 @@ describe("useRadarConsola", () => {
 
     createPursuit.mockRejectedValueOnce(new Error("Sin permisos en la organización"));
     await act(() => result.current.openPursuit(tender("A")));
-    expect(toastError).toHaveBeenCalledWith("Sin permisos en la organización");
+    // Un título humano y el porqué de la API como descripción (D6).
+    expect(toastError).toHaveBeenCalledWith("No se pudo abrir la oportunidad", {
+      description: "Sin permisos en la organización",
+    });
   });
 
   it("lee la última visita al montar y la reescribe al salir", () => {

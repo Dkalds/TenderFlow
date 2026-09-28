@@ -3,37 +3,28 @@
 /**
  * Formulario de alta de una regla de seguimiento.
  *
- * Plegable con la cabecera de la `Card`: la pantalla la usa a diario quien ya
- * tiene sus reglas puestas, y el formulario abierto empujaba el listado fuera
- * de la primera pantalla.
+ * Plegable con su cabecera: la pantalla la usa a diario quien ya tiene sus
+ * reglas puestas, y el formulario abierto empujaba el listado fuera de la
+ * primera pantalla. La cabecera es un `<button aria-expanded>` de verdad, con
+ * el chevron a la derecha (el de un desplegable, no un adorno del título).
  *
  * No reutiliza `RuleFormFields` (el panel de edición sí): esta rejilla es de
  * tres columnas y lleva el botón de alta como sexta celda. Ver la nota de
  * `rule-form-fields.tsx`.
  *
  * Los valores y la validación son de react-hook-form con el esquema de alta
- * rápida (S7.2): cada error sale debajo de su campo, enlazado a él.
+ * rápida (S7.2): cada error sale debajo de su campo, enlazado a él (`Field`).
  */
 
-import { ChevronDown, ChevronRight, FlaskConical, Plus } from "lucide-react";
+import * as React from "react";
+import { ChevronDown, Plus } from "lucide-react";
 import { Controller, useWatch } from "react-hook-form";
+import { Panel } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Field, ariaDeField } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ariaCampo, CampoError } from "@/lib/forms/campo";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { FREQ_NOTE, FREQ_OPTIONS } from "../_hooks/watchlist-rule-options";
 import type { NuevaReglaForm } from "../_hooks/use-mi-watchlist";
 import { VistaPreviaRuido } from "./vista-previa-ruido";
@@ -52,78 +43,48 @@ export function NuevaReglaCard({
   const { control, register, formState } = form.form;
   const errores = formState.errors;
   const keyword = useWatch({ control, name: "keyword" });
+  const cuerpoId = React.useId();
+
   return (
-    <Card>
-      <CardHeader
-        className="cursor-pointer select-none"
-        onClick={onToggle}
-        tabIndex={0}
-        role="button"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onToggle();
-          }
-        }}
-      >
-        <CardTitle className="flex items-center gap-2">
-          {open ? (
-            <ChevronDown className="h-5 w-5" />
-          ) : (
-            <ChevronRight className="h-5 w-5" />
-          )}
-          <Plus className="h-5 w-5" />
+    <Panel className="p-0">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={open}
+          // Solo con el cuerpo montado: plegado no existe el id al que apuntar.
+          aria-controls={open ? cuerpoId : undefined}
+          onClick={onToggle}
+          className="tf-pressable flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left text-tf-body font-semibold"
+        >
           Nueva regla de seguimiento
-        </CardTitle>
-        <CardDescription>
-          Define criterios para recibir alertas sobre licitaciones relevantes.
-        </CardDescription>
-      </CardHeader>
+          <ChevronDown
+            aria-hidden="true"
+            // `rotate-*` escribe `rotate`, no `transform`: la transición nombra esa.
+            className={cn(
+              "ml-auto h-4 w-4 flex-none text-muted-foreground transition-[rotate]",
+              !open && "-rotate-90",
+            )}
+          />
+        </button>
+      </h2>
       {open && (
-        <CardContent>
+        <div id={cuerpoId} className="border-t border-border/60 px-4 pb-4 pt-3.5">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-1">
-              <label htmlFor="wl-keyword" className="text-sm font-medium">
-                Palabra clave *
-              </label>
+            <Field label="Palabra clave *" htmlFor="wl-keyword" error={errores.keyword?.message}>
               <Input
                 id="wl-keyword"
-                placeholder="Ej: SAP, infraestructura…"
+                placeholder="p. ej. SAP, infraestructura…"
                 {...register("keyword")}
                 onKeyDown={(e) => e.key === "Enter" && form.submit()}
-                {...ariaCampo("wl-keyword", errores.keyword?.message)}
               />
-              <CampoError campoId="wl-keyword" mensaje={errores.keyword?.message} />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="wl-cpv" className="text-sm font-medium">
-                Filtro CPV
-              </label>
-              <Input
-                id="wl-cpv"
-                placeholder="Ej: 72000000"
-                {...register("cpv")}
-                {...ariaCampo("wl-cpv", errores.cpv?.message)}
-              />
-              <CampoError campoId="wl-cpv" mensaje={errores.cpv?.message} />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="wl-importe" className="text-sm font-medium">
-                Importe mínimo
-              </label>
-              <Input
-                id="wl-importe"
-                type="number"
-                placeholder="Ej: 100000"
-                {...register("min_importe")}
-                {...ariaCampo("wl-importe", errores.min_importe?.message)}
-              />
-              <CampoError campoId="wl-importe" mensaje={errores.min_importe?.message} />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="wl-ccaa" className="text-sm font-medium">
-                Comunidad Autónoma
-              </label>
+            </Field>
+            <Field label="Filtro CPV" htmlFor="wl-cpv" error={errores.cpv?.message}>
+              <Input id="wl-cpv" placeholder="p. ej. 72000000" {...register("cpv")} />
+            </Field>
+            <Field label="Importe mínimo" htmlFor="wl-importe" error={errores.min_importe?.message}>
+              <Input id="wl-importe" type="number" placeholder="p. ej. 100000" {...register("min_importe")} />
+            </Field>
+            <Field label="Comunidad autónoma" htmlFor="wl-ccaa">
               <Controller
                 control={control}
                 name="ccaa"
@@ -133,29 +94,26 @@ export function NuevaReglaCard({
                     onValueChange={(v) => field.onChange(v === "__all__" ? "" : v)}
                   >
                     <SelectTrigger id="wl-ccaa">
-                      <SelectValue placeholder="— Todas —" />
+                      <SelectValue placeholder="Todas" />
                     </SelectTrigger>
                     <SelectContent>
                       {ccaaList.map((c) => (
                         <SelectItem key={c} value={c}>
-                          {c === "__all__" ? "— Todas —" : c}
+                          {c === "__all__" ? "Todas" : c}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 )}
               />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="wl-frequency" className="text-sm font-medium">
-                Frecuencia de notificación
-              </label>
+            </Field>
+            <Field label="Frecuencia de notificación" htmlFor="wl-frequency" hint={FREQ_NOTE}>
               <Controller
                 control={control}
                 name="frequency"
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="wl-frequency" aria-describedby="wl-frequency-note">
+                    <SelectTrigger id="wl-frequency" {...ariaDeField("wl-frequency", { hint: true })}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -168,18 +126,11 @@ export function NuevaReglaCard({
                   </Select>
                 )}
               />
-              <p id="wl-frequency-note" className="text-xs text-muted-foreground">
-                {FREQ_NOTE}
-              </p>
-            </div>
+            </Field>
             <div className="flex items-end">
-              <Button
-                onClick={form.submit}
-                disabled={!keyword.trim() || form.creating}
-                className="w-full"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Agregar regla
+              <Button onClick={form.submit} disabled={!keyword.trim() || form.creating} className="w-full">
+                <Plus aria-hidden="true" />
+                Añadir regla
               </Button>
             </div>
           </div>
@@ -193,20 +144,17 @@ export function NuevaReglaCard({
                 onClick={form.probar}
                 disabled={!keyword.trim() || form.preview.isPending}
               >
-                <FlaskConical className="mr-2 h-4 w-4" aria-hidden="true" />
                 Ver cuántas alertas daría
               </Button>
-              {form.preview.isPending && (
-                <span className="text-sm text-muted-foreground">Calculando…</span>
-              )}
+              {form.preview.isPending && <span className="text-tf-meta text-muted-foreground">Calculando…</span>}
               {form.preview.isError && (
-                <span className="text-sm text-destructive">No se pudo calcular la vista previa.</span>
+                <span className="text-tf-meta text-destructive">No se pudo calcular la vista previa.</span>
               )}
             </div>
             {form.preview.isSuccess && <VistaPreviaRuido preview={form.preview.data} />}
           </div>
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </Panel>
   );
 }

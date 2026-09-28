@@ -1,9 +1,8 @@
 "use client";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { StatCell } from "@/components/console/panel";
 import { formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { PursuitMetrics } from "@/hooks/use-pursuits";
-import { cn } from "@/lib/utils";
 
 /**
  * La tira del tablero.
@@ -22,10 +21,13 @@ import { cn } from "@/lib/utils";
  * hueco de dato: esas oportunidades quedan fuera de las dos primeras columnas y
  * quien mira la tira tiene que saber cuánto le falta para fiarse de ellas.
  *
+ * Las celdas son `StatCell`, el KPI canónico; la tira va de borde a borde bajo
+ * la cabecera, por eso no es un `StatStrip` (que lleva marco y radio).
+ *
  * Esto es **el resumen**, no el informe: cuatro cifras sobre el tablero que se
  * está mirando. La vista completa de `GET /pursuits/metrics` —funnel con sus
  * tasas de conversión, valor ponderado con supuestos, pérdidas por motivo,
- * calidad del Radar y selector de periodo— es Oportunidades → **Rendimiento**
+ * calidad del Radar y selector de periodo— es Oportunidades › **Rendimiento**
  * (`_components/rendimiento-view.tsx`). Si hace falta una cifra más aquí, casi
  * siempre lo que hace falta es abrir aquélla.
  */
@@ -45,72 +47,36 @@ export function TableroMetricas({
       aria-label="Pipeline de la organización"
       className="border-border/70 bg-border/60 grid flex-none grid-cols-2 gap-px border-b lg:grid-cols-4"
     >
-      <Metrica
+      <StatCell
         label="Valor del pipeline"
         hint="Oferta prevista de lo que sigue abierto"
-        valor={metrics ? formatCompactCurrency(metrics.pipeline_value_eur) : undefined}
-        cargando={cargando}
+        value={metrics ? formatCompactCurrency(metrics.pipeline_value_eur) : "—"}
+        loading={cargando}
       />
-      <Metrica
+      <StatCell
         label="Previsión del trimestre"
-        hint="Ponderada por fase, calculada en backend"
-        valor={actual != null ? formatCompactCurrency(actual) : "—"}
-        cargando={cargando}
+        hint="Estimación ponderada por fase"
+        value={actual != null ? formatCompactCurrency(actual) : "—"}
+        loading={cargando}
       />
-      <Metrica
+      <StatCell
         label="Sin importe"
         hint="Quedan fuera de las dos cifras anteriores"
-        valor={metrics ? formatNumber(metrics.pipeline_sin_importe) : undefined}
-        cargando={cargando}
-        tono="aviso"
+        value={metrics ? formatNumber(metrics.pipeline_sin_importe) : "—"}
+        loading={cargando}
+        tono="warning"
       />
-      <Metrica
+      <StatCell
         label="Ganadas · adjudicado"
         hint="Acumulado histórico de la organización"
-        valor={
+        value={
           metrics
             ? `${formatNumber(metrics.pursuits_won)} · ${formatCompactCurrency(metrics.awarded_amount_eur)}`
-            : undefined
+            : "—"
         }
-        cargando={cargando}
-        tono="favorable"
+        loading={cargando}
+        tono="success"
       />
     </section>
-  );
-}
-
-function Metrica({
-  label,
-  hint,
-  valor,
-  cargando,
-  tono,
-}: {
-  label: string;
-  hint: string;
-  valor: string | undefined;
-  cargando: boolean;
-  tono?: "aviso" | "favorable";
-}) {
-  return (
-    <div className="bg-card min-w-0 px-3.5 py-2.5">
-      <div className="text-muted-foreground mb-1.5 truncate font-mono text-tf-micro font-semibold tracking-wider uppercase">
-        {label}
-      </div>
-      {cargando ? (
-        <Skeleton className="h-5 w-20 rounded" />
-      ) : (
-        <div
-          className={cn(
-            "tf-tnum truncate font-mono text-tf-title leading-none font-semibold",
-            tono === "aviso" && "text-[hsl(var(--warning))]",
-            tono === "favorable" && "text-[hsl(var(--success))]",
-          )}
-        >
-          {valor ?? "—"}
-        </div>
-      )}
-      <div className="text-muted-foreground mt-1 truncate text-tf-micro leading-[1.3]">{hint}</div>
-    </div>
   );
 }

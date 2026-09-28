@@ -3,7 +3,7 @@
 /**
  * Datos, carriles, selección y gestos de la agenda.
  *
- * El backend fusiona, ordena y clasifica (`GET /pursuits/agenda`); aquí viven
+ * La API fusiona, ordena y clasifica (`GET /pursuits/agenda`); aquí viven
  * el carril activo, la fila seleccionada, el teclado —J/K recorren, S sigue, X
  * descarta, C completa la tarea, ⏎ abre— y las acciones que esos gestos
  * comparten con los botones de cada fila.
@@ -24,6 +24,7 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useFilters } from "@/lib/filters";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { useDismissRadarTender, useRestoreRadarTender } from "@/hooks/use-radar";
@@ -117,11 +118,11 @@ export function useAgenda() {
         const pursuit = await createPursuit.mutateAsync({ licitacion_id: item.licitacion_id });
         setActiveOrganizationId(pursuit.organization_id);
         toast.success(
-          item.kind === "renovacion" ? "Renovación anticipada como pursuit" : "Oportunidad abierta",
+          item.kind === "renovacion" ? "Renovación anticipada como oportunidad" : "Oportunidad abierta",
         );
         router.push(`/oportunidades/${pursuit.id}`);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "No se pudo abrir la oportunidad");
+        toast.error("No se pudo abrir la oportunidad", { description: getErrorMessage(err, "accion") });
       }
     },
     [createPursuit, router, setActiveOrganizationId],
@@ -181,7 +182,7 @@ export function useAgenda() {
               },
             }),
           onError: (err) =>
-            toast.error(err instanceof Error ? err.message : "No se pudo completar la tarea"),
+            toast.error("No se pudo completar la tarea", { description: getErrorMessage(err, "accion") }),
         },
       );
     },

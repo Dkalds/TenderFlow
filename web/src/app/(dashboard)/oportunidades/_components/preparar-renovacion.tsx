@@ -6,17 +6,20 @@
  * Crea la oportunidad de la relicitación, enlazada al contrato
  * (`POST /pursuits/cartera/{id}/renovacion`). Pide el expediente de la
  * relicitación porque la oportunidad es sobre **ese** expediente: el del
- * contrato vigente ya tiene la suya, la ganada, y el backend lo rechaza.
- * Idempotente en servidor: un segundo intento devuelve la misma oportunidad.
+ * contrato vigente ya tiene la suya, la ganada, y la API lo rechaza.
+ * Idempotente: un segundo intento devuelve la misma oportunidad.
  */
 import * as React from "react";
 import { RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
+import { PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { usePrepararRenovacion } from "@/hooks/use-cartera";
 import { ApiError } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 
 export function PrepararRenovacion({
   carteraId,
@@ -41,7 +44,7 @@ export function PrepararRenovacion({
       : error instanceof ApiError && error.status === 404
         ? "Ese contrato ya no está en la cartera de tu organización."
         : error
-          ? `No se pudo preparar la renovación. ${(error as Error).message}`
+          ? getErrorMessage(error, "accion")
           : null;
 
   const enviar = (event: React.FormEvent) => {
@@ -64,7 +67,7 @@ export function PrepararRenovacion({
 
   return (
     <>
-      <Button size="sm" variant="outline" className="mt-1 h-7 text-[11px]" onClick={() => setAbierto(true)}>
+      <Button size="sm" variant="outline" className="mt-1" onClick={() => setAbierto(true)}>
         <RefreshCcw aria-hidden="true" />
         Preparar renovación
       </Button>
@@ -76,25 +79,28 @@ export function PrepararRenovacion({
             enlaza este contrato. Indica el expediente de la relicitación publicada.
           </DialogDescription>
           <form onSubmit={enviar} className="space-y-3">
-            <label htmlFor={inputId} className="text-xs font-medium">
-              Expediente de la relicitación
-            </label>
-            <Input
-              id={inputId}
-              value={expediente}
-              onChange={(e) => setExpediente(e.target.value)}
-              placeholder="ID del expediente nuevo"
-              aria-invalid={esElVigente || undefined}
-            />
-            {esElVigente && (
-              <p className="text-xs text-destructive">
-                Ese es el expediente del contrato vigente: la renovación es el siguiente.
-              </p>
-            )}
+            <Field
+              label="Expediente de la relicitación"
+              htmlFor={inputId}
+              error={
+                esElVigente ? "Ese es el expediente del contrato vigente: la renovación es el siguiente." : null
+              }
+            >
+              <Input
+                id={inputId}
+                value={expediente}
+                onChange={(e) => setExpediente(e.target.value)}
+                placeholder="Expediente nuevo…"
+              />
+            </Field>
             {mensajeError && (
-              <p role="alert" className="text-xs text-destructive">
-                {mensajeError}
-              </p>
+              <PanelError
+                variant="inline"
+                className="py-0"
+                title="No se pudo preparar la renovación"
+                message={mensajeError}
+                error={error}
+              />
             )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setAbierto(false)}>

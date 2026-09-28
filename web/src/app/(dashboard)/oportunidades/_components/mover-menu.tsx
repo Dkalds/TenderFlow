@@ -42,7 +42,7 @@ export function MoverMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`Mover «${titulo}» de fase`}
-        className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring grid h-6 w-6 flex-none place-items-center rounded-md transition-colors focus-visible:ring-1"
+        className="tf-pressable text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring grid h-6 w-6 flex-none place-items-center rounded-md focus-visible:ring-1"
       >
         <EllipsisVertical className="h-3.5 w-3.5" aria-hidden="true" />
       </DropdownMenuTrigger>

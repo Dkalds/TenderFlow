@@ -16,6 +16,6 @@ describe("ReportesCard", () => {
 
   it("sin reportes lo dice", () => {
     render(<ReportesCard reportes={{}} isLoading={false} />);
-    expect(screen.getByText("Ningún reporte abierto.")).toBeInTheDocument();
+    expect(screen.getByText("Ningún reporte abierto")).toBeInTheDocument();
   });
 });

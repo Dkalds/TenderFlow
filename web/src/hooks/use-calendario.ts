@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { CalendarioEnlace } from "@/lib/api-types";
 import { calendarioKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export function useCalendarioEnlace() {
   return useQuery({
@@ -24,5 +25,6 @@ export function useCalendarioEnlace() {
     // La firma no cambia entre renders y el recuento de eventos se mueve con
     // la pasada de ingesta: no hay nada que revalidar al enfocar la ventana.
     staleTime: 5 * 60 * 1000,
+    meta: META_ERROR_EN_LINEA,
   });
 }

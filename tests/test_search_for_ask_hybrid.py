@@ -41,7 +41,14 @@ class TestFlagOffIsUnchanged:
         ):
             docs = search_for_ask("consulta rara", 5, ccaa="Madrid")
 
-        mock_like.assert_called_once_with("consulta rara", ccaa="Madrid", limit=5)
+        mock_like.assert_called_once_with(
+            "consulta rara",
+            ccaa="Madrid",
+            tecnologia=None,
+            fecha_desde=None,
+            fecha_hasta=None,
+            limit=5,
+        )
         assert docs == [{"id_externo": "LIKE-1"}]
 
 
@@ -60,7 +67,9 @@ class TestFlagOnHybridActivation:
         ):
             docs = search_for_ask("sap s/4hana", 5, ccaa="Madrid", tecnologia="SAP")
 
-        mock_hybrid.assert_called_once_with("sap s/4hana", 5, ccaa="Madrid", tecnologia="SAP")
+        mock_hybrid.assert_called_once_with(
+            "sap s/4hana", 5, ccaa="Madrid", tecnologia="SAP", fecha_desde=None, fecha_hasta=None
+        )
         mock_fts.assert_not_called()
         assert docs == hybrid_docs
 

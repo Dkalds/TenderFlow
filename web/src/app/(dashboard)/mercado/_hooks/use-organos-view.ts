@@ -14,8 +14,9 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useDebounce } from "@/hooks/use-debounce";
-import { foldText } from "@/lib/utils";
+import { EMPTY, foldText } from "@/lib/utils";
 
 const TIPO_CONTRATO_LABEL: Record<string, string> = {
   "1": "Servicios",
@@ -97,10 +98,11 @@ export function useOrganosView() {
   // top-50 por actividad, así que un órgano fuera de ese ranking jamás
   // aparecería filtrando solo en cliente.
   const debouncedFilter = useDebounce(filter, 300);
-  const { data, isLoading, error } = useFilteredQuery<OrganosResponse>(
+  const { data, isLoading, error, refetch } = useFilteredQuery<OrganosResponse>(
     ["analytics", "organos", debouncedFilter],
     "/api/v1/analytics/organos",
-    { staleTime: 5 * 60 * 1000 },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     debouncedFilter ? { organo_q: debouncedFilter } : undefined,
   );
 
@@ -115,10 +117,15 @@ export function useOrganosView() {
   // panel lleva el nombre del órgano en la cabecera, y servir las cifras del
   // anterior mientras carga el nuevo es la misma mentira que este cambio viene
   // a quitar. Aquí se prefiere el esqueleto.
-  const { data: detailData, isLoading: detailLoading } = useFilteredQuery<OrganoDetailResponse>(
+  const {
+    data: detailData,
+    isLoading: detailLoading,
+    error: detailError,
+    refetch: refetchDetail,
+  } = useFilteredQuery<OrganoDetailResponse>(
     ["analytics", "organo-detail", selectedOrgano ?? ""],
     `/api/v1/analytics/organos/${encodeURIComponent(selectedOrgano ?? "")}`,
-    { enabled: !!selectedOrgano, staleTime: 5 * 60 * 1000 },
+    { enabled: !!selectedOrgano, staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     undefined,
     true,
   );
@@ -191,14 +198,19 @@ export function useOrganosView() {
     // `valorOEmpty`.
     top10Concentration: data?.concentracion_top10 ?? null,
     totalImporte: data?.importe_total ?? null,
-    topOrgano: items.length > 0 ? items[0].organo_contratacion : "-",
+    topOrgano: items.length > 0 ? items[0].organo_contratacion : EMPTY,
     filter,
     setFilter,
     selectedOrgano,
     setSelectedOrgano,
     detailData,
     detailLoading,
+    /** El fallo del panel del órgano: se dice en el panel, no como «sin datos». */
+    detailError,
+    refetchDetail: () => void refetchDetail(),
     isLoading,
     error,
+    /** El «Reintentar» del error. */
+    refetch: () => void refetch(),
   };
 }

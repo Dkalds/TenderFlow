@@ -1,8 +1,8 @@
-﻿import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { LucideIcon } from "lucide-react";
 import { EMPTY } from "@/lib/utils";
-import { KpiCard } from "@/components/charts/kpi-card";
+import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 function TestIcon() {
@@ -34,14 +34,15 @@ describe("KpiCard", () => {
     // Positive trend pill uses the success token color
     const trendSpan = container.querySelector(".text-success");
     expect(trendSpan).not.toBeNull();
-    expect(trendSpan?.textContent).toContain("+5.3%");
+    // Coma decimal (`formatPercent`), como el resto de porcentajes de la consola.
+    expect(trendSpan?.textContent).toContain("+5,3%");
   });
 
   it("shows trend down arrow when trend is negative", () => {
     const { container } = render(<KpiCard title="Total" value="100" trend={-3.2} />);
     const trendSpan = container.querySelector(".text-destructive");
     expect(trendSpan).not.toBeNull();
-    expect(trendSpan?.textContent).toContain("-3.2%");
+    expect(trendSpan?.textContent).toContain("-3,2%");
   });
 
   it("shows anomaly indicator when anomaly={true}", () => {
@@ -59,10 +60,8 @@ describe("KpiCard", () => {
 
   it("does not show anomaly indicator when anomaly={false} (default)", () => {
     const { container } = render(<KpiCard title="Total" value="100" />);
-    // AlertTriangle icon should not be in DOM
-    // Check there's no amber-500 background
-    const anomalyEl = container.querySelector(".bg-amber-500\\/15");
-    expect(anomalyEl).toBeNull();
+    expect(screen.queryByText(/Anomal.a detectada/)).not.toBeInTheDocument();
+    expect(container.querySelector(".text-warning")).toBeNull();
   });
 
   it("applies custom className to card element", () => {
@@ -71,9 +70,12 @@ describe("KpiCard", () => {
     expect(card?.className).toContain("my-custom-class");
   });
 
-  it("renders the icon when provided", () => {
+  it("ignora el icono: un KPI de consola no lleva baldosa de icono", () => {
+    // `icon` se acepta por compatibilidad (decenas de llamadores lo pasan),
+    // pero el dibujo es el de `StatCell`: rótulo y cifra, sin baldosa tintada.
     render(<KpiCard title="Total" value="100" icon={TestIcon as unknown as LucideIcon} />);
-    expect(screen.getByTestId("test-icon")).toBeInTheDocument();
+    expect(screen.queryByTestId("test-icon")).not.toBeInTheDocument();
+    expect(screen.getByText("100")).toBeInTheDocument();
   });
 
   it("does not render trend section when trend is undefined", () => {
@@ -104,5 +106,45 @@ describe("KpiCard", () => {
   it("does not render a link when href is absent", () => {
     render(<KpiCard title="Total" value="100" />);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("pinta la cifra como StatCell: sans a 20 px, sin mono", () => {
+    render(<KpiCard title="Total" value="1.234" />);
+    const cifra = screen.getByText("1.234");
+    expect(cifra).toHaveClass("text-tf-title");
+    expect(cifra.className).not.toMatch(/font-mono/);
+  });
+
+  it("el rótulo va en frase a 11 px, sin versal ni mono", () => {
+    render(<KpiCard title="Importe total" value="1" />);
+    const rotulo = screen.getByText("Importe total");
+    expect(rotulo).toHaveClass("text-tf-micro");
+    expect(rotulo.className).not.toMatch(/uppercase|font-mono/);
+  });
+
+  it("colorea la cifra con `tono` (Online/Offline)", () => {
+    render(<KpiCard title="API" value="Offline" tono="destructive" />);
+    expect(screen.getByText("Offline")).toHaveClass("text-destructive");
+  });
+
+  it("sin enlace no reacciona al ratón: un KPI no es un botón", () => {
+    const { container } = render(<KpiCard title="Total" value="100" />);
+    expect((container.firstChild as HTMLElement).className).not.toMatch(/hover:/);
+  });
+
+  it("con enlace no lleva la flecha de «salir» (ArrowUpRight)", () => {
+    const { container } = render(<KpiCard title="Vencen 48h" value="3" href="/pipeline-alertas" />);
+    expect(container.querySelector("svg")).toBeNull();
+  });
+});
+
+describe("KpiStrip", () => {
+  it("es una StatStrip: rejilla de 1 px con las columnas pedidas", () => {
+    const { container } = render(
+      <KpiStrip columns={3}>
+        <KpiCard title="a" value="1" />
+      </KpiStrip>,
+    );
+    expect(container.firstElementChild).toHaveStyle({ "--console-stat-columns": "3" });
   });
 });

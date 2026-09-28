@@ -11,6 +11,7 @@ import { AtribucionFuente } from "@/app/(publico)/_components/ficha-atribucion";
 import { CabeceraFicha, type Miga } from "@/app/(publico)/_components/ficha-cabecera";
 import { DatosDelAnuncio } from "@/app/(publico)/_components/ficha-datos";
 import { LotesLicitacion } from "@/app/(publico)/_components/ficha-lotes";
+import { BOTON_SECUNDARIO } from "@/app/(publico)/_components/piel-publica";
 
 /**
  * Ficha pública de una licitación.
@@ -138,16 +139,10 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
             utm_content=ficha se conserva: en Vercel Analytics sigue viéndose
             cuántos llegan a /login desde una ficha indexada. */}
         <div className="mt-10 flex flex-wrap gap-3">
-          <Link
-            href={rutaHubCcaa(lic.ccaa)}
-            className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-10 items-center rounded-md border px-5 text-sm font-medium transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
-          >
+          <Link href={rutaHubCcaa(lic.ccaa)} className={BOTON_SECUNDARIO}>
             Más licitaciones {lic.ccaa ? `en ${lic.ccaa}` : ""}
           </Link>
-          <Link
-            href="/login?utm_source=publico&utm_content=ficha"
-            className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-10 items-center rounded-md border px-5 text-sm font-medium transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
-          >
+          <Link href="/login?utm_source=publico&utm_content=ficha" className={BOTON_SECUNDARIO}>
             Ya tengo cuenta
           </Link>
         </div>

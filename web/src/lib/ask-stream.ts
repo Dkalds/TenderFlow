@@ -8,6 +8,7 @@
  */
 
 import { getCsrfToken } from "./api-client";
+import type { FiltrosCorpus } from "./api-types";
 import { registrarEvento } from "./analytics";
 
 export interface ChatMessage {
@@ -125,8 +126,8 @@ export interface AskParams extends StreamCallbacks {
   idsExternos?: string[];
   model?: string;
   topK?: number;
-  /** Extra body params (e.g. ccaa, tecnologia from global filters). */
-  extras?: Record<string, unknown>;
+  /** Filtros globales sobre el corpus (CCAA, tecnología, rango de publicación). */
+  extras?: FiltrosCorpus;
   signal?: AbortSignal;
 }
 

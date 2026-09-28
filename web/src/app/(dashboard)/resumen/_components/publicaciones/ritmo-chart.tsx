@@ -27,7 +27,7 @@ import { ALTO } from "./publicaciones-data";
 
 export interface RitmoChartProps {
   serie: TrendPoint[];
-  /** La serie llegó al techo de puntos del endpoint: hay días sin dibujar. */
+  /** La serie llegó al techo de puntos que publica la API: hay días sin dibujar. */
   serieTruncada: boolean;
   ventana: string;
   onDia: (dia: string) => void;
@@ -35,7 +35,13 @@ export interface RitmoChartProps {
 
 export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartProps) {
   if (serie.length === 0) {
-    return <PanelEmpty message="Sin publicaciones en la ventana seleccionada." height={ALTO} />;
+    return (
+      <PanelEmpty
+        title="Sin publicaciones en la ventana"
+        hint="Amplía las fechas del ámbito para ver el ritmo."
+        height={ALTO}
+      />
+    );
   }
 
   const total = serie.reduce((suma, punto) => suma + punto.count, 0);
@@ -49,13 +55,13 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
             <XAxis
               dataKey="period"
               tickFormatter={(value: string) => formatDate(value)}
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 11 }}
               interval="preserveStartEnd"
               minTickGap={24}
             />
             <YAxis
               tickFormatter={(value: number) => formatNumber(value)}
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 11 }}
               width={52}
             />
             <Tooltip
@@ -64,14 +70,10 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
                 const punto = payload?.[0]?.payload as TrendPoint | undefined;
                 if (!punto) return null;
                 return (
-                  <div className="border-border bg-popover rounded-md border p-2 text-xs shadow">
+                  <div className="rounded-md border border-border bg-popover p-2 text-tf-meta shadow-md">
                     <p className="font-medium">{formatDate(punto.period)}</p>
-                    <p className="tf-tnum font-mono">
-                      {formatNumber(punto.count)} publicaciones
-                    </p>
-                    <p className="text-muted-foreground tf-tnum font-mono">
-                      {formatCompactCurrency(punto.importe)}
-                    </p>
+                    <p className="tf-tnum">{formatNumber(punto.count)} publicaciones</p>
+                    <p className="tf-tnum text-muted-foreground">{formatCompactCurrency(punto.importe)}</p>
                   </div>
                 );
               }}
@@ -92,11 +94,10 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
           </BarChart>
         </ResponsiveContainer>
       </ChartErrorBoundary>
-      <p className="text-muted-foreground mt-2 text-[10.5px] leading-[1.45]">
-        {formatNumber(total)} publicaciones {ventana}, en {serie.length} días con actividad,
-        agregadas en backend sobre el periodo completo.
+      <p className="mt-2 text-tf-micro text-muted-foreground">
+        {formatNumber(total)} publicaciones {ventana}, en {serie.length} días con actividad.
         {serieTruncada
-          ? " La serie llegó al techo de puntos del endpoint: hay días sin dibujar."
+          ? " El periodo es demasiado largo para dibujarlo entero: faltan días; acórtalo para verlos todos."
           : ""}
       </p>
     </>

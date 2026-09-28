@@ -51,5 +51,7 @@ export function useReportarDato(licitacionId: string) {
     onSuccess: (_resultado, body) => {
       registrarEvento("dato_reportado", { tipo: body.tipo });
     },
+    // El fallo lo pinta el formulario (`PanelError`): sin toast encima.
+    meta: { silent: true },
   });
 }

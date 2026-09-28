@@ -8,11 +8,25 @@
  *
  * No se ejercitan aquí los caminos que acaban en `window.location.href`: en
  * jsdom no hay navegación que comprobar. Esos los cubre `e2e/login.spec.ts`.
+ *
+ * La sesión se simula: la página pregunta a `useSession` si ya hay alguien
+ * dentro (F55) y, sin `SessionProvider`, el hook real lanza.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { query } = vi.hoisted(() => ({ query: { actual: "" } }));
+type UsuarioSimulado = {
+  user_id: string;
+  email: string;
+  display_name: null;
+  is_admin: boolean;
+  mfa_required?: boolean;
+};
+
+const { query, sesion } = vi.hoisted(() => ({
+  query: { actual: "" },
+  sesion: { actual: { user: null as UsuarioSimulado | null, isLoading: false } },
+}));
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(query.actual),
@@ -22,6 +36,22 @@ vi.mock("@/lib/analytics", () => ({
   registrarEvento: vi.fn(),
   primeraVez: vi.fn(),
 }));
+
+vi.mock("@/lib/auth", () => ({
+  useSession: () => ({
+    ...sesion.actual,
+    isAuthenticated: sesion.actual.user !== null,
+    isAdmin: false,
+    refresh: async () => {},
+  }),
+}));
+
+const USUARIO: UsuarioSimulado = {
+  user_id: "u-1",
+  email: "persona@example.test",
+  display_name: null,
+  is_admin: false,
+};
 
 import LoginPage from "@/app/login/page";
 
@@ -35,6 +65,7 @@ function respuestaError(status: number, detail: string): Response {
 
 beforeEach(() => {
   query.actual = "";
+  sesion.actual = { user: null, isLoading: false };
   window.history.replaceState({}, "", "/login");
 });
 
@@ -127,14 +158,15 @@ describe("acceso con contraseña", () => {
 });
 
 describe("lo que trae la URL", () => {
-  it("«?mfa=required» abre el gate del segundo factor en vez del formulario", () => {
+  it("«?mfa=required» abre el gate del segundo factor en vez del formulario", async () => {
     // El callback de OAuth vuelve así cuando la cuenta tiene TOTP: la sesión ya
     // existe pero está pendiente, y ofrecer el formulario de acceso aquí
     // mandaría al usuario a repetir un login que ya hizo.
     query.actual = "mfa=required";
     render(<LoginPage />);
 
-    expect(screen.getByLabelText("Código de verificación")).toBeInTheDocument();
+    // El gate llega en su propio trozo (React.lazy): se espera a que aparezca.
+    expect(await screen.findByLabelText("Código de verificación")).toBeInTheDocument();
     expect(screen.queryByLabelText(/correo electrónico/i)).toBeNull();
     expect(screen.getByRole("button", { name: /Verificar/ })).toBeInTheDocument();
   });
@@ -172,17 +204,17 @@ describe("gate del segundo factor", () => {
     query.actual = "mfa=required";
   });
 
-  it("no se puede verificar sin código", () => {
+  it("no se puede verificar sin código", async () => {
     render(<LoginPage />);
 
-    expect(screen.getByRole("button", { name: /Verificar/ })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: /Verificar/ })).toBeDisabled();
   });
 
   it("un código incorrecto se distingue de un bloqueo por intentos", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respuestaError(401, "invalid code")));
     render(<LoginPage />);
 
-    fireEvent.change(screen.getByLabelText("Código de verificación"), {
+    fireEvent.change(await screen.findByLabelText("Código de verificación"), {
       target: { value: "000000" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Verificar/ }));
@@ -196,7 +228,7 @@ describe("gate del segundo factor", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respuestaError(429, "rate limited")));
     render(<LoginPage />);
 
-    fireEvent.change(screen.getByLabelText("Código de verificación"), {
+    fireEvent.change(await screen.findByLabelText("Código de verificación"), {
       target: { value: "123456" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Verificar/ }));
@@ -204,5 +236,90 @@ describe("gate del segundo factor", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("Demasiados intentos fallidos"),
     );
+  });
+});
+
+describe("con la sesión ya abierta (F55)", () => {
+  it("ofrece seguir en vez de volver a pedir la contraseña", async () => {
+    sesion.actual = { user: USUARIO, isLoading: false };
+    render(<LoginPage />);
+
+    // La rama llega en su propio trozo (React.lazy): se espera a que aparezca.
+    expect(await screen.findByText(/Ya has entrado como/)).toHaveTextContent("persona@example.test");
+    expect(screen.getByRole("link", { name: "Ir a Resumen" })).toHaveAttribute("href", "/resumen");
+    expect(screen.getByRole("button", { name: "Entrar con otra cuenta" })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/correo electrónico/i)).toBeNull();
+  });
+
+  it("el botón lleva al destino del «?redirect=» saneado", async () => {
+    sesion.actual = { user: USUARIO, isLoading: false };
+    query.actual = "redirect=%2Fradar";
+    render(<LoginPage />);
+
+    expect(await screen.findByRole("link", { name: "Continuar" })).toHaveAttribute("href", "/radar");
+  });
+
+  it("mientras la sesión no ha respondido se enseña el formulario", () => {
+    sesion.actual = { user: null, isLoading: true };
+    render(<LoginPage />);
+
+    expect(screen.getByLabelText(/correo electrónico/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Ya has entrado como/)).toBeNull();
+  });
+
+  it("una cuenta con segundo factor sigue viendo el formulario", () => {
+    // `/auth/me` no dice si el segundo factor de esta sesión ya se verificó:
+    // ante la duda, el formulario, como antes.
+    sesion.actual = { user: { ...USUARIO, mfa_required: true }, isLoading: false };
+    render(<LoginPage />);
+
+    expect(screen.getByLabelText(/correo electrónico/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Ya has entrado como/)).toBeNull();
+  });
+
+  it("con una invitación en la URL manda el formulario: se canjea al entrar", () => {
+    sesion.actual = { user: USUARIO, isLoading: false };
+    query.actual = "invitacion=tok3n";
+    render(<LoginPage />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(/mismo correo/);
+    expect(screen.getByLabelText(/correo electrónico/i)).toBeInTheDocument();
+  });
+
+  it("con un error del callback manda el formulario, con su aviso", () => {
+    sesion.actual = { user: USUARIO, isLoading: false };
+    query.actual = "error=email_not_allowed";
+    render(<LoginPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Tu cuenta no tiene acceso a TenderFlow");
+    expect(screen.queryByText(/Ya has entrado como/)).toBeNull();
+  });
+});
+
+describe("la puerta", () => {
+  it("tiene un titular y el logo lleva a la portada", () => {
+    render(<LoginPage />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Entra en TenderFlow" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "TenderFlow — inicio" })).toHaveAttribute("href", "/");
+    // Destino del enlace de salto del layout raíz.
+    expect(document.querySelector("main#main-content")).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("la nota de invitación enlaza siempre al formulario de la portada", () => {
+    render(<LoginPage />);
+
+    expect(screen.getByRole("link", { name: "Solicita acceso para tu equipo" })).toHaveAttribute(
+      "href",
+      "/#solicitar-acceso",
+    );
+  });
+
+  it("con el alta cerrada el formulario no se anuncia como panel de pestañas", () => {
+    // Un `tabpanel` etiquetado por una pestaña que no existe era un error de ARIA.
+    render(<LoginPage />);
+
+    expect(screen.queryByRole("tabpanel")).toBeNull();
+    expect(document.querySelector("#auth-panel")).not.toBeNull();
   });
 });

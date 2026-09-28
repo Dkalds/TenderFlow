@@ -9,7 +9,7 @@
  * bloques: lo que ha publicado, los contratos que vencen con quién los tiene,
  * lo que el equipo tiene abierto con él y el análisis de cada órgano.
  *
- * Las cifras las calcula el backend y cada bloque declara su universo y su
+ * Las cifras las calcula la API y cada bloque declara su universo y su
  * ventana (ADR-014). La cabecera sigue la forma de la ficha de oportunidad:
  * identidad arriba, acciones a la derecha, cerrar vuelve a la lista.
  */
@@ -19,18 +19,19 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Pencil, Trash2, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { PanelError } from "@/components/console/panel";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PanelError, ROTULO_DATO } from "@/components/console/panel";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { useFichaCuenta } from "@/hooks/use-cuentas";
 import { usePuedeEscribir } from "@/hooks/use-organization";
+import { cn } from "@/lib/utils";
 
 import { EditarCuentaDialog } from "../_components/editar-cuenta-dialog";
 import { useBajaConDeshacer } from "../_hooks/use-baja-con-deshacer";
 import { AnalisisOrgano } from "./_components/analisis-organo";
 import { BloqueOportunidades, BloquePublicaciones, BloqueVencimientos } from "./_components/bloques";
+import { FichaCuentaEsqueleto } from "./_components/ficha-esqueleto";
 import { OrganosCuenta } from "./_components/organos-cuenta";
 
 function cuentaIdDe(parametro: string | undefined): number | null {
@@ -52,26 +53,20 @@ export default function FichaCuentaPage() {
   if (cuentaId == null) {
     return (
       <div className="grid h-full place-items-center p-10">
-        <PanelError title="Esa cuenta no existe" detail="El enlace no es de ninguna cuenta." />
+        <PanelError title="Esa cuenta no existe" message="El enlace no es de ninguna cuenta." />
       </div>
     );
   }
 
-  if (isPending) {
-    return (
-      <div className="flex h-full min-h-0 flex-col gap-3 p-4">
-        <Skeleton className="h-24 w-full rounded-xl" />
-        <Skeleton className="h-[360px] w-full rounded-xl" />
-      </div>
-    );
-  }
+  if (isPending) return <FichaCuentaEsqueleto />;
 
   if (error || !ficha) {
     return (
       <div className="grid h-full place-items-center p-10">
         <PanelError
           title="No se pudo abrir esta cuenta"
-          detail={error instanceof Error ? error.message : "No encontrada"}
+          error={error}
+          message={error ? undefined : "No existe o ya no está disponible."}
           onRetry={() => void refetch()}
         />
       </div>
@@ -83,7 +78,7 @@ export default function FichaCuentaPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex-none border-b border-border/60 bg-card/40 px-4 py-3.5">
+      <header className="flex-none border-b border-border/60 bg-card px-4 py-3.5">
         {/* `flex-wrap`: en una pantalla estrecha las acciones bajan de línea
             en vez de salirse por la derecha. */}
         <div className="flex flex-wrap items-start gap-3">
@@ -91,7 +86,7 @@ export default function FichaCuentaPage() {
             <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
               <Link
                 href="/cuentas"
-                className="font-mono text-tf-micro font-semibold tracking-wider text-muted-foreground uppercase hover:text-foreground"
+                className={cn(ROTULO_DATO, "transition-colors hover:text-foreground")}
               >
                 Cuentas
               </Link>
@@ -105,7 +100,7 @@ export default function FichaCuentaPage() {
                 />
               )}
             </div>
-            <h1 className="font-display max-w-[74ch] text-tf-title leading-[1.2] font-semibold tracking-[-0.015em] text-pretty">
+            <h1 className="font-display max-w-[74ch] text-tf-title font-semibold text-pretty">
               {cuenta.nombre}
             </h1>
             {cuenta.nota && (
@@ -140,9 +135,13 @@ export default function FichaCuentaPage() {
             <Link
               href="/cuentas"
               aria-label="Cerrar la ficha"
-              className="ml-2 grid h-8 w-8 flex-none place-items-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:text-foreground"
+              className={buttonVariants({
+                variant: "ghost",
+                size: "icon-sm",
+                className: "ml-2 flex-none text-muted-foreground",
+              })}
             >
-              <X className="h-4 w-4" aria-hidden="true" />
+              <X aria-hidden="true" />
             </Link>
           </div>
         </div>

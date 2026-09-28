@@ -1,27 +1,26 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { FileQuestion } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
+/**
+ * 404 dentro de la consola: un `notFound()` de una pantalla del dashboard (una
+ * oportunidad o una cuenta que ya no existe) o una dirección mal escrita con
+ * sesión abierta. El marco sigue en pie, así que basta con decir qué pasó y
+ * ofrecer una salida.
+ *
+ * `h2` y no `h1`: `DashboardShell` ya pinta el `h1` de la página. Sin tarjeta ni
+ * icono de interrogación: era el bloque de 404 por defecto de las plantillas,
+ * con «Página no encontrada» dentro de una `Card` centrada.
+ */
 export default function DashboardNotFound() {
   return (
-    <div className="flex items-center justify-center min-h-[50vh]">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileQuestion className="h-5 w-5" />
-            Página no encontrada
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            La página que buscas no existe o ha sido movida.
-          </p>
-          <Button asChild>
-            <Link href="/resumen">Ir al resumen</Link>
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+    <section className="mx-auto w-full max-w-2xl px-6 py-16">
+      <h2 className="font-display text-tf-title text-balance">Esta pantalla no existe</h2>
+      <p className="text-tf-body text-muted-foreground mt-2 max-w-[58ch]">
+        Puede que el enlace sea antiguo, que lo que abría se haya borrado o que la dirección esté mal escrita.
+      </p>
+      <Button asChild size="sm" className="mt-5">
+        <Link href="/resumen">Ir a Resumen</Link>
+      </Button>
+    </section>
   );
 }

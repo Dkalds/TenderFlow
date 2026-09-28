@@ -180,7 +180,7 @@ export function usePerfilScoring() {
       // pesos, las keywords y los CPV son la estrategia comercial de quien los
       // pone, no una dimensión de producto.
       registrarEvento("perfil_configurado", { primera_vez: primeraVez("perfil") });
-      toast.success("Perfil guardado. El scoring usará tus pesos personalizados.");
+      toast.success("Perfil guardado. La puntuación ya usa tus pesos.");
     },
     onError: () => toast.error("No se pudo guardar el perfil."),
   });
@@ -191,7 +191,7 @@ export function usePerfilScoring() {
       queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
       form.reset(VACIO);
       queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
-      toast.success("Perfil eliminado. El scoring vuelve a los valores globales.");
+      toast.success("Perfil eliminado. La puntuación vuelve a los pesos globales.");
     },
     onError: () => toast.error("No se pudo eliminar el perfil."),
   });

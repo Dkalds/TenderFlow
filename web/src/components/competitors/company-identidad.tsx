@@ -21,13 +21,14 @@
 import Link from "next/link";
 import { useQueries, type UseQueryResult } from "@tanstack/react-query";
 
-import { PanelError } from "@/components/console/panel";
+import { EnlaceIr, PanelError, SUPERFICIE_PANEL, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { empresasKeys } from "@/lib/query-keys";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 type EmpresaDetalle = Schemas["EmpresaDetail"];
 
@@ -40,6 +41,8 @@ export function CompanyIdentidad({ empresaIds }: { empresaIds: number[] }) {
       queryKey: empresasKeys.detail(empresaId),
       queryFn: () => fetchWithAuth<EmpresaDetalle>(`/api/v1/empresas/${empresaId}`),
       staleTime: 5 * 60 * 1000,
+      // Cada fallo se dice en su tarjeta (PanelError): sin toast además.
+      meta: META_ERROR_EN_LINEA,
     })),
   });
 
@@ -49,27 +52,29 @@ export function CompanyIdentidad({ empresaIds }: { empresaIds: number[] }) {
         Identidad en el maestro
       </h2>
       {empresaIds.length > 1 && (
-        <p className="text-muted-foreground max-w-3xl text-sm leading-6">
+        <p className="max-w-3xl text-tf-body text-muted-foreground">
           Esta ficha suma {formatNumber(empresaIds.length)} identidades del maestro. Competencia las cuenta como un solo
           competidor porque comparten NIF o nombre normalizado; el maestro las conserva por separado.
         </p>
       )}
       <div className="grid gap-4 xl:grid-cols-2">
         {consultas.map((consulta, indice) => (
-          <IdentidadTarjeta key={empresaIds[indice]} empresaId={empresaIds[indice]} consulta={consulta} />
+          <IdentidadTarjeta key={empresaIds[indice]} consulta={consulta} />
         ))}
       </div>
     </section>
   );
 }
 
-function IdentidadTarjeta({ empresaId, consulta }: { empresaId: number; consulta: UseQueryResult<EmpresaDetalle> }) {
-  if (consulta.isLoading) return <Skeleton className="h-44 w-full rounded-lg" />;
+function IdentidadTarjeta({ consulta }: { consulta: UseQueryResult<EmpresaDetalle> }) {
+  if (consulta.isLoading) return <Skeleton className="h-44 w-full rounded-xl" />;
   if (consulta.isError || !consulta.data) {
+    // La ruta de la petición va en el «Detalle técnico» plegado (la trae el
+    // error de la API), no en el texto visible.
     return (
       <PanelError
         title="No se pudo cargar esta identidad"
-        detail={`GET /api/v1/empresas/${empresaId}`}
+        error={consulta.error ?? undefined}
         onRetry={() => void consulta.refetch()}
       />
     );
@@ -89,18 +94,18 @@ function IdentidadTarjeta({ empresaId, consulta }: { empresaId: number; consulta
   const tituloId = `identidad-${empresa.empresa_id}`;
 
   return (
-    <section aria-labelledby={tituloId} className="bg-card space-y-4 rounded-lg border p-4">
+    <section aria-labelledby={tituloId} className={cn(SUPERFICIE_PANEL, "space-y-4 p-4")}>
       <div>
         <div className="flex flex-wrap items-center gap-2">
-          <h3 id={tituloId} className="font-semibold">
+          <h3 id={tituloId} className="text-tf-body font-semibold">
             {empresa.nombre_canonico}
           </h3>
           {empresa.es_ute ? <Badge variant="info">UTE</Badge> : null}
           {empresa.es_pyme ? <Badge variant="secondary">PYME</Badge> : null}
         </div>
-        <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+        <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-tf-body">
           <dt className="text-muted-foreground">NIF</dt>
-          <dd className="font-mono">{empresa.nif_canonico ?? "Sin NIF canónico"}</dd>
+          <dd className={cn(empresa.nif_canonico && "font-mono")}>{empresa.nif_canonico ?? "Sin NIF canónico"}</dd>
           {otrosNif.length > 0 && (
             <>
               <dt className="text-muted-foreground">Otros NIF en fuente</dt>
@@ -120,20 +125,20 @@ function IdentidadTarjeta({ empresaId, consulta }: { empresaId: number; consulta
 
       {empresa.aliases.length > 0 && (
         <div>
-          <h4 className="text-muted-foreground mb-2 text-xs font-semibold tracking-[0.12em] uppercase">
-            Alias vistos en fuente ({formatNumber(empresa.aliases.length)})
-          </h4>
+          <SectionTitle hint={formatNumber(empresa.aliases.length)} className="mb-2">
+            Alias vistos en fuente
+          </SectionTitle>
           <ul className="flex flex-wrap gap-1.5">
             {empresa.aliases.slice(0, ALIAS_VISIBLES).map((alias, indice) => (
               <li
                 key={`${alias.alias_normalizado}-${indice}`}
-                className="bg-muted text-muted-foreground rounded px-2 py-0.5 font-mono text-xs"
+                className="rounded-md bg-muted px-2 py-0.5 text-tf-meta text-muted-foreground"
               >
                 {alias.alias_normalizado}
               </li>
             ))}
             {aliasOcultos > 0 && (
-              <li className="text-muted-foreground self-center text-xs">+{formatNumber(aliasOcultos)} más</li>
+              <li className="self-center text-tf-meta text-muted-foreground">+{formatNumber(aliasOcultos)} más</li>
             )}
           </ul>
         </div>
@@ -142,12 +147,9 @@ function IdentidadTarjeta({ empresaId, consulta }: { empresaId: number; consulta
       <Relacionadas titulo="Miembros de la UTE" empresas={empresa.ute_miembros} />
       <Relacionadas titulo="Participa en UTEs" empresas={empresa.participa_en_utes} />
 
-      <Link
-        href={`/empresas?q=${encodeURIComponent(empresa.nif_canonico ?? empresa.nombre_canonico)}`}
-        className="text-primary inline-flex text-sm font-medium hover:underline"
-      >
+      <EnlaceIr href={`/empresas?q=${encodeURIComponent(empresa.nif_canonico ?? empresa.nombre_canonico)}`}>
         Ver en el maestro
-      </Link>
+      </EnlaceIr>
     </section>
   );
 }
@@ -157,11 +159,14 @@ function Relacionadas({ titulo, empresas }: { titulo: string; empresas: Schemas[
   if (!empresas.length) return null;
   return (
     <div>
-      <h4 className="text-muted-foreground mb-2 text-xs font-semibold tracking-[0.12em] uppercase">{titulo}</h4>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
+      <SectionTitle className="mb-2">{titulo}</SectionTitle>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-tf-body">
         {empresas.map((relacionada) => (
           <li key={relacionada.empresa_id}>
-            <Link href={`/competencia/empresa/${relacionada.empresa_id}`} className="text-primary hover:underline">
+            <Link
+              href={`/competencia/empresa/${relacionada.empresa_id}`}
+              className="text-primary transition-colors hover:text-foreground"
+            >
               {relacionada.nombre_canonico}
             </Link>
           </li>

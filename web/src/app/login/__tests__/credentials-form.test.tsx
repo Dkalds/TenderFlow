@@ -1,5 +1,5 @@
 /**
- * Validación por esquema del formulario de cuenta local (S7.2).
+ * Validación por esquema del formulario de correo y contraseña (S7.2).
  *
  * Lo que se fija: un envío inválido no llega a la API, cada error sale debajo
  * de su campo y el campo lo enlaza por `aria-describedby`, y el alta aplica la
@@ -109,7 +109,8 @@ describe("CredentialsForm — alta", () => {
     expect(await screen.findByText("Mínimo 10 caracteres.")).toHaveAttribute("id", "password-error");
     expect(document.querySelector("#password")).toHaveAttribute(
       "aria-describedby",
-      "password-error password-hint",
+      // El error de campo primero y la pista después (`Field`: `<id>-ayuda`).
+      "password-error password-ayuda",
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });

@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import { PanelError } from "@/components/console/panel";
+import { PanelError, PanelTitle } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { celdaSalud, coberturaSinMedir } from "@/lib/cobertura";
 import type { CeldaSalud, CoberturaMetrica } from "@/lib/cobertura";
 import type { ResumenHoyResult } from "@/lib/api-types";
+import { useFiltrosIgnorados } from "./alcance";
 import { compararMeses, mesesCerrados } from "./contexto/comparativa-mensual";
 import { MercadoStrip } from "./contexto/mercado-strip";
 import { SaludStrip, type OverviewConCobertura } from "./contexto/salud-strip";
@@ -40,10 +42,13 @@ export type { ComparativaMensual, MesAgregado } from "./contexto/comparativa-men
 
 export function ContextoStrip() {
   const scopedHref = useScopedHref();
+  const ignorados = useFiltrosIgnorados();
+  // El fallo se pinta aquí (y en la composición, que lee la misma consulta):
+  // sin toast encima. Mismas opciones en `composicion-panel.tsx`.
   const overview = useFilteredQuery<OverviewConCobertura>(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
-    { staleTime: 5 * 60 * 1000 },
+    { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
 
   // «Activas» bajó aquí desde la banda de arriba: es la foto del ámbito, no
@@ -53,14 +58,15 @@ export function ContextoStrip() {
   // Viene de otro endpoint que el resto de la tira, y eso no es gratis:
   // `/resumen/hoy` sólo aplica cuatro de los siete filtros del ámbito
   // (`alcance.ts`), así que con una búsqueda o un chip de estado activos esta
-  // celda mide un conjunto más ancho que sus vecinas. Se declara en el rótulo
-  // de la sección y no en el pie de la celda: a un séptimo del ancho el pie se
-  // trunca, y un aviso truncado no avisa. Misma clave y mismas opciones que en
+  // celda mide un conjunto más ancho que sus vecinas. Se declara en un aviso
+  // encima de la tira, y solo cuando pasa (con esos filtros puestos), no en el
+  // pie de la celda: a un séptimo del ancho el pie se trunca, y un aviso
+  // truncado no avisa. Misma clave y mismas opciones que en
   // `atencion-cards.tsx`: React Query sirve las dos desde una sola petición.
   const hoy = useFilteredQuery<ResumenHoyResult>(
     ["analytics", "resumen", "hoy"],
     "/api/v1/analytics/resumen/hoy",
-    { staleTime: 2 * 60 * 1000 },
+    { staleTime: 2 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     undefined,
     true,
   );
@@ -84,12 +90,10 @@ export function ContextoStrip() {
   if (overview.error) {
     return (
       <section aria-labelledby="resumen-contexto" className="mb-5.5">
-        <h2 id="resumen-contexto" className="mb-2.5 text-xs font-semibold">
-          Contexto de mercado
-        </h2>
+        <PanelTitle as="h2" id="resumen-contexto" title="Contexto de mercado" className="mb-2.5" />
         <PanelError
           title="No se pudo cargar el contexto"
-          detail={(overview.error as Error).message}
+          error={overview.error}
           onRetry={() => void overview.refetch()}
         />
       </section>
@@ -106,6 +110,7 @@ export function ContextoStrip() {
         activas={hoy.data?.total_activas}
         activasLoading={hoy.isLoading}
         activasHref={scopedHref("/detalle?solo_abiertas=true")}
+        activasIgnoran={ignorados}
       />
       <SaludStrip data={data} loading={loading} />
     </>

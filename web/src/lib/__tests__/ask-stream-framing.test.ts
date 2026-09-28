@@ -193,13 +193,16 @@ describe("parámetros de la petición", () => {
   });
 
   it("los extras de los filtros globales viajan en el cuerpo", async () => {
+    // La forma que manda el Investigador: listas y rango, como a la búsqueda.
+    const filtros = {
+      ccaa: ["Galicia", "Madrid"],
+      tecnologia: ["SAP"],
+      fecha_desde: "2026-01-01",
+      fecha_hasta: "2026-06-30",
+    };
     const f = stubFetch(sseChunks(["data: [DONE]\n"]));
-    await streamAsk({
-      question: "q",
-      extras: { ccaa: "Madrid", tecnologia: "SAP" },
-      onToken: () => {},
-    });
-    expect(bodyOf(f)).toMatchObject({ ccaa: "Madrid", tecnologia: "SAP" });
+    await streamAsk({ question: "q", extras: filtros, onToken: () => {} });
+    expect(bodyOf(f)).toMatchObject(filtros);
   });
 
   it("un modelo vacío no viaja como cadena vacía", async () => {

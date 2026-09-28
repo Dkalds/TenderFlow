@@ -6,6 +6,7 @@
  * no vive en el `page.tsx` de la ruta.
  */
 
+import { PanelError } from "@/components/console/panel";
 import { ExportPopover } from "@/components/export-popover";
 
 import { useTecnologiasView } from "../_hooks/use-tecnologias-view";
@@ -34,6 +35,8 @@ export default function TecnologiasView() {
     geoTechs,
     detalle,
     detalleLoading,
+    detalleError,
+    refetchDetalle,
     scoredItems,
     filter,
     setFilter,
@@ -43,29 +46,23 @@ export default function TecnologiasView() {
     setTrendMetric,
     isLoading,
     error,
+    refetch,
   } = useTecnologiasView();
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">Error: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudieron cargar las tecnologías" error={error} onRetry={refetch} />;
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="sr-only">Tecnologías</h1>
-          <p className="text-muted-foreground">
-            Distribución, evolución y cruces por tecnología detectada.
+          <p className="text-tf-meta text-muted-foreground">
+            Qué tecnologías se licitan, cómo evolucionan y dónde.
           </p>
         </div>
-        <ExportPopover
-          endpoint="/api/v1/exports/download"
-          extraParams={{ section: "tecnologias" }}
-        />
+        <ExportPopover extraParams={{ section: "tecnologias" }} label="Exportar tecnologías" />
       </div>
 
       <TecnologiasKpis data={data} isLoading={isLoading} />
@@ -97,6 +94,8 @@ export default function TecnologiasView() {
         onSelectTech={setSelectedTech}
         detalle={detalle}
         isLoading={detalleLoading}
+        error={detalleError}
+        onRetry={refetchDetalle}
       />
 
       <TecnologiasTabla

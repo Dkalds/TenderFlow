@@ -19,27 +19,60 @@ utilities `ease-*`, sobrescribiendo las curvas débiles por defecto:
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);      /* clase: ease-out */
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);  /* clase: ease-in-out */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* clase: ease-drawer */
+  --default-transition-duration: 150ms;               /* cualquier transition-* sin duration-* */
+  --default-transition-timing-function: var(--ease-out); /* ...y sin ease-* */
 }
 ```
+
+Las dos últimas líneas son el valor por defecto de cualquier `transition-*`
+que no fije duración ni curva. Hasta el 2026-09-26 no existían, y la mitad de
+los `transition-colors` del árbol (los que van sin `duration-*` ni `ease-*`)
+usaban la curva estándar de Tailwind, justo la débil que este bloque sustituye.
 
 **Nunca** `ease-in` en UI — arranca lento, retrasa el instante que el usuario
 está mirando. `ease-in` solo existe como default débil de Tailwind; no se usa
 en ningún componente del repo.
 
+**`scale-*` y `translate-*` no son `transform` en Tailwind v4.** Escriben las
+propiedades CSS `scale` y `translate`, así que una lista
+`transition-[transform,…]` no las anima y la pulsación salta sin transición.
+En `transition-[…]` se nombran (`transition-[scale,background-color]`,
+`transition-[translate,color]`) o se usa `transition-transform`, que ya las
+incluye. Había 23; hoy una lista con `transform` no pasa `npm run lint`
+(`restriccionesDeAspecto` en `web/eslint.config.mjs`).
+
 ## Duración por tipo de elemento
 
 | Elemento | Duración | Dónde |
 | --- | --- | --- |
-| Press feedback (`tf-pressable`, `Button` `active:`) | 160ms | `globals.css` |
+| Hover y cambio de estado (color, borde, fondo) | 150ms, curva de la casa (por defecto) | `@theme` de `globals.css` |
+| Filas de tabla y de lista (hover) | 110ms, solo color | `ui/table.tsx` y filas propias |
+| Fila activa del Radar al moverse con J/K | instantánea: la transición de color va solo en `hover:` | `radar-fila.tsx` |
+| Pulsación de controles (`tf-pressable`, `Button` `active:`) | 150ms, `scale: 0.97` | `globals.css`, `ui/button.tsx` |
+| Pulsación de superficies grandes (filas enlazadas, celdas de la tira de KPIs, tarjetas enlace) | tinte instantáneo: `active:bg-primary/10 active:duration-0`, sin escala | `PULSABLE_SOBRE_TARJETA` de `console/panel.tsx` y filas propias |
 | Tooltips | 150ms enter (skip en repetición) | `ui/tooltip.tsx` |
 | Dropdown / Select / Popover | 150ms | `@utility animate-in/out` |
 | Sheet / Dialog | 300ms enter / 200ms exit (asimétrico) | `anim-duration-300`/`-200` |
-| Login (rare/first-load) | 200ms | `app/login/page.tsx` |
+| Puerta (login, restablecer, 404): una sola entrada, la del panel | 200ms | `app/login/page.tsx` |
+| Esqueleto de carga (`Skeleton`, `.tf-shimmer`) | barrido de 1,2 s, `linear` | `globals.css` |
 
-Regla: **animaciones de UI se quedan bajo 300ms**. El Sheet/Dialog es la
-única excepción reconocida (200–500ms es el presupuesto correcto para
-modales/drawers) y aun así su *salida* es más rápida que su *entrada* — el
-sistema responde rápido, el usuario decide despacio.
+Regla: **animaciones de UI se quedan bajo 300ms** (bajo 200ms en la UI
+operativa de la consola). El Sheet/Dialog es la única excepción reconocida
+(200–500ms es el presupuesto correcto para modales/drawers) y aun así su
+*salida* es más rápida que su *entrada* — el sistema responde rápido, el
+usuario decide despacio.
+
+`tf-pressable` es una clase sin capa, no una `@utility`: casi siempre va junto
+a `transition-colors`, y como utilidades las dos escribían `transition-property`
+y la de colores ganaba, así que la escala saltaba. Ahora declara ella misma los
+colores y la escala, y toma la duración y la curva de `duration-*`/`ease-*` si
+el elemento las trae. Las tarjetas enlace grandes de la portada usan 0,99 en
+vez de 0,97: a ese tamaño, 0,97 se ve como un salto.
+
+Un barrido continuo (el del esqueleto, una barra de progreso) va en `linear`:
+la curva por defecto, `ease`, lo hace acelerar y frenar en cada pasada. Es el
+único lenguaje de carga: nada de `animate-pulse` suelto ni un icono que late al
+lado de las líneas de esqueleto.
 
 ## Primitivos de enter/exit (`globals.css`)
 
@@ -52,24 +85,42 @@ así que un dropdown y un sheet *sienten* la misma familia de movimiento
 aunque la duración/curva difiera.
 
 `tf-stagger` añade delays en cascada (60ms, tope 6 hijos) a los hijos
-directos de un contenedor — usado por `components/motion.tsx` (`Stagger`) y
-por el formulario de `app/login/page.tsx`. Es CSS puro (no JS): un contenedor
-con la clase, hijos con `animate-in fade-in-0 slide-in-from-bottom-2`.
+directos de un contenedor. Es CSS puro (no JS): un contenedor con la clase,
+hijos con `animate-in fade-in-0 slide-in-from-bottom-2`. Solo para lo que se
+ve una vez por visita: el hero de la portada
+(`(publico)/_components/landing-hero.tsx`). **No se usa en el dashboard**:
+escalonar KPIs, tarjetas o filas que se consultan a diario anima justo el dato
+que se vino a leer. El componente `Stagger` (`components/motion.tsx`) se retiró
+el 2026-09-26 con su único consumidor, la tira de KPIs de Competencia.
 
 ## Qué NO animar (y por qué ya no hay `motion`/Framer Motion en el bundle)
 
 | Regla | Aplicación en el repo |
 | --- | --- |
-| Nunca animar acciones de teclado (100+/día) | `command-palette.tsx` — sin animación, deliberado |
-| Nunca animar navegación (100+/día) | Sin fade de ruta entre páginas; NProgress es el único indicador |
-| Nunca animar datos que el usuario vino a leer | `KpiCard` renderiza el valor directo, sin count-up |
-| CSS gana a JS bajo carga | `motion`/Framer Motion salió del bundle: `MotionProvider`, `FadeIn`, `PageTransition` y `AnimatedNumber` se eliminaron; `Stagger` se reescribió en CSS puro |
+| Nunca animar acciones de teclado (100+/día) | `command-palette.tsx` — sin animación, deliberado. Y J/K en el Radar: la fila activa cambia de color al instante y sus acciones no vuelven a entrar deslizándose en cada tecla, como hacían hasta el 2026-09-26 |
+| Nunca animar navegación (100+/día) | Sin fade de ruta entre páginas y sin barra de progreso: la navegación la señalan los `loading.tsx` de cada segmento, que pintan al instante. NProgress se retiró el 2026-09-26: solo se encendía con clics en `<a>`, así que las navegaciones por `router.push` (paleta ⌘K, atajos G+X, Agenda, Renovaciones) no daban ninguna señal, y su «peg» luminoso era la firma del ejemplo `with-nprogress` |
+| Nunca animar datos que el usuario vino a leer | `StatCell` pinta el valor directo, sin count-up ni entrada escalonada. Las barras de puntuación y de plazo, igual: el ancho se pinta sin transición. Con los 420 ms que llevaban no llegaban a verse en cuatro sitios, y en la ficha de /detalle interpolaban la puntuación de una licitación hasta la de la siguiente |
+| Cambio de pestaña | `PanelTabs` y `TabsContent` cambian el contenido al instante: se cambian con flechas (teclado) y muchas veces por sesión |
+| Hover en la consola: solo color u opacidad | Filas, celdas, tarjetas y enlaces «ir a» (`EnlaceIr`) no se desplazan al pasar el ratón: lo que se ve decenas de veces al día no se mueve. Sin `translate` de hover ni `animate-ping`/pulsos infinitos decorativos (`animate-ping` y `animate-bounce` no pasan el lint). El único parpadeo que queda es el cursor mientras se emite una respuesta del chat, `motion-safe` y `aria-hidden` |
+| Nada de fondos animados a pantalla completa | El login tuvo una red de partículas en canvas (un bucle `requestAnimationFrame` perpetuo) sobre una retícula con máscara; se retiró con la retícula (`.tf-hero-grid`) el 2026-09-26 (apple-design §14; WCAG 2.2.2) |
+| CSS gana a JS bajo carga | `motion`/Framer Motion salió del bundle: `MotionProvider`, `FadeIn`, `PageTransition` y `AnimatedNumber` se eliminaron; `Stagger` se reescribió en CSS puro y después se retiró |
 
 `motion` como dependencia solo se justifica para springs/gestos reales
 (drag-to-dismiss, interacciones interrumpibles). Si algún componente futuro
 lo necesita genuinamente, `pick-ui-library` sigue recomendando `motion`
 (Framer Motion) para ese caso — no hay que reintroducirla para timers o
 transiciones predeterminadas.
+
+## Toasts
+
+`components/toaster.tsx` envuelve Sonner **sin `richColors`**: la caja es una
+capa flotante de la consola (`--card`, borde, sombra md, la sans de la app) y
+el tipo lo dicen la forma y el color del icono de contorno. Las variables de
+Sonner (`--normal-bg`, `--normal-border`, `--normal-text`) se redefinen desde
+los tokens en `globals.css`, con `html` delante del selector: la hoja de Sonner
+se inyecta sin capa en tiempo de ejecución, así que ni sus valores por defecto
+ni las clases de `toastOptions.classNames` (utilidades con capa) valen para
+esto. El movimiento es el de Sonner, que ya respeta reduced-motion.
 
 ## Accesibilidad
 
@@ -79,8 +130,10 @@ transiciones predeterminadas.
   reescribiendo las mismas custom properties que consumen los keyframes, así
   que cada overlay degrada a un fade puro en vez de teleportar.
 - `prefers-reduced-transparency: reduce` y `prefers-contrast: more` —
-  `.tf-glass`, `.tf-glass-strong`, `.tf-sidebar-surface` caen a fondo sólido
-  (mismo fallback que el `@supports not (backdrop-filter)` existente).
+  `.tf-glass` y `.tf-glass-strong` caen a fondo sólido (mismo fallback que el
+  `@supports not (backdrop-filter)` existente). El vidrio solo se usa donde de
+  verdad pasa contenido por debajo: la cabecera pública sticky y las capas
+  flotantes no modales; un modal va en `bg-popover` sólido.
 - `hover:` está redefinido globalmente detrás de
   `@media (hover: hover) and (pointer: fine)` — el estado hover nunca se
   activa por un tap en táctil.
@@ -120,7 +173,8 @@ transición, tal como pide la skill).
 Cualquier componente que use `<Tooltip>` necesita un ancestro
 `TooltipProvider` — si un test renderiza el componente de forma aislada
 (fuera del árbol de `Providers`), hay que envolverlo explícitamente (ver
-`global-filter-bar.test.tsx`, `top-nav.test.tsx`, `kpi-card.test.tsx`).
+`empresas/__tests__/maestro-list.test.tsx` o
+`mercado/_components/__tests__/renovaciones-view.test.tsx`).
 
 **Migración de `title=` nativos**: cerrada el 2026-09-18 (techo 0 en
 `scripts/check_title_attrs.py`, `deudaTitleNativo` vacía). Dos herramientas:
@@ -139,7 +193,8 @@ Cualquier componente que use `<Tooltip>` necesita un ancestro
 
 `components/ui/table.tsx` sigue siendo el primitivo para tablas cortas.
 Para listas largas (renovaciones, hasta 1000 filas), usar `TableVirtuoso` de
-`react-virtuoso` (ver `app/(dashboard)/renovaciones/page.tsx`): compone con
+`react-virtuoso` (ver
+`app/(dashboard)/mercado/_components/renovaciones/renovaciones-lista.tsx`): compone con
 los mismos `TableHead`/`TableBody`/`TableCell`/`TableRow` de
 `ui/table.tsx` vía el prop `components`, pero **sin** el `<div
 overflow-auto>` que envuelve `Table` normalmente — Virtuoso es dueño del

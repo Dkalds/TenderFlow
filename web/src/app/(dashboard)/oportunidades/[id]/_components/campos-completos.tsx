@@ -36,7 +36,7 @@ export function CamposCompletos({
       id={ANCLA_CAMPOS}
       tabIndex={-1}
       aria-label="Editar todos los campos"
-      className="border-border/60 bg-card/70 rounded-xl border outline-none"
+      className="border-border/60 bg-card rounded-xl border outline-none"
     >
       <button
         type="button"
@@ -49,7 +49,8 @@ export function CamposCompletos({
         <ChevronRight
           aria-hidden="true"
           className={cn(
-            "text-muted-foreground h-3.5 w-3.5 flex-none transition-transform duration-140 ease-out",
+            // `rotate-90` escribe `rotate`, no `transform`: la transición nombra esa.
+            "text-muted-foreground h-3.5 w-3.5 flex-none transition-[rotate]",
             abierto && "rotate-90",
           )}
         />

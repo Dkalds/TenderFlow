@@ -20,21 +20,18 @@
  * pasa de 800 líneas y está en el roadmap de descomposición del UX_AUDIT.
  */
 
-import { Inbox } from "lucide-react";
+import { Panel, PanelEmpty, PanelError, PanelTitle, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSolicitudesAcceso } from "../_hooks/use-solicitudes-acceso";
 import type { OpcionesSolicitudesAcceso } from "../_hooks/use-solicitudes-acceso";
 import { AccesosDinamicos } from "./solicitudes-acceso/accesos-dinamicos";
 import { SolicitudItem } from "./solicitudes-acceso/solicitud-item";
+
+const VISTAS = [
+  { value: "pendiente", label: "Pendientes" },
+  { value: "historico", label: "Todas" },
+] as const;
 
 /** Las opciones son las del hook; la app no pasa ninguna. */
 export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
@@ -44,95 +41,98 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
     solicitudes,
     isLoading,
     error,
+    reintentar,
     pendientes,
     limite,
     truncada,
     pendientesTruncado,
     grants,
     grantsLoading,
+    grantsError,
+    reintentarGrants,
     cambiarEstado,
     revocar,
   } = useSolicitudesAcceso(opciones);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Inbox className="h-4 w-4" aria-hidden="true" />
-          Solicitudes de acceso
-          {pendientes !== undefined && pendientes > 0 && (
-            <Badge variant="secondary">
-              {pendientes}
-              {pendientesTruncado ? "+" : ""} pendientes
-            </Badge>
-          )}
-        </CardTitle>
-        <CardDescription>
-          Peticiones enviadas desde la web pública. «Conceder email y avisar» activa el acceso
-          antes de enviar el correo. Conceder un dominio abre el acceso a todas sus cuentas y
-          debe reservarse para clientes aprobados.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {/* El conmutador, y no un filtro sobre lo ya descargado: cada vista es
-            su propia consulta al servidor, que es el único sitio donde el
-            recorte se puede aplicar sin perder filas por el camino. */}
-        <div
-          className="mb-3 flex items-center gap-1.5"
-          role="group"
-          aria-label="Qué solicitudes se listan"
-        >
-          <Button
-            size="sm"
-            variant={vista === "pendiente" ? "secondary" : "ghost"}
-            aria-pressed={vista === "pendiente"}
-            onClick={() => setVista("pendiente")}
-          >
-            Pendientes
-          </Button>
-          <Button
-            size="sm"
-            variant={vista === "historico" ? "secondary" : "ghost"}
-            aria-pressed={vista === "historico"}
-            onClick={() => setVista("historico")}
-          >
-            Todas
-          </Button>
-        </div>
-        {isLoading && <Skeleton className="h-24 w-full" />}
-        {error && <p className="text-destructive text-sm">{(error as Error).message}</p>}
-        {!isLoading && !error && solicitudes.length === 0 && (
-          <p className="text-muted-foreground text-sm">
-            {vista === "pendiente"
-              ? "No queda ninguna solicitud pendiente. En «Todas» está el histórico."
-              : "Todavía no ha llegado ninguna solicitud."}
-          </p>
-        )}
-        {!isLoading && !error && truncada && (
-          <p className="text-muted-foreground mb-3 text-xs">
-            Se muestran las {limite} más recientes: hay más de las que caben en una respuesta. Usa
-            «Pendientes» para no perder ninguna sin atender.
-          </p>
-        )}
-        {!isLoading && !error && solicitudes.length > 0 && (
-          <ul className="divide-border/60 divide-y">
-            {solicitudes.map((solicitud) => (
-              <SolicitudItem
-                key={solicitud.id}
-                solicitud={solicitud}
-                ocupado={cambiarEstado.isPending}
-                onCambiarEstado={cambiarEstado.mutate}
-              />
-            ))}
-          </ul>
-        )}
-        <AccesosDinamicos
-          grants={grants}
-          isLoading={grantsLoading}
-          revocando={revocar.isPending}
-          onRevocar={revocar.mutate}
+    <Panel>
+      <PanelTitle
+        title={
+          <span className="inline-flex items-center gap-2">
+            Solicitudes de acceso
+            {pendientes !== undefined && pendientes > 0 && (
+              <Badge variant="warning" size="sm">
+                {pendientes}
+                {pendientesTruncado ? "+" : ""} pendientes
+              </Badge>
+            )}
+          </span>
+        }
+      />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Peticiones enviadas desde la web pública. «Conceder email y avisar» activa el acceso antes de enviar el
+        correo. Conceder un dominio abre el acceso a todas sus cuentas: resérvalo para clientes aprobados.
+      </p>
+      {/* El conmutador, y no un filtro sobre lo ya descargado: cada vista es
+          su propia consulta al servidor, que es el único sitio donde el
+          recorte se puede aplicar sin perder filas por el camino. */}
+      <Segmented
+        aria-label="Qué solicitudes se listan"
+        value={vista}
+        options={VISTAS}
+        onChange={setVista}
+        className="mb-3"
+      />
+      {isLoading && <Skeleton className="h-24 w-full" />}
+      {error ? (
+        <PanelError
+          variant="inline"
+          title="No se pudieron cargar las solicitudes"
+          error={error}
+          onRetry={reintentar}
         />
-      </CardContent>
-    </Card>
+      ) : null}
+      {!isLoading && !error && solicitudes.length === 0 && (
+        <PanelEmpty
+          size="sm"
+          title={
+            vista === "pendiente"
+              ? "No queda ninguna solicitud pendiente"
+              : "Todavía no ha llegado ninguna solicitud"
+          }
+          hint={
+            vista === "pendiente"
+              ? "En «Todas» está el histórico."
+              : "Aparecerán aquí las que se envíen desde la web pública."
+          }
+        />
+      )}
+      {!isLoading && !error && truncada && (
+        <p className="text-muted-foreground mb-3 text-tf-meta">
+          Se muestran las {limite} más recientes: hay más de las que caben en una respuesta. Usa «Pendientes»
+          para no perder ninguna sin atender.
+        </p>
+      )}
+      {!isLoading && !error && solicitudes.length > 0 && (
+        <ul className="divide-border/60 divide-y">
+          {solicitudes.map((solicitud) => (
+            <SolicitudItem
+              key={solicitud.id}
+              solicitud={solicitud}
+              ocupado={cambiarEstado.isPending}
+              onCambiarEstado={cambiarEstado.mutate}
+            />
+          ))}
+        </ul>
+      )}
+      <AccesosDinamicos
+        grants={grants}
+        isLoading={grantsLoading}
+        error={grantsError}
+        onRetry={reintentarGrants}
+        revocando={revocar.isPending}
+        onRevocar={revocar.mutate}
+      />
+    </Panel>
   );
 }

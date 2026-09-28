@@ -15,7 +15,8 @@
 
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FlaskConical, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
+import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -97,22 +98,21 @@ export function EditRuleSheet({
         <SheetHeader>
           <SheetTitle>Editar regla</SheetTitle>
           <SheetDescription>
-            Los cambios se aplican al guardar. Usa &quot;Probar regla&quot; para ver
-            cuántas licitaciones coinciden antes de guardar.
+            Los cambios se aplican al guardar. Usa «Probar regla» para ver cuántas licitaciones
+            coinciden antes de guardar.
           </SheetDescription>
         </SheetHeader>
         {rule && (
           <div className="mt-6 space-y-4">
-            <div className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              <Mail className="h-4 w-4 shrink-0" />
+            <Aviso tone="info" icon={Mail} role="note">
               {rule.email ? (
-                <span>
+                <>
                   Entrega por email a <span className="font-medium">{rule.email}</span>
-                </span>
+                </>
               ) : (
-                <span>Sin email de entrega — solo notificaciones in-app.</span>
+                "Sin email de entrega: solo notificaciones en TenderFlow."
               )}
-            </div>
+            </Aviso>
 
             <RuleFormFields
               value={form}
@@ -127,23 +127,19 @@ export function EditRuleSheet({
               <Button
                 type="button"
                 variant="outline"
+                size="sm"
                 onClick={probar}
                 disabled={!tieneCriterio(form) || previewMut.isPending}
               >
-                <FlaskConical className="mr-2 h-4 w-4" />
                 Probar regla
               </Button>
-              {previewMut.isPending && (
-                <span className="text-sm text-muted-foreground">Calculando…</span>
-              )}
+              {previewMut.isPending && <span className="text-tf-meta text-muted-foreground">Calculando…</span>}
               {previewMut.isError && (
-                <span className="text-sm text-destructive">
-                  Error al probar la regla.
-                </span>
+                <span className="text-tf-meta text-destructive">No se pudo probar la regla.</span>
               )}
             </div>
             {/* F5.5 — el conteo de hoy y la serie de las últimas semanas, con
-                el aviso de ruido que decide el servidor. */}
+                el aviso de ruido que decide la API. */}
             {previewMut.isSuccess && <VistaPreviaRuido preview={previewMut.data} />}
 
             <div className="flex justify-end gap-2 pt-2">

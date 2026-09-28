@@ -6,7 +6,7 @@
  * la vista global no, así que sugerirle lo mismo a los dos sería mentirle a uno.
  */
 
-import { EmptyState } from "@/components/ui/empty-state";
+import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { WebhookAmpliado } from "../../_hooks/use-webhooks-ambito";
 import { WebhookRow } from "./webhook-row";
@@ -15,28 +15,26 @@ export function Listado({
   webhooks,
   isPending,
   error,
+  onRetry,
   editable,
   vacio,
 }: {
   webhooks: WebhookAmpliado[] | undefined;
   isPending: boolean;
   error: unknown;
+  onRetry?: () => void;
   editable: boolean;
   vacio: string;
 }) {
   return (
     <>
       {error != null && (
-        <div role="alert" className="text-destructive text-sm">
-          No se pudieron cargar los webhooks.
-        </div>
+        <PanelError title="No se pudieron cargar los webhooks" error={error} onRetry={onRetry} />
       )}
 
-      {isPending && <Skeleton className="h-24 w-full" />}
+      {isPending && <Skeleton className="h-24 w-full rounded-xl" />}
 
-      {!isPending && error == null && !webhooks?.length && (
-        <EmptyState title="Sin webhooks" hint={vacio} />
-      )}
+      {!isPending && error == null && !webhooks?.length && <PanelEmpty title="Sin webhooks" hint={vacio} />}
 
       <div className="space-y-3">
         {webhooks?.map((webhook) => (

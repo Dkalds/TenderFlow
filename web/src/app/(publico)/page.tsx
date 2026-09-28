@@ -52,9 +52,11 @@ import { CierreLanding } from "./_components/landing-cierre";
  * ## Qué queda en este fichero
  *
  * El orden de los bloques, los metadatos y el JSON-LD. Cada bloque vive en
- * `_components/landing-*.tsx` con el porqué de su composición al lado; la piel
- * que comparten (los dos CTA, el kicker, la entrada del hero) está en
- * `_components/landing-piel.ts`, que es lo que impide que diverjan.
+ * `_components/landing-*.tsx` con el porqué de su composición al lado. La piel
+ * que comparten con el resto de la superficie pública (los CTA, el rótulo de
+ * sección, el titular de página) está en `_components/piel-publica.ts`, y la
+ * que es solo de la portada (la entrada del hero, las filas de «Explorar») en
+ * `_components/landing-piel.ts`: es lo que impide que diverjan.
  *
  * `title.absolute` evita la plantilla `%s | TenderFlow` que declara el layout
  * raíz: en la portada duplicaría la marca ("TenderFlow … | TenderFlow") y se

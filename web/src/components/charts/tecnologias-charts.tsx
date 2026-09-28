@@ -16,7 +16,7 @@ import {
   Area,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { getSeriesColor } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -170,7 +170,7 @@ export function TecnologiasDonutChart({ data }: { data: DonutEntry[] }) {
             innerRadius={70}
             outerRadius={140}
             label={({ name, percent }: { name?: string; percent?: number }) =>
-              `${name ?? ""} (${((percent ?? 0) * 100).toFixed(1)}%)`
+              `${name ?? ""} (${formatPercent((percent ?? 0) * 100)})`
             }
             labelLine={{ strokeWidth: 1 }}
           >

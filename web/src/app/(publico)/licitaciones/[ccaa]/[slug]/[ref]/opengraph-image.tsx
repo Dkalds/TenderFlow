@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import { CONTENIDO } from "@/app/(publico)/_content/landing";
+import { MARCA_HEX, TF_MARK_PATHS, TF_MARK_STROKE, TF_MARK_VIEWBOX } from "@/lib/marca";
 import { obtenerLicitacion } from "@/lib/publico-api";
 import { SITE_NAME } from "@/lib/site";
 import { formatCurrency } from "@/lib/utils";
@@ -16,16 +18,22 @@ export const revalidate = 3600;
  * prioridad de los metadatos por convención de fichero este segmento deja de
  * usar la imagen genérica sin tocar nada más.
  *
- * Misma paleta escrita a mano que `app/opengraph-image.tsx` (Satori renderiza
- * fuera del navegador: sin variables CSS ni Tailwind), y las mismas reglas:
- * flexbox sí, grid no, `display: "flex"` explícito en todo contenedor con más
- * de un hijo.
+ * La marca —trazo del monograma y hex— sale de `lib/marca.ts`, como en
+ * `app/opengraph-image.tsx`: Satori renderiza fuera del navegador, sin
+ * variables CSS ni Tailwind, y dos copias a mano del mismo naranja ya habían
+ * divergido. Mismas reglas de Satori: flexbox sí, grid no, `display: "flex"`
+ * explícito en todo contenedor con más de un hijo.
+ *
+ * Sin anuncio (404 confirmado) la tarjeta cae al titular y al rótulo de la
+ * portada, leídos de `CONTENIDO` como en la OG raíz: una copia a mano de ese
+ * texto ya se había quedado atrás una vez. Los chips con el radio de todo chip
+ * de la casa, no en píldora.
  */
 
-const TINTA = "#EFEEEB";
-const FONDO = "#090E11";
-const NARANJA = "#F39349";
-const GRIS = "#8A9199";
+const TINTA = MARCA_HEX.papel;
+const FONDO = MARCA_HEX.tinta;
+const NARANJA = MARCA_HEX.naranja;
+const GRIS = MARCA_HEX.gris;
 
 function Chip({ texto }: { texto: string }) {
   return (
@@ -34,7 +42,7 @@ function Chip({ texto }: { texto: string }) {
         display: "flex",
         alignItems: "center",
         border: "1.5px solid #2A343B",
-        borderRadius: 999,
+        borderRadius: 10,
         padding: "8px 20px",
         fontSize: 24,
         color: GRIS,
@@ -103,24 +111,34 @@ export default async function Image({ params }: { params: Promise<{ ref: string 
             <svg
               width={32}
               height={32}
-              viewBox="0 0 24 24"
+              viewBox={TF_MARK_VIEWBOX}
               fill="none"
               stroke={FONDO}
-              strokeWidth={2.7}
+              strokeWidth={TF_MARK_STROKE}
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="M3.5 6 H20.5" />
-              <path d="M12 6 V19" />
-              <path d="M12 12 H18.5" />
+              {TF_MARK_PATHS.map((d) => (
+                <path key={d} d={d} />
+              ))}
             </svg>
           </div>
           <div style={{ display: "flex", fontSize: 34, fontWeight: 700, color: TINTA, letterSpacing: "-0.02em" }}>
             {SITE_NAME}
           </div>
         </div>
-        <div style={{ display: "flex", fontSize: 22, fontWeight: 600, color: NARANJA, letterSpacing: "0.1em" }}>
-          LICITACIÓN PÚBLICA · TI
+        {/* Rótulo en versal gris, como el KICKER de la superficie pública. */}
+        <div
+          style={{
+            display: "flex",
+            fontSize: 22,
+            fontWeight: 600,
+            color: GRIS,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+          }}
+        >
+          Licitación pública · TI
         </div>
       </div>
 
@@ -137,7 +155,7 @@ export default async function Image({ params }: { params: Promise<{ ref: string 
             maxWidth: 1040,
           }}
         >
-          {titulo ?? "Licitaciones públicas de tecnología en España"}
+          {titulo ?? CONTENIDO.h1}
         </div>
         {organo && (
           <div style={{ display: "flex", fontSize: 28, color: GRIS, marginTop: 22, maxWidth: 1000 }}>{organo}</div>
@@ -149,9 +167,7 @@ export default async function Image({ params }: { params: Promise<{ ref: string 
         {chips.length > 0 ? (
           chips.map((chip) => <Chip key={chip} texto={chip} />)
         ) : (
-          <div style={{ display: "flex", fontSize: 26, color: GRIS }}>
-            Radar de licitaciones TI del sector público español
-          </div>
+          <div style={{ display: "flex", fontSize: 26, color: GRIS }}>{CONTENIDO.eyebrow}</div>
         )}
       </div>
     </div>,

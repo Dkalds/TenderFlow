@@ -2,26 +2,26 @@
 
 /**
  * La cronología: los dos carriles, la barra de filtro y atajos, y las filas
- * agrupadas por las bandas de urgencia que ya vienen del backend.
+ * agrupadas por las bandas de urgencia que ya vienen de la API.
  *
  * **Dos carriles y no una lista.** Lo que la organización ya decidió trabajar
  * —plazos, acciones y contratos propios— y lo que las reglas *proponen* son dos
  * trabajos distintos: uno se ejecuta, el otro se tria. Mezclados, cincuenta
  * señales sin triar enterraban las cuatro cosas que vencen esta semana. Repartir
  * por `kind` no es reordenar: dentro de cada carril las filas conservan el orden
- * y la banda que trae el backend (ADR-014).
+ * y la banda que trae la API (ADR-014).
  *
  * Los conteos de las pestañas y de las bandas describen **lo listado**, no el
  * universo: son el tamaño de la lista que hay debajo. Los agregados sobre el
- * scope completo son los KPIs de la franja, y esos los calcula el backend.
+ * scope completo son los KPIs de la franja, y esos los calcula la API.
  */
 
 import * as React from "react";
-import { ListChecks } from "lucide-react";
 import { cn, formatNumber } from "@/lib/utils";
 import { useDensity } from "@/lib/density";
-import { EmptyState } from "@/components/ui/empty-state";
-import { PanelTabs } from "@/components/console/panel";
+import { PanelEmpty, PanelTabs } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Agenda } from "../../_hooks/use-agenda";
 import { AgendaFila } from "./agenda-fila";
 import { BANDAS, type Carril, claveDe, SHORTCUTS } from "./agenda-meta";
@@ -53,33 +53,31 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
   }, [activeIndex, carril]);
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-xl border border-border/60 bg-card/70">
+    <section className="min-w-0 overflow-hidden rounded-xl border border-border/60 bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 md:px-3.5">
         {/* `PanelTabs` trae su propia línea inferior, pensada para separarse del
-            gráfico que hay debajo; aquí la cabecera ya tiene la suya y se
-            solapaban. Se anula desde fuera para no tocar el primitivo. */}
-        <span className="contents [&>div]:border-0 [&>div]:pb-0">
-          <PanelTabs
-            label="Carriles de la agenda"
-            value={carril}
-            onChange={agenda.setCarril}
-            tabs={[
-              {
-                key: "compromisos" as Carril,
-                label: "Compromisos",
-                badge: agenda.conteos.compromisos,
-              },
-              { key: "triaje" as Carril, label: "Por triar", badge: agenda.conteos.triaje },
-            ]}
-          />
-        </span>
+            gráfico que hay debajo; aquí la cabecera ya tiene la suya. */}
+        <PanelTabs
+          label="Carriles de la agenda"
+          value={carril}
+          onChange={agenda.setCarril}
+          className="border-b-0 pb-0"
+          tabs={[
+            {
+              key: "compromisos" as Carril,
+              label: "Compromisos",
+              badge: agenda.conteos.compromisos,
+            },
+            { key: "triaje" as Carril, label: "Por triar", badge: agenda.conteos.triaje },
+          ]}
+        />
         <button
           type="button"
           aria-pressed={agenda.soloMios}
           onClick={agenda.alternarSoloMios}
           className={cn(
             // 32 px de alto en móvil: el filtro se pulsa con el pulgar.
-            "tf-pressable h-8 flex-none rounded-full border px-2.5 text-[11.5px] font-medium transition-colors duration-150 ease-out md:h-6.5",
+            "tf-pressable h-8 flex-none rounded-md border px-2.5 text-tf-meta font-medium md:h-7",
             agenda.soloMios
               ? "border-primary/30 bg-primary/10 text-primary"
               : "border-border/70 text-muted-foreground hover:text-foreground",
@@ -87,7 +85,7 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
         >
           Solo míos
         </button>
-        <span className="truncate text-[11px] text-muted-foreground">
+        <span className="truncate text-tf-micro text-muted-foreground">
           {isLoading ? "Cargando agenda…" : `${formatNumber(items.length)} en este carril`}
         </span>
         <div className="flex-1" />
@@ -95,9 +93,9 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
           {SHORTCUTS.map((shortcut) => (
             <span
               key={shortcut.key}
-              className="flex items-center gap-1 text-[10px] text-muted-foreground/70"
+              className="flex items-center gap-1 text-tf-micro text-muted-foreground/70"
             >
-              <kbd className="rounded border border-border/70 bg-secondary px-1 font-mono text-[9px]">
+              <kbd className="rounded-sm border border-border/70 bg-secondary px-1 font-mono text-tf-micro">
                 {shortcut.key}
               </kbd>
               {shortcut.label}
@@ -119,20 +117,18 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
         {isLoading ? (
           <div className="flex flex-col gap-2.5 p-3.5">
             {Array.from({ length: 8 }, (_, index) => (
-              <span
-                key={index}
-                className="tf-shimmer block h-10 rounded-lg"
-                style={{ opacity: 1 - index * 0.08 }}
-              />
+              <Skeleton key={index} className="h-10 rounded-md" />
             ))}
           </div>
         ) : items.length === 0 ? (
-          <EmptyState
-            icon={ListChecks}
+          <PanelEmpty
             title={VACIO[carril].title}
             hint={VACIO[carril].hint}
-            actionLabel="Abrir el Radar"
-            onAction={agenda.irAlRadar}
+            action={
+              <Button type="button" variant="outline" size="sm" onClick={agenda.irAlRadar}>
+                Abrir el Radar
+              </Button>
+            }
           />
         ) : (
           BANDAS.map((banda) => {
@@ -144,7 +140,7 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
               <React.Fragment key={banda.key}>
                 <div
                   className={cn(
-                    "sticky top-0 z-10 border-b border-border/50 bg-card px-3 py-1 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] md:px-3.5",
+                    "sticky top-0 z-10 border-b border-border/50 bg-card px-3 py-1 text-tf-meta font-semibold md:px-3.5",
                     banda.tone,
                   )}
                 >

@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { LicitacionDetail } from "@/lib/api-types";
 import { licitacionKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export { licitacionKeys } from "@/lib/query-keys";
 
@@ -27,5 +28,6 @@ export function useLicitacion(id: string | null) {
     // El expediente cambia con la pasada de ingesta (cada 4 h), no entre
     // pestañas: revalidar en cada foco sería tráfico sin información nueva.
     staleTime: 5 * 60 * 1000,
+    meta: META_ERROR_EN_LINEA,
   });
 }

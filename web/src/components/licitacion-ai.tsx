@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { FileText, MessageSquare, RefreshCw, Send, Sparkles, Square } from "lucide-react";
+import { Send, Square } from "lucide-react";
+import { Aviso, PanelError } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChatThread } from "@/components/chat-thread";
+import { AVISO_GENERADO, ChatThread, mensajeDeFalloIA } from "@/components/chat-thread";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
 import { useChat } from "@/hooks/use-ask";
@@ -27,10 +28,15 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 /**
- * Sección "Asistente IA" del detalle de una licitación: resumen ejecutivo en
+ * Sección «Asistente IA» del detalle de una licitación: resumen ejecutivo en
  * streaming (cacheado en servidor por estado de documentos; «Regenerar» lo
  * fuerza) y chat contextualizado en el expediente y el contenido de sus
  * pliegos, con feedback de utilidad por respuesta.
+ *
+ * La IA se nombra, no se adorna: sin el destello delante del título ni dentro
+ * del botón, y lo que genera va etiquetado como tal («Generado
+ * automáticamente · revisa el pliego»), porque un resumen de modelo no es un
+ * dato del expediente (ADR-014).
  */
 export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
   const [tab, setTab] = React.useState("resumen");
@@ -102,50 +108,40 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
 
   return (
     <div className="mb-6 space-y-3" id="licitacion-ai">
-      <h3 className="flex items-center gap-2 text-sm font-medium">
-        <Sparkles className="text-primary h-4 w-4" />
-        Asistente IA
-      </h3>
+      <h3 className="text-tf-body font-semibold">Asistente IA</h3>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="resumen">
-            <FileText className="h-3.5 w-3.5" />
-            Resumen
-          </TabsTrigger>
-          <TabsTrigger value="preguntar">
-            <MessageSquare className="h-3.5 w-3.5" />
-            Preguntar
-          </TabsTrigger>
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="preguntar">Preguntar</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumen">
           {!hasResumen && (
             <div className="space-y-2">
-              <p className="text-muted-foreground text-sm">
+              <p className="text-tf-body text-muted-foreground">
                 Genera un resumen de la oportunidad y de sus pliegos con IA.
               </p>
-              <Button size="sm" onClick={() => void generarResumen()} className="gap-1.5">
-                <Sparkles className="h-3.5 w-3.5" />
+              <Button size="sm" onClick={() => void generarResumen()}>
                 Generar resumen
               </Button>
             </div>
           )}
 
           {meta && !meta.has_pliego_text && (
-            <div className="mb-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-400">
-              Resumen basado solo en los metadatos del anuncio: los pliegos no están disponibles o aún no se han
-              procesado.
+            <Aviso tone="warning" className="mb-3">
+              Resumen basado solo en los datos del anuncio: los pliegos no están disponibles o aún no se
+              han procesado.
               {meta.documentos.length > 0 && (
-                <span className="text-muted-foreground mt-1 flex flex-wrap gap-1.5">
+                <span className="mt-1 flex flex-wrap gap-1.5">
                   {meta.documentos.map((d, i) => (
-                    <Badge key={i} variant="outline" className="text-[10px]">
+                    <Badge key={i} variant="outline" size="sm">
                       {d.filename ?? d.tipo ?? "documento"} · {STATUS_LABELS[d.status ?? ""] ?? d.status}
                     </Badge>
                   ))}
                 </span>
               )}
-            </div>
+            </Aviso>
           )}
 
           {resumenLoading && !resumen && (
@@ -156,28 +152,33 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
             </div>
           )}
 
+          {/* Un solo aviso: el resumen no pasa por React Query, así que no
+              hay toast que callar. Mensaje humano; el texto original, plegado. */}
           {resumenError && (
-            <div
-              className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border p-3 text-sm"
-              role="alert"
-            >
-              {resumenError}
-            </div>
+            <PanelError
+              variant="inline"
+              title="No se pudo generar el resumen"
+              message={mensajeDeFalloIA(resumenError)}
+              detail={resumenError}
+              onRetry={() => void generarResumen()}
+            />
           )}
 
           {resumenDegraded && !resumen && (
-            <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+            <Aviso tone="warning">
               El asistente no está disponible ahora mismo. Inténtalo de nuevo en unos minutos.
-            </div>
+            </Aviso>
           )}
 
           {resumen ? (
             <div>
               <MarkdownAnswer text={resumen} />
-              {resumenLoading && (
+              {resumenLoading ? (
                 <span className="text-primary motion-safe:animate-pulse" aria-hidden="true">
                   ▌
                 </span>
+              ) : (
+                <p className="mt-2 text-tf-micro text-muted-foreground">{AVISO_GENERADO}</p>
               )}
             </div>
           ) : null}
@@ -189,17 +190,11 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
           {resumen != null && !resumenLoading && (
             <div className="mt-2 flex items-center gap-2">
               {/* Regenerar fuerza al proveedor: el hit de caché ya se sirvió. */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => void generarResumen(true)}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="sm" onClick={() => void generarResumen(true)}>
                 Regenerar
               </Button>
               {meta?.cached && (
-                <span className="text-muted-foreground text-[11px]">
+                <span className="text-tf-micro text-muted-foreground">
                   Resumen guardado de una generación anterior.
                 </span>
               )}
@@ -209,7 +204,7 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
 
         <TabsContent value="preguntar" className="space-y-3">
           {chat.messages.length === 0 && !chat.loading && (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-tf-body text-muted-foreground">
               Pregunta sobre esta licitación: plazos, solvencia, criterios de adjudicación… Si los pliegos están
               procesados, responde con su contenido y cita los fragmentos.
             </p>
@@ -236,11 +231,11 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
             />
             {chat.streaming || chat.loading ? (
               <Button onClick={chat.stop} size="icon" variant="outline" aria-label="Detener">
-                <Square className="h-4 w-4" />
+                <Square aria-hidden="true" />
               </Button>
             ) : (
               <Button onClick={submitChat} disabled={!input.trim()} size="icon" aria-label="Enviar pregunta">
-                <Send className="h-4 w-4" />
+                <Send aria-hidden="true" />
               </Button>
             )}
           </div>

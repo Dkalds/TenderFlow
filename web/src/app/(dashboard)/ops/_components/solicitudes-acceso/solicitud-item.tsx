@@ -39,16 +39,16 @@ export function SolicitudItem({ solicitud, ocupado, onCambiarEstado }: Solicitud
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 py-3">
       <div className="min-w-0">
-        <p className="text-sm font-medium">{solicitud.email}</p>
-        <p className="text-muted-foreground mt-0.5 text-xs">{contexto}</p>
+        <p className="text-tf-body font-medium">{solicitud.email}</p>
+        <p className="text-muted-foreground mt-0.5 text-tf-meta">{contexto}</p>
         {solicitud.mensaje && (
-          <p className="text-muted-foreground mt-1 max-w-[70ch] text-xs leading-relaxed">
+          <p className="text-muted-foreground mt-1 max-w-[70ch] text-tf-meta">
             {solicitud.mensaje}
           </p>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <Badge variant={pendiente ? "default" : "outline"}>
+        <Badge variant={pendiente ? "warning" : "outline"} size="sm">
           {ETIQUETA_ESTADO[solicitud.estado] ?? solicitud.estado}
         </Badge>
         {pendiente && (

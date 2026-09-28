@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { ExportPopover } from "@/components/export-popover";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { VistaEsqueleto } from "@/components/layout/space-shell-esqueleto";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
@@ -80,6 +79,12 @@ function useBadgesDeFlags(): Record<string, string> | undefined {
   return Object.keys(badges).length > 0 ? badges : undefined;
 }
 
+/*
+ * Sin «Exportar» propio en la cabecera: el «Exportar ámbito» de la barra de
+ * ámbito descarga lo mismo (mismo endpoint, mismos filtros), y cada vista que
+ * exporta un corte concreto lo nombra («Exportar órganos», «Exportar
+ * tecnologías»…).
+ */
 export default function MercadoPage() {
   const { view, setView } = useSpaceView(SPACE);
   const View = VIEWS[view] ?? VIEWS.tiempo;
@@ -91,9 +96,6 @@ export default function MercadoPage() {
       view={view}
       onViewChange={setView}
       viewBadges={viewBadges}
-      actions={
-        <ExportPopover className="[&>button]:h-7 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs" />
-      }
     >
       <View />
     </SpaceShell>

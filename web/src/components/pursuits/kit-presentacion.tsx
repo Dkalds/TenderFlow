@@ -18,9 +18,11 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Panel, PanelError, PanelLoading, SectionTitle } from "@/components/console/panel";
+import { Panel, PanelEmpty, PanelError, PanelLoading, ROTULO_DATO, SectionTitle } from "@/components/console/panel";
 import { formatDate } from "@/components/pursuits/pursuit-presenters";
 import { useOrganizationMembers } from "@/hooks/use-organization";
+import { getErrorMessage } from "@/lib/query-feedback";
+import { cn } from "@/lib/utils";
 import {
   type ItemKit,
   registrarKitAbierto,
@@ -67,7 +69,7 @@ export function KitPresentacionPanel({
   }, [kit]);
 
   const onError = (mensaje: string) => (err: unknown) =>
-    toast.error(err instanceof Error ? err.message : mensaje);
+    toast.error(mensaje, { description: getErrorMessage(err, "accion") });
 
   if (isPending) {
     return (
@@ -78,13 +80,16 @@ export function KitPresentacionPanel({
   }
   if (error || !kit) {
     return (
-      <div id="ficha-kit">
+      <Panel id="ficha-kit">
+        <SectionTitle>Kit de presentación</SectionTitle>
         <PanelError
+          variant="inline"
           title="No se pudo cargar el kit de presentación"
-          detail={error instanceof Error ? error.message : undefined}
+          error={error}
+          message={error ? undefined : "No hay respuesta que enseñar. Vuelve a intentarlo."}
           onRetry={() => void refetch()}
         />
-      </div>
+      </Panel>
     );
   }
 
@@ -94,17 +99,15 @@ export function KitPresentacionPanel({
     // El mismo rótulo que el resto de paneles de la ficha; el panel se nombra
     // por él y es el destino del paso «Documentación del kit lista».
     <Panel id="ficha-kit" tabIndex={-1} className="outline-none" aria-labelledby={`kit-${pursuitId}`}>
-      <SectionTitle
-        aside={total ? `${listos} de ${total} documentos listos` : "Documentos que exige el pliego"}
-      >
+      <SectionTitle hint={total ? `${listos} de ${total} documentos listos` : "Documentos que exige el pliego"}>
         <span id={`kit-${pursuitId}`}>Kit de presentación</span>
       </SectionTitle>
       {kit.sin_extraccion || total === 0 ? (
-        <p role="status" className="text-tf-meta leading-[1.55] text-muted-foreground">
-          No se han extraído documentos exigidos del pliego de este expediente. El kit no propone
-          una lista genérica: revisa el pliego en la pestaña «Pliego» antes de dar la oferta por
-          completa.
-        </p>
+        <PanelEmpty
+          size="sm"
+          title="Sin documentos exigidos extraídos del pliego"
+          hint="El kit no propone una lista genérica: revisa el pliego en la pestaña «Pliego» antes de dar la oferta por completa."
+        />
       ) : (
         <div className="space-y-4">
           {SOBRES.map((sobre) => {
@@ -112,9 +115,7 @@ export function KitPresentacionPanel({
             if (items.length === 0) return null;
             return (
               <section key={sobre.key} aria-label={sobre.titulo}>
-                <h5 className="mb-1.5 font-mono text-tf-micro font-semibold uppercase tracking-wider text-muted-foreground">
-                  {sobre.titulo}
-                </h5>
+                <h5 className={cn("mb-1.5", ROTULO_DATO)}>{sobre.titulo}</h5>
                 <ul className="divide-y divide-border/50">
                   {items.map((item) => {
                     const checkId = `kit-${pursuitId}-${item.clave}`;
@@ -196,7 +197,7 @@ export function KitPresentacionPanel({
               </section>
             );
           })}
-          <p className="text-tf-micro leading-[1.5] text-muted-foreground">
+          <p className="text-tf-micro text-muted-foreground">
             Asignar un documento crea una tarea con su nombre. Si la tarea se borra, el documento
             vuelve a quedar sin responsable.
           </p>

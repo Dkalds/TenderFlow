@@ -24,9 +24,8 @@ import {
 } from "recharts";
 
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
+import { getSeriesColor } from "@/lib/chart-colors";
 import { useScopedHref } from "@/lib/filters";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import type { TrendPoint } from "@/lib/api-types";
@@ -38,7 +37,9 @@ import {
   type WaterfallPoint,
 } from "../_hooks/use-tendencias-view";
 
-const WaterfallChart = dynamic(() => import("@/components/charts/waterfall-chart").then(m => ({ default: m.WaterfallChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
+const WaterfallChart = dynamic(() => import("@/components/charts/waterfall-chart").then(m => ({ default: m.WaterfallChart })), { ssr: false, loading: () => <PanelLoading height={320} /> });
+
+const VACIO_SERIE = "Ninguna licitación publicada en el ámbito actual. Amplía las fechas o quita filtros.";
 
 export function TendenciasVolumen({
   series,
@@ -57,16 +58,12 @@ export function TendenciasVolumen({
     if (periodo && /^\d{4}-\d{2}$/.test(periodo)) router.push(scopedHref(mesHref(periodo)));
   };
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Licitaciones por Mes</CardTitle>
-        <CardDescription>Pulsa una barra para ver las licitaciones de ese mes.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[350px] w-full" />
-        ) : series.length > 0 ? (
-          <ChartErrorBoundary>
+    <Panel>
+      <PanelTitle title="Licitaciones por mes" hint="Pulsa una barra para ver las licitaciones de ese mes" />
+      {isLoading ? (
+        <PanelLoading height={350} />
+      ) : series.length > 0 ? (
+        <ChartErrorBoundary>
           <ResponsiveContainer width="100%" height={350}>
             <BarChart accessibilityLayer data={series}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -75,7 +72,7 @@ export function TendenciasVolumen({
               <Tooltip formatter={(value) => [formatNumber(value as number), "Licitaciones"]} />
               <Bar
                 dataKey="count"
-                fill="hsl(221, 83%, 53%)"
+                fill={getSeriesColor(1)}
                 radius={[4, 4, 0, 0]}
                 name="Licitaciones"
                 className="cursor-pointer"
@@ -83,12 +80,11 @@ export function TendenciasVolumen({
               />
             </BarChart>
           </ResponsiveContainer>
-            </ChartErrorBoundary>
-        ) : (
-          <EmptyState />
-        )}
-      </CardContent>
-    </Card>
+        </ChartErrorBoundary>
+      ) : (
+        <PanelEmpty title="Sin licitaciones" hint={VACIO_SERIE} height={350} />
+      )}
+    </Panel>
   );
 }
 
@@ -100,43 +96,47 @@ export function TendenciasAcumulado({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Importe Acumulado</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[350px] w-full" />
-        ) : data.length > 0 ? (
-          <ChartErrorBoundary>
+    <Panel>
+      <PanelTitle title="Importe acumulado" />
+      {isLoading ? (
+        <PanelLoading height={350} />
+      ) : data.length > 0 ? (
+        <ChartErrorBoundary>
           <ResponsiveContainer width="100%" height={350}>
             <AreaChart accessibilityLayer data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis dataKey="period" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
               <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
               <Tooltip formatter={(value) => [formatCurrency(value as number), "Acumulado"]} />
-              <Area type="monotone" dataKey="importe_acumulado" stroke="hsl(160, 60%, 45%)" fill="hsl(160, 60%, 45%)" fillOpacity={0.15} name="Importe Acumulado" />
+              <Area
+                type="monotone"
+                dataKey="importe_acumulado"
+                stroke={getSeriesColor(5)}
+                fill={getSeriesColor(5)}
+                fillOpacity={0.15}
+                name="Importe acumulado"
+              />
             </AreaChart>
           </ResponsiveContainer>
-            </ChartErrorBoundary>
-        ) : (
-          <EmptyState />
-        )}
-      </CardContent>
-    </Card>
+        </ChartErrorBoundary>
+      ) : (
+        <PanelEmpty title="Sin importes" hint={VACIO_SERIE} height={350} />
+      )}
+    </Panel>
   );
 }
 
+/** Variación del NÚMERO de licitaciones de un mes al siguiente (no del importe). */
 export function TendenciasWaterfall({ data }: { data: WaterfallPoint[] }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Waterfall: Variacion Mensual</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <WaterfallChart data={data} height={320} />
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Variación mensual del número de licitaciones" />
+      <WaterfallChart
+        data={data}
+        height={320}
+        aria-label="Variación mensual del número de licitaciones"
+      />
+    </Panel>
   );
 }
 
@@ -149,12 +149,12 @@ export function TendenciasHistograma({
   useLogScale: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Distribución de Importes</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ChartErrorBoundary>
+    <Panel>
+      <PanelTitle
+        title="Licitaciones por tramo de importe"
+        hint={useLogScale ? "Escala logarítmica: los tramos pequeños no se aplastan" : undefined}
+      />
+      <ChartErrorBoundary>
         <ResponsiveContainer width="100%" height={320}>
           <BarChart accessibilityLayer data={bins} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -167,11 +167,10 @@ export function TendenciasHistograma({
               tickFormatter={(v: number) => formatNumber(v)}
             />
             <Tooltip formatter={(value) => [formatNumber(value as number), "Licitaciones"]} />
-            <Bar dataKey="count" fill="hsl(280, 65%, 60%)" radius={[0, 4, 4, 0]} />
+            <Bar dataKey="count" fill={getSeriesColor(4)} radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
-          </ChartErrorBoundary>
-      </CardContent>
-    </Card>
+      </ChartErrorBoundary>
+    </Panel>
   );
 }

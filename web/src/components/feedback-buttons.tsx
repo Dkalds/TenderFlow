@@ -54,7 +54,7 @@ export function FeedbackButtons({
   return (
     <div className="mt-1.5 flex items-center gap-1" role="group" aria-label="¿Te ha servido?">
       {voted ? (
-        <span className="text-muted-foreground text-[11px]">Gracias por el feedback.</span>
+        <span className="text-tf-micro text-muted-foreground">Gracias por tu valoración.</span>
       ) : (
         <>
           <button

@@ -1,15 +1,22 @@
 "use client";
 
 import type { SortingState } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { PanelEmpty, PanelError } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { IndicadorOrden } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { MergedRow } from "../_hooks/detalle-table-model";
 import { COLUMNS, TABLE_MIN_WIDTH } from "./detalle-columnas";
 import { DetalleFila } from "./detalle-fila";
 
-/** Cabecera con orden asc/desc/none y `aria-sort` por columna. */
+/**
+ * Cabecera con orden asc/desc/none y `aria-sort` por columna. La versal de
+ * `CABECERA_COLUMNA` va en el `<button>`: el navegador pone `text-transform:
+ * none` a los botones y no la heredan del `<th>`.
+ */
 function DetalleCabecera({
   sorting,
   allPageSelected,
@@ -43,7 +50,7 @@ function DetalleCabecera({
               scope="col"
               aria-sort={direction}
               className={cn(
-                "px-1 font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground",
+                "px-1",
                 column.align === "right" ? "text-right" : "text-left",
                 column.key === "tecnologia" && "pr-3.5",
               )}
@@ -52,20 +59,13 @@ function DetalleCabecera({
                 type="button"
                 onClick={() => onToggleSort(column.key)}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded px-1 py-0.5 transition-colors duration-140 ease-out hover:text-foreground",
-                  active && "text-primary",
+                  CABECERA_COLUMNA,
+                  "group inline-flex items-center gap-1 rounded-sm px-1 py-0.5 transition-colors hover:text-foreground",
+                  active && "text-foreground",
                 )}
               >
                 {column.label}
-                {active ? (
-                  sorting[0].desc ? (
-                    <ArrowDown className="h-3 w-3" aria-hidden="true" />
-                  ) : (
-                    <ArrowUp className="h-3 w-3" aria-hidden="true" />
-                  )
-                ) : (
-                  <ArrowUpDown className="h-3 w-3 opacity-30" aria-hidden="true" />
-                )}
+                <IndicadorOrden direccion={active ? (sorting[0].desc ? "desc" : "asc") : null} />
               </button>
             </th>
           );
@@ -127,7 +127,7 @@ export function DetalleTabla(props: DetalleTablaProps) {
               Array.from({ length: 12 }, (_, index) => (
                 <tr key={index} className="border-b border-border/30">
                   <td colSpan={COLUMNS.length} className="px-3.5 py-1.5">
-                    <Skeleton className="h-6 w-full rounded" />
+                    <Skeleton className="h-6 w-full rounded-sm" />
                   </td>
                 </tr>
               ))
@@ -159,49 +159,29 @@ export function DetalleTabla(props: DetalleTablaProps) {
             de una celda se anuncia como dato de la tabla, que es lo que no
             es. La cabecera de columnas se queda visible en los tres. */}
         {error != null && (
-          <div
-            role="alert"
-            className="mx-auto my-10 max-w-[560px] rounded-xl border border-destructive/40 bg-destructive/8 px-6 py-5"
-          >
-            <div className="mb-2 flex items-center gap-2.5">
-              <span className="grid h-5.5 w-5.5 flex-none place-items-center rounded-full border border-destructive/50 text-[12px] font-semibold text-destructive">
-                !
-              </span>
-              <span className="text-[13.5px] font-semibold text-destructive">
-                Error al cargar la tabla
-              </span>
-            </div>
-            <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">
-              {(error as Error).message}
-            </p>
-            <button
-              type="button"
-              onClick={props.onRetry}
-              className="tf-pressable h-[30px] rounded-md border border-border/80 px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              ↻ Reintentar
-            </button>
-          </div>
+          <PanelError
+            title="No se pudo cargar la tabla"
+            error={error}
+            onRetry={props.onRetry}
+            className="mx-auto my-10 max-w-[560px]"
+          />
         )}
 
         {vacia && (
-          <div className="px-5 py-[90px] text-center">
-            <div className="mb-1.5 font-display text-[15px] font-semibold leading-[1.3]">
-              Sin resultados
-            </div>
-            <p className="mb-3.5 text-[13px] leading-[1.5] text-muted-foreground">
-              {props.conRecorte
+          <PanelEmpty
+            className="py-20"
+            title="Sin resultados"
+            hint={
+              props.conRecorte
                 ? "Ninguna licitación encaja con el ámbito actual ni con el recorte por fecha de cierre."
-                : "Ninguna licitación encaja con el ámbito actual."}
-            </p>
-            <button
-              type="button"
-              onClick={props.onLimpiar}
-              className="tf-pressable h-[30px] rounded-md border border-primary/40 bg-primary/12 px-3 text-xs font-medium text-primary"
-            >
-              {props.conRecorte ? "Limpiar ámbito y recorte" : "Limpiar ámbito"}
-            </button>
-          </div>
+                : "Ninguna licitación encaja con el ámbito actual."
+            }
+            action={
+              <Button type="button" variant="outline" size="sm" onClick={props.onLimpiar}>
+                {props.conRecorte ? "Limpiar ámbito y recorte" : "Limpiar ámbito"}
+              </Button>
+            }
+          />
         )}
       </div>
     </div>

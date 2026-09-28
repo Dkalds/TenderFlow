@@ -12,6 +12,7 @@
  * `/mercado?vista=organos&organo_q=…` la lleva escrita.
  */
 
+import { PanelError } from "@/components/console/panel";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { ExportPopover } from "@/components/export-popover";
 import { Search } from "lucide-react";
@@ -39,30 +40,28 @@ export default function OrganosView() {
     setSelectedOrgano,
     detailData,
     detailLoading,
+    detailError,
+    refetchDetail,
     isLoading,
     error,
+    refetch,
   } = useOrganosView();
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">Error: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudieron cargar los órganos" error={error} onRetry={refetch} />;
   }
 
   return (
     <div className="flex min-h-0 gap-4">
-      <div className="min-w-0 flex-1 space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="min-w-0 flex-1 space-y-4">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="sr-only">Órganos</h1>
-            <p className="text-muted-foreground">Ranking de órganos de contratación.</p>
+            <p className="text-tf-meta text-muted-foreground">
+              Quién contrata más: los órganos de contratación por licitaciones e importe.
+            </p>
           </div>
-          <ExportPopover
-            endpoint="/api/v1/exports/download"
-            extraParams={{ section: "organos" }}
-          />
+          <ExportPopover extraParams={{ section: "organos" }} label="Exportar órganos" />
         </div>
 
         <SearchAutocomplete
@@ -74,7 +73,7 @@ export default function OrganosView() {
             ...(data?.organos?.map((i) => i.organo_contratacion) ?? []),
             ...[...new Set(data?.organos?.map((i) => i.ccaa).filter((c): c is string => c != null) ?? [])],
           ]}
-          leftIcon={<Search className="h-4 w-4" />}
+          leftIcon={<Search className="h-4 w-4" aria-hidden="true" />}
           inputClassName="pl-9"
         />
 
@@ -109,6 +108,8 @@ export default function OrganosView() {
           organo={selectedOrgano}
           detalle={detailData}
           isLoading={detailLoading}
+          error={detailError}
+          onRetry={refetchDetail}
           onClose={() => setSelectedOrgano(null)}
         />
       )}

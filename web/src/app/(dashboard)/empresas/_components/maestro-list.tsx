@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PanelError } from "@/components/console/panel";
-import { EmptyState } from "@/components/ui/empty-state";
+import { PanelEmpty, PanelError } from "@/components/console/panel";
+import { IndicadorOrden } from "@/components/ui/data-table";
 import { Pista } from "@/components/ui/pista";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { SeguirBoton } from "@/components/seguir-boton";
 import { PAGE_SIZE, type EmpresaRow, type EmpresaSortKey } from "../_hooks/use-maestro";
 
@@ -40,8 +41,11 @@ export interface MaestroListProps {
    */
   onWatchToggled?: (ahoraVigila: boolean) => void;
   loading: boolean;
-  error: boolean;
-  errorDetail?: string;
+  /**
+   * El fallo de la consulta, si lo hubo. Da el mensaje y el detalle técnico
+   * (estado y ruta, plegados) de `PanelError`.
+   */
+  error?: unknown;
   onRetry: () => void;
 }
 
@@ -61,7 +65,6 @@ export function MaestroList({
   onWatchToggled,
   loading,
   error,
-  errorDetail,
   onRetry,
 }: MaestroListProps) {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -74,7 +77,7 @@ export function MaestroList({
           espacio, encima de las dos vistas, así que seguía visible en la cola
           de revisión —donde no busca nada— y parecía global. */}
       <div className="border-border/60 flex flex-none items-center gap-2 border-b px-4 py-3">
-        <div className="border-border/70 bg-background focus-within:border-primary/50 flex h-8 flex-1 items-center gap-2 rounded-lg border px-2.5">
+        <div className="border-border/70 bg-background focus-within:border-primary/50 flex h-8 flex-1 items-center gap-2 rounded-md border px-2.5">
           <Search className="text-muted-foreground h-3.5 w-3.5 flex-none" aria-hidden="true" />
           <input
             type="text"
@@ -85,8 +88,8 @@ export function MaestroList({
             className="text-tf-body text-foreground placeholder:text-muted-foreground h-6 min-w-0 flex-1 border-0 bg-transparent outline-none"
           />
           {fromDeepLink && (
-            <Pista contenido="La búsqueda venía en el enlace (?q=)">
-              <span className="bg-primary/12 text-tf-micro text-primary flex h-5 flex-none items-center rounded px-1.5 font-mono font-medium">
+            <Pista contenido="La búsqueda venía en el enlace con el que has llegado">
+              <span className="bg-primary/10 text-tf-micro text-primary flex h-5 flex-none items-center rounded-sm px-1.5 font-medium">
                 desde enlace
               </span>
             </Pista>
@@ -96,7 +99,7 @@ export function MaestroList({
               type="button"
               onClick={() => onSearchChange("")}
               aria-label="Limpiar búsqueda"
-              className="text-muted-foreground hover:text-foreground grid h-5 w-5 flex-none place-items-center rounded"
+              className="text-muted-foreground hover:text-foreground grid h-5 w-5 flex-none place-items-center rounded-sm transition-colors"
             >
               <X className="h-3 w-3" aria-hidden="true" />
             </button>
@@ -106,13 +109,9 @@ export function MaestroList({
 
       {error ? (
         // Error por bloque: el maestro cae, pero la cola de revisión viene de
-        // otro endpoint y sigue siendo alcanzable desde el conmutador.
+        // otra consulta y sigue siendo alcanzable desde el conmutador.
         <div className="p-4">
-          <PanelError
-            title="No se pudo cargar el maestro"
-            detail={errorDetail ?? "GET /api/v1/empresas"}
-            onRetry={onRetry}
-          />
+          <PanelError title="No se pudo cargar el maestro" error={error} onRetry={onRetry} />
         </div>
       ) : (
         <>
@@ -120,25 +119,27 @@ export function MaestroList({
             <div className={cn(GRID, "border-border/70 bg-background sticky top-0 z-10 h-[34px] border-b")}>
               {COLUMNAS.map((columna) => {
                 const on = columna.key === sortKey;
-                const Icono = !on ? ChevronsUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
+                // Sin `<table>` no hay `aria-sort`: el orden va en el nombre.
+                const sentido = sortDir === "asc" ? "ascendente" : "descendente";
                 return (
                   <button
                     key={columna.key}
                     type="button"
                     onClick={() => onSort(columna.key)}
-                    aria-label={`Ordenar por ${columna.label}`}
+                    aria-label={on ? `Ordenar por ${columna.label} (orden ${sentido})` : `Ordenar por ${columna.label}`}
                     className={cn(
-                      "text-tf-micro inline-flex h-5 items-center gap-1 font-medium whitespace-nowrap transition-colors duration-140 ease-out",
+                      CABECERA_COLUMNA,
+                      "group inline-flex h-5 items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground",
                       columna.right && "w-full justify-end",
-                      on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                      on && "text-foreground",
                     )}
                   >
                     {columna.label}
-                    <Icono className={cn("h-3 w-3 flex-none", !on && "opacity-35")} aria-hidden="true" />
+                    <IndicadorOrden direccion={on ? sortDir : null} />
                   </button>
                 );
               })}
-              <span className="text-tf-micro text-muted-foreground text-right font-medium">Vigilar</span>
+              <span className={cn(CABECERA_COLUMNA, "text-right")}>Vigilar</span>
             </div>
 
             {loading ? (
@@ -148,10 +149,9 @@ export function MaestroList({
                 ))}
               </div>
             ) : rows.length === 0 ? (
-              <EmptyState
-                icon={Search}
+              <PanelEmpty
                 title="Sin resultados"
-                hint="Prueba con otro nombre o NIF, o ejecuta el backfill del maestro para resolver los adjudicatarios pendientes."
+                hint="Prueba con otro nombre, un alias o el NIF. Los adjudicatarios que aún no se han incorporado al maestro no salen aquí."
               />
             ) : (
               rows.map((row) => {
@@ -165,8 +165,8 @@ export function MaestroList({
                     key={row.empresa_id}
                     className={cn(
                       GRID,
-                      "border-border/30 h-10 border-b transition-colors duration-140 ease-out",
-                      on ? "bg-primary/8" : "hover:bg-muted-foreground/6",
+                      "border-border/30 h-10 border-b transition-colors",
+                      on ? "bg-primary/10" : "hover:bg-primary/5",
                     )}
                   >
                     <button
@@ -184,16 +184,16 @@ export function MaestroList({
                         {row.nombre_canonico}
                       </span>
                       {marcas && (
-                        <span className="text-tf-micro text-muted-foreground flex-none font-mono">{marcas}</span>
+                        <span className="text-tf-micro text-muted-foreground flex-none">{marcas}</span>
                       )}
                     </button>
                     <span className="text-tf-meta text-muted-foreground truncate font-mono">
                       {row.nif_canonico ?? "—"}
                     </span>
-                    <span className="tf-tnum text-tf-meta text-muted-foreground text-right font-mono">
+                    <span className="tf-tnum text-tf-meta text-muted-foreground text-right">
                       {formatNumber(row.n_adjudicaciones)}
                     </span>
-                    <span className="tf-tnum text-tf-meta text-foreground text-right font-mono font-medium">
+                    <span className="tf-tnum text-tf-meta text-foreground text-right font-medium">
                       {formatCurrency(row.importe_total)}
                     </span>
                     {/* El control único de ADR-031 §C con la piel de siempre de
@@ -208,7 +208,7 @@ export function MaestroList({
                       icono="estrella"
                       nombreAccesible={{ seguir: "Vigilar empresa", dejar: "Dejar de vigilar" }}
                       clases={{
-                        base: "tf-pressable grid h-7 w-7 place-items-center justify-self-end rounded-md transition-colors duration-140 ease-out",
+                        base: "tf-pressable grid h-7 w-7 place-items-center justify-self-end rounded-md",
                         activo: "text-primary",
                         inactivo: "text-muted-foreground/60 hover:text-foreground",
                       }}
@@ -222,7 +222,7 @@ export function MaestroList({
 
           {!loading && total > 0 && (
             <div className="border-border/60 flex flex-none items-center gap-2 border-t px-4 py-2.5">
-              {/* El denominador es el total del filtro, que manda el servidor.
+              {/* El total es el del filtro, que manda la API.
                   Antes se listaban 14 de 1.284 sin forma de ver la 15.
                   `agruparSiempre` porque las tres cifras se leen como una
                   serie: sin él, «1284» al lado de «12» son dos formatos. */}
@@ -241,9 +241,9 @@ export function MaestroList({
                   onClick={() => onPageChange(n)}
                   aria-current={n === page ? "page" : undefined}
                   className={cn(
-                    "tf-pressable tf-tnum text-tf-meta h-6.5 min-w-6.5 rounded-md border px-1.5 font-mono",
+                    "tf-pressable tf-tnum text-tf-meta h-6.5 min-w-6.5 rounded-md border px-1.5",
                     n === page
-                      ? "border-primary/40 bg-primary/12 text-primary"
+                      ? "border-primary/30 bg-primary/10 text-primary"
                       : "text-muted-foreground hover:text-foreground border-transparent",
                   )}
                 >
@@ -278,7 +278,7 @@ function PageButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="tf-pressable border-border/70 text-muted-foreground hover:text-foreground disabled:border-border/25 disabled:text-muted-foreground/40 disabled:hover:text-muted-foreground/40 grid h-6.5 w-6.5 place-items-center rounded-md border transition-colors"
+      className="tf-pressable border-border/70 text-muted-foreground hover:text-foreground disabled:border-border/25 disabled:text-muted-foreground/40 disabled:hover:text-muted-foreground/40 grid h-6.5 w-6.5 place-items-center rounded-md border"
     >
       {children}
     </button>

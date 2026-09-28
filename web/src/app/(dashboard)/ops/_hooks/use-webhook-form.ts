@@ -27,7 +27,7 @@ export function useWebhookForm() {
   const [whEvents, setWhEvents] = useState<string[]>(["*"]);
   const [confirmDeleteWebhookId, setConfirmDeleteWebhookId] = useState<number | null>(null);
 
-  const { data: webhooks, isLoading, error } = useWebhooks();
+  const { data: webhooks, isLoading, error, refetch } = useWebhooks();
   const createWebhook = useCreateWebhook();
   const deleteWebhook = useDeleteWebhook();
   const pingWebhook = usePingWebhook();
@@ -68,6 +68,7 @@ export function useWebhookForm() {
     webhooks,
     isLoading,
     error,
+    reintentar: () => void refetch(),
     newWebhookSecret,
     clearNewWebhookSecret: () => setNewWebhookSecret(null),
     whName,

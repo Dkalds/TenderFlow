@@ -4,7 +4,7 @@
  * Qué vende el equipo, y por tanto qué universo puntúa el Radar por defecto.
  *
  * Hasta 2026-09 las familias del diccionario eran literales en el código: un
- * partner de Microsoft o de Salesforce heredaba el corpus y el ranking
+ * partner de Microsoft o de Salesforce heredaba el universo y el ranking
  * pensados para SAP, sin ninguna forma de decir lo contrario. Vacío sigue
  * significando «todas», que es el comportamiento anterior.
  *
@@ -15,19 +15,21 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveOrganizationId, useOrganizations } from "@/hooks/use-organization";
 import {
   useOrganizationSettings,
   useUpdateOrganizationSettings,
 } from "@/hooks/use-organization-settings";
+import { getErrorMessage } from "@/lib/query-feedback";
 
 export function TecnologiasOrganizacionCard() {
   const activeOrganizationId = useActiveOrganizationId();
   const organizations = useOrganizations();
-  const { data, isLoading } = useOrganizationSettings(activeOrganizationId);
+  const { data, isLoading, error, refetch } = useOrganizationSettings(activeOrganizationId);
   const update = useUpdateOrganizationSettings(activeOrganizationId);
 
   const [seleccion, setSeleccion] = useState<string[]>([]);
@@ -51,25 +53,31 @@ export function TecnologiasOrganizacionCard() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tecnologías de tu organización</CardTitle>
-        <CardDescription>
-          El Radar acota su universo a estas familias cuando no filtras por tecnología a mano.
-          Vacío significa todas.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Panel>
+      <PanelTitle title="Tecnologías de tu organización" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        El Radar solo puntúa licitaciones de estas familias cuando no filtras por tecnología a mano. Vacío significa todas.
+      </p>
+      <div className="space-y-3">
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Cargando familias…</p>
+          <Skeleton className="h-10 w-full" />
+        ) : error ? (
+          <PanelError
+            variant="inline"
+            title="No se pudieron cargar las familias de tecnología"
+            error={error}
+            onRetry={() => void refetch()}
+          />
         ) : disponibles.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No se pudieron cargar las familias del diccionario.
-          </p>
+          <PanelEmpty
+            size="sm"
+            title="Sin familias de tecnología"
+            hint="El Radar puntúa todas las licitaciones mientras no haya familias entre las que elegir."
+          />
         ) : (
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             {disponibles.map((familia) => (
-              <label key={familia} className="flex items-center gap-2 text-sm">
+              <label key={familia} className="flex items-center gap-2 text-tf-body">
                 <Checkbox
                   checked={seleccion.includes(familia)}
                   disabled={!puedeEditar}
@@ -82,13 +90,13 @@ export function TecnologiasOrganizacionCard() {
           </div>
         )}
 
-        {!puedeEditar && !isLoading && (
-          <p className="text-xs text-muted-foreground">
-            Solo owner o admin pueden cambiarlas.
+        {!puedeEditar && !isLoading && !error && (
+          <p className="text-tf-meta text-muted-foreground">
+            Solo un propietario o un administrador puede cambiarlas.
           </p>
         )}
 
-        {puedeEditar && (
+        {puedeEditar && !error && disponibles.length > 0 && (
           <Button
             size="sm"
             disabled={!dirty || update.isPending}
@@ -99,17 +107,13 @@ export function TecnologiasOrganizacionCard() {
                   setDirty(false);
                   toast.success("Tecnologías guardadas. El Radar ya usa este ámbito.");
                 })
-                .catch((error: unknown) =>
-                  toast.error(
-                    error instanceof Error ? error.message : "No se pudieron guardar",
-                  ),
-                )
+                .catch((error: unknown) => toast.error(getErrorMessage(error, "accion")))
             }
           >
             Guardar tecnologías
           </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

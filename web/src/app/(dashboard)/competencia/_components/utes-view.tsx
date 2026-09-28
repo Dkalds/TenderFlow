@@ -15,6 +15,7 @@
  * es un componente de este mismo directorio.
  */
 
+import { PanelError } from "@/components/console/panel";
 import { ExportPopover } from "@/components/export-popover";
 
 import { useUtesData } from "../_hooks/use-utes-data";
@@ -28,6 +29,7 @@ export default function UtesView() {
     data,
     isLoading,
     error,
+    refetch,
     memberSearch,
     setMemberSearch,
     comparativaRows,
@@ -37,26 +39,15 @@ export default function UtesView() {
   } = useUtesData();
 
   if (error) {
-    return (
-      <div
-        className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center"
-        role="alert"
-      >
-        <p className="text-destructive">Error: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudieron cargar las UTE" error={error} onRetry={refetch} />;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* El nombre del corte lo pone la cabecera del espacio; aquí queda la
           acción, que es lo único que no puede vivir allí. */}
-      <div className="flex items-center">
-        <div className="flex-1" />
-        <ExportPopover
-          extraParams={{ section: "utes" }}
-          className="[&>button]:h-8 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs"
-        />
+      <div className="flex items-center justify-end">
+        <ExportPopover extraParams={{ section: "utes" }} label="Exportar UTE" />
       </div>
 
       <UtesKpis kpis={data?.kpis} isLoading={isLoading} />

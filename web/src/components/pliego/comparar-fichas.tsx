@@ -1,12 +1,14 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { Aviso, PanelError } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
 import {
   type CeldaComparacion,
   type FilaComparacion,
   useCompararFichas,
 } from "@/hooks/use-comparar-fichas";
+import { cn } from "@/lib/utils";
 
 /**
  * F2.8 — tabla de las familias de la ficha de dos o tres expedientes.
@@ -65,7 +67,7 @@ export function ComparacionFichasTabla({
   const consulta = useCompararFichas(ids);
 
   if (ids.length < 2) {
-    return <p className="text-sm text-muted-foreground">Elige al menos dos expedientes.</p>;
+    return <p className="text-tf-body text-muted-foreground">Elige al menos dos expedientes.</p>;
   }
   if (consulta.isLoading) {
     return (
@@ -77,9 +79,12 @@ export function ComparacionFichasTabla({
   }
   if (consulta.error) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        No se pudieron comparar las fichas. {(consulta.error as Error).message}
-      </p>
+      <PanelError
+        variant="inline"
+        title="No se pudieron comparar las fichas"
+        error={consulta.error}
+        onRetry={() => void consulta.refetch()}
+      />
     );
   }
   const data = consulta.data;
@@ -95,27 +100,23 @@ export function ComparacionFichasTabla({
   return (
     <div className="space-y-3">
       {sinFicha.length > 0 && (
-        <p
-          role="status"
-          className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning"
-        >
-          <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            Sin ficha del pliego extraída todavía: {sinFicha.map(nombre).join(", ")}. Su columna en
-            blanco no significa que el pliego no exija nada.
-          </span>
-        </p>
+        <Aviso tone="warning">
+          Sin ficha del pliego extraída todavía: {sinFicha.map(nombre).join(", ")}. Su columna en
+          blanco no significa que el pliego no exija nada.
+        </Aviso>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-tf-body">
           <caption className="sr-only">Comparación de las fichas del pliego, familia a familia</caption>
           <thead>
             <tr className="border-b border-border">
-              <th scope="col" className="py-2 pr-3 text-left font-medium text-muted-foreground">
+              <th scope="col" className={cn(CABECERA_COLUMNA, "py-2 pr-3 text-left")}>
                 Familia
               </th>
               {columnas.map((id) => (
-                <th key={id} scope="col" className="py-2 pr-3 text-left font-medium">
+                // El nombre del expediente no es un rótulo de columna sino un
+                // dato: va en frase, sin la versal de `CABECERA_COLUMNA`.
+                <th key={id} scope="col" className="py-2 pr-3 text-left text-tf-meta font-semibold">
                   <span className="line-clamp-2">{nombre(id)}</span>
                 </th>
               ))}
@@ -127,8 +128,8 @@ export function ComparacionFichasTabla({
         </table>
       </div>
       {vacias.length > 0 && (
-        <details className="text-sm">
-          <summary className="cursor-pointer font-medium text-muted-foreground">
+        <details className="text-tf-body">
+          <summary className="cursor-pointer text-tf-meta font-medium text-muted-foreground">
             Ningún pliego publica {vacias.length === 1 ? "esta familia" : `estas ${vacias.length} familias`}
           </summary>
           <ul className="mt-2 list-disc pl-5 text-muted-foreground">

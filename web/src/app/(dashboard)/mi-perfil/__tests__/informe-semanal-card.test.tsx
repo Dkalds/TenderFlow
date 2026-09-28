@@ -26,7 +26,12 @@ vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }
 
 const fetchWithAuth = vi.hoisted(() => vi.fn());
 const apiMutate = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/api-client", () => ({ fetchWithAuth, apiMutate, apiGet: vi.fn() }));
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  fetchWithAuth,
+  apiMutate,
+  apiGet: vi.fn(),
+}));
 
 const rol = vi.hoisted(() => ({ actual: "owner" as string }));
 vi.mock("@/hooks/use-organization", () => ({

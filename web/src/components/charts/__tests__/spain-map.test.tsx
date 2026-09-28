@@ -69,7 +69,7 @@ describe("SpainMap", () => {
   it("shows an error state when the geojson fetch fails", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("network"))));
     render(<SpainMap data={DATA} />);
-    expect(await screen.findByText("Error cargando mapa")).toBeInTheDocument();
+    expect(await screen.findByText("No se pudo cargar el mapa")).toBeInTheDocument();
   });
 
   it("shows an error state on a non-ok response", async () => {
@@ -78,7 +78,7 @@ describe("SpainMap", () => {
       vi.fn(() => Promise.resolve({ ok: false, status: 404 } as Response)),
     );
     render(<SpainMap data={DATA} />);
-    expect(await screen.findByText("Error cargando mapa")).toBeInTheDocument();
+    expect(await screen.findByText("No se pudo cargar el mapa")).toBeInTheDocument();
   });
 
   it("renders the map once the geojson resolves, exercising the color/label helpers", async () => {

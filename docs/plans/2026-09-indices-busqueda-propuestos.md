@@ -166,14 +166,16 @@ def downgrade() -> None:
   secuencial a `Bitmap Index Scan` sobre las filas de esa tecnología. Abarata
   también las variantes por tecnología del snapshot del overview (ver abajo),
   que hoy se calculan secuenciales en cada pasada.
-- **`idx_lic_tecnologia` (`v21`) no se retira aquí.** Lo siguen pudiendo usar
-  las consultas de renovaciones (`db/repositories/renovaciones.py` y
-  `services/competitive/renovaciones.py`), que filtran con
-  `l.tecnologia IN (…)` **por igualdad** — y por eso se dejan fuera los
-  expedientes multi-tecnología, el mismo defecto que el resto del producto
-  corrigió al pasar a `tecnologia_en_csv_sql`. Cuando esas consultas se pasen
-  al fragmento común, mirar el `idx_scan` del btree en `pg_stat_user_indexes`
-  antes de decidir si sobra.
+- **`idx_lic_tecnologia` (`v21`) no se retira aquí.** Lo usaban las consultas
+  de renovaciones (`db/repositories/renovaciones.py` y
+  `services/competitive/renovaciones.py`), que filtraban con
+  `l.tecnologia IN (…)` **por igualdad** y por eso dejaban fuera los
+  expedientes multi-tecnología. Desde el 2026-09-27 filtran con
+  `tecnologia_en_csv_sql`, igual que el alcance de Mercado
+  (`db/repositories/mercado.py::alcance_sql`) y la lista FTS de la búsqueda
+  híbrida (`db/search_backend.py`), que tenían el mismo defecto. Antes de
+  decidir si el btree sobra, mirar su `idx_scan` en `pg_stat_user_indexes`: la
+  guarda `tecnologia IS NOT NULL` del fragmento todavía puede resolverse con él.
 
 ### `v143_lic_busqueda_plegada_trgm`
 

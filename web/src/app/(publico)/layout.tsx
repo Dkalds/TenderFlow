@@ -1,38 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Fraunces } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { CONTACT_EMAIL, solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO } from "./_content/landing";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
 
-/**
- * Tipografía de titulares de la superficie pública.
+/*
+ * Tipografía de titulares: Fraunces, la misma que en la consola.
  *
- * El dashboard usa Space Grotesk como `--font-display`, y para la portada eso
- * era un problema doble. El de forma: es la fuente a la que converge medio
- * internet generado —la propia skill `frontend-design` la nombra como ejemplo
- * de lo que no hay que elegir— y, junto a Geist, dejaba la página con el aspecto
- * de una plantilla. El de fondo: TenderFlow vende lectura de un mercado, y una
- * grotesca geométrica no dice nada de eso.
+ * Esta superficie fue la primera en dejar Space Grotesk. Junto a Geist dejaba
+ * la página con el aspecto de una plantilla —es la fuente a la que converge
+ * medio internet generado, y la skill `frontend-design` la nombra como ejemplo
+ * de lo que no hay que elegir—, y una grotesca geométrica no dice nada de un
+ * producto que vende lectura de un mercado. Fraunces, una serif del linaje de
+ * la prensa económica, sí. El cuerpo de texto sigue en Geist —una serif a 14 px
+ * en pantalla se lee peor—, así que el contraste entre las dos es deliberado.
  *
- * Fraunces es una serif con eje óptico, del linaje de la prensa económica: a
- * cuerpo de titular tiene contraste y remates, que es exactamente el tono de
- * «esto lo escribe alguien que sabe de qué habla». El cuerpo de texto sigue en
- * Geist —una serif a 14 px en pantalla se lee peor— así que el contraste entre
- * las dos es deliberado.
- *
- * Sólo afecta a esta superficie: la clase que genera `next/font` redefine
- * `--font-display` en el elemento que envuelve el layout, y las utilidades
- * `font-display` y `tf-*` de `globals.css` resuelven esa variable **en el sitio
- * donde se usan**, así que la definición más cercana gana sobre la que el layout
- * raíz pone en `<html>`. El dashboard no se entera.
+ * Hasta el 2026-09-26 este layout cargaba Fraunces por su cuenta y la acotaba a
+ * lo público, mientras la consola seguía en Space Grotesk. Desde entonces es la
+ * `--font-display` de toda la aplicación: se declara una vez en
+ * `lib/tipografia.ts` y el layout raíz la pone en `<html>`. La regla que la acota
+ * ya no es la superficie sino el tamaño: `font-display` solo en titulares de
+ * 15 px o más (ver la escala tipográfica de `globals.css`).
  */
-const fuenteDisplay = Fraunces({
-  variable: "--font-display",
-  subsets: ["latin"],
-});
 
 /**
  * Layout de la superficie pública.
@@ -80,7 +71,7 @@ export const metadata: Metadata = {
  * arriba incumple el mismo criterio que el padding venía a satisfacer, así que
  * la altura se recupera con el `gap-y` del contenedor, no comiéndosela. */
 const ENLACE_PIE =
-  "hover:text-foreground focus-visible:ring-ring inline-flex items-center rounded px-1 " +
+  "hover:text-foreground focus-visible:ring-ring inline-flex items-center rounded-sm px-1 " +
   "py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none";
 
 /* Orden deliberado: primero la superficie de datos que se puede ver sin cuenta,
@@ -98,9 +89,7 @@ const ENLACES_PIE = [
 export default function PublicoLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
-      {/* `fuenteDisplay.variable` aquí y no en el `<html>` del layout raíz:
-          es lo que acota la fuente de titulares a la superficie pública. */}
-      <div className={`${fuenteDisplay.variable} bg-background flex min-h-screen flex-col`}>
+      <div className="bg-background flex min-h-screen flex-col">
         <header className="tf-glass border-border/60 sticky top-0 z-40 border-b">
           {/* El header se reparte en varias filas por debajo de `sm` y vuelve a
               una sola línea a partir de ahí, con una sola nav en el DOM. Antes
@@ -121,7 +110,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
             <Link
               href="/"
               aria-label="TenderFlow — inicio"
-              className="focus-visible:ring-ring mr-auto rounded focus-visible:ring-2 focus-visible:outline-none sm:mr-0"
+              className="focus-visible:ring-ring mr-auto rounded-sm focus-visible:ring-2 focus-visible:outline-none sm:mr-0"
             >
               <TenderFlowLogo boxSize={30} />
             </Link>
@@ -167,14 +156,14 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
                 // `whitespace-nowrap`: al dejar de ser un botón con padding,
                 // a 375 px "Iniciar sesión" partía en dos renglones junto a un
                 // CTA de una sola línea. El texto es corto y cabe entero.
-                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded text-sm whitespace-nowrap transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded-sm text-sm whitespace-nowrap transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
               >
                 Iniciar sesión
               </Link>
               <EnlaceSolicitarAcceso
                 href={solicitarAccesoHref()}
                 ubicacion="header"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium shadow transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium transition-[scale,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
               >
                 {CONTENIDO.ctaPrimario}
               </EnlaceSolicitarAcceso>

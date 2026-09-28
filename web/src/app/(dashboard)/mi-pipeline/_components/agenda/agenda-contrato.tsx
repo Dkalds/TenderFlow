@@ -14,6 +14,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { EMPTY, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
 import { SectionTitle } from "@/components/console/panel";
 import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
@@ -28,8 +29,7 @@ function Dato({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const ENLACE =
-  "tf-pressable inline-flex h-7 items-center rounded-md border border-border/70 px-2.5 text-[11.5px] font-medium text-muted-foreground transition-colors hover:text-foreground";
+const ENLACE = buttonVariants({ variant: "outline", size: "sm" });
 
 export function AgendaContrato({ item }: { item: PipelineAgendaItem }) {
   const ventana =
@@ -40,32 +40,32 @@ export function AgendaContrato({ item }: { item: PipelineAgendaItem }) {
   return (
     <div>
       <SectionTitle>Contrato</SectionTitle>
-      <dl className="space-y-0.5 text-[11.5px]">
+      <dl className="space-y-0.5 text-tf-meta">
         <Dato label="Fin efectivo">
           <span className="inline-flex items-center gap-1.5">
             {item.fecha_fin_efectiva ? formatDate(item.fecha_fin_efectiva) : EMPTY}
             <FechaFinOrigenBadge origen={item.fecha_fin_origen} />
           </span>
           {origenFechaFin(item.fecha_fin_origen) && (
-            <span className="block text-[10px] text-muted-foreground">
+            <span className="block text-tf-micro text-muted-foreground">
               {origenFechaFin(item.fecha_fin_origen)}
             </span>
           )}
         </Dato>
         <Dato label="Prórrogas aplicadas">
-          <span className="tf-tnum font-mono">
+          <span className="tf-tnum">
             {item.prorrogas_aplicadas != null ? formatNumber(item.prorrogas_aplicadas) : EMPTY}
           </span>
         </Dato>
         <Dato label="Ventana de relicitación">{ventana ?? EMPTY}</Dato>
         <Dato label="Importe adjudicado">
-          <span className="tf-tnum font-mono">
+          <span className="tf-tnum">
             {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
           </span>
         </Dato>
       </dl>
 
-      <p className="mt-2 text-[10px] text-muted-foreground">
+      <p className="mt-2 text-tf-micro text-muted-foreground">
         Las alertas de este contrato salen a 6, 3 y 1 mes del fin efectivo.
       </p>
 

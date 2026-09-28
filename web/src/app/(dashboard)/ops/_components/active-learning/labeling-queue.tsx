@@ -9,31 +9,30 @@
  * solo desplazaría el mismo acoplamiento a la firma.
  */
 
-import { Activity } from "lucide-react";
+import { Panel, PanelEmpty, PanelError, PanelTitle, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ActiveLearning } from "../../_hooks/use-active-learning";
+import type { ActiveLearning, Strategy } from "../../_hooks/use-active-learning";
 import { QueueItemCard } from "./queue-item-card";
+
+const ESTRATEGIAS: { value: Strategy; label: string }[] = [
+  { value: "uncertainty", label: "Incertidumbre" },
+  { value: "random", label: "Aleatoria" },
+];
 
 export function TechQueueChips({ techCounts }: { techCounts: Record<string, number> }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Tecnologías en cola</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(techCounts).map(([tech, count]) => (
-            <Badge key={tech} variant="outline" className="text-sm py-1 px-3">
-              {tech}: {count}
-            </Badge>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="Tecnologías en cola" />
+      <div className="flex flex-wrap gap-1.5">
+        {Object.entries(techCounts).map(([tech, count]) => (
+          <Badge key={tech} variant="outline">
+            {tech}: <span className="tf-tnum">{count}</span>
+          </Badge>
+        ))}
+      </div>
+    </Panel>
   );
 }
 
@@ -44,16 +43,15 @@ export function LabelingQueue({ estado }: { estado: ActiveLearning }) {
     <>
       <Separator />
 
-      {/* Progress */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Activity className="h-4 w-4" />
+      {/* Progreso de la sesión */}
+      <div className="flex items-center gap-3 text-tf-meta text-muted-foreground">
         <span>
-          {dismissedCount} de {items.length} ítems revisados en esta sesión
+          {dismissedCount} de {items.length} revisadas en esta sesión
         </span>
         {items.length > 0 && (
-          <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden max-w-xs">
+          <div className="h-1.5 max-w-xs flex-1 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full bg-primary rounded-full transition-[width]"
+              className="h-full rounded-full bg-primary transition-[width]"
               style={{
                 width: `${Math.min((dismissedCount / items.length) * 100, 100)}%`,
               }}
@@ -62,61 +60,43 @@ export function LabelingQueue({ estado }: { estado: ActiveLearning }) {
         )}
       </div>
 
-      {/* Labeling queue */}
+      {/* Cola de etiquetado */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold">Cola de etiquetado</h2>
-        <div className="flex items-center gap-1" role="group" aria-label="Estrategia de muestreo">
-          <span className="mr-1 text-xs text-muted-foreground">Estrategia:</span>
-          <Button
-            size="sm"
-            variant={strategy === "uncertainty" ? "default" : "outline"}
-            onClick={() => estado.setStrategy("uncertainty")}
-          >
-            Incertidumbre
-          </Button>
-          <Button
-            size="sm"
-            variant={strategy === "random" ? "default" : "outline"}
-            onClick={() => estado.setStrategy("random")}
-          >
-            Aleatoria
-          </Button>
+        <h2 className="text-tf-body font-semibold">Cola de etiquetado</h2>
+        <div className="flex items-center gap-2">
+          <span className="text-tf-meta text-muted-foreground">Estrategia</span>
+          <Segmented
+            aria-label="Estrategia de muestreo"
+            value={strategy}
+            options={ESTRATEGIAS}
+            onChange={estado.setStrategy}
+          />
         </div>
       </div>
 
-      {queueError && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6 text-destructive">
-            Error al cargar cola de feedback. Verifica que la API esté activa.
-          </CardContent>
-        </Card>
+      {queueError != null && (
+        <PanelError title="No se pudo cargar la cola de etiquetado" error={queueError} onRetry={estado.retryQueue} />
       )}
 
       {queueLoading && (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <Card key={i}>
-              <CardContent className="pt-6 space-y-2">
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-1/4" />
-              </CardContent>
-            </Card>
+            <Skeleton key={i} className="h-28 w-full rounded-xl" />
           ))}
         </div>
       )}
 
-      {!queueLoading && pendingItems.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center">
-            <Activity className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
-            <p className="text-lg font-medium text-muted-foreground">
-              {items.length === 0
-                ? "No hay ítems en la cola de feedback"
-                : "Has revisado todos los ítems de esta sesión"}
-            </p>
-          </CardContent>
-        </Card>
+      {!queueLoading && queueError == null && pendingItems.length === 0 && (
+        <PanelEmpty
+          title={
+            items.length === 0 ? "No hay licitaciones en la cola" : "Has revisado toda la cola de esta sesión"
+          }
+          hint={
+            items.length === 0
+              ? "Cuando el modelo dude de alguna licitación, aparecerá aquí para que la etiquetes."
+              : "Cambia de estrategia o vuelve más tarde para ver más."
+          }
+        />
       )}
 
       {!queueLoading && (

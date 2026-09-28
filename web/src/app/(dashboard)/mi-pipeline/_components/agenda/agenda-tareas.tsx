@@ -6,7 +6,7 @@
  * **Es la primera pantalla de C6.1 en todo el producto**: las rutas
  * `/pursuits/{id}/tasks` existían desde la migración que creó la tabla y no las
  * pintaba nadie, así que el trabajo que la gente se apuntaba sólo se veía
- * reducido a la `next_action` que el backend deriva de ellas. Aquí se ven las
+ * reducido a la `next_action` que la API deriva de ellas. Aquí se ven las
  * tareas de verdad, se cierran con un clic y se añade una sin salir de la lista.
  *
  * Completar una tarea recalcula `next_action` en servidor; el hook invalida la
@@ -16,9 +16,11 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { SectionTitle } from "@/components/console/panel";
+import { PanelError, SectionTitle } from "@/components/console/panel";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { cn, formatDate } from "@/lib/utils";
 import {
   tareaAbierta,
@@ -39,7 +41,7 @@ function FilaTarea({ tarea, pursuitId }: { tarea: PursuitTask; pursuitId: number
       { pursuitId, taskId: tarea.id, estado },
       {
         onError: (err) =>
-          toast.error(err instanceof Error ? err.message : "No se pudo actualizar la tarea"),
+          toast.error("No se pudo actualizar la tarea", { description: getErrorMessage(err, "accion") }),
       },
     );
   };
@@ -57,14 +59,14 @@ function FilaTarea({ tarea, pursuitId }: { tarea: PursuitTask; pursuitId: number
         <span
           id={etiquetaId}
           className={cn(
-            "block text-[11.5px] leading-[1.35]",
+            "block text-tf-meta",
             abierta ? "text-foreground" : "text-muted-foreground line-through",
           )}
         >
           {tarea.titulo}
         </span>
         {(tarea.vence || tarea.responsable_name) && (
-          <span className="block text-[10px] text-muted-foreground">
+          <span className="block text-tf-micro text-muted-foreground">
             {[tarea.vence ? formatDate(tarea.vence) : null, tarea.responsable_name]
               .filter(Boolean)
               .join(" · ")}
@@ -76,7 +78,7 @@ function FilaTarea({ tarea, pursuitId }: { tarea: PursuitTask; pursuitId: number
 }
 
 export function AgendaTareas({ pursuitId }: { pursuitId: number }) {
-  const { data, isPending, error } = usePursuitTasks(pursuitId);
+  const { data, isPending, error, refetch } = usePursuitTasks(pursuitId);
   const crear = useCrearTarea();
   const [titulo, setTitulo] = React.useState("");
   const [vence, setVence] = React.useState("");
@@ -99,25 +101,29 @@ export function AgendaTareas({ pursuitId }: { pursuitId: number }) {
           toast.success("Tarea añadida");
         },
         onError: (err) =>
-          toast.error(err instanceof Error ? err.message : "No se pudo crear la tarea"),
+          toast.error("No se pudo crear la tarea", { description: getErrorMessage(err, "accion") }),
       },
     );
   };
 
   return (
     <div>
-      <SectionTitle aside={tareas.length ? `${abiertas} abiertas` : undefined}>Tareas</SectionTitle>
+      <SectionTitle hint={tareas.length ? `${abiertas} abiertas` : undefined}>Tareas</SectionTitle>
 
       {error ? (
-        <p role="alert" className="text-[11px] text-destructive">
-          No se pudieron cargar las tareas. {(error as Error).message}
-        </p>
+        <PanelError
+          variant="inline"
+          className="py-0"
+          title="No se pudieron cargar las tareas"
+          error={error}
+          onRetry={() => void refetch()}
+        />
       ) : isPending ? (
-        <p role="status" className="text-[11px] text-muted-foreground">
+        <p role="status" className="text-tf-micro text-muted-foreground">
           Cargando tareas…
         </p>
       ) : tareas.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-tf-meta text-muted-foreground">
           Sin tareas. La primera que añadas pasa a ser la próxima acción.
         </p>
       ) : (
@@ -138,7 +144,7 @@ export function AgendaTareas({ pursuitId }: { pursuitId: number }) {
           onChange={(event) => setTitulo(event.target.value)}
           placeholder="Añadir una tarea"
           maxLength={300}
-          className="h-8 text-[12px]"
+          className="h-8 text-tf-meta"
         />
         <div className="flex gap-1.5">
           <label htmlFor={venceId} className="sr-only">
@@ -149,20 +155,17 @@ export function AgendaTareas({ pursuitId }: { pursuitId: number }) {
             type="date"
             value={vence}
             onChange={(event) => setVence(event.target.value)}
-            className="h-8 flex-1 text-[12px]"
+            className="h-8 flex-1 text-tf-meta"
           />
-          <button
+          <Button
             type="submit"
+            variant="outline"
+            size="sm"
             disabled={!titulo.trim() || crear.isPending}
-            className={cn(
-              "tf-pressable h-8 flex-none rounded-md border px-2.5 text-[11.5px] font-medium transition-colors",
-              titulo.trim()
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-border/60 text-muted-foreground/60",
-            )}
+            className="flex-none border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary md:h-8"
           >
             {crear.isPending ? "Añadiendo…" : "Añadir"}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

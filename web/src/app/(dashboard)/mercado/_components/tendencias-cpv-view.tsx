@@ -6,6 +6,8 @@
  * en el `page.tsx` de la ruta.
  */
 
+import { PanelError } from "@/components/console/panel";
+
 import { useTendenciasCpvView } from "../_hooks/use-tendencias-cpv-view";
 import {
   TendenciasCpvForecast,
@@ -33,21 +35,20 @@ export default function TendenciasCpvView() {
     cpvTableData,
     isLoading,
     error,
+    refetch,
   } = useTendenciasCpvView();
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">{"Error"}: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudieron cargar las tendencias por CPV" error={error} onRetry={refetch} />;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h1 className="sr-only">Tendencias CPV</h1>
-        <p className="text-muted-foreground">Series temporales por código CPV.</p>
+        <h1 className="sr-only">Tendencias por CPV</h1>
+        <p className="text-tf-meta text-muted-foreground">
+          Cómo evoluciona el importe de cada código CPV.
+        </p>
       </div>
 
       <TendenciasCpvSelector

@@ -40,6 +40,7 @@ import {
   useActiveOrganizationId,
   type OrganizacionActiva,
 } from "@/hooks/use-organization";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type Cuenta = Schemas["CuentaObjetivo"];
 export type CuentaOrgano = Schemas["CuentaOrgano"];
@@ -75,6 +76,7 @@ export function useCuentas() {
         params: { query: { organization_id: organizationId ?? undefined } },
       }),
     enabled: organizacionResuelta(organizationId),
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -105,6 +107,7 @@ export function useFichaCuenta(cuentaId: number | null) {
       fetchWithAuth<FichaCuenta>(conOrganizacion(`/api/v1/cuentas/${cuentaId}`, organizationId)),
     enabled: cuentaId != null && cuentaId > 0 && organizacionResuelta(organizationId),
     staleTime: 60_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

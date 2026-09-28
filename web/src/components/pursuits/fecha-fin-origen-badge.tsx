@@ -13,6 +13,7 @@
  * `real` no lleva distintivo a propósito: lo excepcional es la estimación, y
  * marcar también lo normal convierte el badge en ruido.
  */
+import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const ETIQUETA: Record<string, { texto: string; explicacion: string }> = {
@@ -39,9 +40,11 @@ export function FechaFinOrigenBadge({ origen }: { origen?: string | null }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex h-[18px] flex-none items-center rounded-sm border border-border/70 bg-muted/60 px-1.5 text-[10px] font-medium text-muted-foreground">
+        {/* Un calificativo de la fecha que va delante («12/03/2027 estimada»),
+            por eso en minúscula: no es un rótulo. */}
+        <Badge size="sm" className="flex-none">
           {etiqueta.texto}
-        </span>
+        </Badge>
       </TooltipTrigger>
       <TooltipContent>{etiqueta.explicacion}</TooltipContent>
     </Tooltip>

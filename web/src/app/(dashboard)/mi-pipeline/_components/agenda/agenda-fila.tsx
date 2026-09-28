@@ -61,12 +61,12 @@ export function AgendaFila({
         if (event.key === "Enter") acciones.onAbrir();
       }}
       className={cn(
-        "flex cursor-pointer flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-120 ease-out",
+        "flex cursor-pointer flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors",
         "md:grid md:items-center md:py-0",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-inset",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset",
         GRID,
         rowPad,
-        activa ? "bg-primary/8" : "hover:bg-secondary/60",
+        activa ? "bg-primary/10" : "hover:bg-secondary/60",
       )}
     >
       {/* Envoltorios de la ficha: `md:contents` los disuelve
@@ -75,7 +75,7 @@ export function AgendaFila({
       <div className="flex min-w-0 items-center gap-2 md:contents">
         <span
           className={cn(
-            "tf-tnum inline-flex h-5 flex-none items-center justify-center rounded-full px-1.5 font-mono text-[10.5px] font-semibold",
+            "tf-tnum inline-flex h-5 flex-none items-center justify-center rounded-full px-1.5 text-tf-micro font-semibold",
             CHIP_POR_BANDA[item.urgencia],
           )}
         >
@@ -87,15 +87,15 @@ export function AgendaFila({
               título de un expediente no cabe en 240 px. */}
           {/* El icono va `aria-hidden` porque la clase de compromiso ya está en
               el `aria-label` de la fila: repetirla la anunciaría dos veces. */}
-          <p className="line-clamp-2 text-[12.5px] font-medium leading-[1.35] md:line-clamp-1">
+          <p className="line-clamp-2 text-tf-body font-medium md:line-clamp-1">
             {tituloDe(item)}
           </p>
-          <p className="truncate text-[10.5px] text-muted-foreground">{metaLinea(item)}</p>
+          <p className="truncate text-tf-micro text-muted-foreground">{metaLinea(item)}</p>
         </div>
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border/40 pt-2 md:contents">
-        <span className="tf-tnum font-mono text-[11.5px] text-foreground/85 md:text-right">
+        <span className="tf-tnum text-tf-meta text-foreground/85 md:text-right">
           {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
         </span>
         <span className="flex min-w-0 flex-none justify-end">

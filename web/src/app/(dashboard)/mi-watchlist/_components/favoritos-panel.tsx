@@ -10,19 +10,16 @@
  */
 
 import Link from "next/link";
-import { Trash2, Star } from "lucide-react";
+import { Trash2 } from "lucide-react";
+import { PanelEmpty } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
-import {
-  useRemoveWatchlistItem,
-  useWatchlistItems,
-} from "@/hooks/use-watchlist-items";
+import { useRemoveWatchlistItem, useWatchlistItems } from "@/hooks/use-watchlist-items";
 import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 
 export function FavoritosPanel() {
@@ -31,18 +28,16 @@ export function FavoritosPanel() {
   // F1.6 — el favorito se etiqueta por su `id_externo`; una sola petición
   // para toda la lista.
   const etiquetas =
-    useEtiquetasDe("favorito", (items ?? []).map((item) => item.id_externo)).data ?? {};
+    useEtiquetasDe(
+      "favorito",
+      (items ?? []).map((item) => item.id_externo),
+    ).data ?? {};
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-2">
         {[1, 2, 3].map((i) => (
-          <Card key={i}>
-            <CardContent className="pt-6 space-y-2">
-              <Skeleton className="h-5 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-            </CardContent>
-          </Card>
+          <Skeleton key={i} className="h-14 w-full rounded-md" />
         ))}
       </div>
     );
@@ -50,83 +45,71 @@ export function FavoritosPanel() {
 
   if (!items || items.length === 0) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <Star className="h-12 w-12 text-muted-foreground/50 mb-4" aria-hidden="true" />
-          <p className="text-lg font-medium text-muted-foreground">
-            No tienes licitaciones marcadas como favoritas
-          </p>
-          {/* Dice dónde está la estrella y lleva hasta ella (C7.3); el `/70`
-              del texto quedaba por debajo de 4,5:1. */}
-          <p className="text-sm text-muted-foreground mt-1 max-w-[52ch]">
+      // Dice dónde está la estrella y lleva hasta ella (C7.3).
+      <PanelEmpty
+        title="No tienes licitaciones marcadas como favoritas"
+        hint={
+          <>
             Pulsa la estrella de una fila en{" "}
             <Link href="/detalle" className="text-primary font-medium hover:underline">
               Detalle
             </Link>{" "}
             (o la tecla S sobre la fila activa) y la licitación aparecerá aquí.
-          </p>
-        </CardContent>
-      </Card>
+          </>
+        }
+      />
     );
   }
 
   return (
-    <div className="space-y-2">
+    <ul className="divide-border/50 border-border/60 bg-card divide-y rounded-xl border">
       {items.map((item) => (
-        <Card key={item.id_externo} className="hover:bg-accent/30 transition-colors">
-          <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <div className="flex-1 min-w-0">
-              <a
-                href={`/detalle?lic=${item.id_externo}`}
-                className="text-sm font-medium hover:underline line-clamp-1"
+        <li key={item.id_externo} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+          <div className="min-w-0 flex-1">
+            <Link
+              href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
+              className="text-tf-body line-clamp-1 font-medium hover:underline"
+            >
+              {truncate(item.titulo ?? item.id_externo, 100)}
+            </Link>
+            <EtiquetaChips etiquetas={etiquetas[item.id_externo]} className="mt-1" />
+          </div>
+          <EtiquetasEditor
+            objetoTipo="favorito"
+            objetoId={item.id_externo}
+            aplicadas={etiquetas[item.id_externo]}
+            descripcion={truncate(item.titulo ?? item.id_externo, 60)}
+          />
+          {item.importe != null && (
+            <span className="tf-tnum text-tf-meta shrink-0 font-medium">{formatCurrency(item.importe)}</span>
+          )}
+          {item.estado && (
+            <Badge size="sm" variant="outline" className="shrink-0">
+              {item.estado}
+            </Badge>
+          )}
+          {item.fecha_publicacion && (
+            <span className="tf-tnum text-tf-meta text-muted-foreground shrink-0">
+              {formatDate(item.fecha_publicacion)}
+            </span>
+          )}
+          <CompararBoton id={item.id_externo} titulo={item.titulo} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-destructive shrink-0"
+                aria-label="Quitar de favoritos"
+                onClick={() => removeItem.mutate(item.id_externo)}
               >
-                {truncate(item.titulo ?? item.id_externo, 100)}
-              </a>
-              <EtiquetaChips etiquetas={etiquetas[item.id_externo]} className="mt-1" />
-            </div>
-            <EtiquetasEditor
-              objetoTipo="favorito"
-              objetoId={item.id_externo}
-              aplicadas={etiquetas[item.id_externo]}
-              descripcion={truncate(item.titulo ?? item.id_externo, 60)}
-            />
-            {item.importe != null && (
-              <Badge variant="secondary" className="shrink-0">
-                {formatCurrency(item.importe)}
-              </Badge>
-            )}
-            {item.estado && (
-              <Badge variant="outline" className="shrink-0">
-                {item.estado}
-              </Badge>
-            )}
-            {item.fecha_publicacion && (
-              <span className="text-xs text-muted-foreground shrink-0">
-                {formatDate(item.fecha_publicacion)}
-              </span>
-            )}
-            <CompararBoton
-              id={item.id_externo}
-              titulo={item.titulo}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border/80 px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary/50 aria-pressed:text-primary"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 shrink-0 text-destructive"
-                  aria-label="Quitar de favoritos"
-                  onClick={() => removeItem.mutate(item.id_externo)}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Quitar de favoritos</TooltipContent>
-            </Tooltip>
-          </CardContent>
-        </Card>
+                <Trash2 aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Quitar de favoritos</TooltipContent>
+          </Tooltip>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }

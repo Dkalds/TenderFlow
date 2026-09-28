@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { registrarEvento } from "@/lib/analytics";
 import { CONSOLE_SPACES, type ConsoleSpace } from "@/lib/console-spaces";
+import { claseContador, clasePestana, useTeclasPestanas } from "@/components/console/panel";
 import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import {
   ScrollEdgeDelProveedor,
@@ -59,6 +60,14 @@ export function useSpaceView(space: ConsoleSpace): {
   return { view, setView };
 }
 
+/** Sin nadie que escuche el cambio de vista, las flechas solo mueven el foco. */
+function sinCambio() {}
+
+/** Ids que unen cada pestaña de vista con el cuerpo del espacio. */
+function idsVista(spaceKey: string, vista: string) {
+  return { tab: `vistas-${spaceKey}-tab-${vista}`, panel: `vistas-${spaceKey}-panel` };
+}
+
 export function SpaceShell({
   spaceKey,
   view,
@@ -89,7 +98,13 @@ export function SpaceShell({
   children: React.ReactNode;
 }) {
   const space = CONSOLE_SPACES.find((candidate) => candidate.key === spaceKey);
-  const views = space?.views ?? [];
+  const views = React.useMemo(() => space?.views ?? [], [space]);
+  const claves = React.useMemo(() => views.map((item) => item.key), [views]);
+  const conPestanas = views.length > 1;
+  // La vista activa, o la primera si la pedida no es de este espacio: alguna
+  // pestaña tiene que estar en el orden de tabulación.
+  const activa = view && claves.includes(view) ? view : claves[0];
+  const { ref: refPestanas, onKeyDown } = useTeclasPestanas(claves, activa ?? "", onViewChange ?? sinCambio);
 
   // Proveedor propio del borde de scroll. El shell ocupa el alto entero bajo la
   // barra de ámbito y el que scrollea es su cuerpo, no `#main-content`: el
@@ -109,56 +124,64 @@ export function SpaceShell({
             bleed && "border-b border-border/60",
           )}
         >
-          <h1 className="flex-none font-display text-[13px] font-semibold">{space?.label}</h1>
-          <span className="hidden flex-none truncate text-[11.5px] text-muted-foreground xl:inline">
+          {/* El único nivel que manda en la pantalla: la display a 15 px (por
+              debajo de 15 la casa no usa Fraunces). Antes medía 13 px, lo mismo
+              que el texto de una fila. La descripción dice qué trabajo resuelve
+              el espacio, no cómo está montada la pantalla. */}
+          <h1 className="flex-none font-display text-tf-lede font-semibold">{space?.label}</h1>
+          <span className="hidden flex-none truncate text-tf-meta text-muted-foreground xl:inline">
             {space?.description}
           </span>
 
-          {views.length > 1 && (
+          {conPestanas && (
+            // Teclado del patrón de pestañas de WAI-ARIA (flechas, Inicio, Fin;
+            // solo la activa en el orden de tabulación) y la misma piel que
+            // `PanelTabs`: un solo gesto para «cambiar de vista».
             <div
+              ref={refPestanas}
               role="tablist"
               aria-label={`Vistas de ${space?.label}`}
               className="ml-2 flex items-center gap-0.5 border-l border-border/60 pl-2.5"
             >
               {views.map((item) => {
-                const on = item.key === view;
+                const on = item.key === activa;
+                const ids = idsVista(spaceKey, item.key);
                 return (
                   <button
                     key={item.key}
                     type="button"
                     role="tab"
+                    id={ids.tab}
                     aria-selected={on}
+                    // Solo la activa: el cuerpo es el panel de la vista que se ve.
+                    aria-controls={on ? ids.panel : undefined}
+                    tabIndex={on ? 0 : -1}
+                    onKeyDown={onKeyDown}
                     onClick={() => onViewChange?.(item.key)}
-                    className={cn(
-                      "tf-pressable h-7 flex-none whitespace-nowrap rounded-md border px-2.5 text-[12px] font-medium transition-colors duration-150 ease-out",
-                      on
-                        ? "border-border/70 bg-secondary text-foreground"
-                        : "border-transparent text-muted-foreground hover:text-foreground",
-                    )}
+                    className={cn(clasePestana(on), "flex-none")}
                   >
                     {item.label}
+                    {/* El espacio separa etiqueta y recuento en el nombre
+                        accesible («Revisión 3», no «Revisión3»). */}
                     {viewBadges?.[item.key] != null && (
-                      <span
-                        className={cn(
-                          "tf-tnum ml-1.5 rounded px-1 py-0.5 font-mono text-tf-micro font-medium",
-                          on
-                            ? "bg-primary/16 text-primary"
-                            : "bg-muted-foreground/12 text-muted-foreground",
-                        )}
-                      >
-                        {viewBadges[item.key]}
-                      </span>
+                      <>
+                        {" "}
+                        <span className={claseContador(on)}>{viewBadges[item.key]}</span>
+                      </>
                     )}
                     {item.visibility === "experimental" && (
                       // Marca la vista en vez de esconderla: ocultarla la
                       // convertiría en código muerto, y presentarla como una
                       // vista más prometería una madurez que no tiene.
-                      <abbr
-                        className="ml-1.5 rounded-sm border border-warning/40 bg-warning/10 px-1 py-px font-mono text-[8.5px] font-semibold uppercase leading-none tracking-[0.04em] text-warning no-underline"
-                        title="Vista experimental: en validación, puede cambiar o desaparecer"
-                      >
-                        Exp
-                      </abbr>
+                      <>
+                        {" "}
+                        <abbr
+                          className="rounded-sm border border-warning/30 bg-warning/10 px-1 text-tf-micro leading-4 font-medium text-warning no-underline"
+                          title="Vista experimental: en validación, puede cambiar o desaparecer"
+                        >
+                          Exp
+                        </abbr>
+                      </>
                     )}
                   </button>
                 );
@@ -182,6 +205,14 @@ export function SpaceShell({
             del dashboard; `e2e/responsive.spec.ts` mide el alto del documento. */}
         <div
           data-slot="space-shell-cuerpo"
+          // Con pestañas, el cuerpo es el panel de la vista activa.
+          {...(conPestanas && activa
+            ? {
+                role: "tabpanel",
+                id: idsVista(spaceKey, activa).panel,
+                "aria-labelledby": idsVista(spaceKey, activa).tab,
+              }
+            : {})}
           className={cn(
             "relative min-h-0 flex-1",
             bleed ? "overflow-hidden" : "overflow-y-auto px-4 pb-6 pt-4",

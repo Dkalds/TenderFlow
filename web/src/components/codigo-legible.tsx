@@ -34,7 +34,7 @@ export function CodigoLegible({
     <span className={cn("inline-flex items-center gap-1", className)}>
       <span>{resuelto.etiqueta}</span>
       {!resuelto.catalogado && (
-        <span className="text-[10px] font-normal text-muted-foreground">(código no catalogado)</span>
+        <span className="text-tf-micro font-normal text-muted-foreground">(código no catalogado)</span>
       )}
       {entrada && <GlosarioHint entrada={entrada} />}
     </span>

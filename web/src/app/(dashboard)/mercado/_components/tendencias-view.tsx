@@ -11,6 +11,8 @@
  * mismo reparto; el invariante lo fija `mercado/__tests__/views-shared.test.tsx`.
  */
 
+import { PanelError } from "@/components/console/panel";
+
 import { useTendenciasView } from "../_hooks/use-tendencias-view";
 import { TendenciasForecast } from "./tendencias-forecast";
 import {
@@ -42,21 +44,20 @@ export default function TendenciasView() {
     setForecastMetric,
     isLoading,
     error,
+    refetch,
   } = useTendenciasView();
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">{"Error"}: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudieron cargar las tendencias" error={error} onRetry={refetch} />;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h1 className="sr-only">Tendencias</h1>
-        <p className="text-muted-foreground">Evolución de publicaciones y montos a lo largo del tiempo.</p>
+        <p className="text-tf-meta text-muted-foreground">
+          Cuánto se publica y por cuánto importe, mes a mes.
+        </p>
       </div>
 
       <TendenciasKpis

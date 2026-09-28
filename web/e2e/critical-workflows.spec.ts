@@ -32,7 +32,8 @@ test.describe("Flujos de trabajo críticos", () => {
     // era el `nested-interactive` de la fila. No lo era, y por eso al quitar esa
     // regla el test siguió sin pasar: **las acciones de una fila inactiva son
     // `inert`** (`radar-acciones.tsx`, `inerte = enTabla && !isActive`), y a
-    // partir de `md` además llevan `pointer-events-none`. `inert` las saca del
+    // partir de `lg`, donde empieza la tabla, además llevan
+    // `pointer-events-none`. `inert` las saca del
     // árbol de accesibilidad, así que `getByRole("button", {name: /^Seguir /})`
     // no resolvía a nada y `click()` esperaba —sin error— hasta agotar el
     // presupuesto del test. El log de la API del job lo confirma: los `GET

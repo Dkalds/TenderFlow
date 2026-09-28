@@ -21,6 +21,7 @@ import type {
   NotificationPreferencesResult,
   SessionsResult,
 } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type { CreatedKey, NotificationPreference };
 
@@ -40,6 +41,7 @@ export function useSesiones() {
     // sesión que ya cerraste y sigue apareciendo es exactamente la duda que
     // esta pantalla viene a resolver.
     staleTime: 15_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -64,6 +66,7 @@ export function useClaves() {
   return useQuery({
     queryKey: ajustesKeys.claves,
     queryFn: () => apiGet("/api/v1/me/keys") as Promise<MyApiKeysResult>,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -97,6 +100,7 @@ export function usePreferencias() {
     queryKey: ajustesKeys.notificaciones,
     queryFn: () =>
       apiGet("/api/v1/me/notification-preferences") as Promise<NotificationPreferencesResult>,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

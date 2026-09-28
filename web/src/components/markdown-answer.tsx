@@ -30,15 +30,15 @@ const COMPONENTES: Components = {
     </a>
   ),
   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-  h1: ({ children }) => <h3 className="mt-3 mb-2 text-sm font-semibold">{children}</h3>,
-  h2: ({ children }) => <h3 className="mt-3 mb-2 text-sm font-semibold">{children}</h3>,
-  h3: ({ children }) => <h4 className="mt-2 mb-1 text-sm font-medium">{children}</h4>,
+  h1: ({ children }) => <h3 className="mt-3 mb-2 text-tf-body font-semibold">{children}</h3>,
+  h2: ({ children }) => <h3 className="mt-3 mb-2 text-tf-body font-semibold">{children}</h3>,
+  h3: ({ children }) => <h4 className="mt-2 mb-1 text-tf-body font-medium">{children}</h4>,
   ul: ({ children }) => <ul className="mb-2 list-disc space-y-0.5 pl-5">{children}</ul>,
   ol: ({ children }) => <ol className="mb-2 list-decimal space-y-0.5 pl-5">{children}</ol>,
-  code: ({ children }) => <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">{children}</code>,
+  code: ({ children }) => <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-tf-meta">{children}</code>,
   table: ({ children }) => (
     <div className="mb-2 overflow-x-auto">
-      <table className="w-full border-collapse text-xs">{children}</table>
+      <table className="w-full border-collapse text-tf-meta">{children}</table>
     </div>
   ),
   th: ({ children }) => <th className="border-border bg-muted border px-2 py-1 text-left font-medium">{children}</th>,
@@ -61,7 +61,7 @@ interface MarkdownAnswerProps {
  */
 export const MarkdownAnswer = React.memo(function MarkdownAnswer({ text, className }: MarkdownAnswerProps) {
   return (
-    <div className={cn("text-sm leading-relaxed", className)}>
+    <div className={cn("text-tf-body leading-relaxed", className)}>
       <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTES}>
         {linkifyExpedientes(text)}
       </ReactMarkdown>

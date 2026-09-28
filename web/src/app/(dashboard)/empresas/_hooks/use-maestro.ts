@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { empresasKeys } from "@/lib/query-keys";
 
 /**
@@ -94,6 +95,8 @@ export function useEmpresasList({
     // altura era lo que hacía perder el sitio al ojo entre un clic y el
     // siguiente.
     placeholderData: (previous) => previous,
+    // El fallo se dice en la propia columna (PanelError): sin toast además.
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -102,6 +105,7 @@ export function useEmpresaDetail(empresaId: number | null) {
     queryKey: empresasKeys.detail(empresaId ?? 0),
     queryFn: () => fetchWithAuth(`/api/v1/empresas/${empresaId}`),
     enabled: empresaId != null,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -110,5 +114,7 @@ export function useEmpresaPerfil(empresaId: number | null) {
     queryKey: empresasKeys.perfil(empresaId ?? 0),
     queryFn: () => fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/perfil`),
     enabled: empresaId != null,
+    // La ficha dice «No se pudo cargar la actividad» en su línea.
+    meta: META_ERROR_EN_LINEA,
   });
 }

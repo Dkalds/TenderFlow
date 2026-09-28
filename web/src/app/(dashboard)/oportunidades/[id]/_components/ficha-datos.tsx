@@ -1,6 +1,8 @@
 "use client";
 
 import type * as React from "react";
+import { ROTULO_DATO } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { iniciales, plazoVisual } from "@/components/pursuits/pursuit-presenters";
 import { useLicitacion } from "@/hooks/use-licitacion";
@@ -62,8 +64,8 @@ export function FichaDatos({
           ) : (
             <span
               className={cn(
-                "tf-tnum font-mono text-tf-lede leading-none font-semibold",
-                sinImporte && !cerrada && "text-[hsl(var(--warning))]",
+                sinImporte ? "text-tf-body font-medium" : "tf-tnum text-tf-lede leading-none font-semibold",
+                sinImporte && !cerrada && "text-warning",
               )}
             >
               {sinImporte ? "Sin importe" : formatCompactCurrency(pursuit.offer_price_eur)}
@@ -76,7 +78,7 @@ export function FichaDatos({
             <span className="flex items-baseline gap-1.5">
               <span
                 className={cn(
-                  "tf-tnum font-mono text-tf-lede leading-none font-semibold",
+                  plazo.dias < 0 ? "text-tf-body font-semibold" : "tf-tnum text-tf-lede leading-none font-semibold",
                   plazo.clases.texto,
                 )}
               >
@@ -111,9 +113,9 @@ export function FichaDatos({
               <span
                 aria-hidden="true"
                 className={cn(
-                  "grid h-5 w-5 flex-none place-items-center rounded-full font-mono text-tf-micro font-semibold",
+                  "grid h-5 w-5 flex-none place-items-center rounded-full text-tf-micro font-semibold",
                   pursuit.responsible_name
-                    ? "bg-primary/14 text-primary"
+                    ? "bg-primary/10 text-primary"
                     : "border-border/60 text-muted-foreground border border-dashed",
                 )}
               >
@@ -130,7 +132,7 @@ export function FichaDatos({
             la estiraba hasta siete líneas y descuadraba la rejilla. */}
         {cerrada ? (
           <Celda etiqueta="Importe adjudicado" ancha>
-            <span className="tf-tnum font-mono text-tf-body font-semibold">
+            <span className="tf-tnum text-tf-lede leading-none font-semibold">
               {formatCompactCurrency(pursuit.awarded_amount_eur)}
             </span>
           </Celda>
@@ -139,9 +141,9 @@ export function FichaDatos({
             <span className="text-tf-body font-medium">
               {adjudicacion.valor}
               {adjudicacion.metodo === "estimacion" ? (
-                <span className="border-border/70 bg-muted/60 text-muted-foreground ml-1.5 inline-flex items-center rounded-sm border px-1.5 align-middle text-tf-micro font-medium">
-                  estimación
-                </span>
+                <Badge size="sm" className="ml-1.5 align-middle">
+                  Estimación
+                </Badge>
               ) : null}
             </span>
           </Celda>
@@ -164,7 +166,7 @@ export function FichaDatos({
  * (ADR-032): por eso la etiqueta no afirma «sin IVA».
  */
 function ImporteLicitacion({ pursuit }: { pursuit: Pursuit }) {
-  const { data: licitacion, isPending } = useLicitacion(pursuit.licitacion_id);
+  const { data: licitacion, isPending, isError } = useLicitacion(pursuit.licitacion_id);
   const lote = pursuit.lote_numero
     ? licitacion?.lotes?.find((candidato) => candidato.numero === pursuit.lote_numero)
     : undefined;
@@ -181,9 +183,13 @@ function ImporteLicitacion({ pursuit }: { pursuit: Pursuit }) {
   return (
     <Celda etiqueta={etiqueta}>
       {isPending ? (
-        <Skeleton className="h-[15px] w-20 rounded" />
+        <Skeleton className="h-[15px] w-20 rounded-sm" />
+      ) : isError ? (
+        // Un fallo no es «sin importe»: la pestaña «Expediente» lo dice con
+        // Reintentar (la consulta es la misma y no lanza toast).
+        <span className="text-muted-foreground text-tf-body">No se pudo cargar</span>
       ) : importe != null ? (
-        <span className="tf-tnum font-mono text-tf-lede leading-none font-semibold">
+        <span className="tf-tnum text-tf-lede leading-none font-semibold">
           {formatCompactCurrency(importe)}
         </span>
       ) : (
@@ -193,6 +199,11 @@ function ImporteLicitacion({ pursuit }: { pursuit: Pursuit }) {
   );
 }
 
+/**
+ * Una celda de la rejilla: rótulo de dato (`ROTULO_DATO`, el de `Fact`) y
+ * valor. No es `Fact` porque aquí hace falta lo que `Fact` no tiene: la
+ * semántica de `dl` (`dt`/`dd`), el botón de editar junto al rótulo y un pie.
+ */
 function Celda({
   etiqueta,
   pie,
@@ -211,13 +222,11 @@ function Celda({
       {/* El botón de editar va dentro del `dt` y no en un envoltorio: un
           grupo de `dl` solo admite `dt` y `dd` como hijos. */}
       <dt className="mb-1.5 flex items-center justify-between gap-1">
-        <span className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider uppercase">
-          {etiqueta}
-        </span>
+        <span className={ROTULO_DATO}>{etiqueta}</span>
         {accion}
       </dt>
       <dd>{children}</dd>
-      {pie ? <dd className="text-muted-foreground mt-0.5 text-tf-micro leading-[1.4]">{pie}</dd> : null}
+      {pie ? <dd className="text-muted-foreground mt-0.5 text-tf-micro">{pie}</dd> : null}
     </div>
   );
 }

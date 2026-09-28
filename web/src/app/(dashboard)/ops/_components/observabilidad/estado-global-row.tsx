@@ -26,9 +26,9 @@ const TITULAR: Record<EstadoGlobalSalud, string> = {
 };
 
 const COLOR: Record<EstadoGlobalSalud, string> = {
-  ok: "bg-green-500",
-  warn: "bg-yellow-500",
-  error: "bg-red-500",
+  ok: "bg-success",
+  warn: "bg-warning",
+  error: "bg-destructive",
 };
 
 export function StatusDot({ status }: { status: EstadoGlobalSalud }) {
@@ -42,7 +42,7 @@ export function StatusDot({ status }: { status: EstadoGlobalSalud }) {
             (`jsx-a11y/no-noninteractive-tabindex`), no una mejora. */}
         <span
           role="img"
-          className={cn("inline-block h-3 w-3 rounded-full", COLOR[status])}
+          className={cn("inline-block h-2.5 w-2.5 rounded-full", COLOR[status])}
           aria-label={`Estado: ${ETIQUETA[status]}`}
         />
       </TooltipTrigger>
@@ -58,11 +58,11 @@ export interface EstadoGlobalRowProps {
 
 export function EstadoGlobalRow({ estado, lastCheck }: EstadoGlobalRowProps) {
   return (
-    <div className="flex items-center gap-3 text-sm">
+    <div className="flex items-center gap-2.5 text-tf-body">
       <StatusDot status={estado} />
       <span className="font-medium">{TITULAR[estado]}</span>
       {lastCheck && (
-        <span className="text-muted-foreground">— Verificado {formatTime(lastCheck)}</span>
+        <span className="text-muted-foreground">· verificado a las {formatTime(lastCheck)}</span>
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Pista } from "@/components/ui/pista";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -40,17 +41,17 @@ export function ContextLine({ items }: { items: ContextItem[] }) {
             <span className="text-tf-meta text-muted-foreground whitespace-nowrap">{item.label}</span>
             <span
               className={cn(
-                "tf-tnum text-tf-lede font-mono font-semibold",
-                item.warn ? "text-[hsl(var(--warning))]" : "text-foreground",
+                "tf-tnum text-tf-lede font-semibold",
+                item.warn ? "text-warning" : "text-foreground",
               )}
             >
               {item.value}
             </span>
             {item.warn && (
-              <span className="bg-warning/14 text-tf-micro text-warning inline-flex h-4.5 items-center gap-1 self-center rounded px-1.5 font-semibold">
-                <TriangleAlert className="h-2.5 w-2.5" aria-hidden="true" />
+              <Badge variant="warning" size="sm" className="self-center">
+                <TriangleAlert aria-hidden="true" />
                 Bajo umbral
-              </span>
+              </Badge>
             )}
           </>
         );

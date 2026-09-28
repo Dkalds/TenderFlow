@@ -89,6 +89,75 @@ def ambito_agenda_sql(
     return clauses, params
 
 
+#: La guarda de ``ids_for_filters`` —el filtro de ``/search/semantic``— para
+#: ``fecha_desde``/``fecha_hasta``: ``fecha_publicacion`` es texto ISO y se
+#: compara como texto, así que una fecha mal formada acotaría cualquier cosa.
+_FECHA_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _valores_filtro(value: str | Sequence[str] | None) -> list[str]:
+    """Los valores de un filtro multi-valor, lleguen como CSV o como lista.
+
+    El caso ``str`` va aparte a propósito: un ``str`` también es una
+    ``Sequence[str]``, y sin él ``"Madrid"`` filtraría letra a letra.
+    """
+    if isinstance(value, str):
+        return csv_values(value)
+    return [v.strip() for v in value or () if v and v.strip()]
+
+
+def ambito_busqueda_sql(
+    alias: str,
+    *,
+    ccaa: str | Sequence[str] | None = None,
+    tecnologia: str | Sequence[str] | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+) -> tuple[list[str], list[str]]:
+    """Cláusulas del ámbito de una búsqueda sobre ``licitaciones``: ``(clauses, params)``.
+
+    Las comparten los tres caminos del retrieval de ``/ask`` —la fusión híbrida
+    (sus **dos** listas, la FTS y la vectorial), el FTS y el LIKE— para que
+    acote igual el que responda. Con el filtro solo en la lista FTS, la fusión
+    traía por el lado vectorial pliegos de cualquier tecnología o CCAA. El
+    criterio es el de ``ids_for_filters``, que acota ``/search/semantic``:
+
+    - ``ccaa``: OR dentro de la lista; con un solo valor, igualdad, como antes.
+    - ``tecnologia``: el código en el CSV de la fila
+      (:func:`db.sql_fragments.tecnologia_en_csv_sql`), nunca igualdad.
+    - ``fecha_desde``/``fecha_hasta``: sobre ``fecha_publicacion``, y solo si
+      son ``YYYY-MM-DD``; una mal formada se ignora.
+
+    ``ccaa`` y ``tecnologia`` aceptan una lista —el cuerpo JSON de ``/ask``— o
+    el CSV de la barra de ámbito (:func:`csv_values`), y los valores en blanco
+    no filtran: un ``""`` colado sería un filtro que no casa con nada, y la
+    respuesta llegaría sin contexto y sin error. Las cláusulas salen en ese
+    orden y los parámetros, en el de sus marcadores.
+    """
+    from db.sql_fragments import tecnologia_en_csv_sql
+
+    clauses: list[str] = []
+    params: list[str] = []
+    regiones = _valores_filtro(ccaa)
+    if len(regiones) == 1:
+        clauses.append(f"{alias}.ccaa = %s")
+    elif regiones:
+        # Se interpolan marcadores, nunca valores: éstos van siempre por params.
+        marcadores = ", ".join(["%s"] * len(regiones))
+        clauses.append(f"{alias}.ccaa IN ({marcadores})")
+    params.extend(regiones)
+    if tecnologias := _valores_filtro(tecnologia):
+        clauses.append(tecnologia_en_csv_sql(f"{alias}.tecnologia", n=len(tecnologias)))
+        params.extend(tecnologias)
+    if fecha_desde and _FECHA_ISO_RE.match(fecha_desde):
+        clauses.append(f"{alias}.fecha_publicacion >= %s")
+        params.append(fecha_desde)
+    if fecha_hasta and _FECHA_ISO_RE.match(fecha_hasta):
+        clauses.append(f"{alias}.fecha_publicacion <= %s")
+        params.append(fecha_hasta)
+    return clauses, params
+
+
 def rows_to_dicts(cursor: Any) -> list[dict[str, Any]]:
     """Convierte todas las filas de un cursor en lista de dicts."""
     cols = [d[0] for d in cursor.description]

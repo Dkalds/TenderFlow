@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { BOTON_SECUNDARIO } from "./piel-publica";
 
 /**
  * Paginación de los hubs.
@@ -61,17 +62,13 @@ export function Paginacion({
 
   return (
     <nav aria-label="Paginación" className="border-border/50 mt-10 border-t pt-6">
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-tf-meta">
         Página {paginaActual} de {ultima} · {formatNumber(total)} licitaciones
       </p>
       <ul className="mt-3 flex flex-wrap items-center gap-1.5">
         {paginaActual > 1 && (
           <li>
-            <Link
-              href={href(paginaActual - 1)}
-              rel="prev"
-              className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
-            >
+            <Link href={href(paginaActual - 1)} rel="prev" className={cn(BOTON_SECUNDARIO, "px-3")}>
               Anterior
             </Link>
           </li>
@@ -89,8 +86,8 @@ export function Paginacion({
                 aria-current={pagina === paginaActual ? "page" : undefined}
                 className={
                   pagina === paginaActual
-                    ? "bg-primary text-primary-foreground inline-flex h-9 min-w-9 items-center justify-center rounded-md px-3 text-sm font-semibold"
-                    : "border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-3 text-sm transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
+                    ? "bg-primary text-primary-foreground tf-tnum focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 min-w-9 items-center justify-center rounded-md px-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    : cn(BOTON_SECUNDARIO, "tf-tnum min-w-9 px-3 font-normal")
                 }
               >
                 {pagina}
@@ -101,11 +98,7 @@ export function Paginacion({
 
         {paginaActual < ultima && (
           <li>
-            <Link
-              href={href(paginaActual + 1)}
-              rel="next"
-              className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
-            >
+            <Link href={href(paginaActual + 1)} rel="next" className={cn(BOTON_SECUNDARIO, "px-3")}>
               Siguiente
             </Link>
           </li>

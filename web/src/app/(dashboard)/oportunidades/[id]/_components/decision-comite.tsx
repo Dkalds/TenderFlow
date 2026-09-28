@@ -3,11 +3,13 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
-import { SectionTitle } from "@/components/console/panel";
+import { SUPERFICIE_PANEL, SectionTitle } from "@/components/console/panel";
 import { decisionLabel } from "@/components/pursuits/pursuit-presenters";
 import { useUpdatePursuit, type Pursuit, type PursuitDecision } from "@/hooks/use-pursuits";
 import { ApiError } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { EMPTY, cn, formatDate } from "@/lib/utils";
 
 const OPCIONES: readonly PursuitDecision[] = ["go", "no_go"];
@@ -16,13 +18,13 @@ const OPCIONES: readonly PursuitDecision[] = ["go", "no_go"];
  * El GO/NO-GO, con su motivo, donde se toma: en la fase «Decisión».
  *
  * Fuera de esa fase se lee pero no se edita, y no por gusto de bloquear: el
- * backend exige GO para preparar o presentar, y un NO-GO sólo lo admite
+ * la API exige GO para preparar o presentar, y un NO-GO sólo lo admite
  * mientras la oportunidad está en «Decisión» o retirada
  * (`services/pursuits.py`). Ofrecer los botones antes o después sería ofrecer
  * un 422. Para los casos raros —corregir una decisión de una oportunidad ya
  * avanzada— sigue estando el formulario completo de «Todos los campos».
  *
- * El motivo no es opcional: el backend rechaza una decisión sin él, y es lo
+ * El motivo no es opcional: la API rechaza una decisión sin él, y es lo
  * único que explica en el historial por qué se fue o no se fue a esta
  * licitación.
  *
@@ -64,7 +66,7 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
             error instanceof ApiError && error.status === 409
               ? "Alguien del equipo la cambió mientras la tenías abierta"
               : "No se pudo guardar la decisión",
-            { description: error instanceof Error ? error.message : undefined },
+            { description: getErrorMessage(error, "accion") },
           ),
       },
     );
@@ -76,12 +78,10 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
         id="ficha-decision"
         tabIndex={-1}
         aria-label="Decisión del comité"
-        className="border-border/60 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 rounded-xl border border-dashed px-4 py-2.5 outline-none"
+        className={cn(SUPERFICIE_PANEL, "flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-4 py-2.5 outline-none")}
       >
-        <h4 className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider uppercase">
-          Decisión del comité
-        </h4>
-        <p className="text-muted-foreground text-tf-micro">
+        <SectionTitle className="mb-0">Decisión del comité</SectionTitle>
+        <p className="text-muted-foreground text-tf-meta">
           Se toma en la fase «Decisión». Hasta entonces, sin decidir.
         </p>
       </section>
@@ -93,9 +93,9 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
       id="ficha-decision"
       tabIndex={-1}
       aria-label="Decisión del comité"
-      className="border-border/60 bg-card/70 rounded-xl border px-4 py-3.5 outline-none"
+      className={cn(SUPERFICIE_PANEL, "px-4 py-3.5 outline-none")}
     >
-      <SectionTitle aside={estado}>Decisión del comité</SectionTitle>
+      <SectionTitle hint={estado}>Decisión del comité</SectionTitle>
 
       {editable ? (
         <>
@@ -107,11 +107,11 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
                 aria-pressed={decision === opcion}
                 onClick={() => setDecision(decision === opcion ? "pending" : opcion)}
                 className={cn(
-                  "h-8 rounded-md border px-5 text-tf-body font-semibold transition-colors",
+                  "tf-pressable h-8 rounded-md border px-5 text-tf-body font-semibold",
                   decision === opcion
                     ? opcion === "go"
-                      ? "border-[hsl(var(--success))] bg-success/14 text-success"
-                      : "border-destructive bg-destructive/12 text-destructive"
+                      ? "border-success/50 bg-success/10 text-success"
+                      : "border-destructive/50 bg-destructive/10 text-destructive"
                     : "border-input text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -120,19 +120,18 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
             ))}
           </div>
 
-          <label htmlFor={motivoId} className="text-muted-foreground mb-1 block text-tf-micro">
-            Motivo de la decisión
-          </label>
-          <Textarea
-            id={motivoId}
-            rows={2}
-            value={motivo}
-            onChange={(event) => setMotivo(event.target.value)}
-            placeholder="Por qué se va o no se va a esta licitación"
-          />
+          <Field label="Motivo de la decisión" htmlFor={motivoId}>
+            <Textarea
+              id={motivoId}
+              rows={2}
+              value={motivo}
+              onChange={(event) => setMotivo(event.target.value)}
+              placeholder="Por qué se va o no se va a esta licitación"
+            />
+          </Field>
 
           <div className="mt-2.5 flex items-center gap-2">
-            <p className="text-muted-foreground flex-1 text-tf-micro leading-[1.4]">
+            <p className="text-muted-foreground flex-1 text-tf-micro">
               {faltaMotivo
                 ? "El GO y el NO-GO exigen motivo."
                 : "Con el NO-GO, la oportunidad solo puede retirarse."}
@@ -148,12 +147,12 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
         </>
       ) : (
         <>
-          <p className="text-tf-body leading-[1.45]">
+          <p className="text-tf-body">
             {pursuit.decision === "pending"
               ? "Sin decidir todavía."
               : (pursuit.decision_reason ?? EMPTY)}
           </p>
-          <p className="text-muted-foreground mt-1.5 text-tf-micro leading-[1.4]">
+          <p className="text-muted-foreground mt-1.5 text-tf-micro">
             {pursuit.status === "identified" || pursuit.status === "qualifying"
               ? "Se registra al llegar a la fase «Decisión»."
               : "Corregirla ahora se hace en «Editar todos los campos»."}

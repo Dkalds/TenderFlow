@@ -100,7 +100,7 @@ export function MultiSelect({
         aria-label={props["aria-label"]}
         className={cn(
           "border-input flex h-8 w-full items-center justify-between rounded-md border",
-          "bg-background/70 text-foreground px-2 text-xs outline-none",
+          "bg-background text-foreground px-2 text-xs outline-none",
           "focus-visible:ring-ring focus-visible:ring-2",
           !selected.length && "text-muted-foreground",
           className,

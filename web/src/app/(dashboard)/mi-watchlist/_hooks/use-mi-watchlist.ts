@@ -24,6 +24,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type * as z from "zod/mini";
 import { nuevaRegla } from "@/lib/forms/esquemas";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { getJSON, setJSON } from "@/lib/storage";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
@@ -109,6 +110,12 @@ export interface MiWatchlistState {
   rules: ApiRule[] | undefined;
   ruleCount: number;
   rulesLoading: boolean;
+  /**
+   * Fallo al leer las reglas. La lista lo pinta en su sitio: sin él, una carga
+   * fallida se leía como «No tienes reglas».
+   */
+  rulesError: unknown;
+  refetchRules: () => void;
   activeRules: ApiRule[];
   editingRule: ApiRule | null;
   setEditingRule: (rule: ApiRule | null) => void;
@@ -151,12 +158,19 @@ export function useMiWatchlist(): MiWatchlistState {
   const [editingRule, setEditingRule] = useState<ApiRule | null>(null);
 
   /* ---- Reglas (server-side) ---- */
-  const { data: rules, isLoading: rulesLoading } = useQuery<ApiRule[]>({
+  const {
+    data: rules,
+    isLoading: rulesLoading,
+    error: rulesError,
+    refetch: refetchRulesQuery,
+  } = useQuery<ApiRule[]>({
     queryKey: watchlistKeys.rules,
     queryFn: async () => {
       const data = await fetchWithAuth<{ items?: ApiRule[] }>(RULES_KEY);
       return data.items ?? [];
     },
+    // La lista pinta el fallo en línea (`PanelError`): sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   /* ---- Migración one-shot del localStorage ---- */
@@ -266,6 +280,8 @@ export function useMiWatchlist(): MiWatchlistState {
     rules,
     ruleCount: rules?.length ?? 0,
     rulesLoading,
+    rulesError,
+    refetchRules: () => void refetchRulesQuery(),
     activeRules,
     editingRule,
     setEditingRule,

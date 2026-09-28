@@ -19,6 +19,7 @@
 
 import { useMemo } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useFilters } from "@/lib/filters";
 import type { HistogramBin, TimelineScatterResult, TrendPoint, TrendsResult } from "@/lib/api-types";
 import type { TimelineItem } from "../_components/types";
@@ -65,14 +66,15 @@ export function usePublicaciones(corte: Corte): Publicaciones {
   const trends = useFilteredQuery<TrendsResult>(
     ["analytics", "trends", "resumen", desde],
     "/api/v1/analytics/trends?group_by=day",
-    { staleTime: STALE_MS },
+    // El fallo lo pinta el panel (`PanelError`): sin toast encima.
+    { staleTime: STALE_MS, meta: META_ERROR_EN_LINEA },
     { fecha_desde: desde },
   );
 
   const timeline = useFilteredQuery<TimelineScatterResult>(
     ["analytics", "resumen", "timeline", "muestra", desde],
     "/api/v1/analytics/resumen/timeline",
-    { staleTime: STALE_MS, enabled: corte === "dispersion" },
+    { staleTime: STALE_MS, enabled: corte === "dispersion", meta: META_ERROR_EN_LINEA },
     { fecha_desde: desde, muestra: "true" },
   );
 
