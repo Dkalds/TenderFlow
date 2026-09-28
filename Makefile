@@ -1,4 +1,4 @@
-.PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
@@ -155,12 +155,6 @@ lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
 
 lock-hashes: lock
 
-lock-uv:  ## Genera uv.lock desde pyproject.toml (uv lock)
-	uv lock
-
-install-uv:  ## Instala dependencias desde uv.lock (uv sync)
-	uv sync
-
 # ── Scraper ──────────────────────────────────────────────────────────────
 scrape:  ## Backfill de un mes específico (YEAR=2024 MONTH=1)
 	python -m scheduler.run_update --backfill $(YEAR) $(MONTH)
@@ -226,13 +220,7 @@ web-test-e2e-ui:  ## Run Playwright E2E tests with UI
 web-docker:  ## Build and run web service via Docker
 	docker compose up --build web
 
-cutover:  ## Full cutover: build web, restart services
-	docker compose up --build -d api web
-
 # ── Migraciones ──────────────────────────────────────────────────────────
-migrate:  ## [DEPRECATED] Migraciones custom v1-v32. Usar migrate-alembic para nuevas BDs.
-	python -c "from db.database import init_db; init_db()"
-
 migrate-alembic:  ## Aplica todas las migraciones Alembic pendientes (sistema canónico)
 	alembic upgrade head
 

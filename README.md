@@ -146,12 +146,9 @@ tenderflow/
 │   └── providers/                #   NVIDIA NIM (OpenAI-compatible), OpenAI, Anthropic
 ├── scripts/                      # Scripts de mantenimiento
 │   ├── doctor.py                 #   Verificación de entorno
-│   ├── retrain.py                #   Reentrenamiento del modelo ML
 │   ├── rotate_api_keys.py        #   Rotación de API keys
-│   ├── migrate_sqlite_to_pg.py   #   ETL de migración a Postgres/Supabase
-│   ├── verify_pg_parity.py       #   Verificación de paridad tras el cutover
 │   ├── check_frontend_invariants.py  # Integridad analítica del frontend (ADR-014)
-│   └── ...                       #   dedupe, retention, coverage, eval_rag_generation
+│   └── ...                       #   retención, evaluación RAG, checks de CI, ...
 ├── docs/                         # Documentación técnica
 │   ├── adr/                      #   Architecture Decision Records (ADR-001..026)
 │   ├── runbooks/                 #   Playbooks operativos (DLQ, DR, migración, ...)
