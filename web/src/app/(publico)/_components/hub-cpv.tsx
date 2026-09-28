@@ -92,7 +92,14 @@ export async function paginaHubCpv(codigo: string, pagina: number) {
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializarJsonLd(migasJsonLd(migas)) }} />
+      <script
+        type="application/ld+json"
+        // Semgrep (react-dangerouslysetinnerhtml) sigue lo que entra por parámetro
+        // hasta `__html`, pero `serializarJsonLd` escapa `<` y el texto no puede
+        // cerrar el bloque: ver `lib/jsonld.ts`. Falso positivo.
+        // nosemgrep
+        dangerouslySetInnerHTML={{ __html: serializarJsonLd(migasJsonLd(migas)) }}
+      />
 
       <div className="mx-auto w-full max-w-5xl px-6 py-12">
         {/* El rótulo de toda la superficie pública, con el total al lado: sin
