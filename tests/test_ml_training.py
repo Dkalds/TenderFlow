@@ -133,7 +133,7 @@ class TestTrainFromDb:
             patch("db.database.init_db"),
             patch("db.repositories.ml_dataset.filas_entrenamiento_sap", return_value=filas),
             patch(
-                "db.repositories.ml_dataset.feedback_humano_sap",
+                "db.repositories.ml_dataset.feedback_humano_es_ti",
                 return_value=list(feedback or []),
             ),
         )

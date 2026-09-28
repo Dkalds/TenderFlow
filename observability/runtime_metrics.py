@@ -1,8 +1,8 @@
 """Métricas runtime de Prometheus expuestas en proceso (D1 + D2).
 
 Estas gauges/counters viven en el ``REGISTRY`` por defecto y se exponen
-vía ``/metrics`` del API. A diferencia de ``observability.prometheus`` (que
-usa textfile collector para el scheduler), estas son in-process.
+vía ``/metrics`` del API; son in-process (el exportador por textfile
+collector del scheduler se retiró el 2026-09-28).
 
 D2: el import de ``prometheus_client`` está protegido — si no está
 instalado, las métricas son no-ops y la app sigue funcionando.
@@ -191,7 +191,8 @@ try:
         "Licitaciones puntuadas por señal de tecnología, por método y resultado",
         # method: keywords | llm | llm_metadata (este último no viene de pliegos
         # sino de la metadata del anuncio, pero comparte tabla, merge y contador)
-        # · status: scored | no_signal | error
+        # · status: scored | no_signal | error, más sin_evidencia en
+        # llm_metadata (el LLM afirmó tecnologías y ninguna sostuvo su cita)
         ["method", "status"],
     )
 

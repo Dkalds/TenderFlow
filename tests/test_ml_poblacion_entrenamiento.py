@@ -14,7 +14,13 @@ positiva) o ``ml_tecnologias`` (la salida del modelo anterior)—.
 
 from __future__ import annotations
 
+import re
+
+import pytest
+
+from db.repositories.licitaciones import etiqueta_humana
 from db.repositories.ml_dataset import (
+    PATRON_SECUNDARIAS_CON_TECNOLOGIA,
     POBLACION_SAP_UNIVERSOS,
     TRAIN_POPULATION_SAP,
     poblacion_clasificador_sql,
@@ -86,6 +92,24 @@ class TestPredicadoDePoblacion:
         """Viaja al registro como ``train_population``: cambiarlo rompe la
         comparación entre versiones, que es justo para lo que se guarda."""
         assert TRAIN_POPULATION_SAP == "universos_filtrados_en_ingesta"
+
+
+@pytest.mark.parametrize(
+    "secundarias",
+    ['["SAP"]', '["SAP", "ORACLE"]', '["  "]', "[]", '[""]', "null", "SAP", ""],
+)
+def test_el_patron_sql_de_secundarias_decide_como_etiqueta_humana(secundarias: str) -> None:
+    """``filas_entrenamiento_tecnologia`` decide en SQL si una fila heredada
+    nombra alguna tecnología en ``tecnologias_secundarias`` (JSON en texto) sin
+    parsear el JSON, para que uno roto no pueda tumbar el dataset. El patrón
+    tiene que decidir lo mismo que :func:`etiqueta_humana` para los valores que
+    escribe ``FeedbackRepository.insert`` y para los rotos o vacíos.
+
+    El patrón es POSIX y se escribe igual en Postgres que en ``re``.
+    """
+    pronuncia = etiqueta_humana("human", 1, None, secundarias) is not None
+
+    assert bool(re.search(PATRON_SECUNDARIAS_CON_TECNOLOGIA, secundarias)) is pronuncia
 
 
 def _medicion(

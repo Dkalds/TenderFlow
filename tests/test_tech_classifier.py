@@ -707,7 +707,13 @@ class TestResolverLabelColumn:
         )
         res = _resolver_label_column(df)
         assert list(res.df[_LABEL_COL_RESOLVED]) == ["WORKDAY", "ORACLE", "SAP"]
-        assert res.counts == {"human": 1, "llm": 1, "keywords": 1, "sin_etiqueta": 0}
+        assert res.counts == {
+            "human": 1,
+            "llm": 1,
+            "keywords": 1,
+            "sin_etiqueta": 0,
+            "conflicto": 0,
+        }
         # Con tres filas —una por fuente— el entrenamiento SÍ es circular: dos
         # etiquetas independientes no mueven ninguna tecnología al tier
         # ml_ready, así que lo que certificaría cualquier métrica es la fila del

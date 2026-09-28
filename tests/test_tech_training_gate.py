@@ -111,6 +111,30 @@ def test_run_entrena_cuando_hay_etiquetas() -> None:
     assert resultado["n_etiquetas_independientes"] == 700
 
 
+def test_el_log_de_metricas_lleva_los_conflictos_llm_keywords() -> None:
+    """Las filas que el entrenamiento excluyó por conflicto (el LLM no ve
+    tecnología y las keywords sí) tienen que verse en el run: es lo que dice
+    cuántas etiquetas se perdieron y por qué."""
+    counts = {"human": 400, "llm": 300, "keywords": 300, "sin_etiqueta": 0, "conflicto": 42}
+    with (
+        patch.object(tech_training_run, "contar_etiquetas_independientes", return_value=700),
+        patch.object(tech_training_run, "umbral_etiquetas_independientes", return_value=50),
+        patch(
+            "scraper.tech_classifier.train_from_db",
+            return_value=_metrics(label_source_counts=counts, label_sources=counts),
+        ),
+        patch.object(tech_training_run, "log") as mock_log,
+    ):
+        run()
+
+    evento, campos = mock_log.info.call_args.args[0], mock_log.info.call_args.kwargs
+    assert evento == "tech_training_metrics"
+    assert campos["label_source_counts"]["conflicto"] == 42
+    assert campos["label_sources"]["conflicto"] == 42
+    # Un conflicto no es una etiqueta independiente usada.
+    assert tech_training_run.etiquetas_independientes_usadas({"label_source_counts": counts}) == 700
+
+
 def test_artefactos_incluye_el_checksum_co_ubicado() -> None:
     """Sin el ``.sha256``, ``load()`` con ENV=prod rechaza el artefacto."""
     rutas = artefactos(_metrics())

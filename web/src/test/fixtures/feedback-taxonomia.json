@@ -1,0 +1,14 @@
+{
+  "etiquetas": [
+    {
+      "codigo": "SAP",
+      "etiqueta": "SAP",
+      "tipo": "fabricante"
+    },
+    {
+      "codigo": "CLOUD_INFRA",
+      "etiqueta": "Infraestructura, cloud y redes",
+      "tipo": "categoria"
+    }
+  ]
+}

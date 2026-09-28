@@ -386,8 +386,10 @@ cuando la tabla está vacía y el respaldo si la BD no responde):
   - **Categorías** (desde 2026-09-14): ERP, CRM, CLOUD_INFRA, CIBERSEGURIDAD,
     DATOS_IA, DESARROLLO, GIS, SANIDAD_DIGITAL, ADMIN_ELECTRONICA. Nombran qué
     se compra sin decir de quién, siempre dentro de TI.
-- `TECH_CATEGORIAS` — etiqueta legible de cada label (UI y analítica) y
-  `TECH_LABEL_TIPO` — si es `fabricante` o `categoria`.
+- `TECH_CATEGORIAS` — etiqueta legible de cada label (UI y analítica),
+  `TECH_LABEL_TIPO` — si es `fabricante` o `categoria` — y
+  `TECH_DEFINICIONES` — qué cubre cada label, en una frase que viaja en la
+  pregunta del etiquetado por LLM.
 
 Las categorías llevan el vocabulario en **castellano, catalán, euskera y
 gallego** cuando la forma difiere («desarrollo de software»,
@@ -398,8 +400,8 @@ solo en castellano no los veía. Los términos son sintagmas, no palabras suelta
 `gis`) valen porque el filtro compila con límites de palabra.
 
 Para añadir un label nuevo, añade la entrada a `TECHNOLOGY_KEYWORDS` **y** a
-`TECH_CATEGORIAS` y `TECH_LABEL_TIPO` (el módulo falla al importar si los tres
-no coinciden), y resiembra (`POST /api/v1/tecnologias/keywords/sembrar` o desde
+`TECH_CATEGORIAS`, `TECH_LABEL_TIPO` y `TECH_DEFINICIONES` (el módulo falla al
+importar si los cuatro no coinciden), y resiembra (`POST /api/v1/tecnologias/keywords/sembrar` o desde
 `/ops`). Cualquier cambio de la semilla cambia `filter_version` (hash del
 contenido) y corta las series analíticas en esa fecha, por diseño (ADR-014).
 Lista completa con el motivo de cada label en

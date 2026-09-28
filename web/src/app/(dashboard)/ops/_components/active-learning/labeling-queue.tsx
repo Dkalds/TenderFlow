@@ -13,10 +13,12 @@ import { Panel, PanelEmpty, PanelError, PanelTitle, Segmented } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ActiveLearning, Strategy } from "../../_hooks/use-active-learning";
+import type { ActiveLearning } from "../../_hooks/use-active-learning";
+import type { Strategy } from "../../_lib/active-learning";
 import { QueueItemCard } from "./queue-item-card";
 
 const ESTRATEGIAS: { value: Strategy; label: string }[] = [
+  { value: "desacuerdo", label: "Desacuerdo" },
   { value: "uncertainty", label: "Incertidumbre" },
   { value: "random", label: "Aleatoria" },
 ];
@@ -93,7 +95,7 @@ export function LabelingQueue({ estado }: { estado: ActiveLearning }) {
           }
           hint={
             items.length === 0
-              ? "Cuando el modelo dude de alguna licitación, aparecerá aquí para que la etiquetes."
+              ? "Cuando reglas, LLM y modelo no coincidan en alguna licitación, o el modelo dude de ella, aparecerá aquí para que la etiquetes."
               : "Cambia de estrategia o vuelve más tarde para ver más."
           }
         />
@@ -106,19 +108,22 @@ export function LabelingQueue({ estado }: { estado: ActiveLearning }) {
               key={item.id_externo}
               item={item}
               activeModel={estado.activeModel}
-              chosenTech={estado.selectedTech[item.id_externo] ?? null}
-              chosenSecs={estado.secondaryTechs[item.id_externo] ?? new Set<string>()}
+              taxonomia={estado.taxonomia}
+              seleccion={estado.seleccionDe(item.id_externo)}
               note={estado.notes[item.id_externo] ?? ""}
               noteExpanded={estado.expandedNotes.has(item.id_externo)}
               descExpanded={estado.expandedDesc.has(item.id_externo)}
               isSubmitting={estado.isSubmitting}
               onSelectTech={(tech, shiftKey) => estado.selectTech(item.id_externo, tech, shiftKey)}
+              onToggleTech={(codigo) => estado.toggleTech(item.id_externo, codigo)}
               onClearSelection={() => estado.clearSelection(item.id_externo)}
               onToggleNote={() => estado.toggleNote(item.id_externo)}
               onToggleDesc={() => estado.toggleDesc(item.id_externo)}
               onNoteChange={(value) => estado.setNote(item.id_externo, value)}
               onConfirm={() => estado.confirmLabel(item.id_externo)}
               onNotRelevant={() => estado.markNotRelevant(item.id_externo)}
+              onAcceptLlm={() => estado.acceptLlmProposal(item.id_externo)}
+              onTiWithoutFamily={() => estado.markTiWithoutFamily(item.id_externo)}
               onSkip={() => estado.skip(item.id_externo)}
             />
           ))}

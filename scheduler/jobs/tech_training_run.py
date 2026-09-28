@@ -72,9 +72,13 @@ def umbral_etiquetas_independientes() -> int:
 def contar_etiquetas_independientes() -> int:
     """Licitaciones sobre las que se pronunció una fuente **no** circular.
 
-    Cuenta igual que ``_resolver_label_column``: una cadena vacía es un
-    pronunciamiento ("ninguna tecnología") y un negativo válido; solo ``None``
-    significa que la fuente no se pronunció.
+    Cuenta como ``_resolver_label_column``: una cadena vacía es un
+    pronunciamiento ("ninguna tecnología"); solo ``None`` significa que la
+    fuente no se pronunció. Es una **cota superior**: aquí no se ve la columna
+    de keywords, así que un «ninguna» del LLM que el entrenamiento acabe
+    excluyendo por conflicto con las keywords todavía cuenta. El gate que
+    decide la publicación (:func:`publicable`) lee el conteo ya resuelto, donde
+    esas filas van aparte (``conflicto``).
     """
     from db.repositories.licitaciones import LicitacionRepository
 

@@ -1,9 +1,17 @@
 "use client";
 
-/** La tira de cabecera del etiquetado: totales, % relevantes y cola. */
+/**
+ * La tira de cabecera del etiquetado: totales y cola.
+ *
+ * Había una tercera celda, «Relevantes», que leía un `pct_relevant` que
+ * `GET /feedback/stats` no ha servido nunca: salía siempre vacía. No se calcula
+ * aquí con `positivos / total` porque `relevante` no significa lo mismo en todas
+ * las filas (las `human` antiguas decían «es SAP», las `revision_ti` «es TI» y
+ * las del LLM mezclan las dos), y un porcentaje sobre esa mezcla no mide nada.
+ */
 
 import { StatCell, StatStrip } from "@/components/console/panel";
-import { formatNumber, formatPercent } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 import type { FeedbackStats } from "@/hooks/use-feedback";
 
 export function LabelingStats({
@@ -18,13 +26,8 @@ export function LabelingStats({
   queueLoading: boolean;
 }) {
   return (
-    <StatStrip columns={3}>
-      <StatCell label="Etiquetas totales" value={formatNumber(stats?.total_labels)} loading={statsLoading} />
-      <StatCell
-        label="Relevantes"
-        value={stats?.pct_relevant != null ? formatPercent(stats.pct_relevant) : "—"}
-        loading={statsLoading}
-      />
+    <StatStrip columns={2}>
+      <StatCell label="Etiquetas totales" value={formatNumber(stats?.total)} loading={statsLoading} />
       <StatCell label="En cola" value={formatNumber(queueSize)} loading={queueLoading} />
     </StatStrip>
   );

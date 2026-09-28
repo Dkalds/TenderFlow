@@ -54,7 +54,7 @@ from typing import Any, Final
 
 from db.database import connect_read
 from db.repositories.base import csv_values, loose_distinct_count, rows_to_dicts
-from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
+from db.repositories.tecnologia_pliego import SENTINELS
 from db.sql_fragments import (
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
@@ -2226,7 +2226,9 @@ class AggregateRepository:
         if not ids:
             return {}
         filtro_tech = " AND tecnologia = %s" if tecnologia else ""
-        params: list[Any] = [ids, NO_SIGNAL_SENTINEL]
+        # Los sentinels («sin tecnología», «etiquetas sin cita») no son señal:
+        # con su score 0 convertirían un «no se sabe» en fuerza 0.0.
+        params: list[Any] = [ids, list(SENTINELS)]
         if tecnologia:
             params.append(tecnologia)
         params.append(ids)
@@ -2236,7 +2238,7 @@ class AggregateRepository:
             "SELECT licitacion_id, MAX(fuerza) AS fuerza FROM ("
             "  SELECT licitacion_id, MAX(score) AS fuerza"
             "    FROM licitacion_tecnologia_pliego"
-            "   WHERE licitacion_id = ANY(%s) AND tecnologia <> %s"
+            "   WHERE licitacion_id = ANY(%s) AND tecnologia <> ALL(%s)"
             f"{filtro_tech}"
             "   GROUP BY licitacion_id"
             "  UNION ALL"

@@ -61,6 +61,7 @@ from typing import Any
 
 from db.database import connect, connect_read
 from db.repositories.base import rows_to_dicts
+from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.sql_fragments import (
     TECHNOLOGY_OBSERVED_SQL,
     UNIVERSOS_TECNOLOGICOS,
@@ -882,12 +883,11 @@ def filas_entrenamiento_sap() -> list[dict[str, Any]]:
         return rows_to_dicts(c.execute(sql))
 
 
-def feedback_humano_sap() -> list[dict[str, Any]]:
-    """Feedback **humano** de relevancia SAP, por expediente.
+def feedback_humano_es_ti() -> list[dict[str, Any]]:
+    """Revisión humana de «¿es TI?», la más reciente por expediente.
 
-    ``source = 'human'`` por el mismo motivo que en
-    ``scheduler/concept_drift.py::_fetch_training_dataframe``: el feedback
-    automático del etiquetado por LLM no puede realimentar al modelo.
+    Solo ``revision_ti``: las filas ``human`` anteriores al plan de tres
+    niveles significaban «es SAP», y el binario aprende «es TI».
 
     No se filtra por población: un expediente sobre el que un humano se
     pronunció es información que no sobra, y si queda fuera del universo la
@@ -895,8 +895,23 @@ def feedback_humano_sap() -> list[dict[str, Any]]:
     """
     with connect_read() as c:
         return rows_to_dicts(
-            c.execute("SELECT expediente, relevante FROM ml_feedback WHERE source = 'human'")
+            c.execute(
+                "SELECT DISTINCT ON (expediente) expediente, relevante FROM ml_feedback "
+                "WHERE source = %s ORDER BY expediente, created_at DESC, id DESC",
+                (FUENTE_REVISION_TI,),
+            )
         )
+
+
+#: ``tecnologias_secundarias`` de una fila humana nombra alguna tecnología: una
+#: cadena JSON no vacía dentro del texto. Decide lo mismo que
+#: :func:`db.repositories.licitaciones.etiqueta_humana` para lo que escribe
+#: ``FeedbackRepository.insert`` (una lista de códigos) y para lo vacío o roto
+#: (``[]``, ``[""]``, ``null``, texto sin JSON), sin parsear JSON en SQL. Solo
+#: difiere en una entrada no textual (``[1]``), que ese escritor no produce. Es
+#: POSIX: se escribe igual en Postgres que en ``re`` (ver
+#: ``tests/test_ml_poblacion_entrenamiento.py``).
+PATRON_SECUNDARIAS_CON_TECNOLOGIA = '"[^"]+"'
 
 
 def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
@@ -915,25 +930,71 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
     ``tecnologia`` viaja como etiqueta de último recurso; las no circulares las
     aporta ``LicitacionRepository.etiquetas_tecnologia_no_circulares`` (S6.2),
     que es también quien define qué cuenta como pronunciamiento — este SQL
-    replica su criterio de fuente/método, no lo amplía.
+    replica su criterio de fuente/método, no lo amplía. Por eso mira grupos
+    ``(licitación, method)``, igual que el lector: un grupo con
+    ``SIN_EVIDENCIA_SENTINEL`` no admite nada, ni siquiera por el marcador de
+    nivel 1 que viaja en la misma llamada (desde el prompt v3, un «es TI» cuyas
+    citas de familia no se sostuvieron escribe ``__es_ti__`` y
+    ``__sin_evidencia__`` juntos). El lector descarta ese grupo entero, así que
+    una fila de fuera de la población que entrara por él lo haría sin etiqueta,
+    es decir, como negativo de todas las familias. Un grupo con solo el
+    marcador (o con ``__no_signal__``) sí admite: es una respuesta real,
+    «ninguna familia». El lector se queda con la versión vigente del grupo y
+    este predicado mira todas sus filas: con dos versiones conviviendo (un
+    backfill) puede dejar fuera una fila que sí tendría etiqueta, nunca meter
+    una que no la tenga.
+
+    La condición humana replica igual a
+    :func:`db.repositories.licitaciones.etiqueta_humana`, sobre la fila humana
+    más reciente del expediente (``revision_ti`` o ``human``, el mismo
+    ``DISTINCT ON`` que el lector): entra si esa fila se pronuncia, es decir,
+    si es ``revision_ti`` (con tecnología o sin ella: «ninguna familia») o si
+    es ``human`` heredada y nombra alguna tecnología, en ``tecnologia`` o en
+    ``tecnologias_secundarias``. Una ``human`` sin tecnología no se pronuncia
+    (su ``relevante`` era «es SAP»), así que la licitación entraría sin
+    etiqueta humana y caería a la de keywords. Las secundarias son JSON en
+    texto: se miran con :data:`PATRON_SECUNDARIAS_CON_TECNOLOGIA` y no se
+    parsean, para que un JSON roto no tumbe el dataset.
     """
+    from db.repositories.tecnologia_pliego import SIN_EVIDENCIA_SENTINEL
+
     sql = f"""
         SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe,
                l.fecha_publicacion, l.tecnologia, l.raw_keywords
         FROM licitaciones l
         WHERE {poblacion_clasificador_sql()}
-           OR EXISTS (
-                  SELECT 1 FROM ml_feedback f
-                  WHERE f.expediente = l.id_externo AND f.source = 'human'
+           OR l.id_externo IN (
+                  SELECT h.expediente FROM (
+                      SELECT DISTINCT ON (f.expediente) f.expediente, f.source,
+                             f.tecnologia, f.tecnologias_secundarias
+                      FROM ml_feedback f
+                      WHERE f.source = ANY(%s)
+                      ORDER BY f.expediente, f.created_at DESC, f.id DESC
+                  ) h
+                  WHERE h.source = %s
+                     OR coalesce(h.tecnologia, '') <> ''
+                     OR coalesce(h.tecnologias_secundarias, '') ~ %s
               )
            OR EXISTS (
                   SELECT 1 FROM licitacion_tecnologia_pliego p
                   WHERE p.licitacion_id = l.id_externo
                     AND p.method IN ('llm_metadata', 'llm')
+                    AND NOT EXISTS (
+                        SELECT 1 FROM licitacion_tecnologia_pliego s
+                        WHERE s.licitacion_id = p.licitacion_id
+                          AND s.method = p.method
+                          AND s.tecnologia = %s
+                    )
               )
-    """  # Interpola solo el predicado constante del módulo.
+    """  # Interpola solo el predicado constante del módulo; el resto va como parámetro.
+    params = (
+        list(FUENTES_HUMANAS),
+        FUENTE_REVISION_TI,
+        PATRON_SECUNDARIAS_CON_TECNOLOGIA,
+        SIN_EVIDENCIA_SENTINEL,
+    )
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql))
+        return rows_to_dicts(c.execute(sql, params))
 
 
 def filas_pendientes_ml_proba(*, force: bool = False) -> list[dict[str, Any]]:

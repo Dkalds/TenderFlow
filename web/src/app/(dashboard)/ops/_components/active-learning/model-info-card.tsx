@@ -4,12 +4,15 @@
  * Ficha del clasificador: el estado del etiquetado y, si ya hay un modelo
  * registrado, su versión, su métrica destacada y la deriva contra el reentreno
  * anterior. Sin modelo el panel lo dice en vez de pintar guiones.
+ *
+ * Sin «precisión estimada (% relevante)»: leía un `pct_relevant` que la API no
+ * sirve (ver `labeling-stats.tsx`, que explica por qué tampoco se calcula aquí).
  */
 
 import { Fact, Panel, PanelTitle } from "@/components/console/panel";
-import { cn, formatDate, formatDateTime, formatNumber, formatPercent } from "@/lib/utils";
+import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { FeedbackStats } from "@/hooks/use-feedback";
-import type { HeadlineMetric, ModelVersionInfo } from "../../_hooks/use-active-learning";
+import type { HeadlineMetric, ModelVersionInfo } from "../../_lib/active-learning";
 
 /** Nombre legible de cada métrica que puede destacar el hook. */
 const NOMBRE_METRICA: Record<string, string> = {
@@ -41,16 +44,11 @@ export function ModelInfoCard({
   return (
     <Panel>
       <PanelTitle title="Modelo de clasificación" />
-      <div className={cn(REJILLA, "sm:grid-cols-3")}>
-        <Fact label="Total de etiquetas" value={formatNumber(stats?.total_labels)} variant="cifra" />
-        <Fact
-          label="Precisión estimada (% relevante)"
-          value={stats?.pct_relevant != null ? formatPercent(stats.pct_relevant) : null}
-          variant="cifra"
-        />
+      <div className={cn(REJILLA, "sm:grid-cols-2")}>
+        <Fact label="Total de etiquetas" value={formatNumber(stats?.total)} variant="cifra" />
         <Fact
           label="Última actualización"
-          value={stats?.last_updated ? formatDateTime(stats.last_updated) : null}
+          value={stats?.last_feedback_at ? formatDateTime(stats.last_feedback_at) : null}
         />
       </div>
 

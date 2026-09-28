@@ -26,6 +26,7 @@ import pytest
 
 from config.keywords import (
     TECH_CATEGORIAS,
+    TECH_DEFINICIONES,
     TECH_LABEL_TIPO,
     TECH_LABELS,
     TECHNOLOGY_KEYWORDS,
@@ -66,6 +67,9 @@ CATEGORIAS = frozenset(
         "GIS",
         "SANIDAD_DIGITAL",
         "ADMIN_ELECTRONICA",
+        "RRHH_NOMINA",
+        "GESTION_DOCUMENTAL",
+        "PUESTO_TRABAJO",
     }
 )
 
@@ -92,7 +96,7 @@ def _detectadas(*textos: str) -> set[str]:
 
 
 class TestForma:
-    def test_los_labels_son_los_trece_fabricantes_y_las_nueve_categorias(self) -> None:
+    def test_los_labels_son_los_trece_fabricantes_y_las_doce_categorias(self) -> None:
         assert set(TECH_LABELS) == FABRICANTES | CATEGORIAS
         assert {k for k, t in TECH_LABEL_TIPO.items() if t == "fabricante"} == FABRICANTES
         assert {k for k, t in TECH_LABEL_TIPO.items() if t == "categoria"} == CATEGORIAS
@@ -125,8 +129,50 @@ class TestForma:
         compartidas = {(kw, frozenset(labels)) for kw, labels in duenos.items() if len(labels) > 1}
         assert compartidas == set(DUPLICADOS_INTENCIONALES)
 
-    def test_los_tres_mapas_declaran_los_mismos_labels(self) -> None:
-        assert set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO)
+    def test_los_cuatro_mapas_declaran_los_mismos_labels(self) -> None:
+        assert (
+            set(TECH_CATEGORIAS)
+            == set(TECH_LABELS)
+            == set(TECH_LABEL_TIPO)
+            == set(TECH_DEFINICIONES)
+        )
+
+    @pytest.mark.parametrize("label", TECH_LABELS)
+    def test_cada_label_tiene_una_definicion_corta(self, label: str) -> None:
+        """La definición viaja en cada llamada al LLM (una por licitación): es
+        una frase que acota el label, no un párrafo."""
+        definicion = TECH_DEFINICIONES[label]
+        assert definicion == definicion.strip(), label
+        assert "\n" not in definicion, label
+        assert 20 <= len(definicion) <= 200, (label, len(definicion))
+
+    @pytest.mark.parametrize(
+        ("label", "termino"),
+        [
+            # Lo que el nombre del label no dice y la definición sí: el
+            # mantenimiento de software a medida es DESARROLLO.
+            ("DESARROLLO", "mantenimiento"),
+            ("RRHH_NOMINA", "nóminas"),
+            ("CRM", "atención ciudadana"),
+            ("CLOUD_INFRA", "copias de seguridad"),
+            ("CIBERSEGURIDAD", "ENS"),
+            ("GIS", "geoportal"),
+            ("SANIDAD_DIGITAL", "historia clínica"),
+            ("ADMIN_ELECTRONICA", "sede"),
+            ("META4", "PeopleNet"),
+            ("UNIT4", "Agresso"),
+            ("GESTION_DOCUMENTAL", "gestor documental"),
+            ("PUESTO_TRABAJO", "microinformática"),
+            ("CLOUD_INFRA", "cableado estructurado"),
+        ],
+    )
+    def test_la_definicion_cubre_lo_que_cubren_sus_keywords(self, label: str, termino: str) -> None:
+        assert termino.casefold() in TECH_DEFINICIONES[label].casefold(), label
+        assert any(termino.casefold() in kw for kw in TECHNOLOGY_KEYWORDS[label]), (
+            "el término de la definición tiene que existir también en las keywords",
+            label,
+            termino,
+        )
 
     def test_toda_keyword_compila_con_limites_de_palabra(self) -> None:
         """Toda keyword tiene que poder casar consigo misma.
@@ -166,12 +212,18 @@ class TestConsumidores:
         assert set(_tecnologias_disponibles()) >= CATEGORIAS
 
     def test_el_vocabulario_cerrado_del_llm_las_incluye_y_sigue_cabiendo(self) -> None:
+        from llm.client import MAX_INTERNAL_QUESTION_LEN
         from services.llm_tech_labeling import build_question
 
         pregunta = build_question()
         for label in TECH_LABELS:
-            assert label in pregunta
-        assert len(pregunta) <= 2000
+            assert f"{label}: {TECH_DEFINICIONES[label]}" in pregunta
+        # El tope que aplica es el de plantilla interna del modo
+        # ``clasificacion`` (``MAX_INTERNAL_QUESTION_LEN``, 12k), no los 2000
+        # caracteres de lo que teclea un usuario en /ask: con una definición
+        # por label la pregunta pasa de 2000 (unos 3.500) y el cliente la
+        # acepta igual. Si un día no cabe, es que el vocabulario se desbocó.
+        assert len(pregunta) <= MAX_INTERNAL_QUESTION_LEN
 
     def test_el_clasificador_nace_con_las_categorias_en_tier_rules(self) -> None:
         """Sin positivos no hay modelo: la categoría clasifica por keywords con
@@ -439,3 +491,91 @@ class TestFabricantesIntactos:
     )
     def test_los_fabricantes_siguen_casando(self, titulo: str, fabricante: str) -> None:
         assert fabricante in _detectadas(titulo)
+
+
+# ── 6. Familias nuevas (D2, 2026-09-27) ─────────────────────────────────────
+
+FAMILIAS_NUEVAS = frozenset({"RRHH_NOMINA", "GESTION_DOCUMENTAL", "PUESTO_TRABAJO"})
+
+TITULOS_FAMILIAS_NUEVAS: list[tuple[str, set[str]]] = [
+    ("Implantación de un nuevo sistema de nóminas para el Ayuntamiento", {"RRHH_NOMINA"}),
+    ("Subministrament del programari de nòmines i portal de l'empleat", {"RRHH_NOMINA"}),
+    ("Mantenimiento del gestor documental corporativo", {"GESTION_DOCUMENTAL"}),
+    ("Subscripció al programari de gestió documental Alfresco", {"GESTION_DOCUMENTAL"}),
+    ("Suministro de ordenadores portátiles para el personal", {"PUESTO_TRABAJO"}),
+    ("Servicio de centro de atención a usuarios y soporte microinformático", {"PUESTO_TRABAJO"}),
+    ("Suministro de electrónica de red y cableado estructurado", {"CLOUD_INFRA"}),
+]
+
+
+class TestFamiliasNuevas:
+    @pytest.mark.parametrize(("titulo", "esperadas"), TITULOS_FAMILIAS_NUEVAS)
+    def test_detecta_la_familia(self, titulo: str, esperadas: set[str]) -> None:
+        assert esperadas <= _detectadas(titulo), titulo
+
+    def test_las_nominas_ya_no_son_erp(self) -> None:
+        """La keyword se mudó de familia: si siguiera en las dos, el test de
+        duplicados lo diría; si siguiera solo en ERP, esto."""
+        assert "ERP" not in _detectadas("Implantación de un nuevo sistema de nóminas")
+
+    def test_el_gestor_documental_ya_no_es_admin_electronica(self) -> None:
+        assert "ADMIN_ELECTRONICA" not in _detectadas("Mantenimiento del gestor documental")
+
+    @pytest.mark.parametrize(
+        "texto",
+        [
+            "Valoración de puestos de trabajo del personal municipal",
+            "Curso de formación en ofimática para empleados",
+            "Servicio de custodia y gestión documental de archivos en papel",
+        ],
+    )
+    def test_no_disparan_donde_la_palabra_significa_otra_cosa(self, texto: str) -> None:
+        assert not (_detectadas(texto) & FAMILIAS_NUEVAS), texto
+
+    def test_el_sistema_de_rrhh_en_euskera_es_rrhh_nomina_y_no_erp(self) -> None:
+        """Su equivalente en castellano, catalán y gallego ya se mudó de ERP."""
+        detectadas = _detectadas("Giza baliabideen kudeaketa sistema berria ezartzea")
+        assert "RRHH_NOMINA" in detectadas
+        assert "ERP" not in detectadas
+
+    def test_la_gestion_de_rrhh_sin_software_no_es_rrhh_nomina(self) -> None:
+        """«Software, nunca el servicio»: sin «sistema» es la gestión de personal."""
+        assert "RRHH_NOMINA" not in _detectadas("Giza baliabideen kudeaketa zerbitzua")
+
+    @pytest.mark.parametrize(
+        "texto",
+        [
+            # Atención al público de un servicio, no soporte informático.
+            "Servicio de centro de atención a usuarios del transporte urbano",
+            "Servei de centre d'atenció a l'usuari del transport públic",
+            # Telefonía de voz: D1 la deja fuera de TI.
+            "Servicios de telecomunicaciones de la red corporativa de voz",
+            "Serveis de telecomunicacions de la xarxa corporativa de veu",
+            "Servizos de telecomunicacións da rede corporativa de voz",
+        ],
+    )
+    def test_cau_y_red_corporativa_sin_sentido_ti_no_dan_familia(self, texto: str) -> None:
+        assert _detectadas(texto) == set(), texto
+
+    @pytest.mark.parametrize(
+        ("titulo", "esperada"),
+        [
+            ("Servicio de centro de atención a usuarios (CAU) informático", "PUESTO_TRABAJO"),
+            ("Servei de centre d'atenció a l'usuari (CAU) informàtic", "PUESTO_TRABAJO"),
+            ("Suministro de electrónica de red para la red corporativa de datos", "CLOUD_INFRA"),
+            ("Ampliación de la red corporativa de datos del Ayuntamiento", "CLOUD_INFRA"),
+            ("Ampliació de la xarxa corporativa de dades de l'Ajuntament", "CLOUD_INFRA"),
+            ("Ampliación da rede corporativa de datos do Concello", "CLOUD_INFRA"),
+        ],
+    )
+    def test_cau_y_red_corporativa_de_ti_conservan_su_familia(
+        self, titulo: str, esperada: str
+    ) -> None:
+        assert esperada in _detectadas(titulo), titulo
+
+    def test_la_etiqueta_antigua_de_cloud_sigue_resolviendo(self) -> None:
+        """Los enlaces guardados a la analítica llevan el texto de la etiqueta."""
+        from services.analytics.tecnologias import _codes_for_label
+
+        assert "CLOUD_INFRA" in _codes_for_label("Cloud e infraestructura")
+        assert "CLOUD_INFRA" in _codes_for_label("Infraestructura, cloud y redes")

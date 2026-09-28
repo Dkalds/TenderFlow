@@ -22,7 +22,7 @@ from lxml import etree
 from config import settings
 from db.database import Adjudicacion, DocumentoReferencia, Licitacion, Lote
 from observability.logging import get_logger
-from scraper.filters import matches_technology
+from scraper.puerta_tecnologica import MOTIVO_ADMITIDA, senal_tecnologica
 from shared.dates import to_iso_date, to_iso_datetime
 from shared.geo import nuts_to_ccaa
 
@@ -565,6 +565,15 @@ def parse_lotes(
     return lotes
 
 
+def _cpvs_del_proyecto(entry: Any, project_xp: str) -> list[str]:
+    """Todos los CPV del proyecto, no solo el primero que guarda `cpv`."""
+    codigos = entry.xpath(
+        f"{project_xp}/cac:RequiredCommodityClassification/cbc:ItemClassificationCode/text()",
+        namespaces=NS,
+    )
+    return [str(c).strip() for c in codigos if str(c).strip()]
+
+
 def parse_entry(entry: Any) -> Licitacion | None:
     """Convierte una <entry> ATOM en una Licitacion (si es de tecnología enterprise)."""
     titulo = _text(entry, "./atom:title") or ""
@@ -644,16 +653,18 @@ def parse_entry(entry: Any) -> Licitacion | None:
     if nombre_proyecto:
         titulo = nombre_proyecto
 
-    is_tech, tech_kw = matches_technology(titulo, summary)
-    if not is_tech:
+    # Decide el título, con la misma puerta que PSCP (2026-09-27). El `summary`
+    # ya no entra: en PLACSP es «Id; Órgano; Importe; Estado», y el nombre del
+    # órgano hacía de keyword (una limpieza del Instituto Nacional de
+    # Ciberseguridad salía CIBERSEGURIDAD). Las keywords ambiguas necesitan que
+    # algún CPV del proyecto las corrobore, y se miran todos, no solo el primero.
+    # Lo que no entra por keyword sigue su camino por el CPV
+    # (`scraper.pipeline`), como antes.
+    senal = senal_tecnologica(titulo, " ".join(_cpvs_del_proyecto(entry, project_xp)))
+    if senal.motivo != MOTIVO_ADMITIDA:
         return None
-
-    # Determinar tecnologías detectadas y keywords
-    tecnologias = sorted(tech_kw.keys())
-    all_keywords: list[str] = []
-    for kw_list in tech_kw.values():
-        all_keywords.extend(kw_list)
-    kw = sorted(set(all_keywords))
+    tecnologias = list(senal.tecnologias)
+    kw = list(senal.keywords)
 
     fecha_pub = _issue_date(entry, cfs) or fecha_upd
 

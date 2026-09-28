@@ -2,8 +2,8 @@
 
 Qué labels de tecnología reconoce TenderFlow, de qué tipo es cada uno y por
 qué existe. La fuente de verdad es `config/keywords.py` (`TECHNOLOGY_KEYWORDS`,
-`TECH_CATEGORIAS`, `TECH_LABEL_TIPO`); este documento explica el criterio, no
-lo sustituye. Decisión de producto: plan de arquitectura v2 (2026-09), «no
+`TECH_CATEGORIAS`, `TECH_LABEL_TIPO`, `TECH_DEFINICIONES`); este documento
+explica el criterio, no lo sustituye. Decisión de producto: plan de arquitectura v2 (2026-09), «no
 salir de TI» — se ensancha la taxonomía por categorías, no por sectores.
 
 ## Dos tipos de label
@@ -19,6 +19,13 @@ Los dos tipos conviven en el mismo dict porque todo consumidor del diccionario
 (analítica), `services.llm_tech_labeling` (vocabulario cerrado del LLM)—
 itera sus claves sin distinguirlas. `TECH_LABEL_TIPO` es donde se distingue
 cuando hace falta (UI, documentación, este fichero).
+
+`TECH_DEFINICIONES` resume en una frase lo que cubre cada label y viaja en la
+pregunta del etiquetado por LLM: con el nombre solo, el modelo lee
+`DESARROLLO` como desarrollo nuevo y deja sin etiqueta el mantenimiento de una
+aplicación a medida, que sus keywords sí cubren. Cada definición resume su
+lista de keywords y la fila de las tablas de abajo; si cambia una, cambian las
+tres.
 
 ## Labels
 
@@ -40,19 +47,49 @@ cuando hace falta (UI, documentación, este fichero).
 | `SAGE` | Sage | ERP de gama media (X3, 200, Despachos) en entes locales y sociedades públicas. |
 | `INFOR` | Infor | ERP industrial (LN, M3, CloudSuite, Baan) en empresas públicas y puertos. |
 
-### Categorías (2026-09-14)
+### Categorías (2026-09-14, ampliado 2026-09-27)
 
 | Label | Etiqueta UI | Motivo |
 |---|---|---|
 | `ERP` | ERP (genérico) | El pliego pide «un ERP» o «un sistema de gestión económico-financiera» sin nombrar vendor; antes ese expediente no tenía label aunque fuese el negocio central del integrador. |
 | `CRM` | CRM (genérico) | Igual que ERP para la relación con el cliente o el ciudadano: plataformas de atención ciudadana, contact center, CRM sin marca. |
-| `CLOUD_INFRA` | Cloud e infraestructura | Nube, IaaS/PaaS/SaaS, contenedores, virtualización, CPD, almacenamiento y backup: la capa que el integrador vende junto a cualquier producto. |
+| `CLOUD_INFRA` | Infraestructura, cloud y redes | Nube, IaaS/PaaS/SaaS, contenedores, virtualización, CPD, almacenamiento, backup y redes de datos (electrónica de red, cableado estructurado, wifi): la capa que el integrador vende junto a cualquier producto. |
 | `CIBERSEGURIDAD` | Ciberseguridad | SOC, SIEM, EDR, ENS, auditorías y pentest: la línea de contratación TI que más crece y que no cabía en ningún fabricante. |
 | `DATOS_IA` | Datos e IA | BI, cuadros de mando, data warehouse/lake, IA y aprendizaje automático: demanda nueva que llega sin marca (o con marca que no está en la lista). |
 | `DESARROLLO` | Desarrollo de software | Desarrollo a medida, mantenimiento evolutivo, factoría de software, apps y APIs: el grueso del CPV 72 no nombra ningún producto. |
 | `GIS` | GIS y geoinformación | Sistemas de información geográfica, IDE, geoportales y visores: vertical propia de administración local y autonómica. |
 | `SANIDAD_DIGITAL` | Sanidad digital | Historia clínica electrónica, receta electrónica, HIS/PACS, telemedicina: el mayor comprador TI autonómico habla con este vocabulario. |
-| `ADMIN_ELECTRONICA` | Administración electrónica | Sede, registro y firma electrónicos, tramitación, interoperabilidad, gestores de expedientes: obligación legal (Ley 39/2015) que genera contratación constante. |
+| `ADMIN_ELECTRONICA` | Administración electrónica | Sede, registro y firma electrónicos, tramitación, interoperabilidad, gestores de expedientes, archivo electrónico: obligación legal (Ley 39/2015) que genera contratación constante. |
+| `RRHH_NOMINA` | RRHH y nómina | Sistema o aplicación de nóminas, gestión de recursos humanos, portal del empleado, sin fabricante nombrado: una nómina no es un ERP, y quien la busca no quiere que se le mezcle con la gestión económico-financiera. |
+| `GESTION_DOCUMENTAL` | Gestión documental | Gestor documental, sistema o plataforma de gestión documental, ECM, Alfresco o Nuxeo: la custodia y el flujo de documentos digitales, no la tramitación del expediente que los contiene. |
+| `PUESTO_TRABAJO` | Puesto de trabajo y soporte | Ordenadores de sobremesa y portátiles, equipos y material informático, microinformática, CAU, service desk, ofimática: el hardware y el soporte del usuario final. |
+
+### Migración de keywords (D2, 2026-09-27)
+
+Las diez keywords de nóminas y RRHH (`sistema de nóminas`, `software de
+nóminas`, `sistema de gestión de recursos humanos`, …) salen de `ERP` y pasan
+a `RRHH_NOMINA`; las cinco de gestor documental (`gestor documental`,
+`sistema de gestión documental`, …) salen de `ADMIN_ELECTRONICA` y pasan a
+`GESTION_DOCUMENTAL`. Una fila cuya única señal fuera una de estas keywords
+**cambia de familia** la próxima vez que se reingiera (resiembra +
+reclasificación), no retroactivamente: lo ya persistido con `ERP` o
+`ADMIN_ELECTRONICA` por esa keyword no se reescribe solo. Ver «Efectos de
+cambiar la semilla» más abajo.
+
+## Frontera de TI (D1)
+
+Qué cuenta como TI, antes de decidir a qué familia pertenece (2026-09-27):
+
+- **Dentro**: software (licencias, SaaS, desarrollo, mantenimiento de
+  aplicaciones), servicios TI (soporte, CAU, outsourcing, consultoría TI),
+  infraestructura (cloud, hosting, CPD, redes de datos, virtualización,
+  servidores, almacenamiento, backup), ciberseguridad, datos/BI/IA,
+  administración electrónica, sanidad digital, GIS y hardware de puesto.
+- **Fuera**: formación sobre herramientas (salvo dentro de una implantación),
+  suscripciones a contenidos (revistas, bases de datos bibliográficas o
+  clínicas), telefonía de voz, publicidad y eventos, y obra civil o
+  climatización del CPD.
+- Los contratos menores ya adjudicados siguen siendo TI.
 
 ## Lenguas cooficiales
 
@@ -131,8 +168,9 @@ Dos particularidades:
 
 1. Entrada en `TECHNOLOGY_KEYWORDS` (lista en minúsculas, sintagmas, con las
    formas ca/eu/gl si difieren).
-2. Entrada en `TECH_CATEGORIAS` (etiqueta UI) y en `TECH_LABEL_TIPO`. El módulo
-   falla al importar si los tres mapas no declaran los mismos labels.
+2. Entrada en `TECH_CATEGORIAS` (etiqueta UI), en `TECH_LABEL_TIPO` y en
+   `TECH_DEFINICIONES` (una frase para el LLM). El módulo falla al importar si
+   los cuatro mapas no declaran los mismos labels.
 3. Fila en la tabla de arriba con su motivo en una línea.
 4. `tests/test_taxonomia_tecnologica.py` verde (≥ 5 keywords, sin duplicados,
    detección sobre títulos reales).

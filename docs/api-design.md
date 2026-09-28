@@ -89,7 +89,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `empresas:read` | GET | `/empresas`, `/empresas/stats` |
 | `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/crm`, `/exports/descargas`, `/exports/download` |
 | `feature_flags:read` | GET | `/feature-flags` |
-| `feedback:read` | GET | `/feedback/asistente`, `/feedback/model-info`, `/feedback/queue`, `/feedback/stats` |
+| `feedback:read` | GET | `/feedback/asistente`, `/feedback/model-info`, `/feedback/queue`, `/feedback/stats`, `/feedback/taxonomia` |
 | `feedback:write` | POST | `/feedback`, `/feedback/asistente` |
 | `licitaciones:read` | GET/POST | `/licitaciones`, `/licitaciones/bulk-get`, `/licitaciones/cursor`, `/licitaciones/search`, `/licitaciones/stream` |
 | `licitaciones:write` | POST | `/licitaciones`, `/licitaciones/comparar` |

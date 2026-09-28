@@ -72,7 +72,7 @@ Generado: 2026-09-28
 
 ## Superficie de la API
 
-**286 endpoints** expuestos.
+**287 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -189,6 +189,7 @@ Generado: 2026-09-28
 | GET | `/api/v1/feedback/model-info` |
 | GET | `/api/v1/feedback/queue` |
 | GET | `/api/v1/feedback/stats` |
+| GET | `/api/v1/feedback/taxonomia` |
 | GET | `/api/v1/follows` |
 | POST | `/api/v1/follows` |
 | DELETE | `/api/v1/follows/{target_type}/{target_id:path}` |

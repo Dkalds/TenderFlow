@@ -251,7 +251,7 @@ _SYSTEM_CLASIFICACION = (
         "indica la pregunta. Usa exclusivamente esas etiquetas, escritas tal cual. "
         "Devuelve solo un objeto JSON válido, sin Markdown ni explicaciones. "
         "Etiqueta únicamente tecnologías que el contrato implanta, mantiene, migra o licencia "
-        "de forma sustancial: no cuentan las menciones incidentales ni la ofimática genérica. "
+        "de forma sustancial: no cuentan las menciones incidentales. "
         "confidence es tu certeza real entre 0 y 1. Si ninguna etiqueta aplica, devuelve la "
         "lista vacía en vez de forzar la más parecida."
     )
