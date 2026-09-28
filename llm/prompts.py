@@ -47,12 +47,17 @@ MAX_HISTORY_MESSAGES = 12
 MAX_HISTORY_CHARS = 8_000
 MAX_CONTEXT_CHARS_GENERAL = 8_000
 MAX_CONTEXT_CHARS_LICITACION = 16_000
+#: La ficha verificable lee el pliego, no lo resume: con 16k chars (~5 páginas
+#: de un PCAP de 100+) los criterios y la fórmula de precio casi nunca
+#: entraban. 60k chars son ~16k tokens, holgados para los 1M de contexto de
+#: los Nemotron por defecto. Ver ``services/rag/fact_sheet.py`` (v6).
+MAX_CONTEXT_CHARS_EXTRACTION = 60_000
 
 _CONTEXT_CHARS_BY_MODE: dict[PromptMode, int] = {
     "general": MAX_CONTEXT_CHARS_GENERAL,
     "licitacion": MAX_CONTEXT_CHARS_LICITACION,
     "resumen": MAX_CONTEXT_CHARS_LICITACION,
-    "extraction": MAX_CONTEXT_CHARS_LICITACION,
+    "extraction": MAX_CONTEXT_CHARS_EXTRACTION,
     # Clasificación: un solo anuncio (título + descripción), sin pliegos.
     "clasificacion": MAX_CONTEXT_CHARS_GENERAL,
     # F2.8: el mismo techo que un expediente, repartido entre dos o tres. La

@@ -87,10 +87,12 @@ jobs:
     # sin llegar a `run_cli` ni a su alerta. El fetch de 300 documentos iba de
     # 17 a 37 min y el embed de 100, de 15 a más de 25. Desde entonces fetch,
     # embed y fichas tienen tope de reloj propio (PLIEGO_*_MAX_SECONDS en
-    # config/settings.py: 20 + 15 + 10 min), y este timeout es la red de
+    # config/settings.py: 20 + 15 + 30 min), y este timeout es la red de
     # seguridad, no lo que corta el trabajo. Si salta, algo sin tope (el setup,
     # tech_signal o el report) se disparó, y hay que mirarlo antes de subirlo.
-    timeout-minutes: 75
+    # 75 → 90 el 2026-09-28, al pasar el tope de fichas de 10 a 30 min
+    # (tender-facts-v6): se conserva el mismo margen para lo que no tiene tope.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
