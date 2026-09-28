@@ -10,14 +10,13 @@ Contiene:
 
 from __future__ import annotations
 
-import functools
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from config.keywords import TECH_LABELS
+from config.keywords import TECH_LABELS, patron_de_keyword
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
@@ -1041,7 +1040,6 @@ def _build_multilabel_dataset(
     return texts, Y, positives
 
 
-@functools.lru_cache(maxsize=4096)
 def _keyword_pattern(keyword: str) -> re.Pattern[str]:
     """Regex de una keyword con límites de palabra, memoizada por keyword.
 
@@ -1051,8 +1049,12 @@ def _keyword_pattern(keyword: str) -> re.Pattern[str]:
     «capital». Antes era un ``in`` sobre el texto en minúsculas, y con la
     taxonomía por categorías (2026-09-14) el tier ``rules`` pasa a estar hecho
     en buena parte de acrónimos cortos así.
+
+    Compila por ``config.keywords.patron_de_keyword`` y no con un
+    ``\\b…\\b`` propio: con ese, `.net` no casaba nunca, y el tier no veía lo
+    que sí ve la ingesta (títulos sin tildes, plurales).
     """
-    return re.compile(r"\b" + re.escape(keyword.lower()) + r"\b", flags=re.IGNORECASE)
+    return patron_de_keyword(keyword)
 
 
 def _keyword_fallback_score(text: str, keywords: list[str]) -> float:

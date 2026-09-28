@@ -45,6 +45,19 @@ log = get_logger(__name__)
 NO_SIGNAL_SENTINEL = "__no_signal__"
 _NO_SIGNAL_SENTINEL = NO_SIGNAL_SENTINEL
 
+# Sentinel del etiquetado por LLM cuando el modelo **sí** afirmó tecnologías
+# pero ninguna traía una cita que aparezca en el texto que se le mandó
+# (``services.llm_tech_labeling``). Como el anterior, marca la licitación como
+# procesada para su ``signal_version`` y con score 0 se queda fuera del merge;
+# a diferencia de él, NO dice «ninguna tecnología»: el entrenamiento lo trata
+# como fuente que no se pronunció. Guardar ``NO_SIGNAL_SENTINEL`` en su lugar
+# convertiría una etiqueta inverificable en un negativo falso.
+SIN_EVIDENCIA_SENTINEL = "__sin_evidencia__"
+
+#: Filas que marcan «procesada» y no son una tecnología. Toda lectura que
+#: exponga o agregue tecnologías excluye las dos.
+SENTINELS: tuple[str, ...] = (NO_SIGNAL_SENTINEL, SIN_EVIDENCIA_SENTINEL)
+
 
 class TechSignal(NamedTuple):
     """Señal detectada para una tecnología: score + evidencia (una de las dos)."""
@@ -86,6 +99,7 @@ class TecnologiaPliegoRepository:
         method: str,
         signal_version: str,
         scores: dict[str, TechSignal],
+        sin_evidencia: bool = False,
     ) -> int:
         """Upsert de las señales ``method`` vigentes de una licitación.
 
@@ -100,10 +114,15 @@ class TecnologiaPliegoRepository:
 
         ``scores`` vacío persiste el sentinel ``_NO_SIGNAL_SENTINEL`` para que
         ``list_licitaciones_pending_signal`` no vuelva a seleccionar esta
-        licitación en cada corrida mientras ``signal_version`` no cambie.
+        licitación en cada corrida mientras ``signal_version`` no cambie. Con
+        ``sin_evidencia`` el sentinel es ``SIN_EVIDENCIA_SENTINEL``: el LLM
+        afirmó tecnologías y ninguna sostuvo su cita, que no es lo mismo que
+        «ninguna tecnología». Con ``scores`` no vacío, ``sin_evidencia`` no
+        cambia nada.
         """
         now = now_utc_iso()
-        techs = list(scores.keys()) or [_NO_SIGNAL_SENTINEL]
+        sentinel = SIN_EVIDENCIA_SENTINEL if sin_evidencia else _NO_SIGNAL_SENTINEL
+        techs = list(scores.keys()) or [sentinel]
         rows: list[tuple[str, str, str, float, str | None, str | None, str, str]] = [
             (
                 licitacion_id,
@@ -120,7 +139,7 @@ class TecnologiaPliegoRepository:
                 now,
             )
             for tech, signal in scores.items()
-        ] or [(licitacion_id, _NO_SIGNAL_SENTINEL, method, 0.0, None, None, signal_version, now)]
+        ] or [(licitacion_id, sentinel, method, 0.0, None, None, signal_version, now)]
 
         with connect() as c:
             placeholders = ",".join("%s" for _ in techs)
@@ -177,10 +196,12 @@ class TecnologiaPliegoRepository:
         Las más recientes primero: el valor de negocio está en el flujo
         entrante, y el backlog histórico se drena por detrás lote a lote.
 
-        Pendiente = sin fila de esta ``(method, signal_version)``, incluido el
-        sentinel ``NO_SIGNAL_SENTINEL`` -- una licitación que el LLM ya declaró
-        "sin tecnología" cuenta como procesada y no se reintenta hasta que se
-        bumpee la versión (modelo o prompt nuevo).
+        Pendiente = sin fila de esta ``(method, signal_version)``, incluidos los
+        sentinels -- una licitación que el LLM ya declaró "sin tecnología"
+        (``NO_SIGNAL_SENTINEL``) o cuyas etiquetas no sostuvieron su cita
+        (``SIN_EVIDENCIA_SENTINEL``) cuenta como procesada y no se reintenta
+        hasta que se bumpee la versión (modelo o prompt nuevo): el mismo prompt
+        daría la misma respuesta.
         """
         with connect_read() as c:
             cur = c.execute(
@@ -279,15 +300,16 @@ class TecnologiaPliegoRepository:
 
     def list_for_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
         """Señales (todas, cualquier score) de una licitación para el
-        endpoint de detalle -- excluye el sentinel de "sin señal"."""
+        endpoint de detalle -- excluye los sentinels (``SENTINELS``): la ruta
+        crea una entrada por cada fila que recibe."""
         with connect_read() as c:
             cur = c.execute(
                 "SELECT tecnologia, method, score, matched_terms, evidence_json, "
                 "signal_version, computed_at, merged_at "
                 "FROM licitacion_tecnologia_pliego "
-                "WHERE licitacion_id = %s AND tecnologia != %s "
+                "WHERE licitacion_id = %s AND tecnologia <> ALL(%s) "
                 "ORDER BY score DESC",
-                (licitacion_id, _NO_SIGNAL_SENTINEL),
+                (licitacion_id, list(SENTINELS)),
             )
             return rows_to_dicts(cur)
 

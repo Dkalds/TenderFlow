@@ -915,8 +915,13 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
     ``tecnologia`` viaja como etiqueta de último recurso; las no circulares las
     aporta ``LicitacionRepository.etiquetas_tecnologia_no_circulares`` (S6.2),
     que es también quien define qué cuenta como pronunciamiento — este SQL
-    replica su criterio de fuente/método, no lo amplía.
+    replica su criterio de fuente/método, no lo amplía. Por eso excluye
+    ``SIN_EVIDENCIA_SENTINEL``: el LLM no se pronunció, y una fila de fuera de
+    la población que entrara solo por él lo haría sin etiqueta, es decir, como
+    negativo.
     """
+    from db.repositories.tecnologia_pliego import SIN_EVIDENCIA_SENTINEL
+
     sql = f"""
         SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe,
                l.fecha_publicacion, l.tecnologia, l.raw_keywords
@@ -930,10 +935,11 @@ def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
                   SELECT 1 FROM licitacion_tecnologia_pliego p
                   WHERE p.licitacion_id = l.id_externo
                     AND p.method IN ('llm_metadata', 'llm')
+                    AND p.tecnologia <> %s
               )
-    """  # Interpola solo el predicado constante del módulo.
+    """  # Interpola solo el predicado constante del módulo; el sentinel va como parámetro.
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql))
+        return rows_to_dicts(c.execute(sql, (SIN_EVIDENCIA_SENTINEL,)))
 
 
 def filas_pendientes_ml_proba(*, force: bool = False) -> list[dict[str, Any]]:

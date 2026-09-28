@@ -56,12 +56,21 @@ def semilla() -> dict[str, list[str]]:
 
 
 def _hash_de(diccionario: dict[str, list[str]]) -> str:
-    """Hash canónico del contenido. Misma forma que `scraper/lineage.py`."""
+    """Hash canónico del contenido. Misma forma que `scraper/lineage.py`.
+
+    Entra también la versión del matcher (`config.keywords.VERSION_MATCHER`):
+    el mismo diccionario casado sin tildes ni plurales y casado con ellos no
+    filtra lo mismo, y `filter_version` existe para poder distinguirlo. Se lee
+    del módulo en cada llamada, no al importar, para que un cambio se note.
+    """
+    import config.keywords as keywords_mod
+
     canonical: dict[str, object] = {
         tecnologia: sorted({kw.casefold() for kw in keywords})
         for tecnologia, keywords in sorted(diccionario.items())
     }
     canonical["__universo__"] = {"cpv_ti": ["48", "72"], "version": 1}
+    canonical["__matcher__"] = keywords_mod.VERSION_MATCHER
     payload = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "keywords-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 

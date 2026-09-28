@@ -26,6 +26,7 @@ import pytest
 
 from config.keywords import (
     TECH_CATEGORIAS,
+    TECH_DEFINICIONES,
     TECH_LABEL_TIPO,
     TECH_LABELS,
     TECHNOLOGY_KEYWORDS,
@@ -125,8 +126,47 @@ class TestForma:
         compartidas = {(kw, frozenset(labels)) for kw, labels in duenos.items() if len(labels) > 1}
         assert compartidas == set(DUPLICADOS_INTENCIONALES)
 
-    def test_los_tres_mapas_declaran_los_mismos_labels(self) -> None:
-        assert set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO)
+    def test_los_cuatro_mapas_declaran_los_mismos_labels(self) -> None:
+        assert (
+            set(TECH_CATEGORIAS)
+            == set(TECH_LABELS)
+            == set(TECH_LABEL_TIPO)
+            == set(TECH_DEFINICIONES)
+        )
+
+    @pytest.mark.parametrize("label", TECH_LABELS)
+    def test_cada_label_tiene_una_definicion_corta(self, label: str) -> None:
+        """La definición viaja en cada llamada al LLM (una por licitación): es
+        una frase que acota el label, no un párrafo."""
+        definicion = TECH_DEFINICIONES[label]
+        assert definicion == definicion.strip(), label
+        assert "\n" not in definicion, label
+        assert 20 <= len(definicion) <= 200, (label, len(definicion))
+
+    @pytest.mark.parametrize(
+        ("label", "termino"),
+        [
+            # Lo que el nombre del label no dice y la definición sí: el
+            # mantenimiento de software a medida es DESARROLLO.
+            ("DESARROLLO", "mantenimiento"),
+            ("ERP", "nóminas"),
+            ("CRM", "atención ciudadana"),
+            ("CLOUD_INFRA", "copias de seguridad"),
+            ("CIBERSEGURIDAD", "ENS"),
+            ("GIS", "geoportal"),
+            ("SANIDAD_DIGITAL", "historia clínica"),
+            ("ADMIN_ELECTRONICA", "sede"),
+            ("META4", "PeopleNet"),
+            ("UNIT4", "Agresso"),
+        ],
+    )
+    def test_la_definicion_cubre_lo_que_cubren_sus_keywords(self, label: str, termino: str) -> None:
+        assert termino.casefold() in TECH_DEFINICIONES[label].casefold(), label
+        assert any(termino.casefold() in kw for kw in TECHNOLOGY_KEYWORDS[label]), (
+            "el término de la definición tiene que existir también en las keywords",
+            label,
+            termino,
+        )
 
     def test_toda_keyword_compila_con_limites_de_palabra(self) -> None:
         """Toda keyword tiene que poder casar consigo misma.
@@ -166,12 +206,18 @@ class TestConsumidores:
         assert set(_tecnologias_disponibles()) >= CATEGORIAS
 
     def test_el_vocabulario_cerrado_del_llm_las_incluye_y_sigue_cabiendo(self) -> None:
+        from llm.client import MAX_INTERNAL_QUESTION_LEN
         from services.llm_tech_labeling import build_question
 
         pregunta = build_question()
         for label in TECH_LABELS:
-            assert label in pregunta
-        assert len(pregunta) <= 2000
+            assert f"{label}: {TECH_DEFINICIONES[label]}" in pregunta
+        # El tope que aplica es el de plantilla interna del modo
+        # ``clasificacion`` (``MAX_INTERNAL_QUESTION_LEN``, 12k), no los 2000
+        # caracteres de lo que teclea un usuario en /ask: con una definición
+        # por label la pregunta pasa de 2000 (unos 3.500) y el cliente la
+        # acepta igual. Si un día no cabe, es que el vocabulario se desbocó.
+        assert len(pregunta) <= MAX_INTERNAL_QUESTION_LEN
 
     def test_el_clasificador_nace_con_las_categorias_en_tier_rules(self) -> None:
         """Sin positivos no hay modelo: la categoría clasifica por keywords con

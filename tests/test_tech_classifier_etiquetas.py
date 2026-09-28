@@ -113,6 +113,124 @@ class TestAvisoDeCircularidad:
         assert resolucion.counts["llm"] == 80
 
 
+class TestConflictoEsAbstencion:
+    """El LLM dice «ninguna tecnología» y las keywords sí ven una.
+
+    Antes la fila entrenaba como negativo de **todo**: el LLM era la primera
+    fuente que se pronunciaba y su CSV vacío borraba el DESARROLLO que el regex
+    había visto. Dos fuentes que se contradicen no son un negativo; son una
+    abstención, y la fila sale del entrenamiento.
+    """
+
+    @staticmethod
+    def _fila(
+        *, tecnologia: str | None, llm: str | None, humana: str | None = None
+    ) -> dict[str, Any]:
+        return {
+            "titulo": "Mantenimiento de la aplicación de gestión",
+            "descripcion": "objeto del contrato",
+            "tecnologia": tecnologia,
+            "tecnologia_humana": humana,
+            "tecnologia_llm": llm,
+        }
+
+    def test_llm_vacio_contra_keywords_con_etiqueta_excluye_la_fila(self) -> None:
+        df = pd.DataFrame([self._fila(tecnologia="DESARROLLO", llm="")])
+
+        resolucion = _resolver_label_column(df)
+
+        assert len(resolucion.df) == 0
+        assert resolucion.counts["conflicto"] == 1
+        assert resolucion.counts["llm"] == 0
+        assert resolucion.counts["keywords"] == 0
+
+    def test_llm_solo_bajo_umbral_tambien_es_conflicto(self) -> None:
+        """El CSV del LLM se filtra por score antes de decidir: un SAP a 0.3 es
+        una respuesta vacía, no una etiqueta."""
+        df = pd.DataFrame([self._fila(tecnologia="SAP", llm="SAP:0.3000")])
+
+        with patch("scraper.tech_classifier.settings") as mock_settings:
+            mock_settings.ML_TECH_LLM_MIN_SCORE = 0.5
+            resolucion = _resolver_label_column(df)
+
+        assert len(resolucion.df) == 0
+        assert resolucion.counts["conflicto"] == 1
+
+    def test_llm_vacio_sin_keywords_sigue_siendo_un_negativo(self) -> None:
+        """Las dos fuentes coinciden en «nada»: ese negativo sí vale."""
+        from scraper.tech_classifier import _LABEL_COL_RESOLVED
+
+        df = pd.DataFrame([self._fila(tecnologia=None, llm=""), self._fila(tecnologia="", llm="")])
+
+        resolucion = _resolver_label_column(df)
+
+        assert list(resolucion.df[_LABEL_COL_RESOLVED]) == ["", ""]
+        assert resolucion.counts["llm"] == 2
+        assert resolucion.counts["conflicto"] == 0
+
+    def test_keywords_fuera_del_vocabulario_no_son_conflicto(self) -> None:
+        """Una etiqueta de keywords que el modelo no conoce no entrenaría nada:
+        no hay positivo que el LLM contradiga."""
+        df = pd.DataFrame([self._fila(tecnologia="COBOL_LEGACY", llm="")])
+
+        resolucion = _resolver_label_column(df)
+
+        assert len(resolucion.df) == 1
+        assert resolucion.counts["conflicto"] == 0
+
+    def test_si_el_humano_se_pronuncio_gana_y_no_hay_conflicto(self) -> None:
+        from scraper.tech_classifier import _LABEL_COL_RESOLVED
+
+        df = pd.DataFrame(
+            [
+                self._fila(tecnologia="DESARROLLO", llm="", humana=""),
+                self._fila(tecnologia="DESARROLLO", llm="", humana="ORACLE"),
+            ]
+        )
+
+        resolucion = _resolver_label_column(df)
+
+        assert list(resolucion.df[_LABEL_COL_RESOLVED]) == ["", "ORACLE"]
+        assert resolucion.counts["human"] == 2
+        assert resolucion.counts["conflicto"] == 0
+
+    def test_la_fila_excluida_no_cuenta_como_independiente_ni_como_keywords(self) -> None:
+        """``_es_circular`` sigue viendo solo lo que entrena: la abstención no
+        suma al suelo de independientes ni al peso del regex."""
+        df = pd.DataFrame(
+            [self._fila(tecnologia="DESARROLLO", llm="") for _ in range(3)]
+            + [self._fila(tecnologia="SAP", llm=None)]
+        )
+
+        resolucion = _resolver_label_column(df)
+
+        assert resolucion.counts == {
+            "human": 0,
+            "llm": 0,
+            "keywords": 1,
+            "sin_etiqueta": 0,
+            "conflicto": 3,
+        }
+        assert resolucion.circular is True
+
+    def test_las_filas_en_conflicto_no_llegan_a_la_matriz(self) -> None:
+        """Excluir es que desaparezcan del entrenamiento, no que entren con la
+        etiqueta vacía: ``n_samples`` es la matriz que de verdad se ajusta."""
+        df = pd.concat(
+            [
+                _df(60, humanas=60),
+                pd.DataFrame([self._fila(tecnologia="META4", llm="") for _ in range(20)]),
+            ],
+            ignore_index=True,
+        )
+
+        metrics = TechnologyClassifier().train(df)
+
+        assert metrics["n_samples"] == 60
+        assert metrics["label_sources"]["conflicto"] == 20
+        assert metrics["label_source_counts"]["conflicto"] == 20
+
+
 class TestLabelSources:
     def test_las_metricas_llevan_el_conteo_por_origen(self) -> None:
         metrics = TechnologyClassifier().train(_df(80, humanas=60))
@@ -121,6 +239,7 @@ class TestLabelSources:
             "llm": 0,
             "keywords": 20,
             "sin_etiqueta": 0,
+            "conflicto": 0,
         }
         # El gate de publicación lee el nombre viejo; los dos son el mismo dato.
         assert metrics["label_source_counts"] == metrics["label_sources"]

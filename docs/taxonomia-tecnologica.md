@@ -2,8 +2,8 @@
 
 Qué labels de tecnología reconoce TenderFlow, de qué tipo es cada uno y por
 qué existe. La fuente de verdad es `config/keywords.py` (`TECHNOLOGY_KEYWORDS`,
-`TECH_CATEGORIAS`, `TECH_LABEL_TIPO`); este documento explica el criterio, no
-lo sustituye. Decisión de producto: plan de arquitectura v2 (2026-09), «no
+`TECH_CATEGORIAS`, `TECH_LABEL_TIPO`, `TECH_DEFINICIONES`); este documento
+explica el criterio, no lo sustituye. Decisión de producto: plan de arquitectura v2 (2026-09), «no
 salir de TI» — se ensancha la taxonomía por categorías, no por sectores.
 
 ## Dos tipos de label
@@ -19,6 +19,13 @@ Los dos tipos conviven en el mismo dict porque todo consumidor del diccionario
 (analítica), `services.llm_tech_labeling` (vocabulario cerrado del LLM)—
 itera sus claves sin distinguirlas. `TECH_LABEL_TIPO` es donde se distingue
 cuando hace falta (UI, documentación, este fichero).
+
+`TECH_DEFINICIONES` resume en una frase lo que cubre cada label y viaja en la
+pregunta del etiquetado por LLM: con el nombre solo, el modelo lee
+`DESARROLLO` como desarrollo nuevo y deja sin etiqueta el mantenimiento de una
+aplicación a medida, que sus keywords sí cubren. Cada definición resume su
+lista de keywords y la fila de las tablas de abajo; si cambia una, cambian las
+tres.
 
 ## Labels
 
@@ -131,8 +138,9 @@ Dos particularidades:
 
 1. Entrada en `TECHNOLOGY_KEYWORDS` (lista en minúsculas, sintagmas, con las
    formas ca/eu/gl si difieren).
-2. Entrada en `TECH_CATEGORIAS` (etiqueta UI) y en `TECH_LABEL_TIPO`. El módulo
-   falla al importar si los tres mapas no declaran los mismos labels.
+2. Entrada en `TECH_CATEGORIAS` (etiqueta UI), en `TECH_LABEL_TIPO` y en
+   `TECH_DEFINICIONES` (una frase para el LLM). El módulo falla al importar si
+   los cuatro mapas no declaran los mismos labels.
 3. Fila en la tabla de arriba con su motivo en una línea.
 4. `tests/test_taxonomia_tecnologica.py` verde (≥ 5 keywords, sin duplicados,
    detección sobre títulos reales).

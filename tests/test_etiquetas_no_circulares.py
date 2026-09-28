@@ -19,7 +19,12 @@ from __future__ import annotations
 import pytest
 
 from db.repositories.licitaciones import LicitacionRepository
-from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
+from db.repositories.tecnologia_pliego import (
+    NO_SIGNAL_SENTINEL,
+    SIN_EVIDENCIA_SENTINEL,
+    TechSignal,
+    TecnologiaPliegoRepository,
+)
 
 
 @pytest.fixture()
@@ -48,6 +53,33 @@ def _insert_feedback_humano(expediente: str, tecnologia: str | None) -> None:
             "INSERT INTO ml_feedback (expediente, relevante, tecnologia, source, created_at) "
             "VALUES (%s, 1, %s, 'human', CURRENT_TIMESTAMP)",
             (expediente, tecnologia),
+        )
+
+
+def _insert_senal(
+    licitacion_id: str,
+    tecnologia: str,
+    *,
+    method: str,
+    signal_version: str,
+    computed_at: str,
+    score: float = 0.9,
+) -> None:
+    """Fila cruda, sin pasar por ``upsert_signals``.
+
+    ``upsert_signals`` reescribe todas las filas del ``method`` con la versión
+    nueva, así que por ese camino no conviven dos versiones. La lectura no
+    puede depender de eso: basta un backfill a mano o un escritor nuevo para
+    mezclar respuestas de dos prompts distintos.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitacion_tecnologia_pliego "
+            "(licitacion_id, tecnologia, method, score, signal_version, computed_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (licitacion_id, tecnologia, method, score, signal_version, computed_at),
         )
 
 
@@ -115,3 +147,133 @@ def test_las_dos_fuentes_conviven_en_la_misma_licitacion(repos) -> None:
 
     assert fuentes["tecnologia_humana"] == "ORACLE"
     assert fuentes["tecnologia_llm"].startswith("SAP:")
+
+
+# ── Solo la versión vigente del LLM ────────────────────────────────────────
+
+
+def test_solo_cuenta_la_version_mas_reciente_del_llm(repos) -> None:
+    """Un cambio de prompt no puede mezclar respuestas viejas y nuevas."""
+    lic_repo, _ = repos
+    _insert_licitacion("EXP-V")
+    _insert_senal(
+        "EXP-V",
+        "SAP",
+        method="llm_metadata",
+        signal_version="llm-meta-v1/m",
+        computed_at="2026-09-01T10:00:00+00:00",
+    )
+    _insert_senal(
+        "EXP-V",
+        "ORACLE",
+        method="llm_metadata",
+        signal_version="llm-meta-v2/m",
+        computed_at="2026-09-20T10:00:00+00:00",
+    )
+
+    fuentes = lic_repo.etiquetas_tecnologia_no_circulares()["EXP-V"]
+
+    assert fuentes["tecnologia_llm"] == "ORACLE:0.9000"
+
+
+def test_la_version_vigente_se_decide_por_method(repos) -> None:
+    """``llm`` (fichas de pliego) y ``llm_metadata`` son carriles distintos:
+    la versión nueva de uno no retira las respuestas del otro."""
+    lic_repo, _ = repos
+    _insert_licitacion("EXP-M")
+    _insert_senal(
+        "EXP-M",
+        "ORACLE",
+        method="llm",
+        signal_version="ficha-v3",
+        computed_at="2026-08-01T10:00:00+00:00",
+    )
+    _insert_senal(
+        "EXP-M",
+        "SAP",
+        method="llm_metadata",
+        signal_version="llm-meta-v2/m",
+        computed_at="2026-09-20T10:00:00+00:00",
+    )
+
+    csv = lic_repo.etiquetas_tecnologia_no_circulares()["EXP-M"]["tecnologia_llm"]
+
+    assert sorted(csv.split(",")) == ["ORACLE:0.9000", "SAP:0.9000"]
+
+
+def test_una_version_nueva_sin_tecnologia_anula_la_vieja(repos) -> None:
+    """El «ninguna» del prompt nuevo es la respuesta vigente: el SAP del prompt
+    anterior ya no cuenta."""
+    lic_repo, _ = repos
+    _insert_licitacion("EXP-NV")
+    _insert_senal(
+        "EXP-NV",
+        "SAP",
+        method="llm_metadata",
+        signal_version="llm-meta-v1/m",
+        computed_at="2026-09-01T10:00:00+00:00",
+    )
+    _insert_senal(
+        "EXP-NV",
+        NO_SIGNAL_SENTINEL,
+        method="llm_metadata",
+        signal_version="llm-meta-v2/m",
+        computed_at="2026-09-20T10:00:00+00:00",
+        score=0.0,
+    )
+
+    assert lic_repo.etiquetas_tecnologia_no_circulares()["EXP-NV"]["tecnologia_llm"] == ""
+
+
+# ── Etiquetas descartadas por falta de cita ────────────────────────────────
+
+
+def test_sin_evidencia_no_es_un_pronunciamiento(repos) -> None:
+    """El LLM afirmó una tecnología y no la sostuvo con una cita: eso no es
+    «ninguna tecnología». Si contara como ``""`` entrenaría un negativo falso."""
+    lic_repo, tech_repo = repos
+    _insert_licitacion("EXP-SE")
+    tech_repo.upsert_signals(
+        "EXP-SE", method="llm_metadata", signal_version="v2", scores={}, sin_evidencia=True
+    )
+
+    assert "EXP-SE" not in lic_repo.etiquetas_tecnologia_no_circulares()
+
+
+def test_sin_evidencia_no_tapa_lo_que_dijo_otro_carril(repos) -> None:
+    lic_repo, tech_repo = repos
+    _insert_licitacion("EXP-SE2")
+    tech_repo.upsert_signals(
+        "EXP-SE2", method="llm_metadata", signal_version="v2", scores={}, sin_evidencia=True
+    )
+    tech_repo.upsert_signals(
+        "EXP-SE2", method="llm", signal_version="ficha-v3", scores={"SAP": TechSignal(score=0.8)}
+    )
+
+    assert lic_repo.etiquetas_tecnologia_no_circulares()["EXP-SE2"]["tecnologia_llm"] == (
+        "SAP:0.8000"
+    )
+
+
+def test_una_version_nueva_sin_evidencia_retira_la_vieja_sin_pronunciarse(repos) -> None:
+    """La versión vigente manda aunque no se pronuncie: el SAP del prompt
+    anterior no vuelve por la puerta de atrás."""
+    lic_repo, _ = repos
+    _insert_licitacion("EXP-SE3")
+    _insert_senal(
+        "EXP-SE3",
+        "SAP",
+        method="llm_metadata",
+        signal_version="llm-meta-v1/m",
+        computed_at="2026-09-01T10:00:00+00:00",
+    )
+    _insert_senal(
+        "EXP-SE3",
+        SIN_EVIDENCIA_SENTINEL,
+        method="llm_metadata",
+        signal_version="llm-meta-v2/m",
+        computed_at="2026-09-20T10:00:00+00:00",
+        score=0.0,
+    )
+
+    assert "EXP-SE3" not in lic_repo.etiquetas_tecnologia_no_circulares()

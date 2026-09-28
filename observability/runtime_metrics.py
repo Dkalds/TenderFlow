@@ -191,7 +191,8 @@ try:
         "Licitaciones puntuadas por señal de tecnología, por método y resultado",
         # method: keywords | llm | llm_metadata (este último no viene de pliegos
         # sino de la metadata del anuncio, pero comparte tabla, merge y contador)
-        # · status: scored | no_signal | error
+        # · status: scored | no_signal | error, más sin_evidencia en
+        # llm_metadata (el LLM afirmó tecnologías y ninguna sostuvo su cita)
         ["method", "status"],
     )
 
