@@ -23,7 +23,7 @@ mismo sitio», que es lo que convertía la duplicidad en diseño.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
@@ -120,6 +120,50 @@ _MERGE_CHUNK_SIZE = 200
 # por licitación (``tenderflow.tech_signal_merge.<id>``); ver el docstring de
 # ``merge_many_with_lock`` para por qué ahora es una sola.
 _MERGE_LOCK_KEY = "tenderflow.tech_signal_merge"
+
+# ── Muestra estratificada de F2 (spec §3.2, plan de clasificación en tres
+# niveles) ───────────────────────────────────────────────────────────────
+#
+# Clave de estrato: fuente x CPV (48/72/otros) x idioma (proxy por ``ccaa``) x
+# si tiene keyword x banda del modelo actual, unidos con ``|`` (p.ej.
+# ``pscp|48|ca|kw|alta``). Una sola constante SQL para que
+# ``tamanos_estratos_muestra`` y ``list_muestra_pending_llm_signal``
+# particionen exactamente igual -- dos copias del mismo CASE divergirían
+# tarde o temprano. El regex de CPV es el estilo de
+# ``db.repositories.revision_ti._CPV_TI_SQL``; ``ILIKE`` (no ``=``) porque los
+# valores reales de ``ccaa`` alternan mayúsculas («Cataluña», «CATALUÑA»).
+_ESTRATO_MUESTRA_SQL = (
+    "("
+    "CASE WHEN l.fuente = 'pscp' THEN 'pscp' "
+    "WHEN l.fuente = 'ted' THEN 'ted' "
+    "WHEN l.fuente LIKE 'placsp%' OR l.fuente LIKE 'bulk_%' THEN 'placsp' "
+    "ELSE 'otras' END"
+    " || '|' || "
+    "CASE WHEN coalesce(l.cpv, '') ~ '(^|[^0-9])48[0-9]{6}' THEN '48' "
+    "WHEN coalesce(l.cpv, '') ~ '(^|[^0-9])72[0-9]{6}' THEN '72' "
+    "ELSE 'otros' END"
+    " || '|' || "
+    "CASE WHEN l.ccaa ILIKE 'Cataluña' OR l.ccaa ILIKE 'Baleares' "
+    "OR l.ccaa ILIKE 'Comunidad Valenciana' OR l.ccaa ILIKE 'C. Valenciana' THEN 'ca' "
+    "WHEN l.ccaa ILIKE 'País Vasco' OR l.ccaa ILIKE 'Navarra' THEN 'eu' "
+    "WHEN l.ccaa ILIKE 'Galicia' THEN 'gl' "
+    "ELSE 'es' END"
+    " || '|' || "
+    "CASE WHEN coalesce(l.tecnologia, '') <> '' THEN 'kw' ELSE 'sin_kw' END"
+    " || '|' || "
+    "CASE WHEN l.ml_proba IS NULL THEN 'sin_modelo' "
+    "WHEN l.ml_proba < 0.3 THEN 'baja' "
+    "WHEN l.ml_proba <= 0.7 THEN 'media' "
+    "ELSE 'alta' END"
+    ")"
+)
+
+# Las dos consultas de la muestra recorren ``licitaciones`` entera (872 MB de
+# heap, ~5-15 s medidos en producción) para rankear/agrupar TODAS las filas:
+# muy por encima del ``DB_STATEMENT_TIMEOUT_MS`` general (30 s). Son
+# manuales y puntuales -- nada del camino diario las llama -- así que se les
+# da un techo propio y generoso en vez de tocar el ajuste global.
+_MUESTRA_STATEMENT_TIMEOUT_MS = 120_000
 
 
 def _filas_a_escribir(
@@ -323,6 +367,99 @@ class TecnologiaPliegoRepository:
                 "ORDER BY l.fecha_publicacion DESC NULLS LAST, l.id_externo "
                 "LIMIT %s",
                 (method, signal_version, max(1, min(int(limit), 5000))),
+            )
+            return rows_to_dicts(cur)
+
+    def tamanos_estratos_muestra(self) -> dict[str, int]:
+        """Tamaño de cada estrato de la muestra F2 (spec §3.2) sobre TODA
+        ``licitaciones`` -- entrada de :func:`services.ml.muestra_estratificada.
+        repartir_cuotas`. Manual y puntual: nada del camino diario la llama.
+        Ver :data:`_MUESTRA_STATEMENT_TIMEOUT_MS` para el porqué del techo.
+        """
+        with connect_read(statement_timeout_ms=_MUESTRA_STATEMENT_TIMEOUT_MS) as c:
+            cur = c.execute(
+                f"SELECT {_ESTRATO_MUESTRA_SQL} AS estrato, count(*) FROM licitaciones l GROUP BY 1"
+            )
+            return {str(fila[0]): int(fila[1]) for fila in cur.fetchall()}
+
+    def list_muestra_pending_llm_signal(
+        self,
+        *,
+        cuotas: Mapping[str, int],
+        semilla: str,
+        signal_version: str,
+        method: str = "llm_metadata",
+    ) -> list[dict[str, Any]]:
+        """La muestra estratificada de F2 (spec §3.2), acotada a lo pendiente.
+
+        Selección determinista dentro de cada estrato: ``row_number() OVER
+        (PARTITION BY estrato ORDER BY md5(id_externo || semilla))``, cortada
+        en la cuota de ese estrato (``cuotas``, calculada por
+        :func:`services.ml.muestra_estratificada.repartir_cuotas` sobre
+        :meth:`tamanos_estratos_muestra`). Con la misma ``semilla`` el
+        universo seleccionado es siempre el mismo, así que relanzar esta
+        función tras un corte (presupuesto, error de red) continúa sobre el
+        mismo conjunto en vez de sortear uno nuevo.
+
+        Lo ya respondido se descarta **después** de rankear, no antes: si se
+        excluyera antes, un estrato ya parcialmente procesado dejaría entrar
+        licitaciones nuevas al hueco libre y el universo de la muestra se
+        movería corrida a corrida. Aquí, en cambio, cada corrida solo reduce
+        lo pendiente del mismo conjunto fijo -- es lo que hace resumible el
+        drenado manual.
+
+        Barrido acotado a lo necesario: la CTE ``claves`` solo lee el id y las
+        columnas que la clave de estrato usa (fuente, cpv, ccaa, tecnologia,
+        ml_proba); el ``JOIN`` contra ``licitaciones`` para traer
+        ``titulo``/``descripcion`` va DESPUÉS de rankear y cortar por cuota,
+        así que solo toca las (pocas) filas ya seleccionadas -- nunca la tabla
+        entera. Aun así, el ``row_number()`` recorre toda ``licitaciones`` una
+        vez (no hay forma de rankear sin hacerlo); de ahí el techo generoso de
+        :data:`_MUESTRA_STATEMENT_TIMEOUT_MS`.
+
+        Devuelve la MISMA forma de fila que :meth:`list_metadata_pending_llm_signal`,
+        para que el bucle del job no tenga que distinguir de dónde vino el
+        lote. Orden determinista: estrato y luego rango.
+        """
+        if not cuotas:
+            return []
+        with connect_read(statement_timeout_ms=_MUESTRA_STATEMENT_TIMEOUT_MS) as c:
+            cur = c.execute(
+                "WITH claves AS ("
+                f"  SELECT l.id_externo, {_ESTRATO_MUESTRA_SQL} AS estrato "
+                "  FROM licitaciones l"
+                "), cupos AS ("
+                "  SELECT * FROM unnest(%(estratos)s::text[], %(cuotas)s::int[]) "
+                "  AS u(estrato, cuota)"
+                "), rankeadas AS ("
+                "  SELECT k.id_externo, k.estrato, "
+                "         row_number() OVER ("
+                "           PARTITION BY k.estrato ORDER BY md5(k.id_externo || %(semilla)s)"
+                "         ) AS rango "
+                "  FROM claves k"
+                "), seleccionadas AS ("
+                "  SELECT r.id_externo, r.estrato, r.rango "
+                "  FROM rankeadas r "
+                "  JOIN cupos q ON q.estrato = r.estrato "
+                "  WHERE r.rango <= q.cuota"
+                ") "
+                "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
+                "l.organo_contratacion, l.estado, l.fecha_publicacion "
+                "FROM seleccionadas s "
+                "JOIN licitaciones l ON l.id_externo = s.id_externo "
+                "WHERE NOT EXISTS ("
+                "  SELECT 1 FROM licitacion_tecnologia_pliego p "
+                "  WHERE p.licitacion_id = l.id_externo AND p.method = %(method)s "
+                "  AND p.signal_version = %(signal_version)s"
+                ") "
+                "ORDER BY s.estrato, s.rango",
+                {
+                    "estratos": list(cuotas.keys()),
+                    "cuotas": [int(v) for v in cuotas.values()],
+                    "semilla": semilla,
+                    "method": method,
+                    "signal_version": signal_version,
+                },
             )
             return rows_to_dicts(cur)
 
