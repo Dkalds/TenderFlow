@@ -43,4 +43,4 @@ graphify query "scheduler anomaly"
 graphify update .
 ```
 
-`graphify` es un CLI local, no un target del Makefile. Si no esta instalado en tu shell, sigue el fallback documentado en `docs/graphify-first.md` y no intentes instalarlo.
+`graphify` es un CLI local, no un target del Makefile. Si no esta instalado en tu shell, sigue el fallback documentado en `docs/AGENT_PLAYBOOK.md` §2.1 y no intentes instalarlo.

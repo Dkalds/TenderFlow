@@ -6,7 +6,7 @@ tags: [spike, decision, codice, hitos]
 
 **Resultado: NO. Cobertura medida 0 %. F2.1 no se construye.**
 
-D32 del [plan de funcionalidades 2026-09](2026-09-plan-funcionalidades.md)
+D32 del [plan de funcionalidades 2026-09](../../plans/2026-09-plan-funcionalidades.md)
 condicionaba F2.1 («hitos del procedimiento»: apertura de sobres, fin del
 plazo de consultas, visita obligatoria, fecha prevista de adjudicación) a que
 un spike midiera la cobertura real de esos eventos en el ATOM de la Plataforma

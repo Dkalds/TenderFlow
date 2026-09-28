@@ -1,5 +1,10 @@
 # Runbook: Migración de Persistencia SQLite/Turso → Postgres/Supabase
 
+> **Histórico (archivado el 2026-09-28).** Procedimiento ya ejecutado. Sus menciones a
+> `backup_db.py`, `backup.yml` y `BACKUP_ENCRYPTION_KEY` están obsoletas: los backups
+> los gestiona Supabase (ver [disaster-recovery.md](../../runbooks/disaster-recovery.md) §2).
+> El checklist F3d del Paso 9 sigue siendo la referencia del ítem abierto del backlog.
+
 **ADR:** ADR-016 | **Fase:** F3c | **Fecha estimada:** Semana 3-4 del plan
 
 > **ESTADO (2026-07-11): CUTOVER EJECUTADO.** Producción corre sobre Supabase
@@ -7,7 +12,7 @@
 > conserva como registro del procedimiento y como referencia para el
 > hardening pendiente: **el Paso 9 y la sección F3d+ siguen abiertos** — ver
 > el ítem P1 "Verificar checklist F3d post-cutover" en
-> [docs/IMPROVEMENT_BACKLOG.md](../IMPROVEMENT_BACKLOG.md).
+> [docs/IMPROVEMENT_BACKLOG.md](../../IMPROVEMENT_BACKLOG.md).
 >
 > **Inventario verificado 2026-07-12** (`gh secret list` / `gh variable list`
 > — solo nombres, sin ver valores): `DATABASE_URL` y `DATABASE_SSL_ROOT_CERT`

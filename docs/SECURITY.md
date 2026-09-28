@@ -5,6 +5,9 @@ de las defensas están verificadas por tests automatizados (ver
 `tests/test_config_settings.py`). Aquí registramos las que requieren acción humana
 periódica.
 
+Para cuestionarios de seguridad de clientes B2B (resumen de controles, cifrado,
+continuidad y lo que no se ofrece) está [seguridad-resumen.md](seguridad-resumen.md).
+
 ## Secretos gestionados
 
 | Variable                   | Alcance                           | Rotación | Responsable | Dónde vive                  |
@@ -97,7 +100,7 @@ aislamiento entre organizaciones es otra cosa: lo aplica la capa de aplicación
 y, desde `v128`, lo respalda la RLS por tenant de la sección siguiente — que
 solo se ejerce de verdad con un rol sin `BYPASSRLS`, es decir, tras el cutover.
 
-Contexto de la migración a Postgres: `docs/runbooks/migracion-persistencia.md`.
+Contexto de la migración a Postgres: `docs/archive/runbooks/migracion-persistencia.md`.
 
 ## Aislamiento por organización en dos capas
 

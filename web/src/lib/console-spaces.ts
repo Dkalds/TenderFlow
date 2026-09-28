@@ -1,7 +1,7 @@
 /**
  * Mapa de espacios de la consola.
  *
- * El rediseño (ver `docs/redesign/README.md`) consolida las 25 rutas del
+ * El rediseño (ver `docs/archive/redesign/README.md`) consolida las 25 rutas del
  * dashboard en 13 espacios navegables. Este módulo es la única fuente de
  * verdad de esa consolidación y gobierna tres cosas a la vez:
  *

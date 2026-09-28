@@ -1,5 +1,5 @@
 -- Rol de privilegios mínimos para la app/scheduler/scraper (F3d, roadmap del
--- runbook de migración de persistencia — docs/runbooks/migracion-persistencia.md
+-- runbook de migración de persistencia — docs/archive/runbooks/migracion-persistencia.md
 -- Paso 9 / "Roadmap F3d+").
 --
 -- Hoy toda la infraestructura (app, scheduler, scraper, alembic) comparte

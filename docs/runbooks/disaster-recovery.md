@@ -122,7 +122,7 @@ Solo si el proyecto no vuelve (borrado, región caída sin ETA, cuenta bloqueada
    datos de usuario (oportunidades, comentarios, seguimientos) se pierden.
 4. Ejecutar `scripts/setup_pg_roles.sql` para recrear `tenderflow_app` y las
    políticas RLS; verificar que puede DML y no DDL
-   ([migracion-persistencia.md](migracion-persistencia.md) paso 9).
+   ([migracion-persistencia.md](../archive/runbooks/migracion-persistencia.md) paso 9).
 5. Rotar secretos: `DATABASE_URL` y `DATABASE_ADMIN_URL` en GitHub Secrets y en <!-- pragma: allowlist secret -->
    los cinco servicios de Render (`render.yaml` los declara `sync: false`).
 6. Redesplegar la API (`gh workflow run deploy.yml`) y esperar

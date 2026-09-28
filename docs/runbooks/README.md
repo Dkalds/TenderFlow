@@ -1,7 +1,7 @@
 # Runbook operativo
 
 Punto de entrada único para operación, on-call y respuesta a incidentes.
-Los procedimientos detallados viven en `docs/runbooks/`.
+Los procedimientos detallados son los ficheros de este directorio (`docs/runbooks/`).
 
 ## Resumen de servicios
 
@@ -40,11 +40,29 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 
 ## Playbooks (orden recomendado de consulta)
 
-1. **DLQ replay**       — [docs/runbooks/dlq-replay.md](runbooks/dlq-replay.md)
-2. **Rate-limit reset** — [docs/runbooks/rate-limit-reset.md](runbooks/rate-limit-reset.md)
-3. **Model rollback**   — [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
-4. **Disaster recovery** (incluye restaurar desde los backups de Supabase) — [docs/runbooks/disaster-recovery.md](runbooks/disaster-recovery.md)
-5. **Incidentes**       — [docs/runbooks/incident-playbooks.md](runbooks/incident-playbooks.md)
+1. **DLQ replay**        — [dlq-replay.md](dlq-replay.md)
+2. **Rate-limit reset**  — [rate-limit-reset.md](rate-limit-reset.md)
+3. **Model rollback**    — [model-rollback.md](model-rollback.md)
+4. **Disaster recovery** (incluye restaurar desde los backups de Supabase) — [disaster-recovery.md](disaster-recovery.md)
+5. **Incidentes**        — [incident-playbooks.md](incident-playbooks.md)
+
+### Operación y procedimientos puntuales
+
+- **Conceder acceso** a quien lo solicita — [conceder-acceso.md](conceder-acceso.md)
+- **Correo transaccional** (ESP, dominio, rotación de clave) — [correo-transaccional.md](correo-transaccional.md)
+- **Alertas y receptor de guardia** — [observability-alerts.md](observability-alerts.md)
+- **Despachador de eventos** (outbox, ADR-027) — [despachador-eventos.md](despachador-eventos.md)
+- **Tripwires de persistencia** — [persistence-tripwires.md](persistence-tripwires.md)
+- **Suite con schema por sesión** — [suite-schema-por-sesion.md](suite-schema-por-sesion.md)
+
+### Ventanas pendientes de ejecutar (archivar tras correrlas)
+
+- **Cron al worker** (ADR-033) — [cutover-cron-al-worker.md](cutover-cron-al-worker.md)
+- **Seguimiento unificado** (ADR-031) — [cutover-follows.md](cutover-follows.md)
+- **Núcleo tipado** (`importe_num`) — [nucleo-tipado-ventana.md](nucleo-tipado-ventana.md)
+
+Los runbooks ya ejecutados (p. ej. el cutover a Supabase) viven en
+[../archive/runbooks/](../archive/runbooks/).
 
 ## SLOs vigentes
 
@@ -108,7 +126,7 @@ docker compose exec scheduler python -c \
 * F4: `shared/signing.py` con rotación `kid`; backend Redis opcional en
   `services/rate_limit_redis.py`.
 * F4: Trivy en `.github/workflows/security.yml` para imágenes Docker.
-* F5: i18n en `shared/i18n.py` + `shared/i18n_es.json` / `shared/i18n_en.json`.
+* F5: i18n del dashboard Streamlit (retirado con él).
 * F5: Sentry opt-in en `observability/sentry.py`.
 * F5: dashboard Grafana RED en `observability/grafana/dashboards/api_red.json`.
 * F6: diagramas C4 en `docs/c4-architecture.md`. [[ADR-005-clustering-ctfidf-minibatch|ADR-005]] documenta el

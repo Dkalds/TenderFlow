@@ -286,4 +286,4 @@ La cadena de schema es aditiva y conserva una única cabeza Alembic:
 > `v138_notice_type_code`, y desde `v134` no avanza en orden numérico
 > (`v134 → v136 → v135 → v140 → v138`). La revisión vigente se lee de
 > `alembic heads` o de la cabecera de
-> [database-schema.md](database-schema.md), no de este documento.
+> [database-schema.md](../database-schema.md), no de este documento.

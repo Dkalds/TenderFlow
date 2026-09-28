@@ -258,8 +258,8 @@ todo, aunque las políticas estén instaladas. El cutover sigue cerrando el DDL
 
 Estos tripwires nacieron señalando que el supuesto "single writer" de
 [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] ya no se sostenía y había que
-decidir si migrar a PostgreSQL — esa migración **ya ocurrió** ([[ADR-016|ADR-016]],
-cutover 2026-07-11, ver `docs/runbooks/migracion-persistencia.md`). El mismo
+decidir si migrar a PostgreSQL — esa migración **ya ocurrió** ([[ADR-016-destino-persistencia-supabase|ADR-016]],
+cutover 2026-07-11, ver `docs/archive/runbooks/migracion-persistencia.md`). El mismo
 invariante (¿cuántos escritores concurrentes tolera la arquitectura antes de
 necesitar revisión?) se sigue vigilando, ahora sobre el pool `psycopg_pool` de
 Postgres en vez de sobre el lock de fichero de SQLite.

@@ -4,7 +4,7 @@ tags: [plan, arquitectura, migraciones, propuesta]
 
 # Ola 2 — diseño y migraciones propuestas, sin escribir
 
-Compañero de [2026-09-plan-arquitectura-v2.md](2026-09-plan-arquitectura-v2.md) §6.
+Compañero de [2026-09-plan-arquitectura-v2.md](../../plans/2026-09-plan-arquitectura-v2.md) §6.
 Cubre **T1, T2, T3, T4 y T6**: los cinco ítems de la Ola 2 que llevan gate
 **[§6]** de migración. **T5 y T7 no están aquí** porque no tocan schema y se
 implementan en la misma tanda que este documento.
@@ -19,7 +19,7 @@ ningún fichero nuevo en `db/alembic/versions/`; la cabeza del repo sigue en
 > `v133`/`v134`, T3 → `v136` y T4 fase 3 → `v135` (2026-09-18). La cabeza del
 > repo es `v138` (cadena `v132 → v133 → v134 → v136 → v135 → v140 → v138`).
 > Estado y pendientes de cada ítem: §6 de
-> [2026-09-plan-arquitectura-v2.md](2026-09-plan-arquitectura-v2.md). Lo que
+> [2026-09-plan-arquitectura-v2.md](../../plans/2026-09-plan-arquitectura-v2.md). Lo que
 > sigue es el diseño del 2026-09-08 y se conserva como estaba.
 
 ## Por qué no se escribieron
@@ -142,7 +142,7 @@ tres.
 > **2026-09-18:** escritas como `v133_nucleo_tipado_sombra` y
 > `v134_nucleo_tipado_indices`, sin aplicar en producción. Estado y pasos
 > pendientes en el ítem T2 del plan y en
-> [runbooks/nucleo-tipado-ventana.md](../runbooks/nucleo-tipado-ventana.md).
+> [runbooks/nucleo-tipado-ventana.md](../../runbooks/nucleo-tipado-ventana.md).
 > Lo de abajo es el diseño del 2026-09-08, que se conserva como estaba.
 
 **Hoy: las tres columnas no existen.** El estado real de `licitaciones`
@@ -225,7 +225,7 @@ llegue.
 > **2026-09-18 — escrita como `v136_tecnologia_verdad_unica`** (trigger, no
 > vista). Productores 1 y 2 cortados; 3 y 4 (ingesta) siguen, con adopción en el
 > merge; la categoría del guardrail está puesta. Estado y lo que falta: nota de
-> T3 en [2026-09-plan-arquitectura-v2.md](2026-09-plan-arquitectura-v2.md) §6.
+> T3 en [2026-09-plan-arquitectura-v2.md](../../plans/2026-09-plan-arquitectura-v2.md) §6.
 
 **Hoy: la tabla origen existe y ya se lee; lo que falta es cortar a los
 productores.** `licitacion_tecnologia_score` es de `v30`

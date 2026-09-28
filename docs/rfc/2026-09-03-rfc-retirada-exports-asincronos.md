@@ -14,7 +14,7 @@ implemented_evidence: "`api/routes/exports.py` ya no declara `POST /exports` ni 
 > este fichero desde el 2026-09-03 y el fichero no se llegó a escribir (backlog
 > P3 «Cuatro módulos citan un RFC de retirada de exports que no existe»). El
 > contenido sale de la decisión D7 de
-> [2026-09-plan-arquitectura.md](../plans/2026-09-plan-arquitectura.md), del
+> [2026-09-plan-arquitectura.md](../archive/plans/2026-09-plan-arquitectura.md), del
 > commit que deprecó los endpoints (`9207bde9`) y del que los retiró
 > (`88d7c7c0`, PR #265). No añade decisiones: registra las que ya se tomaron.
 

@@ -720,7 +720,7 @@ equipo. **Hoy.** Embudo con tres barras y cuatro cifras (128 líneas).
 ya no absorbe el embudo: su vista `embudo` era un `EmptyState` que devolvía a
 Mi Pipeline y se retiró; el embudo vive en **Oportunidades → Rendimiento**
 (`/oportunidades?vista=rendimiento`). Dirección queda con Resultado y
-Actividad del equipo. Ver `docs/redesign/mi-pipeline-inventario.md`.
+Actividad del equipo. Ver `docs/archive/redesign/mi-pipeline-inventario.md`.
 
 #### F4.3 Cartera de contratos en ejecución — P0
 
@@ -757,7 +757,7 @@ Cartera vive en **Oportunidades → Cartera** (`/oportunidades?vista=cartera`,
 `oportunidades/_components/cartera-view.tsx`), intacta; el
 `/mi-pipeline?vista=cartera` viejo reenvía allí con su ámbito. Rendimiento
 (el embudo) la acompaña en el mismo espacio. Ver
-`docs/redesign/mi-pipeline-inventario.md`.
+`docs/archive/redesign/mi-pipeline-inventario.md`.
 
 #### F4.4 Fecha prevista de adjudicación — P1
 

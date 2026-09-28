@@ -208,7 +208,7 @@ fallan **igual en el commit base**, así que es del entorno y no del rediseño.
 
 ## Sistema de movimiento
 
-Lo fija [`frontend-motion.md`](../frontend-motion.md) y no cambia aquí: entrada
+Lo fija [`frontend-motion.md`](../../frontend-motion.md) y no cambia aquí: entrada
 260ms `cubic-bezier(.21,1.02,.73,1)`, salida 170ms (más rápida que la entrada),
 hover/press 140ms, sólo `transform` y `opacity`, y `prefers-reduced-motion`
 siempre. Dos decisiones deliberadas de la consola:
@@ -226,5 +226,5 @@ siempre. Dos decisiones deliberadas de la consola:
 - **El inventario no puede mentir.** Un contador que no se puede calcular sin
   pedir un dato extra no se pinta.
 - **Nada de analítica derivada en cliente** (ADR-014 y
-  [`frontend-data-invariants.md`](../frontend-data-invariants.md)): el desglose
+  [`frontend-data-invariants.md`](../../frontend-data-invariants.md)): el desglose
   de score, los adjudicatarios del órgano y los deltas vienen del backend.
