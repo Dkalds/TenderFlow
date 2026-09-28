@@ -325,6 +325,8 @@ class DocumentosRepository:
         El backlog (~44k documentos referenciados, ~1k licitaciones
         tech-relevantes) se drena por lotes diarios pequeños frente al feed
         PLACSP diario, así que el orden decide qué se procesa primero:
+        0. Demanda real (oportunidad abierta, favorito) y, tras ella, los
+           expedientes con el plazo de ofertas todavía abierto.
         1. Licitaciones con ``tecnologia`` (keyword match en título) o
            ``ml_tecnologias`` (clasificador) no vacíos van primero -- son las
            que la categorización necesita antes de nada.
@@ -354,6 +356,12 @@ class DocumentosRepository:
                 "        AND p.status NOT IN ('won', 'lost', 'withdrawn')) DESC, "
                 "EXISTS (SELECT 1 FROM watchlist_items w "
                 "        WHERE w.id_externo = d.licitacion_id) DESC, "
+                # Plazo de ofertas abierto: es cuando el pliego sirve para algo
+                # y cuando su enlace sigue vivo. Sin esto competía por
+                # ``created_at`` con el backfill histórico —el 2026-09-28 había
+                # 400 documentos de expedientes abiertos esperando detrás de
+                # 35k pendientes, muchos insertados por un backfill reciente—.
+                "(l.fecha_limite_ts IS NOT NULL AND l.fecha_limite_ts > now()) DESC, "
                 "(l.tecnologia IS NOT NULL AND l.tecnologia != '') DESC, "
                 "(l.ml_tecnologias IS NOT NULL AND l.ml_tecnologias != '') DESC, "
                 "d.created_at DESC "

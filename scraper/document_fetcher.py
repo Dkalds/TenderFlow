@@ -22,6 +22,9 @@ Formatos soportados
 - Office Open XML (``.docx``) y OpenDocument (``.odt``).
 - ``application/zip`` — se expande y se procesan los PDF y DOCX de dentro.
 
+El formato lo decide la **firma del contenido** (:func:`_resolver_content_type`),
+no el ``Content-Type`` del servidor, que en PLACSP llega mal escrito o genérico.
+
 **Convención de página lógica en DOCX y ODT**: ninguno de los dos formatos
 tiene páginas — la paginación la decide el motor de renderizado al imprimir, y
 no está en el fichero. Se agrupan los párrafos no vacíos en bloques de
@@ -685,6 +688,53 @@ def _extraer_paginas_de_tipo(content: bytes, content_type: str) -> list[PaginaEx
     )
 
 
+#: Firma de un contenedor ZIP (``.zip``, ``.docx``, ``.odt``, ``.xlsx``…).
+_FIRMA_ZIP = b"PK\x03\x04"
+_FIRMA_PDF = b"%PDF-"
+
+
+def _resolver_content_type(content: bytes, declarado: str | None) -> str | None:
+    """El formato **real** del binario, no el que declara el servidor.
+
+    El ``Content-Type`` de PLACSP no es fiable, y hasta 2026-09-28 era lo único
+    que se miraba. Medido en producción ese día sobre ~3.100 documentos
+    ``unsupported``/``error``:
+
+    - 1.964 DOCX llegaban como
+      ``application/vnd.openxmlformatsofficedocument.wordprocessingml.document``
+      —sin el guion—, y se descartaban como formato desconocido. Es el mayor
+      agujero de cobertura que había: más que todos los PDF rotos juntos.
+    - Servidores que mandan un PDF como ``application/octet-stream`` o sin tipo.
+
+    La firma del contenido manda; el tipo declarado solo decide cuando el
+    contenido no tiene una firma reconocible (``text/plain``). Dentro de un ZIP
+    se distingue DOCX (``word/document.xml``) y ODT (``mimetype``) de un ZIP de
+    verdad; un XLSX u otro contenedor se deja con su tipo declarado, que sigue
+    cayendo en ``unsupported`` como antes.
+    """
+    if content.startswith(_FIRMA_PDF):
+        return CONTENT_TYPE_PDF
+    if content.startswith(_FIRMA_ZIP):
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archivo:
+                nombres = set(archivo.namelist())
+                if "word/document.xml" in nombres:
+                    return CONTENT_TYPE_DOCX
+                if "mimetype" in nombres:
+                    with archivo.open("mimetype") as fh:
+                        mimetype = fh.read(100).decode("ascii", errors="replace").strip()
+                    if mimetype == CONTENT_TYPE_ODT:
+                        return CONTENT_TYPE_ODT
+                if any(nombre.startswith(("xl/", "ppt/")) for nombre in nombres):
+                    return declarado
+        except (zipfile.BadZipFile, OSError, KeyError):
+            # Firma ZIP pero ilegible: que lo diga el extractor de ZIP con su
+            # propio error, no esta detección.
+            return CONTENT_TYPE_ZIP
+        return CONTENT_TYPE_ZIP
+    return declarado
+
+
 def _extract_paginas(content: bytes, content_type: str | None) -> list[PaginaExtraida]:
     """Despacha extracción preservando límites de página.
 
@@ -836,6 +886,7 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
         content, content_type = recuperado
         desde_blob = True
 
+    content_type = _resolver_content_type(content, content_type)
     sha256 = hashlib.sha256(content).hexdigest()
     size_bytes = len(content)
 
@@ -924,6 +975,7 @@ def reextract_from_blob(documento_id: int) -> str:
     if recuperado is None or fila is None:
         return "missing"
     content, content_type = recuperado
+    content_type = _resolver_content_type(content, content_type)
 
     try:
         paginas = _extract_paginas(content, content_type)
