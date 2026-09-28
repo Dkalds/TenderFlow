@@ -133,8 +133,9 @@ lead-time contando dos veces los expedientes duplicados.
 
 El diagnóstico de arquitecto del 2026-09-02 y su plan por streams están en
 [plans/2026-09-plan-arquitectura.md](plans/2026-09-plan-arquitectura.md), con el
-estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
-`restore-drill.yml`** (decisión del usuario del 2026-09-02).
+estado real de cada ítem en su §8. Excluía a propósito `backup.yml` y
+`restore-drill.yml` (decisión del usuario del 2026-09-02); ambos se retiraron
+el 2026-09-28 al delegar los backups en Supabase.
 
 Ítems de ESTE backlog que el plan toca, para que nadie los trabaje dos veces:
 
@@ -202,8 +203,8 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Cerrado y archivado:** el P1 de los enlaces caducados de PLACSP — entregado entero en `c230e63` (PR #191), no en los tres SHAs que el ítem citaba, que nunca llegaron a `master`. Ficha completa en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - **Altas:** dos P1 (allowlist de acceso, `plan: free` frente al SLO) y dos P2 (onboarding de primer uso, experiencia móvil). El de la allowlist nace como **RFC**, no como PR: toca auth y necesita migración. *(2026-09-19: los cuatro están resueltos; el del `plan: free` nunca llegó a tener entrada — ver la nota del P3 de staging.)*
 - **Cifras corregidas** en el P1 de cobertura del frontend: las páginas de 1.000+ líneas que citaba ya no existen.
-- **Sigue abierto y requiere acción externa:** el P0 de los backups sin copia remota
-  (configuración de infraestructura). El índice del scoring en frío ya existe en
+- *(2026-09-28: el P0 de los backups sin copia remota se descartó al delegar las
+  copias en Supabase; ver el archivo.)* El índice del scoring en frío ya existe en
   `v84_lic_universo_cpv_index`; queda medir su efecto tras aplicar la revisión, no
   volver a implementarlo.
 
@@ -239,25 +240,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     avanza durante N pasadas.
 - **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
 - **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
-
-### [P0] Verificar en GitHub el backup remoto cifrado y su restore drill
-- **Área:** .github/workflows/backup.yml, .github/workflows/restore-drill.yml, GitHub Settings (acción del usuario)
-- **Problema:** verificado el 2026-09-01 que `BACKUP_ENCRYPTION_KEY` existe y
-  faltan `AWS_ROLE_TO_ASSUME`/`BACKUP_S3_BUCKET`. El código ya no bloquea por
-  ello: `backup.yml` sube siempre el dump cifrado como GitHub Artifact (90 días)
-  y S3 queda como segunda copia opcional; `restore-drill.yml` descarga el último
-  artefacto exitoso cuando no hay S3. Falta que este cambio llegue a GitHub y
-  ejecutar ambos workflows: hasta que el drill pase, la recuperación sigue sin
-  estar demostrada.
-- **Acceptance criteria:**
-  - Un run de `backup.yml` en verde y artefacto `db-backup-<run_id>` con sólo
-    `*.dump.gpg`.
-  - Un run de `restore-drill.yml` en verde sobre ese artefacto.
-  - Opcional: `AWS_ROLE_TO_ASSUME` y `BACKUP_S3_BUCKET` configurados juntos para
-    una segunda copia S3/R2.
-- **Files de partida:** [.github/workflows/backup.yml](../.github/workflows/backup.yml), [.github/workflows/restore-drill.yml](../.github/workflows/restore-drill.yml), [docs/runbooks/backup-restore.md](runbooks/backup-restore.md)
-- **Relación:** es la pata de infraestructura del checklist F3d (P1, más abajo), que cubre el cifrado y la rotación de credenciales pero da por hecho que el destino existe.
-- **Riesgo:** bajo — solo configuración, sin tocar código. El riesgo real es el que ya se está corriendo cada día que pasa sin copia.
 
 ---
 
@@ -408,20 +390,19 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Área:** docs/runbooks, GitHub Settings, Supabase Dashboard
 - **Problema:** El cutover F3c a Supabase Postgres ya se ejecutó. Todo el trabajo de **código y tooling** del hardening post-cutover está cerrado (ver progreso abajo); lo que queda es estrictamente **ejecución manual contra infraestructura real** con credenciales que un agente no tiene (gate secrets+ops, AGENTS.md §6).
 - **Acceptance criteria (todas acciones del usuario — checklist ejecutable en el runbook):**
-  - `BACKUP_ENCRYPTION_KEY` generado y cargado como GH Secret.
   - Password del rol dueño rotada; `DATABASE_URL` reconstruida con `sslmode=verify-full`.
   - `DATABASE_ADMIN_URL` (rol dueño, solo para alembic) guardada como secret aparte.
   - `scripts/setup_pg_roles.sql` ejecutado contra Supabase; `DATABASE_URL` de runtime apuntando al rol `tenderflow_app`; verificado que puede DML pero no DDL.
   - Confirmado (`psql`) que `v52_rls_lockdown` está aplicada y `has_table_privilege('anon',…)` es false.
   - ~~Turso retirado una vez pasada la ventana de rollback ≥14 días.~~ **Hecho 2026-07-26 (ADR-020)** — pendiente solo la acción manual de revocar el token en el dashboard de Turso y borrar los GH Secrets `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` (código y workflows ya no los usan).
-- **Files de partida:** [docs/runbooks/migracion-persistencia.md](runbooks/migracion-persistencia.md) (Paso 9, checklist ejecutable), [docs/runbooks/backup-restore.md](runbooks/backup-restore.md), [scripts/setup_pg_roles.sql](../scripts/setup_pg_roles.sql)
+- **Files de partida:** [docs/runbooks/migracion-persistencia.md](runbooks/migracion-persistencia.md) (Paso 9, checklist ejecutable), [scripts/setup_pg_roles.sql](../scripts/setup_pg_roles.sql)
 - **Progreso 2026-07-13 (plan Pliegos+RAG, fases D1/D2 — CERRADAS del lado de código):**
-  - `docs/runbooks/backup-restore.md`: sección "Backups Postgres cifrados" (alta del secret, verificación, descifrado, restore).
+  - ~~`docs/runbooks/backup-restore.md`: sección "Backups Postgres cifrados"~~ (retirado el 2026-09-28 con los backups propios).
   - `scripts/setup_pg_roles.sql`: rol `tenderflow_app` (solo DML + timeouts) + políticas RLS explícitas por tabla (`tenderflow_app_full_access`) que resuelven la dependencia con `v52_rls_lockdown` (rol no-dueño + RLS sin políticas = deny-all).
   - `config/settings.py::_validate_prod_database_ssl`: ahora exige `sslmode` seguro para **cualquier host remoto, independientemente de `ENV`** (antes solo en prod/staging) — cierra el gap real donde `scrape-daily.yml` corre con `ENV=dev` contra Supabase sin que el validator actuara. Host local (`localhost`/`127.0.0.1`/`::1`) sigue exento (sin red externa que interceptar). 4 tests nuevos en `test_config_settings.py` cubren la matriz ENV×host×sslmode.
   - `docs/runbooks/migracion-persistencia.md` Paso 9 reescrito como checklist `- [ ]` ejecutable con comandos psql concretos.
   - 2026-07-26: `setup_pg_roles.sql` endurece el rol de runtime con `NOINHERIT`/`NOBYPASSRLS` y sin `CREATE` en `public`; Alembic v59 revoca `EXECUTE` público sobre la función `SECURITY DEFINER` de RLS. Sigue pendiente ejecutar el checklist contra Supabase.
-- **Riesgo:** bajo — todo el código/tooling es aditivo y ya está testeado; el riesgo real pendiente es que el usuario no ejecute el checklist (backups sin cifrar, credencial sin rotar, rol de privilegios mínimos sin crear).
+- **Riesgo:** bajo — todo el código/tooling es aditivo y ya está testeado; el riesgo real pendiente es que el usuario no ejecute el checklist (credencial sin rotar, rol de privilegios mínimos sin crear).
 
 ### [P1] [Ola 1 · S1] Identidad y equipo: invitar sin cuenta previa, OIDC y el ratchet de `user_key`
 - **Área:** api/routes/auth.py, services/organizations.py, db/repositories/organizations.py, db/users.py, shared/identity.py, scripts/check_user_key_ratchet.py

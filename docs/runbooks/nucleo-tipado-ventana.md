@@ -64,7 +64,7 @@ machaca un `importe_num` exacto con el valor degradado del `real`.
    abajo). La CLI de Alembic contra Supabase necesita `PGSSLROOTCERT`.
 2. Ventana valle: ni el ATOM ni un backfill de conector corriendo. El backfill
    convive con la ingesta, pero la ventana más corta es la que no compite.
-3. Una copia reciente (`docs/runbooks/backup-restore.md`).
+3. Una copia reciente (Supabase → Database → Backups; ver `docs/runbooks/disaster-recovery.md` §2).
 4. **No** correr `scripts/fix_dates_adjudicaciones.py` durante la ventana:
    actualiza fechas de `licitaciones` sin pasar por el upsert. Si se corre
    después, volver a pasar el paso 3.

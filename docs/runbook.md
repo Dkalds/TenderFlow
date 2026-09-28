@@ -40,12 +40,11 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 
 ## Playbooks (orden recomendado de consulta)
 
-1. **Backup & restore** — [docs/runbooks/backup-restore.md](runbooks/backup-restore.md)
-2. **DLQ replay**       — [docs/runbooks/dlq-replay.md](runbooks/dlq-replay.md)
-3. **Rate-limit reset** — [docs/runbooks/rate-limit-reset.md](runbooks/rate-limit-reset.md)
-4. **Model rollback**   — [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
-5. **Disaster recovery**— [docs/runbooks/disaster-recovery.md](runbooks/disaster-recovery.md)
-6. **Incidentes**       — [docs/runbooks/incident-playbooks.md](runbooks/incident-playbooks.md)
+1. **DLQ replay**       — [docs/runbooks/dlq-replay.md](runbooks/dlq-replay.md)
+2. **Rate-limit reset** — [docs/runbooks/rate-limit-reset.md](runbooks/rate-limit-reset.md)
+3. **Model rollback**   — [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
+4. **Disaster recovery** (incluye restaurar desde los backups de Supabase) — [docs/runbooks/disaster-recovery.md](runbooks/disaster-recovery.md)
+5. **Incidentes**       — [docs/runbooks/incident-playbooks.md](runbooks/incident-playbooks.md)
 
 ## SLOs vigentes
 

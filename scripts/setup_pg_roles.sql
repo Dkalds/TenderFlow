@@ -2,7 +2,7 @@
 -- runbook de migración de persistencia — docs/runbooks/migracion-persistencia.md
 -- Paso 9 / "Roadmap F3d+").
 --
--- Hoy toda la infraestructura (app, scheduler, scraper, alembic, backup) comparte
+-- Hoy toda la infraestructura (app, scheduler, scraper, alembic) comparte
 -- una única DATABASE_URL con el rol dueño del schema (privilegios altos: DDL,
 -- ownership). Este script separa responsabilidades: `tenderflow_app` es un rol
 -- de solo-DML (SELECT/INSERT/UPDATE/DELETE + secuencias) sin capacidad de crear

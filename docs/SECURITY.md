@@ -12,25 +12,24 @@ periódica.
 | `DATABASE_URL`             | Credenciales Postgres/Supabase (user:pass embebidos) | Tras cutover + 90 días | Maintainer | GitHub Secrets + Render env + `.env` |
 | `DATABASE_ADMIN_URL`       | DSN del rol DUEÑO del schema: el único con DDL y el único que bypassa la RLS de `v52` | 90 días | Maintainer | **Solo** GitHub Secrets (lo usa `migrate.yml`). Nunca en Render ni en el `.env` de la API |
 | `DATABASE_SSL_ROOT_CERT`   | Ruta a la CA de Supabase (cert público, no secreto)  | Al rotar CA Supabase   | Maintainer | Repo/volumen |
-| `BACKUP_ENCRYPTION_KEY`    | Passphrase para cifrar dumps de `pg_dump` (backup.yml) | 180 días | Maintainer | GitHub Secrets |
 | `ALERT_EMAIL_TO`           | Destinatario de alertas por email | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
 | `ALERT_SMTP_USER`          | Cuenta remitente Gmail            | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
 | `ALERT_SMTP_PASSWORD`      | App Password de Gmail (16 chars)  | 90 días              | Maintainer | GitHub Secrets + `.env` |
 | `EMAIL_API_KEY`            | Clave del ESP (Resend / Postmark) cuando `EMAIL_BACKEND` no es `smtp`; sólo permiso de envío | 90 días | Maintainer | Render env (dashboard) + `.env`; si el healthcheck de GitHub Actions cambia de backend, también GitHub Secrets. Procedimiento en [runbooks/correo-transaccional.md](runbooks/correo-transaccional.md) |
 
 Turso/libSQL se retiró como backend (ADR-020, 2026-07-26); `TURSO_AUTH_TOKEN`
-y `TURSO_DATABASE_URL` ya no existen como secretos gestionados.
+y `TURSO_DATABASE_URL` ya no existen como secretos gestionados. Los backups
+propios (`backup.yml`, `BACKUP_ENCRYPTION_KEY`, bucket S3/R2) se retiraron el
+2026-09-28: las copias de la base las gestiona Supabase.
 
 ## Procedimiento de rotación
 
 ### Controles nuevos (2026-07-26)
 
 - Configurar `AUDIT_HMAC_KEY` con al menos 32 caracteres, diferente de las claves de sesión/API. El proceso API (`APP_PROFILE=api`) no arranca en producción sin ella; scraper/worker no la usan (`db/audit.py` solo lo llama código del servidor HTTP) y no la exigen.
-- Configurar `AWS_ROLE_TO_ASSUME` y la trust policy OIDC de GitHub para el bucket de backups; el workflow ya no usa claves AWS estáticas.
 - Configurar `WEBHOOK_ALLOWED_HOSTS` como lista explícita de dominios aprobados. Sin esa lista, los webhooks salientes quedan deshabilitados en producción.
 - Rotar el secret de un webhook con `POST /api/v1/webhooks/{id}/rotate-secret` en vez de borrarlo y recrearlo: conserva id e historial, invalida el anterior al instante (sin gracia) y queda en auditoría como `webhook.secret_rotated`. Las entregas llevan además `X-Webhook-Timestamp` y `X-Webhook-Signature-V2` para que el receptor rechace replays; receta en [integraciones/webhooks.md](integraciones/webhooks.md).
 - Mantener `DOCUMENT_ALLOWED_HOSTS` limitado a fuentes de contratación aprobadas. Las conexiones HTTP salientes fijan la IP validada, verifican TLS/SNI y rechazan redireccionamientos.
-- Configurar `BACKUP_ENCRYPTION_KEY` antes de ejecutar cualquier copia: los scripts cifran todas las copias con GPG/AES-256 y exigen la misma clave para restaurarlas.
 - Asociar o rotar las API keys heredadas sin `user_id`: producción y staging las rechazan para evitar que una clave sin propietario pueda actuar como administrador.
 - Conservar `DOCUMENT_EXTRACTION_TIMEOUT_SECONDS` positivo en producción: cada extracción de PDF corre en un proceso aislado y se termina al exceder ese presupuesto.
 - Ejecutar `python scripts/verify_audit_chain.py` en el runbook de incidentes (verifica la BD de `DATABASE_URL`; `--db-path` se retiró con SQLite, ADR-021). La verificación requiere recorrer la cadena completa; `--limit` ya no es válido porque ocultaría roturas o borrados.

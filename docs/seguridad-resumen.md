@@ -19,7 +19,7 @@ tiene acceso a los paneles.
 | API, worker, observabilidad | Render | Frankfurt (UE) | `render.yaml`, cinco servicios |
 | Base de datos | Supabase (Postgres) | **propietario** | `DATABASE_URL` con `sslmode=verify-full` obligatorio en producción |
 | Frontend | Vercel | edge global; funciones **propietario** | Next.js, sin acceso a la base |
-| Backups | S3 / R2 | **propietario** | cifrados antes de salir (§7) |
+| Backups | Supabase (gestionados por el proveedor) | la del proyecto de Supabase | ver §7 |
 | Cron de producción | GitHub Actions | EE. UU. | en migración al worker de Render ([ADR-033](adr/ADR-033-plano-de-cron-en-el-worker.md)) |
 
 Lista completa de subencargados y mecanismos de transferencia:
@@ -33,8 +33,8 @@ Lista completa de subencargados y mecanismos de transferencia:
   claves por cliente ni BYOK (§12).
 - **Cifrado de aplicación, adicional:** secretos TOTP con Fernet
   (`shared/crypto.py`, `TOTP_ENCRYPTION_KEY`), secretos de webhook derivados de
-  una clave maestra (`db/webhooks.py`, RFC 049), backups con GPG AES-256
-  (`backup.yml`), contraseñas con Argon2id (`shared/auth_core.py`).
+  una clave maestra (`db/webhooks.py`, RFC 049) y contraseñas con Argon2id
+  (`shared/auth_core.py`).
 
 ## 3. Identidad y acceso
 
@@ -91,9 +91,8 @@ Dos capas ([ADR-034](adr/ADR-034-rls-por-tenant.md)):
 
 ## 7. Continuidad y recuperación
 
-- Backup diario cifrado a almacén remoto (`backup.yml`, 03:00 UTC), retención
-  documentada en [SECURITY.md](SECURITY.md#retención-de-datos).
-- Drill semanal de restauración en base efímera (`restore-drill.yml`).
+- Backups de la base gestionados por Supabase (diarios; PITR según el plan
+  contratado). El repo no mantiene copias propias desde el 2026-09-28.
 - Runbook de recuperación ante desastre para Postgres
   ([runbooks/disaster-recovery.md](runbooks/disaster-recovery.md)); RTO 2 h y
   RPO 24 h **declarados**, ensayo de extremo a extremo pendiente (tabla §8 del
@@ -140,7 +139,6 @@ Triaje registrado con fecha; los avisos de Dependabot se cierran con motivo.
 - SAML y SCIM (solo OIDC; se construyen contra contrato, ADR-030 §B).
 - Página de estado pública y SLA contractual de disponibilidad (SLO suspendido
   hasta confirmar el plan del servicio, `docs/sli-slo.md`).
-- Región de Supabase, de las funciones de Vercel y del bucket de backups
-  documentadas: **propietario**.
+- Región de Supabase y de las funciones de Vercel documentadas: **propietario**.
 - Ensayo completo de recuperación con tiempo medido.
 - Segunda persona con acceso operativo a todos los proveedores.

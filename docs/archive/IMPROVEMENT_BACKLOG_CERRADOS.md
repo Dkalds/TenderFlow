@@ -21,6 +21,31 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-09-28 — backups delegados en Supabase
+
+**Descartado el 2026-09-28** por decisión del usuario: las copias de la base las hace Supabase, así que se retiraron `backup.yml`, `restore-drill.yml`, `scripts/backup_db.py`, `scripts/restore_db.py`, sus tests, `docs/runbooks/backup-restore.md` y el secret `BACKUP_ENCRYPTION_KEY`. La restauración está en [disaster-recovery.md](../runbooks/disaster-recovery.md) §2. Ficha original:
+
+### [P0] ~~ Verificar en GitHub el backup remoto cifrado y su restore drill~~
+- **Área:** .github/workflows/backup.yml, .github/workflows/restore-drill.yml, GitHub Settings (acción del usuario)
+- **Problema:** verificado el 2026-09-01 que `BACKUP_ENCRYPTION_KEY` existe y
+  faltan `AWS_ROLE_TO_ASSUME`/`BACKUP_S3_BUCKET`. El código ya no bloquea por
+  ello: `backup.yml` sube siempre el dump cifrado como GitHub Artifact (90 días)
+  y S3 queda como segunda copia opcional; `restore-drill.yml` descarga el último
+  artefacto exitoso cuando no hay S3. Falta que este cambio llegue a GitHub y
+  ejecutar ambos workflows: hasta que el drill pase, la recuperación sigue sin
+  estar demostrada.
+- **Acceptance criteria:**
+  - Un run de `backup.yml` en verde y artefacto `db-backup-<run_id>` con sólo
+    `*.dump.gpg`.
+  - Un run de `restore-drill.yml` en verde sobre ese artefacto.
+  - Opcional: `AWS_ROLE_TO_ASSUME` y `BACKUP_S3_BUCKET` configurados juntos para
+    una segunda copia S3/R2.
+- **Files de partida:** [.github/workflows/backup.yml](../.github/workflows/backup.yml), [.github/workflows/restore-drill.yml](../.github/workflows/restore-drill.yml), [docs/runbooks/backup-restore.md](runbooks/backup-restore.md)
+- **Relación:** es la pata de infraestructura del checklist F3d (P1, más abajo), que cubre el cifrado y la rotación de credenciales pero da por hecho que el destino existe.
+- **Riesgo:** bajo — solo configuración, sin tocar código. El riesgo real es el que ya se está corriendo cada día que pasa sin copia.
+
+---
+
 ## Cerrados el 2026-09-19 — accesibilidad y móvil
 
 ### [P2] La experiencia móvil existe pero nadie la diseñó

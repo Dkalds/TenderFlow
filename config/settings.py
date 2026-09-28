@@ -83,8 +83,8 @@ class Settings(ResumenPregenSettings, BaseSettings):
     DATA_DIR: Path = _DEFAULT_DATA_DIR
     # VESTIGIAL (ADR-021): ya no apunta a ninguna BD — SQLite se retiró y el
     # único motor es Postgres vía DATABASE_URL. Sobrevive porque lo leen los
-    # caminos DuckDB/backup pendientes de migrar (`db/analytics.py`,
-    # `scripts/restore_db.py`), documentados como ítems abiertos del backlog.
+    # caminos pendientes de migrar (`db/analytics.py`, el fallback SQLite de
+    # `db/alembic/env.py`), documentados como ítems abiertos del backlog.
     # **No usar en código nuevo.**
     DB_PATH: Path | None = None  # default calculado en validator
     DOWNLOADS_DIR: Path | None = None

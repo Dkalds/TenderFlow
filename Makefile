@@ -1,4 +1,4 @@
-.PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
@@ -284,11 +284,6 @@ clean:  ## Limpia artefactos de build y caché
 
 # ── Runbooks ejecutables ─────────────────────────────────────────────────
 # Extrae y ejecuta bloques de código bash de los runbooks Markdown.
-runbook-backup-restore:
-	@echo "==> Runbook: backup-restore"
-	@bash docs/runbooks/backup-restore.md 2>/dev/null || \
-		python -c "import re,subprocess,pathlib; md=pathlib.Path('docs/runbooks/backup-restore.md').read_text(); [subprocess.run(b,shell=True) for b in re.findall(r'```bash\\n(.*?)\\n```',md,re.DOTALL)]"
-
 runbook-dlq-replay:
 	@echo "==> Runbook: dlq-replay"
 	@python -c "import re,subprocess,pathlib; md=pathlib.Path('docs/runbooks/dlq-replay.md').read_text(); [subprocess.run(b,shell=True) for b in re.findall(r'```bash\\n(.*?)\\n```',md,re.DOTALL)]"
