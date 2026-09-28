@@ -825,6 +825,65 @@ class TestRunCli:
         run_mock.assert_not_called()
 
 
+class TestEstratoMuestraSqlPlaceholders:
+    """Regresión (fix round 1 de revisión): ``_ESTRATO_MUESTRA_SQL`` se
+    empalma dentro de las consultas de ``TecnologiaPliegoRepository``, y
+    ``list_muestra_pending_llm_signal`` las ejecuta con un dict de parámetros
+    (``c.execute(sql, {...})``). psycopg tokeniza el SQL entero buscando
+    placeholders (``%s``/``%b``/``%t``/``%(nombre)s``) antes de tocar la red;
+    un ``%`` suelto -- el que dejaba un ``LIKE 'placsp%'`` -- no calza
+    ninguna forma reconocida y psycopg 3 lanza ``ProgrammingError`` en el
+    primer ``execute`` con quotas no vacías. Mismo bug que documenta ADR-018
+    para ``db/repositories/extraction_runs.py:104-107`` (ahí se optó por
+    escapar a ``%%``; aquí, al no hacer falta ``LIKE``, se quita el ``%`` del
+    todo con ``starts_with``)."""
+
+    def test_la_constante_no_tiene_ningun_porcentaje(self):
+        from db.repositories.tecnologia_pliego import _ESTRATO_MUESTRA_SQL
+
+        assert "%" not in _ESTRATO_MUESTRA_SQL
+
+    def test_la_query_ensamblada_no_deja_placeholders_sueltos(self, monkeypatch):
+        """Sin BD: ``connect_read`` se sustituye por un doble que solo
+        captura el SQL que se le pasaría a psycopg. Tras quitar los
+        placeholders válidos (``%(nombre)s``) no debe quedar ningún ``%`` --
+        si quedara alguno, sería exactamente el bug que cubre esta clase."""
+        import re
+        from contextlib import contextmanager
+
+        from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+
+        capturado: dict[str, object] = {}
+
+        class _CursorFalso:
+            def __init__(self):
+                self.description: list[object] = []
+
+            def fetchall(self):
+                return []
+
+        class _ConexionFalsa:
+            def execute(self, sql, params=None):
+                capturado["sql"] = sql
+                capturado["params"] = params
+                return _CursorFalso()
+
+        @contextmanager
+        def _connect_read_falso(*, statement_timeout_ms=None):
+            yield _ConexionFalsa()
+
+        monkeypatch.setattr("db.repositories.tecnologia_pliego.connect_read", _connect_read_falso)
+
+        TecnologiaPliegoRepository().list_muestra_pending_llm_signal(
+            cuotas={"pscp|otros|es|sin_kw|sin_modelo": 1}, semilla="s", signal_version="v1"
+        )
+
+        sql = capturado["sql"]
+        assert isinstance(sql, str)
+        sin_placeholders_validos = re.sub(r"%\([a-zA-Z_][a-zA-Z0-9_]*\)s", "", sql)
+        assert "%" not in sin_placeholders_validos
+
+
 class TestPipelineStepReleasesTheWindow:
     """El paso canónico no puede quemar la ventana diaria en silencio."""
 

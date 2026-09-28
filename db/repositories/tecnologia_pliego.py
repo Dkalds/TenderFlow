@@ -130,13 +130,27 @@ _MERGE_LOCK_KEY = "tenderflow.tech_signal_merge"
 # ``tamanos_estratos_muestra`` y ``list_muestra_pending_llm_signal``
 # particionen exactamente igual -- dos copias del mismo CASE divergirían
 # tarde o temprano. El regex de CPV es el estilo de
-# ``db.repositories.revision_ti._CPV_TI_SQL``; ``ILIKE`` (no ``=``) porque los
-# valores reales de ``ccaa`` alternan mayúsculas («Cataluña», «CATALUÑA»).
+# ``db.repositories.revision_ti._CPV_TI_SQL``; ``ILIKE`` (no ``=``) por si
+# ``ccaa`` llega alguna vez en otra capitalización -- en producción (medido
+# 2026-09-28) solo se ha visto «Cataluña», pero es texto libre de scraper.
+#
+# SIN ``%`` literal, bajo ningún concepto: esta constante se empalma dentro
+# de las dos consultas de ``list_muestra_pending_llm_signal``/
+# ``tamanos_estratos_muestra``, y la primera se ejecuta con un dict de
+# parámetros (``c.execute(sql, {...})``). psycopg tokeniza el texto entero en
+# busca de placeholders (``%s``/``%b``/``%t``/``%(nombre)s``) antes de mandar
+# nada a la red; un ``%`` suelto (p.ej. de un ``LIKE 'placsp%'``) no calza
+# ninguna forma reconocida y psycopg 3 lanza ``ProgrammingError`` en el
+# primer ``execute`` con quotas no vacías -- lo mismo que ADR-018 documentó
+# para ``db/repositories/extraction_runs.py`` (ahí se resolvió escapando a
+# ``%%``; aquí, al no hacer falta ``LIKE``, se quita el ``%`` del todo con
+# ``starts_with``, que de paso deja de tratar el ``_`` de ``bulk_`` como
+# comodín de un carácter).
 _ESTRATO_MUESTRA_SQL = (
     "("
     "CASE WHEN l.fuente = 'pscp' THEN 'pscp' "
     "WHEN l.fuente = 'ted' THEN 'ted' "
-    "WHEN l.fuente LIKE 'placsp%' OR l.fuente LIKE 'bulk_%' THEN 'placsp' "
+    "WHEN starts_with(l.fuente, 'placsp') OR starts_with(l.fuente, 'bulk_') THEN 'placsp' "
     "ELSE 'otras' END"
     " || '|' || "
     "CASE WHEN coalesce(l.cpv, '') ~ '(^|[^0-9])48[0-9]{6}' THEN '48' "
