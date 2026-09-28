@@ -21,6 +21,7 @@ import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { Schemas } from "@/lib/api-types";
 import { organizationKeys, pursuitKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type PursuitTask = Schemas["PursuitTaskOut"];
 export type PursuitTaskCreate = Schemas["PursuitTaskCreate"];
@@ -72,6 +73,7 @@ export function usePursuitTasks(pursuitId: number | null) {
     queryFn: () => fetchWithAuth<PursuitTask[]>(rutaTareas(pursuitId!, organizationId)),
     enabled: pursuitId != null && organizacionResuelta(organizationId),
     staleTime: 30_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

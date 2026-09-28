@@ -13,6 +13,7 @@
  * La selección es una lista ordenada: la primera etiqueta es la principal.
  */
 
+import { ROTULO_DATO } from "@/components/console/panel";
 import { cn } from "@/lib/utils";
 import type { EtiquetaTaxonomia } from "../../_lib/active-learning";
 
@@ -35,12 +36,10 @@ export function SelectorTaxonomia({
 
   return (
     <div className="space-y-2">
-      <p className="text-muted-foreground text-xs font-medium">
-        Familias y fabricantes: la primera que marques es la principal
-      </p>
+      <p className={ROTULO_DATO}>Familias y fabricantes: la primera que marques es la principal</p>
       {GRUPOS.map(({ tipo, titulo }) => (
         <div key={tipo} role="group" aria-label={titulo} className="flex flex-wrap items-center gap-1.5">
-          <span aria-hidden="true" className="text-muted-foreground w-24 shrink-0 text-xs">
+          <span aria-hidden="true" className={cn("w-24 shrink-0", ROTULO_DATO)}>
             {titulo}
           </span>
           {taxonomia
@@ -54,9 +53,9 @@ export function SelectorTaxonomia({
                   aria-pressed={marcada}
                   onClick={() => onToggle(etiqueta.codigo)}
                   className={cn(
-                    "rounded-full border px-2.5 py-0.5 text-xs transition-colors duration-140 ease-out",
+                    "rounded-md border px-2 py-0.5 text-tf-meta transition-colors duration-140 ease-out",
                     marcada
-                      ? "border-primary bg-primary text-primary-foreground"
+                      ? "border-primary/40 bg-primary/10 font-medium text-primary"
                       : "border-border text-muted-foreground hover:text-foreground",
                   )}
                 >

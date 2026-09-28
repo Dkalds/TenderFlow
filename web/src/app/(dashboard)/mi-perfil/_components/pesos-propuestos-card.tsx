@@ -18,16 +18,17 @@
  */
 
 import { useState } from "react";
-import { ArrowRight, Scale } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   type PesoPropuestoDimension,
   type PesosPropuestos,
   useApplyWeightsProposal,
   useWeightsProposal,
 } from "@/hooks/use-weights-proposal";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { formatNumber } from "@/lib/utils";
 import { WEIGHT_LABELS } from "./pesos-scoring-card";
 
@@ -38,9 +39,9 @@ const ORIGEN_LABEL: Record<PesosPropuestos["origen_pesos_actuales"], string> = {
 
 function Base({ propuesta }: { propuesta: PesosPropuestos }) {
   return (
-    <p className="text-xs text-muted-foreground">
-      Base: {propuesta.n_cierres} cierre{propuesta.n_cierres === 1 ? "" : "s"} con desglose sellado
-      — {propuesta.n_ganadas} ganada{propuesta.n_ganadas === 1 ? "" : "s"} y{" "}
+    <p className="text-tf-meta text-muted-foreground">
+      Base: {propuesta.n_cierres} cierre{propuesta.n_cierres === 1 ? "" : "s"} con desglose sellado:{" "}
+      {propuesta.n_ganadas} ganada{propuesta.n_ganadas === 1 ? "" : "s"} y{" "}
       {propuesta.n_perdidas} perdida{propuesta.n_perdidas === 1 ? "" : "s"}. Se compara contra{" "}
       {ORIGEN_LABEL[propuesta.origen_pesos_actuales]}.
     </p>
@@ -51,17 +52,18 @@ function DimensionRow({ dimension }: { dimension: PesoPropuestoDimension }) {
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border/50 py-2 last:border-0">
       <div className="min-w-0">
-        <p className="text-sm font-medium">
-          {WEIGHT_LABELS[dimension.dimension] ?? dimension.dimension}
-        </p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-tf-body font-medium">{WEIGHT_LABELS[dimension.dimension] ?? dimension.dimension}</p>
+        <p className="text-tf-meta text-muted-foreground">
           Media en ganadas {formatNumber(dimension.media_ganadas)} · en perdidas{" "}
           {formatNumber(dimension.media_perdidas)} (diferencia {formatNumber(dimension.delta)})
         </p>
       </div>
-      <div className="flex flex-none items-center gap-2 text-sm tabular-nums">
+      {/* Un cambio (antes → después): la flecha es el único sitio donde la
+          regla de la casa la admite, y el lector de pantalla lee «pasa a». */}
+      <div className="tf-tnum flex flex-none items-center gap-2 text-tf-body">
         <span className="text-muted-foreground">{dimension.peso_actual}</span>
         <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+        <span className="sr-only"> pasa a </span>
         <span className="font-semibold">{dimension.peso_propuesto}</span>
       </div>
     </li>
@@ -71,7 +73,7 @@ function DimensionRow({ dimension }: { dimension: PesoPropuestoDimension }) {
 function Insuficiente({ propuesta }: { propuesta: PesosPropuestos }) {
   const faltan = propuesta.minimo_cierres - propuesta.n_cierres;
   return (
-    <p className="text-sm text-muted-foreground">
+    <p className="text-tf-body text-muted-foreground">
       Todavía no hay base para proponer nada: llevas{" "}
       <span className="font-medium text-foreground">{propuesta.n_cierres}</span> de{" "}
       {propuesta.minimo_cierres} cierres con desglose sellado, así que faltan{" "}
@@ -82,7 +84,7 @@ function Insuficiente({ propuesta }: { propuesta: PesosPropuestos }) {
 }
 
 export function PesosPropuestosCard() {
-  const { data, isPending, error } = useWeightsProposal();
+  const { data, isPending, error, refetch } = useWeightsProposal();
   const aplicar = useApplyWeightsProposal();
   const [confirmando, setConfirmando] = useState(false);
 
@@ -100,30 +102,26 @@ export function PesosPropuestosCard() {
         setConfirmando(false);
         toast.success("Pesos aplicados a tu perfil. El Radar ya puntúa con ellos.");
       })
-      .catch((err: unknown) =>
-        toast.error(err instanceof Error ? err.message : "No se pudieron aplicar los pesos"),
-      );
+      .catch((err: unknown) => toast.error(getErrorMessage(err, "accion")));
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Scale className="h-4 w-4 text-primary" aria-hidden="true" />
-          Pesos que sugieren tus cierres
-        </CardTitle>
-        <CardDescription>
-          Comparación entre el desglose de score de lo que tu organización ganó y el de lo que
-          perdió. Es una propuesta: no se aplica sola.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {isPending && <p className="text-sm text-muted-foreground">Calculando la propuesta…</p>}
+    <Panel>
+      <PanelTitle title="Pesos que sugieren tus cierres" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Comparación entre el desglose del score de lo que tu organización ganó y el de lo que perdió. Es una
+        propuesta: no se aplica sola.
+      </p>
+      <div className="space-y-3">
+        {isPending && <p className="text-tf-meta text-muted-foreground">Calculando la propuesta…</p>}
 
         {!isPending && (error || !data) && (
-          <p className="text-sm text-muted-foreground">
-            No se pudo calcular la propuesta de pesos.
-          </p>
+          <PanelError
+            variant="inline"
+            title="No se pudo calcular la propuesta de pesos"
+            error={error ?? undefined}
+            onRetry={() => void refetch()}
+          />
         )}
 
         {data && data.estado === "insuficiente" && <Insuficiente propuesta={data} />}
@@ -138,9 +136,9 @@ export function PesosPropuestosCard() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                Con esos cierres no sale ningún ajuste: las dimensiones puntuaron igual en lo
-                ganado y en lo perdido.
+              <p className="text-tf-body text-muted-foreground">
+                Con esos cierres no sale ningún ajuste: las dimensiones puntuaron igual en lo ganado y en lo
+                perdido.
               </p>
             )}
           </>
@@ -165,12 +163,12 @@ export function PesosPropuestosCard() {
                 Cancelar
               </Button>
             )}
-            <span className="text-xs text-muted-foreground">
+            <span className="text-tf-meta text-muted-foreground">
               Sustituye los pesos de tu perfil y queda registrado.
             </span>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

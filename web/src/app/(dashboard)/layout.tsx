@@ -21,7 +21,7 @@ export const metadata: Metadata = {
  * ruta activa para decidir entre superficie de consola y cromo heredado); aquí
  * quedan los overlays propios del dashboard y la directiva de render dinámico.
  *
- * Los providers, el `Toaster`, la barra de progreso y la región viva —y la
+ * Los providers, el `Toaster` y la región viva —y la
  * lectura del nonce de la CSP que exigen— los monta `SuperficiePrivada`, la
  * misma pieza que usan `/login` y `/restablecer-contrasena`. Estaban en el
  * layout raíz, donde los heredaba también la superficie pública (una landing

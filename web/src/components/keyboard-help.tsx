@@ -22,8 +22,8 @@ function Keys({ keys }: { keys: string[] }) {
     <span className="flex shrink-0 items-center gap-1">
       {keys.map((key, index) => (
         <React.Fragment key={key}>
-          {index > 0 && <span className="text-[10px] text-muted-foreground">+</span>}
-          <kbd className="rounded border border-border/70 bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+          {index > 0 && <span className="text-tf-micro text-muted-foreground">+</span>}
+          <kbd className="rounded-sm border border-border/70 bg-muted px-1.5 py-0.5 font-mono text-tf-micro text-foreground">
             {key}
           </kbd>
         </React.Fragment>
@@ -35,10 +35,10 @@ function Keys({ keys }: { keys: string[] }) {
 function Group({ title, rows }: { title: string; rows: ShortcutRow[] }) {
   return (
     <section className="space-y-2">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+      <h3 className="text-tf-meta font-semibold text-muted-foreground">{title}</h3>
       <ul className="space-y-1">
         {rows.map((row) => (
-          <li key={row.description} className="flex items-center justify-between gap-4 text-sm">
+          <li key={row.description} className="flex items-center justify-between gap-4 text-tf-body">
             <span className="min-w-0 truncate text-muted-foreground">{row.description}</span>
             <Keys keys={row.keys} />
           </li>
@@ -70,7 +70,7 @@ export function KeyboardHelp() {
       <DialogContent className="w-full max-w-md p-6">
         <DialogTitle>Atajos de teclado</DialogTitle>
         <DialogDescription className="mt-1">
-          Los atajos de una sola tecla no actúan mientras escribís en un campo o navegás dentro de un
+          Los atajos de una sola tecla no actúan mientras escribes en un campo o navegas dentro de un
           menú.
         </DialogDescription>
         <div className="mt-5 space-y-5">

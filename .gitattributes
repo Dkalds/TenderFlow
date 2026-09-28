@@ -1,7 +1,18 @@
 * text=auto eol=lf
-*.{png,jpg,jpeg,gif,ico,webp} binary
-*.{woff,woff2,ttf,eot} binary
-*.{zip,gz,tar,bz2} binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.bz2 binary
 *.pdf binary
 *.docx binary
 *.odt binary

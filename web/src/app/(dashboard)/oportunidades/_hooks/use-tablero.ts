@@ -3,6 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { useMoverPursuit } from "@/hooks/use-pursuits";
 import type { Pursuit, PursuitStatus, UpdatePursuitInput } from "@/hooks/use-pursuits";
 import { FASES, faseDe, type FaseKey } from "../_lib/fases";
@@ -70,7 +71,7 @@ export function useTablero() {
           {
             description: conflicto
               ? "El tablero se ha recargado con su cambio. Vuelve a intentarlo si sigue haciendo falta."
-              : (error as Error).message,
+              : getErrorMessage(error, "accion"),
           },
         );
       }

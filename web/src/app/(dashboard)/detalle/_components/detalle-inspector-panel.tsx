@@ -48,7 +48,9 @@ export function DetalleInspectorPanel({
           aria-describedby={undefined}
         >
           <SheetTitle className="sr-only">Ficha de la licitación</SheetTitle>
-          <DetailInspector licitacion={licitacion} onClose={onClose} />
+          {/* Como en el Radar, una ficha por expediente: así el scroll y el
+              «Preguntar» pendiente no pasan a la siguiente. */}
+          <DetailInspector key={licitacion.id_externo} licitacion={licitacion} onClose={onClose} />
         </SheetContent>
       </Sheet>
     );
@@ -56,7 +58,7 @@ export function DetalleInspectorPanel({
 
   return (
     <div className="hidden w-[clamp(28rem,32vw,42rem)] flex-none xl:flex">
-      <DetailInspector licitacion={licitacion} onClose={onClose} />
+      <DetailInspector key={licitacion.id_externo} licitacion={licitacion} onClose={onClose} />
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import { LiveRegion } from "@/components/live-region";
 import { Providers } from "@/components/providers";
-import { RouteProgress } from "@/components/route-progress";
 import { Toaster } from "@/components/toaster";
 
 /**
@@ -9,7 +8,7 @@ import { Toaster } from "@/components/toaster";
  * `/restablecer-contrasena` (S5.9 del plan de septiembre, S7.1 del v2).
  *
  * Los tres layouts montaban a mano la misma pila —leer el nonce, `Providers`,
- * `RouteProgress`, `Toaster`, `LiveRegion`— y ya habían divergido una vez: un
+ * `Toaster`, `LiveRegion`— y ya habían divergido una vez: un
  * `toast()` disparado en `/login` se perdía en silencio porque el `Toaster`
  * sólo existía en el dashboard. Ahora esa pila se declara aquí y los tres
  * layouts la usan; lo que cada uno añade (el marco de consola, la paleta, el
@@ -36,7 +35,6 @@ export async function SuperficiePrivada({ children }: { children: React.ReactNod
 
   return (
     <Providers nonce={nonce}>
-      <RouteProgress />
       {children}
       <Toaster />
       <LiveRegion />

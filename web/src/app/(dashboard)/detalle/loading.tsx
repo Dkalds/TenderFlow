@@ -1,34 +1,28 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
+/**
+ * Carga de /detalle con la forma de la pantalla que llega: la barra de la
+ * tabla, las filas y el pie de paginación, a toda la altura del marco. Antes
+ * era una tarjeta con título y buscador que la página no tiene, y al llegar el
+ * dato todo saltaba de sitio.
+ */
 export default function DetalleLoading() {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-9 w-28" />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-11 flex-none items-center gap-2.5 border-b border-border/60 px-3.5">
+        <Skeleton className="h-4 w-16" />
+        <div className="flex-1" />
+        <Skeleton className="h-6 w-36" />
       </div>
-      {/* Search bar */}
-      <Skeleton className="h-9 w-full max-w-sm" />
-      {/* Table skeleton */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex gap-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-4 flex-1" />
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full" />
-          ))}
-        </CardContent>
-      </Card>
-      {/* Pagination */}
-      <div className="flex justify-between">
-        <Skeleton className="h-8 w-32" />
-        <Skeleton className="h-8 w-48" />
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-hidden px-3.5 py-2">
+        {Array.from({ length: 14 }, (_, i) => (
+          <Skeleton key={i} className="h-7 w-full rounded-sm" />
+        ))}
+      </div>
+      <div className="flex h-11 flex-none items-center gap-3 border-t border-border/70 px-3.5">
+        <Skeleton className="h-4 w-40" />
+        <div className="flex-1" />
+        <Skeleton className="h-6 w-48" />
       </div>
     </div>
   );

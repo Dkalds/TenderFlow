@@ -21,6 +21,7 @@ import { fetchWithAuth } from "@/lib/api-client";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { Schemas } from "@/lib/api-types";
 import { pursuitKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type GoNoGoChecklist = Schemas["GoNoGoChecklist"];
 export type ChecklistFamiliaResultado = Schemas["ChecklistFamiliaResultado"];
@@ -46,5 +47,6 @@ export function usePursuitChecklist(pursuitId: number | string | null) {
     // vez por versión de ficha, así que volver a pedirla en cada foco solo
     // añadiría eventos `checklist_evaluated` sin información nueva.
     staleTime: 5 * 60_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }

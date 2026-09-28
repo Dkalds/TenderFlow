@@ -3,9 +3,10 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Info, Redo2, RotateCcw, Search, Undo2 } from "lucide-react";
+import { Info, Redo2, RotateCcw, Search, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -127,8 +128,13 @@ const IMPORTE_PRESETS = [
  */
 const RETRASO_BUSQUEDA_MS = 300;
 
+/**
+ * Fondo sólido y no vidrio: el contenido se desplaza en `#main-content`, que es
+ * hermano de la barra, y nunca pasa por debajo de ella. El corte con lo que se
+ * desplaza lo dibuja el borde de scroll (`scroll-edge.tsx`).
+ */
 const CABECERA =
-  "tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden";
+  "sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto bg-background px-3.5 [&::-webkit-scrollbar]:hidden";
 
 interface Chip {
   key: string;
@@ -136,29 +142,37 @@ interface Chip {
   remove: () => void;
 }
 
-const NAV_BUTTON =
-  "grid h-6 w-6 place-items-center rounded-md border text-[12px] transition-colors duration-140 ease-out";
+const NAV_BUTTON = "grid h-6 w-6 place-items-center rounded-md border transition-colors";
 
 function ScopeChip({ chip }: { chip: Chip }) {
   return (
     // La clave y la «×» iban con `opacity-60`/`opacity-50` sobre el tinte del
-    // chip: 2,4:1, y la «×» medía 8×13 px. Ahora son tinta plena (la jerarquía
-    // la da el cuerpo mono de 9 px) y la «×» ocupa 24×24 (WCAG 2.5.8), con el
-    // margen negativo para que el chip no crezca.
-    <span className="border-primary/30 bg-primary/10 text-primary inline-flex h-[26px] items-center gap-[7px] rounded-md border pr-0.5 pl-2">
-      <span className="font-mono text-[9px] leading-none font-medium tracking-[0.06em] uppercase">{chip.key}</span>
-      <span className="max-w-40 truncate text-xs leading-none font-medium">{chip.value}</span>
+    // chip: 2,4:1, y la «×» medía 8×13 px. Ahora son tinta plena y la «×»
+    // ocupa 24×24 (WCAG 2.5.8), con el margen negativo para que el chip no
+    // crezca. La clave va en frase y en sans, a 11 px, y el valor a 12 px en
+    // medio: la jerarquía la da el peso, no una versal en mono.
+    <span className="border-primary/30 bg-primary/10 text-primary inline-flex h-6.5 items-center gap-1.5 rounded-md border pr-0.5 pl-2">
+      <span className="text-tf-micro leading-none">{chip.key}</span>
+      <span className="text-tf-meta max-w-40 truncate leading-none font-medium">{chip.value}</span>
       <button
         type="button"
         aria-label={`Quitar ${chip.key.toLowerCase()} ${chip.value}`}
         onClick={chip.remove}
-        className="hover:bg-primary/15 -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded border-0 bg-transparent p-0 text-[13px] leading-none transition-colors duration-140 ease-out"
+        className="hover:bg-primary/10 -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded-sm border-0 bg-transparent p-0 transition-colors"
       >
-        ×
+        <X className="h-3 w-3" aria-hidden="true" />
       </button>
     </span>
   );
 }
+
+/**
+ * Atajos de valor del editor (periodos, importes). Pequeños pero con la diana
+ * mínima de 24 px (WCAG 2.5.8); `tf-pressable` ya anima el color y la
+ * pulsación.
+ */
+const PRESET =
+  "tf-pressable inline-flex h-6 items-center rounded-md border border-border/70 px-2 text-tf-micro text-muted-foreground hover:border-primary/50 hover:text-foreground";
 
 /** Editor del ámbito: los seis controles que antes vivían sueltos en la barra. */
 function ScopeEditor({
@@ -195,9 +209,8 @@ function ScopeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo reacciona al valor debounced
   }, [debouncedImporte]);
 
-  const label = "mb-1.5 block font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground";
-  const control =
-    "h-8 w-full rounded-md border border-input bg-background/70 px-2 text-xs text-foreground outline-none";
+  const label = cn(ETIQUETA_CAMPO, "mb-1.5");
+  const control = "h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground";
 
   return (
     <div className="space-y-3 p-1">
@@ -209,7 +222,7 @@ function ScopeEditor({
               al elegir una búsqueda reciente. */}
           <SearchAutocomplete
             aria-label="Buscar licitaciones"
-            inputClassName="h-8 rounded-md bg-background/70 pl-8 text-xs"
+            inputClassName="h-8 rounded-md bg-background pl-8 text-xs"
             placeholder="Licitaciones, órganos, empresas…"
             value={busqueda.valor}
             onChange={busqueda.cambiar}
@@ -218,7 +231,7 @@ function ScopeEditor({
               addToHistory(valor);
             }}
             recentSearches={history}
-            leftIcon={<Search className="h-3.5 w-3.5" />}
+            leftIcon={<Search className="h-3.5 w-3.5" aria-hidden="true" />}
           />
         </div>
       )}
@@ -248,7 +261,7 @@ function ScopeEditor({
                 key={preset.label}
                 type="button"
                 onClick={() => filters.setRango({ desde: preset.desde(), hasta: preset.hasta() })}
-                className="tf-pressable border-border/70 text-muted-foreground hover:border-primary/50 hover:text-foreground rounded border px-1.5 py-1 text-[10px] transition-colors"
+                className={PRESET}
               >
                 {preset.label}
               </button>
@@ -310,9 +323,9 @@ function ScopeEditor({
               checked={filters.soloAbiertas}
               onCheckedChange={(value) => filters.setSoloAbiertas(value === true)}
             />
-            <label htmlFor="scope-solo-abiertas" className="text-muted-foreground cursor-pointer text-xs">
+            <label htmlFor="scope-solo-abiertas" className="text-tf-meta text-muted-foreground cursor-pointer">
               Sólo abiertas
-              <span className="ml-1 text-[10px]">(sin adjudicar ni cerrar)</span>
+              <span className="text-tf-micro ml-1">(sin adjudicar ni cerrar)</span>
             </label>
           </div>
         </div>
@@ -324,7 +337,7 @@ function ScopeEditor({
           <Input
             aria-label="Importe mínimo"
             type="number"
-            className="bg-background/70 h-8 w-full rounded-md text-xs"
+            className="bg-background h-8 w-full text-xs"
             placeholder="Sin mínimo"
             value={importeInput}
             onChange={(event) => setImporteInput(event.target.value ? Number(event.target.value) : "")}
@@ -335,16 +348,12 @@ function ScopeEditor({
                 key={preset.label}
                 type="button"
                 onClick={() => filters.setImporteMin(preset.value)}
-                className="tf-pressable border-border/70 text-muted-foreground hover:border-primary/50 hover:text-foreground rounded border px-1.5 py-1 text-[10px] transition-colors"
+                className={PRESET}
               >
                 {preset.label}
               </button>
             ))}
-            <button
-              type="button"
-              onClick={() => filters.setImporteMin(null)}
-              className="tf-pressable border-border/70 text-muted-foreground hover:border-primary/50 hover:text-foreground rounded border px-1.5 py-1 text-[10px] transition-colors"
-            >
+            <button type="button" onClick={() => filters.setImporteMin(null)} className={PRESET}>
               Cualquiera
             </button>
           </div>
@@ -555,13 +564,8 @@ export function ScopeBar() {
                 />
                 {activeCount > 0 && (
                   <div className="border-border/70 mt-1 border-t pt-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-full justify-start px-2 text-xs"
-                      onClick={filters.resetFilters}
-                    >
-                      <RotateCcw className="h-3 w-3" />
+                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={filters.resetFilters}>
+                      <RotateCcw aria-hidden="true" />
                       Limpiar el ámbito
                     </Button>
                   </div>
@@ -591,11 +595,9 @@ export function ScopeBar() {
               propia exportación con el corte de esa sección, y dos botones con la
               misma etiqueta a cuatro dedos de distancia no se distinguen. Este
               saca lo que gobierna esta barra — el ámbito activo. Sin ámbito, el
-              rótulo de siempre. */}
-          <ExportPopover
-            label={filtersApply ? "Exportar ámbito" : undefined}
-            className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs"
-          />
+              rótulo de siempre. La talla es la de la consola (`sm`), la misma
+              que «Buscar». */}
+          <ExportPopover label={filtersApply ? "Exportar ámbito" : undefined} />
           <NotificationBell />
         </div>
       </header>
@@ -609,10 +611,50 @@ export function ScopeBar() {
   );
 }
 
-const BOTON_BUSCAR =
-  "border-border/80 text-muted-foreground hover:text-foreground inline-flex h-7 flex-none cursor-pointer items-center gap-1.5 rounded-md border bg-transparent px-2.5 text-xs transition-colors duration-140 ease-out";
+/**
+ * «Buscar» abre la paleta. El atajo se enseña en un `<kbd>` que el lector de
+ * pantalla no lee (lo anuncia `aria-keyshortcuts`), así que el nombre
+ * accesible es la palabra que se ve (WCAG 2.5.3); antes era «Abrir búsqueda y
+ * comandos» sobre un botón que decía «Buscar ⌘K».
+ */
+// `forwardRef` y el resto de props: va dentro de un `TooltipTrigger asChild`,
+// que le pasa su ref y sus manejadores.
+const BotonBuscar = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { onSearch: () => void }
+>(function BotonBuscar({ onSearch, onClick, className, ...props }, ref) {
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="sm"
+      {...props}
+      onClick={(event) => {
+        onClick?.(event);
+        onSearch();
+      }}
+      aria-keyshortcuts="Control+K Meta+K"
+      className={cn("text-muted-foreground hover:text-foreground flex-none", className)}
+    >
+      Buscar
+      <kbd
+        aria-hidden="true"
+        className="border-border/70 text-tf-micro rounded-sm border px-1 py-0.5 font-mono leading-none font-normal"
+      >
+        ⌘K
+      </kbd>
+    </Button>
+  );
+});
 
-const ATAJO_BUSCAR = "border-border/70 rounded border px-1 py-0.5 font-mono text-[9px] leading-none";
+/**
+ * Cuándo se actualizaron los datos por última vez. En castellano y sin punto
+ * de estado: el color no cambiaba con la antigüedad (salía verde también con
+ * «sin registro»), y el pulso infinito se veía cien veces al día.
+ */
+function textoActualizacion(relative: string | null): string {
+  return relative ? `Actualizado ${relative}` : "Sin actualizaciones registradas";
+}
 
 /**
  * Contenido de la barra en las pantallas que no aplican el ámbito. Comparte la
@@ -636,35 +678,32 @@ function BarraSinAmbito({
     <>
       {activeCount > 0 ? (
         <>
-          <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <Info className="text-muted-foreground h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {/* Por debajo de `md`, en una línea: encogido hasta su palabra más
               larga ocupaba nueve líneas (144 px) en una barra de 52 que las
               recortaba, y a 375 px solo se leía «no aplica en esta». Desde
               `md` la barra mide unos 700 px o más y el aviso, como mucho, se
               parte en dos líneas que caben: mejor eso que sacar Buscar y
               Exportar de la vista. */}
-          <span className="text-muted-foreground min-w-max text-xs md:min-w-auto">
+          <span className="text-tf-meta text-muted-foreground min-w-max md:min-w-auto">
             El ámbito global no aplica en esta pantalla ({activeCount}{" "}
             {activeCount === 1 ? "filtro activo" : "filtros activos"}).
           </span>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onReset}>
-            <RotateCcw className="h-3 w-3" />
+          <Button variant="ghost" size="sm" onClick={onReset}>
+            <RotateCcw aria-hidden="true" />
             Limpiar
           </Button>
         </>
       ) : (
-        <span className="text-muted-foreground hidden flex-none font-mono text-[9px] font-semibold tracking-[0.14em] uppercase sm:inline">
-          Ámbito · no aplica en esta pantalla
+        <span className="text-tf-meta text-muted-foreground hidden flex-none sm:inline">
+          El ámbito no aplica en esta pantalla.
         </span>
       )}
       <div className="flex-1" />
-      <span className="text-muted-foreground hidden flex-none text-[11px] sm:inline">
-        {relative ? `sync ${relative}` : "sin registro de sync"}
+      <span className="text-tf-meta text-muted-foreground hidden flex-none sm:inline">
+        {textoActualizacion(relative)}
       </span>
-      <button type="button" onClick={onSearch} aria-label="Abrir búsqueda y comandos" className={BOTON_BUSCAR}>
-        Buscar
-        <span className={ATAJO_BUSCAR}>⌘K</span>
-      </button>
+      <BotonBuscar onSearch={onSearch} />
     </>
   );
 }
@@ -740,9 +779,7 @@ function BarraConAmbito({
         </Tooltip>
       </div>
 
-      <span className="text-muted-foreground flex-none font-mono text-[9px] leading-none font-semibold tracking-[0.14em] uppercase">
-        Ámbito
-      </span>
+      <span className="text-tf-meta text-muted-foreground flex-none font-medium">Ámbito</span>
 
       {/* Nunca más estrecho que sus chips (`min-w-max`): si la barra no cabe
           —a 375 px siempre; en escritorio, con varios chips o con uno y el
@@ -762,7 +799,7 @@ function BarraConAmbito({
               aria-haspopup="dialog"
               onPointerEnter={onAcercarseAlEditor}
               onFocus={onAcercarseAlEditor}
-              className="border-border text-muted-foreground hover:border-primary/50 hover:text-foreground inline-flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 text-xs font-medium transition-colors duration-140 ease-out"
+              className="border-border text-tf-meta text-muted-foreground hover:border-primary/50 hover:text-foreground inline-flex h-6.5 flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 font-medium transition-colors"
             >
               + Añadir
             </button>
@@ -782,14 +819,14 @@ function BarraConAmbito({
             filtran esta pantalla. */}
       {outOfScopeCount > 0 && (
         <div className="flex flex-none items-center gap-1.5">
-          <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span className="text-muted-foreground text-xs">
+          <Info className="text-muted-foreground h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="text-tf-meta text-muted-foreground">
             {outOfScopeCount === 1
               ? "1 filtro activo no aplica en esta pantalla"
               : `${outOfScopeCount} filtros activos no aplican en esta pantalla`}
           </span>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onClearOutOfScope}>
-            <RotateCcw className="h-3 w-3" />
+          <Button variant="ghost" size="sm" onClick={onClearOutOfScope}>
+            <RotateCcw aria-hidden="true" />
             {outOfScopeCount === 1 ? "Quitarlo" : "Quitarlos"}
           </Button>
         </div>
@@ -797,26 +834,19 @@ function BarraConAmbito({
 
       <div className="flex-1" />
 
-      <div className="text-muted-foreground flex flex-none items-center gap-[7px] text-[11px]">
-        <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-          <span className="absolute inset-0 rounded-full bg-[hsl(var(--success))] opacity-60 motion-safe:animate-ping" />
-          <span className="relative h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" />
-        </span>
+      <div className="text-tf-meta text-muted-foreground flex flex-none items-center gap-1.5">
         <span className="tf-tnum">{recuento}</span>
         <span aria-hidden="true">·</span>
-        <span>{relative ? `sync ${relative}` : "sin registro de sync"}</span>
+        <span>{textoActualizacion(relative)}</span>
       </div>
 
       <SavedViewsMenu />
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" onClick={onSearch} aria-label="Abrir búsqueda y comandos" className={BOTON_BUSCAR}>
-            Buscar
-            <span className={ATAJO_BUSCAR}>⌘K</span>
-          </button>
+          <BotonBuscar onSearch={onSearch} />
         </TooltipTrigger>
-        <TooltipContent>Buscar licitaciones, órganos, empresas…</TooltipContent>
+        <TooltipContent>Licitaciones, órganos, empresas y acciones</TooltipContent>
       </Tooltip>
     </>
   );

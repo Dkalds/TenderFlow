@@ -1,9 +1,12 @@
 "use client";
 
+import { SectionTitle } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
 import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
 import type { DocumentoSummary } from "@/lib/api-types";
 import { documentosNuevos } from "@/lib/documento-nuevo";
 import { ExternalLink, FileText } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const TIPO_LABELS: Record<string, string> = {
   legal: "Pliego administrativo (PCAP)",
@@ -33,10 +36,10 @@ function EnlaceFicha({ href, children }: { href: string; children: React.ReactNo
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+      className="inline-flex items-center gap-1 text-tf-meta text-primary hover:underline"
     >
       {children}
-      <ExternalLink className="h-3 w-3 shrink-0" />
+      <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
     </a>
   );
 }
@@ -76,8 +79,8 @@ export function DocumentosBlock({
     if (!fichaUrl) return null;
     return (
       <div className="mt-6 space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground">Documentos</h3>
-        <p className="text-xs text-muted-foreground">
+        <SectionTitle as="h3">Documentos</SectionTitle>
+        <p className="text-tf-meta text-muted-foreground">
           No hemos indexado pliegos de este expediente. Pueden estar publicados en la ficha
           de la plataforma de contratación.
         </p>
@@ -88,34 +91,34 @@ export function DocumentosBlock({
 
   return (
     <div className="mt-6 space-y-3">
-      <h3 className="text-sm font-medium text-muted-foreground">Documentos</h3>
+      <SectionTitle as="h3">Documentos</SectionTitle>
       <ul className="space-y-2">
         {items.map((doc) => {
           const caducado = doc.status === "error";
           return (
             <li key={doc.id} className="flex items-start gap-2">
               <FileText
-                className={`mt-0.5 h-4 w-4 shrink-0 ${
-                  caducado ? "text-muted-foreground/60" : "text-muted-foreground"
-                }`}
+                aria-hidden="true"
+                className={cn("mt-0.5 h-4 w-4 shrink-0", caducado ? "text-muted-foreground/60" : "text-muted-foreground")}
               />
               <div className="min-w-0 flex-1">
                 <a
                   href={doc.uri}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-1 text-sm hover:underline break-all ${
-                    caducado ? "text-muted-foreground" : "text-primary"
-                  }`}
+                  className={cn(
+                    "inline-flex items-center gap-1 break-all text-tf-body hover:underline",
+                    caducado ? "text-muted-foreground" : "text-primary",
+                  )}
                 >
                   {doc.filename ?? TIPO_LABELS[doc.tipo] ?? doc.tipo}
-                  <ExternalLink className="h-3 w-3 shrink-0" />
+                  <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
                 </a>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-tf-meta text-muted-foreground">
                   {nuevos.has(doc.id) && (
-                    <span className="mr-1.5 rounded-sm bg-primary/10 px-1 py-px font-medium text-primary">
+                    <Badge variant="default" size="sm" className="mr-1.5">
                       Nuevo
-                    </span>
+                    </Badge>
                   )}
                   {TIPO_LABELS[doc.tipo] ?? doc.tipo}
                   {doc.size_bytes != null && ` · ${formatBytes(doc.size_bytes)}`}

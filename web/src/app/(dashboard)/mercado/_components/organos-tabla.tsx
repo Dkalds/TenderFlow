@@ -13,12 +13,11 @@
  * sobre el resto.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 import type { OrganoItem } from "../_hooks/use-organos-view";
 
@@ -35,104 +34,82 @@ export function OrganosTabla({
   onOrganoClick: (organo: string) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Listado Completo</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
+    <Panel>
+      <PanelTitle title="Todos los órganos" />
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-full" />
+          ))}
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Órgano</TableHead>
+              <TableHead className="w-40">Licitaciones</TableHead>
+              <TableHead className="text-right">Importe</TableHead>
+              <TableHead className="text-right">%</TableHead>
+              <TableHead>CCAA</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filas.map((item, idx) => (
+              <TableRow
+                key={idx}
+                className="cursor-pointer"
+                onClick={() => onOrganoClick(item.organo_contratacion)}
+              >
+                <TableCell className="max-w-xs">
+                  {/* El botón ya era una parada de tabulación: el
+                      `Tooltip` no añade ninguna y, a diferencia del
+                      `title`, también se abre con el foco. */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="block w-full max-w-full cursor-pointer truncate text-left transition-colors hover:text-primary"
+                        onClick={(e) => {
+                          // Sin esto el clic sube al `<tr>` y el handler corre
+                          // dos veces por pulsación.
+                          e.stopPropagation();
+                          onOrganoClick(item.organo_contratacion);
+                        }}
+                      >
+                        {item.organo_contratacion}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[22rem] text-pretty">{item.organo_contratacion}</TooltipContent>
+                  </Tooltip>
+                </TableCell>
+                <TableCell className="w-40">
+                  <div className="flex items-center gap-2">
+                    {/* Proporción sin transición: es una medida, no algo
+                        que se mueva al cambiar de ámbito. */}
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${(item.count / maxCount) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-8 shrink-0 text-right text-tf-meta">{formatNumber(item.count)}</span>
+                  </div>
+                </TableCell>
+                <TableCell numeric>{formatCurrency(item.importe)}</TableCell>
+                <TableCell numeric>{formatPercent(item.pct)}</TableCell>
+                <TableCell className="text-muted-foreground">{item.ccaa ?? EMPTY}</TableCell>
+              </TableRow>
             ))}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table className="w-full text-sm">
-              <TableHeader>
-                <TableRow className="border-b text-left">
-                  <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">
-                    Órgano
-                  </TableHead>
-                  <TableHead className="pb-2 pr-4 font-medium text-muted-foreground w-40">
-                    Licitaciones
-                  </TableHead>
-                  <TableHead className="pb-2 pr-4 font-medium text-muted-foreground text-right">
-                    Importe
-                  </TableHead>
-                  <TableHead className="pb-2 pr-4 font-medium text-muted-foreground text-right">
-                    %
-                  </TableHead>
-                  <TableHead className="pb-2 font-medium text-muted-foreground">
-                    CCAA
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filas.map((item, idx) => (
-                  <TableRow
-                    key={idx}
-                    className="border-b border-border/50 hover:bg-muted/50 cursor-pointer"
-                    onClick={() => onOrganoClick(item.organo_contratacion)}
-                  >
-                    <TableCell className="py-2 pr-4 max-w-xs">
-                      {/* El botón ya era una parada de tabulación: el
-                          `Tooltip` no añade ninguna y, a diferencia del
-                          `title`, también se abre con el foco. */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="block w-full max-w-full cursor-pointer truncate text-left"
-                            onClick={(e) => {
-                              // Sin esto el clic sube al `<tr>` y el handler corre
-                              // dos veces por pulsación.
-                              e.stopPropagation();
-                              onOrganoClick(item.organo_contratacion);
-                            }}
-                          >
-                            {item.organo_contratacion}
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-[22rem] text-pretty">{item.organo_contratacion}</TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell className="py-2 pr-4 w-40">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className="h-full bg-primary rounded-full transition-[width]"
-                            style={{ width: `${(item.count / maxCount) * 100}%` }}
-                          />
-                        </div>
-                        <span className="tabular-nums text-xs w-8 text-right shrink-0">
-                          {formatNumber(item.count)}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-2 pr-4 text-right tabular-nums">
-                      {formatCurrency(item.importe)}
-                    </TableCell>
-                    <TableCell className="py-2 pr-4 text-right tabular-nums">
-                      {formatPercent(item.pct)}
-                    </TableCell>
-                    <TableCell className="py-2">
-                      {item.ccaa ? <Badge variant="secondary">{item.ccaa}</Badge> : "-"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filas.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                      Sin resultados
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+            {filas.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                  Ningún órgano coincide con la búsqueda en el ámbito actual.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      )}
+    </Panel>
   );
 }

@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { organizationKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type PlantillaTareas = Schemas["PlantillaTareasOut"];
 export type TareaPlantilla = Schemas["TareaPlantilla"];
@@ -20,6 +21,7 @@ export function usePlantillaTareas(organizationId: number | null) {
     queryFn: () =>
       fetchWithAuth<PlantillaTareas>(`/api/v1/organizations/${organizationId}/plantilla-tareas`),
     enabled: organizationId != null,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

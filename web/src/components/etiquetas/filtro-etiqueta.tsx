@@ -12,7 +12,7 @@
  * una página y no el conjunto entero, y por eso no se cuenta ningún total a
  * partir de él (ADR-014).
  *
- * Sin etiquetas en la organización el selector no se pinta: un filtro que no
+ * Sin etiquetas en la organización el selector no aparece: un filtro que no
  * puede filtrar nada es un control inerte.
  */
 
@@ -91,7 +91,7 @@ export function FiltroEtiquetaSelect({
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
-        className={cn("h-7 w-44 text-xs", className)}
+        className={cn("h-7 w-44 text-tf-meta", className)}
         aria-label={alcance ? `Filtrar por etiqueta ${alcance}` : "Filtrar por etiqueta"}
       >
         <SelectValue />

@@ -241,6 +241,33 @@ def test_renovaciones_filtro_por_tecnologia(db):
     assert resumen_sap[0]["empresa"] == "Sap Partner SL"
 
 
+def test_renovaciones_filtro_por_tecnologia_encuentra_los_multi_tecnologia(db):
+    """«ERP,SAP» también es SAP: en el listado, en el resumen y en los totales.
+
+    ``tecnologia`` guarda un CSV. Los tres filtraban con ``l.tecnologia IN (…)``,
+    que compara la columna entera, así que el contrato multi-tecnología
+    desaparecía de la pantalla al filtrar por cualquiera de sus códigos.
+    """
+    from services.competitive.renovaciones import (
+        proximas_renovaciones,
+        resumen_renovaciones,
+        totales_renovaciones,
+    )
+
+    insert_contract(db, "R-M01", "Erp Partner SL", fecha_fin=_date(30), tecnologia="ERP,SAP")
+    insert_contract(db, "R-M02", "Sf Partner SL", fecha_fin=_date(30), tecnologia="SALESFORCE")
+    resolve(db)
+
+    listado = proximas_renovaciones(months_ahead=3, tecnologias=["SAP"])
+    assert [fila["licitacion_id"] for fila in listado] == ["R-M01"]
+
+    resumen = resumen_renovaciones(months_ahead=3, tecnologias=["SAP"])
+    assert [fila["contratos_venciendo"] for fila in resumen] == [1]
+
+    totales = totales_renovaciones(months_ahead=3, tecnologias=["SAP"])
+    assert totales["contratos_venciendo"] == 1
+
+
 def test_perfil_empresa_por_ccaa_es_por_empresa_y_completo(db):
     """perfil_empresa.por_ccaa cubre TODAS las CCAA de la empresa.
 
@@ -617,6 +644,30 @@ def test_listar_adjudicaciones_empresa_filtra_ordena_y_pagina(db):
     filtered = listar_adjudicaciones_empresa(empresa_id, q="M-LIST-A")
     assert filtered["total"] == 1
     assert filtered["items"][0]["presupuesto_licitacion"] == 100000
+
+
+def test_alcance_de_mercado_encuentra_los_multi_tecnologia(db):
+    """El filtro de tecnologías del dossier y del listado busca en el CSV.
+
+    ``alcance_sql`` comparaba ``l.tecnologia IN (…)``: filtrar por SAP perdía
+    las adjudicaciones de expedientes «ERP,SAP».
+    """
+    from db.database import connect_read
+    from services.competitive.mercado import listar_adjudicaciones_empresa
+
+    insert_contract(db, "M-TEC-MULTI", "Tecno Multi SL", nif="B12340030", tecnologia="ERP,SAP")
+    insert_contract(db, "M-TEC-SF", "Tecno Multi SL", nif="B12340030", tecnologia="SALESFORCE")
+    resolve(db)
+    with connect_read() as c:
+        empresa_id = int(
+            c.execute(
+                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340030'"
+            ).fetchone()[0]
+        )
+
+    page = listar_adjudicaciones_empresa(empresa_id, tecnologias=["SAP"])
+    assert page["total"] == 1
+    assert [item["licitacion_id"] for item in page["items"]] == ["M-TEC-MULTI"]
 
 
 def test_hhi_monopolio_es_10000(db):

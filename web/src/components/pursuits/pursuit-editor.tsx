@@ -1,12 +1,14 @@
 "use client";
 
 import type * as React from "react";
-import { Loader2, Save } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useForm, useWatch, type PathValue } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type * as z from "zod/mini";
 import { toast } from "sonner";
+import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
+import { AYUDA_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +19,7 @@ import { MOTIVOS_PERDIDA, errorDeCierre, esMotivoPerdida, pideCodificar } from "
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { oportunidad } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 
 /** Valores del formulario: claves de `PursuitUpdate`, del esquema de S7.2. */
@@ -118,7 +121,7 @@ function PursuitEditorForm({
       });
       toast.success("Oportunidad actualizada");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar la oportunidad");
+      toast.error("No se pudo guardar la oportunidad", { description: getErrorMessage(error, "accion") });
     }
   };
 
@@ -129,15 +132,15 @@ function PursuitEditorForm({
       shouldValidate: formulario.formState.isSubmitted,
     });
   const inputId = (name: string) => `pursuit-${pursuit.id}-${name}`;
-  const etiqueta = "block space-y-1.5 text-tf-meta font-medium";
-  const ayuda = "block text-tf-micro font-normal text-muted-foreground";
+  const etiqueta = cn(ETIQUETA_CAMPO, "space-y-1.5");
+  const ayuda = cn(AYUDA_CAMPO, "block font-normal");
+  // El rótulo de un grupo de campos: el de `SectionTitle`, en un `<legend>`.
+  const grupo = "text-tf-meta font-semibold text-muted-foreground";
 
   return (
     <form onSubmit={save} noValidate className="flex flex-col gap-5">
       <fieldset>
-        <legend className="text-muted-foreground mb-1 font-mono text-tf-micro font-semibold tracking-wider uppercase">
-          Decisión y responsable
-        </legend>
+        <legend className={cn(grupo, "mb-1")}>Decisión y responsable</legend>
         <p className={cn(ayuda, "mb-3")}>
           La fase se cambia desde «Para salir de…», arriba. Aquí se corrigen los datos de la
           oportunidad.
@@ -204,9 +207,7 @@ function PursuitEditorForm({
       </fieldset>
 
       <fieldset>
-        <legend className="text-muted-foreground mb-3 font-mono text-tf-micro font-semibold tracking-wider uppercase">
-          {cerrada ? "Oferta y cierre" : "Oferta"}
-        </legend>
+        <legend className={cn(grupo, "mb-3")}>{cerrada ? "Oferta y cierre" : "Oferta"}</legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className={etiqueta} htmlFor={inputId("offer-price")}>
             Oferta prevista (€)
@@ -215,7 +216,7 @@ function PursuitEditorForm({
               inputMode="decimal"
               value={form.offer_price_eur}
               onChange={(event) => set("offer_price_eur", event.target.value)}
-              placeholder="Ej. 125000"
+              placeholder="p. ej. 125000"
               {...ariaCampo(inputId("offer-price"), errores.offer_price_eur?.message)}
             />
             <CampoError enLabel campoId={inputId("offer-price")} mensaje={errores.offer_price_eur?.message} />
@@ -247,13 +248,10 @@ function PursuitEditorForm({
           {cerrada && form.outcome === "lost" ? (
             <div className={cn(etiqueta, "sm:col-span-2")}>
               {pideCodificar(pursuit) && !form.outcome_reason_code ? (
-                <p
-                  role="status"
-                  className="border-border/70 bg-muted/40 text-muted-foreground rounded-md border px-3 py-2 text-tf-micro font-normal"
-                >
+                <Aviso tone="info" className="font-normal">
                   Este cierre es anterior a los motivos codificados y cuenta como «sin codificar» en el
                   reparto de pérdidas. Elige el motivo para completarlo.
-                </p>
+                </Aviso>
               ) : null}
               <label htmlFor={inputId("outcome-reason-code")}>Motivo de la pérdida</label>
               <Select
@@ -281,7 +279,7 @@ function PursuitEditorForm({
                   "Obligatorio al cerrar como perdida: es lo que permite saber por qué se pierde."}
               </span>
               {intentado && errorMotivo ? (
-                <span role="alert" className="text-destructive block text-tf-micro font-normal">
+                <span role="alert" className="text-destructive block text-tf-meta font-normal">
                   {errorMotivo}
                 </span>
               ) : null}
@@ -309,7 +307,8 @@ function PursuitEditorForm({
       <div className={cn("flex items-center justify-end gap-3", sucio && "sticky bottom-4 z-10")}>
         {!sucio ? <p className="text-muted-foreground text-tf-micro">Sin cambios que guardar.</p> : null}
         <Button type="submit" disabled={!sucio || update.isPending}>
-          {update.isPending ? <Loader2 className="animate-spin" /> : <Save />}Guardar cambios
+          {update.isPending && <Loader2 className="animate-spin" aria-hidden="true" />}
+          Guardar cambios
         </Button>
       </div>
     </form>

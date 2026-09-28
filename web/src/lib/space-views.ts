@@ -117,7 +117,7 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
   // dos entradas montan, igual que hicieron las seis de Ops.
   ajustes: [
     { key: "sesiones", label: "Sesiones" },
-    { key: "claves", label: "API keys" },
+    { key: "claves", label: "Claves de API" },
     { key: "notificaciones", label: "Notificaciones" },
     { key: "cuenta", label: "Datos y cuenta", from: "mi-cuenta" },
   ],

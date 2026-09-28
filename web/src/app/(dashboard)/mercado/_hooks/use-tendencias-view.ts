@@ -17,6 +17,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import type { Schemas, TrendPoint } from "@/lib/api-types";
 
 import {
@@ -129,10 +130,16 @@ export function computeYoY(series: TrendPoint[], field: "count" | "importe"): nu
 export function useTendenciasView() {
   const [forecastMetric, setForecastMetric] = useState<ForecastMetric>("count");
 
-  const { data: trends, isLoading: trendsLoading, error: trendsError } = useFilteredQuery<TrendsResponse>(
+  const {
+    data: trends,
+    isLoading: trendsLoading,
+    error: trendsError,
+    refetch: refetchTrends,
+  } = useFilteredQuery<TrendsResponse>(
     ["analytics", "trends"],
     "/api/v1/analytics/trends?group_by=month",
-    { staleTime: 5 * 60_000 },
+    // El error lo pinta la vista en línea (PanelError): sin toast además.
+    { staleTime: 5 * 60_000, meta: META_ERROR_EN_LINEA },
   );
 
   const { data: forecast, isLoading: forecastLoading } = useFilteredQuery<ForecastResponse>(
@@ -193,5 +200,7 @@ export function useTendenciasView() {
     setForecastMetric,
     isLoading,
     error,
+    /** El «Reintentar» del error. */
+    refetch: () => void refetchTrends(),
   };
 }

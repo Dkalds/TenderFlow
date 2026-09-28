@@ -124,7 +124,7 @@ describe("QueueItemCard — cola por desacuerdo", () => {
     pintar({ item: { ...ITEM, confidence: 0.5, uncertainty: 0, sin_confianza: true } });
 
     expect(screen.queryByText(/Confianza SAP/)).toBeNull();
-    expect(screen.getByText("Sin predicción del modelo disponible.")).toBeInTheDocument();
+    expect(screen.getByText("Sin predicción del modelo para esta licitación.")).toBeInTheDocument();
   });
 
   it("con ml_proba enseña la confianza del modelo", () => {

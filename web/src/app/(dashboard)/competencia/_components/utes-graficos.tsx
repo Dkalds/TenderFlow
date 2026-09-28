@@ -24,10 +24,8 @@ import {
 } from "recharts";
 
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
-import { CHART_SERIES } from "@/lib/chart-colors";
+import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
+import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
 
 import type {
@@ -35,6 +33,8 @@ import type {
   EvolucionEntry,
   TopMiembro,
 } from "../_hooks/utes-types";
+
+const VACIO = "No hay UTE adjudicatarias en el ámbito actual. Amplía las fechas o quita filtros.";
 
 /** Participaciones por miembro y evolución temporal del fenómeno UTE. */
 export function UtesGraficosMiembros({
@@ -47,15 +47,13 @@ export function UtesGraficosMiembros({
   isLoading: boolean;
 }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Top Miembros de UTEs</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[400px] w-full" />
-          ) : topMiembros && topMiembros.length > 0 ? (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Panel>
+        <PanelTitle title="Miembros con más UTE" />
+        {isLoading ? (
+          <PanelLoading height={400} />
+        ) : topMiembros && topMiembros.length > 0 ? (
+          <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={Math.max(300, topMiembros.length * 32)}>
               <BarChart accessibilityLayer data={topMiembros} layout="vertical" margin={{ left: 180 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -68,23 +66,21 @@ export function UtesGraficosMiembros({
                   tickFormatter={(v: string) => truncate(v, 30)}
                 />
                 <Tooltip formatter={(v) => formatNumber(v as number)} />
-                <Bar dataKey="count" fill="hsl(280, 65%, 60%)" radius={[0, 4, 4, 0]} name="Participaciones" />
+                <Bar dataKey="count" fill={getSeriesColor(4)} radius={[0, 4, 4, 0]} name="Participaciones" />
               </BarChart>
             </ResponsiveContainer>
-          ) : (
-            <EmptyState />
-          )}
-        </CardContent>
-      </Card>
+          </ChartErrorBoundary>
+        ) : (
+          <PanelEmpty title="Ninguna UTE" hint={VACIO} height={400} />
+        )}
+      </Panel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Evolución Temporal de UTEs</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[400px] w-full" />
-          ) : evolucion && evolucion.length > 0 ? (
+      <Panel>
+        <PanelTitle title="Evolución de las UTE" />
+        {isLoading ? (
+          <PanelLoading height={400} />
+        ) : evolucion && evolucion.length > 0 ? (
+          <ChartErrorBoundary>
             <ResponsiveContainer width="100%" height={400}>
               <ComposedChart accessibilityLayer data={evolucion} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -102,23 +98,23 @@ export function UtesGraficosMiembros({
                   }
                 />
                 <Legend />
-                <Bar yAxisId="left" dataKey="count" fill="hsl(221, 83%, 53%)" radius={[4, 4, 0, 0]} name="Contratos" />
+                <Bar yAxisId="left" dataKey="count" fill={getSeriesColor(1)} radius={[4, 4, 0, 0]} name="Contratos" />
                 <Line
                   yAxisId="right"
                   type="monotone"
                   dataKey="importe"
-                  stroke="hsl(30, 80%, 55%)"
+                  stroke={getSeriesColor(0)}
                   strokeWidth={2}
                   dot={{ r: 3 }}
                   name="Importe"
                 />
               </ComposedChart>
             </ResponsiveContainer>
-          ) : (
-            <EmptyState />
-          )}
-        </CardContent>
-      </Card>
+          </ChartErrorBoundary>
+        ) : (
+          <PanelEmpty title="Sin evolución" hint={VACIO} height={400} />
+        )}
+      </Panel>
     </div>
   );
 }
@@ -134,62 +130,54 @@ export function UtesGraficosDistribucion({
   isLoading: boolean;
 }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Distribución de Participaciones</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[300px] w-full" />
-          ) : memberDistribution.length > 0 ? (
-            <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart accessibilityLayer data={memberDistribution} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="rango" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => [formatNumber(v as number), "Empresas"]} />
-                  <Bar dataKey="miembros" fill={CHART_SERIES[0]} radius={[4, 4, 0, 0]} name="Empresas" />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartErrorBoundary>
-          ) : (
-            <EmptyState />
-          )}
-        </CardContent>
-      </Card>
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Panel>
+        <PanelTitle title="Empresas por número de participaciones" />
+        {isLoading ? (
+          <PanelLoading height={300} />
+        ) : memberDistribution.length > 0 ? (
+          <ChartErrorBoundary>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart accessibilityLayer data={memberDistribution} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="rango" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v) => [formatNumber(v as number), "Empresas"]} />
+                <Bar dataKey="miembros" fill={CHART_SERIES[0]} radius={[4, 4, 0, 0]} name="Empresas" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartErrorBoundary>
+        ) : (
+          <PanelEmpty title="Sin participaciones" hint={VACIO} height={300} />
+        )}
+      </Panel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Top 15 Miembros por Importe</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[400px] w-full" />
-          ) : topMiembrosByImporte.length > 0 ? (
-            <ChartErrorBoundary>
-              <ResponsiveContainer width="100%" height={Math.max(300, topMiembrosByImporte.length * 28)}>
-                <BarChart accessibilityLayer data={topMiembrosByImporte} layout="vertical" margin={{ left: 180 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
-                  <YAxis
-                    dataKey="nombre"
-                    type="category"
-                    tick={{ fontSize: 11 }}
-                    width={170}
-                    tickFormatter={(v: string) => truncate(v, 30)}
-                  />
-                  <Tooltip formatter={(v) => [formatCurrency(v as number), "Importe"]} />
-                  <Bar dataKey="importe" fill={CHART_SERIES[1]} radius={[0, 4, 4, 0]} name="Importe" />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartErrorBoundary>
-          ) : (
-            <EmptyState />
-          )}
-        </CardContent>
-      </Card>
+      <Panel>
+        <PanelTitle title="Los 15 miembros con más importe" />
+        {isLoading ? (
+          <PanelLoading height={400} />
+        ) : topMiembrosByImporte.length > 0 ? (
+          <ChartErrorBoundary>
+            <ResponsiveContainer width="100%" height={Math.max(300, topMiembrosByImporte.length * 28)}>
+              <BarChart accessibilityLayer data={topMiembrosByImporte} layout="vertical" margin={{ left: 180 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
+                <YAxis
+                  dataKey="nombre"
+                  type="category"
+                  tick={{ fontSize: 11 }}
+                  width={170}
+                  tickFormatter={(v: string) => truncate(v, 30)}
+                />
+                <Tooltip formatter={(v) => [formatCurrency(v as number), "Importe"]} />
+                <Bar dataKey="importe" fill={CHART_SERIES[1]} radius={[0, 4, 4, 0]} name="Importe" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartErrorBoundary>
+        ) : (
+          <PanelEmpty title="Sin importes" hint={VACIO} height={400} />
+        )}
+      </Panel>
     </div>
   );
 }

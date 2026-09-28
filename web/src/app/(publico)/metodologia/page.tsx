@@ -17,8 +17,8 @@ const SECCIONES: SeccionEvidencia[] = [
     puntos: [
       "Bandas: Caliente desde 75, Atractiva desde 50, Tibia desde 25 y Descarte por debajo.",
       "El importe se normaliza entre los percentiles 10 y 90 del mercado abierto puntuable.",
-      "La competencia usa ofertas históricas por segmento CPV de los últimos 24 meses, con fallback declarado.",
-      "Los descartes se guardan antes de ordenar y cortar el top, por lo que no ocupan una plaza invisible.",
+      "La competencia usa ofertas históricas por segmento CPV de los últimos 24 meses; sin histórico en el segmento se usa la media global, y queda declarado.",
+      "Los descartes se apartan antes de ordenar y recortar la lista, así que no ocupan una plaza invisible.",
     ],
   },
   {
@@ -47,7 +47,7 @@ const SECCIONES: SeccionEvidencia[] = [
   {
     titulo: "Trazabilidad y degradación",
     texto: [
-      "El backend informa qué señales estaban disponibles al calcular una respuesta. Si competencia, margen, señal técnica o percentiles no aportan el nivel esperado, el estado viaja con el resultado para que la interfaz pueda declararlo.",
+      "Cada resultado dice qué señales estaban disponibles al calcularlo. Si competencia, margen, señal técnica o percentiles no aportan el nivel esperado, la pantalla lo avisa junto al resultado.",
     ],
     puntos: [
       "Los scores exponen su desglose por dimensión.",

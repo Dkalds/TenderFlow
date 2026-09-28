@@ -1,9 +1,7 @@
 "use client";
 
 import { Component, type ReactNode } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { PanelError } from "@/components/console/panel";
 
 interface Props {
   children: ReactNode;
@@ -16,8 +14,10 @@ interface State {
 }
 
 /**
- * Error boundary specifically designed for chart components.
- * Shows a compact retry UI that matches the chart container size.
+ * Frontera de error de los gráficos: si un gráfico revienta al dibujarse, la
+ * página sigue y en su sitio queda el mismo `PanelError` que el resto de la
+ * consola (mensaje humano, «Reintentar» y el detalle técnico plegado), no una
+ * caja propia con otro dibujo.
  */
 export class ChartErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -32,24 +32,13 @@ export class ChartErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div
-          className={cn(
-            "flex flex-col items-center justify-center gap-3 rounded-md border border-dashed border-destructive/30 bg-destructive/5 p-6",
-            this.props.className,
-          )}
-          role="alert"
-        >
-          <AlertTriangle className="h-8 w-8 text-destructive/60" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">{"No se pudo cargar el gráfico."}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => this.setState({ hasError: false, error: null })}
-          >
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-            {"Reintentar"}
-          </Button>
-        </div>
+        <PanelError
+          title="No se pudo mostrar el gráfico"
+          message="Algo falló al dibujarlo. Vuelve a intentarlo."
+          detail={this.state.error?.message}
+          onRetry={() => this.setState({ hasError: false, error: null })}
+          className={this.props.className}
+        />
       );
     }
     return this.props.children;

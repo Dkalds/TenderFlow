@@ -11,6 +11,7 @@
  * sigue visible y marcada.
  */
 
+import { PanelError } from "@/components/console/panel";
 import { ExportPopover } from "@/components/export-popover";
 
 import { useProyectosModulosView } from "../_hooks/use-proyectos-modulos-view";
@@ -28,7 +29,7 @@ export default function ProyectosModulosView() {
     <VistaExperimental
       flag="mercado_proyectos_modulos"
       vista="proyectos"
-      descripcion="Desglose por tipo de proyecto y módulo SAP."
+      descripcion="Qué se licita en SAP: tipos de proyecto y módulos."
     >
       <ProyectosModulosContenido />
     </VistaExperimental>
@@ -48,34 +49,23 @@ function ProyectosModulosContenido() {
     tipoEstadoEstados,
     tipoEstadoData,
     sortedModulosAvg,
+    modSortKey,
+    modSortDir,
     toggleModSort,
     isLoading,
     error,
+    refetch,
   } = useProyectosModulosView();
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center" role="alert">
-        <p className="text-destructive">Error: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudieron cargar los proyectos y módulos" error={error} onRetry={refetch} />;
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="sr-only">
-            Proyectos &amp; Módulos
-          </h1>
-          <p className="text-muted-foreground">
-            Desglose por tipo de proyecto y módulo SAP.
-          </p>
-        </div>
-        <ExportPopover
-          endpoint="/api/v1/exports/download"
-          extraParams={{ section: "proyectos-modulos" }}
-        />
+    <div className="space-y-4">
+      <div className="flex items-center justify-end">
+        <h1 className="sr-only">Proyectos y módulos</h1>
+        <ExportPopover extraParams={{ section: "proyectos-modulos" }} label="Exportar módulos" />
       </div>
 
       <ProyectosKpisSap data={data} ticketS4Hana={ticketS4Hana} isLoading={isLoading} />
@@ -100,6 +90,8 @@ function ProyectosModulosContenido() {
       <ProyectosModulosTabla
         filas={sortedModulosAvg}
         isLoading={isLoading}
+        sortKey={modSortKey}
+        sortDir={modSortDir}
         onSort={toggleModSort}
       />
 

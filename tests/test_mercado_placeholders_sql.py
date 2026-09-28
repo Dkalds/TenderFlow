@@ -60,7 +60,12 @@ _FRAGMENTO_RENDERIZADO = {
     "fecha_hasta": "a.fecha_adjudicacion <= '2026-12-31'",
     "cpv_prefix": "l.cpv LIKE '7220%'",
     "ccaas": "l.ccaa IN ('Madrid', 'Cataluña')",
-    "tecnologias": "l.tecnologia IN ('SAP', 'Cloud')",
+    # Solapamiento con el CSV de la fila, no `IN`: «ERP,SAP» también es SAP.
+    "tecnologias": (
+        "(l.tecnologia IS NOT NULL AND "
+        "string_to_array(replace(COALESCE(l.tecnologia, ''), ' ', ''), ',') "
+        "&& ARRAY['SAP','Cloud']::text[])"
+    ),
     "importe_min": "l.importe >= 1000.0",
 }
 

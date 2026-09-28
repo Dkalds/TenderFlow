@@ -11,8 +11,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithAuth } from "@/lib/api-client";
+import type { FiltrosCorpus } from "@/lib/api-types";
 import { registrarEvento } from "@/lib/analytics";
 import { useFilters } from "@/lib/filters";
+import { formatDate } from "@/lib/utils";
 import { useAskModels, useChat, type UseChatResult } from "@/hooks/use-ask";
 import {
   DEFAULT_CONFIG,
@@ -38,7 +40,8 @@ export interface UseInvestigadorResult {
   query: string;
   setQuery: (query: string) => void;
   loading: boolean;
-  error: string | null;
+  /** Lo que lanzó la búsqueda, tal cual: `PanelError` saca de ahí el mensaje humano y el detalle técnico. */
+  error: unknown;
   searchResults: SearchResult[] | null;
   /** Fuente REAL de la última búsqueda, tal cual la devuelve el backend. */
   searchSource: string | null;
@@ -58,7 +61,7 @@ export function useInvestigador(): UseInvestigadorResult {
   const [mode, setMode] = useState<Mode>("search");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searchSource, setSearchSource] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
@@ -76,9 +79,9 @@ export function useInvestigador(): UseInvestigadorResult {
   const activeSearchFilters = useMemo(() => {
     if (!config.useGlobalFilters) return [] as string[];
     const chips = [...globalFilters.ccaas, ...globalFilters.tecnologias];
-    if (globalFilters.rango.desde || globalFilters.rango.hasta) {
-      chips.push(`${globalFilters.rango.desde ?? "…"} → ${globalFilters.rango.hasta ?? "…"}`);
-    }
+    const { desde, hasta } = globalFilters.rango;
+    // Fechas en la forma de la casa («1 jul 2026»), no en ISO: el chip se lee.
+    if (desde || hasta) chips.push(`${desde ? formatDate(desde) : "…"} → ${hasta ? formatDate(hasta) : "…"}`);
     return chips;
   }, [config.useGlobalFilters, globalFilters]);
 
@@ -113,7 +116,7 @@ export function useInvestigador(): UseInvestigadorResult {
   }, []);
 
   const runSearch = useCallback(
-    async (q: string, filterExtras: Record<string, unknown>) => {
+    async (q: string, filterExtras: FiltrosCorpus) => {
       abortRef.current?.abort();
       const abort = new AbortController();
       abortRef.current = abort;
@@ -150,7 +153,7 @@ export function useInvestigador(): UseInvestigadorResult {
         });
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Error desconocido");
+        setError(err);
       } finally {
         setLoading(false);
       }
@@ -167,8 +170,9 @@ export function useInvestigador(): UseInvestigadorResult {
       // Filtros globales → se mandan TODOS los valores (no solo el primero) y el
       // backend restringe los resultados (allowed_ids). Antes se enviaba
       // ccaas[0]/tecnologias[0] a un endpoint inexistente (/api/v1/search): falsa
-      // sensacion de filtrado y, de hecho, busqueda rota (ADR-014).
-      const filterExtras: Record<string, unknown> = {};
+      // sensacion de filtrado y, de hecho, busqueda rota (ADR-014). El mismo
+      // objeto va a los dos modos: `FiltrosCorpus` lo ata a los dos contratos.
+      const filterExtras: FiltrosCorpus = {};
       if (config.useGlobalFilters) {
         if (globalFilters.ccaas.length > 0) filterExtras.ccaa = globalFilters.ccaas;
         if (globalFilters.tecnologias.length > 0) filterExtras.tecnologia = globalFilters.tecnologias;
@@ -193,7 +197,7 @@ export function useInvestigador(): UseInvestigadorResult {
   );
 
   const showEmpty =
-    !loading && !error && !searchResults && chat.messages.length === 0 && !chat.loading && !chat.error;
+    !loading && error == null && !searchResults && chat.messages.length === 0 && !chat.loading && !chat.error;
 
   return {
     mode,

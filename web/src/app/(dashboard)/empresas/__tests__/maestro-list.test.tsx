@@ -9,6 +9,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ApiError } from "@/lib/api-client";
 
 // La estrella es `SeguirBoton` (ADR-031 §C), que lee y escribe por
 // `useSeguimiento`. Aquí se prueba cómo lo monta la fila, no el seguimiento:
@@ -83,7 +84,7 @@ function renderLista(overrides: Partial<React.ComponentProps<typeof MaestroList>
     onSelect: vi.fn(),
     onWatchToggled: vi.fn(),
     loading: false,
-    error: false,
+    error: null,
     onRetry: vi.fn(),
     ...overrides,
   };
@@ -130,8 +131,16 @@ describe("MaestroList", () => {
     const { props } = renderLista();
     fireEvent.click(screen.getByRole("button", { name: "Ordenar por NIF" }));
     expect(props.onSort).toHaveBeenCalledWith("nif");
-    fireEvent.click(screen.getByRole("button", { name: "Ordenar por Importe" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ordenar por Importe (orden descendente)" }));
     expect(props.onSort).toHaveBeenCalledWith("importe");
+  });
+
+  it("la cabecera activa dice su sentido en el nombre, que es lo que oye el lector", () => {
+    // No es una `<table>`, así que no hay `aria-sort`: sin esto, el orden
+    // activo solo lo contaba la flecha, que es un icono oculto.
+    renderLista({ sortKey: "nif", sortDir: "asc" });
+    expect(screen.getByRole("button", { name: "Ordenar por NIF (orden ascendente)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ordenar por Importe" })).toBeInTheDocument();
   });
 
   it("la columna de la estrella se llama «Vigilar», que es lo que hace", () => {
@@ -168,16 +177,23 @@ describe("MaestroList", () => {
     expect(props.onSearchChange).toHaveBeenCalledWith("");
   });
 
-  it("sin resultados propone el backfill en vez de dejar la tabla en blanco", () => {
+  it("sin resultados dice qué probar y por qué puede faltar una empresa, en vez de dejar la tabla en blanco", () => {
     renderLista({ rows: [], total: 0 });
     expect(screen.getByText("Sin resultados")).toBeInTheDocument();
-    expect(screen.getByText(/backfill del maestro/)).toBeInTheDocument();
+    expect(screen.getByText(/aún no se han incorporado al maestro/)).toBeInTheDocument();
   });
 
-  it("el error del maestro es del bloque, con su código y su reintento", () => {
-    const { props } = renderLista({ error: true, errorDetail: "500 · /api/v1/empresas" });
-    expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el maestro");
-    expect(screen.getByText("500 · /api/v1/empresas")).toBeInTheDocument();
+  it("el error del maestro es del bloque: mensaje humano, el detalle técnico plegado y su reintento", () => {
+    const { props } = renderLista({
+      error: new ApiError(500, "Internal Server Error", undefined, "GET /api/v1/empresas"),
+    });
+    const alerta = screen.getByRole("alert");
+    expect(alerta).toHaveTextContent("No se pudo cargar el maestro");
+    expect(alerta).toHaveTextContent("Error del servidor. Vuelve a intentarlo en unos segundos.");
+    // El código y la ruta no van en el texto a la vista: van dentro del
+    // «Detalle técnico», plegado, para soporte.
+    const detalle = screen.getByText(/500 · GET \/api\/v1\/empresas/);
+    expect(detalle.closest("details")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Reintentar/ }));
     expect(props.onRetry).toHaveBeenCalled();
     // Y no pinta la tabla debajo del error.

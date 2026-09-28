@@ -57,7 +57,13 @@ class TestHybridSearchDelegado:
         args, kwargs = mock_hybrid.call_args
         assert args[0] == "pregunta"
         assert args[1] == [0.1, 0.2]
-        assert kwargs == {"ccaa": "Madrid", "tecnologia": "SAP", "limit": 5}
+        assert kwargs == {
+            "ccaa": "Madrid",
+            "tecnologia": "SAP",
+            "fecha_desde": None,
+            "fecha_hasta": None,
+            "limit": 5,
+        }
 
     def test_error_de_conexion_degrada_a_none(self):
         """Si abrir la conexión falla, ``search_for_ask`` debe poder caer a FTS."""

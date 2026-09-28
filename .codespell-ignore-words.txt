@@ -41,6 +41,7 @@ controle
 controles
 convencion
 convencional
+cristal
 cursos
 delate
 dependant
@@ -140,6 +141,7 @@ sme
 smove
 sucesor
 suport
+suscribe
 te
 tecnologies
 templat

@@ -217,7 +217,9 @@ describe("triggerDownload", () => {
     expect(anclas).toHaveLength(0);
     expect(trackMock).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledTimes(1);
-    expect(toastErrorMock.mock.calls[0][1]?.description).toContain("422");
+    // El motivo en castellano, sin el código: un «respondió 422» no dice qué hacer.
+    expect(toastErrorMock.mock.calls[0][1]?.description).toContain("filtro");
+    expect(toastErrorMock.mock.calls[0][1]?.description).not.toContain("422");
   });
 
   it("dice que la sesión caducó ante un 401", async () => {

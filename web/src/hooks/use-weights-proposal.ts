@@ -19,6 +19,7 @@ import { apiGet, apiMutate } from "@/lib/api-client";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { Schemas } from "@/lib/api-types";
 import { perfilKeys, pursuitKeys, radarKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type PesosPropuestos = Schemas["PesosPropuestos"];
 export type PesoPropuestoDimension = Schemas["PesoPropuestoDimension"];
@@ -34,6 +35,7 @@ export function useWeightsProposal() {
       }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 60_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

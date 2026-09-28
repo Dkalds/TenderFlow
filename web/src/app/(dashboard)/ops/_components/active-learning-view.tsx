@@ -13,8 +13,7 @@
  * de la página y nada más.
  */
 
-import { Info } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Aviso } from "@/components/console/panel";
 import { AdminGuard } from "@/components/admin-guard";
 import { useActiveLearning } from "../_hooks/use-active-learning";
 import { LabelingStats } from "./active-learning/labeling-stats";
@@ -35,28 +34,20 @@ function ActiveLearningContent() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="sr-only">Active Learning</h1>
-        <p className="text-muted-foreground">
+        <h1 className="sr-only">Active learning</h1>
+        <p className="text-tf-meta text-muted-foreground">
           Revisión humana de si cada licitación es TI y de qué familia.
         </p>
       </div>
 
-      {/* Explanation */}
-      <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-        <CardContent className="pt-4 flex items-start gap-2 text-sm">
-          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
-          <span>
-            Por defecto la cola pone delante las licitaciones en las que
-            reglas, LLM y modelo no coinciden (desacuerdo), después las
-            etiquetas heredadas que decían «es SAP», con el motivo y la
-            propuesta del LLM, que se acepta de un clic; también puedes
-            muestrear por incertidumbre del modelo o al azar. Para etiquetar a
-            mano, marca familias y fabricantes en la lista de cada tarjeta,
-            que arranca con la propuesta del LLM: la primera que marques es la
-            principal.
-          </span>
-        </CardContent>
-      </Card>
+      <Aviso tone="info" role="note">
+        Por defecto la cola pone delante las licitaciones en las que reglas, LLM y modelo no coinciden
+        (desacuerdo) y después las etiquetas heredadas que decían «es SAP», cada una con su motivo y la propuesta
+        del LLM, que se acepta de un clic; también puedes muestrear por incertidumbre del modelo o al azar. Para
+        etiquetar a mano, marca familias y fabricantes en la lista de la tarjeta, que arranca con la propuesta del
+        LLM: la primera que marques es la principal. En la predicción del modelo, pulsar una tecnología la hace
+        principal; con Mayús pulsada, la añade o la quita.
+      </Aviso>
 
       <LabelingStats
         stats={estado.stats}

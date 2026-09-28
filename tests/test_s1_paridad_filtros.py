@@ -222,6 +222,48 @@ def test_el_export_y_la_agenda_emiten_el_mismo_fragmento(monkeypatch: pytest.Mon
     assert params == ["SAP"]
 
 
+def test_renovaciones_filtra_la_tecnologia_igual_en_el_listado_y_los_totales(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """El listado de Renovaciones y sus dos agregados emiten el mismo fragmento.
+
+    Los tres comparaban ``l.tecnologia IN (…)``: filtrar por SAP escondía los
+    contratos «ERP,SAP» del listado, del resumen por empresa y de los totales
+    del panel. Los ``params`` no cambian; los códigos caen dentro del ``ARRAY``.
+    """
+    import db.repositories.renovaciones as repo_mod
+    import services.competitive.renovaciones as svc_mod
+
+    capturado: list[tuple[str, list[Any]]] = []
+
+    class _Conexion:
+        def execute(self, sql: str, params: list[Any]) -> object:
+            capturado.append((sql, list(params)))
+            return object()
+
+    @contextmanager
+    def _connect_read() -> Any:
+        yield _Conexion()
+
+    for modulo in (repo_mod, svc_mod):
+        monkeypatch.setattr(modulo, "connect_read", _connect_read)
+        monkeypatch.setattr(modulo, "rows_to_dicts", lambda _cur: [])
+
+    codigos = ["SAP", "ORACLE"]
+    repo_mod.proximas_renovaciones(tecnologias=codigos)
+    svc_mod.resumen_renovaciones(tecnologias=codigos)
+    svc_mod.totales_renovaciones(tecnologias=codigos)
+
+    fragmento = tecnologia_en_csv_sql("l.tecnologia", n=len(codigos))
+    assert len(capturado) == 3
+    for sql, params in capturado:
+        assert fragmento in sql
+        assert "l.tecnologia IN" not in sql
+        # Tantos `%s` antes del fragmento como parámetros antes de los códigos.
+        primero = sql[: sql.index(fragmento)].count("%s")
+        assert params[primero : primero + len(codigos)] == codigos
+
+
 # ── Con Postgres: el mismo recuento por los dos caminos ───────────────────
 
 # (id, titulo, descripcion, organo, tecnologia). Todas llevan tecnología salvo

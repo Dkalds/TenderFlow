@@ -4,15 +4,17 @@ import * as React from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { LicitacionAI } from "@/components/licitacion-ai";
 import { DocumentosBlock } from "@/components/documentos-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { ROTULO_DATO, SectionTitle } from "@/components/console/panel";
+import { cn, EMPTY, formatCurrency, formatDate } from "@/lib/utils";
 import { fuenteLinkLabel } from "@/lib/fuentes";
-import { ExternalLink, Link2, MessageSquare } from "lucide-react";
+import { ExternalLink, Link2, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
 import { riesgoLabel } from "@/lib/riesgos";
 
@@ -52,7 +54,7 @@ interface DetailPanelProps {
 }
 
 /** Labels presentacionales para las keys del desglose de scoring.
- *  Cualquier key no mapeada muestra la key raw (no rompe si el backend añade dimensiones).
+ *  Cualquier key no mapeada muestra la key raw (no rompe si la API añade dimensiones).
  */
 const DESGLOSE_LABELS: Record<string, string> = {
   importe: "Importe",
@@ -64,20 +66,11 @@ const DESGLOSE_LABELS: Record<string, string> = {
   riesgo: "Riesgo",
 };
 
-const ESTADO_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  Adjudicada: "default",
-  Resuelta: "default",
-  "En plazo": "secondary",
-  Evaluación: "secondary",
-  Anulada: "destructive",
-  Desierta: "destructive",
-};
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <dt className="text-muted-foreground text-xs font-medium">{label}</dt>
-      <dd className="text-sm">{children ?? <span className="text-muted-foreground">-</span>}</dd>
+      <dt className={ROTULO_DATO}>{label}</dt>
+      <dd className="text-tf-body">{children ?? <span className="text-muted-foreground">{EMPTY}</span>}</dd>
     </div>
   );
 }
@@ -100,29 +93,33 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="right" className={cn("w-full overflow-y-auto sm:max-w-lg", className)}>
         <SheetHeader className="mb-6">
-          <SheetTitle className="text-base leading-snug">{l.titulo ?? l.id_externo}</SheetTitle>
-          <SheetDescription>{l.id_externo}</SheetDescription>
+          <SheetTitle className="font-display text-tf-lede font-semibold text-pretty">
+            {l.titulo ?? l.id_externo}
+          </SheetTitle>
+          <SheetDescription className="font-mono text-tf-meta">{l.id_externo}</SheetDescription>
         </SheetHeader>
 
         {/* Estado + importe */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
-          {l.estado && <Badge variant={ESTADO_VARIANTS[l.estado] ?? "outline"}>{l.estado}</Badge>}
+          {/* El mismo chip de estado que el inspector de Detalle. */}
+          {l.estado && <StatusBadge value={l.estado} kind="estado" />}
           <RecurridoBadge licitacionId={l.id_externo} />
-          {l.importe != null && <span className="text-lg font-semibold">{formatCurrency(l.importe)}</span>}
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={handleCopyLink}>
-            <Link2 className="h-3.5 w-3.5" />
+          {l.importe != null && (
+            <span className="tf-tnum text-tf-title font-semibold leading-none">{formatCurrency(l.importe)}</span>
+          )}
+          <Button variant="outline" size="sm" onClick={handleCopyLink}>
+            <Link2 aria-hidden="true" />
             Copiar enlace
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5"
             onClick={() => {
               setAskSignal((k) => k + 1);
               document.getElementById("licitacion-ai")?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           >
-            <MessageSquare className="h-3.5 w-3.5" />
+            <MessageSquareText aria-hidden="true" />
             Preguntar a la IA
           </Button>
         </div>
@@ -133,7 +130,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
         {/* Score section */}
         {l.score != null && (
           <div className="mb-6 space-y-2">
-            <h3 className="text-sm font-medium">Puntuación</h3>
+            <SectionTitle as="h3">Puntuación</SectionTitle>
             <div className="flex items-center gap-3">
               <div
                 role="progressbar"
@@ -143,17 +140,14 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
                 aria-label="Puntuación"
                 className="bg-muted h-2 flex-1 overflow-hidden rounded-full"
               >
-                <div
-                  className="bg-primary h-full rounded-full transition-[width]"
-                  style={{ width: `${Math.min(100, l.score)}%` }}
-                />
+                <div className="bg-primary h-full rounded-full" style={{ width: `${Math.min(100, l.score)}%` }} />
               </div>
-              <span className="text-sm font-medium">{l.score.toFixed(1)}</span>
+              <span className="tf-tnum text-tf-body font-medium">{l.score.toFixed(1)}</span>
             </div>
             {l.score_desglose && (
               <div className="space-y-1 pl-1">
                 {Object.entries(l.score_desglose).map(([dim, val]) => (
-                  <div key={dim} className="flex items-center gap-2 text-xs">
+                  <div key={dim} className="flex items-center gap-2 text-tf-meta">
                     <span className="text-muted-foreground w-28 truncate">{DESGLOSE_LABELS[dim] ?? dim}</span>
                     <div
                       role="progressbar"
@@ -165,7 +159,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
                     >
                       <div className="bg-primary/60 h-full rounded-full" style={{ width: `${Math.min(100, val)}%` }} />
                     </div>
-                    <span className="w-8 text-right">{val.toFixed(1)}</span>
+                    <span className="tf-tnum w-8 text-right">{val.toFixed(1)}</span>
                   </div>
                 ))}
               </div>
@@ -176,10 +170,10 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
         {/* Risk flags */}
         {l.risk_flags && l.risk_flags.length > 0 && (
           <div className="mb-6 space-y-2">
-            <h3 className="text-sm font-medium">Alertas</h3>
+            <SectionTitle as="h3">Alertas</SectionTitle>
             <div className="flex flex-wrap gap-1.5">
               {l.risk_flags.map((flag) => (
-                <Badge key={flag} variant="destructive" className="text-xs">
+                <Badge key={flag} variant="destructive" size="sm">
                   {riesgoLabel(flag)}
                 </Badge>
               ))}
@@ -192,7 +186,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
           <Field label="Órgano de contratación">{l.organo_contratacion}</Field>
           <Field label="CCAA">{l.ccaa}</Field>
           <Field label="Provincia">{l.provincia}</Field>
-          <Field label="CPV">{l.cpv}</Field>
+          <Field label="CPV">{l.cpv ? <span className="font-mono">{l.cpv}</span> : null}</Field>
           <Field label="Tipo de contrato">{l.tipo_contrato}</Field>
           <Field label="Tecnología">{l.tecnologia}</Field>
           <Field label="Fecha publicación">{formatDate(l.fecha_publicacion)}</Field>
@@ -206,14 +200,14 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
         {/* Description */}
         {l.descripcion && (
           <div className="mt-6 space-y-1">
-            <h3 className="text-muted-foreground text-sm font-medium">Descripción</h3>
-            <p className="text-sm whitespace-pre-wrap">{l.descripcion}</p>
+            <SectionTitle as="h3">Descripción</SectionTitle>
+            <p className="text-tf-body whitespace-pre-wrap">{l.descripcion}</p>
           </div>
         )}
 
         {/* Eventos de contrato */}
         <div className="mt-6 space-y-3">
-          <h3 className="text-muted-foreground text-sm font-medium">Línea de tiempo</h3>
+          <SectionTitle as="h3">Cronología</SectionTitle>
           <EventosTimeline licitacionId={l.id_externo} />
         </div>
 
@@ -232,9 +226,9 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
             href={l.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary mt-6 inline-flex items-center gap-1.5 text-sm hover:underline"
+            className="text-primary mt-6 inline-flex items-center gap-1.5 text-tf-body hover:underline"
           >
-            {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3.5 w-3.5" />
+            {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
         )}
       </SheetContent>

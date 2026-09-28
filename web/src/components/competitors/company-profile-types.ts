@@ -1,6 +1,7 @@
 "use client";
 
 import type { Schemas } from "@/lib/api-types";
+import { formatPercent } from "@/lib/utils";
 
 export interface CompanyIdentity {
   empresa_id: number;
@@ -172,6 +173,16 @@ export function cpvFamilyLabel(code: string | null | undefined): string {
   return CPV_FAMILY_LABELS[code] ?? `Familia CPV ${code}`;
 }
 
+/**
+ * La variación frente al periodo anterior, en neutro: que un competidor crezca
+ * no es ni bueno ni malo para quien mira, así que no lleva verde ni rojo. Sin
+ * variación, el detalle de la cifra.
+ */
+export function variacionFrenteAnterior(delta: number | null | undefined, detalle: string): string {
+  if (delta == null) return detalle;
+  return `${delta >= 0 ? "+" : ""}${formatPercent(delta)} frente al periodo anterior`;
+}
+
 export function buildExecutiveSummary(profile: CompanyProfileData): string {
   const parts: string[] = [];
   const topCpv = profile.por_cpv[0];
@@ -194,7 +205,7 @@ export function buildExecutiveSummary(profile: CompanyProfileData): string {
   }
   if (delta != null) {
     parts.push(
-      `El volumen adjudicado ${delta >= 0 ? "crece" : "retrocede"} un ${Math.abs(delta).toFixed(1)}% frente al periodo comparable`,
+      `El volumen adjudicado ${delta >= 0 ? "crece" : "retrocede"} un ${formatPercent(Math.abs(delta))} frente al periodo comparable`,
     );
   }
 

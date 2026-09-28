@@ -1,17 +1,21 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Marco de ventana para las capturas del producto.
+ * Marco de las capturas del producto: un borde, una línea con la pantalla que
+ * se ve y la imagen.
  *
  * Existía dos veces —en el mock CSS del hero y otra vez, copiado a mano, en la
- * sección de captura—, con la misma etiqueta literal y los mismos tres puntos.
- * Al desaparecer el mock queda una sola pieza, que es lo que debió ser desde el
- * principio: la captura no es un adorno suelto, es «esto es una pantalla del
- * producto» y el cromo es lo que lo dice.
+ * sección de captura—, con la misma etiqueta literal. Al desaparecer el mock
+ * queda una sola pieza: la captura no es un adorno suelto, es «esto es una
+ * pantalla del producto», y la línea de arriba es lo que lo dice.
  *
- * `min-w-0` + `truncate` en la etiqueta no son decorativos: la versión anterior
- * era un `flex` de tres hijos sin contención, y por debajo de 360 px el texto
- * se recortaba en seco justo encima del fold.
+ * Sin los tres puntos de semáforo ni sombra (2026-09-26): el cromo de ventana
+ * de macOS dibujado a mano es uno de los gestos que la propia portada nombra
+ * como esqueleto de plantilla, y la superficie pública no lleva sombra en lo
+ * que no flota. La etiqueta, en sans: nombra una pantalla, no es un código.
+ *
+ * `min-w-0` + `truncate` en la etiqueta no son decorativos: sin contención,
+ * por debajo de 360 px el texto se recortaba en seco justo encima del fold.
  */
 export function MarcoCaptura({
   etiqueta,
@@ -23,14 +27,9 @@ export function MarcoCaptura({
   className?: string;
 }) {
   return (
-    <div className={cn("border-border/70 bg-card tf-card-shadow overflow-hidden rounded-xl border", className)}>
-      <div className="border-border/60 flex items-center gap-1.5 border-b px-4 py-2.5">
-        <span className="bg-muted-foreground/25 h-2.5 w-2.5 shrink-0 rounded-full" />
-        <span className="bg-muted-foreground/25 h-2.5 w-2.5 shrink-0 rounded-full" />
-        <span className="bg-muted-foreground/25 h-2.5 w-2.5 shrink-0 rounded-full" />
-        <span className="text-muted-foreground ml-3 min-w-0 truncate font-mono text-[10px] tracking-wide">
-          {etiqueta}
-        </span>
+    <div className={cn("border-border/70 bg-card overflow-hidden rounded-xl border", className)}>
+      <div className="border-border/60 flex items-center border-b px-4 py-2.5">
+        <span className="text-muted-foreground text-tf-micro min-w-0 truncate font-medium">{etiqueta}</span>
       </div>
       {children}
     </div>

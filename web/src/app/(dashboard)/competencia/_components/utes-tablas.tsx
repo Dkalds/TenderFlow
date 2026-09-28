@@ -9,13 +9,10 @@
  * frase el lector puede leer una relación que el dato no afirma.
  */
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Panel, PanelEmpty, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
-import { Building2, Handshake } from "lucide-react";
 
 import type { ComparativaRow, SocioPar } from "../_hooks/utes-types";
 
@@ -27,51 +24,44 @@ export function UtesSocios({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Handshake className="h-4 w-4" />
-          Socios Frecuentes (quién se asocia con quién)
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[200px] w-full" />
-        ) : socios && socios.length > 0 ? (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="text-left text-muted-foreground">
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Socio</TableHead>
-                  <TableHead>UTEs juntas</TableHead>
-                  <TableHead>Importe conjunto</TableHead>
+    <Panel>
+      <PanelTitle title="Socios frecuentes" hint="Quién se asocia con quién" />
+      {isLoading ? (
+        <Skeleton className="h-[200px] w-full" />
+      ) : socios && socios.length > 0 ? (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Empresa</TableHead>
+                <TableHead>Socio</TableHead>
+                <TableHead className="text-right">UTE juntas</TableHead>
+                <TableHead className="text-right">Importe conjunto</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {socios.map((s, idx) => (
+                <TableRow key={idx}>
+                  <TableCell className="font-medium">{truncate(s.empresa_a, 35)}</TableCell>
+                  <TableCell className="font-medium">{truncate(s.empresa_b, 35)}</TableCell>
+                  <TableCell numeric>{formatNumber(s.contratos)}</TableCell>
+                  <TableCell numeric>{formatCurrency(s.importe)}</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {socios.map((s, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="font-medium">{truncate(s.empresa_a, 35)}</TableCell>
-                    <TableCell className="font-medium">{truncate(s.empresa_b, 35)}</TableCell>
-                    <TableCell className="tabular-nums">{formatNumber(s.contratos)}</TableCell>
-                    <TableCell className="tabular-nums">{formatCurrency(s.importe)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            <Separator className="my-3" />
-            <p className="text-xs text-muted-foreground">
-              Pares de empresas que han formado UTE conjunta (co-licitacion real,
-              no co-ocurrencia geografica).
-            </p>
-          </div>
-        ) : (
-          <p className="py-8 text-center text-muted-foreground">
-            Sin pares de co-licitación detectados
+              ))}
+            </TableBody>
+          </Table>
+          <p className="mt-3 border-t border-border/60 pt-3 text-tf-meta text-muted-foreground">
+            Pares de empresas que han firmado juntas una UTE: licitaron juntas de verdad, no solo coinciden en la
+            misma zona.
           </p>
-        )}
-      </CardContent>
-    </Card>
+        </>
+      ) : (
+        <PanelEmpty
+          title="Ningún par de socios"
+          hint="Ninguna pareja de empresas ha firmado una UTE junta en el ámbito actual."
+        />
+      )}
+    </Panel>
   );
 }
 
@@ -83,49 +73,32 @@ export function UtesComparativa({
   isLoading: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Building2 className="h-4 w-4" />
-          Comparativa UTE vs Individual
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-[120px] w-full" />
-        ) : filas.length > 0 ? (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="text-left text-muted-foreground">
-                  <TableHead>Métrica</TableHead>
-                  <TableHead>
-                    <span className="inline-flex items-center gap-1">
-                      <Badge variant="default" className="text-xs">UTE</Badge>
-                    </span>
-                  </TableHead>
-                  <TableHead>
-                    <span className="inline-flex items-center gap-1">
-                      <Badge variant="secondary" className="text-xs">Individual</Badge>
-                    </span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filas.map((row) => (
-                  <TableRow key={row.metrica}>
-                    <TableCell className="font-medium">{row.metrica}</TableCell>
-                    <TableCell className="tabular-nums">{row.ute}</TableCell>
-                    <TableCell className="tabular-nums">{row.individual}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <p className="py-8 text-center text-muted-foreground">Sin datos comparativos disponibles</p>
-        )}
-      </CardContent>
-    </Card>
+    <Panel>
+      <PanelTitle title="UTE frente a contrato en solitario" />
+      {isLoading ? (
+        <Skeleton className="h-[120px] w-full" />
+      ) : filas.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Métrica</TableHead>
+              <TableHead className="text-right">En UTE</TableHead>
+              <TableHead className="text-right">En solitario</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filas.map((row) => (
+              <TableRow key={row.metrica}>
+                <TableCell className="font-medium">{row.metrica}</TableCell>
+                <TableCell numeric>{row.ute}</TableCell>
+                <TableCell numeric>{row.individual}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <PanelEmpty title="Sin comparativa" hint="No hay contratos suficientes en el ámbito actual para comparar." />
+      )}
+    </Panel>
   );
 }

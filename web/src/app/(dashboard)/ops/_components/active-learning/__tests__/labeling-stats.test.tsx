@@ -22,7 +22,7 @@ describe("Estadísticas del etiquetado", () => {
   it("«Etiquetas totales» es el total de /feedback/stats", () => {
     render(<LabelingStats stats={STATS} statsLoading={false} queueSize={20} queueLoading={false} />);
 
-    expect(screen.getByText("Etiquetas totales").previousElementSibling).toHaveTextContent("57");
+    expect(screen.getByText("Etiquetas totales").closest("[data-slot='stat-cell']")).toHaveTextContent("57");
   });
 
   it("la ficha del modelo enseña el total y la fecha de la última etiqueta", () => {
@@ -36,13 +36,13 @@ describe("Estadísticas del etiquetado", () => {
       />,
     );
 
-    expect(screen.getByText("Total etiquetas").nextElementSibling).toHaveTextContent("57");
+    expect(screen.getByText("Total de etiquetas").nextElementSibling).toHaveTextContent("57");
     expect(screen.getByText("Última actualización").nextElementSibling).not.toHaveTextContent("—");
   });
 
   it("no enseña un porcentaje de relevantes que la API no calcula", () => {
     render(<LabelingStats stats={STATS} statsLoading={false} queueSize={20} queueLoading={false} />);
 
-    expect(screen.queryByText(/% relevantes/i)).toBeNull();
+    expect(screen.queryByText(/relevantes/i)).toBeNull();
   });
 });

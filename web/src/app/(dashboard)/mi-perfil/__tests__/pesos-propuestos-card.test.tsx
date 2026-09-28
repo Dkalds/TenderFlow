@@ -22,7 +22,13 @@ vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }
 
 const apiGet = vi.hoisted(() => vi.fn());
 const apiMutate = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/api-client", () => ({ apiGet, apiMutate }));
+// Lo real salvo las dos llamadas: `ApiError` lo usa `getErrorMessage` para
+// redactar el fallo que pinta la tarjeta.
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  apiGet,
+  apiMutate,
+}));
 
 vi.mock("@/hooks/use-organization", () => ({
   // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay

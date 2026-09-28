@@ -122,7 +122,7 @@ describe("ProbabilidadesEtapaCard", () => {
     pintar(false);
     expect(await screen.findByLabelText("Preparando oferta (%)")).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Guardar/ })).not.toBeInTheDocument();
-    expect(screen.getByText("Solo owner o admin pueden cambiarlas.")).toBeInTheDocument();
+    expect(screen.getByText("Solo un propietario o un administrador puede cambiarlas.")).toBeInTheDocument();
   });
 });
 

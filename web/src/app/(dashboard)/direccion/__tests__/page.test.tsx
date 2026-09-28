@@ -135,7 +135,7 @@ describe("DireccionPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Dirección es para owner y admin")).toBeTruthy();
+    expect(await screen.findByText("Dirección es solo para propietarios y administradores")).toBeTruthy();
   });
 
   it("la vista Actividad pide el feed del equipo, no un texto que manda al Resumen", async () => {

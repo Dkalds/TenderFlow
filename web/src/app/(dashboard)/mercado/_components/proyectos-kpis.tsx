@@ -11,10 +11,9 @@
  * con nada. Ninguna de las dos cosas la dice el dataset.
  */
 
-import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { StatCell, StatStrip } from "@/components/console/panel";
+import { EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { valorOEmpty } from "@/lib/cobertura";
-import { Hash, Boxes, Layers, DollarSign, TrendingUp, Percent } from "lucide-react";
 
 import {
   YOY_NUEVO,
@@ -30,8 +29,8 @@ export function ProyectosKpisSap({
   ticketS4Hana: number | null;
   isLoading: boolean;
 }) {
-  // SAP-specific KPIs — a nivel licitación distinct desde el backend, NO la suma
-  // de filas de módulo (una licitación con módulos A+B contaba doble el importe).
+  // KPIs de SAP a nivel de licitación distinta desde el backend, NO la suma de
+  // filas de módulo (una licitación con módulos A+B contaba doble el importe).
   const ticketMedioSAP = data?.ticket_medio_sap ?? null;
   const totalAmbito = data?.total ?? null;
   const totalClasificados = data?.total_clasificados ?? 0;
@@ -39,30 +38,26 @@ export function ProyectosKpisSap({
   const modulosPorClasificada = data?.modulos_por_clasificada ?? null;
   const pctMatchPortfolio = data?.pct_match_portfolio ?? null;
   const yoy = data?.top_modulo_yoy ?? null;
+  const esNuevo = yoy != null && yoy.crecimiento_pct >= YOY_NUEVO;
 
   return (
-    <KpiStrip columns={5}>
-      <KpiCard
-        title="Ticket Medio SAP"
-        value={isLoading ? undefined : valorOEmpty(ticketMedioSAP, formatCurrency)}
-        icon={DollarSign}
+    <StatStrip columns={5}>
+      <StatCell
+        label="Importe medio SAP"
+        value={valorOEmpty(ticketMedioSAP, formatCurrency)}
         loading={isLoading}
       />
-      <KpiCard
-        title="Top módulo YoY"
-        value={isLoading ? undefined : (yoy?.modulo ?? "-")}
-        subtitle={
-          yoy && yoy.crecimiento_pct >= YOY_NUEVO
-            ? `NUEVO · ${formatNumber(yoy.n_act)} lics`
+      <StatCell
+        label="Módulo que más crece"
+        value={yoy?.modulo ?? EMPTY}
+        hint={
+          yoy
+            ? esNuevo
+              ? `Nuevo este año · ${formatNumber(yoy.n_act)} licitaciones`
+              : `${formatNumber(yoy.n_act)} licitaciones este año`
             : undefined
         }
-        trend={yoy && yoy.crecimiento_pct < YOY_NUEVO ? yoy.crecimiento_pct : undefined}
-        trendLabel={
-          yoy && yoy.crecimiento_pct < YOY_NUEVO
-            ? `${formatNumber(yoy.n_act)} lics`
-            : undefined
-        }
-        icon={TrendingUp}
+        trend={yoy && !esNuevo ? yoy.crecimiento_pct : undefined}
         loading={isLoading}
       />
       {/*
@@ -72,49 +67,32 @@ export function ProyectosKpisSap({
         contar licitaciones con >1 módulo distinto, que el agregado SQL de hoy
         (un COUNT por patrón, sin distinct por licitación) no produce.
       */}
-      <KpiCard
-        title="Módulos por clasificada"
-        value={
-          isLoading || modulosPorClasificada == null
-            ? undefined
-            : formatNumber(modulosPorClasificada)
-        }
-        subtitle={
+      <StatCell
+        label="Módulos por licitación clasificada"
+        value={valorOEmpty(modulosPorClasificada, formatNumber)}
+        hint={
           mencionesModulo != null
-            ? `${formatNumber(mencionesModulo)} menciones / ${formatNumber(totalClasificados)} clasificadas`
+            ? `${formatNumber(mencionesModulo)} menciones en ${formatNumber(totalClasificados)} clasificadas`
             : undefined
         }
-        icon={Percent}
         loading={isLoading}
       />
-      <KpiCard
-        title="Ticket S/4HANA"
-        value={
-          isLoading
-            ? undefined
-            : ticketS4Hana !== null
-              ? formatCurrency(ticketS4Hana)
-              : "N/A"
-        }
-        icon={Boxes}
+      <StatCell
+        label="Importe medio S/4HANA"
+        value={valorOEmpty(ticketS4Hana, formatCurrency)}
         loading={isLoading}
       />
-      <KpiCard
-        title="% Match Portfolio"
-        value={
-          isLoading || pctMatchPortfolio == null
-            ? undefined
-            : formatPercent(pctMatchPortfolio)
-        }
-        subtitle={
+      <StatCell
+        label="Encaje con tu portfolio"
+        value={valorOEmpty(pctMatchPortfolio, formatPercent)}
+        hint={
           totalAmbito != null
-            ? `${formatNumber(totalClasificados)} / ${formatNumber(totalAmbito)} licitaciones del ámbito`
+            ? `${formatNumber(totalClasificados)} de ${formatNumber(totalAmbito)} licitaciones del ámbito`
             : undefined
         }
-        icon={Layers}
         loading={isLoading}
       />
-    </KpiStrip>
+    </StatStrip>
   );
 }
 
@@ -133,16 +111,11 @@ export function ProyectosKpisCobertura({
   const totalClasificados = data?.total_clasificados ?? 0;
 
   return (
-    <KpiStrip columns={3}>
-      <KpiCard
-        title="Total Clasificados"
-        value={isLoading ? undefined : formatNumber(totalClasificados)}
-        subtitle={
-          totalAmbito != null
-            ? `de ${formatNumber(totalAmbito)} del ámbito`
-            : undefined
-        }
-        icon={Hash}
+    <StatStrip columns={3}>
+      <StatCell
+        label="Licitaciones clasificadas"
+        value={formatNumber(totalClasificados)}
+        hint={totalAmbito != null ? `De ${formatNumber(totalAmbito)} del ámbito` : undefined}
         loading={isLoading}
       />
       {/*
@@ -150,18 +123,8 @@ export function ProyectosKpisCobertura({
         su longitud ES el conteo. Antes se anteponía `data?.total_modulos` /
         `data?.total_tipos`, campos que el contrato no emite.
       */}
-      <KpiCard
-        title="Módulos Detectados"
-        value={isLoading ? undefined : formatNumber(nModulos)}
-        icon={Boxes}
-        loading={isLoading}
-      />
-      <KpiCard
-        title="Tipos de Proyecto"
-        value={isLoading ? undefined : formatNumber(nTipos)}
-        icon={Layers}
-        loading={isLoading}
-      />
-    </KpiStrip>
+      <StatCell label="Módulos detectados" value={formatNumber(nModulos)} loading={isLoading} />
+      <StatCell label="Tipos de proyecto" value={formatNumber(nTipos)} loading={isLoading} />
+    </StatStrip>
   );
 }

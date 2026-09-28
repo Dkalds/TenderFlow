@@ -3,38 +3,25 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { CalibracionBajaDTO } from "@/lib/api-types";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Gauge } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { cn, formatPercent } from "@/lib/utils";
 import { prediccionKeys } from "@/lib/query-keys";
 
+/** Fracción → «82,0%»: la coma decimal de la casa (`formatPercent`), no el punto de `toFixed`. */
 function pct(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
+  return formatPercent(v * 100);
 }
 
 const ESTADO_INFO: Record<
   CalibracionBajaDTO["estado"],
-  { label: string; badge: "default" | "secondary" | "destructive"; border: string }
+  { label: string; badge: "success" | "destructive" | "neutral" }
 > = {
-  ok: { label: "Bien calibrado", badge: "default", border: "" },
-  degradado: {
-    label: "Calibración degradada",
-    badge: "destructive",
-    border: "border-red-500 bg-red-50/50 dark:bg-red-950/20",
-  },
-  insuficiente: {
-    label: "Datos insuficientes",
-    badge: "secondary",
-    border: "",
-  },
+  ok: { label: "Bien calibrado", badge: "success" },
+  degradado: { label: "Calibración degradada", badge: "destructive" },
+  insuficiente: { label: "Datos insuficientes", badge: "neutral" },
 };
 
 /** Qué está produciendo hoy los intervalos. El backend lo lee de la última
@@ -61,87 +48,89 @@ const REGIMEN_INFO: Record<
  * el baseline, y llamar modelo a lo segundo fue exactamente lo que hizo que un
  * panel en rojo apuntara a reentrenar algo que no existía.
  *
+ * Degradada, el panel lo dice con el borde (`tono="danger"`) y la etiqueta, sin
+ * relleno rojo ni icono delante del título. La cifra de cobertura va a 20 px,
+ * como la de un KPI.
+ *
  * On-demand (sin tabla materializada), cacheado ~15 min en el backend. */
 export function CalibracionBajaBlock() {
-  const { data, isLoading, isError } = useQuery<CalibracionBajaDTO>({
+  const { data, isLoading, isError, error, refetch } = useQuery<CalibracionBajaDTO>({
     queryKey: prediccionKeys.calibracion,
     queryFn: () => fetchWithAuth("/api/v1/predicciones/calibracion"),
     staleTime: 10 * 60 * 1000,
+    // El fallo se pinta en el panel: sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const info = data ? ESTADO_INFO[data.estado] : null;
 
   return (
-    <Card className={cn(info?.border)}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Gauge
-            className={cn(
-              "h-4 w-4",
-              data?.estado === "degradado" ? "text-red-600" : "text-muted-foreground",
-            )}
-          />
-          Calibración del intervalo de baja
-        </CardTitle>
-        <CardDescription>
-          Cobertura real del intervalo p10-p90 vs. bajas adjudicadas observadas
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-16 w-full" />
-        ) : isError || !data ? (
-          <p className="text-sm text-destructive">
-            Error al cargar la calibración.
+    <Panel tono={data?.estado === "degradado" ? "danger" : undefined}>
+      <PanelTitle
+        title="Calibración del intervalo de baja"
+        hint="cobertura real del p10-p90 frente a las bajas adjudicadas"
+      />
+      {isLoading ? (
+        <Skeleton className="h-16 w-full" />
+      ) : isError || !data ? (
+        <PanelError
+          variant="inline"
+          title="No se pudo cargar la calibración"
+          error={error}
+          onRetry={() => void refetch()}
+        />
+      ) : data.estado === "insuficiente" ? (
+        <div className="space-y-2">
+          <p className="text-tf-body text-muted-foreground">
+            Aún no hay suficientes licitaciones adjudicadas con predicción previa
+            para medir la calibración
+            {data.n_evaluadas > 0 && ` (${data.n_evaluadas} evaluadas hasta ahora)`}.
           </p>
-        ) : data.estado === "insuficiente" ? (
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Aún no hay suficientes licitaciones adjudicadas con predicción previa
-              para medir la calibración
-              {data.n_evaluadas > 0 && ` (${data.n_evaluadas} evaluadas hasta ahora)`}.
+          {data.regimen_servido && (
+            <p className="text-tf-meta text-muted-foreground">
+              {REGIMEN_INFO[data.regimen_servido].nota}
             </p>
+          )}
+          <Badge variant={info!.badge}>{info!.label}</Badge>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <p
+              className={cn(
+                "tf-tnum text-tf-title font-semibold",
+                data.estado === "degradado" && "text-destructive",
+              )}
+            >
+              {data.cobertura != null ? pct(data.cobertura) : "Sin dato"}
+            </p>
+            <p className="text-tf-body text-muted-foreground">
+              cobertura real · nominal {pct(data.cobertura_nominal)}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-tf-body text-muted-foreground">
+            {data.mae_p50 != null && <span>MAE p50: {pct(data.mae_p50)}</span>}
+            {data.sesgo_p50 != null && (
+              <span>
+                Sesgo p50: {data.sesgo_p50 >= 0 ? "+" : ""}
+                {pct(data.sesgo_p50)}
+              </span>
+            )}
+            <span>{data.n_evaluadas} licitaciones evaluadas</span>
             {data.regimen_servido && (
-              <p className="text-xs text-muted-foreground">
-                {REGIMEN_INFO[data.regimen_servido].nota}
-              </p>
-            )}
-            <Badge variant={info!.badge}>{info!.label}</Badge>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <p className="text-2xl font-bold">
-                {data.cobertura != null ? pct(data.cobertura) : "N/A"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                cobertura real · nominal {pct(data.cobertura_nominal)}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              {data.mae_p50 != null && <span>MAE p50: {pct(data.mae_p50)}</span>}
-              {data.sesgo_p50 != null && (
-                <span>
-                  Sesgo p50: {data.sesgo_p50 >= 0 ? "+" : ""}
-                  {pct(data.sesgo_p50)}
-                </span>
-              )}
-              <span>{data.n_evaluadas} licitaciones evaluadas</span>
-              {data.regimen_servido && (
-                <span>Sirviendo: {REGIMEN_INFO[data.regimen_servido].etiqueta}</span>
-              )}
-            </div>
-            <Badge variant={info!.badge}>{info!.label}</Badge>
-            {data.estado === "degradado" && (
-              <p className="text-xs text-muted-foreground">
-                La cobertura real está por debajo de lo esperado — los intervalos
-                p10-p90 servidos son menos fiables de lo que indican.
-                {data.regimen_servido && ` ${REGIMEN_INFO[data.regimen_servido].nota}`}
-              </p>
+              <span>Origen: {REGIMEN_INFO[data.regimen_servido].etiqueta}</span>
             )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+          <Badge variant={info!.badge}>{info!.label}</Badge>
+          {data.estado === "degradado" && (
+            <p className="text-tf-meta text-muted-foreground">
+              La cobertura real está por debajo de lo esperado: los intervalos
+              p10-p90 servidos son menos fiables de lo que indican.
+              {data.regimen_servido && ` ${REGIMEN_INFO[data.regimen_servido].nota}`}
+            </p>
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }

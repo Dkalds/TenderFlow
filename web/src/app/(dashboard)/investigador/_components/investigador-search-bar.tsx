@@ -1,16 +1,25 @@
 "use client";
 
 /**
- * Caja de consulta: selector de modo, entrada, historial reciente y los chips
- * de los filtros globales que acotan la búsqueda.
+ * Caja de consulta: selector de modo, entrada, búsquedas recientes y los chips
+ * del ámbito que acotan la búsqueda.
+ *
+ * El modo es un `Segmented` (dos botones con `aria-pressed`), no dos botones
+ * sueltos primario/contorno: con la piel de botón, el modo activo se leía como
+ * «la acción principal» y competía con «Buscar». Las búsquedas recientes son
+ * botones de verdad, no `Badge` con `role="button"`.
  */
 
-import { Clock, MessageSquare, Search } from "lucide-react";
+import { ROTULO_DATO, Panel, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { Mode } from "../_lib/types";
+
+const MODOS = [
+  { value: "search", label: "Búsqueda" },
+  { value: "ask", label: "Preguntar" },
+] as const satisfies readonly { value: Mode; label: string }[];
 
 interface Props {
   mode: Mode;
@@ -40,88 +49,65 @@ export function InvestigadorSearchBar({
   };
 
   return (
-    <Card>
-      <CardContent className="pt-6">
-        {/* Mode toggle */}
-        <div className="mb-4 flex gap-2">
-          <Button
-            variant={mode === "search" ? "default" : "outline"}
-            size="sm"
-            onClick={() => onModeChange("search")}
-          >
-            <Search className="mr-2 h-4 w-4" />
-            Búsqueda
-          </Button>
-          <Button
-            variant={mode === "ask" ? "default" : "outline"}
-            size="sm"
-            onClick={() => onModeChange("ask")}
-          >
-            <MessageSquare className="mr-2 h-4 w-4" />
-            Preguntar
-          </Button>
+    <Panel className="py-4">
+      <Segmented aria-label="Modo" value={mode} onChange={onModeChange} options={MODOS} className="mb-3" />
+
+      <div className="flex gap-2">
+        <Input
+          aria-label={mode === "search" ? "Qué buscas" : "Tu pregunta"}
+          placeholder={
+            mode === "search"
+              ? "Describe lo que buscas: mantenimiento SAP en Andalucía…"
+              : "Haz una pregunta sobre licitaciones…"
+          }
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+          className="flex-1"
+        />
+        <Button onClick={() => onSubmit()} disabled={busy || !query.trim()}>
+          {busy
+            ? mode === "search"
+              ? "Buscando…"
+              : "Preguntando…"
+            : mode === "search"
+              ? "Buscar"
+              : "Preguntar"}
+        </Button>
+      </div>
+
+      {history.length > 0 && (
+        <div role="group" aria-label="Búsquedas recientes" className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className={ROTULO_DATO} aria-hidden="true">
+            Recientes
+          </span>
+          {history.map((h) => (
+            <Button
+              key={h}
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => repetir(h)}
+              className="max-w-full"
+            >
+              <span className="truncate">{h}</span>
+            </Button>
+          ))}
         </div>
+      )}
 
-        <div className="flex gap-2">
-          <Input
-            placeholder={
-              mode === "search"
-                ? "Buscar licitaciones por texto semántico…"
-                : "Haz una pregunta sobre licitaciones…"
-            }
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onSubmit()}
-            className="flex-1"
-          />
-          <Button onClick={() => onSubmit()} disabled={busy || !query.trim()}>
-            {busy
-              ? mode === "search"
-                ? "Buscando…"
-                : "Preguntando…"
-              : mode === "search"
-                ? "Buscar"
-                : "Preguntar"}
-          </Button>
+      {/* El ámbito que acota la búsqueda, a la vista: la relación es explícita
+          y no un ajuste escondido en «Opciones avanzadas». */}
+      {activeSearchFilters.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className={ROTULO_DATO}>Ámbito aplicado</span>
+          {activeSearchFilters.map((f) => (
+            <Badge key={f} variant="outline" size="sm">
+              {f}
+            </Badge>
+          ))}
         </div>
-
-        {/* History chips */}
-        {history.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Clock className="text-muted-foreground mt-0.5 h-4 w-4" />
-            {history.map((h) => (
-              <Badge
-                key={h}
-                variant="secondary"
-                className="hover:bg-accent cursor-pointer"
-                role="button"
-                tabIndex={0}
-                onClick={() => repetir(h)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    repetir(h);
-                  }
-                }}
-              >
-                {h}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* Filtros activos sobre la búsqueda: relación explícita (no un flag oculto) */}
-        {activeSearchFilters.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-muted-foreground text-xs">Filtros activos:</span>
-            {activeSearchFilters.map((f) => (
-              <Badge key={f} variant="outline" className="text-xs">
-                {f}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      )}
+    </Panel>
   );
 }

@@ -89,7 +89,7 @@ export default function RendimientoView() {
     return (
       <PanelError
         title="No se pudo cargar el rendimiento"
-        detail={(error as Error).message}
+        error={error}
         onRetry={() => void refetch()}
         height={320}
       />
@@ -99,7 +99,7 @@ export default function RendimientoView() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-tf-meta text-muted-foreground">
           Ventana:{" "}
           <span className="font-medium text-foreground">
             {ventanaDelPayload(data, periodo)}
@@ -108,12 +108,9 @@ export default function RendimientoView() {
         <PeriodoSelector periodo={periodo} onChange={cambiarPeriodo} />
       </div>
 
-      <StatStrip
-        columns={4}
-        className="lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]"
-      >
+      <StatStrip columns={4}>
         <StatCell
-          label="Win rate"
+          label="Tasa de éxito"
           loading={isPending}
           value={data?.win_rate != null ? `${Math.round(data.win_rate * 100)}%` : EMPTY}
           hint="Sobre ganadas + perdidas"
@@ -128,7 +125,7 @@ export default function RendimientoView() {
           label="Mediana de decisión"
           loading={isPending}
           value={mediana(data?.median_decision_time_hours)}
-          hint="De identificada a go/no-go"
+          hint="De identificada a Go/No-Go"
         />
         <StatCell
           label="Perdidas"

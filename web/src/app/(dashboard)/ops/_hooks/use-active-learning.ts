@@ -16,6 +16,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { feedbackKeys } from "@/lib/query-keys";
 import { useFeedbackStats, useTaxonomiaTecnologias, type FeedbackStats } from "@/hooks/use-feedback";
 import {
@@ -35,7 +36,9 @@ export interface ActiveLearning extends SeleccionEtiquetas {
   pendingItems: QueueItem[];
   queueSize: number;
   queueLoading: boolean;
-  queueError: boolean;
+  /** Lo que lanzó la consulta de la cola (`null` sin fallo), para `PanelError`. */
+  queueError: unknown;
+  retryQueue: () => void;
   dismissedCount: number;
   strategy: Strategy;
   setStrategy: (strategy: Strategy) => void;
@@ -72,11 +75,12 @@ export function useActiveLearning(): ActiveLearning {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [strategy, setStrategy] = useState<Strategy>("desacuerdo");
 
-  const { data: queue, isLoading: queueLoading, isError: queueError } = useQuery<QueueResponse>({
+  const colaQuery = useQuery<QueueResponse>({
     queryKey: feedbackKeys.queue(strategy),
-    queryFn: () =>
-      fetchWithAuth<QueueResponse>(`/api/v1/feedback/queue?strategy=${strategy}&limit=20`),
+    queryFn: () => fetchWithAuth<QueueResponse>(`/api/v1/feedback/queue?strategy=${strategy}&limit=20`),
+    meta: META_ERROR_EN_LINEA, // el fallo lo pinta la cola (`PanelError`): sin toast encima
   });
+  const { data: queue, isLoading: queueLoading } = colaQuery;
 
   const { data: modelInfo } = useQuery<ModelInfo>({
     queryKey: feedbackKeys.modelInfo,
@@ -107,9 +111,7 @@ export function useActiveLearning(): ActiveLearning {
       setDismissed((prev) => new Set(prev).add(vars.expediente));
       queryClient.invalidateQueries({ queryKey: feedbackKeys.stats });
     },
-    onError: () => {
-      toast.error("Error al enviar feedback. Intenta de nuevo.");
-    },
+    onError: () => toast.error("No se pudo guardar la etiqueta. Vuelve a intentarlo."),
   });
 
   const items = useMemo(() => queue?.items ?? [], [queue]);
@@ -131,8 +133,7 @@ export function useActiveLearning(): ActiveLearning {
     metric && modelInfo && modelInfo.history.length > 1
       ? modelInfo.history[1]?.metrics?.[metric.label]
       : undefined;
-  const metricTrend =
-    metric && typeof prevMetric === "number" ? metric.value - prevMetric : null;
+  const metricTrend = metric && typeof prevMetric === "number" ? metric.value - prevMetric : null;
 
   const confirmLabel = useCallback(
     (expediente: string) => {
@@ -221,7 +222,8 @@ export function useActiveLearning(): ActiveLearning {
     pendingItems,
     queueSize,
     queueLoading,
-    queueError,
+    queueError: colaQuery.error,
+    retryQueue: () => void colaQuery.refetch(),
     dismissedCount: dismissed.size,
     strategy,
     setStrategy,

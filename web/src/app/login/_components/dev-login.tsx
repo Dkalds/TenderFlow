@@ -14,9 +14,9 @@ export function DevLogin({ disabled, onLogin }: { disabled: boolean; onLogin: ()
 
   return (
     <>
-      <Separador etiqueta="dev" />
+      <Separador etiqueta="solo en desarrollo" />
       <Button variant="secondary" className="w-full" onClick={() => void onLogin()} disabled={disabled}>
-        Dev Login (user #1)
+        Entrar como el usuario 1
       </Button>
     </>
   );

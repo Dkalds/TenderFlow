@@ -1,22 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { Calculator } from "lucide-react";
+import { PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ERROR_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { usePrediccionBaja } from "@/hooks/use-prediccion-baja";
 import { type SimulacionPrecio, useSimuladorPrecio } from "@/hooks/use-simulador-precio";
 import { type TenderFactSheetRecord, useTenderFactSheet } from "@/hooks/use-tender-fact-sheet";
 import { registrarEvento } from "@/lib/analytics";
-import { formatNumber, formatPercent } from "@/lib/utils";
+import { cn, formatNumber, formatPercent } from "@/lib/utils";
 
 /**
  * F2.2 — simulador de puntuación de la oferta.
  *
  * Dos lecturas de la misma ruta: la tabla de escenarios de referencia (la que
- * el backend simula sin parámetros) y, cuando el usuario escribe su baja, la
+ * la API simula sin parámetros) y, cuando el usuario escribe su baja, la
  * simulación de **esa** baja contra la del rival. Separadas porque el hueco
  * que calcula la API es el de la mejor baja simulada: con los cinco escenarios
  * dentro, compararía siempre el 25 % con el rival, que no es lo que nadie está
@@ -56,7 +58,7 @@ function formulaParaTelemetria(tipo: string | null | undefined): FormulaTelemetr
 }
 
 /**
- * F2.4 — ¿el pliego trae tarifas con las que el backend puede dar margen?
+ * F2.4 — ¿el pliego trae tarifas con las que la API puede dar margen?
  * Hace falta tarifa **y** horas (la misma condición que `margen_implicito`).
  * Sin ficha cargada no se sabe, y no se manda: un «no» por defecto mediría la
  * latencia de la ficha, no los pliegos.
@@ -145,28 +147,29 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
 
   return (
     <section aria-labelledby={`${idPropia}-titulo`} className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Calculator className="h-4 w-4 text-primary" aria-hidden="true" />
-        <h3 id={`${idPropia}-titulo`} className="text-sm font-medium text-muted-foreground">
-          Simulador de puntuación del precio
-        </h3>
-      </div>
+      <SectionTitle as="h3" id={`${idPropia}-titulo`} className="mb-0">
+        Simulador de puntuación del precio
+      </SectionTitle>
 
       {referencia.isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : referencia.error ? (
-        <p role="alert" className="text-sm text-destructive">
-          No se pudo consultar el simulador. {(referencia.error as Error).message}
-        </p>
+        <PanelError
+          variant="inline"
+          className="py-0"
+          title="No se pudo consultar el simulador"
+          error={referencia.error}
+          onRetry={() => void referencia.refetch()}
+        />
       ) : !data ? null : data.sin_calculo ? (
-        <p className="rounded-lg border border-dashed border-border/70 bg-muted/25 p-3 text-sm text-muted-foreground">
-          {MOTIVOS_SIN_CALCULO[data.sin_calculo]}
-        </p>
+        <PanelEmpty size="sm" title="Sin puntos que simular" hint={MOTIVOS_SIN_CALCULO[data.sin_calculo]} />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-1.5 text-tf-meta text-muted-foreground">
             {data.formula_tipo && (
-              <Badge variant="secondary">{FORMULAS[data.formula_tipo] ?? data.formula_tipo}</Badge>
+              <Badge variant="secondary" size="sm">
+                {FORMULAS[data.formula_tipo] ?? data.formula_tipo}
+              </Badge>
             )}
             {data.puntos_precio != null && (
               <span>
@@ -181,13 +184,17 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
             )}
           </div>
 
-          <table className="w-full text-sm">
+          <table className="w-full text-tf-body">
             <caption className="sr-only">Puntos de precio por baja de referencia</caption>
             <thead>
-              <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-1.5 font-medium">Baja</th>
-                <th scope="col" className="py-1.5 font-medium">Puntos de precio</th>
-                <th scope="col" className="py-1.5 font-medium">
+              <tr className="border-b border-border/60 text-left">
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5")}>
+                  Baja
+                </th>
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5")}>
+                  Puntos de precio
+                </th>
+                <th scope="col" className="py-1.5">
                   <span className="sr-only">Temeridad</span>
                 </th>
               </tr>
@@ -203,21 +210,27 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
                     )}
                   </td>
                   <td className="py-1.5 text-right">
-                    {escenario.temeraria && <Badge variant="warning">Temeraria</Badge>}
+                    {escenario.temeraria && (
+                      <Badge variant="warning" size="sm">
+                        Temeraria
+                      </Badge>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <form onSubmit={simular} className="space-y-2 rounded-lg border border-border/60 p-3" noValidate>
+          <form onSubmit={simular} className="space-y-2 rounded-md border border-border/60 p-3" noValidate>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label htmlFor={idPropia} className="text-xs font-medium">Tu baja (%)</label>
+                <label htmlFor={idPropia} className={ETIQUETA_CAMPO}>
+                  Tu baja (%)
+                </label>
                 <Input
                   id={idPropia}
                   inputMode="decimal"
-                  placeholder="12"
+                  placeholder="p. ej. 12"
                   value={propiaTexto}
                   onChange={(e) => setPropiaTexto(e.target.value)}
                   aria-invalid={propiaTexto.trim() !== "" && propia == null}
@@ -225,11 +238,13 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
                 />
               </div>
               <div className="space-y-1">
-                <label htmlFor={idRival} className="text-xs font-medium">Baja del rival (%)</label>
+                <label htmlFor={idRival} className={ETIQUETA_CAMPO}>
+                  Baja del rival (%)
+                </label>
                 <Input
                   id={idRival}
                   inputMode="decimal"
-                  placeholder="opcional"
+                  placeholder="Opcional"
                   value={rivalTexto}
                   onChange={(e) => setRivalTexto(e.target.value)}
                   aria-invalid={!rivalValida}
@@ -240,14 +255,18 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
             {p90 != null && (
               <button
                 type="button"
-                className="text-xs font-medium text-primary hover:underline"
+                className="text-tf-meta font-medium text-primary hover:underline"
                 onClick={() => setRivalTexto(String(Math.round(p90 * 1000) / 10).replace(".", ","))}
               >
                 Usar como rival el p90 de la baja esperada ({pctDe(p90)})
               </button>
             )}
             {errorForm && (
-              <p id={idError} role="alert" className="text-xs text-destructive">{errorForm}</p>
+              // Un solo error para los dos campos (los dos lo citan en
+              // `aria-describedby`), así que aquí sí es una región viva.
+              <p id={idError} role="alert" className={ERROR_CAMPO}>
+                {errorForm}
+              </p>
             )}
             <Button type="submit" size="sm" variant="outline" disabled={propia == null || Boolean(errorForm)}>
               Simular
@@ -255,7 +274,7 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
           </form>
 
           {enviada && propio.data && !propio.data.sin_calculo && (
-            <p aria-live="polite" className="text-sm leading-relaxed">
+            <p aria-live="polite" className="text-tf-body leading-relaxed">
               {propio.data.escenarios?.map((e) => (
                 <span key={e.baja}>
                   Con una baja del {pctDe(e.baja)} obtienes <strong>{puntos(e.puntos)}</strong>

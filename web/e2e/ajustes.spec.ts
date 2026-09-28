@@ -64,6 +64,6 @@ test.describe("Ajustes", () => {
     // está en el menú de usuario donde la gente lo espera.
     await page.goto("/ajustes?vista=sesiones");
     await expect(page.getByText("Esta sesión").first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("Cerrá sesión desde el menú").first()).toBeVisible();
+    await expect(page.getByText("Cierra sesión desde el menú").first()).toBeVisible();
   });
 });

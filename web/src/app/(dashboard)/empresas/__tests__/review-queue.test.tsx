@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ApiError } from "@/lib/api-client";
 import { ReviewQueue } from "../_components/review-queue";
 import { nifEnConflicto, UNDO_MS, useReviewQueue, type ReviewItem } from "../_hooks/use-review-queue";
 
@@ -18,10 +19,12 @@ const { apiMutate, fetchWithAuth } = vi.hoisted(() => ({
   fetchWithAuth: vi.fn(),
 }));
 
-vi.mock("@/lib/api-client", () => ({
+// Solo se doblan las llamadas: `ApiError` y los mensajes por estado son los
+// reales, porque el error de la cola los enseña (`PanelError`).
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
   apiMutate,
   fetchWithAuth,
-  ApiError: class ApiError extends Error {},
 }));
 
 const ITEMS: ReviewItem[] = [
@@ -185,7 +188,7 @@ describe("cola de revisión", () => {
       />,
     );
     expect(screen.getAllByRole("button", { name: "Unir" })).toHaveLength(1);
-    expect(screen.getByText(/1 de 3 matches dudosos/)).toBeInTheDocument();
+    expect(screen.getByText(/1 de 3 coincidencias dudosas/)).toBeInTheDocument();
   });
 
   it("un filtro sin resultados distingue «cola vacía» de «nada en este filtro»", () => {
@@ -225,8 +228,7 @@ describe("cola de revisión", () => {
       <ReviewQueue
         items={[]}
         loading={false}
-        error
-        errorDetail="500 · /api/v1/empresas/reviews"
+        error={new ApiError(500, "Internal Server Error", undefined, "GET /api/v1/empresas/reviews")}
         onRetry={onRetry}
         filtro="all"
         onFiltroChange={() => {}}
@@ -235,6 +237,8 @@ describe("cola de revisión", () => {
       { wrapper: Wrapper },
     );
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar la cola de revisión");
+    // La ruta va plegada en el «Detalle técnico», no a la vista.
+    expect(screen.getByText(/500 · GET \/api\/v1\/empresas\/reviews/).closest("details")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Reintentar/ }));
     expect(onRetry).toHaveBeenCalled();
   });

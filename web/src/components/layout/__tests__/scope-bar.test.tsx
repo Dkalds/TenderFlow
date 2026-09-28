@@ -22,6 +22,7 @@ const {
   overviewKeyRef,
   metaEnabledRef,
   campanaRef,
+  frescuraRef,
   setCommandOpen,
   undo,
   redo,
@@ -63,6 +64,8 @@ const {
   metaEnabledRef: { current: undefined as boolean | undefined },
   // Montajes y desmontajes de la campana: cada montaje abre un SSE.
   campanaRef: { montajes: 0, desmontajes: 0 },
+  // Lo que devuelve `useDataFreshness`: «hace N» o nada si no hay registro.
+  frescuraRef: { current: "hace 5 min" as string | null },
   setCommandOpen: vi.fn(),
   undo: vi.fn(),
   redo: vi.fn(),
@@ -83,7 +86,7 @@ vi.mock("@/lib/search-history", () => ({
   useSearchHistory: () => ({ history: [], addToHistory: vi.fn() }),
 }));
 vi.mock("@/hooks/use-data-freshness", () => ({
-  useDataFreshness: () => ({ relative: "hace 5 min" }),
+  useDataFreshness: () => ({ relative: frescuraRef.current }),
 }));
 vi.mock("@/hooks/use-debounce", () => ({ useDebounce: (v: unknown) => v }));
 vi.mock("@/lib/api-client", () => ({ fetchWithAuth: vi.fn() }));
@@ -170,6 +173,7 @@ beforeEach(() => {
   metaEnabledRef.current = undefined;
   campanaRef.montajes = 0;
   campanaRef.desmontajes = 0;
+  frescuraRef.current = "hace 5 min";
   filtersRef.current = {
     ...filtersRef.current,
     q: "",
@@ -325,9 +329,30 @@ describe("ScopeBar — recuento y sincronía", () => {
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
-  it("dice cuándo fue el último sync", () => {
+  it("dice cuándo se actualizaron los datos, en castellano", () => {
     renderBar();
-    expect(screen.getByText("sync hace 5 min")).toBeInTheDocument();
+    expect(screen.getByText("Actualizado hace 5 min")).toBeInTheDocument();
+    expect(screen.queryByText(/sync/i)).not.toBeInTheDocument();
+  });
+
+  it("sin registro lo dice en una frase, sin jerga", () => {
+    frescuraRef.current = null;
+    renderBar();
+    expect(screen.getByText("Sin actualizaciones registradas")).toBeInTheDocument();
+  });
+
+  it("también en las pantallas sin ámbito", () => {
+    pathnameRef.current = "/mi-perfil";
+    renderBar();
+    expect(screen.getByText("Actualizado hace 5 min")).toBeInTheDocument();
+  });
+
+  it("no pinta un punto «en vivo» con pulso: ni la ingesta es en vivo ni el color decía nada", () => {
+    // El punto verde con `animate-ping` salía igual con «hace 5 horas» y con
+    // «sin registro», y se veía en cada pantalla, cien veces al día.
+    const { container } = renderBar();
+    expect(container.querySelector(".animate-ping")).toBeNull();
+    expect(container.querySelector('[class*="animate-"]')).toBeNull();
   });
 });
 
@@ -341,6 +366,14 @@ describe("ScopeBar — contrato de filtros por página", () => {
     expect(screen.queryByRole("button", { name: /^Quitar / })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "+ Añadir" })).not.toBeInTheDocument();
     expect(screen.getByText(/no aplica en esta pantalla/i)).toBeInTheDocument();
+  });
+
+  it("el aviso «no aplica» es una frase, no un rótulo en versal", () => {
+    pathnameRef.current = "/mi-perfil";
+    renderBar();
+    const aviso = screen.getByText("El ámbito no aplica en esta pantalla.");
+    expect(aviso).toHaveClass("text-tf-meta");
+    expect(aviso.className).not.toMatch(/uppercase|font-mono/);
   });
 
   it("si hay filtros activos que no aplican, lo dice y ofrece limpiarlos", () => {
@@ -456,16 +489,24 @@ describe("ScopeBar — separador con el contenido", () => {
 });
 
 describe("ScopeBar — utilidades", () => {
+  it("el botón de buscar se llama como lo que enseña y anuncia su atajo", () => {
+    // WCAG 2.5.3: el nombre accesible contiene el texto visible («Buscar»). El
+    // «⌘K» es decoración para el lector: el atajo va en `aria-keyshortcuts`.
+    renderBar();
+    const boton = screen.getByRole("button", { name: "Buscar" });
+    expect(boton).toHaveAttribute("aria-keyshortcuts", expect.stringContaining("K"));
+  });
+
   it("el botón de buscar abre la paleta de comandos", () => {
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: "Abrir búsqueda y comandos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
     expect(setCommandOpen).toHaveBeenCalledWith(true);
   });
 
   it("también en las pantallas sin ámbito", () => {
     pathnameRef.current = "/mi-perfil";
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: "Abrir búsqueda y comandos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
     expect(setCommandOpen).toHaveBeenCalledWith(true);
   });
 });

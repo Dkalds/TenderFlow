@@ -13,7 +13,7 @@ export function highlightQuery(text: string, query: string): ReactNode {
   const parts = text.split(new RegExp(`(${escaped})`, "gi"));
   return parts.map((part, i) =>
     part.toLowerCase() === query.toLowerCase() ? (
-      <mark key={i} className="bg-yellow-200 font-semibold dark:bg-yellow-800">
+      <mark key={i} className="rounded-sm bg-warning/15 font-semibold text-foreground">
         {part}
       </mark>
     ) : (

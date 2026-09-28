@@ -8,28 +8,28 @@
  * gobierna: antes había que bajar 2.400 px de gráficos para llegar a ella.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelEmpty, PanelTitle } from "@/components/console/panel";
+import { IndicadorOrden } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { CABECERA_COLUMNA, Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn, formatNumber } from "@/lib/utils";
 
 import type { Competitor, SortKey } from "../_hooks/competidores-types";
 import { CompetitorRow } from "./competidor-fila";
 
-const TABLE_COLUMNS: { key: SortKey; label: string }[] = [
+const TABLE_COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
   { key: "nombre", label: "Nombre" },
   { key: "nif", label: "NIF" },
-  { key: "count", label: "Adjudicaciones" },
-  { key: "importe", label: "Importe" },
-  { key: "cuota", label: "Cuota %" },
-  { key: "contratos_por_anio", label: "Contratos/Año" },
-  { key: "importe_medio", label: "Importe Medio" },
-  { key: "baja_media", label: "Baja Media %" },
-  { key: "ofertas_medias", label: "Ofertas Medias" },
-  { key: "pct_monopolio", label: "% Sin comp." },
-  { key: "pct_top_organo", label: "% Top Órgano" },
-  { key: "ultima", label: "Última Adj." },
+  { key: "count", label: "Adjudicaciones", numeric: true },
+  { key: "importe", label: "Importe", numeric: true },
+  { key: "cuota", label: "Cuota %", numeric: true },
+  { key: "contratos_por_anio", label: "Contratos/año", numeric: true },
+  { key: "importe_medio", label: "Importe medio", numeric: true },
+  { key: "baja_media", label: "Baja media %", numeric: true },
+  { key: "ofertas_medias", label: "Ofertas medias", numeric: true },
+  { key: "pct_monopolio", label: "% sin competencia", numeric: true },
+  { key: "pct_top_organo", label: "% órgano principal", numeric: true },
+  { key: "ultima", label: "Última adj." },
 ];
 
 /**
@@ -68,83 +68,76 @@ export function CompetidoresTabla({
   onDrillDown: (competitor: Competitor) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base">Todos los Competidores</CardTitle>
-          <p className="text-muted-foreground text-xs">Selecciona 2 empresas para comparar con radar</p>
+    <Panel>
+      <PanelTitle title="Todos los competidores" hint="Marca dos empresas para compararlas" />
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-full" />
+          ))}
         </div>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : filas.length > 0 ? (
-          <div className="overflow-x-auto">
-            <Table className="w-full text-sm">
-              <TableHeader>
-                <TableRow className="text-muted-foreground border-b text-left">
-                  <TableHead className="w-10 px-2 py-2 font-medium">
-                    <span className="sr-only">Comparar</span>
-                  </TableHead>
-                  {TABLE_COLUMNS.map(({ key, label }) => (
+      ) : filas.length > 0 ? (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10">
+                  <span className="sr-only">Comparar</span>
+                </TableHead>
+                {TABLE_COLUMNS.map(({ key, label, numeric }) => {
+                  const activa = sortKey === key;
+                  return (
                     <TableHead
                       key={key}
-                      className="hover:text-foreground cursor-pointer px-3 py-2 font-medium whitespace-nowrap select-none"
-                      tabIndex={0}
-                      role="columnheader"
-                      aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
-                      onClick={() => onSort(key)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") onSort(key);
-                      }}
+                      aria-sort={activa ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                      className={cn("whitespace-nowrap", numeric && "text-right")}
                     >
-                      <span className="inline-flex items-center gap-1">
-                        {label}
-                        {sortKey === key ? (
-                          sortDir === "asc" ? (
-                            <ArrowUp className="text-primary h-3 w-3" />
-                          ) : (
-                            <ArrowDown className="text-primary h-3 w-3" />
-                          )
-                        ) : (
-                          <ArrowUpDown className="h-3 w-3 opacity-40" />
+                      {/* Botón real dentro del `<th>`: foco, Intro y Espacio
+                          sin reinventarlos. La versal va en el botón, que no
+                          la hereda del `<th>`. */}
+                      <button
+                        type="button"
+                        onClick={() => onSort(key)}
+                        className={cn(
+                          CABECERA_COLUMNA,
+                          "group inline-flex items-center gap-1 transition-colors hover:text-foreground",
+                          activa && "text-foreground",
                         )}
-                      </span>
+                      >
+                        {label}
+                        <IndicadorOrden direccion={activa ? sortDir : null} />
+                      </button>
                     </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filas.map((c, idx) => (
-                  <CompetitorRow
-                    key={rowKey(c, idx)}
-                    competitor={c}
-                    selected={selectedCompanies.includes(c.nombre)}
-                    onToggleCompare={onToggleCompare}
-                    onDrillDown={onDrillDown}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <p className="text-muted-foreground py-8 text-center">
-            {search ? "No se encontraron competidores" : "Sin datos disponibles"}
+                  );
+                })}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filas.map((c, idx) => (
+                <CompetitorRow
+                  key={rowKey(c, idx)}
+                  competitor={c}
+                  selected={selectedCompanies.includes(c.nombre)}
+                  onToggleCompare={onToggleCompare}
+                  onDrillDown={onDrillDown}
+                />
+              ))}
+            </TableBody>
+          </Table>
+          <p className="mt-3 border-t border-border/60 pt-3 text-tf-meta text-muted-foreground">
+            Mostrando {formatNumber(filas.length)} de {formatNumber(totalEmpresas)} competidores
           </p>
-        )}
-        {!isLoading && filas.length > 0 && (
-          <>
-            <Separator className="my-3" />
-            <p className="text-muted-foreground text-xs">
-              Mostrando {filas.length} de {totalEmpresas} competidores
-            </p>
-          </>
-        )}
-      </CardContent>
-    </Card>
+        </>
+      ) : (
+        <PanelEmpty
+          title={search ? "Ningún competidor coincide con la búsqueda" : "Ningún competidor"}
+          hint={
+            search
+              ? "Prueba con otro nombre o NIF."
+              : "No hay adjudicaciones en el ámbito actual. Amplía las fechas o quita filtros."
+          }
+        />
+      )}
+    </Panel>
   );
 }

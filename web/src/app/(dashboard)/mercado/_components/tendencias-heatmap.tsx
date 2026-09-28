@@ -15,10 +15,8 @@
 
 import Link from "next/link";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
+import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { Pista } from "@/components/ui/pista";
-import { Skeleton } from "@/components/ui/skeleton";
 import { estadoLabel } from "@/lib/estados";
 import { useScopedHref } from "@/lib/filters";
 import { cn } from "@/lib/utils";
@@ -49,17 +47,15 @@ export function TendenciasHeatmap({
 }) {
   const scopedHref = useScopedHref();
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Heatmap: Mes x Estado</CardTitle>
-        <CardDescription>
-          Licitaciones publicadas cada mes, por estado actual. Pulsa un mes o una
-          celda para ver esas licitaciones.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <Panel>
+      <PanelTitle title="Licitaciones por mes y estado" className="mb-1" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Licitaciones publicadas cada mes, por estado actual. Pulsa un mes o una
+        celda para ver esas licitaciones.
+      </p>
+      <div>
         {isLoading ? (
-          <Skeleton className="h-[300px] w-full" />
+          <PanelLoading height={300} />
         ) : heatmapData && heatmapData.meses.length > 0 && heatmapData.estados.length > 0 ? (
           <div className="overflow-x-auto">
             <div className="inline-block min-w-full">
@@ -70,7 +66,7 @@ export function TendenciasHeatmap({
                     key={mes}
                     href={scopedHref(mesHref(mes))}
                     aria-label={`Ver licitaciones publicadas en ${mes}`}
-                    className="w-14 shrink-0 truncate rounded-sm px-0.5 text-center text-xs text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-14 shrink-0 truncate rounded-sm px-0.5 text-center text-tf-micro text-muted-foreground transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {mes.length > 7 ? mes.slice(5) : mes}
                   </Link>
@@ -81,7 +77,7 @@ export function TendenciasHeatmap({
                   {/* `col` viaja con el código de la columna, no con la
                       etiqueta: sin traducir, la fila del heatmap se rotula "AGR". */}
                   <Pista contenido={estadoLabel(estado)}>
-                    <div className="w-32 shrink-0 text-xs text-muted-foreground truncate pr-2">{estadoLabel(estado)}</div>
+                    <div className="w-32 shrink-0 truncate pr-2 text-tf-micro text-muted-foreground">{estadoLabel(estado)}</div>
                   </Pista>
                   {heatmapData.meses.map((mes) => {
                     const value = heatmapData.valores.get(`${mes}|${estado}`) ?? 0;
@@ -91,7 +87,7 @@ export function TendenciasHeatmap({
                       <Pista key={`${estado}-${mes}`} contenido={etiqueta}>
                         <div
                           className={cn(
-                            "w-14 h-8 shrink-0 m-0.5 rounded-sm text-xs font-medium transition-colors",
+                            "w-14 h-8 shrink-0 m-0.5 rounded-sm text-tf-micro font-medium",
                             intensity > 0.55 ? "text-primary-foreground" : "text-foreground/80",
                           )}
                           style={heatmapCellStyle(value, heatmapData.maxVal)}
@@ -113,7 +109,7 @@ export function TendenciasHeatmap({
                 </div>
               ))}
               <div className="flex items-center gap-2 mt-4">
-                <span className="text-xs text-muted-foreground">Menos</span>
+                <span className="text-tf-micro text-muted-foreground">Menos</span>
                 {HEATMAP_LEGEND_STEPS.map((alpha, i) => (
                   <div
                     key={i}
@@ -126,14 +122,18 @@ export function TendenciasHeatmap({
                     }}
                   />
                 ))}
-                <span className="text-xs text-muted-foreground">Mas</span>
+                <span className="text-tf-micro text-muted-foreground">Más</span>
               </div>
             </div>
           </div>
         ) : (
-          <EmptyState />
+          <PanelEmpty
+            title="Sin licitaciones"
+            hint="Ninguna licitación publicada en el ámbito actual. Amplía las fechas o quita filtros."
+            height={300}
+          />
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

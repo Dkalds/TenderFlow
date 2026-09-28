@@ -11,6 +11,7 @@ import {
   Legend,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
+import { getSeriesColor } from "@/lib/chart-colors";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -55,8 +56,8 @@ export function CalendarioMonthlyChart({
             }
           />
           <Legend />
-          <Bar yAxisId="left" dataKey="count" fill="hsl(221, 83%, 53%)" radius={[4, 4, 0, 0]} name={etiqueta} />
-          <Bar yAxisId="right" dataKey="importe" fill="hsl(160, 60%, 45%)" radius={[4, 4, 0, 0]} name="Importe" />
+          <Bar yAxisId="left" dataKey="count" fill={getSeriesColor(1)} radius={[4, 4, 0, 0]} name={etiqueta} />
+          <Bar yAxisId="right" dataKey="importe" fill={getSeriesColor(5)} radius={[4, 4, 0, 0]} name="Importe" />
         </BarChart>
       </ResponsiveContainer>
     </ChartErrorBoundary>
@@ -72,7 +73,7 @@ export function CalendarioDowChart({ data }: { data: DowEntry[] }) {
           <XAxis dataKey="dia" tick={{ fontSize: 12 }} />
           <YAxis tick={{ fontSize: 12 }} />
           <Tooltip />
-          <Bar dataKey="promedio" fill="hsl(280, 65%, 60%)" radius={[4, 4, 0, 0]} name="Promedio diario" />
+          <Bar dataKey="promedio" fill={getSeriesColor(4)} radius={[4, 4, 0, 0]} name="Promedio diario" />
         </BarChart>
       </ResponsiveContainer>
     </ChartErrorBoundary>

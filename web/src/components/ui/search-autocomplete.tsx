@@ -187,9 +187,9 @@ export function SearchAutocomplete({
               }}
             >
               {item.isRecent ? (
-                <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               ) : (
-                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               )}
               <span className="truncate">{item.label}</span>
             </div>

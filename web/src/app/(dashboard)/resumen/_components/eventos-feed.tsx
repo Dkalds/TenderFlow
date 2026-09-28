@@ -7,16 +7,17 @@ import {
   CalendarClock,
   FileCheck,
   type LucideIcon,
+  CircleX,
   RefreshCw,
   Scale,
   Trophy,
-  XCircle,
 } from "lucide-react";
 import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 import type { EventosFeedResult } from "@/lib/api-types";
 
@@ -25,7 +26,7 @@ const TIPO_ICON: Record<string, LucideIcon> = {
   formalizacion: FileCheck,
   modificacion: RefreshCw,
   prorroga: CalendarClock,
-  anulacion: XCircle,
+  anulacion: CircleX,
   cambio_estado: ArrowRightLeft,
   recurso: Scale,
 };
@@ -58,7 +59,7 @@ function ImporteDelta({ value }: { value: number | null | undefined }) {
         {/* Sin `tabIndex` ni `<button>`: esto vive dentro de un `<Link>`, y un
             control focusable aquí sería `nested-interactive` — la primera regla
             que C7.1 quiere reactivar. */}
-        <span className="tf-tnum flex-none font-mono text-[10.5px] font-semibold">
+        <span className="tf-tnum flex-none text-tf-micro font-semibold">
           {value > 0 ? "+" : ""}
           {formatCurrency(value)}
         </span>
@@ -94,46 +95,49 @@ export function EventosFeed() {
   const { data, isLoading, error, refetch } = useFilteredQuery<EventosFeedResult>(
     ["eventos", "feed"],
     "/api/v1/eventos",
-    { staleTime: 2 * 60 * 1000 },
+    // El fallo se pinta en el sitio del panel: sin toast encima.
+    { staleTime: 2 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     { dias: "30", limit: "20" },
   );
 
   const items = data?.items ?? [];
   const visibles = items.slice(0, MAX_FILAS);
 
-  if (error) {
-    return (
-      <PanelError
-        title="No se pudieron cargar los movimientos"
-        detail={(error as Error).message}
-        onRetry={() => void refetch()}
-        height={220}
-      />
-    );
-  }
-
   return (
     <Panel className="mb-5.5">
       <PanelTitle
         title="Movimientos del mercado"
-        hint={`${ventanaLabel(rango.desde, rango.hasta)} · prórrogas, modificaciones y adjudicaciones del ámbito`}
+        hint={`${ventanaLabel(rango.desde, rango.hasta)} · del ámbito`}
         actions={
-          items.length > visibles.length ? (
-            <span className="tf-tnum text-muted-foreground font-mono text-[10.5px]">
+          !error && items.length > visibles.length ? (
+            <span className="tf-tnum text-tf-micro text-muted-foreground">
               {visibles.length} de {items.length}
             </span>
           ) : undefined
         }
       />
 
-      {isLoading ? (
+      {/* El fallo va dentro del panel, bajo su título: la sección no pierde
+          su nombre ni su sitio en la página. */}
+      {error ? (
+        <PanelError
+          variant="inline"
+          title="No se pudieron cargar los movimientos"
+          error={error}
+          onRetry={() => void refetch()}
+          height={180}
+        />
+      ) : isLoading ? (
         <div className="flex flex-col gap-1.5">
           {Array.from({ length: 5 }, (_, index) => (
-            <Skeleton key={index} className="h-7 w-full rounded" />
+            <Skeleton key={index} className="h-7 w-full rounded-sm" />
           ))}
         </div>
       ) : visibles.length === 0 ? (
-        <PanelEmpty message="Ningún contrato del ámbito se ha movido en la ventana." />
+        <PanelEmpty
+          title="Ningún contrato se ha movido en la ventana"
+          hint="Prórrogas, modificaciones, adjudicaciones y anulaciones del ámbito salen aquí. Amplía las fechas para ver más."
+        />
       ) : (
         <ul>
           {visibles.map((evento, indice) => {
@@ -142,20 +146,17 @@ export function EventosFeed() {
               <li key={`${evento.licitacion_id}-${evento.tipo}-${indice}`}>
                 <Link
                   href={`/detalle?lic=${encodeURIComponent(evento.licitacion_id)}`}
-                  className="border-border/25 hover:bg-primary/4 flex items-center gap-2.5 border-b px-1 py-1.5 transition-colors duration-140 ease-out last:border-b-0"
+                  className="flex items-center gap-2.5 border-b border-border/25 px-1 py-1.5 transition-colors last:border-b-0 hover:bg-primary/5 active:bg-primary/10 active:duration-0"
                 >
-                  <Icon
-                    className="text-muted-foreground h-3.5 w-3.5 flex-none"
-                    aria-hidden="true"
-                  />
-                  <span className="w-[104px] flex-none truncate text-[11px] font-semibold">
+                  <Icon className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
+                  <span className="w-[104px] flex-none truncate text-tf-micro font-semibold">
                     {TIPO_LABEL[evento.tipo] ?? evento.tipo}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[11.5px]">
+                  <span className="min-w-0 flex-1 truncate text-tf-meta">
                     {truncate(evento.titulo ?? evento.licitacion_id, 70)}
                   </span>
                   <ImporteDelta value={evento.importe_delta} />
-                  <span className="text-muted-foreground tf-tnum w-[74px] flex-none text-right font-mono text-[10.5px]">
+                  <span className="tf-tnum w-[74px] flex-none text-right text-tf-micro text-muted-foreground">
                     {evento.fecha ? formatDate(evento.fecha) : ""}
                   </span>
                 </Link>

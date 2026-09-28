@@ -1218,10 +1218,12 @@ class TechnologyClassifier:
         descubrir que este camino no la miraba.
 
         El tercer canal —:meth:`ensure_downloaded`, el asset de la Release por
-        nombre— es el que puede traer el artefacto sin registro. Hoy tampoco
-        encuentra nada, porque ``tech_classifier.pkl`` no está publicado: lo
-        publica ``.github/workflows/train-tech.yml`` cuando el gate de etiquetas
-        no circulares deja de rechazar.
+        nombre— es el que trae el artefacto sin registro. Lo sube
+        ``.github/workflows/train-tech.yml`` a la Release *latest* cuando el gate
+        de etiquetas no circulares lo deja pasar; la primera vez fue el
+        2026-09-27. Mientras siga publicado, llamar aquí sin el fichero en disco
+        lo descarga de GitHub, así que un test que llegue hasta este método sin
+        mocks sale a la red.
         """
         from shared.model_artifacts import resolve_servable_artifact
 

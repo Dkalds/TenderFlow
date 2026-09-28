@@ -1,7 +1,9 @@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ANCLA_SOLICITUD } from "@/lib/contacto";
+import { cn } from "@/lib/utils";
 import { CONTENIDO } from "../_content/landing";
+import { CTA_PRIMARIO } from "./piel-publica";
 
 /**
  * Formulario de solicitud de acceso: HTML nativo, sin una línea de JavaScript.
@@ -54,7 +56,7 @@ export function FormularioSolicitud() {
       method="post"
       action="/api/v1/publico/solicitudes-acceso"
       tabIndex={-1}
-      className="border-border/70 bg-card mt-10 w-full scroll-mt-40 rounded-xl border p-6 text-left shadow-sm focus:outline-none sm:scroll-mt-24 md:mt-0"
+      className="border-border/70 bg-card mt-10 w-full scroll-mt-40 rounded-xl border p-6 text-left focus:outline-none sm:scroll-mt-24 md:mt-0"
     >
       {/* Superficie desde la que se envía, no CTA pulsado: los tres botones
           llevan al mismo ancla de este mismo formulario, así que sin
@@ -117,7 +119,7 @@ export function FormularioSolicitud() {
           required
           value="si"
           aria-labelledby="solicitud-consentimiento-texto"
-          className="border-input accent-primary mt-0.5 h-4 w-4 shrink-0 rounded"
+          className="border-input accent-primary mt-0.5 h-4 w-4 shrink-0 rounded-sm"
         />
         <span id="solicitud-consentimiento-texto">
           {CONTENIDO.formConsentimiento}{" "}
@@ -130,7 +132,8 @@ export function FormularioSolicitud() {
 
       <button
         type="submit"
-        className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background mt-6 inline-flex h-11 w-full items-center justify-center rounded-md px-6 text-sm font-semibold shadow-md transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.99]"
+        // Ancho entero: a 0,97 un botón de 400 px encoge 12 px por lado.
+        className={cn(CTA_PRIMARIO, "mt-6 w-full active:scale-[0.99]")}
       >
         {CONTENIDO.formEnviar}
       </button>

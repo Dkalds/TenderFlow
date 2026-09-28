@@ -212,7 +212,7 @@ export function PursuitActivity({
 
   if (ordenados.length === 0) {
     return (
-      <p className="text-muted-foreground text-tf-micro leading-[1.5]">
+      <p className="text-muted-foreground text-tf-meta">
         Sin actividad registrada todavía. Cada cambio de estado, decisión o precio deja aquí su
         rastro con autor y fecha.
       </p>
@@ -240,8 +240,8 @@ export function PursuitActivity({
               )}
             />
             <div className="min-w-0 flex-1">
-              <p className="text-tf-meta leading-[1.35] font-medium">{titulo}</p>
-              <p className="text-muted-foreground mt-0.5 font-mono text-tf-micro">
+              <p className="text-tf-meta font-medium">{titulo}</p>
+              <p className="tf-tnum text-muted-foreground mt-0.5 text-tf-micro">
                 {formatDate(evento.created_at)} · {actorLegible(evento, miembros)}
               </p>
               {resumenContraste(evento) ? (
@@ -255,7 +255,7 @@ export function PursuitActivity({
               {resto.length > 0 && (
                 <ul className="mt-1 flex flex-col gap-0.5">
                   {resto.map((cambio) => (
-                    <li key={cambio.campo} className="text-tf-micro leading-[1.45]">
+                    <li key={cambio.campo} className="text-tf-micro">
                       <span className="text-muted-foreground">
                         {CAMPO_LEGIBLE[cambio.campo] ?? cambio.campo}:
                       </span>{" "}

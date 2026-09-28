@@ -17,7 +17,12 @@ from sqlalchemy.dialects.postgresql import ARRAY, array
 
 from db.database import connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
-from db.repositories.base import csv_values, loose_distinct_strings, rows_to_dicts
+from db.repositories.base import (
+    ambito_busqueda_sql,
+    csv_values,
+    loose_distinct_strings,
+    rows_to_dicts,
+)
 from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.sql_fragments import (
     FOLD_DST_SQL,
@@ -1746,21 +1751,21 @@ class LicitacionRepository:
         self,
         query: str,
         *,
-        ccaa: str | None = None,
-        tecnologia: str | None = None,
+        ccaa: str | Sequence[str] | None = None,
+        tecnologia: str | Sequence[str] | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Búsqueda por ``search_vector`` con metadatos completos (para RAG endpoint)."""
-        conditions: list[str] = ["l.search_vector @@ websearch_to_tsquery('spanish', %s)"]
-        params: list[Any] = [query]
-        if ccaa:
-            conditions.append("l.ccaa = %s")
-            params.append(ccaa)
-        if tecnologias := csv_values(tecnologia):
-            # Ver `fetch_for_pdf`: el CSV se explota, no se compara entero.
-            conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
-            params.extend(tecnologias)
-        where = " AND ".join(conditions)
+        """Búsqueda por ``search_vector`` con metadatos completos (para RAG endpoint).
+
+        Los filtros son los de :func:`ambito_busqueda_sql`, los mismos que
+        aplican la fusión híbrida y el LIKE de ``/ask``.
+        """
+        ambito, valores = ambito_busqueda_sql(
+            "l", ccaa=ccaa, tecnologia=tecnologia, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+        )
+        where = " AND ".join(["l.search_vector @@ websearch_to_tsquery('spanish', %s)", *ambito])
         cols = (
             "l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
             "l.descripcion, l.url, l.fecha_publicacion, l.ccaa, l.estado, l.tecnologia"
@@ -1771,7 +1776,7 @@ class LicitacionRepository:
                 f"WHERE {where} "
                 "ORDER BY ts_rank_cd(l.search_vector, websearch_to_tsquery('spanish', %s)) DESC "
                 "LIMIT %s",
-                [*params, query, limit],
+                [query, *valores, query, limit],
             )
             return rows_to_dicts(cur)
 
@@ -1868,10 +1873,18 @@ class LicitacionRepository:
         self,
         question: str,
         *,
-        ccaa: str | None = None,
+        ccaa: str | Sequence[str] | None = None,
+        tecnologia: str | Sequence[str] | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """LIKE fallback para /ask endpoint cuando FTS5 no devuelve resultados."""
+        """LIKE fallback para /ask endpoint cuando FTS5 no devuelve resultados.
+
+        Acota con los mismos filtros que el FTS (:func:`ambito_busqueda_sql`).
+        Solo miraba la CCAA: cuando el FTS no encontraba nada, el contexto de
+        una pregunta filtrada por SAP podía traer cualquier tecnología.
+        """
         from services.investigador.search_engine import extract_keywords
 
         # Reutiliza la misma extracción de keywords que FTS5 (filtra stopwords
@@ -1891,17 +1904,17 @@ class LicitacionRepository:
         for w in words:
             escaped = f"%{_escape_like(w)}%"
             params.extend([escaped, escaped])
-        conditions = [f"({like_clauses})"]
-        if ccaa:
-            conditions.append("ccaa = %s")
-            params.append(ccaa)
-        where = " AND ".join(conditions)
+        ambito, valores = ambito_busqueda_sql(
+            "l", ccaa=ccaa, tecnologia=tecnologia, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+        )
+        params.extend(valores)
+        where = " AND ".join([f"({like_clauses})", *ambito])
         try:
             with connect_read() as c:
                 cur = c.execute(
                     "SELECT id_externo, titulo, organo_contratacion, importe, "
                     "estado, descripcion, ccaa, tecnologia, fecha_publicacion "
-                    f"FROM licitaciones WHERE {where} LIMIT %s",
+                    f"FROM licitaciones l WHERE {where} LIMIT %s",
                     [*params, limit],
                 )
                 return rows_to_dicts(cur)

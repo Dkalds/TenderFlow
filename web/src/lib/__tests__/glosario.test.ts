@@ -20,6 +20,13 @@ describe("glosario", () => {
     }
   });
 
+  it("explica los indicadores de Competencia que llevan su «?»", () => {
+    // Competencia pinta un `GlosarioHint` junto a estos dos KPIs; sin entrada
+    // el «?» no se pintaría y el término quedaría sin explicar.
+    expect(glosario("hhi")?.termino).toBe("Concentración (HHI)");
+    expect(glosario("oferta_unica")?.termino).toBe("Oferta única");
+  });
+
   it("resuelve por código de estado y por concepto, sin importar la caja", () => {
     expect(glosario("ADJ")?.termino).toBe("Adjudicada");
     expect(glosario("adj")?.termino).toBe("Adjudicada");

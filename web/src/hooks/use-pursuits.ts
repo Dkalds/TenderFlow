@@ -22,6 +22,7 @@ import type {
 } from "@/lib/api-types";
 import { organizationKeys } from "@/lib/query-keys";
 import { pursuitKeys } from "@/lib/query-keys";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export type Pursuit = PursuitDetail;
 export type PursuitStatus = Pursuit["status"];
@@ -112,6 +113,7 @@ export function usePursuits(filters: PursuitFilters = {}) {
       apiGet("/api/v1/pursuits", { params: { query: pursuitQuery(filters, organizationId) }, signal }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -128,6 +130,7 @@ export function usePursuit(id: string | null) {
       });
     },
     enabled: Boolean(id) && organizacionResuelta(organizationId),
+    meta: META_ERROR_EN_LINEA,
   });
 }
 
@@ -291,5 +294,6 @@ export function usePipelineAgenda(filters: AgendaFilters) {
     // organización (último segmento de la clave).
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[3] === organizationId ? previous : undefined,
+    meta: META_ERROR_EN_LINEA,
   });
 }

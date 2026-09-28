@@ -12,32 +12,18 @@
 
 import {
   BarChart3,
-  Briefcase,
-  Building2,
   Calendar,
-  CalendarClock,
-  Eye,
   Flag,
-  Globe,
   GraduationCap,
-  Handshake,
   type LucideIcon,
-  LayoutDashboard,
-  ListChecks,
   Map,
   Puzzle,
-  RadioTower,
-  Search,
-  Settings,
   Shield,
-  Sparkles,
-  Star,
   Target,
   TrendingUp,
-  Trophy,
-  Users,
   Wrench,
 } from "lucide-react";
+import { ICONO_ADMIN, ICONO_CONCEPTO, ICONO_ENTIDAD, ICONO_ESPACIO } from "@/lib/iconos";
 import { SPACE_VIEWS } from "@/lib/space-views";
 
 export type GlobalFilterKey =
@@ -67,7 +53,13 @@ export const FILTROS_OPT_IN: readonly GlobalFilterKey[] = ["procedimiento", "pro
 export interface NavPage {
   label: string;
   slug: string;
+  /** Qué hay en la página, en lenguaje de usuario (se lee en el `title` de los atajos del Resumen). */
   description: string;
+  /**
+   * Icono de la página. Un espacio usa el suyo (`ICONO_ESPACIO`) y una entidad
+   * el de la entidad (`ICONO_ENTIDAD`): el mismo glifo que en el rail y la
+   * paleta. Solo lo pintan hoy los atajos del Resumen.
+   */
   icon: LucideIcon;
   /**
    * Contrato de filtros globales: si es `false`, la página NO consume el
@@ -110,17 +102,17 @@ export interface NavSection {
 export const SECTIONS: NavSection[] = [
   {
     label: "Radar",
-    icon: RadioTower,
+    icon: ICONO_ESPACIO.radar,
     pages: [
       {
         label: "Radar",
         slug: "radar",
         // Ni "recientes" ni "por afinidad": es el top del mercado abierto por
         // score, y la afinidad es una dimensión de seis que además suele estar
-        // desactivada. La descripción prometía el ranking que el P0 del
-        // UX_AUDIT corrigió en la página y que aquí quedó sin actualizar.
-        description: "Top del mercado abierto por potencial comercial.",
-        icon: RadioTower,
+        // desactivada. «Encajan con tu perfil» es el perfil de scoring entero
+        // (sus pesos), como dicen el pie del Radar y `console-spaces.ts`.
+        description: "Las licitaciones abiertas que mejor encajan con tu perfil.",
+        icon: ICONO_ESPACIO.radar,
         usesGlobalFilters: false,
         globalFilterKeys: ["tecnologia"],
         singleValueFilterKeys: ["tecnologia"],
@@ -129,33 +121,33 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Oportunidades",
-    icon: Briefcase,
+    icon: ICONO_ESPACIO.oportunidades,
     pages: [
       {
         label: "Oportunidades",
         slug: "oportunidades",
-        description: "Espacio operativo de decisiones, responsables, ofertas y resultados.",
-        icon: Briefcase,
+        description: "Las licitaciones que persigue tu equipo: decisión, responsables, oferta y resultado.",
+        icon: ICONO_ESPACIO.oportunidades,
         usesGlobalFilters: false,
       },
     ],
   },
   {
     label: "Organización",
-    icon: Users,
+    icon: ICONO_ESPACIO.equipo,
     pages: [
       {
         label: "Equipo",
         slug: "equipo",
-        description: "Organizaciones compartidas, miembros y roles del equipo.",
-        icon: Users,
+        description: "Quién está en tu organización y qué puede hacer.",
+        icon: ICONO_ESPACIO.equipo,
         usesGlobalFilters: false,
       },
     ],
   },
   {
     label: "Inicio",
-    icon: LayoutDashboard,
+    icon: ICONO_ESPACIO.resumen,
     pages: [
       {
         label: "Resumen",
@@ -166,20 +158,19 @@ export const SECTIONS: NavSection[] = [
         // que se pinta de verdad, en el orden en que se pinta.
         description:
           "Tus compromisos del día, lo que exige atención en el mercado abierto y la salud competitiva del ámbito.",
-        icon: LayoutDashboard,
+        icon: ICONO_ESPACIO.resumen,
       },
     ],
   },
   {
     label: "Licitaciones",
-    icon: Search,
+    icon: ICONO_ESPACIO.detalle,
     pages: [
       {
         label: "Detalle",
         slug: "detalle",
-        description:
-          "Tabla completa con todos los campos y exportación a Excel/CSV.",
-        icon: Search,
+        description: "Todas las licitaciones, con filtros y exportación a Excel o CSV.",
+        icon: ICONO_ESPACIO.detalle,
         // Consume `GET /licitaciones`, que sí filtra por ellos (F1.1).
         optInFilterKeys: ["procedimiento", "provincia", "importe_max"],
       },
@@ -192,62 +183,55 @@ export const SECTIONS: NavSection[] = [
       {
         label: "Tendencias",
         slug: "tendencias",
-        description:
-          "Evolución mensual de publicaciones e importes, heatmap y distribución.",
+        description: "Cómo evolucionan cada mes las publicaciones y los importes.",
         icon: TrendingUp,
       },
       {
         label: "Tendencias CPV",
         slug: "tendencias-cpv",
-        description:
-          "Serie temporal de importes por CPV con predicción ARIMA.",
+        description: "Importes por CPV a lo largo del tiempo, con su previsión.",
         icon: BarChart3,
       },
       {
         label: "Calendario",
         slug: "calendario",
-        description: "Heatmap de publicaciones por semana y día del año.",
+        description: "Qué semanas y qué días del año se publica más.",
         icon: Calendar,
       },
     ],
   },
   {
     label: "Mercado",
-    icon: Globe,
+    icon: ICONO_ESPACIO.mercado,
     pages: [
       {
         label: "Órganos",
         slug: "organos",
-        description:
-          "Ranking de órganos contratantes, treemap y análisis de pipeline individual.",
-        icon: Building2,
+        description: "Qué órganos contratan más y qué tiene cada uno en marcha.",
+        icon: ICONO_ENTIDAD.organo,
       },
       {
         label: "Geografía",
         slug: "geografia",
-        description:
-          "Distribución geográfica por comunidad autónoma e importe acumulado.",
+        description: "Dónde se licita: por comunidad autónoma y por importe.",
         icon: Map,
       },
       {
         label: "Tecnologías",
         slug: "tecnologias",
-        description:
-          "Distribución, evolución y cruces por tecnología detectada (SAP, Oracle, Salesforce…).",
+        description: "Qué tecnologías piden las licitaciones (SAP, Oracle, Salesforce…) y cómo evolucionan.",
         icon: Wrench,
       },
       {
-        label: "Proyectos y Módulos",
+        label: "Proyectos y módulos",
         slug: "proyectos-modulos",
-        description:
-          "Desglose por tipo de proyecto y módulo SAP detectado.",
+        description: "Por tipo de proyecto y por módulo de SAP.",
         icon: Puzzle,
       },
       {
         label: "Clusters",
         slug: "clusters",
-        description:
-          "Agrupaciones semánticas de licitaciones para detectar patrones y nichos de mercado.",
+        description: "Licitaciones parecidas agrupadas, para ver patrones y nichos de mercado.",
         icon: Target,
       },
       {
@@ -261,7 +245,7 @@ export const SECTIONS: NavSection[] = [
           // hoy es un corte de mercado sobre contratos de cualquier
           // adjudicatario, y lo tuyo sólo se marca.
           "Contratos de cualquier adjudicatario que vencen pronto: cartera en juego por empresa y riesgo de cambio.",
-        icon: CalendarClock,
+        icon: ICONO_CONCEPTO.plazo,
         usesGlobalFilters: false,
         globalFilterKeys: ["tecnologia"],
       },
@@ -269,29 +253,26 @@ export const SECTIONS: NavSection[] = [
   },
   {
     label: "Competencia",
-    icon: Trophy,
+    icon: ICONO_ESPACIO.competencia,
     pages: [
       {
         label: "Competidores",
         slug: "competidores",
-        description:
-          "Empresas adjudicatarias, cuota de mercado y análisis comparativo.",
-        icon: Trophy,
+        description: "Quién gana, con qué cuota y frente a quién.",
+        icon: ICONO_ESPACIO.competencia,
       },
       {
         label: "Empresas",
         slug: "empresas",
-        description:
-          "Maestro de empresas canónicas: buscador, identidad, alias, vigilancia y cola de revisión.",
-        icon: Briefcase,
+        description: "Fichas de empresa: identidad, alias, seguimiento y alias por revisar.",
+        icon: ICONO_ENTIDAD.empresa,
         usesGlobalFilters: false,
       },
       {
         label: "UTEs",
         slug: "utes",
-        description:
-          "Análisis de Uniones Temporales de Empresas: alianzas, estructura y contratos ganados.",
-        icon: Handshake,
+        description: "Uniones temporales de empresas: quién se alía con quién y qué ganan.",
+        icon: ICONO_ENTIDAD.ute,
       },
     ],
   },
@@ -300,14 +281,13 @@ export const SECTIONS: NavSection[] = [
     // `/renovaciones`; el espacio pasó a llamarse «Agenda» (slug `mi-pipeline`
     // intacto) y las renovaciones son hoy una vista de Mercado.
     label: "Agenda",
-    icon: ListChecks,
+    icon: ICONO_ESPACIO["mi-pipeline"],
     pages: [
       {
         label: "Agenda",
         slug: "pipeline-alertas",
-        description:
-          "Agenda de compromisos: pursuits, señales sin triar y renovaciones por vencer.",
-        icon: ListChecks,
+        description: "Lo que vence pronto: oportunidades con plazo, señales sin triar y renovaciones.",
+        icon: ICONO_ESPACIO["mi-pipeline"],
         usesGlobalFilters: false,
         globalFilterKeys: ["tecnologia", "ccaa"],
         singleValueFilterKeys: ["tecnologia", "ccaa"],
@@ -315,82 +295,74 @@ export const SECTIONS: NavSection[] = [
       {
         label: "Mi Watchlist",
         slug: "mi-watchlist",
-        description:
-          "Reglas de seguimiento personalizadas por CPV, keyword e importe.",
-        icon: Star,
+        description: "Avisos de las licitaciones que cumplen tus reglas.",
+        icon: ICONO_ESPACIO["mi-watchlist"],
         usesGlobalFilters: false,
       },
       {
-        label: "Mi Perfil de Scoring",
+        label: "Mi perfil",
         slug: "mi-perfil",
-        description:
-          "Personaliza los pesos de scoring, keywords de afinidad y rango de importe.",
-        icon: Settings,
+        description: "Qué te interesa y cuánto pesa cada criterio en la puntuación.",
+        icon: ICONO_ESPACIO["mi-perfil"],
         usesGlobalFilters: false,
       },
     ],
   },
   {
     label: "Investigador",
-    icon: Sparkles,
+    icon: ICONO_ESPACIO.investigador,
     pages: [
       {
         label: "Investigador",
         slug: "investigador",
-        description:
-          "Búsqueda semántica RAG sobre el corpus de licitaciones.",
-        icon: Search,
+        description: "Pregunta o busca dentro de las licitaciones y sus pliegos.",
+        icon: ICONO_ESPACIO.investigador,
       },
     ],
   },
   {
     label: "Ops",
-    icon: Eye,
+    icon: ICONO_ESPACIO.ops,
     pages: [
       {
         label: "Observabilidad",
         slug: "observabilidad",
-        description:
-          "Métricas de rendimiento, logs de scraping y estado del pipeline.",
+        description: "Rendimiento, registros de la ingesta y estado de cada paso.",
         icon: BarChart3,
         usesGlobalFilters: false,
       },
       {
-        label: "Calidad de Datos",
+        label: "Calidad de datos",
         slug: "calidad-datos",
-        description:
-          "Completitud del dataset, frescura del scraping, tasa de errores y DLQ.",
+        description: "Qué campos faltan, cuánto hace de la última ingesta y qué ha fallado.",
         icon: Shield,
         usesGlobalFilters: false,
       },
     ],
   },
   {
-    label: "Admin",
-    icon: Settings,
+    label: "Administración",
+    icon: ICONO_ADMIN,
     adminOnly: true,
     pages: [
       {
         label: "Administración",
         slug: "administracion",
-        description:
-          "Gestión de DLQ, usuarios y API keys. Solo accesible para administradores.",
-        icon: Settings,
+        description: "Usuarios, claves de API y la cola de tareas fallidas.",
+        icon: ICONO_ADMIN,
         usesGlobalFilters: false,
       },
       {
-        label: "Feature Flags",
+        label: "Feature flags",
         slug: "feature-flags",
-        description:
-          "Activar y desactivar funcionalidades en tiempo real con despliegue gradual.",
+        description: "Activar y desactivar funciones, también para una parte de los usuarios.",
         icon: Flag,
         usesGlobalFilters: false,
       },
       {
-        label: "Active Learning",
+        label: "Active learning",
         slug: "active-learning",
-        description:
-          "Etiquetado humano de licitaciones en la zona de incertidumbre del modelo.",
+        description: "Etiquetar a mano las licitaciones que el modelo no sabe clasificar.",
         icon: GraduationCap,
         usesGlobalFilters: false,
       },

@@ -42,7 +42,8 @@ describe("Sheet", () => {
     // Radix's Dialog.Overlay renders without an ARIA role (it's a purely
     // visual backdrop); select it by its distinguishing class instead of
     // `[role="presentation"]` used by the previous hand-rolled overlay.
-    expect(document.querySelector(".fixed.inset-0.bg-black\\/80")).toBeInTheDocument();
+    // Un solo scrim para diálogo, hoja y paleta: negro al 50 %.
+    expect(document.querySelector(".fixed.inset-0.bg-black\\/50")).toBeInTheDocument();
   });
 
   it("closes on Escape (Radix's built-in dismiss behavior)", () => {
@@ -96,5 +97,16 @@ describe("Sheet", () => {
       expect(screen.getByText(`side-${side}`)).toBeInTheDocument();
       unmount();
     }
+  });
+
+  it("el botón de cerrar se anuncia en castellano", () => {
+    render(
+      <Sheet open>
+        <SheetContent>
+          <SheetTitle>Panel</SheetTitle>
+        </SheetContent>
+      </Sheet>,
+    );
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
   });
 });

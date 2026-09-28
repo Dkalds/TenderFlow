@@ -27,7 +27,8 @@ describe("EventosTimeline", () => {
 
   it("renders an empty message when there are no events", () => {
     renderTimeline("L-empty", { items: [] });
-    expect(screen.getByText("Sin eventos registrados.")).toBeInTheDocument();
+    expect(screen.getByText("Sin eventos registrados")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/ni recurso de este contrato/);
   });
 
   it("renders events covering the label/variant maps and importe branches", () => {

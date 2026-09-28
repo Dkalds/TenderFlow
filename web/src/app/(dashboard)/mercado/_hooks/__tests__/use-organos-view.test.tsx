@@ -154,7 +154,8 @@ describe("useOrganosView", () => {
     await waitFor(() => expect(sinTotales.result.current.data).toBeDefined());
     expect(sinTotales.result.current.totalImporte).toBeNull();
     expect(sinTotales.result.current.top10Concentration).toBeNull();
-    expect(sinTotales.result.current.topOrgano).toBe("-");
+    // Sin órganos, la raya de vacío de la casa (EMPTY), no un guion suelto.
+    expect(sinTotales.result.current.topOrgano).toBe("—");
     expect(sinTotales.result.current.maxCount).toBe(1);
   });
 

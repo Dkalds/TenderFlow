@@ -21,25 +21,204 @@ const restriccionesDeSintaxis = [
   {
     selector: "CallExpression[callee.name='fetch'] > Literal:first-child[value=/^\\/api\\//]",
     message:
-      "Usá el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
+      "Usa el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
   },
   {
     selector:
       "CallExpression[callee.name='fetch'] > TemplateLiteral:first-child > TemplateElement:first-child[value.raw=/^\\/api\\//]",
     message:
-      "Usá el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
+      "Usa el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
   },
   {
     selector:
       "NewExpression[callee.object.name='Intl'][callee.property.name=/^(NumberFormat|DateTimeFormat|RelativeTimeFormat)$/]",
     message:
-      "Usá los helpers de @/lib/utils (formatCurrency, formatNumber, formatDate…). Si falta uno, añadilo allí.",
+      "Usa los helpers de @/lib/utils (formatCurrency, formatNumber, formatDate…). Si falta uno, añádelo allí.",
   },
   {
     selector:
       "CallExpression[callee.property.name=/^(toLocaleString|toLocaleDateString|toLocaleTimeString)$/]",
     message:
-      "Usá los helpers de @/lib/utils (formatNumber, formatDate…) en vez de toLocaleString.",
+      "Usa los helpers de @/lib/utils (formatNumber, formatDate…) en vez de toLocaleString.",
+  },
+];
+
+// ── Aspecto de plantilla (auditoría anti-vibecode del 2026-09-26) ──────────
+//
+// La consola se leía como UI generada por plantilla, y no por sus valores de
+// base —la paleta, la escala `tf-*`, los paneles planos estaban bien
+// decididos— sino porque **nada hacía cumplir esas decisiones**: la misma pieza
+// se dibujaba de 2 a 6 maneras, con 18 tamaños de letra escritos a mano, y los
+// adornos que la portada ya había retirado seguían dentro. La migración del
+// 2026-09-26/27 dejó cada una de estas cifras a cero (medidas y comandos en
+// docs/UX_AUDIT.md, «Aspecto de plantilla en la consola»; las «reglas» que se
+// citan abajo son las de su apartado «Las reglas de la casa»). Estas restricciones
+// existen para que se queden ahí: **no tienen allowlist**, porque no hay deuda
+// que listar. Un caso legítimo nuevo se justifica en su línea
+// (`// eslint-disable-next-line no-restricted-syntax -- <por qué>`), como hace
+// `connection-banner.tsx`, y se ve en el diff.
+//
+// Solo miran literales (cadenas, plantillas y texto JSX): un comentario que
+// cita la clase retirada para explicar por qué se fue no cuenta.
+//
+// Se aplican a todo `src` salvo los tests —que sí las nombran, para asertar su
+// ausencia— y por eso van en los dos bloques de arriba **y** en uno propio de
+// `src/lib`, que las cuatro de arriba dejan fuera.
+const CLASE = (patron) => [
+  { selector: `Literal[value=/${patron}/]` },
+  { selector: `TemplateElement[value.raw=/${patron}/]` },
+];
+const conMensaje = (message, selectores) => selectores.map((s) => ({ ...s, message }));
+
+const restriccionesDeAspecto = [
+  // Regla 1 de la casa: la escala son seis pasos (`text-tf-micro`… `text-tf-hero`,
+  // más `text-xs`/`text-sm`). Llegó a haber 451 tamaños a mano en 18 valores.
+  ...conMensaje(
+    "Tamaño de letra a mano: usa la escala (text-tf-micro 11 · text-tf-meta 12 · text-tf-body 13 · text-sm 14 · text-tf-lede 15 · text-tf-title 20 · text-tf-hero 32). El mapa está en el comentario de la escala de globals.css.",
+    CLASE(String.raw`(?<![\w-])text-\[(?:[\d.]|length:|clamp\()`),
+  ),
+  // Reglas 2 y 3: el rótulo de dato va en sans, en frase, a 11 px. La receta
+  // «mono + versal» era la voz de todo en la consola (53 líneas).
+  ...conMensaje(
+    "Rótulo en mono versal: usa ROTULO_DATO, SectionTitle, Fact o StatCell de @/components/console/panel (sans, en frase, 11 px). La versal solo va en CABECERA_COLUMNA de @/components/ui/table, y la mono solo en identificadores.",
+    CLASE(String.raw`^(?=[\s\S]*(?<![\w-])font-mono(?![\w-]))(?=[\s\S]*(?<![\w-])uppercase(?![\w-]))`),
+  ),
+  // Utilidades borradas de globals.css: la clase no falla, se queda sin
+  // estilo y el texto cae al del padre sin que nada avise.
+  ...conMensaje(
+    "Clase retirada de globals.css (no pinta nada): tf-display/tf-h1/tf-h2 → font-display text-tf-lede|title|hero; tf-kpi → text-tf-title font-semibold; tf-caption → text-tf-meta; tf-card-shadow → sin sombra (panel plano); tf-sidebar-surface → bg-card; tf-hero-grid y tf-fill-enter → nada.",
+    CLASE(
+      String.raw`(?<![\w-])tf-(?:display|h1|h2|kpi|caption|card-shadow|sidebar-surface|hero-grid|fill-enter)(?![\w-])`,
+    ),
+  ),
+  // Regla 6: la paleta cruda de Tailwind (171 clases en 38 ficheros) esquivaba
+  // los tokens ajustados por contraste en los dos temas.
+  ...conMensaje(
+    "Color de la paleta cruda de Tailwind: usa los tokens semánticos (success, warning, destructive, info, muted, primary), que ya cambian con el tema y están medidos por contraste (lib/__tests__/contraste-tokens.test.ts).",
+    CLASE(
+      String.raw`(?<![\w-])(?:bg|text|border|ring|fill|stroke|from|via|to|divide|outline|decoration|caret|accent|placeholder|shadow)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d{2,3}(?![\w-])`,
+    ),
+  ),
+  // Regla 7: tres radios con papel. `rounded` a secas son los 4 px por
+  // defecto de Tailwind, fuera de la escala de la casa.
+  ...conMensaje(
+    "Radio fuera de la escala: controles, chips y badges rounded-md; paneles rounded-xl; puntos y avatares rounded-full; rounded-sm donde iba el `rounded` desnudo. Nada de rounded-2xl, rounded-3xl ni rounded-[Npx].",
+    CLASE(String.raw`(?<![\w-])rounded(?:-(?:2xl|3xl|\[[^\]]*\]))?(?![\w-])`),
+  ),
+  // Regla 5: panel opaco. `bg-card/70` sobre un fondo plano no deja ver nada
+  // detrás: solo da un segundo blanco (44 usos). Las capas que flotan sobre
+  // contenido lo justifican en su línea.
+  ...conMensaje(
+    "Panel translúcido sobre fondo plano: los paneles van en bg-card opaco. Si es una capa flotante sobre contenido que se desplaza, justifícalo en la línea (eslint-disable-next-line con el motivo).",
+    CLASE(String.raw`(?<![\w-])bg-card\/(?:\d|\[)`),
+  ),
+  // Regla 14 y docs/frontend-motion.md: en Tailwind v4 `scale-*` y
+  // `translate-*` escriben sus propias propiedades, y una lista con
+  // `transform` no las anima: la pulsación saltaba sin transición.
+  ...conMensaje(
+    "transition-[…transform…] no anima scale-* ni translate-* en Tailwind v4: nombra la propiedad (transition-[scale,background-color], transition-[translate,color]) o usa transition-transform.",
+    CLASE(String.raw`transition-\[[^\]]*(?<![\w-])transform(?![\w-])`),
+  ),
+  // Regla 14: nada de pulsos infinitos decorativos. El punto verde que latía
+  // «en vivo» junto a datos de hace horas era la firma de la plantilla.
+  ...conMensaje(
+    "Animación infinita decorativa (animate-ping/animate-bounce): un estado se dice con color y texto, sin pulso. Carga: Skeleton; frescura: «Actualizado hace…».",
+    CLASE(String.raw`(?<![\w-])animate-(?:ping|bounce)(?![\w-])`),
+  ),
+  // Regla 8: solo iconos de lucide. Un emoji o un glifo de dingbat hace de
+  // icono sin tamaño, color ni nombre accesible de la casa (la ficha de
+  // órgano llevaba 🏢 📉 📅 🏆). ©, ® y ™ son tipografía, no iconos.
+  ...conMensaje(
+    "Emoji o glifo como icono: usa un icono de lucide (mapa de conceptos en @/lib/iconos) con aria-hidden, o el texto. ✓ ✕ ● ○ tampoco: Check, X, Circle.",
+    [
+      String.raw`(?![©®™])\p{Extended_Pictographic}|[✓✕✗✘○●]`,
+    ].flatMap((patron) => [
+      { selector: `JSXText[value=/${patron}/u]` },
+      { selector: `Literal[value=/${patron}/u]` },
+      { selector: `TemplateElement[value.raw=/${patron}/u]` },
+    ]),
+  ),
+];
+
+// Módulos y nombres de import retirados. Mismo motivo que arriba.
+//
+// `Card`, `EmptyState` y `KpiCard` eran el vocabulario de shadcn que convivía con
+// el de la consola (`components/console/panel`): 106, 28 y 14 importadores el
+// 2026-09-26, cero el 2026-09-27. Los tres módulos siguen existiendo, deprecados,
+// porque sus tests fijan cómo pintaban; importarlos desde código nuevo es lo
+// que esta regla impide.
+//
+// `deudaCard` es la lista que `ui/card.tsx` prometía desde su comentario y que
+// nunca se escribió. Nace vacía —la migración terminó antes que la regla— y
+// **solo puede encoger**: se deja la constante, como `deudaTitleNativo`, para
+// que una entrada nueva sea un cambio que se ve en el diff. Si alguna vez la
+// tuviera, ese fichero necesitaría su propio bloque con el resto de rutas: en
+// flat config el último bloque que declara una regla la gana entera.
+const deudaCard = [];
+
+const importacionesRetiradas = [
+  {
+    name: "@/components/ui/card",
+    message:
+      "Card está retirado de la consola: usa Panel, PanelTitle (y PanelLoading/PanelEmpty/PanelError) de @/components/console/panel, que fijan los tres estados al alto del contenido.",
+  },
+  {
+    name: "@/components/ui/empty-state",
+    message:
+      "EmptyState está retirado: usa PanelEmpty de @/components/console/panel con un título y una pista concretos (sin props pintaba un vacío en blanco).",
+  },
+  {
+    name: "@/components/charts/kpi-card",
+    message:
+      "KpiCard/KpiStrip están retirados: usa StatStrip y StatCell de @/components/console/panel (cifra a 20 px en sans, sin icono en baldosa).",
+  },
+  {
+    // D5: la IA se nombra, no se adorna. Sparkles hacía de comodín para «IA»,
+    // «nuevo» y «buscar» (7 ficheros); la varita es la misma metáfora.
+    name: "lucide-react",
+    importNames: [
+      "Sparkle",
+      "SparkleIcon",
+      "LucideSparkle",
+      "Sparkles",
+      "SparklesIcon",
+      "LucideSparkles",
+      "WandSparkles",
+      "WandSparklesIcon",
+      "LucideWandSparkles",
+      "PencilSparkles",
+      "PencilSparklesIcon",
+      "LucidePencilSparkles",
+      "Wand",
+      "WandIcon",
+      "LucideWand",
+      "Wand2",
+      "Wand2Icon",
+      "LucideWand2",
+    ],
+    message:
+      "La IA se nombra, no se adorna (D5): nada de Sparkles ni varitas. Si hace falta un glifo, MessageSquareText o TextSearch en text-muted-foreground (mapa en @/lib/iconos).",
+  },
+  {
+    // Regla 8: el icono se elegía por la palabra («importe» → dólar) en un
+    // producto en euros (5 ficheros).
+    name: "lucide-react",
+    importNames: [
+      "DollarSign",
+      "DollarSignIcon",
+      "LucideDollarSign",
+      "CircleDollarSign",
+      "CircleDollarSignIcon",
+      "LucideCircleDollarSign",
+    ],
+    message: "Un importe en euros no lleva icono de dólar: sin icono (la cifra ya lo dice) o Euro. Mapa en @/lib/iconos.",
+  },
+  {
+    // `AlertTriangle` es el nombre viejo de `TriangleAlert` en lucide: con los
+    // dos en el árbol (15 ficheros), el mismo aviso se importaba de dos formas.
+    name: "lucide-react",
+    importNames: ["AlertTriangle", "AlertTriangleIcon", "LucideAlertTriangle"],
+    message: "Usa TriangleAlert (el nombre vigente en lucide): un mismo icono, un mismo nombre.",
   },
 ];
 
@@ -64,7 +243,7 @@ const restriccionTitleNativo = {
   selector:
     "JSXOpeningElement[name.type='JSXIdentifier'][name.name=/^[a-z]/]:not([name.name='abbr']):not([name.name='iframe']) > JSXAttribute[name.name='title']",
   message:
-    "El `title` nativo no existe para teclado ni táctil: usá <Tooltip> (@/components/ui/tooltip) en controles y <Pista> (@/components/ui/pista) en texto y celdas. En <abbr> e <iframe> sí es semántico y está permitido.",
+    "El `title` nativo no existe para teclado ni táctil: usa <Tooltip> (@/components/ui/tooltip) en controles y <Pista> (@/components/ui/pista) en texto y celdas. En <abbr> e <iframe> sí es semántico y está permitido.",
 };
 
 //: Ficheros con `title=` nativo. **Solo puede encoger**, y desde el
@@ -150,7 +329,7 @@ const eslintConfig = defineConfig([
   // criterio de redondeo, y el arreglo fue centralizarlos. Sin una regla que lo
   // sostenga, la dispersión vuelve por goteo: cada componente que necesita una
   // fecha con hora se escribe su `Intl.DateTimeFormat`. Si falta un helper
-  // (p. ej. fecha + hora), añadilo a `lib/utils.ts` en vez de inlinearlo.
+  // (p. ej. fecha + hora), añádelo a `lib/utils.ts` en vez de inlinearlo.
   //
   // 2. La API se consume por el cliente único de `src/lib/api-client.ts`.
   //
@@ -168,13 +347,13 @@ const eslintConfig = defineConfig([
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/lib/**", "src/**/__tests__/**", "src/**/*.test.{ts,tsx}"],
     rules: {
-      "no-restricted-syntax": ["error", ...restriccionesDeSintaxis],
+      "no-restricted-syntax": ["error", ...restriccionesDeSintaxis, ...restriccionesDeAspecto],
     },
   },
   // La quinta restricción, sobre los `.tsx` que ya no tienen `title` nativo.
-  // Las cuatro de arriba se repiten por referencia: sin ellas, este bloque las
-  // desactivaría en todos estos ficheros (flat config: el último bloque que
-  // declara la regla la gana entera).
+  // Las cuatro de arriba (y las de aspecto) se repiten por referencia: sin
+  // ellas, este bloque las desactivaría en todos estos ficheros (flat config:
+  // el último bloque que declara la regla la gana entera).
   {
     files: ["src/**/*.tsx"],
     ignores: [
@@ -184,7 +363,32 @@ const eslintConfig = defineConfig([
       ...deudaTitleNativo,
     ],
     rules: {
-      "no-restricted-syntax": ["error", ...restriccionesDeSintaxis, restriccionTitleNativo],
+      "no-restricted-syntax": [
+        "error",
+        ...restriccionesDeSintaxis,
+        ...restriccionesDeAspecto,
+        restriccionTitleNativo,
+      ],
+    },
+  },
+  // Las de aspecto también en `src/lib`, que los dos bloques de arriba dejan
+  // fuera por el cliente de API y los formateadores: ahí viven constantes de
+  // clases (`lib/forms/campo.tsx`, `lib/iconos.ts`) que pintan en toda la app.
+  {
+    files: ["src/lib/**/*.{ts,tsx}"],
+    ignores: ["src/**/__tests__/**", "src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": ["error", ...restriccionesDeAspecto],
+    },
+  },
+  // Primitivos e iconos retirados (ver `importacionesRetiradas`). Los tests
+  // quedan fuera: los de `card`, `empty-state` y `kpi-card` prueban el propio
+  // módulo, y `navigation.test.ts` importa Sparkles para asertar su ausencia.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/__tests__/**", "src/**/*.test.{ts,tsx}", ...deudaCard],
+    rules: {
+      "no-restricted-imports": ["error", { paths: importacionesRetiradas }],
     },
   },
   // ── Tamaño de fichero en `src/app/**` (S7.1 del plan 2026-09 v2) ──────────

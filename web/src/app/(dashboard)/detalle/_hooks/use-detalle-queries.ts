@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { analyticsKeys, licitacionKeys, licitacionesKeys } from "@/lib/query-keys";
 import type { LicitacionesCursorPage } from "@/lib/api-types";
 import type { LicitacionDetail } from "@/components/detail-panel";
@@ -67,6 +68,8 @@ export function useDetalleQueries({
       }),
     staleTime: 30_000,
     placeholderData: (previous) => previous,
+    // La tabla pinta el fallo en su sitio (`PanelError`): sin toast encima.
+    meta: META_ERROR_EN_LINEA,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   });

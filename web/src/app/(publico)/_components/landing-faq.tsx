@@ -1,5 +1,5 @@
 import { CONTENIDO } from "../_content/landing";
-import { KICKER } from "./landing-piel";
+import { KICKER } from "./piel-publica";
 
 /**
  * Preguntas frecuentes.

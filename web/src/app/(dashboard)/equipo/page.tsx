@@ -17,19 +17,19 @@
  * La pestaña «Integraciones» es la mitad de S4.2 que faltaba: los webhooks de
  * la organización salieron de `/ops` (donde queda la vista global de la
  * instancia) y la vista de equipo, `WebhooksEquipoView`, no la montaba nadie.
- * Sólo la ven `owner` y `admin`: son quienes pueden crear un webhook que manda
- * datos del equipo fuera del producto, y enseñarle a un `member` un formulario
- * que el backend le va a rechazar es prometer un permiso que no tiene.
+ * Sólo la ven el propietario y los administradores: son quienes pueden crear
+ * un webhook que manda datos del equipo fuera del producto, y enseñarle a un
+ * miembro un formulario que el backend le va a rechazar es prometer un permiso
+ * que no tiene.
  *
  * La pestaña «Actividad» (F4.5) es para **todos** los roles: el feed vivía
- * sólo en Dirección, que es owner/admin, y un `member` no tenía dónde ver qué
- * hizo el equipo. El backend ya lo acota por rol (sin eventos de
+ * sólo en Dirección, que es de propietarios y administradores, y un miembro no
+ * tenía dónde ver qué hizo el equipo. El backend ya lo acota por rol (sin eventos de
  * administración para un `member`), así que aquí no se filtra nada.
  */
 
-import { Plus } from "lucide-react";
 import dynamic from "next/dynamic";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelTitle } from "@/components/console/panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -72,17 +72,10 @@ export default function EquipoPage() {
   return (
     <SpaceShell spaceKey="equipo">
       <div className="space-y-5">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="h-4 w-4 text-primary" />
-              Crear organización
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CrearOrganizacionForm />
-          </CardContent>
-        </Card>
+        <Panel>
+          <PanelTitle title="Crear organización" hint="para trabajar en equipo con otras personas" />
+          <CrearOrganizacionForm />
+        </Panel>
 
         <Tabs defaultValue="miembros">
           <TabsList>

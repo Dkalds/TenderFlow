@@ -11,6 +11,7 @@ import {
   routeSlug,
   spaceAbsorbing,
 } from "@/lib/console-spaces";
+import { ICONO_ESPACIO } from "@/lib/iconos";
 import { BUILT_SPACE_ROUTES, SPACE_VIEWS } from "@/lib/space-views";
 
 describe("CONSOLE_SPACES", () => {
@@ -36,16 +37,43 @@ describe("CONSOLE_SPACES", () => {
     expect(new Set(absorbed.map((view) => view.from)).size).toBe(absorbed.length);
   });
 
-  it("da a cada espacio clave y slug únicos, y una etiqueta corta de 2-3 letras", () => {
+  it("da a cada espacio clave, slug y nombre únicos", () => {
     const keys = CONSOLE_SPACES.map((space) => space.key);
     const slugs = CONSOLE_SPACES.map((space) => space.slug);
+    const labels = CONSOLE_SPACES.map((space) => space.label);
     expect(new Set(keys).size).toBe(keys.length);
     expect(new Set(slugs).size).toBe(slugs.length);
+    // El rail pinta el nombre bajo el icono: dos iguales no se distinguirían.
+    expect(new Set(labels).size).toBe(labels.length);
     for (const space of CONSOLE_SPACES) {
-      expect(space.short).toMatch(/^[A-Z]{2,3}$/);
       expect(space.label.length).toBeGreaterThan(0);
       expect(space.description.length).toBeGreaterThan(0);
-      expect(space.icon).toBeDefined();
+    }
+  });
+
+  it("no lleva códigos de tres letras: el rail pinta el nombre del espacio", () => {
+    // RES, MKT, OPS/OPX… eran abreviaturas que había que aprenderse, mitad en
+    // inglés, y con choques. El campo `short` ya no existe.
+    for (const space of CONSOLE_SPACES) {
+      expect(space).not.toHaveProperty("short");
+    }
+  });
+
+  it("da a cada espacio un icono propio, el del mapa de `lib/iconos.ts`", () => {
+    // Resumen y Dirección compartían LayoutDashboard, Cuentas y Empresas
+    // Building2, Ajustes y Ops ShieldCheck.
+    expect(new Set(CONSOLE_SPACES.map((space) => space.icon)).size).toBe(CONSOLE_SPACES.length);
+    for (const space of CONSOLE_SPACES) {
+      expect(space.icon, space.key).toBe(ICONO_ESPACIO[space.key as keyof typeof ICONO_ESPACIO]);
+    }
+  });
+
+  it("describe cada espacio por el trabajo que resuelve, no por cómo está hecho", () => {
+    // Las descripciones se ven junto al título, en el tooltip del rail y en la
+    // paleta: sin jerga de implementación ni roles en inglés.
+    const jerga = /backend|endpoint|servidor|corpus|sem[aá]ntic|tabla de|inspector|cortes|owner|admin\b|keyword|scoring/i;
+    for (const space of CONSOLE_SPACES) {
+      expect(space.description, space.key).not.toMatch(jerga);
     }
   });
 

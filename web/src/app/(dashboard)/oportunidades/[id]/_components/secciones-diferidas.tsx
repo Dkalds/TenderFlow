@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Panel, PanelLoading } from "@/components/console/panel";
 import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
 import { ApiError } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { formatCurrency } from "@/lib/utils";
 
 export type TabKey = "resumen" | "expediente" | "pliego" | "precio" | "conversacion";
@@ -72,7 +73,7 @@ function PestanaPrecio({ pursuit }: { pursuit: Pursuit }) {
             error instanceof ApiError && error.status === 409
               ? "Alguien del equipo la cambió mientras la tenías abierta"
               : "No se pudo guardar la oferta prevista",
-            { description: error instanceof Error ? error.message : undefined },
+            { description: getErrorMessage(error, "accion") },
           ),
       },
     );

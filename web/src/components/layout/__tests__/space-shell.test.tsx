@@ -125,6 +125,63 @@ describe("SpaceShell", () => {
     expect(screen.getByText("contenido")).toBeInTheDocument();
   });
 
+  it("el título manda en la pantalla: display a 15 px, con la descripción en tono meta", () => {
+    render(
+      <SpaceShell spaceKey="mercado" view="tiempo">
+        <p>contenido</p>
+      </SpaceShell>,
+    );
+    const titulo = screen.getByRole("heading", { level: 1, name: "Mercado" });
+    // La display solo a partir de 15 px (decisión D1): a 13 px medía lo mismo
+    // que el texto de una fila.
+    expect(titulo).toHaveClass("font-display", "text-tf-lede", "font-semibold");
+    expect(titulo.className).not.toMatch(/text-\[/);
+    expect(screen.getByText(mercado.description)).toHaveClass("text-tf-meta", "text-muted-foreground");
+  });
+
+  it("las pestañas siguen el teclado de WAI-ARIA: solo la activa se tabula y las flechas cambian de vista", () => {
+    const onViewChange = vi.fn();
+    render(
+      <SpaceShell spaceKey="mercado" view="cpv" onViewChange={onViewChange}>
+        <p>contenido</p>
+      </SpaceShell>,
+    );
+    const activa = screen.getByRole("tab", { name: "CPV" });
+    expect(activa).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("tab", { name: "Tiempo" })).toHaveAttribute("tabindex", "-1");
+
+    fireEvent.keyDown(activa, { key: "ArrowRight" });
+    expect(onViewChange).toHaveBeenLastCalledWith("calendario");
+    fireEvent.keyDown(activa, { key: "ArrowLeft" });
+    expect(onViewChange).toHaveBeenLastCalledWith("tiempo");
+    fireEvent.keyDown(activa, { key: "End" });
+    expect(onViewChange).toHaveBeenLastCalledWith(SPACE_VIEWS.mercado.at(-1)!.key);
+  });
+
+  it("el cuerpo es el panel de la vista activa", () => {
+    render(
+      <SpaceShell spaceKey="mercado" view="organos">
+        <p>contenido</p>
+      </SpaceShell>,
+    );
+    const panel = screen.getByRole("tabpanel", { name: "Órganos" });
+    expect(panel).toHaveAttribute("data-slot", "space-shell-cuerpo");
+    expect(screen.getByRole("tab", { name: "Órganos" })).toHaveAttribute("aria-controls", panel.id);
+  });
+
+  it("el contador de una vista va en sans con el tinte /10 y forma parte del nombre", () => {
+    render(
+      <SpaceShell spaceKey="empresas" view="maestro" viewBadges={{ revision: 3 }}>
+        <p>contenido</p>
+      </SpaceShell>,
+    );
+    const pestana = screen.getByRole("tab", { name: "Revisión 3" });
+    const contador = pestana.querySelector("span")!;
+    expect(contador).toHaveTextContent("3");
+    expect(contador.className).not.toContain("font-mono");
+    expect(contador.className).not.toContain("/16");
+  });
+
   it("pinta una pestaña por vista y marca la activa", () => {
     render(
       <SpaceShell spaceKey="mercado" view="organos">

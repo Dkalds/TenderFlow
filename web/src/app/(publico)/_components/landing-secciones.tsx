@@ -1,10 +1,9 @@
 import { Fragment } from "react";
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { CONTENIDO } from "../_content/landing";
 import type { SeccionLanding } from "../_content/landing-tipos";
+import { EnlaceIrPublico } from "./enlace-ir";
 import { CtaAcceso } from "./landing-cta";
-import { KICKER } from "./landing-piel";
+import { KICKER } from "./piel-publica";
 
 /**
  * Cuerpo en detalle: tres secciones, cada una con su cabecera a la izquierda y
@@ -50,11 +49,12 @@ function CuerpoSeccion({ seccion }: { seccion: SeccionLanding }) {
           ))}
         </ul>
         {/* El diccionario de familias vive donde se explica qué entra
-            en el corpus, no como franja suelta cargada de keywords. */}
+            en el corpus, no como franja suelta cargada de keywords. En sans:
+            son nombres de fabricante y de categoría, no identificadores. */}
         {seccion.icono === "corpus" && (
           <>
             <p className="text-muted-foreground mt-8 text-sm leading-relaxed">{CONTENIDO.familiasTitulo}</p>
-            <ul className="text-foreground/75 mt-4 flex flex-wrap gap-x-4 gap-y-1.5 font-mono text-xs">
+            <ul className="text-foreground/75 text-tf-meta mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
               {CONTENIDO.familias.map((familia) => (
                 <li key={familia}>{familia}</li>
               ))}
@@ -64,17 +64,9 @@ function CuerpoSeccion({ seccion }: { seccion: SeccionLanding }) {
         {seccion.enlaces && (
           <div className="mt-8 flex flex-col gap-2.5">
             {seccion.enlaces.map((enlace) => (
-              <Link
-                key={enlace.href}
-                href={enlace.href}
-                className="group text-primary inline-flex w-fit items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
-              >
+              <EnlaceIrPublico key={enlace.href} href={enlace.href}>
                 {enlace.texto}
-                <ArrowRight
-                  className="h-3.5 w-3.5 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
-                  aria-hidden="true"
-                />
-              </Link>
+              </EnlaceIrPublico>
             ))}
           </div>
         )}

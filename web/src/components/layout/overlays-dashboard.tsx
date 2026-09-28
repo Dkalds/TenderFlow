@@ -41,10 +41,11 @@ function PaletaCargando() {
       <button
         type="button"
         aria-label="Cerrar paleta de comandos"
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50"
         onClick={() => cerrar(false)}
       />
-      <div className="tf-glass-strong border-border/70 text-muted-foreground relative z-10 flex h-12 w-full max-w-xl items-center rounded-xl border px-3 text-sm shadow-2xl">
+      {/* Calca la paleta: superficie opaca de capa modal y `shadow-lg`. */}
+      <div className="border-border bg-popover text-tf-body text-muted-foreground relative z-10 flex h-12 w-full max-w-xl items-center rounded-xl border px-3 shadow-lg">
         Cargando…
       </div>
     </div>

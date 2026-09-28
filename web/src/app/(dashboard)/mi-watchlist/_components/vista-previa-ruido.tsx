@@ -5,7 +5,7 @@
  *
  * Las ocho barras, el umbral y el aviso son la respuesta de
  * `POST /watchlist/rules/preview` tal cual: la escala del dibujo es lo único
- * que se calcula aquí. El aviso lo decide el servidor (`ruido_alto`), no una
+ * que se calcula aquí. El aviso lo decide la API (`ruido_alto`), no una
  * comparación en cliente, para que diga lo mismo en el alta y en la edición.
  *
  * Accesible sin mirar el dibujo: el SVG es decorativo (`aria-hidden`) y la
@@ -13,7 +13,7 @@
  * umbral en su pie.
  */
 
-import { AlertTriangle } from "lucide-react";
+import { Aviso } from "@/components/console/panel";
 import { formatDate, formatNumber } from "@/lib/utils";
 import type { PreviewRegla } from "../_hooks/use-preview-regla";
 
@@ -26,7 +26,7 @@ export function VistaPreviaRuido({ preview }: { preview: PreviewRegla }) {
   const umbral = preview.umbral_semanal ?? null;
   if (serie.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground">
+      <p className="text-tf-meta text-muted-foreground">
         {formatNumber(preview.total)} licitación(es) coincidirían hoy. Sin serie semanal que enseñar.
       </p>
     );
@@ -37,7 +37,7 @@ export function VistaPreviaRuido({ preview }: { preview: PreviewRegla }) {
 
   return (
     <figure className="space-y-2 rounded-md border border-border/70 p-3">
-      <figcaption className="text-xs font-medium">
+      <figcaption className="text-tf-meta font-medium">
         {formatNumber(preview.total)} licitación(es) coincidirían hoy · coincidencias por semana,
         últimas {serie.length}
       </figcaption>
@@ -73,7 +73,7 @@ export function VistaPreviaRuido({ preview }: { preview: PreviewRegla }) {
           />
         )}
       </svg>
-      <div className="flex max-w-[20rem] justify-between text-[10.5px] text-muted-foreground">
+      <div className="flex max-w-[20rem] justify-between text-tf-micro text-muted-foreground">
         <span>{formatDate(serie[0].semana)}</span>
         {umbral != null && <span>- - umbral {formatNumber(umbral)}/semana</span>}
         <span>{formatDate(serie[serie.length - 1].semana)}</span>
@@ -103,14 +103,11 @@ export function VistaPreviaRuido({ preview }: { preview: PreviewRegla }) {
         )}
       </table>
       {preview.ruido_alto && (
-        <p role="status" className="flex gap-2 rounded-md border border-warning/30 bg-warning/10 p-2 text-xs text-warning">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            De media pasa de {umbral != null ? formatNumber(umbral) : "el umbral de"} coincidencias
-            por semana: esta regla va a hacer ruido. Acótala con un CPV, un importe mínimo o una
-            comunidad autónoma.
-          </span>
-        </p>
+        <Aviso tone="warning">
+          De media pasa de {umbral != null ? formatNumber(umbral) : "el umbral de"} coincidencias por
+          semana: esta regla va a hacer ruido. Acótala con un CPV, un importe mínimo o una comunidad
+          autónoma.
+        </Aviso>
       )}
     </figure>
   );

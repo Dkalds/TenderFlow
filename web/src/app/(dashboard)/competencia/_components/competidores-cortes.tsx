@@ -10,13 +10,16 @@
 
 import dynamic from "next/dynamic";
 
-import { EmptyState } from "@/components/ui/empty-state";
-import { Panel, PanelTabs } from "@/components/console/panel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Panel,
+  PanelEmpty,
+  PanelLoading,
+  PanelTabs,
+  PanelTitle,
+  panelDePestana,
+} from "@/components/console/panel";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { truncate } from "@/lib/utils";
-import { Users } from "lucide-react";
 
 import type { ScatterPoint } from "@/components/charts/competitors-charts";
 
@@ -35,40 +38,40 @@ import { CompetidoresHeatmap } from "./competidores-heatmap";
 
 const RadarChart = dynamic(() => import("@/components/charts/radar-chart").then((m) => ({ default: m.RadarChart })), {
   ssr: false,
-  loading: () => <Skeleton className="h-[420px] w-full rounded-md" />,
+  loading: () => <PanelLoading height={420} />,
 });
 const CompetitorsBarChart = dynamic(
   () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsBarChart })),
-  { ssr: false, loading: () => <Skeleton className="h-[500px] w-full rounded-md" /> },
+  { ssr: false, loading: () => <PanelLoading height={500} /> },
 );
 const CompetitorsPieChart = dynamic(
   () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsPieChart })),
-  { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> },
+  { ssr: false, loading: () => <PanelLoading height={400} /> },
 );
 const CompetitorsScatterChart = dynamic(
   () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsScatterChart })),
-  { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> },
+  { ssr: false, loading: () => <PanelLoading height={400} /> },
 );
 const CompetitorsTreemap = dynamic(
   () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsTreemap })),
-  { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> },
+  { ssr: false, loading: () => <PanelLoading height={400} /> },
 );
 const CompetitorsPositioningChart = dynamic(
   () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsPositioningChart })),
-  { ssr: false, loading: () => <Skeleton className="h-[400px] w-full rounded-md" /> },
+  { ssr: false, loading: () => <PanelLoading height={400} /> },
 );
 const CompetitorsEstacionalidadChart = dynamic(
   () => import("@/components/charts/competitors-charts").then((m) => ({ default: m.CompetitorsEstacionalidadChart })),
-  { ssr: false, loading: () => <Skeleton className="h-[300px] w-full rounded-md" /> },
+  { ssr: false, loading: () => <PanelLoading height={300} /> },
 );
 
 export const CORTES = [
-  { key: "top20" as const, label: "Top 20" },
+  { key: "top20" as const, label: "Ranking" },
   { key: "cuota" as const, label: "Cuota" },
-  { key: "ticket" as const, label: "Ticket vs cliente" },
-  { key: "ccaa" as const, label: "Actividad CCAA" },
-  { key: "treemap" as const, label: "Treemap" },
-  { key: "top5" as const, label: "Top 5 métricas" },
+  { key: "ticket" as const, label: "Importe y clientes" },
+  { key: "ccaa" as const, label: "Por CCAA" },
+  { key: "treemap" as const, label: "Reparto de cuota" },
+  { key: "top5" as const, label: "Posicionamiento" },
   { key: "estac" as const, label: "Estacionalidad" },
   { key: "bajas" as const, label: "Bajas" },
   { key: "radar" as const, label: "Comparador" },
@@ -76,39 +79,45 @@ export const CORTES = [
 
 export type CorteKey = (typeof CORTES)[number]["key"];
 
-/** Tarjeta con título: la envoltura común de siete de los nueve cortes. */
-function CorteCard({
+const ID_CORTES = "cortes-competencia";
+
+const VACIO = "Ningún competidor con adjudicaciones en el ámbito actual o con esa búsqueda.";
+
+/**
+ * El contenido de un corte: su título y el gráfico, sin otra tarjeta dentro
+ * del panel (el marco ya lo pone el panel de las pestañas).
+ */
+function Corte({
   titulo,
   hint,
   altura,
   isLoading,
   vacio,
+  vacioTitulo = "Sin datos para este corte",
+  vacioHint = VACIO,
   children,
 }: {
   titulo: React.ReactNode;
-  hint?: string;
-  /** Alto del esqueleto mientras carga, para que el panel no salte. */
-  altura: string;
+  hint?: React.ReactNode;
+  /** Alto del esqueleto y del vacío, para que el panel no salte. */
+  altura: number;
   isLoading: boolean;
   vacio: boolean;
+  vacioTitulo?: string;
+  vacioHint?: string;
   children: React.ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{titulo}</CardTitle>
-        {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className={`${altura} w-full`} />
-        ) : vacio ? (
-          <EmptyState />
-        ) : (
-          <ChartErrorBoundary>{children}</ChartErrorBoundary>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      <PanelTitle title={titulo} hint={hint} />
+      {isLoading ? (
+        <PanelLoading height={altura} />
+      ) : vacio ? (
+        <PanelEmpty title={vacioTitulo} hint={vacioHint} height={altura} />
+      ) : (
+        <ChartErrorBoundary>{children}</ChartErrorBoundary>
+      )}
+    </>
   );
 }
 
@@ -119,7 +128,7 @@ export interface CompetidoresCortesProps {
   barData: Competitor[];
   pieData: PieSlice[];
   /**
-   * El corte «Ticket vs cliente» lo pinta `CompetitorsScatterChart`, que exige
+   * El corte «Importe y clientes» lo pinta `CompetitorsScatterChart`, que exige
    * los dos ejes (`ticket_medio`, `n_organos`). El filtro por búsqueda del hook
    * es genérico sobre `Searchable` —le basta el nombre—, pero aquí el contrato
    * ya no puede serlo: es este panel el que se compromete con el gráfico.
@@ -160,113 +169,111 @@ export function CompetidoresCortes({
         value={corte}
         onChange={onCorteChange}
         tabs={[...CORTES]}
+        idBase={ID_CORTES}
       />
-      <div className="pt-3.5">
+      <div className="pt-3.5 focus-visible:outline-none" {...panelDePestana(ID_CORTES, corte)}>
         {corte === "top20" && (
-          <CorteCard
-            titulo="Top 20 Competidores (por adjudicaciones)"
-            altura="h-[500px]"
+          <Corte
+            titulo="Los 20 competidores con más adjudicaciones"
+            altura={500}
             isLoading={isLoading}
             vacio={barData.length === 0}
           >
             <CompetitorsBarChart data={barData} />
-          </CorteCard>
+          </Corte>
         )}
         {corte === "cuota" && (
-          <CorteCard
-            titulo="Cuota de Mercado por Importe (Top 10)"
-            altura="h-[400px]"
+          <Corte
+            titulo="Cuota de mercado por importe: 10 primeros"
+            altura={400}
             isLoading={isLoading}
             vacio={pieData.length === 0}
           >
             <CompetitorsPieChart data={pieData} />
-          </CorteCard>
+          </Corte>
         )}
         {corte === "ticket" && (
-          <CorteCard
-            titulo="Ticket Medio vs Dependencia de Clientes"
-            altura="h-[400px]"
+          <Corte
+            titulo="Importe medio frente a dependencia de clientes"
+            altura={400}
             isLoading={isLoading}
             vacio={scatterData.length === 0}
           >
             <CompetitorsScatterChart data={scatterData} top5Names={scatterTop5} />
-          </CorteCard>
+          </Corte>
         )}
         {corte === "ccaa" && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Actividad por CCAA y Empresa</CardTitle>
-              <p className="text-muted-foreground text-xs">Clic en una CCAA para filtrar</p>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-[400px] w-full" />
-              ) : heatmapData.empresas.length > 0 ? (
-                <CompetidoresHeatmap
-                  heatmap={heatmapData}
-                  activeCcaa={activeCcaa}
-                  onToggleCcaa={onToggleCcaa}
-                />
-              ) : (
-                <EmptyState />
-              )}
-            </CardContent>
-          </Card>
+          <Corte
+            titulo="Actividad por CCAA y empresa"
+            hint="Pulsa una CCAA para filtrar"
+            altura={400}
+            isLoading={isLoading}
+            vacio={heatmapData.empresas.length === 0}
+          >
+            <CompetidoresHeatmap heatmap={heatmapData} activeCcaa={activeCcaa} onToggleCcaa={onToggleCcaa} />
+          </Corte>
         )}
         {corte === "treemap" && (
-          <CorteCard
-            titulo="Cuota de Mercado (Treemap Top 20)"
-            altura="h-[400px]"
+          <Corte
+            titulo="Cuota de mercado de los 20 primeros"
+            altura={400}
             isLoading={isLoading}
             vacio={treemapData.length === 0}
           >
             <CompetitorsTreemap data={treemapData} />
-          </CorteCard>
+          </Corte>
         )}
         {corte === "top5" && (
-          <CorteCard
-            titulo="Posicionamiento Competitivo"
-            altura="h-[400px]"
+          <Corte
+            titulo="Posicionamiento competitivo"
+            altura={400}
             isLoading={isLoading}
             vacio={positioningData.length === 0}
           >
             <CompetitorsPositioningChart data={positioningData} />
-          </CorteCard>
+          </Corte>
         )}
-        {corte === "estac" && estacionalidadData.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Estacionalidad del mercado (filtrado)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChartErrorBoundary>
-                <CompetitorsEstacionalidadChart data={estacionalidadData} />
-              </ChartErrorBoundary>
-            </CardContent>
-          </Card>
+        {corte === "estac" && (
+          <Corte
+            titulo="Estacionalidad del mercado"
+            hint="Con la búsqueda y el ámbito actuales"
+            altura={300}
+            isLoading={isLoading}
+            vacio={estacionalidadData.length === 0}
+          >
+            <CompetitorsEstacionalidadChart data={estacionalidadData} />
+          </Corte>
         )}
-        {corte === "bajas" && bajasSorted.rows.length > 0 && (
-          <CompetidoresBajas bajas={bajasSorted} />
-        )}
-        {corte === "radar" && radarData && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Users className="h-4 w-4" />
-                Comparacion: {truncate(radarData.nameA, 25)} vs {truncate(radarData.nameB, 25)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+        {corte === "bajas" &&
+          (bajasSorted.rows.length > 0 ? (
+            <CompetidoresBajas bajas={bajasSorted} />
+          ) : (
+            <PanelEmpty
+              title="Sin bajas que comparar"
+              hint="Ninguna empresa con 5 contratos o más tiene baja publicada en el ámbito actual."
+            />
+          ))}
+        {corte === "radar" &&
+          (radarData ? (
+            <>
+              <PanelTitle
+                title={`Comparación: ${truncate(radarData.nameA, 25)} frente a ${truncate(radarData.nameB, 25)}`}
+              />
               <RadarChart
                 data={radarData.dataA}
                 name={truncate(radarData.nameA, 20)}
                 compareData={radarData.dataB}
                 compareName={truncate(radarData.nameB, 20)}
                 height={400}
+                aria-label={`Comparación de ${radarData.nameA} y ${radarData.nameB}`}
               />
-            </CardContent>
-          </Card>
-        )}
+            </>
+          ) : (
+            <PanelEmpty
+              title="Elige dos empresas"
+              hint="Marca dos empresas en la tabla de arriba para compararlas aquí."
+            />
+          ))}
       </div>
     </Panel>
   );

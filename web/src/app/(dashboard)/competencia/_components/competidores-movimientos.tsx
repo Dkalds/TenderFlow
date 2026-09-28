@@ -21,26 +21,19 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Flame, MapPin, Shapes } from "lucide-react";
 
+import { EnlaceIr, Panel, PanelEmpty, PanelTitle, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 
 type Movimientos = Schemas["MovimientosVigiladasResult"];
 type Senal = Schemas["SenalCompetitiva"];
 type Vigilada = Schemas["EmpresaVigiladaActividad"];
 
 const DIAS = 30;
-
-const ICONOS: Record<Senal["tipo"], typeof Flame> = {
-  nueva_ccaa: MapPin,
-  nuevo_cpv: Shapes,
-  racha: Flame,
-};
 
 const TIPO_ETIQUETA: Record<Senal["tipo"], string> = {
   nueva_ccaa: "Territorio nuevo",
@@ -64,88 +57,83 @@ export function CompetidoresMovimientos() {
   const senales = data?.senales ?? [];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Competidores vigilados</CardTitle>
-        <CardDescription>
-          Últimos {DIAS} días, sobre adjudicaciones: lo que ha ganado cada una, entradas en territorios o nichos nuevos
-          y rachas.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <Panel>
+      <PanelTitle title="Competidores vigilados" className="mb-1" />
+      <p className="mb-3 text-tf-meta text-muted-foreground">
+        Últimos {DIAS} días, sobre adjudicaciones: lo que ha ganado cada una, entradas en territorios o nichos nuevos
+        y rachas.
+      </p>
+      <div>
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : empresas.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No vigilas ninguna empresa. Pulsa «Vigilar empresa» en la ficha de un competidor, o la estrella en el
-            maestro de Empresas, para ver aquí su actividad y sus movimientos.
-          </p>
+          <PanelEmpty
+            size="sm"
+            title="No vigilas ninguna empresa"
+            hint="Pulsa «Vigilar empresa» en la ficha de un competidor, o la estrella en el maestro de Empresas, para ver aquí su actividad y sus movimientos."
+          />
         ) : (
           <div className="space-y-5">
             {/* El orden es el del backend: más adjudicaciones primero. */}
             <ul aria-label="Empresas vigiladas" className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
               {empresas.map((empresa) => (
-                <li key={empresa.empresa_id} className="flex min-w-0 items-baseline justify-between gap-3 text-sm">
+                <li key={empresa.empresa_id} className="flex min-w-0 items-baseline justify-between gap-3 text-tf-body">
                   <Link
                     href={`/competencia/empresa/${empresa.empresa_id}`}
-                    className="min-w-0 truncate font-medium underline-offset-4 hover:underline"
+                    className="min-w-0 truncate font-medium transition-colors hover:text-primary"
                   >
                     {empresa.nombre}
                   </Link>
-                  <span className="tf-tnum text-muted-foreground shrink-0 text-xs">{actividad(empresa)}</span>
+                  <span className="shrink-0 text-tf-meta text-muted-foreground">{actividad(empresa)}</span>
                 </li>
               ))}
             </ul>
 
             <div>
-              <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-[0.12em] uppercase">
-                Movimientos
-              </p>
+              <SectionTitle>Movimientos</SectionTitle>
               {senales.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Sin movimientos destacables en este periodo.</p>
+                <p className="text-tf-meta text-muted-foreground">Sin movimientos destacables en este periodo.</p>
               ) : (
                 <ul aria-label="Movimientos" className="space-y-2">
-                  {senales.map((s, i) => {
-                    const Icono = ICONOS[s.tipo];
-                    return (
-                      <li
-                        key={`${s.tipo}-${s.empresa_id}-${s.licitacion_id ?? i}`}
-                        className="flex items-start gap-3 rounded-md border p-3"
-                      >
-                        <Icono className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-medium">{s.titulo}</span>
-                            <Badge variant="outline">{TIPO_ETIQUETA[s.tipo]}</Badge>
-                          </div>
-                          <p className="text-muted-foreground text-xs">
-                            {s.detalle}
-                            {s.fecha ? ` · ${s.fecha}` : ""}
-                            {s.importe != null ? ` · ${formatCurrency(s.importe)}` : ""}
-                          </p>
+                  {senales.map((s, i) => (
+                    <li
+                      key={`${s.tipo}-${s.empresa_id}-${s.licitacion_id ?? i}`}
+                      className="flex items-start gap-3 rounded-md border border-border/60 p-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-tf-body font-medium">{s.titulo}</span>
+                          <Badge variant="outline" size="sm">
+                            {TIPO_ETIQUETA[s.tipo]}
+                          </Badge>
                         </div>
-                        {s.licitacion_id && (
-                          <Link
-                            href={`/detalle?lic=${encodeURIComponent(s.licitacion_id)}`}
-                            className="text-primary shrink-0 text-xs underline-offset-4 hover:underline"
-                            aria-label={`Ver la licitación ${s.licitacion_id}`}
-                          >
-                            Ver
-                          </Link>
-                        )}
-                      </li>
-                    );
-                  })}
+                        <p className="text-tf-meta text-muted-foreground">
+                          {s.detalle}
+                          {s.fecha ? ` · ${formatDate(s.fecha)}` : ""}
+                          {s.importe != null ? ` · ${formatCurrency(s.importe)}` : ""}
+                        </p>
+                      </div>
+                      {s.licitacion_id && (
+                        <EnlaceIr
+                          href={`/detalle?lic=${encodeURIComponent(s.licitacion_id)}`}
+                          aria-label={`Ver la licitación ${s.licitacion_id}`}
+                          className="shrink-0"
+                        >
+                          Ver
+                        </EnlaceIr>
+                      )}
+                    </li>
+                  ))}
                 </ul>
               )}
               {data?.senales_truncadas && (
-                <p className="text-muted-foreground mt-2 text-xs">Se muestran las primeras señales.</p>
+                <p className="mt-2 text-tf-meta text-muted-foreground">Parcial: solo las primeras señales.</p>
               )}
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }
 

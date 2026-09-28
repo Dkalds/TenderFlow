@@ -1,45 +1,56 @@
 import { cn } from "@/lib/utils";
+import {
+  MARCA_NOMBRE,
+  TF_MARK_ESCALA,
+  TF_MARK_PATHS,
+  TF_MARK_RADIO,
+  TF_MARK_STROKE,
+  TF_MARK_VIEWBOX,
+} from "@/lib/marca";
 
-/** TF Ligatura monogram — stroke version, adapts via currentColor */
-function TFMark({ size = 24, className }: { size?: number; className?: string }) {
+/**
+ * Monograma TF en trazo. Toma el color de `currentColor`, así que quien lo
+ * monta decide sobre qué fondo va. El trazo sale de `lib/marca.ts`, la única
+ * copia que comparten el logo, el rail y las imágenes OG.
+ */
+export function TFMark({ size = 24, className }: { size?: number; className?: string }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox={TF_MARK_VIEWBOX}
       aria-hidden="true"
       className={className}
       fill="none"
       stroke="currentColor"
-      strokeWidth={2.7}
+      strokeWidth={TF_MARK_STROKE}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {/* T crossbar + F top bar on shared axis */}
-      <path d="M3.5 6 H20.5" />
-      {/* T stem */}
-      <path d="M12 6 V19" />
-      {/* F middle arm */}
-      <path d="M12 12 H18.5" />
+      {TF_MARK_PATHS.map((d) => (
+        <path key={d} d={d} />
+      ))}
     </svg>
   );
 }
 
 interface TenderFlowLogoProps {
-  /** Show/hide the wordmark next to the icon */
+  /** Muestra u oculta el wordmark junto a la marca. */
   showText?: boolean;
-  /** Size of the icon box in px */
+  /** Lado de la caja de la marca, en px. */
   boxSize?: number;
   className?: string;
 }
 
-export function TenderFlowLogo({
-  showText = true,
-  boxSize = 32,
-  className,
-}: TenderFlowLogoProps) {
-  const iconSize = Math.round(boxSize * 0.58);
-  const radius = Math.round(boxSize * 0.26);
+/**
+ * Marca + wordmark. La caja es plana: sin el halo de color que la rodeaba
+ * (el resplandor de «app icon» de las plantillas) y sin sombra. El wordmark va
+ * en `font-display` (Fraunces) a 15 px, el mínimo al que la regla de la casa
+ * permite la display; la línea de sector, en sans a 11 px y en frase.
+ */
+export function TenderFlowLogo({ showText = true, boxSize = 32, className }: TenderFlowLogoProps) {
+  const iconSize = Math.round(boxSize * TF_MARK_ESCALA);
+  const radius = Math.round(boxSize * TF_MARK_RADIO);
 
   return (
     <span className={cn("flex items-center gap-2", className)}>
@@ -50,26 +61,22 @@ export function TenderFlowLogo({
           borderRadius: radius,
           flexShrink: 0,
         }}
-        className="grid place-items-center bg-primary text-primary-foreground shadow-[0_8px_18px_-10px_hsl(var(--primary)/0.7)]"
+        className="grid place-items-center bg-primary text-primary-foreground"
       >
         <TFMark size={iconSize} />
       </span>
 
       {showText && (
-        <span className="min-w-0 leading-tight">
-          <span className="block truncate font-display text-[15px] font-bold tracking-normal">
-            TenderFlow
-          </span>
-          <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Sector público
-          </span>
+        <span className="min-w-0">
+          <span className="block truncate font-display text-tf-lede font-semibold">{MARCA_NOMBRE}</span>
+          <span className="block truncate text-tf-micro font-medium text-muted-foreground">Sector público</span>
         </span>
       )}
     </span>
   );
 }
 
-/** Compact icon-only version for collapsed sidebar */
+/** Solo la marca, sin wordmark (rail plegado). */
 export function TenderFlowIcon({ size = 32 }: { size?: number }) {
   return <TenderFlowLogo showText={false} boxSize={size} />;
 }

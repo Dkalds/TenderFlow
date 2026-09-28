@@ -25,7 +25,7 @@ const ETIQUETAS = {
   q: "búsqueda",
   estado: "estado",
   importe: "importe mínimo",
-  abiertas: "sólo abiertas",
+  abiertas: "solo abiertas",
 } as const;
 
 /**
@@ -69,7 +69,7 @@ export function useFiltrosDeResumen(): Record<string, string> {
   }, [params]);
 }
 
-/** «búsqueda y estado» / «búsqueda, estado y sólo abiertas». */
+/** «búsqueda y estado» / «búsqueda, estado y solo abiertas». */
 export function enumerar(valores: string[]): string {
   if (valores.length <= 1) return valores[0] ?? "";
   return `${valores.slice(0, -1).join(", ")} y ${valores[valores.length - 1]}`;

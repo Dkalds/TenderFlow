@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { LicitacionPublica } from "@/lib/publico-api";
 import { estadoLabel } from "@/lib/estados";
+import { cn } from "@/lib/utils";
+import { TITULO_PAGINA } from "./piel-publica";
 
 /** Una miga de pan: el mismo par que alimenta el JSON-LD de la ficha. */
 export interface Miga {
@@ -8,8 +10,9 @@ export interface Miga {
   ruta: string;
 }
 
-const CHIP =
-  "inline-flex items-center rounded-full border border-border/60 bg-card/60 px-2.5 py-0.5 text-xs font-medium";
+/* Chip de metadato: `rounded-md` como todo chip de la casa (la píldora es para
+ * puntos y avatares), sin fondo translúcido. */
+const CHIP = "inline-flex items-center rounded-md border border-border/60 px-2 py-0.5 text-tf-meta font-medium";
 
 function nombreFuente(lic: LicitacionPublica): string {
   return lic.fuente === "ted" ? "TED · Unión Europea" : "PLACSP";
@@ -25,7 +28,9 @@ function nombreFuente(lic: LicitacionPublica): string {
  *
  * De los tres chips, dos son valores crudos de la fuente y uno no: el estado
  * pasa por `estadoLabel` porque la API lo devuelve como código (`AGR`, `EJEC`,
- * `RES`) y publicar el código es publicar jerga interna del emisor.
+ * `RES`) y publicar el código es publicar jerga interna del emisor. Solo el
+ * expediente va en monoespaciada, porque es un identificador; el nombre de la
+ * fuente es una palabra.
  */
 export function CabeceraFicha({ lic, migas }: { lic: LicitacionPublica; migas: Miga[] }) {
   return (
@@ -37,7 +42,7 @@ export function CabeceraFicha({ lic, migas }: { lic: LicitacionPublica; migas: M
               <Link href={miga.ruta} className="hover:text-foreground transition-colors duration-150">
                 {miga.nombre}
               </Link>
-              <span aria-hidden="true">/</span>
+              <span aria-hidden="true">›</span>
             </li>
           ))}
           <li className="text-foreground/70 truncate">{lic.titulo.slice(0, 60)}</li>
@@ -47,16 +52,16 @@ export function CabeceraFicha({ lic, migas }: { lic: LicitacionPublica; migas: M
       {/* Cabecera del anuncio: fuente, estado y expediente, tal como los da
           el endpoint. */}
       <p className="flex flex-wrap items-center gap-1.5">
-        <span className={`${CHIP} border-primary/30 bg-primary/[0.06] text-primary font-mono`}>
-          {nombreFuente(lic)}
-        </span>
-        {lic.estado && <span className={`${CHIP} text-muted-foreground`}>{estadoLabel(lic.estado)}</span>}
-        {lic.expediente && <span className={`${CHIP} text-muted-foreground font-mono`}>Exp. {lic.expediente}</span>}
+        <span className={cn(CHIP, "border-primary/30 bg-primary/10 text-primary")}>{nombreFuente(lic)}</span>
+        {lic.estado && <span className={cn(CHIP, "text-muted-foreground")}>{estadoLabel(lic.estado)}</span>}
+        {lic.expediente && (
+          <span className={cn(CHIP, "text-muted-foreground")}>
+            Exp.&nbsp;<span className="font-mono">{lic.expediente}</span>
+          </span>
+        )}
       </p>
 
-      <h1 className="font-display mt-4 text-3xl leading-[1.15] font-bold tracking-[-0.025em] text-balance md:text-4xl">
-        {lic.titulo}
-      </h1>
+      <h1 className={cn(TITULO_PAGINA, "mt-4")}>{lic.titulo}</h1>
 
       {lic.descripcion && (
         <p className="text-muted-foreground mt-6 max-w-[68ch] text-base leading-relaxed whitespace-pre-line">

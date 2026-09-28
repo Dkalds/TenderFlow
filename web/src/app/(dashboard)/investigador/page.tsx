@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * Investigador — búsqueda semántica sobre el corpus y conversación con el LLM.
+ * Investigador — buscar por significado en las licitaciones y preguntar al
+ * asistente.
  *
  * El estado y las dos llamadas viven en `_hooks/use-investigador.ts`; cada
  * bloque de pantalla, en `_components/`. Aquí queda el orden de la página y qué
- * se ve en cada estado.
+ * se ve en cada estado: primero la caja de consulta, debajo las opciones
+ * avanzadas (plegadas) y luego ejemplos, resultados y conversación.
  */
 
 import { useInvestigador } from "./_hooks/use-investigador";
@@ -29,13 +31,7 @@ export default function InvestigadorPage() {
 
   return (
     <SpaceShell spaceKey="investigador">
-      <div className="space-y-6">
-        <InvestigadorConfigPanel
-          config={inv.config}
-          onChange={inv.updateConfig}
-          models={inv.models}
-        />
-
+      <div className="space-y-4">
         <InvestigadorSearchBar
           mode={inv.mode}
           onModeChange={inv.setMode}
@@ -47,11 +43,17 @@ export default function InvestigadorPage() {
           activeSearchFilters={inv.activeSearchFilters}
         />
 
+        <InvestigadorConfigPanel
+          config={inv.config}
+          onChange={inv.updateConfig}
+          models={inv.models}
+        />
+
         {inv.showEmpty && <PreguntasEjemplo onPick={preguntar} />}
 
         {inv.loading && <InvestigadorSkeleton />}
 
-        {inv.error && <InvestigadorError message={inv.error} />}
+        {inv.error != null && <InvestigadorError error={inv.error} onRetry={() => inv.submit()} />}
 
         {/* Resultados y conversación **conviven**: antes se excluían, así que
             preguntar por un resultado te hacía perder la lista desde la que

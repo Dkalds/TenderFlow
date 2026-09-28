@@ -8,22 +8,17 @@
  * `administracion-view.tsx`).
  */
 
-import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { Aviso, Panel, PanelEmpty, PanelError } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { Info, RefreshCw } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { AdminGuard } from "@/components/admin-guard";
 
 interface FeatureFlag {
@@ -57,14 +52,18 @@ function FeatureFlagsContent() {
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [apiAvailable, setApiAvailable] = useState(false);
+  // `cargando` hasta la primera respuesta: antes el aviso de «no disponible»
+  // se pintaba mientras la petición seguía en vuelo.
+  const [carga, setCarga] = useState<"cargando" | "lista" | "error">("cargando");
+  const [errorCarga, setErrorCarga] = useState<unknown>(null);
+  // Cada «Reintentar» sube el contador y vuelve a lanzar la carga.
+  const [intento, setIntento] = useState(0);
 
-  // Fetch flags from API on mount
   useEffect(() => {
-    const fetchFlags = async () => {
-      try {
-        const data = await fetchWithAuth<ApiFlag[]>("/api/v1/feature-flags");
-        setApiAvailable(true);
+    let vigente = true;
+    fetchWithAuth<ApiFlag[]>("/api/v1/feature-flags").then(
+      (data) => {
+        if (!vigente) return;
         // Render exactamente lo que devuelve el backend (fuente de verdad).
         setFlags(
           data.map((a) => ({
@@ -76,12 +75,19 @@ function FeatureFlagsContent() {
             updatedAt: a.updated_at,
           })),
         );
-      } catch {
-        // API no disponible: lista vacía (no hay fallback hardcodeado).
-      }
+        setCarga("lista");
+      },
+      (err: unknown) => {
+        if (!vigente) return;
+        // Sin respuesta, lista vacía: no hay fallback hardcodeado.
+        setErrorCarga(err);
+        setCarga("error");
+      },
+    );
+    return () => {
+      vigente = false;
     };
-    fetchFlags();
-  }, []);
+  }, [intento]);
 
   const toggleFlag = (key: string) => {
     setFlags((prev) =>
@@ -90,9 +96,7 @@ function FeatureFlagsContent() {
   };
 
   const setRollout = (key: string, value: number) => {
-    setFlags((prev) =>
-      prev.map((f) => (f.key === key ? { ...f, rollout: value } : f)),
-    );
+    setFlags((prev) => prev.map((f) => (f.key === key ? { ...f, rollout: value } : f)));
   };
 
   const syncToApi = async () => {
@@ -108,7 +112,7 @@ function FeatureFlagsContent() {
       // ensamblado a mano de la cabecera era una copia local de eso mismo.
       await apiMutate("PUT", "/api/v1/feature-flags", { flags: payload });
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : "Error de conexión");
+      setSyncError(getErrorMessage(err, "accion"));
     } finally {
       setSyncing(false);
     }
@@ -119,104 +123,93 @@ function FeatureFlagsContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="sr-only">Feature Flags</h1>
-          <p className="text-muted-foreground">
-            Toggles de funcionalidades en tiempo real
-            {apiAvailable ? " (sincronizado con API)" : " (local)"}.
+          <h1 className="sr-only">Feature flags</h1>
+          <p className="text-tf-meta text-muted-foreground">
+            Activa o desactiva funcionalidades y su despliegue gradual. Los cambios se aplican al guardar.
           </p>
         </div>
-        {isAdmin && apiAvailable && (
-          <Button
-            variant="outline"
-            onClick={syncToApi}
-            disabled={syncing}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            Sincronizar
+        {isAdmin && carga === "lista" && (
+          <Button size="sm" variant="outline" onClick={syncToApi} disabled={syncing}>
+            {syncing ? "Guardando…" : "Guardar cambios"}
           </Button>
         )}
       </div>
 
       {syncError && (
-        <Card className="bg-destructive/10 border-destructive/30">
-          <CardContent className="pt-4 text-sm text-destructive">
-            {syncError}
-          </CardContent>
-        </Card>
+        <Aviso tone="danger" title="No se pudieron guardar los cambios">
+          {syncError}
+        </Aviso>
       )}
 
-      {!apiAvailable && (
-        <Card className="bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
-          <CardContent className="pt-4 flex items-start gap-2 text-sm">
-            <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-            <span>
-              API de feature flags no disponible. No se muestran flags hasta poder
-              conectar con el backend.
-            </span>
-          </CardContent>
-        </Card>
+      {carga === "cargando" && (
+        <div className="space-y-3">
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-20 w-full rounded-xl" />
+        </div>
       )}
 
-      {apiAvailable && flags.length === 0 && (
-        <Card>
-          <CardContent className="pt-4 text-sm text-muted-foreground">
-            No hay feature flags definidos en el backend.
-          </CardContent>
-        </Card>
+      {carga === "error" && (
+        <PanelError
+          title="No se pudieron cargar los feature flags"
+          error={errorCarga}
+          onRetry={() => {
+            setCarga("cargando");
+            setIntento((n) => n + 1);
+          }}
+        />
       )}
 
-      <div className="space-y-4">
+      {carga === "lista" && flags.length === 0 && (
+        <PanelEmpty
+          title="No hay feature flags definidos"
+          hint="Cuando la instancia declare alguno, aparecerá aquí con su interruptor."
+        />
+      )}
+
+      <div className="space-y-3">
         {flags.map((flag) => {
           const isOn = enabled(flag);
           const r = rollout(flag);
 
           return (
-            <Card key={flag.key}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <CardTitle className="text-base font-mono">
-                      {flag.key}
-                    </CardTitle>
-                    <CardDescription>{flag.description}</CardDescription>
-                    {flag.updatedAt && (
-                      <p className="text-xs text-muted-foreground">
-                        Último cambio: {formatDate(flag.updatedAt)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant={isOn ? "default" : "secondary"}>
-                      {isOn ? "ON" : "OFF"}
-                    </Badge>
-                    <Switch
-                      checked={isOn}
-                      onCheckedChange={() => toggleFlag(flag.key)}
-                      aria-label={`Toggle ${flag.key}`}
-                    />
-                  </div>
+            <Panel key={flag.key}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <h3 className="font-mono text-tf-body font-semibold">{flag.key}</h3>
+                  <p className="text-tf-meta text-muted-foreground">{flag.description}</p>
+                  {flag.updatedAt && (
+                    <p className="text-tf-meta text-muted-foreground">Último cambio: {formatDate(flag.updatedAt)}</p>
+                  )}
                 </div>
-              </CardHeader>
+                <div className="flex flex-none items-center gap-3">
+                  <Badge variant={isOn ? "success" : "secondary"} size="sm">
+                    {isOn ? "Activo" : "Inactivo"}
+                  </Badge>
+                  <Switch
+                    checked={isOn}
+                    onCheckedChange={() => toggleFlag(flag.key)}
+                    aria-label={`Activar ${flag.key}`}
+                  />
+                </div>
+              </div>
               {isOn && (
-                <CardContent>
-                  <div className="flex items-center gap-4">
-                    <label className="text-sm text-muted-foreground whitespace-nowrap">
-                      Rollout: {r}%
-                    </label>
-                    <Slider
-                      value={[r]}
-                      onValueChange={([v]) => setRollout(flag.key, v)}
-                      aria-label={`Rollout de ${flag.key}`}
-                      min={0}
-                      max={100}
-                      className="flex-1"
-                    />
-                  </div>
-                </CardContent>
+                <div className="mt-3 flex items-center gap-4">
+                  <span className="tf-tnum whitespace-nowrap text-tf-meta text-muted-foreground">
+                    Despliegue: {r} %
+                  </span>
+                  <Slider
+                    value={[r]}
+                    onValueChange={([v]) => setRollout(flag.key, v)}
+                    aria-label={`Despliegue gradual de ${flag.key}`}
+                    min={0}
+                    max={100}
+                    className="flex-1"
+                  />
+                </div>
               )}
-            </Card>
+            </Panel>
           );
         })}
       </div>

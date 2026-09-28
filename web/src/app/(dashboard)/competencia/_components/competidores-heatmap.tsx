@@ -34,7 +34,7 @@ export function CompetidoresHeatmap({
   return (
     <div className="overflow-x-auto">
       <div
-        className="grid gap-px text-xs"
+        className="grid gap-px text-tf-micro"
         style={{
           gridTemplateColumns: `180px repeat(${heatmap.ccaas.length}, minmax(50px, 1fr))`,
         }}
@@ -49,7 +49,7 @@ export function CompetidoresHeatmap({
                 onClick={() => onToggleCcaa(ccaa)}
                 aria-pressed={activeCcaa.has(ccaa)}
                 aria-label={`Filtrar por ${ccaa}`}
-                className={`hover:bg-muted cursor-pointer truncate rounded-sm p-1 text-center font-medium transition-colors ${activeCcaa.has(ccaa) ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                className={`cursor-pointer truncate rounded-sm p-1 text-center font-medium transition-colors hover:bg-primary/5 ${activeCcaa.has(ccaa) ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
               >
                 {truncate(ccaa, 10)}
               </button>
@@ -69,9 +69,9 @@ export function CompetidoresHeatmap({
             {heatmap.ccaas.map((ccaa) => {
               const val = heatmap.matrix[empresa]?.[ccaa] ?? 0;
               return (
-                <Pista key={`${empresa}-${ccaa}`} contenido={`${empresa} - ${ccaa}: ${val}`}>
+                <Pista key={`${empresa}-${ccaa}`} contenido={`${empresa} · ${ccaa}: ${val} adjudicaciones`}>
                   <div
-                    className="cursor-default rounded-sm p-1 text-center transition-colors"
+                    className="cursor-default rounded-sm p-1 text-center"
                     style={{ backgroundColor: heatColor(val, heatmap.max) }}
                   >
                     {val > 0 ? val : ""}

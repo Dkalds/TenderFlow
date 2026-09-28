@@ -7,14 +7,17 @@
  * enseña criterios y un contador, y no hay forma de saber si una regla está
  * capturando lo que su autor cree. El deduplicado lo hace `dedupeMatches` —dos
  * reglas del mismo usuario suelen solapar—, aquí solo se pinta.
+ *
+ * Una lista en un solo panel, una fila por licitación: el título enlaza a su
+ * ficha en Detalle.
  */
 
-import { Search } from "lucide-react";
+import Link from "next/link";
+import { PanelEmpty, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCurrency, formatDate, truncate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatNumber, truncate } from "@/lib/utils";
 import type { MatchItem } from "../_hooks/watchlist-rule-types";
 
 export function ResultadosCombinados({
@@ -28,75 +31,59 @@ export function ResultadosCombinados({
     <>
       <Separator />
       <div>
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Search className="h-5 w-5" />
-          Resultados combinados
-          {combined && <Badge variant="secondary">{combined.length}</Badge>}
-        </h2>
+        <PanelTitle
+          as="h2"
+          title="Resultados combinados"
+          hint={combined ? `${formatNumber(combined.length)} licitaciones` : undefined}
+        />
 
         {loading ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardContent className="pt-6 space-y-2">
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
-                </CardContent>
-              </Card>
+              <Skeleton key={i} className="h-14 w-full rounded-md" />
             ))}
           </div>
         ) : combined && combined.length > 0 ? (
-          <div className="space-y-2">
+          <ul className="divide-y divide-border/50 rounded-xl border border-border/60 bg-card">
             {combined.map((item, i) => {
               const id = item.id_externo ?? String(i);
               return (
-                <Card key={id} className="hover:bg-accent/30 transition-colors">
-                  <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                    <div className="flex-1 min-w-0">
-                      <a
-                        href={`/detalle?lic=${item.id_externo ?? ""}`}
-                        className="text-sm font-medium hover:underline line-clamp-1"
-                      >
-                        {truncate(item.titulo ?? "Sin título", 100)}
-                      </a>
-                      {item.organo_contratacion && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {item.organo_contratacion}
-                        </p>
-                      )}
-                    </div>
-                    {item.importe != null && (
-                      <Badge variant="secondary" className="shrink-0">
-                        {formatCurrency(item.importe)}
-                      </Badge>
+                <li key={id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/detalle?lic=${encodeURIComponent(item.id_externo ?? "")}`}
+                      className="line-clamp-1 text-tf-body font-medium hover:underline"
+                    >
+                      {truncate(item.titulo ?? "Sin título", 100)}
+                    </Link>
+                    {item.organo_contratacion && (
+                      <p className="truncate text-tf-meta text-muted-foreground">{item.organo_contratacion}</p>
                     )}
-                    {item.estado && (
-                      <Badge variant="outline" className="shrink-0">
-                        {item.estado}
-                      </Badge>
-                    )}
-                    {item.fecha_publicacion && (
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {formatDate(item.fecha_publicacion)}
-                      </span>
-                    )}
-                  </CardContent>
-                </Card>
+                  </div>
+                  {item.importe != null && (
+                    <span className="tf-tnum shrink-0 text-tf-meta font-medium">{formatCurrency(item.importe)}</span>
+                  )}
+                  {item.estado && (
+                    <Badge size="sm" variant="outline" className="shrink-0">
+                      {item.estado}
+                    </Badge>
+                  )}
+                  {item.fecha_publicacion && (
+                    <span className="tf-tnum shrink-0 text-tf-meta text-muted-foreground">
+                      {formatDate(item.fecha_publicacion)}
+                    </span>
+                  )}
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : (
-          <Card className="border-dashed">
-            <CardContent className="py-8 text-center text-muted-foreground">
-              <p>No se encontraron licitaciones que coincidan con tus reglas activas.</p>
-              {/* Qué hacer con un vacío (C7.3): cada criterio de una regla
-                  restringe, así que la salida es aflojar alguno. */}
-              <p className="mt-1 text-sm">
-                Cada criterio de una regla se suma a los demás: edita la regla y quita o afloja
-                alguno (el importe mínimo o la CCAA suelen ser los que más recortan).
-              </p>
-            </CardContent>
-          </Card>
+          // Qué hacer con un vacío (C7.3): cada criterio de una regla
+          // restringe, así que la salida es aflojar alguno.
+          <PanelEmpty
+            title="Ninguna licitación coincide con tus reglas activas"
+            hint="Cada criterio de una regla se suma a los demás: edita la regla y quita o afloja alguno (el importe mínimo o la CCAA suelen ser los que más recortan)."
+          />
         )}
       </div>
     </>

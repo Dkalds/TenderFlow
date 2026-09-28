@@ -10,7 +10,7 @@
  * resaltado (F2.5).
  *
  * Nada se suma aquí: ni el coste total de las tarifas ni el del presupuesto.
- * El coste que sostiene el margen lo calcula el backend (`margen_implicito`
+ * El coste que sostiene el margen lo calcula la API (`margen_implicito`
  * de los escenarios de precio) y sólo cuando hay tarifa **y** horas de todos
  * los perfiles; una suma parcial hecha en cliente sería un margen equivocado
  * presentado como dato (ADR-014).
@@ -19,9 +19,10 @@
 import * as React from "react";
 import { FileSearch } from "lucide-react";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
+import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { useTenderFactSheet } from "@/hooks/use-tender-fact-sheet";
 import type { EvidenceRef, Schemas } from "@/lib/api-types";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 type RateCard = Schemas["RateCardFact"];
 type BudgetLine = Schemas["BudgetLineFact"];
@@ -63,28 +64,28 @@ export function TarifasPresupuesto({ licitacionId }: { licitacionId: string }) {
   const [cita, setCita] = React.useState<EvidenceRef | null>(null);
   const tarifas: RateCard[] = data?.facts?.rate_cards ?? [];
   const partidas: BudgetLine[] = data?.facts?.budget_breakdown ?? [];
-  // Sin ficha, o una ficha sin estas dos familias, no pinta nada: la pestaña
+  // Sin ficha, o una ficha sin estas dos familias, no enseña nada: la pestaña
   // de la ficha ya dice si falta extraerla.
   if (tarifas.length === 0 && partidas.length === 0) return null;
 
   return (
     <section aria-labelledby="tarifas-presupuesto" className="space-y-4">
-      <h3 id="tarifas-presupuesto" className="text-sm font-semibold">
+      <h3 id="tarifas-presupuesto" className="text-tf-body font-semibold">
         Tarifas y desglose del presupuesto del pliego
       </h3>
 
       {tarifas.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <caption className="mb-1.5 text-left text-xs text-muted-foreground">
+          <table className="w-full text-left text-tf-meta">
+            <caption className="mb-1.5 text-left text-tf-meta text-muted-foreground">
               Tarifas máximas por perfil. Son techos del pliego, no los costes de tu empresa.
             </caption>
             <thead>
-              <tr className="border-b border-border/70 text-muted-foreground">
-                <th scope="col" className="py-1.5 pr-3 font-medium">Perfil</th>
-                <th scope="col" className="py-1.5 pr-3 text-right font-medium">Tarifa máx.</th>
-                <th scope="col" className="py-1.5 pr-3 text-right font-medium">Horas estimadas</th>
-                <th scope="col" className="py-1.5 font-medium">Cita</th>
+              <tr className="border-b border-border/70">
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3")}>Perfil</th>
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>Tarifa máx.</th>
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>Horas estimadas</th>
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5")}>Cita</th>
               </tr>
             </thead>
             <tbody>
@@ -109,17 +110,17 @@ export function TarifasPresupuesto({ licitacionId }: { licitacionId: string }) {
 
       {partidas.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <caption className="mb-1.5 text-left text-xs text-muted-foreground">
+          <table className="w-full text-left text-tf-meta">
+            <caption className="mb-1.5 text-left text-tf-meta text-muted-foreground">
               Desglose del presupuesto publicado (art. 100 LCSP).
             </caption>
             <thead>
-              <tr className="border-b border-border/70 text-muted-foreground">
-                <th scope="col" className="py-1.5 pr-3 font-medium">Concepto</th>
-                <th scope="col" className="py-1.5 pr-3 font-medium">Partida</th>
-                <th scope="col" className="py-1.5 pr-3 text-right font-medium">Importe</th>
-                <th scope="col" className="py-1.5 pr-3 text-right font-medium">%</th>
-                <th scope="col" className="py-1.5 font-medium">Cita</th>
+              <tr className="border-b border-border/70">
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3")}>Concepto</th>
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3")}>Partida</th>
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>Importe</th>
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>%</th>
+                <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5")}>Cita</th>
               </tr>
             </thead>
             <tbody>

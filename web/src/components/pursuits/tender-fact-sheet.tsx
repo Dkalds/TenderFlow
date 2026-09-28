@@ -1,21 +1,12 @@
 "use client";
 
 import * as React from "react";
-import {
-  AlertCircle,
-  BookOpenCheck,
-  ExternalLink,
-  FileSearch,
-  FileText,
-  Loader2,
-  RefreshCw,
-  ScanText,
-} from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
+import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 // Del módulo de los pulgares, no de `chat-thread`: importarlos de allí metía
 // el hilo de chat entero (react-markdown incluido) en la pestaña Pliego.
@@ -30,6 +21,7 @@ import {
   useTenderFactSheetExtraction,
 } from "@/hooks/use-tender-fact-sheet";
 import type { DocumentoSummary } from "@/lib/api-types";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 const categories: Array<{ key: keyof TenderFactSheet; label: string }> = [
@@ -53,7 +45,7 @@ function statusPresentation(status: FactSheetStatus) {
   if (status === "extracted") return { label: "Verificada", variant: "success" as const };
   if (status === "needs_review") return { label: "Revisar", variant: "warning" as const };
   if (status === "failed") return { label: "No disponible", variant: "destructive" as const };
-  return { label: "Pendiente", variant: "secondary" as const };
+  return { label: "Pendiente", variant: "neutral" as const };
 }
 
 /**
@@ -71,7 +63,7 @@ function confidencePresentation(confidence: number): { label: string; pct: numbe
 /**
  * Lee un campo que solo existe en algunas familias de hechos.
  *
- * El backend tipa cada familia por separado (`WeightedCriterion` tiene
+ * La API tipa cada familia por separado (`WeightedCriterion` tiene
  * `weight_pct`, `MonetaryFact` tiene `amount_eur`…). Esta fila las renderiza
  * todas, así que consulta los campos opcionales con una comprobación explícita
  * en vez de asumir un tipo aplanado que la API nunca prometió.
@@ -134,20 +126,20 @@ function FactRow({
     dateValue ? formatDate(dateValue) : null,
   ].filter(Boolean);
   return (
-    <li className="rounded-lg border border-border/70 bg-background/45 p-3">
+    <li className="rounded-md border border-border/70 bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="min-w-0 font-medium leading-snug">{title}</p>
-        <span className="shrink-0 text-xs font-semibold text-muted-foreground">
+        <p className="min-w-0 text-tf-body font-medium leading-snug">{title}</p>
+        <span className="tf-tnum shrink-0 text-tf-meta font-medium text-muted-foreground">
           {confidence.label} · {confidence.pct}%
         </span>
       </div>
       {item.description && item.description !== title && (
-        <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
+        <p className="mt-1 text-tf-body text-muted-foreground">{item.description}</p>
       )}
       {metadata.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {metadata.map((value) => (
-            <Badge key={value} variant="secondary">
+            <Badge key={value} size="sm">
               {value}
             </Badge>
           ))}
@@ -160,12 +152,12 @@ function FactRow({
         <div className="h-full rounded-full bg-primary" style={{ width: `${confidence.pct}%` }} />
       </div>
       {evidence.length > 0 && (
-        <details className="mt-3 text-xs">
+        <details className="mt-3 text-tf-meta">
           <summary className="cursor-pointer font-medium text-primary hover:underline">
             {evidence.length} cita{evidence.length === 1 ? "" : "s"} verificable
             {evidence.length === 1 ? "" : "s"}
           </summary>
-          <ul className="mt-2 space-y-2 border-l-2 border-primary/25 pl-3">
+          <ul className="mt-2 space-y-2 border-l border-border/60 pl-3">
             {evidence.map((cita, index) => {
               const fuente = citaPresentation(cita.documento_id, cita.page_number, docsById);
               return (
@@ -194,7 +186,6 @@ function FactRow({
                     onClick={() => onVerPagina(cita)}
                     className="mt-1 inline-flex items-center gap-1 font-medium text-primary hover:underline"
                   >
-                    <FileSearch className="h-3 w-3 shrink-0" aria-hidden="true" />
                     Ver la cita en su página
                   </button>
                 </li>
@@ -229,43 +220,33 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
       await extraction.start();
       toast.info("Extracción lanzada: la ficha aparecerá aquí en unos minutos");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "No se pudo lanzar la extracción de la ficha",
-      );
+      toast.error("No se pudo lanzar la extracción de la ficha", {
+        description: getErrorMessage(error, "accion"),
+      });
     }
   };
 
   const extractButton = (label: string) => (
-    <Button onClick={() => void requestExtraction()} disabled={extracting}>
+    <Button size="sm" onClick={() => void requestExtraction()} disabled={extracting}>
       {extracting ? (
         <>
-          <Loader2 className="animate-spin" />
+          <Loader2 className="animate-spin" aria-hidden="true" />
           Extrayendo…
         </>
       ) : (
-        <>
-          <FileText />
-          {label}
-        </>
+        label
       )}
     </Button>
   );
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <BookOpenCheck className="h-4 w-4 text-primary" />
-            Ficha estructurada del pliego
-          </CardTitle>
-          <CardDescription className="mt-1">
-            Requisitos que se pueden comprobar en una página concreta del documento.
-          </CardDescription>
-        </div>
-        {presentation && <Badge variant={presentation.variant}>{presentation.label}</Badge>}
-      </CardHeader>
-      <CardContent>
+    <Panel>
+      <PanelTitle
+        title="Ficha estructurada del pliego"
+        hint="Requisitos que se pueden comprobar en una página concreta del documento."
+        actions={presentation ? <Badge variant={presentation.variant}>{presentation.label}</Badge> : undefined}
+      />
+      <div>
         {factSheet.isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-5 w-1/3" />
@@ -273,45 +254,40 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
             <Skeleton className="h-24 w-full" />
           </div>
         ) : factSheet.error && !isMissing ? (
-          <div
-            role="alert"
-            className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
-          >
-            <p className="font-semibold">No se pudo recuperar la ficha del pliego.</p>
-            <p className="mt-1">{(factSheet.error as Error).message}</p>
-            <Button className="mt-3" size="sm" variant="outline" onClick={() => void factSheet.refetch()}>
-              <RefreshCw />
-              Reintentar
-            </Button>
-          </div>
+          <PanelError
+            variant="inline"
+            title="No se pudo recuperar la ficha del pliego"
+            error={factSheet.error}
+            onRetry={() => void factSheet.refetch()}
+          />
         ) : !record || record.status === "pending" || record.status === "failed" || !record.facts ? (
-          <div className="rounded-lg border border-dashed bg-muted/25 p-5 text-center">
-            <ScanText className="mx-auto h-8 w-8 text-muted-foreground" />
-            <h3 className="mt-3 font-semibold">
-              {extracting ? "Extrayendo la ficha del pliego…" : "Aún no hay una ficha verificable"}
-            </h3>
-            <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-              {extracting
-                ? "Se están descargando los pliegos pendientes y extrayendo los requisitos. Puedes seguir navegando: la ficha aparecerá aquí sola."
-                : "La ficha se extrae sola al abrir una oportunidad y en las pasadas nocturnas, que priorizan los expedientes con oportunidad o favorito. Puedes lanzarla ahora. Solo se muestra lo que pueda citarse desde el pliego: los campos sin evidencia quedan vacíos."}
-            </p>
+          <div>
+            <PanelEmpty
+              title={extracting ? "Extrayendo la ficha del pliego…" : "Aún no hay una ficha verificable"}
+              hint={
+                extracting
+                  ? "Se están descargando los pliegos pendientes y extrayendo los requisitos. Puedes seguir navegando: la ficha aparecerá aquí sola."
+                  : "La ficha se extrae sola al abrir una oportunidad y en las pasadas nocturnas, que priorizan los expedientes con oportunidad o favorito. Puedes lanzarla ahora. Solo se muestra lo que pueda citarse desde el pliego: los campos sin evidencia quedan vacíos."
+              }
+              action={extractButton(record ? "Reprocesar ficha" : "Extraer ficha")}
+            />
             {!extracting && record?.error_detail && (
-              <p className="mt-2 text-xs text-destructive">Último intento: {record.error_detail}</p>
+              // El motivo del último fallo es técnico: plegado, para soporte.
+              <details className="mx-auto max-w-[420px] text-center text-tf-meta text-muted-foreground">
+                <summary className="cursor-pointer text-destructive">El último intento falló</summary>
+                <p className="mt-1 break-all font-mono text-tf-micro">{record.error_detail}</p>
+              </details>
             )}
-            <div className="mt-4">{extractButton(record ? "Reprocesar ficha" : "Extraer ficha")}</div>
           </div>
         ) : (
           <div className="space-y-5">
             {record.status === "needs_review" && (
-              <div className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <p>
-                  Se han descartado campos sin una cita verificable, o que el pliego devolvió en un
-                  formato que no encaja. Cada cita visible sigue vinculada a su documento y página.
-                </p>
-              </div>
+              <Aviso tone="warning" role="note">
+                Se han descartado campos sin una cita verificable, o que el pliego devolvió en un
+                formato que no encaja. Cada cita visible sigue vinculada a su documento y página.
+              </Aviso>
             )}
-            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+            <div className="tf-tnum flex flex-wrap gap-x-5 gap-y-1 text-tf-meta text-muted-foreground">
               <span>{record.field_count} campos con evidencia</span>
               <span>{record.evidence_count} citas verificables</span>
               <span>Versión {record.extraction_version}</span>
@@ -320,10 +296,9 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
               const items = record.facts?.[category.key] ?? [];
               return items.length ? (
                 <section key={category.key}>
-                  <h3 className="mb-2 text-sm font-semibold">
-                    {category.label}{" "}
-                    <span className="font-normal text-muted-foreground">· {items.length}</span>
-                  </h3>
+                  <SectionTitle className="mb-2" hint={items.length}>
+                    {category.label}
+                  </SectionTitle>
                   <ul className="space-y-2">
                     {items.map((item, index) => (
                       <FactRow
@@ -345,13 +320,13 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
                 onClick={() => void requestExtraction()}
                 disabled={extracting}
               >
-                {extracting ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                {extracting && <Loader2 className="animate-spin" aria-hidden="true" />}
                 {extracting ? "Extrayendo…" : "Reprocesar"}
               </Button>
             </div>
           </div>
         )}
-      </CardContent>
+      </div>
       {/* Montado sólo con una cita abierta: cerrado no pide nada. */}
       {citaAbierta && (
         <PaginaPliegoDialog
@@ -361,6 +336,6 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
           onClose={() => setCitaAbierta(null)}
         />
       )}
-    </Card>
+    </Panel>
   );
 }

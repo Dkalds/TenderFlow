@@ -16,6 +16,19 @@ Por eso este control mira solo dos sitios:
 Un identificador, una clave de ordenación o un parámetro de query quedan fuera
 por construcción, no por una allowlist que alguien tenga que mantener.
 
+El texto JSX se lee **línea a línea**: uno partido en varias líneas no entra.
+Medido el 2026-09-27 con el AST de TypeScript, ningún texto JSX multilínea ni
+ninguna cadena en prosa de `web/src` tiene hoy una palabra de la lista, así que
+el hueco no esconde nada; pero existe.
+
+La **voz** —tuteo sin voseo ni vosotros, y una consola que no narra su
+implementación («backend», «endpoint», «se pinta»…)— no se vigila aquí sino en
+``web/src/__tests__/voz-de-la-interfaz.test.ts`` (auditoría anti-vibecode del
+2026-09-26). Necesita lo que este script no ve: los toasts de los hooks
+(``.ts``), el texto JSX de varias líneas y distinguir un comentario que cita el
+texto antiguo de una cadena que se pinta, así que lee el AST de TypeScript en
+vez de expresiones regulares.
+
 Estado medido el 2026-09-07
 ---------------------------
 **Cero coincidencias**, y también cero `...` ASCII donde corresponde `…`. La ola

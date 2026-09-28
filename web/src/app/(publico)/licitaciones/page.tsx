@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight, MapPin } from "lucide-react";
 import { hubsOrganoAnunciables, obtenerHubs } from "@/lib/publico-api";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { listaJsonLd, migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCcaa } from "@/lib/slug";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { KICKER, TARJETA_INDICE, TITULO_PAGINA } from "../_components/piel-publica";
 
 /**
  * Índice de la superficie de licitaciones, por comunidad autónoma.
@@ -77,13 +77,8 @@ export default async function IndiceLicitaciones() {
       />
 
       <div className="mx-auto w-full max-w-6xl px-6 py-12">
-        <p className="text-primary flex items-center gap-2 font-mono text-xs tracking-widest uppercase">
-          <MapPin className="h-4 w-4" aria-hidden="true" />
-          Por comunidad autónoma
-        </p>
-        <h1 className="font-display mt-3 text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
-          Licitaciones públicas de tecnología en España
-        </h1>
+        <p className={KICKER}>Por comunidad autónoma</p>
+        <h1 className={cn(TITULO_PAGINA, "mt-3")}>Licitaciones públicas de tecnología en España</h1>
         <p className="text-muted-foreground mt-4 max-w-[62ch] text-base leading-relaxed">
           Concursos con componente de tecnología enterprise publicados por la administración española, agrupados por
           comunidad autónoma. Los datos proceden de la Plataforma de Contratación del Sector Público y de TED, y cada
@@ -93,20 +88,15 @@ export default async function IndiceLicitaciones() {
         <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {ccaa.map((hub) => (
             <li key={hub.slug}>
-              <Link
-                href={rutaHubCcaa(hub.slug)}
-                className="group border-border/70 bg-card focus-visible:ring-ring hover:border-primary/40 flex items-center justify-between gap-3 rounded-xl border px-5 py-4 transition-[transform,border-color,box-shadow] duration-200 ease-out hover:shadow-md focus-visible:ring-2 focus-visible:outline-none active:scale-[0.99]"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">{hub.nombre}</span>
-                  <span className="text-muted-foreground tf-tnum mt-0.5 block text-xs">
+              <Link href={rutaHubCcaa(hub.slug)} className={TARJETA_INDICE}>
+                <span className="block min-w-0">
+                  <span className="group-hover:text-primary block truncate text-sm font-semibold transition-colors">
+                    {hub.nombre}
+                  </span>
+                  <span className="text-muted-foreground tf-tnum text-tf-meta mt-0.5 block">
                     {formatNumber(hub.total)} licitaciones
                   </span>
                 </span>
-                <ArrowUpRight
-                  aria-hidden="true"
-                  className="text-muted-foreground group-hover:text-primary h-4 w-4 shrink-0 transition-[transform,color] duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                />
               </Link>
             </li>
           ))}
@@ -121,10 +111,7 @@ export default async function IndiceLicitaciones() {
             <>
               {" "}
               ·{" "}
-              <Link
-                href="/licitaciones/organo"
-                className="text-foreground font-medium underline underline-offset-4"
-              >
+              <Link href="/licitaciones/organo" className="text-foreground font-medium underline underline-offset-4">
                 Índice por órgano de contratación
               </Link>
             </>

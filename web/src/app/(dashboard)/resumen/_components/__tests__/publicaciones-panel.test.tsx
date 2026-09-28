@@ -79,11 +79,22 @@ describe("PublicacionesPanel", { timeout: 30_000 }, () => {
     expect(h.descargados.has("dispersion")).toBe(true);
   });
 
+  it("el corte activo es el panel de su pestaña", () => {
+    // Pestañas reales (PanelTabs), no un conmutador: el contenido es un
+    // `tabpanel` y la pestaña activa apunta a él.
+    render(<PublicacionesPanel />);
+
+    const pestana = screen.getByRole("tab", { name: "Ritmo" });
+    const panel = screen.getByRole("tabpanel");
+    expect(pestana).toHaveAttribute("aria-controls", panel.id);
+    expect(panel).toHaveAttribute("aria-labelledby", pestana.id);
+  });
+
   it("Importes son barras de CSS: se pintan sin esperar a nada", () => {
     render(<PublicacionesPanel />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Importes" }));
 
-    expect(screen.getByText("Ningún expediente del periodo declara importe.")).toBeInTheDocument();
+    expect(screen.getByText("Ningún expediente del periodo declara importe")).toBeInTheDocument();
   });
 });

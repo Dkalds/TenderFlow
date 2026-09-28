@@ -65,6 +65,6 @@ export function splitForecastSeries(series: ForecastPoint[] | undefined): Foreca
 export function modeloLabel(modelo: string | null | undefined): string | null {
   if (!modelo) return null;
   if (modelo === "holt-winters") return "Holt-Winters (suavizado exponencial)";
-  if (modelo === "regresion-lineal") return "regresión lineal (fallback)";
+  if (modelo === "regresion-lineal") return "regresión lineal (de respaldo)";
   return modelo;
 }

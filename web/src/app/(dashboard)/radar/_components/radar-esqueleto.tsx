@@ -17,7 +17,7 @@ export function RadarEsqueleto({ barras }: { barras: number }) {
       {Array.from({ length: barras }, (_, index) => (
         <span
           key={index}
-          className="tf-shimmer block h-11 rounded-lg"
+          className="tf-shimmer block h-11 rounded-md"
           style={{ opacity: 1 - index * 0.07 }}
         />
       ))}

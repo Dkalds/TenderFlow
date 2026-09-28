@@ -26,6 +26,8 @@
 
 import { startTransition, useState } from "react";
 
+import { PanelError } from "@/components/console/panel";
+
 import { useCompetidoresData } from "../_hooks/use-competidores-data";
 import { CompetidoresBanner } from "./competidores-banner";
 import { CompetidoresCortes, type CorteKey } from "./competidores-cortes";
@@ -41,6 +43,7 @@ export default function CompetidoresView() {
     data,
     isLoading,
     error,
+    refetch,
     series,
     search,
     setSearch,
@@ -64,14 +67,7 @@ export default function CompetidoresView() {
   const [corte, setCorte] = useState<CorteKey>("top20");
 
   if (error) {
-    return (
-      <div
-        className="border-destructive/50 bg-destructive/10 rounded-lg border p-6 text-center"
-        role="alert"
-      >
-        <p className="text-destructive">Error: {(error as Error).message}</p>
-      </div>
-    );
+    return <PanelError title="No se pudieron cargar los competidores" error={error} onRetry={refetch} />;
   }
 
   return (

@@ -6,7 +6,7 @@
  * La primera versión era una lista de nombres: decía a quién se seguía y nada
  * de qué pasaba con ellos. Cada fila trae ahora cuatro cifras —licitaciones
  * abiertas, última publicación, contratos que vencen y oportunidades
- * activas— que calcula el backend (`GET /cuentas/resumen`, ADR-014) con su
+ * activas— que calcula la API (`GET /cuentas/resumen`, ADR-014) con su
  * universo y su ventana, que se explican debajo de la tabla.
  *
  * El resumen llega aparte de la lista: es más caro, y la lista se pinta sin
@@ -15,9 +15,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Building2, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
-import { EmptyState } from "@/components/ui/empty-state";
+import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -33,11 +33,12 @@ import {
 import { formatDate, formatNumber } from "@/lib/utils";
 
 import { EditarCuentaDialog } from "./editar-cuenta-dialog";
+import { ListaCuentasEsqueleto } from "./lista-cuentas-esqueleto";
 import { useBajaConDeshacer } from "../_hooks/use-baja-con-deshacer";
 
 function Cifra({ valor, cargando }: { valor: React.ReactNode; cargando: boolean }) {
   if (cargando) return <Skeleton className="ml-auto h-4 w-8" />;
-  return <span className="tabular-nums">{valor}</span>;
+  return <span>{valor}</span>;
 }
 
 function Organos({ cuenta }: { cuenta: Cuenta }) {
@@ -45,9 +46,9 @@ function Organos({ cuenta }: { cuenta: Cuenta }) {
   // Una cuenta de un órgano que se llama como él no necesita repetirlo.
   if (organos.length === 1 && organos[0].organo_nombre === cuenta.nombre) return null;
   if (organos.length === 1) {
-    return <span className="block truncate text-xs text-muted-foreground">{organos[0].organo_nombre}</span>;
+    return <span className="block truncate text-tf-meta text-muted-foreground">{organos[0].organo_nombre}</span>;
   }
-  return <span className="block text-xs text-muted-foreground">{organos.length} órganos</span>;
+  return <span className="block text-tf-meta text-muted-foreground">{organos.length} órganos</span>;
 }
 
 function QueCuentan({ resumen }: { resumen: CuentasResumen }) {
@@ -58,7 +59,7 @@ function QueCuentan({ resumen }: { resumen: CuentasResumen }) {
     { cifra: "Oportunidades", ambito: resumen.ambito_oportunidades },
   ];
   return (
-    <details className="text-xs text-muted-foreground">
+    <details className="text-tf-meta text-muted-foreground">
       <summary className="cursor-pointer select-none font-medium text-foreground">
         Qué cuentan estas cifras
       </summary>
@@ -83,7 +84,7 @@ export function ListaCuentas({
   puedeEscribir: boolean;
   onNueva?: () => void;
 }) {
-  const { data, isLoading, isError, refetch } = useCuentas();
+  const { data, isLoading, isError, error, refetch } = useCuentas();
   const resumen = useCuentasResumen();
   const { dejarDeSeguir, pendiente } = useBajaConDeshacer();
   const [editando, setEditando] = React.useState<Cuenta | null>(null);
@@ -99,15 +100,10 @@ export function ListaCuentas({
     return mapa;
   }, [resumen.data]);
 
-  if (isLoading) return <Skeleton className="h-40 w-full" />;
+  if (isLoading) return <ListaCuentasEsqueleto />;
   if (isError) {
     return (
-      <EmptyState
-        title="No se pudieron cargar las cuentas"
-        hint="Vuelve a intentarlo en un momento."
-        actionLabel="Reintentar"
-        onAction={() => void refetch()}
-      />
+      <PanelError title="No se pudieron cargar las cuentas" error={error} onRetry={() => void refetch()} />
     );
   }
 
@@ -115,12 +111,17 @@ export function ListaCuentas({
     // Vacío declarado y con la acción al lado: una tabla en blanco se lee como
     // que la pantalla está rota, no como que todavía no hay nada.
     return (
-      <EmptyState
-        icon={Building2}
+      <PanelEmpty
         title="Tu equipo todavía no sigue ninguna cuenta"
         hint="Crea una cuenta con los órganos de un cliente y todo el equipo recibirá en la campana sus publicaciones nuevas y los contratos que entren en sus últimos seis meses."
-        actionLabel={onNueva ? "Nueva cuenta" : undefined}
-        onAction={onNueva}
+        action={
+          onNueva ? (
+            <Button size="sm" onClick={onNueva}>
+              <Plus aria-hidden="true" />
+              Nueva cuenta
+            </Button>
+          ) : undefined
+        }
       />
     );
   }
@@ -161,7 +162,7 @@ export function ListaCuentas({
                   </Link>
                   <Organos cuenta={cuenta} />
                   {cuenta.nota && (
-                    <span className="block truncate text-xs text-muted-foreground italic">
+                    <span className="block truncate text-tf-meta text-muted-foreground italic">
                       {cuenta.nota}
                     </span>
                   )}
@@ -204,19 +205,19 @@ export function ListaCuentas({
                 </TableCell>
                 {puedeEscribir && (
                   <TableCell className="text-right whitespace-nowrap">
-                    <Button variant="ghost" size="sm" onClick={() => setEditando(cuenta)}>
-                      <Pencil className="size-4" aria-hidden="true" />
+                    <Button variant="ghost" size="icon-sm" onClick={() => setEditando(cuenta)}>
+                      <Pencil aria-hidden="true" />
                       <span className="sr-only">Editar {cuenta.nombre}</span>
                     </Button>
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon-sm"
                       onClick={() =>
                         dejarDeSeguir(cuenta, (aplicadas ?? []).map((etiqueta) => etiqueta.id))
                       }
                       disabled={pendiente}
                     >
-                      <Trash2 className="size-4" aria-hidden="true" />
+                      <Trash2 aria-hidden="true" />
                       <span className="sr-only">Dejar de seguir {cuenta.nombre}</span>
                     </Button>
                   </TableCell>

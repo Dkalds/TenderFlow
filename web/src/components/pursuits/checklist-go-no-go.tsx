@@ -9,7 +9,7 @@
  *
  * - No decide. El go/no-go se sigue marcando a mano en el formulario de
  *   decisión que hay justo encima, y el panel lo dice en su pie.
- * - `desconocido` se muestra como tal, con el motivo que da el backend, y
+ * - `desconocido` se muestra como tal, con el motivo que da la API, y
  *   cuando lo que falta es el dato de la organización enlaza a donde se
  *   rellena (`/equipo`, pestaña Organización).
  * - Declara sobre qué ficha se evaluó: `extraction_version` y su fecha. Un
@@ -19,7 +19,7 @@
  * `desconocido_extraidos`) vienen de la respuesta; aquí no se suma nada
  * (ADR-014).
  *
- * **Una familia sin hechos no es un requisito.** El backend manda para cada
+ * **Una familia sin hechos no es un requisito.** La API manda para cada
  * familia de la que la ficha no sacó nada un ítem que lo avisa; pintado como
  * requisito, un pliego sin requisitos extraídos salía como «De 4 requisitos
  * extraídos» y cuatro tarjetas iguales con el mismo enlace al perfil de
@@ -28,6 +28,7 @@
  */
 
 import { Panel, PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePursuitChecklist } from "@/hooks/use-pursuit-checklist";
 import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
@@ -83,7 +84,7 @@ export function ChecklistGoNoGo({
     return (
       <Panel id={ANCLA}>
         <SectionTitle>Requisitos del pliego</SectionTitle>
-        <Skeleton className="h-[132px] w-full rounded-lg" />
+        <Skeleton className="h-[132px] w-full rounded-md" />
       </Panel>
     );
   }
@@ -93,8 +94,10 @@ export function ChecklistGoNoGo({
       <Panel id={ANCLA}>
         <SectionTitle>Requisitos del pliego</SectionTitle>
         <PanelError
+          variant="inline"
           title="No se pudo contrastar el pliego con tu capacidad"
-          detail={error instanceof Error ? error.message : undefined}
+          error={error}
+          message={error ? undefined : "No hay respuesta que enseñar. Vuelve a intentarlo."}
           onRetry={() => void refetch()}
         />
       </Panel>
@@ -117,7 +120,7 @@ export function ChecklistGoNoGo({
   return (
     <Panel id={ANCLA} tabIndex={-1} className="outline-none">
       <SectionTitle
-        aside={
+        hint={
           <Procedencia
             extractionVersion={data.extraction_version}
             fichaActualizada={data.ficha_actualizada}
@@ -129,8 +132,15 @@ export function ChecklistGoNoGo({
 
       {data.ficha_estado == null ? (
         <PanelEmpty
-          message="Todavía no hay ficha del pliego extraída, así que no hay nada contra lo que contrastar tu capacidad. La extracción se lanza desde la pestaña «Pliego»."
-          action={irAPliego ?? undefined}
+          title="Todavía no hay ficha del pliego extraída"
+          hint="Sin ficha no hay nada contra lo que contrastar tu capacidad. La extracción se lanza desde la pestaña «Pliego»."
+          action={
+            onAbrirPliego ? (
+              <Button type="button" variant="outline" size="sm" onClick={onAbrirPliego}>
+                Abrir la pestaña «Pliego»
+              </Button>
+            ) : undefined
+          }
         />
       ) : data.requisitos_extraidos === 0 ? (
         <p role="status" className="text-muted-foreground text-tf-meta leading-relaxed">
@@ -168,7 +178,7 @@ export function ChecklistGoNoGo({
           veredicto no decide es una frase más que leer sin nada debajo. */}
       {data.ficha_estado != null && data.requisitos_extraidos > 0 ? (
         <p className="text-muted-foreground mt-3 text-tf-micro leading-relaxed">
-          Esto no decide el go/no-go: lo propone. La decisión se marca a mano en «Decisión del
+          Esto no decide el Go/No-Go: lo propone. La decisión se marca a mano en «Decisión del
           comité», arriba, y un «desconocido» es una pregunta abierta, no un no.
         </p>
       ) : null}
