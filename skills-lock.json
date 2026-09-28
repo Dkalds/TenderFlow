@@ -61,13 +61,6 @@
       "verifiedHash": "111986c12b6a8a4ef750d3dc7decdd5aeb70eef6d5f22ae6ef83be8d2d1f2103",
       "trust": "community"
     },
-    "fastapi-templates": {
-      "source": "wshobson/agents",
-      "sourceType": "autoskills-registry",
-      "computedHash": "c8e98f955a805e73243713c24b8a5d41eb79fcdd7b950656bd27bef690cb295a",
-      "verifiedHash": "c8c32b07cd7c6d5ea9dc567eaf794a3fd61604641fddd0d716e23027fd3da7fa",
-      "trust": "community"
-    },
     "find-animation-opportunities": {
       "source": "emilkowalski/skill",
       "sourceType": "github",
@@ -107,27 +100,6 @@
       "verifiedHash": "ab7c6e7d1d1fcc86b555d7454951dcd55c16f51cc47f92e2c9685c0add30cd22",
       "trust": "community"
     },
-    "nodejs-backend-patterns": {
-      "source": "wshobson/agents",
-      "sourceType": "autoskills-registry",
-      "computedHash": "710a5e6f83c46e8f6c43356df55c143a7375c4414559a581654ce51709138c55",
-      "verifiedHash": "5615ee0d9fd08611bd0853fa1dbe982018c290b651ceb9e059d1e05343444733",
-      "trust": "community"
-    },
-    "nodejs-best-practices": {
-      "source": "sickn33/antigravity-awesome-skills",
-      "sourceType": "autoskills-registry",
-      "computedHash": "7361ab02fb6b09913e3bdd9cf61c629ed6c17de9485e6a781054e5d437ccfc29",
-      "verifiedHash": "a57904d4f40b1dee99bda78484ebafe97c92b8961d13ffb81d7e1886db3cd149",
-      "trust": "community"
-    },
-    "pandas-data-analysis": {
-      "source": "pluginagentmarketplace/custom-plugin-python",
-      "sourceType": "autoskills-registry",
-      "computedHash": "612eb33d227296b4bdd0ca62785b2e31124a92adf5f40b730b0cf3713adc6f04",
-      "verifiedHash": "33de8e938f10c3c99ef0639b4461b1191a8ff4793c367ef1c8ccd5570b08c575",
-      "trust": "community"
-    },
     "pandas-pro": {
       "source": "jeffallan/claude-skills",
       "sourceType": "autoskills-registry",
@@ -148,13 +120,6 @@
       "sourceType": "autoskills-registry",
       "computedHash": "2173a5225be78c1392ec157dbb1bcfaf8c206aa36f0df35bad5af9461e386dd6",
       "verifiedHash": "f0223609c6ddfeec8988d23baf089d7dfc2d8e7b4285120a3f52c7132749ef2f",
-      "trust": "community"
-    },
-    "python-executor": {
-      "source": "inferen-sh/skills",
-      "sourceType": "autoskills-registry",
-      "computedHash": "bd2d874c27788964fadf03c0840049de0409407f06f883ee90886164cb22ef69",
-      "verifiedHash": "97208c6664ac7add2d76ab69ab1b4c294c45ddb588180c8e3a9bc437e24aadde",
       "trust": "community"
     },
     "python-patterns": {
@@ -238,36 +203,12 @@
       "verifiedHash": "a96b911c5db188133b3d8b97e30c167788c2e3da8873635b820461abe5db6592",
       "trust": "community"
     },
-    "upstash": {
-      "source": "upstash/skills",
-      "sourceType": "github",
-      "skillPath": "skills/upstash/SKILL.md",
-      "computedHash": "8222369bfc06abbae7fa51755e8b26246c1039389ea9589874e1514ea2e62c41",
-      "verifiedHash": "ee63ea06b26890ab6ec7582e993a282f9050a6aa52cf4d674cc7b035983213c6",
-      "trust": "first-party"
-    },
     "upstash-cli": {
       "source": "upstash/skills",
       "sourceType": "github",
       "skillPath": "skills/upstash-cli/SKILL.md",
       "computedHash": "84b0a7d6ff02c7a516084c5959f9135dde262c0801cf403059cac21f21ab87ce",
       "verifiedHash": "1b85056c3b0ae3129954eccd8ad3d648471c14031ec67d24e46017266818bcc1",
-      "trust": "first-party"
-    },
-    "upstash-ratelimit-js": {
-      "source": "upstash/skills",
-      "sourceType": "github",
-      "skillPath": "skills/upstash-ratelimit-js/SKILL.md",
-      "computedHash": "2a37a13b265f48f302e3591082b070513dc97307dba55ac8e43eee7ddb64d0c1",
-      "verifiedHash": "8868897ee0e855bc4c79d656373e51f9d22b138cd2298da83c9843620552e8f6",
-      "trust": "first-party"
-    },
-    "upstash-redis-js": {
-      "source": "upstash/skills",
-      "sourceType": "github",
-      "skillPath": "skills/upstash-redis-js/SKILL.md",
-      "computedHash": "f170c81c26f7a45410377d04e9c3305bb238cc13f6f4b5daf7ae92896e89b458",
-      "verifiedHash": "d546b18fef7cae809a27ddd3f5bde05116a22494aee60e5e5fdb6c031922bceb",
       "trust": "first-party"
     },
     "vercel-composition-patterns": {
