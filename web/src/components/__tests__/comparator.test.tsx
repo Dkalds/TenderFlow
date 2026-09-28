@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { Comparator } from "@/components/comparator";
-import type { LicitacionDetail } from "@/components/detail-panel";
+import type { LicitacionDetail } from "@/lib/licitacion-detail";
 
 function makeItem(overrides: Partial<LicitacionDetail> = {}): LicitacionDetail {
   return {

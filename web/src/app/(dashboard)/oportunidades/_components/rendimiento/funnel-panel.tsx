@@ -38,7 +38,7 @@ const ETAPAS = [
  * —cero identificadas— no hay tasa que enseñar, y se calla en vez de escribir
  * «0 %».
  */
-export function conversion(numerador: number, denominador: number): string | null {
+function conversion(numerador: number, denominador: number): string | null {
   if (denominador <= 0) return null;
   return `${Math.round((numerador / denominador) * 100)} %`;
 }

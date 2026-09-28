@@ -39,7 +39,7 @@ export const acceso = esquemaDeDto("LoginRequest")(
  * patrones débiles («password», «123456»…) los sigue rechazando solo el
  * backend, y su mensaje llega al aviso general del formulario.
  */
-export const registro = esquemaDeDto("RegisterRequest")(
+const registro = esquemaDeDto("RegisterRequest")(
   {
     display_name: z.string(),
     email: correo,
@@ -127,7 +127,7 @@ export const nuevaRegla = esquemaDeDto("WatchlistRuleBody")(
 /* ------------------------------------------------------------------ Perfil */
 
 /** `api/routes/me.py::UserProfileBody`. */
-export const perfil = esquemaDeDto("UserProfileBody")(
+const perfil = esquemaDeDto("UserProfileBody")(
   {
     weights: z.record(z.string(), z.int().check(z.minimum(0), z.maximum(100))),
     afinidad_keywords: z.array(z.string()),

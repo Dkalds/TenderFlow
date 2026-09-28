@@ -19,7 +19,6 @@ vi.mock("@/hooks/use-tender-fact-sheet", () => ({
       },
     },
   }),
-  useExtractTenderFactSheet: () => ({ mutateAsync: extract, isPending: false }),
   useTenderFactSheetExtraction: () => ({ start: extract, isStarting: false, running: false }),
   useFactSheetDocumentos: () => ({
     data: {

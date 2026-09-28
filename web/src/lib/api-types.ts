@@ -23,27 +23,21 @@ export type LicitacionDetail = Schemas["LicitacionDetail"];
 export type TrendPoint = Schemas["TrendPoint"];
 export type TrendsResult = Schemas["TrendsResult"];
 export type HistogramBin = Schemas["HistogramBin"];
-export type RetenderingResult = Schemas["RetenderingResult"];
-export type ForecastVolumeResult = Schemas["ForecastVolumeResult"];
 /** El backend lo llama `OverviewResult`; el frontend histórico, `AnalyticsOverview`. */
 export type AnalyticsOverview = Schemas["OverviewResult"];
 export type ResumenHoyResult = Schemas["ResumenHoyResult"];
 export type ResumenNovedadesResult = Schemas["ResumenNovedadesResult"];
 export type TimelineScatterResult = Schemas["TimelineScatterResult"];
-export type TopLicitacionesResult = Schemas["TopLicitacionesResult"];
 export type CalibracionBajaDTO = Schemas["CalibracionBajaDTO"];
 export type NotificationsResult = Schemas["NotificationsResult"];
 export type AlertItem = Schemas["AlertItem"];
 export type EventosFeedResult = Schemas["EventosFeedResult"];
-export type EventoFeedItem = Schemas["EventoFeedItem"];
 
 // Renovaciones — primera ola del tipado del contrato (ADR/backlog H2).
 // Estas páginas declaraban la forma a mano porque la ruta devolvía
 // `dict[str, Any]`; ahora viene del OpenAPI.
 export type Renovacion = Schemas["Renovacion"];
 export type RenovacionesResult = Schemas["RenovacionesResult"];
-export type CarteraEmpresa = Schemas["CarteraEmpresa"];
-export type RenovacionesTotales = Schemas["RenovacionesTotales"];
 export type RenovacionesResumenResult = Schemas["RenovacionesResumenResult"];
 
 // Watchlist — ola de tipado del contrato (backlog «65 operaciones opacas»).
@@ -54,16 +48,9 @@ export type WatchlistFavoriteItem = Schemas["WatchlistFavoriteItem"];
 // Cierre del tipado del contrato (2026-08-03): ALLOWED_OPAQUE llegó a 0 —
 // las 128 rutas declaran DTO. Aliases de las superficies que las páginas
 // consumen con más frecuencia; el resto se importa como Schemas["..."].
-export type EmpresaListItem = Schemas["EmpresaListItem"];
 export type EmpresaDetail = Schemas["EmpresaDetail"];
 export type EmpresasStats = Schemas["EmpresasStats"];
 export type MetaFilters = Schemas["MetaFilters"];
-export type SavedFilter = Schemas["SavedFilter"];
-export type FeedbackQueueItem = Schemas["FeedbackQueueItem"];
-export type ModelInfoResult = Schemas["ModelInfoResult"];
-export type CuotaResult = Schemas["CuotaResult"];
-export type HhiResult = Schemas["HhiResult"];
-export type BajasResult = Schemas["BajasResult"];
 
 // Superficies que los hooks declaraban a mano con su propia `interface`. Un
 // tipo escrito a mano compila aunque la API nunca envíe ese campo, y el valor
@@ -98,17 +85,13 @@ export type DeadlineFact = Schemas["DeadlineFact"];
 export type LotFact = Schemas["LotFact"];
 export type CertificationRequirement = Schemas["CertificationRequirement"];
 export type ServiceLevelFact = Schemas["ServiceLevelFact"];
-export type TechnologyMention = Schemas["TechnologyMention"];
 /** Lo que devuelve `POST /watchlist/items`: sin los campos enriquecidos del GET. */
 export type WatchlistFavoriteCreated = Schemas["WatchlistFavoriteCreated"];
 /** Solo la creación devuelve `secret`, y una única vez. */
 export type WebhookCreateResponse = Schemas["WebhookCreateResponse"];
 export type WebhookDelivery = Schemas["WebhookDelivery"];
 export type WebhookPingResult = Schemas["WebhookPingResult"];
-export type WebhookEventTypes = Schemas["WebhookEventTypes"];
 export type WebhookOut = Schemas["WebhookOut"];
-export type ResolucionOut = Schemas["ResolucionOut"];
-export type TimelineResult = Schemas["TimelineResult"];
 export type PrediccionBajaResult = Schemas["PrediccionBajaResult"];
 
 // Ola 1 del tipado del cliente OpenAPI (`src/hooks/**`, backlog «migrar al
@@ -129,15 +112,12 @@ export type PursuitCommentListResponse = Schemas["PursuitCommentListResponse"];
 export type PipelineAgendaResponse = Schemas["PipelineAgendaResponse"];
 export type PipelineAgendaItem = Schemas["PipelineAgendaItem"];
 export type ScoredOpportunity = Schemas["ScoredOpportunity"];
-export type ScoringResult = Schemas["ScoringResult"];
 export type ScoringSignalsHealth = Schemas["ScoringSignalsHealth"];
 
 // Envoltorios de respuesta que los hooks declaraban como `interface` local
 // (`LastExtractionResponse`, `DismissalsResponse`, `{ items: … }` inline).
-export type LastExtraction = Schemas["LastExtraction"];
 export type RadarDismissalsResult = Schemas["RadarDismissalsResult"];
 export type RadarDismissalBody = Schemas["RadarDismissalBody"];
-export type WatchlistFavoritesResult = Schemas["WatchlistFavoritesResult"];
 
 // Cuerpos de petición de webhooks: el alta y la edición los describía el hook
 // a mano, con `event_types` obligatorio donde la API lo tiene opcional.
@@ -161,9 +141,7 @@ export type OrganizationSettingsOut = Schemas["OrganizationSettingsOut"];
 // Ajustes (C7.5) — las tres superficies que C2 expuso en el backend y que no
 // consumía nadie: sesiones (C2.1), claves con tier (C2.3) y preferencias de
 // notificación (C2.7).
-export type SessionOut = Schemas["SessionOut"];
 export type SessionsResult = Schemas["SessionsResult"];
-export type MyApiKeyOut = Schemas["MyApiKeyOut"];
 export type MyApiKeysResult = Schemas["MyApiKeysResult"];
 export type CreatedKey = Schemas["CreatedKey"];
 export type NotificationPreference = Schemas["NotificationPreference"];

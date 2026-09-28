@@ -81,18 +81,6 @@ export function useTenderFactSheet(licitacionId: string | null) {
   });
 }
 
-export function useExtractTenderFactSheet(licitacionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      apiMutate<TenderFactSheetRecord>(
-        "POST",
-        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/ficha-pliego/extract`,
-      ),
-    onSuccess: (record) => queryClient.setQueryData(key(licitacionId), record),
-  });
-}
-
 /**
  * Metadatos de los documentos de la licitación, para resolver
  * `documento_id → filename/uri` en las citas de la ficha. Comparte queryKey con
@@ -115,7 +103,7 @@ const estadoKey = (licitacionId: string) => ["tender-fact-sheet-estado", licitac
 /**
  * Extracción en background (`extract-async` + polling de `/estado`).
  *
- * El camino síncrono (`useExtractTenderFactSheet`) mantiene la request abierta
+ * El camino síncrono (`POST …/ficha-pliego/extract`) mantiene la request abierta
  * mientras se descargan hasta 8 PDFs y responde el LLM — minutos de spinner y
  * un timeout de proxy esperando a pasar. Aquí el POST devuelve 202 al momento;
  * el estado se sondea cada pocos segundos y, al terminar, se refresca la ficha.

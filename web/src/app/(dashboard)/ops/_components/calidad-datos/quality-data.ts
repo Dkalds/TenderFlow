@@ -57,7 +57,7 @@ export interface Frescura {
 }
 
 /** Umbrales de frescura de la ingesta, en horas desde la última. */
-export const FRESCURA_OK_H = 6;
+const FRESCURA_OK_H = 6;
 export const FRESCURA_LIMITE_H = 24;
 
 export function freshnessInfo(hours: number | null | undefined): Frescura {

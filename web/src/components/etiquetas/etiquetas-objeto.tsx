@@ -29,7 +29,7 @@ import {
 import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 
-export function EtiquetaChip({ etiqueta }: { etiqueta: Pick<EtiquetaAplicada, "nombre" | "color"> }) {
+function EtiquetaChip({ etiqueta }: { etiqueta: Pick<EtiquetaAplicada, "nombre" | "color"> }) {
   return (
     // El `Badge` de contorno de la consola; el punto de color va a 6 px, no a
     // los 12 de un icono de chip.

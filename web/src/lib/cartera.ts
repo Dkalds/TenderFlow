@@ -17,7 +17,7 @@ export interface FiltrosCartera {
 }
 
 /** Las tecnologías vienen como CSV en la columna (`"SAP,Oracle"`). */
-export function tecnologiasDe(contrato: ContratoCartera): string[] {
+function tecnologiasDe(contrato: ContratoCartera): string[] {
   return (contrato.tecnologia ?? "")
     .split(",")
     .map((t) => t.trim())

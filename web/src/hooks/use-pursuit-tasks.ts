@@ -130,13 +130,3 @@ export function useActualizarTarea() {
     onSuccess: () => invalidarTareas(queryClient),
   });
 }
-
-export function useBorrarTarea() {
-  const queryClient = useQueryClient();
-  const organizationId = useActiveOrganizationId();
-  return useMutation({
-    mutationFn: ({ pursuitId, taskId }: { pursuitId: number; taskId: number }) =>
-      apiMutate<void>("DELETE", rutaTarea(pursuitId, taskId, organizationId)),
-    onSuccess: () => invalidarTareas(queryClient),
-  });
-}

@@ -30,7 +30,7 @@ import { pursuitKeys } from "@/lib/query-keys";
  * en un sitio, y alcanza también a la campana, cuyo componente no es de este
  * módulo. Una opción que ponga el propio hook gana a estos defaults.
  */
-export const CLAVES_FRESCAS_AL_VOLVER: readonly (readonly unknown[])[] = [
+const CLAVES_FRESCAS_AL_VOLVER: readonly (readonly unknown[])[] = [
   // La Agenda: plazos que vencen hoy y tareas que el equipo va cerrando. Es la
   // pantalla a la que se vuelve para saber qué toca ahora.
   pursuitKeys.agenda,

@@ -57,7 +57,7 @@ export function ReportarDatoBoton({
   );
 }
 
-export function ReportarDatoDialog({
+function ReportarDatoDialog({
   licitacionId,
   onClose,
 }: {

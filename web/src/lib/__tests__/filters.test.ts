@@ -9,13 +9,13 @@ import { renderHook, act, cleanup, waitFor } from "@testing-library/react";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import {
   EMPTY_SCOPE,
-  filtersToParams,
   appendFiltersToPath,
   mergeFiltersIntoPath,
   scopeKey,
   useFilters,
   useScopeSnapshot,
 } from "@/lib/filters";
+import { filtersToParams } from "@/lib/filter-params";
 import type { FilterValues, FiltersState, ScopeSnapshot } from "@/lib/filters";
 
 afterEach(() => {

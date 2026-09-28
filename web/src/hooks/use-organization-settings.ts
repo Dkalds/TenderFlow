@@ -17,7 +17,7 @@ import { organizationKeys, pursuitKeys, radarKeys } from "@/lib/query-keys";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 /** Alias histórico; la fábrica canónica es `organizationKeys` de `lib/query-keys`. */
-export const organizationSettingsKeys = {
+const organizationSettingsKeys = {
   detail: organizationKeys.settings,
 };
 

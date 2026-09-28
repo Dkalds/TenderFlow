@@ -116,7 +116,7 @@ export type ForecastMetric = "count" | "sum";
  * (exigir 24 puntos, o normalizar por el tamaño de cada ventana) cambia la cifra
  * en pantalla, así que va aparte. Los tests lo dejan clavado.
  */
-export function computeYoY(series: TrendPoint[], field: "count" | "importe"): number | null {
+function computeYoY(series: TrendPoint[], field: "count" | "importe"): number | null {
   if (series.length < 13) return null;
   const recent = series.slice(-12);
   const prior = series.slice(-24, -12);

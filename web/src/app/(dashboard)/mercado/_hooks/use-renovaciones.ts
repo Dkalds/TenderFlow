@@ -51,7 +51,7 @@ export const HORIZONTES = [
 ];
 
 /** Ventana por defecto: la que se sirve cuando la URL no dice otra cosa. */
-export const MESES_POR_DEFECTO = "6";
+const MESES_POR_DEFECTO = "6";
 
 /**
  * El corte vive en la URL, como el resto del espacio.
@@ -63,8 +63,8 @@ export const MESES_POR_DEFECTO = "6";
  * Geografía y las otras seis por ese texto. Mismo prefijo que el `?organo_q=`
  * de la vista Órganos, por lo mismo.
  */
-export const PARAM_MESES = "meses";
-export const PARAM_BUSQUEDA = "renovacion_q";
+const PARAM_MESES = "meses";
+const PARAM_BUSQUEDA = "renovacion_q";
 
 /**
  * Cuántas oportunidades pide la tabla. El backend ordena por score

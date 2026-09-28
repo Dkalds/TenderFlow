@@ -21,7 +21,7 @@ const SIGNAL_WARNINGS: Record<string, string> = {
     "no se pudo leer la tasa de anulación por órgano: ningún expediente lleva esa penalización",
 };
 
-export function signalWarnings(signals: ScoringSignals | null | undefined): string[] {
+function signalWarnings(signals: ScoringSignals | null | undefined): string[] {
   if (!signals) return [];
   const avisos: string[] = [];
   if (signals.competencia !== "ok") avisos.push(SIGNAL_WARNINGS.competencia);

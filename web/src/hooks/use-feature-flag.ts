@@ -50,7 +50,7 @@ type FlagOut = Schemas["FlagOut"];
  * evitar—, así que mover la constante allí es una línea sin cambio de
  * comportamiento.
  */
-export const featureFlagKeys = {
+const featureFlagKeys = {
   all: ["feature-flags"] as const,
   list: ["feature-flags", "list"] as const,
 };

@@ -30,7 +30,7 @@ export const MOTIVOS_PERDIDA = [
 ] as const satisfies ReadonlyArray<{ codigo: MotivoPerdida; etiqueta: string; ayuda: string }>;
 
 /** Etiqueta de los cierres anteriores a F3.1 en el reparto. */
-export const SIN_CODIFICAR = "sin_codificar";
+const SIN_CODIFICAR = "sin_codificar";
 
 /** Texto legible de un motivo, incluido `sin_codificar`; el código crudo si es desconocido. */
 export function etiquetaMotivo(codigo: string): string {

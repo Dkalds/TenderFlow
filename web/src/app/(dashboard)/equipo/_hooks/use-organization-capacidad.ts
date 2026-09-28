@@ -30,7 +30,7 @@ export type OrganizationCapabilityField = NonNullable<
 >[number];
 
 /** Claves de caché propias: `organizationKeys` no las declara y no es su fichero. */
-export const capacidadKeys = {
+const capacidadKeys = {
   nifs: (organizationId: number | null) =>
     [...organizationKeys.members(organizationId), "nifs"] as const,
   capabilities: (organizationId: number | null) =>

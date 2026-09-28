@@ -50,7 +50,7 @@ type Novedad = Schemas["Novedad"];
 type VisitaMarcada = Schemas["VisitaMarcada"];
 
 /** «Marcar todo como visto»: mueve la marca y vuelve a pedir la banda. */
-export function useMarcarVisto() {
+function useMarcarVisto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => apiMutate<VisitaMarcada>("POST", "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto"),
@@ -62,7 +62,7 @@ export function useMarcarVisto() {
 /** Líneas visibles sin desplegar: las que caben en la primera pantalla. */
 const VISIBLES = 4;
 
-export function useDesdeUltimaVisita() {
+function useDesdeUltimaVisita() {
   const organizationId = useActiveOrganizationId();
   return useQuery<NovedadesDesdeUltimaVisita>({
     queryKey: analyticsKeys.desdeUltimaVisita(organizationId),

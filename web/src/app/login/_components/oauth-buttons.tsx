@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
  * que el backend no hace, así que se gobierna con la misma bandera de entorno
  * que ya usa la pestaña de alta.
  */
-export const MICROSOFT_HABILITADO =
+const MICROSOFT_HABILITADO =
   process.env.NEXT_PUBLIC_OAUTH_MICROSOFT === "1" || process.env.NODE_ENV === "development";
 
 export function OAuthButtons({

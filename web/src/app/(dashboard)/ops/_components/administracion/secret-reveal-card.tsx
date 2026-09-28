@@ -12,7 +12,7 @@ import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-export function copyToClipboard(text: string) {
+function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text).catch(() => {
     toast.error("No se pudo copiar. Copia manualmente: " + text);
   });

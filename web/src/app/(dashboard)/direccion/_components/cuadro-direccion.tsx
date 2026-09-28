@@ -22,7 +22,7 @@ type Tarjeta = Schemas["TarjetaMetrica"];
 type Cuadro = Schemas["CuadroDireccion"];
 
 /** La cifra con su unidad. `pct` llega como fracción 0-1. */
-export function formatoTarjeta(tarjeta: Tarjeta): string | null {
+function formatoTarjeta(tarjeta: Tarjeta): string | null {
   if (tarjeta.valor == null) return null;
   switch (tarjeta.unidad) {
     case "eur":

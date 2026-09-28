@@ -40,10 +40,10 @@ import { fuenteLinkLabel } from "@/lib/fuentes";
  */
 
 /** Plazo de «silenciar», el que fija el plan (F5.6). */
-export const DIAS_SILENCIO = 30;
+const DIAS_SILENCIO = 30;
 
 /** Plazos ofrecidos para el recordatorio. El backend admite de 1 a 365. */
-export const PLAZOS_RECORDATORIO = [3, 7, 14, 30] as const;
+const PLAZOS_RECORDATORIO = [3, 7, 14, 30] as const;
 export function InspectorAcciones({
   tender,
   opening,
