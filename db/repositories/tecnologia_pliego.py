@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -54,9 +54,31 @@ _NO_SIGNAL_SENTINEL = NO_SIGNAL_SENTINEL
 # convertiría una etiqueta inverificable en un negativo falso.
 SIN_EVIDENCIA_SENTINEL = "__sin_evidencia__"
 
+# Marcadores del nivel 1 («¿es TI?», plan de clasificación en tres niveles).
+# Viven DENTRO de ``method='llm_metadata'`` -- junto a las familias, como una
+# fila más de ``scores`` -- y no en un ``method`` propio: la CHECK
+# ``ck_lic_tec_pliego_method`` de la tabla (``v81``) solo admite
+# ``'keywords','llm','llm_metadata'`` y hasta F5 no hay migraciones
+# (AGENTS.md), así que un ``method`` nuevo (p. ej. ``'llm_es_ti'``) revienta
+# cada INSERT con ``CheckViolation`` -- la fila de familias nunca llegaría a
+# escribirse y la licitación se reintentaría (y facturaría) en cada corrida.
+# Con score 0 nunca pasan el umbral del merge ni el de ningún agregado
+# (``PLIEGO_TECH_MIN_SCORE`` nunca es <= 0). La confianza viaja en
+# ``evidence_json``. Ver ``TecnologiaPliegoRepository.upsert_signals`` para
+# cómo conviven con las familias en la misma fila de ``scores``/misma
+# llamada, y ``LicitacionRepository.etiquetas_tecnologia_no_circulares`` para
+# cómo un lector los distingue de una tecnología real.
+ES_TI_SENTINEL = "__es_ti__"
+NO_ES_TI_SENTINEL = "__no_es_ti__"
+
 #: Filas que marcan «procesada» y no son una tecnología. Toda lectura que
-#: exponga o agregue tecnologías excluye las dos.
-SENTINELS: tuple[str, ...] = (NO_SIGNAL_SENTINEL, SIN_EVIDENCIA_SENTINEL)
+#: exponga o agregue tecnologías excluye las cuatro.
+SENTINELS: tuple[str, ...] = (
+    NO_SIGNAL_SENTINEL,
+    SIN_EVIDENCIA_SENTINEL,
+    ES_TI_SENTINEL,
+    NO_ES_TI_SENTINEL,
+)
 
 
 class TechSignal(NamedTuple):
@@ -65,6 +87,15 @@ class TechSignal(NamedTuple):
     score: float
     matched_terms: list[str] | None = None
     evidence: list[dict[str, Any]] | None = None
+
+
+class RespuestaLlmVigente(TypedDict):
+    """La respuesta vigente del LLM para una licitación, tal como la lee
+    :meth:`TecnologiaPliegoRepository.respuestas_llm_vigentes`: el nivel 1
+    (``None`` si no se pronunció) y las etiquetas afirmadas, ordenadas."""
+
+    es_ti: bool | None
+    familias: list[str]
 
 
 class MergeOutcome(NamedTuple):
@@ -91,6 +122,80 @@ _MERGE_CHUNK_SIZE = 200
 _MERGE_LOCK_KEY = "tenderflow.tech_signal_merge"
 
 
+def _filas_a_escribir(
+    scores: dict[str, TechSignal], *, sin_evidencia: bool
+) -> dict[str, TechSignal]:
+    """Qué filas persiste ``upsert_signals`` para una corrida: ``scores`` tal
+    cual -- familias y, si el llamador lo metió ahí, el marcador de nivel 1
+    (``ES_TI_SENTINEL``/``NO_ES_TI_SENTINEL``) -- más el sentinel que
+    corresponda cuando hace falta uno. Pura a propósito: es la pieza que
+    decide qué se escribe, separada de cómo se escribe, y se puede probar
+    sin BD.
+
+    ``sin_evidencia`` añade ``SIN_EVIDENCIA_SENTINEL`` **además** de lo que
+    ya traiga ``scores``: el marcador de nivel 1, si lo hay, no lo tapa --
+    son respuestas independientes (una sobre si las familias sostuvieron su
+    cita, otra sobre si el contrato es TI). Sin ``sin_evidencia`` y con
+    ``scores`` vacío del todo (ni familias ni marcador) se añade
+    ``NO_SIGNAL_SENTINEL``: el comportamiento heredado de "esta licitación
+    no tiene nada que reportar". Con cualquier fila ya presente, familia o
+    marcador, no hace falta ``NO_SIGNAL_SENTINEL`` y no se añade.
+    """
+    filas = dict(scores)
+    if sin_evidencia:
+        filas[SIN_EVIDENCIA_SENTINEL] = TechSignal(score=0.0)
+    elif not filas:
+        filas[_NO_SIGNAL_SENTINEL] = TechSignal(score=0.0)
+    return filas
+
+
+def _respuesta_desde_filas_vigentes(
+    filas: list[tuple[str, float]], *, min_score: float
+) -> RespuestaLlmVigente:
+    """Post-procesa las filas ``(tecnologia, score)`` de la versión vigente
+    de ``llm_metadata`` de UNA licitación en la respuesta que compara
+    :func:`services.ml.acuerdo_llm.medir_acuerdo`. Pura -- sin BD -- para
+    poder probarla sin Postgres; es la pieza que
+    :meth:`TecnologiaPliegoRepository.respuestas_llm_vigentes` aplica por
+    licitación.
+
+    Regla de ``SIN_EVIDENCIA_SENTINEL``: si esa versión lo trae, el LLM no
+    se pronunció en NINGÚN nivel para esta llamada -- ``es_ti`` sale
+    ``None`` y ``familias`` queda vacía, aunque la misma versión también
+    traiga el marcador de nivel 1 o una familia con score suficiente. Es la
+    misma regla que ``LicitacionRepository.etiquetas_tecnologia_no_circulares``
+    aplica para las etiquetas de entrenamiento del clasificador: el informe
+    de acuerdo certifica las etiquetas que el entrenamiento usa de verdad, y
+    ``scheduler/jobs/llm_tech_labeling.py`` no escribe feedback para las
+    licitaciones ``sin_evidencia`` (las excluye de ``clasificadas``) -- si
+    esta función las contara igual, certificaría un acuerdo sobre etiquetas
+    que el entrenamiento nunca usa. ``_filas_a_escribir`` documenta que el
+    marcador "no tapa" a ``sin_evidencia`` desde el punto de vista de quién
+    escribe (son respuestas independientes ahí); esta función no puede
+    apoyarse en que hoy nunca convivan con una familia real -- por diseño,
+    pueden.
+
+    Sin ``SIN_EVIDENCIA_SENTINEL``: ``es_ti`` sale del marcador
+    (``ES_TI_SENTINEL``/``NO_ES_TI_SENTINEL``, ``None`` si ninguno está en
+    ``filas``); ``familias``, de las filas no-sentinel con
+    ``score >= min_score``, ordenadas.
+    """
+    tecnologias_presentes = {tecnologia for tecnologia, _score in filas}
+    if SIN_EVIDENCIA_SENTINEL in tecnologias_presentes:
+        return {"es_ti": None, "familias": []}
+
+    es_ti: bool | None = None
+    familias: list[str] = []
+    for tecnologia, score in filas:
+        if tecnologia == ES_TI_SENTINEL:
+            es_ti = True
+        elif tecnologia == NO_ES_TI_SENTINEL:
+            es_ti = False
+        elif tecnologia not in SENTINELS and score >= min_score:
+            familias.append(tecnologia)
+    return {"es_ti": es_ti, "familias": sorted(familias)}
+
+
 class TecnologiaPliegoRepository:
     def upsert_signals(
         self,
@@ -112,17 +217,19 @@ class TecnologiaPliegoRepository:
         tecnologías que esta corrida YA NO detecta, para no acumular
         obsoletas.
 
-        ``scores`` vacío persiste el sentinel ``_NO_SIGNAL_SENTINEL`` para que
-        ``list_licitaciones_pending_signal`` no vuelva a seleccionar esta
-        licitación en cada corrida mientras ``signal_version`` no cambie. Con
-        ``sin_evidencia`` el sentinel es ``SIN_EVIDENCIA_SENTINEL``: el LLM
-        afirmó tecnologías y ninguna sostuvo su cita, que no es lo mismo que
-        «ninguna tecnología». Con ``scores`` no vacío, ``sin_evidencia`` no
-        cambia nada.
+        ``scores`` puede traer, además de las familias, el marcador de nivel
+        1 (``ES_TI_SENTINEL``/``NO_ES_TI_SENTINEL``, plan de clasificación en
+        tres niveles) que ``scheduler/jobs/llm_tech_labeling.py`` mete en el
+        mismo dict antes de llamar: viven en este ``method`` porque la CHECK
+        ``ck_lic_tec_pliego_method`` no admite uno propio sin migración
+        (F5), y el DELETE de arriba borra por ``method`` -- familias y
+        marcador tienen que ir en la MISMA llamada o la del marcador
+        borraría la de familias (o al revés). Ver :func:`_filas_a_escribir`
+        para el resto de vacío/``sin_evidencia``.
         """
         now = now_utc_iso()
-        sentinel = SIN_EVIDENCIA_SENTINEL if sin_evidencia else _NO_SIGNAL_SENTINEL
-        techs = list(scores.keys()) or [sentinel]
+        filas = _filas_a_escribir(scores, sin_evidencia=sin_evidencia)
+        techs = list(filas.keys())
         rows: list[tuple[str, str, str, float, str | None, str | None, str, str]] = [
             (
                 licitacion_id,
@@ -138,8 +245,8 @@ class TecnologiaPliegoRepository:
                 signal_version,
                 now,
             )
-            for tech, signal in scores.items()
-        ] or [(licitacion_id, sentinel, method, 0.0, None, None, signal_version, now)]
+            for tech, signal in filas.items()
+        ]
 
         with connect() as c:
             placeholders = ",".join("%s" for _ in techs)
@@ -246,8 +353,13 @@ class TecnologiaPliegoRepository:
         candidata, no solo la fila pendiente: el merge recalcula el resumen
         de la licitación entera, y con una fila de menos daría un CSV distinto
         al del barrido completo. Un solo viaje a la BD en ambos caminos.
+
+        Los ``SENTINELS`` se excluyen explícitamente en los dos caminos, y no
+        solo por su score 0: un ``PLIEGO_TECH_MIN_SCORE=0`` por entorno
+        bastaría para fusionar ``__es_ti__`` en ``ml_tecnologias``.
         """
-        params: list[Any] = [min_score]
+        sentinels = list(SENTINELS)
+        params: list[Any] = [min_score, sentinels]
         if licitacion_ids:
             placeholders = ",".join("%s" for _ in licitacion_ids)
             extra = f" AND p.licitacion_id IN ({placeholders})"
@@ -261,7 +373,7 @@ class TecnologiaPliegoRepository:
                 " AND p.licitacion_id IN ("
                 "  SELECT q.licitacion_id FROM licitacion_tecnologia_pliego q"
                 "  JOIN licitaciones l ON l.id_externo = q.licitacion_id"
-                "  WHERE q.score >= %s AND ("
+                "  WHERE q.score >= %s AND q.tecnologia <> ALL(%s) AND ("
                 "    q.merged_at IS NULL"
                 "    OR l.ml_tecnologias IS NULL"
                 "    OR l.ml_proba_max IS NULL"
@@ -270,12 +382,13 @@ class TecnologiaPliegoRepository:
                 "  )"
                 ")"
             )
-            params.append(min_score)
+            params.extend([min_score, sentinels])
         with connect_read() as c:
             cur = c.execute(
                 "SELECT p.licitacion_id, p.tecnologia, p.method, p.score, p.matched_terms, "
                 "p.evidence_json, p.signal_version, p.merged_at "
-                f"FROM licitacion_tecnologia_pliego p WHERE p.score >= %s{extra} "
+                "FROM licitacion_tecnologia_pliego p "
+                f"WHERE p.score >= %s AND p.tecnologia <> ALL(%s){extra} "
                 "ORDER BY p.licitacion_id",
                 params,
             )
@@ -312,6 +425,71 @@ class TecnologiaPliegoRepository:
                 (licitacion_id, list(SENTINELS)),
             )
             return rows_to_dicts(cur)
+
+    def respuestas_llm_vigentes(self, licitacion_ids: list[str]) -> dict[str, RespuestaLlmVigente]:
+        """La respuesta vigente del LLM (nivel 1 + familias) por licitación,
+        para el informe de acuerdo LLM↔humanos (Tarea 6, spec §3.5 --
+        ``services.ml.acuerdo_llm.medir_acuerdo``).
+
+        Vigente = las filas de la versión más reciente (por ``computed_at``,
+        con ``signal_version`` como desempate) de ``method='llm_metadata'``
+        de cada licitación -- misma ventana ``FIRST_VALUE ... OVER
+        (PARTITION BY licitacion_id, method ...)`` que
+        ``LicitacionRepository.etiquetas_tecnologia_no_circulares``: un
+        backfill o un escritor nuevo bastan para que convivan dos versiones,
+        y la lectura no se apoya en que ``upsert_signals`` ya haya limpiado
+        la vieja. El marcador de nivel 1 (``ES_TI_SENTINEL``/
+        ``NO_ES_TI_SENTINEL``) es una fila más de esa misma versión (ver el
+        docstring de :meth:`upsert_signals`).
+
+        Args:
+            licitacion_ids: Expedientes a consultar. Los que no tengan
+                ninguna fila ``llm_metadata`` no aparecen en el resultado --
+                ausencia, no un negativo: el LLM no se pronunció sobre ellos.
+
+        Returns:
+            ``{licitacion_id: RespuestaLlmVigente}``.
+            ``es_ti`` sale del marcador (``None`` si la versión vigente no lo
+            trae). ``familias``, de las filas no-sentinel de esa versión con
+            ``score >= settings.PLIEGO_TECH_MIN_SCORE``, ordenadas. ``es_ti``
+            también es ``None`` (y ``familias`` queda vacía) cuando esa
+            versión trae ``SIN_EVIDENCIA_SENTINEL``, aunque también traiga el
+            marcador o una familia con score suficiente: misma regla que
+            ``LicitacionRepository.etiquetas_tecnologia_no_circulares`` --
+            ver :func:`_respuesta_desde_filas_vigentes` para el porqué.
+        """
+        from config import settings
+
+        if not licitacion_ids:
+            return {}
+
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT licitacion_id, tecnologia, score FROM ("
+                "  SELECT p.licitacion_id, p.tecnologia, p.score, p.signal_version, "
+                "         FIRST_VALUE(p.signal_version) OVER ("
+                "           PARTITION BY p.licitacion_id, p.method "
+                "           ORDER BY p.computed_at DESC, p.signal_version DESC"
+                "         ) AS version_vigente "
+                "  FROM licitacion_tecnologia_pliego p "
+                "  WHERE p.method = 'llm_metadata' AND p.licitacion_id = ANY(%s)"
+                ") vigentes "
+                "WHERE signal_version = version_vigente",
+                (list(licitacion_ids),),
+            )
+            filas = cur.fetchall()
+
+        min_score = settings.PLIEGO_TECH_MIN_SCORE
+        por_licitacion: dict[str, list[tuple[str, float]]] = {}
+        for licitacion_id, tecnologia, score in filas:
+            por_licitacion.setdefault(str(licitacion_id), []).append(
+                (str(tecnologia), float(score))
+            )
+
+        return {
+            licitacion_id: _respuesta_desde_filas_vigentes(filas_lic, min_score=min_score)
+            for licitacion_id, filas_lic in por_licitacion.items()
+        }
 
     def merge_many_with_lock(
         self,

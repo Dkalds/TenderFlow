@@ -375,6 +375,7 @@ def compute_f1_drop(
 
         from db.database import connect as db_connect
         from db.model_registry import get_active
+        from db.repositories.feedback import FUENTE_REVISION_TI
         from scraper.ml_classifier import SAPClassifier
 
     except ImportError as exc:
@@ -414,17 +415,25 @@ def compute_f1_drop(
     try:
         with db_connect() as c:
             rows = c.execute(
-                # ``source = 'human'`` por el mismo motivo que en
+                # ``revision_ti`` y no ``FUENTES_HUMANAS``: aquí ``relevante``
+                # se compara contra la predicción del binario (es TI), y las
+                # filas ``human`` anteriores al plan de tres niveles
+                # significaban «es SAP» -- mezclarlas mediría el acuerdo
+                # contra una pregunta distinta. Mismo motivo que en
                 # ``_fetch_training_dataframe``: el feedback automático del
                 # etiquetado por LLM son predicciones, no ground truth.
                 # Usarlas aquí medía el acuerdo entre dos modelos y lo
                 # reportaba como degradación frente a la realidad.
-                "SELECT f.expediente, f.relevante, l.titulo, l.descripcion, "
-                "l.cpv, l.importe "
+                # Una fila por expediente, la más reciente: con correcciones
+                # hay varias, y contarlas todas pesaba doble el expediente
+                # corregido, también con su etiqueta vieja.
+                "SELECT DISTINCT ON (f.expediente) f.expediente, f.relevante, "
+                "l.titulo, l.descripcion, l.cpv, l.importe "
                 "FROM ml_feedback f "
                 "JOIN licitaciones l ON l.id_externo = f.expediente "
-                "WHERE f.created_at >= %s AND f.source = 'human'",
-                (since,),
+                "WHERE f.created_at >= %s AND f.source = %s "
+                "ORDER BY f.expediente, f.created_at DESC, f.id DESC",
+                (since, FUENTE_REVISION_TI),
             ).fetchall()
     except Exception as exc:
         log.warning("compute_f1_drop_query_failed", error=str(exc))

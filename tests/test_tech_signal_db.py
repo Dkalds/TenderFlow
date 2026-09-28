@@ -2,7 +2,12 @@
 repositorio, fase del job de scheduler y endpoint HTTP.
 
 La aritmética pura del merge (sin BD, repo mockeado) vive en
-``tests/test_tech_signal.py``.
+``tests/test_tech_signal.py``. Excepción: ``TestFilasAEscribir`` y
+``TestRespuestaDesdeFilasVigentes`` de aquí abajo, que prueban directamente
+``_filas_a_escribir`` y ``_respuesta_desde_filas_vigentes`` -- puras, sin BD
+-- porque son las piezas de ``TecnologiaPliegoRepository.upsert_signals`` y
+``TecnologiaPliegoRepository.respuestas_llm_vigentes`` que este mismo fichero
+ejercita end-to-end más abajo.
 """
 
 from __future__ import annotations
@@ -11,8 +16,123 @@ import pytest
 
 from db.database import DocumentoReferencia, connect
 from db.repositories.documentos import DocumentosRepository
-from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
+from db.repositories.tecnologia_pliego import (
+    ES_TI_SENTINEL,
+    NO_ES_TI_SENTINEL,
+    NO_SIGNAL_SENTINEL,
+    SIN_EVIDENCIA_SENTINEL,
+    TechSignal,
+    TecnologiaPliegoRepository,
+    _filas_a_escribir,
+    _respuesta_desde_filas_vigentes,
+)
 from services.tech_signal import _build_merge_result, merge_doc_signals
+
+
+class TestFilasAEscribir:
+    """``_filas_a_escribir`` decide qué filas persiste ``upsert_signals`` a
+    partir de ``scores`` y ``sin_evidencia`` -- pura, sin BD (ver el
+    docstring del módulo)."""
+
+    def test_scores_no_vacio_se_devuelve_tal_cual(self):
+        scores = {"SAP": TechSignal(score=0.9)}
+
+        assert _filas_a_escribir(scores, sin_evidencia=False) == scores
+
+    def test_scores_vacio_sin_sin_evidencia_anade_no_signal(self):
+        filas = _filas_a_escribir({}, sin_evidencia=False)
+
+        assert set(filas) == {NO_SIGNAL_SENTINEL}
+        assert filas[NO_SIGNAL_SENTINEL].score == 0.0
+
+    def test_sin_evidencia_anade_su_sentinel_aunque_scores_traiga_el_marcador(self):
+        """El marcador de nivel 1 (``es_ti``) no tapa ``sin_evidencia``: son
+        respuestas independientes -- las familias no sostuvieron su cita,
+        pero el nivel 1 sí contestó -- así que las dos filas se escriben."""
+        marcador = {ES_TI_SENTINEL: TechSignal(score=0.0, evidence=[{"es_ti": True}])}
+
+        filas = _filas_a_escribir(marcador, sin_evidencia=True)
+
+        assert set(filas) == {ES_TI_SENTINEL, SIN_EVIDENCIA_SENTINEL}
+        assert filas[ES_TI_SENTINEL] == marcador[ES_TI_SENTINEL]
+
+    def test_marcador_solo_no_dispara_no_signal(self):
+        """Con el marcador ya presente, ``scores`` no está vacío: no hace
+        falta (ni se añade) ``NO_SIGNAL_SENTINEL``."""
+        marcador = {"__no_es_ti__": TechSignal(score=0.0)}
+
+        filas = _filas_a_escribir(marcador, sin_evidencia=False)
+
+        assert filas == marcador
+        assert NO_SIGNAL_SENTINEL not in filas
+
+
+class TestRespuestaDesdeFilasVigentes:
+    """``_respuesta_desde_filas_vigentes`` post-procesa las filas de la
+    versión vigente de ``llm_metadata`` de UNA licitación -- pura, sin BD
+    (ver el docstring del módulo). Fix round 1: la regla de
+    ``SIN_EVIDENCIA_SENTINEL`` (misma que
+    ``LicitacionRepository.etiquetas_tecnologia_no_circulares``) -- si esa
+    versión lo trae, el LLM no se pronunció en ningún nivel, aunque la misma
+    versión también traiga el marcador o una familia con score suficiente."""
+
+    def test_marcador_y_familia_con_score_suficiente(self):
+        """(a) Caso base: marcador + familia >= min_score."""
+        filas = [(ES_TI_SENTINEL, 0.0), ("DESARROLLO", 0.9)]
+
+        assert _respuesta_desde_filas_vigentes(filas, min_score=0.5) == {
+            "es_ti": True,
+            "familias": ["DESARROLLO"],
+        }
+
+    def test_marcador_no_es_ti_y_sin_familias(self):
+        """El marcador negativo también se lee, no solo el positivo."""
+        filas = [(NO_ES_TI_SENTINEL, 0.0)]
+
+        assert _respuesta_desde_filas_vigentes(filas, min_score=0.5) == {
+            "es_ti": False,
+            "familias": [],
+        }
+
+    def test_marcador_y_sin_evidencia_es_ti_none(self):
+        """(b) ``sin_evidencia`` tapa el marcador: el LLM no se pronunció."""
+        filas = [(ES_TI_SENTINEL, 0.0), (SIN_EVIDENCIA_SENTINEL, 0.0)]
+
+        assert _respuesta_desde_filas_vigentes(filas, min_score=0.5) == {
+            "es_ti": None,
+            "familias": [],
+        }
+
+    def test_marcador_familia_y_sin_evidencia_es_ti_none_y_sin_familias(self):
+        """(c) ``sin_evidencia`` tapa TANTO el marcador COMO una familia con
+        score suficiente en la misma versión -- el escritor documenta que
+        pueden convivir (``_filas_a_escribir``), así que el lector no puede
+        asumir que hoy nunca pasa."""
+        filas = [(ES_TI_SENTINEL, 0.0), ("DESARROLLO", 0.9), (SIN_EVIDENCIA_SENTINEL, 0.0)]
+
+        assert _respuesta_desde_filas_vigentes(filas, min_score=0.5) == {
+            "es_ti": None,
+            "familias": [],
+        }
+
+    def test_familia_por_debajo_del_score_minimo_se_descarta(self):
+        """(d) Una familia con score < min_score no cuenta como respuesta."""
+        filas = [(ES_TI_SENTINEL, 0.0), ("DESARROLLO", 0.9), ("ORACLE", 0.3)]
+
+        assert _respuesta_desde_filas_vigentes(filas, min_score=0.5) == {
+            "es_ti": True,
+            "familias": ["DESARROLLO"],
+        }
+
+    def test_sin_marcador_es_ti_es_none(self):
+        """(e) Sin fila de marcador, ``es_ti`` es ``None`` aunque haya
+        familias -- el LLM no se pronunció sobre el nivel 1."""
+        filas = [("DESARROLLO", 0.9)]
+
+        assert _respuesta_desde_filas_vigentes(filas, min_score=0.5) == {
+            "es_ti": None,
+            "familias": ["DESARROLLO"],
+        }
 
 
 def _insert_licitacion(
@@ -569,6 +689,28 @@ class TestListSignalsForMerge:
             ("SAP", "llm"),
         }
 
+    def test_los_sentinels_no_entran_al_merge_aunque_pasen_el_umbral(self, repo):
+        """Hasta ahora solo el umbral los dejaba fuera (score 0): con
+        ``PLIEGO_TECH_MIN_SCORE=0`` el marcador de nivel 1 o ``__no_signal__``
+        habrían acabado en ``ml_tecnologias``. Por los dos caminos."""
+        _insert_licitacion("MRG-SENT")
+        repo.upsert_signals(
+            "MRG-SENT",
+            method="llm_metadata",
+            signal_version="llm-meta-v3/m",
+            scores={
+                "SAP": TechSignal(score=0.9),
+                ES_TI_SENTINEL: TechSignal(score=0.0, evidence=[{"es_ti": True}]),
+            },
+        )
+        repo.upsert_signals("MRG-SENT", method="keywords", signal_version="v1", scores={})
+
+        con_ids = repo.list_signals_for_merge(min_score=0.0, licitacion_ids=["MRG-SENT"])
+        sin_ids = repo.list_signals_for_merge(min_score=0.0)
+
+        assert {r["tecnologia"] for r in con_ids} == {"SAP"}
+        assert {r["tecnologia"] for r in sin_ids} == {"SAP"}
+
     def test_without_ids_reselects_a_merged_signal_missing_from_the_summary(self, repo):
         """Un ``precompute_ml_tecnologias(force=True)`` reescribe el CSV sin la
         señal del pliego aunque ``merged_at`` esté puesto: la candidata se
@@ -823,3 +965,87 @@ class TestFuerzaDeLaSenalTecnica:
         fuerza = AggregateRepository().tech_signal_by_ids(["FZ-1", "FZ-2"])
 
         assert fuerza == {"FZ-2": 0.8}
+
+
+def _insert_tech_row(
+    licitacion_id: str,
+    tecnologia: str,
+    *,
+    signal_version: str,
+    computed_at: str,
+    score: float = 0.9,
+    method: str = "llm_metadata",
+) -> None:
+    """Fila directa de ``licitacion_tecnologia_pliego``, sin pasar por
+    ``upsert_signals`` -- su DELETE reemplaza TODAS las tecnologías vigentes
+    de un ``(licitacion_id, method)`` en cada llamada (ver su docstring), así
+    que no puede dejar coexistir dos ``signal_version`` distintas del mismo
+    method a propósito. Aquí sí hace falta: ``respuestas_llm_vigentes`` tiene
+    que ignorar una versión vieja que aún no se limpió (backfill, escritor
+    nuevo -- ver ``LicitacionRepository.etiquetas_tecnologia_no_circulares``)."""
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitacion_tecnologia_pliego "
+            "(licitacion_id, tecnologia, method, score, matched_terms, "
+            "evidence_json, signal_version, computed_at) "
+            "VALUES (%s, %s, %s, %s, NULL, NULL, %s, %s)",
+            (licitacion_id, tecnologia, method, score, signal_version, computed_at),
+        )
+
+
+class TestRespuestasLlmVigentes:
+    """``respuestas_llm_vigentes``: la respuesta vigente del LLM (nivel 1 +
+    familias) por licitación, para el informe de acuerdo LLM↔humanos (Tarea 6,
+    spec §3.5, ``services.ml.acuerdo_llm.medir_acuerdo``)."""
+
+    def test_toma_la_version_vigente_e_ignora_la_version_vieja(self, repo):
+        _insert_licitacion("RLV-1")
+        # v2 (más antigua): ORACLE -- no debe aparecer en el resultado.
+        _insert_tech_row(
+            "RLV-1", "ORACLE", signal_version="v2", computed_at="2026-09-01T00:00:00+00:00"
+        )
+        # v3 (vigente): DESARROLLO + el marcador de nivel 1, misma versión.
+        _insert_tech_row(
+            "RLV-1",
+            "DESARROLLO",
+            signal_version="v3",
+            computed_at="2026-09-15T00:00:00+00:00",
+        )
+        _insert_tech_row(
+            "RLV-1",
+            ES_TI_SENTINEL,
+            signal_version="v3",
+            computed_at="2026-09-15T00:00:00+00:00",
+            score=0.0,
+        )
+
+        assert repo.respuestas_llm_vigentes(["RLV-1"]) == {
+            "RLV-1": {"es_ti": True, "familias": ["DESARROLLO"]}
+        }
+
+    def test_sin_evidencia_tapa_el_marcador_y_la_familia_de_su_misma_version(self, repo):
+        """Fix round 1: si la versión vigente trae ``SIN_EVIDENCIA_SENTINEL``,
+        el LLM no se pronunció en ningún nivel para esta licitación -- ni
+        siquiera con el marcador y una familia de score suficiente en esa
+        misma versión (misma regla que
+        ``LicitacionRepository.etiquetas_tecnologia_no_circulares``)."""
+        _insert_licitacion("RLV-2")
+        _insert_tech_row(
+            "RLV-2", "DESARROLLO", signal_version="v1", computed_at="2026-09-15T00:00:00+00:00"
+        )
+        _insert_tech_row(
+            "RLV-2",
+            ES_TI_SENTINEL,
+            signal_version="v1",
+            computed_at="2026-09-15T00:00:00+00:00",
+            score=0.0,
+        )
+        _insert_tech_row(
+            "RLV-2",
+            SIN_EVIDENCIA_SENTINEL,
+            signal_version="v1",
+            computed_at="2026-09-15T00:00:00+00:00",
+            score=0.0,
+        )
+
+        assert repo.respuestas_llm_vigentes(["RLV-2"]) == {"RLV-2": {"es_ti": None, "familias": []}}

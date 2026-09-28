@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_admin, require_any_auth
-from config.keywords import TECH_LABELS
+from config.keywords import TECH_CATEGORIAS, TECH_LABEL_TIPO, TECH_LABELS, TipoLabel
 from db.audit import log_event
-from db.repositories.feedback import FeedbackRepository
+from db.repositories.feedback import FUENTE_REVISION_TI, FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from shared.audit_events import FEEDBACK_SUBMITTED
@@ -67,6 +67,32 @@ class QueueModelBlock(BaseModel):
     tech_thresholds: dict[str, float]
 
 
+class QueueLlmBlock(BaseModel):
+    """Propuesta del LLM para un candidato de la cola por desacuerdo."""
+
+    es_ti: bool | None
+    confianza_es_ti: float | None
+    familias: list[str]
+    # True cuando la respuesta vigente del LLM trae `__sin_evidencia__`: afirmó
+    # familias sin una cita que se sostenga en el anuncio, y esa respuesta no
+    # entrena. La tarjeta no ofrece aceptarla de un clic.
+    sin_evidencia: bool = False
+
+
+class EtiquetaTaxonomia(BaseModel):
+    """Una etiqueta de tecnología: su código, su nombre legible y su nivel."""
+
+    codigo: str
+    etiqueta: str
+    tipo: TipoLabel
+
+
+class TaxonomiaResult(BaseModel):
+    """La taxonomía entera, en el orden de ``config/keywords.py``."""
+
+    etiquetas: list[EtiquetaTaxonomia]
+
+
 class FeedbackQueueItem(BaseModel):
     """Candidato de etiquetado con contexto y confianza del modelo."""
 
@@ -83,6 +109,14 @@ class FeedbackQueueItem(BaseModel):
     uncertainty: float
     tecnologia: str | None
     model: QueueModelBlock | None
+    # Solo los rellena la estrategia `desacuerdo` (`db/repositories/revision_ti.py`):
+    # por qué está el candidato en la cola y qué propone el LLM.
+    motivo: str | None = None
+    llm: QueueLlmBlock | None = None
+    # True cuando el modelo no puntuó la licitación: `confidence`/`uncertainty`
+    # llevan entonces un relleno (0.5/0.0) y no un dato. Campo aparte porque
+    # volver `confidence` opcional cambiaría su tipo, y eso rompe el contrato.
+    sin_confianza: bool = False
 
 
 class FeedbackQueueResult(BaseModel):
@@ -172,6 +206,24 @@ def _build_queue_items(
     return results
 
 
+def _cargar_tech_classifier() -> Any:  # TechnologyClassifier (import perezoso) o None
+    """Carga el ``TechnologyClassifier`` si hay artefacto; ``None`` si no lo hay o
+    no carga, y entonces el bloque ``model`` de la cola sale ``null``.
+
+    Síncrona y de módulo: la ruta la corre en el pool de ML (``run_ml``), y los
+    tests la sustituyen para no cargar el artefacto de 11 MB.
+    """
+    try:
+        from scraper.tech_classifier import TechnologyClassifier
+
+        if TechnologyClassifier.is_available():
+            return TechnologyClassifier.load()
+        return None
+    except Exception as exc:
+        log.warning("tech_classifier_unavailable", error=str(exc))
+        return None
+
+
 class FeedbackRequest(BaseModel):
     expediente: str = Field(
         ...,
@@ -183,7 +235,10 @@ class FeedbackRequest(BaseModel):
     relevante: bool = Field(
         ...,
         examples=[True],
-        description="True si la licitación es relevante.",
+        description=(
+            "True si la licitación es TI. Solo eso: no dice si encaja con un fabricante "
+            "ni con un perfil; eso lo dicen tecnologia y tecnologias_secundarias."
+        ),
     )
     nota: str = Field(
         default="",
@@ -285,6 +340,11 @@ async def submit_feedback(
             tecnologia=body.tecnologia,
             tecnologias_secundarias=body.tecnologias_secundarias or None,
             user_id=int(ctx["user_id"]),
+            # Desde el plan de clasificación en tres niveles (2026-09-27):
+            # `relevante` pasa a significar «es TI», no «es SAP». Las filas
+            # `source='human'` anteriores se conservan como histórico con su
+            # significado viejo; esta ruta ya no las escribe.
+            source=FUENTE_REVISION_TI,
         )
     except Exception as exc:
         log.error("feedback_store_error", expediente=body.expediente, error=str(exc))
@@ -354,17 +414,48 @@ async def feedback_model_info(
 
 
 @router.get(
+    "/taxonomia",
+    summary="Taxonomía de tecnologías para el formulario de revisión",
+    responses={401: {"description": "API key inválida"}},
+)
+async def feedback_taxonomia(
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> TaxonomiaResult:
+    """Todas las etiquetas que acepta ``POST /feedback`` en ``tecnologia`` y
+    ``tecnologias_secundarias``, con su nombre legible y su nivel: ``categoria``
+    (familia, nivel 2) o ``fabricante`` (nivel 3).
+
+    Es lo que el formulario de revisión de ``/ops`` ofrece para elegir familias
+    y fabricantes: la web no lleva una copia de la taxonomía. Sale de
+    ``config/keywords.py``, sin consultar la base de datos.
+    """
+    return TaxonomiaResult(
+        etiquetas=[
+            EtiquetaTaxonomia(
+                codigo=codigo, etiqueta=TECH_CATEGORIAS[codigo], tipo=TECH_LABEL_TIPO[codigo]
+            )
+            for codigo in TECH_LABELS
+        ]
+    )
+
+
+@router.get(
     "/queue",
-    summary="Cola de active learning (uncertainty sampling)",
+    summary="Cola de etiquetado: desacuerdo, incertidumbre o aleatoria",
     responses={401: {"description": "API key inválida"}},
 )
 async def feedback_queue(
-    strategy: str = Query("uncertainty", description="uncertainty | random"),
+    strategy: str = Query("uncertainty", description="desacuerdo | uncertainty | random"),
     limit: int = Query(20, ge=1, le=200),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> FeedbackQueueResult:
     """Devuelve licitaciones priorizadas para etiquetado.
 
+    - ``desacuerdo``: primero las que reglas, LLM y modelo no ven igual; después
+      las etiquetas heredadas (motivo ``legado``: su ``relevante`` decía «es
+      SAP» y hay que volver a revisarlas), y al final las que el modelo duda.
+      Cada una con su ``motivo`` y la propuesta del LLM (``llm``); nunca las ya
+      revisadas.
     - ``uncertainty``: prioriza las que el modelo clasifica con menor confianza.
     - ``random``: muestra aleatoria (baseline).
 
@@ -374,21 +465,34 @@ async def feedback_queue(
     """
     limit = max(1, min(limit, 200))
 
-    # Intentar cargar TechnologyClassifier (lazy, en threadpool)
-    tech_clf: Any = None
-    try:
+    # TechnologyClassifier perezoso, en el pool de ML (``None`` si no carga).
+    tech_clf: Any = await run_ml(_cargar_tech_classifier)
 
-        def _load_tech() -> Any:
-            from scraper.tech_classifier import TechnologyClassifier
+    if strategy == "desacuerdo":
+        from db.repositories.revision_ti import candidatos_desacuerdo
 
-            if TechnologyClassifier.is_available():
-                return TechnologyClassifier.load()
-            return None
-
-        tech_clf = await run_ml(_load_tech)
-    except Exception as exc:
-        log.warning("tech_classifier_unavailable", error=str(exc))
-        tech_clf = None
+        candidatos = await run_db(candidatos_desacuerdo, limit)
+        # La confianza que pinta la tarjeta es la del modelo guardada en la
+        # fila (`ml_proba`); `_build_queue_items` la toma de estas dos claves.
+        # Sin `ml_proba` el 0.5 es relleno, y `sin_confianza` lo dice.
+        for c in candidatos:
+            p = float(c["ml_proba"]) if c.get("ml_proba") is not None else 0.5
+            c["confidence"], c["uncertainty"] = p, abs(p - 0.5)
+        items = _build_queue_items(candidatos, include_model=True, tech_classifier=tech_clf)
+        for item, c in zip(items, candidatos, strict=True):
+            item["motivo"] = c["motivo"]
+            item["llm"] = {
+                "es_ti": c["llm_es_ti"],
+                "confianza_es_ti": c["llm_confianza_es_ti"],
+                "familias": c["llm_familias"],
+                "sin_evidencia": c["llm_sin_evidencia"],
+            }
+            item["sin_confianza"] = c.get("ml_proba") is None
+        return FeedbackQueueResult(
+            items=[FeedbackQueueItem(**item) for item in items],
+            strategy=strategy,
+            model_version=None,
+        )
 
     if strategy == "uncertainty":
         try:

@@ -10,6 +10,17 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+#: Etiqueta de la revisión humana desde el plan de clasificación en tres
+#: niveles (2026-09-27): `relevante` = «es TI». Las filas `human` anteriores
+#: significaban «es SAP» y se conservan como histórico.
+FUENTE_REVISION_TI = "revision_ti"
+#: Las filas humanas anteriores a ese plan: su `relevante` era «es SAP». La
+#: cola de revisión (`db/repositories/revision_ti.py`, motivo `legado`) las
+#: vuelve a pedir hasta que tengan una fila `revision_ti`.
+FUENTE_LEGADO = "human"
+#: Las dos fuentes de etiqueta humana de familia (tecnologia/secundarias).
+FUENTES_HUMANAS: tuple[str, ...] = (FUENTE_LEGADO, FUENTE_REVISION_TI)
+
 
 class FeedbackRepository:
     def insert(
@@ -26,10 +37,13 @@ class FeedbackRepository:
     ) -> str:
         """Inserta feedback y devuelve el timestamp de creación.
 
-        ``source`` distingue la etiqueta puesta por una persona (``'human'``,
-        el default, que es lo que era todo antes de v80) de la automática del
-        etiquetado por LLM (``'llm_batch'``). El entrenamiento y el contador de
-        reentrenamiento solo miran las humanas: ver el docstring de la
+        ``source`` distingue la etiqueta puesta por una persona
+        (:data:`FUENTES_HUMANAS`: ``'human'``, el default -- lo que era todo
+        antes de v80 --, y ``'revision_ti'`` desde el plan de clasificación en
+        tres niveles, que es lo que escribe ``POST /api/v1/feedback``) de la
+        automática del etiquetado por LLM (``'llm_batch'``). El entrenamiento
+        del binario mira solo ``revision_ti`` (su `relevante` es «es TI»); el
+        contador de reentrenamiento mira las dos. Ver el docstring de la
         migración ``v80_ml_feedback_source``.
         """
         import json
@@ -152,6 +166,28 @@ class FeedbackRepository:
         with connect() as c:
             cur = c.execute("DELETE FROM ml_feedback WHERE user_id = %s", (user_id,))
             return int(cur.rowcount or 0)
+
+    def filas_revision_ti(self) -> list[dict[str, Any]]:  # Any: fila psycopg heterogénea
+        """La revisión humana vigente por expediente, con lo que hace falta del anuncio.
+
+        Una fila por expediente (la más reciente, ``DISTINCT ON``): un mismo
+        expediente puede llevar varias revisiones (correcciones), y solo la
+        última cuenta. Alimenta a ``services.ml.golden_ti`` para construir el
+        golden set real de «¿es TI?» — de ahí el JOIN con ``licitaciones``,
+        que trae lo que el golden set necesita del anuncio y que
+        ``ml_feedback`` no duplica (fuente, fecha de publicación, título,
+        descripción, CPV).
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT DISTINCT ON (f.expediente) f.expediente, f.relevante, f.tecnologia, "
+                "f.tecnologias_secundarias, f.created_at, l.fuente, l.fecha_publicacion, "
+                "l.titulo, l.descripcion, l.cpv "
+                "FROM ml_feedback f JOIN licitaciones l ON l.id_externo = f.expediente "
+                "WHERE f.source = %s ORDER BY f.expediente, f.created_at DESC, f.id DESC",
+                (FUENTE_REVISION_TI,),
+            )
+            return rows_to_dicts(cur)
 
     def reportes_abiertos_por_tipo(self, *, prefijo: str) -> dict[str, int]:
         """``{tipo: nº de reportes}`` de los reportes de dato de F6.2.

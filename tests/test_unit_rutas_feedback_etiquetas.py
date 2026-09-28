@@ -1,12 +1,13 @@
 """Quién puede escribir etiquetas de relevancia (2026-09-27).
 
-Una fila de `ml_feedback` con `source='human'` no es una opinión más: manda
-sobre las keywords al entrenar los dos clasificadores (prioridad humano > LLM >
-keywords). Hasta hoy `POST /api/v1/feedback` aceptaba a cualquier usuario con
-sesión, aunque la única pantalla que lo usa —el etiquetado de `/ops`— ya es
-solo para admins. Las API keys no tenían ese hueco: el núcleo de validación les
-exige el scope `feedback:write` (`api/scopes.py`), que es una concesión
-explícita.
+Una fila de `ml_feedback` con `source='revision_ti'` (`'human'` para las
+filas anteriores al plan de clasificación en tres niveles) no es una opinión
+más: manda sobre las keywords al entrenar los dos clasificadores (prioridad
+humano > LLM > keywords). Hasta hoy `POST /api/v1/feedback` aceptaba a
+cualquier usuario con sesión, aunque la única pantalla que lo usa —el
+etiquetado de `/ops`— ya es solo para admins. Las API keys no tenían ese
+hueco: el núcleo de validación les exige el scope `feedback:write`
+(`api/scopes.py`), que es una concesión explícita.
 
 Lo que fija este módulo: con sesión, solo un admin escribe etiquetas; una API
 key con su scope sigue pudiendo.
@@ -90,3 +91,23 @@ def test_una_api_key_con_su_scope_sigue_escribiendo(
     respuesta = api_key_con_scope.post(RUTA, json=_CUERPO)
     assert respuesta.status_code == 201
     assert len(escrituras) == 1
+
+
+def test_la_revision_se_guarda_como_revision_ti(
+    sesion_admin: TestClient, escrituras: list[dict[str, Any]]
+) -> None:
+    """Desde el plan de tres niveles, `relevante` significa «es TI». Las filas
+    viejas (`human`) significaban «es SAP» y no se mezclan con las nuevas."""
+    sesion_admin.post(RUTA, json=_CUERPO)
+    assert escrituras[0]["source"] == "revision_ti"
+
+
+def test_el_contrato_dice_que_relevante_es_es_ti() -> None:
+    """La descripción del campo es contrato (OpenAPI → ``api.d.ts``): decía
+    «relevante», que era «es SAP» hasta el plan de tres niveles."""
+    from api.app import app
+
+    campo = app.openapi()["components"]["schemas"]["FeedbackRequest"]["properties"]["relevante"]
+
+    assert "es TI" in campo["description"]
+    assert "es relevante" not in campo["description"]

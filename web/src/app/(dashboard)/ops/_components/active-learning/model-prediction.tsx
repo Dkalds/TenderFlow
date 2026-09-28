@@ -10,7 +10,7 @@ import { Check, Circle } from "lucide-react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatDate, formatPercent } from "@/lib/utils";
-import type { ModelVersionInfo, QueueItem, TechModel } from "../../_hooks/use-active-learning";
+import type { ModelVersionInfo, QueueItem, TechModel } from "../../_lib/active-learning";
 
 function ConfianzaBinaria({ prob }: { prob: number }) {
   return (
@@ -142,7 +142,9 @@ export function ModelPrediction({
   chosenSecs: Set<string>;
   onSelectTech: (tech: string, shiftKey: boolean) => void;
 }) {
-  const prob = item.confidence ?? null;
+  // Sin puntuación del modelo, `confidence` es un relleno del contrato: se
+  // trata como ausente para no pintar una confianza que nadie calculó.
+  const prob = item.sin_confianza ? null : (item.confidence ?? null);
   const model = item.model;
   const sortedScores = model
     ? Object.entries(model.tech_scores).sort(([, a], [, b]) => b - a)

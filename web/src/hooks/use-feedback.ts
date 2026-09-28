@@ -11,26 +11,39 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
 import { feedbackKeys } from "@/lib/query-keys";
 
 /**
- * Forma de la respuesta.
- *
- * `GET /feedback/stats` no declara DTO en el backend (devuelve un `dict`), así
- * que el esquema generado no la describe y este tipo es, hasta que lo haga, la
- * suposición del frontend. Todos los campos son opcionales a propósito: la
- * pantalla ya trata la ausencia como «sin dato», no como cero.
+ * Forma de la respuesta: el DTO `FeedbackStats` del backend, del esquema
+ * generado. Hasta 2026-09-28 era una interfaz escrita a mano con
+ * `total_labels`, `pct_relevant` y `last_updated`, campos que la API no ha
+ * servido nunca (manda `total`, `positivos`, `negativos` y
+ * `last_feedback_at`): «Etiquetas totales» y «Última actualización» salían
+ * vacías en `/ops` sin que nada fallara.
  */
-export interface FeedbackStats {
-  total_labels?: number;
-  pct_relevant?: number;
-  last_updated?: string;
-}
+export type FeedbackStats = Schemas["FeedbackStats"];
 
 export function useFeedbackStats() {
   return useQuery<FeedbackStats>({
     queryKey: feedbackKeys.stats,
     queryFn: () => fetchWithAuth<FeedbackStats>("/api/v1/feedback/stats"),
     staleTime: 5 * 60_000,
+  });
+}
+
+export type TaxonomiaTecnologias = Schemas["TaxonomiaResult"];
+
+/**
+ * La taxonomía entera (familias y fabricantes, con su nombre legible), para el
+ * formulario de revisión de `/ops` (`GET /feedback/taxonomia`). El frontend no
+ * lleva una copia: sale de `config/keywords.py` y solo cambia con un
+ * despliegue, así que no caduca en la sesión.
+ */
+export function useTaxonomiaTecnologias() {
+  return useQuery<TaxonomiaTecnologias>({
+    queryKey: feedbackKeys.taxonomia,
+    queryFn: () => fetchWithAuth<TaxonomiaTecnologias>("/api/v1/feedback/taxonomia"),
+    staleTime: Infinity,
   });
 }

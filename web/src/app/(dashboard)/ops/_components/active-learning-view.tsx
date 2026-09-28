@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Active learning — cola de etiquetado de las muestras con más incertidumbre.
+ * Active learning — cola de etiquetado; por defecto, por desacuerdo entre
+ * reglas, LLM y modelo.
  *
  * Vista compartida por la ruta `/active-learning` y por `?vista=etiquetado` del
  * espacio Ops. La guarda de administrador viaja con la vista (ver la nota en
@@ -35,14 +36,17 @@ function ActiveLearningContent() {
       <div>
         <h1 className="sr-only">Active learning</h1>
         <p className="text-tf-meta text-muted-foreground">
-          Etiquetado de las licitaciones en las que el clasificador duda más.
+          Revisión humana de si cada licitación es TI y de qué familia.
         </p>
       </div>
 
       <Aviso tone="info" role="note">
-        Al etiquetar a mano las licitaciones en la zona de duda del modelo (muestreo por incertidumbre), el
-        clasificador aprende más rápido. Pulsa una tecnología de la predicción para marcarla como principal; con
-        Mayús pulsada, como secundaria.
+        Por defecto la cola pone delante las licitaciones en las que reglas, LLM y modelo no coinciden
+        (desacuerdo) y después las etiquetas heredadas que decían «es SAP», cada una con su motivo y la propuesta
+        del LLM, que se acepta de un clic; también puedes muestrear por incertidumbre del modelo o al azar. Para
+        etiquetar a mano, marca familias y fabricantes en la lista de la tarjeta, que arranca con la propuesta del
+        LLM: la primera que marques es la principal. En la predicción del modelo, pulsar una tecnología la hace
+        principal; con Mayús pulsada, la añade o la quita.
       </Aviso>
 
       <LabelingStats

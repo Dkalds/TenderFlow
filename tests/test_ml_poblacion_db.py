@@ -91,6 +91,80 @@ def test_una_etiqueta_humana_entra_aunque_su_fuente_quede_fuera(db) -> None:
     assert _ids(filas_entrenamiento_sap()) == set()
 
 
+def _feedback(
+    expediente: str,
+    *,
+    source: str,
+    tecnologia: str | None = None,
+    secundarias: str | None = None,
+    created_at: str = "2026-09-01T10:00:00+00:00",
+) -> None:
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO ml_feedback "
+            "(expediente, relevante, tecnologia, tecnologias_secundarias, source, created_at) "
+            "VALUES (%s, 1, %s, %s, %s, %s)",
+            (expediente, tecnologia, secundarias, source, created_at),
+        )
+
+
+def test_una_fila_humana_solo_mete_la_licitacion_si_se_pronuncia(db) -> None:
+    """Mismo criterio que ``etiqueta_humana``: una fila ``revision_ti`` se
+    pronuncia siempre (sin tecnología, «ninguna familia»); una ``human``
+    heredada, solo si nombra alguna tecnología, en ``tecnologia`` o en las
+    secundarias. Si la heredada sin tecnología abriera la puerta, la fila de
+    fuera de la población entraría sin etiqueta humana y caería a la de
+    keywords. Lo admitido es justo lo que el lector etiqueta."""
+    from db.repositories.feedback import FUENTE_LEGADO, FUENTE_REVISION_TI
+    from db.repositories.licitaciones import LicitacionRepository
+
+    for expediente in (
+        "PSCP-LEGADO-SIN-TEC",
+        "PSCP-LEGADO-CON-TEC",
+        "PSCP-LEGADO-SECUNDARIA",
+        "PSCP-REVISION-SIN-TEC",
+    ):
+        _insertar(expediente, universo="pscp_observed")
+    _feedback("PSCP-LEGADO-SIN-TEC", source=FUENTE_LEGADO)
+    _feedback("PSCP-LEGADO-CON-TEC", source=FUENTE_LEGADO, tecnologia="ORACLE")
+    _feedback("PSCP-LEGADO-SECUNDARIA", source=FUENTE_LEGADO, secundarias='["SAP"]')
+    _feedback("PSCP-REVISION-SIN-TEC", source=FUENTE_REVISION_TI)
+
+    admitidas = _ids(filas_entrenamiento_tecnologia())
+
+    assert admitidas == {"PSCP-LEGADO-CON-TEC", "PSCP-LEGADO-SECUNDARIA", "PSCP-REVISION-SIN-TEC"}
+    etiquetas = LicitacionRepository().etiquetas_tecnologia_no_circulares()
+    assert {
+        expediente: valores["tecnologia_humana"]
+        for expediente, valores in etiquetas.items()
+        if valores.get("tecnologia_humana") is not None
+    } == {
+        "PSCP-LEGADO-CON-TEC": "ORACLE",
+        "PSCP-LEGADO-SECUNDARIA": "SAP",
+        "PSCP-REVISION-SIN-TEC": "",
+    }
+
+
+def test_manda_la_fila_humana_mas_reciente(db) -> None:
+    """El lector se queda con la fila humana más reciente del expediente: si
+    esa no se pronuncia, una anterior que sí lo hacía no cuenta, y la
+    licitación tampoco entra por ella."""
+    from db.repositories.feedback import FUENTE_LEGADO
+
+    _insertar("PSCP-CORREGIDA", universo="pscp_observed")
+    _feedback(
+        "PSCP-CORREGIDA",
+        source=FUENTE_LEGADO,
+        tecnologia="SAP",
+        created_at="2026-05-01T10:00:00+00:00",
+    )
+    _feedback("PSCP-CORREGIDA", source=FUENTE_LEGADO, created_at="2026-06-01T10:00:00+00:00")
+
+    assert _ids(filas_entrenamiento_tecnologia()) == set()
+
+
 def test_una_cita_inverificable_del_llm_no_mete_la_fila_en_el_dataset(db) -> None:
     """``__sin_evidencia__`` es «el LLM no se pronunció»: si abriera la puerta
     del dataset, la fila de fuera de la población entraría sin etiqueta y
@@ -112,6 +186,70 @@ def test_una_cita_inverificable_del_llm_no_mete_la_fila_en_el_dataset(db) -> Non
     )
 
     assert _ids(filas_entrenamiento_tecnologia()) == {"PSCP-SIN-TECNOLOGIA"}
+
+
+def _marcador_es_ti() -> dict[str, Any]:
+    """La fila de nivel 1 tal como la escribe ``scheduler/jobs/llm_tech_labeling.py``."""
+    from db.repositories.tecnologia_pliego import ES_TI_SENTINEL, TechSignal
+
+    return {
+        ES_TI_SENTINEL: TechSignal(
+            score=0.0, evidence=[{"es_ti": True, "confianza": 0.9, "otros_fabricantes": []}]
+        )
+    }
+
+
+def test_el_marcador_no_reabre_la_puerta_a_una_respuesta_sin_evidencia(db) -> None:
+    """Forma v3: un «es TI» cuyas citas de familia no se sostuvieron escribe el
+    marcador y ``__sin_evidencia__`` en la misma llamada. El lector de etiquetas
+    descarta ese grupo entero; si el marcador abriera la puerta, la fila de
+    fuera de la población entraría sin etiqueta y entrenaría como negativo de
+    todas las familias. El marcador solo sí es una respuesta: «ninguna familia»."""
+    from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+
+    _insertar("PSCP-ES-TI-SIN-EVIDENCIA", universo="pscp_observed")
+    _insertar("PSCP-SOLO-MARCADOR", universo="pscp_observed")
+    repo = TecnologiaPliegoRepository()
+    repo.upsert_signals(
+        "PSCP-ES-TI-SIN-EVIDENCIA",
+        method="llm_metadata",
+        signal_version="llm-meta-v3/m",
+        scores=_marcador_es_ti(),
+        sin_evidencia=True,
+    )
+    repo.upsert_signals(
+        "PSCP-SOLO-MARCADOR",
+        method="llm_metadata",
+        signal_version="llm-meta-v3/m",
+        scores=_marcador_es_ti(),
+    )
+
+    assert _ids(filas_entrenamiento_tecnologia()) == {"PSCP-SOLO-MARCADOR"}
+
+
+def test_sin_evidencia_solo_cierra_su_propio_method(db) -> None:
+    """El grupo es ``(licitación, method)``, como en el lector de etiquetas: un
+    ``__sin_evidencia__`` de ``llm_metadata`` no tapa lo que dijo la ficha del
+    pliego (``llm``) de la misma licitación."""
+    from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
+
+    _insertar("PSCP-DOS-CARRILES", universo="pscp_observed")
+    repo = TecnologiaPliegoRepository()
+    repo.upsert_signals(
+        "PSCP-DOS-CARRILES",
+        method="llm_metadata",
+        signal_version="llm-meta-v3/m",
+        scores=_marcador_es_ti(),
+        sin_evidencia=True,
+    )
+    repo.upsert_signals(
+        "PSCP-DOS-CARRILES",
+        method="llm",
+        signal_version="tender-facts-v2",
+        scores={"SAP": TechSignal(score=0.9, evidence=[])},
+    )
+
+    assert _ids(filas_entrenamiento_tecnologia()) == {"PSCP-DOS-CARRILES"}
 
 
 def test_el_scoring_sirve_la_misma_poblacion_que_el_entrenamiento(db) -> None:

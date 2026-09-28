@@ -146,6 +146,12 @@ def _to_repo_filters(filters: TecnologiasFilters | TecnologiaDetalleFilters) -> 
     )
 
 
+#: Etiquetas legibles que ya no existen y a qué código apuntaban. Los enlaces a
+#: la analítica llevan la etiqueta, no el código: renombrar una (D2, 2026-09-27)
+#: no puede dejar vacíos los guardados.
+_ETIQUETAS_ANTERIORES: dict[str, str] = {"Cloud e infraestructura": "CLOUD_INFRA"}
+
+
 def _codes_for_label(tecnologia: str) -> list[str]:
     """Códigos crudos que mapean al label dado.
 
@@ -154,7 +160,12 @@ def _codes_for_label(tecnologia: str) -> list[str]:
     inyectiva (ningún label conocido se repite para dos códigos distintos),
     así que "códigos que producen este label" es, o bien las claves del dict
     cuyo valor coincide, o el propio ``tecnologia`` como código sin mapear.
+
+    ``tecnologia`` puede además ser una etiqueta anterior a un renombrado
+    (``_ETIQUETAS_ANTERIORES``): se resuelve al código antes de buscar, para
+    que un enlace guardado con el texto viejo siga apuntando a sus filas.
     """
+    tecnologia = _ETIQUETAS_ANTERIORES.get(tecnologia, tecnologia)
     codes = [code for code, label in TECHNOLOGY_LABELS.items() if label == tecnologia]
     if tecnologia not in codes:
         codes.append(tecnologia)

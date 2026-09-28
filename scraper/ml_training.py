@@ -389,7 +389,7 @@ def train_from_db() -> dict[str, Any]:
     import pandas as pd
 
     from db.database import init_db
-    from db.repositories.ml_dataset import feedback_humano_sap, filas_entrenamiento_sap
+    from db.repositories.ml_dataset import feedback_humano_es_ti, filas_entrenamiento_sap
     from scraper.ml_classifier import SAPClassifier
     from scraper.ml_pipeline import validate_training_data
 
@@ -400,7 +400,7 @@ def train_from_db() -> dict[str, Any]:
         # con el mismo código de error que devolvería ``train``.
         log.warning("train_from_db.poblacion_vacia")
         return {"error": "insufficient_data", "n_samples": 0}
-    lic = etiquetar_dataset_sap(pd.DataFrame(filas), feedback_humano_sap())
+    lic = etiquetar_dataset_sap(pd.DataFrame(filas), feedback_humano_es_ti())
     train_population = resumen_poblacion_sap(lic)
     log.info("train_from_db.poblacion", **train_population)
 

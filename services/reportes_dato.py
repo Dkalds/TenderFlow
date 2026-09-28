@@ -9,11 +9,13 @@ Dónde aterrizan los reportes
 ----------------------------
 En ``ml_feedback``, con ``source = 'reporte:<tipo>'``. No es un atajo: es la
 cola de revisión que ya existe, con su expediente, su nota, su autor y su
-fecha, y **todos** sus consumidores de ML filtran por ``source = 'human'``
-(``scraper/ml_training.py``, ``scheduler/concept_drift.py``,
-``db/model_registry.py``, ``db/repositories/licitaciones.py``). Un reporte por
-tanto no puede convertirse en una etiqueta de entrenamiento por accidente,
-que es el único riesgo real de reutilizar esta tabla.
+fecha, y **todos** sus consumidores de ML filtran por ``source='revision_ti'``
+(``scraper/ml_training.py``, ``scheduler/concept_drift.py``) o por ``source``
+en ``FUENTES_HUMANAS`` -- ``revision_ti`` desde el plan de clasificación en
+tres niveles, ``human`` histórico -- (``db/model_registry.py``,
+``db/repositories/licitaciones.py``). Un reporte por tanto no puede
+convertirse en una etiqueta de entrenamiento por accidente, que es el único
+riesgo real de reutilizar esta tabla.
 
 Los tipos que tienen cola propia aguas abajo —``duplicado`` va a la revisión
 de dedupe, ``adjudicatario`` a ``empresa_review_queue``— se distinguen por su

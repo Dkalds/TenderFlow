@@ -1,0 +1,18 @@
+# Golden set real de «¿es TI?» y familias/fabricantes (plan de clasificación
+# en tres niveles, F2). Sustituye a los 27 ejemplos de golden_set.jsonl como
+# gate del binario `es_ti`: sale de la revisión humana (`ml_feedback`,
+# `source='revision_ti'`), lleva fuente, fecha de publicación, quién etiquetó
+# y cuándo, y su holdout es el 50% más reciente por fecha, fijo: la primera
+# exportación congela el corte en la línea `corte_holdout` y las siguientes
+# reparten contra él (`services.ml.golden_ti.repartir`).
+#
+# Formato JSONL: una línea por ejemplo (ver `services.ml.golden_ti.EjemploGoldenTi`
+# para los campos); las líneas vacías y las que empiezan por '#' se ignoran.
+#
+# Se genera con:
+#   ENV=dev PYTHONPATH="$PWD" python scripts/exportar_golden_ti.py
+# tras cada ronda de revisión humana (`ml_feedback.source = 'revision_ti'`).
+# NO SE EDITA A MANO.
+#
+# Vacío hoy: la revisión humana (Tarea 4 del plan) todavía no ha corrido en
+# producción, así que tampoco hay corte congelado.

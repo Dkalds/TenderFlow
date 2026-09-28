@@ -78,7 +78,7 @@ export function OpsHealthStrip() {
       />
       <StatCell
         label="Etiquetas registradas"
-        value={formatNumber(feedback.data?.total_labels ?? 0)}
+        value={formatNumber(feedback.data?.total ?? 0)}
         hint="acumulado de active learning"
         loading={feedback.isLoading}
       />

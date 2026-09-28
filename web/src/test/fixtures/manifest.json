@@ -107,6 +107,13 @@
       "status": "200"
     },
     {
+      "fixture": "feedback-taxonomia.json",
+      "method": "GET",
+      "path": "/api/v1/feedback/taxonomia",
+      "kind": "response",
+      "status": "200"
+    },
+    {
       "fixture": "calendario-enlace.json",
       "method": "GET",
       "path": "/api/v1/exports/calendario/enlace",
