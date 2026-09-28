@@ -1855,9 +1855,9 @@ pandas==3.0.5 \
     #   -r requirements.in
     #   formulaic
     #   statsmodels
-pandas-stubs==2.3.3.260113 \
-    --hash=sha256:076e3724bcaa73de78932b012ec64b3010463d377fa63116f4e6850643d93800 \
-    --hash=sha256:ec070b5c576e1badf12544ae50385872f0631fc35d99d00dc598c2954ec564d3
+pandas-stubs==3.0.5.260914 \
+    --hash=sha256:39a1300c5c5c55fdf609e3476805decce5d5015539a4dcb683449f8feaeee2fb \
+    --hash=sha256:3f6fc1f147f68fd89c007105e7c94a948acb4ecd7eb20dc1c02e153c4ed5c250
     # via -r requirements-dev.in
 pathspec==1.1.1 \
     --hash=sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a \
@@ -2495,12 +2495,6 @@ scipy==1.17.1 \
     #   formulaic
     #   scikit-learn
     #   statsmodels
-setuptools==84.0.0 \
-    --hash=sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670 \
-    --hash=sha256:f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73
-    # via
-    #   -r requirements-dev.in
-    #   pip-tools
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
@@ -2722,10 +2716,6 @@ types-python-dateutil==2.9.0.20260716 \
     --hash=sha256:1ae41d51a5c5f6bbeeb7f1f34df7086d55ff1605cf88d2ed71a7a276e1a7794e \
     --hash=sha256:1d55d1c3024bdb4861bb6a6622c9ec800c433d87bdc5b16fb84cdd0eed4ef2cb
     # via -r requirements-dev.in
-types-pytz==2026.3.1.20260727 \
-    --hash=sha256:42ac44e83645bfceb46597342c8fb8ec028a1407e2feae9c5c539986eab6b57a \
-    --hash=sha256:4364075b6867dd15b210bb8c1d29727d609917129b45600defe1d4b3eda5ecb9
-    # via pandas-stubs
 types-requests==2.33.0.20260906 \
     --hash=sha256:76ab8a0fb736744a0c3deee7aa57b2927e301f078d9e61f5391b3e92002416b9 \
     --hash=sha256:9f53622652bd921ead7a54d665be1b8d518165c8b51cc9d68d944cd6b6bfa8fb
