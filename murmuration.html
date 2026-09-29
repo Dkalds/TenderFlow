@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmuration</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #10131f; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  #hint {
+    position: fixed; left: 0; right: 0; bottom: 18px; text-align: center;
+    font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; letter-spacing: .12em;
+    text-transform: uppercase; color: rgba(255,255,255,.55); pointer-events: none;
+    transition: opacity 1.5s; text-shadow: 0 1px 6px rgba(0,0,0,.4);
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="A murmuration of 400 starlings at dusk"></canvas>
+<div id="hint">400 starlings · move the pointer to lead the flock · click to scatter</div>
+<script>
+(() => {
+  const N = 400;
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  const hint = document.getElementById('hint');
+  let W, H, DPR, focal, sky;
+  const CAM = 950;
+
+  // Boid state in flat typed arrays
+  const px = new Float32Array(N), py = new Float32Array(N), pz = new Float32Array(N);
+  const vx = new Float32Array(N), vy = new Float32Array(N), vz = new Float32Array(N);
+  const ax = new Float32Array(N), ay = new Float32Array(N), az = new Float32Array(N);
+  const phase = new Float32Array(N);
+
+  for (let i = 0; i < N; i++) {
+    const r = 120 * Math.cbrt(Math.random()), th = Math.random() * 6.283, ph = Math.acos(2 * Math.random() - 1);
+    px[i] = r * Math.sin(ph) * Math.cos(th);
+    py[i] = r * Math.sin(ph) * Math.sin(th) * 0.6;
+    pz[i] = r * Math.cos(ph);
+    const a = Math.random() * 6.283;
+    vx[i] = Math.cos(a) * 3; vz[i] = Math.sin(a) * 3; vy[i] = (Math.random() - .5);
+    phase[i] = Math.random() * 6.283;
+  }
+
+  // Flock parameters
+  const P = {
+    view: 85, sep: 24, wSep: 1.5, wAli: 0.9, wCoh: 0.3,
+    wTarget: 0.010, minSp: 2.6, maxSp: 4.6, maxForce: 0.22
+  };
+
+  const target = { x: 0, y: 0, z: 0 };
+  const pointer = { x: 0, y: 0, active: false, last: 0 };
+  let scare = { x: 0, y: 0, z: 0, life: 0 };
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    focal = Math.min(W, H * 1.25) * 1.15;
+    sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0.00, '#141a3a');
+    sky.addColorStop(0.45, '#5a3f6e');
+    sky.addColorStop(0.75, '#d9776a');
+    sky.addColorStop(1.00, '#f4b87a');
+    paintSky(1);
+  }
+
+  function paintSky(alpha) {
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+
+  addEventListener('resize', resize);
+  cv.addEventListener('pointermove', e => {
+    pointer.x = e.clientX; pointer.y = e.clientY; pointer.active = true; pointer.last = performance.now();
+    hint.style.opacity = 0;
+  });
+  cv.addEventListener('pointerleave', () => { pointer.active = false; });
+  cv.addEventListener('pointerdown', e => {
+    pointer.x = e.clientX; pointer.y = e.clientY;
+    const w = unproject(e.clientX, e.clientY);
+    scare = { x: w.x, y: w.y, z: w.z, life: 1 };
+    hint.style.opacity = 0;
+  });
+
+  let yaw = 0;
+  const cosY = () => Math.cos(yaw), sinY = () => Math.sin(yaw);
+
+  function unproject(sx, sy) {
+    const xr = (sx - W / 2) * CAM / focal, y = (sy - H * 0.46) * CAM / focal;
+    const c = cosY(), s = sinY();
+    return { x: xr * c, y, z: xr * s };
+  }
+
+  let last = performance.now(), t = 0, acc = 0;
+  function step(now) {
+    const dt = 1 / 60, k = 1; // fixed timestep keeps the flock stable at any frame rate
+    t += dt;
+    yaw = Math.sin(t * 0.07) * 0.55;
+
+    // Roost target: wandering Lissajous, or the pointer while it is moving
+    if (pointer.active && now - pointer.last < 2500) {
+      const w = unproject(pointer.x, pointer.y);
+      target.x += (w.x - target.x) * 0.05 * k;
+      target.y += (w.y - target.y) * 0.05 * k;
+      target.z += (0 - target.z) * 0.05 * k;
+    } else {
+      const tx = 300 * Math.sin(t * 0.17), ty = 110 * Math.sin(t * 0.26 + 1), tz = 230 * Math.sin(t * 0.13 + 2);
+      target.x += (tx - target.x) * 0.02 * k;
+      target.y += (ty - target.y) * 0.02 * k;
+      target.z += (tz - target.z) * 0.02 * k;
+    }
+    if (scare.life > 0) scare.life -= dt * 0.9;
+
+    const v2 = P.view * P.view, s2 = P.sep * P.sep;
+
+    for (let i = 0; i < N; i++) {
+      let sx = 0, sy = 0, sz = 0, avx = 0, avy = 0, avz = 0, cx = 0, cy = 0, cz = 0, n = 0;
+      const x = px[i], y = py[i], z = pz[i];
+      for (let j = 0; j < N; j++) {
+        if (j === i) continue;
+        const dx = px[j] - x, dy = py[j] - y, dz = pz[j] - z;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 > v2) continue;
+        n++;
+        avx += vx[j]; avy += vy[j]; avz += vz[j];
+        cx += dx; cy += dy; cz += dz;
+        if (d2 < s2 && d2 > 0.01) {
+          const f = 1 / d2;
+          sx -= dx * f; sy -= dy * f; sz -= dz * f;
+        }
+      }
+      let fx = 0, fy = 0, fz = 0;
+      if (n > 0) {
+        // Cap influence to ~7 neighbours' worth, mimicking topological interaction
+        const inv = 1 / n;
+        fx += (avx * inv - vx[i]) * P.wAli * 0.08 + cx * inv * P.wCoh * 0.004;
+        fy += (avy * inv - vy[i]) * P.wAli * 0.08 + cy * inv * P.wCoh * 0.004;
+        fz += (avz * inv - vz[i]) * P.wAli * 0.08 + cz * inv * P.wCoh * 0.004;
+      }
+      fx += sx * P.wSep * 90; fy += sy * P.wSep * 90; fz += sz * P.wSep * 90;
+
+      // Pull toward roost target
+      fx += (target.x - x) * P.wTarget; fy += (target.y - y) * P.wTarget * 1.3; fz += (target.z - z) * P.wTarget;
+
+      // Flee the scare point
+      if (scare.life > 0) {
+        const dx = x - scare.x, dy = y - scare.y, dz = z - scare.z;
+        const d2 = dx * dx + dy * dy + dz * dz + 1;
+        if (d2 < 260 * 260) {
+          const f = scare.life * 900 / d2 * 60;
+          const inv = 1 / Math.sqrt(d2);
+          fx += dx * inv * f * 0.25; fy += dy * inv * f * 0.25; fz += dz * inv * f * 0.25;
+        }
+      }
+
+      // Soft floor/ceiling and outer bound
+      if (y > 220) fy -= (y - 220) * 0.01;
+      if (y < -220) fy -= (y + 220) * 0.01;
+      const r2 = x * x + z * z;
+      if (r2 > 520 * 520) { const f = 0.0006 * (Math.sqrt(r2) - 520); fx -= x * f; fz -= z * f; }
+
+      // Clamp steering
+      const fm = Math.hypot(fx, fy, fz);
+      if (fm > P.maxForce) { const s = P.maxForce / fm; fx *= s; fy *= s; fz *= s; }
+      ax[i] = fx; ay[i] = fy; az[i] = fz;
+    }
+
+    for (let i = 0; i < N; i++) {
+      vx[i] += ax[i] * k; vy[i] += ay[i] * k; vz[i] += az[i] * k;
+      vy[i] *= 0.995; // birds prefer level flight
+      let sp = Math.hypot(vx[i], vy[i], vz[i]);
+      const s = sp > P.maxSp ? P.maxSp / sp : sp < P.minSp ? P.minSp / (sp || 1) : 1;
+      vx[i] *= s; vy[i] *= s; vz[i] *= s;
+      px[i] += vx[i] * k; py[i] += vy[i] * k; pz[i] += vz[i] * k;
+      phase[i] += (0.55 + sp * 0.06) * k;
+    }
+  }
+
+  const order = new Uint16Array(N);
+  const depth = new Float32Array(N);
+
+  function draw() {
+    // Fading repaint of the sky leaves soft motion trails
+    paintSky(0.34);
+
+    // Sun glow low on the horizon
+    const gx = W * 0.5 + Math.sin(yaw) * -W * 0.25, gy = H * 0.92;
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, H * 0.55);
+    g.addColorStop(0, 'rgba(255,214,150,.07)'); g.addColorStop(1, 'rgba(255,214,150,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    const c = cosY(), s = sinY(), cxs = W / 2, cys = H * 0.46;
+    for (let i = 0; i < N; i++) { order[i] = i; depth[i] = -px[i] * s + pz[i] * c; }
+    // Far to near
+    const idx = Array.from(order).sort((a, b) => depth[b] - depth[a]);
+
+    ctx.lineCap = 'round';
+    for (const i of idx) {
+      const xr = px[i] * c + pz[i] * s, zr = -px[i] * s + pz[i] * c;
+      const d = CAM + zr;
+      if (d < 80) continue;
+      const sc = focal / d;
+      const X = cxs + xr * sc, Y = cys + py[i] * sc;
+
+      // Tail point: back along velocity, rotated into camera space
+      const tvx = vx[i] * c + vz[i] * s, tvz = -vx[i] * s + vz[i] * c;
+      const L = 4;
+      const td = d - tvz * L;
+      const tsc = focal / Math.max(td, 80);
+      const X2 = cxs + (xr - tvx * L) * tsc, Y2 = cys + (py[i] - vy[i] * L) * tsc;
+
+      const flap = Math.sin(phase[i]);
+      const near = Math.min(1, Math.max(0, (1300 - d) / 900));
+      ctx.strokeStyle = `rgba(10,8,18,${0.55 + 0.4 * near})`;
+      ctx.lineWidth = Math.max(0.8, sc * (1.5 + 0.5 * flap));
+      ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X2, Y2); ctx.stroke();
+
+      // Wings: two short strokes that beat up and down
+      const wl = sc * (3 + 2 * Math.abs(flap)) ;
+      const dx = X - X2, dy = Y - Y2, dl = Math.hypot(dx, dy) || 1;
+      const nx = -dy / dl, ny = dx / dl;
+      const wy = flap * wl * 0.6;
+      const mx = (X + X2) * 0.5 + dx * 0.15, my = (Y + Y2) * 0.5 + dy * 0.15;
+      ctx.lineWidth = Math.max(0.6, sc * 0.9);
+      ctx.beginPath();
+      ctx.moveTo(mx + nx * wl, my + ny * wl - wy);
+      ctx.lineTo(mx, my);
+      ctx.lineTo(mx - nx * wl, my - ny * wl - wy);
+      ctx.stroke();
+    }
+  }
+
+  function frame(now) {
+    acc += Math.min((now - last) / 1000, 0.1); last = now;
+    let n = 0;
+    while (acc >= 1 / 60 && n++ < 3) { step(now); acc -= 1 / 60; }
+    if (acc > 1 / 60) acc = 0;
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  // Warm the simulation so the flock is already organised on first paint
+  for (let i = 0; i < 90; i++) step(0);
+  setTimeout(() => { hint.style.opacity = 0; }, 9000);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
