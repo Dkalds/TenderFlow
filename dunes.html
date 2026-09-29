@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dunes</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #2a1a18; overflow: hidden; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+  #ui {
+    position: fixed; left: 16px; top: 16px; padding: 12px 14px; width: 190px;
+    font: 12px/1.3 ui-sans-serif, system-ui, sans-serif; color: #f6e6cc;
+    background: rgba(30, 18, 14, .55); border: 1px solid rgba(255, 230, 190, .18);
+    border-radius: 10px; backdrop-filter: blur(6px);
+  }
+  #ui label { display: block; margin: 8px 0 2px; letter-spacing: .08em; text-transform: uppercase; font-size: 10px; opacity: .75; }
+  #ui input[type=range] { width: 100%; accent-color: #e8b877; margin: 0; }
+  #ui button {
+    margin-top: 10px; width: 100%; padding: 6px; font: inherit; color: inherit; cursor: pointer;
+    background: rgba(255, 230, 190, .1); border: 1px solid rgba(255, 230, 190, .25); border-radius: 6px;
+  }
+  #ui button:hover { background: rgba(255, 230, 190, .2); }
+  #ui p { margin: 10px 0 0; font-size: 11px; opacity: .6; }
+  @media (max-width: 520px) { #ui { width: 150px; left: 8px; top: 8px; } #ui p { display: none; } }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Wind shaping sand dunes"></canvas>
+<div id="ui">
+  <label for="str">Wind strength</label>
+  <input id="str" type="range" min="0.2" max="2" step="0.05" value="1">
+  <label for="dir">Wind direction</label>
+  <input id="dir" type="range" min="-90" max="90" step="1" value="0">
+  <button id="reset">Reset sand</button>
+  <p>Drag to pile up sand. Watch it drift, climb and slip.</p>
+</div>
+<script>
+(() => {
+  // Simulation grid (wraps around at the edges)
+  const W = 288, H = 176;
+  const h = new Float32Array(W * H);
+  const noise = new Float32Array(W * H);
+  for (let i = 0; i < noise.length; i++) noise[i] = Math.random();
+
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(W, H);
+  const px32 = new Uint32Array(img.data.buffer);
+
+  const strEl = document.getElementById('str');
+  const dirEl = document.getElementById('dir');
+  let strength = 1, wx = 1, wy = 0;
+
+  const Q = 0.12;            // slab of sand moved per hop
+  const HOP = 4.2;           // base saltation length in cells
+  const REPOSE = 0.72;       // max height step between neighbours (about 35 degrees)
+  const SHADOW_SLOPE = 0.27; // wind shadow behind a crest (about 15 degrees)
+
+  function setWind() {
+    strength = +strEl.value;
+    const a = dirEl.value * Math.PI / 180;
+    wx = Math.cos(a); wy = Math.sin(a);
+  }
+  strEl.oninput = dirEl.oninput = setWind;
+
+  function reset() {
+    // Smooth random bumps on a base layer of sand
+    const octaves = [[16, 2.0], [7, 1.2], [3, 0.8]];
+    h.fill(4);
+    for (const [cell, amp] of octaves) {
+      const gw = Math.ceil(W / cell), gh = Math.ceil(H / cell);
+      const g = Array.from({ length: gw * gh }, Math.random);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const fx = x / cell, fy = y / cell, x0 = fx | 0, y0 = fy | 0;
+        const tx = fx - x0, ty = fy - y0, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+        const a = g[(y0 % gh) * gw + x0 % gw], b = g[(y0 % gh) * gw + (x0 + 1) % gw];
+        const c = g[((y0 + 1) % gh) * gw + x0 % gw], d = g[((y0 + 1) % gh) * gw + (x0 + 1) % gw];
+        h[y * W + x] += ((a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy - 0.5) * amp * 2;
+      }
+    }
+    for (let i = 0; i < h.length; i++) if (h[i] < 0.5) h[i] = 0.5;
+  }
+
+  const wrapX = x => ((x % W) + W) % W;
+  const wrapY = y => ((y % H) + H) % H;
+
+  // Wind picks slabs off exposed cells and hops them downwind
+  function saltate(n) {
+    const hop = HOP * (0.6 + 0.5 * strength);
+    for (let k = 0; k < n; k++) {
+      const x = (Math.random() * W) | 0, y = (Math.random() * H) | 0, i = y * W + x;
+      const hh = h[i];
+      if (hh < 0.2) continue;
+
+      // Wind shadow: a taller upwind crest blocks the flow, so nothing lifts off here
+      let shadow = false;
+      for (let s = 1.5; s <= 12; s += 1.5) {
+        const j = wrapY(Math.round(y - wy * s)) * W + wrapX(Math.round(x - wx * s));
+        if (h[j] > hh + s * SHADOW_SLOPE) { shadow = true; break; }
+      }
+      if (shadow) continue;
+
+      h[i] -= Q;
+      let fx = x, fy = y, j = i;
+      for (let hops = 0; hops < 14; hops++) {
+        fx += wx * hop; fy += wy * hop + (Math.random() - 0.5) * 1.6;
+        j = wrapY(Math.round(fy)) * W + wrapX(Math.round(fx));
+        if (Math.random() < (h[j] > 0.3 ? 0.6 : 0.4)) break; // sand catches grains more than bare ground
+      }
+      h[j] += Q;
+    }
+  }
+
+  // Slopes steeper than the angle of repose slump downhill
+  let flip = 0;
+  function avalanche() {
+    flip ^= 1;
+    for (let yy = 0; yy < H; yy++) {
+      const y = flip ? H - 1 - yy : yy, yu = wrapY(y - 1), yd = wrapY(y + 1);
+      for (let xx = 0; xx < W; xx++) {
+        const x = flip ? W - 1 - xx : xx, i = y * W + x;
+        const xl = wrapX(x - 1), xr = wrapX(x + 1);
+        const nb = [y * W + xl, y * W + xr, yu * W + x, yd * W + x];
+        for (let n = 0; n < 4; n++) {
+          const d = h[i] - h[nb[n]] - REPOSE;
+          if (d > 0) { const t = d * 0.3; h[i] -= t; h[nb[n]] += t; }
+        }
+      }
+    }
+  }
+
+  // Sun low in the sky, coming from the upper left
+  const LAZ = -2.3;
+  const lx = Math.cos(LAZ), ly = Math.sin(LAZ), LTAN = 0.5;
+  const lz = 0.55, ln = Math.hypot(lx * 0.8, ly * 0.8, lz);
+  const Lx = lx * 0.8 / ln, Ly = ly * 0.8 / ln, Lz = lz / ln;
+
+  const hs = new Float32Array(W * H);
+  function smooth() {
+    for (let y = 0; y < H; y++) {
+      const yu = wrapY(y - 1) * W, yc = y * W, yd = wrapY(y + 1) * W;
+      for (let x = 0; x < W; x++) {
+        const xl = wrapX(x - 1), xr = wrapX(x + 1);
+        hs[yc + x] = (h[yc + x] * 4 + h[yc + xl] + h[yc + xr] + h[yu + x] + h[yd + x]) * 0.125;
+      }
+    }
+  }
+
+  function render() {
+    smooth();
+    for (let y = 0; y < H; y++) {
+      const yu = wrapY(y - 1), yd = wrapY(y + 1);
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x, xl = wrapX(x - 1), xr = wrapX(x + 1);
+        const gx = (hs[y * W + xr] - hs[y * W + xl]) * 0.5;
+        const gy = (hs[yd * W + x] - hs[yu * W + x]) * 0.5;
+        const k = 1.5; // vertical exaggeration for readable shading
+        const nl = Math.hypot(gx * k, gy * k, 1);
+        let lam = (-gx * k * Lx - gy * k * Ly + Lz) / nl;
+        if (lam < 0) lam = 0;
+
+        // Cast shadow toward the sun
+        let cast = 1;
+        const hh = hs[i];
+        for (let s = 2; s <= 24; s += 1.5) {
+          const j = wrapY(Math.round(y + ly * s)) * W + wrapX(Math.round(x + lx * s));
+          if (hs[j] > hh + s * LTAN * 0.5) { cast = 0.32; break; }
+        }
+        let t = 0.18 + 0.82 * lam * cast;
+        t += (noise[i] - 0.5) * 0.05;
+        if (t < 0) t = 0; else if (t > 1) t = 1;
+
+        // Shadow purple to lit gold
+        const r = Math.min(255, 78 + t * 172), g = 44 + t * 164, b = 62 + t * 92 - t * t * 20;
+        px32[i] = 0xff000000 | ((b | 0) << 16) | ((g | 0) << 8) | (r | 0);
+      }
+    }
+    octx.putImageData(img, 0, 0);
+  }
+
+  // Blowing sand streaks in screen space
+  const NS = 260;
+  const sx = new Float32Array(NS), sy = new Float32Array(NS), sv = new Float32Array(NS), sl = new Float32Array(NS);
+  let CW = 0, CH = 0, scale = 1, ox = 0, oy = 0;
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    CW = innerWidth; CH = innerHeight;
+    cv.width = CW * dpr; cv.height = CH * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    scale = Math.max(CW / W, CH / H);
+    ox = (CW - W * scale) / 2; oy = (CH - H * scale) / 2;
+    for (let i = 0; i < NS; i++) { sx[i] = Math.random() * CW; sy[i] = Math.random() * CH; sv[i] = 0.6 + Math.random() * 0.9; sl[i] = 10 + Math.random() * 26; }
+  }
+  addEventListener('resize', resize);
+
+  // Drag to add sand
+  let down = false;
+  function pile(e) {
+    const gx = (e.clientX - ox) / scale, gy = (e.clientY - oy) / scale;
+    for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) {
+      const d2 = dx * dx + dy * dy;
+      if (d2 > 49) continue;
+      h[wrapY(Math.round(gy + dy)) * W + wrapX(Math.round(gx + dx))] += 0.9 * Math.exp(-d2 / 18);
+    }
+  }
+  cv.addEventListener('pointerdown', e => { down = true; cv.setPointerCapture(e.pointerId); pile(e); });
+  cv.addEventListener('pointermove', e => { if (down) pile(e); });
+  cv.addEventListener('pointerup', () => { down = false; });
+  cv.addEventListener('pointercancel', () => { down = false; });
+  document.getElementById('reset').onclick = reset;
+
+  function drawStreaks() {
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255, 236, 200, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const v = 5 * strength;
+    for (let i = 0; i < NS; i++) {
+      const wobble = Math.sin((sx[i] + i * 37) * 0.012) * 0.25;
+      const dx = wx * sv[i] * v, dy = (wy + wobble) * sv[i] * v;
+      sx[i] += dx; sy[i] += dy;
+      if (sx[i] < -40 || sx[i] > CW + 40 || sy[i] < -40 || sy[i] > CH + 40) {
+        // Respawn upwind
+        if (Math.abs(wx) > 0.2) sx[i] = wx > 0 ? -30 : CW + 30; else sx[i] = Math.random() * CW;
+        sy[i] = Math.random() * CH;
+        if (Math.abs(wx) <= 0.2) sy[i] = wy > 0 ? -30 : CH + 30;
+      }
+      const m = Math.hypot(wx, wy + wobble) || 1;
+      ctx.moveTo(sx[i], sy[i]);
+      ctx.lineTo(sx[i] - wx / m * sl[i] * strength, sy[i] - (wy + wobble) / m * sl[i] * strength);
+    }
+    ctx.stroke();
+  }
+
+  function frame() {
+    const n = Math.round(45000 * strength);
+    saltate(n);
+    avalanche();
+    render();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(off, ox, oy, W * scale, H * scale);
+    drawStreaks();
+    requestAnimationFrame(frame);
+  }
+
+  setWind();
+  reset();
+  resize();
+  // Let the first ripples form before the first paint
+  const warm = +(location.hash.match(/warm=(\d+)/) || [0, 120])[1];
+  for (let i = 0; i < warm; i++) { saltate(45000); avalanche(); }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
