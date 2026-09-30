@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { Aviso, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import {
@@ -204,6 +205,7 @@ export function PaginaPliegoDialog({
             >
               Abrir el documento original
               <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              <AvisoPestanaNueva />
             </a>
           )}
         </div>

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { toast } from "sonner";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, SectionTitle } from "@/components/console/panel";
@@ -171,6 +172,7 @@ function FactRow({
                     >
                       {fuente.label}
                       <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <AvisoPestanaNueva />
                     </a>
                   ) : (
                     <p className="font-medium text-muted-foreground">{fuente.label}</p>

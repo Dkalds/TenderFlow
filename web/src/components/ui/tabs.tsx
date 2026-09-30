@@ -16,47 +16,33 @@ import { cn } from "@/lib/utils";
  */
 const Tabs = TabsPrimitive.Root;
 
-const TabsList = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn("inline-flex flex-wrap items-center gap-0.5", className)}
-    {...props}
-  />
-));
-TabsList.displayName = TabsPrimitive.List.displayName;
+function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.List>) {
+  return <TabsPrimitive.List className={cn("inline-flex flex-wrap items-center gap-0.5", className)} {...props} />;
+}
 
-const TabsTrigger = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-tf-meta font-medium text-muted-foreground transition-colors md:h-7",
-      "hover:text-foreground disabled:pointer-events-none disabled:opacity-50 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:flex-none",
-      "data-[state=active]:border-border/70 data-[state=active]:bg-secondary data-[state=active]:text-foreground",
-      className,
-    )}
-    {...props}
-  />
-));
-TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
+function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  return (
+    <TabsPrimitive.Trigger
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-tf-meta font-medium text-muted-foreground transition-colors md:h-7",
+        "hover:text-foreground disabled:pointer-events-none disabled:opacity-50 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:flex-none",
+        "data-[state=active]:border-border/70 data-[state=active]:bg-secondary data-[state=active]:text-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 
-const TabsContent = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.Content
-    ref={ref}
-    // Sin fundido de entrada: cambiar de pestaña es un gesto de consulta
-    // diaria, y el contenido tiene que estar ahí en el mismo frame del clic.
-    className={cn("mt-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring", className)}
-    {...props}
-  />
-));
-TabsContent.displayName = TabsPrimitive.Content.displayName;
+function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
+  return (
+    <TabsPrimitive.Content
+      // Sin fundido de entrada: cambiar de pestaña es un gesto de consulta
+      // diaria, y el contenido tiene que estar ahí en el mismo frame del clic.
+      className={cn("mt-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring", className)}
+      {...props}
+    />
+  );
+}
 
 export { Tabs, TabsList, TabsTrigger, TabsContent };

@@ -121,7 +121,8 @@ export function SelectorOrganos({
               <button
                 type="button"
                 onClick={() => onChange(seleccionados.filter((n) => n !== nombre))}
-                className="grid h-5 w-5 flex-none place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                // `after:-inset-1`: diana de 28 px sin agrandar el aspa (WCAG 2.5.8).
+                className="relative grid h-5 w-5 flex-none place-items-center rounded-sm text-muted-foreground transition-colors after:absolute after:-inset-1 hover:bg-accent hover:text-foreground"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
                 <span className="sr-only">Quitar {nombre}</span>

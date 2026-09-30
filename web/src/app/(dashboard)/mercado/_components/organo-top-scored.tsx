@@ -10,6 +10,7 @@
  */
 
 import { ChipBanda, SectionTitle } from "@/components/console/panel";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { Pista } from "@/components/ui/pista";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 
@@ -34,7 +35,7 @@ export function OrganoTopScored({ items }: { items: TopScoredItem[] }) {
                   className="line-clamp-2 text-tf-body font-medium leading-tight text-primary hover:underline"
                 >
                   {s.titulo ?? s.id_externo}
-                  <span className="sr-only"> (se abre en otra pestaña)</span>
+                  <AvisoPestanaNueva />
                 </a>
               ) : (
                 <p className="line-clamp-2 text-tf-body font-medium leading-tight">{s.titulo ?? s.id_externo}</p>

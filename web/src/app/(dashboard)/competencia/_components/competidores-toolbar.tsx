@@ -27,6 +27,7 @@ export function CompetidoresToolbar({
     <div className="flex flex-wrap items-center gap-2.5">
       <SearchAutocomplete
         className="w-full sm:w-72"
+        aria-label="Buscar empresa"
         placeholder="Buscar empresa…"
         value={search}
         onChange={onSearchChange}

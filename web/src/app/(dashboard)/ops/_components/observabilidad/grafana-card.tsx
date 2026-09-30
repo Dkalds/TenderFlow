@@ -9,6 +9,7 @@
  */
 
 import { ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { Panel, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { getGrafanaUrl } from "@/lib/runtime-config";
@@ -24,6 +25,7 @@ export function GrafanaCard() {
           <a href={grafanaUrl} target="_blank" rel="noopener noreferrer">
             Abrir Grafana
             <ExternalLink aria-hidden="true" />
+            <AvisoPestanaNueva />
           </a>
         </Button>
       ) : (
