@@ -1,4 +1,5 @@
 import type { LicitacionPublica } from "@/lib/publico-api";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { fechaOpcional } from "./ficha-formato";
 
 /**
@@ -38,6 +39,7 @@ export function AtribucionFuente({ lic }: { lic: LicitacionPublica }) {
             className="text-foreground font-medium underline underline-offset-4"
           >
             Ver el anuncio oficial
+            <AvisoPestanaNueva />
           </a>
         )}
       </p>

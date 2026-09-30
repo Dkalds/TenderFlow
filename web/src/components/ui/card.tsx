@@ -35,10 +35,9 @@ import { cn } from "@/lib/utils"
  */
 
 /** @deprecated Usa `Panel` de `@/components/console/panel`. */
-const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return (
     <div
-      ref={ref}
       data-slot="card"
       // Panel de consola, no tarjeta elevada: borde tenue, superficie opaca y
       // sin sombra. Translúcida sobre un fondo plano solo daba un segundo
@@ -48,47 +47,31 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
       {...props}
     />
   )
-)
-Card.displayName = "Card"
+}
 
 /** @deprecated Usa el vocabulario de `@/components/console/panel`. */
-const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} data-slot="card-header" className={cn("flex flex-col space-y-1 px-4 pb-2.5 pt-3.5", className)} {...props} />
-  )
-)
-CardHeader.displayName = "CardHeader"
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-header" className={cn("flex flex-col space-y-1 px-4 pb-2.5 pt-3.5", className)} {...props} />
+}
 
 /** @deprecated Usa `PanelTitle` de `@/components/console/panel`. */
-const CardTitle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("text-tf-body font-semibold leading-tight", className)} {...props} />
-  )
-)
-CardTitle.displayName = "CardTitle"
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return <div className={cn("text-tf-body font-semibold leading-tight", className)} {...props} />
+}
 
 /** @deprecated Usa el `hint` de `PanelTitle` de `@/components/console/panel`. */
-const CardDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("text-tf-meta text-muted-foreground", className)} {...props} />
-  )
-)
-CardDescription.displayName = "CardDescription"
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return <div className={cn("text-tf-meta text-muted-foreground", className)} {...props} />
+}
 
 /** @deprecated Usa el vocabulario de `@/components/console/panel`. */
-const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} data-slot="card-content" className={cn("px-4 pb-3.5 pt-0", className)} {...props} />
-  )
-)
-CardContent.displayName = "CardContent"
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-content" className={cn("px-4 pb-3.5 pt-0", className)} {...props} />
+}
 
 /** @deprecated Usa el vocabulario de `@/components/console/panel`. */
-const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("flex items-center px-4 pb-3.5 pt-0", className)} {...props} />
-  )
-)
-CardFooter.displayName = "CardFooter"
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return <div className={cn("flex items-center px-4 pb-3.5 pt-0", className)} {...props} />
+}
 
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }

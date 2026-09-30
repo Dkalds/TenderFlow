@@ -66,6 +66,7 @@ export default function OrganosView() {
 
         <SearchAutocomplete
           className="max-w-sm"
+          aria-label="Buscar órgano o comunidad autónoma"
           placeholder="Buscar órgano o CCAA…"
           value={filter}
           onChange={setFilter}
