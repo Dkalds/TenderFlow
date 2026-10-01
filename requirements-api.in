@@ -79,6 +79,16 @@ openpyxl>=3.1.0,<4
 
 # ── Extracción de pliegos bajo demanda ───────────────────────────────────────
 pypdf>=4.0,<7
+# Reintentos y breaker de las descargas contra PLACSP (`scraper/resilience.py`,
+# que `scraper/document_fetcher.py` importa al cargar). Vivían en
+# requirements-pipeline.in, pero la API también descarga pliegos: el consumidor
+# de la cola de ADR-028 §G y `POST …/ficha-pliego/extract`. Sin ellos, toda
+# extracción en este proceso moría con `No module named 'pybreaker'`
+# (producción, 2026-09-25 y 2026-09-28).
+# python-docx y odfpy NO entran: traen lxml. Un DOCX descargado aquí se queda
+# `pending` para el lote nocturno (`ExtractorAusenteError`).
+tenacity>=8.2.0,<10
+pybreaker>=1.0.0,<2
 
 # ── LLM (/ask) ───────────────────────────────────────────────────────────────
 openai>=1.30.0,<4

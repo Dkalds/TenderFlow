@@ -114,6 +114,13 @@ def _respuesta_llm(*_a: Any, **_k: Any) -> Any:
 
 
 class TestCacheYDescarga:
+    @pytest.fixture(autouse=True)
+    def _sin_republicaciones(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """EXP-1 no es republicación de nada: su pliego es el suyo, sin BD."""
+        monkeypatch.setattr(
+            "services.dedupe.expediente_del_pliego", lambda licitacion_id: licitacion_id
+        )
+
     def _parches(self) -> Any:
         from contextlib import ExitStack
 

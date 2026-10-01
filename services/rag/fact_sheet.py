@@ -531,10 +531,19 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
 
     # ``skipped`` lo devuelve el fetcher cuando el breaker está abierto: no se
-    # llegó a intentar la descarga y la fila sigue ``pending``. ``unsupported``
-    # (S8.2) es un formato que no sabemos leer. Ambos se declaran para que el
-    # diagnóstico pueda distinguirlos de un fallo real.
-    counts = {"attempted": 0, "extracted": 0, "error": 0, "skipped": 0, "unsupported": 0}
+    # llegó a intentar la descarga y la fila sigue ``pending``.
+    # ``skipped_no_extra``, cuando el formato se sabe leer pero no en este
+    # proceso (DOCX/ODT en la imagen de la API): también sigue ``pending``.
+    # ``unsupported`` (S8.2) es un formato que no sabemos leer. Se declaran para
+    # que el diagnóstico pueda distinguirlos de un fallo real.
+    counts = {
+        "attempted": 0,
+        "extracted": 0,
+        "error": 0,
+        "skipped": 0,
+        "skipped_no_extra": 0,
+        "unsupported": 0,
+    }
     for row in candidates[:_ONDEMAND_MAX_DOCUMENTS]:
         counts["attempted"] += 1
         try:
@@ -559,9 +568,12 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
             "la ficha necesita al menos un documento adjunto en PLACSP."
         )
     if fetched.get("skipped_no_extra"):
+        # Sin pypdf no se intenta nada; sin python-docx/odfpy (la imagen de la
+        # API no los trae) se descarga pero la fila sigue `pending`. En los dos
+        # casos los procesa el job nocturno, que sí los tiene.
         return (
-            "Los pliegos siguen en cola de procesado (el servidor no tiene "
-            "instalada la extracción de PDF); el job nocturno los procesará."
+            "Los pliegos siguen en cola de procesado (este servidor no tiene "
+            "instalado el extractor de su formato); el job nocturno los procesará."
         )
     if fetched.get("skipped") and not fetched.get("error"):
         # Breaker abierto: no se intentó ninguna descarga, así que hablar de
@@ -591,6 +603,20 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
     )
 
 
+class SinPaginasError(ValueError):
+    """No hay texto de pliegos del que extraer la ficha.
+
+    ``ValueError`` porque así lo traducen ya sus llamadores (422 en la ruta
+    síncrona, ``failed`` con detalle en la de background). Lleva el expediente
+    que se miró, que en una republicación no es el que se pidió: es donde hay
+    que dejar el ``failed`` para que la siguiente lectura lo encuentre.
+    """
+
+    def __init__(self, mensaje: str, *, licitacion_id: str) -> None:
+        super().__init__(mensaje)
+        self.licitacion_id = licitacion_id
+
+
 def extract_fact_sheet_on_demand(
     licitacion_id: str,
     *,
@@ -606,11 +632,19 @@ def extract_fact_sheet_on_demand(
     de ``extract_fact_sheet``): ``pydantic.ValidationError`` hereda de
     ``ValueError``, y reescribir un fallo de validación del LLM como «no hay
     páginas» mandaría al usuario a mirar el documento equivocado.
+
+    Pedida sobre una republicación confirmada, se extrae la de su canónica:
+    es la que tiene los pliegos (:func:`services.dedupe.expediente_del_pliego`).
     """
+    from services.dedupe import expediente_del_pliego
+
+    licitacion_id = expediente_del_pliego(licitacion_id)
     fetched = ensure_documents_ready(licitacion_id)
     pages = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
     if not any(str(page.get("texto") or "").strip() for page in pages):
-        raise ValueError(_missing_pages_detail(licitacion_id, fetched))
+        raise SinPaginasError(
+            _missing_pages_detail(licitacion_id, fetched), licitacion_id=licitacion_id
+        )
     return extract_fact_sheet(licitacion_id, model=model)
 
 
@@ -711,8 +745,15 @@ def extract_fact_sheet(
 
 
 def get_fact_sheet(licitacion_id: str) -> TenderFactSheetRecord | None:
-    """Lee la ficha vigente sin invocar al proveedor LLM."""
-    row = TenderFactSheetsRepository().get(licitacion_id)
+    """Lee la ficha vigente sin invocar al proveedor LLM.
+
+    La de una republicación confirmada es la de su canónica
+    (:func:`services.dedupe.expediente_del_pliego`), y el registro lo dice: su
+    ``licitacion_id`` es el del expediente del que salen los pliegos.
+    """
+    from services.dedupe import expediente_del_pliego
+
+    row = TenderFactSheetsRepository().get(expediente_del_pliego(licitacion_id))
     return TenderFactSheetRecord.model_validate(row) if row else None
 
 
@@ -836,6 +877,11 @@ def run_background_extraction(
     en que ``extract_fact_sheet_on_demand`` falla SIN persistir— se materializa
     aquí como ``failed`` con detalle, o el polling vería un 404 mudo para
     siempre.
+
+    El ``failed`` se guarda en la ficha que se lee después: la de la canónica
+    si la licitación es una republicación (:class:`SinPaginasError` dice cuál
+    se miró). Guardarlo en la del anuncio TED lo dejaría en una fila que
+    ``get_fact_sheet`` nunca consulta.
     """
     from llm.budget import bind_budget_subject
 
@@ -848,9 +894,10 @@ def run_background_extraction(
             log.warning("fact_sheet_background_validation_failed", licitacion_id=licitacion_id)
             return
         except ValueError as exc:
+            destino = exc.licitacion_id if isinstance(exc, SinPaginasError) else licitacion_id
             try:
                 TenderFactSheetsRepository().upsert(
-                    licitacion_id=licitacion_id,
+                    licitacion_id=destino,
                     status="failed",
                     extraction_version=EXTRACTION_VERSION,
                     model=model,

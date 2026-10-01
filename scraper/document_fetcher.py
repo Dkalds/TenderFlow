@@ -41,10 +41,16 @@ de cada entrada se hace con un tope explícito en vez de fiarse de ``file_size``
 de la cabecera, que la escribe quien construyó el ZIP. No hay recursión: un ZIP
 dentro de un ZIP se ignora.
 
-Un content-type que no sepamos leer —o cuya dependencia opcional no esté
-instalada— marca el documento como ``unsupported`` **con su content-type**
-(``v103``), no como ``error``: son cosas distintas y sólo separadas se puede
-medir cuánta cobertura falta y de qué formato.
+Un content-type que no sepamos leer marca el documento como ``unsupported``
+**con su content-type** (``v103``), no como ``error``: son cosas distintas y
+sólo separadas se puede medir cuánta cobertura falta y de qué formato.
+
+Un content-type que sí sabemos leer pero cuya dependencia opcional falta **en
+este proceso** no es ninguna de las dos: la fila se queda ``pending``
+(:class:`ExtractorAusenteError`). Pasa en la imagen de la API, que extrae la
+ficha bajo demanda sin ``python-docx`` ni ``odfpy`` (traen ``lxml``, fuera de
+``requirements-api.in``); marcarla ``unsupported`` allí la sacaría para siempre
+del lote nocturno, que sí los tiene.
 
 Configuración del OCR (variables de entorno, leídas aquí y no en
 ``config/settings.py`` porque sólo las usa este módulo y sólo en el runner de
@@ -193,6 +199,15 @@ class UnsupportedDocumentError(DocumentFetchError):
     def __init__(self, mensaje: str, *, content_type: str | None) -> None:
         super().__init__(mensaje)
         self.content_type = content_type
+
+
+class ExtractorAusenteError(UnsupportedDocumentError):
+    """El formato se sabe leer, pero no en este proceso: falta su dependencia.
+
+    Subclase de :class:`UnsupportedDocumentError` porque para quien solo extrae
+    (``_extract_paginas``) es lo mismo: no hay páginas. Para quien persiste no:
+    ``fetch_and_extract`` deja la fila ``pending`` en vez de ``unsupported``.
+    """
 
 
 @placsp_breaker
@@ -535,7 +550,7 @@ def _importar_opcional(modulo: str, *, content_type: str, paquete: str) -> Any:
     try:
         return importlib.import_module(modulo)
     except ImportError as exc:
-        raise UnsupportedDocumentError(
+        raise ExtractorAusenteError(
             f"content-type {content_type!r} soportado pero {paquete} no está "
             "instalado (extra [pliegos] ausente)",
             content_type=content_type,
@@ -650,6 +665,10 @@ def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
             procesadas += 1
             try:
                 paginas.extend(_extraer_paginas_de_tipo(datos, tipo_interno))
+            except ExtractorAusenteError:
+                # No es un adjunto roto: saltarlo dejaría el ZIP `extracted`
+                # sin el DOCX de dentro, y ninguna pasada volvería a por él.
+                raise
             except DocumentFetchError as exc:
                 # Un adjunto roto dentro del ZIP no invalida los demás: mismo
                 # criterio fail-open que el lote diario.
@@ -821,10 +840,12 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
     objetos cuando hay uno configurado, y es de ahí de donde se re-extrae si la
     fuente deja de responder.
 
-    Devuelve ``"extracted"``, ``"error"``, ``"unsupported"`` o ``"skipped"`` —
-    para que el llamador (job de embeddings, F8) instrumente métricas sin releer
-    la fila. ``"skipped"`` significa que no se llegó a intentar nada (breaker
-    abierto): la fila se queda en ``pending`` y entra en el lote siguiente.
+    Devuelve ``"extracted"``, ``"error"``, ``"unsupported"``, ``"skipped"`` o
+    ``"skipped_no_extra"`` — para que el llamador (job de embeddings, F8)
+    instrumente métricas sin releer la fila. ``"skipped"`` significa que no se
+    llegó a intentar nada (breaker abierto) y ``"skipped_no_extra"`` que el
+    formato se sabe leer pero no en este proceso (:class:`ExtractorAusenteError`):
+    en los dos casos la fila se queda en ``pending`` y entra en el lote siguiente.
     ``"unsupported"`` es cobertura que falta, no un fallo.
     """
     from db.repositories.documentos import DocumentosRepository
@@ -900,6 +921,17 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
     try:
         paginas = _extract_paginas(content, content_type)
         texto = "\n".join(p.texto for p in paginas).strip()
+    except ExtractorAusenteError as e:
+        # Mismo trato que el breaker abierto: nada que decir de ESTE documento,
+        # solo de este proceso. La fila sigue ``pending`` para el lote nocturno
+        # (y el binario, si se guardó arriba, le ahorra la descarga).
+        log.info(
+            "document_fetch_skipped_extractor_ausente",
+            documento_id=documento_id,
+            content_type=e.content_type or content_type,
+            error=str(e),
+        )
+        return "skipped_no_extra"
     except UnsupportedDocumentError as e:
         log.info(
             "document_fetch_unsupported",

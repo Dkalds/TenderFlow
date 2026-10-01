@@ -107,9 +107,15 @@ def get_pagina(
     ``licitacion_id`` no es decorativo: acota el documento a la licitación de
     la ruta, de modo que un ``documento_id`` de otro expediente devuelve 404 en
     vez de servir el pliego de otro. La comprobación se hace sobre las páginas
-    que la propia licitación tiene, no sobre el id suelto.
+    que la propia licitación tiene, no sobre el id suelto. Las de una
+    republicación confirmada son las de su canónica, que es de donde cita su
+    ficha (:func:`services.dedupe.expediente_del_pliego`).
     """
-    paginas: list[dict[str, Any]] = _repo.list_pages_by_licitacion(licitacion_id)
+    from services.dedupe import expediente_del_pliego
+
+    paginas: list[dict[str, Any]] = _repo.list_pages_by_licitacion(
+        expediente_del_pliego(licitacion_id)
+    )
     del_documento = [p for p in paginas if int(p["documento_id"]) == documento_id]
     if not del_documento:
         return None

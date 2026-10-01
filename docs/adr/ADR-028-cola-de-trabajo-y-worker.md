@@ -124,6 +124,44 @@ reabre — en ese punto el canal worker→API deja de ser un coste sin motivo.
 `ficha-pliego/extract-async`, el export PDF grande y los embeddings a demanda
 **no** entran en esta excepción: no son streams que alguien esté leyendo.
 
+### G. Revisión 2026-10-01: la API consume la cola mientras no haya worker
+
+**Lo que pasó.** El servicio `tenderflow-worker` está declarado en
+`render.yaml`, pero el Blueprint nunca se vinculó (O0.2) y el servicio no
+existe: la API de Render lista uno solo, el de la API. Los jobs `ficha_pliego`
+se encolaban y nadie los reclamaba —siete `pending` con cero intentos, el más
+antiguo del 14 de septiembre— y la pestaña Pliego de una oportunidad decía
+«Extrayendo la ficha del pliego…» para siempre. Es el riesgo que este ADR ya
+nombraba («un worker parado deja la cola creciendo en silencio»), con un worker
+que no llegó a arrancar nunca. A la vez, la imagen de la API no traía
+`pybreaker` ni `tenacity`, así que la extracción que sí corría en la API (la
+de abrir una oportunidad, en `BackgroundTasks`) moría al importar el fetcher.
+
+**Decisión.** El dueño del plano **worker** pasa a ser «el servicio
+`APP_PROFILE=worker` si existe; si no, la propia API»:
+
+1. Con `APP_PROFILE=api` el lifespan arranca el mismo consumidor
+   (`scheduler/worker.py`, solo `TIPOS_A_DEMANDA`) cuando
+   `config.settings.jobs_consumidor_en_api` lo pide: por defecto en
+   `prod`/`staging`, nunca en `dev`/`test`. `JOBS_CONSUMIDOR_EN_API=0` lo apaga
+   el día que el worker dedicado esté sano; dos consumidores a la vez no son un
+   fallo (`SKIP LOCKED`). El plano de cron **no** se mueve: sigue siendo de
+   Actions o del worker (ADR-033), nunca de la API.
+2. `tenacity` y `pybreaker` pasan a `requirements-api.in`. `python-docx` y
+   `odfpy` no (traen `lxml`): un DOCX que la API descarga se queda `pending`
+   para el lote nocturno (`ExtractorAusenteError`), en vez de `unsupported`.
+3. Abrir una oportunidad encola el job en vez de usar `BackgroundTasks` (§D).
+
+**Lo que se acepta.** La extracción vuelve a compartir proceso con la API, que
+es lo que §A quería evitar; el parseo del PDF va en un proceso `spawn` aparte
+en `prod` (`scraper/document_fetcher.py`), así que lo que comparte es sobre todo
+la espera al LLM. Lo que **no** vuelve es lo peor de `BackgroundTasks`: el
+trabajo sigue siendo una fila con intentos, error y TTL, y un despliegue lo
+devuelve a `pending` en vez de perderlo.
+
+**Disparador de revisión:** crear `tenderflow-worker` en Render. En ese momento
+`JOBS_CONSUMIDOR_EN_API=0` en la API y este apartado queda como historia.
+
 ---
 
 ## Consecuencias

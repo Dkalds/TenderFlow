@@ -278,6 +278,23 @@ def test_forecast_y_partners_degradan_sin_statsmodels_ni_networkx(
     assert sonda_api["caminos"]["partners_comunidades"] == 0
 
 
+def test_la_api_puede_extraer_la_ficha_con_su_lockfile() -> None:
+    """ADR-028 §G: la API consume la cola a demanda y descarga pliegos.
+
+    Es la cadena que corre el job ``ficha_pliego`` (y la ruta síncrona
+    ``…/ficha-pliego/extract``): el handler, el servicio de la ficha y el
+    fetcher, que importa ``scraper.resilience`` al cargar. Hasta el 2026-10-01
+    ``pybreaker`` y ``tenacity`` no estaban en ``requirements-api.txt`` y toda
+    extracción en la API moría con ``No module named 'pybreaker'``; ningún test
+    lo veía porque ``api.app`` no importa nada de esto al arrancar.
+    """
+    _sonda(
+        ["api.app", "scheduler.worker", "services.rag.fact_sheet", "scraper.document_fetcher"],
+        lockfile=ROOT / "requirements-api.txt",
+        perfil="api",
+    )
+
+
 # ── Entrypoint worker ────────────────────────────────────────────────────────
 
 
