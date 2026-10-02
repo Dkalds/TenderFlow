@@ -50,6 +50,7 @@ from services.analytics.proyectos_modulos import (
 )
 from services.analytics.quality import QualityResult, get_quality
 from services.analytics.resumen import (
+    AmbitoResumen,
     ResumenHoyFilters,
     ResumenHoyResult,
     ResumenNovedadesResult,
@@ -60,7 +61,7 @@ from services.analytics.resumen import (
     TopLicitacionesFilters,
     TopLicitacionesResult,
     get_resumen_hoy,
-    get_resumen_novedades,
+    get_resumen_novedades_desde,
     get_sankey_flow,
     get_timeline_scatter,
     get_top_licitaciones,
@@ -93,6 +94,7 @@ from services.analytics.vencimientos import (
 from services.novedades import (
     NovedadesDesdeUltimaVisita,
     VisitaMarcada,
+    corte_ultima_visita,
     desde_ultima_visita,
 )
 from services.source_health import SourceFreshnessResult, get_source_freshness
@@ -130,12 +132,14 @@ def overview(
         max_length=100,
         description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
     ),
+    solo_abiertas: bool = Query(default=False, description="Sólo las que siguen abiertas"),
     _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> OverviewResult:
     """Return aggregated KPIs, breakdowns, and funnel data.
 
-    `importe_max`, `provincia` y `procedimiento` (F1.1) tienen la semántica del
-    listado (`GET /licitaciones`): el mismo filtro acota los KPIs y la tabla.
+    `importe_max`, `provincia`, `procedimiento` (F1.1) y `solo_abiertas` tienen
+    la semántica del listado (`GET /licitaciones`): el mismo filtro acota los
+    KPIs y la tabla.
     """
     filters = OverviewFilters(
         fecha_desde=fecha_desde,
@@ -148,6 +152,7 @@ def overview(
         importe_max=importe_max,
         provincia=provincia,
         procedimiento=procedimiento,
+        solo_abiertas=solo_abiertas,
     )
     return get_overview(filters)
 
@@ -159,6 +164,21 @@ def trends(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    estado: str | None = Query(default=None, description="Filter by estado"),
+    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    importe_max: float | None = Query(
+        default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
+    ),
+    provincia: str | None = Query(
+        default=None, max_length=200, description="Provincia (multi-valor, separadas por comas)"
+    ),
+    procedimiento: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
+    ),
+    solo_abiertas: bool = Query(default=False, description="Sólo las que siguen abiertas"),
     group_by: Literal["month", "week", "day"] = Query(
         default="month",
         description=(
@@ -185,6 +205,13 @@ def trends(
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        estado=estado,
+        q=q,
+        importe_min=importe_min,
+        importe_max=importe_max,
+        provincia=provincia,
+        procedimiento=procedimiento,
+        solo_abiertas=solo_abiertas,
         group_by=group_by,
     )
     return get_trends(filters)
@@ -550,12 +577,66 @@ def pipeline(
 
 
 @router.get("/resumen/novedades", response_model=ResumenNovedadesResult)
-@cache_response(ttl=120)
-def resumen_novedades(
-    _user: dict[str, Any] = Depends(require_analytics_auth),
+async def resumen_novedades(
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    estado: str | None = Query(default=None, description="Filter by estado"),
+    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    importe_max: float | None = Query(
+        default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
+    ),
+    provincia: str | None = Query(
+        default=None, max_length=200, description="Provincia (multi-valor, separadas por comas)"
+    ),
+    procedimiento: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
+    ),
+    solo_abiertas: bool = Query(default=False, description="Sólo las que siguen abiertas"),
+    ctx: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ResumenNovedadesResult:
-    """New licitaciones since user's last visit."""
-    return get_resumen_novedades(_user["user_id"])
+    """Licitaciones publicadas desde tu última visita, en el ámbito pedido.
+
+    La última visita es la misma que la de `/resumen/desde-mi-ultima-visita`
+    —la marca de `notification_reads`, con el mismo tope de 14 días—, así que
+    `desde` coincide con el de esa banda y «marcar todo como visto» mueve las
+    dos. Sin última visita, el corte es el tope.
+
+    Acepta el ámbito entero de la barra de filtros, como `/resumen/hoy`: es la
+    cifra de «Nuevas» de la banda «Mercado abierto». Sin filtros, el mercado
+    entero.
+
+    **No se cachea**, por lo mismo que aquella: el corte se mueve con cada
+    lectura y con cada «marcar todo como visto».
+    """
+
+    def _trabajo() -> ResumenNovedadesResult:
+        ambito = AmbitoResumen(
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            estado=estado,
+            q=q,
+            importe_min=importe_min,
+            importe_max=importe_max,
+            provincia=provincia,
+            procedimiento=procedimiento,
+            solo_abiertas=solo_abiertas,
+        )
+        user_id = ctx.get("user_id")
+        last_seen = get_last_seen_ts(
+            str(ctx["user_key"]),
+            user_id=int(user_id) if user_id is not None else None,
+        )
+        desde, _recortada = corte_ultima_visita(last_seen)
+        return get_resumen_novedades_desde(desde.isoformat(), ambito)
+
+    return await run_db(_trabajo)
 
 
 @router.get(
@@ -637,14 +718,42 @@ def resumen_hoy(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    estado: str | None = Query(default=None, description="Filter by estado"),
+    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    importe_max: float | None = Query(
+        default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
+    ),
+    provincia: str | None = Query(
+        default=None, max_length=200, description="Provincia (multi-valor, separadas por comas)"
+    ),
+    procedimiento: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
+    ),
+    solo_abiertas: bool = Query(default=False, description="Sólo las que siguen abiertas"),
     _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ResumenHoyResult:
-    """Para hoy — calientes, vencimientos, nuevas."""
+    """Para hoy — calientes, vencimientos, nuevas.
+
+    Acepta el ámbito entero de la barra de filtros, con la semántica del
+    listado (`GET /licitaciones`): la tarjeta y el listado que abre miden lo
+    mismo. `vencen_48h` cuenta solo las abiertas, e `importe_p75` es el umbral
+    del ámbito con el que se contó `calientes`.
+    """
     filters = ResumenHoyFilters(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        estado=estado,
+        q=q,
+        importe_min=importe_min,
+        importe_max=importe_max,
+        provincia=provincia,
+        procedimiento=procedimiento,
+        solo_abiertas=solo_abiertas,
     )
     return get_resumen_hoy(filters)
 
@@ -656,6 +765,21 @@ def resumen_timeline(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    estado: str | None = Query(default=None, description="Filter by estado"),
+    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    importe_max: float | None = Query(
+        default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
+    ),
+    provincia: str | None = Query(
+        default=None, max_length=200, description="Provincia (multi-valor, separadas por comas)"
+    ),
+    procedimiento: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
+    ),
+    solo_abiertas: bool = Query(default=False, description="Sólo las que siguen abiertas"),
     muestra: bool = Query(
         default=False,
         description=(
@@ -674,6 +798,13 @@ def resumen_timeline(
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        estado=estado,
+        q=q,
+        importe_min=importe_min,
+        importe_max=importe_max,
+        provincia=provincia,
+        procedimiento=procedimiento,
+        solo_abiertas=solo_abiertas,
         muestrear=muestra,
     )
     return get_timeline_scatter(filters)

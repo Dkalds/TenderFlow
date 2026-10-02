@@ -61,10 +61,13 @@ no absorben ninguna ruta heredada y no aparecen en la tabla de redirects.
 
 - **Resumen** (`/resumen`) — de dentro hacia fuera: **Tu día** (compromisos de
   la organización, `GET /pursuits/agenda`), el mercado abierto con el destino
-  real de cada tarjeta en su pie, contexto y salud competitiva en tiras, la
-  composición por estado/órgano que el payload ya traía sin pintar, las
-  publicaciones y los movimientos. Cada banda pide su dato y pinta su error.
-  El detalle de qué mentía y por qué, en los docstrings de `_components/`.
+  real de cada tarjeta en su pie, una tira de contexto de tres cifras, la
+  composición por estado que el payload ya traía sin pintar, las
+  publicaciones y los movimientos. Cada banda pide su dato y pinta su error, y
+  todas aplican el ámbito entero de la barra. La tira de salud competitiva y el
+  corte por órgano se retiraron el 2026-10-02: repetían Mercado y Competencia
+  en la pantalla que dice qué hacer hoy. El detalle de qué mentía y por qué, en
+  los docstrings de `_components/`.
 - **Radar** (`/radar`) — consola de decisión: J/K para recorrer, S seguir,
   X descartar con deshacer, ⏎ abrir oportunidad, inspector siguiendo a la
   selección.

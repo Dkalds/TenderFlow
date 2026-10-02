@@ -37,7 +37,13 @@ log = get_logger(__name__)
 
 _repo = NovedadesRepository()
 
-__all__ = ["Novedad", "NovedadesDesdeUltimaVisita", "VisitaMarcada", "desde_ultima_visita"]
+__all__ = [
+    "Novedad",
+    "NovedadesDesdeUltimaVisita",
+    "VisitaMarcada",
+    "corte_ultima_visita",
+    "desde_ultima_visita",
+]
 
 #: Ventana máxima hacia atrás. Sin tope, la primera visita de alguien que
 #: llevaba tres meses fuera traería tres meses de cambios y el diff dejaría de
@@ -118,6 +124,35 @@ def _campos(raw: Any) -> list[str]:
     return [p.strip() for p in texto.split(",") if p.strip()]
 
 
+def corte_ultima_visita(last_seen: str | None) -> tuple[datetime, bool]:
+    """Desde cuándo mira el Resumen, y si ese corte se recortó al tope.
+
+    ``last_seen`` es la última visita (:func:`db.notifications.get_last_seen_ts`).
+    Sin ella —primera visita, o un valor ilegible— el corte es el tope de
+    :data:`DIAS_MAXIMOS`; con una anterior al tope, también, y entonces
+    ``recortada`` es ``True``.
+
+    Es función aparte porque el Resumen tiene dos bandas «desde tu última
+    visita» —lo que sigues (:func:`desde_ultima_visita`) y las licitaciones
+    nuevas del mercado (``/analytics/resumen/novedades``)— y las dos tienen que
+    decir **la misma fecha**: con dos cortes distintos la pantalla afirmaba dos
+    últimas visitas a la vez, y «Marcar todo como visto» solo movía una.
+    """
+    tope = datetime.now(UTC) - timedelta(days=DIAS_MAXIMOS)
+    if not last_seen:
+        return tope, False
+    try:
+        marcado = datetime.fromisoformat(str(last_seen).replace("Z", "+00:00"))
+    except ValueError:
+        log.warning("novedades_last_seen_invalido", valor=str(last_seen)[:40])
+        return tope, False
+    if marcado.tzinfo is None:
+        marcado = marcado.replace(tzinfo=UTC)
+    if marcado < tope:
+        return tope, True
+    return marcado, False
+
+
 def desde_ultima_visita(
     user_key: str,
     *,
@@ -139,21 +174,7 @@ def desde_ultima_visita(
     esconder los documentos nuevos. Es la misma decisión que toman el Radar y
     la búsqueda global, por el mismo motivo.
     """
-    tope = datetime.now(UTC) - timedelta(days=DIAS_MAXIMOS)
-    desde = tope
-    recortada = False
-    if last_seen:
-        try:
-            marcado = datetime.fromisoformat(str(last_seen).replace("Z", "+00:00"))
-            if marcado.tzinfo is None:
-                marcado = marcado.replace(tzinfo=UTC)
-            if marcado < tope:
-                recortada = True
-            else:
-                desde = marcado
-        except ValueError:
-            log.warning("novedades_last_seen_invalido", valor=str(last_seen)[:40])
-
+    desde, recortada = corte_ultima_visita(last_seen)
     desde_iso = desde.isoformat()
     items: list[Novedad] = []
 

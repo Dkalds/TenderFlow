@@ -53,16 +53,38 @@ class ResumenNovedadesResult(BaseModel):
     # parte de las filas es peor que no marcar ninguna, porque la ausencia de
     # marca se lee como "esta no es nueva". Publicando el corte, el cliente
     # compara `fecha_publicacion >= desde` y acierta en todas.
-    # `None` cuando no hay corte que publicar (usuario sin `last_login`, o
-    # ilegible): el cliente entonces no marca nada, que es la salida segura.
+    # El Resumen siempre recibe uno (la última visita, o el tope de 14 días).
+    # `None` solo en la ruta de la campana, que aún lee `users.last_login`, una
+    # columna que no existe: el cliente entonces no marca nada, que es la
+    # salida segura.
     desde: str | None = None
 
 
-class ResumenHoyFilters(BaseModel):
+class AmbitoResumen(BaseModel):
+    """El ámbito entero de la barra de filtros, tal como lo aplica el listado.
+
+    ``/resumen/hoy`` y ``/resumen/timeline`` solo declaraban fecha, CCAA y
+    tecnología; el resto del ámbito viajaba en la query y FastAPI lo descartaba
+    sin decir nada. Con un chip de estado o una búsqueda activos, la banda de
+    «Mercado abierto» y las publicaciones contaban otro universo que la tira de
+    contexto de al lado, y la pantalla tenía que avisarlo panel por panel.
+    """
+
     fecha_desde: date | None = None
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
+    estado: str | None = None
+    q: str | None = None
+    importe_min: float | None = None
+    importe_max: float | None = None
+    provincia: str | None = None
+    procedimiento: str | None = None
+    solo_abiertas: bool = False
+
+
+class ResumenHoyFilters(AmbitoResumen):
+    pass
 
 
 class ResumenHoyResult(BaseModel):
@@ -80,21 +102,18 @@ class ResumenHoyResult(BaseModel):
     # que lo enseña pueda abrir su listado (`importe_min=<p75>&solo_abiertas=true`)
     # en vez de un listado más ancho que la cifra.
     #
-    # `None` cuando el P75 usado **no** es el global: con ámbito activo el
-    # percentil se recalcula sobre el subconjunto filtrado dentro de la propia
-    # query de agregación (`aggregates.overview_para_hoy`, CTE `p75`) y no sale
-    # de ella. Publicar ahí el P75 global sería peor que no publicar nada: el
-    # enlace cortaría por un umbral que no es el que produjo el número. El
-    # consumidor debe tratar el `None` como "no puedo enlazar exacto", nunca
-    # como cero.
+    # Con ámbito activo es el P75 **del ámbito**: la CTE `p75` de
+    # `aggregates.overview_para_hoy` lo calcula sobre el subconjunto filtrado y
+    # ahora sale de la query. Antes no salía y aquí llegaba `None`, así que con
+    # cualquier chip puesto —el caso normal de quien trabaja una tecnología— la
+    # tarjeta abría un listado más ancho que su cifra.
+    #
+    # `None` solo cuando el ámbito no tiene ningún importe. El consumidor debe
+    # tratarlo como "no puedo enlazar exacto", nunca como cero.
     importe_p75: float | None = None
 
 
-class TimelineScatterFilters(BaseModel):
-    fecha_desde: date | None = None
-    fecha_hasta: date | None = None
-    ccaa: str | None = None
-    tecnologia: str | None = None
+class TimelineScatterFilters(AmbitoResumen):
     #: Reparte las filas por toda la ventana en vez de devolver las más
     #: recientes. Lo pide la nube de puntos; la tabla de «últimas
     #: publicaciones» necesita justo lo contrario y por eso es opt-in.
@@ -173,11 +192,12 @@ class TopLicitacionesResult(BaseModel):
 
 
 def _to_repo_filters(filters: Any) -> LicitacionesFilters:
-    """Traduce los filtros del endpoint (fecha_desde/hasta, ccaa, tecnologia).
+    """Traduce los filtros del endpoint a :class:`LicitacionesFilters`.
 
-    Los tres DTOs de filtros de este módulo comparten esos cuatro campos; el
-    resto de campos de :class:`LicitacionesFilters` no los expone ningún
-    endpoint de resumen.
+    Todos los DTOs de filtros de este módulo traen fecha, CCAA y tecnología;
+    los de ``/resumen/hoy`` y ``/resumen/timeline`` traen además el resto del
+    ámbito (:class:`AmbitoResumen`). Los deprecados (sankey, top) no, y por eso
+    se lee con ``getattr``: un campo ausente es un filtro que no se aplica.
     """
     fecha_desde = getattr(filters, "fecha_desde", None)
     fecha_hasta = getattr(filters, "fecha_hasta", None)
@@ -186,6 +206,13 @@ def _to_repo_filters(filters: Any) -> LicitacionesFilters:
         tecnologia=getattr(filters, "tecnologia", None),
         fecha_desde=fecha_desde.isoformat() if fecha_desde else None,
         fecha_hasta=fecha_hasta.isoformat() if fecha_hasta else None,
+        estado=getattr(filters, "estado", None),
+        q=getattr(filters, "q", None),
+        importe_min=getattr(filters, "importe_min", None),
+        importe_max=getattr(filters, "importe_max", None),
+        provincia=getattr(filters, "provincia", None),
+        procedimiento=getattr(filters, "procedimiento", None),
+        solo_abiertas=bool(getattr(filters, "solo_abiertas", False)),
     )
 
 
@@ -215,8 +242,31 @@ def get_resumen_novedades(user_id: int) -> ResumenNovedadesResult:
     if pd.isna(ts):
         return ResumenNovedadesResult()
 
-    desde_iso = ts.isoformat()
-    count, rows = _repo.resumen_novedades(desde_iso=desde_iso, sample_limit=_NOVEDADES_SAMPLE)
+    return get_resumen_novedades_desde(ts.isoformat())
+
+
+def get_resumen_novedades_desde(
+    desde_iso: str, filters: AmbitoResumen | None = None
+) -> ResumenNovedadesResult:
+    """Licitaciones publicadas desde ``desde_iso``, en el ámbito ``filters``.
+
+    Es lo que pide el Resumen (``/analytics/resumen/novedades``), con el corte
+    ya resuelto por la ruta: la última visita de ``notification_reads``, la
+    misma que usa la banda «desde tu última visita»
+    (:func:`services.novedades.corte_ultima_visita`). Sin ``filters``, el
+    mercado entero.
+
+    :func:`get_resumen_novedades` —por ``user_id``— lee ``users.last_login``,
+    una columna que ninguna migración crea: siempre devuelve vacío. El Resumen
+    dejó de usarla porque decía «Todo al día» sin haber mirado nada; la
+    campana (``/notifications``) aún la llama.
+    """
+    log.info("analytics_resumen_novedades_desde_start")
+    count, rows = _repo.resumen_novedades(
+        _to_repo_filters(filters) if filters is not None else None,
+        desde_iso=desde_iso,
+        sample_limit=_NOVEDADES_SAMPLE,
+    )
     sample = [
         ResumenNovedadesSample(
             id_externo=str(row["id_externo"]),
@@ -259,10 +309,9 @@ def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:
         vencen_48h=counts["vencen_48h"],
         nuevas_24h=counts["nuevas_24h"],
         total_activas=counts["total_activas"],
-        # El P75 del snapshot solo existe cuando el ámbito es la tabla entera (la
-        # variante por tecnología lo trae a `None`), que es justo el caso en
-        # que **es** el que usó el contador de arriba.
-        importe_p75=snap.importe_p75 if snap is not None else None,
+        # El umbral que usó el contador de arriba, venga del snapshot (tabla
+        # entera) o de la CTE del ámbito filtrado.
+        importe_p75=counts["importe_p75"],
     )
     log.info("analytics_resumen_hoy_done")
     return result

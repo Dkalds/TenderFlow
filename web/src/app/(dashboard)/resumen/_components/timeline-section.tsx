@@ -15,8 +15,8 @@ import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { TimelineScatterResult } from "@/lib/api-types";
 import { ITEMS_PER_PAGE, TIMELINE_MAX, esNueva, type TimelineItem } from "./types";
+import { useNovedades } from "../_hooks/use-novedades";
 import { PublicacionesPanel } from "./publicaciones-panel";
-import { NovedadesBanner, useNovedades } from "./novedades-banner";
 
 /**
  * Publicaciones del periodo: el panel de cortes y la tabla que lo desglosa.
@@ -27,10 +27,10 @@ import { NovedadesBanner, useNovedades } from "./novedades-banner";
  * y el tope del endpoint declarado, porque «1–10 de 1.000» se leía como el
  * total del ámbito cuando es el techo de `/resumen/timeline`.
  *
- * La línea de novedades entra aquí, encima de lo que desglosa: antes vivía en
- * la banda urgente de arriba y repetía, en forma de muestra, filas que esta
- * misma tabla ya enseñaba. Ahora el recuento se queda en una línea y **son las
- * filas las que se marcan**, con el punto de `esNueva`.
+ * **Las filas nuevas** (después de tu última visita) llevan el punto de
+ * `esNueva`, con su leyenda en la cabecera cuando hay alguna. El recuento es la
+ * tarjeta «Nuevas» de «Mercado abierto», mismo corte y mismo ámbito
+ * (`_hooks/use-novedades.ts`).
  */
 
 /**
@@ -108,18 +108,29 @@ export function TimelineSection() {
     setPubPage(0);
   };
 
+  const hayNuevas = useMemo(
+    () => items.some((item) => esNueva(item.fecha_publicacion, corteNovedades)),
+    [items, corteNovedades],
+  );
+
   const totalPubPages = Math.max(1, Math.ceil(sortedPubs.length / ITEMS_PER_PAGE));
   const pagedPubs = sortedPubs.slice(pubPage * ITEMS_PER_PAGE, (pubPage + 1) * ITEMS_PER_PAGE);
 
   return (
     <div className="mb-5.5 flex flex-col gap-3.5">
-      <NovedadesBanner data={novedades.data} isLoading={novedades.isLoading} />
-
       <PublicacionesPanel />
 
       <Panel>
         <PanelTitle
           title="Últimas publicaciones"
+          hint={
+            hayNuevas ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 flex-none rounded-full bg-primary" aria-hidden="true" />
+                nuevas desde tu última visita
+              </span>
+            ) : undefined
+          }
           actions={
             <span className="tf-tnum text-tf-micro text-muted-foreground">
               {sortedPubs.length === 0

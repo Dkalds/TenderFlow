@@ -7,10 +7,10 @@ import { Check } from "lucide-react";
 import { EnlaceIr, PanelError, SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithAuth } from "@/lib/api-client";
+import { useFilterParams } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { LicitacionSummary, LicitacionesCursorPage } from "@/lib/api-types";
-import { useFiltrosDeResumen } from "./alcance";
 
 /**
  * «Vencen en 48 horas» — la cola de cierre, no su recuento.
@@ -24,15 +24,16 @@ import { useFiltrosDeResumen } from "./alcance";
  * Tres decisiones que no son de maquetación:
  *
  * 1. **La lista mide lo mismo que el número.** El contador sale de
- *    `/analytics/resumen/hoy`, que sólo aplica cuatro de los siete filtros del
- *    ámbito; `GET /licitaciones/cursor` los aplica todos. Mandarle el ámbito entero
- *    dejaría la lista más estrecha que su propio encabezado —«37» sobre cuatro
- *    filas que sobrevivieron a un chip de estado—, así que se le manda el mismo
- *    recorte que aplicó el contador (`useFiltrosDeResumen`).
- * 2. **Sin `solo_abiertas`.** `vencen_48h` cuenta por `fecha_limite` dentro de
- *    la ventana **sin** guardia de estado (`db/repositories/aggregates.py`, el
- *    `COUNT(*) FILTER` de `vencen_48h`), al revés que `calientes_hoy`. Añadirlo
- *    aquí enseñaría menos filas de las que promete el número.
+ *    `/analytics/resumen/hoy` y la lista de `GET /licitaciones/cursor`, y los
+ *    dos aplican el ámbito entero con la misma semántica, así que se le manda
+ *    tal cual. Antes el contador solo aplicaba fecha, CCAA y tecnología, y la
+ *    lista tenía que recortar el ámbito para no quedarse más estrecha que su
+ *    propio encabezado.
+ * 2. **Solo abiertas, en los dos lados.** `vencen_48h` cuenta con la guardia
+ *    de estado (`db/repositories/aggregates.py`) y la lista pide
+ *    `solo_abiertas`. Contaba sin ella, y una licitación anulada o ya
+ *    adjudicada con plazo mañana salía en rojo en una cola a la que nadie se
+ *    puede presentar.
  * 3. **Las horas se redondean hacia abajo.** «9 h» y no «9,4 h»: es un plazo
  *    que se agota, y redondear hacia arriba regala tiempo que no existe.
  */
@@ -101,7 +102,7 @@ export function ColaCierre({
   target: string;
   className?: string;
 }) {
-  const filtros = useFiltrosDeResumen();
+  const filtros = useFilterParams();
 
   // Ventana de la consulta: de hoy a pasado mañana. El recorte es por día y el
   // contador por hora —los parámetros aceptan fecha, no timestamp—, así que la
@@ -120,7 +121,7 @@ export function ColaCierre({
   // del cursor, sin pagar un COUNT(*). El listado por offset que esto usaba
   // se retira (RFC 2026-09-06); el cursor acepta los mismos filtros.
   const params = useMemo(
-    () => ({ ...filtros, ...ventana, limit: String(TECHO) }),
+    () => ({ ...filtros, ...ventana, solo_abiertas: "true", limit: String(TECHO) }),
     [filtros, ventana],
   );
 

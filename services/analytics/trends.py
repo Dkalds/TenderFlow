@@ -56,6 +56,16 @@ class TrendsFilters(BaseModel):
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
+    # El resto del ámbito de la barra de filtros, con la semántica del listado.
+    # Sin ellos, el ritmo de publicaciones del Resumen y la vista Tiempo de
+    # Mercado contaban fuera de un chip de estado o de una búsqueda activos.
+    estado: str | None = None
+    q: str | None = None
+    importe_min: float | None = None
+    importe_max: float | None = None
+    provincia: str | None = None
+    procedimiento: str | None = None
+    solo_abiertas: bool = False
     group_by: TrendsFreq = Field(
         default="month",
         description=(
@@ -138,6 +148,13 @@ def _to_repo_filters(filters: TrendsFilters) -> LicitacionesFilters:
         fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
         ccaa=filters.ccaa,
         tecnologia=filters.tecnologia,
+        estado=filters.estado,
+        q=filters.q,
+        importe_min=filters.importe_min,
+        importe_max=filters.importe_max,
+        provincia=filters.provincia,
+        procedimiento=filters.procedimiento,
+        solo_abiertas=filters.solo_abiertas,
     )
 
 

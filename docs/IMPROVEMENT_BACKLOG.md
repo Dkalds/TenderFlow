@@ -721,6 +721,13 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P3 — Nice to have
 
+### [P3] La campana nunca lista novedades de licitaciones: lee `users.last_login`, que no existe
+- **Área:** api/routes/notifications.py, services/analytics/resumen.py (`get_resumen_novedades`)
+- **Problema:** `GET /notifications` rellena `items` (y su parte de `unread_count`) con `get_resumen_novedades(user_id)`, que cuenta desde `users.last_login`. Ninguna migración crea esa columna, así que `items` sale vacío siempre. Los tests de `tests/test_analytics_resumen.py` no lo ven porque sustituyen `get_user_by_id` por un mock que sí la trae. El Resumen tenía el mismo fallo —«Todo al día» siempre— y se arregló el 2026-10-02 contando desde la última visita de `notification_reads` (`get_resumen_novedades_desde` + `services.novedades.corte_ultima_visita`).
+- **Por qué no se arregló con el Resumen:** no es solo un bug. Con la misma marca, la campana pasaría de cero a enseñar hasta diez licitaciones del **mercado entero** como no leídas, y como leer una mueve la marca, el número volvería a diez en cuanto se publicaran más: un contador que nunca baja. Antes de arreglarlo hay que decidir si la campana debe listar novedades de mercado (¿acotadas al ámbito de la organización?) o retirar `items` y dejarla en alertas.
+- **Acceptance criteria:** decisión tomada; o bien `items` sale de la marca de última visita con un alcance que tenga sentido para una campana, o bien se retira junto con `get_resumen_novedades` por `user_id`. Ningún camino lee `users.last_login`.
+- **Riesgo:** bajo.
+
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios
 - **Problema:** lo que la rama no pudo cerrar por falta de build, de permiso o de alcance:
