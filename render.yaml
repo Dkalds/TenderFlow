@@ -255,8 +255,21 @@ services:
       # corre sin captura de errores ni trazas.
       - key: SENTRY_DSN
         sync: false
+      # ADR-028 §G: mientras `tenderflow-worker` no exista, ESTE servicio
+      # consume la cola a demanda (la ficha del pliego, los embeddings de un
+      # expediente, el PDF grande) en un hilo propio. Sin definir = consume en
+      # prod. Poner `0` desde el dashboard cuando el worker esté sano. `sync:
+      # false` por lo mismo que `SCHEDULER_PLANE`: que un despliegue del
+      # Blueprint no apague el único consumidor sin que nadie lo decida.
+      - key: JOBS_CONSUMIDOR_EN_API
+        sync: false
 
   # ── Worker de la cola de trabajo (S5.3, decisión D14) ───────────────────
+  # **No existe en Render** (verificado por su API el 2026-09-30: el único
+  # servicio es la API). Durante dos semanas los jobs `ficha_pliego` se
+  # encolaron sin que nadie los reclamara; desde ADR-028 §G los consume la API
+  # (`JOBS_CONSUMIDOR_EN_API`, arriba) hasta que este bloque se cree.
+  #
   # Consume `jobs` (v106): lo que un usuario pide y no cabe en una request —la
   # ficha del pliego, los embeddings de un expediente abierto, el PDF de una
   # exportación grande—. Hasta ahora eso corría en los BackgroundTasks del

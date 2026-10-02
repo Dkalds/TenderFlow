@@ -15,6 +15,14 @@ import pytest
 from services.rag import paginas as mod
 
 
+@pytest.fixture(autouse=True)
+def _sin_republicaciones(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ninguna licitación de aquí es republicación de otra: su pliego es el suyo."""
+    monkeypatch.setattr(
+        "services.dedupe.expediente_del_pliego", lambda licitacion_id: licitacion_id
+    )
+
+
 @pytest.fixture
 def repo_falso(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     """Dos páginas de un documento y una de otro de la misma licitación.

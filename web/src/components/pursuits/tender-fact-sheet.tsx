@@ -283,6 +283,14 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
           </div>
         ) : (
           <div className="space-y-5">
+            {/* Un anuncio TED que reenvía un expediente de PLACSP no trae pliegos:
+                la API devuelve la ficha del expediente original, y se dice. */}
+            {record.licitacion_id !== licitacionId && (
+              <Aviso tone="info" role="note">
+                Pliegos del expediente original {record.licitacion_id}: esta licitación es su republicación y no publica
+                documentos propios.
+              </Aviso>
+            )}
             {record.status === "needs_review" && (
               <Aviso tone="warning" role="note">
                 Se han descartado campos sin una cita verificable, o que el pliego devolvió en un

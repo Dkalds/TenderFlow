@@ -2586,6 +2586,9 @@ export interface paths {
          *     licitación — sin el texto extraído, que solo usa internamente el pipeline
          *     RAG ("Preguntar al copilot"). Lista vacía si aún no se procesó ningún
          *     documento (no todas las fuentes/licitaciones tienen adjuntos parseados).
+         *
+         *     Los de una republicación confirmada (un anuncio TED del mismo contrato) son
+         *     los de su canónica: TED no trae adjuntos, y son los que cita su ficha.
          */
         get: operations["get_documentos_api_v1_licitaciones__id_externo__documentos_get"];
         put?: never;
@@ -4210,7 +4213,7 @@ export interface paths {
          * @description Abre una oportunidad; reintentar la misma licitación no duplica.
          *
          *     Abrirla es la señal de demanda más fuerte que existe, así que si el
-         *     expediente no tiene ficha del pliego se lanza su extracción en background
+         *     expediente no tiene ficha del pliego se encola su extracción
          *     (``PLIEGO_FACTS_ON_PURSUIT``): quien acaba de comprometerse abrirá la
          *     pestaña Pliego hoy, no cuando el lote nocturno llegue a ese expediente.
          */
