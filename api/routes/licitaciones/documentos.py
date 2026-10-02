@@ -74,8 +74,14 @@ async def get_documentos(
     licitación — sin el texto extraído, que solo usa internamente el pipeline
     RAG ("Preguntar al copilot"). Lista vacía si aún no se procesó ningún
     documento (no todas las fuentes/licitaciones tienen adjuntos parseados).
+
+    Los de una republicación confirmada (un anuncio TED del mismo contrato) son
+    los de su canónica: TED no trae adjuntos, y son los que cita su ficha.
     """
-    items = await run_db(_doc_repo.list_by_licitacion, id_externo)
+    from services.dedupe import expediente_del_pliego
+
+    pliego = await run_db(expediente_del_pliego, id_externo)
+    items = await run_db(_doc_repo.list_by_licitacion, pliego)
     return DocumentosResult(
         id_externo=id_externo,
         items=[DocumentoSummary.model_validate(d) for d in items],

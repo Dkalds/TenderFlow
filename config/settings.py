@@ -649,7 +649,10 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # siempre.
     PLIEGO_FETCH_MAX_SECONDS: int = 1200
     PLIEGO_EMBED_MAX_SECONDS: int = 900
-    PLIEGO_FACTS_MAX_SECONDS: int = 600
+    # 30 min desde tender-facts-v6 (2026-09-28): con contexto de ~16k tokens y
+    # salida de hasta 8k, cada ficha tarda de 40 a 110 s, y los 10 min de antes
+    # solo daban para 6-10 fichas por noche frente a un lote de 25.
+    PLIEGO_FACTS_MAX_SECONDS: int = 1800
     # Tamaño del lote de licitaciones puntuadas por corrida de la fase de
     # señal de tecnología (keywords sobre el texto del pliego).
     PLIEGO_TECH_SIGNAL_BATCH: int = 500
@@ -1487,6 +1490,31 @@ def jobs_worker_poll_segundos() -> float:
 
 def jobs_export_umbral_filas() -> int:
     return _entero_env("JOBS_EXPORT_UMBRAL_FILAS", JOBS_EXPORT_UMBRAL_FILAS_DEFAULT, minimo=1)
+
+
+def jobs_consumidor_en_api(env: str) -> bool:
+    """¿El proceso de la API consume él mismo la cola a demanda? (ADR-028 §G)
+
+    ADR-028 da la cola a demanda (la ficha del pliego, los embeddings de un
+    expediente, el PDF grande) a un servicio ``tenderflow-worker`` que nunca se
+    llegó a crear en Render: hasta el 2026-10-01 los jobs ``ficha_pliego`` se
+    encolaban y nadie los reclamaba, y la pestaña Pliego decía «Extrayendo…»
+    para siempre. Mientras ese servicio no exista, la API los consume en un
+    hilo propio.
+
+    Por defecto sí en ``prod``/``staging`` y no en el resto: en ``dev`` y
+    ``test`` un hilo reclamando jobs desde el lifespan de cada ``TestClient``
+    ejecutaría handlers reales en mitad de tests que encolan para mirar la
+    fila. ``JOBS_CONSUMIDOR_EN_API=0`` lo apaga en cuanto el worker dedicado
+    exista (``render.yaml`` lo declara ``sync: false`` en ``tenderflow-api``:
+    lo decide el dashboard); ``=1`` lo enciende en local. Dos consumidores a la
+    vez no son un fallo —``SKIP LOCKED``—: apagarlo solo devuelve ese trabajo a
+    su proceso.
+    """
+    crudo = os.environ.get("JOBS_CONSUMIDOR_EN_API", "").strip().lower()
+    if not crudo:
+        return env in ("prod", "staging")
+    return crudo not in ("0", "false", "no", "off")
 
 
 def jobs_cierre_por_cola() -> bool:

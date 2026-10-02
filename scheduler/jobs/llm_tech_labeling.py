@@ -50,10 +50,12 @@ los pasos post-ingesta y el lock diario lo toma el primero que llegue.
 
 from __future__ import annotations
 
+import argparse
 import json
 from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
+from services.ml.muestra_estratificada import SEMILLA_POR_DEFECTO
 
 if TYPE_CHECKING:
     from services.llm_tech_labeling import Clasificacion
@@ -149,8 +151,26 @@ def batch_failed_systemically(counts: dict[str, Any]) -> bool:
     return bool(counts["error"]) and not procesadas
 
 
-def run() -> dict[str, Any]:
-    """Clasifica un lote de licitaciones pendientes. Fail-open por item."""
+def run(*, muestra: int | None = None, semilla: str = SEMILLA_POR_DEFECTO) -> dict[str, Any]:
+    """Clasifica un lote de licitaciones pendientes. Fail-open por item.
+
+    Sin ``muestra`` (``None``), recorre el backlog de lo más nuevo a lo más
+    viejo -- comportamiento de siempre, acotado por ``LLM_TECH_LABELING_BATCH``
+    -- que es lo que sigue llamando el paso diario de la pipeline
+    (``scheduler/pipeline_runs.py``).
+
+    Con ``muestra``, en cambio, clasifica la muestra estratificada de F2
+    (spec §3.2, D3): calcula el tamaño de cada estrato
+    (:meth:`TecnologiaPliegoRepository.tamanos_estratos_muestra`), reparte
+    ``muestra`` proporcionalmente entre ellos
+    (:func:`services.ml.muestra_estratificada.repartir_cuotas`) y clasifica
+    lo pendiente de esa muestra ENTERA
+    (:meth:`TecnologiaPliegoRepository.list_muestra_pending_llm_signal`) --
+    sin el tope de ``LLM_TECH_LABELING_BATCH``, porque este camino es el
+    drenado manual de un lote ya acotado por diseño; el guard de presupuesto
+    sigue vigilando cada llamada igual que en el backlog. Es resumible:
+    ``semilla`` fija el universo seleccionado entre corridas.
+    """
     from config import settings
 
     counts: dict[str, Any] = {
@@ -195,9 +215,21 @@ def run() -> dict[str, Any]:
     repo = TecnologiaPliegoRepository()
     guard = get_budget_guard()
 
-    pendientes = repo.list_metadata_pending_llm_signal(
-        signal_version=version, method=METHOD, limit=settings.LLM_TECH_LABELING_BATCH
-    )
+    if muestra is None:
+        pendientes = repo.list_metadata_pending_llm_signal(
+            signal_version=version, method=METHOD, limit=settings.LLM_TECH_LABELING_BATCH
+        )
+    else:
+        from services.ml.muestra_estratificada import repartir_cuotas
+
+        tamanos = repo.tamanos_estratos_muestra()
+        cuotas = repartir_cuotas(tamanos, muestra)
+        pendientes = repo.list_muestra_pending_llm_signal(
+            cuotas=cuotas, semilla=semilla, signal_version=version, method=METHOD
+        )
+        counts["muestra"] = muestra
+        counts["muestra_pendientes"] = len(pendientes)
+
     procesadas: list[str] = []
     clasificadas: dict[str, Clasificacion] = {}
 
@@ -308,21 +340,52 @@ def run() -> dict[str, Any]:
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 #
-# Drenado manual del backlog: ``python -m scheduler.jobs.llm_tech_labeling``
-# con ``LLM_TECH_LABELING_BATCH`` subido procesa un lote grande de una vez.
+# Dos usos del drenado manual:
+# - Backlog: ``python -m scheduler.jobs.llm_tech_labeling`` con
+#   ``LLM_TECH_LABELING_BATCH`` subido procesa un lote grande de una vez.
+# - Muestra estratificada (F2, spec §3.2): ``python -m
+#   scheduler.jobs.llm_tech_labeling --muestra 4000`` lanza en su lugar la
+#   muestra en vez del backlog por fecha. Necesita el OK explícito del
+#   propietario para correr contra producción (D3).
 
 
-def run_cli() -> int:
+def _muestra_positiva(valor: str) -> int:
+    entero = int(valor)
+    if entero <= 0:
+        raise argparse.ArgumentTypeError(f"--muestra debe ser un entero positivo: {valor!r}")
+    return entero
+
+
+def run_cli(argv: list[str] | None = None) -> int:
     """Corre el job; falla solo si el lote entero se cayó.
 
     Un anuncio que el modelo no sabe clasificar es normal; que **ningún** item
     del lote se procese señala algo sistémico (falta la API key, red caída,
     presupuesto agotado desde el primer item) que sí debe romper el workflow.
+
+    Sin ``--muestra``, ``argv`` vacío reproduce el drenado del backlog de
+    siempre (``run()`` con sus valores por defecto). Con ``--muestra N``,
+    lanza en su lugar la muestra estratificada de F2 de tamaño ``N``.
     """
     from db.database import init_db
 
+    parser = argparse.ArgumentParser(description="Drenado manual del etiquetado LLM")
+    parser.add_argument(
+        "--muestra",
+        type=_muestra_positiva,
+        default=None,
+        help="Tamaño de la muestra estratificada de F2 (spec §3.2) en vez del backlog",
+    )
+    parser.add_argument(
+        "--semilla",
+        type=str,
+        default=SEMILLA_POR_DEFECTO,
+        help="Semilla del desempate determinista dentro de cada estrato",
+    )
+    args = parser.parse_args(argv)
+
     init_db()
-    resumen = run()
+    resumen = run(muestra=args.muestra, semilla=args.semilla)
 
     if batch_failed_systemically(resumen):
         log.error("llm_tech_labeling_cli_batch_failed", **resumen)

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { toast } from "sonner";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, SectionTitle } from "@/components/console/panel";
@@ -171,6 +172,7 @@ function FactRow({
                     >
                       {fuente.label}
                       <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <AvisoPestanaNueva />
                     </a>
                   ) : (
                     <p className="font-medium text-muted-foreground">{fuente.label}</p>
@@ -281,6 +283,14 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
           </div>
         ) : (
           <div className="space-y-5">
+            {/* Un anuncio TED que reenvía un expediente de PLACSP no trae pliegos:
+                la API devuelve la ficha del expediente original, y se dice. */}
+            {record.licitacion_id !== licitacionId && (
+              <Aviso tone="info" role="note">
+                Pliegos del expediente original {record.licitacion_id}: esta licitación es su republicación y no publica
+                documentos propios.
+              </Aviso>
+            )}
             {record.status === "needs_review" && (
               <Aviso tone="warning" role="note">
                 Se han descartado campos sin una cita verificable, o que el pliego devolvió en un

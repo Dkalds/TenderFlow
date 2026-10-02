@@ -729,6 +729,24 @@ def detect_duplicados_por_referencia(
     return result
 
 
+def expediente_del_pliego(licitacion_id: str) -> str:
+    """El expediente cuyos pliegos son los de *licitacion_id*.
+
+    Una republicación **confirmada** no tiene pliegos propios: TED reenvía al
+    DOUE un contrato que el comprador publicó en PLACSP, y los adjuntos solo se
+    parsean del CODICE de la plataforma del comprador. Medido el 2026-09-30:
+    2.593 filas TED y ninguna con un solo documento. Una oportunidad abierta
+    sobre el anuncio TED se quedaba así sin ficha, sin páginas que citar y sin
+    guion, con los pliegos de la canónica ya descargados y extraídos.
+
+    Solo ``confirmed`` (``idEvl``/BT-22, o expediente + órgano + CPV): un par
+    ``pending`` puede ser otro contrato, y enseñar como suyos los requisitos de
+    otro pliego es peor que no enseñar ninguno. Resuelve un solo salto: la
+    detección por referencia ya descarta como canónica una fila marcada.
+    """
+    return dedupe_repo.canonical_for(licitacion_id, solo_confirmadas=True) or licitacion_id
+
+
 def review_pending(limit: int = 100) -> list[dict[str, Any]]:
     """Cola de revisión humana: matches con confianza < 1.0 sin resolver."""
     with connect_read() as c:

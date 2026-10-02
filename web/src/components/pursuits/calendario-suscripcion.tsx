@@ -11,6 +11,7 @@
  */
 import * as React from "react";
 import { Download } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { toast } from "sonner";
 import { PanelError } from "@/components/console/panel";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -98,6 +99,7 @@ export function CalendarioSuscripcion() {
               >
                 <Download aria-hidden="true" />
                 Descargar .ics
+                <AvisoPestanaNueva />
               </a>
             )}
           </>

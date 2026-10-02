@@ -47,10 +47,10 @@ REQUIREMENTS_PIPELINE_TXT = REPO_ROOT / "requirements-pipeline.txt"
 #:
 #: scikit-learn, statsmodels y networkx entraron el 2026-09-18: la API los
 #: usaba en caminos de request que ahora degradan sin ellos (ver la cabecera de
-#: requirements-api.in).
-SOLO_PIPELINE = frozenset(
-    {"lxml", "tenacity", "pybreaker", "scikit-learn", "statsmodels", "networkx"}
-)
+#: requirements-api.in). tenacity y pybreaker salieron el 2026-10-01: la API
+#: descarga pliegos para la ficha bajo demanda, y sin ellos esa extracción
+#: moría en el import de `scraper/resilience.py`.
+SOLO_PIPELINE = frozenset({"lxml", "scikit-learn", "statsmodels", "networkx"})
 
 # PEP 503: normaliza nombres de paquete para comparar (case-insensitive,
 # "-"/"_"/"." equivalentes). p.ej. "psycopg-pool" == "psycopg_pool" == "Psycopg.Pool".

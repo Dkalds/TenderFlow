@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from collections import Counter
 from typing import Any, get_args
 
 from annotated_types import MaxLen
@@ -34,9 +36,30 @@ log = get_logger(__name__)
 # de 17 hechos de un pliego de prueba caían por «description: Field required».
 # El esquema no cambia y las fichas v5 ya guardadas son válidas, así que un
 # bump solo las reencolaría para extraer lo mismo otra vez.
-EXTRACTION_VERSION = "tender-facts-v5"
-_MAX_CONTEXT_CHARS = 15_000
-_MAX_PAGES = 24
+#
+# v6 (2026-09-28): la ficha v5 con Nemotron salía vacía casi siempre —de 886
+# filas, 17 `extracted` y 70 `needs_review` con 0 hechos; el resto `failed`—.
+# Cuatro causas, medidas sobre pliegos reales de producción:
+# 1. Contexto: 15k chars son ~5 páginas de un PCAP de 118; los criterios y la
+#    fórmula de precio casi nunca entraban. Ahora 56k chars y hasta 40 páginas,
+#    sin reservar la portada de cada anexo (el DEUC se comía el presupuesto).
+# 2. `confidence`: Nemotron lo omite si no va en las llaves de la familia, y
+#    sin él el hecho se descartaba entero. Mismo arreglo que `description`.
+# 3. Salida: `max_tokens=3500` cortaba el JSON a media ficha en los pliegos con
+#    contenido (el caso que importa). Ahora 8000 y descripciones acotadas.
+# 4. Una cita más larga que el tope del esquema tiraba el hecho; ahora se
+#    recorta (sigue siendo literal: un prefijo de la cita está en la página).
+# El bump es obligatorio: las `needs_review` vacías de v5 no se reencolan solas.
+EXTRACTION_VERSION = "tender-facts-v6"
+# Por debajo de ``MAX_CONTEXT_CHARS_EXTRACTION`` (llm/prompts.py): cada página
+# añade su cabecera ``--- Fragmento de pliego (…) ---``, y el bloque de CONTEXTO
+# que se pasa del presupuesto se corta por el final — justo las últimas páginas.
+_MAX_CONTEXT_CHARS = 56_000
+_MAX_PAGES = 40
+_MAX_OUTPUT_TOKENS = 8000
+#: Tope del esquema para ``EvidenceRef.quote``; el recorte se hace aquí para
+#: no perder el hecho por una cita larga.
+_MAX_QUOTE_CHARS = 600
 _TOPIC_TERMS = (
     "criterio",
     "adjudicación",
@@ -65,6 +88,25 @@ _TOPIC_TERMS = (
     "niveles de servicio",
     "disponibilidad",
     "indicador",
+    # v6: las familias de F2.2-F2.4 (fórmula de precio, documentación por
+    # sobre, tarifas, desglose del presupuesto) no tenían ningún término, así
+    # que la página de la fórmula solo entraba si por casualidad hablaba de
+    # plazos o solvencia.
+    "fórmula",
+    "oferta económica",
+    "puntuación",
+    "anormalmente baja",
+    "desproporcionada",
+    "temerari",
+    "presupuesto base",
+    "costes directos",
+    "costes indirectos",
+    "precio/hora",
+    "tarifa",
+    # No "sobre a/b/c": como substring puntúan «sobre aspectos», «sobre
+    # contratación»… en cualquier página.
+    "sobre electrónico",
+    "archivo electrónico",
 )
 # v2 (plan "categorización alimentada por los pliegos"): la selección de
 # páginas también pondera menciones de tecnología, o el pliego técnico
@@ -87,25 +129,27 @@ _TECH_TERMS = ("sap", "oracle", "salesforce", "microsoft", "hana", "erp", "crm",
 # pero sí pierde ese hecho.
 _EXTRACTION_QUESTION = """
 Devuelve un objeto JSON con estas claves exactas. Cada valor es una lista de
-objetos que SIEMPRE llevan description (qué dice el pliego, en una frase),
-confidence (0 a 1) y evidence, más los campos propios de su familia:
-lots: {description, lot_number, name, amount_eur},
-award_criteria: {description, name, weight_pct, criterion_type},
-technical_solvency: {description},
-economic_solvency: {description, amount_eur},
-guarantees: {description, amount_eur},
-penalties: {description, amount_eur},
-service_levels: {description, name, target},
-subcontracting: {description},
-team_requirements: {description, role, minimum_years, quantity},
-certifications: {description, name, scope},
-extensions: {description},
-critical_deadlines: {description, name, date_value},
-technologies: {description, name},
-price_formula: {description, formula_type, max_points, umbral_temeridad, params},
-required_documents: {description, name, scope, subsanable},
-rate_cards: {description, role, max_rate_eur_hour, estimated_hours},
-budget_breakdown: {description, concept, category, amount_eur, pct}.
+objetos con los campos indicados; description, confidence y evidence son
+OBLIGATORIOS en todos. description es una frase corta (máx. 200 caracteres) de
+lo que dice el pliego; confidence es un número de 0 a 1:
+lots: {description, confidence, evidence, lot_number, name, amount_eur},
+award_criteria: {description, confidence, evidence, name, weight_pct, criterion_type},
+technical_solvency: {description, confidence, evidence},
+economic_solvency: {description, confidence, evidence, amount_eur},
+guarantees: {description, confidence, evidence, amount_eur},
+penalties: {description, confidence, evidence, amount_eur},
+service_levels: {description, confidence, evidence, name, target},
+subcontracting: {description, confidence, evidence},
+team_requirements: {description, confidence, evidence, role, minimum_years, quantity},
+certifications: {description, confidence, evidence, name, scope},
+extensions: {description, confidence, evidence},
+critical_deadlines: {description, confidence, evidence, name, date_value},
+technologies: {description, confidence, evidence, name},
+price_formula: {description, confidence, evidence, formula_type, max_points,
+umbral_temeridad, params},
+required_documents: {description, confidence, evidence, name, scope, subsanable},
+rate_cards: {description, confidence, evidence, role, max_rate_eur_hour, estimated_hours},
+budget_breakdown: {description, confidence, evidence, concept, category, amount_eur, pct}.
 lots: un elemento por lote publicado, con lot_number tal como aparece ("1",
 "Lote III") y su presupuesto sin IVA si es inequívoco; vacío si no hay lotes.
 criterion_type: solo "price", "quality", "automatic", "judgement" u "other".
@@ -131,8 +175,8 @@ budget_breakdown: una entrada por línea del desglose del presupuesto base, con
 category "salariales", "directos", "indirectos", "beneficio" u "otro".
 evidence es una lista de citas [{documento_id, page_number, quote}], nunca un
 objeto suelto: documento_id y page_number son los números N y M de la cabecera
-[doc:N p.M] del fragmento, y quote se copia literalmente de él, en menos de 400
-caracteres. Usa null cuando un valor tipado no aparezca y listas vacías cuando
+[doc:N p.M] del fragmento, y quote se copia literalmente de él, en menos de 300
+caracteres: la frase clave, no el párrafo entero. Usa null cuando un valor tipado no aparezca y listas vacías cuando
 no haya evidencia.
 """.strip()
 
@@ -144,17 +188,31 @@ def _page_score(page: dict[str, Any]) -> int:
     return topic_hits + tech_hits
 
 
+#: Tipos de documento cuya portada entra siempre. La del PCAP suele ser el
+#: cuadro resumen (importe, plazo, lotes); la de un ``additional`` es la del
+#: DEUC o de un modelo de declaración, y hasta v6 se reservaba igual: en un
+#: expediente con tres anexos, tres portadas inútiles se comían un tercio del
+#: presupuesto antes de mirar una sola página puntuada.
+_PORTADA_SIEMPRE = frozenset({"legal", "technical"})
+
+
 def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Selecciona portada + páginas densas en requisitos dentro del presupuesto."""
+    """Selecciona portadas del pliego + páginas densas en requisitos."""
     if not pages:
         return []
-    first_per_doc: dict[int, dict[str, Any]] = {}
+    portadas: set[tuple[int, int]] = set()
+    vistos: set[int] = set()
     for page in pages:
-        first_per_doc.setdefault(int(page["documento_id"]), page)
+        documento_id = int(page["documento_id"])
+        if documento_id in vistos:
+            continue
+        vistos.add(documento_id)
+        if page.get("tipo") in _PORTADA_SIEMPRE:
+            portadas.add((documento_id, int(page["page_number"])))
     ranked = sorted(
         pages,
         key=lambda p: (
-            p not in first_per_doc.values(),
+            (int(p["documento_id"]), int(p["page_number"])) not in portadas,
             -_page_score(p),
             int(p["documento_id"]),
             int(p["page_number"]),
@@ -179,19 +237,94 @@ def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _normalize_quote(value: str) -> str:
-    return " ".join(value.casefold().split())
+    """Clave de comparación de citas: sin mayúsculas y **sin espacios**.
+
+    Sin espacios, no con espacios colapsados: el extractor de PDF mete blancos
+    donde el documento no los tiene («( OEmax)», «licitación  (PL)», letras
+    espaciadas en cabeceras) y el modelo, que lee el texto con sentido, los
+    quita al citar. Con espacios colapsados la fórmula de precio de un pliego
+    real se descartaba por ese «( ». Quitar los blancos no deja pasar texto
+    inventado: los caracteres tienen que estar todos, en orden.
+    """
+    return "".join(value.casefold().split())
+
+
+#: Elipsis con la que el modelo abrevia una cita larga («el órgano podrá
+#: optar... por la imposición de penalidades»). Medido el 2026-09-28 sobre un
+#: pliego real: 11 de 25 citas llevaban una, y todas se descartaban.
+_ELIPSIS_RE = re.compile(r"\s*(?:\.{3,}|…)\s*")
+#: Un fragmento más corto que esto casa en cualquier página («de la», «1.»)
+#: y no prueba nada: una cita con elipsis solo vale si su trozo más largo lo
+#: supera.
+_MIN_FRAGMENTO_CHARS = 20
+
+
+def _fragmentos_de_cita(quote: str) -> list[str]:
+    """Trozos literales de una cita, normalizados, separados por la elipsis."""
+    return [f for f in (_normalize_quote(t) for t in _ELIPSIS_RE.split(quote)) if f]
+
+
+def _cita_en_texto(fragmentos: list[str], texto_normalizado: str) -> bool:
+    """Todos los fragmentos aparecen literalmente y en orden."""
+    desde = 0
+    for fragmento in fragmentos:
+        pos = texto_normalizado.find(fragmento, desde)
+        if pos < 0:
+            return False
+        desde = pos + len(fragmento)
+    return True
 
 
 def _validated_evidence(
     evidence: EvidenceRef,
     page_index: dict[tuple[int, int], dict[str, Any]],
 ) -> EvidenceRef | None:
-    page = page_index.get((evidence.documento_id, evidence.page_number))
+    """La cita, si existe literalmente en el pliego; ``None`` si no.
+
+    Literal **por fragmentos**: una elipsis del modelo separa trozos que deben
+    estar todos en la página y en ese orden, y el más largo tiene que ser
+    significativo. Lo que se relaja es la abreviatura, no la literalidad.
+
+    Si la cita no está en la página citada pero sí en otra del **mismo
+    documento**, se corrige la página en vez de tirar el hecho: el modelo
+    confunde páginas contiguas (una tabla de criterios que empieza en la 21 y
+    se cita como 22), y el texto es el del pliego igual. No se busca en otros
+    documentos: la misma frase en el PCAP y en el PPT puede decir cosas
+    distintas según el contexto.
+    """
+    fragmentos = _fragmentos_de_cita(evidence.quote)
+    if not fragmentos or max(len(f) for f in fragmentos) < min(
+        _MIN_FRAGMENTO_CHARS, len(_normalize_quote(evidence.quote))
+    ):
+        return None
+
+    citada = (evidence.documento_id, evidence.page_number)
+    candidatas = [
+        citada,
+        *sorted(
+            (c for c in page_index if c[0] == evidence.documento_id and c != citada),
+            key=lambda c: abs(c[1] - evidence.page_number),
+        ),
+    ]
+    page = next(
+        (
+            page_index[clave]
+            for clave in candidatas
+            if clave in page_index
+            and _cita_en_texto(
+                fragmentos, _normalize_quote(str(page_index[clave].get("texto") or ""))
+            )
+        ),
+        None,
+    )
     if page is None:
         return None
+    evidence.page_number = int(page["page_number"])
+
     page_text = str(page.get("texto") or "")
-    if _normalize_quote(evidence.quote) not in _normalize_quote(page_text):
-        return None
+    # Offsets solo cuando la cita casa tal cual (sin elipsis ni saltos de línea
+    # distintos): el resaltado de la UI necesita posiciones exactas, y un
+    # resaltado aproximado es peor que ninguno.
     exact_pos = page_text.casefold().find(evidence.quote.casefold())
     if exact_pos >= 0:
         page_start = int(page.get("start_offset") or 0)
@@ -216,6 +349,60 @@ def _family_limit(field: FieldInfo) -> int:
     )
 
 
+def _params_numericos(params: Any) -> dict[str, float]:
+    """Las entradas de ``params`` que son un número (o «0,25» escrito como texto)."""
+    if not isinstance(params, dict):
+        return {}
+    numericos: dict[str, float] = {}
+    for clave, valor in params.items():
+        if isinstance(valor, bool):
+            continue
+        if isinstance(valor, int | float):
+            numericos[str(clave)] = float(valor)
+        elif isinstance(valor, str):
+            try:
+                numericos[str(clave)] = float(valor.strip().replace(",", "."))
+            except ValueError:
+                continue
+    return numericos
+
+
+def _normalizar_item(item: Any) -> Any:
+    """Arregla las desviaciones de forma que no cambian el significado.
+
+    - ``params`` de la fórmula con prosa entre los números: se quedan los
+      números (ver :func:`_params_numericos`).
+    - ``evidence`` como objeto suelto en vez de lista (el prompt lo prohíbe,
+      pero pasa): se envuelve.
+    - Una ``quote`` más larga que el tope del esquema: se recorta. Un prefijo
+      de una cita literal sigue siendo literal, así que la verificación contra
+      la página (``_validate_fact_evidence``) sigue valiendo igual.
+
+    Lo demás —un ``confidence`` ausente, un enum inventado— no se rellena: sería
+    inventar un dato que el modelo no dio, y el hecho se descarta como antes.
+    """
+    if not isinstance(item, dict):
+        return item
+    params = item.get("params")
+    if params is not None:
+        # Solo los parámetros numéricos: el modelo mezcla los tramos con la
+        # leyenda de la fórmula ({"OEM": "oferta más baja"}), y por esa prosa
+        # se descartaba la fórmula entera (medido en un pliego real el
+        # 2026-09-28). La leyenda ya va en `description`; no se pierde nada.
+        item = {**item, "params": _params_numericos(params)}
+    evidencia = item.get("evidence")
+    if isinstance(evidencia, dict):
+        evidencia = [evidencia]
+    if isinstance(evidencia, list):
+        normalizada: list[Any] = []
+        for ref in evidencia:
+            if isinstance(ref, dict) and isinstance(ref.get("quote"), str):
+                ref = {**ref, "quote": ref["quote"].strip()[:_MAX_QUOTE_CHARS]}
+            normalizada.append(ref)
+        item = {**item, "evidence": normalizada}
+    return item
+
+
 def _parse_facts(payload: dict[str, Any]) -> tuple[TenderFactSheet, int]:
     """Valida la respuesta del LLM hecho a hecho, no todo o nada.
 
@@ -233,6 +420,7 @@ def _parse_facts(payload: dict[str, Any]) -> tuple[TenderFactSheet, int]:
     """
     facts = TenderFactSheet()
     dropped = 0
+    motivos: Counter[str] = Counter()
     # ``extra='forbid'`` del modelo existía para que una clave inesperada no
     # pasara desapercibida. Validando por familia esa clave ya no rompe nada,
     # así que la visibilidad se conserva por log en vez de por excepción.
@@ -253,10 +441,18 @@ def _parse_facts(payload: dict[str, Any]) -> tuple[TenderFactSheet, int]:
                 dropped += len(items) - index
                 break
             try:
-                kept.append(item_model.model_validate(item))
-            except ValidationError:
+                kept.append(item_model.model_validate(_normalizar_item(item)))
+            except ValidationError as exc:
                 dropped += 1
+                # Qué campo y por qué. Sin esto el log solo decía `invalid=14`,
+                # y averiguar que el 100% era «confidence: missing» exigió
+                # reproducir la llamada a mano (2026-09-28).
+                for error in exc.errors()[:3]:
+                    campo = ".".join(str(p) for p in error["loc"]) or "-"
+                    motivos[f"{name}.{campo}:{error['type']}"] += 1
         setattr(facts, name, kept)
+    if motivos:
+        log.info("fact_sheet_items_invalid", motivos=dict(motivos.most_common(10)))
     return facts, dropped
 
 
@@ -335,10 +531,19 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
 
     # ``skipped`` lo devuelve el fetcher cuando el breaker está abierto: no se
-    # llegó a intentar la descarga y la fila sigue ``pending``. ``unsupported``
-    # (S8.2) es un formato que no sabemos leer. Ambos se declaran para que el
-    # diagnóstico pueda distinguirlos de un fallo real.
-    counts = {"attempted": 0, "extracted": 0, "error": 0, "skipped": 0, "unsupported": 0}
+    # llegó a intentar la descarga y la fila sigue ``pending``.
+    # ``skipped_no_extra``, cuando el formato se sabe leer pero no en este
+    # proceso (DOCX/ODT en la imagen de la API): también sigue ``pending``.
+    # ``unsupported`` (S8.2) es un formato que no sabemos leer. Se declaran para
+    # que el diagnóstico pueda distinguirlos de un fallo real.
+    counts = {
+        "attempted": 0,
+        "extracted": 0,
+        "error": 0,
+        "skipped": 0,
+        "skipped_no_extra": 0,
+        "unsupported": 0,
+    }
     for row in candidates[:_ONDEMAND_MAX_DOCUMENTS]:
         counts["attempted"] += 1
         try:
@@ -363,9 +568,12 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
             "la ficha necesita al menos un documento adjunto en PLACSP."
         )
     if fetched.get("skipped_no_extra"):
+        # Sin pypdf no se intenta nada; sin python-docx/odfpy (la imagen de la
+        # API no los trae) se descarga pero la fila sigue `pending`. En los dos
+        # casos los procesa el job nocturno, que sí los tiene.
         return (
-            "Los pliegos siguen en cola de procesado (el servidor no tiene "
-            "instalada la extracción de PDF); el job nocturno los procesará."
+            "Los pliegos siguen en cola de procesado (este servidor no tiene "
+            "instalado el extractor de su formato); el job nocturno los procesará."
         )
     if fetched.get("skipped") and not fetched.get("error"):
         # Breaker abierto: no se intentó ninguna descarga, así que hablar de
@@ -395,6 +603,20 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
     )
 
 
+class SinPaginasError(ValueError):
+    """No hay texto de pliegos del que extraer la ficha.
+
+    ``ValueError`` porque así lo traducen ya sus llamadores (422 en la ruta
+    síncrona, ``failed`` con detalle en la de background). Lleva el expediente
+    que se miró, que en una republicación no es el que se pidió: es donde hay
+    que dejar el ``failed`` para que la siguiente lectura lo encuentre.
+    """
+
+    def __init__(self, mensaje: str, *, licitacion_id: str) -> None:
+        super().__init__(mensaje)
+        self.licitacion_id = licitacion_id
+
+
 def extract_fact_sheet_on_demand(
     licitacion_id: str,
     *,
@@ -410,11 +632,19 @@ def extract_fact_sheet_on_demand(
     de ``extract_fact_sheet``): ``pydantic.ValidationError`` hereda de
     ``ValueError``, y reescribir un fallo de validación del LLM como «no hay
     páginas» mandaría al usuario a mirar el documento equivocado.
+
+    Pedida sobre una republicación confirmada, se extrae la de su canónica:
+    es la que tiene los pliegos (:func:`services.dedupe.expediente_del_pliego`).
     """
+    from services.dedupe import expediente_del_pliego
+
+    licitacion_id = expediente_del_pliego(licitacion_id)
     fetched = ensure_documents_ready(licitacion_id)
     pages = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
     if not any(str(page.get("texto") or "").strip() for page in pages):
-        raise ValueError(_missing_pages_detail(licitacion_id, fetched))
+        raise SinPaginasError(
+            _missing_pages_detail(licitacion_id, fetched), licitacion_id=licitacion_id
+        )
     return extract_fact_sheet(licitacion_id, model=model)
 
 
@@ -458,7 +688,7 @@ def extract_fact_sheet(
                 model=model,
                 keywords=list(_TOPIC_TERMS),
                 mode="extraction",
-                max_tokens=3500,
+                max_tokens=_MAX_OUTPUT_TOKENS,
                 # Sin fallback de proveedor: la fila persiste `model`, y un
                 # cambio silencioso de modelo la haría mentir sobre quién
                 # extrajo. Si el proveedor está caído, la extracción falla
@@ -466,6 +696,14 @@ def extract_fact_sheet(
                 fallback=False,
             )
         )
+        if not raw.strip():
+            # El cliente devuelve stream vacío cuando el proveedor falló en
+            # todos sus reintentos (saturación, 5xx). Dicho así, y no como «no
+            # devolvió un objeto JSON», que mandaba a revisar el prompt.
+            raise ValueError(
+                f"El modelo {model} devolvió una respuesta vacía "
+                "(proveedor saturado o caído); se reintentará en el próximo lote."
+            )
         facts, invalid = _parse_facts(extract_json_object(raw))
         facts, unverifiable = _validate_fact_evidence(facts, pages)
         rejected = invalid + unverifiable
@@ -507,8 +745,15 @@ def extract_fact_sheet(
 
 
 def get_fact_sheet(licitacion_id: str) -> TenderFactSheetRecord | None:
-    """Lee la ficha vigente sin invocar al proveedor LLM."""
-    row = TenderFactSheetsRepository().get(licitacion_id)
+    """Lee la ficha vigente sin invocar al proveedor LLM.
+
+    La de una republicación confirmada es la de su canónica
+    (:func:`services.dedupe.expediente_del_pliego`), y el registro lo dice: su
+    ``licitacion_id`` es el del expediente del que salen los pliegos.
+    """
+    from services.dedupe import expediente_del_pliego
+
+    row = TenderFactSheetsRepository().get(expediente_del_pliego(licitacion_id))
     return TenderFactSheetRecord.model_validate(row) if row else None
 
 
@@ -632,6 +877,11 @@ def run_background_extraction(
     en que ``extract_fact_sheet_on_demand`` falla SIN persistir— se materializa
     aquí como ``failed`` con detalle, o el polling vería un 404 mudo para
     siempre.
+
+    El ``failed`` se guarda en la ficha que se lee después: la de la canónica
+    si la licitación es una republicación (:class:`SinPaginasError` dice cuál
+    se miró). Guardarlo en la del anuncio TED lo dejaría en una fila que
+    ``get_fact_sheet`` nunca consulta.
     """
     from llm.budget import bind_budget_subject
 
@@ -644,9 +894,10 @@ def run_background_extraction(
             log.warning("fact_sheet_background_validation_failed", licitacion_id=licitacion_id)
             return
         except ValueError as exc:
+            destino = exc.licitacion_id if isinstance(exc, SinPaginasError) else licitacion_id
             try:
                 TenderFactSheetsRepository().upsert(
-                    licitacion_id=licitacion_id,
+                    licitacion_id=destino,
                     status="failed",
                     extraction_version=EXTRACTION_VERSION,
                     model=model,

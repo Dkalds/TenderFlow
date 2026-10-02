@@ -13,6 +13,7 @@
  */
 
 import { ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { EnlaceIr } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import type {
@@ -139,6 +140,7 @@ function ChecklistItemRow({
                     >
                       {fuente.label}
                       <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <AvisoPestanaNueva />
                     </a>
                   ) : (
                     <p className="font-medium text-muted-foreground">{fuente.label}</p>

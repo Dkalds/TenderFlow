@@ -6,6 +6,7 @@ import { SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { resolucionesKeys } from "@/lib/query-keys";
 
 interface Resolucion {
@@ -75,6 +76,7 @@ export function ResolucionesBlock({ licitacionId }: { licitacionId: string }) {
                 className="inline-flex items-center gap-1 text-tf-meta text-primary hover:underline"
               >
                 Ver resolución <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                <AvisoPestanaNueva />
               </a>
             )}
           </li>

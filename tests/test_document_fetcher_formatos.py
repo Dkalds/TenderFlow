@@ -396,6 +396,40 @@ class TestBinarioConservado:
         assert reextract_from_blob(doc["id"]) == "missing"
 
 
+class TestExtractorAusente:
+    """La imagen de la API no trae python-docx ni odfpy (traen lxml).
+
+    Un DOCX que la API descarga para la ficha bajo demanda no puede quedar
+    ``unsupported``: saldría para siempre del lote nocturno, que sí sabe leerlo.
+    """
+
+    def test_el_docx_sin_python_docx_se_queda_pendiente(self, repo, monkeypatch):
+        _sin_dependencia(monkeypatch, "docx")
+        doc = _seed(repo)
+        with patch(
+            "scraper.document_fetcher._download_bytes",
+            return_value=(_fixture("pliego.docx"), CONTENT_TYPE_DOCX),
+        ):
+            assert fetch_and_extract(doc) == "skipped_no_extra"
+
+        fila = repo.get(doc["id"])
+        assert fila is not None
+        assert fila["status"] == "pending"
+        assert doc["id"] in {d["id"] for d in repo.list_pendientes()}
+
+    def test_el_zip_con_un_docx_no_se_da_por_extraido_a_medias(self, monkeypatch):
+        """Saltarse el DOCX de dentro dejaría el ZIP `extracted` sin él."""
+        _sin_dependencia(monkeypatch, "docx")
+        with pytest.raises(df.ExtractorAusenteError):
+            _extract_paginas(_fixture("adjuntos.zip"), CONTENT_TYPE_ZIP)
+
+    def test_sigue_siendo_unsupported_para_quien_solo_extrae(self, monkeypatch):
+        """Los llamadores que no persisten no tienen que distinguirlo."""
+        _sin_dependencia(monkeypatch, "docx")
+        with pytest.raises(UnsupportedDocumentError):
+            _extract_paginas(_fixture("pliego.docx"), CONTENT_TYPE_DOCX)
+
+
 class TestEstadoUnsupported:
     def test_un_formato_sin_soporte_no_se_marca_error(self, repo):
         doc = _seed(repo)

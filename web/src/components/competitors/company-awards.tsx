@@ -78,23 +78,27 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
   async function exportAwards() {
     setIsExporting(true);
     try {
-      const rows: CompanyAward[] = [];
-      let pageOffset = 0;
-      let total = 1;
-      while (pageOffset < total) {
+      const pedirPagina = (pageOffset: number) => {
         const exportParams = new URLSearchParams(scopeQuery);
         if (debouncedSearch) exportParams.set("q", debouncedSearch);
         if (debouncedOrgan) exportParams.set("organo", debouncedOrgan);
         exportParams.set("sort", sort);
         exportParams.set("limit", "500");
         exportParams.set("offset", String(pageOffset));
-        const page = await fetchWithAuth<CompanyAwardsData>(
+        return fetchWithAuth<CompanyAwardsData>(
           `/api/v1/competitive/empresas/${empresaId}/adjudicaciones?${exportParams.toString()}`,
         );
-        rows.push(...page.items);
-        total = page.total;
-        pageOffset += page.items.length;
-        if (!page.items.length) break;
+      };
+      const primera = await pedirPagina(0);
+      const rows: CompanyAward[] = [...primera.items];
+      // El paso es lo que devolvió la primera página: el backend puede recortar el `limit`.
+      const paso = primera.items.length;
+      const restantes: number[] = [];
+      if (paso > 0) for (let o = paso; o < primera.total; o += paso) restantes.push(o);
+      // De tres en tres: en paralelo, pero sin disparar decenas de peticiones a la vez.
+      for (let i = 0; i < restantes.length; i += 3) {
+        const paginas = await Promise.all(restantes.slice(i, i + 3).map(pedirPagina));
+        for (const pagina of paginas) rows.push(...pagina.items);
       }
 
       const header = [

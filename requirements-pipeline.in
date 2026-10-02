@@ -17,10 +17,8 @@
 lxml>=5.0.0,<7
 
 # ── Resiliencia de la ingesta ────────────────────────────────────────────────
-# Reintentos y circuit breaker de las descargas contra PLACSP y las fuentes
-# regionales. La API no reintenta nada de esto: responde o falla.
-tenacity>=8.2.0,<10
-pybreaker>=1.0.0,<2
+# `tenacity` y `pybreaker` subieron a requirements-api.in el 2026-10-01: la API
+# también descarga pliegos (la ficha bajo demanda), y llegan aquí por el `-r`.
 
 # ── ML clásico y analítica pesada (salen de la API el 2026-09-18) ────────────
 # Entrenamiento, scoring por lotes, drift y el precálculo de clusters los usan

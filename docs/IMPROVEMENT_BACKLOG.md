@@ -430,6 +430,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Decisión ya tomada (2026-09-06):** D14 → worker en Render para lo que pide un usuario y Actions para lo programado, sobre la misma tabla de cola. El servicio nuevo exige O0.2 cerrado primero (un solo camino de despliegue).
 - **Acceptance criteria:** los de S5.1–S5.4 del plan v2, incluidos los dos que son medibles sin producción: dos consumidores concurrentes procesan cien jobs exactamente una vez, y `grep -rc "BackgroundTasks" api/routes/licitaciones/` = 0 (el fichero es un paquete desde 2026-09).
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S5), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [api/app.py](../api/app.py)
+- **Estado (2026-10-01):** el código de la cola está, pero **`tenderflow-worker` no existe en Render** (su API lista un único servicio, la API). Nadie consumía los jobs `ficha_pliego`: siete `pending` desde el 14-sep y la pestaña Pliego en «Extrayendo…» para siempre (oportunidad 14). Mientras tanto los consume la API ([ADR-028 §G](adr/ADR-028-cola-de-trabajo-y-worker.md)), que además ganó `pybreaker`/`tenacity` en su imagen y encola la ficha al abrir una oportunidad en vez de usar `BackgroundTasks`. Lo que queda de este ítem: crear el servicio (checklist de `render.yaml`) y poner `JOBS_CONSUMIDOR_EN_API=0` en la API.
 - **Riesgo:** medio — servicio nuevo en producción y cambio del camino por el que se sirve la ficha.
 
 ---
@@ -564,6 +565,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Eval que mida precisión/recall por familia contra ese set, con umbral mínimo ratcheado al valor medido, mismo patrón que `MRR_MIN`.
 - **Files de partida:** [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py), [services/rag/fact_sheet.py](../services/rag/fact_sheet.py)
 - **Riesgo:** bajo en código; el coste real es el etiquetado manual (decisión/tiempo del mantenedor).
+- **Nota 2026-09-28 (`tender-facts-v6`):** el selector de páginas **se cambió sin este eval**, a sabiendas, porque la ficha v5 no tenía nada que proteger: de 886 filas en producción, 17 `extracted` y 70 `needs_review`, casi todas con 0 hechos; el resto `failed`. Medición manual (Nemotron super, mismos pliegos, antes → después): `2025/191` 0 → 7 hechos, `20/026` fallo → 20, `2025/000423-PEA` 0 → 14, `1934/2026` 0 → 22; la fórmula de precio aparece en tres de los cuatro. Es una comparación de cuatro pliegos sin etiquetas, no un baseline: sigue haciendo falta el golden set para medir **precisión**, que esta nota no mide.
 
 ### [P2] Unificar la selección de páginas de la ficha con el retrieval pgvector
 - **Área:** services/rag/fact_sheet.py, services/rag/context.py
@@ -694,6 +696,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S8), [scraper/document_fetcher.py](../scraper/document_fetcher.py)
 - **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release» (cerrado el 2026-09-18): los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
 - **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
+- **Progreso 2026-09-28:** el soporte de DOCX existía pero no se usaba en la mayoría de casos: PLACSP manda el tipo mal escrito (`…openxmlformatsofficedocument…`, sin guion) y 1.964 documentos acabaron en `unsupported`, el mayor agujero de cobertura medido. El formato lo decide ahora la firma del contenido (`_resolver_content_type`). Las filas ya marcadas no se recuperan solas: `unsupported` no vuelve a `list_pendientes`, así que hace falta reencolarlas (dato de producción, OK del mantenedor).
 
 ---
 
