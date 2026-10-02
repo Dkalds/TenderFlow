@@ -2,7 +2,7 @@
  * Tests for web/src/hooks/use-watchlist-items.ts
  *
  * Covers: initial list fetch, optimistic add (+ rollback on error),
- * optimistic remove (+ rollback on error), and useIsWatchlisted.
+ * optimistic remove (+ rollback on error).
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
@@ -26,7 +26,6 @@ import {
   useWatchlistItems,
   useAddWatchlistItem,
   useRemoveWatchlistItem,
-  useIsWatchlisted,
   type WatchlistItem,
 } from "@/hooks/use-watchlist-items";
 import { callCredentials, callMethod, callUrl, jsonResponse } from "./fetch-call";
@@ -248,43 +247,6 @@ describe("useRemoveWatchlistItem", () => {
     const cached = qc.getQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY);
     expect(cached).toEqual(ITEMS);
     expect(toast.error).toHaveBeenCalledWith("No se pudo quitar de favoritos");
-  });
-});
-
-describe("useIsWatchlisted", () => {
-  it("returns true when the id_externo is present in the cached list", async () => {
-    const qc = createClient();
-    qc.setQueryData(WATCHLIST_ITEMS_KEY, ITEMS);
-    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ items: ITEMS }))));
-
-    const { result } = renderHook(() => useIsWatchlisted("EXT-1"), {
-      wrapper: createWrapper(qc),
-    });
-
-    await waitFor(() => expect(result.current).toBe(true));
-  });
-
-  it("returns false when the id_externo is not present in the cached list", async () => {
-    const qc = createClient();
-    qc.setQueryData(WATCHLIST_ITEMS_KEY, ITEMS);
-    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ items: ITEMS }))));
-
-    const { result } = renderHook(() => useIsWatchlisted("EXT-MISSING"), {
-      wrapper: createWrapper(qc),
-    });
-
-    await waitFor(() => expect(result.current).toBe(false));
-  });
-
-  it("returns false when the list has not loaded yet", () => {
-    const qc = createClient();
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-
-    const { result } = renderHook(() => useIsWatchlisted("EXT-1"), {
-      wrapper: createWrapper(qc),
-    });
-
-    expect(result.current).toBe(false);
   });
 });
 

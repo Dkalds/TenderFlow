@@ -13,12 +13,11 @@ from __future__ import annotations
 
 import pytest
 
-from db import webhooks as wh_mod
 from db.repositories.webhooks import WebhookRepository
 
 
 def _crear(nombre: str = "hook") -> int:
-    webhook_id, _ = wh_mod.create_webhook(
+    webhook_id, _ = WebhookRepository().create(
         name=nombre,
         url="https://example.com/hook",
         event_types=["watchlist_match"],

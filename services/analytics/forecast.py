@@ -20,42 +20,6 @@ BANDA_SIGMAS = 1.5
 MODELO_HOLT_WINTERS = "holt-winters"
 MODELO_LINEAL = "regresion-lineal"
 
-# Conversión de unidades CODICE a meses. La tabla vive en `shared/duracion.py`
-# porque `services/cartera.py` la necesita y no puede importar este módulo sin
-# arrastrar pandas; el alias se mantiene porque es el nombre que usan los
-# consumidores de este módulo.
-UNIT_TO_MONTHS = UNIDAD_A_MESES
-
-
-def to_months(valor: float | None, unidad: str | None) -> float | None:
-    if valor is None or pd.isna(valor) or not unidad:
-        return None
-    try:
-        valor_f = float(valor)
-    except (TypeError, ValueError):
-        return None
-    if valor_f <= 0:
-        return None
-    factor = UNIT_TO_MONTHS.get(str(unidad).upper())
-    if factor is None:
-        return None
-    return valor_f * factor
-
-
-def estimate_end_date(
-    start: pd.Timestamp | None,
-    duracion_meses: float | None,
-    fecha_fin_explicit: pd.Timestamp | None = None,
-) -> pd.Timestamp | None:
-    """Devuelve la fecha de fin estimada. Prefiere fecha_fin explícita."""
-    if fecha_fin_explicit is not None and pd.notna(fecha_fin_explicit):
-        return fecha_fin_explicit
-    if start is None or pd.isna(start):
-        return None
-    if duracion_meses is None or pd.isna(duracion_meses) or duracion_meses <= 0:
-        return None
-    return start + pd.DateOffset(months=round(float(duracion_meses)))
-
 
 def build_forecast_df(
     licitaciones: pd.DataFrame,
@@ -91,7 +55,7 @@ def build_forecast_df(
     # Cap at 600 months (50 years) to prevent OutOfBoundsDatetime from
     # corrupt/test data with unrealistically large duration values.
     _MAX_DURACION_MESES = 600.0
-    factor_series = df["duracion_unidad"].str.upper().map(UNIT_TO_MONTHS)
+    factor_series = df["duracion_unidad"].str.upper().map(UNIDAD_A_MESES)
     valor_num = pd.to_numeric(df["duracion_valor"], errors="coerce")
     df["duracion_meses"] = (valor_num.where(valor_num > 0) * factor_series).clip(
         upper=_MAX_DURACION_MESES
@@ -169,53 +133,6 @@ def build_forecast_df(
         labels=["Ya vencido", "<3 meses", "3-6 meses", "6-12 meses", ">12 meses"],
     )
     return df.sort_values("fecha_fin_estimada")
-
-
-def forecast_volume(
-    df: pd.DataFrame,
-    months_ahead: int = 6,
-    metric: str = "count",
-) -> pd.DataFrame:
-    """Pronostica el volumen mensual de licitaciones usando suavizado exponencial.
-
-    Args:
-        df: DataFrame con columna ``fecha_publicacion``.
-        months_ahead: Número de meses a proyectar.
-        metric: ``"count"`` (número de licitaciones) o ``"sum"`` (importe total).
-
-    Returns:
-        DataFrame con columnas ``mes``, ``valor``, ``tipo`` ("historico" | "forecast"),
-        ``modelo`` y ``lower``/``upper`` (banda aproximada, solo para forecast).
-        Devuelve DataFrame vacío si hay <3 meses de histórico.
-    """
-    if df.empty or "fecha_publicacion" not in df.columns:
-        return pd.DataFrame()
-
-    dates = pd.to_datetime(df["fecha_publicacion"], errors="coerce", utc=True)
-    work = df.assign(_fecha=dates).dropna(subset=["_fecha"])
-    if work.empty:
-        return pd.DataFrame()
-
-    work["_mes"] = work["_fecha"].dt.to_period("M").dt.to_timestamp()
-
-    if metric == "sum":
-        hist = (
-            work.groupby("_mes")["importe"]
-            .sum()
-            .rename("valor")
-            .reset_index()
-            .rename(columns={"_mes": "mes"})
-        )
-    else:
-        hist = (
-            work.groupby("_mes")
-            .size()
-            .rename("valor")
-            .reset_index()
-            .rename(columns={"_mes": "mes"})
-        )
-
-    return forecast_volume_from_monthly(hist, months_ahead=months_ahead)
 
 
 def forecast_volume_from_monthly(hist: pd.DataFrame, *, months_ahead: int = 6) -> pd.DataFrame:

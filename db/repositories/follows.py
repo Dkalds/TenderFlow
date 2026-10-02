@@ -374,15 +374,6 @@ def descartes_desde_follows(user_key: str, *, user_id: int | None = None) -> lis
     ]
 
 
-def contar_por_tipo() -> dict[str, int]:
-    """`{target_type:kind: filas}`. Lo usa el script de paridad y el panel de calidad."""
-    with connect_read() as c:
-        filas = c.execute(
-            "SELECT target_type, kind, COUNT(*) FROM follows GROUP BY target_type, kind"
-        ).fetchall()
-    return {f"{r[0]}:{r[1]}": int(r[2]) for r in filas}
-
-
 def borrar_de_usuario(user_key: str, *, user_id: int | None = None) -> int:
     """Borra todos los seguimientos del usuario. Lo llama el borrado GDPR."""
     with connect() as c:

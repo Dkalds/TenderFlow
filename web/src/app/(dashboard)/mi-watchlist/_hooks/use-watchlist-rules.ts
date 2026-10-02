@@ -10,9 +10,9 @@
  * seis criterios, así que lo que no era traducción se ha ido a su propio
  * fichero: las formas a `watchlist-rule-types.ts`, los catálogos de los
  * selectores a `watchlist-rule-options.ts`, el deduplicado y el conteo de
- * coincidencias a `watchlist-matches.ts` y la migración del `localStorage`
- * legacy a `use-legacy-rule-migration.ts` (esta última es la única que puede
- * borrar datos del usuario y merece leerse aislada).
+ * coincidencias a `watchlist-matches.ts`. (La migración one-shot del
+ * `localStorage` legacy se retiró el 2026-09-28, tres meses después de pasar
+ * las reglas a servidor.)
  */
 "use client";
 

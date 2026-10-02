@@ -251,20 +251,5 @@ class JobsRepository:
             filas = c.execute("SELECT estado, COUNT(*) FROM jobs GROUP BY estado").fetchall()
         return {str(f[0]): int(f[1]) for f in filas}
 
-    def listar_por_ids(self, ids: list[int]) -> list[dict[str, Any]]:
-        """Los jobs indicados, en el orden en que Postgres los devuelva.
-
-        Lo usa el cierre post-ingesta (S5.4) para releer de una vez el
-        resultado de los pasos que encoló, en vez de una consulta por paso.
-        """
-        if not ids:
-            return []
-        with connect_read() as c:
-            filas = c.execute(
-                f"SELECT {_SELECT} FROM jobs WHERE id = ANY(%s)",
-                ([int(i) for i in ids],),
-            ).fetchall()
-        return [_fila(f) for f in filas]
-
 
 __all__ = ["JobsRepository"]

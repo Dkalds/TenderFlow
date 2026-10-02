@@ -120,8 +120,8 @@ def _reset_signal_poll_cache() -> None:
 def signal_cache_invalidation() -> None:
     """Publica una invalidación compartida y actualiza el fallback local.
 
-    Debe llamarse al final de cada ingesta exitosa (``process_month``,
-    ``update_daily``) para notificar al API que los datos cambiaron.
+    Debe llamarse al final de cada ingesta exitosa (p. ej. el cierre
+    de ``scheduler/pipeline_runs.py``) para notificar al API que los datos cambiaron.
     No lanza excepciones — si falla, solo loguea un warning.
     """
     timestamp = time.time()

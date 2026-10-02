@@ -7,13 +7,14 @@ import hmac
 from unittest.mock import MagicMock, patch
 
 from db import webhooks as wh_mod
+from db.repositories.webhooks import WebhookRepository
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
 def _create_sample(db_mod) -> tuple[int, str]:
     """Shortcut: crea un webhook de prueba y devuelve (id, secret)."""
-    return wh_mod.create_webhook(
+    return WebhookRepository().create(
         name="test-hook",
         url="https://example.com/hook",
         event_types=["watchlist_match"],
@@ -21,20 +22,6 @@ def _create_sample(db_mod) -> tuple[int, str]:
 
 
 # ── tests ────────────────────────────────────────────────────────────────────
-
-
-class TestSign:
-    def test_hmac_sha256_correct(self):
-        secret = "my-secret"  # pragma: allowlist secret
-        payload = b'{"event":"test"}'
-        expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
-        assert wh_mod._sign(secret, payload) == expected
-
-    def test_different_secrets_produce_different_sigs(self):
-        payload = b"same-payload"
-        sig_a = wh_mod._sign("secret-a", payload)
-        sig_b = wh_mod._sign("secret-b", payload)
-        assert sig_a != sig_b
 
 
 class TestCreateWebhook:
@@ -47,7 +34,10 @@ class TestCreateWebhook:
     def test_secret_not_stored_plaintext_with_master_key(self, tmp_db):
         """When a master key is configured, the DB stores the sentinel."""
         db_mod, _ = tmp_db
-        with patch("db.webhooks._get_webhook_master_key", return_value="test-master-key-long!!"):
+        with patch(
+            "db.repositories.webhooks._get_webhook_master_key",
+            return_value="test-master-key-long!!",
+        ):
             wid, secret = _create_sample(db_mod)
         # Check DB has sentinel, not the actual secret
         from db.database import connect
@@ -56,34 +46,6 @@ class TestCreateWebhook:
             row = c.execute("SELECT secret FROM webhooks WHERE id = %s", (wid,)).fetchone()
         assert row[0] == "derived:v1"
         assert secret != "derived:v1"
-
-
-class TestListWebhooks:
-    def test_excludes_secret(self, tmp_db):
-        db_mod, _ = tmp_db
-        _create_sample(db_mod)
-        rows = wh_mod.list_webhooks()
-        assert len(rows) >= 1
-        for row in rows:
-            assert "secret" not in row
-
-    def test_returns_expected_fields(self, tmp_db):
-        db_mod, _ = tmp_db
-        _create_sample(db_mod)
-        row = wh_mod.list_webhooks()[0]
-        for col in ("id", "name", "url", "event_types", "active"):
-            assert col in row
-
-
-class TestDeleteWebhook:
-    def test_delete_existing(self, tmp_db):
-        db_mod, _ = tmp_db
-        wid, _ = _create_sample(db_mod)
-        assert wh_mod.delete_webhook(wid) is True
-
-    def test_delete_nonexistent(self, tmp_db):
-        _db_mod, _ = tmp_db
-        assert wh_mod.delete_webhook(999999) is False
 
 
 class TestTriggerEvent:
@@ -118,7 +80,9 @@ class TestTriggerEvent:
     @patch("db.webhooks.pinned_https_request")
     def test_wildcard_event_type(self, mock_post, tmp_db):
         _db_mod, _ = tmp_db
-        wh_mod.create_webhook(name="catch-all", url="https://example.com/all", event_types=["*"])
+        WebhookRepository().create(
+            name="catch-all", url="https://example.com/all", event_types=["*"]
+        )
         mock_post.return_value = MagicMock(status_code=200)
         count = wh_mod.trigger_event("any_event", {})
         assert count == 1
@@ -149,7 +113,7 @@ class TestTriggerEvent:
         real (no solo en el ping manual). Un webhook apuntando a una IP privada
         nunca debe llegar a ``requests.post`` — cierra la ventana TOCTOU."""
         _db_mod, _ = tmp_db
-        wh_mod.create_webhook(
+        WebhookRepository().create(
             name="ssrf-attempt",
             url="http://127.0.0.1:9999/hook",
             event_types=["watchlist_match"],
@@ -159,7 +123,7 @@ class TestTriggerEvent:
 
         assert count == 0
         mock_post.assert_not_called()
-        rows = wh_mod.list_webhooks()
+        rows = WebhookRepository().list_all()
         hook = next(r for r in rows if r["url"] == "http://127.0.0.1:9999/hook")
         assert hook["failure_count"] == 1
 
@@ -167,7 +131,7 @@ class TestTriggerEvent:
     def test_dns_rebinding_domain_rejected_at_delivery_time(self, mock_post, tmp_db):
         """Sufijo de dominio de rebinding conocido también bloqueado en trigger_event."""
         _db_mod, _ = tmp_db
-        wh_mod.create_webhook(
+        WebhookRepository().create(
             name="rebinding-attempt",
             url="https://10.0.0.1.nip.io/hook",
             event_types=["*"],
@@ -189,13 +153,13 @@ class TestRecordDelivery:
             wh_mod._record_delivery(wid, 500, False)
 
         # Verify failure_count > 0
-        rows = wh_mod.list_webhooks()
+        rows = WebhookRepository().list_all()
         hook = next(r for r in rows if r["id"] == wid)
         assert hook["failure_count"] == 3
 
         # Success resets counter
         wh_mod._record_delivery(wid, 200, True)
-        rows = wh_mod.list_webhooks()
+        rows = WebhookRepository().list_all()
         hook = next(r for r in rows if r["id"] == wid)
         assert hook["failure_count"] == 0
 
@@ -206,7 +170,7 @@ class TestRecordDelivery:
         for _ in range(wh_mod._MAX_FAILURES_BEFORE_DISABLE):
             wh_mod._record_delivery(wid, 500, False)
 
-        rows = wh_mod.list_webhooks()
+        rows = WebhookRepository().list_all()
         hook = next(r for r in rows if r["id"] == wid)
         assert hook["active"] == 0
         assert hook["failure_count"] >= wh_mod._MAX_FAILURES_BEFORE_DISABLE

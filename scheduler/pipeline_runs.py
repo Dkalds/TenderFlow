@@ -460,7 +460,7 @@ def _run_llm_tech_labeling() -> str:
 def _run_organos_resolve() -> str:
     """Resuelve ``organo_id`` de las grafías nuevas (ADR-032 §C, 2026-09-14).
 
-    Hasta esta fecha solo ``scripts/backfill_organos.py`` llamaba al resolutor,
+    Hasta esta fecha solo el backfill de órganos (ya retirado) llamaba al resolutor,
     así que cada pasada del ATOM dejaba filas nuevas sin órgano y el maestro
     se degradaba solo. Acotado por cuenta y por reloj (settings
     ``ORGANOS_RESOLVE_*``): el backlog grande sigue siendo del script.
@@ -1086,8 +1086,10 @@ def run_daily_pipeline(*, con_cierre: bool = True) -> dict[str, Any]:
             que el cierre ocurra tras los seis conectores. El default es
             ``True`` para que ningún caller pierda el cierre por omisión.
 
-    Cuando ``PLACSP_CONNECTOR_ENABLED=True`` (F2), usa ``PlacspAtomConnector``
-    a través de ``run_connector``; si es False, usa el pipeline legacy.
+    Ingiere con ``PlacspAtomConnector`` a través de ``run_connector``. El
+    flag ``PLACSP_CONNECTOR_ENABLED`` y el camino legacy (``update_daily``) se
+    retiraron el 2026-09-28, tras más de dos meses con el connector en
+    producción.
 
     Returns:
         Dict con ``ingestion_result``, ``steps`` y ``status``.
@@ -1098,35 +1100,13 @@ def run_daily_pipeline(*, con_cierre: bool = True) -> dict[str, Any]:
             ``error_persistencia``) no relanzarán excepción para evitar
             doble-alerta — las notificaciones ya se enviaron dentro del pipeline.
     """
-    from config import settings as _settings
-
-    if getattr(_settings, "PLACSP_CONNECTOR_ENABLED", False):
-        return _run_daily_pipeline_connector(con_cierre=con_cierre)
-
-    # ── Legacy path ──────────────────────────────────────────────────────────
-    from scraper.pipeline import update_daily
-
-    _HANDLED_STATUSES = frozenset({"error_fetch", "error_persistencia"})
-
-    result = update_daily()
-    status = result.get("status", "error")
-
-    if status != "ok" and status not in _HANDLED_STATUSES:
-        raise RuntimeError(f"daily ingestion failed: {status}")
-
-    step_results = _run_post_ingestion_steps(lane=LANE_DAILY) if con_cierre else {}
-
-    return {
-        "status": status,
-        "ingestion_result": result,
-        "steps": step_results,
-    }
+    return _run_daily_pipeline_connector(con_cierre=con_cierre)
 
 
 def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
     """Implementación del carril diario usando PlacspAtomConnector (F2).
 
-    Mantiene paridad operacional con el camino legacy (``update_daily``):
+    Mantiene el contrato que tenía el camino legacy (``update_daily``, retirado):
 
     - ``ingestion_result`` expone ``inserted``/``modified`` como **listas de
       id_externo** (mismo contrato que ``process_daily``; ``_log_daily_summary``
@@ -1254,7 +1234,7 @@ def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
 
     Siempre por ``PlacspBulkConnector`` + ``run_connector``. Hasta 2026-09
     había aquí una rama legacy (``scraper.pipeline.update_recent`` →
-    ``process_month``) gobernada por ``PLACSP_CONNECTOR_ENABLED``; se retiró
+    ``process_month``) gobernada por el flag ya retirado ``PLACSP_CONNECTOR_ENABLED``; se retiró
     con la propia ``process_month`` (S2.1): ese camino escribía sin historial
     (``upsert_licitaciones`` en vez de ``upsert_licitaciones_with_history``),
     sin lotes, sin documentos, sin detección de duplicados y sin salud de

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { TenderFlowLogo, TenderFlowIcon, TFMark } from "@/components/layout/tenderflow-logo";
+import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { TF_MARK_PATHS } from "@/lib/marca";
 
 describe("TenderFlowLogo", () => {
@@ -56,33 +56,5 @@ describe("TenderFlowLogo", () => {
     expect(screen.getByText("TenderFlow")).toHaveClass("font-display");
     const sector = screen.getByText("Sector público");
     expect(sector.className).not.toMatch(/uppercase|tracking-/);
-  });
-});
-
-describe("TFMark", () => {
-  it("se puede montar suelto (rail, barra móvil) con su tamaño", () => {
-    const { container } = render(<TFMark size={18} />);
-    const svg = container.querySelector("svg");
-    expect(svg).toHaveAttribute("width", "18");
-    expect(svg).toHaveAttribute("aria-hidden", "true");
-  });
-});
-
-describe("TenderFlowIcon", () => {
-  it("renders the icon-only variant without the wordmark", () => {
-    render(<TenderFlowIcon />);
-    expect(screen.queryByText("TenderFlow")).toBeNull();
-  });
-
-  it("renders an svg mark", () => {
-    const { container } = render(<TenderFlowIcon />);
-    expect(container.querySelector("svg")).toBeInTheDocument();
-  });
-
-  it("uses a custom size", () => {
-    const { container } = render(<TenderFlowIcon size={48} />);
-    const svg = container.querySelector("svg");
-    // iconSize = round(48 * 0.58) = 28
-    expect(svg).toHaveAttribute("width", "28");
   });
 });

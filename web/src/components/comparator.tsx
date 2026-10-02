@@ -9,7 +9,7 @@ import { ComparacionFichasTabla } from "@/components/pliego/comparar-fichas";
 import { MAX_COMPARAR } from "@/hooks/use-comparar-fichas";
 import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { cn, EMPTY, formatCurrency, formatDate } from "@/lib/utils";
-import type { LicitacionDetail } from "@/components/detail-panel";
+import type { LicitacionDetail } from "@/lib/licitacion-detail";
 
 interface ComparatorProps {
   items: LicitacionDetail[];

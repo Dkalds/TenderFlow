@@ -72,7 +72,7 @@ export function useMarcarVisto() {
 /** Líneas visibles sin desplegar: las que caben en la primera pantalla. */
 const VISIBLES = 4;
 
-export function useDesdeUltimaVisita() {
+function useDesdeUltimaVisita() {
   const organizationId = useActiveOrganizationId();
   return useQuery<NovedadesDesdeUltimaVisita>({
     queryKey: analyticsKeys.desdeUltimaVisita(organizationId),

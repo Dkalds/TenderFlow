@@ -6,7 +6,7 @@ import { fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { analyticsKeys, licitacionKeys, licitacionesKeys } from "@/lib/query-keys";
 import type { LicitacionesCursorPage } from "@/lib/api-types";
-import type { LicitacionDetail } from "@/components/detail-panel";
+import type { LicitacionDetail } from "@/lib/licitacion-detail";
 import {
   conTotalConocido,
   conjuntoDelListado,

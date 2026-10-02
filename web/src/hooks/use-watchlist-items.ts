@@ -132,9 +132,3 @@ export function useRemoveWatchlistItem() {
     },
   });
 }
-
-/** Whether `idExterno` is currently in the user's watchlist (for star icons). */
-export function useIsWatchlisted(idExterno: string): boolean {
-  const { data } = useWatchlistItems();
-  return (data ?? []).some((item) => item.id_externo === idExterno);
-}

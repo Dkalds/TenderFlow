@@ -6,9 +6,9 @@
  * `mi-watchlist/page.tsx`, esta última quedándose sólo con las CCAA. Dos
  * entradas de caché y dos peticiones al mismo endpoint.
  *
- * Quien sólo necesite una dimensión usa `useMetaCcaas`, que es la misma query
- * con un `select`: React Query cachea por clave, no por proyección, así que la
- * petición sigue siendo una.
+ * Quien sólo necesite una dimensión la proyecta con un `select` sobre la misma
+ * clave (`metaKeys.filters`): React Query cachea por clave, no por proyección,
+ * así que la petición sigue siendo una.
  */
 "use client";
 
@@ -30,15 +30,5 @@ export function useMetaFilters(enabled = true) {
     queryFn: () => fetchWithAuth<MetaFilters>("/api/v1/meta/filters"),
     staleTime: 5 * 60 * 1000,
     enabled,
-  });
-}
-
-/** Sólo las CCAA del catálogo, sin una segunda petición. */
-export function useMetaCcaas() {
-  return useQuery<MetaFilters, Error, string[]>({
-    queryKey: metaKeys.filters,
-    queryFn: () => fetchWithAuth<MetaFilters>("/api/v1/meta/filters"),
-    staleTime: 5 * 60 * 1000,
-    select: (data) => data.ccaa ?? [],
   });
 }

@@ -62,11 +62,6 @@ def get_user_id_from_key_id(key_id: int) -> int | None:
     return result
 
 
-def export_api_keys(key_hash: str) -> list[dict[str, Any]]:
-    """Exporta las API keys vinculadas al ``key_hash``."""
-    return _api_key_repo.list_for_export(key_hash)
-
-
 def export_watchlist(key_hash: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
     """Exporta las entradas de watchlist del usuario."""
     return _watchlist_repo.export_by_user_key(key_hash, user_id)
@@ -168,16 +163,6 @@ def anonymize_user_data(
 def revoke_all_api_keys_for_user(user_id: int) -> int:
     """Desactiva todas las API keys del usuario (borrado de cuenta por sesión)."""
     return _api_key_repo.deactivate_all_for_user(user_id)
-
-
-def list_user_keys(key_id: int) -> list[dict[str, Any]]:
-    """Lista las API keys del usuario (solo la key autenticada por ID)."""
-    return _api_key_repo.get_by_key_id(key_id)
-
-
-def get_key_name_and_scopes(key_id: int) -> tuple[str, str] | None:
-    """Obtiene nombre y scopes de una API key por ID."""
-    return _api_key_repo.get_name_and_scopes(key_id)
 
 
 def set_key_expiry(key_id: int, expires_at: str) -> None:

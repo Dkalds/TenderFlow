@@ -41,7 +41,7 @@ interface ValoresProbabilidades {
 }
 
 /** Lo guardado como valores de formulario: vacío donde manda el default. */
-export function valoresDeAjustes(ajustes: OrganizationSettingsOut, etapas: readonly string[]) {
+function valoresDeAjustes(ajustes: OrganizationSettingsOut, etapas: readonly string[]) {
   const guardadas = ajustes.probabilidades_etapa ?? {};
   return {
     probabilidades_etapa: Object.fromEntries(
@@ -51,7 +51,7 @@ export function valoresDeAjustes(ajustes: OrganizationSettingsOut, etapas: reado
 }
 
 /** Del formulario al contrato: sólo las etapas con valor propio. */
-export function probabilidadesDeValores(valores: ValoresProbabilidades): Record<string, number> {
+function probabilidadesDeValores(valores: ValoresProbabilidades): Record<string, number> {
   const salida: Record<string, number> = {};
   for (const [etapa, texto] of Object.entries(valores.probabilidades_etapa)) {
     const numero = numeroDeTexto(texto);

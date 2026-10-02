@@ -4,7 +4,7 @@ Expone helpers para medir tiempos de render y queries de BD,
 usables como decoradores o context managers.
 
 Métricas añadidas:
-  - db_query_seconds{query}          — Tiempo de consultas SQLite
+  - db_query_seconds{query}          — Tiempo de consultas a la BD
 
 Los valores se registran en structlog (siempre) y opcionalmente en
 prometheus_client si está disponible.

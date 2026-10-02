@@ -71,7 +71,7 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "rendimiento", label: "Rendimiento" },
   ],
   // Rediseño 2026-08: la agenda absorbe pipeline-alertas (inventario de
-  // funciones en docs/redesign/mi-pipeline-inventario.md). Reestructura
+  // funciones en docs/archive/redesign/mi-pipeline-inventario.md). Reestructura
   // 2026-09-20: el espacio se llama «Agenda» y responde una sola pregunta
   // —qué se me muere si hoy no hago nada—, así que ésta es su única vista.
   // El `key`/slug `mi-pipeline` se conserva para no romper URLs ni

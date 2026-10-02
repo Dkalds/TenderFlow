@@ -37,7 +37,7 @@ const SIN_CITA =
   "así que no se presenta como cumplido.";
 
 /** El veredicto que se puede defender con lo que trae el propio ítem. */
-export function veredictoDeItem(item: ChecklistItem): ChecklistVeredicto {
+function veredictoDeItem(item: ChecklistItem): ChecklistVeredicto {
   if (item.veredicto === "cumple" && (item.evidencia ?? []).length === 0) return "desconocido";
   return item.veredicto;
 }

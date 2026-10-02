@@ -5,7 +5,7 @@ status: accepted
 date: 2026-08-10
 deciders: "Daniel Kalitovics"
 related:
-  - "[[ADR-016-postgres-supabase]]"
+  - "[[ADR-016-destino-persistencia-supabase]]"
   - "[[ADR-021-retirada-sqlite]]"
   - "[[ADR-022-frontera-de-persistencia]]"
 tags: [adr, architecture, persistence, performance]

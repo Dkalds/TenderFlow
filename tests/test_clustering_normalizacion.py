@@ -1,8 +1,7 @@
 """Normalización L2 del fallback TF-IDF de clustering (``_tfidf_embeddings``).
 
-La función está dos veces con el mismo contrato, en
-``services.clustering_engine`` y en ``services.analytics.clusters``. Las dos
-pasan la matriz densa por ``sklearn.preprocessing.normalize`` antes de
+La función vive en ``services.analytics.clusters`` y
+pasa la matriz densa por ``sklearn.preprocessing.normalize`` antes de
 devolverla: cada fila sale como la del ``TfidfVectorizer`` dividida por su
 norma L2, y una fila a cero se queda a cero.
 
@@ -32,7 +31,7 @@ import numpy as np
 import pytest
 from sklearn.feature_extraction import text as sklearn_text
 
-_MODULOS = ["services.clustering_engine", "services.analytics.clusters"]
+_MODULOS = ["services.analytics.clusters"]
 
 # Dos grupos de títulos que repiten vocabulario, así que superan ``min_df=2``, y
 # un último documento cuyas palabras no salen en ningún otro: su fila se queda
@@ -61,9 +60,8 @@ def _espiar_vectorizador(
         creados.append(vec)
         return vec
 
-    # ``clustering_engine`` enlaza el nombre al importarse; ``analytics.clusters``
-    # lo importa dentro de la función y lo lee del módulo de sklearn.
-    monkeypatch.setattr("services.clustering_engine.TfidfVectorizer", espia)
+    # ``analytics.clusters`` lo importa dentro de la función y lo lee del módulo
+    # de sklearn.
     monkeypatch.setattr(sklearn_text, "TfidfVectorizer", espia)
     return creados
 

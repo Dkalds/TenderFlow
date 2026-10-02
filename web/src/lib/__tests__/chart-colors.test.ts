@@ -4,9 +4,6 @@ import {
   getSeriesColor,
   getEstadoChartColor,
   ESTADO_CHART_COLOR,
-  SCORE_COLOR,
-  BAND_TO_SCORE,
-  getBandColor,
 } from "@/lib/chart-colors";
 
 describe("CHART_SERIES", () => {
@@ -66,32 +63,5 @@ describe("getEstadoChartColor", () => {
 
   it("returns correct color for 'Publicada'", () => {
     expect(getEstadoChartColor("Publicada")).toBe(ESTADO_CHART_COLOR["Publicada"]);
-  });
-});
-
-describe("exports exist", () => {
-  it("ESTADO_CHART_COLOR is a record", () => {
-    expect(typeof ESTADO_CHART_COLOR).toBe("object");
-  });
-
-  it("SCORE_COLOR is an object with hot/warm/cold/skip keys", () => {
-    expect(SCORE_COLOR).toHaveProperty("hot");
-    expect(SCORE_COLOR).toHaveProperty("warm");
-    expect(SCORE_COLOR).toHaveProperty("cold");
-    expect(SCORE_COLOR).toHaveProperty("skip");
-  });
-
-  it("BAND_TO_SCORE maps Spanish labels to ScoreBand keys", () => {
-    expect(BAND_TO_SCORE["Caliente"]).toBe("hot");
-    expect(BAND_TO_SCORE["Descarte"]).toBe("skip");
-  });
-
-  it("getBandColor returns correct color for known band", () => {
-    expect(getBandColor("Caliente")).toBe(SCORE_COLOR.hot);
-  });
-
-  it("getBandColor falls back to skip for unknown band", () => {
-    expect(getBandColor("UNKNOWN")).toBe(SCORE_COLOR.skip);
-    expect(getBandColor(null)).toBe(SCORE_COLOR.skip);
   });
 });

@@ -309,7 +309,7 @@ previo y cambiarlo mueve el ancla de ML y los filtros por fecha.
 
 ## Hallazgo lateral: D32 queda corroborado
 
-El [spike D32](2026-09-spike-d32-hitos-procedimiento.md) midió la cobertura de
+El [spike D32](../archive/plans/2026-09-spike-d32-hitos-procedimiento.md) midió la cobertura de
 los hitos del procedimiento con expresiones regulares del tipo `<\w+:Nombre[ >]`,
 que —como se explica arriba— **no casan prefijos con guion**. Sus ceros podrían
 haber sido un artefacto de medición, así que se recontaron por `local-name` sobre

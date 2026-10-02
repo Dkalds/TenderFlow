@@ -48,21 +48,11 @@ def test_default_ml_threshold():
 
 
 def test_default_paths_derived(tmp_path):
-    """DB_PATH y DOWNLOADS_DIR se derivan de DATA_DIR si no se configuran."""
+    """DOWNLOADS_DIR se deriva de DATA_DIR si no se configura."""
     from config.settings import Settings
 
     s = Settings(DATA_DIR=tmp_path)
-    assert tmp_path / "licitaciones.db" == s.DB_PATH
     assert tmp_path / "downloads" == s.DOWNLOADS_DIR
-
-
-def test_explicit_db_path_not_overridden(tmp_path):
-    """Si DB_PATH se configura explícitamente, no se sobreescribe."""
-    custom = tmp_path / "custom.db"
-    from config.settings import Settings
-
-    s = Settings(DATA_DIR=tmp_path, DB_PATH=custom)
-    assert custom == s.DB_PATH
 
 
 # ---------------------------------------------------------------------------

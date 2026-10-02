@@ -40,10 +40,7 @@ from db.repositories.webhooks import (
 )
 from observability.logging import get_logger
 from shared.crypto import (
-    DERIVED_SECRET_SENTINEL,
     cabeceras_de_firma,
-    derive_webhook_secret,
-    firmar_webhook,
     is_derived_secret,
     resolve_derived_secret,
     segundos_unix,
@@ -95,70 +92,6 @@ def _resolve_secret(webhook_id: int, stored_secret: str) -> str:
             return stored_secret
         return resolve_derived_secret(master_key, webhook_id, stored_secret)
     return stored_secret
-
-
-def _sign(secret: str, payload: bytes) -> str:
-    """Firma HMAC-SHA256 en hex del payload con el secret del webhook (v1)."""
-    return firmar_webhook(secret, payload)
-
-
-def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int, str]:
-    """Crea un webhook nuevo y devuelve (id, secret).
-
-    El secret se deriva de la clave maestra del servidor + webhook_id.
-    Solo se devuelve en la creación — no se almacena en texto plano.
-    Si no hay clave maestra configurada (dev), se genera un secret aleatorio
-    como fallback (legacy behavior).
-    """
-    now = now_utc_iso()
-    master_key = _get_webhook_master_key()
-
-    with connect() as c:
-        # Insert with placeholder; we need the ID to derive the secret.
-        # RETURNING y no lastval(): el id tiene que ser el de ESTA fila aunque
-        # un trigger toque otra secuencia — de él se deriva el secret HMAC.
-        row = c.execute(
-            "INSERT INTO webhooks "
-            "(name, url, secret, event_types, active, created_at) "
-            "VALUES (%s, %s, %s, %s, 1, %s) RETURNING id",
-            (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
-        ).fetchone()
-        webhook_id = int(row[0]) if row else 0
-
-    if master_key:
-        secret = derive_webhook_secret(master_key, webhook_id)
-    else:
-        # Dev fallback: generate random secret (legacy behavior)
-        import secrets as _secrets
-
-        secret = _secrets.token_urlsafe(32)
-        with connect() as c:
-            c.execute(
-                "UPDATE webhooks SET secret = %s WHERE id = %s",
-                (secret, webhook_id),
-            )
-
-    log.info("webhook_created", webhook_id=webhook_id, events=event_types)
-    return webhook_id, secret
-
-
-def list_webhooks() -> list[dict[str, Any]]:
-    """Lista todos los webhooks (sin exponer el secret)."""
-    with connect() as c:
-        cur = c.execute(
-            "SELECT id, name, url, event_types, active, created_at, "
-            "last_triggered_at, last_status, failure_count FROM webhooks "
-            "ORDER BY id"
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
-
-
-def delete_webhook(webhook_id: int) -> bool:
-    """Borra un webhook. Devuelve True si existía."""
-    with connect() as c:
-        cur = c.execute("DELETE FROM webhooks WHERE id = %s", (webhook_id,))
-        return cast(bool, cur.rowcount > 0)
 
 
 def _cabeceras(

@@ -659,12 +659,12 @@ class TestOAuthEmailIsAdmin:
 
 
 # ---------------------------------------------------------------------------
-# PKCE — generate_pkce_pair / verify_pkce
+# PKCE — generate_pkce_pair
 # ---------------------------------------------------------------------------
 
 
 class TestPKCE:
-    """Lines 351-355, 364-368: generate_pkce_pair and verify_pkce."""
+    """generate_pkce_pair produce un par S256 válido."""
 
     def test_generate_pkce_pair(self):
         from shared.auth_core import generate_pkce_pair
@@ -675,22 +675,15 @@ class TestPKCE:
         assert len(verifier) > 10
         assert len(challenge) > 10
 
-    def test_verify_pkce_valid(self):
-        from shared.auth_core import generate_pkce_pair, verify_pkce
+    def test_challenge_es_s256_del_verifier(self):
+        import base64
+        import hashlib
+
+        from shared.auth_core import generate_pkce_pair
 
         verifier, challenge = generate_pkce_pair()
-        assert verify_pkce(verifier, challenge) is True
-
-    def test_verify_pkce_invalid(self):
-        from shared.auth_core import verify_pkce
-
-        assert verify_pkce("wrong_verifier", "wrong_challenge") is False
-
-    def test_verify_pkce_empty(self):
-        from shared.auth_core import verify_pkce
-
-        assert verify_pkce("", "challenge") is False
-        assert verify_pkce("verifier", "") is False
+        digest = hashlib.sha256(verifier.encode("ascii")).digest()
+        assert base64.urlsafe_b64encode(digest).rstrip(b"=").decode() == challenge
 
 
 # ---------------------------------------------------------------------------

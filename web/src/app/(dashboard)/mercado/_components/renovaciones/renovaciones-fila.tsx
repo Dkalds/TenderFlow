@@ -10,7 +10,7 @@ import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 import type { MarcaPropia, RenovacionRow } from "../../_hooks/use-renovaciones";
 
 /** Semáforo del plazo: los mismos cortes de urgencia que usa el resto del producto. */
-export function diasBadgeVariant(dias: number | null): "destructive" | "secondary" | "outline" {
+function diasBadgeVariant(dias: number | null): "destructive" | "secondary" | "outline" {
   if (dias == null) return "outline";
   if (dias <= 30) return "destructive";
   if (dias <= 90) return "secondary";
@@ -24,7 +24,7 @@ export function diasBadgeVariant(dias: number | null): "destructive" | "secondar
  * ofrecer «Anticipar» sobre un contrato que ya está en tu cartera —o sobre uno
  * que ya anticipaste— obligaba a abrir Oportunidades para descubrirlo.
  */
-export const MARCA_PROPIA: Record<MarcaPropia, { texto: string; explicacion: string }> = {
+const MARCA_PROPIA: Record<MarcaPropia, { texto: string; explicacion: string }> = {
   cartera: {
     texto: "En tu cartera",
     explicacion:

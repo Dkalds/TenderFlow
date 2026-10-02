@@ -202,7 +202,7 @@ class TestClusteringPerformance:
 
     def test_cluster_1k_rows_tfidf(self):
         """Clustering sobre 1K filas con TF-IDF debe completar en <10s."""
-        from services.clustering_engine import _tfidf_embeddings
+        from services.analytics.clusters import _tfidf_embeddings
 
         texts = [
             f"Sistema SAP S/4HANA implantación módulo {'FI' if i % 3 == 0 else 'MM'} "
@@ -216,29 +216,3 @@ class TestClusteringPerformance:
 
         assert embeddings.shape == (1_000, min(256, embeddings.shape[1]))
         assert elapsed < 10.0, f"TF-IDF 1K textos tardó {elapsed:.1f}s (máx 10s)"
-
-    def test_cluster_500_rows_kmeans(self):
-        """KMeans clustering sobre 500 filas (via TF-IDF) debe terminar en <30s."""
-        import numpy as np
-        import pandas as pd
-
-        from services.clustering_engine import cluster_licitaciones
-
-        rng = np.random.default_rng(42)
-        df = pd.DataFrame(
-            {
-                "id_externo": [f"PERF-CLUSTER-{i}" for i in range(500)],
-                "titulo": [
-                    f"{'SAP ERP' if i % 4 == 0 else 'Cloud AWS'} licitación {i}" for i in range(500)
-                ],
-                "descripcion": [f"Descripción proyecto {i}" for i in range(500)],
-                "importe": rng.integers(10_000, 1_000_000, 500).astype(float),
-            }
-        )
-
-        t0 = time.monotonic()
-        result = cluster_licitaciones(df, n_clusters=5)
-        elapsed = time.monotonic() - t0
-
-        assert "cluster_id" in result.columns
-        assert elapsed < 30.0, f"Clustering 500 filas tardó {elapsed:.1f}s (máx 30s)"

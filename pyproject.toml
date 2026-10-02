@@ -58,7 +58,7 @@ llm = [
 # Instalar con: pip install tenderflow[ml]
 # NOTA: sentence-transformers arrastra PyTorch (~2 GB). No instalar en entornos sin GPU si no se usa.
 # faiss-cpu eliminado en Fase 3 (2026-07-04): /search usa FTS5/BM25+LIKE; sentence-transformers
-# se mantiene porque lo usan ml_classifier, clustering_engine y embeddings.
+# se mantiene porque lo usan ml_classifier y embeddings.
 ml = [
     "sentence-transformers>=2.2.0,<7",
 ]
@@ -175,9 +175,6 @@ ignore = [
 "scheduler/watchlist_rules_alerts.py" = ["TID251"]
 "scraper/ml_training.py" = ["TID251", "S608"]  # SQL built from internal schema strings
 "scraper/tech_classifier.py" = ["TID251"]
-"scripts/dedupe_licitaciones.py" = ["TID251"]
-"scripts/fix_dates_adjudicaciones.py" = ["TID251"]
-"scripts/retrain.py" = ["TID251"]
 "scripts/rotate_api_keys.py" = ["TID251"]
 "scripts/seed_dev.py" = ["TID251"]
 "services/analytics/scoring_signals.py" = ["TID251"]

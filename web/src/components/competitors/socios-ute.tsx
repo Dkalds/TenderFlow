@@ -54,7 +54,7 @@ export function prefijoCpv(cpv: string | null | undefined): string | null {
   return sinCeros.length >= 2 ? sinCeros : digitos.slice(0, 2);
 }
 
-export function useSociosUte(cpv: string | null, ccaa: string | null) {
+function useSociosUte(cpv: string | null, ccaa: string | null) {
   return useQuery<SugerenciaSocios>({
     queryKey: competitiveKeys.partners(cpv, ccaa),
     queryFn: () =>

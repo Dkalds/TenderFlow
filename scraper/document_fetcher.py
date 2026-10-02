@@ -295,17 +295,6 @@ def _extract_pdf_pages_local(content: bytes, *, max_pages: int, max_text_chars: 
     return pages_text
 
 
-def _extract_pdf_text_local(content: bytes, *, max_pages: int, max_text_chars: int) -> str:
-    """Compatibilidad: devuelve el texto agregado del PDF."""
-    return "\n".join(
-        _extract_pdf_pages_local(
-            content,
-            max_pages=max_pages,
-            max_text_chars=max_text_chars,
-        )
-    ).strip()
-
-
 def _pdf_extraction_worker(
     content: bytes,
     max_pages: int,
@@ -395,11 +384,6 @@ def _extract_pdf_pages(content: bytes) -> list[str]:
             process.join(timeout=1)
         receive_connection.close()
         send_connection.close()
-
-
-def _extract_pdf_text(content: bytes) -> str:
-    """Compatibilidad: texto agregado a partir de las páginas extraídas."""
-    return "\n".join(_extract_pdf_pages(content)).strip()
 
 
 # ── OCR de PDF escaneados (S8.3) ───────────────────────────────────────────
@@ -761,16 +745,6 @@ def _extract_paginas(content: bytes, content_type: str | None) -> list[PaginaExt
     content-type y el PDF es, con diferencia, el caso mayoritario.
     """
     return _extraer_paginas_de_tipo(content, content_type or CONTENT_TYPE_PDF)
-
-
-def _extract_pages(content: bytes, content_type: str | None) -> list[str]:
-    """Compatibilidad: sólo el texto de cada página."""
-    return [pagina.texto for pagina in _extract_paginas(content, content_type)]
-
-
-def _extract_text(content: bytes, content_type: str | None) -> str:
-    """Despacha la extracción según content-type y devuelve el texto agregado."""
-    return "\n".join(_extract_pages(content, content_type)).strip()
 
 
 # ── Almacén de objetos (S8.1) ──────────────────────────────────────────────

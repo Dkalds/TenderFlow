@@ -172,8 +172,8 @@ class ResumenResolucion:
 
     ``agotado_por_tiempo`` distingue «no quedaba nada» de «me quedé sin
     presupuesto»: la primera es el estado normal de la pipeline cada 4 h, la
-    segunda es la señal de que el backfill (``scripts/backfill_organos.py``)
-    tiene trabajo que la pasada incremental no debe hacer.
+    segunda es la señal de que hay backlog histórico que la pasada
+    incremental no debe hacer.
     """
 
     grafias_vistas: int = 0
@@ -219,7 +219,7 @@ def resolver_pendientes(
 ) -> ResumenResolucion:
     """Resuelve, por volumen descendente, las grafías sin ``organo_id``.
 
-    Es **la misma** decisión que ejecuta ``scripts/backfill_organos.py`` —el
+    Es **la misma** decisión que ejecutó el backfill histórico de órganos —el
     script delega aquí desde 2026-09-14— y también lo que corre el paso
     canónico ``organos_resolve`` en cada cierre de la pipeline: hasta esa
     fecha nada resolvía las filas ingeridas *después* del backfill, así que el

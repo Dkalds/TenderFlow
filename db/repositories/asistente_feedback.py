@@ -166,22 +166,6 @@ def peores_preguntas(limit: int = 20, dias: int = 30) -> list[dict[str, Any]]:
         return rows_to_dicts(cur)
 
 
-def preguntas_con_opt_in(limit: int = 500) -> list[dict[str, Any]]:
-    """Preguntas cuyo autor autorizó guardar el texto.
-
-    Es lo único que ``eval_rag_generation`` puede reutilizar: el resto de la
-    tabla son hashes, y un hash no se le puede preguntar a un modelo.
-    """
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT pregunta_texto, modo, licitacion_id, voto, motivo, created_at "
-            "FROM asistente_feedback WHERE pregunta_texto IS NOT NULL "
-            "ORDER BY created_at DESC LIMIT %s",
-            (max(1, min(int(limit), 5000)),),
-        )
-        return rows_to_dicts(cur)
-
-
 def borrar_de_usuario(user_id: int) -> int:
     """Borra los votos de un usuario (export/borrado RGPD).
 

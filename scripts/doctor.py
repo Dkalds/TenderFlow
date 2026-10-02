@@ -139,7 +139,7 @@ def check_alembic_head() -> bool:
         else:
             _warn(
                 "Alembic: hay migraciones pendientes → ejecuta `alembic upgrade head` "
-                "o `make migrate`"
+                "o `make migrate-alembic`"
             )
     except Exception as exc:
         _warn(f"No se pudo verificar alembic: {exc}")

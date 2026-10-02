@@ -45,7 +45,6 @@ ENV_EXAMPLE = REPO_ROOT / ".env.example"
 _NO_APLICA_AL_SERVICIO_WEB = frozenset(
     {
         "TEST_DATABASE_URL",
-        "BACKUP_ENCRYPTION_KEY",
         "SMOKE_BASE_URL",
         "SMOKE_API_KEY",
         # Plano de alertas: lo consume `scheduler/healthcheck.py` desde GitHub
@@ -97,16 +96,9 @@ WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 # del workflow lo pisaba y tumbó el lote entero de fichas.
 #
 # La forma correcta es exportar la variable a `$GITHUB_ENV` SOLO si está
-# definida, de modo que el default vigente sea siempre el del código.
-#
-# Whitelist congelada: solo se QUITAN entradas, nunca se añaden. Las dos son
-# trabajo pendiente, no excepciones permanentes:
-#   - backup.yml / restore-drill.yml: fuera del alcance de S6 por decisión
-#     explícita del responsable (tocan la cadena de copias y su restauración).
-#
-# train-predictivos.yml salió el 2026-09-24: su `ALERT_MIN_LEVEL` pasó al step
-# «Exportar overrides de repositorio definidos», como en los otros seis.
-_ENV_FALLBACK_PENDIENTE = frozenset({"backup.yml", "restore-drill.yml"})
+# definida, de modo que el default vigente sea siempre el del código. No hay
+# excepciones: la whitelist se vació el 2026-09-28 al retirar `backup.yml` y
+# `restore-drill.yml` (las copias las hace Supabase).
 
 # `${{ ... || 'literal' }}`. Solo el fallback a literal entrecomillado: un
 # `a || b` entre dos expresiones no inventa un valor que compita con el default
@@ -209,8 +201,6 @@ def _fallbacks_en_workflows() -> list[str]:
     if not WORKFLOWS_DIR.is_dir():
         return hallazgos
     for ruta in sorted(WORKFLOWS_DIR.glob("*.yml")):
-        if ruta.name in _ENV_FALLBACK_PENDIENTE:
-            continue
         texto = ruta.read_text(encoding="utf-8")
         for numero, linea in _bloques_env(texto):
             # Los comentarios son inertes, y varios explican precisamente por

@@ -21,10 +21,20 @@ import requests
 from scraper.document_fetcher import (
     DocumentFetchError,
     _download_bytes,
-    _extract_pdf_text,
-    _extract_text,
+    _extract_paginas,
+    _extract_pdf_pages,
     fetch_and_extract,
 )
+
+
+def _extract_pdf_text(content: bytes) -> str:
+    """Texto agregado de las páginas de un PDF (el antiguo ``_extract_pdf_text``)."""
+    return "\n".join(_extract_pdf_pages(content)).strip()
+
+
+def _extract_text(content: bytes, content_type: str | None) -> str:
+    """Texto agregado según content-type (el antiguo ``_extract_text``)."""
+    return "\n".join(p.texto for p in _extract_paginas(content, content_type)).strip()
 
 
 def _http_error_del_transporte_real(status_code: int) -> requests.HTTPError:
@@ -126,7 +136,7 @@ class TestExtractText:
 
 class TestDownloadGuards:
     def test_private_ip_rejected_before_any_request(self):
-        """SSRF: resolve_and_validate rechaza ANTES de llamar requests.get.
+        """SSRF: la validación de ``shared/ssrf.py`` rechaza ANTES de llamar requests.get.
         ValueError excluido del breaker/retry -- un único intento, seguro."""
         with pytest.raises(ValueError):
             _download_bytes("http://127.0.0.1:9999/pliego.pdf")

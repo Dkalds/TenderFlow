@@ -1,4 +1,4 @@
-"""Rate limiting persistente basado en SQLite.
+"""Rate limiting persistente en Postgres.
 
 Complementa los controles de rate limit en memoria con un backend de base
 de datos para que los lockouts de autenticación sobrevivan reinicios del
@@ -34,7 +34,7 @@ def check_rate_limit_db(
     max_calls: int = 5,
     window_seconds: float = 300.0,
 ) -> bool:
-    """Verifica el rate limit persistido en SQLite.
+    """Verifica el rate limit persistido en la BD.
 
     Args:
         key: Identificador de la operación + cliente (e.g. "login:192.168.1.1").
@@ -193,9 +193,8 @@ def cleanup_expired(window_seconds: float = 86_400.0) -> int:
     cutoff = time.time() - window_seconds
     try:
         with _connect() as conn:
-            conn.execute("DELETE FROM rate_limits WHERE ts < %s", [cutoff])
-            # SQLite no tiene rowcount fiable vía libsql, así que devolvemos 0
-            return 0
+            cur = conn.execute("DELETE FROM rate_limits WHERE ts < %s", [cutoff])
+            return int(cur.rowcount or 0)
     except Exception:
         log.debug("cleanup_expired_db_error", exc_info=True)
         return 0

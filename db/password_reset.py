@@ -57,14 +57,3 @@ def consume_reset_token(token_hash: str, password_hash: str) -> int | None:
             (user_id,),
         )
     return user_id
-
-
-def purge_password_reset_tokens() -> int:
-    """Elimina tokens usados o expirados con más de siete días."""
-    with connect() as connection:
-        cursor = connection.execute(
-            "DELETE FROM password_reset_tokens "
-            "WHERE expires_at < NOW() - INTERVAL '7 days' "
-            "OR used_at < NOW() - INTERVAL '7 days'"
-        )
-        return int(cursor.rowcount or 0)

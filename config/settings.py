@@ -81,12 +81,6 @@ class Settings(ResumenPregenSettings, BaseSettings):
 
     # ── Rutas ────────────────────────────────────────────────────────────
     DATA_DIR: Path = _DEFAULT_DATA_DIR
-    # VESTIGIAL (ADR-021): ya no apunta a ninguna BD — SQLite se retiró y el
-    # único motor es Postgres vía DATABASE_URL. Sobrevive porque lo leen los
-    # caminos DuckDB/backup pendientes de migrar (`db/analytics.py`,
-    # `scripts/restore_db.py`), documentados como ítems abiertos del backlog.
-    # **No usar en código nuevo.**
-    DB_PATH: Path | None = None  # default calculado en validator
     DOWNLOADS_DIR: Path | None = None
 
     # ── ML ───────────────────────────────────────────────────────────────
@@ -96,9 +90,6 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # β<1 favorece precision. 1.5 prioriza ligeramente recall (perder una
     # licitación SAP cuesta más que una falsa alerta).
     ML_FBETA: float = 1.5
-    # Si True, usar TimeSeriesSplit (sin shuffle) cuando hay fecha_publicacion.
-    # Refleja mejor la performance esperada en producción (datos futuros).
-    ML_USE_TIMESERIES_CV: bool = True
     # Rangos de incertidumbre para la cola de active learning (P(SAP) ∈ [lo, hi]).
     ML_UNCERTAINTY_LO: float = 0.30
     ML_UNCERTAINTY_HI: float = 0.70
@@ -141,13 +132,6 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # práctica, el tier no clasificaba nada. Con 1, la semántica es "al menos
     # una keyword", que es lo que el fallback pretendía.
     ML_TECH_RULES_MIN_KEYWORDS: int = 1
-    # Golden set multi-etiqueta con labels humanas para el clasificador de
-    # tecnologías (el equivalente de ML_GOLDEN_SET_PATH para el binario).
-    # Ver services/ml/eval_tech.py.
-    ML_GOLDEN_TECH_SET_PATH: str = "tests/fixtures/golden_set_tech.jsonl"
-    # Reentrenamiento semanal automático (cron en scheduler.loop).
-    # Activado (2026-05-23) — si hay ≥50 nuevos feedbacks, reentrenar y evaluar.
-    ML_TECH_AUTO_RETRAIN: bool = True
     # Si True, train() ejecuta RandomizedSearchCV para buscar hiperparámetros.
     ML_TUNE_ON_TRAIN: bool = False
     # Si True, usa sentence-transformers embeddings como feature adicional en el
@@ -335,7 +319,7 @@ class Settings(ResumenPregenSettings, BaseSettings):
     TOTP_ENCRYPTION_KEY: SecretStr = SecretStr("")
 
     # ── Postgres / Supabase (ADR-016, F3) ────────────────────────────────
-    # Cuando DATABASE_URL está definida tiene precedencia sobre SQLite local.
+    # Único motor desde ADR-021 (SQLite retirado).
     # Formato: postgresql://user:pass@host:5432/db?sslmode=require  # pragma: allowlist secret
     # En Supabase: usar Supavisor session pooler (puerto 5432) para compatibilidad
     # con GH Actions (IPv4-only) y evitar conflictos con PREPARE.
@@ -457,15 +441,6 @@ class Settings(ResumenPregenSettings, BaseSettings):
     PSCP_DATASET_ID: str = "ybgg-dgi6"
     # App token Socrata opcional (solo necesario si aparece rate limiting).
     PSCP_APP_TOKEN: SecretStr = SecretStr("")
-    # ── F2: Retrofit PLACSP → Connector (ADR-009) ────────────────────────
-    # Cuando True, run_daily_pipeline y run_bulk_pipeline usan PlacspAtomConnector
-    # / PlacspBulkConnector en lugar del pipeline legacy (scraper/pipeline.py).
-    # Activado 2026-07-11 tras paridad verde sobre datos reales del feed ATOM
-    # (196 licitaciones + 166 adjudicaciones idénticas campo a campo entre
-    # ambos caminos; ver ADR-009). Rollback: poner False — el pipeline legacy
-    # sigue intacto (DEPRECATED, no borrado). Retirar el flag y el legacy tras
-    # ≥1 ciclo semanal estable en producción.
-    PLACSP_CONNECTOR_ENABLED: bool = True
     # Índice de resoluciones TACRC (Ministerio de Hacienda).
     #
     # URL validada con `python -m scraper.connectors.tacrc --check` (2026-06-11):
@@ -688,7 +663,7 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # ── Maestro de órganos: resolución incremental en la pipeline (ADR-032) ─
     # Grafías nuevas de `organo_contratacion` que cada cierre intenta resolver
     # a `organo_id`, y presupuesto de reloj para no quedarse con el step. El
-    # backlog histórico es de `scripts/backfill_organos.py`, no de la pipeline.
+    # backlog histórico lo cubrió un backfill ya ejecutado, no la pipeline.
     ORGANOS_RESOLVE_MAX_GRAFIAS: int = 500
     ORGANOS_RESOLVE_BUDGET_S: int = 120
 
@@ -899,8 +874,6 @@ class Settings(ResumenPregenSettings, BaseSettings):
 
     @model_validator(mode="after")
     def _set_derived_paths(self) -> Settings:
-        if self.DB_PATH is None:
-            self.DB_PATH = self.DATA_DIR / "licitaciones.db"
         if self.DOWNLOADS_DIR is None:
             self.DOWNLOADS_DIR = self.DATA_DIR / "downloads"
         return self
@@ -1216,8 +1189,7 @@ class Settings(ResumenPregenSettings, BaseSettings):
         """Rechaza esquemas peligrosos en DATABASE_URL.
 
         Solo se permiten ``postgresql://`` y ``postgres://``. Un valor vacío
-        indica que no se usa Postgres (fallback a SQLite local), lo cual es
-        válido. El chequeo de ``sslmode`` vive en ``_validate_prod_database_ssl``
+        se acepta aquí; lo que exige una URL es quien abre la conexión. El chequeo de ``sslmode`` vive en ``_validate_prod_database_ssl``
         (model_validator) porque depende de ``self.ENV``, no disponible aún
         en un field_validator per-campo.
         """
@@ -1323,7 +1295,7 @@ def _load() -> Settings:
 _settings = _load()
 
 # ── Singleton accesible para nuevos consumidores ─────────────────────────
-# Uso recomendado: ``from config import settings`` y luego ``settings.DB_PATH``.
+# Uso recomendado: ``from config import settings`` y luego ``settings.DATA_DIR``.
 settings = _settings
 
 

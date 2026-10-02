@@ -82,7 +82,7 @@ export interface DowPoint {
 }
 
 /** `YYYY-MM-DD` en hora LOCAL (la rejilla se construye con fechas locales). */
-export function isoLocal(d: Date): string {
+function isoLocal(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${mm}-${dd}`;

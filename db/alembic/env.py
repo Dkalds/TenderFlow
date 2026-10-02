@@ -1,14 +1,9 @@
 """Alembic environment — configurado para TenderFlow.
 
-Este entorno lee DATABASE_URL si está disponible (Postgres/Supabase, ADR-016);
-en caso contrario usa settings.DB_PATH (SQLite legacy).
-
-Precedencia: DATABASE_URL > settings.DB_PATH > alembic.ini.
-
-NOTA: El sistema de migraciones casero (db/migrations.py) gestiona las
-versiones 1-13. Alembic se usa para migraciones nuevas (v14+).
-Antes de usar Alembic, asegúrate de que el sistema casero haya aplicado
-todas sus migraciones (`db.migrations.apply_pending`).
+Migra la base de ``DATABASE_URL`` (Postgres/Supabase, ADR-016): la del entorno
+o, si no está, la que resuelve ``config.settings`` desde ``.env``. SQLite se
+retiró (ADR-021), así que sin una URL de Postgres el entorno falla en vez de
+migrar otra cosa.
 """
 
 import logging
@@ -16,7 +11,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import create_engine, engine_from_config, pool
+from sqlalchemy import create_engine, pool
 
 from db.models import metadata
 
@@ -35,23 +30,12 @@ if not _database_url:
         _database_url = configured_url if isinstance(configured_url, str) else ""
     except Exception:
         logging.getLogger(__name__).warning(
-            "Could not load DATABASE_URL from config.settings; falling back to SQLite",
-            exc_info=True,
+            "Could not load DATABASE_URL from config.settings", exc_info=True
         )
-_is_postgres = bool(_database_url and _database_url.startswith(("postgresql://", "postgres://")))
-
-# Solo configurar via set_main_option para SQLite (sin caracteres especiales)
-if not _is_postgres:
-    try:
-        from config import settings
-
-        db_url = f"sqlite:///{settings.DB_PATH}"
-        config.set_main_option("sqlalchemy.url", db_url)
-    except Exception:
-        logging.getLogger(__name__).warning(
-            "Could not import config.settings; falling back to alembic.ini URL",
-            exc_info=True,
-        )
+if not _database_url.startswith(("postgresql://", "postgres://")):
+    raise RuntimeError(
+        "Alembic necesita DATABASE_URL apuntando a Postgres (SQLite se retiró, ADR-021)."
+    )
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -62,9 +46,8 @@ target_metadata = metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = _database_url if _is_postgres else config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=_database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -76,36 +59,29 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    if _is_postgres:
-        # Crear engine directamente con la URL (evita ConfigParser que interpola %).
-        # SQLAlchemy resuelve el esquema "postgresql://" al driver psycopg2 por
-        # defecto; el proyecto solo declara psycopg (v3) como dependencia
-        # (requirements.txt), así que forzamos el dialecto "+psycopg" explícito.
-        engine_url = _database_url
-        if engine_url.startswith("postgresql://"):
-            engine_url = "postgresql+psycopg://" + engine_url[len("postgresql://") :]
-        elif engine_url.startswith("postgres://"):
-            engine_url = "postgresql+psycopg://" + engine_url[len("postgres://") :]
-        from config import settings
+    # Crear engine directamente con la URL (evita ConfigParser que interpola %).
+    # SQLAlchemy resuelve el esquema "postgresql://" al driver psycopg2 por
+    # defecto; el proyecto solo declara psycopg (v3) como dependencia
+    # (requirements.txt), así que forzamos el dialecto "+psycopg" explícito.
+    engine_url = _database_url
+    if engine_url.startswith("postgresql://"):
+        engine_url = "postgresql+psycopg://" + engine_url[len("postgresql://") :]
+    elif engine_url.startswith("postgres://"):
+        engine_url = "postgresql+psycopg://" + engine_url[len("postgres://") :]
+    from config import settings
 
-        connect_args: dict[str, object] = {}
-        ssl_root_cert = settings.DATABASE_SSL_ROOT_CERT.strip()
-        if ssl_root_cert:
-            connect_args["sslrootcert"] = ssl_root_cert
-        connect_timeout = int(settings.DB_CONNECT_TIMEOUT)
-        if connect_timeout > 0:
-            connect_args["connect_timeout"] = connect_timeout
-        connectable = create_engine(
-            engine_url,
-            poolclass=pool.NullPool,
-            connect_args=connect_args,
-        )
-    else:
-        connectable = engine_from_config(
-            config.get_section(config.config_ini_section, {}),
-            prefix="sqlalchemy.",
-            poolclass=pool.NullPool,
-        )
+    connect_args: dict[str, object] = {}
+    ssl_root_cert = settings.DATABASE_SSL_ROOT_CERT.strip()
+    if ssl_root_cert:
+        connect_args["sslrootcert"] = ssl_root_cert
+    connect_timeout = int(settings.DB_CONNECT_TIMEOUT)
+    if connect_timeout > 0:
+        connect_args["connect_timeout"] = connect_timeout
+    connectable = create_engine(
+        engine_url,
+        poolclass=pool.NullPool,
+        connect_args=connect_args,
+    )
 
     try:
         connection_ctx = connectable.connect()

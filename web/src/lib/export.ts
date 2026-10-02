@@ -105,7 +105,7 @@ function volcarBlob(nombre: string, blob: Blob): void {
  * castellano y sin el código: el aviso es un toast, que no tiene «Detalle
  * técnico» plegado donde meterlo, y un «respondió 422» no le dice qué hacer.
  */
-export function motivoDeFallo(status: number): string {
+function motivoDeFallo(status: number): string {
   if (status === 401 || status === 403) return "Tu sesión caducó. Vuelve a entrar y repite la exportación.";
   if (status === 422) return "Algún filtro no es válido: revísalo y repite la exportación.";
   if (status >= 500) return "Error del servidor. Vuelve a intentarlo en unos segundos.";

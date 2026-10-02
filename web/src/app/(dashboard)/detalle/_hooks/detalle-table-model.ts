@@ -236,7 +236,7 @@ export function pageWindowFor(pageIndex: number, totalPages: number, alcanzables
   return pages;
 }
 
-export const CSV_HEADERS = [
+const CSV_HEADERS = [
   "id_externo",
   "titulo",
   "organo_contratacion",

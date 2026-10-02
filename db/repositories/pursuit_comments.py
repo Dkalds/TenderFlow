@@ -175,26 +175,6 @@ class PursuitCommentRepository:
             return 0
         return len(user_ids)
 
-    def menciones_de(self, comment_ids: list[int]) -> dict[int, list[int]]:
-        """`{comment_id: [user_id]}` para un lote de comentarios.
-
-        Por lote y no de uno en uno: el hilo se pinta entero y una consulta por
-        comentario sería una tormenta de consultas por carga de pantalla.
-        """
-        if not comment_ids:
-            return {}
-        with connect_read() as conn:
-            cur = conn.execute(
-                "SELECT comment_id, user_id FROM pursuit_comment_mentions "
-                "WHERE comment_id = ANY(%s) ORDER BY comment_id, id",
-                (list(comment_ids),),
-            )
-            filas = rows_to_dicts(cur)
-        salida: dict[int, list[int]] = {}
-        for f in filas:
-            salida.setdefault(int(f["comment_id"]), []).append(int(f["user_id"]))
-        return salida
-
     def menciones_de_usuario(self, user_id: int, *, limit: int = 50) -> list[dict[str, Any]]:
         """En qué comentarios se ha mencionado a alguien, del más reciente atrás.
 

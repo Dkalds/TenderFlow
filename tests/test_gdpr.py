@@ -87,23 +87,6 @@ def test_get_user_id_from_key_id_missing_key(tmp_db):
 # ---------------------------------------------------------------------------
 
 
-def test_export_api_keys_returns_matching(tmp_db):
-    db_mod, _ = tmp_db
-    _seed_user_and_key(db_mod, key_hash="abc123")
-    from services.gdpr import export_api_keys
-
-    rows = export_api_keys("abc123")
-    assert len(rows) == 1
-    assert rows[0]["name"] == "test-key"
-
-
-def test_export_api_keys_empty_for_unknown_hash(tmp_db):
-    _db_mod, _ = tmp_db
-    from services.gdpr import export_api_keys
-
-    assert export_api_keys("nonexistent") == []
-
-
 # ---------------------------------------------------------------------------
 # export_feedback
 # ---------------------------------------------------------------------------
@@ -318,35 +301,6 @@ def test_revoke_all_api_keys_for_user(tmp_db):
 # ---------------------------------------------------------------------------
 # list_user_keys / get_key_name_and_scopes / set_key_expiry
 # ---------------------------------------------------------------------------
-
-
-def test_list_user_keys(tmp_db):
-    db_mod, _ = tmp_db
-    _seed_user_and_key(db_mod, key_id=3, key_hash="lk1")
-    from services.gdpr import list_user_keys
-
-    rows = list_user_keys(3)
-    assert len(rows) == 1
-    assert rows[0]["id"] == 3
-
-
-def test_get_key_name_and_scopes(tmp_db):
-    db_mod, _ = tmp_db
-    _seed_user_and_key(db_mod, key_id=10, key_hash="ns1")
-    from services.gdpr import get_key_name_and_scopes
-
-    result = get_key_name_and_scopes(10)
-    assert result is not None
-    name, scopes = result
-    assert name == "test-key"
-    assert isinstance(scopes, str)
-
-
-def test_get_key_name_and_scopes_missing(tmp_db):
-    _db_mod, _ = tmp_db
-    from services.gdpr import get_key_name_and_scopes
-
-    assert get_key_name_and_scopes(9999) is None
 
 
 def test_set_key_expiry(tmp_db):

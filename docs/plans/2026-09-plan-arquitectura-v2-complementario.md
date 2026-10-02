@@ -182,7 +182,7 @@ README. Un plan que no registra sus errores los repite.
     sigue diciendo FTS5 (línea 141).
 31. **`docs/c4-architecture.md`** dibuja un contenedor «Scheduler,
     APScheduler» cuando producción orquesta con GitHub Actions
-    (`docs/runbook.md`); **`docs/AGENT_PLAYBOOK.md`** glosa FAISS como índice
+    (`docs/runbooks/README.md`); **`docs/AGENT_PLAYBOOK.md`** glosa FAISS como índice
     vigente cuando se retiró el 2026-07-04 (README).
 32. **README** lista `db/migrations.py` (línea 93), que no existe, y describe
     `scraper/pipeline.py` como «orquestador principal» (línea 111) tras su

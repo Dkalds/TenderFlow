@@ -4,13 +4,13 @@ import {
   CONSOLE_GROUP_ORDER,
   CONSOLE_ROUTES,
   CONSOLE_SPACES,
-  LEGACY_REDIRECTS,
   findConsoleSpace,
   isSpaceImplemented,
   landingHref,
   routeSlug,
   spaceAbsorbing,
 } from "@/lib/console-spaces";
+import { legacyRedirects } from "@/lib/space-views";
 import { ICONO_ESPACIO } from "@/lib/iconos";
 import { BUILT_SPACE_ROUTES, SPACE_VIEWS } from "@/lib/space-views";
 
@@ -182,7 +182,11 @@ describe("isSpaceImplemented / landingHref", () => {
   });
 });
 
-describe("LEGACY_REDIRECTS", () => {
+// La tabla de redirects vive en `lib/space-views.ts` (la consume
+// `next.config.ts`); aquí se comprueba contra los espacios de la consola.
+const LEGACY_REDIRECTS = legacyRedirects().map(({ source, destination }) => ({ from: source, to: destination }));
+
+describe("legacyRedirects frente a los espacios", () => {
   it("manda cada ruta absorbida a la vista que la sustituye", () => {
     // Derivado de las tablas, no fijado a mano: un literal aquí obliga a tocar
     // el test cada vez que un espacio absorbe una ruta.

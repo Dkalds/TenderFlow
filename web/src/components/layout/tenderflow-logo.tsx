@@ -13,7 +13,7 @@ import {
  * monta decide sobre qué fondo va. El trazo sale de `lib/marca.ts`, la única
  * copia que comparten el logo, el rail y las imágenes OG.
  */
-export function TFMark({ size = 24, className }: { size?: number; className?: string }) {
+function TFMark({ size = 24, className }: { size?: number; className?: string }) {
   return (
     <svg
       width={size}
@@ -74,9 +74,4 @@ export function TenderFlowLogo({ showText = true, boxSize = 32, className }: Ten
       )}
     </span>
   );
-}
-
-/** Solo la marca, sin wordmark (rail plegado). */
-export function TenderFlowIcon({ size = 32 }: { size?: number }) {
-  return <TenderFlowLogo showText={false} boxSize={size} />;
 }

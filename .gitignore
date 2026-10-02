@@ -84,6 +84,7 @@ ci_jobs.json
 
 # Tool caches
 .hypothesis/
+.benchmarks/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
@@ -112,6 +113,8 @@ docs/codegraph/
 
 # Obsidian stubs and canvas files (regenerables desde Obsidian)
 docs/Sin título*
+# Estado local del vault de Obsidian (workspace, plugins): por usuario, no del repo.
+docs/.obsidian/
 
 # ── Frontend dependencies ─────────────────────────────────────────
 node_modules/

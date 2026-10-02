@@ -28,7 +28,7 @@ import { espacioActual } from "@/lib/espacio-actual";
  */
 
 /** Por qué no se marcó la cita, en palabras de quien la está leyendo. */
-export const MOTIVOS_SIN_RESALTADO: Record<string, string> = {
+const MOTIVOS_SIN_RESALTADO: Record<string, string> = {
   sin_offsets: "La cita no guarda su posición en el documento.",
   offsets_invertidos: "La posición guardada de la cita es incoherente.",
   offsets_fuera_de_rango: "La posición guardada de la cita no cae en esta página.",

@@ -332,53 +332,6 @@ class TestProcessDaily:
         assert result["status"] == "error_persistencia"
 
 
-# ── update_daily ──────────────────────────────────────────────────────────────
-
-
-class TestUpdateDaily:
-    @patch("scraper.pipeline.close_pool")
-    @patch("scraper.pipeline.process_daily")
-    @patch("scraper.pipeline.record_run")
-    @patch("scraper.pipeline.bind_run_context", return_value="run1")
-    @patch("scraper.pipeline.init_db")
-    def test_ok(self, init, bind, record_run_cm, proc_daily, close):
-        proc_daily.return_value = {
-            "status": "ok",
-            "inserted": ["A"],
-            "modified": [],
-            "source": "test",
-        }
-        mock_metrics = MagicMock()
-        record_run_cm.return_value.__enter__ = MagicMock(return_value=mock_metrics)
-        record_run_cm.return_value.__exit__ = MagicMock(return_value=False)
-
-        with patch("scraper.pipeline.log"):
-            from scraper.pipeline import update_daily
-
-            result = update_daily()
-
-        assert result["status"] == "ok"
-        close.assert_called_once()
-
-    @patch("scraper.pipeline.close_pool")
-    @patch("scraper.pipeline.process_daily")
-    @patch("scraper.pipeline.record_run")
-    @patch("scraper.pipeline.bind_run_context", return_value="run1")
-    @patch("scraper.pipeline.init_db")
-    def test_error(self, init, bind, record_run_cm, proc_daily, close):
-        proc_daily.return_value = {"status": "error_fetch", "source": "test"}
-        mock_metrics = MagicMock()
-        record_run_cm.return_value.__enter__ = MagicMock(return_value=mock_metrics)
-        record_run_cm.return_value.__exit__ = MagicMock(return_value=False)
-
-        with patch("scraper.pipeline.log"):
-            from scraper.pipeline import update_daily
-
-            result = update_daily()
-
-        assert result["status"] == "error_fetch"
-
-
 # ── _apply_tech_prediction / _ml_classify_entry ──────────────────────────────
 
 

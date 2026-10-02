@@ -61,7 +61,7 @@ export const RADAR_GRID =
   "lg:grid-cols-[52px_1fr_138px_132px_100px_96px_148px] xl:grid-cols-[52px_1fr_150px_100px_96px_116px] lg:gap-3 lg:px-3.5";
 
 /** Banda de scoring que devuelve el backend (`Caliente|Atractiva|Tibia|Descarte`). */
-export const BAND_TOKEN: Record<string, string> = {
+const BAND_TOKEN: Record<string, string> = {
   Caliente: "var(--score-hot)",
   Atractiva: "var(--score-warm)",
   Tibia: "var(--score-cold)",

@@ -12,7 +12,7 @@ Playbooks de respuesta rápida para los incidentes más comunes del sistema.
 4. [Base de datos corrupta o inaccesible](#4-base-de-datos-corrupta-o-inaccesible)
 5. [Caída de frescura de datos](#5-caída-de-frescura-de-datos)
 6. [Errores de autenticación en cascada](#6-errores-de-autenticación-en-cascada)
-7. [Fallo de backup diario](#7-fallo-de-backup-diario)
+7. [Enlace firmado filtrado](#7-enlace-firmado-filtrado-calendario-ics-o-baja-de-correos)
 
 ---
 
@@ -119,46 +119,9 @@ python -c "from db.dlq import mark_matching_resolved; print(mark_matching_resolv
 
 ## 4. Base de datos corrupta o inaccesible
 
-**Síntomas:** Errores SQLite en logs (`database disk image is malformed`, `SQLITE_BUSY`).
-
-**Diagnóstico:**
-
-```bash
-python -c "
-import sqlite3
-from config import settings
-conn = sqlite3.connect(str(settings.DATABASE_PATH))
-print(conn.execute('PRAGMA integrity_check').fetchall())
-"
-```
-
-**Resolución — DB corrupta:**
-
-```bash
-# 1. Detener todos los procesos que usan la DB
-make stop
-
-# 2. Restaurar desde el backup más reciente
-ls -la data/backups/
-# O desde S3: aws s3 ls s3://$BACKUP_S3_BUCKET/backups/ --endpoint-url $AWS_ENDPOINT_URL
-gunzip -c data/backups/licitaciones_YYYYMMDD_HHMMSS.db.gz > data/licitaciones_restored.db
-mv data/licitaciones.db data/licitaciones_corrupted.db.bak
-mv data/licitaciones_restored.db data/licitaciones.db
-
-# 3. Verificar integridad
-python -c "import sqlite3; print(sqlite3.connect('data/licitaciones.db').execute('PRAGMA integrity_check').fetchall())"
-
-# 4. Reiniciar servicios
-make start
-```
-
-**Resolución — SQLITE_BUSY:**
-
-```bash
-# Identificar procesos con la DB abierta
-fuser data/*.db  # Linux
-# Si hay procesos zombie: reiniciar y esperar el timeout (5 minutos por defecto)
-```
+Producción corre sobre Supabase Postgres (ADR-016); SQLite se retiró en
+ADR-021. Diagnóstico y restauración (backups gestionados por Supabase) en
+[disaster-recovery.md](disaster-recovery.md) §0 y §2.
 
 ---
 
@@ -240,41 +203,7 @@ print('Limpiado')
 
 ---
 
-## 7. Fallo de backup diario
-
-**Síntomas:** GitHub Actions workflow `backup.yml` falla, o no hay backups nuevos en S3.
-
-**Diagnóstico:**
-
-```bash
-# Ver últimos backups locales
-ls -la data/backups/
-
-# Ver si hay backups en S3
-aws s3 ls s3://$BACKUP_S3_BUCKET/backups/ --endpoint-url $AWS_ENDPOINT_URL | tail -10
-
-# Ejecutar backup manual para diagnosticar
-python scripts/backup_db.py --dry-run --s3
-```
-
-**Resolución:**
-
-```bash
-# Backup manual sin S3 (solo local)
-python scripts/backup_db.py --keep 7
-
-# Backup manual con S3
-BACKUP_S3_BUCKET=mi-bucket python scripts/backup_db.py --s3 --keep 3 --keep-s3 30
-```
-
-**Causas habituales:**
-- Credenciales S3 expiradas → rotar `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` en GitHub Secrets
-- `BACKUP_S3_BUCKET` no configurado → verificar secrets del repositorio
-- DB no encontrada en el runner → configurar `DATABASE_PATH` o montar volumen
-
----
-
-## 8. Enlace firmado filtrado (calendario ICS o baja de correos)
+## 7. Enlace firmado filtrado (calendario ICS o baja de correos)
 
 **Síntoma:** una persona reporta que su URL de suscripción al calendario, o el
 enlace de baja del pie de un digest, ha llegado a alguien que no debía (chat

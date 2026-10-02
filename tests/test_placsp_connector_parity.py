@@ -15,8 +15,8 @@ Estrategia de dos niveles (F2):
    - El test usa una BD temporal aislada (tmp_db fixture).
 
 El test de paridad completo contra fixtures reales de producción
-(mini-ZIP + ATOM reales) requiere tests/fixtures/placsp/ que se añadirán
-cuando se prepare el flip a PLACSP_CONNECTOR_ENABLED=True.
+(mini-ZIP + ATOM reales) requiere tests/fixtures/placsp/, que no existen: la
+paridad se verificó sobre datos reales al activar el connector (2026-07-11).
 """
 
 from __future__ import annotations
@@ -254,8 +254,8 @@ class TestPlacspDataParity:
     """Verifica que el conector y el pipeline legacy producen los mismos datos.
 
     Nivel básico: misma entry XML → misma Licitacion (campos clave).
-    El test completo con fixtures reales de producción se añadirá cuando
-    se prepare el flip a PLACSP_CONNECTOR_ENABLED=True.
+    La paridad completa se verificó sobre datos reales al activar el connector
+    (2026-07-11).
     """
 
     def test_parse_core_matches_legacy_parse_entry(self, tmp_db):

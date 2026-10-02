@@ -40,23 +40,6 @@ def set_feature(
         )
 
 
-def get_feature(
-    entity_type: str,
-    entity_id: str,
-    feature_name: str,
-    *,
-    version: str = "v1",
-) -> Any | None:
-    """Recupera una feature o None si no existe."""
-    with connect() as c:
-        row = c.execute(
-            "SELECT value_json FROM feature_store "
-            "WHERE entity_type=%s AND entity_id=%s AND feature_name=%s AND version=%s",
-            (entity_type, entity_id, feature_name, version),
-        ).fetchone()
-    return json.loads(row[0]) if row else None
-
-
 def get_features_bulk(
     entity_type: str,
     entity_ids: list[str],
@@ -76,52 +59,3 @@ def get_features_bulk(
             [entity_type, feature_name, version, *entity_ids],
         ).fetchall()
     return {row[0]: json.loads(row[1]) for row in rows}
-
-
-def delete_feature(
-    entity_type: str,
-    entity_id: str,
-    feature_name: str | None = None,
-    *,
-    version: str | None = None,
-) -> int:
-    """Elimina features; si feature_name es None, borra todas las del entity."""
-    with connect() as c:
-        if feature_name is None:
-            cur = c.execute(
-                "DELETE FROM feature_store WHERE entity_type=%s AND entity_id=%s",
-                (entity_type, entity_id),
-            )
-        elif version is None:
-            cur = c.execute(
-                "DELETE FROM feature_store WHERE entity_type=%s AND entity_id=%s AND feature_name=%s",
-                (entity_type, entity_id, feature_name),
-            )
-        else:
-            cur = c.execute(
-                "DELETE FROM feature_store "
-                "WHERE entity_type=%s AND entity_id=%s AND feature_name=%s AND version=%s",
-                (entity_type, entity_id, feature_name, version),
-            )
-        return cur.rowcount if hasattr(cur, "rowcount") else 0
-
-
-def purge_stale_features(*, older_than_days: int = 30) -> int:
-    """Elimina features no actualizadas en N días (para evitar crecimiento indefinido)."""
-    from datetime import UTC, datetime, timedelta
-
-    cutoff = (datetime.now(UTC) - timedelta(days=older_than_days)).isoformat()
-    with connect() as c:
-        cur = c.execute("DELETE FROM feature_store WHERE computed_at < %s", (cutoff,))
-        return cur.rowcount if hasattr(cur, "rowcount") else 0
-
-
-def feature_stats() -> list[dict[str, Any]]:
-    """Estadísticas del feature store (tamaño por tipo/nombre)."""
-    with connect() as c:
-        rows = c.execute(
-            "SELECT entity_type, feature_name, version, COUNT(*) as n "
-            "FROM feature_store GROUP BY entity_type, feature_name, version "
-            "ORDER BY n DESC LIMIT 100"
-        ).fetchall()
-    return [{"entity_type": r[0], "feature_name": r[1], "version": r[2], "n": r[3]} for r in rows]

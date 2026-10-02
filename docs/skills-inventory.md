@@ -7,7 +7,7 @@ Derivado de [`skills-lock.json`](../skills-lock.json) y el frontmatter de cada
 `python scripts/gen_skills_inventory.py` tras instalar/actualizar un skill.
 Ver AGENTS.md §7 para qué significa `trust`.
 
-Total: 39 skills.
+Total: 31 skills.
 
 | Skill | Trust | Source | Descripción |
 | --- | --- | --- | --- |
@@ -17,17 +17,12 @@ Total: 39 skills.
 | `bash-defensive-patterns` | community | wshobson/agents | Master defensive Bash programming techniques for production-grade scripts. Use when writing robust shell scripts, CI/CD pipelines, or… |
 | `emil-design-eng` | community | emilkowalski/skill | This skill encodes Emil Kowalski's philosophy on UI polish, component design, animation decisions, and the invisible details that make… |
 | `fastapi-python` | community | mindrally/skills | Expert in FastAPI Python development with best practices for APIs and async operations |
-| `fastapi-templates` | community | wshobson/agents | Create production-ready FastAPI projects with async patterns, dependency injection, and comprehensive error handling. Use when building… |
 | `find-animation-opportunities` | community | emilkowalski/skill | Search a codebase or UI for places that don't animate but should, and reject everything that shouldn't. Read-only; it proposes motion… |
 | `improve-animations` | community | emilkowalski/skill | Survey a codebase's animation and motion code as a senior motion advisor, then produce a prioritized audit and self-contained… |
 | `machine-learning` | community | pluginagentmarketplace/custom-plugin-python | Python machine learning with scikit-learn, PyTorch, and TensorFlow |
-| `nodejs-backend-patterns` | community | wshobson/agents | Build production-ready Node.js backend services with Express/Fastify, implementing middleware patterns, error handling, authentication,… |
-| `nodejs-best-practices` | community | sickn33/antigravity-awesome-skills | Node.js development principles and decision-making. Framework selection, async patterns, security, and architecture. Teaches thinking,… |
-| `pandas-data-analysis` | community | pluginagentmarketplace/custom-plugin-python | Master data manipulation, analysis, and visualization with Pandas, NumPy, and Matplotlib |
 | `pandas-pro` | community | jeffallan/claude-skills | Performs pandas DataFrame operations for data analysis, manipulation, and transformation. Use when working with pandas DataFrames, data… |
 | `pick-ui-library` | community | emilkowalski/skill | Pick the right library for a given frontend task from a curated, opinionated list — numbers, OTP inputs, charts, command menus,… |
 | `pydantic` | community | bobmatnyc/claude-mpm-skills | Python data validation using type hints and runtime type checking with Pydantic v2's Rust-powered core for high-performance validation… |
-| `python-executor` | community | inferen-sh/skills | Execute Python code in a safe sandboxed environment via [inference.sh](https://inference.sh). Pre-installed: NumPy, Pandas, Matplotlib,… |
 | `python-patterns` | community | affaan-m/everything-claude-code | Pythonic idioms, PEP 8 standards, type hints, and best practices for building robust, efficient, and maintainable Python applications. |
 | `python-testing-patterns` | community | wshobson/agents | Implement comprehensive testing strategies with pytest, fixtures, mocking, and test-driven development. Use when writing Python tests,… |
 | `review-animations` | community | emilkowalski/skill | Reviews animation and motion code against a high craft bar derived from Emil Kowalski's design engineering philosophy. Default to… |
@@ -43,10 +38,7 @@ Total: 39 skills.
 | `frontend-design` | first-party | anthropics/skills | Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web… |
 | `supabase` | first-party | supabase/agent-skills | Use when doing ANY task involving Supabase. Triggers: Supabase products (Database, Auth, Edge Functions, Realtime, Storage, Vectors,… |
 | `supabase-postgres-best-practices` | first-party | supabase/agent-skills | Postgres performance optimization and best practices from Supabase. Use this skill when writing, reviewing, or optimizing Postgres… |
-| `upstash` | first-party | upstash/skills | Work with any Upstash TypeScript/JavaScript SDK including Redis, Box, QStash, Workflow, Vector, Search and Ratelimit. Use when the user… |
 | `upstash-cli` | first-party | upstash/skills | Run the Upstash CLI (`upstash`) against the Upstash Developer API for Redis, Vector, Search, QStash, and teams. Use when listing or… |
-| `upstash-ratelimit-js` | first-party | upstash/skills | Lightweight guidance for using the Upstash Redis RateLimit TypeScript/JavaScript SDK, including setup steps, basic usage, and pointers… |
-| `upstash-redis-js` | first-party | upstash/skills | Work with the Upstash Redis TypeScript/JavaScript SDK for serverless Redis operations. Use for caching, session storage, rate limiting,… |
 | `vercel-composition-patterns` | first-party | vercel-labs/agent-skills | React composition patterns that scale. Use when refactoring components with |
 | `vercel-react-best-practices` | first-party | vercel-labs/agent-skills | React and Next.js performance optimization guidelines from Vercel Engineering. This skill should be used when writing, reviewing, or… |
 | `web-design-guidelines` | first-party | vercel-labs/agent-skills | Review UI code for Web Interface Guidelines compliance. Use when asked to "review my UI", "check accessibility", "audit design",… |

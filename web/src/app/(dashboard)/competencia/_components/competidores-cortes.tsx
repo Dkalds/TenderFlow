@@ -65,7 +65,7 @@ const CompetitorsEstacionalidadChart = dynamic(
   { ssr: false, loading: () => <PanelLoading height={300} /> },
 );
 
-export const CORTES = [
+const CORTES = [
   { key: "top20" as const, label: "Ranking" },
   { key: "cuota" as const, label: "Cuota" },
   { key: "ticket" as const, label: "Importe y clientes" },

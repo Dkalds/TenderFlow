@@ -32,7 +32,7 @@ function resolveBaseUrl(): string {
  * Base API client — all requests go through this.
  * Cookie-based auth (httpOnly) is handled automatically by the browser.
  */
-export const api = createClient<paths>({
+const api = createClient<paths>({
   baseUrl: resolveBaseUrl(),
   /**
    * `openapi-fetch` captura `globalThis.fetch` una sola vez, al crear el

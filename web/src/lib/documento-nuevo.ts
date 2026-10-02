@@ -11,7 +11,7 @@
  * expediente.
  */
 
-export const DIAS_DOCUMENTO_NUEVO = 7;
+const DIAS_DOCUMENTO_NUEVO = 7;
 
 const MS_DIA = 24 * 60 * 60 * 1000;
 

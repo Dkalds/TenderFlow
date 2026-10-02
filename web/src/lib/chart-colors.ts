@@ -59,29 +59,6 @@ export function getEstadoChartColor(estado: string | null | undefined): string {
   return (label ? ESTADO_CHART_COLOR[label] : undefined) ?? CHART_SERIES[0];
 }
 
-/** Scoring band -> score-band token color. */
-export const SCORE_COLOR = {
-  hot: "hsl(var(--score-hot))",
-  warm: "hsl(var(--score-warm))",
-  cold: "hsl(var(--score-cold))",
-  skip: "hsl(var(--score-skip))",
-} as const;
-
-export type ScoreBand = keyof typeof SCORE_COLOR;
-
-/** Spanish band label -> score token key. */
-export const BAND_TO_SCORE: Record<string, ScoreBand> = {
-  Caliente: "hot",
-  Atractiva: "warm",
-  Tibia: "cold",
-  Descarte: "skip",
-};
-
-export function getBandColor(band: string | null | undefined): string {
-  const key = band ? BAND_TO_SCORE[band] : undefined;
-  return key ? SCORE_COLOR[key] : SCORE_COLOR.skip;
-}
-
 /** Urgency semaphore (red -> green ramp) — deadline proximity, gantt bars, alerts. */
 export const URGENCY_COLORS = {
   critical: "hsl(var(--urgency-critical))",
