@@ -16,8 +16,6 @@ import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, formatNumber } from "@/lib/utils";
 import type { ResumenHoyResult } from "@/lib/api-types";
 import { ColaCierre } from "./cola-cierre";
-import { useFiltrosIgnorados } from "./alcance";
-import { AvisoAlcance } from "./aviso-alcance";
 
 /**
  * Mercado abierto — lo que exige mirar hoy en el mercado.
@@ -28,12 +26,14 @@ import { AvisoAlcance } from "./aviso-alcance";
  * 1. **El enlace arrastra el ámbito.** Todo destino pasa por `useScopedHref`,
  *    que fusiona ámbito activo y recorte propio: con un chip de CCAA puesto, la
  *    tarjeta contaba Madrid y abría España.
- * 2. **El destino dice si es exacto.** «Aprox.» marca el único caso que no
- *    puede serlo: con ámbito activo el P75 se recalcula sobre el subconjunto
- *    filtrado y `/resumen/hoy` no lo publica, así que «Grandes en plazo» abre un
- *    listado más ancho que su cifra y lo declara (ADR-014).
- * 3. **El alcance del endpoint se declara.** `/analytics/resumen/hoy` sólo
- *    aplica fecha, CCAA y tecnología (ver `alcance.ts`).
+ * 2. **El destino dice si es exacto.** «Grandes en plazo» corta por el P75 que
+ *    publica `/resumen/hoy`, que es el del ámbito activo. «Aprox.» queda para
+ *    el único caso que no puede ser exacto: un ámbito sin ningún importe, sin
+ *    umbral por el que cortar (ADR-014).
+ * 3. **El ámbito es el mismo en toda la banda.** `/analytics/resumen/hoy`
+ *    aplica la barra de filtros entera, con la semántica del listado. Solo
+ *    aplicaba fecha, CCAA y tecnología, y la banda tenía que avisar de qué
+ *    chips no estaba mirando.
  *
  * Lo que cambia es el reparto. Las cuatro tarjetas eran del mismo tamaño y
  * decían lo mismo —un número y una flecha—, así que la banda no tenía tesis: la
@@ -94,7 +94,6 @@ function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
 }
 
 export function AtencionCards() {
-  const ignorados = useFiltrosIgnorados();
   const scopedHref = useScopedHref();
 
   // El fallo se pinta aquí mismo (`PanelError`): sin toast encima. Misma
@@ -116,7 +115,9 @@ export function AtencionCards() {
   }, []);
 
   // Deep-link de la cola de cierre: `cierre_desde`/`cierre_hasta` acotan
-  // `fecha_limite`, la misma columna sobre la que el KPI cuenta.
+  // `fecha_limite`, la misma columna sobre la que el KPI cuenta, y
+  // `solo_abiertas` es la misma guardia de estado: el KPI ya no cuenta las
+  // anuladas o adjudicadas con plazo en la ventana.
   //
   // El recorte es por día y el contador por hora, así que el listado va de las
   // 00:00 de hoy al final de pasado mañana: los mismos dos días, con los
@@ -128,11 +129,20 @@ export function AtencionCards() {
     const ahora = Date.now();
     const desde = new Date(ahora).toISOString().slice(0, 10);
     const hasta = new Date(ahora + 2 * 86400000).toISOString().slice(0, 10);
-    return `/detalle?cierre_desde=${desde}&cierre_hasta=${hasta}`;
+    return `/detalle?solo_abiertas=true&cierre_desde=${desde}&cierre_hasta=${hasta}`;
   }, []);
 
+  // «En plazo» del contador de grandes: plazo posterior a ahora. El listado
+  // corta por día, así que abre también las que cerraron hoy antes de esta
+  // hora — el mismo redondeo que la cola de cierre.
+  const hoyIso = useMemo(
+    // eslint-disable-next-line react-hooks/purity
+    () => new Date(Date.now()).toISOString().slice(0, 10),
+    [],
+  );
+
   const data = hoy.data;
-  // `null` cuando el corte no es el global: ver el punto 2 de la cabecera.
+  // `null` solo con un ámbito sin importes: ver el punto 2 de la cabecera.
   const p75 = data?.importe_p75 ?? null;
 
   // El recuento es el dato central de la pantalla y saltaba en silencio para
@@ -153,11 +163,13 @@ export function AtencionCards() {
       value: data?.calientes,
       subtitle: "Del 25 % de mayor importe, abiertas y en plazo",
       href:
-        p75 !== null ? `/detalle?solo_abiertas=true&importe_min=${p75}` : "/detalle?solo_abiertas=true",
+        p75 !== null
+          ? `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}&importe_min=${p75}`
+          : `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}`,
       target:
         p75 !== null
-          ? "Abre Detalle: abiertas del 25 % de mayor importe"
-          : "Abre Detalle: todas las abiertas, sin el umbral de importe",
+          ? "Abre Detalle: abiertas en plazo del 25 % de mayor importe"
+          : "Abre Detalle: abiertas en plazo, sin umbral (el ámbito no trae importes)",
       exacto: p75 !== null,
     },
     {
@@ -174,8 +186,6 @@ export function AtencionCards() {
   return (
     <section aria-labelledby="resumen-atencion" className="mb-5.5">
       <PanelTitle as="h2" id="resumen-atencion" title="Mercado abierto" hint="hoy" className="mb-2.5" />
-
-      <AvisoAlcance ignorados={ignorados} />
 
       {hoy.error ? (
         <PanelError

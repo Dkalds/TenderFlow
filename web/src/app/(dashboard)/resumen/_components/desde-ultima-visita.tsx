@@ -49,12 +49,20 @@ type NovedadesDesdeUltimaVisita = Schemas["NovedadesDesdeUltimaVisita"];
 type Novedad = Schemas["Novedad"];
 type VisitaMarcada = Schemas["VisitaMarcada"];
 
-/** «Marcar todo como visto»: mueve la marca y vuelve a pedir la banda. */
+/**
+ * «Marcar todo como visto»: mueve la marca y vuelve a pedir lo que cuelga de
+ * ella — esta banda y la línea de licitaciones nuevas del mercado
+ * (`novedades-banner.tsx`), que cuenta desde la misma última visita.
+ */
 export function useMarcarVisto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => apiMutate<VisitaMarcada>("POST", "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto"),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["analytics", "resumen", "desde-mi-ultima-visita"] }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["analytics", "resumen", "desde-mi-ultima-visita"] }),
+        queryClient.invalidateQueries({ queryKey: analyticsKeys.novedades }),
+      ]),
     onError: () => toast.error("No se pudo marcar como visto. Vuelve a intentarlo."),
   });
 }

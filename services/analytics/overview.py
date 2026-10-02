@@ -348,6 +348,9 @@ class OverviewFilters(BaseModel):
     importe_max: float | None = None
     provincia: str | None = None
     procedimiento: str | None = None
+    # El único filtro de la barra que faltaba: con «solo abiertas» puesto, la
+    # tira de contexto del Resumen seguía contando también las cerradas.
+    solo_abiertas: bool = False
 
 
 class EstadoCount(BaseModel):
@@ -481,6 +484,7 @@ def _to_repo_filters(filters: OverviewFilters) -> LicitacionesFilters:
         importe_max=filters.importe_max,
         provincia=filters.provincia,
         procedimiento=filters.procedimiento,
+        solo_abiertas=filters.solo_abiertas,
     )
 
 

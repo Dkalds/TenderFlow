@@ -180,6 +180,13 @@ export const analyticsKeys = {
    */
   desdeUltimaVisita: (organizationId: OrganizacionDeClave) =>
     ["analytics", "resumen", "desde-mi-ultima-visita", organizationId] as const,
+  /**
+   * Licitaciones nuevas del mercado desde la última visita
+   * (`GET /analytics/resumen/novedades`). Sin ámbito ni organización: el
+   * endpoint no acepta ninguno. Comparte la marca con `desdeUltimaVisita`, y
+   * «Marcar todo como visto» invalida las dos.
+   */
+  novedades: ["analytics", "resumen", "novedades"] as const,
 };
 
 export const radarKeys = {

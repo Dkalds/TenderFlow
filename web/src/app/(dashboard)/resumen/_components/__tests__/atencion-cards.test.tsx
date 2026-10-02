@@ -122,25 +122,38 @@ describe("AtencionCards", () => {
     const href = hrefDe("Ver la cola de cierre");
     expect(href).toMatch(/cierre_desde=\d{4}-\d{2}-\d{2}/);
     expect(href).toMatch(/cierre_hasta=\d{4}-\d{2}-\d{2}/);
+    // El contador ya no cuenta las cerradas con plazo en la ventana: el listado
+    // que abre tampoco.
+    expect(href).toContain("solo_abiertas=true");
     expect(screen.getByText("Abre Detalle: cierran en 48 h")).toBeInTheDocument();
     expect(screen.queryByText(/Aprox\. · Abre Detalle: cierran/)).not.toBeInTheDocument();
   });
 
-  it("«Grandes en plazo» corta por el P75 que publica el endpoint", () => {
+  it("«Grandes en plazo» corta por el P75 que publica el endpoint, y en plazo", () => {
     renderCards();
     expect(hrefDe("Grandes en plazo")).toContain("importe_min=250000");
     expect(hrefDe("Grandes en plazo")).toContain("solo_abiertas=true");
-    expect(screen.getByText("Abre Detalle: abiertas del 25 % de mayor importe")).toBeInTheDocument();
+    expect(hrefDe("Grandes en plazo")).toMatch(/cierre_desde=\d{4}-\d{2}-\d{2}/);
+    expect(
+      screen.getByText("Abre Detalle: abiertas en plazo del 25 % de mayor importe"),
+    ).toBeInTheDocument();
   });
 
-  it("sin P75 publicado, «Grandes en plazo» vuelve a declararse aproximada", () => {
-    // Con ámbito activo el percentil se recalcula sobre el subconjunto filtrado
-    // y no sale del endpoint: enlazar con el P75 global cortaría por un umbral
-    // que no es el que produjo la cifra.
+  it("con ámbito activo sigue siendo exacta: el P75 que llega es el del ámbito", () => {
+    // Antes el endpoint no publicaba el P75 con filtros y la tarjeta se
+    // declaraba aproximada justo en el caso normal: cualquier chip puesto.
+    scope.qs = "?tecnologia=SAP";
+    renderCards({ ...HOY, importe_p75: 90000 });
+    expect(hrefDe("Grandes en plazo")).toContain("importe_min=90000");
+    expect(hrefDe("Grandes en plazo")).toContain("tecnologia=SAP");
+    expect(screen.queryByText(/Aprox\./)).not.toBeInTheDocument();
+  });
+
+  it("sin P75 —un ámbito sin importes— «Grandes en plazo» se declara aproximada", () => {
     renderCards({ ...HOY, importe_p75: null });
     expect(hrefDe("Grandes en plazo")).not.toContain("importe_min");
     expect(
-      screen.getByText(/Aprox\. · Abre Detalle: todas las abiertas, sin el umbral de importe/),
+      screen.getByText(/Aprox\. · Abre Detalle: abiertas en plazo, sin umbral/),
     ).toBeInTheDocument();
   });
 
@@ -163,22 +176,22 @@ describe("AtencionCards", () => {
     expect(cola).not.toContain("with_total");
     expect(cola).toMatch(/cierre_desde=\d{4}-\d{2}-\d{2}/);
     expect(cola).toMatch(/cierre_hasta=\d{4}-\d{2}-\d{2}/);
-    // `vencen_48h` cuenta sin guardia de estado, así que la lista tampoco la
-    // pone: con ella enseñaría menos filas de las que promete el número.
-    expect(cola).not.toContain("solo_abiertas");
+    // `vencen_48h` cuenta con guardia de estado, así que la lista también la
+    // pone: sin ella enseñaría anuladas que el número ya no cuenta.
+    expect(cola).toContain("solo_abiertas=true");
   });
 
-  it("el desglose no aplica los filtros que el contador ignora", () => {
-    // Si la lista aplicara el ámbito entero saldría más estrecha que su propio
-    // encabezado: «37» sobre las cuatro filas que sobreviven al chip de estado.
+  it("el desglose aplica el ámbito entero, igual que el contador", () => {
+    // El contador ya aplica la barra entera: si la lista recortara el ámbito
+    // saldría más ancha que su propio encabezado.
     scope.params = { estado: "PUB", q: "sanidad", ccaa: "Madrid" };
     renderCards();
     const cola = fetchWithAuth.mock.calls
       .map(([url]) => url)
       .find((url) => url.includes("/api/v1/licitaciones"));
     expect(cola).toContain("ccaa=Madrid");
-    expect(cola).not.toContain("estado=PUB");
-    expect(cola).not.toContain("q=sanidad");
+    expect(cola).toContain("estado=PUB");
+    expect(cola).toContain("q=sanidad");
   });
 
   it("desglosa la cola en filas, ordenadas por lo que queda y no por lo que llegó", async () => {
@@ -224,14 +237,11 @@ describe("AtencionCards", () => {
     expect(screen.getByText("AEAT")).toBeInTheDocument();
   });
 
-  it("avisa cuando el ámbito lleva filtros que el endpoint ignora", () => {
+  it("no avisa de filtros ignorados: el endpoint aplica el ámbito entero", () => {
+    // Con búsqueda y estado la banda decía «Estas cifras no aplican búsqueda y
+    // estado». Ya los aplica, y el aviso no tiene nada que declarar.
     scope.estados = ["PUB"];
     scope.q = "sanidad";
-    renderCards();
-    expect(screen.getByText(/no aplican búsqueda y estado/)).toBeInTheDocument();
-  });
-
-  it("no avisa cuando el ámbito sólo lleva filtros que el endpoint sí aplica", () => {
     renderCards();
     expect(screen.queryByText(/no aplican/)).not.toBeInTheDocument();
   });

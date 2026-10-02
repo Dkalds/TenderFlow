@@ -462,8 +462,9 @@ export interface paths {
          * Overview
          * @description Return aggregated KPIs, breakdowns, and funnel data.
          *
-         *     `importe_max`, `provincia` y `procedimiento` (F1.1) tienen la semántica del
-         *     listado (`GET /licitaciones`): el mismo filtro acota los KPIs y la tabla.
+         *     `importe_max`, `provincia`, `procedimiento` (F1.1) y `solo_abiertas` tienen
+         *     la semántica del listado (`GET /licitaciones`): el mismo filtro acota los
+         *     KPIs y la tabla.
          */
         get: operations["overview_api_v1_analytics_overview_get"];
         put?: never;
@@ -599,6 +600,11 @@ export interface paths {
         /**
          * Resumen Hoy
          * @description Para hoy — calientes, vencimientos, nuevas.
+         *
+         *     Acepta el ámbito entero de la barra de filtros, con la semántica del
+         *     listado (`GET /licitaciones`): la tarjeta y el listado que abre miden lo
+         *     mismo. `vencen_48h` cuenta solo las abiertas, e `importe_p75` es el umbral
+         *     del ámbito con el que se contó `calientes`.
          */
         get: operations["resumen_hoy_api_v1_analytics_resumen_hoy_get"];
         put?: never;
@@ -618,7 +624,15 @@ export interface paths {
         };
         /**
          * Resumen Novedades
-         * @description New licitaciones since user's last visit.
+         * @description Licitaciones publicadas en todo el mercado desde tu última visita.
+         *
+         *     La última visita es la misma que la de `/resumen/desde-mi-ultima-visita`
+         *     —la marca de `notification_reads`, con el mismo tope de 14 días—, así que
+         *     `desde` coincide con el de esa banda y «marcar todo como visto» mueve las
+         *     dos. Sin última visita, el corte es el tope.
+         *
+         *     **No se cachea**, por lo mismo que aquella: el corte se mueve con cada
+         *     lectura y con cada «marcar todo como visto».
          */
         get: operations["resumen_novedades_api_v1_analytics_resumen_novedades_get"];
         put?: never;
@@ -15929,6 +15943,8 @@ export interface operations {
                 provincia?: string | null;
                 /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
                 procedimiento?: string | null;
+                /** @description Sólo las que siguen abiertas */
+                solo_abiertas?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -16172,6 +16188,20 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
+                /** @description Filter by estado */
+                estado?: string | null;
+                /** @description Free-text search (titulo, organo, id) */
+                q?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
+                /** @description Sólo las que siguen abiertas */
+                solo_abiertas?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -16289,6 +16319,20 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
+                /** @description Filter by estado */
+                estado?: string | null;
+                /** @description Free-text search (titulo, organo, id) */
+                q?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
+                /** @description Sólo las que siguen abiertas */
+                solo_abiertas?: boolean;
                 /** @description Reparte las filas por toda la ventana (muestra sistemática) en vez de devolver las más recientes. Lo pide la nube de puntos del Resumen: sin esto, las 1.000 más recientes de una ventana de 30 días son 48 horas de datos. La tabla de últimas publicaciones necesita el orden contrario, así que el reparto es opt-in. */
                 muestra?: boolean;
             };
@@ -16542,6 +16586,20 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
+                /** @description Filter by estado */
+                estado?: string | null;
+                /** @description Free-text search (titulo, organo, id) */
+                q?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
+                /** @description Sólo las que siguen abiertas */
+                solo_abiertas?: boolean;
                 /** @description Frecuencia del roll-up de la serie: month (default), week o day. Es el mando que acota `series`, que escala con la LONGITUD DEL RANGO DE FECHAS y no con el número de licitaciones (day ≈ 1 punto/día, o sea ~3.650 puntos en 10 años; week ~1/7; month ~1/30). La respuesta declara en `group_by` la granularidad usada y en `serie_truncada` si se alcanzó el techo de 4000 puntos. */
                 group_by?: "month" | "week" | "day";
             };

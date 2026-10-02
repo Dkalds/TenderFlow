@@ -157,7 +157,7 @@ export const SECTIONS: NavSection[] = [
         // vivo en el backend sin un solo consumidor. La ficha ahora enumera lo
         // que se pinta de verdad, en el orden en que se pinta.
         description:
-          "Tus compromisos del día, lo que exige atención en el mercado abierto y la salud competitiva del ámbito.",
+          "Tus compromisos del día, lo que exige atención en el mercado abierto y las publicaciones del ámbito.",
         icon: ICONO_ESPACIO.resumen,
       },
     ],

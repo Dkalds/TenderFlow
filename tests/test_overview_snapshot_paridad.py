@@ -45,7 +45,9 @@ _FILAS = (
     ("SNAP-CERRADA", "ADJ", "2026-08-01", "2026-09-01", 900_000.0, ""),
     # Plazo ya pasado.
     ("SNAP-VENCIDA", "PUB", "2026-07-01", "2026-08-01", 700_000.0, "Andalucía"),
-    # Cerrada, pero "vencen_48h" cuenta por plazo y no por estado.
+    # Cerrada con el plazo dentro de las 48 h: "vencen_48h" no la cuenta. Antes
+    # contaba por plazo sin mirar el estado, y una resuelta salía en la cola
+    # roja del Resumen.
     ("SNAP-48H", "RES", "2026-08-01", "2026-08-13T09:00:00+00:00", 5.0, None),
     # Fechas fuera de rango: el _iso_guard tiene que descartarla pese al importe.
     ("SNAP-FECHA-MALA", "PUB", "0001-01-01", "9999-12-31", 999_999.0, "Madrid"),
@@ -114,8 +116,10 @@ def test_para_hoy_precalculado_cuenta_lo_mismo_que_en_vivo(snapshot_db):
     assert en_vivo["calientes_hoy"] == 1, (
         "solo SNAP-CALIENTE supera el P75 estando abierta y en plazo"
     )
-    assert en_vivo["vencen_48h"] == 2
+    assert en_vivo["vencen_48h"] == 1, "SNAP-VENCE sí; SNAP-48H está resuelta"
     assert en_vivo["nuevas_24h"] == 2
+    # Las dos ramas publican el umbral con que contaron, y es el mismo.
+    assert en_vivo["importe_p75"] == repo.importe_p75()
     assert en_vivo["total_activas"] == 6
 
 

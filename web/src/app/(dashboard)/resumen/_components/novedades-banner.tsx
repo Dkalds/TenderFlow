@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Aviso, EnlaceIr } from "@/components/console/panel";
+import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
+import { apiGet } from "@/lib/api-client";
+import { analyticsKeys } from "@/lib/query-keys";
+import { formatCurrency, formatDateTime, formatNumber, truncate } from "@/lib/utils";
 import type { ResumenNovedadesResult } from "@/lib/api-types";
 
 /**
@@ -22,10 +24,14 @@ import type { ResumenNovedadesResult } from "@/lib/api-types";
  * está filtrada y el recuento no —ver abajo—, así que puede haber novedades que
  * la tabla no llega a enseñar; ésas sólo se ven aquí.
  *
- * `GET /analytics/resumen/novedades` no acepta **ningún** filtro: cuenta contra
- * `last_login` sobre todo el mercado. Estaba en una pantalla llena de chips de
- * ámbito sin decirlo, así que la línea lo declara («sin tu ámbito») — la misma
- * regla que el aviso de alcance de los paneles vecinos.
+ * `GET /analytics/resumen/novedades` no acepta **ningún** filtro: cuenta sobre
+ * todo el mercado. Estaba en una pantalla llena de chips de ámbito sin decirlo,
+ * así que la línea lo declara («sin tu ámbito»).
+ *
+ * **La última visita es la de la banda de arriba** (`desde-ultima-visita.tsx`):
+ * el backend lee la misma marca y devuelve el mismo `desde`, que aquí se dice
+ * con su fecha. Antes contaba contra `users.last_login`, una columna que no
+ * existe, y esta línea decía «Todo al día» siempre, sin haber mirado nada.
  */
 
 /**
@@ -36,11 +42,15 @@ import type { ResumenNovedadesResult } from "@/lib/api-types";
  * sola petición.
  */
 export function useNovedades() {
-  return useFilteredQuery<ResumenNovedadesResult>(
-    ["analytics", "resumen", "novedades"],
-    "/api/v1/analytics/resumen/novedades",
-    { staleTime: 5 * 60 * 1000 },
-  );
+  // `useQuery` y no `useFilteredQuery`: el endpoint ignora el ámbito, y con la
+  // clave filtrada cada chip abría otra entrada de caché para la misma respuesta.
+  return useQuery<ResumenNovedadesResult>({
+    queryKey: analyticsKeys.novedades,
+    queryFn: () => apiGet("/api/v1/analytics/resumen/novedades"),
+    // Mismo criterio que la banda de arriba: el corte se mueve con «Marcar
+    // todo como visto», que invalida las dos.
+    staleTime: 60_000,
+  });
 }
 
 export function NovedadesBanner({
@@ -53,12 +63,16 @@ export function NovedadesBanner({
   if (isLoading) return <Skeleton className="mb-3.5 h-9 w-full rounded-xl" />;
   if (!data) return null;
 
+  // El backend siempre publica el corte; sin él (un despliegue viejo) se dice
+  // «tu última visita» en vez de inventar una fecha.
+  const desde = data.desde ? `el ${formatDateTime(data.desde)}` : "tu última visita";
+
   if (data.count > 0) {
     return (
       <Aviso
         tone="info"
         className="mb-3.5"
-        title={`${formatNumber(data.count)} nuevas licitaciones desde tu última visita`}
+        title={`${formatNumber(data.count)} ${data.count === 1 ? "licitación nueva" : "licitaciones nuevas"} desde ${desde}`}
         action={<EnlaceIr href="/detalle">Ver todas</EnlaceIr>}
       >
         <span className="text-muted-foreground">En todo el mercado, sin tu ámbito · en la tabla van marcadas.</span>
@@ -95,7 +109,7 @@ export function NovedadesBanner({
 
   return (
     <Aviso tone="success" className="mb-3.5">
-      Todo al día: sin novedades desde tu última visita.
+      Todo al día: ninguna licitación nueva en el mercado desde {desde}.
     </Aviso>
   );
 }
