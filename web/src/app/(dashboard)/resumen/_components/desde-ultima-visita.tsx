@@ -3,8 +3,9 @@
 /**
  * F5.4 — «Qué cambió desde tu última visita».
  *
- * El Resumen ya tenía novedades **de mercado** (`novedades-banner.tsx`): qué
- * expedientes nuevos hay en el corpus. Esta banda responde otra pregunta —qué
+ * El Resumen ya tenía novedades **de mercado** (la tarjeta «Nuevas» de
+ * «Mercado abierto», `_hooks/use-novedades.ts`): qué expedientes nuevos hay en
+ * el ámbito. Esta banda responde otra pregunta —qué
  * se ha movido en **lo mío**: los expedientes que sigo, sus pliegos y
  * recursos, y las oportunidades de mi equipo— y la calcula el backend
  * (`GET /analytics/resumen/desde-mi-ultima-visita`), que fusiona las cuatro
@@ -49,12 +50,21 @@ type NovedadesDesdeUltimaVisita = Schemas["NovedadesDesdeUltimaVisita"];
 type Novedad = Schemas["Novedad"];
 type VisitaMarcada = Schemas["VisitaMarcada"];
 
-/** «Marcar todo como visto»: mueve la marca y vuelve a pedir la banda. */
-function useMarcarVisto() {
+/**
+ * «Marcar todo como visto»: mueve la marca y vuelve a pedir lo que cuelga de
+ * ella — esta banda y las licitaciones nuevas del mercado
+ * (`_hooks/use-novedades.ts`: la tarjeta «Nuevas» y los puntos de la tabla),
+ * que cuentan desde la misma última visita.
+ */
+export function useMarcarVisto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => apiMutate<VisitaMarcada>("POST", "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto"),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["analytics", "resumen", "desde-mi-ultima-visita"] }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["analytics", "resumen", "desde-mi-ultima-visita"] }),
+        queryClient.invalidateQueries({ queryKey: analyticsKeys.novedades }),
+      ]),
     onError: () => toast.error("No se pudo marcar como visto. Vuelve a intentarlo."),
   });
 }

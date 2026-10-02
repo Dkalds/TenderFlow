@@ -61,6 +61,7 @@ def test_la_ruta_de_overview_los_pasa_al_servicio() -> None:
             importe_max=250_000.0,
             provincia="Sevilla",
             procedimiento="6",
+            solo_abiertas=True,
             _user={"user_id": 1},
         )
     filtros = capturado["filtros"]
@@ -69,6 +70,9 @@ def test_la_ruta_de_overview_los_pasa_al_servicio() -> None:
         "Sevilla",
         "6",
     )
+    # El último de la barra que el overview no aceptaba (2026-10): con «solo
+    # abiertas» puesto, la tira de contexto del Resumen contaba las cerradas.
+    assert filtros.solo_abiertas is True
 
 
 def test_el_where_de_analytics_entiende_los_tres() -> None:

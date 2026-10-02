@@ -36,21 +36,30 @@ import { AtajosAnalisis } from "./atajos-analisis";
  * 1. **Tu día** — compromisos de tu organización (`GET /pursuits/agenda`).
  * 1b. **Primeros pasos** — sólo mientras al usuario le falte configurar algo que
  *    el producto necesita para hablar de su negocio. Va **debajo** de «Tu día»
- *    a propósito: no desplaza la tesis de la pantalla, y en una cuenta nueva
- *    «Tu día» ocupa una línea vacía, así que cae igualmente en la primera
- *    pantalla, justo donde explica por qué esa línea está vacía.
+ *    para no desplazar la tesis de la pantalla, salvo en una cuenta sin ningún
+ *    paso hecho: ahí sube arriba del todo, porque lo que había encima eran
+ *    ceros y listas vacías y la banda era lo único accionable
+ *    (`primeros-pasos.tsx`, `posicionDe`).
  * 2. **Mercado abierto** — lo que exige mirar hoy en el corpus, con el destino
  *    real de cada tarjeta en su pie. La banda no reparte el espacio a partes
  *    iguales: lo que tiene plazo (la cola de cierre) ocupa dos tercios y trae
- *    sus primeras filas, para que lo urgente se resuelva sin salir.
- * 3. **Contexto y salud competitiva** — la foto del ámbito y los indicadores de
- *    concentración, con los deltas entre meses cerrados. Aquí baja «Activas»:
- *    describe el ámbito, no pide nada para hoy.
- * 4. **Composición** — por estado y por órgano; pulsar un estado filtra.
- * 5. **Publicaciones** — novedades, los cortes del periodo y la tabla, con el
- *    tope del endpoint declarado y las filas nuevas marcadas.
+ *    sus primeras filas, para que lo urgente se resuelva sin salir. «Nuevas»
+ *    cuenta desde tu última visita: es la única idea de «nuevo» del mercado
+ *    en la pantalla (`_hooks/use-novedades.ts`).
+ * 3. **Contexto de mercado** — tres cifras del ámbito: activas, publicadas y
+ *    importe de los últimos 30 días. Aquí baja «Activas»: describe el ámbito,
+ *    no pide nada para hoy. Fue una tira de siete magnitudes más otra de seis
+ *    indicadores de competencia, medio globales; se retiraron (2026-10) porque
+ *    son la radiografía del mercado que esta pantalla dejó de abrir, y viven en
+ *    Mercado y Competencia.
+ * 4. **Composición** — por estado; pulsar un estado filtra.
+ * 5. **Publicaciones** — los cortes del periodo y la tabla, con el tope del
+ *    endpoint declarado y las filas nuevas desde tu última visita marcadas.
  * 6. **Movimientos** — qué contratos se han movido en la ventana.
  * 7. **Análisis completo** — los atajos, que arrastran el ámbito.
+ *
+ * Todas aplican el ámbito entero de la barra de filtros, salvo las personales
+ * (0 y 1, que son de lo que sigues y de tu organización).
  *
  * Cada banda pide su propio dato y pinta su propio error. Antes un fallo de
  * `/analytics/overview` dejaba la pantalla entera en una tarjeta de error, con
@@ -103,9 +112,10 @@ export function ResumenView() {
           <ScrollEdgeSentinel />
           <CopilotBar className="mb-4 max-w-[720px]" />
 
+          <PrimerosPasos posicion="arriba" onDescartar={recogerFoco} />
           <DesdeUltimaVisita />
           <TuDia />
-          <PrimerosPasos onDescartar={recogerFoco} />
+          <PrimerosPasos posicion="abajo" onDescartar={recogerFoco} />
           <AtencionCards />
           <ContextoStrip />
           <ComposicionPanel />

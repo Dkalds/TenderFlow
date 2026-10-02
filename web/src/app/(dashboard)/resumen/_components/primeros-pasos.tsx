@@ -20,6 +20,7 @@ import {
   progresoParaTelemetria,
   type EstadoPaso,
   type PasoDerivado,
+  type Progreso,
 } from "@/components/onboarding/pasos";
 import { registrarEvento } from "@/lib/analytics";
 import { useSenalesOnboarding } from "@/components/onboarding/use-estado-onboarding";
@@ -42,7 +43,23 @@ import { useSenalesOnboarding } from "@/components/onboarding/use-estado-onboard
  * El botón «Ocultar» es la salida explícita. Al desmontar la sección el foco se
  * quedaría huérfano, así que se avisa al contenedor con `onDescartar` para que
  * lo recoja — el foco no puede caerse al `body` sin más.
+ *
+ * **Dónde va.** Debajo de «Tu día», para no desplazar la tesis de la pantalla…
+ * salvo en una cuenta recién creada. Ahí lo primero que se veía era «sin
+ * cambios», cuatro ceros y una agenda vacía, y lo único accionable quedaba
+ * debajo. Así que con los tres pasos **confirmados** pendientes la banda sube
+ * arriba del todo, y en cuanto hay uno hecho vuelve a su sitio
+ * (`posicionDe`). Con alguno sin comprobar se queda abajo: subirla sería
+ * afirmar una cuenta vacía que puede no serlo, la misma regla que la tiene
+ * oculta mientras carga.
  */
+
+export type PosicionPrimerosPasos = "arriba" | "abajo";
+
+/** Arriba solo con cero pasos hechos y ninguno por comprobar. */
+export function posicionDe(progreso: Progreso): PosicionPrimerosPasos {
+  return progreso.hechos === 0 && progreso.sinResolver === 0 ? "arriba" : "abajo";
+}
 
 // Texto a plena tinta (`text-foreground`) en los chips tintados: a 11 px,
 // `text-primary` sobre su tinte y el verde sobre el suyo quedaban por debajo del
@@ -105,7 +122,18 @@ function ContenidoFila({ paso }: { paso: PasoDerivado }) {
   );
 }
 
-export function PrimerosPasos({ onDescartar }: { onDescartar?: () => void }) {
+export function PrimerosPasos({
+  onDescartar,
+  posicion,
+}: {
+  onDescartar?: () => void;
+  /**
+   * El hueco de la pantalla que ocupa esta instancia. La vista monta una en
+   * cada hueco y solo se pinta la que coincide con `posicionDe`; las consultas
+   * se comparten (misma clave). Sin `posicion` se pinta donde se monte.
+   */
+  posicion?: PosicionPrimerosPasos;
+}) {
   // El descarte se lee como store externo, no en un efecto: así el primer
   // render del cliente ya sabe si la banda está oculta y las tres queries no
   // llegan a lanzarse en quien no las necesita. En servidor no hay preferencia
@@ -124,6 +152,7 @@ export function PrimerosPasos({ onDescartar }: { onDescartar?: () => void }) {
   if (!debeMostrarse(pasos)) return null;
 
   const progreso = progresoDe(pasos);
+  if (posicion && posicionDe(progreso) !== posicion) return null;
 
   function ocultar() {
     marcarDescartado();

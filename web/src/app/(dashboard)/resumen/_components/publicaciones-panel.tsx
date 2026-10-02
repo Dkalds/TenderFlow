@@ -10,8 +10,6 @@ import {
   PanelTitle,
   panelDePestana,
 } from "@/components/console/panel";
-import { useFiltrosIgnorados } from "./alcance";
-import { AvisoAlcance } from "./aviso-alcance";
 import { usePublicaciones } from "../_hooks/use-publicaciones";
 import { ImportesHistograma } from "./publicaciones/importes-histograma";
 import { ALTO, HINTS, TABS, type Corte } from "./publicaciones/publicaciones-data";
@@ -61,10 +59,13 @@ const DispersionScatter = dynamic(
  *
  * Aquí queda el reparto: qué corte se ve y qué estado —error, carga o dato— se
  * pinta, que es común a los tres.
+ *
+ * Los dos endpoints (`/analytics/trends` y `/resumen/timeline`) aplican el
+ * ámbito entero. Solo aplicaban fecha, CCAA y tecnología, y el panel tenía que
+ * avisar encima de qué chips no estaba mirando.
  */
 export function PublicacionesPanel() {
   const [corte, setCorte] = useState<Corte>("ritmo");
-  const ignorados = useFiltrosIgnorados();
   const publicaciones = usePublicaciones(corte);
 
   // El corte por defecto se pide ya, a la vez que su dato: `RitmoChart` no se
@@ -77,7 +78,6 @@ export function PublicacionesPanel() {
   return (
     <Panel>
       <PanelTitle title="Publicaciones en el periodo" hint={HINTS[corte]} />
-      <AvisoAlcance ignorados={ignorados} />
       <div className="mb-2.5">
         <PanelTabs
           tabs={TABS}

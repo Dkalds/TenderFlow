@@ -180,6 +180,15 @@ export const analyticsKeys = {
    */
   desdeUltimaVisita: (organizationId: OrganizacionDeClave) =>
     ["analytics", "resumen", "desde-mi-ultima-visita", organizationId] as const,
+  /**
+   * **Prefijo** de las licitaciones nuevas desde la última visita
+   * (`GET /analytics/resumen/novedades`). La consulta va con el ámbito
+   * (`resumen/_hooks/use-novedades.ts`, vía `useFilteredQuery`), así que su
+   * clave completa lleva detrás la URL y los filtros; esto es lo que se
+   * invalida. Comparte la marca con `desdeUltimaVisita`, y «Marcar todo como
+   * visto» invalida las dos.
+   */
+  novedades: ["analytics", "resumen", "novedades"] as const,
 };
 
 export const radarKeys = {
