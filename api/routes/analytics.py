@@ -613,21 +613,21 @@ async def resumen_novedades(
     **No se cachea**, por lo mismo que aquella: el corte se mueve con cada
     lectura y con cada «marcar todo como visto».
     """
-    ambito = AmbitoResumen(
-        fecha_desde=fecha_desde,
-        fecha_hasta=fecha_hasta,
-        ccaa=ccaa,
-        tecnologia=tecnologia,
-        estado=estado,
-        q=q,
-        importe_min=importe_min,
-        importe_max=importe_max,
-        provincia=provincia,
-        procedimiento=procedimiento,
-        solo_abiertas=solo_abiertas,
-    )
 
     def _trabajo() -> ResumenNovedadesResult:
+        ambito = AmbitoResumen(
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            estado=estado,
+            q=q,
+            importe_min=importe_min,
+            importe_max=importe_max,
+            provincia=provincia,
+            procedimiento=procedimiento,
+            solo_abiertas=solo_abiertas,
+        )
         user_id = ctx.get("user_id")
         last_seen = get_last_seen_ts(
             str(ctx["user_key"]),
