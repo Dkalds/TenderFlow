@@ -52,6 +52,14 @@ _TEMPERATURE = 0.2
 # como `APIStatusError` genérico), así que solo se reconoce por el código.
 _RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
+#: Mensajes de saturación que llegan **sin** código HTTP. NVIDIA NIM abre el
+#: stream con 200 y, cuando está saturado, manda el error como evento SSE: el
+#: SDK lo levanta como ``APIError`` genérico, sin ``status_code``. Hasta
+#: 2026-09-28 eso no se reintentaba y acababa en stream vacío en ~250 ms —en
+#: el lote de pliegos del 2026-09-27, 6 de 25 fichas fallaron así con un
+#: engañoso «El extractor no devolvió un objeto JSON»—.
+_RETRYABLE_MESSAGES = ("overloaded", "rate limit", "too many requests", "temporarily unavailable")
+
 
 def _is_retryable(exc: Exception) -> bool:
     """Determina si la excepción amerita un retry."""
@@ -61,6 +69,9 @@ def _is_retryable(exc: Exception) -> bool:
     # openai.APIStatusError / httpx errors por código
     code = getattr(exc, "status_code", None)
     if code in _RETRYABLE_HTTP_CODES:
+        return True
+    mensaje = str(exc).lower()
+    if any(k in mensaje for k in _RETRYABLE_MESSAGES):
         return True
     # Nombres comunes de excepciones transitorias de openai-python
     return any(k in name for k in ("ratelimit", "timeout", "connection", "apiconnection"))

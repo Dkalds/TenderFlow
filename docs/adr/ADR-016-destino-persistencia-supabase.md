@@ -79,7 +79,7 @@ eliminará la presión del shim.
 
 ## Estrategia de migración
 
-Ver `docs/runbooks/migracion-persistencia.md` (creado en F3c).
+Ver `docs/archive/runbooks/migracion-persistencia.md` (creado en F3c).
 
 Fases:
 - **F3a** (esta fase): ADR-016 + deps psycopg3 + `db/connection.py` shim +

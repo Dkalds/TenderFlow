@@ -330,22 +330,27 @@ __all__ = [
 ]
 
 
-def canonical_for(id_externo: str) -> str | None:
+def canonical_for(id_externo: str, *, solo_confirmadas: bool = False) -> str | None:
     """``canonical_id`` si *id_externo* está marcado como republicación (C4.2).
 
     Devuelve ``None`` cuando la fila no es duplicada de nada, que es el caso
-    normal. Se consultan los dos estados —``pending`` y ``confirmed``— porque la
-    ficha **enseña** el aviso: es la superficie donde ocultar de más costaría
-    (un enlace guardado dejaría de explicar por qué esa página ya no sale en
-    ningún listado) y donde el usuario puede juzgar por sí mismo si el par es
-    correcto. Es la asimetría de ADR-026 §D23: esconder en el Radar, avisar en
-    el Detalle.
+    normal. Por defecto se consultan los dos estados —``pending`` y
+    ``confirmed``— porque la ficha **enseña** el aviso: es la superficie donde
+    ocultar de más costaría (un enlace guardado dejaría de explicar por qué esa
+    página ya no sale en ningún listado) y donde el usuario puede juzgar por sí
+    mismo si el par es correcto. Es la asimetría de ADR-026 §D23: esconder en el
+    Radar, avisar en el Detalle.
+
+    ``solo_confirmadas`` es para quien no avisa sino que **sustituye** un dato
+    por el de la canónica (los pliegos, ``services.dedupe.expediente_del_pliego``):
+    ahí un par ``pending`` puede ser otro contrato.
     """
+    estados = ["confirmed"] if solo_confirmadas else ["pending", "confirmed"]
     with connect_read() as c:
         fila = c.execute(
             "SELECT canonical_id FROM licitaciones_duplicados "
-            "WHERE licitacion_id = %s AND status IN ('pending', 'confirmed') "
+            "WHERE licitacion_id = %s AND status = ANY(%s) "
             "ORDER BY confianza DESC LIMIT 1",
-            (id_externo,),
+            (id_externo, estados),
         ).fetchone()
     return str(fila[0]) if fila and fila[0] else None

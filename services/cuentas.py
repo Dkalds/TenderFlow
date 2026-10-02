@@ -679,7 +679,7 @@ def _copiar_para_miembro(
             visibility="private",
         )
     elif tipo == "vista":
-        from services.saved_filters import save_filter
+        from db.saved_filters import save_filter
 
         save_filter(
             user_key,

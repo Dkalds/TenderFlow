@@ -243,81 +243,6 @@ def test_run_kpi_precompute_returns_summary(tmp_db):
 # ---------------------------------------------------------------------------
 
 
-def test_get_latest_snapshot_returns_none_when_empty(tmp_db):
-    """Sin datos en kpi_snapshots devuelve None."""
-    _, _ = tmp_db
-
-    from db.kpi_precompute import get_latest_snapshot
-
-    result = get_latest_snapshot("total_licitaciones")
-    assert result is None
-
-
-def test_get_latest_snapshot_returns_value_after_precompute(tmp_db):
-    """Tras run_kpi_precompute, get_latest_snapshot devuelve datos."""
-    _, _ = tmp_db
-
-    from db.kpi_precompute import get_latest_snapshot
-    from scheduler.kpi_precompute import run_kpi_precompute
-
-    run_kpi_precompute()
-    result = get_latest_snapshot("total_licitaciones")
-
-    assert result is not None
-    assert "valor" in result
-    assert "computed_at" in result
-
-
-def test_get_latest_snapshot_filtra_por_dimension(tmp_db):
-    """Con la misma métrica en dos dimensiones, devuelve la más reciente de la pedida.
-
-    La fila ``global`` es la más reciente a propósito: una lectura que ignorase
-    la dimensión —o que la fijase a ``global``— devolvería su valor para
-    ``madrid`` y también para una dimensión sin filas. ``madrid`` tiene además
-    una fila más antigua con otro valor, que devolvería una lectura que
-    ordenase ``computed_at`` al revés.
-    """
-    db_mod, _ = tmp_db
-
-    from db.kpi_precompute import get_latest_snapshot, persist_snapshots
-
-    filas = [
-        {
-            "metrica": "licitaciones_por_ccaa",
-            "dimension": "madrid",
-            "valor": 3,
-            "valor_text": None,
-            "computed_at": "2023-12-01T00:00:00",
-        },
-        {
-            "metrica": "licitaciones_por_ccaa",
-            "dimension": "madrid",
-            "valor": 7,
-            "valor_text": None,
-            "computed_at": "2024-01-01T00:00:00",
-        },
-        {
-            "metrica": "licitaciones_por_ccaa",
-            "dimension": "global",
-            "valor": 99,
-            "valor_text": None,
-            "computed_at": "2024-01-02T00:00:00",
-        },
-    ]
-    with db_mod.connect() as c:
-        persist_snapshots(c, filas)
-
-    assert get_latest_snapshot("licitaciones_por_ccaa", "madrid") == {
-        "valor": 7,
-        "computed_at": "2024-01-01T00:00:00",
-    }
-    assert get_latest_snapshot("licitaciones_por_ccaa") == {
-        "valor": 99,
-        "computed_at": "2024-01-02T00:00:00",
-    }
-    assert get_latest_snapshot("licitaciones_por_ccaa", "andalucia") is None
-
-
 # ---------------------------------------------------------------------------
 # get_all_latest
 # ---------------------------------------------------------------------------
@@ -433,56 +358,6 @@ class TestRunKpiPrecompute:
         assert "n_metricas" in result
         assert "elapsed_ms" in result
         assert result["n_metricas"] > 0
-
-
-class TestGetLatestSnapshot:
-    @patch("db.database.connect")
-    def test_found(self, mock_connect: MagicMock) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = (42, None, "2024-01-01")
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
-
-        from db.kpi_precompute import get_latest_snapshot
-
-        result = get_latest_snapshot("total_licitaciones")
-        assert result == {"valor": 42, "computed_at": "2024-01-01"}
-
-    @patch("db.database.connect")
-    def test_not_found(self, mock_connect: MagicMock) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = None
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
-
-        from db.kpi_precompute import get_latest_snapshot
-
-        result = get_latest_snapshot("total_licitaciones")
-        assert result is None
-
-    @patch("db.database.connect")
-    def test_with_valor_text_json(self, mock_connect: MagicMock) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = (None, '{"a":1}', "2024-01-01")
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
-
-        from db.kpi_precompute import get_latest_snapshot
-
-        result = get_latest_snapshot("some_metric")
-        assert result["valor_text"] == {"a": 1}
-
-    @patch("db.database.connect")
-    def test_with_valor_text_bad_json(self, mock_connect: MagicMock) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = (None, "NOT JSON", "2024-01-01")
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
-
-        from db.kpi_precompute import get_latest_snapshot
-
-        result = get_latest_snapshot("some_metric")
-        assert result["valor_text"] == "NOT JSON"
 
 
 class TestGetAllLatest:

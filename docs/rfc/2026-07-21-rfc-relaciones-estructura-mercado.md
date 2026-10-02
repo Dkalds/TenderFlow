@@ -25,10 +25,10 @@ supersedes: >
 ## Contexto
 
 La sección **Relaciones** tiene dos páginas que comparten el componente
-[`force-graph.tsx`](../../web/src/components/charts/force-graph.tsx):
+`force-graph.tsx` (retirado):
 
-- [`red-organo-empresa`](../../web/src/app/(dashboard)/red-organo-empresa/page.tsx) — grafo bipartito órgano↔empresa (adjudicaciones reales).
-- [`ecosistema-partners`](../../web/src/app/(dashboard)/ecosistema-partners/page.tsx) — grafo empresa↔empresa (UTE, comunidades Louvain).
+- `red-organo-empresa` (retirado) — grafo bipartito órgano↔empresa (adjudicaciones reales).
+- `ecosistema-partners` (retirado) — grafo empresa↔empresa (UTE, comunidades Louvain).
 
 El RFC de junio arregló los **datos** (aristas reales) y el RFC de 2026-06-28
 arregló el **render** (fit, contención, leyenda, comunidades). Pese a eso, la
@@ -47,14 +47,14 @@ significa nada, así que no responde ninguna pregunta de negocio.
    más conectado — engaña sobre quién es el actor central.
 3. **Tres vistas redundantes del mismo set de aristas** en `red-organo-empresa`:
    grafo + matriz + tabla. Además la matriz es un top-10×top-10 recortado **en el
-   cliente** ([page.tsx:122-134](../../web/src/app/(dashboard)/red-organo-empresa/page.tsx))
-   y la tabla está capada a 30 filas ([:356](../../web/src/app/(dashboard)/red-organo-empresa/page.tsx)):
+   cliente** (`page.tsx:122-134` (retirado))
+   y la tabla está capada a 30 filas (`:356` (retirado)):
    no escala y el footer "N relaciones" miente sobre el total.
 4. **Sin "trabajo a resolver".** Se aterriza en frío ante un grafo abstracto. Las
    preguntas reales de inteligencia de mercado — *¿quién es incumbente en este
    órgano?*, *¿qué tan cerrado es este comprador?*, *¿con quién armo UTE?* — no se
    responden en ninguna de las dos páginas.
-5. **KPI "Densidad"** ([:142-143](../../web/src/app/(dashboard)/red-organo-empresa/page.tsx))
+5. **KPI "Densidad"** (`:142-143` (retirado))
    es una métrica de teoría de grafos sin lectura accionable.
 6. **Drill-down de arista pendiente.** El RFC previo lo dejó explícitamente fuera
    (§cierre): hoy click en arista solo navega a la empresa, no a *las licitaciones

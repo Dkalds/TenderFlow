@@ -146,16 +146,12 @@ tenderflow/
 │   └── providers/                #   NVIDIA NIM (OpenAI-compatible), OpenAI, Anthropic
 ├── scripts/                      # Scripts de mantenimiento
 │   ├── doctor.py                 #   Verificación de entorno
-│   ├── backup_db.py              #   Backup de la BD (cifrado GPG/AES-256)
-│   ├── retrain.py                #   Reentrenamiento del modelo ML
 │   ├── rotate_api_keys.py        #   Rotación de API keys
-│   ├── migrate_sqlite_to_pg.py   #   ETL de migración a Postgres/Supabase
-│   ├── verify_pg_parity.py       #   Verificación de paridad tras el cutover
 │   ├── check_frontend_invariants.py  # Integridad analítica del frontend (ADR-014)
-│   └── ...                       #   dedupe, retention, coverage, eval_rag_generation
+│   └── ...                       #   retención, evaluación RAG, checks de CI, ...
 ├── docs/                         # Documentación técnica
 │   ├── adr/                      #   Architecture Decision Records (ADR-001..026)
-│   ├── runbooks/                 #   Playbooks operativos (backup, DLQ, DR, migración, ...)
+│   ├── runbooks/                 #   Playbooks operativos (DLQ, DR, migración, ...)
 │   ├── c4-architecture.md        #   Diagramas C4 (Mermaid)
 │   ├── database-schema.md        #   Esquema real de Postgres (generado: `make schema-doc`)
 │   ├── api-design.md             #   Convenciones y contratos de la API REST
@@ -173,7 +169,7 @@ tenderflow/
 │   ├── train-model.yml           #   Entrenamiento programado del clasificador
 │   ├── ml-scoring.yml            #   Scoring diario de predicciones (baja/retención)
 │   ├── train-predictivos.yml     #   Retrain mensual + publicación de artefactos
-│   └── ...                       #   backup, changelog, release, release-sdk
+│   └── ...                       #   changelog, release, release-sdk
 ├── docker/                       # Dockerfiles (multi-stage) + entrypoints
 │   ├── Dockerfile.api            #   Imagen de la API/scheduler
 │   └── Dockerfile.web            #   Imagen del frontend Next.js

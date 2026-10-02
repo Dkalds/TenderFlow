@@ -2,7 +2,9 @@
 
 Calcula la asignación de cada licitación a su cluster semántico via KMeans
 sobre embeddings TF-IDF (fallback) o sentence-transformers si disponible.
-Resultado → ``mat_clusters``, que lee ``services/clustering_engine.py``.
+Resultado → ``mat_clusters``. Ojo: desde que se retiró
+``services/clustering_engine.py`` (2026-09-28) ninguna ruta lee esa tabla; la
+API calcula los clusters en vivo (``services/analytics/clusters.py``).
 
 El ranking ``mat_top_empresas_ccaa`` se eliminó (2026-07): se recomputaba en
 cada pasada de la pipeline y no lo leía ningún consumidor.

@@ -7,7 +7,6 @@ from typing import Any
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     Header,
     HTTPException,
@@ -699,7 +698,6 @@ async def put_organization_member(
 )
 async def post_pursuit(
     body: PursuitCreate,
-    background: BackgroundTasks,
     idempotency_key: str | None = Header(
         default=None,
         alias="X-Idempotency-Key",
@@ -710,7 +708,7 @@ async def post_pursuit(
     """Abre una oportunidad; reintentar la misma licitación no duplica.
 
     Abrirla es la señal de demanda más fuerte que existe, así que si el
-    expediente no tiene ficha del pliego se lanza su extracción en background
+    expediente no tiene ficha del pliego se encola su extracción
     (``PLIEGO_FACTS_ON_PURSUIT``): quien acaba de comprometerse abrirá la
     pestaña Pliego hoy, no cuando el lote nocturno llegue a ese expediente.
     """
@@ -726,37 +724,48 @@ async def post_pursuit(
     except PursuitValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if created:
-        await _lanzar_ficha_si_falta(background, pursuit.licitacion_id, ctx)
+        await _lanzar_ficha_si_falta(pursuit.licitacion_id, pursuit.organization_id, ctx)
     return pursuit
 
 
 async def _lanzar_ficha_si_falta(
-    background: BackgroundTasks, licitacion_id: str, ctx: dict[str, Any]
+    licitacion_id: str, organization_id: int, ctx: dict[str, Any]
 ) -> None:
-    """Encola la extracción de la ficha si no existe. Nunca falla la creación."""
+    """Encola la extracción de la ficha si no existe. Nunca falla la creación.
+
+    Va por la cola (ADR-028) y no por ``BackgroundTasks``, por tres motivos que
+    se veían en producción: la tarea en el proceso de la API moría con cada
+    despliegue; ``…/ficha-pliego/estado`` mira la cola, así que la pestaña
+    Pliego ofrecía «Extraer ficha» mientras la extracción corría, y un clic la
+    encolaba otra vez; y un fallo que no fuera «sin páginas» no dejaba fila, ni
+    reintento, ni rastro fuera del log (``No module named 'pybreaker'``, el
+    2026-09-28, fue exactamente eso). Encolar es idempotente por expediente.
+    """
     from config import settings
 
     if not settings.PLIEGO_FACTS_ON_PURSUIT:
         return
     try:
-        from services.rag.fact_sheet import (
-            get_fact_sheet,
-            run_background_extraction,
-            try_mark_extraction_running,
-        )
+        from services.rag.fact_sheet import get_fact_sheet
+        from shared.jobs import TIPO_FICHA_PLIEGO, enqueue
 
         if await run_db(get_fact_sheet, licitacion_id) is not None:
             return
-        if not await run_db(try_mark_extraction_running, licitacion_id):
-            return
         raw_subject = ctx.get("user_key")
-        background.add_task(
-            run_background_extraction,
-            licitacion_id,
-            model=settings.PLIEGO_FACTS_MODEL,
-            budget_subject=raw_subject if isinstance(raw_subject, str) and raw_subject else None,
+        budget_subject = raw_subject if isinstance(raw_subject, str) and raw_subject else None
+        job_id = await run_db(
+            enqueue,
+            TIPO_FICHA_PLIEGO,
+            {
+                "licitacion_id": licitacion_id,
+                "model": settings.PLIEGO_FACTS_MODEL,
+                "budget_subject": budget_subject,
+            },
+            organization_id=organization_id,
         )
-        log.info("pursuit_fact_sheet_extraction_started", licitacion_id=licitacion_id)
+        log.info(
+            "pursuit_fact_sheet_extraction_encolada", licitacion_id=licitacion_id, job_id=job_id
+        )
     except Exception as exc:
         log.warning(
             "pursuit_fact_sheet_extraction_skipped",

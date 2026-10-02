@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { PursuitDecision, PursuitOutcome, PursuitStatus } from "@/hooks/use-pursuits";
-import { formatCurrency, formatDate as formatDateBase } from "@/lib/utils";
+import { formatDate as formatDateBase } from "@/lib/utils";
 
 const statusCopy: Record<PursuitStatus, string> = {
   identified: "Identificada",
@@ -41,9 +41,6 @@ export function outcomeLabel(outcome: PursuitOutcome): string {
   return outcomeCopy[outcome];
 }
 
-/** Alias de dominio sobre el formateador único (`lib/utils.ts`). */
-export const formatEur = formatCurrency;
-
 /**
  * Igual que `formatDate` de `lib/utils.ts`, pero con el copy de dominio para el
  * caso vacío: aquí la fecha es siempre un plazo de presentación, así que "Sin
@@ -77,11 +74,6 @@ export function PursuitStatusBadge({ status }: { status: PursuitStatus }) {
   return <Badge variant={variant}>{statusLabel(status)}</Badge>;
 }
 
-export function PursuitDecisionBadge({ decision }: { decision: PursuitDecision }) {
-  const variant = decision === "go" ? "success" : decision === "no_go" ? "destructive" : "secondary";
-  return <Badge variant={variant}>{decisionCopy[decision]}</Badge>;
-}
-
 /**
  * Identidad del lote de una oportunidad, o `null` si es del expediente entero.
  *
@@ -112,11 +104,6 @@ export function PursuitLoteBadge({ pursuit }: { pursuit: PursuitConLote }) {
       {etiqueta}
     </Badge>
   );
-}
-
-export function PursuitOutcomeBadge({ outcome }: { outcome: PursuitOutcome }) {
-  const variant = outcome === "won" ? "success" : outcome === "lost" ? "destructive" : outcome === "cancelled" ? "warning" : "secondary";
-  return <Badge variant={variant}>{outcomeCopy[outcome]}</Badge>;
 }
 
 /* ── Plazo: la rampa de urgencia como dato, no como adorno ─────────── */

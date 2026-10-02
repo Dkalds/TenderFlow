@@ -297,15 +297,38 @@ def _persist_documentos(
 ) -> None:
     """Persiste metadatos de adjuntos (plan Pliegos+RAG, F6). Fail-open: un
     fallo aquí no debe tumbar la ingesta de licitaciones/adjudicaciones, que
-    ya se persistieron antes de llamar a esta función."""
+    ya se persistieron antes de llamar a esta función.
+
+    El fail-open es **por licitación**: con un único ``try`` alrededor del
+    bucle, una fila problemática dejaba sin documentos a todas las que venían
+    detrás en el mismo lote, y como el cursor avanza igual no se volvían a
+    pedir hasta que PLACSP re-publicara el expediente."""
     try:
         from db.repositories.documentos import DocumentosRepository
 
         repo = DocumentosRepository()
-        for licitacion_id, refs in docs_por_lic.items():
-            repo.upsert_meta(licitacion_id, refs)
     except Exception as e:
         log.warning("connector_documentos_persist_failed", source=source_id, error=str(e))
+        return
+    fallidas = 0
+    for licitacion_id, refs in docs_por_lic.items():
+        try:
+            repo.upsert_meta(licitacion_id, refs)
+        except Exception as e:
+            fallidas += 1
+            log.warning(
+                "connector_documentos_persist_failed",
+                source=source_id,
+                licitacion_id=licitacion_id,
+                error=str(e),
+            )
+    if fallidas:
+        log.warning(
+            "connector_documentos_persist_parcial",
+            source=source_id,
+            fallidas=fallidas,
+            total=len(docs_por_lic),
+        )
 
 
 def _contar_dedupe_fallido(source_id: str) -> None:

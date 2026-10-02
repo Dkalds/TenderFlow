@@ -1,7 +1,7 @@
 ---
 id: ADR-0011
 title: "CDC con Debezium — Decisión y Alternativas"
-status: proposed
+status: rejected
 date: 2026-05-16
 deciders: "Equipo de Plataforma"
 related:
@@ -11,7 +11,7 @@ tags: [adr]
 
 # ADR-0011: CDC con Debezium — Decisión y Alternativas
 
-**Estado**: Registrado — NO implementado por defecto  
+**Estado**: Rechazado — la decisión es no implementar CDC con Debezium (la forma vigente de publicar eventos es el outbox de [[ADR-027-backbone-de-eventos-outbox|ADR-027]])  
 **Fecha**: 2026-05-16  
 **Autores**: Equipo de Plataforma  
 **Relacionados**: [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (SQLite/Turso), K2 (event sourcing)

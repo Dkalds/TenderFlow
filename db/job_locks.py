@@ -45,7 +45,6 @@ Uso::
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from db.database import connect
 from observability.logging import get_logger
@@ -112,21 +111,6 @@ def release(name: str, holder: str = "") -> bool:
     return deleted
 
 
-def force_release(name: str) -> bool:
-    """Borra el lock ignorando el holder. Solo para intervención manual.
-
-    Los runbooks de operación lo necesitan cuando un proceso muere sin liberar
-    y su TTL es largo. El código de jobs debe usar ``release``.
-    """
-    with connect() as conn:
-        cursor = conn.execute("DELETE FROM job_locks WHERE name = %s", (name,))
-        deleted: bool = cursor.rowcount > 0
-
-    if deleted:
-        log.warning("job_lock_force_released", name=name)
-    return deleted
-
-
 def renew(name: str, holder: str = "", ttl_seconds: int = 600) -> bool:
     """Extiende el TTL de un lock que seguimos teniendo (heartbeat).
 
@@ -148,34 +132,3 @@ def renew(name: str, holder: str = "", ttl_seconds: int = 600) -> bool:
     else:
         log.warning("job_lock_renew_lost", name=name, holder=holder)
     return renewed
-
-
-def is_held(name: str) -> bool:
-    """True si el lock está tomado y no ha expirado."""
-    now_iso = datetime.now(UTC).isoformat()
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT 1 FROM job_locks WHERE name = %s AND expires_at > %s",
-            (name, now_iso),
-        ).fetchone()
-    return row is not None
-
-
-def get_all_locks() -> list[dict[str, Any]]:
-    """Devuelve todos los locks vigentes (no expirados), para diagnóstico."""
-    now_iso = datetime.now(UTC).isoformat()
-    with connect() as conn:
-        rows = conn.execute(
-            "SELECT name, acquired_at, expires_at, holder "
-            "FROM job_locks WHERE expires_at > %s ORDER BY acquired_at",
-            (now_iso,),
-        ).fetchall()
-    return [
-        {
-            "name": r[0],
-            "acquired_at": r[1],
-            "expires_at": r[2],
-            "holder": r[3],
-        }
-        for r in rows
-    ]

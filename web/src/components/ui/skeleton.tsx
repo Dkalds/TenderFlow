@@ -13,10 +13,6 @@ function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>)
   return <div data-slot="skeleton" className={cn("tf-shimmer rounded-md", className)} {...props} />
 }
 
-function SkeletonChart({ height = "h-[420px]", className }: { height?: string; className?: string }) {
-  return <Skeleton className={cn(height, "w-full", className)} />
-}
-
 function SkeletonTable({ rows = 6, className }: { rows?: number; className?: string }) {
   return (
     <div className={cn("space-y-2", className)}>
@@ -28,15 +24,4 @@ function SkeletonTable({ rows = 6, className }: { rows?: number; className?: str
   )
 }
 
-/** La forma de un `Panel` mientras carga: misma superficie, mismo radio. */
-function SkeletonCard({ className }: { className?: string }) {
-  return (
-    <div className={cn("space-y-3 rounded-xl border border-border/60 bg-card p-4", className)}>
-      <Skeleton className="h-4 w-1/3" />
-      <Skeleton className="h-8 w-2/3" />
-      <Skeleton className="h-3 w-1/2" />
-    </div>
-  )
-}
-
-export { Skeleton, SkeletonChart, SkeletonTable, SkeletonCard }
+export { Skeleton, SkeletonTable }

@@ -19,6 +19,7 @@ import {
   formatRelativeTime,
   formatPercent,
   formatDate,
+  formatMonth,
   truncate,
 } from "@/lib/utils";
 
@@ -437,5 +438,20 @@ describe("formatRelativeTime", () => {
   it("describes a recent instant in the past", () => {
     const threeHoursAgo = new Date(Date.now() - 3 * 3_600_000).toISOString();
     expect(formatRelativeTime(threeHoursAgo)).toMatch(/hace 3 horas/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatMonth (venía del test de la tira de contexto del Resumen, retirada)
+// ---------------------------------------------------------------------------
+
+describe("formatMonth", () => {
+  it("abrevia sin el punto de «jul.»", () => {
+    expect(formatMonth("2026-07")).toBe("jul");
+    expect(formatMonth("2026-07", true)).toBe("jul 2026");
+  });
+
+  it("devuelve la cadena intacta si no tiene forma de mes", () => {
+    expect(formatMonth("sin-fecha")).toBe("sin-fecha");
   });
 });

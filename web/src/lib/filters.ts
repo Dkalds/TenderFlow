@@ -10,7 +10,6 @@ import { type DateRange, filtersToParams } from "./filter-params";
 // La derivación pura (URL → parámetros de API) vive en `filter-params.ts` para
 // que el prefetch en servidor la comparta sin importar `nuqs` ni hooks.
 export type { DateRange, FilterValues } from "./filter-params";
-export { filtersToParams } from "./filter-params";
 
 export interface FiltersState {
   q: string;

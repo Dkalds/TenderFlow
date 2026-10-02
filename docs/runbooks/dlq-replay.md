@@ -28,14 +28,10 @@ EOF
 python -m scheduler.dlq_retry
 ```
 
-## Replay filtrado por tipo de error
-
-```bash
-python - <<'EOF'
-from scheduler.dlq_actions import retry_by_error_type
-retry_by_error_type("parse_error", max_items=50)
-EOF
-```
+No hay replay filtrado por tipo de error: `scheduler.dlq_actions` (que citaba
+aquí un `retry_by_error_type` que nunca existió) se retiró el 2026-09-28. Para
+reintentar un subconjunto, marcá como resueltas las entradas que no quieras
+reintentar (`db.dlq.mark_matching_resolved`) y lanzá el replay completo.
 
 ## Violaciones de integridad de adjudicaciones (`scope="adjudicacion"`)
 

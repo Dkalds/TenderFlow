@@ -186,6 +186,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         from scheduler.cron_plane import arrancar_en_hilo as arrancar_cron
 
         cron = arrancar_cron()
+    elif settings.APP_PROFILE == "api":
+        # ADR-028 §G: mientras `tenderflow-worker` no exista en Render, la API
+        # consume la cola a demanda (nunca los tipos programados: `claim` filtra
+        # por `TIPOS_A_DEMANDA`). Sin esto la ficha del pliego se encolaba y no
+        # la ejecutaba nadie. Solo la cola, nunca el plano de cron.
+        from config.settings import jobs_consumidor_en_api
+
+        if jobs_consumidor_en_api(settings.ENV):
+            from scheduler.worker import arrancar_en_hilo
+
+            worker = arrancar_en_hilo()
+            log.info("api_consumidor_cola_arrancado")
 
     yield
 

@@ -619,16 +619,6 @@ class OrganizationRepository:
             ).fetchone()
         return bool(fila and fila[0])
 
-    def contar_por_rol(self, organization_id: int, rol: str) -> int:
-        """Miembros ACTIVOS con ese rol."""
-        with connect_read() as c:
-            fila = c.execute(
-                "SELECT COUNT(*) FROM organization_memberships "
-                "WHERE organization_id = %s AND role = %s AND status = 'active'",
-                (organization_id, rol),
-            ).fetchone()
-        return int(fila[0]) if fila else 0
-
     def traspasar_propiedad(self, organization_id: int, *, de_user_id: int, a_user_id: int) -> bool:
         """Mueve el rol `owner` de un miembro a otro, en UNA transacción.
 

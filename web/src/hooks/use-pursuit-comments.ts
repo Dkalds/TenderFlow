@@ -41,7 +41,7 @@ export type PursuitComment = PursuitCommentOut;
 export type PursuitCommentList = PursuitCommentListResponse;
 
 /** Intervalo de refresco del hilo mientras está a la vista. */
-export const COMMENTS_REFETCH_MS = 20_000;
+const COMMENTS_REFETCH_MS = 20_000;
 
 /**
  * Comentarios por página. Es el máximo que admite la API; un hilo de

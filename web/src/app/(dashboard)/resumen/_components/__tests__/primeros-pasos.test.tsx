@@ -74,7 +74,9 @@ const REGLA_ACTIVA = {
   items: [{ id: 1, active: true, email: null, frequency: "daily", match_count: 3 }],
 };
 
-function renderBanda(props: { onDescartar?: () => void } = {}) {
+function renderBanda(
+  props: { onDescartar?: () => void; posicion?: "arriba" | "abajo" } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -262,5 +264,56 @@ describe("PrimerosPasos", () => {
     expect(rutasPedidas()).not.toContain("/api/v1/me/profile");
     expect(rutasPedidas()).not.toContain("/api/v1/watchlist/rules");
     expect(rutasPedidas()).not.toContain("/api/v1/pursuits");
+  });
+});
+
+/**
+ * Dónde va la banda. La vista monta una instancia en cada hueco —arriba del
+ * todo y debajo de «Tu día»— y solo se pinta la que toca: arriba en una cuenta
+ * sin ningún paso hecho, abajo en cuanto hay uno. Con algo sin comprobar no
+ * sube: sería afirmar una cuenta vacía que puede no serlo.
+ */
+describe("PrimerosPasos · posición", () => {
+  beforeEach(() => {
+    cleanup();
+    window.localStorage.clear();
+    apiGet.mockClear();
+    backend.perfil = {};
+    backend.reglas = { items: [] };
+    backend.pursuits = { items: [], total: 0, limit: 50, offset: 0, organization_id: 1 };
+    backend.organizations = [{ id: 1, name: "Acme", role: "owner" }];
+    backend.fallan = new Set();
+    backend.cuelgan = new Set();
+  });
+
+  it("en una cuenta recién creada sube arriba", async () => {
+    renderBanda({ posicion: "arriba" });
+    expect(await screen.findByRole("heading", { name: "Primeros pasos" })).toBeInTheDocument();
+    await esperarResuelto(0);
+  });
+
+  it("en una cuenta recién creada no se repite abajo", async () => {
+    renderBanda({ posicion: "abajo" });
+    await noApareceLaBanda();
+  });
+
+  it("con un paso hecho vuelve debajo de «Tu día»", async () => {
+    backend.perfil = PERFIL_HECHO;
+    renderBanda({ posicion: "abajo" });
+    await esperarResuelto(1);
+    cleanup();
+
+    renderBanda({ posicion: "arriba" });
+    await noApareceLaBanda();
+  });
+
+  it("con un paso sin comprobar no sube", async () => {
+    backend.fallan = new Set(["/api/v1/me/profile"]);
+    renderBanda({ posicion: "arriba" });
+    await noApareceLaBanda();
+    cleanup();
+
+    renderBanda({ posicion: "abajo" });
+    expect(await screen.findByRole("heading", { name: "Primeros pasos" })).toBeInTheDocument();
   });
 });

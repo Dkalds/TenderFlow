@@ -1,4 +1,4 @@
-"""Módulo shared — utilidades compartidas entre scraper, scheduler y dashboard.
+"""Módulo shared — utilidades compartidas entre scraper, scheduler y API.
 
 Re-exports de conveniencia para los consumers más frecuentes.
 Los paths largos (``from shared.geo import nuts_to_ccaa``) siguen funcionando.
@@ -22,14 +22,12 @@ from shared.dto import PaginatedResponse, WatchlistEntry
 from shared.geo import NUTS3_TO_CCAA, nuts_to_ccaa
 
 # Types
-from shared.types import JsonDict, LicitacionRow, UserRow
+from shared.types import JsonDict
 
 __all__ = [
     "NUTS3_TO_CCAA",
     "JsonDict",
-    "LicitacionRow",
     "PaginatedResponse",
-    "UserRow",
     "WatchlistEntry",
     "get_cache",
     "nuts_to_ccaa",

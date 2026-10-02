@@ -10,7 +10,7 @@ roto en Render, plano de cron parado o credenciales comprometidas.
 | Objetivo | Valor declarado | Estado |
 |---|---|---|
 | RTO (tiempo de recuperación) | < 2 h | **afirmado, no ensayado de extremo a extremo** — ver §8 |
-| RPO (pérdida máxima de datos) | < 24 h (backup diario 03:00 UTC) | medido por el drill semanal de restore |
+| RPO (pérdida máxima de datos) | < 24 h (backup diario gestionado por Supabase; menor con PITR si el plan lo incluye) | depende del plan de Supabase, no de este repo |
 
 **Reescrito el 2026-09-14.** La versión anterior de este runbook abría
 `data/licitaciones.db` con `sqlite3`, motor retirado en
@@ -38,8 +38,7 @@ psql "$DATABASE_ADMIN_URL" -c "SELECT COUNT(*) FROM licitaciones;"
 psql "$DATABASE_ADMIN_URL" -c "SELECT MAX(fecha_extraccion) FROM licitaciones;"
 
 # 3. ¿Cuál es el último backup bueno?
-gh run list --workflow=backup.yml --limit 5          # verde = dump cifrado subido
-gh run list --workflow=restore-drill.yml --limit 3   # verde = ese dump se restaura
+#    Dashboard de Supabase → Database → Backups (diarios, y PITR si está activo).
 ```
 
 | Síntoma | Escenario | Sección |
@@ -56,31 +55,30 @@ gh run list --workflow=restore-drill.yml --limit 3   # verde = ese dump se resta
 ## 1. Requisitos del que actúa
 
 - `DATABASE_ADMIN_URL` (rol dueño; **solo** para restaurar y migrar).
-- `BACKUP_ENCRYPTION_KEY` desde el gestor de contraseñas del propietario. Sin
-  ella los dumps son irrecuperables; no está en ningún otro sitio.
-- Acceso a GitHub (secrets y `gh`), al dashboard de Render y al de Supabase.
-- `psql`, `pg_restore` y `gpg` en la máquina.
+- Acceso a GitHub (secrets y `gh`), al dashboard de Render y al de Supabase
+  (con permiso para restaurar backups del proyecto).
+- `psql` en la máquina.
 
 ---
 
 ## 2. Restaurar la base de datos desde backup
 
-Sigue [backup-restore.md](backup-restore.md) para descargar y descifrar; aquí
-solo el orden y las comprobaciones que un incidente exige.
+Las copias las hace Supabase (backups diarios del proyecto y, según el plan,
+Point-in-Time Recovery). El repo ya no mantiene dumps propios: `backup.yml`,
+`restore-drill.yml` y `scripts/backup_db.py` se retiraron el 2026-09-28 por
+duplicar lo que el proveedor ya hace. Aquí solo el orden y las comprobaciones
+que un incidente exige.
 
 ```bash
 # 2.1 Congelar la escritura: apagar el cron y el worker mientras dure la restauración.
 #     Actions: gh workflow disable scrape-daily.yml  (y ml-scoring, pliegos, healthcheck)
 #     Render:  suspender tenderflow-worker desde el dashboard (o SCHEDULER_PLANE vacío si el cron corre ahí, ADR-033)
 
-# 2.2 Descargar el último dump verificado (S3/R2 o artefacto del run) y descifrar.
-gpg --batch --yes --passphrase "$BACKUP_ENCRYPTION_KEY" \
-    --decrypt --output tenderflow_pg.dump tenderflow_pg_YYYYMMDD_HHMMSS.dump.gpg
-pg_restore --list tenderflow_pg.dump | head        # el dump se lee
+# 2.2 Elegir el punto de restauración: Supabase → Database → Backups.
+#     Con PITR, el instante justo anterior al incidente; si no, el último diario.
 
-# 2.3 Restaurar SOBRE la base existente (misma URL, sin recrear el proyecto).
-pg_restore --clean --if-exists --no-owner --no-acl \
-    --dbname "$DATABASE_ADMIN_URL" tenderflow_pg.dump
+# 2.3 Restaurar desde el dashboard (mismo proyecto, misma URL). El proyecto
+#     queda inaccesible mientras dura; esperar a que vuelva a "Healthy".
 
 # 2.4 Comprobar.
 DATABASE_URL="$DATABASE_ADMIN_URL" ENV=prod APP_PROFILE=scraper python -m alembic current
@@ -95,7 +93,7 @@ recalcularlos: cada conector retoma desde su cursor y el upsert es idempotente
 (AGENTS.md §3.2), así que la siguiente pasada de `scrape-daily` rellena el
 hueco sola. Lo que sí se pierde es lo que los usuarios escribieron después del
 backup (oportunidades, comentarios, seguimientos): avisarlo en el
-post-mortem con la hora exacta del dump.
+post-mortem con la hora exacta del punto restaurado.
 
 ```bash
 # 2.5 Reactivar y forzar una pasada.
@@ -115,10 +113,16 @@ Solo si el proyecto no vuelve (borrado, región caída sin ETA, cuenta bloqueada
    `DATABASE_URL` con `sslmode=verify-full` y el certificado en `db/certs/`.
 2. Extensiones antes de restaurar:
    `CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS unaccent;`
-3. Restaurar con §2.3 contra la URL nueva (rol dueño).
+3. Recuperar los datos. Los backups de Supabase viven dentro del proyecto: si
+   el proyecto se pierde, pedir a soporte de Supabase la última copia y
+   restaurarla con `psql`/`pg_restore` contra la URL nueva (rol dueño). Si no
+   hay copia recuperable, crear el esquema con
+   `DATABASE_URL="$DATABASE_ADMIN_URL" python -m alembic upgrade head` y
+   reingerir los datos públicos con `gh workflow run scrape-bulk.yml`; los
+   datos de usuario (oportunidades, comentarios, seguimientos) se pierden.
 4. Ejecutar `scripts/setup_pg_roles.sql` para recrear `tenderflow_app` y las
    políticas RLS; verificar que puede DML y no DDL
-   ([migracion-persistencia.md](migracion-persistencia.md) paso 9).
+   ([migracion-persistencia.md](../archive/runbooks/migracion-persistencia.md) paso 9).
 5. Rotar secretos: `DATABASE_URL` y `DATABASE_ADMIN_URL` en GitHub Secrets y en <!-- pragma: allowlist secret -->
    los cinco servicios de Render (`render.yaml` los declara `sync: false`).
 6. Redesplegar la API (`gh workflow run deploy.yml`) y esperar
@@ -157,7 +161,7 @@ propósito: producción no migra sola.
 ```bash
 # plan antes de apply: qué revisiones faltan
 DATABASE_URL="$DATABASE_ADMIN_URL" ENV=prod APP_PROFILE=scraper python -m alembic history -r current:head
-# ventana: backup fresco (gh workflow run backup.yml y esperar verde) y después
+# ventana: comprobar en Supabase → Database → Backups que hay copia reciente, y después
 gh workflow run migrate.yml
 # verificar
 curl -s https://<api>/api/v1/health/ready | grep -o '"schema": *"[a-z]*"'
@@ -203,14 +207,13 @@ Tras seguir la tabla de rotación de [SECURITY.md](../SECURITY.md):
 
 ## 8. Ensayo (game day)
 
-El RTO de la cabecera es una afirmación hasta que esta tabla tenga una fila. El
-drill semanal (`restore-drill.yml`) solo prueba que el dump se restaura en una
-base efímera; **no** prueba §2 entero con cron apagado, cursores retomando y
-usuarios avisados.
+El RTO de la cabecera es una afirmación hasta que esta tabla tenga una fila:
+nada prueba §2 entero con cron apagado, cursores retomando y usuarios avisados.
 
-Cómo ensayar sin tocar producción: crear un proyecto de Supabase efímero,
-seguir §3 con el último dump real, apuntar un despliegue de preview a esa base,
-lanzar una pasada de `scrape-daily` a mano y cronometrar de principio a fin.
+Cómo ensayar sin tocar producción: restaurar un backup de Supabase en un
+proyecto nuevo ("Restore to new project" en el dashboard), apuntar un
+despliegue de preview a esa base, lanzar una pasada de `scrape-daily` a mano y
+cronometrar de principio a fin.
 
 | Fecha | Escenario ensayado | Duración medida | Resultado | Quién |
 |---|---|---|---|---|
@@ -222,6 +225,6 @@ lanzar una pasada de `scrape-daily` a mano y cronometrar de principio a fin.
 
 En `docs/runbooks/incident-playbooks.md` o el canal de incidentes, dentro de
 las 48 h: causa raíz, cronología con horas, tiempo de recuperación medido,
-datos perdidos (hora del dump y qué escribieron los usuarios después), y qué
+datos perdidos (hora del punto restaurado y qué escribieron los usuarios después), y qué
 cambia en este runbook. Un runbook que no cambia tras un incidente es un
 runbook que nadie leyó.

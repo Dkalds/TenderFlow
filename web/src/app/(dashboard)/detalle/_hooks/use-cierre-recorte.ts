@@ -18,8 +18,6 @@ import { parseAsString, useQueryStates } from "nuqs";
  * (`api/routes/licitaciones.py::list_licitaciones`) para que el deep-link se
  * pase tal cual a la query sin tabla de traducción.
  */
-export const CIERRE_KEYS = ["cierre_desde", "cierre_hasta"] as const;
-
 const _CIERRE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**

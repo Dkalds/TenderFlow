@@ -22,7 +22,7 @@ type Par = [string, string | null];
  * en la consola (D7): el mismo importe se lee igual dentro y fuera. La serif es
  * para titulares, no para datos.
  */
-export function destacadosDeAnuncio(lic: LicitacionPublica): Par[] {
+function destacadosDeAnuncio(lic: LicitacionPublica): Par[] {
   const plazo = plazoPresentacion(lic.fecha_limite);
   return [
     ["Presupuesto", lic.importe ? formatCurrency(lic.importe) : null],
@@ -35,7 +35,7 @@ export function destacadosDeAnuncio(lic: LicitacionPublica): Par[] {
  * El resto del anuncio. Lo que ya está arriba (destacados y chips de cabecera:
  * estado y expediente) no se repite aquí.
  */
-export function datosDeAnuncio(lic: LicitacionPublica): Par[] {
+function datosDeAnuncio(lic: LicitacionPublica): Par[] {
   return [
     ["Órgano de contratación", lic.organo_contratacion ?? null],
     ["CPV", lic.cpv ?? null],

@@ -88,9 +88,9 @@ Estas son las que existen hoy, no las que se querría tener:
   despliegue, común a todos.
 - **Sin SSO SAML ni aprovisionamiento SCIM.** Solo OIDC — decisión explícita del
   plan v2, revisable cuando una organización lo pida.
-- **Backup y restore drill fuera del alcance** del plan vigente por decisión del
-  mantenedor. Un cliente que exija RPO/RTO contractual necesita que eso se
-  aborde primero.
+- **Backups delegados en Supabase** (copias diarias del proveedor; sin copia
+  externa propia ni drill de restauración automatizado). Un cliente que exija
+  RPO/RTO contractual necesita que eso se aborde primero.
 
 ---
 

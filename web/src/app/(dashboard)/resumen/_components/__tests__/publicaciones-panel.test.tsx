@@ -14,8 +14,6 @@ const h = vi.hoisted(() => ({
   cargando: false,
 }));
 
-vi.mock("../alcance", () => ({ useFiltrosIgnorados: () => [] }));
-vi.mock("../aviso-alcance", () => ({ AvisoAlcance: () => null }));
 vi.mock("../../_hooks/use-publicaciones", () => ({
   usePublicaciones: () => ({
     ventana: "desde el 1 sept 2026",

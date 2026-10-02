@@ -11,7 +11,18 @@ from __future__ import annotations
 
 import pytest
 
-from shared.ssrf import is_ssrf_url, validate_outbound_url
+from shared.ssrf import validate_outbound_url
+
+
+def is_ssrf_url(url: str) -> bool:
+    """True si ``validate_outbound_url`` rechaza la URL (http/https)."""
+    from shared.ssrf import validate_outbound_url
+
+    try:
+        validate_outbound_url(url, allowed_schemes=frozenset({"http", "https"}))
+    except ValueError:
+        return True
+    return False
 
 
 class TestIsSsrfUrl:

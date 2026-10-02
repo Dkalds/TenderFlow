@@ -8,8 +8,29 @@ import pytest
 
 from db.repositories.cobertura import organos_por_fuente, solape_por_ccaa
 from db.upsert import Licitacion, upsert_licitaciones
-from scraper.connectors import REGISTERED_SOURCES, dominios_documentos_por_defecto
+from scraper.connectors import REGISTERED_SOURCES
 from scripts.medir_solape_agregados import CCAA_D16, render_markdown
+
+
+def dominios_documentos_por_defecto() -> tuple[str, ...]:
+    """Allowlist de hosts de documentos que se deriva del inventario.
+
+    Une los ``dominios_documentos`` de toda fuente que no esté
+    ``fuera_de_alcance``, sin duplicados y en orden estable. ``config/`` no
+    importa ``scraper/`` (rompería la capa), así que el literal
+    ``DOCUMENT_ALLOWED_HOSTS`` de settings se mantiene a mano y estos tests
+    exigen que coincida: una fuente nueva que enlace pliegos y no aparezca en
+    la allowlist falla aquí, no en producción con un ``Host no incluido``.
+    """
+    vistos: list[str] = []
+    for fuente in REGISTERED_SOURCES:
+        if fuente.estado == "fuera_de_alcance":
+            continue
+        for dominio in fuente.dominios_documentos:
+            if dominio not in vistos:
+                vistos.append(dominio)
+    return tuple(vistos)
+
 
 _HOY = datetime.now(UTC).date()
 

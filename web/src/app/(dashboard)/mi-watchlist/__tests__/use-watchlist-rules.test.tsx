@@ -10,9 +10,6 @@
  * (coincidencias) y `watchlist-rule-options.ts` (catálogos)— porque son un solo
  * criterio de aceptación: lo que se guarda es lo que el usuario eligió. Partir
  * la tabla de casos en tres ficheros la dispersaría sin aclarar nada.
- *
- * La migración del `localStorage` se probaba también aquí; vive ahora en
- * `use-legacy-rule-migration.test.tsx`, junto al módulo que se le separó.
  */
 import { describe, it, expect } from "vitest";
 import {

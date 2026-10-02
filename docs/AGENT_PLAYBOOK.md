@@ -17,7 +17,7 @@ paquetes exentos — no reproduzcas aquí un estado por paquete, envejece mal.
 | `db/` | Postgres (motor único), upsert batcheado e idempotente, migraciones solo Alembic, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | [database-schema.md](database-schema.md), [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md), [ADR-022](adr/ADR-022-frontera-de-persistencia.md), [ADR-016](adr/ADR-016-destino-persistencia-supabase.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
 | `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; routers en `api/routes/` | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md), [api-design.md](api-design.md) |
 | `web/` | Next.js 16 frontend: dashboard analítico, KPIs, búsqueda, administración | `web/src/app/` | [frontend-data-invariants.md](frontend-data-invariants.md) ([ADR-014](adr/ADR-014-integridad-analitica-frontend.md)) |
-| `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED): descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py`. Las violaciones legacy de persistencia están congeladas por TID251; no son patrón para código nuevo | [ADR-009](adr/ADR-009-framework-conectores-multifuente.md) |
+| `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED): descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py`. Las violaciones legacy de persistencia están congeladas por TID251; no son patrón para código nuevo | [ADR-009](adr/ADR-009-framework-conectores-multifuente.md); cobertura por fuente en [regional-source-coverage.md](regional-source-coverage.md) y [watched-company-awards-coverage.md](watched-company-awards-coverage.md) |
 | `scheduler/` | Jobs cron: `run_update`, precomputes (`kpi_`, `aggregates_`), drift, alertas, DLQ retry, + `scheduler/jobs/` (daily_atom, recent_bulk, ml_predicciones, documentos_embeddings, retention_cleanup, watchlist_rules) | `scheduler/loop.py`, `scheduler/run_update.py` | [ADR-012](adr/ADR-012-plano-unico-orquestacion.md); inventario vigente y su plano: [STATUS.md](STATUS.md) |
 | `llm/` | Cliente y providers LLM (opcional): OpenAI, Anthropic y NVIDIA NIM (vía API compatible OpenAI), presupuesto/circuit-breaker en `budget.py` | `llm/client.py`, `llm/providers/` | — |
 | `observability/` | structlog config, Prometheus metrics, healthcheck, dashboards Grafana | `observability/logging.py` | [sli-slo.md](sli-slo.md), [ADR-019](adr/ADR-019-observabilidad-desplegada.md) |
@@ -83,6 +83,25 @@ fallaron: no llegaron a correr; reintentá con `--pool=threads
 depuración manual; nunca en CI.
 
 ---
+
+### 2.1 Graphify en el día a día
+
+`graphify` es un CLI local del mantenedor, no un target del Makefile (no hay
+`make graphify-*`); el orden de consulta está en AGENTS.md §1. Se invoca
+directo:
+
+```bash
+graphify query "donde se calcula la calidad de datos"
+graphify path "api.app" "services.licitaciones"
+graphify explain "scheduler.loop"
+graphify update .            # incremental: ediciones sin renames ni moves
+graphify update . --force    # renames, moves, borrados o refactor estructural
+```
+
+En Claude Code, `/graph-refresh` envuelve el `update` con verificación de mtime
+y borra el flag `.graph_stale`. Sin el CLI (CI, sesiones remotas): leé los
+artefactos commiteados de `graphify-out/`, omití el `update` del post-flight y
+decilo en el PR.
 
 ## 3. Workflows
 

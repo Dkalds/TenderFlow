@@ -26,7 +26,7 @@ import { Fraunces, Geist, Geist_Mono } from "next/font/google";
  *   jerarquía.
  */
 
-export const fuenteSans = Geist({
+const fuenteSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
   display: "swap",
@@ -36,7 +36,7 @@ export const fuenteSans = Geist({
 // página para códigos y atajos de 11-13 px. Nada de eso es el primer render
 // crítico, y el preload competía con la fuente del `h1` y con la imagen del
 // hero, que sí lo son. Se sigue usando; solo deja de bloquear la cola.
-export const fuenteMono = Geist_Mono({
+const fuenteMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
@@ -61,7 +61,7 @@ export const fuenteMono = Geist_Mono({
  * `Georgia, serif` va detrás del que ajusta `next/font` por métricas: si la
  * fuente no llega, el titular sigue siendo una serif.
  */
-export const fuenteDisplay = Fraunces({
+const fuenteDisplay = Fraunces({
   variable: "--font-display",
   subsets: ["latin"],
   axes: ["opsz"],

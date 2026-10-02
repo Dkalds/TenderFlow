@@ -16,10 +16,10 @@ supersedes: >
 ## Contexto
 
 Dos páginas dibujan grafos de red y comparten el mismo componente
-[`web/src/components/charts/force-graph.tsx`](../../web/src/components/charts/force-graph.tsx):
+`web/src/components/charts/force-graph.tsx` (retirado):
 
-- [`red-organo-empresa/page.tsx`](../../web/src/app/(dashboard)/red-organo-empresa/page.tsx) — grafo **bipartito** órgano↔empresa.
-- [`ecosistema-partners/page.tsx`](../../web/src/app/(dashboard)/ecosistema-partners/page.tsx) — grafo **empresa↔empresa** de co-licitación (UTE).
+- `red-organo-empresa/page.tsx` (retirado) — grafo **bipartito** órgano↔empresa.
+- `ecosistema-partners/page.tsx` (retirado) — grafo **empresa↔empresa** de co-licitación (UTE).
 
 Los dos RFCs de junio (`ux-red-organo-empresa`, `ux-ecosistema-partners`) ya
 arreglaron lo importante a nivel de **datos**: las aristas son reales
@@ -33,42 +33,42 @@ justo la queja.
 
 1. **Leyenda con colores que no coinciden con los nodos.** El grafo colorea por
    grupo con `scaleOrdinal(schemeTableau10)` keyed por orden de aparición
-   ([force-graph.tsx:107,153](../../web/src/components/charts/force-graph.tsx)). En la
+   (`force-graph.tsx:107,153` (retirado)). En la
    red bipartita los nodos vienen órganos-primero, así que `organo`→`#4e79a7`
    (azul) y `empresa`→`#f28e2b` (naranja). Pero la leyenda de la página
    **hardcodea** `empresa = #e15759` (rojo)
-   ([red-organo-empresa/page.tsx:216](../../web/src/app/(dashboard)/red-organo-empresa/page.tsx)).
+   (`red-organo-empresa/page.tsx:216` (retirado)).
    La leyenda miente sobre lo que se ve. Además viola §3 (sin hardcode de algo
    que debe derivar del dato/escala).
 2. **El resaltado por búsqueda está muerto.** `ecosistema-partners` calcula
    `_highlighted` por nodo
-   ([page.tsx:116](../../web/src/app/(dashboard)/ecosistema-partners/page.tsx)) pero
+   (`page.tsx:116` (retirado)) pero
    `ForceGraph` **no conoce ese campo** (no está en su interfaz `GraphNode` ni se
    pinta). Buscar un partner no resalta nada en el grafo.
 3. **Componentes inconexos se escapan del lienzo.** Solo hay `forceCenter`
    (centra el centroide) + `forceManyBody(-120)`, sin fuerza de contención
    (`forceX/forceY`) ni clamp a bounding box
-   ([force-graph.tsx:109-118](../../web/src/components/charts/force-graph.tsx)). Los
+   (`force-graph.tsx:109-118` (retirado)). Los
    subgrafos desconectados (típicos aquí: muchas díadas órgano-empresa o
    UTEs aisladas) salen volando fuera del SVG → "grafo vacío" aparente.
 4. **Sin zoom-to-fit inicial.** Hay zoom manual pero ningún `fit` automático: el
    grafo nace descentrado/mal escalado y el usuario tiene que pelearse con el pan/zoom.
 5. **Aristas planas e ilegibles.** El peso se **clampa a 8 en el cliente**
    (`Math.min(e.contratos, 8)`,
-   [red-organo-empresa/page.tsx:90](../../web/src/app/(dashboard)/red-organo-empresa/page.tsx),
-   [ecosistema-partners/page.tsx:121](../../web/src/app/(dashboard)/ecosistema-partners/page.tsx)),
+   `red-organo-empresa/page.tsx:90` (retirado),
+   `ecosistema-partners/page.tsx:121` (retirado)),
    el `stroke` es `--border` (casi invisible) y no hay escala de grosor ni opacidad
-   por peso ([force-graph.tsx:144-145](../../web/src/components/charts/force-graph.tsx)).
+   por peso (`force-graph.tsx:144-145` (retirado)).
    Relaciones fuertes y débiles se ven igual.
 6. **Tooltip pobre.** Solo muestra `label` + `group`
-   ([force-graph.tsx:162](../../web/src/components/charts/force-graph.tsx)); ni importe,
+   (`force-graph.tsx:162` (retirado)); ni importe,
    ni nº de contratos, ni grado — métricas que el backend ya entrega por nodo.
 7. **Re-layout en cada resize.** El `useEffect` depende de `size`, y un
-   `ResizeObserver` actualiza `size` ([force-graph.tsx:63-78,214](../../web/src/components/charts/force-graph.tsx)):
+   `ResizeObserver` actualiza `size` (`force-graph.tsx:63-78,214` (retirado)):
    cualquier cambio de ancho **reinicia la simulación** y el grafo "explota" y
    se reordena.
 8. **Etiquetas arbitrarias y solapadas.** Solo etiqueta nodos con
-   `radius >= sizeScale(median)` ([force-graph.tsx:190](../../web/src/components/charts/force-graph.tsx)),
+   `radius >= sizeScale(median)` (`force-graph.tsx:190` (retirado)),
    sin anti-solape: nodos importantes quedan sin nombre y los visibles se pisan.
 9. **Sin estructura para el bipartito.** Un force layout libre no comunica la
    naturaleza órgano|empresa; un layout bipartito (dos columnas) lo haría legible
@@ -128,7 +128,7 @@ Nuevo componente (o reescritura in-place con API compatible) con:
 ### B. Backend: señal de clustering para partners (aditivo)
 
 Extender [`services/partners.py::build_partnership_graph`](../../services/partners.py) /
-[`services/analytics/ecosistema_partners.py`](../../services/analytics/ecosistema_partners.py)
+`services/analytics/ecosistema_partners.py` (retirado)
 para añadir a cada `PartnerNode` un campo opcional **`community: int | None`** vía
 detección de comunidades por modularidad (greedy / Louvain sobre el grafo de
 co-licitación). Es la única síntesis nueva y va en **backend** (§3.8: el frontend
@@ -192,11 +192,11 @@ opcionalmente, exponer `degree` ya presente.
    - Páginas: click en nodo navega a `/detalle`.
 
 **Archivos de partida**:
-- [`web/src/components/charts/force-graph.tsx`](../../web/src/components/charts/force-graph.tsx) (reescritura)
-- [`web/src/app/(dashboard)/red-organo-empresa/page.tsx`](../../web/src/app/(dashboard)/red-organo-empresa/page.tsx:80) (graphNodes/links, leyenda, drill-down)
-- [`web/src/app/(dashboard)/ecosistema-partners/page.tsx`](../../web/src/app/(dashboard)/ecosistema-partners/page.tsx:109) (graph, `_highlighted`, drill-down)
+- `web/src/components/charts/force-graph.tsx` (retirado) (reescritura)
+- `web/src/app/(dashboard)/red-organo-empresa/page.tsx` (retirado) (graphNodes/links, leyenda, drill-down)
+- `web/src/app/(dashboard)/ecosistema-partners/page.tsx` (retirado) (graph, `_highlighted`, drill-down)
 - [`services/partners.py`](../../services/partners.py:19) (`build_partnership_graph` + community)
-- [`services/analytics/ecosistema_partners.py`](../../services/analytics/ecosistema_partners.py) (`PartnerNode.community`)
+- `services/analytics/ecosistema_partners.py` (retirado) (`PartnerNode.community`)
 - RFCs previos: `2026-06-16-rfc-ux-red-organo-empresa.md`, `2026-06-16-rfc-ux-ecosistema-partners.md`
 
 **Riesgo estimado**: medio (el grueso es frontend d3; el backend de comunidades es

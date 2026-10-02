@@ -388,38 +388,6 @@ def mat_query_reader() -> Iterator[Callable[[str], pd.DataFrame] | None]:
 # ── Lecturas del último snapshot ──────────────────────────────────────────────
 
 
-def get_latest_snapshot(
-    metrica: str, dimension: str = "global"
-) -> dict[str, Any] | None:  # Any: `valor_text` es JSON crudo
-    """Lee el snapshot más reciente de una métrica desde la BD.
-
-    Args:
-        metrica: Nombre de la métrica (e.g. "total_licitaciones").
-        dimension: Dimensión (default "global").
-
-    Returns:
-        Dict con {valor, valor_text, computed_at} o None si no hay datos.
-    """
-    from db.database import connect
-
-    with connect() as c:
-        row = c.execute(
-            "SELECT valor, valor_text, computed_at FROM kpi_snapshots "
-            "WHERE metrica = %s AND dimension = %s "
-            "ORDER BY computed_at DESC LIMIT 1",
-            [metrica, dimension],
-        ).fetchone()
-    if row is None:
-        return None
-    result: dict[str, Any] = {"valor": row[0], "computed_at": row[2]}
-    if row[1]:
-        try:
-            result["valor_text"] = json.loads(row[1])
-        except json.JSONDecodeError:
-            result["valor_text"] = row[1]
-    return result
-
-
 def get_all_latest() -> dict[str, Any]:  # Any: cada métrica es un JSON distinto
     """Devuelve todos los snapshots más recientes como un dict plano.
 

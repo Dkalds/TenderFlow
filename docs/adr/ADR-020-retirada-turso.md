@@ -38,7 +38,7 @@ ejercitar nunca un backend real (el hueco que ADR-018 vino a cerrar para el
 resto de la suite).
 
 La ventana de rollback del cutover (≥14 días, ver
-`docs/runbooks/migracion-persistencia.md`) ya está superada, y la suite corre
+`docs/archive/runbooks/migracion-persistencia.md`) ya está superada, y la suite corre
 contra Postgres real con `test-postgres` bloqueante (ADR-018), así que ya no
 hace falta conservar Turso como red de seguridad.
 

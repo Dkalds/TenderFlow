@@ -115,35 +115,3 @@ def resolve_pinned_https_target(
         port=parsed.port or 443,
         request_uri=request_uri,
     )
-
-
-def is_ssrf_url(url: str) -> bool:
-    """True cuando una URL HTTP(S) no puede usarse de forma segura."""
-    try:
-        validate_outbound_url(url, allowed_schemes=frozenset({"http", "https"}))
-        return False
-    except ValueError:
-        return True
-
-
-def resolve_and_validate(url: str) -> str:
-    """Compatibilidad para callers legacy que necesitan fijar una IP.
-
-    Solo debe usarse para HTTP no-TLS. Para HTTPS, usar
-    :func:`validate_outbound_url` con una allowlist, ya que reemplazar el host
-    por una IP rompe la validación SNI/certificado.
-    """
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme.lower() != "http":
-        raise ValueError("DNS pinning por IP solo permitido para HTTP interno controlado")
-    validate_outbound_url(url, allowed_schemes=frozenset({"http"}))
-    host = parsed.hostname or ""
-    addrs = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-    resolved_ip = str(addrs[0][4][0])
-    port = parsed.port
-    netloc = f"[{resolved_ip}]" if ":" in resolved_ip else resolved_ip
-    if port:
-        netloc = f"{netloc}:{port}"
-    return urllib.parse.urlunparse(
-        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, "")
-    )

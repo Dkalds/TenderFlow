@@ -14,127 +14,96 @@ import { cn } from "@/lib/utils"
 export const CABECERA_COLUMNA =
   "text-tf-micro font-semibold uppercase tracking-[0.04em] text-muted-foreground"
 
-const Table = React.forwardRef<
-  HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
-    <table
-      ref={ref}
-      // 13 px (tf-body), no 14: la tabla de la consola es densa y tabular, y un
-      // punto menos es lo que mete cuatro filas más en pantalla sin tocar la
-      // legibilidad.
-      className={cn("w-full caption-bottom text-tf-body", className)}
+function Table({ className, ...props }: React.ComponentProps<"table">) {
+  return (
+    <div className="relative w-full overflow-auto">
+      <table
+        // 13 px (tf-body), no 14: la tabla de la consola es densa y tabular, y un
+        // punto menos es lo que mete cuatro filas más en pantalla sin tocar la
+        // legibilidad.
+        className={cn("w-full caption-bottom text-tf-body", className)}
+        {...props}
+      />
+    </div>
+  )
+}
+
+function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+  return <thead className={cn("[&_tr]:border-b", className)} {...props} />
+}
+
+function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
+  return <tbody className={cn("[&_tr:last-child]:border-0", className)} {...props} />
+}
+
+function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
+  return (
+    <tfoot
+      className={cn(
+        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        className
+      )}
       {...props}
     />
-  </div>
-))
-Table.displayName = "Table"
+  )
+}
 
-const TableHeader = React.forwardRef<
-  HTMLTableSectionElement,
-  React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
-))
-TableHeader.displayName = "TableHeader"
+function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+  return (
+    <tr
+      className={cn(
+        // Tintes de la escala: /5 al pasar, /10 la fila seleccionada. 110 ms,
+        // solo color: una fila se cruza con el ratón decenas de veces por minuto
+        // (docs/frontend-motion.md).
+        "border-b border-border/30 transition-colors duration-110 hover:bg-primary/5 data-[state=selected]:bg-primary/10",
+        className
+      )}
+      {...props}
+    />
+  )
+}
 
-const TableBody = React.forwardRef<
-  HTMLTableSectionElement,
-  React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => (
-  <tbody
-    ref={ref}
-    className={cn("[&_tr:last-child]:border-0", className)}
-    {...props}
-  />
-))
-TableBody.displayName = "TableBody"
+function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+  return (
+    <th
+      data-slot="table-head"
+      className={cn(
+        "h-8 px-2 text-left align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        CABECERA_COLUMNA,
+        className
+      )}
+      {...props}
+    />
+  )
+}
 
-const TableFooter = React.forwardRef<
-  HTMLTableSectionElement,
-  React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => (
-  <tfoot
-    ref={ref}
-    className={cn(
-      "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
-      className
-    )}
-    {...props}
-  />
-))
-TableFooter.displayName = "TableFooter"
+function TableCell({
+  className,
+  numeric,
+  ...props
+}: React.ComponentProps<"td"> & {
+  /** Columna de cifras: alineada a la derecha (las cifras ya son tabulares). */
+  numeric?: boolean
+}) {
+  return (
+    <td
+      data-slot="table-cell"
+      className={cn(
+        // Cifras siempre tabulares: sin `tnum` las columnas de importe bailan al
+        // cambiar de página y se pierde la comparación vertical, que es para lo
+        // que existe una tabla.
+        "px-2 py-1.5 align-middle tabular-nums [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        numeric && "text-right",
+        className
+      )}
+      {...props}
+    />
+  )
+}
 
-const TableRow = React.forwardRef<
-  HTMLTableRowElement,
-  React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
-  <tr
-    ref={ref}
-    className={cn(
-      // Tintes de la escala: /5 al pasar, /10 la fila seleccionada. 110 ms,
-      // solo color: una fila se cruza con el ratón decenas de veces por minuto
-      // (docs/frontend-motion.md).
-      "border-b border-border/30 transition-colors duration-110 hover:bg-primary/5 data-[state=selected]:bg-primary/10",
-      className
-    )}
-    {...props}
-  />
-))
-TableRow.displayName = "TableRow"
-
-const TableHead = React.forwardRef<
-  HTMLTableCellElement,
-  React.ThHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
-  <th
-    ref={ref}
-    data-slot="table-head"
-    className={cn(
-      "h-8 px-2 text-left align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-      CABECERA_COLUMNA,
-      className
-    )}
-    {...props}
-  />
-))
-TableHead.displayName = "TableHead"
-
-const TableCell = React.forwardRef<
-  HTMLTableCellElement,
-  React.TdHTMLAttributes<HTMLTableCellElement> & {
-    /** Columna de cifras: alineada a la derecha (las cifras ya son tabulares). */
-    numeric?: boolean
-  }
->(({ className, numeric, ...props }, ref) => (
-  <td
-    ref={ref}
-    data-slot="table-cell"
-    className={cn(
-      // Cifras siempre tabulares: sin `tnum` las columnas de importe bailan al
-      // cambiar de página y se pierde la comparación vertical, que es para lo
-      // que existe una tabla.
-      "px-2 py-1.5 align-middle tabular-nums [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-      numeric && "text-right",
-      className
-    )}
-    {...props}
-  />
-))
-TableCell.displayName = "TableCell"
-
-const TableCaption = React.forwardRef<
-  HTMLTableCaptionElement,
-  React.HTMLAttributes<HTMLTableCaptionElement>
->(({ className, ...props }, ref) => (
-  <caption
-    ref={ref}
-    className={cn("mt-4 text-tf-meta text-muted-foreground", className)}
-    {...props}
-  />
-))
-TableCaption.displayName = "TableCaption"
+function TableCaption({ className, ...props }: React.ComponentProps<"caption">) {
+  return <caption className={cn("mt-4 text-tf-meta text-muted-foreground", className)} {...props} />
+}
 
 export {
   Table,

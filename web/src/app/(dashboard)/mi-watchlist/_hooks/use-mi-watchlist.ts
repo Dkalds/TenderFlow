@@ -25,7 +25,6 @@ import type * as z from "zod/mini";
 import { nuevaRegla } from "@/lib/forms/esquemas";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { getJSON, setJSON } from "@/lib/storage";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
 import { watchlistKeys } from "@/lib/query-keys";
@@ -34,15 +33,9 @@ import { cuerpoDeNuevaRegla, ruidoAvisado, usePreviewRegla } from "./use-preview
 import { activeRulesOf, dedupeMatches } from "./watchlist-matches";
 import { ccaaOptions } from "./watchlist-rule-options";
 import type { ApiRule, MatchItem, RuleBody } from "./watchlist-rule-types";
-import {
-  LEGACY_KEY,
-  MIGRATED_FLAG,
-  useLegacyRuleMigration,
-  type LegacyRule,
-} from "./use-legacy-rule-migration";
 
 /** Raíz de los endpoints de reglas (sesión por cookie, como el resto del dash). */
-export const RULES_KEY = "/api/v1/watchlist/rules";
+const RULES_KEY = "/api/v1/watchlist/rules";
 
 export type WatchlistTab = "reglas" | "favoritos";
 
@@ -171,17 +164,6 @@ export function useMiWatchlist(): MiWatchlistState {
     },
     // La lista pinta el fallo en línea (`PanelError`): sin toast encima.
     meta: META_ERROR_EN_LINEA,
-  });
-
-  /* ---- Migración one-shot del localStorage ---- */
-  useLegacyRuleMigration({
-    // fdi-allow:client-state -- lado lector de la migración one-shot a servidor
-    readFlag: () => getJSON<boolean>(MIGRATED_FLAG, false),
-    readLegacy: () => getJSON<LegacyRule[]>(LEGACY_KEY, []),
-    markMigrated: () => setJSON(MIGRATED_FLAG, true),
-    clearLegacy: () => setJSON(LEGACY_KEY, []),
-    post: (body: RuleBody) => apiMutate("POST", RULES_KEY, body),
-    onDone: () => qc.invalidateQueries({ queryKey: watchlistKeys.rules }),
   });
 
   /* ---- Catálogos de filtros (best-effort desde meta) ---- */

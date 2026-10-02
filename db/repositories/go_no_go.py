@@ -110,22 +110,3 @@ class GoNoGoRepository:
                 ),
             )
             return bool(getattr(cur, "rowcount", 0))
-
-    def puntuaciones_por_organizacion(self, organization_id: int) -> dict[int, dict[str, int]]:
-        """`{pursuit_id: {criterio: puntuacion}}` de toda la organización.
-
-        Lo consume la métrica de producto, que necesita cruzar puntuación y
-        decisión para todas las oportunidades: pedirlo oportunidad a oportunidad
-        sería una consulta por fila del tablero.
-        """
-        with connect_read() as c:
-            cur = c.execute(
-                "SELECT pursuit_id, criterio, puntuacion FROM go_no_go_scores "
-                "WHERE organization_id = %s",
-                (organization_id,),
-            )
-            filas = rows_to_dicts(cur)
-        salida: dict[int, dict[str, int]] = {}
-        for f in filas:
-            salida.setdefault(int(f["pursuit_id"]), {})[str(f["criterio"])] = int(f["puntuacion"])
-        return salida

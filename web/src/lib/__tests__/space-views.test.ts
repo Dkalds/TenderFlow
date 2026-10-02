@@ -14,7 +14,7 @@ const allViews = (): [string, SpaceView][] =>
 
 describe("SPACE_VIEWS", () => {
   it("cubre los espacios multivista con su recuento", () => {
-    // Los recuentos son el contrato de `docs/redesign/README.md`. Si uno cambia
+    // Los recuentos son el contrato de `docs/archive/redesign/README.md`. Si uno cambia
     // sin actualizar el doc, la tabla del README miente. `ajustes` entró con
     // C7.5: cuatro vistas, de las que solo `cuenta` absorbe una ruta heredada
     // (`/mi-cuenta`) — las otras tres no existían en ninguna parte.

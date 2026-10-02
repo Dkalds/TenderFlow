@@ -77,7 +77,7 @@ Lo que **no** se hizo, y por qué:
 
 | Ítem | Estado | Motivo |
 |---|---|---|
-| F2.1 Hitos del procedimiento | **Descartado por D32** | El spike midió 735 entradas del ATOM en vivo: `OpenTenderEvent` aparece en el **0 %**, muy por debajo del umbral del 30 % que D32 fijaba. Ver [el documento del spike](plans/2026-09-spike-d32-hitos-procedimiento.md). La consecuencia prevista —que la fecha prevista de adjudicación se estime sola— está implementada (F4.4), y `ExpectedAward.metodo` ya admite `hito` para el día que la Plataforma los publique. |
+| F2.1 Hitos del procedimiento | **Descartado por D32** | El spike midió 735 entradas del ATOM en vivo: `OpenTenderEvent` aparece en el **0 %**, muy por debajo del umbral del 30 % que D32 fijaba. Ver [el documento del spike](archive/plans/2026-09-spike-d32-hitos-procedimiento.md). La consecuencia prevista —que la fecha prevista de adjudicación se estime sola— está implementada (F4.4), y `ExpectedAward.metodo` ya admite `hito` para el día que la Plataforma los publique. |
 | F4.6 Plantillas de tareas por etapa | **Hecho el 2026-09-18** (rama `worktree-agent-a46c6c93b69b8f96c`) | Se desbloqueó al llegar las tareas C6.1 (v122). Sin migración: plantilla en `plantillas_organizacion` (`tipo='tareas'`), instanciación idempotente por `pursuit_events`, editor en Equipo → Organización. |
 | F6.6 Boletín público | **Descartado por D36** | La propuesta de D36 es «no hasta que exista dominio propio (v2 S1.3) y política de privacidad para suscriptores». Ninguna de las dos existe. |
 
@@ -132,9 +132,10 @@ lead-time contando dos veces los expedientes duplicados.
 ## Plan de arquitectura 2026-09 — ejecutado parcialmente
 
 El diagnóstico de arquitecto del 2026-09-02 y su plan por streams están en
-[plans/2026-09-plan-arquitectura.md](plans/2026-09-plan-arquitectura.md), con el
-estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
-`restore-drill.yml`** (decisión del usuario del 2026-09-02).
+[plans/2026-09-plan-arquitectura.md](archive/plans/2026-09-plan-arquitectura.md), con el
+estado real de cada ítem en su §8. Excluía a propósito `backup.yml` y
+`restore-drill.yml` (decisión del usuario del 2026-09-02); ambos se retiraron
+el 2026-09-28 al delegar los backups en Supabase.
 
 Ítems de ESTE backlog que el plan toca, para que nadie los trabaje dos veces:
 
@@ -202,8 +203,8 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Cerrado y archivado:** el P1 de los enlaces caducados de PLACSP — entregado entero en `c230e63` (PR #191), no en los tres SHAs que el ítem citaba, que nunca llegaron a `master`. Ficha completa en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - **Altas:** dos P1 (allowlist de acceso, `plan: free` frente al SLO) y dos P2 (onboarding de primer uso, experiencia móvil). El de la allowlist nace como **RFC**, no como PR: toca auth y necesita migración. *(2026-09-19: los cuatro están resueltos; el del `plan: free` nunca llegó a tener entrada — ver la nota del P3 de staging.)*
 - **Cifras corregidas** en el P1 de cobertura del frontend: las páginas de 1.000+ líneas que citaba ya no existen.
-- **Sigue abierto y requiere acción externa:** el P0 de los backups sin copia remota
-  (configuración de infraestructura). El índice del scoring en frío ya existe en
+- *(2026-09-28: el P0 de los backups sin copia remota se descartó al delegar las
+  copias en Supabase; ver el archivo.)* El índice del scoring en frío ya existe en
   `v84_lic_universo_cpv_index`; queda medir su efecto tras aplicar la revisión, no
   volver a implementarlo.
 
@@ -239,25 +240,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     avanza durante N pasadas.
 - **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
 - **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
-
-### [P0] Verificar en GitHub el backup remoto cifrado y su restore drill
-- **Área:** .github/workflows/backup.yml, .github/workflows/restore-drill.yml, GitHub Settings (acción del usuario)
-- **Problema:** verificado el 2026-09-01 que `BACKUP_ENCRYPTION_KEY` existe y
-  faltan `AWS_ROLE_TO_ASSUME`/`BACKUP_S3_BUCKET`. El código ya no bloquea por
-  ello: `backup.yml` sube siempre el dump cifrado como GitHub Artifact (90 días)
-  y S3 queda como segunda copia opcional; `restore-drill.yml` descarga el último
-  artefacto exitoso cuando no hay S3. Falta que este cambio llegue a GitHub y
-  ejecutar ambos workflows: hasta que el drill pase, la recuperación sigue sin
-  estar demostrada.
-- **Acceptance criteria:**
-  - Un run de `backup.yml` en verde y artefacto `db-backup-<run_id>` con sólo
-    `*.dump.gpg`.
-  - Un run de `restore-drill.yml` en verde sobre ese artefacto.
-  - Opcional: `AWS_ROLE_TO_ASSUME` y `BACKUP_S3_BUCKET` configurados juntos para
-    una segunda copia S3/R2.
-- **Files de partida:** [.github/workflows/backup.yml](../.github/workflows/backup.yml), [.github/workflows/restore-drill.yml](../.github/workflows/restore-drill.yml), [docs/runbooks/backup-restore.md](runbooks/backup-restore.md)
-- **Relación:** es la pata de infraestructura del checklist F3d (P1, más abajo), que cubre el cifrado y la rotación de credenciales pero da por hecho que el destino existe.
-- **Riesgo:** bajo — solo configuración, sin tocar código. El riesgo real es el que ya se está corriendo cada día que pasa sin copia.
 
 ---
 
@@ -409,20 +391,19 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Área:** docs/runbooks, GitHub Settings, Supabase Dashboard
 - **Problema:** El cutover F3c a Supabase Postgres ya se ejecutó. Todo el trabajo de **código y tooling** del hardening post-cutover está cerrado (ver progreso abajo); lo que queda es estrictamente **ejecución manual contra infraestructura real** con credenciales que un agente no tiene (gate secrets+ops, AGENTS.md §6).
 - **Acceptance criteria (todas acciones del usuario — checklist ejecutable en el runbook):**
-  - `BACKUP_ENCRYPTION_KEY` generado y cargado como GH Secret.
   - Password del rol dueño rotada; `DATABASE_URL` reconstruida con `sslmode=verify-full`.
   - `DATABASE_ADMIN_URL` (rol dueño, solo para alembic) guardada como secret aparte.
   - `scripts/setup_pg_roles.sql` ejecutado contra Supabase; `DATABASE_URL` de runtime apuntando al rol `tenderflow_app`; verificado que puede DML pero no DDL.
   - Confirmado (`psql`) que `v52_rls_lockdown` está aplicada y `has_table_privilege('anon',…)` es false.
   - ~~Turso retirado una vez pasada la ventana de rollback ≥14 días.~~ **Hecho 2026-07-26 (ADR-020)** — pendiente solo la acción manual de revocar el token en el dashboard de Turso y borrar los GH Secrets `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` (código y workflows ya no los usan).
-- **Files de partida:** [docs/runbooks/migracion-persistencia.md](runbooks/migracion-persistencia.md) (Paso 9, checklist ejecutable), [docs/runbooks/backup-restore.md](runbooks/backup-restore.md), [scripts/setup_pg_roles.sql](../scripts/setup_pg_roles.sql)
+- **Files de partida:** [docs/runbooks/migracion-persistencia.md](archive/runbooks/migracion-persistencia.md) (Paso 9, checklist ejecutable), [scripts/setup_pg_roles.sql](../scripts/setup_pg_roles.sql)
 - **Progreso 2026-07-13 (plan Pliegos+RAG, fases D1/D2 — CERRADAS del lado de código):**
-  - `docs/runbooks/backup-restore.md`: sección "Backups Postgres cifrados" (alta del secret, verificación, descifrado, restore).
+  - ~~`docs/runbooks/backup-restore.md`: sección "Backups Postgres cifrados"~~ (retirado el 2026-09-28 con los backups propios).
   - `scripts/setup_pg_roles.sql`: rol `tenderflow_app` (solo DML + timeouts) + políticas RLS explícitas por tabla (`tenderflow_app_full_access`) que resuelven la dependencia con `v52_rls_lockdown` (rol no-dueño + RLS sin políticas = deny-all).
   - `config/settings.py::_validate_prod_database_ssl`: ahora exige `sslmode` seguro para **cualquier host remoto, independientemente de `ENV`** (antes solo en prod/staging) — cierra el gap real donde `scrape-daily.yml` corre con `ENV=dev` contra Supabase sin que el validator actuara. Host local (`localhost`/`127.0.0.1`/`::1`) sigue exento (sin red externa que interceptar). 4 tests nuevos en `test_config_settings.py` cubren la matriz ENV×host×sslmode.
-  - `docs/runbooks/migracion-persistencia.md` Paso 9 reescrito como checklist `- [ ]` ejecutable con comandos psql concretos.
+  - `docs/archive/runbooks/migracion-persistencia.md` Paso 9 reescrito como checklist `- [ ]` ejecutable con comandos psql concretos.
   - 2026-07-26: `setup_pg_roles.sql` endurece el rol de runtime con `NOINHERIT`/`NOBYPASSRLS` y sin `CREATE` en `public`; Alembic v59 revoca `EXECUTE` público sobre la función `SECURITY DEFINER` de RLS. Sigue pendiente ejecutar el checklist contra Supabase.
-- **Riesgo:** bajo — todo el código/tooling es aditivo y ya está testeado; el riesgo real pendiente es que el usuario no ejecute el checklist (backups sin cifrar, credencial sin rotar, rol de privilegios mínimos sin crear).
+- **Riesgo:** bajo — todo el código/tooling es aditivo y ya está testeado; el riesgo real pendiente es que el usuario no ejecute el checklist (credencial sin rotar, rol de privilegios mínimos sin crear).
 
 ### [P1] [Ola 1 · S1] Identidad y equipo: invitar sin cuenta previa, OIDC y el ratchet de `user_key`
 - **Área:** api/routes/auth.py, services/organizations.py, db/repositories/organizations.py, db/users.py, shared/identity.py, scripts/check_user_key_ratchet.py
@@ -449,6 +430,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Decisión ya tomada (2026-09-06):** D14 → worker en Render para lo que pide un usuario y Actions para lo programado, sobre la misma tabla de cola. El servicio nuevo exige O0.2 cerrado primero (un solo camino de despliegue).
 - **Acceptance criteria:** los de S5.1–S5.4 del plan v2, incluidos los dos que son medibles sin producción: dos consumidores concurrentes procesan cien jobs exactamente una vez, y `grep -rc "BackgroundTasks" api/routes/licitaciones/` = 0 (el fichero es un paquete desde 2026-09).
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S5), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [api/app.py](../api/app.py)
+- **Estado (2026-10-01):** el código de la cola está, pero **`tenderflow-worker` no existe en Render** (su API lista un único servicio, la API). Nadie consumía los jobs `ficha_pliego`: siete `pending` desde el 14-sep y la pestaña Pliego en «Extrayendo…» para siempre (oportunidad 14). Mientras tanto los consume la API ([ADR-028 §G](adr/ADR-028-cola-de-trabajo-y-worker.md)), que además ganó `pybreaker`/`tenacity` en su imagen y encola la ficha al abrir una oportunidad en vez de usar `BackgroundTasks`. Lo que queda de este ítem: crear el servicio (checklist de `render.yaml`) y poner `JOBS_CONSUMIDOR_EN_API=0` en la API.
 - **Riesgo:** medio — servicio nuevo en producción y cambio del camino por el que se sirve la ficha.
 
 ---
@@ -583,6 +565,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Eval que mida precisión/recall por familia contra ese set, con umbral mínimo ratcheado al valor medido, mismo patrón que `MRR_MIN`.
 - **Files de partida:** [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py), [services/rag/fact_sheet.py](../services/rag/fact_sheet.py)
 - **Riesgo:** bajo en código; el coste real es el etiquetado manual (decisión/tiempo del mantenedor).
+- **Nota 2026-09-28 (`tender-facts-v6`):** el selector de páginas **se cambió sin este eval**, a sabiendas, porque la ficha v5 no tenía nada que proteger: de 886 filas en producción, 17 `extracted` y 70 `needs_review`, casi todas con 0 hechos; el resto `failed`. Medición manual (Nemotron super, mismos pliegos, antes → después): `2025/191` 0 → 7 hechos, `20/026` fallo → 20, `2025/000423-PEA` 0 → 14, `1934/2026` 0 → 22; la fórmula de precio aparece en tres de los cuatro. Es una comparación de cuatro pliegos sin etiquetas, no un baseline: sigue haciendo falta el golden set para medir **precisión**, que esta nota no mide.
 
 ### [P2] Unificar la selección de páginas de la ficha con el retrieval pgvector
 - **Área:** services/rag/fact_sheet.py, services/rag/context.py
@@ -713,10 +696,18 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S8), [scraper/document_fetcher.py](../scraper/document_fetcher.py)
 - **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release» (cerrado el 2026-09-18): los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
 - **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
+- **Progreso 2026-09-28:** el soporte de DOCX existía pero no se usaba en la mayoría de casos: PLACSP manda el tipo mal escrito (`…openxmlformatsofficedocument…`, sin guion) y 1.964 documentos acabaron en `unsupported`, el mayor agujero de cobertura medido. El formato lo decide ahora la firma del contenido (`_resolver_content_type`). Las filas ya marcadas no se recuperan solas: `unsupported` no vuelve a `list_pendientes`, así que hace falta reencolarlas (dato de producción, OK del mantenedor).
 
 ---
 
 ## P3 — Nice to have
+
+### [P3] La campana nunca lista novedades de licitaciones: lee `users.last_login`, que no existe
+- **Área:** api/routes/notifications.py, services/analytics/resumen.py (`get_resumen_novedades`)
+- **Problema:** `GET /notifications` rellena `items` (y su parte de `unread_count`) con `get_resumen_novedades(user_id)`, que cuenta desde `users.last_login`. Ninguna migración crea esa columna, así que `items` sale vacío siempre. Los tests de `tests/test_analytics_resumen.py` no lo ven porque sustituyen `get_user_by_id` por un mock que sí la trae. El Resumen tenía el mismo fallo —«Todo al día» siempre— y se arregló el 2026-10-02 contando desde la última visita de `notification_reads` (`get_resumen_novedades_desde` + `services.novedades.corte_ultima_visita`).
+- **Por qué no se arregló con el Resumen:** no es solo un bug. Con la misma marca, la campana pasaría de cero a enseñar hasta diez licitaciones del **mercado entero** como no leídas, y como leer una mueve la marca, el número volvería a diez en cuanto se publicaran más: un contador que nunca baja. Antes de arreglarlo hay que decidir si la campana debe listar novedades de mercado (¿acotadas al ámbito de la organización?) o retirar `items` y dejarla en alertas.
+- **Acceptance criteria:** decisión tomada; o bien `items` sale de la marca de última visita con un alcance que tenga sentido para una campana, o bien se retira junto con `get_resumen_novedades` por `user_id`. Ningún camino lee `users.last_login`.
+- **Riesgo:** bajo.
 
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios

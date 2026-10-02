@@ -61,8 +61,7 @@ export interface Follow {
  * separar es una petición por tipo, que es exactamente lo que cada pantalla
  * necesita y nada más.
  */
-export const followKeys = {
-  todos: ["follows"] as const,
+const followKeys = {
   lista: (tipo: TargetType, kind: FollowKind = "seguir") => ["follows", tipo, kind] as const,
 };
 
@@ -90,13 +89,6 @@ export function useFollows(
     meta: { silent: true },
     enabled,
   });
-}
-
-/** `true` si el objetivo está en la lista. Azúcar para el control. */
-export function useSigue(tipo: TargetType, targetId: string | null): boolean {
-  const { data } = useFollows(tipo);
-  if (!targetId) return false;
-  return (data ?? []).some((f) => f.target_id === targetId);
 }
 
 interface Contexto {

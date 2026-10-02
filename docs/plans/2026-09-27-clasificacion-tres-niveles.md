@@ -198,9 +198,14 @@ Hoy fabricantes y categorías van en la misma lista, y por eso unos «funcionan�
   más viejo, a razón de `LLM_TECH_LABELING_BATCH` licitaciones por corrida y
   dentro de `LLM_BUDGET_USD_DAILY`.
 - **Lo que queda de F2:**
-  - un OK explícito para lanzar el LLM sobre la muestra, que necesita antes un
-    modo de selección estratificada (hoy el job solo recorre de lo más nuevo a
-    lo más viejo);
+  - un OK explícito del propietario para lanzar el LLM sobre la muestra
+    estratificada de 4.000 en producción (D3): `ENV=prod APP_PROFILE=scraper
+    python -m scheduler.jobs.llm_tech_labeling --muestra 4000`, desde una
+    máquina con el entorno de producción, o el equivalente. Es resumible (la
+    `--semilla` fija qué licitaciones entran en la muestra entre corridas, así
+    que un corte a mitad de camino continúa donde se quedó) y se mantiene por
+    debajo de `LLM_BUDGET_USD_DAILY`: ~1,4 $ a la tarifa actual (0,07 $ por
+    cada 200);
   - la revisión humana en `/ops?vista=etiquetado`;
   - `scripts/exportar_golden_ti.py` y, después, `scripts/medir_acuerdo_llm.py`.
 - **Nota para F3.** El lector de nivel 1 que entrene el modelo tiene que tratar

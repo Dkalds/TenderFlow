@@ -8,7 +8,7 @@ Todos los RFCs siguen esta estructura.
 > (orchestrator, architect, coder, test_engineer, reviewer, security_triage) se
 > **retiró el 2026-07-30** junto con la denylist por rol que lo sostenía: hoy no
 > hay roles, hay agentes que siguen `AGENTS.md`. El campo `author` se conserva
-> por compatibilidad con los RFCs ya escritos —y porque `docs/adr/discussions/`
+> por compatibilidad con los RFCs ya escritos —y porque `docs/archive/adr-discussions/`
 > hay que leerlo con esa clave—, pero en un RFC nuevo se pone quién lo escribió
 > de verdad. Quién produce un RFC y cuándo hace falta está en `AGENTS.md` §5, no
 > aquí.

@@ -1,7 +1,7 @@
 """Verifica que las instrucciones de agentes describan el repo real.
 
 Valida, sobre `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`,
-`docs/AGENT_PLAYBOOK.md`, `docs/graphify-first.md` y las configs de cada
+`docs/AGENT_PLAYBOOK.md` y las configs de cada
 herramienta (`.claude/`, `.agents/`, `.codex/`, `.opencode/`):
 
 1. Todo `make <target>` citado existe en el Makefile.
@@ -46,8 +46,6 @@ INSTRUCTION_FILES = [
     "web/AGENTS.md",
     ".github/copilot-instructions.md",
     "docs/AGENT_PLAYBOOK.md",
-    "docs/graphify-first.md",
-    "docs/contributor-checklist.md",
     "docs/windows-happy-path.md",
     ".agents/rules/graphify.md",
     ".agents/workflows/graphify.md",

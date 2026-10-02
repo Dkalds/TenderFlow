@@ -83,7 +83,6 @@ vi.mock("@/hooks/use-pursuit-tasks", () => ({
   usePursuitTasks: () => tasksState,
   useCrearTarea: () => ({ mutate: crearTarea, isPending: false }),
   useActualizarTarea: () => ({ mutate: actualizarTarea, isPending: false }),
-  useBorrarTarea: () => ({ mutate: vi.fn(), isPending: false }),
   tareaAbierta: (t: { estado: string }) => t.estado === "pendiente" || t.estado === "en_curso",
 }));
 

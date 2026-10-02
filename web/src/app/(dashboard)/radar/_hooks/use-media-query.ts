@@ -41,7 +41,7 @@ export const MQ_INSPECTOR_ANCLADO = "(min-width: 80rem)";
  * con `getServerSnapshot` es el patrón que React documenta para esto, y evita el
  * desajuste de hidratación que tendría un `useEffect` + `useState`.
  */
-export function useMediaQuery(query: string): boolean {
+function useMediaQuery(query: string): boolean {
   const subscribe = React.useCallback(
     (alCambiar: () => void) => {
       const consulta = window.matchMedia(query);

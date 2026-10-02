@@ -1,4 +1,4 @@
-"""Clasificación compartida + carril diario legacy (ATOM en vivo).
+"""Clasificación compartida + ``process_daily`` para el replay de la DLQ.
 
 .. deprecated:: 2026-07-11 (F2, ADR-009)
    Los carriles de producción no pasan por aquí: ``scheduler/pipeline_runs.py``
@@ -14,11 +14,12 @@
   connector**, no legacy; vive en este fichero por historia, no por diseño.
 - ``_summarize``: métricas de run que reutiliza el bucle bulk de
   ``scheduler/pipeline_runs.py``.
-- ``process_daily`` / ``update_daily``: el carril diario legacy, todavía
-  alcanzable con ``PLACSP_CONNECTOR_ENABLED=False`` y usado por el dispatch de
+- ``process_daily``: el carril diario legacy, que solo usa ya el dispatch de
   la DLQ para las entradas históricas del cursor ``place_live_atom``. **Sí**
   escribe historial y linaje (``upsert_licitaciones_with_history``), que es lo
-  que lo distingue del bulk legacy que se retiró.
+  que lo distingue del bulk legacy que se retiró. ``update_daily`` y el flag
+  ``PLACSP_CONNECTOR_ENABLED`` que lo hacía alcanzable se retiraron el
+  2026-09-28.
 
 **Qué se retiró en 2026-09 (S2.1)** — ``process_month``,
 ``_process_month_impl``, ``update_recent`` y ``backfill``. Eran los dos
@@ -41,7 +42,6 @@ from typing import TYPE_CHECKING, Any
 from db.database import (
     Licitacion,
     UpsertResult,
-    close_pool,
     get_cursor,
     init_db,
     replace_adjudicaciones_batch,
@@ -51,11 +51,8 @@ from db.database import (
 from db.dlq import record_failure
 from observability import (
     AlertLevel,
-    bind_run_context,
     get_logger,
     notify,
-    record_run,
-    traced,
 )
 from scraper.codice_parser import (
     NS,
@@ -495,28 +492,3 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
         "pages_fetched": meta["pages_fetched"],
         "entries_seen": meta["entries_seen"],
     }
-
-
-@traced("scraper.update_daily")
-def update_daily() -> dict[str, Any]:
-    """Punto de entrada para el carril diario con observabilidad.
-
-    Garantiza el cierre de la conexión DB del hilo worker actual al finalizar,
-    independientemente del resultado (éxito o error).
-    """
-    init_db()
-    run_id = bind_run_context(entrypoint="update_daily")
-    try:
-        with record_run(run_id) as metrics:
-            result = process_daily(run_id=run_id)
-            if result["status"] == "ok":
-                metrics.status = "ok"
-                metrics.licitaciones_nuevas = len(result.get("inserted", []))
-                metrics.licitaciones_actualizadas = len(result.get("modified", []))
-            else:
-                metrics.status = "error"
-                metrics.months_failed = 1
-            metrics.notas = f"daily|{result['status']}"
-        return result
-    finally:
-        close_pool()

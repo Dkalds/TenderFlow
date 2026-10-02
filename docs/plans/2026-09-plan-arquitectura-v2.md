@@ -12,7 +12,7 @@ el árbol de la rama `claude/app-architecture-review-d3vcog` (base `master` =
 `17169ce`) y lleva su referencia. Lo que no se pudo comprobar desde esa sesión,
 que es el estado real de producción, se marca como tal.
 
-Sucede a [2026-09-plan-arquitectura.md](2026-09-plan-arquitectura.md), cuyo
+Sucede a [2026-09-plan-arquitectura.md](../archive/plans/2026-09-plan-arquitectura.md), cuyo
 §8 es el punto de partida: nada de lo que allí consta como hecho se repite
 aquí, y los tres ítems de frontend que quedaron a medias (S5.1, S5.2 y S5.9)
 se citan desde el stream S7 con sus criterios originales, sin redefinirlos.
@@ -29,7 +29,7 @@ S2, S3 y S7.1.
 De la Ola 2 se ejecutan **T5 y T7**, los dos únicos ítems sin gate **[§6]**.
 **T1, T2, T3, T4 y T6 quedan sin escribir por decisión del mantenedor del
 2026-09-08**, con su diseño y su DDL en
-[2026-09-ola2-migraciones-propuestas.md](2026-09-ola2-migraciones-propuestas.md):
+[2026-09-ola2-migraciones-propuestas.md](../archive/plans/2026-09-ola2-migraciones-propuestas.md):
 D20 no pre-autoriza esas migraciones y producción sigue once revisiones por
 detrás. La cabeza del repo no se mueve de `v112` en esta tanda.
 
@@ -298,7 +298,7 @@ por dos caminos, ni empezar ítems cuya decisión sigue abierta.
 ### Heredadas del plan de septiembre
 
 **Cerradas el 2026-09-06 por O0.5**, con su columna «Resuelta» y la evidencia de
-cada una en la [tabla §3 del plan de septiembre](2026-09-plan-arquitectura.md#3-decisiones-del-mantenedor).
+cada una en la [tabla §3 del plan de septiembre](../archive/plans/2026-09-plan-arquitectura.md#3-decisiones-del-mantenedor).
 Siete las había decidido ya el código y están **ejecutadas** (D1, D2, D3, D6,
 D7, D8 y D9). Las otras dos se cierran adoptando su propuesta y esperan a una
 acción humana en Render: **D5** (Alertmanager) a O0.3, y **D4** a O0.2, que la
@@ -417,7 +417,7 @@ en D20; la rotación es acción humana en ventana.
 **Qué.** Cerrar o retirar D1–D9 y D11–D19 con fecha; mover a Cerrados los
 ítems del backlog que el código ya resolvió (hecho 5).
 
-**Ficheros.** `docs/plans/2026-09-plan-arquitectura.md` §3, este documento
+**Ficheros.** `docs/archive/plans/2026-09-plan-arquitectura.md` §3, este documento
 §3, `docs/IMPROVEMENT_BACKLOG.md`, `docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md`.
 **Esfuerzo / gate.** S · decisiones del mantenedor.
 
@@ -1137,7 +1137,7 @@ formato en su resumen.
 >
 > El diseño de esas cinco, con el DDL propuesto, el riesgo de cada una y las
 > trampas que hay que conocer antes de escribirlas, está en
-> [2026-09-ola2-migraciones-propuestas.md](2026-09-ola2-migraciones-propuestas.md).
+> [2026-09-ola2-migraciones-propuestas.md](../archive/plans/2026-09-ola2-migraciones-propuestas.md).
 > **Ninguna de esas revisiones existe**: la cabeza del repo sigue en `v112`.
 >
 > Ese documento identifica además **tres trozos que no necesitan el OK** porque

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { Aviso, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +28,7 @@ import { espacioActual } from "@/lib/espacio-actual";
  */
 
 /** Por qué no se marcó la cita, en palabras de quien la está leyendo. */
-export const MOTIVOS_SIN_RESALTADO: Record<string, string> = {
+const MOTIVOS_SIN_RESALTADO: Record<string, string> = {
   sin_offsets: "La cita no guarda su posición en el documento.",
   offsets_invertidos: "La posición guardada de la cita es incoherente.",
   offsets_fuera_de_rango: "La posición guardada de la cita no cae en esta página.",
@@ -204,6 +205,7 @@ export function PaginaPliegoDialog({
             >
               Abrir el documento original
               <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              <AvisoPestanaNueva />
             </a>
           )}
         </div>

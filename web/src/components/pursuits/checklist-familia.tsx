@@ -13,6 +13,7 @@
  */
 
 import { ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { EnlaceIr } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import type {
@@ -36,7 +37,7 @@ const SIN_CITA =
   "así que no se presenta como cumplido.";
 
 /** El veredicto que se puede defender con lo que trae el propio ítem. */
-export function veredictoDeItem(item: ChecklistItem): ChecklistVeredicto {
+function veredictoDeItem(item: ChecklistItem): ChecklistVeredicto {
   if (item.veredicto === "cumple" && (item.evidencia ?? []).length === 0) return "desconocido";
   return item.veredicto;
 }
@@ -139,6 +140,7 @@ function ChecklistItemRow({
                     >
                       {fuente.label}
                       <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <AvisoPestanaNueva />
                     </a>
                   ) : (
                     <p className="font-medium text-muted-foreground">{fuente.label}</p>

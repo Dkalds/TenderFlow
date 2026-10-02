@@ -19,7 +19,6 @@ vi.mock("@/hooks/use-tender-fact-sheet", () => ({
       },
     },
   }),
-  useExtractTenderFactSheet: () => ({ mutateAsync: extract, isPending: false }),
   useTenderFactSheetExtraction: () => ({ start: extract, isStarting: false, running: false }),
   useFactSheetDocumentos: () => ({
     data: {
@@ -92,6 +91,18 @@ describe("TenderFactSheetPanel", () => {
     const visor = screen.getByRole("dialog");
     expect(visor).toHaveTextContent("PCAP.pdf · página 3 de 20");
     expect(visor.querySelector("mark")).toHaveTextContent("El precio tiene un peso del 55%.");
+  });
+
+  it("no avisa de procedencia cuando la ficha es de la propia licitación", () => {
+    render(<TenderFactSheetPanel licitacionId="LIC-1" />);
+    expect(screen.queryByText(/expediente original/)).not.toBeInTheDocument();
+  });
+
+  it("dice de qué expediente salen los pliegos cuando es una republicación", () => {
+    // La API sirve la ficha de la canónica (`licitacion_id` "LIC-1") a quien
+    // la pide desde el anuncio TED.
+    render(<TenderFactSheetPanel licitacionId="ted:657574-2026" />);
+    expect(screen.getByRole("note")).toHaveTextContent("Pliegos del expediente original LIC-1");
   });
 
   it("renders v3 families: lots with number, SLAs with target and certifications with scope", () => {

@@ -1,5 +1,5 @@
 # Golden set MULTI-LABEL para la evaluación honesta del TechnologyClassifier.
-# Lo consume services/ml/eval_tech.py (gemelo de tests/fixtures/golden_set.jsonl,
+# Lo consume tests/test_taxonomia_tecnologica.py (gemelo de tests/fixtures/golden_set.jsonl,
 # que es el binario SAP). Formato JSONL: una licitación por línea; las líneas
 # vacías y las que empiezan por '#' se ignoran.
 #

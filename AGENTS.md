@@ -17,7 +17,7 @@ UX/UI del frontend con su roadmap por olas en
 
 **Congelamiento de superficie — levantado el 2026-08-10.** Estuvo vigente desde
 el 2026-08-07 mientras corría
-[docs/plans/2026-08-plan-saneamiento.md](docs/plans/2026-08-plan-saneamiento.md);
+[docs/archive/plans/2026-08-plan-saneamiento.md](docs/archive/plans/2026-08-plan-saneamiento.md);
 sus dos olas están cerradas, así que la restricción ya no aplica y las features
 nuevas están permitidas. (Su última frase se contradecía con las anteriores, y
 un agente que lo leyera hoy no sabría cuál de las dos obedecer.)

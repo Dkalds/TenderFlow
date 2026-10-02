@@ -1,7 +1,7 @@
 /**
  * Mapa de espacios de la consola.
  *
- * El rediseño (ver `docs/redesign/README.md`) consolida las 25 rutas del
+ * El rediseño (ver `docs/archive/redesign/README.md`) consolida las 25 rutas del
  * dashboard en 13 espacios navegables. Este módulo es la única fuente de
  * verdad de esa consolidación y gobierna tres cosas a la vez:
  *
@@ -11,7 +11,8 @@
  *    con el chrome heredado (breadcrumb + pestañas + barra de filtros clásica),
  *    mientras se migran por lotes.
  * 3. Los redirects de las rutas absorbidas hacia la vista equivalente del
- *    espacio, para que ningún enlace guardado se rompa (`LEGACY_REDIRECTS`).
+ *    espacio, para que ningún enlace guardado se rompa (`legacyRedirects()`
+ *    de `lib/space-views.ts`, que consume `next.config.ts`).
  *
  * Regla dura del proyecto: consolidar nunca puede eliminar funcionalidad. Una
  * ruta absorbida se convierte en `?vista=` del espacio, jamás desaparece.
@@ -300,23 +301,6 @@ export function landingHref(space: ConsoleSpace): string {
   const first = space.views?.find((view) => view.from);
   return first?.from ? `/${first.from}` : `/${space.slug}`;
 }
-
-/**
- * Ruta heredada → destino en el espacio que la absorbe. Se consume desde
- * `next.config.ts` (redirects permanentes) y desde la command palette, para
- * que un marcador de `/tendencias-cpv` siga aterrizando en el mismo análisis.
- * Sólo entran las rutas cuyo espacio ya está construido.
- */
-export const LEGACY_REDIRECTS: { from: string; to: string }[] = CONSOLE_SPACES.filter(
-  isSpaceImplemented,
-).flatMap((space) =>
-  (space.views ?? [])
-    .filter((view): view is Required<SpaceView> => Boolean(view.from))
-    .map((view) => ({
-      from: `/${view.from}`,
-      to: `/${space.slug}?vista=${view.key}`,
-    })),
-);
 
 /** Espacio que absorbió una ruta heredada, si la absorbió alguno. */
 export function spaceAbsorbing(slug: string): { space: ConsoleSpace; view: string } | undefined {

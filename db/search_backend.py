@@ -1,21 +1,17 @@
 """Abstracción de búsqueda full-text (ADR-016, ADR-021).
 
-Define el protocolo ``SearchBackend`` y su única implementación:
-
-- ``PgTsBackend``: ``tsvector``/``ts_rank_cd`` de Postgres, con relajación
+Implementación única, ``PgTsBackend``: ``tsvector``/``ts_rank_cd`` de Postgres, con relajación
   AND→OR de la tsquery, fallback ``pg_trgm`` y búsqueda híbrida (RRF sobre
   ``pg_trgm`` + pgvector).
 
-``Fts5Backend`` (SQLite) se retiró en ADR-021 junto con el motor. El protocolo
-se conserva: sigue siendo el punto de extensión si algún día entra otro motor
-de búsqueda, y es lo que permite testear los call-sites con un doble.
-
-El módulo expone ``get_search_backend()``.
+``Fts5Backend`` (SQLite) se retiró en ADR-021 junto con el motor, y con él (el
+2026-09-28) el protocolo ``SearchBackend``, su factoría y los métodos que solo
+usaban los tests. La producción entra por :func:`hybrid_search_docs`.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
 
@@ -96,52 +92,6 @@ def rrf_score(rank: int, k: int = RRF_K) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Protocolo
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class SearchBackend(Protocol):
-    """Contrato mínimo de un backend de búsqueda full-text."""
-
-    def available(self) -> bool:
-        """True si el backend está operativo en la BD actual."""
-        ...
-
-    def search_ids(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[str]:
-        """Devuelve lista de id_externo ordenados por relevancia."""
-        ...
-
-    def search_docs(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[dict[str, Any]]:
-        """Devuelve dicts con id_externo + campos de contexto (snippet)."""
-        ...
-
-    def ranked_search(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-    ) -> list[tuple[str, float]]:
-        """Devuelve (id_externo, score) ordenados por relevancia."""
-        ...
-
-
-# ---------------------------------------------------------------------------
 # Backend PgTs (Postgres — único desde ADR-021)
 # ---------------------------------------------------------------------------
 
@@ -206,26 +156,6 @@ class PgTsBackend:
     ) -> list[str]:
         rows = self._ts_search(conn, query, limit=limit, offset=offset)
         return [r[0] for r in rows]
-
-    def search_docs(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[dict[str, Any]]:
-        rows = self._ts_search(conn, query, limit=limit, offset=offset)
-        return [{"id_externo": r[0], "score": r[1]} for r in rows]
-
-    def ranked_search(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-    ) -> list[tuple[str, float]]:
-        return self._ts_search(conn, query, limit=limit)
 
     def _ts_search(
         self,
@@ -590,20 +520,3 @@ def hybrid_search_docs(
             candidate_k=candidate_k,
             alpha=alpha,
         )
-
-
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
-
-_BACKEND: SearchBackend | None = None
-
-
-def get_search_backend() -> SearchBackend:
-    """Devuelve el backend de búsqueda.
-
-    Siempre ``PgTsBackend`` desde ADR-021. Si ``search_vector`` todavía no
-    existe (BD anterior a la migración v50), ``search_ids`` cae al fallback
-    ``pg_trgm``, así que devolverlo igualmente es correcto.
-    """
-    return PgTsBackend()

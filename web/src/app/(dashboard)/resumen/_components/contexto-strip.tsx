@@ -1,68 +1,44 @@
 "use client";
 
-import { useMemo } from "react";
-import { PanelError, PanelTitle } from "@/components/console/panel";
+import { PanelError, PanelTitle, StatCell, StatStrip } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { celdaSalud, coberturaSinMedir } from "@/lib/cobertura";
-import type { CeldaSalud, CoberturaMetrica } from "@/lib/cobertura";
-import type { ResumenHoyResult } from "@/lib/api-types";
-import { useFiltrosIgnorados } from "./alcance";
-import { compararMeses, mesesCerrados } from "./contexto/comparativa-mensual";
-import { MercadoStrip } from "./contexto/mercado-strip";
-import { SaludStrip, type OverviewConCobertura } from "./contexto/salud-strip";
+import { formatCompactCurrency, formatNumber } from "@/lib/utils";
+import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
 
 /**
- * Contexto de mercado y salud competitiva — las dos tiras de `overview`.
+ * Contexto de mercado — tres cifras del ámbito, ninguna urgente.
  *
- * Una sola llamada alimenta las dos secciones, y por eso comparten módulo: el
- * `overview` del ámbito trae tanto las magnitudes de mercado como los
- * indicadores de competencia. Aquí queda la consulta, el recorte a meses
- * cerrados y el estado de error; lo que cada tira declara —y por qué se
- * abstiene cuando se abstiene— está en `contexto/mercado-strip.tsx` y
- * `contexto/salud-strip.tsx`, y la comparativa mensual, que es pura y tiene su
- * propio test, en `contexto/comparativa-mensual.ts`.
+ * Era una tira de siete magnitudes y otra de seis indicadores de competencia:
+ * total de licitaciones, importe total y medio, órganos únicos, HHI, oferta
+ * única, días hasta adjudicar… Una radiografía del mercado en la pantalla cuyo
+ * trabajo es decir qué hay que hacer hoy, y medio de ella global —sin tu
+ * ámbito— en una pantalla llena de chips. Esas magnitudes viven en Mercado y en
+ * Competencia, que es donde se analizan; aquí queda lo que sitúa el día:
  *
- * La única cifra derivada en cliente es el badge de anomalía, y va etiquetado
- * como tal — la salida que el invariante 1 de `frontend-data-invariants.md`
- * permite («si un valor es estimado, etiquétalo»).
+ * - **Activas** — cuánto hay abierto en el ámbito, y enlace al listado.
+ * - **Publicadas 30 d**, con su variación contra los 30 días previos
+ *   (`yoy_delta`, que el backend calcula así pese al nombre).
+ * - **Importe 30 d** — lo que se ha puesto en juego en ese mismo mes.
+ *
+ * «Activas» sale de `/resumen/hoy` y las otras dos de `/analytics/overview`.
+ * Los dos aplican el ámbito entero con la semántica del listado, así que las
+ * tres celdas miden el mismo universo y la tira no tiene nada que avisar.
+ * Misma clave y mismas opciones que `atencion-cards.tsx` para `/resumen/hoy` y
+ * que `composicion-panel.tsx` para `/analytics/overview`: React Query sirve
+ * cada una de una sola petición, y el prefetch en servidor
+ * (`_lib/prefetch.ts`) las hidrata.
  */
-
-// `CoberturaMetrica`, `celdaSalud` y `coberturaSinMedir` viven en
-// `lib/cobertura.ts` desde el 2026-08-30. Estaban aquí, y por eso la regla que
-// implementan —no afirmar un porcentaje cuyo denominador no se conoce— solo se
-// aplicaba en esta pantalla: `/competidores` publicaba las mismas magnitudes
-// sin acotarlas. Se reexportan, junto con la comparativa mensual, para no
-// romper a quien las importaba de aquí.
-export type { CeldaSalud, CoberturaMetrica };
-export { celdaSalud, coberturaSinMedir };
-export { compararMeses, mesesCerrados };
-export type { ComparativaMensual, MesAgregado } from "./contexto/comparativa-mensual";
-
 export function ContextoStrip() {
   const scopedHref = useScopedHref();
-  const ignorados = useFiltrosIgnorados();
   // El fallo se pinta aquí (y en la composición, que lee la misma consulta):
-  // sin toast encima. Mismas opciones en `composicion-panel.tsx`.
-  const overview = useFilteredQuery<OverviewConCobertura>(
+  // sin toast encima.
+  const overview = useFilteredQuery<AnalyticsOverview>(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
     { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
-
-  // «Activas» bajó aquí desde la banda de arriba: es la foto del ámbito, no
-  // algo que exija una acción hoy, y allí ocupaba un cuarto de la fila urgente
-  // para decir un número que no caduca.
-  //
-  // Viene de otro endpoint que el resto de la tira, y eso no es gratis:
-  // `/resumen/hoy` sólo aplica cuatro de los siete filtros del ámbito
-  // (`alcance.ts`), así que con una búsqueda o un chip de estado activos esta
-  // celda mide un conjunto más ancho que sus vecinas. Se declara en un aviso
-  // encima de la tira, y solo cuando pasa (con esos filtros puestos), no en el
-  // pie de la celda: a un séptimo del ancho el pie se trunca, y un aviso
-  // truncado no avisa. Misma clave y mismas opciones que en
-  // `atencion-cards.tsx`: React Query sirve las dos desde una sola petición.
   const hoy = useFilteredQuery<ResumenHoyResult>(
     ["analytics", "resumen", "hoy"],
     "/api/v1/analytics/resumen/hoy",
@@ -74,45 +50,39 @@ export function ContextoStrip() {
   const data = overview.data;
   const loading = overview.isLoading;
 
-  const comparativa = useMemo(() => {
-    const mesActual = new Date().toISOString().slice(0, 7);
-    return compararMeses(data?.por_mes, mesActual);
-  }, [data?.por_mes]);
-
-  // Nº de meses cerrados que sirven de historia al badge de anomalía (la serie
-  // menos el mes que se está juzgando). `isAnomaly` ya se abstiene con menos de
-  // tres, así que aquí sólo hace falta para redactar su tooltip.
-  const historial = useMemo(() => {
-    const mesActual = new Date().toISOString().slice(0, 7);
-    return Math.max(0, mesesCerrados(data?.por_mes, mesActual).length - 1);
-  }, [data?.por_mes]);
-
-  if (overview.error) {
-    return (
-      <section aria-labelledby="resumen-contexto" className="mb-5.5">
-        <PanelTitle as="h2" id="resumen-contexto" title="Contexto de mercado" className="mb-2.5" />
+  return (
+    <section aria-labelledby="resumen-contexto" className="mb-5.5">
+      <PanelTitle as="h2" id="resumen-contexto" title="Contexto de mercado" hint="del ámbito" className="mb-2.5" />
+      {overview.error ? (
         <PanelError
           title="No se pudo cargar el contexto"
           error={overview.error}
           onRetry={() => void overview.refetch()}
         />
-      </section>
-    );
-  }
-
-  return (
-    <>
-      <MercadoStrip
-        data={data}
-        loading={loading}
-        comparativa={comparativa}
-        historial={historial}
-        activas={hoy.data?.total_activas}
-        activasLoading={hoy.isLoading}
-        activasHref={scopedHref("/detalle?solo_abiertas=true")}
-        activasIgnoran={ignorados}
-      />
-      <SaludStrip data={data} loading={loading} />
-    </>
+      ) : (
+        <StatStrip columns={3}>
+          <StatCell
+            label="Activas"
+            loading={hoy.isLoading}
+            value={formatNumber(hoy.data?.total_activas)}
+            href={scopedHref("/detalle?solo_abiertas=true")}
+            hint="sin adjudicar ni cerrar"
+          />
+          <StatCell
+            label="Publicadas 30 d"
+            loading={loading}
+            value={formatNumber(data?.licitaciones_30d)}
+            trend={data?.yoy_delta}
+            hint="vs los 30 días previos"
+          />
+          <StatCell
+            label="Importe 30 d"
+            loading={loading}
+            value={formatCompactCurrency(data?.importe_30d)}
+            hint="publicado en los últimos 30 días"
+          />
+        </StatStrip>
+      )}
+    </section>
   );
 }

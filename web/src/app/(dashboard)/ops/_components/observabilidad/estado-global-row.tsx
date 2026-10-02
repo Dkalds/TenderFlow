@@ -31,7 +31,7 @@ const COLOR: Record<EstadoGlobalSalud, string> = {
   error: "bg-destructive",
 };
 
-export function StatusDot({ status }: { status: EstadoGlobalSalud }) {
+function StatusDot({ status }: { status: EstadoGlobalSalud }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>

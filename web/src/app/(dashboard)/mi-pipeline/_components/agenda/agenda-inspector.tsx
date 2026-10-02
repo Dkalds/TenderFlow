@@ -20,6 +20,7 @@
 
 import type { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { cn, EMPTY, formatCompactCurrency, formatDate, truncate } from "@/lib/utils";
 import { statusLabel } from "@/components/pursuits/pursuit-presenters";
 import { PanelEmpty, ROTULO_DATO } from "@/components/console/panel";
@@ -156,6 +157,7 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
               >
                 PLACSP
                 <ExternalLink aria-hidden="true" />
+                <AvisoPestanaNueva />
               </a>
             )}
           </div>

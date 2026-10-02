@@ -57,7 +57,7 @@ export interface AccessGrant {
  * producto por invitación no llega a 500 en la práctica, así que en la vista
  * que importa no hay truncado real. Cuando lo haya, se dice — ver `truncada`.
  */
-export const LIMITE = 500;
+const LIMITE = 500;
 
 export interface OpcionesSolicitudesAcceso {
   /**

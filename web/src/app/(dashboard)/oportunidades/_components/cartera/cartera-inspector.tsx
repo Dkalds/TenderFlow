@@ -18,6 +18,7 @@
  * ausencia.
  */
 import { ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { EnlaceIr, PanelEmpty, SectionTitle } from "@/components/console/panel";
 import { fechaCorta } from "@/lib/adjudicacion-prevista";
 import type { ContratoCartera } from "@/lib/cartera";
@@ -125,6 +126,7 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
                   >
                     {contrato.licitacion_id}
                     <ExternalLink className="h-3 w-3 flex-none" aria-hidden="true" />
+                    <AvisoPestanaNueva />
                   </a>
                 ) : (
                   <span className="truncate font-mono text-tf-micro">{contrato.licitacion_id}</span>

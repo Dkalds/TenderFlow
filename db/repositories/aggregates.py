@@ -50,7 +50,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Any, Final, TypedDict
 
 from db.database import connect_read
 from db.repositories.base import csv_values, loose_distinct_count, rows_to_dicts
@@ -332,20 +332,29 @@ def build_licitaciones_where(
 _build_where = build_licitaciones_where
 
 
+class ParaHoy(TypedDict):
+    """Lo que devuelve :meth:`AggregateRepository.overview_para_hoy`."""
+
+    calientes_hoy: int
+    vencen_48h: int
+    nuevas_24h: int
+    total_activas: int
+    #: Umbral de importe con el que se contó ``calientes_hoy``.
+    importe_p75: float | None
+
+
+def _para_hoy_vacio() -> ParaHoy:
+    return {
+        "calientes_hoy": 0,
+        "vencen_48h": 0,
+        "nuevas_24h": 0,
+        "total_activas": 0,
+        "importe_p75": None,
+    }
+
+
 class AggregateRepository:
     """Acceso a las vistas materializadas de aggregates y a agregaciones en vivo."""
-
-    def load_mat_clusters(self) -> list[dict[str, Any]]:
-        """Carga datos de ``mat_clusters`` para ``services/clustering_engine.py``."""
-        with connect_read() as c:
-            try:
-                cur = c.execute(
-                    "SELECT id_externo, cluster_id, cluster_label, updated_at FROM mat_clusters"
-                )
-                return rows_to_dicts(cur)
-            except Exception as exc:
-                log.warning("repo_mat_clusters_unavailable", error=str(exc))
-                return []
 
     # ── Overview ──────────────────────────────────────────────────────────
 
@@ -685,8 +694,8 @@ class AggregateRepository:
         hace_24h_iso: str,
         p75: float | None = None,
         total_activas: int | None = None,
-    ) -> dict[str, int]:
-        """Los cuatro contadores del bloque "para hoy".
+    ) -> ParaHoy:
+        """Los cuatro contadores del bloque "para hoy", y el P75 con que se contó.
 
         Compartido por ``services/analytics/overview.py`` (que ignora
         ``total_activas``) y por ``services/analytics/resumen.py``
@@ -699,6 +708,17 @@ class AggregateRepository:
         es la tabla entera, se sirve por :meth:`_para_hoy_fast`; en cualquier
         otro caso se calcula todo en vivo, que con filtros es la única opción
         correcta.
+
+        ``vencen_48h`` cuenta solo las **abiertas**. Contaba cualquier
+        expediente con el plazo en la ventana, así que una licitación anulada o
+        ya adjudicada con plazo mañana salía en la cola roja del Resumen: algo
+        que exige acción hoy y a lo que ya no se puede presentar nadie.
+
+        ``importe_p75`` es el umbral con el que se contó ``calientes_hoy``: el
+        del snapshot en el camino rápido y el de la CTE ``p75`` —el del ámbito
+        filtrado— en el vivo. Sale para que el enlace de la tarjeta pueda cortar
+        por el mismo umbral que produjo la cifra. ``None`` solo cuando el ámbito
+        no tiene ningún importe.
         """
         if filters.is_empty() and p75 is not None and total_activas is not None:
             return self._para_hoy_fast(
@@ -736,23 +756,27 @@ class AggregateRepository:
             f"     AND {lim_guard} AND fecha_limite > %s "
             "      AND importe >= (SELECT v FROM p75)"
             "  ) AS calientes_hoy, "
-            f"  COUNT(*) FILTER (WHERE {lim_guard} AND fecha_limite >= %s AND fecha_limite <= %s)"
-            "     AS vencen_48h, "
+            "  COUNT(*) FILTER ("
+            f"    WHERE {abierta} "
+            f"     AND {lim_guard} AND fecha_limite >= %s AND fecha_limite <= %s"
+            "  ) AS vencen_48h, "
             f"  COUNT(*) FILTER (WHERE {pub_guard} AND fecha_publicacion >= %s) AS nuevas_24h, "
-            f"  COUNT(*) FILTER (WHERE {abierta}) AS total_activas "
+            f"  COUNT(*) FILTER (WHERE {abierta}) AS total_activas, "
+            "  (SELECT v FROM p75) AS importe_p75 "
             "FROM filtered"
         )
         run_params = [*params, hoy_iso, hoy_iso, limite_48h_iso, hace_24h_iso]
         with connect_read() as c:
             row = c.execute(sql, run_params).fetchone()
         if row is None:
-            return {"calientes_hoy": 0, "vencen_48h": 0, "nuevas_24h": 0, "total_activas": 0}
-        calientes, vencen, nuevas, activas = row
+            return _para_hoy_vacio()
+        calientes, vencen, nuevas, activas, umbral = row
         return {
             "calientes_hoy": int(calientes or 0),
             "vencen_48h": int(vencen or 0),
             "nuevas_24h": int(nuevas or 0),
             "total_activas": int(activas or 0),
+            "importe_p75": float(umbral) if umbral is not None else None,
         }
 
     def _para_hoy_fast(
@@ -763,7 +787,7 @@ class AggregateRepository:
         hace_24h_iso: str,
         p75: float,
         total_activas: int,
-    ) -> dict[str, int]:
+    ) -> ParaHoy:
         """Los tres contadores con ventana, cada uno por su índice.
 
         Misma pregunta y mismos predicados que la rama con CTE, pero sin
@@ -789,7 +813,7 @@ class AggregateRepository:
             f"    WHERE {abierta} AND {lim_guard} AND fecha_limite > %s "
             "      AND importe >= %s) AS calientes_hoy, "
             "  (SELECT COUNT(*) FROM licitaciones "
-            f"    WHERE {lim_guard} AND fecha_limite >= %s AND fecha_limite <= %s) "
+            f"    WHERE {abierta} AND {lim_guard} AND fecha_limite >= %s AND fecha_limite <= %s) "
             "     AS vencen_48h, "
             "  (SELECT COUNT(*) FROM licitaciones "
             f"    WHERE {pub_guard} AND fecha_publicacion >= %s) AS nuevas_24h"
@@ -798,12 +822,13 @@ class AggregateRepository:
         with connect_read() as c:
             row = c.execute(sql, run_params).fetchone()
         if row is None:
-            return {"calientes_hoy": 0, "vencen_48h": 0, "nuevas_24h": 0, "total_activas": 0}
+            return _para_hoy_vacio()
         return {
             "calientes_hoy": int(row[0] or 0),
             "vencen_48h": int(row[1] or 0),
             "nuevas_24h": int(row[2] or 0),
             "total_activas": total_activas,
+            "importe_p75": p75,
         }
 
     # ── Resumen ──────────────────────────────────────────────────────────
@@ -882,7 +907,11 @@ class AggregateRepository:
         return int(row[0] or 0) if row else 0
 
     def resumen_novedades(
-        self, *, desde_iso: str, sample_limit: int
+        self,
+        filters: LicitacionesFilters | None = None,
+        *,
+        desde_iso: str,
+        sample_limit: int,
     ) -> tuple[int, list[dict[str, Any]]]:
         """(total, muestra) de licitaciones publicadas después de ``desde_iso``.
 
@@ -890,12 +919,16 @@ class AggregateRepository:
         ``head(10)`` de pandas devolvía las primeras filas en el orden en que
         las servía la BD (arbitrario y no estable entre llamadas); las más
         recientes son además las que el banner quiere enseñar.
+
+        ``filters`` acota al ámbito con el mismo ``WHERE`` que el resto de
+        agregados del Resumen; sin él cuenta el mercado entero (la campana).
         """
+        filtro, params = _build_where(filters or LicitacionesFilters())
         guard = iso_guard("fecha_publicacion")
-        where = f"{guard} AND fecha_publicacion > %s"
+        where = f"{filtro} AND {guard} AND fecha_publicacion > %s"
         with connect_read() as c:
             row = c.execute(
-                f"SELECT COUNT(*) FROM licitaciones WHERE {where}", [desde_iso]
+                f"SELECT COUNT(*) FROM licitaciones WHERE {where}", [*params, desde_iso]
             ).fetchone()
             count = int(row[0]) if row and row[0] is not None else 0
             if count == 0:
@@ -905,7 +938,7 @@ class AggregateRepository:
                     "SELECT id_externo, titulo, importe, organo_contratacion "
                     f"FROM licitaciones WHERE {where} "
                     "ORDER BY fecha_publicacion DESC LIMIT %s",
-                    [desde_iso, sample_limit],
+                    [*params, desde_iso, sample_limit],
                 )
             )
         return count, sample

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
-import { Skeleton, SkeletonChart, SkeletonTable, SkeletonCard } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonTable } from "@/components/ui/skeleton";
 
 describe("Skeleton", () => {
   it("renders without crashing", () => {
@@ -17,24 +17,6 @@ describe("Skeleton", () => {
   it("renders as a div", () => {
     const { container } = render(<Skeleton />);
     expect(container.firstChild?.nodeName).toBe("DIV");
-  });
-});
-
-describe("SkeletonChart", () => {
-  it("renders without crashing", () => {
-    const { container } = render(<SkeletonChart />);
-    expect(container.firstChild).toBeInTheDocument();
-  });
-
-  it("accepts a custom height class", () => {
-    const { container } = render(<SkeletonChart height="h-[200px]" />);
-    // The height class should be applied somewhere in the rendered output
-    expect(container.innerHTML).toContain("h-[200px]");
-  });
-
-  it("accepts a custom className", () => {
-    const { container } = render(<SkeletonChart className="mt-4" />);
-    expect(container.innerHTML).toContain("mt-4");
   });
 });
 
@@ -59,34 +41,10 @@ describe("SkeletonTable", () => {
   });
 });
 
-describe("SkeletonCard", () => {
-  it("renders without crashing", () => {
-    const { container } = render(<SkeletonCard />);
-    expect(container.firstChild).toBeInTheDocument();
-  });
-
-  it("renders three skeleton lines inside", () => {
-    const { container } = render(<SkeletonCard />);
-    // The card wrapper + 3 skeleton divs
-    const divs = container.querySelectorAll("div");
-    expect(divs.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it("applies custom className to wrapper", () => {
-    const { container } = render(<SkeletonCard className="custom-card" />);
-    expect(container.firstChild).toHaveClass("custom-card");
-  });
-});
-
 describe("Skeleton — manija estable", () => {
   it("lleva data-slot=skeleton además del barrido", () => {
     const { container } = render(<Skeleton />);
     expect(container.firstChild).toHaveAttribute("data-slot", "skeleton");
     expect(container.firstChild).toHaveClass("tf-shimmer");
-  });
-
-  it("SkeletonCard tiene la forma de un Panel", () => {
-    const { container } = render(<SkeletonCard />);
-    expect(container.firstChild).toHaveClass("rounded-xl", "bg-card");
   });
 });

@@ -38,7 +38,7 @@ export interface UserProfile {
 
 // Debe reflejar `settings.SCORING_WEIGHTS`: es el reparto que el backend
 // aplica a quien no tiene perfil, y el que se ofrece al crear uno.
-export const DEFAULT_WEIGHTS: Record<string, number> = {
+const DEFAULT_WEIGHTS: Record<string, number> = {
   importe: 20,
   plazo: 15,
   competencia: 20,

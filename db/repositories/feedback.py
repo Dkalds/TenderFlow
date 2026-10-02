@@ -104,16 +104,6 @@ class FeedbackRepository:
             return {"total": 0, "positivos": 0, "negativos": 0, "last_feedback_at": None}
         return dict(zip(["total", "positivos", "negativos", "last_feedback_at"], row, strict=False))
 
-    def labeled_expedientes(self, prefix: str = "active_learning_dashboard:") -> set[str]:
-        """Devuelve expedientes ya etiquetados (por prefijo de nota)."""
-        with connect_read() as c:
-            rows = c.execute(
-                # `%%`: ver db/dlq.py — el literal viaja con parámetros.
-                "SELECT DISTINCT expediente FROM ml_feedback WHERE nota LIKE %s || '%%'",
-                (prefix,),
-            ).fetchall()
-        return {str(r[0]) for r in rows}
-
     def exists_idempotency(self, key: str) -> dict[str, Any] | None:
         """Devuelve la respuesta cacheada si la idempotency key ya existe."""
         with connect_read() as c:
@@ -146,12 +136,6 @@ class FeedbackRepository:
                 "ON CONFLICT(idem_key, endpoint) DO NOTHING",
                 (key, json.dumps(response, ensure_ascii=False), now_utc_iso()),
             )
-
-    def export_all(self, limit: int = 10_000) -> list[dict[str, Any]]:
-        """Exporta todo el ML feedback (anónimo, sin FK a usuario). Para GDPR."""
-        with connect_read() as c:
-            cur = c.execute("SELECT * FROM ml_feedback LIMIT %s", (limit,))
-            return rows_to_dicts(cur)
 
     def export_for_user(self, user_id: int, limit: int = 10_000) -> list[dict[str, Any]]:
         """Exporta exclusivamente el feedback atribuible a un usuario."""

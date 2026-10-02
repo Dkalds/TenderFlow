@@ -99,7 +99,7 @@ class Adjunto:
     hasta entonces el transporte montaba un ``MIMEMultipart("alternative")`` y
     no había forma de adjuntar nada, ni por SMTP ni por los dos ESP. Se dejó
     sin hacer a propósito mientras no hubo consumidor
-    (`docs/plans/2026-09-ola2-migraciones-propuestas.md` §T6); ahora lo hay.
+    (`docs/archive/plans/2026-09-ola2-migraciones-propuestas.md` §T6); ahora lo hay.
 
     ``contenido`` son bytes y no una ruta: quien genera el PDF lo tiene en
     memoria, y hacerle escribir un fichero temporal sólo para que el mailer lo

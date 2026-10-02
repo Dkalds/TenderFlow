@@ -1,8 +1,8 @@
 """Métricas runtime de Prometheus expuestas en proceso (D1 + D2).
 
 Estas gauges/counters viven en el ``REGISTRY`` por defecto y se exponen
-vía ``/metrics`` del API. A diferencia de ``observability.prometheus`` (que
-usa textfile collector para el scheduler), estas son in-process.
+vía ``/metrics`` del API; son in-process (el exportador por textfile
+collector del scheduler se retiró el 2026-09-28).
 
 D2: el import de ``prometheus_client`` está protegido — si no está
 instalado, las métricas son no-ops y la app sigue funcionando.

@@ -19,13 +19,13 @@ import { EMPTY, formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { CalendarWeek, VencimientosResponse } from "../_hooks/use-calendario-view";
 
 /** Suma `n` días a una fecha `YYYY-MM-DD` (aritmética en UTC, sin horas). */
-export function sumarDias(iso: string, n: number): string {
+function sumarDias(iso: string, n: number): string {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }
 
 /** Último día del mes de una fecha `YYYY-MM-DD`. */
-export function finDeMes(iso: string): string {
+function finDeMes(iso: string): string {
   const [y, m] = iso.split("-").map(Number);
   return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
 }

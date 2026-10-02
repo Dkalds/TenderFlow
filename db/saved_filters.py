@@ -15,7 +15,6 @@ dual: ver ``db/repositories/watchlist.py``.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from db.database import connect, now_utc_iso
@@ -157,61 +156,3 @@ def delete_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
             (user_id, user_key, user_id),
         )
         return int(cur.rowcount)
-
-
-def filters_to_json(
-    filters_state: Any, *, nav_section: str | None = None, detalle_cols: list[str] | None = None
-) -> str:
-    """Serializa un FiltersState a JSON string, con contexto de vista opcional."""
-    d: dict[str, Any] = {
-        "q": filters_state.q,
-        "estados": filters_state.estados,
-        "ccaas": filters_state.ccaas,
-        "organos": filters_state.organos,
-        "tipos_proy": filters_state.tipos_proy,
-        "tecnologias": filters_state.tecnologias,
-        "importe_min": filters_state.importe_min,
-        "rango": (
-            [filters_state.rango[0].isoformat(), filters_state.rango[1].isoformat()]
-            if filters_state.rango
-            else None
-        ),
-    }
-    if nav_section:
-        d["nav_section"] = nav_section
-    if detalle_cols:
-        d["detalle_cols"] = detalle_cols
-    return json.dumps(d, ensure_ascii=False)
-
-
-def json_to_session_state(filters_json: str) -> dict[str, Any]:
-    """Convierte un JSON guardado a un dict de session_state keys."""
-    from datetime import date
-
-    d = json.loads(filters_json)
-    ss: dict[str, Any] = {}
-    if d.get("q"):
-        ss["fs_q"] = d["q"]
-    if d.get("estados"):
-        ss["fs_estados"] = d["estados"]
-    if d.get("ccaas"):
-        ss["fs_ccaas"] = d["ccaas"]
-    if d.get("organos"):
-        ss["fs_organos"] = d["organos"]
-    if d.get("tipos_proy"):
-        ss["fs_tipos"] = d["tipos_proy"]
-    if d.get("tecnologias"):
-        ss["fs_tecnologias"] = d["tecnologias"]
-    if d.get("importe_min"):
-        ss["fs_imp_min"] = int(d["importe_min"])
-    if d.get("rango") and len(d["rango"]) == 2:
-        ss["fs_rango"] = (
-            date.fromisoformat(d["rango"][0]),
-            date.fromisoformat(d["rango"][1]),
-        )
-    # M7: restore nav section and detalle columns
-    if d.get("nav_section"):
-        ss["nav_section"] = d["nav_section"]
-    if d.get("detalle_cols"):
-        ss["detalle_cols"] = d["detalle_cols"]
-    return ss

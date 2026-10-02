@@ -17,7 +17,7 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
  * donde vive su pregunta: el embudo a Oportunidades › Rendimiento, la cartera
  * a Oportunidades › Cartera y el horizonte de renovaciones a Mercado ›
  * Renovaciones. Ninguna perdió nada al moverse; el inventario de funciones y
- * el destino de cada una está en `docs/redesign/mi-pipeline-inventario.md`.
+ * el destino de cada una está en `docs/archive/redesign/mi-pipeline-inventario.md`.
  *
  * El `key`/slug `mi-pipeline` se conserva: cambiarlo rompería marcadores, el
  * redirect 308 de `/pipeline-alertas` y la serie histórica de

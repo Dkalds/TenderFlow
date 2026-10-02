@@ -490,7 +490,7 @@ class TestRound2Improvements:
         assert _expected_calibration_error(np.array([]), np.array([])) == 0.0
 
     def test_registry_append_and_read(self, tmp_path):
-        from scraper.ml_classifier import _append_to_registry, read_registry
+        from scraper.ml_training import _append_to_registry, read_registry
 
         reg_path = tmp_path / "registry.json"
         entry1 = {"trained_at": "2025-01-01T00:00:00", "f1": 0.85, "fbeta": 0.88}
@@ -503,13 +503,13 @@ class TestRound2Improvements:
         assert history[1]["f1"] == 0.87
 
     def test_read_registry_missing_file(self, tmp_path):
-        from scraper.ml_classifier import read_registry
+        from scraper.ml_training import read_registry
 
         missing = tmp_path / "does_not_exist.json"
         assert read_registry(path=missing) == []
 
     def test_read_registry_corrupt_file(self, tmp_path):
-        from scraper.ml_classifier import read_registry
+        from scraper.ml_training import read_registry
 
         bad = tmp_path / "bad.json"
         bad.write_text("{not valid json", encoding="utf-8")
@@ -517,7 +517,8 @@ class TestRound2Improvements:
 
     def test_train_appends_to_registry(self, sample_df, tmp_path, monkeypatch):
         from scraper import ml_training
-        from scraper.ml_classifier import SAPClassifier, read_registry
+        from scraper.ml_classifier import SAPClassifier
+        from scraper.ml_training import read_registry
 
         reg_path = tmp_path / "reg.json"
         monkeypatch.setattr(ml_training, "_REGISTRY_PATH", reg_path)

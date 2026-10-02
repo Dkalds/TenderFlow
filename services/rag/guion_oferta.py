@@ -260,6 +260,7 @@ def generar_guion(
     from db.repositories.documentos import DocumentosRepository
     from llm.client import DEFAULT_MODEL, stream_llm_response
     from llm.json_utils import extract_json_object
+    from services.dedupe import expediente_del_pliego
     from services.rag.fact_sheet import get_fact_sheet
 
     record = get_fact_sheet(licitacion_id)
@@ -276,7 +277,9 @@ def generar_guion(
             ),
         )
 
-    paginas = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
+    # Las páginas del mismo expediente del que salió la ficha: el de una
+    # republicación confirmada es su canónica (``get_fact_sheet`` ya lo sigue).
+    paginas = DocumentosRepository().list_pages_by_licitacion(expediente_del_pliego(licitacion_id))
     validas = {(int(p["documento_id"]), int(p["page_number"])) for p in paginas}
     if not validas:
         return GuionOferta(
@@ -447,12 +450,13 @@ def guion_generado(licitacion_id: str) -> GuionOferta | None:
     ser una forma de gastar presupuesto sin que se vea.
     """
     from db.repositories.documentos import DocumentosRepository
+    from services.dedupe import expediente_del_pliego
     from services.rag.fact_sheet import get_fact_sheet
 
     record = get_fact_sheet(licitacion_id)
     if record is None or not record.facts or not record.facts.award_criteria:
         return None
-    paginas = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
+    paginas = DocumentosRepository().list_pages_by_licitacion(expediente_del_pliego(licitacion_id))
     if not paginas:
         return None
     return _leer_cache(licitacion_id, firma_de(record.facts, paginas))
@@ -466,13 +470,15 @@ def guion_pdf(licitacion_id: str) -> bytes | None:
     igual con los ids, que siguen siendo verificables.
     """
     from db.repositories.documentos import DocumentosRepository
+    from services.dedupe import expediente_del_pliego
 
     guion = guion_generado(licitacion_id)
     if guion is None:
         return None
     nombres: dict[int, str] = {}
     try:
-        for doc in DocumentosRepository().list_by_licitacion(licitacion_id):
+        documentos = DocumentosRepository().list_by_licitacion(expediente_del_pliego(licitacion_id))
+        for doc in documentos:
             nombre = doc.get("filename") or doc.get("tipo")
             if doc.get("id") is not None and nombre:
                 nombres[int(doc["id"])] = str(nombre)

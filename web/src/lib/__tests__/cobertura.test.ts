@@ -37,6 +37,35 @@ describe("celdaSalud", () => {
     // segura es abstenerse, no asumir que sí.
     expect(celdaSalud(50, { cobertura_pct: 90 }, "glosa").value).toBe(EMPTY);
   });
+
+  // Los tres casos de abajo vivían en el test de la tira de salud del
+  // Resumen, que se retiró de la pantalla (2026-10): fijan los textos exactos
+  // del pie, que siguen siendo los de `/competidores`.
+  it("dice exactamente cuánta cobertura hay cuando se abstiene", () => {
+    const celda = celdaSalud(
+      93.1,
+      { base: 5780, universo: 170000, cobertura_pct: 3.4, umbral_pct: 50, suficiente: false },
+      "adjudicaciones con 1 oferta",
+    );
+    expect(celda.value).toBe(EMPTY);
+    expect(celda.hint).toBe("solo 3,4% de las adjudicaciones traen el dato");
+  });
+
+  it("no confunde «cobertura 0 %» con «cobertura sin medir»", () => {
+    const celda = celdaSalud(93.1, { cobertura_pct: 0, suficiente: false }, "glosa");
+    expect(celda.hint).toBe("solo 0,0% de las adjudicaciones traen el dato");
+  });
+
+  it("al publicar, deja la cobertura al pie junto a la glosa", () => {
+    const glosa = "adjudicaciones con 1 oferta";
+    const celda = celdaSalud(
+      41.5,
+      { base: 150000, universo: 170000, cobertura_pct: 88.2, umbral_pct: 50, suficiente: true },
+      glosa,
+    );
+    expect(celda.value).toBe("41,5%");
+    expect(celda.hint).toBe(`${glosa} · cobertura 88,2%`);
+  });
 });
 
 describe("coberturaSinMedir", () => {

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ExternalLink, Link2, MessageSquareText, X } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { toast } from "sonner";
 import { LicitacionAI } from "@/components/licitacion-ai";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
@@ -23,7 +24,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { fuenteLinkLabel } from "@/lib/fuentes";
-import type { LicitacionDetail } from "@/components/detail-panel";
+import type { LicitacionDetail } from "@/lib/licitacion-detail";
 
 /**
  * Inspector de la licitación — el mismo contenido del Sheet, en el mismo plano.
@@ -303,6 +304,7 @@ export function DetailInspector({
                 className="mb-5 flex w-fit items-center gap-1.5 text-tf-body font-medium"
               >
                 {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                <AvisoPestanaNueva />
               </a>
             )}
 

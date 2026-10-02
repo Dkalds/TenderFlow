@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  * Esto replica las bandas reales y sus altos, para que la carga no salte: la
  * cabecera sin borde (el borde lo pone el scroll), el campo del copiloto, «Tu
  * día», la banda de «Mercado abierto» con la cola a dos tercios y las dos
- * tarjetas apiladas, y las dos tiras de contexto.
+ * tarjetas apiladas, y la tira de contexto.
  */
 export default function ResumenLoading() {
   return (
@@ -36,10 +36,8 @@ export default function ResumenLoading() {
           </div>
         </div>
 
-        {/* Contexto y salud competitiva */}
+        {/* Contexto de mercado */}
         <Skeleton className="mb-2.5 h-4 w-36 rounded-sm" />
-        <Skeleton className="mb-5.5 h-[72px] w-full rounded-xl" />
-        <Skeleton className="mb-2.5 h-4 w-32 rounded-sm" />
         <Skeleton className="h-[72px] w-full rounded-xl" />
       </div>
     </div>

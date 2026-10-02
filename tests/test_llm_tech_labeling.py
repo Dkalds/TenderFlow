@@ -680,6 +680,210 @@ class TestSinEvidenciaEnElJob:
         assert counts["es_ti_si"] == 1
 
 
+class TestMuestraModeEnElJob:
+    """Modo muestra estratificada (F2, spec §3.2): con ``muestra`` no nulo el
+    job cambia de camino de selección -- el resto del bucle (clasificar,
+    fundir, contar) no se entera, así que se mockea igual que en
+    ``TestSinEvidenciaEnElJob``."""
+
+    @staticmethod
+    def _run_with(monkeypatch, *, muestra=50, semilla="sem-x", pendientes=None):
+        from unittest.mock import MagicMock
+
+        from scheduler.jobs.llm_tech_labeling import run
+
+        monkeypatch.setattr(settings, "LLM_TECH_LABELING_ENABLED", True, raising=False)
+        monkeypatch.setattr(settings, "LLM_TECH_FEEDBACK_ENABLED", False, raising=False)
+        # Deliberadamente bajo: la prueba de que este tope NO acota la
+        # muestra es que, aun así, se procesan todos los ``pendientes``.
+        monkeypatch.setattr(settings, "LLM_TECH_LABELING_BATCH", 1, raising=False)
+        if pendientes is None:
+            pendientes = [
+                {
+                    "id_externo": "EXP-M1",
+                    "titulo": "Soporte del ERP municipal",
+                    "descripcion": "Mantenimiento evolutivo de la aplicación de nóminas.",
+                }
+            ]
+        repo = MagicMock()
+        repo.tamanos_estratos_muestra.return_value = {"pscp|otros|es|sin_kw|sin_modelo": 5}
+        repo.list_muestra_pending_llm_signal.return_value = pendientes
+        # Un iterador propio por item: ``stream_llm_response`` se llama una
+        # vez por licitación y un ``return_value`` fijo se agotaría tras la
+        # primera (ver ``TestRunJob.test_one_failure_does_not_abort_the_batch``
+        # para el mismo patrón con ``side_effect``).
+        respuestas = [iter(['{"tecnologias": []}']) for _ in pendientes]
+        with (
+            patch(
+                "db.repositories.tecnologia_pliego.TecnologiaPliegoRepository", return_value=repo
+            ),
+            patch("llm.budget.get_budget_guard"),
+            patch("observability.ops_events.record_event"),
+            patch(
+                "services.tech_signal.merge_doc_signals", return_value={"licitaciones_merged": 0}
+            ),
+            patch("services.llm_tech_labeling.stream_llm_response", side_effect=respuestas),
+        ):
+            counts = run(muestra=muestra, semilla=semilla)
+        return counts, repo
+
+    def test_uses_the_sample_path_not_the_backlog(self, monkeypatch):
+        counts, repo = self._run_with(monkeypatch)
+
+        repo.list_muestra_pending_llm_signal.assert_called_once()
+        repo.list_metadata_pending_llm_signal.assert_not_called()
+        assert counts["no_signal"] == 1
+
+    def test_passes_the_quotas_from_repartir_cuotas(self, monkeypatch):
+        from services.ml.muestra_estratificada import repartir_cuotas
+
+        counts, repo = self._run_with(monkeypatch, muestra=50, semilla="sem-x")
+
+        repo.tamanos_estratos_muestra.assert_called_once_with()
+        esperado = repartir_cuotas({"pscp|otros|es|sin_kw|sin_modelo": 5}, 50)
+        repo.list_muestra_pending_llm_signal.assert_called_once_with(
+            cuotas=esperado,
+            semilla="sem-x",
+            signal_version=signal_version(settings.LLM_TECH_LABELING_MODEL),
+            method=METHOD,
+        )
+        assert counts["no_signal"] == 1
+
+    def test_counts_include_muestra_and_muestra_pendientes(self, monkeypatch):
+        pendientes = [
+            {"id_externo": "EXP-M1", "titulo": "A", "descripcion": "Mantenimiento del ERP"},
+            {"id_externo": "EXP-M2", "titulo": "B", "descripcion": "Mantenimiento del ERP"},
+        ]
+
+        counts, _repo = self._run_with(monkeypatch, muestra=50, pendientes=pendientes)
+
+        assert counts["muestra"] == 50
+        assert counts["muestra_pendientes"] == 2
+
+    def test_llm_tech_labeling_batch_does_not_cap_the_sample(self, monkeypatch):
+        """El tope de lote del backlog (``LLM_TECH_LABELING_BATCH=1`` en
+        ``_run_with``) no se aplica al camino de muestra: el drenado manual
+        procesa la muestra pendiente entera."""
+        pendientes = [
+            {"id_externo": f"EXP-M{i}", "titulo": "A", "descripcion": "Mantenimiento del ERP"}
+            for i in range(3)
+        ]
+
+        counts, repo = self._run_with(monkeypatch, muestra=50, pendientes=pendientes)
+
+        repo.list_muestra_pending_llm_signal.assert_called_once()
+        assert counts["no_signal"] == 3
+        assert counts["muestra_pendientes"] == 3
+
+
+#: Resumen mínimo que no dispara ``batch_failed_systemically`` -- estas
+#: pruebas verifican el parseo de argumentos, no la decisión de fallo.
+_RESUMEN_CLI_OK = {"scored": 0, "no_signal": 0, "error": 0, "disabled": 0}
+
+
+class TestRunCli:
+    """Parseo de argumentos del drenado manual (F2, spec §3.2): con flags pasa
+    lo pedido a ``run``; sin flags, el comportamiento de siempre."""
+
+    def test_sin_flags_llama_a_run_con_los_valores_por_defecto(self):
+        from services.ml.muestra_estratificada import SEMILLA_POR_DEFECTO
+
+        with (
+            patch("db.database.init_db") as init_db,
+            patch("scheduler.jobs.llm_tech_labeling.run", return_value=_RESUMEN_CLI_OK) as run_mock,
+        ):
+            from scheduler.jobs.llm_tech_labeling import run_cli
+
+            codigo = run_cli([])
+
+        run_mock.assert_called_once_with(muestra=None, semilla=SEMILLA_POR_DEFECTO)
+        init_db.assert_called_once_with()
+        assert codigo == 0
+
+    def test_muestra_y_semilla_se_pasan_a_run(self):
+        with (
+            patch("db.database.init_db"),
+            patch("scheduler.jobs.llm_tech_labeling.run", return_value=_RESUMEN_CLI_OK) as run_mock,
+        ):
+            from scheduler.jobs.llm_tech_labeling import run_cli
+
+            codigo = run_cli(["--muestra", "10", "--semilla", "x"])
+
+        run_mock.assert_called_once_with(muestra=10, semilla="x")
+        assert codigo == 0
+
+    def test_muestra_cero_se_rechaza(self):
+        with (
+            patch("db.database.init_db"),
+            patch("scheduler.jobs.llm_tech_labeling.run") as run_mock,
+            pytest.raises(SystemExit),
+        ):
+            from scheduler.jobs.llm_tech_labeling import run_cli
+
+            run_cli(["--muestra", "0"])
+
+        run_mock.assert_not_called()
+
+
+class TestEstratoMuestraSqlPlaceholders:
+    """Regresión (fix round 1 de revisión): ``_ESTRATO_MUESTRA_SQL`` se
+    empalma dentro de las consultas de ``TecnologiaPliegoRepository``, y
+    ``list_muestra_pending_llm_signal`` las ejecuta con un dict de parámetros
+    (``c.execute(sql, {...})``). psycopg tokeniza el SQL entero buscando
+    placeholders (``%s``/``%b``/``%t``/``%(nombre)s``) antes de tocar la red;
+    un ``%`` suelto -- el que dejaba un ``LIKE 'placsp%'`` -- no calza
+    ninguna forma reconocida y psycopg 3 lanza ``ProgrammingError`` en el
+    primer ``execute`` con quotas no vacías. Mismo bug que documenta ADR-018
+    para ``db/repositories/extraction_runs.py:104-107`` (ahí se optó por
+    escapar a ``%%``; aquí, al no hacer falta ``LIKE``, se quita el ``%`` del
+    todo con ``starts_with``)."""
+
+    def test_la_constante_no_tiene_ningun_porcentaje(self):
+        from db.repositories.tecnologia_pliego import _ESTRATO_MUESTRA_SQL
+
+        assert "%" not in _ESTRATO_MUESTRA_SQL
+
+    def test_la_query_ensamblada_no_deja_placeholders_sueltos(self, monkeypatch):
+        """Sin BD: ``connect_read`` se sustituye por un doble que solo
+        captura el SQL que se le pasaría a psycopg. Tras quitar los
+        placeholders válidos (``%(nombre)s``) no debe quedar ningún ``%`` --
+        si quedara alguno, sería exactamente el bug que cubre esta clase."""
+        import re
+        from contextlib import contextmanager
+
+        from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+
+        capturado: dict[str, object] = {}
+
+        class _CursorFalso:
+            def __init__(self):
+                self.description: list[object] = []
+
+            def fetchall(self):
+                return []
+
+        class _ConexionFalsa:
+            def execute(self, sql, params=None):
+                capturado["sql"] = sql
+                capturado["params"] = params
+                return _CursorFalso()
+
+        @contextmanager
+        def _connect_read_falso(*, statement_timeout_ms=None):
+            yield _ConexionFalsa()
+
+        monkeypatch.setattr("db.repositories.tecnologia_pliego.connect_read", _connect_read_falso)
+
+        TecnologiaPliegoRepository().list_muestra_pending_llm_signal(
+            cuotas={"pscp|otros|es|sin_kw|sin_modelo": 1}, semilla="s", signal_version="v1"
+        )
+
+        sql = capturado["sql"]
+        assert isinstance(sql, str)
+        sin_placeholders_validos = re.sub(r"%\([a-zA-Z_][a-zA-Z0-9_]*\)s", "", sql)
+        assert "%" not in sin_placeholders_validos
+
+
 class TestPipelineStepReleasesTheWindow:
     """El paso canónico no puede quemar la ventana diaria en silencio."""
 
@@ -1033,6 +1237,148 @@ class TestListMetadataPendingLlmSignal:
         pendientes = repo.list_metadata_pending_llm_signal(signal_version="v1")
 
         assert [p["id_externo"] for p in pendientes] == ["EXP-NEW", "EXP-OLD"]
+
+
+# ── Muestra estratificada de F2 (spec §3.2) -- requieren Postgres ─────────
+#
+# NOTA para quien las ejecute: no se corrieron en esta sesión (sin Postgres
+# disponible en el entorno). Están trazadas a mano contra la SQL de
+# ``TecnologiaPliegoRepository.tamanos_estratos_muestra``/
+# ``list_muestra_pending_llm_signal`` -- incluidas las cadenas MD5 reales de
+# los ids usados en ``TestListMuestraPendingLlmSignal``, calculadas con
+# ``hashlib.md5`` para no adivinar el orden del desempate.
+
+
+def _insert_con_estrato(
+    id_externo: str,
+    *,
+    fuente: str = "placsp",
+    cpv: str | None = None,
+    ccaa: str | None = None,
+    ml_proba: float | None = None,
+    tecnologia: str | None = None,
+    fecha: str = "2026-06-01",
+) -> None:
+    """Como ``_insert_licitacion``, pero con control fino de las columnas que
+    forman la clave de estrato. Independiente a propósito: no toca el
+    fixture que ya usan ``TestListMetadataPendingLlmSignal``/``TestRunJob``."""
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones "
+            "(id_externo, titulo, descripcion, fuente, cpv, ccaa, ml_proba, tecnologia, "
+            "fecha_publicacion, fecha_extraccion) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
+            (
+                id_externo,
+                f"Contrato {id_externo}",
+                _CITA_SEMBRADA,
+                fuente,
+                cpv,
+                ccaa,
+                ml_proba,
+                tecnologia,
+                fecha,
+            ),
+        )
+
+
+class TestTamanosEstratosMuestra:
+    def test_sizes_per_stratum_cover_each_dimension(self, repo):
+        """Cubre las cinco dimensiones, incluidos ``ccaa``/``ml_proba`` NULL
+        y una fuente ``bulk_*``; EST-1 y EST-6 comparten estrato para
+        verificar que el ``count(*)`` de verdad agrupa."""
+        _insert_con_estrato("EST-1", fuente="pscp", cpv="48000000-8")
+        _insert_con_estrato("EST-6", fuente="pscp", cpv="48000000-8")
+        _insert_con_estrato(
+            "EST-2",
+            fuente="ted",
+            cpv="72212200-1",
+            ccaa="Cataluña",
+            ml_proba=0.1,
+            tecnologia="SAP",
+        )
+        _insert_con_estrato(
+            "EST-3", fuente="bulk_202409", cpv="79999999-0", ccaa="País Vasco", ml_proba=0.5
+        )
+        _insert_con_estrato(
+            "EST-4",
+            fuente="placsp_watched_company_awards",
+            cpv="79999999-0",
+            ccaa="Galicia",
+            ml_proba=0.85,
+            tecnologia="ERP",
+        )
+        _insert_con_estrato("EST-5", fuente="otro_conector_raro", ccaa="Navarra")
+
+        tamanos = repo.tamanos_estratos_muestra()
+
+        assert tamanos == {
+            "pscp|48|es|sin_kw|sin_modelo": 2,
+            "ted|72|ca|kw|baja": 1,
+            "placsp|otros|eu|sin_kw|media": 1,
+            "placsp|otros|gl|kw|alta": 1,
+            "otras|otros|eu|sin_kw|sin_modelo": 1,
+        }
+
+
+class TestListMuestraPendingLlmSignal:
+    _CLAVE = "pscp|otros|es|sin_kw|sin_modelo"
+
+    def test_respects_quotas_and_is_deterministic_for_a_seed(self, repo):
+        """5 candidatos, cupo 2: el orden de ``md5(id || 'test-seed')`` es
+        (ascendente) EST-Q2, EST-Q4, EST-Q5, EST-Q3, EST-Q1 -- calculado con
+        ``hashlib.md5``, no adivinado -- así que el top-2 es {EST-Q2, EST-Q4}.
+        Con la semilla 'otra-semilla' el orden cambia (EST-Q1, EST-Q4, EST-Q2,
+        EST-Q5, EST-Q3) y el top-2 pasa a ser {EST-Q1, EST-Q4}: incluye a
+        EST-Q4 en ambos a propósito, para que la prueba no dependa de que las
+        dos semillas den conjuntos disjuntos."""
+        for id_ in ("EST-Q1", "EST-Q2", "EST-Q3", "EST-Q4", "EST-Q5"):
+            _insert_con_estrato(id_, fuente="pscp")
+        cuotas = {self._CLAVE: 2}
+
+        primera = repo.list_muestra_pending_llm_signal(
+            cuotas=cuotas, semilla="test-seed", signal_version="v1"
+        )
+        repetida = repo.list_muestra_pending_llm_signal(
+            cuotas=cuotas, semilla="test-seed", signal_version="v1"
+        )
+        otra_semilla = repo.list_muestra_pending_llm_signal(
+            cuotas=cuotas, semilla="otra-semilla", signal_version="v1"
+        )
+
+        assert {p["id_externo"] for p in primera} == {"EST-Q2", "EST-Q4"}
+        assert {p["id_externo"] for p in repetida} == {"EST-Q2", "EST-Q4"}
+        assert {p["id_externo"] for p in otra_semilla} == {"EST-Q1", "EST-Q4"}
+
+    def test_excludes_a_tender_with_a_current_answer(self, repo):
+        """3 candidatos, cupo 3 (los tres rankean dentro de cupo): EXC-2 ya
+        tiene fila vigente de ``(METHOD, 'v1')`` y se descarta DESPUÉS de
+        rankear -- no libera su puesto a un cuarto candidato inexistente, solo
+        deja fuera al ya respondido."""
+        for id_ in ("EXC-1", "EXC-2", "EXC-3"):
+            _insert_con_estrato(id_, fuente="pscp")
+        repo.upsert_signals("EXC-2", method=METHOD, signal_version="v1", scores={})
+
+        pendientes = repo.list_muestra_pending_llm_signal(
+            cuotas={self._CLAVE: 3}, semilla="seed-excl", signal_version="v1"
+        )
+
+        assert {p["id_externo"] for p in pendientes} == {"EXC-1", "EXC-3"}
+
+    def test_returns_the_same_row_shape_as_list_metadata_pending_llm_signal(self, repo):
+        _insert_con_estrato("EST-SHAPE", fuente="pscp")
+
+        de_la_muestra = repo.list_muestra_pending_llm_signal(
+            cuotas={self._CLAVE: 1}, semilla="shape-seed", signal_version="v1"
+        )
+        normal = repo.list_metadata_pending_llm_signal(signal_version="v1")
+
+        assert len(de_la_muestra) == 1
+        assert len(normal) == 1
+        assert set(de_la_muestra[0]) == set(normal[0])
+        assert de_la_muestra[0] == normal[0]
 
 
 class TestRunJob:

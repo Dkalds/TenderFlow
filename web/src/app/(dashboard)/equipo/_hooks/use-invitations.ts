@@ -17,7 +17,7 @@ import { organizationKeys } from "@/lib/query-keys";
 export type OrganizationInvitation = Schemas["OrganizationInvitationOut"];
 
 /** Clave de caché propia: `organizationKeys` no la declara y no es su fichero. */
-export const invitationKeys = {
+const invitationKeys = {
   list: (organizationId: number | null) =>
     [...organizationKeys.members(organizationId), "invitations"] as const,
 };

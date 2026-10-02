@@ -48,7 +48,7 @@ export const DIAS = [
   "domingo",
 ] as const;
 
-export const reportScheduleKeys = {
+const reportScheduleKeys = {
   detail: (organizationId: OrganizacionActiva) =>
     [...organizationKeys.all, "report-schedule", organizationId] as const,
 };

@@ -2,7 +2,7 @@
 
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { DetailInspector } from "@/components/detail-inspector";
-import type { LicitacionDetail } from "@/components/detail-panel";
+import type { LicitacionDetail } from "@/lib/licitacion-detail";
 import type { ModoInspector } from "../../radar/_hooks/use-media-query";
 
 /**
