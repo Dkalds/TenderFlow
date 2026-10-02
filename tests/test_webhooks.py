@@ -34,7 +34,10 @@ class TestCreateWebhook:
     def test_secret_not_stored_plaintext_with_master_key(self, tmp_db):
         """When a master key is configured, the DB stores the sentinel."""
         db_mod, _ = tmp_db
-        with patch("db.webhooks._get_webhook_master_key", return_value="test-master-key-long!!"):
+        with patch(
+            "db.repositories.webhooks._get_webhook_master_key",
+            return_value="test-master-key-long!!",
+        ):
             wid, secret = _create_sample(db_mod)
         # Check DB has sentinel, not the actual secret
         from db.database import connect
