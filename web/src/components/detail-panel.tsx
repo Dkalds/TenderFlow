@@ -15,6 +15,7 @@ import { ROTULO_DATO, SectionTitle } from "@/components/console/panel";
 import { cn, EMPTY, formatCurrency, formatDate } from "@/lib/utils";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import { ExternalLink, Link2, MessageSquareText } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { toast } from "sonner";
 import { riesgoLabel } from "@/lib/riesgos";
 
@@ -229,6 +230,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
             className="text-primary mt-6 inline-flex items-center gap-1.5 text-tf-body hover:underline"
           >
             {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            <AvisoPestanaNueva />
           </a>
         )}
       </SheetContent>

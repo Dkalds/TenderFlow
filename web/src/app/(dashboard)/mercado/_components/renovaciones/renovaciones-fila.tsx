@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLink } from "lucide-react";
+import { AVISO_PESTANA_NUEVA } from "@/components/ui/aviso-pestana-nueva";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Pista } from "@/components/ui/pista";
@@ -91,7 +92,7 @@ export function CeldasRenovacion({
               target="_blank"
               rel="noopener noreferrer"
               className="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-              aria-label="Abrir anuncio original"
+              aria-label={`Abrir anuncio original${AVISO_PESTANA_NUEVA}`}
               onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />

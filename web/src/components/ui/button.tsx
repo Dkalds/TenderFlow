@@ -65,28 +65,19 @@ function buttonVariants(props?: Parameters<typeof variantesBoton>[0]): string {
 }
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends React.ComponentProps<"button">,
     ButtonVariantProps {
   asChild?: boolean
 }
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    // `asChild` renders the button's styling/behavior onto its child (e.g. a
-    // Next `<Link>`) instead of wrapping it in a real `<button>`, which
-    // produces invalid `<button><a>...` nesting and breaks link semantics
-    // (right-click "open in new tab", screen reader link role, etc.).
-    const Comp = asChild ? Slot : "button"
-    return (
-      <Comp
-        className={buttonVariants({ variant, size, className })}
-        ref={ref}
-        {...props}
-      />
-    )
-  }
-)
-Button.displayName = "Button"
+function Button({ className, variant, size, asChild = false, ...props }: ButtonProps) {
+  // `asChild` renders the button's styling/behavior onto its child (e.g. a
+  // Next `<Link>`) instead of wrapping it in a real `<button>`, which
+  // produces invalid `<button><a>...` nesting and breaks link semantics
+  // (right-click "open in new tab", screen reader link role, etc.).
+  const Comp = asChild ? Slot : "button"
+  return <Comp className={buttonVariants({ variant, size, className })} {...props} />
+}
 
 export { Button, buttonVariants }
 export type { ButtonVariantProps }

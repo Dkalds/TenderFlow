@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ExternalLink, Link2, MessageSquareText, X } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { toast } from "sonner";
 import { LicitacionAI } from "@/components/licitacion-ai";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
@@ -303,6 +304,7 @@ export function DetailInspector({
                 className="mb-5 flex w-fit items-center gap-1.5 text-tf-body font-medium"
               >
                 {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                <AvisoPestanaNueva />
               </a>
             )}
 

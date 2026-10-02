@@ -20,6 +20,7 @@
  * pliego, donde se decide si se va solo o acompañado.
  */
 import { ExternalLink } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { CodigoLegible } from "@/components/codigo-legible";
 import { DocumentosBlock } from "@/components/documentos-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
@@ -117,6 +118,7 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
               >
                 {fuenteLinkLabel(l.fuente, l.url)}
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                <AvisoPestanaNueva />
               </a>
             )}
             <EnlaceIr href={`/detalle?lic=${encodeURIComponent(licitacionId)}`}>Abrir en Detalle</EnlaceIr>

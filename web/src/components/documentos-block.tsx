@@ -6,6 +6,7 @@ import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
 import type { DocumentoSummary } from "@/lib/api-types";
 import { documentosNuevos } from "@/lib/documento-nuevo";
 import { ExternalLink, FileText } from "lucide-react";
+import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { cn } from "@/lib/utils";
 
 const TIPO_LABELS: Record<string, string> = {
@@ -40,6 +41,7 @@ function EnlaceFicha({ href, children }: { href: string; children: React.ReactNo
     >
       {children}
       <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <AvisoPestanaNueva />
     </a>
   );
 }
@@ -113,6 +115,7 @@ export function DocumentosBlock({
                 >
                   {doc.filename ?? TIPO_LABELS[doc.tipo] ?? doc.tipo}
                   <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <AvisoPestanaNueva />
                 </a>
                 <p className="text-tf-meta text-muted-foreground">
                   {nuevos.has(doc.id) && (
