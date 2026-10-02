@@ -41,12 +41,12 @@ def _usuario(email: str) -> tuple[str, dict[str, str]]:
     return user_key_from_email(email, user_id), {"X-API-Key": clave}
 
 
-def _publicada(id_externo: str, **hace: float) -> None:
+def _publicada(id_externo: str, *, ccaa: str = "Madrid", **hace: float) -> None:
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, estado, fecha_publicacion, "
-            "fecha_extraccion) VALUES (%s, %s, 'PUB', %s, %s)",
-            (id_externo, f"Expediente {id_externo}", _iso(**hace), _iso(**hace)),
+            "fecha_extraccion, ccaa) VALUES (%s, %s, 'PUB', %s, %s, %s)",
+            (id_externo, f"Expediente {id_externo}", _iso(**hace), _iso(**hace), ccaa),
         )
 
 
@@ -135,3 +135,19 @@ def test_la_marca_de_otro_usuario_no_cuenta(client):
 
     assert client.get(_URL, headers=h_ana).json()["count"] == 0
     assert client.get(_URL, headers=h_bea).json()["count"] == 1
+
+
+def test_cuenta_dentro_del_ambito(client):
+    """Es la cifra de «Nuevas» en «Mercado abierto»: mide el ámbito de la barra.
+
+    Sin filtros sigue contando el mercado entero.
+    """
+    uk, cabeceras = _usuario("nov-ambito@example.test")
+    _publicada("NOV-MADRID", ccaa="Madrid", hours=6)
+    _publicada("NOV-CATALUNA", ccaa="Cataluña", hours=6)
+    _visto(uk, cuando=_iso(days=1))
+
+    assert client.get(_URL, headers=cabeceras).json()["count"] == 2
+    madrid = client.get(f"{_URL}?ccaa=Madrid", headers=cabeceras).json()
+    assert madrid["count"] == 1
+    assert [fila["id_externo"] for fila in madrid["sample"]] == ["NOV-MADRID"]

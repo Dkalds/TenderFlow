@@ -919,7 +919,11 @@ class AggregateRepository:
         return int(row[0] or 0) if row else 0
 
     def resumen_novedades(
-        self, *, desde_iso: str, sample_limit: int
+        self,
+        filters: LicitacionesFilters | None = None,
+        *,
+        desde_iso: str,
+        sample_limit: int,
     ) -> tuple[int, list[dict[str, Any]]]:
         """(total, muestra) de licitaciones publicadas después de ``desde_iso``.
 
@@ -927,12 +931,16 @@ class AggregateRepository:
         ``head(10)`` de pandas devolvía las primeras filas en el orden en que
         las servía la BD (arbitrario y no estable entre llamadas); las más
         recientes son además las que el banner quiere enseñar.
+
+        ``filters`` acota al ámbito con el mismo ``WHERE`` que el resto de
+        agregados del Resumen; sin él cuenta el mercado entero (la campana).
         """
+        filtro, params = _build_where(filters or LicitacionesFilters())
         guard = iso_guard("fecha_publicacion")
-        where = f"{guard} AND fecha_publicacion > %s"
+        where = f"{filtro} AND {guard} AND fecha_publicacion > %s"
         with connect_read() as c:
             row = c.execute(
-                f"SELECT COUNT(*) FROM licitaciones WHERE {where}", [desde_iso]
+                f"SELECT COUNT(*) FROM licitaciones WHERE {where}", [*params, desde_iso]
             ).fetchone()
             count = int(row[0]) if row and row[0] is not None else 0
             if count == 0:
@@ -942,7 +950,7 @@ class AggregateRepository:
                     "SELECT id_externo, titulo, importe, organo_contratacion "
                     f"FROM licitaciones WHERE {where} "
                     "ORDER BY fecha_publicacion DESC LIMIT %s",
-                    [desde_iso, sample_limit],
+                    [*params, desde_iso, sample_limit],
                 )
             )
         return count, sample

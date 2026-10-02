@@ -13,8 +13,9 @@ import { useAnnounceOnChange } from "@/components/live-region";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { cn, formatNumber } from "@/lib/utils";
+import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { ResumenHoyResult } from "@/lib/api-types";
+import { useNovedades } from "../_hooks/use-novedades";
 import { ColaCierre } from "./cola-cierre";
 
 /**
@@ -58,9 +59,11 @@ interface Tarjeta {
   /** Qué abre de verdad. `exacto: false` ⇒ el listado es más ancho que la cifra. */
   target: string;
   exacto: boolean;
+  /** Cada tarjeta carga de su propio endpoint. */
+  cargando: boolean;
 }
 
-function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
+function UrgentCard({ card }: { card: Tarjeta }) {
   const scopedHref = useScopedHref();
 
   return (
@@ -73,7 +76,7 @@ function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
       )}
     >
       <span className="mb-1.5 text-tf-meta font-medium">{card.title}</span>
-      {loading ? (
+      {card.cargando ? (
         <Skeleton className="h-6 w-16 rounded-sm" />
       ) : (
         <span className="tf-tnum text-tf-title font-semibold">{formatNumber(card.value)}</span>
@@ -106,14 +109,6 @@ export function AtencionCards() {
     true,
   );
 
-  // Deep-link de «Nuevas 24h»: el listado aplica `fecha_desde` de verdad, así
-  // que esta tarjeta sí abre exactamente lo que cuenta.
-  const nuevasHref = useMemo(() => {
-    // eslint-disable-next-line react-hooks/purity
-    const ayer = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    return `/detalle?fecha_desde=${ayer}`;
-  }, []);
-
   // Deep-link de la cola de cierre: `cierre_desde`/`cierre_hasta` acotan
   // `fecha_limite`, la misma columna sobre la que el KPI cuenta, y
   // `solo_abiertas` es la misma guardia de estado: el KPI ya no cuenta las
@@ -141,15 +136,24 @@ export function AtencionCards() {
     [],
   );
 
+  // «Nuevas» cuenta desde tu última visita y en tu ámbito: la misma marca que
+  // la banda de arriba, y la misma consulta que marca las filas nuevas de la
+  // tabla de publicaciones (`_hooks/use-novedades.ts`). Sustituye a «Nuevas
+  // 24h», que contaba otra ventana, y a la línea de novedades de todo el
+  // mercado que había encima de la tabla: eran tres ideas de «nuevo».
+  const novedades = useNovedades();
+  const desde = novedades.data?.desde ?? null;
+
   const data = hoy.data;
   // `null` solo con un ámbito sin importes: ver el punto 2 de la cabecera.
   const p75 = data?.importe_p75 ?? null;
 
   // El recuento es el dato central de la pantalla y saltaba en silencio para
   // quien usa lector (hallazgo 5 de la auditoría UX).
+  const nuevas = novedades.data ? `${novedades.data.count} nuevas desde tu última visita, ` : "";
   useAnnounceOnChange(
     data
-      ? `Mercado abierto: ${data.vencen_48h} vencen en 48 horas, ${data.nuevas_24h} nuevas en 24 horas, ${data.total_activas} activas.`
+      ? `Mercado abierto: ${data.vencen_48h} vencen en 48 horas, ${nuevas}${data.total_activas} activas.`
       : null,
   );
 
@@ -171,15 +175,25 @@ export function AtencionCards() {
           ? "Abre Detalle: abiertas en plazo del 25 % de mayor importe"
           : "Abre Detalle: abiertas en plazo, sin umbral (el ámbito no trae importes)",
       exacto: p75 !== null,
+      cargando: hoy.isLoading,
     },
     {
       key: "nuevas",
-      title: "Nuevas 24h",
-      value: data?.nuevas_24h,
-      subtitle: "Publicadas hoy",
-      href: nuevasHref,
-      target: "Abre Detalle: publicadas desde ayer",
-      exacto: true,
+      title: "Nuevas",
+      value: novedades.data?.count,
+      subtitle: novedades.error
+        ? "No se pudo comprobar desde tu última visita"
+        : desde
+          ? `Desde tu última visita, el ${formatDateTime(desde)}`
+          : "Desde tu última visita",
+      // El listado corta por día: abre también lo publicado ese día antes de
+      // la marca. Es el mismo redondeo que la cola de cierre.
+      href: desde ? `/detalle?fecha_desde=${desde.slice(0, 10)}` : "/detalle",
+      target: desde
+        ? `Abre Detalle: publicadas desde el ${formatDate(desde)}`
+        : "Abre Detalle: todas las publicaciones",
+      exacto: desde !== null || novedades.isLoading,
+      cargando: novedades.isLoading,
     },
   ];
 
@@ -204,7 +218,7 @@ export function AtencionCards() {
           />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             {cards.map((card) => (
-              <UrgentCard key={card.key} card={card} loading={hoy.isLoading} />
+              <UrgentCard key={card.key} card={card} />
             ))}
           </div>
         </div>

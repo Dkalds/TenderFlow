@@ -52,9 +52,22 @@ function key(base: string[], url: string) {
   return [...base, url, { ...scope.params }];
 }
 
-function renderCards(hoy: Record<string, unknown> = HOY) {
+/** Última visita: el corte con el que cuenta «Nuevas». */
+const DESDE = "2026-09-29T08:15:00+00:00";
+const NOVEDADES = { count: 8, sample: [], desde: DESDE };
+
+function renderCards(
+  hoy: Record<string, unknown> = HOY,
+  novedades: Record<string, unknown> | null = NOVEDADES,
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   qc.setQueryData(key(["analytics", "resumen", "hoy"], "/api/v1/analytics/resumen/hoy"), hoy);
+  if (novedades) {
+    qc.setQueryData(
+      key(["analytics", "resumen", "novedades"], "/api/v1/analytics/resumen/novedades"),
+      novedades,
+    );
+  }
   return render(
     <QueryClientProvider client={qc}>
       <AtencionCards />
@@ -102,7 +115,7 @@ describe("AtencionCards", () => {
     // y su enlace abría /detalle sin la CCAA — otro universo, mismo número.
     scope.qs = "?ccaa=Madrid&tecnologia=SAP";
     renderCards();
-    for (const titulo of ["Ver la cola de cierre", "Grandes en plazo", "Nuevas 24h"]) {
+    for (const titulo of ["Ver la cola de cierre", "Grandes en plazo", "Nuevas"]) {
       expect(hrefDe(titulo)).toContain("ccaa=Madrid");
       expect(hrefDe(titulo)).toContain("tecnologia=SAP");
     }
@@ -111,8 +124,27 @@ describe("AtencionCards", () => {
   it("conserva el recorte propio de la tarjeta junto al ámbito", () => {
     scope.qs = "?ccaa=Madrid";
     renderCards();
-    expect(hrefDe("Nuevas 24h")).toMatch(/fecha_desde=\d{4}-\d{2}-\d{2}/);
-    expect(hrefDe("Nuevas 24h")).toContain("ccaa=Madrid");
+    expect(hrefDe("Nuevas")).toContain("fecha_desde=2026-09-29");
+    expect(hrefDe("Nuevas")).toContain("ccaa=Madrid");
+  });
+
+  it("«Nuevas» cuenta desde tu última visita, no las últimas 24 horas", () => {
+    // Eran tres ideas de «nuevo»: «Nuevas 24h», la línea de novedades del
+    // mercado entero y la banda de lo que sigues. La tarjeta cuenta ahora el
+    // corte de la última visita, dentro del ámbito, y dice cuál es.
+    renderCards({ ...HOY, nuevas_24h: 99 });
+    expect(screen.queryByText("99")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nuevas 24h")).not.toBeInTheDocument();
+    expect(screen.getByText(/^Desde tu última visita, el /)).toBeInTheDocument();
+    expect(screen.getByText(/^Abre Detalle: publicadas desde el /)).toBeInTheDocument();
+  });
+
+  it("si no se puede comprobar la última visita, no inventa la cifra", () => {
+    renderCards(HOY, null);
+    // Sin dato en caché, la consulta queda pendiente (el doble no resuelve):
+    // la tarjeta enseña su esqueleto, no un cero.
+    const tarjeta = screen.getByText("Nuevas").closest("a");
+    expect(tarjeta?.textContent).not.toMatch(/\b0\b/);
   });
 
   it("la cola de cierre abre la ventana que cuenta, y lo declara", () => {

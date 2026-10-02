@@ -624,12 +624,16 @@ export interface paths {
         };
         /**
          * Resumen Novedades
-         * @description Licitaciones publicadas en todo el mercado desde tu última visita.
+         * @description Licitaciones publicadas desde tu última visita, en el ámbito pedido.
          *
          *     La última visita es la misma que la de `/resumen/desde-mi-ultima-visita`
          *     —la marca de `notification_reads`, con el mismo tope de 14 días—, así que
          *     `desde` coincide con el de esa banda y «marcar todo como visto» mueve las
          *     dos. Sin última visita, el corte es el tope.
+         *
+         *     Acepta el ámbito entero de la barra de filtros, como `/resumen/hoy`: es la
+         *     cifra de «Nuevas» de la banda «Mercado abierto». Sin filtros, el mercado
+         *     entero.
          *
          *     **No se cachea**, por lo mismo que aquella: el corte se mueve con cada
          *     lectura y con cada «marcar todo como visto».
@@ -16235,7 +16239,30 @@ export interface operations {
     };
     resumen_novedades_api_v1_analytics_resumen_novedades_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Start date (YYYY-MM-DD) */
+                fecha_desde?: string | null;
+                /** @description End date (YYYY-MM-DD) */
+                fecha_hasta?: string | null;
+                /** @description Filter by CCAA */
+                ccaa?: string | null;
+                /** @description Filter by tecnologia */
+                tecnologia?: string | null;
+                /** @description Filter by estado */
+                estado?: string | null;
+                /** @description Free-text search (titulo, organo, id) */
+                q?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
+                /** @description Sólo las que siguen abiertas */
+                solo_abiertas?: boolean;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };

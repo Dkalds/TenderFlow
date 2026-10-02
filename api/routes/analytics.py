@@ -50,6 +50,7 @@ from services.analytics.proyectos_modulos import (
 )
 from services.analytics.quality import QualityResult, get_quality
 from services.analytics.resumen import (
+    AmbitoResumen,
     ResumenHoyFilters,
     ResumenHoyResult,
     ResumenNovedadesResult,
@@ -577,18 +578,54 @@ def pipeline(
 
 @router.get("/resumen/novedades", response_model=ResumenNovedadesResult)
 async def resumen_novedades(
+    fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    estado: str | None = Query(default=None, description="Filter by estado"),
+    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    importe_max: float | None = Query(
+        default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
+    ),
+    provincia: str | None = Query(
+        default=None, max_length=200, description="Provincia (multi-valor, separadas por comas)"
+    ),
+    procedimiento: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
+    ),
+    solo_abiertas: bool = Query(default=False, description="Sólo las que siguen abiertas"),
     ctx: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ResumenNovedadesResult:
-    """Licitaciones publicadas en todo el mercado desde tu última visita.
+    """Licitaciones publicadas desde tu última visita, en el ámbito pedido.
 
     La última visita es la misma que la de `/resumen/desde-mi-ultima-visita`
     —la marca de `notification_reads`, con el mismo tope de 14 días—, así que
     `desde` coincide con el de esa banda y «marcar todo como visto» mueve las
     dos. Sin última visita, el corte es el tope.
 
+    Acepta el ámbito entero de la barra de filtros, como `/resumen/hoy`: es la
+    cifra de «Nuevas» de la banda «Mercado abierto». Sin filtros, el mercado
+    entero.
+
     **No se cachea**, por lo mismo que aquella: el corte se mueve con cada
     lectura y con cada «marcar todo como visto».
     """
+    ambito = AmbitoResumen(
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        estado=estado,
+        q=q,
+        importe_min=importe_min,
+        importe_max=importe_max,
+        provincia=provincia,
+        procedimiento=procedimiento,
+        solo_abiertas=solo_abiertas,
+    )
 
     def _trabajo() -> ResumenNovedadesResult:
         user_id = ctx.get("user_id")
@@ -597,7 +634,7 @@ async def resumen_novedades(
             user_id=int(user_id) if user_id is not None else None,
         )
         desde, _recortada = corte_ultima_visita(last_seen)
-        return get_resumen_novedades_desde(desde.isoformat())
+        return get_resumen_novedades_desde(desde.isoformat(), ambito)
 
     return await run_db(_trabajo)
 

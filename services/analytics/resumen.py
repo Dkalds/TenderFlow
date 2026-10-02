@@ -245,13 +245,16 @@ def get_resumen_novedades(user_id: int) -> ResumenNovedadesResult:
     return get_resumen_novedades_desde(ts.isoformat())
 
 
-def get_resumen_novedades_desde(desde_iso: str) -> ResumenNovedadesResult:
-    """Licitaciones publicadas en todo el mercado desde ``desde_iso``.
+def get_resumen_novedades_desde(
+    desde_iso: str, filters: AmbitoResumen | None = None
+) -> ResumenNovedadesResult:
+    """Licitaciones publicadas desde ``desde_iso``, en el ámbito ``filters``.
 
     Es lo que pide el Resumen (``/analytics/resumen/novedades``), con el corte
     ya resuelto por la ruta: la última visita de ``notification_reads``, la
     misma que usa la banda «desde tu última visita»
-    (:func:`services.novedades.corte_ultima_visita`).
+    (:func:`services.novedades.corte_ultima_visita`). Sin ``filters``, el
+    mercado entero.
 
     :func:`get_resumen_novedades` —por ``user_id``— lee ``users.last_login``,
     una columna que ninguna migración crea: siempre devuelve vacío. El Resumen
@@ -259,7 +262,11 @@ def get_resumen_novedades_desde(desde_iso: str) -> ResumenNovedadesResult:
     campana (``/notifications``) aún la llama.
     """
     log.info("analytics_resumen_novedades_desde_start")
-    count, rows = _repo.resumen_novedades(desde_iso=desde_iso, sample_limit=_NOVEDADES_SAMPLE)
+    count, rows = _repo.resumen_novedades(
+        _to_repo_filters(filters) if filters is not None else None,
+        desde_iso=desde_iso,
+        sample_limit=_NOVEDADES_SAMPLE,
+    )
     sample = [
         ResumenNovedadesSample(
             id_externo=str(row["id_externo"]),
