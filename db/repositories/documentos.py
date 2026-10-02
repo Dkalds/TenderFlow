@@ -25,12 +25,35 @@ from typing import Any
 
 from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import columna_nucleo, columna_nucleo_sql, universo_tecnologico_sql
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS
 
 log = get_logger(__name__)
 
 _MAX_ERROR_DETAIL_LEN = 2000
+
+
+def _vigente_sql() -> str:
+    """«Convocatoria vigente» para quien completa documentos fuera del ATOM.
+
+    Con el plazo de ofertas abierto (hoy incluido) o, si la fuente no lo publica
+    —un anuncio previo de TED no lo tiene—, publicada en los últimos 90 días.
+    Fuera de eso el pliego ya no sirve para presentarse y no compensa ir a
+    buscarlo.
+
+    Lee el plazo con :func:`columna_nucleo_sql`, no ``fecha_limite_ts`` a pelo:
+    el 2026-10-02, 680 de las 1.082 convocatorias TED de producción tenían el
+    texto y la sombra vacía (el backfill de ``v133`` no ha llegado), y con la
+    sombra habrían contado como «sin plazo».
+    """
+    limite = columna_nucleo_sql("fecha_limite")
+    hoy = (
+        "current_date"
+        if columna_nucleo("fecha_limite") == "fecha_limite_ts"
+        else "to_char(current_date, 'YYYY-MM-DD')"
+    )
+    return f"({limite} >= {hoy} OR ({limite} IS NULL AND l.fecha_pub_d >= current_date - 90))"
 
 
 @dataclass(frozen=True)
@@ -393,6 +416,67 @@ class DocumentosRepository:
                 "ORDER BY CASE tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
                 "created_at DESC, id",
                 (licitacion_id,),
+            )
+            return rows_to_dicts(cur)
+
+    def ted_vigentes_sin_documentos(self, limit: int = 300) -> list[str]:
+        """Convocatorias TED vigentes, sin pareja confirmada y sin ningún documento.
+
+        Son las que reciben el PDF de su anuncio como documento propio
+        (``scraper.documentos_plataforma.completar_documentos_ted``). «Vigente»
+        es :func:`_vigente_sql`. La pareja ``confirmed`` se excluye porque su
+        ficha lee los pliegos de la canónica; una ``pending`` no, porque puede
+        ser otro contrato y entonces el anuncio es lo único que la describe.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT l.id_externo FROM licitaciones l "
+                "WHERE l.fuente = 'ted' AND l.estado IN ('PUB', 'PRE') "
+                f"AND {_vigente_sql()} "
+                "AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados x "
+                "    WHERE x.licitacion_id = l.id_externo AND x.status = 'confirmed') "
+                "AND NOT EXISTS (SELECT 1 FROM documentos d WHERE d.licitacion_id = l.id_externo) "
+                "ORDER BY l.fecha_pub_d DESC NULLS LAST, l.id_externo "
+                "LIMIT %s",
+                (max(1, min(int(limit), 1000)),),
+            )
+            return [str(fila[0]) for fila in cur.fetchall()]
+
+    def pscp_vigentes_para_documentos(
+        self, limit: int = 200, *, dias_refresco: int = 21
+    ) -> list[dict[str, Any]]:
+        """Convocatorias tecnológicas vigentes de la PSCP cuya ficha toca leer.
+
+        Las que aún no tienen documentos y, de las que sí, las publicadas en los
+        últimos *dias_refresco* días: en ese margen llegan las rectificaciones
+        de pliegos y el anuncio TED que la ficha cita, que es con lo que se
+        empareja el aviso TED (``services.dedupe.marcar_republicaciones_ted``).
+        Sin documentos primero; dentro, lo más reciente.
+
+        El corte es el universo tecnológico de la superficie pública
+        (:func:`db.sql_fragments.universo_tecnologico_sql`) **más** lo que la
+        puerta de PSCP guarda solo por su CPV 48/72 (``inclusion_reason =
+        'cpv_ti_universe'``, ``scraper.connectors.pscp.INCLUSION_CPV_TI``). Esas
+        filas no se publican —no tienen etiqueta de tecnología—, pero su anuncio
+        TED sí, porque TED entra por CPV: el 2026-10-02 eran 48 de las 122
+        convocatorias vigentes, y sin leer su ficha el aviso TED se quedaba sin
+        pliegos. Leer la de un contrato de limpieza no serviría a nadie.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT l.id_externo, l.url FROM ("
+                "  SELECT l.id_externo, l.url, l.fecha_pub_d, "
+                "  NOT EXISTS (SELECT 1 FROM documentos d "
+                "      WHERE d.licitacion_id = l.id_externo) AS sin_documentos "
+                "  FROM licitaciones l "
+                "  WHERE l.fuente = 'pscp' AND l.estado = 'PUB' "
+                f"  AND {_vigente_sql()} "
+                f"  AND ({universo_tecnologico_sql('l')} OR l.inclusion_reason = 'cpv_ti_universe')"
+                ") l "
+                "WHERE l.sin_documentos OR l.fecha_pub_d >= current_date - %s::int "
+                "ORDER BY l.sin_documentos DESC, l.fecha_pub_d DESC NULLS LAST, l.id_externo "
+                "LIMIT %s",
+                (max(0, int(dias_refresco)), max(1, min(int(limit), 1000))),
             )
             return rows_to_dicts(cur)
 

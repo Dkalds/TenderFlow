@@ -293,6 +293,52 @@ def iter_candidatas_por_referencia(
     yield from _iter_dicts(sql, tuple(params))
 
 
+def ted_sin_pareja_con_id_evl() -> list[dict[str, Any]]:
+    """Filas TED con deeplink de PLACSP (``idEvl`` en ``url``) y sin pareja decidida.
+
+    «Decidida» es una marca ``confirmed`` o una que alguien resolvió a mano
+    (``resolved_at``): las dos son definitivas para
+    :func:`marcar_duplicados_por_referencia`, así que no tiene sentido volver a
+    evaluarlas. Una ``pending`` sí entra: la referencia exacta la promueve.
+
+    Alimenta dos cosas: el re-emparejamiento del histórico
+    (``services.dedupe.reemparejar_ted_por_id_evl``), que la detección por
+    referencia solo hacía con los avisos de su ventana de 14 días, y el rescate
+    de pliegos de las entries del ATOM que el filtro de tecnología descarta.
+    Son unos cientos de filas sobre ``idx_lic_fuente``.
+    """
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT l.id_externo, l.url FROM licitaciones l "
+                "WHERE l.fuente = 'ted' AND l.url ILIKE %s "
+                "AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados d "
+                "    WHERE d.licitacion_id = l.id_externo "
+                "    AND (d.status = 'confirmed' OR d.resolved_at IS NOT NULL)) "
+                "ORDER BY l.id_externo",
+                ("%idevl=%",),
+            )
+        )
+
+
+def es_canonica_visible(id_externo: str) -> bool:
+    """¿Puede *id_externo* hacer de canónica de otra fila sin que el contrato desaparezca?
+
+    El mismo invariante que :func:`iter_candidatas_por_referencia`: publicable
+    con el predicado de la superficie pública y sin marca de duplicado propia.
+    Esconder una fila detrás de otra que tampoco se publica borraría el contrato
+    entero; detrás de una que ya está escondida, crearía un ciclo.
+    """
+    with connect_read() as c:
+        fila = c.execute(
+            "SELECT 1 FROM licitaciones l WHERE l.id_externo = %s "
+            f"AND {_publicable_sql('l')} "
+            f"AND {exclude_duplicados_presentacion_sql('l.id_externo')}",
+            (id_externo,),
+        ).fetchone()
+    return fila is not None
+
+
 def marcar_duplicados_por_referencia(marcas: Sequence[tuple[str, str, str, float, str]]) -> int:
     """Como :func:`marcar_duplicados`, pero promueve una marca ``pending`` sin resolver.
 
@@ -320,6 +366,7 @@ def marcar_duplicados_por_referencia(marcas: Sequence[tuple[str, str, str, float
 
 
 __all__ = [
+    "es_canonica_visible",
     "filas_nuevas_de_fuente",
     "filas_por_id",
     "iter_candidatas_por_referencia",
@@ -327,6 +374,7 @@ __all__ = [
     "iter_filas_publicables_de_organos",
     "marcar_duplicados",
     "marcar_duplicados_por_referencia",
+    "ted_sin_pareja_con_id_evl",
 ]
 
 

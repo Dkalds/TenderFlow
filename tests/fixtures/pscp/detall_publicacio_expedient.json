@@ -1,0 +1,106 @@
+{
+  "expedientId": "fcd0edf9-2bd9-4f2e-9924-24b8627a96de",
+  "publicacioId": 300885821,
+  "fase": 1000040,
+  "titol": "Subministrament de divers programari instal·lat a l’Ajuntament d’Esplugues de Llobregat",
+  "codiExpedient": "2026/6150/1428",
+  "dades": {
+    "codiExpedient": "2026/6150/1428",
+    "organ": {
+      "nom": "Ajuntament d'Esplugues de Llobregat"
+    },
+    "publicacio": {
+      "id": null,
+      "fase": {
+        "id": 1000040,
+        "text": "Anunci de licitació"
+      },
+      "dadesBasiquesPublicacio": {
+        "codiExpedient": "2026/6150/1428",
+        "denominacio": {
+          "text": "Subministrament de divers programari instal·lat a l’Ajuntament d’Esplugues de Llobregat"
+        }
+      },
+      "dadesPublicacio": {
+        "plecsDeClausulesAdministratives": {
+          "docs": [
+            {
+              "id": 302602164,
+              "titol": "PCAP.pdf",
+              "path": "Dl-803jGuO_CIuXXStWHuNi1…",
+              "hash": "9A924223D961BE24728F61B79E4CABF9",
+              "idioma": "es",
+              "mida": 1149134
+            }
+          ]
+        },
+        "plecsDePrescripcionsTecniques": {
+          "docs": [
+            {
+              "id": 302602166,
+              "titol": "PPT.pdf",
+              "path": "CaK3WNSwm0mAtBApJcH8obmM…",
+              "hash": "BED412D30394A796A1E7F7C62352C981",
+              "idioma": "es",
+              "mida": 200151
+            }
+          ]
+        },
+        "memoriaJustificativaContracte": {
+          "docs": [
+            {
+              "id": 302602167,
+              "titol": "Informe de necessitat.pdf",
+              "path": "EWhTzx_qFP3bpIYvFGWDggjt…",
+              "hash": "1D4F800931F4E13CA9E09AE0CA1243FD",
+              "idioma": "es",
+              "mida": 432028
+            }
+          ]
+        },
+        "altresDocuments": {
+          "docs": [
+            {
+              "id": 302602168,
+              "titol": "ANNEX I AL PCAP.docx",
+              "path": "Y1A6cKC5aerSAyAcGc7SsCTX…",
+              "hash": "3B1DB83351CADE70F00163EE50C8C653",
+              "idioma": "es",
+              "mida": 61578
+            },
+            {
+              "id": 302602170,
+              "titol": "ANNEX II AL PCAP.docx",
+              "path": "MnIxtp4pFYoxs3uDvvw_pXYE…",
+              "hash": "E45475D699043DEAD4A4DF8293B59431",
+              "idioma": "es",
+              "mida": 59877
+            }
+          ]
+        }
+      },
+      "dadesPublicacioLot": [
+        {
+          "titol": "Autodesk",
+          "cpvPrincipal": {
+            "codi": "48000000-8",
+            "text": "Paquets de programes i sistemes d'informació"
+          }
+        }
+      ],
+      "publicacionsOficials": [
+        {
+          "tipus": {
+            "id": 35002,
+            "text": "DOUE"
+          },
+          "url": "https://ted.europa.eu/en/notice/-/detail/675385-2026",
+          "dataPublicacio": "2026-09-30T22:00:00.000Z",
+          "dataTramesaTED": "2026-09-30T11:05:35.000Z",
+          "procedureId": "fcd0edf9-2bd9-4f2e-9924-24b8627a96de",
+          "noticeId": "f11a410c-a91d-4cad-985d-fefbd777dda2"
+        }
+      ]
+    }
+  }
+}

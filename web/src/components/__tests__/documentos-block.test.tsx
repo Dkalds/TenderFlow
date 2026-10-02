@@ -48,12 +48,42 @@ describe("DocumentosBlock", () => {
     withData(
       "L-empty2",
       { items: [] },
-      <DocumentosBlock licitacionId="L-empty2" fichaUrl="https://placsp.example/ficha?idEvl=abc" />,
+      <DocumentosBlock licitacionId="L-empty2" fichaUrl="https://contrataciondelestado.es/wps/poc?idEvl=abc" />,
     );
     expect(screen.getByRole("link", { name: /ficha de PLACSP/ })).toHaveAttribute(
       "href",
-      "https://placsp.example/ficha?idEvl=abc",
+      "https://contrataciondelestado.es/wps/poc?idEvl=abc",
     );
+  });
+
+  it.each([
+    ["https://contractaciopublica.cat/ca/detall-publicacio/x/1", /ficha de la PSCP/],
+    ["https://ted.europa.eu/es/notice/678766-2026/pdf", /anuncio en TED/],
+    ["https://www.contratosdegalicia.gal/licitacion?id=1", /plataforma del comprador/],
+  ])("names the platform the ficha link actually goes to (%s)", (url, nombre) => {
+    withData("L-plataforma", { items: [] }, <DocumentosBlock licitacionId="L-plataforma" fichaUrl={url} />);
+    expect(screen.getByRole("link", { name: nombre })).toHaveAttribute("href", url);
+    expect(screen.queryByText(/PLACSP/)).not.toBeInTheDocument();
+  });
+
+  it("labels the TED notice as such, not as an additional document", () => {
+    withData(
+      "L-ted",
+      {
+        items: [
+          {
+            ...ITEMS.items[0],
+            id: 9,
+            tipo: "additional",
+            uri: "https://ted.europa.eu/es/notice/678766-2026/pdf",
+            filename: "Anuncio TED 678766-2026.pdf",
+          },
+        ],
+      },
+      <DocumentosBlock licitacionId="L-ted" />,
+    );
+    expect(screen.getByText(/Anuncio publicado en TED/)).toBeInTheDocument();
+    expect(screen.queryByText(/Documento adicional/)).not.toBeInTheDocument();
   });
 
   it("keeps the link on failed documents but flags it as possibly expired", () => {
@@ -79,11 +109,11 @@ describe("DocumentosBlock", () => {
     withData(
       "L2",
       ITEMS,
-      <DocumentosBlock licitacionId="L2" fichaUrl="https://placsp.example/ficha?idEvl=xyz" />,
+      <DocumentosBlock licitacionId="L2" fichaUrl="https://contrataciondelestado.es/wps/poc?idEvl=xyz" />,
     );
     expect(screen.getByRole("link", { name: /ficha de PLACSP/ })).toHaveAttribute(
       "href",
-      "https://placsp.example/ficha?idEvl=xyz",
+      "https://contrataciondelestado.es/wps/poc?idEvl=xyz",
     );
   });
 

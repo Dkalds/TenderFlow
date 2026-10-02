@@ -426,7 +426,13 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # In production PDF parsing runs in a disposable child process. A malformed
     # document cannot monopolize the scheduler process indefinitely.
     DOCUMENT_EXTRACTION_TIMEOUT_SECONDS: int = 30
-    DOCUMENT_ALLOWED_HOSTS: str = "contrataciondelestado.es,*.contrataciondelestado.es"
+    # Union de `dominios_documentos` del inventario de fuentes, en su orden
+    # (`scraper/connectors/__init__.py`); `config/` no puede importar `scraper/`,
+    # así que se copia a mano y `test_allowlist_de_documentos_por_defecto_sale_del_inventario`
+    # exige que coincidan.
+    DOCUMENT_ALLOWED_HOSTS: str = (
+        "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat"
+    )
     WEBHOOK_ALLOWED_HOSTS: str = ""
     ALLOW_SELF_REGISTRATION: bool = False
 

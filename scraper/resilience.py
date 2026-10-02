@@ -3,7 +3,9 @@
 - ``http_retry``: decorador tenacity con backoff exponencial + jitter, que
   reintenta solo en errores transitorios (timeouts, 5xx, 429, conn errors).
 - ``placsp_breaker``: circuit breaker que se abre tras 5 fallos consecutivos,
-  evitando saturar la plataforma cuando está caída.
+  evitando saturar la plataforma cuando está caída. ``ted_breaker`` y
+  ``pscp_breaker`` son sus gemelos para los documentos de esas plataformas;
+  ``breaker_para_host`` elige el que toca.
 
 El breaker ignora ``ValueError`` (validación de tamaño o URL) porque no son
 fallos del servidor — un payload malicioso no debería abrir el circuito.
@@ -97,6 +99,7 @@ class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
             cb.reset_timeout = new_timeout
             log.warning(
                 "placsp_breaker_state_change",
+                breaker=cb.name,
                 old_state=old_name,
                 new_state=new_name,
                 fail_counter=cb.fail_counter,
@@ -108,6 +111,7 @@ class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
             cb.reset_timeout = self._base_timeout
             log.info(
                 "placsp_breaker_state_change",
+                breaker=cb.name,
                 old_state=old_name,
                 new_state=new_name,
                 fail_counter=cb.fail_counter,
@@ -116,21 +120,50 @@ class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
         else:
             log.info(
                 "placsp_breaker_state_change",
+                breaker=cb.name,
                 old_state=old_name,
                 new_state=new_name,
                 fail_counter=cb.fail_counter,
             )
 
 
-placsp_breaker = pybreaker.CircuitBreaker(
-    fail_max=5,
-    reset_timeout=settings.BREAKER_BASE_TIMEOUT,
-    exclude=[ValueError],
-    listeners=[
-        _AdaptiveBackoffListener(
-            base_timeout=settings.BREAKER_BASE_TIMEOUT,
-            max_timeout=settings.BREAKER_MAX_TIMEOUT,
-        )
-    ],
-    name="placsp",
+def _nuevo_breaker(nombre: str) -> pybreaker.CircuitBreaker:
+    return pybreaker.CircuitBreaker(
+        fail_max=5,
+        reset_timeout=settings.BREAKER_BASE_TIMEOUT,
+        exclude=[ValueError],
+        listeners=[
+            _AdaptiveBackoffListener(
+                base_timeout=settings.BREAKER_BASE_TIMEOUT,
+                max_timeout=settings.BREAKER_MAX_TIMEOUT,
+            )
+        ],
+        name=nombre,
+    )
+
+
+placsp_breaker = _nuevo_breaker("placsp")
+
+#: Un circuito por plataforma de la que se descargan documentos. Con uno solo,
+#: cinco fallos seguidos de TED o de la plataforma catalana abrían el de PLACSP
+#: y paraban también la descarga de sus pliegos, que es el grueso del lote.
+ted_breaker = _nuevo_breaker("ted")
+pscp_breaker = _nuevo_breaker("pscp")
+
+_BREAKERS_POR_HOST: tuple[tuple[str, pybreaker.CircuitBreaker], ...] = (
+    ("ted.europa.eu", ted_breaker),
+    ("contractaciopublica.cat", pscp_breaker),
 )
+
+
+def breaker_para_host(host: str | None) -> pybreaker.CircuitBreaker:
+    """El circuito de la plataforma que sirve *host*; PLACSP para el resto.
+
+    PLACSP es el defecto porque es lo que era el único circuito hasta ahora: un
+    host que no esté en la tabla se comporta exactamente como antes.
+    """
+    host_l = (host or "").lower()
+    for dominio, breaker in _BREAKERS_POR_HOST:
+        if host_l == dominio or host_l.endswith("." + dominio):
+            return breaker
+    return placsp_breaker

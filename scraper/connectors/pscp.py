@@ -559,6 +559,21 @@ class PscpConnector:
             "pscp_fechas_implausibles": self._fechas_implausibles,
         }
 
+    # ── documentos ───────────────────────────────────────────────────────
+
+    def completar_documentos(self) -> None:
+        """Tras la ingesta: pliegos de las convocatorias vigentes y su anuncio TED.
+
+        El dataset de Socrata no trae adjuntos; la ficha pública de cada
+        publicación sí (``scraper.documentos_plataforma.completar_documentos_pscp``).
+        No depende del lote del run sino de la BD: así cubre también lo que se
+        ingirió antes de que existiera este paso.
+        """
+        from scraper.documentos_plataforma import completar_documentos_pscp
+
+        resumen = completar_documentos_pscp()
+        log.info("pscp_documentos_completados", **resumen.as_dict())
+
     # ── cursor ───────────────────────────────────────────────────────────
 
     def new_cursor(self) -> dict[str, Any] | None:
