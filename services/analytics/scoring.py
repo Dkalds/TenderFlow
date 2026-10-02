@@ -492,9 +492,9 @@ def _build_context(
         imp_p10, imp_p90 = importe_percentiles.p10, importe_percentiles.p90
         percentiles_fuente = importe_percentiles.fuente
     else:
-        valid_imp = (
-            df["importe"].dropna() if "importe" in df.columns else pd.Series([], dtype=float)
-        )
+        # `pd.Series(dtype=float)` y no `pd.Series([], dtype=float)`: pandas-stubs 3
+        # tipa la lista vacía como `Series[str]` y `quantile` deja de tipar.
+        valid_imp = df["importe"].dropna() if "importe" in df.columns else pd.Series(dtype=float)
         imp_p10 = float(valid_imp.quantile(0.10)) if len(valid_imp) > 0 else 0.0
         imp_p90 = float(valid_imp.quantile(0.90)) if len(valid_imp) > 0 else 0.0
         percentiles_fuente = "lote_local" if len(valid_imp) > 0 else "sin_datos"
