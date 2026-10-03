@@ -417,7 +417,32 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   candidatas, las 120 con documentos, 958 referencias (117 PCAP, 117 PPT, 724
   adicionales), 45 fichas que citan un anuncio TED y 0 fallos en 52 s. Quedan
   los otros dos criterios, que solo se cierran con un run de producción.
-- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py)
+- **Qué consumía los 10 minutos (diagnóstico del 2026-10-03):** la resolución
+  de empresas, y no por cálculo sino por viajes de red.
+  - Un lote son 5.000 adjudicaciones en una transacción, con un `INSERT` de
+    alias y un `UPDATE` de enlace **por fila, cada uno en su viaje**. Sobre el
+    lote real de PSCP: 4.904 filas por NIF exacto, 10.126 escrituras, 2 s de
+    CPU (la comparación difusa, 1,9 s en 56 filas).
+  - Los runners están en EE. UU. («Azure Region» del log: eastus,
+    northcentralus, westus3) y la BD en París: 95-150 ms por viaje. El
+    2026-10-01, desde eastus, el lote tardó 961 s; el dedupe de detrás, 16 s.
+  - `HOOK_TIME_BUDGET_S` solo se mira entre lotes, así que no llegaba a actuar.
+  - El `timeout-minutes` del step no mata el proceso: lo deja huérfano
+    escribiendo hasta el final del job («Terminate orphan process … (python)»).
+    Si el job acaba antes que el lote, se deshace entero: el 2 y el 3 de octubre
+    no avanzó nada, y el cursor `entity_resolution_pscp` seguía en el día 1.
+  - Estado medido: 52.811 de las 58.029 adjudicaciones de PSCP sin enlazar
+    (91 %). El atraso se regenera a diario: `replace_adjudicaciones_batch`
+    reinserta las adjudicaciones sin conservar `empresa_id`.
+- **Arreglo de la causa (PR de `claude/resolucion-empresas-por-lotes`):** los
+  alias y los enlaces del lote se escriben juntos al final con `executemany`.
+  La función real sobre el lote real, con las escrituras interceptadas: **134
+  viajes en vez de 10.130**. Medido por el pooler de producción, en solo
+  lectura: 5.000 sentencias en un `executemany` tardan 0,2 s; una a una, 142 s.
+  Pendiente: verlo en un run (`entity_resolution_batch` de `source=pscp`, el
+  cursor avanzando y el porcentaje enlazado), y decidir si
+  `replace_adjudicaciones_batch` debe conservar el enlace.
+- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [services/entity_resolution.py](../services/entity_resolution.py), [db/empresas.py](../db/empresas.py)
 - **Riesgo:** bajo — el paso ya es fail-open y tiene presupuesto de tiempo.
 
 ### [P2] Medir en producción los documentos de TED y PSCP tras el despliegue
