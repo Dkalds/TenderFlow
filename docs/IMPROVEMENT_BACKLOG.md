@@ -349,11 +349,10 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   pliegos, los de su canónica). Desde entonces: el PDF del anuncio TED para las
   convocatorias sin pareja, los pliegos de PLACSP rescatados de las entries que
   el ATOM descarta, la ficha JSON de la PSCP y el emparejamiento TED↔PSCP por el
-  anuncio que la ficha cita. Nada de eso está medido en producción, y dos cosas
-  pueden dejarlo mudo sin error: que Render fije `DOCUMENT_ALLOWED_HOSTS` con el
+  anuncio que la ficha cita. Nada de eso está medido en producción, y una cosa
+  puede dejarlo mudo sin error: que Render fije `DOCUMENT_ALLOWED_HOSTS` con el
   valor viejo (solo PLACSP; la descarga bajo demanda de la API rechazaría TED y
-  la PSCP con «Host no incluido»), y que `.env.example` siga con ese valor
-  (editarlo requiere OK, AGENTS.md §6).
+  la PSCP con «Host no incluido»). `.env.example` ya lleva el valor nuevo.
 - **Acceptance criteria:**
   - Logs `ted_documentos_completados`, `pscp_documentos_completados` y
     `placsp_rescate_ted` en un run de `scrape-daily.yml`, con sus recuentos aquí.
@@ -361,7 +360,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     y cuántos llegan a `extracted` tras el lote nocturno de `pliegos.yml`.
   - Marcas `clave_match LIKE 'publicacion_oficial:%'` contadas.
   - `DOCUMENT_ALLOWED_HOSTS` en Render comprobado (sin definir, o con
-    `ted.europa.eu` y `contractaciopublica.cat`), y `.env.example` alineado.
+    `ted.europa.eu` y `contractaciopublica.cat`).
   - PSCP guarda sin etiqueta de tecnología lo que entra solo por CPV 48/72
     (`cpv_ti_universe`: 48 de 122 convocatorias vigentes ese día) y por eso no se
     publica, mientras su anuncio TED sí. Decidir con el diagnóstico de la
