@@ -155,6 +155,9 @@ los secretos cuando lleven más de 90 días.
 - **`detect-secrets` en CI** con baseline `.secrets.baseline`; falla si hay
   nuevos hallazgos no auditados.
 - **`pip-audit`** contra CVEs conocidas en dependencias.
+- **`npm audit`** sobre `web/package-lock.json`, a través de
+  `scripts/check_npm_audit.py`: falla con avisos `high` o `critical`, también
+  en dependencias de desarrollo.
 - **Dependabot** (semanal) para actualizaciones de seguridad.
 - **SARIF upload** de Semgrep a GitHub Security tab.
 
@@ -297,6 +300,12 @@ desde que el aviso aparece en la pestaña de seguridad del repositorio:
 dependencia es de desarrollo y no viaja a producción— se **descarta con
 motivo escrito** en el propio aviso. Descartar sin motivo no está permitido:
 es indistinguible de ignorar.
+
+**Excepciones en `npm audit`.** `npm audit` no permite ignorar un aviso, así
+que las del job «Security audit» viven en `EXCEPCIONES`, dentro de
+`scripts/check_npm_audit.py`, cada una con su motivo y su fecha de caducidad
+(90 días como máximo). Una excepción caducada, o que ya no tapa ningún aviso,
+hace fallar el job: se renueva re-evaluando o se retira, no se queda.
 
 **Avisos fantasma.** Un aviso contra un fichero de lock que ya no existe en el
 árbol (por ejemplo el `uv.lock` retirado) no es un falso positivo del
