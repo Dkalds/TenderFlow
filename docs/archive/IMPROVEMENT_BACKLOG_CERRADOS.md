@@ -23,7 +23,7 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ## Cerrados el 2026-10-03 — el gate local de tests
 
-**Cerrados el 2026-10-03** en la rama `claude/tests-error-detection-9aa70b`, los dos en el mismo cambio.
+**Cerrados el 2026-10-03** en el PR #402 (rama `claude/tests-error-detection-9aa70b`), los dos en el mismo cambio.
 
 **Auto-marcado.** `_LOAD_TOKENS` casa ahora como palabra de la ruta (`re.split` por lo que no sea alfanumérico), no como subcadena. Al fijar con nombres qué módulos quedan `load` apareció un tercero mal marcado que la ficha no citaba: `tests/test_ola2_performance.py` probaba la caché de respuestas y el endpoint `bulk-get`, no medía rendimiento; se renombra a `tests/test_ola2_cache_y_bulk.py` (invariante 4: se renombra, no se marca a mano). Entran en `-m "unit or integration"` 47 tests: 27 `unit`, que pasan en local, y 20 `integration`. Matiz sobre la ficha: la CI nunca los dejó fuera —`ci.yml` corre `pytest -n auto` sin `-m`—; lo que no los ejecutaba era el gate local (`make check`, `make test-unit`). `tests/test_markers_automarking.py::test_fuera_del_gate_local_solo_quedan_los_modulos_de_carga_declarados` es el trinquete: lista los módulos `load` por su nombre.
 
