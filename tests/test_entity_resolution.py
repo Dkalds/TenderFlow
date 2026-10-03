@@ -557,3 +557,137 @@ def test_identificador_extranjero_sigue_casando_por_nif(db):
     assert stats.nif_invalido == 0
     assert stats.created == 1
     assert stats.linked_nif == 1
+
+
+# ---------------------------------------------------------------------------
+# Viajes a la BD por lote
+# ---------------------------------------------------------------------------
+#
+# Medido el 2026-10-03 sobre el lote real de PSCP (5.000 adjudicaciones, 4.904
+# por NIF exacto): 10.126 escrituras, una por viaje. La CPU de todo el lote eran
+# 2 s; desde un runner de GitHub en EE. UU. (95-150 ms por viaje a la BD de
+# París) el lote tardaba 16 minutos o más, no cabía en los 10 del step de PSCP y
+# dejaba sin enlazar el 91 % de sus adjudicaciones.
+
+
+class _ConexionQueAnota:
+    """Conexión de mentira que anota cada viaje a la BD: una llamada, un viaje."""
+
+    def __init__(self) -> None:
+        self.viajes: list[tuple[str, list[tuple]]] = []
+
+    def execute(self, sql, params=()):
+        self.viajes.append((" ".join(sql.split()), [tuple(params)]))
+        return self
+
+    def executemany(self, sql, seq):
+        self.viajes.append((" ".join(sql.split()), [tuple(p) for p in seq]))
+
+    def fetchone(self):
+        return None
+
+    def fetchall(self):
+        return []
+
+
+def test_un_lote_escribe_alias_y_enlaces_en_dos_viajes_y_no_en_dos_por_fila(monkeypatch):
+    from contextlib import contextmanager
+
+    import services.entity_resolution as er
+    from db.empresas import EmpresaCaches
+
+    conexion = _ConexionQueAnota()
+
+    @contextmanager
+    def conectar():
+        yield conexion
+
+    monkeypatch.setattr(er, "connect", conectar)
+    monkeypatch.setattr(
+        er,
+        "load_caches",
+        lambda conn: EmpresaCaches(
+            nif={"B12345674": 7, "A28599033": 9},
+            alias={},
+            alias_by_length={},
+            nif_canonico={7: "B12345674", 9: "A28599033"},
+        ),
+    )
+    monkeypatch.setattr(er, "pending_review_keys", lambda conn: set())
+    monkeypatch.setattr(
+        er,
+        "fetch_unlinked",
+        lambda conn, limit, after_id, fuente=None: [
+            {"id": 101, "nombre": "ACME Consulting S.L.", "nif": "B12345674", "es_pyme": None},
+            {"id": 102, "nombre": "Indra Sistemas S.A.", "nif": "A28599033", "es_pyme": None},
+            {"id": 103, "nombre": "ACME CONSULTING SLU", "nif": "b-12345674", "es_pyme": None},
+            {"id": 104, "nombre": "ACME Consulting S.L.", "nif": "B12345674", "es_pyme": None},
+        ],
+    )
+
+    stats = er.resolve_unlinked_adjudicaciones(fuente="pscp", scope_fuente="pscp")
+
+    assert stats.linked_nif == 4
+    assert stats.last_id == 104
+    # Dos viajes para todo el lote, tenga cuatro filas o cinco mil.
+    assert len(conexion.viajes) == 2
+    enlaces = next(p for sql, p in conexion.viajes if sql.startswith("UPDATE adjudicaciones"))
+    assert enlaces == [(7, 101), (9, 102), (7, 103), (7, 104)]
+    alias = next(p for sql, p in conexion.viajes if sql.startswith("INSERT INTO empresa_aliases"))
+    # La misma variante vista tres veces en el lote se escribe una.
+    assert [fila[:4] for fila in alias] == [
+        (7, "ACME CONSULTING", "B12345674", "pscp"),
+        (9, "INDRA SISTEMAS", "A28599033", "pscp"),
+    ]
+
+
+def test_integration_los_viajes_de_un_lote_no_crecen_con_sus_filas(db, monkeypatch):
+    """Con Postgres de verdad: 30 adjudicaciones de una empresa conocida, menos viajes que filas."""
+    from contextlib import contextmanager
+
+    import services.entity_resolution as er
+    from db.database import connect
+
+    setup_lic(db, "LIC-000")
+    insert_adj(db, "ACME Consulting S.L.", nif="B12345674", lic_id="LIC-000")
+    assert er.resolve_unlinked_adjudicaciones().created == 1
+    for i in range(1, 31):
+        setup_lic(db, f"LIC-{i:03d}")
+        insert_adj(db, "ACME CONSULTING SLU", nif="B12345674", lic_id=f"LIC-{i:03d}")
+
+    viajes: list[str] = []
+    conectar_de_verdad = er.connect
+
+    class _Contando:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, sql, params=()):
+            viajes.append(sql)
+            return self._conn.execute(sql, params)
+
+        def executemany(self, sql, seq):
+            viajes.append(sql)
+            return self._conn.executemany(sql, seq)
+
+    @contextmanager
+    def contando():
+        with conectar_de_verdad() as conn:
+            yield _Contando(conn)
+
+    monkeypatch.setattr(er, "connect", contando)
+
+    stats = er.resolve_unlinked_adjudicaciones()
+
+    assert stats.linked_nif == 30
+    assert len(viajes) < 30
+    with connect() as c:
+        empresas, sin_enlazar = c.execute(
+            "SELECT count(DISTINCT empresa_id), count(*) FILTER (WHERE empresa_id IS NULL) "
+            "FROM adjudicaciones"
+        ).fetchone()
+        alias = [
+            r[0] for r in c.execute("SELECT alias_normalizado FROM empresa_aliases").fetchall()
+        ]
+    assert (empresas, sin_enlazar) == (1, 0)
+    assert alias == ["ACME CONSULTING"]

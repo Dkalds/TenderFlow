@@ -20,18 +20,18 @@ from __future__ import annotations
 
 import difflib
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from db.database import connect, get_cursor, set_cursor
 from db.empresas import (
     EmpresaCaches,
-    add_alias,
+    add_aliases,
     add_ute_member,
     create_empresa,
     enqueue_review,
     fetch_unlinked,
-    link_adjudicacion,
+    link_adjudicaciones,
     load_caches,
     pending_review_keys,
     set_nif_canonico_if_null,
@@ -89,6 +89,44 @@ class ResolutionStats:
         }
 
 
+@dataclass
+class _EscriturasDelLote:
+    """Alias y enlaces de un lote, que se escriben juntos al final.
+
+    Eran una sentencia por adjudicación cada uno. Medido el 2026-10-03 sobre el
+    lote real de PSCP (5.000 filas, 4.904 por NIF exacto): 10.126 escrituras, una
+    por viaje, frente a 2 s de CPU. Desde un runner de GitHub en EE. UU. —95 a
+    150 ms por viaje a la BD de París— el lote tardaba 16 minutos o más: no cabía
+    en los 10 del step de PSCP, el presupuesto de tiempo (que solo se mira entre
+    lotes) no llegaba a actuar y el 91 % de las adjudicaciones de PSCP se quedaba
+    sin enlazar.
+
+    Ninguna sentencia del lote lee ``empresa_aliases`` ni
+    ``adjudicaciones.empresa_id`` —las decisiones salen de los cachés en
+    memoria—, así que aplazarlas no cambia el resultado. Lo que sí necesita su
+    respuesta al momento (el id de una empresa nueva, si se fijó un NIF
+    canónico) sigue yendo por separado: son decenas por lote, no miles.
+    """
+
+    #: ``(empresa_id, alias, nif_variante, fuente)``. Un dict y no una lista: la
+    #: misma variante se ve muchas veces en un lote y basta escribirla una.
+    alias: dict[tuple[int, str, str | None, str], None] = field(default_factory=dict)
+    #: ``(empresa_id, adjudicacion_id)``.
+    enlaces: list[tuple[int, int]] = field(default_factory=list)
+
+    def anotar_alias(
+        self, empresa_id: int, alias: str, *, nif_variante: str | None = None, fuente: str = ""
+    ) -> None:
+        self.alias.setdefault((empresa_id, alias, nif_variante, fuente))
+
+    def anotar_enlace(self, adjudicacion_id: int, empresa_id: int) -> None:
+        self.enlaces.append((empresa_id, adjudicacion_id))
+
+    def volcar(self, conn: Any) -> None:
+        add_aliases(conn, list(self.alias))
+        link_adjudicaciones(conn, self.enlaces)
+
+
 def _cache_alias(caches: EmpresaCaches, alias: str, empresa_id: int) -> None:
     if alias not in caches.alias:
         caches.alias[alias] = empresa_id
@@ -117,6 +155,7 @@ def _resolve_simple(
     caches: EmpresaCaches,
     pending: set[tuple[str, str]],
     stats: ResolutionStats,
+    escrituras: _EscriturasDelLote,
     *,
     nombre: str,
     nif_norm: str | None,
@@ -129,7 +168,7 @@ def _resolve_simple(
     # 2. NIF exacto
     if nif_norm and nif_norm in caches.nif:
         empresa_id = caches.nif[nif_norm]
-        add_alias(conn, empresa_id, alias, nif_variante=nif_norm, fuente=fuente)
+        escrituras.anotar_alias(empresa_id, alias, nif_variante=nif_norm, fuente=fuente)
         _cache_alias(caches, alias, empresa_id)
         stats.linked_nif += 1
         return empresa_id
@@ -153,7 +192,7 @@ def _resolve_simple(
                 pending.add(key)
                 stats.queued_review += 1
             return None
-        add_alias(conn, empresa_id, alias, nif_variante=nif_norm, fuente=fuente)
+        escrituras.anotar_alias(empresa_id, alias, nif_variante=nif_norm, fuente=fuente)
         if nif_norm and not nif_canon and set_nif_canonico_if_null(conn, empresa_id, nif_norm):
             caches.nif_canonico[empresa_id] = nif_norm
             caches.nif[nif_norm] = empresa_id
@@ -183,7 +222,7 @@ def _resolve_simple(
     empresa_id = create_empresa(
         conn, nombre_canonico=nombre.strip(), nif_canonico=nif_norm, es_pyme=es_pyme
     )
-    add_alias(conn, empresa_id, alias, nif_variante=nif_norm, fuente=fuente)
+    escrituras.anotar_alias(empresa_id, alias, nif_variante=nif_norm, fuente=fuente)
     _cache_alias(caches, alias, empresa_id)
     caches.nif_canonico[empresa_id] = nif_norm
     if nif_norm:
@@ -196,6 +235,7 @@ def _resolve_ute(
     conn: Any,
     caches: EmpresaCaches,
     stats: ResolutionStats,
+    escrituras: _EscriturasDelLote,
     *,
     nombre: str,
     nif_norm: str | None,
@@ -216,7 +256,7 @@ def _resolve_ute(
         caches.nif_canonico[ute_id] = nif_norm
         if nif_norm:
             caches.nif[nif_norm] = ute_id
-    add_alias(conn, ute_id, alias, nif_variante=nif_norm, fuente=fuente)
+    escrituras.anotar_alias(ute_id, alias, nif_variante=nif_norm, fuente=fuente)
 
     for member_alias in members:
         # Los miembros llegan ya normalizados desde parse_ute_members y sin
@@ -225,7 +265,7 @@ def _resolve_ute(
             member_id = caches.alias[member_alias]
         else:
             member_id = create_empresa(conn, nombre_canonico=member_alias)
-            add_alias(conn, member_id, member_alias, fuente=f"{fuente}:ute_member")
+            escrituras.anotar_alias(member_id, member_alias, fuente=f"{fuente}:ute_member")
             _cache_alias(caches, member_alias, member_id)
             caches.nif_canonico[member_id] = None
         add_ute_member(conn, ute_id, member_id)
@@ -244,7 +284,9 @@ def resolve_unlinked_adjudicaciones(
     """Procesa un lote de adjudicaciones sin empresa_id. Devuelve estadísticas.
 
     Llamar en bucle (backfill) o una vez tras la ingesta (hook). Cada lote
-    corre en una única transacción.
+    corre en una única transacción, y sus alias y enlaces se escriben juntos al
+    final (:class:`_EscriturasDelLote`): los viajes a la BD de un lote no crecen
+    con sus filas.
 
     ``fuente`` y ``scope_fuente`` son ejes independientes y deliberadamente
     distintos: el primero es la ETIQUETA de procedencia que se graba en
@@ -255,6 +297,7 @@ def resolve_unlinked_adjudicaciones(
     los aliases de una forma y recorrer otra cosa.
     """
     stats = ResolutionStats(last_id=after_id)
+    escrituras = _EscriturasDelLote()
     with connect() as conn:
         caches = load_caches(conn)
         pending = pending_review_keys(conn)
@@ -274,7 +317,7 @@ def resolve_unlinked_adjudicaciones(
                 nif_norm = None
             if not alias:
                 if nif_norm and nif_norm in caches.nif:
-                    link_adjudicacion(conn, int(row["id"]), caches.nif[nif_norm])
+                    escrituras.anotar_enlace(int(row["id"]), caches.nif[nif_norm])
                     stats.linked_nif += 1
                     continue
                 stats.skipped += 1
@@ -290,6 +333,7 @@ def resolve_unlinked_adjudicaciones(
                     conn,
                     caches,
                     stats,
+                    escrituras,
                     nombre=nombre,
                     nif_norm=nif_norm,
                     alias=alias,
@@ -302,6 +346,7 @@ def resolve_unlinked_adjudicaciones(
                     caches,
                     pending,
                     stats,
+                    escrituras,
                     nombre=nombre,
                     nif_norm=nif_norm,
                     alias=alias,
@@ -310,7 +355,8 @@ def resolve_unlinked_adjudicaciones(
                     fuzzy=fuzzy,
                 )
             if empresa_id is not None:
-                link_adjudicacion(conn, int(row["id"]), empresa_id)
+                escrituras.anotar_enlace(int(row["id"]), empresa_id)
+        escrituras.volcar(conn)
 
     if stats.processed or stats.queued_review:
         log.info("entity_resolution_batch", **stats.as_dict())
