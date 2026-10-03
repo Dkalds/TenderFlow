@@ -374,6 +374,16 @@ def _completar_documentos_de(connector: Connector) -> Callable[[], object] | Non
     return paso if callable(paso) else None
 
 
+def _completar_documentos(source_id: str, paso: Callable[[], object] | None) -> None:
+    """Ejecuta el paso de documentos del conector. Fail-open: nunca tumba la pasada."""
+    if paso is None:
+        return
+    try:
+        paso()
+    except Exception as e:
+        log.warning("connector_completar_documentos_failed", source=source_id, error=str(e))
+
+
 def _post_ingestion(
     source_id: str,
     *,
@@ -432,11 +442,7 @@ def _post_ingestion(
             # Mismo trato que el dedupe de arriba: fail-open, pero contado.
             _contar_dedupe_fallido(source_id)
             log.warning("connector_dedupe_referencias_failed", source=source_id, error=str(e))
-    if completar_documentos is not None:
-        try:
-            completar_documentos()
-        except Exception as e:
-            log.warning("connector_completar_documentos_failed", source=source_id, error=str(e))
+    _completar_documentos(source_id, completar_documentos)
     try:
         from services.contract_events import derive_new_events
 
@@ -639,12 +645,21 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     if final_cursor:
         set_cursor(source_id, **final_cursor)
 
+    completar_documentos = _completar_documentos_de(connector)
     if result.parsed or result.adjudicaciones:
         _post_ingestion(
             source_id,
             referencias=_referencias_de(connector),
-            completar_documentos=_completar_documentos_de(connector),
+            completar_documentos=completar_documentos,
         )
+    else:
+        # Sin lote no hay empresas que resolver ni filas que deduplicar, pero el
+        # paso de documentos no depende del lote: lee de la BD las convocatorias
+        # vigentes. Atado solo a `_post_ingestion` no corría casi nunca en PSCP,
+        # cuyo dataset se actualiza una vez al día —la mayoría de sus pasadas
+        # son de cero filas—: tras la primera pasada con #395 en producción
+        # (2026-10-03) no había leído ni una ficha.
+        _completar_documentos(source_id, completar_documentos)
 
     # Contadores por motivo del conector, si los expone (C4.1, C4.4). El
     # `getattr` evita obligar a todos los conectores a declararlo en el Protocol,

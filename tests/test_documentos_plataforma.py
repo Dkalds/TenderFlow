@@ -524,6 +524,68 @@ def test_completar_documentos_es_opt_in_por_atributo():
     assert _completar_documentos_de(PscpConnector()) is not None
 
 
+class _ConectorSinFilas:
+    """La pasada habitual de PSCP: el dataset no trae nada nuevo desde el cursor."""
+
+    source_id = "pscp"
+
+    def __init__(self, completar: Any) -> None:
+        self._completar = completar
+
+    def fetch(self, cursor: Any) -> Any:
+        return iter(())
+
+    def parse(self, raw: Any) -> Any:
+        raise AssertionError("no hay nada que parsear")
+
+    def new_cursor(self) -> None:
+        return None
+
+    def completar_documentos(self) -> None:
+        self._completar()
+
+
+@pytest.fixture()
+def runner_sin_bd(monkeypatch):
+    """``run_connector`` sin Postgres: el cursor y la salud de la fuente, doblados."""
+    from scraper.connectors import base
+
+    monkeypatch.setattr(base, "get_cursor", lambda source_id: None)
+    monkeypatch.setattr(base, "record_source_started", lambda source_id: None)
+    monkeypatch.setattr(base, "_record_source_completed", lambda result: None)
+    return base
+
+
+def test_sin_filas_nuevas_el_runner_completa_documentos_igual(runner_sin_bd, monkeypatch):
+    """El paso lee de la BD las convocatorias vigentes: no depende del lote.
+
+    Hasta el 2026-10-03 colgaba solo de ``_post_ingestion``, que el runner se
+    salta cuando no parsea nada. PSCP actualiza su dataset una vez al día, así
+    que casi todas sus pasadas son de cero filas: en producción no llegó a leer
+    ni una ficha (0 filas PSCP con documentos tras la primera pasada de #395).
+    """
+    completadas: list[str] = []
+    cierres: list[str] = []
+    monkeypatch.setattr(runner_sin_bd, "_post_ingestion", lambda *a, **k: cierres.append("x"))
+
+    resultado = runner_sin_bd.run_connector(_ConectorSinFilas(lambda: completadas.append("x")))
+
+    assert (resultado.fetched, resultado.parsed) == (0, 0)
+    assert completadas == ["x"]
+    # Sin lote no hay empresas que resolver ni filas que deduplicar.
+    assert cierres == []
+
+
+def test_sin_filas_un_completar_roto_no_tumba_la_pasada(runner_sin_bd):
+    def roto() -> None:
+        raise RuntimeError("plataforma caída")
+
+    resultado = runner_sin_bd.run_connector(_ConectorSinFilas(roto))
+
+    assert resultado.errores == 0
+    assert not resultado.fetch_failed
+
+
 # ── Red: un circuito por plataforma ──────────────────────────────────────────
 
 
@@ -771,3 +833,51 @@ def test_integration_el_rescate_escribe_los_pliegos_en_la_fila_ted(db) -> None:
             ).fetchall()
         ]
     assert uris == ["https://contrataciondelestado.es/pcap.pdf"]
+
+
+class _ConectorConUnaFila:
+    """Un lote de una fila y un paso de documentos que cuenta sus llamadas."""
+
+    source_id = "fake"
+
+    def __init__(self, notices: list[str]) -> None:
+        self.notices = notices
+        self.completadas = 0
+
+    def fetch(self, cursor: Any) -> Any:
+        from scraper.connectors.base import RawNotice
+
+        for natural_id in self.notices:
+            yield RawNotice(natural_id=natural_id, payload={})
+
+    def parse(self, raw: Any) -> Any:
+        from db.upsert import Licitacion
+        from scraper.connectors.base import ParsedTender
+
+        return ParsedTender(
+            licitacion=Licitacion(
+                id_externo=f"fake:{raw.natural_id}",
+                titulo="Suministro de licencias de software de gestión documental",
+                fuente="fake",
+                fecha_publicacion=_dia(-1),
+            )
+        )
+
+    def new_cursor(self) -> None:
+        return None
+
+    def completar_documentos(self) -> None:
+        self.completadas += 1
+
+
+@pytest.mark.parametrize("notices", [["A"], []], ids=["con_lote", "sin_lote"])
+def test_integration_el_paso_de_documentos_corre_una_vez_por_pasada(db, notices) -> None:
+    """Con lote va dentro de ``_post_ingestion``; sin lote, directo. Nunca dos veces."""
+    from scraper.connectors.base import run_connector
+
+    conector = _ConectorConUnaFila(notices)
+
+    resultado = run_connector(conector)
+
+    assert resultado.parsed == len(notices)
+    assert conector.completadas == 1

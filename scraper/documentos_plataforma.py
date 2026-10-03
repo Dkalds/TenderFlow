@@ -32,9 +32,11 @@ hueco con tres caminos, todos sobre datos abiertos:
   al perfil del comprador, no al expediente, y el BT-22 falta en muchos.
 
 Los dos pasos que se ejecutan tras cada ingesta —:func:`completar_documentos_ted`
-y :func:`completar_documentos_pscp`— los llaman los conectores desde
-``_post_ingestion``, con presupuesto de tiempo: corren dentro del step de 10
-minutos de ``scrape-daily.yml``.
+y :func:`completar_documentos_pscp`— los llama ``run_connector`` a través del
+``completar_documentos`` de cada conector, con presupuesto de tiempo: corren
+dentro del step de 10 minutos de ``scrape-daily.yml``. Con lote van dentro de
+``_post_ingestion``, tras los dedupes; sin lote se llaman igual, porque leen de
+la BD y no de lo que trajo la pasada.
 """
 
 from __future__ import annotations
