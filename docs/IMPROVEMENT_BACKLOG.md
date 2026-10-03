@@ -346,6 +346,13 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     (la resolución de empresas o `detect_duplicates(fuente='pscp')`). El ítem
     «Verificar que el fix de PSCP progresa…» mira el cursor, que sí avanza; esto
     no lo mira nadie.
+- **Progreso (2026-10-03):** el primer criterio lo cubre el PR #398
+  (`run_connector` llama al paso también sin lote; tests unitarios y de
+  integración). Una pasada en seco ese día —la consulta de candidatas sobre
+  producción y la ficha de cada una pedida al portal, sin escribir— dio 120
+  candidatas, las 120 con documentos, 958 referencias (117 PCAP, 117 PPT, 724
+  adicionales), 45 fichas que citan un anuncio TED y 0 fallos en 52 s. Quedan
+  los otros dos criterios, que solo se cierran con un run de producción.
 - **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py)
 - **Riesgo:** bajo — el paso ya es fail-open y tiene presupuesto de tiempo.
 
