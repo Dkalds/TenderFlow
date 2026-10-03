@@ -512,9 +512,15 @@ jobs:
       # sin que CI pudiera verla. Trivy solo mira la imagen de la API, que no
       # lleva `node_modules`. `/web` es el único árbol npm del repo (el
       # `package.json` raíz, duplicado de `/web`, se retiró).
+      #
+      # Pasa por `scripts/check_npm_audit.py` y no por `npm audit
+      # --audit-level=high` a secas porque `npm audit` no tiene `--ignore`: un
+      # aviso sin versión corregida (braces, GHSA-vfj7-8cjw-p6xm, 2026-10-03)
+      # dejaba el job rojo en todas las ramas y tapaba cualquier aviso posterior.
+      # El script mantiene el mismo umbral, también para devDependencies, y sus
+      # excepciones caducan: están en `EXCEPCIONES`, dentro del propio script.
       - name: Audit npm dependencies (web)
-        working-directory: web
-        run: npm audit --audit-level=high
+        run: python scripts/check_npm_audit.py
 
   # ── SAST: depende de static-analysis (ahorra runner si lint falla) ─
   bandit:

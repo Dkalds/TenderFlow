@@ -729,6 +729,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
 - **Progreso 2026-09-28:** el soporte de DOCX existía pero no se usaba en la mayoría de casos: PLACSP manda el tipo mal escrito (`…openxmlformatsofficedocument…`, sin guion) y 1.964 documentos acabaron en `unsupported`, el mayor agujero de cobertura medido. El formato lo decide ahora la firma del contenido (`_resolver_content_type`). Las filas ya marcadas no se recuperan solas: `unsupported` no vuelve a `list_pendientes`, así que hace falta reencolarlas (dato de producción, OK del mantenedor).
 
+### [P2] Retirar la excepción de `braces` en `npm audit` cuando haya versión corregida (caduca el 2026-11-03)
+- **Área:** scripts/check_npm_audit.py, web/package-lock.json, .github/workflows/ci.yml (job `audit`)
+- **Problema:** desde el 2026-10-03 el paso `npm audit --audit-level=high` del job «Security audit» fallaba en cualquier rama, también con el lockfile de master, por GHSA-vfj7-8cjw-p6xm (`braces <= 3.0.3`, alta, CVE-2026-93687: agotamiento de pila con patrones muy anidados). No hay versión corregida —3.0.3 es la última publicada; el arreglo es micromatch/braces#72, sin fusionar, en un repositorio sin commits desde 2025-01— y la cadena es solo de desarrollo: `eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob@3.3.1` → `micromatch` → `braces` (`npm audit --omit=dev` da 0). Subir `eslint-config-next` no la corta (la 16.3.8 y la canary 16.4 siguen fijando `fast-glob@3.3.1`) y `npm audit fix --force` lo baja a 14.2.35.
+- **Decisión (mantenedor, 2026-10-03):** excepción explícita y fechada. Se descartaron (a) auditar solo producción con `--omit=dev` y dejar las de desarrollo en un paso informativo —las deja sin puerta para siempre, contra el criterio que el mismo job aplica a `requirements-dev.txt`— y (b) aceptar el rojo hasta el parche —un check siempre rojo no distingue el aviso siguiente—. `npm audit` no tiene `--ignore`, así que el paso de CI pasa por `scripts/check_npm_audit.py`: mismo umbral (high/critical, desarrollo incluido), lista `EXCEPCIONES` con caducidad (90 días como máximo) y fallo si una excepción caduca o ya no tapa ningún aviso.
+- **Acceptance criteria:**
+  - `braces` corregido en `web/package-lock.json` (`npm update braces` si la versión nueva entra en el rango `^3.0.3` de `micromatch`; si no, `overrides` en `web/package.json`) y su entrada retirada de `EXCEPCIONES` en el mismo cambio: el script falla si sobra.
+  - Si el 2026-11-03 sigue sin parche (`npm view braces version`; `firstPatchedVersion` del aviso), renovar la fecha con el motivo al día, o reabrir la decisión si upstream sigue parado.
+- **Files de partida:** [scripts/check_npm_audit.py](../scripts/check_npm_audit.py), [tests/test_check_npm_audit.py](../tests/test_check_npm_audit.py), [web/package.json](../web/package.json)
+- **Riesgo:** bajo — solo dependencias de desarrollo. Desde el 2026-11-04 el job vuelve a fallar a propósito hasta que alguien re-evalúe.
+
 ---
 
 ## P3 — Nice to have
