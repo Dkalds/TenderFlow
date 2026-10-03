@@ -11,9 +11,12 @@ en transacciones grandes (mismo motivo que ``replace_adjudicaciones_batch``).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from db.database import connect, now_utc_iso
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @dataclass
@@ -96,6 +99,29 @@ def add_alias(
     )
 
 
+def add_aliases(conn: Any, variantes: Sequence[tuple[int, str, str | None, str]]) -> None:
+    """Como :func:`add_alias`, para todas las variantes de un lote en un viaje.
+
+    Cada variante es ``(empresa_id, alias_normalizado, nif_variante, fuente)``.
+    Un solo ``executemany``, que psycopg canaliza: el lote de resolución hacía un
+    ``INSERT`` por adjudicación, y con la BD a 95-150 ms del runner eso eran
+    minutos (ver ``services.entity_resolution.resolve_unlinked_adjudicaciones``).
+    """
+    if not variantes:
+        return
+    ahora = now_utc_iso()
+    conn.executemany(
+        "INSERT INTO empresa_aliases "
+        "(empresa_id, alias_normalizado, nif_variante, fuente, confianza, created_at) "
+        "VALUES (%s, %s, %s, %s, %s, %s) "
+        "ON CONFLICT (empresa_id, alias_normalizado, COALESCE(nif_variante, '')) DO NOTHING",
+        [
+            (empresa_id, alias, nif, fuente, 1.0, ahora)
+            for empresa_id, alias, nif, fuente in variantes
+        ],
+    )
+
+
 def set_nif_canonico_if_null(conn: Any, empresa_id: int, nif: str) -> bool:
     """Fija el NIF canónico solo si la empresa aún no tiene uno.
 
@@ -120,11 +146,11 @@ def add_ute_member(conn: Any, ute_empresa_id: int, miembro_empresa_id: int) -> N
     )
 
 
-def link_adjudicacion(conn: Any, adjudicacion_id: int, empresa_id: int) -> None:
-    conn.execute(
-        "UPDATE adjudicaciones SET empresa_id = %s WHERE id = %s",
-        (empresa_id, adjudicacion_id),
-    )
+def link_adjudicaciones(conn: Any, enlaces: Sequence[tuple[int, int]]) -> None:
+    """Enlaza adjudicaciones con su empresa: ``(empresa_id, adjudicacion_id)``, en un viaje."""
+    if not enlaces:
+        return
+    conn.executemany("UPDATE adjudicaciones SET empresa_id = %s WHERE id = %s", list(enlaces))
 
 
 def fetch_unlinked(
