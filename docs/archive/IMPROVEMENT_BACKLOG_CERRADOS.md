@@ -21,6 +21,43 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-10-03 — backfill de TED
+
+**Cerrado el 2026-10-03.** El backfill se lanzó ese día a las 08:41 UTC, a mano y contra producción, con el código de master (`e984fe81`, #395) y a petición del usuario: 2.985 avisos leídos, 329 filas nuevas, 2.106 actualizadas, 0 errores, 3 minutos.
+
+Una desviación respecto al criterio: se lanzó con `--desde 20260601` y no `20250101`. La fila TED más antigua de la BD era del 2026-06-10, así que la ventana cubre todo lo ingerido; desde 2025 habría traído además año y medio de avisos que nunca estuvieron en la BD, que es otra decisión.
+
+| | Antes | Después |
+|---|---|---|
+| Filas `ted` | 2.649 | 2.978 |
+| Títulos que empiezan por «España – » | 2.101 | 0 |
+| Marcas `confirmed` de filas `ted` | 291 | 1.417 |
+| … con `clave_match LIKE 'idEvl:%'` | 100 | 522 |
+| … con `clave_match LIKE 'expediente:%'` | 191 | 895 |
+
+Log de la pasada: `dedupe_referencias_detected confirmados=1411 evaluadas=2705`. Las 329 filas nuevas son, todas, avisos publicados del 1 al 9 de junio: la ventana empezó nueve días antes que la fila más antigua. Desde el 10 de junio no faltaba ninguno. Ficha original:
+
+### [P1] Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó
+- **Área:** scraper/connectors/ted.py, services/dedupe.py (ADR-026, addendum 2026-09-24)
+- **Problema:** `detect_duplicados_por_referencia` solo empareja los avisos que el
+  conector re-lee (ventana de 14 días): BT-22 y el `idEvl` no son columnas. Lo ya
+  ingerido conserva además el título con el prefijo «España – {CPV} – » y la
+  etiqueta `DESARROLLO` que ese prefijo le ponía (17 % de una muestra de 300).
+- **Acceptance criteria:**
+  - `python -m scraper.connectors.ted --desde 20250101` ejecutado en producción
+    (acción con escritura: la lanza el usuario o un `workflow_dispatch`).
+  - Log `dedupe_referencias_detected` con el recuento, y
+    `SELECT COUNT(*) FROM licitaciones_duplicados WHERE clave_match LIKE 'idEvl:%' OR clave_match LIKE 'expediente:%'`
+    anotado aquí junto al total de filas `ted`.
+  - Ninguna fila `ted` con título que empiece por `España –`.
+- **Progreso (2026-10-02):** el camino del `idEvl` ya no necesita el backfill:
+  `services.dedupe.reemparejar_ted_por_id_evl` lo relee de `licitaciones.url` tras
+  cada pasada de TED (medido ese día: 332 avisos con el `idEvl` de un expediente de
+  PLACSP en BD y sin pareja, todos publicados en TED hasta el 2026-09-09). El
+  backfill sigue haciendo falta para BT-22, que no se guarda, y para los títulos.
+- **Files de partida:** [scraper/connectors/ted.py](../../scraper/connectors/ted.py), [services/dedupe.py](../../services/dedupe.py)
+- **Riesgo:** bajo — el upsert es idempotente y las marcas `confirmed` automáticas no pisan lo que un humano resolvió.
+
 ## Cerrados el 2026-09-28 — backups delegados en Supabase
 
 **Descartado el 2026-09-28** por decisión del usuario: las copias de la base las hace Supabase, así que se retiraron `backup.yml`, `restore-drill.yml`, `scripts/backup_db.py`, `scripts/restore_db.py`, sus tests, `docs/runbooks/backup-restore.md` y el secret `BACKUP_ENCRYPTION_KEY`. La restauración está en [disaster-recovery.md](../runbooks/disaster-recovery.md) §2. Ficha original:

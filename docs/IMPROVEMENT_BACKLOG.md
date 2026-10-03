@@ -321,26 +321,40 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
   y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
 
-### [P1] Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó
-- **Área:** scraper/connectors/ted.py, services/dedupe.py (ADR-026, addendum 2026-09-24)
-- **Problema:** `detect_duplicados_por_referencia` solo empareja los avisos que el
-  conector re-lee (ventana de 14 días): BT-22 y el `idEvl` no son columnas. Lo ya
-  ingerido conserva además el título con el prefijo «España – {CPV} – » y la
-  etiqueta `DESARROLLO` que ese prefijo le ponía (17 % de una muestra de 300).
+### [P1] Los pliegos de la PSCP no se leen: su paso tras la ingesta no llega a ejecutarse
+- **Área:** scraper/connectors/base.py (`run_connector`, `_post_ingestion`), scraper/connectors/pscp.py, scraper/documentos_plataforma.py
+- **Problema:** `completar_documentos` cuelga de `_post_ingestion` (#395), y en
+  PSCP eso no ocurre casi nunca:
+  - **Con cero filas nuevas** —la mayoría de las pasadas: el dataset se actualiza
+    una vez al día— `run_connector` se salta `_post_ingestion` entero
+    (`if result.parsed or result.adjudicaciones`).
+  - **Con filas**, el step «Run PSCP Catalunya connector» se corta a los 10
+    minutos dentro de `_post_ingestion`, antes de llegar al paso. El 2026-10-03
+    a las 13:36 UTC el cursor quedó escrito 3 s después de la última página y no
+    hubo más logs hasta el corte (run 37126368765). El run del 2026-10-02 14:47,
+    anterior a #395, se cortó igual (37022322136): el corte no lo trajo #395.
+
+  Medido el 2026-10-03: 0 filas PSCP con documentos y 0 marcas
+  `publicacion_oficial:%`. El paso no depende del lote —lee de la BD las
+  convocatorias vigentes—, así que no hay motivo para atarlo a que el lote
+  traiga algo.
 - **Acceptance criteria:**
-  - `python -m scraper.connectors.ted --desde 20250101` ejecutado en producción
-    (acción con escritura: la lanza el usuario o un `workflow_dispatch`).
-  - Log `dedupe_referencias_detected` con el recuento, y
-    `SELECT COUNT(*) FROM licitaciones_duplicados WHERE clave_match LIKE 'idEvl:%' OR clave_match LIKE 'expediente:%'`
-    anotado aquí junto al total de filas `ted`.
-  - Ninguna fila `ted` con título que empiece por `España –`.
-- **Progreso (2026-10-02):** el camino del `idEvl` ya no necesita el backfill:
-  `services.dedupe.reemparejar_ted_por_id_evl` lo relee de `licitaciones.url` tras
-  cada pasada de TED (medido ese día: 332 avisos con el `idEvl` de un expediente de
-  PLACSP en BD y sin pareja, todos publicados en TED hasta el 2026-09-09). El
-  backfill sigue haciendo falta para BT-22, que no se guarda, y para los títulos.
-- **Files de partida:** [scraper/connectors/ted.py](../scraper/connectors/ted.py), [services/dedupe.py](../services/dedupe.py)
-- **Riesgo:** bajo — el upsert es idempotente y las marcas `confirmed` automáticas no pisan lo que un humano resolvió.
+  - `completar_documentos` corre aunque la pasada no parsee nada, y un test lo fija.
+  - Log `pscp_documentos_completados` en un run de `scrape-daily.yml`, y filas
+    PSCP con documentos en producción.
+  - Aparte: saber qué consume los 10 minutos del step cuando PSCP trae filas
+    (la resolución de empresas o `detect_duplicates(fuente='pscp')`). El ítem
+    «Verificar que el fix de PSCP progresa…» mira el cursor, que sí avanza; esto
+    no lo mira nadie.
+- **Progreso (2026-10-03):** el primer criterio lo cubre el PR #398
+  (`run_connector` llama al paso también sin lote; tests unitarios y de
+  integración). Una pasada en seco ese día —la consulta de candidatas sobre
+  producción y la ficha de cada una pedida al portal, sin escribir— dio 120
+  candidatas, las 120 con documentos, 958 referencias (117 PCAP, 117 PPT, 724
+  adicionales), 45 fichas que citan un anuncio TED y 0 fallos en 52 s. Quedan
+  los otros dos criterios, que solo se cierran con un run de producción.
+- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py)
+- **Riesgo:** bajo — el paso ya es fail-open y tiene presupuesto de tiempo.
 
 ### [P2] Medir en producción los documentos de TED y PSCP tras el despliegue
 - **Área:** scraper/documentos_plataforma.py, scraper/connectors/{ted,pscp,placsp}.py, config/settings.py
@@ -365,6 +379,23 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     (`cpv_ti_universe`: 48 de 122 convocatorias vigentes ese día) y por eso no se
     publica, mientras su anuncio TED sí. Decidir con el diagnóstico de la
     clasificación si esa asimetría se mantiene.
+- **Progreso (2026-10-03, #395 en producción desde las 08:39 UTC):**
+  - **TED, medido.** El backfill de ese día dejó 193 convocatorias con su
+    anuncio (`ted_documentos_completados candidatas=193 con_documentos=193`), y
+    la pasada programada de las 13:29 ya no encontró ninguna (`candidatas=0`).
+    De las 239 convocatorias TED abiertas: 119 emparejadas (116 con pliegos en
+    la canónica, 91 extraídos) y 120 con su anuncio; ninguna sin documentos. Los
+    193 anuncios seguían `pending` a las 14:00 UTC, con el lote de `pliegos.yml`
+    en curso: falta anotar cuántos llegan a `extracted`.
+  - **Rescate del ATOM, sin ocasión todavía.** `ted_reemparejo_id_evl
+    evaluadas=147 confirmados=0`: son los avisos que esperan una entry
+    descartada. El ATOM no trajo entradas nuevas en esa pasada (sábado), así que
+    no hay `placsp_rescate_ted` que contar.
+  - **PSCP, sin ejecutar**: ver el ítem P1 de arriba. 0 filas con documentos y
+    0 marcas `publicacion_oficial:%`.
+  - **Render, sin comprobar.** El MCP de Render no lista variables de entorno
+    (solo las escribe): hay que mirarlo en el panel. Fuera de Render no la pisa
+    nadie: ni `render.yaml`, ni los workflows, ni las variables del repositorio.
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 
@@ -863,6 +894,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## Cerrados
 
+- [2026-10-03] **P1: Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó** — backfill ejecutado desde el 2026-06-01 (no desde 2025-01-01: la fila TED más antigua era del 2026-06-10): 2.978 filas TED, 1.417 `confirmed` (522 por `idEvl`, 895 por expediente; eran 291) y ningún título con el prefijo «España – ». Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [2026-09-19] **P2: Remediación axe — reactivar las reglas desactivadas del E2E de accesibilidad** — sin `disableRules` ni `fixme`; últimos rojos en `8a424967` y `0fd5082c`. Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [2026-09-19] **P2: La experiencia móvil existe pero nadie la diseñó** — los cuatro criterios cumplidos; los rojos móviles del E2E, en `8a424967`. Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [2026-09-18] **P2: La consola no tiene primer uso** (rama worktree-agent-a37b58d577faad267) — la barra de
