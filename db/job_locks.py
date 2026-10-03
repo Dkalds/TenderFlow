@@ -44,6 +44,7 @@ Uso::
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from db.database import connect
@@ -109,6 +110,30 @@ def release(name: str, holder: str = "") -> bool:
     else:
         log.debug("job_lock_release_noop", name=name, holder=holder)
     return deleted
+
+
+def release_many(names: Sequence[str], holder: str = "") -> int:
+    """Libera de una vez los locks de ``names`` que sigan siendo de ``holder``.
+
+    Mismo contrato que :func:`release` —el holder es parte de la identidad— en
+    un solo viaje a la BD. Lo usa el cierre de la pasada para cerrar las
+    ventanas de aviso de todos los pasos que terminaron bien: uno por paso
+    serían una veintena de idas y vueltas por pasada desde un runner que está a
+    ~100 ms de la base.
+
+    Devuelve cuántos se borraron.
+    """
+    if not names:
+        return 0
+    with connect() as conn:
+        cursor = conn.execute(
+            "DELETE FROM job_locks WHERE holder = %s AND name = ANY(%s)",
+            (holder, list(names)),
+        )
+        borrados: int = cursor.rowcount
+
+    log.debug("job_locks_released", pedidos=len(names), borrados=borrados, holder=holder)
+    return borrados
 
 
 def renew(name: str, holder: str = "", ttl_seconds: int = 600) -> bool:

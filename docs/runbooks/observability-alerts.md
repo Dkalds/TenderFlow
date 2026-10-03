@@ -57,9 +57,23 @@ durante `cooldown_s`. La ventana es un lock de `db.job_locks` llamado
 una escalada warn→crit avisa al momento. Antes mandaban el mismo correo cada
 mañana: el de drift, un ERROR sobre un modelo que ni siquiera se servía.
 
+**Avisos que se reevalúan en cada pasada (desde 2026-10-03).** Salen la primera
+vez y, mientras sigan igual, una vez al día (`COOLDOWN_RECORDATORIO_DIARIO_S`,
+22 h: con 24 justas la pasada del día siguiente llegaría minutos antes de que
+caduque la ventana). Del 29/09 al 03/10 `ml_scoring` falló en catorce pasadas
+seguidas y cada una mandó su correo, más el del healthcheck: una docena al día
+diciendo lo mismo, y cuatro días sin que nadie abriera el que importaba.
+
+| Aviso | Clave | Cuándo vuelve a salir antes de un día |
+|---|---|---|
+| `[pipeline] paso <paso> falló` | `pipeline_step:<paso>` | Si el paso termina `ok` y se rompe otra vez: el cierre de la pasada cierra la ventana de los pasos recuperados (`_cerrar_avisos_de_pasos_recuperados`, un solo `DELETE`). |
+| `Healthcheck tenderflow` (degradado) | `healthcheck:degraded:<huella>` | Si cambia el conjunto de avisos. La huella ignora las cifras (`dlq_above_threshold:53` → `:57` no es noticia) y conserva los nombres (`fuente_atrasada:ted`). |
+
+El healthcheck **crítico no se deduplica**: sale siempre y deja el job en rojo.
+
 - **Si quieres que vuelva a avisar ya**: borra el lock con
-  `db.job_locks.force_release("alert:<clave>")`. Los vigentes aparecen en el
-  listado de locks de `scheduler/healthcheck.py`.
+  `db.job_locks.release("alert:<clave>", holder="observability.alerts")`. Los
+  vigentes aparecen en el listado de locks de `scheduler/healthcheck.py`.
 - **Si una alerta dedup no llega**: busca `alert_suppressed_cooldown` en el
   log del job. La ventana se abre después del filtro de `ALERT_MIN_LEVEL` y se
   suelta si el correo no llega a salir, así que ni un nivel filtrado ni un SMTP

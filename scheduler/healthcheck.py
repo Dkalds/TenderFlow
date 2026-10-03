@@ -12,6 +12,8 @@ Comprueba:
        a propósito» de «muerta» — y, si declara `max_antiguedad_dato_hours`,
        que su cursor siga avanzando: un run exitoso con la fuente congelada no
        es una fuente fresca.
+    7. Ningún error de JavaScript del navegador (`client_errors`) sigue
+       ocurriendo después de haberse repetido.
 
 Salida:
   exit 0 → healthy
@@ -25,7 +27,9 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
+import re
 import shutil
 import sys
 import time
@@ -39,8 +43,12 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from db.database import connect, init_db  # noqa: E402
+from db.repositories.client_errors import (  # noqa: E402
+    activos_desde as errores_activos_del_frontend,
+)
 from db.repositories.publico import estado_refresco_canonicas  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
+from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -353,10 +361,52 @@ def _incorporar_frescura_fuentes(
             log.debug("fuentes_frescura_notify_failed")
 
 
+def _incorporar_errores_de_frontend(
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+    *,
+    horas: int,
+    min_ocurrencias: int,
+) -> None:
+    """Vuelca en el informe los errores de JavaScript que siguen ocurriendo.
+
+    ``client_errors`` (v117) nació para que lo que falla en el navegador tuviera
+    un destino mejor que un log de Render, y hasta 2026-10 lo único que la leía
+    era la purga a 30 días: el endpoint de listado existe y ninguna pantalla lo
+    consulta. Un error activo y repetido entra aquí como aviso, y con él en el
+    correo de estado degradado.
+
+    En su propio ``try`` como sus vecinos: un check secundario no puede llevarse
+    por delante el informe entero.
+    """
+    try:
+        desde = (datetime.now(UTC) - timedelta(hours=horas)).isoformat()
+        activos, top = errores_activos_del_frontend(desde=desde, min_ocurrencias=min_ocurrencias)
+    except Exception as exc:
+        info["client_errors_error"] = str(exc)[:200]
+        warnings.append("client_errors_no_medido")
+        checks.append({"name": "client_errors_sin_actividad", "ok": True})
+        return
+
+    info["client_errors"] = {"ventana_horas": horas, "activos": activos, "top": top}
+    if activos:
+        warnings.append(f"client_errors_activos:{activos}")
+        # El correo solo lleva los valores planos de `info`: sin esta línea
+        # diría «hay un error» y obligaría a ir a la BD a ver cuál.
+        peor = top[0]
+        info["client_errors_top"] = (
+            f"{peor.get('mensaje') or 'sin mensaje'} · {peor.get('ruta') or '?'} · "
+            f"{peor.get('ocurrencias')} veces"
+        )
+    checks.append({"name": "client_errors_sin_actividad", "ok": not activos})
+
+
 def run_check(
     freshness_hours: int = 36,
     dlq_threshold: int = 50,
     canonicas_stale_hours: int = 9,
+    client_errors_min_ocurrencias: int = 2,
 ) -> dict[str, Any]:
     init_db()
     status = "healthy"
@@ -524,6 +574,11 @@ def run_check(
         # `continue-on-error: true`, así que tampoco ponen el job en rojo.
         _incorporar_frescura_fuentes(checks, warnings, info)
 
+        # ── Errores de JavaScript del navegador (v117) ─────────────────
+        _incorporar_errores_de_frontend(
+            checks, warnings, info, horas=24, min_ocurrencias=client_errors_min_ocurrencias
+        )
+
         # Locks activos (ADR-012)
         try:
             now_iso = datetime.now(UTC).isoformat()
@@ -599,6 +654,23 @@ def run_check(
     }
 
 
+#: La cifra con la que acaban los avisos medidos (``dlq_above_threshold:53``,
+#: ``canonicas_stale:12.5h``, ``canonicas_encogieron:900->700``). Un sufijo que
+#: es un nombre (``fuente_atrasada:ted``) no casa y se queda en la huella.
+_CIFRA_DE_UN_AVISO = re.compile(r":[\d.,%h>-]+$")
+
+
+def _clave_aviso_degradado(warnings: list[str]) -> str:
+    """Clave de dedup del aviso de estado degradado: cambia si cambia lo que dice.
+
+    La huella son los avisos **sin su cifra** y sin orden: que la DLQ pase de 53
+    a 57 no es una noticia, que aparezca un aviso que ayer no estaba sí.
+    """
+    codigos = sorted({_CIFRA_DE_UN_AVISO.sub("", aviso) for aviso in warnings})
+    huella = hashlib.sha256("\n".join(codigos).encode()).hexdigest()[:16]
+    return f"healthcheck:degraded:{huella}"
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--freshness-hours", type=int, default=36)
@@ -610,19 +682,36 @@ def main() -> int:
         help="Horas sin refrescar `licitaciones_canonicas` que se consideran viejas "
         "(por defecto 9: dos ciclos del carril de 4h más margen)",
     )
+    p.add_argument(
+        "--client-errors-min",
+        type=int,
+        default=2,
+        help="Ocurrencias a partir de las que un error de JavaScript activo en las "
+        "últimas 24 h degrada el estado (por defecto 2: uno suelto no cuenta)",
+    )
     p.add_argument("--alert", action="store_true", help="Emite alertas si el estado no es healthy")
     args = p.parse_args()
 
     configure_logging()
-    result = run_check(args.freshness_hours, args.dlq_threshold, args.canonicas_stale_hours)
+    result = run_check(
+        args.freshness_hours,
+        args.dlq_threshold,
+        args.canonicas_stale_hours,
+        args.client_errors_min,
+    )
     print(json.dumps(result, indent=2, default=str))
 
     if args.alert and result["status"] != "healthy":
-        level = AlertLevel.CRITICAL if result["status"] == "critical" else AlertLevel.WARN
+        critico = result["status"] == "critical"
         notify(
-            level,
+            AlertLevel.CRITICAL if critico else AlertLevel.WARN,
             "Healthcheck tenderflow",
             body=f"Estado: {result['status']}",
+            # Un estado crítico no se calla nunca. Uno degradado que no cambia
+            # sale una vez y luego recuerda a diario: este check corre tras cada
+            # pasada y cada seis horas, diez veces al día con los mismos avisos.
+            dedup_key=None if critico else _clave_aviso_degradado(result["warnings"]),
+            cooldown_s=None if critico else COOLDOWN_RECORDATORIO_DIARIO_S,
             warnings=result["warnings"],
             errors=result["errors"],
             **{k: v for k, v in result["info"].items() if not isinstance(v, dict)},
