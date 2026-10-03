@@ -100,11 +100,11 @@ class RegisteredSource:
     #: entonces la allowlist era un literal de settings que solo nombraba
     #: PLACSP, y ninguna otra fuente podía aportar un pliego aunque lo
     #: enlazara. Vacío significa «esta fuente no emite referencias a
-    #: documentos», que hoy es el caso de todas menos PLACSP: TED publica la
-    #: página del comprador (BT-15), no el adjunto, y PSCP, Galicia, Euskadi y
-    #: TACRC aún no extraen enlaces. Cuando un conector empiece a emitir
-    #: ``DocumentoReferencia``, su dominio se declara aquí y el test de
-    #: paridad exige que la allowlist por defecto lo incluya.
+    #: documentos». Desde el 2026-10-02 las emiten PLACSP, TED (el PDF de su
+    #: anuncio, ``scraper.documentos_plataforma``) y PSCP (los pliegos de la
+    #: ficha de cada publicación); Galicia, Euskadi y TACRC aún no. Cuando un
+    #: conector empiece a emitir ``DocumentoReferencia``, su dominio se declara
+    #: aquí y el test de paridad exige que la allowlist por defecto lo incluya.
     dominios_documentos: tuple[str, ...] = ()
     #: Horas sin **dato** nuevo a partir de las cuales la fuente está atascada
     #: aunque sus runs terminen bien. Se mide sobre el ``last_seen_updated`` de
@@ -196,6 +196,7 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
             "completa su histórico: aporta los anuncios que llegan al diario "
             "europeo, no una segunda copia del mercado español."
         ),
+        dominios_documentos=("ted.europa.eu",),
         max_antiguedad_dato_hours=_LAG_SEMANAL,
     ),
     RegisteredSource(
@@ -243,6 +244,7 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
             "configurado y de los campos que ese dataset publica."
         ),
         estado="opcional",
+        dominios_documentos=("contractaciopublica.cat",),
     ),
     RegisteredSource(
         source_id="tacrc",

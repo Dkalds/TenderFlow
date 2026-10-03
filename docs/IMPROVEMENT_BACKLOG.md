@@ -334,8 +334,39 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     `SELECT COUNT(*) FROM licitaciones_duplicados WHERE clave_match LIKE 'idEvl:%' OR clave_match LIKE 'expediente:%'`
     anotado aquí junto al total de filas `ted`.
   - Ninguna fila `ted` con título que empiece por `España –`.
+- **Progreso (2026-10-02):** el camino del `idEvl` ya no necesita el backfill:
+  `services.dedupe.reemparejar_ted_por_id_evl` lo relee de `licitaciones.url` tras
+  cada pasada de TED (medido ese día: 332 avisos con el `idEvl` de un expediente de
+  PLACSP en BD y sin pareja, todos publicados en TED hasta el 2026-09-09). El
+  backfill sigue haciendo falta para BT-22, que no se guarda, y para los títulos.
 - **Files de partida:** [scraper/connectors/ted.py](../scraper/connectors/ted.py), [services/dedupe.py](../services/dedupe.py)
 - **Riesgo:** bajo — el upsert es idempotente y las marcas `confirmed` automáticas no pisan lo que un humano resolvió.
+
+### [P2] Medir en producción los documentos de TED y PSCP tras el despliegue
+- **Área:** scraper/documentos_plataforma.py, scraper/connectors/{ted,pscp,placsp}.py, config/settings.py
+- **Problema:** hasta el 2026-10-02 ninguna fila TED ni PSCP tenía documentos
+  (de ~248 convocatorias TED abiertas, solo las 87 emparejadas con PLACSP veían
+  pliegos, los de su canónica). Desde entonces: el PDF del anuncio TED para las
+  convocatorias sin pareja, los pliegos de PLACSP rescatados de las entries que
+  el ATOM descarta, la ficha JSON de la PSCP y el emparejamiento TED↔PSCP por el
+  anuncio que la ficha cita. Nada de eso está medido en producción, y una cosa
+  puede dejarlo mudo sin error: que Render fije `DOCUMENT_ALLOWED_HOSTS` con el
+  valor viejo (solo PLACSP; la descarga bajo demanda de la API rechazaría TED y
+  la PSCP con «Host no incluido»). `.env.example` ya lleva el valor nuevo.
+- **Acceptance criteria:**
+  - Logs `ted_documentos_completados`, `pscp_documentos_completados` y
+    `placsp_rescate_ted` en un run de `scrape-daily.yml`, con sus recuentos aquí.
+  - `SELECT l.fuente, count(DISTINCT d.licitacion_id) FROM documentos d JOIN licitaciones l ON l.id_externo = d.licitacion_id WHERE l.fuente IN ('ted','pscp') GROUP BY 1`
+    y cuántos llegan a `extracted` tras el lote nocturno de `pliegos.yml`.
+  - Marcas `clave_match LIKE 'publicacion_oficial:%'` contadas.
+  - `DOCUMENT_ALLOWED_HOSTS` en Render comprobado (sin definir, o con
+    `ted.europa.eu` y `contractaciopublica.cat`).
+  - PSCP guarda sin etiqueta de tecnología lo que entra solo por CPV 48/72
+    (`cpv_ti_universe`: 48 de 122 convocatorias vigentes ese día) y por eso no se
+    publica, mientras su anuncio TED sí. Decidir con el diagnóstico de la
+    clasificación si esa asimetría se mantiene.
+- **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
+- **Riesgo:** bajo — solo observación y una variable de entorno.
 
 ### [P1] La vista canónica todavía puede preferir TED, y el bulk no cuenta como PLACSP
 - **Área:** db/sql_fragments.py (`_criterios_canonicos_sql`), services/dedupe.py (`_rango_canonico`), db/alembic

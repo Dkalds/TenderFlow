@@ -513,6 +513,38 @@ class TedConnector:
         """
         return dict(self._referencias)
 
+    # ── documentos ───────────────────────────────────────────────────────
+
+    def completar_documentos(self) -> None:
+        """Tras la ingesta y el dedupe: pliegos para los avisos que no los tienen.
+
+        Dos pasos, en este orden y cada uno fail-open:
+
+        1. Re-emparejar por ``idEvl`` los avisos antiguos que siguen sin pareja
+           (``services.dedupe.reemparejar_ted_por_id_evl``): emparejados, su
+           ficha lee los pliegos del expediente de PLACSP.
+        2. Dar el PDF del anuncio como documento a las convocatorias vigentes
+           que, aun así, se quedan sin pareja ni documentos
+           (``scraper.documentos_plataforma.completar_documentos_ted``).
+
+        Los pliegos de PLACSP de un expediente que el ATOM descartó no salen de
+        aquí sino del propio conector de PLACSP, que los rescata al ver pasar la
+        entry (``RescatePliegosPlacsp``).
+        """
+        from scraper.documentos_plataforma import completar_documentos_ted
+        from services.dedupe import reemparejar_ted_por_id_evl
+
+        try:
+            reemparejo = reemparejar_ted_por_id_evl()
+            log.info("ted_reemparejo_id_evl", **reemparejo.as_dict())
+        except Exception as e:
+            log.warning("ted_reemparejo_id_evl_failed", error=str(e))
+        try:
+            resumen = completar_documentos_ted()
+            log.info("ted_documentos_completados", **resumen.as_dict())
+        except Exception as e:
+            log.warning("ted_documentos_completados_failed", error=str(e))
+
     # ── cursor ───────────────────────────────────────────────────────────
 
     def new_cursor(self) -> dict[str, Any] | None:

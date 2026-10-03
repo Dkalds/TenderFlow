@@ -80,13 +80,14 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pybreaker
 import requests
 
 from config import USER_AGENT, settings
 from observability.logging import get_logger
-from scraper.resilience import http_retry, placsp_breaker
+from scraper.resilience import breaker_para_host, http_retry
 from shared.object_store import ObjectStoreError, document_blob_key, get_object_store
 from shared.outbound_http import pinned_https_request
 
@@ -210,10 +211,22 @@ class ExtractorAusenteError(UnsupportedDocumentError):
     """
 
 
-@placsp_breaker
-@http_retry
 def _download_bytes(uri: str) -> tuple[bytes, str | None]:
     """Descarga ``uri`` en memoria con guardas SSRF + tamaño.
+
+    Detrás del circuito de la plataforma que la sirve (``breaker_para_host``):
+    PLACSP, TED y la plataforma catalana fallan por separado, y el lote de una
+    no puede parar el de las otras. El circuito envuelve a los reintentos, como
+    cuando era un decorador: cuenta un fallo por descarga, no por intento.
+    """
+    breaker = breaker_para_host(urlparse(uri).hostname)
+    resultado: tuple[bytes, str | None] = breaker.call(_download_bytes_con_reintentos, uri)
+    return resultado
+
+
+@http_retry
+def _download_bytes_con_reintentos(uri: str) -> tuple[bytes, str | None]:
+    """El cuerpo de :func:`_download_bytes`, sin el circuito.
 
     DNS-pinning (mismo helper que webhooks, ``shared/ssrf.py``): resuelve y
     valida la IP en cada intento (no solo al parsear el CODICE), cerrando la
@@ -840,8 +853,8 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
     try:
         content, content_type = _download_bytes(uri)
     except pybreaker.CircuitBreakerError as e:
-        # El breaker abierto no dice nada de ESTE documento: dice que PLACSP
-        # está rechazando ahora mismo. Marcarlo 'error' lo sacaría de
+        # El breaker abierto no dice nada de ESTE documento: dice que su
+        # plataforma (PLACSP, TED o la catalana) está rechazando ahora mismo. Marcarlo 'error' lo sacaría de
         # ``list_pendientes`` para siempre por una condición transitoria — así
         # se perdieron 1.702 documentos (el 66% de los errores acumulados en
         # producción a 2026-08-18) antes de que existiera esta rama. La fila se
