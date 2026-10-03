@@ -14,6 +14,8 @@ Fija tres invariantes que el código violaba:
 
 from __future__ import annotations
 
+import pytest
+
 from services.ml.promotion import MIN_RECALL_NO_KEYWORD, evaluar_gate
 from services.ml_eval import (
     SPLIT_HOLDOUT,
@@ -186,16 +188,25 @@ class _ClfFalso:
         return destino
 
 
-def _promocionar(tmp_path, *, motivos):
-    """Corre `promote_if_better` con el registro y el gate mockeados."""
+def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None):
+    """Corre `promote_if_better` con el registro y el gate mockeados.
+
+    ``siguiente`` es lo que el registro dice que toca (el máximo de TODAS las
+    filas más uno) y ``registrada`` lo que `register_version` acaba asignando.
+    Por defecto coinciden, que es lo que pasa si nadie registra entre medias.
+    """
     from unittest.mock import patch
 
     from services.ml.promotion import promote_if_better
 
     publicado = tmp_path / "publicado" / "sap_classifier.pkl"
     with (
-        patch("db.model_registry.get_active", return_value=None),
-        patch("db.model_registry.register_version") as register,
+        patch("db.model_registry.get_active", return_value=activa),
+        patch("db.model_registry.next_version", return_value=siguiente),
+        patch(
+            "db.model_registry.register_version",
+            return_value=siguiente if registrada is None else registrada,
+        ) as register,
         patch("services.ml.promotion.evaluar_gate", return_value=motivos),
         patch("services.ml.promotion.evaluar_en_golden", return_value=None),
     ):
@@ -241,3 +252,90 @@ def test_si_el_gate_rechaza_no_se_publica_y_se_registra_el_versionado(tmp_path):
     registrado = register.call_args.kwargs
     assert registrado["path"].endswith("sap_classifier_v1.pkl")
     assert registrado["activate"] is False
+
+
+# ---------------------------------------------------------------------------
+# Qué número de versión lleva el candidato (2026-10)
+# ---------------------------------------------------------------------------
+#
+# `promote_if_better` numeraba desde la versión ACTIVA (`activa + 1`, o 1 si no
+# había ninguna) y `register_version` desde el máximo de TODAS las filas. Con
+# una v1 registrada e inactiva (run 36609890015 de scrape-daily, 2026-09-29) el
+# artefacto se guardó como `sap_classifier_v1.pkl`, los logs y la notificación
+# dijeron «v1», y la fila insertada en `model_versions` fue la versión 2.
+
+
+@pytest.mark.parametrize(
+    "version_activa",
+    [
+        pytest.param(None, id="ninguna_activa"),
+        # Tras un rollback con `activate_version` la activa queda por detrás
+        # del máximo: `activa + 1` daría un número que ya existe.
+        pytest.param(1, id="la_activa_no_es_la_ultima"),
+    ],
+)
+def test_el_versionado_lleva_la_version_siguiente_al_maximo_registrado(tmp_path, version_activa):
+    activa = None
+    if version_activa is not None:
+        activa = {
+            "id": 7,
+            "name": "sap_classifier",
+            "version": version_activa,
+            # No existe a propósito: sin fichero no hay golden del activo que
+            # evaluar, y el gate va mockeado de todos modos.
+            "path": str(tmp_path / "no-existe.pkl"),
+            "sha256": "a" * 64,
+            "trained_at": "2026-09-01T00:00:00+00:00",
+            "trained_on_n_samples": 150,
+            "trained_on_n_feedbacks": None,
+            "is_active": 1,
+            "notes": None,
+            "metrics": {},
+        }
+
+    resultado, register, _publicado = _promocionar(
+        tmp_path, motivos=["recall_no_keyword"], activa=activa, siguiente=3
+    )
+
+    versionados = sorted(p.name for p in (tmp_path / "versiones").iterdir())
+    assert versionados == ["sap_classifier_v3.pkl"]
+    assert register.call_args.kwargs["path"].endswith("sap_classifier_v3.pkl")
+    assert resultado.version == 3
+
+
+def test_el_resultado_lleva_la_version_que_asigno_el_registro(tmp_path):
+    """`ResultadoPromocion.version` acaba en `$GITHUB_OUTPUT` y en la
+    notificación: tiene que nombrar la fila que existe en `model_versions`. Si
+    otro proceso registra entre la consulta y el INSERT, manda el INSERT."""
+    resultado, _register, _publicado = _promocionar(tmp_path, motivos=[], siguiente=2, registrada=3)
+
+    assert resultado.version == 3
+
+
+def test_con_una_version_inactiva_registrada_el_candidato_es_la_v2(tmp_db, tmp_path):
+    """El caso real, contra el registro de verdad: existe una v1 inactiva y
+    ninguna activa. Fichero versionado, resultado y fila tienen que decir 2."""
+    from unittest.mock import patch
+
+    from db.model_registry import get_active, register_version
+    from services.ml.promotion import promote_if_better
+
+    register_version(name="sap_classifier", path="data/models/sap_classifier_v1.pkl", sha256="a")
+    assert get_active("sap_classifier") is None
+
+    with (
+        patch("services.ml.promotion.evaluar_gate", return_value=[]),
+        patch("services.ml.promotion.evaluar_en_golden", return_value=None),
+    ):
+        resultado = promote_if_better(
+            _ClfFalso(),
+            {"n_train": 100, "n_test": 50},
+            models_dir=tmp_path / "versiones",
+            publicar_como=tmp_path / "publicado" / "sap_classifier.pkl",
+        )
+
+    assert resultado.version == 2
+    assert [p.name for p in (tmp_path / "versiones").iterdir()] == ["sap_classifier_v2.pkl"]
+    activa = get_active("sap_classifier")
+    assert activa is not None
+    assert activa["version"] == 2

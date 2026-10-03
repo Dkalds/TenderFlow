@@ -366,13 +366,18 @@ def promote_if_better(
             descargan API y runners). Solo se sobrescribe si el gate pasa; si
             no, el modelo anterior queda intacto.
     """
-    from db.model_registry import get_active, register_version
+    from db.model_registry import get_active, next_version, register_version
 
     activa = get_active(name)
-    version = int(activa["version"]) + 1 if activa else 1
+    # Se numera desde el máximo registrado, que es desde donde numera
+    # ``register_version``. ``activa + 1`` diverge en cuanto hay versiones
+    # registradas y ninguna activa (o la activa no es la última): con una v1
+    # inactiva, el artefacto se guardó como ``_v1``, los logs y la notificación
+    # dijeron «v1», y la fila insertada fue la 2.
+    prevista = next_version(name)
     destino_dir = models_dir or Path("data/models")
     destino_dir.mkdir(parents=True, exist_ok=True)
-    ruta_version = destino_dir / f"{name}_v{version}.pkl"
+    ruta_version = destino_dir / f"{name}_v{prevista}.pkl"
     guardado = Path(clf.save(ruta_version))
     sha = hashlib.sha256(guardado.read_bytes()).hexdigest()
 
@@ -417,7 +422,10 @@ def promote_if_better(
         ruta_registrada = publicar_como
 
     n_samples = int(metrics.get("n_train") or 0) + int(metrics.get("n_test") or 0)
-    register_version(
+    # De aquí en adelante ``version`` es la que asignó el registro: es la que
+    # existe en ``model_versions``, y la que tienen que nombrar los logs, la
+    # notificación y el resumen de ``train-model.yml``.
+    version = register_version(
         name=name,
         # Mismo sha en los dos: ``publicar_como`` es copia byte a byte de
         # ``guardado``, así que el hash registrado sigue describiendo el
@@ -434,6 +442,17 @@ def promote_if_better(
         notes=notes,
         activate=debe_activar,
     )
+    if version != prevista:
+        # Otro proceso registró entre ``next_version`` y el INSERT. El fichero
+        # versionado ya está escrito (y, si el gate rechazó, registrado) con el
+        # número previsto: no se renombra, pero se deja dicho cuál es cuál.
+        log.warning(
+            "promotion.version_desfasada",
+            name=name,
+            prevista=prevista,
+            registrada=version,
+            path=str(guardado),
+        )
 
     if debe_activar:
         log.info("promotion.activada", name=name, version=version, golden=golden_dict)

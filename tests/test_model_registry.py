@@ -8,6 +8,7 @@ from db.model_registry import (
     feedbacks_since_last_train,
     get_active,
     list_versions,
+    next_version,
     register_version,
 )
 
@@ -55,6 +56,34 @@ def test_list_versions(tmp_db):
     assert len(versions) == 3
     # Ordered DESC by version
     assert versions[0]["version"] > versions[-1]["version"]
+
+
+def test_next_version_sin_filas_es_la_primera(tmp_db):
+    _db_mod, _ = tmp_db
+    assert next_version("m") == 1
+
+
+def test_next_version_cuenta_las_versiones_inactivas(tmp_db):
+    """Quien numera desde la versión activa empieza otra vez en 1 cuando no hay
+    ninguna activa, y la fila que se inserta es la 2."""
+    _db_mod, _ = tmp_db
+    register_version(name="m", path="p1", sha256="a1")
+    register_version(name="otro", path="q1", sha256="b1", activate=True)
+    assert get_active("m") is None
+
+    siguiente = next_version("m")
+
+    assert siguiente == 2
+    assert register_version(name="m", path="p2", sha256="a2") == siguiente
+
+
+def test_next_version_sigue_al_maximo_aunque_la_activa_sea_anterior(tmp_db):
+    _db_mod, _ = tmp_db
+    register_version(name="m", path="p1", sha256="a1", activate=True)
+    register_version(name="m", path="p2", sha256="a2", activate=True)
+    activate_version("m", 1)
+
+    assert next_version("m") == 3
 
 
 def test_feedbacks_since_last_train(tmp_db):
