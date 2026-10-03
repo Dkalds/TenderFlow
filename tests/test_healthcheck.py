@@ -203,6 +203,78 @@ def test_healthcheck_healthy_after_successful_run(tmp_db):
     assert result["info"]["fuentes_frescura"]["sin_registro"] == []
 
 
+def _error_de_frontend(veces: int) -> None:
+    from db.repositories.client_errors import registrar
+
+    for _ in range(veces):
+        registrar(
+            mensaje="TypeError: Cannot read properties of undefined (reading 'map')",
+            ruta="/radar",
+            origen="onerror",
+            build="abc1234",
+        )
+
+
+def test_un_error_de_frontend_que_se_repite_degrada_un_sistema_sano(tmp_db):
+    """``client_errors`` se escribía y solo la leía la purga: ahora llega al informe."""
+    from observability.metrics import record_run
+
+    with record_run("run-ok") as m:
+        m.months_attempted = 1
+        m.months_ok = 1
+    _con_fuentes_frescas()
+    _error_de_frontend(veces=3)
+
+    from scheduler.healthcheck import run_check
+
+    result = run_check()
+
+    assert result["status"] == "degraded", result
+    assert result["warnings"] == ["client_errors_activos:1"]
+    assert {"name": "client_errors_sin_actividad", "ok": False} in result["checks"]
+    assert result["info"]["client_errors"]["top"][0]["ocurrencias"] == 3
+    assert result["info"]["client_errors_top"].endswith("/radar · 3 veces")
+
+
+def test_un_error_de_frontend_suelto_no_degrada(tmp_db):
+    """Una sola ocurrencia —una extensión, un corte de red— no es una regresión."""
+    from observability.metrics import record_run
+
+    with record_run("run-ok") as m:
+        m.months_attempted = 1
+        m.months_ok = 1
+    _con_fuentes_frescas()
+    _error_de_frontend(veces=1)
+
+    from scheduler.healthcheck import run_check
+
+    result = run_check()
+
+    assert result["status"] == "healthy", result
+    assert {"name": "client_errors_sin_actividad", "ok": True} in result["checks"]
+
+
+def test_un_error_de_frontend_que_dejo_de_ocurrir_no_degrada(tmp_db):
+    """Activo es «sigue pasando»: lo de hace dos días ya no despierta a nadie."""
+    from datetime import datetime, timedelta
+
+    from db.database import connect
+    from observability.metrics import record_run
+
+    with record_run("run-ok") as m:
+        m.months_attempted = 1
+        m.months_ok = 1
+    _con_fuentes_frescas()
+    _error_de_frontend(veces=5)
+    anteayer = (datetime.now(UTC) - timedelta(hours=49)).isoformat()
+    with connect() as c:
+        c.execute("UPDATE client_errors SET ultima_vez = %s", (anteayer,))
+
+    from scheduler.healthcheck import run_check
+
+    assert run_check()["status"] == "healthy"
+
+
 def test_una_fuente_muerta_degrada_aunque_la_pasada_global_este_fresca(tmp_db):
     """El motivo entero de S2.3, extremo a extremo.
 

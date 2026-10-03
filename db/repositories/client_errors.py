@@ -83,6 +83,37 @@ def listar(*, limit: int = 100) -> list[dict[str, Any]]:
         )
 
 
+def activos_desde(
+    *, desde: str, min_ocurrencias: int, limit: int = 5
+) -> tuple[int, list[dict[str, Any]]]:
+    """Errores que siguen ocurriendo y ya se repitieron: lo que mira el healthcheck.
+
+    «Activo» es que su última ocurrencia cae después de *desde*; «repetido», que
+    acumula al menos *min_ocurrencias*. El contador es el de toda la vida de la
+    fila —como mucho la retención, 30 días—, no el de la ventana: la tabla
+    agrega por huella y no guarda cuándo ocurrió cada vez. Uno suelto no cuenta
+    (una extensión del navegador, un corte de red de un visitante).
+
+    Devuelve ``(total, los `limit` con más ocurrencias)``: el total para el
+    aviso, los ejemplos para que el correo diga de qué error se trata.
+    """
+    with connect_read() as c:
+        filas = rows_to_dicts(
+            c.execute(
+                "SELECT fingerprint, origen, ruta, mensaje, build, ocurrencias, "
+                "       primera_vez, ultima_vez, COUNT(*) OVER () AS total "
+                "FROM client_errors "
+                "WHERE ultima_vez >= %s AND ocurrencias >= %s "
+                "ORDER BY ocurrencias DESC, ultima_vez DESC LIMIT %s",
+                (desde, min_ocurrencias, limit),
+            )
+        )
+    total = int(filas[0]["total"]) if filas else 0
+    for fila in filas:
+        del fila["total"]
+    return total, filas
+
+
 def purgar(*, antes_de: str) -> int:
     """Borra los errores cuya última ocurrencia es anterior a *antes_de*.
 

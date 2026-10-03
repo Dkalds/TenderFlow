@@ -820,18 +820,46 @@ def _notify_step_failure(step: str, exc: Exception) -> None:
     efímero de Actions: ningún notify(), ninguna métrica, exit code intacto.
     Así se ocultó semanas el cursor PSCP atascado. El plano APScheduler
     (loop.py) siempre alertó sus fallos; el plano activo no.
+
+    Un paso que sigue roto avisa la primera vez y después una vez al día, no en
+    cada pasada (``COOLDOWN_RECORDATORIO_DIARIO_S``). La ventana va por paso y
+    la cierra :func:`_cerrar_avisos_de_pasos_recuperados` cuando el paso vuelve
+    a terminar bien, así que una recaída avisa al momento.
     """
     try:
-        from observability.alerts import notify
+        from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S, notify
 
         notify(
             "error",
             f"[pipeline] paso {step} falló",
             body=f"{type(exc).__name__}: {exc}"[:500],
+            dedup_key=_clave_aviso_de_paso(step),
+            cooldown_s=COOLDOWN_RECORDATORIO_DIARIO_S,
             step=step,
         )
     except Exception:
         log.warning("pipeline_step_alert_failed", step=step)
+
+
+def _clave_aviso_de_paso(step: str) -> str:
+    return f"pipeline_step:{step}"
+
+
+def _cerrar_avisos_de_pasos_recuperados(results: dict[str, str]) -> None:
+    """Cierra la ventana de aviso de los pasos que acaban de terminar ``ok``.
+
+    Solo ``ok``: un paso ``skipped`` —apagado por flag, o periódico fuera de su
+    día— o saltado por dependencia no ha demostrado que funcione. Best-effort,
+    como el aviso que complementa.
+    """
+    try:
+        from observability.alerts import cerrar_ventanas
+
+        cerrar_ventanas(
+            _clave_aviso_de_paso(name) for name, estado in results.items() if estado == STEP_OK
+        )
+    except Exception:
+        log.warning("pipeline_step_alert_close_failed")
 
 
 def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
@@ -875,6 +903,7 @@ def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
             # Los advisory notifican igual: dejan de tumbar el job, no de avisar.
             _notify_step_failure(name, exc)
 
+    _cerrar_avisos_de_pasos_recuperados(results)
     return results
 
 
@@ -999,6 +1028,7 @@ def _cierre_por_cola(*, lane: str) -> dict[str, str]:
     if sin_consumir:
         log.warning("pipeline_cierre_pasos_sin_consumir", pasos=sin_consumir)
 
+    _cerrar_avisos_de_pasos_recuperados(results)
     return results
 
 

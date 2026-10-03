@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import ipaddress
 import itertools
 import os
+import re
+import socket
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
 
 # ── Auto-marking de tests por convención de nombre + uso de fixtures ────────
 # Evita anotar manualmente los tests. Reglas, en orden:
-#   - módulo test_*property*/test_*performance*/test_*load*    → property/load
+#   - módulo test_*property* / palabra `performance` o `load`  → property/load
 #   - test_*e2e* / test_visual_regression / test_dashboard_smoke → e2e
 #   - test_integration_*, test_*_integration   → integration
 #   - cierre de fixtures incluye tmp_db/api_db → integration (BD real)
@@ -32,7 +36,14 @@ _E2E_TOKENS = ("_e2e", "visual_regression", "dashboard_smoke", "dashboard_pages"
 # su propio nombre de archivo (`test_performance.py`, `test_property_based.py`,
 # `test_load_scraper_placsp.py`, …), así que la ruta basta como señal — la
 # ruta DENTRO del repo, nunca la absoluta (ver `_ruta_relativa`).
-_LOAD_TOKENS = ("performance", "load")
+#
+# Los de carga casan además como PALABRA de la ruta, no como subcadena: `load`
+# vive dentro de «download», y `test_bulk_downloader.py` y
+# `test_exports_download_session.py` (30 tests) estuvieron fuera de `make check`
+# por eso. Qué módulos reales quedan `load` lo fija, con sus nombres,
+# `tests/test_markers_automarking.py`.
+_LOAD_TOKENS = frozenset({"performance", "load"})
+_SEPARADOR_DE_PALABRAS = re.compile(r"[^a-z0-9]+")
 _PROPERTY_TOKENS = ("property", "properties", "property_based")
 
 # Fixtures raíz que abren el schema Postgres aislado (ambas piden
@@ -55,9 +66,8 @@ def _infer_marker(path: str, name: str) -> str:
     for token in _E2E_TOKENS:
         if token in p or token in n:
             return "e2e"
-    for token in _LOAD_TOKENS:
-        if token in p:
-            return "load"
+    if _LOAD_TOKENS & set(_SEPARADOR_DE_PALABRAS.split(p)):
+        return "load"
     for token in _PROPERTY_TOKENS:
         if token in p:
             return "property"
@@ -118,6 +128,135 @@ def pytest_collection_modifyitems(config, items):
         if marker_name == "unit" and _PG_FIXTURES & set(getattr(item, "fixturenames", ())):
             marker_name = "integration"
         item.add_marker(getattr(pytest.mark, marker_name))
+
+
+# ── Guard de red: un test `unit` no sale de la máquina ──────────────────────
+_SALIDAS_A_LA_RED = pytest.StashKey[list[str]]()
+_NOMBRES_LOCALES = frozenset({"", "localhost", "localhost.localdomain", "ip6-localhost"})
+
+
+def _ip_literal(host: object) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """La dirección si ``host`` es un literal de IP; ``None`` si es un nombre."""
+    if isinstance(host, bytes):
+        host = host.decode("ascii", "replace")
+    try:
+        # `%eth0` es el ámbito de una IPv6 link-local, no parte de la dirección.
+        return ipaddress.ip_address(str(host).split("%", 1)[0])
+    except ValueError:
+        return None
+
+
+def _es_nombre_local(host: object) -> bool:
+    if host is None:
+        return True
+    if isinstance(host, bytes):
+        host = host.decode("ascii", "replace")
+    return str(host).strip().lower().rstrip(".") in _NOMBRES_LOCALES
+
+
+def _resuelve_sin_red(host: object) -> bool:
+    """``getaddrinfo(host)`` no consulta a nadie: nombre local o literal de IP."""
+    return _es_nombre_local(host) or _ip_literal(host) is not None
+
+
+def _conecta_sin_red(sock: socket.socket, address: object) -> bool:
+    """``sock.connect(address)`` se queda en la máquina.
+
+    Solo se vigilan los sockets de internet: uno ``AF_UNIX`` no sale por
+    definición y su dirección ni siquiera es una tupla.
+    """
+    if sock.family not in (socket.AF_INET, socket.AF_INET6):
+        return True
+    host = address[0] if isinstance(address, tuple) and address else address
+    ip = _ip_literal(host)
+    return ip.is_loopback if ip is not None else _es_nombre_local(host)
+
+
+@pytest.fixture(autouse=True)
+def _sin_red_en_tests_unitarios(request, monkeypatch):
+    """Hace **fallar** al test ``unit`` que resuelve o conecta fuera de la máquina.
+
+    ``unit`` significa «sin I/O externo» y nada lo imponía. El 2026-09-27 la
+    Release *latest* empezó a publicar ``tech_classifier.pkl`` y un test cuyo
+    parche no llegaba a ``settings`` pasó de «sin modelo» a bajar 11,5 MB de
+    GitHub: CI en rojo en un PR que no tocaba nada de eso.
+
+    Falla con ``pytest.fail`` y no simulando «sin red» con un ``OSError``:
+    ``pytest.fail`` lanza una ``BaseException``, que atraviesa los ``except
+    Exception`` del código bajo prueba. ``shared/release_assets.py`` tiene uno,
+    y con un stub silencioso aquel test habría seguido en verde con el parche
+    roto.
+
+    Quedan abiertos el loopback (el ``socketpair`` del event loop en Windows, un
+    servidor de pega) y resolver un literal de IP, que no consulta a ningún DNS.
+    Un test que necesite una respuesta DNS la declara parcheando
+    ``socket.getaddrinfo``: su parche se instala después de este y lo sustituye.
+
+    Solo ``unit``: los ``integration`` hablan con Postgres, y extenderlo es un
+    cambio con su propia medición.
+
+    Devuelve la lista de salidas cortadas (``None`` fuera de ``unit``), que
+    `pytest_runtest_call` vuelve a mirar al acabar el test. Solo la vacía quien
+    provoca el corte a propósito: `tests/test_guard_de_red.py`.
+    """
+    if request.node.get_closest_marker("unit") is None:
+        yield None
+        return
+
+    salidas: list[str] = []
+    request.node.stash[_SALIDAS_A_LA_RED] = salidas
+    getaddrinfo_real = socket.getaddrinfo
+    connect_real = socket.socket.connect
+    connect_ex_real = socket.socket.connect_ex
+
+    def _cortar(operacion: str, destino: object) -> NoReturn:
+        salidas.append(f"{operacion}({destino!r})")
+        pytest.fail(
+            f"test `unit` saliendo a la red: {operacion}({destino!r}). Un test unitario "
+            "no hace I/O externo: falta un mock, o el parche no llega al objeto que "
+            "lee el código. Si necesita una respuesta DNS, parcheá `socket.getaddrinfo`."
+        )
+
+    def getaddrinfo(host, *args, **kwargs):
+        if not _resuelve_sin_red(host):
+            _cortar("getaddrinfo", host)
+        return getaddrinfo_real(host, *args, **kwargs)
+
+    def connect(self, address):
+        if not _conecta_sin_red(self, address):
+            _cortar("connect", address)
+        return connect_real(self, address)
+
+    def connect_ex(self, address):
+        if not _conecta_sin_red(self, address):
+            _cortar("connect_ex", address)
+        return connect_ex_real(self, address)
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", connect_ex)
+    yield salidas
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    """Un test que salió a la red no pasa, aunque su código se tragara el corte.
+
+    El ``pytest.fail`` del guard atraviesa un ``except Exception``, pero no un
+    ``except BaseException``, ni un hilo suelto, ni un
+    ``asyncio.gather(return_exceptions=True)``: ahí el corte se pierde y el
+    test acabaría en verde habiendo intentado salir. Si el cuerpo del test
+    termina sin error y aun así quedaron salidas anotadas, falla aquí.
+    """
+    resultado = yield
+    salidas = item.stash.get(_SALIDAS_A_LA_RED, None)
+    if salidas:
+        pytest.fail(
+            "test `unit` saliendo a la red (el código bajo prueba se tragó el corte): "
+            + ", ".join(salidas),
+            pytrace=False,
+        )
+    return resultado
 
 
 @pytest.fixture(autouse=True)

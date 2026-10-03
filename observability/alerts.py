@@ -30,7 +30,7 @@ Cómo obtener la contraseña de aplicación de Gmail
 from __future__ import annotations
 
 import textwrap
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import UTC
 from enum import IntEnum
 from typing import Any, Final, Literal
@@ -64,6 +64,18 @@ _COOLDOWN_PREFIJO = "alert:"
 #: las claves de esos monitores llevan la severidad, así que una escalada
 #: warn→crit sale al momento.
 COOLDOWN_MONITOR_DIARIO_S: Final = 7 * 24 * 60 * 60
+
+#: Ventana de un aviso de operación que se reevalúa en cada pasada (un paso del
+#: cierre que falla, un healthcheck degradado): sale la primera vez y, mientras
+#: siga igual, un recordatorio al día. Del 2026-09-29 al 2026-10-03 ``ml_scoring``
+#: falló en catorce pasadas seguidas y cada una mandó su correo, más el del
+#: healthcheck: una docena al día diciendo lo mismo, y nadie abrió el que
+#: importaba.
+#:
+#: 22 h y no 24: la pasada cae cada día a la misma hora con minutos de holgura,
+#: y con 24 h justas la del día siguiente llegaría antes de que caduque la
+#: ventana — el recordatorio «diario» se iría a la pasada de cuatro horas después.
+COOLDOWN_RECORDATORIO_DIARIO_S: Final = 22 * 60 * 60
 
 
 class AlertLevel(IntEnum):
@@ -336,6 +348,30 @@ def _soltar_ventana(nombre: str) -> None:
         release(nombre, holder=_COOLDOWN_HOLDER)
     except Exception as exc:
         log.warning("alert_cooldown_release_failed", lock=nombre, error=str(exc))
+
+
+def cerrar_ventanas(dedup_keys: Iterable[str]) -> None:
+    """Cierra las ventanas de cooldown de avisos cuya condición ya no se da.
+
+    Es la otra mitad de ``notify(dedup_key=…)`` para lo que se **recupera**: sin
+    esto, un paso que falla, se arregla y vuelve a romperse dentro de la misma
+    ventana se quedaría callado hasta que caducara, y un incidente nuevo
+    pasaría por repetición del anterior. Los monitores diarios no lo necesitan
+    —su clave lleva la severidad y su ventana es un recordatorio—; el cierre de
+    la pasada sí, porque sabe qué pasos acaban de terminar bien.
+
+    Un solo viaje a la BD para todas las claves, y nunca propaga: que no se
+    pueda cerrar una ventana cuesta, como mucho, un aviso que llega tarde.
+    """
+    nombres = [f"{_COOLDOWN_PREFIJO}{clave}" for clave in dedup_keys]
+    if not nombres:
+        return
+    try:
+        from db.job_locks import release_many
+
+        release_many(nombres, holder=_COOLDOWN_HOLDER)
+    except Exception as exc:
+        log.warning("alert_cooldown_release_failed", locks=len(nombres), error=str(exc))
 
 
 def notify(

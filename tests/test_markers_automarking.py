@@ -41,6 +41,55 @@ def test_infer_marker_load():
     assert conftest_mod._infer_marker("tests/test_performance.py", "test_api_load") == "load"
 
 
+# `load` casaba como subcadena y se llevaba por delante a todo módulo con
+# «download» en el nombre: 30 tests reales fuera de `make check` sin que nadie
+# lo viera, porque un test deseleccionado no falla. Los ids no llevan tokens
+# (ver el comentario del parametrize de más abajo).
+@pytest.mark.parametrize(
+    ("modulo", "esperado"),
+    [
+        pytest.param("tests/test_bulk_downloader.py", "unit", id="descargador"),
+        pytest.param("tests/test_exports_download_session.py", "unit", id="descarga"),
+        pytest.param("tests/test_payload_webhook.py", "unit", id="carga-util"),
+        pytest.param("tests/test_load_scraper_placsp.py", "load", id="prefijo"),
+        pytest.param("tests/test_scraper_load.py", "load", id="sufijo"),
+        pytest.param("tests/load/test_escenarios.py", "load", id="directorio"),
+        pytest.param("tests/test_api_performance.py", "load", id="rendimiento"),
+    ],
+)
+def test_el_token_de_carga_casa_como_palabra_y_no_como_subcadena(
+    modulo: str, esperado: str
+) -> None:
+    conftest_mod = _load_test_conftest_module()
+
+    assert conftest_mod._infer_marker(modulo, "test_calcula_kpi") == esperado
+
+
+def test_fuera_del_gate_local_solo_quedan_los_modulos_de_carga_declarados() -> None:
+    """Qué módulos reales se quedan fuera de ``make check``, con nombre y apellido.
+
+    ``make check`` corre ``unit or integration``: un módulo marcado ``load`` no
+    se ejecuta en local y nada lo avisa. Esta lista es el trinquete: quien añada
+    un módulo de carga lo declara aquí, y quien bautice un módulo funcional con
+    un nombre que el auto-marcado confunde se entera al momento, no meses
+    después. Así se colaron los dos de «download» y ``test_ola2_performance.py``,
+    que probaba la caché de la API y no medía rendimiento.
+    """
+    conftest_mod = _load_test_conftest_module()
+    raiz = Path(__file__).resolve().parents[1]
+
+    de_carga = sorted(
+        ruta
+        for ruta in (m.relative_to(raiz).as_posix() for m in (raiz / "tests").rglob("test_*.py"))
+        if conftest_mod._infer_marker(ruta, "test_calcula_kpi") == "load"
+    )
+
+    assert de_carga == [
+        "tests/test_load_scraper_placsp.py",
+        "tests/test_performance.py",
+    ]
+
+
 def test_infer_marker_property():
     conftest_mod = _load_test_conftest_module()
     assert (

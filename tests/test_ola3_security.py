@@ -203,10 +203,18 @@ def test_ssrf_blocks_xip_io():
     assert is_ssrf_url("https://172.16.0.1.xip.io/") is True
 
 
-def test_ssrf_allows_public_url():
+def test_ssrf_allows_public_url(monkeypatch):
     """La validación SSRF debe permitir URLs públicas legítimas."""
+    import socket
 
-    # example.com es un dominio público real — no debe bloquearse
+    # Respuesta DNS pública de pega: se prueba la validación, no que
+    # example.com exista hoy ni que haya red (ver `dns_publico` en test_ssrf.py).
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, *a, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))],
+    )
+
     result = is_ssrf_url("https://example.com/webhook")
     assert result is False
 

@@ -9,9 +9,26 @@ db.webhooks.trigger_event); este archivo cubre el módulo compartido directo.
 
 from __future__ import annotations
 
+import socket
+
 import pytest
 
 from shared.ssrf import validate_outbound_url
+
+
+@pytest.fixture()
+def dns_publico(monkeypatch):
+    """Cualquier nombre resuelve a una dirección global, sin preguntar a un DNS.
+
+    Lo que se prueba es qué hace la validación con una respuesta pública, no
+    que ``example.com`` exista hoy: con el DNS real el test dependía de la red
+    y fallaba sin ella (y el guard de ``tests/conftest.py`` lo corta).
+    """
+
+    def getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
 
 
 def is_ssrf_url(url: str) -> bool:
@@ -36,7 +53,7 @@ class TestIsSsrfUrl:
         # Bloqueado por sufijo antes de intentar resolver DNS.
         assert is_ssrf_url("http://10.0.0.1.nip.io/hook") is True
 
-    def test_public_domain_allowed(self):
+    def test_public_domain_allowed(self, dns_publico):
         assert is_ssrf_url("https://example.com/webhook") is False
 
 
@@ -53,6 +70,6 @@ class TestValidateOutboundUrl:
         with pytest.raises(ValueError, match="DNS rebinding"):
             validate_outbound_url("https://127.0.0.1.nip.io/hook")
 
-    def test_public_domain_keeps_hostname_for_tls_sni(self):
+    def test_public_domain_keeps_hostname_for_tls_sni(self, dns_publico):
         url = "https://example.com/hook?x=1"
         assert validate_outbound_url(url) == url

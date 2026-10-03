@@ -97,6 +97,30 @@ class TestJobLockRelease:
         assert is_held("slow_job") is False
 
 
+class TestJobLockReleaseMany:
+    def test_release_many_borra_de_una_vez_solo_los_del_holder(self) -> None:
+        from db.job_locks import acquire, release_many
+
+        acquire("alert:a", ttl_seconds=60, holder="alertas")
+        acquire("alert:b", ttl_seconds=60, holder="alertas")
+        acquire("job_c", ttl_seconds=60, holder="otro")
+
+        borrados = release_many(["alert:a", "alert:b", "job_c", "no_existe"], holder="alertas")
+
+        assert borrados == 2
+        assert is_held("alert:a") is False
+        assert is_held("alert:b") is False
+        assert is_held("job_c") is True  # el holder es parte de la identidad
+
+    def test_release_many_sin_nombres_no_borra_nada(self) -> None:
+        from db.job_locks import acquire, release_many
+
+        acquire("alert:a", ttl_seconds=60, holder="alertas")
+
+        assert release_many([], holder="alertas") == 0
+        assert is_held("alert:a") is True
+
+
 class TestJobLockRenew:
     def test_renew_extends_ttl_for_owner(self) -> None:
         from db.job_locks import acquire, renew
