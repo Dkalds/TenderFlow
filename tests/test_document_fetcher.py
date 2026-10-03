@@ -1,7 +1,8 @@
 """Tests de scraper/document_fetcher.py (plan Pliegos+RAG, F7).
 
-``_download_bytes`` está decorado con ``@placsp_breaker``/``@http_retry``
-(singleton compartido con ``scraper/bulk_downloader.py``). Los tests que
+``_download_bytes`` pasa por el circuito de su plataforma
+(``breaker_para_host``; el de PLACSP es el singleton compartido con
+``scraper/bulk_downloader.py``) y por ``@http_retry``. Los tests que
 verifican lógica de negocio (extracción, persistencia) parchean
 ``document_fetcher._download_bytes`` completo — mismo patrón que
 ``tests/test_bulk_downloader.py`` — para no tocar el breaker compartido.

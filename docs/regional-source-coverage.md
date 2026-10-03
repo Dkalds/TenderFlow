@@ -70,8 +70,20 @@ sin sumarse como censo.
 deja de ser un literal aislado: cada `RegisteredSource` declara
 `dominios_documentos`, y `dominios_documentos_por_defecto()` los une para las
 fuentes que no están fuera de alcance. Un test exige que el valor por defecto
-de settings coincida con esa unión. Hoy solo PLACSP emite referencias a
-documentos (`scraper/codice_parser.py`); TED enlaza la página del comprador,
-no el adjunto, y PSCP, Galicia, Euskadi y TACRC no extraen enlaces todavía.
-Cuando un conector empiece a emitirlos, declara su dominio en el inventario y
-el test dirá qué falta en la allowlist.
+de settings coincida con esa unión. Cuando un conector empiece a emitirlos,
+declara su dominio en el inventario y el test dirá qué falta en la allowlist.
+
+Desde el 2026-10-02 emiten referencias tres fuentes (`scraper/documentos_plataforma.py`):
+
+- **PLACSP** (`contrataciondelestado.es`): las del CODICE de cada entry
+  (`scraper/codice_parser.py`) y, para los avisos TED cuyo expediente el ATOM
+  descarta por el filtro de tecnología, las de esa entry descartada.
+- **TED** (`ted.europa.eu`): el PDF del anuncio, para las convocatorias sin
+  pareja en otra fuente. TED no publica pliegos; su BT-15 enlaza la página del
+  comprador, no el adjunto.
+- **PSCP** (`contractaciopublica.cat`): los pliegos de la ficha JSON pública de
+  cada publicación, que además cita el anuncio TED del mismo contrato.
+
+La ficha HTML de PLACSP no se usa: su `robots.txt` es `Disallow: /` y no sirve
+los documentos a un User-Agent que se identifique como bot. Galicia, Euskadi y
+TACRC no extraen enlaces todavía.

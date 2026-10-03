@@ -73,7 +73,7 @@ from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
 log = get_logger(__name__)
 
@@ -727,6 +727,85 @@ def detect_duplicados_por_referencia(
     if result.confirmados:
         log.info("dedupe_referencias_detected", **result.as_dict())
     return result
+
+
+def reemparejar_ted_por_id_evl() -> DedupeResult:
+    """Pasa por la detección por referencia las filas TED antiguas que siguen sin pareja.
+
+    :func:`detect_duplicados_por_referencia` solo ve los avisos de la pasada
+    (los 14 días de solapamiento de TED), y entró el 2026-09-25: lo publicado
+    antes no se evaluó nunca. Medido el 2026-10-02, 332 avisos TED con el
+    ``idEvl`` de un expediente de PLACSP que **sí** estaba en BD seguían sin
+    pareja, todos publicados en TED hasta el 2026-09-09, y su ficha se quedaba
+    sin los pliegos de la canónica.
+
+    El ``idEvl`` vive en ``licitaciones.url`` (es el enlace que el aviso publica
+    como acceso a los pliegos), así que se puede releer de la BD; BT-22 no se
+    guarda, y para esos avisos el remedio sigue siendo el backfill con
+    ``python -m scraper.connectors.ted --desde YYYYMMDD``. Corre tras cada
+    pasada de TED y es idempotente: lo ya emparejado sale de la consulta.
+    """
+    referencias = {
+        str(fila["id_externo"]): ReferenciaCruzada(id_evl=evl)
+        for fila in dedupe_repo.ted_sin_pareja_con_id_evl()
+        if (evl := id_evl_de_url(fila.get("url"))) is not None
+    }
+    return detect_duplicados_por_referencia(fuente=FUENTE_TED, referencias=referencias)
+
+
+@dataclass(frozen=True)
+class RepublicacionesTed:
+    """Qué pasó con los anuncios TED que cita una ficha de la plataforma del comprador."""
+
+    #: Marcados ``confirmed`` como republicación de la canónica.
+    marcadas: list[str] = field(default_factory=list)
+    #: Existen y siguen sin pareja porque la canónica no se publica: son la
+    #: única cara visible del contrato, así que los pliegos van a ellos.
+    sin_canonica_visible: list[str] = field(default_factory=list)
+
+
+def marcar_republicaciones_ted(canonica_id: str, numeros_ted: Sequence[str]) -> RepublicacionesTed:
+    """Marca los anuncios TED que la plataforma del comprador cita como suyos.
+
+    La ficha de una publicación de la PSCP enlaza el anuncio TED del mismo
+    contrato (``publicacionsOficials``). Es una referencia exacta en el sentido
+    contrario al habitual —la canónica señala a la republicación—, y la única
+    para esos avisos: su BT-15 apunta al perfil del comprador, no al
+    expediente, y el BT-22 falta en muchos (12 de los 20 medidos el 2026-10-02).
+
+    Mismas garantías que :func:`detect_duplicados_por_referencia`: ``confirmed``
+    porque la referencia es exacta, solo si la canónica sigue visible
+    (``es_canonica_visible``) y sin tocar lo que alguien ya resolvió. Si la
+    canónica no se publica —PSCP guarda sin etiqueta de tecnología lo que entra
+    solo por CPV, y TED lo publica igual—, esconder el aviso TED borraría el
+    contrato: no se marca, y se devuelve en ``sin_canonica_visible`` para que
+    quien llama le dé los pliegos directamente. Los que ya tienen pareja
+    confirmada con otra fila no se devuelven: su ficha ya lee otros pliegos.
+    """
+    ids = sorted({f"{FUENTE_TED}:{numero}" for numero in numeros_ted})
+    existentes = [
+        str(f["id_externo"]) for f in dedupe_repo.filas_por_id(ids) if f.get("fuente") == FUENTE_TED
+    ]
+    if not existentes:
+        return RepublicacionesTed()
+    if not dedupe_repo.es_canonica_visible(canonica_id):
+        return RepublicacionesTed(
+            sin_canonica_visible=[
+                id_ted
+                for id_ted in existentes
+                if dedupe_repo.canonical_for(id_ted, solo_confirmadas=True) is None
+            ]
+        )
+    marcas = [
+        (id_ted, canonica_id, f"publicacion_oficial:{id_ted}", CONFIANZA_EXACTA, "confirmed")
+        for id_ted in existentes
+    ]
+    dedupe_repo.marcar_duplicados_por_referencia(marcas)
+    fuente_canonica = canonica_id.split(":", 1)[0] if ":" in canonica_id else "placsp"
+    source_pair = "|".join(sorted((FUENTE_TED, fuente_canonica)))
+    dedupe_marked_total.labels(source_pair=source_pair, status="confirmed").inc(len(marcas))
+    log.info("dedupe_publicacion_oficial", canonica=canonica_id, marcadas=existentes)
+    return RepublicacionesTed(marcadas=existentes)
 
 
 def expediente_del_pliego(licitacion_id: str) -> str:

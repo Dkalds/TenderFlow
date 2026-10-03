@@ -39,7 +39,34 @@ class _PlacspParseCore:
 
     El fallback ML (``_ml_classify_entry``) vive aquí; el contrato de
     ``parse()`` no cambia si el ML no está disponible.
+
+    También guarda, de las entries que descarta, los pliegos que espera algún
+    aviso TED sin pareja (``rescate``; ver
+    ``scraper.documentos_plataforma.RescatePliegosPlacsp``). El conector los
+    persiste tras la ingesta con ``completar_documentos``.
     """
+
+    def __init__(self) -> None:
+        from scraper.documentos_plataforma import RescatePliegosPlacsp
+
+        self.rescate = RescatePliegosPlacsp()
+
+    def _rescatar_pliegos(self, entry_elem: Any) -> None:
+        """Ofrece al rescate los pliegos de una entry descartada. Nunca lanza.
+
+        El rescate no puede interferir con el parseo: una entry descartada sigue
+        descartada pase lo que pase aquí.
+        """
+        try:
+            from scraper.codice_parser import NS, parse_document_references
+
+            enlaces = entry_elem.xpath("./atom:link/@href", namespaces=NS)
+            url = str(enlaces[0]) if enlaces else None
+            fechas = entry_elem.xpath("./atom:updated/text()", namespaces=NS)
+            actualizado = str(fechas[0]).strip() if fechas else None
+            self.rescate.considerar(url, parse_document_references(entry_elem), actualizado)
+        except Exception as exc:
+            log.debug("placsp_rescate_entry_failed", error=str(exc))
 
     def parse_entry_elem(
         self,
@@ -73,6 +100,7 @@ class _PlacspParseCore:
                 if lic is not None:
                     inclusion_reason = lic.inclusion_reason or INCLUSION_ML_RESCUE
             if lic is None:
+                self._rescatar_pliegos(entry_elem)
                 return None
             lic.filter_version = current_filter_version()
             lic.inclusion_reason = inclusion_reason
@@ -171,6 +199,10 @@ class PlacspAtomConnector:
             updated_str=updated_str or None,
         )
 
+    def completar_documentos(self) -> None:
+        """Persiste los pliegos rescatados de entries descartadas (ver ``_PlacspParseCore``)."""
+        self._core.rescate.persistir()
+
     def new_cursor(self) -> dict[str, Any] | None:
         """Cursor con el timestamp más nuevo visto + etag/last_modified."""
         newest = self._meta.get("newest_updated") or self._last_seen_updated
@@ -255,6 +287,10 @@ class PlacspBulkConnector:
             fuente=fuente,
             updated_str=updated_str,
         )
+
+    def completar_documentos(self) -> None:
+        """Persiste los pliegos rescatados de entries descartadas (ver ``_PlacspParseCore``)."""
+        self._core.rescate.persistir()
 
     def new_cursor(self) -> dict[str, Any] | None:
         """Bulk no avanza cursor — la parametrización es por mes."""

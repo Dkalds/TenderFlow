@@ -15,6 +15,42 @@ const TIPO_LABELS: Record<string, string> = {
   additional: "Documento adicional",
 };
 
+function hostDe(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function enDominio(host: string, dominio: string): boolean {
+  return host === dominio || host.endsWith(`.${dominio}`);
+}
+
+/** Texto del enlace a `licitacion.url`. Cada fuente enlaza su propia
+ *  plataforma: un aviso TED lleva a la del comprador o a su anuncio, y uno de
+ *  Cataluña a la PSCP, así que «la ficha de PLACSP» no valía para todos. */
+function textosFicha(url: string): { ver: string; verTodos: string } {
+  const host = hostDe(url);
+  if (enDominio(host, "contrataciondelestado.es")) {
+    return { ver: "Ver en la ficha de PLACSP", verTodos: "Ver todos en la ficha de PLACSP" };
+  }
+  if (enDominio(host, "contractaciopublica.cat") || enDominio(host, "contractaciopublica.gencat.cat")) {
+    return { ver: "Ver en la ficha de la PSCP", verTodos: "Ver todos en la ficha de la PSCP" };
+  }
+  if (enDominio(host, "ted.europa.eu")) {
+    return { ver: "Ver el anuncio en TED", verTodos: "Ver el anuncio en TED" };
+  }
+  return { ver: "Ver en la plataforma del comprador", verTodos: "Ver todos en la plataforma del comprador" };
+}
+
+/** El anuncio TED entra como documento `additional` (la columna `tipo` no
+ *  admite otro valor), pero no es un adjunto del pliego: se nombra por lo que es. */
+function etiquetaTipo(doc: DocumentoSummary): string {
+  if (enDominio(hostDe(doc.uri), "ted.europa.eu")) return "Anuncio publicado en TED";
+  return TIPO_LABELS[doc.tipo] ?? doc.tipo;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB"];
@@ -86,7 +122,7 @@ export function DocumentosBlock({
           No hemos indexado pliegos de este expediente. Pueden estar publicados en la ficha
           de la plataforma de contratación.
         </p>
-        <EnlaceFicha href={fichaUrl}>Ver en la ficha de PLACSP</EnlaceFicha>
+        <EnlaceFicha href={fichaUrl}>{textosFicha(fichaUrl).ver}</EnlaceFicha>
       </div>
     );
   }
@@ -113,7 +149,7 @@ export function DocumentosBlock({
                     caducado ? "text-muted-foreground" : "text-primary",
                   )}
                 >
-                  {doc.filename ?? TIPO_LABELS[doc.tipo] ?? doc.tipo}
+                  {doc.filename ?? etiquetaTipo(doc)}
                   <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
                   <AvisoPestanaNueva />
                 </a>
@@ -123,7 +159,7 @@ export function DocumentosBlock({
                       Nuevo
                     </Badge>
                   )}
-                  {TIPO_LABELS[doc.tipo] ?? doc.tipo}
+                  {etiquetaTipo(doc)}
                   {doc.size_bytes != null && ` · ${formatBytes(doc.size_bytes)}`}
                   {caducado && " · el enlace original puede haber caducado"}
                 </p>
@@ -132,7 +168,7 @@ export function DocumentosBlock({
           );
         })}
       </ul>
-      {fichaUrl && <EnlaceFicha href={fichaUrl}>Ver todos en la ficha de PLACSP</EnlaceFicha>}
+      {fichaUrl && <EnlaceFicha href={fichaUrl}>{textosFicha(fichaUrl).verTodos}</EnlaceFicha>}
     </div>
   );
 }

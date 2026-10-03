@@ -42,7 +42,7 @@ from db.dlq import record_failure
 from observability import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
     from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
     from services.dedupe import ReferenciaCruzada
@@ -363,14 +363,32 @@ def _referencias_de(connector: Connector) -> Mapping[str, ReferenciaCruzada]:
         return {}
 
 
+def _completar_documentos_de(connector: Connector) -> Callable[[], object] | None:
+    """El paso ``completar_documentos`` del conector, si lo tiene.
+
+    Opt-in por atributo, como :func:`_referencias_de`: lo tienen TED, PSCP y
+    los dos de PLACSP, que completan documentos que su feed no trae (ver
+    ``scraper.documentos_plataforma``).
+    """
+    paso = getattr(connector, "completar_documentos", None)
+    return paso if callable(paso) else None
+
+
 def _post_ingestion(
-    source_id: str, *, referencias: Mapping[str, ReferenciaCruzada] | None = None
+    source_id: str,
+    *,
+    referencias: Mapping[str, ReferenciaCruzada] | None = None,
+    completar_documentos: Callable[[], object] | None = None,
 ) -> None:
-    """Resolución de empresas + dedupe + eventos de contrato + caché. Fail-open.
+    """Resolución de empresas + dedupe + documentos + eventos de contrato + caché. Fail-open.
 
     ``referencias`` son las del conector (ver :func:`_referencias_de`). Con
     ellas corre además el dedupe por referencia explícita, que es el único que
     ve una fila TED como copia de la de PLACSP o PSCP.
+
+    ``completar_documentos`` va **después** de los dos dedupes: un aviso TED que
+    acaba de emparejarse lee los pliegos de su canónica y no necesita los suyos,
+    y el paso lo sabe por la marca que el dedupe acaba de escribir.
     """
     try:
         from services.entity_resolution import HOOK_TIME_BUDGET_S, resolve_all_unlinked
@@ -414,6 +432,11 @@ def _post_ingestion(
             # Mismo trato que el dedupe de arriba: fail-open, pero contado.
             _contar_dedupe_fallido(source_id)
             log.warning("connector_dedupe_referencias_failed", source=source_id, error=str(e))
+    if completar_documentos is not None:
+        try:
+            completar_documentos()
+        except Exception as e:
+            log.warning("connector_completar_documentos_failed", source=source_id, error=str(e))
     try:
         from services.contract_events import derive_new_events
 
@@ -617,7 +640,11 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         set_cursor(source_id, **final_cursor)
 
     if result.parsed or result.adjudicaciones:
-        _post_ingestion(source_id, referencias=_referencias_de(connector))
+        _post_ingestion(
+            source_id,
+            referencias=_referencias_de(connector),
+            completar_documentos=_completar_documentos_de(connector),
+        )
 
     # Contadores por motivo del conector, si los expone (C4.1, C4.4). El
     # `getattr` evita obligar a todos los conectores a declararlo en el Protocol,
