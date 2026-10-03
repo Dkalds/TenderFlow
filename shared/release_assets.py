@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -52,6 +52,8 @@ REPO_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 # y empezando por alfanumérico para que no pueda ser ``.`` ni ``..``. Mismo
 # criterio que ``REPO_RE``: lo que no encaja no sale a la red.
 _TAG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+# Campo ``digest`` de un asset en la API de Releases.
+_DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})")
 
 #: Tag de la Release **fija** donde ``train-predictivos.yml`` publica los
 #: artefactos de modelo. El workflow la crea con ``--latest=false``: una
@@ -186,28 +188,25 @@ def locate_release_asset(
     if not REPO_RE.fullmatch(repo):
         log.warning("release_assets.invalid_repository", repository=repo)
         return None
-    vistas: set[int] = set()
     revisadas = 0
-    for release in _releases_candidatas(repo, token=token, tag_fijo=tag_fijo, recientes=recientes):
-        # La Release fija y *latest* reaparecen en el listado de recientes: se
-        # revisan una vez.
-        release_id = release.get("id")
-        if isinstance(release_id, int):
-            if release_id in vistas:
-                continue
-            vistas.add(release_id)
-        if release.get("draft") is True:
-            continue
-        revisadas += 1
-        asset_id = _asset_id(release, asset_name)
-        if asset_id is not None:
-            log.info(
-                "release_assets.asset_located",
-                asset=asset_name,
-                release=release.get("tag_name"),
-                releases_revisadas=revisadas,
-            )
-            return AssetLocalizado(release, asset_id)
+
+    def _contadas() -> Iterator[dict[str, Any]]:
+        nonlocal revisadas
+        for release in iter_candidate_releases(
+            repo, token=token, tag_fijo=tag_fijo, recientes=recientes
+        ):
+            revisadas += 1
+            yield release
+
+    localizado = find_asset_in_releases(_contadas(), asset_name)
+    if localizado is not None:
+        log.info(
+            "release_assets.asset_located",
+            asset=asset_name,
+            release=localizado.release.get("tag_name"),
+            releases_revisadas=revisadas,
+        )
+        return localizado
     # Un solo aviso por búsqueda, no uno por Release revisada.
     log.warning(
         "release_assets.asset_not_found",
@@ -215,6 +214,70 @@ def locate_release_asset(
         repo=repo,
         releases_revisadas=revisadas,
     )
+    return None
+
+
+def iter_candidate_releases(
+    repo: str,
+    *,
+    token: str = "",
+    tag_fijo: str | None = ML_MODELS_RELEASE_TAG,
+    recientes: int = _RELEASES_RECIENTES,
+) -> Iterator[dict[str, Any]]:
+    """Releases **publicadas** donde se busca un asset, en orden y sin repetir.
+
+    Es el orden de :func:`locate_release_asset` —tag fijo, *latest*,
+    recientes— separado de la búsqueda para que quien necesite saber *qué
+    bajaría* un runner sin bajarlo
+    (``scheduler/jobs/model_artifacts_canary.py``) recorra exactamente las
+    mismas Releases. Con dos copias del orden, la comprobación acabaría
+    mirando una Release distinta de la que se sirve.
+
+    Se piden bajo demanda. La Release fija y *latest* reaparecen en el listado
+    de recientes y se entregan una sola vez; los borradores se saltan.
+    """
+    if not REPO_RE.fullmatch(repo):
+        log.warning("release_assets.invalid_repository", repository=repo)
+        return
+    vistas: set[int] = set()
+    for release in _releases_candidatas(repo, token=token, tag_fijo=tag_fijo, recientes=recientes):
+        release_id = release.get("id")
+        if isinstance(release_id, int):
+            if release_id in vistas:
+                continue
+            vistas.add(release_id)
+        if release.get("draft") is True:
+            continue
+        yield release
+
+
+def find_asset_in_releases(
+    releases: Iterable[dict[str, Any]], asset_name: str
+) -> AssetLocalizado | None:
+    """Primera de ``releases`` que publica ``asset_name``. No sale a la red."""
+    for release in releases:
+        asset_id = _asset_id(release, asset_name)
+        if asset_id is not None:
+            return AssetLocalizado(release, asset_id)
+    return None
+
+
+def published_sha256(release: dict[str, Any], asset_id: int) -> str | None:
+    """sha256 del asset ``asset_id`` según la propia Release, o ``None``.
+
+    GitHub calcula el hash de cada asset al subirlo y lo devuelve en la
+    metadata de la Release (campo ``digest``, ``"sha256:<hex>"``): permite
+    saber qué contenido hay publicado sin descargarlo. Los assets subidos antes
+    de que existiera el campo lo traen a ``null``, y ahí la única forma de
+    saberlo sigue siendo bajarlos.
+    """
+    assets = release.get("assets", [])
+    if not isinstance(assets, list):
+        return None
+    for asset in assets:
+        if isinstance(asset, dict) and asset.get("id") == asset_id:
+            coincidencia = _DIGEST_RE.fullmatch(str(asset.get("digest") or ""))
+            return coincidencia.group(1) if coincidencia else None
     return None
 
 

@@ -11,17 +11,67 @@
 
 ```bash
 python - <<'EOF'
-from db.database import connect
-with connect() as c:
-    rows = c.execute(
-        "SELECT version, model_name, accuracy, f1_score, trained_at, is_active "
-        "FROM model_versions ORDER BY trained_at DESC LIMIT 10"
-    ).fetchall()
-    for r in rows:
-        active = "← ACTIVO" if r[5] else ""
-        print(f"  v{r[0]} | {r[1]:30s} | acc={r[2]:.4f} f1={r[3]:.4f} | {r[4]} {active}")
+from db.model_registry import list_versions
+
+for fila in list_versions("sap_classifier", limit=10):
+    activa = "← ACTIVO" if fila["is_active"] else ""
+    print(
+        f"  v{fila['version']} | f1={fila['metrics'].get('f1')} | {fila['trained_at']} | "
+        f"{fila['sha256'][:12]} | {fila['path']} {activa}"
+    )
 EOF
 ```
+
+## `ModelArtifactMismatch`: el registro y la Release no coinciden
+
+**Síntoma**: el paso `ml_scoring` del cierre falla con `ModelArtifactMismatch`
+(evento `model_artifact_sha256_mismatch_post_download`, con `expected` y
+`actual`), o llega el aviso del paso `model_artifacts_canary`
+(«model_versions y las Releases divergen»), que trae el modelo, la versión, los
+dos hashes y la Release.
+
+**Qué significa**: la versión activa de `model_versions` registra un sha256
+(`expected`) y el asset que publica la Release con ese nombre tiene otro
+(`actual`). Ningún proceso puede servir esa versión: todos bajan el asset,
+comparan y abortan. `expected` sale de la BD; `actual`, del fichero publicado:
+
+```bash
+gh api repos/Dkalds/TenderFlow/releases \
+  --jq '.[] | .tag_name as $t | .assets[] | [$t, .name, .digest, .updated_at] | @tsv'
+```
+
+Cómo se llega: algo activó una versión sin publicar su artefacto. El
+2026-09-29 fue el reentrenamiento automático dentro de un runner de
+`scrape-daily`; desde el 2026-10 ese camino solo avisa. Queda uno: que
+`train-model.yml` falle entre el paso de entrenamiento, que activa, y el de
+subida a la Release.
+
+**Salidas**, por orden de preferencia:
+
+1. **El artefacto registrado existe todavía** (el job sigue en curso o lo
+   guardaste): subilo a la Release con el nombre registrado y no toques la BD.
+2. **Hay otra versión cuyo artefacto sí está publicado**: `activate_version`,
+   como en «Marcar versión anterior como activa en BD».
+3. **Ninguna de las dos** (el caso del 2026-09-29: el `.pkl` murió con el
+   runner): dejá el modelo sin versión activa. Los consumidores vuelven al
+   artefacto de nombre fijo de la Release, que es lo que servían antes.
+
+   ```bash
+   python - <<'EOF'
+   from db.model_registry import deactivate, get_active
+
+   print("desactivadas:", deactivate("sap_classifier"))
+   print("activa ahora:", get_active("sap_classifier"))
+   EOF
+   ```
+
+   Sin versión activa, `feedbacks_since_last_train` vuelve a contar todo el
+   feedback humano: si supera el umbral, el paso semanal `sap_active_learning`
+   avisará de que toca lanzar `train-model.yml`.
+
+Después de cualquiera de las tres, la siguiente pasada de `scrape-daily` puntúa
+lo que quedó pendiente (`ml_proba IS NULL`), y `model_artifacts_canary` deja de
+avisar.
 
 ## Criterio de promoción: cuándo una versión puede activarse
 

@@ -115,6 +115,24 @@ def get_active(name: str) -> dict[str, Any] | None:
     return data
 
 
+def list_active() -> list[dict[str, Any]]:
+    """Versión activa de **cada** modelo registrado (una fila por ``name``).
+
+    Es lo que recorre ``scheduler/jobs/model_artifacts_canary.py`` para cotejar
+    lo registrado con lo publicado. Si un modelo tuviera dos filas activas se
+    devuelve la de mayor versión, que es la que resuelve :func:`get_active`.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "SELECT DISTINCT ON (name) name, version, path, sha256, trained_at, notes "
+            "FROM model_versions WHERE is_active = 1 "
+            "ORDER BY name, version DESC"
+        )
+        cols = [d[0] for d in cur.description]
+        rows = cur.fetchall()
+    return [dict(zip(cols, row, strict=False)) for row in rows]
+
+
 def list_versions(name: str, *, limit: int = 50) -> list[dict[str, Any]]:
     """Lista las últimas ``limit`` versiones del modelo ``name``."""
     with connect() as c:
@@ -154,6 +172,26 @@ def activate_version(name: str, version: int) -> bool:
         )
     log.info("model_activated", name=name, version=version)
     return True
+
+
+def deactivate(name: str) -> int:
+    """Deja el modelo ``name`` **sin** versión activa. Devuelve las filas tocadas.
+
+    Sin versión activa cada consumidor cae a su alternativa documentada (el
+    baseline histórico en los predictivos; el artefacto de nombre fijo de la
+    Release en los clasificadores). Es la salida cuando la versión activa no
+    tiene un artefacto que nadie pueda bajar y tampoco hay otra versión
+    publicada a la que volver con :func:`activate_version`; ver
+    ``docs/runbooks/model-rollback.md``. Las filas se conservan.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE model_versions SET is_active = 0 WHERE name = %s AND is_active = 1",
+            (name,),
+        )
+        desactivadas = int(cur.rowcount or 0)
+    log.info("model_deactivated", name=name, versions=desactivadas)
+    return desactivadas
 
 
 def active_model_summary(name: str = "sap_classifier") -> dict[str, Any]:

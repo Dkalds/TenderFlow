@@ -5,8 +5,10 @@ from __future__ import annotations
 from db.model_registry import (
     activate_version,
     active_model_summary,
+    deactivate,
     feedbacks_since_last_train,
     get_active,
+    list_active,
     list_versions,
     register_version,
 )
@@ -119,3 +121,39 @@ def test_get_active_nonexistent(tmp_db):
 def test_activate_nonexistent_version(tmp_db):
     _db_mod, _ = tmp_db
     assert activate_version("nonexistent", 999) is False
+
+
+def test_list_active_devuelve_la_activa_de_cada_modelo(tmp_db):
+    """Lo que recorre el canary de artefactos: una fila por modelo, la activa."""
+    _db_mod, _ = tmp_db
+    register_version(name="a", path="p/a1.pkl", sha256="a1", activate=True)
+    register_version(name="a", path="p/a2.pkl", sha256="a2", activate=True)
+    register_version(name="b", path="p/b1.pkl", sha256="b1", activate=True)
+    register_version(name="c", path="p/c1.pkl", sha256="c1")  # nunca activada
+
+    activas = list_active()
+
+    assert [(f["name"], f["version"], f["path"], f["sha256"]) for f in activas] == [
+        ("a", 2, "p/a2.pkl", "a2"),
+        ("b", 1, "p/b1.pkl", "b1"),
+    ]
+
+
+def test_list_active_sin_modelos(tmp_db):
+    _db_mod, _ = tmp_db
+    assert list_active() == []
+
+
+def test_deactivate_deja_el_modelo_sin_version_activa(tmp_db):
+    """Y no toca ni las filas del modelo ni la versión activa de los demás."""
+    _db_mod, _ = tmp_db
+    register_version(name="m", path="p1", sha256="a1", activate=True)
+    register_version(name="otro", path="p2", sha256="a2", activate=True)
+
+    assert deactivate("m") == 1
+
+    assert get_active("m") is None
+    assert len(list_versions("m")) == 1
+    assert get_active("otro")["version"] == 1
+    # Idempotente: sin versión activa no hay nada que tocar.
+    assert deactivate("m") == 0

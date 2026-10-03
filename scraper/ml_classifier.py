@@ -1020,13 +1020,16 @@ class SAPClassifier:
         3. El asset de la última Release por nombre, vía
            :meth:`ensure_downloaded` — **sin pasar por el registro**.
 
-        El tercero no es redundante, es el único que funciona hoy: ``model_versions``
-        no tiene ninguna fila de ``sap_classifier`` (el registro lo escribe
-        ``train-model.yml``, que no completa desde 2026-07-05), así que 1 devuelve
+        El tercero no es redundante: es el que sirve mientras ``sap_classifier``
+        no tenga versión activa en ``model_versions`` — el gate de promoción
+        rechazó a los candidatos, o alguien la desactivó. Ahí 1 devuelve
         ``None``; y ``data/models/`` está en ``.gitignore``, así que en un runner
-        efímero 2 también. Con solo esos dos, el paso seguiría saliendo en
-        ``no_model`` con el ``sap_classifier.pkl`` publicado en la Release desde
-        el 2026-05-22 y nadie bajándolo.
+        efímero 2 también. Con solo esos dos, el paso saldría en ``no_model``
+        con el ``sap_classifier.pkl`` publicado en la Release y nadie bajándolo.
+
+        Con versión activa manda 1, y un artefacto publicado que no coincida con
+        su sha256 lanza ``ModelArtifactMismatch`` en vez de caer al tercero: lo
+        vigila ``scheduler/jobs/model_artifacts_canary.py``.
         """
         from shared.model_artifacts import resolve_servable_artifact
 

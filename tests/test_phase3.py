@@ -193,6 +193,16 @@ class TestPromotionGate:
     aquí solo se comprueba el cableado y qué devuelve el job.
     """
 
+    @pytest.fixture(autouse=True)
+    def _sin_plano_declarado(self, monkeypatch):
+        """El reentrenamiento en proceso solo existe sin ``SCHEDULER_PLANE``.
+
+        Con un plano declarado el job avisa y no entrena (ver
+        ``tests/test_active_learning_publicacion.py``); sin fijarlo aquí, estos
+        tests dependerían del entorno de quien los corre.
+        """
+        monkeypatch.delenv("SCHEDULER_PLANE", raising=False)
+
     def _patches(self, promocion: SimpleNamespace):
         import pandas as pd
 

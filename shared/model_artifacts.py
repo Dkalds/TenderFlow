@@ -49,7 +49,9 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Any, Literal, NamedTuple
 
 from observability.logging import get_logger
 
@@ -411,6 +413,77 @@ def _ensure_sidecar_checksum(
 
     write_checksum(path, verified_sha256)
     log.info("model_artifact_sidecar_written", path=str(sidecar))
+
+
+#: Qué dice la Release sobre el artefacto de una versión registrada.
+#:
+#: ``ok``            el asset publicado tiene el sha256 registrado.
+#: ``divergente``    hay un asset con ese nombre y **otro** contenido: quien
+#:                   resuelva la versión lo bajará y morirá en
+#:                   :class:`ModelArtifactMismatch`.
+#: ``sin_publicar``  ninguna Release publica un asset con ese nombre.
+#: ``sin_digest``    el asset está, pero la Release no trae su hash.
+#: ``sin_sha256``    la fila no registró hash: no hay nada que comparar.
+EstadoPublicacion = Literal["ok", "divergente", "sin_publicar", "sin_digest", "sin_sha256"]
+
+
+class ArtefactoPublicado(NamedTuple):
+    """Resultado de cotejar una fila de ``model_versions`` con las Releases."""
+
+    estado: EstadoPublicacion
+    asset: str
+    registrado: str
+    publicado: str | None
+    release: str | None
+
+
+def fetch_model_releases() -> list[dict[str, Any]]:
+    """Las Releases donde :func:`resolve_active_artifact` buscaría un artefacto.
+
+    Mismo repositorio, mismo tag fijo y mismo orden que
+    :func:`_download_release_asset`, pero leídas una sola vez: sirven para
+    cotejar varias versiones sin repetir las peticiones. Lista vacía si la API
+    de GitHub no respondió — no significa que no haya Releases.
+    """
+    from shared.release_assets import ML_MODELS_RELEASE_TAG, iter_candidate_releases
+
+    token = os.environ.get("GITHUB_TOKEN", "")
+    return list(iter_candidate_releases(_RELEASE_REPO, token=token, tag_fijo=ML_MODELS_RELEASE_TAG))
+
+
+def check_published_artifact(
+    version: Mapping[str, Any], releases: Iterable[dict[str, Any]]
+) -> ArtefactoPublicado:
+    """Coteja una fila de ``model_versions`` con lo que publican ``releases``.
+
+    Responde, sin descargar nada, a la pregunta que
+    :func:`resolve_active_artifact` contesta bajando el fichero: ¿el asset que
+    otro proceso encontraría por ``Path(path).name`` tiene el sha256
+    registrado? El hash publicado sale de la metadata de la Release
+    (``shared.release_assets.published_sha256``).
+
+    Solo mira las Releases. El almacén de objetos, que el resolvedor consulta
+    antes, queda fuera: hoy nadie publica modelos ahí
+    (:func:`publish_artifact_to_bucket` no tiene llamadores de producción). El
+    día que los tenga, una versión publicada solo en el bucket saldría aquí
+    como ``sin_publicar`` y esta función tendrá que mirarlo también.
+    """
+    from shared.release_assets import find_asset_in_releases, published_sha256
+
+    asset = Path(str(version.get("path") or "")).name
+    registrado = str(version.get("sha256") or "").strip().lower()
+    if not registrado:
+        return ArtefactoPublicado("sin_sha256", asset, registrado, None, None)
+    localizado = find_asset_in_releases(releases, asset)
+    if localizado is None:
+        return ArtefactoPublicado("sin_publicar", asset, registrado, None, None)
+    tag = localizado.release.get("tag_name")
+    release = str(tag) if tag else None
+    publicado = published_sha256(localizado.release, localizado.asset_id)
+    if publicado is None:
+        return ArtefactoPublicado("sin_digest", asset, registrado, None, release)
+    estado: EstadoPublicacion = "ok" if publicado == registrado else "divergente"
+    return ArtefactoPublicado(estado, asset, registrado, publicado, release)
 
 
 def resolve_servable_artifact(name: str, fallback: Path) -> Path | None:

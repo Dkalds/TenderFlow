@@ -241,6 +241,70 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
 - **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
 
+### [P0] `ml_scoring` cae en cada pasada: la versión activa de `sap_classifier` no tiene artefacto publicado
+- **Área:** scheduler/concept_drift.py, services/ml/promotion.py, shared/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
+- **Problema:** medido el 2026-10-03. `scrape-daily` lleva 14 runs en rojo desde
+  el 2026-09-29T18:08Z. En ese run el paso semanal `sap_active_learning` contó
+  59 feedbacks humanos (umbral 50), reentrenó **dentro del runner**, pasó el
+  gate y dejó activa la v2 en `model_versions` (sha256 `c45898ee…`, nota
+  `active_learning_auto_retrain`). El `.pkl` se escribió en `data/models/` de
+  ese runner y nadie lo subió a ninguna Release ni al bucket: ya no existe. El
+  `precompute_ml_proba(force=True)` posterior agotó los 20 minutos del step
+  (primer rojo). Desde la pasada siguiente, `resolve_active_artifact` baja el
+  `sap_classifier.pkl` de `v1.0.0-models` —el del 2026-05-22, sha256
+  `5ddcc0ee…`—, no coincide con el registrado y `ml_scoring` (bloqueante) lanza
+  `ModelArtifactMismatch`. Hasta entonces no había versión activa y la pasada
+  servía ese mismo asset de mayo por `ensure_downloaded`, sin cotejar. La semana
+  anterior (2026-09-22) el mismo paso había fallado al entrenar por desbalance
+  (1,2 % de positivos con las 709k filas de PSCP), y por eso no ocurrió antes.
+  Efecto en el dato: 481 licitaciones de la población del clasificador sin
+  `ml_proba`, y una parte no medida de las 24.113 puntuadas lleva el score de la
+  v2 (la reescritura se cortó a los 68 s).
+- **Hecho en la rama `claude/angry-jackson-4f5a43` (2026-10-03), sin tocar
+  producción ni workflows:**
+  - `maybe_retrain_classifier` ya no entrena ni activa con `SCHEDULER_PLANE`
+    declarado: avisa de que toca lanzar `train-model.yml`.
+  - Paso canónico `model_artifacts_canary` (advisory, diario): coteja el sha256
+    de cada versión activa con el `digest` del asset que publica la Release, sin
+    descargar. Corrido contra las Releases reales con la fila activa de
+    producción, da exactamente los dos hashes del incidente.
+  - `db.model_registry.deactivate` y la sección «`ModelArtifactMismatch`» de
+    [docs/runbooks/model-rollback.md](runbooks/model-rollback.md).
+- **Acceptance criteria (cada uno exige OK del propietario, AGENTS.md §6):**
+  - **Producción:** dejar `sap_classifier` sin versión activa
+    (`deactivate("sap_classifier")`, una fila) y ver `ml_scoring` en `ok` en la
+    pasada siguiente. La v2 no se puede publicar: su artefacto se perdió.
+    **La rama tiene que estar en master antes del 2026-10-06T18:26Z**: ahí
+    vence la ventana semanal y, sin versión activa, el código actual de master
+    volvería a contar 59 feedbacks, a reentrenar en el runner y a romperlo
+    igual.
+  - **Producción:** `python -m scraper.ml_classifier precompute --force` con el
+    modelo publicado, para que `ml_proba` vuelva a salir de un solo modelo.
+  - **Workflow:** en `train-model.yml`, activar **después** de subir (registrar
+    el candidato sin activar → `gh release upload` → cotejar el `digest` →
+    activar → `precompute`). Hoy activa en «Train model» y sube tres pasos
+    después: un fallo en medio deja la misma divergencia.
+  - **Workflow:** que el paso semanal lance `train-model.yml`
+    (`workflow_dispatch` desde `scrape-daily.yml`, pide `actions: write`) en vez
+    de avisar. Devuelve el «auto» al reentrenamiento con un único camino que
+    entrena y publica.
+  - Decidir qué entrena cada camino: el candidato de `train-model.yml` del
+    2026-09-27 (v1, 17.641 filas) fue rechazado con `recall_no_keyword` 0 y el
+    del reentrenamiento automático (v2, 57.913 filas, `_fetch_training_dataframe`
+    sobre la tabla entera) pasó con 0,33 — uno de tres ejemplos del golden. Ver
+    «Ampliar el golden set del clasificador SAP».
+  - `promote_if_better` numera la versión desde la **activa** y
+    `register_version` desde el máximo: la v2 se guardó como
+    `sap_classifier_v1.pkl` y el log y el aviso dijeron «v1». En curso en el
+    PR #403.
+- **Files de partida:** [scheduler/concept_drift.py](../scheduler/concept_drift.py), [scheduler/jobs/model_artifacts_canary.py](../scheduler/jobs/model_artifacts_canary.py), [services/ml/promotion.py](../services/ml/promotion.py), [.github/workflows/train-model.yml](../.github/workflows/train-model.yml)
+- **Relación:** el punto «Pasar a `locate_release_asset` y a una Release fija»
+  de «ml-scoring: verificar en producción el arreglo del 2026-09-24» sigue
+  abierto y se resolvería en el mismo cambio de `train-model.yml`.
+- **Riesgo:** bajo para la desactivación (una fila, reversible con
+  `activate_version`); medio para los cambios de workflow, que tocan el único
+  camino que publica el modelo servido.
+
 ---
 
 ## P1 — Alta
