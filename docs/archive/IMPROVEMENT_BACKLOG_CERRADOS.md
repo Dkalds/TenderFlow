@@ -21,6 +21,33 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-10-03 — el gate local de tests
+
+**Cerrados el 2026-10-03** en la rama `claude/tests-error-detection-9aa70b`, los dos en el mismo cambio.
+
+**Auto-marcado.** `_LOAD_TOKENS` casa ahora como palabra de la ruta (`re.split` por lo que no sea alfanumérico), no como subcadena. Al fijar con nombres qué módulos quedan `load` apareció un tercero mal marcado que la ficha no citaba: `tests/test_ola2_performance.py` probaba la caché de respuestas y el endpoint `bulk-get`, no medía rendimiento; se renombra a `tests/test_ola2_cache_y_bulk.py` (invariante 4: se renombra, no se marca a mano). Entran en `-m "unit or integration"` 47 tests: 27 `unit`, que pasan en local, y 20 `integration`. Matiz sobre la ficha: la CI nunca los dejó fuera —`ci.yml` corre `pytest -n auto` sin `-m`—; lo que no los ejecutaba era el gate local (`make check`, `make test-unit`). `tests/test_markers_automarking.py::test_fuera_del_gate_local_solo_quedan_los_modulos_de_carga_declarados` es el trinquete: lista los módulos `load` por su nombre.
+
+**Guard de red.** `_sin_red_en_tests_unitarios` (autouse) envuelve `socket.getaddrinfo`, `socket.socket.connect` y `connect_ex` en los tests `unit`. Deja pasar el loopback y la resolución de literales de IP, que no consulta a ningún DNS (`shared/ssrf.py` pasa las IP por `getaddrinfo`). El corte es `pytest.fail`; un envoltorio de `pytest_runtest_call` hace fallar además al test cuyo código se lo tragó (`except BaseException`, un hilo, `gather(return_exceptions=True)`). Medido sobre `-m "unit and not slow"` sin `.env`: ningún test más intenta salir. Los tests SSRF que resolvían `example.com` eran tres, no cuatro (dos en `test_ssrf.py`, uno en `test_ola3_security.py`). No se midió con el `.env` del checkout principal, donde un `SENTRY_DSN` o una clave de LLM reales podrían destapar más salidas. Fichas originales:
+
+### [P2] [Rendimiento 2026-09] El auto-marcado de tests excluye del gate los módulos con «download» en el nombre
+- **Área:** tests/conftest.py (`_LOAD_TOKENS`), scripts/check_agent_docs.py
+- **Problema:** `_infer_marker` busca `load` como subcadena de la ruta, así que `tests/test_bulk_downloader.py` y `tests/test_exports_download_session.py` quedan marcados `load` y fuera de `make check` y `make test-unit`, que corren `unit or integration`. Hallado al arreglar que la ruta se tomaba absoluta (rama de rendimiento); no se tocó porque incluirlos puede destapar fallos de tests que nunca se han ejecutado en el gate.
+- **Acceptance criteria:**
+  - El token de carga casa como palabra del nombre del módulo (`test_load_*`, `*_performance*`), no como subcadena, y `check_agent_docs` sigue en verde.
+  - Los dos módulos corren en el gate y pasan, o sus fallos quedan arreglados en el mismo cambio.
+- **Files de partida:** [tests/conftest.py](../../tests/conftest.py)
+- **Riesgo:** bajo — solo cambia qué tests entran en el gate.
+
+### [P2] Impedir que un test unitario salga a la red
+- **Área:** tests/conftest.py, shared/release_assets.py, scraper/tech_classifier.py
+- **Problema:** Nada impide que un test `unit` llegue a la red, y cuando llega no se nota. El 2026-09-27 la Release *latest* empezó a publicar `tech_classifier.pkl`, y `test_s2_step_tiers.py::test_ml_tecnologias_reporta_skipped_con_el_flag_apagado` —cuyo parche del flag no llegaba a la instancia de `settings`— pasó de «sin modelo» a bajar 11,5 MB de GitHub y acabar en la BD: CI en rojo en el PR #366 sin ningún cambio de código. El test se arregló ese mismo día, pero el mecanismo sigue: cualquier test que llegue sin mocks a `TechnologyClassifier.resolve_artifact()` o `ensure_downloaded()` descarga del repo público sin token y deja el fichero en `data/models/` del checkout (`_MODEL_PATH` es fijo), donde sigue para los tests siguientes y para la próxima pasada. Medido ese día con una sonda de pytest que registra `getaddrinfo`/`connect` por test sobre `-m "unit and not slow"` (6.293 tests): con el arreglo ningún test contacta GitHub; solo `tests/test_ssrf.py` (tres tests) y `tests/test_ola3_security.py::test_ssrf_allows_public_url` resuelven `example.com` con DNS real, y sin red fallarían. Aparte, algún test unitario escribe `data/models/registry.json` (`scraper/ml_training.py::_REGISTRY_PATH`).
+- **Acceptance criteria:**
+  - Un fixture autouse de `tests/conftest.py` hace **fallar** con `pytest.fail` —que es `BaseException`— toda conexión o resolución DNS hacia un host no local desde un test `unit`. Que falle, no que simule «sin red»: `shared/release_assets.py` se traga cualquier `Exception`, y un stub silencioso habría hecho pasar el test de arriba por accidente, escondiendo el parche roto.
+  - Los cuatro tests SSRF resuelven contra un `getaddrinfo` falso.
+  - `make test-unit` da el mismo resultado con la red cortada.
+- **Files de partida:** [tests/conftest.py](../../tests/conftest.py), [tests/test_ssrf.py](../../tests/test_ssrf.py), [tests/test_ola3_security.py](../../tests/test_ola3_security.py), [shared/release_assets.py](../../shared/release_assets.py)
+- **Riesgo:** bajo — solo toca tests; extender el guard a `integration` puede destapar más dependencias de red.
+
 ## Cerrados el 2026-10-03 — backfill de TED
 
 **Cerrado el 2026-10-03.** El backfill se lanzó ese día a las 08:41 UTC, a mano y contra producción, con el código de master (`e984fe81`, #395) y a petición del usuario: 2.985 avisos leídos, 329 filas nuevas, 2.106 actualizadas, 0 errores, 3 minutos.

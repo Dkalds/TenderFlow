@@ -9,7 +9,7 @@ Guía para ejecutar, escribir y entender los tests del proyecto.
 | Regla                                                  | Marker        |
 |--------------------------------------------------------|---------------|
 | `_e2e`, `visual_regression` en el nombre               | `e2e`         |
-| `performance`, `load`                                  | `load`        |
+| `performance`, `load` como **palabra** de la ruta      | `load`        |
 | `property`, `properties`, `property_based`             | `property`    |
 | `integration_e2e` (o `/integration/` en el path)       | `integration` |
 | Cierre de fixtures incluye `tmp_db`/`api_db` (BD real) | `integration` |
@@ -22,6 +22,23 @@ Los tokens de ruta se buscan en la ruta del módulo **relativa a la raíz del
 repo** (`tests/test_performance.py`), no en la absoluta: los directorios padre
 del checkout —un worktree `…-performance-…`, `~/Downloads`— no cambian la
 categoría de nada.
+
+`load` y `performance` casan como palabra, no como subcadena: `load` vive
+dentro de «download», y `test_bulk_downloader.py` y
+`test_exports_download_session.py` estuvieron fuera de `make check` por eso
+hasta 2026-10. Qué módulos quedan `load` lo fija por nombre
+`tests/test_markers_automarking.py`: si añadís uno de carga de verdad, se
+declara ahí; si ese test falla con un módulo funcional, renombralo.
+
+### Un test `unit` no sale a la red
+
+Un fixture autouse (`_sin_red_en_tests_unitarios`) hace **fallar** al test
+`unit` que resuelve un nombre o conecta fuera de la máquina. Falla con
+`pytest.fail`, que atraviesa los `except Exception` del código bajo prueba, y
+también si el código se traga el corte (un hilo, `except BaseException`). El
+loopback y los literales de IP pasan. Si el test necesita una respuesta DNS,
+parcheá `socket.getaddrinfo` (ver `dns_publico` en `tests/test_ssrf.py`); si
+lo que falta es un mock, el fallo dice qué host se intentó alcanzar.
 
 La regla por fixture (2026-08) hace la taxonomía **real**: un test que abre un
 schema Postgres — directamente (`tmp_db`, `api_db`) o transitivamente
