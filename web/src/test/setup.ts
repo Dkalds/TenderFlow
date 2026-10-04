@@ -61,6 +61,13 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+// jsdom has no 2D canvas: `getContext` returns null, but only after writing
+// "Not implemented" to the console on every call. Keep the result, drop the
+// noise; a test that needs a context spies on `getContext` and supplies one.
+if (typeof HTMLCanvasElement !== "undefined") {
+  HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
+}
+
 // jsdom lacks matchMedia, relied on by Recharts, motion, and next-themes.
 // Default to "no match" (no reduced-motion, light theme); individual tests can
 // override window.matchMedia when they need a specific media state.

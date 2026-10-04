@@ -12,8 +12,10 @@
  *
  * La composición es la de la portada (decisión D4, 2026-09-26): texto a la
  * izquierda, formulario en un panel sólido a la derecha y el logo enlazado a
- * `/`. El fondo animado de partículas, la retícula, el halo y la tarjeta de
- * cristal centrada se fueron con ella; el porqué, en `puerta.tsx`.
+ * `/`. La retícula, el halo y la tarjeta de cristal centrada se fueron con ella
+ * (el porqué, en `puerta.tsx`). El fondo animado de partículas también se fue,
+ * y volvió el 2026-10-04 por decisión del dueño, detrás de esa misma
+ * composición: `_components/fondo-particulas.tsx`.
  */
 
 import { lazy, Suspense } from "react";
@@ -31,6 +33,11 @@ import { useLoginForm } from "./_hooks/use-login-form";
 const MfaForm = lazy(() => import("./_components/mfa-form").then((m) => ({ default: m.MfaForm })));
 const SesionAbierta = lazy(() =>
   import("./_components/sesion-abierta").then((m) => ({ default: m.SesionAbierta })),
+);
+// El fondo en movimiento también llega aparte: es decorativo y el formulario
+// tiene que poder usarse antes de que se pinte.
+const FondoParticulas = lazy(() =>
+  import("./_components/fondo-particulas").then((m) => ({ default: m.FondoParticulas })),
 );
 
 export default function LoginPage() {
@@ -84,6 +91,15 @@ function LoginPageContent() {
   // FAQ de la portada lo dice; el copy público no promete lo que el producto no
   // hace.
   return (
-    <Puerta titulo="Entra en TenderFlow" lede="El radar de licitaciones TI del sector público español." panel={panel} />
+    <Puerta
+      titulo="Entra en TenderFlow"
+      lede="El radar de licitaciones TI del sector público español."
+      panel={panel}
+      fondo={
+        <Suspense fallback={null}>
+          <FondoParticulas />
+        </Suspense>
+      }
+    />
   );
 }
