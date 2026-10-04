@@ -306,6 +306,25 @@ describe("la puerta", () => {
     expect(document.querySelector("main#main-content")).toHaveAttribute("tabindex", "-1");
   });
 
+  it("lleva el fondo en movimiento, decorativo y después del formulario", async () => {
+    // Volvió el 2026-10-04. Llega en su propio trozo (React.lazy), va al final
+    // del DOM —detrás solo por apilamiento— y el lector de pantalla no lo ve.
+    // Lo que hace el lienzo se comprueba en `fondo-particulas.test.tsx`; aquí
+    // jsdom no le da contexto 2D y no pinta nada.
+    render(<LoginPage />);
+
+    const lienzo = await waitFor(() => {
+      const encontrado = document.querySelector("canvas");
+      expect(encontrado).not.toBeNull();
+      return encontrado as HTMLCanvasElement;
+    });
+
+    expect(lienzo).toHaveAttribute("aria-hidden", "true");
+    const principal = document.querySelector("main#main-content") as HTMLElement;
+    expect(principal.compareDocumentPosition(lienzo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(principal.contains(lienzo)).toBe(false);
+  });
+
   it("la nota de invitación enlaza siempre al formulario de la portada", () => {
     render(<LoginPage />);
 

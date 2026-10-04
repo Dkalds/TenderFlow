@@ -53,7 +53,8 @@ incluye. Había 23; hoy una lista con `transform` no pasa `npm run lint`
 | Tooltips | 150ms enter (skip en repetición) | `ui/tooltip.tsx` |
 | Dropdown / Select / Popover | 150ms | `@utility animate-in/out` |
 | Sheet / Dialog | 300ms enter / 200ms exit (asimétrico) | `anim-duration-300`/`-200` |
-| Puerta (login, restablecer, 404): una sola entrada, la del panel | 200ms | `app/login/page.tsx` |
+| Puerta (login, restablecer, 404): una sola entrada del contenido, la del panel | 200ms | `(publico)/_components/puerta.tsx` |
+| Fondo de `/login`: fundido de entrada, una vez por visita | 500ms | `login/_components/fondo-particulas.tsx` |
 | Esqueleto de carga (`Skeleton`, `.tf-shimmer`) | barrido de 1,2 s, `linear` | `globals.css` |
 
 Regla: **animaciones de UI se quedan bajo 300ms** (bajo 200ms en la UI
@@ -102,7 +103,7 @@ el 2026-09-26 con su único consumidor, la tira de KPIs de Competencia.
 | Nunca animar datos que el usuario vino a leer | `StatCell` pinta el valor directo, sin count-up ni entrada escalonada. Las barras de puntuación y de plazo, igual: el ancho se pinta sin transición. Con los 420 ms que llevaban no llegaban a verse en cuatro sitios, y en la ficha de /detalle interpolaban la puntuación de una licitación hasta la de la siguiente |
 | Cambio de pestaña | `PanelTabs` y `TabsContent` cambian el contenido al instante: se cambian con flechas (teclado) y muchas veces por sesión |
 | Hover en la consola: solo color u opacidad | Filas, celdas, tarjetas y enlaces «ir a» (`EnlaceIr`) no se desplazan al pasar el ratón: lo que se ve decenas de veces al día no se mueve. Sin `translate` de hover ni `animate-ping`/pulsos infinitos decorativos (`animate-ping` y `animate-bounce` no pasan el lint). El único parpadeo que queda es el cursor mientras se emite una respuesta del chat, `motion-safe` y `aria-hidden` |
-| Nada de fondos animados a pantalla completa | El login tuvo una red de partículas en canvas (un bucle `requestAnimationFrame` perpetuo) sobre una retícula con máscara; se retiró con la retícula (`.tf-hero-grid`) el 2026-09-26 (apple-design §14; WCAG 2.2.2) |
+| Nada de fondos animados a pantalla completa, con una excepción: `/login` | El login tuvo una red de partículas en canvas (un bucle `requestAnimationFrame` perpetuo) sobre una retícula con máscara; se retiraron el 2026-09-26 (apple-design §14; WCAG 2.2.2). La red volvió el 2026-10-04 por decisión del dueño, solo a `/login` y sin la retícula (`login/_components/fondo-particulas.tsx`, `login/_lib/red-particulas.ts`), con lo que le faltaba: un botón que la pausa, un solo fotograma con `prefers-reduced-motion`, bucle parado con la pestaña oculta y paso medido en tiempo (misma velocidad a 60 que a 120 Hz). El formulario va en un panel sólido que la tapa. No es precedente para la consola ni para la portada |
 | CSS gana a JS bajo carga | `motion`/Framer Motion salió del bundle: `MotionProvider`, `FadeIn`, `PageTransition` y `AnimatedNumber` se eliminaron; `Stagger` se reescribió en CSS puro y después se retiró |
 
 `motion` como dependencia solo se justifica para springs/gestos reales

@@ -12,17 +12,23 @@ import { KICKER } from "./piel-publica";
  * alineada a la izquierda —rótulo, titular en Fraunces y una línea de
  * entrada— con el formulario, si lo hay, en un panel sólido a la derecha.
  *
- * Lo que se fue, y por qué no vuelve: el login tenía una red de partículas
- * animada en canvas, una retícula con máscara radial, un halo y una tarjeta de
- * cristal con `shadow-xl` centrada, el bloque de login por defecto de las
- * plantillas. La portada había retirado ese ornamento el 2026-09-03 y la puerta
- * se quedó con él; restablecer contraseña, que es el mismo recorrido, tenía
- * además otra composición. Ahora las tres comparten esta.
+ * Lo que se fue: el login tenía una red de partículas animada en canvas, una
+ * retícula con máscara radial, un halo y una tarjeta de cristal con `shadow-xl`
+ * centrada, el bloque de login por defecto de las plantillas. La portada había
+ * retirado ese ornamento el 2026-09-03 y la puerta se quedó con él; restablecer
+ * contraseña, que es el mismo recorrido, tenía además otra composición. Ahora
+ * las tres comparten esta.
  *
- * Una sola animación de entrada, la del panel (200 ms): es una pantalla que se
- * ve una vez por sesión. El orden de tabulación es el visual —logo, lo que
- * cuelgue del texto (`children`), y el panel—, a cualquier ancho: en móvil las
- * columnas se apilan en ese mismo orden.
+ * De todo eso volvió una cosa, y solo a `/login`: la red de partículas, por
+ * decisión del dueño (2026-10-04), en la ranura `fondo`
+ * (`login/_components/fondo-particulas.tsx`). La retícula, el halo, el cristal
+ * y la sombra siguen fuera, y el panel sigue siendo sólido: tapa la red.
+ *
+ * Una sola animación de entrada del contenido, la del panel (200 ms): es una
+ * pantalla que se ve una vez por sesión. El orden de tabulación es el visual
+ * —logo, lo que cuelgue del texto (`children`), el panel y, si hay fondo, su
+ * botón de pausa al pie—, a cualquier ancho: en móvil las columnas se apilan en
+ * ese mismo orden.
  *
  * Sin `"use client"`: la monta tanto el 404 raíz (servidor) como el login
  * (cliente). `main#main-content` con `tabIndex={-1}` es el destino del enlace
@@ -34,6 +40,7 @@ export function Puerta({
   lede,
   children,
   panel,
+  fondo,
 }: {
   kicker?: string;
   titulo: string;
@@ -43,9 +50,15 @@ export function Puerta({
   children?: React.ReactNode;
   /** El formulario. Sin él la composición es de una columna. */
   panel?: React.ReactNode;
+  /**
+   * Capa decorativa que se pinta detrás de todo. Va al final del DOM, para no
+   * adelantarse en el orden de tabulación, y queda detrás por su `-z-10`
+   * dentro del contexto que abre `isolate`.
+   */
+  fondo?: React.ReactNode;
 }) {
   return (
-    <div className="bg-background flex min-h-screen flex-col">
+    <div className="bg-background relative isolate flex min-h-screen flex-col">
       <header className="border-border/60 border-b">
         <div className="mx-auto flex w-full max-w-6xl items-center px-6 py-3.5">
           <Link
@@ -79,6 +92,8 @@ export function Puerta({
           </div>
         )}
       </main>
+
+      {fondo}
     </div>
   );
 }

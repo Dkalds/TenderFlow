@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { DEMO_USER } from "./fixtures";
 
 /**
@@ -138,5 +138,50 @@ test.describe("Alta de cuenta", () => {
     await expect(page.locator("#confirm-password-error")).toContainText(/no coinciden|do not match/i);
     await expect(page.locator("#confirm-password")).toHaveAttribute("aria-describedby", /confirm-password-error/);
     await expect(page).toHaveURL(/\/login/);
+  });
+});
+
+/**
+ * ¿Pinta el fondo lo mismo dos fotogramas después? `true` es que está quieto.
+ * Se compara el lienzo entero y se espera con `requestAnimationFrame`, que es
+ * el reloj con el que se mueve, no con un tiempo fijo.
+ */
+function fondoQuieto(page: Page): Promise<boolean> {
+  return page.locator('canvas[aria-hidden="true"]').evaluate(async (lienzo: HTMLCanvasElement) => {
+    const antes = lienzo.toDataURL();
+    await new Promise((seguir) => requestAnimationFrame(() => requestAnimationFrame(seguir)));
+    return lienzo.toDataURL() === antes;
+  });
+}
+
+/**
+ * La red de partículas volvió a `/login` el 2026-10-04 con dos condiciones: lo
+ * que se mueve solo se puede parar (WCAG 2.2.2) y no se mueve si el sistema
+ * pide menos movimiento. El lienzo llega en su propio trozo bajo la CSP
+ * estricta de la ruta; si no cargara, no habría ni lienzo ni botón.
+ */
+test.describe("Fondo en movimiento", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/login");
+    await page.waitForLoadState("networkidle");
+  });
+
+  test("se puede pausar y reanudar", async ({ page }) => {
+    await expect(page.locator('canvas[aria-hidden="true"]')).toHaveCount(1);
+    await expect.poll(() => fondoQuieto(page), { message: "la red no se mueve" }).toBe(false);
+
+    await page.getByRole("button", { name: "Pausar fondo" }).click();
+    await expect(page.getByRole("button", { name: "Reanudar fondo" })).toBeVisible();
+    expect(await fondoQuieto(page), "en pausa la red sigue moviéndose").toBe(true);
+
+    await page.getByRole("button", { name: "Reanudar fondo" }).click();
+    await expect.poll(() => fondoQuieto(page), { message: "la red no se reanuda" }).toBe(false);
+  });
+
+  test("con «reducir movimiento» queda quieto y no ofrece pausa", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+
+    await expect(page.getByRole("button", { name: "Pausar fondo" })).toHaveCount(0);
+    expect(await fondoQuieto(page), "la red se mueve con reducir movimiento").toBe(true);
   });
 });

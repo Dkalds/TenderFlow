@@ -431,7 +431,7 @@ consola seguía con los valores del andamiaje:
 | D1 | Titulares | Fraunces como `--font-display` de toda la aplicación, declarada una vez en `lib/tipografia.ts`, y **solo a 15 px o más**; por debajo, sans. Space Grotesk, fuera |
 | D2 | Rótulos de dato | Sans, en frase, a 11 px (`ROTULO_DATO`), sin mono, sin versal y sin tracking. La versal queda solo en las cabeceras de columna (`CABECERA_COLUMNA`) |
 | D3 | Rail | Palabra completa en castellano bajo cada icono, rail de ~72 px, un icono distinto por espacio |
-| D4 | Puerta | Login, restablecer contraseña y 404 en el lenguaje de la portada: composición editorial a la izquierda y el formulario en un panel sólido; sin partículas, retícula, halo, cristal ni sombra |
+| D4 | Puerta | Login, restablecer contraseña y 404 en el lenguaje de la portada: composición editorial a la izquierda y el formulario en un panel sólido; sin partículas, retícula, halo, cristal ni sombra. **Revisada el 2026-10-04:** la red de partículas vuelve, solo a `/login`, detrás de esta misma composición y con botón de pausa (`docs/frontend-motion.md`); lo demás sigue igual |
 | D5 | IA | Sparkles, fuera de todo el código: la IA se nombra, no se adorna |
 | D6 | Errores | Mensaje humano, «Detalle técnico» plegado y Reintentar. **Un solo aviso por fallo**: lo que se pinta en línea no lanza además un toast |
 | D7 | Cifra KPI | 20 px en sans con cifras tabulares; `StatStrip`/`StatCell` es el KPI canónico |
