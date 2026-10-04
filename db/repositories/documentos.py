@@ -27,11 +27,56 @@ from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import columna_nucleo, columna_nucleo_sql, universo_tecnologico_sql
 from observability.logging import get_logger
-from shared.estados import ESTADOS_CERRADOS
+from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
 log = get_logger(__name__)
 
 _MAX_ERROR_DETAIL_LEN = 2000
+
+#: Servlet con el que PLACSP sirve los adjuntos de sus expedientes. Un adjunto
+#: alojado en otra plataforma no depende de lo que PLACSP haya publicado.
+_SERVLET_PLACSP = "/FileSystem/servlet/GetDocumentByIdServlet"
+
+
+def _sin_publicar_sql(doc: str = "d", lic: str = "l") -> str:
+    """«PLACSP ha anunciado este documento pero todavía no lo sirve».
+
+    El CODICE referencia el PCAP, el PPT y sus anexos desde que se publica el
+    anuncio de licitación (``DOC_CN``), pero el servlet contesta
+    ``500 NullPointerException`` a esos enlaces hasta que se publica el pliego
+    (``DOC_CD``); en esa ventana la ficha de PLACSP tampoco los lista. Medido
+    el 2026-10-04 sobre el feed vivo: de los expedientes abiertos con pliego en
+    el servlet, 60 de 60 con ``DOC_CN`` y sin ``DOC_CD`` daban 500, y 100 de
+    101 con ``DOC_CD`` respondían. El enlace **no cambia** cuando el pliego se
+    publica: el del Banco de España (LIC-10620) daba 500 el 1 de octubre y un
+    PDF el día 4, con la misma URI.
+
+    La regla es deliberadamente estrecha, porque fuera de ella los datos no
+    acompañan:
+
+    - Solo con ``DOC_CN``. Con anuncio previo y nada más (``DOC_PIN``) hay
+      expedientes cuyos documentos sí se descargaron.
+    - Solo con el expediente abierto (:func:`shared.estados.abierta_sql`). Uno
+      adjudicado o resuelto sin ``DOC_CD`` servía sus pliegos en 28 de 36 casos.
+    - Solo si no llegamos a descargarlo: lo ya extraído lo sirvió PLACSP, y un
+      hecho manda sobre una inferencia.
+
+    ``strpos`` y no ``LIKE``: el fragmento se incrusta en consultas con
+    parámetros, donde un ``%`` literal habría que duplicarlo (mismo motivo que
+    en ``v88``). Las comas alrededor casan el código entero, que la lista
+    oficial tiene pares como ``DOC_PIN`` / ``DOC_PIN_RTL``. El ``COALESCE``
+    hace que el predicado nunca sea ``NULL``: sin ``tipos_anuncio`` (fila
+    anterior a ``v138``, o un camino que no lee los anuncios) es falso, y un
+    ``NOT`` delante no descarta la fila en silencio.
+    """
+    anuncios = f"(',' || COALESCE({lic}.tipos_anuncio, '') || ',')"
+    return (
+        f"({doc}.status IN ('pending', 'error') "
+        f"AND strpos({doc}.uri, '{_SERVLET_PLACSP}') > 0 "
+        f"AND {abierta_sql(f'{lic}.estado')} "
+        f"AND strpos({anuncios}, ',DOC_CN,') > 0 "
+        f"AND strpos({anuncios}, ',DOC_CD,') = 0)"
+    )
 
 
 def _vigente_sql() -> str:
@@ -357,6 +402,16 @@ class DocumentosRepository:
            usan tokens rotativos que caducan (~82% de los antiguos), así que
            el backlog viejo tiene tasa de error de descarga alta y queda al
            final -- newest-first evita gastar el lote diario en URIs muertas.
+
+        Quedan fuera los documentos que PLACSP ha anunciado sin publicarlos
+        todavía (:func:`_sin_publicar_sql`). Son justo los que el orden pondría
+        primero —plazo abierto, recién llegados— y todos contestan 500: cada
+        uno gastaba cuatro reintentos, acababa en ``error`` sin nada que lo
+        reviviera (el enlace no cambia al publicarse el pliego) y, con cinco
+        seguidos, abría el circuito de PLACSP y el resto del lote se saltaba
+        (255 documentos el 2026-10-01, 139 el 2026-09-28). No se pierden: siguen
+        ``pending`` y entran solos cuando la re-emisión del expediente trae el
+        ``DOC_CD`` o cuando el expediente se cierra.
         """
         with connect_read() as c:
             cur = c.execute(
@@ -370,6 +425,7 @@ class DocumentosRepository:
                 "FROM documentos d "
                 "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
                 "WHERE d.status = 'pending' "
+                f"AND NOT {_sin_publicar_sql()} "
                 "ORDER BY "
                 # Demanda real por delante de la relevancia estimada: los pliegos
                 # de una oportunidad abierta o de un favorito son los que alguien
@@ -408,13 +464,23 @@ class DocumentosRepository:
         ``created_at`` ascendente enseñaba primero la copia más vieja, que es
         justo la que ya ha caducado. ``id`` desempata las filas de un mismo
         lote, cuyo ``created_at`` es idéntico.
+
+        Cada fila lleva ``sin_publicar``: PLACSP la ha anunciado pero todavía
+        no la sirve (:func:`_sin_publicar_sql`). Con él la ficha no ofrece un
+        enlace que contesta 500 y la extracción bajo demanda no lo intenta. El
+        ``LEFT JOIN`` conserva el contrato de antes —documentos de una
+        licitación que no está en ``licitaciones``—; sin fila no hay anuncios
+        que leer y la marca sale falsa.
         """
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, tipo, uri, filename, content_type, size_bytes, "
-                "status, created_at FROM documentos WHERE licitacion_id = %s "
-                "ORDER BY CASE tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
-                "created_at DESC, id",
+                "SELECT d.id, d.tipo, d.uri, d.filename, d.content_type, d.size_bytes, "
+                f"d.status, d.created_at, {_sin_publicar_sql()} AS sin_publicar "
+                "FROM documentos d "
+                "LEFT JOIN licitaciones l ON l.id_externo = d.licitacion_id "
+                "WHERE d.licitacion_id = %s "
+                "ORDER BY CASE d.tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
+                "d.created_at DESC, d.id",
                 (licitacion_id,),
             )
             return rows_to_dicts(cur)

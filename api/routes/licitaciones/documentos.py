@@ -47,6 +47,11 @@ class DocumentoSummary(BaseModel):
     size_bytes: int | None = None
     status: str
     created_at: str | None = None
+    #: PLACSP ha anunciado el documento pero todavía no lo sirve: lo referencia
+    #: desde el anuncio de licitación y su enlace contesta 500 hasta que publica
+    #: el pliego. No es un enlace caducado, y la ficha no debe ofrecerlo como
+    #: si abriera (``DocumentosRepository.list_by_licitacion``).
+    sin_publicar: bool = False
 
 
 # `PaginatedResponse` y `CursorPaginatedResponse` viven en `shared/dto.py`

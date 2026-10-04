@@ -51,7 +51,37 @@ def test_documentos_licitacion_con_documentos(client, auth):
     assert doc["filename"] == "PCAP.pdf"
     assert doc["tipo"] == "legal"
     assert doc["status"] == "pending"
+    assert doc["sin_publicar"] is False
     assert "texto" not in doc
+
+
+def test_documentos_de_un_pliego_sin_publicar_van_marcados(client, auth):
+    """PLACSP anuncia el pliego con el anuncio de licitación y no lo sirve hasta
+    publicar el pliego: la ficha tiene que saberlo para no ofrecer un enlace que
+    contesta 500."""
+    import db.database as db_mod
+
+    _seed_licitacion("DOC005")
+    with db_mod.connect() as c:
+        c.execute("UPDATE licitaciones SET tipos_anuncio = 'DOC_CN' WHERE id_externo = 'DOC005'")
+    DocumentosRepository().upsert_meta(
+        "DOC005",
+        [
+            DocumentoReferencia(
+                tipo="legal",
+                uri=(
+                    "https://contrataciondelestado.es/FileSystem/servlet/"
+                    "GetDocumentByIdServlet?cifrado=C&DocumentIdParam=T"
+                ),
+                filename="PCAP.pdf",
+            )
+        ],
+    )
+
+    r = client.get("/api/v1/licitaciones/DOC005/documentos", headers=auth)
+
+    assert r.status_code == 200
+    assert [d["sin_publicar"] for d in r.json()["items"]] == [True]
 
 
 def test_documentos_llegan_en_orden_documental(client, auth):

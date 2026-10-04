@@ -7864,6 +7864,11 @@ export interface components {
             filename?: string | null;
             /** Id */
             id: number;
+            /**
+             * Sin Publicar
+             * @default false
+             */
+            sin_publicar: boolean;
             /** Size Bytes */
             size_bytes?: number | null;
             /** Status */
