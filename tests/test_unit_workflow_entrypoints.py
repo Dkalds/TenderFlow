@@ -366,6 +366,17 @@ _METRICAS_PROMOCIONADAS = {
     "f1": 0.8,
     "promotion": {"activada": True, "version": 3, "motivos_rechazo": []},
 }
+# Lo que devuelve `train_from_db(activar=False)` cuando el gate pasa: hay
+# artefacto que subir, y la versión espera a que esté publicado.
+_METRICAS_PENDIENTES = {
+    "f1": 0.8,
+    "promotion": {
+        "activada": False,
+        "pendiente_de_activar": True,
+        "version": 3,
+        "motivos_rechazo": [],
+    },
+}
 _METRICAS_RECHAZADAS = {
     "f1": 0.8,
     "promotion": {
@@ -376,43 +387,239 @@ _METRICAS_RECHAZADAS = {
 }
 
 
-def test_training_run_precomputes_forzado_al_promocionar():
-    """Si el modelo cambió, `ml_proba` tiene que recalcularse entero.
+def test_training_run_entrena_sin_activar_y_no_precomputa():
+    """Activar y recalcular `ml_proba` van DESPUÉS de subir el artefacto.
 
-    Con ``force=False`` solo se rellenaban los NULL, así que la superficie de
-    serving y el test de drift de predicciones seguían mostrando los scores
-    del modelo anterior.
+    Hasta 2026-10 `run()` activaba y hacía el `precompute` forzado antes de la
+    subida: un fallo en medio dejaba activa una versión sin artefacto publicado.
     """
     with (
         patch("scraper.ml_training.seed_negatives") as seed,
-        patch("scraper.ml_training.train_from_db", return_value=_METRICAS_PROMOCIONADAS),
+        patch("scraper.ml_training.train_from_db", return_value=_METRICAS_PENDIENTES) as train,
         patch("scraper.ml_training.precompute_ml_proba") as precompute,
+        patch("db.model_registry.deactivate", return_value=1),
     ):
-        assert training_job.run() == _METRICAS_PROMOCIONADAS
-        precompute.assert_called_once_with(force=True)
+        assert training_job.run() == _METRICAS_PENDIENTES
+        train.assert_called_once_with(activar=False)
+        precompute.assert_not_called()
         # Los negativos deben venir de la población de serving (CPV 48/72) y
         # de varios meses: sembrarlos de un solo mes y sin TI le enseña al
         # modelo un separador de CPV que en producción es constante.
         seed.assert_called_once_with(include_ti=True, spread_months=6)
 
 
-def test_training_run_no_precomputa_si_el_gate_rechaza():
+def test_training_run_retira_la_version_activa_antes_de_la_subida():
+    """La subida sustituye el asset de nombre fijo: la activa deja de tener el suyo.
+
+    Sin versión activa, ningún estado intermedio —ni un fallo a mitad— deja
+    registrado como activo un sha256 que no es el del asset publicado.
+    """
+    with (
+        patch("scraper.ml_training.seed_negatives"),
+        patch("scraper.ml_training.train_from_db", return_value=_METRICAS_PENDIENTES),
+        patch("db.model_registry.deactivate", return_value=1) as deactivate,
+    ):
+        training_job.run()
+
+    deactivate.assert_called_once_with("sap_classifier")
+
+
+def test_training_run_no_toca_la_version_activa_si_el_gate_rechaza():
     """Un rechazo del gate no es un error, pero tampoco hay nada que aplicar."""
     with (
         patch("scraper.ml_training.seed_negatives"),
         patch("scraper.ml_training.train_from_db", return_value=_METRICAS_RECHAZADAS),
         patch("scraper.ml_training.precompute_ml_proba") as precompute,
+        patch("db.model_registry.deactivate") as deactivate,
     ):
         assert training_job.run() == _METRICAS_RECHAZADAS
         precompute.assert_not_called()
+        deactivate.assert_not_called()
 
 
-def test_promocionado_distingue_los_tres_desenlaces():
+def test_promocionado_distingue_los_desenlaces():
     assert training_job.promocionado(_METRICAS_PROMOCIONADAS) is True
+    # Pasó el gate y espera a que su artefacto se publique: hay fichero que subir.
+    assert training_job.promocionado(_METRICAS_PENDIENTES) is True
     assert training_job.promocionado(_METRICAS_RECHAZADAS) is False
     # Métricas sin bloque `promotion` (p. ej. un camino antiguo) no cuentan
     # como promoción: ante la duda, no se publica.
     assert training_job.promocionado({"f1": 0.9}) is False
+
+
+# -- activar_publicada: el paso de después de la subida ----------------------
+
+_SHA_CANDIDATO = "ab" * 32
+
+
+def _fila_candidata(version: int = 3) -> dict[str, object]:
+    return {
+        "name": "sap_classifier",
+        "version": version,
+        "path": "/home/runner/work/TenderFlow/TenderFlow/data/models/sap_classifier.pkl",
+        "sha256": _SHA_CANDIDATO,
+        "is_active": 0,
+    }
+
+
+def _release_con(sha256: str | None) -> list[dict[str, object]]:
+    """La Release *latest* tal como la devuelve la API tras `gh release upload`."""
+    return [
+        {
+            "id": 2,
+            "tag_name": "v1.0.0-models",
+            "assets": [
+                {
+                    "name": "sap_classifier.pkl",
+                    "id": 21,
+                    "digest": f"sha256:{sha256}" if sha256 else None,
+                }
+            ],
+        }
+    ]
+
+
+def _activar(releases, *, versiones=None, version: int = 3):
+    """Corre `activar_publicada` con registro, Releases y precompute simulados.
+
+    ``releases`` es una lista de respuestas sucesivas de `fetch_model_releases`.
+    Devuelve ``(resultado_o_excepción, llamadas, esperas)``; ``llamadas``
+    conserva el orden en que se activó y se recalculó.
+    """
+    llamadas: list[str] = []
+    esperas: list[float] = []
+
+    def _activate(_name, _version):
+        llamadas.append("activar")
+        return True
+
+    def _precompute(*, force):
+        llamadas.append(f"precompute(force={force})")
+        return {"updated": 24113, "skipped_no_model": False}
+
+    with (
+        patch(
+            "db.model_registry.list_versions",
+            return_value=[_fila_candidata()] if versiones is None else versiones,
+        ),
+        patch("db.model_registry.activate_version", side_effect=_activate),
+        patch("shared.model_artifacts.fetch_model_releases", side_effect=releases),
+        patch("scraper.ml_training.precompute_ml_proba", side_effect=_precompute),
+    ):
+        try:
+            resultado = training_job.activar_publicada(version, sleep=esperas.append)
+        except RuntimeError as exc:
+            resultado = exc
+    return resultado, llamadas, esperas
+
+
+def test_activa_solo_despues_de_ver_el_artefacto_publicado():
+    """Y recalcula `ml_proba` entero, con el modelo ya activo.
+
+    Con ``force=False`` solo se rellenarían los NULL, así que la superficie de
+    serving y el test de drift de predicciones seguirían mostrando los scores
+    del modelo anterior.
+    """
+    resultado, llamadas, esperas = _activar([_release_con(_SHA_CANDIDATO)])
+
+    assert llamadas == ["activar", "precompute(force=True)"]
+    assert esperas == []
+    assert resultado["version"] == 3
+    assert resultado["sha256"] == _SHA_CANDIDATO
+    assert resultado["release"] == "v1.0.0-models"
+    assert resultado["ml_proba"]["updated"] == 24113
+
+
+def test_no_activa_si_la_release_publica_otro_contenido():
+    """La subida falló o subió otro fichero: la versión se queda sin activar."""
+    resultado, llamadas, esperas = _activar([_release_con("cd" * 32)] * 3)
+
+    assert isinstance(resultado, RuntimeError)
+    assert "divergente" in str(resultado)
+    assert llamadas == []
+    # Tres lecturas, dos esperas: se rinde, no se queda colgado.
+    assert len(esperas) == 2
+
+
+def test_no_activa_si_el_asset_no_esta_en_ninguna_release():
+    resultado, llamadas, _esperas = _activar([[]] * 3)
+
+    assert isinstance(resultado, RuntimeError)
+    assert "sin_publicar" in str(resultado)
+    assert llamadas == []
+
+
+def test_un_fallo_pasajero_de_la_api_no_impide_activar():
+    """La primera lectura falla (lista vacía) y la segunda ya trae el asset."""
+    resultado, llamadas, esperas = _activar([[], _release_con(_SHA_CANDIDATO)])
+
+    assert not isinstance(resultado, RuntimeError)
+    assert llamadas == ["activar", "precompute(force=True)"]
+    assert len(esperas) == 1
+
+
+def test_no_activa_una_version_que_no_existe():
+    resultado, llamadas, _esperas = _activar([_release_con(_SHA_CANDIDATO)], version=9)
+
+    assert isinstance(resultado, RuntimeError)
+    assert "No existe la versión 9" in str(resultado)
+    assert llamadas == []
+
+
+def test_activar_cli_sale_con_1_si_no_se_pudo_activar(sin_entorno_actions):
+    with (
+        patch("db.model_registry.list_versions", return_value=[]),
+        patch("db.model_registry.activate_version") as activate,
+    ):
+        assert training_job.main(["activar", "--version", "3"]) == 1
+    activate.assert_not_called()
+
+
+def test_activar_cli_sale_con_0_y_deja_el_resumen(tmp_path, monkeypatch, sin_entorno_actions):
+    resumen = tmp_path / "resumen.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(resumen))
+    with (
+        patch("db.model_registry.list_versions", return_value=[_fila_candidata()]),
+        patch("db.model_registry.activate_version", return_value=True),
+        patch(
+            "shared.model_artifacts.fetch_model_releases",
+            return_value=_release_con(_SHA_CANDIDATO),
+        ),
+        patch("scraper.ml_training.precompute_ml_proba", return_value={"updated": 7}),
+    ):
+        assert training_job.main(["activar", "--version", "3"]) == 0
+
+    texto = resumen.read_text(encoding="utf-8")
+    assert "Versión activada" in texto
+    assert _SHA_CANDIDATO in texto
+
+
+def test_sin_subcomando_entrena(sin_entorno_actions):
+    """`train-model.yml` llama sin argumentos: tiene que seguir entrenando."""
+    with patch.object(training_job, "run", return_value=_METRICAS_RECHAZADAS) as run:
+        assert training_job.main([]) == 0
+    run.assert_called_once_with()
+
+
+# -- rescore -----------------------------------------------------------------
+
+
+def test_rescore_recalcula_todo_con_el_modelo_que_se_sirve():
+    with patch(
+        "scraper.ml_training.precompute_ml_proba",
+        return_value={"updated": 24594, "skipped_no_model": False},
+    ) as precompute:
+        assert training_job.rescore()["updated"] == 24594
+    precompute.assert_called_once_with(force=True)
+
+
+def test_rescore_sin_modelo_es_un_fallo_no_un_verde(sin_entorno_actions):
+    """Un rescore que no puntúa nada y sale en verde es peor que uno que falla."""
+    sin_modelo = {"updated": 0, "skipped_no_model": True}
+    with patch("scraper.ml_training.precompute_ml_proba", return_value=sin_modelo):
+        with pytest.raises(RuntimeError, match="No hay modelo servible"):
+            training_job.rescore()
+        assert training_job.main(["rescore"]) == 1
 
 
 def test_salida_github_permite_al_workflow_distinguir_rechazo_de_fallo(tmp_path, monkeypatch):

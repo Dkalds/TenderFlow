@@ -1,0 +1,70 @@
+name: Rescore ml_proba (clasificador SAP)
+
+# Reescribe `licitaciones.ml_proba` de TODA la población del clasificador con
+# el modelo que se sirve en ese momento. No entrena ni cambia qué versión está
+# activa.
+#
+# Para cuando la columna no sale de un solo modelo. La pasada diaria solo
+# puntúa lo que tiene `ml_proba IS NULL`, así que después de retirar una
+# versión (`db.model_registry.deactivate`), de un rollback con
+# `activate_version` o de un `precompute` forzado que se cortó a medias, las
+# filas ya puntuadas conservan el score del modelo anterior. El 2026-09-29 una
+# versión se activó, reescribió parte de la columna durante 68 segundos y se
+# retiró cinco días después: los scores que dejó no los puede reproducir ni
+# explicar ningún modelo que exista.
+#
+# Solo manual. `train-model.yml` ya hace este mismo recálculo al activar una
+# versión nueva; aquí vive el caso en que el modelo servido cambia sin que
+# nadie entrene.
+#
+# En Actions y no desde un checkout: el resultado depende de las versiones de
+# scikit-learn y numpy con las que se carga el artefacto, y las que cuentan son
+# las de `requirements.txt`, que son las que usa la pasada diaria.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Dos rescores a la vez escribirían las mismas filas dos veces.
+concurrency:
+  group: rescore-ml-proba
+  cancel-in-progress: false
+
+jobs:
+  rescore:
+    name: Recalcular ml_proba con el modelo servido
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Rescore
+        env:
+          # ENV=prod porque este job escribe en la BD de producción, así que
+          # los validators de datos (TLS de DATABASE_URL) deben estar activos.
+          # APP_PROFILE=scraper omite los secretos del proceso HTTP.
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+          # El runner viene sin `data/models/`: el artefacto se baja de la
+          # Release, y la API de GitHub pide token para no chocar con el
+          # límite anónimo.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m scheduler.jobs.ml_training_run rescore

@@ -233,12 +233,23 @@ def active_model_summary(name: str = "sap_classifier") -> dict[str, Any]:
     }
 
 
-def feedbacks_since_last_train(name: str = "sap_classifier") -> int:
+def feedbacks_since_last_train(
+    name: str = "sap_classifier", *, desde_ultimo_registro: bool = False
+) -> int:
     """Cuenta filas de feedback **humano** desde el ``trained_at`` de la versión
     activa.
 
     Si no hay versión activa, devuelve el total. Usado por C1 (active learning)
     para decidir si toca reentrenar.
+
+    Con ``desde_ultimo_registro`` la referencia es la última versión
+    **registrada**, esté activa o no. Es la pregunta que decide un
+    reentrenamiento: «¿hay etiquetas que el último entrenamiento no vio?». Un
+    candidato que el gate rechazó ya gastó esas etiquetas; contando desde la
+    activa, el umbral seguiría superado y se relanzaría cada semana el mismo
+    entrenamiento para recibir el mismo rechazo. El panel de active learning
+    sigue leyendo la cuenta desde la activa, que es la que explica el modelo
+    que se sirve.
 
     Solo ``source`` en :data:`db.repositories.feedback.FUENTES_HUMANAS`
     (``human``, histórico, y ``revision_ti`` desde el plan de clasificación en
@@ -248,15 +259,20 @@ def feedbacks_since_last_train(name: str = "sap_classifier") -> int:
     de etiquetado por LLM supera el umbral de 50 sin aportar una sola etiqueta
     nueva al modelo.
     """
-    active = get_active(name)
+    referencia: dict[str, Any] | None
+    if desde_ultimo_registro:
+        ultimas = list_versions(name, limit=1)
+        referencia = ultimas[0] if ultimas else None
+    else:
+        referencia = get_active(name)
     fuentes = list(FUENTES_HUMANAS)
     with connect() as c:
-        if active is None:
+        if referencia is None:
             cur = c.execute("SELECT COUNT(*) FROM ml_feedback WHERE source = ANY(%s)", (fuentes,))
         else:
             cur = c.execute(
                 "SELECT COUNT(*) FROM ml_feedback WHERE source = ANY(%s) AND created_at > %s",
-                (fuentes, active["trained_at"]),
+                (fuentes, referencia["trained_at"]),
             )
         row = cur.fetchone()
     return int(row[0]) if row else 0

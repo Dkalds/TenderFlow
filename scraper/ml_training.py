@@ -372,8 +372,13 @@ def resumen_poblacion_sap(lic: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def train_from_db() -> dict[str, Any]:
+def train_from_db(*, activar: bool = True) -> dict[str, Any]:
     """Entrena el clasificador usando datos de la BD activa y lo guarda.
+
+    ``activar=False`` es para quien todavía tiene que publicar el artefacto
+    (``scheduler/jobs/ml_training_run.py``, el entrypoint de
+    ``train-model.yml``): el candidato que pasa el gate queda registrado sin
+    activar, y ``metrics["promotion"]`` lo dice con ``pendiente_de_activar``.
 
     **Población acotada (S6.1).** El dataset ya no es ``licitaciones`` entera:
     son las fuentes cuyo conector filtró por señal tecnológica antes de
@@ -440,9 +445,11 @@ def train_from_db() -> dict[str, Any]:
         notes="train_from_db",
         models_dir=_MODEL_DIR,
         publicar_como=_MODEL_DIR / "sap_classifier.pkl",
+        activar=activar,
     )
-    metrics["promotion"] = resultado.as_dict()
-    if not resultado.activada:
+    promocion = resultado.as_dict()
+    metrics["promotion"] = promocion
+    if not (promocion.get("activada") or promocion.get("pendiente_de_activar")):
         log.warning(
             "train_from_db.no_promocionado",
             version=resultado.version,

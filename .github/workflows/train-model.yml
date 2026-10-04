@@ -1,5 +1,16 @@
 name: Train & publish ML model
 
+# Entrena el clasificador SAP, lo publica en la Release y activa la versión,
+# en ese orden: entrenar → subir → comprobar lo subido → activar. Es el único
+# camino que publica el modelo, así que también es el único que lo activa.
+#
+# Lo lanza una persona, o el paso semanal `sap_active_learning` del cierre de
+# `scrape-daily.yml` cuando hay etiquetas humanas que el último entrenamiento
+# no vio (`scheduler/concept_drift.py::maybe_retrain_classifier`). Ese paso
+# entrenaba por su cuenta dentro de su runner, sin poder publicar nada: el
+# 2026-09-29 dejó activa una versión sin artefacto y `ml_scoring` cayó cuatro
+# días.
+
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +21,12 @@ on:
 
 permissions:
   contents: write  # necesario para crear/actualizar releases
+
+# Dos entrenamientos a la vez retirarían, subirían y activarían cada uno su
+# versión sobre el mismo asset de nombre fijo. El segundo espera.
+concurrency:
+  group: train-model
+  cancel-in-progress: false
 
 jobs:
   train:
@@ -39,6 +56,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Entrena y pasa el gate, pero NO activa: el candidato que lo supera queda
+      # registrado sin activar (`promoted=true`) hasta «Activar la versión
+      # publicada». Si lo supera, este paso deja además el modelo sin versión
+      # activa, porque la subida va a sustituir el asset de la que hubiera.
       - name: Train model
         id: train
         env:
@@ -81,30 +102,6 @@ jobs:
             echo "- n_train / n_test: \`$N_TRAIN\` / \`$N_TEST\`"
             echo
             echo "La versión queda en \`model_versions\` para inspección y rollback."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # S6.1: la medición del cambio de población, después de que
-      # `precompute_ml_proba` haya reescrito la columna con el modelo nuevo.
-      # No bloquea —el artefacto ya está entrenado y el gate ya decidió—, pero
-      # deja en el run el número que dice si el clasificador discrimina: la
-      # proporción de filas puntuadas por encima de 0.7. El 2026-09-04 era el
-      # 90,64%, con el modelo puntuando 683k filas de PSCP que nunca vio.
-      - name: Medir la discriminación del clasificador
-        if: steps.train.outputs.promoted == 'true'
-        continue-on-error: true
-        env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-        run: |
-          {
-            echo "## Auditoría de verdad del dato (post-entrenamiento)"
-            echo
-            echo '```'
-            python scripts/audit_domain_truth.py --check 2>&1 \
-              || echo "(algún umbral superado — ver las líneas de arriba)"
-            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify model artifact
@@ -160,4 +157,58 @@ jobs:
             echo "- Versión: \`$VERSION\`"
             echo "- recall_no_keyword: \`$RECALL_NO_KEYWORD\`"
             echo "- n_train / n_test: \`$N_TRAIN\` / \`$N_TEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # La versión se activa AQUÍ, después de subir, y solo si la Release
+      # publica el sha256 que quedó registrado: el paso lee el `digest` del
+      # asset de la API de Releases y lo coteja con `model_versions` antes de
+      # tocar `is_active`. Después recalcula `ml_proba` entero con el modelo ya
+      # activo.
+      #
+      # Hasta 2026-10 «Train model» activaba la versión y la subida iba tres
+      # pasos más abajo, con el `precompute` forzado —que recorre toda la
+      # población— en medio. Un fallo ahí dejaba activa una versión cuyo
+      # artefacto no estaba publicado, y todos los runners caían por
+      # `ModelArtifactMismatch`: lo mismo que ocurrió el 2026-09-29 por el
+      # camino del reentrenamiento automático.
+      #
+      # Si este paso falla, el modelo queda SIN versión activa («Train model»
+      # ya retiró la anterior) y los runners sirven el asset de nombre fijo
+      # que haya en la Release: degradado, no roto. Relanzar el workflow lo
+      # resuelve; ver docs/runbooks/model-rollback.md.
+      - name: Activar la versión publicada
+        if: steps.train.outputs.promoted == 'true'
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+          # Para leer la Release por la API sin chocar con el límite anónimo.
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.train.outputs.version }}
+        run: python -m scheduler.jobs.ml_training_run activar --version "$VERSION"
+
+      # S6.1: la medición del cambio de población, después de que el paso
+      # anterior haya reescrito `ml_proba` con el modelo nuevo.
+      # No bloquea —el artefacto ya está entrenado y el gate ya decidió—, pero
+      # deja en el run el número que dice si el clasificador discrimina: la
+      # proporción de filas puntuadas por encima de 0.7. El 2026-09-04 era el
+      # 90,64%, con el modelo puntuando 683k filas de PSCP que nunca vio.
+      - name: Medir la discriminación del clasificador
+        if: steps.train.outputs.promoted == 'true'
+        continue-on-error: true
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+        run: |
+          {
+            echo "## Auditoría de verdad del dato (post-entrenamiento)"
+            echo
+            echo '```'
+            python scripts/audit_domain_truth.py --check 2>&1 \
+              || echo "(algún umbral superado — ver las líneas de arriba)"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

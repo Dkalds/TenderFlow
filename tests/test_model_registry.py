@@ -113,6 +113,54 @@ def test_feedbacks_since_last_train(tmp_db):
     assert count == 2
 
 
+def test_feedbacks_desde_el_ultimo_registro_no_cuenta_lo_que_ya_vio_un_candidato(tmp_db):
+    """Producción el 2026-10-04: etiquetas viejas y un candidato posterior, inactivo.
+
+    Contando desde la versión activa (ninguna) el umbral seguía superado y el
+    reentrenamiento se relanzaría cada semana con las mismas etiquetas.
+    """
+    _db_mod, _ = tmp_db
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO ml_feedback (expediente, relevante, created_at) VALUES (%s, %s, %s)",
+            ("EXP-VIEJA", 1, "2020-01-01T00:00:00"),
+        )
+    register_version(name="sap_classifier", path="p", sha256="s")  # el gate lo rechazó
+    with connect() as c:
+        c.execute(
+            "UPDATE model_versions SET trained_at = '2021-01-01T00:00:00' "
+            "WHERE name = 'sap_classifier'"
+        )
+
+    assert feedbacks_since_last_train("sap_classifier") == 1
+    assert feedbacks_since_last_train("sap_classifier", desde_ultimo_registro=True) == 0
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO ml_feedback (expediente, relevante, created_at) "
+            "VALUES (%s, %s, CURRENT_TIMESTAMP)",
+            ("EXP-NUEVA", 0),
+        )
+
+    assert feedbacks_since_last_train("sap_classifier", desde_ultimo_registro=True) == 1
+
+
+def test_feedbacks_desde_el_ultimo_registro_sin_versiones_es_el_total(tmp_db):
+    _db_mod, _ = tmp_db
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO ml_feedback (expediente, relevante, created_at) "
+            "VALUES (%s, %s, CURRENT_TIMESTAMP)",
+            ("EXP-001", 1),
+        )
+
+    assert feedbacks_since_last_train("sap_classifier", desde_ultimo_registro=True) == 1
+
+
 def test_active_model_summary_composes_loop_state(tmp_db):
     """active_model_summary expone versión activa + histórico + feedbacks (panel AL)."""
     _db_mod, _ = tmp_db
