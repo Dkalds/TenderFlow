@@ -7,7 +7,7 @@
  * `degraded` (fallback without LLM synthesis) and `resumen_meta`.
  */
 
-import { getCsrfToken } from "./api-client";
+import { errorDeRespuesta, getCsrfToken, type ApiError } from "./api-client";
 import type { FiltrosCorpus } from "./api-types";
 import { registrarEvento } from "./analytics";
 
@@ -285,9 +285,26 @@ async function consumeStream(res: Response, cb: StreamCallbacks, signal?: AbortS
 }
 
 /**
+ * El rechazo del servidor como `ApiError`: el estado, y el `detail` y el `type`
+ * de su problem+json. Hasta 2026-10 se lanzaba un `Error("Error 403")` sin leer
+ * el cuerpo, y un token CSRF caducado, un scope insuficiente y cualquier otro
+ * 403 eran el mismo «Error 403» en el panel.
+ *
+ * Un 401 **no** redirige a /login, a diferencia de `fetchWithAuth`: el stream
+ * nunca lo ha hecho, y el fallo se queda en el panel de quien preguntó.
+ */
+async function rechazo(res: Response, url: string, signal?: AbortSignal): Promise<ApiError> {
+  const error = await errorDeRespuesta(res, "POST", url);
+  // Leer el cuerpo es una espera más: si «Detener» llegó en medio, gana la
+  // cancelación y no hay fallo que enseñar.
+  signal?.throwIfAborted();
+  return error;
+}
+
+/**
  * POST a question and stream the answer. Resolves with the final result
- * (answer + fuentes/degraded metadata). Throws on non-OK responses; aborts are
- * surfaced as the standard AbortError.
+ * (answer + fuentes/degraded metadata). Throws an `ApiError` on non-OK
+ * responses; aborts are surfaced as the standard AbortError.
  *
  * Telemetría: se cuenta la pregunta que llega a tener respuesta (o rechazo del
  * servidor). Un abort del usuario o una caída de red no emiten nada — no son
@@ -307,7 +324,8 @@ export async function streamAsk({
 }: AskParams): Promise<AskStreamResult> {
   const csrf = getCsrfToken();
   const varios = idsExternos && idsExternos.length > 0 ? idsExternos : undefined;
-  const res = await fetch("/api/v1/ask", {
+  const url = "/api/v1/ask";
+  const res = await fetch(url, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -332,7 +350,7 @@ export async function streamAsk({
   const conteo = n >= 1 && n <= 3 ? { n_expedientes: String(n) as "1" | "2" | "3" } : {};
   if (!res.ok) {
     registrarEvento("asistente_usado", { modo: "pregunta", ambito, resultado: "error", ...conteo });
-    throw new Error(`Error ${res.status}`);
+    throw await rechazo(res, url, signal);
   }
   const resultado = await consumeStream(res, callbacks, signal);
   // `degradado` es la respuesta sin síntesis del LLM: cuenta como uso, pero no
@@ -360,7 +378,8 @@ export async function streamResumen({
   ...callbacks
 }: ResumenParams): Promise<AskStreamResult> {
   const csrf = getCsrfToken();
-  const res = await fetch(`/api/v1/licitaciones/${encodeURIComponent(idExterno)}/resumen`, {
+  const url = `/api/v1/licitaciones/${encodeURIComponent(idExterno)}/resumen`;
+  const res = await fetch(url, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -376,7 +395,7 @@ export async function streamResumen({
       ambito: "licitacion",
       resultado: "error",
     });
-    throw new Error(`Error ${res.status}`);
+    throw await rechazo(res, url, signal);
   }
   const resultado = await consumeStream(res, callbacks, signal);
   registrarEvento("asistente_usado", {

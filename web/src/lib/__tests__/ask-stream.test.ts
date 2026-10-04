@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 
 import { registrarEvento } from "@/lib/analytics";
+import { ApiError, esAborto, mensajePorEstado } from "@/lib/api-client";
 import { streamAsk, streamResumen } from "@/lib/ask-stream";
 
 /** Build a Response whose body streams the given SSE lines. */
@@ -31,6 +32,14 @@ function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { "content-type": "application/json" },
+  });
+}
+
+/** Respuesta de error con el cuerpo `application/problem+json` que arma `api/errors.py`. */
+function problemResponse(status: number, problema: { type?: string; title?: string; detail?: string }): Response {
+  return new Response(JSON.stringify({ status, ...problema }), {
+    status,
+    headers: { "content-type": "application/problem+json" },
   });
 }
 
@@ -176,7 +185,10 @@ describe("streamAsk", () => {
   it("throws on non-OK responses", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
 
-    await expect(streamAsk({ question: "q", onToken: vi.fn() })).rejects.toThrow("Error 429");
+    await expect(streamAsk({ question: "q", onToken: vi.fn() })).rejects.toMatchObject({
+      name: "ApiError",
+      status: 429,
+    });
   });
 
   it("includes X-CSRF-Token header when csrf_token cookie is present", async () => {
@@ -248,6 +260,120 @@ describe("streamResumen", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("mytoken");
+  });
+});
+
+/* ── Rechazo del servidor: el motivo no se pierde ───────────────────────── */
+
+describe("rechazo del servidor", () => {
+  it("el resumen conserva el `detail` y el `type` del problem+json", async () => {
+    // El 2026-10-04 un 403 en producción era el token CSRF caducado, y el panel
+    // solo podía decir «Error 403»: el cuerpo de la respuesta no se leía.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        problemResponse(403, {
+          type: "https://licitaciones-sap/errors/forbidden",
+          title: "Forbidden",
+          detail: "CSRF token mismatch",
+        }),
+      ),
+    );
+
+    const error = await streamResumen({ idExterno: "EXP-1", onToken: vi.fn() }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 403,
+      message: "CSRF token mismatch",
+      tipo: "https://licitaciones-sap/errors/forbidden",
+      ruta: "POST /api/v1/licitaciones/EXP-1/resumen",
+    });
+  });
+
+  it("la pregunta también: el 429 del presupuesto agotado llega con su texto", async () => {
+    // Mismo estado que el rate-limit, otro motivo: solo el `detail` y el `type`
+    // los distinguen.
+    const detail = "Presupuesto LLM daily de tu cuenta agotado (1.0000 USD >= 1.0000 USD).";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        problemResponse(429, {
+          type: "https://licitaciones-sap/errors/too-many-requests",
+          title: "Too Many Requests",
+          detail,
+        }),
+      ),
+    );
+
+    const error = await streamAsk({ question: "q", onToken: vi.fn() }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 429,
+      message: detail,
+      tipo: "https://licitaciones-sap/errors/too-many-requests",
+      ruta: "POST /api/v1/ask",
+    });
+  });
+
+  it("sin cuerpo que leer (un corte del proxy), queda el mensaje de reserva del estado", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html>Bad Gateway</html>", { status: 502 })));
+
+    const error = (await streamAsk({ question: "q", onToken: vi.fn() }).catch((e: unknown) => e)) as ApiError;
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(502);
+    expect(error.message).toBe(mensajePorEstado(502));
+    expect(error.tipo).toBeUndefined();
+  });
+
+  it("un 401 no redirige a /login: el fallo se queda en el panel, con su motivo", async () => {
+    // A diferencia de `fetchWithAuth`, el stream nunca ha redirigido: sacar al
+    // usuario de la ficha a media pregunta no lo decide un cambio de formato
+    // del error.
+    const locationMock = { href: "", pathname: "/detalle", search: "?lic=EXP-1" };
+    vi.stubGlobal("window", { ...globalThis.window, location: locationMock });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        problemResponse(401, {
+          type: "https://licitaciones-sap/errors/unauthorized",
+          title: "Unauthorized",
+          detail: "Authentication required. Provide session cookie or X-API-Key header.",
+        }),
+      ),
+    );
+
+    await expect(streamResumen({ idExterno: "EXP-1", onToken: vi.fn() })).rejects.toMatchObject({
+      status: 401,
+      message: "Authentication required. Provide session cookie or X-API-Key header.",
+    });
+    expect(locationMock.href).toBe("");
+  });
+
+  it("si se aborta mientras se lee el cuerpo del error, gana la cancelación", async () => {
+    // Leer el cuerpo es una espera nueva: «Detener» puede llegar en medio, y
+    // entonces no hay fallo que enseñar.
+    const controller = new AbortController();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: () => {
+          controller.abort();
+          return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
+        },
+      }),
+    );
+
+    const error = await streamAsk({ question: "q", signal: controller.signal, onToken: vi.fn() }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(esAborto(error)).toBe(true);
+    expect(error).not.toBeInstanceOf(ApiError);
   });
 });
 
@@ -390,7 +516,7 @@ describe("telemetría asistente_usado", () => {
   it("un rechazo del servidor sí cuenta como error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
 
-    await expect(streamAsk({ question: "q", onToken: vi.fn() })).rejects.toThrow("Error 429");
+    await expect(streamAsk({ question: "q", onToken: vi.fn() })).rejects.toMatchObject({ status: 429 });
     expect(registrarEvento).toHaveBeenCalledWith("asistente_usado", {
       modo: "pregunta",
       ambito: "corpus",

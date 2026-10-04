@@ -6,7 +6,8 @@ import { ChevronRight, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Aviso, PanelError } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
+import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
+import { detalleTecnico } from "@/lib/query-feedback";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
 import type { ChatTurn } from "@/hooks/use-ask";
@@ -14,15 +15,26 @@ import type { AskMeta, DegradedInfo, FuenteDocumento, SourcesInfo } from "@/lib/
 
 /**
  * Mensaje humano para el fallo de una llamada del asistente. `ask-stream` lanza
- * `Error("Error 503")` con el estado HTTP, o el error de red del navegador: ni
- * uno ni otro se enseñan tal cual (D6). El texto original va al «Detalle
- * técnico» plegado de `PanelError`.
+ * un `ApiError` con el estado HTTP y el `detail` de la API, o el error de red
+ * del navegador: ni uno ni otro se enseñan tal cual (D6). Del `ApiError` solo
+ * cuenta el estado: su `detail` («CSRF token mismatch», el presupuesto agotado
+ * con sus importes) es para soporte y va al «Detalle técnico» plegado de
+ * `PanelError`, con `detalleDeFalloIA`.
  */
-export function mensajeDeFalloIA(texto: string): string {
-  const estado = /^Error (\d{3})$/.exec(texto.trim());
-  if (estado) return mensajePorEstado(Number(estado[1]));
-  if (/failed to fetch|networkerror|load failed/i.test(texto)) return MENSAJE_SIN_CONEXION;
+export function mensajeDeFalloIA(error: unknown): string {
+  if (error instanceof ApiError) return mensajePorEstado(error.status);
+  if (error instanceof Error && /failed to fetch|networkerror|load failed/i.test(error.message)) {
+    return MENSAJE_SIN_CONEXION;
+  }
   return "El asistente no pudo responder. Vuelve a intentarlo en unos segundos.";
+}
+
+/**
+ * Lo que va plegado bajo `mensajeDeFalloIA`: estado, método y ruta, y el
+ * `detail` que mandó la API. Es lo que distingue un 403 de otro.
+ */
+export function detalleDeFalloIA(error: unknown): string | undefined {
+  return detalleTecnico(error, mensajeDeFalloIA(error));
 }
 
 /**
@@ -214,7 +226,7 @@ export interface ChatThreadProps {
   messages: ChatTurn[];
   streaming: boolean;
   loading: boolean;
-  error: string | null;
+  error: Error | null;
   className?: string;
   /**
    * True cuando este hilo pidió contexto de una licitación concreta
@@ -339,13 +351,13 @@ export function ChatThread({
       })}
 
       {/* Un solo aviso: el hilo no pasa por React Query, así que no hay toast
-          que callar. Mensaje humano; el texto original, plegado. */}
+          que callar. Mensaje humano; lo que dijo la API, plegado. */}
       {error && (
         <PanelError
           variant="inline"
           title="No se pudo obtener la respuesta"
           message={mensajeDeFalloIA(error)}
-          detail={error}
+          detail={detalleDeFalloIA(error)}
         />
       )}
       <div ref={bottomRef} />

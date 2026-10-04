@@ -12,6 +12,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { ApiError } from "@/lib/api-client";
 import type { AskParams, AskStreamResult } from "@/lib/ask-stream";
 import { callUrl, jsonResponse } from "./fetch-call";
 
@@ -180,7 +181,10 @@ describe("useChat", () => {
   });
 
   it("sets error and drops the empty assistant placeholder on failure", async () => {
-    mockStreamAsk.mockRejectedValue(new Error("Error 503"));
+    // El error se guarda entero, no su mensaje: el hilo saca de él el estado
+    // (mensaje humano) y el `detail` de la API (detalle técnico plegado).
+    const rechazo = new ApiError(503, "Servicio temporalmente no disponible.", undefined, "POST /api/v1/ask");
+    mockStreamAsk.mockRejectedValue(rechazo);
 
     const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
 
@@ -189,7 +193,7 @@ describe("useChat", () => {
     });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.error).toBe("Error 503");
+    expect(result.current.error).toBe(rechazo);
     // El turno user queda; el placeholder assistant vacío se elimina.
     expect(result.current.messages).toHaveLength(1);
     expect(result.current.messages[0].role).toBe("user");
@@ -204,7 +208,8 @@ describe("useChat", () => {
       await result.current.send("¿Algo raro?");
     });
 
-    await waitFor(() => expect(result.current.error).toBe("Error desconocido"));
+    await waitFor(() => expect(result.current.error?.message).toBe("Error desconocido"));
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 
   it("silently swallows AbortError (request cancelled)", async () => {
@@ -228,7 +233,7 @@ describe("useChat", () => {
     await act(async () => {
       await result.current.send("pregunta");
     });
-    await waitFor(() => expect(result.current.error).toBe("fallo"));
+    await waitFor(() => expect(result.current.error?.message).toBe("fallo"));
 
     act(() => {
       result.current.reset();
