@@ -69,6 +69,9 @@ class TestPresupuestoAgotado:
 @pytest.fixture()
 def repo_fetch() -> Iterator[MagicMock]:
     repo = MagicMock()
+    # La fase revive descargas fallidas antes de elegir el lote; aquí no hay
+    # ninguna. Sin fijarlo, el ``MagicMock`` que devuelve cuenta como 1.
+    repo.revivir_descargas_fallidas.return_value = 0
     with patch("db.repositories.documentos.DocumentosRepository", return_value=repo):
         yield repo
 
@@ -92,6 +95,7 @@ class TestFetchConTope:
             "skipped": 0,
             "unsupported": 0,
             "aplazados": 3,
+            "revividos": 0,
         }
         # Aplazar no es fallar: la fila sigue `pending` para el lote siguiente.
         repo_fetch.mark_error.assert_not_called()

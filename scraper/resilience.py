@@ -8,7 +8,9 @@
   ``breaker_para_host`` elige el que toca.
 
 El breaker ignora ``ValueError`` (validación de tamaño o URL) porque no son
-fallos del servidor — un payload malicioso no debería abrir el circuito.
+fallos del servidor — un payload malicioso no debería abrir el circuito. Y, por
+lo mismo, ``RecursoNoServidoError``: la respuesta con la que una plataforma
+dice que no sirve un recurso concreto.
 """
 
 from __future__ import annotations
@@ -35,8 +37,24 @@ log = get_logger(__name__)
 _stdlib_log = logging.getLogger(__name__)
 
 
+class RecursoNoServidoError(requests.HTTPError):
+    """El servidor contestó, y lo que dijo habla del recurso pedido, no de él.
+
+    Lo lanza quien sabe reconocer esa respuesta en su plataforma (hoy,
+    ``scraper.document_fetcher`` con el 500 del servlet de PLACSP). Ni se
+    reintenta ni cuenta para el circuito: pedir otra vez lo mismo da lo mismo, y
+    una plataforma que contesta en 0,2 s no está caída.
+
+    Es un ``HTTPError`` para que quien ya trata los fallos HTTP de una descarga
+    la reciba sin saber de ella; por eso :func:`_is_transient` la mira antes
+    que al resto, que por su 500 la tomaría por transitoria.
+    """
+
+
 def _is_transient(exc: BaseException) -> bool:
     """Reintenta solo en errores transitorios de red y 5xx/429."""
+    if isinstance(exc, RecursoNoServidoError):
+        return False
     if isinstance(exc, requests.ConnectionError | requests.Timeout):
         return True
     if isinstance(exc, requests.HTTPError):
@@ -155,7 +173,7 @@ def _nuevo_breaker(nombre: str) -> pybreaker.CircuitBreaker:
     return pybreaker.CircuitBreaker(
         fail_max=5,
         reset_timeout=settings.BREAKER_BASE_TIMEOUT,
-        exclude=[ValueError],
+        exclude=[ValueError, RecursoNoServidoError],
         listeners=[
             _AdaptiveBackoffListener(
                 base_timeout=settings.BREAKER_BASE_TIMEOUT,

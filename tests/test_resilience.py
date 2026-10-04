@@ -157,6 +157,40 @@ def test_breaker_opens_after_consecutive_failures():
         always_fail()
 
 
+def test_recurso_no_servido_no_se_reintenta():
+    """Es un ``HTTPError`` sin ``response``, que a secas se toma por transitorio.
+
+    Así llegan los errores del transporte de documentos (``PinnedHttpsResponse``
+    no pasa ``response=``), y por eso el 500 con el que PLACSP contesta por un
+    documento concreto se pedía cuatro veces: 417 reintentos en los 33 lotes de
+    ``pliegos.yml`` del 2026-09-04 al 2026-10-04, ninguno con otro resultado.
+    """
+    from scraper.resilience import RecursoNoServidoError
+
+    exc = RecursoNoServidoError("Pinned HTTPS response status 500")
+
+    assert isinstance(exc, requests.HTTPError)
+    assert not _is_transient(exc)
+
+
+def test_recurso_no_servido_no_cuenta_para_el_circuito():
+    """El servidor contestó: lo roto es el recurso pedido, no la plataforma."""
+    from scraper.resilience import RecursoNoServidoError, _nuevo_breaker
+
+    circuito = _nuevo_breaker("test_recurso_no_servido")
+
+    @circuito
+    def pedir() -> None:
+        raise RecursoNoServidoError("Pinned HTTPS response status 500")
+
+    for _ in range(circuito.fail_max + 1):
+        with pytest.raises(RecursoNoServidoError):
+            pedir()
+
+    assert circuito.current_state == "closed"
+    assert circuito.fail_counter == 0
+
+
 def test_placsp_breaker_exported():
     assert placsp_breaker.name == "placsp"
     assert placsp_breaker.fail_max == 5
