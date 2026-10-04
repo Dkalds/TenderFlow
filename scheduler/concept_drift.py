@@ -8,6 +8,7 @@ a la configuración.
 
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
@@ -272,6 +273,15 @@ def run_drift_report(*, days: int = 30, send_alert: bool = True) -> list[dict[st
 _RETRAIN_FEEDBACK_THRESHOLD = 50
 
 
+def _plano_declarado() -> str:
+    """Valor de ``SCHEDULER_PLANE``, o cadena vacía si nadie lo puso.
+
+    Vacío es el caso de quien corre esto a mano en su checkout, donde el
+    proceso que entrena y el que sirve comparten ``data/models/``.
+    """
+    return os.environ.get("SCHEDULER_PLANE", "").strip()
+
+
 def maybe_retrain_classifier(
     *, threshold: int = _RETRAIN_FEEDBACK_THRESHOLD, dry_run: bool = False
 ) -> dict[str, Any]:
@@ -282,12 +292,18 @@ def maybe_retrain_classifier(
     re-entrenamiento, registra la nueva versión en el model registry y la
     activa automáticamente.
 
+    **Solo reentrena sin plano de orquestación declarado.** Con
+    ``SCHEDULER_PLANE`` puesto —producción incluida— avisa de que toca lanzar
+    ``train-model.yml`` y no toca el registro: activar una versión cuyo
+    artefacto no se publica deja sin modelo a todos los procesos.
+
     Args:
         threshold: Mínimo de feedbacks nuevos para disparar el retrain.
         dry_run: Si True, solo reporta sin entrenar.
 
     Returns:
-        Dict con ``triggered``, ``feedbacks_new``, ``new_version`` (si aplica).
+        Dict con ``triggered``, ``feedbacks_new``, ``new_version`` (si aplica)
+        y ``retrain_pendiente`` cuando tocaba reentrenar y solo se avisó.
     """
     from db.model_registry import feedbacks_since_last_train, get_active
 
@@ -309,6 +325,36 @@ def maybe_retrain_classifier(
         log.info("active_learning.dry_run", n_new=n_new)
         result["triggered"] = True
         result["dry_run"] = True
+        return result
+
+    plano = _plano_declarado()
+    if plano:
+        # Con un plano de orquestación declarado (ADR-012), este proceso no es
+        # el que sirve el modelo y lo que escriba en ``data/models/`` no llega
+        # a quien sí: el runner de Actions se destruye al acabar el job, y ni
+        # el worker de Render ni el contenedor del scheduler de Compose
+        # comparten ese directorio con la API. Entrenar aquí dejaba activa en
+        # ``model_versions`` una versión que nadie podía bajar: el 2026-09-29
+        # ``ml_scoring`` cayó por ``ModelArtifactMismatch`` en cada pasada
+        # hasta que alguien miró. Quien entrena y publica en el mismo job es
+        # ``train-model.yml``; aquí se avisa de que toca lanzarlo.
+        log.warning(
+            "active_learning.retrain_pendiente",
+            n_new=n_new,
+            threshold=threshold,
+            plano=plano,
+        )
+        result["retrain_pendiente"] = True
+        notify(
+            AlertLevel.WARN,
+            "Active learning: toca reentrenar el clasificador SAP",
+            f"Hay {n_new} feedbacks humanos desde el último entrenamiento "
+            f"(umbral: {threshold}).\n"
+            f"El plano '{plano}' no puede publicar el artefacto, así que no "
+            "reentrena por su cuenta: una versión activa sin artefacto "
+            "publicado deja sin modelo a todos los procesos.\n"
+            "Lanzá el workflow que entrena y publica: gh workflow run train-model.yml",
+        )
         return result
 
     # Re-entrenar

@@ -68,6 +68,7 @@ CANONICAL_STEPS: list[str] = [
     "anomaly_checks",
     "follows_paridad",
     "llm_models_canary",
+    "model_artifacts_canary",
     "retention_cleanup",
     "sap_active_learning",
     "drift_checks",
@@ -137,6 +138,11 @@ STEP_TIER: dict[str, StepTier] = {
     # ADR-031 §B, y eso lo decide una persona mirando la serie.
     "follows_paridad": "advisory",
     "llm_models_canary": "advisory",
+    # advisory: compara `model_versions` con las Releases y avisa. Si el
+    # artefacto que falta es el del clasificador SAP, quien pone la pasada en
+    # rojo es `ml_scoring`, que es el que deja de entregar; este paso explica
+    # por qué y cubre los modelos que la pasada no carga.
+    "model_artifacts_canary": "advisory",
     "retention_cleanup": "bloqueante",
     "sap_active_learning": "advisory",
     "drift_checks": "advisory",
@@ -673,9 +679,17 @@ def _run_sap_active_learning() -> str:
     producción: el feedback se acumulaba en ``ml_feedback`` para un contador
     de UI y nada lo consumía (revisión de arquitectura 2026-08). La función ya
     no-opea por debajo del umbral, así que la ventana semanal solo limita el
-    coste del conteo. OJO runners efímeros: si promociona una versión nueva,
-    el artefacto debe subirse a la Release (canal de ``ensure_downloaded``) —
-    la propia función lo avisa en su log de promoción.
+    coste del conteo.
+
+    **En producción avisa, no entrena** (2026-10). Con ``SCHEDULER_PLANE``
+    declarado la función no reentrena: manda la alerta de que toca lanzar
+    ``train-model.yml`` y devuelve ``retrain_pendiente``. Hasta entonces
+    entrenaba y activaba la versión aquí mismo, en un runner que se destruye
+    al acabar el job, con un aviso en el log —el de abajo— como único
+    recordatorio de subir el ``.pkl`` a la Release. El 2026-09-29 ese aviso ni
+    llegó a escribirse: el ``precompute_ml_proba(force=True)`` posterior agotó
+    los 20 minutos del step, y la versión quedó activa sin artefacto. El aviso
+    se conserva para quien corra esto sin plano declarado.
     """
 
     def _run() -> None:
@@ -806,6 +820,34 @@ def _run_llm_models_canary() -> str:
             )
 
     return _run_periodic("llm_models_canary", _SEGUNDOS_DIA, _check)
+
+
+def _run_model_artifacts_canary() -> str:
+    """Canary de artefactos de modelo (una vez al día): registro frente a Release.
+
+    Una versión activa en ``model_versions`` cuyo artefacto publicado tiene
+    otro sha256 —o no está publicado— no la puede servir ningún proceso. El
+    2026-09-29 eso dejó ``ml_scoring`` cayendo cuatro días por
+    ``ModelArtifactMismatch``. Los hallazgos se lanzan como fallo del paso por
+    el mismo motivo que en ``_run_llm_models_canary``: así llega el email de
+    ``_notify_step_failure`` con los dos hashes y la Release, en vez de
+    quedarse en el log de un runner efímero. Un fallo leyendo las Releases NO
+    lanza: el job lo reporta como ``error`` y la ventana siguiente reintenta.
+    """
+
+    def _check() -> None:
+        from scheduler.jobs.model_artifacts_canary import resumen
+        from scheduler.jobs.model_artifacts_canary import run as run_canary
+
+        result = run_canary()
+        hallazgos = resumen(result)
+        if hallazgos:
+            raise RuntimeError(
+                f"model_versions y las Releases divergen: {hallazgos}. Ningún proceso "
+                "puede servir esas versiones (docs/runbooks/model-rollback.md)."
+            )
+
+    return _run_periodic("model_artifacts_canary", _SEGUNDOS_DIA, _check)
 
 
 # ---------------------------------------------------------------------------

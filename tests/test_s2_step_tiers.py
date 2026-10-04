@@ -39,6 +39,10 @@ PASOS_ADVISORY = {
     # pasada siguiente. Un webhook de cliente caído no rompe la ingesta.
     "event_dispatch",
     "llm_models_canary",
+    # Coteja `model_versions` con las Releases y avisa. Cuando el artefacto que
+    # falta es el del clasificador SAP, quien pone la pasada en rojo es
+    # `ml_scoring`, que es el que deja de entregar.
+    "model_artifacts_canary",
     "anomaly_checks",
     # Mide la paridad de `follows` (ADR-031 §B) y no repara nada: que esté rota
     # no rompe la pasada ni lo nota ningún cliente. Lo que bloquea es la
