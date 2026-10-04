@@ -8,6 +8,10 @@ verifican lógica de negocio (extracción, persistencia) parchean
 ``tests/test_bulk_downloader.py`` — para no tocar el breaker compartido.
 Solo los tests de guardas (SSRF, tamaño) que fallan en el primer intento con
 ``ValueError`` (excluido del breaker, no reintentable) llaman al código real.
+
+La excepción son los tests cuyo objeto son justo los reintentos y el circuito
+(fallos de red del transporte, estados HTTP): también llaman al código real,
+pero con un circuito propio y sin las esperas de tenacity (fixture ``circuito``).
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from unittest.mock import MagicMock, patch
 import pybreaker
 import pytest
 import requests
+import urllib3
 
 from scraper.document_fetcher import (
     DocumentFetchError,
@@ -173,14 +178,15 @@ class TestDownloadGuards:
                 _download_bytes("https://example.com/pliego.pdf")
 
 
-# ── El 500 con el que el servlet de PLACSP no sirve UN documento ────────────
+# ── El transporte fijado, visto desde los reintentos y el circuito ─────────
 
+# El 500 con el que el servlet de PLACSP no sirve UN documento. Respuesta medida
+# el 2026-10-04 con el transporte real para los documentos 202384 y 202385
+# («2026/56 PAS»): 500 en 0,15 s, 42 bytes, sin Content-Length.
 _URI_SERVLET = (
     "https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet"
     "?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=UR4k/CIhvDBfNUQ5HFSORz"
 )
-# Respuesta medida el 2026-10-04 con el transporte real para los documentos
-# 202384 y 202385 («2026/56 PAS»): 500 en 0,15 s, 42 bytes, sin Content-Length.
 _CUERPO_NO_SERVIDO = b"Error 500: java.lang.NullPointerException\n"
 _TIPO_NO_SERVIDO = "text/html;charset=ISO-8859-1"
 
@@ -273,15 +279,14 @@ class TestServletNoSirveElDocumento:
             assert _download_bytes(_URI_SERVLET) == (b"%PDF-1.6 pliego", "application/pdf")
 
     def test_el_error_conserva_el_estado_para_quien_lo_clasifica(self, circuito):
-        """``fetch_and_extract`` lee el código con ``_status_de``, del mensaje."""
-        from scraper.document_fetcher import _status_de
-        from scraper.resilience import RecursoNoServidoError
+        """``fetch_and_extract`` lee el código con ``status_de``, del mensaje."""
+        from scraper.resilience import RecursoNoServidoError, status_de
 
         with _servir(500, _CUERPO_NO_SERVIDO, _TIPO_NO_SERVIDO):
             with pytest.raises(RecursoNoServidoError) as fallo:
                 _download_bytes(_URI_SERVLET)
 
-        assert _status_de(fallo.value) == 500
+        assert status_de(fallo.value) == 500
         assert "NullPointerException" in str(fallo.value)
 
     def test_otro_500_del_servlet_sigue_siendo_de_la_plataforma(self, circuito):
@@ -306,6 +311,232 @@ class TestServletNoSirveElDocumento:
 
         assert not isinstance(fallo.value, RecursoNoServidoError)
         assert transporte.call_count == 4
+
+
+class _RespuestaQueSeCorta(_RespuestaCruda):
+    """Un 200 cuyo cuerpo se interrumpe después del primer trozo."""
+
+    def __init__(self, cuerpo: bytes, corte: Exception) -> None:
+        super().__init__(200, cuerpo, "application/pdf")
+        self._corte = corte
+
+    def stream(self, amt: int, decode_content: bool = True):
+        yield self._cuerpo[:amt]
+        raise self._corte
+
+
+@pytest.fixture()
+def red(monkeypatch):
+    """El ``pinned_https_request`` de verdad, con la red sustituida justo debajo.
+
+    Devuelve una función que programa lo que el ``urlopen`` de urllib3 va dando
+    intento a intento —lanza las excepciones y devuelve lo demás; el último
+    resultado se repite— y que entrega la lista de peticiones hechas.
+    """
+    from shared import outbound_http
+    from shared.ssrf import PinnedHttpsTarget
+
+    monkeypatch.setattr(
+        outbound_http,
+        "resolve_pinned_https_target",
+        lambda _url, **_k: PinnedHttpsTarget(
+            hostname="example.org", address="192.0.2.1", port=443, request_uri="/pliegos/pcap.pdf"
+        ),
+    )
+
+    def programar(*resultados):
+        pendientes = list(resultados)
+        peticiones: list[str] = []
+
+        def urlopen(_pool, _metodo, url, **_kwargs):
+            peticiones.append(url)
+            resultado = pendientes.pop(0) if len(pendientes) > 1 else pendientes[0]
+            if isinstance(resultado, Exception):
+                raise resultado
+            return resultado
+
+        monkeypatch.setattr(urllib3.HTTPSConnectionPool, "urlopen", urlopen)
+        return peticiones
+
+    return programar
+
+
+_URI_PLIEGO = "https://example.org/pliegos/pcap.pdf"
+_PDF = b"%PDF-1.6 pliego"
+
+# Los errores con los que urllib3 deja una petición sin respuesta. El pool del
+# transporte va con ``retries=False``, así que salen tal cual, sin envolver en
+# ``MaxRetryError``.
+_FALLOS_AL_PEDIR = [
+    pytest.param(
+        urllib3.exceptions.NewConnectionError(
+            None, "Failed to establish a new connection: [Errno 111] Connection refused"
+        ),
+        id="conexion-rechazada",
+    ),
+    pytest.param(
+        urllib3.exceptions.ProtocolError(
+            "Connection aborted.", ConnectionResetError(104, "Connection reset by peer")
+        ),
+        id="conexion-cortada",
+    ),
+    pytest.param(
+        urllib3.exceptions.SSLError("EOF occurred in violation of protocol (_ssl.c:1032)"),
+        id="tls",
+    ),
+    pytest.param(
+        urllib3.exceptions.ConnectTimeoutError(
+            None, "Connection to 192.0.2.1 timed out. (connect timeout=30.0)"
+        ),
+        id="timeout-al-conectar",
+    ),
+    pytest.param(
+        urllib3.exceptions.ReadTimeoutError(
+            None, "/pliegos/pcap.pdf", "Read timed out. (read timeout=30.0)"
+        ),
+        id="timeout-esperando-respuesta",
+    ),
+]
+
+_CORTES_DE_CUERPO = [
+    pytest.param(
+        urllib3.exceptions.ProtocolError(
+            "Connection broken: IncompleteRead(8192 bytes read, 11817 more expected)"
+        ),
+        id="cuerpo-incompleto",
+    ),
+    pytest.param(
+        urllib3.exceptions.ReadTimeoutError(None, "/pliegos/pcap.pdf", "Read timed out."),
+        id="timeout-a-mitad-de-cuerpo",
+    ),
+]
+
+
+class TestFalloDeRedDelTransporte:
+    """Un corte de red al descargar un pliego no se reintentaba ni una vez.
+
+    Cuando urllib3 se queda sin respuesta, ``pinned_https_request`` lanza
+    ``RequestException("Pinned HTTPS request failed")`` a secas, y lo que se
+    corta con el cuerpo a medias sale como el error de urllib3 tal cual. Ninguno
+    es ``ConnectionError`` ni ``Timeout``, que es lo que ``http_retry`` sabe
+    reintentar: los dos documentos de la PSCP que fallaron así el 2026-10-04
+    (205537 y 204888) quedaron en ``error`` al primer intento, y de los 417
+    reintentos de los 33 lotes de ``pliegos.yml`` de ese mes ninguno fue por red.
+    """
+
+    def test_un_fallo_al_conectar_se_reintenta_y_la_descarga_sale(self, circuito, red):
+        peticiones = red(
+            urllib3.exceptions.NewConnectionError(None, "Failed to establish a new connection"),
+            _RespuestaCruda(200, _PDF, "application/pdf"),
+        )
+
+        assert _download_bytes(_URI_PLIEGO) == (_PDF, "application/pdf")
+        assert len(peticiones) == 2
+        assert circuito.fail_counter == 0
+
+    @pytest.mark.parametrize("causa", _FALLOS_AL_PEDIR)
+    def test_agotados_los_intentos_queda_un_error_de_red_que_dice_cual(self, circuito, red, causa):
+        peticiones = red(causa)
+
+        with pytest.raises(requests.ConnectionError) as fallo:
+            _download_bytes(_URI_PLIEGO)
+
+        assert len(peticiones) == 4
+        assert type(fallo.value) is requests.ConnectionError
+        assert fallo.value.__cause__ is causa
+        # Empieza como el mensaje del transporte, que es por lo que ya se
+        # cuentan estas filas en ``error_detail``; detrás va la clase de fallo,
+        # que antes no quedaba escrita en ningún sitio.
+        assert str(fallo.value) == f"Pinned HTTPS request failed ({type(causa).__name__})"
+        # El circuito envuelve a los reintentos: una descarga, un fallo.
+        assert circuito.fail_counter == 1
+
+    def test_un_corte_a_mitad_de_cuerpo_se_reintenta_sin_arrastrar_lo_leido(self, circuito, red):
+        cuerpo = b"%PDF-1.6 " + b"x" * 20_000
+        peticiones = red(
+            _RespuestaQueSeCorta(
+                cuerpo,
+                urllib3.exceptions.ProtocolError(
+                    "Connection broken: IncompleteRead(8192 bytes read, 11817 more expected)"
+                ),
+            ),
+            _RespuestaCruda(200, cuerpo, "application/pdf"),
+        )
+
+        assert _download_bytes(_URI_PLIEGO) == (cuerpo, "application/pdf")
+        assert len(peticiones) == 2
+
+    @pytest.mark.parametrize("corte", _CORTES_DE_CUERPO)
+    def test_un_cuerpo_que_siempre_se_corta_acaba_en_error_de_red(self, circuito, red, corte):
+        peticiones = red(_RespuestaQueSeCorta(b"x" * 20_000, corte))
+
+        with pytest.raises(requests.ConnectionError) as fallo:
+            _download_bytes(_URI_PLIEGO)
+
+        assert len(peticiones) == 4
+        assert type(fallo.value) is requests.ConnectionError
+        assert fallo.value.__cause__ is corte
+        assert str(fallo.value) == f"Pinned HTTPS response body failed ({type(corte).__name__})"
+        assert circuito.fail_counter == 1
+
+    def test_lo_que_no_viene_de_la_red_no_se_disfraza_de_red(self, circuito):
+        """La traducción mira la causa: otro ``RequestException`` sigue como venía."""
+        ajeno = requests.RequestException("otra cosa")
+
+        with patch(
+            "scraper.document_fetcher.pinned_https_request", side_effect=ajeno
+        ) as transporte:
+            with pytest.raises(requests.RequestException) as fallo:
+                _download_bytes(_URI_PLIEGO)
+
+        assert fallo.value is ajeno
+        assert transporte.call_count == 1
+
+
+class TestEstadosQueRepetirNoCambia:
+    """Un 4xx o una redirección se pedían cuatro veces, ~19 s por documento.
+
+    ``PinnedHttpsResponse.raise_for_status`` construye el ``HTTPError`` sin
+    ``response=``, y sin ella ``http_retry`` tomaba por transitorio cualquier
+    estado.
+    """
+
+    @pytest.mark.parametrize("status", [302, 403, 404, 410])
+    def test_se_piden_una_sola_vez(self, circuito, status):
+        with _servir(status, b"", "text/html") as transporte:
+            with pytest.raises(requests.HTTPError, match=f"status {status}"):
+                _download_bytes(_URI_PLIEGO)
+
+        assert transporte.call_count == 1
+
+    @pytest.mark.parametrize("status", [408, 429, 503])
+    def test_los_que_si_pueden_cambiar_se_siguen_reintentando(self, circuito, status):
+        with _servir(status, b"", "text/html") as transporte:
+            with pytest.raises(requests.HTTPError, match=f"status {status}"):
+                _download_bytes(_URI_PLIEGO)
+
+        assert transporte.call_count == 4
+
+    def test_un_404_sigue_contando_para_el_circuito(self, circuito):
+        """Decidido con lo medido el 2026-10-05; cambiarlo tiene que ser a propósito.
+
+        La PSCP y TED contestan 404 por un documento que no existe, así que cinco
+        enlaces muertos seguidos abren el circuito de su plataforma, igual que
+        los 500 del servlet de PLACSP. Pero de los ~13.500 documentos que han
+        pasado por la descarga en producción ninguno ha quedado en ``error`` por
+        un 4xx, y sacarlos del circuito cambia un retraso por una pérdida: el día
+        que una plataforma conteste 404 o 403 a todo (una ruta que cambia, un
+        bloqueo), su lote entero pasaría a ``error`` —de donde hoy no se vuelve—
+        en vez de quedarse ``pending`` tras el quinto fallo.
+        """
+        with _servir(404, b"", "application/json"):
+            for _ in range(circuito.fail_max - 1):
+                with pytest.raises(requests.HTTPError):
+                    _download_bytes(_URI_PLIEGO)
+            with pytest.raises(pybreaker.CircuitBreakerError):
+                _download_bytes(_URI_PLIEGO)
+
+        assert circuito.current_state == "open"
 
 
 # ── fetch_and_extract: orquestación + persistencia ─────────────────────────
@@ -462,6 +693,28 @@ class TestFetchAndExtract:
         detalle = row["error_detail"] or ""
         assert detalle.startswith("descarga fallida:")
         assert "token caducado" not in detalle
+
+    def test_corte_de_red_agotado_marca_error_y_deja_escrito_que_fallo(self, repo, circuito, red):
+        """Lo que queda en ``error_detail`` tras agotar los reintentos de red.
+
+        Recorre el camino entero —el ``pinned_https_request`` real con la red
+        cortada debajo— porque ese texto es por lo que luego se cuentan estas
+        filas: conserva el principio del mensaje del transporte y le añade la
+        clase de fallo, que el 2026-10-04 hubo que suponer.
+        """
+        doc = _seed_documento(repo)
+        peticiones = red(
+            urllib3.exceptions.ConnectTimeoutError(None, "Connection to 192.0.2.1 timed out.")
+        )
+
+        assert fetch_and_extract(doc) == "error"
+
+        assert len(peticiones) == 4
+        row = repo.get(doc["id"])
+        assert row is not None
+        assert row["error_detail"] == (
+            "descarga fallida: Pinned HTTPS request failed (ConnectTimeoutError)"
+        )
 
     def test_corrupt_pdf_marks_error_but_records_download_metadata(self, repo):
         """Extracción fallida tras descarga OK: se persiste sha256/size (útil
