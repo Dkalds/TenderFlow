@@ -282,33 +282,64 @@ def _plano_declarado() -> str:
     return os.environ.get("SCHEDULER_PLANE", "").strip()
 
 
+#: Workflow que entrena, publica el artefacto en la Release y activa la versión.
+_WORKFLOW_ENTRENAMIENTO = "train-model.yml"
+
+
+def _lanzar_entrenamiento() -> bool:
+    """Encola ``train-model.yml`` por ``workflow_dispatch``. ``True`` si se aceptó.
+
+    Solo puede funcionar dentro de GitHub Actions, que es donde existen las
+    tres variables: ``GITHUB_TOKEN`` (el step tiene que exportarlo, y el
+    workflow darle ``actions: write``), ``GITHUB_REPOSITORY`` y
+    ``GITHUB_REF_NAME``. Se lanza sobre la misma rama que está corriendo, que en
+    la pasada programada es la rama por defecto. Fuera de Actions —el worker de
+    Render, el scheduler de Compose— falta alguna y devuelve ``False``.
+    """
+    token = os.environ.get("GITHUB_TOKEN", "")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    ref = os.environ.get("GITHUB_REF_NAME", "")
+    if not (token and repo and ref):
+        return False
+    from shared.github_actions import dispatch_workflow
+
+    return dispatch_workflow(repo, _WORKFLOW_ENTRENAMIENTO, ref=ref, token=token)
+
+
 def maybe_retrain_classifier(
     *, threshold: int = _RETRAIN_FEEDBACK_THRESHOLD, dry_run: bool = False
 ) -> dict[str, Any]:
     """Re-entrena el clasificador si hay suficientes feedbacks nuevos (C1).
 
-    Cuenta cuántas filas en ``ml_feedback`` son posteriores al ``trained_at``
-    de la versión activa registrada. Si supera ``threshold``, dispara
-    re-entrenamiento, registra la nueva versión en el model registry y la
-    activa automáticamente.
+    Cuenta cuántas filas de feedback humano en ``ml_feedback`` son posteriores
+    al ``trained_at`` de la **última versión registrada**, esté activa o no. Si
+    supera ``threshold``, dispara re-entrenamiento, registra la nueva versión
+    en el model registry y la activa automáticamente.
 
-    **Solo reentrena sin plano de orquestación declarado.** Con
-    ``SCHEDULER_PLANE`` puesto —producción incluida— avisa de que toca lanzar
-    ``train-model.yml`` y no toca el registro: activar una versión cuyo
-    artefacto no se publica deja sin modelo a todos los procesos.
+    Desde la última registrada y no desde la activa: un candidato que el gate
+    rechazó ya se entrenó con esas etiquetas, y reentrenar cada semana con las
+    mismas solo repite el rechazo.
+
+    **Solo reentrena en proceso sin plano de orquestación declarado.** Con
+    ``SCHEDULER_PLANE`` puesto —producción incluida— no toca el registro:
+    activar una versión cuyo artefacto no se publica deja sin modelo a todos
+    los procesos. Lanza ``train-model.yml``, que entrena y publica; y si no
+    puede lanzarlo (sin token, fuera de Actions), avisa de que toca hacerlo a
+    mano.
 
     Args:
         threshold: Mínimo de feedbacks nuevos para disparar el retrain.
         dry_run: Si True, solo reporta sin entrenar.
 
     Returns:
-        Dict con ``triggered``, ``feedbacks_new``, ``new_version`` (si aplica)
-        y ``retrain_pendiente`` cuando tocaba reentrenar y solo se avisó.
+        Dict con ``triggered``, ``feedbacks_new``, ``new_version`` (si aplica),
+        ``retrain_lanzado`` cuando se encoló ``train-model.yml`` y
+        ``retrain_pendiente`` cuando tocaba reentrenar y solo se pudo avisar.
     """
     from db.model_registry import feedbacks_since_last_train, get_active
 
     name = "sap_classifier"
-    n_new = feedbacks_since_last_train(name)
+    n_new = feedbacks_since_last_train(name, desde_ultimo_registro=True)
     active = get_active(name)
     result: dict[str, Any] = {
         "triggered": False,
@@ -337,7 +368,19 @@ def maybe_retrain_classifier(
         # ``model_versions`` una versión que nadie podía bajar: el 2026-09-29
         # ``ml_scoring`` cayó por ``ModelArtifactMismatch`` en cada pasada
         # hasta que alguien miró. Quien entrena y publica en el mismo job es
-        # ``train-model.yml``; aquí se avisa de que toca lanzarlo.
+        # ``train-model.yml``: aquí se lanza, y si no se puede, se avisa.
+        if _lanzar_entrenamiento():
+            log.info("active_learning.retrain_lanzado", n_new=n_new, threshold=threshold)
+            result["retrain_lanzado"] = True
+            notify(
+                AlertLevel.INFO,
+                "Active learning: reentrenamiento del clasificador SAP lanzado",
+                f"Hay {n_new} feedbacks humanos desde el último entrenamiento "
+                f"(umbral: {threshold}), así que se lanzó {_WORKFLOW_ENTRENAMIENTO}.\n"
+                "Entrena, pasa el gate de promoción y, si lo supera, publica el "
+                "artefacto y activa la versión. El desenlace está en ese workflow.",
+            )
+            return result
         log.warning(
             "active_learning.retrain_pendiente",
             n_new=n_new,
@@ -350,10 +393,11 @@ def maybe_retrain_classifier(
             "Active learning: toca reentrenar el clasificador SAP",
             f"Hay {n_new} feedbacks humanos desde el último entrenamiento "
             f"(umbral: {threshold}).\n"
-            f"El plano '{plano}' no puede publicar el artefacto, así que no "
-            "reentrena por su cuenta: una versión activa sin artefacto "
-            "publicado deja sin modelo a todos los procesos.\n"
-            "Lanzá el workflow que entrena y publica: gh workflow run train-model.yml",
+            f"El plano '{plano}' no puede publicar el artefacto ni ha podido "
+            f"lanzar {_WORKFLOW_ENTRENAMIENTO}, así que no reentrena por su "
+            "cuenta: una versión activa sin artefacto publicado deja sin modelo "
+            "a todos los procesos.\n"
+            f"Lanzá el workflow que entrena y publica: gh workflow run {_WORKFLOW_ENTRENAMIENTO}",
         )
         return result
 

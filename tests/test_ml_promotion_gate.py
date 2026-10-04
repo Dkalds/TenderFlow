@@ -188,12 +188,13 @@ class _ClfFalso:
         return destino
 
 
-def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None):
+def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None, **kwargs):
     """Corre `promote_if_better` con el registro y el gate mockeados.
 
     ``siguiente`` es lo que el registro dice que toca (el máximo de TODAS las
     filas más uno) y ``registrada`` lo que `register_version` acaba asignando.
     Por defecto coinciden, que es lo que pasa si nadie registra entre medias.
+    ``kwargs`` llega tal cual a `promote_if_better` (p. ej. ``activar=False``).
     """
     from unittest.mock import patch
 
@@ -215,6 +216,7 @@ def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None
             {"n_train": 100, "n_test": 50},
             models_dir=tmp_path / "versiones",
             publicar_como=publicado,
+            **kwargs,
         )
     return resultado, register, publicado
 
@@ -252,6 +254,53 @@ def test_si_el_gate_rechaza_no_se_publica_y_se_registra_el_versionado(tmp_path):
     registrado = register.call_args.kwargs
     assert registrado["path"].endswith("sap_classifier_v1.pkl")
     assert registrado["activate"] is False
+
+
+# ---------------------------------------------------------------------------
+# Activar después de publicar (2026-10)
+# ---------------------------------------------------------------------------
+#
+# `train-model.yml` sube el artefacto DESPUÉS del paso que entrena. Activando
+# dentro de `promote_if_better`, un fallo entre los dos dejaba activa una
+# versión sin artefacto publicado. Con `activar=False` el candidato que pasa
+# el gate se escribe y se registra, pero inactivo; lo activa
+# `scheduler.jobs.ml_training_run.activar_publicada` tras cotejar la Release.
+
+
+def test_con_activar_false_el_candidato_se_publica_pero_no_se_activa(tmp_path):
+    resultado, register, publicado = _promocionar(tmp_path, motivos=[], activar=False)
+
+    assert resultado.activada is False
+    assert resultado.pendiente_de_activar is True
+    registrado = register.call_args.kwargs
+    assert registrado["activate"] is False
+    # El fichero y la ruta registrada son los que el workflow va a subir: es
+    # por ese nombre por el que se cotejará la Release antes de activar.
+    assert registrado["path"] == str(publicado)
+    assert publicado.read_bytes() == b"artefacto-entrenado"
+    assert resultado.as_dict()["pendiente_de_activar"] is True
+
+
+def test_un_rechazo_no_queda_pendiente_de_activar(tmp_path):
+    """`activar=False` no convierte un rechazo en algo que subir."""
+    resultado, register, publicado = _promocionar(
+        tmp_path, motivos=["recall_no_keyword"], activar=False
+    )
+
+    assert resultado.activada is False
+    assert resultado.pendiente_de_activar is False
+    assert "pendiente_de_activar" not in resultado.as_dict()
+    assert not publicado.exists()
+    assert register.call_args.kwargs["activate"] is False
+
+
+def test_por_defecto_sigue_activando(tmp_path):
+    """Quien corre a mano en un checkout sirve desde el mismo `data/models/`."""
+    resultado, _register, _publicado = _promocionar(tmp_path, motivos=[])
+
+    assert resultado.activada is True
+    assert resultado.pendiente_de_activar is False
+    assert "pendiente_de_activar" not in resultado.as_dict()
 
 
 # ---------------------------------------------------------------------------

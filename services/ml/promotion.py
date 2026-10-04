@@ -106,6 +106,10 @@ class ResultadoPromocion:
     version: int | None
     motivos_rechazo: list[str] = field(default_factory=list)
     golden: dict[str, Any] = field(default_factory=dict)
+    #: Pasó el gate y su artefacto está escrito, pero quien llamó pidió no
+    #: activarlo todavía (``promote_if_better(activar=False)``): falta
+    #: publicarlo y comprobar que lo publicado es lo registrado.
+    pendiente_de_activar: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -114,6 +118,7 @@ class ResultadoPromocion:
             "version": self.version,
             "motivos_rechazo": self.motivos_rechazo,
             **({"golden": self.golden} if self.golden else {}),
+            **({"pendiente_de_activar": True} if self.pendiente_de_activar else {}),
         }
 
 
@@ -338,12 +343,23 @@ def promote_if_better(
     notes: str | None = None,
     models_dir: Path | None = None,
     publicar_como: Path | None = None,
+    activar: bool = True,
 ) -> ResultadoPromocion:
     """Registra la versión y la activa **solo si** pasa el gate.
 
     La versión se registra SIEMPRE (aunque no pase): es lo que permite ver el
     histórico. Lo que el gate decide es la *activación* y la publicación del
     artefacto que sirve producción.
+
+    **Activar es afirmar que el artefacto se puede bajar.** Quien corre en un
+    sitio donde ``publicar_como`` todavía no ha llegado a nadie —el job de
+    ``train-model.yml``, antes de su ``gh release upload``— pasa
+    ``activar=False``: el candidato que supera el gate se escribe y se registra
+    igual, pero inactivo (``pendiente_de_activar``), y lo activa
+    ``scheduler.jobs.ml_training_run.activar_publicada`` después de comprobar
+    que la Release publica ese mismo sha256. Activando aquí, un fallo entre
+    este punto y la subida dejaba activa una versión sin artefacto: lo mismo
+    que pasó el 2026-09-29 por el camino del reentrenamiento automático.
 
     **El rollback dejó de ser automático.** El ``path`` de una versión activada
     es el artefacto publicado, no el versionado (ver el comentario junto a
@@ -365,6 +381,8 @@ def promote_if_better(
         publicar_como: Ruta del artefacto que sirve producción (el que
             descargan API y runners). Solo se sobrescribe si el gate pasa; si
             no, el modelo anterior queda intacto.
+        activar: ``False`` deja inactivo al candidato que pasa el gate, a la
+            espera de que quien llama publique el artefacto y lo active.
     """
     from db.model_registry import get_active, next_version, register_version
 
@@ -401,7 +419,8 @@ def promote_if_better(
         golden=golden,
         golden_activo=golden_activo,
     )
-    debe_activar = not motivos
+    pasa_el_gate = not motivos
+    debe_activar = pasa_el_gate and activar
 
     # Publicar ANTES de registrar: el ``path`` que queda en ``model_versions``
     # tiene que ser el del fichero que de verdad viaja a la Release, porque es
@@ -414,7 +433,7 @@ def promote_if_better(
     # invariante que ya cumple ``train-predictivos.yml``: se sube el fichero
     # cuyo path se registró.
     ruta_registrada = guardado
-    if debe_activar and publicar_como is not None:
+    if pasa_el_gate and publicar_como is not None:
         publicar_como.parent.mkdir(parents=True, exist_ok=True)
         publicar_como.write_bytes(guardado.read_bytes())
         _escribir_checksum(publicar_como)
@@ -456,6 +475,14 @@ def promote_if_better(
 
     if debe_activar:
         log.info("promotion.activada", name=name, version=version, golden=golden_dict)
+    elif pasa_el_gate:
+        log.info(
+            "promotion.pendiente_de_activar",
+            name=name,
+            version=version,
+            path=str(ruta_registrada),
+            golden=golden_dict,
+        )
     else:
         log.warning(
             "promotion.rechazada",
@@ -471,6 +498,7 @@ def promote_if_better(
         version=version,
         motivos_rechazo=motivos,
         golden=golden_dict,
+        pendiente_de_activar=pasa_el_gate and not activar,
     )
 
 

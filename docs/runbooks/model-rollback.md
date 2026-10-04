@@ -42,9 +42,11 @@ gh api repos/Dkalds/TenderFlow/releases \
 
 Cómo se llega: algo activó una versión sin publicar su artefacto. El
 2026-09-29 fue el reentrenamiento automático dentro de un runner de
-`scrape-daily`; desde el 2026-10 ese camino solo avisa. Queda uno: que
-`train-model.yml` falle entre el paso de entrenamiento, que activa, y el de
-subida a la Release.
+`scrape-daily`; desde el 2026-10 ese paso ya no entrena: lanza
+`train-model.yml`, o avisa si no puede. Y `train-model.yml` activa **después**
+de subir, tras comprobar que la Release publica el sha256 registrado. Lo que
+queda son los caminos manuales: un `activate_version` sobre una versión cuyo
+artefacto no está publicado, o alguien que sustituye el asset a mano.
 
 **Salidas**, por orden de preferencia:
 
@@ -65,13 +67,60 @@ subida a la Release.
    EOF
    ```
 
-   Sin versión activa, `feedbacks_since_last_train` vuelve a contar todo el
-   feedback humano: si supera el umbral, el paso semanal `sap_active_learning`
-   avisará de que toca lanzar `train-model.yml`.
+   Desactivar no relanza ningún entrenamiento: el paso semanal
+   `sap_active_learning` cuenta el feedback humano posterior a la última
+   versión **registrada**, esté activa o no. Si querés un modelo nuevo,
+   `gh workflow run train-model.yml`.
 
 Después de cualquiera de las tres, la siguiente pasada de `scrape-daily` puntúa
 lo que quedó pendiente (`ml_proba IS NULL`), y `model_artifacts_canary` deja de
-avisar.
+avisar. Las filas que ya tenían score lo conservan, y puede ser el de un modelo
+que ya no se sirve: ver «Recalcular `ml_proba`».
+
+## `train-model.yml` falló después de «Train model»
+
+El workflow va en este orden: entrenar y pasar el gate → subir el artefacto a
+la Release → comprobar que lo publicado es lo registrado → activar → recalcular
+`ml_proba`. Si el candidato pasa el gate, «Train model» lo deja registrado
+**sin activar** y retira la versión que estuviera activa, porque la subida va a
+sustituir su asset.
+
+Así que un fallo a partir de ahí deja `sap_classifier` **sin versión activa**:
+los runners sirven el asset de nombre fijo que haya en la Release. Es un estado
+degradado —nada lo coteja contra el registro— pero ninguna pasada cae.
+
+- **Falló la subida**: mirá qué publica la Release con el `gh api` de arriba.
+  Si `sap_classifier.pkl` sigue ahí, es el anterior: reactivá su versión con
+  `activate_version`, o relanzá el workflow. Si no está —el paso borra el asset
+  antes de subir el nuevo—, los runners no tienen modelo y `ml_scoring` sale
+  `skipped` hasta que un entrenamiento vuelva a publicar uno.
+- **Falló «Activar la versión publicada»**: el asset ya es el nuevo. El resumen
+  del run dice por qué no se activó. Si era un fallo pasajero de la API de
+  GitHub, se activa a mano, con la versión que emitió «Train model» y un token
+  que pueda leer la Release:
+
+  ```bash
+  GITHUB_TOKEN="$(gh auth token)" python -m scheduler.jobs.ml_training_run activar --version <N>
+  ```
+
+  Hace las mismas comprobaciones que el paso del workflow, y si no cuadran no
+  activa.
+
+## Recalcular `ml_proba`
+
+La pasada diaria solo puntúa las filas con `ml_proba IS NULL`. Cuando cambia el
+modelo que se sirve sin que nadie entrene —un rollback, una versión retirada,
+un recálculo que se cortó a medias—, las filas ya puntuadas conservan el score
+del modelo anterior. Para reescribirlas todas con el que se sirve ahora:
+
+```bash
+gh workflow run rescore-ml-proba.yml
+```
+
+Desde Actions y no desde un checkout: el score depende de las versiones de
+scikit-learn y numpy con las que se carga el artefacto, y las que cuentan son
+las de `requirements.txt`. `train-model.yml` ya hace este recálculo al activar
+una versión nueva.
 
 ## Criterio de promoción: cuándo una versión puede activarse
 
