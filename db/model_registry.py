@@ -36,6 +36,27 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+# Una sola definición de "la versión que toca": ``next_version`` la prevé y
+# ``register_version`` la asigna, y las dos tienen que contar igual.
+_SQL_NEXT_VERSION = "SELECT COALESCE(MAX(version), 0) + 1 FROM model_versions WHERE name = %s"
+
+
+def next_version(name: str) -> int:
+    """Versión que ``register_version`` asignaría ahora mismo al modelo ``name``.
+
+    Es el máximo de TODAS las filas más uno, no la versión activa más uno: con
+    versiones registradas y ninguna activa, o con la activa por detrás del
+    máximo tras un ``activate_version``, las dos cuentas divergen. Quien
+    necesita el número antes de registrar (para nombrar el artefacto
+    versionado) lo pide aquí.
+
+    Es una previsión, no una reserva: si otro proceso registra entre medias,
+    manda lo que devuelva ``register_version``.
+    """
+    with connect() as c:
+        row = c.execute(_SQL_NEXT_VERSION, (name,)).fetchone()
+    return int(row[0])
+
 
 def register_version(
     *,
@@ -54,11 +75,8 @@ def register_version(
     Devuelve el ``version`` asignado (auto-incremento por ``name``).
     """
     with connect() as c:
-        row = c.execute(
-            "SELECT COALESCE(MAX(version), 0) + 1 FROM model_versions WHERE name = %s",
-            (name,),
-        ).fetchone()
-        next_version = int(row[0])
+        row = c.execute(_SQL_NEXT_VERSION, (name,)).fetchone()
+        version = int(row[0])
 
         c.execute(
             "INSERT INTO model_versions "
@@ -67,7 +85,7 @@ def register_version(
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 name,
-                next_version,
+                version,
                 path,
                 sha256,
                 json.dumps(metrics or {}, ensure_ascii=False),
@@ -82,18 +100,18 @@ def register_version(
         if activate:
             c.execute(
                 "UPDATE model_versions SET is_active = 0 WHERE name = %s AND version != %s",
-                (name, next_version),
+                (name, version),
             )
 
     log.info(
         "model_registered",
         name=name,
-        version=next_version,
+        version=version,
         active=activate,
         n_samples=n_samples,
         n_feedbacks=n_feedbacks,
     )
-    return next_version
+    return version
 
 
 def get_active(name: str) -> dict[str, Any] | None:
