@@ -21,13 +21,14 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import columna_nucleo, columna_nucleo_sql, universo_tecnologico_sql
 from observability.logging import get_logger
-from shared.estados import ESTADOS_CERRADOS
+from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
 log = get_logger(__name__)
 
@@ -54,6 +55,76 @@ def _vigente_sql() -> str:
         else "to_char(current_date, 'YYYY-MM-DD')"
     )
     return f"({limite} >= {hoy} OR ({limite} IS NULL AND l.fecha_pub_d >= current_date - 90))"
+
+
+#: Prefijo que ``fetch_and_extract`` pone a todo fallo de *descarga*; un fallo
+#: de extracción no lo lleva.
+_FALLO_DE_DESCARGA = "descarga fallida:"
+
+#: Lo que deja escrito un fallo que vino del otro lado: el transporte fijado de
+#: ``shared/outbound_http.py`` (un estado HTTP o un corte de red) y, en las
+#: filas anteriores a él, el de ``requests``.
+_MARCAS_DE_LA_FUENTE = ("Pinned HTTPS", "HTTPSConnectionPool")
+
+
+def _fallo_achacable_a_la_fuente(error_detail: str | None) -> bool:
+    """¿Falló el otro lado —la red o lo que contestó el servidor—, y no nosotros?
+
+    El prefijo de descarga lo llevan también los rechazos de nuestras guardas
+    (tamaño, SSRF), y esos no cambian por volver a pedir: un fichero de más de
+    50 MB lo seguirá siendo. La lista es de lo que sí se reintenta y no de lo
+    que no: así un mensaje que nadie previó se queda sin reintento en vez de
+    entrar en uno.
+    """
+    detalle = error_detail or ""
+    return detalle.startswith(_FALLO_DE_DESCARGA) and any(
+        marca in detalle for marca in _MARCAS_DE_LA_FUENTE
+    )
+
+
+#: Cuánto se espera entre dos intentos del mismo documento: lo que llevaba dado
+#: de alta cuando falló, entre un día y una semana.
+_ESPERA_MINIMA = timedelta(days=1)
+_ESPERA_MAXIMA = timedelta(days=7)
+
+#: El lote es diario pero no puntual: en septiembre de 2026 arrancó entre las
+#: 12:10 y las 17:05 UTC. Sin este margen, una noche que empieza antes que la
+#: anterior dejaría el reintento para el día siguiente.
+_HOLGURA_DEL_LOTE = timedelta(hours=6)
+
+
+def _instante(texto: str | None) -> datetime | None:
+    """Lee ``created_at``/``updated_at``, que son texto; ``None`` si no se deja."""
+    if not texto:
+        return None
+    try:
+        momento = datetime.fromisoformat(texto)
+    except ValueError:
+        return None
+    return momento if momento.tzinfo else momento.replace(tzinfo=UTC)
+
+
+def _toca_reintentar_descarga(
+    creado: str | None, ultimo_fallo: str | None, ahora: datetime
+) -> bool:
+    """¿Ha pasado ya la espera desde el último intento fallido?
+
+    La espera crece con la edad del documento, así que los intentos se espacian
+    al doble: con un lote al día, uno recién llegado se pide los días 1, 2, 4 y
+    8, y de ahí en adelante una vez por semana. Un corte de red se recupera la
+    noche siguiente y un enlace muerto cuesta siete peticiones en un mes, no
+    treinta.
+
+    No hay contador de intentos (sería una columna nueva): la edad al fallar
+    hace sus veces. El techo de una semana es para el documento que llegó tarde
+    a su primer intento; sin él esperaría lo que llevaba en cola.
+    """
+    alta = _instante(creado)
+    fallo = _instante(ultimo_fallo)
+    if alta is None or fallo is None:
+        return False
+    espera = min(max(fallo - alta, _ESPERA_MINIMA), _ESPERA_MAXIMA) - _HOLGURA_DEL_LOTE
+    return ahora - fallo >= espera
 
 
 @dataclass(frozen=True)
@@ -158,7 +229,13 @@ class DocumentosRepository:
         servlet. No reviven los fallos de *extracción* —content-type no
         soportado, PDF cifrado, escaneado sin OCR—, que no llevan ese prefijo:
         con esos, un enlace nuevo da el mismo resultado y el documento entraría
-        en un ciclo perpetuo de reintento consumiendo el lote diario.
+        en un ciclo perpetuo de reintento consumiendo el lote diario. El fallo
+        de descarga cuyo enlace **no** cambia no revive aquí: lo reintenta, con
+        espera, :meth:`revivir_descargas_fallidas`.
+
+        Una referencia que no trae nada nuevo para su fila no la escribe: volver
+        a ver un documento no es actualizarlo, y ``updated_at`` se queda en el
+        último cambio de verdad.
 
         Devuelve el número de referencias procesadas (no distingue insertadas de
         refrescadas; el detalle va al log ``documentos_upsert``).
@@ -188,6 +265,7 @@ class DocumentosRepository:
 
             updates: list[tuple[Any, ...]] = []
             updates_revive: list[tuple[Any, ...]] = []
+            intactas: list[int] = []
             inserts: list[tuple[Any, ...]] = []
             huerfanas: list[DocumentoReferencia] = []
             vistas_hash: set[tuple[str, str]] = set()
@@ -220,10 +298,25 @@ class DocumentosRepository:
                     duenio_de_uri[nueva_uri] = fila["id"]
                 filas_tocadas.add(fila["id"])
 
+                if (
+                    not cambio_uri
+                    and ref.tipo == fila["tipo"]
+                    and ref.filename in (None, fila["filename"])
+                    and ref.source_hash in (None, fila["source_hash"])
+                ):
+                    # La referencia no trae nada que la fila no tenga. Escribirla
+                    # solo movería ``updated_at``, que en una fila en ``error`` es
+                    # el momento de su último intento de descarga
+                    # (:func:`_toca_reintentar_descarga`): la pasada de la PSCP
+                    # relee las mismas fichas cada ~4 h y su espera no vencería
+                    # nunca.
+                    intactas.append(fila["id"])
+                    return
+
                 revive = (
                     cambio_uri
                     and fila["status"] == "error"
-                    and (fila["error_detail"] or "").startswith("descarga fallida:")
+                    and (fila["error_detail"] or "").startswith(_FALLO_DE_DESCARGA)
                 )
                 destino = updates_revive if revive else updates
                 # ``tipo`` se refresca junto al resto: la adopción por URI casa
@@ -337,10 +430,70 @@ class DocumentosRepository:
             referencias=len(refs),
             insertados=len(inserts),
             refrescados=len(updates),
+            sin_cambios=len(intactas),
             revividos=len(updates_revive),
             duplicadas_en_lote=duplicadas_en_lote,
         )
         return len(refs)
+
+    def revivir_descargas_fallidas(self) -> int:
+        """Devuelve a ``pending`` las descargas fallidas a las que les toca otro intento.
+
+        El revive de :meth:`upsert_meta` exige que cambie la URI. Deja fuera el
+        corte de red y el enlace del servlet que vuelve a responder con la misma
+        URI: el 2026-10-04, 10 de los 27 expedientes abiertos con documentos en
+        error de descarga respondían ya 200. Sin este método, esos fallos eran
+        definitivos.
+
+        Lo llama el lote nocturno antes de elegir sus documentos, no la ingesta.
+        La re-emisión del expediente no sirve de disparador. Medidas 62 pasadas
+        de la ingesta (2026-09-18 a 2026-10-04): el 55 % de los expedientes del
+        ATOM salió en una sola y ninguno en más de 7, así que la mayoría de los
+        fallos no tendría segunda oportunidad; y la pasada de la PSCP relee las
+        mismas fichas cada vez (68 expedientes en 5 de 5), así que los suyos la
+        tendrían todas las noches.
+
+        Tres condiciones, y las tres acotan:
+
+        - El fallo vino de la fuente (:func:`_fallo_achacable_a_la_fuente`).
+        - El plazo de ofertas sigue abierto y el expediente no está cerrado. Es
+          el mismo «plazo abierto» que pone estas filas al principio de
+          :meth:`list_pendientes`, y lo que da fin a los reintentos: sin fecha
+          límite no se revive.
+        - Ha vencido la espera (:func:`_toca_reintentar_descarga`).
+
+        Devuelve cuántas filas ha revivido.
+        """
+        ahora = datetime.now(UTC)
+        with connect() as c:
+            cur = c.execute(
+                "SELECT d.id, d.created_at, d.updated_at, d.error_detail "
+                "FROM documentos d "
+                "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
+                "WHERE d.status = 'error' "
+                # ``starts_with`` y no ``LIKE``: sin comodines que escapar.
+                f"AND starts_with(d.error_detail, '{_FALLO_DE_DESCARGA}') "
+                f"AND {abierta_sql('l.estado')} "
+                "AND l.fecha_limite_ts > now()"
+            )
+            candidatas = rows_to_dicts(cur)
+            ids = [
+                int(fila["id"])
+                for fila in candidatas
+                if _fallo_achacable_a_la_fuente(fila["error_detail"])
+                and _toca_reintentar_descarga(fila["created_at"], fila["updated_at"], ahora)
+            ]
+            if ids:
+                marcadores = ", ".join(["%s"] * len(ids))
+                c.execute(
+                    "UPDATE documentos SET status = 'pending', error_detail = NULL, "
+                    # ``status = 'error'`` otra vez: entre el SELECT y el UPDATE la
+                    # ficha bajo demanda pudo haberlo extraído.
+                    f"updated_at = %s WHERE status = 'error' AND id IN ({marcadores})",
+                    (now_utc_iso(), *ids),
+                )
+        log.info("documentos_descargas_revividas", candidatas=len(candidatas), revividas=len(ids))
+        return len(ids)
 
     def list_pendientes(self, limit: int = 100) -> list[dict[str, Any]]:
         """Documentos con ``status='pending'``, priorizados por relevancia.

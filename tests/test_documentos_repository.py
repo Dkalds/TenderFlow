@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from db.database import DocumentoReferencia
@@ -99,6 +101,30 @@ class TestUpsertMeta:
         repo.upsert_meta("EXP-5", [ref])
 
         assert len(repo.list_pendientes()) == 2
+
+    def test_reingesta_sin_cambios_no_toca_la_fila(self, repo):
+        """Volver a ver la misma referencia no es una actualización de la fila.
+
+        ``updated_at`` de una fila en ``error`` es el momento de su último
+        intento, y de él cuelga la espera de :func:`_toca_reintentar_descarga`.
+        La pasada de la PSCP relee las mismas fichas cada ~4 h (68 expedientes
+        en 5 de 5 pasadas el 2026-10-04): si cada relectura lo adelantara, la
+        espera de esos documentos no vencería nunca.
+        """
+        _insert_licitacion("EXP-NOOP")
+        ref = DocumentoReferencia(
+            tipo="legal", uri="https://x/pcap.pdf", filename="PCAP.pdf", source_hash="H1"
+        )
+        repo.upsert_meta("EXP-NOOP", [ref])
+        doc = repo.list_pendientes()[0]
+        repo.mark_error(doc["id"], error_detail="descarga fallida: Pinned HTTPS request failed")
+        antes = repo.get(doc["id"])
+
+        repo.upsert_meta("EXP-NOOP", [ref])
+
+        despues = repo.get(doc["id"])
+        assert despues["updated_at"] == antes["updated_at"]
+        assert despues["status"] == "error"
 
 
 class TestUpsertMetaIdentidadEstable:
@@ -678,3 +704,250 @@ class TestCountAll:
         )
 
         assert repo.count_all() == 3
+
+
+# ── Reintento acotado de las descargas fallidas ─────────────────────────────
+
+
+def _iso(momento: datetime) -> str:
+    return momento.isoformat()
+
+
+class TestCuandoTocaReintentarUnaDescarga:
+    """La regla, sin BD: cuánto se espera entre dos intentos del mismo documento."""
+
+    def test_un_enlace_que_no_vuelve_se_pide_siete_veces_en_un_mes(self):
+        """Un lote al día: los intentos se espacian al doble y luego cada semana."""
+        from db.repositories.documentos import _toca_reintentar_descarga
+
+        alta = datetime(2026, 9, 1, 19, 0, tzinfo=UTC)
+        lote = datetime(2026, 9, 2, 15, 0, tzinfo=UTC)
+        ultimo_fallo = lote  # día 1: la fila estaba ``pending`` y falla
+        dias_con_intento = [1]
+        for dia in range(2, 31):
+            lote += timedelta(days=1)
+            if _toca_reintentar_descarga(_iso(alta), _iso(ultimo_fallo), lote):
+                dias_con_intento.append(dia)
+                ultimo_fallo = lote
+
+        assert dias_con_intento == [1, 2, 4, 8, 15, 22, 29]
+
+    def test_el_lote_siguiente_lo_reintenta_aunque_arranque_antes(self):
+        """El cron no arranca a la misma hora: 12:10–17:05 UTC en septiembre de 2026."""
+        from db.repositories.documentos import _toca_reintentar_descarga
+
+        alta = datetime(2026, 9, 27, 19, 15, tzinfo=UTC)
+        fallo = datetime(2026, 9, 28, 17, 18, tzinfo=UTC)
+
+        assert _toca_reintentar_descarga(
+            _iso(alta), _iso(fallo), datetime(2026, 9, 29, 12, 10, tzinfo=UTC)
+        )
+
+    def test_el_mismo_dia_no_se_repite(self):
+        """La ficha bajo demanda falla a mediodía; el lote de esa tarde no insiste."""
+        from db.repositories.documentos import _toca_reintentar_descarga
+
+        alta = datetime(2026, 9, 27, 19, 15, tzinfo=UTC)
+        fallo = datetime(2026, 9, 28, 11, 0, tzinfo=UTC)
+
+        assert not _toca_reintentar_descarga(
+            _iso(alta), _iso(fallo), datetime(2026, 9, 28, 15, 0, tzinfo=UTC)
+        )
+
+    def test_un_documento_que_llego_tarde_al_primer_intento_espera_una_semana(self):
+        """Sin el techo esperaría lo que llevaba en cola, y el plazo se le pasaría."""
+        from db.repositories.documentos import _toca_reintentar_descarga
+
+        alta = datetime(2026, 9, 2, 19, 13, tzinfo=UTC)
+        fallo = datetime(2026, 9, 25, 11, 37, tzinfo=UTC)
+
+        assert not _toca_reintentar_descarga(_iso(alta), _iso(fallo), fallo + timedelta(days=6))
+        assert _toca_reintentar_descarga(_iso(alta), _iso(fallo), fallo + timedelta(days=7))
+
+    def test_lee_las_dos_grafias_que_hay_en_la_tabla(self):
+        """``created_at`` lo escribe Postgres (``NOW()`` a texto) y ``updated_at``, Python."""
+        from db.repositories.documentos import _toca_reintentar_descarga
+
+        creado = "2026-09-26 19:24:13.241215+00"
+        fallo = "2026-09-28T17:18:19.787544+00:00"
+
+        assert not _toca_reintentar_descarga(
+            creado, fallo, datetime(2026, 9, 29, 15, 0, tzinfo=UTC)
+        )
+        assert _toca_reintentar_descarga(creado, fallo, datetime(2026, 10, 1, 15, 0, tzinfo=UTC))
+
+    @pytest.mark.parametrize("ilegible", ["", "ayer", None])
+    def test_una_fecha_ilegible_no_reintenta(self, ilegible):
+        from db.repositories.documentos import _toca_reintentar_descarga
+
+        ahora = datetime(2026, 10, 1, 15, 0, tzinfo=UTC)
+
+        assert not _toca_reintentar_descarga(ilegible, "2026-09-28T17:18:19+00:00", ahora)
+        assert not _toca_reintentar_descarga("2026-09-26 19:24:13+00", ilegible, ahora)
+
+
+class TestFalloAchacableALaFuente:
+    """Solo se vuelve a pedir lo que falló al otro lado; lo que frenan las guardas, no."""
+
+    @pytest.mark.parametrize(
+        "detalle",
+        [
+            # Las cinco formas que había en producción el 2026-10-04, más la nueva.
+            "descarga fallida: token caducado (500): Pinned HTTPS response status 500",
+            "descarga fallida: Pinned HTTPS response status 500",
+            "descarga fallida: Pinned HTTPS response status 500: el servlet de PLACSP "
+            "no sirve este documento (NullPointerException)",
+            "descarga fallida: Pinned HTTPS request failed",
+            "descarga fallida: HTTPSConnectionPool(host='contrataciondelestado.es', port=443): "
+            "Max retries exceeded with url: /FileSystem/servlet/GetDocumentByIdServlet",
+        ],
+    )
+    def test_fallos_de_red_y_de_respuesta(self, detalle):
+        from db.repositories.documentos import _fallo_achacable_a_la_fuente
+
+        assert _fallo_achacable_a_la_fuente(detalle)
+
+    @pytest.mark.parametrize(
+        "detalle",
+        [
+            "descarga fallida: Descarga abortada: tamaño real supera 52,428,800 bytes.",
+            "descarga fallida: Content-Length 99,999,999 bytes supera el límite de 52,428,800 bytes.",
+            "descarga fallida: private network",
+            "PDF corrupto o ilegible: Stream has ended unexpectedly",
+            "Error inesperado: Pinned HTTPS request failed",
+            "",
+            None,
+        ],
+    )
+    def test_guardas_propias_y_fallos_de_extraccion(self, detalle):
+        from db.repositories.documentos import _fallo_achacable_a_la_fuente
+
+        assert not _fallo_achacable_a_la_fuente(detalle)
+
+
+def _insert_licitacion_con_plazo(
+    id_externo: str, *, estado: str | None = "PUB", dias_hasta_limite: int | None = 10
+) -> None:
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones "
+            "(id_externo, titulo, fuente, fecha_extraccion, estado, fecha_limite_ts) "
+            "VALUES (%s, %s, 'placsp', CURRENT_TIMESTAMP, %s, "
+            "        now() + make_interval(days => %s))",
+            (id_externo, f"Contrato {id_externo}", estado, dias_hasta_limite),
+        )
+
+
+_FALLO_DE_LA_FUENTE = (
+    "descarga fallida: Pinned HTTPS response status 500: el servlet de PLACSP "
+    "no sirve este documento (NullPointerException)"
+)
+
+
+def _documento_fallido(
+    repo,
+    licitacion_id: str,
+    *,
+    detalle: str = _FALLO_DE_LA_FUENTE,
+    creado_hace: timedelta = timedelta(days=3),
+    fallo_hace: timedelta = timedelta(days=2),
+) -> int:
+    """Un documento en ``error`` con las fechas de alta y de último intento dadas."""
+    from db.database import connect
+
+    repo.upsert_meta(
+        licitacion_id,
+        [DocumentoReferencia(tipo="legal", uri=f"https://x/{licitacion_id}.pdf", source_hash="H1")],
+    )
+    documento_id = int(repo.list_by_licitacion(licitacion_id)[0]["id"])
+    repo.mark_error(documento_id, error_detail=detalle)
+    ahora = datetime.now(UTC)
+    with connect() as c:
+        c.execute(
+            "UPDATE documentos SET created_at = %s, updated_at = %s WHERE id = %s",
+            (_iso(ahora - creado_hace), _iso(ahora - fallo_hace), documento_id),
+        )
+    return documento_id
+
+
+class TestRevivirDescargasFallidas:
+    """Hasta ahora un fallo de descarga solo volvía a ``pending`` si cambiaba la URI.
+
+    Un corte de red o un enlace del servlet que vuelve a responder con la misma
+    URI —10 de los 27 expedientes abiertos con documentos en error que se
+    probaron el 2026-10-04— no se reintentaban nunca en el lote nocturno.
+    """
+
+    def test_revive_un_fallo_de_la_fuente_con_el_plazo_abierto(self, repo):
+        _insert_licitacion_con_plazo("EXP-RV1")
+        documento_id = _documento_fallido(repo, "EXP-RV1")
+
+        assert repo.revivir_descargas_fallidas() == 1
+
+        fila = repo.get(documento_id)
+        assert fila["status"] == "pending"
+        assert fila["error_detail"] is None
+        assert [p["id"] for p in repo.list_pendientes()] == [documento_id]
+
+    def test_no_revive_antes_de_que_venza_la_espera(self, repo):
+        _insert_licitacion_con_plazo("EXP-RV2")
+        documento_id = _documento_fallido(repo, "EXP-RV2", fallo_hace=timedelta(hours=2))
+
+        assert repo.revivir_descargas_fallidas() == 0
+        assert repo.get(documento_id)["status"] == "error"
+
+    def test_la_fila_revivida_que_vuelve_a_fallar_espera_mas(self, repo):
+        """El mismo día no se revive dos veces: el fallo nuevo pone el reloj a cero."""
+        _insert_licitacion_con_plazo("EXP-RV3")
+        documento_id = _documento_fallido(repo, "EXP-RV3")
+        assert repo.revivir_descargas_fallidas() == 1
+        repo.mark_error(documento_id, error_detail=_FALLO_DE_LA_FUENTE)
+
+        assert repo.revivir_descargas_fallidas() == 0
+        assert repo.get(documento_id)["status"] == "error"
+
+    def test_no_revive_con_el_plazo_de_ofertas_vencido(self, repo):
+        _insert_licitacion_con_plazo("EXP-RV4", dias_hasta_limite=-1)
+        documento_id = _documento_fallido(repo, "EXP-RV4")
+
+        assert repo.revivir_descargas_fallidas() == 0
+        assert repo.get(documento_id)["status"] == "error"
+
+    def test_no_revive_sin_plazo_conocido(self, repo):
+        """El plazo es lo que acota los reintentos: sin fecha no hay cota."""
+        _insert_licitacion_con_plazo("EXP-RV5", dias_hasta_limite=None)
+        documento_id = _documento_fallido(repo, "EXP-RV5")
+
+        assert repo.revivir_descargas_fallidas() == 0
+        assert repo.get(documento_id)["status"] == "error"
+
+    def test_no_revive_un_expediente_cerrado(self, repo):
+        """Anulado antes de que venza el plazo: ya no hay a qué presentarse."""
+        _insert_licitacion_con_plazo("EXP-RV6", estado="ANUL")
+        documento_id = _documento_fallido(repo, "EXP-RV6")
+
+        assert repo.revivir_descargas_fallidas() == 0
+        assert repo.get(documento_id)["status"] == "error"
+
+    def test_no_revive_lo_que_frenaron_nuestras_guardas(self, repo):
+        """Un fichero de más de 50 MB lo seguirá siendo: bajarlo otra vez no arregla nada."""
+        _insert_licitacion_con_plazo("EXP-RV7")
+        documento_id = _documento_fallido(
+            repo,
+            "EXP-RV7",
+            detalle="descarga fallida: Descarga abortada: tamaño real supera 52,428,800 bytes.",
+        )
+
+        assert repo.revivir_descargas_fallidas() == 0
+        assert repo.get(documento_id)["status"] == "error"
+
+    def test_no_revive_un_fallo_de_extraccion(self, repo):
+        _insert_licitacion_con_plazo("EXP-RV8")
+        documento_id = _documento_fallido(
+            repo, "EXP-RV8", detalle="PDF corrupto o ilegible: Stream has ended unexpectedly"
+        )
+
+        assert repo.revivir_descargas_fallidas() == 0
+        assert repo.get(documento_id)["status"] == "error"

@@ -173,6 +173,141 @@ class TestDownloadGuards:
                 _download_bytes("https://example.com/pliego.pdf")
 
 
+# ── El 500 con el que el servlet de PLACSP no sirve UN documento ────────────
+
+_URI_SERVLET = (
+    "https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet"
+    "?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=UR4k/CIhvDBfNUQ5HFSORz"
+)
+# Respuesta medida el 2026-10-04 con el transporte real para los documentos
+# 202384 y 202385 («2026/56 PAS»): 500 en 0,15 s, 42 bytes, sin Content-Length.
+_CUERPO_NO_SERVIDO = b"Error 500: java.lang.NullPointerException\n"
+_TIPO_NO_SERVIDO = "text/html;charset=ISO-8859-1"
+
+
+class _RespuestaCruda:
+    """Lo que envuelve ``PinnedHttpsResponse``: la respuesta de urllib3 sin precargar."""
+
+    def __init__(self, status: int, cuerpo: bytes, content_type: str) -> None:
+        self.status = status
+        self.headers = {"Content-Type": content_type}
+        self._cuerpo = cuerpo
+
+    def stream(self, amt: int, decode_content: bool = True):
+        for inicio in range(0, len(self._cuerpo), amt):
+            yield self._cuerpo[inicio : inicio + amt]
+
+    def release_conn(self) -> None:
+        pass
+
+
+class _PoolFalso:
+    def close(self) -> None:
+        pass
+
+
+def _respuesta_del_transporte(status: int, cuerpo: bytes, content_type: str):
+    """Un ``PinnedHttpsResponse`` de verdad sobre una respuesta enlatada.
+
+    Mismo motivo que ``_http_error_del_transporte_real``: el estado, el cuerpo y
+    el ``raise_for_status`` son los del transporte, no los de un ``MagicMock``
+    que aceptaría cualquier cosa.
+    """
+    from shared.outbound_http import PinnedHttpsResponse
+
+    return PinnedHttpsResponse(_PoolFalso(), _RespuestaCruda(status, cuerpo, content_type))
+
+
+@pytest.fixture()
+def circuito(monkeypatch):
+    """Un circuito con la configuración real, para no ensuciar el compartido."""
+    from scraper import document_fetcher
+    from scraper.resilience import _nuevo_breaker
+
+    propio = _nuevo_breaker("placsp-test")
+    monkeypatch.setattr(document_fetcher, "breaker_para_host", lambda _host: propio)
+    # tenacity duerme entre intentos con el ``sleep`` del decorador: sin
+    # anularlo, el caso que sí reintenta tardaría sus ~19 s de verdad.
+    monkeypatch.setattr(
+        document_fetcher._download_bytes_con_reintentos.retry, "sleep", lambda _s: None
+    )
+    return propio
+
+
+def _servir(status: int, cuerpo: bytes, content_type: str):
+    """El transporte contesta eso a cualquier petición del fetcher."""
+    return patch(
+        "scraper.document_fetcher.pinned_https_request",
+        side_effect=lambda *_a, **_k: _respuesta_del_transporte(status, cuerpo, content_type),
+    )
+
+
+class TestServletNoSirveElDocumento:
+    """El lote de ``pliegos.yml`` se saltó entero tres veces en un mes por esto.
+
+    Cinco documentos seguidos con este 500 abrían el circuito de PLACSP, y
+    saltar los demás es instantáneo mientras el circuito tarda 60 s en volver a
+    probar: 142 documentos sin intentar el 2026-09-12, 139 el 2026-09-28 y 255
+    el 2026-10-01, con el resto de PLACSP contestando 200 en ese mismo momento.
+    """
+
+    def test_no_se_reintenta(self, circuito):
+        from scraper.resilience import RecursoNoServidoError
+
+        with _servir(500, _CUERPO_NO_SERVIDO, _TIPO_NO_SERVIDO) as transporte:
+            with pytest.raises(RecursoNoServidoError):
+                _download_bytes(_URI_SERVLET)
+
+        assert transporte.call_count == 1
+
+    def test_cinco_seguidos_no_abren_el_circuito_y_el_lote_sigue(self, circuito):
+        from scraper.resilience import RecursoNoServidoError
+
+        with _servir(500, _CUERPO_NO_SERVIDO, _TIPO_NO_SERVIDO):
+            for _ in range(circuito.fail_max + 1):
+                with pytest.raises(RecursoNoServidoError):
+                    _download_bytes(_URI_SERVLET)
+
+        assert circuito.current_state == "closed"
+        with _servir(200, b"%PDF-1.6 pliego", "application/pdf"):
+            assert _download_bytes(_URI_SERVLET) == (b"%PDF-1.6 pliego", "application/pdf")
+
+    def test_el_error_conserva_el_estado_para_quien_lo_clasifica(self, circuito):
+        """``fetch_and_extract`` lee el código con ``_status_de``, del mensaje."""
+        from scraper.document_fetcher import _status_de
+        from scraper.resilience import RecursoNoServidoError
+
+        with _servir(500, _CUERPO_NO_SERVIDO, _TIPO_NO_SERVIDO):
+            with pytest.raises(RecursoNoServidoError) as fallo:
+                _download_bytes(_URI_SERVLET)
+
+        assert _status_de(fallo.value) == 500
+        assert "NullPointerException" in str(fallo.value)
+
+    def test_otro_500_del_servlet_sigue_siendo_de_la_plataforma(self, circuito):
+        """Sin esa firma no se sabe de quién es el fallo: se reintenta y cuenta."""
+        from scraper.resilience import RecursoNoServidoError
+
+        with _servir(500, b"<html>Service Unavailable</html>", "text/html") as transporte:
+            with pytest.raises(requests.HTTPError) as fallo:
+                _download_bytes(_URI_SERVLET)
+
+        assert not isinstance(fallo.value, RecursoNoServidoError)
+        assert transporte.call_count == 4
+        assert circuito.fail_counter == 1
+
+    def test_la_misma_firma_fuera_del_servlet_no_cambia_de_trato(self, circuito):
+        """La regla es la medida en PLACSP; de otro servidor no se sabe nada."""
+        from scraper.resilience import RecursoNoServidoError
+
+        with _servir(500, _CUERPO_NO_SERVIDO, _TIPO_NO_SERVIDO) as transporte:
+            with pytest.raises(requests.HTTPError) as fallo:
+                _download_bytes("https://example.org/pliegos/pcap.pdf")
+
+        assert not isinstance(fallo.value, RecursoNoServidoError)
+        assert transporte.call_count == 4
+
+
 # ── fetch_and_extract: orquestación + persistencia ─────────────────────────
 
 
@@ -184,7 +319,9 @@ def repo(tmp_db):
     return DocumentosRepository()
 
 
-def _seed_documento(repo, licitacion_id: str = "EXP-FETCH-1") -> dict:
+def _seed_documento(
+    repo, licitacion_id: str = "EXP-FETCH-1", *, uri: str = "https://x/pliego.pdf"
+) -> dict:
     from db.database import DocumentoReferencia, connect
 
     with connect() as c:
@@ -195,7 +332,7 @@ def _seed_documento(repo, licitacion_id: str = "EXP-FETCH-1") -> dict:
         )
     repo.upsert_meta(
         licitacion_id,
-        [DocumentoReferencia(tipo="legal", uri="https://x/pliego.pdf", filename="PCAP.pdf")],
+        [DocumentoReferencia(tipo="legal", uri=uri, filename="PCAP.pdf")],
     )
     return repo.list_pendientes()[0]
 
@@ -282,6 +419,34 @@ class TestFetchAndExtract:
         assert detalle.startswith("descarga fallida:")
         assert "token caducado (500)" in detalle
 
+    def test_documento_no_servido_marca_error_con_su_causa_y_no_la_del_token(self, repo):
+        """El 500 que el servlet da por UN documento no es un token caducado.
+
+        Conserva el prefijo de descarga —sigue siendo un fallo de descarga, y es
+        lo que deja que la fila vuelva a intentarse— y nombra lo que pasó, que
+        además es lo que distingue estas filas al contarlas.
+        """
+        from scraper.resilience import RecursoNoServidoError
+
+        doc = _seed_documento(repo)
+
+        with patch(
+            "scraper.document_fetcher._download_bytes",
+            side_effect=RecursoNoServidoError(
+                "Pinned HTTPS response status 500: el servlet de PLACSP "
+                "no sirve este documento (NullPointerException)"
+            ),
+        ):
+            status = fetch_and_extract(doc)
+
+        assert status == "error"
+        row = repo.get(doc["id"])
+        assert row is not None
+        detalle = row["error_detail"] or ""
+        assert detalle.startswith("descarga fallida:")
+        assert "no sirve este documento" in detalle
+        assert "token caducado" not in detalle
+
     def test_http_error_no_500_no_se_etiqueta_como_token_caducado(self, repo):
         doc = _seed_documento(repo)
 
@@ -354,3 +519,69 @@ class TestFetchAndExtract:
         row = repo.get(doc["id"])
         assert row is not None
         assert row["texto"] == "Anexo tecnico en texto plano"
+
+
+class TestLoQueEscribeElFetcherYLoQueSeReintenta:
+    """Contrato entre quien escribe ``error_detail`` y quien decide el reintento.
+
+    ``DocumentosRepository.revivir_descargas_fallidas`` reconoce por el texto
+    los fallos que vinieron de la fuente. Aquí cada fallo recorre el camino de
+    verdad —el transporte, el servlet, la guarda de tamaño— para que cambiar la
+    redacción de cualquiera rompa este test en vez de dejar el reintento mudo.
+    """
+
+    def _detalle_tras_fallar(self, repo, uri: str = "https://x/pliego.pdf") -> str:
+        doc = _seed_documento(repo, uri=uri)
+        assert fetch_and_extract(doc) == "error"
+        return str(repo.get(doc["id"])["error_detail"])
+
+    def test_un_estado_http_de_error_es_de_la_fuente(self, repo, circuito):
+        from db.repositories.documentos import _fallo_achacable_a_la_fuente
+
+        with _servir(503, b"Service Unavailable", "text/html"):
+            detalle = self._detalle_tras_fallar(repo)
+
+        assert _fallo_achacable_a_la_fuente(detalle), detalle
+
+    def test_el_documento_que_el_servlet_no_sirve_es_de_la_fuente(self, repo, circuito):
+        from db.repositories.documentos import _fallo_achacable_a_la_fuente
+
+        with _servir(500, _CUERPO_NO_SERVIDO, _TIPO_NO_SERVIDO):
+            detalle = self._detalle_tras_fallar(repo, uri=_URI_SERVLET)
+
+        assert _fallo_achacable_a_la_fuente(detalle), detalle
+
+    def test_un_corte_de_red_es_de_la_fuente(self, repo, circuito, monkeypatch):
+        """Sale del ``pinned_https_request`` real, con la conexión cortada debajo."""
+        import urllib3
+
+        from db.repositories.documentos import _fallo_achacable_a_la_fuente
+        from shared import outbound_http
+        from shared.ssrf import PinnedHttpsTarget
+
+        def sin_red(*_a, **_k):
+            raise urllib3.exceptions.ConnectTimeoutError("sin red")
+
+        monkeypatch.setattr(
+            outbound_http,
+            "resolve_pinned_https_target",
+            lambda _url, **_k: PinnedHttpsTarget(
+                hostname="x", address="192.0.2.1", port=443, request_uri="/pliego.pdf"
+            ),
+        )
+        monkeypatch.setattr(urllib3.HTTPSConnectionPool, "urlopen", sin_red)
+
+        detalle = self._detalle_tras_fallar(repo)
+
+        assert _fallo_achacable_a_la_fuente(detalle), detalle
+
+    def test_lo_que_frena_la_guarda_de_tamano_no_lo_es(self, repo, circuito, monkeypatch):
+        from db.repositories.documentos import _fallo_achacable_a_la_fuente
+
+        monkeypatch.setattr("scraper.document_fetcher.settings.MAX_DOCUMENT_SIZE_BYTES", 10)
+
+        with _servir(200, b"x" * 20, "application/pdf"):
+            detalle = self._detalle_tras_fallar(repo)
+
+        assert detalle.startswith("descarga fallida:")
+        assert not _fallo_achacable_a_la_fuente(detalle), detalle
