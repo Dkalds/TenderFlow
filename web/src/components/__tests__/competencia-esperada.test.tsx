@@ -282,8 +282,8 @@ describe("CompetenciaEsperadaBlock", () => {
     renderBloque();
     expect(await screen.findByText("Baja típica del ganador")).toBeInTheDocument();
     expect(screen.getByText("12,5%")).toBeInTheDocument();
-    expect(screen.getByText("Baja de la oferta más baja")).toBeInTheDocument();
-    expect(screen.getByText(/sobre 6 adjudicaciones \(3 publican la oferta más baja\)/)).toBeInTheDocument();
+    expect(screen.getByText("Baja de la oferta mínima")).toBeInTheDocument();
+    expect(screen.getByText(/sobre 6 adjudicaciones \(3 publican la oferta mínima\)/)).toBeInTheDocument();
   });
 
   it("sin el NIF de tu organización avisa de que podría colarse entre los rivales", async () => {

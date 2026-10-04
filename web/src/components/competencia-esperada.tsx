@@ -175,8 +175,13 @@ function FilaRival({ rival, vigilada }: { rival: RivalEsperado; vigilada: boolea
         <span className="min-w-0 flex-1 break-words text-tf-meta">
           <NombreEmpresa nombre={rival.nombre} empresaId={rival.empresa_id} />
         </span>
-        <span className="tf-tnum shrink-0 text-tf-micro text-muted-foreground">
+        {/* La abreviatura es para el ojo; el lector de pantalla oye la frase. */}
+        <span aria-hidden="true" className="tf-tnum shrink-0 text-tf-micro text-muted-foreground">
           {formatNumber(rival.expedientes)} exp. · {formatPercent(rival.cuota_pct, 0)}
+        </span>
+        <span className="sr-only">
+          {formatNumber(rival.expedientes)} {rival.expedientes === 1 ? "expediente" : "expedientes"},{" "}
+          {formatPercent(rival.cuota_pct, 0)} del importe adjudicado
         </span>
       </div>
       {conDetalle && (
@@ -275,7 +280,7 @@ function Puja({ data, Sub }: { data: CompetenciaEsperada; Sub: Subtitulo }) {
         )}
         {puja.baja_oferta_minima_mediana_pct != null && (
           <>
-            <dt className="text-muted-foreground">Baja de la oferta más baja</dt>
+            <dt className="text-muted-foreground">Baja de la oferta mínima</dt>
             <dd className="tf-tnum text-right font-medium">{formatPercent(puja.baja_oferta_minima_mediana_pct)}</dd>
           </>
         )}
@@ -283,7 +288,7 @@ function Puja({ data, Sub }: { data: CompetenciaEsperada; Sub: Subtitulo }) {
       <p className="tf-tnum mt-1 text-tf-micro text-muted-foreground">
         Medianas del mismo segmento, sobre {formatNumber(puja.bajas_n ?? 0)} adjudicaciones
         {(puja.ofertas_minimas_n ?? 0) > 0
-          ? ` (${formatNumber(puja.ofertas_minimas_n ?? 0)} publican la oferta más baja)`
+          ? ` (${formatNumber(puja.ofertas_minimas_n ?? 0)} publican la oferta mínima)`
           : ""}
         . Sin los presupuestos que se sabe que llevan IVA.
       </p>
