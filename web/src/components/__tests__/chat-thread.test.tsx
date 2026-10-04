@@ -23,11 +23,17 @@ vi.mock("react-markdown", () => ({
     return <p>{children}</p>;
   },
 }));
-vi.mock("@/lib/api-client", () => ({ apiMutate }));
+// Solo se dobla la mutación del voto: `ApiError` y los mensajes por estado son
+// los de verdad, que es con lo que el hilo decide qué enseñar de un fallo.
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  apiMutate,
+}));
 vi.mock("@/lib/analytics", () => ({ registrarEvento }));
 
-import { ChatThread } from "@/components/chat-thread";
+import { ChatThread, detalleDeFalloIA, mensajeDeFalloIA } from "@/components/chat-thread";
 import { FeedbackButtons } from "@/components/feedback-buttons";
+import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
 
 const pregunta1: ChatTurn = { role: "user", content: "¿Qué plazo tiene?" };
 const respuesta1: ChatTurn = { role: "assistant", content: "Tres meses." };
@@ -110,6 +116,53 @@ describe("ChatThread mientras se emite una respuesta", () => {
 
     for (const cb of frames.values()) cb(performance.now());
     expect(scroll).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("fallo de una llamada del asistente", () => {
+  const csrf = () =>
+    new ApiError(403, "CSRF token mismatch", "https://licitaciones-sap/errors/forbidden", "POST /api/v1/ask");
+  const presupuesto = () =>
+    new ApiError(
+      429,
+      "Presupuesto LLM daily global agotado (1.0000 USD >= 1.0000 USD).",
+      "https://licitaciones-sap/errors/too-many-requests",
+      "POST /api/v1/ask",
+    );
+
+  it("el mensaje es el humano del estado, nunca el `detail` crudo de la API", () => {
+    expect(mensajeDeFalloIA(csrf())).toBe(mensajePorEstado(403));
+    expect(mensajeDeFalloIA(presupuesto())).toBe(mensajePorEstado(429));
+  });
+
+  it("un fallo de red es «Sin conexión»; lo demás, que el asistente no pudo responder", () => {
+    expect(mensajeDeFalloIA(new TypeError("Failed to fetch"))).toBe(MENSAJE_SIN_CONEXION);
+    expect(mensajeDeFalloIA(new Error("boom"))).toBe(
+      "El asistente no pudo responder. Vuelve a intentarlo en unos segundos.",
+    );
+  });
+
+  it("el detalle técnico lleva estado, ruta y el `detail` que mandó la API", () => {
+    expect(detalleDeFalloIA(csrf())).toBe("403 · POST /api/v1/ask — CSRF token mismatch");
+    expect(detalleDeFalloIA(presupuesto())).toBe(
+      "429 · POST /api/v1/ask — Presupuesto LLM daily global agotado (1.0000 USD >= 1.0000 USD).",
+    );
+    // Sin `detail` de la API el mensaje del error ya es el que se enseña: no se repite.
+    expect(detalleDeFalloIA(new ApiError(503, mensajePorEstado(503), undefined, "POST /api/v1/ask"))).toBe(
+      "503 · POST /api/v1/ask",
+    );
+    expect(detalleDeFalloIA(new TypeError("Failed to fetch"))).toBe("Failed to fetch");
+  });
+
+  it("el hilo enseña el mensaje humano y deja el motivo de la API plegado", () => {
+    render(<ChatThread messages={[pregunta1]} streaming={false} loading={false} error={csrf()} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("No tienes permiso para ver esto.");
+    const plegado = screen.getByText("Detalle técnico").closest("details");
+    expect(plegado).not.toHaveAttribute("open");
+    expect(plegado).toHaveTextContent("403 · POST /api/v1/ask — CSRF token mismatch");
+    // El motivo crudo no sale del plegado.
+    expect(screen.getByText(/CSRF token mismatch/).closest("details")).toBe(plegado);
   });
 });
 

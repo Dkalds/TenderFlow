@@ -72,7 +72,11 @@ export interface UseChatResult {
   messages: ChatTurn[];
   streaming: boolean;
   loading: boolean;
-  error: string | null;
+  /**
+   * El fallo del último envío, entero: de un `ApiError` el hilo saca el estado
+   * (mensaje humano) y el `detail` de la API (detalle técnico plegado).
+   */
+  error: Error | null;
   send: (question: string, opts?: SendOptions) => Promise<void>;
   stop: () => void;
   reset: () => void;
@@ -91,7 +95,7 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
   const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const messagesRef = useRef<ChatTurn[]>([]);
 
@@ -155,7 +159,7 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         if (abortRef.current !== abort) return; // superseded by a newer send
-        setError(err instanceof Error ? err.message : "Error desconocido");
+        setError(err instanceof Error ? err : new Error("Error desconocido"));
         // Drop the empty assistant placeholder so the thread stays consistent.
         setMessages((prev) =>
           prev.length > 0 && prev[prev.length - 1].role === "assistant" && !prev[prev.length - 1].content

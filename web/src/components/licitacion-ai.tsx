@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AVISO_GENERADO, ChatThread, mensajeDeFalloIA } from "@/components/chat-thread";
+import { AVISO_GENERADO, ChatThread, detalleDeFalloIA, mensajeDeFalloIA } from "@/components/chat-thread";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
 import { useChat } from "@/hooks/use-ask";
@@ -45,7 +45,7 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
   const [resumen, setResumen] = React.useState<string | null>(null);
   const [meta, setMeta] = React.useState<ResumenMeta | null>(null);
   const [resumenLoading, setResumenLoading] = React.useState(false);
-  const [resumenError, setResumenError] = React.useState<string | null>(null);
+  const [resumenError, setResumenError] = React.useState<Error | null>(null);
   const [resumenDegraded, setResumenDegraded] = React.useState(false);
   const abortRef = React.useRef<AbortController | null>(null);
 
@@ -75,7 +75,7 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
         if (!result.answer && result.degraded) setResumen(null);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setResumenError(err instanceof Error ? err.message : "Error desconocido");
+        setResumenError(err instanceof Error ? err : new Error("Error desconocido"));
         setResumen(null);
       } finally {
         if (abortRef.current === abort) setResumenLoading(false);
@@ -153,13 +153,13 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
           )}
 
           {/* Un solo aviso: el resumen no pasa por React Query, así que no
-              hay toast que callar. Mensaje humano; el texto original, plegado. */}
+              hay toast que callar. Mensaje humano; lo que dijo la API, plegado. */}
           {resumenError && (
             <PanelError
               variant="inline"
               title="No se pudo generar el resumen"
               message={mensajeDeFalloIA(resumenError)}
-              detail={resumenError}
+              detail={detalleDeFalloIA(resumenError)}
               onRetry={() => void generarResumen()}
             />
           )}

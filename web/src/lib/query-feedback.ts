@@ -76,16 +76,19 @@ export function getErrorMessage(error: unknown, uso: "consulta" | "accion" = "co
  * ruta, y el texto original de la API si no es el que ya se enseña. Es lo que
  * sirve para reportarlo a soporte, y por eso no va en el texto visible.
  * Devuelve `undefined` si no hay nada que añadir al mensaje humano.
+ *
+ * `visible` es el mensaje que se enseña, por si no es el de `getErrorMessage`:
+ * el asistente pinta el del estado aunque la API mande un `detail`, y sin
+ * decirlo aquí ese `detail` se daría por visto y no saldría en ningún sitio.
  */
-export function detalleTecnico(error: unknown): string | undefined {
+export function detalleTecnico(error: unknown, visible: string = getErrorMessage(error)): string | undefined {
   if (error instanceof ApiError) {
     const partes = [String(error.status), error.ruta].filter(Boolean).join(" · ");
-    const original = error.message && error.message !== getErrorMessage(error) ? error.message : null;
+    const original = error.message && error.message !== visible ? error.message : null;
     return original ? `${partes} — ${original}` : partes;
   }
   if (error instanceof Error) {
-    const humano = getErrorMessage(error);
-    if (error.message && error.message !== humano) return error.message;
+    if (error.message && error.message !== visible) return error.message;
     return undefined;
   }
   if (typeof error === "string" && error.trim() !== "") return error;

@@ -21,7 +21,15 @@ vi.mock("openapi-fetch", () => ({
 // @/generated/api is a type-only import (`import type { paths }`) and is
 // completely erased at runtime by esbuild/Vite — no mock needed.
 
-import { getCsrfToken, apiMutate, ApiError, esAborto, fetchWithAuth, mensajePorEstado } from "@/lib/api-client";
+import {
+  getCsrfToken,
+  apiMutate,
+  ApiError,
+  errorDeRespuesta,
+  esAborto,
+  fetchWithAuth,
+  mensajePorEstado,
+} from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -202,6 +210,47 @@ describe("ApiError — tipo del problem+json", () => {
 
     expect(error.ruta).toBe("GET /api/v1/empresas");
     expect(error.message).toBe("No existe o ya no está disponible.");
+  });
+});
+
+describe("errorDeRespuesta", () => {
+  const respuesta = (status: number, cuerpo: string) =>
+    new Response(cuerpo, { status, headers: { "content-type": "application/problem+json" } });
+
+  it("arma el ApiError con el `detail`, el `type` y la ruta sin query", async () => {
+    const error = await errorDeRespuesta(
+      respuesta(
+        403,
+        JSON.stringify({ type: "https://licitaciones-sap/errors/forbidden", detail: "CSRF token mismatch" }),
+      ),
+      "POST",
+      "/api/v1/ask?debug=1",
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 403,
+      message: "CSRF token mismatch",
+      tipo: "https://licitaciones-sap/errors/forbidden",
+      ruta: "POST /api/v1/ask",
+    });
+  });
+
+  it("con un cuerpo que no es JSON, el mensaje es el de reserva del estado", async () => {
+    const error = await errorDeRespuesta(respuesta(504, "Gateway Timeout"), "GET", "/api/v1/algo");
+
+    expect(error.message).toBe(mensajePorEstado(504));
+    expect(error.tipo).toBeUndefined();
+  });
+
+  it("solo describe el fallo: un 401 no redirige, eso lo decide quien llama", async () => {
+    const locationMock = { href: "", pathname: "/radar", search: "" };
+    vi.stubGlobal("window", { ...globalThis.window, location: locationMock });
+
+    const error = await errorDeRespuesta(respuesta(401, JSON.stringify({ detail: "No autenticado." })), "POST", "/x");
+
+    expect(error.status).toBe(401);
+    expect(locationMock.href).toBe("");
   });
 });
 

@@ -123,13 +123,7 @@ export async function apiMutate<T>(
       redirectToLogin();
       throw new ApiError(401, "Session expired");
     }
-    const error = await res.json().catch(() => ({}));
-    throw new ApiError(
-      res.status,
-      detalleDeProblema(error) ?? mensajePorEstado(res.status),
-      tipoDeProblema(error),
-      `${method} ${rutaDe(url)}`,
-    );
+    throw await errorDeRespuesta(res, method, url);
   }
 
   return readJsonBody<T>(res);
@@ -195,22 +189,12 @@ export async function fetchWithAuth<T>(url: string, options?: RequestInit): Prom
     if (res.status === 401 && typeof window !== "undefined") {
       redirectToLogin();
     }
-    // La API responde `application/problem+json` (RFC 7807): `detail` es el
-    // mensaje. `title` es el genérico en inglés («Not Found», «Too Many
-    // Requests»), y los cortes de middleware (429, 413) solo traen ése: el
-    // respaldo es el mensaje en castellano de `mensajePorEstado`, no `title`
-    // ni el `statusText` del navegador.
-    const body = await res.json().catch(() => ({}));
-    // Si la cancelación llegó mientras se leía el cuerpo del error, el `catch`
-    // de arriba se la ha tragado: se relanza ella y no un `ApiError(5xx)`, que
-    // se reintentaría y acabaría en aviso por una respuesta que ya nadie quiere.
+    const error = await errorDeRespuesta(res, method, url);
+    // Si la cancelación llegó mientras se leía el cuerpo del error, esa lectura
+    // se la ha tragado: se relanza ella y no un `ApiError(5xx)`, que se
+    // reintentaría y acabaría en aviso por una respuesta que ya nadie quiere.
     options?.signal?.throwIfAborted();
-    throw new ApiError(
-      res.status,
-      detalleDeProblema(body) ?? mensajePorEstado(res.status),
-      tipoDeProblema(body),
-      `${method} ${rutaDe(url)}`,
-    );
+    throw error;
   }
 
   return readJsonBody<T>(res);
@@ -288,6 +272,30 @@ function rutaDe(url: string): string {
 }
 
 /**
+ * El `ApiError` de una respuesta fallida, con lo que la API dijo del fallo.
+ *
+ * La API responde `application/problem+json` (RFC 7807): `detail` es el
+ * mensaje y `type` distingue fallos con el mismo estado. `title` es el genérico
+ * en inglés («Not Found», «Too Many Requests»), y los cortes de middleware
+ * (429, 413) solo traen ése: el respaldo es el mensaje en castellano de
+ * `mensajePorEstado`, no `title` ni el `statusText` del navegador.
+ *
+ * Solo describe el fallo: ni lanza ni redirige. Qué hacer con un 401, o con
+ * una cancelación que llega mientras se lee el cuerpo (esa lectura se la
+ * traga), lo decide quien llama. Lo usan también los `fetch` crudos que no
+ * pueden pasar por `fetchWithAuth`, como los streams de `lib/ask-stream.ts`.
+ */
+export async function errorDeRespuesta(res: Response, metodo: string, url: string): Promise<ApiError> {
+  const cuerpo = await res.json().catch(() => ({}));
+  return new ApiError(
+    res.status,
+    detalleDeProblema(cuerpo) ?? mensajePorEstado(res.status),
+    tipoDeProblema(cuerpo),
+    `${metodo} ${rutaDe(url)}`,
+  );
+}
+
+/**
  * GET autenticado cuyo cuerpo **no** es JSON (ZIP, CSV, PDF…).
  *
  * `fetchWithAuth` cierra con `res.json()`, así que un endpoint binario
@@ -306,13 +314,7 @@ export async function fetchBlobWithAuth(url: string, options?: RequestInit): Pro
     if (res.status === 401 && typeof window !== "undefined") {
       redirectToLogin();
     }
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(
-      res.status,
-      detalleDeProblema(body) ?? mensajePorEstado(res.status),
-      tipoDeProblema(body),
-      `GET ${rutaDe(url)}`,
-    );
+    throw await errorDeRespuesta(res, "GET", url);
   }
 
   return res.blob();

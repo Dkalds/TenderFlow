@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import * as React from "react";
 import type { ChatTurn } from "@/hooks/use-ask";
+import { ApiError } from "@/lib/api-client";
 
 // ── Shared mock state ──────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ const defaultChatState = {
   messages: [] as ChatTurn[],
   streaming: false,
   loading: false,
-  error: null as string | null,
+  error: null as Error | null,
   send: mockSend,
   stop: mockStop,
   reset: mockReset,
@@ -172,12 +173,12 @@ describe("CopilotPanel", { timeout: 30_000 }, () => {
   });
 
   it("displays the error message in an alert when error is set", async () => {
-    chatState = { ...defaultChatState, error: "Error del servidor" };
+    chatState = { ...defaultChatState, error: new ApiError(503, "Servicio temporalmente no disponible.") };
     render(<CopilotPanel open={true} onOpenChange={vi.fn()} />);
 
     const alert = await screen.findByRole("alert", {}, ESPERA_HILO);
     expect(alert).toBeInTheDocument();
-    expect(alert).toHaveTextContent("Error del servidor");
+    expect(alert).toHaveTextContent("Error del servidor. Vuelve a intentarlo en unos segundos.");
   });
 
   it("renders user and assistant turns of the conversation", async () => {

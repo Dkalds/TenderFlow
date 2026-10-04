@@ -112,6 +112,18 @@ describe("detalleTecnico", () => {
     expect(detalleTecnico(new Error("backend caído"))).toBeUndefined();
     expect(detalleTecnico(null)).toBeUndefined();
   });
+
+  it("si quien pinta enseña otro mensaje, el detail que no se ve va al detalle", () => {
+    // Un 429 enseña por defecto su `detail`, y entonces el detalle no lo repite.
+    // El asistente enseña el mensaje del estado: sin decir cuál es el visible,
+    // el motivo de la API no saldría en ningún sitio.
+    const err = new ApiError(429, "Presupuesto LLM daily global agotado.", undefined, "POST /api/v1/ask");
+    expect(detalleTecnico(err)).toBe("429 · POST /api/v1/ask");
+    expect(detalleTecnico(err, "Demasiadas peticiones seguidas. Espera unos segundos.")).toBe(
+      "429 · POST /api/v1/ask — Presupuesto LLM daily global agotado.",
+    );
+    expect(detalleTecnico(new Error("boom"), "El asistente no pudo responder.")).toBe("boom");
+  });
 });
 
 describe("META_ERROR_EN_LINEA", () => {

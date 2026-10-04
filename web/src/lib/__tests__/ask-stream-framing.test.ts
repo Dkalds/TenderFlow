@@ -228,6 +228,6 @@ describe("parámetros de la petición", () => {
     stubFetch(new Response("", { status: 503 }));
     await expect(
       streamResumen({ idExterno: "X1", onToken: () => {} }),
-    ).rejects.toThrow("Error 503");
+    ).rejects.toMatchObject({ name: "ApiError", status: 503 });
   });
 });
