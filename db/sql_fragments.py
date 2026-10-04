@@ -259,6 +259,68 @@ def round_sql(expr: str, ndigits: int) -> str:
     return f"CAST(ROUND(CAST({expr} AS numeric), {ndigits}) AS FLOAT)"
 
 
+# ── C1.1 / ADR-032: la base de comparación ──────────────────────────────────
+#
+# Bajó de ``services/sql_fragments.py`` (que lo reexporta) cuando la competencia
+# esperada de la ficha (``db/repositories/competencia_esperada.py``) necesitó la
+# baja típica del ganador desde ``db/``: la fórmula por fila tiene que ser una
+# sola, y ``db/`` no puede importarla de arriba (ADR-024).
+#
+# Una baja es `(presupuesto - adjudicado) / presupuesto`. Si unas filas traen el
+# presupuesto CON IVA y otras SIN, la media no es una media de nada: una baja
+# del 21 % puede ser exactamente el IVA.
+#
+# Hasta v113 la fila no decía de qué base era su `importe`. Ahora `importe_tipo`
+# lo dice para todo lo ingerido desde entonces, y el histórico anterior queda
+# como `desconocido` — no se puede reinterpretar sin volver a parsear el CODICE.
+#
+# De ahí los dos predicados de abajo, que responden preguntas distintas:
+
+#: Excluye lo que se SABE que lleva IVA. Es la corrección disponible hoy: no
+#: recupera el histórico, pero deja de mezclar lo que ya está identificado.
+#: Aplicarlo no vacía nada, porque `desconocido` sigue entrando.
+SIN_IVA_CONOCIDO_SQL = "COALESCE(l.importe_tipo, 'desconocido') <> 'con_iva'"
+
+#: Solo filas con base sin IVA **declarada**. Es lo que hace verdad un
+#: `base: "sin_iva"` en la respuesta, y hoy devuelve poco: `importe_base_sin_iva`
+#: se puebla con la re-ingesta, no con la migración. Por eso es opt-in y el
+#: default declara `base: "mixta"` — decir "sin IVA" sobre una población mixta
+#: sería la misma mentira que el ítem vino a quitar, con otra etiqueta.
+BASE_DECLARADA_SQL = "l.importe_tipo = 'sin_iva' AND l.importe_base_sin_iva IS NOT NULL"
+
+#: Presupuesto efectivo prefiriendo la base sin IVA cuando está declarada.
+#: El lote manda igual que antes: `lotes.importe` sale del mismo
+#: `TaxExclusiveAmount` del lote, así que ya es base sin IVA.
+BASE_COMPARABLE_SQL = "COALESCE(lo.importe, l.importe_base_sin_iva, l.importe)"
+
+#: Valores del campo `base` que las respuestas comparativas declaran.
+BASE_SIN_IVA = "sin_iva"
+BASE_MIXTA = "mixta"
+
+# Para comparar una fila de adjudicación contra su presupuesto real (el del
+# lote, no el del expediente completo). Antes de v65_lotes, comparar un lote
+# contra l.importe sobreestimaba sistemáticamente la baja de cualquier
+# expediente con más de un lote — db/repositories/pricing.py lo parcheaba
+# descartando ratios > 1 en vez de corregir el denominador, perdiendo esas
+# filas de la distribución en vez de arreglarlas. Usa `BASE_COMPARABLE_SQL` y
+# no `EFFECTIVE_BUDGET_SQL` (``services/sql_fragments.py``): prefiere la base
+# sin IVA declarada y cae al `importe` histórico cuando no la hay. La diferencia
+# solo se nota en las filas re-ingeridas tras v113, que son las únicas que
+# tienen ese dato — para el resto es el mismo número. Descarta pares sin
+# importes positivos y outliers donde el adjudicado supera el presupuesto en
+# más de un 50 % (errores de fuente o modificados mal atribuidos). Asume alias
+# ``l`` (licitaciones), ``a`` (adjudicaciones) y ``lo`` (``LEFT JOIN lotes``).
+VALID_PAIR_LOTE = (
+    f"({BASE_COMPARABLE_SQL}) > 0 AND a.importe_adjudicado > 0 "
+    f"AND a.importe_adjudicado <= ({BASE_COMPARABLE_SQL}) * 1.5"
+)
+
+# Baja porcentual de una fila de adjudicación contra su presupuesto real.
+# Único punto de esta fórmula fuera de la agregación por licitación — ver la
+# nota de ``VALID_PAIR`` en ``services/sql_fragments.py`` sobre cuál usar.
+BAJA_PCT_SQL = f"(({BASE_COMPARABLE_SQL}) - a.importe_adjudicado) / ({BASE_COMPARABLE_SQL}) * 100"
+
+
 def exclude_duplicados_sql(col: str = "l.id_externo") -> str:
     """Cláusula SQL para excluir filas no-canónicas en consultas analíticas.
 

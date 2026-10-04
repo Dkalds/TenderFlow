@@ -1775,6 +1775,33 @@ def apply_weights_proposal(
     )
 
 
+def _bloque_competencia(licitacion_id: str, organization_id: int) -> BloqueFicha:
+    """El bloque «Competencia esperada» del one-pager (F2.7).
+
+    Es lectura de mercado —adjudicaciones públicas— más la identidad fiscal de
+    la organización **ya resuelta** por :func:`get_pursuit`, que es lo único
+    que se usa de ella: para no contarla entre sus rivales. Un fallo aquí no
+    tumba el documento: el bloque lo dice con su nota y el resto del papel
+    sigue sirviendo para el comité.
+    """
+    from services.competitive.competencia_esperada import bloque_ficha, competencia_esperada
+
+    try:
+        competencia = competencia_esperada(licitacion_id, organization_id=organization_id)
+    except Exception:
+        log.warning("ficha_pdf_competencia_error", licitacion_id=licitacion_id, exc_info=True)
+        return BloqueFicha(
+            titulo="Competencia esperada",
+            nota_vacio="No se pudo calcular la competencia esperada al generar el documento.",
+        )
+    if competencia is None:
+        return BloqueFicha(
+            titulo="Competencia esperada",
+            nota_vacio="El expediente ya no está disponible: no hay segmento que medir.",
+        )
+    return bloque_ficha(competencia)
+
+
 def ficha_pdf(user_id: int, pursuit_id: int, *, organization_id: int | None = None) -> bytes:
     """F2.7 — el one-pager de una oportunidad, en PDF.
 
@@ -1803,6 +1830,9 @@ def ficha_pdf(user_id: int, pursuit_id: int, *, organization_id: int | None = No
                 ),
             ],
         ),
+        # Entre el expediente y la decisión: es el contexto con el que el
+        # comité lee el go/no-go (contra cuántos y contra quién).
+        _bloque_competencia(detalle.licitacion_id, detalle.organization_id),
         BloqueFicha(
             titulo="Decisión",
             filas=[

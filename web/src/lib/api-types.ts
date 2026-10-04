@@ -48,6 +48,13 @@ export type WatchlistFavoriteItem = Schemas["WatchlistFavoriteItem"];
 // Cierre del tipado del contrato (2026-08-03): ALLOWED_OPAQUE llegó a 0 —
 // las 128 rutas declaran DTO. Aliases de las superficies que las páginas
 // consumen con más frecuencia; el resto se importa como Schemas["..."].
+// Competencia esperada de la ficha (`GET /licitaciones/{id}/competencia-esperada`):
+// cuántos se presentarán, quién lo tiene y contra quién, sobre el segmento del
+// propio expediente.
+export type CompetenciaEsperada = Schemas["CompetenciaEsperada"];
+export type RivalEsperado = Schemas["Rival"];
+export type OfertasSegmento = Schemas["OfertasSegmento"];
+
 export type EmpresaDetail = Schemas["EmpresaDetail"];
 export type EmpresasStats = Schemas["EmpresasStats"];
 export type MetaFilters = Schemas["MetaFilters"];

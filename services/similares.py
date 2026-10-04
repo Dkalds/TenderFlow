@@ -100,6 +100,15 @@ class Candidato:
     importe_adjudicado: float | None = None
     fecha_adjudicacion: str | None = None
     baja_pct: float | None = None
+    #: Identidad del adjudicatario del predecesor, para uso interno: la clave
+    #: de competidor de ``db.sql_fragments.empresa_key_sql`` (marca al
+    #: incumbente entre los rivales de la competencia esperada), su
+    #: ``empresa_id`` (enlace al dossier) y su NIF (reconocer a la propia
+    #: organización). ``SimilarOut`` no los declara, así que `/similares` no
+    #: los publica.
+    adjudicatario_clave: str | None = None
+    adjudicatario_empresa_id: int | None = None
+    adjudicatario_nif: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,7 +201,52 @@ def _a_candidato(fila: dict[str, Any], score: float, *, con_adjudicacion: bool) 
         importe_adjudicado=adjudicado,
         fecha_adjudicacion=fila.get("fecha_adjudicacion") if con_adjudicacion else None,
         baja_pct=_baja(importe, adjudicado) if con_adjudicacion else None,
+        adjudicatario_clave=fila.get("adjudicatario_clave") if con_adjudicacion else None,
+        adjudicatario_empresa_id=(
+            fila.get("adjudicatario_empresa_id") if con_adjudicacion else None
+        ),
+        adjudicatario_nif=fila.get("adjudicatario_nif") if con_adjudicacion else None,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class Predecesor:
+    """El predecesor de un expediente, con cómo se buscó."""
+
+    #: ``None`` cuando ningún candidato pasa el umbral del método: un
+    #: predecesor dudoso es peor que ninguno.
+    candidato: Candidato | None
+    metodo: Metodo
+    #: Contratos del mismo órgano y CPV4 que se evaluaron.
+    n: int
+
+
+def predecesor_de(objetivo: dict[str, Any]) -> Predecesor:
+    """El contrato anterior del mismo objeto, del mismo órgano, si lo hay.
+
+    ``objetivo`` es la fila del expediente: ``id_externo``, ``titulo``,
+    ``descripcion``, ``organo_id``, ``organo_contratacion``, ``cpv`` y
+    ``fecha_publicacion``. Separada de :func:`buscar` porque la competencia
+    esperada de la ficha (``services/competitive/competencia_esperada.py``) solo
+    necesita esta mitad, y la otra —ordenar cien similares de cualquier
+    órgano— es la cara.
+    """
+    texto = " ".join(str(objetivo.get(campo) or "") for campo in ("titulo", "descripcion")).strip()
+    previos = repo.candidatos_a_predecesor(
+        id_externo=str(objetivo["id_externo"]),
+        organo_id=objetivo.get("organo_id"),
+        organo_contratacion=objetivo.get("organo_contratacion"),
+        cpv4=_cpv4(objetivo.get("cpv")),
+        antes_de=objetivo.get("fecha_publicacion"),
+    )
+    puntuados, metodo = _ordenar(texto, previos)
+    candidato: Candidato | None = None
+    if puntuados:
+        mejor, score = puntuados[0]
+        umbral = UMBRAL_PREDECESOR if metodo == "embedding" else UMBRAL_SOLAPE_FTS
+        if score >= umbral:
+            candidato = _a_candidato(mejor, score, con_adjudicacion=True)
+    return Predecesor(candidato=candidato, metodo=metodo, n=len(previos))
 
 
 def buscar(id_externo: str, *, max_similares: int = 10) -> Similares | None:
@@ -206,23 +260,9 @@ def buscar(id_externo: str, *, max_similares: int = 10) -> Similares | None:
 
     texto = " ".join(str(objetivo.get(campo) or "") for campo in ("titulo", "descripcion")).strip()
     cpv4 = _cpv4(objetivo.get("cpv"))
-    fecha = objetivo.get("fecha_publicacion")
 
     # ── Predecesor ──────────────────────────────────────────────────────────
-    previos = repo.candidatos_a_predecesor(
-        id_externo=id_externo,
-        organo_id=objetivo.get("organo_id"),
-        organo_contratacion=objetivo.get("organo_contratacion"),
-        cpv4=cpv4,
-        antes_de=fecha,
-    )
-    puntuados_previos, metodo = _ordenar(texto, previos)
-    predecesor: Candidato | None = None
-    if puntuados_previos:
-        mejor, score = puntuados_previos[0]
-        umbral = UMBRAL_PREDECESOR if metodo == "embedding" else UMBRAL_SOLAPE_FTS
-        if score >= umbral:
-            predecesor = _a_candidato(mejor, score, con_adjudicacion=True)
+    predecesor = predecesor_de(objetivo)
 
     # ── Similares ───────────────────────────────────────────────────────────
     otros = repo.candidatos_a_similar(id_externo=id_externo, cpv4=cpv4)
@@ -234,8 +274,8 @@ def buscar(id_externo: str, *, max_similares: int = 10) -> Similares | None:
 
     return Similares(
         licitacion_id=id_externo,
-        predecesor=predecesor,
+        predecesor=predecesor.candidato,
         similares=similares,
         metodo=metodo_similares,
-        n=len(previos) + len(otros),
+        n=predecesor.n + len(otros),
     )

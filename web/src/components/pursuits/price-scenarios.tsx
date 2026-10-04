@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useParams } from "next/navigation";
 import { Check, ShieldAlert } from "lucide-react";
 import { Aviso, Panel, PanelEmpty, PanelError, ROTULO_DATO, SectionTitle } from "@/components/console/panel";
@@ -7,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TarifasPresupuesto } from "@/components/pliego/tarifas-presupuesto";
+import { useCompetenciaEsperada } from "@/hooks/use-competencia-esperada";
 import { usePriceScenarios } from "@/hooks/use-price-scenarios";
 import { usePursuit } from "@/hooks/use-pursuits";
 import { formatCurrency, formatPercent } from "@/lib/utils";
@@ -50,6 +52,11 @@ const percent = (value: number): string => formatPercent(value * 100);
  * Con `onUsarPrecio`, cada escenario ofrece fijarse como oferta prevista. La
  * pestaña calculaba tres precios y el único sitio donde anotar uno era el
  * formulario completo de otra pestaña, a mano y sin copiar.
+ *
+ * Si la ficha estima cuántas ofertas recibirá el expediente (la competencia
+ * esperada, el mismo hook que su bloque), el panel ofrece acotar la cohorte a
+ * adjudicaciones con una competencia parecida. Es opcional y se ve: la API
+ * solo la usa si con ella quedan comparables suficientes, y cuando no, se dice.
  */
 export function PriceScenariosPanel({
   licitacionId,
@@ -77,7 +84,13 @@ export function PriceScenariosPanel({
   // sustituirlo por el del lote es enseñar un precio equivocado y corregirlo a
   // la vista del usuario.
   const resolviendo = !explicito && pursuitId !== null && pursuit.isPending;
-  const query = usePriceScenarios(licitacionId, lote, { enabled: !resolviendo });
+  const competencia = useCompetenciaEsperada(licitacionId);
+  const estimacion = competencia.data?.ofertas.estimacion ?? null;
+  const [acotar, setAcotar] = React.useState(false);
+  const query = usePriceScenarios(licitacionId, lote, {
+    enabled: !resolviendo,
+    competencia: acotar ? estimacion : null,
+  });
 
   if (resolviendo || query.isLoading) {
     return <Skeleton className="h-56 w-full rounded-xl" />;
@@ -110,6 +123,9 @@ export function PriceScenariosPanel({
         ? "warning"
         : "neutral";
   const criterios = (data.cohort ?? []).map((clave) => CRITERIO_COHORTE[clave] ?? clave);
+  // La API acota por competencia solo si con ella quedan comparables; si no,
+  // cae a una cohorte sin esa dimensión y lo dice en `cohort`.
+  const acotadaDeVerdad = (data.cohort ?? []).includes("competencia");
 
   return (
     <Panel>
@@ -129,7 +145,31 @@ export function PriceScenariosPanel({
           : "Cuantiles de bajas observadas en adjudicaciones comparables."}
       </p>
 
-      <div className="space-y-3.5">
+      {estimacion != null && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant={acotar ? "secondary" : "outline"}
+            aria-pressed={acotar}
+            onClick={() => setAcotar((actual) => !actual)}
+          >
+            {acotar
+              ? `Acotado a la competencia esperada (~${estimacion} ofertas)`
+              : `Acotar a la competencia esperada (~${estimacion} ofertas)`}
+          </Button>
+          {acotar && !query.isPlaceholderData && !acotadaDeVerdad && (
+            <p role="status" className="text-muted-foreground text-tf-meta">
+              No hay bastantes adjudicaciones con esa competencia: los escenarios no la usan.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div
+        className={query.isPlaceholderData ? "space-y-3.5 opacity-60" : "space-y-3.5"}
+        aria-busy={query.isPlaceholderData || undefined}
+      >
         {/* El lote se abrió, pero el pliego ya no lo publica: el `lote_id` que
             resuelve la API viene NULL y sólo sobrevive su número (v110).
             Los escenarios son entonces los del expediente, y decirlo es más

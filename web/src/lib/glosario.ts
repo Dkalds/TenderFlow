@@ -185,6 +185,12 @@ const CONCEPTOS: Record<string, EntradaGlosario> = {
       "Porcentaje de licitaciones adjudicadas a la única empresa que se presentó. Mucha oferta única suele indicar pliegos a medida o poca competencia real.",
     ancla: "competencia",
   },
+  competencia_esperada: {
+    termino: "Competencia esperada",
+    definicion:
+      "Cuántas ofertas suele recibir un contrato como este, quién ganó el anterior del mismo órgano y objeto, y quién gana en su segmento, con su cuota sobre lo adjudicado allí. Sale de adjudicaciones publicadas; no es una probabilidad de ganar.",
+    ancla: "competencia",
+  },
   deuc: {
     termino: "DEUC",
     definicion:

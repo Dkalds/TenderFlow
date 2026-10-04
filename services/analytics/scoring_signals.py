@@ -178,7 +178,23 @@ def _cutoff_iso(months: int = 24) -> str:
     return _months_ago(months).isoformat()
 
 
-def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
+#: Ventana de la señal de competencia (media de ofertas por CPV-4), en meses de
+#: calendario sobre ``fecha_adjudicacion``. Pública porque la competencia
+#: esperada de la ficha (``services/competitive/competencia_esperada.py``) mide
+#: la misma media para el mismo CPV y no puede contradecir a la barra del score.
+VENTANA_COMPETENCIA_MESES = 24
+
+
+def corte_ventana_competencia_iso(*, ahora: datetime | None = None) -> str:
+    """Desde cuándo cuenta la señal de competencia: el corte de su ventana, en ISO UTC.
+
+    Es exactamente el corte que usa :func:`load_competencia_stats` (``ahora``
+    solo se inyecta en los tests).
+    """
+    return _months_ago(VENTANA_COMPETENCIA_MESES, now=ahora).isoformat()
+
+
+def _load_competencia_stats_raw(cutoff_months: int = VENTANA_COMPETENCIA_MESES) -> CompetenciaStats:
     """Carga sin caché — llamado solo por SignalAwareCache.get().
 
     El SQL vive en ``AggregateRepository.competencia_ofertas_por_cpv4`` (ADR-022)

@@ -8,6 +8,7 @@ todas.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import (
@@ -28,6 +29,7 @@ from api.routes.licitaciones.modelos import (
     LicitacionDetail,
     LoteOut,
 )
+from api.tenancy import require_organization
 from db.repositories import dedupe as _dedupe_repo
 from db.repositories.licitaciones import lotes_de
 from observability.logging import get_logger
@@ -38,6 +40,11 @@ from services.comparador_fichas import (
     ComparacionFichas,
     comparar,
 )
+from services.competitive.competencia_esperada import (
+    CompetenciaEsperada,
+    competencia_esperada,
+)
+from shared.cache import cache_response
 from shared.dto import (
     SafeStr,
 )
@@ -186,13 +193,54 @@ async def get_similares(
     if resultado is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
 
+    # `asdict` y no `vars`: `Candidato` es un dataclass con `slots`, sin
+    # `__dict__`, y `vars()` respondía 500 en cuanto había un predecesor o un
+    # similar. Los campos internos del candidato (la identidad del
+    # adjudicatario, NIF incluido) no están en `SimilarOut` y no salen.
     return SimilaresResult(
         licitacion_id=resultado.licitacion_id,
-        predecesor=(SimilarOut(**vars(resultado.predecesor)) if resultado.predecesor else None),
-        similares=[SimilarOut(**vars(c)) for c in resultado.similares],
+        predecesor=(SimilarOut(**asdict(resultado.predecesor)) if resultado.predecesor else None),
+        similares=[SimilarOut(**asdict(c)) for c in resultado.similares],
         metodo=resultado.metodo,
         n=resultado.n,
     )
+
+
+# ── /licitaciones/{id_externo}/competencia-esperada ──────────────────────
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/competencia-esperada",
+    response_model=CompetenciaEsperada,
+    summary="Competencia esperada: cuántos se presentarán, quién lo tiene y contra quién",
+    responses={
+        403: {"description": "No perteneces a esa organización"},
+        404: {"description": "No encontrado"},
+    },
+)
+# Por usuario y organización (`user_scoped` por defecto): la respuesta saca de
+# los rivales a la organización que mira y declara su cuota aparte.
+@cache_response(ttl=300)
+async def get_competencia_esperada(
+    id_externo: str,
+    _ctx: dict[str, Any] = Depends(require_organization()),
+) -> CompetenciaEsperada:
+    """Lo que se viene a preguntar al abrir el expediente, sobre su propio segmento.
+
+    Ofertas esperadas (la media del CPV-4 es la de la dimensión `competencia`
+    del score; con muestra, afinada al órgano), el incumbente (el predecesor de
+    `/similares`) y quién gana en el segmento con su cuota sobre lo adjudicado
+    en él, más las bajas de referencia. Cada sección declara su universo, su
+    ventana y su `n`; ver `services/competitive/competencia_esperada.py`.
+    """
+    resultado = await run_db(
+        competencia_esperada,
+        id_externo,
+        organization_id=int(_ctx["organization_id"]),
+    )
+    if resultado is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+    return resultado
 
 
 class CompararBody(BaseModel):

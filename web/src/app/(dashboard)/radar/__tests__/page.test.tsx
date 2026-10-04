@@ -52,6 +52,9 @@ vi.mock("@/hooks/use-watchlist-items", () => ({
 const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
   useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
+  // La competencia esperada del inspector pregunta con la organización activa.
+  useActiveOrganizationId: () => null,
+  organizacionResuelta: (id: number | null | undefined) => id !== undefined,
 }));
 // `useSeguimiento` instancia también la fuente de cuentas (deshabilitada para
 // una licitación), que lee la organización activa: en blanco, como el resto de
@@ -140,13 +143,22 @@ vi.mock("@/hooks/use-radar", () => ({
     typeof valor === "string" && ["Caliente", "Atractiva", "Tibia", "Descarte"].includes(valor),
 }));
 
-// El inspector consulta el histórico del órgano; en jsdom no hay backend, así
-// que se devuelve vacío y el panel enseña su estado "sin adjudicaciones".
-// El resto del módulo (ApiError, los mensajes por estado) es el real: los
-// errores se cuentan con `getErrorMessage`, que los necesita.
+// El inspector consulta la competencia esperada del expediente; en jsdom no hay
+// backend, así que se devuelve una sin datos y el bloque enseña sus motivos.
+// El resto de llamadas reciben `{}`. El resto del módulo (ApiError, los
+// mensajes por estado) es el real: los errores se cuentan con
+// `getErrorMessage`, que los necesita.
+const COMPETENCIA_SIN_DATOS = {
+  licitacion_id: "ES-1",
+  ofertas: { ventana_meses: 24, sin_datos: "Ningún expediente comparable publica sus ofertas." },
+  rivales: { ventana_meses: 36, items: [], sin_datos: "Ninguna adjudicación en el segmento." },
+  calculado_en: "2026-10-01T00:00:00+00:00",
+};
 vi.mock("@/lib/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api-client")>()),
-  fetchWithAuth: vi.fn().mockResolvedValue({}),
+  fetchWithAuth: vi.fn((url: string) =>
+    Promise.resolve(url.includes("/competencia-esperada") ? COMPETENCIA_SIN_DATOS : {}),
+  ),
 }));
 
 // RadarPage lee `filters.tecnologias` vía el hook nuqs-backed `useFilters`;

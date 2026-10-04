@@ -258,7 +258,7 @@ TED entre las fuentes activas.
 |---|---|
 | C1.1 Importe con semántica (D21) | **Hecho** (`6b1490d`, v113). Tres columnas + `importe_tipo`; el histórico queda en `desconocido` y **no** se copia a `importe_base_sin_iva`. `bajas`/`pricing`/`escenarios-precio` declaran `base`. |
 | C1.2 Maestro de órganos (D22) | **Hecho** (`048a0ea`, v114+v115). Patrón de `empresas`; DIR3 único parcial; lectura dual `clave_organo_sql`. **La migración no rellena**: el backfill de 706 k filas es una operación con ventana, no un `UPDATE` en migración. |
-| C1.3 Predecesor y similares | **Hecho** (`efbb709`). `GET /licitaciones/{id}/similares`, `metodo ∈ {embedding, fts}` y `n`. **Pendiente**: el golden de 30 pares con precisión ≥ 0,8 exige etiquetado humano — generarlo con la misma regla que se quiere medir sería circular. |
+| C1.3 Predecesor y similares | **Hecho** (`efbb709`). `GET /licitaciones/{id}/similares`, `metodo ∈ {embedding, fts}` y `n`. Primer consumidor en pantalla (2026-10-04): el incumbente de la competencia esperada (`GET /licitaciones/{id}/competencia-esperada`, `services.similares.predecesor_de`). **Pendiente**: el golden de 30 pares con precisión ≥ 0,8 exige etiquetado humano — generarlo con la misma regla que se quiere medir sería circular. |
 | C1.4 Lotes de primera clase | **Hecho** (`6b1490d`). `LoteOut`, `exports/download?por_lote=true`. |
 
 ## C2 — Cuentas y seguridad

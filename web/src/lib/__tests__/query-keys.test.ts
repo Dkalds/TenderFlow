@@ -165,7 +165,6 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "radarKeys.scoring", clave: radarKeys.scoring },
       { nombre: "radarKeys.scopedScoring", clave: radarKeys.scopedScoring(1, "SAP") },
       { nombre: "radarKeys.dismissed", clave: radarKeys.dismissed(1, ["ES-1"]) },
-      { nombre: "radarKeys.organo", clave: radarKeys.organo("Ayuntamiento") },
     ],
   },
   {
@@ -208,6 +207,10 @@ const FABRICAS: readonly Fabrica[] = [
       },
       { nombre: "competitiveKeys.contraMi", clave: competitiveKeys.contraMi("42", 21, 24) },
       { nombre: "competitiveKeys.partners", clave: competitiveKeys.partners("72", "Madrid") },
+      {
+        nombre: "competitiveKeys.competenciaEsperada",
+        clave: competitiveKeys.competenciaEsperada("ES-1", 21),
+      },
     ],
   },
   {
@@ -481,7 +484,6 @@ describe("las fábricas parametrizadas", () => {
     { nombre: "analyticsKeys.scoringBatch", conA: () => analyticsKeys.scoringBatch(["ES-1"]), conB: () => analyticsKeys.scoringBatch(["ES-1", "ES-2"]) },
     { nombre: "radarKeys.scopedScoring", conA: () => radarKeys.scopedScoring(1, "SAP"), conB: () => radarKeys.scopedScoring(2, "SAP") },
     { nombre: "radarKeys.dismissed", conA: () => radarKeys.dismissed(1, ["ES-1"]), conB: () => radarKeys.dismissed(1, ["ES-2"]) },
-    { nombre: "radarKeys.organo", conA: () => radarKeys.organo("Ayuntamiento"), conB: () => radarKeys.organo(null) },
     { nombre: "watchlistKeys.combined", conA: () => watchlistKeys.combined("1,2"), conB: () => watchlistKeys.combined("1,3") },
     { nombre: "empresasKeys.list", conA: () => empresasKeys.list("acme"), conB: () => empresasKeys.list("globex") },
     { nombre: "empresasKeys.detail", conA: () => empresasKeys.detail(7), conB: () => empresasKeys.detail(8) },
@@ -490,6 +492,8 @@ describe("las fábricas parametrizadas", () => {
     { nombre: "analyticsKeys.desdeUltimaVisita", conA: () => analyticsKeys.desdeUltimaVisita(21), conB: () => analyticsKeys.desdeUltimaVisita(null) },
     { nombre: "competitiveKeys.contraMi", conA: () => competitiveKeys.contraMi("42", 21, 24), conB: () => competitiveKeys.contraMi("42", 21, 12) },
     { nombre: "competitiveKeys.partners", conA: () => competitiveKeys.partners("72", "Madrid"), conB: () => competitiveKeys.partners("72", null) },
+    // La organización entra en la clave: la respuesta saca de los rivales a la que mira.
+    { nombre: "competitiveKeys.competenciaEsperada", conA: () => competitiveKeys.competenciaEsperada("ES-1", 21), conB: () => competitiveKeys.competenciaEsperada("ES-1", null) },
     { nombre: "searchKeys.global", conA: () => searchKeys.global("indra", 21), conB: () => searchKeys.global("indra", null) },
     { nombre: "competitiveKeys.companyAwards", conA: () => competitiveKeys.companyAwards(7, "limit=20"), conB: () => competitiveKeys.companyAwards(7, { limit: "20" }) },
     { nombre: "pursuitKeys.list", conA: () => pursuitKeys.list({ estado: "abierto" }), conB: () => pursuitKeys.list({ estado: "ganado" }) },
@@ -572,10 +576,10 @@ const FABRICAS_CON_ARGUMENTOS: readonly string[] = [
   "analyticsKeys.desdeUltimaVisita",
   "competitiveKeys.contraMi",
   "competitiveKeys.partners",
+  "competitiveKeys.competenciaEsperada",
   "searchKeys.global",
   "radarKeys.scopedScoring",
   "radarKeys.dismissed",
-  "radarKeys.organo",
   "watchlistKeys.combined",
   "empresasKeys.list",
   "empresasKeys.detail",

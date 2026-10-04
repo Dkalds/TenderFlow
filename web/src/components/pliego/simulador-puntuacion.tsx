@@ -8,6 +8,7 @@ import { ERROR_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CABECERA_COLUMNA } from "@/components/ui/table";
+import { useCompetenciaEsperada } from "@/hooks/use-competencia-esperada";
 import { usePrediccionBaja } from "@/hooks/use-prediccion-baja";
 import { type SimulacionPrecio, useSimuladorPrecio } from "@/hooks/use-simulador-precio";
 import { type TenderFactSheetRecord, useTenderFactSheet } from "@/hooks/use-tender-fact-sheet";
@@ -26,6 +27,11 @@ import { cn, formatNumber, formatPercent } from "@/lib/utils";
  *
  * Nada se calcula aquí. Puntos, temeridad y hueco vienen de la API; sin
  * fórmula extraída la pantalla dice por qué y no enseña cifras (ADR-014).
+ *
+ * La baja del rival se puede tomar de tres referencias publicadas, no
+ * inventadas: el p90 de la baja esperada, la baja con la que el incumbente
+ * ganó el contrato anterior y la baja típica del ganador en el segmento (las
+ * dos últimas, de la competencia esperada de la ficha).
  */
 
 const FORMULAS: Record<string, string> = {
@@ -79,6 +85,8 @@ export function parsearBajaPct(texto: string): number | null {
 }
 
 const pctDe = (fraccion: number) => formatPercent(fraccion * 100);
+/** Un porcentaje (14.25) como lo teclearía alguien en el campo: «14,3». */
+const textoDePorcentaje = (pct: number) => String(Math.round(pct * 10) / 10).replace(".", ",");
 /** Los puntos vienen redondeados a dos decimales por la API. */
 const puntos = (n: number) => formatNumber(n);
 
@@ -137,6 +145,14 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
   }, [enviada, propio.data, propio.isPlaceholderData, ficha]);
 
   const p90 = prediccion?.baja_real == null ? (prediccion?.p90 ?? null) : null;
+  // Misma clave que el bloque «Competencia esperada» de la ficha: casi siempre
+  // ya está en caché. Un fallo aquí solo quita los atajos.
+  const { data: competencia } = useCompetenciaEsperada(licitacionId);
+  const incumbente = competencia?.incumbente;
+  // La baja del contrato anterior es la del rival solo si no lo ganó tu
+  // organización: contra ti mismo no se compite.
+  const bajaIncumbente = incumbente && !incumbente.es_propia ? (incumbente.baja_pct ?? null) : null;
+  const bajaGanador = competencia?.puja?.baja_ganadora_mediana_pct ?? null;
   const data = referencia.data;
 
   const simular = (event: React.FormEvent) => {
@@ -252,14 +268,36 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
                 />
               </div>
             </div>
-            {p90 != null && (
-              <button
-                type="button"
-                className="text-tf-meta font-medium text-primary hover:underline"
-                onClick={() => setRivalTexto(String(Math.round(p90 * 1000) / 10).replace(".", ","))}
-              >
-                Usar como rival el p90 de la baja esperada ({pctDe(p90)})
-              </button>
+            {(p90 != null || bajaIncumbente != null || bajaGanador != null) && (
+              <div className="flex flex-col items-start gap-1">
+                {p90 != null && (
+                  <button
+                    type="button"
+                    className="text-tf-meta font-medium text-primary hover:underline"
+                    onClick={() => setRivalTexto(String(Math.round(p90 * 1000) / 10).replace(".", ","))}
+                  >
+                    Usar como rival el p90 de la baja esperada ({pctDe(p90)})
+                  </button>
+                )}
+                {bajaIncumbente != null && (
+                  <button
+                    type="button"
+                    className="text-tf-meta font-medium text-primary hover:underline"
+                    onClick={() => setRivalTexto(textoDePorcentaje(bajaIncumbente))}
+                  >
+                    Usar como rival la baja del incumbente ({formatPercent(bajaIncumbente)})
+                  </button>
+                )}
+                {bajaGanador != null && (
+                  <button
+                    type="button"
+                    className="text-tf-meta font-medium text-primary hover:underline"
+                    onClick={() => setRivalTexto(textoDePorcentaje(bajaGanador))}
+                  >
+                    Usar como rival la baja típica del ganador ({formatPercent(bajaGanador)})
+                  </button>
+                )}
+              </div>
             )}
             {errorForm && (
               // Un solo error para los dos campos (los dos lo citan en

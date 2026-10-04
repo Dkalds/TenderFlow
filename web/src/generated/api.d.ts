@@ -2591,6 +2591,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/competencia-esperada": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Competencia esperada: cuántos se presentarán, quién lo tiene y contra quién
+         * @description Lo que se viene a preguntar al abrir el expediente, sobre su propio segmento.
+         *
+         *     Ofertas esperadas (la media del CPV-4 es la de la dimensión `competencia`
+         *     del score; con muestra, afinada al órgano), el incumbente (el predecesor de
+         *     `/similares`) y quién gana en el segmento con su cuota sobre lo adjudicado
+         *     en él, más las bajas de referencia. Cada sección declara su universo, su
+         *     ventana y su `n`; ver `services/competitive/competencia_esperada.py`.
+         */
+        get: operations["get_competencia_esperada_api_v1_licitaciones__id_externo__competencia_esperada_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/documentos": {
         parameters: {
             query?: never;
@@ -6037,6 +6063,21 @@ export interface components {
             items: components["schemas"]["BajaAgregada"][];
         };
         /**
+         * BandaOfertas
+         * @description Cuántos expedientes del segmento cayeron en cada banda de ofertas.
+         */
+        BandaOfertas: {
+            /**
+             * Banda
+             * @enum {string}
+             */
+            banda: "1" | "2-4" | "5+";
+            /** Expedientes */
+            expedientes: number;
+            /** Pct */
+            pct: number;
+        };
+        /**
          * Batalla
          * @description Un expediente en el que coincidimos con el competidor.
          */
@@ -6684,6 +6725,26 @@ export interface components {
             deltas?: components["schemas"]["PeriodDeltas"];
             period_a?: components["schemas"]["PeriodStats"];
             period_b?: components["schemas"]["PeriodStats"];
+        };
+        /**
+         * CompetenciaEsperada
+         * @description Respuesta de ``GET /licitaciones/{id}/competencia-esperada``.
+         */
+        CompetenciaEsperada: {
+            /** Calculado En */
+            calculado_en: string;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv4 */
+            cpv4?: string | null;
+            incumbente?: components["schemas"]["Incumbente"] | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            ofertas: components["schemas"]["OfertasEsperadas"];
+            /** Organo */
+            organo?: string | null;
+            puja?: components["schemas"]["PujaSegmento"] | null;
+            rivales: components["schemas"]["RivalesEsperados"];
         };
         /**
          * CompetitiveCompanyAwardDTO
@@ -7552,6 +7613,18 @@ export interface components {
             importe: number;
             /** Ofertas Medias */
             ofertas_medias: number | null;
+        };
+        /**
+         * CuotaPropia
+         * @description La parte de la propia organización en el segmento.
+         */
+        CuotaPropia: {
+            /** Cuota Pct */
+            cuota_pct: number;
+            /** Expedientes */
+            expedientes: number;
+            /** Importe Adjudicado */
+            importe_adjudicado: number;
         };
         /** CuotaResult */
         CuotaResult: {
@@ -9102,6 +9175,36 @@ export interface components {
             q3: number;
         };
         /**
+         * Incumbente
+         * @description ¿Quién lo tiene hoy? El adjudicatario del contrato anterior del mismo objeto.
+         */
+        Incumbente: {
+            /** Adjudicatario */
+            adjudicatario?: string | null;
+            /** Baja Pct */
+            baja_pct?: number | null;
+            /** Empresa Id */
+            empresa_id?: number | null;
+            /**
+             * Es Propia
+             * @default false
+             */
+            es_propia: boolean;
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /**
+             * Metodo
+             * @enum {string}
+             */
+            metodo: "embedding" | "fts";
+            /** Titulo */
+            titulo: string;
+        };
+        /**
          * ItemActividad
          * @description Una línea del feed del equipo.
          */
@@ -9972,6 +10075,45 @@ export interface components {
         OAuthAuthorizeResult: {
             /** Authorization Url */
             authorization_url: string;
+        };
+        /**
+         * OfertasEsperadas
+         * @description ¿Cuántos se presentarán?
+         */
+        OfertasEsperadas: {
+            cpv4?: components["schemas"]["OfertasSegmento"] | null;
+            /** Estimacion */
+            estimacion?: number | null;
+            /** Estimacion Nivel */
+            estimacion_nivel?: ("organo_cpv4" | "cpv4" | "global") | null;
+            /** Media Global */
+            media_global?: number | null;
+            organo_cpv4?: components["schemas"]["OfertasSegmento"] | null;
+            /** Sin Datos */
+            sin_datos?: string | null;
+            /** Ventana Meses */
+            ventana_meses: number;
+        };
+        /**
+         * OfertasSegmento
+         * @description Ofertas recibidas en un nivel de segmento, con su ``n``.
+         */
+        OfertasSegmento: {
+            /** Adjudicados */
+            adjudicados: number;
+            /** Bandas */
+            bandas?: components["schemas"]["BandaOfertas"][];
+            /** Expedientes */
+            expedientes: number;
+            /** Media */
+            media: number;
+            /**
+             * Nivel
+             * @enum {string}
+             */
+            nivel: "organo_cpv4" | "cpv4";
+            /** Pct Oferta Unica */
+            pct_oferta_unica: number;
         };
         /**
          * OpcionCodificada
@@ -11496,6 +11638,38 @@ export interface components {
             url?: string | null;
         };
         /**
+         * PujaSegmento
+         * @description Cómo se puja en el segmento: las bajas de referencia para el precio.
+         */
+        PujaSegmento: {
+            /** Baja Ganadora Mediana Pct */
+            baja_ganadora_mediana_pct?: number | null;
+            /** Baja Oferta Minima Mediana Pct */
+            baja_oferta_minima_mediana_pct?: number | null;
+            /**
+             * Bajas N
+             * @default 0
+             */
+            bajas_n: number;
+            /**
+             * Base
+             * @default mixta
+             */
+            base: string;
+            /**
+             * Nivel
+             * @enum {string}
+             */
+            nivel: "organo_cpv4" | "cpv4_ccaa" | "cpv4";
+            /**
+             * Ofertas Minimas N
+             * @default 0
+             */
+            ofertas_minimas_n: number;
+            /** Ventana Meses */
+            ventana_meses: number;
+        };
+        /**
          * PuntoGuion
          * @description Un punto a cubrir dentro de un criterio.
          */
@@ -12856,6 +13030,71 @@ export interface components {
             review_id: number;
             /** Status */
             status: string;
+        };
+        /**
+         * Rival
+         * @description Una empresa que gana en el segmento.
+         */
+        Rival: {
+            /** Baja Mediana Pct */
+            baja_mediana_pct?: number | null;
+            /**
+             * Bajas N
+             * @default 0
+             */
+            bajas_n: number;
+            /** Cuota Pct */
+            cuota_pct: number;
+            /** Empresa Id */
+            empresa_id?: number | null;
+            /**
+             * Es Incumbente
+             * @default false
+             */
+            es_incumbente: boolean;
+            /** Expedientes */
+            expedientes: number;
+            /** Importe Adjudicado */
+            importe_adjudicado: number;
+            /** Nombre */
+            nombre: string;
+            /** Ultima Adjudicacion */
+            ultima_adjudicacion?: string | null;
+        };
+        /**
+         * RivalesEsperados
+         * @description ¿Contra quién? Quién gana en el segmento, con su cuota.
+         */
+        RivalesEsperados: {
+            /**
+             * Expedientes
+             * @default 0
+             */
+            expedientes: number;
+            /**
+             * Identidad Conocida
+             * @default false
+             */
+            identidad_conocida: boolean;
+            /**
+             * Importe Total
+             * @default 0
+             */
+            importe_total: number;
+            /** Items */
+            items?: components["schemas"]["Rival"][];
+            /**
+             * Muestra Suficiente
+             * @default false
+             */
+            muestra_suficiente: boolean;
+            /** Nivel */
+            nivel?: ("organo_cpv4" | "cpv4_ccaa" | "cpv4") | null;
+            propia?: components["schemas"]["CuotaPropia"] | null;
+            /** Sin Datos */
+            sin_datos?: string | null;
+            /** Ventana Meses */
+            ventana_meses: number;
         };
         /**
          * RotatedKey
@@ -20151,6 +20390,58 @@ export interface operations {
             };
             /** @description API key inválida */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_competencia_esperada_api_v1_licitaciones__id_externo__competencia_esperada_get: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompetenciaEsperada"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

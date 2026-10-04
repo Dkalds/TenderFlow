@@ -10,6 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
+// La competencia esperada de la ficha: de ella salen la baja del incumbente y
+// la típica del ganador como rivales. Sin ella, solo el p90.
+const competencia = vi.hoisted(() => ({ data: undefined as unknown }));
+vi.mock("@/hooks/use-competencia-esperada", () => ({ useCompetenciaEsperada: () => competencia }));
 
 import { registrarEvento } from "@/lib/analytics";
 import { callUrl } from "@/hooks/__tests__/fetch-call";
@@ -42,7 +46,10 @@ const PROPIA = {
   baja_referencia: 0.18,
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  competencia.data = undefined;
+});
 afterEach(() => vi.unstubAllGlobals());
 
 describe("conTarifas (F2.4)", () => {
@@ -126,6 +133,31 @@ describe("SimuladorPuntuacion", () => {
       }),
     );
     expect(registrarEvento).toHaveBeenCalledTimes(1);
+  });
+
+  it("ofrece como rival la baja del incumbente y la típica del ganador del segmento", async () => {
+    competencia.data = {
+      incumbente: { baja_pct: 13.16, es_propia: false },
+      puja: { baja_ganadora_mediana_pct: 12.5 },
+    };
+    fetchPorRuta([/simulador/, REFERENCIA], [/prediccion-baja/, {}, 404]);
+    renderConQuery(<SimuladorPuntuacion licitacionId="LIC-1" />);
+    await screen.findByRole("table");
+
+    fireEvent.click(screen.getByRole("button", { name: "Usar como rival la baja del incumbente (13,2%)" }));
+    expect(screen.getByLabelText("Baja del rival (%)")).toHaveValue("13,2");
+    fireEvent.click(screen.getByRole("button", { name: "Usar como rival la baja típica del ganador (12,5%)" }));
+    expect(screen.getByLabelText("Baja del rival (%)")).toHaveValue("12,5");
+  });
+
+  it("si el contrato anterior lo ganó tu organización, no la ofrece como rival", async () => {
+    competencia.data = { incumbente: { baja_pct: 13.16, es_propia: true }, puja: null };
+    fetchPorRuta([/simulador/, REFERENCIA], [/prediccion-baja/, {}, 404]);
+    renderConQuery(<SimuladorPuntuacion licitacionId="LIC-1" />);
+    await screen.findByRole("table");
+
+    expect(screen.queryByRole("button", { name: /baja del incumbente/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /baja típica del ganador/ })).not.toBeInTheDocument();
   });
 
   it("una baja fuera de rango no se envía y lo dice", async () => {

@@ -198,7 +198,6 @@ export const radarKeys = {
     ["radar", "scoring", organizationId, tecnologia] as const,
   dismissed: (organizationId: OrganizacionDeClave, visibles: readonly string[]) =>
     ["radar", "dismissed-tenders", organizationId, visibles] as const,
-  organo: (organo: string | null | undefined) => ["radar", "organo", organo] as const,
   // Estas dos las usa también el prefetch en servidor del Radar
   // (`radar/page.tsx`): son las del Radar que no dependen de la organización
   // activa, que vive en `localStorage` y el servidor no puede leer.
@@ -271,6 +270,13 @@ export const competitiveKeys = {
   /** Socios de UTE de un segmento (`GET /competitive/partners`, F3.3). */
   partners: (cpv: string | null, ccaa: string | null) =>
     ["competitive", "partners", cpv, ccaa] as const,
+  /**
+   * Competencia esperada de un expediente
+   * (`GET /licitaciones/{id}/competencia-esperada`). Lleva la organización: la
+   * respuesta saca de los rivales a la que mira y declara su cuota aparte.
+   */
+  competenciaEsperada: (licitacionId: string, organizationId: OrganizacionDeClave) =>
+    ["competitive", "competencia-esperada", licitacionId, organizationId] as const,
 };
 
 // ---------------------------------------------------------------------------
