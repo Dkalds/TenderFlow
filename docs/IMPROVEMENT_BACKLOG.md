@@ -245,7 +245,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P1 — Alta
 
-### [P1] Cerrar el incidente de la v2 de `sap_classifier`: recalcular `ml_proba` y unificar los dos caminos de entrenamiento
+### [P1] Cerrar el incidente de la v2 de `sap_classifier`: ver la pasada en verde y unificar los dos caminos de entrenamiento
 - **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, shared/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
 - **Problema:** `scrape-daily` está en rojo desde el 2026-09-29T18:08Z (15
   runs hasta el 2026-10-03T23:09Z). En el primero el paso semanal
@@ -274,23 +274,34 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     «`ModelArtifactMismatch`» del runbook.
   - PR #403 (`2e341907`): `promote_if_better` numera desde el máximo
     registrado, como `register_version`.
-  - Rama `claude/ml-activar-tras-publicar`: `train-model.yml` activa
-    **después** de subir (entrenar → subir → cotejar el `digest` → activar →
-    `precompute`); el paso semanal lanza `train-model.yml` por
-    `workflow_dispatch` (`actions: write` en `scrape-daily.yml`) y, si no
-    puede, avisa; el disparador cuenta el feedback posterior a la última
-    versión **registrada**, no a la activa, para no relanzar cada semana un
-    entrenamiento que el gate ya rechazó; `rescore-ml-proba.yml`, manual, para
-    recalcular `ml_proba` con el modelo servido.
+  - PR #405 (`ec970a77`): `train-model.yml` activa **después** de subir
+    (entrenar → subir → cotejar el `digest` → activar → `precompute`); el paso
+    semanal lanza `train-model.yml` por `workflow_dispatch` (`actions: write`
+    en `scrape-daily.yml`) y, si no puede, avisa; el disparador cuenta el
+    feedback posterior a la última versión **registrada**, no a la activa, para
+    no relanzar cada semana un entrenamiento que el gate ya rechazó;
+    `rescore-ml-proba.yml`, manual, para recalcular `ml_proba` con el modelo
+    servido.
+  - 2026-10-04T01:12Z, producción: `rescore-ml-proba.yml` (run 37167276246,
+    3 min). Cargó el asset de mayo (`trained_at` 2026-05-20, umbral 0,466),
+    reescribió 24.593 filas y borró 978 scores fuera de la población: la
+    población quedó con 0 filas sin `ml_proba`, incluidas las 481 que la
+    pasada no había podido puntuar desde el 29/09. **La distribución cambió**:
+    `ml_proba ≥ 0,69` pasó de 5.859 de 25.090 filas puntuadas (23 %, medido el
+    2026-10-03) a 14.819 de 24.593 (60 %), y `≥ 0,30` de 32 % a 81 %. Dos
+    lecturas: la reescritura de la v2 del 29/09, que se cortó a los 68 s, había
+    cubierto casi toda la población; y el modelo de mayo da por SAP a la
+    mayoría, que es el problema de «El corpus de PSCP ahoga el dataset del
+    clasificador SAP». No es reversible: el artefacto de la v2 no existe.
 - **Acceptance criteria:**
   - Ver `ml_scoring: ok` en una pasada de `scrape-daily` posterior al
-    2026-10-04T00:19Z, con las 481 licitaciones pendientes puntuadas.
-  - Lanzar `rescore-ml-proba.yml` (acción del propietario: reescribe
-    `ml_proba` de ~24.600 filas). Una parte no medida lleva el score de la v2
-    —su reescritura se cortó a los 68 s—, que ningún modelo existente puede
-    reproducir ni explicar. Ojo con lo que se cambia: el modelo servido es el
-    de mayo, el mismo de «El corpus de PSCP ahoga el dataset del clasificador
-    SAP» (no discrimina), y la v2 había pasado el gate.
+    2026-10-04T00:19Z. A las 01:45Z de ese día no había corrido ninguna; el
+    rescore cargó el modelo por el mismo camino y funcionó, pero no es la misma
+    comprobación.
+  - Ver correr por primera vez el flujo nuevo de `train-model.yml` (subir →
+    cotejar → activar) y el `workflow_dispatch` desde el cierre. El orden de
+    pasos, los permisos y el `env` están fijados por tests sobre el YAML; ni la
+    activación ni el dispatch contra la API real se han ejecutado todavía.
   - Decidir qué entrena cada camino: el candidato de `train-model.yml` del
     2026-09-27 (v1, 17.641 filas) fue rechazado con `recall_no_keyword` 0 y el
     del reentrenamiento automático (v2, 57.913 filas, `_fetch_training_dataframe`
@@ -308,9 +319,9 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     2026-09-24», y exige que la ingesta resuelva el modelo por
     `resolve_artifact` y no por `ensure_downloaded` + `load()`.
 - **Files de partida:** [scheduler/jobs/ml_training_run.py](../scheduler/jobs/ml_training_run.py), [scheduler/concept_drift.py](../scheduler/concept_drift.py), [services/ml/promotion.py](../services/ml/promotion.py), [.github/workflows/train-model.yml](../.github/workflows/train-model.yml), [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
-- **Riesgo:** bajo para el rescore (idempotente; reescribe una columna
-  derivada); medio para el nombre por contenido, que toca el camino por el que
-  la ingesta y la API cargan el modelo.
+- **Riesgo:** bajo para las verificaciones; medio para el nombre por
+  contenido, que toca el camino por el que la ingesta y la API cargan el
+  modelo.
 
 ### [P1] Ejecutar en producción la purga de PSCP sin tecnología
 - **Área:** scripts/purgar_pscp_sin_tecnologia.py, db/repositories/purga_licitaciones.py (acción del usuario: borrado irreversible)
