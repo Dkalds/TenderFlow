@@ -917,6 +917,11 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
         # Va antes que ``HTTPError``, de la que hereda: la plataforma ha dicho
         # que no sirve ESTE documento, y el mensaje ya trae la causa. Etiquetarlo
         # «token caducado» mandaría a esperar un enlace nuevo que puede no llegar.
+        #
+        # Es también lo que contesta por un pliego anunciado y aún sin publicar.
+        # Esos no deberían llegar aquí: ``list_pendientes`` y la extracción bajo
+        # demanda los apartan antes (``sin_publicar``), y su URI no cambia al
+        # publicarse.
         recuperado = _contenido_desde_blob(documento_id, documento)
         if recuperado is None:
             log.warning("document_fetch_download_failed", documento_id=documento_id, error=str(e))

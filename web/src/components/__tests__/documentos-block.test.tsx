@@ -105,6 +105,38 @@ describe("DocumentosBlock", () => {
     expect(screen.getByText(/puede haber caducado/)).toBeInTheDocument();
   });
 
+  it("says so, without links, when PLACSP has announced the documents but not published them", () => {
+    // PLACSP referencia el pliego desde el anuncio de licitación y contesta 500
+    // a sus enlaces hasta publicarlo: ahí un enlace solo lleva a ese error, y
+    // el motivo no es que haya caducado.
+    const sinPublicar = {
+      items: [
+        { ...ITEMS.items[0], status: "error", sin_publicar: true },
+        { ...ITEMS.items[1], filename: "PPT.pdf", sin_publicar: true },
+      ],
+    };
+    withData(
+      "L-sp",
+      sinPublicar,
+      <DocumentosBlock licitacionId="L-sp" fichaUrl="https://contrataciondelestado.es/wps/poc?idEvl=abc" />,
+    );
+
+    expect(screen.getByText(/todavía no ha publicado el pliego/)).toBeInTheDocument();
+    expect(screen.getByText("PCAP.pdf")).toBeInTheDocument();
+    expect(screen.getByText("PPT.pdf")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /PCAP\.pdf/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /PPT\.pdf/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/puede haber caducado/)).not.toBeInTheDocument();
+    // La ficha del expediente sigue siendo la salida, sin prometer «todos»:
+    // allí tampoco están todavía.
+    expect(screen.getByRole("link", { name: /^Ver en la ficha de PLACSP/ })).toBeInTheDocument();
+  });
+
+  it("does not mention the unpublished pliego when every document is available", () => {
+    withData("L-ok", ITEMS, <DocumentosBlock licitacionId="L-ok" />);
+    expect(screen.queryByText(/todavía no ha publicado/)).not.toBeInTheDocument();
+  });
+
   it("shows the ficha link as a footer when documents are present", () => {
     withData(
       "L2",

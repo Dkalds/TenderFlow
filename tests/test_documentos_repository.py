@@ -17,16 +17,39 @@ def repo(tmp_db):
 
 
 def _insert_licitacion(
-    id_externo: str, *, tecnologia: str | None = None, ml_tecnologias: str | None = None
+    id_externo: str,
+    *,
+    tecnologia: str | None = None,
+    ml_tecnologias: str | None = None,
+    estado: str | None = None,
+    tipos_anuncio: str | None = None,
 ) -> None:
     from db.database import connect
 
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones "
-            "(id_externo, titulo, fuente, fecha_extraccion, tecnologia, ml_tecnologias) "
-            "VALUES (%s, %s, 'placsp', CURRENT_TIMESTAMP, %s, %s)",
-            (id_externo, f"Contrato {id_externo}", tecnologia, ml_tecnologias),
+            "(id_externo, titulo, fuente, fecha_extraccion, tecnologia, ml_tecnologias, "
+            "estado, tipos_anuncio) "
+            "VALUES (%s, %s, 'placsp', CURRENT_TIMESTAMP, %s, %s, %s, %s)",
+            (
+                id_externo,
+                f"Contrato {id_externo}",
+                tecnologia,
+                ml_tecnologias,
+                estado,
+                tipos_anuncio,
+            ),
+        )
+
+
+def _set_tipos_anuncio(id_externo: str, tipos_anuncio: str) -> None:
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "UPDATE licitaciones SET tipos_anuncio = %s WHERE id_externo = %s",
+            (tipos_anuncio, id_externo),
         )
 
 
@@ -415,6 +438,105 @@ class TestListPendientes:
         pendientes = repo.list_pendientes()
 
         assert [p["licitacion_id"] for p in pendientes] == ["EXP-NEW", "EXP-OLD"]
+
+
+_SERVLET = "https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet"
+
+
+def _ref_servlet(tipo: str = "legal", doc_id: str = "D1") -> DocumentoReferencia:
+    return DocumentoReferencia(
+        tipo=tipo,
+        uri=f"{_SERVLET}?cifrado=C&DocumentIdParam={doc_id}",
+        filename=f"{tipo}.pdf",
+        source_hash=f"H-{doc_id}",
+    )
+
+
+class TestPliegoSinPublicar:
+    """PLACSP anuncia los pliegos antes de servirlos.
+
+    El CODICE referencia el PCAP y el PPT desde que se publica el anuncio de
+    licitación (``DOC_CN``), pero el servlet contesta 500 a esos enlaces hasta
+    que se publica el pliego (``DOC_CD``). Medido el 2026-10-04 sobre el feed
+    vivo: 60 de 60 expedientes abiertos con ``DOC_CN`` y sin ``DOC_CD`` daban
+    500, y 100 de 101 con ``DOC_CD`` respondían. Descargarlos en esa ventana
+    los dejaba en ``error`` para siempre —la URI no cambia cuando el pliego se
+    publica, así que nada los revivía— y cinco seguidos abrían el circuito de
+    PLACSP y saltaban el resto del lote (255 documentos el 2026-10-01).
+    """
+
+    def test_no_entra_en_el_lote_mientras_el_pliego_no_este_publicado(self, repo):
+        _insert_licitacion("EXP-SP-1", estado="PUB", tipos_anuncio="DOC_CN")
+        repo.upsert_meta("EXP-SP-1", [_ref_servlet()])
+
+        assert repo.list_pendientes() == []
+
+    def test_entra_en_el_lote_en_cuanto_se_publica_el_pliego(self, repo):
+        """La fila nunca dejó de estar ``pending``: basta con que la re-emisión
+        del expediente traiga ``DOC_CD`` para que el lote siguiente la tome."""
+        _insert_licitacion("EXP-SP-2", estado="PUB", tipos_anuncio="DOC_CN")
+        repo.upsert_meta("EXP-SP-2", [_ref_servlet()])
+
+        _set_tipos_anuncio("EXP-SP-2", "DOC_CD,DOC_CN")
+
+        assert [p["licitacion_id"] for p in repo.list_pendientes()] == ["EXP-SP-2"]
+
+    @pytest.mark.parametrize(
+        ("estado", "tipos_anuncio", "uri"),
+        [
+            # Sin el dato (fila anterior a v138, o un camino que no lee los
+            # anuncios) no se presume nada.
+            ("PUB", None, f"{_SERVLET}?cifrado=C&DocumentIdParam=T"),
+            # Un adjudicado sin anuncio de pliegos sí sirve sus documentos
+            # (28 de 36 en el feed del 2026-10-04): la regla es de la convocatoria.
+            ("ADJ", "DOC_CAN_ADJ,DOC_CN", f"{_SERVLET}?cifrado=C&DocumentIdParam=T"),
+            # Solo anuncio previo: en producción hay expedientes así con sus
+            # documentos extraídos, así que no se excluyen.
+            ("PRE", "DOC_PIN", f"{_SERVLET}?cifrado=C&DocumentIdParam=T"),
+            # Un adjunto alojado fuera del servlet de PLACSP no depende de que
+            # PLACSP publique nada.
+            ("PUB", "DOC_CN", "https://contratacion.ejemplo.es/pliegos/pcap.pdf"),
+        ],
+    )
+    def test_el_resto_de_casos_sigue_en_el_lote(self, repo, estado, tipos_anuncio, uri):
+        _insert_licitacion("EXP-SP-3", estado=estado, tipos_anuncio=tipos_anuncio)
+        repo.upsert_meta("EXP-SP-3", [DocumentoReferencia(tipo="legal", uri=uri)])
+
+        assert [p["licitacion_id"] for p in repo.list_pendientes()] == ["EXP-SP-3"]
+
+    def test_la_ficha_los_recibe_marcados(self, repo):
+        _insert_licitacion("EXP-SP-4", estado="PUB", tipos_anuncio="DOC_CN")
+        repo.upsert_meta("EXP-SP-4", [_ref_servlet("legal", "D1"), _ref_servlet("technical", "D2")])
+
+        filas = repo.list_by_licitacion("EXP-SP-4")
+
+        assert [f["sin_publicar"] for f in filas] == [True, True]
+
+    def test_un_error_de_descarga_en_esa_ventana_tambien_va_marcado(self, repo):
+        """Los que ya se intentaron antes de este arreglo: el 500 no fue un
+        enlace caducado, y la ficha tiene que poder decirlo."""
+        _insert_licitacion("EXP-SP-5", estado="PUB", tipos_anuncio="DOC_CN")
+        repo.upsert_meta("EXP-SP-5", [_ref_servlet()])
+        doc = repo.list_by_licitacion("EXP-SP-5")[0]
+        repo.mark_error(doc["id"], error_detail="descarga fallida: token caducado (500): 500")
+
+        assert repo.list_by_licitacion("EXP-SP-5")[0]["sin_publicar"] is True
+
+    def test_lo_que_ya_se_descargo_no_va_marcado(self, repo):
+        """Si tenemos el texto, PLACSP lo sirvió: los hechos mandan sobre la
+        inferencia por los anuncios."""
+        _insert_licitacion("EXP-SP-6", estado="PUB", tipos_anuncio="DOC_CN")
+        repo.upsert_meta("EXP-SP-6", [_ref_servlet()])
+        doc = repo.list_by_licitacion("EXP-SP-6")[0]
+        repo.mark_extracted(doc["id"], texto="cláusulas", sha256="abc")
+
+        assert repo.list_by_licitacion("EXP-SP-6")[0]["sin_publicar"] is False
+
+    def test_con_el_pliego_publicado_no_va_marcado(self, repo):
+        _insert_licitacion("EXP-SP-7", estado="PUB", tipos_anuncio="DOC_CD,DOC_CN")
+        repo.upsert_meta("EXP-SP-7", [_ref_servlet()])
+
+        assert repo.list_by_licitacion("EXP-SP-7")[0]["sin_publicar"] is False
 
 
 class TestListByLicitacion:
