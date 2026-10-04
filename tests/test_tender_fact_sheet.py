@@ -505,12 +505,15 @@ class TestPartialPayloadSurvives:
 # ── Extracción bajo demanda (botón «Extraer ficha») ────────────────────────
 
 
-def _seed_licitacion(licitacion_id: str) -> None:
+def _seed_licitacion(
+    licitacion_id: str, *, estado: str | None = None, tipos_anuncio: str | None = None
+) -> None:
     with connect() as c:
         c.execute(
-            "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
-            "VALUES (%s, 'Contrato con pliego', 'placsp', CURRENT_TIMESTAMP)",
-            (licitacion_id,),
+            "INSERT INTO licitaciones "
+            "(id_externo, titulo, fuente, fecha_extraccion, estado, tipos_anuncio) "
+            "VALUES (%s, 'Contrato con pliego', 'placsp', CURRENT_TIMESTAMP, %s, %s)",
+            (licitacion_id, estado, tipos_anuncio),
         )
 
 
@@ -626,6 +629,67 @@ class TestExtractFactSheetOnDemand:
 
         assert fetch_mock.call_count == 1  # el doc en error se reintentó
         assert record.status == "extracted"
+
+    def test_pliego_sin_publicar_no_se_intenta_y_se_dice(self, tmp_db):
+        """PLACSP anuncia el pliego antes de servirlo: 500 hasta el ``DOC_CD``.
+
+        Intentarlo costaba cuatro reintentos por documento (76 s de espera en
+        un expediente de cuatro), dejaba las filas en ``error`` y el mensaje
+        hablaba de enlaces caducados cuando todavía no se habían publicado.
+        """
+        _db_mod, _ = tmp_db
+        _seed_licitacion("OND-6", estado="PUB", tipos_anuncio="DOC_CN")
+        repo = DocumentosRepository()
+        repo.upsert_meta(
+            "OND-6",
+            [
+                DocumentoReferencia(
+                    tipo="legal",
+                    uri=(
+                        "https://contrataciondelestado.es/FileSystem/servlet/"
+                        "GetDocumentByIdServlet?cifrado=C&DocumentIdParam=T"
+                    ),
+                )
+            ],
+        )
+
+        with (
+            patch("scraper.document_fetcher.fetch_and_extract") as fetch_mock,
+            pytest.raises(ValueError, match="todavía no ha publicado"),
+        ):
+            extract_fact_sheet_on_demand("OND-6", model="gpt-4o-mini")
+
+        assert fetch_mock.call_count == 0
+        assert repo.list_by_licitacion("OND-6")[0]["status"] == "pending"
+
+    def test_un_error_previo_sin_publicar_tampoco_se_reintenta(self, tmp_db):
+        """Los que ya fallaron antes de saber esto: reintentarlos en cada clic
+        es esperar otra vez por el mismo 500."""
+        _db_mod, _ = tmp_db
+        _seed_licitacion("OND-7", estado="PUB", tipos_anuncio="DOC_CN")
+        repo = DocumentosRepository()
+        repo.upsert_meta(
+            "OND-7",
+            [
+                DocumentoReferencia(
+                    tipo="legal",
+                    uri=(
+                        "https://contrataciondelestado.es/FileSystem/servlet/"
+                        "GetDocumentByIdServlet?cifrado=C&DocumentIdParam=T"
+                    ),
+                )
+            ],
+        )
+        doc = repo.list_by_licitacion("OND-7")[0]
+        repo.mark_error(int(doc["id"]), error_detail="descarga fallida: token caducado (500): 500")
+
+        with (
+            patch("scraper.document_fetcher.fetch_and_extract") as fetch_mock,
+            pytest.raises(ValueError, match="todavía no ha publicado"),
+        ):
+            extract_fact_sheet_on_demand("OND-7", model="gpt-4o-mini")
+
+        assert fetch_mock.call_count == 0
 
 
 class TestListPendingLicitacionesSelector:

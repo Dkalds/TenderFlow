@@ -512,6 +512,12 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     ``extracted``: sin eso la ficha sería imposible, y con eso reintentarlos
     en cada clic no resucita enlaces con token caducado. Fail-open por
     documento, mismo criterio que el job nocturno.
+
+    Lo que PLACSP ha anunciado sin publicarlo todavía (``sin_publicar``) no se
+    intenta, esté ``pending`` o en ``error``: el servlet contesta 500 hasta que
+    sale el pliego, y cada intento son cuatro reintentos con espera —76 s para
+    un expediente de cuatro documentos, medido el 2026-10-04— para acabar
+    dejando la fila en ``error``.
     """
     if not _pdf_extraction_available():
         log.warning("fact_sheet_ondemand_fetch_skipped_no_pliegos_extra")
@@ -521,12 +527,13 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
 
     repo = DocumentosRepository()
     rows = repo.list_by_licitacion(licitacion_id)
-    pending = [row for row in rows if row.get("status") == "pending"]
+    descargables = [row for row in rows if not row.get("sin_publicar")]
+    pending = [row for row in descargables if row.get("status") == "pending"]
     any_extracted = any(row.get("status") == "extracted" for row in rows)
     candidates = (
         pending
         if (pending or any_extracted)
-        else [row for row in rows if row.get("status") == "error"]
+        else [row for row in descargables if row.get("status") == "error"]
     )
     candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
 
@@ -566,6 +573,15 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
         return (
             "La licitación no referencia ningún pliego descargable; "
             "la ficha necesita al menos un documento adjunto en PLACSP."
+        )
+    if any(row.get("sin_publicar") for row in rows):
+        # Va antes que el resto porque es la causa y no un síntoma: hablar de
+        # descargas fallidas o de enlaces caducados mandaría a esperar a «la
+        # ingesta diaria», que no arregla nada mientras PLACSP no publique.
+        return (
+            "PLACSP ha anunciado los pliegos de este expediente, pero todavía no "
+            "ha publicado el pliego: hasta que lo haga, sus enlaces dan error. "
+            "La ficha se podrá extraer cuando lo publique."
         )
     if fetched.get("skipped_no_extra"):
         # Sin pypdf no se intenta nada; sin python-docx/odfpy (la imagen de la

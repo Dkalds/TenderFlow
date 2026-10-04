@@ -873,6 +873,11 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
             # cualquier otro fallo de descarga —conservando el prefijo, que es lo
             # que distingue "falló la red" de "falló la extracción"— pero nombrando
             # la causa: estos son justo los que un token nuevo del CODICE resucita.
+            #
+            # Contesta ese mismo 500 cuando el pliego está anunciado pero aún sin
+            # publicar. Esos no deberían llegar aquí: ``list_pendientes`` y la
+            # extracción bajo demanda los apartan antes (``sin_publicar``), porque
+            # a ellos ningún token nuevo los revive —su URI no cambia al publicarse—.
             detalle = (
                 f"descarga fallida: token caducado (500): {e}"
                 if _status_de(e) == 500
