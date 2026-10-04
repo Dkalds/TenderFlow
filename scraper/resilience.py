@@ -8,12 +8,15 @@
   ``breaker_para_host`` elige el que toca.
 
 El breaker ignora ``ValueError`` (validación de tamaño o URL) porque no son
-fallos del servidor — un payload malicioso no debería abrir el circuito.
+fallos del servidor — un payload malicioso no debería abrir el circuito. Y, por
+lo mismo, ``RecursoNoServidoError``: la respuesta con la que una plataforma
+dice que no sirve un recurso concreto.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 
 import pybreaker
 import requests
@@ -34,16 +37,55 @@ log = get_logger(__name__)
 _stdlib_log = logging.getLogger(__name__)
 
 
+class RecursoNoServidoError(requests.HTTPError):
+    """El servidor contestó, y lo que dijo habla del recurso pedido, no de él.
+
+    Lo lanza quien sabe reconocer esa respuesta en su plataforma (hoy,
+    ``scraper.document_fetcher`` con el 500 del servlet de PLACSP). Ni se
+    reintenta ni cuenta para el circuito: pedir otra vez lo mismo da lo mismo, y
+    una plataforma que contesta en 0,2 s no está caída.
+
+    Es un ``HTTPError`` para que quien ya trata los fallos HTTP de una descarga
+    la reciba sin saber de ella; por eso :func:`_is_transient` la mira antes
+    que al resto, que por su 500 la tomaría por transitoria.
+    """
+
+
 def _is_transient(exc: BaseException) -> bool:
     """Reintenta solo en errores transitorios de red y 5xx/429."""
+    if isinstance(exc, RecursoNoServidoError):
+        return False
     if isinstance(exc, requests.ConnectionError | requests.Timeout):
         return True
     if isinstance(exc, requests.HTTPError):
-        resp = getattr(exc, "response", None)
-        if resp is None:
+        codigo = status_de(exc)
+        if codigo is None:
+            # Sin ``response`` y sin código en el mensaje no hay con qué decidir.
             return True
-        return bool(500 <= resp.status_code < 600 or resp.status_code in (408, 429))
+        # Un 4xx o una redirección dan lo mismo al cuarto intento que al
+        # primero; 408 y 429 son los dos 4xx que piden justamente esperar.
+        return bool(500 <= codigo < 600 or codigo in (408, 429))
     return False
+
+
+def status_de(exc: requests.HTTPError) -> int | None:
+    """Código HTTP de un ``HTTPError``, venga de donde venga.
+
+    ``PinnedHttpsResponse.raise_for_status`` (shared/outbound_http.py) construye
+    el error **sin** ``response=``, así que ``exc.response`` es ``None`` en toda
+    la ruta de descarga de documentos y leer ``exc.response.status_code`` a
+    secas no detecta nada: ni la causa de un 500 al etiquetarlo, ni que un 404
+    no merece reintento. Se cae entonces al texto del mensaje, cuyo formato fija
+    esa misma función; ``test_resilience`` y ``test_document_fetcher`` ejercitan
+    el ``raise_for_status`` real para que un cambio de redacción rompa los tests
+    en vez de dejar la clasificación muda.
+    """
+    respuesta = getattr(exc, "response", None)
+    codigo = getattr(respuesta, "status_code", None)
+    if isinstance(codigo, int):
+        return codigo
+    match = re.search(r"\b(\d{3})\b", str(exc))
+    return int(match.group(1)) if match else None
 
 
 http_retry = retry(
@@ -131,7 +173,7 @@ def _nuevo_breaker(nombre: str) -> pybreaker.CircuitBreaker:
     return pybreaker.CircuitBreaker(
         fail_max=5,
         reset_timeout=settings.BREAKER_BASE_TIMEOUT,
-        exclude=[ValueError],
+        exclude=[ValueError, RecursoNoServidoError],
         listeners=[
             _AdaptiveBackoffListener(
                 base_timeout=settings.BREAKER_BASE_TIMEOUT,

@@ -72,7 +72,6 @@ import importlib
 import io
 import multiprocessing
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -84,12 +83,13 @@ from urllib.parse import urlparse
 
 import pybreaker
 import requests
+import urllib3
 
 from config import USER_AGENT, settings
 from observability.logging import get_logger
-from scraper.resilience import breaker_para_host, http_retry
+from scraper.resilience import RecursoNoServidoError, breaker_para_host, http_retry, status_de
 from shared.object_store import ObjectStoreError, document_blob_key, get_object_store
-from shared.outbound_http import pinned_https_request
+from shared.outbound_http import PinnedHttpsResponse, pinned_https_request
 
 log = get_logger(__name__)
 
@@ -164,25 +164,6 @@ class PaginaExtraida:
     ocr: bool = False
 
 
-def _status_de(exc: requests.HTTPError) -> int | None:
-    """Código HTTP de un ``HTTPError``, venga de donde venga.
-
-    ``PinnedHttpsResponse.raise_for_status`` (shared/outbound_http.py) construye
-    el error **sin** ``response=``, así que ``exc.response`` es ``None`` en toda
-    la ruta de descarga de documentos y leer ``exc.response.status_code`` a
-    secas no detecta nada. Se cae entonces al texto del mensaje, cuyo formato
-    fija esa misma función; ``test_document_fetcher`` ejercita el
-    ``raise_for_status`` real para que un cambio de redacción rompa el test en
-    vez de dejar la clasificación muda.
-    """
-    respuesta = getattr(exc, "response", None)
-    codigo = getattr(respuesta, "status_code", None)
-    if isinstance(codigo, int):
-        return codigo
-    match = re.search(r"\b(\d{3})\b", str(exc))
-    return int(match.group(1)) if match else None
-
-
 class DocumentFetchError(RuntimeError):
     """Fallo recuperable de extracción (PDF corrupto, PDF sin texto ni OCR,
     ZIP que excede los límites). Distinto de fallos de descarga (red/SSRF/
@@ -211,6 +192,47 @@ class ExtractorAusenteError(UnsupportedDocumentError):
     """
 
 
+#: Servlet con el que PLACSP sirve los adjuntos de sus expedientes.
+_SERVLET_PLACSP = "/FileSystem/servlet/GetDocumentByIdServlet"
+
+#: Lo que ese servlet escribe en el cuerpo de su 500 cuando no sirve un
+#: documento concreto. Entero son 42 bytes: ``Error 500: java.lang.NullPointerException``.
+_FIRMA_NO_SERVIDO = b"java.lang.NullPointerException"
+
+#: Cuánto cuerpo de un 500 se lee para buscar la firma.
+_MAX_CUERPO_DE_ERROR = 512
+
+
+def _no_sirve_el_documento(uri: str, respuesta: PinnedHttpsResponse) -> bool:
+    """¿Es el 500 con el que el servlet de PLACSP dice que no sirve ESTE documento?
+
+    Lo contesta por un enlace muerto, un token caducado o un pliego anunciado y
+    aún sin publicar, y es una respuesta del documento, no una caída: llega en
+    ~0,2 s y los demás documentos de PLACSP —hasta los del mismo expediente—
+    responden 200 en ese momento. Tratarla como un 5xx cualquiera costaba cuatro
+    intentos (~19 s) por documento, y cinco seguidos abrían el circuito y el
+    resto del lote se saltaba: 536 documentos en tres noches del 2026-09-04 al
+    2026-10-04, sin que PLACSP estuviera caído ninguna.
+
+    La regla es estrecha porque solo eso está medido: el servlet, un 500 y esa
+    firma en el cuerpo. Un 500 distinto (la plataforma rota de verdad) o esa
+    firma en otro servidor siguen el camino de siempre.
+    """
+    if respuesta.status_code != 500 or _SERVLET_PLACSP not in urlparse(uri).path:
+        return False
+    leido = b""
+    try:
+        for trozo in respuesta.iter_content(chunk_size=_MAX_CUERPO_DE_ERROR):
+            leido += trozo
+            if len(leido) >= _MAX_CUERPO_DE_ERROR:
+                break
+    except Exception:
+        # El cuerpo es un indicio, no un requisito: si no se deja leer, el 500
+        # se queda en lo que era antes de mirarlo.
+        return False
+    return _FIRMA_NO_SERVIDO in leido
+
+
 def _download_bytes(uri: str) -> tuple[bytes, str | None]:
     """Descarga ``uri`` en memoria con guardas SSRF + tamaño.
 
@@ -227,6 +249,52 @@ def _download_bytes(uri: str) -> tuple[bytes, str | None]:
 @http_retry
 def _download_bytes_con_reintentos(uri: str) -> tuple[bytes, str | None]:
     """El cuerpo de :func:`_download_bytes`, sin el circuito.
+
+    Cada intento es :func:`_descargar_un_intento`; lo que se añade aquí es la
+    traducción de sus fallos de red a lo que ``http_retry`` sabe reintentar. El
+    transporte fijado no habla ese idioma: cuando urllib3 se queda sin
+    respuesta lanza un ``RequestException`` a secas —con el error de urllib3
+    como causa—, y lo que se corta con el cuerpo a medias sale como el error de
+    urllib3 tal cual. Ninguno es ``ConnectionError`` ni ``Timeout``, así que un
+    corte de red dejaba el documento en ``error`` al primer intento.
+
+    Se traduce aquí y no en ``shared/outbound_http.py`` porque ese transporte
+    lo comparten los webhooks, el correo y la descarga de modelos, y ninguno
+    decide por el tipo del error: capturan ``RequestException`` y reintentan,
+    o no, con sus propias reglas.
+    """
+    try:
+        return _descargar_un_intento(uri)
+    except urllib3.exceptions.HTTPError as exc:
+        # Sin envolver solo llega lo que falla con la respuesta ya empezada:
+        # ``iter_content`` deja pasar el error de urllib3.
+        raise _error_de_red("Pinned HTTPS response body failed", exc) from exc
+    except requests.RequestException as exc:
+        causa = exc.__cause__
+        if not isinstance(causa, urllib3.exceptions.HTTPError):
+            raise
+        raise _error_de_red(str(exc), causa) from causa
+
+
+def _error_de_red(mensaje: str, causa: urllib3.exceptions.HTTPError) -> requests.ConnectionError:
+    """El fallo de urllib3 *causa*, como el error de red que ``http_retry`` reintenta.
+
+    El mensaje conserva el principio del que da el transporte, que es por lo
+    que se reconocen estas filas en ``error_detail``, y le añade la clase del
+    fallo: sin ella, «Pinned HTTPS request failed» no dice si fue un timeout o
+    una conexión rechazada. Solo la clase, porque el texto de urllib3 lleva la
+    IP y la dirección en memoria de la conexión.
+
+    Siempre ``ConnectionError``, también para un timeout: aquí nadie los trata
+    distinto, y separarlos por la jerarquía de urllib3 engaña (su
+    ``NewConnectionError``, una conexión rechazada, hereda de
+    ``ConnectTimeoutError``).
+    """
+    return requests.ConnectionError(f"{mensaje} ({type(causa).__name__})")
+
+
+def _descargar_un_intento(uri: str) -> tuple[bytes, str | None]:
+    """Una petición de ``uri``, con los errores tal y como los da el transporte.
 
     DNS-pinning (mismo helper que webhooks, ``shared/ssrf.py``): resuelve y
     valida la IP en cada intento (no solo al parsear el CODICE), cerrando la
@@ -250,6 +318,13 @@ def _download_bytes_con_reintentos(uri: str) -> tuple[bytes, str | None]:
         timeout_seconds=float(settings.REQUEST_TIMEOUT),
         allowed_hosts=allowed_hosts or None,
     ) as r:
+        if _no_sirve_el_documento(uri, r):
+            # El mensaje empieza como el de ``raise_for_status`` a propósito:
+            # ``status_de`` saca el código de ahí.
+            raise RecursoNoServidoError(
+                f"Pinned HTTPS response status {r.status_code}: el servlet de PLACSP "
+                "no sirve este documento (NullPointerException)"
+            )
         r.raise_for_status()
         content_type = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower() or None
 
@@ -865,22 +940,36 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
             return "skipped"
         content, content_type = recuperado
         desde_blob = True
+    except RecursoNoServidoError as e:
+        # Va antes que ``HTTPError``, de la que hereda: la plataforma ha dicho
+        # que no sirve ESTE documento, y el mensaje ya trae la causa. Etiquetarlo
+        # «token caducado» mandaría a esperar un enlace nuevo que puede no llegar.
+        #
+        # Es también lo que contesta por un pliego anunciado y aún sin publicar.
+        # Esos no deberían llegar aquí: ``list_pendientes`` y la extracción bajo
+        # demanda los apartan antes (``sin_publicar``), y su URI no cambia al
+        # publicarse.
+        recuperado = _contenido_desde_blob(documento_id, documento)
+        if recuperado is None:
+            log.warning("document_fetch_download_failed", documento_id=documento_id, error=str(e))
+            repo.mark_error(
+                documento_id, error_detail=f"descarga fallida: {e}"[:_MAX_ERROR_DETAIL_LEN]
+            )
+            return "error"
+        content, content_type = recuperado
+        desde_blob = True
     except requests.HTTPError as e:
         recuperado = _contenido_desde_blob(documento_id, documento)
         if recuperado is None:
-            # El servlet de PLACSP contesta 500 (NullPointerException), no 404,
-            # cuando el token rotativo de la URI ha caducado. Se marca error como
-            # cualquier otro fallo de descarga —conservando el prefijo, que es lo
-            # que distingue "falló la red" de "falló la extracción"— pero nombrando
-            # la causa: estos son justo los que un token nuevo del CODICE resucita.
-            #
-            # Contesta ese mismo 500 cuando el pliego está anunciado pero aún sin
-            # publicar. Esos no deberían llegar aquí: ``list_pendientes`` y la
-            # extracción bajo demanda los apartan antes (``sin_publicar``), porque
-            # a ellos ningún token nuevo los revive —su URI no cambia al publicarse—.
+            # Un 500 sin la firma con la que el servlet de PLACSP dice «este
+            # documento no lo sirvo» (ese va en la rama de arriba). Se marca error
+            # como cualquier otro fallo de descarga —conservando el prefijo, que es
+            # lo que distingue "falló la red" de "falló la extracción"— y con la
+            # etiqueta con la que se venían contando los 500, aunque de estos ya
+            # no consta que sean por el token.
             detalle = (
                 f"descarga fallida: token caducado (500): {e}"
-                if _status_de(e) == 500
+                if status_de(e) == 500
                 else f"descarga fallida: {e}"
             )
             log.warning("document_fetch_download_failed", documento_id=documento_id, error=str(e))

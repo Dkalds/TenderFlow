@@ -115,6 +115,7 @@ class TestRunFetchPhase:
             "skipped": 0,
             "unsupported": 0,
             "aplazados": 0,
+            "revividos": 0,
         }
 
     def test_no_pending_returns_zero_counts(self, repo):
@@ -127,7 +128,58 @@ class TestRunFetchPhase:
             # (PLIEGO_FETCH_MAX_SECONDS). Sin tope, siempre 0, pero la clave
             # está para que el informe tenga siempre la misma forma.
             "aplazados": 0,
+            # Descargas fallidas que esta pasada devolvió a ``pending`` antes de
+            # elegir el lote. No es un resultado más de los de arriba: lo
+            # revivido se cuenta además en el que le toque al reintentarse.
+            "revividos": 0,
         }
+
+    def test_revive_las_descargas_fallidas_antes_de_elegir_el_lote(self, repo):
+        """Lo que se revive entra en el lote de esa misma noche."""
+        from datetime import UTC, datetime, timedelta
+
+        from db.database import connect
+
+        doc = _seed_pending(repo, "EXP-F7")
+        repo.mark_error(doc["id"], error_detail="descarga fallida: Pinned HTTPS request failed")
+        ahora = datetime.now(UTC)
+        with connect() as c:
+            c.execute(
+                "UPDATE licitaciones SET estado = 'PUB', "
+                "fecha_limite_ts = now() + interval '10 days' WHERE id_externo = 'EXP-F7'"
+            )
+            c.execute(
+                "UPDATE documentos SET created_at = %s, updated_at = %s WHERE id = %s",
+                (
+                    (ahora - timedelta(days=3)).isoformat(),
+                    (ahora - timedelta(days=2)).isoformat(),
+                    doc["id"],
+                ),
+            )
+
+        with patch("scraper.document_fetcher.fetch_and_extract", return_value="extracted") as fetch:
+            counts = _run_fetch_phase()
+
+        assert [llamada.args[0]["id"] for llamada in fetch.call_args_list] == [doc["id"]]
+        assert counts["revividos"] == 1
+        assert counts["extracted"] == 1
+
+    def test_un_fallo_al_revivir_no_deja_sin_lote(self, repo):
+        """Revivir es un añadido: si se cae, lo pendiente se procesa igual."""
+        _seed_pending(repo, "EXP-F8")
+
+        with (
+            patch.object(
+                DocumentosRepository,
+                "revivir_descargas_fallidas",
+                side_effect=RuntimeError("la consulta de revive se cayó"),
+            ),
+            patch("scraper.document_fetcher.fetch_and_extract", return_value="extracted"),
+        ):
+            counts = _run_fetch_phase()
+
+        assert counts["extracted"] == 1
+        assert counts["revividos"] == 0
 
     def test_skipped_no_consume_la_fila(self, repo):
         """Un documento saltado por breaker abierto se cuenta aparte y sigue
@@ -143,6 +195,7 @@ class TestRunFetchPhase:
             "skipped": 1,
             "unsupported": 0,
             "aplazados": 0,
+            "revividos": 0,
         }
         assert len(repo.list_pendientes()) == 1
 
@@ -166,6 +219,7 @@ class TestRunFetchPhase:
             "skipped": 0,
             "unsupported": 1,
             "aplazados": 0,
+            "revividos": 0,
         }
 
     def test_unexpected_exception_counts_as_error(self, repo):

@@ -11,6 +11,9 @@ licitación (uno roto no aborta el resto del lote, mismo criterio que el
 resto del scraper):
 
 1. **Fetch**: documentos ``pending`` → ``scraper.document_fetcher.fetch_and_extract``.
+   Antes de elegir el lote, las descargas fallidas a las que les toca otro
+   intento vuelven a ``pending``
+   (``DocumentosRepository.revivir_descargas_fallidas``).
 2. **Embed**: documentos ``extracted`` sin chunks → ``services.rag.chunking.chunk_text``
    → ``services.embeddings.encode_texts`` → ``documento_chunks``.
 3. **Facts**: licitaciones con páginas y sin ficha → extracción Pydantic
@@ -88,6 +91,20 @@ def _marcar_error_inesperado(repo: Any, doc: Mapping[str, Any], exc: Exception) 
         log.warning("documentos_fetch_mark_error_failed", documento_id=documento_id, exc_info=True)
 
 
+def _revivir_descargas_fallidas(repo: Any) -> int:
+    """Da otro intento a las descargas fallidas a las que les toca.
+
+    Va antes de elegir el lote para que lo revivido entre esa misma noche. Si
+    la consulta se cae, la fase sigue con lo que ya estaba ``pending``: revivir
+    es un añadido y no puede dejar una noche sin lote.
+    """
+    try:
+        return int(repo.revivir_descargas_fallidas())
+    except Exception:
+        log.warning("documentos_fetch_revivir_failed", exc_info=True)
+        return 0
+
+
 def _run_fetch_phase(
     limit: int = _FETCH_BATCH_SIZE, max_seconds: float | None = None
 ) -> dict[str, int]:
@@ -102,17 +119,22 @@ def _run_fetch_phase(
     from scraper.document_fetcher import fetch_and_extract
 
     repo = DocumentosRepository()
+    revividos = _revivir_descargas_fallidas(repo)
     pendientes = repo.list_pendientes(limit=limit)
     # ``skipped`` (breaker abierto), ``unsupported`` (formato que no sabemos
     # leer, S8.2) y ``aplazados`` (no cupieron en el tope de reloj) se declaran
     # aquí para que el informe del cron tenga siempre la misma forma: un lote
     # entero saltado debe verse como 300 skipped, no como una clave ausente.
+    # ``revividos`` no es un resultado más: son descargas fallidas devueltas a
+    # ``pending`` antes de elegir el lote, y cada una se cuenta además en el
+    # resultado que le toque al reintentarse.
     counts: dict[str, int] = {
         "extracted": 0,
         "error": 0,
         "skipped": 0,
         "unsupported": 0,
         "aplazados": 0,
+        "revividos": revividos,
     }
     inicio = time.monotonic()
     for posicion, doc in enumerate(pendientes):

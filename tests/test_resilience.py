@@ -42,6 +42,70 @@ def test_is_transient_random_error_not_retried():
     assert not _is_transient(ValueError("payload too big"))
 
 
+def _http_error_del_transporte_fijado(status_code: int) -> requests.HTTPError:
+    """El ``HTTPError`` que da el ``raise_for_status`` real del transporte fijado.
+
+    ``PinnedHttpsResponse`` lo construye sin ``response=``: el estado solo va en
+    el mensaje. Se usa el método de verdad, y no un error fabricado aquí, para
+    que un cambio en su redacción rompa estos tests en vez de devolver la
+    clasificación a «no sé qué estado es, reintento».
+    """
+    from shared.outbound_http import PinnedHttpsResponse
+
+    respuesta = PinnedHttpsResponse.__new__(PinnedHttpsResponse)
+    respuesta.status_code = status_code
+    with pytest.raises(requests.HTTPError) as fallo:
+        respuesta.raise_for_status()
+    return fallo.value
+
+
+@pytest.mark.parametrize("status", [301, 302, 400, 401, 403, 404, 410])
+def test_estado_del_transporte_fijado_que_repetir_no_cambia_no_se_reintenta(status):
+    """Un 404, un 403 o una redirección dan lo mismo al cuarto intento que al primero.
+
+    Sin ``response`` se tomaban todos por transitorios: cuatro peticiones y
+    ~19 s de espera por cada documento, para acabar en el mismo error.
+    """
+    exc = _http_error_del_transporte_fijado(status)
+
+    assert exc.response is None
+    assert not _is_transient(exc)
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503, 504])
+def test_estado_transitorio_del_transporte_fijado_se_reintenta(status):
+    assert _is_transient(_http_error_del_transporte_fijado(status))
+
+
+def test_http_error_sin_estado_legible_sigue_siendo_transitorio():
+    """Sin ``response`` y sin código en el mensaje no hay con qué decidir: como antes."""
+    assert _is_transient(requests.HTTPError("el servidor contestó algo ilegible"))
+
+
+def test_status_de_prefiere_la_respuesta_y_cae_al_mensaje():
+    from scraper.resilience import status_de
+
+    con_respuesta = requests.HTTPError("503 Server Error")
+    con_respuesta.response = _FakeResp(404)
+
+    assert status_de(con_respuesta) == 404
+    assert status_de(_http_error_del_transporte_fijado(410)) == 410
+    assert status_de(requests.HTTPError("sin código")) is None
+
+
+def test_http_retry_pide_una_sola_vez_un_404_del_transporte_fijado():
+    calls = {"n": 0}
+
+    @http_retry
+    def _pedir():
+        calls["n"] += 1
+        raise _http_error_del_transporte_fijado(404)
+
+    with pytest.raises(requests.HTTPError):
+        _pedir()
+    assert calls["n"] == 1
+
+
 def test_http_retry_reraises_after_exhaustion():
     calls = {"n": 0}
 
@@ -91,6 +155,40 @@ def test_breaker_opens_after_consecutive_failures():
     # Llamadas posteriores también son cortocircuitadas.
     with pytest.raises(pybreaker.CircuitBreakerError):
         always_fail()
+
+
+def test_recurso_no_servido_no_se_reintenta():
+    """Es un ``HTTPError`` sin ``response``, que a secas se toma por transitorio.
+
+    Así llegan los errores del transporte de documentos (``PinnedHttpsResponse``
+    no pasa ``response=``), y por eso el 500 con el que PLACSP contesta por un
+    documento concreto se pedía cuatro veces: 417 reintentos en los 33 lotes de
+    ``pliegos.yml`` del 2026-09-04 al 2026-10-04, ninguno con otro resultado.
+    """
+    from scraper.resilience import RecursoNoServidoError
+
+    exc = RecursoNoServidoError("Pinned HTTPS response status 500")
+
+    assert isinstance(exc, requests.HTTPError)
+    assert not _is_transient(exc)
+
+
+def test_recurso_no_servido_no_cuenta_para_el_circuito():
+    """El servidor contestó: lo roto es el recurso pedido, no la plataforma."""
+    from scraper.resilience import RecursoNoServidoError, _nuevo_breaker
+
+    circuito = _nuevo_breaker("test_recurso_no_servido")
+
+    @circuito
+    def pedir() -> None:
+        raise RecursoNoServidoError("Pinned HTTPS response status 500")
+
+    for _ in range(circuito.fail_max + 1):
+        with pytest.raises(RecursoNoServidoError):
+            pedir()
+
+    assert circuito.current_state == "closed"
+    assert circuito.fail_counter == 0
 
 
 def test_placsp_breaker_exported():
