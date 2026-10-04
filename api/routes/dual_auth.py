@@ -25,18 +25,12 @@ from fastapi.security import APIKeyHeader
 from api.concurrency import run_db
 from config import settings
 from observability.logging import get_logger
-from shared.csrf import csrf_token_valido
 from shared.identity import user_key_from_email
 
 log = get_logger(__name__)
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-
-#: Vida máxima del token CSRF. Es la de la sesión (`api/routes/auth.py`):
-#: la cookie se emite en el login y no se renueva, así que caducar el token
-#: antes que la sesión rompería las mutaciones sin cerrar la sesión.
-_CSRF_MAX_AGE = 86400
 
 
 async def require_any_auth(
@@ -58,7 +52,7 @@ async def require_any_auth(
     scopes y ``last_used``) que usa ``require_api_key``.
     """
     if session:
-        from api.routes.auth import get_current_session_user
+        from api.routes.auth import _reject_bad_csrf, get_current_session_user
 
         session_user = await get_current_session_user(session)
         if session_user.get("mfa_required") and not session_user.get("mfa_verified_at"):
@@ -66,15 +60,13 @@ async def require_any_auth(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="MFA verification required for this session.",
             )
-        # Misma función que usa `api/routes/auth.py::_reject_bad_csrf`. Esta rama
-        # tenía su propia copia de la comparación: dos sitios donde cambiar el
-        # formato del token, y solo uno se habría acordado.
-        if request.method.upper() in _UNSAFE_METHODS and not csrf_token_valido(
-            x_csrf_token,
-            str(session_user.get("session_token") or ""),
-            max_age=_CSRF_MAX_AGE,
-        ):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token mismatch")
+        # La misma validación que `require_csrf`, vida del token incluida. Esta
+        # rama tuvo primero su propia copia de la comparación y después su
+        # propio `max_age` de 24 h: cuando la sesión se hizo deslizante (#311)
+        # solo se acordó el otro sitio, y pasado un día del login toda mutación
+        # por aquí daba 403 con la sesión viva.
+        if request.method.upper() in _UNSAFE_METHODS:
+            _reject_bad_csrf(session_user, x_csrf_token)
         session_user["auth_method"] = "session"
         session_user["user_key"] = user_key_from_email(
             session_user.get("email"), int(session_user["user_id"])
