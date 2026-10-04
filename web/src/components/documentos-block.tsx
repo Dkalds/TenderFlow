@@ -93,7 +93,14 @@ function EnlaceFicha({ href, children }: { href: string; children: React.ReactNo
  *  cada cuatro, el enlace abre perfectamente en el navegador. Romperlo sería
  *  peor que la nota de aviso. Por eso el bloque ofrece además la ficha del
  *  expediente (`fichaUrl`), que es la salida buena cuando el enlace directo ya
- *  no responde. */
+ *  no responde.
+ *
+ *  Sobre `sin_publicar`: ahí el enlace **sí se quita**. PLACSP referencia el
+ *  pliego desde que publica el anuncio de licitación, pero su servlet contesta
+ *  «Error 500» a esos enlaces hasta que publica el pliego —60 de 60 en la
+ *  medición del 2026-10-04—, así que el enlace no abre nada y el motivo no es
+ *  que haya caducado. Se enseña el nombre, que ya dice qué va a publicarse, y
+ *  la salida sigue siendo la ficha del expediente. */
 export function DocumentosBlock({
   licitacionId,
   fichaUrl,
@@ -127,32 +134,48 @@ export function DocumentosBlock({
     );
   }
 
+  const haySinPublicar = items.some((doc) => doc.sin_publicar);
+
   return (
     <div className="mt-6 space-y-3">
       <SectionTitle as="h3">Documentos</SectionTitle>
+      {haySinPublicar && (
+        <p className="text-tf-meta text-muted-foreground">
+          PLACSP ha anunciado estos documentos, pero todavía no ha publicado el pliego: hasta que lo
+          haga, sus enlaces dan error.
+        </p>
+      )}
       <ul className="space-y-2">
         {items.map((doc) => {
-          const caducado = doc.status === "error";
+          const sinPublicar = doc.sin_publicar;
+          const caducado = !sinPublicar && doc.status === "error";
+          const apagado = sinPublicar || caducado;
           return (
             <li key={doc.id} className="flex items-start gap-2">
               <FileText
                 aria-hidden="true"
-                className={cn("mt-0.5 h-4 w-4 shrink-0", caducado ? "text-muted-foreground/60" : "text-muted-foreground")}
+                className={cn("mt-0.5 h-4 w-4 shrink-0", apagado ? "text-muted-foreground/60" : "text-muted-foreground")}
               />
               <div className="min-w-0 flex-1">
-                <a
-                  href={doc.uri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn(
-                    "inline-flex items-center gap-1 break-all text-tf-body hover:underline",
-                    caducado ? "text-muted-foreground" : "text-primary",
-                  )}
-                >
-                  {doc.filename ?? etiquetaTipo(doc)}
-                  <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-                  <AvisoPestanaNueva />
-                </a>
+                {sinPublicar ? (
+                  <span className="break-all text-tf-body text-muted-foreground">
+                    {doc.filename ?? etiquetaTipo(doc)}
+                  </span>
+                ) : (
+                  <a
+                    href={doc.uri}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      "inline-flex items-center gap-1 break-all text-tf-body hover:underline",
+                      caducado ? "text-muted-foreground" : "text-primary",
+                    )}
+                  >
+                    {doc.filename ?? etiquetaTipo(doc)}
+                    <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    <AvisoPestanaNueva />
+                  </a>
+                )}
                 <p className="text-tf-meta text-muted-foreground">
                   {nuevos.has(doc.id) && (
                     <Badge variant="default" size="sm" className="mr-1.5">
@@ -161,6 +184,7 @@ export function DocumentosBlock({
                   )}
                   {etiquetaTipo(doc)}
                   {doc.size_bytes != null && ` · ${formatBytes(doc.size_bytes)}`}
+                  {sinPublicar && " · sin publicar todavía"}
                   {caducado && " · el enlace original puede haber caducado"}
                 </p>
               </div>
@@ -168,7 +192,13 @@ export function DocumentosBlock({
           );
         })}
       </ul>
-      {fichaUrl && <EnlaceFicha href={fichaUrl}>{textosFicha(fichaUrl).verTodos}</EnlaceFicha>}
+      {fichaUrl && (
+        <EnlaceFicha href={fichaUrl}>
+          {/* Sin nada publicado todavía, «ver todos» prometería unos pliegos
+              que la ficha de la plataforma tampoco tiene. */}
+          {items.every((doc) => doc.sin_publicar) ? textosFicha(fichaUrl).ver : textosFicha(fichaUrl).verTodos}
+        </EnlaceFicha>
+      )}
     </div>
   );
 }
