@@ -541,6 +541,16 @@ gate.
 
 *Adopción:* `export_lanzado` con `formato=pdf_oportunidad`.
 
+*Estado (2026-10-04, rama `claude/competencia-esperada-licitacion-l1nkda`):* el
+bloque **«Competencia esperada»** del one-pager ya existe, entre el expediente y
+la decisión: ofertas esperadas, incumbente, rivales principales con su cuota, la
+parte de la propia organización y la baja típica del ganador, con universo,
+ventana y `n` en la procedencia, o nota de vacío. Sale de
+`GET /licitaciones/{id}/competencia-esperada`
+(`services/competitive/competencia_esperada.py`), el mismo cálculo que el bloque
+compartido de Radar, Detalle y la pestaña Precio de la oportunidad. Siguen sin
+entrar en el PDF los criterios y pesos, los escenarios de precio y el checklist.
+
 #### F2.8 Comparar expedientes — P2
 
 **Para quién.** Quien elige entre dos. **Qué.** Tabla determinística de las

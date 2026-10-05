@@ -11,7 +11,12 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import exclude_duplicados_presentacion_sql
+from db.sql_fragments import (
+    empresa_key_sql,
+    exclude_duplicados_presentacion_sql,
+    organo_normalizado_sql,
+    plegar_organo,
+)
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -55,7 +60,17 @@ def candidatos_a_predecesor(
 
     El órgano se compara por `organo_id` cuando el maestro lo resolvió (C1.2) y
     por texto cuando no: la misma lectura dual que la analítica, por el mismo
-    motivo — un expediente sin resolver sigue siendo un expediente.
+    motivo — un expediente sin resolver sigue siendo un expediente. El texto es
+    el nombre plegado de :func:`organo_normalizado_sql`, que tiene índice propio
+    (v146): con ``lower(btrim(...))``, que no lo tiene, cada consulta de un
+    órgano sin resolver recorría la tabla entera — y la competencia esperada de
+    la ficha pregunta por el predecesor cada vez que se abre un expediente.
+
+    La identidad del adjudicatario (`adjudicatario_clave`, la de
+    :func:`empresa_key_sql`; `empresa_id` y NIF) viaja para que la competencia
+    esperada pueda marcar al incumbente entre los rivales, enlazar su dossier y
+    reconocer a la propia organización. La respuesta de `/similares` no la
+    publica.
     """
     if not cpv4:
         return []
@@ -67,12 +82,13 @@ def candidatos_a_predecesor(
     ]
     params: list[Any] = [id_externo, f"{cpv4}%"]
 
+    plegado = plegar_organo(organo_contratacion)
     if organo_id is not None:
         condiciones.append("l.organo_id = %s")
         params.append(organo_id)
-    elif organo_contratacion:
-        condiciones.append("lower(btrim(l.organo_contratacion)) = lower(btrim(%s))")
-        params.append(organo_contratacion)
+    elif plegado:
+        condiciones.append(f"{organo_normalizado_sql('l')} = %s")
+        params.append(plegado)
     else:
         # Sin órgano no hay predecesor posible: devolverlo sería llamar
         # «predecesor» a un contrato de otro comprador.
@@ -85,7 +101,8 @@ def candidatos_a_predecesor(
     params.append(limit)
     sql = (
         f"SELECT {_COLS}, a.importe_adjudicado, a.nombre AS adjudicatario, "
-        "       a.fecha_adjudicacion "
+        "       a.fecha_adjudicacion, a.empresa_id AS adjudicatario_empresa_id, "
+        f"      a.nif AS adjudicatario_nif, {empresa_key_sql('a')} AS adjudicatario_clave "
         "FROM licitaciones l "
         "JOIN adjudicaciones a ON a.licitacion_id = l.id_externo "
         "WHERE " + " AND ".join(condiciones) + " "

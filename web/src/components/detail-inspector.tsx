@@ -5,6 +5,7 @@ import { ExternalLink, Link2, MessageSquareText, X } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { toast } from "sonner";
 import { LicitacionAI } from "@/components/licitacion-ai";
+import { CompetenciaEsperadaBlock } from "@/components/competencia-esperada";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 import { DocumentosBlock } from "@/components/documentos-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
@@ -36,8 +37,8 @@ import type { LicitacionDetail } from "@/lib/licitacion-detail";
  * lista, no abrir y cerrar.
  *
  * Ningún bloque se ha quedado fuera: Resumen (puntuación + desglose, alertas,
- * predicción de baja, los diez campos, descripción, el enlace al portal de
- * origen y la cronología de eventos del contrato), IA (resumen ejecutivo + chat +
+ * competencia esperada, predicción de baja, los diez campos, descripción, el
+ * enlace al portal de origen y la cronología de eventos del contrato), IA (resumen ejecutivo + chat +
  * «Preguntar» + ficha estructurada del pliego con lotes, criterios, ANS y
  * certificaciones citables), Pliegos (documentos parseados) y Recursos
  * (resoluciones del TACRC). La cabecera conserva estado, badge de recurrida,
@@ -245,6 +246,10 @@ export function DetailInspector({
                 </div>
               </div>
             )}
+
+            {/* Antes de la baja esperada y del simulador: contra cuántos y
+                contra quién es el contexto con el que se leen los dos. */}
+            <CompetenciaEsperadaBlock licitacionId={l.id_externo} />
 
             <div className="mb-4.5">
               <PrediccionBajaBlock licitacionId={l.id_externo} />

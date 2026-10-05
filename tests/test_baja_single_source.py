@@ -1,4 +1,4 @@
-"""Ratchet: la fórmula de baja por-fila vive solo en services/sql_fragments.py.
+"""Ratchet: la fórmula de baja por-fila vive solo en db/sql_fragments.py.
 
 Contexto (docs/IMPROVEMENT_BACKLOG.md): antes de v65_lotes, comparar el
 importe adjudicado de UNA fila contra ``l.importe`` (el presupuesto del
@@ -7,7 +7,10 @@ procedimiento con más de un lote. ``services/competitive/bajas.py`` y
 ``db/repositories/pricing.py`` reinventaban la fórmula cada uno por su
 cuenta -- este test evita que un fichero nuevo (o uno de estos dos, tras un
 refactor descuidado) vuelva a hacerlo en vez de importar
-``services.sql_fragments.BAJA_PCT_SQL``/``EFFECTIVE_BUDGET_SQL``.
+``services.sql_fragments.BAJA_PCT_SQL``/``EFFECTIVE_BUDGET_SQL``. Desde la
+competencia esperada de la ficha, ``BAJA_PCT_SQL`` se define en
+``db/sql_fragments.py`` (``db/`` también la necesita y no puede importar de
+``services/``, ADR-024) y ``services/sql_fragments.py`` la reexporta.
 
 No es un parser SQL real (mismo espíritu que el ratchet TID251 o
 ``test_user_key_sql_isolation.py``): busca los literales de texto que
@@ -15,7 +18,8 @@ constituían la fórmula rota -- "(l.importe - a.importe_adjudicado)" y
 "a.importe_adjudicado) / l.importe" -- en cualquier .py del árbol de
 producción, con dos excepciones documentadas y auditadas a mano:
 
-- ``services/sql_fragments.py``: dueño legítimo de la fórmula.
+- ``services/sql_fragments.py``: la reexporta; la definición, que no casa
+  con el patrón roto, vive en ``db/sql_fragments.py``.
 - ``db/repositories/pricing.py``: duplica ``EFFECTIVE_BUDGET_SQL`` porque
   ``db/`` no debe depender de ``services/`` (capa superior, ADR-024) -- su
   fórmula ya usa ``COALESCE(lo.importe, l.importe)``, no ``l.importe`` a

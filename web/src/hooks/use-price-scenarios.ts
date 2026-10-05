@@ -26,6 +26,11 @@ export type { HistoricalDistribution, PriceScenario, PriceScenariosResult };
  * las dos variantes), pero sin sufijo el escenario del lote 2 y el del
  * expediente compartirían entrada y se pisarían.
  *
+ * `options.competencia` acota la cohorte a adjudicaciones con un número de
+ * ofertas parecido (`competencia_esperada`, bandas 1 / 2-4 / 5+): es la
+ * competencia esperada de la ficha, que el panel ofrece usar. Va también como
+ * sufijo de la clave, y solo cuando se usa: sin ella la clave es la de siempre.
+ *
  * `options.enabled` deja aplazar la llamada mientras el llamador todavía no
  * sabe si hay lote: pedir primero el del expediente y corregir después sería
  * enseñar un precio equivocado y cambiarlo delante del usuario.
@@ -33,18 +38,31 @@ export type { HistoricalDistribution, PriceScenario, PriceScenariosResult };
 export function usePriceScenarios(
   licitacionId: string | null,
   loteId?: number | null,
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; competencia?: number | null },
 ) {
   const lote = loteId ?? null;
+  const competencia = options?.competencia ?? null;
+  const base = [...prediccionKeys.escenarios(licitacionId), lote] as const;
+  const parametros = new URLSearchParams();
+  if (lote != null) parametros.set("lote_id", String(lote));
+  if (competencia != null) parametros.set("competencia_esperada", String(competencia));
+  const query = parametros.toString();
   return useQuery({
-    queryKey: [...prediccionKeys.escenarios(licitacionId), lote],
+    queryKey: competencia == null ? base : [...base, competencia],
     queryFn: () =>
       fetchWithAuth<PriceScenariosResult>(
         `/api/v1/licitaciones/${encodeURIComponent(licitacionId!)}/escenarios-precio` +
-          (lote == null ? "" : `?lote_id=${lote}`),
+          (query ? `?${query}` : ""),
       ),
     enabled: Boolean(licitacionId) && (options?.enabled ?? true),
     staleTime: 5 * 60_000,
+    // Al acotar o soltar la competencia los escenarios anteriores siguen a la
+    // vista mientras llegan los nuevos, pero solo si son del mismo expediente y
+    // del mismo lote: un precio de otro objeto no se enseña ni un instante.
+    placeholderData: (anterior, consultaAnterior) =>
+      consultaAnterior?.queryKey[1] === licitacionId && consultaAnterior?.queryKey[2] === lote
+        ? anterior
+        : undefined,
     meta: META_ERROR_EN_LINEA,
   });
 }

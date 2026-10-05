@@ -38,6 +38,10 @@ const PriceScenariosPanel = dynamic(
   () => import("@/components/pursuits/price-scenarios").then((modulo) => modulo.PriceScenariosPanel),
   { loading: cargando },
 );
+const CompetenciaEsperadaBlock = dynamic(
+  () => import("@/components/competencia-esperada").then((modulo) => modulo.CompetenciaEsperadaBlock),
+  { loading: cargando },
+);
 const SimuladorPuntuacion = dynamic(
   () => import("@/components/pliego/simulador-puntuacion").then((modulo) => modulo.SimuladorPuntuacion),
   { loading: cargando },
@@ -57,9 +61,11 @@ export const EditorCompleto = dynamic(
 );
 
 /**
- * La pestaña Precio: los escenarios, que ahora fijan la oferta prevista con un
- * clic, y el simulador de puntuación. El lote va explícito desde el pursuit
- * que la ficha ya tiene, en vez de que el panel lo vuelva a resolver por ruta.
+ * La pestaña Precio: la competencia esperada, los escenarios —que fijan la
+ * oferta prevista con un clic y pueden acotarse a esa competencia— y el
+ * simulador de puntuación, que ofrece como rival la baja del incumbente. El
+ * lote va explícito desde el pursuit que la ficha ya tiene, en vez de que el
+ * panel lo vuelva a resolver por ruta.
  */
 function PestanaPrecio({ pursuit }: { pursuit: Pursuit }) {
   const actualizar = useUpdatePursuit(pursuit.id);
@@ -80,6 +86,10 @@ function PestanaPrecio({ pursuit }: { pursuit: Pursuit }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Primero contra cuántos y contra quién: es con lo que se lee el precio. */}
+      <Panel>
+        <CompetenciaEsperadaBlock licitacionId={pursuit.licitacion_id} className="pb-0" />
+      </Panel>
       <PriceScenariosPanel
         licitacionId={pursuit.licitacion_id}
         loteId={pursuit.lote_id ?? null}

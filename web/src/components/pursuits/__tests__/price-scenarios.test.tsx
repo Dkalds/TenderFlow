@@ -24,6 +24,11 @@ const pursuit = vi.hoisted(() => ({
 }));
 vi.mock("@/hooks/use-pursuits", () => ({ usePursuit: () => pursuit }));
 vi.mock("next/navigation", () => ({ useParams: () => ({ id: "42" }) }));
+// La competencia esperada de la ficha: sin ella el panel no ofrece acotar.
+const competencia = vi.hoisted(() => ({
+  data: undefined as { ofertas: { estimacion: number | null } } | undefined,
+}));
+vi.mock("@/hooks/use-competencia-esperada", () => ({ useCompetenciaEsperada: () => competencia }));
 
 import { PriceScenariosPanel } from "@/components/pursuits/price-scenarios";
 
@@ -72,6 +77,7 @@ beforeEach(() => {
   fetchWithAuth.mockResolvedValue(escenarios);
   pursuit.data = { lote_id: null, lote_numero: null };
   pursuit.isLoading = false;
+  competencia.data = undefined;
 });
 
 describe("PriceScenariosPanel", () => {
@@ -112,6 +118,68 @@ describe("PriceScenariosPanel", () => {
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalled());
     expect(url()).toBe("/api/v1/licitaciones/LIC-1/escenarios-precio");
     expect(await screen.findByText(/ya no figura publicado/)).toBeInTheDocument();
+  });
+});
+
+describe("PriceScenariosPanel — competencia esperada", () => {
+  // Solo las de escenarios: las tarifas del pliego piden la ficha por su cuenta.
+  const urls = () =>
+    fetchWithAuth.mock.calls.map((llamada) => String(llamada[0])).filter((u) => u.includes("/escenarios-precio"));
+  const conmutador = () => screen.findByRole("button", { name: /a la competencia esperada \(~3 ofertas\)/ });
+
+  it("sin estimación de ofertas no ofrece acotar", async () => {
+    renderPanel({ licitacionId: "LIC-1", loteId: null });
+    await screen.findByText("Central");
+    expect(screen.queryByRole("button", { name: /competencia esperada/ })).not.toBeInTheDocument();
+  });
+
+  it("acota la cohorte a la competencia esperada solo cuando se pide", async () => {
+    competencia.data = { ofertas: { estimacion: 3 } };
+    fetchWithAuth.mockImplementation((u: string) =>
+      Promise.resolve(
+        u.includes("competencia_esperada")
+          ? { ...escenarios, cohort: ["cpv4", "importe", "competencia"] }
+          : escenarios,
+      ),
+    );
+    renderPanel({ licitacionId: "LIC-1", loteId: null });
+
+    const boton = await conmutador();
+    // Por defecto, los escenarios de siempre.
+    expect(urls()).toEqual(["/api/v1/licitaciones/LIC-1/escenarios-precio"]);
+    expect(boton).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(boton);
+    await waitFor(() =>
+      expect(urls()).toContain("/api/v1/licitaciones/LIC-1/escenarios-precio?competencia_esperada=3"),
+    );
+    expect(await screen.findByText(/Comparables por: .*competencia parecida/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Acotado a la competencia esperada/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryByText(/los escenarios no la usan/)).not.toBeInTheDocument();
+  });
+
+  it("si con esa competencia no quedan comparables, lo dice", async () => {
+    competencia.data = { ofertas: { estimacion: 3 } };
+    renderPanel({ licitacionId: "LIC-1", loteId: null });
+
+    fireEvent.click(await conmutador());
+    expect(
+      await screen.findByText("No hay bastantes adjudicaciones con esa competencia: los escenarios no la usan."),
+    ).toBeInTheDocument();
+  });
+
+  it("con lote, acota el escenario del lote", async () => {
+    pursuit.data = { lote_id: 7, lote_numero: "2" };
+    competencia.data = { ofertas: { estimacion: 3 } };
+    renderPanel({ licitacionId: "LIC-1" });
+
+    fireEvent.click(await conmutador());
+    await waitFor(() =>
+      expect(urls()).toContain("/api/v1/licitaciones/LIC-1/escenarios-precio?lote_id=7&competencia_esperada=3"),
+    );
   });
 });
 

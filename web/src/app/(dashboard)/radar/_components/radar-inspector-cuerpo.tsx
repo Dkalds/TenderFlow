@@ -1,17 +1,22 @@
 "use client";
 
 import { CodigoLegible } from "@/components/codigo-legible";
+import { CompetenciaEsperadaBlock } from "@/components/competencia-esperada";
 import { Fact, SectionTitle } from "@/components/console/panel";
 import { DESGLOSE_LABELS } from "@/components/score-desglose";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import type { RadarTender } from "@/hooks/use-radar";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { ExpectedCompetition } from "./radar-competencia-esperada";
 import { daysLeft, urgency } from "./radar-shared";
 
 /**
  * Cuerpo del inspector: los ocho datos del anuncio, el desglose del score, la
  * línea de tiempo y la competencia esperada. Es la única parte que hace scroll.
+ *
+ * La competencia esperada es el bloque compartido con Detalle y la oportunidad
+ * (`components/competencia-esperada.tsx`): sobre el segmento del expediente, no
+ * sobre el órgano entero, y con la media de ofertas que explica la barra
+ * «Competencia» del desglose de aquí arriba.
  *
  * Nada de esto se calcula aquí: el desglose viene del scoring y si no lo ha
  * devuelto se dice, en vez de pintar seis barras a cero — que se leería como
@@ -131,7 +136,7 @@ export function InspectorCuerpo({ tender }: { tender: RadarTender }) {
         ))}
       </div>
 
-      <ExpectedCompetition organo={tender.organo_contratacion} />
+      <CompetenciaEsperadaBlock licitacionId={tender.id_externo} />
     </div>
   );
 }

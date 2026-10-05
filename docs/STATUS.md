@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-28
+Generado: 2026-10-04
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -72,7 +72,7 @@ Generado: 2026-09-28
 
 ## Superficie de la API
 
-**287 endpoints** expuestos.
+**288 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -204,6 +204,7 @@ Generado: 2026-09-28
 | POST | `/api/v1/licitaciones/search` |
 | GET | `/api/v1/licitaciones/stream` |
 | GET | `/api/v1/licitaciones/{id_externo:path}` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/competencia-esperada` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos/{documento_id}/paginas/{page_number}` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/embeddings-async` |

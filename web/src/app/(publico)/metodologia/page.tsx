@@ -39,6 +39,7 @@ const SECCIONES: SeccionEvidencia[] = [
       "Las cuotas y la concentración HHI se calculan sobre adjudicaciones del universo tecnológico observado. El maestro de empresas normaliza NIF, alias y uniones temporales para reducir la fragmentación de un mismo competidor.",
     ],
     puntos: [
+      "La competencia esperada de cada licitación se mide sobre su segmento: las ofertas recibidas en su CPV en 24 meses (la misma media del scoring) y, con al menos cinco expedientes, en su órgano; el incumbente es quien ganó el contrato anterior del mismo órgano y objeto; y los rivales, con su cuota sobre lo adjudicado, salen del segmento más concreto con al menos cinco expedientes en 36 meses.",
       "El dossier de empresa conserva historial y participación en UTEs.",
       "La ficha del órgano muestra lo que publica y los resultados disponibles en la fuente.",
       "El nombre del órgano procede de la fuente oficial; hay búsqueda y agregación, pero no se afirma un maestro administrativo perfecto.",
