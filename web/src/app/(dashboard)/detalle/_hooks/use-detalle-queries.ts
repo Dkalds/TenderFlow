@@ -51,14 +51,20 @@ export interface DetalleQueries {
   refetch: () => void;
   scoring: ScoringResponse | undefined;
   detailData: LicitacionDetail | undefined;
+  /** Fallo de la ficha abierta: la ficha completa lo dice en vez de quedarse cargando. */
+  detailError: unknown;
+  refetchDetail: () => void;
 }
 
 export function useDetalleQueries({
   queryParams,
   detailId,
+  errorDetalleEnLinea = false,
 }: {
   queryParams: Record<string, string>;
   detailId: string | null;
+  /** La ficha completa está en pantalla y dice ella misma si la ficha falla. */
+  errorDetalleEnLinea?: boolean;
 }): DetalleQueries {
   const { data, isLoading, error, isFetching, isPlaceholderData, refetch } = useQuery({
     queryKey: licitacionesKeys.list(queryParams),
@@ -110,14 +116,32 @@ export function useDetalleQueries({
     placeholderData: (previous) => previous,
   });
 
-  const { data: detailData } = useQuery({
+  const {
+    data: detailData,
+    error: detailError,
+    refetch: refetchDetail,
+  } = useQuery({
     queryKey: licitacionKeys.detail(detailId ?? ""),
     queryFn: ({ signal }) =>
       fetchWithAuth<LicitacionDetail>(`/api/v1/licitaciones/${encodeURIComponent(detailId!)}`, { signal }),
     enabled: !!detailId,
+    // La ficha completa pinta el fallo en línea, y entonces sin toast encima.
+    // El inspector no tiene dónde pintarlo: ahí se queda el toast.
+    meta: errorDetalleEnLinea ? META_ERROR_EN_LINEA : undefined,
   });
 
-  return { data: pagina, isLoading, isFetching, isPlaceholderData, error, refetch, scoring, detailData };
+  return {
+    data: pagina,
+    isLoading,
+    isFetching,
+    isPlaceholderData,
+    error,
+    refetch,
+    scoring,
+    detailData,
+    detailError,
+    refetchDetail: () => void refetchDetail(),
+  };
 }
 
 /**

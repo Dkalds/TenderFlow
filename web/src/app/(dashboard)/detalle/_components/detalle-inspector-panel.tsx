@@ -18,21 +18,26 @@ import type { ModoInspector } from "../../radar/_hooks/use-media-query";
  *   `?lic=` ya existía y no pintaba nada: abrir una fila era un clic sin
  *   respuesta. Ahora la ficha entra como panel lateral sobre la tabla y se
  *   cierra con Esc, con la X o navegando atrás.
- * - **< md — nada.** La tabla mide 1358 px y a 375 px la pantalla es de
- *   consulta: el permalink sigue siendo válido y la ficha se lee en cuanto la
- *   ventana da para ello.
+ * - **< md — la ficha completa.** La tabla mide 1358 px y no deja sitio a un
+ *   panel: abrir una fila (o un permalink) cambia la tabla por la ficha
+ *   completa (`detalle-ficha-completa.tsx`), y este componente no se monta.
  *
  * En los tres casos la fuente es la misma `LicitacionDetail`: no hay dos
  * versiones de la ficha que puedan divergir.
+ *
+ * `onExpandir` abre la ficha completa, que sustituye a la tabla y a este
+ * panel; por debajo de `md` es la única ficha (ver `use-ficha-completa`).
  */
 export function DetalleInspectorPanel({
   modo,
   licitacion,
   onClose,
+  onExpandir,
 }: {
   modo: ModoInspector;
   licitacion: LicitacionDetail | null;
   onClose: () => void;
+  onExpandir: () => void;
 }) {
   if (!licitacion) return null;
 
@@ -50,7 +55,12 @@ export function DetalleInspectorPanel({
           <SheetTitle className="sr-only">Ficha de la licitación</SheetTitle>
           {/* Como en el Radar, una ficha por expediente: así el scroll y el
               «Preguntar» pendiente no pasan a la siguiente. */}
-          <DetailInspector key={licitacion.id_externo} licitacion={licitacion} onClose={onClose} />
+          <DetailInspector
+            key={licitacion.id_externo}
+            licitacion={licitacion}
+            onClose={onClose}
+            onExpandir={onExpandir}
+          />
         </SheetContent>
       </Sheet>
     );
@@ -58,7 +68,12 @@ export function DetalleInspectorPanel({
 
   return (
     <div className="hidden w-[clamp(28rem,32vw,42rem)] flex-none xl:flex">
-      <DetailInspector key={licitacion.id_externo} licitacion={licitacion} onClose={onClose} />
+      <DetailInspector
+        key={licitacion.id_externo}
+        licitacion={licitacion}
+        onClose={onClose}
+        onExpandir={onExpandir}
+      />
     </div>
   );
 }

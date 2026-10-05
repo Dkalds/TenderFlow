@@ -13,7 +13,7 @@ export type { GuionCriterio, GuionOferta, PuntoGuion };
  *
  * La API lo expone como `POST` porque **genera**: cuesta una llamada al LLM y
  * consume presupuesto de la organización. Por eso aquí no hay `useQuery` que
- * lo pida al montar —abrir la pestaña IA tres veces serían tres llamadas— sino
+ * lo pida al montar —abrir la pestaña Pliegos tres veces serían tres llamadas— sino
  * una mutación que se lanza con un botón y deja el resultado en la caché.
  *
  * La lectura (`guion`) sólo mira esa caché: nunca pide nada por su cuenta. El

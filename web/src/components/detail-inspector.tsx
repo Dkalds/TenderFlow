@@ -1,76 +1,79 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, Link2, MessageSquareText, X } from "lucide-react";
-import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
-import { toast } from "sonner";
+import { Maximize2, X } from "lucide-react";
 import { LicitacionAI } from "@/components/licitacion-ai";
 import { CompetenciaEsperadaBlock } from "@/components/competencia-esperada";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 import { DocumentosBlock } from "@/components/documentos-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
-import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
-import { CodigoLegible } from "@/components/codigo-legible";
 import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
-import { ReportarDatoBoton } from "@/components/pliego/reportar-dato";
-import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
-import { RecurridoBadge, ResolucionesBlock, useResoluciones } from "@/components/resoluciones-block";
-import { Fact, PanelEmpty, PanelTabs, SectionTitle, panelDePestana } from "@/components/console/panel";
-import { Badge } from "@/components/ui/badge";
+import { useResoluciones } from "@/components/resoluciones-block";
+import { PanelTabs, SectionTitle, panelDePestana } from "@/components/console/panel";
+import { FichaAcciones, FichaAvisos, FichaEstado, FichaOrgano } from "@/components/ficha/ficha-cabecera";
+import { FichaCifras } from "@/components/ficha/ficha-cifras";
+import { FichaCampos } from "@/components/ficha/ficha-campos";
+import {
+  FichaDescripcion,
+  FichaEventos,
+  FichaFuente,
+  FichaPuntuacion,
+  FichaRecursos,
+} from "@/components/ficha/ficha-secciones";
 import { Button } from "@/components/ui/button";
-import { GlosarioHint } from "@/components/ui/glosario-hint";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { fuenteLinkLabel } from "@/lib/fuentes";
+import { cn } from "@/lib/utils";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
 
 /**
- * Inspector de la licitación — el mismo contenido del Sheet, en el mismo plano.
+ * Inspector de la licitación — la ficha en el mismo plano que la tabla.
  *
- * `DetailPanel` apilaba once bloques dentro de un Sheet modal: para leer los
- * pliegos había que bajar por delante del asistente de IA, y el modal tapaba la
- * tabla de la que venías. Aquí los once bloques se reparten en cuatro pestañas y
- * el panel convive con la tabla, así que comparar dos filas es moverse por la
- * lista, no abrir y cerrar.
+ * Lo que decide si mirar una licitación va arriba y sin pestañas: estado,
+ * título, órgano y lugar, las cifras (importe, fecha límite, puntuación y baja
+ * esperada) y los avisos del score. Antes la cabecera solo enseñaba el importe
+ * y la fecha límite vivía en la rejilla de campos, por debajo de cinco bloques
+ * de la pestaña Resumen.
  *
- * Ningún bloque se ha quedado fuera: Resumen (puntuación + desglose, alertas,
- * competencia esperada, predicción de baja, los diez campos, descripción, el
- * enlace al portal de origen y la cronología de eventos del contrato), IA (resumen ejecutivo + chat +
- * «Preguntar» + ficha estructurada del pliego con lotes, criterios, ANS y
- * certificaciones citables), Pliegos (documentos parseados) y Recursos
- * (resoluciones del TACRC). La cabecera conserva estado, badge de recurrida,
- * importe y copiar enlace.
+ * Debajo, cinco pestañas con lo que antes se apilaba en cuatro:
  *
- * Rótulos y datos con los primitivos de la consola (`SectionTitle`, `Fact`):
- * sans y en frase, mono solo para el expediente y el CPV.
+ * - **Resumen**: los campos, el desglose de la puntuación, la descripción
+ *   (recortada), las tecnologías, el enlace al portal y los eventos.
+ * - **Competencia**: competencia esperada, baja esperada y simulador de
+ *   puntuación, que antes alargaban el Resumen.
+ * - **Pliegos**: documentos, ficha estructurada del pliego (lotes, criterios,
+ *   ANS, certificaciones citables) y el guion de oferta que se apoya en ella.
+ * - **IA**: el asistente (resumen y «Preguntar»).
+ * - **Recursos**: resoluciones del TACRC.
+ *
+ * Todo el contenido se desplaza en una sola caja y las pestañas se quedan
+ * pegadas arriba: con la cabecera fija, en un portátil de 768 px de alto el
+ * contenido de la pestaña se quedaba con un tercio de la altura.
+ *
+ * Con `onExpandir`, un botón abre la ficha completa (todas las secciones a la
+ * vez, a pantalla entera).
  */
 
-// Las etiquetas viven en `components/score-desglose.tsx` desde que el Radar
-// también pinta el desglose: dos copias del mismo mapa divergen en cuanto el
-// scoring añade una dimensión, y la pantalla que se quedara atrás mostraría la
-// clave cruda sin que nada fallara.
-import { DESGLOSE_LABELS } from "@/components/score-desglose";
-import { riesgoLabel } from "@/lib/riesgos";
-
-type TabKey = "resumen" | "ia" | "pliegos" | "recursos";
+type TabKey = "resumen" | "competencia" | "pliegos" | "ia" | "recursos";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
-  { key: "ia", label: "IA" },
+  { key: "competencia", label: "Competencia" },
   { key: "pliegos", label: "Pliegos" },
+  { key: "ia", label: "IA" },
   { key: "recursos", label: "Recursos" },
 ];
 
 export function DetailInspector({
   licitacion: l,
   onClose,
+  onExpandir,
   className,
 }: {
   licitacion: LicitacionDetail;
   onClose: () => void;
+  onExpandir?: () => void;
   className?: string;
 }) {
   const [tab, setTab] = React.useState<TabKey>("resumen");
@@ -91,17 +94,7 @@ export function DetailInspector({
     setTab("resumen");
   }
 
-  const copyLink = React.useCallback(async () => {
-    const url = `${window.location.origin}/detalle?lic=${encodeURIComponent(l.id_externo)}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success("Enlace copiado al portapapeles");
-    } catch {
-      toast.error("No se pudo copiar el enlace");
-    }
-  }, [l.id_externo]);
-
-  const askAI = () => {
+  const preguntar = () => {
     setTab("ia");
     setAskSignal((key) => key + 1);
   };
@@ -115,252 +108,130 @@ export function DetailInspector({
 
   return (
     <aside aria-label="Ficha de la licitación" className={cn("flex min-h-0 flex-1 flex-col bg-card", className)}>
-      <div className="flex-none border-b border-border/60 px-4 pt-3.5">
-        <div className="mb-2.5 flex items-center gap-2">
-          <StatusBadge value={l.estado} kind="estado" showIcon />
-          {/* F1.8 — «Evaluación» no dice que ya no se puede presentar. */}
-          <GlosarioHint termino={l.estado ?? undefined} />
-          <RecurridoBadge licitacionId={l.id_externo} />
-          <span className="font-mono text-tf-micro text-muted-foreground">{l.id_externo}</span>
-          <div className="flex-1" />
+      <div className="flex flex-none items-center gap-2 border-b border-border/60 px-4 py-2">
+        <FichaEstado licitacion={l} className="flex-1" />
+        {onExpandir && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                onClick={onClose}
-                aria-label="Cerrar ficha"
+                onClick={onExpandir}
+                aria-label="Abrir la ficha completa"
                 className="text-muted-foreground"
               >
-                <X aria-hidden="true" />
+                <Maximize2 aria-hidden="true" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Cerrar · Esc</TooltipContent>
+            <TooltipContent>Ficha completa, a pantalla entera</TooltipContent>
           </Tooltip>
-        </div>
-
-        <h2 className="mb-2.5 font-display text-tf-lede font-semibold text-pretty">{l.titulo ?? l.id_externo}</h2>
-
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="tf-tnum text-tf-title font-semibold leading-none">{formatCurrency(l.importe)}</span>
-          <div className="flex-1" />
-          <CompararBoton id={l.id_externo} titulo={l.titulo} />
-          <ReportarDatoBoton licitacionId={l.id_externo} />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button type="button" variant="outline" size="sm" onClick={() => void copyLink()}>
-                <Link2 aria-hidden="true" />
-                Copiar enlace
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Enlace directo a esta ficha</TooltipContent>
-          </Tooltip>
-          <Button type="button" variant="outline" size="sm" onClick={askAI}>
-            <MessageSquareText aria-hidden="true" />
-            Preguntar a la IA
-          </Button>
-        </div>
-
-        <PanelTabs
-          tabs={pestanas}
-          value={tab}
-          onChange={setTab}
-          label="Secciones de la ficha"
-          idBase={idPestanas}
-          className="border-b-0 pb-2.5"
-        />
+        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Cerrar ficha"
+              className="text-muted-foreground"
+            >
+              <X aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Cerrar · Esc</TooltipContent>
+        </Tooltip>
       </div>
 
-      {/* El panel de la pestaña activa lleva foco propio (el `tabIndex` de
-          `panelDePestana`; axe `scrollable-region-focusable`): «Resumen» puede
-          no tener ningún control dentro, y sin foco el teclado no puede
-          desplazar lo que no cabe. */}
-      <div
-        {...panelDePestana(idPestanas, tab)}
-        className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        {tab === "resumen" && (
-          <div className="pb-6">
-            {l.score != null && (
-              <>
-                <div className="mb-2.5 flex items-center gap-2.5">
-                  <SectionTitle as="h3" className="mb-0 flex-1">
-                    Puntuación
-                  </SectionTitle>
-                  <span className="tf-tnum text-tf-lede leading-none">{l.score.toFixed(1)}</span>
-                  <StatusBadge value={l.band ?? null} kind="band" />
-                </div>
-                {/* Las barras se pintan ya en su valor, sin transición: entre
-                    dos expedientes una barra que se desliza dice que el dato
-                    cambió (docs/frontend-motion.md, «Qué NO animar»). */}
-                <div
-                  role="progressbar"
-                  aria-valuenow={Math.min(100, l.score)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label="Puntuación"
-                  className="mb-3.5 block h-1.5 overflow-hidden rounded-full bg-muted-foreground/15"
-                >
-                  <span
-                    className="block h-full w-full origin-left rounded-full bg-primary"
-                    style={{ transform: `scaleX(${Math.min(100, l.score) / 100})` }}
-                  />
-                </div>
-              </>
-            )}
+      {/* Una sola caja con scroll, `relative` para que los `sr-only` y los
+          absolutos de dentro no tomen el viewport como bloque contenedor
+          (docs/UX_AUDIT.md, «scroll fantasma»). Las pestañas van `sticky`. */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
+        <div className="flex flex-col gap-3 px-4 pb-3 pt-3.5">
+          <div className="flex flex-col gap-1.5">
+            <h2 className="font-display text-tf-lede font-semibold text-pretty">
+              {l.titulo ?? l.id_externo}
+            </h2>
+            <FichaOrgano licitacion={l} />
+          </div>
+          <FichaCifras licitacion={l} columnas={2} />
+          <FichaAvisos flags={l.risk_flags} />
+          <FichaAcciones licitacion={l} onPreguntar={preguntar} />
+        </div>
 
-            {l.score_desglose && (
-              <div className="mb-4.5 flex flex-col gap-2">
-                {Object.entries(l.score_desglose).map(([dim, value]) => (
-                  <div key={dim} className="grid grid-cols-[96px_1fr_30px] items-center gap-2.5">
-                    <span className="text-tf-meta text-muted-foreground">{DESGLOSE_LABELS[dim] ?? dim}</span>
-                    <span
-                      role="progressbar"
-                      aria-valuenow={Math.min(100, value)}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={`Puntuación ${dim}`}
-                      className="block h-[5px] overflow-hidden rounded-full bg-muted-foreground/15"
-                    >
-                      <span
-                        className="block h-full w-full origin-left rounded-full bg-primary/70"
-                        style={{ transform: `scaleX(${Math.min(100, value) / 100})` }}
-                      />
-                    </span>
-                    <span className="tf-tnum text-right text-tf-micro font-medium">{value.toFixed(1)}</span>
-                  </div>
-                ))}
+        <div className="sticky top-0 z-10 border-b border-border/60 bg-card px-4 pt-2">
+          <PanelTabs
+            tabs={pestanas}
+            value={tab}
+            onChange={setTab}
+            label="Secciones de la ficha"
+            idBase={idPestanas}
+            className="border-b-0 pb-2"
+          />
+        </div>
+
+        {/* El panel lleva foco propio (`panelDePestana`): «Resumen» puede no
+            tener ningún control dentro, y el lector tiene que poder llegar. */}
+        <div
+          {...panelDePestana(idPestanas, tab)}
+          className="px-4 pb-6 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          {tab === "resumen" && (
+            <div className="flex flex-col gap-5">
+              <section aria-labelledby={`${idPestanas}-campos`}>
+                <SectionTitle as="h3" id={`${idPestanas}-campos`}>
+                  Lo esencial
+                </SectionTitle>
+                <FichaCampos licitacion={l} variante="inspector" />
+                <FichaFuente licitacion={l} className="mt-3" />
+              </section>
+              <FichaPuntuacion licitacion={l} />
+              <FichaDescripcion licitacion={l} recortar />
+              <div className="[&>*:first-child]:mt-0">
+                <TecnologiasBlock licitacionId={l.id_externo} />
               </div>
-            )}
-
-            {l.risk_flags && l.risk_flags.length > 0 && (
-              <div className="mb-4.5">
-                <SectionTitle as="h3">Alertas</SectionTitle>
-                <div className="flex flex-wrap gap-1.5">
-                  {l.risk_flags.map((flag) => (
-                    <Badge key={flag} variant="destructive" size="sm">
-                      {riesgoLabel(flag)}
-                    </Badge>
-                  ))}
-                </div>
+              <div className="border-t border-border/50 pt-4">
+                <FichaEventos licitacionId={l.id_externo} />
               </div>
-            )}
-
-            {/* Antes de la baja esperada y del simulador: contra cuántos y
-                contra quién es el contexto con el que se leen los dos. */}
-            <CompetenciaEsperadaBlock licitacionId={l.id_externo} />
-
-            <div className="mb-4.5">
-              <PrediccionBajaBlock licitacionId={l.id_externo} />
             </div>
+          )}
 
-            {/* F2.2 — junto a la baja esperada: es con esa baja con la que se
-                mide el rival, y el simulador la ofrece como referencia. */}
-            <div className="mb-4.5">
+          {tab === "competencia" && (
+            <div>
+              {/* Contra cuántos y contra quién, antes de la baja esperada y del
+                  simulador: es el contexto con el que se leen los dos. */}
+              <CompetenciaEsperadaBlock licitacionId={l.id_externo} />
+              <div className="mb-4.5 [&>*:first-child]:mt-0">
+                <PrediccionBajaBlock licitacionId={l.id_externo} />
+              </div>
+              {/* F2.2 — junto a la baja esperada: es con esa baja con la que se
+                  mide el rival, y el simulador la ofrece como referencia. */}
               <SimuladorPuntuacion licitacionId={l.id_externo} />
             </div>
+          )}
 
-            <SectionTitle as="h3">Ficha</SectionTitle>
-            <div className="mb-4.5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60">
-              <Fact label="Órgano" value={l.organo_contratacion} />
-              <Fact label="CCAA" value={l.ccaa} />
-              <Fact label="Provincia" value={l.provincia} />
-              <Fact label="CPV" value={l.cpv} variant="codigo" />
-              <Fact
-                label="Tipo de contrato"
-                value={l.tipo_contrato ? <CodigoLegible familia="tipo_contrato" codigo={l.tipo_contrato} /> : null}
-              />
-              {/* F1.7 — etiqueta legible y definición desde `/meta/filters`. */}
-              <Fact
-                label="Procedimiento"
-                value={l.procedimiento ? <CodigoLegible familia="procedimiento" codigo={l.procedimiento} /> : null}
-              />
-              <Fact
-                label="Tramitación"
-                value={l.tramitacion ? <CodigoLegible familia="tramitacion" codigo={l.tramitacion} /> : null}
-              />
-              <Fact label="Tecnología" value={l.tecnologia} />
-              <Fact label="Publicación" value={formatDate(l.fecha_publicacion)} />
-              <Fact label="Fecha límite" value={formatDate(l.fecha_limite)} />
-              <Fact label="Inicio" value={formatDate(l.fecha_inicio)} />
-              <Fact label="Fin" value={formatDate(l.fecha_fin)} />
+          {tab === "pliegos" && (
+            <div className="[&>*:first-child]:mt-0">
+              {/* `fichaUrl` da salida cuando el enlace directo al adjunto ya no
+                  responde (tokens rotativos de PLACSP) y cuando no hay ningún
+                  pliego indexado. */}
+              <DocumentosBlock licitacionId={l.id_externo} fichaUrl={l.url} />
+              {/* Ficha estructurada (lotes, criterios, ANS, certificaciones…)
+                  con citas verificables; «Extraer ficha» descarga los pliegos
+                  pendientes bajo demanda. */}
+              <div className="mt-6">
+                <TenderFactSheetPanel licitacionId={l.id_externo} />
+              </div>
+              {/* F2.6 — se construye sobre los criterios de esa misma ficha. */}
+              <GuionOfertaPanel licitacionId={l.id_externo} />
             </div>
+          )}
 
-            <TecnologiasBlock licitacionId={l.id_externo} />
+          {tab === "ia" && <LicitacionAI idExterno={l.id_externo} askSignal={askSignal} />}
 
-            {l.descripcion && (
-              <>
-                <SectionTitle as="h3">Descripción</SectionTitle>
-                <p className="mb-4 whitespace-pre-wrap text-tf-body leading-relaxed text-muted-foreground text-pretty">
-                  {l.descripcion}
-                </p>
-              </>
-            )}
-
-            {l.url && (
-              <a
-                href={l.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                // `flex w-fit` en vez de `inline-flex`: el margen inferior de una
-                // caja en línea no separa de lo que viene detrás, y detrás hay
-                // ahora la cronología.
-                className="mb-5 flex w-fit items-center gap-1.5 text-tf-body font-medium"
-              >
-                {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                <AvisoPestanaNueva />
-              </a>
-            )}
-
-            {/* La cronología cierra el Resumen en vez de vivir en su propia
-                pestaña: los eventos son el «qué le ha pasado a este
-                expediente» de los mismos campos que hay arriba (importe,
-                estado, fechas), y separarlos obligaba a cambiar de pestaña
-                para saber si el importe que acabas de leer venía de una
-                modificación. `EventosTimeline` trae su propio estado de carga,
-                de error y de vacío. */}
-            <div className="border-t border-border/50 pt-4">
-              <SectionTitle as="h3">Eventos</SectionTitle>
-              <EventosTimeline licitacionId={l.id_externo} />
-            </div>
-          </div>
-        )}
-
-        {tab === "ia" && (
-          <div className="pb-6">
-            <LicitacionAI idExterno={l.id_externo} askSignal={askSignal} />
-            {/* Ficha estructurada (lotes, criterios, ANS, certificaciones…)
-                con citas verificables; el botón «Extraer ficha» descarga los
-                pliegos pendientes bajo demanda y lanza la extracción LLM. */}
-            <TenderFactSheetPanel licitacionId={l.id_externo} />
-            {/* F2.6 — se construye sobre los criterios de esa misma ficha. */}
-            <GuionOfertaPanel licitacionId={l.id_externo} />
-          </div>
-        )}
-
-        {tab === "pliegos" && (
-          <div className="pb-6">
-            {/* `fichaUrl` da salida cuando el enlace directo al adjunto ya no
-                responde (tokens rotativos de PLACSP) y cuando no hemos indexado
-                ningún pliego: en esta pestaña, a diferencia del sheet, no hay
-                otro "Ver en PLACSP" a mano. */}
-            <DocumentosBlock licitacionId={l.id_externo} fichaUrl={l.url} />
-          </div>
-        )}
-
-        {tab === "recursos" && (
-          <div className="pb-6">
-            {resolucionesCount > 0 ? (
-              <ResolucionesBlock licitacionId={l.id_externo} />
-            ) : (
-              <PanelEmpty
-                title="Sin recursos registrados"
-                hint="No consta ninguna resolución del TACRC para este expediente."
-              />
-            )}
-          </div>
-        )}
+          {tab === "recursos" && <FichaRecursos licitacionId={l.id_externo} />}
+        </div>
       </div>
     </aside>
   );

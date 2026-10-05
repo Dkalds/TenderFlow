@@ -80,7 +80,8 @@ test("desde la ficha del pliego se abre la página con la cita resaltada en dos 
   await page.goto(`/detalle?lic=${ID}`);
   const ficha = page.getByRole("complementary", { name: "Ficha de la licitación" });
   await expect(ficha).toBeVisible({ timeout: 20000 });
-  await ficha.getByRole("tab", { name: "IA" }).click();
+  // La ficha estructurada vive en «Pliegos», junto a los documentos que cita.
+  await ficha.getByRole("tab", { name: "Pliegos" }).click();
   await expect(ficha.getByText("Criterios de adjudicación")).toBeVisible();
 
   // Clic 1: desplegar las citas del hecho. Clic 2: abrir la página.
