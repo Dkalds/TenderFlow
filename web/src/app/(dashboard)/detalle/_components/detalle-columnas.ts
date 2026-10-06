@@ -36,6 +36,14 @@ export const COLUMNS: DetalleColumna[] = [
   { key: "tecnologia", label: "Tecnología", width: "114px", sortable: true },
 ];
 
+/** El chip del orden activo («Importe ↓»), o `null` sin orden. */
+export function etiquetaDeOrden(sorting: ReadonlyArray<{ id: string; desc: boolean }>): string | null {
+  const [orden] = sorting;
+  if (!orden) return null;
+  const columna = COLUMNS.find((column) => column.key === orden.id)?.label ?? orden.id;
+  return `${columna} ${orden.desc ? "↓" : "↑"}`;
+}
+
 /** Suma de anchos: por debajo la tabla scrollea en horizontal en vez de apretarse. */
 export const TABLE_MIN_WIDTH = 1358;
 

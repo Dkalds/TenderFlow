@@ -51,9 +51,9 @@ export function formatDate(value: string | null | undefined): string {
   return formatDateBase(value);
 }
 
-export function daysUntil(value: string | null | undefined): string | null {
+export function daysUntil(value: string | null | undefined, ahora: number = Date.now()): string | null {
   if (!value) return null;
-  const difference = Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000);
+  const difference = Math.ceil((new Date(value).getTime() - ahora) / 86_400_000);
   if (Number.isNaN(difference)) return null;
   if (difference < 0) return `Vencida hace ${Math.abs(difference)} d`;
   if (difference === 0) return "Vence hoy";
@@ -149,9 +149,9 @@ export interface PlazoVisual {
  * El color nunca va solo: la banda acompaña siempre al texto con los días, que
  * es lo que lee quien no distingue los tonos de la rampa.
  */
-export function plazoVisual(value: string | null | undefined): PlazoVisual | null {
+export function plazoVisual(value: string | null | undefined, ahora: number = Date.now()): PlazoVisual | null {
   if (!value) return null;
-  const dias = Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000);
+  const dias = Math.ceil((new Date(value).getTime() - ahora) / 86_400_000);
   if (Number.isNaN(dias)) return null;
   const banda: BandaPlazo =
     dias < 0 ? "pasado" : dias <= 3 ? "critico" : dias <= 7 ? "alto" : dias <= 21 ? "medio" : "holgado";
@@ -160,7 +160,7 @@ export function plazoVisual(value: string | null | undefined): PlazoVisual | nul
     dias,
     banda,
     pct,
-    texto: daysUntil(value) ?? formatDate(value),
+    texto: daysUntil(value, ahora) ?? formatDate(value),
     clases: PLAZO_CLASES[banda],
   };
 }

@@ -3,6 +3,17 @@
 import { Download, GitCompareArrows, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { LicitacionSummary } from "@/lib/api-types";
+import { descargarBlob } from "@/lib/export";
+import { buildCsv } from "../_hooks/detalle-table-model";
+
+/** CSV de las filas seleccionadas, con la fecha del día en el nombre. */
+export function descargarSeleccion(rows: LicitacionSummary[]) {
+  const filename = `seleccion_${new Date().toISOString().slice(0, 10)}.csv`;
+  // Vía `descargarBlob` y no con un ancla propia: esta exportación se arma en el
+  // cliente, no pasa por `/exports/download` y por eso no emitía ningún evento.
+  descargarBlob(filename, new Blob([buildCsv(rows)], { type: "text/csv" }), "detalle");
+}
 
 /**
  * Barra flotante de selección.

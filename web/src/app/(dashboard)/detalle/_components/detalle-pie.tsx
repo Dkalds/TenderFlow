@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-r
 import { Badge } from "@/components/ui/badge";
 import { Pista } from "@/components/ui/pista";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { SHORTCUTS } from "./detalle-columnas";
 
 const EXPLICACION_ORDEN_LOCAL =
@@ -12,6 +12,22 @@ const EXPLICACION_ORDEN_LOCAL =
 
 const BOTON_PAGINA =
   "tf-pressable grid h-6.5 w-6.5 place-items-center rounded-md border border-border/70 text-tf-meta text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-35";
+
+/** «Mostrando 26–50 de 1.204», o la raya mientras no hay página. */
+export function lineaMostrando({
+  hayDatos,
+  pageIndex,
+  pageSize,
+  total,
+}: {
+  hayDatos: boolean;
+  pageIndex: number;
+  pageSize: number;
+  total: number;
+}): string {
+  if (!hayDatos) return "—";
+  return `Mostrando ${pageIndex * pageSize + 1}–${Math.min((pageIndex + 1) * pageSize, total)} de ${formatNumber(total)}`;
+}
 
 /**
  * Pie: qué tramo se está viendo, los atajos y la paginación completa.

@@ -4,21 +4,17 @@ import { startTransition, useCallback, useEffect, useMemo, useState } from "reac
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useTable } from "@tanstack/react-table";
-import { Comparator } from "@/components/comparator";
 import { useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
-import { formatNumber } from "@/lib/utils";
 import { useDensity } from "@/lib/density";
-import { descargarBlob } from "@/lib/export";
 import { useFilterParams, useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
-import type { LicitacionSummary } from "@/lib/api-types";
 import { useModoInspector } from "../radar/_hooks/use-media-query";
 import { DetalleBarra } from "./_components/detalle-barra";
-import { COLUMNS } from "./_components/detalle-columnas";
-import { DetallePie } from "./_components/detalle-pie";
-import { DetalleSeleccion } from "./_components/detalle-seleccion";
+import { COLUMNS, etiquetaDeOrden } from "./_components/detalle-columnas";
+import { DetalleComparador } from "./_components/detalle-comparador";
+import { DetallePie, lineaMostrando } from "./_components/detalle-pie";
+import { DetalleSeleccion, descargarSeleccion } from "./_components/detalle-seleccion";
 import { DetalleTabla } from "./_components/detalle-tabla";
-import { buildCsv } from "./_hooks/detalle-table-model";
 import { detalleTableFeatures } from "./_hooks/detalle-table-features";
 import { useBusquedaListado } from "./_hooks/use-busqueda-listado";
 import { useCierreRecorte } from "./_hooks/use-cierre-recorte";
@@ -26,6 +22,7 @@ import { useDetalleFavoritos } from "./_hooks/use-detalle-favoritos";
 import { useDetalleQueries, useDetailWithScore } from "./_hooks/use-detalle-queries";
 import { useDetalleRows, useDetalleTableState } from "./_hooks/use-detalle-table";
 import { useDetalleTeclado } from "./_hooks/use-detalle-teclado";
+import { pasosDeFicha, useFichaCompleta } from "./_hooks/use-ficha-completa";
 
 /**
  * Detalle — tabla de trabajo con inspector en el mismo plano.
@@ -34,7 +31,9 @@ import { useDetalleTeclado } from "./_hooks/use-detalle-teclado";
  * ficha. Antes era un Sheet modal que apilaba once bloques encima de la tabla,
  * así que comparar dos licitaciones exigía abrir, leer, cerrar y volver a
  * abrir. Ahora el inspector (`components/detail-inspector.tsx`) convive con la
- * tabla y reparte esos once bloques en cinco pestañas.
+ * tabla y reparte esos once bloques en cinco pestañas. Desde el inspector se abre
+ * la ficha completa (`?ficha=completa`), que ocupa el sitio de la tabla con
+ * todo a la vez; por debajo de `md`, donde no hay inspector, es la ficha.
  *
  * La tabla conserva las catorce columnas, el orden asc/desc/none con cabecera
  * pegajosa, la selección múltiple con select-all, el punto de «nueva», la
@@ -52,12 +51,10 @@ import { useDetalleTeclado } from "./_hooks/use-detalle-teclado";
 const DetalleInspectorPanel = dynamic(() =>
   import("./_components/detalle-inspector-panel").then((modulo) => modulo.DetalleInspectorPanel),
 );
-
-function downloadCsv(rows: LicitacionSummary[], filename: string) {
-  // Vía `descargarBlob` y no con un ancla propia: esta exportación se arma en el
-  // cliente, no pasa por `/exports/download` y por eso no emitía ningún evento.
-  descargarBlob(filename, new Blob([buildCsv(rows)], { type: "text/csv" }), "detalle");
-}
+// La ficha completa arrastra los mismos bloques: tampoco entra en el First Load.
+const DetalleFichaCompleta = dynamic(() =>
+  import("./_components/detalle-ficha-completa").then((modulo) => modulo.DetalleFichaCompleta),
+);
 
 export default function DetallePage() {
   const filterParams = useFilterParams();
@@ -95,8 +92,13 @@ export default function DetallePage() {
   const { compact, toggleCompact } = useDensity();
   const modo = useModoInspector();
   const favoritos = useDetalleFavoritos();
+  const ficha = useFichaCompleta({ modo, detailId });
 
-  const queries = useDetalleQueries({ queryParams: tabla.queryParams, detailId });
+  const queries = useDetalleQueries({
+    queryParams: tabla.queryParams,
+    detailId,
+    errorDetalleEnLinea: ficha.activa,
+  });
   useBusquedaListado(queryFilters, queries.data, queries.isFetching);
 
   // Cursor de la siguiente, aprendido de ésta (nunca del `placeholderData` de la anterior).
@@ -147,115 +149,130 @@ export default function DetallePage() {
 
   const openDetail = useCallback((id: string) => void setDetailId(id), [setDetailId]);
 
+  const { cerrar: cerrarFichaCompleta } = ficha;
   const closeDetail = useCallback(() => {
     // startTransition: cerrar desmonta bloques pesados (IA, documentos,
     // eventos); diferirlo evita bloquear el hilo principal en el propio clic.
     startTransition(() => {
       void setDetailId(null, { history: "replace" });
+      cerrarFichaCompleta();
     });
-  }, [setDetailId]);
+  }, [setDetailId, cerrarFichaCompleta]);
+  // Volver de la ficha completa: al inspector donde lo hay; en móvil, a la tabla.
+  const volverATabla = ficha.enMovil ? closeDetail : cerrarFichaCompleta;
 
   const { cursor, setCursor } = useDetalleTeclado({
     mergedRows,
     detailId,
     showComparator,
     closeComparator,
-    closeDetail,
+    closeDetail: ficha.activa ? volverATabla : closeDetail,
     openDetail,
     toggleFavorite: favoritos.toggleFavorite,
+    fichaCompleta: ficha.activa,
   });
 
   const detailWithScore = useDetailWithScore(queries.detailData, filas.scoreMap);
   const isEmpty = !queries.isLoading && !queries.error && mergedRows.length === 0;
 
-  const sortLabel = sorting.length
-    ? `${COLUMNS.find((column) => column.key === sorting[0].id)?.label ?? sorting[0].id} ${
-        sorting[0].desc ? "↓" : "↑"
-      }`
-    : null;
-
-  const showingLine = queries.data
-    ? `Mostrando ${pagination.pageIndex * pagination.pageSize + 1}–${Math.min(
-        (pagination.pageIndex + 1) * pagination.pageSize,
-        total,
-      )} de ${formatNumber(total)}`
-    : "—";
+  const sortLabel = etiquetaDeOrden(sorting);
+  const showingLine = lineaMostrando({ hayDatos: Boolean(queries.data), ...pagination, total });
 
   return (
     <div className="flex h-full min-h-0">
-      <section className="flex min-w-0 flex-1 flex-col border-r border-border/70">
-        <DetalleBarra
-          cierreLabel={cierre.label}
-          onClearCierre={() => {
-            cierre.clear();
-            // Volver a la primera página: «página 7» de un recorte que ya no
-            // existe apunta a un tramo distinto del listado ensanchado.
-            setPagination((current) => ({ ...current, pageIndex: 0 }));
+      {ficha.activa && detailId ? (
+        <DetalleFichaCompleta
+          idExterno={detailId}
+          licitacion={detailWithScore}
+          error={queries.detailError}
+          onReintentar={queries.refetchDetail}
+          pasos={pasosDeFicha(mergedRows, detailId)}
+          onIr={(paso) => {
+            setCursor(paso.indice);
+            openDetail(paso.id);
           }}
-          sortLabel={sortLabel}
-          onClearSort={() => setSorting([])}
-          etiqueta={etiqueta}
-          compact={compact}
-          onCompactChange={(next) => {
-            if (compact !== next) toggleCompact();
-          }}
+          onVolver={volverATabla}
         />
+      ) : (
+        <>
+          <section className="flex min-w-0 flex-1 flex-col border-r border-border/70">
+            <DetalleBarra
+              cierreLabel={cierre.label}
+              onClearCierre={() => {
+                cierre.clear();
+                // Volver a la primera página: «página 7» de un recorte que ya no
+                // existe apunta a un tramo distinto del listado ensanchado.
+                setPagination((current) => ({ ...current, pageIndex: 0 }));
+              }}
+              sortLabel={sortLabel}
+              onClearSort={() => setSorting([])}
+              etiqueta={etiqueta}
+              compact={compact}
+              onCompactChange={(next) => {
+                if (compact !== next) toggleCompact();
+              }}
+            />
 
-        <DetalleTabla
-          rows={mergedRows}
-          sorting={sorting}
-          allPageSelected={filas.allPageSelected}
-          onToggleAllPage={filas.toggleAllPage}
-          onToggleSort={tabla.toggleSort}
-          isLoading={queries.isLoading}
-          isFetching={queries.isFetching}
-          error={queries.error}
-          onRetry={() => void queries.refetch()}
-          vacia={isEmpty}
-          conRecorte={Boolean(cierre.label)}
-          onLimpiar={() => {
-            resetFilters();
-            // El recorte por cierre también: si sólo se limpiara el ámbito, el
-            // botón dejaría la pantalla igual de vacía y sin nada más que pulsar.
-            cierre.clear();
-          }}
-          detailId={detailId}
-          cursor={cursor}
-          rowSelection={rowSelection}
-          ccaas={ccaas}
-          tecnologias={tecnologias}
-          compact={compact}
-          rowHeight={compact ? 34 : 44}
-          onOpen={(index, id) => {
-            setCursor(index);
-            openDetail(id);
-          }}
-          onToggleSelect={tabla.toggleRow}
-          onToggleCcaa={toggleCcaa}
-          onToggleTecnologia={toggleTecnologia}
-        />
+            <DetalleTabla
+              rows={mergedRows}
+              sorting={sorting}
+              allPageSelected={filas.allPageSelected}
+              onToggleAllPage={filas.toggleAllPage}
+              onToggleSort={tabla.toggleSort}
+              isLoading={queries.isLoading}
+              isFetching={queries.isFetching}
+              error={queries.error}
+              onRetry={() => void queries.refetch()}
+              vacia={isEmpty}
+              conRecorte={Boolean(cierre.label)}
+              onLimpiar={() => {
+                resetFilters();
+                // El recorte por cierre también: si sólo se limpiara el ámbito, el
+                // botón dejaría la pantalla igual de vacía y sin nada más que pulsar.
+                cierre.clear();
+              }}
+              detailId={detailId}
+              cursor={cursor}
+              rowSelection={rowSelection}
+              ccaas={ccaas}
+              tecnologias={tecnologias}
+              compact={compact}
+              rowHeight={compact ? 34 : 44}
+              onOpen={(index, id) => {
+                setCursor(index);
+                openDetail(id);
+              }}
+              onToggleSelect={tabla.toggleRow}
+              onToggleCcaa={toggleCcaa}
+              onToggleTecnologia={toggleTecnologia}
+            />
 
-        <DetallePie
-          showingLine={showingLine}
-          clientSorted={tabla.clientSorted}
-          pageIndex={pagination.pageIndex}
-          totalPages={totalPages}
-          pageWindow={filas.pageWindow}
-          canPrevious={table.getCanPreviousPage()}
-          canNext={pagination.pageIndex + 1 < tabla.alcanzables}
-          canLast={totalPages - 1 < tabla.alcanzables && pagination.pageIndex < totalPages - 1}
-          onPageChange={tabla.irAPagina}
-        />
-      </section>
+            <DetallePie
+              showingLine={showingLine}
+              clientSorted={tabla.clientSorted}
+              pageIndex={pagination.pageIndex}
+              totalPages={totalPages}
+              pageWindow={filas.pageWindow}
+              canPrevious={table.getCanPreviousPage()}
+              canNext={pagination.pageIndex + 1 < tabla.alcanzables}
+              canLast={totalPages - 1 < tabla.alcanzables && pagination.pageIndex < totalPages - 1}
+              onPageChange={tabla.irAPagina}
+            />
+          </section>
 
-      <DetalleInspectorPanel modo={modo} licitacion={detailWithScore} onClose={closeDetail} />
+          <DetalleInspectorPanel
+            modo={modo}
+            licitacion={detailWithScore}
+            onClose={closeDetail}
+            onExpandir={ficha.abrir}
+          />
+        </>
+      )}
 
       <DetalleSeleccion
         seleccionadas={selectedIds.length}
         onComparar={() => setShowComparator(true)}
-        onExportar={() =>
-          downloadCsv(selectedItems, `seleccion_${new Date().toISOString().slice(0, 10)}.csv`)
-        }
+        onExportar={() => descargarSeleccion(selectedItems)}
         onSeguir={() => {
           selectedIds.forEach((id) => favoritos.seguir(id));
           setRowSelection({});
@@ -264,30 +281,8 @@ export default function DetallePage() {
       />
 
       {showComparator && selectedItems.length >= 2 && (
-        <Comparator
-          items={selectedItems.map((row) => ({
-            id_externo: row.id_externo,
-            titulo: row.titulo,
-            organo_contratacion: row.organo_contratacion ?? null,
-            importe: row.importe ?? null,
-            estado: row.estado ?? null,
-            fecha_publicacion: row.fecha_publicacion ?? null,
-            ccaa: row.ccaa ?? null,
-            cpv: row.cpv ?? null,
-            url: row.url ?? null,
-            // El listado no trae `fuente` (solo la ficha), y el comparador no
-            // pinta el enlace externo: mismo `null` que el resto de campos que
-            // esta proyección no puede rellenar.
-            fuente: null,
-            tecnologia: row.tecnologia ?? null,
-            tipo_contrato: null,
-            provincia: null,
-            fecha_limite: null,
-            fecha_inicio: null,
-            fecha_fin: null,
-            descripcion: null,
-            score: row.score,
-          }))}
+        <DetalleComparador
+          filas={selectedItems}
           onClose={() => startTransition(() => setShowComparator(false))}
         />
       )}

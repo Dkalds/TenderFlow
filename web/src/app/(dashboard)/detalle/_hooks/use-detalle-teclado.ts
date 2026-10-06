@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { MergedRow } from "./detalle-table-model";
+import { pasosDeFicha } from "./use-ficha-completa";
 
 export interface DetalleTeclado {
   /** Fila sobre la que actúan los atajos, recortada al tamaño de la página. */
@@ -16,6 +17,11 @@ export interface DetalleTeclado {
  * Esc cierra primero el comparador y sólo después la ficha: es el orden de
  * apilamiento que ve el usuario, y cerrar la ficha por debajo del comparador
  * dejaría abierto lo que está encima.
+ *
+ * Con la ficha completa en pantalla no hay tabla que recorrer: J/K abren la
+ * licitación siguiente o la anterior de la página (y el cursor las sigue, para
+ * volver a la tabla en la fila donde se estaba), S marca la abierta y las
+ * flechas se quedan para desplazar la ficha.
  */
 export function useDetalleTeclado({
   mergedRows,
@@ -25,6 +31,7 @@ export function useDetalleTeclado({
   closeDetail,
   openDetail,
   toggleFavorite,
+  fichaCompleta = false,
 }: {
   mergedRows: MergedRow[];
   detailId: string | null;
@@ -33,6 +40,8 @@ export function useDetalleTeclado({
   closeDetail: () => void;
   openDetail: (id: string) => void;
   toggleFavorite: (id: string) => void;
+  /** La ficha completa ocupa el sitio de la tabla. */
+  fichaCompleta?: boolean;
 }): DetalleTeclado {
   const [cursor, setCursor] = useState(0);
 
@@ -49,6 +58,19 @@ export function useDetalleTeclado({
       }
       if (!mergedRows.length) return;
       const key = event.key.toLowerCase();
+      if (fichaCompleta) {
+        if (key === "j" || key === "k") {
+          const paso = pasosDeFicha(mergedRows, detailId)[key === "j" ? "siguiente" : "anterior"];
+          if (!paso) return;
+          event.preventDefault();
+          setCursor(paso.indice);
+          openDetail(paso.id);
+        } else if (key === "s" && detailId) {
+          event.preventDefault();
+          toggleFavorite(detailId);
+        }
+        return;
+      }
       const current = mergedRows[Math.min(cursor, mergedRows.length - 1)];
       if (key === "j" || event.key === "ArrowDown") {
         event.preventDefault();
@@ -67,7 +89,7 @@ export function useDetalleTeclado({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- toggleFavorite se redefine cada render
-  }, [mergedRows, cursor, detailId, showComparator, closeComparator, closeDetail, openDetail]);
+  }, [mergedRows, cursor, detailId, showComparator, closeComparator, closeDetail, openDetail, fichaCompleta]);
 
   // La fila del cursor se mantiene a la vista al recorrer con teclado.
   useEffect(() => {
