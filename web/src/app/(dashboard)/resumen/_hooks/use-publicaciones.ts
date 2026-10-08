@@ -56,20 +56,35 @@ export interface Publicaciones {
   acotarADia: (dia: string) => void;
 }
 
-export function usePublicaciones(corte: Corte): Publicaciones {
-  const { rango, setRango } = useFilters();
-
-  // Ventana por defecto de 30 días cuando el ámbito no fija fecha de inicio.
+/**
+ * Inicio de la ventana del Resumen: el del ámbito, o hace 30 días si el ámbito
+ * no fija fecha de inicio.
+ */
+export function useDesdeResumen(): string {
+  const { rango } = useFilters();
   // eslint-disable-next-line react-hooks/purity
-  const desde = rango.desde ?? new Date(Date.now() - VENTANA_DIAS * 86400000).toISOString().slice(0, 10);
+  return rango.desde ?? new Date(Date.now() - VENTANA_DIAS * 86400000).toISOString().slice(0, 10);
+}
 
-  const trends = useFilteredQuery<TrendsResult>(
+/**
+ * Publicaciones por día de la ventana (`/analytics/trends?group_by=day`). La
+ * piden el ritmo del panel y la línea de «Publicadas 30 d» de la tira de
+ * contexto: misma clave, una sola petición.
+ */
+export function useRitmoDiario(desde: string) {
+  return useFilteredQuery<TrendsResult>(
     ["analytics", "trends", "resumen", desde],
     "/api/v1/analytics/trends?group_by=day",
     // El fallo lo pinta el panel (`PanelError`): sin toast encima.
     { staleTime: STALE_MS, meta: META_ERROR_EN_LINEA },
     { fecha_desde: desde },
   );
+}
+
+export function usePublicaciones(corte: Corte): Publicaciones {
+  const { rango, setRango } = useFilters();
+  const desde = useDesdeResumen();
+  const trends = useRitmoDiario(desde);
 
   const timeline = useFilteredQuery<TimelineScatterResult>(
     ["analytics", "resumen", "timeline", "muestra", desde],

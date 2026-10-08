@@ -277,4 +277,23 @@ describe("AtencionCards", () => {
     renderCards();
     expect(screen.queryByText(/no aplican/)).not.toBeInTheDocument();
   });
+
+  it("«Grandes en plazo» dice en cifra dónde empieza el 25 % de mayor importe", () => {
+    renderCards();
+    expect(screen.getByText(/^Desde .+: el 25 % de mayor importe, abiertas y en plazo$/)).toBeInTheDocument();
+  });
+
+  it("«Nuevas» enseña bajo la cifra la muestra que trae el endpoint", () => {
+    renderCards(HOY, {
+      ...NOVEDADES,
+      sample: [
+        { id_externo: "N1", titulo: "Servicio de ciberseguridad gestionada", importe: 960000, organo_contratacion: null },
+        { id_externo: "N2", titulo: null, importe: null, organo_contratacion: null },
+      ],
+    });
+    const tarjeta = screen.getByText("Nuevas").closest("a");
+    expect(tarjeta).toHaveTextContent("Servicio de ciberseguridad gestionada");
+    // Sin título, el expediente se nombra por su id y no por «undefined».
+    expect(tarjeta).toHaveTextContent("N2");
+  });
 });

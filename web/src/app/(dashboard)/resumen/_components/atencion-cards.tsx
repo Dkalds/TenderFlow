@@ -13,7 +13,7 @@ import { useAnnounceOnChange } from "@/components/live-region";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
+import { cn, formatCompactCurrency, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { ResumenHoyResult } from "@/lib/api-types";
 import { useNovedades } from "../_hooks/use-novedades";
 import { ColaCierre } from "./cola-cierre";
@@ -49,6 +49,9 @@ import { ColaCierre } from "./cola-cierre";
  * tiene plazo, que es la cola de cierre.
  */
 
+/** Publicaciones de muestra bajo la cifra de «Nuevas». */
+const MUESTRA_NUEVAS = 3;
+
 interface Tarjeta {
   key: string;
   title: string;
@@ -61,6 +64,8 @@ interface Tarjeta {
   exacto: boolean;
   /** Cada tarjeta carga de su propio endpoint. */
   cargando: boolean;
+  /** Lo que la cifra resume, cuando el endpoint lo trae: unas filas de muestra. */
+  muestra?: { id: string; titulo: string; importe: number | null }[];
 }
 
 function UrgentCard({ card }: { card: Tarjeta }) {
@@ -82,6 +87,20 @@ function UrgentCard({ card }: { card: Tarjeta }) {
         <span className="tf-tnum text-tf-title font-semibold">{formatNumber(card.value)}</span>
       )}
       <span className="mt-1 text-tf-meta text-muted-foreground">{card.subtitle}</span>
+      {card.muestra && card.muestra.length > 0 && (
+        // Texto y no enlaces: la tarjeta entera ya es un enlace.
+        <span className="mb-3 mt-2.5 flex flex-col gap-1">
+          {card.muestra.map((fila) => (
+            <span key={fila.id} className="flex min-w-0 items-center gap-2">
+              <span className="h-1.5 w-1.5 flex-none rounded-full bg-primary" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate text-tf-meta">{fila.titulo}</span>
+              <span className="tf-tnum flex-none text-tf-micro font-semibold text-muted-foreground">
+                {formatCompactCurrency(fila.importe)}
+              </span>
+            </span>
+          ))}
+        </span>
+      )}
       <span className="mt-auto flex items-center gap-1.5 border-t border-border/40 pt-2">
         <span
           className={cn(
@@ -165,7 +184,12 @@ export function AtencionCards() {
       key: "grandes",
       title: "Grandes en plazo",
       value: data?.calientes,
-      subtitle: "Del 25 % de mayor importe, abiertas y en plazo",
+      // El umbral se dice en cifra: «el 25 % de mayor importe» no dice si eso
+      // empieza en 50 k€ o en 2 M€, y depende del ámbito.
+      subtitle:
+        p75 !== null
+          ? `Desde ${formatCompactCurrency(p75)}: el 25 % de mayor importe, abiertas y en plazo`
+          : "Del 25 % de mayor importe, abiertas y en plazo",
       href:
         p75 !== null
           ? `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}&importe_min=${p75}`
@@ -194,6 +218,11 @@ export function AtencionCards() {
         : "Abre Detalle: todas las publicaciones",
       exacto: desde !== null || novedades.isLoading,
       cargando: novedades.isLoading,
+      muestra: (novedades.data?.sample ?? []).slice(0, MUESTRA_NUEVAS).map((fila) => ({
+        id: fila.id_externo,
+        titulo: fila.titulo ?? fila.id_externo,
+        importe: fila.importe ?? null,
+      })),
     },
   ];
 

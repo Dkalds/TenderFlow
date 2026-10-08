@@ -835,7 +835,7 @@ class AggregateRepository:
 
     _RESUMEN_ITEM_COLS = (
         "id_externo, titulo, importe, fecha_publicacion, estado, "
-        "organo_contratacion, tipo_contrato, ccaa"
+        "organo_contratacion, tipo_contrato, ccaa, fuente"
     )
 
     def resumen_timeline_items(

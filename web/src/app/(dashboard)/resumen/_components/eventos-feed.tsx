@@ -18,8 +18,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { useMemo } from "react";
+import { getSeriesColor } from "@/lib/chart-colors";
 import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 import type { EventosFeedResult } from "@/lib/api-types";
+import { agruparPorDia } from "./eventos-dias";
 
 const TIPO_ICON: Record<string, LucideIcon> = {
   adjudicacion: Trophy,
@@ -42,6 +45,25 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 const MAX_FILAS = 8;
+
+/**
+ * Color de cada clase de movimiento en la línea de tiempo: por posición en la
+ * serie de la consola, fijo de un día a otro. El cambio de estado —y lo que no
+ * se sabe nombrar— va en el gris de «Otros» (`chart-8`).
+ */
+const TIPO_SERIE: Record<string, number> = {
+  adjudicacion: 1,
+  formalizacion: 5,
+  modificacion: 2,
+  prorroga: 9,
+  anulacion: 8,
+  recurso: 4,
+  cambio_estado: 7,
+};
+
+function colorDeTipo(tipo: string): string {
+  return getSeriesColor(TIPO_SERIE[tipo] ?? 7);
+}
 
 /**
  * Variación del importe del contrato.
@@ -102,9 +124,12 @@ export function EventosFeed() {
 
   const items = data?.items ?? [];
   const visibles = items.slice(0, MAX_FILAS);
+  // eslint-disable-next-line react-hooks/purity
+  const ahora = useMemo(() => new Date(Date.now()), []);
+  const dias = useMemo(() => agruparPorDia(visibles, ahora), [visibles, ahora]);
 
   return (
-    <Panel className="mb-5.5">
+    <Panel>
       <PanelTitle
         title="Movimientos del mercado"
         hint={`${ventanaLabel(rango.desde, rango.hasta)} · del ámbito`}
@@ -139,31 +164,48 @@ export function EventosFeed() {
           hint="Prórrogas, modificaciones, adjudicaciones y anulaciones del ámbito salen aquí. Amplía las fechas para ver más."
         />
       ) : (
-        <ul>
-          {visibles.map((evento, indice) => {
-            const Icon = TIPO_ICON[evento.tipo] ?? Activity;
-            return (
-              <li key={`${evento.licitacion_id}-${evento.tipo}-${indice}`}>
-                <Link
-                  href={`/detalle?lic=${encodeURIComponent(evento.licitacion_id)}`}
-                  className="flex items-center gap-2.5 border-b border-border/25 px-1 py-1.5 transition-colors last:border-b-0 hover:bg-primary/5 active:bg-primary/10 active:duration-0"
-                >
-                  <Icon className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
-                  <span className="w-[104px] flex-none truncate text-tf-micro font-semibold">
-                    {TIPO_LABEL[evento.tipo] ?? evento.tipo}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-tf-meta">
-                    {truncate(evento.titulo ?? evento.licitacion_id, 70)}
-                  </span>
-                  <ImporteDelta value={evento.importe_delta} />
-                  <span className="tf-tnum w-[74px] flex-none text-right text-tf-micro text-muted-foreground">
-                    {evento.fecha ? formatDate(evento.fecha) : ""}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        // Línea de tiempo: un grupo por día y, en cada movimiento, un disco con
+        // el icono de su clase sobre la línea vertical.
+        <div className="flex flex-col gap-1">
+          {dias.map((dia) => (
+            <section key={dia.clave} aria-label={dia.etiqueta}>
+              <h3 className="pb-0.5 pl-9 text-tf-micro font-semibold text-muted-foreground">{dia.etiqueta}</h3>
+              <ul className="relative before:absolute before:bottom-0 before:left-[13px] before:top-0 before:w-px before:bg-border/60">
+                {dia.eventos.map((evento, indice) => {
+                  const Icon = TIPO_ICON[evento.tipo] ?? Activity;
+                  return (
+                    <li key={`${evento.licitacion_id}-${evento.tipo}-${indice}`}>
+                      <Link
+                        href={`/detalle?lic=${encodeURIComponent(evento.licitacion_id)}`}
+                        className="relative flex items-start gap-2.5 rounded-md py-1.5 pr-1 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
+                      >
+                        <span className="grid h-7 w-7 flex-none place-items-center rounded-full border border-border/60 bg-card">
+                          <Icon className="h-3.5 w-3.5" color={colorDeTipo(evento.tipo)} aria-hidden="true" />
+                        </span>
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="flex items-baseline gap-2">
+                            <span className="min-w-0 flex-1 truncate text-tf-micro font-semibold">
+                              {TIPO_LABEL[evento.tipo] ?? evento.tipo}
+                            </span>
+                            <ImporteDelta value={evento.importe_delta} />
+                          </span>
+                          <span className="truncate text-tf-meta">
+                            {truncate(evento.titulo ?? evento.licitacion_id, 90)}
+                          </span>
+                          {evento.organo_contratacion && (
+                            <span className="truncate text-tf-micro text-muted-foreground">
+                              {evento.organo_contratacion}
+                            </span>
+                          )}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
       )}
     </Panel>
   );

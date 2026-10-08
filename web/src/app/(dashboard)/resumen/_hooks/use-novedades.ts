@@ -16,7 +16,7 @@ import type { ResumenNovedadesResult } from "@/lib/api-types";
  * abierto». La consumen dos sitios, que comparten clave y por tanto petición:
  *
  * - la tarjeta «Nuevas» de `atencion-cards.tsx`, que enseña la cifra;
- * - la tabla de `timeline-section.tsx`, que marca con un punto cada fila
+ * - la tabla de `ultimas-publicaciones.tsx`, que marca con un punto cada fila
  *   publicada después del corte `desde`.
  *
  * La clave empieza por `analyticsKeys.novedades`, que es lo que invalida

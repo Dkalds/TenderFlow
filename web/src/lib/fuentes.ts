@@ -75,3 +75,35 @@ export function fuenteLinkLabel(
   if (clave.startsWith("placsp")) return ETIQUETAS.placsp;
   return ETIQUETA_GENERICA;
 }
+
+/** Cómo se nombra un portal en una celda: corto a la vista, completo en la pista. */
+export interface OrigenFuente {
+  corta: string;
+  nombre: string;
+}
+
+/** `licitaciones.fuente` → nombre del portal de origen. Mismas claves que `ETIQUETAS`. */
+const ORIGENES: Record<string, OrigenFuente> = {
+  placsp: { corta: "PLACSP", nombre: "Plataforma de Contratación del Sector Público" },
+  ted: { corta: "TED", nombre: "Diario Oficial de la Unión Europea (TED)" },
+  pscp: { corta: "PSCP", nombre: "Plataforma de Serveis de Contractació Pública" },
+  euskadi_rss: { corta: "Euskadi", nombre: "Contratación Pública de Euskadi" },
+  galicia_rss: { corta: "Galicia", nombre: "Contratos de Galicia" },
+};
+
+/** Para una fuente que existe pero que el frontend todavía no sabe nombrar. */
+const ORIGEN_GENERICO: OrigenFuente = { corta: "Otra", nombre: "Otra plataforma de contratación" };
+
+/**
+ * De qué portal viene un expediente (la columna «Origen»). A diferencia de
+ * `fuenteLinkLabel`, aquí no importa adónde lleva el enlace: un anuncio de TED
+ * es de TED aunque sus pliegos estén en PLACSP. Sin fuente devuelve `null` y la
+ * celda pinta la raya de vacío; una fuente desconocida se dice como «Otra».
+ */
+export function fuenteOrigen(fuente: string | null | undefined): OrigenFuente | null {
+  const clave = fuente?.trim().toLowerCase();
+  if (!clave) return null;
+  if (clave in ORIGENES) return ORIGENES[clave];
+  if (clave.startsWith("placsp")) return ORIGENES.placsp;
+  return ORIGEN_GENERICO;
+}

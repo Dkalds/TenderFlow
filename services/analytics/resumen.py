@@ -129,6 +129,9 @@ class TimelineScatterItem(BaseModel):
     organo_contratacion: str | None = None
     tipo_contrato: str | None = None
     ccaa: str | None = None
+    #: Fuente de ingesta (`placsp`, `ted`, `pscp`…): de qué portal viene el
+    #: expediente. La tabla «Últimas publicaciones» la enseña como «Origen».
+    fuente: str | None = None
 
 
 class TimelineScatterResult(BaseModel):
@@ -338,6 +341,7 @@ def get_timeline_scatter(filters: TimelineScatterFilters) -> TimelineScatterResu
             organo_contratacion=row.get("organo_contratacion"),
             tipo_contrato=row.get("tipo_contrato"),
             ccaa=row.get("ccaa"),
+            fuente=row.get("fuente"),
         )
         for row in rows
     ]

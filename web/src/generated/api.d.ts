@@ -14148,6 +14148,8 @@ export interface components {
             estado?: string | null;
             /** Fecha Publicacion */
             fecha_publicacion?: string | null;
+            /** Fuente */
+            fuente?: string | null;
             /** Id Externo */
             id_externo: string;
             /** Importe */

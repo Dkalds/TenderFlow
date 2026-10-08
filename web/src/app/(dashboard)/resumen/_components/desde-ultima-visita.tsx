@@ -45,6 +45,7 @@ import { apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { analyticsKeys } from "@/lib/query-keys";
 import { cn, formatDateTime, formatRelativeTime, truncate } from "@/lib/utils";
+import { estiloSubtipo, repartoPorSubtipo, type TramoReparto } from "./novedades-subtipos";
 
 type NovedadesDesdeUltimaVisita = Schemas["NovedadesDesdeUltimaVisita"];
 type Novedad = Schemas["Novedad"];
@@ -87,9 +88,59 @@ function useDesdeUltimaVisita() {
   });
 }
 
+/**
+ * Barra del reparto por clase de cambio, con los recuentos que trae
+ * `por_subtipo`. SVG con atributos y no anchos en `style`: un estilo en línea
+ * más alejaría quitar `'unsafe-inline'` de `style-src`
+ * (scripts/check_inline_styles.py). Lo que dice la barra lo dice también la
+ * leyenda en texto, así que la barra es decorativa para el lector.
+ */
+function BarraReparto({ tramos, total }: { tramos: TramoReparto[]; total: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox={`0 0 ${total} 1`}
+      preserveAspectRatio="none"
+      className="h-2 w-full overflow-hidden rounded-full"
+    >
+      {tramos.map((tramo) => (
+        <rect
+          key={tramo.clave}
+          x={tramo.inicio}
+          width={tramo.n}
+          height="1"
+          fill={tramo.color}
+          className="stroke-card"
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+    </svg>
+  );
+}
+
+function LeyendaReparto({ tramos }: { tramos: TramoReparto[] }) {
+  return (
+    <ul className="flex flex-wrap gap-x-3.5 gap-y-1">
+      {tramos.map((tramo) => (
+        <li key={tramo.clave} className="inline-flex items-center gap-1.5 text-tf-meta text-muted-foreground">
+          <svg aria-hidden="true" viewBox="0 0 8 8" className="h-2 w-2 flex-none">
+            <circle cx="4" cy="4" r="4" fill={tramo.color} />
+          </svg>
+          {tramo.etiqueta}
+          <span className="tf-tnum font-semibold text-foreground">{tramo.n}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function LineaNovedad({ novedad }: { novedad: Novedad }) {
+  // El icono va del color de su tramo en la barra: la línea y el tramo se leen juntos.
+  const { icono: Icono, color } = estiloSubtipo(novedad.subtipo);
   const contenido = (
     <>
+      <Icono className="h-3.5 w-3.5 flex-none" color={color} aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-tf-meta font-medium">{truncate(novedad.titulo, 110)}</span>
         {novedad.detalle && (
@@ -108,12 +159,12 @@ function LineaNovedad({ novedad }: { novedad: Novedad }) {
       {novedad.licitacion_id ? (
         <Link
           href={`/detalle?lic=${encodeURIComponent(novedad.licitacion_id)}`}
-          className="flex items-baseline gap-3 rounded-md px-1.5 py-1 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
+          className="flex items-center gap-2.5 rounded-md px-1.5 py-1 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
         >
           {contenido}
         </Link>
       ) : (
-        <div className="flex items-baseline gap-3 px-1.5 py-1">{contenido}</div>
+        <div className="flex items-center gap-2.5 px-1.5 py-1">{contenido}</div>
       )}
     </li>
   );
@@ -141,57 +192,72 @@ export function DesdeUltimaVisita() {
   const items = data.items ?? [];
   const desde = formatDateTime(data.desde);
 
+  const tramos = repartoPorSubtipo(data.por_subtipo);
+  const hayCambios = items.length > 0;
+
   return (
-    <section aria-labelledby="desde-ultima-visita-titulo" className={cn(SUPERFICIE_PANEL, "mb-3.5 px-3.5 py-2.5")}>
-      <div className="flex items-center gap-2.5">
-        <h2 id="desde-ultima-visita-titulo" className="min-w-0 text-tf-body font-semibold">
-          {items.length > 0
-            ? `${items.length} ${items.length === 1 ? "cambio" : "cambios"} en lo que sigues desde el ${desde}`
-            : `Sin cambios en lo que sigues desde el ${desde}`}
-        </h2>
-        {items.length > 0 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => marcarVisto.mutate()}
-            disabled={marcarVisto.isPending}
-            className="ml-auto flex-none text-muted-foreground"
-          >
-            {marcarVisto.isPending ? "Marcando…" : "Marcar todo como visto"}
-          </Button>
+    <section aria-labelledby="desde-ultima-visita-titulo" className={cn(SUPERFICIE_PANEL, "mb-3.5 px-4 py-3.5")}>
+      {/* Dos columnas en escritorio: a la izquierda cuánto y de qué clase, a la
+          derecha qué en concreto. Sin cambios, una sola línea que lo dice. */}
+      <div className={cn("grid gap-x-8 gap-y-3", hayCambios && "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]")}>
+        <div className="flex min-w-0 flex-col gap-2.5">
+          <h2 id="desde-ultima-visita-titulo" className="font-display text-tf-lede font-semibold">
+            {hayCambios
+              ? `${items.length} ${items.length === 1 ? "cambio" : "cambios"} en lo que sigues desde el ${desde}`
+              : `Sin cambios en lo que sigues desde el ${desde}`}
+          </h2>
+          {data.ventana_recortada && (
+            <p className="-mt-1.5 text-tf-micro text-muted-foreground">
+              Tu última visita es anterior a esa fecha: no se mira más atrás.
+            </p>
+          )}
+          {hayCambios && tramos.length > 0 && (
+            <>
+              <BarraReparto tramos={tramos} total={items.length} />
+              <LeyendaReparto tramos={tramos} />
+            </>
+          )}
+          {hayCambios && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => marcarVisto.mutate()}
+              disabled={marcarVisto.isPending}
+              className="-ml-2.5 self-start text-muted-foreground"
+            >
+              {marcarVisto.isPending ? "Marcando…" : "Marcar todo como visto"}
+            </Button>
+          )}
+        </div>
+
+        {hayCambios && (
+          <div className="min-w-0">
+            <ul className="flex flex-col">
+              {items.slice(0, VISIBLES).map((novedad, indice) => (
+                <LineaNovedad key={`${novedad.subtipo}-${novedad.licitacion_id ?? ""}-${indice}`} novedad={novedad} />
+              ))}
+            </ul>
+
+            {items.length > VISIBLES && (
+              <details className="group">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 px-1.5 py-1 text-tf-micro text-muted-foreground transition-colors hover:text-foreground">
+                  <ChevronRight className="h-3 w-3 transition-[rotate] group-open:rotate-90" aria-hidden="true" />
+                  Ver {items.length - VISIBLES} más
+                </summary>
+                <ul className="flex flex-col">
+                  {items.slice(VISIBLES).map((novedad, indice) => (
+                    <LineaNovedad
+                      key={`${novedad.subtipo}-${novedad.licitacion_id ?? ""}-${indice + VISIBLES}`}
+                      novedad={novedad}
+                    />
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
         )}
       </div>
-      {data.ventana_recortada && (
-        <p className="mt-0.5 text-tf-micro text-muted-foreground">
-          Tu última visita es anterior a esa fecha: no se mira más atrás.
-        </p>
-      )}
-
-      {items.length > 0 && (
-        <ul className="mt-1.5 flex flex-col">
-          {items.slice(0, VISIBLES).map((novedad, indice) => (
-            <LineaNovedad key={`${novedad.subtipo}-${novedad.licitacion_id ?? ""}-${indice}`} novedad={novedad} />
-          ))}
-        </ul>
-      )}
-
-      {items.length > VISIBLES && (
-        <details className="group">
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1 py-1 text-tf-micro text-muted-foreground transition-colors hover:text-foreground">
-            <ChevronRight className="h-3 w-3 transition-[rotate] group-open:rotate-90" aria-hidden="true" />
-            Ver {items.length - VISIBLES} más
-          </summary>
-          <ul className="flex flex-col">
-            {items.slice(VISIBLES).map((novedad, indice) => (
-              <LineaNovedad
-                key={`${novedad.subtipo}-${novedad.licitacion_id ?? ""}-${indice + VISIBLES}`}
-                novedad={novedad}
-              />
-            ))}
-          </ul>
-        </details>
-      )}
     </section>
   );
 }

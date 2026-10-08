@@ -47,6 +47,7 @@ def _row(
     ccaa: str = "Madrid",
     tecnologia: str = "SAP",
     tipo_contrato: str = "2",
+    fuente: str = "placsp",
 ) -> dict:
     return {
         "id_externo": id_externo,
@@ -59,6 +60,7 @@ def _row(
         "ccaa": ccaa,
         "tecnologia": tecnologia,
         "tipo_contrato": tipo_contrato,
+        "fuente": fuente,
     }
 
 
@@ -80,6 +82,7 @@ def _insert(rows: list[dict]) -> None:
                 tecnologia=r["tecnologia"],
                 tipo_contrato=r["tipo_contrato"],
                 fecha_extraccion=r["fecha_publicacion"],
+                fuente=r.get("fuente", "placsp"),
             )
             for r in rows
         ]
@@ -306,6 +309,18 @@ def test_timeline_scatter_campos_completos(tmp_db):
     assert item.ccaa == "Madrid"
     assert item.tipo_contrato == "3"
     assert item.estado == "PUB"
+
+
+def test_timeline_scatter_expone_la_fuente_de_ingesta(tmp_db):
+    """Cada fila dice de qué portal viene: la columna «Origen» de la tabla."""
+    _insert([_row("P1", fecha_pub_offset=-2), _row("ted:T1", fuente="ted", fecha_pub_offset=-1)])
+
+    result = get_timeline_scatter(TimelineScatterFilters())
+
+    assert {item.id_externo: item.fuente for item in result.items} == {
+        "ted:T1": "ted",
+        "P1": "placsp",
+    }
 
 
 def test_timeline_scatter_orden_descendente_y_filtro_fecha(tmp_db):
