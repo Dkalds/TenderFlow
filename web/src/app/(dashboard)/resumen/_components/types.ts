@@ -7,6 +7,8 @@ export interface TimelineItem {
   organo_contratacion: string | null;
   tipo_contrato: string | null;
   ccaa: string | null;
+  /** Fuente de ingesta (`placsp`, `ted`, `pscp`…): la columna «Origen». */
+  fuente?: string | null;
 }
 
 export const ITEMS_PER_PAGE = 10;

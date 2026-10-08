@@ -13,8 +13,8 @@ import { DesdeUltimaVisita } from "./desde-ultima-visita";
 import { PrimerosPasos } from "./primeros-pasos";
 import { AtencionCards } from "./atencion-cards";
 import { ContextoStrip } from "./contexto-strip";
-import { ComposicionPanel } from "./composicion-panel";
-import { TimelineSection } from "./timeline-section";
+import { PublicacionesPanel } from "./publicaciones-panel";
+import { UltimasPublicaciones } from "./ultimas-publicaciones";
 import { EventosFeed } from "./eventos-feed";
 import { AtajosAnalisis } from "./atajos-analisis";
 
@@ -52,10 +52,12 @@ import { AtajosAnalisis } from "./atajos-analisis";
  *    indicadores de competencia, medio globales; se retiraron (2026-10) porque
  *    son la radiografía del mercado que esta pantalla dejó de abrir, y viven en
  *    Mercado y Competencia.
- * 4. **Composición** — por estado; pulsar un estado filtra.
- * 5. **Publicaciones** — los cortes del periodo y la tabla, con el tope del
- *    endpoint declarado y las filas nuevas desde tu última visita marcadas.
- * 6. **Movimientos** — qué contratos se han movido en la ventana.
+ * 4. **Composición** — por estado, en la misma sección que el contexto: una
+ *    barra apilada y un botón por estado que filtra el ámbito.
+ * 5. **Publicaciones** y **Movimientos**, uno junto al otro: el ritmo del
+ *    periodo y qué contratos se han movido en la ventana.
+ * 6. **Últimas publicaciones** — la tabla, con el tope del endpoint declarado,
+ *    el origen de cada expediente y las filas nuevas desde tu última visita.
  * 7. **Análisis completo** — los atajos, que arrastran el ámbito.
  *
  * Todas aplican el ámbito entero de la barra de filtros, salvo las personales
@@ -118,9 +120,13 @@ export function ResumenView() {
           <PrimerosPasos posicion="abajo" onDescartar={recogerFoco} />
           <AtencionCards />
           <ContextoStrip />
-          <ComposicionPanel />
-          <TimelineSection />
-          <EventosFeed />
+          {/* El ritmo del periodo y lo que se movió en él, uno junto al otro; la
+              tabla que los desglosa, debajo y a todo el ancho. */}
+          <div className="mb-3.5 grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <PublicacionesPanel />
+            <EventosFeed />
+          </div>
+          <UltimasPublicaciones />
           <AtajosAnalisis />
         </div>
       </div>

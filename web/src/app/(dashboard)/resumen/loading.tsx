@@ -7,9 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
  * y una rejilla 2×2 de gráficos— que la página dejó de tener hace dos
  * rediseños: el usuario veía aparecer una estructura y llegar otra distinta.
  * Esto replica las bandas reales y sus altos, para que la carga no salte: la
- * cabecera sin borde (el borde lo pone el scroll), el campo del copiloto, «Tu
- * día», la banda de «Mercado abierto» con la cola a dos tercios y las dos
- * tarjetas apiladas, y la tira de contexto.
+ * cabecera sin borde (el borde lo pone el scroll), el campo del copiloto, la
+ * banda de «Desde tu última visita», «Tu día» con sus contadores y la semana,
+ * la banda de «Mercado abierto» con la cola a dos tercios y las dos tarjetas
+ * apiladas, y el contexto con su composición.
  */
 export default function ResumenLoading() {
   return (
@@ -21,10 +22,13 @@ export default function ResumenLoading() {
         {/* Copiloto */}
         <Skeleton className="mb-4 h-10 max-w-[720px] rounded-md" />
 
-        {/* Tu día: tira de cuatro + lista de compromisos */}
+        {/* Desde tu última visita: el reparto a la izquierda y los cambios a la derecha */}
+        <Skeleton className="mb-3.5 h-[104px] w-full rounded-xl" />
+
+        {/* Tu día: la tira de cuatro y, debajo, la semana en carriles */}
         <Skeleton className="mb-2.5 h-4 w-28 rounded-sm" />
         <Skeleton className="mb-2.5 h-[72px] w-full rounded-xl" />
-        <Skeleton className="mb-5.5 h-[104px] w-full rounded-xl" />
+        <Skeleton className="mb-5.5 h-[132px] w-full rounded-xl" />
 
         {/* Mercado abierto: la cola a dos tercios y dos tarjetas apiladas */}
         <Skeleton className="mb-2.5 h-4 w-32 rounded-sm" />
@@ -36,9 +40,10 @@ export default function ResumenLoading() {
           </div>
         </div>
 
-        {/* Contexto de mercado */}
+        {/* Contexto de mercado: la tira de tres y la composición por estado */}
         <Skeleton className="mb-2.5 h-4 w-36 rounded-sm" />
-        <Skeleton className="h-[72px] w-full rounded-xl" />
+        <Skeleton className="mb-2.5 h-[72px] w-full rounded-xl" />
+        <Skeleton className="h-[150px] w-full rounded-xl" />
       </div>
     </div>
   );

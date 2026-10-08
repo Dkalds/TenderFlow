@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo } from "react";
 import {
   Aviso,
@@ -14,22 +13,10 @@ import {
 } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilters } from "@/lib/filters";
-import { cn, EMPTY, formatCompactCurrency, formatNumber, truncate } from "@/lib/utils";
-import {
-  CHIP_POR_BANDA,
-  claseDeIcono,
-  destinoDe,
-  etiquetaKind,
-  ICONOS,
-  plazoChip,
-  tipoDeFecha,
-  tituloDe,
-} from "@/app/(dashboard)/mi-pipeline/_components/agenda/agenda-meta";
-import {
-  type AgendaUrgencia,
-  type PipelineAgendaItem,
-  usePipelineAgenda,
-} from "@/hooks/use-pursuits";
+import { cn, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
+import { type AgendaUrgencia, usePipelineAgenda } from "@/hooks/use-pursuits";
+import { SemanaEnCarriles } from "./tu-dia-semana";
+import { semanaEnCarriles } from "./tu-dia-semana-data";
 
 /**
  * Tu día — la banda que le faltaba al Resumen.
@@ -43,60 +30,24 @@ import {
  *
  * No hay analítica nueva: los contadores y las bandas de urgencia los calcula
  * el backend en `GET /pursuits/agenda` (ADR-014), el mismo endpoint que alimenta
- * la Agenda. Aquí sólo se recorta a los tres primeros tramos y se enseñan cuatro
- * filas; la agenda completa sigue siendo su pantalla.
+ * la Agenda. Aquí sólo se recorta a los tres primeros tramos y se enseñan como
+ * semana, con tres compromisos por día; la agenda completa sigue siendo su
+ * pantalla.
  *
  * **El vocabulario visual se importa de la Agenda** (`agenda-meta.ts`): iconos,
  * chips y el nombre de cada clase de fecha. Con dos mapas separados, la misma
  * fila se leía de dos maneras según por dónde entraras — y el que estaba aquí
  * ni siquiera conocía `tarea` ni `contrato`, así que las pintaba a las dos con
  * el icono de otra cosa.
+ *
+ * **La semana va en carriles** (`tu-dia-semana.tsx`): lo vencido, hoy y un
+ * carril por día con algo, colocado por los `dias_restantes` que manda el
+ * backend. Cuatro filas en lista no decían si el viernes venía cargado; un
+ * carril por día sí, y de un vistazo.
  */
 
 /** Tramos que caben en una banda de entrada: lo vencido, lo de hoy y la semana. */
 const URGENTES: AgendaUrgencia[] = ["vencida", "hoy", "semana"];
-
-const MAX_FILAS = 4;
-
-function FilaTuDia({ item }: { item: PipelineAgendaItem }) {
-  const Icono = ICONOS[claseDeIcono(item)];
-  // La fila entera es el enlace: sin flecha detrás, que dice lo mismo que el
-  // hover y el cursor.
-  return (
-    <li>
-      <Link
-        href={destinoDe(item)}
-        className="flex items-center gap-2.5 border-b border-border/25 px-3.5 py-2 transition-colors last:border-b-0 hover:bg-primary/5 active:bg-primary/10 active:duration-0"
-      >
-        <span
-          className={cn(
-            "tf-tnum w-[54px] flex-none rounded-sm px-1.5 py-0.5 text-center text-tf-micro font-semibold",
-            CHIP_POR_BANDA[item.urgencia],
-          )}
-        >
-          {plazoChip(item)}
-        </span>
-        <Icono className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">
-          {etiquetaKind(item)} · {tipoDeFecha(item)}:
-        </span>
-        <span className="min-w-0 flex-1 truncate text-tf-meta font-medium">{tituloDe(item)}</span>
-        {/* Qué clase de fecha es la del chip. Sin esto, «3 d» podía ser el
-            plazo del pliego, una tarea propia o la ventana de una renovación:
-            tres relojes distintos pintados igual. */}
-        <span className="hidden flex-none text-tf-micro text-muted-foreground lg:inline">
-          {tipoDeFecha(item)}
-        </span>
-        <span className="hidden min-w-0 max-w-[180px] truncate text-tf-micro text-muted-foreground xl:inline">
-          {item.organo ? truncate(item.organo, 36) : ""}
-        </span>
-        <span className="tf-tnum flex-none text-tf-meta font-semibold">
-          {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
-        </span>
-      </Link>
-    </li>
-  );
-}
 
 export function TuDia() {
   const { tecnologias, ccaas } = useFilters();
@@ -109,9 +60,12 @@ export function TuDia() {
   });
 
   const urgentes = useMemo(
-    () => (data?.items ?? []).filter((item) => URGENTES.includes(item.urgencia)).slice(0, MAX_FILAS),
+    () => (data?.items ?? []).filter((item) => URGENTES.includes(item.urgencia)),
     [data?.items],
   );
+  // eslint-disable-next-line react-hooks/purity
+  const hoy = useMemo(() => new Date(Date.now()), []);
+  const tramos = useMemo(() => semanaEnCarriles(urgentes, hoy), [urgentes, hoy]);
 
   const kpis = data?.kpis;
   const recortada =
@@ -138,8 +92,11 @@ export function TuDia() {
         />
       ) : (
         <>
-          <StatStrip columns={4}>
-            <StatCell
+          {/* Los contadores encima y la semana a todo el ancho: al lado, los
+              carriles no cabían y recortaban los títulos. */}
+          <div className="grid grid-cols-1 gap-2.5">
+            <StatStrip columns={4}>
+              <StatCell
               label="Plazos ≤ 7 días"
               loading={isPending}
               value={kpis ? formatNumber(kpis.vence_semana) : EMPTY}
@@ -169,7 +126,27 @@ export function TuDia() {
               tono={kpis && kpis.sin_proxima_accion > 0 ? "warning" : undefined}
               hint="Oportunidades sin tarea abierta"
             />
-          </StatStrip>
+            </StatStrip>
+
+            <div className={cn(SUPERFICIE_PANEL, "min-w-0 p-2.5")}>
+              {isPending ? (
+                <div className="flex flex-col gap-2 md:flex-row">
+                  {Array.from({ length: 4 }, (_, index) => (
+                    <Skeleton key={index} className="h-28 w-full rounded-lg" />
+                  ))}
+                </div>
+              ) : urgentes.length === 0 ? (
+                <PanelEmpty
+                  size="sm"
+                  title="Nada vence esta semana"
+                  hint="Aquí salen los plazos, las tareas y las renovaciones de los próximos siete días."
+                  action={<EnlaceIr href="/radar">Buscar oportunidades en el Radar</EnlaceIr>}
+                />
+              ) : (
+                <SemanaEnCarriles tramos={tramos} />
+              )}
+            </div>
+          </div>
 
           {/* La lista tiene un tope y se declara: unos contadores
               silenciosamente bajos se leen como «no tengo trabajo». */}
@@ -179,29 +156,6 @@ export function TuDia() {
               aparecen.
             </Aviso>
           )}
-
-          <div className={cn(SUPERFICIE_PANEL, "mt-2.5 overflow-hidden")}>
-            {isPending ? (
-              <div className="flex flex-col gap-2 p-3">
-                {Array.from({ length: 3 }, (_, index) => (
-                  <Skeleton key={index} className="h-6 w-full rounded-sm" />
-                ))}
-              </div>
-            ) : urgentes.length === 0 ? (
-              <PanelEmpty
-                size="sm"
-                title="Nada vence esta semana"
-                hint="Aquí salen los plazos, las tareas y las renovaciones de los próximos siete días."
-                action={<EnlaceIr href="/radar">Buscar oportunidades en el Radar</EnlaceIr>}
-              />
-            ) : (
-              <ul>
-                {urgentes.map((item) => (
-                  <FilaTuDia key={`${item.kind}-${item.licitacion_id}-${item.tarea_id ?? ""}`} item={item} />
-                ))}
-              </ul>
-            )}
-          </div>
         </>
       )}
     </section>

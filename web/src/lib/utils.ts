@@ -241,6 +241,24 @@ export function formatTime(
   return d.toLocaleTimeString(locale);
 }
 
+/** Día de la semana abreviado y número ("vie 9"): la cabecera de un día de agenda. */
+export function formatDiaSemana(date: Date, locale = "es-ES"): string {
+  if (isNaN(date.getTime())) return EMPTY;
+  const dia = date.toLocaleDateString(locale, { weekday: "short" }).replace(/\.$/, "");
+  return `${dia} ${date.getDate()}`;
+}
+
+/** Hora y minutos ("09:05"), sin segundos: la hora de una publicación de hoy o de ayer. */
+export function formatHoraMinuto(
+  date: string | Date | null | undefined,
+  locale = "es-ES",
+): string {
+  if (!date) return EMPTY;
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return EMPTY;
+  return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+}
+
 /**
  * Format a past instant as relative time ("hace 3 h", "hace 2 días").
  *

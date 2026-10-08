@@ -7,9 +7,10 @@
  * qué significa el punto de las filas nuevas — solo cuando hay alguna.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const h = vi.hoisted(() => ({
   params: {} as Record<string, string>,
@@ -40,12 +41,10 @@ vi.mock("@/lib/filters", async () => {
     useFilters: () => ({ rango: { desde: null, hasta: null } }),
   };
 });
-// El panel de gráficos no es lo que se prueba aquí y arrastra recharts.
-vi.mock("../publicaciones-panel", () => ({ PublicacionesPanel: () => null }));
 
 import { useNovedades } from "../../_hooks/use-novedades";
 import { useMarcarVisto } from "../desde-ultima-visita";
-import { TimelineSection } from "../timeline-section";
+import { UltimasPublicaciones } from "../ultimas-publicaciones";
 import { analyticsKeys } from "@/lib/query-keys";
 
 function cliente() {
@@ -54,11 +53,15 @@ function cliente() {
 
 function envoltorio(qc: QueryClient) {
   return function Envoltorio({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={qc}>
+        <TooltipProvider>{children}</TooltipProvider>
+      </QueryClientProvider>
+    );
   };
 }
 
-function fila(id: string, fechaPublicacion: string) {
+function fila(id: string, fechaPublicacion: string, fuente = "placsp") {
   return {
     id_externo: id,
     titulo: `Expediente ${id}`,
@@ -68,6 +71,7 @@ function fila(id: string, fechaPublicacion: string) {
     organo_contratacion: "Ministerio",
     tipo_contrato: "2",
     ccaa: "Madrid",
+    fuente,
   };
 }
 
@@ -113,20 +117,47 @@ describe("useMarcarVisto", () => {
   });
 });
 
-describe("TimelineSection · filas nuevas", () => {
+describe("UltimasPublicaciones · filas nuevas", () => {
   it("explica el punto cuando hay alguna fila nueva", async () => {
     h.timeline = [fila("NUEVA", "2026-09-30T09:00:00+00:00"), fila("VIEJA", "2026-09-20T09:00:00+00:00")];
-    render(<TimelineSection />, { wrapper: envoltorio(cliente()) });
+    render(<UltimasPublicaciones />, { wrapper: envoltorio(cliente()) });
 
     expect(await screen.findByText("nuevas desde tu última visita")).toBeInTheDocument();
-    expect(screen.getAllByText("Nueva desde tu última visita.")).toHaveLength(1);
+    // La tabla (escritorio) y las fichas (teléfono) se pintan las dos; el CSS
+    // decide cuál se ve. En cada una, una sola fila es nueva.
+    const tabla = screen.getByRole("table");
+    expect(within(tabla).getAllByText("Nueva desde tu última visita.")).toHaveLength(1);
   });
 
   it("sin filas nuevas no hay leyenda que explicar", async () => {
     h.timeline = [fila("VIEJA", "2026-09-20T09:00:00+00:00")];
-    render(<TimelineSection />, { wrapper: envoltorio(cliente()) });
+    render(<UltimasPublicaciones />, { wrapper: envoltorio(cliente()) });
 
-    expect(await screen.findByText("Expediente VIEJA")).toBeInTheDocument();
+    expect(await within(screen.getByRole("table")).findByText("Expediente VIEJA")).toBeInTheDocument();
     expect(screen.queryByText("nuevas desde tu última visita")).not.toBeInTheDocument();
+  });
+
+  it("«Nuevas» deja solo las filas publicadas después de tu última visita", async () => {
+    h.timeline = [fila("NUEVA", "2026-09-30T09:00:00+00:00"), fila("VIEJA", "2026-09-20T09:00:00+00:00")];
+    render(<UltimasPublicaciones />, { wrapper: envoltorio(cliente()) });
+
+    expect(await within(screen.getByRole("table")).findByText("Expediente VIEJA")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /^Nuevas/ }));
+
+    const tabla = screen.getByRole("table");
+    expect(within(tabla).getByText("Expediente NUEVA")).toBeInTheDocument();
+    expect(within(tabla).queryByText("Expediente VIEJA")).not.toBeInTheDocument();
+  });
+});
+
+describe("UltimasPublicaciones · origen", () => {
+  it("dice de qué portal viene cada expediente", async () => {
+    h.timeline = [fila("T1", "2026-09-20T09:00:00+00:00", "ted"), fila("P1", "2026-09-19T09:00:00+00:00")];
+    render(<UltimasPublicaciones />, { wrapper: envoltorio(cliente()) });
+
+    const tabla = screen.getByRole("table");
+    expect(within(tabla).getByRole("columnheader", { name: /Origen/ })).toBeInTheDocument();
+    expect(await within(tabla).findByText("TED")).toBeInTheDocument();
+    expect(within(tabla).getByText("PLACSP")).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fuenteLinkLabel } from "@/lib/fuentes";
+import { fuenteLinkLabel, fuenteOrigen } from "@/lib/fuentes";
 
 describe("fuenteLinkLabel", () => {
   it("names each known portal after itself", () => {
@@ -65,5 +65,29 @@ describe("fuenteLinkLabel", () => {
     expect(fuenteLinkLabel(" TED ", "https://ted.europa.eu/es/notice/1/pdf")).toBe(
       "Ver en TED",
     );
+  });
+});
+
+describe("fuenteOrigen", () => {
+  it("da el nombre corto y el completo de cada portal conocido", () => {
+    expect(fuenteOrigen("placsp")).toEqual({
+      corta: "PLACSP",
+      nombre: "Plataforma de Contratación del Sector Público",
+    });
+    expect(fuenteOrigen("ted")?.corta).toBe("TED");
+    expect(fuenteOrigen("pscp")?.corta).toBe("PSCP");
+    expect(fuenteOrigen("euskadi_rss")?.corta).toBe("Euskadi");
+    expect(fuenteOrigen("galicia_rss")?.corta).toBe("Galicia");
+  });
+
+  it("los conectores derivados de PLACSP son PLACSP", () => {
+    expect(fuenteOrigen("placsp_watched_company_awards")?.corta).toBe("PLACSP");
+    expect(fuenteOrigen(" PLACSP ")?.corta).toBe("PLACSP");
+  });
+
+  it("una fuente que no sabe nombrar no se inventa un portal", () => {
+    expect(fuenteOrigen("nueva_fuente")).toEqual({ corta: "Otra", nombre: "Otra plataforma de contratación" });
+    expect(fuenteOrigen(null)).toBeNull();
+    expect(fuenteOrigen("")).toBeNull();
   });
 });

@@ -2,10 +2,13 @@
 
 import { PanelError, PanelTitle, StatCell, StatStrip } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { useScopedHref } from "@/lib/filters";
+import { useFilters, useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
+import { useDesdeResumen, useRitmoDiario } from "../_hooks/use-publicaciones";
+import { ComposicionPanel } from "./composicion-panel";
+import { Sparkline } from "./contexto-graficos";
 
 /**
  * Contexto de mercado — tres cifras del ámbito, ninguna urgente.
@@ -29,9 +32,20 @@ import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
  * que `composicion-panel.tsx` para `/analytics/overview`: React Query sirve
  * cada una de una sola petición, y el prefetch en servidor
  * (`_lib/prefetch.ts`) las hidrata.
+ *
+ * Bajo «Publicadas 30 d» va la línea del ritmo diario, la misma serie que el
+ * panel de publicaciones (`useRitmoDiario`), y solo cuando el ámbito no mueve
+ * las fechas: con otra ventana, la línea dibujaría otros días que la cifra.
+ * La composición por estado vive en la misma sección, debajo: las dos son la
+ * foto del ámbito.
  */
 export function ContextoStrip() {
   const scopedHref = useScopedHref();
+  const { rango } = useFilters();
+  const ritmo = useRitmoDiario(useDesdeResumen());
+  const ventanaPorDefecto = rango.desde == null && rango.hasta == null;
+  const serie =
+    ventanaPorDefecto && !ritmo.data?.serie_truncada ? (ritmo.data?.series ?? []).map((punto) => punto.count) : [];
   // El fallo se pinta aquí (y en la composición, que lee la misma consulta):
   // sin toast encima.
   const overview = useFilteredQuery<AnalyticsOverview>(
@@ -73,7 +87,12 @@ export function ContextoStrip() {
             loading={loading}
             value={formatNumber(data?.licitaciones_30d)}
             trend={data?.yoy_delta}
-            hint="vs los 30 días previos"
+            hint={
+              <span className="flex items-center gap-2">
+                <span className="flex-none">vs los 30 días previos</span>
+                {serie.length > 1 && <Sparkline valores={serie} className="min-w-0 flex-1" />}
+              </span>
+            }
           />
           <StatCell
             label="Importe 30 d"
@@ -83,6 +102,7 @@ export function ContextoStrip() {
           />
         </StatStrip>
       )}
+      <ComposicionPanel className="mt-2.5" />
     </section>
   );
 }

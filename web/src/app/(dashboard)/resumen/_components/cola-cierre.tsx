@@ -49,6 +49,31 @@ const VISIBLES = 4;
  */
 const TECHO = 200;
 
+/** La ventana de la cola, en horas: el 100 % de la barra de cada fila. */
+const VENTANA_HORAS = 48;
+
+/**
+ * Lo que le queda a una fila, como barra sobre las 48 horas: se agota hacia la
+ * izquierda. Roja en las últimas 24, como la cifra de horas. SVG con atributos
+ * y no un ancho en `style` (scripts/check_inline_styles.py).
+ */
+function BarraPlazo({ horas }: { horas: number }) {
+  const ancho = Math.max(2, Math.min(100, (horas / VENTANA_HORAS) * 100));
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 100 6"
+      preserveAspectRatio="none"
+      className="hidden h-1.5 w-full overflow-hidden rounded-full sm:block"
+    >
+      <rect width="100" height="6" className="fill-border/40" />
+      <rect width={ancho} height="6" className={horas <= 24 ? "fill-destructive" : "fill-warning"} />
+      {/* La marca de las 24 horas, para leer la barra sin contar. */}
+      <rect x="49.6" width="0.8" height="6" className="fill-card" />
+    </svg>
+  );
+}
+
 interface FilaCierre {
   id: string;
   titulo: string;
@@ -198,7 +223,7 @@ export function ColaCierre({
             <li key={fila.id}>
               <Link
                 href={`/detalle?lic=${encodeURIComponent(fila.id)}`}
-                className="-mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t border-border/40 px-1.5 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
+                className="-mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t border-border/40 px-1.5 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0 sm:grid-cols-[minmax(0,1fr)_88px_minmax(80px,160px)_60px]"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-tf-meta font-medium">{fila.titulo}</span>
@@ -207,6 +232,7 @@ export function ColaCierre({
                 <span className="tf-tnum truncate text-right text-tf-meta font-medium">
                   {formatCompactCurrency(fila.importe)}
                 </span>
+                <BarraPlazo horas={fila.horas} />
                 <span
                   className={cn(
                     "tf-tnum text-right text-tf-meta font-semibold",

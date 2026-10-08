@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Panel, PanelEmpty, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { getEstadoChartColor } from "@/lib/chart-colors";
@@ -9,6 +10,7 @@ import { estadoLabel } from "@/lib/estados";
 import { useFilters } from "@/lib/filters";
 import { cn, formatNumber, formatPercent } from "@/lib/utils";
 import type { AnalyticsOverview } from "@/lib/api-types";
+import { BarraApilada, tramosApilados } from "./contexto-graficos";
 
 /**
  * Composición del ámbito — el desglose que el payload ya traía y nadie pintaba.
@@ -23,66 +25,19 @@ import type { AnalyticsOverview } from "@/lib/api-types";
  * analizan, y sus filas no podían filtrar nada —el órgano no es una clave del
  * ámbito—. Lo que queda es el corte que sí hace algo en esta pantalla.
  *
- * Barras HTML y no un `BarChart`: es un ranking de seis a ocho filas, y a esta
- * densidad una lista con barra se lee mejor que un gráfico con ejes — además de
- * poder ser un `<button>` de verdad, con foco y nombre accesible.
+ * Una barra apilada y no un `BarChart`: dice de un vistazo cuánto del ámbito
+ * está abierto y cuánto cerrado, que es lo que se pregunta al entrar. Debajo,
+ * cada estado es un `<button>` de verdad, con foco y nombre accesible, que
+ * lleva su recuento y su parte del total en texto: la barra no dice nada que
+ * la leyenda no diga.
  *
  * Cada estado **filtra el ámbito al pulsarlo**, que es la regla dura del
  * sistema de gráficos de la consola: clic en una marca filtra, no navega.
  */
 
-const ALTO = 232;
+const ALTO = 56;
 
-function Barra({
-  label,
-  value,
-  valueLabel,
-  hint,
-  max,
-  color,
-  active,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  valueLabel: string;
-  hint?: string;
-  max: number;
-  color: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  const pct = max > 0 ? Math.max(1, (value / max) * 100) : 0;
-  const contenido = (
-    <>
-      <span className="flex items-baseline gap-2">
-        <span className={cn("min-w-0 flex-1 truncate text-tf-meta", active && "font-semibold")}>
-          {label}
-        </span>
-        {hint && <span className="tf-tnum flex-none text-tf-micro text-muted-foreground">{hint}</span>}
-        <span className="tf-tnum flex-none text-tf-micro font-semibold">{valueLabel}</span>
-      </span>
-      {/* Sin transición: al cambiar el ámbito la barra está ya en su valor. Un
-          deslizamiento entre dos ámbitos se lee como que el dato cambió. */}
-      <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-border/40">
-        <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
-      </span>
-    </>
-  );
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className="block w-full rounded-sm px-1 py-1.5 text-left transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
-    >
-      {contenido}
-    </button>
-  );
-}
-
-export function ComposicionPanel() {
+export function ComposicionPanel({ className }: { className?: string }) {
   const { estados, setEstados } = useFilters();
 
   const overview = useFilteredQuery<AnalyticsOverview>(
@@ -93,8 +48,13 @@ export function ComposicionPanel() {
     { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
 
-  const porEstado = useMemo(
-    () => [...(overview.data?.por_estado ?? [])].sort((a, b) => b.n - a.n),
+  const tramos = useMemo(
+    () =>
+      tramosApilados(
+        [...(overview.data?.por_estado ?? [])]
+          .sort((a, b) => b.n - a.n)
+          .map((estado) => ({ estado: estado.estado, n: estado.n, color: getEstadoChartColor(estado.estado) })),
+      ),
     [overview.data?.por_estado],
   );
 
@@ -106,12 +66,25 @@ export function ComposicionPanel() {
     );
   };
 
-  const maxEstado = porEstado[0]?.n ?? 0;
-  const totalEstado = porEstado.reduce((suma, estado) => suma + estado.n, 0);
+  const totalEstado = tramos.reduce((suma, tramo) => suma + tramo.n, 0);
 
   return (
-    <Panel className="mb-3.5">
-      <PanelTitle title="Composición por estado" hint="pulsa un estado para filtrar el ámbito" />
+    <Panel className={className}>
+      <PanelTitle
+        title="Composición por estado"
+        hint={
+          totalEstado > 0
+            ? `${formatNumber(totalEstado)} expedientes · pulsa un estado para filtrar el ámbito`
+            : "pulsa un estado para filtrar el ámbito"
+        }
+        actions={
+          estados.length > 0 ? (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEstados([])}>
+              Quitar filtro de estado
+            </Button>
+          ) : undefined
+        }
+      />
 
       {overview.error ? (
         // Sin esto, un fallo pintaba «Sin expedientes en el ámbito»: un vacío
@@ -125,27 +98,45 @@ export function ComposicionPanel() {
         />
       ) : overview.isLoading ? (
         <PanelLoading height={ALTO} />
-      ) : porEstado.length === 0 ? (
+      ) : tramos.length === 0 ? (
         <PanelEmpty
           title="Sin expedientes en el ámbito"
           hint="Quita algún filtro del ámbito o amplía las fechas."
           height={ALTO}
         />
       ) : (
-        <div className="min-h-[232px]">
-          {porEstado.map((estado) => (
-            <Barra
-              key={estado.estado}
-              label={estadoLabel(estado.estado)}
-              value={estado.n}
-              valueLabel={formatNumber(estado.n)}
-              hint={totalEstado ? formatPercent((estado.n / totalEstado) * 100) : undefined}
-              max={maxEstado}
-              color={getEstadoChartColor(estado.estado)}
-              active={estados.includes(estado.estado)}
-              onClick={() => alternarEstado(estado.estado)}
-            />
-          ))}
+        <div className="flex min-h-[56px] flex-col gap-3">
+          {/* Sin transición: al cambiar el ámbito la barra está ya en su valor.
+              Un deslizamiento entre dos ámbitos se lee como que el dato cambió. */}
+          <BarraApilada tramos={tramos} total={totalEstado} activos={estados} />
+          <div role="group" aria-label="Filtrar el ámbito por estado" className="flex flex-wrap gap-1.5">
+            {tramos.map((tramo) => {
+              const activo = estados.includes(tramo.estado);
+              return (
+                <button
+                  key={tramo.estado}
+                  type="button"
+                  aria-pressed={activo}
+                  onClick={() => alternarEstado(tramo.estado)}
+                  className={cn(
+                    "inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-tf-meta transition-colors active:duration-0",
+                    activo
+                      ? "border-primary/50 bg-primary/10"
+                      : "border-border/60 bg-card hover:bg-primary/5 active:bg-primary/10",
+                  )}
+                >
+                  <svg aria-hidden="true" viewBox="0 0 8 8" className="h-2 w-2 flex-none">
+                    <rect width="8" height="8" rx="2" fill={tramo.color} />
+                  </svg>
+                  <span className={cn(activo && "font-semibold")}>{estadoLabel(tramo.estado)}</span>
+                  <span className="tf-tnum font-semibold">{formatNumber(tramo.n)}</span>
+                  <span className="tf-tnum text-muted-foreground">
+                    {formatPercent((tramo.n / totalEstado) * 100)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </Panel>
