@@ -7,7 +7,6 @@ criterio literal del plan sobre ``BackgroundTasks``.
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import pytest
@@ -90,36 +89,75 @@ def _seed_licitacion(id_externo: str) -> None:
         )
 
 
+def _seed_pliego_extraido(id_externo: str) -> None:
+    """Un pliego ya descargado y con texto: a la ficha solo le falta el LLM."""
+    from db.database import DocumentoReferencia
+    from db.repositories.documentos import DocumentosRepository
+
+    repo = DocumentosRepository()
+    repo.upsert_meta(
+        id_externo, [DocumentoReferencia(tipo="legal", uri="https://example.test/pcap.pdf")]
+    )
+    texto = "El criterio precio tendrá una ponderación del 60 por ciento."
+    (documento,) = repo.list_by_licitacion(id_externo)
+    repo.mark_extracted(documento["id"], texto=texto, sha256="abc", pages=[texto])
+
+
 # ---------------------------------------------------------------------------
 # 202 sin tocar el proveedor LLM
 # ---------------------------------------------------------------------------
 
 
 def test_extract_async_devuelve_202_con_job_id_sin_llamar_al_llm(client, cabeceras, monkeypatch):
-    """El 202 responde rápido y **sin** proveedor: el trabajo se hace luego.
+    """El 202 **encola** la extracción y no la hace: el proveedor ni se toca.
 
-    El «proveedor simulado» es un doble que revienta: si la ruta lo tocara, el
-    test fallaría con esa excepción en vez de con el tiempo, que es una señal
-    más útil que un umbral de milisegundos.
+    El expediente tiene un pliego ya descargado y con texto, así que lo único
+    que separa a la ruta del proveedor es la cola: hecha en línea, la extracción
+    llegaría al LLM. Tres comprobaciones, ninguna de reloj:
+
+    - El doble del proveedor **apunta** la llamada además de reventar, porque
+      ``run_background_extraction`` nunca lanza y se tragaría la excepción. Va
+      sobre ``services.rag.fact_sheet``, que importa la función por nombre:
+      parcheada solo en ``llm.client``, el servicio seguía llamando a la real.
+    - El job queda ``pending`` y sin reclamar (``intentos`` sube al reclamar).
+    - No hay ficha: la extracción deja siempre una, también cuando falla.
+
+    Aquí hubo un ``transcurrido_ms < 200`` que falló con 204 ms en un runner
+    compartido. No vuelve con una cota más holgada: medido con el proveedor
+    doblado, hacer la extracción en línea añade ~6 ms a una respuesta de ~14,
+    así que ningún umbral que aguante un runner cargado la separa de encolar.
     """
+    from services.rag.fact_sheet import get_fact_sheet
+    from shared.jobs import TIPO_FICHA_PLIEGO, obtener
+
+    llamadas_al_proveedor: list[str] = []
 
     def _proveedor_prohibido(*_args, **_kwargs):
+        llamadas_al_proveedor.append("stream_llm_response")
         raise AssertionError("la ruta que encola no puede llamar al proveedor LLM")
 
+    monkeypatch.setattr("services.rag.fact_sheet.stream_llm_response", _proveedor_prohibido)
+    # Y en su módulo de origen, por si un camino nuevo la importa al llamarla.
     monkeypatch.setattr("llm.client.stream_llm_response", _proveedor_prohibido)
     _seed_licitacion("EXP-ASYNC-1")
+    _seed_pliego_extraido("EXP-ASYNC-1")
 
-    t0 = time.monotonic()
     resp = client.post(
         "/api/v1/licitaciones/EXP-ASYNC-1/ficha-pliego/extract-async", headers=cabeceras
     )
-    transcurrido_ms = (time.monotonic() - t0) * 1000
 
     assert resp.status_code == 202, resp.text
     cuerpo = resp.json()
     assert cuerpo["running"] is True
     assert isinstance(cuerpo["job_id"], int)
-    assert transcurrido_ms < 200, f"el 202 tardó {transcurrido_ms:.0f} ms"
+
+    assert llamadas_al_proveedor == []
+    job = obtener(cuerpo["job_id"])
+    assert job is not None
+    assert job.tipo == TIPO_FICHA_PLIEGO
+    assert job.payload["licitacion_id"] == "EXP-ASYNC-1"
+    assert (job.estado, job.intentos, job.locked_by, job.resultado) == ("pending", 0, None, None)
+    assert get_fact_sheet("EXP-ASYNC-1") is None
 
 
 def test_extract_async_es_idempotente(client, cabeceras):
