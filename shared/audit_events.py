@@ -101,6 +101,7 @@ EMPRESA_REVIEW_RESOLVED: Final = "empresa.review_resolved"
 
 # ── operación — acciones sobre la ingesta (solo administración) ────────────
 DLQ_REQUEUED: Final = "dlq.requeued"
+DLQ_DISCARDED: Final = "dlq.discarded"
 
 # ── producto — acciones de negocio que dejan rastro ────────────────────────
 FEEDBACK_SUBMITTED: Final = "feedback.submitted"
@@ -159,7 +160,7 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
             EMPRESA_REVIEW_RESOLVED,
         }
     ),
-    "operacion": frozenset({DLQ_REQUEUED}),
+    "operacion": frozenset({DLQ_REQUEUED, DLQ_DISCARDED}),
     "producto": frozenset(
         {FEEDBACK_SUBMITTED, PURSUIT_WEIGHTS_PROPOSAL_APPLIED, GO_NO_GO_WEIGHTS_UPDATED}
     ),

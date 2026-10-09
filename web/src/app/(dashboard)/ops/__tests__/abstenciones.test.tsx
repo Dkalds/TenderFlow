@@ -8,15 +8,16 @@ import { jsonResponse } from "@/hooks/__tests__/fetch-call";
 /**
  * Ops no afirma lo que no ha leído (ADR-014).
  *
- * Cada caso es una lectura que, al fallar, se pintaba como su contrario: la
- * lista de claves caída salía como «no hay claves», el historial de entregas
- * caído como «sin entregas», la cola sin medir como «0 registros» y las
- * concesiones sin leer como «no hay concesiones». Ahora el fallo se dice como
- * fallo, con su «Reintentar».
+ * Cada caso es una lectura que, al fallar, se pintaba como su contrario: el
+ * historial de entregas caído como «sin entregas» y las concesiones sin leer
+ * como «no hay concesiones». Ahora el fallo se dice como fallo, con su
+ * «Reintentar».
+ *
+ * La misma regla para la cola de errores sin medir («—», no «0») está en
+ * `health-strip.test.tsx`, que es donde vive ese recuento desde 2026-10; la de
+ * la lista de claves se fue con su tarjeta (la que funciona está en Ajustes).
  */
 
-import { ApiKeysCard } from "../_components/administracion/api-keys-card";
-import { DlqPanel } from "../_components/observabilidad/dlq-panel";
 import { AccesosDinamicos } from "../_components/solicitudes-acceso/accesos-dinamicos";
 import { DeliveriesPanel } from "../_components/webhooks/deliveries-panel";
 
@@ -34,30 +35,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("ApiKeysCard", () => {
-  it("con la lectura caída dice que falló, no que no hay claves", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ detail: "boom" }, 500)));
-    conConsultas(<ApiKeysCard />);
-
-    expect(await screen.findByText("No se pudieron cargar las claves")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Reintentar/ })).toBeInTheDocument();
-    expect(screen.queryByText("No hay claves de API registradas")).not.toBeInTheDocument();
-  });
-
-  it("no ofrece revocar una clave: la API no tiene esa operación", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse({ keys: [{ prefix: "tf_ab12", created_at: "2026-09-01T10:00:00Z", active: true }] }),
-      ),
-    );
-    conConsultas(<ApiKeysCard />);
-
-    expect(await screen.findByText("tf_ab12")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Revocar/ })).not.toBeInTheDocument();
-  });
-});
-
 describe("DeliveriesPanel", () => {
   it("con el historial caído dice que falló, no «sin entregas»", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ detail: "boom" }, 500)));
@@ -65,23 +42,6 @@ describe("DeliveriesPanel", () => {
 
     expect(await screen.findByText("No se pudo cargar el historial de entregas")).toBeInTheDocument();
     expect(screen.queryByText(/Sin entregas/)).not.toBeInTheDocument();
-  });
-});
-
-describe("DlqPanel", () => {
-  it("sin recuento enseña una raya y lo dice, en vez de un 0", () => {
-    render(<DlqPanel dlqCount={null} />);
-
-    expect(screen.getByText("—")).toBeInTheDocument();
-    expect(screen.getByText(/sin dato/)).toBeInTheDocument();
-    expect(screen.queryByText("0")).not.toBeInTheDocument();
-  });
-
-  it("con cola, avisa y cuenta", () => {
-    render(<DlqPanel dlqCount={4} />);
-
-    expect(screen.getByText("4")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/Hay registros en la cola/);
   });
 });
 

@@ -4,6 +4,7 @@ import {
   SPACE_VIEWS,
   legacyRedirects,
   SUBRUTAS_MOVIDAS,
+  VISTAS_FUSIONADAS,
   type SpaceView,
 } from "@/lib/space-views";
 
@@ -44,7 +45,16 @@ describe("SPACE_VIEWS", () => {
       "rendimiento",
     ]);
     expect(SPACE_VIEWS["mi-pipeline"].map((view) => view.key)).toEqual(["agenda"]);
-    expect(SPACE_VIEWS.ops).toHaveLength(6);
+    // Reagrupación 2026-10: Ops pasa de seis vistas a cinco. Entra
+    // `ejecuciones` y `flags` y `webhooks` se funden en `administracion`
+    // (siguen entrando: ver `VISTAS_FUSIONADAS`).
+    expect(SPACE_VIEWS.ops.map((view) => view.key)).toEqual([
+      "observabilidad",
+      "ejecuciones",
+      "calidad",
+      "etiquetado",
+      "administracion",
+    ]);
     expect(SPACE_VIEWS.empresas).toHaveLength(2);
     expect(SPACE_VIEWS.cuentas).toHaveLength(2);
     expect(SPACE_VIEWS.direccion.map((view) => view.key)).toEqual(["resultado", "actividad"]);
@@ -101,6 +111,31 @@ describe("SPACE_VIEWS", () => {
   });
 });
 
+describe("VISTAS_FUSIONADAS", () => {
+  it("fundir una vista no rompe su ruta heredada ni su `?vista=`", () => {
+    // `/feature-flags` y `/webhooks` fueron vistas propias de Ops. Su redirect
+    // sigue apuntando a su `?vista=` de siempre, que la página del espacio
+    // resuelve: así el marcador viejo y el enlace pegado en un mensaje
+    // aterrizan en la sección que buscaban, no en la vista por defecto.
+    const redirects = legacyRedirects();
+    expect(redirects).toContainEqual({
+      source: "/feature-flags",
+      destination: "/ops?vista=flags",
+    });
+    expect(redirects).toContainEqual({ source: "/webhooks", destination: "/ops?vista=webhooks" });
+  });
+
+  it("cada vista fusionada acaba en una vista que existe, y no pisa a ninguna viva", () => {
+    for (const [slug, vistas] of Object.entries(VISTAS_FUSIONADAS)) {
+      const vivas = (SPACE_VIEWS[slug] ?? []).map((view) => view.key);
+      for (const vista of vistas) {
+        expect(vivas, `${slug}: «${vista.key}» se funde en una vista inexistente`).toContain(vista.en);
+        expect(vivas, `${slug}: «${vista.key}» sigue siendo una vista viva`).not.toContain(vista.key);
+      }
+    }
+  });
+});
+
 describe("BUILT_SPACE_ROUTES", () => {
   it("declara los espacios sin repetir y sin barra inicial", () => {
     expect(new Set(BUILT_SPACE_ROUTES).size).toBe(BUILT_SPACE_ROUTES.length);
@@ -119,10 +154,14 @@ describe("BUILT_SPACE_ROUTES", () => {
 describe("legacyRedirects", () => {
   it("emite un redirect por ruta absorbida hacia su `?vista=`", () => {
     const redirects = legacyRedirects();
-    // Derivado: uno por vista con `from` de un espacio ya construido.
-    const esperados = allViews().filter(
-      ([slug, view]) => view.from && BUILT_SPACE_ROUTES.includes(slug),
+    // Derivado: uno por vista con `from` de un espacio ya construido, más uno
+    // por vista fusionada que absorbía una ruta.
+    const fusionadas = Object.entries(VISTAS_FUSIONADAS).flatMap(([slug, vistas]) =>
+      BUILT_SPACE_ROUTES.includes(slug) ? vistas.filter((vista) => vista.from) : [],
     ).length;
+    const esperados =
+      allViews().filter(([slug, view]) => view.from && BUILT_SPACE_ROUTES.includes(slug)).length +
+      fusionadas;
     expect(redirects).toHaveLength(esperados);
     expect(redirects).toContainEqual({
       source: "/tendencias",

@@ -1,6 +1,7 @@
 /**
  * Forma del payload de `/api/v1/analytics/quality` y las dos derivaciones que
- * la pantalla necesita.
+ * Ops necesita: la serie del gráfico de completitud (vista Datos) y la etiqueta
+ * de frescura de la ingesta (tira de salud).
  *
  * Ambas son puras y ninguna inventa dato: `completitudSeries` **descarta** las
  * columnas que el backend no manda en vez de rellenarlas con cero, y
@@ -58,7 +59,7 @@ export interface Frescura {
 
 /** Umbrales de frescura de la ingesta, en horas desde la última. */
 const FRESCURA_OK_H = 6;
-export const FRESCURA_LIMITE_H = 24;
+const FRESCURA_LIMITE_H = 24;
 
 export function freshnessInfo(hours: number | null | undefined): Frescura {
   if (hours == null) return { label: "Sin medir", badge: "secondary" };

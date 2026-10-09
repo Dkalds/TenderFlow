@@ -20,7 +20,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { ICONO_ESPACIO } from "@/lib/iconos";
-import { BUILT_SPACE_ROUTES, SPACE_VIEWS, type SpaceView } from "@/lib/space-views";
+import { BUILT_SPACE_ROUTES, SPACE_VIEWS, VISTAS_FUSIONADAS, type SpaceView } from "@/lib/space-views";
 
 /** Agrupación visual del rail. Separadores, no navegación. */
 export type ConsoleGroup = "trabajo" | "analisis" | "personal" | "organizacion";
@@ -236,8 +236,9 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     key: "ops",
     label: "Ops y Admin",
     slug: "ops",
-    description: "Estado del sistema, calidad de los datos y administración.",
-    terminos: "observabilidad feature flags webhooks administración",
+    description: "Estado del sistema, ejecuciones, calidad de los datos y administración.",
+    terminos:
+      "observabilidad estado ejecuciones pasos cierre cola errores calidad datos etiquetado feature flags webhooks usuarios administración",
     icon: ICONO_ESPACIO.ops,
     group: "organizacion",
     visibility: "admin",
@@ -302,11 +303,19 @@ export function landingHref(space: ConsoleSpace): string {
   return first?.from ? `/${first.from}` : `/${space.slug}`;
 }
 
-/** Espacio que absorbió una ruta heredada, si la absorbió alguno. */
+/**
+ * Espacio que absorbió una ruta heredada, si la absorbió alguno.
+ *
+ * La ruta de una vista que después se fundió en otra (`/feature-flags`, hoy una
+ * sección de Ops › Administración) sigue siendo del mismo espacio: se devuelve
+ * la vista donde vive ahora, que es la única que existe.
+ */
 export function spaceAbsorbing(slug: string): { space: ConsoleSpace; view: string } | undefined {
   for (const space of CONSOLE_SPACES) {
     const view = space.views?.find((candidate) => candidate.from === slug);
     if (view) return { space, view: view.key };
+    const fusionada = VISTAS_FUSIONADAS[space.slug]?.find((candidate) => candidate.from === slug);
+    if (fusionada) return { space, view: fusionada.en };
   }
   return undefined;
 }

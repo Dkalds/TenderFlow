@@ -35,6 +35,7 @@ import {
   documentosKeys,
   empresasKeys,
   etiquetaKeys,
+  featureFlagKeys,
   eventosKeys,
   feedbackKeys,
   fichaKeys,
@@ -298,10 +299,21 @@ const FABRICAS: readonly Fabrica[] = [
     nombre: "adminKeys",
     miembros: [
       { nombre: "adminKeys.users", clave: adminKeys.users },
-      { nombre: "adminKeys.apiKeys", clave: adminKeys.apiKeys },
       { nombre: "adminKeys.health", clave: adminKeys.health },
       { nombre: "adminKeys.accessGrants", clave: adminKeys.accessGrants },
+      { nombre: "adminKeys.clientErrors", clave: adminKeys.clientErrors },
+      { nombre: "adminKeys.ejecuciones", clave: adminKeys.ejecuciones },
     ],
+  },
+  {
+    nombre: "featureFlagKeys",
+    raiz: featureFlagKeys.all,
+    miembros: [{ nombre: "featureFlagKeys.list", clave: featureFlagKeys.list }],
+  },
+  {
+    nombre: "adminKeys.dlq",
+    raiz: adminKeys.dlq.all,
+    miembros: [{ nombre: "adminKeys.dlq.estado", clave: adminKeys.dlq.estado("abiertas") }],
   },
   {
     // Sub-fábrica anidada: `adminKeys.solicitudes` tiene su propio `all`, y es

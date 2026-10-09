@@ -254,6 +254,59 @@ def requeue(failure_id: int) -> EstadoReencolado:
     return "agotada" if exhausted_at is not None else "abierta"
 
 
+EstadoDescarte = Literal["abierta", "agotada", "resuelta", "inexistente"]
+
+
+def discard(failure_id: int) -> EstadoDescarte:
+    """Cierra una entrada sin reintentarla. Devuelve su estado previo.
+
+    Es la salida de lo que reencolar no puede arreglar: un ``UndefinedColumn``
+    de una versión del esquema que ya no existe fallará igual en cada pasada, y
+    sin esto la entrada se quedaba en la cola para siempre —y con ella, el
+    aviso en rojo que nadie podía apagar.
+
+    Se cierra con ``resolved_at``, igual que una resolución con éxito: la tabla
+    no distingue los dos cierres y la retención purga ambos por la misma regla.
+    Lo que sí los distingue es ``audit_log`` (``dlq.discarded``), que es donde
+    queda quién decidió no reintentar. Una entrada ya resuelta no se toca.
+    """
+    with connect() as c:
+        row = c.execute(
+            "SELECT resolved_at, exhausted_at FROM failed_extractions WHERE id = %s",
+            (failure_id,),
+        ).fetchone()
+        if row is None:
+            return "inexistente"
+        resolved_at, exhausted_at = row
+        if resolved_at is not None:
+            return "resuelta"
+        c.execute(
+            "UPDATE failed_extractions SET resolved_at = %s WHERE id = %s AND resolved_at IS NULL",
+            (now_utc_iso(), failure_id),
+        )
+    return "agotada" if exhausted_at is not None else "abierta"
+
+
+def unresolved_error_summary() -> list[dict[str, Any]]:
+    """Fallos sin resolver —abiertos **y** agotados— agrupados por tipo de error.
+
+    A diferencia de :func:`unresolved_summary` incluye las agotadas: la pregunta
+    aquí no es «qué se va a reintentar» sino «de qué está hecha la cola», y una
+    entrada agotada sigue en ella hasta que alguien la reencola o la descarta.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "SELECT COALESCE(error_type, '') AS error_type, COUNT(*) AS n, "
+            "COUNT(*) FILTER (WHERE exhausted_at IS NULL) AS abiertas, "
+            "COUNT(*) FILTER (WHERE exhausted_at IS NOT NULL) AS agotadas "
+            "FROM failed_extractions WHERE resolved_at IS NULL "
+            "GROUP BY COALESCE(error_type, '') "
+            "ORDER BY n DESC, error_type"
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
 def increment_retry(failure_id: int) -> None:
     """Incrementa retry_count y actualiza last_attempt_at para resetear el backoff."""
     with connect() as c:

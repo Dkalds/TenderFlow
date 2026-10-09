@@ -10,7 +10,7 @@ import {
   routeSlug,
   spaceAbsorbing,
 } from "@/lib/console-spaces";
-import { legacyRedirects } from "@/lib/space-views";
+import { legacyRedirects, VISTAS_FUSIONADAS } from "@/lib/space-views";
 import { ICONO_ESPACIO } from "@/lib/iconos";
 import { BUILT_SPACE_ROUTES, SPACE_VIEWS } from "@/lib/space-views";
 
@@ -193,7 +193,11 @@ describe("legacyRedirects frente a los espacios", () => {
     const absorbidas = CONSOLE_SPACES.flatMap((space) => space.views ?? []).filter(
       (view) => view.from,
     );
-    expect(LEGACY_REDIRECTS).toHaveLength(absorbidas.length);
+    // Más las de las vistas que se fundieron en otra: su ruta sigue redirigiendo.
+    const fusionadas = Object.values(VISTAS_FUSIONADAS)
+      .flat()
+      .filter((vista) => vista.from);
+    expect(LEGACY_REDIRECTS).toHaveLength(absorbidas.length + fusionadas.length);
     expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/competidores",
       to: "/competencia?vista=competidores",
@@ -242,12 +246,26 @@ describe("spaceAbsorbing", () => {
     });
   });
 
+  it("la ruta de una vista que se fundió en otra resuelve a la vista donde vive hoy", () => {
+    // `/feature-flags` fue una vista propia de Ops y hoy es una sección de
+    // Administración. El rail sigue teniendo que saber de qué espacio es, y la
+    // vista que devuelve tiene que existir: `flags` ya no es ninguna.
+    expect(spaceAbsorbing("feature-flags")).toEqual({
+      space: expect.objectContaining({ key: "ops" }),
+      view: "administracion",
+    });
+    expect(spaceAbsorbing("webhooks")).toEqual({
+      space: expect.objectContaining({ key: "ops" }),
+      view: "administracion",
+    });
+  });
+
   it("devuelve undefined para una ruta que nadie absorbió", () => {
     expect(spaceAbsorbing("resumen")).toBeUndefined();
     expect(spaceAbsorbing("no-existe")).toBeUndefined();
   });
 
-  it("resuelve las 17 rutas absorbidas hacia una vista real de su espacio", () => {
+  it("resuelve todas las rutas absorbidas hacia una vista real de su espacio", () => {
     for (const { from } of LEGACY_REDIRECTS) {
       const slug = from.replace(/^\//, "");
       const hit = spaceAbsorbing(slug);
