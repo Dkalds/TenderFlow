@@ -5,7 +5,13 @@
  * Mercado. Ver la nota en `tendencias-view.tsx` sobre por qué el cuerpo no vive
  * en el `page.tsx` de la ruta.
  *
- * Es la única de las ocho que lee la URL (`useSearchParams`, para sembrar el
+ * Primero el mapa, después el detalle: el mapa de compradores y la
+ * concentración arriba, el perfil del órgano abierto en una franja debajo y el
+ * ranking mariposa al final. Hasta 2026-10 eran dos gráficos de barras gemelos,
+ * un treemap y una tabla que repetían el mismo top-50 cuatro veces, con el
+ * perfil en una columna lateral que sólo existía a partir de `xl` y tras un clic.
+ *
+ * Es la única de las vistas que lee la URL (`useSearchParams`, para sembrar el
  * filtro con `?organo_q=`, dentro de `_hooks/use-organos-view.ts`). No dependía
  * de ser una ruta sino de la query, y la query sobrevive igual por las dos
  * entradas: el redirect 308 arrastra la entrante, y
@@ -13,31 +19,36 @@
  */
 
 import { PanelError } from "@/components/console/panel";
-import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
-import { ExportPopover } from "@/components/export-popover";
-import { Search } from "lucide-react";
 
 import { useOrganosView } from "../_hooks/use-organos-view";
-import { OrganoDetalle } from "./organo-detalle";
-import { OrganosKpis, OrganosRankings } from "./organos-rankings";
-import { OrganosTabla } from "./organos-tabla";
+import { OrganoPerfil } from "./organo-perfil";
+import { OrganosCabecera } from "./organos-cabecera";
+import { OrganosConcentracion } from "./organos-concentracion";
+import { OrganosMapa } from "./organos-mapa";
+import { OrganosMariposa } from "./organos-mariposa";
 
 export default function OrganosView() {
   const {
     data,
     items,
     filteredItems,
-    maxCount,
-    top20,
-    top15ByImporte,
-    treemapData,
-    top10Concentration,
-    totalImporte,
-    topOrgano,
+    puntos,
+    medianas,
+    mariposa,
+    concentracion,
+    metrica,
+    setMetrica,
+    concentracionTop10,
+    totalLicitaciones,
+    importeMedio,
+    importeTotal,
+    totalOrganos,
     filter,
     setFilter,
-    selectedOrgano,
-    setSelectedOrgano,
+    organoAbierto,
+    rangoAbierto,
+    abrirOrgano,
+    cerrarPerfil,
     detailData,
     detailLoading,
     detailError,
@@ -51,69 +62,71 @@ export default function OrganosView() {
     return <PanelError title="No se pudieron cargar los órganos" error={error} onRetry={refetch} />;
   }
 
+  const filtrado = Boolean(filter);
+  const ordenTxt = metrica === "count" ? "licitaciones" : "importe";
+  const sugerencias = [
+    ...(data?.organos?.map((i) => i.organo_contratacion) ?? []),
+    ...[...new Set(data?.organos?.map((i) => i.ccaa).filter((c): c is string => c != null) ?? [])],
+  ];
+  const abierto = organoAbierto ? items.find((i) => i.organo_contratacion === organoAbierto) : undefined;
+
   return (
-    <div className="flex min-h-0 gap-4">
-      <div className="min-w-0 flex-1 space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="sr-only">Órganos</h1>
-            <p className="text-tf-meta text-muted-foreground">
-              Quién contrata más: los órganos de contratación por licitaciones e importe.
-            </p>
-          </div>
-          <ExportPopover extraParams={{ section: "organos" }} label="Exportar órganos" />
-        </div>
+    <div className="space-y-4">
+      <OrganosCabecera
+        concentracionTop10={concentracionTop10}
+        totalLicitaciones={totalLicitaciones}
+        totalOrganos={totalOrganos}
+        importeTotal={importeTotal}
+        metrica={metrica}
+        onMetricaChange={setMetrica}
+        filter={filter}
+        onFilterChange={setFilter}
+        sugerencias={sugerencias}
+        isLoading={isLoading}
+      />
 
-        <SearchAutocomplete
-          className="max-w-sm"
-          aria-label="Buscar órgano o comunidad autónoma"
-          placeholder="Buscar órgano o CCAA…"
-          value={filter}
-          onChange={setFilter}
-          suggestions={[
-            ...(data?.organos?.map((i) => i.organo_contratacion) ?? []),
-            ...[...new Set(data?.organos?.map((i) => i.ccaa).filter((c): c is string => c != null) ?? [])],
-          ]}
-          leftIcon={<Search className="h-4 w-4" aria-hidden="true" />}
-          inputClassName="pl-9"
-        />
-
-        <OrganosKpis
-          data={data}
-          nItems={items.length}
-          top10Concentration={top10Concentration}
-          totalImporte={totalImporte}
-          topOrgano={topOrgano}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <OrganosMapa
+          puntos={puntos}
+          medianas={medianas}
+          filtrado={filtrado}
           isLoading={isLoading}
+          onOrganoClick={abrirOrgano}
         />
-
-        <OrganosRankings
-          top20={top20}
-          top15ByImporte={top15ByImporte}
-          treemapData={treemapData}
-          filtrado={Boolean(filter)}
+        <OrganosConcentracion
+          concentracion={concentracion}
+          metrica={metrica}
+          nItems={filteredItems.length}
+          totalOrganos={totalOrganos}
+          importeTotal={importeTotal}
+          importeMedio={importeMedio}
           isLoading={isLoading}
-          onOrganoClick={setSelectedOrgano}
-        />
-
-        <OrganosTabla
-          filas={filteredItems}
-          maxCount={maxCount}
-          isLoading={isLoading}
-          onOrganoClick={setSelectedOrgano}
         />
       </div>
 
-      {selectedOrgano && (
-        <OrganoDetalle
-          organo={selectedOrgano}
+      {organoAbierto && (
+        <OrganoPerfil
+          organo={organoAbierto}
+          rango={rangoAbierto}
+          ordenTxt={ordenTxt}
+          ccaa={abierto?.ccaa}
           detalle={detailData}
           isLoading={detailLoading}
           error={detailError}
           onRetry={refetchDetail}
-          onClose={() => setSelectedOrgano(null)}
+          onClose={cerrarPerfil}
         />
       )}
+
+      <OrganosMariposa
+        filas={mariposa}
+        metrica={metrica}
+        onMetricaChange={setMetrica}
+        totalOrganos={totalOrganos}
+        filtrado={filtrado}
+        isLoading={isLoading}
+        onOrganoClick={abrirOrgano}
+      />
     </div>
   );
 }

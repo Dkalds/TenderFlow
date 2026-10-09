@@ -18,10 +18,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-// `useFilteredQuery` lee el ámbito de aquí; ExportPopover también.
+// `useFilteredQuery` lee el ámbito de aquí; ExportPopover también. El perfil
+// construye su enlace a Detalle con `useScopedHref`, que aquí no añade nada.
 const mockFilterParams = vi.fn<() => Record<string, string>>();
 vi.mock("@/lib/filters", () => ({
   useFilterParams: () => mockFilterParams(),
+  useScopedHref: () => (path: string) => path,
 }));
 
 // El control «Seguir» del panel tampoco es el sujeto: pregunta por la
@@ -34,9 +36,11 @@ vi.mock("@/hooks/use-cuentas", () => ({
 }));
 
 // Los gráficos no son el sujeto: recharts en jsdom sólo añade ruido y tiempo.
+// El órgano se abre desde el ranking mariposa, que es una tabla con un botón
+// real por fila y no necesita el mapa.
 vi.mock("@/components/charts/organos-charts", () => ({
-  OrganosRankingChart: () => null,
-  OrganosTreemapChart: () => null,
+  ALTO_MAPA: 380,
+  OrganosMapaChart: () => null,
   OrganosAdjudicatariosChart: () => null,
   OrganosEstacionalidadChart: () => null,
 }));
