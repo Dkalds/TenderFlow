@@ -121,6 +121,45 @@ def test_single_bid_metrics_use_n_ofertas():
     assert oracle.pct_monopolio is None
 
 
+def test_cobertura_ofertas_es_la_base_de_oferta_unica():
+    with patch(_PATCH_TARGET, return_value=_rows()):
+        res = get_competitors(CompetitorFilters())
+    # L1, L2 y L3 traen el número de ofertantes y L4 no: 3 de 4 licitaciones.
+    # Es la base del 2/3 de arriba, y sin ella ese porcentaje no se puede leer.
+    assert res.cobertura_ofertas_pct == 75.0
+
+
+def test_cobertura_ofertas_cuenta_licitaciones_no_filas():
+    # Un expediente con dos adjudicatarios son dos filas y una sola licitación.
+    # `pct_oferta_unica` la cuenta una vez; su cobertura tiene que hablar de la
+    # misma base, o valor y cobertura describirían cosas distintas.
+    rows = [
+        *_rows(),
+        {
+            **_rows()[0],
+            "nombre": "Indra Sistemas",
+            "nif": "D1",
+            "empresa_id": 40,
+            "empresa_nombre_master": "Indra",
+            "empresa_nif_master": "D-CANON",
+        },
+    ]
+    with patch(_PATCH_TARGET, return_value=rows):
+        res = get_competitors(CompetitorFilters())
+    assert res.total_adjudicaciones == 5
+    assert res.cobertura_ofertas_pct == 75.0  # 3 de 4 licitaciones, no 4 de 5 filas
+
+
+def test_cobertura_ofertas_a_cero_es_un_dato_medido():
+    # Ninguna fila trae el número de ofertantes: la cobertura se midió y es
+    # cero. `None` queda para cuando no hay nada que medir.
+    rows = [{**row, "n_ofertas_recibidas": None} for row in _rows()]
+    with patch(_PATCH_TARGET, return_value=rows):
+        res = get_competitors(CompetitorFilters())
+    assert res.cobertura_ofertas_pct == 0.0
+    assert res.pct_oferta_unica == 0.0
+
+
 def test_totals_and_aux_blocks():
     with patch(_PATCH_TARGET, return_value=_rows()):
         res = get_competitors(CompetitorFilters())
@@ -295,6 +334,8 @@ def test_empty_rows():
     assert res.competitors == []
     assert res.total_empresas == 0
     assert res.total_adjudicaciones == 0
+    # Sin adjudicaciones no hay cobertura que medir: desconocida, no 0 %.
+    assert res.cobertura_ofertas_pct is None
 
 
 def test_contratos_por_anio_usa_los_anios_activos_de_cada_empresa():
