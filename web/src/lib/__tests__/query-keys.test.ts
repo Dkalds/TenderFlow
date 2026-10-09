@@ -40,6 +40,7 @@ import {
   feedbackKeys,
   fichaKeys,
   guionKeys,
+  investigadorKeys,
   licitacionKeys,
   licitacionesKeys,
   metaKeys,
@@ -172,6 +173,13 @@ const FABRICAS: readonly Fabrica[] = [
     nombre: "askKeys",
     raiz: askKeys.all,
     miembros: [{ nombre: "askKeys.models", clave: askKeys.models }],
+  },
+  {
+    nombre: "investigadorKeys",
+    raiz: investigadorKeys.all,
+    miembros: [
+      { nombre: "investigadorKeys.busqueda", clave: investigadorKeys.busqueda({ q: "sap", top_k: 10 }) },
+    ],
   },
   {
     nombre: "watchlistKeys",

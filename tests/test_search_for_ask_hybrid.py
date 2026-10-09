@@ -1,8 +1,12 @@
 """Tests de services/licitaciones.py::search_for_ask (plan Pliegos+RAG, F9).
 
-Regresión central del flag: con ``RAG_HYBRID_ENABLED=False`` (default), el
-comportamiento debe ser byte-a-byte idéntico al anterior — el híbrido ni
-siquiera se intenta.
+Regresión central del flag: con ``RAG_HYBRID_ENABLED=False`` (default) el
+híbrido ni siquiera se intenta.
+
+Lo que responde entonces es el motor de texto del Investigador
+(``_contexto_por_texto``, desde 2026-10). El camino anterior —FTS estricto y
+LIKE— queda de red para cuando ese motor **falla**; aquí se fija que la red
+sigue comportándose como antes.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ class TestFlagOffIsUnchanged:
 
         with (
             patch("services.licitaciones._try_hybrid_search") as mock_hybrid,
-            patch.object(_repo, "search_fts_docs", return_value=[{"id_externo": "X"}]),
+            patch("services.licitaciones._contexto_por_texto", return_value=[{"id_externo": "X"}]),
         ):
             docs = search_for_ask("sap basis", 5)
 
@@ -28,12 +32,14 @@ class TestFlagOffIsUnchanged:
         assert docs == [{"id_externo": "X"}]
 
     def test_fts_and_like_fallback_paths_unaffected(self, monkeypatch):
-        """Sin resultados FTS, cae a LIKE — mismo comportamiento previo al flag."""
+        """Con el motor de texto caído: FTS estricto y, sin resultados, LIKE —
+        el mismo comportamiento que antes de que existiera."""
         from config import settings
 
         monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", False, raising=False)
 
         with (
+            patch("services.licitaciones._contexto_por_texto", side_effect=RuntimeError("bd")),
             patch.object(_repo, "search_fts_docs", return_value=[]),
             patch.object(
                 _repo, "search_like_for_ask", return_value=[{"id_externo": "LIKE-1"}]
@@ -63,6 +69,7 @@ class TestFlagOnHybridActivation:
             patch(
                 "services.licitaciones._try_hybrid_search", return_value=hybrid_docs
             ) as mock_hybrid,
+            patch("services.licitaciones._contexto_por_texto") as mock_texto,
             patch.object(_repo, "search_fts_docs") as mock_fts,
         ):
             docs = search_for_ask("sap s/4hana", 5, ccaa="Madrid", tecnologia="SAP")
@@ -70,25 +77,26 @@ class TestFlagOnHybridActivation:
         mock_hybrid.assert_called_once_with(
             "sap s/4hana", 5, ccaa="Madrid", tecnologia="SAP", fecha_desde=None, fecha_hasta=None
         )
+        mock_texto.assert_not_called()
         mock_fts.assert_not_called()
         assert docs == hybrid_docs
 
-    def test_hybrid_empty_falls_back_to_fts(self, monkeypatch):
-        """Híbrido activo pero sin chunks aún (documento_chunks vacía) -> FTS."""
+    def test_hybrid_empty_falls_back_to_texto(self, monkeypatch):
+        """Híbrido activo pero sin chunks aún (documento_chunks vacía) -> texto."""
         from config import settings
 
         monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", True, raising=False)
 
         with (
             patch("services.licitaciones._try_hybrid_search", return_value=None),
-            patch.object(
-                _repo, "search_fts_docs", return_value=[{"id_externo": "FTS-1"}]
-            ) as mock_fts,
+            patch(
+                "services.licitaciones._contexto_por_texto", return_value=[{"id_externo": "TXT-1"}]
+            ) as mock_texto,
         ):
             docs = search_for_ask("sap s/4hana", 5)
 
-        mock_fts.assert_called_once()
-        assert docs == [{"id_externo": "FTS-1"}]
+        mock_texto.assert_called_once()
+        assert docs == [{"id_externo": "TXT-1"}]
 
 
 class TestTryHybridSearchGating:

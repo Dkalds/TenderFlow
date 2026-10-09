@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from db.repositories.licitaciones import LicitacionRepository
@@ -236,7 +237,13 @@ def like_search(question: str, top_k: int) -> list[tuple[str, float]]:
     return _repo.like_fallback_search(question, top_k)
 
 
-def hybrid_search(question: str, top_k: int, *, alpha: float | None = None) -> list[dict[str, Any]]:
+def hybrid_search(
+    question: str,
+    top_k: int,
+    *,
+    alpha: float | None = None,
+    filtros: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Fusión RRF (FTS + pgvector) para una consulta, o ``[]`` si no aplica.
 
     Devuelve licitaciones completas (los mismos campos que ``fetch_docs``, más
@@ -249,6 +256,11 @@ def hybrid_search(question: str, top_k: int, *, alpha: float | None = None) -> l
     Las dos comprobaciones previas —modelo y corpus— son lo que permite al
     llamador etiquetar la fuente por el camino REALMENTE ejecutado en vez de
     por configuración.
+
+    ``filtros`` son los del ámbito, en la forma de ``hybrid_search_docs``
+    (``services.investigador.busqueda.filtros_de_fusion``): acotan las dos
+    listas antes de fusionar. Hasta 2026-10 la ruta filtraba después, contra un
+    conjunto de ids con tope, y un ámbito ancho perdía resultados.
 
     Nota: esto NO mira ``settings.RAG_HYBRID_ENABLED``. Ese flag existe para
     decidir si ``/ask`` cambia de recuperación por debajo de un LLM que ya
@@ -277,6 +289,7 @@ def hybrid_search(question: str, top_k: int, *, alpha: float | None = None) -> l
             limit=top_k,
             candidate_k=max(top_k, 50),
             alpha=alpha,
+            **(filtros or {}),
         )
     except Exception as e:
         log.debug("hybrid_search.query_failed", error=str(e))

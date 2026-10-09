@@ -93,24 +93,85 @@ class TestLosFiltrosLleganAlRetrieval:
 
         args, kwargs = buscar.call_args
         assert args == ("soporte sap", req.top_k)
-        assert kwargs == _FILTROS
+        assert kwargs == {**_FILTROS, "interpretar": True}
 
-    def test_los_tres_caminos_reciben_los_mismos_filtros(self, monkeypatch):
-        """Híbrido, FTS y LIKE: el que responda, acota igual."""
+    def test_interpretar_false_llega_al_retrieval(self):
+        """«Buscar el texto tal cual» vale también para el contexto del asistente."""
+        req = AskRequest.model_validate({"question": "soporte sap en Madrid", "interpretar": False})
+
+        with patch("services.licitaciones.search_for_ask", return_value=[]) as buscar:
+            _prepare_ask_context(req)
+
+        assert buscar.call_args.kwargs["interpretar"] is False
+
+    def test_el_hibrido_y_el_motor_de_texto_reciben_los_mismos_filtros(self, monkeypatch):
+        """El que responda, acota igual."""
         from config import settings
-        from services.licitaciones import _repo, search_for_ask
+        from services.licitaciones import search_for_ask
 
         monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", True, raising=False)
         with (
             patch("services.licitaciones._try_hybrid_search", return_value=None) as hibrido,
+            patch("services.licitaciones._contexto_por_texto", return_value=[]) as texto,
+        ):
+            search_for_ask("soporte sap", 5, **_FILTROS)
+
+        hibrido.assert_called_once_with("soporte sap", 5, **_FILTROS)
+        texto.assert_called_once_with("soporte sap", 5, **_FILTROS, interpretar=True)
+
+    def test_si_el_motor_de_texto_falla_la_red_recibe_los_mismos_filtros(self, monkeypatch):
+        """El camino anterior (FTS estricto y LIKE) queda de red para cuando el
+        motor de texto **falla**, y acota igual que él."""
+        from config import settings
+        from services.licitaciones import _repo, search_for_ask
+
+        monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", False, raising=False)
+        with (
+            patch("services.licitaciones._contexto_por_texto", side_effect=RuntimeError("bd")),
             patch.object(_repo, "search_fts_docs", return_value=[]) as fts,
             patch.object(_repo, "search_like_for_ask", return_value=[]) as like,
         ):
             search_for_ask("soporte sap", 5, **_FILTROS)
 
-        hibrido.assert_called_once_with("soporte sap", 5, **_FILTROS)
         fts.assert_called_once_with("soporte sap", limit=5, **_FILTROS)
         like.assert_called_once_with("soporte sap", limit=5, **_FILTROS)
+
+    def test_sin_resultados_no_se_cae_a_la_red(self, monkeypatch):
+        """Que el motor de texto no encuentre nada no es un fallo: la pregunta
+        llega al modelo sin contexto, y no con el de un LIKE sin orden."""
+        from config import settings
+        from services.licitaciones import _repo, search_for_ask
+
+        monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", False, raising=False)
+        with (
+            patch("services.licitaciones._contexto_por_texto", return_value=[]),
+            patch.object(_repo, "search_fts_docs") as fts,
+            patch.object(_repo, "search_like_for_ask") as like,
+        ):
+            assert search_for_ask("soporte sap", 5) == []
+
+        fts.assert_not_called()
+        like.assert_not_called()
+
+    def test_el_motor_de_texto_recibe_la_pregunta_entendida(self):
+        """Los filtros que dice la pregunta acotan el contexto del asistente
+        igual que la lista de resultados, y los explícitos mandan."""
+        from services.investigador.busqueda import Resultado
+        from services.licitaciones import _contexto_por_texto
+
+        with patch(
+            "services.investigador.busqueda.buscar_por_texto", return_value=Resultado([], "fts")
+        ) as buscar:
+            _contexto_por_texto(
+                "soporte SAP abiertas en Andalucía", 5, ccaa=None, tecnologia="SAP, ORACLE"
+            )
+
+        consulta, ambito, top_k = buscar.call_args.args
+        assert top_k == 5
+        assert consulta.terminos == ("soporte", "sap")
+        assert ambito.ccaa_del_texto == ("Andalucía",)
+        assert ambito.tecnologia == ("SAP", "ORACLE")
+        assert ambito.solo_abiertas is True
 
     def test_el_hibrido_pasa_los_filtros_a_la_fusion(self):
         fila = type("Row", (), {"tolist": lambda self: [0.1, 0.2]})()

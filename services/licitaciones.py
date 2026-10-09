@@ -185,20 +185,32 @@ def search_for_ask(
     tecnologia: str | Sequence[str] | None = None,
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
+    interpretar: bool = True,
 ) -> list[dict[str, Any]]:
     """Búsqueda para el endpoint ``/ask`` (RAG).
 
     Con ``settings.RAG_HYBRID_ENABLED=True`` + backend Postgres + extra
     ``[ml]`` instalado: retrieval híbrido (FTS + similitud vectorial sobre
     ``documento_chunks``, fusión RRF) vía ``PgTsBackend.hybrid_search_docs``
-    — cada doc trae además ``chunks`` (fuentes citables). En cualquier otro
-    caso, o si el híbrido no encuentra nada (aún no hay pliegos chunkeados):
-    FTS5/search_vector + LIKE fallback, **idéntico** al comportamiento
-    histórico (plan Pliegos+RAG F9 — con el flag off este código no cambia
-    de camino en absoluto).
+    — cada doc trae además ``chunks`` (fuentes citables).
 
-    Los filtros viajan iguales a los tres caminos, que los traducen con
+    En cualquier otro caso, o si el híbrido no encuentra nada, responde el
+    motor de texto del Investigador (:func:`_contexto_por_texto`): el mismo que
+    pinta la lista de ``/search/semantic``, así que el asistente se apoya en
+    los expedientes que la pantalla enseña. Hasta 2026-10 este paso era la
+    tsquery estricta y, si no casaba —lo normal en una pregunta—, un ``LIKE``
+    sin ``ORDER BY``: el contexto de la respuesta lo elegía el plan de
+    ejecución.
+
+    Ese camino anterior (``search_fts_docs`` → ``search_like_for_ask``) queda
+    como red: solo corre si el motor de texto **falla**, no si no encuentra
+    nada. Una pregunta sin expedientes que la respondan llega al modelo sin
+    contexto, que es lo que el prompt del modo general ya contempla.
+
+    Los filtros viajan iguales a todos los caminos, que los traducen con
     ``db.repositories.base.ambito_busqueda_sql``: el que responda acota igual.
+    ``interpretar`` solo gobierna el motor de texto (los filtros que diga la
+    propia pregunta).
     """
     from config import settings
 
@@ -213,6 +225,19 @@ def search_for_ask(
         )
         if hybrid_docs:
             return hybrid_docs
+
+    try:
+        return _contexto_por_texto(
+            question,
+            top_k,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            interpretar=interpretar,
+        )
+    except Exception as e:
+        log.warning("search_for_ask_texto_failed", error=str(e))
 
     docs = _repo.search_fts_docs(
         question,
@@ -232,6 +257,47 @@ def search_for_ask(
             limit=top_k,
         )
     return docs
+
+
+def _lista(valor: str | Sequence[str] | None) -> list[str]:
+    """Un filtro multi-valor como lista, llegue como CSV, lista o ``None``."""
+    if valor is None:
+        return []
+    if isinstance(valor, str):
+        return [v.strip() for v in valor.split(",") if v.strip()]
+    return [v for v in valor if v]
+
+
+def _contexto_por_texto(
+    question: str,
+    top_k: int,
+    *,
+    ccaa: str | Sequence[str] | None,
+    tecnologia: str | Sequence[str] | None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    interpretar: bool = True,
+) -> list[dict[str, Any]]:
+    """El contexto de ``/ask`` con el motor de texto del Investigador.
+
+    Cada doc trae las columnas del expediente y, si un pasaje de su pliego
+    contiene los términos de la pregunta, ese fragmento en ``chunks``.
+    """
+    from services.investigador.busqueda import (
+        buscar_por_texto,
+        documentos_de_contexto,
+        preparar,
+    )
+
+    consulta, ambito = preparar(
+        question,
+        ccaa=_lista(ccaa),
+        tecnologia=_lista(tecnologia),
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        interpretar_filtros=interpretar,
+    )
+    return documentos_de_contexto(buscar_por_texto(consulta, ambito, top_k).hits)
 
 
 def _try_hybrid_search(

@@ -163,3 +163,20 @@ solo por el feedback de relevancia sobre los resultados de búsqueda.
   otra tecnología o CCAA. El LIKE ignoraba además la tecnología. Tests:
   `tests/test_ask_filtros.py`, `tests/test_search_backend_hybrid.py` y, contra
   Postgres + pgvector, `tests/test_search_semantic_hybrid.py`.
+
+*Estado (2026-10-09):* sigue **parcial** por lo mismo —no hay pulgares sobre
+los resultados de búsqueda—, pero la premisa del RFC cambió y conviene leerlo
+sabiéndolo.
+- **«No se cambia el motor híbrido» ya no vale.** Medido contra producción, el
+  motor no era híbrido: la API no puede codificar la consulta, así que
+  respondía por texto, y por texto una pregunta normal no casaba con nada. La
+  búsqueda se reescribió (`services/investigador/busqueda.py`,
+  `db/repositories/investigador.py`): interpreta los filtros de la frase, basta
+  con casar algún término, y mira también dentro de los pliegos.
+- **Criterio #1, ahora de verdad.** El ámbito se aplicaba con `allowed_ids`
+  (5.000 ids sin orden): con una comunidad grande descartaba casi todo lo que
+  casaba. Va en el `WHERE` de cada consulta.
+- **Decisión #4 (claridad del filtro).** Además de los chips del ámbito, la
+  pantalla enseña lo que entendió de la frase y deja buscar el texto tal cual.
+- **Pantalla.** Una sola caja en vez de dos modos, la consulta en la URL, y el
+  asistente junto a la lista con su propia entrada.

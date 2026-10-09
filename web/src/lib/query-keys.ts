@@ -220,6 +220,17 @@ export const askKeys = {
   models: ["ask-models"] as const,
 };
 
+export const investigadorKeys = {
+  all: ["investigador"] as const,
+  /**
+   * Una búsqueda del Investigador. La petición entera entra en la clave: la
+   * misma frase con otro ámbito, otro número de resultados o sin interpretar
+   * es otra respuesta. Es lo que hace que volver de una ficha encuentre la
+   * lista donde estaba, sin pedirla otra vez.
+   */
+  busqueda: (peticion: Readonly<Record<string, unknown>>) => ["investigador", "busqueda", peticion] as const,
+};
+
 // ---------------------------------------------------------------------------
 // Watchlist y reglas
 // ---------------------------------------------------------------------------

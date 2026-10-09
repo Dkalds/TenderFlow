@@ -1,11 +1,14 @@
 """Tests para Phase 4: búsqueda semántica SSE y endpoint POST /search/semantic.
 
 El campo ``source`` de la respuesta usa el vocabulario de la API
-(``rrf``/``fts``/``like``, :data:`api.routes.search.SEARCH_SOURCES`), que es el
-que comparte con la UI del Investigador y con el cliente generado. No es el
-nombre interno del motor (``"FTS5"``/``"LIKE"``, que es lo que devuelve
-``services.investigador.search_engine.hybrid_search_docs``): esa distinción es
-la razón de que aquí se importen las constantes en vez de repetir el literal.
+(``rrf``/``fts``/``like``/``filtros``, :data:`api.routes.search.SEARCH_SOURCES`),
+que es el que comparte con la UI del Investigador y con el cliente generado: por
+eso aquí se importan las constantes en vez de repetir el literal.
+
+El motor se sustituye en su única entrada
+(``services.investigador.busqueda.buscar_por_texto``): lo que estos tests fijan
+es el contrato HTTP de la ruta. Que el motor encuentre lo que debe lo prueba,
+con el SQL corriendo, ``tests/test_investigador_busqueda_bd.py``.
 """
 
 from __future__ import annotations
@@ -17,6 +20,17 @@ from unittest.mock import patch
 from api.routes.search import SOURCE_FTS, SOURCE_LIKE
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
+
+
+def _motor(hits, fuente=SOURCE_FTS):
+    """Sustituye el motor de texto por uno que devuelve ``hits`` por ``fuente``."""
+    from services.investigador.busqueda import Resultado
+
+    return patch(
+        "services.investigador.busqueda.buscar_por_texto",
+        return_value=Resultado(list(hits), fuente),
+    )
+
 
 _FAKE_HITS = [
     {
@@ -30,6 +44,13 @@ _FAKE_HITS = [
         "ccaa": "Madrid",
         "estado": "EV",
         "score": 0.92,
+        "fecha_limite": None,
+        "tecnologia": "SAP",
+        "coincide_en": ["anuncio"],
+        "terminos_ausentes": [],
+        "titulo_tramos": [],
+        "extracto": [],
+        "pasaje": None,
     },
     {
         "id_externo": "LIC-002",
@@ -42,6 +63,13 @@ _FAKE_HITS = [
         "ccaa": "Cataluña",
         "estado": "ADJ",
         "score": 0.78,
+        "fecha_limite": None,
+        "tecnologia": "SAP",
+        "coincide_en": ["anuncio"],
+        "terminos_ausentes": [],
+        "titulo_tramos": [],
+        "extracto": [],
+        "pasaje": None,
     },
 ]
 
@@ -73,16 +101,8 @@ class TestSemanticSearchEndpoint:
         assert resp.status_code == 422
 
     def test_returns_200_with_fts(self, client, auth):
-        """Cuando FTS devuelve hits, se devuelve respuesta 200 con source ``fts``."""
-        fts_hits = [("LIC-001", 0.92), ("LIC-002", 0.78)]
-
-        with (
-            patch("services.investigador.search_engine.fts5_search", return_value=fts_hits),
-            patch(
-                "services.investigador.search_engine.fetch_docs",
-                return_value={h["id_externo"]: h for h in _FAKE_HITS},
-            ),
-        ):
+        """Cuando el texto devuelve hits, se devuelve respuesta 200 con source ``fts``."""
+        with _motor(_FAKE_HITS):
             resp = client.post(
                 "/api/v1/search/semantic",
                 json={"q": "SAP S/4HANA", "top_k": 5},
@@ -98,16 +118,8 @@ class TestSemanticSearchEndpoint:
         assert data["elapsed_ms"] >= 0
 
     def test_falls_back_to_fts_when_hits_present(self, client, auth):
-        """Con FTS hits, devuelve source ``fts``."""
-        fts_hits = [("LIC-002", 0.65)]
-
-        with (
-            patch("services.investigador.search_engine.fts5_search", return_value=fts_hits),
-            patch(
-                "services.investigador.search_engine.fetch_docs",
-                return_value={"LIC-002": _FAKE_HITS[1]},
-            ),
-        ):
+        """Con hits de texto, devuelve source ``fts``."""
+        with _motor([_FAKE_HITS[1]]):
             resp = client.post(
                 "/api/v1/search/semantic",
                 json={"q": "ABAP", "top_k": 5},
@@ -120,17 +132,8 @@ class TestSemanticSearchEndpoint:
         assert len(data["hits"]) == 1
 
     def test_falls_back_to_like_when_all_empty(self, client, auth):
-        """Sin FTS hits, usa ``like``."""
-        like_hits = [("LIC-001", 0.5)]
-
-        with (
-            patch("services.investigador.search_engine.fts5_search", return_value=[]),
-            patch("services.investigador.search_engine.like_search", return_value=like_hits),
-            patch(
-                "services.investigador.search_engine.fetch_docs",
-                return_value={"LIC-001": _FAKE_HITS[0]},
-            ),
-        ):
+        """Si el motor tuvo que degradar a subcadena, la respuesta dice ``like``."""
+        with _motor([_FAKE_HITS[0]], SOURCE_LIKE):
             resp = client.post(
                 "/api/v1/search/semantic",
                 json={"q": "SAP"},
@@ -143,7 +146,7 @@ class TestSemanticSearchEndpoint:
     def test_returns_503_on_search_exception(self, client, auth):
         """Si el motor falla, devuelve 503."""
         with patch(
-            "services.investigador.search_engine.fts5_search",
+            "services.investigador.busqueda.buscar_por_texto",
             side_effect=RuntimeError("FTS not available"),
         ):
             resp = client.post(
@@ -155,11 +158,7 @@ class TestSemanticSearchEndpoint:
 
     def test_response_schema(self, client, auth):
         """Verifica que la respuesta cumple el schema SemanticSearchResponse."""
-        with (
-            patch("services.investigador.search_engine.fts5_search", return_value=[]),
-            patch("services.investigador.search_engine.like_search", return_value=[]),
-            patch("services.investigador.search_engine.fetch_docs", return_value={}),
-        ):
+        with _motor([]):
             resp = client.post(
                 "/api/v1/search/semantic",
                 json={"q": "consulta vacia"},
@@ -168,22 +167,33 @@ class TestSemanticSearchEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert set(data.keys()) >= {"q", "top_k", "source", "hits", "elapsed_ms"}
+        assert set(data.keys()) >= {"q", "top_k", "source", "hits", "elapsed_ms", "interpretacion"}
         assert isinstance(data["hits"], list)
 
     def test_custom_alpha_passed(self, client, auth):
         """El parametro alpha se acepta sin error 422."""
-        with (
-            patch("services.investigador.search_engine.fts5_search", return_value=[]),
-            patch("services.investigador.search_engine.like_search", return_value=[]),
-            patch("services.investigador.search_engine.fetch_docs", return_value={}),
-        ):
+        with _motor([]):
             resp = client.post(
                 "/api/v1/search/semantic",
                 json={"q": "SAP", "alpha": 0.5},
                 headers=auth,
             )
         assert resp.status_code == 200
+
+    def test_sin_motor_sustituido_una_bd_vacia_responde_200(self, client, auth):
+        """El camino entero contra la BD del test, sin nada sembrado: ninguna de
+        las consultas del motor revienta con el corpus vacío."""
+        resp = client.post(
+            "/api/v1/search/semantic",
+            json={"q": "mantenimiento SAP abiertas en Madrid de más de 500K"},
+            headers=auth,
+        )
+
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["hits"] == []
+        assert data["interpretacion"]["ccaa"] == ["Madrid"]
+        assert data["interpretacion"]["solo_abiertas"] is True
 
 
 # ─── GET /api/v1/licitaciones/stream (SSE) ────────────────────────────────────

@@ -1,23 +1,33 @@
 import type { ReactNode } from "react";
+import type { TramoTexto } from "./types";
 
 /**
- * Resalta las apariciones literales de la consulta dentro de un extracto.
+ * Pinta un texto que la búsqueda ya devolvió troceado por lo que casa.
  *
- * Sin consulta devuelve el texto tal cual; la consulta se escapa antes de
- * entrar en el `RegExp` porque el usuario escribe lo que quiere y un `(` suelto
- * tumbaba el render.
+ * Hasta 2026-10 el resaltado se calculaba aquí, buscando la consulta **entera
+ * y literal** dentro de los primeros 200 caracteres de la descripción: con dos
+ * palabras no casaba casi nunca, y «licencia» no resaltaba «licencias». Ahora
+ * los tramos los calcula quien buscó, con el mismo diccionario con el que
+ * encontró el resultado, y aquí solo se pintan.
+ *
+ * Sin tramos devuelve `alternativa` (el título tal cual, por ejemplo): un
+ * resultado que llegó por otro camino no trae marcas, y eso no es un error.
  */
-export function highlightQuery(text: string, query: string): ReactNode {
-  if (!query.trim()) return text;
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const parts = text.split(new RegExp(`(${escaped})`, "gi"));
-  return parts.map((part, i) =>
-    part.toLowerCase() === query.toLowerCase() ? (
+export function TextoResaltado({
+  tramos,
+  alternativa = null,
+}: {
+  tramos: readonly TramoTexto[];
+  alternativa?: ReactNode;
+}): ReactNode {
+  if (tramos.length === 0) return alternativa;
+  return tramos.map((tramo, i) =>
+    tramo.resaltado ? (
       <mark key={i} className="rounded-sm bg-warning/15 font-semibold text-foreground">
-        {part}
+        {tramo.texto}
       </mark>
     ) : (
-      part
+      tramo.texto
     ),
   );
 }

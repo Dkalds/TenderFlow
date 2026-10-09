@@ -281,6 +281,9 @@ class PgTsBackend:
         tecnologia: str | Sequence[str] | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
+        importe_min: float | None = None,
+        importe_max: float | None = None,
+        solo_abiertas: bool = False,
         limit: int = 20,
         candidate_k: int = 50,
         alpha: float | None = None,
@@ -302,7 +305,8 @@ class PgTsBackend:
         Fail-open: cualquier error (extensión ausente, tabla vacía) devuelve
         lista vacía, igual que ``_ts_search``.
 
-        Los filtros (``ccaa``, ``tecnologia``, ``fecha_desde``/``fecha_hasta``;
+        Los filtros (``ccaa``, ``tecnologia``, ``fecha_desde``/``fecha_hasta`` y,
+        desde el Investigador, ``importe_min``/``importe_max``/``solo_abiertas``;
         ver ``db.repositories.base.ambito_busqueda_sql``) acotan las **dos**
         listas antes de fusionar, así que el ranking de cada una se cuenta ya
         dentro del ámbito y ningún fragmento de fuera llega a ``chunks``.
@@ -331,7 +335,14 @@ class PgTsBackend:
         # `search_for_ask`: la tecnología se busca en el CSV de la fila («ERP,SAP»
         # también es SAP) y un CSV de varios códigos se trocea.
         ambito, ambito_params = ambito_busqueda_sql(
-            "l", ccaa=ccaa, tecnologia=tecnologia, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
+            "l",
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            importe_min=importe_min,
+            importe_max=importe_max,
+            solo_abiertas=solo_abiertas,
         )
         fts_where = " AND ".join(
             ["l.search_vector @@ websearch_to_tsquery('spanish', %s)", *ambito]
@@ -489,6 +500,9 @@ def hybrid_search_docs(
     tecnologia: str | Sequence[str] | None = None,
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
+    importe_min: float | None = None,
+    importe_max: float | None = None,
+    solo_abiertas: bool = False,
     limit: int = 20,
     candidate_k: int = 50,
     alpha: float | None = None,
@@ -516,6 +530,9 @@ def hybrid_search_docs(
             tecnologia=tecnologia,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
+            importe_min=importe_min,
+            importe_max=importe_max,
+            solo_abiertas=solo_abiertas,
             limit=limit,
             candidate_k=candidate_k,
             alpha=alpha,

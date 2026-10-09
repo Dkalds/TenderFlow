@@ -181,3 +181,16 @@ export type TipoReporte = ReporteDatoBody["tipo"];
 type CampoFiltroCorpus = "ccaa" | "tecnologia" | "fecha_desde" | "fecha_hasta";
 export type FiltrosCorpus = Pick<Schemas["AskRequest"], CampoFiltroCorpus> &
   Pick<Schemas["SemanticSearchRequest"], CampoFiltroCorpus>;
+// Lo mismo más `interpretar`, que también comparten los dos contratos. Va
+// aparte y opcional: el generador marca como obligatorio un booleano con valor
+// por defecto, y quien no lo manda quiere justo ese valor.
+export type OpcionesCorpus = FiltrosCorpus &
+  Partial<Pick<Schemas["AskRequest"], "interpretar"> & Pick<Schemas["SemanticSearchRequest"], "interpretar">>;
+
+// Búsqueda del Investigador (`POST /search/semantic`).
+export type SemanticSearchRequest = Schemas["SemanticSearchRequest"];
+export type SemanticSearchResponse = Schemas["SemanticSearchResponse"];
+export type SemanticHit = Schemas["SemanticHit"];
+export type Interpretacion = Schemas["Interpretacion"];
+export type TramoTexto = Schemas["TramoTexto"];
+export type PasajePliego = Schemas["PasajePliego"];

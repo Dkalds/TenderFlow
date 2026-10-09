@@ -142,6 +142,14 @@ class AskRequest(BaseModel):
     fecha_hasta: str | None = Field(
         default=None, description="Fecha de publicación hasta (YYYY-MM-DD)"
     )
+    interpretar: bool = Field(
+        default=True,
+        description=(
+            "Lee los filtros que diga la propia pregunta (comunidad, importe, fechas, "
+            "«abiertas») al recuperar el contexto del corpus, igual que "
+            "`/search/semantic`. Solo aplica sin id_externo/ids_externos."
+        ),
+    )
     id_externo: str | None = Field(
         default=None,
         description=(
@@ -300,11 +308,13 @@ def _retrieve_docs(
     tecnologia: list[str],
     fecha_desde: str | None,
     fecha_hasta: str | None,
+    interpretar: bool = True,
 ) -> list[dict[str, Any]]:
-    """Recupera documentos relevantes usando FTS5 con LIKE fallback.
+    """Recupera los expedientes de contexto de una pregunta sobre el corpus.
 
-    Delega en ``services.licitaciones.search_for_ask`` que orquesta
-    FTS5 + LIKE fallback a través del repository.
+    Delega en ``services.licitaciones.search_for_ask``, que responde con el
+    mismo motor de texto que ``/search/semantic`` (anuncios y pasajes de
+    pliego, con los filtros que diga la pregunta).
     """
     try:
         from services.licitaciones import search_for_ask
@@ -316,6 +326,7 @@ def _retrieve_docs(
             tecnologia=tecnologia,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
+            interpretar=interpretar,
         )
     except Exception as exc:
         log.warning("ask.retrieve_docs_failed", error=str(exc))
@@ -631,6 +642,7 @@ def _prepare_ask_context(
             tecnologia=request.tecnologia,
             fecha_desde=request.fecha_desde,
             fecha_hasta=request.fecha_hasta,
+            interpretar=request.interpretar,
         )
         mode = "general"
 

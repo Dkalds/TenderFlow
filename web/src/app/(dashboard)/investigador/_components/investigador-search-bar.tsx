@@ -1,80 +1,66 @@
 "use client";
 
 /**
- * Caja de consulta: selector de modo, entrada, búsquedas recientes y los chips
- * del ámbito que acotan la búsqueda.
+ * Caja de consulta: una sola entrada, las búsquedas recientes y, debajo, con
+ * qué se buscó de verdad —el ámbito aplicado y lo que se entendió de la frase.
  *
- * El modo es un `Segmented` (dos botones con `aria-pressed`), no dos botones
- * sueltos primario/contorno: con la piel de botón, el modo activo se leía como
- * «la acción principal» y competía con «Buscar». Las búsquedas recientes son
+ * No hay selector de modo. Lo que se escribe siempre se busca, y si es una
+ * pregunta el asistente la responde además; decidir eso antes de escribir era
+ * pedirle a quien busca que conociera la pantalla. Las búsquedas recientes son
  * botones de verdad, no `Badge` con `role="button"`.
  */
 
-import { ROTULO_DATO, Panel, Segmented } from "@/components/console/panel";
+import type { FormEvent } from "react";
+import { ROTULO_DATO, Panel } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Mode } from "../_lib/types";
-
-const MODOS = [
-  { value: "search", label: "Búsqueda" },
-  { value: "ask", label: "Preguntar" },
-] as const satisfies readonly { value: Mode; label: string }[];
 
 interface Props {
-  mode: Mode;
-  onModeChange: (mode: Mode) => void;
-  query: string;
-  onQueryChange: (query: string) => void;
-  onSubmit: (overrideQuery?: string) => void;
-  /** Deshabilita el botón mientras hay búsqueda o respuesta en vuelo. */
+  texto: string;
+  onTextoChange: (texto: string) => void;
+  onSubmit: (override?: string) => void;
+  /** Deshabilita el botón mientras llega la primera respuesta de una búsqueda. */
   busy: boolean;
   history: string[];
   activeSearchFilters: string[];
+  /** Los filtros que salieron de la frase, ya en palabras. */
+  entendido: string[];
+  /** La última búsqueda se hizo sin leer filtros en la frase. */
+  talCual: boolean;
+  onTalCualChange: (talCual: boolean) => void;
 }
 
 export function InvestigadorSearchBar({
-  mode,
-  onModeChange,
-  query,
-  onQueryChange,
+  texto,
+  onTextoChange,
   onSubmit,
   busy,
   history,
   activeSearchFilters,
+  entendido,
+  talCual,
+  onTalCualChange,
 }: Props) {
-  const repetir = (h: string) => {
-    onQueryChange(h);
-    onSubmit(h);
+  const enviar = (evento: FormEvent<HTMLFormElement>) => {
+    evento.preventDefault();
+    onSubmit();
   };
 
   return (
     <Panel className="py-4">
-      <Segmented aria-label="Modo" value={mode} onChange={onModeChange} options={MODOS} className="mb-3" />
-
-      <div className="flex gap-2">
+      <form role="search" onSubmit={enviar} className="flex gap-2">
         <Input
-          aria-label={mode === "search" ? "Qué buscas" : "Tu pregunta"}
-          placeholder={
-            mode === "search"
-              ? "Describe lo que buscas: mantenimiento SAP en Andalucía…"
-              : "Haz una pregunta sobre licitaciones…"
-          }
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+          aria-label="Busca o pregunta"
+          placeholder="Busca o pregunta: mantenimiento SAP abiertas en Andalucía…"
+          value={texto}
+          onChange={(e) => onTextoChange(e.target.value)}
           className="flex-1"
         />
-        <Button onClick={() => onSubmit()} disabled={busy || !query.trim()}>
-          {busy
-            ? mode === "search"
-              ? "Buscando…"
-              : "Preguntando…"
-            : mode === "search"
-              ? "Buscar"
-              : "Preguntar"}
+        <Button type="submit" disabled={busy || !texto.trim()}>
+          {busy ? "Buscando…" : "Buscar"}
         </Button>
-      </div>
+      </form>
 
       {history.length > 0 && (
         <div role="group" aria-label="Búsquedas recientes" className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -87,7 +73,7 @@ export function InvestigadorSearchBar({
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => repetir(h)}
+              onClick={() => onSubmit(h)}
               className="max-w-full"
             >
               <span className="truncate">{h}</span>
@@ -106,6 +92,33 @@ export function InvestigadorSearchBar({
               {f}
             </Badge>
           ))}
+        </div>
+      )}
+
+      {/* Lo que se leyó en la frase como filtro. Un filtro que se aplica sin
+          decirlo es un resultado que falta sin explicación; por eso se enseña,
+          y se puede deshacer. */}
+      {entendido.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className={ROTULO_DATO}>Entendido de tu frase</span>
+          {entendido.map((f) => (
+            <Badge key={f} variant="info" size="sm">
+              {f}
+            </Badge>
+          ))}
+          <Button type="button" variant="ghost" size="sm" onClick={() => onTalCualChange(true)}>
+            Buscar el texto tal cual
+          </Button>
+        </div>
+      )}
+      {talCual && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-tf-meta text-muted-foreground">
+            Buscando el texto tal cual, sin leer filtros en la frase.
+          </span>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onTalCualChange(false)}>
+            Volver a leerlos
+          </Button>
         </div>
       )}
     </Panel>

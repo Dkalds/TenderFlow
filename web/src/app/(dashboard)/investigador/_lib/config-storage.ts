@@ -22,12 +22,18 @@ export const DEFAULT_CONFIG: InvestigadorConfig = {
   useGlobalFilters: false,
 };
 
-export const EXAMPLE_QUESTIONS = [
-  "¿Cuáles son las licitaciones más recientes?",
+/**
+ * Consultas de ejemplo. Cada una enseña una cosa que la caja entiende: un
+ * filtro escrito en la frase, un importe, una búsqueda dentro de los pliegos,
+ * el orden por fecha y una pregunta al asistente. Las anteriores prometían lo
+ * que la búsqueda no hacía: tres de las cinco no devolvían ni un resultado.
+ */
+export const EJEMPLOS = [
+  "mantenimiento SAP abiertas en Andalucía",
+  "licencias de más de 500.000 € desde 2026",
+  "baja temeraria",
+  "últimas licitaciones de S/4HANA",
   "¿Qué es un PCAP y qué contiene?",
-  "¿Cómo funciona el procedimiento abierto simplificado?",
-  "Resumen de licitaciones de mantenimiento en Madrid",
-  "Buscar licitaciones de S/4HANA con importe mayor a 500K",
 ];
 
 export function loadConfig(): InvestigadorConfig {

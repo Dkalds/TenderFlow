@@ -8,7 +8,7 @@
  */
 
 import { errorDeRespuesta, getCsrfToken, type ApiError } from "./api-client";
-import type { FiltrosCorpus } from "./api-types";
+import type { OpcionesCorpus } from "./api-types";
 import { registrarEvento } from "./analytics";
 
 export interface ChatMessage {
@@ -127,7 +127,7 @@ export interface AskParams extends StreamCallbacks {
   model?: string;
   topK?: number;
   /** Filtros globales sobre el corpus (CCAA, tecnología, rango de publicación). */
-  extras?: FiltrosCorpus;
+  extras?: OpcionesCorpus;
   signal?: AbortSignal;
 }
 

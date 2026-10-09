@@ -5145,8 +5145,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Búsqueda de texto completo con fusión semántica
-         * @description Fusiona (RRF) el texto completo de Postgres (tsvector/ts_rank_cd) con la similitud vectorial sobre los chunks de pliego, ponderadas por alpha. Sin embeddings disponibles degrada a texto completo y, si este no encuentra nada, a coincidencia literal; el campo source de la respuesta dice cuál de los tres caminos se ejecutó.
+         * Búsqueda de texto completo en anuncios y pliegos, con fusión semántica
+         * @description Interpreta los filtros que diga la frase, busca por texto completo en los anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la instalación tiene embeddings con los que codificar la consulta, fusiona (RRF) con la similitud vectorial, ponderada por alpha. Si el texto no encuentra nada degrada a coincidencia literal; el campo source de la respuesta dice cuál de los caminos se ejecutó.
          */
         post: operations["semantic_search_api_v1_search_semantic_post"];
         delete?: never;
@@ -5999,6 +5999,12 @@ export interface components {
              * @description F2.8 — hasta tres licitaciones para una pregunta cruzada (comparar). El contexto se reparte entre ellas —el presupuesto por expediente se reduce y se declara en `ask_meta`— y la respuesta cita cada dato con su expediente. Compatible con `id_externo`: si llegan los dos, `id_externo` va primero.
              */
             ids_externos?: string[] | null;
+            /**
+             * Interpretar
+             * @description Lee los filtros que diga la propia pregunta (comunidad, importe, fechas, «abiertas») al recuperar el contexto del corpus, igual que `/search/semantic`. Solo aplica sin id_externo/ids_externos.
+             * @default true
+             */
+            interpretar: boolean;
             /**
              * Messages
              * @description Historial previo de la conversación (no incluye la pregunta actual). No se persiste en el servidor.
@@ -9506,6 +9512,36 @@ export interface components {
             titulo: string;
         };
         /**
+         * Interpretacion
+         * @description Lo que se entendió de la frase y se aplicó a la búsqueda.
+         */
+        Interpretacion: {
+            /** Ccaa */
+            ccaa: string[];
+            /** Fecha Desde */
+            fecha_desde: string | null;
+            /** Fecha Hasta */
+            fecha_hasta: string | null;
+            /** Importe Max */
+            importe_max: number | null;
+            /** Importe Min */
+            importe_min: number | null;
+            /**
+             * Orden
+             * @enum {string}
+             */
+            orden: "relevancia" | "recientes";
+            /** Solo Abiertas */
+            solo_abiertas: boolean;
+            /** Terminos */
+            terminos: string[];
+            /**
+             * Texto
+             * @description El texto con el que se buscó, ya sin los filtros.
+             */
+            texto: string;
+        };
+        /**
          * ItemActividad
          * @description Una línea del feed del equipo.
          */
@@ -11188,6 +11224,25 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /**
+         * PasajePliego
+         * @description El fragmento de pliego que casa con la consulta.
+         */
+        PasajePliego: {
+            /** Documento Id */
+            documento_id: number | null;
+            /** Filename */
+            filename: string | null;
+            /** Page Number */
+            page_number: number | null;
+            /**
+             * Tipo
+             * @description Clase del documento: legal, technical o additional.
+             */
+            tipo: string | null;
+            /** Tramos */
+            tramos: components["schemas"]["TramoTexto"][];
         };
         /**
          * PasoEjecucion
@@ -13782,10 +13837,25 @@ export interface components {
         SemanticHit: {
             /** Ccaa */
             ccaa: string | null;
+            /**
+             * Coincide En
+             * @description Dónde casa la consulta: en el anuncio (título, descripción o CPV), en un pasaje del pliego, o en los dos. Vacío con source=rrf y con source=filtros.
+             */
+            coincide_en: ("anuncio" | "pliego")[];
             /** Descripcion */
             descripcion: string | null;
             /** Estado */
             estado: string | null;
+            /**
+             * Extracto
+             * @description Fragmentos de la descripción alrededor de lo que casa. Vacío si la descripción no contiene ningún término: no se rellena con su arranque.
+             */
+            extracto: components["schemas"]["TramoTexto"][];
+            /**
+             * Fecha Limite
+             * @description Fin del plazo de presentación, tal como lo publica la fuente.
+             */
+            fecha_limite: string | null;
             /** Fecha Publicacion */
             fecha_publicacion: string | null;
             /** Id Externo */
@@ -13794,13 +13864,30 @@ export interface components {
             importe: number | null;
             /** Organo Contratacion */
             organo_contratacion: string | null;
+            /** @description El fragmento de pliego que casa, cuando coincide_en lo incluye. */
+            pasaje: components["schemas"]["PasajePliego"] | null;
             /**
              * Score
-             * @description Relevancia en [0, 1]. La escala DEPENDE de source y no es comparable entre búsquedas ni entre fuentes: con rrf se escala contra el mejor resultado de esta misma respuesta, que vale 1; con fts, contra el mejor candidato del texto completo ANTES de aplicar los filtros, así que el máximo de la lista puede quedar por debajo de 1; con like es la constante 0.2 en todos los resultados, porque la coincidencia literal no ordena por relevancia.
+             * @description En [0, 1], y su significado DEPENDE de source; no es comparable entre búsquedas ni entre fuentes. Con fts es la parte de los términos de la consulta que casan: 1 = todos, en el anuncio o en un pasaje del pliego. Con like, la parte de los términos buscados por subcadena que el anuncio contiene. Con rrf se escala contra el mejor resultado de esta misma respuesta, que vale 1. Con filtros vale 0: no hubo texto que casar.
              */
             score: number;
+            /**
+             * Tecnologia
+             * @description Códigos de tecnología del expediente, en CSV.
+             */
+            tecnologia: string | null;
+            /**
+             * Terminos Ausentes
+             * @description Términos de la consulta que este resultado no contiene.
+             */
+            terminos_ausentes: string[];
             /** Titulo */
             titulo: string | null;
+            /**
+             * Titulo Tramos
+             * @description El título entero, troceado por lo que casa. Vacío si no se calculó.
+             */
+            titulo_tramos: components["schemas"]["TramoTexto"][];
             /** Url */
             url: string | null;
         };
@@ -13811,7 +13898,7 @@ export interface components {
         SemanticSearchRequest: {
             /**
              * Alpha
-             * @description Peso del lado semántico en la fusión RRF: 0 = solo texto completo, 1 = solo similitud vectorial. Solo tiene efecto cuando la respuesta es source=rrf; con source=fts o like no hay nada que ponderar.
+             * @description Peso del lado semántico en la fusión RRF: 0 = solo texto completo, 1 = solo similitud vectorial. Solo tiene efecto cuando la respuesta es source=rrf; con source=fts, like o filtros no hay nada que ponderar.
              * @default 0.7
              */
             alpha: number;
@@ -13836,6 +13923,12 @@ export interface components {
              * @description Fecha de publicación hasta (YYYY-MM-DD)
              */
             fecha_hasta?: string | null;
+            /**
+             * Interpretar
+             * @description Lee los filtros que diga la frase (comunidad, importe, fechas, «abiertas», «más recientes») y los aplica; lo entendido vuelve en `interpretacion`. Con false se busca el texto tal cual. Un filtro explícito del cuerpo manda sobre el de la frase en su misma dimensión.
+             * @default true
+             */
+            interpretar: boolean;
             /**
              * Q
              * @description Consulta en lenguaje natural
@@ -13862,11 +13955,13 @@ export interface components {
             elapsed_ms: number;
             /** Hits */
             hits: components["schemas"]["SemanticHit"][];
+            /** @description Los filtros y términos que salieron de la frase y se aplicaron. */
+            interpretacion: components["schemas"]["Interpretacion"];
             /** Q */
             q: string;
             /**
              * Source
-             * @description Camino REALMENTE ejecutado: rrf (fusión de texto completo y similitud vectorial), fts (solo texto completo) o like (coincidencia literal). No se declara por configuración.
+             * @description Camino REALMENTE ejecutado: rrf (fusión de texto completo y similitud vectorial), fts (texto completo sobre anuncios y pliegos), like (coincidencia literal) o filtros (la frase eran solo filtros: lo más reciente del ámbito). No se declara por configuración.
              */
             source: string;
             /** Top K */
@@ -14750,6 +14845,16 @@ export interface components {
             ultimo_error?: string | null;
             /** Ultimo Fallo */
             ultimo_fallo?: string | null;
+        };
+        /**
+         * TramoTexto
+         * @description Un trozo de un título o de un extracto, y si casa con la consulta.
+         */
+        TramoTexto: {
+            /** Resaltado */
+            resaltado: boolean;
+            /** Texto */
+            texto: string;
         };
         /**
          * TransferOwnershipBody
