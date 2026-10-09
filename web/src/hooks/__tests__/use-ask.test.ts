@@ -165,6 +165,63 @@ describe("useChat", () => {
     );
   });
 
+  it("los expedientes de una pregunta mandan sobre los del hook, y quedan en el turno", async () => {
+    // El Investigador elige el alcance en cada pregunta: lo marcado en la
+    // lista, o nada. El turno recuerda lo que se pidió para que el hilo pueda
+    // avisar si la respuesta salió de otro sitio.
+    mockStreamAsk.mockResolvedValue(makeResult({ answer: "ok" }));
+    const { result } = renderHook(() => useChat({ idsExternos: ["DEL-HOOK"] }), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.send("compara", { idsExternos: ["A", "B"] });
+    });
+
+    expect(mockStreamAsk).toHaveBeenLastCalledWith(expect.objectContaining({ idsExternos: ["A", "B"] }));
+    expect(result.current.messages[1].expedientesPedidos).toEqual(["A", "B"]);
+  });
+
+  it("una lista vacía es «sobre todo», no «los del hook»", async () => {
+    mockStreamAsk.mockResolvedValue(makeResult({ answer: "ok" }));
+    const { result } = renderHook(() => useChat({ idsExternos: ["DEL-HOOK"] }), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.send("¿qué hay?", { idsExternos: [] });
+    });
+
+    expect(mockStreamAsk).toHaveBeenLastCalledWith(expect.objectContaining({ idsExternos: [] }));
+    expect(result.current.messages[1].expedientesPedidos).toBeUndefined();
+  });
+
+  it("sin alcance por pregunta siguen valiendo los del hook, y el turno no los repite", async () => {
+    mockStreamAsk.mockResolvedValue(makeResult({ answer: "ok" }));
+    const { result } = renderHook(() => useChat({ idsExternos: ["DEL-HOOK"] }), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.send("pregunta");
+    });
+
+    expect(mockStreamAsk).toHaveBeenLastCalledWith(expect.objectContaining({ idsExternos: ["DEL-HOOK"] }));
+    expect(result.current.messages[1].expedientesPedidos).toBeUndefined();
+  });
+
+  it("reset() y send() en el mismo gesto no arrastran el historial anterior", async () => {
+    // «Conversación nueva y preguntar» de la caja del Investigador: `send` lee
+    // el historial de una referencia que el efecto sincroniza tras el render.
+    mockStreamAsk.mockResolvedValue(makeResult({ answer: "Respuesta" }));
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.send("Primera pregunta");
+    });
+
+    await act(async () => {
+      result.current.reset();
+      await result.current.send("Otra conversación");
+    });
+
+    expect(mockStreamAsk.mock.calls.at(-1)?.[0].messages).toEqual([]);
+    expect(result.current.messages.map((m) => m.content)).toEqual(["Otra conversación", "Respuesta"]);
+  });
+
   it("attaches fuentes and degraded metadata to the assistant turn", async () => {
     const fuentes = [{ id_externo: "EXP-1", titulo: "T", chunks: [{ chunk_index: 0, texto: "frag" }] }];
     mockStreamAsk.mockResolvedValue(makeResult({ answer: "respuesta", fuentes, degraded: null }));

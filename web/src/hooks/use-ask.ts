@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiGet } from "@/lib/api-client";
-import type { FiltrosCorpus } from "@/lib/api-types";
+import type { OpcionesCorpus } from "@/lib/api-types";
 import {
   streamAsk,
   type AskMeta,
@@ -59,13 +59,27 @@ export interface ChatTurn {
    * «sin fuentes»: eso lo dice `sources.sinFuentes`.
    */
   sources?: SourcesInfo | null;
+  /**
+   * Los expedientes sobre los que se **pidió** este turno, cuando el alcance se
+   * eligió para esa pregunta (`SendOptions.idsExternos`). Va por turno y no por
+   * hilo porque en el Investigador cambia a mitad de conversación: una pregunta
+   * sobre todo el corpus y la siguiente sobre un expediente marcado. `askMeta`
+   * dice lo que el servidor usó de verdad; con los dos, el hilo puede avisar
+   * cuando no coinciden.
+   */
+  expedientesPedidos?: string[];
 }
 
 export interface SendOptions {
   model?: string;
   topK?: number;
   /** Filtros globales sobre el corpus (CCAA, tecnología, rango de publicación). */
-  extras?: FiltrosCorpus;
+  extras?: OpcionesCorpus;
+  /**
+   * Expedientes de **esta** pregunta; manda sobre los del hook. Una lista vacía
+   * es «sobre todo el corpus», no «los del hook».
+   */
+  idsExternos?: string[];
 }
 
 export interface UseChatResult {
@@ -128,7 +142,17 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
         .slice(-MAX_HISTORY_TURNS)
         .map(({ role, content }) => ({ role, content }));
 
-      setMessages((prev) => [...prev, { role: "user", content: q }, { role: "assistant", content: "" }]);
+      const idsDelHook = idsClave ? idsClave.split("\0") : undefined;
+      const idsExternos = sendOpts?.idsExternos ?? idsDelHook;
+      // Solo los que se pidieron **para esta pregunta**. Los del hook describen
+      // el hilo entero, y quien lo monta ya le dice a `ChatThread` qué esperar.
+      const pedidos = sendOpts?.idsExternos ?? [];
+
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: q },
+        { role: "assistant", content: "", ...(pedidos.length > 0 ? { expedientesPedidos: pedidos } : {}) },
+      ]);
       setLoading(true);
       setError(null);
       setStreaming(true);
@@ -138,7 +162,7 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
           question: q,
           messages: history,
           idExterno,
-          idsExternos: idsClave ? idsClave.split("\0") : undefined,
+          idsExternos,
           model: sendOpts?.model,
           topK: sendOpts?.topK,
           extras: sendOpts?.extras,
@@ -185,6 +209,10 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
+    // También la referencia, y ya: `send` lee de ella el historial que manda, y
+    // el efecto que la sincroniza corre tras el render. Sin esto, «conversación
+    // nueva y preguntar» en el mismo gesto mandaba el historial de la anterior.
+    messagesRef.current = [];
     setMessages([]);
     setError(null);
     setStreaming(false);

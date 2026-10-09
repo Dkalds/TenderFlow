@@ -1,32 +1,26 @@
 /**
  * Formas que se mueven entre la página del Investigador y sus piezas.
  *
- * `SearchResult` es el hit de `POST /api/v1/search/semantic` tal cual llega:
- * la API devuelve `descripcion` (SemanticHit) y esta vista esperaba
- * `description`, de ahí que ambos nombres convivan hasta que el contrato se
- * unifique.
+ * El resultado y lo entendido de la frase salen del contrato generado
+ * (`POST /api/v1/search/semantic`): la vista no declara su propia copia. Hasta
+ * 2026-10 lo hacía —con `description` junto a `descripcion`, `organo` junto a
+ * `organo_contratacion`, todo opcional— y por eso la tarjeta no enseñaba el
+ * estado, la comunidad ni la fecha que la API llevaba meses devolviendo.
  */
 
-/** Los dos modos de la consola: búsqueda («Búsqueda») o conversación con el asistente («Preguntar»). */
-export type Mode = "search" | "ask";
+import type { Interpretacion, SemanticHit, SemanticSearchResponse, TramoTexto } from "@/lib/api-types";
 
-export interface SearchResult {
-  id_externo?: string;
-  titulo?: string;
-  organo_contratacion?: string;
-  organo?: string;
-  importe?: number;
-  score?: number;
-  descripcion?: string;
-  description?: string;
-  id?: string;
-  expediente?: string;
-}
+export type SearchResult = SemanticHit;
+export type { Interpretacion, SemanticSearchResponse, TramoTexto };
 
 /** Ajustes que el usuario persiste en `localStorage`, no en el servidor. */
 export interface InvestigadorConfig {
   topK: number;
-  /** «Tipo de coincidencia»: cuánto pesa el significado frente a las palabras exactas en la fusión; viaja al backend como `alpha`. */
+  /**
+   * «Tipo de coincidencia»: cuánto pesa el significado frente a las palabras
+   * exactas cuando la búsqueda combina las dos cosas; viaja como `alpha`. El
+   * control solo aparece si una respuesta ha llegado por ese camino.
+   */
   alpha: number;
   model: string;
   useGlobalFilters: boolean;

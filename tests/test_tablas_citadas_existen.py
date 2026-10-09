@@ -105,8 +105,13 @@ _ES_SQL = re.compile(r"\b(?:SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b")
 #: La lista de columnas opcional —`reach(src, dst) AS (`— también es un CTE.
 #: El `§` es la frontera entre literales: un CTE encadenado suele empezar su
 #: propio fragmento (`"nodes AS (SELECT …"`), con la coma en el anterior.
+#: `AS MATERIALIZED (` y `AS NOT MATERIALIZED (` son el mismo CTE con una
+#: indicación al planificador (`db/repositories/investigador.py` la necesita:
+#: sin ella Postgres incrusta el CTE y la consulta se vuelve cuadrática).
 _CTE = re.compile(
-    r"(?:\bWITH\s+(?:RECURSIVE\s+)?|,|§)\s*([a-z_][a-z0-9_]*)\s*(?:\([^)]*\))?\s+AS\s*\(", re.I
+    r"(?:\bWITH\s+(?:RECURSIVE\s+)?|,|§)\s*([a-z_][a-z0-9_]*)\s*(?:\([^)]*\))?"
+    r"\s+AS\s*(?:(?:NOT\s+)?MATERIALIZED\s*)?\(",
+    re.I,
 )
 
 #: Alias de una subconsulta: `FROM ( … ) p`, `JOIN ( … ) t2 ON`. El nombre no

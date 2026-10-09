@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * «Opciones avanzadas» de la consola: cuántos resultados traer, qué tipo de
- * coincidencia pesa más, con qué modelo responde el asistente y si la búsqueda
- * aplica el ámbito.
+ * «Opciones avanzadas» de la consola: cuántos resultados traer, con qué modelo
+ * responde el asistente, si la búsqueda aplica el ámbito y —solo cuando
+ * gobierna algo— qué tipo de coincidencia pesa más.
  *
  * Plegado por defecto y debajo del buscador: la primera pantalla es la caja de
- * texto, no cuatro controles que casi nadie toca. Los nombres son los de quien
+ * texto, no unos controles que casi nadie toca. Los nombres son los de quien
  * busca, no los del motor: «Resultados» y no `top_k`, «Tipo de coincidencia» y
  * no un peso numérico de la fusión. La API sigue recibiendo `top_k` y `alpha`
  * tal cual (`use-investigador.ts`).
@@ -28,9 +28,16 @@ interface Props {
   config: InvestigadorConfig;
   onChange: (patch: Partial<InvestigadorConfig>) => void;
   models: string[] | undefined;
+  /**
+   * Alguna respuesta ha combinado significado y texto. Sin eso, «Tipo de
+   * coincidencia» no mueve nada y no se enseña: medido el 2026-10-09, la
+   * búsqueda de producción no combina —responde por texto— y el deslizador
+   * llevaba ahí desde que se construyó.
+   */
+  fusionDisponible: boolean;
 }
 
-export function InvestigadorConfigPanel({ config, onChange, models }: Props) {
+export function InvestigadorConfigPanel({ config, onChange, models, fusionDisponible }: Props) {
   const [abierto, setAbierto] = useState(false);
   const idPanel = useId();
   const idResultados = useId();
@@ -56,7 +63,7 @@ export function InvestigadorConfigPanel({ config, onChange, models }: Props) {
         </button>
       </h2>
       <div id={idPanel} hidden={!abierto} className="mt-3 pb-1">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className={cn("grid gap-4 sm:grid-cols-2", fusionDisponible ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
           <div className="space-y-1.5">
             {/* El nombre del deslizador es solo «Resultados»: la cifra ya la
                 anuncia su valor, y repetirla en el nombre la leería dos veces. */}
@@ -73,28 +80,30 @@ export function InvestigadorConfigPanel({ config, onChange, models }: Props) {
               className="w-full"
             />
           </div>
-          {/* El `alpha` de la fusión del backend. Se llamó «Alpha (FAISS vs
-              FTS5)» citando dos motores retirados y luego «Peso semántico» con
-              su cifra: nombres del motor, no de quien busca. Aquí es un
-              deslizador entre sus dos extremos, sin número que interpretar. */}
-          <div className="space-y-1.5">
-            <p id={idCoincidencia} className={ETIQUETA_CAMPO}>
-              Tipo de coincidencia
-            </p>
-            <Slider
-              value={[Math.round(config.alpha * 100)]}
-              onValueChange={([v]) => onChange({ alpha: v / 100 })}
-              aria-labelledby={idCoincidencia}
-              min={0}
-              max={100}
-              className="w-full"
-            />
-            <div className={cn(AYUDA_CAMPO, "flex justify-between")}>
-              <span>Palabras exactas</span>
-              <span>Por significado</span>
+          {/* El `alpha` de la fusión. Se llamó «Alpha (FAISS vs FTS5)» citando
+              dos motores retirados y luego «Peso semántico» con su cifra:
+              nombres del motor, no de quien busca. Aquí es un deslizador entre
+              sus dos extremos, sin número que interpretar. */}
+          {fusionDisponible && (
+            <div className="space-y-1.5">
+              <p id={idCoincidencia} className={ETIQUETA_CAMPO}>
+                Tipo de coincidencia
+              </p>
+              <Slider
+                value={[Math.round(config.alpha * 100)]}
+                onValueChange={([v]) => onChange({ alpha: v / 100 })}
+                aria-labelledby={idCoincidencia}
+                min={0}
+                max={100}
+                className="w-full"
+              />
+              <div className={cn(AYUDA_CAMPO, "flex justify-between")}>
+                <span>Palabras exactas</span>
+                <span>Por significado</span>
+              </div>
             </div>
-          </div>
-          <Field label="Modelo de IA" htmlFor="inv-model">
+          )}
+          <Field label="Modelo del asistente" htmlFor="inv-model">
             <Select
               value={config.model || "__default__"}
               onValueChange={(v) => onChange({ model: v === "__default__" ? "" : v })}

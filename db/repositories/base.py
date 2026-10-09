@@ -113,7 +113,10 @@ def ambito_busqueda_sql(
     tecnologia: str | Sequence[str] | None = None,
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
-) -> tuple[list[str], list[str]]:
+    importe_min: float | None = None,
+    importe_max: float | None = None,
+    solo_abiertas: bool = False,
+) -> tuple[list[str], list[Any]]:
     """Cláusulas del ámbito de una búsqueda sobre ``licitaciones``: ``(clauses, params)``.
 
     Las comparten los tres caminos del retrieval de ``/ask`` —la fusión híbrida
@@ -127,6 +130,14 @@ def ambito_busqueda_sql(
       (:func:`db.sql_fragments.tecnologia_en_csv_sql`), nunca igualdad.
     - ``fecha_desde``/``fecha_hasta``: sobre ``fecha_publicacion``, y solo si
       son ``YYYY-MM-DD``; una mal formada se ignora.
+    - ``importe_min``/``importe_max``: sobre el importe del núcleo
+      (:func:`db.sql_fragments.columna_nucleo_sql`), la misma columna que
+      filtra el listado. Una fila sin importe no pasa ninguno de los dos.
+    - ``solo_abiertas``: el juicio de :func:`shared.estados.abierta_sql`.
+
+    Los tres últimos los pone el Investigador cuando la frase los dice («de
+    más de 500K», «abiertas»); el resto de llamantes no los pasa y su consulta
+    no cambia en un carácter.
 
     ``ccaa`` y ``tecnologia`` aceptan una lista —el cuerpo JSON de ``/ask``— o
     el CSV de la barra de ámbito (:func:`csv_values`), y los valores en blanco
@@ -134,10 +145,11 @@ def ambito_busqueda_sql(
     respuesta llegaría sin contexto y sin error. Las cláusulas salen en ese
     orden y los parámetros, en el de sus marcadores.
     """
-    from db.sql_fragments import tecnologia_en_csv_sql
+    from db.sql_fragments import columna_nucleo_sql, tecnologia_en_csv_sql
+    from shared.estados import abierta_sql
 
     clauses: list[str] = []
-    params: list[str] = []
+    params: list[Any] = []
     regiones = _valores_filtro(ccaa)
     if len(regiones) == 1:
         clauses.append(f"{alias}.ccaa = %s")
@@ -155,6 +167,17 @@ def ambito_busqueda_sql(
     if fecha_hasta and _FECHA_ISO_RE.match(fecha_hasta):
         clauses.append(f"{alias}.fecha_publicacion <= %s")
         params.append(fecha_hasta)
+    importe = columna_nucleo_sql("importe", alias)
+    if importe_min is not None:
+        clauses.append(f"{importe} >= %s")
+        params.append(float(importe_min))
+    if importe_max is not None:
+        clauses.append(f"{importe} <= %s")
+        params.append(float(importe_max))
+    if solo_abiertas:
+        # Los estados cerrados van como literales —constantes de `shared`, no
+        # entrada de usuario—, así que la cláusula no gasta marcadores.
+        clauses.append(abierta_sql(f"{alias}.estado"))
     return clauses, params
 
 

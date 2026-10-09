@@ -1,19 +1,26 @@
 """Búsqueda de texto — POST /api/v1/search/semantic.
 
-Expone el motor de :mod:`services.investigador.search_engine` como endpoint
-REST (requiere API-key o sesión).
+Expone el motor de :mod:`services.investigador.busqueda` como endpoint REST
+(requiere API-key o sesión).
 
 Diseño
 ------
-* Tres caminos, de más a menos informado: fusión RRF (FTS + pgvector sobre
-  ``documento_chunks``), full-text de Postgres (``tsvector``/``ts_rank_cd``;
-  los nombres ``fts5_*`` sobreviven por compatibilidad de contrato) y
-  fallback LIKE. ``source`` dice cuál se ejecutó de verdad.
+* La frase se **interpreta** antes de buscar
+  (:mod:`services.investigador.consulta`): «en Andalucía», «de más de 500K»,
+  «abiertas» o «desde 2025» son filtros, no palabras, y lo entendido vuelve en
+  ``interpretacion`` para que la pantalla lo enseñe. ``interpretar=false``
+  busca el texto tal cual.
+* Cuatro caminos, y ``source`` dice cuál se ejecutó de verdad: fusión RRF
+  (texto + pgvector sobre ``documento_chunks``, solo si la instalación puede
+  codificar la consulta), texto completo de Postgres sobre anuncios **y
+  pliegos** (``fts``), coincidencia literal (``like``) y, cuando la frase eran
+  solo filtros, lo más reciente del ámbito (``filtros``).
+* El ámbito —el explícito y el entendido— va en el ``WHERE`` de cada camino.
+  Hasta 2026-10 se aplicaba después, contra un conjunto de 5.000 ids sin
+  ordenar: con Cataluña (60.840 filas) el filtro descartaba el 92 % de lo que
+  sí casaba.
 * ``alpha`` pondera las dos listas de la fusión (0 = solo léxico, 1 = solo
-  semántico). Entre 2026-07 (retirada de FAISS) y 2026-09 fue un campo
-  legacy sin efecto, y el deslizador del Investigador que lo enviaba era el
-  único control de la UI que el backend ignoraba (D15 del plan de
-  arquitectura 2026-09: servir la fusión que ya existía).
+  semántico) y no interviene en los demás caminos.
 * ``run_ml`` aísla la latencia en el pool de ML (bulkhead 2 slots).
 
 Ejemplo::
@@ -26,7 +33,7 @@ Ejemplo::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
@@ -34,15 +41,22 @@ from pydantic import BaseModel, Field, field_validator
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import resolve_organization_ctx
-from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from services.busqueda_global import BusquedaGlobal, buscar_global
+from services.investigador.busqueda import (
+    FUENTE_FILTROS,
+    FUENTE_FUSION,
+    FUENTE_LITERAL,
+    FUENTE_TEXTO,
+    FUENTES,
+    filtros_de_fusion,
+)
+from services.investigador.busqueda import preparar as preparar_consulta
+from services.investigador.consulta import ConsultaInterpretada
 
 log = get_logger(__name__)
 
 router = APIRouter(tags=["search"])
-
-_repo = LicitacionRepository()
 
 _MAX_Q_LEN = 500
 _DEFAULT_TOP_K = 10
@@ -50,13 +64,14 @@ _MAX_TOP_K = 50
 
 # Valores posibles de ``SemanticSearchResponse.source``, en el orden en que se
 # intentan los caminos. Son constantes y no un literal suelto porque el
-# Investigador tiene que poder etiquetar los tres sin inventarse un cuarto:
+# Investigador tiene que poder etiquetar todos sin inventarse otro:
 # ``tests/test_search_semantic_source.py`` comprueba que la tabla de etiquetas
-# de la UI y esta tupla no se separen.
-SOURCE_RRF = "rrf"
-SOURCE_FTS = "fts"
-SOURCE_LIKE = "like"
-SEARCH_SOURCES: tuple[str, ...] = (SOURCE_RRF, SOURCE_FTS, SOURCE_LIKE)
+# de la UI y esta tupla no se separen. La fuente de verdad es el servicio.
+SOURCE_RRF = FUENTE_FUSION
+SOURCE_FTS = FUENTE_TEXTO
+SOURCE_LIKE = FUENTE_LITERAL
+SOURCE_FILTROS = FUENTE_FILTROS
+SEARCH_SOURCES: tuple[str, ...] = FUENTES
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -78,7 +93,7 @@ class SemanticSearchRequest(BaseModel):
         description=(
             "Peso del lado semántico en la fusión RRF: 0 = solo texto completo, "
             "1 = solo similitud vectorial. Solo tiene efecto cuando la respuesta "
-            "es source=rrf; con source=fts o like no hay nada que ponderar."
+            "es source=rrf; con source=fts, like o filtros no hay nada que ponderar."
         ),
     )
     embedding_model: str = Field(
@@ -98,6 +113,15 @@ class SemanticSearchRequest(BaseModel):
     fecha_hasta: str | None = Field(
         default=None, description="Fecha de publicación hasta (YYYY-MM-DD)"
     )
+    interpretar: bool = Field(
+        default=True,
+        description=(
+            "Lee los filtros que diga la frase (comunidad, importe, fechas, «abiertas», "
+            "«más recientes») y los aplica; lo entendido vuelve en `interpretacion`. Con "
+            "false se busca el texto tal cual. Un filtro explícito del cuerpo manda sobre "
+            "el de la frase en su misma dimensión."
+        ),
+    )
 
     @field_validator("q", "ccaa", "tecnologia", "fecha_desde", "fecha_hasta")
     @classmethod
@@ -114,6 +138,23 @@ class SemanticSearchRequest(BaseModel):
         return value
 
 
+class TramoTexto(BaseModel):
+    """Un trozo de un título o de un extracto, y si casa con la consulta."""
+
+    texto: str
+    resaltado: bool
+
+
+class PasajePliego(BaseModel):
+    """El fragmento de pliego que casa con la consulta."""
+
+    documento_id: int | None
+    tipo: str | None = Field(description="Clase del documento: legal, technical o additional.")
+    filename: str | None
+    page_number: int | None
+    tramos: list[TramoTexto]
+
+
 class SemanticHit(BaseModel):
     """Un resultado de búsqueda semántica."""
 
@@ -124,20 +165,71 @@ class SemanticHit(BaseModel):
     descripcion: str | None
     url: str | None
     fecha_publicacion: str | None
+    fecha_limite: str | None = Field(
+        description="Fin del plazo de presentación, tal como lo publica la fuente."
+    )
     ccaa: str | None
     estado: str | None
+    tecnologia: str | None = Field(description="Códigos de tecnología del expediente, en CSV.")
     score: float = Field(
         description=(
-            "Relevancia en [0, 1]. La escala DEPENDE de source y no es "
-            "comparable entre búsquedas ni entre fuentes: con rrf se escala "
-            "contra el mejor resultado de esta misma respuesta, que vale 1; "
-            "con fts, contra el mejor candidato del texto completo ANTES de "
-            "aplicar los filtros, así que el máximo de la lista puede quedar "
-            "por debajo de 1; con like es la constante 0.2 en todos los "
-            "resultados, porque la coincidencia literal no ordena por "
-            "relevancia."
+            "En [0, 1], y su significado DEPENDE de source; no es comparable entre "
+            "búsquedas ni entre fuentes. Con fts es la parte de los términos de la "
+            "consulta que casan: 1 = todos, en el anuncio o en un pasaje del pliego. "
+            "Con like, la parte de los términos buscados por subcadena que el anuncio "
+            "contiene. Con rrf se escala contra el mejor resultado de esta misma "
+            "respuesta, que vale 1. Con filtros vale 0: no hubo texto que casar."
         )
     )
+    coincide_en: list[Literal["anuncio", "pliego"]] = Field(
+        description=(
+            "Dónde casa la consulta: en el anuncio (título, descripción o CPV), en un "
+            "pasaje del pliego, o en los dos. Vacío con source=rrf y con source=filtros."
+        ),
+    )
+    terminos_ausentes: list[str] = Field(
+        description="Términos de la consulta que este resultado no contiene.",
+    )
+    titulo_tramos: list[TramoTexto] = Field(
+        description="El título entero, troceado por lo que casa. Vacío si no se calculó.",
+    )
+    extracto: list[TramoTexto] = Field(
+        description=(
+            "Fragmentos de la descripción alrededor de lo que casa. Vacío si la "
+            "descripción no contiene ningún término: no se rellena con su arranque."
+        ),
+    )
+    pasaje: PasajePliego | None = Field(
+        description="El fragmento de pliego que casa, cuando coincide_en lo incluye."
+    )
+
+
+class Interpretacion(BaseModel):
+    """Lo que se entendió de la frase y se aplicó a la búsqueda."""
+
+    texto: str = Field(description="El texto con el que se buscó, ya sin los filtros.")
+    terminos: list[str]
+    ccaa: list[str]
+    importe_min: float | None
+    importe_max: float | None
+    solo_abiertas: bool
+    fecha_desde: str | None
+    fecha_hasta: str | None
+    orden: Literal["relevancia", "recientes"]
+
+    @classmethod
+    def de(cls, consulta: ConsultaInterpretada) -> Interpretacion:
+        return cls(
+            texto=consulta.texto,
+            terminos=list(consulta.terminos),
+            ccaa=list(consulta.ccaa),
+            importe_min=consulta.importe_min,
+            importe_max=consulta.importe_max,
+            solo_abiertas=consulta.solo_abiertas,
+            fecha_desde=consulta.fecha_desde,
+            fecha_hasta=consulta.fecha_hasta,
+            orden=consulta.orden,
+        )
 
 
 class SemanticSearchResponse(BaseModel):
@@ -151,18 +243,22 @@ class SemanticSearchResponse(BaseModel):
     source: str = Field(
         description=(
             "Camino REALMENTE ejecutado: rrf (fusión de texto completo y "
-            "similitud vectorial), fts (solo texto completo) o like "
-            "(coincidencia literal). No se declara por configuración."
+            "similitud vectorial), fts (texto completo sobre anuncios y pliegos), "
+            "like (coincidencia literal) o filtros (la frase eran solo filtros: lo "
+            "más reciente del ámbito). No se declara por configuración."
         )
     )
     hits: list[SemanticHit]
     elapsed_ms: int
+    interpretacion: Interpretacion = Field(
+        description="Los filtros y términos que salieron de la frase y se aplicaron.",
+    )
 
 
 # ── Normalización de los hits de la fusión ───────────────────────────────────
 
 # Campos de ``hybrid_search_docs`` que sí viajan al cliente. El resto de lo que
-# devuelve (``tecnologia``, ``chunks``) es para el RAG, no para esta ruta.
+# devuelve (``rrf_score``, ``chunks``) es para el RAG, no para esta ruta.
 _HIT_FIELDS = (
     "id_externo",
     "titulo",
@@ -173,7 +269,20 @@ _HIT_FIELDS = (
     "fecha_publicacion",
     "ccaa",
     "estado",
+    "tecnologia",
 )
+
+# Lo que la fusión no calcula. Viaja vacío, y no ausente, para que el contrato
+# sea el mismo por cualquier camino: quien pinta no tiene que preguntarse por
+# qué fuente llegó el resultado antes de leer un campo.
+_SIN_DETALLE: dict[str, Any] = {
+    "fecha_limite": None,
+    "coincide_en": [],
+    "terminos_ausentes": [],
+    "titulo_tramos": [],
+    "extracto": [],
+    "pasaje": None,
+}
 
 
 def _hits_from_fused(
@@ -197,7 +306,9 @@ def _hits_from_fused(
     max_score = max(float(d.get("rrf_score") or 0.0) for d in docs)
     hits: list[dict[str, Any]] = []
     for doc in docs:
-        hit: dict[str, Any] = {k: doc.get(k) for k in _HIT_FIELDS}
+        hit: dict[str, Any] = {k: doc.get(k) for k in _HIT_FIELDS} | {
+            k: (list(v) if isinstance(v, list) else v) for k, v in _SIN_DETALLE.items()
+        }
         raw = float(doc.get("rrf_score") or 0.0)
         hit["score"] = round(raw / max_score, 6) if max_score > 0 else 0.0
         hits.append(hit)
@@ -210,13 +321,14 @@ def _hits_from_fused(
 @router.post(
     "/search/semantic",
     response_model=SemanticSearchResponse,
-    summary="Búsqueda de texto completo con fusión semántica",
+    summary="Búsqueda de texto completo en anuncios y pliegos, con fusión semántica",
     description=(
-        "Fusiona (RRF) el texto completo de Postgres (tsvector/ts_rank_cd) con "
-        "la similitud vectorial sobre los chunks de pliego, ponderadas por "
-        "alpha. Sin embeddings disponibles degrada a texto completo y, si este "
-        "no encuentra nada, a coincidencia literal; el campo source de la "
-        "respuesta dice cuál de los tres caminos se ejecutó."
+        "Interpreta los filtros que diga la frase, busca por texto completo en los "
+        "anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la "
+        "instalación tiene embeddings con los que codificar la consulta, fusiona "
+        "(RRF) con la similitud vectorial, ponderada por alpha. Si el texto no "
+        "encuentra nada degrada a coincidencia literal; el campo source de la "
+        "respuesta dice cuál de los caminos se ejecutó."
     ),
 )
 async def semantic_search(
@@ -228,63 +340,36 @@ async def semantic_search(
 
     t0 = time.perf_counter()
 
-    # Filtros activos → restringir los hits a esos ids (allowed_ids). El backend
-    # es la fuente del filtrado; el frontend no finge ni manda solo el primer valor.
-    allowed_ids: set[str] | None = None
-    if body.ccaa or body.tecnologia or body.fecha_desde or body.fecha_hasta:
-        allowed_ids = await run_db(
-            lambda: _repo.ids_for_filters(
-                ccaa=body.ccaa or None,
-                tecnologia=body.tecnologia or None,
-                fecha_desde=body.fecha_desde,
-                fecha_hasta=body.fecha_hasta,
-            )
-        )
+    # Pura y sin BD: se entiende la frase antes de despachar al pool.
+    consulta, ambito = preparar_consulta(
+        body.q,
+        ccaa=body.ccaa,
+        tecnologia=body.tecnologia,
+        fecha_desde=body.fecha_desde,
+        fecha_hasta=body.fecha_hasta,
+        interpretar_filtros=body.interpretar,
+    )
 
     def _run() -> tuple[list[dict[str, Any]], str]:
-        from services.investigador.search_engine import (
-            fetch_docs,
-            fts5_search,
-            hybrid_search,
-            like_search,
-        )
-
-        # Con filtros activos ampliamos el pool de candidatos y filtramos ANTES de
-        # recortar a top_k, para no quedarnos cortos de resultados tras el filtro.
-        pool = min(body.top_k * (10 if allowed_ids is not None else 2), 200)
+        from services.investigador.busqueda import buscar_por_texto
+        from services.investigador.search_engine import hybrid_search
 
         # La fusión primero: solo devuelve algo cuando hay modelo de embeddings
         # y chunks embebidos con los que fusionar. Que esté vacía significa que
         # el camino no existe hoy en esta instalación, no que la consulta no
-        # tenga resultados — por eso se sigue al FTS en vez de responder vacío.
-        fused = hybrid_search(body.q, pool, alpha=body.alpha)
-        if fused:
-            return _hits_from_fused(fused, allowed_ids, body.top_k), SOURCE_RRF
+        # tenga resultados — por eso se sigue al texto en vez de responder vacío.
+        if consulta.tiene_texto:
+            fused = hybrid_search(
+                consulta.texto,
+                min(body.top_k * 2, 200),
+                alpha=body.alpha,
+                filtros=filtros_de_fusion(ambito),
+            )
+            if fused:
+                return _hits_from_fused(fused, None, body.top_k), SOURCE_RRF
 
-        fts_hits = fts5_search(body.q, pool)
-
-        if fts_hits:
-            ranked = sorted(fts_hits, key=lambda x: x[1], reverse=True)[:pool]
-            source = SOURCE_FTS
-        else:
-            ranked = like_search(body.q, pool)
-            source = SOURCE_LIKE
-
-        if allowed_ids is not None:
-            ranked = [(id_, sc) for id_, sc in ranked if id_ in allowed_ids]
-        ranked = ranked[: body.top_k]
-
-        ids = [id_ for id_, _ in ranked]
-        docs_map = fetch_docs(ids)
-
-        hits: list[dict[str, Any]] = []
-        for id_, score in ranked:
-            if id_ in docs_map:
-                doc = dict(docs_map[id_])
-                doc["score"] = round(score, 6)
-                hits.append(doc)
-
-        return hits, source
+        resultado = buscar_por_texto(consulta, ambito, body.top_k)
+        return resultado.hits, resultado.fuente
 
     try:
         hits, source = await run_ml(_run)
@@ -303,20 +388,25 @@ async def semantic_search(
         n=len(hits),
         source=source,
         # ``alpha`` solo se interpreta cuando ``source`` es rrf; loguear ambos
-        # juntos es lo que permite saber, sin abrir la BD, si el deslizador del
-        # Investigador está gobernando algo o si esa instalación no tiene
-        # embeddings que fusionar.
+        # juntos es lo que permite saber, sin abrir la BD, si esa instalación
+        # tiene embeddings que fusionar.
         alpha=body.alpha,
+        # Si la frase traía filtros y cuántos términos quedaron: una búsqueda
+        # sin resultados se lee distinto si se entendió «en Madrid» que si no.
+        filtros_entendidos=consulta.tiene_filtros,
+        n_terminos=len(consulta.terminos),
         elapsed_ms=elapsed_ms,
         user=ctx.get("user_id"),
     )
 
+    campos = SemanticHit.model_fields
     return SemanticSearchResponse(
         q=body.q,
         top_k=body.top_k,
         source=source,
-        hits=[SemanticHit(**h) for h in hits],
+        hits=[SemanticHit(**{k: v for k, v in h.items() if k in campos}) for h in hits],
         elapsed_ms=elapsed_ms,
+        interpretacion=Interpretacion.de(consulta),
     )
 
 

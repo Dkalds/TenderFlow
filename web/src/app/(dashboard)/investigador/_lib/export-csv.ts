@@ -8,7 +8,17 @@
 import { descargarBlob } from "@/lib/export";
 import type { SearchResult } from "./types";
 
-const HEADERS = ["id_externo", "titulo", "organo", "importe", "score", "source"];
+const HEADERS = [
+  "id_externo",
+  "titulo",
+  "organo",
+  "ccaa",
+  "estado",
+  "fecha_limite",
+  "importe",
+  "coincide_en",
+  "source",
+];
 
 function csvQuote(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
@@ -17,14 +27,19 @@ function csvQuote(value: string): string {
 export function exportCSV(results: SearchResult[], source: string | null) {
   const rows = results.map((r) =>
     [
-      r.id_externo ?? r.id ?? "",
+      csvQuote(r.id_externo),
       csvQuote(r.titulo ?? ""),
-      csvQuote(r.organo_contratacion ?? r.organo ?? ""),
+      csvQuote(r.organo_contratacion ?? ""),
+      csvQuote(r.ccaa ?? ""),
+      r.estado ?? "",
+      r.fecha_limite ?? "",
       r.importe ?? "",
-      r.score != null ? r.score.toFixed(4) : "",
-      // La fuente es de la respuesta, no del hit: el backend la devuelve una
-      // vez por búsqueda. La columna se rellenaba con un campo por hit que la
-      // API nunca ha devuelto, así que salía siempre vacía.
+      // Dónde casa: «anuncio», «pliego» o los dos. Sustituye a la columna
+      // `score`, que era un porcentaje relativo al primer resultado y se leía
+      // como una relevancia que no era.
+      r.coincide_en.join("+"),
+      // La fuente es de la respuesta, no del resultado: llega una vez por
+      // búsqueda.
       source ?? "",
     ].join(","),
   );

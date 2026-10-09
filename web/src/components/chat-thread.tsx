@@ -264,6 +264,10 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
   enCurso,
   expectLicitacionContext,
 }: TurnoAsistenteProps) {
+  // El hilo entero es de un expediente (la ficha), o este turno se pidió sobre
+  // uno concreto (el Investigador, donde el alcance cambia de un turno a otro).
+  // Con varios pedidos, lo que faltó lo dice `ComparacionNotice`.
+  const esperaExpediente = expectLicitacionContext || turno.expedientesPedidos?.length === 1;
   return (
     <div className="text-tf-body">
       {turno.content ? (
@@ -280,7 +284,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
           ▌
         </span>
       ) : null}
-      {expectLicitacionContext && turno.askMeta && turno.askMeta.contexto === "general" ? (
+      {esperaExpediente && turno.askMeta && turno.askMeta.contexto === "general" ? (
         <ScopeFallbackNotice />
       ) : null}
       {turno.askMeta?.expedientes ? <ComparacionNotice meta={turno.askMeta} /> : null}
@@ -291,7 +295,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
       {turno.content && !turno.degraded && !enCurso ? (
         <>
           <p className="mt-2 text-tf-micro text-muted-foreground">
-            {expectLicitacionContext ? AVISO_GENERADO : AVISO_GENERADO_VARIOS}
+            {esperaExpediente ? AVISO_GENERADO : AVISO_GENERADO_VARIOS}
           </p>
           <FeedbackButtons modo="pregunta" pregunta={pregunta} />
         </>

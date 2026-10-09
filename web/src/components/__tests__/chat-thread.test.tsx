@@ -97,6 +97,41 @@ describe("ChatThread mientras se emite una respuesta", () => {
     expect(screen.getAllByText("Generado automáticamente · revisa el pliego")).toHaveLength(2);
   });
 
+  it("un turno pedido sobre un expediente avisa si la respuesta salió de otro sitio", () => {
+    // En el Investigador el alcance cambia de un turno a otro: lo que se
+    // esperaba va en cada turno, no en el hilo. Sin eso, una pregunta sobre un
+    // expediente marcado que no se pudo cargar se leía como si saliera de él.
+    const sobreTodo: ChatTurn = {
+      role: "assistant",
+      content: "Hay doce.",
+      askMeta: { contexto: "general", id_externo: null },
+    };
+    const sobreUno: ChatTurn = {
+      role: "assistant",
+      content: "No lo sé.",
+      askMeta: { contexto: "general", id_externo: "EXP-1" },
+      expedientesPedidos: ["EXP-1"],
+    };
+    render(hilo([pregunta1, sobreTodo, pregunta2, sobreUno], false));
+
+    expect(screen.getAllByText("Respuesta sin el contexto de este expediente")).toHaveLength(1);
+    // Y cada turno remite a lo suyo: los pliegos citados, o el pliego.
+    expect(screen.getByText("Generado automáticamente · revisa los pliegos citados")).toBeInTheDocument();
+    expect(screen.getByText("Generado automáticamente · revisa el pliego")).toBeInTheDocument();
+  });
+
+  it("un turno pedido sobre un expediente que sí se cargó no avisa de nada", () => {
+    const sobreUno: ChatTurn = {
+      role: "assistant",
+      content: "Tres meses.",
+      askMeta: { contexto: "licitacion", id_externo: "EXP-1" },
+      expedientesPedidos: ["EXP-1"],
+    };
+    render(hilo([pregunta1, sobreUno], false));
+
+    expect(screen.queryByText("Respuesta sin el contexto de este expediente")).toBeNull();
+  });
+
   it("pide como mucho un scroll por frame", () => {
     const frames = new Map<number, FrameRequestCallback>();
     let siguiente = 1;

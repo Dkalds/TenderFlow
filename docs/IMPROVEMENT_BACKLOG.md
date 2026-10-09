@@ -858,6 +858,34 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P3 — Nice to have
 
+### [P2] [Investigador] La búsqueda por significado no corre en producción: decidir si se sirve
+- **Área:** services/investigador/search_engine.py, services/embeddings.py, requirements-api.in, docker/Dockerfile.api
+- **Problema:** `hybrid_search` exige `sentence-transformers` para codificar la consulta y la imagen de la API no lo instala a propósito (C3.1: PyTorch pesa ~2 GB). Medido el 2026-10-09: `POST /search/semantic` responde siempre `fts` o `like`, y los 345.422 fragmentos embebidos de `documento_chunks` (2,2 GB de los 6,9 GB de la base; el HNSW, 637 MB) no los consulta ninguna ruta por vector. Desde esa fecha la pantalla ya no lo promete —«Tipo de coincidencia» solo aparece si una respuesta llega por `rrf`— y la búsqueda por texto mira dentro de los pliegos, pero la decisión sigue pendiente.
+- **Acceptance criteria:**
+  - Decisión tomada entre codificar la consulta en la API sin PyTorch (el mismo `paraphrase-multilingual-MiniLM-L12-v2` en ONNX; es una dependencia nueva, §6), o dejar de embeber los pliegos y soltar el índice.
+  - Si se sirve: `source=rrf` en el log `semantic_search.ok` de producción, y el MRR del golden set (`tests/eval/test_eval_rag.py`) medido antes y después.
+- **Files de partida:** [services/investigador/search_engine.py](../services/investigador/search_engine.py), [services/embeddings.py](../services/embeddings.py), [requirements-api.in](../requirements-api.in)
+- **Riesgo:** medio — dependencia nueva y memoria del proceso de la API.
+
+### [P3] [Investigador] El historial de consultas sigue en `localStorage`
+- **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
+- **Problema:** las consultas recientes viven en el navegador (`docs/frontend-data-invariants.md`, anti-patrón 3): no viajan a otro dispositivo. `saved_filters` no sirve tal cual —guarda instantáneas del ámbito que las demás pantallas restauran—, así que hace falta una tabla propia, es decir, una migración (§6).
+- **Acceptance criteria:**
+  - Las consultas recientes se guardan por usuario en servidor y `localStorage` queda como caché.
+  - El término no llega a la telemetría de producto (sigue siendo «la estrategia comercial de quien lo escribe»).
+- **Files de partida:** [web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts](<../web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts>)
+- **Riesgo:** bajo.
+
+### [P3] [Investigador] Flecos de la reescritura de la búsqueda
+- **Área:** db/repositories/licitaciones.py, services/investigador/search_engine.py, api/routes/search.py
+- **Problema:** tres cosas que quedaron fuera a propósito. (1) `ids_for_filters`, `fts5_bm25_search`, `like_fallback_search`, `fetch_metadata_by_ids` y sus envoltorios `fts5_search`/`like_search`/`fetch_docs` ya no los llama la ruta; siguen por sus tests y por `rag_query` (`scripts/eval_rag_generation.py`). (2) `semantic_search.ok` escribe los primeros 80 caracteres de la consulta en el log de Render, mientras la analítica del frontend evita mandar el término. (3) `tests/test_investigador_busqueda_bd.py` fija el orden, pero el MRR del motor nuevo sobre el golden set solo se lee en el resumen del job de CI: subir `MRR_MIN` cuando se haya leído.
+- **Acceptance criteria:**
+  - Código sin llamantes retirado junto con sus tests (borrar tests exige OK, §6), o motivo anotado para conservarlo.
+  - Decisión sobre el texto de la consulta en los logs.
+  - `MRR_MIN` de `tests/eval/test_eval_rag.py` al valor medido menos el margen.
+- **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [api/routes/search.py](../api/routes/search.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
+- **Riesgo:** bajo.
+
 ### [P3] La campana nunca lista novedades de licitaciones: lee `users.last_login`, que no existe
 - **Área:** api/routes/notifications.py, services/analytics/resumen.py (`get_resumen_novedades`)
 - **Problema:** `GET /notifications` rellena `items` (y su parte de `unread_count`) con `get_resumen_novedades(user_id)`, que cuenta desde `users.last_login`. Ninguna migración crea esa columna, así que `items` sale vacío siempre. Los tests de `tests/test_analytics_resumen.py` no lo ven porque sustituyen `get_user_by_id` por un mock que sí la trae. El Resumen tenía el mismo fallo —«Todo al día» siempre— y se arregló el 2026-10-02 contando desde la última visita de `notification_reads` (`get_resumen_novedades_desde` + `services.novedades.corte_ultima_visita`).
@@ -978,6 +1006,20 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## Cerrados
 
+- [2026-10-09] **P1: El Investigador no encontraba lo que se le escribía** (rama
+  `claude/investigador-improvements-1e5d9c`) — medido contra producción: una
+  pregunta normal caía a un `ILIKE` del primer token de la consulta cruda
+  (5,4 s; 0 y 9 resultados en las dos únicas búsquedas del registro), el ámbito
+  se aplicaba después contra 5.000 ids sin orden (Cataluña tiene 60.840 filas) y
+  la fusión semántica no corría nunca (la imagen de la API no trae el modelo).
+  Ahora la frase se interpreta (`services/investigador/consulta.py`), basta con
+  casar algún término y el orden pesa los raros
+  (`db/repositories/investigador.py`), se busca también en los pasajes de
+  pliego, y `/ask` usa el mismo motor (`services/investigador/busqueda.py`). En
+  la pantalla: una sola caja, la consulta en la URL, tarjeta con estado, plazo y
+  pasaje, asistente con su propia entrada y alcance de hasta tres resultados, y
+  «Crear alerta» hacia Mi Watchlist. Mismas consultas, 20-600 ms. Quedan
+  abiertos los tres ítems «[Investigador]» de P2/P3.
 - [2026-10-03] **P2: El auto-marcado de tests excluye del gate los módulos con «download» en el nombre** (#402) — el token de carga casa como palabra de la ruta; entran en `make check` 47 tests de tres módulos (los dos de «download» y `test_ola2_performance.py`, que probaba la caché y se renombra a `test_ola2_cache_y_bulk.py`), y un test fija con nombres qué módulos quedan `load`. Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [2026-10-03] **P2: Impedir que un test unitario salga a la red** (#402) — fixture autouse en `tests/conftest.py` que hace fallar con `pytest.fail` toda resolución o conexión no local desde un test `unit`, también si el código se traga el corte; los tests SSRF resuelven contra un `getaddrinfo` de pega. Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [2026-10-03] **P1: Tras desplegar el dedupe por referencia de TED, re-leer TED y medir cuánto se marcó** — backfill ejecutado desde el 2026-06-01 (no desde 2025-01-01: la fila TED más antigua era del 2026-06-10): 2.978 filas TED, 1.417 `confirmed` (522 por `idEvl`, 895 por expediente; eran 291) y ningún título con el prefijo «España – ». Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).

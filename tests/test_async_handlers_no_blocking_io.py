@@ -147,6 +147,13 @@ _PURE_CALLS: frozenset[str] = frozenset(
         # modelo y la firma de estado ya cargada. El contexto que firma lo trae
         # `cargar_contexto_resumen`, y ese sí se despacha con `run_db`.
         "resumen_cache_key",
+        # `services.investigador.busqueda.preparar` (importado como
+        # `preparar_consulta`): lee los filtros que dice la frase con
+        # expresiones regulares sobre una consulta de 500 caracteres como mucho
+        # y arma dos dataclasses. Ni conexión ni red (`tests/
+        # test_investigador_consulta.py` lo ejercita sin BD). La búsqueda, que
+        # sí va a BD, se despacha con `run_ml` unas líneas más abajo.
+        "preparar_consulta",
     }
 )
 

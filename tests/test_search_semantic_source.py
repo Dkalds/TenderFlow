@@ -16,6 +16,7 @@ import pytest
 
 from api.routes.search import (
     SEARCH_SOURCES,
+    SOURCE_FILTROS,
     SOURCE_FTS,
     SOURCE_LIKE,
     SOURCE_RRF,
@@ -110,13 +111,29 @@ class TestEtiquetaDelInvestigador:
         variable que viaja entre ellos es un detalle del troceado.
         """
         codigo = _codigo_del_investigador()
-        # Extremo 1: el estado se alimenta del `source` de la respuesta.
-        assert "setSearchSource(data.source" in codigo
-        # Extremo 2: ese estado se traduce con el catálogo compartido.
+        # Extremo 1: la fuente se lee del `source` de la respuesta (desde
+        # 2026-10 la búsqueda es una consulta de React Query, no estado local).
+        assert "busqueda.data?.source" in codigo
+        # Extremo 2: esa fuente se traduce con el catálogo compartido.
         assert "sourceLabel(" in codigo
 
     def test_la_pantalla_envia_alpha(self) -> None:
         assert "alpha: config.alpha" in _codigo_del_investigador()
+
+    def test_el_deslizador_solo_se_ofrece_si_la_respuesta_combino(self) -> None:
+        """«Tipo de coincidencia» gobierna ``alpha``, y ``alpha`` solo interviene
+        con ``source=rrf``. Medido contra producción el 2026-10-09: la imagen de
+        la API no trae el modelo con que codificar la consulta, la búsqueda
+        respondía siempre ``fts`` o ``like`` y el deslizador llevaba ahí sin
+        mover nada. Ahora la pantalla lo enseña cuando una respuesta ha llegado
+        por la fusión, y no antes.
+        """
+        codigo = _sin_comentarios(_codigo_del_investigador())
+        # La fuente con la que se compara es la de la fusión…
+        assert f'FUENTE_CON_SIGNIFICADO = "{SOURCE_RRF}"' in codigo
+        assert "searchSource === FUENTE_CON_SIGNIFICADO" in codigo
+        # …y el control está detrás de esa condición.
+        assert "{fusionDisponible && (" in codigo
 
 
 class TestFusionWeights:
@@ -231,7 +248,17 @@ class TestHitsDeLaFusion:
         (hit,) = _hits_from_fused([self._doc("A", 0.03)], None, 10)
         assert "chunks" not in hit
         assert "rrf_score" not in hit
-        assert "tecnologia" not in hit
+
+    def test_lo_que_la_fusion_no_calcula_viaja_vacio_no_ausente(self) -> None:
+        """El contrato es el mismo por cualquier camino: la tecnología del
+        expediente sí llega (la tarjeta la pinta), y lo que solo calcula el
+        motor de texto va vacío."""
+        uno, otro = _hits_from_fused([self._doc("A", 0.03), self._doc("B", 0.02)], None, 10)
+        assert uno["tecnologia"] == "SAP"
+        assert uno["coincide_en"] == [] and uno["pasaje"] is None
+        # Cada hit con su lista: mutar uno no toca al siguiente.
+        uno["coincide_en"].append("anuncio")
+        assert otro["coincide_en"] == []
 
     def test_respeta_allowed_ids_y_top_k(self) -> None:
         docs = [self._doc("A", 0.03), self._doc("B", 0.02), self._doc("C", 0.01)]
@@ -244,19 +271,29 @@ class TestHitsDeLaFusion:
 
     def test_la_respuesta_valida_con_los_hits_de_la_fusion(self) -> None:
         """Contrato: lo que produce la fusión encaja en el DTO publicado."""
+        from api.routes.search import Interpretacion
+        from services.investigador.consulta import interpretar
+
         hits = _hits_from_fused([self._doc("A", 0.03)], None, 10)
-        resp = SemanticSearchResponse(q="sap", top_k=10, source=SOURCE_RRF, hits=hits, elapsed_ms=1)
+        resp = SemanticSearchResponse(
+            q="sap",
+            top_k=10,
+            source=SOURCE_RRF,
+            hits=hits,
+            elapsed_ms=1,
+            interpretacion=Interpretacion.de(interpretar("sap")),
+        )
         assert resp.hits[0].id_externo == "A"
         assert 0.0 <= resp.hits[0].score <= 1.0
 
 
 class TestCatalogoDeFuentes:
     def test_valores_en_minusculas_y_sin_duplicados(self) -> None:
-        assert SEARCH_SOURCES == (SOURCE_RRF, SOURCE_FTS, SOURCE_LIKE)
-        assert len(set(SEARCH_SOURCES)) == 3
+        assert SEARCH_SOURCES == (SOURCE_RRF, SOURCE_FTS, SOURCE_LIKE, SOURCE_FILTROS)
+        assert len(set(SEARCH_SOURCES)) == 4
         assert all(s == s.lower() for s in SEARCH_SOURCES)
 
-    def test_openapi_describe_los_tres_valores(self) -> None:
+    def test_openapi_describe_todos_los_valores(self) -> None:
         """El contrato público explica qué significa cada uno."""
         desc = SemanticSearchResponse.model_fields["source"].description or ""
         assert all(s in desc for s in SEARCH_SOURCES)

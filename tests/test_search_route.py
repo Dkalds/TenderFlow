@@ -51,6 +51,13 @@ def _patch_one_hit():
         "ccaa": "Madrid",
         "estado": "PUB",
         "score": 0.95,
+        "fecha_limite": None,
+        "tecnologia": "SAP",
+        "coincide_en": ["anuncio"],
+        "terminos_ausentes": [],
+        "titulo_tramos": [],
+        "extracto": [],
+        "pasaje": None,
     }
     return patch("api.routes.search.run_ml", return_value=([hit], "FTS5"))
 
@@ -132,7 +139,9 @@ class TestSearchResponse:
 
 
 class TestSearchFilters:
-    """Los filtros se aplican en backend (allowed_ids), no se fingen en el cliente."""
+    """Los filtros se aplican en backend, en la propia consulta: ni se fingen en
+    el cliente ni se aplican después contra un conjunto de ids con tope (lo que
+    hacía ``allowed_ids`` hasta 2026-10). El motor corre de verdad."""
 
     @staticmethod
     def _seed():
@@ -140,41 +149,31 @@ class TestSearchFilters:
 
         upsert_licitaciones(
             [
-                Licitacion(id_externo="L1", titulo="SAP Madrid", ccaa="Madrid", tecnologia="SAP"),
                 Licitacion(
-                    id_externo="L2", titulo="SAP Cataluña", ccaa="Cataluña", tecnologia="SAP"
+                    id_externo="L1", titulo="Soporte SAP sede", ccaa="Madrid", tecnologia="SAP"
                 ),
-                Licitacion(id_externo="L3", titulo="SAP Galicia", ccaa="Galicia", tecnologia="SAP"),
+                Licitacion(
+                    id_externo="L2", titulo="Soporte SAP puerto", ccaa="Cataluña", tecnologia="SAP"
+                ),
+                Licitacion(
+                    id_externo="L3", titulo="Soporte SAP hospital", ccaa="Galicia", tecnologia="SAP"
+                ),
             ]
         )
 
-    @staticmethod
-    def _patch_engine_returns_all():
-        # FTS devuelve los 3 candidatos; _run filtra por allowed_ids.
-        return (
-            patch(
-                "services.investigador.search_engine.fts5_search",
-                return_value=[("L1", 0.9), ("L2", 0.8), ("L3", 0.7)],
-            ),
-        )
-
-    def test_filters_restrict_to_allowed_ids(self, search_client):
+    def test_filters_restrict_to_scope(self, search_client):
         self._seed()
-        (p_fts,) = self._patch_engine_returns_all()
-        with p_fts:
-            resp = search_client.post(
-                "/api/v1/search/semantic",
-                json={"q": "sap", "ccaa": ["Madrid", "Cataluña"]},
-            )
+        resp = search_client.post(
+            "/api/v1/search/semantic",
+            json={"q": "soporte sap", "ccaa": ["Madrid", "Cataluña"]},
+        )
         assert resp.status_code == 200
         ids = {h["id_externo"] for h in resp.json()["hits"]}
         assert ids == {"L1", "L2"}  # Galicia (L3) excluida por el filtro
 
     def test_no_filters_returns_all_candidates(self, search_client):
         self._seed()
-        (p_fts,) = self._patch_engine_returns_all()
-        with p_fts:
-            resp = search_client.post("/api/v1/search/semantic", json={"q": "sap"})
+        resp = search_client.post("/api/v1/search/semantic", json={"q": "soporte sap"})
         assert resp.status_code == 200
         ids = {h["id_externo"] for h in resp.json()["hits"]}
         assert ids == {"L1", "L2", "L3"}
@@ -184,17 +183,32 @@ class TestSearchFilters:
 
         upsert_licitaciones(
             [
-                Licitacion(id_externo="T1", titulo="x", ccaa="Madrid", tecnologia="SAP"),
-                Licitacion(id_externo="T2", titulo="y", ccaa="Madrid", tecnologia="ORACLE"),
+                Licitacion(
+                    id_externo="T1", titulo="Soporte ERP", ccaa="Madrid", tecnologia="ERP,SAP"
+                ),
+                Licitacion(
+                    id_externo="T2", titulo="Soporte ERP", ccaa="Madrid", tecnologia="ORACLE"
+                ),
             ]
         )
-        with patch(
-            "services.investigador.search_engine.fts5_search",
-            return_value=[("T1", 0.9), ("T2", 0.8)],
-        ):
-            resp = search_client.post(
-                "/api/v1/search/semantic",
-                json={"q": "x", "tecnologia": ["ORACLE"]},
-            )
-        ids = {h["id_externo"] for h in resp.json()["hits"]}
-        assert ids == {"T2"}
+        resp = search_client.post(
+            "/api/v1/search/semantic",
+            json={"q": "soporte erp", "tecnologia": ["ORACLE"]},
+        )
+        assert {h["id_externo"] for h in resp.json()["hits"]} == {"T2"}
+        # El código se busca en el CSV de la fila: «ERP,SAP» también es SAP.
+        resp = search_client.post(
+            "/api/v1/search/semantic",
+            json={"q": "soporte erp", "tecnologia": ["SAP"]},
+        )
+        assert {h["id_externo"] for h in resp.json()["hits"]} == {"T1"}
+
+    def test_the_scope_is_applied_before_top_k(self, search_client):
+        """El ámbito acota antes de recortar: con ``top_k=1`` sale el único
+        expediente del ámbito aunque otros dos casen igual de bien fuera de él."""
+        self._seed()
+        resp = search_client.post(
+            "/api/v1/search/semantic",
+            json={"q": "soporte sap", "ccaa": ["Galicia"], "top_k": 1},
+        )
+        assert [h["id_externo"] for h in resp.json()["hits"]] == ["L3"]

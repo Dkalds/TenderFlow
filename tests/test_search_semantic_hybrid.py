@@ -132,15 +132,20 @@ class TestFuenteDerivadaDelCaminoEjecutado:
         assert ids == {"L-FTS", "L-VEC"}  # una lista aporta cada uno
 
     def test_sin_coincidencias_fts_cae_a_like(self, search_client, monkeypatch):
-        """Sin fusión y con el FTS vacío, la fuente es ``like``."""
+        """Sin fusión y con el texto completo vacío, la fuente es ``like``.
+
+        «ocumenta» no es un lexema de nada —el diccionario no lo encuentra— y
+        sí una subcadena de «documental»: responde el último recurso.
+        """
         import services.embeddings as emb
 
         monkeypatch.setattr(emb, "embeddings_available", lambda: False)
         _seed_licitaciones()
-        monkeypatch.setattr("services.investigador.search_engine.fts5_search", lambda q, k: [])
-        resp = search_client.post("/api/v1/search/semantic", json={"q": "documental"})
+        resp = search_client.post("/api/v1/search/semantic", json={"q": "ocumenta"})
         assert resp.status_code == 200
-        assert resp.json()["source"] == "like"
+        data = resp.json()
+        assert data["source"] == "like"
+        assert [h["id_externo"] for h in data["hits"]] == ["L-VEC"]
 
     def test_score_normalizado_en_la_fusion(self, search_client, embeddings_simulados):
         _seed_licitaciones()
