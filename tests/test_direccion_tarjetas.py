@@ -432,6 +432,23 @@ class TestCortes:
             "organo",
         ]
 
+    def test_los_campos_anteriores_siguen_en_la_respuesta(self) -> None:
+        """Quitar `win_rate_por_*` rompería el contrato: siguen, ya en la ventana."""
+        filas = [_cierre("won", tender_tecnologia="SAP", tender_organo="Madrid") for _ in range(5)]
+        filas.append(
+            _cierre(
+                "lost",
+                inicio=datetime(2020, 1, 1, tzinfo=UTC),
+                tender_tecnologia="SAP",
+                tender_organo="Madrid",
+            )
+        )
+        cuadro = _cuadro(filas, ventana=Ventana(datetime(2025, 10, 9, tzinfo=UTC)))
+        assert [(c.clave, c.n, c.valor) for c in cuadro.win_rate_por_tecnologia] == [
+            ("SAP", 5, 1.0)
+        ]
+        assert [(c.clave, c.n) for c in cuadro.win_rate_por_organo] == [("Madrid", 5)]
+
     def test_las_filas_sin_base_van_aparte_con_sus_cierres(self) -> None:
         filas = [_cierre("won", tender_organo="Madrid") for _ in range(5)]
         filas += [_cierre("lost", tender_organo=f"Órgano {i}") for i in range(3)]

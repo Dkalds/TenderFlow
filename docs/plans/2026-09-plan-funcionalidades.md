@@ -748,7 +748,9 @@ aceptación, que hasta ahora era siempre el histórico:
 - **Cortes** (`cortes`): tecnología, tramo de importe, procedimiento y órgano,
   con intervalo de Wilson al 95 %, posición frente a la media sólo cuando el
   intervalo entero queda a un lado, y las filas sin base aparte con sus
-  cierres. Sustituye a `win_rate_por_tecnologia`/`win_rate_por_organo`.
+  cierres. `win_rate_por_tecnologia`/`win_rate_por_organo` siguen en la
+  respuesta, obsoletos y acotados a la ventana: quitarlos rompería el contrato
+  (`docs/api-design.md`) y su retirada necesita su propia RFC.
 - **Previsión trimestral y supuestos** viajan en el cuadro (se calculaban y se
   tiraban).
 - **Estado sin base**: un solo aviso con las presentadas sin resultado

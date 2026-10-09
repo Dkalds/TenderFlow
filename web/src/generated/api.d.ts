@@ -7704,6 +7704,16 @@ export interface components {
             radar_quality?: components["schemas"]["RadarQuality"] | null;
             /** Tarjetas */
             tarjetas?: components["schemas"]["TarjetaMetrica"][];
+            /**
+             * Win Rate Por Organo
+             * @deprecated
+             */
+            win_rate_por_organo?: components["schemas"]["CorteMetrica"][];
+            /**
+             * Win Rate Por Tecnologia
+             * @deprecated
+             */
+            win_rate_por_tecnologia?: components["schemas"]["CorteMetrica"][];
         };
         /**
          * CuentaObjetivo

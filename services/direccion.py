@@ -326,6 +326,17 @@ class CuadroDireccion(BaseModel):
     cierres: int = Field(default=0, ge=0)
     cierres_historico: int = Field(default=0, ge=0)
     cortes: list[CorteDireccion] = Field(default_factory=list)
+    #: **Obsoletos: usar `cortes`.** Los dos cortes que había antes de `cortes`,
+    #: con la misma forma de siempre (lista con el mínimo aplicado dentro) y ya
+    #: acotados a la ventana. Quitarlos de la respuesta sería un cambio
+    #: incompatible del contrato (`docs/api-design.md`): siguen hasta que una
+    #: RFC de retirada los saque con su `api-breaking`.
+    win_rate_por_tecnologia: list[CorteMetrica] = Field(
+        default_factory=list, json_schema_extra={"deprecated": True}
+    )
+    win_rate_por_organo: list[CorteMetrica] = Field(
+        default_factory=list, json_schema_extra={"deprecated": True}
+    )
     #: Mínimo aplicado, declarado en vez de repetido en la UI.
     n_minimo: int = MINIMO_POR_CORTE
     #: Reparto de las pérdidas por motivo codificado (D37). Vacío por debajo
@@ -906,6 +917,8 @@ def construir_cuadro(
         cierres=len(cerradas),
         cierres_historico=len(_cerradas(filas, Ventana())),
         cortes=cortes_de_direccion(cerradas, tasa.valor),
+        win_rate_por_tecnologia=corte_con_minimo(cerradas, clave="tender_tecnologia"),
+        win_rate_por_organo=corte_con_minimo(cerradas, clave="tender_organo"),
         perdidas_por_motivo=_perdidas_por_motivo([dict(f) for f in cerradas]),
         perdidas=perdidas,
         perdidas_sin_motivo=sin_motivo,
