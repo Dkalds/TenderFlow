@@ -3,13 +3,15 @@
 /**
  * Ficha del clasificador: el estado del etiquetado y, si ya hay un modelo
  * registrado, su versión, su métrica destacada y la deriva contra el reentreno
- * anterior. Sin modelo el panel lo dice en vez de pintar guiones.
+ * anterior. Sin modelo el panel lo dice en vez de pintar guiones, y distingue
+ * los dos «sin modelo»: no hay ninguna versión (falta etiquetar para el primer
+ * entrenamiento) o las hay y ninguna está activa (eso no se arregla etiquetando).
  *
  * Sin «precisión estimada (% relevante)»: leía un `pct_relevant` que la API no
  * sirve (ver `labeling-stats.tsx`, que explica por qué tampoco se calcula aquí).
  */
 
-import { Fact, Panel, PanelTitle } from "@/components/console/panel";
+import { Aviso, Fact, Panel, PanelTitle } from "@/components/console/panel";
 import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { FeedbackStats } from "@/hooks/use-feedback";
 import type { HeadlineMetric, ModelVersionInfo } from "../../_lib/active-learning";
@@ -34,9 +36,12 @@ export function ModelInfoCard({
   metric,
   metricTrend,
   feedbacksSinceTrain,
+  ultimaRegistrada,
 }: {
   stats: FeedbackStats | undefined;
   activeModel: ModelVersionInfo | null;
+  /** La versión más reciente del registro, esté activa o no; `null` si no hay ninguna. */
+  ultimaRegistrada: Pick<ModelVersionInfo, "version" | "trained_at"> | null;
   metric: HeadlineMetric | null;
   metricTrend: number | null;
   feedbacksSinceTrain: number;
@@ -79,6 +84,13 @@ export function ModelInfoCard({
           />
           <Fact label="Etiquetas desde el reentreno" value={formatNumber(feedbacksSinceTrain)} variant="cifra" />
         </div>
+      ) : ultimaRegistrada ? (
+        <Aviso tone="warning" className="mt-3">
+          Ninguna versión está activa. La última registrada es la{" "}
+          <span className="font-mono">v{ultimaRegistrada.version}</span>
+          {ultimaRegistrada.trained_at ? `, del ${formatDate(ultimaRegistrada.trained_at)}` : ""}: mientras
+          no se active una, el clasificador no puntúa licitaciones nuevas.
+        </Aviso>
       ) : (
         <p className="mt-3 text-tf-meta text-muted-foreground">
           Aún no hay un modelo registrado: etiqueta para habilitar el primer entrenamiento.

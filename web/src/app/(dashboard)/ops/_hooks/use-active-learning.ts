@@ -48,6 +48,8 @@ export interface ActiveLearning extends SeleccionEtiquetas {
   metric: HeadlineMetric | null;
   metricTrend: number | null;
   feedbacksSinceTrain: number;
+  /** La versión más reciente del registro, esté activa o no. */
+  ultimaRegistrada: Pick<ModelVersionInfo, "version" | "trained_at"> | null;
   techCounts: Record<string, number>;
   hasTechData: boolean;
   notes: Record<string, string>;
@@ -233,6 +235,8 @@ export function useActiveLearning(): ActiveLearning {
     metric,
     metricTrend,
     feedbacksSinceTrain: modelInfo?.feedbacks_since_train ?? 0,
+    // El histórico llega de la versión más nueva a la más vieja.
+    ultimaRegistrada: modelInfo?.history[0] ?? null,
     techCounts,
     hasTechData: Object.keys(techCounts).length > 0,
     notes,

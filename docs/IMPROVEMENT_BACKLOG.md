@@ -856,6 +856,34 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ---
 
+### [P2] Inventariar las claves de API sin dueño: 89 activas, sin usuario y sin caducidad
+- **Área:** api/routes, db/repositories, web/src/app/(dashboard)/ops
+- **Problema:** medido en producción el 2026-10-09: `api_keys` tiene 101 filas, 89 activas, **todas con `user_id` nulo y sin `expires_at`**, y ninguna creada en los últimos 30 días. No hay pantalla que las liste: Ajustes › Claves de API enseña las de quien mira, y la tarjeta que había en Ops › Administración (retirada ese día) también listaba solo las propias, rotuladas como «de la instancia». Una clave sin dueño no se revoca al desactivar a nadie, así que no hay ningún camino por el que estas dejen de valer.
+- **Acceptance criteria:**
+  - Se sabe qué son (restos de pruebas, integraciones vivas o claves de antes de que tuvieran dueño) y se revocan las que no tengan uso.
+  - Ruta de administración tipada que lista las claves de la instancia (nombre, tier, permisos, dueño, creada, caduca) sin exponer hash ni token, y una tarjeta en Ops › Administración que la lee y permite revocar con confirmación.
+  - Una clave nueva no puede nacer sin dueño ni sin caducidad.
+- **Files de partida:** [api/routes/me.py](../api/routes/me.py), [services/auth.py](../services/auth.py), [web/src/app/(dashboard)/ops/_components/administracion-view.tsx](../web/src/app/(dashboard)/ops/_components/administracion-view.tsx)
+- **Riesgo:** medio — revocar una clave que sí usa una integración la rompe; primero el inventario.
+
+### [P2] `ops_events` no recibe ningún evento en producción
+- **Área:** scheduler, db
+- **Problema:** el 2026-10-09 la tabla `ops_events` tenía **0 filas** (ya estaba vacía el 2026-09-18). La escriben el cierre de la pasada, el healthcheck, el drift report y el etiquetado por LLM, y de ella dependen criterios escritos en el código (`tech_signal_merge` se retira «con cero reparaciones en siete días, medido en `ops_events`»). Lo que sí llega a la BD son las filas de `jobs`, que es lo que lee Ops › Ejecuciones desde ese día; la telemetría fina de cada paso se pierde.
+- **Acceptance criteria:**
+  - Una pasada de `scrape-daily` deja filas en `ops_events`, y se sabe por qué no las dejaba.
+  - El healthcheck avisa si pasan 24 h sin ningún evento.
+- **Files de partida:** [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [db/connection.py](../db/connection.py)
+- **Riesgo:** bajo — es observabilidad; nada lee todavía esos eventos para decidir.
+
+### [P3] Las violaciones de CSP se guardan y nadie las lee
+- **Área:** api/routes/security.py, web/src/app/(dashboard)/ops
+- **Problema:** `csp_violations` recibió 14 informes en siete días (todos `frame-src`, a 2026-10-09) y no tiene ruta de lectura. Los errores de JavaScript del navegador, que se guardan al lado, sí la tienen y desde ese día se ven en Ops › Estado.
+- **Acceptance criteria:**
+  - Ruta de administración tipada con las violaciones agrupadas por directiva y origen.
+  - Panel en Ops › Estado junto a «Errores en el navegador».
+- **Files de partida:** [api/routes/security.py](../api/routes/security.py), [web/src/app/(dashboard)/ops/_components/observabilidad/errores-navegador-card.tsx](../web/src/app/(dashboard)/ops/_components/observabilidad/errores-navegador-card.tsx)
+- **Riesgo:** bajo.
+
 ## P3 — Nice to have
 
 ### [P3] La campana nunca lista novedades de licitaciones: lee `users.last_login`, que no existe

@@ -1,6 +1,10 @@
 /**
- * Las seis vistas de Ops viven en `_components/<x>-view.tsx` y las monta una
+ * Las cinco vistas de Ops viven en `_components/<x>-view.tsx` y las monta una
  * sola entrada: el espacio `/ops`.
+ *
+ * Fueron seis, una por ruta absorbida. La reagrupación de 2026-10 fundió dos
+ * —Feature flags y Webhooks— en Administración y añadió Ejecuciones, que no
+ * viene de ninguna ruta. Las seis rutas heredadas siguen redirigiendo.
  *
  * Hasta 2026-09 cada vista tenía además un `page.tsx` de ruta heredada que la
  * re-exportaba, y este test exigía que ese boundary siguiera existiendo. Los
@@ -30,7 +34,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "@/lib/auth";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-import { SPACE_VIEWS, legacyRedirects } from "@/lib/space-views";
+import { SPACE_VIEWS, VISTAS_FUSIONADAS, legacyRedirects } from "@/lib/space-views";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -39,7 +43,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import AdministracionView from "../_components/administracion-view";
-import FeatureFlagsView from "../_components/feature-flags-view";
+import EjecucionesView from "../_components/ejecuciones-view";
 import ActiveLearningView from "../_components/active-learning-view";
 
 import { metadata as opsMeta } from "../layout";
@@ -48,15 +52,24 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPS_DIR = path.resolve(HERE, "..");
 const DASHBOARD_DIR = path.resolve(OPS_DIR, "..");
 
-/** ruta absorbida → fichero de vista en `_components` que la sustituye. */
-const ROUTES: Record<string, string> = {
+/** vista (`?vista=`) → fichero de `_components` que la pinta. */
+const VISTAS: Record<string, string> = {
   observabilidad: "observabilidad-view",
-  "calidad-datos": "calidad-datos-view",
+  ejecuciones: "ejecuciones-view",
+  calidad: "calidad-datos-view",
+  etiquetado: "active-learning-view",
   administracion: "administracion-view",
-  "feature-flags": "feature-flags-view",
-  "active-learning": "active-learning-view",
-  webhooks: "webhooks-view",
 };
+
+/** Las seis rutas que el espacio absorbió: ninguna puede volver a existir. */
+const RUTAS_ABSORBIDAS = [
+  "observabilidad",
+  "calidad-datos",
+  "administracion",
+  "feature-flags",
+  "active-learning",
+  "webhooks",
+];
 
 const read = (...segments: string[]): string => readFileSync(path.join(...segments), "utf8");
 
@@ -67,15 +80,16 @@ describe("vistas de Ops — módulo compartido", () => {
     expect(source).not.toMatch(/from\s+["'][^"']*\/page["']/);
   });
 
-  it("ops/page.tsx monta las seis vistas desde _components", () => {
-    const source = read(OPS_DIR, "page.tsx");
-    for (const view of Object.values(ROUTES)) {
-      expect(source).toContain(`./_components/${view}`);
-    }
-  });
+  it("cada vista declarada del espacio tiene su fichero, y la página lo monta", () => {
+    // La tabla de este test y `SPACE_VIEWS.ops` no pueden divergir: una vista
+    // declarada sin componente caería a la de por defecto sin decir nada.
+    expect(SPACE_VIEWS.ops.map((view) => view.key).sort()).toEqual(Object.keys(VISTAS).sort());
 
-  it.each(Object.entries(ROUTES))("la vista de /%s existe en _components", (_route, view) => {
-    expect(existsSync(path.join(OPS_DIR, "_components", `${view}.tsx`))).toBe(true);
+    const source = read(OPS_DIR, "page.tsx");
+    for (const view of Object.values(VISTAS)) {
+      expect(source).toContain(`./_components/${view}`);
+      expect(existsSync(path.join(OPS_DIR, "_components", `${view}.tsx`))).toBe(true);
+    }
   });
 
   it("el espacio tiene título de documento propio", () => {
@@ -90,13 +104,31 @@ describe("consolidar no elimina funcionalidad", () => {
     // Es lo único que mantiene vivo un marcador de `/feature-flags`.
     const redirects = new Map(legacyRedirects().map((r) => [r.source, r.destination]));
 
-    for (const view of SPACE_VIEWS.ops) {
-      expect(view.from, `la vista ${view.key} debería absorber una ruta`).toBeDefined();
+    // Las vivas y las que se fundieron en otra: para un marcador son lo mismo.
+    const conRuta = [...SPACE_VIEWS.ops, ...VISTAS_FUSIONADAS.ops].filter((view) => view.from);
+    expect(conRuta.map((view) => view.from).sort()).toEqual([...RUTAS_ABSORBIDAS].sort());
+    for (const view of conRuta) {
       expect(redirects.get(`/${view.from}`)).toBe(`/ops?vista=${view.key}`);
     }
   });
 
-  it.each(Object.keys(ROUTES))(
+  it("una vista fundida tiene sección donde aterrizar", () => {
+    // El `?vista=flags` de un marcador lleva a Administración y se desplaza a
+    // `#feature-flags`: si el ancla no existe en el código, aterriza arriba y
+    // el usuario tiene que buscar lo que antes era una pantalla.
+    const fuentes = ["administracion/feature-flags-card.tsx", "webhooks-view.tsx"].map((fichero) =>
+      read(OPS_DIR, "_components", fichero),
+    );
+    for (const vista of VISTAS_FUSIONADAS.ops) {
+      expect(vista.ancla, `${vista.key} no declara ancla`).toBeDefined();
+      expect(
+        fuentes.some((fuente) => fuente.includes(`id="${vista.ancla}"`)),
+        `ningún componente pinta id="${vista.ancla}"`,
+      ).toBe(true);
+    }
+  });
+
+  it.each(RUTAS_ABSORBIDAS)(
     "/%s no vuelve a existir como ruta a la sombra de su redirect",
     (route) => {
       expect(existsSync(path.join(DASHBOARD_DIR, route))).toBe(false);
@@ -144,8 +176,10 @@ afterEach(() => {
 
 describe("guarda de administrador de las vistas de Ops", () => {
   const GUARDED: [string, React.ComponentType, string][] = [
-    ["administracion", AdministracionView, "Cola de errores"],
-    ["feature-flags", FeatureFlagsView, "Activa o desactiva funcionalidades"],
+    // Administración lleva dentro los feature flags y la lista global de
+    // webhooks: su guarda es la de las tres secciones.
+    ["administracion", AdministracionView, "Activa o desactiva funcionalidades"],
+    ["ejecuciones", EjecucionesView, "Pasos del cierre"],
     ["active-learning", ActiveLearningView, "Cola de etiquetado"],
   ];
 

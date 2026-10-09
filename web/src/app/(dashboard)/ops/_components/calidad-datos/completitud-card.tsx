@@ -11,6 +11,7 @@
 import dynamic from "next/dynamic";
 import { Panel, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatNumber } from "@/lib/utils";
 import type { ColumnCompleteness } from "./quality-data";
 
 const CalidadCompletenessChart = dynamic(
@@ -23,10 +24,12 @@ const CalidadCompletenessChart = dynamic(
 
 export interface CompletitudCardProps {
   data: ColumnCompleteness[];
+  /** El denominador de los porcentajes; sin él, el pie no se pinta. */
+  totalRecords: number | undefined;
   isLoading: boolean;
 }
 
-export function CompletitudCard({ data, isLoading }: CompletitudCardProps) {
+export function CompletitudCard({ data, totalRecords, isLoading }: CompletitudCardProps) {
   return (
     <Panel>
       <PanelTitle title="Completitud por columna" hint="Porcentaje de registros con cada campo informado" />
@@ -37,7 +40,14 @@ export function CompletitudCard({ data, isLoading }: CompletitudCardProps) {
           ))}
         </div>
       ) : (
-        <CalidadCompletenessChart data={data} />
+        <>
+          <CalidadCompletenessChart data={data} />
+          {totalRecords != null && (
+            <p className="mt-2 text-tf-meta text-muted-foreground">
+              Porcentajes sobre {formatNumber(totalRecords)} registros.
+            </p>
+          )}
+        </>
       )}
     </Panel>
   );

@@ -55,14 +55,48 @@ function SourceRow({ source }: { source: SourceFreshness }) {
   );
 }
 
+/** Estado de un lote de carga histórica: terminó, falló o se quedó a medias. */
+function estadoLote(source: SourceFreshness) {
+  if (source.status === "success") return { label: "Completada", variant: "success" as const };
+  if (source.status === "failed") return { label: "Fallida", variant: "destructive" as const };
+  return { label: "Sin terminar", variant: "warning" as const };
+}
+
+function LoteRow({ source }: { source: SourceFreshness }) {
+  const state = estadoLote(source);
+  return (
+    <tr className="border-b border-border/60 last:border-0">
+      <td className={cn(CELDA, "font-mono text-tf-meta")}>{source.source}</td>
+      <td className={CELDA}>
+        <Badge size="sm" variant={state.variant}>
+          {state.label}
+        </Badge>
+      </td>
+      <td className={cn(CELDA, "tf-tnum text-tf-meta text-muted-foreground")}>
+        {formatDate(source.last_success_at ?? null)}
+      </td>
+      <td className={cn(CELDA, "text-tf-meta text-muted-foreground")}>
+        {source.warning ?? `${formatNumber(source.parsed)} procesadas · ${formatNumber(source.errors)} errores`}
+      </td>
+    </tr>
+  );
+}
+
 /**
  * Cobertura y SLA por fuente (Ops). Nunca habla del mercado entero sin decir
  * de qué fuente: cada cifra va en la fila de la suya.
+ *
+ * Los lotes de carga histórica (`bulk_YYYYMM`, `is_backfill`) van en una tabla
+ * aparte: son la carga de un mes, no una fuente con frescura que vigilar, y la
+ * API ya no los cuenta en `healthy_sources`/`total_sources`. Mezclados, un lote
+ * fallido dejaba el aviso de degradación encendido para siempre.
  */
 export function SourceFreshnessPanel() {
   const freshness = useSourceFreshness();
   const data = freshness.data;
-  const degraded = data?.sources.filter((source) => source.is_degraded) ?? [];
+  const vivas = data?.sources.filter((source) => !source.is_backfill) ?? [];
+  const lotes = data?.sources.filter((source) => source.is_backfill) ?? [];
+  const degraded = vivas.filter((source) => source.is_degraded);
 
   return (
     <Panel>
@@ -99,7 +133,7 @@ export function SourceFreshnessPanel() {
           error={freshness.error}
           onRetry={() => void freshness.refetch()}
         />
-      ) : !data?.sources.length ? (
+      ) : !data || vivas.length === 0 ? (
         <PanelEmpty
           size="sm"
           title="Aún no hay fuentes con actividad registrada"
@@ -145,13 +179,49 @@ export function SourceFreshnessPanel() {
                 </tr>
               </thead>
               <tbody>
-                {data.sources.map((source) => (
+                {vivas.map((source) => (
                   <SourceRow key={source.source} source={source} />
                 ))}
               </tbody>
             </table>
           </div>
         </>
+      )}
+      {!freshness.isLoading && !freshness.error && lotes.length > 0 && (
+        <section aria-labelledby="fuentes-cargas-historicas" className="mt-5">
+          <h4 id="fuentes-cargas-historicas" className="text-tf-meta font-semibold text-muted-foreground">
+            Cargas históricas
+          </h4>
+          <p className="mb-2 mt-0.5 text-tf-meta text-muted-foreground">
+            Lotes de un mes que se cargan una vez. No tienen frescura que vigilar y no cuentan arriba.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left text-tf-body">
+              <caption className="sr-only">Cargas históricas por mes</caption>
+              <thead className="border-y border-border/70">
+                <tr>
+                  <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
+                    Lote
+                  </th>
+                  <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
+                    Estado
+                  </th>
+                  <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
+                    Terminó bien
+                  </th>
+                  <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
+                    Observación
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {lotes.map((source) => (
+                  <LoteRow key={source.source} source={source} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </Panel>
   );

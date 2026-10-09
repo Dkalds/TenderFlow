@@ -96,7 +96,7 @@ const VOSEO = [
 
 /**
  * Palabras de quien construye la consola, no de quien la usa. `API` no está:
- * en Ajustes › Claves de API y en Ops › Observabilidad la API es el producto.
+ * en Ajustes › Claves de API y en Ops › Estado la API es el producto.
  */
 const NARRACION = [
   "backends?",
