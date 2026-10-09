@@ -17,15 +17,15 @@ panel de administración la lista y la mueve de estado
   que el sistema no sabe enviar es la clase de incumplimiento que se paga en
   confianza justo con quien acaba de dar su dirección.
 
-**Lo que este módulo NO hace: conceder el acceso.** La allowlist sigue viviendo
-en ``OAUTH_ALLOWED_EMAILS``/``OAUTH_ALLOWED_DOMAINS`` (``shared/auth_core.py``),
-así que habilitar a alguien sigue siendo editar variables de entorno. Moverla a
-base de datos cambia un mecanismo de autenticación, y eso exige RFC
-(AGENTS.md §5) además de migración: queda en el backlog, no aquí. Por eso el
-correo de bienvenida **no se envía solo** al cambiar de estado: lo dispara el
-operador explícitamente cuando ya ha habilitado el acceso, y el nombre del campo
-que lo activa lo dice (ver ``EstadoBody.notificar``). Si se enviara automático,
-la persona recibiría un "ya puedes entrar" y se encontraría un 403.
+**Lo que este módulo NO hace: conceder el acceso.** Conceder es escribir una
+concesión en ``access_grants`` (RFC 242), y eso lo hace la ruta de
+administración con ``db/access_grants.py``; ``OAUTH_ALLOWED_EMAILS``/
+``OAUTH_ALLOWED_DOMAINS`` (``shared/auth_core.py``) quedan como arranque
+estático. Aquí solo se escribe el correo, y por eso **no se envía solo** al
+cambiar de estado: la ruta lo manda después de persistir la concesión o, si el
+operador pide avisar sin conceder (``EstadoBody.notificar``), solo cuando esa
+dirección ya pasa la allowlist. Enviado sin esa comprobación, la persona
+recibiría un "ya puedes entrar" y se encontraría ``email_not_allowed``.
 """
 
 from __future__ import annotations

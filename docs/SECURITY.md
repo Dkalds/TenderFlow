@@ -186,6 +186,16 @@ tabla vacía o una caída de Postgres deniega el acceso fuera de desarrollo. Las
 altas y bajas requieren admin y dejan eventos de auditoría sin copiar el email
 o dominio al audit log.
 
+Dos reglas acotan qué se compara y qué se concede. Una dirección tiene que
+tener exactamente un `@` con algo a cada lado (`oauth_email_parts`, en
+`shared/auth_core.py`); lo que no la tiene se deniega en la lista estática, en
+`access_grants` y al leer el token, sin mirar «lo que va tras el último `@`».
+Y el dominio de un proveedor de correo público (`gmail.com`, `outlook.com`…;
+lista en `services/access_grants.py`) no se puede conceder como dominio: el
+formulario de solicitud es público, y un clic sobre una solicitud enviada desde
+Gmail dejaría entrar a cualquier cuenta de Gmail. Esas solicitudes se conceden
+por email.
+
 ### Recuperación de contraseña local
 
 `POST /auth/password-reset/request` no revela si existe la cuenta. Un token

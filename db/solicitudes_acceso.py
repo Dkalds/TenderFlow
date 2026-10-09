@@ -1,8 +1,11 @@
 """CRUD de ``solicitudes_acceso`` — cola de peticiones de acceso de la landing.
 
-El acceso a TenderFlow es por invitación y se concede editando la allowlist de
-``OAUTH_ALLOWED_EMAILS``/``OAUTH_ALLOWED_DOMAINS``. Esta tabla no cambia eso:
-sólo evita que la petición se pierda entre el visitante y esa decisión manual.
+El acceso a TenderFlow es por invitación. Esta tabla es la cola de quien lo
+pide: evita que la petición se pierda entre el visitante y la decisión de un
+administrador. Conceder no se hace aquí sino en ``db/access_grants.py``
+(RFC 242), cuya ``grant_access_request`` escribe la concesión y marca la fila
+de esta cola como atendida en una misma transacción.
+``OAUTH_ALLOWED_EMAILS``/``OAUTH_ALLOWED_DOMAINS`` quedan como arranque estático.
 """
 
 from __future__ import annotations

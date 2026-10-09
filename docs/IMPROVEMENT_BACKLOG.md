@@ -639,6 +639,17 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:** un paso del cierre (plano `pipeline`, ADR-012) llama a `event_dispatch.run()`; decisión documentada sobre la cola histórica; `domain_events_pending` baja en producción.
 - **Riesgo:** medio — primera vez que salen correos y webhooks del outbox.
 
+### [P1] Microsoft/Entra: la allowlist se decide sobre un correo que puede no estar verificado
+- **Área:** shared/identity.py, api/routes/auth.py, db/users.py, config/settings.py
+- **Problema:** hay que cerrarlo **antes de activar Microsoft en producción** (`OAUTH_MICROSOFT_CLIENT_ID`; vacío es apagado, y el 2026-10-09 no se comprobó qué valor tiene en Render). Comprobado en el código ese día: el camino de Google exige `email_verified` (`validate_google_id_token` en `shared/auth_core.py`) y el genérico que sirve a Entra no —`verify_oidc_id_token` lo dice en su docstring: Entra no emite ese claim—; sobre ese token, `_email_from_claims` toma `email` → `preferred_username` → `upn`; el tenant por defecto es `common` (`oauth_microsoft_tenant`) y `_issuer_matches` acepta el `tid` de cualquier tenant; y `get_or_create_oauth_user` **vincula por email**: si ya existe un usuario con esa dirección, le reescribe `oauth_provider`/`oauth_sub` y devuelve su `id`. Ninguno de esos tres claims acredita que quien entra controle ese buzón (Microsoft documenta `email` y `preferred_username` como modificables y no aptos para autorizar; contrastarlo con su documentación vigente al abordar el ítem, no se probó contra un tenant real). Si quien administra un tenant cualquiera puede presentarse con el correo de otra persona, pasa la allowlist —estática o `access_grants`— como si fuera ella y se queda con su cuenta: suplantación de un usuario existente, no solo un alta indebida. La decisión D17 (multi-tenant + allowlist por dominio) da por hecho que el dominio del correo dice de qué organización es la cuenta.
+- **Acceptance criteria:**
+  - El callback de Microsoft solo acepta un correo cuya propiedad conste (el claim opcional `xms_edov`, una lista de `tid` permitidos, o dejar de decidir sobre `email`). La elección queda escrita: toca ADR-030 y D17.
+  - `get_or_create_oauth_user` no vincula la identidad de otro proveedor a un usuario existente solo porque el correo coincide.
+  - Tests: un token de Entra firmado y válido cuyo correo no está verificado no entra, y no altera el `oauth_sub` de un usuario existente con esa dirección.
+  - Comprobado en Render que `OAUTH_MICROSOFT_CLIENT_ID` está vacío mientras esto siga abierto. Si no lo está, este ítem es P0.
+- **Files de partida:** [shared/identity.py](../shared/identity.py), [api/routes/auth.py](../api/routes/auth.py), [db/users.py](../db/users.py), [docs/adr/ADR-030-identidad-user-id-y-oidc.md](adr/ADR-030-identidad-user-id-y-oidc.md)
+- **Riesgo:** alto — toca el login y la vinculación de cuentas; el camino de Google no debe cambiar.
+
 ## P2 — Media
 
 ### [P2] [Rendimiento 2026-09] Medir la analítica en producción y encender su techo de sentencia
@@ -907,6 +918,19 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [db/connection.py](../db/connection.py)
 - **Riesgo:** bajo — es observabilidad; nada lee todavía esos eventos para decidir.
 
+### [P2] La auditoría de conceder y revocar acceso puede no escribirse, y la revocación no guarda quién la hizo
+- **Área:** db/audit.py, db/access_grants.py, api/routes/admin_solicitudes.py
+- **Problema:** `access_grant.granted` y `access_grant.revoked` se escriben con `db.audit.log_event` **después** de confirmar la transacción de la concesión, y `log_event`/`log_action` son best-effort por diseño en todo el producto: un fallo se queda en el log (`audit_log_persist_failed`) y no llega a quien llama. Puede existir, por tanto, una concesión —o una revocación— sin su fila de auditoría. De la concesión queda al menos `access_grants.granted_by`; de la revocación no queda nada más: la tabla guarda `revoked_at` pero no quién, así que el audit log es el único sitio donde consta. No se arregló al cerrar los huecos del RFC 242 (2026-10-09) porque hacerlo solo aquí deja dos semánticas de auditoría en el producto, y hacerlo para todo es un cambio de `db/audit.py` con alcance propio.
+- **Relacionado:** ese día las tres llamadas de `api/routes/admin_solicitudes.py` empezaron a pasar `user_id`. `api/routes/admin_users.py` y `api/routes/feature_flags.py` siguen llamando a `log_event` sin él, así que sus filas quedan con `audit_log.user_id` NULL pese a lo que dice `docs/SECURITY.md` («el actor se guarda como `users.id`»).
+- **Acceptance criteria:**
+  - Decidido y escrito (ADR) para qué eventos la auditoría es condición de la operación —candidatos: control de acceso y administración de usuarios— y para cuáles sigue siendo best-effort.
+  - Para los primeros, la fila de `audit_log` va en la misma transacción que la escritura que audita, o la operación falla si no se puede auditar. La cadena de hashes sigue verificando (`scripts/verify_audit_chain.py`).
+  - `access_grants` guarda quién revocó (columna nueva: migración, AGENTS.md §6).
+  - Test: con la escritura de auditoría fallando, conceder no deja una concesión activa sin rastro.
+  - Las rutas de administración que auditan pasan `user_id`.
+- **Files de partida:** [db/audit.py](../db/audit.py), [db/access_grants.py](../db/access_grants.py), [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py), [docs/rfc/242-acceso-oauth-dinamico.md](rfc/242-acceso-oauth-dinamico.md)
+- **Riesgo:** medio — `log_action` serializa la cadena con un advisory lock global: meterlo en transacciones ajenas cambia quién espera a quién.
+
 ### [P3] Las violaciones de CSP se guardan y nadie las lee
 - **Área:** api/routes/security.py, web/src/app/(dashboard)/ops
 - **Problema:** `csp_violations` recibió 14 informes en siete días (todos `frame-src`, a 2026-10-09) y no tiene ruta de lectura. Los errores de JavaScript del navegador, que se guardan al lado, sí la tienen y desde ese día se ven en Ops › Estado.
@@ -1062,6 +1086,17 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`FEATURES_PENDIENTES_COBERTURA`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py)
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
 - **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — la medición existe; el número no.** `ENV=dev python scripts/medir_cobertura_features.py` (o `--json` para archivarlo) imprime, contra la BD de `DATABASE_URL` y solo leyendo, la cobertura de los tres campos sobre dos poblaciones: `dataset_baja` (las filas exactas de entrenamiento, `_sql_agregado`) y `universo_abierto` (lo que puntúa el batch), cada una con total, por `fuente` y por año de publicación, y un veredicto contra el 50 % **solo sobre el total del dataset**. El SQL vive en `MlDatasetRepository.cobertura_features_pendientes`. Tests en `tests/test_medir_cobertura_features.py` (uno contra Postgres, no ejecutado en local). **Falta:** correrlo contra producción, anotar aquí el número con fecha y, según salga, seguir los cuatro pasos o dejar escrito el número que lo desaconseja.
+
+### [P3] El panel de accesos no deja volver a conceder tras revocar ni dice quién concedió y cuándo
+- **Área:** web/src/app/(dashboard)/ops/_components/solicitudes-acceso, web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts, api/routes/admin_solicitudes.py
+- **Problema:** en Ops › Administración › Solicitudes de acceso, «Accesos dinámicos activos» lista solo las concesiones vivas, con su valor, su tipo y «Revocar». La API ya devuelve `granted_by`, `created_at`, `updated_at` y `revoked_at` (`AccessGrantOut`) y admite `GET /grants?include_inactive=true`, pero el panel no los pide ni los pinta: no se ve quién concedió ni cuándo, ni queda a la vista lo revocado. Las acciones de conceder solo aparecen en solicitudes pendientes, así que devolverle el acceso a alguien revocado exige que vuelva a rellenar el formulario público o llamar a la API a mano (el `PATCH` con `conceder` sobre su solicitud ya atendida reactiva la fila). Tampoco hay confirmación antes de «Conceder dominio» ni de «Revocar»: desde el 2026-10-09 el servidor rechaza el dominio de un proveedor de correo público, pero un clic sigue bastando para abrir el dominio entero de una empresa.
+- **Acceptance criteria:**
+  - Cada concesión muestra quién la concedió y cuándo (hay que resolver `granted_by` a un nombre: hoy la ruta devuelve el id).
+  - Las revocadas se pueden ver y volver a conceder desde el panel, sin pasar por una solicitud nueva.
+  - «Conceder dominio» y «Revocar» piden confirmación diciendo a quién afectan.
+  - El 422 de un dominio no concedible se enseña una sola vez, con su motivo (hoy salen dos avisos: el genérico del hook y el global con el `detail`).
+- **Files de partida:** [web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx](../web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx), [web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts](../web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts), [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py)
+- **Riesgo:** bajo — es interfaz sobre rutas que ya existen; lo único nuevo en la API es el nombre de quien concedió.
 
 ### [P3] Saber si el **lote** de una oportunidad ya se adjudicó
 - **Área:** db/repositories/pursuits.py (`_AGENDA_SELECT`), scraper (adjudicaciones por lote)
