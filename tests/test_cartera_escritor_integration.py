@@ -246,3 +246,81 @@ def test_los_avisos_no_se_repiten(client: TestClient, equipo: tuple[int, int]) -
     eventos = get_events("contrato_cartera", fila["id"], event_type=EVENTO_CARTERA_VENCE)
     assert [e["payload"]["meses"] for e in eventos] == [3]
     assert eventos[0]["payload"]["destinatarios"] == [owner]
+
+
+# ── La fecha de fin puesta a mano ──────────────────────────────────────────
+
+
+def test_la_fecha_puesta_a_mano_da_ventana_y_sobrevive_a_la_resincronizacion(
+    client: TestClient, equipo: tuple[int, int]
+) -> None:
+    """El contrato que la fuente dejó sin fecha de fin deja de estar a ciegas.
+
+    Y la fecha se queda: si la fuente publica otra después, la resincronización
+    diaria la cuenta como manual y no la pisa.
+    """
+    from db.database import connect
+    from services.cartera import sincronizar_cartera
+
+    owner, organizacion = equipo
+    _licitacion(_GANADA)  # ni fecha de fin ni duración: entra sin ventana
+    pursuit_id = _presentada(owner, organizacion, _GANADA)
+    _ganar(client, organizacion, pursuit_id)
+    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    assert fila is not None
+    assert fila["fecha_fin_efectiva"] is None
+
+    respuesta = client.patch(
+        f"/api/v1/pursuits/cartera/{fila['id']}",
+        params={"organization_id": organizacion},
+        json={"fecha_fin": "2027-06-30"},
+    )
+
+    assert respuesta.status_code == 200, respuesta.text
+    cuerpo = respuesta.json()
+    assert (cuerpo["fecha_fin_efectiva"], cuerpo["fecha_fin_origen"]) == ("2027-06-30", "manual")
+    assert (cuerpo["relicitacion_desde"], cuerpo["relicitacion_hasta"]) == (
+        "2026-12-30",
+        "2027-03-30",
+    )
+    # La respuesta es el contrato de la lista, con su licitación: no un eco.
+    assert cuerpo["titulo"] == f"Contrato {_GANADA}"
+
+    with connect() as conn:
+        conn.execute(
+            "UPDATE licitaciones SET fecha_fin = '2028-01-31' WHERE id_externo = %s", (_GANADA,)
+        )
+    resumen = sincronizar_cartera(dry_run=False)
+    assert (resumen.manuales, resumen.actualizados) == (1, 0)
+    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    assert fila is not None
+    assert (fila["fecha_fin_efectiva"], fila["fecha_fin_origen"]) == ("2027-06-30", "manual")
+
+
+def test_la_fecha_de_fin_rechaza_lo_imposible_y_lo_ajeno(
+    client: TestClient, sesion: _Sesion, equipo: tuple[int, int]
+) -> None:
+    owner, organizacion = equipo
+    _licitacion(_GANADA, fecha_inicio="2025-03-01")
+    pursuit_id = _presentada(owner, organizacion, _GANADA)
+    _ganar(client, organizacion, pursuit_id)
+    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    assert fila is not None
+    ruta = f"/api/v1/pursuits/cartera/{fila['id']}"
+
+    antes_del_inicio = client.patch(
+        ruta, params={"organization_id": organizacion}, json={"fecha_fin": "2025-02-28"}
+    )
+    assert antes_del_inicio.status_code == 422
+    assert "anterior al inicio" in antes_del_inicio.json()["detail"]
+
+    otro = _user("otro-fecha-fin@example.test")
+    ajena = int(OrganizationRepository().create_organization("Ajena", otro)["id"])
+    sesion.user_id = otro
+    ajeno = client.patch(ruta, params={"organization_id": ajena}, json={"fecha_fin": "2027-06-30"})
+    assert ajeno.status_code == 404
+
+    # Ninguno de los dos intentos escribió nada.
+    intacta = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    assert intacta is not None
+    assert (intacta["fecha_fin_efectiva"], intacta["fecha_fin_origen"]) == (None, None)

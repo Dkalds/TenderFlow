@@ -1037,6 +1037,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
 - **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — la medición existe; el número no.** `ENV=dev python scripts/medir_cobertura_features.py` (o `--json` para archivarlo) imprime, contra la BD de `DATABASE_URL` y solo leyendo, la cobertura de los tres campos sobre dos poblaciones: `dataset_baja` (las filas exactas de entrenamiento, `_sql_agregado`) y `universo_abierto` (lo que puntúa el batch), cada una con total, por `fuente` y por año de publicación, y un veredicto contra el 50 % **solo sobre el total del dataset**. El SQL vive en `MlDatasetRepository.cobertura_features_pendientes`. Tests en `tests/test_medir_cobertura_features.py` (uno contra Postgres, no ejecutado en local). **Falta:** correrlo contra producción, anotar aquí el número con fecha y, según salga, seguir los cuatro pasos o dejar escrito el número que lo desaconseja.
 
+### [P3] Saber si el **lote** de una oportunidad ya se adjudicó
+- **Área:** db/repositories/pursuits.py (`_AGENDA_SELECT`), scraper (adjudicaciones por lote)
+- **Problema:** desde el 2026-10-09 la agenda mira el expediente y lleva a «Por cerrar» la oportunidad cuya licitación ya está resuelta o adjudicada. Para una oportunidad **de un lote** solo puede fiarse del estado del expediente entero: las filas de `adjudicaciones` no dicen de qué lote son (medido ese día en producción: 77.965 filas, ninguna con `lote_id`), así que la consulta no afirma adjudicatario cuando hay `lote_numero` — la adjudicación de otro lote no cierra el suyo. Consecuencia: un lote ya adjudicado en un expediente que sigue en `PUB` (lo normal en TED) se queda en su tramo de plazo hasta que la fecha pase. Hoy no afecta a nadie (0 oportunidades con lote), y por eso es P3.
+- **Acceptance criteria:**
+  - La ingesta escribe `adjudicaciones.lote_id` cuando la fuente lo publica, o se documenta por qué no puede.
+  - `_AGENDA_SELECT` afirma adjudicatario para una oportunidad con lote solo con las adjudicaciones de ese lote, con su test en `tests/test_agenda_ambito_sql.py` (hoy `test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote` fija lo contrario a propósito).
+- **Files de partida:** [db/repositories/pursuits.py](../db/repositories/pursuits.py), [services/pursuits.py](../services/pursuits.py) (`_expediente_cerrado`), [tests/test_agenda_ambito_sql.py](../tests/test_agenda_ambito_sql.py)
+- **Riesgo:** bajo — la regla actual es la conservadora; relajarla solo añade casos.
+
 ---
 
 ## Cerrados

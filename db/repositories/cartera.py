@@ -127,6 +127,22 @@ class CarteraRepository:
             )
             return bool(cur.rowcount > 0)
 
+    def fijar_fecha_fin(self, *, organization_id: int, cartera_id: int, fecha_fin: str) -> bool:
+        """Guarda una fecha de fin puesta a mano. ``False`` si la fila no es suya.
+
+        El origen pasa a ``manual``, que es lo que impide que la
+        resincronización diaria la pise (``services.cartera.accion_para``): una
+        fecha que alguien corrigió no puede volver sola a la que se derivó.
+        """
+        with connect() as conn:
+            cur = conn.execute(
+                "UPDATE contratos_cartera "
+                "SET fecha_fin_efectiva = %s, fecha_fin_origen = 'manual', updated_at = %s "
+                "WHERE organization_id = %s AND id = %s",
+                (fecha_fin, now_utc_iso(), organization_id, cartera_id),
+            )
+            return bool(cur.rowcount > 0)
+
     def get(self, organization_id: int, cartera_id: int) -> dict[str, Any] | None:
         """Una entrada de cartera dentro de su organización, o ``None``."""
         with connect_read() as conn:

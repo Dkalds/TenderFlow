@@ -8,11 +8,22 @@
  * toca hacer — lo que toca es preparar la renovación. Cada `kind` tiene un
  * siguiente paso distinto y aquí es donde se decide cuál.
  *
- * La oportunidad tiene tres, según lo que le falte: **cerrarla** si su plazo
- * pasó sin oferta (y ahí sí van dos botones: el que la retira y el que lleva a
- * la ficha, por si sí hubo oferta y lo que falta es registrarla), **apuntar su
- * próxima acción** si no tiene ninguna, y abrir la ficha en el resto. Cuál de
- * las tres le toca lo dice la API (`banda`, `cuenta_en`), no esta pantalla.
+ * La oportunidad ofrece **lo primero que le falta**, en el orden en que el
+ * trabajo lo pide: **cerrarla** si ya no admite oferta (y ahí sí van dos
+ * botones: el que la retira y el que lleva a la ficha, por si sí hubo oferta y
+ * lo que falta es registrarla), **registrar el resultado** si está presentada y
+ * la licitación ya se resolvió, **decidir** el GO/NO-GO si nadie lo ha hecho,
+ * **apuntar su próxima acción** si no tiene ninguna, y abrir la ficha en el
+ * resto. Qué le falta lo dice la API (`banda`, `cuenta_en`,
+ * `expediente_cerrado`), no esta pantalla.
+ *
+ * Decidir va antes que apuntar la acción porque es lo que desbloquea lo demás:
+ * de catorce oportunidades creadas, dos llegaron a tener decisión. La excepción
+ * es el filtro «Sin próxima acción»: quien lo ha pulsado ha dicho qué viene a
+ * hacer, y ahí la fila ofrece apuntarla.
+ *
+ * El contrato sin fecha de fin ofrece **ponerla**: sin ella no tiene ventana de
+ * relicitación, y «Ver contrato» no la arregla.
  *
  * El diálogo de «Preparar renovación» se **importa** del espacio de
  * Oportunidades en vez de duplicarse: es el mismo flujo (`POST
@@ -25,10 +36,12 @@ import { ArrowRight, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PrepararRenovacion } from "@/app/(dashboard)/oportunidades/_components/preparar-renovacion";
+import { type Decision, DecidirGoNoGo } from "@/components/pursuits/decidir-go-no-go";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
-import { bandaDe } from "./agenda-meta";
+import { type AgendaContador, bandaDe } from "./agenda-meta";
 import { tituloDe } from "./agenda-texto";
 import { type AccionApuntada, ApuntarAccion } from "./apuntar-accion";
+import { FechaFinContrato } from "./fecha-fin-contrato";
 
 /**
  * El `Button` `sm` de la consola: 32 px de alto en móvil (diana para el pulgar;
@@ -49,31 +62,49 @@ export interface AccionesFila {
   onRetirar: () => void;
   onApuntarAccion: (accion: AccionApuntada, alGuardar: () => void) => void;
   apuntando: boolean;
+  onDecidir: (decision: Decision, alGuardar: () => void) => void;
+  decidiendo: boolean;
+  onFijarFechaFin: (fecha: string, alGuardar: () => void) => void;
+  guardandoFechaFin: boolean;
 }
 
-export function AgendaAccion({ item, acciones }: { item: PipelineAgendaItem; acciones: AccionesFila }) {
+export function AgendaAccion({
+  item,
+  acciones,
+  filtro = null,
+}: {
+  item: PipelineAgendaItem;
+  acciones: AccionesFila;
+  /** El contador que filtra la lista: dice qué ha venido a hacer quien mira. */
+  filtro?: AgendaContador | null;
+}) {
   const detener = (fn: () => void) => (event: MouseEvent) => {
     event.stopPropagation();
     fn();
   };
 
+  /**
+   * Con una acción propia delante, la ficha queda a un botón de icono: la fila
+   * se abre con doble clic o ⏎, pero en un móvil no hay ninguno de los dos y el
+   * inspector tampoco existe.
+   */
+  const abrirConIcono = (nombre: string) => (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon-sm"
+      aria-label={nombre}
+      onClick={detener(acciones.onAbrir)}
+      className={cn("flex-none", NEUTRO)}
+    >
+      <ArrowRight aria-hidden="true" />
+    </Button>
+  );
+
   if (item.kind === "pursuit") {
-    // Con una acción propia delante, la ficha queda a un botón de icono: la
-    // fila se abre con doble clic o ⏎, pero en un móvil no hay ninguno de los
-    // dos y el inspector tampoco existe.
-    const abrirFicha = (
-      <Button
-        type="button"
-        variant="outline"
-        size="icon-sm"
-        aria-label="Abrir ficha"
-        onClick={detener(acciones.onAbrir)}
-        className={cn("flex-none", NEUTRO)}
-      >
-        <ArrowRight aria-hidden="true" />
-      </Button>
-    );
-    if (bandaDe(item) === "plazo_pasado") {
+    const abrirFicha = abrirConIcono("Abrir ficha");
+    const banda = bandaDe(item);
+    if (banda === "plazo_pasado") {
       return (
         // 8 px entre los dos: uno cierra la oportunidad y el otro solo la abre.
         <span className="flex items-center gap-2">
@@ -84,7 +115,27 @@ export function AgendaAccion({ item, acciones }: { item: PipelineAgendaItem; acc
         </span>
       );
     }
-    if ((item.cuenta_en ?? []).includes("sin_paso")) {
+    if (banda === "en_resolucion" && item.expediente_cerrado) {
+      // La licitación ya se resolvió: lo pendiente es decir cómo quedó. El
+      // cierre (ganada o perdida, con su motivo) vive en la ficha, que además
+      // propone el resultado cruzando los NIF de los adjudicatarios.
+      return (
+        <button type="button" onClick={detener(acciones.onAbrir)} className={cn(BOTON, PRIMARIO)}>
+          Registrar resultado
+        </button>
+      );
+    }
+    const cuenta = item.cuenta_en ?? [];
+    const sinPaso = cuenta.includes("sin_paso");
+    if (cuenta.includes("go_no_go") && !(filtro === "sin_paso" && sinPaso)) {
+      return (
+        <span className="flex items-center gap-2">
+          <DecidirGoNoGo guardando={acciones.decidiendo} onGuardar={acciones.onDecidir} />
+          {abrirFicha}
+        </span>
+      );
+    }
+    if (sinPaso) {
       return (
         <span className="flex items-center gap-2">
           <ApuntarAccion guardando={acciones.apuntando} onGuardar={acciones.onApuntarAccion} />
@@ -142,6 +193,19 @@ export function AgendaAccion({ item, acciones }: { item: PipelineAgendaItem; acc
             licitacionVigente={item.licitacion_id}
             titulo={tituloDe(item)}
           />
+        </span>
+      );
+    }
+    if (item.fecha_fin_efectiva == null && item.cartera_id != null) {
+      return (
+        <span className="flex items-center gap-2">
+          <FechaFinContrato
+            etiqueta="Poner fecha de fin"
+            guardando={acciones.guardandoFechaFin}
+            onGuardar={acciones.onFijarFechaFin}
+            className={PRIMARIO}
+          />
+          {abrirConIcono("Ver contrato")}
         </span>
       );
     }

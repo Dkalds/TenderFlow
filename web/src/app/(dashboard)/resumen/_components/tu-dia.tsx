@@ -156,9 +156,12 @@ export function TuDia() {
                   </EnlaceIr>
                 }
               >
+                {/* «Ya no admite oferta» y no «plazo pasado»: cuentan también
+                    las que están sobre una licitación resuelta, tenga o no
+                    fecha límite. */}
                 {pasados === 1
-                  ? "1 oportunidad sigue abierta con el plazo de presentación pasado."
-                  : `${formatNumber(pasados)} oportunidades siguen abiertas con el plazo de presentación pasado.`}
+                  ? "1 oportunidad sigue abierta y ya no admite oferta."
+                  : `${formatNumber(pasados)} oportunidades siguen abiertas y ya no admiten oferta.`}
               </Aviso>
             )}
 

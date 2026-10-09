@@ -88,6 +88,34 @@ export function useCarteraEventos(carteraId: number | null) {
 }
 
 /**
+ * Poner a mano la fecha de fin de un contrato (`PATCH /pursuits/cartera/{id}`).
+ *
+ * Es lo que le da ventana de relicitación al contrato cuya fuente no publicó
+ * ni fecha de fin ni duración. El backend la guarda con origen `manual` y la
+ * resincronización no la pisa.
+ *
+ * Invalida toda la raíz `pursuits`: la fecha mueve la fila del contrato en la
+ * Agenda —cambia de tramo— y los agregados de la Cartera.
+ */
+export function useFijarFechaFin() {
+  const queryClient = useQueryClient();
+  const organizationId = useActiveOrganizationId();
+  return useMutation({
+    mutationFn: ({ carteraId, fechaFin }: { carteraId: number; fechaFin: string }) => {
+      const ruta = `/api/v1/pursuits/cartera/${carteraId}`;
+      return apiMutate<Schemas["ContratoCartera"]>(
+        "PATCH",
+        organizationId != null ? `${ruta}?organization_id=${organizationId}` : ruta,
+        { fecha_fin: fechaFin },
+      );
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: pursuitKeys.all }),
+    // El fallo lo dice quien pidió el cambio, con el contrato delante.
+    meta: { silent: true },
+  });
+}
+
+/**
  * «Preparar renovación»: crea la oportunidad de la relicitación, enlazada al
  * contrato. Idempotente en el backend —un segundo clic devuelve la misma con
  * `creada=false`—, así que el evento de activación solo se cuenta cuando de

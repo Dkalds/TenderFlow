@@ -164,6 +164,50 @@ describe("DecisionComite", () => {
     expect(screen.queryByRole("button", { name: "GO" })).not.toBeInTheDocument();
   });
 
+  it("antes de «Decisión» también se puede decidir ya: el GO salta a preparar la oferta", () => {
+    render(<DecisionComite pursuit={base} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Decidir ya" }));
+    fireEvent.click(screen.getByRole("button", { name: "GO" }));
+    fireEvent.change(screen.getByLabelText("Motivo de la decisión"), {
+      target: { value: "Encaja con la práctica" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar decisión" }));
+
+    expect(h.mutate).toHaveBeenCalledWith(
+      {
+        status: "preparing",
+        decision: "go",
+        decision_reason: "Encaja con la práctica",
+        expected_version: 4,
+      },
+      expect.anything(),
+    );
+  });
+
+  it("y el NO-GO anticipado la retira", () => {
+    render(<DecisionComite pursuit={en({ status: "qualifying" })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Decidir ya" }));
+    fireEvent.click(screen.getByRole("button", { name: "NO-GO" }));
+    fireEvent.change(screen.getByLabelText("Motivo de la decisión"), {
+      target: { value: "Fuera de perímetro" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar decisión" }));
+
+    expect(h.mutate).toHaveBeenCalledWith(
+      {
+        status: "withdrawn",
+        outcome: "cancelled",
+        outcome_reason_code: "no_presentada",
+        decision: "no_go",
+        decision_reason: "Fuera de perímetro",
+        expected_version: 4,
+      },
+      expect.anything(),
+    );
+  });
+
   it("en «Decisión» se decide ahí mismo", () => {
     render(<DecisionComite pursuit={en({ status: "go_no_go" })} />);
     expect(screen.getByRole("button", { name: "GO" })).toBeInTheDocument();

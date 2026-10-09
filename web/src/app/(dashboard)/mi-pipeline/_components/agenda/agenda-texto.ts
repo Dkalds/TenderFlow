@@ -13,12 +13,72 @@ import type { PipelineAgendaItem, PursuitStatus } from "@/hooks/use-pursuits";
 import { bandaDe, esVentanaAbierta } from "./agenda-meta";
 
 /**
- * El estado de la oportunidad, dicho dentro de una frase. El tablero titula su
- * columna «Decisión» y ahí se entiende; suelto entre puntos («Plazo de
- * presentación · Decisión · Ana») no decía de qué.
+ * La oportunidad sigue viva y nadie ha decidido si se va a por ella.
+ *
+ * Lo dice la API, con la misma regla con la que cuenta «Go/No-Go pendientes»
+ * (`cuenta_en`): así lo que el filtro deja y lo que la fila dice no pueden
+ * separarse. Antes la fila redactaba por **fase** y el contador contaba por
+ * **decisión**, y el filtro dejaba filas que solo decían «Identificada». Una
+ * API anterior al campo no lo manda: ahí se mira la decisión, que es lo que hay.
  */
-export function estadoEnFrase(status: PursuitStatus): string {
-  return status === "go_no_go" ? "Pendiente de Go/No-Go" : statusLabel(status);
+export function sinDecidir(item: PipelineAgendaItem): boolean {
+  return item.cuenta_en ? item.cuenta_en.includes("go_no_go") : item.decision === "pending";
+}
+
+/**
+ * Lo que la fila tiene que decir en alto: que el plazo cae dentro de la semana
+ * y la oportunidad sigue sin decidir. Las dos cosas las marca la API
+ * (`cuenta_en`); aquí solo se juntan en una palabra.
+ */
+export function avisoDeFila(item: PipelineAgendaItem): string | null {
+  const cuenta = item.cuenta_en ?? [];
+  return item.kind === "pursuit" && cuenta.includes("go_no_go") && cuenta.includes("plazo_semana")
+    ? "Sin decidir"
+    : null;
+}
+
+/**
+ * La fase de la oportunidad, dicha dentro de una frase, y si falta la decisión.
+ *
+ * El tablero titula su columna «Decisión» y ahí se entiende; suelto entre
+ * puntos («Plazo de presentación · Decisión · Ana») no decía de qué.
+ * `sinColetilla` es para la fila que ya lleva el aviso «Sin decidir» delante:
+ * decirlo dos veces en la misma línea no lo hace más urgente.
+ */
+export function estadoDeFila(
+  item: PipelineAgendaItem,
+  { sinColetilla = false }: { sinColetilla?: boolean } = {},
+): string | null {
+  const status: PursuitStatus | null | undefined = item.status;
+  if (!status) return null;
+  const pendiente = sinDecidir(item) && !sinColetilla;
+  if (status === "go_no_go") return pendiente ? "Pendiente de Go/No-Go" : "En decisión";
+  return pendiente ? `${statusLabel(status)}, sin decidir` : statusLabel(status);
+}
+
+const CIERRE_POR_ESTADO: Record<string, { chip: string; frase: string }> = {
+  RES: { chip: "resuelta", frase: "Licitación resuelta" },
+  ADJ: { chip: "adjudicada", frase: "Licitación adjudicada" },
+  ANUL: { chip: "anulada", frase: "Licitación anulada" },
+};
+
+/**
+ * En qué quedó la licitación de una oportunidad que sigue abierta, o `null` si
+ * sigue admitiendo ofertas. Que está cerrada lo decide la API
+ * (`expediente_cerrado`); aquí solo se redacta, con el adjudicatario delante
+ * cuando se conoce: es lo que permite cerrarla sin abrir nada.
+ */
+export function cierreDelExpediente(item: PipelineAgendaItem): string | null {
+  if (item.kind !== "pursuit" || !item.expediente_cerrado) return null;
+  if (item.adjudicatario) return `Adjudicada a ${truncate(item.adjudicatario, 48)}`;
+  return CIERRE_POR_ESTADO[item.expediente_estado ?? ""]?.frase ?? "Licitación cerrada";
+}
+
+/** Lo mismo en una palabra, para el aviso de la fila que no tiene días que contar. */
+function chipDeCierre(item: PipelineAgendaItem): string | null {
+  if (item.kind !== "pursuit" || !item.expediente_cerrado) return null;
+  if (item.adjudicatario) return "adjudicada";
+  return CIERRE_POR_ESTADO[item.expediente_estado ?? ""]?.chip ?? "cerrada";
 }
 
 /**
@@ -77,6 +137,11 @@ export function plazoChip(item: PipelineAgendaItem): string {
   // La oferta está entregada: los días que hayan pasado desde el plazo no son
   // un retraso, y contarlos en rojo decía lo contrario.
   if (bandaDe(item) === "en_resolucion") return "presentada";
+  // Por cerrar sin un plazo vencido que contar —no hay fecha, o la licitación
+  // se resolvió antes de que llegara—: «5 d» diría que queda tiempo.
+  if (bandaDe(item) === "plazo_pasado" && !(item.dias_restantes != null && item.dias_restantes < 0)) {
+    return chipDeCierre(item) ?? EMPTY;
+  }
   if (item.dias_restantes == null) return EMPTY;
   if (esVentanaAbierta(item)) return "abierta";
   if (item.urgencia === "hoy") return item.due_hora ? `hoy ${item.due_hora}` : "hoy";
@@ -122,7 +187,13 @@ export function metaLinea(item: PipelineAgendaItem, { anidada = false } = {}): s
 
   if (item.kind === "pursuit") {
     if (item.due_hora) partes[0] = `${partes[0]} a las ${item.due_hora}`;
-    if (item.status) partes.push(estadoEnFrase(item.status));
+    // Delante de todo, antes incluso que la clase de fecha: si la licitación
+    // ya está resuelta el resto de la línea se lee de otra manera, y en la
+    // ficha móvil —donde la línea se corta a los 200 px— es lo único que cabe.
+    const cierre = cierreDelExpediente(item);
+    if (cierre) partes.unshift(cierre);
+    const estado = estadoDeFila(item, { sinColetilla: avisoDeFila(item) != null });
+    if (estado) partes.push(estado);
     // Antes que el responsable y el órgano: la línea se corta por la derecha
     // cuando no cabe, y lo que se pierde tiene que ser lo que menos decide.
     if (item.tareas_abiertas) {
@@ -137,7 +208,10 @@ export function metaLinea(item: PipelineAgendaItem, { anidada = false } = {}): s
     // El título de la fila es la tarea, así que aquí va el expediente: sin él,
     // cuatro «Revisar pliego» seguidas son indistinguibles.
     partes[0] = `Acción de «${truncate(item.titulo ?? item.licitacion_id, 40)}»`;
-    if (item.status) partes.push(estadoEnFrase(item.status));
+    // La fase de su oportunidad, sin la coletilla: la decisión es de la
+    // oportunidad y se dice en su fila, no en cada tarea suya.
+    const estado = estadoDeFila(item, { sinColetilla: true });
+    if (estado) partes.push(estado);
     return partes.join(" · ");
   }
   if (item.kind === "senal") {

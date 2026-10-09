@@ -1697,8 +1697,10 @@ AgendaDueKind = Literal["plazo", "accion", "fin_contrato", "relicitacion"]
 AgendaUrgencia = Literal["vencida", "hoy", "semana", "mes", "despues", "sin_fecha"]
 #: En qué tramo de la agenda va la fila. Es ``urgencia`` salvo en los dos casos
 #: en que el plazo de presentación ya no es algo que se pueda cumplir:
-#: ``plazo_pasado`` (pasó sin oferta presentada: lo pendiente es cerrarla) y
-#: ``en_resolucion`` (la oferta está entregada: lo pendiente es el resultado).
+#: ``plazo_pasado`` (ya no se puede presentar y no hubo oferta: lo pendiente es
+#: cerrarla) y ``en_resolucion`` (la oferta está entregada: lo pendiente es el
+#: resultado). «Ya no se puede presentar» es que el plazo pasó **o** que el
+#: expediente está cerrado (``expediente_cerrado``), tenga o no fecha límite.
 #: El orden de este ``Literal`` es el de los tramos en pantalla.
 AgendaBanda = Literal[
     "vencida",
@@ -1724,7 +1726,10 @@ class PipelineAgendaItem(BaseModel):
     - ``pursuit``: ``pursuit_id``/``status``/``decision``/``responsible_*``/
       ``next_action``/``version``. ``due_date`` es **solo** el plazo de
       presentación; ``next_action``/``next_action_due`` viajan como dato
-      informativo, no como la fecha del compromiso.
+      informativo, no como la fecha del compromiso. Lleva además lo que la
+      ingesta sabe del expediente: ``expediente_estado``,
+      ``expediente_cerrado`` y, si ya hay adjudicación publicada, sus
+      adjudicatarios en ``adjudicatario``.
     - ``tarea``: los mismos campos del pursuit al que pertenece, más
       ``tarea_id``/``tarea_texto``. ``tarea_id`` es NULL cuando la fila es la
       ``next_action`` manual de un pursuit sin tareas abiertas (se edita con
@@ -1798,6 +1803,13 @@ class PipelineAgendaItem(BaseModel):
     cuenta_en: list[AgendaContador] = Field(default_factory=list)
     #: Solo en ``pursuit``: cuántas filas ``tarea`` suyas hay en la agenda.
     tareas_abiertas: int | None = None
+    #: Solo en ``pursuit``: el estado del expediente tal y como lo guarda la
+    #: ingesta (``PUB``, ``EV``, ``RES``, ``ADJ``, ``ANUL``…), o NULL.
+    expediente_estado: str | None = None
+    #: Solo en ``pursuit``: el expediente ya no admite ofertas —su estado es de
+    #: cierre (``shared.estados.ESTADOS_CERRADOS``) o tiene adjudicación
+    #: publicada—. Lo decide el servicio; la consola no lo deduce del estado.
+    expediente_cerrado: bool = False
 
 
 class PipelineAgendaKpis(BaseModel):
@@ -1847,7 +1859,8 @@ class PipelineAgendaContadores(BaseModel):
     go_no_go: int = Field(default=0, ge=0)
     #: Oportunidades vivas sin ``next_action`` ni tarea abierta.
     sin_paso: int = Field(default=0, ge=0)
-    #: Oportunidades sin presentar cuyo plazo ya pasó.
+    #: Oportunidades sin presentar a las que ya no se puede presentar oferta:
+    #: el plazo pasó o el expediente está cerrado.
     plazo_pasado: int = Field(default=0, ge=0)
 
 

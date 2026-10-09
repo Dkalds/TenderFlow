@@ -44,7 +44,16 @@ function Fecha({
   );
 }
 
-export function AgendaFechas({ item, enfoque }: { item: PipelineAgendaItem; enfoque: number }) {
+export function AgendaFechas({
+  item,
+  enfoque,
+  soloPlazo = false,
+}: {
+  item: PipelineAgendaItem;
+  enfoque: number;
+  /** La oportunidad ya no admite oferta: no hay próxima acción que enseñar. */
+  soloPlazo?: boolean;
+}) {
   const esTarea = item.kind === "tarea";
   // En una fila de tarea el `due_date` es el de **esa** tarea; el plazo de
   // presentación no viaja en ella (lo trae la fila de la oportunidad).
@@ -57,7 +66,9 @@ export function AgendaFechas({ item, enfoque }: { item: PipelineAgendaItem; enfo
       <SectionTitle>Fechas</SectionTitle>
       <dl className="mb-2 space-y-0.5 text-tf-meta">
         <Fecha label="Presentación" duenno="Externo" valor={presentacion} />
-        <Fecha label="Próxima acción" duenno="Interna" valor={accion} detalle={textoAccion} />
+        {!soloPlazo && (
+          <Fecha label="Próxima acción" duenno="Interna" valor={accion} detalle={textoAccion} />
+        )}
       </dl>
       {esTarea && (
         <p className="mb-2 text-tf-micro text-muted-foreground">

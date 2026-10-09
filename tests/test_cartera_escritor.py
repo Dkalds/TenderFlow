@@ -425,3 +425,117 @@ class TestCableadoConElCierre:
 
         with patch("services.cartera.registrar_ganada", side_effect=RuntimeError("boom")):
             _registrar_en_cartera(3, 7)  # no lanza
+
+
+class TestFechaFinManual:
+    """La fecha de fin que la fuente no publicó, puesta por quien la conoce.
+
+    El origen ``manual`` existía —la resincronización no lo pisa— pero nada lo
+    escribía: un contrato sin fecha de fin se quedaba sin ventana de
+    relicitación para siempre, que es justo el aviso que la cartera promete.
+    """
+
+    def _fila(self, **extra: Any) -> dict[str, Any]:
+        fila: dict[str, Any] = {
+            "id": 11,
+            "organization_id": 3,
+            "pursuit_id": 7,
+            "licitacion_id": "LIC-1",
+            "titulo": "Soporte SAP",
+            "organo_contratacion": "Junta",
+            "fecha_inicio": "2025-04-01",
+            "fecha_fin_efectiva": None,
+            "fecha_fin_origen": None,
+            "importe_adjudicado": 480_000.0,
+            "prorrogas_aplicadas": 0,
+            "renovacion_pursuit_id": None,
+        }
+        fila.update(extra)
+        return fila
+
+    def test_guarda_la_fecha_con_origen_manual_y_devuelve_el_contrato_con_su_ventana(self) -> None:
+        from services.cartera import fijar_fecha_fin
+
+        repo = MagicMock()
+        repo.get.return_value = self._fila()
+        repo.fijar_fecha_fin.return_value = True
+        repo.list_for_organization.return_value = [
+            self._fila(fecha_fin_efectiva="2027-06-30", fecha_fin_origen="manual")
+        ]
+        with (
+            patch.object(cartera, "_repo", repo),
+            patch("services.organizations.alcance_resuelto", _alcance),
+        ):
+            contrato = fijar_fecha_fin(5, 11, date(2027, 6, 30))
+
+        repo.fijar_fecha_fin.assert_called_once_with(
+            organization_id=3, cartera_id=11, fecha_fin="2027-06-30"
+        )
+        assert (contrato.fecha_fin_efectiva, contrato.fecha_fin_origen) == ("2027-06-30", "manual")
+        # La ventana de relicitación sale de la fecha recién puesta.
+        assert (contrato.relicitacion_desde, contrato.relicitacion_hasta) == (
+            "2026-12-30",
+            "2027-03-30",
+        )
+
+    def test_pide_permiso_de_escritura(self) -> None:
+        from services.cartera import fijar_fecha_fin
+
+        pedidos: list[bool] = []
+
+        @contextmanager
+        def _alcance_espia(
+            _user_id: int, _organization_id: int | None, *, write: bool = False
+        ) -> Any:
+            pedidos.append(write)
+            yield 3, "member"
+
+        repo = MagicMock()
+        repo.get.return_value = self._fila()
+        repo.list_for_organization.return_value = [
+            self._fila(fecha_fin_efectiva="2027-06-30", fecha_fin_origen="manual")
+        ]
+        with (
+            patch.object(cartera, "_repo", repo),
+            patch("services.organizations.alcance_resuelto", _alcance_espia),
+        ):
+            fijar_fecha_fin(5, 11, date(2027, 6, 30))
+        assert pedidos == [True]
+
+    def test_contrato_de_otra_organizacion(self) -> None:
+        from services.cartera import fijar_fecha_fin
+
+        repo = MagicMock()
+        repo.get.return_value = None
+        with (
+            patch.object(cartera, "_repo", repo),
+            patch("services.organizations.alcance_resuelto", _alcance),
+            pytest.raises(CarteraNoEncontradaError),
+        ):
+            fijar_fecha_fin(5, 11, date(2027, 6, 30))
+        repo.fijar_fecha_fin.assert_not_called()
+
+    def test_un_fin_anterior_al_inicio_no_es_una_fecha_de_fin(self) -> None:
+        from services.cartera import FechaFinInvalidaError, fijar_fecha_fin
+
+        repo = MagicMock()
+        repo.get.return_value = self._fila(fecha_inicio="2025-04-01")
+        with (
+            patch.object(cartera, "_repo", repo),
+            patch("services.organizations.alcance_resuelto", _alcance),
+            pytest.raises(FechaFinInvalidaError, match="anterior al inicio"),
+        ):
+            fijar_fecha_fin(5, 11, date(2025, 3, 31))
+        repo.fijar_fecha_fin.assert_not_called()
+
+    def test_la_resincronizacion_no_pisa_la_fecha_puesta_a_mano(self) -> None:
+        """La otra mitad del contrato: lo manual sobrevive a la pasada diaria."""
+        accion, _ = accion_para(
+            _fuente(
+                fecha_fin="2028-01-31",
+                cartera_id=11,
+                cartera_fecha_fin_efectiva="2027-06-30",
+                cartera_fecha_fin_origen="manual",
+            )
+        )
+        assert accion == "manual"

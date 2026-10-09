@@ -47,6 +47,8 @@ __all__ = [
     "CarteraResumen",
     "ContratoCartera",
     "ContratoEvento",
+    "FechaFinInvalidaError",
+    "FechaFinManualIn",
     "PrepararRenovacionIn",
     "RenovacionInvalidaError",
     "RenovacionPreparada",
@@ -55,6 +57,7 @@ __all__ = [
     "contrato_de_fuente",
     "emitir_avisos_de_fin",
     "eventos_de_contrato",
+    "fijar_fecha_fin",
     "fin_efectivo",
     "listar_cartera",
     "preparar_renovacion",
@@ -682,6 +685,69 @@ def preparar_renovacion(
         return RenovacionPreparada(
             cartera_id=cartera_id, renovacion_pursuit_id=int(pursuit.id), creada=True
         )
+
+
+# ── La fecha de fin, puesta a mano ─────────────────────────────────────────
+
+
+class FechaFinInvalidaError(ValueError):
+    """La fecha indicada no puede ser el fin de ese contrato."""
+
+
+class FechaFinManualIn(BaseModel):
+    """Cuerpo de ``PATCH /pursuits/cartera/{id}``: la fecha de fin del contrato."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Fin efectivo del contrato, prórrogas incluidas. Es la fecha de la que
+    #: sale la ventana de relicitación.
+    fecha_fin: date
+
+
+def fijar_fecha_fin(
+    user_id: int,
+    cartera_id: int,
+    fecha_fin: date,
+    *,
+    organization_id: int | None = None,
+) -> ContratoCartera:
+    """Pone a mano la fecha de fin de un contrato y devuelve cómo queda.
+
+    Es el escritor que le faltaba al origen ``manual``: la resincronización ya
+    lo respetaba, pero nada lo producía, y un contrato cuya fuente no publicó
+    ni fecha de fin ni duración se quedaba **sin ventana de relicitación para
+    siempre** — que es justo el aviso por el que la cartera existe.
+
+    La fecha puede ser pasada (un contrato que ya terminó también se corrige),
+    pero no anterior al inicio: eso es una errata, y guardada movería la
+    ventana de relicitación a antes de que el contrato empezara.
+    """
+    from services.organizations import alcance_resuelto
+
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _rol):
+        contrato = _repo.get(resuelta, cartera_id)
+        if contrato is None:
+            raise CarteraNoEncontradaError("Contrato no encontrado en la cartera.")
+        inicio = a_fecha(contrato.get("fecha_inicio"))
+        if inicio is not None and fecha_fin < inicio:
+            raise FechaFinInvalidaError(
+                f"La fecha de fin no puede ser anterior al inicio del contrato ({inicio.isoformat()})."
+            )
+        _repo.fijar_fecha_fin(
+            organization_id=resuelta, cartera_id=cartera_id, fecha_fin=fecha_fin.isoformat()
+        )
+        log.info(
+            "cartera_fecha_fin_manual",
+            cartera_id=cartera_id,
+            organization_id=resuelta,
+            fecha_fin=fecha_fin.isoformat(),
+        )
+        # Se relee de la lista y no se compone a mano: es el mismo objeto —con
+        # su ventana y sus meses restantes— que la cartera va a pintar después.
+        for actualizado in listar_cartera(resuelta):
+            if actualizado.id == cartera_id:
+                return actualizado
+        raise CarteraNoEncontradaError("Contrato no encontrado en la cartera.")
 
 
 # ── Eventos del contrato vigente ───────────────────────────────────────────

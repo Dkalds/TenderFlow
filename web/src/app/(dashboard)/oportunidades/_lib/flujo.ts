@@ -9,8 +9,11 @@
  *
  * El flujo es lineal y sin vuelta atrás: desde cada fase abierta sólo se avanza
  * a la siguiente o se retira, «Ganada» y «Perdida» sólo salen de «Presentada»,
- * y un estado terminal ya no cambia. Si el backend cambia estas reglas, este
- * fichero cambia en el mismo PR.
+ * y un estado terminal ya no cambia. Con **una** excepción: con la decisión GO
+ * tomada se pasa a «Preparando oferta» desde cualquier fase anterior
+ * (`_transicion_permitida`) — las fases previas existen para llegar a la
+ * decisión, y una vez tomada no les queda nada que frenar. Si el backend cambia
+ * estas reglas, este fichero cambia en el mismo PR.
  */
 
 import { statusLabel } from "@/components/pursuits/pursuit-presenters";
@@ -34,6 +37,15 @@ const TRANSICIONES: Record<PursuitStatus, readonly PursuitStatus[]> = {
   withdrawn: [],
 };
 
+/** Las fases que preceden a la decisión: con el GO tomado se pueden saltar. */
+const PREVIAS_AL_GO: readonly PursuitStatus[] = ["identified", "qualifying"];
+
+/** La tabla lineal, más el atajo del GO hacia «Preparando oferta». */
+function transicionPermitida(pursuit: EstadoFlujo, destino: PursuitStatus): boolean {
+  if (TRANSICIONES[pursuit.status].includes(destino)) return true;
+  return destino === "preparing" && pursuit.decision === "go" && PREVIAS_AL_GO.includes(pursuit.status);
+}
+
 /** Los estados a los que no se llega sin decisión GO. */
 const EXIGEN_GO: readonly PursuitStatus[] = ["preparing", "submitted", "won", "lost"];
 
@@ -53,7 +65,7 @@ export function siguienteFase(status: PursuitStatus): PursuitStatus | null {
 export function motivoBloqueo(pursuit: EstadoFlujo, destino: PursuitStatus): string | null {
   const actual = pursuit.status;
   if (destino === actual) return null;
-  if (!TRANSICIONES[actual].includes(destino)) {
+  if (!transicionPermitida(pursuit, destino)) {
     if (esTerminal(actual)) return CERRADA_NO_CAMBIA;
     const siguiente = siguienteFase(actual);
     return siguiente
