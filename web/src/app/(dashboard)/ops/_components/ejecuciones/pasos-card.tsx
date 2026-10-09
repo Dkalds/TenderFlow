@@ -55,13 +55,23 @@ function FilaPaso({ paso }: { paso: PasoEjecucion }) {
         <span className="font-mono text-tf-body">{paso.paso}</span>
         {/* El último error se enseña mientras el paso lo arrastre en la
             ventana, aunque la última ejecución ya fuera bien: es lo que
-            explica el recuento de la derecha. */}
+            explica el recuento de la derecha. En ese caso va con su fecha,
+            que no sale en ninguna columna: sin ella, el error de un incidente
+            cerrado se lee como un fallo de ahora. Con el paso roto no hace
+            falta, es la de «Última ejecución». */}
         {paso.ultimo_error && (roto || paso.fallos > 0) && (
-          <Pista contenido={paso.ultimo_error}>
-            <p className="mt-0.5 line-clamp-2 max-w-prose text-tf-meta text-muted-foreground">
-              {paso.ultimo_error}
-            </p>
-          </Pista>
+          <>
+            {!roto && paso.ultimo_fallo && (
+              <p className="tf-tnum mt-0.5 text-tf-meta text-muted-foreground">
+                Último fallo: {formatDateTime(paso.ultimo_fallo)}
+              </p>
+            )}
+            <Pista contenido={paso.ultimo_error}>
+              <p className="mt-0.5 line-clamp-2 max-w-prose text-tf-meta text-muted-foreground">
+                {paso.ultimo_error}
+              </p>
+            </Pista>
+          </>
         )}
       </td>
       <td className={cn(CELDA, "text-tf-meta text-muted-foreground")}>
