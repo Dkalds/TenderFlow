@@ -45,19 +45,29 @@ def consume_reset_token(token_hash: str, password_hash: str) -> int | None:
     pendientes de la cuenta y caen sus sesiones, o no cambia nada.
     """
     with connect() as connection:
-        # `OF u, prt` y no al revés: las filas se bloquean en ese orden, el
-        # mismo que sigue la emisión (usuario primero, tokens después).
-        row = connection.execute(
-            "SELECT prt.user_id FROM password_reset_tokens prt "
-            "JOIN users u ON u.id = prt.user_id "
-            "WHERE prt.token_hash = %s AND prt.used_at IS NULL "
-            "AND prt.expires_at > NOW() AND u.deactivated_at IS NULL "
-            "AND u.password_hash IS NOT NULL FOR UPDATE OF u, prt",
+        # Primero la cuenta y después el token, en dos sentencias: el mismo
+        # orden que sigue la emisión. Un solo `FOR UPDATE OF` sobre el JOIN
+        # dejaría ese orden en manos de cómo recorra Postgres las tablas, que
+        # no está documentado.
+        owner = connection.execute(
+            "SELECT u.id FROM users u WHERE u.id = "
+            "(SELECT prt.user_id FROM password_reset_tokens prt WHERE prt.token_hash = %s) "
+            "AND u.deactivated_at IS NULL AND u.password_hash IS NOT NULL FOR UPDATE",
             (token_hash,),
         ).fetchone()
-        if row is None:
+        if owner is None:
             return None
-        user_id = int(row[0])
+        user_id = int(owner[0])
+        # Con la cuenta ya bloqueada se mira el token: si otra confirmación o
+        # una solicitud nueva lo gastó mientras esta esperaba, aquí ya se ve.
+        token = connection.execute(
+            "SELECT id FROM password_reset_tokens "
+            "WHERE token_hash = %s AND user_id = %s "
+            "AND used_at IS NULL AND expires_at > NOW() FOR UPDATE",
+            (token_hash, user_id),
+        ).fetchone()
+        if token is None:
+            return None
         connection.execute(
             "UPDATE users SET password_hash = %s WHERE id = %s",
             (password_hash, user_id),
