@@ -4,7 +4,7 @@ import {
   PERIODO_POR_DEFECTO,
   periodoDeUrl,
   rangoDePeriodo,
-} from "../_lib/periodo";
+} from "@/lib/periodo";
 
 /**
  * El periodo de Rendimiento, probado sin montar la vista.

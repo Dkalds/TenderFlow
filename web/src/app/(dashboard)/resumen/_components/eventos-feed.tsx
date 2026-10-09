@@ -22,7 +22,7 @@ import { useMemo } from "react";
 import { getSeriesColor } from "@/lib/chart-colors";
 import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 import type { EventosFeedResult } from "@/lib/api-types";
-import { agruparPorDia } from "./eventos-dias";
+import { agruparPorDia } from "@/lib/agrupar-por-dia";
 
 const TIPO_ICON: Record<string, LucideIcon> = {
   adjudicacion: Trophy,

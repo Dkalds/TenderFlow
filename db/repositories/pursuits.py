@@ -432,10 +432,20 @@ class PursuitRepository:
                 # Vienen en la misma consulta porque el valor ponderado se
                 # calcula sobre exactamente estas filas.
                 "l.importe AS tender_importe, l.fecha_limite AS tender_deadline, "
-                # F4.2: los dos cortes del cuadro de mando (win rate por
-                # tecnología y por órgano) salen de esta misma consulta.
+                # F4.2: los cortes del cuadro de mando (tasa de éxito por
+                # tecnología, órgano, procedimiento y tramo de importe) salen
+                # de esta misma consulta.
                 "l.organo_contratacion AS tender_organo, "
-                "l.tecnologia AS tender_tecnologia "
+                "l.tecnologia AS tender_tecnologia, "
+                "l.procedimiento AS tender_procedimiento, "
+                # Y lo que Dirección enlaza: las presentadas sin resultado y
+                # las pérdidas sin motivo se listan para registrarlas, así
+                # que viajan con su id y su título (el del lote, como en la
+                # agenda, para que dos lotes no se lean como el mismo).
+                "p.id AS pursuit_id, p.licitacion_id, "
+                "CASE WHEN p.lote_numero IS NULL THEN l.titulo "
+                "     ELSE COALESCE(l.titulo, p.licitacion_id) || ' · Lote ' || p.lote_numero "
+                "END AS titulo "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
                 "WHERE " + " AND ".join(clauses),

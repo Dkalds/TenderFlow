@@ -22,6 +22,7 @@ from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth, require_recent_session
 from db.audit import log_event
 from observability.logging import get_logger
+from services.carga_equipo import CargaEquipo, carga_del_equipo
 from services.cartera import (
     CarteraNoEncontradaError,
     CarteraResumen,
@@ -1060,6 +1061,12 @@ async def post_pursuits_weights_proposal_apply(
 )
 async def get_direccion(
     organization_id: int | None = Query(default=None, ge=1),
+    period_from: datetime | None = Query(
+        default=None, description="Inicio de la ventana de **cierres** (incluido)"
+    ),
+    period_to: datetime | None = Query(
+        default=None, description="Fin de la ventana de cierres (excluido); sin él, ahora"
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> CuadroDireccion:
     """El control de rol está **en el servicio**, no en el rail.
@@ -1069,12 +1076,42 @@ async def get_direccion(
 
     Cada tarjeta lleva universo, `n` y mínimo; por debajo del mínimo sale sin
     `valor` y con la `nota` que dice por qué, nunca con un número inventado.
+    Con ventana, cada tarjeta trae además la del mismo periodo de hace un año
+    y la diferencia (`anterior`, `delta`).
     """
     try:
-        return await run_db(cuadro_de_direccion, int(ctx["user_id"]), organization_id)
+        return await run_db(
+            cuadro_de_direccion,
+            int(ctx["user_id"]),
+            organization_id,
+            period_from=period_from,
+            period_to=period_to,
+        )
     except OrganizationPermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/direccion/carga",
+    summary="Carga del equipo: abiertas y avisos por responsable — solo owner y admin",
+    responses={403: {"description": "Dirección es para owner y admin"}},
+)
+async def get_direccion_carga(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> CargaEquipo:
+    """Quién tiene qué abierto hoy y qué de eso pide atención.
+
+    Mismo permiso que el cuadro, comprobado en el servicio. Una fila por
+    miembro activo, también los que no tienen nada abierto.
+    """
+    try:
+        return await run_db(carga_del_equipo, int(ctx["user_id"]), organization_id)
+    except (OrganizationPermissionError, OrganizationAccessError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 

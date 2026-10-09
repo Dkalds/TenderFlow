@@ -4572,8 +4572,33 @@ export interface paths {
          *
          *     Cada tarjeta lleva universo, `n` y mínimo; por debajo del mínimo sale sin
          *     `valor` y con la `nota` que dice por qué, nunca con un número inventado.
+         *     Con ventana, cada tarjeta trae además la del mismo periodo de hace un año
+         *     y la diferencia (`anterior`, `delta`).
          */
         get: operations["get_direccion_api_v1_pursuits_direccion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/direccion/carga": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Carga del equipo: abiertas y avisos por responsable — solo owner y admin
+         * @description Quién tiene qué abierto hoy y qué de eso pide atención.
+         *
+         *     Mismo permiso que el cuadro, comprobado en el servicio. Una fila por
+         *     miembro activo, también los que no tienen nada abierto.
+         */
+        get: operations["get_direccion_carga_api_v1_pursuits_direccion_carga_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6408,6 +6433,21 @@ export interface components {
             sesgo_p50?: number | null;
         };
         /**
+         * CambioActividad
+         * @description Un campo que cambió en un evento: de qué valor a qué valor.
+         */
+        CambioActividad: {
+            /**
+             * Campo
+             * @enum {string}
+             */
+            campo: "status" | "decision" | "outcome" | "outcome_reason_code";
+            /** Desde */
+            desde?: string | null;
+            /** Hasta */
+            hasta?: string | null;
+        };
+        /**
          * CambioEstadoOut
          * @description Resultado del cambio de estado.
          *
@@ -6429,6 +6469,73 @@ export interface components {
              * @default ok
              */
             status: string;
+        };
+        /**
+         * CargaEquipo
+         * @description Carga del equipo: quién tiene qué abierto hoy.
+         */
+        CargaEquipo: {
+            /** Horizonte Dias */
+            horizonte_dias: number;
+            /**
+             * Hoy
+             * Format: date
+             */
+            hoy: string;
+            /** Organization Id */
+            organization_id: number;
+            /** Responsables */
+            responsables?: components["schemas"]["CargaResponsable"][];
+            /**
+             * Total Abiertas
+             * @default 0
+             */
+            total_abiertas: number;
+            /**
+             * Truncado
+             * @default false
+             */
+            truncado: boolean;
+        };
+        /**
+         * CargaResponsable
+         * @description Lo que tiene abierto una persona, y lo que de eso pide atención.
+         */
+        CargaResponsable: {
+            /**
+             * Abiertas
+             * @default 0
+             */
+            abiertas: number;
+            /**
+             * Acciones Vencidas
+             * @default 0
+             */
+            acciones_vencidas: number;
+            /** Nombre */
+            nombre?: string | null;
+            /**
+             * Plazos Proximos
+             * @default 0
+             */
+            plazos_proximos: number;
+            /**
+             * Plazos Vencidos
+             * @default 0
+             */
+            plazos_vencidos: number;
+            /**
+             * Presentadas
+             * @default 0
+             */
+            presentadas: number;
+            /**
+             * Sin Proxima Accion
+             * @default 0
+             */
+            sin_proxima_accion: number;
+            /** User Id */
+            user_id?: number | null;
         };
         /**
          * CarteraEmpresa
@@ -7365,14 +7472,46 @@ export interface components {
             tipo: string;
         };
         /**
+         * CorteDireccion
+         * @description Un corte entero: las filas con base y, aparte, las que no la tienen.
+         */
+        CorteDireccion: {
+            /**
+             * Cierres Sin Base
+             * @default 0
+             */
+            cierres_sin_base: number;
+            /**
+             * Clave
+             * @enum {string}
+             */
+            clave: "tecnologia" | "tramo_importe" | "procedimiento" | "organo";
+            /** Filas */
+            filas?: components["schemas"]["CorteMetrica"][];
+            /** Filas Sin Base */
+            filas_sin_base?: components["schemas"]["CorteMetrica"][];
+            /** Media */
+            media?: number | null;
+            /** Titulo */
+            titulo: string;
+        };
+        /**
          * CorteMetrica
-         * @description Una fila de un corte (por tecnología, por órgano).
+         * @description Una fila de un corte (por tecnología, por órgano…).
          */
         CorteMetrica: {
             /** Clave */
             clave: string;
+            /** Etiqueta */
+            etiqueta?: string | null;
+            /** Intervalo Alto */
+            intervalo_alto?: number | null;
+            /** Intervalo Bajo */
+            intervalo_bajo?: number | null;
             /** N */
             n: number;
+            /** Posicion */
+            posicion?: ("por_encima" | "en_linea" | "por_debajo") | null;
             /** Valor */
             valor?: number | null;
         };
@@ -7494,6 +7633,22 @@ export interface components {
          * @description Lo que ve owner o admin en Dirección.
          */
         CuadroDireccion: {
+            /** Anterior Desde */
+            anterior_desde?: string | null;
+            /** Anterior Hasta */
+            anterior_hasta?: string | null;
+            /**
+             * Cierres
+             * @default 0
+             */
+            cierres: number;
+            /**
+             * Cierres Historico
+             * @default 0
+             */
+            cierres_historico: number;
+            /** Cortes */
+            cortes?: components["schemas"]["CorteDireccion"][];
             /**
              * N Minimo
              * @default 5
@@ -7502,22 +7657,62 @@ export interface components {
             /** Organization Id */
             organization_id: number;
             /**
+             * Pendientes Resultado
+             * @default 0
+             */
+            pendientes_resultado: number;
+            /** Pendientes Resultado Muestra */
+            pendientes_resultado_muestra?: components["schemas"]["OportunidadPendiente"][];
+            /**
+             * Perdidas
+             * @default 0
+             */
+            perdidas: number;
+            /**
              * Perdidas N Minimo
              * @default 5
              */
             perdidas_n_minimo: number;
             /** Perdidas Por Motivo */
             perdidas_por_motivo?: components["schemas"]["PerdidaPorMotivo"][];
+            /**
+             * Perdidas Sin Motivo
+             * @default 0
+             */
+            perdidas_sin_motivo: number;
+            /** Perdidas Sin Motivo Muestra */
+            perdidas_sin_motivo_muestra?: components["schemas"]["OportunidadPendiente"][];
+            /** Periodo Desde */
+            periodo_desde?: string | null;
+            /** Periodo Hasta */
+            periodo_hasta?: string | null;
+            /**
+             * Pipeline Sin Importe
+             * @default 0
+             */
+            pipeline_sin_importe: number;
+            /** Prevision Trimestral */
+            prevision_trimestral?: {
+                [key: string]: number;
+            };
             /** Probabilidades Etapa Usadas */
             probabilidades_etapa_usadas?: {
                 [key: string]: number;
             };
+            /** Radar Ordena Bien */
+            radar_ordena_bien?: boolean | null;
             radar_quality?: components["schemas"]["RadarQuality"] | null;
             /** Tarjetas */
             tarjetas?: components["schemas"]["TarjetaMetrica"][];
-            /** Win Rate Por Organo */
+            /**
+             * Win Rate Por Organo
+             * @deprecated
+             */
             win_rate_por_organo?: components["schemas"]["CorteMetrica"][];
-            /** Win Rate Por Tecnologia */
+            /**
+             * Win Rate Por Tecnologia
+             * @deprecated
+             */
             win_rate_por_tecnologia?: components["schemas"]["CorteMetrica"][];
         };
         /**
@@ -9317,6 +9512,8 @@ export interface components {
         ItemActividad: {
             /** Actor */
             actor?: string | null;
+            /** Cambios */
+            cambios?: components["schemas"]["CambioActividad"][];
             /** Cuando */
             cuando: string;
             /** Evento */
@@ -10258,6 +10455,22 @@ export interface components {
             responsable?: string | null;
             /** Status */
             status: string;
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
+         * OportunidadPendiente
+         * @description Una oportunidad a la que le falta un dato que sólo el equipo puede poner.
+         */
+        OportunidadPendiente: {
+            /** Desde */
+            desde?: string | null;
+            /** Dias */
+            dias?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Pursuit Id */
+            pursuit_id: number;
             /** Titulo */
             titulo?: string | null;
         };
@@ -14000,15 +14213,32 @@ export interface components {
          * @description Una cifra con todo lo que hace falta para creerla.
          */
         TarjetaMetrica: {
+            /** Anterior */
+            anterior?: number | null;
             /** Clave */
             clave: string;
+            /** Delta */
+            delta?: number | null;
+            /**
+             * Depende Del Periodo
+             * @default true
+             */
+            depende_del_periodo: boolean;
             /** Etiqueta */
             etiqueta: string;
+            /**
+             * Mejor Si
+             * @default sube
+             * @enum {string}
+             */
+            mejor_si: "sube" | "baja";
             /**
              * N
              * @default 0
              */
             n: number;
+            /** N Anterior */
+            n_anterior?: number | null;
             /**
              * N Minimo
              * @default 1
@@ -24541,6 +24771,10 @@ export interface operations {
         parameters: {
             query?: {
                 organization_id?: number | null;
+                /** @description Inicio de la ventana de **cierres** (incluido) */
+                period_from?: string | null;
+                /** @description Fin de la ventana de cierres (excluido); sin él, ahora */
+                period_to?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -24559,6 +24793,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CuadroDireccion"];
+                };
+            };
+            /** @description Dirección es para owner y admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_direccion_carga_api_v1_pursuits_direccion_carga_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CargaEquipo"];
                 };
             };
             /** @description Dirección es para owner y admin */

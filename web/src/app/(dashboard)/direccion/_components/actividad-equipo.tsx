@@ -7,17 +7,19 @@
  * el backend ya le quita los eventos de administración, así que el componente
  * no filtra nada por rol.
  *
- * `GET /pursuits/actividad` existía con cursor y filtro por persona, y ninguna
- * pantalla lo llamaba: la pestaña era un texto que mandaba al Resumen, y
- * «Qué cambió desde tu última visita» sólo enseña lo posterior a tu última
- * entrada, así que una semana sin movimiento se leía como un producto roto.
+ * El feed entero, del más reciente al más antiguo, paginado por el cursor que
+ * devuelve el backend y agrupado por día. Cada línea dice qué cambió
+ * (`cambios`: etapa, decisión, resultado, motivo), no sólo que algo cambió.
+ * La pantalla no cuenta ni agrega eventos (ADR-014): coloca las filas que
+ * llegan y dice cuándo no hay más.
  *
- * Aquí el feed entero, del más reciente al más antiguo, paginado por el cursor
- * que devuelve el backend. La pantalla no cuenta ni agrega eventos (ADR-014):
- * pinta las filas que llegan y dice cuándo no hay más.
+ * La persona filtrada vive en `?persona=`, como la vista en `?vista=`: «lo que
+ * hizo Ana» es un enlace que se puede pegar. Se escribe sin navegar
+ * (`reemplazarQuery`): ningún Server Component lee `persona`.
  */
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { PanelEmpty, PanelError } from "@/components/console/panel";
@@ -29,57 +31,96 @@ import {
   useOrganizationMembers,
   type OrganizacionActiva,
 } from "@/hooks/use-organization";
+import { agruparPorDia } from "@/lib/agrupar-por-dia";
 import { apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { pursuitKeys } from "@/lib/query-keys";
-import { formatDateTime, formatRelativeTime } from "@/lib/utils";
+import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
+import { formatHoraMinuto, formatRelativeTime } from "@/lib/utils";
+import { etiquetaCambio, verboDeEvento } from "../_lib/actividad";
 
 type ItemActividad = Schemas["ItemActividad"];
 
 const PAGINA = 50;
 const TODOS = "todos";
 
-/**
- * Tipos del ledger `pursuit_events`, como verbo. Un tipo que no esté aquí se
- * pinta tal cual en vez de descartarse: un evento nuevo en backend tiene que
- * verse, aunque sea con su nombre técnico, hasta que alguien le ponga uno.
- */
-const VERBO: Record<string, string> = {
-  "pursuit.created": "abrió la oportunidad",
-  "pursuit.updated": "actualizó la oportunidad",
-  checklist_evaluated: "evaluó el go/no-go de",
-  kit_item_marcado: "marcó un documento del kit de",
-};
-
-export function verboDeEvento(evento: string): string {
-  return VERBO[evento] ?? evento;
+/** `?persona=7` → 7; cualquier otra cosa, sin filtro. */
+function personaDeUrl(valor: string | null): number | null {
+  const id = valor != null ? Number(valor) : Number.NaN;
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 function FilaActividad({ item }: { item: ItemActividad }) {
+  const cambios = item.cambios ?? [];
   return (
     <li className="border-border/60 flex flex-col gap-0.5 border-b py-2.5 last:border-b-0">
       <p className="text-tf-body leading-snug">
         {/* `actor` es null cuando la cuenta se dio de baja: el ledger es
             inmutable y se dice quién fue sin inventar un nombre. */}
         <span className="font-medium">{item.actor ?? "Alguien del equipo"}</span>{" "}
-        <span className="text-muted-foreground">{verboDeEvento(item.evento)}</span>{" "}
+        <span className="text-muted-foreground">{verboDeEvento(item.evento, cambios)}</span>{" "}
         <Link href={`/oportunidades/${item.pursuit_id}`} className="font-medium hover:underline">
           {item.titulo ?? item.licitacion_id}
         </Link>
       </p>
-      {/* La fecha absoluta va visible y no en `title`: el tooltip nativo no
-          existe para teclado ni táctil, y «hace 8 días» solo no sitúa el evento. */}
+      {cambios.length > 0 ? (
+        <ul className="flex flex-wrap gap-x-3 gap-y-0.5 text-tf-meta" aria-label="Qué cambió">
+          {cambios.map((cambio) => (
+            <li key={cambio.campo}>{etiquetaCambio(cambio)}</li>
+          ))}
+        </ul>
+      ) : null}
+      {/* La hora va visible y no en `title`: el tooltip nativo no existe para
+          teclado ni táctil. El día lo dice el encabezado del grupo. */}
       <time dateTime={item.cuando} className="text-muted-foreground text-tf-meta">
-        {formatRelativeTime(item.cuando)} · {formatDateTime(item.cuando)}
+        {formatHoraMinuto(item.cuando)} · {formatRelativeTime(item.cuando)}
       </time>
     </li>
   );
 }
 
-export function ActividadEquipo({ organizationId }: { organizationId: OrganizacionActiva }) {
-  const [usuario, setUsuario] = React.useState<number | null>(null);
+function FiltroPersona({
+  organizationId,
+  usuario,
+  onChange,
+}: {
+  organizationId: OrganizacionActiva;
+  usuario: number | null;
+  onChange: (usuario: number | null) => void;
+}) {
   const miembros = useOrganizationMembers(organizationId);
+  const activos = (miembros.data ?? []).filter((miembro) => miembro.status === "active");
+  if (activos.length <= 1) return null;
+  return (
+    <Select
+      value={usuario != null ? String(usuario) : TODOS}
+      onValueChange={(valor) => onChange(valor === TODOS ? null : Number(valor))}
+    >
+      <SelectTrigger className="h-8 w-56 text-tf-meta" aria-label="Filtrar por persona">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={TODOS}>Todo el equipo</SelectItem>
+        {activos.map((miembro) => (
+          <SelectItem key={miembro.user_id} value={String(miembro.user_id)}>
+            {miembro.display_name ?? miembro.email ?? `Usuario #${miembro.user_id}`}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+export function ActividadEquipo({ organizationId }: { organizationId: OrganizacionActiva }) {
+  const params = useSearchParams();
+  const usuario = personaDeUrl(params.get("persona"));
+  const setUsuario = React.useCallback((siguiente: number | null) => {
+    const search = queryActual();
+    if (siguiente == null) search.delete("persona");
+    else search.set("persona", String(siguiente));
+    reemplazarQuery(search);
+  }, []);
 
   const feed = useInfiniteQuery({
     queryKey: pursuitKeys.actividad(organizationId, usuario),
@@ -103,33 +144,19 @@ export function ActividadEquipo({ organizationId }: { organizationId: Organizaci
     meta: META_ERROR_EN_LINEA,
   });
 
-  const items = feed.data?.pages.flatMap((pagina) => pagina.items ?? []) ?? [];
-  const activos = (miembros.data ?? []).filter((miembro) => miembro.status === "active");
+  const items = React.useMemo(
+    () => feed.data?.pages.flatMap((pagina) => pagina.items ?? []) ?? [],
+    [feed.data],
+  );
+  const dias = React.useMemo(() => agruparPorDia(items, new Date(), (item) => item.cuando), [items]);
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-muted-foreground text-tf-meta">
-          Quién abrió, actualizó y evaluó cada oportunidad del equipo, de lo más reciente a lo más antiguo.
+          Quién abrió, movió, decidió y cerró cada oportunidad del equipo, de lo más reciente a lo más antiguo.
         </p>
-        {activos.length > 1 && (
-          <Select
-            value={usuario != null ? String(usuario) : TODOS}
-            onValueChange={(valor) => setUsuario(valor === TODOS ? null : Number(valor))}
-          >
-            <SelectTrigger className="h-8 w-56 text-tf-meta" aria-label="Filtrar por persona">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={TODOS}>Todo el equipo</SelectItem>
-              {activos.map((miembro) => (
-                <SelectItem key={miembro.user_id} value={String(miembro.user_id)}>
-                  {miembro.display_name ?? miembro.email ?? `Usuario #${miembro.user_id}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <FiltroPersona organizationId={organizationId} usuario={usuario} onChange={setUsuario} />
       </div>
 
       {feed.isPending ? (
@@ -151,11 +178,20 @@ export function ActividadEquipo({ organizationId }: { organizationId: Organizaci
         />
       ) : (
         <>
-          <ol aria-label="Actividad del equipo">
-            {items.map((item) => (
-              <FilaActividad key={item.id} item={item} />
+          <div className="flex flex-col gap-4">
+            {dias.map((dia) => (
+              <section key={dia.clave} aria-labelledby={`actividad-${dia.clave}`}>
+                <h3 id={`actividad-${dia.clave}`} className="text-tf-micro font-semibold text-muted-foreground">
+                  {dia.etiqueta}
+                </h3>
+                <ol aria-label={`Actividad del equipo, ${dia.etiqueta.toLowerCase()}`}>
+                  {dia.eventos.map((item) => (
+                    <FilaActividad key={item.id} item={item} />
+                  ))}
+                </ol>
+              </section>
             ))}
-          </ol>
+          </div>
           {feed.hasNextPage ? (
             <Button
               variant="outline"

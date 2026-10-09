@@ -9,7 +9,7 @@
 
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { authKeys } from "@/lib/query-keys";
+import { authKeys } from "@/lib/claves-raiz";
 
 export interface AuthUser {
   user_id: string;

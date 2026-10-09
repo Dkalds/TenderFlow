@@ -72,7 +72,7 @@ Generado: 2026-10-09
 
 ## Superficie de la API
 
-**290 endpoints** expuestos.
+**291 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -299,6 +299,7 @@ Generado: 2026-10-09
 | GET | `/api/v1/pursuits/cartera/{cartera_id}/eventos` |
 | POST | `/api/v1/pursuits/cartera/{cartera_id}/renovacion` |
 | GET | `/api/v1/pursuits/direccion` |
+| GET | `/api/v1/pursuits/direccion/carga` |
 | GET | `/api/v1/pursuits/metrics` |
 | GET | `/api/v1/pursuits/mi-baja` |
 | GET | `/api/v1/pursuits/tasks/agenda` |

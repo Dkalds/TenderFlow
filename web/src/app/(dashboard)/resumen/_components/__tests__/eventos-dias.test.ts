@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agruparPorDia } from "../eventos-dias";
+import { agruparPorDia } from "@/lib/agrupar-por-dia";
 
 const ahora = new Date(2026, 9, 8, 12, 0);
 const en = (dia: number, hora = 10) => new Date(2026, 9, dia, hora, 0).toISOString();

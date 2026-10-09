@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
 import type { PursuitMetrics } from "@/hooks/use-pursuits";
-import type { RangoPeriodo } from "../_lib/periodo";
+import type { RangoPeriodo } from "@/lib/periodo";
 
 /**
  * Rendimiento (Oportunidades → Rendimiento; hasta 2026-09-20, «Embudo» de Mi
