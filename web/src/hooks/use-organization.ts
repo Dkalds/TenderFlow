@@ -2,8 +2,6 @@
 
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { apiGet, apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type {
   OrganizationMemberInvite,
@@ -12,6 +10,12 @@ import type {
   OrganizationSummary,
 } from "@/lib/api-types";
 import { organizationKeys } from "@/lib/claves-raiz";
+import { useOrganizationStore } from "@/lib/organization-store";
+
+// El store y `olvidarOrganizacionPorDefecto` viven en `lib/organization-store.ts`
+// para que `/login` no cargue este módulo entero; se reexportan porque el resto
+// de la aplicación los importa de aquí.
+export { olvidarOrganizacionPorDefecto, useOrganizationStore } from "@/lib/organization-store";
 
 /** Nombres locales estables sobre los schemas generados (ver lib/api-types.ts). */
 export type Organization = OrganizationSummary;
@@ -20,47 +24,6 @@ export type AddOrganizationMemberInput = OrganizationMemberInvite;
 export type UpdateOrganizationMemberInput = OrganizationMembershipUpsert;
 export type OrganizationRole = OrganizationSummary["role"];
 export type OrganizationMembershipStatus = OrganizationMembershipOut["status"];
-
-interface OrganizationState {
-  /** La que la persona eligió en el selector; `null` si no eligió ninguna. */
-  activeOrganizationId: number | null;
-  /**
-   * Caché de la organización por defecto (`organizacionPorDefecto`) que
-   * `/organizations` confirmó la última vez en este navegador. `undefined`:
-   * todavía no se ha confirmado nunca. No es una elección de la persona, solo
-   * una apuesta para no esperar al listado (ver `useActiveOrganizationId`).
-   */
-  ultimaPorDefecto?: number | null;
-  setActiveOrganizationId: (organizationId: number | null) => void;
-  recordarPorDefecto: (organizationId: number | null) => void;
-}
-
-export const useOrganizationStore = create<OrganizationState>()(
-  persist(
-    (set) => ({
-      activeOrganizationId: null,
-      setActiveOrganizationId: (activeOrganizationId) => set({ activeOrganizationId }),
-      recordarPorDefecto: (ultimaPorDefecto) => set({ ultimaPorDefecto }),
-    }),
-    { name: "tenderflow-active-organization" },
-  ),
-);
-
-/**
- * Olvida la organización por defecto recordada (`ultimaPorDefecto`).
- *
- * El store vive en `localStorage`, que es del navegador y no de la persona:
- * sin esto, quien entra después de otra en el mismo equipo adelantaría sus
- * primeras peticiones con la organización de la anterior (un 403 con aviso
- * hasta que llega `/organizations`). Lo llama la pantalla de login al montarse,
- * que es por donde pasa toda sesión nueva —contraseña, Google, alta y la vuelta
- * tras un 401—, así que cuesta un RTT en la primera carga de cada sesión y
- * ninguno en las siguientes. La organización **elegida** en el selector no se
- * toca: es una decisión de la persona y sobrevive a cerrar sesión como antes.
- */
-export function olvidarOrganizacionPorDefecto(): void {
-  useOrganizationStore.setState({ ultimaPorDefecto: undefined });
-}
 
 export function useOrganizations() {
   return useQuery({

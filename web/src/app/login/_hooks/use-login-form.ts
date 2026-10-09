@@ -19,12 +19,15 @@ import { useSearchParams } from "next/navigation";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod/mini";
-import { acceso, registroFormulario } from "@/lib/forms/esquemas";
+// De `esquemas-acceso` y no de `esquemas`: ese módulo trae los esquemas de
+// todas las pantallas al First Load de `/login` (ver `esquemas-acceso.ts`).
+import { acceso, registroFormulario } from "@/lib/forms/esquemas-acceso";
 import { apiMutate, ApiError, fetchWithAuth, MENSAJE_SIN_CONEXION } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { registrarEvento } from "@/lib/analytics";
-import { olvidarOrganizacionPorDefecto } from "@/hooks/use-organization";
+// Del store y no de `hooks/use-organization`, que arrastraría todos sus hooks.
+import { olvidarOrganizacionPorDefecto } from "@/lib/organization-store";
 
 export type Mode = "login" | "register";
 

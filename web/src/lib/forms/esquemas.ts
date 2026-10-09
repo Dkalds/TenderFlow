@@ -10,58 +10,21 @@
  * Los límites repiten los del backend (se cita el modelo Pydantic en cada
  * uno); los textos de error son de esta capa y no prometen nada que el backend
  * no haga.
+ *
+ * Los del acceso están en `esquemas-acceso.ts` y `/login` los importa de allí:
+ * este módulo entra entero en el bundle de quien lo importa, y la pantalla de
+ * login no tiene por qué cargar los esquemas de las demás. Aquí solo se
+ * recogen sus contratos, para el test de deriva.
  */
 
 import * as z from "zod/mini";
 import type { components } from "@/generated/api";
 import { MOTIVOS_PERDIDA, type MotivoPerdida } from "@/lib/motivos-perdida";
 import { esquemaDeDto, type ContratoDto } from "./dto-schema";
+import { acceso, registro } from "./esquemas-acceso";
 import { correo, enteroOpcional, importeOpcional, numeroDeTexto, textoOpcional } from "./valores";
 
 type Schemas = components["schemas"];
-
-/* ------------------------------------------------------------------ Acceso */
-
-/** `api/routes/auth.py::LoginRequest`. */
-export const acceso = esquemaDeDto("LoginRequest")(
-  {
-    email: correo,
-    password: z.string().check(z.minLength(1, "Escribe tu contraseña.")),
-  },
-  // «Recordar este equipo» no se ofrece en esta pantalla: el backend lo toma
-  // a `false`, que es el comportamiento que ya tenía.
-  ["remember"],
-);
-
-/**
- * `api/routes/auth.py::RegisterRequest`. La política es la de
- * `check_password_strength(min_length=10, require_special=False)`; los
- * patrones débiles («password», «123456»…) los sigue rechazando solo el
- * backend, y su mensaje llega al aviso general del formulario.
- */
-const registro = esquemaDeDto("RegisterRequest")(
-  {
-    display_name: z.string(),
-    email: correo,
-    password: z
-      .string()
-      .check(
-        z.minLength(10, "Mínimo 10 caracteres."),
-        z.regex(/[a-z]/, "Tiene que llevar alguna minúscula."),
-        z.regex(/[A-Z]/, "Tiene que llevar alguna mayúscula."),
-        z.regex(/\d/, "Tiene que llevar algún número."),
-      ),
-  },
-  [],
-);
-
-/** El alta añade la confirmación, que es del formulario y no del contrato. */
-export const registroFormulario = z.extend(registro.esquema, { confirm_password: z.string() }).check(
-  z.refine((valores) => valores.password === valores.confirm_password, {
-    path: ["confirm_password"],
-    message: "Las contraseñas no coinciden",
-  }),
-);
 
 /* ------------------------------------------------------------------ Reglas */
 
