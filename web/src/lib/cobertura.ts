@@ -92,13 +92,17 @@ export function coberturaSinMedir(cobertura: CoberturaMetrica | undefined): bool
  * divergir.
  *
  * El umbral por defecto es el mismo que aplica el backend a las métricas que sí
- * viajan acotadas; se puede subir, nunca bajar en silencio.
+ * viajan acotadas (`UMBRAL_COBERTURA_PCT` en `services/analytics/overview.py`);
+ * se puede subir, nunca bajar en silencio. Estuvo en 30 mientras
+ * `/analytics/competitors` no mandaba la cobertura y esta rama no se ejecutaba:
+ * con el dato llegando, un 30 habría publicado aquí lo que el backend no da por
+ * hecho por debajo del 50.
  */
 export function celdaSaludPorPct(
   pct: number | null | undefined,
   coberturaPct: number | null | undefined,
   glosa: string,
-  umbralPct = 30,
+  umbralPct = 50,
 ): CeldaSalud {
   return celdaSalud(
     pct,
