@@ -1,8 +1,10 @@
 /**
  * Claves de React Query que necesita código que viaja en **todas** las rutas,
- * `/login` incluida: `lib/auth.tsx` (la sesión), `hooks/use-organization.ts`
- * (la organización activa; el login la olvida al cerrar sesión) y
- * `components/providers.tsx` (la política de refresco por prefijo).
+ * `/login` incluida: `lib/auth.tsx` (la sesión) y `components/providers.tsx`
+ * (la política de refresco por prefijo). Las de `hooks/use-organization.ts`
+ * llegaron por lo mismo; ese módulo ya no viaja en el login —lo único que la
+ * pantalla de acceso usa de él está en `lib/organization-store.ts`—, pero sus
+ * claves siguen aquí.
  *
  * Importaban de `lib/query-keys.ts`, y Turbopack no recorta los exports que no
  * se usan de un módulo: el registro entero viajaba en el First Load del login,

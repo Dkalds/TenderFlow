@@ -5,7 +5,6 @@ import { QueryCache, MutationCache, QueryClient, QueryClientProvider } from "@ta
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { SessionProvider } from "@/lib/auth";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   notifyQueryError,
   notifyMutationError,
@@ -106,6 +105,16 @@ export function crearQueryClient(): QueryClient {
   return queryClient;
 }
 
+/**
+ * La pila que comparten las tres superficies con sesión.
+ *
+ * **Aquí no va `TooltipProvider`**: lo monta `app/(dashboard)/layout.tsx`. Solo
+ * el dashboard pinta tooltips, y este módulo viaja en `/login` y
+ * `/restablecer-contrasena`: importar el provider traía a su First Load
+ * `@radix-ui/react-tooltip` entero con su popper y floating-ui (51 662 bytes
+ * sin comprimir, medido) para no pintar ninguno. Un `<Tooltip>` fuera del
+ * dashboard necesita su propio `TooltipProvider`, igual que en un test aislado.
+ */
 export function Providers({ children, nonce }: { children: React.ReactNode; nonce?: string }) {
   const [queryClient] = React.useState(crearQueryClient);
   return (
@@ -118,9 +127,7 @@ export function Providers({ children, nonce }: { children: React.ReactNode; nonc
           default system, `theme` vale "system". */}
       <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange nonce={nonce}>
         <SessionProvider>
-          <TooltipProvider>
-            <NuqsAdapter>{children}</NuqsAdapter>
-          </TooltipProvider>
+          <NuqsAdapter>{children}</NuqsAdapter>
         </SessionProvider>
       </ThemeProvider>
     </QueryClientProvider>
