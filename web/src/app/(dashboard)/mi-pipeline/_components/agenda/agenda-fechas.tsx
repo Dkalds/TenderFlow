@@ -64,7 +64,11 @@ export function AgendaFechas({ item, enfoque }: { item: PipelineAgendaItem; enfo
           El plazo de presentación va en la fila de la oportunidad, no en la de la tarea.
         </p>
       )}
-      {item.pursuit_id != null && item.version != null && (
+      {/* El editor a mano solo sale en la fila de una acción escrita a mano
+          (`tarea_id` nulo). En las demás, la próxima acción sale de las tareas
+          de abajo: dos formularios seguidos —texto, fecha y botón los dos—
+          para lo mismo empujaban el panel fuera de la pantalla. */}
+      {esTarea && item.tarea_id == null && item.pursuit_id != null && item.version != null && (
         <NextActionEditor item={item} enfoque={enfoque} />
       )}
     </div>
