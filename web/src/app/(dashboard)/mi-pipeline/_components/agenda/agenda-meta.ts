@@ -1,46 +1,106 @@
 /**
- * Vocabulario visual de la agenda: las bandas de urgencia que manda el backend,
- * su color, y **de qué clase es la fecha** de cada compromiso.
+ * Vocabulario visual de la agenda: los tramos que manda el backend, su color,
+ * los contadores de la franja y el icono de cada clase de compromiso. Lo que la
+ * fila **dice** —título, aviso, día, línea de contexto— está en
+ * `agenda-texto.ts`.
  *
- * Ninguna de estas tablas decide *en qué banda cae* un ítem ni *en qué orden*
- * va — eso viene en `item.urgencia` desde `GET /pursuits/agenda` (ADR-014).
- * Aquí sólo se traduce a etiqueta, tono e icono.
+ * Ninguna de estas tablas decide *en qué tramo cae* un ítem, *en qué orden* va
+ * ni *en qué contador cuenta* — eso viene en `item.banda`, en el orden de la
+ * lista y en `item.cuenta_en` desde `GET /pursuits/agenda` (ADR-014). Aquí sólo
+ * se traduce a etiqueta, tono e icono.
  *
- * Lo exporta también el Resumen (`resumen/_components/tu-dia.tsx`): las dos
+ * Lo usa también el Resumen (`resumen/_components/tu-dia.tsx`): las dos
  * superficies enseñan las mismas cinco clases de compromiso, y con dos mapas de
  * iconos distintos la misma fila se leía de dos maneras según por dónde
  * entraras. Un solo vocabulario, dos pantallas.
  */
 
-import { Bell, Briefcase, CalendarClock, RefreshCcw, SquareCheck, type LucideIcon } from "lucide-react";
-import { EMPTY, formatDate, truncate } from "@/lib/utils";
-import { statusLabel } from "@/components/pursuits/pursuit-presenters";
-import type { AgendaKind, AgendaUrgencia, PipelineAgendaItem } from "@/hooks/use-pursuits";
+import {
+  Bell,
+  Briefcase,
+  CalendarClock,
+  CornerDownRight,
+  RefreshCcw,
+  SquareCheck,
+  type LucideIcon,
+} from "lucide-react";
+import type { AgendaKind, PipelineAgendaItem } from "@/hooks/use-pursuits";
 
 /**
  * Rejilla de la tabla — solo a partir de `md`. Por debajo, ficha en columna.
- * La última columna creció de 96 a 150 px: la acción del contrato es «Preparar
- * renovación», y a 96 px se recortaba a «Preparar r…».
+ *
+ * La primera columna lleva el aviso **y** el día («5 d» encima de «jue 15
+ * oct»): 88 px es lo que pide «hoy 14:00». La última son 184 px porque la fila
+ * de plazo pasado lleva dos acciones («No nos presentamos» y abrir la ficha);
+ * la que más pedía antes era «Preparar renovación», a 150.
  */
-export const GRID = "md:grid-cols-[72px_26px_1fr_110px_150px] md:gap-3 md:px-3.5";
+export const GRID = "md:grid-cols-[88px_26px_minmax(0,1fr)_96px_184px] md:gap-3 md:px-3.5";
 
-export const BANDAS: { key: AgendaUrgencia; label: string; tone: string }[] = [
+/** Tramo en el que la API coloca la fila (`banda`), o su urgencia si no lo dice. */
+export type AgendaBanda = NonNullable<PipelineAgendaItem["banda"]>;
+
+/**
+ * El tramo de la fila. `banda` es opcional en el contrato: una API anterior al
+ * campo no lo manda, y ahí la fila cae en su urgencia, que es donde estaba.
+ */
+export function bandaDe(item: PipelineAgendaItem): AgendaBanda {
+  return item.banda ?? item.urgencia;
+}
+
+/**
+ * Los tramos, en el orden en que la API ordena la lista: primero lo que aún se
+ * puede hacer, después lo que hay que cerrar, después el horizonte y al final
+ * lo que solo queda esperar o no tiene fecha.
+ *
+ * `hint` solo lo llevan los dos tramos que no son un plazo por delante: sin esa
+ * línea, «Plazo pasado» parecía otro nombre para «Vencidas».
+ */
+export const BANDAS: { key: AgendaBanda; label: string; tone: string; hint?: string }[] = [
   { key: "vencida", label: "Vencidas", tone: "text-destructive" },
   { key: "hoy", label: "Hoy", tone: "text-destructive" },
   { key: "semana", label: "Próximos 7 días", tone: "text-warning" },
+  {
+    key: "plazo_pasado",
+    label: "Plazo pasado",
+    tone: "text-foreground/80",
+    hint: "El plazo de presentación pasó y siguen abiertas. Retíralas si no hubo oferta, o registra la presentación en su ficha.",
+  },
   { key: "mes", label: "Próximos 30 días", tone: "text-muted-foreground" },
   { key: "despues", label: "Más adelante", tone: "text-muted-foreground" },
+  {
+    key: "en_resolucion",
+    label: "Presentadas, a la espera",
+    tone: "text-muted-foreground",
+    hint: "La oferta está entregada. Registra el resultado en la ficha cuando se adjudique.",
+  },
   { key: "sin_fecha", label: "Sin fecha", tone: "text-muted-foreground" },
 ];
 
-export const CHIP_POR_BANDA: Record<AgendaUrgencia, string> = {
+const CHIP_AMBAR = "bg-warning/10 text-warning";
+const CHIP_NEUTRO = "bg-muted-foreground/10 text-muted-foreground";
+
+const CHIP_POR_BANDA: Record<AgendaBanda, string> = {
   vencida: "bg-destructive/10 text-destructive",
   hoy: "bg-destructive/10 text-destructive",
-  semana: "bg-warning/10 text-warning",
+  semana: CHIP_AMBAR,
+  // Ni rojo ni ámbar: ya no hay nada que llegue tarde, hay algo que cerrar.
+  plazo_pasado: "bg-secondary text-foreground/80",
   mes: "bg-secondary text-foreground/80",
-  despues: "bg-muted-foreground/10 text-muted-foreground",
-  sin_fecha: "bg-muted-foreground/10 text-muted-foreground",
+  despues: CHIP_NEUTRO,
+  en_resolucion: CHIP_NEUTRO,
+  sin_fecha: CHIP_NEUTRO,
 };
+
+/** Una ventana de relicitación que ya empezó: está abierta, no llega tarde. */
+export function esVentanaAbierta(item: PipelineAgendaItem): boolean {
+  return item.due_kind === "relicitacion" && item.dias_restantes != null && item.dias_restantes < 0;
+}
+
+/** Color del aviso de la fila. */
+export function claseChip(item: PipelineAgendaItem): string {
+  if (esVentanaAbierta(item)) return CHIP_AMBAR;
+  return CHIP_POR_BANDA[bandaDe(item)];
+}
 
 /**
  * Los dos carriles de la agenda. `compromisos` es lo que la organización ya ha
@@ -54,12 +114,38 @@ export function carrilDe(item: PipelineAgendaItem): Carril {
   return item.kind === "senal" ? "triaje" : "compromisos";
 }
 
+/** Un contador de la franja, que además filtra la lista (`item.cuenta_en`). */
+export type AgendaContador = NonNullable<PipelineAgendaItem["cuenta_en"]>[number];
+
+/**
+ * Los contadores, en el orden de la franja. Qué fila cuenta en cada uno lo
+ * decide la API; aquí va el rótulo y el tono de la cifra cuando no es cero.
+ */
+export const CONTADORES: {
+  key: AgendaContador;
+  label: string;
+  tono?: "destructive" | "warning";
+}[] = [
+  { key: "plazo_semana", label: "Plazos en 7 días", tono: "destructive" },
+  { key: "accion_vencida", label: "Acciones hoy o vencidas", tono: "destructive" },
+  { key: "go_no_go", label: "Go/No-Go pendientes" },
+  { key: "sin_paso", label: "Sin próxima acción", tono: "warning" },
+  { key: "plazo_pasado", label: "Plazo pasado", tono: "warning" },
+];
+
+export function esContador(valor: string | null): valor is AgendaContador {
+  return CONTADORES.some((contador) => contador.key === valor);
+}
+
 /**
  * El contrato tiene dos iconos: `Briefcase` cuando lo que vence es el contrato
  * y `RefreshCcw` cuando lo que se abre es su ventana de relicitación — es otra
  * cosa la que hay que hacer, y el icono lo dice antes que el texto.
+ *
+ * `anidada` es la tarea que va justo debajo de su oportunidad: la flecha dice
+ * de quién es sin repetir el título.
  */
-export type IconoAgenda = AgendaKind | "relicitacion";
+export type IconoAgenda = AgendaKind | "relicitacion" | "anidada";
 
 /**
  * Tabla y no función que devuelva el componente: el compilador de React prohíbe
@@ -70,6 +156,7 @@ export type IconoAgenda = AgendaKind | "relicitacion";
 export const ICONOS: Record<IconoAgenda, LucideIcon> = {
   pursuit: CalendarClock,
   tarea: SquareCheck,
+  anidada: CornerDownRight,
   contrato: Briefcase,
   relicitacion: RefreshCcw,
   senal: Bell,
@@ -96,64 +183,12 @@ export function etiquetaKind(item: PipelineAgendaItem): string {
 }
 
 /**
- * Qué es la fecha que la fila enseña. Es la mitad del rediseño: un chip de «3 d»
- * sin esto no dice si lo que vence es la licitación, una tarea propia o la
- * ventana en la que se espera la relicitación de un contrato ya ganado.
- */
-export function tipoDeFecha(item: PipelineAgendaItem): string {
-  switch (item.due_kind) {
-    case "plazo":
-      return "Plazo de presentación";
-    case "accion":
-      return "Acción";
-    case "fin_contrato":
-      return "Fin de contrato";
-    case "relicitacion":
-      return "Ventana de relicitación";
-    default:
-      // `due_kind` es opcional en el contrato (los clientes viejos construyen
-      // items sin él): se cae al `kind`, que siempre viene.
-      return item.kind === "senal" ? "Plazo de presentación" : "Fin de contrato";
-  }
-}
-
-/**
- * De dónde sale la fecha de fin de un contrato, en las dos familias que el
- * backend usa: la cartera propia (`publicada | duracion | prorroga | manual`) y
- * las renovaciones de mercado (`real | estimada_*`). Una fecha calculada con la
- * duración no vale lo mismo que una publicada, y sobre ella se decide cuándo
- * empezar a preparar la relicitación.
- */
-const ORIGEN_FECHA_FIN: Record<string, string> = {
-  publicada: "fecha publicada",
-  real: "fecha publicada",
-  duracion: "fecha estimada por duración",
-  estimada_inicio: "fecha estimada por duración",
-  estimada_adjudicacion: "fecha estimada por duración",
-  prorroga: "fecha con prórroga aplicada",
-  manual: "fecha introducida a mano",
-  desconocida: "sin fecha de fin publicada",
-};
-
-export function origenFechaFin(origen: string | null | undefined): string | null {
-  return origen ? (ORIGEN_FECHA_FIN[origen] ?? null) : null;
-}
-
-/**
  * Identidad de una fila. Lleva `tarea_id` porque una oportunidad y sus tareas
  * comparten `licitacion_id`: sin él, React reutilizaba el nodo de la primera
  * tarea para la segunda y el inspector se quedaba con el detalle anterior.
  */
 export function claveDe(item: PipelineAgendaItem): string {
   return `${item.kind}:${item.licitacion_id}:${item.tarea_id ?? ""}`;
-}
-
-/** El título de la fila. En una tarea, lo que hay que hacer — no el expediente. */
-export function tituloDe(item: PipelineAgendaItem): string {
-  if (item.kind === "tarea") {
-    return item.tarea_texto ?? item.next_action ?? item.titulo ?? item.licitacion_id;
-  }
-  return item.titulo ?? item.licitacion_id;
 }
 
 /** Dónde vive el compromiso: su oportunidad, o la ficha del expediente. */
@@ -172,50 +207,39 @@ export function destinoDe(item: PipelineAgendaItem): string {
  */
 export const DIAS_POSPONER = 7;
 
-export const SHORTCUTS = [
+/**
+ * Los atajos, con lo que tiene que haber delante para que hagan algo. La barra
+ * anunciaba los cinco siempre: en Compromisos, sin tareas ni señales, tres de
+ * ellos eran teclas muertas.
+ */
+const SHORTCUTS: { key: string; label: string; aplica?: (item: PipelineAgendaItem) => boolean }[] = [
   { key: "J K", label: "navegar" },
-  { key: "S", label: "seguir" },
-  { key: "X", label: "descartar" },
-  { key: "C", label: "completar tarea" },
+  { key: "S", label: "seguir", aplica: (item) => item.kind === "senal" || item.kind === "renovacion" },
+  { key: "X", label: "descartar", aplica: (item) => item.kind === "senal" },
+  { key: "C", label: "completar tarea", aplica: (item) => item.kind === "tarea" },
   { key: "⏎", label: "abrir" },
 ];
 
-export function plazoChip(item: PipelineAgendaItem): string {
-  if (item.dias_restantes == null) return EMPTY;
-  if (item.urgencia === "hoy") return "hoy";
-  if (item.dias_restantes < 0) return `−${Math.abs(item.dias_restantes)} d`;
-  return `${item.dias_restantes} d`;
+/** Los atajos que hacen algo con las filas que se están viendo. */
+export function atajosPara(items: readonly PipelineAgendaItem[]): { key: string; label: string }[] {
+  return SHORTCUTS.filter((atajo) => !atajo.aplica || items.some(atajo.aplica));
 }
 
 /**
- * La línea que hay bajo el título: primero **qué clase de fecha** es la del
- * chip, después el contexto que hace falta para decidir sin abrir nada.
+ * Qué filas de un tramo van pegadas a su oportunidad: las tareas que siguen,
+ * sin nada en medio, a la fila de su oportunidad. La API las ordena juntas
+ * (`_ordenar_agenda`); aquí solo se mira si lo están.
+ *
+ * Hace falta la fila de la oportunidad **encima**: dos tareas seguidas de una
+ * oportunidad que está en otro tramo —o filtrada fuera— no tienen a qué
+ * referirse con «de esta oportunidad», y conservan su línea entera.
  */
-export function metaLinea(item: PipelineAgendaItem): string {
-  const partes: string[] = [tipoDeFecha(item)];
-
-  if (item.kind === "pursuit") {
-    if (item.status) partes.push(statusLabel(item.status));
-    if (item.responsible_name) partes.push(item.responsible_name);
-  }
-  if (item.kind === "tarea") {
-    // El título de la fila es la tarea, así que aquí va el expediente: sin él,
-    // cuatro «Revisar pliego» seguidas son indistinguibles.
-    partes[0] = `Acción de «${truncate(item.titulo ?? item.licitacion_id, 40)}»`;
-    if (item.status) partes.push(statusLabel(item.status));
-    return partes.join(" · ");
-  }
-  if (item.kind === "senal" && item.rule_nombre) partes.push(`Regla «${item.rule_nombre}»`);
-  if (item.kind === "renovacion" && item.adjudicatario) {
-    partes.push(`Adjudicatario: ${truncate(item.adjudicatario, 32)}`);
-  }
-  if (item.organo) partes.push(truncate(item.organo, 40));
-  if (item.kind === "contrato") {
-    partes.push(
-      item.due_kind === "relicitacion" && item.fecha_fin_efectiva
-        ? `contrato vence el ${formatDate(item.fecha_fin_efectiva)}`
-        : (origenFechaFin(item.fecha_fin_origen) ?? ""),
-    );
-  }
-  return partes.filter(Boolean).join(" · ");
+export function tareasAnidadas(filas: readonly PipelineAgendaItem[]): boolean[] {
+  let cabeza: number | null = null;
+  return filas.map((item) => {
+    const anidada = item.kind === "tarea" && item.pursuit_id != null && item.pursuit_id === cabeza;
+    if (item.kind === "pursuit") cabeza = item.pursuit_id ?? null;
+    else if (!anidada) cabeza = null;
+    return anidada;
+  });
 }

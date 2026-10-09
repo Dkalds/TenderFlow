@@ -4407,6 +4407,11 @@ export interface paths {
          *     (`contrato`). Las renovaciones del mercado sólo entran con
          *     `incluir_mercado=true`.
          *
+         *     `banda` es el tramo en el que va la fila: su `urgencia`, salvo cuando el
+         *     plazo ya no obliga (`plazo_pasado`: pasó sin oferta; `en_resolucion`: la
+         *     oferta está presentada). `contadores` son los de la franja, y cada fila
+         *     declara en `cuenta_en` en cuáles cuenta.
+         *
          *     Sin caché compartida: la respuesta es por usuario/organización (incluye el
          *     triaje de señales del propio usuario).
          */
@@ -11035,6 +11040,48 @@ export interface components {
             visibility: "private" | "organization";
         };
         /**
+         * PipelineAgendaContadores
+         * @description Los contadores que la franja de la agenda enseña y con los que filtra.
+         *
+         *     Cada uno es el número de filas que lo llevan en ``cuenta_en``, y los cuatro
+         *     de oportunidades miran solo las que **siguen vivas**: un plazo que pasó sin
+         *     oferta cuenta en ``plazo_pasado`` y en ninguno más, y una oferta presentada
+         *     no cuenta en ninguno. Así el número de un contador y las filas que deja al
+         *     pulsarlo son siempre los mismos.
+         */
+        PipelineAgendaContadores: {
+            /**
+             * Accion Vencida
+             * @default 0
+             */
+            accion_vencida: number;
+            /**
+             * Go No Go
+             * @default 0
+             */
+            go_no_go: number;
+            /**
+             * Plazo Pasado
+             * @default 0
+             */
+            plazo_pasado: number;
+            /**
+             * Plazo Semana
+             * @default 0
+             */
+            plazo_semana: number;
+            /**
+             * Plazo Semana Importe Eur
+             * @default 0
+             */
+            plazo_semana_importe_eur: number;
+            /**
+             * Sin Paso
+             * @default 0
+             */
+            sin_paso: number;
+        };
+        /**
          * PipelineAgendaItem
          * @description Una fila de la agenda, ya clasificada por urgencia.
          *
@@ -11062,16 +11109,22 @@ export interface components {
         PipelineAgendaItem: {
             /** Adjudicatario */
             adjudicatario: string | null;
+            /** Banda */
+            banda?: ("vencida" | "hoy" | "semana" | "plazo_pasado" | "mes" | "despues" | "en_resolucion" | "sin_fecha") | null;
             /** Cartera Id */
             cartera_id?: number | null;
             /** Ccaa */
             ccaa: string | null;
+            /** Cuenta En */
+            cuenta_en?: ("plazo_semana" | "accion_vencida" | "go_no_go" | "sin_paso" | "plazo_pasado")[];
             /** Decision */
             decision: ("pending" | "go" | "no_go") | null;
             /** Dias Restantes */
             dias_restantes: number | null;
             /** Due Date */
             due_date: string | null;
+            /** Due Hora */
+            due_hora?: string | null;
             /** Due Kind */
             due_kind?: ("plazo" | "accion" | "fin_contrato" | "relicitacion") | null;
             /** Fecha Fin Efectiva */
@@ -11119,6 +11172,8 @@ export interface components {
             tarea_id?: number | null;
             /** Tarea Texto */
             tarea_texto?: string | null;
+            /** Tareas Abiertas */
+            tareas_abiertas?: number | null;
             /** Tecnologia */
             tecnologia: string | null;
             /** Titulo */
@@ -11142,6 +11197,11 @@ export interface components {
          *     contratos propios cuya ventana de relicitación ya empezó sin renovación
          *     preparada. Tres relojes distintos, tres contadores: sumarlos daría un
          *     número que no dice a quién le toca hacer qué.
+         *
+         *     La consola dejó de leer ``vence_semana``, ``go_no_go_pendientes`` y
+         *     ``sin_proxima_accion`` (lee ``PipelineAgendaContadores``): contaban como
+         *     trabajo pendiente los plazos que ya habían pasado. Se conservan con el
+         *     significado de siempre porque son contrato publicado.
          */
         PipelineAgendaKpis: {
             /**
@@ -11170,6 +11230,7 @@ export interface components {
          * @description Respuesta de ``GET /api/v1/pursuits/agenda``.
          */
         PipelineAgendaResponse: {
+            contadores?: components["schemas"]["PipelineAgendaContadores"];
             /** Items */
             items?: components["schemas"]["PipelineAgendaItem"][];
             kpis: components["schemas"]["PipelineAgendaKpis"];
@@ -11179,6 +11240,11 @@ export interface components {
             pursuits_total: number;
             /** Pursuits Truncados */
             pursuits_truncados: boolean;
+            /**
+             * Reglas Activas
+             * @default 0
+             */
+            reglas_activas: number;
             /** Renovaciones Horizonte Meses */
             renovaciones_horizonte_meses: number;
             /** Senales Truncadas */
