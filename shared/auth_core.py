@@ -348,17 +348,47 @@ def csv_set(value: str) -> set[str]:
     return {item.strip().lower() for item in value.split(",") if item.strip()}
 
 
+def oauth_email_parts(email: str) -> tuple[str, str] | None:
+    """Dirección normalizada y su dominio, o ``None`` si no tiene forma de dirección.
+
+    Exige **exactamente un** ``@`` con parte local y dominio no vacíos. Es la
+    forma que comparten las dos mitades de la allowlist (esta y
+    ``db/access_grants.py``) y el callback al leer el token. Quedarse con «lo
+    que va tras el último ``@``» hacía que ``x@evil.com@example.com`` contase
+    como del dominio ``example.com``, y que una cadena sin ``@`` se consultase
+    como dominio. Google no emite direcciones así, pero esto decide quién entra
+    y no puede depender de lo que cada proveedor tenga a bien mandar.
+    """
+    normalized = email.strip().lower()
+    local, separador, domain = normalized.partition("@")
+    if not separador or not local or not domain or "@" in domain:
+        return None
+    return normalized, domain
+
+
 def oauth_email_allowed(email: str) -> bool:
     """Valida el email OAuth contra allowlists opcionales (settings).
 
+    Es solo la mitad **estática** de la decisión: el callback la combina con
+    las concesiones de ``access_grants`` (``_oauth_access_allowed``, en
+    ``api/routes/auth.py``). Con las dos listas vacías la aplicación arranca
+    igual en producción —``config/settings.py::_validate_prod_oauth_domains``
+    dejó de rechazarlo cuando llegó la tabla (RFC 242)— y esta función devuelve
+    ``False`` fuera de desarrollo, de modo que solo entra quien tenga una
+    concesión activa.
+
     ``OAUTH_ALLOWED_DOMAINS=*`` permite cualquier cuenta de forma explícita y
-    auditable — es la vía deliberada de login abierto, ahora que en producción
-    los allowlists vacíos con OAuth activo rechazan el arranque
-    (``config/settings.py::_validate_prod_oauth_domains``).
+    auditable: es la única vía deliberada de login abierto.
+
+    Una cadena que no tiene forma de dirección (:func:`oauth_email_parts`) se
+    deniega siempre, también con el comodín y en desarrollo.
     """
     from config import settings
 
-    normalized = email.strip().lower()
+    partes = oauth_email_parts(email)
+    if partes is None:
+        return False
+    normalized, domain = partes
     allowed_emails = csv_set(settings.OAUTH_ALLOWED_EMAILS)
     allowed_domains = csv_set(settings.OAUTH_ALLOWED_DOMAINS)
     if "*" in allowed_domains:
@@ -368,7 +398,6 @@ def oauth_email_allowed(email: str) -> bool:
         # staging, una lista estática vacía significa "consulta la allowlist
         # dinámica", nunca "deja entrar a cualquiera".
         return settings.ENV == "dev"
-    domain = normalized.rsplit("@", 1)[-1] if "@" in normalized else ""
     return normalized in allowed_emails or domain in allowed_domains
 
 

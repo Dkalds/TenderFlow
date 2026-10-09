@@ -65,6 +65,7 @@ from shared.auth_core import (
     hash_password,
     oauth_email_allowed,
     oauth_email_is_admin,
+    oauth_email_parts,
     oauth_state_nonce,
     verify_google_id_token,
     verify_oauth_state,
@@ -100,7 +101,12 @@ _RESET_REQUEST_RESPONSE = "Si existe una cuenta local activa, recibirás un enla
 
 
 async def _oauth_access_allowed(email: str) -> bool:
-    """Allowlist estática o grant dinámico; cualquier fallo dinámico deniega."""
+    """Allowlist estática o grant dinámico; cualquier fallo dinámico deniega.
+
+    Es la única definición de «esta dirección puede entrar». Además del
+    callback la usa ``api/routes/admin_solicitudes.py`` para no escribirle «ya
+    tienes acceso» a quien aquí se rechazaría.
+    """
     if oauth_email_allowed(email):
         return True
     try:
@@ -1100,11 +1106,17 @@ def _email_from_claims(claims: Mapping[str, Any]) -> str:
     Con cuentas de trabajo, Microsoft emite ``preferred_username`` (el UPN) y
     solo incluye ``email`` si el tenant lo tiene poblado. Sin este respaldo, un
     login de Microsoft perfectamente válido acabaría en «email_not_allowed».
+
+    El primer claim que trae un ``@`` es el que identifica a la cuenta, y tiene
+    que tener forma de dirección (``oauth_email_parts``: un solo ``@`` con algo
+    a cada lado). Si no la tiene se devuelve vacío —el callback lo deniega— en
+    vez de seguir con el siguiente claim: lo que decide la allowlist es esta
+    cadena, y de ``x@evil.com@empresa.com`` no se puede decir de qué dominio es.
     """
     for clave in ("email", "preferred_username", "upn"):
         valor = str(claims.get(clave, "") or "").strip()
         if "@" in valor:
-            return valor
+            return valor if oauth_email_parts(valor) is not None else ""
     return ""
 
 

@@ -142,6 +142,23 @@ def test_email_from_claims_cubre_las_formas_de_los_dos_proveedores(claims, esper
     assert auth_routes._email_from_claims(claims) == esperado
 
 
+@pytest.mark.parametrize(
+    "claims",
+    [
+        # «Lo que va tras el último `@`» sería un dominio ajeno a la cuenta.
+        {"email": "x@evil.com@empresa.test"},
+        {"email": "@empresa.test"},
+        {"email": "persona@"},
+        {"preferred_username": "x@evil.com@empresa.test"},
+        # El primer claim con `@` es el que identifica a la cuenta. Si está mal
+        # formado se deniega: no se sigue buscando otro que sí entre.
+        {"email": "x@evil.com@empresa.test", "preferred_username": "b@empresa.test"},
+    ],
+)
+def test_email_from_claims_no_acepta_lo_que_no_tiene_forma_de_direccion(claims):
+    assert auth_routes._email_from_claims(claims) == ""
+
+
 # ── Redirect URI derivado ───────────────────────────────────────────────────
 
 

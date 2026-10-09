@@ -235,6 +235,8 @@ DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
 GOOGLE_CLIENT_ID=<client-id>.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=<client-secret>
 OAUTH_REDIRECT_URI=http://localhost:3000
+# Las dos listas son el arranque: el resto de accesos se concede y se revoca desde
+# Ops › Administración › Solicitudes de acceso (docs/runbooks/conceder-acceso.md).
 OAUTH_ALLOWED_EMAILS=persona@empresa.com,otra@empresa.com
 OAUTH_ALLOWED_DOMAINS=empresa.com
 OAUTH_ADMIN_EMAILS=admin@empresa.com

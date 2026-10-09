@@ -6,8 +6,19 @@ from collections.abc import Sequence
 from typing import Literal, TypedDict, cast
 
 from db.database import connect, connect_read
+from shared.auth_core import oauth_email_parts
 
 AccessGrantKind = Literal["email", "domain"]
+
+
+class ConcesionInvalida(ValueError):
+    """La concesión pedida no se puede escribir.
+
+    Su mensaje está escrito para el administrador: la ruta lo devuelve tal cual
+    en un 422. Es un ``ValueError`` con nombre propio justo por eso —el
+    manejador global de ``ValueError`` (``api/errors.py``) enmascara el mensaje
+    a propósito, y aquí publicarlo es una decisión, no un descuido—.
+    """
 
 
 class AccessGrant(TypedDict):
@@ -32,18 +43,36 @@ def normalize_grant(kind: AccessGrantKind, value: str) -> str:
     normalized = value.strip().lower()
     if kind == "domain":
         normalized = normalized.removeprefix("@")
-    if not normalized or (kind == "email" and "@" not in normalized):
-        raise ValueError("Concesión de acceso inválida")
-    if kind == "domain" and ("@" in normalized or "." not in normalized):
-        raise ValueError("Dominio de acceso inválido")
+    if kind == "email" and oauth_email_parts(normalized) is None:
+        raise ConcesionInvalida("El email de la concesión no es una dirección válida.")
+    if kind == "domain" and (not normalized or "@" in normalized or "." not in normalized):
+        raise ConcesionInvalida("El dominio de la concesión no es válido.")
+    return normalized
+
+
+def _valor_concedible(kind: AccessGrantKind, value: str) -> str:
+    """Valor normalizado de una concesión que sí se puede escribir.
+
+    El criterio de qué no se concede (hoy: el dominio de un proveedor de correo
+    público) vive en ``services/access_grants.py``; aquí solo se le pregunta. Se
+    le pregunta en las dos funciones que escriben, y no en la ruta, para que
+    ningún llamador pueda saltárselo.
+    """
+    # Diferido: `services.access_grants` importa este módulo.
+    from services.access_grants import validar_concesion
+
+    normalized = normalize_grant(kind, value)
+    validar_concesion(kind, normalized)
     return normalized
 
 
 def is_access_granted(email: str) -> bool:
-    normalized = email.strip().lower()
-    domain = normalized.rpartition("@")[2]
-    if not domain:
+    partes = oauth_email_parts(email)
+    if partes is None:
+        # Sin forma de dirección no hay nada que buscar: ni como email ni,
+        # sobre todo, como dominio.
         return False
+    normalized, domain = partes
     with connect_read() as connection:
         row = connection.execute(
             "SELECT 1 FROM access_grants "
@@ -60,7 +89,7 @@ def grant_access(
     *,
     granted_by: int | None,
 ) -> AccessGrant:
-    normalized = normalize_grant(kind, value)
+    normalized = _valor_concedible(kind, value)
     with connect() as connection:
         cursor = connection.execute(
             "INSERT INTO access_grants (kind, value, active, granted_by) "
@@ -83,7 +112,12 @@ def grant_access_request(
     *,
     granted_by: int | None,
 ) -> GrantedAccessRequest | None:
-    """Concede y marca la solicitud atendida en una única transacción."""
+    """Concede y marca la solicitud atendida en una única transacción.
+
+    Lanza :class:`ConcesionInvalida` si la solicitud no da para esa concesión
+    (su correo no tiene forma de dirección, o el dominio no es concedible). La
+    transacción se deshace entera: ni concesión ni cambio de estado.
+    """
     with connect() as connection:
         request_row = connection.execute(
             "SELECT email, empresa, estado FROM solicitudes_acceso WHERE id = %s FOR UPDATE",
@@ -94,7 +128,12 @@ def grant_access_request(
         email = str(request_row[0]).strip().lower()
         empresa = str(request_row[1]) if request_row[1] else None
         previous_state = str(request_row[2])
-        value = normalize_grant(kind, email if kind == "email" else email.rpartition("@")[2])
+        partes = oauth_email_parts(email)
+        if partes is None:
+            # El dominio se deriva de la dirección: de una que no lo es no se
+            # saca ninguno («lo que va tras el último @» sería el de otro).
+            raise ConcesionInvalida("El email de la solicitud no es una dirección válida.")
+        value = _valor_concedible(kind, partes[0] if kind == "email" else partes[1])
         grant_row = connection.execute(
             "INSERT INTO access_grants (kind, value, active, granted_by) "
             "VALUES (%s, %s, TRUE, %s) "

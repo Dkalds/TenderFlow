@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # _TTLCacheNonceStore
 # ---------------------------------------------------------------------------
@@ -636,6 +638,85 @@ class TestOAuthEmailAllowed:
         settings.OAUTH_ALLOWED_DOMAINS = "other.com"
         with patch("config.settings", settings):
             assert oauth_email_allowed("user@bad.com") is False
+
+    @pytest.mark.parametrize("entorno", ["prod", "staging"])
+    def test_listas_vacias_fuera_de_desarrollo_deniegan(self, entorno):
+        """Vacío significa «mira ``access_grants``», nunca «entra cualquiera».
+
+        Es la garantía que permite arrancar en producción sin lista estática
+        (RFC 242): si esta función devolviera ``True`` aquí, el callback no
+        llegaría a consultar la tabla y el login quedaría abierto.
+        """
+        from shared.auth_core import oauth_email_allowed
+
+        settings = MagicMock()
+        settings.ENV = entorno
+        settings.OAUTH_ALLOWED_EMAILS = ""
+        settings.OAUTH_ALLOWED_DOMAINS = ""
+        with patch("config.settings", settings):
+            assert oauth_email_allowed("anyone@test.com") is False
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            # Lo que va tras el último `@` es un dominio permitido, pero la
+            # dirección no es de ese dominio.
+            "x@evil.com@example.com",
+            "@example.com",
+            # Sin `@` no hay dirección, aunque la cadena coincida con una entrada.
+            "example.com",
+            "persona@",
+            "@",
+            "",
+        ],
+    )
+    def test_lo_que_no_tiene_forma_de_direccion_se_deniega(self, email):
+        from shared.auth_core import oauth_email_allowed
+
+        settings = MagicMock()
+        settings.ENV = "prod"
+        settings.OAUTH_ALLOWED_EMAILS = "example.com,persona@"
+        settings.OAUTH_ALLOWED_DOMAINS = "example.com"
+        with patch("config.settings", settings):
+            assert oauth_email_allowed(email) is False
+
+    @pytest.mark.parametrize(
+        ("entorno", "dominios"),
+        [
+            # Ni el comodín ni el atajo de desarrollo convierten en dirección
+            # algo que no lo es.
+            ("prod", "*"),
+            ("dev", ""),
+        ],
+    )
+    def test_ni_el_comodin_ni_desarrollo_aceptan_una_direccion_mal_formada(self, entorno, dominios):
+        from shared.auth_core import oauth_email_allowed
+
+        settings = MagicMock()
+        settings.ENV = entorno
+        settings.OAUTH_ALLOWED_EMAILS = ""
+        settings.OAUTH_ALLOWED_DOMAINS = dominios
+        with patch("config.settings", settings):
+            assert oauth_email_allowed("x@evil.com@example.com") is False
+            assert oauth_email_allowed("persona@example.com") is True
+
+
+class TestOAuthEmailParts:
+    """Una dirección es exactamente un ``@`` con algo a cada lado."""
+
+    def test_normaliza_y_separa_el_dominio(self):
+        from shared.auth_core import oauth_email_parts
+
+        assert oauth_email_parts("  Ana@Example.COM ") == ("ana@example.com", "example.com")
+
+    @pytest.mark.parametrize(
+        "email",
+        ["x@evil.com@example.com", "example.com", "@example.com", "persona@", "@", "", "   "],
+    )
+    def test_rechaza_lo_que_no_es_una_direccion(self, email):
+        from shared.auth_core import oauth_email_parts
+
+        assert oauth_email_parts(email) is None
 
 
 class TestOAuthEmailIsAdmin:
