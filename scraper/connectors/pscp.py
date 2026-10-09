@@ -2,9 +2,9 @@
 
 La Plataforma de Serveis de Contractació Pública publica su histórico como
 open data en ``analisi.transparenciacatalunya.cat``. Este conector consume el
-dataset vía SoQL (paginación ``$limit``/``$offset`` ordenada por fecha de
-publicación) con filtro incremental ``$where`` y 1 día de solape — el upsert
-idempotente absorbe los duplicados, mismo patrón que ``_since`` en TED.
+dataset vía SoQL, página a página y por cursor ``(:updated_at, :id)`` —sin
+``$offset`` ni solape de días: el porqué está en ``fetch``—, y pide cada página
+con los reintentos compartidos de ``scraper.resilience``.
 
 Regla operativa del RFC 20260611-1: el id de dataset y los nombres de campo
 NO van hardcodeados como verdad absoluta. El dataset se configura por entorno
@@ -44,6 +44,7 @@ from scraper.puerta_tecnologica import MOTIVO_SIN_SENAL as MOTIVO_SIN_SENAL
 from scraper.puerta_tecnologica import SenalTecnologica as SenalTecnologica
 from scraper.puerta_tecnologica import codigos_cpv as codigos_cpv
 from scraper.puerta_tecnologica import senal_tecnologica as senal_tecnologica
+from scraper.resilience import http_retry
 from services.classification import normalizar_estado
 from shared.dates import ANIO_MINIMO_PLAUSIBLE, es_fecha_plausible
 from shared.geo import nuts_to_ccaa
@@ -243,6 +244,46 @@ def _fase_to_estado(fase: str | None) -> str | None:
     return normalizar_estado(fase)
 
 
+@http_retry
+def _pedir_pagina(
+    session: requests.Session,
+    url: str,
+    *,
+    params: dict[str, str],
+    headers: dict[str, str],
+) -> requests.Response:
+    """Una página del dataset, con los reintentos compartidos del scraper.
+
+    La petición no tenía ninguno, y ``fetch`` recorre el dataset página a
+    página: el 2026-09-27 la reingesta completa murió a los 55 minutos y 812.591
+    avisos por **un** «Read timed out» de Socrata (issue #408), y en los dos
+    días siguientes la pasada diaria cayó tres veces más por lo mismo, tapada
+    por el ``continue-on-error`` de su step.
+
+    ``http_retry`` es el de ``fetch_atom_page`` y el de la descarga de
+    documentos: cuatro intentos, con 2, 4 y 8 s de espera entre ellos (más hasta
+    2 s de jitter, tope de 30 s), y solo ante timeouts, errores de conexión,
+    5xx, 408 y 429. Repetir la página es seguro porque la paginación es por
+    cursor: la petición es la misma hasta que la página se ha servido entera.
+    Agotados los intentos sale el error original y ``run_connector`` lo trata
+    como siempre: pasada fallida, con el cursor en el último lote escrito.
+
+    Sin circuito, a propósito: la pasada termina en la primera página que agota
+    sus intentos, así que nunca llegaría a abrirse; y ``pscp_breaker`` es el de
+    los documentos de ``contractaciopublica.cat``, que es otro host.
+    """
+    try:
+        resp = session.get(url, params=params, headers=headers, timeout=_TIMEOUT)
+    except requests.exceptions.ChunkedEncodingError as exc:
+        # La conexión se cortó con el cuerpo a medias. ``requests`` no lo da
+        # como ``ConnectionError``, que es lo que ``http_retry`` sabe reintentar;
+        # se traduce aquí, como hace ``document_fetcher`` con los cortes de red
+        # de su transporte.
+        raise requests.ConnectionError(str(exc)) from exc
+    resp.raise_for_status()
+    return resp
+
+
 class PscpConnector:
     """Implementación del contrato Connector para la API Socrata de la PSCP."""
 
@@ -356,7 +397,8 @@ class PscpConnector:
                 )
             else:
                 where = f"{_CURSOR_FIELD} >= '{last_updated}'"
-            resp = self._session.get(
+            resp = _pedir_pagina(
+                self._session,
                 self._resource_url,
                 params={
                     # Incremental sobre el campo de sistema Socrata: cada fila
@@ -373,9 +415,7 @@ class PscpConnector:
                     "$limit": str(_PAGE_SIZE),
                 },
                 headers=headers,
-                timeout=_TIMEOUT,
             )
-            resp.raise_for_status()
             records = resp.json()
             log.info(
                 "pscp_fetch_page",

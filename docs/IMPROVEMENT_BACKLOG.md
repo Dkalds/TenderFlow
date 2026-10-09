@@ -348,6 +348,23 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `--apply` ejecutado y PSCP reingerida entera (`--desde 2000-01-01`) para
     refrescar las etiquetas desactualizadas; balance y delta de
     `make audit-truth-check` anotados en el RFC, que pasa a `implemented`.
+    - **Estado al 2026-10-09** (issue #408; leído de los logs de Actions, no de
+      la BD): la reingesta del run 36287345654 (2026-09-27, con `apply`) murió
+      a los 55 min y 812.591 avisos por un «Read timed out» de Socrata en una
+      página, que no tenía reintento. Lo escrito no se perdió: el cursor avanza
+      con cada lote y quedó en `2026-07-13T13:26:08.273Z` (la marca de la
+      republicación completa del dataset). La pasada diaria de
+      `scrape-daily.yml`, que no lleva `--desde`, siguió desde ahí —cayendo
+      tres veces más por el mismo timeout— y alcanzó la cabeza del dataset el
+      2026-09-28 17:09 UTC: el recorrido completo está hecho, aunque el último
+      run de `purga-pscp.yml` siga en rojo.
+    - Arreglado el 2026-10-09: la petición de página reintenta con el
+      `http_retry` compartido (`_pedir_pagina` en el conector).
+    - Sin tocar, por si se relanza: `--desde` no reanuda. Ignora el cursor,
+      vuelve a recorrer los ~1,9 M de filas (~2 h) y mientras dura rebobina el
+      cursor de la pasada diaria al punto por el que va; y el step de reingesta
+      solo corre con `apply`, así que relanzarlo repite antes la purga.
+    - Falta lo demás: balance, delta de `make audit-truth-check` y el RFC.
   - Tras el `VACUUM (ANALYZE)`, `pg_relation_size('licitaciones')` anotado aquí.
 - **Files de partida:** [.github/workflows/purga-pscp.yml](../.github/workflows/purga-pscp.yml) (dry-run por defecto; `apply` + `reingerir_desde`), [scripts/purgar_pscp_sin_tecnologia.py](../scripts/purgar_pscp_sin_tecnologia.py), [db/repositories/purga_licitaciones.py](../db/repositories/purga_licitaciones.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py) (`senal_tecnologica`)
 - **Riesgo:** alto — borra ~680.000 filas y sus dependientes. Mitigado: reevalúa con la
