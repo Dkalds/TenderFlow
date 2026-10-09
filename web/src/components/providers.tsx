@@ -14,7 +14,9 @@ import {
   retrasoDeReintento,
   type QueryFeedbackMeta,
 } from "@/lib/query-feedback";
-import { pursuitKeys } from "@/lib/query-keys";
+// Las constantes sueltas y no `pursuitKeys`: este módulo viaja en todas las
+// rutas, `/login` incluida, y el registro entero no hace falta para dos prefijos.
+import { PURSUITS_AGENDA, PURSUITS_RAIZ } from "@/lib/claves-raiz";
 
 /**
  * Consultas que sí se vuelven a pedir al volver a la pestaña.
@@ -33,7 +35,7 @@ import { pursuitKeys } from "@/lib/query-keys";
 const CLAVES_FRESCAS_AL_VOLVER: readonly (readonly unknown[])[] = [
   // La Agenda: plazos que vencen hoy y tareas que el equipo va cerrando. Es la
   // pantalla a la que se vuelve para saber qué toca ahora.
-  pursuitKeys.agenda,
+  PURSUITS_AGENDA,
   // La campana (`NOTIFICATIONS_KEY` de `notification-bell.tsx`): su contador es
   // lo primero que se mira al volver. Su `refetchInterval` se pausa con la
   // pestaña oculta, así que sin esto el número podía llevar cinco minutos viejo.
@@ -41,9 +43,9 @@ const CLAVES_FRESCAS_AL_VOLVER: readonly (readonly unknown[])[] = [
   // Tablero, ficha y tareas de una oportunidad: los mueven varias personas, y
   // el PATCH lleva `expected_version`. Arrastrar una tarjeta sobre un tablero
   // rancio acaba en un 409 y en deshacer el movimiento.
-  [...pursuitKeys.all, "list"],
-  [...pursuitKeys.all, "detail"],
-  [...pursuitKeys.all, "tasks"],
+  [...PURSUITS_RAIZ, "list"],
+  [...PURSUITS_RAIZ, "detail"],
+  [...PURSUITS_RAIZ, "tasks"],
 ];
 
 /**

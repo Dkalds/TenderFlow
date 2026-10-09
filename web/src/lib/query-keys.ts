@@ -41,6 +41,8 @@
  * dos `queryFn` distintas bajo la misma clave es el bug de arriba.
  */
 
+import { PURSUITS_AGENDA, PURSUITS_RAIZ } from "./claves-raiz";
+
 /**
  * Organización de una clave con ámbito, tal y como la devuelve
  * `useActiveOrganizationId`: `number` cuando se sabe cuál, `null` cuando no hay
@@ -61,10 +63,9 @@ type OrganizacionDeClave = number | null | undefined;
 // Sesión y metadatos
 // ---------------------------------------------------------------------------
 
-export const authKeys = {
-  all: ["auth"] as const,
-  me: ["auth", "me"] as const,
-};
+// `authKeys` vive en `claves-raiz.ts` (lo importa `lib/auth.tsx`, que va en
+// todas las rutas) y se reexporta aquí para que el registro siga completo.
+export { authKeys } from "./claves-raiz";
 
 export const metaKeys = {
   all: ["meta"] as const,
@@ -295,7 +296,7 @@ export const searchKeys = {
 // ---------------------------------------------------------------------------
 
 export const pursuitKeys = {
-  all: ["pursuits"] as const,
+  all: PURSUITS_RAIZ,
   list: (filters: object) => ["pursuits", "list", filters] as const,
   detail: (id: string) => ["pursuits", "detail", id] as const,
   metrics: ["pursuits", "metrics"] as const,
@@ -318,7 +319,7 @@ export const pursuitKeys = {
     desde == null && hasta == null
       ? (["pursuits", "metrics", organizationId] as const)
       : (["pursuits", "metrics", organizationId, desde, hasta] as const),
-  agenda: ["pursuits", "agenda"] as const,
+  agenda: PURSUITS_AGENDA,
   /**
    * Contraste ficha × capacidad de una oportunidad
    * (`GET /pursuits/{id}/checklist`, S2.3).
@@ -433,17 +434,9 @@ export const pursuitCommentKeys = {
   thread: (pursuitId: number | string) => ["pursuit-comments", String(pursuitId)] as const,
 };
 
-export const organizationKeys = {
-  all: ["organizations"] as const,
-  members: (organizationId: OrganizacionDeClave) => ["organization-members", organizationId] as const,
-  settings: (organizationId: OrganizacionDeClave) => ["organization-settings", organizationId] as const,
-  /**
-   * Plantilla de tareas por etapa (F4.6). Nace bajo la raíz, no con literal
-   * propio como `members`/`settings`: no hay clientes desplegados que migrar.
-   */
-  plantillaTareas: (organizationId: OrganizacionDeClave) =>
-    ["organizations", "plantilla-tareas", organizationId] as const,
-};
+// `organizationKeys` vive en `claves-raiz.ts`: lo importa `hooks/use-organization`,
+// que entra hasta en `/login`. Se reexporta para que el registro siga completo.
+export { organizationKeys } from "./claves-raiz";
 
 export const perfilKeys = {
   /** Perfil de scoring del usuario (`GET /me/profile`). */
