@@ -163,8 +163,10 @@ los secretos cuando lleven más de 90 días.
 
 ## Protección de endpoints
 
-- Frontend web: rate-limit progresivo (2ⁿ backoff) tras 3 intentos
-  fallidos y sesiones server-side revocables con caducidad **deslizante**
+- Frontend web: bloqueo del login tras 5 intentos fallidos en 5 minutos por
+  par IP + cuenta (`db/rate_limits.py::is_login_locked_out`; responde 429 con
+  `Retry-After` y, si la tabla de límites no responde, bloquea; no hay
+  backoff exponencial) y sesiones server-side revocables con caducidad **deslizante**
   (`db/sessions.py`): cada petición validada vuelve a poner el plazo de
   inactividad en `now + SESSION_IDLE_HOURS` (24 h), sin superar nunca el techo
   absoluto `created_at + SESSION_ABSOLUTE_DAYS` (30 días), pasado el cual la
@@ -198,12 +200,37 @@ por email.
 
 ### Recuperación de contraseña local
 
-`POST /auth/password-reset/request` no revela si existe la cuenta. Un token
-aleatorio se envía en el fragmento `#token=` —no viaja a servidores ni access
-logs— y en Postgres sólo se guarda su SHA-256. Caduca en 30 minutos, se consume
-una vez y la confirmación revoca todas las sesiones activas. Las solicitudes se
-limitan por IP y por hash del email; los tokens usados/expirados se purgan por
-retención.
+`POST /auth/password-reset/request` no revela si existe la cuenta, ni por el
+cuerpo ni por lo que tarda: en línea solo valida y cuenta las cuotas; emitir el
+token, el evento de auditoría y el correo ocurren con la respuesta ya enviada
+(`services/password_reset.py::process_password_reset_request`). El token es
+aleatorio (`secrets.token_urlsafe(32)`) y en Postgres sólo se guarda su
+SHA-256. Caduca en 30 minutos y se consume una vez. Pedir uno nuevo invalida
+los anteriores, y la confirmación —en una sola transacción— invalida además
+cualquier otro pendiente de la cuenta y revoca todas sus sesiones activas. Las
+cuentas solo-OAuth y las desactivadas no reciben token ni pueden consumirlo. La
+contraseña nueva pasa por la misma política que el alta
+(`shared/password_policy.py::check_account_password`), antes de tocar el token:
+un rechazo no gasta el enlace. El segundo factor no se toca: una cuenta con
+TOTP lo sigue pidiendo en el siguiente login.
+
+El token viaja en el fragmento `#token=` del enlace. El navegador no envía el
+fragmento, así que no llega al servidor ni a sus access logs, y la pantalla lo
+saca de la barra de direcciones al cargar. Donde sí puede acabar es en el log
+de la propia API con `EMAIL_BACKEND=console`, que escribe el cuerpo del correo
+en el evento `mailer_console`: el redactor de `observability/logging.py`
+sustituye el valor de `#token=`, pero ese backend no es para producción (el
+validador de arranque no lo impide; ver el backlog). El origen del enlace sale
+de la configuración (`services/app_urls.py`), nunca de la cabecera `Host`.
+
+Cuotas: 5 solicitudes por IP cada 15 minutos y 3 por hash del email cada hora
+—cuentan igual exista o no la cuenta, y al superarlas la respuesta es el mismo
+202—, y 5 confirmaciones por IP cada 15 minutos en un cubo aparte (429 con
+`Retry-After`). Si el limitador falla, se deniega. Los tokens usados/expirados
+se purgan por retención.
+
+Un correo que no sale deja `password_reset_email sent=false` a nivel `warning`,
+con el dominio del destinatario y nunca la dirección ni el token.
 
 ## Auditoría
 
@@ -221,7 +248,7 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | Familia | Eventos | Dónde se escriben |
 |---|---|---|
 | `org.*` | `created`, `deleted`, `settings_updated`, `nifs_updated`, `capabilities_updated`, `member_added`, `member_role_changed`, `member_removed`, `ownership_transferred`, `left`, `invitation_sent`, `invitation_resent`, `invitation_revoked`, `invitation_accepted` | `api/routes/pursuits.py`, `organization_settings.py`, `organizations_capacidad.py` |
-| `auth.*` | `login_success`, `login_failed`, `logout`, `logout_all`, `password_reset_requested`, `password_reset_completed`, `totp_enabled`, `totp_disabled`, `session_revoked` | `api/routes/auth.py`, `api/routes/me.py` |
+| `auth.*` | `login_success`, `login_failed`, `logout`, `logout_all`, `password_reset_requested`, `password_reset_completed`, `totp_enabled`, `totp_disabled`, `session_revoked` | `api/routes/auth.py`, `api/routes/me.py` y `services/password_reset.py` (la solicitud de recuperación, que se registra después de responder) |
 | `api_key.*` | `created`, `rotated`, `revoked` | `api/routes/me.py`; `revoked` lo emite la revocación por Secret Scanning de GitHub (`api/routes/security.py`) |
 | `export.*` | `downloaded`, `calendar_link_created` | `api/routes/exports.py` |
 | `gdpr.*` | `export`, `delete` | `api/routes/me.py` |

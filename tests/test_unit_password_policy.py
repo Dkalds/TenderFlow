@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from shared.password_policy import (
     PasswordCheckResult,
+    check_account_password,
     check_password_strength,
     check_secret_strength,
 )
@@ -107,6 +110,40 @@ def test_secret_with_weak_pattern():
     result = check_secret_strength("deloitte" * 10, min_length=32)
     assert not result.is_strong
     assert any("patrón débil" in i for i in result.issues)
+
+
+# ---------------------------------------------------------------------------
+# check_account_password — la política de las cuentas locales
+# ---------------------------------------------------------------------------
+
+
+def test_account_password_no_exige_caracter_especial():
+    """Diez caracteres con mayúsculas, minúsculas y un dígito bastan."""
+    result = check_account_password("Registro2026OK")
+    assert result.is_strong, result.summary
+
+
+@pytest.mark.parametrize(
+    ("password", "motivo"),
+    [
+        ("Corta2026", "demasiado corto"),
+        ("sinmayusculas2026", "mayúsculas"),
+        ("SINMINUSCULAS2026", "minúsculas"),
+        ("SinNingunDigito", "dígito"),
+        ("MiPassword2026", "patrón débil"),
+    ],
+)
+def test_account_password_rechaza_lo_que_el_alta_ya_rechazaba(password: str, motivo: str):
+    result = check_account_password(password)
+    assert not result.is_strong
+    assert motivo in result.summary
+
+
+def test_account_password_nombra_el_campo_como_lo_lee_el_usuario():
+    """El mensaje llega tal cual a la pantalla: dice «contraseña», no «password»."""
+    result = check_account_password("corta")
+    assert result.issues
+    assert all(issue.startswith("contraseña ") for issue in result.issues)
 
 
 # ---------------------------------------------------------------------------

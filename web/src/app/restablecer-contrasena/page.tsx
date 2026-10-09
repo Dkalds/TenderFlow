@@ -29,6 +29,28 @@ import { CampoContrasena } from "@/app/login/_components/campo-contrasena";
 
 const GENERIC_MESSAGE = "Si ese correo entra en TenderFlow con contraseña, te llegará un enlace para cambiarla.";
 
+/**
+ * Quita el fragmento de la URL sin navegar, y de forma que Next se entere.
+ *
+ * El router de Next guarda su copia de la URL y la reescribe en la barra cada
+ * vez que su estado cambia (un `router.refresh()` basta): si no se entera de
+ * que el fragmento se quitó, el token vuelve a la barra de direcciones. Se
+ * entera por su parche de `replaceState`, con dos condiciones, las mismas que
+ * documenta `lib/url-superficial.ts`:
+ *
+ * - **`null` como estado.** Con `window.history.state` —que ya lleva la marca
+ *   interna de Next— el parche deja pasar la llamada sin sincronizar nada.
+ * - **Después de los efectos de montaje.** El parche lo instala un efecto del
+ *   router, y los efectos de un hijo corren antes que los de su ancestro: al
+ *   montar, esta página llegaría antes que el parche. De ahí el microtask.
+ */
+function quitarFragmento() {
+  queueMicrotask(() => {
+    const { pathname, search } = window.location;
+    window.history.replaceState(null, "", pathname + search);
+  });
+}
+
 export default function PasswordResetPage() {
   return <PasswordResetContent />;
 }
@@ -45,9 +67,28 @@ function PasswordResetContent() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    setToken(fragment.get("token")); // eslint-disable-line react-hooks/set-state-in-effect
-    setReady(true);
+    // El token se guarda en estado y sale de la URL en cuanto se lee. Antes se
+    // quitaba solo tras cambiar la contraseña: mientras tanto seguía a la vista
+    // en la barra de direcciones y en la entrada del historial de la pestaña.
+    function leerFragmento() {
+      const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const recibido = fragment.get("token");
+      if (recibido) {
+        setToken(recibido);
+        // Un enlace que llega con la pantalla ya abierta —pegado en la pestaña
+        // donde se pidió— sustituye a lo que hubiera: el «te llegará un enlace»
+        // o el error de un intento anterior.
+        setMessage(null);
+        setError(null);
+        quitarFragmento();
+      }
+      setReady(true);
+    }
+    leerFragmento();
+    // Pegar el enlace en esta misma pestaña solo cambia el fragmento: el
+    // navegador no recarga la página, avisa con `hashchange`.
+    window.addEventListener("hashchange", leerFragmento);
+    return () => window.removeEventListener("hashchange", leerFragmento);
   }, []);
 
   async function requestReset(event: React.FormEvent) {
@@ -81,7 +122,6 @@ function PasswordResetContent() {
       // message`, que es lo que lee el `catch` de abajo.
       await apiMutate("POST", "/api/v1/auth/password-reset/confirm", { token, password });
       setMessage("Contraseña actualizada. Ya puedes iniciar sesión.");
-      window.history.replaceState(window.history.state, "", window.location.pathname);
       setPassword("");
       setConfirmation("");
     } catch (caught) {

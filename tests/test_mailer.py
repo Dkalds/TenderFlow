@@ -415,6 +415,39 @@ def test_console_escribe_al_log_sin_la_direccion_completa(ajustes) -> None:
     assert "ana@example.com" not in str(kwargs)
 
 
+def test_console_no_deja_en_el_log_el_token_del_enlace_de_recuperacion(
+    ajustes, monkeypatch
+) -> None:
+    """El correo de recuperación real, por el backend ``console`` y por el redactor.
+
+    ``console`` vuelca el cuerpo en texto, y el enlace lleva el token en el
+    fragmento (``#token=``), que el redactor no miraba: con este backend el
+    token quedaba en claro en el log. Se comprueba sobre la línea que el
+    backend escribe de verdad, pasada por el procesador que la redacta.
+    """
+    from observability.logging import _redact_secrets
+    from services import app_urls
+    from services.password_reset import send_password_reset_email
+
+    ajustes(EMAIL_BACKEND="console")
+    monkeypatch.setattr(app_urls.settings, "CORS_ALLOWED_ORIGINS", "https://app.example")
+    token = "tok_-" + "x" * 38
+    with patch("observability.mailer.log") as log:
+        assert send_password_reset_email("ana@example.com", token) is True
+
+    evento, campos = log.info.call_args.args[0], log.info.call_args.kwargs
+    assert evento == "mailer_console"
+    # Premisa: lo que el backend entrega al log sí lleva el enlace entero.
+    assert f"https://app.example/restablecer-contrasena#token={token}" in campos["texto"]
+
+    linea = _redact_secrets(None, "info", {"event": evento, **campos})
+
+    assert token not in json.dumps(linea, default=str)
+    assert "https://app.example/restablecer-contrasena#token=***REDACTED***" in linea["texto"]
+    # El resto del correo se sigue pudiendo leer: para eso sirve este backend.
+    assert "El enlace caduca en 30 minutos" in linea["texto"]
+
+
 # ── Settings: obligatoriedad condicional en producción ───────────────────────
 
 

@@ -153,6 +153,39 @@ def test_redact_value_exact_match_short_circuits(capsys, monkeypatch):
     assert data["raw_value"] == "***REDACTED***"
 
 
+# Estos dos van aquí, y no junto al test de `?token=`, a propósito: más arriba
+# hay líneas registradas por número en `.secrets.baseline`, y moverlas hace
+# fallar el hook de detect-secrets.
+def test_redact_token_en_el_fragmento_de_un_enlace(capsys):
+    """El enlace de recuperación lleva el token tras ``#``, no en la query."""
+    configure_logging(level="INFO", json_logs=True)
+    log = get_logger("tests.redact")
+    token = "tok_-" + "x" * 38
+    log.info(
+        "mailer_console",
+        texto=f"Abre el enlace:\n\nhttps://app.example/restablecer-contrasena#token={token}\n\nGracias.",
+        callback=f"https://app.example/cb#access_token={token}&state=abc",
+    )
+    out = capsys.readouterr().err + capsys.readouterr().out
+    data = _find_event(out, "mailer_console")
+    assert token not in data["texto"]
+    assert "https://app.example/restablecer-contrasena#token=***REDACTED***" in data["texto"]
+    # Lo que rodea al enlace se conserva: el redactor quita el secreto, no la línea.
+    assert data["texto"].startswith("Abre el enlace:")
+    assert data["texto"].endswith("Gracias.")
+    assert token not in data["callback"]
+    assert data["callback"].endswith("&state=abc")
+
+
+def test_un_fragmento_sin_secreto_no_se_toca(capsys):
+    configure_logging(level="INFO", json_logs=True)
+    log = get_logger("tests.redact")
+    log.info("navegacion", url="https://app.example/docs#seccion=2&page=3")
+    out = capsys.readouterr().err + capsys.readouterr().out
+    data = _find_event(out, "navegacion")
+    assert data["url"] == "https://app.example/docs#seccion=2&page=3"
+
+
 # ── Redacción de DSN Postgres/Supabase ───────────────────────────────────
 
 

@@ -128,10 +128,17 @@ se trata como rechazo aunque el HTTP sea 200.
 ### 2.4 `console`
 
 No envía nada: escribe el correo entero (dominio del destinatario, asunto,
-encabezados y cuerpo en texto) al log estructurado. Para desarrollo —ver el
-enlace de un reset o de una invitación sin buzón— y para tests. **Nunca en
+encabezados y cuerpo en texto) al log estructurado. Para desarrollo —leer un
+correo o seguir el enlace de una invitación sin buzón— y para tests. **Nunca en
 producción**: el validador no lo impide porque un entorno de staging sin salida
 de correo es un uso legítimo.
+
+El enlace de recuperación de contraseña es la excepción: sale en el log con el
+token sustituido (`…/restablecer-contrasena#token=***REDACTED***`). El redactor
+de `observability/logging.py` no distingue entornos, y una credencial que
+cambia la contraseña de una cuenta no puede quedar en un log por haber elegido
+este backend. Para recorrer ese flujo en local hace falta un buzón de verdad
+(`smtp` contra un servidor de pruebas).
 
 ### 2.5 Vuelta atrás
 

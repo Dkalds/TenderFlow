@@ -55,7 +55,6 @@ from shared.audit_events import (
     AUTH_LOGIN_SUCCESS,
     AUTH_LOGOUT,
     AUTH_PASSWORD_RESET_COMPLETED,
-    AUTH_PASSWORD_RESET_REQUESTED,
     AUTH_TOTP_DISABLED,
     AUTH_TOTP_ENABLED,
 )
@@ -75,7 +74,7 @@ from shared.auth_core import (
 from shared.csrf import csrf_token_valido, generate_csrf_token
 from shared.dto import DetailMessage, StatusOk
 from shared.identity import fetch_discovery_document, user_key_from_email, verify_oidc_id_token
-from shared.password_policy import check_password_strength
+from shared.password_policy import check_account_password
 
 log = get_logger(__name__)
 
@@ -132,8 +131,30 @@ def _activar_invitaciones(user_id: int, email: str | None) -> None:
     accept_invitations_for_email(user_id, email)
 
 
-async def _password_reset_rate_allowed(request: Request, email: str | None = None) -> bool:
-    """Cuotas independientes por IP y sujeto; un fallo del limiter deniega."""
+#: Cuota por IP de la recuperación de contraseña: 5 intentos cada 15 minutos.
+#: Pedir el enlace y confirmarlo la aplican cada uno sobre **su** cubo. Mientras
+#: compartieron uno, cada solicitud gastaba un intento de confirmar: quien pedía
+#: el enlace un par de veces llegaba al formulario con la cuota a medias, y
+#: cualquiera detrás de la misma IP podía agotársela a los demás solo pidiendo.
+_RESET_IP_MAX_CALLS = 5
+_RESET_IP_WINDOW_SECONDS = 900
+_RESET_REQUEST_BUCKET = "password-reset"
+_RESET_CONFIRM_BUCKET = "password-reset:confirm"
+
+
+async def _password_reset_rate_allowed(
+    request: Request,
+    email: str | None = None,
+    *,
+    bucket: str = _RESET_REQUEST_BUCKET,
+) -> bool:
+    """Cuotas independientes por IP y sujeto; un fallo del limiter deniega.
+
+    ``bucket`` separa los pasos del flujo: cada uno cuenta sus intentos por IP
+    aparte, con el mismo tope y la misma ventana. El cubo de sujeto solo existe
+    cuando hay correo —al pedir el enlace— y su clave es un hash, no la
+    dirección: las claves acaban en ``rate_limits`` o en Redis.
+    """
     from api.middleware import _trusted_client_ip
     from services.rate_limiting import get_rate_limiter
 
@@ -143,14 +164,14 @@ async def _password_reset_rate_allowed(request: Request, email: str | None = Non
     def _check() -> bool:
         limiter = get_rate_limiter()
         ip_allowed = limiter.check(
-            f"password-reset:ip:{client_ip}", max_calls=5, window_seconds=900
+            f"{bucket}:ip:{client_ip}",
+            max_calls=_RESET_IP_MAX_CALLS,
+            window_seconds=_RESET_IP_WINDOW_SECONDS,
         )
         if not ip_allowed:
             return False
         if email:
-            return limiter.check(
-                f"password-reset:subject:{email_key}", max_calls=3, window_seconds=3600
-            )
+            return limiter.check(f"{bucket}:subject:{email_key}", max_calls=3, window_seconds=3600)
         return True
 
     try:
@@ -532,12 +553,7 @@ async def register(body: RegisterRequest, response: Response, request: Request) 
             detail="Self-service registration is disabled. Contact an administrator.",
         )
 
-    check = check_password_strength(
-        body.password,
-        min_length=10,
-        require_special=False,
-        label="contraseña",
-    )
+    check = check_account_password(body.password)
     if not check.is_strong:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=check.summary)
 
@@ -594,23 +610,13 @@ async def request_password_reset(
     if not await _password_reset_rate_allowed(request, email):
         return DetailMessage(detail=_RESET_REQUEST_RESPONSE)
 
-    from services.password_reset import issue_password_reset, send_password_reset_email
+    from services.password_reset import process_password_reset_request
 
-    try:
-        created, token = await run_db(issue_password_reset, email)
-    except Exception:
-        log.exception("password_reset_request_failed")
-        return DetailMessage(detail=_RESET_REQUEST_RESPONSE)
-    if created and token is not None:
-        background_tasks.add_task(send_password_reset_email, email, token)
-    # La respuesta es indistinguible; el rastro no: dice si se emitió un
-    # enlace, sin el correo ni el id (para una cuenta que no existe no hay).
-    await run_db(
-        log_event,
-        event_type=AUTH_PASSWORD_RESET_REQUESTED,
-        outcome="success" if created else "failure",
-        detail={"issued": bool(created)},
-    )
+    # Hasta aquí —validar y contar las cuotas— el camino pesa lo mismo exista o
+    # no la cuenta. Lo que sí depende de ella (emitir el token, el rastro de
+    # auditoría, el correo) se hace con la respuesta ya enviada, para que
+    # tampoco el tiempo de respuesta distinga una cuenta de otra.
+    background_tasks.add_task(process_password_reset_request, email)
     return DetailMessage(detail=_RESET_REQUEST_RESPONSE)
 
 
@@ -620,14 +626,19 @@ async def confirm_password_reset(
     request: Request,
 ) -> StatusOk:
     """Consume un token una sola vez, cambia la contraseña y revoca sesiones."""
-    if not await _password_reset_rate_allowed(request):
-        raise HTTPException(status_code=429, detail="Demasiados intentos. Inténtalo más tarde.")
+    if not await _password_reset_rate_allowed(request, bucket=_RESET_CONFIRM_BUCKET):
+        # `Retry-After` con la ventana entera, igual que el 429 del
+        # `RateLimitMiddleware`: el limitador responde sí o no, no cuánto
+        # falta, y decir de más es el lado seguro.
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Inténtalo más tarde.",
+            headers={"Retry-After": str(_RESET_IP_WINDOW_SECONDS)},
+        )
 
-    password_check = check_password_strength(
-        body.password,
-        min_length=10,
-        label="password",
-    )
+    # La misma política que el alta, por la misma función. Va antes de tocar el
+    # token: una contraseña rechazada no gasta el enlace.
+    password_check = check_account_password(body.password)
     if not password_check.is_strong:
         raise HTTPException(status_code=400, detail=password_check.summary)
 

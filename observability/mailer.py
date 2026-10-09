@@ -618,8 +618,11 @@ def _enviar_console(prep: _Preparado) -> ResultadoEnvio:
     """No envía nada: deja el correo entero en el log. Para desarrollo y tests.
 
     Al log va el dominio del destinatario y no la dirección, igual que en el
-    resto del proyecto; el cuerpo en texto sí, porque ver el enlace de un reset
-    o de una invitación es justamente para lo que sirve este backend.
+    resto del proyecto; el cuerpo en texto sí, porque leer el correo sin buzón
+    es justamente para lo que sirve este backend. Lo que no llega al log es el
+    token de un enlace: el redactor de ``observability/logging.py`` sustituye
+    el valor de ``?token=``, ``&token=`` y ``#token=``, así que del enlace de
+    recuperación de contraseña se ve la forma y no la credencial.
     """
     log.info(
         "mailer_console",
