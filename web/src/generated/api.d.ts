@@ -7192,6 +7192,8 @@ export interface components {
          * @description Combined competitor response.
          */
         CompetitorResult: {
+            /** Cobertura Ofertas Pct */
+            cobertura_ofertas_pct?: number | null;
             /** Competitors */
             competitors?: components["schemas"]["CompetitorEntry"][];
             /** Estacionalidad */
