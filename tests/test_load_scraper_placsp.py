@@ -1,32 +1,59 @@
-"""Load tests for scraper PLACSP: XML parsing + bulk upsert performance."""
+"""Tests de carga del scraper de PLACSP: un feed grande y un upsert masivo.
+
+Ninguno mira el reloj. Los dos medían rendimiento con ``time.perf_counter()``
+contra un suelo absoluto (10 000 entradas/s y 200 licitaciones/s), y eso mide el
+runner: en CI corren dentro del check requerido, que no filtra por marker. Lo
+que protegían se comprueba ahora por su causa, que es determinista.
+"""
 
 from __future__ import annotations
 
-import time
-import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 
 import pytest
+
+from scraper.codice_parser import NS, parse_atom_bytes
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _build_simple_atom(n: int) -> bytes:
-    """Minimal ATOM-like XML with n entries for parsing benchmarks."""
-    entries = []
-    for i in range(n):
-        entries.append(
-            f"  <entry><id>id-{i}</id><title>Test {i}</title>"
-            f"<updated>2026-01-15T10:00:00Z</updated></entry>"
-        )
-    body = "\n".join(entries)
+def _entrada(i: int) -> str:
+    """Una ``<entry>`` CODICE con los datos propios de la entrada ``i``."""
+    expediente = f"CARGA-{i:05d}"
     return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<feed xmlns="http://www.w3.org/2005/Atom">\n'
-        f"{body}\n"
-        "</feed>"
-    ).encode()
+        "<entry>"
+        f"<id>https://example.com/{expediente}</id>"
+        f"<title>Mantenimiento SAP ERP {i}</title>"
+        "<updated>2026-01-15T10:00:00Z</updated>"
+        "<cacext:ContractFolderStatus>"
+        f"<cbc:ContractFolderID>{expediente}</cbc:ContractFolderID>"
+        "<cacext:LocatedContractingParty><cac:Party><cac:PartyName>"
+        f"<cbc:Name>Organismo {i}</cbc:Name>"
+        "</cac:PartyName></cac:Party></cacext:LocatedContractingParty>"
+        "<cac:ProcurementProject>"
+        f"<cbc:Name>Mantenimiento SAP ERP {i}</cbc:Name>"
+        "<cac:RequiredCommodityClassification>"
+        "<cbc:ItemClassificationCode>72267100</cbc:ItemClassificationCode>"
+        "</cac:RequiredCommodityClassification>"
+        "<cac:BudgetAmount>"
+        f'<cbc:TaxExclusiveAmount currencyID="EUR">{100_000 + i}</cbc:TaxExclusiveAmount>'
+        "</cac:BudgetAmount>"
+        "</cac:ProcurementProject>"
+        "</cacext:ContractFolderStatus>"
+        "</entry>"
+    )
+
+
+def _feed(n: int) -> bytes:
+    """Feed ATOM de ``n`` entradas, con los namespaces del propio parser."""
+    espacios = " ".join(
+        f'xmlns="{uri}"' if prefijo == "atom" else f'xmlns:{prefijo}="{uri}"'
+        for prefijo, uri in NS.items()
+    )
+    entradas = "".join(_entrada(i) for i in range(n))
+    return f'<?xml version="1.0" encoding="UTF-8"?><feed {espacios}>{entradas}</feed>'.encode()
 
 
 # ---------------------------------------------------------------------------
@@ -34,39 +61,75 @@ def _build_simple_atom(n: int) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-class TestXmlParsingThroughput:
-    """Benchmark: parse N entries from synthetic ATOM XML."""
+class TestFeedGrande:
+    """Un feed de N entradas sale entero, y cada licitación con SUS datos.
+
+    Pasa por ``parse_atom_bytes``, el parser de verdad. La versión anterior
+    cronometraba ``Element.find`` de la librería estándar sobre un feed de
+    juguete: no ejercía código del proyecto, así que su suelo de entradas por
+    segundo solo medía el runner.
+
+    Comparar cada licitación con su entrada es lo que vigila el rendimiento sin
+    reloj. El parseo se vuelve cuadrático cuando un XPath deja de ser relativo a
+    la entrada y recorre el documento entero, y ese mismo fallo le da a todas
+    las licitaciones los datos de la primera.
+    """
 
     @pytest.mark.parametrize("n", [100, 500, 1000])
-    def test_parse_throughput(self, n: int) -> None:
-        xml_bytes = _build_simple_atom(n)
-        ns = {"atom": "http://www.w3.org/2005/Atom"}
+    def test_un_feed_de_n_entradas_sale_entero_y_cada_una_con_sus_datos(self, n: int) -> None:
+        licitaciones = [lic for lic, _adjudicaciones in parse_atom_bytes(_feed(n))]
 
-        root = ET.fromstring(xml_bytes)  # noqa: S314 - synthetic trusted XML built in-test
-        entries = root.findall("atom:entry", ns)
-        assert len(entries) == n
-
-        t0 = time.perf_counter()
-        parsed = 0
-        for entry in entries:
-            uid_el = entry.find("atom:id", ns)
-            title_el = entry.find("atom:title", ns)
-            if uid_el is not None and title_el is not None:
-                parsed += 1
-        elapsed = time.perf_counter() - t0
-
-        assert parsed == n
-        throughput = n / elapsed if elapsed > 0 else float("inf")
-        assert throughput > 10_000, f"Parsing too slow: {throughput:.0f} entries/sec"
+        assert [
+            (lic.id_externo, lic.titulo, lic.organo_contratacion, lic.importe)
+            for lic in licitaciones
+        ] == [
+            (f"CARGA-{i:05d}", f"Mantenimiento SAP ERP {i}", f"Organismo {i}", 100_000.0 + i)
+            for i in range(n)
+        ]
 
 
-class TestBulkUpsertPerformance:
-    """Benchmark: bulk upsert of synthetic licitaciones."""
+class TestUpsertMasivo:
+    """Escribir N licitaciones cuesta un puñado de viajes a la BD, no uno por fila.
+
+    Es lo que decide el rendimiento del upsert contra una BD remota (ver el
+    comentario del ``executemany`` en ``upsert_licitaciones``), y se cuenta en
+    vez de cronometrarse. Hoy son tres sentencias para cualquier N de hasta 500:
+    las existentes, el catálogo de las sombras y el ``executemany``. El umbral es
+    holgado a propósito, como el de ``test_ingesta_no_hace_un_round_trip_por_fila``:
+    solo salta si vuelve el patrón fila a fila.
+
+    El suelo de 200 licitaciones/s que había aquí no veía esa regresión: medido
+    contra un Postgres local, escribir fila a fila seguía por encima de 1 500.
+    """
 
     @pytest.mark.parametrize("n", [100, 500])
-    def test_upsert_throughput(self, n: int, tmp_db) -> None:
+    def test_escribir_n_licitaciones_no_cuesta_un_viaje_por_fila(
+        self, n: int, tmp_db, monkeypatch
+    ) -> None:
+        import db.upsert as up
         from db.database import Licitacion
-        from db.upsert import upsert_licitaciones
+
+        viajes: list[str] = []
+        conectar_de_verdad = up.connect
+
+        class _Contando:
+            def __init__(self, conn) -> None:
+                self._conn = conn
+
+            def execute(self, sql, *args):
+                viajes.append(sql)
+                return self._conn.execute(sql, *args)
+
+            def executemany(self, sql, seq):
+                viajes.append(sql)
+                return self._conn.executemany(sql, seq)
+
+        @contextmanager
+        def contando():
+            with conectar_de_verdad() as conn:
+                yield _Contando(conn)
+
+        monkeypatch.setattr(up, "connect", contando)
 
         lics = [
             Licitacion(
@@ -82,10 +145,10 @@ class TestBulkUpsertPerformance:
             for i in range(n)
         ]
 
-        t0 = time.perf_counter()
-        inserted, updated = upsert_licitaciones(lics)
-        elapsed = time.perf_counter() - t0
+        nuevas, actualizadas = up.upsert_licitaciones(lics)
 
-        assert inserted + updated == n
-        throughput = n / elapsed if elapsed > 0 else float("inf")
-        assert throughput > 200, f"Upsert too slow: {throughput:.0f} lic/s"
+        assert (nuevas, actualizadas) == (n, 0)
+        assert len(viajes) < n / 10, (
+            f"{len(viajes)} viajes para {n} filas: el upsert volvió a escribir fila a fila"
+        )
+        assert up.count_licitaciones() == n
