@@ -61,10 +61,10 @@ export default function AgendaView() {
       </div>
 
       <RetirarNoPresentada
-        item={agenda.porRetirar}
+        items={agenda.porRetirar}
         retirando={agenda.retirando}
         onCancelar={agenda.cancelarRetirada}
-        onConfirmar={agenda.confirmarRetirada}
+        onConfirmar={(seleccion) => void agenda.confirmarRetirada(seleccion)}
       />
     </div>
   );

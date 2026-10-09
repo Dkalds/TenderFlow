@@ -136,6 +136,23 @@ def hora_local_de_plazo(valor: object) -> str | None:
     return local.strftime("%H:%M")
 
 
+def hoy_peninsular(ahora: datetime | None = None) -> date:
+    """El día de hoy en la península, que es en el que se cuenta un plazo.
+
+    Los plazos de presentación son fechas peninsulares —las publica el órgano
+    en su hora— y «faltan 3 días» se lee contra el calendario de quien los
+    mira. Con ``datetime.now(UTC).date()`` el día cambiaba a las 02:00 de
+    verano (01:00 en invierno): hasta entonces el plazo de hoy salía como «1 d».
+
+    ``ahora`` existe para poder fijar el reloj en un test; sin tz se toma como
+    UTC, igual que el resto de este módulo.
+    """
+    momento = ahora if ahora is not None else datetime.now(UTC)
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=UTC)
+    return momento.astimezone(_MADRID_TZ).date()
+
+
 def month_start(series: pd.Series) -> pd.Series:
     """Return timezone-naive month starts without pandas timezone warnings."""
     values = pd.to_datetime(series, errors="coerce", utc=True)

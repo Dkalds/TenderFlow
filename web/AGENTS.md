@@ -104,3 +104,14 @@ en Resumen.
 Los providers, el `Toaster` y el nonce de la CSP de las tres superficies con
 sesión (dashboard, login y restablecer contraseña) se montan en
 `web/src/components/layout/superficie-privada.tsx`; ningún layout los monta a mano.
+La excepción es `TooltipProvider`, que monta solo el layout del dashboard: es la
+única superficie que pinta tooltips, y en la pila común cargaba Radix Tooltip en
+el First Load de las otras dos.
+
+Lo que importa la pantalla de login viaja entero: un módulo de `web/src/` entra
+completo en el bundle de quien use cualquiera de sus exports (medido: Turbopack
+no recorta los que no se usan). Por eso lo que esa pantalla necesita de un
+módulo compartido vive en uno propio y pequeño
+(`web/src/lib/claves-raiz.ts`, `web/src/lib/organization-store.ts`,
+`web/src/lib/forms/esquemas-acceso.ts`), y su techo en `web/bundle-budget.json`
+es el que avisa cuando alguien vuelve a colgarle uno grande.

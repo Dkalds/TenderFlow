@@ -163,7 +163,10 @@ paneles desaparecían de golpe al cerrarse.
 ## Tooltip
 
 `components/ui/tooltip.tsx` envuelve `@radix-ui/react-tooltip`.
-`TooltipProvider` está montado una vez en `components/providers.tsx` con
+`TooltipProvider` está montado una vez en `app/(dashboard)/layout.tsx` —no en
+`components/providers.tsx`, que viaja también en `/login` y
+`/restablecer-contrasena`, donde no hay tooltips y Radix Tooltip pesaba ~50 KB
+de First Load— con
 `delayDuration={300}` + `skipDelayDuration={300}` — la regla exacta de la
 skill: el primer tooltip de un grupo espera el delay completo (evita
 activación accidental al mover el puntero por una toolbar), pero los
@@ -172,8 +175,8 @@ siguientes abren instantáneos mientras el puntero se mantenga cerca
 transición, tal como pide la skill).
 
 Cualquier componente que use `<Tooltip>` necesita un ancestro
-`TooltipProvider` — si un test renderiza el componente de forma aislada
-(fuera del árbol de `Providers`), hay que envolverlo explícitamente (ver
+`TooltipProvider` — fuera del dashboard no lo hay, y si un test renderiza el
+componente de forma aislada hay que envolverlo explícitamente (ver
 `empresas/__tests__/maestro-list.test.tsx` o
 `mercado/_components/__tests__/renovaciones-view.test.tsx`).
 

@@ -244,3 +244,69 @@ def test_las_tareas_sin_fecha_van_al_final(escenario: _Escenario) -> None:
 
     assert int(ordenadas[-1]["tarea_id"]) == sin_fecha
     assert ordenadas[-1]["tarea_vence"] is None
+
+
+# ── Lo que la fila sabe de su expediente ──────────────────────────────────
+
+
+def _adjudicar(licitacion_id: str, *nombres: str) -> None:
+    from db.database import connect
+
+    with connect() as conn:
+        for nombre in nombres:
+            conn.execute(
+                "INSERT INTO adjudicaciones (licitacion_id, nombre, fecha_extraccion) "
+                "VALUES (%s, %s, %s)",
+                (licitacion_id, nombre, "2026-09-20T10:00:00+00:00"),
+            )
+
+
+def test_la_fila_trae_el_estado_y_los_adjudicatarios_de_su_expediente(
+    escenario: _Escenario,
+) -> None:
+    """Es lo que saca del tramo «Sin fecha» a una oportunidad ya adjudicada.
+
+    La agenda miraba solo la oportunidad: un expediente resuelto hacía años
+    seguía pintándose como trabajo pendiente. El estado y los adjudicatarios
+    salen de la misma consulta, sin una ida a la base por fila.
+    """
+    from db.database import connect
+
+    with connect() as conn:
+        conn.execute("UPDATE licitaciones SET estado = 'RES' WHERE id_externo = %s", (_SAP,))
+    # Un mismo adjudicatario en dos filas (dos lotes, dos importes) sale una vez.
+    _adjudicar(_SAP, "Indra", "Accenture", "Indra")
+
+    filas, _truncado = PursuitRepository().agenda_rows(escenario.organizacion)
+    por_expediente = {str(fila["licitacion_id"]): fila for fila in filas}
+
+    assert por_expediente[_SAP]["tender_estado"] == "RES"
+    assert por_expediente[_SAP]["adjudicatarios"] == "Accenture, Indra"
+    # Sin estado y sin adjudicación no se inventa ninguno de los dos.
+    assert por_expediente[_MULTI]["tender_estado"] is None
+    assert por_expediente[_MULTI]["adjudicatarios"] is None
+
+
+def test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote(
+    escenario: _Escenario,
+) -> None:
+    """Con lote, quién se llevó **otro** lote no dice nada del suyo.
+
+    Las filas de ``adjudicaciones`` no dicen de qué lote son, así que para la
+    oportunidad de un lote no se afirma ningún adjudicatario: decir «adjudicada
+    a Indra» de un lote que sigue abierto la sacaría de la semana.
+    """
+    from db.database import connect
+
+    with connect() as conn:
+        conn.execute(
+            "UPDATE pursuits SET lote_numero = '2' "
+            "WHERE organization_id = %s AND licitacion_id = %s",
+            (escenario.organizacion, _SAP),
+        )
+    _adjudicar(_SAP, "Indra")
+
+    filas, _truncado = PursuitRepository().agenda_rows(escenario.organizacion)
+    [fila] = [f for f in filas if str(f["licitacion_id"]) == _SAP]
+
+    assert fila["adjudicatarios"] is None

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import functools
+import json
+
 import pytest
+import requests
 
 from scraper.connectors.base import RawNotice
 from scraper.connectors.pscp import PscpConnector, _fase_to_estado, _field, _number
@@ -625,3 +629,297 @@ def test_cada_keyword_ambigua_existe_en_la_semilla() -> None:
 
     semilla = {kw.casefold() for kws in TECHNOLOGY_KEYWORDS.values() for kw in kws}
     assert not KEYWORDS_AMBIGUAS - semilla
+
+
+# ── Reintento por página (issue #408) ───────────────────────────────────────
+#
+# La petición de página no tenía reintento a ningún nivel. El 2026-09-27 la
+# reingesta completa de `purga-pscp.yml` murió a los 55 minutos y 812.591 avisos
+# por UN «Read timed out» de Socrata, y en los dos días siguientes la pasada
+# diaria cayó tres veces más por lo mismo, tapada por su `continue-on-error`.
+
+#: El mensaje literal del issue: el de urllib3, que `requests` no retoca.
+_READ_TIMEOUT = (
+    "HTTPSConnectionPool(host='analisi.transparenciacatalunya.cat', port=443): "
+    "Read timed out. (read timeout=60)"
+)
+#: La republicación completa del dataset dejó ~1,8 M de filas con esta misma
+#: marca: el recorrido avanza por `:id`, que es donde un reintento mal hecho
+#: perdería o repetiría filas.
+_MARCA = "2026-07-13T13:26:08.273Z"
+
+
+def _fila(expediente: str) -> dict:
+    """Una fila que pasa la puerta, con la marca y el id que ordenan el recorrido."""
+    return dict(
+        _pscp_record(),
+        codi_expedient=expediente,
+        **{":updated_at": _MARCA, ":id": f"row-{expediente.lower()}"},
+    )
+
+
+def _cursor_en(expediente: str) -> dict:
+    return {"last_seen_updated": _MARCA, "last_entry_id": f"row-{expediente.lower()}"}
+
+
+def _respuesta(status: int, filas: list | None = None) -> requests.Response:
+    """Un ``requests.Response`` de verdad sobre un cuerpo enlatado.
+
+    Su ``raise_for_status`` y su ``json`` son los reales: lo que se clasifica
+    como transitorio es el ``HTTPError`` que produce ``requests``, no uno
+    fabricado aquí con la forma que le convenga al test.
+    """
+    respuesta = requests.Response()
+    respuesta.status_code = status
+    respuesta.url = "https://ejemplo.cat/resource/abcd-1234.json"
+    respuesta._content = json.dumps(filas or []).encode()
+    return respuesta
+
+
+class _SesionConGuion:
+    """Contesta cada petición con el siguiente paso del guion.
+
+    Un paso es una página (lista de filas), un estado HTTP o la excepción con
+    la que ``requests`` se queda sin respuesta. Agotado el guion contesta
+    ``siempre``; sin él, una petición de más es un fallo del test.
+    """
+
+    def __init__(self, *guion, siempre=None):
+        self._guion = guion
+        self._siempre = siempre
+        self.calls: list[dict] = []
+
+    def get(self, url, *, params, headers, timeout):
+        n = len(self.calls)
+        self.calls.append(params)
+        if n < len(self._guion):
+            paso = self._guion[n]
+        elif self._siempre is not None:
+            paso = self._siempre
+        else:
+            raise AssertionError(f"petición {n + 1} fuera del guion: {params['$where']}")
+        if isinstance(paso, BaseException):
+            raise paso
+        if isinstance(paso, int):
+            return _respuesta(paso)
+        return _respuesta(200, paso)
+
+
+@pytest.fixture()
+def esperas(monkeypatch):
+    """Páginas de dos filas y ninguna espera real; devuelve las que se habrían dormido.
+
+    tenacity duerme entre intentos con el ``sleep`` del decorador (mismo parche
+    que la fixture ``circuito`` de ``tests/test_document_fetcher.py``): sin
+    anularlo, el caso que agota los intentos tardaría sus ~17 s de verdad.
+    """
+    from scraper.connectors import pscp
+
+    dormidas: list[float] = []
+    monkeypatch.setattr(pscp._pedir_pagina.retry, "sleep", dormidas.append)
+    monkeypatch.setattr(pscp, "_PAGE_SIZE", 2)
+    monkeypatch.setattr(pscp, "_PAGE_PAUSE_S", 0)
+    return dormidas
+
+
+_TROPIEZOS = [
+    pytest.param(requests.ReadTimeout(_READ_TIMEOUT), id="read-timeout"),
+    pytest.param(requests.ConnectTimeout("Connection to host timed out."), id="connect-timeout"),
+    pytest.param(requests.ConnectionError("Connection aborted."), id="conexion"),
+    pytest.param(
+        requests.exceptions.ChunkedEncodingError(
+            "Connection broken: IncompleteRead(8192 bytes read, 11817 more expected)"
+        ),
+        id="cuerpo-cortado",
+    ),
+    pytest.param(429, id="429"),
+    pytest.param(500, id="500"),
+    pytest.param(502, id="502"),
+    pytest.param(503, id="503"),
+    pytest.param(504, id="504"),
+]
+
+
+@pytest.mark.parametrize("tropiezo", _TROPIEZOS)
+def test_un_tropiezo_en_una_pagina_se_reintenta_sin_perder_ni_repetir_avisos(esperas, tropiezo):
+    """El caso del issue: la segunda página falla una vez y al reintento responde."""
+    sesion = _SesionConGuion(
+        [_fila("A"), _fila("B")],
+        tropiezo,
+        [_fila("C"), _fila("D")],
+        [_fila("E")],
+    )
+    conector = PscpConnector(dataset_id="abcd-1234", session=sesion)
+
+    avisos = [n.natural_id for n in conector.fetch({"last_seen_updated": "2026-07-13"})]
+
+    assert avisos == ["A", "B", "C", "D", "E"]
+    # El reintento pide la MISMA página: la paginación es por cursor y el cursor
+    # no se mueve hasta que la página se ha servido entera.
+    assert len(sesion.calls) == 4
+    assert sesion.calls[2] == sesion.calls[1]
+    assert ":id > 'row-b'" in sesion.calls[1]["$where"]
+    assert ":id > 'row-d'" in sesion.calls[3]["$where"]
+    assert conector.new_cursor() == _cursor_en("E")
+    assert len(esperas) == 1
+
+
+def test_un_fallo_que_no_cede_agota_los_intentos_y_sale_el_error_original(esperas):
+    caida = requests.ReadTimeout(_READ_TIMEOUT)
+    sesion = _SesionConGuion([_fila("A"), _fila("B")], siempre=caida)
+    conector = PscpConnector(dataset_id="abcd-1234", session=sesion)
+
+    vistos = []
+    with pytest.raises(requests.ReadTimeout) as fallo:
+        for aviso in conector.fetch({"last_seen_updated": "2026-07-13"}):
+            vistos.append(aviso.natural_id)
+
+    # El error de siempre y no un ``RetryError`` que lo envuelva: ``run_connector``
+    # lo registra con ``str(e)``, y ese texto es por el que se reconoce el fallo.
+    assert fallo.value is caida
+    assert len(sesion.calls) == 1 + 4
+    # Lo servido antes de la caída ya salió, y el cursor se queda en ello.
+    assert vistos == ["A", "B"]
+    assert conector.new_cursor() == _cursor_en("B")
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404])
+def test_un_4xx_que_no_pide_esperar_se_pide_una_sola_vez(esperas, status):
+    """Socrata contesta 400 a un SoQL mal formado: repetirlo da lo mismo."""
+    sesion = _SesionConGuion(siempre=status)
+    conector = PscpConnector(dataset_id="abcd-1234", session=sesion)
+
+    with pytest.raises(requests.HTTPError) as fallo:
+        list(conector.fetch(None))
+
+    assert fallo.value.response.status_code == status
+    assert len(sesion.calls) == 1
+    assert esperas == []
+
+
+def test_los_intentos_y_las_esperas_son_los_del_reintento_compartido(esperas):
+    """Cuatro intentos y tres esperas crecientes: el ``http_retry`` de todo el scraper."""
+    sesion = _SesionConGuion(siempre=503)
+    conector = PscpConnector(dataset_id="abcd-1234", session=sesion)
+
+    with pytest.raises(requests.HTTPError) as fallo:
+        list(conector.fetch(None))
+
+    assert fallo.value.response.status_code == 503
+    assert len(sesion.calls) == 4
+    # 2, 4 y 8 s, cada una con hasta 2 s de jitter. El tope de 30 s no llega a
+    # tocarse con cuatro intentos: una página caída cuesta como mucho 20 s de
+    # espera, más lo que tarde en fallar cada petición.
+    assert len(esperas) == 3
+    for espera, base in zip(esperas, (2, 4, 8), strict=True):
+        assert base <= espera <= base + 2
+
+
+def test_un_cuerpo_que_siempre_se_corta_acaba_en_error_de_conexion(esperas):
+    """``requests`` no da el corte a medio cuerpo como ``ConnectionError``; el conector sí."""
+    corte = requests.exceptions.ChunkedEncodingError(
+        "Connection broken: IncompleteRead(8192 bytes read, 11817 more expected)"
+    )
+    sesion = _SesionConGuion(siempre=corte)
+    conector = PscpConnector(dataset_id="abcd-1234", session=sesion)
+
+    with pytest.raises(requests.ConnectionError) as fallo:
+        list(conector.fetch(None))
+
+    assert fallo.value.__cause__ is corte
+    assert "IncompleteRead" in str(fallo.value)
+    assert len(sesion.calls) == 4
+
+
+class _Pasada:
+    """``main()`` sobre una sesión dada, y lo que habría escrito en Postgres."""
+
+    def __init__(self, monkeypatch) -> None:
+        self._monkeypatch = monkeypatch
+        self.lotes: list[list[str]] = []
+        self.cursores: list[dict] = []
+        self.fallos: list[tuple[str, str]] = []
+
+    def ejecutar(self, sesion) -> int:
+        """La invocación de ``purga-pscp.yml``: ``python -m scraper.connectors.pscp --desde …``."""
+        from scraper.connectors import pscp
+
+        self._monkeypatch.setattr(
+            pscp, "PscpConnector", lambda **kw: PscpConnector(session=sesion, **kw)
+        )
+        return pscp.main(["--desde", "2000-01-01", "--dataset", "abcd-1234"])
+
+
+@pytest.fixture()
+def pasada(monkeypatch, esperas):
+    """``main()`` de punta a punta sin Postgres.
+
+    Los dobles de ``runner_sin_bd`` (``tests/test_documentos_plataforma.py``)
+    más los de la escritura, porque aquí la pasada sí trae filas. El runner es
+    el de verdad, con lotes de tres: con páginas de dos, un fallo en la tercera
+    página pilla un aviso en memoria, que es el caso que interesa mirar.
+    """
+    import db.database as database
+    from db.upsert import UpsertResult
+    from scraper.connectors import base
+
+    escrito = _Pasada(monkeypatch)
+
+    def upsert(licitaciones, *, source):
+        ids = [lic.id_externo for lic in licitaciones]
+        escrito.lotes.append(ids)
+        return UpsertResult(inserted=ids, modified=[], unchanged=[])
+
+    monkeypatch.setattr(database, "init_db", lambda: None)
+    monkeypatch.setattr(database, "close_pool", lambda: None)
+    monkeypatch.setattr(base, "get_cursor", lambda source_id: None)
+    monkeypatch.setattr(base, "set_cursor", lambda source_id, **c: escrito.cursores.append(c))
+    monkeypatch.setattr(base, "upsert_licitaciones_with_history", upsert)
+    monkeypatch.setattr(
+        base,
+        "record_failure",
+        lambda run_id, fuente, exc, **k: escrito.fallos.append((k["scope"], str(exc))),
+    )
+    monkeypatch.setattr(base, "record_source_started", lambda source_id: None)
+    monkeypatch.setattr(base, "_record_source_completed", lambda result: None)
+    monkeypatch.setattr(base, "_post_ingestion", lambda *a, **k: None)
+    monkeypatch.setattr(base, "run_connector", functools.partial(base.run_connector, batch_size=3))
+    return escrito
+
+
+def test_la_pasada_con_un_timeout_puntual_termina_bien_y_escribe_cada_aviso_una_vez(pasada):
+    sesion = _SesionConGuion(
+        [_fila("A"), _fila("B")],
+        requests.ReadTimeout(_READ_TIMEOUT),
+        [_fila("C"), _fila("D")],
+        [_fila("E")],
+    )
+
+    assert pasada.ejecutar(sesion) == 0
+
+    escritos = [id_externo for lote in pasada.lotes for id_externo in lote]
+    assert escritos == ["pscp:A", "pscp:B", "pscp:C", "pscp:D", "pscp:E"]
+    assert pasada.fallos == []
+    assert pasada.cursores[-1] == _cursor_en("E")
+
+
+def test_la_pasada_con_la_fuente_caida_sigue_fallando_y_conserva_lo_ya_escrito(pasada):
+    """Lo que el reintento no cambia: un fallo real no sale en verde.
+
+    Y lo que ya pasaba y conviene tener escrito: el cursor avanza con cada lote
+    (``cursor_advances_incrementally``), así que la pasada cortada no pierde lo
+    escrito, y el aviso que estaba en memoria se vuelve a pedir en la siguiente
+    porque el cursor se quedó antes que él.
+    """
+    sesion = _SesionConGuion(
+        [_fila("A"), _fila("B")],
+        [_fila("C"), _fila("D")],
+        siempre=requests.ReadTimeout(_READ_TIMEOUT),
+    )
+
+    assert pasada.ejecutar(sesion) == 1
+
+    assert len(sesion.calls) == 2 + 4
+    assert pasada.fallos == [("fetch", _READ_TIMEOUT)]
+    assert pasada.lotes == [["pscp:A", "pscp:B", "pscp:C"]]
+    assert pasada.cursores == [_cursor_en("C")]

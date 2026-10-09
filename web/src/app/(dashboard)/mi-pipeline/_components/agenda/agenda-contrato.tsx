@@ -9,6 +9,10 @@
  * eso se enseñan las dos, con el origen de la de fin declarado — sólo una
  * minoría de los contratos trae fecha publicada y el resto se calcula con la
  * duración, que no es lo mismo cuando de ahí sale cuándo empezar a trabajar.
+ *
+ * Y por eso la fecha de fin **se puede corregir aquí**: quien ejecuta el
+ * contrato sabe cuándo acaba mejor que una cuenta sobre la duración publicada.
+ * Lo que se guarda queda como fecha puesta a mano, y así se enseña.
  */
 
 import type { ReactNode } from "react";
@@ -19,6 +23,7 @@ import { SectionTitle } from "@/components/console/panel";
 import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
 import { origenFechaFin } from "./agenda-texto";
+import { FechaFinContrato } from "./fecha-fin-contrato";
 
 function Dato({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -31,7 +36,15 @@ function Dato({ label, children }: { label: string; children: ReactNode }) {
 
 const ENLACE = buttonVariants({ variant: "outline", size: "sm" });
 
-export function AgendaContrato({ item }: { item: PipelineAgendaItem }) {
+export function AgendaContrato({
+  item,
+  guardandoFechaFin,
+  onFijarFechaFin,
+}: {
+  item: PipelineAgendaItem;
+  guardandoFechaFin: boolean;
+  onFijarFechaFin: (fecha: string, alGuardar: () => void) => void;
+}) {
   const ventana =
     item.relicitacion_desde && item.relicitacion_hasta
       ? `${formatDate(item.relicitacion_desde)} – ${formatDate(item.relicitacion_hasta)}`
@@ -70,6 +83,14 @@ export function AgendaContrato({ item }: { item: PipelineAgendaItem }) {
       </p>
 
       <div className="mt-2 flex flex-wrap gap-1.5">
+        {item.cartera_id != null && (
+          <FechaFinContrato
+            etiqueta={item.fecha_fin_efectiva ? "Cambiar la fecha de fin" : "Poner fecha de fin"}
+            inicial={item.fecha_fin_efectiva}
+            guardando={guardandoFechaFin}
+            onGuardar={onFijarFechaFin}
+          />
+        )}
         {item.pursuit_id != null && (
           <Link href={`/oportunidades/${item.pursuit_id}`} className={ENLACE}>
             Oportunidad ganada

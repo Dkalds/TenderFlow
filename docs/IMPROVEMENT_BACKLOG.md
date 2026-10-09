@@ -348,6 +348,31 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `--apply` ejecutado y PSCP reingerida entera (`--desde 2000-01-01`) para
     refrescar las etiquetas desactualizadas; balance y delta de
     `make audit-truth-check` anotados en el RFC, que pasa a `implemented`.
+    - **Estado al 2026-10-09** (issue #408; logs de Actions): la reingesta del
+      run 36287345654 (2026-09-27, con `apply`) murió a los 55 min y 812.591
+      avisos por un «Read timed out» de Socrata en una página, que no tenía
+      reintento. Lo escrito no se perdió: el cursor avanza con cada lote y quedó
+      en `2026-07-13T13:26:08.273Z` (la marca de la republicación completa del
+      dataset). La pasada diaria de `scrape-daily.yml`, que no lleva `--desde`,
+      siguió desde ahí —cayendo tres veces más por el mismo timeout— y alcanzó
+      la cabeza del dataset el 2026-09-28 17:09 UTC: el recorrido completo está
+      hecho, aunque el último run de `purga-pscp.yml` siga en rojo.
+    - Medido en producción el 2026-10-09 (solo lectura): 60.107 filas de PSCP.
+      59.910 llevan `fecha_actualizacion_fuente`, es decir, las ha escrito el
+      conector actual. Las otras 197 no la llevan, ni `analysis_universe` ni
+      `inclusion_reason`: su última extracción es de entre el 2026-06-12 y el
+      2026-07-29 (182 con CPV 48/72, 33 con `tecnologia`). Una muestra de 6 ya
+      no está en el dataset (2.007.085 filas hoy, ninguna con marca anterior a
+      la republicación), así que relanzar la reingesta no las tocaría. Con el
+      universo a NULL cuentan como `technology_observed`; qué hacer con ellas
+      está sin decidir.
+    - Arreglado el 2026-10-09: la petición de página reintenta con el
+      `http_retry` compartido (`_pedir_pagina` en el conector).
+    - Sin tocar, por si se relanza: `--desde` no reanuda. Ignora el cursor,
+      vuelve a recorrer los ~2 M de filas (más de 2 h) y mientras dura rebobina el
+      cursor de la pasada diaria al punto por el que va; y el step de reingesta
+      solo corre con `apply`, así que relanzarlo repite antes la purga.
+    - Falta lo demás: balance, delta de `make audit-truth-check` y el RFC.
   - Tras el `VACUUM (ANALYZE)`, `pg_relation_size('licitaciones')` anotado aquí.
 - **Files de partida:** [.github/workflows/purga-pscp.yml](../.github/workflows/purga-pscp.yml) (dry-run por defecto; `apply` + `reingerir_desde`), [scripts/purgar_pscp_sin_tecnologia.py](../scripts/purgar_pscp_sin_tecnologia.py), [db/repositories/purga_licitaciones.py](../db/repositories/purga_licitaciones.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py) (`senal_tecnologica`)
 - **Riesgo:** alto — borra ~680.000 filas y sus dependientes. Mitigado: reevalúa con la
@@ -950,7 +975,8 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios
 - **Problema:** lo que la rama no pudo cerrar por falta de build, de permiso o de alcance:
-  - Los techos de `web/bundle-budget.json` no se han bajado: sin `next build` no se midió. Estimado: −200 a −570 KB sin comprimir según la ruta (/resumen la que más). Las rutas nuevas de `hub-paginado/` salen como «NUEVA».
+  - Los techos de `web/bundle-budget.json` no se han bajado: sin `next build` no se midió. Estimado: −200 a −570 KB sin comprimir según la ruta (/resumen la que más). **Parcial (2026-10-09, issue #428):** las tres rutas de `hub-paginado/` y `/cuentas/[id]` ya tienen techo y el de `/login` se bajó a lo medido; los de las demás rutas siguen sin bajar (holgura medida ese día: 13–36 % en el dashboard salvo `/investigador`, 3,7 %; ~8 % en la superficie pública; 9 % en `/restablecer-contrasena`).
+  - El paso «Bundle analyzer report» de `ci.yml` no genera nada (comprobado el 2026-10-09): `@next/bundle-analyzer` no es compatible con las builds de Turbopack, `ANALYZE=true next build` lo avisa y no escribe `.next/analyze/`, y el artefacto se sube vacío sin fallar. El desglose por módulo sale de `next experimental-analyze -o` (`.next/diagnostics/analyze/`). Cambiar el paso pide OK (workflow); el docstring de `scripts/check_bundle_budget.py` y el comentario de `web/next.config.ts` siguen recomendando el plugin, y este último dice que el control lee `app-build-manifest.json` cuando lee `diagnostics/route-bundle-stats.json`.
   - `.env.example` no declara `RATE_LIMIT_BACKEND=auto` (sigue diciendo `sqlite`), `DB_POOL_MIN_SIZE`, `DB_READ_POOL_MIN_SIZE`, `API_ANALYTICS_STATEMENT_TIMEOUT_MS` ni `UVICORN_LIMIT_CONCURRENCY` (tocar `.env*` pide OK; por eso `render.yaml` tampoco declara la última: `check_env_parity` exige que todo lo de `render.yaml` esté en `.env.example`).
   - Siguen con E/S síncrona en handlers `async`: `_check_budget` de `api/routes/ask.py` (presupuesto LLM en Redis).
   - La imagen Open Graph de la ficha pública (`opengraph-image.tsx`) sigue dinámica.
@@ -1055,6 +1081,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`FEATURES_PENDIENTES_COBERTURA`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py)
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
 - **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — la medición existe; el número no.** `ENV=dev python scripts/medir_cobertura_features.py` (o `--json` para archivarlo) imprime, contra la BD de `DATABASE_URL` y solo leyendo, la cobertura de los tres campos sobre dos poblaciones: `dataset_baja` (las filas exactas de entrenamiento, `_sql_agregado`) y `universo_abierto` (lo que puntúa el batch), cada una con total, por `fuente` y por año de publicación, y un veredicto contra el 50 % **solo sobre el total del dataset**. El SQL vive en `MlDatasetRepository.cobertura_features_pendientes`. Tests en `tests/test_medir_cobertura_features.py` (uno contra Postgres, no ejecutado en local). **Falta:** correrlo contra producción, anotar aquí el número con fecha y, según salga, seguir los cuatro pasos o dejar escrito el número que lo desaconseja.
+
+### [P3] Saber si el **lote** de una oportunidad ya se adjudicó
+- **Área:** db/repositories/pursuits.py (`_AGENDA_SELECT`), scraper (adjudicaciones por lote)
+- **Problema:** desde el 2026-10-09 la agenda mira el expediente y lleva a «Por cerrar» la oportunidad cuya licitación ya está resuelta o adjudicada. Para una oportunidad **de un lote** solo puede fiarse del estado del expediente entero: las filas de `adjudicaciones` no dicen de qué lote son (medido ese día en producción: 77.965 filas, ninguna con `lote_id`), así que la consulta no afirma adjudicatario cuando hay `lote_numero` — la adjudicación de otro lote no cierra el suyo. Consecuencia: un lote ya adjudicado en un expediente que sigue en `PUB` (lo normal en TED) se queda en su tramo de plazo hasta que la fecha pase. Hoy no afecta a nadie (0 oportunidades con lote), y por eso es P3.
+- **Acceptance criteria:**
+  - La ingesta escribe `adjudicaciones.lote_id` cuando la fuente lo publica, o se documenta por qué no puede.
+  - `_AGENDA_SELECT` afirma adjudicatario para una oportunidad con lote solo con las adjudicaciones de ese lote, con su test en `tests/test_agenda_ambito_sql.py` (hoy `test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote` fija lo contrario a propósito).
+- **Files de partida:** [db/repositories/pursuits.py](../db/repositories/pursuits.py), [services/pursuits.py](../services/pursuits.py) (`_expediente_cerrado`), [tests/test_agenda_ambito_sql.py](../tests/test_agenda_ambito_sql.py)
+- **Riesgo:** bajo — la regla actual es la conservadora; relajarla solo añade casos.
 
 ---
 

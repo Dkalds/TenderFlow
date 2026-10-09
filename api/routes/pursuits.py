@@ -28,11 +28,14 @@ from services.cartera import (
     CarteraResumen,
     ContratoCartera,
     ContratoEvento,
+    FechaFinInvalidaError,
+    FechaFinManualIn,
     PrepararRenovacionIn,
     RenovacionInvalidaError,
     RenovacionPreparada,
     cartera_de_usuario,
     eventos_de_contrato,
+    fijar_fecha_fin,
     preparar_renovacion,
     resumen_de_usuario,
 )
@@ -989,6 +992,45 @@ async def get_cartera_eventos(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except CarteraNoEncontradaError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/pursuits/cartera/{cartera_id}",
+    response_model=ContratoCartera,
+    summary="Poner a mano la fecha de fin de un contrato en cartera",
+    responses={
+        403: {"description": "No perteneces a esa organización o no puedes escribir"},
+        404: {"description": "El contrato no está en la cartera de la organización"},
+        422: {"description": "La fecha no puede ser el fin de ese contrato"},
+    },
+)
+async def patch_cartera_fecha_fin(
+    cartera_id: int,
+    body: FechaFinManualIn,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> ContratoCartera:
+    """Fija la fecha de fin que la fuente no publicó, con origen `manual`.
+
+    Devuelve el contrato como queda, con su ventana de relicitación ya
+    calculada sobre la fecha nueva. La resincronización diaria no pisa una
+    fecha puesta por aquí: quien la corrige a mano sabe algo que la fuente no
+    dijo.
+    """
+    try:
+        return await run_db(
+            fijar_fecha_fin,
+            int(ctx["user_id"]),
+            cartera_id,
+            body.fecha_fin,
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except CarteraNoEncontradaError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FechaFinInvalidaError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post(
