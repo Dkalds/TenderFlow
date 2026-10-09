@@ -114,7 +114,7 @@ describe("TuDia", () => {
   it("pero lo dice, y lleva a cerrarlos en la agenda", () => {
     render(<TuDia />);
 
-    expect(screen.getByText(/5 oportunidades siguen abiertas con el plazo de presentación pasado/)).toBeInTheDocument();
+    expect(screen.getByText(/5 oportunidades siguen abiertas y ya no admiten oferta/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Cerrarlas en la agenda" })).toHaveAttribute(
       "href",
       "/mi-pipeline?filtro=plazo_pasado",
@@ -127,7 +127,7 @@ describe("TuDia", () => {
     });
     render(<TuDia />);
 
-    expect(screen.getByText(/1 oportunidad sigue abierta con el plazo de presentación pasado/)).toBeInTheDocument();
+    expect(screen.getByText(/1 oportunidad sigue abierta y ya no admite oferta/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Cerrarla en la agenda" })).toBeInTheDocument();
   });
 
@@ -137,7 +137,7 @@ describe("TuDia", () => {
     });
     render(<TuDia />);
 
-    expect(screen.queryByText(/plazo de presentación pasado/)).toBeNull();
+    expect(screen.queryByText(/ya no admite/)).toBeNull();
   });
 
   it("con una API que aún no manda la franja, enseña los contadores de siempre", () => {

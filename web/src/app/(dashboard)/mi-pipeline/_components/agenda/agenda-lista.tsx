@@ -19,6 +19,11 @@
  * Los conteos de las pestañas y de los tramos describen **lo listado**, no el
  * universo: son el tamaño de la lista que hay debajo. Los agregados sobre el
  * ámbito completo son los contadores de la franja, y esos los calcula la API.
+ *
+ * **«Por cerrar» se cierra de una vez.** Es el único tramo cuyas filas piden
+ * todas lo mismo, y se acumulan: su cabecera ofrece retirarlas juntas, con una
+ * sola confirmación que las lista. Actúa sobre lo que se está viendo —con
+ * «Solo míos» puesto, solo las mías—, que es lo que el botón tiene debajo.
  */
 
 import * as React from "react";
@@ -192,18 +197,38 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
               .filter(({ item }) => bandaDe(item) === banda.key);
             if (!filas.length) return null;
             const anidadas = tareasAnidadas(filas.map(({ item }) => item));
+            const porCerrar =
+              banda.key === "plazo_pasado"
+                ? filas.map(({ item }) => item).filter((item) => item.kind === "pursuit")
+                : [];
             return (
               <React.Fragment key={banda.key}>
                 {/* Pegajosa solo desde `md`, donde la lista tiene su propio
                     scroll. En móvil se desplaza la página, cuyo cuerpo lleva
                     relleno arriba: una cabecera pegada ahí se quedaba 16 px
                     por debajo del borde, con las filas asomando por encima. */}
-                <div className="z-10 border-b border-border/50 bg-card px-3 py-1 md:sticky md:top-0 md:px-3.5">
-                  <p className={cn("text-tf-meta font-semibold", banda.tone)}>
-                    {banda.label} · {filas.length}
-                  </p>
-                  {banda.hint && (
-                    <p className="text-tf-micro text-muted-foreground">{banda.hint}</p>
+                {/* Envuelve: en una ficha estrecha el botón de «Por cerrar»
+                    baja debajo del texto en vez de estrujarlo a su lado. */}
+                <div className="z-10 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/50 bg-card px-3 py-1 md:sticky md:top-0 md:px-3.5">
+                  <div className="min-w-[14rem] flex-1">
+                    <p className={cn("text-tf-meta font-semibold", banda.tone)}>
+                      {banda.label} · {filas.length}
+                    </p>
+                    {banda.hint && (
+                      <p className="text-tf-micro text-muted-foreground">{banda.hint}</p>
+                    )}
+                  </div>
+                  {/* Con una sola, su propia fila ya lo ofrece. */}
+                  {porCerrar.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => agenda.pedirRetirada(porCerrar)}
+                      className="flex-none text-muted-foreground hover:text-foreground"
+                    >
+                      Retirar las {formatNumber(porCerrar.length)}
+                    </Button>
                   )}
                 </div>
                 {filas.map(({ item, index }, posicion) => (
@@ -213,6 +238,7 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
                     activa={index === activeIndex}
                     anidada={anidadas[posicion]}
                     rowPad={rowPad}
+                    filtro={filtro}
                     onSeleccionar={() => agenda.setSelected(index)}
                     acciones={{
                       onAbrir: () => agenda.abrir(item),
@@ -224,10 +250,16 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
                         agenda.editarAccion(item);
                       },
                       onVerRenovacion: agenda.verRenovacion,
-                      onRetirar: () => agenda.pedirRetirada(item),
+                      onRetirar: () => agenda.pedirRetirada([item]),
                       onApuntarAccion: (accion, alGuardar) =>
                         agenda.apuntarAccion(item, accion, alGuardar),
                       apuntando: agenda.apuntando,
+                      onDecidir: (decision, alGuardar) =>
+                        agenda.decidir(item, decision, alGuardar),
+                      decidiendo: agenda.decidiendo,
+                      onFijarFechaFin: (fecha, alGuardar) =>
+                        agenda.fijarFechaFin(item, fecha, alGuardar),
+                      guardandoFechaFin: agenda.guardandoFechaFin,
                     }}
                   />
                 ))}

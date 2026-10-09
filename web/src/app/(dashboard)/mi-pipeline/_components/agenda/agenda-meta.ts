@@ -31,8 +31,8 @@ import type { AgendaKind, PipelineAgendaItem } from "@/hooks/use-pursuits";
  *
  * La primera columna lleva el aviso **y** el día («5 d» encima de «jue 15
  * oct»): 88 px es lo que pide «hoy 14:00». La última son 184 px porque la fila
- * de plazo pasado lleva dos acciones («No nos presentamos» y abrir la ficha);
- * la que más pedía antes era «Preparar renovación», a 150.
+ * por cerrar lleva dos acciones («No nos presentamos» y abrir la ficha); la
+ * que más pedía antes era «Preparar renovación», a 150.
  */
 export const GRID = "md:grid-cols-[88px_26px_minmax(0,1fr)_96px_184px] md:gap-3 md:px-3.5";
 
@@ -53,7 +53,12 @@ export function bandaDe(item: PipelineAgendaItem): AgendaBanda {
  * lo que solo queda esperar o no tiene fecha.
  *
  * `hint` solo lo llevan los dos tramos que no son un plazo por delante: sin esa
- * línea, «Plazo pasado» parecía otro nombre para «Vencidas».
+ * línea, «Por cerrar» parecía otro nombre para «Vencidas».
+ *
+ * El tramo `plazo_pasado` se llama **«Por cerrar»** y no «Plazo pasado»: desde
+ * que la API mira el estado del expediente caen en él también las
+ * oportunidades sobre una licitación ya resuelta, tengan o no fecha límite. Lo
+ * que las une no es el plazo, es lo que toca hacer con ellas.
  */
 export const BANDAS: { key: AgendaBanda; label: string; tone: string; hint?: string }[] = [
   { key: "vencida", label: "Vencidas", tone: "text-destructive" },
@@ -61,9 +66,9 @@ export const BANDAS: { key: AgendaBanda; label: string; tone: string; hint?: str
   { key: "semana", label: "Próximos 7 días", tone: "text-warning" },
   {
     key: "plazo_pasado",
-    label: "Plazo pasado",
+    label: "Por cerrar",
     tone: "text-foreground/80",
-    hint: "El plazo de presentación pasó y siguen abiertas. Retíralas si no hubo oferta, o registra la presentación en su ficha.",
+    hint: "Ya no admiten oferta —el plazo pasó o la licitación está resuelta— y siguen abiertas. Retíralas si no hubo oferta, o registra la presentación en su ficha.",
   },
   { key: "mes", label: "Próximos 30 días", tone: "text-muted-foreground" },
   { key: "despues", label: "Más adelante", tone: "text-muted-foreground" },
@@ -130,7 +135,7 @@ export const CONTADORES: {
   { key: "accion_vencida", label: "Acciones hoy o vencidas", tono: "destructive" },
   { key: "go_no_go", label: "Go/No-Go pendientes" },
   { key: "sin_paso", label: "Sin próxima acción", tono: "warning" },
-  { key: "plazo_pasado", label: "Plazo pasado", tono: "warning" },
+  { key: "plazo_pasado", label: "Por cerrar", tono: "warning" },
 ];
 
 export function esContador(valor: string | null): valor is AgendaContador {
