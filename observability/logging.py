@@ -77,8 +77,12 @@ _SENSITIVE_KEYS = frozenset(
 # incident. They must not become a secondary database of personal data.
 _PERSONAL_KEYS = frozenset({"email", "recipient", "recipients"})
 _EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![\w.-])")
+# `#` además de `?` y `&`: el enlace de recuperación de contraseña lleva el
+# token en el fragmento (`…/restablecer-contrasena#token=…`) para que el
+# navegador no se lo mande al servidor, y con `EMAIL_BACKEND=console` el cuerpo
+# del correo —enlace incluido— se escribe entero en el evento `mailer_console`.
 _URL_QUERY_SECRET_RE = re.compile(
-    r"([?&](?:access_)?(?:token|api[_-]?key|secret|signature|sig|password|auth)=)[^&#\s]+",
+    r"([?&#](?:access_)?(?:token|api[_-]?key|secret|signature|sig|password|auth)=)[^&#\s]+",
     re.IGNORECASE,
 )
 

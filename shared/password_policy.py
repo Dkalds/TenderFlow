@@ -2,7 +2,9 @@
 
 Módulo reutilizable para validar que contraseñas y secretos cumplen
 requisitos mínimos de seguridad. Usado por ``config.settings`` (validación
-al arranque) y ``scripts/hash_password.py`` (advertencia interactiva).
+al arranque), ``scripts/hash_password.py`` (advertencia interactiva) y
+``api/routes/auth.py`` (contraseña de las cuentas locales, vía
+:func:`check_account_password`).
 
 Typing strict — no usar ``Any`` ni ``# type: ignore`` sin justificación.
 """
@@ -92,6 +94,25 @@ def check_password_strength(
     return PasswordCheckResult(
         is_strong=len(issues) == 0,
         issues=tuple(issues),
+    )
+
+
+def check_account_password(password: str) -> PasswordCheckResult:
+    """Política vigente para la contraseña de una cuenta local.
+
+    Mínimo 10 caracteres con mayúsculas, minúsculas y un dígito, sin exigir
+    carácter especial. Es la **única** puerta del alta (``POST /auth/register``)
+    y de la recuperación (``POST /auth/password-reset/confirm``): mientras cada
+    ruta pasó sus propios argumentos a :func:`check_password_strength`, la
+    recuperación acabó exigiendo un carácter especial que el alta no pide y
+    que la pantalla no anuncia, y rechazaba con un enlace válido una contraseña
+    que el alta admite. Si la política cambia, cambia aquí y para las dos.
+    """
+    return check_password_strength(
+        password,
+        min_length=10,
+        require_special=False,
+        label="contraseña",
     )
 
 

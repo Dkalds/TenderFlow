@@ -155,6 +155,17 @@ describe("acceso con contraseña", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ocultar contraseña" }));
     expect(document.querySelector("#password")).toHaveAttribute("type", "password");
   });
+
+  it("quien la ha olvidado tiene un enlace a la pantalla de recuperación", () => {
+    // Sin esta salida, la recuperación existe pero no se encuentra: nadie
+    // llega a `/restablecer-contrasena` si no es desde aquí o desde el correo.
+    render(<LoginPage />);
+
+    expect(screen.getByRole("link", { name: "¿Has olvidado tu contraseña?" })).toHaveAttribute(
+      "href",
+      "/restablecer-contrasena",
+    );
+  });
 });
 
 describe("lo que trae la URL", () => {
