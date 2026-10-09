@@ -20,10 +20,10 @@ import {
   periodoDeUrl,
   rangoDePeriodo,
   type PeriodoClave,
-} from "../_lib/periodo";
+} from "@/lib/periodo";
 import { FunnelPanel } from "./rendimiento/funnel-panel";
 import { PerdidasPorMotivo } from "./rendimiento/perdidas-por-motivo";
-import { PeriodoSelector } from "./rendimiento/periodo-selector";
+import { PeriodoSelector } from "@/components/console/periodo-selector";
 import { ValorPonderado } from "./rendimiento/valor-ponderado";
 
 /**
@@ -72,7 +72,7 @@ export default function RendimientoView() {
   const periodo = periodoDeUrl(params.get("periodo"));
   // `new Date()` en cada render no desestabiliza la clave de la consulta:
   // `rangoDePeriodo` trunca al día, así que la ventana es la misma cadena
-  // durante toda la sesión (el porqué, en `_lib/periodo.ts`).
+  // durante toda la sesión (el porqué, en `lib/periodo.ts`).
   const rango = rangoDePeriodo(periodo, new Date());
   const { data, isPending, error, refetch } = useMetricasPeriodo(rango);
 

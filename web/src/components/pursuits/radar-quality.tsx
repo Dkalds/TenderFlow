@@ -73,7 +73,7 @@ export function RadarQualityNota({
 }
 
 /** Lo que se dice cuando no hay ni una oportunidad con banda sellada. */
-function SinBandaSellada() {
+export function SinBandaSellada() {
   return (
     <p className="text-tf-meta leading-relaxed text-muted-foreground">
       Todavía no se puede medir si el Radar prioriza bien: ninguna oportunidad guarda la banda con
@@ -83,7 +83,7 @@ function SinBandaSellada() {
 }
 
 /** «Ventana 1 ene 2026 → 31 mar 2026»: el universo del que habla el cuadro. */
-function CoberturaRadar({ calidad }: { calidad: RadarQuality }) {
+export function CoberturaRadar({ calidad }: { calidad: RadarQuality }) {
   const desde = calidad.ventana_desde?.slice(0, 10);
   const hasta = calidad.ventana_hasta?.slice(0, 10);
   return (

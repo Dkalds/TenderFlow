@@ -9,9 +9,13 @@ import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call"
  * DLQ accionable (RFC ux-calidad-datos #4): la tarjeta lista lo que falló y
  * reencola una entrada sólo tras confirmar, contra el endpoint de admin. Antes
  * el botón respondía «Funcionalidad en desarrollo».
+ *
+ * Y descarta: en producción 38 de las 53 entradas sin resolver eran errores de
+ * esquema de una versión que ya no existe, que un reintento no arregla. Sin
+ * una salida, la cola no podía vaciarse y su aviso no se apagaba nunca.
  */
 
-import { DlqCard } from "../_components/administracion/dlq-card";
+import { DlqCard } from "../_components/ejecuciones/dlq-card";
 
 const LISTADO = {
   estado: "abiertas",
@@ -27,13 +31,19 @@ const LISTADO = {
     },
   ],
   resumen: [{ fuente: "placsp", scope: "atom", n: 3, retries: 2 }],
+  resumen_errores: [
+    { error_type: "UndefinedColumn", n: 36, abiertas: 2, agotadas: 34 },
+    { error_type: "TimeoutError", n: 1, abiertas: 1, agotadas: 0 },
+  ],
 };
 
 function montar(listado: unknown = LISTADO, status = 200) {
   const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
     if (callMethod(call) === "POST") {
       return Promise.resolve(
-        jsonResponse({ id: 7, estado_previo: "abierta", reencolada: true, detalle: "Reencolada" }),
+        callUrl(call).endsWith("/descartar")
+          ? jsonResponse({ id: 7, estado_previo: "abierta", descartada: true, detalle: "Descartada" })
+          : jsonResponse({ id: 7, estado_previo: "abierta", reencolada: true, detalle: "Reencolada" }),
       );
     }
     return Promise.resolve(jsonResponse(listado, status));
@@ -75,6 +85,45 @@ describe("DlqCard", () => {
       const post = fetchMock.mock.calls.find((c) => callMethod(c) === "POST");
       expect(post && callUrl(post)).toBe("/api/v1/admin/dlq/7/reintentar");
     });
+  });
+
+  it("descarta sólo después de confirmar, con POST al endpoint de descarte", async () => {
+    const fetchMock = montar();
+    const boton = await screen.findByRole("button", { name: /Descartar la entrada 7/ });
+
+    fireEvent.click(boton);
+    expect(fetchMock.mock.calls.some((c) => callMethod(c) === "POST")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar descarte de la entrada 7/ }));
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find((c) => callMethod(c) === "POST");
+      expect(post && callUrl(post)).toBe("/api/v1/admin/dlq/7/descartar");
+    });
+  });
+
+  it("mientras se confirma una acción no se ofrece la otra", async () => {
+    // Con las dos a la vista, el segundo clic de una confirmación podía caer
+    // en la acción que no se estaba mirando.
+    montar();
+    fireEvent.click(await screen.findByRole("button", { name: /Reencolar la entrada 7/ }));
+
+    expect(screen.getByRole("button", { name: /Confirmar reencolado de la entrada 7/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Descartar la entrada 7/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.getByRole("button", { name: /Reencolar la entrada 7/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Descartar la entrada 7/ })).toBeInTheDocument();
+  });
+
+  it("dice de qué está hecha la cola, agotadas incluidas", async () => {
+    montar();
+
+    const resumen = await screen.findByRole("list", { name: "Entradas sin resolver por tipo de error" });
+    expect(resumen).toHaveTextContent("UndefinedColumn");
+    expect(resumen).toHaveTextContent("36");
+    // Las agotadas no salen en «abiertas», pero siguen en la cola.
+    expect(screen.getByRole("button", { name: /Agotadas\s*34/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Abiertas\s*3/ })).toBeInTheDocument();
   });
 
   it("sin permisos de admin lo dice en vez de enseñar un error crudo", async () => {

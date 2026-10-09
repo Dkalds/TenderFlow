@@ -54,6 +54,7 @@ doble
 dobles
 dominante
 elegible
+elipse
 elipsis
 envrionment
 excede

@@ -86,15 +86,26 @@ describe("celdaSaludPorPct", () => {
   });
 
   it("se abstiene sin denominador", () => {
-    // El caso real de `/competidores`: la API manda `pct_oferta_unica` y puede
-    // no mandar `cobertura_ofertas_pct`.
+    // `/analytics/competitors` manda `cobertura_ofertas_pct` a `null` cuando no
+    // hay adjudicaciones en el ámbito, y un backend anterior al campo no lo
+    // manda.
     expect(celdaSaludPorPct(12.4, null, "glosa").value).toBe(EMPTY);
     expect(celdaSaludPorPct(12.4, undefined, "glosa").value).toBe(EMPTY);
   });
 
+  it("el umbral por defecto es el del backend, no uno más laxo", () => {
+    // `UMBRAL_COBERTURA_PCT` en `services/analytics/overview.py`. Con un
+    // umbral propio más bajo, esta pantalla publicaba lo que el backend no da
+    // por hecho.
+    expect(celdaSaludPorPct(12.4, 50, "glosa").value).toBe(formatPercent(12.4));
+    const justoDebajo = celdaSaludPorPct(12.4, 49.9, "glosa");
+    expect(justoDebajo.value).toBe(EMPTY);
+    expect(justoDebajo.hint).toBe("solo 49,9% de las adjudicaciones traen el dato");
+  });
+
   it("el umbral se puede subir en la llamada", () => {
-    expect(celdaSaludPorPct(12.4, 40, "glosa").value).toBe(formatPercent(12.4));
-    expect(celdaSaludPorPct(12.4, 40, "glosa", 60).value).toBe(EMPTY);
+    expect(celdaSaludPorPct(12.4, 55, "glosa").value).toBe(formatPercent(12.4));
+    expect(celdaSaludPorPct(12.4, 55, "glosa", 60).value).toBe(EMPTY);
   });
 });
 

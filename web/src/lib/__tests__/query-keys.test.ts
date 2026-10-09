@@ -35,6 +35,7 @@ import {
   documentosKeys,
   empresasKeys,
   etiquetaKeys,
+  featureFlagKeys,
   eventosKeys,
   feedbackKeys,
   fichaKeys,
@@ -235,6 +236,7 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "pursuitKeys.metrics", clave: pursuitKeys.metrics },
       { nombre: "pursuitKeys.agenda", clave: pursuitKeys.agenda },
       { nombre: "pursuitKeys.direccion", clave: pursuitKeys.direccion(21) },
+      { nombre: "pursuitKeys.direccionCarga", clave: pursuitKeys.direccionCarga(21) },
       { nombre: "pursuitKeys.actividad", clave: pursuitKeys.actividad(21, null) },
       { nombre: "pursuitKeys.kit", clave: pursuitKeys.kit(7, 21) },
       { nombre: "pursuitKeys.cartera", clave: pursuitKeys.cartera(21) },
@@ -306,10 +308,21 @@ const FABRICAS: readonly Fabrica[] = [
     nombre: "adminKeys",
     miembros: [
       { nombre: "adminKeys.users", clave: adminKeys.users },
-      { nombre: "adminKeys.apiKeys", clave: adminKeys.apiKeys },
       { nombre: "adminKeys.health", clave: adminKeys.health },
       { nombre: "adminKeys.accessGrants", clave: adminKeys.accessGrants },
+      { nombre: "adminKeys.clientErrors", clave: adminKeys.clientErrors },
+      { nombre: "adminKeys.ejecuciones", clave: adminKeys.ejecuciones },
     ],
+  },
+  {
+    nombre: "featureFlagKeys",
+    raiz: featureFlagKeys.all,
+    miembros: [{ nombre: "featureFlagKeys.list", clave: featureFlagKeys.list }],
+  },
+  {
+    nombre: "adminKeys.dlq",
+    raiz: adminKeys.dlq.all,
+    miembros: [{ nombre: "adminKeys.dlq.estado", clave: adminKeys.dlq.estado("abiertas") }],
   },
   {
     // Sub-fábrica anidada: `adminKeys.solicitudes` tiene su propio `all`, y es
@@ -507,6 +520,7 @@ describe("las fábricas parametrizadas", () => {
     { nombre: "pursuitKeys.list", conA: () => pursuitKeys.list({ estado: "abierto" }), conB: () => pursuitKeys.list({ estado: "ganado" }) },
     { nombre: "pursuitKeys.detail", conA: () => pursuitKeys.detail("7"), conB: () => pursuitKeys.detail("8") },
     { nombre: "pursuitKeys.direccion", conA: () => pursuitKeys.direccion(21), conB: () => pursuitKeys.direccion(null) },
+    { nombre: "pursuitKeys.direccionCarga", conA: () => pursuitKeys.direccionCarga(21), conB: () => pursuitKeys.direccionCarga(null) },
     { nombre: "pursuitKeys.actividad", conA: () => pursuitKeys.actividad(21, null), conB: () => pursuitKeys.actividad(21, 7) },
     { nombre: "pursuitCommentKeys.thread", conA: () => pursuitCommentKeys.thread(7), conB: () => pursuitCommentKeys.thread(8) },
     { nombre: "cuentaKeys.lista", conA: () => cuentaKeys.lista(21), conB: () => cuentaKeys.lista(null) },
@@ -597,6 +611,7 @@ const FABRICAS_CON_ARGUMENTOS: readonly string[] = [
   "pursuitKeys.list",
   "pursuitKeys.detail",
   "pursuitKeys.direccion",
+  "pursuitKeys.direccionCarga",
   "pursuitKeys.actividad",
   "pursuitCommentKeys.thread",
   "cuentaKeys.lista",
@@ -725,5 +740,15 @@ describe("`all` invalida de verdad a sus hijas", () => {
       "watchlistKeys.items",
       "watchlistKeys.rules",
     ]);
+  });
+});
+
+describe("pursuitKeys.direccion", () => {
+  it("la ventana entra en la clave: «12 meses» y «Este año» son dos respuestas", () => {
+    expect(pursuitKeys.direccion(21, "2025-10-09T00:00:00.000Z")).not.toEqual(
+      pursuitKeys.direccion(21, "2026-01-01T00:00:00.000Z"),
+    );
+    // Sin ventana es la misma clave que con los dos extremos a `null`.
+    expect(pursuitKeys.direccion(21)).toEqual(pursuitKeys.direccion(21, null, null));
   });
 });

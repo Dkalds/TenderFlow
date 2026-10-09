@@ -1,26 +1,28 @@
 "use client";
 
 /**
- * Datos de la vista de Observabilidad: el health del servicio y el recuento de
- * DLQ que la acompaña.
+ * Datos de la vista Estado: el health del servicio, ya leído.
  *
- * Las dos consultas refrescan cada 30 s porque la pantalla se deja abierta como
- * panel de guardia; `dataUpdatedAt` es lo que da la hora del último chequeo, y
- * por eso sale de aquí ya convertido a `Date` en vez de dejar el epoch suelto
- * en el JSX.
+ * Refresca cada 30 s porque la pantalla se deja abierta como panel de guardia;
+ * `dataUpdatedAt` es lo que da la hora del último chequeo, y por eso sale de
+ * aquí ya convertido a `Date` en vez de dejar el epoch suelto en el JSX.
+ *
+ * El recuento de la cola de errores ya no se pide aquí: lo lleva la tira de
+ * salud, que está encima de todas las vistas, y repetirlo en un panel propio
+ * era el mismo número por tercera vez.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { adminKeys, analyticsKeys } from "@/lib/query-keys";
+import { adminKeys } from "@/lib/query-keys";
 import {
-  extraerChecks,
+  componentesDeSalud,
+  estadoGlobal,
+  type ComponenteSalud,
+  type EstadoGlobalSalud,
   type HealthResponse,
-  type QualityData,
 } from "../_components/observabilidad/health-checks";
-
-export type EstadoGlobalSalud = "ok" | "warn" | "error";
 
 const REFRESCO_MS = 30_000;
 
@@ -30,15 +32,11 @@ export interface Observabilidad {
   isError: boolean;
   isFetching: boolean;
   refetch: () => void;
-  /** Hay respuesta y no ha fallado: la API contesta. */
-  isOnline: boolean;
   /** Momento del último health que llegó, o `null` si aún no llegó ninguno. */
   lastCheck: Date | null;
+  /** Lo que dice la API de sí misma (`status`), no si la llamada fue bien. */
   estado: EstadoGlobalSalud;
-  checks: Record<string, unknown>;
-  /** Registros en la cola de errores; `null` si no se ha podido leer. */
-  dlqCount: number | null;
-  dlqLoading: boolean;
+  componentes: ComponenteSalud[];
 }
 
 export function useObservabilidad(): Observabilidad {
@@ -53,20 +51,10 @@ export function useObservabilidad(): Observabilidad {
     queryKey: adminKeys.health,
     queryFn: () => fetchWithAuth<HealthResponse>("/api/v1/health"),
     refetchInterval: REFRESCO_MS,
-    // La caída se pinta en la pantalla (tira de salud y «Estado del sistema»):
-    // sin esto, con la API caída saltaba un toast cada 30 s.
+    // La caída se pinta en la pantalla (cabecera y «Estado del sistema»): sin
+    // esto, con la API caída saltaba un toast cada 30 s.
     meta: META_ERROR_EN_LINEA,
   });
-
-  const { data: quality, isLoading: dlqLoading } = useQuery<QualityData>({
-    queryKey: analyticsKeys.quality,
-    queryFn: () => fetchWithAuth<QualityData>("/api/v1/analytics/quality"),
-    refetchInterval: REFRESCO_MS,
-    // Su fallo lo dice el panel de la cola («sin dato»): sin toast cada 30 s.
-    meta: META_ERROR_EN_LINEA,
-  });
-
-  const isOnline = !!health && !isError;
 
   return {
     health,
@@ -74,13 +62,8 @@ export function useObservabilidad(): Observabilidad {
     isError,
     isFetching,
     refetch: () => void refetch(),
-    isOnline,
     lastCheck: dataUpdatedAt ? new Date(dataUpdatedAt) : null,
-    estado: isLoading ? "warn" : isOnline ? "ok" : "error",
-    checks: extraerChecks(health),
-    // Sin respuesta no hay recuento: un «0» afirmaría una cola vacía que
-    // nadie ha medido (la misma regla que la tira de salud de Ops).
-    dlqCount: quality ? (quality.dlq_count ?? 0) : null,
-    dlqLoading,
+    estado: estadoGlobal(health, { cargando: isLoading, fallo: isError }),
+    componentes: componentesDeSalud(health),
   };
 }

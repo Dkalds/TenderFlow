@@ -13,11 +13,12 @@
  *
  * - `WebhooksEquipoView` es la de `/equipo`: los webhooks de TU organización,
  *   con alta, edición y ping. Es la que usa el 99% de la gente.
- * - `WebhooksView` (el default, `/ops`) es la vista **global** del
- *   administrador de la instancia: todas las filas, incluidas las que no
- *   tienen dueño (las anteriores a la revisión `v108`), en modo lectura de
- *   estado. Se conserva porque esas integraciones sin organización siguen
- *   entregando y alguien tiene que poder verlas.
+ * - `WebhooksGlobales` (una sección de Ops › Administración) es la vista
+ *   **global** del administrador de la instancia: todas las filas, incluidas
+ *   las que no tienen dueño (las anteriores a la revisión `v108`), en modo
+ *   lectura de estado. Se conserva porque esas integraciones sin organización
+ *   siguen entregando y alguien tiene que poder verlas. Fue una pestaña propia
+ *   de Ops hasta 2026-10; en producción no tenía ni una fila.
  *
  * Las piezas viven en `webhooks/` y las dos consultas en
  * `_hooks/use-webhooks-ambito.ts`: aquí solo queda quién ve qué y con qué
@@ -64,25 +65,32 @@ export function WebhooksEquipoView() {
 }
 
 /**
- * Vista global de `/ops`: todos los webhooks de la instancia, en lectura.
+ * Sección de Ops › Administración: todos los webhooks de la instancia, en lectura.
  *
  * No permite crear ni editar a propósito. Crear un webhook exige decir a qué
  * organización pertenece, y esa decisión se toma dentro del equipo (en
  * `/equipo`), no desde una consola que ve todas las organizaciones a la vez.
- * Lo que esta vista sí resuelve es lo que ninguna otra puede: ver las
+ * Lo que esta sección sí resuelve es lo que ninguna otra puede: ver las
  * integraciones **sin dueño** heredadas de antes de `v108` y el estado de
  * entrega de todo el conjunto.
+ *
+ * Sin guarda propia: la pone `administracion-view.tsx`, que es quien la monta.
  */
-export default function WebhooksView() {
+export function WebhooksGlobales() {
   const { data, isPending, error, refetch } = useWebhooksGlobales();
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4">
-      <p className="text-muted-foreground text-tf-meta">
-        Vista global de la instancia, en solo lectura. Cada equipo gestiona los suyos desde{" "}
-        <strong className="font-medium text-foreground">Equipo › Integraciones</strong>; aquí aparecen además los que
-        no tienen organización, heredados de antes de que los webhooks tuvieran dueño.
-      </p>
+    <section id="webhooks" aria-labelledby="ops-webhooks" className="space-y-3">
+      <div>
+        <h2 id="ops-webhooks" className="text-tf-body font-semibold">
+          Webhooks
+        </h2>
+        <p className="mt-1 max-w-prose text-muted-foreground text-tf-meta">
+          Todos los de la instancia, en solo lectura. Cada equipo gestiona los suyos desde{" "}
+          <strong className="font-medium text-foreground">Equipo › Integraciones</strong>; aquí aparecen además
+          los que no tienen organización, heredados de antes de que los webhooks tuvieran dueño.
+        </p>
+      </div>
 
       <Listado
         webhooks={data}
@@ -92,6 +100,6 @@ export default function WebhooksView() {
         editable={false}
         vacio="No hay ningún webhook registrado en la instancia."
       />
-    </div>
+    </section>
   );
 }

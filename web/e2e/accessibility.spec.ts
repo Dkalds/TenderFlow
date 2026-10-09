@@ -166,7 +166,7 @@ test.describe("Accesibilidad básica con sesión", () => {
     "/mi-watchlist",
     "/mi-perfil",
     "/equipo",
-    "/ops?vista=webhooks",
+    "/ops",
   ]) {
     test(`${route} conserva landmarks y nombres accesibles`, async ({ page }) => {
       await page.goto(route);

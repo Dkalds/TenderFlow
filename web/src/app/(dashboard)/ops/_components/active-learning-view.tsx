@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Active learning — cola de etiquetado; por defecto, por desacuerdo entre
- * reglas, LLM y modelo.
+ * Etiquetado (active learning) — cola de etiquetado; por defecto, por
+ * desacuerdo entre reglas, LLM y modelo.
  *
  * Vista compartida por la ruta `/active-learning` y por `?vista=etiquetado` del
  * espacio Ops. La guarda de administrador viaja con la vista (ver la nota en
@@ -34,7 +34,7 @@ function ActiveLearningContent() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="sr-only">Active learning</h1>
+        <h1 className="sr-only">Etiquetado</h1>
         <p className="text-tf-meta text-muted-foreground">
           Revisión humana de si cada licitación es TI y de qué familia.
         </p>
@@ -62,6 +62,7 @@ function ActiveLearningContent() {
         metric={estado.metric}
         metricTrend={estado.metricTrend}
         feedbacksSinceTrain={estado.feedbacksSinceTrain}
+        ultimaRegistrada={estado.ultimaRegistrada}
       />
 
       {estado.hasTechData && <TechQueueChips techCounts={estado.techCounts} />}

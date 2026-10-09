@@ -9,9 +9,12 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
  * Competencia — `/competidores` y `/utes` como dos cortes del mismo análisis.
  *
  * Las dos rutas responden a la misma pregunta (quién gana y con quién) sobre el
- * mismo ámbito, y separarlas obligaba a re-aplicar el filtro al cruzar. Cada
- * vista monta su pantalla original completa: las 34 funciones inventariadas
- * siguen donde estaban, incluido el dossier de empresa y su análisis completo.
+ * mismo ámbito, y separarlas obligaba a re-aplicar el filtro al cruzar.
+ *
+ * Desde 2026-10 las dos vistas van «primero el dibujo, después la lista»:
+ * Competidores abre con el reparto y el mapa y deja la tabla de doce columnas a
+ * un clic; UTE es una red de alianzas. El análisis completo de una empresa
+ * sigue en su ruta, `competencia/empresa/[empresaId]`.
  *
  * Los cuerpos viven en `_components/`, no en los `page.tsx` de las rutas
  * absorbidas. Este espacio los importaba de allí (`../competidores/page`,

@@ -68,7 +68,7 @@ export function VistaExperimental({
           hint={
             <>
               Esta vista experimental está apagada para tu organización. Se enciende
-              en Ops › Feature flags (<code className="font-mono">{flag}</code>).
+              en Ops › Administración (<code className="font-mono">{flag}</code>).
             </>
           }
         />

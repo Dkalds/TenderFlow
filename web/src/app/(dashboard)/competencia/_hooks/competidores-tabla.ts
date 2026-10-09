@@ -1,11 +1,11 @@
 /**
- * Búsqueda, orden, selección para comparar y drill-down: todo lo que gobierna
- * la **tabla** de Competidores, como funciones puras.
+ * Búsqueda, orden de columna e identidades del perfil: lo que gobierna la
+ * **lista** de Competidores, como funciones puras.
  *
  * Ninguna toca la red ni React: reciben lo que la vista ya descargó. Eso es lo
  * que permite comprobar las reglas que importan —qué identidades encuentra una
- * búsqueda, qué columnas se ordenan como texto, qué ids agrega el dossier— sin
- * montar siete gráficos `dynamic()` que en jsdom no pintan nada.
+ * búsqueda, qué columnas se ordenan como texto, qué ids agrega el perfil— sin
+ * montar un mapa `dynamic()` que en jsdom no pinta nada.
  */
 
 import type { Competitor, Searchable, SortKey } from "./competidores-types";
@@ -46,17 +46,10 @@ export function sortCompetitors(
   });
 }
 
-/** Selección para el radar: como mucho dos, la más antigua cede el sitio. */
-export function toggleCompareSelection(prev: string[], nombre: string): string[] {
-  if (prev.includes(nombre)) return prev.filter((n) => n !== nombre);
-  if (prev.length >= 2) return [prev[1], nombre];
-  return [...prev, nombre];
-}
-
 /**
  * Identidades del maestro que representan al mismo competidor analítico.
  *
- * El dossier siempre agrega todas —el usuario nunca elige cuál abrir—, así que
+ * El perfil siempre agrega todas —el usuario nunca elige cuál abrir—, así que
  * se deduplica `empresa_id` con `empresa_ids`.
  */
 export function drillDownIds(company: Competitor | null): number[] {

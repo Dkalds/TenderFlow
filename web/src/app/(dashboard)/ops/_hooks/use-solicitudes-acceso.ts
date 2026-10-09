@@ -85,6 +85,25 @@ async function cargarSolicitudes(query: string): Promise<SolicitudAcceso[]> {
   return fetchWithAuth<SolicitudAcceso[]>(`/api/v1/admin/solicitudes-acceso?${query}`);
 }
 
+/**
+ * Cuántas solicitudes esperan a una persona, para el contador de la pestaña.
+ *
+ * Es la misma consulta que la lista de pendientes de la tarjeta —misma clave,
+ * misma `queryFn`—, así que entrar en Administración no la vuelve a pedir y el
+ * número de la pestaña no puede discrepar del de la tarjeta. `truncado` avisa
+ * de que hay al menos esas: el endpoint no da más de `LIMITE` filas.
+ */
+export function usePendientesDeAcceso({ enabled = true }: { enabled?: boolean } = {}) {
+  const { data } = useQuery<SolicitudAcceso[]>({
+    queryKey: [...adminKeys.solicitudes.vista("pendiente"), LIMITE],
+    queryFn: () => cargarSolicitudes(`estado=pendiente&limit=${LIMITE}`),
+    enabled,
+    // Un contador que no llega no es un incidente: la pestaña va sin número.
+    meta: META_ERROR_EN_LINEA,
+  });
+  return { total: data?.length, truncado: data?.length === LIMITE };
+}
+
 export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcceso = {}) {
   const queryClient = useQueryClient();
   const [vista, setVista] = useState<Vista>("pendiente");

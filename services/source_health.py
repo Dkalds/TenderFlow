@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
 from db.repositories.source_health import SourceHealthRepository
+
+#: Lotes de carga histórica: ``bulk_YYYYMM`` (PLACSP) y ``<conector>_bulk_YYYYMM``.
+#: Son efímeros por diseño —uno por mes reprocesado— y no tienen frescura que
+#: vigilar (ver ``REGISTERED_SOURCES``), así que no entran en el recuento de
+#: fuentes al día: contarlos dejaba el aviso de degradación encendido para
+#: siempre por un mes que se cargó una vez.
+_LOTE_HISTORICO_RE = re.compile(r"(?:^|_)bulk_\d{6}$")
 
 
 class SourceFreshness(BaseModel):
@@ -24,6 +32,9 @@ class SourceFreshness(BaseModel):
     discarded: int = Field(default=0, ge=0)
     errors: int = Field(default=0, ge=0)
     is_degraded: bool = False
+    #: Lote de carga histórica (``bulk_YYYYMM``), no una fuente viva: viaja con
+    #: su ``status`` pero nunca cuenta como degradado ni entra en los totales.
+    is_backfill: bool = False
     warning: str | None = None
 
 
@@ -48,7 +59,17 @@ def _parse_datetime(value: object) -> datetime | None:
 
 
 def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshnessResult:
-    """Combina salud de runs, cursor y latencia observada fuente→ingesta."""
+    """Combina salud de runs, cursor y latencia observada fuente→ingesta.
+
+    Cada fuente registrada se mide contra su propio ``max_lag_hours``, el mismo
+    que usa ``scheduler/healthcheck.py`` para avisar: con un umbral único el
+    panel marcaba degradada una RSS semanal que el healthcheck daba por buena.
+    ``degraded_after_hours`` queda para las fuentes sin registro.
+    """
+    # Diferido, como el resto de usos de `scraper` desde `services/`: el registro
+    # de fuentes no hace falta para importar este módulo.
+    from scraper.connectors import REGISTERED_SOURCES_BY_ID
+
     repo = SourceHealthRepository()
     rows = repo.list_health()
     samples = repo.latency_samples()
@@ -75,15 +96,23 @@ def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshne
         observed = within.get(source, [])
         detected_pct = round(sum(observed) / len(observed) * 100, 2) if observed else None
         status = str(row.get("status") or "unknown")
-        is_degraded = status != "success" or lag_hours is None or lag_hours > degraded_after_hours
+        is_backfill = _LOTE_HISTORICO_RE.search(source) is not None
+        registrada = REGISTERED_SOURCES_BY_ID.get(source)
+        umbral = float(registrada.max_lag_hours) if registrada else degraded_after_hours
+        is_degraded = not is_backfill and (
+            status != "success" or lag_hours is None or lag_hours > umbral
+        )
         warning: str | None = None
         if status == "running" and row.get("last_started_at"):
             warning = (
                 "La fuente sigue marcada como ejecutándose; el proceso pudo quedar interrumpido."
             )
+        elif is_backfill:
+            # Un lote terminado no «se atrasa»: su antigüedad no es un aviso.
+            warning = None
         elif lag_hours is None:
             warning = "Todavía no hay una ingesta exitosa registrada."
-        elif lag_hours > degraded_after_hours:
+        elif lag_hours > umbral:
             warning = f"La última ingesta exitosa fue hace {lag_hours:.1f} horas."
         elif detected_pct is not None and detected_pct < 90:
             warning = "Menos del 90% de la muestra se detectó en menos de 24 horas."
@@ -103,11 +132,13 @@ def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshne
                 discarded=int(row.get("discarded") or 0),
                 errors=int(row.get("errors") or 0),
                 is_degraded=is_degraded,
+                is_backfill=is_backfill,
                 warning=warning,
             )
         )
-    healthy = sum(not source.is_degraded for source in sources)
-    total = len(sources)
+    vivas = [source for source in sources if not source.is_backfill]
+    healthy = sum(not source.is_degraded for source in vivas)
+    total = len(vivas)
     return SourceFreshnessResult(
         sources=sources,
         healthy_sources=healthy,

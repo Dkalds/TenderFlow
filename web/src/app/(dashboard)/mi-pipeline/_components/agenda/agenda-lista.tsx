@@ -2,29 +2,42 @@
 
 /**
  * La cronología: los dos carriles, la barra de filtro y atajos, y las filas
- * agrupadas por las bandas de urgencia que ya vienen de la API.
+ * agrupadas por los tramos que ya vienen de la API.
  *
  * **Dos carriles y no una lista.** Lo que la organización ya decidió trabajar
  * —plazos, acciones y contratos propios— y lo que las reglas *proponen* son dos
  * trabajos distintos: uno se ejecuta, el otro se tria. Mezclados, cincuenta
  * señales sin triar enterraban las cuatro cosas que vencen esta semana. Repartir
  * por `kind` no es reordenar: dentro de cada carril las filas conservan el orden
- * y la banda que trae la API (ADR-014).
+ * y el tramo que trae la API (ADR-014).
  *
- * Los conteos de las pestañas y de las bandas describen **lo listado**, no el
+ * **Sin reglas no hay segundo carril.** Las señales salen de las reglas de Mi
+ * Watchlist; quien no tiene ninguna no tiene bandeja, y una pestaña «Por triar
+ * · 0» permanente parecía una bandeja ya triada. En su lugar va una línea que
+ * dice cómo llenarla.
+ *
+ * Los conteos de las pestañas y de los tramos describen **lo listado**, no el
  * universo: son el tamaño de la lista que hay debajo. Los agregados sobre el
- * scope completo son los KPIs de la franja, y esos los calcula la API.
+ * ámbito completo son los contadores de la franja, y esos los calcula la API.
  */
 
 import * as React from "react";
 import { cn, formatNumber } from "@/lib/utils";
 import { useDensity } from "@/lib/density";
-import { PanelEmpty, PanelTabs } from "@/components/console/panel";
+import { EnlaceIr, PanelEmpty, PanelTabs } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Agenda } from "../../_hooks/use-agenda";
 import { AgendaFila } from "./agenda-fila";
-import { BANDAS, type Carril, claveDe, SHORTCUTS } from "./agenda-meta";
+import {
+  atajosPara,
+  bandaDe,
+  BANDAS,
+  type Carril,
+  claveDe,
+  CONTADORES,
+  tareasAnidadas,
+} from "./agenda-meta";
 
 const VACIO: Record<Carril, { title: string; hint: string }> = {
   compromisos: {
@@ -42,7 +55,9 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
   // La densidad es de la tabla: la ficha móvil tiene su propio relleno, y
   // apretarla a 6 px de aire vertical no la hace más legible, solo más pequeña.
   const rowPad = compact ? "md:py-1.5" : "md:py-2.5";
-  const { items, isLoading, activeIndex, carril } = agenda;
+  const { items, isLoading, activeIndex, carril, filtro } = agenda;
+  const atajos = atajosPara(items);
+  const filtrado = CONTADORES.find((contador) => contador.key === filtro);
 
   // El scroll de la fila activa vive donde vive la lista: el ref apunta a este
   // contenedor, y sacarlo al hook obligaba a pasearlo por props.
@@ -50,27 +65,37 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
   React.useEffect(() => {
     const node = listRef.current?.querySelector<HTMLElement>('[data-active="true"]');
     node?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex, carril]);
+  }, [activeIndex, carril, filtro]);
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-xl border border-border/60 bg-card">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 md:px-3.5">
-        {/* `PanelTabs` trae su propia línea inferior, pensada para separarse del
-            gráfico que hay debajo; aquí la cabecera ya tiene la suya. */}
-        <PanelTabs
-          label="Carriles de la agenda"
-          value={carril}
-          onChange={agenda.setCarril}
-          className="border-b-0 pb-0"
-          tabs={[
-            {
-              key: "compromisos" as Carril,
-              label: "Compromisos",
-              badge: agenda.conteos.compromisos,
-            },
-            { key: "triaje" as Carril, label: "Por triar", badge: agenda.conteos.triaje },
-          ]}
-        />
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card md:min-h-0">
+      <div className="flex flex-none flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 md:px-3.5">
+        {agenda.sinReglas ? (
+          <h2 className="px-1 text-tf-body font-semibold">Compromisos</h2>
+        ) : (
+          // `PanelTabs` trae su propia línea inferior, pensada para separarse
+          // del gráfico que hay debajo; aquí la cabecera ya tiene la suya.
+          <PanelTabs
+            label="Carriles de la agenda"
+            value={carril}
+            onChange={agenda.setCarril}
+            className="border-b-0 pb-0"
+            tabs={[
+              {
+                key: "compromisos" as Carril,
+                label: "Compromisos",
+                // Sin número mientras carga: un «0» ahí se leía como «no
+                // tienes nada» medio segundo antes de que llegara la lista.
+                badge: isLoading ? undefined : agenda.conteos.compromisos,
+              },
+              {
+                key: "triaje" as Carril,
+                label: "Por triar",
+                badge: isLoading ? undefined : agenda.conteos.triaje,
+              },
+            ]}
+          />
+        )}
         <button
           type="button"
           aria-pressed={agenda.soloMios}
@@ -86,11 +111,23 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
           Solo míos
         </button>
         <span className="truncate text-tf-micro text-muted-foreground">
-          {isLoading ? "Cargando agenda…" : `${formatNumber(items.length)} en este carril`}
+          {isLoading
+            ? "Cargando agenda…"
+            : filtrado
+              ? `${formatNumber(items.length)} con el filtro «${filtrado.label}»`
+              : `${formatNumber(items.length)} en este carril`}
         </span>
+        {agenda.sinReglas && (
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-tf-micro text-muted-foreground">
+            Aún no llega nada por triar.
+            <EnlaceIr href="/mi-watchlist" className="text-tf-micro">
+              Crea tu primera regla
+            </EnlaceIr>
+          </span>
+        )}
         <div className="flex-1" />
         <div className="hidden items-center gap-2.5 md:flex">
-          {SHORTCUTS.map((shortcut) => (
+          {atajos.map((shortcut) => (
             <span
               key={shortcut.key}
               className="flex items-center gap-1 text-tf-micro text-muted-foreground/70"
@@ -104,15 +141,15 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
         </div>
       </div>
 
-      {/* En móvil el alto se ata al viewport (`70vh`) y no a un cálculo
-          pensado para la franja de KPIs de escritorio, que ahí ocupa el
-          doble de alto y dejaba la lista en una rendija. Sigue siendo un
-          contenedor con scroll propio: las cabeceras de banda son
-          `sticky` y necesitan uno acotado para no pegarse bajo el cromo. */}
+      {/* En móvil la lista crece con su contenido y la que se desplaza es la
+          página: una caja con scroll propio (`70vh`) dentro de otra que también
+          lo tenía atrapaba el pulgar en la de dentro. Desde `md` la lista ocupa
+          el alto que queda y sí lleva el suyo, para que la cabecera, los
+          contadores y el inspector no se vayan al desplazarla. */}
       <div
         data-slot="agenda-filas"
         ref={listRef}
-        className="relative max-h-[70vh] min-h-[240px] overflow-y-auto md:max-h-[calc(100vh-320px)]"
+        className="relative min-h-[240px] md:min-h-0 md:flex-1 md:overflow-y-auto"
       >
         {isLoading ? (
           <div className="flex flex-col gap-2.5 p-3.5">
@@ -120,6 +157,24 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
               <Skeleton key={index} className="h-10 rounded-md" />
             ))}
           </div>
+        ) : items.length === 0 && filtrado ? (
+          // El vacío del filtro no es el de la agenda: decir «Sin compromisos
+          // por delante» con los demás a un clic habría sido mentira. Pasa al
+          // resolver la última fila de un contador con el filtro puesto.
+          <PanelEmpty
+            title={`Nada en «${filtrado.label}»`}
+            hint="Ya no queda ninguna fila en este contador. El resto de tus compromisos sigue ahí."
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => agenda.alternarFiltro(filtrado.key)}
+              >
+                Quitar el filtro
+              </Button>
+            }
+          />
         ) : items.length === 0 ? (
           <PanelEmpty
             title={VACIO[carril].title}
@@ -134,23 +189,29 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
           BANDAS.map((banda) => {
             const filas = items
               .map((item, index) => ({ item, index }))
-              .filter(({ item }) => item.urgencia === banda.key);
+              .filter(({ item }) => bandaDe(item) === banda.key);
             if (!filas.length) return null;
+            const anidadas = tareasAnidadas(filas.map(({ item }) => item));
             return (
               <React.Fragment key={banda.key}>
-                <div
-                  className={cn(
-                    "sticky top-0 z-10 border-b border-border/50 bg-card px-3 py-1 text-tf-meta font-semibold md:px-3.5",
-                    banda.tone,
+                {/* Pegajosa solo desde `md`, donde la lista tiene su propio
+                    scroll. En móvil se desplaza la página, cuyo cuerpo lleva
+                    relleno arriba: una cabecera pegada ahí se quedaba 16 px
+                    por debajo del borde, con las filas asomando por encima. */}
+                <div className="z-10 border-b border-border/50 bg-card px-3 py-1 md:sticky md:top-0 md:px-3.5">
+                  <p className={cn("text-tf-meta font-semibold", banda.tone)}>
+                    {banda.label} · {filas.length}
+                  </p>
+                  {banda.hint && (
+                    <p className="text-tf-micro text-muted-foreground">{banda.hint}</p>
                   )}
-                >
-                  {banda.label} · {filas.length}
                 </div>
-                {filas.map(({ item, index }) => (
+                {filas.map(({ item, index }, posicion) => (
                   <AgendaFila
                     key={claveDe(item)}
                     item={item}
                     activa={index === activeIndex}
+                    anidada={anidadas[posicion]}
                     rowPad={rowPad}
                     onSeleccionar={() => agenda.setSelected(index)}
                     acciones={{
@@ -163,6 +224,10 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
                         agenda.editarAccion(item);
                       },
                       onVerRenovacion: agenda.verRenovacion,
+                      onRetirar: () => agenda.pedirRetirada(item),
+                      onApuntarAccion: (accion, alGuardar) =>
+                        agenda.apuntarAccion(item, accion, alGuardar),
+                      apuntando: agenda.apuntando,
                     }}
                   />
                 ))}

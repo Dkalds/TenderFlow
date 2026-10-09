@@ -11,7 +11,7 @@ import type {
   OrganizationMembershipUpsert,
   OrganizationSummary,
 } from "@/lib/api-types";
-import { organizationKeys } from "@/lib/query-keys";
+import { organizationKeys } from "@/lib/claves-raiz";
 
 /** Nombres locales estables sobre los schemas generados (ver lib/api-types.ts). */
 export type Organization = OrganizationSummary;

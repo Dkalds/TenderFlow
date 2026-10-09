@@ -72,7 +72,7 @@ Generado: 2026-10-09
 
 ## Superficie de la API
 
-**288 endpoints** expuestos.
+**291 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -84,7 +84,9 @@ Generado: 2026-10-09
 | GET | `/api/redoc` |
 | GET | `/api/v1/adjudicaciones` |
 | GET | `/api/v1/admin/dlq` |
+| POST | `/api/v1/admin/dlq/{failure_id}/descartar` |
 | POST | `/api/v1/admin/dlq/{failure_id}/reintentar` |
+| GET | `/api/v1/admin/ejecuciones` |
 | GET | `/api/v1/admin/solicitudes-acceso` |
 | GET | `/api/v1/admin/solicitudes-acceso/grants` |
 | DELETE | `/api/v1/admin/solicitudes-acceso/grants/{grant_id}` |
@@ -297,6 +299,7 @@ Generado: 2026-10-09
 | GET | `/api/v1/pursuits/cartera/{cartera_id}/eventos` |
 | POST | `/api/v1/pursuits/cartera/{cartera_id}/renovacion` |
 | GET | `/api/v1/pursuits/direccion` |
+| GET | `/api/v1/pursuits/direccion/carga` |
 | GET | `/api/v1/pursuits/metrics` |
 | GET | `/api/v1/pursuits/mi-baja` |
 | GET | `/api/v1/pursuits/tasks/agenda` |

@@ -86,6 +86,20 @@ class CompetitorResult(BaseModel):
     competitors: list[CompetitorEntry] = Field(default_factory=list)
     hhi: float = 0.0
     pct_oferta_unica: float = 0.0
+    cobertura_ofertas_pct: float | None = None
+    """Qué parte de las licitaciones del ámbito trae el número de ofertantes.
+
+    Es la base de ``pct_oferta_unica``, que solo se calcula sobre las
+    licitaciones que reportan ``n_ofertas_recibidas``: sin ella, un 60 % de
+    oferta única puede ser el mercado entero o cuatro expedientes. Se mide en
+    licitaciones y no en filas de adjudicación porque así se cuenta el
+    porcentaje al que acompaña.
+
+    ``None`` es «sin medir» —no hay adjudicaciones en el ámbito, o la carga no
+    trae la columna— y ``0.0`` es «medido, y ninguna lo trae». El consumidor se
+    abstiene en los dos casos, pero solo en el segundo tiene algo que contar.
+    """
+
     total_adjudicaciones: int = 0
     total_empresas: int = 0
     importe_total: float = 0.0
@@ -625,12 +639,17 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     lic_id_col = "id_externo" if "id_externo" in df.columns else "licitacion_id"
     single_bid_lics: set[object] = set()
     lics_con_ofertas: set[object] = set()
+    cobertura_ofertas: float | None = None
     if lic_id_col in df.columns and "n_ofertas_recibidas" in df.columns:
         _ofertas_lic = pd.to_numeric(df["n_ofertas_recibidas"], errors="coerce")
         _per_lic = df.assign(_ofertas=_ofertas_lic).dropna(subset=["_ofertas"])
         ofertas_por_lic = _per_lic.groupby(lic_id_col)["_ofertas"].max()
         lics_con_ofertas = set(ofertas_por_lic.index)
         single_bid_lics = set(ofertas_por_lic[ofertas_por_lic <= 1].index)
+        # Misma base que el porcentaje: licitaciones distintas, no filas.
+        lics_ambito = int(df[lic_id_col].nunique())
+        if lics_ambito:
+            cobertura_ofertas = len(lics_con_ofertas) / lics_ambito * 100
 
     # pct_monopolio per empresa (% de sus licitaciones —con dato— sin rival)
     pct_monopolio_map: dict[str, float | None] = {}
@@ -771,6 +790,7 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         competitors=entries,
         hhi=hhi,
         pct_oferta_unica=pct_unica,
+        cobertura_ofertas_pct=cobertura_ofertas,
         total_adjudicaciones=total,
         total_empresas=len(g),
         importe_total=total_importe,

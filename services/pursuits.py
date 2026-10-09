@@ -32,14 +32,17 @@ from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.kit_presentacion import KitPresentacion, construir_kit, marcar_item
 from services.organizations import alcance_resuelto, require_active_member
 from services.pursuit_awards import resultado_sugerido
-from services.watchlist_rules import list_rules
+from services.watchlist_rules import WatchlistRule, list_rules
 from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
-from shared.dates import a_fecha
+from shared.dates import a_fecha, hora_local_de_plazo
 from shared.dto import (
+    AgendaBanda,
+    AgendaContador,
     AgendaDueKind,
     AgendaUrgencia,
     OrganizationSettings,
     PerdidaPorMotivo,
+    PipelineAgendaContadores,
     PipelineAgendaItem,
     PipelineAgendaKpis,
     PipelineAgendaResponse,
@@ -781,8 +784,10 @@ def get_agenda(
       propios ya entran como ``contrato``— y por eso dejaron de fusionarse
       por defecto: solo con ``incluir_mercado``.
 
-    La fusión, el orden y las bandas de urgencia se calculan aquí; el frontend
-    solo agrupa por la banda que ya viene puesta (ADR-014). ``tecnologia`` y
+    La fusión, el orden y las bandas se calculan aquí; el frontend solo agrupa
+    por la banda que ya viene puesta (ADR-014). Cada fila lleva además los
+    contadores de la franja en los que cuenta (``cuenta_en``), para que filtrar
+    por uno enseñe exactamente las filas que suma. ``tecnologia`` y
     ``ccaa`` admiten varios valores separados por comas (OR dentro de cada
     dimensión). ``solo_mios`` acota pursuits y tareas por el responsable del
     pursuit; los contratos son de la organización y no se filtran por persona.
@@ -816,7 +821,9 @@ def get_agenda(
             )
         )
 
+        reglas = [regla for regla in list_rules(user_key, resolved_id) if regla.active]
         senal_items, senales_truncadas = _agenda_senales(
+            reglas,
             user_key,
             resolved_id,
             hoy,
@@ -834,7 +841,7 @@ def get_agenda(
                 )
             )
 
-        items.sort(key=_agenda_orden)
+        items = _ordenar_agenda(_marcar(items))
         return PipelineAgendaResponse(
             organization_id=resolved_id,
             solo_mios=solo_mios,
@@ -845,6 +852,8 @@ def get_agenda(
             senales_truncadas=senales_truncadas,
             renovaciones_horizonte_meses=AGENDA_RENOVACIONES_MESES,
             tareas_truncadas=tareas_truncadas,
+            contadores=_agenda_contadores(items),
+            reglas_activas=len(reglas),
         )
 
 
@@ -1023,6 +1032,75 @@ def _agenda_orden(item: PipelineAgendaItem) -> tuple[bool, int, int, str]:
     )
 
 
+#: El orden de los tramos en pantalla es el del ``Literal``: primero lo que aún
+#: se puede hacer (vencido, hoy, semana), después lo que hay que cerrar, después
+#: el horizonte, y al final lo que solo queda esperar o no tiene fecha.
+_BANDA_ORDEN: dict[AgendaBanda, int] = {
+    banda: posicion for posicion, banda in enumerate(get_args(AgendaBanda))
+}
+
+
+def _banda_de_pursuit(status: object, dias: int | None) -> AgendaBanda:
+    """Tramo de una oportunidad: su urgencia, salvo que el plazo ya no obligue.
+
+    Con la oferta presentada no queda plazo que cumplir, venza cuando venza:
+    lo pendiente es el resultado. Y un plazo que pasó sin oferta no es una
+    urgencia —ya no se puede presentar— sino una oportunidad que nadie cerró.
+    """
+    if status == "submitted":
+        return "en_resolucion"
+    if dias is not None and dias < 0:
+        return "plazo_pasado"
+    return _urgencia(dias)
+
+
+def _banda(item: PipelineAgendaItem) -> AgendaBanda:
+    """La banda de la fila, o su urgencia si quien la construyó no la puso."""
+    return item.banda or item.urgencia
+
+
+def _grupo(item: PipelineAgendaItem) -> tuple[str, str]:
+    """Con quién va junta la fila: una oportunidad y sus tareas forman grupo."""
+    if item.kind in ("pursuit", "tarea") and item.pursuit_id is not None:
+        return ("oportunidad", str(item.pursuit_id))
+    return (item.kind, item.licitacion_id)
+
+
+def _ordenar_agenda(items: Sequence[PipelineAgendaItem]) -> list[PipelineAgendaItem]:
+    """Orden final de la agenda: por banda y, dentro de ella, por oportunidad.
+
+    Las tareas van **detrás de su oportunidad** cuando caen en la misma banda:
+    juntas se leen como un trabajo, y sueltas obligaban a repetir en cada una
+    de qué expediente era. El grupo se coloca por su fila más próxima
+    (:func:`_agenda_orden`), así que una tarea de mañana sube consigo al plazo
+    de dentro de cinco días. Una tarea cuya oportunidad está en otra banda se
+    queda en la suya: la de hoy no espera al plazo de dentro de tres semanas.
+    """
+    ancla: dict[tuple[AgendaBanda, tuple[str, str]], tuple[bool, int, int, str]] = {}
+    for item in items:
+        clave = (_banda(item), _grupo(item))
+        orden = _agenda_orden(item)
+        if clave not in ancla or orden < ancla[clave]:
+            ancla[clave] = orden
+
+    def posicion(
+        item: PipelineAgendaItem,
+    ) -> tuple[int, tuple[bool, int, int, str], tuple[str, str], int, bool, int, int]:
+        banda = _banda(item)
+        grupo = _grupo(item)
+        return (
+            _BANDA_ORDEN[banda],
+            ancla[(banda, grupo)],
+            grupo,
+            _KIND_ORDEN[item.kind],
+            item.dias_restantes is None,
+            item.dias_restantes if item.dias_restantes is not None else 0,
+            item.tarea_id or 0,
+        )
+
+    return sorted(items, key=posicion)
+
+
 def _campos_pursuit(row: dict[str, Any]) -> dict[str, Any]:
     """Los campos que ``pursuit`` y ``tarea`` comparten: la tarea hereda su oportunidad.
 
@@ -1067,7 +1145,9 @@ def _pursuit_item(row: dict[str, Any], hoy: date) -> PipelineAgendaItem:
         {
             "kind": "pursuit",
             "urgencia": _urgencia(dias),
+            "banda": _banda_de_pursuit(row.get("status"), dias),
             "due_date": deadline,
+            "due_hora": hora_local_de_plazo(row.get("tender_deadline")),
             "due_kind": "plazo",
             "dias_restantes": dias,
             **_campos_pursuit(row),
@@ -1097,6 +1177,7 @@ def _tarea_item(
         {
             "kind": "tarea",
             "urgencia": _urgencia(dias),
+            "banda": _urgencia(dias),
             "due_date": due,
             "due_kind": "accion",
             "dias_restantes": dias,
@@ -1172,6 +1253,7 @@ def _contrato_item(contrato: ContratoCartera, hoy: date) -> PipelineAgendaItem:
         {
             "kind": "contrato",
             "urgencia": _urgencia(dias),
+            "banda": _urgencia(dias),
             "due_date": due,
             "due_kind": due_kind,
             "dias_restantes": dias,
@@ -1248,6 +1330,7 @@ def _agenda_contratos(
 
 
 def _agenda_senales(
+    reglas: Sequence[WatchlistRule],
     user_key: str,
     organization_id: int,
     hoy: date,
@@ -1255,8 +1338,12 @@ def _agenda_senales(
     tecnologias: Sequence[str],
     ccaas: Sequence[str],
 ) -> tuple[list[PipelineAgendaItem], bool]:
-    """Matches vivos y sin triar de las reglas activas del usuario, deduplicados."""
-    reglas = [regla for regla in list_rules(user_key, organization_id) if regla.active]
+    """Matches vivos y sin triar de las reglas activas del usuario, deduplicados.
+
+    ``reglas`` son las activas, ya filtradas por quien llama: ``get_agenda``
+    necesita además cuántas son, para decir «no tienes reglas» en vez de
+    enseñar una bandeja vacía que parece triada.
+    """
     recogidas: dict[str, PipelineAgendaItem] = {}
     for regla in reglas[:AGENDA_REGLAS_MAX]:
         if regla.id is None:
@@ -1287,7 +1374,9 @@ def _agenda_senales(
                 {
                     "kind": "senal",
                     "urgencia": _urgencia(dias),
+                    "banda": _urgencia(dias),
                     "due_date": deadline,
+                    "due_hora": hora_local_de_plazo(row.get("fecha_limite")),
                     "due_kind": "plazo",
                     "dias_restantes": dias,
                     "licitacion_id": licitacion_id,
@@ -1361,6 +1450,7 @@ def _agenda_renovaciones(
                 {
                     "kind": "renovacion",
                     "urgencia": _urgencia(dias),
+                    "banda": _urgencia(dias),
                     "due_date": due,
                     "due_kind": "fin_contrato",
                     "dias_restantes": dias,
@@ -1430,6 +1520,71 @@ def _agenda_kpis(items: list[PipelineAgendaItem]) -> PipelineAgendaKpis:
             and item.dias_restantes is not None
             and item.dias_restantes <= 0
         ),
+    )
+
+
+def _marcar(items: Sequence[PipelineAgendaItem]) -> list[PipelineAgendaItem]:
+    """Anota en cada fila los contadores en los que cuenta y sus tareas abiertas.
+
+    Los cuatro contadores de oportunidades miran solo las **vivas**: un plazo
+    que pasó sin oferta cuenta en ``plazo_pasado`` y en ninguno más —su
+    siguiente paso es cerrarla, no decidir ni planificar— y una oferta
+    presentada no cuenta en ninguno. Sin ese corte, cinco oportunidades muertas
+    hinchaban a la vez «plazos esta semana», «Go/No-Go pendientes» y «sin
+    siguiente paso», y la franja dejaba de decir qué había que hacer.
+
+    Devuelve copias: las filas de entrada no se tocan.
+    """
+    tareas_por_pursuit: dict[int, int] = {}
+    for item in items:
+        if item.kind == "tarea" and item.pursuit_id is not None:
+            tareas_por_pursuit[item.pursuit_id] = tareas_por_pursuit.get(item.pursuit_id, 0) + 1
+
+    marcados: list[PipelineAgendaItem] = []
+    for item in items:
+        cuenta_en: list[AgendaContador] = []
+        tareas_abiertas: int | None = None
+        if item.kind == "pursuit":
+            banda = _banda(item)
+            tareas_abiertas = tareas_por_pursuit.get(item.pursuit_id or 0, 0)
+            if banda == "plazo_pasado":
+                cuenta_en.append("plazo_pasado")
+            elif banda != "en_resolucion":
+                if banda in ("hoy", "semana"):
+                    cuenta_en.append("plazo_semana")
+                if item.decision == "pending":
+                    cuenta_en.append("go_no_go")
+                if not item.next_action and tareas_abiertas == 0:
+                    cuenta_en.append("sin_paso")
+        elif item.kind == "tarea":
+            if item.dias_restantes is not None and item.dias_restantes <= 0:
+                cuenta_en.append("accion_vencida")
+        marcados.append(
+            item.model_copy(update={"cuenta_en": cuenta_en, "tareas_abiertas": tareas_abiertas})
+        )
+    return marcados
+
+
+def _agenda_contadores(items: Sequence[PipelineAgendaItem]) -> PipelineAgendaContadores:
+    """Los contadores de la franja: cuántas filas llevan cada uno en ``cuenta_en``.
+
+    No vuelve a aplicar ninguna regla —eso lo hizo :func:`_marcar`—, así que el
+    número de un contador y las filas que quedan al filtrar por él no pueden
+    separarse.
+    """
+
+    def cuantas(contador: AgendaContador) -> int:
+        return sum(1 for item in items if contador in item.cuenta_en)
+
+    return PipelineAgendaContadores(
+        plazo_semana=cuantas("plazo_semana"),
+        plazo_semana_importe_eur=sum(
+            item.importe_eur or 0.0 for item in items if "plazo_semana" in item.cuenta_en
+        ),
+        accion_vencida=cuantas("accion_vencida"),
+        go_no_go=cuantas("go_no_go"),
+        sin_paso=cuantas("sin_paso"),
+        plazo_pasado=cuantas("plazo_pasado"),
     )
 
 

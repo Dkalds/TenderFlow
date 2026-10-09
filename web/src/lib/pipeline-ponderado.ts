@@ -45,8 +45,14 @@ export interface SupuestoEtapa {
   probabilidad: number;
 }
 
-/** Probabilidades que el backend **usó** (sólo etapas con oportunidades abiertas). */
-export function supuestosEtapas(metrics: PursuitMetrics): SupuestoEtapa[] {
+/**
+ * Probabilidades que el backend **usó** (sólo etapas con oportunidades
+ * abiertas). Vale para `PursuitMetrics` y para el cuadro de Dirección, que
+ * declaran los supuestos con el mismo campo.
+ */
+export function supuestosEtapas(
+  metrics: Pick<PursuitMetrics, "probabilidades_etapa_usadas">,
+): SupuestoEtapa[] {
   const usadas = metrics.probabilidades_etapa_usadas ?? {};
   const posicion = (etapa: string) => {
     const i = (ORDEN_ETAPAS as readonly string[]).indexOf(etapa);
@@ -73,8 +79,10 @@ export function etiquetaTrimestre(clave: string): string {
   return match ? `T${match[2]} ${match[1]}` : clave;
 }
 
-/** Previsión por trimestre en orden cronológico. */
-export function previsionOrdenada(metrics: PursuitMetrics): TrimestrePrevision[] {
+/** Previsión por trimestre en orden cronológico (Rendimiento y Dirección). */
+export function previsionOrdenada(
+  metrics: Pick<PursuitMetrics, "prevision_trimestral">,
+): TrimestrePrevision[] {
   return Object.entries(metrics.prevision_trimestral ?? {})
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([clave, valor]) => ({ clave, etiqueta: etiquetaTrimestre(clave), valor }));

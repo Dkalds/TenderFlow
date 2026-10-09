@@ -1,249 +1,148 @@
 /**
- * Las nueve series de gráfico de Competidores, como funciones puras.
+ * Las series de Competidores, como funciones puras.
  *
  * No hay fetch: reciben lo que la vista ya descargó de `api/`. La agregación
- * sigue viniendo del backend (ADR-014); esto solo da forma a lo recibido.
+ * sigue viniendo del backend (ADR-014); esto solo da forma a lo recibido
+ * —ordenar, recortar, escalar una barra contra el máximo visible— y, donde suma
+ * algo, suma cifras que la API ya calculó sobre el ámbito entero.
  *
- * Cada builder tiene una regla que sí importa —qué cuenta como «Otros», contra
- * qué se normaliza el radar, a quién descarta el posicionamiento— y ninguna se
+ * Cada builder tiene una regla que sí importa —qué cuenta como «Otras», cuándo
+ * una concentración es parcial, qué es un dato y qué una ausencia— y ninguna se
  * podría comprobar desde el árbol de render.
+ *
+ * Las dos series que cruzan dimensiones (la matriz empresa × CCAA y el mapa de
+ * competidores) viven en `competidores-cruces.ts`.
  */
 
-import { truncate } from "@/lib/utils";
+import type { Competitor, EstacionalidadEntry, Metrica } from "./competidores-types";
 
-import type { BajaItem, Competitor, HeatmapEntry } from "./competidores-types";
+export const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-export const MONTH_LABELS = [
-  "Ene",
-  "Feb",
-  "Mar",
-  "Abr",
-  "May",
-  "Jun",
-  "Jul",
-  "Ago",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dic",
-];
+/** Los totales del ámbito que acompañan a la lista; `null` = la API no los dio. */
+export interface TotalesAmbito {
+  totalAdjudicaciones: number | null;
+  totalEmpresas: number | null;
+}
 
-export const RADAR_DIMENSIONS = [
-  "Contratos",
-  "Importe",
-  "Cuota",
-  "Contratos/año",
-  "Importe medio",
-  "Agresividad baja",
-] as const;
+/* ── Orden y cuota ──────────────────────────────────────────────────── */
 
-export interface PieSlice {
-  name: string;
-  value: number;
+export function ordenarPorMetrica(items: Competitor[], metrica: Metrica): Competitor[] {
+  const valor = metrica === "importe" ? (c: Competitor) => c.importe : (c: Competitor) => c.count;
+  return [...items].sort((a, b) => valor(b) - valor(a));
 }
 
 /**
- * Tarta de cuota: top 10 por importe más un resto agregado.
+ * Cuota de un competidor en la medida activa.
  *
- * Sin búsqueda, «Otros» es el mercado total menos el top 10 —incluye la cola que
- * quedó fuera del `limit` que devolvió el backend—. Con búsqueda solo se puede
- * hablar de lo filtrado visible, así que «Otros» es la cola de ese subconjunto.
+ * Por importe es la que manda la API. Por adjudicaciones no hay campo: es su
+ * recuento sobre el total del ámbito, las dos cifras de la API; sin ese total
+ * no se calcula contra la suma de lo recibido, que daría la cuota entre los
+ * primeros de la lista y no la del mercado.
  */
-export function buildPieData(
-  filtered: Competitor[],
-  search: string,
-  importeTotal: number | undefined,
-): PieSlice[] {
-  if (!filtered.length) return [];
-  const sorted = [...filtered].sort((a, b) => b.importe - a.importe);
-  const top10 = sorted.slice(0, 10);
-  const top10Importe = top10.reduce((s, c) => s + c.importe, 0);
-  const otrosImporte = search
-    ? sorted.slice(10).reduce((s, c) => s + c.importe, 0)
-    : Math.max((importeTotal ?? top10Importe) - top10Importe, 0);
-  const result: PieSlice[] = top10.map((c) => ({
-    name: truncate(c.nombre, 25),
-    value: c.importe,
-  }));
-  if (otrosImporte > 0) result.push({ name: "Otros", value: otrosImporte });
-  return result;
+export function cuotaDe(c: Competitor, metrica: Metrica, totalAdjudicaciones: number | null): number | null {
+  if (metrica === "importe") return c.cuota;
+  if (totalAdjudicaciones == null || totalAdjudicaciones <= 0) return null;
+  return (c.count / totalAdjudicaciones) * 100;
 }
 
-/** Barras: los 20 competidores con más adjudicaciones. */
-export function buildBarData(filtered: Competitor[]): Competitor[] {
-  return [...filtered].sort((a, b) => b.count - a.count).slice(0, 20);
+/* ── Concentración del titular ──────────────────────────────────────── */
+
+export interface Concentracion {
+  /** Cuota conjunta de las `n` primeras; `null` si no se puede afirmar. */
+  pct: number | null;
+  /** Cuántas empresas entran en la cifra (menos de las pedidas si no hay más). */
+  n: number;
+  /** La cifra sale de una lista recortada y puede quedarse corta. */
+  parcial: boolean;
 }
 
-/** Nombres del top 5 por importe — son los únicos etiquetados en la dispersión. */
-export function buildScatterTop5(competitors: Competitor[] | undefined): Set<string> {
-  if (!competitors?.length) return new Set<string>();
-  return new Set(
-    [...competitors]
-      .sort((a, b) => b.importe - a.importe)
-      .slice(0, 5)
-      .map((c) => c.nombre),
-  );
-}
-
-export interface HeatmapModel {
-  empresas: string[];
-  ccaas: string[];
-  matrix: Record<string, Record<string, number>>;
-  max: number;
-}
-
-const EMPTY_HEATMAP: HeatmapModel = { empresas: [], ccaas: [], matrix: {}, max: 0 };
-
-/** Mapa de calor empresa × CCAA, recortado a las 10 empresas con más contratos. */
-export function buildHeatmap(
-  entries: HeatmapEntry[] | undefined,
-  search: string,
-): HeatmapModel {
-  if (!entries?.length) return EMPTY_HEATMAP;
-  const filtered = search
-    ? entries.filter((h) => h.empresa.toLowerCase().includes(search.toLowerCase()))
-    : entries;
-
-  const empresaCounts: Record<string, number> = {};
-  for (const h of filtered) {
-    empresaCounts[h.empresa] = (empresaCounts[h.empresa] ?? 0) + h.count;
-  }
-  const empresas = Object.entries(empresaCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([e]) => e);
-  const empresaSet = new Set(empresas);
-
-  const ccaaSet = new Set<string>();
-  const matrix: Record<string, Record<string, number>> = {};
-  let max = 0;
-  for (const h of filtered) {
-    if (!empresaSet.has(h.empresa)) continue;
-    ccaaSet.add(h.ccaa);
-    if (!matrix[h.empresa]) matrix[h.empresa] = {};
-    matrix[h.empresa][h.ccaa] = h.count;
-    if (h.count > max) max = h.count;
-  }
-  return { empresas, ccaas: Array.from(ccaaSet).sort(), matrix, max };
-}
-
-export interface RadarModel {
-  nameA: string;
-  nameB: string;
-  /** `value: null` = esa dimensión no existe para esa empresa. Ver abajo. */
-  dataA: { dimension: string; value: number | null }[];
-  dataB: { dimension: string; value: number | null }[];
-}
+/** Cuántas empresas nombra el titular. */
+export const EMPRESAS_TITULAR = 5;
 
 /**
- * Radar de dos competidores, con cada eje normalizado al máximo del mercado.
+ * «5 empresas se reparten el 45 %»: la suma de las cuotas de las primeras.
  *
- * El denominador es el máximo de **todos** los competidores, no de los dos
- * elegidos: si no, comparar a dos rezagados los pintaría al 100% y el gráfico
- * mentiría sobre su tamaño. El `max(…, 1)` evita dividir por cero cuando una
- * métrica no viene en el dataset.
+ * Es parcial por importe cuando la API no devolvió todas las empresas: la lista
+ * llega ordenada por adjudicaciones, así que una empresa con pocos contratos
+ * muy grandes puede haberse quedado fuera del corte. Por adjudicaciones ese
+ * riesgo no existe.
  */
-export function buildRadarData(
-  selectedCompanies: string[],
-  competitors: Competitor[] | undefined,
-): RadarModel | null {
-  if (selectedCompanies.length !== 2 || !competitors) return null;
-  const [nameA, nameB] = selectedCompanies;
-  const compA = competitors.find((c) => c.nombre === nameA);
-  const compB = competitors.find((c) => c.nombre === nameB);
-  if (!compA || !compB) return null;
-
-  const maxCount = Math.max(...competitors.map((c) => c.count), 1);
-  const maxImporte = Math.max(...competitors.map((c) => c.importe), 1);
-  const maxCuota = Math.max(...competitors.map((c) => c.cuota), 1);
-  // fdi-allow:nulo-a-cero — techo de normalización: una empresa sin el dato no
-  // debe subir el máximo del mercado, y `Math.max(…, 1)` ya evita el /0.
-  const maxCpa = Math.max(...competitors.map((c) => c.contratos_por_anio ?? 0), 1);
-  // fdi-allow:nulo-a-cero — ídem.
-  const maxIm = Math.max(...competitors.map((c) => c.importe_medio ?? 0), 1);
-  // fdi-allow:nulo-a-cero — ídem.
-  const maxBaja = Math.max(...competitors.map((c) => c.baja_media ?? 0), 1);
-
-  // Los ejes que la empresa no tiene salen `null`, no 0. En un radar de
-  // comparación un 0 no es "sin dato": es el vértice pegado al centro, o sea
-  // "el peor del mercado en esa dimensión". Recharts deja hueco con `null`,
-  // que es exactamente lo que hay que comunicar.
-  const escala = (valor: number | null | undefined, maximo: number): number | null =>
-    valor == null ? null : (valor / maximo) * 100;
-
-  const normalize = (c: Competitor): (number | null)[] => [
-    (c.count / maxCount) * 100,
-    (c.importe / maxImporte) * 100,
-    (c.cuota / maxCuota) * 100,
-    escala(c.contratos_por_anio, maxCpa),
-    escala(c.importe_medio, maxIm),
-    escala(c.baja_media, maxBaja),
-  ];
-
-  const valsA = normalize(compA);
-  const valsB = normalize(compB);
-
+export function buildConcentracion(
+  competitors: Competitor[],
+  metrica: Metrica,
+  totales: TotalesAmbito,
+  n = EMPRESAS_TITULAR,
+): Concentracion {
+  const primeras = ordenarPorMetrica(competitors, metrica).slice(0, n);
+  if (primeras.length === 0) return { pct: null, n: 0, parcial: false };
+  if (metrica === "importe") {
+    return {
+      pct: primeras.reduce((suma, c) => suma + c.cuota, 0),
+      n: primeras.length,
+      parcial: totales.totalEmpresas != null && totales.totalEmpresas > competitors.length,
+    };
+  }
+  const total = totales.totalAdjudicaciones;
   return {
-    nameA,
-    nameB,
-    dataA: RADAR_DIMENSIONS.map((d, i) => ({ dimension: d, value: valsA[i] })),
-    dataB: RADAR_DIMENSIONS.map((d, i) => ({ dimension: d, value: valsB[i] })),
+    // Un solo cociente sobre la suma de recuentos, y no la suma de cocientes:
+    // misma cifra, sin el arrastre de decimales de cada división.
+    pct: total != null && total > 0 ? (primeras.reduce((suma, c) => suma + c.count, 0) / total) * 100 : null,
+    n: primeras.length,
+    parcial: false,
   };
 }
 
-export interface TreemapNode {
-  name: string;
-  size: number;
-  count: number;
-  // El treemap de recharts indexa por clave arbitraria para el tooltip.
-  [key: string]: string | number;
-}
+/* ── Reparto en barra al 100 % ──────────────────────────────────────── */
 
-/** Treemap sectorial: top 20 por importe. */
-export function buildTreemapData(filtered: Competitor[]): TreemapNode[] {
-  if (!filtered.length) return [];
-  return [...filtered]
-    .sort((a, b) => b.importe - a.importe)
-    .slice(0, 20)
-    .map((c) => ({ name: truncate(c.nombre, 22), size: c.importe, count: c.count }));
-}
-
-export interface PositioningPoint {
+export interface TramoReparto {
   nombre: string;
-  baja_media: number;
-  importe_medio: number;
-  count: number;
-  /** `null` = el corpus no reporta ofertantes para esta empresa. Ver abajo. */
-  pct_monopolio: number | null;
+  pct: number;
+  /** El resto del mercado: va en `chart-8` y no abre ningún perfil. */
+  esOtros: boolean;
+  seleccionado: boolean;
 }
+
+/** Cuántas empresas llevan nombre en la barra de reparto. */
+export const EMPRESAS_REPARTO = 8;
+
+/** Por debajo de esto el resto no se dibuja: es redondeo, no mercado. */
+const RESTO_MINIMO = 0.05;
 
 /**
- * Posicionamiento baja media × importe medio.
+ * Las primeras con nombre y el resto del mercado en un solo tramo.
  *
- * Descarta a quien no tiene ambas métricas: un punto en (0,0) por dato ausente
- * se leería como «oferta a precio de catálogo y contratos minúsculos», que es
- * una afirmación que el dataset no hace.
+ * «Otras» es lo que falta hasta 100, no la suma de la cola recibida: incluye a
+ * las empresas que quedaron fuera del `limit` de la API.
  */
-export function buildPositioningData(filtered: Competitor[]): PositioningPoint[] {
-  if (!filtered.length) return [];
-  return filtered
-    .filter((c) => c.baja_media != null && c.importe_medio != null && c.importe_medio > 0)
-    .map((c) => ({
-      nombre: c.nombre,
-      // El `filter` de arriba ya garantiza los dos ejes; el `??` es para el
-      // compilador, no una coerción de dato ausente.
-      baja_media: c.baja_media ?? 0, // fdi-allow:nulo-a-cero
-      importe_medio: c.importe_medio ?? 0, // fdi-allow:nulo-a-cero
-      count: c.count,
-      // `pct_monopolio` NO se rellena con 0. Este módulo descartaba los puntos
-      // sin ambos ejes precisamente para no afirmar «oferta a precio de
-      // catálogo y contratos minúsculos», y luego hacía justo eso con la
-      // tercera dimensión: una empresa sin dato de ofertantes salía en el
-      // tooltip como «% Monopolio: 0,0 %», o sea como la más disputada del
-      // mercado. `null` viaja hasta el tooltip, que lo pinta como sin dato.
-      pct_monopolio: c.pct_monopolio ?? null,
-    }));
+export function buildReparto(
+  competitors: Competitor[],
+  metrica: Metrica,
+  totales: TotalesAmbito,
+  abierta: string | null,
+  n = EMPRESAS_REPARTO,
+): TramoReparto[] {
+  const tramos: TramoReparto[] = [];
+  for (const c of ordenarPorMetrica(competitors, metrica).slice(0, n)) {
+    const pct = cuotaDe(c, metrica, totales.totalAdjudicaciones);
+    if (pct == null) return [];
+    tramos.push({ nombre: c.nombre, pct, esOtros: false, seleccionado: c.nombre === abierta });
+  }
+  if (tramos.length === 0) return [];
+
+  const resto = 100 - tramos.reduce((suma, t) => suma + t.pct, 0);
+  if (resto > RESTO_MINIMO) {
+    const otras = totales.totalEmpresas != null ? totales.totalEmpresas - tramos.length : 0;
+    tramos.push({
+      nombre: otras > 0 ? `Otras ${otras} empresas` : "Otras empresas",
+      pct: resto,
+      esOtros: true,
+      seleccionado: false,
+    });
+  }
+  return tramos;
 }
+
+/* ── Meses del año ──────────────────────────────────────────────────── */
 
 export interface EstacionalidadPoint {
   mes: string;
@@ -252,9 +151,7 @@ export interface EstacionalidadPoint {
 }
 
 /** Rellena los doce meses: un mes sin datos vale cero, no se salta del eje. */
-export function buildEstacionalidad(
-  entries: { mes: number; count: number; importe: number }[] | undefined,
-): EstacionalidadPoint[] {
+export function buildEstacionalidad(entries: EstacionalidadEntry[] | undefined): EstacionalidadPoint[] {
   if (!entries?.length) return [];
   return Array.from({ length: 12 }, (_, i) => {
     const entry = entries.find((e) => e.mes === i + 1);
@@ -262,20 +159,131 @@ export function buildEstacionalidad(
   });
 }
 
-export interface BajasModel {
-  rows: BajaItem[];
-  maxBaja: number;
+/** El mes con más adjudicaciones; `null` si ninguno tiene actividad. */
+export function mesPico(meses: EstacionalidadPoint[]): { indice: number; count: number } | null {
+  let pico: { indice: number; count: number } | null = null;
+  meses.forEach((mes, indice) => {
+    if (mes.count > 0 && (pico == null || mes.count > pico.count)) pico = { indice, count: mes.count };
+  });
+  return pico;
 }
 
-/** Ranking de bajas: las doce más agresivas, y el máximo para la barra. */
-export function sortBajas(items: BajaItem[] | undefined): BajasModel {
-  const withValue = (items ?? []).filter((b) => b.baja_media_pct != null);
-  const sorted = [...withValue].sort(
-    // Clave de orden, no valor pintado: sin dato la fila cae al final en vez
-    // de encabezar el ranking.
-    (a, b) => (b.baja_media_pct ?? 0) - (a.baja_media_pct ?? 0), // fdi-allow:nulo-a-cero
-  );
-  // fdi-allow:nulo-a-cero — techo de normalización de la barra.
-  const maxBaja = Math.max(...sorted.map((b) => b.baja_media_pct ?? 0), 1);
-  return { rows: sorted.slice(0, 12), maxBaja };
+/* ── Escalas del ranking ────────────────────────────────────────────── */
+
+export interface EscalasRanking {
+  cuota: number | null;
+  baja: number | null;
+  ofertas: number | null;
+}
+
+function maximo(valores: (number | null | undefined)[]): number | null {
+  const medidos = valores.filter((v): v is number => v != null);
+  return medidos.length > 0 ? Math.max(...medidos) : null;
+}
+
+/**
+ * El tope de cada dibujo del ranking, entre las filas visibles.
+ *
+ * Una medida que ninguna fila trae no tiene escala (`null`), y su columna se
+ * queda sin barra: un tope de 0 las pintaría todas vacías, como si se hubiera
+ * medido y nadie bajara el precio.
+ */
+export function escalasRanking(filas: Competitor[]): EscalasRanking {
+  return {
+    cuota: maximo(filas.map((c) => c.cuota)),
+    baja: maximo(filas.map((c) => c.baja_media)),
+    ofertas: maximo(filas.map((c) => c.ofertas_medias)),
+  };
+}
+
+/* ── Cara a cara ────────────────────────────────────────────────────── */
+
+export type MedidaDuelo =
+  | "cuota"
+  | "count"
+  | "importe_medio"
+  | "baja_media"
+  | "ofertas_medias"
+  | "pct_monopolio"
+  | "n_organos"
+  | "pct_top_organo";
+
+export interface FilaDuelo {
+  clave: MedidaDuelo;
+  /** `null` = esa empresa no trae la medida. */
+  a: number | null;
+  b: number | null;
+  /** Ancho del ala, a escala del mayor de los dos. */
+  pctA: number;
+  pctB: number;
+  /** Cuál de las dos cifras es la mayor. Con un empate o un dato ausente, ninguna. */
+  mayorA: boolean;
+  mayorB: boolean;
+}
+
+/** Un 0 que es el valor por defecto del backend, no una medida. */
+const positivo = (valor: number): number | null => (valor > 0 ? valor : null);
+
+const MEDIDAS_DUELO: { clave: MedidaDuelo; valor: (c: Competitor) => number | null }[] = [
+  { clave: "cuota", valor: (c) => c.cuota },
+  { clave: "count", valor: (c) => c.count },
+  { clave: "importe_medio", valor: (c) => positivo(c.importe_medio) },
+  { clave: "baja_media", valor: (c) => c.baja_media ?? null },
+  { clave: "ofertas_medias", valor: (c) => c.ofertas_medias ?? null },
+  { clave: "pct_monopolio", valor: (c) => c.pct_monopolio ?? null },
+  { clave: "n_organos", valor: (c) => positivo(c.n_organos) },
+  // Sin órganos no hay «primer cliente» del que medir el peso.
+  { clave: "pct_top_organo", valor: (c) => (c.n_organos > 0 ? c.pct_top_organo : null) },
+];
+
+/**
+ * Dos empresas, ocho medidas, cada una a escala del mayor de los dos.
+ *
+ * No se normaliza contra el mercado: aquí la pregunta es cuál de las dos es más
+ * grande en cada medida, y la cifra exacta va escrita al lado de la barra.
+ */
+export function buildDuelo(a: Competitor, b: Competitor): FilaDuelo[] {
+  return MEDIDAS_DUELO.map(({ clave, valor }) => {
+    const va = valor(a);
+    const vb = valor(b);
+    const tope = Math.max(va ?? Number.NEGATIVE_INFINITY, vb ?? Number.NEGATIVE_INFINITY);
+    const ancho = (v: number | null) => (v == null || tope <= 0 ? 0 : (v / tope) * 100);
+    const comparables = va != null && vb != null;
+    return {
+      clave,
+      a: va,
+      b: vb,
+      pctA: ancho(va),
+      pctB: ancho(vb),
+      mayorA: comparables && va > vb,
+      mayorB: comparables && vb > va,
+    };
+  });
+}
+
+/* ── Qué empresa queda abierta ──────────────────────────────────────── */
+
+/**
+ * El perfil arranca abierto con la primera del ranking. Cerrarlo es una decisión
+ * aparte de «ninguna elegida», porque sin ella el cierre volvería a abrir la
+ * primera; y una elegida que ya no está en la lista (cambió el ámbito o la
+ * búsqueda) cede el sitio a la primera en vez de dejar el perfil en blanco.
+ */
+export function resolverAbierta(
+  ordenados: Competitor[],
+  seleccion: string | null,
+  cerrado: boolean,
+): Competitor | null {
+  if (cerrado) return null;
+  return ordenados.find((c) => c.nombre === seleccion) ?? ordenados[0] ?? null;
+}
+
+/** La segunda empresa del cara a cara: distinta de la abierta y presente en los datos. */
+export function resolverRival(
+  competitors: Competitor[],
+  rival: string | null,
+  abierta: Competitor | null,
+): Competitor | null {
+  if (rival == null || abierta == null || rival === abierta.nombre) return null;
+  return competitors.find((c) => c.nombre === rival) ?? null;
 }

@@ -732,6 +732,36 @@ Mi Pipeline y se retiró; el embudo vive en **Oportunidades → Rendimiento**
 (`/oportunidades?vista=rendimiento`). Dirección queda con Resultado y
 Actividad del equipo. Ver `docs/archive/redesign/mi-pipeline-inventario.md`.
 
+**Estado (2026-10-09, rediseño de Dirección).** Se cumple la «ventana» de la
+aceptación, que hasta ahora era siempre el histórico:
+
+- **Ventana de cierres** (`period_from`/`period_to` en `GET
+  /pursuits/direccion`, 12 meses por defecto en la UI) y, con ella, cada
+  tarjeta trae el **mismo periodo de hace un año** y la diferencia
+  (`anterior`, `n_anterior`, `delta`, `mejor_si`). Rendimiento recorta por
+  altas (cohorte); Dirección, por fecha de cierre, como el informe semanal.
+- **Tarjetas**: importe adjudicado, tasa de éxito, valor ponderado (foto de
+  hoy, `depende_del_periodo=False`) y ciclo. «Pérdidas con motivo» pasa al
+  panel de pérdidas con la lista de las que no lo tienen; la precisión del
+  Radar deja de repetirse y queda en su panel, como escalera por banda
+  (`radar_ordena_bien`).
+- **Cortes** (`cortes`): tecnología, tramo de importe, procedimiento y órgano,
+  con intervalo de Wilson al 95 %, posición frente a la media sólo cuando el
+  intervalo entero queda a un lado, y las filas sin base aparte con sus
+  cierres. `win_rate_por_tecnologia`/`win_rate_por_organo` siguen en la
+  respuesta, obsoletos y acotados a la ventana: quitarlos rompería el contrato
+  (`docs/api-design.md`) y su retirada necesita su propia RFC.
+- **Previsión trimestral y supuestos** viajan en el cuadro (se calculaban y se
+  tiraban).
+- **Estado sin base**: un solo aviso con las presentadas sin resultado
+  (`pendientes_resultado_muestra`) en vez de un hueco por panel.
+- **Carga del equipo**, vista nueva (`GET /pursuits/direccion/carga`,
+  `services/carga_equipo.py`): abiertas, presentadas, plazos próximos y
+  vencidos, sin próxima acción y acciones vencidas por persona.
+- **Actividad**: cada línea dice qué cambió (`cambios`, sólo campos
+  enumerados del `payload_json`), agrupada por día y con la persona en
+  `?persona=`. Ya no espera al cuadro ni cae con él.
+
 #### F4.3 Cartera de contratos en ejecución — P0
 
 **Para quién.** El incumbente que quiere seguir siéndolo. **Qué.** Las

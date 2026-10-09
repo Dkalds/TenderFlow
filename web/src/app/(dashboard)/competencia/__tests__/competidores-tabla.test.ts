@@ -1,11 +1,10 @@
 /**
  * Tests de `_hooks/competidores-tabla.ts`: qué encuentra la búsqueda, cómo se
- * ordena cada columna, cuántas empresas caben en el comparador y qué
- * identidades agrega el dossier.
+ * ordena cada columna y qué identidades agrega el perfil.
  *
  * Son funciones puras justamente para poder comprobarlas sin montar la
- * pantalla: la tabla real trae doce columnas y siete gráficos `dynamic()` que
- * en jsdom no pintan nada útil.
+ * pantalla: la vista real trae doce columnas y un mapa `dynamic()` que en jsdom
+ * no pinta nada útil.
  */
 import { describe, it, expect } from "vitest";
 
@@ -14,7 +13,6 @@ import {
   drillDownIds,
   filterBySearch,
   sortCompetitors,
-  toggleCompareSelection,
 } from "../_hooks/competidores-tabla";
 
 import { ACME, BETA, GAMMA, competitor } from "./competidores-fixtures";
@@ -87,21 +85,6 @@ describe("sortCompetitors", () => {
     const items = [GAMMA, ACME];
     sortCompetitors(items, "count", "asc");
     expect(items[0]).toBe(GAMMA);
-  });
-});
-
-describe("toggleCompareSelection", () => {
-  it("añade hasta dos", () => {
-    expect(toggleCompareSelection([], "A")).toEqual(["A"]);
-    expect(toggleCompareSelection(["A"], "B")).toEqual(["A", "B"]);
-  });
-
-  it("con dos ya elegidos, la más antigua cede el sitio", () => {
-    expect(toggleCompareSelection(["A", "B"], "C")).toEqual(["B", "C"]);
-  });
-
-  it("volver a marcar la misma la quita", () => {
-    expect(toggleCompareSelection(["A", "B"], "A")).toEqual(["B"]);
   });
 });
 

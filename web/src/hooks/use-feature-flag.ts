@@ -5,7 +5,8 @@
  *
  * # Por qué existe
  *
- * Las flags se administraban en `/ops` (`ops/_components/feature-flags-view.tsx`)
+ * Las flags se administraban en `/ops` (hoy, la tarjeta
+ * `ops/_components/administracion/feature-flags-card.tsx`)
  * y **ninguna vista las leía**: fuera de `ops/` la palabra sólo aparecía como
  * nombre de ruta heredada en `lib/navigation.ts` y `lib/space-views.ts`. Un
  * panel de toggles que no apaga nada es peor que no tenerlo — promete un
@@ -38,22 +39,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { featureFlagKeys } from "@/lib/query-keys";
 
 type FlagOut = Schemas["FlagOut"];
-
-/**
- * Clave de React Query de la lista de flags.
- *
- * La convención del repo es declararla en `lib/query-keys.ts`; vive aquí
- * porque ese fichero pertenece a otro lote de este mismo refactor. Es una sola
- * clave para una sola `queryFn` —el problema que `query-keys.ts` existe para
- * evitar—, así que mover la constante allí es una línea sin cambio de
- * comportamiento.
- */
-const featureFlagKeys = {
-  all: ["feature-flags"] as const,
-  list: ["feature-flags", "list"] as const,
-};
 
 /**
  * Qué sabe el frontend de una flag.
