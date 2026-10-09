@@ -10,7 +10,7 @@ exista un webhook configurado.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -296,6 +296,20 @@ class TestAgrupacionDelAviso:
 
 
 class TestPatchNotifica:
+    @pytest.fixture(autouse=True)
+    def acceso_efectivo(self):
+        """Por defecto, la dirección de la solicitud ya pasa la allowlist.
+
+        Es el supuesto de los tests de este bloque: el operador avisa a alguien
+        que ya puede entrar. Sin fijarlo, el resultado dependería de lo que la
+        máquina tenga en ``OAUTH_ALLOWED_*`` y de si hay Postgres detrás.
+        """
+        with patch(
+            "api.routes.admin_solicitudes._oauth_access_allowed",
+            new=AsyncMock(return_value=True),
+        ) as comprobar:
+            yield comprobar
+
     def test_sin_notificar_no_lee_ni_escribe_a_nadie(self, client):
         """El comportamiento por defecto no cambia: nadie recibe un correo."""
         app.dependency_overrides[require_any_auth] = _admin
@@ -395,3 +409,93 @@ class TestPatchNotifica:
 
         assert resp.status_code == 200
         assert resp.json()["notificado"] is False
+
+    def test_sin_acceso_efectivo_no_promete_la_entrada(self, client, acceso_efectivo):
+        """«Ya tienes acceso» a quien el login rechazaría es una promesa falsa.
+
+        ``notificar`` sin ``conceder`` no habilita a nadie. Si la dirección no
+        pasa la allowlist, la persona recibiría el correo y se encontraría
+        ``email_not_allowed`` al entrar.
+        """
+        acceso_efectivo.return_value = False
+        app.dependency_overrides[require_any_auth] = _admin
+        try:
+            with (
+                patch(
+                    "api.routes.admin_solicitudes.actualizar_estado", return_value=True
+                ) as actualizar,
+                patch("api.routes.admin_solicitudes.log_event") as auditar,
+                patch("api.routes.admin_solicitudes.obtener_solicitud", return_value=_solicitud()),
+                patch("api.routes.admin_solicitudes.notificar_acceso_concedido") as avisar,
+            ):
+                resp = client.patch(f"{RUTA}/7", json={"estado": "atendida", "notificar": True})
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        # Se pidió y no salió: `False`, no `None`. Sin concesión.
+        assert resp.json() == {"status": "ok", "notificado": False, "grant_id": None}
+        avisar.assert_not_called()
+        acceso_efectivo.assert_awaited_once_with("ana@empresa.example")
+        # El cambio de estado se aplica igual, con su rastro.
+        actualizar.assert_called_once_with(7, "atendida")
+        assert auditar.call_args.kwargs["event_type"] == "solicitud_acceso.estado"
+
+    def test_con_acceso_efectivo_el_aviso_sale(self, client, acceso_efectivo):
+        """La otra rama: la dirección ya entra (lista estática o concesión previa)."""
+        app.dependency_overrides[require_any_auth] = _admin
+        try:
+            with (
+                patch("api.routes.admin_solicitudes.actualizar_estado", return_value=True),
+                patch("api.routes.admin_solicitudes.log_event"),
+                patch("api.routes.admin_solicitudes.obtener_solicitud", return_value=_solicitud()),
+                patch(
+                    "api.routes.admin_solicitudes.notificar_acceso_concedido", return_value=True
+                ) as avisar,
+            ):
+                resp = client.patch(f"{RUTA}/7", json={"estado": "atendida", "notificar": True})
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok", "notificado": True, "grant_id": None}
+        acceso_efectivo.assert_awaited_once_with("ana@empresa.example")
+        avisar.assert_called_once_with(email="ana@empresa.example", empresa="Empresa SL")
+
+    def test_al_conceder_no_hace_falta_volver_a_preguntar(self, client, acceso_efectivo):
+        """La concesión se acaba de escribir en esta misma petición: ya es efectiva."""
+        app.dependency_overrides[require_any_auth] = _admin
+        concedido = {
+            "grant": {
+                "id": 11,
+                "kind": "email",
+                "value": "ana@empresa.example",
+                "active": True,
+                "granted_by": 1,
+                "created_at": "2026-09-01T00:00:00+00:00",
+                "updated_at": "2026-09-01T00:00:00+00:00",
+                "revoked_at": None,
+            },
+            "email": "ana@empresa.example",
+            "empresa": "Empresa SL",
+            "previous_state": "pendiente",
+        }
+        try:
+            with (
+                patch("api.routes.admin_solicitudes.grant_access_request", return_value=concedido),
+                patch("api.routes.admin_solicitudes.log_event"),
+                patch(
+                    "api.routes.admin_solicitudes.notificar_acceso_concedido", return_value=True
+                ) as avisar,
+            ):
+                resp = client.patch(
+                    f"{RUTA}/7",
+                    json={"estado": "atendida", "conceder": "email", "notificar": True},
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok", "notificado": True, "grant_id": 11}
+        acceso_efectivo.assert_not_awaited()
+        avisar.assert_called_once_with(email="ana@empresa.example", empresa="Empresa SL")

@@ -42,8 +42,16 @@ Cada fila trae `id`, `email`, `empresa`, `mensaje`, `origen` y `created_at`.
 
 ## 2. Decidir, conceder y avisar
 
-La acción es atómica desde la API: persiste el grant dinámico, marca la solicitud
-como atendida y sólo después intenta enviar el correo.
+Lo que es atómico es **la concesión y el cambio de estado**: van en una misma
+transacción, así que no puede quedar una solicitud atendida sin concesión ni una
+concesión con la solicitud pendiente. La auditoría y el correo vienen después,
+con la transacción ya confirmada, y los dos son best-effort:
+
+- si el registro de auditoría falla, la concesión se queda hecha y el fallo va al
+  log (`audit_log_persist_failed`), no a la respuesta;
+- si el correo no sale, la respuesta lo dice (`notificado: false`).
+
+`conceder` avisa siempre a la persona, se pase o no `notificar`.
 
 Concesión a una sola dirección (opción normal):
 
@@ -65,16 +73,31 @@ La respuesta incluye `grant_id`, que identifica la concesión revocable. Las
 variables `OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS` se conservan como
 bootstrap de emergencia y no se editan para altas normales.
 
+**El dominio de un proveedor de correo público no se concede.** Si la solicitud
+viene de `gmail.com`, `outlook.com`, `hotmail.com`, `yahoo.com`, `icloud.com` o
+cualquier otro de la lista `DOMINIOS_DE_CORREO_PUBLICO`
+(`services/access_grants.py`), `"conceder":"domain"` responde **422** con el
+motivo y no cambia nada: ni concesión ni estado. Conceder ese dominio dejaría
+entrar a cualquiera con una cuenta ahí, y el formulario de solicitud es público.
+Para esas solicitudes se usa `"conceder":"email"`, que sigue funcionando.
+También es 422 una solicitud cuyo correo no dé para la concesión pedida (por
+ejemplo, un dominio sin punto).
+
 La respuesta trae `notificado`:
 
 | Valor | Significado | Qué hacer |
 |---|---|---|
 | `true` | El correo salió | Nada |
-| `false` | Se pidió y **no** salió (SMTP sin configurar, buzón que rechaza, o la solicitud ya estaba atendida) | Revisar `email_producto_failed` en los logs y escribir a mano |
+| `false` | Se pidió y **no** salió: SMTP sin configurar, buzón que rechaza, la solicitud ya estaba atendida, o se pidió avisar **sin conceder** a una dirección que no tiene acceso (`solicitud_acceso_aviso_sin_acceso` en los logs) | Revisar `email_producto_failed` en los logs y escribir a mano. En el último caso falta además conceder; como la solicitud ya quedó atendida, concederla ahora no reenvía el correo |
 | `null` | No se pidió aviso | Nada |
 
 El orden lo impone el servidor: si no puede persistir la concesión, no marca la
 solicitud como atendida ni envía el correo.
+
+`notificar: true` **sin** `conceder` no habilita a nadie: marca la solicitud como
+atendida y solo escribe a la persona si su dirección ya entra (lista estática o
+una concesión anterior, por ejemplo la de su dominio). Si no entra, el estado
+cambia igual y la respuesta lleva `notificado: false`.
 
 Marcar `notificar: true` sobre una solicitud **que ya estaba `atendida`** no
 reenvía nada (devuelve `notificado: false`): pulsar dos veces no puede escribir
@@ -114,8 +137,10 @@ peor que el silencio.
 
 - Todo cambio de estado queda en el log de auditoría encadenado
   (`solicitud_acceso.estado`), verificable con `scripts/verify_audit_chain.py`.
-- Cada alta/baja dinámica deja `access_grant.granted`/`access_grant.revoked` sin
-  copiar el email o dominio al detalle del audit log.
+- Cada alta/baja dinámica deja `access_grant.granted`/`access_grant.revoked` con
+  el `user_id` del administrador y el id de la concesión, sin copiar el email o
+  dominio al detalle del audit log. Quién **revocó** solo consta ahí: la tabla
+  `access_grants` guarda quién concedió (`granted_by`), no quién revocó.
 - El correo a la persona registra sólo el **dominio** del destinatario
   (`solicitud_acceso_aviso_persona`), nunca la dirección completa.
 - Reenviar el formulario con el mismo email **no** crea una fila nueva mientras
@@ -123,7 +148,10 @@ peor que el silencio.
 
 ## Ficheros
 
-- `api/routes/admin_solicitudes.py` — la cola y el cambio de estado.
+- `api/routes/admin_solicitudes.py` — la cola, el cambio de estado, conceder y revocar.
+- `db/access_grants.py` — las concesiones: conceder (con la solicitud, en una
+  transacción), revocar, listar y la consulta que hace el login.
+- `services/access_grants.py` — qué no se puede conceder (proveedores de correo público).
 - `services/solicitudes_acceso.py` — qué dicen los avisos y a quién.
 - `api/routes/publico_solicitudes.py` — la entrada del formulario y los dos avisos.
 - `db/solicitudes_acceso.py` — la persistencia de la cola.

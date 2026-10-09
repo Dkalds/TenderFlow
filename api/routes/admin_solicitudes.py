@@ -1,17 +1,23 @@
 """Admin endpoints — cola de solicitudes de acceso llegadas desde la landing.
 
 Requiere autenticación dual (sesión o API key) + is_admin, como el resto de
-``/admin``. Aprobar una solicitud **no** se hace desde aquí: la allowlist de
-acceso vive en ``OAUTH_ALLOWED_EMAILS``/``OAUTH_ALLOWED_DOMAINS`` y sigue
-siendo una decisión de operación. Lo que da esta cola es saber que la petición
-existe y poder marcarla como atendida o descartada.
+``/admin``. El recorrido entero se hace desde aquí (RFC 242): ver la cola,
+**conceder** el acceso —``conceder`` en el PATCH escribe una concesión en
+``access_grants``, por email o por dominio—, avisar a la persona, revocar una
+concesión y descartar. ``OAUTH_ALLOWED_EMAILS``/``OAUTH_ALLOWED_DOMAINS`` siguen
+siendo el arranque estático: no se editan para un alta normal y no se pueden
+revocar desde aquí.
 
-Lo que sí se cierra desde aquí es **el aviso a la persona**: hasta ahora nadie
-le escribía nunca, aunque la página de gracias le promete que "la respuesta
-llega por correo". El correo es **opt-in por operación** (``notificar``) y no un
-efecto automático del cambio de estado, porque el sistema no puede saber si la
-allowlist ya se editó: enviarlo solo cuando el operador lo pide es lo que evita
-prometerle a alguien un acceso que todavía le daría 403.
+**El aviso a la persona** no es un efecto del cambio de estado a secas. Al
+conceder, el correo sale después de persistir la concesión. Con ``notificar``
+y sin ``conceder`` solo sale si esa dirección ya entra —lista estática o
+concesión previa, con la misma comprobación que decide el login—: prometerle a
+alguien un acceso que le daría ``email_not_allowed`` es peor que no escribirle.
+
+La auditoría (``solicitud_acceso.estado``, ``access_grant.granted``,
+``access_grant.revoked``) se escribe con ``log_event`` una vez confirmada la
+escritura y es best-effort, como en todo el producto: no comparte transacción
+con la concesión.
 """
 
 from __future__ import annotations
@@ -23,9 +29,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.concurrency import run_db, run_io
+from api.routes.auth import _oauth_access_allowed
 from api.routes.dual_auth import require_admin
 from db.access_grants import (
     AccessGrantKind,
+    ConcesionInvalida,
     grant_access_request,
     list_access_grants,
     revoke_access,
@@ -67,10 +75,12 @@ class EstadoBody(BaseModel):
     conceder: Literal["email", "domain"] | None = None
     #: Escribir a quien pidió el acceso diciéndole que ya puede entrar.
     #:
-    #: Opt-in y no automático: sólo el operador sabe si ya añadió la dirección a
-    #: ``OAUTH_ALLOWED_EMAILS``/``OAUTH_ALLOWED_DOMAINS``. Un correo enviado
-    #: antes de eso manda a la persona contra un 403, que es peor que no
-    #: escribirle. Se ignora si el estado no es ``atendida``.
+    #: ``conceder`` ya lo implica: una concesión avisa siempre. Este campo es
+    #: para avisar **sin** conceder, y por sí solo no habilita a nadie: el
+    #: correo sale solo si la dirección ya pasa la allowlist (estática o
+    #: dinámica). Si no la pasa no se envía y la respuesta lleva
+    #: ``notificado: false``, porque mandaría a la persona contra un
+    #: ``email_not_allowed``. Se ignora si el estado no es ``atendida``.
     notificar: bool = False
 
 
@@ -100,6 +110,16 @@ class AccessGrantOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     revoked_at: datetime | None = None
+
+
+def _id_del_admin(admin: dict[str, Any]) -> int | None:
+    """``users.id`` de quien actúa, para ``audit_log.user_id`` (ADR-030 §D).
+
+    Sin él la fila se guardaba con ``user_id`` NULL y la identidad del actor
+    quedaba solo como texto, en la columna que rellena ``actor``.
+    """
+    valor = admin.get("user_id")
+    return int(valor) if valor is not None else None
 
 
 @router.get("", response_model=list[SolicitudAccesoOut])
@@ -162,6 +182,7 @@ async def cambiar_estado(
             log_event(
                 event_type=SOLICITUD_ACCESO_ESTADO,
                 actor=str(admin.get("user_id", "")),
+                user_id=_id_del_admin(admin),
                 resource=f"solicitud_acceso:{solicitud_id}",
                 detail=body.estado,
             )
@@ -169,12 +190,21 @@ async def cambiar_estado(
                 log_event(
                     event_type=ACCESS_GRANT_GRANTED,
                     actor=str(admin.get("user_id", "")),
+                    user_id=_id_del_admin(admin),
                     resource=f"access_grant:{grant_id}",
                     detail={"kind": grant["kind"]},
                 )
         return actualizada, previa, grant_id
 
-    actualizada, previa, grant_id = await run_db(_trabajo)
+    try:
+        actualizada, previa, grant_id = await run_db(_trabajo)
+    except ConcesionInvalida as exc:
+        # Solo la lanza `grant_access_request`, y antes de escribir: la
+        # transacción se deshace, así que no hay concesión ni cambio de estado
+        # que auditar. Su mensaje está escrito para el administrador («concede
+        # el email»); sin esta traducción caía en el manejador global de
+        # `ValueError`, que responde un 400 sin motivo.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not actualizada:
         raise HTTPException(status_code=404, detail="solicitud no encontrada")
 
@@ -186,10 +216,20 @@ async def cambiar_estado(
         # estado queda bien, pero no se reenvía nada.
         return CambioEstadoOut(status="ok", notificado=False, grant_id=grant_id)
 
+    email = str(previa.get("email") or "")
+    if body.conceder is None and not await _oauth_access_allowed(email):
+        # `notificar` sin `conceder` no habilita a nadie. Se pregunta con la
+        # misma función que decide el login, no con una copia: si el callback
+        # rechazaría esta dirección, el correo «ya tienes acceso» sería
+        # mentira. El estado ya quedó cambiado; lo que no sale es el aviso, y
+        # la respuesta lo dice (`notificado: false`). Al conceder no hace falta
+        # preguntar: la concesión se acaba de escribir en esta misma petición.
+        log.info("solicitud_acceso_aviso_sin_acceso", solicitud_id=solicitud_id)
+        return CambioEstadoOut(status="ok", notificado=False, grant_id=grant_id)
+
     # El correo va fuera del `run_db`: es I/O de red con su propio timeout, y
     # meterlo en el salto de base de datos retendría una conexión del pool
     # mientras habla un SMTP.
-    email = str(previa.get("email") or "")
     empresa_valor = previa.get("empresa")
     empresa = str(empresa_valor) if empresa_valor else None
     notificado = await run_io(notificar_acceso_concedido, email=email, empresa=empresa)
@@ -217,6 +257,7 @@ async def revocar_grant(
         log_event,
         event_type=ACCESS_GRANT_REVOKED,
         actor=str(admin.get("user_id", "")),
+        user_id=_id_del_admin(admin),
         resource=f"access_grant:{grant_id}",
         detail={"kind": grant["kind"]},
     )

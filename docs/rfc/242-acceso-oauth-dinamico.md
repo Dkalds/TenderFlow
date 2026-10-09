@@ -7,10 +7,13 @@ date: 2026-09-01
 status: implemented
 implemented_on: 2026-09-06
 implemented_evidence: >
-  Revisión `v95_access_grants` (tabla `access_grants`), `db/access_grants.py` y las
-  rutas `/admin/solicitudes-acceso/grants` de `api/routes/admin_solicitudes.py`.
-  Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2):
-  el criterio es que el código exista, no que el PR figure mergeado.
+  Revisión `v95_access_grants` (tabla `access_grants`), `db/access_grants.py`,
+  `services/access_grants.py`, las rutas de `api/routes/admin_solicitudes.py`
+  (PATCH con `conceder`, `GET` y `DELETE /grants`) y el callback de
+  `api/routes/auth.py` (`_oauth_access_allowed`). La evidencia son los tests
+  citados junto a cada criterio de aceptación de este RFC; los de
+  `tests/test_access_grants_integration.py` corren contra Postgres. Revisado el
+  2026-10-09, al cerrar los huecos que encontró la auditoría del issue.
 ---
 
 ## Contexto
@@ -70,13 +73,55 @@ revocarse desde la UI.
 
 ## Acceptance criteria
 
-- [ ] Aprobar desde Admin concede acceso sin editar entorno.
-- [ ] Revocar una concesión dinámica corta nuevos logins.
-- [ ] Env vacío + tabla vacía sigue fail-closed en producción.
-- [ ] Una caída de BD no abre acceso.
-- [ ] Concesión/revocación quedan auditadas.
-- [ ] `make lint && make typecheck && make test-unit` pasan.
+Cada casilla marcada lleva el test que la prueba. Los de
+`tests/test_access_grants_integration.py` necesitan Postgres (los corre CI).
+
+- [x] Aprobar desde Admin concede acceso sin editar entorno.
+  - `tests/test_access_grants_integration.py::test_conceder_desde_la_ruta_abre_el_login_y_deja_rastro`
+    (el PATCH concede y el login, con la lista estática sin esa dirección, pasa
+    de denegar a permitir).
+  - `tests/test_access_grants_integration.py::test_conceder_la_solicitud_escribe_la_concesion_y_la_atiende`
+    (concesión y solicitud atendida en una transacción).
+  - `tests/test_auth_oauth_callback.py::test_callback_con_una_concesion_dinamica_deja_entrar`
+    (sin BD: el callback entero con la concesión como única vía).
+- [x] Revocar una concesión dinámica corta nuevos logins.
+  - `tests/test_auth_dynamic_grants.py::test_dynamic_grant_is_normalized_idempotent_and_revocable`
+  - `tests/test_access_grants_integration.py::test_revocar_desde_la_ruta_corta_los_logins_nuevos_y_deja_rastro`
+  - `tests/test_access_grants_integration.py::test_volver_a_conceder_tras_revocar_reactiva_la_misma_fila`
+- [x] Env vacío + tabla vacía sigue fail-closed en producción.
+  - `tests/test_auth_core.py::TestOAuthEmailAllowed::test_listas_vacias_fuera_de_desarrollo_deniegan`
+    (listas vacías en `prod` y `staging`: la mitad estática dice que no).
+  - `tests/test_access_grants_integration.py::test_conceder_desde_la_ruta_abre_el_login_y_deja_rastro`
+    (su primera comprobación: con la tabla vacía, el login deniega).
+  - `tests/test_auth_oauth_callback.py::test_callback_sin_acceso_redirige_sin_crear_usuario_ni_sesion`
+    (la negativa acaba en `/login?error=email_not_allowed`, sin usuario ni sesión).
+  - `tests/test_config_settings.py::test_prod_oauth_without_static_allowlists_uses_dynamic_fail_closed_path`
+    (producción arranca con las dos listas vacías).
+- [x] Una caída de BD no abre acceso.
+  - `tests/test_auth_dynamic_grants.py::test_dynamic_allowlist_failure_is_closed`
+  - `tests/test_auth_oauth_callback.py::test_callback_con_la_tabla_de_concesiones_caida_no_deja_entrar`
+- [x] Concesión/revocación quedan auditadas.
+  - `tests/test_routes_admin_solicitudes.py::TestCambiarEstado::test_conceder_se_audita_con_actor_recurso_y_user_id`
+  - `tests/test_routes_admin_solicitudes.py::TestAccessGrants::test_la_revocacion_se_audita_con_actor_recurso_y_user_id`
+  - Las filas en `audit_log`, con su `user_id`, las comprueban los dos tests de
+    ruta de `tests/test_access_grants_integration.py`.
+  - Alcance: el evento se escribe tras confirmar la transacción y es
+    best-effort, como toda la auditoría del producto. Que una concesión no
+    pueda existir sin su fila de auditoría queda en
+    `docs/IMPROVEMENT_BACKLOG.md`.
+- [ ] `make lint && make typecheck && make test-unit` pasan. No lo prueba un
+  test: es el gate de CI del PR que lleve el cambio.
 
 ## Notas de review
 
 2026-09-01 human:user — Autorizada la creación del RFC, issue y migración.
+
+2026-10-09 agent:claude-code — Auditoría de la implementación y cierre de sus
+huecos, sin cambios en la decisión. Dos precisiones sobre cómo quedó
+implementada: revocar es `DELETE /admin/solicitudes-acceso/grants/{id}` y no una
+acción del PATCH, y «registra auditoría» es un `log_event` best-effort posterior
+a la transacción, no parte de ella. Añadido en esa pasada: el dominio de un
+proveedor de correo público no se concede (422, `services/access_grants.py`);
+una dirección que no tenga exactamente un `@` se deniega en la lista estática,
+en `access_grants` y al leer el token; y avisar sin conceder solo escribe a
+quien ya puede entrar.
