@@ -197,7 +197,7 @@ describe("Competidores — la vista contra el contrato", () => {
   });
 
   it("con cobertura suficiente, «Oferta única» se publica", async () => {
-    renderVista({ ...COMPETIDORES, cobertura_ofertas_pct: 64 } as CompetitorResult);
+    renderVista({ ...COMPETIDORES, cobertura_ofertas_pct: 64 });
 
     expect(await screen.findByText("27,0%")).toBeInTheDocument();
   });

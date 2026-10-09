@@ -23,13 +23,11 @@ export type EstacionalidadEntry = Schemas["EstacionalidadEntry"];
  * La respuesta de `/analytics/competitors`.
  *
  * `cobertura_ofertas_pct` es el denominador de `pct_oferta_unica`: qué parte de
- * las licitaciones trae el número de ofertantes. Se declara opcional aquí
- * mientras el backend desplegado pueda ser anterior al campo; sin él, la celda
- * «Oferta única» se abstiene (`lib/cobertura`), que es la salida segura.
+ * las licitaciones trae el número de ofertantes. Puede no venir (`null` = sin
+ * medir, o un backend desplegado anterior al campo); sin él, la celda «Oferta
+ * única» se abstiene (`lib/cobertura`), que es la salida segura.
  */
-export type CompetitorsData = Schemas["CompetitorResult"] & {
-  cobertura_ofertas_pct?: number | null;
-};
+export type CompetitorsData = Schemas["CompetitorResult"];
 
 /** Medida que ordena el ranking y gobierna el titular y el reparto. */
 export type Metrica = "importe" | "count";
