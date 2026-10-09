@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "@/lib/auth";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
+import { formatDateTime } from "@/lib/utils";
 
 /**
  * Ops › Ejecuciones: qué pasó con cada paso del cierre.
@@ -138,6 +139,31 @@ describe("Ops › Ejecuciones", () => {
     expect(within(roto).getByText("Error")).toBeInTheDocument();
     expect(within(roto).getByText(/ModelArtifactMismatch: el artefacto no coincide/)).toBeInTheDocument();
     expect(within(roto).getByText("7 de 23")).toBeInTheDocument();
+    // La fecha de ese error ya es la de «Última ejecución»: no se repite.
+    expect(within(roto).queryByText(/Último fallo/)).not.toBeInTheDocument();
+  });
+
+  it("un paso que ya se recuperó dice de cuándo es el error que enseña", async () => {
+    // El 2026-10-09 la fila de `ml_scoring` enseñaba el error de un incidente
+    // cerrado el día 3 —seguía dentro de la ventana— junto a un «Bien», sin
+    // fecha: se leyó como un fallo de ese día.
+    const recuperado = {
+      ...RESUMEN.pasos[0],
+      ultimo_estado: "ok",
+      ultima_ejecucion: "2026-10-09T06:25:00+00:00",
+      ultima_ok: "2026-10-09T06:25:00+00:00",
+      ultimo_fallo: "2026-10-03T23:13:00+00:00",
+      fallos: 6,
+    };
+    montar({ resumen: { ...RESUMEN, pasos_en_error: 0, pasos: [recuperado] } });
+
+    await screen.findByText("ml_scoring");
+    const sano = fila("ml_scoring");
+    expect(within(sano).getByText("Bien")).toBeInTheDocument();
+    expect(within(sano).getByText(/ModelArtifactMismatch: el artefacto no coincide/)).toBeInTheDocument();
+    expect(
+      within(sano).getByText(`Último fallo: ${formatDateTime(recuperado.ultimo_fallo)}`),
+    ).toBeInTheDocument();
   });
 
   it("un paso que no tocaba correr no es un fallo", async () => {

@@ -293,15 +293,22 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     cubierto casi toda la población; y el modelo de mayo da por SAP a la
     mayoría, que es el problema de «El corpus de PSCP ahoga el dataset del
     clasificador SAP». No es reversible: el artefacto de la v2 no existe.
+  - 2026-10-09, producción (tabla `jobs`): `ml_scoring` volvió a `ok` en la
+    pasada del 2026-10-04T06:09Z y no ha fallado desde entonces — 14 fallos
+    entre el 2026-09-29T23:58Z y el 2026-10-03T23:13Z, 17 pasadas `ok` después
+    (la última medida, 2026-10-09T06:25Z). `model_artifacts_canary` da `ok` a
+    diario y `sap_classifier` sigue sin versión activa. Ops › Ejecuciones
+    seguía enseñando ese día el texto del error —6 de los fallos quedaban
+    dentro de su ventana de siete días— sin decir de cuándo era, y se leyó como
+    un fallo vivo; la fila de un paso recuperado lleva ahora la fecha de su
+    último fallo.
 - **Acceptance criteria:**
-  - Ver `ml_scoring: ok` en una pasada de `scrape-daily` posterior al
-    2026-10-04T00:19Z. A las 01:45Z de ese día no había corrido ninguna; el
-    rescore cargó el modelo por el mismo camino y funcionó, pero no es la misma
-    comprobación.
   - Ver correr por primera vez el flujo nuevo de `train-model.yml` (subir →
     cotejar → activar) y el `workflow_dispatch` desde el cierre. El orden de
     pasos, los permisos y el `env` están fijados por tests sobre el YAML; ni la
-    activación ni el dispatch contra la API real se han ejecutado todavía.
+    activación ni el dispatch contra la API real se han ejecutado todavía: el
+    paso semanal corrió el 2026-10-06T18:47Z sin lanzar nada (`train-model.yml`
+    no tiene runs desde el 2026-09-27).
   - Decidir qué entrena cada camino: el candidato de `train-model.yml` del
     2026-09-27 (v1, 17.641 filas) fue rechazado con `recall_no_keyword` 0 y el
     del reentrenamiento automático (v2, 57.913 filas, `_fetch_training_dataframe`
