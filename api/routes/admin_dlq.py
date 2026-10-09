@@ -6,6 +6,9 @@ respondía «Funcionalidad en desarrollo». Aquí está lo que le faltaba:
 - ``GET /admin/dlq``: las entradas (abiertas o agotadas) y el resumen por
   fuente, para saber QUÉ falló antes de tocar nada.
 - ``POST /admin/dlq/{id}/reintentar``: devuelve una entrada a la cola.
+- ``POST /admin/dlq/{id}/descartar``: la cierra sin reintentarla. Es la salida
+  de lo que un reintento no arregla (un error de esquema de una versión que ya
+  no existe); sin ella esas entradas no salían nunca de la cola.
 
 Reintentar **no** ejecuta el conector en la petición: eso son minutos (u horas
 para un mes bulk) y no cabe en un request HTTP. Deja la entrada vencida para
@@ -14,7 +17,8 @@ fuente (ver :func:`db.dlq.requeue`).
 
 Sólo administradores de la plataforma: la DLQ es de la ingesta, que es común a
 todas las organizaciones, así que no hay «owner» de organización que pueda
-decidir sobre ella. Cada reencolado queda en ``audit_log`` (``dlq.requeued``).
+decidir sobre ella. Cada reencolado queda en ``audit_log`` (``dlq.requeued``)
+y cada descarte también (``dlq.discarded``).
 """
 
 from __future__ import annotations
@@ -27,9 +31,16 @@ from pydantic import BaseModel, Field
 from api.concurrency import run_db
 from api.routes.dual_auth import require_admin
 from db.audit import log_event
-from db.dlq import list_exhausted, list_unresolved, requeue, unresolved_summary
+from db.dlq import (
+    discard,
+    list_exhausted,
+    list_unresolved,
+    requeue,
+    unresolved_error_summary,
+    unresolved_summary,
+)
 from observability.logging import get_logger
-from shared.audit_events import DLQ_REQUEUED
+from shared.audit_events import DLQ_DISCARDED, DLQ_REQUEUED
 
 log = get_logger(__name__)
 
@@ -61,12 +72,26 @@ class DlqResumenFuente(BaseModel):
     last_attempt: str | None = None
 
 
+class DlqResumenError(BaseModel):
+    """Fallos sin resolver —abiertos y agotados— de un mismo tipo de error."""
+
+    #: Nombre de la excepción; vacío si la entrada se registró sin él.
+    error_type: str
+    n: int
+    abiertas: int = 0
+    agotadas: int = 0
+
+
 class DlqListado(BaseModel):
     estado: Literal["abiertas", "agotadas"]
     items: list[DlqEntrada] = Field(default_factory=list)
     resumen: list[DlqResumenFuente] = Field(
         default_factory=list,
         description="Abiertas por fuente/scope (siempre, sea cual sea `estado`).",
+    )
+    resumen_errores: list[DlqResumenError] = Field(
+        default_factory=list,
+        description="Sin resolver (abiertas y agotadas) por tipo de error.",
     )
 
 
@@ -76,6 +101,15 @@ class DlqReintento(BaseModel):
     id: int
     estado_previo: Literal["abierta", "agotada", "duplicada", "resuelta"]
     reencolada: bool
+    detalle: str
+
+
+class DlqDescarte(BaseModel):
+    """Resultado de cerrar una entrada sin reintentarla."""
+
+    id: int
+    estado_previo: Literal["abierta", "agotada", "resuelta"]
+    descartada: bool
     detalle: str
 
 
@@ -120,6 +154,15 @@ async def listar_dlq(
                     last_attempt=_txt(r.get("last_attempt")),
                 )
                 for r in unresolved_summary()
+            ],
+            resumen_errores=[
+                DlqResumenError(
+                    error_type=str(r.get("error_type") or ""),
+                    n=int(r.get("n") or 0),
+                    abiertas=int(r.get("abiertas") or 0),
+                    agotadas=int(r.get("agotadas") or 0),
+                )
+                for r in unresolved_error_summary()
             ],
         )
 
@@ -169,4 +212,46 @@ async def reintentar_dlq(
         estado_previo=previo,
         reencolada=reencolada,
         detalle=_DETALLES[previo],
+    )
+
+
+_DETALLES_DESCARTE = {
+    "abierta": "Descartada: sale de la cola y no se reintentará.",
+    "agotada": "Descartada: sale de la cola de agotadas.",
+    "resuelta": "Ya estaba resuelta: no hay nada que descartar.",
+}
+
+
+@router.post(
+    "/{failure_id}/descartar",
+    response_model=DlqDescarte,
+    summary="Cerrar una entrada de la DLQ sin reintentarla",
+    responses={404: {"description": "La entrada no existe"}},
+)
+async def descartar_dlq(
+    failure_id: int = Path(ge=1),
+    admin: dict[str, Any] = Depends(require_admin),
+) -> DlqDescarte:
+    previo = await run_db(discard, failure_id)
+    if previo == "inexistente":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Entrada DLQ {failure_id} no encontrada.",
+        )
+    descartada = previo in ("abierta", "agotada")
+    if descartada:
+        await run_db(
+            log_event,
+            event_type=DLQ_DISCARDED,
+            actor=str(admin.get("user_id", "")),
+            user_id=int(admin["user_id"]) if admin.get("user_id") is not None else None,
+            resource=f"failed_extraction:{failure_id}",
+            detail=f"estado_previo={previo}",
+        )
+        log.info("dlq_discarded", failure_id=failure_id, estado_previo=previo)
+    return DlqDescarte(
+        id=failure_id,
+        estado_previo=previo,
+        descartada=descartada,
+        detalle=_DETALLES_DESCARTE[previo],
     )

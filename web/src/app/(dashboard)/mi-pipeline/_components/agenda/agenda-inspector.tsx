@@ -9,20 +9,24 @@
  * relicitación; una señal, la regla que la trajo. La cabecera y los datos
  * comunes son los mismos para las cinco.
  *
+ * **Lo que se hace con el compromiso va arriba**, justo bajo el título, y los
+ * datos después. Estaba al revés —las acciones al final de un panel de 690 px—
+ * y en un portátil «Abrir ficha» caía fuera de la pantalla. Si aun así el panel
+ * no cabe, se desplaza él y no la página.
+ *
  * Decisión escrita: el inspector no baja de `xl`. Lo accionable de cada
  * compromiso ya está en su ficha (abrir / completar / preparar renovación /
- * seguir / descartar), así que en móvil no se pierde ninguna decisión. Lo que
- * sí queda fuera es el editor de próxima acción y el alta de tareas: escribir
- * texto libre y una fecha en 375 px pide una hoja a pantalla completa, no un
- * panel lateral encogido, y eso es trabajo aparte — anotado como pendiente, no
- * resuelto con un `hidden`.
+ * seguir / descartar / apuntar la próxima acción), así que en móvil no se
+ * pierde ninguna decisión. Lo que sí queda fuera es la lista de tareas de la
+ * oportunidad: en 375 px pide una hoja a pantalla completa, no un panel lateral
+ * encogido, y eso es trabajo aparte — anotado como pendiente, no resuelto con
+ * un `hidden`.
  */
 
 import type { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { cn, EMPTY, formatCompactCurrency, formatDate, truncate } from "@/lib/utils";
-import { statusLabel } from "@/components/pursuits/pursuit-presenters";
 import { PanelEmpty, ROTULO_DATO } from "@/components/console/panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
@@ -31,7 +35,8 @@ import { AgendaContrato } from "./agenda-contrato";
 import { AgendaFechas } from "./agenda-fechas";
 import { AgendaSenal } from "./agenda-senal";
 import { AgendaTareas } from "./agenda-tareas";
-import { CHIP_POR_BANDA, claveDe, etiquetaKind, plazoChip, tipoDeFecha, tituloDe } from "./agenda-meta";
+import { bandaDe, claseChip, claveDe, etiquetaKind } from "./agenda-meta";
+import { estadoEnFrase, plazoChip, tipoDeFecha, tituloDe } from "./agenda-texto";
 
 function Dato({ label, valor }: { label: string; valor: ReactNode }) {
   return (
@@ -49,7 +54,7 @@ function Cabecera({ item }: { item: PipelineAgendaItem }) {
         <span
           className={cn(
             "tf-tnum inline-flex h-5 items-center rounded-full px-2 text-tf-micro font-semibold",
-            CHIP_POR_BANDA[item.urgencia],
+            claseChip(item),
           )}
         >
           {plazoChip(item)}
@@ -60,10 +65,13 @@ function Cabecera({ item }: { item: PipelineAgendaItem }) {
       <p className="mt-1 text-tf-micro text-muted-foreground">
         {tipoDeFecha(item)}
         {item.due_date ? ` · ${formatDate(item.due_date)}` : " · sin fecha"}
+        {item.due_hora ? `, ${item.due_hora}` : ""}
       </p>
     </div>
   );
 }
+
+const PRIMARIO = "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary";
 
 export function AgendaInspector({ agenda }: { agenda: Agenda }) {
   const item = agenda.active;
@@ -72,7 +80,7 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
   return (
     <aside
       aria-label="Detalle del compromiso"
-      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card p-4 xl:sticky xl:top-0 xl:block"
+      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card p-4 xl:block xl:max-h-full xl:overflow-y-auto"
     >
       {!item ? (
         <PanelEmpty size="sm" hint="Selecciona un compromiso para ver su detalle." />
@@ -80,7 +88,61 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
         <div className="space-y-4">
           <Cabecera item={item} />
 
-          <dl className="space-y-1.5 text-tf-meta">
+          {(item.kind !== "senal" || item.url) && (
+            <div className="flex flex-wrap gap-1.5">
+              {item.kind !== "senal" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => agenda.abrir(item)}
+                  className={cn("flex-1", PRIMARIO)}
+                >
+                  {item.kind === "renovacion" ? "Anticipar oportunidad" : "Abrir ficha"}
+                </Button>
+              )}
+              {item.kind === "pursuit" && bandaDe(item) === "plazo_pasado" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => agenda.pedirRetirada(item)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  No nos presentamos
+                </Button>
+              )}
+              {item.url && (
+                // Enlace a la página del expediente en PLACSP, nunca al documento:
+                // los enlaces directos a pliegos llevan tokens rotativos y caducan.
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonVariants({
+                    variant: "outline",
+                    size: "sm",
+                    className: "text-muted-foreground hover:text-foreground",
+                  })}
+                >
+                  PLACSP
+                  <ExternalLink aria-hidden="true" />
+                  <AvisoPestanaNueva />
+                </a>
+              )}
+            </div>
+          )}
+
+          {item.kind === "senal" && (
+            <AgendaSenal
+              item={item}
+              onSeguir={() => void agenda.seguir(item)}
+              onDescartar={() => agenda.descartar(item)}
+              onPosponer={() => agenda.posponer(item)}
+            />
+          )}
+
+          <dl className="space-y-1.5 border-t border-border/50 pt-3 text-tf-meta">
             {item.organo && <Dato label="Órgano" valor={truncate(item.organo, 40)} />}
             <Dato
               label="Importe"
@@ -91,7 +153,7 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
               }
             />
             {item.ccaa && <Dato label="CCAA" valor={item.ccaa} />}
-            {item.status && <Dato label="Estado" valor={statusLabel(item.status)} />}
+            {item.status && <Dato label="Estado" valor={estadoEnFrase(item.status)} />}
             {item.responsible_name && <Dato label="Responsable" valor={item.responsible_name} />}
             {item.kind === "renovacion" && item.adjudicatario && (
               <Dato label="Adjudicatario" valor={truncate(item.adjudicatario, 36)} />
@@ -121,46 +183,6 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
             <AgendaTareas pursuitId={item.pursuit_id} />
           )}
           {item.kind === "contrato" && <AgendaContrato item={item} />}
-          {item.kind === "senal" && (
-            <AgendaSenal
-              item={item}
-              onSeguir={() => void agenda.seguir(item)}
-              onDescartar={() => agenda.descartar(item)}
-              onPosponer={() => agenda.posponer(item)}
-            />
-          )}
-
-          <div className="flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
-            {item.kind !== "senal" && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => agenda.abrir(item)}
-                className="flex-1 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
-              >
-                {item.kind === "renovacion" ? "Anticipar oportunidad" : "Abrir ficha"}
-              </Button>
-            )}
-            {item.url && (
-              // Enlace a la página del expediente en PLACSP, nunca al documento:
-              // los enlaces directos a pliegos llevan tokens rotativos y caducan.
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={buttonVariants({
-                  variant: "outline",
-                  size: "sm",
-                  className: "text-muted-foreground hover:text-foreground",
-                })}
-              >
-                PLACSP
-                <ExternalLink aria-hidden="true" />
-                <AvisoPestanaNueva />
-              </a>
-            )}
-          </div>
         </div>
       )}
     </aside>

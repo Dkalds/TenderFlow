@@ -476,13 +476,29 @@ export const webhookKeys = {
 
 export const adminKeys = {
   users: ["admin-users"] as const,
-  apiKeys: ["api-keys"] as const,
   health: ["health"] as const,
   solicitudes: {
     all: ["admin-solicitudes-acceso"] as const,
     vista: (vista: "pendiente" | "historico") => ["admin-solicitudes-acceso", vista] as const,
   },
   accessGrants: ["admin-access-grants"] as const,
+  clientErrors: ["admin-client-errors"] as const,
+  ejecuciones: ["admin-ejecuciones"] as const,
+  dlq: {
+    all: ["admin", "dlq"] as const,
+    estado: (estado: "abiertas" | "agotadas") => ["admin", "dlq", estado] as const,
+  },
+};
+
+/**
+ * Lista de feature flags del backend. La comparten quien las lee
+ * (`hooks/use-feature-flag.ts`) y quien las edita (la tarjeta de Ops): con dos
+ * claves, apagar una flag no se notaba en la consola hasta que caducaba la
+ * copia del lector.
+ */
+export const featureFlagKeys = {
+  all: ["feature-flags"] as const,
+  list: ["feature-flags", "list"] as const,
 };
 
 export const renovacionesKeys = {

@@ -1,46 +1,43 @@
 "use client";
 
 /**
- * Datos, carriles, selección y gestos de la agenda.
+ * Datos, carriles, filtro, selección y teclado de la agenda.
  *
  * La API fusiona, ordena y clasifica (`GET /pursuits/agenda`); aquí viven
- * el carril activo, la fila seleccionada, el teclado —J/K recorren, S sigue, X
- * descarta, C completa la tarea, ⏎ abre— y las acciones que esos gestos
- * comparten con los botones de cada fila.
+ * el carril activo, el contador que filtra, la fila seleccionada y el teclado
+ * —J/K recorren, S sigue, X descarta, C completa la tarea, ⏎ abre—. Lo que
+ * esos gestos hacen, que es lo mismo que hacen los botones de cada fila, está
+ * en `use-agenda-acciones.ts`.
  *
- * **El carril y `solo_mios` viven en la URL** (`?carril=`, `?mios=1`), no en
- * `useState`: la agenda es una pantalla que se pasa por chat («mira lo que
- * tengo sin triar»), y un estado que sólo existe en memoria convierte ese
- * enlace en «la agenda, pero por donde tú entres». Se escriben con `replace`
- * porque cambiar de carril no es navegar: llenar el historial de carriles deja
- * el botón «atrás» inservible. Y se escriben sin pasar por el servidor
- * (`lib/url-superficial.ts`): la página es `"use client"` y ningún Server
- * Component lee `carril` ni `mios`. El carril filtra la respuesta de
- * `/pursuits/agenda` que ya está en caché, y el cambio de `mios` lo pide el
- * propio `usePipelineAgenda` a la API.
+ * **El carril, el filtro y `solo_mios` viven en la URL** (`?carril=`,
+ * `?filtro=`, `?mios=1`), no en `useState`: la agenda es una pantalla que se
+ * pasa por chat («mira lo que tengo sin triar»), y un estado que sólo existe en
+ * memoria convierte ese enlace en «la agenda, pero por donde tú entres». Se
+ * escriben con `replace` porque cambiar de carril no es navegar: llenar el
+ * historial de carriles deja el botón «atrás» inservible. Y se escriben sin
+ * pasar por el servidor (`lib/url-superficial.ts`): la página es `"use client"`
+ * y ningún Server Component lee esos parámetros. El carril y el filtro recortan
+ * la respuesta de `/pursuits/agenda` que ya está en caché, y el cambio de
+ * `mios` lo pide el propio `usePipelineAgenda` a la API.
+ *
+ * **El filtro no decide nada.** Qué filas cuentan en cada contador lo dice la
+ * API en `item.cuenta_en`, con la misma regla con la que calcula el número;
+ * aquí solo se dejan las que lo llevan.
  */
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
+import { useSearchParams } from "next/navigation";
 import { useFilters } from "@/lib/filters";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
-import { useOrganizationStore } from "@/hooks/use-organization";
-import { useDismissRadarTender, useRestoreRadarTender } from "@/hooks/use-radar";
-import { useActualizarTarea } from "@/hooks/use-pursuit-tasks";
+import { type PipelineAgendaItem, usePipelineAgenda } from "@/hooks/use-pursuits";
 import {
-  type PipelineAgendaItem,
-  useCreatePursuit,
-  usePipelineAgenda,
-} from "@/hooks/use-pursuits";
-import {
+  type AgendaContador,
   type Carril,
   carrilDe,
   claveDe,
-  DIAS_POSPONER,
-  tituloDe,
+  esContador,
 } from "../_components/agenda/agenda-meta";
+import { useAgendaAcciones } from "./use-agenda-acciones";
 
 /** Ámbito de la agenda: varias tecnologías o CCAA, separadas por comas (OR). */
 function listaDeAmbito(valores: string[]): string | null {
@@ -48,7 +45,6 @@ function listaDeAmbito(valores: string[]): string | null {
 }
 
 export function useAgenda() {
-  const router = useRouter();
   const params = useSearchParams();
   const filters = useFilters();
   // El backend acepta listas desde 2026-09-21: se manda **todo** el ámbito
@@ -57,16 +53,25 @@ export function useAgenda() {
   const tecnologia = listaDeAmbito(filters.tecnologias);
   const ccaa = listaDeAmbito(filters.ccaas);
 
-  const carril: Carril = params.get("carril") === "triaje" ? "triaje" : "compromisos";
   const soloMios = params.get("mios") === "1";
 
   const { data, isPending, error, refetch } = usePipelineAgenda({ soloMios, tecnologia, ccaa });
 
-  const createPursuit = useCreatePursuit();
-  const dismissTender = useDismissRadarTender();
-  const restoreTender = useRestoreRadarTender();
-  const actualizarTarea = useActualizarTarea();
-  const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
+  /**
+   * Sin reglas activas no puede llegar ninguna señal, así que no hay bandeja
+   * que triar. `=== 0` y no «falsy»: una API anterior al campo no lo manda, y
+   * ahí no se sabe — el carril se queda como estaba.
+   */
+  const sinReglas = data?.reglas_activas === 0;
+  const carril: Carril =
+    params.get("carril") === "triaje" && !sinReglas ? "triaje" : "compromisos";
+  const pedido = params.get("filtro");
+  // El filtro es de los compromisos: en el triaje no hay contador que valga.
+  const filtro: AgendaContador | null =
+    carril === "compromisos" && esContador(pedido) ? pedido : null;
+
+  const acciones = useAgendaAcciones();
+  const { abrir, completarTarea, descartar, seguir } = acciones;
 
   const todos = React.useMemo(() => data?.items ?? [], [data]);
   const conteos = React.useMemo(
@@ -77,8 +82,12 @@ export function useAgenda() {
     [todos],
   );
   const items = React.useMemo(
-    () => todos.filter((item) => carrilDe(item) === carril),
-    [todos, carril],
+    () =>
+      todos.filter(
+        (item) =>
+          carrilDe(item) === carril && (filtro == null || (item.cuenta_en ?? []).includes(filtro)),
+      ),
+    [todos, carril, filtro],
   );
 
   const [selected, setSelected] = React.useState(0);
@@ -92,132 +101,57 @@ export function useAgenda() {
    */
   const [focoAccion, setFocoAccion] = React.useState<{ clave: string; n: number } | null>(null);
 
-  const escribirParam = React.useCallback((clave: string, valor: string | null) => {
+  const escribirParams = React.useCallback((cambios: Record<string, string | null>) => {
     const search = queryActual();
-    if (valor) search.set(clave, valor);
-    else search.delete(clave);
+    for (const [clave, valor] of Object.entries(cambios)) {
+      if (valor) search.set(clave, valor);
+      else search.delete(clave);
+    }
     reemplazarQuery(search);
   }, []);
 
   const setCarril = React.useCallback(
     (next: Carril) => {
       setSelected(0);
-      escribirParam("carril", next === "compromisos" ? null : next);
+      // Al triaje se llega sin filtro: un contador pulsado sobre una lista que
+      // no filtra sería un botón encendido que no hace nada.
+      escribirParams(
+        next === "compromisos" ? { carril: null } : { carril: next, filtro: null },
+      );
     },
-    [escribirParam],
+    [escribirParams],
+  );
+
+  /** Pulsar un contador lo pone; pulsarlo otra vez lo quita. */
+  const alternarFiltro = React.useCallback(
+    (contador: AgendaContador) => {
+      setSelected(0);
+      escribirParams({ carril: null, filtro: filtro === contador ? null : contador });
+    },
+    [escribirParams, filtro],
   );
 
   const alternarSoloMios = React.useCallback(() => {
     setSelected(0);
-    escribirParam("mios", soloMios ? null : "1");
-  }, [escribirParam, soloMios]);
-
-  const seguir = React.useCallback(
-    async (item: PipelineAgendaItem) => {
-      try {
-        const pursuit = await createPursuit.mutateAsync({ licitacion_id: item.licitacion_id });
-        setActiveOrganizationId(pursuit.organization_id);
-        toast.success(
-          item.kind === "renovacion" ? "Renovación anticipada como oportunidad" : "Oportunidad abierta",
-        );
-        router.push(`/oportunidades/${pursuit.id}`);
-      } catch (err) {
-        toast.error("No se pudo abrir la oportunidad", { description: getErrorMessage(err, "accion") });
-      }
-    },
-    [createPursuit, router, setActiveOrganizationId],
-  );
-
-  const descartar = React.useCallback(
-    (item: PipelineAgendaItem) => {
-      dismissTender.mutate({ idExterno: item.licitacion_id });
-      toast("Señal descartada", {
-        description: item.titulo ?? undefined,
-        action: { label: "Deshacer", onClick: () => restoreTender.mutate(item.licitacion_id) },
-      });
-    },
-    [dismissTender, restoreTender],
-  );
-
-  /**
-   * Posponer: el mismo triaje del Radar con caducidad (`accion: "posponer"`).
-   * La señal vuelve sola pasada la semana, así que «ahora no» deja de ser
-   * indistinguible de «nunca» — que es lo que era descartar.
-   */
-  const posponer = React.useCallback(
-    (item: PipelineAgendaItem) => {
-      dismissTender.mutate({
-        idExterno: item.licitacion_id,
-        accion: "posponer",
-        dias: DIAS_POSPONER,
-      });
-      toast(`Señal pospuesta ${DIAS_POSPONER} días`, {
-        description: item.titulo ?? undefined,
-        action: { label: "Deshacer", onClick: () => restoreTender.mutate(item.licitacion_id) },
-      });
-    },
-    [dismissTender, restoreTender],
-  );
-
-  /**
-   * Completar la tarea de la fila. Siempre con deshacer: es la única acción de
-   * escritura que el teclado dispara, y una tecla que cierra trabajo sin vuelta
-   * atrás convierte un dedo torpe en una tarea perdida.
-   */
-  const completarTarea = React.useCallback(
-    (item: PipelineAgendaItem) => {
-      const pursuitId = item.pursuit_id;
-      const taskId = item.tarea_id;
-      if (pursuitId == null || taskId == null) return;
-      actualizarTarea.mutate(
-        { pursuitId, taskId, estado: "hecha" },
-        {
-          onSuccess: () =>
-            toast.success("Tarea completada", {
-              description: tituloDe(item),
-              action: {
-                label: "Deshacer",
-                onClick: () =>
-                  actualizarTarea.mutate({ pursuitId, taskId, estado: "pendiente" }),
-              },
-            }),
-          onError: (err) =>
-            toast.error("No se pudo completar la tarea", { description: getErrorMessage(err, "accion") }),
-        },
-      );
-    },
-    [actualizarTarea],
-  );
+    escribirParams({ mios: soloMios ? null : "1" });
+  }, [escribirParams, soloMios]);
 
   /** La `next_action` manual no tiene fila que completar: se edita a mano. */
   const editarAccion = React.useCallback((item: PipelineAgendaItem) => {
     setFocoAccion((previo) => ({ clave: claveDe(item), n: (previo?.n ?? 0) + 1 }));
   }, []);
 
-  const abrir = React.useCallback(
-    (item: PipelineAgendaItem) => {
-      if (item.kind === "senal") {
-        void seguir(item);
-        return;
-      }
-      const pursuitId =
-        item.kind === "contrato" ? (item.renovacion_pursuit_id ?? item.pursuit_id) : item.pursuit_id;
-      if (pursuitId != null) {
-        router.push(`/oportunidades/${pursuitId}`);
-        return;
-      }
-      void seguir(item);
-    },
-    [router, seguir],
-  );
-
   // Teclado: mismo contrato que el Radar, más `C` para cerrar la tarea activa.
-  // Ignorado con el foco en un campo.
+  // Ignorado con el foco en un campo o dentro de un diálogo, que tienen sus
+  // propias teclas.
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
+      // El destino puede no ser un elemento (`window`, el documento): ahí no
+      // hay foco en ningún control y el atajo es de la lista.
+      const target = event.target instanceof HTMLElement ? event.target : null;
       const tag = target?.tagName ?? "";
       if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      if (target?.closest('[role="dialog"]')) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (!items.length) return;
       const key = event.key.toLowerCase();
@@ -239,6 +173,12 @@ export function useAgenda() {
         if (active.tarea_id == null) editarAccion(active);
         else completarTarea(active);
       } else if (event.key === "Enter") {
+        // ⏎ con el foco en un botón o un enlace es de ese control. Se escucha
+        // en `window`, así que sin esta salvedad pulsarlo sobre un contador o
+        // sobre «Solo míos» abría la ficha de la fila seleccionada. Las filas
+        // (`role="button"`) tienen su propio ⏎: abren la fila enfocada, que no
+        // siempre es la activa.
+        if (tag === "BUTTON" || tag === "A" || target?.getAttribute("role") === "button") return;
         event.preventDefault();
         if (active) abrir(active);
       }
@@ -248,6 +188,7 @@ export function useAgenda() {
   }, [abrir, active, completarTarea, descartar, editarAccion, items.length, seguir]);
 
   return {
+    ...acciones,
     data,
     // `isPending` y no `isLoading`: mientras la organización activa no está
     // resuelta la consulta sigue retenida, sin fetch en vuelo, y la agenda
@@ -259,20 +200,16 @@ export function useAgenda() {
     conteos,
     carril,
     setCarril,
+    sinReglas,
+    filtro,
+    alternarFiltro,
     activeIndex,
     active,
     setSelected,
     soloMios,
     alternarSoloMios,
-    seguir,
-    descartar,
-    posponer,
-    abrir,
-    completarTarea,
     editarAccion,
     focoAccion: active && focoAccion?.clave === claveDe(active) ? focoAccion.n : 0,
-    verRenovacion: (pursuitId: number) => router.push(`/oportunidades/${pursuitId}`),
-    irAlRadar: () => router.push("/radar"),
   };
 }
 

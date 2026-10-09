@@ -1,176 +1,291 @@
 /**
- * Tests de las series de reparto y ranking de `_hooks/competidores-series.ts`:
- * tarta de cuota, barras, top 5 de la dispersión, treemap, estacionalidad y
- * ranking de bajas.
+ * Tests de las series de `_hooks/competidores-series.ts` que hablan del reparto
+ * del mercado: el orden por la medida activa, la concentración del titular, la
+ * barra al 100 %, los meses del año, las escalas del ranking, el cara a cara y
+ * qué empresa queda abierta.
  *
  * Lo que se comprueba aquí es lo que un cambio descuidado rompe sin que la UI
- * se queje: qué entra en «Otros», dónde se recorta cada ranking y qué pasa con
+ * se queje: qué entra en «Otras», cuándo una cifra es parcial y qué pasa con
  * una empresa que no trae el dato.
  */
 import { describe, it, expect } from "vitest";
 
 import {
   MONTH_LABELS,
-  buildBarData,
+  buildConcentracion,
+  buildDuelo,
   buildEstacionalidad,
-  buildPieData,
-  buildScatterTop5,
-  buildTreemapData,
-  sortBajas,
+  buildReparto,
+  cuotaDe,
+  escalasRanking,
+  mesPico,
+  ordenarPorMetrica,
+  resolverAbierta,
+  resolverRival,
 } from "../_hooks/competidores-series";
 
-import { ACME, BETA, competitor } from "./competidores-fixtures";
+import { ACME, BETA, GAMMA, competitor } from "./competidores-fixtures";
 
-/* ── Tarta ──────────────────────────────────────────────────────────── */
+const MERCADO = [ACME, BETA, GAMMA];
 
-describe("buildPieData", () => {
-  const many = Array.from({ length: 12 }, (_, i) =>
-    competitor({ nombre: `E${i}`, importe: (12 - i) * 1000, count: 1 }),
-  );
+/* ── Orden y cuota ──────────────────────────────────────────────────── */
+
+describe("ordenarPorMetrica", () => {
+  it("por importe y por adjudicaciones dan órdenes distintos", () => {
+    expect(ordenarPorMetrica(MERCADO, "importe").map((c) => c.nombre)).toEqual([
+      "Acme Sistemas",
+      "Beta Consulting",
+      "Gamma Redes",
+    ]);
+    // Gamma gana más veces que Beta, aunque menos dinero.
+    expect(ordenarPorMetrica(MERCADO, "count").map((c) => c.nombre)).toEqual([
+      "Acme Sistemas",
+      "Gamma Redes",
+      "Beta Consulting",
+    ]);
+  });
+
+  it("no muta la lista de entrada", () => {
+    const items = [GAMMA, ACME];
+    ordenarPorMetrica(items, "importe");
+    expect(items[0]).toBe(GAMMA);
+  });
+});
+
+describe("cuotaDe", () => {
+  it("por importe es la cuota que manda la API, sin recalcular", () => {
+    expect(cuotaDe(ACME, "importe", 999)).toBe(40);
+  });
+
+  it("por adjudicaciones es su recuento sobre el total del ámbito", () => {
+    expect(cuotaDe(ACME, "count", 50)).toBe(20);
+  });
+
+  it("sin total del ámbito no hay cuota por adjudicaciones", () => {
+    // Dividir por la suma de lo recibido daría la cuota entre los 100 primeros,
+    // que no es la del mercado.
+    expect(cuotaDe(ACME, "count", null)).toBeNull();
+    expect(cuotaDe(ACME, "count", 0)).toBeNull();
+  });
+});
+
+/* ── Concentración del titular ──────────────────────────────────────── */
+
+describe("buildConcentracion", () => {
+  const totales = { totalAdjudicaciones: 50, totalEmpresas: 3 };
+
+  it("suma las cuotas de la API de las primeras por importe", () => {
+    expect(buildConcentracion(MERCADO, "importe", totales)).toEqual({ pct: 64, n: 3, parcial: false });
+  });
+
+  it("por adjudicaciones, los recuentos sobre el total del ámbito", () => {
+    // 10 + 7 + 4 = 21 de 50.
+    expect(buildConcentracion(MERCADO, "count", totales)).toEqual({ pct: 42, n: 3, parcial: false });
+  });
+
+  it("solo cuenta las n primeras", () => {
+    expect(buildConcentracion(MERCADO, "importe", totales, 2)).toEqual({ pct: 56, n: 2, parcial: false });
+  });
+
+  it("por importe es parcial si la API no devolvió todas las empresas", () => {
+    // La lista llega ordenada por adjudicaciones: la primera por importe puede
+    // haberse quedado fuera del corte, y la vista tiene que decirlo.
+    const parcial = buildConcentracion(MERCADO, "importe", { totalAdjudicaciones: 50, totalEmpresas: 214 });
+    expect(parcial.parcial).toBe(true);
+  });
+
+  it("por adjudicaciones nunca es parcial: la lista ya viene en ese orden", () => {
+    const exacta = buildConcentracion(MERCADO, "count", { totalAdjudicaciones: 50, totalEmpresas: 214 });
+    expect(exacta.parcial).toBe(false);
+  });
+
+  it("sin competidores no hay cifra", () => {
+    expect(buildConcentracion([], "importe", totales)).toEqual({ pct: null, n: 0, parcial: false });
+  });
+
+  it("sin total del ámbito no hay cifra por adjudicaciones", () => {
+    expect(buildConcentracion(MERCADO, "count", { totalAdjudicaciones: null, totalEmpresas: 3 }).pct).toBeNull();
+  });
+});
+
+/* ── Reparto en barra al 100 % ──────────────────────────────────────── */
+
+describe("buildReparto", () => {
+  const totales = { totalAdjudicaciones: 50, totalEmpresas: 10 };
+
+  it("las primeras con nombre y el resto del mercado en un solo tramo", () => {
+    const tramos = buildReparto(MERCADO, "importe", totales, null, 2);
+    expect(tramos.map((t) => [t.nombre, t.pct, t.esOtros])).toEqual([
+      ["Acme Sistemas", 40, false],
+      ["Beta Consulting", 16, false],
+      ["Otras 8 empresas", 44, true],
+    ]);
+  });
+
+  it("«Otras» es el resto hasta 100, no la suma de lo recibido", () => {
+    // Gamma (8 %) cae en «Otras» junto a las 7 que la API no devolvió.
+    const otros = buildReparto(MERCADO, "importe", totales, null, 2).at(-1);
+    expect(otros?.pct).toBe(44);
+  });
+
+  it("sin resto no hay tramo «Otras»", () => {
+    const dos = [competitor({ nombre: "A", cuota: 60, importe: 6 }), competitor({ nombre: "B", cuota: 40, importe: 4 })];
+    const tramos = buildReparto(dos, "importe", { totalAdjudicaciones: 2, totalEmpresas: 2 }, null);
+    expect(tramos.map((t) => t.nombre)).toEqual(["A", "B"]);
+  });
+
+  it("marca el tramo de la empresa abierta", () => {
+    const tramos = buildReparto(MERCADO, "importe", totales, "Beta Consulting", 2);
+    expect(tramos.map((t) => t.seleccionado)).toEqual([false, true, false]);
+  });
+
+  it("por adjudicaciones sin total del ámbito no dibuja nada", () => {
+    expect(buildReparto(MERCADO, "count", { totalAdjudicaciones: null, totalEmpresas: 10 }, null)).toEqual([]);
+  });
 
   it("vacío sin competidores", () => {
-    expect(buildPieData([], "", 1000)).toEqual([]);
-  });
-
-  it("sin búsqueda, «Otros» es la cola del mercado total, no solo la visible", () => {
-    // El backend recorta la lista a `limit`; usar la suma de lo devuelto como
-    // total pintaría una cuota inflada para el top 10.
-    const pie = buildPieData(many, "", 1_000_000);
-    const top10Importe = many
-      .slice(0, 10)
-      .reduce((s, c) => s + c.importe, 0);
-    const otros = pie.find((s) => s.name === "Otros");
-    expect(pie).toHaveLength(11);
-    expect(otros?.value).toBe(1_000_000 - top10Importe);
-  });
-
-  it("con búsqueda, «Otros» solo agrega la cola de lo filtrado", () => {
-    const pie = buildPieData(many, "E", 1_000_000);
-    const cola = many.slice(10).reduce((s, c) => s + c.importe, 0);
-    expect(pie.find((s) => s.name === "Otros")?.value).toBe(cola);
-  });
-
-  it("omite «Otros» cuando no queda cola", () => {
-    const pie = buildPieData([ACME, BETA], "acme", undefined);
-    expect(pie.map((s) => s.name)).not.toContain("Otros");
-  });
-
-  it("nunca emite un «Otros» negativo si el total llega por debajo", () => {
-    const pie = buildPieData([ACME], "", 1);
-    expect(pie.map((s) => s.name)).not.toContain("Otros");
-  });
-
-  it("recorta los nombres largos para la leyenda", () => {
-    const nombre = "Consorcio Nacional de Infraestructuras y Servicios Integrales";
-    const largo = competitor({ nombre, importe: 10 });
-    // `truncate` corta a 25 y añade la elipsis: 26 caracteres visibles.
-    expect(buildPieData([largo], "x", undefined)[0].name).toBe(
-      `${nombre.slice(0, 25)}…`,
-    );
+    expect(buildReparto([], "importe", totales, null)).toEqual([]);
   });
 });
 
-/* ── Barras / dispersión ────────────────────────────────────────────── */
-
-describe("buildBarData", () => {
-  it("ordena por número de adjudicaciones y recorta a 20", () => {
-    const many = Array.from({ length: 25 }, (_, i) =>
-      competitor({ nombre: `E${i}`, count: i }),
-    );
-    const bars = buildBarData(many);
-    expect(bars).toHaveLength(20);
-    expect(bars[0].count).toBe(24);
-  });
-});
-
-describe("buildScatterTop5", () => {
-  it("son los cinco de mayor importe", () => {
-    const many = Array.from({ length: 8 }, (_, i) =>
-      competitor({ nombre: `E${i}`, importe: i * 100 }),
-    );
-    const top5 = buildScatterTop5(many);
-    expect(top5.size).toBe(5);
-    expect(top5.has("E7")).toBe(true);
-    expect(top5.has("E2")).toBe(false);
-  });
-
-  it("conjunto vacío sin datos", () => {
-    expect(buildScatterTop5(undefined).size).toBe(0);
-    expect(buildScatterTop5([]).size).toBe(0);
-  });
-});
-
-/* ── Treemap / estacionalidad ───────────────────────────────────────── */
-
-describe("buildTreemapData", () => {
-  it("vacío sin competidores", () => {
-    expect(buildTreemapData([])).toEqual([]);
-  });
-
-  it("top 20 por importe, con el nombre recortado", () => {
-    const many = Array.from({ length: 25 }, (_, i) =>
-      competitor({ nombre: `Empresa con nombre larguísimo ${i}`, importe: i, count: 1 }),
-    );
-    const nodes = buildTreemapData(many);
-    expect(nodes).toHaveLength(20);
-    expect(nodes[0].size).toBe(24);
-    // `truncate` corta a 22 y añade la elipsis.
-    expect(nodes[0].name).toBe("Empresa con nombre lar…");
-  });
-});
+/* ── Meses del año ──────────────────────────────────────────────────── */
 
 describe("buildEstacionalidad", () => {
-  it("vacío cuando el endpoint no manda la serie", () => {
+  it("vacío sin datos", () => {
     expect(buildEstacionalidad(undefined)).toEqual([]);
     expect(buildEstacionalidad([])).toEqual([]);
   });
 
-  it("rellena los doce meses aunque solo lleguen algunos", () => {
-    const serie = buildEstacionalidad([
-      { mes: 1, count: 4, importe: 100 },
-      { mes: 12, count: 2, importe: 50 },
-    ]);
+  it("rellena los doce meses aunque solo llegue uno", () => {
+    // Saltarse un mes sin datos desplazaría el eje: diciembre aparecería
+    // pegado a marzo.
+    const serie = buildEstacionalidad([{ mes: 3, count: 4, importe: 900 }]);
     expect(serie).toHaveLength(12);
     expect(serie.map((p) => p.mes)).toEqual(MONTH_LABELS);
-    expect(serie[0]).toEqual({ mes: "Ene", count: 4, importe: 100 });
-    expect(serie[5]).toEqual({ mes: "Jun", count: 0, importe: 0 });
-    expect(serie[11].count).toBe(2);
+    expect(serie[2]).toEqual({ mes: "Mar", count: 4, importe: 900 });
+    expect(serie[0]).toEqual({ mes: "Ene", count: 0, importe: 0 });
   });
 });
 
-/* ── Bajas ──────────────────────────────────────────────────────────── */
-
-describe("sortBajas", () => {
-  it("modelo neutro sin datos: maxBaja 1 para no dividir por cero", () => {
-    expect(sortBajas(undefined)).toEqual({ rows: [], maxBaja: 1 });
-  });
-
-  it("descarta las que no tienen baja media", () => {
-    const model = sortBajas([
-      { grupo: "A", contratos: 6, baja_media_pct: null },
-      { grupo: "B", contratos: 8, baja_media_pct: 12 },
+describe("mesPico", () => {
+  it("el mes con más adjudicaciones", () => {
+    const serie = buildEstacionalidad([
+      { mes: 3, count: 4, importe: 1 },
+      { mes: 12, count: 9, importe: 1 },
     ]);
-    expect(model.rows.map((r) => r.grupo)).toEqual(["B"]);
+    expect(mesPico(serie)).toEqual({ indice: 11, count: 9 });
   });
 
-  it("ordena de más agresiva a menos y expone el máximo", () => {
-    const model = sortBajas([
-      { grupo: "A", contratos: 6, baja_media_pct: 5 },
-      { grupo: "B", contratos: 8, baja_media_pct: 30 },
-      { grupo: "C", contratos: 9, baja_media_pct: 18 },
+  it("sin actividad no hay pico", () => {
+    expect(mesPico([])).toBeNull();
+    expect(mesPico(buildEstacionalidad([{ mes: 1, count: 0, importe: 0 }]))).toBeNull();
+  });
+});
+
+/* ── Escalas del ranking ────────────────────────────────────────────── */
+
+describe("escalasRanking", () => {
+  it("el máximo de cada medida entre las filas visibles", () => {
+    expect(escalasRanking(MERCADO)).toEqual({ cuota: 40, baja: 20, ofertas: 3.5 });
+  });
+
+  it("una medida que ninguna fila trae no tiene escala", () => {
+    // Un máximo de 0 pintaría todas las barras vacías, como si se hubiera
+    // medido y nadie bajara el precio.
+    expect(escalasRanking([GAMMA])).toEqual({ cuota: 8, baja: null, ofertas: null });
+  });
+
+  it("sin filas no hay escalas", () => {
+    expect(escalasRanking([])).toEqual({ cuota: null, baja: null, ofertas: null });
+  });
+});
+
+/* ── Cara a cara ────────────────────────────────────────────────────── */
+
+describe("buildDuelo", () => {
+  const filas = buildDuelo(ACME, BETA);
+  const fila = (clave: string) => filas.find((f) => f.clave === clave)!;
+
+  it("ocho medidas, en el mismo orden para las dos", () => {
+    expect(filas.map((f) => f.clave)).toEqual([
+      "cuota",
+      "count",
+      "importe_medio",
+      "baja_media",
+      "ofertas_medias",
+      "pct_monopolio",
+      "n_organos",
+      "pct_top_organo",
     ]);
-    expect(model.rows.map((r) => r.grupo)).toEqual(["B", "C", "A"]);
-    expect(model.maxBaja).toBe(30);
   });
 
-  it("recorta a doce filas", () => {
-    const model = sortBajas(
-      Array.from({ length: 20 }, (_, i) => ({
-        grupo: `G${i}`,
-        contratos: 5,
-        baja_media_pct: i,
-      })),
-    );
-    expect(model.rows).toHaveLength(12);
+  it("cada barra va a escala del mayor de los dos", () => {
+    // Acme 10 adjudicaciones, Beta 4: 100 y 40.
+    expect(fila("count")).toMatchObject({ a: 10, b: 4, pctA: 100, pctB: 40, mayorA: true, mayorB: false });
+  });
+
+  it("en un empate ninguna destaca", () => {
+    expect(fila("importe_medio")).toMatchObject({ pctA: 100, pctB: 100, mayorA: false, mayorB: false });
+  });
+
+  it("un 0 medido es un dato: barra vacía, pero con cifra", () => {
+    expect(fila("pct_monopolio")).toMatchObject({ a: 10, b: 0, pctB: 0 });
+  });
+
+  it("una medida ausente sale `null`, no 0", () => {
+    // «0 % de baja» afirmaría que Gamma gana a precio de salida; lo que se sabe
+    // es que no hay baja publicada.
+    const conGamma = buildDuelo(ACME, GAMMA);
+    const baja = conGamma.find((f) => f.clave === "baja_media")!;
+    expect(baja).toMatchObject({ a: 20, b: null, pctA: 100, pctB: 0, mayorA: false, mayorB: false });
+  });
+
+  it("los valores por defecto del backend (importe medio y órganos a 0) son ausencia", () => {
+    const conGamma = buildDuelo(ACME, GAMMA);
+    expect(conGamma.find((f) => f.clave === "importe_medio")?.b).toBeNull();
+    expect(conGamma.find((f) => f.clave === "n_organos")?.b).toBeNull();
+    expect(conGamma.find((f) => f.clave === "pct_top_organo")?.b).toBeNull();
+  });
+});
+
+/* ── Qué empresa queda abierta ──────────────────────────────────────── */
+
+describe("resolverAbierta", () => {
+  const ordenados = [ACME, BETA, GAMMA];
+
+  it("sin elegir ninguna, la primera del ranking", () => {
+    expect(resolverAbierta(ordenados, null, false)).toBe(ACME);
+  });
+
+  it("la elegida, si sigue en la lista", () => {
+    expect(resolverAbierta(ordenados, "Beta Consulting", false)).toBe(BETA);
+  });
+
+  it("si la elegida ya no está (cambió el ámbito), vuelve a la primera", () => {
+    expect(resolverAbierta(ordenados, "Fantasma SL", false)).toBe(ACME);
+  });
+
+  it("cerrado es cerrado: no reabre la primera", () => {
+    expect(resolverAbierta(ordenados, null, true)).toBeNull();
+  });
+
+  it("sin competidores no hay nada que abrir", () => {
+    expect(resolverAbierta([], null, false)).toBeNull();
+  });
+});
+
+describe("resolverRival", () => {
+  it("la empresa pedida, si está en los datos", () => {
+    expect(resolverRival(MERCADO, "Beta Consulting", ACME)).toBe(BETA);
+  });
+
+  it("nadie se compara consigo misma", () => {
+    expect(resolverRival(MERCADO, "Acme Sistemas", ACME)).toBeNull();
+  });
+
+  it("sin rival, sin perfil abierto o con un rival que ya no está, no hay cara a cara", () => {
+    expect(resolverRival(MERCADO, null, ACME)).toBeNull();
+    expect(resolverRival(MERCADO, "Beta Consulting", null)).toBeNull();
+    expect(resolverRival(MERCADO, "Fantasma SL", ACME)).toBeNull();
   });
 });

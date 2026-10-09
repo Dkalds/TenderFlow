@@ -41,6 +41,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dlq/{failure_id}/descartar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cerrar una entrada de la DLQ sin reintentarla */
+        post: operations["descartar_dlq_api_v1_admin_dlq__failure_id__descartar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/dlq/{failure_id}/reintentar": {
         parameters: {
             query?: never;
@@ -52,6 +69,23 @@ export interface paths {
         put?: never;
         /** Devolver una entrada de la DLQ a la cola de reintentos */
         post: operations["reintentar_dlq_api_v1_admin_dlq__failure_id__reintentar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ejecuciones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pasos del cierre y cola de trabajo: última ejecución y fallos recientes */
+        get: operations["resumen_ejecuciones_api_v1_admin_ejecuciones_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4407,6 +4441,11 @@ export interface paths {
          *     (`contrato`). Las renovaciones del mercado sólo entran con
          *     `incluir_mercado=true`.
          *
+         *     `banda` es el tramo en el que va la fila: su `urgencia`, salvo cuando el
+         *     plazo ya no obliga (`plazo_pasado`: pasó sin oferta; `en_resolucion`: la
+         *     oferta está presentada). `contadores` son los de la franja, y cada fila
+         *     declara en `cuenta_en` en cuáles cuenta.
+         *
          *     Sin caché compartida: la respuesta es por usuario/organización (incluye el
          *     triaje de señales del propio usuario).
          */
@@ -7294,6 +7333,8 @@ export interface components {
          * @description Combined competitor response.
          */
         CompetitorResult: {
+            /** Cobertura Ofertas Pct */
+            cobertura_ofertas_pct?: number | null;
             /** Competitors */
             competitors?: components["schemas"]["CompetitorEntry"][];
             /** Estacionalidad */
@@ -7918,6 +7959,23 @@ export interface components {
             version: string;
         };
         /**
+         * DlqDescarte
+         * @description Resultado de cerrar una entrada sin reintentarla.
+         */
+        DlqDescarte: {
+            /** Descartada */
+            descartada: boolean;
+            /** Detalle */
+            detalle: string;
+            /**
+             * Estado Previo
+             * @enum {string}
+             */
+            estado_previo: "abierta" | "agotada" | "resuelta";
+            /** Id */
+            id: number;
+        };
+        /**
          * DlqEntrada
          * @description Una extracción fallida.
          */
@@ -7958,6 +8016,11 @@ export interface components {
              * @description Abiertas por fuente/scope (siempre, sea cual sea `estado`).
              */
             resumen?: components["schemas"]["DlqResumenFuente"][];
+            /**
+             * Resumen Errores
+             * @description Sin resolver (abiertas y agotadas) por tipo de error.
+             */
+            resumen_errores?: components["schemas"]["DlqResumenError"][];
         };
         /**
          * DlqReintento
@@ -7975,6 +8038,26 @@ export interface components {
             id: number;
             /** Reencolada */
             reencolada: boolean;
+        };
+        /**
+         * DlqResumenError
+         * @description Fallos sin resolver —abiertos y agotados— de un mismo tipo de error.
+         */
+        DlqResumenError: {
+            /**
+             * Abiertas
+             * @default 0
+             */
+            abiertas: number;
+            /**
+             * Agotadas
+             * @default 0
+             */
+            agotadas: number;
+            /** Error Type */
+            error_type: string;
+            /** N */
+            n: number;
         };
         /**
          * DlqResumenFuente
@@ -8072,6 +8155,24 @@ export interface components {
             id_externo: string;
             /** Items */
             items: components["schemas"]["DocumentoSummary"][];
+        };
+        /** EjecucionesResumen */
+        EjecucionesResumen: {
+            /** Generado At */
+            generado_at: string;
+            /** Horizonte Dias */
+            horizonte_dias: number;
+            /** Pasos */
+            pasos?: components["schemas"]["PasoEjecucion"][];
+            /**
+             * Pasos En Error
+             * @default 0
+             */
+            pasos_en_error: number;
+            /** Trabajos */
+            trabajos?: components["schemas"]["TrabajoResumen"][];
+            /** Ventana Dias */
+            ventana_dias: number;
         };
         /** EmpresaAlias */
         EmpresaAlias: {
@@ -11078,6 +11179,39 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * PasoEjecucion
+         * @description Un paso del cierre post-ingesta y su historia reciente.
+         */
+        PasoEjecucion: {
+            /**
+             * Ejecuciones
+             * @default 0
+             */
+            ejecuciones: number;
+            /**
+             * Fallos
+             * @default 0
+             */
+            fallos: number;
+            /** Paso */
+            paso: string;
+            /** Tier */
+            tier?: string | null;
+            /** Ultima Ejecucion */
+            ultima_ejecucion?: string | null;
+            /** Ultima Ok */
+            ultima_ok?: string | null;
+            /** Ultimo Error */
+            ultimo_error?: string | null;
+            /**
+             * Ultimo Estado
+             * @enum {string}
+             */
+            ultimo_estado: "ok" | "error" | "omitido" | "omitido_por_dependencia" | "sin_ejecuciones";
+            /** Ultimo Fallo */
+            ultimo_fallo?: string | null;
+        };
         /** PasswordResetConfirm */
         PasswordResetConfirm: {
             /** Password */
@@ -11236,6 +11370,48 @@ export interface components {
             visibility: "private" | "organization";
         };
         /**
+         * PipelineAgendaContadores
+         * @description Los contadores que la franja de la agenda enseña y con los que filtra.
+         *
+         *     Cada uno es el número de filas que lo llevan en ``cuenta_en``, y los cuatro
+         *     de oportunidades miran solo las que **siguen vivas**: un plazo que pasó sin
+         *     oferta cuenta en ``plazo_pasado`` y en ninguno más, y una oferta presentada
+         *     no cuenta en ninguno. Así el número de un contador y las filas que deja al
+         *     pulsarlo son siempre los mismos.
+         */
+        PipelineAgendaContadores: {
+            /**
+             * Accion Vencida
+             * @default 0
+             */
+            accion_vencida: number;
+            /**
+             * Go No Go
+             * @default 0
+             */
+            go_no_go: number;
+            /**
+             * Plazo Pasado
+             * @default 0
+             */
+            plazo_pasado: number;
+            /**
+             * Plazo Semana
+             * @default 0
+             */
+            plazo_semana: number;
+            /**
+             * Plazo Semana Importe Eur
+             * @default 0
+             */
+            plazo_semana_importe_eur: number;
+            /**
+             * Sin Paso
+             * @default 0
+             */
+            sin_paso: number;
+        };
+        /**
          * PipelineAgendaItem
          * @description Una fila de la agenda, ya clasificada por urgencia.
          *
@@ -11263,16 +11439,22 @@ export interface components {
         PipelineAgendaItem: {
             /** Adjudicatario */
             adjudicatario: string | null;
+            /** Banda */
+            banda?: ("vencida" | "hoy" | "semana" | "plazo_pasado" | "mes" | "despues" | "en_resolucion" | "sin_fecha") | null;
             /** Cartera Id */
             cartera_id?: number | null;
             /** Ccaa */
             ccaa: string | null;
+            /** Cuenta En */
+            cuenta_en?: ("plazo_semana" | "accion_vencida" | "go_no_go" | "sin_paso" | "plazo_pasado")[];
             /** Decision */
             decision: ("pending" | "go" | "no_go") | null;
             /** Dias Restantes */
             dias_restantes: number | null;
             /** Due Date */
             due_date: string | null;
+            /** Due Hora */
+            due_hora?: string | null;
             /** Due Kind */
             due_kind?: ("plazo" | "accion" | "fin_contrato" | "relicitacion") | null;
             /** Fecha Fin Efectiva */
@@ -11320,6 +11502,8 @@ export interface components {
             tarea_id?: number | null;
             /** Tarea Texto */
             tarea_texto?: string | null;
+            /** Tareas Abiertas */
+            tareas_abiertas?: number | null;
             /** Tecnologia */
             tecnologia: string | null;
             /** Titulo */
@@ -11343,6 +11527,11 @@ export interface components {
          *     contratos propios cuya ventana de relicitación ya empezó sin renovación
          *     preparada. Tres relojes distintos, tres contadores: sumarlos daría un
          *     número que no dice a quién le toca hacer qué.
+         *
+         *     La consola dejó de leer ``vence_semana``, ``go_no_go_pendientes`` y
+         *     ``sin_proxima_accion`` (lee ``PipelineAgendaContadores``): contaban como
+         *     trabajo pendiente los plazos que ya habían pasado. Se conservan con el
+         *     significado de siempre porque son contrato publicado.
          */
         PipelineAgendaKpis: {
             /**
@@ -11371,6 +11560,7 @@ export interface components {
          * @description Respuesta de ``GET /api/v1/pursuits/agenda``.
          */
         PipelineAgendaResponse: {
+            contadores?: components["schemas"]["PipelineAgendaContadores"];
             /** Items */
             items?: components["schemas"]["PipelineAgendaItem"][];
             kpis: components["schemas"]["PipelineAgendaKpis"];
@@ -11380,6 +11570,11 @@ export interface components {
             pursuits_total: number;
             /** Pursuits Truncados */
             pursuits_truncados: boolean;
+            /**
+             * Reglas Activas
+             * @default 0
+             */
+            reglas_activas: number;
             /** Renovaciones Horizonte Meses */
             renovaciones_horizonte_meses: number;
             /** Senales Truncadas */
@@ -13909,6 +14104,11 @@ export interface components {
              */
             fetched: number;
             /**
+             * Is Backfill
+             * @default false
+             */
+            is_backfill: boolean;
+            /**
              * Is Degraded
              * @default false
              */
@@ -14508,6 +14708,38 @@ export interface components {
         TotpSetupResult: {
             /** Otpauth Uri */
             otpauth_uri: string;
+        };
+        /**
+         * TrabajoResumen
+         * @description Un tipo de trabajo a demanda (ficha del pliego, embeddings, export).
+         */
+        TrabajoResumen: {
+            /**
+             * En Curso
+             * @default 0
+             */
+            en_curso: number;
+            /**
+             * Fallidos
+             * @default 0
+             */
+            fallidos: number;
+            /**
+             * Hechos
+             * @default 0
+             */
+            hechos: number;
+            /**
+             * Pendientes
+             * @default 0
+             */
+            pendientes: number;
+            /** Tipo */
+            tipo: string;
+            /** Ultimo Error */
+            ultimo_error?: string | null;
+            /** Ultimo Fallo */
+            ultimo_fallo?: string | null;
         };
         /**
          * TransferOwnershipBody
@@ -15582,6 +15814,48 @@ export interface operations {
             };
         };
     };
+    descartar_dlq_api_v1_admin_dlq__failure_id__descartar_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                failure_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqDescarte"];
+                };
+            };
+            /** @description La entrada no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reintentar_dlq_api_v1_admin_dlq__failure_id__reintentar_post: {
         parameters: {
             query?: never;
@@ -15612,6 +15886,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_ejecuciones_api_v1_admin_ejecuciones_get: {
+        parameters: {
+            query?: {
+                /** @description Ventana del recuento de fallos, en días */
+                dias?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EjecucionesResumen"];
+                };
             };
             /** @description Validation Error */
             422: {

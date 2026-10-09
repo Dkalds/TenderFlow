@@ -251,5 +251,141 @@ class JobsRepository:
             filas = c.execute("SELECT estado, COUNT(*) FROM jobs GROUP BY estado").fetchall()
         return {str(f[0]): int(f[1]) for f in filas}
 
+    # ── Resúmenes para la vista Ejecuciones de Ops ───────────────────────
+
+    def resumen_por_paso(
+        self,
+        *,
+        tipo: str,
+        desde: datetime,
+        horizonte: datetime,
+        hasta: datetime,
+        resultado_ok: str,
+        ignorar_resultados: tuple[str, ...],
+    ) -> list[dict[str, Any]]:
+        """Una fila por paso (``payload ->> 'paso'``) con su historia reciente.
+
+        Tres ventanas, y cada una contesta una pregunta distinta:
+
+        - ``horizonte``..``hasta`` acota el recorrido de la tabla. La última
+          ejecución, la última que fue bien y el último fallo se buscan ahí; un
+          paso sin filas en el horizonte no sale (quien llama decide cómo
+          decirlo).
+        - ``desde``..``hasta`` es la ventana de recuento: ``fallos`` y
+          ``ejecuciones`` solo cuentan ahí.
+
+        ``ejecuciones`` cuenta lo que corrió de verdad —terminó ``failed`` o
+        con ``resultado_ok``—, no lo que decidió no correr: un paso omitido por
+        cadencia no es una ejecución de la que medir una tasa de fallo.
+        ``ignorar_resultados`` saca del resumen los jobs que no representan una
+        ejecución en absoluto (los restos de una pasada anterior que el cierre
+        descarta): si contaran, el descarte de después taparía el fallo real.
+
+        Un ``done`` sin ``resultado_json`` cuenta como ``resultado_ok``.
+        """
+        ok = [resultado_ok, ""]
+        with connect_read() as c:
+            filas = c.execute(
+                "WITH ejecuciones AS ("
+                "  SELECT id, payload_json::jsonb ->> 'paso' AS paso, estado, "
+                "         COALESCE(resultado_json::jsonb ->> 'estado', '') AS resultado, "
+                "         error_detail, updated_at "
+                "    FROM jobs "
+                "   WHERE tipo = %s AND estado IN ('done', 'failed') "
+                "     AND updated_at >= %s AND updated_at <= %s "
+                "     AND payload_json::jsonb ->> 'paso' IS NOT NULL "
+                "     AND NOT (COALESCE(resultado_json::jsonb ->> 'estado', '') = ANY(%s::text[]))"
+                "), ultima AS ("
+                "  SELECT DISTINCT ON (paso) paso, estado, resultado, updated_at "
+                "    FROM ejecuciones ORDER BY paso, updated_at DESC, id DESC"
+                "), ultimo_fallo AS ("
+                "  SELECT DISTINCT ON (paso) paso, updated_at, error_detail "
+                "    FROM ejecuciones WHERE estado = 'failed' "
+                "   ORDER BY paso, updated_at DESC, id DESC"
+                "), agregado AS ("
+                "  SELECT paso, "
+                "         MAX(updated_at) FILTER ("
+                "           WHERE estado = 'done' AND resultado = ANY(%s::text[])) AS ultima_ok, "
+                "         COUNT(*) FILTER ("
+                "           WHERE estado = 'failed' AND updated_at >= %s) AS fallos, "
+                "         COUNT(*) FILTER ("
+                "           WHERE updated_at >= %s "
+                "             AND (estado = 'failed' OR resultado = ANY(%s::text[]))) AS ejecuciones "
+                "    FROM ejecuciones GROUP BY paso"
+                ") "
+                "SELECT u.paso, u.estado, u.resultado, u.updated_at, a.ultima_ok, "
+                "       f.updated_at, f.error_detail, a.fallos, a.ejecuciones "
+                "  FROM ultima u "
+                "  JOIN agregado a USING (paso) "
+                "  LEFT JOIN ultimo_fallo f USING (paso) "
+                " ORDER BY u.paso",
+                (tipo, horizonte, hasta, list(ignorar_resultados), ok, desde, desde, ok),
+            ).fetchall()
+        columnas = (
+            "paso",
+            "estado",
+            "resultado",
+            "ultima_ejecucion",
+            "ultima_ok",
+            "ultimo_fallo",
+            "ultimo_error",
+            "fallos",
+            "ejecuciones",
+        )
+        return [dict(zip(columnas, f, strict=True)) for f in filas]
+
+    def resumen_por_tipo(
+        self,
+        *,
+        excluir_tipo: str,
+        desde: datetime,
+        horizonte: datetime,
+        hasta: datetime,
+    ) -> list[dict[str, Any]]:
+        """Recuento por tipo de job, sin ``excluir_tipo`` (los pasos del cierre).
+
+        ``pendientes`` y ``en_curso`` son la cola de ahora, tenga la antigüedad
+        que tenga: un job atascado desde hace un mes es justo lo que hay que
+        ver. ``fallidos`` y ``hechos`` cuentan desde ``desde``; el último fallo
+        se busca hasta ``horizonte``.
+        """
+        with connect_read() as c:
+            filas = c.execute(
+                "WITH trabajos AS ("
+                "  SELECT id, tipo, estado, error_detail, updated_at "
+                "    FROM jobs "
+                "   WHERE tipo <> %s "
+                "     AND (estado IN ('pending', 'running') "
+                "          OR (updated_at >= %s AND updated_at <= %s))"
+                "), ultimo_fallo AS ("
+                "  SELECT DISTINCT ON (tipo) tipo, updated_at, error_detail "
+                "    FROM trabajos WHERE estado = 'failed' "
+                "   ORDER BY tipo, updated_at DESC, id DESC"
+                ") "
+                "SELECT t.tipo, "
+                "       COUNT(*) FILTER (WHERE t.estado = 'pending') AS pendientes, "
+                "       COUNT(*) FILTER (WHERE t.estado = 'running') AS en_curso, "
+                "       COUNT(*) FILTER ("
+                "         WHERE t.estado = 'failed' AND t.updated_at >= %s) AS fallidos, "
+                "       COUNT(*) FILTER ("
+                "         WHERE t.estado = 'done' AND t.updated_at >= %s) AS hechos, "
+                "       f.updated_at, f.error_detail "
+                "  FROM trabajos t "
+                "  LEFT JOIN ultimo_fallo f USING (tipo) "
+                " GROUP BY t.tipo, f.updated_at, f.error_detail "
+                " ORDER BY t.tipo",
+                (excluir_tipo, horizonte, hasta, desde, desde),
+            ).fetchall()
+        columnas = (
+            "tipo",
+            "pendientes",
+            "en_curso",
+            "fallidos",
+            "hechos",
+            "ultimo_fallo",
+            "ultimo_error",
+        )
+        return [dict(zip(columnas, f, strict=True)) for f in filas]
+
 
 __all__ = ["JobsRepository"]

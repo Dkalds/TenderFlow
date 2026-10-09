@@ -18,7 +18,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { SectionTitle } from "@/components/console/panel";
 import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
-import { origenFechaFin } from "./agenda-meta";
+import { origenFechaFin } from "./agenda-texto";
 
 function Dato({ label, children }: { label: string; children: ReactNode }) {
   return (

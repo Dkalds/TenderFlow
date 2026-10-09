@@ -662,7 +662,7 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   no esconde nada; pero el hueco existe (lo dice el propio script).
 - `animate-pulse` queda en dos sitios, a propósito: el cursor que parpadea
   mientras se emite una respuesta (`chat-thread.tsx`, `licitacion-ai.tsx`),
-  `motion-safe` y `aria-hidden`. Y ▲/▼ en Ops › Active learning es el signo de
+  `motion-safe` y `aria-hidden`. Y ▲/▼ en Ops › Etiquetado es el signo de
   una tendencia junto a su cifra, no un icono.
 
 **Hallazgos no hechos, o a medias:**

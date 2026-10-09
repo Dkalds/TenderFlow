@@ -33,6 +33,7 @@ describe("Estadísticas del etiquetado", () => {
         metric={null}
         metricTrend={null}
         feedbacksSinceTrain={0}
+        ultimaRegistrada={null}
       />,
     );
 

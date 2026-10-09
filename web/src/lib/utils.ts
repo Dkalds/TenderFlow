@@ -248,6 +248,14 @@ export function formatDiaSemana(date: Date, locale = "es-ES"): string {
   return `${dia} ${date.getDate()}`;
 }
 
+/** Día de la semana, número y mes abreviados ("jue 15 oct"): la fecha de una fila de agenda. */
+export function formatDiaCorto(date: Date, locale = "es-ES"): string {
+  if (isNaN(date.getTime())) return EMPTY;
+  return date
+    .toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" })
+    .replace(/[.,]/g, "");
+}
+
 /** Hora y minutos ("09:05"), sin segundos: la hora de una publicación de hoy o de ayer. */
 export function formatHoraMinuto(
   date: string | Date | null | undefined,

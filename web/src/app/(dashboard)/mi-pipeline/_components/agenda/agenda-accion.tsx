@@ -8,6 +8,12 @@
  * toca hacer — lo que toca es preparar la renovación. Cada `kind` tiene un
  * siguiente paso distinto y aquí es donde se decide cuál.
  *
+ * La oportunidad tiene tres, según lo que le falte: **cerrarla** si su plazo
+ * pasó sin oferta (y ahí sí van dos botones: el que la retira y el que lleva a
+ * la ficha, por si sí hubo oferta y lo que falta es registrarla), **apuntar su
+ * próxima acción** si no tiene ninguna, y abrir la ficha en el resto. Cuál de
+ * las tres le toca lo dice la API (`banda`, `cuenta_en`), no esta pantalla.
+ *
  * El diálogo de «Preparar renovación» se **importa** del espacio de
  * Oportunidades en vez de duplicarse: es el mismo flujo (`POST
  * /pursuits/cartera/{id}/renovacion`, idempotente) y dos copias
@@ -15,12 +21,14 @@
  */
 
 import type { MouseEvent } from "react";
-import { X } from "lucide-react";
+import { ArrowRight, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PrepararRenovacion } from "@/app/(dashboard)/oportunidades/_components/preparar-renovacion";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
-import { tituloDe } from "./agenda-meta";
+import { bandaDe } from "./agenda-meta";
+import { tituloDe } from "./agenda-texto";
+import { type AccionApuntada, ApuntarAccion } from "./apuntar-accion";
 
 /**
  * El `Button` `sm` de la consola: 32 px de alto en móvil (diana para el pulgar;
@@ -37,6 +45,10 @@ export interface AccionesFila {
   onCompletar: () => void;
   onEditarAccion: () => void;
   onVerRenovacion: (pursuitId: number) => void;
+  /** Pide confirmación para retirar la oportunidad como no presentada. */
+  onRetirar: () => void;
+  onApuntarAccion: (accion: AccionApuntada, alGuardar: () => void) => void;
+  apuntando: boolean;
 }
 
 export function AgendaAccion({ item, acciones }: { item: PipelineAgendaItem; acciones: AccionesFila }) {
@@ -46,6 +58,40 @@ export function AgendaAccion({ item, acciones }: { item: PipelineAgendaItem; acc
   };
 
   if (item.kind === "pursuit") {
+    // Con una acción propia delante, la ficha queda a un botón de icono: la
+    // fila se abre con doble clic o ⏎, pero en un móvil no hay ninguno de los
+    // dos y el inspector tampoco existe.
+    const abrirFicha = (
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-sm"
+        aria-label="Abrir ficha"
+        onClick={detener(acciones.onAbrir)}
+        className={cn("flex-none", NEUTRO)}
+      >
+        <ArrowRight aria-hidden="true" />
+      </Button>
+    );
+    if (bandaDe(item) === "plazo_pasado") {
+      return (
+        // 8 px entre los dos: uno cierra la oportunidad y el otro solo la abre.
+        <span className="flex items-center gap-2">
+          <button type="button" onClick={detener(acciones.onRetirar)} className={cn(BOTON, NEUTRO)}>
+            No nos presentamos
+          </button>
+          {abrirFicha}
+        </span>
+      );
+    }
+    if ((item.cuenta_en ?? []).includes("sin_paso")) {
+      return (
+        <span className="flex items-center gap-2">
+          <ApuntarAccion guardando={acciones.apuntando} onGuardar={acciones.onApuntarAccion} />
+          {abrirFicha}
+        </span>
+      );
+    }
     return (
       <button type="button" onClick={detener(acciones.onAbrir)} className={cn(BOTON, NEUTRO)}>
         Abrir ficha
@@ -107,7 +153,9 @@ export function AgendaAccion({ item, acciones }: { item: PipelineAgendaItem; acc
   }
 
   return (
-    <span className="flex items-center gap-1.5 md:gap-1">
+    // 8 px y no 4 entre «Seguir» y la X: son la acción contraria, pegadas, y en
+    // móvil se pulsan con el pulgar.
+    <span className="flex items-center gap-2">
       <button type="button" onClick={detener(acciones.onSeguir)} className={cn(BOTON, PRIMARIO)}>
         {item.kind === "renovacion" ? "Anticipar" : "Seguir"}
       </button>

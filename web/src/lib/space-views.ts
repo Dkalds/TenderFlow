@@ -124,13 +124,53 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "notificaciones", label: "Notificaciones" },
     { key: "cuenta", label: "Datos y cuenta", from: "mi-cuenta" },
   ],
+  // Reagrupación 2026-10: el orden es el del turno de guardia —¿responde?,
+  // ¿corrió?, ¿llegó bien el dato?— y al final lo que no es vigilancia sino
+  // trabajo (etiquetar) y gobierno (quién entra, qué está encendido).
+  //
+  // Los `key` no cambian aunque cambie la etiqueta: son la URL, el redirect de
+  // la ruta heredada y la serie de `espacio_abierto`. `ejecuciones` es la única
+  // vista nueva (los pasos del cierre y la cola de trabajo, que la API
+  // registraba y ninguna pantalla leía) y por eso no absorbe ruta. `flags` y
+  // `webhooks` dejaron de ser vistas: en producción eran una fila y ninguna.
+  // Viven dentro de `administracion` y siguen entrando — `VISTAS_FUSIONADAS`.
   ops: [
-    { key: "observabilidad", label: "Observabilidad", from: "observabilidad" },
-    { key: "calidad", label: "Calidad de datos", from: "calidad-datos" },
+    { key: "observabilidad", label: "Estado", from: "observabilidad" },
+    { key: "ejecuciones", label: "Ejecuciones" },
+    { key: "calidad", label: "Datos", from: "calidad-datos" },
+    { key: "etiquetado", label: "Etiquetado", from: "active-learning" },
     { key: "administracion", label: "Administración", from: "administracion" },
-    { key: "flags", label: "Feature flags", from: "feature-flags" },
-    { key: "etiquetado", label: "Active learning", from: "active-learning" },
-    { key: "webhooks", label: "Webhooks", from: "webhooks" },
+  ],
+};
+
+/** Una vista que existió y hoy es una sección de otra del mismo espacio. */
+export interface VistaFusionada {
+  /** El `?vista=` que tuvo: sigue entrando, y es el destino de su redirect. */
+  key: string;
+  /** Ruta heredada que absorbía, si absorbía alguna. */
+  from?: string;
+  /** Vista del mismo espacio donde vive ahora. */
+  en: string;
+  /** `id` de su sección dentro de esa vista, para aterrizar en ella. */
+  ancla?: string;
+}
+
+/**
+ * slug del espacio → vistas que se fundieron en otra.
+ *
+ * Es la misma regla de siempre —consolidar no elimina nada— aplicada a una
+ * vista en vez de a una ruta. El redirect de la ruta heredada conserva su
+ * destino (`/feature-flags` → `/ops?vista=flags`) y es la **página del
+ * espacio** la que resuelve ese `vista`: monta la vista `en` y se desplaza a
+ * `ancla`. Se hace así, y no reapuntando el redirect a `?vista=administracion`,
+ * por dos motivos: un marcador o un enlace pegado con el `?vista=` viejo no
+ * pasan por ningún redirect, así que la página tiene que entenderlo igualmente;
+ * y el destino nuevo no podría decir a qué sección ir.
+ */
+export const VISTAS_FUSIONADAS: Record<string, VistaFusionada[]> = {
+  ops: [
+    { key: "flags", from: "feature-flags", en: "administracion", ancla: "feature-flags" },
+    { key: "webhooks", from: "webhooks", en: "administracion", ancla: "webhooks" },
   ],
 };
 
@@ -193,8 +233,10 @@ export function legacyRedirects(): LegacyRedirect[] {
   return Object.entries(SPACE_VIEWS)
     .filter(([slug]) => BUILT_SPACE_ROUTES.includes(slug))
     .flatMap(([slug, views]) =>
-      views
-        .filter((view): view is Required<SpaceView> => Boolean(view.from))
+      // Las fusionadas van con las vivas: para un redirect son lo mismo, una
+      // ruta heredada que lleva a un `?vista=` que la página sabe resolver.
+      [...views, ...(VISTAS_FUSIONADAS[slug] ?? [])]
+        .filter((view) => Boolean(view.from))
         .map((view) => ({
           source: `/${view.from}`,
           destination: `/${slug}?vista=${view.key}`,

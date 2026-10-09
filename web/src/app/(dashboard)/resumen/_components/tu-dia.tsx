@@ -14,7 +14,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilters } from "@/lib/filters";
 import { cn, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
-import { type AgendaUrgencia, usePipelineAgenda } from "@/hooks/use-pursuits";
+import { type AgendaBanda, bandaDe } from "@/app/(dashboard)/mi-pipeline/_components/agenda/agenda-meta";
+import { usePipelineAgenda } from "@/hooks/use-pursuits";
 import { SemanaEnCarriles } from "./tu-dia-semana";
 import { semanaEnCarriles } from "./tu-dia-semana-data";
 
@@ -47,7 +48,7 @@ import { semanaEnCarriles } from "./tu-dia-semana-data";
  */
 
 /** Tramos que caben en una banda de entrada: lo vencido, lo de hoy y la semana. */
-const URGENTES: AgendaUrgencia[] = ["vencida", "hoy", "semana"];
+const URGENTES: AgendaBanda[] = ["vencida", "hoy", "semana"];
 
 export function TuDia() {
   const { tecnologias, ccaas } = useFilters();
@@ -59,15 +60,31 @@ export function TuDia() {
     ccaa: ccaas.length ? ccaas.join(",") : null,
   });
 
+  // Por el tramo de la fila y no por su urgencia: un plazo que pasó sin oferta
+  // sigue teniendo urgencia `vencida`, pero ya no es trabajo de esta semana —
+  // la Agenda lo pinta aparte, como algo que cerrar— y aquí llenaba el carril
+  // «Vencido» con lo que no se puede hacer.
   const urgentes = useMemo(
-    () => (data?.items ?? []).filter((item) => URGENTES.includes(item.urgencia)),
+    () => (data?.items ?? []).filter((item) => URGENTES.includes(bandaDe(item))),
     [data?.items],
   );
   // eslint-disable-next-line react-hooks/purity
   const hoy = useMemo(() => new Date(Date.now()), []);
   const tramos = useMemo(() => semanaEnCarriles(urgentes, hoy), [urgentes, hoy]);
 
+  // Los contadores de la franja de la Agenda, que miran solo las oportunidades
+  // vivas. Una API anterior a ellos no los manda: ahí se enseñan los de
+  // siempre, que es lo que esta banda pintaba, en vez de cuatro rayas.
   const kpis = data?.kpis;
+  const franja = data?.contadores;
+  const cifras = kpis && {
+    plazos: franja?.plazo_semana ?? kpis.vence_semana,
+    plazosImporte: franja?.plazo_semana_importe_eur ?? kpis.vence_semana_importe_eur,
+    acciones: franja?.accion_vencida ?? kpis.acciones_hoy,
+    goNoGo: franja?.go_no_go ?? kpis.go_no_go_pendientes,
+    sinAccion: franja?.sin_paso ?? kpis.sin_proxima_accion,
+  };
+  const pasados = franja?.plazo_pasado ?? 0;
   const recortada =
     data?.pursuits_truncados || data?.tareas_truncadas || data?.senales_truncadas;
 
@@ -97,36 +114,53 @@ export function TuDia() {
           <div className="grid grid-cols-1 gap-2.5">
             <StatStrip columns={4}>
               <StatCell
-              label="Plazos ≤ 7 días"
+              label="Plazos en 7 días"
               loading={isPending}
-              value={kpis ? formatNumber(kpis.vence_semana) : EMPTY}
-              tono={kpis && kpis.vence_semana > 0 ? "destructive" : undefined}
+              value={cifras ? formatNumber(cifras.plazos) : EMPTY}
+              tono={cifras && cifras.plazos > 0 ? "destructive" : undefined}
               hint={
-                kpis && kpis.vence_semana > 0
-                  ? `${formatCompactCurrency(kpis.vence_semana_importe_eur)} en juego`
-                  : "Incluye lo ya vencido"
+                cifras && cifras.plazos > 0
+                  ? `${formatCompactCurrency(cifras.plazosImporte)} en juego`
+                  : "Oportunidades que aún se pueden presentar"
               }
             />
             <StatCell
               label="Acciones hoy o vencidas"
               loading={isPending}
-              value={kpis ? formatNumber(kpis.acciones_hoy) : EMPTY}
+              value={cifras ? formatNumber(cifras.acciones) : EMPTY}
               hint="Tareas propias con fecha pasada o de hoy"
             />
             <StatCell
               label="Go/No-Go pendientes"
               loading={isPending}
-              value={kpis ? formatNumber(kpis.go_no_go_pendientes) : EMPTY}
+              value={cifras ? formatNumber(cifras.goNoGo) : EMPTY}
               hint="Sin decisión tomada"
             />
             <StatCell
               label="Sin próxima acción"
               loading={isPending}
-              value={kpis ? formatNumber(kpis.sin_proxima_accion) : EMPTY}
-              tono={kpis && kpis.sin_proxima_accion > 0 ? "warning" : undefined}
+              value={cifras ? formatNumber(cifras.sinAccion) : EMPTY}
+              tono={cifras && cifras.sinAccion > 0 ? "warning" : undefined}
               hint="Oportunidades sin tarea abierta"
             />
             </StatStrip>
+
+            {/* Lo que salió de los contadores no se calla: son oportunidades
+                que nadie cerró, y el sitio donde se cierran es la Agenda. */}
+            {pasados > 0 && (
+              <Aviso
+                tone="info"
+                action={
+                  <EnlaceIr href="/mi-pipeline?filtro=plazo_pasado">
+                    {pasados === 1 ? "Cerrarla en la agenda" : "Cerrarlas en la agenda"}
+                  </EnlaceIr>
+                }
+              >
+                {pasados === 1
+                  ? "1 oportunidad sigue abierta con el plazo de presentación pasado."
+                  : `${formatNumber(pasados)} oportunidades siguen abiertas con el plazo de presentación pasado.`}
+              </Aviso>
+            )}
 
             <div className={cn(SUPERFICIE_PANEL, "min-w-0 p-2.5")}>
               {isPending ? (

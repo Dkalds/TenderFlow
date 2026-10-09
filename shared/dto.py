@@ -1695,6 +1695,25 @@ AgendaItemKind = Literal["pursuit", "tarea", "contrato", "senal", "renovacion"]
 #: propio sin renovación preparada).
 AgendaDueKind = Literal["plazo", "accion", "fin_contrato", "relicitacion"]
 AgendaUrgencia = Literal["vencida", "hoy", "semana", "mes", "despues", "sin_fecha"]
+#: En qué tramo de la agenda va la fila. Es ``urgencia`` salvo en los dos casos
+#: en que el plazo de presentación ya no es algo que se pueda cumplir:
+#: ``plazo_pasado`` (pasó sin oferta presentada: lo pendiente es cerrarla) y
+#: ``en_resolucion`` (la oferta está entregada: lo pendiente es el resultado).
+#: El orden de este ``Literal`` es el de los tramos en pantalla.
+AgendaBanda = Literal[
+    "vencida",
+    "hoy",
+    "semana",
+    "plazo_pasado",
+    "mes",
+    "despues",
+    "en_resolucion",
+    "sin_fecha",
+]
+#: Los contadores de la franja, que además filtran la lista. Cada fila declara
+#: en cuáles cuenta (``PipelineAgendaItem.cuenta_en``) y el contador es ese
+#: recuento (``PipelineAgendaContadores``): número y filas salen de una regla.
+AgendaContador = Literal["plazo_semana", "accion_vencida", "go_no_go", "sin_paso", "plazo_pasado"]
 
 
 class PipelineAgendaItem(BaseModel):
@@ -1767,6 +1786,18 @@ class PipelineAgendaItem(BaseModel):
     relicitacion_hasta: date | None = None
     renovacion_pursuit_id: int | None = None
     prorrogas_aplicadas: int | None = None
+    #: Hora peninsular (``HH:MM``) del plazo de presentación, cuando la fuente
+    #: la publicó. Solo en ``pursuit`` y ``senal``: «hoy» no distingue las 09:00
+    #: de la medianoche. NULL si el plazo es una fecha sola.
+    due_hora: str | None = None
+    #: Tramo en el que va la fila. Opcional por los clientes que construyen
+    #: items sin él; el servicio lo pone siempre, y quien no lo tenga cae en
+    #: ``urgencia``.
+    banda: AgendaBanda | None = None
+    #: Contadores de la franja en los que cuenta esta fila.
+    cuenta_en: list[AgendaContador] = Field(default_factory=list)
+    #: Solo en ``pursuit``: cuántas filas ``tarea`` suyas hay en la agenda.
+    tareas_abiertas: int | None = None
 
 
 class PipelineAgendaKpis(BaseModel):
@@ -1777,6 +1808,11 @@ class PipelineAgendaKpis(BaseModel):
     contratos propios cuya ventana de relicitación ya empezó sin renovación
     preparada. Tres relojes distintos, tres contadores: sumarlos daría un
     número que no dice a quién le toca hacer qué.
+
+    La consola dejó de leer ``vence_semana``, ``go_no_go_pendientes`` y
+    ``sin_proxima_accion`` (lee ``PipelineAgendaContadores``): contaban como
+    trabajo pendiente los plazos que ya habían pasado. Se conservan con el
+    significado de siempre porque son contrato publicado.
     """
 
     vence_semana: int = Field(ge=0)
@@ -1789,6 +1825,30 @@ class PipelineAgendaKpis(BaseModel):
     acciones_hoy: int = Field(default=0, ge=0)
     #: Contratos con ``due_kind="relicitacion"`` cuya ventana ya está abierta.
     relicitaciones_abiertas: int = Field(default=0, ge=0)
+
+
+class PipelineAgendaContadores(BaseModel):
+    """Los contadores que la franja de la agenda enseña y con los que filtra.
+
+    Cada uno es el número de filas que lo llevan en ``cuenta_en``, y los cuatro
+    de oportunidades miran solo las que **siguen vivas**: un plazo que pasó sin
+    oferta cuenta en ``plazo_pasado`` y en ninguno más, y una oferta presentada
+    no cuenta en ninguno. Así el número de un contador y las filas que deja al
+    pulsarlo son siempre los mismos.
+    """
+
+    #: Oportunidades sin presentar con el plazo entre hoy y siete días.
+    plazo_semana: int = Field(default=0, ge=0)
+    #: Presupuesto de esas oportunidades: lo que todavía se puede presentar.
+    plazo_semana_importe_eur: float = Field(default=0, ge=0)
+    #: Tareas que vencen hoy o ya vencieron.
+    accion_vencida: int = Field(default=0, ge=0)
+    #: Oportunidades vivas sin decisión go/no-go.
+    go_no_go: int = Field(default=0, ge=0)
+    #: Oportunidades vivas sin ``next_action`` ni tarea abierta.
+    sin_paso: int = Field(default=0, ge=0)
+    #: Oportunidades sin presentar cuyo plazo ya pasó.
+    plazo_pasado: int = Field(default=0, ge=0)
 
 
 class PipelineAgendaResponse(BaseModel):
@@ -1806,6 +1866,10 @@ class PipelineAgendaResponse(BaseModel):
     renovaciones_horizonte_meses: int = Field(ge=1, le=60)
     #: Las tareas abiertas también tienen tope; si se alcanzó, se declara.
     tareas_truncadas: bool = False
+    contadores: PipelineAgendaContadores = Field(default_factory=PipelineAgendaContadores)
+    #: Reglas de watchlist activas del usuario. Con cero no puede llegar
+    #: ninguna señal: la consola lo dice en vez de enseñar una bandeja vacía.
+    reglas_activas: int = Field(default=0, ge=0)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

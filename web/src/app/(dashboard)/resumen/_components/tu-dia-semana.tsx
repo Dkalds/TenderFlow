@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import {
-  CHIP_POR_BANDA,
+  claseChip,
   claseDeIcono,
   destinoDe,
   etiquetaKind,
   ICONOS,
+} from "@/app/(dashboard)/mi-pipeline/_components/agenda/agenda-meta";
+import {
   plazoChip,
   tipoDeFecha,
   tituloDe,
-} from "@/app/(dashboard)/mi-pipeline/_components/agenda/agenda-meta";
+} from "@/app/(dashboard)/mi-pipeline/_components/agenda/agenda-texto";
 import { cn, formatCompactCurrency } from "@/lib/utils";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
 import type { TonoCarril, TramoSemana } from "./tu-dia-semana-data";
@@ -62,7 +64,7 @@ function TarjetaCompromiso({ item }: { item: PipelineAgendaItem }) {
         <span
           className={cn(
             "tf-tnum flex-none rounded-md px-1.5 text-tf-micro font-semibold",
-            CHIP_POR_BANDA[item.urgencia],
+            claseChip(item),
           )}
         >
           {plazoChip(item)}

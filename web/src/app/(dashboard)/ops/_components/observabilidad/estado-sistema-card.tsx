@@ -4,14 +4,10 @@
  * Volcado literal de `/api/v1/health`.
  *
  * Se pinta clave a clave y sin interpretar: es la tarjeta a la que se baja
- * cuando la rejilla de componentes de arriba no explica lo que pasa.
- *
- * El icono del título es el estado (en línea, comprobando, caída), no un
- * adorno: por eso lleva nombre accesible. Mientras carga se queda quieto; que
- * está cargando ya lo dicen las líneas de esqueleto.
+ * cuando la cabecera y la rejilla de componentes no explican lo que pasa. El
+ * veredicto lo da la cabecera; aquí no se repite.
  */
 
-import { Activity, CircleCheck, CircleX } from "lucide-react";
 import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { HealthResponse } from "./health-checks";
@@ -20,27 +16,12 @@ export interface EstadoSistemaCardProps {
   health: HealthResponse | undefined;
   isLoading: boolean;
   isError: boolean;
-  isOnline: boolean;
 }
 
-function IconoEstado({ isOnline, isLoading }: { isOnline: boolean; isLoading: boolean }) {
-  if (isOnline) return <CircleCheck className="h-4 w-4 text-success" role="img" aria-label="En línea" />;
-  if (isLoading) return <Activity className="h-4 w-4 text-muted-foreground" aria-hidden="true" />;
-  return <CircleX className="h-4 w-4 text-destructive" role="img" aria-label="Sin conexión" />;
-}
-
-export function EstadoSistemaCard({ health, isLoading, isError, isOnline }: EstadoSistemaCardProps) {
+export function EstadoSistemaCard({ health, isLoading, isError }: EstadoSistemaCardProps) {
   return (
     <Panel>
-      <PanelTitle
-        title={
-          <span className="inline-flex items-center gap-2">
-            <IconoEstado isOnline={isOnline} isLoading={isLoading} />
-            Estado del sistema
-          </span>
-        }
-        hint="Respuesta completa del chequeo de salud, sin interpretar"
-      />
+      <PanelTitle title="Respuesta del chequeo de salud" hint="Tal como la devuelve la API, sin interpretar" />
       {isLoading ? (
         <div className="space-y-2">
           <Skeleton className="h-5 w-full" />

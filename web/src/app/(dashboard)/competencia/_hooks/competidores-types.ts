@@ -1,46 +1,39 @@
 /**
  * Tipos del contrato de Competidores.
  *
- * Viven aparte de los módulos que los usan porque los comparten tres: la tabla
- * (`competidores-tabla.ts`), las series de gráfico (`competidores-series.ts`) y
- * el hook que las agrega (`use-competidores-view.ts`). Un fichero de tipos sin
- * lógica es lo único que evita que uno de los tres importe a otro sólo para
- * llegar a un `interface`.
+ * Salen del OpenAPI generado, no de una declaración a mano. Hasta 2026-10 esta
+ * pantalla escribía sus propios `interface`, y el compilador no vio que leía
+ * dos campos (`cobertura_ofertas_pct`, `top_competidor`) que la respuesta nunca
+ * trajo: con tipos a mano, un nombre que el backend no envía compila igual.
+ *
+ * Viven aparte de los módulos que los usan porque los comparten cuatro: la
+ * tabla (`competidores-tabla.ts`), las series (`competidores-series.ts`), los
+ * vigilados (`vigilados.ts`) y el hook que los agrega.
  */
 
-export interface Competitor {
-  nombre: string;
-  empresa_id?: number | null;
-  nif?: string | null;
-  empresa_ids?: number[];
-  nifs?: string[];
-  nombres_variantes?: string[];
-  es_agrupacion?: boolean;
-  count: number;
-  importe: number;
-  cuota: number;
-  contratos_por_anio?: number;
-  importe_medio?: number;
-  baja_media?: number;
-  n_organos?: number;
-  ofertas_medias?: number;
-  pct_monopolio?: number;
-  pct_top_organo?: number;
-  ultima?: string;
-}
+import type { Schemas } from "@/lib/api-types";
 
-export interface HeatmapEntry {
-  ccaa: string;
-  empresa: string;
-  count: number;
-}
+export type Competitor = Schemas["CompetitorEntry"];
 
-export interface BajaItem {
-  grupo: string;
-  grupo_id?: number;
-  contratos: number;
-  baja_media_pct: number | null;
-}
+export type HeatmapEntry = Schemas["HeatmapCcaaCell"];
+
+export type EstacionalidadEntry = Schemas["EstacionalidadEntry"];
+
+/**
+ * La respuesta de `/analytics/competitors`.
+ *
+ * `cobertura_ofertas_pct` es el denominador de `pct_oferta_unica`: qué parte de
+ * las licitaciones trae el número de ofertantes. Puede no venir (`null` = sin
+ * medir, o un backend desplegado anterior al campo); sin él, la celda «Oferta
+ * única» se abstiene (`lib/cobertura`), que es la salida segura.
+ */
+export type CompetitorsData = Schemas["CompetitorResult"];
+
+/** Medida que ordena el ranking y gobierna el titular y el reparto. */
+export type Metrica = "importe" | "count";
+
+/** Lente del mapa de competidores: qué dos medidas forman el plano. */
+export type Lente = "precio" | "clientes";
 
 export type SortKey =
   | "nombre"
@@ -58,8 +51,7 @@ export type SortKey =
 
 /**
  * Lo mínimo que necesita una fila para ser buscable: su nombre y las identidades
- * bajo las que aparece en la fuente. Los puntos de la dispersión lo cumplen sin
- * ser competidores completos, y por eso el filtro es genérico.
+ * bajo las que aparece en la fuente.
  */
 export interface Searchable {
   nombre: string;

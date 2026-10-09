@@ -1,90 +1,87 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import {
-  CompetitorsBarChart,
-  CompetitorsPieChart,
-  CompetitorsScatterChart,
-  CompetitorsTreemap,
-  CompetitorsPositioningChart,
-  CompetitorsEstacionalidadChart,
+  CompetidoresMapaChart,
+  ladosDe,
+  type PuntoMapaCompetidor,
 } from "@/components/charts/competitors-charts";
 
-describe("competitors charts", () => {
-  it("renders the bar chart", () => {
+const empresa = (nombre: string): PuntoMapaCompetidor["empresa"] => ({
+  nombre,
+  count: 12,
+  importe: 900_000,
+  cuota: 8,
+  contratos_por_anio: 3,
+  importe_medio: 75_000,
+  n_organos: 4,
+  pct_top_organo: 40,
+  es_agrupacion: false,
+});
+
+const punto = (nombre: string, over: Partial<PuntoMapaCompetidor> = {}): PuntoMapaCompetidor => ({
+  nombre,
+  x: 12,
+  y: 75_000,
+  cuota: 8,
+  etiqueta: nombre,
+  seleccionado: false,
+  vigilada: false,
+  empresa: empresa(nombre),
+  ...over,
+});
+
+describe("ladosDe", () => {
+  // En `ReferenceArea` el lado que falta se va al borde del lienzo. Con `y1`
+  // en los de arriba, el tinte y los rótulos «Contratos grandes…» se pintaban
+  // por debajo de la mediana: el cuadrante al revés.
+  it("un cuadrante de arriba va de su suelo (y2) al borde superior", () => {
+    expect(ladosDe("arribaDerecha", 10, 500)).toEqual({ x1: 10, y2: 500 });
+    expect(ladosDe("arribaIzquierda", 10, 500)).toEqual({ x2: 10, y2: 500 });
+  });
+
+  it("un cuadrante de abajo va de su techo (y1) al borde inferior", () => {
+    expect(ladosDe("abajoDerecha", 10, 500)).toEqual({ x1: 10, y1: 500 });
+    expect(ladosDe("abajoIzquierda", 10, 500)).toEqual({ x2: 10, y1: 500 });
+  });
+});
+
+describe("CompetidoresMapaChart", () => {
+  const puntos = [punto("A", { seleccionado: true }), punto("B", { x: 4, y: 20_000, vigilada: true })];
+
+  it("pinta la lente de precio, con su eje logarítmico", () => {
     expect(() =>
       render(
-        <CompetitorsBarChart
-          data={[
-            { nombre: "Empresa con un nombre extremadamente largo", count: 30 },
-            { nombre: "ACME", count: 12 },
-          ]}
+        <CompetidoresMapaChart puntos={puntos} lente="precio" medianaX={8} medianaY={47_500} onEmpresaClick={vi.fn()} />,
+      ),
+    ).not.toThrow();
+  });
+
+  it("pinta la lente de clientes", () => {
+    expect(() =>
+      render(
+        <CompetidoresMapaChart puntos={puntos} lente="clientes" medianaX={3} medianaY={50} onEmpresaClick={vi.fn()} />,
+      ),
+    ).not.toThrow();
+  });
+
+  it("sin medianas no parte el plano, pero dibuja los puntos", () => {
+    expect(() =>
+      render(
+        <CompetidoresMapaChart
+          puntos={[punto("A")]}
+          lente="precio"
+          medianaX={null}
+          medianaY={null}
+          onEmpresaClick={vi.fn()}
         />,
       ),
     ).not.toThrow();
   });
 
-  it("renders the pie chart", () => {
+  it("no revienta sin puntos", () => {
     expect(() =>
       render(
-        <CompetitorsPieChart
-          data={[
-            { name: "A", value: 900000 },
-            { name: "B", value: 400000 },
-          ]}
-        />,
-      ),
-    ).not.toThrow();
-  });
-
-  it("renders the scatter chart with a top-5 highlight set", () => {
-    expect(() =>
-      render(
-        <CompetitorsScatterChart
-          data={[
-            { nombre: "A", ticket_medio: 50000, n_organos: 12 },
-            { nombre: "B", ticket_medio: 30000, n_organos: 5 },
-          ]}
-          top5Names={new Set(["A"])}
-        />,
-      ),
-    ).not.toThrow();
-  });
-
-  it("renders the treemap", () => {
-    expect(() =>
-      render(
-        <CompetitorsTreemap
-          data={[
-            { name: "A", size: 900000, count: 30 },
-            { name: "B", size: 400000, count: 12 },
-          ]}
-        />,
-      ),
-    ).not.toThrow();
-  });
-
-  it("renders the positioning chart (computes its own top-5 set)", () => {
-    expect(() =>
-      render(
-        <CompetitorsPositioningChart
-          data={[
-            { nombre: "A", baja_media: 12.5, importe_medio: 80000, count: 30, pct_monopolio: 20 },
-            { nombre: "B", baja_media: 8.1, importe_medio: 40000, count: 12, pct_monopolio: 10 },
-          ]}
-        />,
-      ),
-    ).not.toThrow();
-  });
-
-  it("renders the seasonality chart", () => {
-    expect(() =>
-      render(
-        <CompetitorsEstacionalidadChart
-          data={[
-            { mes: "Ene", count: 5, importe: 100000 },
-            { mes: "Feb", count: 8, importe: 220000 },
-          ]}
-        />,
+        <CompetidoresMapaChart puntos={[]} lente="precio" medianaX={null} medianaY={null} onEmpresaClick={vi.fn()} />,
       ),
     ).not.toThrow();
   });

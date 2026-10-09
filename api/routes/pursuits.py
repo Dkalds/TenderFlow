@@ -855,6 +855,11 @@ async def get_pursuits_agenda(
     (`contrato`). Las renovaciones del mercado sólo entran con
     `incluir_mercado=true`.
 
+    `banda` es el tramo en el que va la fila: su `urgencia`, salvo cuando el
+    plazo ya no obliga (`plazo_pasado`: pasó sin oferta; `en_resolucion`: la
+    oferta está presentada). `contadores` son los de la franja, y cada fila
+    declara en `cuenta_en` en cuáles cuenta.
+
     Sin caché compartida: la respuesta es por usuario/organización (incluye el
     triaje de señales del propio usuario).
     """
