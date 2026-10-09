@@ -129,3 +129,42 @@ class TestHoraLocalDePlazo:
         from shared.dates import hora_local_de_plazo
 
         assert hora_local_de_plazo("2026-07-15T22:30:00+00:00") is None
+
+
+# ─── hoy_peninsular (el «hoy» con el que se cuentan los días de un plazo) ───
+
+
+class TestHoyPeninsular:
+    """Un plazo se cuenta en días peninsulares, no en días UTC.
+
+    La agenda restaba la fecha del plazo de ``datetime.now(UTC).date()``: entre
+    la medianoche de la península y la de UTC —dos horas en verano, una en
+    invierno— el plazo de hoy salía como «1 d».
+    """
+
+    def test_pasada_la_medianoche_peninsular_ya_es_el_dia_siguiente(self):
+        from datetime import UTC, date, datetime
+
+        from shared.dates import hoy_peninsular
+
+        # Las 22:30 UTC del 14 de octubre son las 00:30 del 15 en Madrid.
+        assert hoy_peninsular(datetime(2026, 10, 14, 22, 30, tzinfo=UTC)) == date(2026, 10, 15)
+
+    def test_en_invierno_el_desfase_es_de_una_hora(self):
+        from datetime import UTC, date, datetime
+
+        from shared.dates import hoy_peninsular
+
+        assert hoy_peninsular(datetime(2026, 1, 14, 22, 30, tzinfo=UTC)) == date(2026, 1, 14)
+        assert hoy_peninsular(datetime(2026, 1, 14, 23, 30, tzinfo=UTC)) == date(2026, 1, 15)
+
+    def test_sin_argumento_lee_el_reloj(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from shared.dates import hoy_peninsular
+
+        antes = datetime.now(ZoneInfo("Europe/Madrid")).date()
+        hoy = hoy_peninsular()
+        despues = datetime.now(ZoneInfo("Europe/Madrid")).date()
+        assert antes <= hoy <= despues

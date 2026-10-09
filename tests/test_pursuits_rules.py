@@ -602,3 +602,52 @@ def test_a_corrupt_event_payload_degrades_to_an_empty_dict(tmp_db):
     assert len(events) == 2
     assert events[0]["payload"]["status"] == "identified"
     assert events[1]["payload"] == {}
+
+
+# ── El GO salta a preparación ────────────────────────────────────────────
+
+
+def test_a_go_decision_can_jump_straight_to_preparing(tmp_db):
+    """Decidir desde la agenda: un solo cambio, de «Identificada» a preparar.
+
+    Las fases previas existen para llegar a la decisión; con el GO y su motivo
+    en el mismo cambio no queda nada que tengan que frenar. El salto deja el
+    mismo rastro que el camino largo: decisión fechada y un evento con el
+    cambio de fase.
+    """
+    db_mod, _ = tmp_db
+    owner, organization_id = _org(db_mod)
+    pursuit_id = _open(owner, organization_id)
+
+    detail = update_pursuit(
+        owner,
+        pursuit_id,
+        PursuitUpdate(status="preparing", decision="go", decision_reason="Encaje estratégico"),
+        organization_id=organization_id,
+    )
+
+    assert (detail.status, detail.decision) == ("preparing", "go")
+    assert detail.decision_at is not None
+    # Por tipo y no por posición: entrar en preparación instancia la plantilla
+    # de tareas, que puede dejar sus propios eventos detrás.
+    cambios = [
+        evento.payload.get("changes", {})
+        for evento in detail.events
+        if evento.event_type == "pursuit.updated"
+    ]
+    assert cambios[-1]["status"] == {"from": "identified", "to": "preparing"}
+
+
+def test_the_jump_does_not_reach_past_preparing(tmp_db):
+    """Lo que sigue a la decisión no se salta: presentar es otro paso."""
+    db_mod, _ = tmp_db
+    owner, organization_id = _org(db_mod)
+    pursuit_id = _open(owner, organization_id)
+
+    with pytest.raises(PursuitTransitionError, match="identified -> submitted"):
+        update_pursuit(
+            owner,
+            pursuit_id,
+            PursuitUpdate(status="submitted", decision="go", decision_reason="Encaje"),
+            organization_id=organization_id,
+        )
