@@ -79,3 +79,53 @@ class TestToIsoDatetime:
         from shared.dates import to_iso_datetime
 
         assert to_iso_datetime("15/07/2026", "23:59:00") == "2026-07-15T21:59:00+00:00"
+
+
+class TestHoraLocalDePlazo:
+    """La vuelta de ``to_iso_datetime``: de la hora guardada en UTC a la peninsular.
+
+    El plazo se guarda en UTC para que los recordatorios no lleguen tarde, pero
+    quien lo lee quiere la hora que publicó el órgano: las 14:00 de un pliego
+    de julio están en la base como las 12:00.
+    """
+
+    def test_verano_suma_dos_horas(self):
+        from shared.dates import hora_local_de_plazo
+
+        assert hora_local_de_plazo("2026-07-15T12:00:00+00:00") == "14:00"
+
+    def test_invierno_suma_una(self):
+        from shared.dates import hora_local_de_plazo
+
+        assert hora_local_de_plazo("2026-01-15T12:00:00+00:00") == "13:00"
+
+    def test_es_la_inversa_de_to_iso_datetime(self):
+        from shared.dates import hora_local_de_plazo, to_iso_datetime
+
+        assert hora_local_de_plazo(to_iso_datetime("2026-07-15", "23:59:00")) == "23:59"
+
+    def test_una_fecha_sin_hora_no_inventa_ninguna(self):
+        """Sin hora publicada no hay medianoche que enseñar."""
+        from shared.dates import hora_local_de_plazo
+
+        assert hora_local_de_plazo("2026-07-15") is None
+
+    def test_lo_que_no_se_entiende_no_tiene_hora(self):
+        from shared.dates import hora_local_de_plazo
+
+        assert hora_local_de_plazo(None) is None
+        assert hora_local_de_plazo("") is None
+        assert hora_local_de_plazo("garbage con más de diez letras") is None
+        assert hora_local_de_plazo(42) is None
+
+    def test_si_la_hora_local_cae_en_otro_dia_se_calla(self):
+        """El resto del producto lee la fecha de los diez primeros caracteres.
+
+        Las 22:30 UTC de un día de verano son las 00:30 del siguiente en la
+        península: enseñar «00:30» junto a la fecha del texto (el día anterior)
+        sería dar una hora y un día que no van juntos. Sin hora es menos dato,
+        pero no es un dato falso.
+        """
+        from shared.dates import hora_local_de_plazo
+
+        assert hora_local_de_plazo("2026-07-15T22:30:00+00:00") is None

@@ -108,6 +108,34 @@ def to_iso_datetime(raw_date: str | None, raw_time: str | None = None) -> str | 
     return dt.isoformat()
 
 
+def hora_local_de_plazo(valor: object) -> str | None:
+    """Hora peninsular (``HH:MM``) de un plazo guardado por :func:`to_iso_datetime`.
+
+    Es su inversa: el plazo se guarda en UTC y quien lo lee quiere la hora que
+    publicó el órgano. ``None`` cuando el valor no trae hora —una fecha sola no
+    tiene medianoche que enseñar— o no se entiende.
+
+    También ``None`` si la hora peninsular cae en **otro día** que el del
+    texto: el resto del producto lee la fecha de sus diez primeros caracteres,
+    y una hora que no va con ese día sería un dato falso, no uno más preciso.
+    """
+    if not isinstance(valor, str):
+        return None
+    texto = valor.strip()
+    if len(texto) <= 10:
+        return None
+    try:
+        momento = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=UTC)
+    local = momento.astimezone(_MADRID_TZ)
+    if local.date().isoformat() != texto[:10]:
+        return None
+    return local.strftime("%H:%M")
+
+
 def month_start(series: pd.Series) -> pd.Series:
     """Return timezone-naive month starts without pandas timezone warnings."""
     values = pd.to_datetime(series, errors="coerce", utc=True)
