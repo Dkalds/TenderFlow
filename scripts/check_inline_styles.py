@@ -46,13 +46,15 @@ _STYLE_ATTR = re.compile(r"style=\{\{")
 #: (76), al pasar la consola a tokens y primitivos, el 2026-09-28 (74), al
 #: borrar componentes sin importador, el 2026-10-05 (73), cuando el desglose
 #: del inspector de /detalle pasó a `ScoreDesglose`, el 2026-10-08 (72), al
-#: pasar la composición por estado del Resumen a una barra SVG, y el
+#: pasar la composición por estado del Resumen a una barra SVG, el
 #: 2026-10-09 (71), al retirar la tabla de Órganos (su barra de proporción es
-#: ahora un `rect` SVG en el ranking mariposa). **Solo puede bajar.**
+#: ahora un `rect` SVG en el ranking mariposa), y ese mismo día (63), con el
+#: rediseño de Competencia: la matriz de empresas por CCAA pasó a tabla con pasos de
+#: clase, y las barras de bajas y el radar se fueron. **Solo puede bajar.**
 #:
 #: Bajarlo es el trabajo que desbloquea C2.8; subirlo es declarar que se acepta
 #: seguir con `'unsafe-inline'` en `style-src`, y eso no se hace de pasada.
-MAX_ESTILOS_INLINE = 71
+MAX_ESTILOS_INLINE = 63
 
 
 def contar() -> dict[str, int]:

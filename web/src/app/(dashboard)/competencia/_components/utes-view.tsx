@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * UTEs — con quién se alía cada competidor para ganar.
+ * UTE — con quién se alía cada competidor para ganar.
  *
  * Segunda vista del espacio Competencia (`?vista=utes`). El cuerpo vive aquí y
  * no en `(dashboard)/utes/page.tsx` por lo mismo que Competidores: `/utes`
@@ -10,19 +10,22 @@
  * de ruta inalcanzable que además se montaba como componente, sin el contrato
  * `params`/`searchParams` que Next le pasa a una página.
  *
- * Aquí sólo queda el orden de la pantalla: la petición y sus derivaciones están
- * en `_hooks/use-utes-data.ts` y `_hooks/utes-series.ts`, y cada bloque visible
- * es un componente de este mismo directorio.
+ * De lo general a lo concreto: el titular y la tira de cifras, la red de
+ * alianzas con su lista y la evolución al lado, y al final las UTE con más
+ * adjudicaciones. Aquí sólo queda ese orden: la petición y lo que el usuario
+ * elige están en `_hooks/use-utes-data.ts`, las series en `_hooks/utes-series.ts`
+ * y la disposición de la red en `_hooks/utes-red.ts`.
  */
 
 import { PanelError } from "@/components/console/panel";
-import { ExportPopover } from "@/components/export-popover";
 
 import { useUtesData } from "../_hooks/use-utes-data";
-import { UtesGraficosDistribucion, UtesGraficosMiembros } from "./utes-graficos";
+import { UtesAlianzas } from "./utes-alianzas";
+import { UtesCabecera } from "./utes-cabecera";
+import { UtesEvolucion } from "./utes-evolucion";
 import { UtesKpis } from "./utes-kpis";
-import { UtesMiembros } from "./utes-miembros";
-import { UtesComparativa, UtesSocios } from "./utes-tablas";
+import { UtesMariposa } from "./utes-mariposa";
+import { UtesRed } from "./utes-red";
 
 export default function UtesView() {
   const {
@@ -30,49 +33,41 @@ export default function UtesView() {
     isLoading,
     error,
     refetch,
-    memberSearch,
-    setMemberSearch,
-    comparativaRows,
-    filteredMiembros,
-    memberDistribution,
-    topMiembrosByImporte,
+    red,
+    alianzas,
+    elegirEmpresa,
+    mariposa,
+    busqueda,
+    setBusqueda,
+    evolucion,
   } = useUtesData();
 
   if (error) {
     return <PanelError title="No se pudieron cargar las UTE" error={error} onRetry={refetch} />;
   }
 
+  const utes = data?.top_miembros ?? [];
+
   return (
     <div className="space-y-4">
-      {/* El nombre del corte lo pone la cabecera del espacio; aquí queda la
-          acción, que es lo único que no puede vivir allí. */}
-      <div className="flex items-center justify-end">
-        <ExportPopover extraParams={{ section: "utes" }} label="Exportar UTE" />
+      <UtesCabecera kpis={data?.kpis} isLoading={isLoading} />
+
+      <UtesKpis kpis={data?.kpis} comparativa={data?.tabla_comparativa} isLoading={isLoading} />
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <UtesRed red={red} isLoading={isLoading} onElegir={elegirEmpresa} />
+        <div className="flex min-w-0 flex-col gap-4">
+          <UtesAlianzas filas={alianzas} elegida={red.elegida} isLoading={isLoading} onElegir={elegirEmpresa} />
+          <UtesEvolucion serie={evolucion} isLoading={isLoading} />
+        </div>
       </div>
 
-      <UtesKpis kpis={data?.kpis} isLoading={isLoading} />
-
-      <UtesGraficosMiembros
-        topMiembros={data?.top_miembros}
-        evolucion={data?.evolucion}
-        isLoading={isLoading}
-      />
-
-      <UtesSocios socios={data?.socios_frecuentes} isLoading={isLoading} />
-
-      <UtesGraficosDistribucion
-        memberDistribution={memberDistribution}
-        topMiembrosByImporte={topMiembrosByImporte}
-        isLoading={isLoading}
-      />
-
-      <UtesComparativa filas={comparativaRows} isLoading={isLoading} />
-
-      <UtesMiembros
-        filas={filteredMiembros}
-        totalMiembros={data?.top_miembros?.length ?? 0}
-        search={memberSearch}
-        onSearchChange={setMemberSearch}
+      <UtesMariposa
+        filas={mariposa}
+        total={utes.length}
+        busqueda={busqueda}
+        onBusquedaChange={setBusqueda}
+        sugerencias={utes.map((ute) => ute.nombre)}
         isLoading={isLoading}
       />
     </div>

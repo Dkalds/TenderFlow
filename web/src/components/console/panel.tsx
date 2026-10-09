@@ -243,6 +243,7 @@ export function StatCell({
   label,
   value,
   hint,
+  grafico,
   trend,
   trendAlert,
   badge,
@@ -257,6 +258,12 @@ export function StatCell({
   label: React.ReactNode;
   value: React.ReactNode;
   hint?: React.ReactNode;
+  /**
+   * El dibujo de la cifra, entre el valor y su pie: una barra de proporción,
+   * una regla con zonas, doce columnas. Un gráfico mínimo que sitúa el número,
+   * no un segundo dato; mientras carga no se pinta.
+   */
+  grafico?: React.ReactNode;
   trend?: number;
   /**
    * Sube el delta al cuerpo del valor y lo pinta en ámbar. Es para la celda que
@@ -318,6 +325,7 @@ export function StatCell({
           )}
         </div>
       )}
+      {grafico != null && !loading && <div className="mt-2">{grafico}</div>}
       {hint && <div className="mt-1 truncate text-tf-meta text-muted-foreground">{hint}</div>}
     </>
   );

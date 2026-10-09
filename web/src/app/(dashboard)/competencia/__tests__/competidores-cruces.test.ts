@@ -1,26 +1,21 @@
 /**
- * Tests de las series de `_hooks/competidores-series.ts` que cruzan dos
- * dimensiones: mapa de calor empresa × CCAA, radar de dos competidores y
- * posicionamiento baja media × importe medio.
+ * Tests de `_hooks/competidores-cruces.ts`, las series que cruzan dos
+ * dimensiones: la matriz empresa × CCAA y el mapa de competidores con sus dos
+ * lentes.
  *
  * Van juntas porque comparten el modo de mentir: en un cruce, un cero por dato
- * ausente no se lee como «sin dato» sino como una posición —el vértice pegado
- * al centro, el punto en el origen—, y eso es una afirmación que el dataset no
- * hace. Cada uno de estos tests fija dónde se decidió abstenerse.
+ * ausente no se lee como «sin dato» sino como una posición —el punto pegado al
+ * eje—, y eso es una afirmación que el dataset no hace. Cada uno de estos tests
+ * fija dónde se decidió abstenerse.
  */
 import { describe, it, expect } from "vitest";
 
-import {
-  RADAR_DIMENSIONS,
-  buildHeatmap,
-  buildPositioningData,
-  buildRadarData,
-} from "../_hooks/competidores-series";
+import { buildHeatmap, buildMapa } from "../_hooks/competidores-cruces";
 import type { HeatmapEntry } from "../_hooks/competidores-types";
 
 import { ACME, BETA, GAMMA, competitor } from "./competidores-fixtures";
 
-/* ── Mapa de calor ──────────────────────────────────────────────────── */
+/* ── Matriz empresa × CCAA ──────────────────────────────────────────── */
 
 describe("buildHeatmap", () => {
   const entries: HeatmapEntry[] = [
@@ -74,118 +69,102 @@ describe("buildHeatmap", () => {
   });
 });
 
-/* ── Radar ──────────────────────────────────────────────────────────── */
+/* ── Mapa de competidores ───────────────────────────────────────────── */
 
-describe("buildRadarData", () => {
-  const pool = [ACME, BETA, GAMMA];
+describe("buildMapa", () => {
+  const sinMarcas = { abierta: null, vigiladas: new Set<number>() };
 
-  it("null salvo con exactamente dos seleccionadas", () => {
-    expect(buildRadarData([], pool)).toBeNull();
-    expect(buildRadarData(["Acme Sistemas"], pool)).toBeNull();
-    expect(buildRadarData(["A", "B", "C"], pool)).toBeNull();
-  });
-
-  it("null si el dataset aún no llegó", () => {
-    expect(buildRadarData(["Acme Sistemas", "Beta Consulting"], undefined)).toBeNull();
-  });
-
-  it("null si alguna seleccionada ya no está en los datos", () => {
-    // Cambiar el filtro global puede dejar fuera a una elegida antes; pintar el
-    // radar con una sola sería comparar contra nada.
-    expect(buildRadarData(["Acme Sistemas", "Fantasma SL"], pool)).toBeNull();
-  });
-
-  it("normaliza contra el máximo del mercado, no contra los dos elegidos", () => {
-    // Beta tiene 4 de los 10 contratos del líder: 40, no 100.
-    const radar = buildRadarData(["Acme Sistemas", "Beta Consulting"], pool)!;
-    expect(radar.dataA[0].value).toBe(100);
-    expect(radar.dataB[0].value).toBe(40);
-  });
-
-  it("emite las seis dimensiones en orden para ambos", () => {
-    const radar = buildRadarData(["Acme Sistemas", "Beta Consulting"], pool)!;
-    expect(radar.dataA.map((d) => d.dimension)).toEqual([...RADAR_DIMENSIONS]);
-    expect(radar.dataB).toHaveLength(6);
-    expect(radar.nameA).toBe("Acme Sistemas");
-    expect(radar.nameB).toBe("Beta Consulting");
-  });
-
-  it("una métrica ausente en todo el dataset no divide por cero", () => {
-    const sinBaja = [
-      competitor({ nombre: "A", count: 1, importe: 1, cuota: 1 }),
-      competitor({ nombre: "B", count: 1, importe: 1, cuota: 1 }),
-    ];
-    const radar = buildRadarData(["A", "B"], sinBaja)!;
-    // Los ejes que SÍ tienen dato siguen siendo números finitos: el `max(…, 1)`
-    // sigue evitando la división por cero, que es lo que este test vigila.
-    expect(radar.dataA.slice(0, 3).every((d) => Number.isFinite(d.value))).toBe(true);
-  });
-
-  it("un eje sin dato sale `null`, no pegado al centro", () => {
-    // Este test afirmaba `value === 0` para el eje ausente, y con eso blindaba
-    // el problema en vez de detectarlo: en un radar el 0 es el vértice pegado
-    // al centro, que se lee como «el peor del mercado en esa dimensión». Es una
-    // afirmación, y justo la contraria de lo que se sabe. Recharts deja hueco
-    // con `null`.
-    const sinBaja = [
-      competitor({ nombre: "A", count: 1, importe: 1, cuota: 1 }),
-      competitor({ nombre: "B", count: 1, importe: 1, cuota: 1 }),
-    ];
-    const radar = buildRadarData(["A", "B"], sinBaja)!;
-    expect(radar.dataA[5].value).toBeNull();
-    expect(radar.dataB[5].value).toBeNull();
-  });
-});
-
-/* ── Posicionamiento ────────────────────────────────────────────────── */
-
-describe("buildPositioningData", () => {
-  it("descarta a quien no tiene baja media o importe medio", () => {
-    // Un punto en (0,0) por dato ausente afirmaría «no baja y contratos
-    // minúsculos», que el dataset no dice.
-    const points = buildPositioningData([ACME, GAMMA]);
-    expect(points.map((p) => p.nombre)).toEqual(["Acme Sistemas"]);
-  });
-
-  it("descarta importe medio cero", () => {
-    const cero = competitor({ nombre: "Z", baja_media: 5, importe_medio: 0 });
-    expect(buildPositioningData([cero])).toEqual([]);
-  });
-
-  it("copia las métricas del punto y propaga pct_monopolio ausente", () => {
-    // Antes esperaba `pct_monopolio: 0`, y ese cero llegaba al tooltip como
-    // «% Monopolio: 0,0 %»: una empresa sin dato de ofertantes se presentaba
-    // como la más disputada del mercado. El propio `buildPositioningData`
-    // descarta los puntos sin ambos ejes para no afirmar lo que el dataset no
-    // dice, y hacía justo eso con la tercera dimensión.
-    const sinMonopolio = competitor({
-      nombre: "Z",
-      baja_media: 12,
-      importe_medio: 5000,
-      count: 3,
+  describe("lente de precio", () => {
+    it("baja media en horizontal e importe medio en vertical", () => {
+      const { puntos } = buildMapa([ACME, BETA], "precio", sinMarcas);
+      expect(puntos.map((p) => [p.nombre, p.x, p.y])).toEqual([
+        ["Acme Sistemas", 20, 100_000],
+        ["Beta Consulting", 5, 100_000],
+      ]);
     });
-    expect(buildPositioningData([sinMonopolio])[0]).toEqual({
-      nombre: "Z",
-      baja_media: 12,
-      importe_medio: 5000,
-      count: 3,
-      pct_monopolio: null,
+
+    it("descarta a quien no tiene baja media o importe medio, y lo cuenta", () => {
+      // Un punto en (0,0) por dato ausente afirmaría «no baja y contratos
+      // minúsculos», que el dataset no dice.
+      const mapa = buildMapa([ACME, GAMMA], "precio", sinMarcas);
+      expect(mapa.puntos.map((p) => p.nombre)).toEqual(["Acme Sistemas"]);
+      expect(mapa.sinDato).toBe(1);
+    });
+
+    it("un importe medio a cero es el valor por defecto del backend, no un dato", () => {
+      const cero = competitor({ nombre: "Z", baja_media: 5, importe_medio: 0 });
+      expect(buildMapa([cero], "precio", sinMarcas).puntos).toEqual([]);
+    });
+
+    it("una baja media de 0 sí se dibuja: es un dato", () => {
+      const sinBaja = competitor({ nombre: "Z", baja_media: 0, importe_medio: 5000 });
+      expect(buildMapa([sinBaja], "precio", sinMarcas).puntos).toHaveLength(1);
     });
   });
 
-  it("un pct_monopolio real sí se copia", () => {
-    // La distinción que importa: 0 es un dato, ausente es otra cosa.
-    const conCero = competitor({
-      nombre: "Z",
-      baja_media: 12,
-      importe_medio: 5000,
-      count: 3,
-      pct_monopolio: 0,
+  describe("lente de clientes", () => {
+    it("órganos distintos en horizontal y peso del primero en vertical", () => {
+      const { puntos } = buildMapa([ACME, BETA], "clientes", sinMarcas);
+      expect(puntos.map((p) => [p.nombre, p.x, p.y])).toEqual([
+        ["Acme Sistemas", 6, 30],
+        ["Beta Consulting", 2, 75],
+      ]);
     });
-    expect(buildPositioningData([conCero])[0].pct_monopolio).toBe(0);
+
+    it("descarta a quien no trae órganos", () => {
+      const mapa = buildMapa([ACME, GAMMA], "clientes", sinMarcas);
+      expect(mapa.puntos.map((p) => p.nombre)).toEqual(["Acme Sistemas"]);
+      expect(mapa.sinDato).toBe(1);
+    });
+  });
+
+  it("las medianas salen de los puntos dibujados", () => {
+    const tercero = competitor({ nombre: "Z", baja_media: 11, importe_medio: 40_000, cuota: 1 });
+    const mapa = buildMapa([ACME, BETA, tercero, GAMMA], "precio", sinMarcas);
+    // Gamma no se dibuja, así que no cuenta: bajas 20, 5 y 11.
+    expect(mapa.medianaX).toBe(11);
+    expect(mapa.medianaY).toBe(100_000);
+  });
+
+  it("con menos de dos puntos no hay medianas que partan el plano", () => {
+    const mapa = buildMapa([ACME], "precio", sinMarcas);
+    expect(mapa.medianaX).toBeNull();
+    expect(mapa.medianaY).toBeNull();
+  });
+
+  it("el tamaño del punto es la cuota de la API", () => {
+    expect(buildMapa([ACME], "precio", sinMarcas).puntos[0].cuota).toBe(40);
+  });
+
+  it("solo llevan nombre las seis de más cuota, la abierta y las vigiladas", () => {
+    const muchas = Array.from({ length: 9 }, (_, i) =>
+      competitor({ nombre: `E${i}`, empresa_id: 100 + i, cuota: 9 - i, baja_media: i, importe_medio: 1000 + i }),
+    );
+    const mapa = buildMapa(muchas, "precio", { abierta: "E7", vigiladas: new Set([108]) });
+    const conNombre = mapa.puntos.filter((p) => p.etiqueta !== "").map((p) => p.nombre);
+    expect(conNombre).toEqual(["E0", "E1", "E2", "E3", "E4", "E5", "E7", "E8"]);
+  });
+
+  it("marca la abierta y las vigiladas", () => {
+    const mapa = buildMapa([ACME, BETA], "precio", { abierta: "Beta Consulting", vigiladas: new Set([1]) });
+    expect(mapa.puntos.map((p) => [p.seleccionado, p.vigilada])).toEqual([
+      [false, true],
+      [true, false],
+    ]);
+  });
+
+  it("una agrupación está vigilada si lo está cualquiera de sus identidades", () => {
+    const grupo = competitor({
+      nombre: "Holding XY",
+      empresa_id: 7,
+      empresa_ids: [7, 8, 9],
+      baja_media: 10,
+      importe_medio: 1000,
+    });
+    expect(buildMapa([grupo], "precio", { abierta: null, vigiladas: new Set([9]) }).puntos[0].vigilada).toBe(true);
   });
 
   it("vacío sin competidores", () => {
-    expect(buildPositioningData([])).toEqual([]);
+    expect(buildMapa([], "precio", sinMarcas)).toEqual({ puntos: [], medianaX: null, medianaY: null, sinDato: 0 });
   });
 });
