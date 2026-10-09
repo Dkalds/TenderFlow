@@ -1,94 +1,195 @@
 /**
- * Las derivaciones de la vista de UTEs, como funciones puras.
+ * Las series de la vista de UTE, como funciones puras.
  *
- * No hay fetch ni React: reciben lo que `use-utes-data.ts` ya descargó. La
- * agregación real (quién forma UTE con quién, cuánto suma cada par) la hace el
- * backend; esto sólo da forma a lo recibido —ordenar, filtrar por el buscador y
- * repartir en tramos— sin inventar ninguna cifra nueva.
+ * No hay fetch ni React: reciben lo que `use-utes-data.ts` ya descargó. Quién
+ * forma UTE con quién, cuántas y por cuánto lo agrega la API; aquí sólo se le
+ * da forma para pintarlo —ordenar, filtrar por el buscador y medir cada barra
+ * contra el máximo visible—, sin totales, medias ni recuentos nuevos.
  */
 
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import type { Schemas } from "@/lib/api-types";
+import { foldText, formatMonth } from "@/lib/utils";
 
-import type {
-  ComparativaRow,
-  DistribucionBin,
-  TablaComparativa,
-  TopMiembro,
-} from "./utes-types";
+type Kpis = Schemas["UTEKpis"];
+type Ute = Schemas["UTEMiembro"];
+type SocioPar = Schemas["UTESocioPar"];
+type MesEvolucion = Schemas["UTEEvolucion"];
 
-/** Las tres filas de la comparativa UTE vs individual, ya formateadas. */
-export function buildComparativaRows(
-  comparativa: TablaComparativa | undefined,
-): ComparativaRow[] {
-  if (!comparativa) return [];
-  return [
-    {
-      metrica: "Contratos",
-      ute: formatNumber(comparativa.ute.contratos),
-      individual: formatNumber(comparativa.individual.contratos),
-    },
-    {
-      metrica: "Importe medio",
-      ute: formatCurrency(comparativa.ute.importe_medio),
-      individual: formatCurrency(comparativa.individual.importe_medio),
-    },
-    {
-      metrica: "Importe total",
-      ute: formatCurrency(comparativa.ute.importe_total),
-      individual: formatCurrency(comparativa.individual.importe_total),
-    },
-  ];
+/** La parte de `valor` sobre `maximo`, de 0 a 100; sin máximo no hay barra. */
+const aEscala = (valor: number, maximo: number) => (maximo > 0 ? (valor * 100) / maximo : 0);
+
+/* ── Importe medio por contrato ───────────────────────────────────────── */
+
+/**
+ * Un importe medio sólo es un dato si hay contratos sobre los que hacerlo: sin
+ * ellos la API manda un cero, y «el contrato medio es de 0 €» afirmaría algo
+ * que nadie ha medido. Ese cero se lee aquí como ausencia.
+ */
+export function importeMedioConDato(valor: number | null | undefined): number | null {
+  return valor != null && valor > 0 ? valor : null;
 }
 
-/** Buscador de la tabla de miembros: por nombre, sin distinguir mayúsculas. */
-export function filterMiembros(
-  miembros: TopMiembro[] | undefined,
-  search: string,
-): TopMiembro[] {
-  if (!miembros) return [];
-  if (!search) return miembros;
-  const q = search.toLowerCase();
-  return miembros.filter((m) => m.nombre.toLowerCase().includes(q));
+export interface BarraImporteMedio {
+  clave: "ute" | "solitario";
+  etiqueta: string;
+  valor: number | null;
+  /** Ancho de la barra, a escala de la mayor de las dos. */
+  pct: number;
 }
 
-const BIN_ORDER = ["1", "2-3", "4-5", "6-10", "11+"];
+/** Las dos barras pareadas de la tira: el contrato medio en UTE y en solitario. */
+export function barrasImporteMedio(kpis: Kpis | undefined): BarraImporteMedio[] {
+  const ute = importeMedioConDato(kpis?.ticket_medio_ute);
+  const solitario = importeMedioConDato(kpis?.ticket_medio_individual);
+  const mayor = Math.max(0, ...[ute, solitario].filter((valor): valor is number => valor != null));
+  const barra = (clave: BarraImporteMedio["clave"], etiqueta: string, valor: number | null): BarraImporteMedio => ({
+    clave,
+    etiqueta,
+    valor,
+    pct: valor == null ? 0 : aEscala(valor, mayor),
+  });
+  return [barra("ute", "En UTE", ute), barra("solitario", "En solitario", solitario)];
+}
 
-function bin(count: number): string {
-  if (count <= 1) return "1";
-  if (count <= 3) return "2-3";
-  if (count <= 5) return "4-5";
-  if (count <= 10) return "6-10";
-  return "11+";
+/* ── Alianzas ─────────────────────────────────────────────────────────── */
+
+export interface FilaAlianza {
+  clave: string;
+  /** «A + B» en la lista de pares; el socio en la de una empresa elegida. */
+  nombre: string;
+  /** La empresa que elige la fila al pulsarla. */
+  empresa: string;
+  contratos: number;
+  importe: number;
+  /** Ancho de la barrita, a escala de la fila con más UTE de las visibles. */
+  pct: number;
 }
 
 /**
- * Histograma de participaciones: cuántos miembros caen en cada tramo.
- *
- * Los tramos vacíos no se pintan —una barra a cero se lee como «medido y
- * ninguno», y aquí no hay tal medición para el tramo que el dataset no alcanza.
+ * La lista que acompaña a la red. Sin empresa elegida, todos los pares; con
+ * una, sólo sus socios. En los dos casos del par más repetido al menos, y a
+ * igualdad por importe.
  */
-export function buildMemberDistribution(
-  miembros: TopMiembro[] | undefined,
-): DistribucionBin[] {
-  if (!miembros?.length) return [];
-  const bins: Record<string, number> = {};
-  for (const m of miembros) {
-    const tramo = bin(m.count);
-    bins[tramo] = (bins[tramo] ?? 0) + 1;
-  }
-  return BIN_ORDER.filter((k) => bins[k]).map((k) => ({
-    rango: `${k} UTEs`,
-    miembros: bins[k],
+export function filasAlianzas(pares: readonly SocioPar[] | undefined, elegida: string | null): FilaAlianza[] {
+  const propios = (pares ?? []).filter(
+    (par) => elegida == null || par.empresa_a === elegida || par.empresa_b === elegida,
+  );
+  const filas = propios.map((par, i) => {
+    const socio = par.empresa_a === elegida ? par.empresa_b : par.empresa_a;
+    return {
+      clave: `${i}:${par.empresa_a}:${par.empresa_b}`,
+      nombre: elegida == null ? `${par.empresa_a} + ${par.empresa_b}` : socio,
+      empresa: socio,
+      contratos: par.contratos,
+      importe: par.importe,
+    };
+  });
+  filas.sort(
+    (a, b) => b.contratos - a.contratos || b.importe - a.importe || a.nombre.localeCompare(b.nombre, "es"),
+  );
+  const masRepetido = Math.max(0, ...filas.map((fila) => fila.contratos));
+  return filas.map((fila) => ({ ...fila, pct: aEscala(fila.contratos, masRepetido) }));
+}
+
+/* ── Mariposa ─────────────────────────────────────────────────────────── */
+
+/** Cuántas UTE del ranking se pintan en la mariposa. */
+export const FILAS_MARIPOSA = 12;
+
+/** Una fila de la mariposa: las dos medidas, cada una a escala de su máximo visible. */
+export interface FilaMariposa {
+  nombre: string;
+  /** El puesto en el ranking recibido, que no cambia al buscar. */
+  puesto: number;
+  count: number;
+  importe: number;
+  pctCount: number;
+  pctImporte: number;
+}
+
+/**
+ * Las UTE con más adjudicaciones, filtradas por el buscador. El buscador sólo
+ * mira la lista recibida —las primeras del ámbito—, sin mayúsculas ni tildes.
+ */
+export function filasMariposa(utes: readonly Ute[] | undefined, busqueda: string): FilaMariposa[] {
+  const ranking = [...(utes ?? [])]
+    .sort((a, b) => b.count - a.count || b.importe - a.importe || a.nombre.localeCompare(b.nombre, "es"))
+    .map((ute, i) => ({ ...ute, puesto: i + 1 }));
+  const buscado = foldText(busqueda.trim());
+  const visibles = (buscado ? ranking.filter((ute) => foldText(ute.nombre).includes(buscado)) : ranking).slice(
+    0,
+    FILAS_MARIPOSA,
+  );
+  const maxCount = Math.max(0, ...visibles.map((ute) => ute.count));
+  const maxImporte = Math.max(0, ...visibles.map((ute) => ute.importe));
+  return visibles.map((ute) => ({
+    nombre: ute.nombre,
+    puesto: ute.puesto,
+    count: ute.count,
+    importe: ute.importe,
+    pctCount: aEscala(ute.count, maxCount),
+    pctImporte: aEscala(ute.importe, maxImporte),
   }));
 }
 
-/** Top 15 por importe, descartando a quien no reporta importe conjunto. */
-export function buildTopMiembrosPorImporte(
-  miembros: TopMiembro[] | undefined,
-): TopMiembro[] {
-  if (!miembros?.length) return [];
-  return [...miembros]
-    .filter((m) => m.importe > 0)
-    .sort((a, b) => b.importe - a.importe)
-    .slice(0, 15);
+/* ── Evolución ────────────────────────────────────────────────────────── */
+
+/** Con menos meses que éstos, las columnas no ocupan todo el ancho. */
+const COLUMNAS_MINIMAS = 12;
+
+/** Cuántos rótulos caben, como mucho, en el eje de los meses. */
+const ROTULOS_EN_EJE = 4;
+
+export interface ColumnaEvolucion {
+  period: string;
+  /** El mes en forma legible: «2026-01» → «ene 2026». */
+  etiqueta: string;
+  contratos: number;
+  importe: number;
+  pctContratos: number;
+  pctImporte: number;
+  /**
+   * Si su rótulo va en el eje: uno de cada tantos, y sólo si tiene a su derecha
+   * el sitio de un paso entero, para que ni se pisen ni se salgan del panel.
+   */
+  enEje: boolean;
+}
+
+export interface SerieEvolucion {
+  columnas: ColumnaEvolucion[];
+  /** El mes con más UTE y el de más importe: lo que mide la columna más alta. */
+  maxContratos: number | null;
+  maxImporte: number | null;
+  /** Huecos vacíos a la derecha cuando hay pocos meses. */
+  relleno: number;
+}
+
+/**
+ * Los meses de la evolución, en orden, con las dos medidas a escala de su
+ * propio máximo: dos gráficos que comparten el eje de los meses, no un eje con
+ * dos escalas. Un mes que la API no manda no se rellena con un cero.
+ */
+export function serieEvolucion(evolucion: readonly MesEvolucion[] | undefined): SerieEvolucion {
+  const meses = [...(evolucion ?? [])].sort((a, b) => a.period.localeCompare(b.period));
+  if (meses.length === 0) return { columnas: [], maxContratos: null, maxImporte: null, relleno: 0 };
+
+  const maxContratos = Math.max(...meses.map((mes) => mes.contratos));
+  const maxImporte = Math.max(...meses.map((mes) => mes.importe));
+  const huecos = Math.max(meses.length, COLUMNAS_MINIMAS);
+  const paso = Math.ceil(huecos / ROTULOS_EN_EJE);
+
+  return {
+    columnas: meses.map((mes, i) => ({
+      period: mes.period,
+      etiqueta: formatMonth(mes.period, true),
+      contratos: mes.contratos,
+      importe: mes.importe,
+      pctContratos: aEscala(mes.contratos, maxContratos),
+      pctImporte: aEscala(mes.importe, maxImporte),
+      enEje: i % paso === 0 && i + paso <= huecos,
+    })),
+    maxContratos,
+    maxImporte,
+    relleno: huecos - meses.length,
+  };
 }

@@ -3,40 +3,40 @@
 /**
  * Competidores — quién gana, con cuánta cuota y a qué baja.
  *
+ * Primero el dibujo, después la lista: el titular de dato y las cifras del
+ * mercado arriba, el reparto en una barra, el mapa de competidores junto a tus
+ * vigilados, el perfil de la empresa abierta en una franja, el cara a cara y la
+ * matriz por comunidad, y el ranking al final. Hasta 2026-10 era una tabla de
+ * cien filas con nueve gráficos detrás de pestañas, de uno en uno.
+ *
  * El cuerpo vive aquí y no en un `page.tsx` de ruta propia porque
  * `/competidores` no es alcanzable: `next.config.ts` la redirige con un 308
  * permanente a `/competencia?vista=competidores`, y los redirects de Next
- * corren ANTES del enrutado por sistema de ficheros. Mientras el fichero
- * estuvo en `(dashboard)/competidores/page.tsx` era a la vez boundary de ruta
- * —que nunca llegaba a ejecutarse— y componente montado por el espacio, así
- * que Next no podía tratarlo como lo primero: un `page.tsx` recibe el contrato
- * `params`/`searchParams` y este se montaba sin él. Mismo reparto que las ocho
- * vistas de Mercado y las seis de Ops.
+ * corren antes del enrutado por sistema de ficheros. Lo que preserva los
+ * enlaces guardados es el 308, no el fichero de ruta. El análisis completo de
+ * una empresa sí es ruta propia, `competencia/empresa/[empresaId]`.
  *
- * Lo que preserva los enlaces guardados es el 308, no el fichero de ruta. El
- * dossier de empresa sí es ruta propia, `competencia/empresa/[empresaId]`; la
- * de antes, `competidores/empresa/[empresaId]`, redirige allí
- * (`SUBRUTAS_MOVIDAS` en `lib/space-views.ts`).
- *
- * Aquí sólo queda el orden de la pantalla. Las peticiones y el estado están en
- * `_hooks/use-competidores-data.ts`, las series en `_hooks/competidores-series.ts`
- * y la lógica de la tabla en `_hooks/competidores-tabla.ts`; cada bloque
- * visible es un componente de este mismo directorio.
+ * Aquí solo queda el orden de la pantalla. Las peticiones y el estado están en
+ * `_hooks/use-competidores-data.ts` y las series en
+ * `_hooks/competidores-series.ts`; cada bloque visible es un componente de este
+ * mismo directorio.
  */
 
-import { startTransition, useState } from "react";
-
 import { PanelError } from "@/components/console/panel";
+import { cn } from "@/lib/utils";
 
 import { useCompetidoresData } from "../_hooks/use-competidores-data";
-import { CompetidoresBanner } from "./competidores-banner";
-import { CompetidoresCortes, type CorteKey } from "./competidores-cortes";
-import { CompetidoresDossier } from "./competidores-dossier";
-import { CompetidoresKpis } from "./competidores-kpis";
-import { CompetidoresMovimientos } from "./competidores-movimientos";
+import { CompetidorPerfil } from "./competidor-perfil";
+import { CompetidoresCabecera } from "./competidores-cabecera";
+import { CompetidoresCifras } from "./competidores-cifras";
+import { CompetidoresDuelo } from "./competidores-duelo";
+import { CompetidoresHeatmap } from "./competidores-heatmap";
+import { CompetidoresMapa } from "./competidores-mapa";
+import { CompetidoresRanking } from "./competidores-ranking";
+import { CompetidoresReparto } from "./competidores-reparto";
 import { CompetidoresResolucion } from "./competidores-resolucion";
-import { CompetidoresTabla } from "./competidores-tabla";
-import { CompetidoresToolbar } from "./competidores-toolbar";
+import { CompetidoresTruncado } from "./competidores-truncado";
+import { CompetidoresVigilados } from "./competidores-vigilados";
 
 export default function CompetidoresView() {
   const {
@@ -45,101 +45,130 @@ export default function CompetidoresView() {
     error,
     refetch,
     series,
+    vigiladas,
     search,
     setSearch,
+    metrica,
+    setMetrica,
+    lente,
+    setLente,
     activeCcaa,
     toggleCcaa,
     sortKey,
     sortDir,
     toggleSort,
-    selectedCompanies,
-    onToggleCompare,
-    drillDownCompany,
-    setDrillDownCompany,
-    drillDownCompanyId,
-    drillDownGroupIds,
-    drillDownProfile,
-    drillDownAwards,
-    isLoadingDrillDownProfile,
-    isLoadingDrillDownAwards,
+    abrirEmpresa,
+    cerrarPerfil,
+    compararCon,
+    quitarRival,
+    perfilId,
+    perfilIds,
+    perfil,
+    perfilLoading,
+    perfilError,
+    refetchPerfil,
   } = useCompetidoresData();
-
-  const [corte, setCorte] = useState<CorteKey>("top20");
 
   if (error) {
     return <PanelError title="No se pudieron cargar los competidores" error={error} onRetry={refetch} />;
   }
 
+  const { abierta, rival, duelo } = series;
+  const filtrado = Boolean(search.trim());
+  const totalEmpresas = data?.total_empresas ?? null;
+
   return (
-    <div className="flex min-h-0 gap-4">
-      <div className="min-w-0 flex-1 space-y-4">
-        <CompetidoresToolbar
-          search={search}
-          onSearchChange={setSearch}
-          suggestions={data?.competitors?.map((c) => c.nombre) ?? []}
-        />
+    <div className="space-y-4">
+      <CompetidoresCabecera
+        concentracion={series.concentracion}
+        metrica={metrica}
+        onMetricaChange={setMetrica}
+        importeTotal={data?.importe_total ?? null}
+        totalAdjudicaciones={data?.total_adjudicaciones ?? null}
+        totalEmpresas={totalEmpresas}
+        nRecibidas={data?.competitors?.length ?? 0}
+        search={search}
+        onSearchChange={setSearch}
+        suggestions={data?.competitors?.map((c) => c.nombre) ?? []}
+        isLoading={isLoading}
+      />
 
-        {/* Marcador del espacio: los cuatro KPIs del mercado competitivo. */}
-        <CompetidoresKpis data={data} isLoading={isLoading} />
+      <CompetidoresCifras data={data} meses={series.meses} isLoading={isLoading} />
 
-        {/* Las cuotas de arriba y de la tabla sólo son fiables con el maestro
-            bien resuelto. Si no lo está, se avisa aquí, no sólo en Empresas. */}
-        <CompetidoresResolucion />
+      {/* Las cuotas de esta pantalla solo son las del ámbito si la API lo
+          analizó entero y el maestro tiene resueltas las empresas. Si alguna de
+          las dos cosas falla, se avisa aquí, junto a las cifras que afecta. */}
+      <CompetidoresTruncado truncado={data?.truncado} limite={data?.limite_filas} />
+      <CompetidoresResolucion />
 
-        {/* Las empresas vigiladas y sus señales proactivas (RFC #4). */}
-        <CompetidoresMovimientos />
+      <CompetidoresReparto
+        tramos={series.reparto}
+        metrica={metrica}
+        isLoading={isLoading}
+        onEmpresaClick={abrirEmpresa}
+      />
 
-        {/* La tabla gobierna los nueve cortes, así que va primero. Antes había
-            que bajar 2.400 px de gráficos para llegar a la superficie de
-            trabajo que los filtra. */}
-        <CompetidoresTabla
-          filas={series.filteredSorted}
-          totalEmpresas={data?.total_empresas ?? data?.competitors.length ?? 0}
+      {/* `grid-cols-1`: sin él la columna implícita mide lo que pida su
+          contenido, y el mapa (recharts) ensanchaba la página en el móvil. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <CompetidoresMapa
+          mapa={series.mapa}
+          lente={lente}
+          onLenteChange={setLente}
+          hayVigiladas={vigiladas.size > 0}
+          filtrado={filtrado}
           isLoading={isLoading}
-          search={search}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={toggleSort}
-          selectedCompanies={selectedCompanies}
-          onToggleCompare={onToggleCompare}
-          onDrillDown={setDrillDownCompany}
+          onEmpresaClick={abrirEmpresa}
         />
+        <CompetidoresVigilados />
+      </div>
 
-        <CompetidoresBanner seleccionadas={selectedCompanies.length} />
+      {abierta && (
+        <CompetidorPerfil
+          empresa={abierta}
+          rango={series.rangoAbierta}
+          ordenTxt={metrica === "importe" ? "importe" : "adjudicaciones"}
+          totalEmpresas={totalEmpresas}
+          empresaId={perfilId}
+          empresaIds={perfilIds}
+          perfil={perfil}
+          isLoading={perfilLoading}
+          error={perfilError}
+          onRetry={refetchPerfil}
+          enDuelo={rival != null}
+          onClose={cerrarPerfil}
+        />
+      )}
 
-        {/* Los nueve gráficos, como cortes con pestañas de la misma tabla. */}
-        <CompetidoresCortes
-          corte={corte}
-          onCorteChange={setCorte}
-          isLoading={isLoading}
-          barData={series.barData}
-          pieData={series.pieData}
-          scatterData={series.scatterData}
-          scatterTop5={series.scatterTop5}
-          heatmapData={series.heatmapData}
+      <div className={cn("grid grid-cols-1 gap-4", duelo && "xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]")}>
+        {abierta && rival && duelo && (
+          <CompetidoresDuelo nombreA={abierta.nombre} nombreB={rival.nombre} filas={duelo} onQuitar={quitarRival} />
+        )}
+        <CompetidoresHeatmap
+          heatmap={series.heatmap}
           activeCcaa={activeCcaa}
           onToggleCcaa={toggleCcaa}
-          treemapData={series.treemapData}
-          positioningData={series.positioningData}
-          estacionalidadData={series.estacionalidadData}
-          bajasSorted={series.bajasSorted}
-          radarData={series.radarData}
+          filtrado={filtrado}
+          isLoading={isLoading}
         />
       </div>
 
-      {drillDownCompany && (
-        <CompetidoresDossier
-          key={drillDownCompanyId ?? drillDownCompany.nombre}
-          company={drillDownCompany}
-          companyId={drillDownCompanyId}
-          groupIds={drillDownGroupIds}
-          profile={drillDownProfile}
-          recentAwards={drillDownAwards}
-          isLoadingProfile={isLoadingDrillDownProfile}
-          isLoadingAwards={isLoadingDrillDownAwards}
-          onClose={() => startTransition(() => setDrillDownCompany(null))}
-        />
-      )}
+      <CompetidoresRanking
+        ordenados={series.ordenados}
+        tabla={series.tabla}
+        metrica={metrica}
+        totalEmpresas={totalEmpresas}
+        search={search}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={toggleSort}
+        abierta={abierta?.nombre ?? null}
+        rival={rival?.nombre ?? null}
+        vigiladas={vigiladas}
+        onAbrir={abrirEmpresa}
+        onComparar={compararCon}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

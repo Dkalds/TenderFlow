@@ -128,27 +128,32 @@ export function CompanyYearTrend({ rows, compact = false }: CompanyYearTrendProp
         </ol>
       </div>
 
-      <table className="sr-only">
-        <caption>Evolución anual de adjudicaciones</caption>
-        <thead>
-          <tr>
-            <th>Año</th>
-            <th>Adjudicaciones</th>
-            <th>Importe</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((row) => (
-            <tr key={row.anio}>
-              <td>{row.anio}</td>
-              <td>{row.contratos}</td>
-              <td>{row.importe}</td>
-              <td>{row.anio === currentYear ? "Año en curso, dato parcial" : "Ejercicio completo"}</td>
+      {/* `sr-only` en un envoltorio y no en la tabla: una tabla no encoge por
+          debajo de su contenido, así que seguía midiendo su ancho entero fuera
+          de pantalla y ensanchaba la caja con scroll que la contuviera. */}
+      <div className="sr-only">
+        <table>
+          <caption>Evolución anual de adjudicaciones</caption>
+          <thead>
+            <tr>
+              <th>Año</th>
+              <th>Adjudicaciones</th>
+              <th>Importe</th>
+              <th>Estado</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sorted.map((row) => (
+              <tr key={row.anio}>
+                <td>{row.anio}</td>
+                <td>{row.contratos}</td>
+                <td>{row.importe}</td>
+                <td>{row.anio === currentYear ? "Año en curso, dato parcial" : "Ejercicio completo"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

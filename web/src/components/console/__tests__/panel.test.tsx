@@ -198,6 +198,19 @@ describe("StatCell", () => {
     expect(screen.getByText("92%")).toHaveStyle({ color: "rgb(255, 0, 0)" });
   });
 
+  it("pinta el dibujo de la cifra entre el valor y su pie", () => {
+    render(<StatCell label="Oferta única" value="27%" grafico={<svg data-testid="barra" />} hint="cobertura 64%" />);
+    const barra = screen.getByTestId("barra");
+    const posicion = (nodo: Node) => screen.getByText("27%").compareDocumentPosition(nodo);
+    expect(posicion(barra) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(barra.compareDocumentPosition(screen.getByText("cobertura 64%")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("mientras carga no pinta el dibujo: no hay cifra que situar", () => {
+    render(<StatCell label="Oferta única" value="27%" grafico={<svg data-testid="barra" />} loading />);
+    expect(screen.queryByTestId("barra")).not.toBeInTheDocument();
+  });
+
   it("sólo es botón cuando filtra: si no, es un div", () => {
     const onClick = vi.fn();
     const { rerender } = render(<StatCell label="CCAA" value="Madrid" onClick={onClick} />);

@@ -1,8 +1,9 @@
 /**
- * La tarjeta de vigiladas: la lista de empresas y sus señales.
+ * El panel de vigiladas: un carril por empresa y sus señales.
  *
- * Fija que la lista se pinta —hasta 2026-09-25 sólo se contaba—, que cada
- * empresa lleva a su ficha y que la falta de señales no esconde la lista.
+ * Fija que la lista se pinta, que cada empresa lleva a su ficha, que la falta
+ * de señales no esconde la lista y que el carril dice a quien no lo ve lo mismo
+ * que dibuja.
  */
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +15,7 @@ import type { Schemas } from "@/lib/api-types";
 const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }));
 vi.mock("@/lib/api-client", () => ({ apiGet }));
 
-import { CompetidoresMovimientos } from "../_components/competidores-movimientos";
+import { CompetidoresVigilados } from "../_components/competidores-vigilados";
 
 type Movimientos = Schemas["MovimientosVigiladasResult"];
 
@@ -24,12 +25,23 @@ const EMPRESAS: Movimientos["empresas"] = [
   { empresa_id: 9, nombre: "Sur Consultoría", adjudicaciones: 0, importe: 0 },
 ];
 
-function renderTarjeta(movimientos: Partial<Movimientos>) {
+const ENTRADA_EN_GALICIA: NonNullable<Movimientos["senales"]>[number] = {
+  tipo: "nueva_ccaa",
+  empresa_id: 7,
+  empresa: "Ejemplo Digital",
+  titulo: "Ejemplo Digital entra en Galicia",
+  detalle: "Primera adjudicación en Galicia: Servicio de soporte.",
+  licitacion_id: "LIC-1",
+  fecha: "2026-09-10",
+  importe: 400_000,
+};
+
+function renderPanel(movimientos: Partial<Movimientos>) {
   apiGet.mockResolvedValue({ desde: "2026-08-26", dias: 30, senales_truncadas: false, ...movimientos });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <CompetidoresMovimientos />
+      <CompetidoresVigilados />
     </QueryClientProvider>,
   );
 }
@@ -39,9 +51,9 @@ afterEach(() => {
   apiGet.mockReset();
 });
 
-describe("CompetidoresMovimientos", () => {
+describe("CompetidoresVigilados", () => {
   it("lista las vigiladas, cada una hacia su ficha y con lo que ha ganado", async () => {
-    renderTarjeta({ empresas: EMPRESAS, senales: [] });
+    renderPanel({ empresas: EMPRESAS, senales: [] });
 
     const lista = await screen.findByRole("list", { name: "Empresas vigiladas" });
     expect(within(lista).getByRole("link", { name: "Ejemplo Digital" })).toHaveAttribute(
@@ -56,36 +68,37 @@ describe("CompetidoresMovimientos", () => {
   });
 
   it("sin señales lo dice, pero la lista se queda", async () => {
-    renderTarjeta({ empresas: EMPRESAS, senales: [] });
+    renderPanel({ empresas: EMPRESAS, senales: [] });
 
     expect(await screen.findByText("Sin movimientos destacables en este periodo.")).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(EMPRESAS!.length);
   });
 
-  it("las señales van debajo de la lista, con su licitación", async () => {
-    renderTarjeta({
-      empresas: EMPRESAS,
-      senales: [
-        {
-          tipo: "nueva_ccaa",
-          empresa_id: 7,
-          empresa: "Ejemplo Digital",
-          titulo: "Ejemplo Digital entra en Galicia",
-          detalle: "Primera adjudicación en Galicia: Servicio de soporte.",
-          licitacion_id: "LIC-1",
-          fecha: "2026-09-10",
-          importe: 400_000,
-        },
-      ],
-    });
+  it("el carril de cada empresa dice sus movimientos fechados", async () => {
+    renderPanel({ empresas: EMPRESAS, senales: [ENTRADA_EN_GALICIA] });
 
-    expect(await screen.findByText("Ejemplo Digital entra en Galicia")).toBeInTheDocument();
-    expect(screen.getByText("Territorio nuevo")).toBeInTheDocument();
+    // Quien no ve la marca en el carril lee lo mismo: qué pasó y cuándo.
+    expect(await screen.findByRole("img", { name: /^Ejemplo Digital: Territorio nuevo el / })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Norte Sistemas: sin movimientos fechados en la ventana" })).toBeInTheDocument();
+  });
+
+  it("las señales van debajo de la lista, con su licitación", async () => {
+    renderPanel({ empresas: EMPRESAS, senales: [ENTRADA_EN_GALICIA] });
+
+    const movimientos = await screen.findByRole("list", { name: "Movimientos" });
+    expect(within(movimientos).getByText("Ejemplo Digital entra en Galicia")).toBeInTheDocument();
+    expect(within(movimientos).getByText("Territorio nuevo")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ver la licitación LIC-1" })).toHaveAttribute("href", "/detalle?lic=LIC-1");
   });
 
+  it("la ventana es la que manda la API, no una constante de la pantalla", async () => {
+    renderPanel({ dias: 45, empresas: EMPRESAS, senales: [] });
+
+    expect(await screen.findByText("últimos 45 días, sobre adjudicaciones")).toBeInTheDocument();
+  });
+
   it("sin vigiladas explica cómo empezar a vigilar", async () => {
-    renderTarjeta({ empresas: [], senales: [] });
+    renderPanel({ empresas: [], senales: [] });
 
     expect(await screen.findByText(/No vigilas ninguna empresa/)).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Empresas vigiladas" })).not.toBeInTheDocument();

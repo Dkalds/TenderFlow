@@ -1,357 +1,271 @@
 "use client";
 
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
   CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
   Cell,
-  ScatterChart,
-  Scatter,
-  ZAxis,
   Label,
   LabelList,
-  Treemap,
-  Legend,
-  Line,
-  ComposedChart,
+  ReferenceArea,
+  ReferenceLine,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+  ZAxis,
 } from "recharts";
-import * as React from "react";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CAJA_TOOLTIP } from "@/components/charts/chart-tooltip";
-import { TreemapContent } from "@/components/charts/treemap-content";
-import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
-import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
+import type { Schemas } from "@/lib/api-types";
+import { CHART_SERIES } from "@/lib/chart-colors";
+import { formatCompactCurrency, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
-/* ── Types ─────────────────────────────────────────────────────── */
+/* ── Mapa de competidores ──────────────────────────────────────── */
 
-export interface ScatterPoint {
+export const ALTO_MAPA_COMPETIDORES = 380;
+
+export type LenteMapa = "precio" | "clientes";
+
+export interface PuntoMapaCompetidor {
   nombre: string;
-  ticket_medio: number;
-  n_organos: number;
+  x: number;
+  y: number;
+  /** Cuota del importe: el tamaño del punto. */
+  cuota: number;
+  /** Nombre corto junto al punto; vacío en los que no destacan. */
+  etiqueta: string;
+  seleccionado: boolean;
+  vigilada: boolean;
+  empresa: Schemas["CompetitorEntry"];
 }
 
-interface BarEntry {
-  nombre: string;
-  count: number;
+export type Cuadrante = "arribaIzquierda" | "arribaDerecha" | "abajoIzquierda" | "abajoDerecha";
+
+/**
+ * Qué cruza cada lente y cómo se llama cada cuarto del plano. El cuadrante
+ * destacado es el que conviene mirar primero: quien gana contratos grandes
+ * bajando mucho el precio, o quien vive de un solo cliente.
+ */
+const LENTES: Record<
+  LenteMapa,
+  { ejeX: string; ejeY: string; cuadrantes: Record<Cuadrante, string>; destacado: Cuadrante }
+> = {
+  precio: {
+    ejeX: "Baja media: cuánto por debajo del presupuesto gana",
+    ejeY: "Importe medio (escala logarítmica)",
+    cuadrantes: {
+      arribaIzquierda: "Contratos grandes, baja contenida",
+      arribaDerecha: "Contratos grandes, baja agresiva",
+      abajoIzquierda: "Contratos pequeños, baja contenida",
+      abajoDerecha: "Contratos pequeños, baja agresiva",
+    },
+    destacado: "arribaDerecha",
+  },
+  clientes: {
+    ejeX: "Órganos distintos a los que adjudica",
+    ejeY: "Peso de su primer cliente",
+    cuadrantes: {
+      arribaIzquierda: "Pocos clientes y uno manda",
+      arribaDerecha: "Muchos clientes y uno manda",
+      abajoIzquierda: "Pocos clientes, repartidos",
+      abajoDerecha: "Cartera repartida",
+    },
+    destacado: "arribaIzquierda",
+  },
+};
+
+const POSICION_ETIQUETA: Record<
+  Cuadrante,
+  "insideTopLeft" | "insideTopRight" | "insideBottomLeft" | "insideBottomRight"
+> = {
+  arribaIzquierda: "insideTopLeft",
+  arribaDerecha: "insideTopRight",
+  abajoIzquierda: "insideBottomLeft",
+  abajoDerecha: "insideBottomRight",
+};
+
+const CUADRANTES: Cuadrante[] = ["arribaIzquierda", "arribaDerecha", "abajoIzquierda", "abajoDerecha"];
+
+/**
+ * Los lados de un cuadrante que tocan las medianas; los otros dos van al borde.
+ *
+ * En `ReferenceArea` el lado que falta se va al borde del **lienzo**, no del
+ * valor: sin `x2` llega al borde derecho, y sin `y1` al borde de arriba, porque
+ * el eje Y crece hacia arriba y los píxeles hacia abajo. Por eso un cuadrante
+ * de arriba lleva `y2` (su suelo) y uno de abajo lleva `y1` (su techo).
+ */
+export function ladosDe(cuadrante: Cuadrante, medianaX: number, medianaY: number) {
+  return {
+    ...(cuadrante.endsWith("Derecha") ? { x1: medianaX } : { x2: medianaX }),
+    ...(cuadrante.startsWith("arriba") ? { y2: medianaY } : { y1: medianaY }),
+  };
 }
 
-interface PieEntry {
-  name: string;
-  value: number;
-}
-
-interface TreemapEntry {
-  name: string;
-  size: number;
-  count: number;
-  [key: string]: string | number;
-}
-
-interface PositioningEntry {
-  nombre: string;
-  baja_media: number;
-  importe_medio: number;
-  count: number;
-  /** `null` cuando el corpus no reporta ofertantes para esa empresa. */
-  pct_monopolio: number | null;
-}
-
-interface EstacionalidadEntry {
-  mes: string;
-  count: number;
-  importe: number;
-}
-
-/* ── Exported chart components ─────────────────────────────────── */
-
-export const CompetitorsBarChart = React.memo(function CompetitorsBarChart({ data }: { data: BarEntry[] }) {
+function TooltipEmpresa({ punto, lente }: { punto: PuntoMapaCompetidor; lente: LenteMapa }) {
+  const e = punto.empresa;
   return (
-    <ChartErrorBoundary>
-      <ResponsiveContainer width="100%" height={Math.max(400, data.length * 32)}>
-        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: 180 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis type="number" tick={{ fontSize: 12 }} />
-          <YAxis
-            dataKey="nombre"
-            type="category"
-            tick={{ fontSize: 11 }}
-            width={170}
-            tickFormatter={(v: string) => truncate(v, 30)}
-          />
-          <Tooltip formatter={(v) => formatNumber(v as number)} />
-          <Bar dataKey="count" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} name="Adjudicaciones" />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartErrorBoundary>
+    <div className={CAJA_TOOLTIP}>
+      <p className="max-w-[22rem] font-medium text-pretty">{punto.nombre}</p>
+      {lente === "precio" ? (
+        <p className="tf-tnum text-muted-foreground">
+          Baja media {formatPercent(punto.x)} · importe medio {formatCurrency(punto.y)}
+        </p>
+      ) : (
+        <p className="tf-tnum text-muted-foreground">
+          {formatNumber(punto.x)} órganos · el primero pesa el {formatPercent(punto.y)}
+        </p>
+      )}
+      <p className="tf-tnum text-muted-foreground">
+        Cuota {formatPercent(e.cuota)} · {formatNumber(e.count)} adjudicaciones
+      </p>
+      {/* Sin dato de ofertantes no hay porcentaje que dar: un «0,0 %» aquí se
+          lee como «nunca gana sin competencia», que es lo contrario de «no lo
+          sabemos». */}
+      <p className="tf-tnum text-muted-foreground">
+        Gana sin competencia:{" "}
+        {e.pct_monopolio == null ? "sin dato de ofertantes" : formatPercent(e.pct_monopolio)}
+      </p>
+      {punto.vigilada && <p className="font-medium text-foreground">La vigilas</p>}
+    </div>
   );
-});
+}
 
-export const CompetitorsPieChart = React.memo(function CompetitorsPieChart({ data }: { data: PieEntry[] }) {
-  return (
-    <ChartErrorBoundary>
-      <ResponsiveContainer width="100%" height={400}>
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            outerRadius={140}
-            label={({ name, percent }: { name?: string; percent?: number }) =>
-              `${name ?? ""}: ${formatPercent((percent ?? 0) * 100)}`
-            }
-            labelLine={{ strokeWidth: 1 }}
-          >
-            {data.map((_, idx) => (
-              <Cell key={idx} fill={getSeriesColor(idx)} />
-            ))}
-          </Pie>
-          <Tooltip formatter={(v) => formatCurrency(v as number)} />
-        </PieChart>
-      </ResponsiveContainer>
-    </ChartErrorBoundary>
-  );
-});
-
-export const CompetitorsScatterChart = React.memo(function CompetitorsScatterChart({
-  data,
-  top5Names,
+/**
+ * Cada empresa es un punto en el plano de la lente, con su cuota como tamaño.
+ * Las medianas de los puntos dibujados parten el plano en cuatro perfiles.
+ */
+export function CompetidoresMapaChart({
+  puntos,
+  lente,
+  medianaX,
+  medianaY,
+  onEmpresaClick,
 }: {
-  data: ScatterPoint[];
-  top5Names: Set<string>;
+  puntos: PuntoMapaCompetidor[];
+  lente: LenteMapa;
+  medianaX: number | null;
+  medianaY: number | null;
+  onEmpresaClick: (nombre: string) => void;
 }) {
+  const config = LENTES[lente];
+  const conMedianas = medianaX != null && medianaY != null;
   return (
     <ChartErrorBoundary>
-      <ResponsiveContainer width="100%" height={400}>
-        <ScatterChart accessibilityLayer margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+      <ResponsiveContainer width="100%" height={ALTO_MAPA_COMPETIDORES}>
+        {/* `key`: al cambiar de lente cambian las dos escalas (una es
+            logarítmica); el gráfico se monta de nuevo en vez de interpolar
+            entre dos planos que no tienen nada que ver. */}
+        <ScatterChart key={lente} accessibilityLayer margin={{ top: 12, right: 28, bottom: 26, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis
-            type="number"
-            dataKey="ticket_medio"
-            name="Importe medio"
-            tick={{ fontSize: 11 }}
-            tickFormatter={(v: number) => formatCurrency(v)}
-          >
-            <Label value="Importe medio" position="bottom" offset={0} style={{ fontSize: 12 }} />
-          </XAxis>
-          <YAxis type="number" dataKey="n_organos" name="Órganos" tick={{ fontSize: 11 }}>
-            <Label value="Órganos distintos" angle={-90} position="left" offset={0} style={{ fontSize: 12 }} />
-          </YAxis>
-          <ZAxis range={[40, 400]} />
+          {lente === "precio" ? (
+            <XAxis
+              type="number"
+              dataKey="x"
+              name="Baja media"
+              domain={[(min: number) => Math.min(0, Math.floor(min)), "dataMax"]}
+              tick={{ fontSize: 11 }}
+              tickFormatter={(v: number) => formatPercent(v, 0)}
+            >
+              <Label value={config.ejeX} position="bottom" offset={6} fontSize={11} className="fill-muted-foreground" />
+            </XAxis>
+          ) : (
+            <XAxis
+              type="number"
+              dataKey="x"
+              name="Órganos"
+              domain={[0, "dataMax"]}
+              allowDecimals={false}
+              tick={{ fontSize: 11 }}
+              tickFormatter={(v: number) => formatNumber(v)}
+            >
+              <Label value={config.ejeX} position="bottom" offset={6} fontSize={11} className="fill-muted-foreground" />
+            </XAxis>
+          )}
+          {lente === "precio" ? (
+            <YAxis
+              type="number"
+              dataKey="y"
+              name="Importe medio"
+              scale="log"
+              domain={["auto", "auto"]}
+              tick={{ fontSize: 11 }}
+              tickFormatter={(v: number) => formatCompactCurrency(v)}
+              width={72}
+            />
+          ) : (
+            <YAxis
+              type="number"
+              dataKey="y"
+              name="Peso del primer cliente"
+              domain={[0, 100]}
+              tick={{ fontSize: 11 }}
+              tickFormatter={(v: number) => formatPercent(v, 0)}
+              width={72}
+            />
+          )}
+          <ZAxis type="number" dataKey="cuota" name="Cuota" range={[50, 520]} />
+          {conMedianas && (
+            <>
+              {CUADRANTES.map((cuadrante) => {
+                const destacado = cuadrante === config.destacado;
+                return (
+                  <ReferenceArea
+                    key={cuadrante}
+                    {...ladosDe(cuadrante, medianaX, medianaY)}
+                    fill={CHART_SERIES[0]}
+                    fillOpacity={destacado ? 0.06 : 0}
+                    stroke="none"
+                    label={{
+                      value: config.cuadrantes[cuadrante],
+                      position: POSICION_ETIQUETA[cuadrante],
+                      fontSize: 11,
+                      className: destacado ? "fill-primary" : "fill-muted-foreground",
+                    }}
+                  />
+                );
+              })}
+              <ReferenceLine x={medianaX} strokeDasharray="4 4" className="stroke-muted-foreground" />
+              <ReferenceLine y={medianaY} strokeDasharray="4 4" className="stroke-muted-foreground" />
+            </>
+          )}
           <Tooltip
             cursor={{ strokeDasharray: "3 3" }}
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) return null;
-              const d = payload[0].payload as ScatterPoint;
-              return (
-                <div className={CAJA_TOOLTIP}>
-                  <p className="font-semibold">{d.nombre}</p>
-                  <p>Importe medio: {formatCurrency(d.ticket_medio)}</p>
-                  <p>Órganos: {formatNumber(d.n_organos)}</p>
-                </div>
-              );
+            content={({ payload }) => {
+              if (!payload?.[0]) return null;
+              return <TooltipEmpresa punto={payload[0].payload as PuntoMapaCompetidor} lente={lente} />;
             }}
           />
-          <Scatter data={data} fill={CHART_SERIES[0]} fillOpacity={0.7}>
-            <LabelList
-              dataKey="nombre"
-              position="top"
-              style={{ fontSize: 12 }}
-              content={({ x, y, value }) => {
-                if (!top5Names.has(value as string)) return null;
-                return (
-                  <text
-                    x={x as number}
-                    y={(y as number) - 8}
-                    textAnchor="middle"
-                    fontSize={12}
-                    fill="hsl(var(--foreground))"
-                  >
-                    {truncate(value as string, 18)}
-                  </text>
-                );
-              }}
-            />
+          <Scatter
+            data={puntos}
+            shape="circle"
+            legendType="none"
+            className="cursor-pointer"
+            // Sin animación de entrada: es una medida, no algo que se mueva.
+            isAnimationActive={false}
+            onClick={(punto: unknown) => {
+              const nodo = punto as { nombre?: string; payload?: { nombre?: string } } | undefined;
+              const nombre = nodo?.nombre ?? nodo?.payload?.nombre;
+              if (nombre) onEmpresaClick(nombre);
+            }}
+          >
+            {/* A la derecha, en una línea: encima del punto recharts parte el
+                nombre al ancho de la burbuja y lo apila sobre las vecinas. */}
+            <LabelList dataKey="etiqueta" position="right" fontSize={11} className="fill-foreground" />
+            {puntos.map((punto) => (
+              <Cell
+                key={punto.nombre}
+                fill={punto.seleccionado ? "hsl(var(--primary))" : CHART_SERIES[0]}
+                fillOpacity={punto.seleccionado ? 1 : 0.75}
+                stroke={
+                  punto.seleccionado ? "hsl(var(--primary))" : punto.vigilada ? "hsl(var(--foreground))" : "none"
+                }
+                strokeWidth={punto.seleccionado ? 3 : punto.vigilada ? 2 : 0}
+              />
+            ))}
           </Scatter>
         </ScatterChart>
       </ResponsiveContainer>
     </ChartErrorBoundary>
   );
-});
-
-export const CompetitorsTreemap = React.memo(function CompetitorsTreemap({ data }: { data: TreemapEntry[] }) {
-  return (
-    <ChartErrorBoundary>
-      <ResponsiveContainer width="100%" height={400}>
-        <Treemap
-          data={data}
-          dataKey="size"
-          nameKey="name"
-          aspectRatio={4 / 3}
-          stroke="hsl(var(--border))"
-          content={
-            <TreemapContent
-              minWidth={50}
-              minHeight={30}
-              fontSize={11}
-              valueFontSize={10}
-              borderRadius={2}
-              opacity={1}
-              formatValue={(v) => formatCurrency(v)}
-            />
-          }
-        >
-          <Tooltip
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) return null;
-              const d = payload[0].payload;
-              return (
-                <div className={CAJA_TOOLTIP}>
-                  <p className="font-semibold">{d.name}</p>
-                  <p>Importe: {formatCurrency(d.size)}</p>
-                  <p>Adjudicaciones: {formatNumber(d.count)}</p>
-                </div>
-              );
-            }}
-          />
-        </Treemap>
-      </ResponsiveContainer>
-    </ChartErrorBoundary>
-  );
-});
-
-export const CompetitorsPositioningChart = React.memo(function CompetitorsPositioningChart({ data }: { data: PositioningEntry[] }) {
-  const top5Names = new Set(
-    [...data].sort((a, b) => b.count - a.count).slice(0, 5).map((d) => d.nombre),
-  );
-
-  return (
-    <ChartErrorBoundary>
-      <ResponsiveContainer width="100%" height={400}>
-        <ScatterChart accessibilityLayer margin={{ top: 20, right: 20, bottom: 30, left: 20 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis
-            type="number"
-            dataKey="baja_media"
-            name="Baja media"
-            tick={{ fontSize: 11 }}
-            tickFormatter={(v: number) => formatPercent(v, 0)}
-          >
-            <Label value="Baja media (%)" position="bottom" offset={10} style={{ fontSize: 12 }} />
-          </XAxis>
-          <YAxis
-            type="number"
-            dataKey="importe_medio"
-            name="Importe medio"
-            tick={{ fontSize: 11 }}
-            scale="log"
-            domain={["auto", "auto"]}
-            tickFormatter={(v: number) => formatCurrency(v)}
-          >
-            <Label
-              value="Importe medio (escala logarítmica)"
-              angle={-90}
-              position="left"
-              offset={0}
-              style={{ fontSize: 12 }}
-            />
-          </YAxis>
-          <ZAxis dataKey="count" range={[40, 600]} name="Contratos" />
-          <Tooltip
-            cursor={{ strokeDasharray: "3 3" }}
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) return null;
-              const d = payload[0].payload as PositioningEntry;
-              return (
-                <div className={CAJA_TOOLTIP}>
-                  <p className="font-semibold">{d.nombre}</p>
-                  <p>Baja media: {formatPercent(d.baja_media)}</p>
-                  <p>Importe medio: {formatCurrency(d.importe_medio)}</p>
-                  <p>Contratos: {formatNumber(d.count)}</p>
-                  {/* Sin dato de ofertantes no hay porcentaje que dar: un
-                      «0,0 %» aquí se lee como «nunca gana sin competencia»,
-                      que es lo contrario de «no lo sabemos». */}
-                  <p>
-                    Oferta única:{" "}
-                    {d.pct_monopolio == null ? "sin dato de ofertantes" : formatPercent(d.pct_monopolio)}
-                  </p>
-                </div>
-              );
-            }}
-          />
-          <Scatter data={data} fill={CHART_SERIES[2]} fillOpacity={0.7}>
-            <LabelList
-              dataKey="nombre"
-              position="top"
-              content={({ x, y, value }) => {
-                if (!top5Names.has(value as string)) return null;
-                return (
-                  <text
-                    x={x as number}
-                    y={(y as number) - 8}
-                    textAnchor="middle"
-                    fontSize={10}
-                    fill="hsl(var(--foreground))"
-                  >
-                    {truncate(value as string, 18)}
-                  </text>
-                );
-              }}
-            />
-          </Scatter>
-        </ScatterChart>
-      </ResponsiveContainer>
-    </ChartErrorBoundary>
-  );
-});
-
-export const CompetitorsEstacionalidadChart = React.memo(function CompetitorsEstacionalidadChart({ data }: { data: EstacionalidadEntry[] }) {
-  return (
-    <ChartErrorBoundary>
-      <ResponsiveContainer width="100%" height={300}>
-        <ComposedChart accessibilityLayer data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
-          <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            tick={{ fontSize: 11 }}
-            tickFormatter={(v: number) => formatCurrency(v)}
-          />
-          <Tooltip
-            formatter={(v, name) =>
-              name === "Importe"
-                ? formatCurrency(Number(v ?? 0))
-                : formatNumber(Number(v ?? 0))
-            }
-          />
-          <Legend />
-          <Bar
-            yAxisId="left"
-            dataKey="count"
-            fill={CHART_SERIES[0]}
-            radius={[4, 4, 0, 0]}
-            name="Adjudicaciones"
-          />
-          <Line
-            yAxisId="right"
-            type="monotone"
-            dataKey="importe"
-            stroke={CHART_SERIES[1]}
-            strokeWidth={2}
-            dot={{ r: 3 }}
-            name="Importe"
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </ChartErrorBoundary>
-  );
-});
+}
