@@ -3,11 +3,16 @@
 /**
  * Datos y series de la vista Órganos.
  *
- * Dos peticiones con **el mismo ámbito**: el ranking y el drill-down del órgano
- * abierto. Que compartan filtros no es un detalle de implementación — el panel
+ * Dos peticiones con **el mismo ámbito**: el ranking y el perfil del órgano
+ * abierto. Que compartan filtros no es un detalle de implementación — el perfil
  * lleva el nombre del órgano en la cabecera, y responder ahí con el histórico
- * completo mientras la tabla cuenta sólo las SAP es el mismo encabezado sobre
+ * completo mientras el mapa cuenta sólo las SAP es el mismo encabezado sobre
  * dos universos.
+ *
+ * La tercera, `/analytics/overview`, da el total de licitaciones del ámbito que
+ * el titular necesita («10 órganos concentran el 62 % de las 1.284
+ * licitaciones»). Es la misma clave que usa la barra de ámbito para su recuento,
+ * así que no cuesta una petición más.
  */
 
 import { useMemo, useState } from "react";
@@ -16,13 +21,9 @@ import { useSearchParams } from "next/navigation";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useDebounce } from "@/hooks/use-debounce";
-import { EMPTY, foldText } from "@/lib/utils";
+import { foldText, truncate } from "@/lib/utils";
 
-const TIPO_CONTRATO_LABEL: Record<string, string> = {
-  "1": "Servicios",
-  "2": "Suministros",
-  "3": "Obras",
-};
+export type MetricaOrganos = "count" | "importe";
 
 export interface OrganoItem {
   organo_contratacion: string;
@@ -32,18 +33,17 @@ export interface OrganoItem {
   ccaa?: string;
 }
 
-export interface TreemapBreakdownItem {
-  organo: string;
-  tipo_contrato: string;
-  importe: number;
-}
-
 export interface OrganosResponse {
   organos: OrganoItem[];
   total_organos: number;
   importe_total?: number;
   concentracion_top10?: number;
-  treemap_breakdown?: TreemapBreakdownItem[];
+}
+
+/** Lo que el titular toma de `/analytics/overview`; el resto no se lee. */
+interface OverviewTotales {
+  total_licitaciones: number;
+  importe_medio: number;
 }
 
 export interface OrganoKpis {
@@ -75,28 +75,73 @@ export interface TopScoredItem {
   cpv_desc?: string | null;
 }
 
+export interface Adjudicatario {
+  nombre: string;
+  count: number;
+  importe: number;
+}
+
 export interface OrganoDetailResponse {
   kpis: OrganoKpis;
-  top_adjudicatarios: { nombre: string; count: number; importe: number }[];
+  top_adjudicatarios: Adjudicatario[];
   estacionalidad: { mes_numero: number; count: number }[];
   top_scored: TopScoredItem[];
 }
 
-/** Nodo del treemap: jerárquico si el backend manda desglose, plano si no. */
-export type OrganoTreemapNode =
-  | { name: string; children: { name: string; size: number }[] }
-  | { name: string; size: number };
+/** Un órgano en el mapa de compradores. */
+export interface PuntoOrgano {
+  organo: string;
+  ccaa?: string;
+  count: number;
+  importe: number;
+  /** Importe medio por licitación: el tamaño del punto. */
+  medio: number;
+  /** Nombre corto junto al punto, sólo en los que destacan; vacío en el resto. */
+  etiqueta: string;
+  seleccionado: boolean;
+}
+
+/** Una fila del gráfico mariposa: las dos medidas a escala del máximo visible. */
+export interface FilaMariposa {
+  organo: string;
+  ccaa?: string;
+  count: number;
+  importe: number;
+  pctCount: number;
+  pctImporte: number;
+  seleccionado: boolean;
+}
+
+/** Cuántas filas del ranking se pintan en la mariposa. */
+export const FILAS_MARIPOSA = 12;
+
+/** Cuántos puntos llevan su nombre al lado, por cada una de las dos medidas. */
+const ETIQUETAS_POR_MEDIDA = 6;
+
+function mediana(valores: number[]): number | null {
+  if (valores.length < 2) return null;
+  const ordenados = [...valores].sort((a, b) => a - b);
+  const mitad = Math.floor(ordenados.length / 2);
+  return ordenados.length % 2 === 0
+    ? (ordenados[mitad - 1] + ordenados[mitad]) / 2
+    : ordenados[mitad];
+}
 
 export function useOrganosView() {
   const searchParams = useSearchParams();
   // Deep-link externo: `?organo_q=<órgano>` siembra el filtro local. `q`
   // pertenece al ámbito global y useFilteredQuery lo adjunta por separado.
   const [filter, setFilter] = useState(() => searchParams?.get("organo_q") ?? "");
+  const [metrica, setMetrica] = useState<MetricaOrganos>("count");
   const [selectedOrgano, setSelectedOrgano] = useState<string | null>(null);
+  // El perfil arranca abierto con el primer órgano del ranking; cerrarlo es una
+  // decisión aparte de «ninguno elegido», porque sin ella el cierre volvería a
+  // abrir el primero.
+  const [perfilCerrado, setPerfilCerrado] = useState(false);
 
-  // Búsqueda server-side (accent-insensitive): sin q el API devuelve solo el
-  // top-50 por actividad, así que un órgano fuera de ese ranking jamás
-  // aparecería filtrando solo en cliente.
+  // Búsqueda en la propia API (sin tildes): sin q devuelve solo el top-50 por
+  // actividad, así que un órgano fuera de ese ranking jamás aparecería
+  // filtrando solo en cliente.
   const debouncedFilter = useDebounce(filter, 300);
   const { data, isLoading, error, refetch } = useFilteredQuery<OrganosResponse>(
     ["analytics", "organos", debouncedFilter],
@@ -106,28 +151,12 @@ export function useOrganosView() {
     debouncedFilter ? { organo_q: debouncedFilter } : undefined,
   );
 
-  // El drill-down viaja con el mismo ámbito que el ranking del que se abre.
-  // Antes era un `fetch` desnudo sin un solo parámetro: entrando con
-  // `?tecnologia=SAP`, la tabla contaba las licitaciones SAP del órgano y el
-  // panel de al lado respondía con su histórico completo — dos universos, el
-  // mismo encabezado. `useFilteredQuery` además mete los filtros en la key,
-  // así que cambiar de ámbito refetchea en vez de servir el panel anterior.
-  //
-  // El último argumento (`isRealtime`) apaga `keepPreviousData` a propósito: el
-  // panel lleva el nombre del órgano en la cabecera, y servir las cifras del
-  // anterior mientras carga el nuevo es la misma mentira que este cambio viene
-  // a quitar. Aquí se prefiere el esqueleto.
-  const {
-    data: detailData,
-    isLoading: detailLoading,
-    error: detailError,
-    refetch: refetchDetail,
-  } = useFilteredQuery<OrganoDetailResponse>(
-    ["analytics", "organo-detail", selectedOrgano ?? ""],
-    `/api/v1/analytics/organos/${encodeURIComponent(selectedOrgano ?? "")}`,
-    { enabled: !!selectedOrgano, staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
-    undefined,
-    true,
+  // Misma clave que el recuento de la barra de ámbito (`analyticsKeys.overview`),
+  // así que en las pantallas que consumen el ámbito entero comparte caché.
+  const { data: overview } = useFilteredQuery<OverviewTotales>(
+    ["analytics", "overview"],
+    "/api/v1/analytics/overview",
+    { staleTime: 60_000, meta: META_ERROR_EN_LINEA },
   );
 
   const items = useMemo(() => data?.organos ?? [], [data]);
@@ -142,70 +171,118 @@ export function useOrganosView() {
     );
   }, [items, filter]);
 
-  const maxCount = useMemo(
-    () => (filteredItems.length > 0 ? Math.max(...filteredItems.map((i) => i.count)) : 1),
+  const ordenados = useMemo(() => {
+    const valor = metrica === "count" ? (o: OrganoItem) => o.count : (o: OrganoItem) => o.importe;
+    return [...filteredItems].sort((a, b) => valor(b) - valor(a));
+  }, [filteredItems, metrica]);
+
+  const primero = ordenados[0]?.organo_contratacion ?? null;
+  const organoAbierto = perfilCerrado ? null : (selectedOrgano ?? primero);
+  const rangoAbierto =
+    organoAbierto == null ? null : ordenados.findIndex((o) => o.organo_contratacion === organoAbierto) + 1;
+
+  // El perfil viaja con el mismo ámbito que el mapa del que se abre, y sin
+  // `keepPreviousData` (último argumento) a propósito: lleva el nombre del
+  // órgano en la cabecera, y servir las cifras del anterior mientras carga el
+  // nuevo sería el mismo encabezado sobre dos universos. Se prefiere el esqueleto.
+  const {
+    data: detailData,
+    isLoading: detailLoading,
+    error: detailError,
+    refetch: refetchDetail,
+  } = useFilteredQuery<OrganoDetailResponse>(
+    ["analytics", "organo-detail", organoAbierto ?? ""],
+    `/api/v1/analytics/organos/${encodeURIComponent(organoAbierto ?? "")}`,
+    { enabled: !!organoAbierto, staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
+    undefined,
+    true,
+  );
+
+  const medianas = useMemo(
+    () => ({
+      count: mediana(filteredItems.map((o) => o.count)),
+      importe: mediana(filteredItems.map((o) => o.importe)),
+    }),
     [filteredItems],
   );
 
-  const top20 = useMemo(() => filteredItems.slice(0, 20), [filteredItems]);
+  const puntos = useMemo<PuntoOrgano[]>(() => {
+    const porCount = [...filteredItems].sort((a, b) => b.count - a.count).slice(0, ETIQUETAS_POR_MEDIDA);
+    const porImporte = [...filteredItems].sort((a, b) => b.importe - a.importe).slice(0, ETIQUETAS_POR_MEDIDA);
+    const conEtiqueta = new Set([...porCount, ...porImporte].map((o) => o.organo_contratacion));
+    return filteredItems.map((o) => {
+      const seleccionado = o.organo_contratacion === organoAbierto;
+      return {
+        organo: o.organo_contratacion,
+        ccaa: o.ccaa,
+        count: o.count,
+        importe: o.importe,
+        medio: o.count > 0 ? o.importe / o.count : 0,
+        etiqueta: seleccionado || conEtiqueta.has(o.organo_contratacion) ? truncate(o.organo_contratacion, 28) : "",
+        seleccionado,
+      };
+    });
+  }, [filteredItems, organoAbierto]);
 
-  const top15ByImporte = useMemo(
-    () => [...filteredItems].sort((a, b) => b.importe - a.importe).slice(0, 15),
-    [filteredItems],
-  );
+  const mariposa = useMemo<FilaMariposa[]>(() => {
+    const filas = ordenados.slice(0, FILAS_MARIPOSA);
+    const maxCount = Math.max(1, ...filas.map((o) => o.count));
+    const maxImporte = Math.max(1, ...filas.map((o) => o.importe));
+    return filas.map((o) => ({
+      organo: o.organo_contratacion,
+      ccaa: o.ccaa,
+      count: o.count,
+      importe: o.importe,
+      pctCount: (o.count / maxCount) * 100,
+      pctImporte: (o.importe / maxImporte) * 100,
+      seleccionado: o.organo_contratacion === organoAbierto,
+    }));
+  }, [ordenados, organoAbierto]);
 
-  // Hierarchical treemap: organo → tipo_contrato if backend provides breakdown
-  const treemapData = useMemo<OrganoTreemapNode[]>(() => {
-    const breakdown = data?.treemap_breakdown;
-    if (breakdown && breakdown.length > 0) {
-      // Filter by local search if active
-      const relevant = filter
-        ? breakdown.filter((b) => foldText(b.organo).includes(foldText(filter)))
-        : breakdown;
-      const map = new Map<string, { name: string; children: { name: string; size: number }[] }>();
-      for (const item of relevant) {
-        const key = item.organo;
-        if (!map.has(key)) {
-          map.set(key, { name: key.slice(0, 40), children: [] });
-        }
-        const label = TIPO_CONTRATO_LABEL[item.tipo_contrato] ?? item.tipo_contrato ?? "Otro";
-        map.get(key)!.children.push({ name: label, size: item.importe });
-      }
-      return Array.from(map.values());
+  // Concentración de los 10 primeros. Por licitaciones es la cifra de la API
+  // sobre TODO el ámbito. Por importe no hay cifra de la API: se suma el top-10
+  // por importe de la lista recibida (los 50 más activos) contra el importe
+  // total del ámbito, y la vista lo dice como parcial.
+  const importeTotal = data?.importe_total ?? null;
+  const concentracion = useMemo(() => {
+    if (metrica === "count") {
+      return { pct: data?.concentracion_top10 ?? null, parcial: false };
     }
-    // Fallback: flat treemap
-    return filteredItems
-      .filter((i) => i.importe > 0)
-      .slice(0, 30)
-      .map((i) => ({ name: i.organo_contratacion, size: i.importe }));
-  }, [data, filteredItems, filter]);
+    if (importeTotal == null || importeTotal <= 0 || ordenados.length === 0) {
+      return { pct: null, parcial: true };
+    }
+    const top10 = ordenados.slice(0, 10).reduce((suma, o) => suma + o.importe, 0);
+    return { pct: (top10 / importeTotal) * 100, parcial: true };
+  }, [metrica, data, importeTotal, ordenados]);
 
   return {
     data,
     items,
     filteredItems,
-    maxCount,
-    top20,
-    top15ByImporte,
-    treemapData,
-    // Totales reales del backend (sobre TODO el dataset), no la suma del top-50
-    // que devuelve `items`: antes "Concentración Top 10" se inflaba (denominador
-    // = top-50) e "Importe Total" se subestimaba (ignoraba órganos fuera del
-    // top-50). `?? null` y no `?? 0`: un campo que el backend no manda no es un
-    // cero. Un "0 %" de concentración se lee como "mercado perfectamente
-    // repartido" y un "0 €" de importe total como "no se licitó nada" — dos
-    // afirmaciones que el dataset no hace. La tarjeta se abstiene con
-    // `valorOEmpty`.
-    top10Concentration: data?.concentracion_top10 ?? null,
-    totalImporte: data?.importe_total ?? null,
-    topOrgano: items.length > 0 ? items[0].organo_contratacion : EMPTY,
+    puntos,
+    medianas,
+    mariposa,
+    concentracion,
+    metrica,
+    setMetrica,
+    // `?? null` y no `?? 0`: un campo que la API no manda no es un cero.
+    concentracionTop10: data?.concentracion_top10 ?? null,
+    totalLicitaciones: overview?.total_licitaciones ?? null,
+    importeMedio: overview?.importe_medio ?? null,
+    importeTotal,
+    totalOrganos: data?.total_organos ?? null,
     filter,
     setFilter,
-    selectedOrgano,
-    setSelectedOrgano,
+    organoAbierto,
+    rangoAbierto,
+    abrirOrgano: (organo: string) => {
+      setSelectedOrgano(organo);
+      setPerfilCerrado(false);
+    },
+    cerrarPerfil: () => setPerfilCerrado(true),
     detailData,
     detailLoading,
-    /** El fallo del panel del órgano: se dice en el panel, no como «sin datos». */
+    /** El fallo del perfil del órgano: se dice en el perfil, no como «sin datos». */
     detailError,
     refetchDetail: () => void refetchDetail(),
     isLoading,

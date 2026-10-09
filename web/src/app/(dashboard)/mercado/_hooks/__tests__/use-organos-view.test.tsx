@@ -57,11 +57,16 @@ const DETALLE = {
   top_scored: [],
 };
 
+/** El total del ámbito que el titular toma del recuento general. */
+const OVERVIEW = { total_licitaciones: 1_284, importe_medio: 379_000 };
+
 function montar(search: string, lista: unknown = LISTA) {
   searchParamsRef.actual = new URLSearchParams(search);
   const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
     const url = callUrl(call);
-    return Promise.resolve(jsonResponse(/\/analytics\/organos\/[^?]/.test(url) ? DETALLE : lista));
+    if (/\/analytics\/organos\/[^?]/.test(url)) return Promise.resolve(jsonResponse(DETALLE));
+    if (url.includes("/analytics/overview")) return Promise.resolve(jsonResponse(OVERVIEW));
+    return Promise.resolve(jsonResponse(lista));
   });
   vi.stubGlobal("fetch", fetchMock);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -127,62 +132,88 @@ describe("useOrganosView", () => {
     expect(result.current.filteredItems.map((i) => i.organo_contratacion)).toEqual(["Consorci Sanitari"]);
   });
 
-  it("el drill-down sólo se pide al abrir un órgano, con el nombre codificado y el ámbito", async () => {
+  it("el perfil arranca con el primero del ranking; abrir otro pide su detalle con el nombre codificado y el ámbito", async () => {
     const { result, urls } = montar("?tecnologia=SAP");
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(urls().some((u) => u.pathname.startsWith("/api/v1/analytics/organos/"))).toBe(false);
 
-    act(() => result.current.setSelectedOrgano("Servicio Andaluz de Salud"));
+    // Sin nada elegido, el perfil es el del órgano con más licitaciones.
+    expect(result.current.organoAbierto).toBe("Ayuntamiento de Móstoles");
+    expect(result.current.rangoAbierto).toBe(1);
     await waitFor(() => expect(result.current.detailData).toEqual(DETALLE));
 
-    const detalle = urls().find((u) => u.pathname.startsWith("/api/v1/analytics/organos/"))!;
-    expect(decodeURIComponent(detalle.pathname)).toBe("/api/v1/analytics/organos/Servicio Andaluz de Salud");
+    act(() => result.current.abrirOrgano("Servicio Andaluz de Salud"));
+    const esSas = (u: URL) =>
+      decodeURIComponent(u.pathname) === "/api/v1/analytics/organos/Servicio Andaluz de Salud";
+    await waitFor(() => expect(urls().some(esSas)).toBe(true));
+
+    const detalle = urls().find(esSas)!;
     expect(detalle.searchParams.get("tecnologia")).toBe("SAP");
+    expect(result.current.rangoAbierto).toBe(2);
+
+    // Cerrar el perfil no vuelve a abrir el primero.
+    act(() => result.current.cerrarPerfil());
+    expect(result.current.organoAbierto).toBeNull();
   });
 
-  it("totales del backend, no sumas del top: y null cuando el backend no los manda", async () => {
+  it("totales de la API, no sumas del top: y null cuando la API no los manda", async () => {
     const { result } = montar("");
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.totalImporte).toBe(5_000);
-    expect(result.current.top10Concentration).toBe(71.5);
-    expect(result.current.topOrgano).toBe("Ayuntamiento de Móstoles");
-    expect(result.current.maxCount).toBe(9);
-    expect(result.current.top15ByImporte[0].organo_contratacion).toBe("Servicio Andaluz de Salud");
+    expect(result.current.importeTotal).toBe(5_000);
+    expect(result.current.totalOrganos).toBe(3);
+    expect(result.current.concentracionTop10).toBe(71.5);
+    // Por licitaciones, la concentración es la cifra de la API sobre todo el ámbito.
+    expect(result.current.concentracion).toEqual({ pct: 71.5, parcial: false });
+    expect(result.current.totalLicitaciones).toBe(1_284);
 
     cleanup();
     const sinTotales = montar("", { organos: [], total_organos: 0 });
     await waitFor(() => expect(sinTotales.result.current.data).toBeDefined());
-    expect(sinTotales.result.current.totalImporte).toBeNull();
-    expect(sinTotales.result.current.top10Concentration).toBeNull();
-    // Sin órganos, la raya de vacío de la casa (EMPTY), no un guion suelto.
-    expect(sinTotales.result.current.topOrgano).toBe("—");
-    expect(sinTotales.result.current.maxCount).toBe(1);
+    expect(sinTotales.result.current.importeTotal).toBeNull();
+    expect(sinTotales.result.current.concentracionTop10).toBeNull();
+    expect(sinTotales.result.current.concentracion).toEqual({ pct: null, parcial: false });
+    // Sin órganos no hay perfil que abrir.
+    expect(sinTotales.result.current.organoAbierto).toBeNull();
   });
 
-  it("el treemap es jerárquico con desglose y etiqueta los tipos de contrato conocidos", async () => {
+  it("por importe, la concentración se calcula sobre la lista recibida y se declara parcial", async () => {
     const { result } = montar("");
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    expect(result.current.treemapData).toEqual([
-      {
-        name: "Ayuntamiento de Móstoles",
-        children: [
-          { name: "Servicios", size: 60 },
-          { name: "Suministros", size: 40 },
-        ],
-      },
-      // Un código que no está en la tabla se enseña tal cual, no se inventa.
-      { name: "Servicio Andaluz de Salud", children: [{ name: "9", size: 900 }] },
+    act(() => result.current.setMetrica("importe"));
+    // (100 + 900 + 0) sobre los 5.000 de importe total del ámbito.
+    expect(result.current.concentracion).toEqual({ pct: 20, parcial: true });
+    // El ranking y el perfil siguen a la medida: el primero pasa a ser el de más importe.
+    expect(result.current.mariposa.map((f) => f.organo)).toEqual([
+      "Servicio Andaluz de Salud",
+      "Ayuntamiento de Móstoles",
+      "Consorci Sanitari",
     ]);
+    expect(result.current.organoAbierto).toBe("Servicio Andaluz de Salud");
   });
 
-  it("sin desglose el treemap es plano y deja fuera los órganos sin importe", async () => {
-    const { result } = montar("", { ...LISTA, treemap_breakdown: [] });
+  it("la mariposa escala cada ala a su máximo; el mapa trae medianas, etiquetas y el seleccionado", async () => {
+    const { result } = montar("");
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    expect(result.current.treemapData).toEqual([
-      { name: "Ayuntamiento de Móstoles", size: 100 },
-      { name: "Servicio Andaluz de Salud", size: 900 },
+    const filas = result.current.mariposa;
+    expect(filas.map((f) => f.organo)).toEqual([
+      "Ayuntamiento de Móstoles",
+      "Servicio Andaluz de Salud",
+      "Consorci Sanitari",
     ]);
+    expect(filas.map((f) => Math.round(f.pctCount))).toEqual([100, 56, 22]);
+    expect(filas.map((f) => Math.round(f.pctImporte))).toEqual([11, 100, 0]);
+    expect(filas[0].seleccionado).toBe(true);
+
+    expect(result.current.medianas).toEqual({ count: 5, importe: 100 });
+    const puntos = result.current.puntos;
+    expect(puntos.find((p) => p.organo === "Ayuntamiento de Móstoles")).toMatchObject({
+      medio: 100 / 9,
+      seleccionado: true,
+    });
+    // Con tres órganos, los tres destacan y llevan nombre; y el tamaño no
+    // inventa un importe medio donde no hay licitaciones.
+    expect(puntos.every((p) => p.etiqueta !== "")).toBe(true);
+    expect(puntos.find((p) => p.organo === "Consorci Sanitari")?.medio).toBe(0);
   });
 });
