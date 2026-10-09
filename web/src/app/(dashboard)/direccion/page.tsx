@@ -1,166 +1,79 @@
 "use client";
 
-import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
-
-import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
-import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
-import { CONSOLE_SPACES } from "@/lib/console-spaces";
-import { ApiError, apiGet } from "@/lib/api-client";
-import type { Schemas } from "@/lib/api-types";
-import { ICONO_ADMIN } from "@/lib/iconos";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { pursuitKeys } from "@/lib/query-keys";
-import { ActividadEquipo } from "./_components/actividad-equipo";
-import { PerdidasDireccion, RadarDireccion, TarjetasDireccion } from "./_components/cuadro-direccion";
-
 /**
- * F4.2 — Cuadro de mando de dirección.
+ * F4.2 — Dirección: resultados, carga y actividad del equipo.
  *
  * El Embudo son tres barras y cuatro cifras. Con eso un propietario no puede
  * responder ninguna de las preguntas que se hace: dónde ganamos, dónde
- * perdemos, cuánto tarda el ciclo. Este espacio añade los cortes que en el
- * embudo no caben. Tuvo una vista `embudo` que era sólo un `EmptyState`
- * devolviendo a Mi Pipeline; la reestructura 2026-09-20 la retiró —no tenía
- * funcionalidad que conservar— y el embudo vive en Oportunidades →
- * Rendimiento.
+ * perdemos, cuánto tarda el ciclo, si vamos mejor o peor y quién tiene qué
+ * encima de la mesa. El embudo vive en Oportunidades → Rendimiento (por
+ * cohorte de altas); Dirección mira los **cierres** de un periodo frente al
+ * mismo periodo de hace un año.
  *
- * La regla de esta pantalla: **ninguna celda se pinta por debajo del mínimo**.
+ * Tres vistas, en `?vista=` como el resto de espacios:
+ * - **Resultado** (`_components/resultado-view.tsx`): cifras con su periodo
+ *   anterior, previsión, pérdidas, cortes, Radar y lo que falta registrar.
+ * - **Carga del equipo** (`_components/carga-equipo.tsx`).
+ * - **Actividad del equipo**, el mismo feed que Equipo → Actividad.
+ *
+ * Cada vista pide sólo lo suyo. Antes la página pedía el cuadro entero también
+ * para la pestaña de actividad, la tenía esperando a esa consulta —la más
+ * pesada del espacio— y, si fallaba, la actividad tampoco se veía.
+ *
+ * La regla de la pantalla: **ninguna cifra se publica por debajo del mínimo**.
  * El backend devuelve `valor: null` con su `n`, y aquí se enseña el hueco con
- * el motivo. Una tasa de éxito del 100 % sobre dos cierres, en la pantalla que mira
- * dirección, es peor que un hueco: el hueco se pregunta, el número se cree.
+ * el motivo. Una tasa de éxito del 100 % sobre dos cierres, en la pantalla que
+ * mira dirección, es peor que un hueco: el hueco se pregunta, el número se cree.
  */
+import dynamic from "next/dynamic";
 
-type Celda = Schemas["CorteMetrica"];
+import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useActiveOrganizationId, useRolActivo } from "@/hooks/use-organization";
+import { CONSOLE_SPACES } from "@/lib/console-spaces";
+import { ResultadoView } from "./_components/resultado-view";
+import { SinPermisoDireccion } from "./_components/sin-permiso";
 
-function CorteTabla({
-  titulo,
-  filas,
-  minimo,
-}: {
-  titulo: string;
-  filas: Celda[];
-  minimo: number;
-}) {
-  const encabezado = `Tasa de éxito por ${titulo.toLowerCase()}`;
-  if (filas.length === 0) {
-    return (
-      <Panel>
-        <PanelTitle as="h2" title={encabezado} />
-        <PanelEmpty
-          size="sm"
-          title={`Sin cierres para ${titulo.toLowerCase()}`}
-          hint="La tasa de éxito necesita oportunidades cerradas, y todavía no hay ninguna en este corte."
-        />
-      </Panel>
-    );
-  }
-  return (
-    <Panel>
-      <PanelTitle as="h2" title={encabezado} />
-      <p className="mb-3 text-tf-meta text-muted-foreground">
-        Sobre oportunidades cerradas. Se publica a partir de {minimo} cierres: con menos, el porcentaje diría
-        más del azar que del equipo.
-      </p>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{titulo}</TableHead>
-            <TableHead className="w-24 text-right">Cierres</TableHead>
-            <TableHead className="w-32 text-right">Tasa de éxito</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filas.map((fila) => (
-            <TableRow key={fila.clave}>
-              <TableCell className="font-medium">{fila.clave}</TableCell>
-              <TableCell className="tf-tnum text-right">{fila.n}</TableCell>
-              <TableCell className="tf-tnum text-right">
-                {fila.valor == null ? (
-                  <span className="text-muted-foreground text-tf-meta">
-                    aún no ({fila.n}/{minimo})
-                  </span>
-                ) : (
-                  `${Math.round(fila.valor * 100)} %`
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Panel>
-  );
-}
+// Sólo Resultado se ve al entrar. Carga y Actividad viajan aparte, como las
+// pestañas secundarias de Equipo: la ruta tiene un techo de First Load JS
+// (`web/bundle-budget.json`) y la tabla, el selector y el feed no hacen falta
+// para la primera pantalla.
+const loading = () => <Skeleton className="h-80 w-full rounded-xl" />;
+const CargaEquipoView = dynamic(
+  () => import("./_components/carga-equipo").then((modulo) => modulo.CargaEquipoView),
+  { loading },
+);
+const ActividadEquipo = dynamic(
+  () => import("./_components/actividad-equipo").then((modulo) => modulo.ActividadEquipo),
+  { loading },
+);
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "direccion")!;
 
+/** Roles que abren Dirección. El permiso lo impone la API; esto evita pedir lo que va a dar 403. */
+const ROLES_DIRECCION = new Set(["owner", "admin"]);
+
 export default function DireccionPage() {
-  // La vista vive en `?vista=`, como en el resto de espacios: con estado
-  // local, `/direccion?vista=embudo` aterrizaba en Resultado y la URL no
-  // cambiaba al conmutar, así que el corte no era enlazable.
   const { view: vista, setView: setVista } = useSpaceView(SPACE);
   // Sin `organization_id` el backend resuelve la organización **personal**, y
-  // las oportunidades viven en la del equipo: la pantalla salía vacía para
-  // cualquier propietario mientras la Agenda, que sí la manda, las enseñaba.
+  // las oportunidades viven en la del equipo: cada vista la manda.
   const organizationId = useActiveOrganizationId();
-  const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: pursuitKeys.direccion(organizationId),
-    queryFn: () =>
-      apiGet("/api/v1/pursuits/direccion", {
-        params: { query: { organization_id: organizationId ?? undefined } },
-      }),
-    // Y por lo mismo tampoco se pregunta antes de saberlo: el `organization_id`
-    // que falta en el primer render es exactamente el que vaciaba la pantalla.
-    enabled: organizacionResuelta(organizationId),
-    retry: false,
-    // El fallo se pinta en la pantalla: sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  // Con el rol ya conocido, un `member` no lanza consultas que van a dar 403:
+  // ve el aviso en las tres vistas. Mientras no se sabe, las vistas piden y el
+  // 403 del backend dice lo mismo.
+  const rol = useRolActivo();
+  const sinPermiso = rol !== undefined && !ROLES_DIRECCION.has(rol);
 
   return (
     <SpaceShell spaceKey="direccion" view={vista} onViewChange={setVista}>
-      {isPending ? (
-        <Skeleton className="h-64 w-full rounded-xl" />
-      ) : isError ? (
-        // 403 es «tu rol no llega»; cualquier otro fallo es un fallo. Enseñarlo
-        // todo como problema de permisos mandaba a un propietario a pelearse con
-        // un rol correcto mientras la API estaba caída, y hacía invisible la caída.
-        error instanceof ApiError && error.status === 403 ? (
-          <Panel>
-            <PanelEmpty
-              icon={ICONO_ADMIN}
-              title="Dirección es solo para propietarios y administradores"
-              hint="Tu rol en esta organización no permite ver este espacio."
-            />
-          </Panel>
-        ) : (
-          <PanelError title="No se ha podido cargar Dirección" error={error} onRetry={() => void refetch()} />
-        )
+      {sinPermiso ? (
+        <SinPermisoDireccion />
       ) : vista === "actividad" ? (
         <ActividadEquipo organizationId={organizationId} />
+      ) : vista === "carga" ? (
+        <CargaEquipoView organizationId={organizationId} />
       ) : (
-        <div className="flex flex-col gap-6">
-          <TarjetasDireccion tarjetas={data?.tarjetas ?? []} />
-          <CorteTabla
-            titulo="Tecnología"
-            filas={data?.win_rate_por_tecnologia ?? []}
-            minimo={data?.n_minimo ?? 5}
-          />
-          <CorteTabla
-            titulo="Órgano"
-            filas={data?.win_rate_por_organo ?? []}
-            minimo={data?.n_minimo ?? 5}
-          />
-          {data ? (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <PerdidasDireccion cuadro={data} />
-              <RadarDireccion cuadro={data} />
-            </div>
-          ) : null}
-        </div>
+        <ResultadoView organizationId={organizationId} />
       )}
     </SpaceShell>
   );

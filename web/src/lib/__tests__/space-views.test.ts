@@ -47,7 +47,7 @@ describe("SPACE_VIEWS", () => {
     expect(SPACE_VIEWS.ops).toHaveLength(6);
     expect(SPACE_VIEWS.empresas).toHaveLength(2);
     expect(SPACE_VIEWS.cuentas).toHaveLength(2);
-    expect(SPACE_VIEWS.direccion.map((view) => view.key)).toEqual(["resultado", "actividad"]);
+    expect(SPACE_VIEWS.direccion.map((view) => view.key)).toEqual(["resultado", "carga", "actividad"]);
     expect(SPACE_VIEWS.ajustes).toHaveLength(4);
   });
 

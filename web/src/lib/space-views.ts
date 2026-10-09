@@ -95,8 +95,11 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
   // Tuvo una vista `embudo` que era sólo un `EmptyState` devolviendo a Mi
   // Pipeline; la reestructura 2026-09-20 la retiró —no tenía funcionalidad—
   // y el embudo vive en `Oportunidades → Rendimiento`.
+  // La carga del equipo es la foto de hoy —quién tiene qué abierto— y no cabe
+  // en Resultado, que mira cierres de un periodo.
   direccion: [
     { key: "resultado", label: "Resultado" },
+    { key: "carga", label: "Carga del equipo" },
     { key: "actividad", label: "Actividad del equipo" },
   ],
   // Empresas no absorbe ninguna ruta heredada: sus dos vistas siempre

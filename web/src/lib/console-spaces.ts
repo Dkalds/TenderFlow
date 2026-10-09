@@ -138,7 +138,7 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     key: "direccion",
     label: "Dirección",
     slug: "direccion",
-    description: "Resultados y actividad del equipo.",
+    description: "Resultados, carga y actividad del equipo.",
     icon: ICONO_ESPACIO.direccion,
     group: "organizacion",
     // `admin` aquí es un filtro de **navegación**: la autorización real la

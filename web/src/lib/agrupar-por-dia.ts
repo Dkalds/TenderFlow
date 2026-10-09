@@ -1,8 +1,9 @@
 /**
- * Los movimientos de contrato agrupados por el día en que ocurrieron, para
- * pintarlos como línea de tiempo («Hoy», «Ayer», «5 oct 2026»).
+ * Una lista de eventos agrupada por el día en que ocurrieron, para pintarla
+ * como línea de tiempo («Hoy», «Ayer», «5 oct 2026»): los movimientos de
+ * contrato del Resumen y la actividad del equipo.
  *
- * Solo coloca: los eventos llegan ya ordenados de `GET /eventos` y cada grupo
+ * Solo coloca: los eventos llegan ya ordenados del backend y cada grupo
  * conserva ese orden. El día es el del navegador, como el resto de fechas de la
  * consola.
  */
@@ -19,16 +20,23 @@ function claveDia(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-export function agruparPorDia<T extends { fecha?: string | null }>(
+/**
+ * `fechaDe` dice de dónde sale la fecha de cada evento; por defecto, su campo
+ * `fecha` (el de `GET /eventos`).
+ */
+export function agruparPorDia<T>(
   eventos: readonly T[],
   ahora: Date,
+  fechaDe: (evento: T) => string | null | undefined = (evento) =>
+    (evento as { fecha?: string | null }).fecha,
 ): DiaEventos<T>[] {
   const hoy = claveDia(ahora);
   const ayer = claveDia(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - 1));
   const grupos = new Map<string, DiaEventos<T>>();
 
   for (const evento of eventos) {
-    const fecha = evento.fecha ? new Date(evento.fecha) : null;
+    const cruda = fechaDe(evento);
+    const fecha = cruda ? new Date(cruda) : null;
     const valida = fecha !== null && !Number.isNaN(fecha.getTime());
     const clave = valida ? claveDia(fecha) : "sin-fecha";
     let grupo = grupos.get(clave);

@@ -1,6 +1,6 @@
 /**
- * El periodo de la vista Rendimiento, fuera del componente para poder probarlo
- * sin montar nada.
+ * El periodo de las vistas de métricas (Oportunidades → Rendimiento y
+ * Dirección), fuera de los componentes para poder probarlo sin montar nada.
  *
  * `GET /pursuits/metrics` acepta `period_from`/`period_to` y ninguna pantalla
  * los usaba: el embudo hablaba siempre del histórico completo, así que «cómo
@@ -29,11 +29,17 @@ export const PERIODOS = [
  */
 export const PERIODO_POR_DEFECTO: PeriodoClave = "historico";
 
-/** `?periodo=` → clave conocida; cualquier otra cosa cae al histórico. */
-export function periodoDeUrl(valor: string | null | undefined): PeriodoClave {
-  return PERIODOS.some((periodo) => periodo.clave === valor)
-    ? (valor as PeriodoClave)
-    : PERIODO_POR_DEFECTO;
+/**
+ * `?periodo=` → clave conocida; cualquier otra cosa cae a `porDefecto` (el
+ * histórico, salvo que la vista declare otro: Dirección entra por «12 meses»,
+ * porque su pregunta es «vamos mejor o peor» y el histórico no tiene periodo
+ * anterior con el que compararse).
+ */
+export function periodoDeUrl(
+  valor: string | null | undefined,
+  porDefecto: PeriodoClave = PERIODO_POR_DEFECTO,
+): PeriodoClave {
+  return PERIODOS.some((periodo) => periodo.clave === valor) ? (valor as PeriodoClave) : porDefecto;
 }
 
 export interface RangoPeriodo {

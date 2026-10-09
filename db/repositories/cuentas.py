@@ -1212,7 +1212,12 @@ class ActividadRepository:
 
         with connect_read() as conn:
             cur = conn.execute(
+                # ``payload_json`` dice **qué** cambió (``{campo: {from, to}}``
+                # en ``pursuit.updated``): sin él el feed sólo podía decir
+                # «actualizó la oportunidad». Qué campos se publican lo decide
+                # el servicio, no esta consulta.
                 "SELECT e.id, e.pursuit_id, e.event_type, e.actor_user_id, e.created_at, "
+                "       e.payload_json, "
                 "       u.display_name AS actor, p.licitacion_id, p.status, l.titulo "
                 "FROM pursuit_events e "
                 "JOIN pursuits p ON p.id = e.pursuit_id "

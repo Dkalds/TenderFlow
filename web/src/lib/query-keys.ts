@@ -341,13 +341,25 @@ export const pursuitKeys = {
    */
   weightsProposal: ["pursuits", "weights-proposal"] as const,
   /**
-   * Cuadro de mando de Dirección (`GET /pursuits/direccion`, F4.2). Lleva la
-   * organización porque sin ella el backend resuelve la personal, que no tiene
-   * las oportunidades del equipo. Cuelga de `pursuits` por lo mismo que
-   * `weightsProposal`: cerrar una oportunidad cambia el win rate.
+   * Cuadro de mando de Dirección (`GET /pursuits/direccion`, F4.2), por
+   * organización y ventana de cierres. Lleva la organización porque sin ella
+   * el backend resuelve la personal, que no tiene las oportunidades del
+   * equipo, y la ventana porque cada una es una respuesta distinta. Cuelga de
+   * `pursuits` por lo mismo que `weightsProposal`: cerrar una oportunidad
+   * cambia el win rate.
    */
-  direccion: (organizationId: OrganizacionDeClave) =>
-    ["pursuits", "direccion", organizationId] as const,
+  direccion: (
+    organizationId: OrganizacionDeClave,
+    desde: string | null = null,
+    hasta: string | null = null,
+  ) => ["pursuits", "direccion", organizationId, desde, hasta] as const,
+  /**
+   * Carga del equipo (`GET /pursuits/direccion/carga`): quién tiene qué
+   * abierto. Cuelga de `pursuits`: asignar, mover o cerrar una oportunidad
+   * cambia la carga de alguien.
+   */
+  direccionCarga: (organizationId: OrganizacionDeClave) =>
+    ["pursuits", "direccion-carga", organizationId] as const,
   /**
    * Feed de actividad del equipo (`GET /pursuits/actividad`, F4.5), por
    * organización y persona filtrada. Cuelga de `pursuits`: cada mutación de una
