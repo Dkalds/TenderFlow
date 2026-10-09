@@ -73,7 +73,17 @@ _AGENDA_SELECT = (
     "l.fecha_limite AS tender_deadline, l.importe AS importe_eur, "
     "l.organo_contratacion AS organo, l.ccaa, l.tecnologia, l.url, "
     "p.responsible_user_id, u.display_name AS responsible_name, "
-    "p.status, p.decision, p.next_action, p.next_action_due, p.version "
+    "p.status, p.decision, p.next_action, p.next_action_due, p.version, "
+    # Lo que la ingesta sabe del expediente: sin esto la agenda trataba como
+    # viva una oportunidad sobre una licitación ya adjudicada. Los
+    # adjudicatarios solo se piden para la oportunidad del expediente completo:
+    # con lote, la adjudicación de **otro** lote no cierra el suyo, y las filas
+    # de ``adjudicaciones`` no dicen de cuál son (``lote_id`` va vacío).
+    "l.estado AS tender_estado, "
+    "CASE WHEN p.lote_numero IS NULL THEN "
+    "  (SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
+    "    WHERE a.licitacion_id = p.licitacion_id) "
+    "END AS adjudicatarios "
     "FROM pursuits p "
     "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
     "LEFT JOIN users u ON u.id = p.responsible_user_id "

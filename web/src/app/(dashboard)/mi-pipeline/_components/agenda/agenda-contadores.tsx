@@ -89,7 +89,7 @@ export function AgendaContadores({
                   )}
                 >
                   {/* El rótulo delante y la cifra detrás, como en las pestañas:
-                      «5 Plazo pasado» se leía como una frase mal concordada. */}
+                      «5 Por cerrar» se leía como una frase mal concordada. */}
                   <span className="min-w-0 flex-1 leading-tight md:flex-none">{contador.label}</span>
                   <span
                     className={cn(

@@ -4508,6 +4508,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/cartera/{cartera_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Poner a mano la fecha de fin de un contrato en cartera
+         * @description Fija la fecha de fin que la fuente no publicó, con origen `manual`.
+         *
+         *     Devuelve el contrato como queda, con su ventana de relicitación ya
+         *     calculada sobre la fecha nueva. La resincronización diaria no pisa una
+         *     fecha puesta por aquí: quien la corrige a mano sabe algo que la fuente no
+         *     dijo.
+         */
+        patch: operations["patch_cartera_fecha_fin_api_v1_pursuits_cartera__cartera_id__patch"];
+        trace?: never;
+    };
     "/api/v1/pursuits/cartera/{cartera_id}/eventos": {
         parameters: {
             query?: never;
@@ -8753,6 +8778,17 @@ export interface components {
             running: boolean;
         };
         /**
+         * FechaFinManualIn
+         * @description Cuerpo de ``PATCH /pursuits/cartera/{id}``: la fecha de fin del contrato.
+         */
+        FechaFinManualIn: {
+            /**
+             * Fecha Fin
+             * Format: date
+             */
+            fecha_fin: string;
+        };
+        /**
          * FeedActividad
          * @description Página del feed, con su cursor.
          */
@@ -11485,7 +11521,10 @@ export interface components {
          *     - ``pursuit``: ``pursuit_id``/``status``/``decision``/``responsible_*``/
          *       ``next_action``/``version``. ``due_date`` es **solo** el plazo de
          *       presentación; ``next_action``/``next_action_due`` viajan como dato
-         *       informativo, no como la fecha del compromiso.
+         *       informativo, no como la fecha del compromiso. Lleva además lo que la
+         *       ingesta sabe del expediente: ``expediente_estado``,
+         *       ``expediente_cerrado`` y, si ya hay adjudicación publicada, sus
+         *       adjudicatarios en ``adjudicatario``.
          *     - ``tarea``: los mismos campos del pursuit al que pertenece, más
          *       ``tarea_id``/``tarea_texto``. ``tarea_id`` es NULL cuando la fila es la
          *       ``next_action`` manual de un pursuit sin tareas abiertas (se edita con
@@ -11522,6 +11561,13 @@ export interface components {
             due_hora?: string | null;
             /** Due Kind */
             due_kind?: ("plazo" | "accion" | "fin_contrato" | "relicitacion") | null;
+            /**
+             * Expediente Cerrado
+             * @default false
+             */
+            expediente_cerrado: boolean;
+            /** Expediente Estado */
+            expediente_estado?: string | null;
             /** Fecha Fin Efectiva */
             fecha_fin_efectiva?: string | null;
             /** Fecha Fin Origen */
@@ -24765,6 +24811,59 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    patch_cartera_fecha_fin_api_v1_pursuits_cartera__cartera_id__patch: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cartera_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FechaFinManualIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContratoCartera"];
+                };
+            };
+            /** @description No perteneces a esa organización o no puedes escribir */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El contrato no está en la cartera de la organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La fecha no puede ser el fin de ese contrato */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

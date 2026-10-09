@@ -34,7 +34,7 @@ from services.organizations import alcance_resuelto, require_active_member
 from services.pursuit_awards import resultado_sugerido
 from services.watchlist_rules import WatchlistRule, list_rules
 from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
-from shared.dates import a_fecha, hora_local_de_plazo
+from shared.dates import a_fecha, hora_local_de_plazo, hoy_peninsular
 from shared.dto import (
     AgendaBanda,
     AgendaContador,
@@ -60,6 +60,7 @@ from shared.dto import (
     RadarBandaCalidad,
     RadarQuality,
 )
+from shared.estados import ESTADOS_CERRADOS
 from shared.identity import user_key_from_email
 from shared.scoring_weights import (
     KNOWN_WEIGHT_KEYS,
@@ -124,6 +125,26 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
     "withdrawn": frozenset(),
 }
 _TERMINAL_OUTCOME = {"won": "won", "lost": "lost", "withdrawn": "cancelled"}
+
+#: Fases que preceden a la decisión. Con el GO tomado se pueden saltar: existen
+#: para llegar a él, y una vez tomado no les queda nada que frenar.
+_FASES_PREVIAS_AL_GO = frozenset({"identified", "qualifying"})
+
+
+def _transicion_permitida(previous: str, siguiente: str, decision: str) -> bool:
+    """La tabla lineal, más el atajo del GO hacia ``preparing``.
+
+    El embudo era lineal sin excepción: de «Identificada» a «Preparando oferta»
+    hacían falta tres movimientos, y un equipo pequeño no los daba —las
+    oportunidades se quedaban en la primera fase hasta que el plazo pasaba—.
+    El atajo no relaja ninguna otra regla: ``preparing`` sigue exigiendo GO y
+    el GO sigue exigiendo motivo; solo deja de exigirse haber pulsado antes
+    «cualificar» y «llevar a decisión». Lo que sigue a la decisión
+    (presentar, ganar, perder) no se salta.
+    """
+    if siguiente in _TRANSITIONS[previous]:
+        return True
+    return siguiente == "preparing" and decision == "go" and previous in _FASES_PREVIAS_AL_GO
 
 
 class PursuitNotFoundError(LookupError):
@@ -796,7 +817,9 @@ def get_agenda(
     ccaas = csv_values(ccaa)
     responsable = user_id if solo_mios else None
     with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
-        hoy = datetime.now(UTC).date()
+        # Peninsular y no UTC: «faltan N días» se lee contra el calendario de
+        # quien mira, y hasta las 02:00 de verano el día UTC es todavía ayer.
+        hoy = hoy_peninsular()
 
         pursuit_rows, pursuits_truncados = _repo.agenda_rows(
             resolved_id,
@@ -888,13 +911,15 @@ def _normalize_and_validate_update(
 
     previous_status = str(current["status"])
     next_status = str(changes.get("status", previous_status))
-    if next_status != previous_status and next_status not in _TRANSITIONS[previous_status]:
+    next_decision = str(changes.get("decision", current["decision"]))
+    if next_status != previous_status and not _transicion_permitida(
+        previous_status, next_status, next_decision
+    ):
         raise PursuitTransitionError(
             f"Transición no permitida: {previous_status} -> {next_status}."
         )
 
     now = now_utc_iso()
-    next_decision = str(changes.get("decision", current["decision"]))
     next_decision_reason = changes.get("decision_reason", current.get("decision_reason"))
     if next_decision != "pending" and not str(next_decision_reason or "").strip():
         raise PursuitValidationError("Una decisión go/no-go exige motivo.")
@@ -1040,16 +1065,30 @@ _BANDA_ORDEN: dict[AgendaBanda, int] = {
 }
 
 
-def _banda_de_pursuit(status: object, dias: int | None) -> AgendaBanda:
+def _expediente_cerrado(estado: object, adjudicatarios: object) -> bool:
+    """El expediente ya no admite ofertas, diga lo que diga su fecha límite.
+
+    Dos evidencias, y basta una: un estado de cierre (el mismo juicio que usa
+    el Radar, ``shared.estados``) o una adjudicación publicada. La segunda
+    existe porque TED no mueve el estado del anuncio de licitación —la
+    adjudicación llega como otro anuncio— y sin ella esos expedientes
+    seguirían pareciendo abiertos para siempre.
+    """
+    return str(estado or "") in ESTADOS_CERRADOS or bool(str(adjudicatarios or "").strip())
+
+
+def _banda_de_pursuit(status: object, dias: int | None, *, cerrado: bool = False) -> AgendaBanda:
     """Tramo de una oportunidad: su urgencia, salvo que el plazo ya no obligue.
 
     Con la oferta presentada no queda plazo que cumplir, venza cuando venza:
-    lo pendiente es el resultado. Y un plazo que pasó sin oferta no es una
-    urgencia —ya no se puede presentar— sino una oportunidad que nadie cerró.
+    lo pendiente es el resultado. Y si ya no se puede presentar —el plazo pasó
+    o el expediente está cerrado— no es una urgencia sino una oportunidad que
+    nadie cerró. ``cerrado`` manda sobre la fecha: un expediente resuelto sin
+    fecha límite caía en «sin fecha» como si le faltara el siguiente paso.
     """
     if status == "submitted":
         return "en_resolucion"
-    if dias is not None and dias < 0:
+    if cerrado or (dias is not None and dias < 0):
         return "plazo_pasado"
     return _urgencia(dias)
 
@@ -1138,19 +1177,31 @@ def _pursuit_item(row: dict[str, Any], hoy: date) -> PipelineAgendaItem:
     mueven ``due_date``: la acción interna es otro compromiso, con otra fila
     (``tarea``), y mezclar los dos plazos en uno dejaba al usuario sin saber
     cuál de los dos vencía.
+
+    La fila mira además **el expediente**, no solo la oportunidad: si ya está
+    resuelto o adjudicado, lo dice (``expediente_cerrado``, ``adjudicatario``)
+    y cambia de tramo. Sin eso la agenda ofrecía planificar el siguiente paso
+    de una licitación que llevaba años adjudicada.
     """
     deadline = _parse_iso_date(row.get("tender_deadline"))
     dias = (deadline - hoy).days if deadline is not None else None
+    adjudicatarios = str(row.get("adjudicatarios") or "").strip() or None
+    cerrado = _expediente_cerrado(row.get("tender_estado"), adjudicatarios)
     return PipelineAgendaItem.model_validate(
         {
             "kind": "pursuit",
             "urgencia": _urgencia(dias),
-            "banda": _banda_de_pursuit(row.get("status"), dias),
+            "banda": _banda_de_pursuit(row.get("status"), dias, cerrado=cerrado),
             "due_date": deadline,
             "due_hora": hora_local_de_plazo(row.get("tender_deadline")),
             "due_kind": "plazo",
             "dias_restantes": dias,
             **_campos_pursuit(row),
+            # Detrás de los campos comunes: ``_campos_pursuit`` deja
+            # ``adjudicatario`` a NULL, que es lo que vale para una tarea.
+            "adjudicatario": adjudicatarios,
+            "expediente_estado": row.get("tender_estado"),
+            "expediente_cerrado": cerrado,
         }
     )
 

@@ -14,6 +14,12 @@
  * y en un portátil «Abrir ficha» caía fuera de la pantalla. Si aun así el panel
  * no cabe, se desplaza él y no la página.
  *
+ * **De una oportunidad por cerrar no se ofrece planificar.** Ya no admite
+ * oferta: enseñarle el formulario de tareas y una «Próxima acción» vacía era
+ * invitar a apuntar el siguiente paso de algo que no lo tiene. En su lugar va
+ * lo que hace falta para cerrarla: en qué quedó la licitación y quién se la
+ * llevó, si se sabe.
+ *
  * Decisión escrita: el inspector no baja de `xl`. Lo accionable de cada
  * compromiso ya está en su ficha (abrir / completar / preparar renovación /
  * seguir / descartar / apuntar la próxima acción), así que en móvil no se
@@ -27,6 +33,7 @@ import type { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { cn, EMPTY, formatCompactCurrency, formatDate, truncate } from "@/lib/utils";
+import { estadoLabel } from "@/lib/estados";
 import { PanelEmpty, ROTULO_DATO } from "@/components/console/panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
@@ -36,7 +43,7 @@ import { AgendaFechas } from "./agenda-fechas";
 import { AgendaSenal } from "./agenda-senal";
 import { AgendaTareas } from "./agenda-tareas";
 import { bandaDe, claseChip, claveDe, etiquetaKind } from "./agenda-meta";
-import { estadoEnFrase, plazoChip, tipoDeFecha, tituloDe } from "./agenda-texto";
+import { estadoDeFila, plazoChip, tipoDeFecha, tituloDe } from "./agenda-texto";
 
 function Dato({ label, valor }: { label: string; valor: ReactNode }) {
   return (
@@ -76,6 +83,8 @@ const PRIMARIO = "border-primary/30 bg-primary/10 text-primary hover:bg-primary/
 export function AgendaInspector({ agenda }: { agenda: Agenda }) {
   const item = agenda.active;
   const esPursuitOTarea = item?.kind === "pursuit" || item?.kind === "tarea";
+  const porCerrar = item?.kind === "pursuit" && bandaDe(item) === "plazo_pasado";
+  const estado = item ? estadoDeFila(item) : null;
 
   return (
     <aside
@@ -101,12 +110,12 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
                   {item.kind === "renovacion" ? "Anticipar oportunidad" : "Abrir ficha"}
                 </Button>
               )}
-              {item.kind === "pursuit" && bandaDe(item) === "plazo_pasado" && (
+              {porCerrar && (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => agenda.pedirRetirada(item)}
+                  onClick={() => agenda.pedirRetirada([item])}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   No nos presentamos
@@ -153,9 +162,14 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
               }
             />
             {item.ccaa && <Dato label="CCAA" valor={item.ccaa} />}
-            {item.status && <Dato label="Estado" valor={estadoEnFrase(item.status)} />}
+            {estado && <Dato label="Estado" valor={estado} />}
             {item.responsible_name && <Dato label="Responsable" valor={item.responsible_name} />}
-            {item.kind === "renovacion" && item.adjudicatario && (
+            {/* Lo que la ingesta sabe de la licitación, cuando ya está cerrada:
+                es lo que permite decidir cómo se cierra la oportunidad. */}
+            {item.kind === "pursuit" && item.expediente_cerrado && (
+              <Dato label="Licitación" valor={estadoLabel(item.expediente_estado) || "Cerrada"} />
+            )}
+            {(item.kind === "renovacion" || item.kind === "pursuit") && item.adjudicatario && (
               <Dato label="Adjudicatario" valor={truncate(item.adjudicatario, 36)} />
             )}
             {item.kind === "renovacion" && item.riesgo_cambio != null && (
@@ -177,12 +191,19 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
               key={`${claveDe(item)}:${item.version ?? 0}`}
               item={item}
               enfoque={agenda.focoAccion}
+              soloPlazo={porCerrar}
             />
           )}
-          {esPursuitOTarea && item.pursuit_id != null && (
+          {esPursuitOTarea && !porCerrar && item.pursuit_id != null && (
             <AgendaTareas pursuitId={item.pursuit_id} />
           )}
-          {item.kind === "contrato" && <AgendaContrato item={item} />}
+          {item.kind === "contrato" && (
+            <AgendaContrato
+              item={item}
+              guardandoFechaFin={agenda.guardandoFechaFin}
+              onFijarFechaFin={(fecha, alGuardar) => agenda.fijarFechaFin(item, fecha, alGuardar)}
+            />
+          )}
         </div>
       )}
     </aside>

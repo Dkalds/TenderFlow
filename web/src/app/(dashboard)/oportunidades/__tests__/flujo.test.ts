@@ -52,6 +52,20 @@ describe("flujo de una oportunidad", () => {
     expect(motivoBloqueo(en("go_no_go", "go"), "preparing")).toBeNull();
   });
 
+  it("con el GO tomado se pasa a preparar la oferta desde cualquier fase anterior", () => {
+    // Las fases previas existen para llegar a la decisión: con ella, no frenan.
+    expect(motivoBloqueo(en("identified", "go"), "preparing")).toBeNull();
+    expect(motivoBloqueo(en("qualifying", "go"), "preparing")).toBeNull();
+    expect(bloqueoDeFase(en("identified", "go"), "preparing")).toBeNull();
+    // Sin el GO, el salto sigue sin ofrecerse…
+    expect(motivoBloqueo(en("identified"), "preparing")).toBe(
+      "Desde «Identificada» solo se avanza a «En cualificación» o se retira.",
+    );
+    // …y lo que sigue a la decisión no se salta nunca.
+    expect(motivoBloqueo(en("identified", "go"), "submitted")).not.toBeNull();
+    expect(motivoBloqueo(en("identified", "go"), "go_no_go")).not.toBeNull();
+  });
+
   it("con NO-GO solo cabe retirarla", () => {
     expect(motivoBloqueo(en("go_no_go", "no_go"), "withdrawn")).toBeNull();
     expect(resultadosPermitidos(en("go_no_go", "no_go"))).toEqual(["withdrawn"]);

@@ -955,7 +955,8 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios
 - **Problema:** lo que la rama no pudo cerrar por falta de build, de permiso o de alcance:
-  - Los techos de `web/bundle-budget.json` no se han bajado: sin `next build` no se midió. Estimado: −200 a −570 KB sin comprimir según la ruta (/resumen la que más). Las rutas nuevas de `hub-paginado/` salen como «NUEVA».
+  - Los techos de `web/bundle-budget.json` no se han bajado: sin `next build` no se midió. Estimado: −200 a −570 KB sin comprimir según la ruta (/resumen la que más). **Parcial (2026-10-09, issue #428):** las tres rutas de `hub-paginado/` y `/cuentas/[id]` ya tienen techo y el de `/login` se bajó a lo medido; los de las demás rutas siguen sin bajar (holgura medida ese día: 13–36 % en el dashboard salvo `/investigador`, 3,7 %; ~8 % en la superficie pública; 9 % en `/restablecer-contrasena`).
+  - El paso «Bundle analyzer report» de `ci.yml` no genera nada (comprobado el 2026-10-09): `@next/bundle-analyzer` no es compatible con las builds de Turbopack, `ANALYZE=true next build` lo avisa y no escribe `.next/analyze/`, y el artefacto se sube vacío sin fallar. El desglose por módulo sale de `next experimental-analyze -o` (`.next/diagnostics/analyze/`). Cambiar el paso pide OK (workflow); el docstring de `scripts/check_bundle_budget.py` y el comentario de `web/next.config.ts` siguen recomendando el plugin, y este último dice que el control lee `app-build-manifest.json` cuando lee `diagnostics/route-bundle-stats.json`.
   - `.env.example` no declara `RATE_LIMIT_BACKEND=auto` (sigue diciendo `sqlite`), `DB_POOL_MIN_SIZE`, `DB_READ_POOL_MIN_SIZE`, `API_ANALYTICS_STATEMENT_TIMEOUT_MS` ni `UVICORN_LIMIT_CONCURRENCY` (tocar `.env*` pide OK; por eso `render.yaml` tampoco declara la última: `check_env_parity` exige que todo lo de `render.yaml` esté en `.env.example`).
   - Siguen con E/S síncrona en handlers `async`: `_check_budget` de `api/routes/ask.py` (presupuesto LLM en Redis).
   - La imagen Open Graph de la ficha pública (`opengraph-image.tsx`) sigue dinámica.
@@ -1071,6 +1072,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - El 422 de un dominio no concedible se enseña una sola vez, con su motivo (hoy salen dos avisos: el genérico del hook y el global con el `detail`).
 - **Files de partida:** [web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx](../web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx), [web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts](../web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts), [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py)
 - **Riesgo:** bajo — es interfaz sobre rutas que ya existen; lo único nuevo en la API es el nombre de quien concedió.
+
+### [P3] Saber si el **lote** de una oportunidad ya se adjudicó
+- **Área:** db/repositories/pursuits.py (`_AGENDA_SELECT`), scraper (adjudicaciones por lote)
+- **Problema:** desde el 2026-10-09 la agenda mira el expediente y lleva a «Por cerrar» la oportunidad cuya licitación ya está resuelta o adjudicada. Para una oportunidad **de un lote** solo puede fiarse del estado del expediente entero: las filas de `adjudicaciones` no dicen de qué lote son (medido ese día en producción: 77.965 filas, ninguna con `lote_id`), así que la consulta no afirma adjudicatario cuando hay `lote_numero` — la adjudicación de otro lote no cierra el suyo. Consecuencia: un lote ya adjudicado en un expediente que sigue en `PUB` (lo normal en TED) se queda en su tramo de plazo hasta que la fecha pase. Hoy no afecta a nadie (0 oportunidades con lote), y por eso es P3.
+- **Acceptance criteria:**
+  - La ingesta escribe `adjudicaciones.lote_id` cuando la fuente lo publica, o se documenta por qué no puede.
+  - `_AGENDA_SELECT` afirma adjudicatario para una oportunidad con lote solo con las adjudicaciones de ese lote, con su test en `tests/test_agenda_ambito_sql.py` (hoy `test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote` fija lo contrario a propósito).
+- **Files de partida:** [db/repositories/pursuits.py](../db/repositories/pursuits.py), [services/pursuits.py](../services/pursuits.py) (`_expediente_cerrado`), [tests/test_agenda_ambito_sql.py](../tests/test_agenda_ambito_sql.py)
+- **Riesgo:** bajo — la regla actual es la conservadora; relajarla solo añade casos.
 
 ---
 

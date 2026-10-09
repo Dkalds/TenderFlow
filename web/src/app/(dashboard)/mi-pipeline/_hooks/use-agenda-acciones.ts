@@ -2,28 +2,36 @@
 
 /**
  * Lo que se le puede **hacer** a una fila de la agenda: seguir, descartar o
- * posponer una señal; completar una tarea; apuntar la próxima acción de una
- * oportunidad; retirarla si su plazo pasó sin oferta; abrirla.
+ * posponer una señal; completar una tarea; decidir el GO/NO-GO de una
+ * oportunidad, apuntar su próxima acción o retirarla si ya no admite oferta;
+ * poner la fecha de fin de un contrato; abrirla.
  *
  * Son las mismas acciones para el botón de la fila, el del inspector y el
  * atajo de teclado, así que viven aquí y no en cada uno. Qué fila está activa y
  * qué se está viendo es cosa de `use-agenda.ts`.
  *
- * Toda escritura se puede deshacer desde su aviso **salvo retirar**: `withdrawn`
- * es un estado terminal y la API no reabre, y por eso es la única que pasa por
- * un diálogo de confirmación (`porRetirar`).
+ * Toda escritura se puede deshacer desde su aviso **salvo las que cierran una
+ * oportunidad** —retirarla y el NO-GO—: `withdrawn` es un estado terminal y la
+ * API no reabre. Retirar pasa por un diálogo de confirmación y tiene su propio
+ * hook (`use-agenda-retirada.ts`); el NO-GO lo avisa en su propia capa, antes
+ * de guardar.
  */
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/query-feedback";
+import { cambioDeDecision, type Decision } from "@/components/pursuits/decidir-go-no-go";
+import { decisionLabel } from "@/components/pursuits/pursuit-presenters";
+import { useFijarFechaFin } from "@/hooks/use-cartera";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { useDismissRadarTender, useRestoreRadarTender } from "@/hooks/use-radar";
 import { useActualizarTarea, useCrearTarea } from "@/hooks/use-pursuit-tasks";
 import { type PipelineAgendaItem, useCreatePursuit, useMoverPursuit } from "@/hooks/use-pursuits";
 import { DIAS_POSPONER } from "../_components/agenda/agenda-meta";
 import { tituloDe } from "../_components/agenda/agenda-texto";
+import { useAgendaRetirada } from "./use-agenda-retirada";
 
 export function useAgendaAcciones() {
   const router = useRouter();
@@ -33,10 +41,9 @@ export function useAgendaAcciones() {
   const restoreTender = useRestoreRadarTender();
   const actualizarTarea = useActualizarTarea();
   const crearTarea = useCrearTarea();
+  const fechaFin = useFijarFechaFin();
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
-
-  /** La oportunidad que espera confirmación para retirarse, si hay alguna. */
-  const [porRetirar, setPorRetirar] = React.useState<PipelineAgendaItem | null>(null);
+  const retirada = useAgendaRetirada();
 
   const seguir = React.useCallback(
     async (item: PipelineAgendaItem) => {
@@ -143,32 +150,58 @@ export function useAgendaAcciones() {
   );
 
   /**
-   * Retirar como no presentada la oportunidad que espera confirmación.
-   *
-   * El motivo va puesto —`no_presentada`— porque es lo que la acción afirma: el
-   * plazo pasó y no hubo oferta.
+   * Decidir el GO/NO-GO desde la fila. Un solo cambio registra la decisión y
+   * mueve la oportunidad con ella: el GO a «Preparando oferta» —la API deja
+   * saltar las fases previas cuando hay GO— y el NO-GO a retirada.
    */
-  const confirmarRetirada = React.useCallback(() => {
-    const item = porRetirar;
-    if (!item || item.pursuit_id == null || item.version == null) return;
-    moverPursuit.mutate(
-      {
-        id: item.pursuit_id,
-        status: "withdrawn",
-        outcome: "cancelled",
-        outcome_reason_code: "no_presentada",
-        expected_version: item.version,
-      },
-      {
-        onSuccess: () => {
-          setPorRetirar(null);
-          toast.success("Oportunidad retirada como no presentada", { description: tituloDe(item) });
+  const decidir = React.useCallback(
+    (item: PipelineAgendaItem, decision: Decision, alGuardar?: () => void) => {
+      if (item.pursuit_id == null || item.version == null) return;
+      moverPursuit.mutate(
+        { id: item.pursuit_id, ...cambioDeDecision(decision, item.version) },
+        {
+          onSuccess: () => {
+            toast.success(
+              decision.decision === "go"
+                ? `Decisión ${decisionLabel("go")}: pasa a preparar la oferta`
+                : `Decisión ${decisionLabel("no_go")}: oportunidad retirada`,
+              { description: tituloDe(item) },
+            );
+            alGuardar?.();
+          },
+          onError: (err) =>
+            toast.error(
+              err instanceof ApiError && err.status === 409
+                ? "Alguien del equipo la cambió mientras decidías"
+                : "No se pudo guardar la decisión",
+              { description: getErrorMessage(err, "accion") },
+            ),
         },
-        onError: (err) =>
-          toast.error("No se pudo retirar la oportunidad", { description: getErrorMessage(err, "accion") }),
-      },
-    );
-  }, [moverPursuit, porRetirar]);
+      );
+    },
+    [moverPursuit],
+  );
+
+  /** Poner o corregir la fecha de fin de un contrato de la cartera. */
+  const fijarFechaFin = React.useCallback(
+    (item: PipelineAgendaItem, fecha: string, alGuardar?: () => void) => {
+      if (item.cartera_id == null) return;
+      fechaFin.mutate(
+        { carteraId: item.cartera_id, fechaFin: fecha },
+        {
+          onSuccess: () => {
+            toast.success("Fecha de fin guardada", { description: tituloDe(item) });
+            alGuardar?.();
+          },
+          onError: (err) =>
+            toast.error("No se pudo guardar la fecha de fin", {
+              description: getErrorMessage(err, "accion"),
+            }),
+        },
+      );
+    },
+    [fechaFin],
+  );
 
   const abrir = React.useCallback(
     (item: PipelineAgendaItem) => {
@@ -194,11 +227,11 @@ export function useAgendaAcciones() {
     completarTarea,
     apuntarAccion,
     apuntando: crearTarea.isPending,
-    porRetirar,
-    pedirRetirada: setPorRetirar,
-    cancelarRetirada: () => setPorRetirar(null),
-    confirmarRetirada,
-    retirando: moverPursuit.isPending,
+    decidir,
+    decidiendo: moverPursuit.isPending,
+    ...retirada,
+    fijarFechaFin,
+    guardandoFechaFin: fechaFin.isPending,
     abrir,
     verRenovacion: (pursuitId: number) => router.push(`/oportunidades/${pursuitId}`),
     irAlRadar: () => router.push("/radar"),

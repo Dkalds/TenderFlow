@@ -4,6 +4,7 @@ import { ConnectionBanner } from "@/components/connection-banner";
 import { ConsoleFrame } from "@/components/layout/console-frame";
 import { OverlaysDashboard } from "@/components/layout/overlays-dashboard";
 import { OAuthLoginTelemetry } from "@/components/oauth-login-telemetry";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const dynamic = "force-dynamic";
 
@@ -27,20 +28,28 @@ export const metadata: Metadata = {
  * layout raíz, donde los heredaba también la superficie pública (una landing
  * cargando react-query y disparando un `GET /auth/me` por visita anónima), y
  * después copiados a mano en los tres layouts privados.
+ *
+ * `TooltipProvider` es lo único de esa pila que monta este layout y no
+ * `SuperficiePrivada`: solo el dashboard pinta tooltips, y en la pila común
+ * metía Radix Tooltip con su popper en el First Load de `/login` y
+ * `/restablecer-contrasena` (ver `components/providers.tsx`). Envuelve todo lo
+ * que pinta el dashboard, el marco y los overlays incluidos.
  */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <SuperficiePrivada>
-      <OAuthLoginTelemetry />
-      {/* Dentro de `Providers`: lee el caché de React Query para saber si hay
-          reintentos en vuelo (arranque en frío de la API). */}
-      <ConnectionBanner />
-      <ConsoleFrame>{children}</ConsoleFrame>
-      {/* Paleta, copiloto, bandeja de comparación (F2.8: los expedientes
-          marcados siguen a mano al cambiar de pantalla) y ayuda de atajos.
-          Cerrados al entrar, así que se descargan la primera vez que se abren:
-          ver `overlays-dashboard.tsx`. */}
-      <OverlaysDashboard />
+      <TooltipProvider>
+        <OAuthLoginTelemetry />
+        {/* Dentro de `Providers`: lee el caché de React Query para saber si hay
+            reintentos en vuelo (arranque en frío de la API). */}
+        <ConnectionBanner />
+        <ConsoleFrame>{children}</ConsoleFrame>
+        {/* Paleta, copiloto, bandeja de comparación (F2.8: los expedientes
+            marcados siguen a mano al cambiar de pantalla) y ayuda de atajos.
+            Cerrados al entrar, así que se descargan la primera vez que se abren:
+            ver `overlays-dashboard.tsx`. */}
+        <OverlaysDashboard />
+      </TooltipProvider>
     </SuperficiePrivada>
   );
 }

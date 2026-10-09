@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { SUPERFICIE_PANEL, SectionTitle } from "@/components/console/panel";
+import { cambioDeDecision, type Decision, DecidirGoNoGo } from "@/components/pursuits/decidir-go-no-go";
 import { decisionLabel } from "@/components/pursuits/pursuit-presenters";
 import { useUpdatePursuit, type Pursuit, type PursuitDecision } from "@/hooks/use-pursuits";
 import { ApiError } from "@/lib/api-client";
@@ -17,12 +18,18 @@ const OPCIONES: readonly PursuitDecision[] = ["go", "no_go"];
 /**
  * El GO/NO-GO, con su motivo, donde se toma: en la fase «Decisión».
  *
- * Fuera de esa fase se lee pero no se edita, y no por gusto de bloquear: el
- * la API exige GO para preparar o presentar, y un NO-GO sólo lo admite
- * mientras la oportunidad está en «Decisión» o retirada
- * (`services/pursuits.py`). Ofrecer los botones antes o después sería ofrecer
- * un 422. Para los casos raros —corregir una decisión de una oportunidad ya
- * avanzada— sigue estando el formulario completo de «Todos los campos».
+ * Después de esa fase se lee pero no se edita, y no por gusto de bloquear: la
+ * API exige GO para preparar o presentar, y un NO-GO sólo lo admite mientras la
+ * oportunidad está en «Decisión» o retirada (`services/pursuits.py`). Ofrecer
+ * los botones ahí sería ofrecer un 422. Para los casos raros —corregir una
+ * decisión de una oportunidad ya avanzada— sigue estando el formulario completo
+ * de «Todos los campos».
+ *
+ * **Antes de esa fase también se puede decidir**, con «Decidir ya»: la API deja
+ * que un GO lleve la oportunidad directa a «Preparando oferta» desde cualquier
+ * fase anterior, y un NO-GO la retira. Es la misma capa que ofrece la fila de
+ * la Agenda (`DecidirGoNoGo`): quien ya lo tiene claro no tiene por qué pulsar
+ * antes «cualificar» y «llevar a decisión».
  *
  * El motivo no es opcional: la API rechaza una decisión sin él, y es lo
  * único que explica en el historial por qué se fue o no se fue a esta
@@ -72,6 +79,22 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
     );
   };
 
+  const decidirYa = (tomada: Decision, alGuardar: () => void) => {
+    actualizar.mutate(cambioDeDecision(tomada, pursuit.version), {
+      onSuccess: () => {
+        toast.success("Decisión guardada");
+        alGuardar();
+      },
+      onError: (error) =>
+        toast.error(
+          error instanceof ApiError && error.status === 409
+            ? "Alguien del equipo la cambió mientras la tenías abierta"
+            : "No se pudo guardar la decisión",
+          { description: getErrorMessage(error, "accion") },
+        ),
+    });
+  };
+
   if (todaviaNo) {
     return (
       <section
@@ -81,9 +104,14 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
         className={cn(SUPERFICIE_PANEL, "flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-4 py-2.5 outline-none")}
       >
         <SectionTitle className="mb-0">Decisión del comité</SectionTitle>
-        <p className="text-muted-foreground text-tf-meta">
-          Se toma en la fase «Decisión». Hasta entonces, sin decidir.
+        <p className="text-muted-foreground flex-1 text-tf-meta">
+          Se toma en la fase «Decisión», o antes si ya está claro.
         </p>
+        <DecidirGoNoGo
+          etiqueta="Decidir ya"
+          guardando={actualizar.isPending}
+          onGuardar={decidirYa}
+        />
       </section>
     );
   }

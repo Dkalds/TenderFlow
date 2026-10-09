@@ -26,8 +26,10 @@ vi.mock("@/hooks/use-calendario", () => ({
 }));
 // El diálogo de «Preparar renovación» se importa de Oportunidades y trae su
 // propia mutación; aquí sólo importa que la fila del contrato lo ofrezca.
+const fijarFechaFin = vi.fn();
 vi.mock("@/hooks/use-cartera", () => ({
   usePrepararRenovacion: () => ({ mutate: vi.fn(), isPending: false, error: null }),
+  useFijarFechaFin: () => ({ mutate: fijarFechaFin, isPending: false }),
 }));
 
 const toastSuccess = vi.fn();
@@ -64,6 +66,9 @@ const agendaArgs = vi.fn();
 const createPursuit = vi.fn().mockResolvedValue({ id: 42, organization_id: 3 });
 const updateMutate = vi.fn();
 const moverMutate = vi.fn();
+// Retirar va con `mutateAsync`: son varias seguidas y hay que saber cuáles
+// salieron. Decidir es una sola y va con `mutate`.
+const moverAsync = vi.fn();
 vi.mock("@/hooks/use-pursuits", () => ({
   usePipelineAgenda: (filtros: unknown) => {
     agendaArgs(filtros);
@@ -71,7 +76,7 @@ vi.mock("@/hooks/use-pursuits", () => ({
   },
   useCreatePursuit: () => ({ mutateAsync: createPursuit, isPending: false }),
   useUpdatePursuit: () => ({ mutate: updateMutate, isPending: false }),
-  useMoverPursuit: () => ({ mutate: moverMutate, isPending: false }),
+  useMoverPursuit: () => ({ mutate: moverMutate, mutateAsync: moverAsync, isPending: false }),
 }));
 
 const tasksState: { data?: unknown[]; isPending: boolean; error: unknown } = {
@@ -269,17 +274,93 @@ const PRESENTADA = item({
   next_action: null,
 });
 
-/** Oportunidad viva sin tarea ni próxima acción. */
+/** Oportunidad viva y ya decidida, sin tarea ni próxima acción. */
 const SIN_PASO = item({
   licitacion_id: "EXP-7",
   pursuit_id: 17,
   titulo: "Integraciones con la plataforma de contratación",
+  status: "preparing",
+  decision: "go",
+  next_action: null,
+  next_action_due: null,
+  tareas_abiertas: 0,
+  cuenta_en: ["plazo_semana", "sin_paso"],
+});
+
+/** Oportunidad viva a la que le falta lo primero: decidir si se va. */
+const SIN_DECIDIR = item({
+  banda: "semana",
+  licitacion_id: "EXP-6",
+  pursuit_id: 16,
+  titulo: "Migración a S/4HANA de la Diputación",
   status: "identified",
   decision: "pending",
   next_action: null,
   next_action_due: null,
   tareas_abiertas: 0,
+  version: 3,
   cuenta_en: ["plazo_semana", "go_no_go", "sin_paso"],
+});
+
+/** Sin plazo, pero sobre una licitación que ya se adjudicó a otros. */
+const RESUELTA = item({
+  banda: "plazo_pasado",
+  urgencia: "sin_fecha",
+  due_date: null,
+  dias_restantes: null,
+  licitacion_id: "EXP-5",
+  pursuit_id: 15,
+  titulo: "Acuerdo marco de consultoría SAP",
+  status: "identified",
+  decision: "pending",
+  next_action: null,
+  next_action_due: null,
+  version: 6,
+  expediente_estado: "RES",
+  expediente_cerrado: true,
+  adjudicatario: "Indra, Accenture",
+  cuenta_en: ["plazo_pasado"],
+});
+
+/** Otro plazo pasado, para cerrar varias de una vez. */
+const PASADO_2 = item({
+  banda: "plazo_pasado",
+  urgencia: "vencida",
+  due_date: "2026-07-20",
+  dias_restantes: -24,
+  licitacion_id: "EXP-4",
+  pursuit_id: 14,
+  titulo: "Licencias SAP del Ayuntamiento",
+  status: "identified",
+  decision: "pending",
+  next_action: null,
+  next_action_due: null,
+  version: 2,
+  cuenta_en: ["plazo_pasado"],
+});
+
+/** Contrato de la cartera cuya fuente no publicó ni fecha de fin ni duración. */
+const CONTRATO_SIN_FIN = item({
+  kind: "contrato",
+  banda: "sin_fecha",
+  urgencia: "sin_fecha",
+  due_kind: "fin_contrato",
+  due_date: null,
+  dias_restantes: null,
+  licitacion_id: "CON-3",
+  titulo: "Soporte de la plataforma tributaria",
+  organo: "Agencia Tributaria de Catalunya",
+  status: null,
+  decision: null,
+  version: null,
+  next_action: null,
+  next_action_due: null,
+  pursuit_id: 92,
+  cartera_id: 8,
+  fecha_fin_efectiva: null,
+  fecha_fin_origen: null,
+  renovacion_pursuit_id: null,
+  prorrogas_aplicadas: 0,
 });
 
 /**
@@ -301,6 +382,8 @@ function enCarril(carril: "compromisos" | "triaje") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  moverAsync.mockReset();
+  moverAsync.mockResolvedValue({});
   agendaState.data = payload();
   agendaState.isPending = false;
   agendaState.error = null;
@@ -687,7 +770,7 @@ describe("AgendaView — plazos que ya no obligan", () => {
     agendaState.data = payload({ items: [item({}), PASADO] });
     render(<AgendaView />);
 
-    expect(screen.getByText(/Plazo pasado · 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Por cerrar · 1/)).toBeInTheDocument();
     expect(screen.queryByText(/Vencidas/)).toBeNull();
   });
 
@@ -698,22 +781,19 @@ describe("AgendaView — plazos que ya no obligan", () => {
     fireEvent.click(within(lista()).getByRole("button", { name: "No nos presentamos" }));
 
     // Retirar no se deshace: la API no reabre una oportunidad retirada.
-    expect(moverMutate).not.toHaveBeenCalled();
+    expect(moverAsync).not.toHaveBeenCalled();
     const dialogo = screen.getByRole("dialog", { name: "Retirar como no presentada" });
     expect(within(dialogo).getByText("Soporte Basis del SMS")).toBeInTheDocument();
 
     fireEvent.click(within(dialogo).getByRole("button", { name: "Retirar" }));
 
-    expect(moverMutate).toHaveBeenCalledWith(
-      {
-        id: 19,
-        status: "withdrawn",
-        outcome: "cancelled",
-        outcome_reason_code: "no_presentada",
-        expected_version: 4,
-      },
-      expect.anything(),
-    );
+    expect(moverAsync).toHaveBeenCalledWith({
+      id: 19,
+      status: "withdrawn",
+      outcome: "cancelled",
+      outcome_reason_code: "no_presentada",
+      expected_version: 4,
+    });
   });
 
   it("cancelar el diálogo no toca la oportunidad", () => {
@@ -723,7 +803,7 @@ describe("AgendaView — plazos que ya no obligan", () => {
     fireEvent.click(within(lista()).getByRole("button", { name: "No nos presentamos" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
 
-    expect(moverMutate).not.toHaveBeenCalled();
+    expect(moverAsync).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -760,7 +840,7 @@ describe("AgendaView — contadores que filtran", () => {
     expect(grupo.getByRole("button", { name: /Acciones hoy o vencidas/ })).toHaveTextContent("1");
     expect(grupo.getByRole("button", { name: /Go\/No-Go pendientes/ })).toHaveTextContent("2");
     expect(grupo.getByRole("button", { name: /Sin próxima acción/ })).toHaveTextContent("0");
-    expect(grupo.getByRole("button", { name: /Plazo pasado/ })).toHaveTextContent("0");
+    expect(grupo.getByRole("button", { name: /Por cerrar/ })).toHaveTextContent("0");
     // Lo que está en juego es lo que todavía se puede presentar.
     expect(grupo.getByRole("button", { name: /Plazos en 7 días/ })).toHaveTextContent("940 mil €");
   });
@@ -799,7 +879,7 @@ describe("AgendaView — contadores que filtran", () => {
   it("un contador a cero no se puede pulsar", () => {
     render(<AgendaView />);
 
-    expect(within(contadores()).getByRole("button", { name: /Plazo pasado/ })).toBeDisabled();
+    expect(within(contadores()).getByRole("button", { name: /Por cerrar/ })).toBeDisabled();
   });
 
   it("entrar con `?filtro=` ya filtra: el enlace es compartible", () => {
@@ -812,14 +892,14 @@ describe("AgendaView — contadores que filtran", () => {
   });
 
   it("si el filtro se queda sin filas, lo dice y deja quitarlo", () => {
-    // Pasa al retirar la última de «Plazo pasado» con el filtro puesto: el
+    // Pasa al retirar la última de «Por cerrar» con el filtro puesto: el
     // vacío de la agenda («Sin compromisos por delante») habría sido mentira.
     agendaState.data = payload({ items: [item({})] });
     irA("/mi-pipeline?filtro=plazo_pasado");
     render(<AgendaView />);
 
     expect(screen.queryByText("Sin compromisos por delante")).toBeNull();
-    expect(screen.getByText("Nada en «Plazo pasado»")).toBeInTheDocument();
+    expect(screen.getByText("Nada en «Por cerrar»")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Quitar el filtro" }));
     expect(window.location.search).toBe("");
@@ -1041,5 +1121,335 @@ describe("AgendaView — inspector ordenado", () => {
     render(<AgendaView />);
 
     expect(within(inspector()).getByLabelText("Editar la próxima acción a mano")).toBeInTheDocument();
+  });
+});
+
+describe("AgendaView — el expediente ya cerrado", () => {
+  it("la oportunidad sobre una licitación adjudicada va a «Por cerrar», aunque no tenga plazo", () => {
+    agendaState.data = payload({ items: [item({}), RESUELTA] });
+    render(<AgendaView />);
+
+    expect(screen.getByText(/Por cerrar · 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sin fecha/)).toBeNull();
+    // Sin días que contar, el aviso dice en qué quedó la licitación.
+    expect(within(lista()).getByText("adjudicada")).toBeInTheDocument();
+    // Delante de todo: en una ficha móvil la línea se corta, y lo que no puede
+    // perderse es en qué quedó la licitación.
+    expect(
+      within(lista()).getByText(/^Adjudicada a Indra, Accenture · Plazo de presentación · Identificada/),
+    ).toBeInTheDocument();
+    // Lo que toca es cerrarla: ni decidir ni planificar el siguiente paso.
+    expect(within(lista()).getByRole("button", { name: "No nos presentamos" })).toBeInTheDocument();
+    expect(within(lista()).queryByRole("button", { name: "Decidir" })).toBeNull();
+    expect(within(lista()).queryByRole("button", { name: "Apuntar acción" })).toBeNull();
+  });
+
+  it("sin adjudicatario publicado, dice en qué quedó la licitación", () => {
+    agendaState.data = payload({
+      items: [{ ...RESUELTA, adjudicatario: null, expediente_estado: "ANUL" }],
+    });
+    render(<AgendaView />);
+
+    expect(within(lista()).getByText("anulada")).toBeInTheDocument();
+    expect(within(lista()).getByText(/^Licitación anulada · Plazo de presentación · /)).toBeInTheDocument();
+  });
+
+  it("con el plazo pasado y además adjudicada, conserva los días y dice a quién", () => {
+    agendaState.data = payload({
+      items: [{ ...PASADO, expediente_cerrado: true, expediente_estado: "ADJ", adjudicatario: "Indra" }],
+    });
+    render(<AgendaView />);
+
+    expect(within(lista()).getByText("−12 d")).toBeInTheDocument();
+    expect(within(lista()).getByText(/Adjudicada a Indra/)).toBeInTheDocument();
+  });
+
+  it("la oferta presentada sobre una licitación adjudicada pide registrar el resultado", () => {
+    agendaState.data = payload({
+      items: [{ ...PRESENTADA, expediente_cerrado: true, expediente_estado: "ADJ", adjudicatario: "Indra" }],
+    });
+    render(<AgendaView />);
+
+    expect(within(lista()).getByText(/Adjudicada a Indra/)).toBeInTheDocument();
+    fireEvent.click(within(lista()).getByRole("button", { name: "Registrar resultado" }));
+    expect(push).toHaveBeenCalledWith("/oportunidades/18");
+  });
+
+  it("mientras no se resuelva, la presentada solo ofrece abrir su ficha", () => {
+    agendaState.data = payload({ items: [PRESENTADA] });
+    render(<AgendaView />);
+
+    expect(within(lista()).queryByRole("button", { name: "Registrar resultado" })).toBeNull();
+    expect(within(lista()).getByRole("button", { name: "Abrir ficha" })).toBeInTheDocument();
+  });
+
+  it("de una oportunidad por cerrar el inspector no ofrece tareas nuevas", () => {
+    agendaState.data = payload({ items: [RESUELTA] });
+    render(<AgendaView />);
+
+    expect(within(inspector()).queryByPlaceholderText("Añadir una tarea")).toBeNull();
+    expect(within(inspector()).queryByText("Próxima acción")).toBeNull();
+    expect(within(inspector()).getByText("Indra, Accenture")).toBeInTheDocument();
+    expect(within(inspector()).getByText("Resuelta")).toBeInTheDocument();
+    expect(within(inspector()).getByRole("button", { name: "No nos presentamos" })).toBeInTheDocument();
+  });
+});
+
+describe("AgendaView — decidir desde la fila", () => {
+  function decidir(opcion: "GO" | "NO-GO", motivo: string) {
+    fireEvent.click(within(lista()).getByRole("button", { name: "Decidir" }));
+    fireEvent.click(screen.getByRole("button", { name: opcion }));
+    fireEvent.change(screen.getByLabelText("Motivo de la decisión"), { target: { value: motivo } });
+  }
+
+  it("a la oportunidad sin decidir le ofrece decidir, antes que apuntar una acción", () => {
+    agendaState.data = payload({ items: [SIN_DECIDIR] });
+    render(<AgendaView />);
+
+    expect(within(lista()).getByRole("button", { name: "Decidir" })).toBeInTheDocument();
+    expect(within(lista()).queryByRole("button", { name: "Apuntar acción" })).toBeNull();
+    // Y sigue dejando abrir su ficha, que en móvil no tiene otro camino.
+    fireEvent.click(within(lista()).getByRole("button", { name: "Abrir ficha" }));
+    expect(push).toHaveBeenCalledWith("/oportunidades/16");
+  });
+
+  it("el GO con su motivo la lleva a preparar la oferta en un solo cambio", () => {
+    agendaState.data = payload({ items: [SIN_DECIDIR] });
+    render(<AgendaView />);
+
+    decidir("GO", "  Encaja con la cartera  ");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar decisión" }));
+
+    expect(moverMutate).toHaveBeenCalledWith(
+      {
+        id: 16,
+        status: "preparing",
+        decision: "go",
+        decision_reason: "Encaja con la cartera",
+        expected_version: 3,
+      },
+      expect.anything(),
+    );
+  });
+
+  it("el NO-GO la retira, y lo avisa antes de guardar", () => {
+    agendaState.data = payload({ items: [SIN_DECIDIR] });
+    render(<AgendaView />);
+
+    decidir("NO-GO", "Sin solvencia técnica");
+    expect(screen.getByText(/se retira y sale de la agenda\. No se puede reabrir/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar decisión" }));
+
+    expect(moverMutate).toHaveBeenCalledWith(
+      {
+        id: 16,
+        status: "withdrawn",
+        outcome: "cancelled",
+        outcome_reason_code: "no_presentada",
+        decision: "no_go",
+        decision_reason: "Sin solvencia técnica",
+        expected_version: 3,
+      },
+      expect.anything(),
+    );
+  });
+
+  it("sin elegir o sin motivo no hay nada que guardar", () => {
+    agendaState.data = payload({ items: [SIN_DECIDIR] });
+    render(<AgendaView />);
+
+    fireEvent.click(within(lista()).getByRole("button", { name: "Decidir" }));
+    expect(screen.getByRole("button", { name: "Guardar decisión" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "GO" }));
+    // La API rechaza una decisión sin motivo: ofrecer el botón sería ofrecer un 422.
+    expect(screen.getByRole("button", { name: "Guardar decisión" })).toBeDisabled();
+    expect(moverMutate).not.toHaveBeenCalled();
+  });
+
+  it("filtrando por «Sin próxima acción», la fila ofrece apuntarla", () => {
+    agendaState.data = payload({ items: [SIN_DECIDIR] });
+    irA("/mi-pipeline?filtro=sin_paso");
+    render(<AgendaView />);
+
+    expect(within(lista()).getByRole("button", { name: "Apuntar acción" })).toBeInTheDocument();
+    expect(within(lista()).queryByRole("button", { name: "Decidir" })).toBeNull();
+  });
+
+  it("la que ya está decidida no ofrece decidir otra vez", () => {
+    agendaState.data = payload({ items: [SIN_PASO] });
+    render(<AgendaView />);
+
+    expect(within(lista()).queryByRole("button", { name: "Decidir" })).toBeNull();
+  });
+
+  it("a menos de una semana del plazo y sin decidir, la fila lo avisa", () => {
+    agendaState.data = payload({ items: [SIN_DECIDIR] });
+    render(<AgendaView />);
+
+    expect(within(lista()).getByText("Sin decidir")).toBeInTheDocument();
+    // El aviso sustituye a la coletilla: no se dice dos veces.
+    expect(within(lista()).queryByText(/Identificada, sin decidir/)).toBeNull();
+  });
+
+  it("con el plazo lejos, lo dice en la línea y sin alarma", () => {
+    agendaState.data = payload({
+      items: [{ ...SIN_DECIDIR, banda: "mes", urgencia: "mes", dias_restantes: 20, cuenta_en: ["go_no_go", "sin_paso"] }],
+    });
+    render(<AgendaView />);
+
+    expect(within(lista()).queryByText("Sin decidir")).toBeNull();
+    expect(
+      within(lista()).getByText(/Plazo de presentación · Identificada, sin decidir · Adri Speck/),
+    ).toBeInTheDocument();
+  });
+
+  it("lo que deja el filtro de Go/No-Go dice que está sin decidir", () => {
+    // El contador contaba por decisión y la fila redactaba por fase: el filtro
+    // dejaba filas que solo decían «Identificada».
+    agendaState.data = payload({
+      items: [
+        item({}),
+        { ...SIN_DECIDIR, banda: "mes", urgencia: "mes", dias_restantes: 20, cuenta_en: ["go_no_go"] },
+      ],
+    });
+    irA("/mi-pipeline?filtro=go_no_go");
+    render(<AgendaView />);
+
+    expect(within(lista()).queryByText("Mantenimiento S/4")).toBeNull();
+    expect(within(lista()).getByText(/Identificada, sin decidir/)).toBeInTheDocument();
+  });
+});
+
+describe("AgendaView — cerrar varias de una vez", () => {
+  const TRES = [PASADO, PASADO_2, RESUELTA];
+
+  it("con una sola por cerrar no hay acción en bloque", () => {
+    agendaState.data = payload({ items: [PASADO] });
+    render(<AgendaView />);
+
+    expect(screen.queryByRole("button", { name: /Retirar las/ })).toBeNull();
+  });
+
+  it("las retira todas con una sola confirmación, cada una con su versión", async () => {
+    agendaState.data = payload({ items: TRES });
+    render(<AgendaView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retirar las 3" }));
+
+    const dialogo = screen.getByRole("dialog", { name: "Retirar como no presentadas" });
+    expect(within(dialogo).getAllByRole("checkbox")).toHaveLength(3);
+    expect(moverAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Retirar 3" }));
+
+    await waitFor(() => expect(moverAsync).toHaveBeenCalledTimes(3));
+    expect(moverAsync.mock.calls.map(([llamada]) => [llamada.id, llamada.expected_version])).toEqual([
+      [19, 4],
+      [14, 2],
+      [15, 6],
+    ]);
+    for (const [llamada] of moverAsync.mock.calls) {
+      expect(llamada).toMatchObject({
+        status: "withdrawn",
+        outcome: "cancelled",
+        outcome_reason_code: "no_presentada",
+      });
+    }
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("3 oportunidades retiradas como no presentadas"),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("deja fuera la que sí se presentó", async () => {
+    agendaState.data = payload({ items: TRES });
+    render(<AgendaView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retirar las 3" }));
+    const dialogo = screen.getByRole("dialog", { name: "Retirar como no presentadas" });
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Licencias SAP del Ayuntamiento" }));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Retirar 2" }));
+
+    await waitFor(() => expect(moverAsync).toHaveBeenCalledTimes(2));
+    expect(moverAsync.mock.calls.map(([llamada]) => llamada.id)).toEqual([19, 15]);
+  });
+
+  it("sin ninguna marcada no hay nada que retirar", () => {
+    agendaState.data = payload({ items: [PASADO, PASADO_2] });
+    render(<AgendaView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retirar las 2" }));
+    const dialogo = screen.getByRole("dialog", { name: "Retirar como no presentadas" });
+    for (const casilla of within(dialogo).getAllByRole("checkbox")) fireEvent.click(casilla);
+
+    expect(within(dialogo).getByRole("button", { name: "Retirar" })).toBeDisabled();
+  });
+
+  it("si una falla, lo dice y no da las demás por perdidas", async () => {
+    moverAsync.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("conflicto")).mockResolvedValueOnce({});
+    agendaState.data = payload({ items: TRES });
+    render(<AgendaView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retirar las 3" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Retirar como no presentadas" })).getByRole("button", {
+        name: "Retirar 3",
+      }),
+    );
+
+    // No se corta en el primer fallo: las otras dos se retiran igual.
+    await waitFor(() => expect(moverAsync).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "1 de 3 no se pudo retirar",
+        expect.objectContaining({ description: expect.stringContaining("Licencias SAP del Ayuntamiento") }),
+      ),
+    );
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("AgendaView — contrato sin fecha de fin", () => {
+  it("ofrece ponerla desde la fila, que es lo que le falta para tener ventana", () => {
+    agendaState.data = payload({ items: [CONTRATO_SIN_FIN] });
+    render(<AgendaView />);
+
+    fireEvent.click(within(lista()).getByRole("button", { name: "Poner fecha de fin" }));
+    fireEvent.change(screen.getByLabelText("Fecha de fin del contrato"), {
+      target: { value: "2027-06-30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    expect(fijarFechaFin).toHaveBeenCalledWith(
+      { carteraId: 8, fechaFin: "2027-06-30" },
+      expect.anything(),
+    );
+  });
+
+  it("sin fecha no hay nada que guardar", () => {
+    agendaState.data = payload({ items: [CONTRATO_SIN_FIN] });
+    render(<AgendaView />);
+
+    fireEvent.click(within(lista()).getByRole("button", { name: "Poner fecha de fin" }));
+
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled();
+  });
+
+  it("y sigue dejando abrir el contrato desde la fila", () => {
+    agendaState.data = payload({ items: [CONTRATO_SIN_FIN] });
+    render(<AgendaView />);
+
+    fireEvent.click(within(lista()).getByRole("button", { name: "Ver contrato" }));
+    expect(push).toHaveBeenCalledWith("/oportunidades/92");
+  });
+
+  it("el contrato que ya tiene fecha deja corregirla desde el inspector", () => {
+    agendaState.data = payload({ items: [CONTRATO_VENTANA] });
+    render(<AgendaView />);
+
+    fireEvent.click(within(inspector()).getByRole("button", { name: "Cambiar la fecha de fin" }));
+    // Parte de la fecha que hay: corregir un día no obliga a teclearla entera.
+    expect(screen.getByLabelText("Fecha de fin del contrato")).toHaveValue("2027-03-12");
   });
 });

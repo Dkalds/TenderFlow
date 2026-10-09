@@ -672,6 +672,66 @@ class TestBanda:
         item = sp._pursuit_item(_pursuit_row(tender_deadline=plazo), self.HOY)
         assert (item.banda, item.urgencia) == (banda, banda)
 
+    def test_un_expediente_resuelto_sin_plazo_es_un_cierre_pendiente(self) -> None:
+        """Sin fecha límite no hay plazo que medir, pero ya no hay nada que licitar.
+
+        Caía en «Sin fecha» como una oportunidad viva a la que le faltaba el
+        siguiente paso, y la franja la contaba en «Go/No-Go pendientes».
+        """
+        item = sp._pursuit_item(
+            _pursuit_row(
+                tender_deadline=None,
+                status="identified",
+                decision="pending",
+                tender_estado="RES",
+                adjudicatarios="Indra, Accenture",
+            ),
+            self.HOY,
+        )
+        # El reloj no cambia: sigue sin fecha. Lo que cambia es el tramo.
+        assert (item.urgencia, item.dias_restantes) == ("sin_fecha", None)
+        assert item.banda == "plazo_pasado"
+        assert (item.expediente_cerrado, item.expediente_estado) == (True, "RES")
+        assert item.adjudicatario == "Indra, Accenture"
+
+    @pytest.mark.parametrize("estado", ["RES", "ADJ", "ANUL"])
+    def test_un_estado_de_cierre_cierra_aunque_el_plazo_no_haya_pasado(self, estado: str) -> None:
+        item = sp._pursuit_item(
+            _pursuit_row(tender_deadline="2026-08-20", status="qualifying", tender_estado=estado),
+            self.HOY,
+        )
+        assert (item.banda, item.urgencia) == ("plazo_pasado", "semana")
+
+    def test_una_adjudicacion_publicada_cierra_aunque_el_estado_siga_abierto(self) -> None:
+        """TED no mueve el estado del anuncio: la adjudicación llega aparte."""
+        item = sp._pursuit_item(
+            _pursuit_row(
+                tender_deadline="2026-08-20",
+                status="qualifying",
+                tender_estado="PUB",
+                adjudicatarios="Indra",
+            ),
+            self.HOY,
+        )
+        assert (item.banda, item.expediente_cerrado) == ("plazo_pasado", True)
+
+    @pytest.mark.parametrize("estado", ["PUB", "EV", None])
+    def test_un_expediente_abierto_no_cambia_de_tramo(self, estado: str | None) -> None:
+        item = sp._pursuit_item(
+            _pursuit_row(tender_deadline="2026-08-16", status="qualifying", tender_estado=estado),
+            self.HOY,
+        )
+        assert (item.banda, item.expediente_cerrado, item.adjudicatario) == ("semana", False, None)
+
+    def test_una_oferta_presentada_sobre_un_expediente_resuelto_sigue_esperando(self) -> None:
+        """Lo pendiente es registrar el resultado, y la fila ya sabe quién ganó."""
+        item = sp._pursuit_item(
+            _pursuit_row(status="submitted", tender_estado="ADJ", adjudicatarios="Indra"),
+            self.HOY,
+        )
+        assert item.banda == "en_resolucion"
+        assert (item.expediente_cerrado, item.adjudicatario) == (True, "Indra")
+
     def test_una_tarea_vencida_sigue_siendo_vencida(self) -> None:
         """Llega tarde, pero todavía se puede hacer: eso sí es una urgencia."""
         item = sp._tarea_item(
@@ -735,6 +795,12 @@ class TestContadores:
         «plazos esta semana», «Go/No-Go pendientes» y «sin próxima acción».
         """
         [item] = sp._marcar([sp._pursuit_item(self._viva(tender_deadline="2026-08-01"), self.HOY)])
+        assert item.cuenta_en == ["plazo_pasado"]
+
+    def test_un_expediente_resuelto_solo_cuenta_como_cierre_pendiente(self) -> None:
+        """Ni decisión pendiente ni «sin siguiente paso», aunque no tenga plazo."""
+        fila = self._viva(tender_deadline=None, tender_estado="RES", adjudicatarios="Indra")
+        [item] = sp._marcar([sp._pursuit_item(fila, self.HOY)])
         assert item.cuenta_en == ["plazo_pasado"]
 
     def test_una_oportunidad_viva_cuenta_en_cada_reloj_que_le_toca(self) -> None:
@@ -943,7 +1009,7 @@ class _Dependencias:
 
 @pytest.fixture()
 def agenda_deps(monkeypatch: pytest.MonkeyPatch) -> _Dependencias:
-    hoy = datetime.now(UTC).date()
+    hoy = sp.hoy_peninsular()
     pursuits = _RepoStub([_pursuit_row(tender_deadline=(hoy + timedelta(days=3)).isoformat())])
     tareas = _RepoStub([_tarea_row(tarea_vence=(hoy + timedelta(days=2)).isoformat())])
     deps = _Dependencias(pursuits, tareas)
@@ -1155,7 +1221,7 @@ def test_get_agenda_declara_el_corte_de_tareas(monkeypatch: pytest.MonkeyPatch) 
 def test_get_agenda_la_senal_lleva_la_hora_de_su_plazo(
     agenda_deps: _Dependencias, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    hoy = datetime.now(UTC).date()
+    hoy = sp.hoy_peninsular()
     plazo = f"{(hoy + timedelta(days=1)).isoformat()}T10:00:00+00:00"
     monkeypatch.setattr(
         sp,
@@ -1191,3 +1257,89 @@ def test_update_normaliza_next_action_y_serializa_fecha() -> None:
     assert changes["next_action"] == "Subir oferta"
     # TEXT ISO en BD: comparable en el diff y serializable en el evento JSON.
     assert changes["next_action_due"] == "2026-08-20"
+
+
+def test_get_agenda_cuenta_los_dias_desde_el_hoy_peninsular(
+    agenda_deps: _Dependencias, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pasada la medianoche peninsular, el plazo de hoy es «hoy» y no «1 d».
+
+    La agenda medía contra el día UTC: durante las dos primeras horas del día
+    (una en invierno) todo plazo salía un día más lejos de lo que estaba.
+    """
+    monkeypatch.setattr(sp, "hoy_peninsular", lambda: date(2026, 10, 15))
+    agenda_deps.pursuits._rows[:] = [_pursuit_row(tender_deadline="2026-10-15")]
+    agenda_deps.tareas._rows[:] = []
+
+    respuesta = sp.get_agenda(1, user_key="uk", organization_id=7)
+
+    [oportunidad] = [item for item in respuesta.items if item.kind == "pursuit"]
+    assert (oportunidad.dias_restantes, oportunidad.banda) == (0, "hoy")
+
+
+# ── Decidir desde cualquier fase: el GO salta a preparación ─────────────────
+
+
+class TestSaltoConGo:
+    """Con el GO tomado, las fases anteriores ya no tienen nada que frenar.
+
+    El embudo era lineal sin excepción: de «Identificada» a «Preparando oferta»
+    hacían falta tres movimientos y un motivo, y un equipo pequeño no los daba
+    —de catorce oportunidades, dos con decisión registrada—. Las fases previas
+    existen para llegar a la decisión; una vez tomada, se puede ir directo.
+    """
+
+    def _actual(self, **overrides: Any) -> dict[str, Any]:
+        actual: dict[str, Any] = {
+            "status": "identified",
+            "decision": "pending",
+            "decision_reason": None,
+            "outcome": "pending",
+            "next_action": None,
+            "next_action_due": None,
+            "submitted_at": None,
+            "closed_at": None,
+            "version": 1,
+        }
+        actual.update(overrides)
+        return actual
+
+    @pytest.mark.parametrize("fase", ["identified", "qualifying", "go_no_go"])
+    def test_el_go_lleva_a_preparacion_desde_cualquier_fase_anterior(self, fase: str) -> None:
+        cambios = sp._normalize_and_validate_update(
+            self._actual(status=fase),
+            {"status": "preparing", "decision": "go", "decision_reason": "Encaja"},
+            organization_id=7,
+        )
+        assert (cambios["status"], cambios["decision"]) == ("preparing", "go")
+        assert cambios["decision_at"] is not None
+
+    def test_un_go_ya_registrado_tambien_deja_saltar(self) -> None:
+        """El GO pudo anotarse antes sin mover la fase: lo que cuenta es tenerlo."""
+        cambios = sp._normalize_and_validate_update(
+            self._actual(decision="go", decision_reason="Encaja"),
+            {"status": "preparing"},
+            organization_id=7,
+        )
+        assert cambios["status"] == "preparing"
+
+    def test_sin_go_el_salto_sigue_siendo_una_transicion_no_permitida(self) -> None:
+        with pytest.raises(sp.PursuitTransitionError, match="identified -> preparing"):
+            sp._normalize_and_validate_update(
+                self._actual(), {"status": "preparing"}, organization_id=7
+            )
+
+    def test_el_go_no_deja_saltarse_la_presentacion(self) -> None:
+        """Solo se salta lo que precede a la decisión, no lo que la sigue."""
+        with pytest.raises(sp.PursuitTransitionError, match="identified -> submitted"):
+            sp._normalize_and_validate_update(
+                self._actual(),
+                {"status": "submitted", "decision": "go", "decision_reason": "Encaja"},
+                organization_id=7,
+            )
+
+    def test_el_go_sigue_exigiendo_motivo(self) -> None:
+        with pytest.raises(sp.PursuitValidationError, match="motivo"):
+            sp._normalize_and_validate_update(
+                self._actual(), {"status": "preparing", "decision": "go"}, organization_id=7
+            )

@@ -20,19 +20,32 @@
  *
  * `anidada` es la tarea que va justo debajo de su oportunidad: no repite de
  * quién es ni el importe de la licitación, que ya están en la fila de encima.
+ *
+ * **El aviso** (`avisoDeFila`) va delante de la línea de contexto y en ámbar:
+ * «5 d» y, dos puntos más allá y en gris, «Identificada» eran dos datos
+ * sueltos; juntos son que el plazo cae esta semana y nadie ha decidido si se
+ * va. Es lo único de la línea que no puede perderse al recortarla.
  */
 
 import { cn, EMPTY, formatCompactCurrency } from "@/lib/utils";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
 import { AgendaAccion, type AccionesFila } from "./agenda-accion";
-import { claseChip, claseDeIcono, etiquetaKind, GRID, ICONOS } from "./agenda-meta";
-import { fechaDeFila, metaLinea, plazoChip, tituloDe } from "./agenda-texto";
+import {
+  type AgendaContador,
+  claseChip,
+  claseDeIcono,
+  etiquetaKind,
+  GRID,
+  ICONOS,
+} from "./agenda-meta";
+import { avisoDeFila, fechaDeFila, metaLinea, plazoChip, tituloDe } from "./agenda-texto";
 
 export function AgendaFila({
   item,
   activa,
   anidada = false,
   rowPad,
+  filtro = null,
   onSeleccionar,
   acciones,
 }: {
@@ -40,11 +53,14 @@ export function AgendaFila({
   activa: boolean;
   anidada?: boolean;
   rowPad: string;
+  /** El contador que filtra la lista; decide qué paso ofrece la fila primero. */
+  filtro?: AgendaContador | null;
   onSeleccionar: () => void;
   acciones: AccionesFila;
 }) {
   const Icono = ICONOS[anidada ? "anidada" : claseDeIcono(item)];
   const fecha = fechaDeFila(item);
+  const aviso = avisoDeFila(item);
 
   return (
     <div
@@ -56,7 +72,7 @@ export function AgendaFila({
       // de pantalla anunciaba «… 940 mil € Preparar renovación» antes de que el
       // usuario supiera de qué contrato hablaba. Lleva la línea entera aunque la
       // fila vaya anidada: quien no ve la de encima no sabe de quién es.
-      aria-label={`${etiquetaKind(item)}: ${tituloDe(item)}. ${metaLinea(item)}${fecha ? `. ${fecha}` : ""}`}
+      aria-label={`${etiquetaKind(item)}: ${tituloDe(item)}. ${aviso ? `${aviso}. ` : ""}${metaLinea(item)}${fecha ? `. ${fecha}` : ""}`}
       tabIndex={0}
       onClick={onSeleccionar}
       onDoubleClick={(event) => {
@@ -114,6 +130,12 @@ export function AgendaFila({
             {tituloDe(item)}
           </p>
           <p className="truncate text-tf-micro text-muted-foreground">
+            {aviso && (
+              <>
+                <span className="font-semibold text-warning">{aviso}</span>
+                {" · "}
+              </>
+            )}
             {metaLinea(item, { anidada })}
           </p>
         </div>
@@ -126,7 +148,7 @@ export function AgendaFila({
           {anidada ? null : item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
         </span>
         <span className="flex min-w-0 flex-none justify-end">
-          <AgendaAccion item={item} acciones={acciones} />
+          <AgendaAccion item={item} acciones={acciones} filtro={filtro} />
         </span>
       </div>
     </div>
