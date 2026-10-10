@@ -88,14 +88,16 @@ mismas:
 | `ENV` | `prod` | — |
 | `APP_PROFILE` | `worker` | — |
 | `REQUIREMENTS_FILE` | `requirements-pipeline.txt` | — (sin ella la imagen no lleva lxml ni scikit-learn) |
-| `DATABASE_URL`, `DATABASE_SSL_ROOT_CERT` | igual que la API | `tenderflow-api` (rol `tenderflow_app`, el mismo que usa Actions) |
+| `DATABASE_URL`, `DATABASE_SSL_ROOT_CERT` | igual que la API | `tenderflow-api` (rol `tenderflow_app`, el mismo que usa Actions). El certificado va en la imagen: `/app/db/certs/prod-ca-2021.crt` |
 | `DB_POOL_SIZE`, `DB_READ_POOL_SIZE` | `2`, `2` | — (presupuesto del pooler, ver `render.yaml`) |
 | `REDIS_URL`, `REDIS_PASSWORD` | igual que la API | `tenderflow-api` |
 | `NVIDIA_API_KEY` | igual que la API | `tenderflow-api` |
 | `AUDIT_HMAC_KEY` | igual que la API | `tenderflow-api` |
 | `SENTRY_DSN` | igual que la API (opcional) | `tenderflow-api` |
 | `JOBS_LOCK_TTL_SEGUNDOS` | `900` | — |
-| `ALERT_EMAIL_TO`, `ALERT_SMTP_USER`, `ALERT_SMTP_PASSWORD` | los de alertas | `tenderflow-alertmanager` |
+| `ALERT_EMAIL_TO`, `ALERT_SMTP_USER`, `ALERT_SMTP_PASSWORD` | los de alertas, **las tres juntas** | `tenderflow-alertmanager`. Con `ALERT_EMAIL_TO` y sin contraseña el worker no arranca en `prod`. Son también las credenciales SMTP con las que salen los digests a usuarios (`observability/mailer.py`) |
+| `WEBHOOK_ALLOWED_HOSTS` | igual que la API | `tenderflow-api`. El cierre reintenta los webhooks salientes; sin la allowlist quedan deshabilitados |
+| `EMAIL_BACKEND`, `EMAIL_FROM`, `EMAIL_FROM_NAME` y la clave de su proveedor | solo si la API las tiene | `tenderflow-api`. Sin ellas los digests salen por SMTP con `ALERT_SMTP_USER` de remitente, que es lo que hacía Actions |
 | `ALERT_MIN_LEVEL` | solo si está definida en Actions | GitHub → Settings → Variables → Actions |
 | `GITHUB_TOKEN` | token *fine-grained* solo sobre `Dkalds/TenderFlow`, con `Contents: Read-only` y nada más | <https://github.com/settings/personal-access-tokens/new> (no `settings/keys`, que son deploy keys SSH). El scoring descarga el modelo de la Release `ml-models`; sin token, la llamada va anónima y degrada a baseline. Al caducar pasa lo mismo, y avisa por correo: apuntá la fecha. *Actions: write* no sirve de nada aquí: el paso semanal de aprendizaje activo solo puede lanzar `train-model.yml` dentro de Actions (necesita también `GITHUB_REPOSITORY` y `GITHUB_REF_NAME`), y en el worker avisa por correo para lanzarlo a mano |
 | `PSCP_DATASET_ID`, `TACRC_INDEX_URL` | los de Actions | GitHub → Settings → Variables. Sin ellas la fuente se declara `disabled` |
