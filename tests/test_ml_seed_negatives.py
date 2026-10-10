@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import scraper.ml_training as mt
+import scraper.seed_negatives as mt
 
 
 def test_seed_negatives_spreads_across_months(monkeypatch) -> None:

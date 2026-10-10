@@ -90,7 +90,7 @@ def test_run_no_entrena_por_debajo_del_suelo() -> None:
     with (
         patch.object(tech_training_run, "contar_etiquetas_independientes", return_value=33),
         patch.object(tech_training_run, "umbral_etiquetas_independientes", return_value=50),
-        patch("scraper.tech_classifier.train_from_db") as entrenar,
+        patch("services.ml.tech_classifier.train_from_db") as entrenar,
     ):
         resultado = run()
 
@@ -103,7 +103,7 @@ def test_run_entrena_cuando_hay_etiquetas() -> None:
     with (
         patch.object(tech_training_run, "contar_etiquetas_independientes", return_value=700),
         patch.object(tech_training_run, "umbral_etiquetas_independientes", return_value=50),
-        patch("scraper.tech_classifier.train_from_db", return_value=_metrics()) as entrenar,
+        patch("services.ml.tech_classifier.train_from_db", return_value=_metrics()) as entrenar,
     ):
         resultado = run()
 
@@ -120,7 +120,7 @@ def test_el_log_de_metricas_lleva_los_conflictos_llm_keywords() -> None:
         patch.object(tech_training_run, "contar_etiquetas_independientes", return_value=700),
         patch.object(tech_training_run, "umbral_etiquetas_independientes", return_value=50),
         patch(
-            "scraper.tech_classifier.train_from_db",
+            "services.ml.tech_classifier.train_from_db",
             return_value=_metrics(label_source_counts=counts, label_sources=counts),
         ),
         patch.object(tech_training_run, "log") as mock_log,

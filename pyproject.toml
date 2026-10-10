@@ -173,8 +173,8 @@ ignore = [
 "scheduler/healthcheck.py" = ["TID251"]
 "scheduler/retention.py" = ["TID251"]
 "scheduler/watchlist_rules_alerts.py" = ["TID251"]
-"scraper/ml_training.py" = ["TID251", "S608"]  # SQL built from internal schema strings
-"scraper/tech_classifier.py" = ["TID251"]
+"scraper/seed_negatives.py" = ["TID251", "S608"]  # SQL built from internal schema strings
+"services/ml/tech_classifier.py" = ["TID251"]
 "scripts/rotate_api_keys.py" = ["TID251"]
 "scripts/seed_dev.py" = ["TID251"]
 "services/analytics/scoring_signals.py" = ["TID251"]
@@ -190,7 +190,7 @@ ignore = [
 # ── fin RATCHET TID251 ──
 # Archivos no-TID con permisos especiales
 "db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports
-"scraper/ml_classifier.py" = ["E402"]  # E402 re-exports at module bottom
+"services/ml/sap_classifier.py" = ["E402"]  # E402 re-exports at module bottom
 "api/routes/licitaciones.py" = ["E402"]  # TypeVar declared before imports for Python 3.11 compatibility
 # S608: SQL built from internal dataclass-field/schema constants, not user input.
 # These files ONLY construct SQL from controlled code constants — no user data reaches the column/table names.
@@ -233,6 +233,12 @@ exclude = ["db/alembic/versions/v58_security_identity_hardening.py", "*.md"]
 "db.connection.connect_read".msg = "Lectura: abrir conexiones solo dentro de db/ — AGENTS.md §3.10, ADR-022."
 "db.database.connect".msg = "Facade: mismo ban que db.connection.connect."
 "db.database.connect_read".msg = "Facade: mismo ban que db.connection.connect_read."
+# Alias de compatibilidad de los módulos de ML que se mudaron a services/ml/.
+# Existen solo para que joblib.load resuelva los .pkl ya publicados; el código
+# importa del destino. Se quitan de aquí cuando se borre el alias.
+"scraper.ml_classifier".msg = "Alias de compatibilidad para pickles: importá de services.ml.sap_classifier."
+"scraper.tech_classifier".msg = "Alias de compatibilidad para pickles: importá de services.ml.tech_classifier."
+"scraper.ml_pipeline".msg = "Alias de compatibilidad para pickles: importá de services.ml.classifier_pipeline."
 
 [tool.mypy]
 python_version = "3.11"

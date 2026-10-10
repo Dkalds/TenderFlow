@@ -116,7 +116,7 @@ _ALLOWLIST: dict[str, str] = {
         "un agregado: cada licitacion lleva su propio resumen ml_*, y una "
         "duplicada que se quedara sin puntuar mostraria resumen vacio en su "
         "ficha. Es la misma consulta que ya corria inline en "
-        "scraper/ml_training.py (fuera del escaner) hasta que T3 la movio a db/ "
+        "services/ml/classifier_training.py (fuera del escaner) hasta que T3 la movio a db/ "
         "el 2026-09-18; la dedupe se aplica al agregar, no al etiquetar."
     ),
     "predicciones.purgar_cerradas": (

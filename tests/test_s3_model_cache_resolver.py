@@ -21,8 +21,8 @@ from typing import Any
 import pytest
 
 import api.model_cache as cache_mod
-from scraper.ml_classifier import DEGRADACION_VERSION_MISMATCH
-from scraper.ml_classifier import SAPClassifier as _SAPClassifierReal
+from services.ml.sap_classifier import DEGRADACION_VERSION_MISMATCH
+from services.ml.sap_classifier import SAPClassifier as _SAPClassifierReal
 
 
 class _ClasificadorFalso:
@@ -41,7 +41,7 @@ class _ClasificadorFalso:
 
 @pytest.fixture(autouse=True)
 def _clasificador_falso(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("scraper.ml_classifier.SAPClassifier", _ClasificadorFalso)
+    monkeypatch.setattr("services.ml.sap_classifier.SAPClassifier", _ClasificadorFalso)
     cache_mod.invalidate_classifier_cache()
     yield
     cache_mod.invalidate_classifier_cache()

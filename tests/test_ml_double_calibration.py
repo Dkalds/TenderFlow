@@ -22,7 +22,7 @@ def _restore_calibration_flag():
 def test_pipeline_internally_calibrated_by_default(monkeypatch) -> None:
     from sklearn.calibration import CalibratedClassifierCV
 
-    from scraper.ml_classifier import SAPClassifier
+    from services.ml.sap_classifier import SAPClassifier
 
     monkeypatch.setattr(settings, "ML_USE_CALIBRATION", False)
     clf = SAPClassifier()
@@ -34,7 +34,7 @@ def test_pipeline_not_internally_calibrated_when_external(monkeypatch) -> None:
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.linear_model import LogisticRegression
 
-    from scraper.ml_classifier import SAPClassifier
+    from services.ml.sap_classifier import SAPClassifier
 
     monkeypatch.setattr(settings, "ML_USE_CALIBRATION", True)
     clf = SAPClassifier()
@@ -47,7 +47,7 @@ def test_pipeline_not_internally_calibrated_when_external(monkeypatch) -> None:
 def test_make_pipeline_embeddings_respects_calibrate_flag() -> None:
     from sklearn.calibration import CalibratedClassifierCV
 
-    from scraper.ml_pipeline import _make_pipeline_with_embeddings
+    from services.ml.classifier_pipeline import _make_pipeline_with_embeddings
 
     calibrated = _make_pipeline_with_embeddings(calibrate=True)
     assert isinstance(calibrated.named_steps["clf"], CalibratedClassifierCV)

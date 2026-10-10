@@ -6,7 +6,7 @@ Coexistían dos caminos de reentrenamiento con garantías opuestas:
 
 - ``scheduler.concept_drift.maybe_retrain_classifier`` (semanal, disparado por
   feedback) tenía gate de tres métricas y registraba la versión.
-- ``scraper.ml_training.train_from_db`` —el que produce el asset de la Release
+- ``services.ml.classifier_training.train_from_db`` —el que produce el asset de la Release
   que descargan la API y todos los runners, o sea **el modelo que realmente se
   sirve**— guardaba el ``.pkl`` si el entrenamiento no lanzaba ``error``, sin
   gate, sin fila en ``model_versions`` y sin sha registrado. Su propio docstring
@@ -405,7 +405,7 @@ def promote_if_better(
     golden_activo: GoldenEvalResult | None = None
     if activa:
         try:
-            from scraper.ml_classifier import SAPClassifier
+            from services.ml.sap_classifier import SAPClassifier
 
             ruta_activa = Path(str(activa.get("path") or ""))
             if ruta_activa.exists():

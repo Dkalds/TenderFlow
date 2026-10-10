@@ -87,7 +87,7 @@ class TestFeedbackEndpoints:
         mock_clf = MagicMock()
         mock_clf.predict_proba.return_value = fake_probs
 
-        with patch("scraper.ml_classifier.SAPClassifier.load", return_value=mock_clf):
+        with patch("services.ml.sap_classifier.SAPClassifier.load", return_value=mock_clf):
             resp = client.get("/api/v1/feedback/queue?strategy=uncertainty&limit=10", headers=auth)
         assert resp.status_code == 200
         data = resp.json()

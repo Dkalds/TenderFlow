@@ -78,7 +78,8 @@ def run() -> dict[str, Any]:
     Raises:
         RuntimeError: Si el entrenamiento devuelve un dict con ``error``.
     """
-    from scraper.ml_training import seed_negatives, train_from_db
+    from scraper.seed_negatives import seed_negatives
+    from services.ml.classifier_training import train_from_db
 
     # ``include_ti=True``: en serving el modelo SOLO puntúa licitaciones con
     # CPV 48/72 (``scraper.pipeline._ml_classify_entry`` descarta el resto
@@ -155,7 +156,7 @@ def activar_publicada(
             nada: el modelo sigue sin versión activa.
     """
     from db.model_registry import activate_version, list_versions
-    from scraper.ml_training import precompute_ml_proba
+    from services.ml.classifier_training import precompute_ml_proba
 
     fila = next((f for f in list_versions(_MODELO) if int(f["version"]) == version), None)
     if fila is None:
@@ -224,7 +225,7 @@ def rescore() -> dict[str, Any]:
         RuntimeError: Si no hay modelo servible. Un rescore que no puntúa nada
             y sale en verde es peor que uno que falla.
     """
-    from scraper.ml_training import precompute_ml_proba
+    from services.ml.classifier_training import precompute_ml_proba
 
     resultado = precompute_ml_proba(force=True)
     if resultado.get("skipped_no_model"):

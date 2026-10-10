@@ -123,7 +123,7 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # de entrenamiento. Es la fuente que rompe la circularidad del multi-label
     # (la columna `tecnologia` la escribe el mismo regex que ve el modelo), así
     # que conviene ser exigente: una etiqueta LLM floja es ruido con la
-    # apariencia de ground truth. Ver scraper/tech_classifier.
+    # apariencia de ground truth. Ver services/ml/tech_classifier.
     ML_TECH_LLM_MIN_SCORE: float = 0.5
     # Keywords mínimas presentes en el texto para que el tier `rules` clasifique.
     # El score de ese tier es la *fracción* de keywords de la tecnología que
@@ -145,7 +145,7 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # TI 48/72 sin keywords — potenciales SAP no detectados) reciben menor peso
     # de muestra en el entrenamiento, en vez de tratarse como negativos de
     # confianza plena. Reduce el sesgo de aprender el filtro de keywords como
-    # ground truth. Ver scraper/ml_pipeline._build_dataset.
+    # ground truth. Ver services/ml/classifier_pipeline._build_dataset.
     ML_PU_LEARNING: bool = False
     # Peso de muestra para los negativos ambiguos cuando ML_PU_LEARNING=True.
     ML_PU_UNLABELED_WEIGHT: float = 0.5
@@ -168,18 +168,18 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # (hash a bucket), permitiendo al modelo aprender que ciertos órganos compran
     # SAP de forma recurrente. Off por defecto para evitar training-serving skew
     # hasta que todos los call sites de predict propaguen el órgano. Ver
-    # scraper/ml_pipeline._augment_text.
+    # services/ml/classifier_pipeline._augment_text.
     ML_USE_ORGANO_FEATURE: bool = False
     # Hash SHA256 fijado del modelo (out-of-band). Si se define, load() y
     # ensure_downloaded() verifican el .pkl contra este valor ADEMÁS del checksum
     # .sha256 co-ubicado. Defensa contra un GitHub Release comprometido (donde
     # .pkl y .sha256 podrían sustituirse a la vez, y joblib.load ejecuta código
-    # arbitrario). Vacío = sin pin. Ver scraper/ml_classifier.SAPClassifier.load.
+    # arbitrario). Vacío = sin pin. Ver services/ml/sap_classifier.SAPClassifier.load.
     ML_MODEL_SHA256: str = ""
     # Hash SHA256 fijado (out-of-band) para el TechnologyClassifier
     # (data/models/tech_classifier.pkl). Mismo propósito y semántica que
     # ML_MODEL_SHA256. Vacío = sin pin. Ver
-    # scraper.tech_classifier.TechnologyClassifier.load.
+    # services.ml.tech_classifier.TechnologyClassifier.load.
     ML_TECH_MODEL_SHA256: str = ""
     # Hash SHA256 fijado (out-of-band) para el artefacto que cargue BajaModel
     # (desde 2026-09-24 cada versión se publica como

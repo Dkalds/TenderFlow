@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from config import settings
-from scraper.ml_classifier import SAPClassifier
+from services.ml.sap_classifier import SAPClassifier
 
 
 def _save_untrained(tmp_path):
@@ -160,7 +160,7 @@ def test_resolve_artifact_devuelve_none_si_la_release_tampoco_lo_tiene() -> None
 
 def test_tech_resolve_artifact_tambien_cae_a_la_release() -> None:
     """Gemelo del SAP: hoy no encuentra nada porque `train-tech.yml` aún no publica."""
-    from scraper.tech_classifier import TechnologyClassifier
+    from services.ml.tech_classifier import TechnologyClassifier
 
     with (
         patch("shared.model_artifacts.resolve_servable_artifact", return_value=None),

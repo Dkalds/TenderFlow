@@ -334,10 +334,10 @@ def test_servable_propaga_el_mismatch_en_vez_de_caer_al_local(tmp_path):
 def test_los_clasificadores_de_scraper_resuelven_por_el_canal():
     """El nombre del registro y la ruta local viajan juntos: si alguien cambia
     uno sin el otro, el artefacto deja de resolverse en silencio."""
-    from scraper.ml_classifier import _MODEL_PATH as SAP_PATH
-    from scraper.ml_classifier import SAPClassifier
-    from scraper.tech_classifier import _MODEL_PATH as TECH_PATH
-    from scraper.tech_classifier import TechnologyClassifier
+    from services.ml.sap_classifier import _MODEL_PATH as SAP_PATH
+    from services.ml.sap_classifier import SAPClassifier
+    from services.ml.tech_classifier import _MODEL_PATH as TECH_PATH
+    from services.ml.tech_classifier import TechnologyClassifier
 
     with patch("shared.model_artifacts.resolve_servable_artifact") as resolver:
         SAPClassifier.resolve_artifact()
@@ -352,13 +352,15 @@ def test_los_clasificadores_de_scraper_resuelven_por_el_canal():
 def test_precompute_ml_proba_sirve_el_artefacto_resuelto_no_el_local(tmp_path):
     """La regresión: el paso ya no se rinde por `is_available()` (disco local)
     y carga el artefacto que devuelve el canal."""
-    from scraper import ml_training
+    from services.ml import classifier_training as ml_training
 
     artefacto = tmp_path / "resuelto.pkl"
     with (
-        patch("scraper.ml_classifier.SAPClassifier.resolve_artifact", return_value=artefacto),
-        patch("scraper.ml_classifier.SAPClassifier.is_available") as is_available,
-        patch("scraper.ml_classifier.SAPClassifier.load", side_effect=RuntimeError("stop")) as load,
+        patch("services.ml.sap_classifier.SAPClassifier.resolve_artifact", return_value=artefacto),
+        patch("services.ml.sap_classifier.SAPClassifier.is_available") as is_available,
+        patch(
+            "services.ml.sap_classifier.SAPClassifier.load", side_effect=RuntimeError("stop")
+        ) as load,
     ):
         resultado = ml_training.precompute_ml_proba()
 

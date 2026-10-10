@@ -516,7 +516,7 @@ class TestClassifierHolder:
 
         monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
 
-        with patch("scraper.ml_classifier.SAPClassifier") as mock_clf:
+        with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
             mock_clf.ensure_downloaded = MagicMock()
             mock_clf.is_available = MagicMock(return_value=False)
 
@@ -533,7 +533,7 @@ class TestClassifierHolder:
 
         monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
 
-        with patch("scraper.ml_classifier.SAPClassifier") as mock_clf:
+        with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
             mock_clf.ensure_downloaded = MagicMock()
             mock_clf.is_available = MagicMock(return_value=False)
 
@@ -554,7 +554,7 @@ class TestClassifierHolder:
         monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
         _load_classifiers.cache_clear()
 
-        with patch("scraper.ml_classifier.SAPClassifier") as mock_clf:
+        with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
             mock_clf.ensure_downloaded = MagicMock()
             mock_clf.is_available = MagicMock(return_value=False)
             result = _get_ml_clf()
@@ -567,7 +567,7 @@ class TestClassifierHolder:
 
         monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
 
-        with patch("scraper.ml_classifier.SAPClassifier") as mock_clf:
+        with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
             mock_clf.ensure_downloaded = MagicMock()
             mock_clf.is_available = MagicMock(return_value=False)
 

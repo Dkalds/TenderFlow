@@ -228,7 +228,7 @@ class TestConsumidores:
     def test_el_clasificador_nace_con_las_categorias_en_tier_rules(self) -> None:
         """Sin positivos no hay modelo: la categoría clasifica por keywords con
         su umbral propio, y no tira el resto."""
-        from scraper.tech_classifier import TechnologyClassifier
+        from services.ml.tech_classifier import TechnologyClassifier
 
         clf = TechnologyClassifier()
         assert clf.labels == TECH_LABELS
@@ -241,7 +241,7 @@ class TestConsumidores:
     def test_el_tier_rules_respeta_limites_de_palabra(self) -> None:
         """«gis» no está en «registro» ni «erp» en «interpretación»: con las
         categorías el tier rules es casi todo acrónimos cortos."""
-        from scraper.ml_pipeline import _keyword_fallback_score
+        from services.ml.classifier_pipeline import _keyword_fallback_score
 
         assert _keyword_fallback_score("registro de interpretación", ["gis", "erp"]) == 0.0
         assert _keyword_fallback_score("Implantación de un ERP", ["gis", "erp"]) == 0.5

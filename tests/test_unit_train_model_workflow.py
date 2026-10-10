@@ -22,8 +22,8 @@ from typing import Any
 
 import yaml
 
-from scraper.ml_classifier import _MODEL_PATH
-from scraper.ml_training import _MODEL_DIR
+from services.ml.classifier_training import _MODEL_DIR
+from services.ml.sap_classifier import _MODEL_PATH
 
 _WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 WORKFLOW = _WORKFLOWS / "train-model.yml"

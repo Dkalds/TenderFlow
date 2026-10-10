@@ -28,6 +28,13 @@ superficies mostraban datos fabricados o placeholder. Antes de añadir una
 superficie nueva, comprobá que ninguna existente cubre ya el caso, y que la que
 añadís muestra datos reales desde el primer commit.
 
+Para la API esa comprobación deja rastro: `scripts/check_api_surface.py` falla
+ante una operación que no esté en la línea base
+(`api/superficie_congelada.txt`, que solo encoge) ni en su lista `NUEVAS`, donde
+cada operación añadida lleva escrito qué superficie existente se miró y por qué
+no alcanza. No es un congelamiento —añadir un endpoint cuesta una línea—; lo
+que impide es añadirlo sin haberse hecho la pregunta.
+
 Salvo que el usuario priorice otra cosa, seguí el orden de
 [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md). Los ítems cerrados
 se archivan en
@@ -91,7 +98,16 @@ El mapa detallado, entry points y documentación por paquete viven en
 - `services/` contiene reglas y transformaciones de dominio; no es una frontera
     obligatoria para CRUD simple.
 - `api/` expone HTTP y `web/` solo consume contratos tipados de esa API.
-- `scraper/` ingiere y clasifica; `scheduler/` orquesta su ejecución.
+- `scraper/` ingiere; `scheduler/` orquesta su ejecución. Los modelos con los
+    que se clasifica viven en `services/ml/`, no en `scraper/`: servir una
+    predicción no depende del paquete de ingesta.
+- **Los imports van hacia abajo.** Orden de capas, de abajo arriba:
+    `config < observability < shared < llm < db < services < scraper <
+    scheduler < api`. Un paquete importa de sí mismo y de los que tiene por
+    debajo; además `api/` no importa de `scraper/`. Un import dentro de una
+    función cuenta igual. `scripts/check_layers.py` es un ratchet: las
+    violaciones heredadas están congeladas y **no se le añaden entradas** —si
+    dos capas necesitan la misma pieza, la pieza baja.
 
 ---
 
@@ -127,6 +143,11 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
     `make check-frontend-invariants`.
 - Para contratos API: `make check-api-contract`. Para customizaciones de
     agentes: `make check-agent-docs`.
+- Si añadís un módulo, movés código entre paquetes o tocás imports entre
+    ellos: `make check-layers`. Si añadís o retirás una ruta de la API:
+    `make check-api-surface` y `make status`. Los dos corren también dentro
+    de la suite (`tests/test_unit_ratchet_*.py`), así que CI los ejecuta
+    aunque no tengan paso propio en el workflow.
 - Gates que exigen BD sembrada y por eso no entran en `make check`: `make
     fuzz-api` (ninguna operación puede devolver 5xx; ratchet `KNOWN_5XX` que
     solo encoge) y los E2E de Playwright, que en CI corren contra Postgres +

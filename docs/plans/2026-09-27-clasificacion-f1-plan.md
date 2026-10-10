@@ -590,7 +590,7 @@ Expected: PASS. Revisa que `test_fits_client_validation_limits` sigue pasando: l
 - Modify: `db/repositories/ml_dataset.py`:
   - `feedback_humano_sap` pasa a llamarse `feedback_humano_es_ti`, con `DISTINCT ON` y `revision_ti`;
   - el `EXISTS` de `filas_entrenamiento_tecnologia` usa `FUENTES_HUMANAS`.
-- Modify: `scraper/ml_training.py`: su llamador.
+- Modify: `services/ml/classifier_training.py`: su llamador.
 - Modify: `db/repositories/licitaciones.py:etiquetas_tecnologia_no_circulares`: lee `FUENTES_HUMANAS`, y las filas heredadas sin tecnología no se pronuncian.
 - Modify: `db/model_registry.py:186-198`, que cuenta `FUENTES_HUMANAS`.
 - Modify: `scheduler/concept_drift.py:424` y `scheduler/drift_report.py:426`, que leen `revision_ti`.
@@ -718,10 +718,10 @@ Expected: FAIL (`'human' != 'revision_ti'`, `ImportError: etiqueta_humana`).
                )
            )
    ```
-   Renombra el llamador en `scraper/ml_training.py`. En `filas_entrenamiento_tecnologia`, `f.source = 'human'` pasa a `f.source = ANY(%s)` con `list(FUENTES_HUMANAS)` como parámetro, junto al que ya lleva.
+   Renombra el llamador en `services/ml/classifier_training.py`. En `filas_entrenamiento_tecnologia`, `f.source = 'human'` pasa a `f.source = ANY(%s)` con `list(FUENTES_HUMANAS)` como parámetro, junto al que ya lleva.
 5. `db/model_registry.py:186-198`: `source = 'human'` pasa a `source = ANY(%s)` con `FUENTES_HUMANAS`.
 6. `scheduler/concept_drift.py:424` y `scheduler/drift_report.py:426`: `'human'` pasa a `%s` con `FUENTE_REVISION_TI`, porque ambos comparan `relevante` con la predicción del binario (es TI). Es SQL legado dentro del ratchet TID251: se edita en su sitio, sin añadir consultas nuevas fuera de `db/`.
-7. Docstrings que citan `source = 'human'` (`scraper/tech_classifier.py:34`, `services/reportes_dato.py:12`, `scheduler/jobs/llm_tech_labeling.py`): una línea sobre `revision_ti`.
+7. Docstrings que citan `source = 'human'` (`services/ml/tech_classifier.py:34`, `services/reportes_dato.py:12`, `scheduler/jobs/llm_tech_labeling.py`): una línea sobre `revision_ti`.
 
 - [ ] **Step 4: Verificar que pasan**
 

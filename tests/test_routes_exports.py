@@ -109,7 +109,7 @@ class TestBuildPdf:
     """``_build_pdf``: el maquetador, único superviviente literal del F5."""
 
     def test_build_pdf_empty_rows(self):
-        from api.routes.exports import _build_pdf
+        from services.pdf_tabular import construir_pdf_tabular as _build_pdf
 
         result = _build_pdf([], "Test Title")
         assert isinstance(result, bytes)
@@ -117,7 +117,7 @@ class TestBuildPdf:
         assert result[:5] == b"%PDF-"
 
     def test_build_pdf_with_rows(self):
-        from api.routes.exports import _build_pdf
+        from services.pdf_tabular import construir_pdf_tabular as _build_pdf
 
         rows = [
             {"col_a": "value1", "col_b": "value2"},
@@ -137,7 +137,9 @@ class TestDescargaPdfSincrona:
         ahora en el cuerpo de la respuesta, con su tipo y su nombre de fichero.
         """
         with (
-            patch.object(exports_mod, "_build_pdf", return_value=b"%PDF-fake") as construir,
+            patch(
+                "services.pdf_tabular.construir_pdf_tabular", return_value=b"%PDF-fake"
+            ) as construir,
             patch("services.licitaciones.fetch_for_pdf", return_value=[{"a": 1}]) as consultar,
         ):
             respuesta, cuerpo = _descargar(ccaa="Madrid")
@@ -160,7 +162,7 @@ class TestDescargaPdfSincrona:
         ``limit`` de por medio, potencialmente 50 000 filas de más.
         """
         with (
-            patch.object(exports_mod, "_build_pdf", return_value=b"%PDF-fake"),
+            patch("services.pdf_tabular.construir_pdf_tabular", return_value=b"%PDF-fake"),
             patch("services.licitaciones.fetch_for_pdf", return_value=[]) as consultar,
         ):
             _descargar(
@@ -201,7 +203,9 @@ class TestDescargaPdfSincrona:
         descarga sería un fichero vacío con un 200 encima.
         """
         with (
-            patch.object(exports_mod, "_build_pdf", return_value=b"%PDF-fake") as construir,
+            patch(
+                "services.pdf_tabular.construir_pdf_tabular", return_value=b"%PDF-fake"
+            ) as construir,
             patch("services.licitaciones.fetch_for_pdf", side_effect=RuntimeError("boom")),
             pytest.raises(RuntimeError, match="boom"),
         ):
@@ -233,7 +237,7 @@ class TestDescargaPdfSincrona:
             return []
 
         with (
-            patch.object(exports_mod, "_build_pdf", side_effect=_maquetar),
+            patch("services.pdf_tabular.construir_pdf_tabular", side_effect=_maquetar),
             patch("services.licitaciones.fetch_for_pdf", side_effect=_consultar),
         ):
             _descargar()
@@ -263,7 +267,7 @@ class TestDescargaPdfSincrona:
         antes = _contenedores_de_modulo()
 
         with (
-            patch.object(exports_mod, "_build_pdf", return_value=marca),
+            patch("services.pdf_tabular.construir_pdf_tabular", return_value=marca),
             patch("services.licitaciones.fetch_for_pdf", return_value=[{"a": 1}]),
         ):
             _descargar()

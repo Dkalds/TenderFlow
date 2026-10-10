@@ -179,7 +179,7 @@ class Licitacion:
     prorroga_descripcion: str | None = None
     ml_proba: float | None = None
     tecnologia: str | None = None  # SAP, SALESFORCE, ORACLE, MICROSOFT, etc.
-    # Multi-tech ML (poblado por scraper.tech_classifier). ml_proba se mantiene
+    # Multi-tech ML (poblado por services.ml.tech_classifier). ml_proba se mantiene
     # como P(SAP) por compatibilidad; estos campos son aditivos.
     ml_tecnologias: str | None = None  # CSV ordenado por probabilidad
     ml_proba_max: float | None = None
@@ -278,7 +278,7 @@ _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 #
 # Las cuatro columnas ML (2026-09-14) entran por un motivo distinto: un
 # conector NUNCA las calcula. `ml_proba` la escribe el scoring SAP
-# (`guardar_ml_proba`, desde `scraper/ml_training.py::precompute_ml_proba`) y
+# (`guardar_ml_proba`, desde `services/ml/classifier_training.py::precompute_ml_proba`) y
 # las tres de tecnología, desde `v136` (T3), las deriva el trigger
 # `trg_lts_derivar_ml` de `licitacion_tecnologia_score`, que es donde escriben
 # `precompute_ml_tecnologias` y el merge de la señal de pliego. La

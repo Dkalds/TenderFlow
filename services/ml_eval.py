@@ -3,7 +3,7 @@
 Motivación
 ----------
 El dataset de entrenamiento deriva sus etiquetas de ``raw_keywords IS NOT NULL``
-(ver :func:`scraper.ml_pipeline._build_dataset`). Por tanto, las métricas internas
+(ver :func:`services.ml.classifier_pipeline._build_dataset`). Por tanto, las métricas internas
 calculadas sobre el test split (F1, PR-AUC) miden cuánto **imita** el modelo al
 filtro de keywords, no cuánto **detecta SAP de verdad**. El valor real del ML
 —pescar licitaciones SAP que las keywords pierden— solo es medible contra
@@ -18,7 +18,7 @@ Este módulo carga un golden set JSONL etiquetado a mano y mide:
 
 Uso típico::
 
-    from scraper.ml_classifier import SAPClassifier
+    from services.ml.sap_classifier import SAPClassifier
     from services.ml_eval import evaluate_classifier, load_golden_set
 
     clf = SAPClassifier.load()

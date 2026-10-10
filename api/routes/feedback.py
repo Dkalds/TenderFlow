@@ -214,7 +214,7 @@ def _cargar_tech_classifier() -> Any:  # TechnologyClassifier (import perezoso) 
     tests la sustituyen para no cargar el artefacto de 11 MB.
     """
     try:
-        from scraper.tech_classifier import TechnologyClassifier
+        from services.ml.tech_classifier import TechnologyClassifier
 
         if TechnologyClassifier.is_available():
             return TechnologyClassifier.load()
@@ -503,7 +503,7 @@ async def feedback_queue(
             texts = [f"{c['titulo']} {c.get('descripcion') or ''}" for c in candidates]
 
             def _predict() -> list[dict[str, Any]]:
-                from scraper.ml_classifier import SAPClassifier
+                from services.ml.sap_classifier import SAPClassifier
 
                 clf = SAPClassifier.load()
                 # cpvs/importes son obligatorios aquí: el modelo se entrenó

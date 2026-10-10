@@ -393,7 +393,7 @@ p = Path('models/sap_classifier.pkl')
 print(joblib.load(p).metadata.get('trained_at', 'unknown') if p.exists() else 'Modelo no encontrado')
 "
 
-python -m scraper.ml_training --force
+python -m services.ml.classifier_training --force
 ```
 
 ### 7.4 Scheduler job timeout

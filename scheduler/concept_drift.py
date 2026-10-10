@@ -405,9 +405,9 @@ def maybe_retrain_classifier(
     try:
         from pathlib import Path
 
-        from scraper.ml_classifier import SAPClassifier
-        from scraper.ml_training import precompute_ml_proba
+        from services.ml.classifier_training import precompute_ml_proba
         from services.ml.promotion import promote_if_better
+        from services.ml.sap_classifier import SAPClassifier
 
         df = _fetch_training_dataframe()
         if df is None or df.empty:
@@ -422,7 +422,7 @@ def maybe_retrain_classifier(
             result["error"] = metrics.get("error")
             return result
 
-        # Gate único, compartido con ``scraper.ml_training.train_from_db``:
+        # Gate único, compartido con ``services.ml.classifier_training.train_from_db``:
         # decide sobre el golden set humano (fijo entre versiones) en vez de
         # comparar métricas medidas cada una sobre su propio test split, y
         # bloquea si el modelo no aporta nada sobre el filtro de keywords.
@@ -491,7 +491,7 @@ def _fetch_training_dataframe() -> Any:
     ``_PgConnAdapter``, que expone ``execute``/``executemany`` pero **no**
     ``cursor()``, y pandas lo necesita para su camino no-SQLAlchemy. Usarlo
     lanzaba ``AttributeError`` y dejaba el reentrenamiento semanal caído sin
-    que nada lo destapara. Mismo patrón que ``scraper/ml_training.py``, que ya
+    que nada lo destapara. Mismo patrón que ``services/ml/classifier_training.py``, que ya
     lo hacía así.
     """
     try:
@@ -518,7 +518,7 @@ def _fetch_training_dataframe() -> Any:
     # etiqueta del LLM pisaría la señal de keywords con su propia salida. Y
     # una fila por expediente, la más reciente: con correcciones hay varias, y
     # sin ese orden el dict de abajo se quedaba con la que el SELECT
-    # devolviera la última. Es la misma lectura que ``scraper.ml_training``.
+    # devolviera la última. Es la misma lectura que ``services.ml.classifier_training``.
     lic = pd.DataFrame(lic_rows, columns=lic_cols)
     fb = pd.DataFrame(feedback_humano_es_ti(), columns=["expediente", "relevante"])
     if lic.empty:

@@ -376,7 +376,7 @@ def compute_f1_drop(
         from db.database import connect as db_connect
         from db.model_registry import get_active
         from db.repositories.feedback import FUENTE_REVISION_TI
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
     except ImportError as exc:
         log.warning("compute_f1_drop_import_error", error=str(exc))

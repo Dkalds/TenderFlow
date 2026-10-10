@@ -13,11 +13,11 @@ paquetes exentos — no reproduzcas aquí un estado por paquete, envejece mal.
 |---|---|---|---|
 | `config/` | Settings (pydantic-settings), keywords SAP, constantes PLACSP, secrets | `config/settings.py` | [ADR-004](adr/ADR-004-sqlite-turso-vs-postgres.md) (histórico; superado por [ADR-016](adr/ADR-016-destino-persistencia-supabase.md)/[ADR-021](adr/ADR-021-retirada-sqlite.md)) |
 | `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, signing (JWKS), ssrf, csrf, types | `shared/dto.py` | [SECURITY.md](SECURITY.md) |
-| `services/` | Biblioteca de dominio: licitaciones, normalization, classification, clusters, rate_limiting, `analytics_engine.py` (DuckDB) + subpaquetes `analytics/`, `competitive/`, `investigador/` (FTS Postgres `tsvector`), `ml/`, `rag/` | `services/licitaciones.py` | [ADR-007](adr/ADR-007-services-domain-layer.md), [ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md), [ADR-005](adr/ADR-005-clustering-ctfidf-minibatch.md) |
+| `services/` | Biblioteca de dominio: licitaciones, normalization, classification, clusters, rate_limiting, `analytics_engine.py` (DuckDB) + subpaquetes `analytics/`, `competitive/`, `investigador/` (FTS Postgres `tsvector`), `ml/` (todo el ML: clasificadores SAP y de tecnología —`sap_classifier.py`, `tech_classifier.py`, `classifier_pipeline.py`, `classifier_training.py`— y los modelos de baja y retención), `rag/` | `services/licitaciones.py` | [ADR-007](adr/ADR-007-services-domain-layer.md), [ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md), [ADR-005](adr/ADR-005-clustering-ctfidf-minibatch.md) |
 | `db/` | Postgres (motor único), upsert batcheado e idempotente, migraciones solo Alembic, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | [database-schema.md](database-schema.md), [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md), [ADR-022](adr/ADR-022-frontera-de-persistencia.md), [ADR-016](adr/ADR-016-destino-persistencia-supabase.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
 | `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; routers en `api/routes/` | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md), [api-design.md](api-design.md) |
 | `web/` | Next.js 16 frontend: dashboard analítico, KPIs, búsqueda, administración | `web/src/app/` | [frontend-data-invariants.md](frontend-data-invariants.md) ([ADR-014](adr/ADR-014-integridad-analitica-frontend.md)) |
-| `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED): descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, clasificador ML | `scraper/pipeline.py`; ML en `scraper/ml_classifier.py`, `scraper/ml_pipeline.py`. Las violaciones legacy de persistencia están congeladas por TID251; no son patrón para código nuevo | [ADR-009](adr/ADR-009-framework-conectores-multifuente.md); cobertura por fuente en [regional-source-coverage.md](regional-source-coverage.md) y [watched-company-awards-coverage.md](watched-company-awards-coverage.md) |
+| `scraper/` | Pipeline multi-fuente (`connectors/`: PLACSP, PSCP, TACRC, TED): descarga ZIP/ATOM, parser CODICE/UBL, circuit breaker, filtros keywords, siembra de negativos (`seed_negatives.py`) | `scraper/pipeline.py`. Los clasificadores **no** viven aquí: están en `services/ml/` y la ingesta los importa de allí; `scraper/ml_classifier.py`, `tech_classifier.py` y `ml_pipeline.py` son alias de compatibilidad para los `.pkl` ya publicados, no puntos de entrada. Las violaciones legacy de persistencia están congeladas por TID251; no son patrón para código nuevo | [ADR-009](adr/ADR-009-framework-conectores-multifuente.md); cobertura por fuente en [regional-source-coverage.md](regional-source-coverage.md) y [watched-company-awards-coverage.md](watched-company-awards-coverage.md) |
 | `scheduler/` | Jobs cron: `run_update`, precomputes (`kpi_`, `aggregates_`), drift, alertas, DLQ retry, + `scheduler/jobs/` (daily_atom, recent_bulk, ml_predicciones, documentos_embeddings, retention_cleanup, watchlist_rules) | `scheduler/loop.py`, `scheduler/run_update.py` | [ADR-012](adr/ADR-012-plano-unico-orquestacion.md); inventario vigente y su plano: [STATUS.md](STATUS.md) |
 | `llm/` | Cliente y providers LLM (opcional): OpenAI, Anthropic y NVIDIA NIM (vía API compatible OpenAI), presupuesto/circuit-breaker en `budget.py` | `llm/client.py`, `llm/providers/` | — |
 | `observability/` | structlog config, Prometheus metrics, healthcheck, dashboards Grafana | `observability/logging.py` | [sli-slo.md](sli-slo.md), [ADR-019](adr/ADR-019-observabilidad-desplegada.md) |
@@ -39,6 +39,8 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Tests de integración | `make test-integration` |
 | Validar customizaciones agénticas | `make check-agent-docs` |
 | Validar contrato API | `make check-api-contract` |
+| Dirección de imports entre paquetes | `make check-layers` |
+| Operación nueva de la API con su motivo | `make check-api-surface` |
 | Validar invariantes analíticos del frontend | `make check-frontend-invariants` |
 | Lint / typecheck frontend | `make web-lint` / `make web-typecheck` |
 | Tests unitarios frontend | `make web-test` (con umbrales: `make web-test-coverage`) |
@@ -64,6 +66,8 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make typecheck` | requiere deps y mypy | disponible |
 | `make status`, `make job-parity` | requiere deps | disponible |
 | `make check-api-contract` | requiere deps | disponible tras `make openapi` |
+| `make check-layers` | disponible: stdlib + git | disponible |
+| `make check-api-surface` | requiere deps | disponible |
 | `make test-unit`, `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
 | `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
 | `graphify *` | solo si el CLI está instalado | igual |

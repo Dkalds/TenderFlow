@@ -20,7 +20,7 @@ from datetime import date, timedelta
 import pandas as pd
 import pytest
 
-from scraper.ml_classifier import SAPClassifier
+from services.ml.sap_classifier import SAPClassifier
 
 _SAP = "Implantacion de SAP S/4HANA modulo financiero"
 _NO_SAP = "Suministro de material de oficina para dependencias"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scraper.ml_pipeline import _augment_text
+from services.ml.classifier_pipeline import _augment_text
 
 
 class TestImporteFineBucket:
@@ -71,7 +71,7 @@ class TestOrganoToken:
         import pandas as pd
 
         from config import settings
-        from scraper.ml_pipeline import _build_dataset
+        from services.ml.classifier_pipeline import _build_dataset
 
         monkeypatch.setattr(settings, "ML_USE_ORGANO_FEATURE", False)
         rows = [

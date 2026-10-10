@@ -1,4 +1,4 @@
-"""Tests para scraper/ml_training.py — registro de entrenamientos y precómputo ML."""
+"""Tests para services/ml/classifier_training.py — registro de entrenamientos y precómputo ML."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 class TestAppendToRegistry:
     def test_creates_file_when_missing(self, tmp_path: Path) -> None:
-        from scraper.ml_training import _append_to_registry
+        from services.ml.classifier_training import _append_to_registry
 
         target = tmp_path / "sub" / "registry.json"
         _append_to_registry({"run": 1}, path=target)
@@ -20,7 +20,7 @@ class TestAppendToRegistry:
         assert data == [{"run": 1}]
 
     def test_appends_to_existing(self, tmp_path: Path) -> None:
-        from scraper.ml_training import _append_to_registry
+        from services.ml.classifier_training import _append_to_registry
 
         target = tmp_path / "registry.json"
         target.write_text('[{"run": 1}]', encoding="utf-8")
@@ -30,7 +30,7 @@ class TestAppendToRegistry:
         assert data[1]["run"] == 2
 
     def test_handles_corrupt_json(self, tmp_path: Path) -> None:
-        from scraper.ml_training import _append_to_registry
+        from services.ml.classifier_training import _append_to_registry
 
         target = tmp_path / "registry.json"
         target.write_text("NOT JSON", encoding="utf-8")
@@ -39,7 +39,7 @@ class TestAppendToRegistry:
         assert data == [{"run": 1}]
 
     def test_handles_non_list_json(self, tmp_path: Path) -> None:
-        from scraper.ml_training import _append_to_registry
+        from services.ml.classifier_training import _append_to_registry
 
         target = tmp_path / "registry.json"
         target.write_text('{"not": "a list"}', encoding="utf-8")
@@ -48,7 +48,7 @@ class TestAppendToRegistry:
         assert data == [{"run": 1}]
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
-        from scraper.ml_training import _append_to_registry
+        from services.ml.classifier_training import _append_to_registry
 
         target = tmp_path / "registry.json"
         target.write_text("", encoding="utf-8")
@@ -59,26 +59,26 @@ class TestAppendToRegistry:
 
 class TestReadRegistry:
     def test_missing_file(self, tmp_path: Path) -> None:
-        from scraper.ml_training import read_registry
+        from services.ml.classifier_training import read_registry
 
         assert read_registry(path=tmp_path / "nope.json") == []
 
     def test_corrupt_json(self, tmp_path: Path) -> None:
-        from scraper.ml_training import read_registry
+        from services.ml.classifier_training import read_registry
 
         f = tmp_path / "reg.json"
         f.write_text("BAD", encoding="utf-8")
         assert read_registry(path=f) == []
 
     def test_non_list(self, tmp_path: Path) -> None:
-        from scraper.ml_training import read_registry
+        from services.ml.classifier_training import read_registry
 
         f = tmp_path / "reg.json"
         f.write_text('{"x":1}', encoding="utf-8")
         assert read_registry(path=f) == []
 
     def test_valid(self, tmp_path: Path) -> None:
-        from scraper.ml_training import read_registry
+        from services.ml.classifier_training import read_registry
 
         f = tmp_path / "reg.json"
         f.write_text('[{"a":1}]', encoding="utf-8")
@@ -150,7 +150,7 @@ class TestTrainFromDb:
             lecturas[0],
             lecturas[1],
             lecturas[2],
-            patch("scraper.ml_classifier.SAPClassifier", return_value=mock_clf),
+            patch("services.ml.sap_classifier.SAPClassifier", return_value=mock_clf),
             patch("services.ml.promotion.promote_if_better") as mock_promote,
         ):
             mock_promote.return_value = SimpleNamespace(
@@ -159,7 +159,7 @@ class TestTrainFromDb:
                 motivos_rechazo=[],
                 as_dict=lambda: {"activada": True, "version": 3},
             )
-            from scraper.ml_training import train_from_db
+            from services.ml.classifier_training import train_from_db
 
             metrics = train_from_db()
 
@@ -178,13 +178,13 @@ class TestTrainFromDb:
             lecturas[0],
             lecturas[1],
             lecturas[2],
-            patch("scraper.ml_classifier.SAPClassifier", return_value=mock_clf),
+            patch("services.ml.sap_classifier.SAPClassifier", return_value=mock_clf),
             patch("services.ml.promotion.promote_if_better") as mock_promote,
         ):
             mock_promote.return_value = SimpleNamespace(
                 activada=True, version=1, motivos_rechazo=[], as_dict=lambda: {"activada": True}
             )
-            from scraper.ml_training import train_from_db
+            from services.ml.classifier_training import train_from_db
 
             metrics = train_from_db()
 
@@ -210,9 +210,9 @@ class TestTrainFromDb:
             lecturas[0],
             lecturas[1],
             lecturas[2],
-            patch("scraper.ml_classifier.SAPClassifier", return_value=mock_clf),
+            patch("services.ml.sap_classifier.SAPClassifier", return_value=mock_clf),
         ):
-            from scraper.ml_training import train_from_db
+            from services.ml.classifier_training import train_from_db
 
             metrics = train_from_db()
 
@@ -225,8 +225,8 @@ class TestTrainFromDb:
         """22,4% de positivos (PLACSP + bulk + TED) supera el suelo del 5%."""
         import pandas as pd
 
-        from scraper.ml_pipeline import validate_training_data
-        from scraper.ml_training import etiquetar_dataset_sap
+        from services.ml.classifier_pipeline import validate_training_data
+        from services.ml.classifier_training import etiquetar_dataset_sap
 
         df = etiquetar_dataset_sap(pd.DataFrame(self._filas(224, 776)), [])
         # No lanza: es el criterio de aceptación de S6.1.
@@ -235,7 +235,7 @@ class TestTrainFromDb:
     def test_feedback_humano_sobrescribe_la_etiqueta_base(self) -> None:
         import pandas as pd
 
-        from scraper.ml_training import etiquetar_dataset_sap
+        from services.ml.classifier_training import etiquetar_dataset_sap
 
         df = etiquetar_dataset_sap(
             pd.DataFrame(self._filas(1, 1)),
@@ -255,7 +255,7 @@ class TestTrainFromDb:
             lecturas[0],
             lecturas[1],
             lecturas[2],
-            patch("scraper.ml_classifier.SAPClassifier", return_value=mock_clf),
+            patch("services.ml.sap_classifier.SAPClassifier", return_value=mock_clf),
             patch("services.ml.promotion.promote_if_better") as mock_promote,
         ):
             mock_promote.return_value = SimpleNamespace(
@@ -264,7 +264,7 @@ class TestTrainFromDb:
                 motivos_rechazo=["recall_no_keyword 0.0000 < 0.05"],
                 as_dict=lambda: {"activada": False, "version": 4},
             )
-            from scraper.ml_training import train_from_db
+            from services.ml.classifier_training import train_from_db
 
             metrics = train_from_db()
 
@@ -278,9 +278,9 @@ class TestTrainFromDb:
             lecturas[0],
             lecturas[1],
             lecturas[2],
-            patch("scraper.ml_classifier.SAPClassifier", return_value=mock_clf),
+            patch("services.ml.sap_classifier.SAPClassifier", return_value=mock_clf),
         ):
-            from scraper.ml_training import train_from_db
+            from services.ml.classifier_training import train_from_db
 
             result = train_from_db()
 
@@ -300,20 +300,20 @@ class TestPrecomputeMlProba:
             "organo_contratacion": "Organo",
         }
 
-    @patch("scraper.ml_classifier.SAPClassifier")
+    @patch("services.ml.sap_classifier.SAPClassifier")
     def test_no_model_available(self, mock_cls: MagicMock) -> None:
         # `resolve_artifact` y no `is_available`: el paso ya no se rinde por lo
         # que haya en disco (`data/models/` viene vacío en el runner), sino por
         # lo que devuelve el canal de artefactos.
         mock_cls.resolve_artifact.return_value = None
-        from scraper.ml_training import precompute_ml_proba
+        from services.ml.classifier_training import precompute_ml_proba
 
         result = precompute_ml_proba()
         assert result["skipped_no_model"] is True
         assert result["updated"] == 0
 
-    @patch("scraper.ml_pipeline._augment_text", side_effect=lambda t, **kw: t)
-    @patch("scraper.ml_classifier.SAPClassifier")
+    @patch("services.ml.classifier_pipeline._augment_text", side_effect=lambda t, **kw: t)
+    @patch("services.ml.sap_classifier.SAPClassifier")
     def test_updates_rows(self, mock_cls: MagicMock, mock_aug: MagicMock) -> None:
         import numpy as np
 
@@ -329,7 +329,7 @@ class TestPrecomputeMlProba:
             patch("db.repositories.ml_dataset.limpiar_ml_proba_fuera_de_poblacion", return_value=0),
             patch("db.repositories.ml_dataset.guardar_ml_proba", return_value=1) as mock_guardar,
         ):
-            from scraper.ml_training import precompute_ml_proba
+            from services.ml.classifier_training import precompute_ml_proba
 
             result = precompute_ml_proba(batch_size=10, force=True)
 
@@ -337,8 +337,8 @@ class TestPrecomputeMlProba:
         assert result["skipped_no_model"] is False
         assert mock_guardar.call_args[0][0] == [(0.8, "ext1")]
 
-    @patch("scraper.ml_pipeline._augment_text", side_effect=lambda t, **kw: t)
-    @patch("scraper.ml_classifier.SAPClassifier")
+    @patch("services.ml.classifier_pipeline._augment_text", side_effect=lambda t, **kw: t)
+    @patch("services.ml.sap_classifier.SAPClassifier")
     def test_limpia_los_scores_fuera_de_la_poblacion(
         self, mock_cls: MagicMock, mock_aug: MagicMock
     ) -> None:
@@ -354,7 +354,7 @@ class TestPrecomputeMlProba:
                 return_value=683_076,
             ) as mock_limpiar,
         ):
-            from scraper.ml_training import precompute_ml_proba
+            from services.ml.classifier_training import precompute_ml_proba
 
             result = precompute_ml_proba()
 
@@ -362,18 +362,18 @@ class TestPrecomputeMlProba:
         assert result["limpiadas_fuera_de_poblacion"] == 683_076
         assert result["updated"] == 0
 
-    @patch("scraper.ml_classifier.SAPClassifier")
+    @patch("services.ml.sap_classifier.SAPClassifier")
     def test_load_fails(self, mock_cls: MagicMock) -> None:
         mock_cls.load.side_effect = RuntimeError("corrupt")
 
-        from scraper.ml_training import precompute_ml_proba
+        from services.ml.classifier_training import precompute_ml_proba
 
         result = precompute_ml_proba()
         assert result["skipped_no_model"] is True
         assert result["updated"] == 0
 
-    @patch("scraper.ml_pipeline._augment_text", side_effect=lambda t, **kw: t)
-    @patch("scraper.ml_classifier.SAPClassifier")
+    @patch("services.ml.classifier_pipeline._augment_text", side_effect=lambda t, **kw: t)
+    @patch("services.ml.sap_classifier.SAPClassifier")
     def test_predict_failure_continues(self, mock_cls: MagicMock, mock_aug: MagicMock) -> None:
         mock_clf = MagicMock()
         mock_cls.load.return_value = mock_clf
@@ -387,7 +387,7 @@ class TestPrecomputeMlProba:
             patch("db.repositories.ml_dataset.limpiar_ml_proba_fuera_de_poblacion", return_value=0),
             patch("db.repositories.ml_dataset.guardar_ml_proba", return_value=0),
         ):
-            from scraper.ml_training import precompute_ml_proba
+            from services.ml.classifier_training import precompute_ml_proba
 
             result = precompute_ml_proba()
 
@@ -395,19 +395,19 @@ class TestPrecomputeMlProba:
 
 
 class TestPrecomputeMlTecnologias:
-    @patch("scraper.tech_classifier.TechnologyClassifier")
+    @patch("services.ml.tech_classifier.TechnologyClassifier")
     def test_no_model(self, mock_cls: MagicMock) -> None:
         mock_cls.resolve_artifact.return_value = None
-        from scraper.ml_training import precompute_ml_tecnologias
+        from services.ml.classifier_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias()
         assert result["skipped_no_model"] is True
 
-    @patch("scraper.tech_classifier.TechnologyClassifier")
+    @patch("services.ml.tech_classifier.TechnologyClassifier")
     def test_load_fails(self, mock_cls: MagicMock) -> None:
         mock_cls.is_available.return_value = True
         mock_cls.load.side_effect = RuntimeError("corrupt")
-        from scraper.ml_training import precompute_ml_tecnologias
+        from services.ml.classifier_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias()
         assert result["skipped_no_model"] is True
@@ -422,14 +422,14 @@ class TestPrecomputeMlTecnologias:
 
     @patch("db.repositories.ml_dataset.guardar_scores_tecnologia")
     @patch("db.repositories.ml_dataset.filas_pendientes_ml_tecnologias", return_value=[])
-    @patch("scraper.tech_classifier.TechnologyClassifier")
+    @patch("services.ml.tech_classifier.TechnologyClassifier")
     def test_no_rows(
         self, mock_cls: MagicMock, _pendientes: MagicMock, mock_guardar: MagicMock
     ) -> None:
         mock_cls.is_available.return_value = True
         mock_cls.load.return_value = MagicMock()
 
-        from scraper.ml_training import precompute_ml_tecnologias
+        from services.ml.classifier_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias()
         assert result == {"updated": 0, "scores_inserted": 0, "skipped_no_model": False}
@@ -437,7 +437,7 @@ class TestPrecomputeMlTecnologias:
 
     @patch("db.repositories.ml_dataset.guardar_scores_tecnologia")
     @patch("db.repositories.ml_dataset.filas_pendientes_ml_tecnologias")
-    @patch("scraper.tech_classifier.TechnologyClassifier")
+    @patch("services.ml.tech_classifier.TechnologyClassifier")
     def test_updates_rows_force(
         self, mock_cls: MagicMock, mock_pendientes: MagicMock, mock_guardar: MagicMock
     ) -> None:
@@ -456,7 +456,7 @@ class TestPrecomputeMlTecnologias:
         ]
         mock_pendientes.return_value = [dict(self._FILA)]
 
-        from scraper.ml_training import precompute_ml_tecnologias
+        from services.ml.classifier_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias(force=True, batch_size=10)
         assert result["updated"] == 1
@@ -471,7 +471,7 @@ class TestPrecomputeMlTecnologias:
 
     @patch("db.repositories.ml_dataset.guardar_scores_tecnologia")
     @patch("db.repositories.ml_dataset.filas_pendientes_ml_tecnologias")
-    @patch("scraper.tech_classifier.TechnologyClassifier")
+    @patch("services.ml.tech_classifier.TechnologyClassifier")
     def test_all_zero_scores_mark_ml_proba_max_without_labels(
         self, mock_cls: MagicMock, mock_pendientes: MagicMock, mock_guardar: MagicMock
     ) -> None:
@@ -492,7 +492,7 @@ class TestPrecomputeMlTecnologias:
         ]
         mock_pendientes.return_value = [dict(self._FILA)]
 
-        from scraper.ml_training import precompute_ml_tecnologias
+        from services.ml.classifier_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias()
         assert result["scores_inserted"] == 0
@@ -500,7 +500,7 @@ class TestPrecomputeMlTecnologias:
 
     @patch("db.repositories.ml_dataset.guardar_scores_tecnologia")
     @patch("db.repositories.ml_dataset.filas_pendientes_ml_tecnologias")
-    @patch("scraper.tech_classifier.TechnologyClassifier")
+    @patch("services.ml.tech_classifier.TechnologyClassifier")
     def test_predict_batch_failure(
         self, mock_cls: MagicMock, mock_pendientes: MagicMock, mock_guardar: MagicMock
     ) -> None:
@@ -510,7 +510,7 @@ class TestPrecomputeMlTecnologias:
         mock_clf.predict_batch.side_effect = RuntimeError("boom")
         mock_pendientes.return_value = [dict(self._FILA)]
 
-        from scraper.ml_training import precompute_ml_tecnologias
+        from services.ml.classifier_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias()
         assert result["updated"] == 0
