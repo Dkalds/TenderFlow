@@ -84,6 +84,14 @@ class TestBuildQuestion:
         assert "cita literal" in question
         assert "se descarta" in question
 
+    def test_says_confianza_es_ti_is_certainty_in_the_answer(self):
+        """Sin definirla, el nombre se lee también como «probabilidad de que
+        sea TI», y un «no es TI» seguro llegaba unas veces con 0,95 y otras
+        con 0,05."""
+        question = build_question()
+        assert "confianza_es_ti es tu certeza en la respuesta que das en es_ti" in question
+        assert "no es la probabilidad de que el contrato sea TI" in question
+
 
 class TestBuildDocs:
     def test_descripcion_travels_as_chunk_not_excerpt(self):
@@ -246,8 +254,8 @@ class TestEsTi:
         )
         assert _parse(raw).otros_fabricantes == ("Qlik", "Z" * 60)
 
-    def test_la_version_del_prompt_es_v3(self):
-        assert signal_version("m").startswith("llm-meta-v3/")
+    def test_la_version_del_prompt_es_v4(self):
+        assert signal_version("m").startswith("llm-meta-v4/")
 
 
 def _respuesta_v3(**informativos: object) -> str:
@@ -486,11 +494,11 @@ class TestSignalVersion:
         """Cambiar de modelo debe dejar pendiente al universo entero."""
         assert signal_version("deepseek-ai/deepseek-v4-pro") != signal_version("gpt-4o-mini")
 
-    def test_the_prompt_with_the_level_1_question_is_v3(self):
-        """La pregunta de nivel 1 (``es_ti``) es otro prompt: el corpus
-        clasificado con el v2 vuelve a la cola en vez de mezclarse con el
-        nuevo."""
-        assert signal_version("nvidia/modelo") == "llm-meta-v3/nvidia/modelo"
+    def test_the_prompt_that_defines_confianza_es_ti_is_v4(self):
+        """Definir ``confianza_es_ti`` es otro prompt: lo clasificado con el
+        v3, donde el campo se leía de dos maneras, vuelve a la cola en vez de
+        mezclarse con el nuevo."""
+        assert signal_version("nvidia/modelo") == "llm-meta-v4/nvidia/modelo"
 
 
 class TestBatchFailedSystemically:
