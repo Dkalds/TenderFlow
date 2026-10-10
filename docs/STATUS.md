@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-09
+Generado: 2026-10-10
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -45,8 +45,7 @@ Generado: 2026-10-09
 - `scheduler/healthcheck.py`
 - `scheduler/retention.py`
 - `scheduler/watchlist_rules_alerts.py`
-- `scraper/ml_training.py`
-- `scraper/tech_classifier.py`
+- `scraper/seed_negatives.py`
 - `scripts/rotate_api_keys.py`
 - `scripts/seed_dev.py`
 - `services/analytics/scoring_signals.py`
@@ -56,6 +55,7 @@ Generado: 2026-10-09
 - `services/deadline_reminders.py`
 - `services/dedupe.py`
 - `services/entity_resolution.py`
+- `services/ml/tech_classifier.py`
 - `services/notifications.py`
 - `services/resoluciones.py`
 - `services/watchlist_rules.py`
@@ -66,6 +66,35 @@ Generado: 2026-10-09
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 
+## Ratchet de capas — imports contra el orden de paquetes
+
+**22 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
+
+`scripts/check_layers.py` falla ante uno nuevo, también si está dentro de una función. Orden, de abajo arriba: `config < observability < shared < llm < db < services < scraper < scheduler < api`.
+
+- `api/routes/publico.py -> scraper.connectors`
+- `config/secrets.py -> observability.logging`
+- `config/settings.py -> shared.password_policy`
+- `config/settings.py -> shared.scoring_weights`
+- `db/access_grants.py -> services.access_grants`
+- `db/repositories/go_no_go.py -> services.go_no_go_template`
+- `db/repositories/licitaciones.py -> services.investigador.search_engine`
+- `db/webhooks.py -> services.webhook_retry`
+- `observability/alerts.py -> db.database`
+- `observability/alerts.py -> db.job_locks`
+- `observability/alerts.py -> services.extraction_runs`
+- `observability/mailer.py -> shared.outbound_http`
+- `observability/metrics.py -> services.extraction_runs`
+- `observability/ops_events.py -> db.connection`
+- `observability/runtime_metrics.py -> db.connection`
+- `services/ml/sap_classifier.py -> scraper.seed_negatives`
+- `services/rag/fact_sheet.py -> scraper.document_fetcher`
+- `services/source_health.py -> scraper.connectors`
+- `services/tech_signal.py -> scraper.filters`
+- `shared/cache_signal.py -> db.events`
+- `shared/jobs.py -> db.repositories.jobs`
+- `shared/model_artifacts.py -> db.model_registry`
+
 ## Motor de la suite de tests (ADR-018)
 
 ✅ la suite corre contra Postgres y el job es bloqueante
@@ -73,6 +102,8 @@ Generado: 2026-10-09
 ## Superficie de la API
 
 **292 endpoints** expuestos.
+
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **0** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 

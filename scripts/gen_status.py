@@ -67,6 +67,22 @@ def _user_key_ratchet() -> tuple[int, int]:
     )
 
 
+def _capas_ratchet() -> list[str]:
+    """Imports que hoy van contra el orden de capas (``scripts/check_layers.py``)."""
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import check_layers
+
+    return check_layers.violaciones()
+
+
+def _superficie_ratchet() -> tuple[int, int]:
+    """``(líneas de la base congelada, operaciones añadidas con motivo)``."""
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import check_api_surface
+
+    return len(check_api_surface.leer_base()), len(check_api_surface.NUEVAS)
+
+
 def _jobs_table() -> tuple[list[dict], list[str]]:
     sys.path.insert(0, str(_ROOT / "scripts"))
     import check_job_parity
@@ -179,6 +195,8 @@ def render() -> str:
         lines += [""]
     lines += [f"- `{f}`" for f in whitelist if f not in stale]
     usan_user_key, congelados = _user_key_ratchet()
+    capas = _capas_ratchet()
+    base_superficie, nuevas_superficie = _superficie_ratchet()
     lines += [
         "",
         "## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)",
@@ -191,6 +209,17 @@ def render() -> str:
         "lectura dual; hasta entonces cambiar de correo pierde los datos que "
         "cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.",
         "",
+        "## Ratchet de capas — imports contra el orden de paquetes",
+        "",
+        f"**{len(capas)} imports** van de una capa a otra superior (lista congelada; "
+        "solo puede decrecer).",
+        "",
+        "`scripts/check_layers.py` falla ante uno nuevo, también si está dentro de "
+        "una función. Orden, de abajo arriba: `config < observability < shared < "
+        "llm < db < services < scraper < scheduler < api`.",
+        "",
+        *[f"- `{v}`" for v in capas],
+        "",
         "## Motor de la suite de tests (ADR-018)",
         "",
         _test_engine_status(),
@@ -198,6 +227,10 @@ def render() -> str:
         "## Superficie de la API",
         "",
         f"**{len(endpoints)} endpoints** expuestos.",
+        "",
+        f"Línea base congelada: **{base_superficie}** (solo puede decrecer). "
+        f"Añadidos después, cada uno con su motivo: **{nuevas_superficie}** "
+        "(`scripts/check_api_surface.py`).",
         "",
         "<details><summary>Ver listado</summary>",
         "",
