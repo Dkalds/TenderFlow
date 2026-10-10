@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any, get_args
 
 from annotated_types import MaxLen
@@ -664,19 +665,30 @@ def extract_fact_sheet_on_demand(
     return extract_fact_sheet(licitacion_id, model=model)
 
 
-def extract_fact_sheet(
-    licitacion_id: str,
-    *,
-    model: str = DEFAULT_MODEL,
-) -> TenderFactSheetRecord:
-    """Extrae, valida citas y persiste la ficha vigente de una licitación."""
-    documentos = DocumentosRepository()
-    sheets = TenderFactSheetsRepository()
-    pages = documentos.list_pages_by_licitacion(licitacion_id)
-    selected = _select_pages(pages)
-    if not selected:
-        raise ValueError("No hay texto por página disponible para extraer la ficha")
+_SIN_TEXTO = "No hay texto por página disponible para extraer la ficha"
 
+
+@dataclass(frozen=True)
+class ExtraccionHechos:
+    """Lo que sale de un pliego antes de persistir nada."""
+
+    facts: TenderFactSheet
+    #: Elementos que no encajaron en el esquema (``_parse_facts``).
+    invalidos: int
+    #: Hechos sin ninguna cita literal en el pliego (``_validate_fact_evidence``).
+    inverificables: int
+    #: Las páginas que vio el modelo, en orden de documento y página.
+    seleccionadas: list[dict[str, Any]]
+
+
+def _extraer_de_seleccion(
+    pages: list[dict[str, Any]],
+    selected: list[dict[str, Any]],
+    *,
+    licitacion_id: str,
+    model: str,
+) -> ExtraccionHechos:
+    """De las páginas seleccionadas a hechos con cita validada. Sin persistencia."""
     chunks = [
         {
             "documento_id": int(page["documento_id"]),
@@ -695,40 +707,87 @@ def extract_fact_sheet(
             "chunks": chunks,
         }
     ]
+    raw = "".join(
+        stream_llm_response(
+            question=_EXTRACTION_QUESTION,
+            docs=docs,
+            model=model,
+            keywords=list(_TOPIC_TERMS),
+            mode="extraction",
+            max_tokens=_MAX_OUTPUT_TOKENS,
+            # Sin fallback de proveedor: la fila persiste `model`, y un
+            # cambio silencioso de modelo la haría mentir sobre quién
+            # extrajo. Si el proveedor está caído, la extracción falla
+            # visible y el cron/botón reintentan.
+            fallback=False,
+        )
+    )
+    if not raw.strip():
+        # El cliente devuelve stream vacío cuando el proveedor falló en
+        # todos sus reintentos (saturación, 5xx). Dicho así, y no como «no
+        # devolvió un objeto JSON», que mandaba a revisar el prompt.
+        raise ValueError(
+            f"El modelo {model} devolvió una respuesta vacía "
+            "(proveedor saturado o caído); se reintentará en el próximo lote."
+        )
+    facts, invalid = _parse_facts(extract_json_object(raw))
+    # Contra todas las páginas, no solo las seleccionadas: una cita que el
+    # modelo atribuye a la página contigua se corrige si el texto está allí.
+    facts, unverifiable = _validate_fact_evidence(facts, pages)
+    return ExtraccionHechos(
+        facts=facts,
+        invalidos=invalid,
+        inverificables=unverifiable,
+        seleccionadas=selected,
+    )
+
+
+def extraer_hechos(
+    pages: list[dict[str, Any]],
+    *,
+    licitacion_id: str,
+    model: str = DEFAULT_MODEL,
+) -> ExtraccionHechos:
+    """Extrae los hechos de un pliego a partir de sus páginas, sin base de datos.
+
+    Es el mismo camino que ``extract_fact_sheet`` —selector, pregunta, modelo y
+    validación de citas— sin leer ni escribir nada: lo que ejecuta el eval de
+    la ficha (``scripts/eval_ficha.py``) sobre los casos del golden, para medir
+    producción y no una copia.
+    """
+    selected = _select_pages(pages)
+    if not selected:
+        raise ValueError(_SIN_TEXTO)
+    return _extraer_de_seleccion(pages, selected, licitacion_id=licitacion_id, model=model)
+
+
+def extract_fact_sheet(
+    licitacion_id: str,
+    *,
+    model: str = DEFAULT_MODEL,
+) -> TenderFactSheetRecord:
+    """Extrae, valida citas y persiste la ficha vigente de una licitación."""
+    documentos = DocumentosRepository()
+    sheets = TenderFactSheetsRepository()
+    pages = documentos.list_pages_by_licitacion(licitacion_id)
+    # Fuera del `try` a propósito: un expediente sin páginas no es una
+    # extracción fallida y no debe dejar una fila `failed`.
+    selected = _select_pages(pages)
+    if not selected:
+        raise ValueError(_SIN_TEXTO)
 
     try:
-        raw = "".join(
-            stream_llm_response(
-                question=_EXTRACTION_QUESTION,
-                docs=docs,
-                model=model,
-                keywords=list(_TOPIC_TERMS),
-                mode="extraction",
-                max_tokens=_MAX_OUTPUT_TOKENS,
-                # Sin fallback de proveedor: la fila persiste `model`, y un
-                # cambio silencioso de modelo la haría mentir sobre quién
-                # extrajo. Si el proveedor está caído, la extracción falla
-                # visible y el cron/botón reintentan.
-                fallback=False,
-            )
+        extraccion = _extraer_de_seleccion(
+            pages, selected, licitacion_id=licitacion_id, model=model
         )
-        if not raw.strip():
-            # El cliente devuelve stream vacío cuando el proveedor falló en
-            # todos sus reintentos (saturación, 5xx). Dicho así, y no como «no
-            # devolvió un objeto JSON», que mandaba a revisar el prompt.
-            raise ValueError(
-                f"El modelo {model} devolvió una respuesta vacía "
-                "(proveedor saturado o caído); se reintentará en el próximo lote."
-            )
-        facts, invalid = _parse_facts(extract_json_object(raw))
-        facts, unverifiable = _validate_fact_evidence(facts, pages)
-        rejected = invalid + unverifiable
+        facts = extraccion.facts
+        rejected = extraccion.invalidos + extraccion.inverificables
         if rejected:
             log.info(
                 "fact_sheet_items_rejected",
                 licitacion_id=licitacion_id,
-                invalid=invalid,
-                unverifiable=unverifiable,
+                invalid=extraccion.invalidos,
+                unverifiable=extraccion.inverificables,
             )
         field_count, evidence_count = _counts(facts)
         status = "needs_review" if rejected else "extracted"
