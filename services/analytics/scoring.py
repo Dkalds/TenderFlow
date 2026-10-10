@@ -270,6 +270,48 @@ class ScoringResult(BaseModel):
     signals: ScoringSignalsHealth | None = None
 
 
+class ScoringPreviewItem(BaseModel):
+    """Una oportunidad en la vista previa de un perfil que aún no se ha guardado.
+
+    Lleva las dos puntuaciones a la vez —la del perfil de prueba y la del
+    guardado— porque lo que el usuario necesita ver es el salto, y calcularlo
+    en el cliente con dos peticiones compararía dos universos distintos si
+    entre una y otra entrara una ingesta.
+    """
+
+    id_externo: str
+    titulo: str | None = None
+    organo_contratacion: str | None = None
+    importe: float | None = None
+    fecha_limite: str | None = None
+    score: int = Field(description="Score con el perfil de prueba.")
+    band: str = Field(description="Banda con el perfil de prueba.")
+    posicion: int = Field(ge=1, description="Puesto con el perfil de prueba; 1 es la primera.")
+    score_actual: int = Field(description="Score con el perfil guardado (o los pesos globales).")
+    posicion_actual: int = Field(ge=1, description="Puesto con el perfil guardado.")
+
+
+class ScoringPreview(BaseModel):
+    """Cómo quedaría el Radar con un perfil de prueba, frente a cómo está hoy."""
+
+    opportunities: list[ScoringPreviewItem] = Field(
+        default_factory=list,
+        description="Las primeras con el perfil de prueba, en ese orden.",
+    )
+    salen: list[ScoringPreviewItem] = Field(
+        default_factory=list,
+        description=(
+            "Las que hoy están entre las primeras y con el perfil de prueba dejan de "
+            "estarlo, en su orden actual."
+        ),
+    )
+    total_scored: int = Field(default=0, description="Tamaño del universo puntuado.")
+    afinidad_origen: str = Field(
+        default="ninguno",
+        description="Con qué se comparó la afinidad de la prueba: perfil | organizacion | ninguno",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Contexto inmutable por request (evita accesos globales en _score_row)
 # ---------------------------------------------------------------------------
@@ -1200,6 +1242,70 @@ def _ambito_como_filtros(
     )
 
 
+def _marco_puntuable(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    """Las filas del repositorio como DataFrame, con importe y plazo ya tipados."""
+    df = pd.DataFrame(rows)
+    return df.assign(
+        importe=pd.to_numeric(df["importe"], errors="coerce"),
+        fecha_limite_dt=pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True),
+    )
+
+
+def _sin_descartadas(
+    df: pd.DataFrame, user_key: str, user_id: int | None
+) -> tuple[pd.DataFrame, int]:
+    """``df`` sin lo que el usuario descartó en el Radar, y cuántas eran.
+
+    Si la lectura falla se puntúa el universo entero: un ranking con filas de
+    más es mejor que ninguno.
+    """
+    try:
+        from db import radar_dismissals
+
+        descartadas = set(radar_dismissals.list_ids(user_key, user_id=user_id))
+    except Exception as exc:
+        log.warning("scoring_dismissals_load_error", error=str(exc))
+        descartadas = set()
+    if descartadas:
+        df = df[~df["id_externo"].astype(str).isin(descartadas)]
+    return df, len(descartadas)
+
+
+def _perfil_guardado(
+    user_key: str, organization_id: int | None, user_id: int | None
+) -> tuple[ScoringProfile | None, str]:
+    """Perfil que aplica al usuario y el estado de su lectura (``ok`` | ``error``)."""
+    try:
+        from db.repositories.user_profiles import (
+            get_own_user_profile,
+            get_user_profile,
+        )
+
+        # El repositorio ya no decide en silencio qué hacer sin
+        # organización: cada semántica tiene su función y aquí se
+        # elige de forma explícita.
+        raw_profile = (
+            get_user_profile(user_key, organization_id, user_id=user_id)
+            if organization_id is not None
+            else get_own_user_profile(user_key, user_id=user_id)
+        )
+    except Exception as exc:
+        log.warning("scoring_profile_load_error", error=str(exc))
+        return None, "error"
+    if raw_profile is None:
+        return None, "ok"
+    return (
+        ScoringProfile(
+            weights=raw_profile.get("weights"),
+            afinidad_keywords=raw_profile.get("afinidad_keywords"),
+            cpvs=raw_profile.get("cpvs"),
+            importe_min=raw_profile.get("importe_min"),
+            importe_max=raw_profile.get("importe_max"),
+        ),
+        "ok",
+    )
+
+
 def get_scoring(
     filters: ScoringFilters,
     user_key: str | None = None,
@@ -1237,58 +1343,22 @@ def get_scoring(
         log.info("analytics_scoring_done", total=0)
         return ScoringResult()
 
-    df = pd.DataFrame(rows)
-    df = df.assign(
-        importe=pd.to_numeric(df["importe"], errors="coerce"),
-        fecha_limite_dt=pd.to_datetime(df["fecha_limite"], errors="coerce", utc=True),
-    )
+    df = _marco_puntuable(rows)
 
     # Descartes: fuera del universo antes de ordenar, para que el top-N se
     # rellene con las siguientes. En modo page-aligned no aplica: ahí manda el
     # listado, y una fila que el usuario descartó sigue mereciendo su score.
     if filters.exclude_dismissed and user_key is not None and not filters.ids:
-        try:
-            from db import radar_dismissals
-
-            descartadas = set(radar_dismissals.list_ids(user_key, user_id=user_id))
-        except Exception as exc:
-            log.warning("scoring_dismissals_load_error", error=str(exc))
-            descartadas = set()
-        if descartadas:
-            df = df[~df["id_externo"].astype(str).isin(descartadas)]
-            if df.empty:
-                log.info("analytics_scoring_done", total=0, descartadas=len(descartadas))
-                return ScoringResult()
+        df, descartadas = _sin_descartadas(df, user_key, user_id)
+        if df.empty:
+            log.info("analytics_scoring_done", total=0, descartadas=descartadas)
+            return ScoringResult()
 
     # Cargar perfil del usuario si se proporciona
     profile: ScoringProfile | None = None
     profile_status = "ok"
     if user_key is not None:
-        try:
-            from db.repositories.user_profiles import (
-                get_own_user_profile,
-                get_user_profile,
-            )
-
-            # El repositorio ya no decide en silencio qué hacer sin
-            # organización: cada semántica tiene su función y aquí se
-            # elige de forma explícita.
-            raw_profile = (
-                get_user_profile(user_key, organization_id, user_id=user_id)
-                if organization_id is not None
-                else get_own_user_profile(user_key, user_id=user_id)
-            )
-            if raw_profile is not None:
-                profile = ScoringProfile(
-                    weights=raw_profile.get("weights"),
-                    afinidad_keywords=raw_profile.get("afinidad_keywords"),
-                    cpvs=raw_profile.get("cpvs"),
-                    importe_min=raw_profile.get("importe_min"),
-                    importe_max=raw_profile.get("importe_max"),
-                )
-        except Exception as exc:
-            log.warning("scoring_profile_load_error", error=str(exc))
-            profile_status = "error"
+        profile, profile_status = _perfil_guardado(user_key, organization_id, user_id)
 
     # Construir contexto inmutable (P10/P90 del universo vivo vía SQL cacheado
     # + señales + settings/perfil). Los percentiles se calculan en Postgres
@@ -1353,3 +1423,92 @@ def get_scoring(
     )
     log.info("analytics_scoring_done", total=total, devueltas=len(scored))
     return result
+
+
+def previsualizar_scoring(
+    perfil: ScoringProfile,
+    *,
+    user_key: str,
+    organization_id: int | None = None,
+    user_id: int | None = None,
+    limit: int = 10,
+) -> ScoringPreview:
+    """Cómo quedaría el Radar con ``perfil``, sin guardarlo.
+
+    Puntúa dos veces el mismo universo —el del Radar: vivo, en el ámbito de la
+    organización y sin lo descartado— con el perfil de prueba y con el que el
+    usuario tiene guardado, y devuelve las primeras de la prueba con el puesto
+    que ocupan hoy. Las dos pasadas comparten filas y percentiles: lo único
+    que cambia entre ellas es el perfil, que es lo que se quiere medir.
+
+    No lee ni escribe la caché del ranking ni toca ``user_profiles``.
+    """
+    rows = _repo.scoring_candidates(
+        hoy_iso=pd.Timestamp.now("UTC").strftime("%Y-%m-%d"),
+        filters=_ambito_como_filtros(organization_id, None),
+    )
+    if not rows:
+        return ScoringPreview()
+
+    df, _descartadas = _sin_descartadas(_marco_puntuable(rows), user_key, user_id)
+    if df.empty:
+        return ScoringPreview()
+
+    guardado, _estado = _perfil_guardado(user_key, organization_id, user_id)
+    percentiles = load_importe_percentiles()
+    ctx_actual = _build_context(
+        df, profile=guardado, importe_percentiles=percentiles, organization_id=organization_id
+    )
+    ctx_prueba = _build_context(
+        df, profile=perfil, importe_percentiles=percentiles, organization_id=organization_id
+    )
+    actual = _puntuar(df, ctx_actual)
+    prueba = _puntuar(df, ctx_prueba)
+
+    # Mismo desempate que `get_scoring`: orden estable por score descendente.
+    orden_actual = np.argsort(-actual.score, kind="stable")
+    orden_prueba = np.argsort(-prueba.score, kind="stable")
+    puestos = np.arange(1, len(df) + 1)
+    puesto_actual = np.empty(len(df), dtype=np.intp)
+    puesto_actual[orden_actual] = puestos
+    puesto_prueba = np.empty(len(df), dtype=np.intp)
+    puesto_prueba[orden_prueba] = puestos
+
+    primeras = orden_prueba[:limit]
+    dentro = set(primeras.tolist())
+    desplazadas = np.array(
+        [i for i in orden_actual[:limit].tolist() if i not in dentro], dtype=np.intp
+    )
+
+    def filas(seleccion: npt.NDArray[np.intp]) -> list[ScoringPreviewItem]:
+        return [
+            ScoringPreviewItem(
+                id_externo=oportunidad.id_externo,
+                titulo=oportunidad.titulo,
+                organo_contratacion=oportunidad.organo_contratacion,
+                importe=oportunidad.importe,
+                fecha_limite=oportunidad.fecha_limite,
+                score=oportunidad.score,
+                band=oportunidad.band,
+                posicion=int(puesto_prueba[i]),
+                score_actual=int(actual.score[i]),
+                posicion_actual=int(puesto_actual[i]),
+            )
+            for oportunidad, i in zip(
+                _oportunidades(df, prueba, seleccion), seleccion.tolist(), strict=True
+            )
+        ]
+
+    preview = ScoringPreview(
+        opportunities=filas(primeras),
+        salen=filas(desplazadas),
+        total_scored=len(df),
+        afinidad_origen=ctx_prueba.affinity_origen,
+    )
+    log.info(
+        "analytics_scoring_preview_done",
+        total=len(df),
+        organization_id=organization_id,
+        salen=len(preview.salen),
+    )
+    return preview

@@ -97,7 +97,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `notifications:read` | GET | `/notifications`, `/notifications/baja` |
 | `notifications:write` | POST | `/notifications/alerts`, `/notifications/baja`, `/notifications/read` |
 | `profile:read` | GET | `/me/profile` |
-| `profile:write` | PUT/DELETE | `/me/profile` |
+| `profile:write` | POST/PUT/DELETE | `/me/profile` |
 | `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/actividad`, `/pursuits/adjuntos`, `/pursuits/agenda`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks`, `/pursuits/weights-proposal` |
 | `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/go-no-go`, `/organizations/invitations`, `/pursuits`, `/pursuits/adjuntos`, `/pursuits/cartera`, `/pursuits/weights-proposal` |
 | `saved_filters:read` | GET | `/saved-filters` |

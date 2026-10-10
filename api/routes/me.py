@@ -31,8 +31,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from api.auth import create_api_key
-from api.concurrency import run_db
+from api.concurrency import run_cpu, run_db
 from api.routes.dual_auth import require_any_auth, require_recent_session
+from api.techo_analitica import techo_sentencia_analitica
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.audit import log_event
 from db.database import now_utc_iso
@@ -44,6 +45,7 @@ from db.sessions import (
     session_public_id,
 )
 from observability.logging import get_logger
+from services.analytics.scoring import ScoringPreview, ScoringProfile, previsualizar_scoring
 from services.gdpr import (
     anonymize_user_data,
     export_audit_log,
@@ -945,3 +947,51 @@ async def delete_profile(
         previous.get("organization_id") if previous else None,
     )
     return StatusOk(status="ok")
+
+
+@router.post(
+    "/me/profile/preview",
+    response_model=ScoringPreview,
+    summary="Ver cómo quedaría el Radar con un perfil sin guardarlo",
+    dependencies=[Depends(techo_sentencia_analitica)],
+)
+async def preview_profile(
+    body: UserProfileBody,
+    limit: int = Query(default=10, ge=1, le=25, description="Cuántas oportunidades devolver."),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> ScoringPreview:
+    """Puntúa el Radar con el perfil del cuerpo y lo compara con el guardado.
+
+    **No guarda nada** ni invalida el ranking: es la respuesta a «¿qué cambia
+    si muevo esto?» antes de pulsar Guardar. El cuerpo es el mismo de
+    ``PUT /me/profile`` (``visibility`` se ignora) y pasa la misma validación
+    de pesos, así que lo que se previsualiza es exactamente lo que se
+    guardaría.
+
+    Es ``POST`` porque el perfil no cabe en una query, no porque escriba: lo
+    puede pedir también un ``viewer``. Con API key, el prefijo ``/me/profile``
+    le exige ``profile:write`` como a cualquier verbo que no sea ``GET``.
+    """
+    body.validate_weights()
+    ctx = await resolve_organization_ctx(ctx, body.organization_id)
+    user_key = _user_key(ctx)
+    user_id = int(ctx["user_id"])
+    organization_id = int(ctx["organization_id"])
+
+    def _calcular() -> ScoringPreview:
+        return previsualizar_scoring(
+            ScoringProfile(
+                weights=body.weights,
+                afinidad_keywords=body.afinidad_keywords,
+                cpvs=body.cpvs,
+                importe_min=body.importe_min,
+                importe_max=body.importe_max,
+            ),
+            user_key=user_key,
+            organization_id=organization_id,
+            user_id=user_id,
+            limit=limit,
+        )
+
+    # Dos pasadas de scoring con pandas: al carril de CPU, como el ranking.
+    return await run_cpu(_calcular)

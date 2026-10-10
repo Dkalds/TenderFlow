@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-09
+Generado: 2026-10-10
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -72,7 +72,7 @@ Generado: 2026-10-09
 
 ## Superficie de la API
 
-**292 endpoints** expuestos.
+**293 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -236,6 +236,7 @@ Generado: 2026-10-09
 | DELETE | `/api/v1/me/profile` |
 | GET | `/api/v1/me/profile` |
 | PUT | `/api/v1/me/profile` |
+| POST | `/api/v1/me/profile/preview` |
 | GET | `/api/v1/me/sessions` |
 | DELETE | `/api/v1/me/sessions/{session_id}` |
 | GET | `/api/v1/meta/filters` |
