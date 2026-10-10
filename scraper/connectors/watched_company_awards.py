@@ -22,6 +22,8 @@ from services.normalization import nif_espanol_malformado, normalize_nif
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
+    from scraper.connectors.base import ConnectorRunResult
+
 log = get_logger(__name__)
 
 SOURCE_ID = "placsp_watched_company_awards"
@@ -162,6 +164,23 @@ class PlacspWatchedCompanyAwardsBulkConnector(PlacspWatchedCompanyAwardsConnecto
         return None
 
 
+def ejecutar() -> ConnectorRunResult | None:
+    """Una pasada incremental; ``None`` si no hay ningún NIF vigilado.
+
+    Sin NIF vigilados no se descarga el feed: no hay nada que buscar en él.
+    La usan ``main`` y el carril diario del worker
+    (``scheduler/jobs/daily_atom.py``). No abre ni cierra la BD: el worker
+    comparte el pool con la cola, y ``close_pool()`` se la llevaría por delante.
+    """
+    from db.repositories.watched_companies import WatchedCompanyRepository
+    from scraper.connectors.base import run_connector
+
+    watched_nifs = WatchedCompanyRepository().list_canonical_nifs()
+    if not watched_nifs:
+        return None
+    return run_connector(PlacspWatchedCompanyAwardsConnector(watched_nifs))
+
+
 def main(argv: list[str] | None = None) -> int:
     """Ejecuta la fuente incremental o un backfill mensual manual."""
     import argparse
@@ -182,22 +201,26 @@ def main(argv: list[str] | None = None) -> int:
     from scraper.connectors.base import run_connector
 
     init_db()
-    watched_nifs = WatchedCompanyRepository().list_canonical_nifs()
-    if not watched_nifs:
-        print("Empresas vigiladas: 0 NIF canónicos; no se descarga PLACSP.")
-        return 0
-
     try:
         if args.bulk:
+            watched_nifs = WatchedCompanyRepository().list_canonical_nifs()
             year, month = args.bulk
-            connector: PlacspWatchedCompanyAwardsConnector = (
-                PlacspWatchedCompanyAwardsBulkConnector(year, month, watched_nifs, force=args.force)
+            result = (
+                run_connector(
+                    PlacspWatchedCompanyAwardsBulkConnector(
+                        year, month, watched_nifs, force=args.force
+                    )
+                )
+                if watched_nifs
+                else None
             )
         else:
-            connector = PlacspWatchedCompanyAwardsConnector(watched_nifs)
-        result = run_connector(connector)
+            result = ejecutar()
     finally:
         close_pool()
+    if result is None:
+        print("Empresas vigiladas: 0 NIF canónicos; no se descarga PLACSP.")
+        return 0
     print(
         f"Adjudicaciones de empresas vigiladas: {result.fetched} avisos · "
         f"{result.nuevas} nuevas · {result.actualizadas} actualizadas · "

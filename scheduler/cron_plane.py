@@ -40,15 +40,18 @@ que puedan estar dos activos. La exclusión se sostiene en dos sitios:
   configurado no arranca ninguno de los dos, que es preferible a arrancar los
   dos.
 * **Operativo.** Cada ejecución toma un lock con nombre y TTL en
-  ``db.job_locks`` (``cron:<job>``). Durante la ventana del cutover —mientras
-  los workflows programados siguen existiendo pero ya no deberían mandar— el
-  segundo corredor encuentra el lock tomado y se queda en no-op. Es el mismo
-  primitivo que usa la pipeline canónica (``scheduler/pipeline_runs.py``).
+  ``db.job_locks`` (``cron:<job>``), con el presupuesto del job como TTL. Lo
+  que excluye es a **otro worker**: dos instancias, o la nueva y la vieja
+  durante un despliegue. A los workflows de Actions **no** los excluye, porque
+  ninguno toma ese lock — por eso el cutover apaga los workflows antes de
+  encender este plano, y no los deja convivir (ver el runbook).
 
 Qué jobs asume, y por qué esos
 ------------------------------
-Exactamente los declarados ``plane="actions"``: los que hoy ejecuta un workflow
-**programado**. El cutover es entonces una sustitución 1:1, verificable.
+Los declarados ``plane="actions"`` —los que hoy ejecuta un workflow
+**programado**— menos los de :data:`SE_QUEDAN_EN_ACTIONS`, cada uno con su
+motivo escrito. El cutover es entonces una sustitución 1:1, verificable, de lo
+que el worker puede ejecutar de verdad.
 
 Los otros tres planos se quedan donde están, y no por omisión:
 
@@ -86,7 +89,13 @@ from typing import Any
 
 from observability.logging import get_logger
 from scheduler.jobs import ScheduledJob, build_default_registry
-from scheduler.loop import _backoff_interval, _env_int, _resolve_interval, _run_job
+from scheduler.loop import (
+    _backoff_interval,
+    _env_int,
+    _job_timeout_s,
+    _resolve_interval,
+    _run_job,
+)
 
 log = get_logger(__name__)
 
@@ -95,6 +104,32 @@ PLANO = "worker"
 
 #: Planos del registry que este plano asume. Ver el docstring del módulo.
 PLANOS_ASUMIDOS: frozenset[str] = frozenset({"actions"})
+
+#: Jobs ``plane="actions"`` que el worker **no** asume, con el motivo.
+#:
+#: Siguen siendo ``plane="actions"`` porque es la verdad: los ejecuta su
+#: workflow programado, y ``scripts/check_job_parity.py`` sigue exigiéndolo.
+#: Sacar uno de aquí es decidir que el worker ya puede ejecutarlo igual que
+#: Actions; el motivo dice qué tiene que cambiar antes.
+SE_QUEDAN_EN_ACTIONS: dict[str, str] = {
+    "ml_retrain_baja": (
+        "train-predictivos.yml publica el .pkl en la Release `ml-models` con "
+        "`gh release upload`; en el worker el artefacto quedaría en el disco "
+        "efímero del contenedor y `model_versions` apuntaría a una ruta que "
+        "ningún scoring puede resolver (el fallo que sacó este job de la "
+        "pipeline en 2026-08). Además el calendario del plano vive en memoria: "
+        "con un intervalo de 30 días reentrenaría 12 h después de cada reinicio "
+        "del worker. Puede moverse cuando el artefacto viva en el almacén de "
+        "objetos (ADR-029)."
+    ),
+    "documentos_embeddings": (
+        "calcula los embeddings en local con sentence-transformers (extra "
+        "`ml-embeddings`, PyTorch) y extrae con OCR (`ocrmypdf`, binario del "
+        "sistema): ninguno de los dos está en la imagen del worker, y el modelo "
+        "no cabe en su memoria junto a la cola. Trata pliegos públicos, no dato "
+        "personal, así que el motivo de residencia de ADR-033 no le aplica."
+    ),
+}
 
 #: Prefijo de los locks en ``job_locks``. Con prefijo y no con el nombre pelado
 #: para no chocar con los que toma la pipeline canónica, que usan el nombre del
@@ -114,7 +149,11 @@ def plano_activo() -> bool:
 
 def jobs_del_plano(registry: list[ScheduledJob] | None = None) -> list[ScheduledJob]:
     """Jobs del registry que este plano ejecuta, en el orden del registry."""
-    return [j for j in (registry or build_default_registry()) if j.plane in PLANOS_ASUMIDOS]
+    return [
+        j
+        for j in (registry or build_default_registry())
+        if j.plane in PLANOS_ASUMIDOS and j.name not in SE_QUEDAN_EN_ACTIONS
+    ]
 
 
 def _holder() -> str:
@@ -147,7 +186,7 @@ def _con_lock(nombre: str, ttl_s: int, fn: Callable[[], Any]) -> bool:
         return False
 
     try:
-        return _run_job(nombre, fn, heavy=False)
+        return _run_job(nombre, fn, heavy=False, timeout_s=ttl_s)
     finally:
         if holder:
             try:
@@ -204,9 +243,10 @@ class CronPlane:
         """
         instante = ahora or datetime.now(UTC)
         ejecutados: list[str] = []
-        ttl_s = _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
         for job in self.vencidos(instante):
-            _con_lock(job.name, ttl_s, job.fn)
+            # El presupuesto del job es a la vez su timeout y el TTL del lock:
+            # con un TTL más corto que el job, el lock caducaba a media pasada.
+            _con_lock(job.name, _job_timeout_s(job.timeout_seconds), job.fn)
             ejecutados.append(job.name)
             self.proxima[job.name] = instante + _backoff_interval(
                 job.name, self.intervalos[job.name]

@@ -59,7 +59,20 @@ def _env_int(name: str, default: int, *, min_value: int = 1) -> int:
     return max(value, min_value)
 
 
-def _run_heavy_job(name: str, fn: Callable[[], Any]) -> bool:
+def _job_timeout_s(timeout_s: int | None) -> int:
+    """Tope de reloj de un job: el que declara él, o el global si no declara.
+
+    ``SCHEDULER_JOB_TIMEOUT_SECONDS`` es el tope de los jobs ligeros. Un job
+    con presupuesto propio (``ScheduledJob.timeout_seconds``) no lo hereda: la
+    ingesta diaria tiene 45 min solo para PLACSP, y con 600 s se daba por
+    colgada en cada pasada.
+    """
+    if timeout_s is not None:
+        return timeout_s
+    return _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
+
+
+def _run_heavy_job(name: str, fn: Callable[[], Any], *, timeout_s: int | None = None) -> bool:
     """Ejecuta un job pesado en un proceso separado (cancellable en timeout).
 
     A diferencia de threads, los procesos pueden terminarse al exceder el
@@ -80,7 +93,7 @@ def _run_heavy_job(name: str, fn: Callable[[], Any]) -> bool:
     if _heavy_executor is None:
         _heavy_executor = concurrent.futures.ProcessPoolExecutor(max_workers=1)
 
-    timeout_s = _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
+    timeout_s = _job_timeout_s(timeout_s)
     started = time.monotonic()
 
     future = _heavy_executor.submit(fn)
@@ -128,7 +141,9 @@ def _run_heavy_job(name: str, fn: Callable[[], Any]) -> bool:
     return True
 
 
-def _run_job(name: str, fn: Callable[[], Any], *, heavy: bool = False) -> bool:
+def _run_job(
+    name: str, fn: Callable[[], Any], *, heavy: bool = False, timeout_s: int | None = None
+) -> bool:
     """Ejecuta un job ligero en un thread con timeout. Devuelve True si tuvo éxito.
 
     Para jobs pesados usa ``_run_heavy_job`` que emplea un proceso separado
@@ -138,7 +153,7 @@ def _run_job(name: str, fn: Callable[[], Any], *, heavy: bool = False) -> bool:
     en el loop principal.
     """
     if heavy:
-        return _run_heavy_job(name, fn)
+        return _run_heavy_job(name, fn, timeout_s=timeout_s)
 
     # Jobs ligeros: thread daemon con join(timeout)
     # Evitar solapamiento: si el job anterior sigue vivo, saltar esta ejecución
@@ -147,7 +162,7 @@ def _run_job(name: str, fn: Callable[[], Any], *, heavy: bool = False) -> bool:
         log.warning("scheduler_loop_job_skipped_overlap", job=name)
         return False
 
-    timeout_s = _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
+    timeout_s = _job_timeout_s(timeout_s)
     started = time.monotonic()
     result_holder: list[Any] = []
     exc_holder: list[BaseException] = []
@@ -296,7 +311,7 @@ def main() -> int:
             now = datetime.now(UTC)
             for job in registry:
                 if now >= schedule[job.name]:
-                    _run_job(job.name, job.fn, heavy=job.heavy)
+                    _run_job(job.name, job.fn, heavy=job.heavy, timeout_s=job.timeout_seconds)
                     schedule[job.name] = now + _backoff_interval(job.name, intervals[job.name])
             # Esperar el poll interval o despertar inmediatamente si llega señal de parada
             if _stop_event.wait(timeout=sleep_seconds):

@@ -390,6 +390,80 @@ def debe_correr_cli() -> int:
 # ── Scoring: outputs y resumen del job ────────────────────────────────────────
 
 
+def _degradados(resumen: dict[str, Any]) -> dict[str, Any]:
+    """Modelos con versión activa cuyo artefacto no se sirvió (salió el baseline).
+
+    No es el baseline honesto del RFC («no hay modelo activo»): es un modelo
+    activo que no está llegando a producción.
+    """
+    return {
+        modelo: resultado["degradado"]
+        for modelo in ("baja", "retencion")
+        if (resultado := resumen.get(modelo, {})).get("degradado")
+    }
+
+
+def run_scoring_programado() -> dict[str, Any]:
+    """El scoring diario tal como lo hace ``ml-scoring.yml``, para un plano de cron.
+
+    Los planos que no son Actions —el worker de ADR-033 y el loop de Docker—
+    llamaban a :func:`run_scoring` a secas, y perdían tres cosas del workflow:
+
+    - **El guard de una corrida por día UTC** (:func:`debe_correr`). Con él el
+      job puede pedir turno cada pocas horas y solo puntúa la primera vez del
+      día; sin él, un reinicio del worker reprogramaba el scoring a otra hora,
+      o lo repetía. Fail-open como el del workflow: si no puede leer la BD,
+      puntúa — saltarse el día en silencio es peor que puntuar dos veces.
+    - **Fallar** si el modelo de baja no completó o si el serving quedó
+      degradado a baseline, como :func:`run_scoring_cli`.
+    - **Verificar** que ``predicciones_baja`` tiene las filas de *esta*
+      corrida (:func:`_verificar_corrida`), como el step ``verify``.
+
+    Los fallos salen como excepción: el plano la registra y avisa una sola vez
+    (``scheduler/loop.py::_run_job``). El ``notify`` propio de la CLI no se
+    repite aquí, que mandaría el mismo correo dos veces.
+    """
+    from db.repositories.predicciones import PrediccionesRepository
+
+    repo = PrediccionesRepository()
+    ultimo: object = None
+    correr, motivo = True, "lectura_fallida"
+    try:
+        ultimo = repo.estado("predicciones_baja")["ultimo_computed_at"]
+    except Exception as exc:
+        log.warning("ml_scoring_guard_lectura_failed", error=str(exc))
+    else:
+        correr, motivo = debe_correr(ultimo, datetime.now(UTC), forzar=False)
+    log.info("ml_scoring_guard", correr=correr, motivo=motivo, ultimo_computed_at=ultimo)
+    if not correr:
+        return {"guard": motivo}
+
+    resumen = run_scoring()
+    resumen["guard"] = motivo
+    baja = resumen.get("baja", {})
+    if baja.get("status") not in _SCORING_OK_STATUSES:
+        raise RuntimeError(
+            f"El modelo de baja no completó el scoring: status={baja.get('status')!r}"
+        )
+    degradados = _degradados(resumen)
+    if degradados:
+        raise RuntimeError(
+            "ML scoring degradado a baseline: hay una versión activa en model_versions "
+            f"cuyo artefacto no se pudo servir ({degradados}). Revisá que "
+            "train-predictivos.yml haya subido el .pkl a la Release y que el proceso "
+            "tenga GITHUB_TOKEN para descargarlo."
+        )
+    salidas = _salidas_scoring(baja)
+    if salidas["baja_computed_at"] and _verificar_corrida(
+        repo, salidas["baja_computed_at"], salidas["baja_filas"]
+    ):
+        raise RuntimeError(
+            "predicciones_baja no tiene las filas que el scoring dijo escribir "
+            f"(computed_at={salidas['baja_computed_at']}, filas={salidas['baja_filas']})"
+        )
+    return resumen
+
+
 def _salidas_scoring(baja: dict[str, Any]) -> dict[str, str]:
     """Outputs del step de scoring que consume ``verify``.
 
@@ -599,11 +673,7 @@ def run_scoring_cli() -> int:
         log.error("ml_scoring_cli_failed", baja=baja)
         return 1
 
-    degradados = {
-        modelo: resultado["degradado"]
-        for modelo, resultado in (("baja", baja), ("retencion", retencion))
-        if resultado.get("degradado")
-    }
+    degradados = _degradados(resumen)
     if degradados:
         from observability.alerts import notify
 

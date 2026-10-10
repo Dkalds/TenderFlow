@@ -90,9 +90,43 @@ class TestRunJob:
             patch("scheduler.loop._run_heavy_job", return_value=True) as mock_heavy,
             patch("scheduler.loop.log"),
         ):
-            result = _run_job("test_heavy", fn, heavy=True)
-        mock_heavy.assert_called_once_with("test_heavy", fn)
+            result = _run_job("test_heavy", fn, heavy=True, timeout_s=900)
+        mock_heavy.assert_called_once_with("test_heavy", fn, timeout_s=900)
         assert result is True
+
+    def test_timeout_propio_del_job_gana_al_global(self):
+        """Un job con presupuesto propio no hereda el tope global de 600 s.
+
+        Con el global, la ingesta diaria (45 min solo para PLACSP en
+        scrape-daily.yml) se daba por colgada en cada pasada.
+        """
+        from scheduler.loop import _job_timeout_s
+
+        with patch.dict(os.environ, {"SCHEDULER_JOB_TIMEOUT_SECONDS": "600"}):
+            assert _job_timeout_s(7200) == 7200
+            assert _job_timeout_s(None) == 600
+
+    def test_el_hilo_espera_el_presupuesto_del_job(self):
+        from scheduler.loop import _run_job
+
+        with (
+            patch("scheduler.loop.threading.Thread") as thread_cls,
+            patch("scheduler.loop.log"),
+        ):
+            thread_cls.return_value.is_alive.return_value = False
+            _run_job("test_presupuesto", lambda: None, timeout_s=1234)
+        thread_cls.return_value.join.assert_called_once_with(timeout=1234)
+
+    def test_los_jobs_que_vienen_de_actions_declaran_su_presupuesto(self):
+        """Cada job ``plane="actions"`` lleva el ``timeout-minutes`` de su workflow."""
+        from scheduler.jobs import build_default_registry
+
+        sin_presupuesto = [
+            job.name
+            for job in build_default_registry()
+            if job.plane == "actions" and job.timeout_seconds is None
+        ]
+        assert sin_presupuesto == []
 
     @patch("observability.runtime_metrics.scheduler_job_duration_seconds")
     @patch("observability.runtime_metrics.scheduler_job_total")

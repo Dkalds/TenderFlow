@@ -34,7 +34,7 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.jobs.llm_models_canary import run as run_llm_models_canary
     from scheduler.jobs.llm_tech_labeling import run as run_llm_tech_labeling
     from scheduler.jobs.ml_predicciones import run_retrain as run_ml_retrain
-    from scheduler.jobs.ml_predicciones import run_scoring as run_ml_scoring
+    from scheduler.jobs.ml_predicciones import run_scoring_programado as run_ml_scoring
     from scheduler.jobs.recent_bulk import run as run_recent_bulk
     from scheduler.jobs.retention_cleanup import run as run_retention_cleanup
     from scheduler.jobs.watchlist_rules import run as run_watchlist_rules
@@ -52,6 +52,9 @@ def build_default_registry() -> list[ScheduledJob]:
             default_interval_minutes=240,
             initial_offset_minutes=0,
             heavy=True,
+            # El `timeout-minutes: 120` del job de scrape-daily.yml: 45 de
+            # PLACSP + 45 de los seis conectores + 20 del cierre, más margen.
+            timeout_seconds=120 * 60,
         ),
         ScheduledJob(
             # plane='manual' (2026-08): el refresh de N meses ya no tiene cron.
@@ -85,9 +88,15 @@ def build_default_registry() -> list[ScheduledJob]:
             module="scheduler.jobs.ml_predicciones",
             fn=run_ml_scoring,
             interval_env="SCHEDULER_ML_SCORING_INTERVAL_MINUTES",
-            default_interval_minutes=1440,  # nocturno
-            initial_offset_minutes=240,  # tras la ingesta diaria
+            # Pide turno con la cadencia de la ingesta y el guard de
+            # `run_scoring_programado` deja puntuar solo la primera vez de cada
+            # día UTC: es lo que hace ml-scoring.yml encadenado a scrape-daily.
+            # Con 1440 min el día de puntuación dependía de cuándo arrancó el
+            # proceso, y un reinicio lo movía.
+            default_interval_minutes=240,
+            initial_offset_minutes=30,  # detrás de daily_atom, que arranca en 0
             heavy=True,  # construye el dataset histórico completo
+            timeout_seconds=20 * 60,  # `timeout-minutes: 20` de ml-scoring.yml
         ),
         ScheduledJob(
             # plane='actions' (2026-08): el reentrenamiento salió de
@@ -105,6 +114,7 @@ def build_default_registry() -> list[ScheduledJob]:
             default_interval_minutes=43_200,  # mensual
             initial_offset_minutes=720,
             heavy=True,
+            timeout_seconds=45 * 60,  # `timeout-minutes: 45` de train-predictivos.yml
         ),
         ScheduledJob(
             name="documentos_embeddings",
@@ -115,6 +125,7 @@ def build_default_registry() -> list[ScheduledJob]:
             default_interval_minutes=1440,  # nocturno
             initial_offset_minutes=300,  # tras la ingesta diaria + scoring
             heavy=True,  # descarga de red + inferencia del modelo de embeddings
+            timeout_seconds=90 * 60,  # `timeout-minutes: 90` del job de pliegos.yml
         ),
         # ── Light jobs (daemon threads) ───────────────────────────────
         ScheduledJob(

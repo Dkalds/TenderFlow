@@ -6,7 +6,14 @@ oficial publicado por Open Data Euskadi como descubrimiento reciente; no se
 presenta como cobertura exhaustiva ni histórica.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from scraper.connectors.regional_rss import RegionalRssConnector
+
+if TYPE_CHECKING:
+    from scraper.connectors.base import ConnectorRunResult
 
 
 class EuskadiRssConnector(RegionalRssConnector):
@@ -20,6 +27,18 @@ class EuskadiRssConnector(RegionalRssConnector):
     analysis_universe = "euskadi_rss_recent_technology_observed"
 
 
+def ejecutar(*, feed_url: str | None = None) -> ConnectorRunResult:
+    """Una pasada incremental del RSS de Euskadi.
+
+    La usan ``main`` y el carril diario del worker
+    (``scheduler/jobs/daily_atom.py``). No abre ni cierra la BD: el worker
+    comparte el pool con la cola, y ``close_pool()`` se la llevaría por delante.
+    """
+    from scraper.connectors.base import run_connector
+
+    return run_connector(EuskadiRssConnector(feed_url=feed_url))
+
+
 def main(argv: list[str] | None = None) -> int:
     """Ejecuta la ingesta incremental del RSS oficial de Euskadi."""
     import argparse
@@ -29,11 +48,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from db.database import close_pool, init_db
-    from scraper.connectors.base import run_connector
 
     init_db()
     try:
-        result = run_connector(EuskadiRssConnector(feed_url=args.url))
+        result = ejecutar(feed_url=args.url)
     finally:
         close_pool()
     print(

@@ -41,6 +41,12 @@ class ScheduledJob:
             in production. Checked by ``scripts/check_job_parity.py``.
         module: Module invocable with ``python -m`` when ``plane`` is
             ``actions`` or ``manual``. Empty for the other planes.
+        timeout_seconds: Tope de reloj propio del job. ``None`` usa
+            ``SCHEDULER_JOB_TIMEOUT_SECONDS`` (600 s por defecto), que es un
+            tope pensado para jobs ligeros: aplicado a la ingesta diaria —45 min
+            de presupuesto solo para PLACSP en ``scrape-daily.yml``— la daba por
+            colgada en cada pasada. Los jobs que en Actions tienen un
+            ``timeout-minutes`` mayor declaran aquí ese mismo presupuesto.
     """
 
     name: str
@@ -51,3 +57,4 @@ class ScheduledJob:
     heavy: bool = False
     plane: Plane = "pipeline"
     module: str = ""
+    timeout_seconds: int | None = None

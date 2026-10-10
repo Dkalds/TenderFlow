@@ -52,6 +52,8 @@ from shared.geo import nuts_to_ccaa
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from scraper.connectors.base import ConnectorRunResult
+
 log = get_logger(__name__)
 
 SOURCE_ID = "pscp"
@@ -622,6 +624,36 @@ class PscpConnector:
         return {"last_seen_updated": self._max_pub_date, "last_entry_id": self._max_pub_id}
 
 
+def ejecutar(
+    *, dataset_id: str | None = None, desde: str | None = None
+) -> ConnectorRunResult | None:
+    """Una pasada incremental de PSCP; ``None`` si la fuente está apagada.
+
+    Sin dataset configurado la fuente está APAGADA, no rota (S2.5): se declara
+    ``disabled`` en ``ops_events``, que es lo que lee el chequeo de frescura
+    del healthcheck para distinguir «apagada» de «muerta».
+    La usan ``main`` y el carril diario del worker
+    (``scheduler/jobs/daily_atom.py``). No abre ni cierra la BD: el worker
+    comparte el pool con la cola, y ``close_pool()`` se la llevaría por delante.
+    """
+    from scraper.connectors.base import record_source_disabled, run_connector
+
+    dataset = dataset_id or settings.PSCP_DATASET_ID
+    if not dataset:
+        record_source_disabled(
+            SOURCE_ID,
+            motivo=(
+                "PSCP_DATASET_ID no configurado; validá el dataset con "
+                "`python scripts/probe_pscp.py` y fijalo por entorno"
+            ),
+        )
+        return None
+    connector = PscpConnector(dataset_id=dataset)
+    if desde:
+        connector._since = lambda cursor: desde  # type: ignore[method-assign]  # --desde sustituye _since en la instancia, como en TED
+    return run_connector(connector)
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -631,39 +663,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from db.database import close_pool, init_db
-    from scraper.connectors.base import record_source_disabled, run_connector
 
     init_db()
-
-    # Sin dataset configurado la fuente está APAGADA, no rota (S2.5). Antes
-    # esto no llegaba a ejecutarse: `scrape-daily.yml` gatea el step con
-    # `vars.PSCP_DATASET_ID != ''`, así que un PSCP sin configurar no dejaba
-    # rastro de ninguna clase — y si el gate se quitaba, `fetch()` lanzaba
-    # RuntimeError y ponía el job en rojo por una decisión de configuración.
-    # Declarándolo, el chequeo de frescura del healthcheck distingue «apagada»
-    # de «muerta» y el gate del workflow puede retirarse.
-    dataset_id = args.dataset or settings.PSCP_DATASET_ID
-    if not dataset_id:
-        try:
-            record_source_disabled(
-                SOURCE_ID,
-                motivo=(
-                    "PSCP_DATASET_ID no configurado; validá el dataset con "
-                    "`python scripts/probe_pscp.py` y fijalo por entorno"
-                ),
-            )
-        finally:
-            close_pool()
-        print("PSCP: sin PSCP_DATASET_ID configurado — fuente declarada 'disabled'.")
-        return 0
-
     try:
-        connector = PscpConnector(dataset_id=dataset_id)
-        if args.desde:
-            connector._since = lambda cursor: args.desde  # type: ignore[method-assign]  # --desde sustituye _since en la instancia, como en TED
-        result = run_connector(connector)
+        result = ejecutar(dataset_id=args.dataset, desde=args.desde)
     finally:
         close_pool()
+    if result is None:
+        print("PSCP: sin PSCP_DATASET_ID configurado — fuente declarada 'disabled'.")
+        return 0
     print(
         f"PSCP: {result.fetched} avisos · {result.nuevas} nuevas · "
         f"{result.actualizadas} actualizadas · {result.adjudicaciones} adjudicaciones · "

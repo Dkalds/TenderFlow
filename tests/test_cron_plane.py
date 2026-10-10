@@ -3,7 +3,8 @@
 Lo que se fija aquí es lo que el plano promete y no se ve mirando el código
 corriendo en producción:
 
-1. **Qué jobs asume.** Exactamente los ``plane="actions"`` del registry. Es la
+1. **Qué jobs asume.** Los ``plane="actions"`` del registry menos los de
+   ``SE_QUEDAN_EN_ACTIONS``, que tienen que nombrar jobs reales. Es la
    afirmación central del ADR: el cutover es una sustitución 1:1 de los
    workflows programados. Si alguien añade un job ``actions`` y el plano no lo
    recoge, ese job deja de correr el día del cutover — silencio, otra vez.
@@ -33,6 +34,7 @@ import pytest
 from scheduler.cron_plane import (
     PLANO,
     PLANOS_ASUMIDOS,
+    SE_QUEDAN_EN_ACTIONS,
     CronPlane,
     arrancar_en_hilo,
     jobs_del_plano,
@@ -107,6 +109,30 @@ def test_el_registry_real_declara_al_menos_un_job_de_actions():
     assert all(j.module for j in asumidos)
 
 
+def test_no_asume_los_jobs_que_se_quedan_en_actions():
+    registry = [_job("uno", plane="actions"), _job("ml_retrain_baja", plane="actions")]
+    assert [j.name for j in jobs_del_plano(registry)] == ["uno"]
+
+
+def test_las_exclusiones_nombran_jobs_reales_de_actions():
+    """Cada exclusión apunta a un job ``plane="actions"`` que sigue existiendo.
+
+    Siguen siendo ``actions`` porque es la verdad —los ejecuta su workflow
+    programado— y es lo que ``check_job_parity.py`` exige. Una exclusión con un
+    nombre que ya no está en el registry sería una línea muerta que nadie lee.
+    """
+    planos = {j.name: j.plane for j in build_default_registry()}
+    for nombre, motivo in SE_QUEDAN_EN_ACTIONS.items():
+        assert planos.get(nombre) == "actions", nombre
+        assert motivo.strip(), f"{nombre} se queda en Actions sin motivo escrito"
+
+
+def test_el_worker_asume_la_ingesta_y_el_scoring():
+    """Los dos jobs que el cutover mueve. Si cambia, cambia el runbook."""
+    asumidos = {j.name for j in jobs_del_plano(build_default_registry())}
+    assert asumidos == {"daily_atom", "ml_scoring_baja"}
+
+
 # ── 2. No se activa solo ────────────────────────────────────────────────────
 
 
@@ -164,6 +190,42 @@ def test_ejecuta_igual_si_la_tabla_de_locks_no_responde():
     # No se libera lo que no se tomó: soltar un lock ajeno dejaría correr a un
     # tercero en paralelo.
     release.assert_not_called()
+
+
+def test_el_ttl_del_lock_es_el_presupuesto_del_job():
+    """Con un TTL más corto que el job, el lock caducaba a media pasada."""
+    job = ScheduledJob(
+        name="largo",
+        fn=lambda: None,
+        interval_env="TEST_LARGO_INTERVAL_MINUTES",
+        default_interval_minutes=60,
+        plane="actions",
+        module="tests.largo",
+        timeout_seconds=7200,
+    )
+    plano = CronPlane([job], poll_segundos=1)
+    plano.planificar(AHORA)
+
+    with (
+        patch("db.job_locks.acquire", return_value=True) as acquire,
+        patch("scheduler.cron_plane._run_job", return_value=True) as run_job,
+    ):
+        plano.tick(AHORA)
+
+    assert acquire.call_args.kwargs["ttl_seconds"] == 7200
+    assert run_job.call_args.kwargs["timeout_s"] == 7200
+
+
+def test_sin_presupuesto_propio_usa_el_global(monkeypatch):
+    monkeypatch.setenv("SCHEDULER_JOB_TIMEOUT_SECONDS", "900")
+    job = _job("corto")
+    plano = CronPlane([job], poll_segundos=1)
+    plano.planificar(AHORA)
+
+    with patch("db.job_locks.acquire", return_value=True) as acquire:
+        plano.tick(AHORA)
+
+    assert acquire.call_args.kwargs["ttl_seconds"] == 900
 
 
 def test_libera_el_lock_al_terminar():

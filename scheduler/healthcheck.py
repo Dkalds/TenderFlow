@@ -671,6 +671,38 @@ def _clave_aviso_degradado(warnings: list[str]) -> str:
     return f"healthcheck:degraded:{huella}"
 
 
+def alertar(result: dict[str, Any]) -> None:
+    """Avisa si el estado no es ``healthy``: lo que añade ``--alert`` al chequeo."""
+    if result["status"] == "healthy":
+        return
+    critico = result["status"] == "critical"
+    notify(
+        AlertLevel.CRITICAL if critico else AlertLevel.WARN,
+        "Healthcheck tenderflow",
+        body=f"Estado: {result['status']}",
+        # Un estado crítico no se calla nunca. Uno degradado que no cambia
+        # sale una vez y luego recuerda a diario: este check corre tras cada
+        # pasada y cada seis horas, diez veces al día con los mismos avisos.
+        dedup_key=None if critico else _clave_aviso_degradado(result["warnings"]),
+        cooldown_s=None if critico else COOLDOWN_RECORDATORIO_DIARIO_S,
+        warnings=result["warnings"],
+        errors=result["errors"],
+        **{k: v for k, v in result["info"].items() if not isinstance(v, dict)},
+    )
+
+
+def comprobar_y_alertar() -> dict[str, Any]:
+    """El chequeo post-pasada con sus alertas, con los umbrales por defecto.
+
+    Es lo que ``scrape-daily.yml`` ejecuta al final de cada pasada
+    (``python -m scheduler.healthcheck --alert``), sin pasar por la CLI: lo usa
+    el carril diario del worker (``scheduler/jobs/daily_atom.py``).
+    """
+    result = run_check()
+    alertar(result)
+    return result
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--freshness-hours", type=int, default=36)
@@ -701,21 +733,8 @@ def main() -> int:
     )
     print(json.dumps(result, indent=2, default=str))
 
-    if args.alert and result["status"] != "healthy":
-        critico = result["status"] == "critical"
-        notify(
-            AlertLevel.CRITICAL if critico else AlertLevel.WARN,
-            "Healthcheck tenderflow",
-            body=f"Estado: {result['status']}",
-            # Un estado crítico no se calla nunca. Uno degradado que no cambia
-            # sale una vez y luego recuerda a diario: este check corre tras cada
-            # pasada y cada seis horas, diez veces al día con los mismos avisos.
-            dedup_key=None if critico else _clave_aviso_degradado(result["warnings"]),
-            cooldown_s=None if critico else COOLDOWN_RECORDATORIO_DIARIO_S,
-            warnings=result["warnings"],
-            errors=result["errors"],
-            **{k: v for k, v in result["info"].items() if not isinstance(v, dict)},
-        )
+    if args.alert:
+        alertar(result)
 
     if args.alert and result["status"] == "degraded":
         # El email ya avisó del estado degradado; el job de CI queda verde para
