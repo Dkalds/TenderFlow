@@ -80,8 +80,8 @@ que se crea a mano. Dashboard → **New → Web Service** → el repositorio, ra
 
 Variables de entorno. Las de la API se copian de `tenderflow-api` →
 Environment. Los secrets de GitHub **no se pueden leer** una vez creados, así
-que las de alertas se copian de `tenderflow-alertmanager`, que tiene las
-mismas:
+que las que solo viven allí se vuelven a obtener en su origen (lo dice cada
+fila):
 
 | Variable | Valor | De dónde sale |
 |---|---|---|
@@ -95,7 +95,7 @@ mismas:
 | `AUDIT_HMAC_KEY` | igual que la API | `tenderflow-api` |
 | `SENTRY_DSN` | igual que la API (opcional) | `tenderflow-api` |
 | `JOBS_LOCK_TTL_SEGUNDOS` | `900` | — |
-| `ALERT_EMAIL_TO`, `ALERT_SMTP_USER`, `ALERT_SMTP_PASSWORD` | los de alertas, **las tres juntas** | `tenderflow-alertmanager`. Con `ALERT_EMAIL_TO` y sin contraseña el worker no arranca en `prod`. Son también las credenciales SMTP con las que salen los digests a usuarios (`observability/mailer.py`) |
+| `ALERT_EMAIL_TO`, `ALERT_SMTP_USER`, `ALERT_SMTP_PASSWORD` | los de alertas, **las tres juntas** | El destinatario, la cuenta de Gmail que envía (la misma que usa Actions) y una *contraseña de aplicación* nueva de esa cuenta (<https://myaccount.google.com/apppasswords>; crearla no invalida la de Actions). No se copian de `tenderflow-alertmanager`: está declarado en `render.yaml` pero, como el worker, no consta creado en Render. Con `ALERT_EMAIL_TO` y sin contraseña el worker no arranca en `prod`. Son también las credenciales SMTP con las que salen los digests a usuarios (`observability/mailer.py`); host y puerto por defecto: `smtp.gmail.com:587` |
 | `WEBHOOK_ALLOWED_HOSTS` | igual que la API | `tenderflow-api`. El cierre reintenta los webhooks salientes; sin la allowlist quedan deshabilitados |
 | `EMAIL_BACKEND`, `EMAIL_FROM`, `EMAIL_FROM_NAME` y la clave de su proveedor | solo si la API las tiene | `tenderflow-api`. Sin ellas los digests salen por SMTP con `ALERT_SMTP_USER` de remitente, que es lo que hacía Actions |
 | `ALERT_MIN_LEVEL` | solo si está definida en Actions | GitHub → Settings → Variables → Actions |
