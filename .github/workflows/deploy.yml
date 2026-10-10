@@ -13,7 +13,12 @@ name: Deploy a producción (Render)
 # el resultado en tres pasos (healthcheck, alineación de schema, smoke).
 #
 # Alcance exacto de «único»: gobierna `tenderflow-api`, que es el servicio que
-# atiende internet y el único con `autoDeploy: false` en `render.yaml`. Los tres
+# atiende internet, y `tenderflow-worker` (la cola y, con ADR-033, el plano de
+# cron), los dos con `autoDeploy: false` en `render.yaml`. El worker se despliega
+# del mismo commit y solo cuando la API ha pasado su verificación: ejecuta la
+# ingesta contra la misma BD, y dejarlo en otra generación del código —que es lo
+# que pasaba mientras este workflow solo conocía la API— es tener la pasada
+# diaria corriendo con un esquema o unos pasos que ya no son los de `master`. Los tres
 # servicios de observabilidad (Prometheus, Alertmanager, Grafana) conservan a
 # propósito el autoDeploy por defecto de Render —su configuración va horneada en
 # la imagen, así que una regla de alerta editada solo llega a producción con un
@@ -34,6 +39,7 @@ name: Deploy a producción (Render)
 # Requiere configurar:
 #   - secrets.RENDER_DEPLOY_HOOK_URL  (Render → tenderflow-api → Settings →
 #     Deploy Hook). Es una URL con token: va como secret, nunca como variable.
+#   - secrets.RENDER_WORKER_DEPLOY_HOOK_URL  (lo mismo en tenderflow-worker).
 #   - vars.SMOKE_BASE_URL / secrets.SMOKE_API_KEY (los mismos que usa smoke.yml).
 
 on:
@@ -63,10 +69,18 @@ jobs:
       - name: Verificar configuración
         env:
           DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          WORKER_DEPLOY_HOOK: ${{ secrets.RENDER_WORKER_DEPLOY_HOOK_URL }}
           SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
         run: |
           if [ -z "$DEPLOY_HOOK" ]; then
             echo "::error title=Falta el deploy hook::Definí el secret RENDER_DEPLOY_HOOK_URL con la URL del Deploy Hook de tenderflow-api."
+            exit 1
+          fi
+          # Antes de desplegar nada: sin él, la API pasaría a la versión nueva y
+          # el worker se quedaría en la anterior, que es justo lo que este paso
+          # existe para impedir.
+          if [ -z "$WORKER_DEPLOY_HOOK" ]; then
+            echo "::error title=Falta el deploy hook del worker::Definí el secret RENDER_WORKER_DEPLOY_HOOK_URL con la URL del Deploy Hook de tenderflow-worker."
             exit 1
           fi
           if [ -z "$SMOKE_BASE_URL" ]; then
@@ -148,6 +162,31 @@ jobs:
           SMOKE_API_KEY: ${{ secrets.SMOKE_API_KEY }}
         run: python scripts/smoke_prod.py
 
+      # El worker va después de que la API haya pasado su verificación: mismo
+      # commit, y solo si es bueno. Con `skip_smoke` se despliega igual, que es
+      # lo que quiere un rollback urgente: devolver los dos servicios a la misma
+      # versión.
+      #
+      # No se sondea su `/health/ready` como el de la API, y no por olvido. Ese
+      # endpoint no dice qué commit está sirviendo, y mientras Render construye
+      # la versión nueva sigue respondiendo la anterior: un 200 no probaría nada.
+      # Si la nueva no arranca, Render la marca como fallida y mantiene la
+      # anterior viva, así que un deploy roto del worker no lo tumba — se ve en
+      # Render → tenderflow-worker → Events.
+      - name: Disparar deploy del worker
+        id: worker
+        env:
+          WORKER_DEPLOY_HOOK: ${{ secrets.RENDER_WORKER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          codigo=$(curl -sS -o /tmp/deploy-worker.json -w "%{http_code}" -X POST "$WORKER_DEPLOY_HOOK")
+          if [ "$codigo" -ge 300 ]; then
+            echo "::error title=Deploy del worker rechazado::Render devolvió HTTP $codigo"
+            cat /tmp/deploy-worker.json || true
+            exit 1
+          fi
+          echo "Deploy del worker encolado (HTTP $codigo). Su resultado se ve en Render → tenderflow-worker → Events."
+
       # Todo lo que viene de `inputs`, `job` o `github` viaja por `env:` y se lee
       # como variable de shell. Interpolar `${{ ... }}` dentro de un bloque
       # `run:` es el patrón que Semgrep marca como
@@ -162,16 +201,23 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           SKIP_SMOKE: ${{ inputs.skip_smoke }}
           JOB_STATUS: ${{ job.status }}
+          WORKER_OUTCOME: ${{ steps.worker.outcome }}
         run: |
           if [ "$SKIP_SMOKE" = "true" ]; then
             verificacion="omitida (skip_smoke)"
           else
             verificacion="ejecutada"
           fi
+          case "$WORKER_OUTCOME" in
+            success) worker="deploy encolado; su resultado, en Render → tenderflow-worker → Events" ;;
+            failure) worker="Render rechazó el deploy hook" ;;
+            *) worker="no desplegado: un paso anterior falló, y sigue en la versión previa" ;;
+          esac
           {
             echo "### Deploy a producción"
             echo ""
             echo "- Commit: \`$COMMIT_SHA\`"
             echo "- Verificación posterior: $verificacion"
+            echo "- Worker: $worker"
             echo "- Resultado: $JOB_STATUS"
           } >> "$GITHUB_STEP_SUMMARY"

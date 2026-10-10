@@ -53,7 +53,7 @@ worker**. El lock sigue sirviendo para lo suyo: que dos instancias del worker
 
 | Comprobación | Cómo | Qué esperar |
 |---|---|---|
-| El código está en `master` y desplegado en la API | GitHub → PR del cutover mergeado; `deploy.yml` en verde | — |
+| El código está en `master` y desplegado en la API y el worker | GitHub → PR del cutover mergeado; `deploy.yml` en verde y, en Render → `tenderflow-worker` → Events, el deploy de ese commit como *live* | — |
 | Los dos planos se conocen | `ENV=dev python scripts/check_job_parity.py` | exit 0 |
 | Qué jobs asume el worker | `ENV=dev python -c "from scheduler.cron_plane import jobs_del_plano; print([j.name for j in jobs_del_plano()])"` | `['daily_atom', 'ml_scoring_baja']` |
 
@@ -125,10 +125,13 @@ Desplegar y comprobar:
    no lo filtre un `ALERT_MIN_LEVEL` alto). Si no llega, las alertas del cron
    tampoco llegarán.
 
-`deploy.yml` solo dispara el deploy hook de `tenderflow-api`. Mientras no
-dispare también el del worker, **cada merge a `master` deja al worker con el
-código anterior**: hasta entonces, tras cada despliegue de la API, Render →
-`tenderflow-worker` → *Manual Deploy → Deploy latest commit*.
+**El deploy hook del worker.** `deploy.yml` despliega el worker del mismo
+commit que la API, justo después de que la API pase su verificación, y **se
+niega a desplegar nada** si falta su hook. Render → `tenderflow-worker` →
+Settings → *Deploy Hook* → copiar la URL → GitHub → Settings → Secrets and
+variables → Actions → *New repository secret*:
+`RENDER_WORKER_DEPLOY_HOOK_URL`. Es una URL con token: va como secret, no como
+variable.
 
 Opcional y aparte: con el worker sano, `JOBS_CONSUMIDOR_EN_API=0` en
 `tenderflow-api` saca la cola a demanda del proceso de la API (ADR-028 §G). No
