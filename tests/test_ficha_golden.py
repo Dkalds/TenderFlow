@@ -20,7 +20,9 @@ from services.rag.ficha_golden import (
     CasoGolden,
     escribir_golden,
     escribir_paginas,
+    escribir_pendientes,
     leer_caso,
+    leer_pendientes,
     listar_casos,
     modelo_de,
     negativos,
@@ -192,3 +194,14 @@ def test_propuesta_de_una_ficha_fallida_no_tiene_hechos() -> None:
 
     assert con_fila.hechos == {} and con_fila.status_origen == "failed"
     assert sin_fila.hechos == {} and sin_fila.status_origen is None
+
+
+def test_los_pendientes_se_releen_y_el_fichero_desaparece_al_vaciarse(tmp_path: Path) -> None:
+    pendientes = [("award_criteria", _criterio(10, "Plazo")), ("lots", {"description": "Lote 1"})]
+
+    escribir_pendientes(tmp_path, pendientes)
+    assert leer_pendientes(tmp_path) == pendientes
+
+    escribir_pendientes(tmp_path, [])
+    assert not (tmp_path / "pendientes.json").exists()
+    assert leer_pendientes(tmp_path) == []

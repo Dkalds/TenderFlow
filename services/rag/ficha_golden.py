@@ -35,6 +35,7 @@ FAMILIAS: tuple[str, ...] = tuple(TenderFactSheet.model_fields)
 
 NOMBRE_GOLDEN = "golden.json"
 NOMBRE_PAGINAS = "paginas.jsonl"
+NOMBRE_PENDIENTES = "pendientes.json"
 
 #: Lo único que se guarda de una página. ``uri`` queda fuera a propósito: las
 #: de PLACSP llevan un token, y el eval no la necesita para nada.
@@ -239,6 +240,40 @@ def escribir_golden(carpeta: Path, golden: CasoGolden) -> None:
     contenido = json.dumps(golden.model_dump(mode="json"), ensure_ascii=False, indent=2)
     temporal.write_text(contenido + "\n", encoding="utf-8")
     temporal.replace(destino)
+
+
+def leer_pendientes(carpeta: Path) -> list[tuple[str, dict[str, Any]]]:
+    """Hechos extraídos que nadie ha juzgado todavía, con su familia.
+
+    Los deja ``scripts/eval_ficha.py --pendientes`` y los consume la revisión.
+    Viven fuera de ``golden.json`` para que un caso ya etiquetado no vuelva a
+    tener veredictos en ``null`` —y deje de evaluarse— por haber medido un
+    extractor nuevo.
+    """
+    ruta = carpeta / NOMBRE_PENDIENTES
+    if not ruta.is_file():
+        return []
+    return [
+        (str(item["familia"]), dict(item["hecho"]))
+        for item in json.loads(ruta.read_text(encoding="utf-8"))
+    ]
+
+
+def escribir_pendientes(carpeta: Path, pendientes: list[tuple[str, dict[str, Any]]]) -> None:
+    """Escribe ``pendientes.json``; sin pendientes, borra el fichero."""
+    ruta = carpeta / NOMBRE_PENDIENTES
+    if not pendientes:
+        ruta.unlink(missing_ok=True)
+        return
+    carpeta.mkdir(parents=True, exist_ok=True)
+    temporal = carpeta / (NOMBRE_PENDIENTES + ".tmp")
+    contenido = json.dumps(
+        [{"familia": familia, "hecho": hecho} for familia, hecho in pendientes],
+        ensure_ascii=False,
+        indent=2,
+    )
+    temporal.write_text(contenido + "\n", encoding="utf-8")
+    temporal.replace(ruta)
 
 
 def escribir_paginas(carpeta: Path, paginas: list[dict[str, Any]]) -> int:
