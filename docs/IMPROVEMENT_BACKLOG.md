@@ -774,6 +774,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Eval que mida precisión/recall por familia contra ese set, con umbral mínimo ratcheado al valor medido, mismo patrón que `MRR_MIN`.
 - **Files de partida:** [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py), [services/rag/fact_sheet.py](../services/rag/fact_sheet.py)
 - **Riesgo:** bajo en código; el coste real es el etiquetado manual (decisión/tiempo del mantenedor).
+- *Estado (2026-10-11):* diseño aprobado y especificación escrita en [plans/2026-10-eval-ficha-pliego.md](plans/2026-10-eval-ficha-pliego.md), pendiente de revisión del propietario; sin código. Cambia un criterio de arriba: diez pliegos revisados, de los que tres se etiquetan además a fondo, en vez de diez desde cero.
 - **Nota 2026-09-28 (`tender-facts-v6`):** el selector de páginas **se cambió sin este eval**, a sabiendas, porque la ficha v5 no tenía nada que proteger: de 886 filas en producción, 17 `extracted` y 70 `needs_review`, casi todas con 0 hechos; el resto `failed`. Medición manual (Nemotron super, mismos pliegos, antes → después): `2025/191` 0 → 7 hechos, `20/026` fallo → 20, `2025/000423-PEA` 0 → 14, `1934/2026` 0 → 22; la fórmula de precio aparece en tres de los cuatro. Es una comparación de cuatro pliegos sin etiquetas, no un baseline: sigue haciendo falta el golden set para medir **precisión**, que esta nota no mide.
 
 ### [P2] Unificar la selección de páginas de la ficha con el retrieval pgvector
