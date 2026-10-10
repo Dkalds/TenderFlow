@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -158,3 +158,36 @@ def render_pursuits_export(
                 len(rows),
             )
         return generate_csv(rows, PURSUIT_COLUMNS), "text/csv; charset=utf-8", len(rows)
+
+
+def build_pdf_export(payload: dict[str, Any]) -> tuple[bytes, int]:
+    """Consulta + maquetado del PDF de exportación. Devuelve ``(bytes, filas)``.
+
+    Una sola implementación para los dos caminos: la descarga síncrona
+    (``api/routes/exports.py``) y el job de la cola (``scheduler/worker.py``).
+    Si fueran dos, el PDF que llega por la cola dejaría de parecerse al que
+    llega por la request en cuanto una de las dos cambiara. Vive en
+    ``services/`` y no en la ruta porque el worker no puede importar
+    ``api/routes/`` para ejecutar lo que un usuario encoló.
+    """
+    from services.licitaciones import fetch_for_pdf
+    from services.pdf_tabular import construir_pdf_tabular
+
+    ccaa = payload.get("ccaa")
+    rows = fetch_for_pdf(
+        ccaa=ccaa,
+        estado=payload.get("estado"),
+        q=payload.get("q"),
+        tecnologia=payload.get("tecnologia"),
+        fecha_desde=payload.get("fecha_desde"),
+        fecha_hasta=payload.get("fecha_hasta"),
+        importe_min=payload.get("importe_min"),
+        importe_max=payload.get("importe_max"),
+        provincia=payload.get("provincia"),
+        procedimiento=payload.get("procedimiento"),
+        limit=int(payload.get("limit") or 10000),
+    )
+    title = "Licitaciones SAP — Exportación"
+    if ccaa:
+        title += f" ({ccaa})"
+    return construir_pdf_tabular(rows, title), len(rows)

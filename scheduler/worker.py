@@ -133,7 +133,7 @@ def ejecutar_export_pdf(job: Job) -> dict[str, Any]:
     Hasta 50 000 filas y la maquetación de reportlab: segundos de CPU que en el
     threadpool de la API compiten con cada lectura del resto del producto.
     """
-    from api.routes.exports import build_pdf_export
+    from services.exports import build_pdf_export
     from shared.cache import get_cache
 
     contenido, filas = build_pdf_export(job.payload)

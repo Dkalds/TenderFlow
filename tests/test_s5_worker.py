@@ -225,7 +225,7 @@ def test_el_handler_del_export_guarda_el_pdf_bajo_la_clave_del_job() -> None:
     from shared.jobs import CACHE_EXPORTS, clave_cache_export
 
     reset_cache(CACHE_EXPORTS)
-    with patch("api.routes.exports.build_pdf_export", return_value=(b"%PDF-falso", 42)):
+    with patch("services.exports.build_pdf_export", return_value=(b"%PDF-falso", 42)):
         resultado = ejecutar_export_pdf(_job(TIPO_EXPORT_PDF, {"limit": 20000}, job_id=7))
 
     assert resultado == {

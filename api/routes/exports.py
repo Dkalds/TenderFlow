@@ -45,12 +45,10 @@ from db.audit import log_event
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
 
-# El maquetador del PDF vivía aquí como `_build_pdf` hasta 2026-09-15. Se
-# mudó a `services/` porque los informes programados (T6) adjuntan un PDF que
-# nadie pide por HTTP, y un job del scheduler no puede importar `api/routes/`
-# para maquetar una tabla. Conserva el nombre local para no mover de sitio lo
-# que ya tenía consumidores, tests incluidos.
-from services.pdf_tabular import construir_pdf_tabular as _build_pdf
+# `build_pdf_export` (consulta + maquetado) vive en `services/exports.py`: la
+# ejecutan esta ruta y el worker de la cola, y el worker no puede importar
+# `api/routes/` para hacerlo. El maquetador, en `services/pdf_tabular.py`.
+from services.exports import build_pdf_export
 from shared.audit_events import EXPORT_CALENDAR_LINK_CREATED, EXPORT_DOWNLOADED
 from shared.dto import CalendarioEnlace, JobEstadoDTO
 
@@ -59,36 +57,6 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/exports", tags=["exports"])
 
 # ── Synchronous CSV/Excel download ───────────────────────────────────────────
-
-
-def build_pdf_export(payload: dict[str, Any]) -> tuple[bytes, int]:
-    """Consulta + maquetado del PDF de exportación. Devuelve ``(bytes, filas)``.
-
-    Extraída del handler para que el worker de la cola pueda ejecutar
-    exactamente lo mismo que el camino síncrono (``scheduler/worker.py``): si
-    fueran dos implementaciones, el PDF que llega por la cola dejaría de
-    parecerse al que llega por la request en cuanto una de las dos cambiara.
-    """
-    from services.licitaciones import fetch_for_pdf
-
-    ccaa = payload.get("ccaa")
-    rows = fetch_for_pdf(
-        ccaa=ccaa,
-        estado=payload.get("estado"),
-        q=payload.get("q"),
-        tecnologia=payload.get("tecnologia"),
-        fecha_desde=payload.get("fecha_desde"),
-        fecha_hasta=payload.get("fecha_hasta"),
-        importe_min=payload.get("importe_min"),
-        importe_max=payload.get("importe_max"),
-        provincia=payload.get("provincia"),
-        procedimiento=payload.get("procedimiento"),
-        limit=int(payload.get("limit") or 10000),
-    )
-    title = "Licitaciones SAP — Exportación"
-    if ccaa:
-        title += f" ({ccaa})"
-    return _build_pdf(rows, title), len(rows)
 
 
 # response_class=StreamingResponse: la respuesta normal es el fichero
