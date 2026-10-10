@@ -53,7 +53,15 @@ MOTIVO_MINIMO = 40
 # Formato: ``"MÉTODO /ruta": "qué superficie existente se miró y por qué no
 # alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
 # que añaden operaciones distintas no choquen al fusionar.
-NUEVAS: dict[str, str] = {}
+NUEVAS: dict[str, str] = {
+    "POST /api/v1/me/profile/preview": (
+        "Se miró GET /analytics/scoring, que puntúa siempre con el perfil guardado: "
+        "no admite uno de prueba, y unos pesos con sus palabras clave y CPV no caben "
+        "en una query. PUT /me/profile lo aceptaría, pero guardándolo. La vista previa "
+        "necesita además las dos pasadas (prueba y guardado) sobre el mismo universo "
+        "en una sola respuesta, para poder decir cuánto se mueve cada oportunidad."
+    ),
+}
 
 
 def leer_base(ruta: Path = _BASE) -> set[str]:
