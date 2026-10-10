@@ -33,17 +33,29 @@ class TestDailyPipelineParity:
             assert result == 0
 
     def test_daily_atom_delegates_to_canonical(self) -> None:
-        """scheduler/jobs/daily_atom.run() calls run_daily_pipeline."""
-        with patch("scheduler.pipeline_runs.run_daily_pipeline") as mock_pipeline:
+        """daily_atom.run() usa la pipeline canónica partida, como scrape-daily.yml.
+
+        Ingesta sin cierre (``--fase ingesta``) y, tras los conectores, el
+        cierre canónico (``--fase cierre``): las mismas dos mitades que el
+        workflow, no una secuencia propia.
+        """
+        with (
+            patch("scheduler.pipeline_runs.run_daily_pipeline") as mock_pipeline,
+            patch("scheduler.pipeline_runs.run_post_ingestion_only") as mock_cierre,
+            patch("scheduler.healthcheck.comprobar_y_alertar", return_value={"status": "healthy"}),
+        ):
             mock_pipeline.return_value = {
                 "status": "ok",
                 "ingestion_result": {"status": "ok", "inserted": [], "modified": []},
                 "steps": {},
             }
+            mock_cierre.return_value = {"status": "ok", "steps": {}}
             from scheduler.jobs.daily_atom import run
+            from scheduler.pipeline_runs import LANE_DAILY
 
-            run()
-            mock_pipeline.assert_called_once()
+            run(conectores=[])
+            mock_pipeline.assert_called_once_with(con_cierre=False)
+            mock_cierre.assert_called_once_with(lane=LANE_DAILY)
 
 
 class TestBulkPipelineParity:
