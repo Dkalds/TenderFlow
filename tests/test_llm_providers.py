@@ -7,7 +7,6 @@ y ``tests/test_llm_prompts.py`` para el montaje de prompts).
 from __future__ import annotations
 
 import threading
-import time
 from collections.abc import Generator, Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -528,28 +527,52 @@ def test_openai_stream_stop_already_set_makes_no_request() -> None:
     mock_openai_module.OpenAI.return_value.chat.completions.create.assert_not_called()
 
 
+class _ParadaDuranteLaEspera(threading.Event):
+    """Señal de parada que llega mientras alguien la está esperando.
+
+    Apunta con qué plazo se la esperó. La activa la propia espera, así que el
+    ``wait`` de verdad vuelve al instante y el test no depende de un temporizador.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.esperas: list[float | None] = []
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.esperas.append(timeout)
+        self.set()
+        return super().wait(timeout)
+
+
 def test_openai_backoff_is_cut_short_by_stop() -> None:
-    """La espera de backoff (1 s) no retiene el hilo: la parada la despierta."""
-    stop = threading.Event()
+    """La espera de backoff (1 s) no retiene el hilo: la parada la despierta.
+
+    Sin reloj. Lo que deja que la parada corte la espera es que el backoff se
+    espere SOBRE la señal, con el backoff como plazo, y eso es lo que se mira.
+    Un ``sleep`` ciego, que la parada no puede despertar, falla aquí en vez de
+    tardar un segundo. Antes era un ``elapsed < 0.9`` con la parada en un
+    ``Timer`` de 50 ms: 850 ms de margen contra el planificador del runner.
+    """
+    stop = _ParadaDuranteLaEspera()
     call_count = [0]
 
     def failing_create(*_args: object, **_kwargs: object) -> None:
         call_count[0] += 1
-        # La parada llega DURANTE el backoff, no antes de empezarlo.
-        threading.Timer(0.05, stop.set).start()
         raise ConnectionError("network unreachable")
 
     mock_openai_module = MagicMock()
     mock_openai_module.OpenAI.return_value.chat.completions.create.side_effect = failing_create
+    sleep_ciego = AssertionError("con señal de parada, el backoff no puede ser un sleep")
 
-    t0 = time.monotonic()
-    with patch.dict("sys.modules", {"openai": mock_openai_module}):
+    with (
+        patch.dict("sys.modules", {"openai": mock_openai_module}),
+        patch("time.sleep", side_effect=sleep_ciego),
+    ):
         result = list(oai.stream(SYSTEM, MESSAGES, "gpt-4o", "sk-fake", stop=stop))
-    elapsed = time.monotonic() - t0
 
     assert result == []
     assert call_count[0] == 1
-    assert elapsed < 0.9
+    assert stop.esperas == [1]
 
 
 def test_openai_stream_closed_mid_response_closes_http_and_estimates_usage() -> None:
