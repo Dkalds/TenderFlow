@@ -292,20 +292,29 @@ services:
   # `APP_PROFILE`. Un Dockerfile propio para el worker significaría dos
   # imágenes que pueden divergir en dependencias y en versión de código.
   #
-  # ADR-012 intacto: esto no es un plano de orquestación. No hay cron, ni
-  # intervalos, ni registry de jobs periódicos; el worker solo reacciona a lo
-  # que alguien pidió. Lo programado sigue siendo de GitHub Actions, y el
-  # cierre de `scrape-daily` consume SU cola dentro del propio job.
+  # Plano de cron (ADR-033): con `SCHEDULER_PLANE=worker` este proceso asume
+  # además la ingesta diaria (`daily_atom`: PLACSP, los seis conectores, el
+  # cierre y el healthcheck) y el scoring (`ml_scoring_baja`), en un hilo. El
+  # reentrenamiento y los embeddings de pliegos se quedan en Actions
+  # (`scheduler/cron_plane.py::SE_QUEDAN_EN_ACTIONS`). Sin la variable, el
+  # worker solo reacciona a lo que alguien pidió. El procedimiento está en
+  # `docs/runbooks/cutover-cron-al-worker.md`.
   #
-  # `plan: starter` y no `standard`: el trabajo es ráfagas cortas de I/O (la
-  # extracción de la ficha espera al proveedor LLM) y una instancia basta. Si
-  # la cola se acumulara, la respuesta es más instancias, no una más grande —
-  # `SELECT … FOR UPDATE SKIP LOCKED` escala horizontalmente por diseño.
+  # `plan: standard` (2 GB) y no `starter` (512 MB), por el plano de cron. Para
+  # la cola sola bastaba `starter`: ráfagas cortas de I/O esperando al
+  # proveedor LLM. Pero el scoring construye en pandas el dataset histórico
+  # completo y la pasada diaria parsea un feed ATOM de 17 MB, en el mismo
+  # proceso que la cola y el healthcheck: con 512 MB un OOM se lleva el
+  # servicio entero. Ninguno de los dos se ha medido todavía fuera de un runner
+  # de Actions; tras dos semanas de cutover, el pico de memoria decide si se
+  # puede bajar. Si la cola se acumulara, la respuesta sigue siendo más
+  # instancias, no una más grande — `SELECT … FOR UPDATE SKIP LOCKED` escala
+  # horizontalmente por diseño.
   - type: web
     name: tenderflow-worker
     runtime: docker
     dockerfilePath: ./docker/Dockerfile.api
-    plan: starter
+    plan: standard
     region: frankfurt
     # Mismo gate que la API: a producción solo llega lo que `deploy.yml` lanza
     # sobre un commit verde (O0.2). Un worker que se despliega solo mataría
@@ -321,9 +330,11 @@ services:
         value: worker
       # Variante de dependencias (C3.1, 2026-09-18). La imagen por defecto es
       # la de la API, sin lxml ni scikit-learn; el plano de cron de este
-      # servicio los necesita (drift, clusters, DLQ de TACRC). Render expone
-      # las variables del servicio como build args, y `docker/Dockerfile.api`
-      # declara `ARG REQUIREMENTS_FILE`.
+      # servicio los necesita (el parser de PLACSP, TACRC, drift, clusters, el
+      # scoring). Render expone las variables del servicio como build args, y
+      # `docker/Dockerfile.api` declara `ARG REQUIREMENTS_FILE`: sin esta
+      # variable la imagen se construye sin ellos y la pasada diaria revienta
+      # al importar.
       - key: REQUIREMENTS_FILE
         value: requirements-pipeline.txt
       - key: DATABASE_URL
@@ -374,6 +385,25 @@ services:
       # `docs/runbooks/cutover-cron-al-worker.md`.
       - key: SCHEDULER_PLANE
         sync: false
+      # Canal de alertas del plano de cron. En Actions cada workflow las recibe
+      # de sus secrets; aquí, sin ellas, `notify()` solo escribe en el log: los
+      # fallos de la ingesta, del cierre, del scoring y el healthcheck
+      # post-pasada dejarían de llegar por correo el día del cutover.
+      - key: ALERT_EMAIL_TO
+        sync: false
+      - key: ALERT_SMTP_USER
+        sync: false
+      - key: ALERT_SMTP_PASSWORD
+        sync: false
+      - key: ALERT_MIN_LEVEL
+        sync: false
+      # Pendientes de declarar aquí: GITHUB_TOKEN (el scoring descarga el modelo
+      # de la Release `ml-models`), PSCP_DATASET_ID, PSCP_APP_TOKEN,
+      # TACRC_INDEX_URL y las LLM_TECH_LABELING_* / LLM_TECH_FEEDBACK_ENABLED que
+      # hoy llegan como `vars` de Actions. `scripts/check_env_parity.py` exige
+      # que toda variable de este fichero esté documentada en `.env.example`, y
+      # tocar `.env*` requiere OK explícito (AGENTS.md §6). Hasta entonces se
+      # ponen desde el dashboard: lo lista el paso 1 del runbook del cutover.
 
   # ── Observabilidad (ADR-019) ────────────────────────────────────────────
   # El código expone /metrics desde siempre, pero hasta ahora nadie lo
