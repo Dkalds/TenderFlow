@@ -1,12 +1,17 @@
 /**
  * Punto único de reporte de errores de cliente.
  *
- * Hasta ahora esto era un `console.error` con nombre bonito: en producción un
- * error de JavaScript solo se descubría si un usuario lo contaba. No hay Sentry
- * (`grep -ri sentry web/` = 0 resultados) y añadirlo es un cambio de
- * dependencias que requiere OK humano, así que el canal se construye con lo que
- * ya hay: un POST al endpoint propio `POST /api/v1/security/client-error`, que
- * solo escribe en el log estructurado del backend.
+ * Antes era un `console.error` con nombre bonito: en producción un error de
+ * JavaScript solo se descubría si un usuario lo contaba. El canal propio es un
+ * POST a `POST /api/v1/security/client-error`, que alimenta la tabla
+ * `client_errors` y su vista en Ops.
+ *
+ * Desde 2026-10 hay además Sentry, opt-in por `NEXT_PUBLIC_SENTRY_DSN`. Este
+ * módulo **no lo importa** —sigue sin dependencias, que es lo que le deja
+ * vivir dentro de `global-error`—: `src/instrumentation-client.ts` conecta un
+ * sumidero (`conectarSumideroDeErrores`) y por él salen los reportes que
+ * Sentry no ve solo, los `manual` y los `global-error`. Los de `onerror` y
+ * `unhandledrejection` ya los engancha su SDK y reenviarlos los duplicaría.
  *
  * **La CSP lo permite y conviene dejarlo dicho**, porque si no encajara el
  * reporte se bloquearía en silencio y el colector de errores sería, él mismo, un
@@ -70,6 +75,20 @@ const huellas = new Map<string, number>();
 
 /** Instantes de los últimos envíos, para la ventana deslizante. */
 let enviosRecientes: number[] = [];
+
+/**
+ * Segundo destino de un reporte, además del endpoint propio. Recibe el error
+ * tal cual —el destino saca su propio stack— y las dos dimensiones del log.
+ * Igual que al endpoint, el `extra` del call-site no se le pasa.
+ */
+export type SumideroDeErrores = (error: unknown, etiquetas: { contexto: string; origen: OrigenError }) => void;
+
+let sumidero: SumideroDeErrores | null = null;
+
+/** Conecta (o, con `null`, desconecta) el sumidero. Lo llama `instrumentation-client`. */
+export function conectarSumideroDeErrores(destino: SumideroDeErrores | null): void {
+  sumidero = destino;
+}
 
 /**
  * Reinicia el estado de deduplicación y el presupuesto de envíos.
@@ -188,6 +207,17 @@ export function reportError(
     if (typeof window === "undefined") return;
 
     if (!debeEnviar(`${origen}|${context}|${message}`, Date.now())) return;
+
+    // Después del filtro a propósito: un bucle de render tampoco debe inundar
+    // el segundo destino. Y con su propio `try`, para que un sumidero que
+    // lanza no deje sin enviar el reporte al endpoint propio.
+    if (sumidero && (origen === "manual" || origen === "global-error")) {
+      try {
+        sumidero(error, { contexto: context.slice(0, MAX_CONTEXTO), origen });
+      } catch {
+        // El sumidero es de un tercero; su fallo no es el nuestro.
+      }
+    }
 
     enviar(
       JSON.stringify({

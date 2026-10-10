@@ -69,7 +69,7 @@ datos había que deducirlas leyendo el esquema.
 | **Base jurídica** | Interés legítimo (art. 6.1.f): mantener el servicio en funcionamiento. |
 | **Categorías de datos** | Ruta sin query string, mensaje de error truncado, versión de build, huella sin identificador. **No** se registran IP, email ni contenido de formularios. |
 | **Plazo** | 30 días (`RETENTION_CLIENT_ERRORS_DAYS`). |
-| **Nota** | La decisión de no usar un SDK externo (D26 del plan complementario) es también una decisión de privacidad: sin SDK no hay un tercero recibiendo trazas del navegador. |
+| **Nota** | Desde 2026-10-10 el frontend lleva además el SDK de Sentry (`@sentry/nextjs`), activo solo donde existe `NEXT_PUBLIC_SENTRY_DSN`. Revierte D26 del plan complementario («tabla propia, sin SDK»), cuya razón era también de privacidad: sin SDK no había un tercero recibiendo trazas del navegador. Ahora lo hay —Sentry, ver [subencargados](subencargados.md)— y lo que recibe se limita en `web/src/lib/sentry-opciones.ts`: mensaje y stack del error, ruta **sin query string**, `user-agent` y migas de navegación sin query. No recibe cookies, cuerpo de formularios, IP reenviada, email ni grabación de pantalla (sin Session Replay ni trazas). El plazo de arriba es el de la tabla propia; **la retención en Sentry es la del plan contratado (propietario: confirmar)**. |
 
 ### 2.5 Datos de contratación pública (sin dato personal por diseño)
 

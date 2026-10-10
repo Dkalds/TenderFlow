@@ -16,7 +16,8 @@ import { esPaginaPrerenderizada, esPaginaPublica } from "@/lib/rutas-publicas";
 // una ruta exenta del control de sesión sin nada detrás.
 //
 // Los prefijos de SEO no están aquí por comodidad. El matcher de abajo sólo
-// excluye `/api`, `/_next/static`, `/_next/image` y `favicon.ico`, así que
+// excluye `/api`, `/_next/static`, `/_next/image`, `favicon.ico` y el túnel
+// de Sentry, así que
 // `robots.txt`, `sitemap.xml` y las rutas de imagen de metadatos **entran** en
 // el proxy, y sin exención devolvían un 307 a `/login`: Google no podía
 // leer el robots ni el sitemap, y el unfurler de Slack/LinkedIn/WhatsApp
@@ -185,6 +186,12 @@ export function proxy(request: NextRequest) {
   return withSecurityHeaders(continuar(request, nonce, csp), csp);
 }
 
+// `monitoring` es el túnel de Sentry (`RUTA_TUNEL_SENTRY`): un POST que Next
+// reescribe al ingest. Si entrara aquí, el guard de sesión respondería con un
+// 307 a `/login` a cada reporte de un visitante anónimo, y a los demás les
+// reenviaría el nonce y la CSP a un tercero. Va escrito a mano porque Next
+// exige que el matcher sea un literal; el test del matcher lo ata a la
+// constante.
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|monitoring).*)"],
 };

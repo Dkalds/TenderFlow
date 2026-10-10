@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { proxy, config } from "@/proxy";
+import { RUTA_TUNEL_SENTRY } from "@/lib/sentry-opciones";
 
 /**
  * El fichero que decide qué es público.
@@ -246,9 +247,18 @@ describe("paginación de los hubs", () => {
 });
 
 describe("el matcher", () => {
-  it("excluye la API y los estáticos de Next, y nada más", () => {
+  it("excluye la API, los estáticos de Next y el túnel de Sentry, y nada más", () => {
     // Si el matcher dejara de cubrir el resto, el guard de sesión no correría
     // y el dashboard quedaría accesible sin que ningún test de arriba fallara.
-    expect(config.matcher).toEqual(["/((?!api|_next/static|_next/image|favicon.ico).*)"]);
+    expect(config.matcher).toEqual(["/((?!api|_next/static|_next/image|favicon.ico|monitoring).*)"]);
+  });
+
+  it("el túnel excluido es el que se le da a Sentry", () => {
+    // El matcher es un literal (Next lo exige) y `tunnelRoute` sale de la
+    // constante: si divergen, los reportes de un visitante sin sesión acaban
+    // en un 307 a /login y no hay error que lo delate.
+    const matcher = new RegExp(`^${config.matcher[0]}$`);
+    expect(matcher.test(RUTA_TUNEL_SENTRY)).toBe(false);
+    expect(matcher.test("/resumen")).toBe(true);
   });
 });
