@@ -5,7 +5,7 @@ Por qué existe
 La extracción de la ficha (``services/rag/fact_sheet.py``) se cambiaba
 comparando a ojo unos pocos pliegos. Este script ejecuta el camino de
 producción —selector de páginas, pregunta, modelo y validación de citas— sobre
-los pliegos de ``tests/eval/fixtures/fichas/`` y dice, por familia, cuánto de lo
+los pliegos de ``tests/fixtures/fichas/`` y dice, por familia, cuánto de lo
 que extrae es cierto y cuánto de lo cierto extrae.
 
 Es el control que se ejecuta, y cuyo resultado se pega en el PR, **antes de
@@ -83,7 +83,7 @@ from services.rag.ficha_golden import (  # noqa: E402
     sin_revisar,
 )
 
-RAIZ_POR_DEFECTO = _RAIZ_REPO / "tests" / "eval" / "fixtures" / "fichas"
+RAIZ_POR_DEFECTO = _RAIZ_REPO / "tests" / "fixtures" / "fichas"
 NOMBRE_MINIMOS = "minimos.json"
 
 #: Ejecuciones con las que se fija la base: el modelo no es determinista.

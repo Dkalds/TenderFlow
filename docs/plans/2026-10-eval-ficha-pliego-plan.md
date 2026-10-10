@@ -5,7 +5,7 @@
 **Goal:** poder medir, contra diez pliegos reales con etiquetas humanas, si un
 cambio en la extracción de la ficha la mejora o la empeora.
 
-**Architecture:** los casos viven como ficheros en `tests/eval/fixtures/fichas/`.
+**Architecture:** los casos viven como ficheros en `tests/fixtures/fichas/`.
 Un módulo puro empareja lo extraído con el golden y calcula métricas; tres
 scripts lo rodean (capturar, revisar, evaluar con el LLM real). De
 `extract_fact_sheet` se separa un núcleo sin base de datos para que el eval
@@ -269,7 +269,7 @@ def list_candidatas_golden(self, *, limit: int = 200) -> list[dict[str, Any]]
 #         status, extraction_version, field_count, lotes, formulas
 
 # scripts/capturar_ficha_golden.py
-RAIZ_POR_DEFECTO = <repo>/tests/eval/fixtures/fichas
+RAIZ_POR_DEFECTO = <repo>/tests/fixtures/fichas
 class CasoYaExiste(Exception): ...
 def capturar(licitacion_id: str, carpeta: Path, *, completo: bool, forzar: bool,
              documentos: Any, fichas: Any, hoy: date) -> int   # bytes de paginas.jsonl
@@ -688,7 +688,7 @@ def test_fijar_minimos_no_baja_un_minimo_existente(tmp_path): ...
 `_validated_evidence` de `services.rag.fact_sheet`.
 
 Reglas:
-- Raíz: `tests/eval/fixtures/fichas`. **Sin casos y sin `minimos.json`**: los
+- Raíz: `tests/fixtures/fichas`. **Sin casos y sin `minimos.json`**: los
   dos tests de datos hacen `pytest.skip` con el motivo «aún no hay casos
   capturados (docs/plans/2026-10-eval-ficha-pliego.md §8)». **Con
   `minimos.json` y sin casos: fallan.** Un control que se salta en silencio

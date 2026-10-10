@@ -54,10 +54,11 @@ from services.rag.ficha_golden import (  # noqa: E402
     sin_revisar,
 )
 
-RAIZ_POR_DEFECTO = _RAIZ_REPO / "tests" / "eval" / "fixtures" / "fichas"
+RAIZ_POR_DEFECTO = _RAIZ_REPO / "tests" / "fixtures" / "fichas"
 
-#: A partir de aquí la captura avisa: el texto de los pliegos se versiona, y un
-#: caso enorme merece que alguien lo decida en vez de que entre sin más.
+#: A partir de aquí la captura avisa: el texto de los pliegos se versiona, y
+#: `check-added-large-files` (`.pre-commit-config.yaml`, `--maxkb=1024`)
+#: rechaza el commit de un fichero mayor.
 AVISO_TAMANO_BYTES = 1_000_000
 
 
@@ -167,7 +168,8 @@ def main(argv: list[str] | None = None) -> int:
     if escritos > AVISO_TAMANO_BYTES:
         print(
             f"Aviso: las páginas de este caso pasan de 1 MB ({escritos / 1_000_000:.1f} MB). "
-            "Se versionan con el repositorio: comprueba que el caso lo merece.",
+            "El hook check-added-large-files no deja commitear un fichero de más de 1 MB: "
+            "elige un expediente más corto.",
             file=sys.stderr,
         )
     print(f"Siguiente paso: python scripts/revisar_ficha_golden.py {args.caso}")

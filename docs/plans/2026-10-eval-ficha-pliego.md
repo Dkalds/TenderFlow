@@ -47,7 +47,7 @@ a cambio de que el conjunto llegue a existir.
 
 ## 3. Los casos de referencia
 
-Una carpeta por pliego en `tests/eval/fixtures/fichas/<caso>/`:
+Una carpeta por pliego en `tests/fixtures/fichas/<caso>/`:
 
 - `paginas.jsonl` — **todas** las páginas con texto del expediente, una por
   línea: `documento_id`, `page_number`, `tipo`, `filename`, `texto`,
@@ -73,6 +73,13 @@ Una carpeta por pliego en `tests/eval/fixtures/fichas/<caso>/`:
 Los pliegos son documentos públicos. Tamaño esperado: unos pocos MB en total;
 la captura avisa si un caso pasa de 1 MB y la decisión se revisa si el conjunto
 supera los 10 MB.
+
+*Corregido al implementar (2026-10-11):* la carpeta es `tests/fixtures/fichas/`
+y no `tests/eval/fixtures/fichas/`, como decía el diseño. `tests/fixtures/` ya
+está excluida de codespell y de detect-secrets en `.pre-commit-config.yaml`; en
+la otra, el texto real de un pliego haría fallar el corrector en cada commit
+(ya marcó como errata una palabra española en un docstring de este mismo trabajo). Y el límite de 1 MB por
+caso no es solo un aviso: `check-added-large-files` rechaza un fichero mayor.
 
 ### Cómo se eligen los diez
 
@@ -245,7 +252,7 @@ permisos; `--listar` lo responde.
 
 ## 11. Criterios de aceptación
 
-- Diez casos en `tests/eval/fixtures/fichas/`, tres con `completo: true`,
+- Diez casos en `tests/fixtures/fichas/`, tres con `completo: true`,
   ninguno con veredictos en `null`.
 - `make eval-ficha` imprime las métricas de §6 por familia y en total, y
   `--check` devuelve 1 por debajo de `minimos.json`.

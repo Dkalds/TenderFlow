@@ -48,7 +48,7 @@ from services.rag.ficha_golden import (
     sin_revisar,
 )
 
-_RAIZ = Path(__file__).parent / "fixtures" / "fichas"
+_RAIZ = Path(__file__).resolve().parents[1] / "fixtures" / "fichas"
 _MINIMOS = "minimos.json"
 _SIN_CASOS = "aún no hay casos capturados (docs/plans/2026-10-eval-ficha-pliego.md §8)"
 
@@ -216,6 +216,24 @@ def test_la_cobertura_cuenta_el_hecho_cuya_pagina_no_cabe_en_el_contexto(tmp_pat
 
     assert _cobertura([fuera]) == {"award_criteria": (0, 1)}
     assert _cobertura([fuera, dentro]) == {"award_criteria": (1, 2)}
+
+
+def test_los_scripts_y_este_test_miran_la_misma_carpeta_y_los_hooks_la_excluyen() -> None:
+    from scripts import capturar_ficha_golden, eval_ficha, revisar_ficha_golden
+
+    raices = {
+        capturar_ficha_golden.RAIZ_POR_DEFECTO,
+        revisar_ficha_golden.RAIZ_POR_DEFECTO,
+        eval_ficha.RAIZ_POR_DEFECTO,
+        _RAIZ,
+    }
+
+    assert len(raices) == 1
+    # Bajo `tests/fixtures/`, que codespell y detect-secrets ya excluyen
+    # (`.pre-commit-config.yaml`): el texto de un pliego real no es prosa del
+    # proyecto, y pasarle un corrector en inglés lo llenaría de falsos avisos.
+    repo = Path(__file__).resolve().parents[2]
+    assert _RAIZ.resolve().relative_to(repo).as_posix() == "tests/fixtures/fichas"
 
 
 # ── Los casos reales ────────────────────────────────────────────────────────

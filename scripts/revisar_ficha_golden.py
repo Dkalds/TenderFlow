@@ -63,7 +63,7 @@ from services.rag.ficha_golden import (  # noqa: E402
 )
 from shared.tender_facts import EvidenceRef  # noqa: E402
 
-RAIZ_POR_DEFECTO = _RAIZ_REPO / "tests" / "eval" / "fixtures" / "fichas"
+RAIZ_POR_DEFECTO = _RAIZ_REPO / "tests" / "fixtures" / "fichas"
 
 MIN_CASOS = 10
 MIN_COMPLETOS = 3
