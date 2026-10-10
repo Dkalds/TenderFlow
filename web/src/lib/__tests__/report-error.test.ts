@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { reportError, reiniciarReporteErrores } from "@/lib/report-error";
+import {
+  conectarSumideroDeErrores,
+  reportError,
+  reiniciarReporteErrores,
+  type SumideroDeErrores,
+} from "@/lib/report-error";
 
 const ENDPOINT = "/api/v1/security/client-error";
 
@@ -327,5 +332,81 @@ describe("reportError · envío al backend", () => {
     reiniciarReporteErrores();
     reportError("Ctx", new Error("repetido"));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * El segundo destino (Sentry, conectado desde `instrumentation-client`). Se
+ * prueba con un doble: el módulo no importa el SDK.
+ */
+describe("reportError · sumidero", () => {
+  let sumidero: ReturnType<typeof vi.fn<SumideroDeErrores>>;
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+    reiniciarReporteErrores();
+    vi.stubEnv("NODE_ENV", "production");
+    fetchMock = vi.fn(() => Promise.resolve({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    sumidero = vi.fn<SumideroDeErrores>();
+    conectarSumideroDeErrores(sumidero);
+  });
+
+  afterEach(() => {
+    conectarSumideroDeErrores(null);
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("recibe el error tal cual, con el contexto y el origen", () => {
+    const err = new Error("boom");
+    reportError("DashboardError", err);
+    expect(sumidero).toHaveBeenCalledExactlyOnceWith(err, { contexto: "DashboardError", origen: "manual" });
+  });
+
+  it("recibe también los de global-error", () => {
+    reportError("global-error", new Error("boom"), undefined, "global-error");
+    expect(sumidero).toHaveBeenCalledTimes(1);
+  });
+
+  it("no recibe los que el SDK ya engancha por su cuenta", () => {
+    reportError("window.onerror", new Error("uno"), undefined, "onerror");
+    reportError("unhandledrejection", new Error("dos"), undefined, "unhandledrejection");
+    expect(sumidero).not.toHaveBeenCalled();
+    // …pero al endpoint propio sí llegan.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("nunca recibe el `extra` del call-site", () => {
+    reportError("Ctx", new Error("boom"), { email: "persona@example.com" });
+    expect(JSON.stringify(sumidero.mock.calls)).not.toContain("persona@example.com");
+  });
+
+  it("comparte la deduplicación con el endpoint", () => {
+    for (let i = 0; i < 50; i += 1) reportError("Ctx", new Error("el mismo de siempre"));
+    expect(sumidero).toHaveBeenCalledTimes(1);
+  });
+
+  it("si lanza, el reporte al endpoint propio sale igual", () => {
+    sumidero.mockImplementation(() => {
+      throw new Error("sumidero roto");
+    });
+    expect(() => reportError("Ctx", new Error("boom"))).not.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("desconectado no recibe nada", () => {
+    conectarSumideroDeErrores(null);
+    reportError("Ctx", new Error("boom"));
+    expect(sumidero).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("en el entorno de test no se le llama", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    reportError("Ctx", new Error("boom"));
+    expect(sumidero).not.toHaveBeenCalled();
   });
 });

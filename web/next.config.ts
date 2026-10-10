@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import { legacyRedirects, SUBRUTAS_MOVIDAS } from "./src/lib/space-views";
 // Ruta relativa y no alias `@/`: los `paths` de tsconfig no se aplican al
 // cargar este fichero, igual que con `space-views` de arriba.
 import { esValorLegalPlaceholder } from "./src/lib/legal-placeholder";
+import { RUTA_TUNEL_SENTRY } from "./src/lib/sentry-opciones";
 
 /**
  * Aquí viven solo las cabeceras de seguridad **estáticas**, las que no dependen
@@ -15,7 +17,8 @@ import { esValorLegalPlaceholder } from "./src/lib/legal-placeholder";
  * `Content-Security-Policy`, no Report-Only), porque `script-src` usa un nonce
  * nuevo en cada respuesta junto a `'strict-dynamic'`: un array de headers
  * estático no puede generar ese valor. El matcher del proxy excluye
- * `/api`, `/_next/static`, `/_next/image` y `favicon.ico`. En `/_next/static`
+ * `/api`, `/_next/static`, `/_next/image`, `favicon.ico` y el túnel de Sentry
+ * (`/monitoring`). En `/_next/static`
  * y `/_next/image` eso deja las de abajo como únicas cabeceras. `/api/*` no:
  * `rewrites()` lo proxya al backend FastAPI, que ya emite las suyas desde
  * `api/middleware.py::SecurityHeadersMiddleware` —incluido un CSP propio
@@ -198,6 +201,21 @@ const nextConfig: NextConfig = {
     ],
   },
 
+  /**
+   * Recorta del SDK de Sentry lo que no se usa: las trazas de navegación y sus
+   * mensajes de depuración. El SDK los deja detrás de estas dos constantes y,
+   * con Turbopack, `withSentryConfig` no las define por su cuenta. Medido el
+   * 2026-10-10: el SDK del navegador baja de 163 KB a 90 KB sin comprimir. Va
+   * en un chunk aparte (`src/instrumentation-client.ts`), pero lo descarga
+   * cada visitante.
+   */
+  compiler: {
+    define: {
+      __SENTRY_DEBUG__: false,
+      __SENTRY_TRACING__: false,
+    },
+  },
+
   /** Strict React mode for development */
   reactStrictMode: true,
 
@@ -224,4 +242,33 @@ const withBundleAnalyzer = bundleAnalyzer({
   openAnalyzer: false,
 });
 
-export default withBundleAnalyzer(nextConfig);
+/**
+ * Sentry (errores del navegador y del servidor de Next).
+ *
+ * - `org` y `project` son los del proyecto que creó la integración de Sentry
+ *   del Marketplace de Vercel. No son secretos; el token sí, y llega por
+ *   `SENTRY_AUTH_TOKEN`.
+ * - `tunnelRoute`: los eventos del navegador van a una ruta propia que Next
+ *   reescribe al ingest de Sentry. Deja la CSP en `connect-src 'self'` y
+ *   esquiva a los bloqueadores. El matcher de `src/proxy.ts` la excluye: sin
+ *   eso el guard de sesión devolvería un 307 a `/login` a cada reporte de un
+ *   visitante anónimo.
+ * - `sourcemaps.disable` sin token: con Turbopack el plugin enciende
+ *   `productionBrowserSourceMaps` para subirlos y borrarlos después. Un build
+ *   sin token —el job `frontend`, el E2E, la imagen de Docker— no podría
+ *   subirlos, así que tampoco los genera.
+ * - `routeManifestInjection: false` y sin aviso de `onRouterTransitionStart`:
+ *   las dos cosas sirven a las trazas de navegación, que están apagadas
+ *   (`src/lib/sentry-opciones.ts`).
+ * - `telemetry: false`: el plugin no informa a Sentry de cada build.
+ */
+export default withSentryConfig(withBundleAnalyzer(nextConfig), {
+  org: "tenderflow",
+  project: "sentry-bole-coin",
+  silent: !process.env.CI,
+  tunnelRoute: RUTA_TUNEL_SENTRY,
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+  routeManifestInjection: false,
+  suppressOnRouterTransitionStartWarning: true,
+  telemetry: false,
+});
