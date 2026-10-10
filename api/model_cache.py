@@ -89,7 +89,7 @@ def _cargar() -> tuple[Any, str | None]:
     Cualquier otro fallo de resolución degrada al artefacto local, que es lo
     que se venía sirviendo — pero dejando dicho que es una degradación.
     """
-    from scraper.ml_classifier import SAPClassifier
+    from services.ml.sap_classifier import SAPClassifier
     from shared.model_artifacts import ModelArtifactMismatch
 
     artefacto: Path | None = None

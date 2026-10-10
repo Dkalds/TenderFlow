@@ -38,7 +38,7 @@ class TestMLAccuracy:
     """El modelo entrenado con datos realistas debe alcanzar accuracy mínima."""
 
     def test_accuracy_above_threshold(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -46,7 +46,7 @@ class TestMLAccuracy:
         assert metrics["accuracy"] >= 0.80, f"Accuracy {metrics['accuracy']:.2f} < 0.80 mínimo"
 
     def test_f1_above_threshold(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -55,7 +55,7 @@ class TestMLAccuracy:
 
     def test_predictions_coherent(self, sample_df):
         """Textos claramente SAP deben dar mayor confianza que textos no SAP."""
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -77,7 +77,7 @@ class TestMLSerialization:
     """Verifica que el ciclo save/load preserva las predicciones."""
 
     def test_save_load_preserves_predictions(self, sample_df, tmp_path):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -97,7 +97,7 @@ class TestMLSerialization:
         assert abs(pred_before[1] - pred_after[1]) < 0.01  # misma confianza
 
     def test_sha256_checksum_created(self, sample_df, tmp_path):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -110,7 +110,7 @@ class TestMLSerialization:
         assert len(checksum_path.read_text().strip()) == 64  # SHA256 hex
 
     def test_corrupted_model_rejected(self, sample_df, tmp_path):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -131,7 +131,7 @@ class TestBatchPrediction:
     """Verifica predicción en batch."""
 
     def test_batch_returns_correct_length(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -155,7 +155,7 @@ class TestNewMetrics:
     """Verifica que train() reporta las nuevas métricas del clasificador mejorado."""
 
     def test_train_returns_pr_auc(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -163,7 +163,7 @@ class TestNewMetrics:
         assert 0.0 <= metrics["pr_auc"] <= 1.0
 
     def test_train_returns_cv_f1(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -171,7 +171,7 @@ class TestNewMetrics:
         assert 0.0 <= metrics["cv_f1"] <= 1.0
 
     def test_train_returns_optimal_threshold(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -180,7 +180,7 @@ class TestNewMetrics:
         assert 0.30 <= thresh <= 0.95, f"threshold {thresh} fuera del rango [0.30, 0.95]"
 
     def test_train_returns_precision_recall(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -190,7 +190,7 @@ class TestNewMetrics:
         assert 0.0 <= metrics["recall"] <= 1.0
 
     def test_train_returns_temporal_split_flag(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -208,7 +208,7 @@ class TestNewMetrics:
         """
         import pandas as pd
 
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         df_with_dates = sample_df.copy()
         # Intercalar positivos y negativos antes de datar: el orden del fixture
@@ -246,7 +246,7 @@ class TestNewMetrics:
         """
         import pandas as pd
 
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         df = sample_df.copy()  # el fixture ya viene con los SAP primero
         df["fecha_publicacion"] = pd.date_range("2023-01-01", periods=len(df), freq="7D").strftime(
@@ -258,7 +258,7 @@ class TestNewMetrics:
 
     def test_threshold_used_in_predict(self, sample_df):
         """El umbral óptimo del entrenamiento se usa en predict()."""
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -268,7 +268,7 @@ class TestNewMetrics:
 
     def test_metadata_populated_after_train(self, sample_df):
         """metadata contiene trained_at y métricas clave tras train()."""
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -282,7 +282,7 @@ class TestPredictProba:
     """Verifica el método predict_proba() público."""
 
     def test_predict_proba_shape(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -293,7 +293,7 @@ class TestPredictProba:
     def test_predict_proba_sums_to_one(self, sample_df):
         import numpy as np
 
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -304,7 +304,7 @@ class TestPredictProba:
 
     def test_predict_proba_column1_is_p_sap(self, sample_df):
         """Columna 1 es P(SAP); texto SAP debe tener P(SAP) > P(no-SAP)."""
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -314,7 +314,7 @@ class TestPredictProba:
 
     def test_predict_proba_consistent_with_predict_batch(self, sample_df):
         """predict_proba y predict_batch deben dar las mismas confianzas."""
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -331,19 +331,19 @@ class TestCPVTokenAugmentation:
     """Verifica que los tokens CPV e importe mejoran la predicción."""
 
     def test_augment_text_cpv_ti(self):
-        from scraper.ml_classifier import _augment_text
+        from services.ml.sap_classifier import _augment_text
 
         result = _augment_text("sistema ERP", cpv="72263000")
         assert "CPV_TI" in result
 
     def test_augment_text_cpv_no_ti(self):
-        from scraper.ml_classifier import _augment_text
+        from services.ml.sap_classifier import _augment_text
 
         result = _augment_text("suministro muebles", cpv="39000000")
         assert "CPV_NO_TI" in result
 
     def test_augment_text_importe_bins(self):
-        from scraper.ml_classifier import _augment_text
+        from services.ml.sap_classifier import _augment_text
 
         assert "IMPORTE_XS" in _augment_text("texto", importe=5000.0)
         assert "IMPORTE_S" in _augment_text("texto", importe=50000.0)
@@ -353,13 +353,13 @@ class TestCPVTokenAugmentation:
 
     def test_augment_text_no_extra(self):
         """Sin CPV ni importe, el texto no se modifica."""
-        from scraper.ml_classifier import _augment_text
+        from services.ml.sap_classifier import _augment_text
 
         result = _augment_text("texto original")
         assert result == "texto original"
 
     def test_predict_with_cpv_kwarg(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -373,7 +373,7 @@ class TestMetadataPersistence:
     """Verifica que metadata y threshold se preservan en save/load."""
 
     def test_save_load_preserves_threshold(self, sample_df, tmp_path):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -386,7 +386,7 @@ class TestMetadataPersistence:
         assert abs(loaded._threshold - original_threshold) < 1e-9
 
     def test_save_load_preserves_metadata(self, sample_df, tmp_path):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         clf.train(sample_df)
@@ -403,7 +403,7 @@ class TestMetadataPersistence:
         import joblib
 
         from config import settings
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         # Simular modelo legacy sin _threshold ni metadata
         clf = SAPClassifier()
@@ -428,7 +428,7 @@ class TestRound2Improvements:
     """Tests para mejoras Round 2: F-beta, Brier/ECE, registry, TimeSeriesCV."""
 
     def test_train_returns_fbeta_metric(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -438,7 +438,7 @@ class TestRound2Improvements:
         assert metrics["beta"] > 0
 
     def test_train_returns_brier_score(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -447,7 +447,7 @@ class TestRound2Improvements:
         assert 0.0 <= metrics["brier"] <= 1.0
 
     def test_train_returns_ece(self, sample_df):
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -457,7 +457,7 @@ class TestRound2Improvements:
     def test_fbeta_uses_settings(self, sample_df):
         """beta reportado en métricas refleja el valor en settings.ML_FBETA."""
         from config.settings import settings
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         clf = SAPClassifier()
         metrics = clf.train(sample_df)
@@ -468,7 +468,7 @@ class TestRound2Improvements:
     def test_expected_calibration_error_helper(self):
         import numpy as np
 
-        from scraper.ml_classifier import _expected_calibration_error
+        from services.ml.sap_classifier import _expected_calibration_error
 
         # Predicciones perfectamente calibradas → ECE ≈ 0
         y_true = np.array([0, 0, 0, 0, 1, 1, 1, 1])
@@ -485,12 +485,12 @@ class TestRound2Improvements:
     def test_ece_empty_input(self):
         import numpy as np
 
-        from scraper.ml_classifier import _expected_calibration_error
+        from services.ml.sap_classifier import _expected_calibration_error
 
         assert _expected_calibration_error(np.array([]), np.array([])) == 0.0
 
     def test_registry_append_and_read(self, tmp_path):
-        from scraper.ml_training import _append_to_registry, read_registry
+        from services.ml.classifier_training import _append_to_registry, read_registry
 
         reg_path = tmp_path / "registry.json"
         entry1 = {"trained_at": "2025-01-01T00:00:00", "f1": 0.85, "fbeta": 0.88}
@@ -503,22 +503,22 @@ class TestRound2Improvements:
         assert history[1]["f1"] == 0.87
 
     def test_read_registry_missing_file(self, tmp_path):
-        from scraper.ml_training import read_registry
+        from services.ml.classifier_training import read_registry
 
         missing = tmp_path / "does_not_exist.json"
         assert read_registry(path=missing) == []
 
     def test_read_registry_corrupt_file(self, tmp_path):
-        from scraper.ml_training import read_registry
+        from services.ml.classifier_training import read_registry
 
         bad = tmp_path / "bad.json"
         bad.write_text("{not valid json", encoding="utf-8")
         assert read_registry(path=bad) == []
 
     def test_train_appends_to_registry(self, sample_df, tmp_path, monkeypatch):
-        from scraper import ml_training
-        from scraper.ml_classifier import SAPClassifier
-        from scraper.ml_training import read_registry
+        from services.ml import classifier_training as ml_training
+        from services.ml.classifier_training import read_registry
+        from services.ml.sap_classifier import SAPClassifier
 
         reg_path = tmp_path / "reg.json"
         monkeypatch.setattr(ml_training, "_REGISTRY_PATH", reg_path)

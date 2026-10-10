@@ -2,7 +2,7 @@
 
 Invocado por ``.github/workflows/train-tech.yml``. Cierra el hueco más ancho
 del subsistema ML: ``data/models/tech_classifier.pkl`` no lo producía ningún
-workflow —solo el subcomando local ``python -m scraper.ml_classifier
+workflow —solo el subcomando local ``python -m services.ml.sap_classifier
 train-tech``— y ``TechnologyClassifier`` ni siquiera tenía ``ensure_downloaded``,
 así que ``precompute_ml_tecnologias`` salía ``no_model`` en **todas** las
 pasadas de ``scrape-daily.yml`` desde que el paso existe.
@@ -14,7 +14,7 @@ prioridad ``tecnologia_humana`` > ``tecnologia_llm`` > ``licitaciones.tecnologia
 Esa última la escriben los conectores con ``matches_technology()`` sobre el
 mismo texto que después ve el modelo, así que entrenar contra ella es enseñarle
 a reproducir un regex que ya tenemos (ver el docstring de
-``scraper/tech_classifier.py``).
+``services/ml/tech_classifier.py``).
 
 El flag ``labels_circulares`` que emite ``train`` **no basta como gate**: se
 apaga en cuanto UNA fila trae etiqueta independiente. Con las 33 de producción
@@ -100,7 +100,7 @@ def run() -> dict[str, Any]:
     Raises:
         RuntimeError: si el entrenamiento devuelve un dict con ``error``.
     """
-    from scraper.tech_classifier import train_from_db
+    from services.ml.tech_classifier import train_from_db
 
     umbral = umbral_etiquetas_independientes()
     n_independientes = contar_etiquetas_independientes()
@@ -186,7 +186,7 @@ def artefactos(metrics: dict[str, Any]) -> list[str]:
     """
     if not publicable(metrics):
         return []
-    from scraper.tech_classifier import _MODEL_PATH
+    from services.ml.tech_classifier import _MODEL_PATH
 
     return [str(_MODEL_PATH), str(_MODEL_PATH.with_suffix(".sha256"))]
 

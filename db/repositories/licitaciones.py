@@ -1259,7 +1259,7 @@ class LicitacionRepository:
         tecnología detecta.
 
         Este método aporta las dos fuentes que sí son independientes, para que
-        ``scraper.tech_classifier._resolver_label_column`` las priorice sobre
+        ``services.ml.tech_classifier._resolver_label_column`` las priorice sobre
         las keywords:
 
         - ``tecnologia_humana``: CSV desde el feedback humano más reciente de

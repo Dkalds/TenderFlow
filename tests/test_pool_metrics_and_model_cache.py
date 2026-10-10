@@ -137,7 +137,7 @@ class _FakeClassifier:
 def _preparar_cache(monkeypatch: pytest.MonkeyPatch) -> type[_FakeClassifier]:
     """Clasificador falso + resolvedor inyectado (sin red ni BD)."""
     _FakeClassifier.cargas = []
-    monkeypatch.setattr("scraper.ml_classifier.SAPClassifier", _FakeClassifier)
+    monkeypatch.setattr("services.ml.sap_classifier.SAPClassifier", _FakeClassifier)
     monkeypatch.setattr("api.model_cache._resolve_artifact", lambda _name: None)
     import api.model_cache as cache_mod
 

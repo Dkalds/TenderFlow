@@ -338,7 +338,7 @@ def _run_ml_scoring() -> str:
     «ok».
 
     Clave del dict que se lee: ``skipped_no_model`` (bool). Es el contrato con
-    el agente que está arreglando ``scraper/ml_training.py`` para que llame a
+    el agente que está arreglando ``services/ml/classifier_training.py`` para que llame a
     ``ensure_downloaded()``: cuando ese cambio entre, este paso volverá a
     reportar ``ok`` solo. Si esa clave desapareciera del dict, este paso
     reportaría ``ok`` de nuevo — por eso el nombre va documentado aquí y no
@@ -348,7 +348,7 @@ def _run_ml_scoring() -> str:
         ``"ok"`` si el precompute puntuó (o no tenía nada que puntuar),
         ``"skipped"`` si reportó que no hay modelo disponible.
     """
-    from scraper.ml_training import precompute_ml_proba
+    from services.ml.classifier_training import precompute_ml_proba
 
     resultado = precompute_ml_proba(force=False)
     if resultado.get("skipped_no_model"):
@@ -381,7 +381,7 @@ def _run_ml_tecnologias() -> str:
     if not getattr(_settings, "ML_TECH_ENABLED", False):
         return STEP_SKIPPED
 
-    from scraper.ml_training import precompute_ml_tecnologias
+    from services.ml.classifier_training import precompute_ml_tecnologias
 
     resultado = precompute_ml_tecnologias(force=False)
     if resultado.get("skipped_no_model"):

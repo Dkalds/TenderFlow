@@ -19,7 +19,7 @@ from datetime import date, timedelta
 import pandas as pd
 import pytest
 
-from scraper.ml_pipeline import (
+from services.ml.classifier_pipeline import (
     TemporalSplitImposible,
     _clave_grupo,
     build_dataset_rows,

@@ -65,7 +65,7 @@ if TYPE_CHECKING:
     # Solo para anotar. El import real sigue dentro de ``_load_classifiers``:
     # perezoso, detrás de ``ML_TECH_ENABLED`` y en el ``try`` que hace fail-open
     # la carga del modelo.
-    from scraper.tech_classifier import TechnologyClassifier
+    from services.ml.tech_classifier import TechnologyClassifier
 
 log = get_logger(__name__)
 
@@ -174,7 +174,7 @@ def _load_classifiers() -> _ClassifierHolder:
     # ── SAP binario ────────────────────────────────────────────────────────
     ml: Any = None
     try:
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         SAPClassifier.ensure_downloaded()
         if SAPClassifier.is_available():
@@ -187,7 +187,7 @@ def _load_classifiers() -> _ClassifierHolder:
     tech: TechnologyClassifier | None = None
     if getattr(_settings, "ML_TECH_ENABLED", False):
         try:
-            from scraper.tech_classifier import TechnologyClassifier
+            from services.ml.tech_classifier import TechnologyClassifier
 
             TechnologyClassifier.ensure_downloaded()
             if TechnologyClassifier.is_available():
@@ -275,7 +275,7 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
     if clf is None:
         return lic
     try:
-        from scraper.ml_pipeline import _augment_text
+        from services.ml.classifier_pipeline import _augment_text
 
         text = _augment_text(
             ((lic.titulo or "") + " " + (lic.descripcion or "")).strip(),

@@ -14,7 +14,7 @@ salir de TI» — se ensancha la taxonomía por categorías, no por sectores.
 | `categoria` | Qué se compra, sin decir de quién | «Implantación de un ERP» |
 
 Los dos tipos conviven en el mismo dict porque todo consumidor del diccionario
-—`scraper.filters` (ingesta), `scraper.tech_classifier` (multi-etiqueta),
+—`scraper.filters` (ingesta), `services.ml.tech_classifier` (multi-etiqueta),
 `services.tech_signal` (pliegos), `services.analytics.tecnologias`
 (analítica), `services.llm_tech_labeling` (vocabulario cerrado del LLM)—
 itera sus claves sin distinguirlas. `TECH_LABEL_TIPO` es donde se distingue
@@ -122,7 +122,7 @@ Dos particularidades:
   contenedores»).
 - **Acrónimos cortos sí**, porque `services.tecnologias_diccionario.patrones`
   compila con límites de palabra: `erp` no casa dentro de «interpretación» ni
-  `gis` dentro de «registro». `scraper/ml_pipeline._keyword_fallback_score`
+  `gis` dentro de «registro». `services/ml/classifier_pipeline._keyword_fallback_score`
   (tier `rules` del clasificador) aplica el mismo criterio desde el 2026-09-14.
 - **Sin duplicados entre labels.** Una keyword pertenece a un único label; el
   test `tests/test_taxonomia_tecnologica.py` fija el conjunto de excepciones

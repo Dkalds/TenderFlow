@@ -218,11 +218,11 @@ def test_el_exit_code_de_la_ingesta_nunca_se_baja() -> None:
 
 
 def test_ml_scoring_reporta_skipped_si_el_precompute_no_encuentra_modelo() -> None:
-    """La clave leída es ``skipped_no_model`` (contrato con scraper/ml_training)."""
+    """La clave leída es ``skipped_no_model`` (contrato con services/ml/classifier_training)."""
     from scheduler.pipeline_runs import _run_ml_scoring
 
     with patch(
-        "scraper.ml_training.precompute_ml_proba",
+        "services.ml.classifier_training.precompute_ml_proba",
         return_value={"updated": 0, "skipped_no_model": True},
     ):
         assert _run_ml_scoring() == "skipped"
@@ -232,7 +232,7 @@ def test_ml_scoring_reporta_ok_cuando_si_hay_modelo() -> None:
     from scheduler.pipeline_runs import _run_ml_scoring
 
     with patch(
-        "scraper.ml_training.precompute_ml_proba",
+        "services.ml.classifier_training.precompute_ml_proba",
         return_value={"updated": 42, "skipped_no_model": False},
     ):
         assert _run_ml_scoring() == "ok"
@@ -255,7 +255,7 @@ def test_ml_tecnologias_reporta_skipped_sin_modelo(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(settings, "ML_TECH_ENABLED", True)
     with patch(
-        "scraper.ml_training.precompute_ml_tecnologias",
+        "services.ml.classifier_training.precompute_ml_tecnologias",
         return_value={"updated": 0, "scores_inserted": 0, "skipped_no_model": True},
     ) as precompute:
         assert _run_ml_tecnologias() == "skipped"
@@ -275,7 +275,7 @@ def test_ml_tecnologias_reporta_skipped_con_el_flag_apagado(
 
     monkeypatch.setattr(settings, "ML_TECH_ENABLED", False)
     with patch(
-        "scraper.ml_training.precompute_ml_tecnologias",
+        "services.ml.classifier_training.precompute_ml_tecnologias",
         return_value={"updated": 3, "scores_inserted": 12, "skipped_no_model": False},
     ) as precompute:
         assert _run_ml_tecnologias() == "skipped"

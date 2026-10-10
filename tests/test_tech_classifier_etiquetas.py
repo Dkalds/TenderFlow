@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from scraper.tech_classifier import (
+from services.ml.tech_classifier import (
     TechnologyClassifier,
     _es_circular,
     _resolver_label_column,
@@ -65,9 +65,9 @@ class TestSuficienciaDeEtiquetas:
     def test_el_suelo_es_el_del_tier_ml_ready(self) -> None:
         """No es un umbral nuevo: por debajo de ``ML_TECH_MIN_POS_READY``
         ninguna tecnología puede llegar al tier con filas independientes."""
-        from scraper.tech_classifier import _suelo_etiquetas_independientes
+        from services.ml.tech_classifier import _suelo_etiquetas_independientes
 
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_MIN_POS_READY = 7
             assert _suelo_etiquetas_independientes() == 7
             assert _es_circular({"human": 7, "llm": 0, "keywords": 10}) is False
@@ -78,7 +78,7 @@ class TestAvisoDeCircularidad:
     def test_con_etiquetas_humanas_suficientes_no_avisa(self) -> None:
         """El criterio de aceptación de S6.2, en una línea."""
         df = _df(80, humanas=80)
-        with patch("scraper.tech_classifier.log") as mock_log:
+        with patch("services.ml.tech_classifier.log") as mock_log:
             resolucion = _resolver_label_column(df)
         avisos = [c[0][0] for c in mock_log.warning.call_args_list]
         assert "tech_classifier.circular_labels" not in avisos
@@ -87,7 +87,7 @@ class TestAvisoDeCircularidad:
 
     def test_train_no_avisa_con_etiquetas_humanas_suficientes(self) -> None:
         df = _df(80, humanas=80)
-        with patch("scraper.tech_classifier.log") as mock_log:
+        with patch("services.ml.tech_classifier.log") as mock_log:
             metrics = TechnologyClassifier().train(df)
         avisos = [c[0][0] for c in mock_log.warning.call_args_list]
         assert "tech_classifier.circular_labels" not in avisos
@@ -98,7 +98,7 @@ class TestAvisoDeCircularidad:
 
     def test_train_avisa_cuando_las_humanas_no_llegan_al_suelo(self) -> None:
         df = _df(80, humanas=2)
-        with patch("scraper.tech_classifier.log") as mock_log:
+        with patch("services.ml.tech_classifier.log") as mock_log:
             metrics = TechnologyClassifier().train(df)
         avisos = [c[0][0] for c in mock_log.warning.call_args_list]
         assert "tech_classifier.circular_labels" in avisos
@@ -106,7 +106,7 @@ class TestAvisoDeCircularidad:
 
     def test_la_senal_llm_tambien_cuenta_como_independiente(self) -> None:
         df = _df(80, llm=80)
-        with patch("scraper.tech_classifier.log") as mock_log:
+        with patch("services.ml.tech_classifier.log") as mock_log:
             resolucion = _resolver_label_column(df)
         avisos = [c[0][0] for c in mock_log.warning.call_args_list]
         assert "tech_classifier.circular_labels" not in avisos
@@ -149,7 +149,7 @@ class TestConflictoEsAbstencion:
         una respuesta vacía, no una etiqueta."""
         df = pd.DataFrame([self._fila(tecnologia="SAP", llm="SAP:0.3000")])
 
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_LLM_MIN_SCORE = 0.5
             resolucion = _resolver_label_column(df)
 
@@ -158,7 +158,7 @@ class TestConflictoEsAbstencion:
 
     def test_llm_vacio_sin_keywords_sigue_siendo_un_negativo(self) -> None:
         """Las dos fuentes coinciden en «nada»: ese negativo sí vale."""
-        from scraper.tech_classifier import _LABEL_COL_RESOLVED
+        from services.ml.tech_classifier import _LABEL_COL_RESOLVED
 
         df = pd.DataFrame([self._fila(tecnologia=None, llm=""), self._fila(tecnologia="", llm="")])
 
@@ -179,7 +179,7 @@ class TestConflictoEsAbstencion:
         assert resolucion.counts["conflicto"] == 0
 
     def test_si_el_humano_se_pronuncio_gana_y_no_hay_conflicto(self) -> None:
-        from scraper.tech_classifier import _LABEL_COL_RESOLVED
+        from services.ml.tech_classifier import _LABEL_COL_RESOLVED
 
         df = pd.DataFrame(
             [
@@ -308,10 +308,10 @@ class TestTrainFromDb:
                 "db.repositories.ml_dataset.filas_entrenamiento_tecnologia", return_value=filas
             ) as mock_filas,
             patch("db.repositories.licitaciones.LicitacionRepository", repo),
-            patch("scraper.tech_classifier.TechnologyClassifier", return_value=clf),
-            patch("scraper.tech_classifier.registrar_entrenamiento") as mock_registro,
+            patch("services.ml.tech_classifier.TechnologyClassifier", return_value=clf),
+            patch("services.ml.tech_classifier.registrar_entrenamiento") as mock_registro,
         ):
-            from scraper.tech_classifier import train_from_db
+            from services.ml.tech_classifier import train_from_db
 
             train_from_db()
 

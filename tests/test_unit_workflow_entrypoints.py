@@ -352,9 +352,9 @@ def test_docs_report_cli_exits_zero(tmp_db):
 
 def test_training_run_raises_on_error_metrics():
     with (
-        patch("scraper.ml_training.seed_negatives"),
-        patch("scraper.ml_training.train_from_db", return_value={"error": "sin datos"}),
-        patch("scraper.ml_training.precompute_ml_proba") as precompute,
+        patch("scraper.seed_negatives.seed_negatives"),
+        patch("services.ml.classifier_training.train_from_db", return_value={"error": "sin datos"}),
+        patch("services.ml.classifier_training.precompute_ml_proba") as precompute,
     ):
         with pytest.raises(RuntimeError, match="Training failed"):
             training_job.run()
@@ -394,9 +394,11 @@ def test_training_run_entrena_sin_activar_y_no_precomputa():
     subida: un fallo en medio dejaba activa una versión sin artefacto publicado.
     """
     with (
-        patch("scraper.ml_training.seed_negatives") as seed,
-        patch("scraper.ml_training.train_from_db", return_value=_METRICAS_PENDIENTES) as train,
-        patch("scraper.ml_training.precompute_ml_proba") as precompute,
+        patch("scraper.seed_negatives.seed_negatives") as seed,
+        patch(
+            "services.ml.classifier_training.train_from_db", return_value=_METRICAS_PENDIENTES
+        ) as train,
+        patch("services.ml.classifier_training.precompute_ml_proba") as precompute,
         patch("db.model_registry.deactivate", return_value=1),
     ):
         assert training_job.run() == _METRICAS_PENDIENTES
@@ -415,8 +417,8 @@ def test_training_run_retira_la_version_activa_antes_de_la_subida():
     registrado como activo un sha256 que no es el del asset publicado.
     """
     with (
-        patch("scraper.ml_training.seed_negatives"),
-        patch("scraper.ml_training.train_from_db", return_value=_METRICAS_PENDIENTES),
+        patch("scraper.seed_negatives.seed_negatives"),
+        patch("services.ml.classifier_training.train_from_db", return_value=_METRICAS_PENDIENTES),
         patch("db.model_registry.deactivate", return_value=1) as deactivate,
     ):
         training_job.run()
@@ -427,9 +429,9 @@ def test_training_run_retira_la_version_activa_antes_de_la_subida():
 def test_training_run_no_toca_la_version_activa_si_el_gate_rechaza():
     """Un rechazo del gate no es un error, pero tampoco hay nada que aplicar."""
     with (
-        patch("scraper.ml_training.seed_negatives"),
-        patch("scraper.ml_training.train_from_db", return_value=_METRICAS_RECHAZADAS),
-        patch("scraper.ml_training.precompute_ml_proba") as precompute,
+        patch("scraper.seed_negatives.seed_negatives"),
+        patch("services.ml.classifier_training.train_from_db", return_value=_METRICAS_RECHAZADAS),
+        patch("services.ml.classifier_training.precompute_ml_proba") as precompute,
         patch("db.model_registry.deactivate") as deactivate,
     ):
         assert training_job.run() == _METRICAS_RECHAZADAS
@@ -504,7 +506,7 @@ def _activar(releases, *, versiones=None, version: int = 3):
         ),
         patch("db.model_registry.activate_version", side_effect=_activate),
         patch("shared.model_artifacts.fetch_model_releases", side_effect=releases),
-        patch("scraper.ml_training.precompute_ml_proba", side_effect=_precompute),
+        patch("services.ml.classifier_training.precompute_ml_proba", side_effect=_precompute),
     ):
         try:
             resultado = training_job.activar_publicada(version, sleep=esperas.append)
@@ -585,7 +587,7 @@ def test_activar_cli_sale_con_0_y_deja_el_resumen(tmp_path, monkeypatch, sin_ent
             "shared.model_artifacts.fetch_model_releases",
             return_value=_release_con(_SHA_CANDIDATO),
         ),
-        patch("scraper.ml_training.precompute_ml_proba", return_value={"updated": 7}),
+        patch("services.ml.classifier_training.precompute_ml_proba", return_value={"updated": 7}),
     ):
         assert training_job.main(["activar", "--version", "3"]) == 0
 
@@ -606,7 +608,7 @@ def test_sin_subcomando_entrena(sin_entorno_actions):
 
 def test_rescore_recalcula_todo_con_el_modelo_que_se_sirve():
     with patch(
-        "scraper.ml_training.precompute_ml_proba",
+        "services.ml.classifier_training.precompute_ml_proba",
         return_value={"updated": 24594, "skipped_no_model": False},
     ) as precompute:
         assert training_job.rescore()["updated"] == 24594
@@ -616,7 +618,7 @@ def test_rescore_recalcula_todo_con_el_modelo_que_se_sirve():
 def test_rescore_sin_modelo_es_un_fallo_no_un_verde(sin_entorno_actions):
     """Un rescore que no puntúa nada y sale en verde es peor que uno que falla."""
     sin_modelo = {"updated": 0, "skipped_no_model": True}
-    with patch("scraper.ml_training.precompute_ml_proba", return_value=sin_modelo):
+    with patch("services.ml.classifier_training.precompute_ml_proba", return_value=sin_modelo):
         with pytest.raises(RuntimeError, match="No hay modelo servible"):
             training_job.rescore()
         assert training_job.main(["rescore"]) == 1

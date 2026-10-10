@@ -186,7 +186,7 @@ class TestPromotionGate:
     """El gate de promoción que aplica ``maybe_retrain_classifier``.
 
     Ya no vive inline: ambos caminos de reentrenamiento (este y
-    ``scraper.ml_training.train_from_db``) delegan en
+    ``services.ml.classifier_training.train_from_db``) delegan en
     ``services.ml.promotion.promote_if_better``, que decide sobre el golden set
     humano en vez de comparar métricas medidas cada una sobre su propio test
     split. La lógica del gate se testea en ``tests/test_ml_promotion_gate.py``;
@@ -213,8 +213,8 @@ class TestPromotionGate:
                 "scheduler.concept_drift._fetch_training_dataframe",
                 return_value=pd.DataFrame({"col": [1]}),
             ),
-            patch("scraper.ml_classifier.SAPClassifier"),
-            patch("scraper.ml_training.precompute_ml_proba"),
+            patch("services.ml.sap_classifier.SAPClassifier"),
+            patch("services.ml.classifier_training.precompute_ml_proba"),
             patch("services.ml.promotion.promote_if_better", return_value=promocion),
             patch("scheduler.concept_drift.notify"),
         )
@@ -353,7 +353,7 @@ class TestComputeF1Drop:
         with (
             patch("db.model_registry.get_active", return_value=active_model),
             patch("db.database.connect") as mock_conn,
-            patch("scraper.ml_classifier.SAPClassifier") as MockClf,
+            patch("services.ml.sap_classifier.SAPClassifier") as MockClf,
         ):
             ctx = MagicMock()
             ctx.__enter__ = lambda s: s
@@ -375,7 +375,7 @@ class TestMlClassifierLoadRegistry:
         """When no path given, load() should query registry and use active path."""
         import joblib
 
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         # Create a fake model file
         clf_obj = SAPClassifier()
@@ -394,13 +394,13 @@ class TestMlClassifierLoadRegistry:
 
     def test_load_falls_back_to_default_path_on_registry_error(self, tmp_path):
         """If registry raises, load() falls back to _MODEL_PATH (FileNotFoundError expected)."""
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         nonexistent = tmp_path / "no_such_model.pkl"  # does not exist
 
         with (
             patch("db.model_registry.get_active", side_effect=RuntimeError("db down")),
-            patch("scraper.ml_classifier._MODEL_PATH", nonexistent),
+            patch("services.ml.sap_classifier._MODEL_PATH", nonexistent),
             pytest.raises(FileNotFoundError),
         ):
             SAPClassifier.load()

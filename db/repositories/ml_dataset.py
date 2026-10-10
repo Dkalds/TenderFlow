@@ -3,7 +3,7 @@
 Todo el SQL del dataset de ``services/ml/`` y de ``scraper/`` vive aquí
 (ADR-022: el SQL solo existe en ``db/``). Antes estaba inline en
 ``services/ml/features.py``, ``services/ml/calibration.py``,
-``scraper/ml_training.py`` y ``scraper/tech_classifier.py``, todos en la
+``services/ml/classifier_training.py`` y ``services/ml/tech_classifier.py``, todos en la
 whitelist congelada del ratchet TID251 -- moverlo la encoge, que es la única
 dirección permitida.
 

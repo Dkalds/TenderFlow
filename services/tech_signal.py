@@ -134,7 +134,7 @@ def _build_merge_result(
     # ``licitaciones.ml_tecnologias`` y ``existing_scores`` de
     # ``licitacion_tecnologia_score`` -- dos tablas distintas, y nada garantiza
     # que la primera esté contenida en la segunda. ``precompute_ml_tecnologias``
-    # no persiste fila para un label con score 0.0 (scraper/ml_training.py) y
+    # no persiste fila para un label con score 0.0 (services/ml/classifier_training.py) y
     # ``_apply_tech_prediction`` (scraper/pipeline.py) delega la persistencia de
     # scores en el llamador. Indexar directo lanzaba un KeyError con el nombre
     # de la tecnología, que el fail-open de ``merge_doc_signals`` reducía a un

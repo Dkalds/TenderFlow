@@ -3,7 +3,7 @@
 ``joblib.load`` ejecuta código arbitrario (usa pickle bajo el capó), así que
 deserializar un artefacto ``.pkl`` manipulado equivale a ejecutar código de un
 atacante. Este módulo centraliza la defensa en profundidad que originalmente
-vivía solo en ``scraper.ml_classifier.SAPClassifier.load`` y la extiende a los
+vivía solo en ``services.ml.sap_classifier.SAPClassifier.load`` y la extiende a los
 demás cargadores de modelo del proyecto (``TechnologyClassifier``,
 ``BajaModel``, ``RetencionModel``):
 

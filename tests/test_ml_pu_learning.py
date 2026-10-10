@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from scraper.ml_pipeline import _build_dataset
+from services.ml.classifier_pipeline import _build_dataset
 
 
 def _make_df() -> pd.DataFrame:

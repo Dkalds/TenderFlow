@@ -507,7 +507,7 @@ def resolve_servable_artifact(name: str, fallback: Path) -> Path | None:
     fallo **leyendo** el registro (BD caída, proceso sin ``DATABASE_URL``) no
     es lo mismo y no debe dejar sin modelo a quien tiene uno local: se avisa y
     se cae al fallback, que es el criterio que ya aplica
-    ``scraper/ml_classifier.py::load`` con su ``registry_lookup_failed``.
+    ``services/ml/sap_classifier.py::load`` con su ``registry_lookup_failed``.
     """
     try:
         artefacto = resolve_active_artifact(name)

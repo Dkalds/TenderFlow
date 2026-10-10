@@ -115,7 +115,7 @@ class TestFeedbackQueueContextFields:
 class TestFeedbackQueueModelBlock:
     def test_model_block_present_when_tech_classifier_unavailable(self, seeded_db, monkeypatch):
         monkeypatch.setattr(
-            "scraper.tech_classifier.TechnologyClassifier.is_available",
+            "services.ml.tech_classifier.TechnologyClassifier.is_available",
             classmethod(lambda cls, path=None: False),
         )
         resp = seeded_db.get(
@@ -127,7 +127,7 @@ class TestFeedbackQueueModelBlock:
             assert item.get("model") is None
 
     def test_model_block_has_expected_keys(self, seeded_db, monkeypatch):
-        from scraper.tech_classifier import TechnologyClassifier
+        from services.ml.tech_classifier import TechnologyClassifier
 
         class _FakeClassifier:
             labels = TechnologyClassifier.labels if hasattr(TechnologyClassifier, "labels") else []
@@ -173,11 +173,11 @@ class TestFeedbackQueueModelBlock:
                 ]
 
         monkeypatch.setattr(
-            "scraper.tech_classifier.TechnologyClassifier.is_available",
+            "services.ml.tech_classifier.TechnologyClassifier.is_available",
             classmethod(lambda cls, path=None: True),
         )
         monkeypatch.setattr(
-            "scraper.tech_classifier.TechnologyClassifier.load",
+            "services.ml.tech_classifier.TechnologyClassifier.load",
             classmethod(lambda cls, path=None: _FakeClassifier()),
         )
 
@@ -210,11 +210,11 @@ class TestFeedbackQueueModelBlock:
                 ]
 
         monkeypatch.setattr(
-            "scraper.tech_classifier.TechnologyClassifier.is_available",
+            "services.ml.tech_classifier.TechnologyClassifier.is_available",
             classmethod(lambda cls, path=None: True),
         )
         monkeypatch.setattr(
-            "scraper.tech_classifier.TechnologyClassifier.load",
+            "services.ml.tech_classifier.TechnologyClassifier.load",
             classmethod(lambda cls, path=None: _FakeClf()),
         )
 
@@ -244,11 +244,11 @@ class TestFeedbackQueueModelBlock:
                 ]
 
         monkeypatch.setattr(
-            "scraper.tech_classifier.TechnologyClassifier.is_available",
+            "services.ml.tech_classifier.TechnologyClassifier.is_available",
             classmethod(lambda cls, path=None: True),
         )
         monkeypatch.setattr(
-            "scraper.tech_classifier.TechnologyClassifier.load",
+            "services.ml.tech_classifier.TechnologyClassifier.load",
             classmethod(lambda cls, path=None: _FakeClf()),
         )
 

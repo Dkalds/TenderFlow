@@ -9,7 +9,7 @@ alcance: la ficha del pliego, los modelos de baja y de retención.
 ## 1. Por qué (medido el 2026-09-27)
 
 - **Las etiquetas son circulares.** El binario «SAP» se entrena con «alguna
-  keyword de cualquier tecnología» (`scraper/ml_training.py`), y el
+  keyword de cualquier tecnología» (`services/ml/classifier_training.py`), y el
   multi-tecnología de hoy tuvo 7.010 etiquetas de keywords frente a 39
   humanas y 260 del LLM. Resultado:
   - Fabricantes: F1 de 0,93-0,995, es decir, imitan el regex.

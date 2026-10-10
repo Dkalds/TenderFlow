@@ -292,7 +292,7 @@ class TestComputeF1Drop:
 
         with patch("db.model_registry.get_active", return_value=None):
             with patch("db.database.connect"):
-                with patch("scraper.ml_classifier.SAPClassifier"):
+                with patch("services.ml.sap_classifier.SAPClassifier"):
                     result = compute_f1_drop()
         assert result == 0.0
 
@@ -303,7 +303,7 @@ class TestComputeF1Drop:
             "db.model_registry.get_active", return_value={"metrics": {}, "path": "model.pkl"}
         ):
             with patch("db.database.connect"):
-                with patch("scraper.ml_classifier.SAPClassifier"):
+                with patch("services.ml.sap_classifier.SAPClassifier"):
                     result = compute_f1_drop()
         assert result == 0.0
 
@@ -321,7 +321,7 @@ class TestComputeF1Drop:
             return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
         ):
             with patch("db.database.connect", return_value=mock_connect):
-                with patch("scraper.ml_classifier.SAPClassifier"):
+                with patch("services.ml.sap_classifier.SAPClassifier"):
                     result = compute_f1_drop()
         assert result == 0.0
 
@@ -339,7 +339,7 @@ class TestComputeF1Drop:
             return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
         ):
             with patch("db.database.connect", return_value=mock_connect):
-                with patch("scraper.ml_classifier.SAPClassifier"):
+                with patch("services.ml.sap_classifier.SAPClassifier"):
                     result = compute_f1_drop(min_labelled=20)
         assert result == 0.0
 
@@ -361,7 +361,7 @@ class TestComputeF1Drop:
             return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
         ):
             with patch("db.database.connect", return_value=mock_connect):
-                with patch("scraper.ml_classifier.SAPClassifier", mock_clf_cls):
+                with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     result = compute_f1_drop(min_labelled=5)
         assert result == 0.0
 
@@ -385,7 +385,7 @@ class TestComputeF1Drop:
             return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
         ):
             with patch("db.database.connect", return_value=mock_connect):
-                with patch("scraper.ml_classifier.SAPClassifier", mock_clf_cls):
+                with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     result = compute_f1_drop(min_labelled=5)
         assert result == 0.0
 
@@ -416,7 +416,7 @@ class TestComputeF1Drop:
             },
         ):
             with patch("db.database.connect", return_value=mock_connect):
-                with patch("scraper.ml_classifier.SAPClassifier", mock_clf_cls):
+                with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     result = compute_f1_drop(min_labelled=5)
         assert result > 0.0  # there should be a drop since predictions are all wrong
 
@@ -443,7 +443,7 @@ class TestComputeF1Drop:
             return_value={"metrics": {"golden_holdout_f1": 0.9}, "path": "model.pkl"},
         ):
             with patch("db.database.connect", return_value=mock_connect):
-                with patch("scraper.ml_classifier.SAPClassifier", mock_clf_cls):
+                with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     compute_f1_drop(min_labelled=5)
 
         sql = " ".join(mock_conn.execute.call_args.args[0].split())

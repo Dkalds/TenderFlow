@@ -224,7 +224,7 @@ EOF
 
 ```bash
 python - <<'EOF'
-from scraper.ml_classifier import SAPClassifier
+from services.ml.sap_classifier import SAPClassifier
 clf = SAPClassifier.load()
 test_texts = [
     "Migración SAP S/4HANA",

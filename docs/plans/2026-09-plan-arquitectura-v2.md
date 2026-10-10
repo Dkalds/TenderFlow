@@ -226,7 +226,7 @@ Los agentes ejecutores asumen ESTO, no lo que digan docs anteriores.
     reentrenarse porque el corpus PSCP ahoga el dataset (backlog P2); el
     golden set tiene 27 ejemplos (backlog P1); `TechnologyClassifier` entrena
     con etiquetas circulares porque `train_from_db` no lee las columnas humana
-    y LLM (`scraper/tech_classifier.py:29-34`); los modelos NIM de razonamiento
+    y LLM (`services/ml/tech_classifier.py:29-34`); los modelos NIM de razonamiento
     pueden vaciar el stream porque el cliente no envía `chat_template_kwargs`
     (`llm/client.py:57-62`); baja v2 y retención v1 están registrados y no son
     activables (backlog P2).
@@ -568,8 +568,8 @@ cabeza real se choca con quien haya mergeado antes.
 - `shared/jobs.py`, `db/repositories/jobs.py`, `scheduler/worker.py`,
   `api/routes/jobs.py`, `scheduler/pipeline_runs.py`, `render.yaml`
   (bloque `worker`), `scripts/check_job_parity.py`: S5.
-- `db/repositories/ml_dataset.py`, `scraper/tech_classifier.py`,
-  `scraper/ml_training.py`, `services/ml/promotion.py`, `services/ml_eval.py`,
+- `db/repositories/ml_dataset.py`, `services/ml/tech_classifier.py`,
+  `services/ml/classifier_training.py`, `services/ml/promotion.py`, `services/ml_eval.py`,
   `tests/fixtures/golden_set*.jsonl`: S6.
 - `web/**` salvo lo asignado a S2, S3 y S4: S7.
 - `scraper/document_fetcher.py`, `db/repositories/documentos.py`,

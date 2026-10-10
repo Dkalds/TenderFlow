@@ -11,12 +11,12 @@ np = pytest.importorskip("numpy")
 pytest.importorskip("sklearn")
 
 from config.keywords import TECH_LABELS
-from scraper.ml_pipeline import (
+from services.ml.classifier_pipeline import (
     _build_multilabel_dataset,
     _keyword_fallback_score,
     _parse_tecnologia_csv,
 )
-from scraper.tech_classifier import (
+from services.ml.tech_classifier import (
     _TIER_FRAGILE,
     _TIER_ML_READY,
     _TIER_RULES,
@@ -259,8 +259,8 @@ class TestTechnologyClassifierScoreOne:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.5
 
-        with patch("scraper.tech_classifier._augment_text", return_value="SAP ERP system"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.8):
+        with patch("services.ml.tech_classifier._augment_text", return_value="SAP ERP system"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.8):
                 result = clf.predict_one("SAP ERP system")
         assert "scores" in result
         assert "predicted" in result
@@ -280,8 +280,8 @@ class TestTechnologyClassifierScoreOne:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.5
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.0):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 result = clf.predict_one("text")
         assert result["scores"][label] == 0.9
 
@@ -298,8 +298,8 @@ class TestTechnologyClassifierScoreOne:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.5
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.0):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 result = clf.predict_one("text")
         assert result["scores"][label] == 0.0
 
@@ -318,8 +318,8 @@ class TestTechnologyClassifierScoreOne:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.5
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.0):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 result = clf.predict_one("text")
         assert result["scores"][label] == 0.0
 
@@ -332,8 +332,8 @@ class TestTechnologyClassifierScoreOne:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.99
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.1):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.1):
                 result = clf.predict_one("text")
         assert result["principal"] is None
         assert result["max_proba"] == 0.1
@@ -353,8 +353,8 @@ class TestTechnologyClassifierScoreOne:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.99
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.0):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 result = clf.predict_one("text")
         assert label in result["low_confidence_techs"]
 
@@ -364,7 +364,7 @@ class TestTechnologyClassifierThreshold:
         from unittest.mock import patch
 
         clf = TechnologyClassifier()
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_THRESHOLDS = {"SAP": "0.7"}
             mock_settings.ML_TECH_DEFAULT_THRESHOLD = 0.5
             result = clf._threshold_for("SAP")
@@ -375,7 +375,7 @@ class TestTechnologyClassifierThreshold:
 
         clf = TechnologyClassifier()
         clf._thresholds["SAP"] = 0.6
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_THRESHOLDS = {"SAP": "not_a_number"}
             mock_settings.ML_TECH_DEFAULT_THRESHOLD = 0.5
             result = clf._threshold_for("SAP")
@@ -386,7 +386,7 @@ class TestTechnologyClassifierThreshold:
 
         clf = TechnologyClassifier()
         clf._thresholds["SAP"] = 0.65
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_THRESHOLDS = {}
             mock_settings.ML_TECH_DEFAULT_THRESHOLD = 0.5
             result = clf._threshold_for("SAP")
@@ -396,7 +396,7 @@ class TestTechnologyClassifierThreshold:
         from unittest.mock import patch
 
         clf = TechnologyClassifier()
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_THRESHOLDS = None
             mock_settings.ML_TECH_DEFAULT_THRESHOLD = 0.5
             result = clf._threshold_for("UNKNOWN_LABEL")
@@ -419,8 +419,8 @@ class TestTechnologyClassifierPredictBatch:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.5
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.0):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 results = clf.predict_batch([{"text": "hello"}])
         assert len(results) == 1
         assert results[0]["scores"][label] == 0.0
@@ -434,8 +434,8 @@ class TestTechnologyClassifierPredictBatch:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.99
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.1):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.1):
                 results = clf.predict_batch([{"text": "nothing"}])
         assert results[0]["principal"] is None
         assert results[0]["max_proba"] == 0.1
@@ -453,8 +453,8 @@ class TestTechnologyClassifierPredictBatch:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.5
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.0):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 results = clf.predict_batch([{"text": "hello"}])
         assert results[0]["scores"][label] == 0.0
 
@@ -473,8 +473,8 @@ class TestTechnologyClassifierPredictBatch:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.99
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.0):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 results = clf.predict_batch([{"text": "hello"}])
         assert results[0]["principal"] == label
         assert results[0]["max_proba"] == 0.9
@@ -494,8 +494,8 @@ class TestTechnologyClassifierPredictBatch:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.99
 
-        with patch("scraper.tech_classifier._augment_text", return_value="text"):
-            with patch("scraper.tech_classifier._keyword_fallback_score", return_value=0.0):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+            with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 results = clf.predict_batch([{"text": "hello"}])
         assert label in results[0]["low_confidence_techs"]
 
@@ -612,7 +612,7 @@ class TestTechnologyClassifierTrain:
 
         import numpy as np
 
-        with patch("scraper.tech_classifier._build_multilabel_dataset") as mock_build:
+        with patch("services.ml.tech_classifier._build_multilabel_dataset") as mock_build:
             mock_build.return_value = (["t"] * 5, np.zeros((5, 2)), [0, 0])
             clf = TechnologyClassifier()
             df = pd.DataFrame({"titulo": ["a"], "descripcion": ["b"], "tecnologia": ["SAP"]})
@@ -639,17 +639,17 @@ class TestTechTrainFromDb:
             }
         ]
         with (
-            patch("scraper.tech_classifier.TechnologyClassifier") as mock_cls,
+            patch("services.ml.tech_classifier.TechnologyClassifier") as mock_cls,
             patch("db.repositories.ml_dataset.filas_entrenamiento_tecnologia", return_value=filas),
             patch("db.repositories.licitaciones.LicitacionRepository") as mock_repo,
-            patch("scraper.tech_classifier.registrar_entrenamiento"),
+            patch("services.ml.tech_classifier.registrar_entrenamiento"),
         ):
             mock_repo.return_value.etiquetas_tecnologia_no_circulares.return_value = {}
             mock_instance = MagicMock()
             mock_instance.train.return_value = {"f1": 0.9}
             mock_cls.return_value = mock_instance
 
-            from scraper.tech_classifier import train_from_db
+            from services.ml.tech_classifier import train_from_db
 
             train_from_db()
             mock_instance.save.assert_called_once()
@@ -675,7 +675,7 @@ def _rules_only_df(tecnologia: str = "META4", n: int = 24) -> pd.DataFrame:
 
 class TestResolverLabelColumn:
     def test_sin_columnas_devuelve_vacio(self) -> None:
-        from scraper.tech_classifier import _resolver_label_column
+        from services.ml.tech_classifier import _resolver_label_column
 
         res = _resolver_label_column(pd.DataFrame({"titulo": ["a"], "descripcion": ["b"]}))
         assert res.column == ""
@@ -684,17 +684,17 @@ class TestResolverLabelColumn:
         """Entrenar contra ``tecnologia`` es imitar al regex que ve el mismo texto."""
         from unittest.mock import patch
 
-        from scraper.tech_classifier import _resolver_label_column
+        from services.ml.tech_classifier import _resolver_label_column
 
         df = pd.DataFrame({"titulo": ["a"], "descripcion": ["b"], "tecnologia": ["SAP"]})
-        with patch("scraper.tech_classifier.log") as mock_log:
+        with patch("services.ml.tech_classifier.log") as mock_log:
             res = _resolver_label_column(df)
         assert res.column == "tecnologia"
         assert res.circular is True
         assert mock_log.warning.call_args[0][0] == "tech_classifier.circular_labels"
 
     def test_humana_gana_a_llm_y_a_keywords(self) -> None:
-        from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
+        from services.ml.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
 
         df = pd.DataFrame(
             {
@@ -722,7 +722,7 @@ class TestResolverLabelColumn:
         assert res.circular is True
 
     def test_no_muta_el_dataframe_original(self) -> None:
-        from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
+        from services.ml.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
 
         df = pd.DataFrame({"titulo": ["a"], "descripcion": ["x"], "tecnologia_humana": ["SAP"]})
         _resolver_label_column(df)
@@ -730,7 +730,7 @@ class TestResolverLabelColumn:
 
     def test_cadena_vacia_es_negativo_revisado_no_falta_de_etiqueta(self) -> None:
         """Un "el humano miró y no vio tecnología" es información, no un hueco."""
-        from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
+        from services.ml.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
 
         df = pd.DataFrame(
             {
@@ -747,7 +747,7 @@ class TestResolverLabelColumn:
     def test_llm_filtra_por_score(self) -> None:
         from unittest.mock import patch
 
-        from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
+        from services.ml.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
 
         df = pd.DataFrame(
             {
@@ -756,7 +756,7 @@ class TestResolverLabelColumn:
                 "tecnologia_llm": ["SAP:0.91,ORACLE:0.12"],
             }
         )
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_LLM_MIN_SCORE = 0.5
             res = _resolver_label_column(df)
         assert list(res.df[_LABEL_COL_RESOLVED]) == ["SAP"]
@@ -779,7 +779,7 @@ class TestTrainRompeLaCircularidad:
         from unittest.mock import patch
 
         clf = TechnologyClassifier()
-        with patch("scraper.tech_classifier.log") as mock_log:
+        with patch("services.ml.tech_classifier.log") as mock_log:
             metrics = clf.train(_rules_only_df())
         assert metrics["labels_circulares"] is True
         avisos = [c[0][0] for c in mock_log.warning.call_args_list]
@@ -817,7 +817,7 @@ class TestRulesThreshold:
     def test_default_threshold_era_inalcanzable(self) -> None:
         """Regresión del bug: 0.50 exigía la mitad del vocabulario del label."""
         from config.keywords import TECHNOLOGY_KEYWORDS
-        from scraper.ml_pipeline import _keyword_fallback_score
+        from services.ml.classifier_pipeline import _keyword_fallback_score
 
         score = _keyword_fallback_score(
             "mantenimiento del sistema de nóminas meta4", TECHNOLOGY_KEYWORDS["META4"]
@@ -853,7 +853,7 @@ class TestRulesThreshold:
 
         clf = TechnologyClassifier()
         clf.train(_rules_only_df())
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_THRESHOLDS = {"META4": 0.99}
             mock_settings.ML_TECH_DEFAULT_THRESHOLD = 0.5
             assert clf._threshold_for("META4") == 0.99
@@ -874,7 +874,7 @@ def _multilabel_Y(n: int = 120, n_raros: int = 8):
 
 class TestSplitIndices:
     def test_particion_disjunta_y_completa(self) -> None:
-        from scraper.tech_classifier import _split_indices
+        from services.ml.tech_classifier import _split_indices
 
         split = _split_indices(_multilabel_Y())
         todos = set(split.train) | set(split.val) | set(split.test)
@@ -884,7 +884,7 @@ class TestSplitIndices:
 
     def test_estratifica_las_etiquetas_raras(self) -> None:
         """Sin estratificar, un label frágil puede quedarse sin positivos en val."""
-        from scraper.tech_classifier import _split_indices
+        from services.ml.tech_classifier import _split_indices
 
         Y = _multilabel_Y()
         workday = TECH_LABELS.index("WORKDAY")
@@ -895,7 +895,7 @@ class TestSplitIndices:
         assert Y[split.test, workday].sum() > 0
 
     def test_datasets_pequenos_no_reservan_val_ni_test(self) -> None:
-        from scraper.tech_classifier import _split_indices
+        from services.ml.tech_classifier import _split_indices
 
         split = _split_indices(_multilabel_Y(n=30, n_raros=2))
         assert len(split.train) == 30
@@ -907,7 +907,7 @@ class TestSplitIndices:
 
         import sklearn.model_selection as skms
 
-        from scraper.tech_classifier import _split_indices
+        from services.ml.tech_classifier import _split_indices
 
         real = skms.train_test_split
 
@@ -917,7 +917,7 @@ class TestSplitIndices:
             return real(*args, **kwargs)
 
         with patch.object(skms, "train_test_split", _falla_si_estratifica):
-            with patch("scraper.tech_classifier.log") as mock_log:
+            with patch("services.ml.tech_classifier.log") as mock_log:
                 split = _split_indices(_multilabel_Y())
         assert split.stratified is False
         assert split.reason.startswith("stratify_failed")
@@ -945,7 +945,7 @@ class TestTrainMetricasHonestas:
         from config import settings as real_settings
 
         clf = TechnologyClassifier()
-        with patch("scraper.tech_classifier.settings") as mock_settings:
+        with patch("services.ml.tech_classifier.settings") as mock_settings:
             mock_settings.ML_TECH_THRESHOLDS = {"SAP": 0.999}
             for attr in (
                 "ML_TECH_MIN_POS_READY",

@@ -112,7 +112,7 @@ def _cargar_candidatos(pool: int) -> list[dict[str, Any]]:
 def _puntuar(candidatos: list[dict[str, Any]]) -> list[float | None]:
     """Puntúa con el clasificador activo; ``None`` si no hay modelo disponible."""
     try:
-        from scraper.ml_classifier import SAPClassifier
+        from services.ml.sap_classifier import SAPClassifier
 
         if not SAPClassifier.is_available():
             print("[aviso] no hay modelo disponible: se muestreará sin banda de probabilidad")

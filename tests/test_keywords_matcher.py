@@ -185,7 +185,7 @@ class TestPuertaPscp:
 
 class TestTierRules:
     def test_casa_sin_tildes(self) -> None:
-        from scraper.ml_pipeline import _keyword_fallback_score
+        from services.ml.classifier_pipeline import _keyword_fallback_score
 
         score = _keyword_fallback_score(
             "SISTEMA DE GESTION ECONOMICO-FINANCIERA",
@@ -195,7 +195,7 @@ class TestTierRules:
 
     def test_casa_punto_net(self) -> None:
         """Con el `\\b…\\b` propio del tier, `.net` no podía casar nunca."""
-        from scraper.ml_pipeline import _keyword_fallback_score
+        from services.ml.classifier_pipeline import _keyword_fallback_score
 
         assert _keyword_fallback_score("Desarrollo en plataforma .NET", [".net"]) == 1.0
 

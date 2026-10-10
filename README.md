@@ -293,7 +293,7 @@ python -m scheduler.run_update --daily
 ### 4. Entrenar el clasificador ML
 
 ```bash
-python -m scraper.ml_classifier train
+python -m services.ml.sap_classifier train
 ```
 
 Requiere al menos 50 registros en la BD. El modelo se guarda en
