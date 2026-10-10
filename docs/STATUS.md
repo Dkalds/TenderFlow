@@ -103,7 +103,7 @@ Generado: 2026-10-10
 
 **293 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **0** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **1** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
