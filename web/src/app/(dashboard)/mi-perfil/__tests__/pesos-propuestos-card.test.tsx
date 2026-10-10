@@ -82,14 +82,14 @@ const PROPUESTA = {
   ],
 };
 
-function renderCard(propuesta: unknown = PROPUESTA) {
+function renderCard(propuesta: unknown = PROPUESTA, bloqueada = false) {
   apiGet.mockResolvedValue(propuesta);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={qc}>
-      <PesosPropuestosCard />
+      <PesosPropuestosCard bloqueada={bloqueada} />
     </QueryClientProvider>,
   );
 }
@@ -180,5 +180,21 @@ describe("pesos propuestos en /mi-perfil", () => {
 
     expect(await screen.findByText(/No se pudo calcular la propuesta de pesos/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Aplicar/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("pesos propuestos con cambios sin guardar en el formulario", () => {
+  it("no deja aplicar y dice por qué", async () => {
+    // Aplicar recarga el perfil y el formulario se reinicia con él: lo que no
+    // se hubiera guardado (unas palabras clave recién añadidas) se perdía.
+    renderCard(PROPUESTA, true);
+
+    const aplicar = await screen.findByRole("button", { name: "Aplicar la propuesta" });
+    expect(aplicar).toBeDisabled();
+    expect(screen.getByText(/Guarda o descarta antes tus cambios/)).toBeInTheDocument();
+
+    fireEvent.click(aplicar);
+    expect(screen.queryByRole("button", { name: /¿Aplicar estos pesos/ })).not.toBeInTheDocument();
+    expect(apiMutate).not.toHaveBeenCalled();
   });
 });

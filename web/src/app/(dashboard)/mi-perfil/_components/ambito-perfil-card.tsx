@@ -3,21 +3,19 @@
 /**
  * Ámbito del perfil: privado o compartido con la organización.
  *
- * Un perfil compartido es el que usan los miembros que no tienen uno propio; el
- * badge de «heredado» dice cuándo lo que se está viendo viene de ahí.
+ * Un perfil compartido es el que usan los miembros que no tienen uno propio.
+ * Que lo que se está viendo viene de ahí lo dice la página arriba del todo,
+ * antes del primer campo, y no esta tarjeta, que queda al final.
  */
 
 import { Panel, PanelTitle } from "@/components/console/panel";
-import { Badge } from "@/components/ui/badge";
 import { AYUDA_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 
 export function AmbitoPerfilCard({
-  inherited,
   shared,
   onSharedChange,
 }: {
-  inherited: boolean;
   shared: boolean;
   onSharedChange: (checked: boolean) => void;
 }) {
@@ -29,7 +27,6 @@ export function AmbitoPerfilCard({
         tengan uno propio.
       </p>
       <div className="space-y-3">
-        {inherited && <Badge variant="secondary">Perfil heredado de la organización</Badge>}
         <div className="flex items-center justify-between gap-4">
           <label htmlFor="profile-visibility" className="space-y-1">
             <span className={ETIQUETA_CAMPO}>Compartir con la organización</span>

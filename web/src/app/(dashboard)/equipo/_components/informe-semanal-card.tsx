@@ -8,13 +8,13 @@
  * esta tarjeta el único modo de encenderlo sería un `PUT` a mano, es decir,
  * nadie lo encendería — «infraestructura sin consumidor».
  *
- * Vive junto a `TecnologiasOrganizacionCard` porque es lo mismo: un ajuste de
- * organización, no del usuario, editable sólo por propietarios y administradores.
+ * Vive junto a `TecnologiasOrganizacionCard`, en Equipo › Organización, porque
+ * es lo mismo: un ajuste de organización, no del usuario, editable sólo por
+ * propietarios y administradores. Estuvo en Mi perfil, entre los pesos de
+ * cada uno, con su propio botón de guardar.
  *
- * La hora se guarda en **UTC** (el scheduler razona en UTC de punta a punta,
- * ADR-033) y aquí se traduce al enseñarla. La traducción se calcula sobre la
- * *próxima* entrega y no sobre una semana de referencia fija: así el horario
- * de verano sale bien en vez de con una hora de más medio año.
+ * El día y la hora se eligen en el horario de quien configura y se guardan en
+ * UTC; la conversión y sus límites están en `_lib/horario-informe.ts`.
  */
 
 import { useEffect, useState } from "react";
@@ -32,32 +32,23 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useActiveOrganizationId, useOrganizations } from "@/hooks/use-organization";
+import { type OrganizacionActiva } from "@/hooks/use-organization";
 import { DIAS, useGuardarReportSchedule, useReportSchedule } from "@/hooks/use-report-schedule";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { formatDateTime, formatDiaYHora } from "@/lib/utils";
+import {
+  aHorarioLocal,
+  aHorarioUtc,
+  horarioLocalDisponible,
+  proximaEntrega,
+} from "../_lib/horario-informe";
+
+export { proximaEntrega };
 
 /** Tope de la lista explícita. Espejo de `ReportSchedule.destinatarios` (DTO). */
 const MAX_DESTINATARIOS = 25;
 
 const HORAS = Array.from({ length: 24 }, (_, h) => h);
-
-/**
- * Instante UTC de la próxima entrega programada, estrictamente futura.
- *
- * Se exporta para poder probarla sin depender de la zona horaria en que corra
- * el runner: el test mira el día y la hora **UTC** del resultado.
- */
-export function proximaEntrega(diaSemana: number, horaUtc: number, desde: Date = new Date()): Date {
-  const cuando = new Date(desde);
-  cuando.setUTCMinutes(0, 0, 0);
-  cuando.setUTCHours(horaUtc);
-  // `getUTCDay()` es 0 = domingo; la programación es 0 = lunes.
-  const hoy = (cuando.getUTCDay() + 6) % 7;
-  cuando.setUTCDate(cuando.getUTCDate() + ((diaSemana - hoy + 7) % 7));
-  if (cuando.getTime() <= desde.getTime()) cuando.setUTCDate(cuando.getUTCDate() + 7);
-  return cuando;
-}
 
 /**
  * Traduce `ultimo_estado` a algo que se pueda leer sin abrir los logs. Los
@@ -84,15 +75,16 @@ function parsearDestinatarios(texto: string): string[] {
     .filter(Boolean);
 }
 
-export function InformeSemanalCard() {
-  const activeOrganizationId = useActiveOrganizationId();
-  const organizations = useOrganizations();
-  const rol = organizations.data?.find((o) => o.id === activeOrganizationId)?.role;
-  const puedeEditar = rol === "owner" || rol === "admin";
-
+export function InformeSemanalCard({
+  organizationId: organizacionActiva,
+  canManage: puedeEditar,
+}: {
+  organizationId: OrganizacionActiva;
+  canManage: boolean;
+}) {
   // Sólo Dirección puede leer esto (el backend responde 403 al resto): se pasa
   // `null` para no gastar una petición que se sabe rechazada.
-  const organizationId = puedeEditar ? activeOrganizationId : null;
+  const organizationId = puedeEditar ? organizacionActiva : null;
   const { data, isLoading, error, refetch } = useReportSchedule(organizationId);
   const guardar = useGuardarReportSchedule(organizationId);
 
@@ -117,6 +109,16 @@ export function InformeSemanalCard() {
 
   const lista = parsearDestinatarios(destinatarios);
   const proxima = proximaEntrega(diaSemana, horaUtc);
+  // Lo que enseñan los dos selectores: la programación en el horario del
+  // navegador, o en UTC donde la hora local no cae en una hora UTC entera.
+  const enLocal = horarioLocalDisponible();
+  const elegido = enLocal ? aHorarioLocal(diaSemana, horaUtc) : { dia: diaSemana, hora: horaUtc };
+  const programar = (dia: number, hora: number) => {
+    const utc = enLocal ? aHorarioUtc(dia, hora) : { dia_semana: dia, hora_utc: hora };
+    setDiaSemana(utc.dia_semana);
+    setHoraUtc(utc.hora_utc);
+    setDirty(true);
+  };
 
   const enviar = () => {
     // El validador de verdad es el `EmailStr` del DTO; esto sólo existe para
@@ -184,11 +186,8 @@ export function InformeSemanalCard() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Día" htmlFor="informe-dia">
                 <Select
-                  value={String(diaSemana)}
-                  onValueChange={(valor) => {
-                    setDiaSemana(Number(valor));
-                    setDirty(true);
-                  }}
+                  value={String(elegido.dia)}
+                  onValueChange={(valor) => programar(Number(valor), elegido.hora)}
                 >
                   <SelectTrigger id="informe-dia" className="w-full">
                     <SelectValue />
@@ -203,13 +202,10 @@ export function InformeSemanalCard() {
                 </Select>
               </Field>
 
-              <Field label="Hora (UTC)" htmlFor="informe-hora">
+              <Field label={enLocal ? "Hora" : "Hora (UTC)"} htmlFor="informe-hora">
                 <Select
-                  value={String(horaUtc)}
-                  onValueChange={(valor) => {
-                    setHoraUtc(Number(valor));
-                    setDirty(true);
-                  }}
+                  value={String(elegido.hora)}
+                  onValueChange={(valor) => programar(elegido.dia, Number(valor))}
                 >
                   <SelectTrigger id="informe-hora" className="w-full">
                     <SelectValue />
@@ -229,8 +225,10 @@ export function InformeSemanalCard() {
                 momento a partir del cual sale, no el minuto exacto. Decirlo
                 aquí evita el parte de incidencias de las 07:05. */}
             <p className="text-tf-meta text-muted-foreground">
-              En tu horario: <strong className="font-medium text-foreground">{formatDiaYHora(proxima)}</strong>. Se
-              envía a partir de esa hora y puede tardar hasta cuatro horas.
+              {enLocal ? "Próximo envío" : "En tu horario"}:{" "}
+              <strong className="font-medium text-foreground">{formatDiaYHora(proxima)}</strong>. Se envía a partir
+              de esa hora y puede tardar hasta cuatro horas.
+              {enLocal && " Con el cambio de hora de marzo y octubre se desplaza una hora."}
             </p>
 
             <Field

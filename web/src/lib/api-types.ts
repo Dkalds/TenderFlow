@@ -120,6 +120,8 @@ export type PipelineAgendaResponse = Schemas["PipelineAgendaResponse"];
 export type PipelineAgendaItem = Schemas["PipelineAgendaItem"];
 export type ScoredOpportunity = Schemas["ScoredOpportunity"];
 export type ScoringSignalsHealth = Schemas["ScoringSignalsHealth"];
+export type ScoringPreview = Schemas["ScoringPreview"];
+export type ScoringPreviewItem = Schemas["ScoringPreviewItem"];
 
 // Envoltorios de respuesta que los hooks declaraban como `interface` local
 // (`LastExtractionResponse`, `DismissalsResponse`, `{ items: … }` inline).

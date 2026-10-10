@@ -17,50 +17,23 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type * as z from "zod/mini";
 import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { perfilKeys, radarKeys } from "@/lib/query-keys";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { perfilFormulario } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
+import {
+  DEFAULT_WEIGHTS,
+  PENALIZACIONES,
+  hydrateWeights,
+  isValidCpv,
+  partirLista,
+  sumWeights,
+} from "../_lib/pesos";
 
-export interface UserProfile {
-  user_key?: string | null;
-  weights?: Record<string, number> | null;
-  afinidad_keywords?: string[] | null;
-  cpvs?: string[] | null;
-  importe_min?: number | null;
-  importe_max?: number | null;
-  updated_at?: string | null;
-  organization_id?: number | null;
-  visibility?: "private" | "organization";
-  inherited?: boolean;
-}
-
-// Debe reflejar `settings.SCORING_WEIGHTS`: es el reparto que el backend
-// aplica a quien no tiene perfil, y el que se ofrece al crear uno.
-const DEFAULT_WEIGHTS: Record<string, number> = {
-  importe: 20,
-  plazo: 15,
-  competencia: 20,
-  margen: 20,
-  afinidad: 15,
-  senal_tecnica: 10,
-};
-
-/**
- * F1.4 — penalizaciones con peso propio. **No son dimensiones**: no suman en
- * el 100 ni tienen slider, y su valor son los puntos que se restan cuando la
- * oportunidad lleva el flag. Refleja `organo_anula_frecuente` de
- * `settings.SCORING_WEIGHTS`; ponerla a 0 la apaga (`PENALTY_WEIGHT_KEYS` en
- * `shared/scoring_weights.py`).
- */
-export const PENALIZACIONES: Record<string, number> = {
-  organo_anula_frecuente: 8,
-};
-
-export function esPenalizacion(clave: string): boolean {
-  return clave in PENALIZACIONES;
-}
+export type UserProfile = Schemas["UserProfileOut"];
+export type CuerpoPerfil = Schemas["UserProfileBody"];
 
 const PROFILE_KEY = perfilKeys.me;
 
@@ -76,32 +49,35 @@ const VACIO: PerfilValores = {
   visibility: "private",
 };
 
-/** Suma de las dimensiones; las penalizaciones (F1.4) no cuentan en el 100. */
-function sumWeights(w: Record<string, number>): number {
-  return Object.entries(w)
-    .filter(([clave]) => !esPenalizacion(clave))
-    .reduce((a, [, b]) => a + b, 0);
+/** Respuesta del servidor → valores del formulario. */
+function valoresDe(data: UserProfile): PerfilValores {
+  return {
+    weights: hydrateWeights(data.weights),
+    afinidad_keywords: data.afinidad_keywords ?? [],
+    cpvs: data.cpvs ?? [],
+    importe_min: data.importe_min != null ? String(data.importe_min) : "",
+    importe_max: data.importe_max != null ? String(data.importe_max) : "",
+    // Un perfil heredado es de otra persona: guardar crea uno propio, y ese
+    // nace privado. Con el `organization` del heredado, quien solo quería
+    // retocar sus pesos acababa compartiendo un segundo perfil con el equipo.
+    visibility: data.visibility === "organization" && !data.inherited ? "organization" : "private",
+  };
 }
 
 /**
- * Pesos guardados → formulario, completando las dimensiones que falten con 0.
- *
- * Un perfil creado antes de que existiera una dimensión no la trae. Sin este
- * relleno, su slider no aparecería y el usuario no podría activarla nunca; con
- * el 0 explícito la ve, sabe que no está puntuando, y la suma sigue en 100.
+ * El cuerpo que se guarda —y el que se previsualiza—: una lista vacía viaja
+ * como `null` («sin preferencia») y los pesos solo si cuadran.
  */
-function hydrateWeights(saved: Record<string, number> | null | undefined): Record<string, number> {
-  if (!saved) return { ...DEFAULT_WEIGHTS, ...PENALIZACIONES };
-  const ceros = Object.fromEntries(Object.keys(DEFAULT_WEIGHTS).map((k) => [k, 0]));
-  // Una penalización ausente no se rellena con 0 como las dimensiones: el
-  // backend aplica la global a quien no la trae, y rellenarla con 0 la
-  // apagaría en silencio al guardar un perfil anterior a F1.4.
-  return { ...ceros, ...PENALIZACIONES, ...saved };
-}
-
-/** Mismo criterio que valida el backend: división, grupo o código completo. */
-export function isValidCpv(value: string): boolean {
-  return /^\d{4,8}$/.test(value.trim());
+export function cuerpoDePerfil(v: PerfilValores, organizationId: number | null | undefined): CuerpoPerfil {
+  return {
+    weights: sumWeights(v.weights) === 100 ? v.weights : null,
+    afinidad_keywords: v.afinidad_keywords.length > 0 ? v.afinidad_keywords : null,
+    cpvs: v.cpvs.length > 0 ? v.cpvs : null,
+    importe_min: numeroDeTexto(v.importe_min),
+    importe_max: numeroDeTexto(v.importe_max),
+    organization_id: organizationId ?? null,
+    visibility: v.visibility,
+  };
 }
 
 export function usePerfilScoring() {
@@ -135,14 +111,7 @@ export function usePerfilScoring() {
   // esos valores como referencia de «sin cambios» (`isDirty`).
   useEffect(() => {
     if (!data) return;
-    form.reset({
-      weights: hydrateWeights(data.weights),
-      afinidad_keywords: data.afinidad_keywords ?? [],
-      cpvs: data.cpvs ?? [],
-      importe_min: data.importe_min != null ? String(data.importe_min) : "",
-      importe_max: data.importe_max != null ? String(data.importe_max) : "",
-      visibility: data.visibility === "organization" ? "organization" : "private",
-    });
+    form.reset(valoresDe(data));
   }, [data, form]);
 
   /** Cambia un campo marcándolo sucio; tras un intento de guardar, revalida. */
@@ -153,21 +122,14 @@ export function usePerfilScoring() {
     });
   }
 
-  // Validación de suma de pesos
+  // El backend rechaza una afinidad de 100: sin palabras clave ni CPV esa
+  // dimensión se omite, y no quedaría ninguna otra entre la que repartirla.
   const total = sumWeights(weights);
-  const weightsValid = total === 100;
+  const weightsValid = total === 100 && (weights.afinidad ?? 0) < 100;
 
   const saveMut = useMutation({
     mutationFn: (v: PerfilValores) =>
-      apiMutate<UserProfile>("PUT", "/api/v1/me/profile", {
-        weights: sumWeights(v.weights) === 100 ? v.weights : null,
-        afinidad_keywords: v.afinidad_keywords.length > 0 ? v.afinidad_keywords : null,
-        cpvs: v.cpvs.length > 0 ? v.cpvs : null,
-        importe_min: numeroDeTexto(v.importe_min),
-        importe_max: numeroDeTexto(v.importe_max),
-        organization_id: activeOrganizationId,
-        visibility: v.visibility,
-      }),
+      apiMutate<UserProfile>("PUT", "/api/v1/me/profile", cuerpoDePerfil(v, activeOrganizationId)),
     onSuccess: (_respuesta, v) => {
       queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
       queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
@@ -196,46 +158,28 @@ export function usePerfilScoring() {
     onError: () => toast.error("No se pudo eliminar el perfil."),
   });
 
-  function handleWeightChange(name: string, value: number) {
-    cambiar("weights", { ...weights, [name]: value });
-  }
-
-  function handleResetWeights() {
-    cambiar("weights", { ...DEFAULT_WEIGHTS, ...PENALIZACIONES });
-  }
-
   function addKeyword() {
-    const kw = kwInput.trim().toLowerCase();
-    if (!kw || keywords.includes(kw)) return;
-    cambiar("afinidad_keywords", [...keywords, kw]);
+    // Pegar «sap, s/4hana; abap» son tres palabras clave, no una con comas.
+    const nuevas = partirLista(kwInput)
+      .map((kw) => kw.toLowerCase())
+      .filter((kw, indice, todas) => !keywords.includes(kw) && todas.indexOf(kw) === indice);
+    if (nuevas.length === 0) return;
+    cambiar("afinidad_keywords", [...keywords, ...nuevas]);
     setKwInput("");
   }
 
-  function removeKeyword(kw: string) {
-    cambiar(
-      "afinidad_keywords",
-      keywords.filter((k) => k !== kw),
-    );
-  }
-
-  function addCpv() {
-    const cpv = cpvInput.trim();
+  /** Añade un CPV; sin argumento, el que está tecleado. */
+  function addCpv(codigo: string = cpvInput) {
+    const cpv = codigo.trim();
     if (!isValidCpv(cpv) || cpvs.includes(cpv)) return;
     cambiar("cpvs", [...cpvs, cpv]);
     setCpvInput("");
   }
 
-  function removeCpv(cpv: string) {
-    cambiar(
-      "cpvs",
-      cpvs.filter((c) => c !== cpv),
-    );
-  }
-
   const errores = form.formState.errors;
 
   const hasProfile =
-    data &&
+    data != null &&
     (data.weights != null ||
       data.afinidad_keywords != null ||
       data.cpvs != null ||
@@ -249,21 +193,33 @@ export function usePerfilScoring() {
     // que ya no se está cargando cuando todavía no hay nada que enseñar.
     isLoading: isPending,
     hasProfile,
+    /** El perfil que se ve es el compartido de otra persona, no uno propio. */
+    inherited: data?.inherited === true,
+    valores,
+    organizationId: activeOrganizationId,
     weights,
-    total,
     weightsValid,
-    handleWeightChange,
-    handleResetWeights,
+    setWeights: (siguientes: Record<string, number>) => cambiar("weights", siguientes),
+    handleWeightChange: (name: string, value: number) => cambiar("weights", { ...weights, [name]: value }),
+    handleResetWeights: () => cambiar("weights", { ...DEFAULT_WEIGHTS, ...PENALIZACIONES }),
     keywords,
     kwInput,
     setKwInput,
     addKeyword,
-    removeKeyword,
+    removeKeyword: (kw: string) =>
+      cambiar(
+        "afinidad_keywords",
+        keywords.filter((k) => k !== kw),
+      ),
     cpvs,
     cpvInput,
     setCpvInput,
     addCpv,
-    removeCpv,
+    removeCpv: (cpv: string) =>
+      cambiar(
+        "cpvs",
+        cpvs.filter((c) => c !== cpv),
+      ),
     importeMin: valores.importe_min,
     setImporteMin: (value: string) => cambiar("importe_min", value),
     importeMax: valores.importe_max,
@@ -279,6 +235,12 @@ export function usePerfilScoring() {
     dirty: form.formState.isDirty,
     /** Valida con el esquema y guarda; con errores, los enseña y no pide nada. */
     guardar: () => void form.handleSubmit((v) => saveMut.mutate(v))(),
+    /** Vuelve a lo último que se cargó o se guardó, y olvida lo que se estaba tecleando. */
+    descartar: () => {
+      form.reset();
+      setKwInput("");
+      setCpvInput("");
+    },
     saveMut,
     deleteMut,
   };

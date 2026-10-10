@@ -15,9 +15,11 @@ Nace **apagado** para todas las organizaciones. Un informe que empieza a
 enviarse solo, a una lista deducida, el día que se despliega la migración, es
 correo que nadie pidió.
 
-Desde **Mi perfil → «Informe semanal por correo»**, junto al resto de ajustes
-de organización de esa página. La tarjeta no se pinta para quien no es owner ni
-admin, y por eso mismo no pide los datos: el `GET` le respondería 403.
+Desde **Equipo › Organización → «Informe semanal por correo»**, junto al resto
+de ajustes de la organización (hasta 2026-10 estaba en Mi perfil, mezclado con
+los pesos de cada usuario). La tarjeta no se pinta para quien no es owner ni
+admin, y por eso mismo no pide los datos: el `GET` le respondería 403. El día y
+la hora se eligen en el horario del navegador y se guardan en UTC.
 
 Debajo, lo mismo por API:
 
@@ -122,4 +124,4 @@ de ingesta, y la ventana de un día la recupera sola.
 | Paso de la pipeline | `informes_programados` en `scheduler/pipeline_runs.py` |
 | Adjuntos en el transporte | `observability/mailer.py` (`Adjunto`) |
 | Opt-out | `notification_preferences`, tipo `informe_semanal` |
-| Pantalla de programación | `web/src/app/(dashboard)/mi-perfil/_components/informe-semanal-card.tsx`, `web/src/hooks/use-report-schedule.ts` |
+| Pantalla de programación | `web/src/app/(dashboard)/equipo/_components/informe-semanal-card.tsx`, `web/src/app/(dashboard)/equipo/_lib/horario-informe.ts`, `web/src/hooks/use-report-schedule.ts` |
