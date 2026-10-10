@@ -148,7 +148,7 @@ export function PesosScoringCard({
   // 12/11/11/11/10 donde tocaba 10/14/14/10/7) y no vuelve a su sitio al
   // deshacer. El gesto dura mientras se siga moviendo la misma dimensión y
   // nadie más cambie los pesos: un arrastre entero o una tanda de flechas.
-  const gesto = useRef<{ clave: string; base: Record<string, number>; ultimo: Record<string, number> } | null>(
+  const gesto = useRef<{ clave: string; base: Record<string, number>; emitido: Record<string, number> } | null>(
     null,
   );
 
@@ -156,10 +156,10 @@ export function PesosScoringCard({
 
   const mover = (name: string, valor: number) => {
     const previo = gesto.current;
-    const sigue = previo != null && previo.clave === name && mismosPesos(previo.ultimo, weights);
+    const sigue = previo != null && previo.clave === name && mismosPesos(previo.emitido, weights);
     const base = sigue ? previo.base : weights;
     const siguientes = repartirPesos(base, name, valor, fijadas);
-    gesto.current = { clave: name, base, ultimo: siguientes };
+    gesto.current = { clave: name, base, emitido: siguientes };
     onWeightsChange(siguientes);
   };
 
