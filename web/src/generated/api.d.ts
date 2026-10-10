@@ -3304,6 +3304,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/profile/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ver cómo quedaría el Radar con un perfil sin guardarlo
+         * @description Puntúa el Radar con el perfil del cuerpo y lo compara con el guardado.
+         *
+         *     **No guarda nada** ni invalida el ranking: es la respuesta a «¿qué cambia
+         *     si muevo esto?» antes de pulsar Guardar. El cuerpo es el mismo de
+         *     ``PUT /me/profile`` (``visibility`` se ignora) y pasa la misma validación
+         *     de pesos, así que lo que se previsualiza es exactamente lo que se
+         *     guardaría.
+         *
+         *     Es ``POST`` porque el perfil no cabe en una query, no porque escriba: lo
+         *     puede pedir también un ``viewer``. Con API key, el prefijo ``/me/profile``
+         *     le exige ``profile:write`` como a cualquier verbo que no sea ``GET``.
+         */
+        post: operations["preview_profile_api_v1_me_profile_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/sessions": {
         parameters: {
             query?: never;
@@ -3378,13 +3408,16 @@ export interface paths {
          *                 ...
          *             ],
          *             "tramitacion": [...],
-         *             "tipo_contrato": [...]
+         *             "tipo_contrato": [...],
+         *             "cpv_nombres": [{"codigo": "72000000", "nombre": "Servicios TI: ..."}, ...]
          *         }
          *
          *     Las cuatro primeras listas son valores presentes en la tabla; las tres
          *     últimas son el catálogo completo de la lista controlada CODICE
          *     (``shared/procedimientos.py``), etiqueta y definición incluidas, para que
          *     la consola no tenga que llevar su propia copia del vocabulario.
+         *     ``cpv_nombres`` es el catálogo corto de CPV con nombre: sirve para
+         *     sugerir y rotular, no acota qué códigos son válidos.
          */
         get: operations["get_filter_options_api_v1_meta_filters_get"];
         put?: never;
@@ -7569,6 +7602,16 @@ export interface components {
             /** Importe Total */
             importe_total: number;
         };
+        /**
+         * CpvNombre
+         * @description Un código CPV con su nombre, para que la consola no enseñe ocho dígitos a secas.
+         */
+        CpvNombre: {
+            /** Codigo */
+            codigo: string;
+            /** Nombre */
+            nombre: string;
+        };
         /** CpvSeries */
         CpvSeries: {
             /** Cpv */
@@ -10088,6 +10131,8 @@ export interface components {
             ccaa: string[];
             /** Cpv */
             cpv: string[];
+            /** Cpv Nombres */
+            cpv_nombres?: components["schemas"]["CpvNombre"][];
             /** Estado */
             estado: string[];
             /** Procedimiento */
@@ -13751,6 +13796,80 @@ export interface components {
             tramitacion?: string | null;
             /** Url */
             url?: string | null;
+        };
+        /**
+         * ScoringPreview
+         * @description Cómo quedaría el Radar con un perfil de prueba, frente a cómo está hoy.
+         */
+        ScoringPreview: {
+            /**
+             * Afinidad Origen
+             * @description Con qué se comparó la afinidad de la prueba: perfil | organizacion | ninguno
+             * @default ninguno
+             */
+            afinidad_origen: string;
+            /**
+             * Opportunities
+             * @description Las primeras con el perfil de prueba, en ese orden.
+             */
+            opportunities?: components["schemas"]["ScoringPreviewItem"][];
+            /**
+             * Salen
+             * @description Las que hoy están entre las primeras y con el perfil de prueba dejan de estarlo, en su orden actual.
+             */
+            salen?: components["schemas"]["ScoringPreviewItem"][];
+            /**
+             * Total Scored
+             * @description Tamaño del universo puntuado.
+             * @default 0
+             */
+            total_scored: number;
+        };
+        /**
+         * ScoringPreviewItem
+         * @description Una oportunidad en la vista previa de un perfil que aún no se ha guardado.
+         *
+         *     Lleva las dos puntuaciones a la vez —la del perfil de prueba y la del
+         *     guardado— porque lo que el usuario necesita ver es el salto, y calcularlo
+         *     en el cliente con dos peticiones compararía dos universos distintos si
+         *     entre una y otra entrara una ingesta.
+         */
+        ScoringPreviewItem: {
+            /**
+             * Band
+             * @description Banda con el perfil de prueba.
+             */
+            band: string;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe?: number | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /**
+             * Posicion
+             * @description Puesto con el perfil de prueba; 1 es la primera.
+             */
+            posicion: number;
+            /**
+             * Posicion Actual
+             * @description Puesto con el perfil guardado.
+             */
+            posicion_actual: number;
+            /**
+             * Score
+             * @description Score con el perfil de prueba.
+             */
+            score: number;
+            /**
+             * Score Actual
+             * @description Score con el perfil guardado (o los pesos globales).
+             */
+            score_actual: number;
+            /** Titulo */
+            titulo?: string | null;
         };
         /**
          * ScoringResult
@@ -22463,6 +22582,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_profile_api_v1_me_profile_preview_post: {
+        parameters: {
+            query?: {
+                /** @description Cuántas oportunidades devolver. */
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserProfileBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoringPreview"];
                 };
             };
             /** @description Validation Error */

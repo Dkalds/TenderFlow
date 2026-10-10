@@ -14,6 +14,7 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.repositories.kpi_snapshots import read_meta_cpv
 from db.repositories.licitaciones import LicitacionRepository
+from services.classification import CPV_NAMES
 from shared.cache import API_NAMESPACE, aget_cache, cache_key, single_flight
 from shared.procedimientos import Familia, opciones
 
@@ -41,6 +42,13 @@ class OpcionCodificada(BaseModel):
     descripcion: str
 
 
+class CpvNombre(BaseModel):
+    """Un código CPV con su nombre, para que la consola no enseñe ocho dígitos a secas."""
+
+    codigo: str
+    nombre: str
+
+
 class MetaFilters(BaseModel):
     """Valores únicos disponibles para los selectores de filtros."""
 
@@ -57,6 +65,12 @@ class MetaFilters(BaseModel):
     procedimiento: list[OpcionCodificada] = Field(default_factory=list)
     tramitacion: list[OpcionCodificada] = Field(default_factory=list)
     tipo_contrato: list[OpcionCodificada] = Field(default_factory=list)
+    # Campo ADITIVO: los CPV que el producto sabe nombrar (`CPV_NAMES`, las
+    # divisiones 48 y 72 que filtra la ingesta). `cpv` son los 18.203 códigos
+    # presentes en la tabla, sin nombre; esto es el catálogo corto con el que
+    # un formulario puede sugerir y rotular. Un código que no esté aquí sigue
+    # siendo válido: solo se queda sin nombre.
+    cpv_nombres: list[CpvNombre] = Field(default_factory=list)
 
 
 class LastExtraction(BaseModel):
@@ -99,6 +113,9 @@ def _con_catalogos(dinamicos: dict[str, Any]) -> MetaFilters:
         procedimiento=_opciones("procedimiento"),
         tramitacion=_opciones("tramitacion"),
         tipo_contrato=_opciones("tipo_contrato"),
+        cpv_nombres=[
+            CpvNombre(codigo=codigo, nombre=nombre) for codigo, nombre in sorted(CPV_NAMES.items())
+        ],
     )
 
 
@@ -128,13 +145,16 @@ async def get_filter_options(
                 ...
             ],
             "tramitacion": [...],
-            "tipo_contrato": [...]
+            "tipo_contrato": [...],
+            "cpv_nombres": [{"codigo": "72000000", "nombre": "Servicios TI: ..."}, ...]
         }
 
     Las cuatro primeras listas son valores presentes en la tabla; las tres
     últimas son el catálogo completo de la lista controlada CODICE
     (``shared/procedimientos.py``), etiqueta y definición incluidas, para que
     la consola no tenga que llevar su propia copia del vocabulario.
+    ``cpv_nombres`` es el catálogo corto de CPV con nombre: sirve para
+    sugerir y rotular, no acota qué códigos son válidos.
     """
     # `aget`/`aset` y no `get`/`set`: con Redis son un viaje de red, y este
     # handler es `async` — la versión síncrona paraba el event loop del único

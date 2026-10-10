@@ -22,6 +22,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
  * doblarlo devolviendo siempre "si" haría verde un test que no prueba nada.
  */
 
+// La página monta el aviso de cambios sin guardar, que navega con el router.
+vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.mock("@/lib/api-client", () => ({
@@ -89,7 +91,7 @@ function ensuciarFormulario() {
 }
 
 async function guardar() {
-  const boton = await screen.findByRole("button", { name: "Guardar perfil" });
+  const boton = await screen.findByText("Guardar perfil");
   fireEvent.click(boton);
   await waitFor(() => expect(mutar).toHaveBeenCalled());
 }
@@ -112,7 +114,7 @@ describe("MiPerfilPage — telemetría de activación", () => {
 
   it("guardar el perfil por primera vez emite la activación", async () => {
     renderPagina();
-    await screen.findByRole("button", { name: "Guardar perfil" });
+    await screen.findByText("Guardar perfil");
     ensuciarFormulario();
     await guardar();
 
@@ -128,7 +130,7 @@ describe("MiPerfilPage — telemetría de activación", () => {
 
   it("el segundo guardado es reajuste, no activación", async () => {
     renderPagina();
-    await screen.findByRole("button", { name: "Guardar perfil" });
+    await screen.findByText("Guardar perfil");
     ensuciarFormulario();
     await guardar();
     cleanup();
@@ -136,7 +138,7 @@ describe("MiPerfilPage — telemetría de activación", () => {
     eventos.mockClear();
     mutar.mockClear();
     renderPagina();
-    await screen.findByRole("button", { name: "Guardar perfil" });
+    await screen.findByText("Guardar perfil");
     ensuciarFormulario();
     await guardar();
 
@@ -147,7 +149,7 @@ describe("MiPerfilPage — telemetría de activación", () => {
 
   it("no manda nada del contenido del perfil", async () => {
     renderPagina();
-    await screen.findByRole("button", { name: "Guardar perfil" });
+    await screen.findByText("Guardar perfil");
     const campoKeyword = screen.getByPlaceholderText(/consultoría, mantenimiento/);
     fireEvent.change(campoKeyword, { target: { value: "sap" } });
     // Enter y no el botón: hay dos «Añadir» en la página (keywords y CPVs).
@@ -166,7 +168,7 @@ describe("MiPerfilPage — telemetría de activación", () => {
   it("un guardado fallido no cuenta como activación", async () => {
     mutar.mockRejectedValue(new Error("500"));
     renderPagina();
-    await screen.findByRole("button", { name: "Guardar perfil" });
+    await screen.findByText("Guardar perfil");
     ensuciarFormulario();
     await guardar();
 

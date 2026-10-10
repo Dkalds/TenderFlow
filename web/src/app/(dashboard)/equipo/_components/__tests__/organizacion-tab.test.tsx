@@ -29,10 +29,38 @@ const CAPACIDAD_PARCIAL = {
   campos_incompletos: ["facturacion", "referencias", "perfiles_equipo"],
 };
 
+/** Lo que piden las dos tarjetas que valen para cualquier organización. */
+function respuestaComun(url: string) {
+  if (url.endsWith("/settings")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ organization_id: 7, tecnologias: ["SAP"], tecnologias_disponibles: ["ORACLE", "SAP"] }),
+    };
+  }
+  if (url.endsWith("/report-schedule")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        organization_id: 7,
+        tipo: "pipeline_semanal",
+        activo: false,
+        dia_semana: 0,
+        hora_utc: 7,
+        destinatarios: null,
+      }),
+    };
+  }
+  return null;
+}
+
 function stubFetch(capacidad: unknown) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
+      const comun = respuestaComun(url);
+      if (comun) return comun;
       if (url.endsWith("/capabilities")) {
         return { ok: true, status: 200, json: async () => capacidad };
       }
@@ -109,6 +137,8 @@ describe("OrganizacionTab", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
+        const comun = respuestaComun(url);
+        if (comun) return comun;
         if (url.endsWith("/capabilities") || url.endsWith("/nifs")) {
           return new Response(JSON.stringify({ detail: "boom" }), {
             status: 500,
@@ -134,5 +164,26 @@ describe("OrganizacionTab", () => {
 
     expect(screen.getByText(/no concurre a licitaciones/i)).toBeInTheDocument();
     expect(screen.queryByText("Perfil de capacidad")).not.toBeInTheDocument();
+  });
+
+  it("la organización personal sí elige tecnologías y programa su informe", async () => {
+    // Las dos acotan o resumen el Radar de quien trabaja solo: al sacarlas de
+    // Mi perfil no pueden quedar detrás del aviso de «no concurre».
+    stubFetch(CAPACIDAD_VACIA);
+    renderTab({ canManage: true, isPersonal: true });
+
+    expect(await screen.findByRole("checkbox", { name: "SAP" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "ORACLE" })).not.toBeChecked();
+    expect(await screen.findByRole("button", { name: /Guardar programación/ })).toBeInTheDocument();
+  });
+
+  it("quien no gestiona la organización ve las tecnologías sin poder cambiarlas", async () => {
+    stubFetch(CAPACIDAD_PARCIAL);
+    renderTab({ canManage: false });
+
+    expect(await screen.findByRole("checkbox", { name: "SAP" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Guardar tecnologías" })).not.toBeInTheDocument();
+    // El informe es de Dirección: ni se enseña ni se pide.
+    expect(screen.queryByText("Informe semanal por correo")).not.toBeInTheDocument();
   });
 });

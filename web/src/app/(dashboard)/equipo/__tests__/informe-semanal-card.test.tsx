@@ -12,8 +12,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
  *    lista explícita de cero personas y el informe dejaría de salir sin que
  *    nadie hubiera pedido apagarlo.
  * 2. **0 = lunes**, la numeración del backend, no la de `Date.getDay()`.
- * 3. **Quien no es owner ni admin no ve la tarjeta y no pide los datos**: el
- *    backend le responde 403, así que la petición sobra.
+ * 3. **Quien no puede gestionar la organización no ve la tarjeta y no pide los
+ *    datos**: el backend le responde 403, así que la petición sobra.
  * 4. Un correo mal escrito se para aquí nombrando la línea, en vez de viajar y
  *    volver como un 422 opaco.
  */
@@ -33,16 +33,12 @@ vi.mock("@/lib/api-client", async (importOriginal) => ({
   apiGet: vi.fn(),
 }));
 
-const rol = vi.hoisted(() => ({ actual: "owner" as string }));
-vi.mock("@/hooks/use-organization", () => ({
-  useActiveOrganizationId: () => 7,
-  useOrganizations: () => ({ data: [{ id: 7, role: rol.actual }] }),
-}));
-
 import {
   InformeSemanalCard,
   proximaEntrega,
-} from "@/app/(dashboard)/mi-perfil/_components/informe-semanal-card";
+} from "@/app/(dashboard)/equipo/_components/informe-semanal-card";
+import { DIAS } from "@/hooks/use-report-schedule";
+import { aHorarioLocal, aHorarioUtc } from "@/app/(dashboard)/equipo/_lib/horario-informe";
 
 const PROGRAMACION = {
   organization_id: 7,
@@ -55,14 +51,14 @@ const PROGRAMACION = {
   ultimo_estado: null,
 };
 
-function renderCard(programacion: unknown = PROGRAMACION) {
+function renderCard(programacion: unknown = PROGRAMACION, canManage = true) {
   fetchWithAuth.mockResolvedValue(programacion);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={qc}>
-      <InformeSemanalCard />
+      <InformeSemanalCard organizationId={7} canManage={canManage} />
     </QueryClientProvider>,
   );
 }
@@ -71,7 +67,6 @@ function renderCard(programacion: unknown = PROGRAMACION) {
 const trigger = (texto: string) => screen.getByText(texto, { selector: "span" });
 
 beforeEach(() => {
-  rol.actual = "owner";
   apiMutate.mockResolvedValue({ ...PROGRAMACION, activo: true });
 });
 
@@ -104,13 +99,40 @@ describe("proximaEntrega", () => {
   });
 });
 
+describe("horario del informe", () => {
+  // Los dos casos valen en cualquier zona de desfase entero, que es donde se
+  // elige en local; el día y la hora concretos dependen del runner.
+  it("lo elegido en local vuelve a ser lo mismo tras pasar por UTC", () => {
+    const desde = new Date("2026-09-15T10:00:00Z");
+    for (let dia = 0; dia < 7; dia += 1) {
+      for (let hora = 0; hora < 24; hora += 1) {
+        const utc = aHorarioUtc(dia, hora, desde);
+        expect(aHorarioLocal(utc.dia_semana, utc.hora_utc, desde)).toEqual({ dia, hora });
+      }
+    }
+  });
+
+  it("lo guardado en UTC sobrevive a enseñarse en local y volver", () => {
+    const desde = new Date("2026-01-20T10:00:00Z");
+    for (let dia = 0; dia < 7; dia += 1) {
+      for (let hora = 0; hora < 24; hora += 1) {
+        const local = aHorarioLocal(dia, hora, desde);
+        expect(aHorarioUtc(local.dia, local.hora, desde)).toEqual({ dia_semana: dia, hora_utc: hora });
+      }
+    }
+  });
+});
+
 describe("InformeSemanalCard", () => {
   it("enseña la programación guardada y no deja guardar sin cambios", async () => {
     renderCard();
 
     expect(await screen.findByRole("switch")).toBeInTheDocument();
-    expect(trigger("lunes")).toBeInTheDocument();
-    expect(trigger("07:00")).toBeInTheDocument();
+    // Lunes a las 07:00 UTC, enseñado en el horario de quien mira: en Madrid
+    // son las 09:00 y en el runner de CI (UTC), las 07:00.
+    const local = aHorarioLocal(PROGRAMACION.dia_semana, PROGRAMACION.hora_utc);
+    expect(trigger(DIAS[local.dia])).toBeInTheDocument();
+    expect(trigger(`${String(local.hora).padStart(2, "0")}:00`)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Guardar programación/ })).toBeDisabled();
   });
 
@@ -170,8 +192,7 @@ describe("InformeSemanalCard", () => {
   });
 
   it("no se pinta ni pide nada para quien no es owner ni admin", async () => {
-    rol.actual = "member";
-    const { container } = renderCard();
+    const { container } = renderCard(PROGRAMACION, false);
 
     await waitFor(() => expect(container).toBeEmptyDOMElement());
     expect(fetchWithAuth).not.toHaveBeenCalled();

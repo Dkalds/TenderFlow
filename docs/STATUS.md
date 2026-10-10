@@ -101,7 +101,7 @@ Generado: 2026-10-10
 
 ## Superficie de la API
 
-**292 endpoints** expuestos.
+**293 endpoints** expuestos.
 
 Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **0** (`scripts/check_api_surface.py`).
 
@@ -267,6 +267,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | DELETE | `/api/v1/me/profile` |
 | GET | `/api/v1/me/profile` |
 | PUT | `/api/v1/me/profile` |
+| POST | `/api/v1/me/profile/preview` |
 | GET | `/api/v1/me/sessions` |
 | DELETE | `/api/v1/me/sessions/{session_id}` |
 | GET | `/api/v1/meta/filters` |

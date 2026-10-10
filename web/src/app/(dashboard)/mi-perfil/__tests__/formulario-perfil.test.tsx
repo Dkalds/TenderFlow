@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+// La página monta el aviso de cambios sin guardar, que navega con el router.
+vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/api-client", () => ({
   fetchWithAuth: vi.fn(),
@@ -61,7 +63,7 @@ describe("MiPerfilPage — esquema", () => {
 
     const maximo = screen.getByLabelText("Máximo (€)");
     fireEvent.change(maximo, { target: { value: "500" } });
-    fireEvent.click(screen.getByRole("button", { name: "Guardar perfil" }));
+    fireEvent.click(screen.getByText("Guardar perfil"));
 
     const error = await screen.findByText("El máximo no puede ser menor que el mínimo.");
     expect(error).toHaveAttribute("id", "mp-importe-max-error");
@@ -72,7 +74,7 @@ describe("MiPerfilPage — esquema", () => {
     // Corregido, revalida al escribir y guarda con las claves del DTO.
     fireEvent.change(maximo, { target: { value: "5000" } });
     await waitFor(() => expect(maximo).not.toHaveAttribute("aria-invalid"));
-    fireEvent.click(screen.getByRole("button", { name: "Guardar perfil" }));
+    fireEvent.click(screen.getByText("Guardar perfil"));
     await waitFor(() =>
       expect(mutar).toHaveBeenCalledWith(
         "PUT",
@@ -85,6 +87,6 @@ describe("MiPerfilPage — esquema", () => {
   it("los valores del servidor no cuentan como cambio: «Guardar» empieza apagado", async () => {
     renderPagina();
     await waitFor(() => expect(screen.getByLabelText("Mínimo (€)")).toHaveValue(1000));
-    expect(screen.getByRole("button", { name: "Guardar perfil" })).toBeDisabled();
+    expect(screen.getByText("Guardar perfil")).toBeDisabled();
   });
 });

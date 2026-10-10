@@ -452,6 +452,15 @@ export { organizationKeys } from "./claves-raiz";
 export const perfilKeys = {
   /** Perfil de scoring del usuario (`GET /me/profile`). */
   me: ["me", "profile"] as const,
+  /**
+   * Vista previa del Radar con un perfil sin guardar (`POST /me/profile/preview`).
+   * Cuelga de `me` a propósito: la respuesta compara contra el perfil
+   * guardado, así que guardar, borrar o aplicar una propuesta la dejan vieja
+   * aunque el cuerpo no cambie —el «sube 6 puestos» de antes de guardar ya
+   * no es verdad después—, y esas tres cosas ya invalidan `me`.
+   */
+  preview: (organizationId: OrganizacionDeClave, cuerpo: string) =>
+    ["me", "profile", "preview", organizationId, cuerpo] as const,
 };
 
 export const calendarioKeys = {

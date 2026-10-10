@@ -15,6 +15,11 @@
  * 3. **Aplicar es un clic explícito y confirmado.** Nunca se aplica sola, y el
  *    POST no lleva pesos: el backend recalcula y escribe lo mismo que se
  *    enseñó, y deja rastro en `audit_log`.
+ *
+ * Aplicar reescribe el perfil guardado y el formulario de la página se
+ * recarga con él. Con cambios sin guardar eso los tiraría sin avisar —unas
+ * palabras clave recién añadidas, por ejemplo—, así que mientras los haya no
+ * se puede aplicar (`bloqueada`).
  */
 
 import { useState } from "react";
@@ -30,7 +35,7 @@ import {
 } from "@/hooks/use-weights-proposal";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { formatNumber } from "@/lib/utils";
-import { WEIGHT_LABELS } from "./pesos-scoring-card";
+import { WEIGHT_LABELS } from "../_lib/pesos";
 
 const ORIGEN_LABEL: Record<PesosPropuestos["origen_pesos_actuales"], string> = {
   perfil: "tus pesos guardados",
@@ -83,7 +88,7 @@ function Insuficiente({ propuesta }: { propuesta: PesosPropuestos }) {
   );
 }
 
-export function PesosPropuestosCard() {
+export function PesosPropuestosCard({ bloqueada = false }: { bloqueada?: boolean }) {
   const { data, isPending, error, refetch } = useWeightsProposal();
   const aplicar = useApplyWeightsProposal();
   const [confirmando, setConfirmando] = useState(false);
@@ -150,7 +155,7 @@ export function PesosPropuestosCard() {
               size="sm"
               variant={confirmando ? "default" : "outline"}
               onClick={onAplicar}
-              disabled={aplicar.isPending}
+              disabled={aplicar.isPending || bloqueada}
             >
               {aplicar.isPending
                 ? "Aplicando…"
@@ -164,7 +169,9 @@ export function PesosPropuestosCard() {
               </Button>
             )}
             <span className="text-tf-meta text-muted-foreground">
-              Sustituye los pesos de tu perfil y queda registrado.
+              {bloqueada
+                ? "Guarda o descarta antes tus cambios: aplicar la propuesta recarga el perfil y los perdería."
+                : "Sustituye los pesos de tu perfil y queda registrado."}
             </span>
           </div>
         )}

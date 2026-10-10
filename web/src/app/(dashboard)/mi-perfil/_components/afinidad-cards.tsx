@@ -14,28 +14,78 @@ import { Panel, PanelTitle } from "@/components/console/panel";
 import { badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { Schemas } from "@/lib/api-types";
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
-import { cn } from "@/lib/utils";
-import { isValidCpv } from "../_hooks/use-perfil-scoring";
+import { cn, foldText } from "@/lib/utils";
+import { isValidCpv } from "../_lib/pesos";
+
+export type CpvNombre = Schemas["CpvNombre"];
+
+const MAX_SUGERENCIAS = 6;
+
+/**
+ * Nombre de un CPV según el catálogo de la API, o `null` si no lo conoce.
+ *
+ * Un código parcial («7226») o más fino que el catálogo («72262000» cuando
+ * solo está «72260000») toma el nombre del nivel que lo contiene: se prueba el
+ * código y, después, sus prefijos rellenados con ceros, del más largo al más
+ * corto. Es la misma caída que aplica la API al rotular un CPV.
+ */
+export function nombreDeCpv(codigo: string, catalogo: readonly CpvNombre[]): string | null {
+  const porCodigo = new Map(catalogo.map((entrada) => [entrada.codigo, entrada.nombre]));
+  for (let largo = Math.min(codigo.length, 8); largo >= 2; largo -= 1) {
+    const nombre = porCodigo.get(codigo.slice(0, largo).padEnd(8, "0"));
+    if (nombre) return nombre;
+  }
+  return null;
+}
+
+/** Entradas del catálogo que casan con lo tecleado, por código o por nombre. */
+export function sugerirCpvs(
+  tecleado: string,
+  catalogo: readonly CpvNombre[],
+  yaElegidos: readonly string[],
+): CpvNombre[] {
+  const busqueda = foldText(tecleado.trim());
+  if (!busqueda) return [];
+  return catalogo
+    .filter(
+      (entrada) =>
+        !yaElegidos.includes(entrada.codigo) &&
+        (entrada.codigo.startsWith(busqueda) || foldText(entrada.nombre).includes(busqueda)),
+    )
+    .slice(0, MAX_SUGERENCIAS);
+}
 
 /**
  * Un valor de la lista que se quita al pulsarlo. Botón de verdad, y no un
  * `Badge` con `onClick`: con teclado no se podía quitar ninguno.
  */
-function ChipQuitable({ valor, onRemove, codigo }: { valor: string; onRemove: () => void; codigo?: boolean }) {
+function ChipQuitable({
+  valor,
+  detalle,
+  onRemove,
+  codigo,
+}: {
+  valor: string;
+  /** Lo que acompaña al valor sin ser parte de él: el nombre de un CPV. */
+  detalle?: string | null;
+  onRemove: () => void;
+  codigo?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onRemove}
-      aria-label={`Quitar ${valor}`}
+      aria-label={`Quitar ${valor}${detalle ? `, ${detalle}` : ""}`}
       className={cn(
         badgeVariants({ variant: "secondary" }),
-        "gap-1 pr-1.5 transition-colors hover:bg-destructive/10 hover:text-destructive",
-        codigo && "font-mono",
+        "h-auto max-w-full gap-1 pr-1.5 text-left transition-colors hover:bg-destructive/10 hover:text-destructive",
       )}
     >
-      {valor}
-      <X className="h-3 w-3" aria-hidden="true" />
+      <span className={cn(codigo && "font-mono")}>{valor}</span>
+      {detalle && <span className="min-w-0 truncate text-muted-foreground">{detalle}</span>}
+      <X className="h-3 w-3 flex-none" aria-hidden="true" />
     </button>
   );
 }
@@ -90,7 +140,7 @@ export function KeywordsAfinidadCard({
           </div>
         ) : (
           <p className="text-tf-meta text-muted-foreground">
-            Sin palabras clave. Si tampoco hay CPV, la afinidad no cuenta en la puntuación.
+            Sin palabras clave. Puedes escribir varias a la vez, separadas por comas.
           </p>
         )}
       </div>
@@ -105,15 +155,21 @@ export function CpvsInteresCard({
   onAdd,
   onRemove,
   error,
+  catalogo = [],
 }: {
   cpvs: string[];
   cpvInput: string;
   onCpvInputChange: (value: string) => void;
-  onAdd: () => void;
+  /** Sin argumento añade lo tecleado; con él, ese código (una sugerencia). */
+  onAdd: (codigo?: string) => void;
   onRemove: (cpv: string) => void;
   /** Error del esquema sobre la lista (p. ej. más de 50 CPVs). */
   error?: string;
+  /** Los CPV que la API sabe nombrar; un código que no esté aquí sigue valiendo. */
+  catalogo?: readonly CpvNombre[];
 }) {
+  const sugerencias = sugerirCpvs(cpvInput, catalogo, cpvs);
+  const tecleadoValido = isValidCpv(cpvInput);
   return (
     <Panel>
       <PanelTitle title="CPV de interés" />
@@ -126,9 +182,8 @@ export function CpvsInteresCard({
           <Input
             id="mp-cpvs"
             aria-label="Nuevo código CPV de interés"
-            placeholder="p. ej. 72000000, 4823…"
+            placeholder="Un código (72000000, 4823…) o parte del nombre"
             value={cpvInput}
-            inputMode="numeric"
             {...ariaCampo("mp-cpvs", error)}
             onChange={(e) => onCpvInputChange(e.target.value)}
             onKeyDown={(e) => {
@@ -139,18 +194,44 @@ export function CpvsInteresCard({
             }}
             className="flex-1"
           />
-          <Button variant="outline" onClick={onAdd} disabled={!isValidCpv(cpvInput)}>
+          <Button variant="outline" onClick={() => onAdd()} disabled={!tecleadoValido}>
             Añadir
           </Button>
         </div>
         <CampoError campoId="mp-cpvs" mensaje={error} />
-        {cpvInput.trim() !== "" && !isValidCpv(cpvInput) && (
-          <p className="text-tf-meta text-destructive">Un CPV son entre 4 y 8 dígitos, sin letras ni guiones.</p>
+        {sugerencias.length > 0 && (
+          <ul aria-label="CPV que coinciden" className="space-y-1">
+            {sugerencias.map((sugerencia) => (
+              <li key={sugerencia.codigo}>
+                <button
+                  type="button"
+                  onClick={() => onAdd(sugerencia.codigo)}
+                  aria-label={`Añadir ${sugerencia.codigo}, ${sugerencia.nombre}`}
+                  className="flex min-h-6 w-full items-baseline gap-2 rounded-md px-2 py-1 text-left text-tf-meta transition-colors hover:bg-primary/5"
+                >
+                  <span className="font-mono">{sugerencia.codigo}</span>
+                  <span className="min-w-0 truncate text-muted-foreground">{sugerencia.nombre}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {cpvInput.trim() !== "" && !tecleadoValido && sugerencias.length === 0 && (
+          <p className="text-tf-meta text-destructive">
+            Ningún CPV con nombre coincide. Para añadir otro, escribe su código: entre 4 y 8 dígitos, sin letras ni
+            guiones.
+          </p>
         )}
         {cpvs.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {cpvs.map((cpv) => (
-              <ChipQuitable key={cpv} valor={cpv} codigo onRemove={() => onRemove(cpv)} />
+              <ChipQuitable
+                key={cpv}
+                valor={cpv}
+                detalle={nombreDeCpv(cpv, catalogo)}
+                codigo
+                onRemove={() => onRemove(cpv)}
+              />
             ))}
           </div>
         ) : (

@@ -11,6 +11,9 @@
  * La lista de familias válidas la manda el backend (`tecnologias_disponibles`):
  * mantenerla aquí a mano sería la lista paralela que el invariante 3 de
  * `web/AGENTS.md` prohíbe.
+ *
+ * Vive en Equipo › Organización, también para la organización personal: es
+ * una decisión del equipo, no de cada persona, y Mi perfil solo la enseña.
  */
 
 import { useEffect, useState } from "react";
@@ -19,18 +22,22 @@ import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useActiveOrganizationId, useOrganizations } from "@/hooks/use-organization";
+import { type OrganizacionActiva } from "@/hooks/use-organization";
 import {
   useOrganizationSettings,
   useUpdateOrganizationSettings,
 } from "@/hooks/use-organization-settings";
 import { getErrorMessage } from "@/lib/query-feedback";
 
-export function TecnologiasOrganizacionCard() {
-  const activeOrganizationId = useActiveOrganizationId();
-  const organizations = useOrganizations();
-  const { data, isLoading, error, refetch } = useOrganizationSettings(activeOrganizationId);
-  const update = useUpdateOrganizationSettings(activeOrganizationId);
+export function TecnologiasOrganizacionCard({
+  organizationId,
+  canManage: puedeEditar,
+}: {
+  organizationId: OrganizacionActiva;
+  canManage: boolean;
+}) {
+  const { data, isLoading, error, refetch } = useOrganizationSettings(organizationId);
+  const update = useUpdateOrganizationSettings(organizationId);
 
   const [seleccion, setSeleccion] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -41,8 +48,6 @@ export function TecnologiasOrganizacionCard() {
     setDirty(false);
   }, [data]);
 
-  const rol = organizations.data?.find((o) => o.id === activeOrganizationId)?.role;
-  const puedeEditar = rol === "owner" || rol === "admin";
   const disponibles = data?.tecnologias_disponibles ?? [];
 
   const alternar = (familia: string) => {
