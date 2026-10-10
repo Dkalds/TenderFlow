@@ -328,6 +328,85 @@ def test_scoring_cli_publica_outputs_aunque_el_resumen_reviente(tmp_path, monkey
     assert _outputs(salida)["baja_filas"] == "4414"
 
 
+# ---------------------------------------------------------------------------
+# run_scoring_programado — el mismo contrato, en un plano de cron (ADR-033)
+# ---------------------------------------------------------------------------
+
+
+def _programado(resumen, *, ultimo=None, escritas=4414, estado_falla=False):
+    repo = MagicMock()
+    if estado_falla:
+        repo.estado.side_effect = RuntimeError("sin BD")
+    else:
+        repo.estado.return_value = {"ultimo_computed_at": ultimo}
+    repo.contar_baja_de_corrida.return_value = escritas
+    with (
+        patch(_REPO, return_value=repo),
+        patch.object(ml_job, "run_scoring", return_value=resumen) as run_scoring,
+    ):
+        return ml_job.run_scoring_programado(), run_scoring, repo
+
+
+def test_programado_salta_si_ya_se_puntuo_hoy():
+    """El guard del workflow: el job pide turno cada 4 h y puntúa una vez al día."""
+    hoy = datetime.now(UTC).isoformat()
+    resultado, run_scoring, _ = _programado(_resumen(), ultimo=hoy)
+    assert resultado == {"guard": "ya_puntuado_hoy"}
+    run_scoring.assert_not_called()
+
+
+def test_programado_puntua_la_primera_vez_del_dia_y_verifica_la_corrida():
+    ayer = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    resultado, run_scoring, repo = _programado(_resumen(), ultimo=ayer)
+    run_scoring.assert_called_once()
+    assert resultado["guard"] == "primera_del_dia"
+    repo.contar_baja_de_corrida.assert_called_once_with(_COMPUTED_AT)
+
+
+def test_programado_puntua_si_no_puede_leer_la_bd():
+    """Fail-open, como el guard del workflow: saltarse el día es peor."""
+    resultado, run_scoring, _ = _programado(_resumen(), estado_falla=True)
+    run_scoring.assert_called_once()
+    assert resultado["guard"] == "lectura_fallida"
+
+
+def test_programado_falla_si_el_modelo_de_baja_no_completo():
+    with pytest.raises(RuntimeError, match="no completó"):
+        _programado(_resumen(status="error"))
+
+
+def test_programado_falla_si_el_serving_quedo_degradado():
+    with pytest.raises(RuntimeError, match="degradado a baseline"):
+        _programado(_resumen(serving="baseline", degradado="artefacto_irresoluble"))
+
+
+def test_programado_falla_si_faltan_filas_de_la_corrida():
+    with pytest.raises(RuntimeError, match="no tiene las filas"):
+        _programado(_resumen(), escritas=10)
+
+
+def test_programado_sin_abiertas_no_verifica_filas():
+    resumen = _resumen()
+    resumen["baja"].update(status="sin_abiertas", computed_at=None, filas=0)
+    _, _, repo = _programado(resumen)
+    repo.contar_baja_de_corrida.assert_not_called()
+
+
+def test_programado_no_manda_su_propio_correo():
+    """El plano ya avisa del fallo una vez (``_run_job``); un segundo correo sobra."""
+    with patch("observability.alerts.notify") as notify, pytest.raises(RuntimeError):
+        _programado(_resumen(serving="baseline", degradado="artefacto_irresoluble"))
+    notify.assert_not_called()
+
+
+def test_el_registry_puntua_con_el_guard():
+    """Los planos de cron llaman a la versión con guard, no a ``run_scoring`` a secas."""
+    from scheduler.jobs import build_default_registry
+
+    job = next(j for j in build_default_registry() if j.name == "ml_scoring_baja")
+    assert job.fn is ml_job.run_scoring_programado
+
+
 def test_escribir_github_output_una_linea_por_clave(tmp_path, monkeypatch):
     salida = tmp_path / "gh_output"
     monkeypatch.setenv("GITHUB_OUTPUT", str(salida))

@@ -30,6 +30,7 @@ staging «por coste» sin que nadie pudiera decir cuánto costaba lo que ya hay
 | `tenderflow-prometheus` | `pserv` | `starter`, `frankfurt` | 10 GB | `render.yaml` |
 | `tenderflow-alertmanager` | `pserv` | `starter`, `frankfurt` | 1 GB | `render.yaml` |
 | `tenderflow-grafana` | `web` | `starter`, `frankfurt` | 1 GB | `render.yaml` |
+| `tenderflow-worker` | `web` | `standard`, `frankfurt` — **aún sin crear** | — | `render.yaml` |
 
 ```bash
 grep -n "name:\|type:\|plan:\|sizeGB:" render.yaml
@@ -40,8 +41,13 @@ grep -n "name:\|type:\|plan:\|sizeGB:" render.yaml
 **Pendientes de coste conocido en este plan:**
 
 - El servicio `worker` de [ADR-028](adr/ADR-028-cola-de-trabajo-y-worker.md)
-  (v2 S5.3) añade un servicio más. Su plan y su coste se anotan aquí en el
-  mismo cambio que lo declare en `render.yaml`.
+  está declarado en `render.yaml` pero **no existe todavía en Render**: se crea
+  en el paso 1 del [runbook del cutover del cron](runbooks/cutover-cron-al-worker.md).
+  Declarado en `standard` (2 GB) y no en `starter` porque, con el plano de cron
+  de [ADR-033](adr/ADR-033-plano-de-cron-en-el-worker.md), corre el scoring y la
+  ingesta diaria en el mismo proceso que la cola; el motivo y cuándo
+  revisarlo están junto al servicio en `render.yaml`. Su facturado se anota
+  aquí tras el primer mes.
 - El preview por PR de C3.5 es efímero: su coste es proporcional a las PR
   abiertas y se anota tras el primer mes de uso real, no antes.
 

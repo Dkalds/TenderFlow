@@ -4,18 +4,48 @@ tags: [runbook, operacion, scheduler]
 
 # Runbook — cutover del cron de GitHub Actions al worker
 
-**Qué hace este runbook:** mueve el plano de cron de producción de GitHub
-Actions al worker de Render, sin ventana de parada y con vuelta atrás en un
-clic. Implementa [ADR-033](../adr/ADR-033-plano-de-cron-en-el-worker.md).
+**Qué hace este runbook:** mueve la ingesta diaria y el scoring de producción
+de GitHub Actions al worker de Render, con vuelta atrás en dos clics.
+Implementa [ADR-033](../adr/ADR-033-plano-de-cron-en-el-worker.md) con su
+enmienda del 2026-10-10.
 
-**Quién lo ejecuta:** una persona con acceso al dashboard de Render y permiso
-de escritura sobre `.github/workflows/`. **Ningún agente puede hacerlo**: los
-pasos 2, 4 y 6 son cambios de configuración en la plataforma y el 7 toca
+**Quién lo ejecuta:** una persona con acceso al dashboard de Render y
+administración del repositorio en GitHub. **Ningún agente puede hacerlo**: los
+pasos 1, 4 y 8 son cambios de configuración en las plataformas, y el 7 toca
 workflows.
 
-**Estado al escribir esto (2026-09-14):** no ejecutado. El código está en el
-árbol y es inerte: `SCHEDULER_PLANE` vale `actions` en producción, así que el
-worker arranca el consumidor de la cola y nada más.
+**Estado (2026-10-10):** no ejecutado. **`tenderflow-worker` no existe en
+Render** (verificado por su API el 2026-09-30): el paso 1 lo crea. El código
+está en el árbol y es inerte mientras `SCHEDULER_PLANE` no diga `worker`.
+
+---
+
+## Qué se mueve y qué no
+
+| Job | Hoy lo ejecuta | Tras el cutover |
+|---|---|---|
+| `daily_atom` — PLACSP, los seis conectores, el cierre y el healthcheck | `scrape-daily.yml`, cada 4 h | **worker**, cada 4 h |
+| `ml_scoring_baja` — scoring, drift, calibración, purgas | `ml-scoring.yml`, tras cada ingesta, una vez al día UTC | **worker**, una vez al día UTC (mismo guard) |
+| `ml_retrain_baja` | `train-predictivos.yml`, mensual | Actions, sin cambios |
+| `documentos_embeddings` | `pliegos.yml`, nocturno | Actions, sin cambios |
+
+Los dos que se quedan tienen el motivo escrito en
+`scheduler/cron_plane.py::SE_QUEDAN_EN_ACTIONS`: el reentrenamiento publica el
+`.pkl` en una Release, que el worker no puede hacer, y los embeddings necesitan
+PyTorch y `ocrmypdf`, que no están en su imagen. Tampoco se mueve lo que no es
+un job del registry: `healthcheck.yml`, `scrape-bulk.yml`, `migrate.yml`,
+`deploy.yml` y el resto siguen en Actions.
+
+### Por qué los dos planos no conviven
+
+La versión anterior de este runbook encendía el worker con los workflows aún
+activos y confiaba en los locks `cron:<job>` para decidir quién ejecutaba cada
+disparo. **Esa red no existe:** solo el worker toma esos locks, los workflows
+no toman ninguno. Con los dos encendidos, todo corre dos veces. Los datos no se
+duplican, porque el upsert es idempotente, pero sí la carga contra Supabase y
+las llamadas al LLM. Por eso el paso 4 **apaga Actions antes de encender el
+worker**. El lock sigue sirviendo para lo suyo: que dos instancias del worker
+(o la vieja y la nueva durante un despliegue) no ejecuten la misma pasada.
 
 ---
 
@@ -23,171 +53,231 @@ worker arranca el consumidor de la cola y nada más.
 
 | Comprobación | Cómo | Qué esperar |
 |---|---|---|
-| Los dos planos se conocen | `python scripts/check_job_parity.py` | exit 0 |
-| Qué jobs se mueven | `python -c "from scheduler.cron_plane import jobs_del_plano; print([j.name for j in jobs_del_plano()])"` | la lista de los `plane="actions"` |
-| Qué workflow ejecuta cada uno | `grep -rn "python -m" .github/workflows/*.yml` | un `python -m <module>` por job de la lista |
-| El worker está sano | `curl -fsS https://<host-worker>/api/v1/health/ready` | `200` |
+| El código está en `master` y desplegado en la API | GitHub → PR del cutover mergeado; `deploy.yml` en verde | — |
+| Los dos planos se conocen | `ENV=dev python scripts/check_job_parity.py` | exit 0 |
+| Qué jobs asume el worker | `ENV=dev python -c "from scheduler.cron_plane import jobs_del_plano; print([j.name for j in jobs_del_plano()])"` | `['daily_atom', 'ml_scoring_baja']` |
 
-Anotá la lista de jobs. Es el contrato del cutover: al terminar, cada uno de
-esos nombres tiene que aparecer en los logs del worker con la cadencia
-declarada, y en ningún sitio más.
+La lista de jobs es el contrato del cutover: al terminar, esos dos nombres
+aparecen en los logs del worker con su cadencia y en ningún sitio más.
 
 ---
 
-## 1. Elegir la ventana
+## 1. Crear el worker en Render (una sola vez)
 
-Cualquier día laborable por la mañana, **no** un viernes ni la víspera de un
-festivo: la fase de observación dura 48 h y alguien tiene que estar mirando.
+`render.yaml` describe el servicio, pero no está vinculado a un Blueprint, así
+que se crea a mano. Dashboard → **New → Web Service** → el repositorio, rama
+`master`:
 
-Evitar la hora a la que dispara `daily_atom` (el job más largo). Si cae dentro
-de la ventana, esperar a que termine antes del paso 2.
+| Campo | Valor |
+|---|---|
+| Name | `tenderflow-worker` |
+| Region | Frankfurt (la misma que la API) |
+| Language / Runtime | Docker |
+| Dockerfile Path | `./docker/Dockerfile.api` |
+| Instance Type | **Standard** (2 GB). El motivo está junto al servicio en `render.yaml` |
+| Health Check Path | `/api/v1/health/ready` |
+| Auto-Deploy | **Off** |
 
----
+Variables de entorno. Las de la API se copian de `tenderflow-api` →
+Environment. Los secrets de GitHub **no se pueden leer** una vez creados, así
+que las que solo viven allí se vuelven a obtener en su origen (lo dice cada
+fila):
 
-## 2. Encender el plano en el worker (Render)
+| Variable | Valor | De dónde sale |
+|---|---|---|
+| `ENV` | `prod` | — |
+| `APP_PROFILE` | `worker` | — |
+| `REQUIREMENTS_FILE` | `requirements-pipeline.txt` | — (sin ella la imagen no lleva lxml ni scikit-learn) |
+| `DATABASE_URL`, `DATABASE_SSL_ROOT_CERT` | igual que la API | `tenderflow-api` (rol `tenderflow_app`, el mismo que usa Actions). El certificado va en la imagen: `/app/db/certs/prod-ca-2021.crt` |
+| `DB_POOL_SIZE`, `DB_READ_POOL_SIZE` | `2`, `2` | — (presupuesto del pooler, ver `render.yaml`) |
+| `REDIS_URL`, `REDIS_PASSWORD` | igual que la API | `tenderflow-api` |
+| `NVIDIA_API_KEY` | igual que la API | `tenderflow-api` |
+| `AUDIT_HMAC_KEY` | igual que la API | `tenderflow-api` |
+| `SENTRY_DSN` | igual que la API (opcional) | `tenderflow-api` |
+| `JOBS_LOCK_TTL_SEGUNDOS` | `900` | — |
+| `ALERT_EMAIL_TO`, `ALERT_SMTP_USER`, `ALERT_SMTP_PASSWORD` | los de alertas, **las tres juntas** | El destinatario, la cuenta de Gmail que envía (la misma que usa Actions) y una *contraseña de aplicación* nueva de esa cuenta (<https://myaccount.google.com/apppasswords>; crearla no invalida la de Actions). No se copian de `tenderflow-alertmanager`: está declarado en `render.yaml` pero, como el worker, no consta creado en Render. Con `ALERT_EMAIL_TO` y sin contraseña el worker no arranca en `prod`. Son también las credenciales SMTP con las que salen los digests a usuarios (`observability/mailer.py`); host y puerto por defecto: `smtp.gmail.com:587` |
+| `WEBHOOK_ALLOWED_HOSTS` | igual que la API | `tenderflow-api`. El cierre reintenta los webhooks salientes; sin la allowlist quedan deshabilitados |
+| `EMAIL_BACKEND`, `EMAIL_FROM`, `EMAIL_FROM_NAME` y la clave de su proveedor | solo si la API las tiene | `tenderflow-api`. Sin ellas los digests salen por SMTP con `ALERT_SMTP_USER` de remitente, que es lo que hacía Actions |
+| `ALERT_MIN_LEVEL` | solo si está definida en Actions | GitHub → Settings → Variables → Actions |
+| `GITHUB_TOKEN` | token *fine-grained* solo sobre `Dkalds/TenderFlow`, con `Contents: Read-only` y nada más | <https://github.com/settings/personal-access-tokens/new> (no `settings/keys`, que son deploy keys SSH). El scoring descarga el modelo de la Release `ml-models`; sin token, la llamada va anónima y degrada a baseline. Al caducar pasa lo mismo, y avisa por correo: apuntá la fecha. *Actions: write* no sirve de nada aquí: el paso semanal de aprendizaje activo solo puede lanzar `train-model.yml` dentro de Actions (necesita también `GITHUB_REPOSITORY` y `GITHUB_REF_NAME`), y en el worker avisa por correo para lanzarlo a mano |
+| `PSCP_DATASET_ID`, `TACRC_INDEX_URL` | los de Actions | GitHub → Settings → Variables. Sin ellas la fuente se declara `disabled` |
+| `PSCP_APP_TOKEN` | el token de Socrata | La cuenta de datos abiertos de Catalunya (el secret de GitHub no se puede leer) |
+| `LLM_TECH_LABELING_ENABLED`, `LLM_TECH_LABELING_MODEL`, `LLM_TECH_LABELING_BATCH`, `LLM_TECH_FEEDBACK_ENABLED` | solo las que estén definidas en Actions | GitHub → Settings → Variables. Si no están, manda el default del código, como en Actions |
+| `SCHEDULER_PLANE` | **no la pongas todavía** | Es el paso 4 |
 
-Dashboard → `tenderflow-worker` → Environment → añadir:
+Las cinco últimas filas antes de `SCHEDULER_PLANE` todavía no están declaradas
+en `render.yaml`: falta documentarlas en `.env.example`, que requiere OK
+explícito (AGENTS.md §6). Se ponen igual desde el dashboard.
 
-```
-SCHEDULER_PLANE = worker
-```
+Desplegar y comprobar:
 
-Guardar. Render redespliega el servicio.
-
-> `tenderflow-worker` tiene `autoDeploy: false`, así que el cambio de variable
-> **sí** redespliega (Render trata las variables como un deploy) pero un merge a
-> `master` no. Es lo que se quiere: el cutover ocurre cuando alguien lo decide.
-
-Verificar en los logs del servicio, en este orden:
-
-```
-cron_plane_arrancado   plano=worker  jobs=[...]
-cron_plane_planificado intervalos_min={...}
-```
-
-Si en su lugar aparece `cron_plane_inactivo`, la variable no llegó al proceso:
-revisar que se guardó en `tenderflow-worker` y no en `tenderflow-api`.
-
-**A partir de aquí hay dos planos vivos a propósito.** No pasa nada: los locks
-`cron:<job>` de `db.job_locks` deciden cuál de los dos ejecuta cada disparo, y
-los jobs que compiten se saltan con `cron_plane_job_saltado_por_lock`. Esta
-convivencia es la red de seguridad del cutover, no un accidente.
-
----
-
-## 3. Observar 48 horas
-
-Lo que hay que ver, una vez por turno:
-
-1. **Cada job de la lista se ejecutó al menos una vez en el worker.** En los
-   logs: `scheduler_loop_job_done job=<nombre>`. Los de cadencia diaria tardan
-   hasta 24 h en aparecer; los de 4 h, menos de una mañana.
-2. **Nadie corrió dos veces el mismo trabajo.** Grafana → panel del scheduler,
-   o directamente:
-   ```sql
-   SELECT name, holder, expires_at FROM job_locks WHERE name LIKE 'cron:%';
+1. `curl -fsS https://<host-del-worker>/api/v1/health/ready` → `200`.
+2. En los logs: `worker_arrancado` (el consumidor de la cola) y
+   `cron_plane_inactivo` (el cron sigue apagado, que es lo correcto).
+3. Render → `tenderflow-worker` → **Shell**:
+   ```bash
+   python -c "import lxml, sklearn, statsmodels; print('dependencias ok')"
+   python -m scheduler.healthcheck            # lectura: BD y entorno
+   python -m scraper.connectors.galicia       # una fuente ligera e idempotente
+   python -c "from observability.alerts import notify; print(notify('error', 'Prueba del worker', body='SMTP ok'))"
    ```
-   Un `holder` que empieza por `worker:` es el plano nuevo. Los saltos quedan
-   en `cron_plane_job_saltado_por_lock`.
-3. **La tasa de error no subió.** `scheduler_job_total{status="error"}` en
-   Prometheus, comparado con la misma franja de la semana anterior.
-4. **El healthcheck del worker no parpadeó.** Es la señal de que el cron no le
-   está comiendo el contenedor. Si hay reinicios, ir al paso 8 (vuelta atrás) y
-   reconsiderar el `plan: starter`.
+   Tiene que llegarte el correo de la última línea (va como `error` para que
+   no lo filtre un `ALERT_MIN_LEVEL` alto). Si no llega, las alertas del cron
+   tampoco llegarán.
 
-Rellená esta tabla al terminar la observación:
+`deploy.yml` solo dispara el deploy hook de `tenderflow-api`. Mientras no
+dispare también el del worker, **cada merge a `master` deja al worker con el
+código anterior**: hasta entonces, tras cada despliegue de la API, Render →
+`tenderflow-worker` → *Manual Deploy → Deploy latest commit*.
 
-| Job | Primera ejecución en el worker | Duración | ¿Saltado por lock alguna vez? |
-|---|---|---|---|
-| | | | |
+Opcional y aparte: con el worker sano, `JOBS_CONSUMIDOR_EN_API=0` en
+`tenderflow-api` saca la cola a demanda del proceso de la API (ADR-028 §G). No
+es parte de este cutover.
+
+---
+
+## 2. Elegir la ventana
+
+Un día laborable por la mañana, **no** un viernes ni la víspera de un festivo:
+la observación dura 48 h y alguien tiene que estar mirando. El momento exacto,
+justo después de que termine una pasada de `scrape-daily` (arrancan a las
+hh:23 UTC cada 4 h) y con `ml-scoring` ya terminado.
+
+---
+
+## 3. Comprobar que no hay nada en vuelo
+
+GitHub → Actions → **Scrape PLACSP diario** y **ML scoring predicciones**:
+ninguna ejecución `In progress`. Deshabilitar un workflow no cancela la
+ejecución que ya está corriendo; si hay una, esperar a que termine.
+
+---
+
+## 4. El cambio (unos cinco minutos, en este orden)
+
+1. **Apagar Actions.** GitHub → Actions → cada uno de estos dos workflows →
+   `···` → **Disable workflow**:
+   - `Scrape PLACSP diario (ATOM live feed + conectores)` (`scrape-daily.yml`)
+   - `ML scoring predicciones` (`ml-scoring.yml`)
+
+   No tocar `pliegos.yml`, `train-predictivos.yml` ni `healthcheck.yml`.
+2. **Encender el worker.** Render → `tenderflow-worker` → Environment →
+   `SCHEDULER_PLANE = worker` → Save. Render redespliega el servicio.
+3. **Verificar en los logs**, en este orden:
+   ```
+   cron_plane_arrancado    plano=worker  jobs=['daily_atom', 'ml_scoring_baja']
+   cron_plane_planificado  intervalos_min={'daily_atom': 240, 'ml_scoring_baja': 240}
+   ```
+   `daily_atom` arranca en el acto: un `daily_atom_conector_completado` por
+   cada conector y al final `daily_atom_pasada_completada` con el estado de
+   cada parte. Treinta minutos después, `ml_scoring_guard`.
+
+   Si aparece `cron_plane_inactivo`, la variable no llegó al proceso: revisar
+   que se guardó en `tenderflow-worker` y no en `tenderflow-api`.
+
+---
+
+## 5. Observar 48 horas
+
+Una vez por turno:
+
+1. **La pasada corre cada 4 h.** Un `daily_atom_pasada_completada` cada ~4 h,
+   con `conectores` en `success` o con un motivo que ya se conocía (PSCP agota
+   a veces su presupuesto hacia las 09:00 UTC; ya pasaba en Actions).
+2. **Las siete fuentes siguen entrando:**
+   ```sql
+   SELECT source, status, last_started_at, last_success_at
+   FROM source_ingestion_health
+   ORDER BY last_success_at DESC NULLS LAST;
+   ```
+   `last_success_at` avanza en todas las que no estén `disabled`. El
+   healthcheck de cada pasada avisa también si una se queda atrás.
+3. **El scoring corre una vez al día UTC:** un `ml_scoring_guard` con
+   `motivo=primera_del_dia` (o `sin_scoring_previo`) al día, y los demás
+   `ya_puntuado_hoy`.
+4. **La memoria aguanta.** Render → `tenderflow-worker` → Metrics → Memory.
+   Anotá el pico de la pasada de `daily_atom` y el del scoring. Un reinicio del
+   servicio durante un job es un OOM: vuelta atrás (paso 8).
+5. **Nada se dio por colgado:** ningún `scheduler_loop_job_timeout` ni
+   `daily_atom_conector_presupuesto_agotado` nuevo. En Prometheus,
+   `scheduler_job_total{status=~"error|timeout"}`, y por conector
+   `scheduler_job_total{job=~"daily_atom:.*"}`.
+6. **Nadie más corre:** ningún `cron_plane_job_saltado_por_lock`. Si aparece,
+   hay una segunda instancia del worker.
+
+Rellená esta tabla al terminar:
+
+| Job | Primera ejecución en el worker | Duración | Pico de memoria | ¿Fallos o timeouts? |
+|---|---|---|---|---|
+| `daily_atom` | | | | |
+| `ml_scoring_baja` | | | | |
 
 *(Sin datos: el cutover no se ha ejecutado.)*
 
 ---
 
-## 4. Congelar Actions sin borrarlo
+## 6. Secretos de Actions: qué se puede retirar
 
-Todavía **no** se tocan los ficheros. En GitHub: Actions → cada workflow
-programado de la lista → `···` → **Disable workflow**.
-
-Es reversible en un clic y deja el histórico intacto. Si algo va mal, se
-vuelven a habilitar y el paso 8 no hace falta.
-
-Desde aquí el worker es el único que ejecuta el cron de verdad.
-
----
-
-## 5. Observar otras 48 horas
-
-Mismas cuatro comprobaciones del paso 3. Ahora, además:
-
-- **Ningún lock debería saltarse.** Un `cron_plane_job_saltado_por_lock` a
-  estas alturas significa que hay otro corredor: o quedó un workflow sin
-  deshabilitar, o hay dos instancias del worker. Averiguar cuál antes de
-  seguir.
-- **Ningún job de la lista deja de aparecer.** Un job que no se ve en 48 h es
-  un job que el plano no recogió: comprobar su `plane` en el registry.
-
----
-
-## 6. Retirar `DATABASE_URL` de los secretos de Actions
-
-Este es el paso que compra la mitad del valor del ADR, y el más fácil de
-olvidar.
-
-GitHub → Settings → Secrets and variables → Actions. Borrar los secretos que
-solo usaba el cron. **Comprobar antes qué otros workflows los leen** —el
-`deploy.yml` y los smoke tests tienen los suyos y no se tocan aquí:
+Poco, de momento. `DATABASE_URL` lo siguen leyendo trece workflows (los que no
+son de cron: `healthcheck`, `migrate`, `pliegos`, `train-predictivos`,
+`scrape-bulk`, los backfills…), `PSCP_APP_TOKEN` lo usa también
+`purga-pscp.yml` y `NVIDIA_API_KEY` `pliegos.yml` y `scrape-bulk.yml`.
+Compruébalo antes de borrar nada:
 
 ```bash
-grep -rn "secrets\." .github/workflows/ | grep -i "database\|db_"
+grep -ln "secrets\.<NOMBRE>\b" .github/workflows/*.yml
 ```
 
-Si un workflow que no es de cron lo necesita, ese secreto se queda y se anota
-aquí por qué.
+Lo que este cutover sí consigue es lo que motivó el ADR: el procesamiento de
+datos personales del cierre (digests, notificaciones, retención) ocurre en
+Frankfurt, y la ingesta deja de depender de que GitHub dispare un `schedule:`.
+Sacar la credencial de producción de CI exige mover también esos otros
+workflows, y es otro trabajo.
 
 ---
 
-## 7. Borrar los `schedule:` (PR)
+## 7. Borrar los disparadores de Actions (PR, tras dos semanas)
 
-Ahora sí, en un PR aparte y con CI verde: quitar el bloque `schedule:` de los
-workflows deshabilitados. Dejar el `workflow_dispatch:` — ejecutar un job a
-mano sigue siendo útil, y sin él el workflow no se puede lanzar nunca.
+En un PR aparte y con CI verde:
 
-Al quitar el `schedule:`, `scripts/check_job_parity.py` **empezará a fallar**
-para esos jobs: su regla es que un job `plane="actions"` viva en un workflow
-programado. Es correcto que falle, y es la señal de que al mismo PR le toca
-cambiar `plane="actions"` por `plane="loop"`… no: el valor correcto no existe
-todavía. **Ese es el trabajo de este paso:** añadir a `scheduler/jobs/_base.py`
-el plano `worker` en el `Literal`, marcar con él los jobs migrados, y enseñar
-al checker a exigir para ese plano lo que corresponde — que el job esté en
-`jobs_del_plano()`, y no en un workflow.
+- `scrape-daily.yml`: quitar el bloque `schedule:`.
+- `ml-scoring.yml`: quitar `schedule:` **y** `workflow_run:` (se encadenaba a
+  `scrape-daily`).
+- Dejar en los dos el `workflow_dispatch:` para poder lanzarlos a mano, y
+  volver a habilitarlos en la UI de Actions.
 
-Se deja para el final, y no antes, a propósito: mientras exista la posibilidad
-de volver atrás (pasos 4 y 8), la declaración del registry tiene que seguir
-diciendo la verdad, que es «lo ejecuta Actions».
+Al quitarlos, `scripts/check_job_parity.py` **empezará a fallar** para esos
+dos jobs: su regla es que un job `plane="actions"` viva en un workflow
+programado. Ese fallo es correcto, y marca el trabajo de este paso: añadir el
+plano `worker` al `Literal` de `scheduler/jobs/_base.py`, marcar con él los dos
+jobs, y enseñar al checker que un job `worker` tiene que estar en
+`jobs_del_plano()` y no en un workflow programado. `PLANOS_ASUMIDOS` pasa a
+incluir `worker`.
+
+Se deja para el final a propósito: mientras exista la vuelta atrás de un clic,
+el registry tiene que seguir diciendo la verdad, que es «lo dispara Actions».
 
 ---
 
 ## 8. Vuelta atrás
 
-En cualquier punto anterior al paso 7, y en este orden:
+En cualquier punto anterior al paso 7, en este orden:
 
-1. Render → `tenderflow-worker` → Environment → `SCHEDULER_PLANE = actions`.
-   Guardar. El redespliegue deja el worker como estaba: cola sí, cron no.
-   Comprobar en logs: `cron_plane_inactivo`.
-2. GitHub → Actions → **Enable workflow** en los que se deshabilitaron.
-3. Si se borraron secretos (paso 6), volver a crearlos.
+1. Render → `tenderflow-worker` → Environment → `SCHEDULER_PLANE = actions`
+   (o borrarla) → Save. Comprobar en los logs: `cron_plane_inactivo`. El
+   worker sigue consumiendo la cola.
+2. GitHub → Actions → **Enable workflow** en los dos que se deshabilitaron.
 
-No hace falta tocar la base de datos. Los locks `cron:*` caducan solos por TTL
-(`SCHEDULER_JOB_TIMEOUT_SECONDS`, 600 s por defecto). Si alguno quedara
-atascado —un worker muerto sin liberar—, `db.job_locks.force_release` lo suelta:
+No hace falta tocar la base de datos. Los locks `cron:*` caducan con el
+presupuesto del job (hasta 2 h en `daily_atom`) y solo los mira el worker. Si
+uno quedara tomado por un worker muerto y hubiera que volver a encender el
+plano antes:
 
 ```bash
 python -c "from db.job_locks import force_release; force_release('cron:daily_atom')"
 ```
 
-Después del paso 7 la vuelta atrás ya no es de un clic: hay que revertir el PR.
+Después del paso 7 la vuelta atrás ya no es de un clic: hay que revertir ese PR.
 
 ---
 
@@ -196,8 +286,13 @@ Después del paso 7 la vuelta atrás ya no es de un clic: hay que revertir el PR
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | `cron_plane_inactivo` en el arranque | `SCHEDULER_PLANE` no llegó al proceso | Revisar la variable en `tenderflow-worker` |
-| Ningún log del cron y el worker vivo | El hilo murió, o `APP_PROFILE` no es `worker` | Reiniciar el servicio; si se repite, es un bug: el bucle traga excepciones por diseño |
-| `cron_plane_job_saltado_por_lock` continuo | Otro corredor activo | Buscar el workflow no deshabilitado o la segunda instancia del worker |
-| `cron_plane_lock_indisponible` | La tabla `job_locks` no responde | Es un problema de BD, no del cron: [disaster-recovery.md](disaster-recovery.md) |
-| `scheduler_loop_job_timeout` repetido | Job más largo que `SCHEDULER_JOB_TIMEOUT_SECONDS` | Subir el timeout **o** partir el job. El hilo colgado no se puede matar (ADR-033 §4): si se acumulan, reiniciar el servicio |
-| Reinicios del worker durante un job pesado | OOM: `plan: starter` se quedó corto | Vuelta atrás (paso 8) y subir el plan antes de repetir |
+| `ModuleNotFoundError: lxml` / `sklearn` | La imagen se construyó sin `REQUIREMENTS_FILE` | Añadirla y redesplegar (es un *build arg*) |
+| Ningún log del cron y el worker vivo | El hilo murió, o `APP_PROFILE` no es `worker` | Reiniciar; si se repite es un bug, el bucle traga excepciones por diseño |
+| `daily_atom_conector_presupuesto_agotado` | La fuente tardó más que su `timeout-minutes` | Igual que en Actions: el cierre sigue sin ella. Si se repite, mirar la fuente |
+| `daily_atom_conector_saltado_por_solape` | El hilo de la pasada anterior de ese conector sigue colgado | Se resuelve cuando termina. Si dura, reiniciar el servicio |
+| `ML scoring degradado a baseline` | El worker no pudo descargar el `.pkl` activo | `GITHUB_TOKEN` (paso 1), y que `train-predictivos.yml` lo haya subido |
+| Timeouts de pool (`PoolTimeout`) | Dos conexiones de escritura no bastan con un conector colgado | Subir `DB_POOL_SIZE` a `3`, comprobando antes el margen del pooler (nota en `render.yaml`) |
+| No llegan correos | Faltan las `ALERT_*` | Paso 1; probar con el `notify` del paso 1.3 |
+| `cron_plane_job_saltado_por_lock` continuo | Otro worker activo | Buscar la segunda instancia |
+| `cron_plane_lock_indisponible` | La tabla `job_locks` no responde | Es la BD, no el cron: [disaster-recovery.md](disaster-recovery.md) |
+| Reinicios del worker durante un job | OOM | Vuelta atrás (paso 8); subir de plan antes de repetir |

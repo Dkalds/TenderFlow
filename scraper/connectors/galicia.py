@@ -4,7 +4,14 @@ Cobertura: publicaciones recientes del RSS, no histórico completo ni cambios
 posteriores de una licitación. El runner registra frescura por ``galicia_rss``.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from scraper.connectors.regional_rss import RegionalRssConnector
+
+if TYPE_CHECKING:
+    from scraper.connectors.base import ConnectorRunResult
 
 
 class GaliciaRssConnector(RegionalRssConnector):
@@ -12,6 +19,18 @@ class GaliciaRssConnector(RegionalRssConnector):
     feed_url = "https://www.contratosdegalicia.gal/rss/ultimas-publicacions.rss"
     ccaa = "Galicia"
     analysis_universe = "galicia_rss_recent_technology_observed"
+
+
+def ejecutar(*, feed_url: str | None = None) -> ConnectorRunResult:
+    """Una pasada incremental del RSS de Galicia.
+
+    La usan ``main`` y el carril diario del worker
+    (``scheduler/jobs/daily_atom.py``). No abre ni cierra la BD: el worker
+    comparte el pool con la cola, y ``close_pool()`` se la llevaría por delante.
+    """
+    from scraper.connectors.base import run_connector
+
+    return run_connector(GaliciaRssConnector(feed_url=feed_url))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,11 +42,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from db.database import close_pool, init_db
-    from scraper.connectors.base import run_connector
 
     init_db()
     try:
-        result = run_connector(GaliciaRssConnector(feed_url=args.url))
+        result = ejecutar(feed_url=args.url)
     finally:
         close_pool()
     print(

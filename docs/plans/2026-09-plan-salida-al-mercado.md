@@ -78,7 +78,7 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
 - [ ] Decidir la activación de `baja_model` v2 y `retencion_model` v1 con el gate de `services/ml/promotion.py`.
 - [ ] Ejecutar `make medir-solape` contra producción y anotar el número en el ítem de D16.
 - [ ] Mirar la serie `follows_paridad_faltan` en `ops_events` y, si lleva 30 días en cero, ejecutar el cutover de «Seguir» ([runbooks/cutover-follows.md](../runbooks/cutover-follows.md)). Ya no hay que ejecutar nada para medirlo: el paso `follows_paridad` lo hace a diario.
-- [ ] Cutover del cron al worker ([runbooks/cutover-cron-al-worker.md](../runbooks/cutover-cron-al-worker.md)).
+- [ ] Cutover del cron al worker ([runbooks/cutover-cron-al-worker.md](../runbooks/cutover-cron-al-worker.md)). Antes de ejecutarlo hubo que corregir el código (enmienda del 2026-10-10 a [ADR-033](../adr/ADR-033-plano-de-cron-en-el-worker.md)): tal como estaba, el worker habría dejado de ingerir seis de las siete fuentes. El paso 1 del runbook crea `tenderflow-worker`, que todavía no existe.
 - [ ] Backfill del maestro de órganos (`scripts/backfill_organos.py --apply`); a partir de ahí lo incremental lo hace la pipeline.
 
 ---

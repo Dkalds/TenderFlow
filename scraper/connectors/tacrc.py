@@ -240,6 +240,29 @@ def run(index_url: str | None = None, *, session: requests.Session | None = None
     return stats
 
 
+def ejecutar(*, index_url: str | None = None) -> dict[str, Any] | None:
+    """Una pasada de TACRC; ``None`` si la fuente está apagada.
+
+    Sin índice configurado la fuente está APAGADA, no rota (S2.5): se declara
+    ``disabled`` en ``ops_events`` en vez de lanzar desde ``fetch_index``.
+    La usan ``main`` y el carril diario del worker
+    (``scheduler/jobs/daily_atom.py``). No abre ni cierra la BD: el worker
+    comparte el pool con la cola, y ``close_pool()`` se la llevaría por delante.
+    """
+    if not (index_url or settings.TACRC_INDEX_URL):
+        from scraper.connectors.base import record_source_disabled
+
+        record_source_disabled(
+            SOURCE_ID,
+            motivo=(
+                "TACRC_INDEX_URL no configurada; validá el índice vivo con "
+                "`python -m scraper.connectors.tacrc --check --url <url>`"
+            ),
+        )
+        return None
+    return run(index_url)
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -278,33 +301,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if items else 1
 
     from db.database import close_pool, init_db
-    from scraper.connectors.base import record_source_disabled
 
     init_db()
-
-    # Sin índice configurado la fuente está APAGADA, no rota (S2.5). Antes
-    # esto no llegaba a ejecutarse: `scrape-daily.yml` gatea el step con
-    # `vars.TACRC_INDEX_URL != ''`, así que un TACRC sin configurar no dejaba
-    # rastro de ninguna clase — y si el gate se quitaba, `fetch_index` lanzaba
-    # RuntimeError y ponía el job en rojo por una decisión de configuración.
-    if not (args.url or settings.TACRC_INDEX_URL):
-        try:
-            record_source_disabled(
-                SOURCE_ID,
-                motivo=(
-                    "TACRC_INDEX_URL no configurada; validá el índice vivo con "
-                    "`python -m scraper.connectors.tacrc --check --url <url>`"
-                ),
-            )
-        finally:
-            close_pool()
-        print("TACRC: sin TACRC_INDEX_URL configurada — fuente declarada 'disabled'.")
-        return 0
-
     try:
-        stats = run(args.url)
+        stats = ejecutar(index_url=args.url)
     finally:
         close_pool()
+    if stats is None:
+        print("TACRC: sin TACRC_INDEX_URL configurada — fuente declarada 'disabled'.")
+        return 0
     print(
         f"TACRC: {stats['fetched']} resoluciones · {stats['nuevas']} nuevas · "
         f"{stats['actualizadas']} actualizadas · {stats.get('vinculadas', 0)} vinculadas · "

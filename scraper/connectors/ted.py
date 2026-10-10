@@ -52,6 +52,8 @@ from shared.geo import nuts_to_ccaa
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from scraper.connectors.base import ConnectorRunResult
+
 log = get_logger(__name__)
 
 SOURCE_ID = "ted"
@@ -553,6 +555,23 @@ class TedConnector:
         return {"last_seen_updated": self._max_pub_date}
 
 
+def ejecutar(
+    *, cpv_families: tuple[str, ...] = ("48", "72"), desde: str | None = None
+) -> ConnectorRunResult:
+    """Una pasada incremental de TED.
+
+    La usan ``main`` y el carril diario del worker
+    (``scheduler/jobs/daily_atom.py``). No abre ni cierra la BD: el worker
+    comparte el pool con la cola, y ``close_pool()`` se la llevaría por delante.
+    """
+    from scraper.connectors.base import run_connector
+
+    connector = TedConnector(cpv_families=cpv_families)
+    if desde:
+        connector._since = lambda cursor: desde  # type: ignore[method-assign]  # --desde sustituye _since por contrato (ver su docstring)
+    return run_connector(connector)
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -562,14 +581,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from db.database import close_pool, init_db
-    from scraper.connectors.base import run_connector
 
     init_db()
     try:
-        connector = TedConnector(cpv_families=tuple(args.cpv.split(",")))
-        if args.desde:
-            connector._since = lambda cursor: args.desde  # type: ignore[method-assign]  # --desde sustituye _since por contrato (ver su docstring)
-        result = run_connector(connector)
+        result = ejecutar(cpv_families=tuple(args.cpv.split(",")), desde=args.desde)
     finally:
         close_pool()
     print(

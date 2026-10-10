@@ -1,8 +1,9 @@
 # ADR-033 — Plano de cron dentro del worker de Render
 
-- **Estado:** aceptado. **El código está; el cutover no:** mientras
-  `SCHEDULER_PLANE` no diga `worker` en el servicio de Render, esta decisión no
-  cambia nada en producción (ver el
+- **Estado:** aceptado, **enmendado el 2026-10-10** (ver [Enmienda](#enmienda-2026-10-10-lo-que-el-worker-no-hacía-igual-que-actions)).
+  **El código está; el cutover no:** mientras `SCHEDULER_PLANE` no diga
+  `worker` en el servicio de Render —que además aún no existe—, esta decisión
+  no cambia nada en producción (ver el
   [runbook de cutover](../runbooks/cutover-cron-al-worker.md)).
 - **Fecha:** 2026-09-14
 - **Extiende:** [ADR-012](ADR-012-plano-unico-orquestacion.md) — no lo deroga.
@@ -155,3 +156,56 @@ ligeros del loop de Docker y los handlers de la cola a demanda.
   los del registry (`interval_env`, minutos), que es lo que el código ya sabe
   hacer. Un `cron:` de verdad —«el día 1 a las 03:00»— no lo cubre esto y hoy
   no hay ningún job que lo pida.
+
+---
+
+## Enmienda 2026-10-10: lo que el worker no hacía igual que Actions
+
+Una revisión del cutover antes de ejecutarlo encontró que la «sustitución 1:1»
+del §2 no lo era, y que la red de seguridad del §3 no existía. Ninguno de los
+fallos habría dado error: todos eran trabajo que dejaba de hacerse, o que se
+hacía dos veces, en silencio.
+
+1. **`daily_atom` solo ingería PLACSP.** TED, Galicia, Euskadi, las
+   adjudicaciones vigiladas, PSCP y TACRC eran steps de `scrape-daily.yml`, no
+   parte del job: apagar el workflow habría apagado seis de las siete fuentes.
+   El job ahora reproduce la pasada del workflow paso a paso —ingesta,
+   conectores con el presupuesto de su step, cierre y healthcheck— y un test
+   compara su lista de conectores con el YAML. Cada conector expone
+   `ejecutar()`, que no abre ni cierra la BD: su `main()` cerraba el pool, que
+   en el worker es el de la cola.
+2. **Los locks no excluían a Actions.** Solo el worker toma `cron:<job>`; los
+   workflows no toman ninguno. Con los dos planos encendidos, que es lo que
+   pedía el runbook, todo habría corrido dos veces. El §3 «operativo» queda
+   acotado a lo que sí hace: excluir a otra instancia del worker. El cutover
+   apaga los workflows antes de encender el plano.
+3. **Un único timeout de 600 s.** La ingesta tiene 45 min solo para PLACSP y
+   el scoring tardó 1.049 s el 2026-09-24: cada pasada habría salido como
+   timeout con alerta, y el lock —cuyo TTL era ese mismo timeout— caducaba a
+   media pasada. Cada job declara ahora su presupuesto
+   (`ScheduledJob.timeout_seconds`, el `timeout-minutes` de su workflow), que
+   es también el TTL del lock.
+4. **El scoring sin su guard.** El worker llamaba a `run_scoring()` a secas:
+   sin la regla de una corrida por día UTC, sin fallar ante un serving
+   degradado a baseline y sin verificar las filas escritas. Ahora llama a
+   `run_scoring_programado()`, que hace las tres cosas.
+
+Y el §2 cambia: **el worker no asume todos los jobs `plane="actions"`.** Dos se
+quedan en Actions, con el motivo en `scheduler/cron_plane.py::SE_QUEDAN_EN_ACTIONS`:
+
+- `ml_retrain_baja` publica el `.pkl` en una Release con `gh release upload`;
+  en el worker quedaría en el disco efímero del contenedor, y el calendario en
+  memoria lo reentrenaría tras cada reinicio. Puede moverse cuando el artefacto
+  viva en el almacén de objetos ([ADR-029](ADR-029-almacen-de-objetos.md)).
+- `documentos_embeddings` calcula los embeddings con PyTorch y extrae con
+  `ocrmypdf`, y ninguno de los dos está en la imagen del worker. Trata pliegos
+  públicos, así que el motivo de residencia del dato personal (Contexto, §1) no
+  le aplica.
+
+Siguen siendo `plane="actions"` porque es la verdad, y `check_job_parity.py`
+sigue exigiendo su workflow programado.
+
+Por último, el servicio de Render de este ADR **no existe todavía** (verificado
+el 2026-09-30) y su plan pasa de `starter` a `standard`: el scoring y la ingesta
+corren en el mismo proceso que la cola y el healthcheck, y ninguno de los dos se
+ha medido fuera de un runner de Actions.
