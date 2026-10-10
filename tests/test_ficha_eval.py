@@ -11,9 +11,18 @@ from typing import Any
 
 import pytest
 
-from services.rag.ficha_eval import comparar_clave, emparejar
-from services.rag.ficha_golden import modelo_de
-from shared.tender_facts import FactItem
+from services.rag.fact_sheet import ExtraccionHechos
+from services.rag.ficha_eval import (
+    agregar,
+    cobertura_selector,
+    comparar_clave,
+    comprobar_minimos,
+    emparejar,
+    medir_caso,
+    minimos_desde,
+)
+from services.rag.ficha_golden import Caso, CasoGolden, modelo_de
+from shared.tender_facts import FactItem, TenderFactSheet
 
 _CITA_PRECIO = "El criterio precio tendrá una ponderación del 60 por ciento del total"
 _CITA_CALIDAD = "La calidad técnica de la oferta se valorará con hasta cuarenta puntos"
@@ -276,3 +285,217 @@ def test_sin_hechos_extraidos_todos_los_positivos_quedan_omitidos() -> None:
 
     assert emparejamiento.pares == []
     assert emparejamiento.omitidos == golden
+
+
+# ── Métricas, mínimos y cobertura del selector ──────────────────────────────
+
+
+def _caso(
+    hechos: list[tuple[str, FactItem]],
+    *,
+    completo: bool,
+    nombre: str = "caso",
+    paginas: list[dict[str, Any]] | None = None,
+) -> Caso:
+    golden = CasoGolden.model_validate(
+        {
+            "licitacion_id": "EXP-1",
+            "completo": completo,
+            "capturado_el": "2026-10-11",
+            "extraction_version": "tender-facts-v6",
+            "model": "modelo-x",
+            "status_origen": "extracted",
+            "hechos": {
+                "award_criteria": [
+                    {"veredicto": veredicto, "hecho": hecho.model_dump(mode="json")}
+                    for veredicto, hecho in hechos
+                ]
+            },
+        }
+    )
+    return Caso(nombre=nombre, golden=golden, paginas=paginas or [])
+
+
+def _extraccion(
+    *criterios: FactItem, invalidos: int = 0, inverificables: int = 0
+) -> ExtraccionHechos:
+    return ExtraccionHechos(
+        facts=TenderFactSheet.model_validate(
+            {"award_criteria": [c.model_dump(mode="json") for c in criterios]}
+        ),
+        invalidos=invalidos,
+        inverificables=inverificables,
+        seleccionadas=[],
+    )
+
+
+def _tres_positivos() -> list[tuple[str, FactItem]]:
+    return [
+        ("correcto", _hecho("award_criteria", {"weight_pct": 60, "name": "Precio"})),
+        (
+            "correcto",
+            _hecho("award_criteria", {"weight_pct": 30, "name": "Calidad"}, cita=_CITA_CALIDAD),
+        ),
+        (
+            "añadido",
+            _hecho("award_criteria", {"weight_pct": 10, "name": "Plazo"}, cita=_CITA_PLAZO),
+        ),
+    ]
+
+
+def _cuatro_extraidos() -> list[FactItem]:
+    return [
+        _hecho("award_criteria", {"weight_pct": 60, "name": "Precio"}),
+        _hecho("award_criteria", {"weight_pct": 30, "name": "Calidad"}, cita=_CITA_CALIDAD),
+        # Mismo sitio, otro dato.
+        _hecho("award_criteria", {"weight_pct": 15, "name": "Plazo"}, cita=_CITA_PLAZO),
+        # No casa con nada del golden.
+        _hecho(
+            "award_criteria",
+            {"weight_pct": 5, "name": "Mejoras"},
+            cita="Se valorarán las mejoras ofertadas sin coste para la Administración",
+            pagina=9,
+        ),
+    ]
+
+
+def test_caso_completo_precision_y_cobertura() -> None:
+    caso = _caso(_tres_positivos(), completo=True)
+
+    resultado = medir_caso(caso, _extraccion(*_cuatro_extraidos(), invalidos=2, inverificables=1))
+
+    total = resultado.por_familia["award_criteria"]
+    assert (total.extraidos, total.positivos, total.aciertos) == (4, 3, 2)
+    assert (total.valor_distinto, total.falsos_positivos, total.sin_juzgar) == (1, 1, 0)
+    assert (total.precision, total.cobertura) == (0.5, pytest.approx(2 / 3))
+    assert (resultado.invalidos, resultado.inverificables, resultado.fallo) == (2, 1, None)
+    assert resultado.pendientes == []
+    vacia = resultado.por_familia["lots"]
+    assert (vacia.precision, vacia.cobertura) == (None, None)
+
+
+def test_en_un_caso_parcial_lo_no_revisado_no_es_error_y_sale_en_pendientes() -> None:
+    caso = _caso(_tres_positivos(), completo=False)
+    extraidos = _cuatro_extraidos()
+
+    resultado = medir_caso(caso, _extraccion(*extraidos))
+
+    total = resultado.por_familia["award_criteria"]
+    assert (total.aciertos, total.valor_distinto) == (2, 1)
+    assert (total.sin_juzgar, total.falsos_positivos) == (1, 0)
+    ((familia, pendiente),) = resultado.pendientes
+    assert familia == "award_criteria"
+    assert pendiente.evidence[0].page_number == 9
+
+
+def test_un_negativo_del_golden_cuenta_como_error_confirmado() -> None:
+    inventado = _hecho("award_criteria", {"weight_pct": 5, "name": "Mejoras"}, cita=_CITA_PLAZO)
+    caso = _caso([*_tres_positivos()[:2], ("incorrecto", inventado)], completo=False)
+
+    resultado = medir_caso(caso, _extraccion(inventado))
+
+    total = resultado.por_familia["award_criteria"]
+    assert (total.positivos, total.errores_confirmados, total.aciertos) == (2, 1, 0)
+
+
+def test_una_extraccion_fallida_cuenta_sus_positivos_como_omitidos() -> None:
+    caso = _caso(_tres_positivos(), completo=True)
+
+    resultado = medir_caso(caso, None, fallo="respuesta vacía")
+    informe = agregar([resultado])
+
+    assert resultado.fallo == "respuesta vacía"
+    assert informe.casos_fallidos == 1
+    assert informe.totales["cobertura_completos"] == 0.0
+    assert informe.totales["precision_completos"] is None
+
+
+def test_agregar_separa_completos_de_parciales() -> None:
+    completo = medir_caso(
+        _caso(_tres_positivos(), completo=True, nombre="a"),
+        _extraccion(*_cuatro_extraidos(), invalidos=1),
+    )
+    parcial = medir_caso(
+        _caso(_tres_positivos(), completo=False, nombre="b"),
+        _extraccion(_cuatro_extraidos()[0], inverificables=2),
+    )
+
+    informe = agregar([completo, parcial])
+
+    assert (informe.n_completos, informe.n_parciales, informe.casos_fallidos) == (1, 1, 0)
+    assert (informe.invalidos, informe.inverificables) == (1, 2)
+    assert informe.completos["award_criteria"].extraidos == 4
+    assert informe.parciales["award_criteria"].extraidos == 1
+    assert informe.totales == {
+        "precision_completos": 0.5,
+        "cobertura_completos": pytest.approx(2 / 3),
+        "conservados_parciales": pytest.approx(1 / 3),
+    }
+
+
+def test_sin_casos_completos_los_totales_son_none() -> None:
+    parcial = medir_caso(_caso(_tres_positivos(), completo=False), _extraccion())
+
+    informe = agregar([parcial])
+
+    assert informe.totales["precision_completos"] is None
+    assert informe.totales["cobertura_completos"] is None
+    assert informe.totales["conservados_parciales"] == 0.0
+    assert agregar([]).totales["conservados_parciales"] is None
+
+
+def test_comprobar_minimos() -> None:
+    assert comprobar_minimos({"precision_completos": 0.8}, {"precision_completos": 0.7}) == []
+    assert comprobar_minimos({"precision_completos": 0.7}, {"precision_completos": 0.7}) == []
+    (baja,) = comprobar_minimos({"precision_completos": 0.6}, {"precision_completos": 0.7})
+    assert "precision_completos" in baja and "0.6" in baja and "0.7" in baja
+    (sin_poblacion,) = comprobar_minimos(
+        {"precision_completos": None}, {"precision_completos": 0.7}
+    )
+    assert "sin población" in sin_poblacion
+    (ausente,) = comprobar_minimos({}, {"selector_cobertura": 0.9})
+    assert "selector_cobertura" in ausente
+
+
+def test_cobertura_selector_cuenta_el_positivo_si_su_pagina_entro() -> None:
+    caso = _caso(
+        [
+            ("correcto", _hecho("award_criteria", {"weight_pct": 60}, pagina=3)),
+            ("correcto", _hecho("award_criteria", {"weight_pct": 40}, pagina=12)),
+            ("incorrecto", _hecho("award_criteria", {"weight_pct": 5}, pagina=3)),
+        ],
+        completo=False,
+    )
+
+    assert cobertura_selector(caso, [{"documento_id": 7, "page_number": 3}]) == {
+        "award_criteria": (1, 2)
+    }
+    assert cobertura_selector(caso, [{"documento_id": 8, "page_number": 3}]) == {
+        "award_criteria": (0, 2)
+    }
+
+
+def test_minimos_desde_toma_la_peor_ejecucion_menos_dos_puntos() -> None:
+    ejecuciones = [
+        {"precision_completos": 0.80, "cobertura_completos": 0.61, "conservados_parciales": 0.9},
+        {"precision_completos": 0.74, "cobertura_completos": 0.65, "conservados_parciales": 0.9},
+        {"precision_completos": 0.79, "cobertura_completos": 0.6049, "conservados_parciales": 0.01},
+    ]
+
+    assert minimos_desde(ejecuciones, selector=0.9) == {
+        "precision_completos": 0.72,
+        "cobertura_completos": 0.584,
+        "conservados_parciales": 0.0,
+        "selector_cobertura": 0.9,
+    }
+
+
+def test_minimos_desde_no_inventa_un_minimo_sin_poblacion() -> None:
+    sin_completos = {
+        "precision_completos": None,
+        "cobertura_completos": None,
+        "conservados_parciales": 0.9,
+    }
+
+    with pytest.raises(ValueError, match="precision_completos"):
+        minimos_desde([sin_completos], selector=0.9)
