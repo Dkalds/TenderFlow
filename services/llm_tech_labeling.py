@@ -113,7 +113,9 @@ class Clasificacion(NamedTuple):
         es_ti: Respuesta a la pregunta de nivel 1. ``None`` si el modelo no la
             contestó (p. ej. una respuesta v2 sin el campo): sigue siendo una
             respuesta válida, no un «no es TI» -- eso es ``False`` explícito.
-        confianza_es_ti: Confianza del modelo en ``es_ti``, si la dio.
+        confianza_es_ti: Certeza del modelo en su respuesta a ``es_ti``, si la
+            dio: alta también en un «no es TI» seguro. No es la probabilidad
+            de que el contrato sea TI.
         otros_fabricantes: Fabricantes que el anuncio nombra y no están en el
             vocabulario cerrado, limpios de vacíos y duplicados
             (:func:`_limpiar_fabricantes`).
@@ -137,8 +139,21 @@ class Clasificacion(NamedTuple):
 #
 # v3 (2026-09-27): pregunta de nivel 1 (``es_ti``) con la frontera de D1 y
 # fabricantes fuera del vocabulario.
+#
+# v4 (2026-10-11): la pregunta dice qué es ``confianza_es_ti``. El v3 no lo
+# definía y el nombre se deja leer de dos maneras: en producción, 43 de los 330
+# «no es TI» traían 0,0 o 0,1 (la probabilidad de que fuera TI) y el resto 0,9
+# o 0,95 (la certeza en la respuesta). Medido ese día con nemotron-3-super
+# sobre 28 anuncios al azar, tres veces cada uno: con el v3, 14 de 83
+# respuestas con 0,1 o menos; con el v4, 0 de 84.
+#
+# La regla va sin cifra de ejemplo y sin decir qué significaría un valor bajo.
+# Una redacción anterior añadía «por debajo de 0.5 estarías diciendo que crees
+# lo contrario de lo que respondes», y con ella un anuncio dudoso («10 PACS DE
+# 6X1,5L D'AMPOLLES D'AIGUA…») salió «es TI» en 6 de 33 respuestas, frente a 0
+# de 34 con el v3; con la redacción vigente, en 2 de 24.
 METHOD = "llm_metadata"
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 
 # Por debajo de esta confianza la etiqueta es ruido y no se persiste. No se
 # confunde con ``PLIEGO_TECH_MIN_SCORE`` (0.5), que decide qué entra al merge:
@@ -168,6 +183,7 @@ Reglas:
 - Un fabricante exige que el anuncio lo nombre a él o a uno de sus productos; una categoría describe qué se compra sin decir de quién.
 - El trabajo TI genérico sin fabricante (p. ej. el mantenimiento de una aplicación a medida) lleva la categoría cuya definición lo cubre aunque su nombre no lo sugiera: ahí, DESARROLLO. Si ninguna definición lo cubre, no fuerces la más parecida.
 - evidencia es una cita literal del anuncio, copiada tal cual y sin puntos suspensivos, que justifica la etiqueta. Se comprueba contra el anuncio: una etiqueta sin cita que aparezca en él se descarta.
+- confianza_es_ti es tu certeza en la respuesta que das en es_ti, sea true o false; no es la probabilidad de que el contrato sea TI: un «no es TI» del que estás seguro lleva un valor alto, igual que un «es TI» seguro.
 Formato de salida (JSON, sin Markdown):
 {{"es_ti": true, "confianza_es_ti": 0.0-1.0, "tecnologias": [{{"tecnologia": "<ETIQUETA>", "confidence": 0.0-1.0, "evidencia": "<cita literal del anuncio>"}}], "otros_fabricantes": ["<fabricante que el anuncio nombra y no está en la lista>"]}}
 Si no es TI: {{"es_ti": false, "confianza_es_ti": 0.0-1.0, "tecnologias": [], "otros_fabricantes": []}}.
