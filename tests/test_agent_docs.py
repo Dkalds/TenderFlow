@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 import os
 import runpy
+import subprocess
 import tempfile
+import time
 import unittest
+import uuid
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -334,4 +337,188 @@ class AgentHookTests(unittest.TestCase):
 
         payload = json.loads(output)
         context = payload["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("committed artifacts", context)
+        self.assertIn("graphify query", context)
+
+    def _otro_checkout(self) -> Path:
+        """Un segundo checkout, como el worktree desde el que trabaja la sesión."""
+        otro = self.root / "worktrees/otro"
+        _write(otro / ".git", "gitdir: en-otra-parte\n")
+        return otro
+
+    def test_search_hook_calla_ante_un_filtro_de_tuberia(self) -> None:
+        hook = self._copy_hook("pretooluse_bash_grep_hint.py")
+        _write(self.root / "graphify-out/graph.json", "{}")
+
+        for comando in ("git ls-files | grep py", "ls -la && cat x | grep -c foo", "echo listo"):
+            with self.subTest(comando=comando):
+                self.assertEqual(self._run_hook(hook, {"tool_input": {"command": comando}}), "")
+
+    def test_search_hook_avisa_cuando_la_busqueda_va_tras_otro_comando(self) -> None:
+        hook = self._copy_hook("pretooluse_bash_grep_hint.py")
+        _write(self.root / "graphify-out/graph.json", "{}")
+
+        for comando in ("cd web && grep -rn foo src", "git grep -n foo", "FOO=1 find . -name x"):
+            with self.subTest(comando=comando):
+                self.assertIn(
+                    "graphify query", self._run_hook(hook, {"tool_input": {"command": comando}})
+                )
+
+    def test_search_hook_avisa_una_sola_vez_por_sesion(self) -> None:
+        hook = self._copy_hook("pretooluse_bash_grep_hint.py")
+        _write(self.root / "graphify-out/graph.json", "{}")
+        sesion = f"test-{uuid.uuid4().hex}"
+        marca = Path(tempfile.gettempdir()) / f"tf-pista-busqueda-{sesion}"
+        self.addCleanup(marca.unlink, missing_ok=True)
+        payload = {"tool_input": {"command": "rg TODO"}, "session_id": sesion}
+
+        self.assertIn("graphify query", self._run_hook(hook, payload))
+        self.assertEqual(self._run_hook(hook, payload), "")
+
+    def test_search_hook_sin_grafo_propone_el_mapa_del_checkout_de_la_sesion(self) -> None:
+        # El script vive en un checkout que sí tiene grafo; la sesión trabaja en
+        # otro que no: manda el `cwd`, no la ubicación del fichero.
+        hook = self._copy_hook("pretooluse_bash_grep_hint.py")
+        _write(self.root / "graphify-out/graph.json", "{}")
+        otro = self._otro_checkout()
+        _write(otro / "scripts/code_map.py", "")
+
+        output = self._run_hook(
+            hook, {"tool_input": {"command": "rg TODO"}, "cwd": str(otro / "scripts")}
+        )
+
+        context = json.loads(output)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("scripts/code_map.py", context)
+        self.assertNotIn("graphify query", context)
+
+    def test_edit_hook_marca_el_checkout_del_fichero_editado(self) -> None:
+        hook = self._copy_hook("pretooluse_edit_stale.py")
+        otro = self._otro_checkout()
+        (otro / "graphify-out").mkdir()
+
+        self._run_hook(hook, {"tool_input": {"file_path": str(otro / "services/example.py")}})
+
+        self.assertTrue((otro / "graphify-out/.graph_stale").is_file())
+        self.assertFalse((self.root / "graphify-out/.graph_stale").exists())
+
+
+class SessionStartContextoTests(unittest.TestCase):
+    """`session_start_contexto.py`: qué le falta al checkout y qué hay en curso."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        base = Path(self.temp_dir.name)
+        self.principal = base / "principal"
+        self.worktree = base / "principal/.claude/worktrees/tarea"
+        (self.principal / ".git").mkdir(parents=True)
+        _write(self.worktree / ".git", "gitdir: ../../../.git/worktrees/tarea\n")
+        _write(self.worktree / "web/package.json", "{}")
+        self.prs: list[dict[str, object]] = []
+        self.ramas = ""
+        self.cli_graphify: str | None = None
+
+    def _fake_run(self, cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if "--git-common-dir" in cmd:
+            salida = str(self.principal / ".git")
+        elif cmd[:3] == ["gh", "pr", "list"]:
+            salida = json.dumps(self.prs)
+        elif "for-each-ref" in cmd:
+            salida = self.ramas
+        elif "--abbrev-ref" in cmd:
+            salida = "mi-rama"
+        else:
+            salida = "ok"
+        return subprocess.CompletedProcess(cmd, 0, stdout=salida, stderr="")
+
+    def _which(self, nombre: str) -> str | None:
+        return {"gh": "/usr/bin/gh", "graphify": self.cli_graphify}.get(nombre)
+
+    def _contexto(self) -> str:
+        hook = Path(__file__).resolve().parents[1] / ".claude/hooks/session_start_contexto.py"
+        output = StringIO()
+        with (
+            patch("sys.stdin", StringIO(json.dumps({"cwd": str(self.worktree / "web")}))),
+            patch("subprocess.run", self._fake_run),
+            patch("shutil.which", self._which),
+            patch.dict(os.environ),
+            redirect_stdout(output),
+        ):
+            # La suite corre con `ENV=dev` en el entorno; el hook lo vería y callaría.
+            os.environ.pop("ENV", None)
+            runpy.run_path(str(hook), run_name="__main__")
+        if not output.getvalue():
+            return ""
+        return str(json.loads(output.getvalue())["hookSpecificOutput"]["additionalContext"])
+
+    def test_dice_lo_que_le_falta_al_worktree_y_no_al_checkout_del_script(self) -> None:
+        _write(self.principal / ".venv/bin/python", "")
+
+        contexto = self._contexto()
+
+        self.assertIn("no tiene `.venv`", contexto)
+        self.assertIn((self.principal / ".venv/bin/python").as_posix(), contexto)
+        self.assertIn("ENV=dev", contexto)
+        self.assertIn("npm ci", contexto)
+
+    def test_un_env_sin_la_variable_de_entorno_sigue_avisando(self) -> None:
+        # El caso de una sesión remota: `session_start_pg.py` deja un `.env` con
+        # solo la URL de tests, y `settings` sigue arrancando en `prod`.
+        _write(self.worktree / ".env", "TEST_DATABASE_URL=postgresql://localhost/x\n")
+
+        self.assertIn("ENV=dev", self._contexto())
+
+    def test_sin_venv_pero_con_las_dependencias_instaladas_no_pide_instalarlas(self) -> None:
+        # Sesión remota: `pip install` contra el Python del sistema, que es el
+        # que lanza el hook (y esta suite: fastapi y pytest están).
+        self.assertNotIn("Python:", self._contexto())
+
+    def test_un_checkout_completo_no_anade_ruido(self) -> None:
+        _write(self.worktree / ".venv/bin/python", "")
+        _write(self.worktree / ".env", "ENV=dev\n")
+        (self.worktree / "web/node_modules").mkdir()
+
+        self.assertEqual(self._contexto(), "")
+
+    def test_lista_los_pr_de_personas_y_las_ramas_recientes(self) -> None:
+        self.prs = [
+            {"number": 12, "title": "feat: cosa", "headRefName": "feat/cosa", "author": {}},
+            {
+                "number": 13,
+                "title": "chore(deps): bump x",
+                "headRefName": "dependabot/pip/x",
+                "author": {"login": "app/dependabot"},
+            },
+        ]
+        ahora = int(time.time())
+        self.ramas = (
+            f"feat/viva\t{ahora}\tfeat: en curso\n"
+            f"mi-rama\t{ahora}\tfeat: la propia\n"
+            f"feat/vieja\t{ahora - 30 * 24 * 3600}\tfeat: abandonada"
+        )
+
+        contexto = self._contexto()
+
+        self.assertIn("#12 feat: cosa (feat/cosa)", contexto)
+        self.assertNotIn("#13", contexto)
+        self.assertIn("feat/viva: feat: en curso", contexto)
+        self.assertNotIn("feat/vieja", contexto)
+        self.assertNotIn("la propia", contexto)
+
+    def test_siembra_el_grafo_del_checkout_principal_si_hay_cli(self) -> None:
+        _write(self.principal / "graphify-out/graph.json", '{"nodes": []}')
+        self.cli_graphify = "/usr/bin/graphify"
+
+        contexto = self._contexto()
+
+        self.assertEqual(
+            (self.worktree / "graphify-out/graph.json").read_text(encoding="utf-8"),
+            '{"nodes": []}',
+        )
+        self.assertIn("copiado del checkout principal", contexto)
+
+    def test_sin_cli_no_copia_un_grafo_que_nadie_va_a_consultar(self) -> None:
+        _write(self.principal / "graphify-out/graph.json", "{}")
+
+        self._contexto()
+
+        self.assertFalse((self.worktree / "graphify-out").exists())

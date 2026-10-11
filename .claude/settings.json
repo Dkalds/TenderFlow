@@ -46,6 +46,11 @@
           {
             "type": "command",
             "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_pg.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_pg.py\""
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_contexto.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_contexto.py\"",
+            "timeout": 45
           }
         ]
       }

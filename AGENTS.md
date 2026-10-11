@@ -56,36 +56,42 @@ Usá este orden para preguntas de arquitectura y relaciones cross-file:
 1. Si el ejecutable `graphify` está disponible, usá `graphify query`,
     `graphify path` o `graphify explain`. Es una herramienta local del mantenedor:
     **no está en PyPI ni npm y no debe instalarse**.
-2. Si el CLI no está pero existe `graphify-out/graph.json`, consultá los
-    artefactos commiteados en `graphify-out/` (`wiki/`, `graph.json` y, como
-    último recurso, `GRAPH_REPORT.md`).
-3. Si tampoco hay artefactos, usá búsqueda textual y el mapa de
+2. Si el CLI no está, usá `python scripts/code_map.py` (solo biblioteca
+    estándar, lee el árbol tal como está): `simbolo <nombre>` da la definición y
+    sus usos, `importadores <módulo>` quién lo importa, `paquete <paquete>` y
+    `fichero <ruta>` el esquema. Cubre el código Python.
+3. Para lo demás (frontend, SQL, configuración), búsqueda textual y el mapa de
     [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md). Seguí con la tarea: la
     ausencia del CLI no es un error.
 
-Que `graphify-out/` esté dirty tras hooks o actualizaciones incrementales es
-normal. Leé archivos raw cuando vayas a modificar o depurar código concreto, o
-cuando el grafo no tenga el detalle necesario.
+Leé archivos raw cuando vayas a modificar o depurar código concreto, o cuando
+ninguna de las dos herramientas tenga el detalle necesario.
 
-**Peso de `graphify-out/`: se conserva commiteado** (decisión del 2026-09-06,
-C3.7). Medido ese día: **17 MB**, de los que 16 MB son `graph.json`; cuatro
-ficheros versionados, sobre un repositorio empaquetado de 23 MB.
+**`graphify-out/` no se versiona** (decisión del 2026-10-11; revoca la del
+2026-09-06, que lo conservaba commiteado y fijaba 50 MB como punto de
+revisión). Medido ese día en `HEAD`: **52,4 MB**, de los que 51,6 son
+`graph.json` — eran 17 MB en septiembre. El disparador saltó, y al volver a
+mirar la decisión, el motivo para conservarlo ya no se sostenía:
 
-Se evaluaron las tres opciones y las dos alternativas rompen el paso 2 de la
-lista de arriba:
+- **El fallback no se podía usar.** El grafo se guardaba para las sesiones sin
+  el CLI, pero ninguna herramienta de lectura de un agente abre un JSON de
+  51 MB, y `wiki/` era un índice de 4,7 KB. En la práctica el paso 2 era
+  buscar texto.
+- **Iba por detrás.** Solo se regenera en la máquina que tiene el CLI: el día
+  de la medida el commiteado llevaba 51 commits de retraso, 36 de ellos con
+  cambios en `.py`.
+- **Ensuciaba cada checkout.** Los hooks de git de graphify lo reescriben tras
+  cada commit y cada cambio de rama, así que el árbol nunca estaba limpio:
+  cambiar de rama o traer master abortaba hasta hacer `git restore
+  graphify-out/`.
 
-- **Artefacto de CI.** El grafo dejaría de estar en el checkout, que es
-  precisamente donde lo lee un agente sin el CLI — el caso de **todas** las
-  sesiones remotas. Cambiaría un fallback que funciona por uno que exige
-  descargar un artefacto y autenticarse.
-- **Git LFS.** Añade un requisito de instalación a cualquiera que clone, y un
-  `clone` sin LFS deja punteros en vez del grafo: el mismo fallo, en silencio.
-- **Conservarlo.** 17 MB en un repositorio de 23 MB es caro en proporción y
-  barato en absoluto, y mantiene el fallback documentado.
-
-**Disparador de revisión:** si `graphify-out/` supera los **50 MB**, se vuelve a
-decidir. El número no es un límite técnico; es el punto en que el coste del
-clon deja de ser despreciable frente a la comodidad que compra.
+Lo que lo sustituye en cada caso: con el CLI, el grafo sigue en
+`graphify-out/` como caché local (lo mantienen los hooks de git de graphify, y
+`.claude/hooks/session_start_contexto.py` lo siembra en un worktree nuevo
+copiándolo del checkout principal); sin el CLI, `scripts/code_map.py`, que no
+puede quedarse viejo porque no guarda nada. El historial de git conserva los
+blobs antiguos: dejar de versionarlo frena el crecimiento del clon, no lo
+encoge.
 
 ---
 
@@ -168,7 +174,7 @@ mano.
 ## 5. Workflow estándar
 
 **Pre-flight (siempre):**
-1. Seguí el orden Graphify CLI → artefactos commiteados → búsqueda textual de §1.
+1. Seguí el orden Graphify CLI → `scripts/code_map.py` → búsqueda textual de §1.
 2. Lee [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) si vas a tocar un área que no conocés.
 3. Revisa [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md) si te pidieron "encuentra una mejora".
 
