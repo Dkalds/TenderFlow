@@ -352,6 +352,11 @@ class Settings(ResumenPregenSettings, BaseSettings):
     ALERT_SMTP_PASSWORD: SecretStr = SecretStr("")
     ALERT_SMTP_HOST: str = "smtp.gmail.com"
     ALERT_SMTP_PORT: int = 587
+    # Dead-man's switch del healthcheck (scheduler/latido.py): URL que un
+    # servicio externo espera recibir tras cada chequeo con alertas. Vacía →
+    # no se hace ninguna petición. Es SecretStr porque quien la conoce puede
+    # fingir el latido.
+    HEALTHCHECK_HEARTBEAT_URL: SecretStr = SecretStr("")
 
     # ── Correo transaccional (observability/mailer.py) ───────────────────
     # Backend por el que sale TODO el correo (alertas, invitaciones, reset de

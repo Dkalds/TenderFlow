@@ -714,6 +714,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
 - **Riesgo:** bajo.
 
+### [P2] Dar de alta el check externo del latido del healthcheck (acción del propietario)
+- **Área:** healthchecks.io (o equivalente), GitHub (variables cifradas de Actions), Render
+- **Problema:** `scheduler/latido.py` hace una petición a `HEALTHCHECK_HEARTBEAT_URL` tras cada healthcheck con alertas, pero la variable está vacía en todas partes: no hay check externo esperándola. Mientras tanto, si el cron deja de ejecutar el healthcheck o el correo deja de entregarse, nadie lo nota.
+- **Acceptance criteria:**
+  - El check creado (periodo de 6 h, gracia de 2 h) y su URL guardada en el repositorio de GitHub con el nombre `HEALTHCHECK_HEARTBEAT_URL`; pasos en [observability-alerts.md §3.1](runbooks/observability-alerts.md).
+  - `healthcheck.yml` lanzado a mano: el panel del servicio muestra el ping y el log del job dice `latido_enviado`.
+  - Al pasar el cron al worker, la misma URL como variable de `tenderflow-worker`.
+- **Files de partida:** [scheduler/latido.py](../scheduler/latido.py), [docs/runbooks/observability-alerts.md](runbooks/observability-alerts.md)
+- **Riesgo:** bajo.
+
 ### [P2] `render.yaml` no gobierna el servicio que corre en producción
 - **Área:** render.yaml, Render Dashboard (acción del usuario)
 - **Problema:** el Blueprint está en el repo, pero el servicio de producción se creó a mano por el dashboard y nunca se vinculó a él, así que el fichero documenta una intención que nadie aplica: editarlo no cambia nada y leerlo puede inducir a error sobre cómo está configurado el servicio real. Lo que sí está activo es `autoDeploy`, y **sin healthcheck configurado** — es decir, un deploy que arranca mal reemplaza igualmente al que funcionaba, sin rollback automático. (Estado observado en la sesión del 2026-08-04; **reconfirmar en el dashboard antes de actuar**, que es barato.)

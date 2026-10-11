@@ -189,6 +189,33 @@ Criterio de aceptación de O0.3: el `Watchdog` llega al receptor en cada
 intervalo durante **siete días seguidos**. Es una comprobación en producción, y
 a fecha de este runbook no se ha hecho.
 
+### 3.1 El otro silencio: el plano de cron
+
+El `Watchdog` vigila Prometheus y Alertmanager. No dice nada de la ingesta: si
+el cron deja de ejecutar el healthcheck (un workflow desactivado, el hilo de
+cron del worker muerto) o el SMTP deja de entregar, tampoco llega ningún
+correo, y ese silencio se lee como «todo bien».
+
+Para eso está `HEALTHCHECK_HEARTBEAT_URL` (`scheduler/latido.py`, desde
+2026-10-11): cada healthcheck con alertas —tras cada pasada diaria y cada seis
+horas— hace un GET a esa URL al terminar. Con estado `critical` no late, así
+que un crítico sostenido también dispara el interruptor, por un canal que no
+depende del correo.
+
+Alta, una sola vez (**acción humana pendiente**):
+
+1. Crear un check en healthchecks.io (o equivalente) con periodo de **6 h** y
+   gracia de **2 h**: el healthcheck programado corre cada seis horas y
+   GitHub puede retrasar un `schedule` más de una hora.
+2. Guardar su URL de ping como secret `HEALTHCHECK_HEARTBEAT_URL` del
+   repositorio (lo leen `healthcheck.yml` y `scrape-daily.yml`) y, cuando el
+   cron pase al worker, como variable del servicio `tenderflow-worker`.
+3. Lanzar `healthcheck.yml` a mano y comprobar en el panel del servicio que
+   llegó el ping; en el log del job aparece `latido_enviado`.
+
+Es un check distinto del de `ALERTMANAGER_WEBHOOK_URL`: dos URL, dos cosas
+vigiladas.
+
 ---
 
 ## 4. `alert_delivery_failed_total`: dónde se mira

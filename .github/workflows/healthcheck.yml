@@ -54,5 +54,10 @@ jobs:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          # Dead-man's switch (scheduler/latido.py): un servicio externo espera
+          # esta petición y avisa por su cuenta cuando deja de llegar, que es
+          # lo único que este workflow no puede contar de sí mismo. Sin el
+          # secret, la variable llega vacía y no se hace ninguna petición.
+          HEALTHCHECK_HEARTBEAT_URL: ${{ secrets.HEALTHCHECK_HEARTBEAT_URL }}
           LOG_FORMAT: json
         run: python -m scheduler.healthcheck --alert --freshness-hours 36
