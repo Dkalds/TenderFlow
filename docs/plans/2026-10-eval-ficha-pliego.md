@@ -1,7 +1,9 @@
 # Evaluación de la ficha del pliego: saber si un cambio la mejora o la empeora
 
-**Estado:** diseño aprobado por el propietario el 2026-10-11; especificación
-pendiente de su revisión. Sin código escrito.
+**Estado:** diseño aprobado por el propietario el 2026-10-11. **Código escrito
+ese mismo día; sin casos todavía.** Falta el trabajo del propietario (§8):
+capturar, revisar y fijar la base. Lo que cambió respecto a este diseño al
+implementarlo y al revisarlo está en §12, que manda sobre el resto si difieren.
 **Alcance:** medir la extracción de la ficha del pliego
 (`services/rag/fact_sheet.py`) contra pliegos reales con etiquetas humanas.
 Fuera de alcance: las respuestas del asistente, el clasificador, la búsqueda de
@@ -263,3 +265,53 @@ permisos; `--listar` lo responde.
 - `extract_fact_sheet` persiste lo mismo que antes: sus tests no cambian.
 - El ítem del backlog se mueve a _Cerrados_ y el de la unificación del selector
   deja de citar este como bloqueo.
+
+## 12. Lo que cambió al implementarlo (2026-10-11)
+
+La implementación pasó una revisión independiente antes de que existiera un
+solo caso. Lo que sigue corrige a las secciones de arriba.
+
+**Casos (§3)**
+- Carpeta: `tests/fixtures/fichas/` (el motivo, en §3).
+- `paginas.jsonl` guarda **todas** las páginas, también las vacías: producción
+  las persiste y el selector trata la primera de cada documento como portada.
+- Un hecho extraído que nadie ha juzgado no entra en `golden.json` con `null`:
+  va a `pendientes.json` y pasa al golden al recibir veredicto.
+
+**Captura (§4.3)**
+- `--listar` agrupa por fuente y por estado de la ficha (rica, pobre, fallida,
+  sin ficha) y enseña hasta quince de cada grupo, con su total. Un tope global
+  dejaba fuera a todas las fuentes menos la primera.
+
+**Revisión (§4.4)**
+- Los números se leen como se escriben en un pliego («150.000» es ciento
+  cincuenta mil) y se enseña lo entendido. «-» deja un campo sin valor.
+
+**Emparejamiento (§5)** — más estricto en todo lo que inflaba la medida:
+- Cada hecho extraído se queda con su **vínculo más fuerte**, sea con un
+  positivo o con un error conocido: primero el que coincide en toda la clave,
+  luego el de más texto de cita en común. Antes los positivos se asignaban
+  primero, y repetir un error ya corregido podía contar como acierto.
+- Dos nombres son el mismo si uno contiene las palabras del otro o su Jaccard
+  es ≥ **0,75** (no 0,5): sustituir una palabra es decir otra cosa.
+- Con la clave igual, la página sola solo vale si coincide **toda** la clave.
+- Sin dato que comparar, la cita tiene que compartir al menos la mitad de la
+  más corta **y** estar en la misma página o una contigua.
+- `valor_distinto` exige además la misma página.
+- Resultado nuevo: **`duplicado`**, el mismo hecho extraído otra vez. Cuenta
+  contra la precisión y nunca va a revisión.
+
+**Métricas y mínimos (§6)**
+- Se informa de las extracciones **vacías** (sin error y sin un solo hecho)
+  además de las fallidas.
+- `--check` falla si a `minimos.json` le falta alguna de sus cuatro claves.
+- `--fijar-minimos` no escribe nada si alguna extracción falló o si algún caso
+  se saltó por estar a medio revisar.
+
+**Pendiente, anotado por la revisión y sin hacer:** no hay forma de cambiar un
+veredicto ya dado salvo editando el JSON; `--anadir` no confirma antes de
+guardar y una cita pegada en varias líneas descoloca las preguntas; el mismo
+dato dicho en dos sitios del pliego cuenta como omisión más falso positivo si
+el golden solo cita uno; los lotes en números romanos no casan con los
+arábigos; y gitleaks sí escanea `tests/fixtures/`, así que el texto de un
+pliego podría hacer saltar ese hook.
