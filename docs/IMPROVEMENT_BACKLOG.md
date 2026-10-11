@@ -672,6 +672,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P2 — Media
 
+### [P2] Instalar la app de Renovate y ver su primer PR de Python (acción del propietario)
+- **Área:** GitHub (app), renovate.json, .github/dependabot.yml
+- **Problema:** desde el 2026-10-11 las actualizaciones de versión las abre Renovate y las de Dependabot están apagadas (`open-pull-requests-limit: 0`), pero la app de Renovate no está instalada en el repositorio. Mientras no lo esté, `renovate.json` es configuración muerta y el repo **no recibe actualizaciones de versión**.
+- **Acceptance criteria:**
+  - La app instalada y el primer *Dependency Dashboard* abierto.
+  - Su primer PR de Python recompila los cuatro lockfiles con CI en verde. En local solo se validó la configuración y la lectura de dependencias (Renovate 44, `--platform=local`), no la recompilación.
+  - Decidido si se apagan las *security updates* de Dependabot para no duplicar las de Renovate.
+- **Files de partida:** [renovate.json](../renovate.json), [.github/dependabot.yml](../.github/dependabot.yml), [tests/test_unit_lock_cabeceras.py](../tests/test_unit_lock_cabeceras.py)
+- **Riesgo:** bajo.
+
 ### [P2] [Rendimiento 2026-09] Medir la analítica en producción y encender su techo de sentencia
 - **Área:** config/settings.py (`API_ANALYTICS_STATEMENT_TIMEOUT_MS`), variables de Render
 - **Problema:** el mecanismo existe (`api/techo_analitica.py`, `db.connection.techo_de_sentencia`) pero nace apagado: sin `pg_stat_statements` de producción no se sabe cuántas agregaciones filtradas tardan hoy entre 15 y 30 s y pasarían a fallar. Una consulta cancelada ya no se reintenta (503 `query-timeout`), así que encenderlo no multiplica la carga.
