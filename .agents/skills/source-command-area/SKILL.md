@@ -11,7 +11,7 @@ Use this skill when the user asks to run the migrated source command `area`.
 
 Querés trabajar en `$ARGUMENTS`. Da un panorama denso y accionable, en este orden:
 
-1. **Graphify-first**: si el CLI `graphify` está disponible, ejecutá `graphify explain "$ARGUMENTS"` y copiá el output relevante. Si falta el CLI pero existe `graphify-out/graph.json`, consultá los artefactos commiteados (`wiki/`, `graph.json`) sin intentar instalarlo. Si tampoco hay artefactos, seguí con el playbook y búsqueda de texto.
+1. **Graphify-first**: si el CLI `graphify` está disponible, ejecutá `graphify explain "$ARGUMENTS"` y copiá el output relevante. Si falta el CLI, no intentes instalarlo: `python scripts/code_map.py paquete "$ARGUMENTS"` da los módulos y su API pública, y `simbolo` / `importadores` las relaciones. Para lo que eso no cubra, seguí con el playbook y búsqueda de texto.
 2. **Archivos del paquete**: si `$ARGUMENTS` es un paquete (`services`, `api`, `db`, `scraper`, `scheduler`, `config`, `shared`, `observability`, `llm`), listá `ls <paquete>/` con tamaño en líneas de cada `.py`.
 3. **Entry point**: identificá el archivo principal (mirando `docs/AGENT_PLAYBOOK.md` sección 1, "Mapa detallado de paquetes").
 4. **Tests asociados**: `ls tests/test_<area>*.py` o `grep -l "from <area>" tests/`. Indicar coverage rápido solo si existe `.coverage` y la herramienta `coverage` está disponible.

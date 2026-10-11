@@ -71,6 +71,7 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make test-unit`, `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
 | `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
 | `graphify *` | solo si el CLI está instalado | igual |
+| `python scripts/code_map.py *` | disponible: stdlib + git | disponible |
 
 Un control no ejecutado se reporta como tal; no cuenta como verde ni se
 sustituye por otro motor. El catálogo completo sigue disponible con `make help`.
@@ -103,9 +104,92 @@ graphify update . --force    # renames, moves, borrados o refactor estructural
 ```
 
 En Claude Code, `/graph-refresh` envuelve el `update` con verificación de mtime
-y borra el flag `.graph_stale`. Sin el CLI (CI, sesiones remotas): leé los
-artefactos commiteados de `graphify-out/`, omití el `update` del post-flight y
-decilo en el PR.
+y borra el flag `.graph_stale`. `graphify-out/` es una caché local y no se
+versiona (AGENTS.md §1). Sin el CLI (CI, sesiones remotas), el equivalente es
+`scripts/code_map.py`, que solo necesita Python:
+
+```bash
+python scripts/code_map.py simbolo classify_licitacion   # definición y usos
+python scripts/code_map.py importadores db.upsert        # quién importa el módulo
+python scripts/code_map.py paquete services/rag          # módulos y API pública
+python scripts/code_map.py fichero api/routes/ask.py     # esquema e imports del repo
+```
+
+Omití el `update` del post-flight y decilo en el PR.
+
+### 2.2 Entorno local: worktrees y Windows
+
+Al arrancar, el hook `session_start_contexto.py` dice qué le falta al checkout
+y qué PR y ramas hay vivos. Lo que sigue es el porqué de cada aviso, para quien
+no lo recibe (Codex sin hooks, un subagente) o quiere entenderlo.
+
+**Un worktree nuevo no trae nada instalado.** Ni `.venv`, ni `.env`, ni
+`web/node_modules`: los tres están fuera de git.
+
+- **Python.** Se usa el `.venv` del checkout principal por ruta absoluta. Su
+  `pip install -e` apunta a ese checkout, así que `python scripts/x.py` desde
+  el worktree importa **el código del principal** sin avisar: prefijá
+  `PYTHONPATH="$PWD"`. pytest no lo necesita (fija su rootdir).
+- **`ENV=dev`.** Sin `.env`, `config.settings` arranca en `prod` y aborta
+  pidiendo `SIGNING_KEY`. Es el mismo valor que usa el job de tests de CI.
+- **`PYTHONUTF8=1`** en Windows: varios scripts imprimen tildes y símbolos y la
+  consola (cp1252) los rechaza con `UnicodeEncodeError`.
+- **Frontend.** `npm ci` en `web/` del worktree. No enlaces el `node_modules`
+  de otro checkout: si va por detrás del lockfile, los resultados son de otra
+  versión de vitest o de Next. `npm run build` falla en Windows por un script
+  POSIX de codegen; `npx next build` hace lo mismo sin él.
+
+Con eso, el equivalente de `make check` sin `make` (Git Bash no lo trae):
+
+```bash
+PY="<checkout principal>/.venv/Scripts/python.exe"
+export ENV=dev PYTHONPATH="$PWD" PYTHONUTF8=1
+"$PY" -m ruff check . && "$PY" -m mypy . && "$PY" -m pytest tests/ -m "unit and not slow" -q
+```
+
+**Un rojo en un módulo que no tocaste suele ser el entorno, no tu cambio.** Un
+`.venv` instalado hace semanas va por detrás de `requirements-dev.txt` (un
+`mypy` que protesta por una librería sin anotar, un test que pide el extra
+`[pliegos]`). Antes de diagnosticarlo, corré lo mismo sobre `master`: si falla
+igual, es de base y se dice así en el PR.
+
+**Los tests con BD no corren en el host Windows.** No basta con un Postgres
+accesible: las fixtures `tmp_db`/`api_db` lanzan `pg_dump` como subproceso, así
+que hace falta el cliente de Postgres en el PATH, y `config.settings` rechaza
+un host de BD que no sea `localhost` sin `sslmode`. `make test-unit` no abre
+Postgres y sí corre. Lo que no se pueda ejecutar se reporta como no ejecutado
+(AGENTS.md §4); el job `Tests (Postgres)` de CI es la verificación fiable.
+
+**Trampas de Git Bash** que dan un resultado falso en vez de un error:
+
+- Un argumento que empieza por `/` se convierte en ruta de Windows
+  (`npx playwright test -g "/patrón"` no encuentra tests): quitá la barra o
+  prefijá `MSYS_NO_PATHCONV=1`. Dentro de una cadena no se convierte, y Node
+  recibe `/c/...` tal cual: pasala por `cygpath -m`.
+- Un heredoc cuyo cuerpo lleva comillas simples falla con «unexpected EOF»:
+  escribí el script en un fichero y ejecutalo.
+- No hay `jq`: usá el `--jq` de `gh`.
+
+**Antes de levantar la API en local, mirá a qué base apunta tu `.env`.** Si es
+una base compartida, cada API local retiene conexiones de su pooler aunque no
+reciba tráfico: arrancala con los pools al mínimo (`DB_POOL_SIZE=2`,
+`DB_READ_POOL_SIZE=2`, `DB_POOL_MIN_SIZE=1`, `DB_READ_POOL_MIN_SIZE=1`) y parala
+al acabar. La ruta mínima en PowerShell está en
+[windows-happy-path.md](windows-happy-path.md).
+
+### 2.3 Lo que verifica un cambio además de los tests
+
+- **Revisión de PR por un modelo que no escribió el cambio**:
+  `.github/workflows/claude-review.yml`. Apagado por defecto (variable de
+  repositorio `CLAUDE_REVIEW_ENABLED`); no es un check requerido. La etiqueta
+  `claude-review` en un PR pide otra pasada.
+- **Cambios en el prompt de clasificación** (`services/llm_tech_labeling.py`):
+  los tests sustituyen al proveedor, así que no dicen nada del prompt.
+  `make eval-clasificacion` lo mide contra el LLM real —estabilidad entre
+  repeticiones, confianza en las respuestas que se contradicen y, con
+  `--contra`, qué anuncios cambian respecto a la ejecución anterior—. Manual y
+  fuera de CI: consume cuota del proveedor. `make eval-llm` hace lo propio con
+  la generación RAG.
 
 ## 3. Workflows
 

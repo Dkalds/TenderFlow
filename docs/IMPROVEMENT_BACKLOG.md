@@ -1019,15 +1019,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
 - **Riesgo:** bajo — no toca código; el cuidado está en verificar cada aviso contra el pin vivo en vez de contra el nombre del manifiesto.
 
-### [P3] Decidir el destino del peso de `graphify-out/` (28 MB y creciendo)
-- **Área:** graphify-out, .claude/hooks
-- **Problema:** los artefactos commiteados del knowledge graph pesan **28 MB** (medido 2026-08-18): cada clone y cada sesión remota los paga, y el hook de stale-flag deja el working tree dirty en sesiones sin el CLI (que no pueden limpiarlo). El valor para agentes sin CLI es real (AGENTS.md §1), así que es un trade-off consciente a revisar, no un error. **La cifra de este ítem estaba desactualizada: decía 17 MB, o sea que el artefacto creció un 65% mientras la decisión seguía aplazada.** La comparación "~52% del repo" ya no es evaluable tal cual y se retira; lo que decide es el absoluto y su tendencia.
-- **Acceptance criteria:**
-  - Decisión registrada: mantener como está, excluir `wiki/` (la parte más pesada y más regenerable), o mover a artefacto de CI/LFS con fallback textual documentado en AGENTS.md §1.
-- **Files de partida:** [AGENTS.md](../AGENTS.md), [.claude/hooks/](../.claude/hooks/)
-- **Riesgo:** bajo — decisión de mantenedor; sin impacto en runtime.
-- *Estado (2026-09-19):* **40,6 MB versionados** (suma de blobs de `graphify-out/` en `HEAD`, `git ls-tree -r -l`), un 45 % más que los 28 MB de agosto; el working tree llega a ~41,7 MB cuando el hook post-commit lo reescribe. La premisa de «excluir `wiki/`» ya no vale: `wiki/` pesa unos KB y el 98 % es `graph.json` (39,9 MB), seguido de `GRAPH_REPORT.md` (0,7 MB).
-
 ### [P3] Los dos módulos-dios: `aggregates.py` y `settings.py`
 - **Nota:** este ítem estaba **duplicado**. Había una segunda entrada, "Partir los dos módulos-dios: `aggregates.py` y `settings.py`", sobre los mismos dos ficheros y con criterios que se contradecían: una decía "no big-bang, solo dejar de crecer" y la otra "partir por dominio". Fusionados el 2026-08-18 (mismo patrón que la fusión de los `title=` el 2026-08-10). El criterio que sobrevive es el gradual, que es el que el repo ha demostrado que sí ejecuta.
 - **Área:** db/repositories/aggregates.py, config/settings.py

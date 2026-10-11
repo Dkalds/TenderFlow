@@ -136,6 +136,12 @@ test-property:  ## Tests basados en propiedades (hypothesis)
 test-load:  ## Tests de carga/benchmark
 	pytest tests/ -m load
 
+# El prompt de clasificación, no la generación RAG (eso es `eval-llm`). Llama al
+# proveedor de `LLM_TECH_LABELING_MODEL`: necesita su API key y consume cuota.
+.PHONY: eval-clasificacion
+eval-clasificacion:  ## Eval manual del prompt «¿es TI?» con el LLM real: estabilidad y A/B (ARGS="--entrada f.jsonl --contra antes.json")
+	python scripts/eval_clasificacion_llm.py $(ARGS)
+
 # ── Lockfile reproducible con hashes (uv) ────────────────────────────────
 # Requiere uv instalado (https://github.com/astral-sh/uv).
 # Genera requirements.txt y requirements-dev.txt con --generate-hashes.

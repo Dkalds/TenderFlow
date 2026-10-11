@@ -1,0 +1,97 @@
+name: Claude review
+
+# Revisión automática de cada PR por un modelo que no escribió el cambio.
+#
+# Por qué existe: casi todos los PR de este repo los abre un agente, que además
+# es quien verifica su propio trabajo, y se fusionan con auto-merge en cuanto
+# pasan `Tests (Postgres)` y `Frontend E2E`. Los tests comprueban lo que el
+# autor pensó en probar; nadie con contexto limpio leía el diff.
+#
+# **Está apagado hasta que el dueño lo encienda**, porque cada revisión cuesta
+# dinero y el repo ya tiene un `ANTHROPIC_API_KEY` (el del producto, lo usa
+# pliegos.yml) que este workflow no debe gastar por sorpresa:
+#
+#   1. Variable de repositorio `CLAUDE_REVIEW_ENABLED` = `true`
+#      (`gh variable set CLAUDE_REVIEW_ENABLED --body true`).
+#   2. Una credencial como secreto: `CLAUDE_CODE_OAUTH_TOKEN` (la genera
+#      `claude setup-token`, tira de la suscripción) o, si no existe esa, el
+#      `ANTHROPIC_API_KEY` del repo (se factura por uso).
+#
+# Sin la variable el job no arranca; con la variable y sin credencial, termina
+# en verde con un aviso. No es un check requerido: informa, no bloquea.
+#
+# Cuándo corre: al abrir el PR, al sacarlo de borrador, al reabrirlo y al
+# ponerle la etiqueta `claude-review` (la forma de pedir otra pasada). No en
+# cada `synchronize`: un PR con Auto-fix recibe varios pushes seguidos y cada
+# uno sería una revisión entera.
+#
+# Qué no revisa: PR de forks (GitHub no les da secretos, y su contenido no es
+# de confianza para un agente con permiso de comentar) ni de bots de
+# dependencias (los valida el lockfile y la suite).
+
+on:
+  pull_request:
+    branches: ["master"]
+    types: [opened, ready_for_review, reopened, labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Claude review
+    if: >-
+      vars.CLAUDE_REVIEW_ENABLED == 'true'
+      && !github.event.pull_request.draft
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.type != 'Bot'
+      && (github.event.action != 'labeled' || github.event.label.name == 'claude-review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Para publicar los comentarios de la revisión en el PR.
+      pull-requests: write
+      issues: read
+    steps:
+      # Un `if:` de job no puede leer `secrets`: la presencia de la credencial
+      # se comprueba en un paso y los siguientes dependen de su salida.
+      - name: Comprobar credencial
+        id: credencial
+        env:
+          OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$OAUTH" ] || [ -n "$API_KEY" ]; then
+            echo "hay=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Claude review activado sin credencial (secretos CLAUDE_CODE_OAUTH_TOKEN o ANTHROPIC_API_KEY). No se revisa."
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.credencial.outputs.hay == 'true'
+        with:
+          fetch-depth: 1
+
+      # `github_token`: con el token del propio workflow no hace falta instalar
+      # la GitHub App de Claude en el repositorio; los comentarios salen como
+      # `github-actions[bot]`.
+      #
+      # `--allowedTools` con la herramienta de comentarios en línea es lo que
+      # arranca ese servidor MCP: sin nombrarla, la revisión se queda en el log
+      # del run. `--comment` en el prompt es lo que la manda al PR.
+      - uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        if: steps.credencial.outputs.hay == 'true'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN == '' && secrets.ANTHROPIC_API_KEY || '' }}
+          github_token: ${{ github.token }}
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'

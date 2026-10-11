@@ -100,14 +100,10 @@ htmlcov/
 # Los ajustes compartidos van en .claude/settings.json, que sí se commitea.
 .claude/settings.local.json
 
-# graphify - local-only files (graph.json, GRAPH_REPORT.md, graph.html are committed)
-graphify-out/manifest.json
-graphify-out/cost.json
-graphify-out/cache/
-graphify-out/.graphify_*
-graphify-out/graphify_cluster_*.txt
-# Marca local de .claude/hooks/pretooluse_edit_stale.py; la borra /graph-refresh.
-graphify-out/.graph_stale
+# graphify: el grafo es una caché local, no se versiona (AGENTS.md §1). Lo
+# reconstruyen los hooks de git de graphify en la máquina que tiene el CLI, y
+# .claude/hooks/session_start_contexto.py lo siembra en los worktrees nuevos.
+graphify-out/
 
 # Obsidian companion vault for the code graph - regenerable from graphify-out/graph.json
 # (one file per node, ~18k files - not meant for git history)

@@ -151,8 +151,9 @@ def main() -> None:
         emit(
             "Postgres de tests NO disponible en esta sesión: "
             + "; ".join(notes)
-            + ". La suite no se puede ejecutar; reportá los tests como no ejecutados "
-            "(AGENTS.md §4) en vez de darlos por verdes."
+            + ". Los tests con fixture de BD (`tmp_db`/`api_db`) no se pueden ejecutar: "
+            "reportalos como no ejecutados (AGENTS.md §4) en vez de darlos por verdes. "
+            "`make test-unit` no abre Postgres y sí corre."
         )
         return
     ensure_extensions(notes)
