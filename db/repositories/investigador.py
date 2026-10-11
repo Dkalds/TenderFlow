@@ -39,7 +39,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import ambito_busqueda_sql, rows_to_dicts
 from db.search_backend import TS_RANK_NORMALIZATION, TS_RANK_WEIGHTS
-from db.sql_fragments import FOLD_TABLE, fold_expr
+from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr
 
 __all__ = [
     "MARCA_FIN",
@@ -409,8 +409,7 @@ def anuncios_por_id(ids: Sequence[str]) -> dict[str, dict[str, Any]]:
 def _patron(termino: str) -> str:
     """``termino`` plegado, con sus comodines escapados, como subcadena."""
     limpio = termino.strip().translate(FOLD_TABLE).lower()
-    escapado = limpio.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escapado}%"
+    return f"%{escape_like(limpio)}%"
 
 
 def anuncios_literales(

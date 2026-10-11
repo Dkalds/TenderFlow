@@ -33,6 +33,7 @@ from db.sql_fragments import (
     codigo_normalizado_sql,
     columna_nucleo,
     columna_nucleo_sql,
+    escape_like,
     fecha_valida_sql,
     fold_expr,
     importe_select_sql,
@@ -125,11 +126,6 @@ def _dia_siguiente(iso_date: str) -> str | None:
         return (date.fromisoformat(iso_date) + timedelta(days=1)).isoformat()
     except ValueError:
         return None
-
-
-def _escape_like(s: str) -> str:
-    """Escape SQL LIKE wildcards (%, _) in user input."""
-    return s.replace("%", r"\%").replace("_", r"\_")
 
 
 def _plegado(column: Any) -> Any:
@@ -438,7 +434,7 @@ class LicitacionRepository:
             )
 
         if q and q.strip():
-            like = f"%{_escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
+            like = f"%{escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
             clauses.append(or_(*[_plegado(c).like(like) for c in _COLUMNAS_BUSQUEDA]))
         estados = csv_values(estado)
         if estados:
@@ -476,7 +472,7 @@ class LicitacionRepository:
                 # El valor va escapado dentro del patrón: llega de la query y
                 # un `%` lo convertía en comodín. La rama FTS escapa igual, de
                 # modo que las dos casan el mismo conjunto.
-                t = _escape_like(tecnologia_predicha)
+                t = escape_like(tecnologia_predicha)
                 clauses.append(
                     or_(
                         licitaciones.c.ml_tech_principal == tecnologia_predicha,
@@ -534,7 +530,7 @@ class LicitacionRepository:
         # conocer los ocho dígitos, que nadie recuerda.
         cpvs = csv_values(cpv)
         if cpvs:
-            clauses.append(or_(*[licitaciones.c.cpv.like(f"{_escape_like(c)}%") for c in cpvs]))
+            clauses.append(or_(*[licitaciones.c.cpv.like(f"{escape_like(c)}%") for c in cpvs]))
 
         # Órgano: coincidencia por subcadena y plegada, igual que la búsqueda
         # libre. El autocompletado manda el nombre normalizado, pero un usuario
@@ -547,7 +543,7 @@ class LicitacionRepository:
                 or_(
                     *[
                         _plegado(licitaciones.c.organo_contratacion).like(
-                            f"%{_escape_like(o.translate(FOLD_TABLE).lower())}%"
+                            f"%{escape_like(o.translate(FOLD_TABLE).lower())}%"
                         )
                         for o in organos
                     ]
@@ -910,7 +906,7 @@ class LicitacionRepository:
                     " OR l.ml_tecnologias LIKE %s OR l.ml_tecnologias LIKE %s "
                     " OR l.ml_tecnologias LIKE %s)"
                 )
-                t = _escape_like(tecnologia_predicha)
+                t = escape_like(tecnologia_predicha)
                 extra_params.extend(
                     [tecnologia_predicha, tecnologia_predicha, f"{t},%", f"%,{t},%", f"%,{t}"]
                 )
@@ -955,7 +951,7 @@ class LicitacionRepository:
         cpvs = csv_values(cpv)
         if cpvs:
             extra_conditions.append("(" + " OR ".join(["l.cpv LIKE %s" for _ in cpvs]) + ")")
-            extra_params.extend(f"{_escape_like(c)}%" for c in cpvs)
+            extra_params.extend(f"{escape_like(c)}%" for c in cpvs)
 
         organos = csv_values(organo)
         if organos:
@@ -964,7 +960,7 @@ class LicitacionRepository:
                 "(" + " OR ".join([f"{plegado} LIKE %s" for _ in organos]) + ")"
             )
             extra_params.extend(
-                f"%{_escape_like(o.translate(FOLD_TABLE).lower())}%" for o in organos
+                f"%{escape_like(o.translate(FOLD_TABLE).lower())}%" for o in organos
             )
 
         provincias = csv_values(provincia)
@@ -1520,7 +1516,7 @@ class LicitacionRepository:
         ]
 
         if q and q.strip():
-            like = f"%{_escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
+            like = f"%{escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
             clauses.append(or_(*[_plegado(c).like(like) for c in _COLUMNAS_BUSQUEDA]))
         if estado:
             clauses.append(licitaciones.c.estado.in_(estado))
@@ -1735,7 +1731,7 @@ class LicitacionRepository:
             conditions.append(
                 f"(titulo {like_op} %s ESCAPE '\\' OR descripcion {like_op} %s ESCAPE '\\')"
             )
-            eq = _escape_like(q)
+            eq = escape_like(q)
             params.extend([f"%{eq}%", f"%{eq}%"])
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         with connect_read() as c:
@@ -1824,7 +1820,7 @@ class LicitacionRepository:
                     f"SELECT id_externo FROM licitaciones "
                     f"WHERE titulo {like_op} %s ESCAPE '\\' OR descripcion {like_op} %s ESCAPE '\\' "
                     "LIMIT %s",
-                    [f"%{_escape_like(token)}%", f"%{_escape_like(token)}%", top_k],
+                    [f"%{escape_like(token)}%", f"%{escape_like(token)}%", top_k],
                 )
                 return [(r[0], 0.20) for r in cur.fetchall()]
         except Exception:
@@ -1902,7 +1898,7 @@ class LicitacionRepository:
         )
         params: list[Any] = []
         for w in words:
-            escaped = f"%{_escape_like(w)}%"
+            escaped = f"%{escape_like(w)}%"
             params.extend([escaped, escaped])
         ambito, valores = ambito_busqueda_sql(
             "l", ccaa=ccaa, tecnologia=tecnologia, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta

@@ -62,6 +62,7 @@ from db.sql_fragments import (
     codigo_normalizado_sql,
     columna_nucleo_sql,
     empresa_key_sql,
+    escape_like,
     exclude_duplicados_presentacion_sql,
     fecha_valida_sql,
     fold_expr,
@@ -99,11 +100,6 @@ def _lectura(conn: Any | None) -> Iterator[Any]:
     else:
         with connect_read() as abierta:
             yield abierta
-
-
-def _escape_like(s: str) -> str:
-    """Escapa comodines de LIKE/ILIKE (``%``, ``_``) en input de usuario."""
-    return s.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
 def _in_clause(column: str, values: list[str]) -> str:
@@ -267,7 +263,7 @@ def build_licitaciones_where(
         clauses.append(f"{col_nucleo('importe')} >= %s")
         params.append(filters.importe_min)
     if filters.q and filters.q.strip():
-        needle = f"%{_escape_like(filters.q.strip().translate(FOLD_TABLE).lower())}%"
+        needle = f"%{escape_like(filters.q.strip().translate(FOLD_TABLE).lower())}%"
         # ``descripcion`` entró el 2026-09-03 para casar con el listado, que
         # siempre la había buscado. Un NULL en cualquiera de las cuatro da NULL
         # en su ``LIKE`` y el ``OR`` lo absorbe, así que no hace falta coalesce.
@@ -301,7 +297,7 @@ def build_licitaciones_where(
     if prefijos:
         disyuntos = " OR ".join(f"{col('cpv')} LIKE %s ESCAPE '\\'" for _ in prefijos)
         clauses.append(f"({disyuntos})")
-        params.extend(f"{_escape_like(p)}%" for p in prefijos)
+        params.extend(f"{escape_like(p)}%" for p in prefijos)
     excluidos = sorted({normaliza_codigo(c) for c in csv_values(filters.procedimientos_excluidos)})
     if excluidos:
         marcadores = ",".join("%s" for _ in excluidos)
@@ -1398,7 +1394,7 @@ class AggregateRepository:
         where, params = _build_where(filters)
         if q:
             where += f" AND {fold_expr('organo_contratacion')} LIKE %s ESCAPE '\\'"
-            params.append(f"%{_escape_like(q)}%")
+            params.append(f"%{escape_like(q)}%")
         return where, params
 
     def organos_totales(
