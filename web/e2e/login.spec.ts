@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { DEMO_USER } from "./fixtures";
+import { DEMO_USER } from "./fixtures"; // Recorre CU-01 de docs/casos-de-uso.md.
 
 /**
  * El login se prueba sin sesión previa: estos specs vacían el storageState que

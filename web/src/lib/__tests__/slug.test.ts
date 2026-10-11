@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { CCAA_SIN_ASIGNAR, rutaHubCcaa, rutaHubCpv, rutaLicitacion, slugCcaa, slugificar } from "../slug";
+import {
+  CCAA_SIN_ASIGNAR,
+  esSlugOrgano,
+  rutaHubCcaa,
+  rutaHubCpv,
+  rutaHubOrgano,
+  rutaLicitacion,
+  slugCcaa,
+  slugificar,
+} from "../slug";
 
 describe("slugificar", () => {
   it("pliega los diacríticos en vez de comérselos", () => {
@@ -90,5 +99,33 @@ describe("rutaHubCpv", () => {
 
   it("tolera un código sin dígitos", () => {
     expect(rutaHubCpv("sin-codigo")).toBe("/cpv/");
+  });
+});
+
+describe("esSlugOrgano", () => {
+  // Es el filtro que decide si un segmento de la URL se le pregunta a la API.
+  // Ningún test lo ejercitaba directamente: Stryker (2026-10-11) le quitó el
+  // `$` final a la expresión y la suite siguió en verde, o sea que un slug
+  // válido seguido de cualquier cosa habría pasado sin que nadie se enterase.
+  it.each(["ayuntamiento-de-madrid", "aena", "consorci-2030", "a"])("acepta «%s»", (slug) => {
+    expect(esSlugOrgano(slug)).toBe(true);
+  });
+
+  it.each([
+    ["guion al final", "ayuntamiento-"],
+    ["guion al principio", "-ayuntamiento"],
+    ["dos guiones seguidos", "ayuntamiento--madrid"],
+    ["barra detrás de un slug válido", "ayuntamiento/otra-cosa"],
+    ["mayúsculas", "Ayuntamiento"],
+    ["espacio detrás de un slug válido", "ayuntamiento madrid"],
+    ["cadena vacía", ""],
+  ])("rechaza un slug con %s", (_caso, slug) => {
+    expect(esSlugOrgano(slug)).toBe(false);
+  });
+});
+
+describe("rutaHubOrgano", () => {
+  it("cuelga el slug que da el backend del índice de órganos, sin tocarlo", () => {
+    expect(rutaHubOrgano("ayuntamiento-de-madrid")).toBe("/licitaciones/organo/ayuntamiento-de-madrid");
   });
 });

@@ -76,6 +76,78 @@ def test_parser_properties_handles_empty(tmp_db):
     ...
 ```
 
+## Tests de escenario y casos de uso
+
+[casos-de-uso.md](casos-de-uso.md) lista lo que una persona tiene que poder
+hacer con el producto. Cada caso necesita un **recorrido** que lo cite por su
+identificador (`CU-NN`), y `make check-casos-uso` falla si a alguno le falta.
+
+Un test de escenario (`tests/test_escenario_*.py`) recorre un caso de punta a
+punta por la API. Se diferencia de un test de ruta en tres cosas:
+
+- **La sesión es de verdad.** `tests/escenarios.py::abrir_sesion` da de alta,
+  inicia sesión y manda el CSRF de la cookie en cada escritura. Nada de
+  `dependency_overrides` de autenticación: un escenario que se salta la sesión
+  no prueba el camino que recorre el navegador.
+- **Cada persona, su cliente.** Las cookies viven en el `TestClient`; dos
+  usuarios en el mismo escenario son dos llamadas a `abrir_sesion`.
+- **Lo único que se siembra a mano son los expedientes**
+  (`sembrar_licitacion`): los trae la ingesta, no el usuario. Todo lo demás se
+  crea por la API, que es lo que se está probando.
+
+Un escenario afirma lo que el usuario ve al final de cada paso, y también lo
+que **no** puede hacer (el 403 de quien solo lee, el 409 de una transición que
+no existe). Los detalles de cada contrato siguen en los tests de su ruta.
+
+El mismo caso en el navegador es un E2E de Playwright (`web/e2e/`). Los specs
+que escriben usan una cuenta desechable (`web/e2e/cuenta-desechable.ts`), no la
+del seed: comparten base con las capturas de `visual.spec.ts`.
+
+## Máquinas de estado (Hypothesis)
+
+Donde el fallo está en la **secuencia** y no en un paso, el test es una
+`RuleBasedStateMachine`: Hypothesis encadena operaciones al azar y los
+invariantes se comprueban tras cada una.
+
+| Test | Qué encadena | Contra qué se compara |
+|------|--------------|-----------------------|
+| `test_pursuit_maquina_property.py` | Parches arbitrarios de una oportunidad, `null` incluido | Invariantes del embudo escritos sin leer la tabla de transiciones del servicio |
+| `test_watchlist_rules_maquina_property.py` | Altas, ediciones y borrados de reglas de dos personas | Un modelo en memoria, y un oráculo en Python de qué expedientes casan |
+
+Dos reglas al escribir una:
+
+- **El oráculo no comparte código con lo que prueba.** Si los invariantes
+  reutilizan la tabla o el predicado del servicio, un error ahí pasa el test.
+- **Acotá los ejemplos** (`max_examples`, `stateful_step_count`): con base de
+  datos, cada paso son varias consultas.
+
+Cuando una máquina falla, Hypothesis imprime la secuencia mínima que lo
+reproduce; ese es el caso que hay que convertir en test de regresión con nombre
+(los tres primeros fallos que encontraron están en
+`tests/test_escenario_oportunidad.py` y en el corpus de la máquina de reglas).
+
+## Frontend: propiedades y mutación
+
+**Tests de propiedades (fast-check).** Los ficheros `*.property.test.ts`
+conviven con los tests de ejemplo y corren en `npm run test`. Dicen lo que un
+ejemplo no puede: ida y vuelta, idempotencia e invariantes. Usan `comprobar()`
+de `web/src/test/propiedades.ts`: semilla fija (lo que pasa en local pasa en CI)
+y 200 casos por propiedad. Para explorar con otra semilla:
+`FC_SEED=azar FC_NUM_RUNS=20000 npm run test -- --expect-min=1 <fichero>`. Un
+contraejemplo que destape un fallo se queda en el test con nombre; si el fallo
+no se arregla en el mismo cambio, como `it.fails` con el porqué.
+
+**Mutation testing (Stryker).** `make web-mutation` (o `cd web && npm run
+test:mutation`) muta una muestra pequeña de `web/src/lib` y vuelve a correr los
+tests de `src/lib` que cubren cada mutante; `FILES="src/lib/x.ts"` elige otros
+ficheros. Es un informe, no un gate, igual que `make mutation-sample` en el
+backend: un superviviente puede ser un test que falta o una mutación
+equivalente. El informe queda en `web/reports/mutation/`. Usa el runner
+`vitest-5` de `web/scripts/stryker-vitest-5.mjs` porque el oficial no
+selecciona tests con vitest 5 —todos los mutantes «sobreviven» sin dar error—;
+su cabecera dice cuándo retirarlo, y una guarda falla si un mutante se queda sin
+tests que correr.
+
 ## Ejecutar tests por categoría
 
 ```bash

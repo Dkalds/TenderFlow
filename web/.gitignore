@@ -53,3 +53,7 @@ next-env.d.ts
 /playwright/.auth/
 
 .vercel
+
+# mutation testing (Stryker, `npm run test:mutation`): copia de trabajo e informe
+/.stryker-tmp/
+/reports/
