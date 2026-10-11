@@ -105,7 +105,7 @@ def test_positivos_negativos_y_sin_revisar() -> None:
     assert positivos(golden)["lots"] == []
 
 
-def test_escribir_paginas_omite_uri_y_paginas_vacias(tmp_path: Path) -> None:
+def test_escribir_paginas_omite_la_uri_y_conserva_las_paginas_vacias(tmp_path: Path) -> None:
     paginas = [
         {
             "documento_id": 7,
@@ -125,11 +125,39 @@ def test_escribir_paginas_omite_uri_y_paginas_vacias(tmp_path: Path) -> None:
 
     crudo = (tmp_path / "paginas.jsonl").read_bytes()
     assert escritos == len(crudo)
-    lineas = crudo.decode("utf-8").splitlines()
-    assert len(lineas) == 1
-    assert "uri" not in json.loads(lineas[0])
-    assert "token" not in lineas[0]
+    lineas = crudo.decode("utf-8").split("\n")[:-1]
+    # La página vacía se queda: producción la persiste, y la primera página de
+    # cada documento es la que el selector trata como portada. Quitarla haría
+    # que el eval eligiera otra portada que producción.
+    assert [json.loads(linea)["page_number"] for linea in lineas] == [1, 2]
+    assert all("uri" not in json.loads(linea) for linea in lineas)
+    assert "token" not in crudo.decode("utf-8")
     assert "Ñandú" in lineas[0]
+
+
+def test_un_texto_con_separadores_de_linea_unicode_se_relee_entero(tmp_path: Path) -> None:
+    # U+2028, U+2029 y U+0085 salen de algunos PDF. `json.dumps` no los escapa
+    # con `ensure_ascii=False`, y `str.splitlines()` parte la línea por ellos.
+    texto = "antes" + chr(0x2028) + "medio" + chr(0x2029) + "casi" + chr(0x85) + "después"
+    escribir_golden(tmp_path, _caso({}))
+    escribir_paginas(tmp_path, [{"documento_id": 7, "page_number": 1, "texto": texto}])
+
+    (pagina,) = leer_caso(tmp_path).paginas
+
+    assert pagina["texto"] == texto
+
+
+def test_los_ficheros_del_caso_se_escriben_con_saltos_lf(tmp_path: Path) -> None:
+    # En Windows `write_text` traduce a CRLF, y el hook `mixed-line-ending`
+    # tumbaría el primer intento de cada commit de un caso.
+    golden = _caso({"award_criteria": [{"veredicto": "correcto", "hecho": _criterio(60)}]})
+
+    escribir_golden(tmp_path, golden)
+    escribir_paginas(tmp_path, [{"documento_id": 7, "page_number": 1, "texto": "a"}])
+    escribir_pendientes(tmp_path, [("award_criteria", _criterio(10, "Plazo"))])
+
+    for nombre in ("golden.json", "paginas.jsonl", "pendientes.json"):
+        assert b"\r" not in (tmp_path / nombre).read_bytes(), nombre
 
 
 def test_golden_se_relee_igual_y_no_deja_temporal(tmp_path: Path) -> None:

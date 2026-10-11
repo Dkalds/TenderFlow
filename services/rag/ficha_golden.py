@@ -222,7 +222,9 @@ def leer_caso(carpeta: Path) -> Caso:
     if ruta_paginas.is_file():
         paginas = [
             json.loads(linea)
-            for linea in ruta_paginas.read_text(encoding="utf-8").splitlines()
+            # `split("\n")` y no `splitlines()`: este también parte por U+2028,
+            # U+2029 y U+0085, que `json.dumps` deja sin escapar dentro del texto.
+            for linea in ruta_paginas.read_text(encoding="utf-8").split("\n")
             if linea.strip()
         ]
     return Caso(nombre=carpeta.name, golden=golden, paginas=paginas)
@@ -238,7 +240,9 @@ def escribir_golden(carpeta: Path, golden: CasoGolden) -> None:
     destino = carpeta / NOMBRE_GOLDEN
     temporal = carpeta / (NOMBRE_GOLDEN + ".tmp")
     contenido = json.dumps(golden.model_dump(mode="json"), ensure_ascii=False, indent=2)
-    temporal.write_text(contenido + "\n", encoding="utf-8")
+    # `newline="\n"`: en Windows `write_text` escribiría CRLF y el hook
+    # `mixed-line-ending` tumbaría el primer intento de cada commit de un caso.
+    temporal.write_text(contenido + "\n", encoding="utf-8", newline="\n")
     temporal.replace(destino)
 
 
@@ -272,14 +276,17 @@ def escribir_pendientes(carpeta: Path, pendientes: list[tuple[str, dict[str, Any
         ensure_ascii=False,
         indent=2,
     )
-    temporal.write_text(contenido + "\n", encoding="utf-8")
+    temporal.write_text(contenido + "\n", encoding="utf-8", newline="\n")
     temporal.replace(ruta)
 
 
 def escribir_paginas(carpeta: Path, paginas: list[dict[str, Any]]) -> int:
     """Escribe ``paginas.jsonl`` y devuelve los bytes escritos.
 
-    Solo las páginas con texto y solo las claves de ``CAMPOS_PAGINA``.
+    Todas las páginas, también las vacías, y solo las claves de
+    ``CAMPOS_PAGINA``. Las vacías se conservan porque producción las persiste
+    y el selector trata la primera página de cada documento como portada:
+    quitarlas haría que el eval eligiera otra portada que producción.
     """
     carpeta.mkdir(parents=True, exist_ok=True)
     lineas = [
@@ -288,7 +295,6 @@ def escribir_paginas(carpeta: Path, paginas: list[dict[str, Any]]) -> int:
             ensure_ascii=False,
         )
         for pagina in paginas
-        if str(pagina.get("texto") or "").strip()
     ]
     contenido = "".join(linea + "\n" for linea in lineas).encode("utf-8")
     (carpeta / NOMBRE_PAGINAS).write_bytes(contenido)
