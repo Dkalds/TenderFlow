@@ -34,6 +34,9 @@ Resultado = Literal[
     # Es el error más caro, porque la validación de citas lo deja pasar.
     "valor_distinto",
     "error_confirmado",
+    # El mismo hecho extraído otra vez. No es un desconocido —casa con algo ya
+    # etiquetado—, así que nunca va a revisión: es ruido del extractor.
+    "duplicado",
     # Caso parcial: nadie revisó este hecho. No es un error; es un desconocido.
     "sin_juzgar",
     "falso_positivo",
@@ -45,8 +48,15 @@ TOLERANCIA_NUMERICA = 0.005
 #: Páginas de distancia a las que una cita sigue contando como «el mismo
 #: sitio»: el modelo confunde páginas contiguas de una misma tabla.
 MAX_DISTANCIA_PAGINAS = 1
-#: Solape mínimo de palabras (Jaccard) para dar dos nombres por el mismo.
-MIN_JACCARD_NOMBRES = 0.5
+#: Solape mínimo de palabras (Jaccard) para dar dos nombres por el mismo cuando
+#: ninguno contiene al otro. Alto a propósito: con 0,5, «ENS categoría media» y
+#: «ENS categoría alta» eran el mismo requisito. Parafrasear añade o quita
+#: palabras; sustituir una es decir otra cosa.
+MIN_JACCARD_NOMBRES = 0.75
+#: Cuando no hay dato que comparar, la cita es lo único que une dos hechos:
+#: tienen que compartir al menos esta parte de la más corta. Veinte caracteres
+#: los comparte cualquier coletilla («en los últimos tres años»).
+MIN_PARTE_DE_LA_CITA = 0.5
 
 #: Familias de dos campos donde el primero decide solo y el segundo es el
 #: recurso cuando el primero falta («el peso si ambos lo traen; si no, el nombre»).
@@ -64,8 +74,12 @@ def _plano(texto: str) -> str:
     return "".join(c for c in sin_tildes if not unicodedata.combining(c))
 
 
+def _todas_las_palabras(texto: str) -> frozenset[str]:
+    return frozenset(p for p in _NO_ALFANUMERICO.split(_plano(texto)) if p)
+
+
 def _palabras(texto: str) -> frozenset[str]:
-    todas = frozenset(p for p in _NO_ALFANUMERICO.split(_plano(texto)) if p)
+    todas = _todas_las_palabras(texto)
     return (todas - _PALABRAS_VACIAS) or todas
 
 
@@ -78,8 +92,13 @@ def _mismo_nombre(a: str, b: str) -> bool:
     return len(pa & pb) / len(pa | pb) >= MIN_JACCARD_NOMBRES
 
 
+#: Lo que acompaña al identificador de un lote sin serlo («Lote nº 3»).
+_RELLENO_DE_LOTE = frozenset({"lote", "lot", "n", "no", "num", "numero"})
+
+
 def _mismo_lote(a: str, b: str) -> bool:
-    return _palabras(a) - {"lote"} == _palabras(b) - {"lote"}
+    # Sin quitar palabras vacías: «A» e «Y» son identificadores de lote.
+    return _todas_las_palabras(a) - _RELLENO_DE_LOTE == _todas_las_palabras(b) - _RELLENO_DE_LOTE
 
 
 def _comparar_campo(campo: str, a: object, b: object) -> Comparacion:
@@ -127,13 +146,31 @@ def comparar_clave(familia: str, a: FactItem, b: FactItem) -> Comparacion:
     return "distinta" if segunda == "distinta" else "igual"
 
 
+def _clave_exacta(familia: str, a: FactItem, b: FactItem) -> bool:
+    """Todos los campos de la clave que ambos traen coinciden, y hay alguno.
+
+    Más estricto que ``comparar_clave``, que en las familias de clave
+    alternativa se conforma con el primer campo. Sirve para desempatar: entre
+    un positivo «Precio 60 %» y un error conocido «Mejoras 60 %», un hecho
+    extraído «Mejoras 60 %» es el error, no el acierto.
+    """
+    comparadas = [
+        comparacion
+        for campo in CAMPOS_CLAVE[familia]
+        if (comparacion := _comparar_campo(campo, getattr(a, campo, None), getattr(b, campo, None)))
+        != "sin_comparar"
+    ]
+    return bool(comparadas) and all(c == "igual" for c in comparadas)
+
+
 @dataclass(frozen=True)
 class Emparejado:
     """Un hecho extraído y lo que resultó ser."""
 
     extraido: FactItem
-    #: El hecho del golden con el que casó: el positivo en ``acierto`` y
-    #: ``valor_distinto``, el negativo en ``error_confirmado``, ``None`` si no casó.
+    #: El hecho del golden con el que casó: el positivo en ``acierto``,
+    #: ``valor_distinto`` y ``duplicado``, el negativo en ``error_confirmado``,
+    #: ``None`` si no casó con nada.
     golden: FactItem | None
     resultado: Resultado
 
@@ -152,8 +189,11 @@ class _Vinculo:
     """Lo que une a un hecho extraído con uno del golden."""
 
     solape: int
+    #: Qué parte de la cita más corta es ese solape (0-1).
+    parte: float
     misma_pagina: bool
     clave: Comparacion
+    exacta: bool
 
     @property
     def ancla_cita(self) -> bool:
@@ -161,19 +201,25 @@ class _Vinculo:
 
     @property
     def casa(self) -> bool:
-        # La página sola nunca basta sin un dato que coincida: dos requisitos
-        # distintos de la misma página no son el mismo hecho.
-        return (self.ancla_cita and self.clave != "distinta") or (
-            self.misma_pagina and self.clave == "igual"
-        )
+        if self.clave == "distinta":
+            return False
+        if self.clave == "igual":
+            # Con el dato coincidente basta citar el mismo texto. La página
+            # sola solo vale si coincide toda la clave: dos criterios del mismo
+            # peso en una misma página son dos criterios.
+            return self.ancla_cita or (self.misma_pagina and self.exacta)
+        # Sin dato que comparar, solo la cita puede unirlos: tiene que ser la
+        # misma frase, en el mismo sitio, y no una coletilla compartida.
+        return self.ancla_cita and self.misma_pagina and self.parte >= MIN_PARTE_DE_LA_CITA
 
     @property
     def mismo_sitio_otro_dato(self) -> bool:
-        return self.ancla_cita and self.clave == "distinta"
+        return self.ancla_cita and self.misma_pagina and self.clave == "distinta"
 
 
 def _vinculo(familia: str, extraido: FactItem, golden: FactItem) -> _Vinculo:
     solape = 0
+    parte = 0.0
     misma_pagina = False
     for cita_e in extraido.evidence:
         texto_e = _normalize_quote(cita_e.quote)
@@ -186,25 +232,16 @@ def _vinculo(familia: str, extraido: FactItem, golden: FactItem) -> _Vinculo:
             comun = SequenceMatcher(None, texto_e, texto_g, autojunk=False).find_longest_match(
                 0, len(texto_e), 0, len(texto_g)
             )
-            solape = max(solape, comun.size)
+            if comun.size > solape:
+                solape = comun.size
+                parte = comun.size / max(1, min(len(texto_e), len(texto_g)))
     return _Vinculo(
-        solape=solape, misma_pagina=misma_pagina, clave=comparar_clave(familia, extraido, golden)
+        solape=solape,
+        parte=parte,
+        misma_pagina=misma_pagina,
+        clave=comparar_clave(familia, extraido, golden),
+        exacta=_clave_exacta(familia, extraido, golden),
     )
-
-
-def _asignar(
-    candidatos: list[tuple[int, int, int]],
-    libres_extraidos: set[int],
-    libres_golden: set[int],
-) -> list[tuple[int, int]]:
-    """Asignación uno a uno: mayor solape primero; a igualdad, orden de aparición."""
-    asignados: list[tuple[int, int]] = []
-    for _solape, i, j in sorted(candidatos, key=lambda c: (-c[0], c[1], c[2])):
-        if i in libres_extraidos and j in libres_golden:
-            libres_extraidos.discard(i)
-            libres_golden.discard(j)
-            asignados.append((i, j))
-    return asignados
 
 
 def emparejar(
@@ -217,10 +254,15 @@ def emparejar(
 ) -> EmparejamientoFamilia:
     """Decide qué es cada hecho extraído frente al golden de su familia.
 
-    Tres pasadas uno a uno, cada una sobre lo que dejó libre la anterior:
-    aciertos, errores ya conocidos y, por último, «mismo sitio, otro dato».
-    El orden importa: repetir el valor que alguien ya corrigió es un error
-    confirmado antes que un valor distinto sin más.
+    1. Cada hecho extraído se queda con su vínculo más fuerte, sea con un
+       positivo (``acierto``) o con un error conocido (``error_confirmado``):
+       primero el que coincide en toda la clave, luego el de más texto de cita
+       en común. Los positivos se asignan uno a uno; un error conocido puede
+       repetirse cuantas veces lo repita el extractor.
+    2. Lo que sobra y casa con un positivo ya acertado es un ``duplicado``.
+    3. Lo que sobra y cita el mismo sitio que un positivo libre con otro dato
+       es ``valor_distinto``; ese positivo sigue contando como omitido.
+    4. El resto: ``falso_positivo`` en un caso completo, ``sin_juzgar`` si no.
     """
     con_positivos = {
         (i, j): _vinculo(familia, e, g)
@@ -234,31 +276,46 @@ def emparejar(
     }
     libres = set(range(len(extraidos)))
     positivos_libres = set(range(len(positivos)))
-    negativos_libres = set(range(len(negativos)))
     resultado: dict[int, Emparejado] = {}
+    acertados: set[int] = set()
 
-    aciertos = _asignar(
-        [(v.solape, i, j) for (i, j), v in con_positivos.items() if v.casa],
-        libres,
-        positivos_libres,
+    # (no exacta, -solape, es negativo, i, j): a igualdad de fuerza gana el
+    # positivo, y después el orden de aparición.
+    candidatos = sorted(
+        [(not v.exacta, -v.solape, 0, i, j) for (i, j), v in con_positivos.items() if v.casa]
+        + [(not v.exacta, -v.solape, 1, i, j) for (i, j), v in con_negativos.items() if v.casa]
     )
-    for i, j in aciertos:
-        resultado[i] = Emparejado(extraidos[i], positivos[j], "acierto")
-    acertados = {j for _i, j in aciertos}
+    for _no_exacta, _solape, es_negativo, i, j in candidatos:
+        if i not in libres:
+            continue
+        if es_negativo:
+            libres.discard(i)
+            resultado[i] = Emparejado(extraidos[i], negativos[j], "error_confirmado")
+        elif j in positivos_libres:
+            libres.discard(i)
+            positivos_libres.discard(j)
+            acertados.add(j)
+            resultado[i] = Emparejado(extraidos[i], positivos[j], "acierto")
 
-    for i, j in _asignar(
-        [(v.solape, i, j) for (i, j), v in con_negativos.items() if v.casa],
-        libres,
-        negativos_libres,
-    ):
-        resultado[i] = Emparejado(extraidos[i], negativos[j], "error_confirmado")
+    for i in sorted(libres):
+        repetido = next(
+            (j for j in sorted(acertados) if con_positivos[(i, j)].casa),
+            None,
+        )
+        if repetido is not None:
+            libres.discard(i)
+            resultado[i] = Emparejado(extraidos[i], positivos[repetido], "duplicado")
 
-    for i, j in _asignar(
-        [(v.solape, i, j) for (i, j), v in con_positivos.items() if v.mismo_sitio_otro_dato],
-        libres,
-        positivos_libres,
-    ):
-        resultado[i] = Emparejado(extraidos[i], positivos[j], "valor_distinto")
+    otro_dato = sorted(
+        (-v.solape, i, j)
+        for (i, j), v in con_positivos.items()
+        if v.mismo_sitio_otro_dato and i in libres and j in positivos_libres
+    )
+    for _solape, i, j in otro_dato:
+        if i in libres and j in positivos_libres:
+            libres.discard(i)
+            positivos_libres.discard(j)
+            resultado[i] = Emparejado(extraidos[i], positivos[j], "valor_distinto")
 
     sin_casar: Resultado = "falso_positivo" if completo else "sin_juzgar"
     for i in libres:
@@ -304,6 +361,7 @@ class MetricasFamilia:
     errores_confirmados: int = 0
     sin_juzgar: int = 0
     falsos_positivos: int = 0
+    duplicados: int = 0
 
     def __add__(self, otra: MetricasFamilia) -> MetricasFamilia:
         return MetricasFamilia(
@@ -314,6 +372,7 @@ class MetricasFamilia:
             errores_confirmados=self.errores_confirmados + otra.errores_confirmados,
             sin_juzgar=self.sin_juzgar + otra.sin_juzgar,
             falsos_positivos=self.falsos_positivos + otra.falsos_positivos,
+            duplicados=self.duplicados + otra.duplicados,
         )
 
     @property
@@ -348,6 +407,9 @@ class Informe:
     n_completos: int
     n_parciales: int
     casos_fallidos: int
+    #: Extracciones que respondieron sin un solo hecho válido. No lanzan error,
+    #: pero son el fallo de la v5: una ficha vacía sobre un pliego con contenido.
+    extracciones_vacias: int
     invalidos: int
     inverificables: int
     #: `precision_completos`, `cobertura_completos` y `conservados_parciales`.
@@ -390,6 +452,7 @@ def medir_caso(
             errores_confirmados=cuenta["error_confirmado"],
             sin_juzgar=cuenta["sin_juzgar"],
             falsos_positivos=cuenta["falso_positivo"],
+            duplicados=cuenta["duplicado"],
         )
         pendientes.extend(
             (familia, par.extraido) for par in emparejamiento.pares if par.resultado == "sin_juzgar"
@@ -434,6 +497,11 @@ def agregar(resultados: Sequence[ResultadoCaso]) -> Informe:
         n_completos=len(de_completos),
         n_parciales=len(de_parciales),
         casos_fallidos=sum(1 for r in resultados if r.fallo is not None),
+        extracciones_vacias=sum(
+            1
+            for r in resultados
+            if r.fallo is None and not any(m.extraidos for m in r.por_familia.values())
+        ),
         invalidos=sum(r.invalidos for r in resultados),
         inverificables=sum(r.inverificables for r in resultados),
         totales={

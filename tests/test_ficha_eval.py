@@ -78,6 +78,34 @@ def _hecho(
         ("certifications", {"name": "ISO 9001"}, {"name": "ISO 27001"}, "distinta"),
         ("lots", {"lot_number": "Lote 1"}, {"lot_number": "1"}, "igual"),
         ("lots", {"lot_number": "1"}, {"lot_number": "2"}, "distinta"),
+        # Una letra de lote no es una palabra vacía.
+        ("lots", {"lot_number": "Lote A"}, {"lot_number": "A"}, "igual"),
+        ("lots", {"lot_number": "Lote A"}, {"lot_number": "Lote Y"}, "distinta"),
+        # Sustituir una palabra no es parafrasear: es otro requisito.
+        (
+            "certifications",
+            {"name": "ENS categoría media"},
+            {"name": "ENS categoría alta"},
+            "distinta",
+        ),
+        (
+            "certifications",
+            {"name": "ISO/IEC 27001:2022"},
+            {"name": "ISO/IEC 27017:2022"},
+            "distinta",
+        ),
+        (
+            "required_documents",
+            {"name": "Declaración responsable de solvencia"},
+            {"name": "Declaración responsable del grupo"},
+            "distinta",
+        ),
+        (
+            "rate_cards",
+            {"role": "Consultor SAP senior", "max_rate_eur_hour": 50},
+            {"role": "Consultor SAP junior", "max_rate_eur_hour": 50},
+            "distinta",
+        ),
         ("lots", {"amount_eur": 1000.0}, {"lot_number": "1", "amount_eur": 1000.0}, "igual"),
         (
             "price_formula",
@@ -200,13 +228,94 @@ def test_un_hecho_repetido_solo_acierta_una_vez() -> None:
     golden = _hecho("award_criteria", {"weight_pct": 60})
     repetidos = [_hecho("award_criteria", {"weight_pct": 60}) for _ in range(2)]
 
-    assert _resultados("award_criteria", repetidos, positivos=[golden], completo=True) == [
-        "acierto",
-        "falso_positivo",
+    # Un duplicado no es un desconocido: casa con algo ya etiquetado. Si saliera
+    # como `sin_juzgar` acabaría en los pendientes de revisión, y al marcarlo
+    # correcto el golden tendría dos positivos idénticos.
+    for completo in (True, False):
+        assert _resultados("award_criteria", repetidos, positivos=[golden], completo=completo) == [
+            "acierto",
+            "duplicado",
+        ]
+
+
+def test_un_error_conocido_repetido_dos_veces_es_error_las_dos() -> None:
+    inventado = _hecho("award_criteria", {"weight_pct": 25, "name": "Inventado"})
+    repetidos = [
+        _hecho("award_criteria", {"weight_pct": 25, "name": "Inventado"}) for _ in range(2)
     ]
-    assert _resultados("award_criteria", repetidos, positivos=[golden], completo=False) == [
-        "acierto",
-        "sin_juzgar",
+
+    assert _resultados("award_criteria", repetidos, negativos=[inventado], completo=False) == [
+        "error_confirmado",
+        "error_confirmado",
+    ]
+
+
+def test_el_valor_original_de_un_corregido_en_el_segundo_campo_es_error_confirmado() -> None:
+    # La revisión deja corregir los dos campos de la clave. Si el primero
+    # (el número de lote) no cambió, el valor malo no puede colarse como acierto.
+    bueno = _hecho("lots", {"lot_number": "1", "amount_eur": 120000.0})
+    original = _hecho("lots", {"lot_number": "1", "amount_eur": 100000.0})
+    repite_el_error = _hecho("lots", {"lot_number": "1", "amount_eur": 100000.0})
+    acierta = _hecho("lots", {"lot_number": "1", "amount_eur": 120000.0})
+
+    assert _resultados("lots", [repite_el_error], positivos=[bueno], negativos=[original]) == [
+        "error_confirmado"
+    ]
+    assert _resultados("lots", [acierta], positivos=[bueno], negativos=[original]) == ["acierto"]
+
+
+def test_un_nombre_corregido_con_el_mismo_peso_tambien_es_error_confirmado() -> None:
+    bueno = _hecho("award_criteria", {"weight_pct": 60, "name": "Calidad técnica"})
+    original = _hecho("award_criteria", {"weight_pct": 60, "name": "Precio"})
+    repite_el_error = _hecho("award_criteria", {"weight_pct": 60, "name": "Precio"})
+
+    assert _resultados(
+        "award_criteria", [repite_el_error], positivos=[bueno], negativos=[original]
+    ) == ["error_confirmado"]
+
+
+def test_un_incorrecto_identico_no_acierta_contra_otro_positivo_de_la_pagina() -> None:
+    precio = _hecho("award_criteria", {"weight_pct": 40, "name": "Precio"}, cita=_CITA_PRECIO)
+    inventado = _hecho("award_criteria", {"weight_pct": 40, "name": "Mejoras"}, cita=_CITA_CALIDAD)
+    extraido = _hecho("award_criteria", {"weight_pct": 40, "name": "Mejoras"}, cita=_CITA_CALIDAD)
+
+    emparejamiento = emparejar(
+        "award_criteria", [extraido], positivos=[precio], negativos=[inventado], completo=True
+    )
+
+    assert [par.resultado for par in emparejamiento.pares] == ["error_confirmado"]
+    assert emparejamiento.omitidos == [precio]
+
+
+def test_sin_dato_que_comparar_la_misma_frase_en_otra_pagina_no_casa() -> None:
+    golden = _hecho(
+        "guarantees",
+        cita="Garantía definitiva: 5 por ciento del presupuesto base de licitación, IVA excluido",
+        pagina=10,
+    )
+    otra = _hecho(
+        "guarantees",
+        cita="Garantía complementaria de hasta un 5 por ciento del presupuesto base de licitación",
+        pagina=44,
+    )
+
+    assert _resultados("guarantees", [otra], positivos=[golden]) == ["falso_positivo"]
+
+
+def test_sin_dato_que_comparar_una_coletilla_comun_en_la_misma_pagina_no_casa() -> None:
+    golden = _hecho(
+        "technical_solvency",
+        cita="Relación de los principales servicios realizados en los últimos tres años, "
+        "con importes y fechas",
+    )
+    otro_requisito = _hecho(
+        "technical_solvency",
+        cita="Certificados de buena ejecución expedidos en los últimos tres años "
+        "por el destinatario",
+    )
+
+    assert _resultados("technical_solvency", [otro_requisito], positivos=[golden]) == [
+        "falso_positivo"
     ]
 
 
@@ -499,3 +608,28 @@ def test_minimos_desde_no_inventa_un_minimo_sin_poblacion() -> None:
 
     with pytest.raises(ValueError, match="precision_completos"):
         minimos_desde([sin_completos], selector=0.9)
+
+
+def test_un_duplicado_cuenta_contra_la_precision_y_no_va_a_pendientes() -> None:
+    caso = _caso(_tres_positivos()[:1], completo=False)
+    precio = _cuatro_extraidos()[0]
+
+    resultado = medir_caso(caso, _extraccion(precio, precio))
+
+    total = resultado.por_familia["award_criteria"]
+    assert (total.aciertos, total.duplicados, total.sin_juzgar) == (1, 1, 0)
+    assert total.precision == 0.5
+    assert resultado.pendientes == []
+    assert (total + total).duplicados == 2
+
+
+def test_una_extraccion_sin_hechos_se_cuenta_como_vacia_y_no_como_fallida() -> None:
+    vacia = medir_caso(_caso(_tres_positivos(), completo=True, nombre="a"), _extraccion())
+    fallida = medir_caso(_caso(_tres_positivos(), completo=True, nombre="b"), None, fallo="caído")
+    normal = medir_caso(
+        _caso(_tres_positivos(), completo=True, nombre="c"), _extraccion(*_cuatro_extraidos())
+    )
+
+    informe = agregar([vacia, fallida, normal])
+
+    assert (informe.extracciones_vacias, informe.casos_fallidos) == (1, 1)
