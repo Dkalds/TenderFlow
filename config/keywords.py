@@ -1443,11 +1443,24 @@ if not (set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO) == set(
 # cual llega: ningún consumidor tiene que plegar nada antes de llamar a
 # `search`, y el test que compila cada keyword contra sí misma sigue valiendo.
 
+#
+# ── Un nombre de producto no tiene plural (2026-10-11) ──────────────────────
+#
+# El plural opcional valía para todas las keywords, y `concur` (SAP Concur)
+# pasó a casar con «concurs», que es concurso en catalán: medido ese día en
+# producción, 512 de las 2.014 filas etiquetadas SAP —511 de ellas en PSCP,
+# que tiene 980— no traían «concur» más que así («Concurs de Castells»,
+# «Pagament Jurat Concurs Pedralbes»). El plural es de los nombres comunes de las categorías
+# («firewalls», «servidores»); las keywords de un fabricante nombran productos,
+# y «saps», «oracles» o «concurs» no son varios de ellos sino otra palabra. Las
+# de fabricante se compilan sin plural: `_SIN_PLURAL`. Lo mismo, una a una,
+# las de categoría cuyo plural resulta ser otra cosa (`_CATEGORIA_SIN_PLURAL`).
+
 #: Versión de la forma de casar. Entra en el hash de `filter_version`
 #: (`services.tecnologias_diccionario._hash_de`): dos filas filtradas con el
 #: mismo diccionario pero con matchers distintos no se filtraron igual, y el
 #: linaje tiene que poder decirlo. Se cambia a mano cuando cambia `con_limites`.
-VERSION_MATCHER = "2026-09-27-plegado-plurales"
+VERSION_MATCHER = "2026-10-11-fabricantes-sin-plural"
 
 #: Letras que un título escribe con o sin diacrítico. La keyword se pliega
 #: antes, y cada una de estas letras se convierte en la clase con sus variantes.
@@ -1475,7 +1488,8 @@ _SEPARADORES: dict[str, str] = {
 
 #: Plural opcional al final de cada palabra de tres letras o más: «firewalls»,
 #: «servidores», «copias de seguridad», «sedes electrónicas». Las palabras más
-#: cortas (de, la, el, y, i) no lo llevan: «des» o «les» no son su plural.
+#: cortas (de, la, el, y, i) no lo llevan: «des» o «les» no son su plural. Las
+#: keywords de fabricante tampoco (`_SIN_PLURAL`).
 _PLURAL = "(?:e?s)?"
 _MIN_LETRAS_PLURAL = 3
 
@@ -1490,21 +1504,43 @@ def plegar(texto: str) -> str:
     return "".join(c for c in descompuesto if not unicodedata.combining(c))
 
 
+#: Keywords de categoría cuyo «plural» es otra cosa. Cada una entra por un
+#: ejemplo de producción, como las ambiguas de la puerta:
+#:
+#: - `gis`: «GISS» es la Gerencia de Informática de la Seguridad Social. Las 8
+#:   filas que el 2026-10-11 casaban `gis` solo en plural eran contratos suyos
+#:   («sistemas de información de la GISS»), etiquetados GIS.
+_CATEGORIA_SIN_PLURAL: frozenset[str] = frozenset({"gis"})
+
+#: Keywords que se compilan sin plural: las de los labels de fabricante,
+#: plegadas, y las de `_CATEGORIA_SIN_PLURAL`. Sale de la semilla, así que una
+#: keyword de fabricante añadida solo en la tabla `tecnologias_keywords`
+#: conserva el plural hasta que entre también aquí.
+_SIN_PLURAL: frozenset[str] = _CATEGORIA_SIN_PLURAL | frozenset(
+    plegar(kw).casefold()
+    for label, kws in TECHNOLOGY_KEYWORDS.items()
+    if TECH_LABEL_TIPO[label] == "fabricante"
+    for kw in kws
+)
+
+
 def _cuerpo(keyword: str) -> str:
     """El centro del patrón: letras con sus variantes, separadores y plurales."""
+    plegada = plegar(keyword)
+    plural = "" if plegada.casefold() in _SIN_PLURAL else _PLURAL
     partes: list[str] = []
     letras_seguidas = 0
-    for signo in plegar(keyword):
+    for signo in plegada:
         if signo.isalpha():
             letras_seguidas += 1
             partes.append(_VARIANTES.get(signo.lower(), re.escape(signo)))
             continue
         if signo in (" ", "-") and letras_seguidas >= _MIN_LETRAS_PLURAL:
-            partes.append(_PLURAL)
+            partes.append(plural)
         letras_seguidas = 0
         partes.append(_SEPARADORES.get(signo, re.escape(signo)))
     if letras_seguidas >= _MIN_LETRAS_PLURAL:
-        partes.append(_PLURAL)
+        partes.append(plural)
     return "".join(partes)
 
 
