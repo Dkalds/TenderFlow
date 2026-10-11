@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -62,19 +62,27 @@ class _Fichas:
             },
         }
 
-    def list_candidatas_golden(self, *, limit: int = 200) -> list[dict[str, Any]]:
+    #: Con qué argumentos se pidió el último listado.
+    pedido: ClassVar[dict[str, Any]] = {}
+
+    def list_candidatas_golden(
+        self, *, por_grupo: int = 15, fuente: str | None = None
+    ) -> list[dict[str, Any]]:
+        type(self).pedido = {"por_grupo": por_grupo, "fuente": fuente}
         return [
             {
                 "licitacion_id": "EXP-1",
                 "fuente": "placsp",
+                "grupo": "rica",
                 "documentos": 1,
                 "paginas": 1,
                 "paginas_ocr": 0,
                 "status": "extracted",
                 "extraction_version": "tender-facts-v6",
-                "field_count": 1,
+                "field_count": 12,
                 "lotes": 0,
                 "formulas": 0,
+                "total_grupo": 40,
             }
         ]
 
@@ -161,6 +169,18 @@ def test_listar_imprime_los_candidatos(
 
     salida = capsys.readouterr().out
     assert "EXP-1" in salida and "placsp" in salida and "extracted" in salida
+    # El listado está acotado por grupo: tiene que decir cuántas hay de verdad,
+    # no dar las que enseña por el total.
+    assert "rica" in salida and "1 de 40" in salida
+    assert _Fichas.pedido == {"por_grupo": 15, "fuente": None}
+
+
+def test_listar_admite_una_fuente_y_otro_tope(tmp_path: Path, repos_falsos: None) -> None:
+    argumentos = ["--listar", "--fuente", "pscp", "--por-grupo", "40", "--raiz", str(tmp_path)]
+
+    assert main(argumentos) == 0
+
+    assert _Fichas.pedido == {"por_grupo": 40, "fuente": "pscp"}
 
 
 def test_avisa_si_las_paginas_pasan_de_un_mega(

@@ -18,6 +18,10 @@ las tres fuentes, un multi-lote, uno con fórmula de precio, uno con OCR, uno
 corto y uno largo, y dos cuya ficha sea pobre o ``failed``)::
 
     python scripts/capturar_ficha_golden.py --listar
+    python scripts/capturar_ficha_golden.py --listar --fuente pscp --por-grupo 40
+
+El listado va agrupado por fuente y por estado de la ficha (rica, pobre,
+fallida, sin ficha) y enseña hasta quince de cada grupo, diciendo cuántas hay.
 
 Capturar uno (``--completo`` en los tres que se van a leer a fondo)::
 
@@ -90,13 +94,26 @@ def capturar(
     return escritos
 
 
-def _listar(fichas: Any) -> None:
-    filas = fichas.list_candidatas_golden()
-    print(
+def _listar(fichas: Any, *, fuente: str | None, por_grupo: int) -> None:
+    filas = fichas.list_candidatas_golden(por_grupo=por_grupo, fuente=fuente)
+    cabecera = (
         f"{'licitacion_id':40} {'fuente':8} {'docs':>4} {'págs':>5} {'ocr':>4} "
         f"{'estado':13} {'hechos':>6} {'lotes':>5} {'fórm.':>5}  versión"
     )
+    grupo_actual: tuple[Any, Any] | None = None
+    en_grupo = 0
     for fila in filas:
+        grupo = (fila.get("fuente"), fila.get("grupo"))
+        if grupo != grupo_actual:
+            grupo_actual = grupo
+            en_grupo = sum(1 for f in filas if (f.get("fuente"), f.get("grupo")) == grupo)
+            # El listado va acotado por fuente y grupo: se dice cuántas hay de
+            # verdad, para no dar las que se enseñan por el total.
+            print(
+                f"\n── {grupo[0] or '—'} · {grupo[1]} · "
+                f"{en_grupo} de {fila.get('total_grupo') or en_grupo} ──"
+            )
+            print(cabecera)
         hechos = fila.get("field_count")
         print(
             f"{str(fila['licitacion_id'])[:40]:40} {str(fila.get('fuente') or '—')[:8]:8} "
@@ -105,7 +122,10 @@ def _listar(fichas: Any) -> None:
             f"{'—' if hechos is None else hechos:>6} {fila.get('lotes') or 0:>5} "
             f"{fila.get('formulas') or 0:>5}  {fila.get('extraction_version') or '—'}"
         )
-    print(f"\n{len(filas)} expedientes con texto de pliego.")
+    print(
+        f"\n{len(filas)} expedientes mostrados (hasta {por_grupo} por fuente y grupo). "
+        "Para ver más: --por-grupo N; para una sola fuente: --fuente <fuente>."
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,6 +134,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("licitacion_id", nargs="?", help="id_externo del expediente")
     parser.add_argument("--listar", action="store_true", help="ver los candidatos y salir")
+    parser.add_argument("--fuente", help="con --listar: solo esta fuente (placsp, pscp, ted…)")
+    parser.add_argument(
+        "--por-grupo",
+        type=int,
+        default=15,
+        help="con --listar: cuántos enseñar por fuente y grupo (rica, pobre, fallida, sin ficha)",
+    )
     parser.add_argument("--caso", help="nombre de la carpeta del caso")
     parser.add_argument(
         "--completo",
@@ -128,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
 
     fichas = TenderFactSheetsRepository()
     if args.listar:
-        _listar(fichas)
+        _listar(fichas, fuente=args.fuente, por_grupo=args.por_grupo)
         return 0
 
     if not args.licitacion_id or not args.caso:
