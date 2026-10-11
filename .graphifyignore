@@ -36,7 +36,7 @@ data/*.log
 docs/codegraph/
 docs/.obsidian/
 
-# graphify output (graph.json/GRAPH_REPORT.md/graph.html se commitean; el resto no)
+# graphify output (caché local, no se versiona)
 graphify-out/
 
 # Agent/skill directories (no son código del proyecto)

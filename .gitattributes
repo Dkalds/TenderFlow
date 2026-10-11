@@ -1,4 +1,15 @@
 * text=auto eol=lf
+
+# Ficheros a los que casi todos los PR añaden entradas. Con `merge=union`, dos
+# ramas que añaden ítems en el mismo punto se fusionan conservando los dos en
+# vez de dar conflicto. Lo aplica el git local, no el servidor: GitHub sigue
+# marcando el PR «con conflictos» hasta que alguien trae master a la rama con
+# `git merge origin/master`, que ahí ya se resuelve solo. Si las dos ramas
+# reescriben la misma línea quedan las dos versiones, sin marcas de conflicto:
+# tras fusionar, mirar el diff de estos dos ficheros.
+docs/IMPROVEMENT_BACKLOG.md merge=union
+docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md merge=union
+
 *.png binary
 *.jpg binary
 *.jpeg binary

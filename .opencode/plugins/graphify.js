@@ -5,7 +5,7 @@ import { join } from "path";
 
 const SEARCH_COMMAND = /(^|[;&|\s])(grep|rg|ripgrep|find|fd|ack|ag)(\s|$)/;
 const REMINDER =
-  '[graphify] Knowledge graph available in graphify-out/. Use graphify query "<question>" when the CLI exists; otherwise read the committed artifacts before searching raw files.';
+  '[graphify] Knowledge graph available in graphify-out/. Use graphify query "<question>" before searching raw files.';
 
 export const GraphifyPlugin = async ({ directory }) => {
   let reminded = false;

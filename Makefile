@@ -137,11 +137,20 @@ test-e2e:  ## Tests end-to-end
 eval-llm:  ## Eval manual de generación RAG con un LLM real (sin BD, fuera de CI; requiere la API key del LLM)
 	python scripts/eval_rag_generation.py
 
+eval-ficha:  ## Eval de la ficha del pliego con el LLM real (sin BD, fuera de CI; requiere la API key del LLM)
+	python scripts/eval_ficha.py
+
 test-property:  ## Tests basados en propiedades (hypothesis)
 	pytest tests/ -m property
 
 test-load:  ## Tests de carga/benchmark
 	pytest tests/ -m load
+
+# El prompt de clasificación, no la generación RAG (eso es `eval-llm`). Llama al
+# proveedor de `LLM_TECH_LABELING_MODEL`: necesita su API key y consume cuota.
+.PHONY: eval-clasificacion
+eval-clasificacion:  ## Eval manual del prompt «¿es TI?» con el LLM real: estabilidad y A/B (ARGS="--entrada f.jsonl --contra antes.json")
+	python scripts/eval_clasificacion_llm.py $(ARGS)
 
 # ── Lockfile reproducible con hashes (uv) ────────────────────────────────
 # Requiere uv instalado (https://github.com/astral-sh/uv).

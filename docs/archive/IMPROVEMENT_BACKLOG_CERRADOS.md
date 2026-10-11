@@ -21,6 +21,21 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-10-11 — el grafo deja de versionarse
+
+**Cerrado el 2026-10-11** (rama `claude/ai-dev-tools-architecture-a18cd2`). Decisión: `graphify-out/` sale del control de versiones y queda como caché local de la máquina que tiene el CLI. Ese día pesaba **52,4 MB** en `HEAD` (51,6 de `graph.json`), por encima de los 50 MB que AGENTS.md §1 fijaba para volver a decidir, y llevaba 51 commits de retraso respecto al código. El motivo para conservarlo —que lo leyeran las sesiones sin el CLI— no se cumplía: ninguna herramienta de lectura de un agente abre un JSON de 51 MB. Lo sustituye `scripts/code_map.py` (definición y usos de un símbolo, importadores de un módulo, esquema de un paquete o un fichero; solo stdlib, sin artefacto que caduque), que pasa a ser el paso 2 de AGENTS.md §1. El hook `session_start_contexto.py` siembra el grafo en los worktrees nuevos copiándolo del checkout principal. Ni artefacto de CI ni LFS: el CLI no existe en CI, así que no habría quien lo generase. El historial conserva los blobs antiguos; el cambio frena el crecimiento del clon, no lo encoge.
+
+### [P3] Decidir el destino del peso de `graphify-out/` (28 MB y creciendo)
+- **Área:** graphify-out, .claude/hooks
+- **Problema:** los artefactos commiteados del knowledge graph pesan **28 MB** (medido 2026-08-18): cada clone y cada sesión remota los paga, y el hook de stale-flag deja el working tree dirty en sesiones sin el CLI (que no pueden limpiarlo). El valor para agentes sin CLI es real (AGENTS.md §1), así que es un trade-off consciente a revisar, no un error. **La cifra de este ítem estaba desactualizada: decía 17 MB, o sea que el artefacto creció un 65% mientras la decisión seguía aplazada.** La comparación "~52% del repo" ya no es evaluable tal cual y se retira; lo que decide es el absoluto y su tendencia.
+- **Acceptance criteria:**
+  - Decisión registrada: mantener como está, excluir `wiki/` (la parte más pesada y más regenerable), o mover a artefacto de CI/LFS con fallback textual documentado en AGENTS.md §1.
+- **Files de partida:** [AGENTS.md](../AGENTS.md), [.claude/hooks/](../.claude/hooks/)
+- **Riesgo:** bajo — decisión de mantenedor; sin impacto en runtime.
+- *Estado (2026-09-19):* **40,6 MB versionados** (suma de blobs de `graphify-out/` en `HEAD`, `git ls-tree -r -l`), un 45 % más que los 28 MB de agosto; el working tree llega a ~41,7 MB cuando el hook post-commit lo reescribe. La premisa de «excluir `wiki/`» ya no vale: `wiki/` pesa unos KB y el 98 % es `graph.json` (39,9 MB), seguido de `GRAPH_REPORT.md` (0,7 MB).
+
+---
+
 ## Cerrados el 2026-10-03 — el gate local de tests
 
 **Cerrados el 2026-10-03** en el PR #402 (rama `claude/tests-error-detection-9aa70b`), los dos en el mismo cambio.
