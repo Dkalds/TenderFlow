@@ -88,6 +88,7 @@ jobs:
       # arranca ese servidor MCP: sin nombrarla, la revisión se queda en el log
       # del run. `--comment` en el prompt es lo que la manda al PR.
       - uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        id: review
         if: steps.credencial.outputs.hay == 'true'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -97,3 +98,30 @@ jobs:
           plugins: "code-review@claude-code-plugins"
           prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
           claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
+
+      # La acción esconde la salida del modelo, y cuando la API rechaza la
+      # primera petición su anotación solo dice «result is_error:true». Esa
+      # misma firma (un turno, coste 0, ~2 s) la dan un token OAuth rechazado
+      # (401), el límite de la suscripción (429) y un saldo agotado: sin el
+      # texto del resultado no se distinguen, y `gh run rerun --debug` no lo
+      # destapa. `show_full_output: true` sí, pero vuelca la sesión entera en
+      # los logs de un repositorio público.
+      #
+      # Esto imprime solo el estado de la API y, si la revisión no llegó a
+      # empezar (un turno como mucho), el principio del mensaje de error. Con
+      # más turnos el resultado es ya texto de la revisión y no se copia.
+      - name: Motivo del fallo
+        if: failure() && steps.review.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          jq -rs '
+            flatten | map(select(.type? == "result")) | last // {}
+            | (if (.num_turns // 0) <= 1
+               then (.result // "" | tostring | gsub("[\r\n]+"; " ") | gsub("%"; "%25") | .[0:300])
+               else "(la revisión había empezado: el texto no se copia)" end) as $texto
+            | "::error title=Claude review no pudo ejecutarse::"
+              + "api_error_status=\(.api_error_status // "-") "
+              + "terminal_reason=\(.terminal_reason // "-") "
+              + "num_turns=\(.num_turns // "-") · \($texto)"
+          ' "$EXECUTION_FILE" || echo "::warning::No se pudo leer el fichero de ejecución de la acción."
