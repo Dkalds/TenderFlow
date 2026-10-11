@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from scripts.revisar_ficha_golden import anadir, estado, revisar
+from scripts.revisar_ficha_golden import _numero_es, anadir, estado, revisar
 from services.rag.ficha_golden import (
     CasoGolden,
     escribir_golden,
@@ -272,3 +272,53 @@ def test_estado_es_falso_con_dos_completos_o_con_hechos_sin_revisar(tmp_path: Pa
 
     assert estado(tmp_path / "pocos-completos") is False
     assert estado(tmp_path / "sin-revisar") is False
+
+
+@pytest.mark.parametrize(
+    ("escrito", "esperado"),
+    [
+        ("150.000", "150000"),
+        ("1.250.000,50", "1250000.50"),
+        ("1,250,000.75", "1250000.75"),
+        ("60,5", "60.5"),
+        ("12.5", "12.5"),
+        ("150 000 €", "150000"),
+        ("40%", "40"),
+        ("abc", "abc"),
+    ],
+)
+def test_numero_es_entiende_como_se_escribe_un_importe_en_un_pliego(
+    escrito: str, esperado: str
+) -> None:
+    assert _numero_es(escrito) == esperado
+
+
+def _importe(importe: float | None) -> dict[str, Any]:
+    return {**_solvencia(), "amount_eur": importe}
+
+
+def test_un_importe_con_punto_de_miles_no_se_guarda_como_decimal(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # «150.000» es ciento cincuenta mil. Leído como decimal dejaría en el
+    # golden un «correcto» de 150 €, y la extracción buena saldría como error.
+    caso = _crear(tmp_path / "caso", {"economic_solvency": [_importe(100000.0)]})
+
+    assert revisar(caso, leer=_respuestas("v", "150.000")) == 1
+
+    (hecho,) = leer_caso(caso).golden.hechos["economic_solvency"]
+    assert hecho.hecho["amount_eur"] == 150000.0
+    assert hecho.valor_extraido == {"amount_eur": 100000.0}
+    # Y se enseña lo que se ha entendido, para que un malentendido se vea.
+    assert "150000" in capsys.readouterr().out
+
+
+def test_anadir_entiende_los_importes_y_el_guion_deja_un_campo_sin_valor(tmp_path: Path) -> None:
+    caso = _crear(tmp_path / "caso", {}, completo=True)
+    respuestas = _respuestas("lots", "7", "1", _CITA, "-", "1.250.000,50", "", "")
+
+    assert anadir(caso, leer=respuestas) == 1
+
+    (hecho,) = leer_caso(caso).golden.hechos["lots"]
+    assert hecho.hecho["lot_number"] is None
+    assert hecho.hecho["amount_eur"] == 1250000.5

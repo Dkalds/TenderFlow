@@ -34,10 +34,11 @@ Diez casos, tres de ellos completos, y ningún hecho sin veredicto.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from pydantic import ValidationError
 
@@ -119,6 +120,45 @@ def _ver_paginas(caso: Caso, hecho: dict[str, Any]) -> None:
         print(str(pagina.get("texto")) if pagina else "(esa página no está entre las capturadas)")
 
 
+_SOLO_CIFRAS_Y_SEPARADORES = re.compile(r"[\d.,]+")
+_MILES_CON_PUNTO = re.compile(r"\d{1,3}(\.\d{3})+")
+
+
+def _numero_es(texto: str) -> str:
+    """Un número tal como se escribe en un pliego, en la forma que entiende Python.
+
+    «150.000» es ciento cincuenta mil, no ciento cincuenta: leído como decimal
+    dejaría en el golden un valor «correcto» que no lo es. Con los dos
+    separadores, el último es el decimal; con solo comas, una es decimal y
+    varias son de miles; con solo puntos, son de miles si agrupan de tres en
+    tres. Lo que no es un número se devuelve tal cual, para que lo rechace el
+    modelo con su propio mensaje.
+    """
+    limpio = "".join(c for c in texto if not c.isspace() and c not in "€%")
+    if not _SOLO_CIFRAS_Y_SEPARADORES.fullmatch(limpio):
+        return texto
+    if "," in limpio and "." in limpio:
+        decimal, miles = (",", ".") if limpio.rfind(",") > limpio.rfind(".") else (".", ",")
+        return limpio.replace(miles, "").replace(decimal, ".")
+    if "," in limpio:
+        return limpio.replace(",", ".") if limpio.count(",") == 1 else limpio.replace(",", "")
+    if _MILES_CON_PUNTO.fullmatch(limpio):
+        return limpio.replace(".", "")
+    return limpio
+
+
+def _es_numerico(familia: str, campo: str) -> bool:
+    anotacion = modelo_de(familia).model_fields[campo].annotation
+    return bool({float, int} & {anotacion, *get_args(anotacion)})
+
+
+def _interpretar(familia: str, campo: str, respuesta: str) -> Any:
+    """Lo tecleado, listo para validar: ``-`` es «sin valor» y los números van a la española."""
+    if respuesta == "-":
+        return None
+    return _numero_es(respuesta) if _es_numerico(familia, campo) else respuesta
+
+
 def _pedir_campo(familia: str, hecho: dict[str, Any], campo: str, leer: Lector) -> Any:
     """Pide un campo hasta que encaje en el modelo. Vacío conserva el valor; ``-`` lo borra."""
     modelo = modelo_de(familia)
@@ -126,14 +166,18 @@ def _pedir_campo(familia: str, hecho: dict[str, Any], campo: str, leer: Lector) 
         respuesta = leer(f"    {campo} [{hecho.get(campo)}] > ").strip()
         if not respuesta:
             return hecho.get(campo)
-        valor = None if respuesta == "-" else respuesta
+        valor = _interpretar(familia, campo, respuesta)
         try:
             validado = modelo.model_validate({**hecho, campo: valor})
         except ValidationError as exc:
             motivo = next((e["msg"] for e in exc.errors() if campo in e["loc"]), str(exc))
             print(f"    No vale: {motivo}")
             continue
-        return validado.model_dump(mode="json")[campo]
+        entendido = validado.model_dump(mode="json")[campo]
+        # Se enseña lo que se ha entendido: un número mal leído se ve aquí o
+        # no se ve nunca.
+        print(f"      → {campo} = {entendido}")
+        return entendido
 
 
 def _corregir(familia: str, hecho: dict[str, Any], leer: Lector) -> HechoGolden | None:
@@ -309,9 +353,10 @@ def anadir(carpeta: Path, *, leer: Lector = input) -> int:
             preguntar = [*CAMPOS_CLAVE[familia]]
             preguntar += [c for c in obligatorios if c not in preguntar]
             for campo in preguntar:
-                respuesta = leer(f"    {campo} > ").strip()
+                respuesta = leer(f"    {campo} (vacío o «-» = sin valor) > ").strip()
                 if respuesta:
-                    hecho[campo] = respuesta
+                    hecho[campo] = _interpretar(familia, campo, respuesta)
+                    print(f"      → {campo} = {hecho[campo]}")
             descripcion = leer("    descripción (vacío = la cita) > ").strip()
             if descripcion:
                 hecho["description"] = descripcion
