@@ -65,6 +65,7 @@ from services.rag.fact_sheet import (  # noqa: E402
     extraer_hechos,
 )
 from services.rag.ficha_eval import (  # noqa: E402
+    CLAVES_DE_MINIMOS,
     MIN_POSITIVOS_POR_FAMILIA,
     Informe,
     MetricasFamilia,
@@ -169,7 +170,7 @@ def _tabla(por_familia: Mapping[str, MetricasFamilia], *, completos: bool) -> li
     ultima = "f.pos" if completos else "s.juz"
     lineas = [
         f"{'familia':22} {'extr':>5} {'posit':>5} {'acier':>5} {'v.dist':>6} {'err':>4} "
-        f"{ultima:>5}  {'precisión' if completos else 'conservados':>11}  "
+        f"{'dupl':>4} {ultima:>5}  {'precisión' if completos else 'conservados':>11}  "
         f"{'cobertura' if completos else '':>9}"
     ]
     total = MetricasFamilia()
@@ -187,7 +188,7 @@ def _fila(nombre: str, m: MetricasFamilia, *, completos: bool, exigir_poblacion:
     ultima = m.falsos_positivos if completos else m.sin_juzgar
     recuentos = (
         f"{nombre:22} {m.extraidos:>5} {m.positivos:>5} {m.aciertos:>5} "
-        f"{m.valor_distinto:>6} {m.errores_confirmados:>4} {ultima:>5}"
+        f"{m.valor_distinto:>6} {m.errores_confirmados:>4} {m.duplicados:>4} {ultima:>5}"
     )
     if exigir_poblacion and m.positivos < MIN_POSITIVOS_POR_FAMILIA:
         return f"{recuentos}  sin datos suficientes ({m.positivos} positivos)"
@@ -200,7 +201,8 @@ def formatear(informe: Informe, selector: Mapping[str, tuple[int, int]]) -> str:
     """El informe en texto, listo para pegarlo en un PR."""
     lineas = [
         f"Casos: {informe.n_completos} completos, {informe.n_parciales} parciales"
-        f" · extracciones fallidas: {informe.casos_fallidos}",
+        f" · extracciones fallidas: {informe.casos_fallidos}"
+        f" · vacías: {informe.extracciones_vacias}",
         f"Descartes del extractor: {informe.invalidos} por esquema, "
         f"{informe.inverificables} por cita no literal",
         "",
@@ -239,7 +241,9 @@ def _leer_minimos(raiz: Path) -> dict[str, float] | None:
 
 def _escribir_pendientes(raiz: Path, resultados: list[ResultadoCaso]) -> None:
     for resultado in resultados:
-        if resultado.completo:
+        # Un caso cuya extracción falló no dice nada nuevo: sus pendientes de
+        # una ejecución anterior siguen siendo los que hay que revisar.
+        if resultado.completo or resultado.fallo is not None:
             continue
         escribir_pendientes(
             raiz / resultado.nombre,
@@ -289,6 +293,7 @@ def _escribir_salida(
         )
         + "\n",
         encoding="utf-8",
+        newline="\n",
     )
 
 
@@ -301,6 +306,19 @@ def _fijar_minimos(raiz: Path, model: str) -> int:
             return _sin_casos()
         print(f"\n── Ejecución {numero} de {EJECUCIONES_DE_BASE} ──")
         print(formatear(informe, selector))
+        # La base se mide con todos los casos y todas las extracciones hechas:
+        # una caída del proveedor o un caso a medio revisar dejarían el mínimo
+        # a la altura de ese accidente, y los mínimos solo suben.
+        evaluados = {r.nombre for r in resultados}
+        saltados = [c.name for c in listar_casos(raiz) if c.name not in evaluados]
+        fallidos = [r.nombre for r in resultados if r.fallo is not None]
+        if saltados or fallidos:
+            print("\nNo se fijan los mínimos: la medición no está completa.")
+            if saltados:
+                print(f"  · casos sin revisar, no evaluados: {', '.join(saltados)}")
+            if fallidos:
+                print(f"  · extracciones fallidas: {', '.join(fallidos)}")
+            return 1
         ejecuciones.append(informe.totales)
 
     cobertura = _selector_total(selector)
@@ -310,7 +328,10 @@ def _fijar_minimos(raiz: Path, model: str) -> int:
     try:
         nuevos = minimos_desde(ejecuciones, cobertura)
     except ValueError as exc:
-        print(f"\nNo se fijan los mínimos: {exc}. Hace falta al menos un caso completo.")
+        print(
+            f"\nNo se fijan los mínimos: {exc}. Hacen falta casos completos y casos "
+            "parciales, los dos con hechos ciertos."
+        )
         return 1
 
     previos = _leer_minimos(raiz) or {}
@@ -343,6 +364,9 @@ def _fijar_minimos(raiz: Path, model: str) -> int:
         )
         + "\n",
         encoding="utf-8",
+        # Sin esto, en Windows saldría con CRLF y el hook `mixed-line-ending`
+        # tumbaría el commit de los mínimos.
+        newline="\n",
     )
     print(f"\nMínimos escritos en {raiz / NOMBRE_MINIMOS}: {nuevos}")
     return 0
@@ -412,7 +436,12 @@ def main(argv: list[str] | None = None) -> int:
             "sin mínimos no hay nada que comprobar, y eso no es un aprobado."
         )
         return 1
-    faltas = comprobar_minimos(totales, minimos)
+    # Un fichero al que le falta una clave no comprueba esa métrica, y eso no
+    # puede salir como «se cumplen los mínimos».
+    faltas = [
+        f"{clave}: falta en {NOMBRE_MINIMOS}" for clave in CLAVES_DE_MINIMOS if clave not in minimos
+    ]
+    faltas += comprobar_minimos(totales, minimos)
     if faltas:
         print("\n--check: por debajo de los mínimos:")
         for falta in faltas:

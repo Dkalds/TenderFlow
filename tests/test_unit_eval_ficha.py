@@ -20,11 +20,12 @@ from pydantic import SecretStr
 
 import scripts.eval_ficha as eval_ficha
 from services.rag.fact_sheet import ExtraccionHechos
-from services.rag.ficha_eval import MetricasFamilia, agregar, medir_caso
+from services.rag.ficha_eval import CLAVES_DE_MINIMOS, MetricasFamilia, agregar, medir_caso
 from services.rag.ficha_golden import (
     CasoGolden,
     escribir_golden,
     escribir_paginas,
+    escribir_pendientes,
     leer_caso,
     leer_pendientes,
 )
@@ -231,7 +232,9 @@ def test_sin_casos_evaluables_devuelve_2(
     assert "capturar_ficha_golden" in capsys.readouterr().err
 
 
-def _minimos(raiz: Path, **minimos: float) -> None:
+def _minimos(raiz: Path, *, solo_estas: bool = False, **minimos: float) -> None:
+    """Un ``minimos.json`` con las cuatro claves a cero, salvo las que se den."""
+    base = {} if solo_estas else dict.fromkeys(CLAVES_DE_MINIMOS, 0.0)
     (raiz / "minimos.json").write_text(
         json.dumps(
             {
@@ -239,7 +242,7 @@ def _minimos(raiz: Path, **minimos: float) -> None:
                 "model": "m",
                 "extraction_version": "tender-facts-v6",
                 "ejecuciones": 3,
-                "minimos": minimos,
+                "minimos": {**base, **minimos},
             }
         ),
         encoding="utf-8",
@@ -404,3 +407,89 @@ def test_salida_escribe_el_resultado_en_json(
     assert escrito["totales"]["selector_cobertura"] == 1.0
     assert escrito["casos"][0]["nombre"] == "caso-a"
     assert escrito["completos"]["award_criteria"]["aciertos"] == 2
+    assert b"\r" not in salida.read_bytes()
+
+
+@pytest.mark.parametrize("contenido", [{}, {"precision_completos": 0.5}])
+def test_check_falla_si_a_minimos_json_le_faltan_claves(
+    contenido: dict[str, float],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Un fichero editado a mano al que le falta una clave no comprueba esa
+    # métrica: sin esto, `--check` decía «se cumplen los mínimos» con `{}`.
+    _crear(tmp_path, "caso-a", completo=True)
+    _crear(tmp_path, "caso-b", completo=False)
+    _minimos(tmp_path, solo_estas=True, **contenido)
+    _con_extractor(monkeypatch, _extractor())
+
+    assert eval_ficha.main(["--raiz", str(tmp_path), "--check"]) == 1
+    assert "selector_cobertura" in capsys.readouterr().out
+
+
+def test_el_informe_cuenta_duplicados_y_extracciones_vacias(tmp_path: Path) -> None:
+    _crear(tmp_path, "con-duplicado", completo=True)
+    _crear(tmp_path, "vacio", completo=True)
+    extraer = _extractor({"con-duplicado": [_PRECIO, _PRECIO, _CALIDAD], "vacio": []})
+
+    informe, _resultados, selector = eval_ficha.evaluar(tmp_path, model="m", extraer=extraer)
+    texto = eval_ficha.formatear(informe, selector)
+
+    assert informe.completos["award_criteria"].duplicados == 1
+    assert "vacías: 1" in texto
+    cabecera = next(linea for linea in texto.splitlines() if linea.startswith("familia"))
+    assert "dupl" in cabecera
+
+
+def test_fijar_minimos_se_niega_si_alguna_extraccion_falla(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Una caída del proveedor en una llamada dejaría el mínimo a la altura de
+    # la caída: la base se mide con todas las extracciones hechas.
+    _crear(tmp_path, "caso-a", completo=True)
+    _crear(tmp_path, "caso-b", completo=False)
+    _con_extractor(monkeypatch, _extractor(falla_en="caso-b"))
+
+    assert eval_ficha.main(["--raiz", str(tmp_path), "--fijar-minimos"]) == 1
+
+    assert not (tmp_path / "minimos.json").exists()
+    assert "caso-b" in capsys.readouterr().out
+
+
+def test_fijar_minimos_se_niega_si_se_salta_un_caso_sin_revisar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _crear(tmp_path, "caso-a", completo=True)
+    _crear(tmp_path, "caso-b", completo=False)
+    _crear(tmp_path, "a-medias", completo=False, veredicto=None)
+    _con_extractor(monkeypatch, _extractor())
+
+    assert eval_ficha.main(["--raiz", str(tmp_path), "--fijar-minimos"]) == 1
+
+    assert not (tmp_path / "minimos.json").exists()
+    assert "a-medias" in capsys.readouterr().out
+
+
+def test_fijar_minimos_escribe_con_saltos_lf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _crear(tmp_path, "caso-a", completo=True)
+    _crear(tmp_path, "caso-b", completo=False)
+    _con_extractor(monkeypatch, _extractor())
+
+    assert eval_ficha.main(["--raiz", str(tmp_path), "--fijar-minimos"]) == 0
+
+    assert b"\r" not in (tmp_path / "minimos.json").read_bytes()
+
+
+def test_pendientes_no_borra_los_de_un_caso_cuya_extraccion_fallo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parcial = _crear(tmp_path, "parcial", completo=False)
+    escribir_pendientes(parcial, [("award_criteria", _MEJORAS)])
+    _con_extractor(monkeypatch, _extractor(falla_en="parcial"))
+
+    assert eval_ficha.main(["--raiz", str(tmp_path), "--pendientes"]) == 0
+
+    assert len(leer_pendientes(parcial)) == 1
