@@ -8,14 +8,16 @@ name: Claude review
 # autor pensó en probar; nadie con contexto limpio leía el diff.
 #
 # **Está apagado hasta que el dueño lo encienda**, porque cada revisión cuesta
-# dinero y el repo ya tiene un `ANTHROPIC_API_KEY` (el del producto, lo usa
-# pliegos.yml) que este workflow no debe gastar por sorpresa:
+# dinero. `ANTHROPIC_API_KEY` es además el nombre que pliegos.yml reserva para
+# el producto: si algún día se define ese secreto, este workflow no debe
+# empezar a gastarlo sin que nadie lo haya decidido. Hacen falta las dos cosas:
 #
 #   1. Variable de repositorio `CLAUDE_REVIEW_ENABLED` = `true`
 #      (`gh variable set CLAUDE_REVIEW_ENABLED --body true`).
 #   2. Una credencial como secreto: `CLAUDE_CODE_OAUTH_TOKEN` (la genera
-#      `claude setup-token`, tira de la suscripción) o, si no existe esa, el
-#      `ANTHROPIC_API_KEY` del repo (se factura por uso).
+#      `claude setup-token`, tira de la suscripción) o, si no existe esa,
+#      `ANTHROPIC_API_KEY` (se factura por uso). El 2026-10-11 el repositorio
+#      no tenía ninguna de las dos.
 #
 # Sin la variable el job no arranca; con la variable y sin credencial, termina
 # en verde con un aviso. No es un check requerido: informa, no bloquea.
