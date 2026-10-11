@@ -100,6 +100,37 @@ class TestPatron:
     def test_sigue_respetando_los_limites_de_palabra(self, keyword: str, texto: str) -> None:
         assert not patron_de_keywords([keyword]).search(texto), (keyword, texto)
 
+    @pytest.mark.parametrize(
+        ("keyword", "texto"),
+        [
+            # Títulos reales de PSCP etiquetados SAP (2026-10-11): «concurs» es
+            # concurso en catalán, no el plural de SAP Concur.
+            ("concur", "Concurs de Castells de la Bisbal del Penedès"),
+            ("concur", "Pagament Jurat Concurs Pedralbes_PR"),
+            ("sap", "Saps com reciclar? Campanya de sensibilització"),
+            ("oracle", "Els oracles de l'antiga Grècia: conferències"),
+            ("licencias sap", "Licencias saps"),
+            # La Gerencia de Informática de la Seguridad Social no es un SIG.
+            ("gis", "Mantenimiento de sistemas de información de la GISS para el INSS"),
+        ],
+    )
+    def test_un_nombre_de_producto_no_tiene_plural(self, keyword: str, texto: str) -> None:
+        assert not patron_de_keywords([keyword]).search(texto), (keyword, texto)
+
+    @pytest.mark.parametrize(
+        ("keyword", "texto"),
+        [
+            ("concur", "Suministro de licencias SAP CONCUR para el Grupo RENFE"),
+            ("migración sap", "MIGRACION  SAP AL NUEVO ENTORNO"),
+            ("s/4hana", "Llicències SAP S/4HANA"),
+            ("gis", "Plataforma GIS corporativa del Ayuntamiento"),
+        ],
+    )
+    def test_un_nombre_de_producto_sigue_casando_en_singular(
+        self, keyword: str, texto: str
+    ) -> None:
+        assert patron_de_keywords([keyword]).search(texto), (keyword, texto)
+
 
 # ── 2. Lo que devuelven los consumidores ────────────────────────────────────
 
@@ -127,6 +158,12 @@ class TestMatchesTechnology:
 
     def test_sin_texto_no_casa(self) -> None:
         assert matches_technology(None, "") == (False, {})
+
+    def test_un_concurso_en_catalan_no_es_sap_concur(self) -> None:
+        assert matches_technology(
+            "anunci de felicitació a la Colla Castellera La Bisbal del Penedès "
+            "amb motiu de la seva victòria en el concurs de castells"
+        ) == (False, {})
 
     def test_texto_con_tildes_descompuestas(self) -> None:
         """El texto extraído de un PDF llega a menudo en NFD (la tilde como signo
@@ -159,6 +196,9 @@ class TestMatchesSap:
         _, kws = matches_sap("Soporte SAP ERP")
         assert {"sap", "sap erp"} <= set(kws)
 
+    def test_un_concurso_en_catalan_no_es_sap(self) -> None:
+        assert matches_sap("Concurs de Castells de la Bisbal del Penedès") == (False, [])
+
 
 # ── 3. La puerta de PSCP compara con la forma canónica ──────────────────────
 
@@ -178,6 +218,75 @@ class TestPuertaPscp:
         senal = senal_tecnologica("Suport SAP FI/CO i SAP MM", "79411000-8")
         assert senal.motivo == MOTIVO_ADMITIDA
         assert "SAP" in senal.tecnologias
+
+    @pytest.mark.parametrize(
+        ("titulo", "cpv"),
+        [
+            # Las tres filas de producción que destaparon el fallo (2026-10-11).
+            ("Concurs de Castells de la Bisbal del Penedès", "79952100-3"),
+            (
+                "anunci de felicitació a la Colla Castellera La Bisbal del Penedès "
+                "amb motiu de la seva victòria en el concurs de castells",
+                "79341000-6",
+            ),
+            ("Pagament Jurat Concurs Pedralbes_PR", "71210000-3"),
+        ],
+    )
+    def test_un_concurso_no_entra_como_sap(self, titulo: str, cpv: str) -> None:
+        from scraper.connectors.pscp import MOTIVO_SIN_SENAL, senal_tecnologica
+
+        assert senal_tecnologica(titulo, cpv).motivo == MOTIVO_SIN_SENAL
+
+    def test_un_concurso_de_software_entra_por_cpv_y_sin_etiqueta_sap(self) -> None:
+        """Con CPV 72 la fila es TI, pero «concurs» no la hace SAP."""
+        from scraper.connectors.pscp import MOTIVO_CPV_TI, senal_tecnologica
+
+        senal = senal_tecnologica("Concurs de projectes per a la nova web", "72413000-8")
+        assert senal.motivo == MOTIVO_CPV_TI
+        assert senal.tecnologias == ()
+
+    @pytest.mark.parametrize(
+        ("titulo", "cpv"),
+        [
+            # «Concurs» sin la ese (pscp:F240000036) y partido por un guion de
+            # final de línea (PLACSP 2023/000169): `concur` a secas es ambigua.
+            ("Concur monòlegs alumnat escola Rec Comtal.Tr.Vella", "98300000-6"),
+            (
+                "Servicios y suministros necesarios para el desarrollo de la activi-dad "
+                "(exhibiciones, competiciones y concur-sos deportivos)",
+                "92600000",
+            ),
+        ],
+    )
+    def test_concur_a_secas_necesita_un_cpv_de_software(self, titulo: str, cpv: str) -> None:
+        from scraper.connectors.pscp import MOTIVO_AMBIGUA_SIN_CPV_TI, senal_tecnologica
+
+        assert senal_tecnologica(titulo, cpv).motivo == MOTIVO_AMBIGUA_SIN_CPV_TI
+
+    @pytest.mark.parametrize(
+        ("titulo", "cpv"),
+        [
+            # Concur nombrado sin «SAP», corroborado por el CPV (PLACSP 2024-02032).
+            (
+                "Servicio de desarrollo y configuración de dietas para viajes "
+                "internacionales en la aplicación Concur.",
+                "72267100",
+            ),
+            # CPV de ingeniería, pero «SAP Concur» es `sap concur`, que no es
+            # ambigua (pscp:CONTR/2020/0000000680).
+            (
+                "Servei d'implantació del mòdul de gestió de despeses de viatges "
+                "SAP Concur Expenses i aprovisionament de les llicències",
+                "71356200-0",
+            ),
+        ],
+    )
+    def test_sap_concur_de_verdad_sigue_entrando(self, titulo: str, cpv: str) -> None:
+        from scraper.connectors.pscp import MOTIVO_ADMITIDA, senal_tecnologica
+
+        senal = senal_tecnologica(titulo, cpv)
+        assert senal.motivo == MOTIVO_ADMITIDA
+        assert senal.tecnologias == ("SAP",)
 
 
 # ── 4. El tier `rules` del clasificador ─────────────────────────────────────

@@ -48,6 +48,11 @@ KEYWORDS_AMBIGUAS: frozenset[str] = frozenset(
         # Servei d'Atenció Primària («SAP CENTRE»), un «servei d'assessorament
         # psicològic (SAP)».
         "sap",
+        # «Concurs» (concurso, en catalán) sin la ese o partido por un guion de
+        # final de línea: «Concur monòlegs alumnat» (CPV 98), «competiciones y
+        # concur-sos deportivos» (CPV 92). SAP Concur nombrado entero casa
+        # además con `sap concur`, que no es ambigua.
+        "concur",
         # Cables y adaptadores Apple Lightning, AirPods; kits de anticuerpos
         # «Lightning-Link». Casa incluso con CPV de material informático (302),
         # por eso la corroboración es 48/72 y no «cualquier cosa informática».
@@ -128,8 +133,8 @@ _CPV_CORROBORA_AMBIGUA: tuple[str, ...] = (*CPV_PREFIXES_TI, "302", "50312", "50
 #: Ambiguas que solo corrobora un CPV 48/72: casan con compras de material
 #: informático que no son la tecnología que nombran. Con 302 volverían los
 #: cables Lightning (Salesforce) y los ordenadores que el ICS compra con su
-#: «CODI SAP».
-_AMBIGUAS_ESTRICTAS: frozenset[str] = frozenset({"sap", "lightning"})
+#: «CODI SAP». Concur es software como servicio: no lo corrobora un equipo.
+_AMBIGUAS_ESTRICTAS: frozenset[str] = frozenset({"sap", "concur", "lightning"})
 
 #: Motivos del veredicto. Los dos de descarte son también los contadores del
 #: resumen del run (ver `PscpConnector.contadores_de_descarte`).
