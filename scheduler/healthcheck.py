@@ -49,6 +49,7 @@ from db.repositories.client_errors import (  # noqa: E402
 from db.repositories.publico import estado_refresco_canonicas  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S  # noqa: E402
+from scheduler.latido import enviar_latido  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -696,10 +697,12 @@ def comprobar_y_alertar() -> dict[str, Any]:
 
     Es lo que ``scrape-daily.yml`` ejecuta al final de cada pasada
     (``python -m scheduler.healthcheck --alert``), sin pasar por la CLI: lo usa
-    el carril diario del worker (``scheduler/jobs/daily_atom.py``).
+    el carril diario del worker (``scheduler/jobs/daily_atom.py``). Termina con
+    el latido externo (``scheduler/latido.py``), igual que la CLI con ``--alert``.
     """
     result = run_check()
     alertar(result)
+    enviar_latido(result)
     return result
 
 
@@ -735,6 +738,9 @@ def main() -> int:
 
     if args.alert:
         alertar(result)
+        # El latido acompaña a las alertas: sin `--alert` esto es una consulta
+        # a mano, no el vigilante.
+        enviar_latido(result)
 
     if args.alert and result["status"] == "degraded":
         # El email ya avisó del estado degradado; el job de CI queda verde para
