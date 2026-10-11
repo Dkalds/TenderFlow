@@ -154,12 +154,20 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
     `make check-api-surface` y `make status`. Los dos corren también dentro
     de la suite (`tests/test_unit_ratchet_*.py`), así que CI los ejecuta
     aunque no tengan paso propio en el workflow.
+- Si añadís, cambiás o retirás algo que una persona hace con el producto de
+    punta a punta: [docs/casos-de-uso.md](docs/casos-de-uso.md) es el catálogo,
+    y cada caso necesita un recorrido —un test de escenario por la API
+    (`tests/test_escenario_*.py`) o un E2E (`web/e2e/`)— que lo cite por su
+    identificador. `make check-casos-uso` lo comprueba y `make casos-uso`
+    regenera la tabla; corre también dentro de la suite
+    (`tests/test_unit_ratchet_casos_uso.py`).
 - Gates que exigen BD sembrada y por eso no entran en `make check`: `make
     fuzz-api` (ninguna operación puede devolver 5xx; ratchet `KNOWN_5XX` que
     solo encoge) y los E2E de Playwright, que en CI corren contra Postgres +
     API + build de producción y **bloquean el merge**. `make audit-truth-check`
     mide la verdad del dato contra una BD real y su versión programada avisa
-    por email. `make mutation-sample` es informe periódico, no gate.
+    por email. `make mutation-sample` y `make web-mutation` (Stryker sobre
+    `web/src/lib`) son informes, no gates.
 
 Los tests usan exclusivamente Postgres y requieren `TEST_DATABASE_URL`. Si
 faltan dependencias, Postgres o el CLI de Graphify, ejecutá solo los controles

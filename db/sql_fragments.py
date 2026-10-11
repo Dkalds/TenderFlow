@@ -460,9 +460,11 @@ def escape_like(texto: str) -> str:
 
     Es la única copia. Hubo seis —cuatro ``_escape_like`` privados y dos
     escritos en línea— y dos de ellos se dejaban la barra
-    (``tests/test_escape_like.py``). El llamante compone el patrón alrededor
-    del resultado (``f"%{escape_like(q)}%"``); lo que no puede hacer es
-    recortarlo o transformarlo después, porque partiría un par de escape.
+    (``tests/test_escape_like.py``; en las reglas de vigilancia lo había
+    encontrado ``tests/test_watchlist_rules_maquina_property.py``). El
+    llamante compone el patrón alrededor del resultado
+    (``f"%{escape_like(q)}%"``); lo que no puede hacer es recortarlo o
+    transformarlo después, porque partiría un par de escape.
     """
     return texto.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 

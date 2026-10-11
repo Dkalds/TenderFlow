@@ -714,6 +714,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
 - **Riesgo:** bajo.
 
+### [P2] Dar de alta el check externo del latido del healthcheck (acción del propietario)
+- **Área:** healthchecks.io (o equivalente), GitHub (variables cifradas de Actions), Render
+- **Problema:** `scheduler/latido.py` hace una petición a `HEALTHCHECK_HEARTBEAT_URL` tras cada healthcheck con alertas, pero la variable está vacía en todas partes: no hay check externo esperándola. Mientras tanto, si el cron deja de ejecutar el healthcheck o el correo deja de entregarse, nadie lo nota.
+- **Acceptance criteria:**
+  - El check creado (periodo de 6 h, gracia de 2 h) y su URL guardada en el repositorio de GitHub con el nombre `HEALTHCHECK_HEARTBEAT_URL`; pasos en [observability-alerts.md §3.1](runbooks/observability-alerts.md).
+  - `healthcheck.yml` lanzado a mano: el panel del servicio muestra el ping y el log del job dice `latido_enviado`.
+  - Al pasar el cron al worker, la misma URL como variable de `tenderflow-worker`.
+- **Files de partida:** [scheduler/latido.py](../scheduler/latido.py), [docs/runbooks/observability-alerts.md](runbooks/observability-alerts.md)
+- **Riesgo:** bajo.
+
 ### [P2] `render.yaml` no gobierna el servicio que corre en producción
 - **Área:** render.yaml, Render Dashboard (acción del usuario)
 - **Problema:** el Blueprint está en el repo, pero el servicio de producción se creó a mano por el dashboard y nunca se vinculó a él, así que el fichero documenta una intención que nadie aplica: editarlo no cambia nada y leerlo puede inducir a error sobre cómo está configurado el servicio real. Lo que sí está activo es `autoDeploy`, y **sin healthcheck configurado** — es decir, un deploy que arranca mal reemplaza igualmente al que funcionaba, sin rollback automático. (Estado observado en la sesión del 2026-08-04; **reconfirmar en el dashboard antes de actuar**, que es barato.)
@@ -930,6 +940,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [api/routes/me.py](../api/routes/me.py), [services/auth.py](../services/auth.py), [web/src/app/(dashboard)/ops/_components/administracion-view.tsx](../web/src/app/(dashboard)/ops/_components/administracion-view.tsx)
 - **Riesgo:** medio — revocar una clave que sí usa una integración la rompe; primero el inventario.
 
+### [P2] Confirmar que Sentry captura en el backend de producción (acción del propietario)
+- **Área:** Render (variables de `tenderflow-api` y `tenderflow-worker`), observability/sentry.py
+- **Problema:** `sentry-sdk` entró en los lockfiles el 2026-10-11; hasta entonces el módulo existía pero no enviaba nada. Que capture depende de una variable que el repo no ve: `SENTRY_DSN` en el panel de Render.
+- **Acceptance criteria:**
+  - `SENTRY_DSN` definida en `tenderflow-api` (y en `tenderflow-worker`) con el DSN de un proyecto de backend, no el del frontend.
+  - Tras el siguiente despliegue el log dice `sentry_configured` y no `sentry_sdk_missing`, y un error provocado aparece en Sentry sin query string, cookies ni cabeceras fuera de `host`, `user-agent` y `referer`.
+- **Files de partida:** [observability/sentry.py](../observability/sentry.py), [render.yaml](../render.yaml)
+- **Riesgo:** bajo.
+
 ### [P2] `ops_events` no recibe ningún evento en producción
 - **Área:** scheduler, db
 - **Problema:** el 2026-10-09 la tabla `ops_events` tenía **0 filas** (ya estaba vacía el 2026-09-18). La escriben el cierre de la pasada, el healthcheck, el drift report y el etiquetado por LLM, y de ella dependen criterios escritos en el código (`tech_signal_merge` se retira «con cero reparaciones en siete días, medido en `ops_events`»). Lo que sí llega a la BD son las filas de `jobs`, que es lo que lee Ops › Ejecuciones desde ese día; la telemetría fina de cada paso se pierde.
@@ -1077,6 +1096,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Tiempo del job `test` de CI medido antes/después en el PR.
 - **Files de partida:** [tests/conftest.py](../tests/conftest.py)
 - **Riesgo:** medio — toca el aislamiento de toda la suite; un fallo aquí se manifiesta como tests que se contaminan entre sí.
+
+### [P3] Decidir el techo de memoria de WSL en la máquina de desarrollo (acción del propietario)
+- **Área:** `%UserProfile%\.wslconfig`, scripts/dev/
+- **Problema:** los controles corren en WSL desde el 2026-10-11 ([entorno-wsl.md](runbooks/entorno-wsl.md)). WSL reserva hasta la mitad de la RAM del host y no devuelve enseguida la caché de disco: con el equipo cargado, la VM dejó de aceptar conexiones unos diez minutos ese mismo día.
+- **Acceptance criteria:**
+  - Decidido el techo (`memory=` y `autoMemoryReclaim`) y aplicado con `wsl --shutdown`, que corta Docker Desktop y las shells abiertas en la distro.
+  - Medida de nuevo la suite completa con la máquina desahogada y anotada en el runbook: los 34 min 33 s del 2026-10-11 se midieron con la VM tirando de swap.
+- **Files de partida:** [docs/runbooks/entorno-wsl.md](runbooks/entorno-wsl.md), [scripts/dev/wsl_run.sh](../scripts/dev/wsl_run.sh)
+- **Riesgo:** bajo.
 
 ### [P3] Entorno de staging
 

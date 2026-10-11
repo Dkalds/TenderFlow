@@ -1,5 +1,6 @@
 .PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface check-layers check-api-surface
+.PHONY: check-casos-uso casos-uso web-mutation
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -53,6 +54,12 @@ check-layers:  ## Ningún paquete importa de una capa superior (ratchet, solo en
 
 check-api-surface:  ## Una operación nueva de la API llega con su motivo (AGENTS.md §0)
 	ENV=dev APP_PROFILE=api python scripts/check_api_surface.py
+
+check-casos-uso:  ## Cada caso de uso tiene un recorrido (escenario o E2E) y la tabla está al día
+	python scripts/check_casos_uso.py
+
+casos-uso:  ## Regenera la tabla de trazabilidad de docs/casos-de-uso.md
+	python scripts/check_casos_uso.py --write
 
 check-api-contract:  ## Ratchet del contrato API↔web + fixtures del frontend
 	python scripts/check_openapi_contract.py
@@ -225,6 +232,9 @@ web-test:  ## Tests unitarios del frontend (vitest + gate de suite ejecutada)
 
 web-test-coverage:  ## Tests del frontend con cobertura (los umbrales que aplica CI)
 	cd web && npm run test:coverage
+
+web-mutation:  ## Mutation testing del frontend sobre una muestra de src/lib (FILES="src/lib/a.ts,src/lib/b.ts")
+	cd web && npm run test:mutation $(if $(FILES),-- --mutate "$(FILES)",)
 
 web-test-e2e:  ## Run Playwright E2E tests
 	cd web && npx playwright test

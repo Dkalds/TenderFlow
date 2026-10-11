@@ -329,4 +329,7 @@ jobs:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          # Dead-man's switch (scheduler/latido.py). Sin el secret, la variable
+          # llega vacía y no se hace ninguna petición.
+          HEALTHCHECK_HEARTBEAT_URL: ${{ secrets.HEALTHCHECK_HEARTBEAT_URL }}
         run: python -m scheduler.healthcheck --alert

@@ -19,7 +19,13 @@ export function safeRedirectPath(candidate: string | null | undefined): string {
     if (parsed.origin !== APPLICATION_ORIGIN) {
       return FALLBACK_PATH;
     }
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    const destino = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    // El `//` inicial se rechaza arriba sobre el texto que llega, pero la
+    // normalización de la URL lo puede fabricar después: `/.//evil.example` no
+    // empieza por `//` y su pathname normalizado sí (`//evil.example`). Un
+    // navegador lee eso como otro host, así que la regla se comprueba también
+    // sobre lo que se devuelve.
+    return destino.startsWith("//") ? FALLBACK_PATH : destino;
   } catch {
     return FALLBACK_PATH;
   }

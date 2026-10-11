@@ -47,6 +47,12 @@ openai>=1.30.0,<4
 prometheus_client>=0.19.0,<1
 # Prometheus auto-instrumentación HTTP para FastAPI (métricas RED por handler)
 prometheus-fastapi-instrumentator>=8.0.0,<9
+# Captura de errores (observability/sentry.py), opt-in por SENTRY_DSN. El módulo y
+# la variable de render.yaml existían desde F5, pero el paquete no estaba en
+# ningún lockfile: con el DSN puesto, la API registraba `sentry_sdk_missing` y
+# producción seguía sin captura. Sin extras: las integraciones de FastAPI y
+# Starlette van dentro del paquete base.
+sentry-sdk>=2.20.0,<3
 # Password hashing seguro para autenticación
 bcrypt>=4.0,<6
 # Cifrado simétrico (Fernet/AES) para secretos TOTP y derivación de webhook keys

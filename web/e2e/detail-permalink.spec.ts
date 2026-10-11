@@ -1,3 +1,4 @@
+// Recorre CU-02 de docs/casos-de-uso.md.
 import { test, expect } from "@playwright/test";
 import { ID_INEXISTENTE, SEED_LICITACION } from "./fixtures";
 

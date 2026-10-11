@@ -1,3 +1,4 @@
+// Recorre CU-19 de docs/casos-de-uso.md.
 import { expect, test } from "@playwright/test";
 
 /**

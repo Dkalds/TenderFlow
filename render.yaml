@@ -397,6 +397,15 @@ services:
         sync: false
       - key: ALERT_MIN_LEVEL
         sync: false
+      # Dead-man's switch del healthcheck post-pasada (scheduler/latido.py).
+      # Con el cron en este servicio, la rutina que vigila los workflows de
+      # Actions deja de ver la ingesta: si el hilo de cron muere, el worker
+      # sigue contestando `/health/ready` y nadie nota que la pasada dejó de
+      # correr. El latido es lo que lo delata. Mismo valor que el secret
+      # `HEALTHCHECK_HEARTBEAT_URL` de Actions: el check externo es uno solo y
+      # late desde el plano que esté activo.
+      - key: HEALTHCHECK_HEARTBEAT_URL
+        sync: false
       # Pendientes de declarar aquí: GITHUB_TOKEN (el scoring descarga el modelo
       # de la Release `ml-models`), PSCP_DATASET_ID, PSCP_APP_TOKEN,
       # TACRC_INDEX_URL y las LLM_TECH_LABELING_* / LLM_TECH_FEEDBACK_ENABLED que
