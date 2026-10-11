@@ -41,5 +41,17 @@ export const SEED_TOTAL_LICITACIONES = 15;
 /** Prefijo común a las 15 licitaciones sembradas. */
 export const SEED_PREFIX = "SEED-2026-";
 
+/**
+ * Adjudicatarias del seed (`_SAMPLE_ADJUDICACIONES`), una por cada expediente
+ * `ADJ`, de mayor a menor importe adjudicado: el orden en que las lista
+ * Competencia. El seed no siembra el maestro de empresas, así que ninguna
+ * tiene identidad resuelta ni NIF: se las reconoce por el nombre.
+ */
+export const SEED_ADJUDICATARIAS = [
+  "Servidores Ibéricos S.A.",
+  "SecureTech Solutions S.L.",
+  "CertISO Consultoría",
+] as const;
+
 /** Id que no existe: sirve para comprobar el estado vacío. */
 export const ID_INEXISTENTE = "NO-EXISTE-999";

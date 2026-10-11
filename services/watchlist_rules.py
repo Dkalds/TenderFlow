@@ -311,8 +311,14 @@ _MATCH_COLS = (
 
 
 def _escape_like(s: str) -> str:
-    """Escapa wildcards LIKE (%, _) del input de usuario."""
-    return s.replace("%", r"\%").replace("_", r"\_")
+    """Escapa wildcards LIKE (%, _) y el propio carácter de escape.
+
+    La barra invertida va primero: sin escaparla, una keyword ``C:\\`` llegaba a
+    Postgres como ``%C:\\%`` —la barra escapando al comodín— y la regla no casaba
+    con ningún título que la contuviera (lo encontró
+    ``tests/test_watchlist_rules_maquina_property.py``).
+    """
+    return s.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
 def _hoy(hoy_iso: str | None) -> date:

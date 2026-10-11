@@ -6,6 +6,7 @@ test.describe("Flujos de trabajo críticos", () => {
   test.describe.configure({ mode: "serial" });
 
   test("guardar una vista sobrevive a la recarga", async ({ page, context }) => {
+    // CU-09
     const name = "E2E · vista persistente";
     await deleteSavedView(page, context, name);
 
@@ -28,6 +29,7 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("seguir una licitación persiste y se puede deshacer", async ({ page, context }) => {
+    // CU-03
     // Estuvo en `fixme` desde que se escribió, con la sospecha de que la causa
     // era el `nested-interactive` de la fila. No lo era, y por eso al quitar esa
     // regla el test siguió sin pasar: **las acciones de una fila inactiva son
@@ -83,6 +85,7 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("exportar el ámbito descarga un CSV servido por la API", async ({ page }) => {
+    // CU-16
     // Estuvo en `fixme` con el diagnóstico «el evento download no llega en CI».
     // Eso era el síntoma; la causa estaba en `lib/export.ts::volcarBlob`, que
     // revocaba el object URL en la **misma vuelta del event loop** que el
@@ -108,6 +111,7 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("el borrado RGPD de la cuenta se ejecuta contra la API real", async ({ browser }) => {
+    // CU-15
     // Regresión O0.7. El botón hacía `fetch("/api/v1/me", {method:"DELETE"})` a
     // pelo: sin `X-CSRF-Token` (que `require_any_auth` exige a toda mutación
     // por cookie) y sin el cuerpo `{"confirmation":"DELETE"}` que declara
