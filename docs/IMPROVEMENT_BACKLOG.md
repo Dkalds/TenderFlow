@@ -1087,6 +1087,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [tests/conftest.py](../tests/conftest.py)
 - **Riesgo:** medio — toca el aislamiento de toda la suite; un fallo aquí se manifiesta como tests que se contaminan entre sí.
 
+### [P3] Decidir el techo de memoria de WSL en la máquina de desarrollo (acción del propietario)
+- **Área:** `%UserProfile%\.wslconfig`, scripts/dev/
+- **Problema:** los controles corren en WSL desde el 2026-10-11 ([entorno-wsl.md](runbooks/entorno-wsl.md)). WSL reserva hasta la mitad de la RAM del host y no devuelve enseguida la caché de disco: con el equipo cargado, la VM dejó de aceptar conexiones unos diez minutos ese mismo día.
+- **Acceptance criteria:**
+  - Decidido el techo (`memory=` y `autoMemoryReclaim`) y aplicado con `wsl --shutdown`, que corta Docker Desktop y las shells abiertas en la distro.
+  - Medida de nuevo la suite completa con la máquina desahogada y anotada en el runbook: los 34 min 33 s del 2026-10-11 se midieron con la VM tirando de swap.
+- **Files de partida:** [docs/runbooks/entorno-wsl.md](runbooks/entorno-wsl.md), [scripts/dev/wsl_run.sh](../scripts/dev/wsl_run.sh)
+- **Riesgo:** bajo.
+
 ### [P3] Entorno de staging
 
 - **Área:** render.yaml, infraestructura (acción del usuario)
