@@ -79,6 +79,80 @@ class TenderFactSheetsRepository:
             ).fetchall()
             return [str(row[0]) for row in rows]
 
+    def list_candidatas_golden(
+        self, *, por_grupo: int = 15, fuente: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Expedientes con texto de pliego, para elegir los casos del golden.
+
+        Lo consume ``scripts/capturar_ficha_golden.py --listar``. Entra todo
+        expediente con alguna página de texto, **tenga ficha o no**: los que no
+        la tienen, o la tienen ``failed``, son justo donde hay que medir lo que
+        la ficha omite (``docs/plans/2026-10-eval-ficha-pliego.md`` §3).
+
+        El tope es **por fuente y grupo** (``sin_ficha``, ``fallida``,
+        ``pobre`` con menos de cinco hechos, ``rica``), no global: con un
+        ``LIMIT`` sobre la lista ordenada por fuente, la primera fuente la
+        llenaba entera y ni las demás ni las fichas ricas llegaban a verse.
+        ``total_grupo`` dice cuántas hay en el grupo, se enseñen o no. Dentro
+        de cada grupo, primero las de más hechos y, a igualdad, las de más
+        páginas.
+
+        ``lotes`` y ``formulas`` salen del JSON de la ficha y valen 0 si no hay
+        ficha, si no trae datos o si la clave no es una lista: el listado sirve
+        para elegir, no para validar la fila.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "WITH paginas AS ("
+                "  SELECT d.licitacion_id, "
+                "         COUNT(DISTINCT d.id) AS documentos, "
+                "         COUNT(*) AS paginas, "
+                "         COUNT(*) FILTER (WHERE dp.ocr) AS paginas_ocr "
+                "  FROM documento_pages dp "
+                "  JOIN documentos d ON d.id = dp.documento_id "
+                # `octet_length` lee el tamaño sin descomprimir el texto de
+                # cada página, que es lo que haría compararlo con ''.
+                "  WHERE octet_length(dp.texto) > 0 "
+                "  GROUP BY d.licitacion_id"
+                "), candidatas AS ("
+                "  SELECT p.licitacion_id, l.fuente, p.documentos, p.paginas, p.paginas_ocr, "
+                "         tf.status, tf.extraction_version, tf.field_count, "
+                "         CASE WHEN jsonb_typeof(f.datos -> 'lots') = 'array' "
+                "              THEN jsonb_array_length(f.datos -> 'lots') ELSE 0 END AS lotes, "
+                "         CASE WHEN jsonb_typeof(f.datos -> 'price_formula') = 'array' "
+                "              THEN jsonb_array_length(f.datos -> 'price_formula') ELSE 0 END "
+                "           AS formulas, "
+                "         CASE WHEN tf.licitacion_id IS NULL THEN 'sin_ficha' "
+                "              WHEN tf.status = 'failed' THEN 'fallida' "
+                "              WHEN tf.field_count < 5 THEN 'pobre' "
+                "              ELSE 'rica' END AS grupo "
+                "  FROM paginas p "
+                "  JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "  LEFT JOIN tender_fact_sheets tf ON tf.licitacion_id = p.licitacion_id "
+                # `data_json` es `text`: se convierte aquí una sola vez, y una
+                # cadena vacía se trata como «sin datos» en vez de romper el cast.
+                "  LEFT JOIN LATERAL ("
+                "    SELECT NULLIF(tf.data_json, '')::jsonb AS datos"
+                "  ) f ON TRUE "
+                "  WHERE (%s::text IS NULL OR l.fuente = %s)"
+                "), numeradas AS ("
+                "  SELECT c.*, "
+                "         ROW_NUMBER() OVER ("
+                "           PARTITION BY c.fuente, c.grupo "
+                "           ORDER BY COALESCE(c.field_count, 0) DESC, c.paginas DESC, c.licitacion_id"
+                "         ) AS orden, "
+                "         COUNT(*) OVER (PARTITION BY c.fuente, c.grupo) AS total_grupo "
+                "  FROM candidatas c"
+                ") "
+                "SELECT licitacion_id, fuente, grupo, documentos, paginas, paginas_ocr, status, "
+                "       extraction_version, field_count, lotes, formulas, total_grupo "
+                "FROM numeradas "
+                "WHERE orden <= %s "
+                "ORDER BY fuente, grupo, orden",
+                (fuente, fuente, max(1, min(int(por_grupo), 200))),
+            )
+            return rows_to_dicts(cur)
+
     def get(self, licitacion_id: str) -> dict[str, Any] | None:
         """Ficha persistida; ``facts`` se devuelve como objeto Python."""
         with connect_read() as c:
