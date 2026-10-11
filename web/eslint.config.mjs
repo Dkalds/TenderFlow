@@ -277,6 +277,11 @@ const eslintConfig = defineConfig([
     // Reportes, trazas y adjuntos generados por Playwright.
     "playwright-report/**",
     "test-results/**",
+    // Mutation testing (`npm run test:mutation`): la copia de trabajo de
+    // Stryker —una réplica de `src` con el código instrumentado, que sin esto
+    // se lintaría entera mientras dura una ejecución— y su informe.
+    ".stryker-tmp/**",
+    "reports/**",
   ]),
   // Accessibility rules.
   // El plugin `jsx-a11y` ya lo registra `eslint-config-next/core-web-vitals`;

@@ -33,6 +33,8 @@ const URLS = [
   "?fecha_desde=2026-01-01&fecha_hasta=2026-06-30&importe_min=50000",
   // `importe_min=0` es un filtro, no una ausencia.
   "?importe_min=0",
+  // Un importe que no es un número se ignora en las dos lecturas.
+  "?importe_min=abc&importe_max=1e999&q=sap",
   // Lo que el hook ignora, también lo ignora el servidor.
   "?solo_abiertas=false&comparar=true&rango_b_desde=2025-01-01&vista=organos",
   // Valores vacíos: nuqs los lee como el default "".

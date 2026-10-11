@@ -1,3 +1,21 @@
+# Solo security updates. Las version updates las abre Renovate (renovate.json)
+# desde 2026-10-11: por eso los tres bloques llevan el límite de PR abiertos a
+# cero, que apaga las de versión y deja pasar las de seguridad. Borrar el
+# fichero haría lo mismo con las de versión, pero se llevaría los `ignore` de
+# abajo, que también valen para las de seguridad.
+#
+# Por qué se cambió: cada PR de Dependabot que recompilaba los lockfiles borraba
+# el pin de `setuptools` (CI instala con --require-hashes y moría en el primer
+# paso), dejaba requirements-api.txt y requirements-pipeline.txt sin sus `# via`,
+# ensanchaba los techos de los .in (scikit-learn en #294) y no tocaba los pines
+# de `.pre-commit-config.yaml`. Un PR de seguridad de Dependabot sigue teniendo
+# esos defectos, más uno nuevo: reescribe la cabecera de los lockfiles en un
+# formato que Renovate no admite (`tests/test_unit_lock_cabeceras.py` lo
+# detecta). Se arregla con `make lock` sobre la rama del PR.
+#
+# Los grupos y el cooldown se fueron con las version updates: solo aplicaban a
+# ellas. Sus equivalentes están en renovate.json (`groupName`,
+# `minimumReleaseAge`).
 version: 2
 updates:
   - package-ecosystem: "pip"
@@ -7,9 +25,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Europe/Madrid"
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     labels:
       - "dependencies"
       - "python"
@@ -32,11 +48,6 @@ updates:
       # ignora: su PR tiene que pasar tests/test_s3_feature_todo_nan.py.
       - dependency-name: "scikit-learn"
         versions: [">=1.9, <1.10"]
-    groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
 
   - package-ecosystem: "npm"
     directory: "/web"
@@ -45,9 +56,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Europe/Madrid"
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     labels:
       - "dependencies"
       - "javascript"
@@ -72,20 +81,13 @@ updates:
     # estaba en `false` hasta el 2026-08-30.
     allow:
       - dependency-type: "all"
-    groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     labels:
       - "dependencies"
       - "github-actions"

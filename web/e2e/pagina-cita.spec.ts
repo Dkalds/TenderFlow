@@ -1,3 +1,4 @@
+// Recorre CU-22 de docs/casos-de-uso.md.
 import { test, expect } from "@playwright/test";
 import { SEED_LICITACION } from "./fixtures";
 

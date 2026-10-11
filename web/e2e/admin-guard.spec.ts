@@ -1,3 +1,4 @@
+// Recorre CU-20 de docs/casos-de-uso.md.
 import { test, expect } from "@playwright/test";
 import { DEMO_USER, STORAGE_STATE_ADMIN } from "./fixtures";
 

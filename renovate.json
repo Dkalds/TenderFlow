@@ -1,126 +1,129 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Actualizaciones de versión de todo el repo. Sustituye a las version updates de Dependabot (.github/dependabot.yml las deja a cero y conserva sus ignore para las security updates).",
+    "Por qué Renovate: recompila los cuatro lockfiles con el mismo `uv pip compile` de `make lock` (Dependabot borraba el pin de setuptools y los `# via` de api/pipeline en cada PR), no ensancha los techos de los .in y mueve a la vez el pin de una herramienta y el `rev` de su hook de pre-commit.",
+    "Nada se fusiona solo: sin automerge. Cada PR pasa por los checks requeridos de master y lo fusiona una persona."
+  ],
   "extends": [
-    "config:base",
+    "config:recommended",
     ":dependencyDashboard",
     ":semanticCommits",
-    ":automergeMinor"
+    "helpers:pinGitHubActionDigests"
   ],
   "timezone": "Europe/Madrid",
-  "schedule": ["every weekend"],
+  "schedule": ["before 6am on monday"],
+  "minimumReleaseAge": "7 days",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
   "labels": ["dependencies"],
-  "assignees": [],
-  "reviewers": [],
-
-  "packageRules": [
-    {
-      "groupName": "all non-major (minor + patch)",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["pip-compile", "pip_requirements", "github-actions", "dockerfile"],
-      "matchUpdateTypes": ["minor", "patch", "digest"],
-      "automerge": true,
-      "schedule": ["every weekend"]
-    },
-    {
-      "groupName": "all major updates",
-      "minimumReleaseAge": "7 days",
-      "matchUpdateTypes": ["major"],
-      "automerge": false,
-      "prPriority": -1,
-      "schedule": ["before 6am on monday"]
-    },
-    {
-      "groupName": "Python ML & Data",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["pip-compile", "pip_requirements"],
-      "matchPackageNames": [
-        "scikit-learn",
-        "sentence-transformers",
-        "faiss-cpu",
-        "statsmodels",
-        "evidently",
-        "scipy"
-      ],
-      "automerge": false
-    },
-    {
-      "groupName": "FastAPI ecosystem",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["pip-compile", "pip_requirements"],
-      "matchPackageNames": [
-        "fastapi",
-        "uvicorn",
-        "httpx",
-        "pydantic",
-        "pydantic-settings"
-      ],
-      "automerge": false
-    },
-    {
-      "groupName": "Data & analytics",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["pip-compile", "pip_requirements"],
-      "matchPackageNames": [
-        "plotly",
-        "pandas",
-        "numpy"
-      ],
-      "automerge": false
-    },
-    {
-      "groupName": "Observability",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["pip-compile", "pip_requirements"],
-      "matchPackageNames": [
-        "opentelemetry-sdk",
-        "opentelemetry-exporter-otlp",
-        "structlog",
-        "prometheus-client"
-      ],
-      "automerge": true
-    },
-    {
-      "groupName": "Security & auth",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["pip-compile", "pip_requirements"],
-      "matchPackageNames": [
-        "argon2-cffi",
-        "cryptography",
-        "pyotp",
-        "python-jose"
-      ],
-      "automerge": false
-    },
-    {
-      "groupName": "Dev & CI tools",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["pip-compile", "pip_requirements"],
-      "matchPackagePatterns": ["^pytest", "^bandit", "^ruff", "^mypy"],
-      "automerge": true
-    },
-    {
-      "groupName": "GitHub Actions",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["github-actions"],
-      "automerge": true
-    },
-    {
-      "groupName": "Docker base images",
-      "minimumReleaseAge": "7 days",
-      "matchManagers": ["dockerfile"],
-      "automerge": false
-    }
+  "enabledManagers": [
+    "pip-compile",
+    "npm",
+    "github-actions",
+    "dockerfile",
+    "docker-compose",
+    "pre-commit"
   ],
-
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/__fixtures__/**",
+    ".agents/**",
+    ".claude/**"
+  ],
   "pip-compile": {
-    "fileMatch": ["(^|/)requirements.*\\.in$"]
+    "managerFilePatterns": ["/(^|/)requirements(-[a-z]+)?\\.txt$/"]
   },
-
+  "pre-commit": {
+    "enabled": true
+  },
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": ["security"]
+    "labels": ["dependencies", "security"]
   },
-
-  "prConcurrentLimit": 5,
-  "prHourlyLimit": 2
+  "osvVulnerabilityAlerts": true,
+  "packageRules": [
+    {
+      "description": "Python: dentro del rango del .in solo cambia el lockfile; el rango no se toca.",
+      "matchManagers": ["pip-compile"],
+      "rangeStrategy": "update-lockfile",
+      "addLabels": ["python"]
+    },
+    {
+      "matchManagers": ["pip-compile"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "python minor-and-patch"
+    },
+    {
+      "description": "Frontend: mismo comportamiento que tenía Dependabot (sube el rango de package.json y el lock).",
+      "matchManagers": ["npm"],
+      "rangeStrategy": "bump",
+      "addLabels": ["javascript"]
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "web minor-and-patch"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "addLabels": ["github-actions"]
+    },
+    {
+      "description": "El pin del lockfile y el rev del hook de pre-commit de la misma herramienta van en un solo PR: Dependabot no tocaba .pre-commit-config.yaml y los dos derivaban (ruff 0.16 en el lock, v0.15 en el hook).",
+      "matchPackageNames": [
+        "ruff",
+        "astral-sh/ruff-pre-commit",
+        "mypy",
+        "pre-commit/mirrors-mypy",
+        "codespell",
+        "codespell-project/codespell",
+        "detect-secrets",
+        "Yelp/detect-secrets"
+      ],
+      "groupName": "lint (lockfile + hooks de pre-commit)"
+    },
+    {
+      "description": "fastapi >= 0.141 devuelve `_IncludedRouter` opacos en app.routes y la API responde 500 en todas las rutas (PR #187). Subir es una migración a mano; los tres van juntos. Detalle en requirements.in.",
+      "matchManagers": ["pip-compile"],
+      "matchPackageNames": ["fastapi"],
+      "allowedVersions": "<0.137"
+    },
+    {
+      "matchManagers": ["pip-compile"],
+      "matchPackageNames": ["starlette"],
+      "allowedVersions": "<1.4"
+    },
+    {
+      "matchManagers": ["pip-compile"],
+      "matchPackageNames": ["uvicorn"],
+      "allowedVersions": "<0.47"
+    },
+    {
+      "description": "scikit-learn 1.9.x: regresión de HistGradientBoostingRegressor con una columna numérica 100% NaN. La 1.10 no se veta: su PR tiene que pasar tests/test_s3_feature_todo_nan.py.",
+      "matchManagers": ["pip-compile"],
+      "matchPackageNames": ["scikit-learn"],
+      "allowedVersions": "!/^1\\.9\\./"
+    },
+    {
+      "description": "eslint 10 rompe `npm ci` (ERESOLVE): eslint-plugin-jsx-a11y, que trae eslint-config-next, solo declara peer hasta ^9 (PR #284). Se quita cuando esa cadena lo soporte.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["eslint"],
+      "allowedVersions": "<10"
+    },
+    {
+      "description": "La imagen base sigue la versión de Python de CI y del lockfile (`--python-version 3.13`): solo parches de 3.13.",
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["python"],
+      "allowedVersions": "/^3\\.13\\./"
+    },
+    {
+      "description": "La mayor de Postgres de CI y del compose local es una decisión de paridad con producción, no una actualización: no se propone.",
+      "matchPackageNames": ["pgvector/pgvector"],
+      "enabled": false
+    }
+  ]
 }

@@ -158,7 +158,8 @@ los secretos cuando lleven más de 90 días.
 - **`npm audit`** sobre `web/package-lock.json`, a través de
   `scripts/check_npm_audit.py`: falla con avisos `high` o `critical`, también
   en dependencias de desarrollo.
-- **Dependabot** (semanal) para actualizaciones de seguridad.
+- **Dependabot** para actualizaciones de seguridad; las de versión las abre
+  **Renovate** (semanal, `renovate.json`), sin automerge.
 - **SARIF upload** de Semgrep a GitHub Security tab.
 
 ## Protección de endpoints

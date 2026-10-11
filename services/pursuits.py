@@ -885,6 +885,15 @@ def _normalize_and_validate_update(
     requested: dict[str, Any],
     organization_id: int,
 ) -> dict[str, Any]:
+    # ``status``, ``decision`` y ``outcome`` son NOT NULL en la tabla, y el
+    # contrato los admite como ``null`` (es su valor por defecto). Un ``null``
+    # explícito significa «no tocar», igual que no mandarlo: tratado como un
+    # cambio pasaba las guardas convertido en la cadena "None" y un
+    # ``{"decision": null}`` sobre una oportunidad con motivo llegaba al UPDATE
+    # y salía como 500 (lo encontró ``tests/test_pursuit_maquina_property.py``).
+    for campo in ("status", "decision", "outcome"):
+        if campo in requested and requested[campo] is None:
+            del requested[campo]
     if "next_action" in requested:
         texto = str(requested["next_action"] or "").strip()
         requested["next_action"] = texto or None
@@ -958,8 +967,11 @@ def _normalize_and_validate_update(
     # existe si se captura cuando la persona todavía recuerda por qué perdió.
     # Los cierres anteriores a v104 quedan sin código y se completan aparte;
     # esta regla mira `next_outcome`, así que no bloquea editar otra cosa de
-    # una oportunidad ya cerrada.
-    if next_outcome == "lost" and "outcome" in changes:
+    # una oportunidad ya cerrada. Sí mira un cambio del propio código: una
+    # pérdida ya codificada puede corregir su motivo, pero no quedarse sin él
+    # (un ``null`` explícito lo borraba, y con él el dato que F3.1 existe para
+    # conservar).
+    if next_outcome == "lost" and ("outcome" in changes or "outcome_reason_code" in changes):
         codigo = changes.get("outcome_reason_code", current.get("outcome_reason_code"))
         if not str(codigo or "").strip():
             raise PursuitValidationError(

@@ -4,6 +4,8 @@ Ningún test mencionaba estos endpoints pese a gobernar el perfil de scoring
 personalizado del usuario. Se añaden aquí porque los tres se reescribieron en
 esta rama para sacar su acceso a BD del event loop (``run_db``), y sin una
 prueba end-to-end ese cambio no quedaba ejercitado.
+
+Caso de uso: CU-17 (``docs/casos-de-uso.md``).
 """
 
 from __future__ import annotations

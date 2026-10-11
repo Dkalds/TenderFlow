@@ -1,5 +1,6 @@
 .PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface check-layers check-api-surface
+.PHONY: check-casos-uso casos-uso web-mutation
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -53,6 +54,12 @@ check-layers:  ## Ningún paquete importa de una capa superior (ratchet, solo en
 
 check-api-surface:  ## Una operación nueva de la API llega con su motivo (AGENTS.md §0)
 	ENV=dev APP_PROFILE=api python scripts/check_api_surface.py
+
+check-casos-uso:  ## Cada caso de uso tiene un recorrido (escenario o E2E) y la tabla está al día
+	python scripts/check_casos_uso.py
+
+casos-uso:  ## Regenera la tabla de trazabilidad de docs/casos-de-uso.md
+	python scripts/check_casos_uso.py --write
 
 check-api-contract:  ## Ratchet del contrato API↔web + fixtures del frontend
 	python scripts/check_openapi_contract.py
@@ -155,18 +162,32 @@ eval-clasificacion:  ## Eval manual del prompt «¿es TI?» con el LLM real: est
 # condicional de click/tqdm) y a partir de ahí viaja al CI de Linux como si
 # fuera obligatoria. 3.13 es la versión que ejercita el CI y con la que se
 # generó el lock vigente.
-LOCK_TARGET := --python-platform x86_64-unknown-linux-gnu --python-version 3.13
+LOCK_TARGET := --python-platform x86_64-unknown-linux-gnu --python-version=3.13
+
+# La cabecera de cada lockfile es el comando que Renovate vuelve a ejecutar
+# para recompilarlo (renovate.json, manager `pip-compile`), y su parser solo
+# admite un subconjunto de opciones de uv, siempre con `=`: `--output-file=`
+# y no `-o`, `--python-version=3.13`, `--constraint=`. `--python-platform` no
+# está entre ellas —con `-o` o con la plataforma en la cabecera, Renovate deja
+# de gestionar el fichero («Option … not supported (yet)»)—, así que se pasa
+# al compilar pero no se escribe: Renovate corre en Linux x86_64, donde omitirla
+# resuelve lo mismo. `tests/test_unit_lock_cabeceras.py` fija el formato.
+lock_cmd = uv pip compile $(1) --output-file=$(2) $(3) --generate-hashes --python-version=3.13
+
+define compilar_lock
+	uv pip compile $(1) --output-file=$(2) $(3) --generate-hashes $(LOCK_TARGET) --quiet 		--custom-compile-command "$(strip $(call lock_cmd,$(1),$(2),$(3)))"
+endef
 
 lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
-	uv pip compile requirements.in -o requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
-	uv pip compile requirements-dev.in -o requirements-dev.txt --generate-hashes $(LOCK_TARGET) --quiet
+	$(call compilar_lock,requirements.in,requirements.txt,)
+	$(call compilar_lock,requirements-dev.in,requirements-dev.txt,)
 	# C3.1: el corte API / pipeline. `requirements-api.txt` es el que instala
-	# docker/Dockerfile.api. `--constraint requirements.txt` es lo que impide
+	# docker/Dockerfile.api. `--constraint=requirements.txt` es lo que impide
 	# que la imagen de producción corra versiones que el CI no probó: los dos
 	# hijos salen con los MISMOS pines que el lock histórico, solo que menos.
 	# `scripts/check_requirements_sync.py` lo verifica pin a pin.
-	uv pip compile requirements-api.in -o requirements-api.txt --constraint requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
-	uv pip compile requirements-pipeline.in -o requirements-pipeline.txt --constraint requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
+	$(call compilar_lock,requirements-api.in,requirements-api.txt,--constraint=requirements.txt)
+	$(call compilar_lock,requirements-pipeline.in,requirements-pipeline.txt,--constraint=requirements.txt)
 
 lock-hashes: lock
 
@@ -225,6 +246,9 @@ web-test:  ## Tests unitarios del frontend (vitest + gate de suite ejecutada)
 
 web-test-coverage:  ## Tests del frontend con cobertura (los umbrales que aplica CI)
 	cd web && npm run test:coverage
+
+web-mutation:  ## Mutation testing del frontend sobre una muestra de src/lib (FILES="src/lib/a.ts,src/lib/b.ts")
+	cd web && npm run test:mutation $(if $(FILES),-- --mutate "$(FILES)",)
 
 web-test-e2e:  ## Run Playwright E2E tests
 	cd web && npx playwright test

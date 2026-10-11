@@ -52,6 +52,7 @@ test.describe("Con sesión", () => {
   });
 
   test("el radar lista una licitación real del seed", async ({ page }) => {
+    // CU-10
     await page.goto("/radar");
 
     await expect(

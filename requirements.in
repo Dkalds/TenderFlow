@@ -30,7 +30,7 @@ pillow>=12.3,<13
 # de FEATURE_COLUMNS sin cobertura en el fold lo dispararía en producción.
 # Dependabot ensancha este techo cuando propone 1.9.x (en #294 pasó a `<1.10`
 # sin que nadie lo notara), así que la serie 1.9 está además en el `ignore` de
-# .github/dependabot.yml.
+# .github/dependabot.yml y vetada en renovate.json (`allowedVersions`).
 scikit-learn>=1.3.0,<1.9
 # LLM — SDK OpenAI: cubre OpenAI y NVIDIA NIM (API compatible vía base_url).
 # Necesario para el endpoint RAG /api/v1/ask (default: llm.client.DEFAULT_MODEL).
@@ -79,7 +79,8 @@ alembic>=1.13.0,<2
 #
 # Subir de aquí es una migración con trabajo propio (auditar todo el código y
 # los tests que recorren `app.routes`), no una recompilación de lockfile; por eso
-# fastapi/starlette/uvicorn están además en el `ignore` de .github/dependabot.yml.
+# fastapi/starlette/uvicorn están además en el `ignore` de .github/dependabot.yml
+# y topados en renovate.json (`allowedVersions`).
 fastapi>=0.110.0,<0.137
 # Starlette pinned explicitly — fastapi 0.136 ships with 0.52.x but >=1.0.1
 # is needed for bugfixes; without this pin the Dockerfile had a force-reinstall hack.
