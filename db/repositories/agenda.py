@@ -22,7 +22,7 @@ from typing import Any
 from db.database import connect_read
 from db.radar_dismissals import VIGENTE_SQL
 from db.repositories.base import ambito_agenda_sql, rows_to_dicts
-from db.sql_fragments import ISO_MAX
+from db.sql_fragments import ISO_MAX, escape_like
 from shared.estados import abierta_sql
 
 # Techo de fecha bien formada. Sale de la misma constante que usa
@@ -54,11 +54,6 @@ class SignalCriteria:
     cpv: str | None
     min_importe: float | None
     ccaa: str | None
-
-
-def _escape_like(value: str) -> str:
-    """Escapa comodines LIKE (``%``, ``_``) del input de usuario."""
-    return value.replace("%", r"\%").replace("_", r"\_")
 
 
 def signal_rows(
@@ -100,12 +95,12 @@ def signal_rows(
     ]
     params: list[Any] = [organization_id, user_id, user_key, user_id]
     if criteria.keyword:
-        like = f"%{_escape_like(criteria.keyword)}%"
+        like = f"%{escape_like(criteria.keyword)}%"
         clauses.append("(l.titulo LIKE %s OR l.descripcion LIKE %s)")
         params.extend([like, like])
     if criteria.cpv:
         clauses.append("l.cpv LIKE %s")
-        params.append(f"{_escape_like(criteria.cpv)}%")
+        params.append(f"{escape_like(criteria.cpv)}%")
     if criteria.min_importe is not None:
         clauses.append("l.importe >= %s")
         params.append(criteria.min_importe)

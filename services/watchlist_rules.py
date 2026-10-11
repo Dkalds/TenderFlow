@@ -33,7 +33,7 @@ from db.repositories.watchlist_rules import (
     daily_match_counts,
     matches_pendientes,
 )
-from db.sql_fragments import FOLD_TABLE, fold_expr, iso_guard
+from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard
 from services.dedupe import normalize_organo
 from shared.dto import RadarBanda
 from shared.estados import abierta_core
@@ -310,11 +310,6 @@ _MATCH_COLS = (
 )
 
 
-def _escape_like(s: str) -> str:
-    """Escapa wildcards LIKE (%, _) del input de usuario."""
-    return s.replace("%", r"\%").replace("_", r"\_")
-
-
 def _hoy(hoy_iso: str | None) -> date:
     """Fecha de corte del predicado temporal.
 
@@ -364,7 +359,7 @@ def _clausula_organo(organo_norm: str) -> Any:
     parámetro anónimo del texto de la columna —tildes y comillas incluidas— y
     ``compile_query`` no lo encuentra al ordenar los posicionales.
     """
-    patron = f"%{_escape_like(organo_norm).translate(FOLD_TABLE)}%"
+    patron = f"%{escape_like(organo_norm.translate(FOLD_TABLE))}%"
     return literal_column(fold_expr("licitaciones.organo_contratacion")).like(
         bindparam("wr_organo", patron, unique=True)
     )
@@ -413,7 +408,7 @@ def _rule_clauses(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list[An
     """
     clauses: list[Any] = []
     if rule.keyword:
-        like = f"%{_escape_like(rule.keyword)}%"
+        like = f"%{escape_like(rule.keyword)}%"
         clauses.append(
             or_(
                 licitaciones.c.titulo.ilike(like),
@@ -421,7 +416,7 @@ def _rule_clauses(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list[An
             )
         )
     if rule.cpv:
-        clauses.append(licitaciones.c.cpv.like(f"{_escape_like(rule.cpv)}%"))
+        clauses.append(licitaciones.c.cpv.like(f"{escape_like(rule.cpv)}%"))
     if rule.min_importe is not None:
         clauses.append(licitaciones.c.importe >= rule.min_importe)
     if rule.ccaa:

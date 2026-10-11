@@ -17,7 +17,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import FOLD_TABLE, fold_expr, organo_normalizado_sql
+from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, organo_normalizado_sql
 
 __all__ = ["BusquedaRepository"]
 
@@ -27,8 +27,7 @@ def _patron(termino: str) -> str:
     o subcadena. Los comodines del usuario se escapan: escribir ``%`` en la
     paleta no puede convertirse en «tráemelo todo»."""
     limpio = termino.strip().translate(FOLD_TABLE).lower()
-    escapado = limpio.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escapado}%"
+    return f"%{escape_like(limpio)}%"
 
 
 class BusquedaRepository:

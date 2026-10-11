@@ -446,6 +446,27 @@ def fold_expr(column: str) -> str:
     return f"lower(translate({column}, {FOLD_SRC_SQL}, {FOLD_DST_SQL}))"
 
 
+def escape_like(texto: str) -> str:
+    r"""``texto`` listo para ir dentro de un patrón ``LIKE``/``ILIKE`` como literal.
+
+    Escapa los dos comodines (``%``, ``_``) **y la barra invertida, que va
+    primero**. Postgres usa ``\`` como carácter de escape de ``LIKE`` aunque la
+    sentencia no lleve ``ESCAPE``, así que una barra del usuario sin doblar no
+    es texto: ``C:\100`` pedía «un 1 literal» y casaba con ``C:100``, no con lo
+    escrito; y si quedaba al final del patrón (``%,SAP\``), Postgres rechazaba
+    la consulta («LIKE pattern must not end with escape character»). Doblarla
+    después de escapar los comodines tampoco vale: doblaría las barras que
+    acaban de escaparlos.
+
+    Es la única copia. Hubo seis —cuatro ``_escape_like`` privados y dos
+    escritos en línea— y dos de ellos se dejaban la barra
+    (``tests/test_escape_like.py``). El llamante compone el patrón alrededor
+    del resultado (``f"%{escape_like(q)}%"``); lo que no puede hacer es
+    recortarlo o transformarlo después, porque partiría un par de escape.
+    """
+    return texto.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+
+
 def tecnologia_tokens_sql(col: str) -> str:
     """Los códigos de tecnología de la fila como ``text[]``, sin espacios.
 
