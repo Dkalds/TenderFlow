@@ -146,18 +146,32 @@ test-load:  ## Tests de carga/benchmark
 # condicional de click/tqdm) y a partir de ahí viaja al CI de Linux como si
 # fuera obligatoria. 3.13 es la versión que ejercita el CI y con la que se
 # generó el lock vigente.
-LOCK_TARGET := --python-platform x86_64-unknown-linux-gnu --python-version 3.13
+LOCK_TARGET := --python-platform x86_64-unknown-linux-gnu --python-version=3.13
+
+# La cabecera de cada lockfile es el comando que Renovate vuelve a ejecutar
+# para recompilarlo (renovate.json, manager `pip-compile`), y su parser solo
+# admite un subconjunto de opciones de uv, siempre con `=`: `--output-file=`
+# y no `-o`, `--python-version=3.13`, `--constraint=`. `--python-platform` no
+# está entre ellas —con `-o` o con la plataforma en la cabecera, Renovate deja
+# de gestionar el fichero («Option … not supported (yet)»)—, así que se pasa
+# al compilar pero no se escribe: Renovate corre en Linux x86_64, donde omitirla
+# resuelve lo mismo. `tests/test_unit_lock_cabeceras.py` fija el formato.
+lock_cmd = uv pip compile $(1) --output-file=$(2) $(3) --generate-hashes --python-version=3.13
+
+define compilar_lock
+	uv pip compile $(1) --output-file=$(2) $(3) --generate-hashes $(LOCK_TARGET) --quiet 		--custom-compile-command "$(strip $(call lock_cmd,$(1),$(2),$(3)))"
+endef
 
 lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
-	uv pip compile requirements.in -o requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
-	uv pip compile requirements-dev.in -o requirements-dev.txt --generate-hashes $(LOCK_TARGET) --quiet
+	$(call compilar_lock,requirements.in,requirements.txt,)
+	$(call compilar_lock,requirements-dev.in,requirements-dev.txt,)
 	# C3.1: el corte API / pipeline. `requirements-api.txt` es el que instala
-	# docker/Dockerfile.api. `--constraint requirements.txt` es lo que impide
+	# docker/Dockerfile.api. `--constraint=requirements.txt` es lo que impide
 	# que la imagen de producción corra versiones que el CI no probó: los dos
 	# hijos salen con los MISMOS pines que el lock histórico, solo que menos.
 	# `scripts/check_requirements_sync.py` lo verifica pin a pin.
-	uv pip compile requirements-api.in -o requirements-api.txt --constraint requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
-	uv pip compile requirements-pipeline.in -o requirements-pipeline.txt --constraint requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
+	$(call compilar_lock,requirements-api.in,requirements-api.txt,--constraint=requirements.txt)
+	$(call compilar_lock,requirements-pipeline.in,requirements-pipeline.txt,--constraint=requirements.txt)
 
 lock-hashes: lock
 
