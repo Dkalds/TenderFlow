@@ -24,10 +24,11 @@ describe("scopeKey", () => {
   it("dos ámbitos tienen la misma clave si y sólo si son el mismo ámbito", () => {
     // El historial decide por esta cadena si el ámbito cambió. Dos ámbitos
     // distintos con la misma clave serían un paso de «deshacer» que se pierde.
-    // Valores sin `&`: con él la propiedad no se cumple (ver el caso de abajo).
+    // Con `&` y `=` entre los valores: son los caracteres con los que la clave
+    // se confundía cuando unía los pares a mano (ver el caso de abajo).
     const valor = fc.oneof(
-      fc.constantFrom("", "PUB", "PUB,ADJ", "true", "2026-01-01", "a=b"),
-      textoUnicode({ maxLength: 8 }).filter((texto) => !texto.includes("&")),
+      fc.constantFrom("", "PUB", "PUB,ADJ", "true", "2026-01-01", "a=b", "&q=", "&fecha_desde="),
+      textoUnicode({ maxLength: 8 }),
     );
     const pareja = fc.oneof(
       fc.tuple(instantanea(valor), instantanea(valor)),
@@ -44,18 +45,17 @@ describe("scopeKey", () => {
   });
 
   /**
-   * Contraejemplo de la propiedad de arriba cuando los valores pueden llevar
-   * `&`: la clave une los pares con `&` sin escapar nada, así que un valor que
-   * contenga `&<clave siguiente>=` se confunde con el parámetro siguiente.
+   * El contraejemplo que tumbaba la propiedad de arriba: la clave unía los
+   * pares con `&` sin escapar nada, así que un valor que contuviera
+   * `&<clave siguiente>=` se confundía con el parámetro siguiente.
    *
-   * No es explotable ni fácil de provocar —hace falta que el texto buscado
-   * contenga literalmente `&fecha_desde=` y pasar de un ámbito al otro en un
+   * No era explotable ni fácil de provocar —hacía falta que el texto buscado
+   * contuviera literalmente `&fecha_desde=` y pasar de un ámbito al otro en un
    * solo cambio—, pero `q` es texto libre y `&` es un carácter corriente en
-   * él. El arreglo es de una línea (la serialización con `JSON.stringify` que
-   * ya usa `useScopeSnapshot`), y cambia el formato de la clave: por eso se
-   * deja señalado y no se toca.
+   * él. Ahora los valores van como un array JSON, que no tiene separador que
+   * confundir.
    */
-  it.fails("distingue dos ámbitos aunque un valor contenga el separador", () => {
+  it("distingue dos ámbitos aunque un valor contenga el separador", () => {
     const uno: ScopeSnapshot = { ...EMPTY_SCOPE, q: "&fecha_desde=" };
     const otro: ScopeSnapshot = { ...EMPTY_SCOPE, fecha_desde: "&fecha_desde=" };
 

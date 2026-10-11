@@ -42,6 +42,16 @@ export function cn(...inputs: ClassValue[]) {
 export const EMPTY = "—";
 
 /**
+ * Un número que no se puede pintar. `NaN` y los infinitos no llegan de la API
+ * (JSON no los tiene), pero una división en el cliente los fabrica —`0 / 0`
+ * con un total a cero—, y sin esta guarda acababan en pantalla como «NaN%» o
+ * «∞ €». Son «sin dato», igual que `null`.
+ */
+function sinDato(value: number | null | undefined): value is null | undefined {
+  return value == null || !Number.isFinite(value);
+}
+
+/**
  * Format a number as currency (EUR by default).
  */
 export function formatCurrency(
@@ -49,7 +59,7 @@ export function formatCurrency(
   locale = "es-ES",
   currency = "EUR",
 ): string {
-  if (value == null) return EMPTY;
+  if (sinDato(value)) return EMPTY;
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
@@ -73,7 +83,7 @@ export function formatCompactCurrency(
   locale = "es-ES",
   currency = "EUR",
 ): string {
-  if (value == null) return EMPTY;
+  if (sinDato(value)) return EMPTY;
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
@@ -93,7 +103,7 @@ export function formatNumber(
   locale = "es-ES",
   { agruparSiempre = false }: { agruparSiempre?: boolean } = {},
 ): string {
-  if (value == null) return EMPTY;
+  if (sinDato(value)) return EMPTY;
   // `es-ES` no agrupa los números de cuatro dígitos (`minimumGroupingDigits` es
   // 2 en este locale), así que "1038" y "417.182" salen con formatos distintos.
   // Correcto en prosa; malo cuando las cifras se leen como una serie, que es lo
@@ -109,7 +119,7 @@ export function formatPercent(
   value: number | null | undefined,
   decimals = 1,
 ): string {
-  if (value == null) return EMPTY;
+  if (sinDato(value)) return EMPTY;
   // El valor entra ya como porcentaje (12.5 → "12,5%"), no como fracción.
   // `toFixed` siempre emite el punto como separador decimal; lo pasamos a coma
   // (convención es-ES) conservando los mismos decimales y el sufijo %.
@@ -176,7 +186,11 @@ export function formatDate(
   } else {
     d = date;
   }
-  if (isNaN(d.getTime())) return date?.toString() ?? EMPTY;
+  // Un texto que no es fecha se devuelve tal cual: se ve el dato crudo. Un
+  // `Date` inválido no tiene dato crudo que enseñar —su `toString()` es
+  // literalmente «Invalid Date»—, así que es la raya, como en el resto de
+  // formateadores de fecha.
+  if (isNaN(d.getTime())) return typeof date === "string" ? date : EMPTY;
   return d.toLocaleDateString(locale, {
     year: "numeric",
     month: "short",
@@ -307,7 +321,13 @@ export function formatRelativeHours(
  */
 export function truncate(text: string | null | undefined, max = 80): string {
   if (!text) return "";
-  return text.length > max ? `${text.slice(0, max)}…` : text;
+  if (text.length <= max) return text;
+  // `slice` corta por unidades UTF-16 y un emoji ocupa dos: si el corte cae
+  // entre ellas queda media pareja suelta, que el navegador pinta como «�».
+  // Se corta una unidad antes y el carácter se queda fuera entero.
+  const ultima = max > 0 ? text.charCodeAt(max - 1) : 0;
+  const parteUnCaracter = ultima >= 0xd800 && ultima <= 0xdbff;
+  return `${text.slice(0, parteUnCaracter ? max - 1 : max)}…`;
 }
 
 /**

@@ -5,7 +5,7 @@
 import { parseAsString, useQueryStates } from "nuqs";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
-import { type DateRange, filtersToParams } from "./filter-params";
+import { type DateRange, filtersToParams, importeDeUrl } from "./filter-params";
 
 // La derivación pura (URL → parámetros de API) vive en `filter-params.ts` para
 // que el prefetch en servidor la comparta sin importar `nuqs` ni hooks.
@@ -100,7 +100,7 @@ export function useFilters(): FiltersState {
     [setParams],
   );
 
-  const importeMin = useMemo(() => (params.importe_min ? Number(params.importe_min) : null), [params.importe_min]);
+  const importeMin = useMemo(() => importeDeUrl(params.importe_min), [params.importe_min]);
 
   const setImporteMin = useCallback(
     (val: number | null) => setParams({ importe_min: val != null ? String(val) : "" }),
@@ -126,7 +126,7 @@ export function useFilters(): FiltersState {
     [setParams],
   );
 
-  const importeMax = useMemo(() => (params.importe_max ? Number(params.importe_max) : null), [params.importe_max]);
+  const importeMax = useMemo(() => importeDeUrl(params.importe_max), [params.importe_max]);
   const setImporteMax = useCallback(
     (val: number | null) => setParams({ importe_max: val != null ? String(val) : "" }),
     [setParams],
@@ -213,9 +213,17 @@ const SCOPE_KEYS = Object.keys(filterParsers) as (keyof typeof filterParsers)[];
 
 export const EMPTY_SCOPE: ScopeSnapshot = Object.fromEntries(SCOPE_KEYS.map((key) => [key, ""])) as ScopeSnapshot;
 
-/** Serialización estable de una instantánea, para comparar sin `deepEqual`. */
+/**
+ * Serialización estable de una instantánea, para comparar sin `deepEqual`.
+ *
+ * Los valores van como un array JSON, en el orden fijo de `SCOPE_KEYS`. Unidos
+ * con `&` sin escapar, un texto buscado que contuviera `&fecha_desde=` daba la
+ * misma clave que ese mismo texto puesto en `fecha_desde`, y el historial de
+ * deshacer tomaba dos ámbitos distintos por el mismo. La clave no sale de la
+ * memoria de la pestaña, así que su formato no es contrato de nada.
+ */
 export function scopeKey(snapshot: ScopeSnapshot): string {
-  return SCOPE_KEYS.map((key) => `${key}=${snapshot[key] ?? ""}`).join("&");
+  return JSON.stringify(SCOPE_KEYS.map((key) => snapshot[key] ?? ""));
 }
 
 /**

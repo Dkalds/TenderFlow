@@ -40,9 +40,14 @@ const FECHA = fc.option(
     .map((fecha) => fecha.toISOString().slice(0, 10)),
   { nil: null },
 );
-// Cualquier `number`, no sólo los importes razonables: -0, decimales, 1e21,
-// infinitos y NaN también tienen que sobrevivir a String() → Number().
-const IMPORTE = fc.option(fc.oneof(fc.nat(), fc.double()), { nil: null });
+// Cualquier importe que la API acepta, no sólo los razonables: decimales,
+// 5e-324 y 1e21 también tienen que sobrevivir a String() → Number(). Los que
+// no acepta (negativos, infinitos, NaN) no son un ámbito: la lectura los
+// ignora, y lo fija el `describe` del final.
+const IMPORTE = fc.option(
+  fc.oneof(fc.nat(), fc.double({ min: 0, noNaN: true, noDefaultInfinity: true })),
+  { nil: null },
+);
 
 const AMBITO: fc.Arbitrary<FilterValues> = fc.record({
   q: textoUnicode({ maxLength: 30 }),
@@ -152,22 +157,41 @@ describe("filterParamsFromSearch · con cualquier query", () => {
   });
 });
 
-describe("filterParamsFromSearch · contraejemplos pendientes de decisión", () => {
+describe("filterParamsFromSearch · un importe que no es un importe", () => {
   /**
-   * La propiedad «el importe que llega a la API es un número» falla con
-   * cualquier texto que `Number()` no entienda. `?importe_min=abc` —una URL
-   * retocada a mano o cortada al pegarla— manda `importe_min=NaN`, la API lo
-   * rechaza con 422 (el parámetro es `float` con `ge=0`) y todos los paneles
-   * de la pantalla quedan en error por un filtro que el usuario no ve en
-   * ningún chip. `useFilters` hace la misma conversión, así que las dos
-   * lecturas coinciden: el arreglo, si se decide, va en los dos sitios.
-   *
-   * `it.fails` y no un arreglo porque ignorar el filtro en silencio también es
-   * una decisión de producto. Cuando se tome, este test pasa a `it`.
+   * `?importe_min=abc` —una URL retocada a mano o cortada al pegarla— mandaba
+   * `importe_min=NaN`, la API lo rechazaba con 422 (el parámetro es `float`
+   * con `ge=0`) y todos los paneles de la pantalla quedaban en error por un
+   * filtro que el usuario no ve en ningún chip. Ahora se ignora, como si no
+   * viniera. `useFilters` lee con la misma función (`importeDeUrl`), y la
+   * paridad de las dos lecturas la fija `filter-params.test.tsx`.
    */
-  it.fails("un importe que no es un número no viaja a la API", () => {
+  it("un importe que no es un número no viaja a la API", () => {
     const leido = filterParamsFromSearch(new URLSearchParams("importe_min=abc&importe_max=1e999"));
 
     expect(leido).toEqual({});
+  });
+
+  it("un importe negativo tampoco: la API no lo acepta", () => {
+    expect(filterParamsFromSearch(new URLSearchParams("importe_min=-5"))).toEqual({});
+  });
+
+  it("lo que sí es un importe pasa, cero incluido", () => {
+    expect(filterParamsFromSearch(new URLSearchParams("importe_min=0&importe_max=1.5e5"))).toEqual({
+      importe_min: "0",
+      importe_max: "150000",
+    });
+  });
+
+  it("con cualquier texto, el importe que sale es un número que la API acepta", () => {
+    comprobar(
+      fc.property(textoUnicode({ maxLength: 12 }), (texto) => {
+        const leido = filterParamsFromSearch(new URLSearchParams({ importe_min: texto }));
+        if ("importe_min" in leido) {
+          const importe = Number(leido.importe_min);
+          expect(Number.isFinite(importe) && importe >= 0).toBe(true);
+        }
+      }),
+    );
   });
 });

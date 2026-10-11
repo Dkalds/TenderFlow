@@ -65,6 +65,23 @@ export function filtersToParams(filters: FilterValues): Record<string, string> {
   return params;
 }
 
+/**
+ * El importe de un parámetro de la URL, o `null` si no es un importe.
+ *
+ * La URL es texto que cualquiera retoca o pega cortado. `Number("abc")` es
+ * `NaN` y `Number("1e999")` es infinito, y los dos viajaban a la API como
+ * `importe_min=NaN`: el parámetro es un número no negativo, así que respondía
+ * 422 y todos los paneles quedaban en error por un filtro que no sale en
+ * ningún chip. Un valor que la API no aceptaría se ignora, igual que si no
+ * viniera. Lo usan las dos lecturas de la URL (`filterParamsFromSearch` y
+ * `useFilters`) para que no puedan discrepar.
+ */
+export function importeDeUrl(texto: string | null | undefined): number | null {
+  if (!texto) return null;
+  const importe = Number(texto);
+  return Number.isFinite(importe) && importe >= 0 ? importe : null;
+}
+
 /** Forma de los `searchParams` que Next entrega a una página de servidor. */
 export type SearchParamsServidor = Record<string, string | string[] | undefined>;
 
@@ -96,10 +113,10 @@ export function filterParamsFromSearch(
     estados: lista("estado"),
     ccaas: lista("ccaa"),
     tecnologias: lista("tecnologia"),
-    importeMin: importe ? Number(importe) : null,
+    importeMin: importeDeUrl(importe),
     soloAbiertas: leer("solo_abiertas") === "true",
     procedimientos: lista("procedimiento"),
     provincias: lista("provincia"),
-    importeMax: importeMax ? Number(importeMax) : null,
+    importeMax: importeDeUrl(importeMax),
   });
 }

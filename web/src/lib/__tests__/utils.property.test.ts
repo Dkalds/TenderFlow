@@ -134,25 +134,18 @@ describe("formateadores numéricos · sin dato", () => {
   });
 
   /**
-   * Contraejemplo de «ninguno deja basura en el texto» en cuanto se quita el
-   * «finito» del enunciado: `formatRelativeHours` ya devuelve la raya, y los
-   * otros cuatro pintan el `NaN` tal cual.
-   *
-   * La API no puede mandar un `NaN` (JSON no lo tiene), pero una división en
-   * el cliente sí lo fabrica: `formatPercent((tramo.n / total) * 100)` con el
-   * total a cero es `0 / 0`. Hoy ese caso concreto está protegido por quien
-   * llama; el formateador no protege a nadie.
-   *
-   * El arreglo es la guarda que ya tiene `formatRelativeHours`
-   * (`!Number.isFinite(value)` → `EMPTY`). No se aplica aquí porque cambia lo
-   * que pintan cuatro formateadores en toda la aplicación.
+   * Lo mismo sin el «finito» del enunciado. La API no puede mandar un `NaN`
+   * (JSON no lo tiene), pero una división en el cliente sí lo fabrica:
+   * `formatPercent((tramo.n / total) * 100)` con el total a cero es `0 / 0`.
+   * Pintaban «NaN%», «NaN €» y «∞ €»; ahora es «sin dato», con la misma guarda
+   * que ya tenía `formatRelativeHours`.
    */
-  it.fails("un NaN o un infinito se pinta como «sin dato», no como «NaN %»", () => {
-    for (const valor of [Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(formatPercent(valor)).toBe(EMPTY); // hoy: «NaN%» · «Infinity%»
-      expect(formatCurrency(valor)).toBe(EMPTY); // hoy: «NaN €» · «∞ €»
+  it("un NaN o un infinito se pinta como «sin dato», no como «NaN %»", () => {
+    for (const valor of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(formatPercent(valor)).toBe(EMPTY);
+      expect(formatCurrency(valor)).toBe(EMPTY);
       expect(formatCompactCurrency(valor)).toBe(EMPTY);
-      expect(formatNumber(valor)).toBe(EMPTY); // hoy: «NaN» · «∞»
+      expect(formatNumber(valor)).toBe(EMPTY);
     }
   });
 });
@@ -232,14 +225,16 @@ describe("formateadores de fecha", () => {
   });
 
   /**
-   * El único de la familia que no cumple lo de arriba. Para un texto que no es
-   * fecha devuelve el texto (bien: se ve el dato crudo), pero con un objeto
-   * `Date` inválido cae en la misma rama y devuelve su `toString()`, que es
+   * Era el único de la familia que no cumplía lo de arriba. Un texto que no es
+   * fecha lo devuelve tal cual (bien: se ve el dato crudo), pero un objeto
+   * `Date` inválido caía en la misma rama y salía su `toString()`, que es
    * literalmente «Invalid Date». Lo encontró `fc.date()`, que genera también
    * fechas inválidas.
    */
-  it.fails("formatDate con un Date inválido devuelve la raya, como los demás", () => {
-    expect(formatDate(new Date(Number.NaN))).toBe(EMPTY); // hoy: «Invalid Date»
+  it("formatDate con un Date inválido devuelve la raya, como los demás", () => {
+    expect(formatDate(new Date(Number.NaN))).toBe(EMPTY);
+    // El texto que no es fecha sigue saliendo crudo.
+    expect(formatDate("pendiente de fecha")).toBe("pendiente de fecha");
   });
 });
 
@@ -283,7 +278,12 @@ describe("truncate", () => {
         if (texto.length <= max) {
           expect(corto).toBe(texto);
         } else {
-          expect(corto).toBe(`${texto.slice(0, max)}…`);
+          // El principio del texto y la elipsis. Se queda una unidad por debajo
+          // del máximo sólo cuando cortar en él partiría un carácter en dos.
+          const cuerpo = corto.slice(0, -1);
+          expect(corto.endsWith("…")).toBe(true);
+          expect(texto.startsWith(cuerpo)).toBe(true);
+          expect(max - cuerpo.length).toBeLessThanOrEqual(1);
         }
       }),
     );
@@ -299,14 +299,21 @@ describe("truncate", () => {
   });
 
   /**
-   * `slice` corta por unidades UTF-16, y un emoji ocupa dos: si el corte cae
-   * en medio, queda media pareja suelta y el navegador pinta «�…». Lo
-   * encontró el generador de texto Unicode. Los títulos de la contratación
-   * pública no llevan emoji, pero `truncate` también recorta nombres de
-   * vistas, de reglas y comentarios, que escribe el usuario.
+   * `slice` corta por unidades UTF-16 y un emoji ocupa dos: si el corte caía en
+   * medio quedaba media pareja suelta, que el navegador pinta «�…». Lo encontró
+   * el generador de texto Unicode. Los títulos de la contratación pública no
+   * llevan emoji, pero `truncate` también recorta nombres de vistas, de reglas
+   * y comentarios, que escribe el usuario.
    */
-  it.fails("no parte un carácter por la mitad", () => {
-    expect(truncate("😀😀", 1).isWellFormed()).toBe(true); // hoy: «\ud83d…»
+  it("no parte un carácter por la mitad", () => {
+    expect(truncate("😀😀", 1)).toBe("…");
+    expect(truncate("😀😀", 3)).toBe("😀…");
+    comprobar(
+      fc.property(textoUnicode({ maxLength: 12 }), fc.integer({ min: 0, max: 12 }), (texto, max) => {
+        fc.pre(texto.isWellFormed());
+        expect(truncate(texto, max).isWellFormed()).toBe(true);
+      }),
+    );
   });
 });
 
