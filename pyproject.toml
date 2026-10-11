@@ -29,6 +29,8 @@ dependencies = [
     # de aquí decía `<8` y el lockfile instalaba 8.0.0, así que `pip install -e .`
     # y `pip install -r requirements.txt` pedían cosas incompatibles.
     "prometheus-fastapi-instrumentator>=8.0.0,<9",
+    # Opt-in por SENTRY_DSN (observability/sentry.py); mismo rango que requirements.in.
+    "sentry-sdk>=2.20.0,<3",
     "bcrypt>=4.0,<6",
     "argon2-cffi>=23.1.0,<26",
     "alembic>=1.13.0,<2",

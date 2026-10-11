@@ -929,6 +929,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [api/routes/me.py](../api/routes/me.py), [services/auth.py](../services/auth.py), [web/src/app/(dashboard)/ops/_components/administracion-view.tsx](../web/src/app/(dashboard)/ops/_components/administracion-view.tsx)
 - **Riesgo:** medio — revocar una clave que sí usa una integración la rompe; primero el inventario.
 
+### [P2] Confirmar que Sentry captura en el backend de producción (acción del propietario)
+- **Área:** Render (variables de `tenderflow-api` y `tenderflow-worker`), observability/sentry.py
+- **Problema:** `sentry-sdk` entró en los lockfiles el 2026-10-11; hasta entonces el módulo existía pero no enviaba nada. Que capture depende de una variable que el repo no ve: `SENTRY_DSN` en el panel de Render.
+- **Acceptance criteria:**
+  - `SENTRY_DSN` definida en `tenderflow-api` (y en `tenderflow-worker`) con el DSN de un proyecto de backend, no el del frontend.
+  - Tras el siguiente despliegue el log dice `sentry_configured` y no `sentry_sdk_missing`, y un error provocado aparece en Sentry sin query string, cookies ni cabeceras fuera de `host`, `user-agent` y `referer`.
+- **Files de partida:** [observability/sentry.py](../observability/sentry.py), [render.yaml](../render.yaml)
+- **Riesgo:** bajo.
+
 ### [P2] `ops_events` no recibe ningún evento en producción
 - **Área:** scheduler, db
 - **Problema:** el 2026-10-09 la tabla `ops_events` tenía **0 filas** (ya estaba vacía el 2026-09-18). La escriben el cierre de la pasada, el healthcheck, el drift report y el etiquetado por LLM, y de ella dependen criterios escritos en el código (`tech_signal_merge` se retira «con cero reparaciones en siete días, medido en `ops_events`»). Lo que sí llega a la BD son las filas de `jobs`, que es lo que lee Ops › Ejecuciones desde ese día; la telemetría fina de cada paso se pierde.
