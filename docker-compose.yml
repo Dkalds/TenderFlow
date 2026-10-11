@@ -151,7 +151,7 @@ services:
   #   docker compose --profile redis up
   # En producción se usa Upstash (configurar REDIS_URL en .env).
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: tenderflow-redis
     profiles: ["redis"]
     restart: unless-stopped
@@ -173,7 +173,7 @@ services:
   # Prometheus/Grafana son la definición de referencia de los umbrales; alerting
   # de producción se realiza via scheduler/healthcheck.py + ops_events en BD.
   prometheus:
-    image: prom/prometheus:v2.53.0
+    image: prom/prometheus:v3.15.0
     container_name: tenderflow-prometheus
     profiles: ["monitoring"]
     restart: unless-stopped
@@ -196,7 +196,7 @@ services:
       start_period: 20s
 
   grafana:
-    image: grafana/grafana-oss:11.1.0
+    image: grafana/grafana-oss:13.0.2
     container_name: tenderflow-grafana
     profiles: ["monitoring"]
     restart: unless-stopped
