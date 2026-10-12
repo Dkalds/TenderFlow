@@ -1292,7 +1292,9 @@ async def get_adjuntos_politica(
     """
     from services.pursuit_attachments import politica
 
-    vigente = politica()
+    # Al threadpool: resolver el almacén la primera vez construye el cliente de
+    # boto3, y eso no puede correr sobre el event loop del único proceso.
+    vigente = await run_db(politica)
     return PursuitAttachmentPolicy(
         almacen_disponible=vigente.almacen_disponible,
         max_bytes=vigente.max_bytes,
