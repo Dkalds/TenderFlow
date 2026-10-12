@@ -3,14 +3,17 @@
 /**
  * Datos y series de la vista «Proyectos y módulos».
  *
- * Todo lo que aquí se calcula es **presentación** (ordenar, recortar a top-N,
- * pivotar filas a columnas para el apilado): los totales y ratios llegan
- * calculados del backend, como exige ADR-014. La única derivada aritmética que
- * queda es `importe_medio` por módulo, que es una división de dos campos de la
- * misma fila y no cambia de universo.
+ * Desde 2026-10 la vista agrupa por familias de la taxonomía (ERP, CRM, cloud,
+ * ciberseguridad…) y los módulos SAP son el desglose de ERP. Todo lo que aquí
+ * se calcula es **presentación** (ordenar, recortar a top-N, pivotar filas a
+ * columnas para el apilado): los totales y ratios llegan calculados del
+ * backend, como exige ADR-014. Las únicas derivadas aritméticas que quedan son
+ * `importe_medio` por módulo y el importe medio de S/4HANA, divisiones de dos
+ * campos de la misma fila que no cambian de universo; el de las familias ya
+ * llega hecho.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
@@ -26,33 +29,44 @@ import type { Schemas } from "@/lib/api-types";
  * licitación con módulos A+B cuenta dos veces), así que el KPI leía MÁS BAJO
  * cuanto más multi-módulo era el corpus. Derivar el tipo del esquema hace que
  * `npm run typecheck` delate esa divergencia en vez de la pantalla.
- *
- * El bloque intersección son los campos que este cambio AÑADE a
- * `ProyectosModulosResult` en el backend; se declaran aquí solo hasta que se
- * regenere `api.d.ts` (`make openapi`), que es artefacto generado.
  */
-export type ProyectosModulosResponse = Schemas["ProyectosModulosResult"] & {
-  total?: number;
-  menciones_modulo?: number;
-  pct_match_portfolio?: number;
-  modulos_por_clasificada?: number;
-};
+export type ProyectosModulosResponse = Schemas["ProyectosModulosResult"];
 
 /** Sentinel used by the backend to flag a brand-new module (no prior-year data). */
 export const YOY_NUEVO = 999;
 
-export type ModSortKey = "modulo" | "count" | "importe" | "importe_medio";
-
-export type ModuloConMedia = Schemas["ModuloEntry"] & { importe_medio: number };
+/**
+ * Una fila de las tablas ordenables: una familia o un módulo SAP, con lo que
+ * se compara entre ellas.
+ */
+export interface FilaCategoria {
+  nombre: string;
+  count: number;
+  importe: number;
+  importe_medio: number;
+}
 
 export type TipoProyectoRow = Schemas["ProyectoTipoEntry"];
 
 export type TipoEstadoRow = { tipo: string; [estado: string]: number | string };
 
-export function useProyectosModulosView() {
-  const [modSortKey, setModSortKey] = useState<ModSortKey>("count");
-  const [modSortDir, setModSortDir] = useState<"asc" | "desc">("desc");
+/** Nodo de treemap: nombre y tamaño (el importe). */
+export interface NodoImporte {
+  name: string;
+  size: number;
+  [key: string]: string | number;
+}
 
+/** Los `limite` nodos de más importe, sin los que no tienen. */
+function nodosDeImporte(filas: FilaCategoria[], limite: number): NodoImporte[] {
+  return filas
+    .filter((fila) => fila.importe > 0)
+    .sort((a, b) => b.importe - a.importe)
+    .slice(0, limite)
+    .map((fila) => ({ name: fila.nombre, size: fila.importe }));
+}
+
+export function useProyectosModulosView() {
   const { data, isLoading, error, refetch } = useFilteredQuery<ProyectosModulosResponse>(
     ["analytics", "proyectos-modulos"],
     "/api/v1/analytics/proyectos-modulos",
@@ -60,22 +74,38 @@ export function useProyectosModulosView() {
     { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
 
-  const modulos = useMemo(() => data?.modulos ?? [], [data]);
+  // Las familias llegan ordenadas de más a menos licitaciones y con su importe
+  // medio: aquí solo se les da la forma de fila.
+  const familias = useMemo<FilaCategoria[]>(
+    () =>
+      (data?.familias ?? []).map((f) => ({
+        nombre: f.etiqueta,
+        count: f.count,
+        importe: f.importe,
+        importe_medio: f.importe_medio,
+      })),
+    [data],
+  );
+
+  const modulos = useMemo<FilaCategoria[]>(
+    () =>
+      [...(data?.modulos ?? [])]
+        .sort((a, b) => b.count - a.count)
+        .map((m) => ({
+          nombre: m.modulo,
+          count: m.count,
+          importe: m.importe,
+          importe_medio: m.count > 0 ? m.importe / m.count : 0,
+        })),
+    [data],
+  );
+
   const tipos = useMemo(() => data?.tipos_proyecto ?? [], [data]);
 
   const ticketS4Hana = useMemo(() => {
-    const s4 = modulos.find(
-      (m) =>
-        m.modulo.toLowerCase().includes("s/4hana") ||
-        m.modulo.toLowerCase().includes("s4hana"),
-    );
-    return s4 && s4.count > 0 ? s4.importe / s4.count : null;
+    const s4 = modulos.find((m) => /s\/?4hana/i.test(m.nombre));
+    return s4 && s4.count > 0 ? s4.importe_medio : null;
   }, [modulos]);
-
-  const modulosSorted = useMemo(
-    () => [...modulos].sort((a, b) => b.count - a.count),
-    [modulos],
-  );
 
   const tiposPie = useMemo(() => {
     const sorted = [...tipos].sort((a, b) => b.count - a.count);
@@ -92,24 +122,14 @@ export function useProyectosModulosView() {
     ];
   }, [tipos]);
 
-  // Treemap data: modulos by importe
-  const modulosTreemap = useMemo(
-    () =>
-      modulos
-        .filter((m) => m.importe > 0)
-        .sort((a, b) => b.importe - a.importe)
-        .slice(0, 25)
-        .map((m) => ({ name: m.modulo, size: m.importe })),
-    [modulos],
-  );
-
+  const familiasTreemap = useMemo(() => nodosDeImporte(familias, 20), [familias]);
+  const modulosTreemap = useMemo(() => nodosDeImporte(modulos, 25), [modulos]);
   const tiposTreemap = useMemo(
     () =>
-      tipos
-        .filter((t) => t.importe > 0)
-        .sort((a, b) => b.importe - a.importe)
-        .slice(0, 20)
-        .map((t) => ({ name: t.tipo, size: t.importe })),
+      nodosDeImporte(
+        tipos.map((t) => ({ nombre: t.tipo, count: t.count, importe: t.importe, importe_medio: 0 })),
+        20,
+      ),
     [tipos],
   );
 
@@ -133,57 +153,18 @@ export function useProyectosModulosView() {
       .slice(0, 12) as TipoEstadoRow[];
   }, [data]);
 
-  // Average importe per module table
-  const modulosWithAvg = useMemo<ModuloConMedia[]>(
-    () =>
-      modulos.map((m) => ({
-        ...m,
-        importe_medio: m.count > 0 ? m.importe / m.count : 0,
-      })),
-    [modulos],
-  );
-
-  const sortedModulosAvg = useMemo(() => {
-    const sorted = [...modulosWithAvg];
-    sorted.sort((a, b) => {
-      const aVal = a[modSortKey];
-      const bVal = b[modSortKey];
-      if (typeof aVal === "string" && typeof bVal === "string") {
-        return modSortDir === "asc"
-          ? aVal.localeCompare(bVal)
-          : bVal.localeCompare(aVal);
-      }
-      return modSortDir === "asc"
-        ? (aVal as number) - (bVal as number)
-        : (bVal as number) - (aVal as number);
-    });
-    return sorted;
-  }, [modulosWithAvg, modSortKey, modSortDir]);
-
-  function toggleModSort(key: ModSortKey) {
-    if (modSortKey === key) {
-      setModSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setModSortKey(key);
-      setModSortDir("desc");
-    }
-  }
-
   return {
     data,
+    familias,
     modulos,
     tipos,
     ticketS4Hana,
-    modulosSorted,
     tiposPie,
+    familiasTreemap,
     modulosTreemap,
     tiposTreemap,
     tipoEstadoEstados,
     tipoEstadoData,
-    sortedModulosAvg,
-    modSortKey,
-    modSortDir,
-    toggleModSort,
     isLoading,
     error,
     /** El «Reintentar» del error. */

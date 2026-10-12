@@ -225,7 +225,7 @@ export const SECTIONS: NavSection[] = [
       {
         label: "Proyectos y módulos",
         slug: "proyectos-modulos",
-        description: "Por tipo de proyecto y por módulo de SAP.",
+        description: "Qué se licita por familia tecnológica (ERP, CRM, cloud, ciberseguridad…), con los módulos de SAP dentro de ERP.",
         icon: Puzzle,
       },
       {

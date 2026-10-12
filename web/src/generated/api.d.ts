@@ -538,7 +538,7 @@ export interface paths {
         };
         /**
          * Proyectos Modulos
-         * @description SAP module and project type breakdown.
+         * @description Familias tecnológicas, módulos SAP como desglose de ERP, tipos de contrato y CPV.
          */
         get: operations["proyectos_modulos_api_v1_analytics_proyectos_modulos_get"];
         put?: never;
@@ -8821,6 +8821,22 @@ export interface components {
             running: boolean;
         };
         /**
+         * FamiliaEntry
+         * @description Una familia de la taxonomía: cuántas licitaciones y cuánto importe.
+         */
+        FamiliaEntry: {
+            /** Count */
+            count: number;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Familia */
+            familia: string;
+            /** Importe */
+            importe: number;
+            /** Importe Medio */
+            importe_medio: number;
+        };
+        /**
          * FechaFinManualIn
          * @description Cuerpo de ``PATCH /pursuits/cartera/{id}``: la fecha de fin del contrato.
          */
@@ -12124,11 +12140,30 @@ export interface components {
         ProyectosModulosResult: {
             /** Cpv */
             cpv?: components["schemas"]["CpvEntry"][];
+            /** Fabricantes Sin Familia */
+            fabricantes_sin_familia?: string[];
+            /** Familias */
+            familias?: components["schemas"]["FamiliaEntry"][];
+            /**
+             * Familias Por Licitacion
+             * @default 0
+             */
+            familias_por_licitacion: number;
+            /**
+             * Importe Con Familia
+             * @default 0
+             */
+            importe_con_familia: number;
             /**
              * Importe Total Sap
              * @default 0
              */
             importe_total_sap: number;
+            /**
+             * Menciones Familia
+             * @default 0
+             */
+            menciones_familia: number;
             /**
              * Menciones Modulo
              * @default 0
@@ -12142,10 +12177,20 @@ export interface components {
              */
             modulos_por_clasificada: number;
             /**
-             * Pct Match Portfolio
+             * Pct Con Familia
              * @default 0
              */
-            pct_match_portfolio: number;
+            pct_con_familia: number;
+            /**
+             * Pct Sap Con Modulo
+             * @default 0
+             */
+            pct_sap_con_modulo: number;
+            /**
+             * Ticket Medio Familia
+             * @default 0
+             */
+            ticket_medio_familia: number;
             /**
              * Ticket Medio Sap
              * @default 0
@@ -12155,6 +12200,7 @@ export interface components {
             tipo_estado?: components["schemas"]["TipoEstadoEntry"][];
             /** Tipos Proyecto */
             tipos_proyecto?: components["schemas"]["ProyectoTipoEntry"][];
+            top_familia_yoy?: components["schemas"]["TopFamiliaYoY"] | null;
             top_modulo_yoy?: components["schemas"]["TopModuloYoY"] | null;
             /**
              * Total
@@ -12166,6 +12212,16 @@ export interface components {
              * @default 0
              */
             total_clasificados: number;
+            /**
+             * Total Con Familia
+             * @default 0
+             */
+            total_con_familia: number;
+            /**
+             * Total Sap
+             * @default 0
+             */
+            total_sap: number;
         };
         /**
          * PublicacionCuenta
@@ -14886,6 +14942,20 @@ export interface components {
             importe: number;
             /** Nombre */
             nombre: string;
+        };
+        /**
+         * TopFamiliaYoY
+         * @description La familia que más crece: últimos 12 meses frente a los 12 anteriores.
+         */
+        TopFamiliaYoY: {
+            /** Crecimiento Pct */
+            crecimiento_pct: number;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Familia */
+            familia: string;
+            /** N Act */
+            n_act: number;
         };
         /** TopLicitacionItem */
         TopLicitacionItem: {

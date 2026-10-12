@@ -793,3 +793,29 @@ endpoints). Se queda en **Rendimiento** y Dirección enlaza allí:
   el mismo enlace.
 - `prevision_trimestral` sigue viajando en `CuadroDireccion`: retirarlo es un
   cambio de contrato que esta pantalla no necesita para dejar de pintarlo.
+
+### Proyectos y módulos, por familias tecnológicas
+
+Mercado › Proyectos y módulos (vista experimental) solo entendía módulos SAP
+sobre un corpus que ya clasifica ERP, CRM, cloud, ciberseguridad, datos e IA,
+desarrollo, GIS, sanidad digital, administración electrónica, RRHH, gestión
+documental y puesto de trabajo. Decisión del dueño: agrupar por esas
+categorías y dejar los módulos SAP como desglose de ERP.
+
+- **Familia = categoría + fabricantes de una sola línea.** Las familias son las
+  categorías de `config/keywords.py` en su orden; SAP, Unit4, Sage e Infor
+  cuentan en ERP, Salesforce en CRM, Workday y Meta4 en RRHH y nómina y
+  OpenText en gestión documental, por la columna «Motivo» de
+  `docs/taxonomia-tecnologica.md`. Oracle, Microsoft, IBM, ServiceNow y Sopra
+  venden en varias familias: no cuentan en ninguna y la vista lo dice debajo
+  de la tabla, en vez de inflar una familia por intuición.
+- **Sin doble conteo.** Una licitación de dos familias cuenta en las dos
+  (barras, treemap y tabla), pero «Licitaciones con familia», el importe medio
+  y el porcentaje del ámbito la cuentan una vez, y llegan hechos del backend.
+- **El desglose es de ERP.** Los módulos SAP se buscan solo en lo etiquetado
+  como SAP: «financiero» es keyword de SAP FI y casaba con cualquier
+  asesoramiento financiero. El porcentaje con módulo divide por las
+  licitaciones SAP, no por el ámbito; desaparece «Encaje con tu portfolio»,
+  que medía qué parte de todo lo licitado nombraba un módulo SAP.
+- Sigue detrás de `mercado_proyectos_modulos` y marcada como experimental: la
+  agrupación es nueva y no se ha validado con uso.

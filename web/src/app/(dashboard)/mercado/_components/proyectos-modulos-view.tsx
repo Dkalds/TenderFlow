@@ -5,23 +5,27 @@
  * espacio Mercado. Ver la nota en `tendencias-view.tsx` sobre por qué el cuerpo
  * no vive en el `page.tsx` de la ruta.
  *
+ * Qué se licita, por **familia tecnológica** (ERP, CRM, cloud,
+ * ciberseguridad… las categorías de `config/keywords.py`), y dentro de ERP el
+ * desglose por módulo SAP. Hasta 2026-10 solo entendía módulos SAP, sobre un
+ * corpus que ya clasificaba todas esas familias. Abajo, los tipos de proyecto y
+ * los CPV del ámbito, que no dependen de la familia.
+ *
  * Es una de las dos vistas `experimental` del espacio (`lib/space-views.ts`),
  * así que se monta detrás de `VistaExperimental`: la flag
  * `mercado_proyectos_modulos` puede apagarla desde Ops, y sin backend de flags
  * sigue visible y marcada.
  */
 
+import { useId } from "react";
+
 import { PanelError } from "@/components/console/panel";
 import { ExportPopover } from "@/components/export-popover";
 
 import { useProyectosModulosView } from "../_hooks/use-proyectos-modulos-view";
-import { ProyectosGraficos } from "./proyectos-graficos";
-import { ProyectosKpisCobertura, ProyectosKpisSap } from "./proyectos-kpis";
-import {
-  ProyectosCpvTabla,
-  ProyectosModulosTabla,
-  ProyectosTiposTabla,
-} from "./proyectos-tablas";
+import { GraficosFamilias, GraficosModulos, GraficosTipos, SIN_FAMILIAS, SIN_MODULOS } from "./proyectos-graficos";
+import { ProyectosKpisFamilias, ProyectosKpisSap } from "./proyectos-kpis";
+import { ProyectosCpvTabla, ProyectosTiposTabla, TablaCategorias } from "./proyectos-tablas";
 import { VistaExperimental } from "./vista-experimental";
 
 export default function ProyectosModulosView() {
@@ -29,75 +33,94 @@ export default function ProyectosModulosView() {
     <VistaExperimental
       flag="mercado_proyectos_modulos"
       vista="proyectos"
-      descripcion="Qué se licita en SAP: tipos de proyecto y módulos."
+      descripcion="Qué se licita por familia tecnológica, con los módulos SAP como desglose de ERP."
     >
       <ProyectosModulosContenido />
     </VistaExperimental>
   );
 }
 
-function ProyectosModulosContenido() {
-  const {
-    data,
-    modulos,
-    tipos,
-    ticketS4Hana,
-    modulosSorted,
-    tiposPie,
-    modulosTreemap,
-    tiposTreemap,
-    tipoEstadoEstados,
-    tipoEstadoData,
-    sortedModulosAvg,
-    modSortKey,
-    modSortDir,
-    toggleModSort,
-    isLoading,
-    error,
-    refetch,
-  } = useProyectosModulosView();
+/** «A, B y C»: la lista en castellano. */
+function enumerar(nombres: string[]): string {
+  if (nombres.length <= 1) return nombres.join("");
+  return `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}`;
+}
 
-  if (error) {
-    return <PanelError title="No se pudieron cargar los proyectos y módulos" error={error} onRetry={refetch} />;
+/** Título de bloque: rótulo de sección de la vista, no de panel. */
+function Seccion({ id, titulo, children }: { id: string; titulo: string; children: React.ReactNode }) {
+  return (
+    <section aria-labelledby={id} className="space-y-4">
+      <h2 id={id} className="text-tf-body font-semibold">
+        {titulo}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function ProyectosModulosContenido() {
+  const v = useProyectosModulosView();
+  const idFamilias = useId();
+  const idErp = useId();
+  const idTipos = useId();
+
+  if (v.error) {
+    return <PanelError title="No se pudieron cargar los proyectos y módulos" error={v.error} onRetry={v.refetch} />;
   }
 
+  const sinFamilia = v.data?.fabricantes_sin_familia ?? [];
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-end">
         <h1 className="sr-only">Proyectos y módulos</h1>
-        <ExportPopover extraParams={{ section: "proyectos-modulos" }} label="Exportar módulos" />
+        <ExportPopover extraParams={{ section: "proyectos-modulos" }} label="Exportar licitaciones" />
       </div>
 
-      <ProyectosKpisSap data={data} ticketS4Hana={ticketS4Hana} isLoading={isLoading} />
+      <Seccion id={idFamilias} titulo="Por familia tecnológica">
+        <ProyectosKpisFamilias data={v.data} isLoading={v.isLoading} />
+        <GraficosFamilias filas={v.familias} treemap={v.familiasTreemap} isLoading={v.isLoading} />
+        <TablaCategorias
+          titulo="Importe medio por familia"
+          etiqueta="Familias"
+          columnaNombre="Familia"
+          filas={v.familias}
+          vacio={SIN_FAMILIAS}
+          isLoading={v.isLoading}
+        />
+        {sinFamilia.length > 0 && (
+          // Lo que no suma se dice: una familia «ERP» sin Oracle no es una
+          // familia «ERP» incompleta por descuido.
+          <p className="text-tf-meta text-muted-foreground">
+            {enumerar(sinFamilia)} no cuentan en ninguna familia: venden en varias, y repartirlas sería adivinar.
+          </p>
+        )}
+      </Seccion>
 
-      <ProyectosKpisCobertura
-        data={data}
-        nModulos={modulos.length}
-        nTipos={tipos.length}
-        isLoading={isLoading}
-      />
+      <Seccion id={idErp} titulo="ERP por dentro: módulos SAP">
+        <ProyectosKpisSap data={v.data} ticketS4Hana={v.ticketS4Hana} isLoading={v.isLoading} />
+        <GraficosModulos filas={v.modulos} treemap={v.modulosTreemap} isLoading={v.isLoading} />
+        <TablaCategorias
+          titulo="Importe medio por módulo SAP"
+          etiqueta="Módulos SAP"
+          columnaNombre="Módulo"
+          filas={v.modulos}
+          vacio={SIN_MODULOS}
+          isLoading={v.isLoading}
+        />
+      </Seccion>
 
-      <ProyectosGraficos
-        modulosSorted={modulosSorted}
-        tiposPie={tiposPie}
-        modulosTreemap={modulosTreemap}
-        tiposTreemap={tiposTreemap}
-        tipoEstadoData={tipoEstadoData}
-        tipoEstadoEstados={tipoEstadoEstados}
-        isLoading={isLoading}
-      />
-
-      <ProyectosModulosTabla
-        filas={sortedModulosAvg}
-        isLoading={isLoading}
-        sortKey={modSortKey}
-        sortDir={modSortDir}
-        onSort={toggleModSort}
-      />
-
-      <ProyectosTiposTabla tipos={tipos} isLoading={isLoading} />
-
-      <ProyectosCpvTabla filas={data?.cpv ?? []} isLoading={isLoading} />
+      <Seccion id={idTipos} titulo="Por tipo de proyecto y CPV">
+        <GraficosTipos
+          tiposPie={v.tiposPie}
+          tiposTreemap={v.tiposTreemap}
+          tipoEstadoData={v.tipoEstadoData}
+          tipoEstadoEstados={v.tipoEstadoEstados}
+          isLoading={v.isLoading}
+        />
+        <ProyectosTiposTabla tipos={v.tipos} isLoading={v.isLoading} />
+        <ProyectosCpvTabla filas={v.data?.cpv ?? []} isLoading={v.isLoading} />
+      </Seccion>
     </div>
   );
 }
