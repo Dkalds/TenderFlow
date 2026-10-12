@@ -208,16 +208,19 @@ class TestBorrado:
     ) -> None:
         import api.routes.pursuits as rutas
 
+        # El doble devuelve lo mismo que el repositorio real, adjuntos incluidos:
+        # el DTO los tiraba y la advertencia callaba los ficheros del equipo.
         monkeypatch.setattr(
             rutas,
             "resumen_de_borrado",
-            lambda **k: {"oportunidades": 14, "comentarios": 37, "miembros": 3},
+            lambda **k: {"oportunidades": 14, "comentarios": 37, "miembros": 3, "adjuntos": 12},
         )
 
         assert client.get(self.PREVIEW).json() == {
             "oportunidades": 14,
             "comentarios": 37,
             "miembros": 3,
+            "adjuntos": 12,
         }
 
     def test_una_confirmacion_incorrecta_es_409(
