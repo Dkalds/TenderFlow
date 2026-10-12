@@ -153,6 +153,7 @@ export type OrganizationSettingsOut = Schemas["OrganizationSettingsOut"];
 export type SessionsResult = Schemas["SessionsResult"];
 export type MyApiKeysResult = Schemas["MyApiKeysResult"];
 export type CreatedKey = Schemas["CreatedKey"];
+export type RotatedKey = Schemas["RotatedKey"];
 export type NotificationPreference = Schemas["NotificationPreference"];
 export type NotificationPreferencesResult = Schemas["NotificationPreferencesResult"];
 
