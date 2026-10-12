@@ -38,6 +38,50 @@ Un ámbito excluido **no** se registra como `RegisteredSource`: no tiene módulo
 ni SLA, ni fila de salud, y el healthcheck lo reclamaría cada seis horas como
 una fuente muerta.
 
+## Conectores escritos y apagados: sindicaciones 1044 y 1143 de PLACSP (2026-10-12)
+
+Para revisar D16 con algo concreto delante, el dueño decidió escribir ya dos
+conectores sobre sindicaciones de PLACSP y no encenderlos hasta decidir. Están
+registrados como `opcional` y su variable de URL va vacía: corren en cada
+pasada, escriben `disabled` y no descargan nada. Las dos exclusiones de arriba
+siguen vigentes y lo dicen. Cómo se encienden:
+[runbooks/fuentes-opcionales.md](runbooks/fuentes-opcionales.md).
+
+- **`placsp_agregadas`** — `sindicacion_1044/PlataformasAgregadasSinMenores.atom`:
+  lo que las plataformas autonómicas vierten en PLACSP por agregación, sin
+  contratos menores. Es la vía para ver los portales «no integrados» sin un
+  conector por portal. Mismo parseo, misma puerta tecnológica y mismo universo
+  (`technology_observed`) que el feed principal: son oportunidades. Contra lo
+  que ya entra, tres capas que ya existían: `id_externo` namespaceado
+  (`placsp_agregadas:<expediente>`) que no pisa ninguna fila, el dedupe por
+  expediente natural + órgano + CPV4 que corre tras cada lote (la canónica es
+  la de PLACSP si existe; si no, la publicada antes), y la clave canónica de la
+  superficie pública. La regla dura de este documento sigue en pie: que una
+  plataforma llegue por agregación no la convierte en censo.
+- **`placsp_menores`** — `sindicacion_1143/contratosMenoresPerfilesContratantes.atom`:
+  contratos menores de los perfiles alojados en PLACSP, filtrados por la misma
+  puerta tecnológica. **No son oportunidades** y el modelado lo garantiza sin
+  migración: estado siempre cerrado, sin plazo, universo propio
+  (`placsp_contratos_menores_observed`, fuera de `UNIVERSOS_TECNOLOGICOS`) y sin
+  etiqueta `tecnologia` (la evidencia queda en `raw_keywords`). Con eso no
+  entran en el Radar, el listado, la superficie pública, los KPIs ni la
+  población del clasificador. Lo que aportan son adjudicaciones y empresas:
+  quién gana qué y a quién.
+
+Ninguna de las dos URL se pudo descargar desde la sesión que escribió los
+conectores (el proxy denegaba los hosts de PLACSP): los nombres salen de la
+página de datos abiertos del Ministerio de Hacienda y las fixtures de los tests
+son sintéticas. `--check --dump` es el primer paso al encender cualquiera.
+
+## TACRC: del índice del Pleno al índice completo (2026-10-12)
+
+El índice por defecto (`Resoluciones-Pleno.aspx`) trae unas 17 resoluciones
+doctrinales; el tribunal dicta del orden de 1.900 al año. El conector lee ahora
+también la biblioteca de SharePoint donde viven todos los PDFs
+(`/tacrc/resoluciones/año AAAA/`), año a año, con una URL que lleve `{anio}`.
+La candidata (`URL_BIBLIOTECA_RESOLUCIONES`) no está verificada y el valor por
+defecto no cambia: ver el runbook.
+
 ## Cómo medir el solape antes de abrir un conector (2026-09-14)
 
 D16 se decidió sin saber cuánto de la contratación TI de Madrid, Andalucía y

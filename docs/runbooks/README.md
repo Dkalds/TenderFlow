@@ -48,6 +48,7 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 
 ### Operación y procedimientos puntuales
 
+- **Fuentes opcionales** (encender PSCP, TACRC completo, agregadas y contratos menores de PLACSP; respaldo ZIP del ATOM) — [fuentes-opcionales.md](fuentes-opcionales.md)
 - **Conceder acceso** a quien lo solicita — [conceder-acceso.md](conceder-acceso.md)
 - **Correo transaccional** (ESP, dominio, rotación de clave) — [correo-transaccional.md](correo-transaccional.md)
 - **Alertas y receptor de guardia** — [observability-alerts.md](observability-alerts.md)
