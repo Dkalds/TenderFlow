@@ -20,6 +20,10 @@ export type LicitacionSummary = Schemas["LicitacionSummary"];
  */
 export type LicitacionesCursorPage = Schemas["CursorPaginatedResponseWithTotal_LicitacionSummary_"];
 export type LicitacionDetail = Schemas["LicitacionDetail"];
+/** Quién ganó el expediente o uno de sus lotes, tal como lo publicó la fuente. */
+export type Adjudicatario = Schemas["AdjudicatarioOut"];
+/** `GET /licitaciones/{id}/similares`: predecesor y parecidos, con método y `n`. */
+export type SimilaresResult = Schemas["SimilaresResult"];
 export type TrendPoint = Schemas["TrendPoint"];
 export type TrendsResult = Schemas["TrendsResult"];
 export type HistogramBin = Schemas["HistogramBin"];

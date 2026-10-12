@@ -15,6 +15,8 @@ import { PanelTabs, SectionTitle, panelDePestana } from "@/components/console/pa
 import { FichaAcciones, FichaAvisos, FichaEstado, FichaOrgano } from "@/components/ficha/ficha-cabecera";
 import { FichaCifras } from "@/components/ficha/ficha-cifras";
 import { FichaCampos } from "@/components/ficha/ficha-campos";
+import { FichaAdjudicatarios } from "@/components/ficha/ficha-adjudicatarios";
+import { FichaSimilares } from "@/components/ficha/ficha-similares";
 import {
   FichaDescripcion,
   FichaEventos,
@@ -38,10 +40,11 @@ import type { LicitacionDetail } from "@/lib/licitacion-detail";
  *
  * Debajo, cinco pestañas con lo que antes se apilaba en cuatro:
  *
- * - **Resumen**: los campos, el desglose de la puntuación, la descripción
- *   (recortada), las tecnologías, el enlace al portal y los eventos.
- * - **Competencia**: competencia esperada, baja esperada y simulador de
- *   puntuación, que antes alargaban el Resumen.
+ * - **Resumen**: los campos, quién lo ganó (si ya tiene adjudicatario), el
+ *   desglose de la puntuación, la descripción (recortada), las tecnologías, el
+ *   enlace al portal y los eventos.
+ * - **Competencia**: competencia esperada, baja esperada, simulador de
+ *   puntuación y los expedientes parecidos, que antes alargaban el Resumen.
  * - **Pliegos**: documentos, ficha estructurada del pliego (lotes, criterios,
  *   ANS, certificaciones citables) y el guion de oferta que se apoya en ella.
  * - **IA**: el asistente (resumen y «Preguntar»).
@@ -186,6 +189,7 @@ export function DetailInspector({
                 <FichaCampos licitacion={l} variante="inspector" />
                 <FichaFuente licitacion={l} className="mt-3" />
               </section>
+              <FichaAdjudicatarios licitacion={l} />
               <FichaPuntuacion licitacion={l} />
               <FichaDescripcion licitacion={l} recortar />
               <div className="[&>*:first-child]:mt-0">
@@ -208,6 +212,11 @@ export function DetailInspector({
               {/* F2.2 — junto a la baja esperada: es con esa baja con la que se
                   mide el rival, y el simulador la ofrece como referencia. */}
               <SimuladorPuntuacion licitacionId={l.id_externo} />
+              {/* Qué más se compra parecido, de cualquier órgano: el contexto
+                  del precio, después de las cifras que lo deciden. */}
+              <div className="mt-6">
+                <FichaSimilares licitacionId={l.id_externo} />
+              </div>
             </div>
           )}
 

@@ -81,6 +81,8 @@ export const metaKeys = {
 export const licitacionKeys = {
   all: ["licitacion"] as const,
   detail: (id: string) => ["licitacion", id] as const,
+  /** `GET /licitaciones/{id}/similares`, con el tope de parecidos que se pide. */
+  similares: (id: string, limite: number) => ["licitacion", id, "similares", limite] as const,
 };
 
 export const licitacionesKeys = {
