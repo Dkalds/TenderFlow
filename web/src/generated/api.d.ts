@@ -4316,6 +4316,10 @@ export interface paths {
         /**
          * Get Pursuits
          * @description Lista únicamente opportunities de una organización autorizada.
+         *
+         *     Los filtros van en el `WHERE` y el `total` es el del conjunto filtrado: el
+         *     tablero los usa en vez de filtrar la página que ya tiene, que con más de una
+         *     página escondía lo que no había llegado.
          */
         get: operations["get_pursuits_api_v1_pursuits_get"];
         put?: never;
@@ -4355,6 +4359,30 @@ export interface paths {
          *     ha pasado nada.
          */
         get: operations["get_actividad_api_v1_pursuits_actividad_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/adjuntos/politica": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Adjuntos Politica
+         * @description Si este entorno acepta adjuntos, el tope por fichero y los tipos admitidos.
+         *
+         *     Sin organización: la lista blanca y el tope son del producto y el almacén es
+         *     del despliegue, iguales para todos. Lo que sí depende de la organización —si
+         *     quien mira puede subir— lo decide su rol, y la subida lo vuelve a comprobar.
+         */
+        get: operations["get_adjuntos_politica_api_v1_pursuits_adjuntos_politica_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4829,7 +4857,14 @@ export interface paths {
          *     `python-multipart` —una dependencia que este plan no pre-autoriza (D31)— para
          *     parsear un formato que aquí solo transportaría un campo. El cliente hace
          *     `fetch(url, {method: 'POST', body: file, headers: {'Content-Type': file.type,
-         *     'X-Filename': file.name}})`, y el servidor recibe exactamente los bytes.
+         *     'X-Filename': encodeURIComponent(file.name)}})`, y el servidor recibe
+         *     exactamente los bytes.
+         *
+         *     El nombre va **codificado como URI** porque una cabecera HTTP solo lleva
+         *     Latin-1: `fetch` lanza `TypeError` ante «Oferta — v2.pdf» (la raya,
+         *     U+2014), y un nombre con tilde llegaba según cómo lo serializara cada
+         *     cliente. Un nombre sin `%` se decodifica a sí mismo, así que el cliente que
+         *     lo mande en claro sigue funcionando.
          *
          *     El tamaño se comprueba **dos veces**: contra `Content-Length` antes de leer
          *     —para no traer 500 MB a memoria y rechazarlos después— y contra los bytes
@@ -5846,6 +5881,36 @@ export interface components {
             pct_oferta_maxima: number;
             /** Pct Oferta Minima */
             pct_oferta_minima: number;
+        };
+        /**
+         * AdjudicatarioOut
+         * @description Quién ganó el expediente (o uno de sus lotes), tal como lo publicó la fuente.
+         *
+         *     Una fila por adjudicatario y lote, sin agregar ni resolver a empresa
+         *     canónica: la ficha enseña lo publicado, y el maestro de empresas puede estar
+         *     todavía corrigiendo la identidad en la cola de revisión. Lo que la fuente no
+         *     publicó llega como ``None`` —nunca como cero—, porque un importe o un número
+         *     de ofertas a cero se leerían como dato.
+         *
+         *     El lote va por su **número** y su título, no por el id de ``lotes``: la
+         *     re-ingesta borra y reinserta los lotes, y el id no sobrevive (``v110``).
+         *     ``lote_numero`` ``None`` es la adjudicación del expediente completo.
+         */
+        AdjudicatarioOut: {
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Lote Titulo */
+            lote_titulo?: string | null;
+            /** N Ofertas Recibidas */
+            n_ofertas_recibidas?: number | null;
+            /** Nif */
+            nif?: string | null;
+            /** Nombre */
+            nombre: string;
         };
         /**
          * AdminUserAction
@@ -9812,6 +9877,8 @@ export interface components {
         };
         /** LicitacionDetail */
         LicitacionDetail: {
+            /** Adjudicatarios */
+            adjudicatarios?: components["schemas"]["AdjudicatarioOut"][];
             /** Ccaa */
             ccaa?: string | null;
             /** Cpv */
@@ -12336,6 +12403,22 @@ export interface components {
             uploaded_by_name?: string | null;
             /** Uploaded By User Id */
             uploaded_by_user_id?: number | null;
+        };
+        /**
+         * PursuitAttachmentPolicy
+         * @description Lo que la consola necesita saber antes de ofrecer «Subir adjunto».
+         *
+         *     Sale de las mismas constantes con las que el servidor valida la subida: la
+         *     pantalla no lleva su propia copia de la lista blanca ni del tope, y un
+         *     entorno sin almacén lo dice aquí en vez de con un 503 tras enviar el fichero.
+         */
+        PursuitAttachmentPolicy: {
+            /** Almacen Disponible */
+            almacen_disponible: boolean;
+            /** Max Bytes */
+            max_bytes: number;
+            /** Tipos */
+            tipos: components["schemas"]["TipoAdjuntoOut"][];
         };
         /**
          * PursuitCommentCreate
@@ -14865,6 +14948,16 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * TipoAdjuntoOut
+         * @description Un tipo de la lista blanca y las extensiones que le corresponden.
+         */
+        TipoAdjuntoOut: {
+            /** Content Type */
+            content_type: string;
+            /** Extensiones */
+            extensiones: string[];
         };
         /**
          * TipoEstadoEntry
@@ -20875,6 +20968,10 @@ export interface operations {
                 tipo_contrato?: string | null;
                 /** @description Sólo expedientes cuyo plazo vence dentro de N días. Se calcula en SQL sobre `fecha_limite` y excluye los estados terminales: un expediente ya adjudicado con fecha límite futura no vence, no se puede licitar. */
                 dias_restantes_max?: number | null;
+                /** @description Sólo expedientes con esta etiqueta de la organización (F1.6), puesta como favorito. Filtra en servidor: el total y las páginas son las del conjunto etiquetado entero, no las de la página que el cliente tenga cargada. */
+                etiqueta?: number | null;
+                /** @description Organización dueña de `etiqueta`; por defecto la personal. Sólo se usa con `etiqueta`: sin ella el listado es el mismo para cualquier organización. */
+                organization_id?: number | null;
                 /** @description Orden: fecha_publicacion (default), -importe, importe, titulo */
                 sort?: string | null;
                 /** @description Incluir total (false = más rápido para paginación) */
@@ -21050,6 +21147,10 @@ export interface operations {
                 tipo_contrato?: string | null;
                 /** @description Plazo que vence dentro de N días */
                 dias_restantes_max?: number | null;
+                /** @description Sólo expedientes con esta etiqueta de la organización (F1.6), puesta como favorito. Filtra en servidor: el total y las páginas son las del conjunto etiquetado entero, no las de la página que el cliente tenga cargada. */
+                etiqueta?: number | null;
+                /** @description Organización dueña de `etiqueta`; por defecto la personal. Sólo se usa con `etiqueta`: sin ella el listado es el mismo para cualquier organización. */
+                organization_id?: number | null;
                 /** @description Orden, con los mismos valores que `/licitaciones`: `fecha_publicacion` (recientes primero, el de por defecto), `importe`, `titulo` y sus inversos con `-`. Los nulos van al final en los dos sentidos. El cursor lleva el orden dentro: no vale para otro. */
                 sort?: string | null;
                 /** @description Añade `total`: un COUNT(*) con los mismos filtros. Pídelo sólo en la primera página; el cursor existe para no pagarlo en cada una. */
@@ -24558,6 +24659,12 @@ export interface operations {
                 organization_id?: number | null;
                 status?: ("identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn") | null;
                 responsible_user_id?: number | null;
+                /** @description Texto en el título del expediente, su referencia o el nombre del responsable; sin distinguir acentos ni mayúsculas. */
+                q?: string | null;
+                /** @description Sólo oportunidades con esta etiqueta de la organización. */
+                etiqueta?: number | null;
+                /** @description Plazo de presentación del expediente, sobre oportunidades abiertas y sin presentar: `vencido` (el día ya pasó), `7d` o `30d` (vence de hoy a dentro de N días, inclusive). */
+                plazo?: ("vencido" | "7d" | "30d") | null;
                 /** @description Tamaño de página (máx. 500). */
                 limit?: number;
                 /** @description Filas a saltar desde el inicio. */
@@ -24666,6 +24773,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_adjuntos_politica_api_v1_pursuits_adjuntos_politica_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentPolicy"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -25518,7 +25658,7 @@ export interface operations {
                 organization_id?: number | null;
             };
             header: {
-                /** @description Nombre original del fichero. Se sanea antes de guardarlo. */
+                /** @description Nombre original del fichero, codificado como componente de URI (`encodeURIComponent`). Se decodifica y se sanea antes de guardarlo. */
                 "X-Filename": string;
                 "X-CSRF-Token"?: string | null;
             };

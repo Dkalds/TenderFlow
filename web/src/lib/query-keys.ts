@@ -346,6 +346,16 @@ export const pursuitKeys = {
    */
   tasks: (pursuitId: number | string) => ["pursuits", "tasks", String(pursuitId)] as const,
   /**
+   * Adjuntos propios de una oportunidad (`GET /pursuits/{id}/adjuntos`, C6.3).
+   * Cuelga de la raíz `pursuits` como las tareas: son trabajo de la oportunidad.
+   */
+  adjuntos: (pursuitId: number | string) => ["pursuits", "adjuntos", String(pursuitId)] as const,
+  /**
+   * Política de adjuntos del entorno (`GET /pursuits/adjuntos/politica`): si hay
+   * almacén, el tope y los tipos. No depende de la organización.
+   */
+  adjuntosPolitica: ["pursuits", "adjuntos-politica"] as const,
+  /**
    * Propuesta de pesos a partir de los cierres con desglose sellado
    * (`GET /pursuits/weights-proposal`, S3.3). Cuelga de la raíz `pursuits`
    * a propósito: cerrar una oportunidad cambia su base, y la invalidación

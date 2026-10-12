@@ -18,7 +18,28 @@ import { ApiError } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { formatCurrency } from "@/lib/utils";
 
-export type TabKey = "resumen" | "expediente" | "pliego" | "precio" | "conversacion";
+export type TabKey = "resumen" | "expediente" | "pliego" | "precio" | "adjuntos" | "conversacion";
+
+/** Las pestañas de la ficha, en el orden del trabajo sobre la oportunidad. */
+export function pestanasDeFicha(pursuit: Pursuit): { key: TabKey; label: string; badge?: number }[] {
+  return [
+    { key: "resumen", label: "Resumen" },
+    // El expediente vive aquí desde 2026-09: antes había que salir a
+    // `/detalle` para leer órgano, CPV, plazos y pliegos de aquello sobre lo
+    // que se decide en esta misma pantalla.
+    { key: "expediente", label: "Expediente" },
+    { key: "pliego", label: "Pliego" },
+    { key: "precio", label: "Precio" },
+    // C6.3 — lo que el equipo escribe para responder al pliego. Sin contador:
+    // saberlo exigiría pedir la lista al abrir la ficha.
+    { key: "adjuntos", label: "Adjuntos" },
+    {
+      key: "conversacion",
+      label: "Conversación",
+      badge: pursuit.comments_count ? pursuit.comments_count : undefined,
+    },
+  ];
+}
 
 const cargando = () => <PanelLoading height={320} />;
 
@@ -44,6 +65,10 @@ const CompetenciaEsperadaBlock = dynamic(
 );
 const SimuladorPuntuacion = dynamic(
   () => import("@/components/pliego/simulador-puntuacion").then((modulo) => modulo.SimuladorPuntuacion),
+  { loading: cargando },
+);
+const AdjuntosPanel = dynamic(
+  () => import("@/components/pursuits/adjuntos-panel").then((modulo) => modulo.AdjuntosPanel),
   { loading: cargando },
 );
 const PursuitCommentsThread = dynamic(
@@ -119,6 +144,8 @@ export function PestanaDiferida({ tab, pursuit }: { tab: Exclude<TabKey, "resume
       );
     case "precio":
       return <PestanaPrecio pursuit={pursuit} />;
+    case "adjuntos":
+      return <AdjuntosPanel pursuitId={pursuit.id} />;
     case "conversacion":
       return <PursuitCommentsThread pursuitId={pursuit.id} className="mx-auto h-full max-w-[760px]" />;
   }

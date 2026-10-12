@@ -30,7 +30,7 @@ import { HistorialFicha } from "./_components/historial-ficha";
 import { PathFases } from "./_components/path-fases";
 import { PrecargaFicha, idDeRuta } from "./_components/precarga-ficha";
 import { SalidaDeFase } from "./_components/salida-fase";
-import { PestanaDiferida, type TabKey } from "./_components/secciones-diferidas";
+import { PestanaDiferida, pestanasDeFicha, type TabKey } from "./_components/secciones-diferidas";
 
 /** Los paneles del Resumen a los que lleva un paso pendiente. */
 const ANCLA_DE_LUGAR = { decision: "ficha-decision", contraste: "ficha-requisitos", kit: "ficha-kit" } as const;
@@ -227,20 +227,7 @@ export default function OpportunityDetailPage() {
             idBase="ficha"
             value={tab}
             onChange={setTab}
-            tabs={[
-              { key: "resumen", label: "Resumen" },
-              // El expediente vive aquí desde 2026-09: antes había que salir a
-              // `/detalle` para leer órgano, CPV, plazos y pliegos de aquello
-              // sobre lo que se decide en esta misma pantalla.
-              { key: "expediente", label: "Expediente" },
-              { key: "pliego", label: "Pliego" },
-              { key: "precio", label: "Precio" },
-              {
-                key: "conversacion",
-                label: "Conversación",
-                badge: pursuit.comments_count ? pursuit.comments_count : undefined,
-              },
-            ]}
+            tabs={pestanasDeFicha(pursuit)}
           />
         </div>
       </header>
