@@ -54,6 +54,14 @@ MOTIVO_MINIMO = 40
 # alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
 # que añaden operaciones distintas no choquen al fusionar.
 NUEVAS: dict[str, str] = {
+    "GET /api/v1/licitaciones/{id_externo:path}/condiciones-oficiales": (
+        "Se miró GET /licitaciones/{id}/ficha-pliego, que sirve la extracción LLM del "
+        "pliego y responde 404 mientras no se ha extraído: meter ahí el dato de PLACSP "
+        "mezclaría dos procedencias en un mismo contrato y lo escondería tras ese 404. "
+        "GET /licitaciones/{id} (detalle) no lo trae y engordaría la lectura más "
+        "caliente de la API con tres tablas que solo pide la pestaña Pliego y el "
+        "checklist Go/No-Go."
+    ),
     "POST /api/v1/me/profile/preview": (
         "Se miró GET /analytics/scoring, que puntúa siempre con el perfil guardado: "
         "no admite uno de prueba, y unos pesos con sus palabras clave y CPV no caben "

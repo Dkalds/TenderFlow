@@ -5,6 +5,10 @@ sobrescribe lo vigente. Por eso estas rutas comparten tope de peticiones con
 ``/ask`` y son las únicas de la casa que atribuyen gasto
 (:func:`_budget_subject`). El guion de oferta y el encolado de embeddings
 entran aquí por lo mismo: trabajo caro y asíncrono sobre el pliego.
+
+``/condiciones-oficiales`` vive aquí por vecindad, no por coste: es la lectura
+barata de lo que la publicación oficial dice de las mismas familias que la
+ficha (criterios, garantías, solvencia), y la pestaña Pliego pide las dos.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from api.routes.licitaciones._base import (
 from api.tenancy import require_organization
 from observability.logging import get_logger
 from services.rag.guion_oferta import GuionOferta, generar_guion, guion_pdf
+from shared.dto import CondicionesOficiales
 from shared.tender_facts import TenderFactSheetRecord
 
 log = get_logger(__name__)
@@ -128,6 +133,37 @@ async def get_tender_fact_sheet(
             detail="La ficha del pliego todavía no está disponible.",
         )
     return record
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/condiciones-oficiales",
+    response_model=CondicionesOficiales,
+    summary="Criterios, garantías y solvencia tal como los publica PLACSP",
+    responses={
+        401: {"description": "Autenticación inválida"},
+        404: {"description": "Licitación no encontrada"},
+    },
+)
+async def get_condiciones_oficiales(
+    id_externo: str,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> CondicionesOficiales:
+    """Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v149).
+
+    Es la fuente primaria de criterios, garantías y solvencia; la ficha del
+    pliego (``/ficha-pliego``) es la extracción LLM que la complementa, y por
+    eso se sirven por separado. Sin condiciones publicadas responde 200 con
+    ``ambitos`` vacío: «no lo publica» es un estado, no un error.
+    """
+    from services.condiciones_oficiales import condiciones_oficiales
+
+    resultado = await run_db(condiciones_oficiales, id_externo)
+    if resultado is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Licitación no encontrada.",
+        )
+    return resultado
 
 
 def _budget_subject(ctx: dict[str, Any]) -> str | None:

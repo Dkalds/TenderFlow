@@ -47,17 +47,26 @@ class CondicionesOficialesRepository:
 
         Devuelve ``{"criterios", "garantias", "solvencia"}`` como listas de
         filas, ``"lotes"`` como ``{numero: titulo}`` (para rotular cada ámbito
-        sin otra consulta) y ``"actualizado"``, la ``fecha_extraccion`` más
-        reciente de las tres familias o ``None`` si no hay ninguna fila.
+        sin otra consulta), ``"actualizado"`` —la ``fecha_extraccion`` más
+        reciente de las tres familias, o ``None`` si no hay ninguna fila—,
+        ``"existe"`` (si el expediente está en ``licitaciones``) y ``"url"``, el
+        enlace a su publicación en la Plataforma.
 
         Sin las tablas (código desplegado antes que v149) responde como un
         expediente sin condiciones, que es lo cierto: no hay ninguna guardada.
         Cualquier otro error de la base sube tal cual.
         """
+        with connect_read() as c:
+            fila = c.execute(
+                "SELECT url FROM licitaciones WHERE id_externo = %s", (licitacion_id,)
+            ).fetchone()
+        base = {"existe": fila is not None, "url": fila[0] if fila else None}
+        if fila is None:
+            return {**_vacio(), **base}
         try:
-            return self._leer(licitacion_id)
+            return {**self._leer(licitacion_id), **base}
         except pg_errors.UndefinedTable:
-            return _vacio()
+            return {**_vacio(), **base}
 
     def _leer(self, licitacion_id: str) -> dict[str, Any]:
         with connect_read() as c:

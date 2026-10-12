@@ -233,6 +233,7 @@ def test_el_repositorio_devuelve_las_familias_y_los_titulos_de_lote(db: Any) -> 
     assert [s["clase"] for s in leido["solvencia"]] == ["economica", "clasificacion"]
     assert leido["lotes"] == {"2": "Soporte Oracle"}
     assert leido["actualizado"] is not None
+    assert leido["existe"] is True
 
 
 def test_el_repositorio_sin_filas_devuelve_listas_vacias(db: Any) -> None:
@@ -246,6 +247,8 @@ def test_el_repositorio_sin_filas_devuelve_listas_vacias(db: Any) -> None:
         "solvencia": [],
         "lotes": {},
         "actualizado": None,
+        "existe": False,
+        "url": None,
     }
 
 
@@ -253,7 +256,11 @@ def test_el_repositorio_sin_las_tablas_responde_sin_condiciones(db: Any) -> None
     """Código desplegado antes que v149: no hay condiciones guardadas, y se dice así."""
     from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
 
+    upsert_licitaciones([_lic(None)])
     with db.connect() as c:
         c.execute("DROP TABLE licitacion_criterios_adjudicacion")
 
-    assert CondicionesOficialesRepository().get("COND-1")["criterios"] == []
+    leido = CondicionesOficialesRepository().get("COND-1")
+
+    assert leido["criterios"] == []
+    assert leido["existe"] is True
