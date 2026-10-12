@@ -4,9 +4,10 @@
  * Editores de fila del perfil de capacidad (S2.2).
  *
  * Viven aparte de `organizacion-capacidad-card.tsx` porque son cuatro formas
- * distintas —certificación, ejercicio facturado, referencia y perfil de
- * equipo— y juntarlas con el estado y el guardado pasaba de las 300 líneas
- * que permite `max-lines` (cuya allowlist solo puede encoger).
+ * distintas —documento, ejercicio facturado, referencia y perfil de equipo— y
+ * juntarlas con el estado y el guardado pasaba de las 300 líneas que permite
+ * `max-lines` (cuya allowlist solo puede encoger). El editor de documento, con
+ * su tipo (v147), vive en `organizacion-capacidad-documento.tsx` por lo mismo.
  */
 
 import * as React from "react";
@@ -14,13 +15,6 @@ import { Plus, Trash2 } from "lucide-react";
 import { SectionTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { Schemas } from "@/lib/api-types";
 
 export type Certificacion = Schemas["OrganizationCertification"];
@@ -28,7 +22,7 @@ export type Facturacion = Schemas["OrganizationFacturacion"];
 export type Referencia = Schemas["OrganizationReferencia"];
 export type PerfilEquipo = Schemas["OrganizationTeamProfile"];
 
-function Campo({
+export function Campo({
   etiqueta,
   ancho = "min-w-40 flex-1",
   children,
@@ -111,48 +105,6 @@ export function Seccion<T>({
 function numero(valor: string): number {
   const parsed = Number(valor);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-export function filaCertificacion(
-  fila: Certificacion,
-  actualizar: (cambio: Partial<Certificacion>) => void,
-  editable: boolean,
-): React.ReactNode {
-  return (
-    <>
-      <Campo etiqueta="Nombre" ancho="min-w-56 flex-[2]">
-        <Input
-          value={fila.nombre}
-          disabled={!editable}
-          placeholder="ISO/IEC 27001"
-          onChange={(event) => actualizar({ nombre: event.target.value })}
-        />
-      </Campo>
-      <Campo etiqueta="Ámbito" ancho="min-w-36">
-        <Select
-          value={fila.ambito}
-          disabled={!editable}
-          onValueChange={(value) => actualizar({ ambito: value as Certificacion["ambito"] })}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="company">Empresa</SelectItem>
-            <SelectItem value="team">Equipo</SelectItem>
-          </SelectContent>
-        </Select>
-      </Campo>
-      <Campo etiqueta="Vigente hasta" ancho="min-w-40">
-        <Input
-          type="date"
-          value={fila.vigente_hasta ?? ""}
-          disabled={!editable}
-          onChange={(event) => actualizar({ vigente_hasta: event.target.value || null })}
-        />
-      </Campo>
-    </>
-  );
 }
 
 export function filaFacturacion(

@@ -3527,8 +3527,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Notificaciones del usuario (novedades + alertas + contadores de hoy) */
+        /** Resumen de notificaciones (alertas; campos de mercado deprecados) */
         get: operations["get_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bandeja de la campana: tus alertas, paginadas y con filtro de lectura
+         * @description Lo que te concierne en la organización activa, lo más reciente arriba.
+         *
+         *     Alertas de tus reglas, cambios en lo que sigues, menciones, tareas y plazos
+         *     de tus oportunidades y avisos de tu organización. **Leer no marca nada**:
+         *     cada alerta se marca al abrirla, o todas con ``POST /notifications/alerts/read``
+         *     y ``all=true``. ``sin_leer`` no depende del filtro.
+         */
+        get: operations["get_alertas_api_v1_notifications_alerts_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5905,6 +5930,28 @@ export interface components {
             title?: string | null;
             /** Type */
             type: string;
+        };
+        /**
+         * AlertasPagina
+         * @description Una página de la bandeja de la campana.
+         */
+        AlertasPagina: {
+            /** Items */
+            items: components["schemas"]["AlertItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Sin Leer
+             * @description Alertas sin leer, sea cual sea el filtro: el número del distintivo.
+             */
+            sin_leer: number;
+            /**
+             * Total
+             * @description Alertas que cumplen el filtro, en todas las páginas.
+             */
+            total: number;
         };
         /**
          * AmbitoCifra
@@ -10444,11 +10491,21 @@ export interface components {
              * @default 0
              */
             alerts_unread_count: number;
+            /**
+             * @deprecated
+             * @description Deprecado: contadores del mercado, que la campana ya no pinta. Los mismos, con el ámbito de la barra, en GET /analytics/resumen/hoy.
+             */
             hoy?: components["schemas"]["HoyCounters"];
-            /** Items */
+            /**
+             * Items
+             * @deprecated
+             * @description Deprecado: siempre vacío. La campana ya no lista novedades del mercado; están en GET /analytics/resumen/novedades.
+             */
             items?: components["schemas"]["NotificationItem"][];
             /**
              * Unread Count
+             * @deprecated
+             * @description Deprecado: siempre 0 (acompañaba a `items`).
              * @default 0
              */
             unread_count: number;
@@ -10628,10 +10685,17 @@ export interface components {
             referencias?: components["schemas"]["OrganizationReferencia"][];
             /** Updated At */
             updated_at?: string | null;
+            /** Vigencias */
+            vigencias?: components["schemas"]["VigenciaDocumento"][];
         };
         /**
          * OrganizationCertification
-         * @description Certificación que la organización puede acreditar.
+         * @description Documento acreditativo de la organización: certificación o papeleo.
+         *
+         *     El nombre histórico se conserva —es el esquema que ya consume la consola—
+         *     aunque desde v147 la fila también puede ser documentación administrativa
+         *     (``tipo``). Lo guardado antes no trae tipo y vale como certificación
+         *     técnica, que es lo único que la pantalla dejaba declarar.
          */
         OrganizationCertification: {
             /**
@@ -10642,6 +10706,12 @@ export interface components {
             ambito: "company" | "team";
             /** Nombre */
             nombre: string;
+            /**
+             * Tipo
+             * @default certificacion_tecnica
+             * @enum {string}
+             */
+            tipo: "certificacion_tecnica" | "corriente_aeat" | "corriente_seguridad_social" | "rolece" | "clasificacion_empresarial";
             /** Vigente Hasta */
             vigente_hasta?: string | null;
         };
@@ -15408,6 +15478,37 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * VigenciaDocumento
+         * @description Estado de vigencia de un documento del perfil, calculado en el servidor.
+         *
+         *     Lo calcula ``services/documentacion_caducidad.py`` con el mismo criterio
+         *     que los avisos de caducidad, para que la pestaña y el aviso no puedan
+         *     discrepar sobre si un certificado está a punto de caducar.
+         */
+        VigenciaDocumento: {
+            /**
+             * Categoria
+             * @enum {string}
+             */
+            categoria: "tecnica" | "administrativa";
+            /** Dias Restantes */
+            dias_restantes?: number | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "vigente" | "caduca_pronto" | "caducado" | "sin_caducidad";
+            /** Nombre */
+            nombre: string;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "certificacion_tecnica" | "corriente_aeat" | "corriente_seguridad_social" | "rolece" | "clasificacion_empresarial";
+            /** Vigente Hasta */
+            vigente_hasta?: string | null;
         };
         /**
          * VisitaMarcada
@@ -22926,6 +23027,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_alertas_api_v1_notifications_alerts_get: {
+        parameters: {
+            query?: {
+                /** @description `todas`, `sin_leer` o `leidas`. */
+                estado?: "todas" | "sin_leer" | "leidas";
+                limit?: number;
+                offset?: number;
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertasPagina"];
                 };
             };
             /** @description Validation Error */

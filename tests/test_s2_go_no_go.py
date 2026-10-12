@@ -214,3 +214,60 @@ def test_los_extraidos_cuentan_solo_las_familias_con_hechos() -> None:
     assert checklist.desconocido_extraidos == sum(
         1 for item in equipo.items if item.veredicto == "desconocido"
     )
+
+
+# ── Documentación administrativa (v147) ─────────────────────────────────────
+
+
+def _requisito_cert(nombre: str) -> dict[str, Any]:
+    return {
+        "certifications": [
+            {
+                "name": nombre,
+                "scope": "company",
+                "description": nombre,
+                "confidence": 0.9,
+                "evidence": [{"documento_id": 1, "page_number": 3, "quote": nombre}],
+            }
+        ]
+    }
+
+
+def _certificaciones(*documentos: dict[str, Any]) -> OrganizationCapabilities:
+    return OrganizationCapabilities.model_validate({"certificaciones": list(documentos)})
+
+
+def test_solo_papeleo_administrativo_no_es_haber_declarado_certificaciones() -> None:
+    """Quien solo declaró la AEAT no ha dicho nada de su ISO: «desconocido», no
+    «no cumple». El checklist no puede castigar a quien rellenó otra familia."""
+    checklist = evaluate(
+        licitacion_id="EXP-ADM",
+        organization_id=3,
+        record=_record(_requisito_cert("ISO/IEC 27001")),
+        capabilities=_certificaciones(
+            {"nombre": "Certificado AEAT", "tipo": "corriente_aeat", "vigente_hasta": "2027-01-31"}
+        ),
+        hoy=date(2026, 10, 12),
+    )
+    (item,) = next(f for f in checklist.familias if f.familia == "certifications").items
+    assert item.veredicto == "desconocido"
+
+
+def test_un_documento_administrativo_que_el_pliego_pide_si_cuenta() -> None:
+    """Si el pliego pide la clasificación y está declarada, encaja como cualquier otra."""
+    checklist = evaluate(
+        licitacion_id="EXP-CLAS",
+        organization_id=3,
+        record=_record(_requisito_cert("Clasificación empresarial grupo V")),
+        capabilities=_certificaciones(
+            {
+                "nombre": "Clasificación empresarial grupo V",
+                "tipo": "clasificacion_empresarial",
+                "vigente_hasta": "2027-06-30",
+            }
+        ),
+        hoy=date(2026, 10, 12),
+    )
+    (item,) = next(f for f in checklist.familias if f.familia == "certifications").items
+    assert item.veredicto == "cumple"
+    assert item.evidencia

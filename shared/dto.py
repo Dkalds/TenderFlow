@@ -2033,17 +2033,80 @@ class OrganizationNifsOut(BaseModel):
     nifs: list[OrganizationNifOut] = Field(default_factory=list)
 
 
+#: Tipo de documento acreditativo (v147). ``certificacion_tecnica`` es lo que
+#: el checklist contrasta con el pliego (ISO 9001, ISO/IEC 27001, ENS, partner
+#: de fabricante, títulos del equipo); el resto es la **documentación
+#: administrativa** que una empresa tiene que tener al día para presentarse:
+#: estar al corriente con la AEAT y con la Seguridad Social, la inscripción en
+#: el ROLECE y la clasificación empresarial. Espejo del ``CHECK`` de v147.
+OrganizationDocumentType = Literal[
+    "certificacion_tecnica",
+    "corriente_aeat",
+    "corriente_seguridad_social",
+    "rolece",
+    "clasificacion_empresarial",
+]
+
+#: Las dos familias de documento: lo que acredita capacidad técnica y lo que
+#: acredita que la empresa está en regla.
+OrganizationDocumentCategory = Literal["tecnica", "administrativa"]
+
+#: Estado de vigencia de un documento en el perfil de capacidad.
+#:
+#: ``caduca_pronto`` es «dentro de la ventana del primer aviso» (60 días),
+#: ``sin_caducidad`` es que no se declaró fecha —no que valga para siempre—.
+EstadoVigencia = Literal["vigente", "caduca_pronto", "caducado", "sin_caducidad"]
+
+
 class OrganizationCertification(BaseModel):
-    """Certificación que la organización puede acreditar."""
+    """Documento acreditativo de la organización: certificación o papeleo.
+
+    El nombre histórico se conserva —es el esquema que ya consume la consola—
+    aunque desde v147 la fila también puede ser documentación administrativa
+    (``tipo``). Lo guardado antes no trae tipo y vale como certificación
+    técnica, que es lo único que la pantalla dejaba declarar.
+    """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     nombre: SafeStr = Field(min_length=1, max_length=300)
+    tipo: OrganizationDocumentType = "certificacion_tecnica"
     ambito: OrganizationCapabilityScope = "company"
     #: ``None`` significa «sin caducidad declarada», no «vigente para
     #: siempre»: el checklist la da por vigente porque no tiene motivo para
     #: decir lo contrario, y lo dice en el motivo del veredicto.
     vigente_hasta: date | None = None
+
+    @model_validator(mode="after")
+    def _administrativa_es_de_empresa(self) -> OrganizationCertification:
+        """La AEAT, la Seguridad Social, el ROLECE y la clasificación certifican
+        a la empresa. Documentación administrativa «del equipo» no existe, y
+        guardarlo así solo produciría un perfil que no dice la verdad."""
+        if self.tipo != "certificacion_tecnica" and self.ambito != "company":
+            raise ValueError(
+                "La documentación administrativa la acredita la empresa, no una persona."
+            )
+        return self
+
+
+class VigenciaDocumento(BaseModel):
+    """Estado de vigencia de un documento del perfil, calculado en el servidor.
+
+    Lo calcula ``services/documentacion_caducidad.py`` con el mismo criterio
+    que los avisos de caducidad, para que la pestaña y el aviso no puedan
+    discrepar sobre si un certificado está a punto de caducar.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str
+    tipo: OrganizationDocumentType
+    categoria: OrganizationDocumentCategory
+    vigente_hasta: date | None = None
+    estado: EstadoVigencia
+    #: Días hasta ``vigente_hasta`` (negativo si ya caducó; ``0`` es su último
+    #: día de vigencia). ``None`` sin caducidad declarada.
+    dias_restantes: int | None = None
 
 
 class OrganizationFacturacion(BaseModel):
@@ -2109,6 +2172,9 @@ class OrganizationCapabilitiesOut(OrganizationCapabilities):
     #: Familias vacías. La UI las marca para que se entienda por qué el
     #: checklist de una oportunidad contesta «desconocido» en esa familia.
     campos_incompletos: list[OrganizationCapabilityField] = Field(default_factory=list)
+    #: Vigencia de cada documento declarado, ordenada por la próxima
+    #: caducidad (lo caducado primero, lo que no declara fecha al final).
+    vigencias: list[VigenciaDocumento] = Field(default_factory=list)
 
 
 # ── ANCLA S3 — oportunidad por lote y calidad del Radar ────────────────────

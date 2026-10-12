@@ -22,6 +22,7 @@ vi.mock("@/hooks/use-organization", () => ({
   useOrganizationStore: (selector: (state: { setActiveOrganizationId: () => void }) => unknown) =>
     selector({ setActiveOrganizationId: vi.fn() }),
 }));
+vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 vi.mock("@/components/layout/space-shell", () => ({
   SpaceShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
@@ -29,7 +30,9 @@ vi.mock("../_components/crear-organizacion-form", () => ({ CrearOrganizacionForm
 vi.mock("../_components/invitaciones-pendientes", () => ({ InvitacionesPendientes: () => null }));
 vi.mock("../_components/matriz-permisos", () => ({ MatrizPermisos: () => null }));
 vi.mock("../_components/miembros-card", () => ({ MiembrosCard: () => <p>miembros</p> }));
-vi.mock("../_components/organizacion-tab", () => ({ OrganizacionTab: () => null }));
+vi.mock("../_components/organizacion-tab", () => ({
+  OrganizacionTab: () => <p>perfil de capacidad</p>,
+}));
 vi.mock("../../ops/_components/webhooks-view", () => ({
   WebhooksEquipoView: () => <p>webhooks del equipo</p>,
 }));
@@ -40,6 +43,7 @@ vi.mock("../../direccion/_components/actividad-equipo", () => ({
 }));
 
 import EquipoPage from "@/app/(dashboard)/equipo/page";
+import { irA } from "@/test/navegacion-superficial";
 
 function fijarRol(role: string) {
   organizaciones.data = [{ id: 21, name: "Equipo SAP", role, is_personal: false }];
@@ -48,6 +52,27 @@ function fijarRol(role: string) {
 afterEach(() => {
   cleanup();
   organizaciones.data = [];
+  irA("/equipo");
+});
+
+describe("EquipoPage — enlace a una pestaña", () => {
+  // CU-30 — el aviso de caducidad de un documento abre el perfil de capacidad.
+  it("`?tab=organizacion` abre la pestaña Organización", async () => {
+    fijarRol("owner");
+    irA("/equipo?tab=organizacion");
+    render(<EquipoPage />);
+
+    expect(screen.getByRole("tab", { name: "Organización" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("perfil de capacidad")).toBeInTheDocument();
+  });
+
+  it("una pestaña desconocida cae en Miembros", () => {
+    fijarRol("member");
+    irA("/equipo?tab=integraciones");
+    render(<EquipoPage />);
+
+    expect(screen.getByRole("tab", { name: "Miembros" })).toHaveAttribute("aria-selected", "true");
+  });
 });
 
 describe("EquipoPage — pestaña Integraciones", () => {

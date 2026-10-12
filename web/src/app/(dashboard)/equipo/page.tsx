@@ -29,6 +29,7 @@
  */
 
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { Panel, PanelTitle } from "@/components/console/panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SpaceShell } from "@/components/layout/space-shell";
@@ -61,7 +62,16 @@ const ActividadEquipo = dynamic(
   { loading },
 );
 
+/**
+ * Pestañas a las que se puede llegar con `?tab=`. El aviso de caducidad de un
+ * documento (la campana) abre «Organización», donde está el perfil de
+ * capacidad; «Integraciones» no entra porque solo existe para owner y admin.
+ */
+const PESTANAS_ENLAZABLES = new Set(["miembros", "organizacion", "actividad"]);
+
 export default function EquipoPage() {
+  const pestanaPedida = useSearchParams().get("tab");
+  const pestanaInicial = pestanaPedida && PESTANAS_ENLAZABLES.has(pestanaPedida) ? pestanaPedida : "miembros";
   const organizations = useOrganizations();
   const activeOrganizationId = useActiveOrganizationId();
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
@@ -77,7 +87,7 @@ export default function EquipoPage() {
           <CrearOrganizacionForm />
         </Panel>
 
-        <Tabs defaultValue="miembros">
+        <Tabs defaultValue={pestanaInicial}>
           <TabsList>
             <TabsTrigger value="miembros">Miembros</TabsTrigger>
             <TabsTrigger value="organizacion">Organización</TabsTrigger>

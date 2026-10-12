@@ -35,8 +35,8 @@ const CLAVES_FRESCAS_AL_VOLVER: readonly (readonly unknown[])[] = [
   // La Agenda: plazos que vencen hoy y tareas que el equipo va cerrando. Es la
   // pantalla a la que se vuelve para saber qué toca ahora.
   PURSUITS_AGENDA,
-  // La campana (`NOTIFICATIONS_KEY` de `notification-bell.tsx`): su contador es
-  // lo primero que se mira al volver. Su `refetchInterval` se pausa con la
+  // La campana (`CLAVE_CAMPANA` de `components/campana/avisos.ts`): su contador
+  // es lo primero que se mira al volver. Su `refetchInterval` se pausa con la
   // pestaña oculta, así que sin esto el número podía llevar cinco minutos viejo.
   ["notifications"],
   // Tablero, ficha y tareas de una oportunidad: los mueven varias personas, y

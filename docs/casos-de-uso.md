@@ -194,6 +194,31 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Ve la carga por persona y la actividad reciente de las oportunidades de la
   organización.
 
+### CU-29 — Enterarme de lo que me concierne desde la campana
+
+- **Quién:** cualquier miembro de una organización. **Dónde:** la campana de la
+  barra de ámbito, y «Ver todas».
+- Ve solo lo suyo en la organización activa: alertas de sus reglas, cambios en
+  lo que sigue, menciones, tareas y plazos de sus oportunidades y avisos de la
+  organización. Las novedades del mercado no están: son del Resumen.
+- Mirar la campana no marca nada; cada aviso se marca al abrirlo, y «Marcar
+  todo como leído» es una acción aparte.
+- Recorre la lista completa, paginada, filtrando leídos y sin leer, y pone en
+  pausa la regla que disparó una alerta sin salir de la campana.
+
+### CU-30 — Tener al día la documentación acreditativa
+
+- **Quién:** propietario o administrador de la organización. **Dónde:**
+  Equipo › Organización, perfil de capacidad.
+- Declara cada documento con su tipo —certificación técnica, o documentación
+  administrativa: corriente con la AEAT y con la Seguridad Social, ROLECE,
+  clasificación— y hasta cuándo vale.
+- Ve el estado de cada uno (vigente, caduca en N días, caducado, sin caducidad
+  declarada), ordenado por la próxima caducidad.
+- Recibe en la campana y por correo un aviso a 60, 30 y 7 días y al caducar,
+  una sola vez por umbral y documento; renovarlo con otra fecha vuelve a
+  avisar en sus umbrales. Lo puede apagar en Ajustes.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->

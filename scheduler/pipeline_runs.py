@@ -60,6 +60,7 @@ CANONICAL_STEPS: list[str] = [
     "aggregates_precompute",
     "watchlist_notify",
     "cartera_avisos",
+    "documentacion_avisos",
     "event_dispatch",
     "digests",
     "informes_programados",
@@ -116,6 +117,10 @@ STEP_TIER: dict[str, StepTier] = {
     # la ventana es diaria; una pasada fallida la recupera la siguiente. No
     # puede tumbar la ingesta.
     "cartera_avisos": "advisory",
+    # advisory: los avisos de caducidad de la documentación acreditativa tienen
+    # semanas de margen (60, 30 y 7 días) y la ventana es diaria; una pasada
+    # fallida la recupera la siguiente. No puede tumbar la ingesta.
+    "documentacion_avisos": "advisory",
     # advisory: el outbox es persistente. Si el reparto falla, los eventos
     # siguen pendientes y la pasada siguiente los entrega (dentro de la
     # antigüedad máxima, ver `event_dispatch.caducar_viejos`); un receptor de
@@ -785,6 +790,24 @@ def _run_cartera_avisos() -> str:
         )
 
     return _run_periodic("cartera_avisos", _SEGUNDOS_DIA, _run)
+
+
+def _run_documentacion_avisos() -> str:
+    """Caducidad de la documentación acreditativa: avisa una vez al día.
+
+    Escribe en el outbox un ``organizacion.documento_caduca`` por documento del
+    perfil de capacidad que cruza un umbral (60, 30, 7 días, o caducado), una
+    vez por umbral y documento. Va antes de ``event_dispatch`` para que el
+    aviso salga en esta misma pasada; el reparto lo hace el despachador, como
+    el de cualquier otro evento.
+    """
+    from services import documentacion_caducidad
+
+    def _run() -> None:
+        emitidos = documentacion_caducidad.emitir_avisos_de_caducidad()
+        log.info("documentacion_avisos_done", avisos=emitidos)
+
+    return _run_periodic("documentacion_avisos", _SEGUNDOS_DIA, _run)
 
 
 def _run_follows_paridad() -> str:

@@ -667,8 +667,8 @@ describe("ScopeBar — búsqueda con espera", () => {
 describe("ScopeBar — la campana se monta una sola vez", () => {
   /**
    * Cada rama de la barra pintaba su propia campana. Al pasar de un espacio
-   * con ámbito a otro sin él, React la desmontaba: cerraba el SSE de
-   * `/licitaciones/stream`, abría otro y perdía el contador en vivo.
+   * con ámbito a otro sin él, React la desmontaba: entonces cerraba y reabría
+   * un SSE; hoy perdería el menú abierto y repetiría la consulta.
    */
   const conRuta = (ruta: string, rerender: (ui: React.ReactElement) => void) => {
     pathnameRef.current = ruta;

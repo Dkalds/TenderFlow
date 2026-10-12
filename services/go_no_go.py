@@ -268,8 +268,16 @@ def _evaluar_certificaciones(
     hoy: date,
 ) -> list[ChecklistItem]:
     items: list[ChecklistItem] = []
+    # Desde v147 el perfil guarda también documentación administrativa (AEAT,
+    # Seguridad Social, ROLECE, clasificación). Encaja contra todo lo declarado
+    # —un pliego puede pedir la clasificación por su nombre—, pero «no ha
+    # declarado ninguna» se decide solo con las técnicas: quien rellenó su
+    # papeleo y no sus certificaciones no ha dicho nada de su ISO, y contestar
+    # «no cumple» castigaría haber rellenado otra cosa.
+    tecnicas = [c for c in capacidad.certificaciones if c.tipo == "certificacion_tecnica"]
     for requisito in facts.certifications:
-        if not capacidad.certificaciones:
+        encaje = _certificacion_que_encaja(requisito, capacidad.certificaciones)
+        if encaje is None and not tecnicas:
             items.append(
                 ChecklistItem(
                     familia="certifications",
@@ -280,7 +288,6 @@ def _evaluar_certificaciones(
                 )
             )
             continue
-        encaje = _certificacion_que_encaja(requisito, capacidad.certificaciones)
         if encaje is None:
             items.append(
                 ChecklistItem(

@@ -1,223 +1,201 @@
 "use client";
 
+/**
+ * La campana: lo que te concierne en la organización activa.
+ *
+ * Solo lo tuyo (decisión de producto del 2026-10-12): alertas de tus reglas,
+ * cambios en lo que sigues, menciones, tareas y plazos de tus oportunidades y
+ * avisos de tu organización. Hasta entonces mezclaba contadores de mercado,
+ * licitaciones en vivo por SSE y una lista de novedades que salía siempre
+ * vacía; el mercado lo cubre el Resumen, y el SSE dejaba ocupada una plaza de
+ * concurrencia de la API por pestaña para enseñar algo que no era de nadie.
+ *
+ * Abrirla **no** marca nada: cada aviso se marca al abrirlo, y «Marcar todo
+ * como leído» es una acción aparte. Marcarlo todo al abrir hacía que el número
+ * bajara a cero por mirar el menú, y lo que no cabía en él se perdía sin leer.
+ */
+
 import * as React from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { buttonVariants } from "@/components/ui/button";
+import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { registrarEvento } from "@/lib/analytics";
-import { cn } from "@/lib/utils";
-import { fetchWithAuth, apiMutate } from "@/lib/api-client";
+import { apiMutate } from "@/lib/api-client";
 import { pursuitKeys, radarKeys } from "@/lib/query-keys";
 import { reportError } from "@/lib/report-error";
+import { cn } from "@/lib/utils";
+import {
+  type Aviso,
+  AVISOS_EN_VISTA_PREVIA,
+  cambiarActivaRegla,
+  destinoDeAviso,
+  refrescarReglas,
+  useAvisos,
+  useMarcarLeidos,
+} from "./campana/avisos";
 
-interface NotificationBellProps {
-  className?: string;
-}
+// «Ver todas» solo se descarga cuando alguien la abre: la campana viaja en el
+// First Load de todas las pantallas.
+const VerTodasSheet = dynamic(() => import("./campana/ver-todas-sheet").then((m) => m.VerTodasSheet));
 
-interface NotificationItem {
-  id: string;
-  titulo: string | null;
-  importe: number | null;
-  organo_contratacion: string | null;
-  read: boolean;
-}
+/** Refresco del distintivo con la pestaña a la vista. */
+const REFRESCO_MS = 5 * 60_000;
 
-interface AlertItem {
-  id: number;
-  created_at: string | null;
-  type: string;
-  title: string | null;
-  body: string | null;
-  licitacion_id: string | null;
-  rule_id: number | null;
-  /** Oportunidad de la organización sobre ese expediente, si ya existe. */
-  pursuit_id: number | null;
-  read: boolean;
-}
+const CLASE_SECUNDARIA = "h-6 px-1.5 py-0 text-tf-micro text-muted-foreground";
 
-interface HoyCounters {
-  calientes: number;
-  vencen_48h: number;
-  nuevas_24h: number;
-  total_activas: number;
-}
-
-interface NotificationsResult {
-  items: NotificationItem[];
-  unread_count: number;
-  alerts: AlertItem[];
-  alerts_unread_count: number;
-  hoy: HoyCounters;
-}
-
-/** Live item pushed via SSE (not yet persisted in the novedades feed). */
-interface LiveItem {
-  id: string;
-  message: string;
-}
-
-const MAX_RECONNECT_DELAY = 60_000;
-const INITIAL_RECONNECT_DELAY = 1_000;
-const NOTIFICATIONS_KEY = ["notifications"] as const;
-
-/**
- * Cuánto se espera con la pestaña oculta antes de cerrar el SSE.
- *
- * Cada `EventSource` abierto ocupa una de las plazas de concurrencia de
- * uvicorn en la API (20), también el de una pestaña olvidada en segundo plano.
- * El margen evita el caso contrario: cerrar y reabrir la conexión cada vez que
- * alguien cambia de pestaña un momento para copiar un dato.
- */
-export const MARGEN_OCULTA_MS = 45_000;
-
-export function NotificationBell({ className: _className }: NotificationBellProps) {
+export function NotificationBell() {
   const queryClient = useQueryClient();
-  const [liveItems, setLiveItems] = React.useState<LiveItem[]>([]);
-  const [liveUnread, setLiveUnread] = React.useState(0);
-  const [connected, setConnected] = React.useState(false);
+  const organizationId = useActiveOrganizationId();
+  const [verTodas, setVerTodas] = React.useState(false);
+  const vistaPrevia = useAvisos(organizationId, { refetchInterval: REFRESCO_MS });
+  const marcar = useMarcarLeidos(organizationId);
 
-  // Persistent notifications (novedades since last visit + "today" counters).
-  const { data } = useQuery<NotificationsResult>({
-    queryKey: NOTIFICATIONS_KEY,
-    queryFn: () => fetchWithAuth<NotificationsResult>("/api/v1/notifications"),
-    refetchInterval: 5 * 60_000,
-    meta: { silent: true },
-  });
+  const avisos = vistaPrevia.data?.items ?? [];
+  const sinLeer = vistaPrevia.data?.sin_leer ?? 0;
+  const total = vistaPrevia.data?.total ?? 0;
 
-  // Live push of brand-new licitaciones via SSE.
-  React.useEffect(() => {
-    let es: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-    let reconnectDelay = INITIAL_RECONNECT_DELAY;
-    // Pestaña oculta: el temporizador del margen y si la conexión ya se cerró.
-    let ocultaTimer: ReturnType<typeof setTimeout> | undefined;
-    let enPausa = false;
-
-    function scheduleReconnect() {
-      reconnectTimer = setTimeout(() => {
-        reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-        connect();
-      }, reconnectDelay);
-    }
-
-    function connect() {
-      try {
-        es = new EventSource("/api/v1/licitaciones/stream", { withCredentials: true });
-
-        es.onopen = () => {
-          setConnected(true);
-          reconnectDelay = INITIAL_RECONNECT_DELAY;
-        };
-
-        es.addEventListener("licitaciones_nuevas", (event) => {
-          try {
-            const payload = JSON.parse(event.data);
-            const item: LiveItem = {
-              id: crypto.randomUUID(),
-              message: payload.message ?? `${payload.count ?? 1} nuevas licitaciones`,
-            };
-            setLiveItems((prev) => [item, ...prev].slice(0, 5));
-            setLiveUnread((prev) => prev + 1);
-            // Refresh the persistent feed so new tenders surface in the list.
-            queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
-          } catch (parseError) {
-            reportError("NotificationBell.parse", parseError);
-          }
-        });
-
-        es.onerror = () => {
-          setConnected(false);
-          es?.close();
-          scheduleReconnect();
-        };
-      } catch (connError) {
-        reportError("NotificationBell.connect", connError);
-        setConnected(false);
-        scheduleReconnect();
-      }
-    }
-
-    /** Cierra la conexión (y cualquier reintento pendiente) hasta que se vuelva. */
-    function pausar() {
-      ocultaTimer = undefined;
-      enPausa = true;
-      clearTimeout(reconnectTimer);
-      es?.close();
-      es = null;
-      setConnected(false);
-    }
-
-    function onVisibilityChange() {
-      if (document.visibilityState === "hidden") {
-        if (!enPausa && ocultaTimer === undefined) ocultaTimer = setTimeout(pausar, MARGEN_OCULTA_MS);
-        return;
-      }
-      clearTimeout(ocultaTimer);
-      ocultaTimer = undefined;
-      if (!enPausa) return;
-      enPausa = false;
-      // El backoff no se reinicia: si la API estaba fallando, el siguiente
-      // error sigue esperando lo que tocaba. Lo que sí se hace en el acto es
-      // reconectar y pedir el feed: lo publicado mientras la pestaña estuvo
-      // oculta no llegó por el SSE cerrado. `cancelRefetch: false` porque el
-      // feed también se refresca al volver a la pestaña (`providers.tsx`): si
-      // esa petición ya está en vuelo, vale, no se cancela para repetirla.
-      connect();
-      queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }, { cancelRefetch: false });
-    }
-
-    // Una pestaña que se abre ya en segundo plano no conecta hasta que se mira.
-    if (document.visibilityState === "hidden") enPausa = true;
-    else connect();
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      es?.close();
-      clearTimeout(reconnectTimer);
-      clearTimeout(ocultaTimer);
-    };
-  }, [queryClient]);
-
-  const items = data?.items ?? [];
-  const alerts = data?.alerts ?? [];
-  const hoy = data?.hoy;
-  const unreadCount = (data?.unread_count ?? 0) + (data?.alerts_unread_count ?? 0) + liveUnread;
-
-  /** Mark unread novedades + alerts as read and clear the live badge. */
-  const markAllRead = async () => {
-    setLiveUnread(0);
-    const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
-    const unreadAlertIds = alerts.filter((a) => !a.read).map((a) => a.id);
-    try {
-      if (unreadIds.length > 0) {
-        await apiMutate("POST", "/api/v1/notifications/read", { ids: unreadIds });
-      }
-      if (unreadAlertIds.length > 0) {
-        await apiMutate("POST", "/api/v1/notifications/alerts/read", { ids: unreadAlertIds });
-      }
-      queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
-    } catch (err) {
-      reportError("NotificationBell.markRead", err);
-    }
+  const abrir = (aviso: Aviso) => {
+    if (!aviso.read) marcar.mutate({ ids: [aviso.id] });
   };
 
-  // F5.6 — silenciar y posponer desde la alerta, con el backend del Radar:
-  // `silenciar` saca el expediente del Radar y de la Agenda hasta que vence;
-  // `posponer` además lo devuelve como recordatorio ese día. No hay endpoint
-  // para silenciar la regla que disparó la alerta: eso se hace pausándola en
-  // Mi Watchlist, y aquí no se finge otra cosa.
-  //
-  // Llamadas directas y no los hooks de `use-radar`: la campana está en todas
-  // las pantallas, y arrastrar el módulo del Radar entero al bundle común por
-  // dos botones subía el First Load JS de cada ruta.
+  const silenciarRegla = (ruleId: number) => void pausarRegla(queryClient, ruleId, organizationId);
+
+  return (
+    <>
+      <DropdownMenu>
+        {/* La talla de la barra de ámbito (`icon-sm`), junto a «Exportar» y
+            «Buscar». El recuento es la señal de «hay algo nuevo», no un error:
+            va en el primario, no en rojo. */}
+        <DropdownMenuTrigger
+          className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "relative")}
+          aria-label={`Notificaciones${sinLeer > 0 ? ` (${sinLeer} sin leer)` : ""}`}
+        >
+          <Bell aria-hidden="true" />
+          {sinLeer > 0 && (
+            <span
+              aria-hidden="true"
+              className="tf-tnum absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-tf-micro leading-none font-semibold text-primary-foreground"
+            >
+              {sinLeer > 99 ? "99+" : sinLeer}
+            </span>
+          )}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-80 p-2">
+          <div className="mb-1 flex items-center justify-between gap-2 px-2">
+            <h4 className="text-tf-meta font-semibold text-muted-foreground">Notificaciones</h4>
+            {sinLeer > 0 && (
+              <DropdownMenuItem
+                className={CLASE_SECUNDARIA}
+                // Sin cerrar el menú: lo natural tras marcar es seguir mirando.
+                onSelect={(event) => {
+                  event.preventDefault();
+                  marcar.mutate("todos");
+                }}
+              >
+                Marcar todo como leído
+              </DropdownMenuItem>
+            )}
+          </div>
+
+          {avisos.length === 0 ? (
+            <p className="px-2 py-4 text-center text-tf-body text-muted-foreground">
+              {vistaPrevia.isError
+                ? "No se pudieron cargar tus avisos."
+                : "Nada por ahora. Aquí llegan las alertas de tus reglas, las menciones y los plazos de tus oportunidades."}
+            </p>
+          ) : (
+            <ul className="space-y-0.5">
+              {avisos.map((aviso) => (
+                <FilaAviso key={aviso.id} aviso={aviso} onAbrir={abrir} onSilenciarRegla={silenciarRegla} />
+              ))}
+            </ul>
+          )}
+
+          {total > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="justify-center text-tf-body" onSelect={() => setVerTodas(true)}>
+                {total > AVISOS_EN_VISTA_PREVIA ? `Ver todas (${total})` : "Ver todas"}
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {verTodas && (
+        <VerTodasSheet
+          organizationId={organizationId}
+          open={verTodas}
+          onOpenChange={setVerTodas}
+          onSilenciarRegla={silenciarRegla}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Pone en pausa la regla de una alerta, con «Deshacer». «Ver todas» la recibe
+ * como prop: un solo texto y un solo camino para la misma acción.
+ */
+async function pausarRegla(
+  queryClient: ReturnType<typeof useQueryClient>,
+  ruleId: number,
+  organizationId: ReturnType<typeof useActiveOrganizationId>,
+) {
+  try {
+    const resultado = await cambiarActivaRegla(ruleId, false, organizationId);
+    if (resultado === "no_existe") {
+      toast.error("Esa regla ya no existe");
+      return;
+    }
+    if (resultado === "sin_cambio") {
+      toast("La regla ya estaba en pausa");
+      return;
+    }
+  } catch (err) {
+    reportError("NotificationBell.silenciarRegla", err);
+    toast.error("No se pudo poner la regla en pausa");
+    return;
+  }
+  void refrescarReglas(queryClient);
+  toast("Regla en pausa: deja de avisarte", {
+    action: {
+      label: "Deshacer",
+      onClick: () =>
+        void cambiarActivaRegla(ruleId, true, organizationId)
+          .then(() => refrescarReglas(queryClient))
+          .catch((err: unknown) => reportError("NotificationBell.reactivarRegla", err)),
+    },
+  });
+}
+
+function FilaAviso({
+  aviso,
+  onAbrir,
+  onSilenciarRegla,
+}: {
+  aviso: Aviso;
+  onAbrir: (aviso: Aviso) => void;
+  onSilenciarRegla: (ruleId: number) => void;
+}) {
+  const queryClient = useQueryClient();
+  const destino = destinoDeAviso(aviso);
+  const titulo = aviso.title ?? aviso.type;
+
+  // F5.6 — silenciar y posponer el expediente con el backend del Radar:
+  // `silenciar` lo saca del Radar y de la Agenda hasta que vence; `posponer`
+  // además lo devuelve como recordatorio ese día.
   const refrescarRadar = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: radarKeys.dismissals }),
@@ -251,162 +229,65 @@ export function NotificationBell({ className: _className }: NotificationBellProp
     });
   };
 
-  return (
-    <DropdownMenu>
-      {/* La talla de la barra de ámbito (`icon-sm`), junto a «Exportar» y
-          «Buscar». El recuento es la señal de «hay algo nuevo», no un error:
-          va en el primario, no en rojo. */}
-      <DropdownMenuTrigger
-        className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "relative")}
-        aria-label={`Notificaciones${unreadCount > 0 ? ` (${unreadCount} sin leer)` : ""}`}
-        onClick={markAllRead}
-      >
-        <Bell aria-hidden="true" />
-        {unreadCount > 0 && (
-          <span
-            aria-hidden="true"
-            className="tf-tnum absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-tf-micro leading-none font-semibold text-primary-foreground"
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 p-2">
-        <h4 className="mb-2 px-2 text-tf-meta font-semibold text-muted-foreground">Notificaciones</h4>
-
-        {hoy && (hoy.nuevas_24h > 0 || hoy.vencen_48h > 0 || hoy.calientes > 0) && (
-          <div className="mb-2 grid grid-cols-3 gap-1 px-1">
-            <HoyStat label="Nuevas 24h" value={hoy.nuevas_24h} />
-            <HoyStat label="Vencen 48h" value={hoy.vencen_48h} accent />
-            {/* Importe ≥ P75 y en plazo — no la banda "Caliente" del score. */}
-            <HoyStat label="Grandes en plazo" value={hoy.calientes} />
-          </div>
-        )}
-
-        {liveItems.length > 0 && (
-          <ul className="mb-1 space-y-1">
-            {liveItems.map((n) => (
-              // Genuinely live data (pushed via SSE, prepended as it
-              // arrives) — fade+slide instead of popping in with no
-              // transition (find-animation-opportunities: "preventing a
-              // jarring change"). Keyed by a fresh uuid per push, so this
-              // only plays once per item, on its own mount.
-              <li
-                key={n.id}
-                className="animate-in fade-in-0 slide-in-from-top-2 rounded-sm bg-primary/5 px-2 py-1.5 text-tf-body"
-              >
-                <p>{n.message}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {items.length === 0 && liveItems.length === 0 && alerts.length === 0 ? (
-          <p className="px-2 py-4 text-center text-tf-body text-muted-foreground">Sin notificaciones</p>
-        ) : (
-          <>
-            {alerts.length > 0 && (
-              <>
-                <h5 className="mt-2 mb-1 px-2 text-tf-meta font-semibold text-muted-foreground">Alertas</h5>
-                <ul className="mb-2 space-y-0.5">
-                  {alerts.slice(0, 5).map((a) => (
-                    <li key={a.id} className="flex flex-col">
-                      {/* Si el expediente ya es una oportunidad del equipo, el
-                          destino útil es su ficha —donde está la decisión y el
-                          cierre—, no el inspector genérico del catálogo. */}
-                      {a.licitacion_id && (
-                        // F5.6 — el mismo descarte temporal del inspector del
-                        // Radar (`POST /radar/dismissals`). Son `menuitem` y no
-                        // botones sueltos: dentro del menú el teclado se mueve
-                        // con las flechas, y un botón plano no sería alcanzable.
-                        <div className="order-last flex flex-wrap gap-1 pl-5">
-                          <DropdownMenuItem
-                            className="h-6 px-1.5 py-0 text-tf-micro text-muted-foreground"
-                            aria-label={`Ocultar del Radar 30 días: ${a.title ?? a.type}`}
-                            onSelect={() => void aplazar(a.licitacion_id!, "silenciar", 30)}
-                          >
-                            Ocultar del Radar 30 días
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="h-6 px-1.5 py-0 text-tf-micro text-muted-foreground"
-                            aria-label={`Recordármelo en 7 días: ${a.title ?? a.type}`}
-                            onSelect={() => void aplazar(a.licitacion_id!, "posponer", 7)}
-                          >
-                            Recordármelo en 7 días
-                          </DropdownMenuItem>
-                        </div>
-                      )}
-                      {a.pursuit_id != null || a.licitacion_id ? (
-                        <Link
-                          href={
-                            a.pursuit_id != null
-                              ? `/oportunidades/${a.pursuit_id}`
-                              : `/detalle?lic=${encodeURIComponent(a.licitacion_id!)}`
-                          }
-                          className="block rounded-sm px-2 py-1.5 text-tf-body transition-colors hover:bg-accent"
-                        >
-                          <span className="flex items-center gap-2">
-                            {!a.read && (
-                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                            )}
-                            <span className="truncate">{a.title ?? a.type}</span>
-                          </span>
-                        </Link>
-                      ) : (
-                        <div className="rounded-sm px-2 py-1.5 text-tf-body">
-                          <span className="flex items-center gap-2">
-                            {!a.read && (
-                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                            )}
-                            <span className="truncate">{a.title ?? a.type}</span>
-                          </span>
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <ul className="space-y-0.5">
-              {items.map((n) => (
-                <li key={n.id}>
-                  <Link
-                    href={`/detalle?lic=${encodeURIComponent(n.id)}`}
-                    className="block rounded-sm px-2 py-1.5 text-tf-body transition-colors hover:bg-accent"
-                  >
-                    <span className="flex items-center gap-2">
-                      {!n.read && (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                      )}
-                      <span className="truncate">{n.titulo ?? n.id}</span>
-                    </span>
-                    {n.organo_contratacion && (
-                      <span className="block truncate pl-3.5 text-tf-meta text-muted-foreground">
-                        {n.organo_contratacion}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-
-        {!connected && (
-          <p className="mt-2 px-2 text-tf-meta text-muted-foreground">Sin conexión en vivo</p>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+  const contenido = (
+    <span className="flex min-w-0 items-center gap-2">
+      {!aviso.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />}
+      <span className="truncate">{titulo}</span>
+      {!aviso.read && <span className="sr-only">{" (sin leer)"}</span>}
+    </span>
   );
-}
 
-function HoyStat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
-    <div className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-center">
-      <div className={cn("tf-tnum text-tf-body font-semibold", accent ? "text-destructive" : "text-foreground")}>
-        {value}
-      </div>
-      <div className="text-tf-micro text-muted-foreground">{label}</div>
-    </div>
+    <li className="flex flex-col">
+      {destino ? (
+        // `menuitem` y no un enlace suelto: dentro del menú el teclado se mueve
+        // con las flechas. Abrirlo lo marca como leído, a él solo.
+        <DropdownMenuItem asChild className="text-tf-body" onSelect={() => onAbrir(aviso)}>
+          <Link href={destino}>{contenido}</Link>
+        </DropdownMenuItem>
+      ) : (
+        <DropdownMenuItem
+          className="text-tf-body"
+          aria-label={aviso.read ? titulo : `Marcar como leído: ${titulo}`}
+          onSelect={(event) => {
+            event.preventDefault();
+            onAbrir(aviso);
+          }}
+        >
+          {contenido}
+        </DropdownMenuItem>
+      )}
+      {(aviso.licitacion_id || aviso.rule_id != null) && (
+        <div className="flex flex-wrap gap-1 pl-5">
+          {aviso.licitacion_id && (
+            <>
+              <DropdownMenuItem
+                className={CLASE_SECUNDARIA}
+                aria-label={`Ocultar del Radar 30 días: ${titulo}`}
+                onSelect={() => void aplazar(aviso.licitacion_id!, "silenciar", 30)}
+              >
+                Ocultar del Radar 30 días
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={CLASE_SECUNDARIA}
+                aria-label={`Recordármelo en 7 días: ${titulo}`}
+                onSelect={() => void aplazar(aviso.licitacion_id!, "posponer", 7)}
+              >
+                Recordármelo en 7 días
+              </DropdownMenuItem>
+            </>
+          )}
+          {aviso.rule_id != null && (
+            <DropdownMenuItem
+              className={CLASE_SECUNDARIA}
+              aria-label={`Silenciar esta regla: ${titulo}`}
+              onSelect={() => onSilenciarRegla(aviso.rule_id!)}
+            >
+              Silenciar esta regla
+            </DropdownMenuItem>
+          )}
+        </div>
+      )}
+    </li>
   );
 }

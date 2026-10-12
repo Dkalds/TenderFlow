@@ -1,13 +1,25 @@
-"""Rutas /api/v1/notifications -- centro de notificaciones in-app.
+"""Rutas /api/v1/notifications -- la campana: lo que concierne a cada persona.
 
-Dos tipos de items:
-- ``items``: novedades de licitaciones (existente, basado en last_login del usuario).
-- ``alerts``: alertas de reglas de watchlist + recordatorios de deadline (Feature A).
+La campana enseña **solo lo tuyo** (decisión de producto del 2026-10-12): lo
+que el canal ``in_app`` del outbox y los productores directos dejan en
+``user_notifications`` —alertas de tus reglas, cambios en lo que sigues,
+menciones, tareas y plazos de tus oportunidades, caducidades de la
+documentación de tu organización—. Las novedades del mercado no son de nadie en
+concreto y las cubre el Resumen.
+
+- ``GET /notifications/alerts``: la bandeja, paginada y con filtro de lectura.
+  Es lo que pide la campana, tanto su vista previa como «Ver todas».
+- ``POST /notifications/alerts/read``: leída una a una al abrirla, o todas con
+  la acción explícita «Marcar todo como leído».
+- ``GET /notifications``: el resumen de antes, conservado por compatibilidad.
+  Sus campos de mercado (``items``, ``unread_count``, ``hoy``) están
+  deprecados: retirarlos es un cambio incompatible del contrato y va por RFC
+  (``docs/api-design.md``).
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
@@ -17,11 +29,11 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.connection import lecturas_agrupadas
+from db.notifications import listar_alertas
 from observability.logging import get_logger
-from services.analytics.resumen import ResumenHoyFilters, get_resumen_hoy, get_resumen_novedades
+from services.analytics.resumen import ResumenHoyFilters, get_resumen_hoy
 from services.notifications import (
     get_alerts_unread_count,
-    get_unread_ids,
     get_user_alerts,
     mark_alerts_read,
     mark_all_alerts_read,
@@ -83,12 +95,69 @@ class HoyCounters(BaseModel):
     total_activas: int = 0
 
 
+#: Marca de deprecación en el esquema y **solo** en el esquema. No es
+#: ``Field(deprecated=True)`` a propósito: Pydantic emite entonces un
+#: ``DeprecationWarning`` cada vez que el servidor lee el atributo para
+#: serializarlo, y lo que se quiere avisar es al consumidor del contrato.
+_DEPRECADO: dict[str, Any] = {"deprecated": True}
+
+
 class NotificationsResult(BaseModel):
-    items: list[NotificationItem] = Field(default_factory=list)
-    unread_count: int = 0
+    items: list[NotificationItem] = Field(
+        default_factory=list,
+        description=(
+            "Deprecado: siempre vacío. La campana ya no lista novedades del mercado; "
+            "están en GET /analytics/resumen/novedades."
+        ),
+        json_schema_extra=_DEPRECADO,
+    )
+    unread_count: int = Field(
+        default=0,
+        description="Deprecado: siempre 0 (acompañaba a `items`).",
+        json_schema_extra=_DEPRECADO,
+    )
     alerts: list[AlertItem] = Field(default_factory=list)
     alerts_unread_count: int = 0
-    hoy: HoyCounters = Field(default_factory=HoyCounters)
+    hoy: HoyCounters = Field(
+        default_factory=HoyCounters,
+        description=(
+            "Deprecado: contadores del mercado, que la campana ya no pinta. "
+            "Los mismos, con el ámbito de la barra, en GET /analytics/resumen/hoy."
+        ),
+        json_schema_extra=_DEPRECADO,
+    )
+
+
+#: Filtro de lectura de la bandeja. Espejo de ``db.notifications.EstadoLectura``.
+EstadoLectura = Literal["todas", "sin_leer", "leidas"]
+
+
+class AlertasPagina(BaseModel):
+    """Una página de la bandeja de la campana."""
+
+    items: list[AlertItem]
+    total: int = Field(ge=0, description="Alertas que cumplen el filtro, en todas las páginas.")
+    sin_leer: int = Field(
+        ge=0,
+        description="Alertas sin leer, sea cual sea el filtro: el número del distintivo.",
+    )
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+def _alerta(fila: dict[str, Any]) -> AlertItem:
+    """Fila de ``user_notifications`` (con ``pursuit_id`` resuelto) a contrato."""
+    return AlertItem(
+        id=int(fila["id"]),
+        created_at=fila.get("created_at"),
+        type=str(fila.get("type", "")),
+        title=fila.get("title"),
+        body=fila.get("body"),
+        licitacion_id=fila.get("licitacion_id"),
+        rule_id=fila.get("rule_id"),
+        pursuit_id=fila.get("pursuit_id"),
+        read=fila.get("read_at") is not None,
+    )
 
 
 class MarkReadRequest(BaseModel):
@@ -101,66 +170,74 @@ class MarkAlertsReadRequest(BaseModel):
     organization_id: int | None = Field(default=None, ge=1)
 
 
-@router.get("", summary="Notificaciones del usuario (novedades + alertas + contadores de hoy)")
+@router.get("", summary="Resumen de notificaciones (alertas; campos de mercado deprecados)")
 async def get_notifications(
     ctx: dict[str, Any] = Depends(require_organization()),
 ) -> NotificationsResult:
     # Nota de implementación (fuera del docstring: FastAPI lo publica en el
-    # OpenAPI). Cada pestaña pide esta ruta al abrir y en cada evento SSE. Eran
-    # cinco `run_db` en serie, cada uno con su conexión y, con la organización
-    # fijada, su `BEGIN; SET LOCAL` + consulta + `ROLLBACK`: más de quince
-    # viajes y cinco saltos al threadpool. Ahora es un salto, y dentro
-    # `lecturas_agrupadas` hace que todas las lecturas compartan una conexión y
-    # un ámbito: un `BEGIN; SET LOCAL`, una consulta por lectura y un
-    # `ROLLBACK`. El SQL sigue en `db/` (ADR-022): aquí solo se agrupa.
+    # OpenAPI). Las lecturas comparten una conexión y un ámbito
+    # (`lecturas_agrupadas`): un `BEGIN; SET LOCAL`, una consulta por lectura y
+    # un `ROLLBACK`, en un solo salto al threadpool. El SQL sigue en `db/`.
+    #
+    # `items` ya no se calcula: salía de `get_resumen_novedades(user_id)`, que
+    # contaba desde `users.last_login`, una columna que ninguna migración crea,
+    # así que siempre llegaba vacío. Se retiró con la decisión de que la campana
+    # enseñe solo lo tuyo; el campo sigue en el contrato, vacío y deprecado,
+    # porque quitarlo rompería a quien lo lea. `hoy` se sigue sirviendo por lo
+    # mismo, aunque la campana ya no lo pinte.
     user_id = _user_id_int(ctx)
     user_key = _user_key(ctx)
     resolved_id = ctx["organization_id"]
 
     def _trabajo() -> NotificationsResult:
         with lecturas_agrupadas():
-            novedades = get_resumen_novedades(int(user_id)) if user_id is not None else None
             hoy = get_resumen_hoy(ResumenHoyFilters())
-            samples = novedades.sample if novedades else []
-            candidate_ids = [s.id_externo for s in samples]
-            unread_ids = set(get_unread_ids(user_key, candidate_ids, user_id=user_id))
-            # Alertas in-app (reglas + deadlines) -- Feature A
             raw_alerts = get_user_alerts(user_key, 30, resolved_id, user_id=user_id)
             alerts_unread = get_alerts_unread_count(user_key, resolved_id, user_id=user_id)
 
-        items = [
-            NotificationItem(
-                id=s.id_externo,
-                titulo=s.titulo,
-                importe=s.importe,
-                organo_contratacion=s.organo_contratacion,
-                read=s.id_externo not in unread_ids,
-            )
-            for s in samples
-        ]
-        alerts = [
-            AlertItem(
-                id=int(a["id"]),
-                created_at=a.get("created_at"),
-                type=str(a.get("type", "")),
-                title=a.get("title"),
-                body=a.get("body"),
-                licitacion_id=a.get("licitacion_id"),
-                rule_id=a.get("rule_id"),
-                pursuit_id=a.get("pursuit_id"),
-                read=a.get("read_at") is not None,
-            )
-            for a in raw_alerts
-        ]
         return NotificationsResult(
-            items=items,
-            unread_count=len(unread_ids),
-            alerts=alerts,
+            alerts=[_alerta(a) for a in raw_alerts],
             alerts_unread_count=alerts_unread,
             hoy=HoyCounters(**hoy.model_dump()),
         )
 
     return await run_db(_trabajo)
+
+
+@router.get(
+    "/alerts",
+    response_model=AlertasPagina,
+    summary="Bandeja de la campana: tus alertas, paginadas y con filtro de lectura",
+)
+async def get_alertas(
+    estado: EstadoLectura = Query(default="todas", description="`todas`, `sin_leer` o `leidas`."),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10_000),
+    ctx: dict[str, Any] = Depends(require_organization()),
+) -> AlertasPagina:
+    """Lo que te concierne en la organización activa, lo más reciente arriba.
+
+    Alertas de tus reglas, cambios en lo que sigues, menciones, tareas y plazos
+    de tus oportunidades y avisos de tu organización. **Leer no marca nada**:
+    cada alerta se marca al abrirla, o todas con ``POST /notifications/alerts/read``
+    y ``all=true``. ``sin_leer`` no depende del filtro.
+    """
+    pagina = await run_db(
+        listar_alertas,
+        _user_key(ctx),
+        int(ctx["organization_id"]),
+        user_id=_user_id_int(ctx),
+        estado=estado,
+        limit=limit,
+        offset=offset,
+    )
+    return AlertasPagina(
+        items=[_alerta(fila) for fila in pagina["items"]],
+        total=pagina["total"],
+        sin_leer=pagina["sin_leer"],
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/read", summary="Marcar novedades como leidas")

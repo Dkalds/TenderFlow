@@ -14,6 +14,8 @@ dual (ver ``db/repositories/watchlist.py``).
 
 from __future__ import annotations
 
+from typing import Any, Literal, TypedDict
+
 from db.database import connect, connect_read, now_utc_iso
 
 #: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
@@ -175,3 +177,84 @@ def insert_user_notification(
             ),
         )
         return bool(cur.rowcount > 0)
+
+
+#: Filtro de lectura de «Ver todas» en la campana. Cerrado: el predicado SQL de
+#: cada valor está escrito aquí y no se compone desde lo que llega por la query.
+EstadoLectura = Literal["todas", "sin_leer", "leidas"]
+
+_PREDICADO_LECTURA: dict[str, str] = {
+    "todas": "",
+    "sin_leer": " AND n.read_at IS NULL",
+    "leidas": " AND n.read_at IS NOT NULL",
+}
+
+#: Predicado de identidad dual con el alias de ``user_notifications``.
+_IDENT_N = "(n.user_id = %s OR (n.user_key = %s AND (n.user_id IS NULL OR %s::int IS NULL)))"
+
+
+class PaginaAlertas(TypedDict):
+    """Una página de la bandeja de alertas de una persona en una organización."""
+
+    items: list[dict[str, Any]]
+    #: Cuántas alertas cumplen el filtro, no cuántas trae la página.
+    total: int
+    #: Las no leídas, sea cual sea el filtro: es el número del distintivo de la
+    #: campana, y no puede bajar porque alguien mire solo las leídas.
+    sin_leer: int
+
+
+def listar_alertas(
+    user_key: str,
+    organization_id: int,
+    *,
+    user_id: int | None = None,
+    estado: EstadoLectura = "todas",
+    limit: int = 20,
+    offset: int = 0,
+) -> PaginaAlertas:
+    """La bandeja completa de la campana, paginada y con filtro de lectura.
+
+    Es lo que el canal ``in_app`` del outbox (``scheduler/jobs/event_dispatch``)
+    y los productores directos (reglas, plazos) dejaron para esta persona en
+    esta organización: lo suyo, no el mercado.
+
+    El orden es **cronológico** (lo más reciente arriba, ``id`` como
+    desempate) y no «sin leer primero» como la vista previa antigua: con
+    paginación por desplazamiento, un orden que dependa de ``read_at`` movería
+    de página la alerta que alguien acaba de abrir y la página siguiente
+    saltaría una. Lo nuevo entra por arriba; lo leído se queda donde estaba.
+
+    ``organization_id`` es obligatorio: una lectura sin ámbito mezclaría las
+    bandejas de todas las organizaciones de la persona, y la campana trabaja
+    sobre la organización activa, como el resto de la consola.
+
+    ``pursuit_id`` llega resuelto igual que en
+    ``services.notifications.get_user_alerts``: si el expediente ya es una
+    oportunidad de la organización, la campana enlaza a su ficha.
+    """
+    filtro = _PREDICADO_LECTURA[estado]
+    ident = (user_id, user_key, user_id)
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT n.id, n.created_at, n.type, n.title, n.body, n.licitacion_id, "
+            "n.rule_id, n.read_at, p.id AS pursuit_id "
+            "FROM user_notifications n "
+            "LEFT JOIN pursuits p ON p.organization_id = n.organization_id "
+            "AND p.licitacion_id = n.licitacion_id "
+            f"WHERE {_IDENT_N} AND n.organization_id = %s{filtro} "
+            "ORDER BY n.created_at DESC, n.id DESC LIMIT %s OFFSET %s",
+            (*ident, organization_id, limit, offset),
+        )
+        cols = [d[0] for d in cur.description]
+        items = [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+        # Los dos recuentos en una sola consulta: ``FILTER`` ahorra el segundo
+        # viaje que pediría el número del distintivo.
+        fila = c.execute(
+            f"SELECT COUNT(*) FILTER (WHERE TRUE{filtro}), "
+            "COUNT(*) FILTER (WHERE n.read_at IS NULL) "
+            f"FROM user_notifications n WHERE {_IDENT_N} AND n.organization_id = %s",
+            (*ident, organization_id),
+        ).fetchone()
+    total, sin_leer = (int(fila[0]), int(fila[1])) if fila else (0, 0)
+    return PaginaAlertas(items=items, total=total, sin_leer=sin_leer)
