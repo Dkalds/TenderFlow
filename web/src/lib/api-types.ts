@@ -9,7 +9,7 @@
  * Si el backend renombra un schema, este es el único sitio a tocar.
  */
 
-import type { components } from "@/generated/api";
+import type { components, operations } from "@/generated/api";
 
 export type Schemas = components["schemas"];
 
@@ -111,6 +111,13 @@ export type PursuitListResponse = Schemas["PursuitListResponse"];
 export type PursuitMetrics = Schemas["PursuitMetrics"];
 export type PursuitCreate = Schemas["PursuitCreate"];
 export type PursuitUpdate = Schemas["PursuitUpdate"];
+/**
+ * Filtro de plazo del tablero (`GET /pursuits?plazo=`, `shared.dto.PursuitPlazo`).
+ * Es un `Literal` de query, no un schema: sale de la operación.
+ */
+export type PursuitPlazo = NonNullable<
+  NonNullable<operations["get_pursuits_api_v1_pursuits_get"]["parameters"]["query"]>["plazo"]
+>;
 // Hilo de comentarios de una oportunidad (v97): el chat del equipo sobre un
 // expediente. `can_delete` viene calculado por la API para quien pregunta.
 export type PursuitCommentOut = Schemas["PursuitCommentOut"];

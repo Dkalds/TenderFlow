@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { PanelError } from "@/components/console/panel";
-import { pasaFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
+import { Aviso, PanelEmpty, PanelError } from "@/components/console/panel";
+import { Button } from "@/components/ui/button";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
-import type { Pursuit } from "@/hooks/use-pursuits";
+import { formatNumber } from "@/lib/utils";
 /**
  * El diálogo de cierre, sólo cuando se cierra algo.
  *
@@ -24,6 +25,7 @@ import { TableroMetricas } from "./tablero-metricas";
 import { TableroVacio } from "./tablero-vacio";
 import { useTablero } from "../_hooks/use-tablero";
 import { FASES, faseDe } from "../_lib/fases";
+import { consultaDelTablero, hayFiltros, type FiltrosTablero } from "../_lib/filtros-tablero";
 import { bloqueoDeFase, resultadosPermitidos } from "../_lib/flujo";
 
 /**
@@ -34,9 +36,14 @@ import { bloqueoDeFase, resultadosPermitidos } from "../_lib/flujo";
  * cartera y rendimiento, y este componente sólo se monta cuando el tablero es
  * la vista activa: así sus consultas (`usePursuits`, `usePursuitMetrics`, las
  * etiquetas de todas las tarjetas) no se disparan para mirar la cartera. Los
- * filtros (búsqueda y etiqueta) llegan como props porque sus controles viven
- * en la cabecera del espacio, que es de la página. Nada más cambió: el
- * tablero es el mismo, columna a columna.
+ * filtros llegan como props porque sus controles viven en la cabecera del
+ * espacio, que es de la página.
+ *
+ * Los filtros se aplican **en servidor** (CU-28): el tablero pide hasta
+ * `TOPE_TABLERO` oportunidades ya filtradas y el `total` de la respuesta es el
+ * del conjunto filtrado. Antes pedía la página por defecto y filtraba en el
+ * navegador, así que lo que no cabía en ella no aparecía por mucho que se
+ * buscara. Si el conjunto supera el tope, el tablero lo dice.
  *
  * Una columna por estado abierto del workflow y una sola para los tres
  * terminales. La versión anterior agrupaba los ocho estados en cuatro carriles,
@@ -55,26 +62,26 @@ import { bloqueoDeFase, resultadosPermitidos } from "../_lib/flujo";
  * expediente y la tira declara su unidad de conteo.
  */
 export default function TableroView({
-  query,
-  etiquetaFiltro,
+  filtros,
+  onLimpiar,
 }: {
-  query: string;
-  etiquetaFiltro: string;
+  filtros: FiltrosTablero;
+  onLimpiar: () => void;
 }) {
-  const pursuits = usePursuits();
+  // El texto espera a que se deje de escribir: cada tecla sería una consulta.
+  const q = useDebounce(filtros.q, 300);
+  const conFiltros = hayFiltros(filtros);
+  const pursuits = usePursuits(consultaDelTablero({ ...filtros, q }));
   const metrics = usePursuitMetrics();
   const tablero = useTablero();
 
   // F1.6 — una sola petición con las etiquetas de todas las tarjetas.
-  const ids = (pursuits.data?.items ?? []).map((pursuit) => String(pursuit.id));
+  const items = pursuits.data?.items ?? [];
+  const ids = items.map((pursuit) => String(pursuit.id));
   const etiquetasPorId = useEtiquetasDe("oportunidad", ids).data ?? {};
-  const items = (pursuits.data?.items ?? []).filter(
-    (pursuit) =>
-      coincide(pursuit, query) &&
-      pasaFiltroEtiqueta(etiquetasPorId[String(pursuit.id)], etiquetaFiltro),
-  );
 
-  const vacio = !pursuits.isPending && !pursuits.error && (pursuits.data?.items?.length ?? 0) === 0;
+  const sinResultados = !pursuits.isPending && !pursuits.error && items.length === 0;
+  const total = pursuits.data?.total ?? 0;
   const arrastrada = items.find((item) => item.id === tablero.arrastrandoId) ?? null;
 
   return (
@@ -90,31 +97,51 @@ export default function TableroView({
               onRetry={() => void pursuits.refetch()}
             />
           </div>
-        ) : vacio ? (
+        ) : sinResultados && conFiltros ? (
+          <div className="grid flex-1 place-items-center p-10">
+            <PanelEmpty
+              title="Ninguna oportunidad con estos filtros"
+              hint="Prueba con otro plazo, otra etiqueta u otro responsable, o quita los filtros."
+              action={
+                <Button type="button" size="sm" variant="outline" onClick={onLimpiar}>
+                  Quitar filtros
+                </Button>
+              }
+            />
+          </div>
+        ) : sinResultados ? (
           <TableroVacio />
         ) : (
-          <div className="bg-border/50 grid min-h-0 flex-1 grid-cols-1 gap-px md:grid-cols-3 xl:grid-cols-6">
-            {FASES.map((fase) => (
-              <TableroColumna
-                key={fase.key}
-                fase={fase}
-                items={items.filter((item) => faseDe(tablero.estadoDe(item)) === fase.key)}
-                etiquetasPorId={etiquetasPorId}
-                cargando={pursuits.isPending}
-                activa={tablero.columnaActiva === fase.key}
-                aceptaSoltar={arrastrada == null || bloqueoDeFase(arrastrada, fase.key) === null}
-                arrastrandoId={tablero.arrastrandoId}
-                onSobrevolar={() => tablero.sobrevolar(fase.key)}
-                onSalir={() => tablero.salirDe(fase.key)}
-                onSoltarEnColumna={() => {
-                  if (arrastrada) tablero.moverA(arrastrada, fase.key);
-                }}
-                onArrastrar={tablero.empezarArrastre}
-                onFinArrastre={tablero.terminarArrastre}
-                onMover={tablero.moverA}
-              />
-            ))}
-          </div>
+          <>
+            <AvisoDelTablero
+              filtros={filtros}
+              total={total}
+              cargadas={items.length}
+              cargando={pursuits.isPending}
+            />
+            <div className="bg-border/50 grid min-h-0 flex-1 grid-cols-1 gap-px md:grid-cols-3 xl:grid-cols-6">
+              {FASES.map((fase) => (
+                <TableroColumna
+                  key={fase.key}
+                  fase={fase}
+                  items={items.filter((item) => faseDe(tablero.estadoDe(item)) === fase.key)}
+                  etiquetasPorId={etiquetasPorId}
+                  cargando={pursuits.isPending}
+                  activa={tablero.columnaActiva === fase.key}
+                  aceptaSoltar={arrastrada == null || bloqueoDeFase(arrastrada, fase.key) === null}
+                  arrastrandoId={tablero.arrastrandoId}
+                  onSobrevolar={() => tablero.sobrevolar(fase.key)}
+                  onSalir={() => tablero.salirDe(fase.key)}
+                  onSoltarEnColumna={() => {
+                    if (arrastrada) tablero.moverA(arrastrada, fase.key);
+                  }}
+                  onArrastrar={tablero.empezarArrastre}
+                  onFinArrastre={tablero.terminarArrastre}
+                  onMover={tablero.moverA}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
@@ -133,11 +160,32 @@ export default function TableroView({
   );
 }
 
-/** Busca por título, referencia y responsable, que es lo que promete el campo. */
-function coincide(pursuit: Pursuit, query: string): boolean {
-  const aguja = query.trim().toLocaleLowerCase("es");
-  if (!aguja) return true;
-  return `${pursuit.tender_title ?? ""} ${pursuit.licitacion_id} ${pursuit.responsible_name ?? ""}`
-    .toLocaleLowerCase("es")
-    .includes(aguja);
+/**
+ * Lo que el tablero tiene que decir de su universo (ADR-014): cuántas casan con
+ * los filtros, que la tira de arriba sigue siendo de toda la organización, qué
+ * cuenta el plazo y si lo que se ve es parcial. Sin filtros y sin recorte, nada.
+ */
+function AvisoDelTablero({
+  filtros,
+  total,
+  cargadas,
+  cargando,
+}: {
+  filtros: FiltrosTablero;
+  total: number;
+  cargadas: number;
+  cargando: boolean;
+}) {
+  if (cargando) return null;
+  const parcial = total > cargadas;
+  if (!hayFiltros(filtros) && !parcial) return null;
+  return (
+    <Aviso tone={parcial ? "warning" : "info"} variant="banda" className="flex-none">
+      {hayFiltros(filtros)
+        ? `${formatNumber(total)} ${total === 1 ? "oportunidad casa" : "oportunidades casan"} con los filtros; la tira de arriba es de toda la organización.`
+        : `Hay ${formatNumber(total)} oportunidades.`}
+      {filtros.plazo !== "todos" && " El plazo solo cuenta las abiertas sin presentar."}
+      {parcial && ` Se ven las ${formatNumber(cargadas)} con actividad más reciente: acota con los filtros para ver el resto.`}
+    </Aviso>
+  );
 }
