@@ -772,3 +772,24 @@ con su ficha) y **Revisión** (la cola):
   `ESPACIOS_ABSORBIDOS`. De paso se cierra la misma costura en Mercado ›
   Renovaciones, que ofrecía seis controles y aplica uno, tecnología.
 
+### La previsión por trimestre, en un solo sitio
+
+El reparto por trimestre del valor ponderado (`PrevisionTrimestral`, con sus
+supuestos por etapa) se pintaba en Oportunidades › Rendimiento y en Dirección
+› Resultado, con el mismo cálculo en el backend (`_valor_ponderado` de los dos
+endpoints). Se queda en **Rendimiento** y Dirección enlaza allí:
+
+- **Por quién lo ve.** Rendimiento lo ve cualquier miembro; Dirección, solo un
+  owner o un admin (`GET /pursuits/direccion` da 403 a un `member`). Dejarlo
+  solo en Dirección quitaba el dato a quien mueve las oportunidades, que es
+  quien puede corregir una fecha o una etapa que lo desvía.
+- **Es la misma cifra.** La tarjeta «Valor ponderado del pipeline» de
+  Dirección es una foto de hoy, y Rendimiento entra en el histórico: el enlace
+  («Reparto por trimestre en Rendimiento») va sin `periodo`, así que aterriza
+  en el mismo universo de oportunidades abiertas.
+- Dirección › Resultado se reordena sin el panel «Lo que viene»: las cifras,
+  dónde ganamos, por qué perdemos junto a si el Radar ordena bien, y lo que
+  falta por registrar. Sin base en el histórico, la tarjeta del pipeline lleva
+  el mismo enlace.
+- `prevision_trimestral` sigue viajando en `CuadroDireccion`: retirarlo es un
+  cambio de contrato que esta pantalla no necesita para dejar de pintarlo.

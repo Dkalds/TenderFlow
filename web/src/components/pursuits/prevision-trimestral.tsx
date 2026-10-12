@@ -1,9 +1,11 @@
 /**
  * F4.1 — la previsión por trimestre y los supuestos del valor ponderado.
  *
- * Las dos piezas que Oportunidades → Rendimiento y Dirección enseñan igual:
- * el reparto por trimestre de adjudicación prevista y las probabilidades por
- * etapa con las que se ponderó. Las cifras vienen hechas (`prevision_trimestral`,
+ * El reparto por trimestre de adjudicación prevista y las probabilidades por
+ * etapa con las que se ponderó, en Oportunidades › Rendimiento. Hasta 2026-10
+ * Dirección lo pintaba también; hoy su tarjeta del valor ponderado enlaza aquí,
+ * porque Rendimiento lo ve todo el equipo y Dirección solo un owner o un admin.
+ * Las cifras vienen hechas (`prevision_trimestral`,
  * `probabilidades_etapa_usadas`); aquí sólo se ordenan y se dibujan barras
  * proporcionales al trimestre mayor.
  */

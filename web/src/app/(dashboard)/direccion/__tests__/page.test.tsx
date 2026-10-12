@@ -175,6 +175,60 @@ describe("Dirección › Resultado", () => {
     expect(screen.getAllByText("Cómo se calcula")).toHaveLength(3);
   });
 
+  it("la previsión por trimestre no se repite aquí: la cifra lleva a Rendimiento, que la ve todo el equipo", async () => {
+    // El reparto por trimestre se pintaba aquí y en Oportunidades ›
+    // Rendimiento con el mismo cálculo. Vive allí porque allí lo ve cualquier
+    // miembro, y Dirección solo un owner o un admin.
+    apiGet.mockResolvedValue(
+      cuadro({
+        tarjetas: [
+          tarjeta({
+            clave: "valor_ponderado",
+            etiqueta: "Valor ponderado del pipeline",
+            valor: 50000,
+            unidad: "eur",
+            n: 3,
+            depende_del_periodo: false,
+          }),
+        ],
+        prevision_trimestral: { "2026-Q4": 30000, "2027-Q1": 20000 },
+        probabilidades_etapa_usadas: { identified: 10 },
+      }),
+    );
+    renderPage();
+
+    const enlace = await screen.findByRole("link", { name: "Reparto por trimestre en Rendimiento" });
+    // Sin `periodo`: Rendimiento entra en el histórico, que es la misma foto de
+    // hoy que la tarjeta.
+    expect(enlace.getAttribute("href")).toBe("/oportunidades?vista=rendimiento");
+    expect(screen.queryByText("Previsión por trimestre")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Lo que viene" })).toBeNull();
+  });
+
+  it("sin base en el histórico, la cifra del pipeline también lleva al reparto", async () => {
+    apiGet.mockResolvedValue(
+      cuadro({
+        cierres: 1,
+        cierres_historico: 2,
+        tarjetas: [
+          tarjeta({
+            clave: "valor_ponderado",
+            etiqueta: "Valor ponderado del pipeline",
+            valor: 50000,
+            unidad: "eur",
+            n: 3,
+            depende_del_periodo: false,
+          }),
+        ],
+        prevision_trimestral: { "2026-Q4": 50000 },
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "Reparto por trimestre en Rendimiento" })).toBeTruthy();
+    expect(screen.queryByText("Previsión por trimestre")).toBeNull();
+  });
+
   it("los cortes llevan su posición frente a la media y pliegan lo que no tiene base", async () => {
     apiGet.mockResolvedValue(
       cuadro({

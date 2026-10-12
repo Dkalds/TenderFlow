@@ -12,8 +12,12 @@
  * Cuatro tarjetas con tres líneas de metodología cada una tapaban la cifra, y
  * un `<details>` y no un `title`: el tooltip nativo no existe para teclado ni
  * táctil.
+ *
+ * Una cifra cuyo desglose vive en otra pantalla lleva un enlace a él
+ * (`enlaces`, por `clave`): hoy el valor ponderado, cuyo reparto por trimestre
+ * se pinta en Oportunidades › Rendimiento y no se repite aquí.
  */
-import { ROTULO_DATO } from "@/components/console/panel";
+import { EnlaceIr, ROTULO_DATO } from "@/components/console/panel";
 import { cn, formatNumber } from "@/lib/utils";
 import { formatoCifra, lineaComparacion, tonoDelta, type Tarjeta } from "../_lib/formato";
 
@@ -23,7 +27,13 @@ const TONO_DELTA = {
   igual: "text-muted-foreground",
 } as const;
 
-function TarjetaCifra({ tarjeta }: { tarjeta: Tarjeta }) {
+/** Destino del desglose de una cifra que se pinta en otra pantalla. */
+export interface EnlaceTarjeta {
+  href: string;
+  texto: string;
+}
+
+function TarjetaCifra({ tarjeta, enlace }: { tarjeta: Tarjeta; enlace?: EnlaceTarjeta }) {
   const cifra = tarjeta.valor != null ? formatoCifra(tarjeta.unidad, tarjeta.valor) : null;
   const comparacion = lineaComparacion(tarjeta);
   const tono = tonoDelta(tarjeta);
@@ -41,6 +51,11 @@ function TarjetaCifra({ tarjeta }: { tarjeta: Tarjeta }) {
         </p>
       ) : null}
       {tarjeta.nota ? <p className="text-tf-meta text-muted-foreground">{tarjeta.nota}</p> : null}
+      {enlace ? (
+        <EnlaceIr href={enlace.href} className="self-start">
+          {enlace.texto}
+        </EnlaceIr>
+      ) : null}
       <div className="mt-auto pt-1 text-tf-micro text-muted-foreground">
         <span className="tf-tnum">
           n = {formatNumber(tarjeta.n ?? 0)}
@@ -55,7 +70,13 @@ function TarjetaCifra({ tarjeta }: { tarjeta: Tarjeta }) {
   );
 }
 
-export function TarjetasDireccion({ tarjetas }: { tarjetas: Tarjeta[] }) {
+export function TarjetasDireccion({
+  tarjetas,
+  enlaces,
+}: {
+  tarjetas: Tarjeta[];
+  enlaces?: Partial<Record<string, EnlaceTarjeta>>;
+}) {
   if (tarjetas.length === 0) return null;
   return (
     <section aria-labelledby="direccion-resumen" className="flex flex-col gap-2">
@@ -67,7 +88,7 @@ export function TarjetasDireccion({ tarjetas }: { tarjetas: Tarjeta[] }) {
         aria-label="Cifras de dirección"
       >
         {tarjetas.map((tarjeta) => (
-          <TarjetaCifra key={tarjeta.clave} tarjeta={tarjeta} />
+          <TarjetaCifra key={tarjeta.clave} tarjeta={tarjeta} enlace={enlaces?.[tarjeta.clave]} />
         ))}
       </ul>
     </section>
