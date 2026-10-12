@@ -586,6 +586,186 @@ def test_sin_filas_un_completar_roto_no_tumba_la_pasada(runner_sin_bd):
     assert not resultado.fetch_failed
 
 
+# ── Con lote: el paso de PSCP no espera al cierre del lote ───────────────────
+
+
+class _CorteDelStep(BaseException):
+    """El ``timeout-minutes`` del step: mata el proceso, no es una ``Exception``.
+
+    Hereda de ``BaseException`` a propósito, como ``SystemExit``: nada del
+    runner la atrapa, igual que nada sobrevive a que Actions mate el proceso.
+    """
+
+
+class _ConectorConLote:
+    """Una pasada con una fila: la que de verdad ocurría el 2026-10-03."""
+
+    def __init__(self, source_id: str, completar: Any, *, primero: bool) -> None:
+        self.source_id = source_id
+        self._completar = completar
+        if primero:
+            self.completar_documentos_primero = True
+
+    def fetch(self, cursor: Any) -> Any:
+        from scraper.connectors.base import RawNotice
+
+        yield RawNotice(natural_id="1", payload={})
+
+    def parse(self, raw: Any) -> Any:
+        from db.upsert import Licitacion
+        from scraper.connectors.base import ParsedTender
+
+        return ParsedTender(
+            licitacion=Licitacion(
+                id_externo=f"{self.source_id}:1",
+                titulo="Llicències de programari de gestió documental",
+                fuente=self.source_id,
+            )
+        )
+
+    def new_cursor(self) -> None:
+        return None
+
+    def completar_documentos(self) -> None:
+        self._completar()
+
+
+@pytest.fixture()
+def runner_con_lote(runner_sin_bd, monkeypatch):
+    """``run_connector`` con lote y sin BD: el upsert devuelve una fila nueva."""
+    from db.upsert import UpsertResult
+
+    monkeypatch.setattr(
+        runner_sin_bd,
+        "upsert_licitaciones_with_history",
+        lambda lics, source: UpsertResult(
+            inserted=[lic.id_externo for lic in lics], modified=[], unchanged=[]
+        ),
+    )
+    return runner_sin_bd
+
+
+def test_con_lote_pscp_lee_las_fichas_antes_de_que_el_step_corte_el_cierre(
+    runner_con_lote, monkeypatch
+):
+    """La segunda causa del backlog: con filas, el corte llegaba antes que el paso.
+
+    El 2026-10-03 (run 37126368765) el cursor quedó escrito 3 s después de la
+    última página y el step murió a los 10 minutos dentro de la resolución de
+    empresas, que va primero en ``_post_ingestion``: el paso de documentos,
+    detrás de ella y de los dos dedupes, no llegó a correr. El paso no lee nada
+    de lo que esos pasos escriben, así que PSCP lo pide **antes**.
+    """
+    orden: list[str] = []
+
+    def empresas(**kw: Any) -> None:
+        orden.append("empresas")
+        raise _CorteDelStep
+
+    monkeypatch.setattr("services.entity_resolution.resolve_all_unlinked", empresas)
+
+    conector = _ConectorConLote("pscp", lambda: orden.append("documentos"), primero=True)
+    with pytest.raises(_CorteDelStep):
+        runner_con_lote.run_connector(conector)
+
+    assert orden == ["documentos", "empresas"]
+
+
+def test_con_lote_el_paso_primero_no_se_repite_dentro_del_cierre(runner_con_lote, monkeypatch):
+    llamadas: list[str] = []
+    for paso in (
+        "services.entity_resolution.resolve_all_unlinked",
+        "services.dedupe.detect_duplicates",
+    ):
+        monkeypatch.setattr(paso, lambda **kw: None)
+    monkeypatch.setattr("services.contract_events.derive_new_events", lambda: None)
+    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+
+    conector = _ConectorConLote("pscp", lambda: llamadas.append("x"), primero=True)
+    resultado = runner_con_lote.run_connector(conector)
+
+    assert resultado.parsed == 1
+    assert llamadas == ["x"]
+
+
+def test_sin_declararlo_el_paso_sigue_detras_de_los_dedupes(runner_con_lote, monkeypatch):
+    """TED y PLACSP no cambian: su paso necesita las marcas que deja el dedupe.
+
+    Un aviso TED recién emparejado lee los pliegos de su canónica, y el paso lo
+    sabe por la marca que el dedupe acaba de escribir.
+    """
+    orden: list[str] = []
+    monkeypatch.setattr(
+        "services.entity_resolution.resolve_all_unlinked", lambda **kw: orden.append("empresas")
+    )
+    monkeypatch.setattr("services.dedupe.detect_duplicates", lambda **kw: orden.append("dedupe"))
+    monkeypatch.setattr("services.contract_events.derive_new_events", lambda: None)
+    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+
+    conector = _ConectorConLote("ted", lambda: orden.append("documentos"), primero=False)
+    runner_con_lote.run_connector(conector)
+
+    assert orden == ["empresas", "dedupe", "documentos"]
+
+
+def test_solo_pscp_pide_el_paso_de_documentos_antes_del_cierre():
+    from scraper.connectors.placsp import PlacspAtomConnector, PlacspBulkConnector
+    from scraper.connectors.pscp import PscpConnector
+    from scraper.connectors.ted import TedConnector
+
+    assert getattr(PscpConnector(), "completar_documentos_primero", False) is True
+    for otro in (TedConnector(), PlacspAtomConnector(), PlacspBulkConnector(2026, 9)):
+        assert not getattr(otro, "completar_documentos_primero", False)
+
+
+def test_el_conector_pscp_acota_el_paso_con_su_presupuesto(monkeypatch):
+    from scraper.connectors import pscp
+
+    recibido: dict[str, Any] = {}
+
+    def completar(**kw: Any) -> dp.ResumenDocumentos:
+        recibido.update(kw)
+        return dp.ResumenDocumentos()
+
+    monkeypatch.setattr("scraper.documentos_plataforma.completar_documentos_pscp", completar)
+
+    pscp.PscpConnector().completar_documentos()
+
+    assert recibido["presupuesto_s"] == pscp.PRESUPUESTO_DOCUMENTOS_S
+    # Holgura para la resolución de empresas y los dedupes que vienen detrás,
+    # dentro de los 10 minutos del step.
+    assert 0 < pscp.PRESUPUESTO_DOCUMENTOS_S <= 180
+
+
+def test_completar_pscp_no_deja_que_una_peticion_pase_del_presupuesto(repo_falso, monkeypatch):
+    """Sin tope por petición, una ficha lenta podía alargar el paso 30 s más.
+
+    El presupuesto se miraba solo **antes** de cada ficha; la petición en curso
+    tenía el ``REQUEST_TIMEOUT`` entero (30 s) por delante. Con el reloj al
+    borde, cada petición recibe lo que queda, y nunca más que el timeout global.
+    """
+    repo_falso([{"id_externo": f"pscp:{i}", "url": _FICHA_PSCP} for i in range(2)])
+    monkeypatch.setattr(
+        "services.dedupe.marcar_republicaciones_ted", lambda *a: RepublicacionesTed()
+    )
+    instantes = iter([100.0, 100.0, 108.0])
+    topes: list[float] = []
+
+    def obtener(url: str, *, host: str, timeout_s: float | None = None) -> bytes:
+        assert host == "contractaciopublica.cat"
+        topes.append(float(timeout_s or 0))
+        return _FIXTURE_PSCP.read_bytes()
+
+    monkeypatch.setattr(dp, "_obtener", obtener)
+
+    resumen = dp.completar_documentos_pscp(
+        presupuesto_s=10, pausa_s=0, reloj=lambda: next(instantes)
+    )
+
+    assert resumen.candidatas == 2
+    assert topes == [10.0, 2.0]
+
+
 # ── Red: un circuito por plataforma ──────────────────────────────────────────
 
 
