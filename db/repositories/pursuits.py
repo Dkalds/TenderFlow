@@ -8,7 +8,7 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import ambito_agenda_sql, rows_to_dicts
-from db.sql_fragments import empresa_key_sql
+from db.sql_fragments import FOLD_TABLE, empresa_key_sql, escape_like, fold_expr, iso_guard
 
 # El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
 # numero)`` y no por un id guardado: ``db/upsert.py::replace_lotes`` borra y
@@ -232,9 +232,32 @@ class PursuitRepository:
         *,
         status: str | None = None,
         responsible_user_id: int | None = None,
+        q: str | None = None,
+        etiqueta_id: int | None = None,
+        plazo_desde: str | None = None,
+        plazo_hasta: str | None = None,
+        excluir_estados: Sequence[str] = (),
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
+        """Página de oportunidades de la organización y el total del conjunto filtrado.
+
+        - ``q``: subcadena plegada (sin tildes ni mayúsculas) del título del
+          expediente, su referencia o el nombre del responsable. Se escapa: `%`
+          y `_` son texto.
+        - ``etiqueta_id``: ``EXISTS`` sobre ``etiquetas_aplicadas`` con la
+          organización **de la oportunidad** en el predicado, de modo que una
+          etiqueta ajena no casa con nada de aquí.
+        - ``plazo_desde`` (inclusive) / ``plazo_hasta`` (exclusivo): fechas
+          ``YYYY-MM-DD`` contra ``l.fecha_limite``. El guard ISO deja fuera los
+          expedientes sin plazo publicado en cuanto se pide cualquiera de las
+          dos cotas. Qué estados cuentan lo decide el servicio con
+          ``excluir_estados``: aquí no hay regla de negocio.
+
+        El conteo lleva los mismos ``JOIN`` que la página porque los filtros de
+        texto y plazo miran el expediente y el responsable; con el ``COUNT`` de
+        antes, sobre ``pursuits`` a secas, el total no habría podido filtrarse.
+        """
         clauses = ["p.organization_id = %s"]
         params: list[Any] = [organization_id]
         if status is not None:
@@ -243,10 +266,38 @@ class PursuitRepository:
         if responsible_user_id is not None:
             clauses.append("p.responsible_user_id = %s")
             params.append(responsible_user_id)
+        if q and q.strip():
+            patron = f"%{escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
+            clauses.append(
+                f"({fold_expr('l.titulo')} LIKE %s OR {fold_expr('p.licitacion_id')} LIKE %s "
+                f"OR {fold_expr('u.display_name')} LIKE %s)"
+            )
+            params.extend([patron, patron, patron])
+        if etiqueta_id is not None:
+            clauses.append(
+                "EXISTS (SELECT 1 FROM etiquetas_aplicadas ea "
+                "WHERE ea.organization_id = p.organization_id AND ea.etiqueta_id = %s "
+                "AND ea.objeto_tipo = 'oportunidad' AND ea.objeto_id = p.id::text)"
+            )
+            params.append(etiqueta_id)
+        if plazo_desde is not None or plazo_hasta is not None:
+            clauses.append(iso_guard("l.fecha_limite"))
+            if plazo_desde is not None:
+                clauses.append("l.fecha_limite >= %s")
+                params.append(plazo_desde)
+            if plazo_hasta is not None:
+                clauses.append("l.fecha_limite < %s")
+                params.append(plazo_hasta)
+        if excluir_estados:
+            clauses.append("p.status NOT IN (" + ", ".join(["%s"] * len(excluir_estados)) + ")")
+            params.extend(excluir_estados)
         where = " AND ".join(clauses)
         with connect_read() as conn:
             total_row = conn.execute(
-                "SELECT COUNT(*) FROM pursuits p WHERE " + where,
+                "SELECT COUNT(*) FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "LEFT JOIN users u ON u.id = p.responsible_user_id "
+                "WHERE " + where,
                 tuple(params),
             ).fetchone()
             cur = conn.execute(

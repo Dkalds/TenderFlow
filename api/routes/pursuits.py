@@ -122,6 +122,7 @@ from shared.dto import (
     PursuitDetail,
     PursuitListResponse,
     PursuitMetrics,
+    PursuitPlazo,
     PursuitStatus,
     PursuitSummary,
     PursuitUpdate,
@@ -783,10 +784,34 @@ async def get_pursuits(
     organization_id: int | None = Query(default=None, ge=1),
     pursuit_status: PursuitStatus | None = Query(default=None, alias="status"),
     responsible_user_id: int | None = Query(default=None, ge=1),
+    q: str | None = Query(
+        default=None,
+        max_length=200,
+        description=(
+            "Texto en el título del expediente, su referencia o el nombre del "
+            "responsable; sin distinguir acentos ni mayúsculas."
+        ),
+    ),
+    etiqueta: int | None = Query(
+        default=None, ge=1, description="Sólo oportunidades con esta etiqueta de la organización."
+    ),
+    plazo: PursuitPlazo | None = Query(
+        default=None,
+        description=(
+            "Plazo de presentación del expediente, sobre oportunidades abiertas y "
+            "sin presentar: `vencido` (el día ya pasó), `7d` o `30d` (vence de hoy "
+            "a dentro de N días, inclusive)."
+        ),
+    ),
     page: PageParams = Depends(pagina(50)),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PursuitListResponse:
-    """Lista únicamente opportunities de una organización autorizada."""
+    """Lista únicamente opportunities de una organización autorizada.
+
+    Los filtros van en el `WHERE` y el `total` es el del conjunto filtrado: el
+    tablero los usa en vez de filtrar la página que ya tiene, que con más de una
+    página escondía lo que no había llegado.
+    """
     try:
         return await run_db(
             list_pursuits,
@@ -794,6 +819,9 @@ async def get_pursuits(
             organization_id=organization_id,
             status=pursuit_status,
             responsible_user_id=responsible_user_id,
+            q=q,
+            etiqueta_id=etiqueta,
+            plazo=plazo,
             limit=page.limit,
             offset=page.offset,
         )
