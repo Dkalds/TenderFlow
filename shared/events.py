@@ -64,6 +64,7 @@ FAMILIAS: tuple[str, ...] = (
     "solicitud_acceso",
     "competidor",
     "cuenta",
+    "organizacion",
 )
 
 
@@ -315,6 +316,20 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
             ("in_app", "digest", "webhook"),
             tipo_notificacion="cartera_vence",
             clave_ajustes="pursuit.cartera_vence",
+        ),
+        # Lo emite `services/documentacion_caducidad.emitir_avisos_de_caducidad`
+        # desde el paso `documentacion_avisos` del cierre: 60, 30 y 7 días antes
+        # de que caduque un documento del perfil de capacidad, y al caducar
+        # (`umbral=0`), una vez por umbral y por documento y vigencia. Va a
+        # quien puede renovarlo: owner y admin de la organización. El opt-out
+        # es la preferencia de Ajustes, para la campana y para el correo.
+        _spec(
+            "organizacion.documento_caduca",
+            "Caduca un documento acreditativo de tu organización",
+            ("organization_id", "documento_id", "tipo", "vigente_hasta", "umbral"),
+            ("in_app", "digest", "webhook"),
+            tipo_notificacion="documentacion_caduca",
+            clave_ajustes="organizacion.documento_caduca",
         ),
     )
 )

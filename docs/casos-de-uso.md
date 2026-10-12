@@ -206,6 +206,19 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Recorre la lista completa, paginada, filtrando leídos y sin leer, y pone en
   pausa la regla que disparó una alerta sin salir de la campana.
 
+### CU-30 — Tener al día la documentación acreditativa
+
+- **Quién:** propietario o administrador de la organización. **Dónde:**
+  Equipo › Organización, perfil de capacidad.
+- Declara cada documento con su tipo —certificación técnica, o documentación
+  administrativa: corriente con la AEAT y con la Seguridad Social, ROLECE,
+  clasificación— y hasta cuándo vale.
+- Ve el estado de cada uno (vigente, caduca en N días, caducado, sin caducidad
+  declarada), ordenado por la próxima caducidad.
+- Recibe en la campana y por correo un aviso a 60, 30 y 7 días y al caducar,
+  una sola vez por umbral y documento; renovarlo con otra fecha vuelve a
+  avisar en sus umbrales. Lo puede apagar en Ajustes.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->

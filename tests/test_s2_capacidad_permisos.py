@@ -352,3 +352,68 @@ def test_put_nifs_rechaza_identificador_extranjero(tmp_db):
             ),
             actor_user_id=owner,
         )
+
+
+# ── Documentación acreditativa: tipo y vigencias (v147) ────────────────────
+
+
+def test_el_tipo_se_guarda_y_las_vigencias_salen_ordenadas(tmp_db):
+    """La pestaña Organización pinta el estado de cada documento con lo que
+    calcula el servidor, ordenado por la próxima caducidad."""
+    from datetime import UTC, datetime, timedelta
+
+    _db_mod, _ = tmp_db
+    owner = _user("owner-cap-docs@example.test")
+    organizacion = _organizacion("Equipo documentación", owner)
+    hoy = datetime.now(UTC).date()
+
+    guardado = _escribir_capacidad(
+        organizacion,
+        OrganizationCapabilities.model_validate(
+            {
+                "certificaciones": [
+                    {
+                        "nombre": "ISO 9001",
+                        "vigente_hasta": (hoy + timedelta(days=400)).isoformat(),
+                    },
+                    {"nombre": "ROLECE", "tipo": "rolece"},
+                    {
+                        "nombre": "Certificado AEAT",
+                        "tipo": "corriente_aeat",
+                        "vigente_hasta": (hoy + timedelta(days=10)).isoformat(),
+                    },
+                ]
+            }
+        ),
+    )
+
+    assert {c.nombre: c.tipo for c in guardado.certificaciones} == {
+        "Certificado AEAT": "corriente_aeat",
+        "ISO 9001": "certificacion_tecnica",
+        "ROLECE": "rolece",
+    }
+    assert [(v.nombre, v.estado, v.dias_restantes) for v in guardado.vigencias] == [
+        ("Certificado AEAT", "caduca_pronto", 10),
+        ("ISO 9001", "vigente", 400),
+        ("ROLECE", "sin_caducidad", None),
+    ]
+    # Lo mismo al leer, no solo al guardar.
+    assert _leer_capacidad(organizacion).vigencias == guardado.vigencias
+
+
+def test_solo_papeleo_sigue_echando_en_falta_las_certificaciones(tmp_db):
+    """«Certificaciones» incompleta es lo que hace que el go/no-go diga
+    «desconocido»: la AEAT sola no la completa."""
+    _db_mod, _ = tmp_db
+    owner = _user("owner-cap-papeleo@example.test")
+    organizacion = _organizacion("Equipo papeleo", owner)
+
+    guardado = _escribir_capacidad(
+        organizacion,
+        OrganizationCapabilities.model_validate(
+            {"certificaciones": [{"nombre": "Certificado AEAT", "tipo": "corriente_aeat"}]}
+        ),
+    )
+
+    assert "certificaciones" in guardado.campos_incompletos
+    assert [v.categoria for v in guardado.vigencias] == ["administrativa"]

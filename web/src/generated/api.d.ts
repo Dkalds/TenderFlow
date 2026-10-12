@@ -10685,10 +10685,17 @@ export interface components {
             referencias?: components["schemas"]["OrganizationReferencia"][];
             /** Updated At */
             updated_at?: string | null;
+            /** Vigencias */
+            vigencias?: components["schemas"]["VigenciaDocumento"][];
         };
         /**
          * OrganizationCertification
-         * @description Certificación que la organización puede acreditar.
+         * @description Documento acreditativo de la organización: certificación o papeleo.
+         *
+         *     El nombre histórico se conserva —es el esquema que ya consume la consola—
+         *     aunque desde v147 la fila también puede ser documentación administrativa
+         *     (``tipo``). Lo guardado antes no trae tipo y vale como certificación
+         *     técnica, que es lo único que la pantalla dejaba declarar.
          */
         OrganizationCertification: {
             /**
@@ -10699,6 +10706,12 @@ export interface components {
             ambito: "company" | "team";
             /** Nombre */
             nombre: string;
+            /**
+             * Tipo
+             * @default certificacion_tecnica
+             * @enum {string}
+             */
+            tipo: "certificacion_tecnica" | "corriente_aeat" | "corriente_seguridad_social" | "rolece" | "clasificacion_empresarial";
             /** Vigente Hasta */
             vigente_hasta?: string | null;
         };
@@ -15465,6 +15478,37 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * VigenciaDocumento
+         * @description Estado de vigencia de un documento del perfil, calculado en el servidor.
+         *
+         *     Lo calcula ``services/documentacion_caducidad.py`` con el mismo criterio
+         *     que los avisos de caducidad, para que la pestaña y el aviso no puedan
+         *     discrepar sobre si un certificado está a punto de caducar.
+         */
+        VigenciaDocumento: {
+            /**
+             * Categoria
+             * @enum {string}
+             */
+            categoria: "tecnica" | "administrativa";
+            /** Dias Restantes */
+            dias_restantes?: number | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "vigente" | "caduca_pronto" | "caducado" | "sin_caducidad";
+            /** Nombre */
+            nombre: string;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "certificacion_tecnica" | "corriente_aeat" | "corriente_seguridad_social" | "rolece" | "clasificacion_empresarial";
+            /** Vigente Hasta */
+            vigente_hasta?: string | null;
         };
         /**
          * VisitaMarcada

@@ -278,6 +278,12 @@ def _tipo_notificacion(evento: dict[str, Any], spec: EspecificacionEvento) -> st
         return (
             f"{base}:{payload.get('cartera_id')}:{payload.get('meses')}:{payload.get('fecha_fin')}"
         )
+    if spec.tipo == "organizacion.documento_caduca":
+        # El mismo documento avisa a 60, 30 y 7 días y al caducar, y otra vez
+        # cuando se renueva con otra fecha: `documento_id` ya identifica el
+        # documento y su vigencia. Sin expediente, el único de la tabla no
+        # deduplica (`licitacion_id` es NULL): lo hace el productor.
+        return f"{base}:{payload.get('documento_id')}:{payload.get('umbral')}"
     return base
 
 

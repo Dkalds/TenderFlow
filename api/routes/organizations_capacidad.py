@@ -30,7 +30,7 @@ para los casos en que el id no viaja en la query.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -41,6 +41,7 @@ from api.tenancy import resolve_organization_ctx
 from db.audit import log_event
 from db.repositories.organization_capabilities import OrganizationCapabilitiesRepository
 from db.repositories.organization_nifs import OrganizationNifRepository
+from services.documentacion_caducidad import vigencias
 from services.go_no_go import ChecklistNotFoundError, GoNoGoChecklist, build_checklist
 from services.normalization import clasificar_nif, normalize_nif
 from services.organizations import OrganizationAccessError
@@ -136,9 +137,14 @@ def _normalizar_nifs(body: OrganizationNifsIn) -> list[dict[str, Any]]:
 def _campos_incompletos(
     capabilities: OrganizationCapabilities,
 ) -> list[OrganizationCapabilityField]:
-    """Qué familias siguen vacías. La UI las marca; el checklist las sufre."""
+    """Qué familias siguen vacías. La UI las marca; el checklist las sufre.
+
+    «Certificaciones» cuenta solo las técnicas (v147): con únicamente
+    documentación administrativa declarada, el go/no-go sigue contestando
+    «desconocido» en esa familia, y la pantalla tiene que decirlo.
+    """
     faltan: list[OrganizationCapabilityField] = []
-    if not capabilities.certificaciones:
+    if not any(c.tipo == "certificacion_tecnica" for c in capabilities.certificaciones):
         faltan.append("certificaciones")
     if not capabilities.facturacion:
         faltan.append("facturacion")
@@ -163,6 +169,9 @@ def _capabilities_out(
         organization_id=organization_id,
         updated_at=updated_at,
         campos_incompletos=_campos_incompletos(capabilities),
+        # El mismo juicio que los avisos de caducidad, con la fecha de hoy en
+        # UTC como el paso del cierre: la pestaña y el aviso no discrepan.
+        vigencias=vigencias(capabilities.certificaciones, datetime.now(UTC).date()),
         certificaciones=capabilities.certificaciones,
         facturacion=capabilities.facturacion,
         referencias=capabilities.referencias,

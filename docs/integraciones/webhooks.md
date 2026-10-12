@@ -234,8 +234,9 @@ es el **opt-out unánime**:
 
 - Solo afecta a los eventos gobernados desde Ajustes (los que tienen
   `clave_ajustes` en `shared/events.py`: hoy `pursuit.task_due`,
-  `pursuit.mentioned` y `pursuit.cartera_vence`). El resto sale por la
-  suscripción sin mirar preferencias.
+  `pursuit.mentioned`, `pursuit.cartera_vence` y
+  `organizacion.documento_caduca`). El resto sale por la suscripción sin mirar
+  preferencias.
 - El webhook **no** recibe el aviso solo si **todos** sus destinatarios lo
   pusieron en «No avisar» para el canal Webhook. Basta uno con «Al momento» o
   «Resumen diario», o uno que nunca haya tocado el ajuste, para que salga.
@@ -257,6 +258,16 @@ es el **opt-out unánime**:
 `EVENT_DISPATCH_MAX_AGE_HOURS` horas (48 por defecto): si el reparto estuvo
 parado, lo acumulado caduca sin salir en vez de llegar de golpe. Un receptor
 no recibirá nunca un aviso de hace una semana.
+
+## Caducidad de la documentación acreditativa
+
+| Evento | Cuándo sale | Campos que siempre trae |
+|---|---|---|
+| `organizacion.documento_caduca` | Un documento del perfil de capacidad de la organización cruza un umbral: 60, 30 o 7 días antes de su `vigente_hasta`, o al caducar (`umbral` = `0`). Una vez por umbral y por documento con esa vigencia; renovarlo con otra fecha vuelve a avisar. Lo escribe el paso diario `documentacion_avisos` del cierre. | `organization_id`, `documento_id` (estable para el documento y su vigencia), `documento`, `tipo` (`certificacion_tecnica`, `corriente_aeat`, `corriente_seguridad_social`, `rolece` o `clasificacion_empresarial`), `categoria` (`tecnica` o `administrativa`), `vigente_hasta`, `umbral`, `dias_restantes` (negativo si ya caducó) y `aviso_titulo` |
+
+Los `seguidores` son el propietario y los administradores activos: quienes
+pueden renovar el documento y cambiar el perfil. Es un evento con
+`clave_ajustes`, así que le aplica el opt-out unánime de arriba.
 
 ## Cabeceras
 
