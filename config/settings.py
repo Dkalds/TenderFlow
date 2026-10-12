@@ -458,6 +458,17 @@ class Settings(ResumenPregenSettings, BaseSettings):
     PSCP_DATASET_ID: str = "ybgg-dgi6"
     # App token Socrata opcional (solo necesario si aparece rate limiting).
     PSCP_APP_TOKEN: SecretStr = SecretStr("")
+    # Sindicaciones secundarias de PLACSP (revisión de D16). Vacías = fuente
+    # APAGADA: el conector declara `disabled` y no descarga nada, como PSCP sin
+    # dataset. Se encienden fijando la URL documentada en cada módulo
+    # (`URL_SINDICACION_1143` en `scraper/connectors/placsp_menores.py`,
+    # `URL_SINDICACION_1044` en `placsp_agregadas.py`) tras validarla con
+    # `python -m scraper.connectors.<módulo> --check`. Se usa la URL como
+    # interruptor —y no un booleano— porque así viaja por `vars.` en el
+    # workflow igual que `PSCP_DATASET_ID`: una variable de repo sin definir
+    # llega como cadena vacía, que para un booleano es un error de arranque.
+    PLACSP_MENORES_ATOM_URL: str = ""
+    PLACSP_AGREGADAS_ATOM_URL: str = ""
     # Índice de resoluciones TACRC (Ministerio de Hacienda).
     #
     # URL validada con `python -m scraper.connectors.tacrc --check` (2026-06-11):

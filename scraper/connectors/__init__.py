@@ -280,6 +280,52 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         estado="opcional",
         dominios_documentos=("contrataciondelestado.es", "*.contrataciondelestado.es"),
     ),
+    RegisteredSource(
+        source_id="placsp_agregadas",
+        nombre="PLACSP — plataformas autonómicas agregadas",
+        modulo="scraper.connectors.placsp_agregadas",
+        max_lag_hours=_LAG_DIARIO_TOLERANTE,
+        motivo=(
+            "Apagada por defecto (PLACSP_AGREGADAS_ATOM_URL vacía): sin variable "
+            "escribe 'disabled' y no alerta. Encendida corre en cada pasada como el "
+            "feed principal; 72 h sin completar son dieciocho ciclos. Su dato se "
+            "vigila con el mismo umbral que PLACSP (48 h): es el mismo tipo de feed "
+            "ATOM, con el cursor en la entrada más reciente de todas las plataformas."
+        ),
+        alcance=(
+            "Conector escrito y apagado: no ingiere nada hasta que se active. Cuando "
+            "lo esté, aportará las licitaciones que las plataformas autonómicas "
+            "vierten en PLACSP por agregación (sin contratos menores), acotadas a la "
+            "misma señal de tecnología que el feed principal. Un contrato que ya "
+            "entra por otra fuente se marca como duplicado y no se cuenta dos veces."
+        ),
+        estado="opcional",
+        dominios_documentos=("contrataciondelestado.es", "*.contrataciondelestado.es"),
+        max_antiguedad_dato_hours=_DATO_PLACSP,
+    ),
+    RegisteredSource(
+        source_id="placsp_menores",
+        nombre="PLACSP — contratos menores",
+        modulo="scraper.connectors.placsp_menores",
+        max_lag_hours=_LAG_SEMANAL,
+        motivo=(
+            "Apagada por defecto (PLACSP_MENORES_ATOM_URL vacía): sin variable escribe "
+            "'disabled' y no alerta. Es inteligencia competitiva sobre contratos ya "
+            "adjudicados, no una ventana de licitación: una semana sin completar no "
+            "hace perder ninguna oportunidad, y el feed conserva lo publicado. El "
+            "dato, con el mismo umbral, porque los órganos publican sus menores por "
+            "tandas."
+        ),
+        alcance=(
+            "Conector escrito y apagado: no ingiere nada hasta que se active, y los "
+            "contratos menores siguen fuera del alcance declarado. Cuando lo esté, "
+            "aportará las adjudicaciones de contratos menores de tecnología de los "
+            "perfiles alojados en PLACSP —quién gana qué y a quién—. Nunca como "
+            "licitaciones abiertas: no tienen convocatoria a la que presentarse."
+        ),
+        estado="opcional",
+        max_antiguedad_dato_hours=_LAG_SEMANAL,
+    ),
 )
 
 
@@ -334,7 +380,9 @@ FUERA_DE_ALCANCE: tuple[AmbitoExcluido, ...] = (
         motivo=(
             "Se adjudican sin concurrencia previa y se publican agregados "
             "después del hecho. No hay ventana de licitación que anticipar, "
-            "que es exactamente lo que el producto sirve."
+            "que es exactamente lo que el producto sirve. Hay un conector "
+            "escrito para la sindicación de PLACSP (placsp_menores), apagado: "
+            "no ingiere nada mientras esta exclusión siga vigente."
         ),
         decision="D16",
         desde=_FECHA_D16,
@@ -355,7 +403,9 @@ FUERA_DE_ALCANCE: tuple[AmbitoExcluido, ...] = (
             "Cada portal es una integración propia, con su formato y su "
             "mantenimiento. Hoy hay conector para Catalunya, Galicia y "
             "Euskadi; lo que publiquen los demás por su cuenta no se descubre "
-            "y tampoco se cuenta."
+            "y tampoco se cuenta. Lo que esos portales vierten en PLACSP por "
+            "agregación tiene un conector escrito (placsp_agregadas), apagado "
+            "hasta revisar esta decisión."
         ),
         decision="D16",
         desde=_FECHA_D16,
