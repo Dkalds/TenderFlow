@@ -73,6 +73,12 @@ backend solo para la tabla** (`POST /licitaciones/comparar`): `/ask` sigue
 aceptando un único `id_externo`, así que la pregunta cruzada falta también en
 el backend, no solo en la UI.
 
+*Estado (2026-10-12):* las dos salvedades de arriba ya no describen el código.
+F1.4 tiene backend: `tasas_anulacion_organo` (v141) alimenta el flag
+`FLAG_ANULACION` de `services/analytics/scoring.py`. Y `/ask` acepta
+`ids_externos` con hasta tres expedientes (`api/routes/ask.py`), que el
+Investigador usa (`web/src/lib/ask-stream.ts`).
+
 Lo que **no** se hizo, y por qué:
 
 | Ítem | Estado | Motivo |
@@ -112,7 +118,7 @@ Pantallas que faltaban de lado ficha y superficie pública (2026-09-18, rama
 `worktree-agent-ac5d5218d7d3b1f8b`): F2.2, F2.5, F2.6, F2.8, F6.2 y F6.5 ya
 tienen UI; el estado por ítem está anotado en el plan. Quedan sin hacer: el
 PDF del guion (F2.6, sin ruta en el backend), `/ask` multi-expediente (F2.8;
-sin backend ni UI, ver la nota de arriba) y la emisión de `evidencia_abierta` (F2.5). Los E2E nuevos
+hecho después, ver el estado del 2026-10-12 de arriba) y la emisión de `evidencia_abierta` (F2.5). Los E2E nuevos
 (`pagina-cita.spec.ts`, bloque de órganos de `seo.spec.ts`) no se ejecutaron
 en local.
 
@@ -632,13 +638,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — servicio nuevo en producción y cambio del camino por el que se sirve la ficha.
 
 ---
-
-### [P1] El despachador del outbox no lo invoca ningún plano
-- **Área:** scheduler/jobs/event_dispatch.py, scheduler/pipeline_runs.py, scheduler/jobs/__init__.py
-- **Problema:** `scheduler/jobs/event_dispatch.run()` está escrito y probado (S4.1), pero ni el cierre de `pipeline_runs.py` ni el registro de jobs de APScheduler lo llaman (comprobado el 2026-09-18 buscando `event_dispatch` fuera de `tests/` y `docs/`). Ningún evento de `domain_events` se entrega: ni notificaciones in-app, ni correos de `pursuit.*`, ni webhooks del catálogo, ni los nuevos `pursuit.task_due`/`pursuit.mentioned`. La alerta `DomainEventsBacklogHigh` acabará disparándose por esto.
-- **Por qué no se hizo en el mismo cambio:** cablearlo vacía de golpe la cola acumulada desde que existe el outbox —correos y webhooks incluidos, con fechas viejas—. Hace falta decidir antes si se marca como despachado lo anterior a una fecha o se entrega.
-- **Acceptance criteria:** un paso del cierre (plano `pipeline`, ADR-012) llama a `event_dispatch.run()`; decisión documentada sobre la cola histórica; `domain_events_pending` baja en producción.
-- **Riesgo:** medio — primera vez que salen correos y webhooks del outbox.
 
 ### [P1] Recuperación de contraseña: comprobar la entrega en producción y decidir lo que la auditoría dejó fuera
 - **Área:** services/password_reset.py, api/routes/auth.py, api/middleware.py, observability/, config/settings.py, variables de Render (acción del usuario)
@@ -1161,6 +1160,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## Cerrados
 
+- [2026-10-12] **P1: El despachador del outbox no lo invoca ningún plano** — el ítem
+  estaba desfasado: el cierre de la pasada ya llama a `event_dispatch` entre
+  `cartera_avisos` y `digests` (`scheduler/pipeline_runs.py`, `_run_event_dispatch`,
+  tier `advisory`), encendido por defecto y con `EVENT_DISPATCH_ENABLED=0` como
+  salida de escape (`config/settings.py`, `event_dispatch_enabled`). La cola
+  histórica se resolvió por antigüedad: `event_dispatch.caducar_viejos` caduca sin
+  repartir lo que supera la antigüedad máxima. Lo único que queda es mirar que
+  `domain_events_pending` baja en producción, y eso va con las demás comprobaciones
+  del propietario.
 - [2026-10-09] **P1: El Investigador no encontraba lo que se le escribía** (rama
   `claude/investigador-improvements-1e5d9c`) — medido contra producción: una
   pregunta normal caía a un `ILIKE` del primer token de la consulta cruda
