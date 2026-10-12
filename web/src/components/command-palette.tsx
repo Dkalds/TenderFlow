@@ -32,7 +32,7 @@ const GROUP_LABELS: Record<ConsoleGroup, string> = {
   organizacion: "Organización",
 };
 import { useUiStore } from "@/lib/ui-store";
-import { useAdmin } from "@/hooks/use-admin";
+import { useAccesoEspacios } from "@/hooks/use-acceso-espacios";
 import { useDensity } from "@/lib/density";
 import { useFilterParams, useWithFilters } from "@/lib/filters";
 import { buildExportUrl, triggerDownload } from "@/lib/export";
@@ -128,7 +128,7 @@ function CommandPaletteInner() {
   // partir del tema que se está viendo, no del literal "system".
   const { resolvedTheme, setTheme } = useTheme();
   const { compact, toggleCompact } = useDensity();
-  const isAdmin = useAdmin();
+  const acceso = useAccesoEspacios();
   const withFilters = useWithFilters();
   const filterParams = useFilterParams();
   const [search, setSearch] = React.useState("");
@@ -152,7 +152,7 @@ function CommandPaletteInner() {
   // Un grupo por familia de espacios; cada espacio multivista despliega sus
   // vistas como destinos propios.
   const spaceGroups = React.useMemo(() => {
-    const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, isAdmin));
+    const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, acceso));
     return CONSOLE_GROUP_ORDER.map((group) => ({
       label: GROUP_LABELS[group],
       items: spaces
@@ -180,7 +180,7 @@ function CommandPaletteInner() {
           ];
         }),
     })).filter((group) => group.items.length > 0);
-  }, [isAdmin]);
+  }, [acceso]);
   const idQuery = search.trim();
   const showJump = looksLikeLicitacionId(idQuery);
   const showSearch = idQuery.length >= 2 && !showJump;

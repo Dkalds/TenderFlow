@@ -4,9 +4,13 @@ import {
   CONSOLE_GROUP_ORDER,
   CONSOLE_ROUTES,
   CONSOLE_SPACES,
+  type ConsoleSpace,
   findConsoleSpace,
+  gestionaOrganizacion,
   isSpaceImplemented,
+  isSpaceVisible,
   landingHref,
+  ROLES_GESTION,
   routeSlug,
   spaceAbsorbing,
 } from "@/lib/console-spaces";
@@ -100,6 +104,66 @@ describe("CONSOLE_SPACES", () => {
     for (const slug of ADMIN_ONLY_SPACES) {
       expect(CONSOLE_SPACES.some((space) => space.slug === slug)).toBe(true);
     }
+  });
+
+  it("Dirección no es de la plataforma: es de quien gestiona la organización", () => {
+    // Con `admin`, la veía sólo el administrador de TenderFlow, y su dueña
+    // natural —la propietaria del equipo— no tenía enlace ninguno a `/direccion`
+    // aunque la API se la sirve.
+    expect(ADMIN_ONLY_SPACES.has("direccion")).toBe(false);
+    expect(CONSOLE_SPACES.find((space) => space.key === "direccion")?.visibility).toBe("gestion");
+  });
+});
+
+describe("isSpaceVisible", () => {
+  const espacio = (visibility?: "core" | "admin" | "gestion" | "experimental") =>
+    ({ ...CONSOLE_SPACES[0], visibility }) satisfies ConsoleSpace;
+  const nadie = { isAdmin: false, gestionaOrganizacion: false };
+  const plataforma = { isAdmin: true, gestionaOrganizacion: false };
+  const gestora = { isAdmin: false, gestionaOrganizacion: true };
+
+  it("core, experimental o sin nivel: para cualquiera", () => {
+    for (const nivel of [undefined, "core", "experimental"] as const) {
+      expect(isSpaceVisible(espacio(nivel), nadie)).toBe(true);
+    }
+  });
+
+  it("admin: sólo el administrador de la plataforma, gestione o no un equipo", () => {
+    expect(isSpaceVisible(espacio("admin"), plataforma)).toBe(true);
+    expect(isSpaceVisible(espacio("admin"), gestora)).toBe(false);
+    expect(isSpaceVisible(espacio("admin"), nadie)).toBe(false);
+  });
+
+  it("gestion: el administrador de la plataforma o quien gestiona la organización activa", () => {
+    expect(isSpaceVisible(espacio("gestion"), plataforma)).toBe(true);
+    expect(isSpaceVisible(espacio("gestion"), gestora)).toBe(true);
+    expect(isSpaceVisible(espacio("gestion"), nadie)).toBe(false);
+  });
+});
+
+describe("gestionaOrganizacion", () => {
+  const equipo = { is_personal: false };
+
+  it("propietaria y administradora de un equipo, sí", () => {
+    expect(gestionaOrganizacion({ ...equipo, role: "owner" })).toBe(true);
+    expect(gestionaOrganizacion({ ...equipo, role: "admin" })).toBe(true);
+  });
+
+  it("miembro y solo lectura, no: son los roles a los que la API responde 403", () => {
+    expect(gestionaOrganizacion({ ...equipo, role: "member" })).toBe(false);
+    expect(gestionaOrganizacion({ ...equipo, role: "viewer" })).toBe(false);
+  });
+
+  it("la organización personal no cuenta: no tiene equipo que dirigir", () => {
+    expect(gestionaOrganizacion({ is_personal: true, role: "owner" })).toBe(false);
+  });
+
+  it("mientras no se sabe cuál es la activa, no", () => {
+    expect(gestionaOrganizacion(undefined)).toBe(false);
+  });
+
+  it("comparte la lista de roles con la pantalla de Dirección", () => {
+    expect([...ROLES_GESTION].sort()).toEqual(["admin", "owner"]);
   });
 });
 

@@ -30,7 +30,7 @@ import dynamic from "next/dynamic";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveOrganizationId, useRolActivo } from "@/hooks/use-organization";
-import { CONSOLE_SPACES } from "@/lib/console-spaces";
+import { CONSOLE_SPACES, ROLES_GESTION } from "@/lib/console-spaces";
 import { ResultadoView } from "./_components/resultado-view";
 import { SinPermisoDireccion } from "./_components/sin-permiso";
 
@@ -50,9 +50,6 @@ const ActividadEquipo = dynamic(
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "direccion")!;
 
-/** Roles que abren Dirección. El permiso lo impone la API; esto evita pedir lo que va a dar 403. */
-const ROLES_DIRECCION = new Set(["owner", "admin"]);
-
 export default function DireccionPage() {
   const { view: vista, setView: setVista } = useSpaceView(SPACE);
   // Sin `organization_id` el backend resuelve la organización **personal**, y
@@ -62,7 +59,10 @@ export default function DireccionPage() {
   // ve el aviso en las tres vistas. Mientras no se sabe, las vistas piden y el
   // 403 del backend dice lo mismo.
   const rol = useRolActivo();
-  const sinPermiso = rol !== undefined && !ROLES_DIRECCION.has(rol);
+  // Los roles son los mismos con los que el rail decide si enseña el espacio
+  // (`ROLES_GESTION`): el permiso lo impone la API, esto evita pedir lo que va
+  // a dar 403.
+  const sinPermiso = rol !== undefined && !ROLES_GESTION.has(rol);
 
   return (
     <SpaceShell spaceKey="direccion" view={vista} onViewChange={setVista}>
