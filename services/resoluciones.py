@@ -17,12 +17,13 @@ Fase 4:
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from db.connection import now_utc_iso
 from db.database import connect, connect_read
 from db.repositories.base import rows_to_dicts
+from db.resoluciones import upsert_resoluciones_lote
 from observability.logging import get_logger
 from services.dedupe import natural_expediente, normalize_organo
 
@@ -45,56 +46,14 @@ class Resolucion:
     licitacion_id: str | None = None
 
 
-_RES_KEYS = tuple(f.name for f in fields(Resolucion))
-
-
 def upsert_resoluciones(items: list[Resolucion]) -> tuple[int, int]:
     """Inserta o actualiza resoluciones. Devuelve (nuevas, actualizadas).
 
     Idempotente: re-ejecutar con los mismos datos no duplica (invariante §3.2).
-    El UPDATE no pisa ``licitacion_id`` ya asignado por la vinculación.
+    El UPDATE no pisa ``licitacion_id`` ya asignado por la vinculación. El SQL,
+    por lotes, vive en :mod:`db.resoluciones`.
     """
-    if not items:
-        return 0, 0
-    nuevas = actualizadas = 0
-    with connect() as c:
-        for res in items:
-            existing = c.execute(
-                "SELECT id FROM resoluciones_recurso WHERE tribunal = %s AND numero_resolucion = %s",
-                (res.tribunal, res.numero_resolucion),
-            ).fetchone()
-            values = asdict(res)
-            if existing:
-                c.execute(
-                    "UPDATE resoluciones_recurso SET numero_recurso = %s, fecha = %s, "
-                    "expediente = %s, organo = %s, sentido = %s, url_pdf = %s, resumen = %s, "
-                    "licitacion_id = COALESCE(licitacion_id, %s), fecha_extraccion = %s "
-                    "WHERE id = %s",
-                    (
-                        values["numero_recurso"],
-                        values["fecha"],
-                        values["expediente"],
-                        values["organo"],
-                        values["sentido"],
-                        values["url_pdf"],
-                        values["resumen"],
-                        values["licitacion_id"],
-                        now_utc_iso(),
-                        existing[0],
-                    ),
-                )
-                actualizadas += 1
-            else:
-                cols = ", ".join(_RES_KEYS)
-                placeholders = ", ".join("%s" for _ in _RES_KEYS)
-                c.execute(
-                    # S608: cols/placeholders derivan del dataclass fijo Resolucion
-                    f"INSERT INTO resoluciones_recurso ({cols}, fecha_extraccion) "  # noqa: S608
-                    f"VALUES ({placeholders}, %s)",
-                    [values[k] for k in _RES_KEYS] + [now_utc_iso()],
-                )
-                nuevas += 1
-    return nuevas, actualizadas
+    return upsert_resoluciones_lote([asdict(res) for res in items])
 
 
 def _registrar_evento_recurso(c: Any, licitacion_id: str, res: dict[str, Any]) -> bool:

@@ -480,10 +480,21 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # Resoluciones-Pleno cubre solo resoluciones del Pleno (doctrinales); las
     # resoluciones individuales de recurso quedan pendientes de otro índice.
     # Para cobertura completa, configurar TACRC_INDEX_URL por entorno.
+    #
+    # 2026-10: el conector lee también un listado JSON de la biblioteca de
+    # SharePoint y una URL con `{anio}` que recorre año a año
+    # (`URL_BIBLIOTECA_RESOLUCIONES` en `scraper/connectors/tacrc.py`, sin
+    # verificar: `--check` antes). El valor por defecto NO cambia: en el plano
+    # del worker, sin variable, manda este, y cambiarlo encendería el índice
+    # completo sin decidirlo.
     TACRC_INDEX_URL: str = (
         "https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/"
         "TACRC/Paginas/Resoluciones-Pleno.aspx"
     )
+    # Primer año que recorre un índice por años sin cursor. El TACRC se crea
+    # con la Ley 34/2010; un año sin carpeta responde 404 y se salta, así que
+    # empezar antes de tiempo solo cuesta una petición.
+    TACRC_PRIMER_ANIO: int = 2010
 
     # ── Embeddings / NLP ─────────────────────────────────────────────────
     # Modelo sentence-transformers a usar. Cambiar a un modelo multilingual para
