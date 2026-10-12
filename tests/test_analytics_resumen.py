@@ -8,7 +8,9 @@ con los mismos valores que daba pandas.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -19,7 +21,7 @@ from services.analytics.resumen import (
     TimelineScatterFilters,
     TopLicitacionesFilters,
     get_resumen_hoy,
-    get_resumen_novedades,
+    get_resumen_novedades_desde,
     get_sankey_flow,
     get_timeline_scatter,
     get_top_licitaciones,
@@ -90,37 +92,60 @@ def _insert(rows: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_resumen_novedades
+# get_resumen_novedades_desde
 # ---------------------------------------------------------------------------
+#
+# Hasta 2026-10-12 estos tests probaban `get_resumen_novedades(user_id)`, que
+# contaba desde `users.last_login` con `get_user_by_id` sustituido por un mock
+# que sí traía la columna. La columna no existe —ninguna migración la crea—,
+# así que lo que probaban no pasaba nunca en producción. La función se retiró
+# con la campana «solo lo tuyo»; el recuento, la muestra y el corte que estos
+# tests fijaban son los de `get_resumen_novedades_desde`, que es la que usa el
+# Resumen, y se siguen fijando contra ella.
+
+_RAIZ = Path(__file__).resolve().parents[1]
+_PAQUETES_PRODUCCION = (
+    "api",
+    "config",
+    "db",
+    "llm",
+    "observability",
+    "scheduler",
+    "scraper",
+    "services",
+    "shared",
+)
 
 
-def test_novedades_user_sin_last_login(tmp_db):
-    """User con last_login=None → count=0, sample=[]."""
-    _insert([_row("L001", fecha_pub_offset=-1), _row("L002", fecha_pub_offset=-2)])
+def test_ningun_camino_de_produccion_lee_users_last_login():
+    """Criterio de cierre de «La campana nunca lista novedades de licitaciones».
 
-    with patch("db.users.get_user_by_id", return_value={"id": 1, "last_login": None}):
-        result = get_resumen_novedades(1)
+    Se busca el acceso, no la palabra: los comentarios que cuentan por qué se
+    retiró pueden nombrarla.
+    """
+    lecturas = re.compile(r"""\[\s*["']last_login["']\s*\]|\.get\(\s*["']last_login["']""")
+    culpables = [
+        str(ruta.relative_to(_RAIZ))
+        for paquete in _PAQUETES_PRODUCCION
+        for ruta in (_RAIZ / paquete).rglob("*.py")
+        if lecturas.search(ruta.read_text(encoding="utf-8"))
+    ]
+    assert culpables == []
 
-    assert result.count == 0
-    assert result.sample == []
-    # Sin corte que publicar el cliente no marca ninguna fila como nueva.
-    assert result.desde is None
 
-
-def test_novedades_con_new_since(tmp_db):
-    """User con last_login hace 2 días → licitaciones publicadas ayer cuentan como novedades."""
-    last_login = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+def test_novedades_cuenta_lo_publicado_desde_el_corte(tmp_db):
+    """Lo publicado después del corte cuenta; lo anterior, no."""
+    desde = (datetime.now(UTC) - timedelta(days=2)).isoformat()
 
     _insert(
         [
-            _row("NEW1", fecha_pub_offset=-1),  # después del login → novedad
-            _row("NEW2", fecha_pub_offset=-1),  # después del login → novedad
-            _row("OLD1", fecha_pub_offset=-5),  # antes del login → no cuenta
+            _row("NEW1", fecha_pub_offset=-1),  # después del corte → novedad
+            _row("NEW2", fecha_pub_offset=-1),  # después del corte → novedad
+            _row("OLD1", fecha_pub_offset=-5),  # antes del corte → no cuenta
         ]
     )
 
-    with patch("db.users.get_user_by_id", return_value={"id": 1, "last_login": last_login}):
-        result = get_resumen_novedades(1)
+    result = get_resumen_novedades_desde(desde)
 
     assert result.count == 2
     assert len(result.sample) == 2
@@ -130,26 +155,15 @@ def test_novedades_con_new_since(tmp_db):
 
 def test_novedades_sample_capado_a_10(tmp_db):
     """count refleja el total; la muestra se capa a 10 y trae las más recientes."""
-    last_login = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+    desde = (datetime.now(UTC) - timedelta(days=30)).isoformat()
     _insert([_row(f"N{i:02d}", fecha_pub_offset=-i) for i in range(1, 16)])
 
-    with patch("db.users.get_user_by_id", return_value={"id": 1, "last_login": last_login}):
-        result = get_resumen_novedades(1)
+    result = get_resumen_novedades_desde(desde)
 
     assert result.count == 15
     assert len(result.sample) == 10
     # Orden descendente por fecha_publicacion: N01 es la más reciente.
     assert [s.id_externo for s in result.sample] == [f"N{i:02d}" for i in range(1, 11)]
-
-
-def test_novedades_user_no_existe(tmp_db):
-    """get_user_by_id devuelve None → ResumenNovedadesResult vacío."""
-    with patch("db.users.get_user_by_id", return_value=None):
-        result = get_resumen_novedades(99)
-
-    assert result.count == 0
-    assert result.sample == []
-    assert result.desde is None
 
 
 def test_novedades_publica_el_corte(tmp_db):
@@ -158,20 +172,16 @@ def test_novedades_publica_el_corte(tmp_db):
     Es el contrato que permite al cliente marcar *todas* las filas nuevas de una
     tabla y no sólo las de la muestra: se compara `fecha_publicacion >= desde`.
     """
-    last_login = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    desde = (datetime.now(UTC) - timedelta(days=2)).isoformat()
     _insert([_row("NEW1", fecha_pub_offset=-1), _row("OLD1", fecha_pub_offset=-5)])
 
-    with patch("db.users.get_user_by_id", return_value={"id": 1, "last_login": last_login}):
-        result = get_resumen_novedades(1)
+    result = get_resumen_novedades_desde(desde)
 
-    assert result.desde is not None
+    assert result.desde == desde
     corte = datetime.fromisoformat(result.desde)
     assert corte.tzinfo is not None, (
         "el corte viaja con zona horaria o el cliente no puede compararlo"
     )
-    # El corte cae entre la publicación vieja y la nueva, que es lo que lo hace
-    # utilizable como umbral en cliente.
-    assert datetime.now(UTC) - timedelta(days=5) < corte < datetime.now(UTC) - timedelta(days=1)
     assert result.count == 1
 
 

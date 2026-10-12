@@ -61,6 +61,15 @@ NUEVAS: dict[str, str] = {
         "necesita además las dos pasadas (prueba y guardado) sobre el mismo universo "
         "en una sola respuesta, para poder decir cuánto se mueve cada oportunidad."
     ),
+    "GET /api/v1/notifications/alerts": (
+        "Se miró GET /notifications: devuelve las 30 alertas más recientes con las no "
+        "leídas primero, sin total ni desplazamiento, y arrastra los contadores de "
+        "mercado (`hoy`, deprecado pero aún calculado por compatibilidad), una consulta "
+        "sobre licitaciones que cada página de «Ver todas» y cada refresco de la campana "
+        "pagarían sin pintarla. Ampliarlo con filtro y paginación habría mezclado dos "
+        "contratos en uno; la bandeja paginada con filtro de lectura y el número sin leer "
+        "es la que pide la campana «solo lo tuyo»."
+    ),
 }
 
 

@@ -194,6 +194,18 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Ve la carga por persona y la actividad reciente de las oportunidades de la
   organización.
 
+### CU-29 — Enterarme de lo que me concierne desde la campana
+
+- **Quién:** cualquier miembro de una organización. **Dónde:** la campana de la
+  barra de ámbito, y «Ver todas».
+- Ve solo lo suyo en la organización activa: alertas de sus reglas, cambios en
+  lo que sigue, menciones, tareas y plazos de sus oportunidades y avisos de la
+  organización. Las novedades del mercado no están: son del Resumen.
+- Mirar la campana no marca nada; cada aviso se marca al abrirlo, y «Marcar
+  todo como leído» es una acción aparte.
+- Recorre la lista completa, paginada, filtrando leídos y sin leer, y pone en
+  pausa la regla que disparó una alerta sin salir de la campana.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->

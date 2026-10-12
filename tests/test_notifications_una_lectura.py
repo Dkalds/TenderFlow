@@ -1,14 +1,16 @@
 """``GET /notifications``: un salto al threadpool, una conexión y un ámbito.
 
-Sin BD. Las cinco lecturas del handler se sustituyen por dobles que leen de
+Sin BD. Las lecturas del handler se sustituyen por dobles que leen de
 verdad a través de ``db.connection.connect_read`` —así pasan por la
 agrupación real de ``lecturas_agrupadas``— y ``_get_conn`` por un doble que
 cuenta checkouts y registra lo que se ejecuta. Lo que se fija:
 
 - un único ``run_db``;
-- un único checkout del pool de lectura para las cinco lecturas;
+- un único checkout del pool de lectura para las tres lecturas;
 - un único ``BEGIN; SET LOCAL`` con la organización y un único ``ROLLBACK``;
-- la respuesta sale igual que antes.
+- las alertas y los contadores salen igual que antes, y las novedades de
+  mercado (``items``) ya no se leen: eran dos de las cinco lecturas, y salían
+  siempre vacías porque contaban desde ``users.last_login``, que no existe.
 """
 
 from __future__ import annotations
@@ -95,23 +97,11 @@ def _lectura(nombre: str, llamadas: list[str]) -> None:
 @pytest.fixture()
 def lecturas(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     llamadas: list[str] = []
-    muestra = [
-        SimpleNamespace(id_externo="L-1", titulo="Uno", importe=10.0, organo_contratacion="A"),
-        SimpleNamespace(id_externo="L-2", titulo="Dos", importe=None, organo_contratacion="B"),
-    ]
-
-    def _novedades(user_id: int) -> Any:
-        _lectura("novedades", llamadas)
-        return SimpleNamespace(sample=muestra)
 
     def _hoy(_filters: Any) -> Any:
         _lectura("hoy", llamadas)
         contadores = {"calientes": 1, "vencen_48h": 2, "nuevas_24h": 3, "total_activas": 4}
         return SimpleNamespace(model_dump=lambda: contadores)
-
-    def _no_leidas(user_key: str, ids: list[str], *, user_id: int | None) -> list[str]:
-        _lectura("no_leidas", llamadas)
-        return ids[:1]
 
     def _alertas(user_key: str, limit: int, org: int, *, user_id: int | None) -> list[dict]:
         _lectura("alertas", llamadas)
@@ -121,15 +111,13 @@ def lecturas(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         _lectura("alertas_sin_leer", llamadas)
         return 1
 
-    monkeypatch.setattr(ruta, "get_resumen_novedades", _novedades)
     monkeypatch.setattr(ruta, "get_resumen_hoy", _hoy)
-    monkeypatch.setattr(ruta, "get_unread_ids", _no_leidas)
     monkeypatch.setattr(ruta, "get_user_alerts", _alertas)
     monkeypatch.setattr(ruta, "get_alerts_unread_count", _alertas_sin_leer)
     return llamadas
 
 
-def test_cinco_lecturas_un_run_db_una_conexion_un_ambito(
+def test_tres_lecturas_un_run_db_una_conexion_un_ambito(
     pool: dict[str, Any], lecturas: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     saltos = {"n": 0}
@@ -145,7 +133,7 @@ def test_cinco_lecturas_un_run_db_una_conexion_un_ambito(
     with tenant_scope(7):
         resultado = asyncio.run(ruta.get_notifications(ctx=ctx))
 
-    assert lecturas == ["novedades", "hoy", "no_leidas", "alertas", "alertas_sin_leer"]
+    assert lecturas == ["hoy", "alertas", "alertas_sin_leer"]
     assert saltos["n"] == 1
     assert pool["checkouts"] == 1
     assert pool["devoluciones"] == 1
@@ -154,23 +142,24 @@ def test_cinco_lecturas_un_run_db_una_conexion_un_ambito(
     assert registro.count(registro[0]) == 1, "el ámbito se abre una sola vez"
     assert registro[-1] == "ROLLBACK"
     assert registro.count("ROLLBACK") == 1
-    # Una consulta por lectura: 1 + 5 + 1 viajes.
-    assert len(registro) == 7
+    # Una consulta por lectura: 1 + 3 + 1 viajes.
+    assert len(registro) == 5
 
-    assert [i.id for i in resultado.items] == ["L-1", "L-2"]
-    assert [i.read for i in resultado.items] == [False, True]
-    assert resultado.unread_count == 1
     assert resultado.alerts[0].pursuit_id == 3
     assert resultado.alerts_unread_count == 1
     assert resultado.hoy.total_activas == 4
 
 
-def test_sin_usuario_no_pide_novedades(pool: dict[str, Any], lecturas: list[str]) -> None:
-    ctx = {"user_id": None, "user_key": "uk-x", "organization_id": 7}
+def test_las_novedades_de_mercado_salen_vacias_sin_leerse(
+    pool: dict[str, Any], lecturas: list[str]
+) -> None:
+    """Campo deprecado: sigue en el contrato, vacío, y no cuesta ninguna lectura."""
+    ctx = {"user_id": 5, "user_key": "uk-5", "organization_id": 7}
 
     with tenant_scope(7):
         resultado = asyncio.run(ruta.get_notifications(ctx=ctx))
 
-    assert "novedades" not in lecturas
     assert resultado.items == []
-    assert pool["checkouts"] == 1
+    assert resultado.unread_count == 0
+    assert not hasattr(ruta, "get_resumen_novedades")
+    assert not hasattr(ruta, "get_unread_ids")
