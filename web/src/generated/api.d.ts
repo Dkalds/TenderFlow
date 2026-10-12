@@ -3245,6 +3245,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revocar UNA API key propia
+         * @description Apaga una clave al momento, sin esperar a que caduque.
+         *
+         *     Hasta ahora no había forma de retirar una clave desde el producto: borrar
+         *     la cuenta las revocaba todas, y rotar dejaba la vieja viva durante la
+         *     gracia. Revocar una ya revocada responde 204: el estado pedido es el que
+         *     hay.
+         *
+         *     Exige sesión reciente, como la creación, la rotación y cerrar una sesión
+         *     ajena: con una clave filtrada no se puede tumbar la integración buena, y
+         *     con una cookie robada tampoco sin volver a entrar.
+         */
+        delete: operations["revoke_my_key_api_v1_me_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/notification-preferences": {
         parameters: {
             query?: never;
@@ -10359,6 +10388,11 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /**
+             * Last Used
+             * @description Última petición autenticada con ella; `null` si nunca se usó
+             */
+            last_used?: string | null;
             /** Name */
             name?: string | null;
             /**
@@ -22441,6 +22475,53 @@ export interface operations {
                 content?: never;
             };
             /** @description La key no existe o no pertenece al usuario */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_my_key_api_v1_me_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                key_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere una sesión de navegador reciente */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La key no existe o no es tuya */
             404: {
                 headers: {
                     [name: string]: unknown;

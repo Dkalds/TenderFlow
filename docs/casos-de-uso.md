@@ -130,7 +130,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 
 - **Quién:** integrador. **Dónde:** Ajustes › Claves.
 - Crea una clave, que se enseña una sola vez y nace con el mínimo privilegio.
-- La usa sin sesión, y al rotarla recibe una nueva que funciona.
+- La usa sin sesión, y al rotarla recibe una nueva que funciona mientras la
+  vieja aguanta la gracia.
+- Revoca la que ya no usa, y deja de abrir la API al momento.
 
 ### CU-15 — Exportar mis datos y borrar mi cuenta
 
