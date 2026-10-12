@@ -18,7 +18,8 @@ describe("SPACE_VIEWS", () => {
     // Los recuentos son el contrato de `docs/archive/redesign/README.md`. Si uno cambia
     // sin actualizar el doc, la tabla del README miente. `ajustes` entró con
     // C7.5: cuatro vistas, de las que solo `cuenta` absorbe una ruta heredada
-    // (`/mi-cuenta`) — las otras tres no existían en ninguna parte.
+    // (`/mi-cuenta`) — las otras tres no existían en ninguna parte. La quinta,
+    // `seguridad`, es el alta del segundo factor (CU-25).
     //
     // Reestructura 2026-09-20 («un espacio, una pregunta»): `mi-pipeline` se
     // queda con la agenda; su embudo y su cartera son las vistas `rendimiento`
@@ -58,7 +59,13 @@ describe("SPACE_VIEWS", () => {
     expect(SPACE_VIEWS.empresas).toHaveLength(2);
     expect(SPACE_VIEWS.cuentas).toHaveLength(2);
     expect(SPACE_VIEWS.direccion.map((view) => view.key)).toEqual(["resultado", "carga", "actividad"]);
-    expect(SPACE_VIEWS.ajustes).toHaveLength(4);
+    expect(SPACE_VIEWS.ajustes.map((view) => view.key)).toEqual([
+      "sesiones",
+      "seguridad",
+      "claves",
+      "notificaciones",
+      "cuenta",
+    ]);
   });
 
   it("las renovaciones viven en Mercado y absorben su ruta heredada", () => {

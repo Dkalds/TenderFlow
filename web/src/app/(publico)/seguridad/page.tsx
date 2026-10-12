@@ -22,9 +22,10 @@ const SECCIONES: SeccionEvidencia[] = [
   {
     titulo: "Segundo factor y acciones sensibles",
     texto: [
-      "La cuenta puede activar TOTP. El secreto se entrega durante el alta, los códigos de recuperación se muestran una sola vez y el login queda pendiente hasta verificar el segundo factor cuando corresponde.",
+      "La cuenta puede activar TOTP desde Ajustes › Seguridad. El secreto se entrega durante el alta, los códigos de recuperación se muestran una sola vez y el login queda pendiente hasta verificar el segundo factor cuando corresponde.",
     ],
     puntos: [
+      "Desactivar el segundo factor exige un código vigente o uno de recuperación, no solo la sesión.",
       "Los intentos fallidos de MFA tienen ventana y límite configurables.",
       "Las operaciones irreversibles exigen autenticación reciente y, si la cuenta usa MFA, elevación reciente del segundo factor.",
       "Cerrar o eliminar una cuenta revoca sus sesiones y sus claves de API.",

@@ -17,6 +17,11 @@ export interface AuthUser {
   display_name: string | null;
   is_admin: boolean;
   role?: string;
+  /**
+   * La cuenta tiene la verificación en dos pasos activa. `/auth/me` lo calcula
+   * en cada petición, así que tras activarla o quitarla basta con `refresh()`.
+   */
+  mfa_required?: boolean;
 }
 
 interface SessionContextValue {
