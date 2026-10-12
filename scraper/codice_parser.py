@@ -590,8 +590,15 @@ def _escala_pct(pesos_raiz: list[float]) -> float | None:
     return None
 
 
-def _criterios_del_ambito(terms: Any, lote_numero: str | None) -> list[CriterioAdjudicacion]:
-    """Criterios de un ``TenderingTerms``, en orden de documento, con su padre.
+def _criterios_del_ambito(
+    bloques: list[Any], lote_numero: str | None
+) -> list[CriterioAdjudicacion]:
+    """Criterios de un ámbito, en orden de documento, con su padre.
+
+    ``bloques`` son los ``TenderingTerms`` del ámbito (normalmente uno). Se
+    numeran seguidos: si el anuncio repite el bloque, o dos lotes comparten
+    número, ``orden`` no vuelve a empezar y la unicidad
+    ``(licitacion_id, lote_numero, orden)`` de v149 se sostiene.
 
     Se recorre el árbol en vez de pedir los nodos con ``//`` porque lo que
     importa de un subcriterio es **de quién** es: el padre es el criterio más
@@ -610,8 +617,9 @@ def _criterios_del_ambito(terms: Any, lote_numero: str | None) -> list[CriterioA
             else:
                 recorrer(hijo, padre)
 
-    for awarding_terms in terms.xpath(_hijo("AwardingTerms")):
-        recorrer(awarding_terms, None)
+    for terms in bloques:
+        for awarding_terms in terms.xpath(_hijo("AwardingTerms")):
+            recorrer(awarding_terms, None)
 
     leidos: list[CriterioAdjudicacion] = []
     #: Índice crudo → orden asignado, solo para los criterios que se guardan.
@@ -659,9 +667,10 @@ def _criterios_del_ambito(terms: Any, lote_numero: str | None) -> list[CriterioA
     return leidos
 
 
-def _garantias_del_ambito(terms: Any, lote_numero: str | None) -> list[GarantiaExigida]:
+def _garantias_del_ambito(bloques: list[Any], lote_numero: str | None) -> list[GarantiaExigida]:
     garantias: list[GarantiaExigida] = []
-    for nodo in terms.xpath(_hijo("RequiredFinancialGuarantee")):
+    nodos = [n for terms in bloques for n in terms.xpath(_hijo("RequiredFinancialGuarantee"))]
+    for nodo in nodos:
         garantia = GarantiaExigida(
             orden=len(garantias) + 1,
             lote_numero=lote_numero,
@@ -682,7 +691,7 @@ def _garantias_del_ambito(terms: Any, lote_numero: str | None) -> list[GarantiaE
     return garantias
 
 
-def _solvencia_del_ambito(terms: Any, lote_numero: str | None) -> list[RequisitoSolvencia]:
+def _solvencia_del_ambito(bloques: list[Any], lote_numero: str | None) -> list[RequisitoSolvencia]:
     requisitos: list[RequisitoSolvencia] = []
 
     def anadir(clase: ClaseSolvencia, **campos: Any) -> None:
@@ -692,7 +701,10 @@ def _solvencia_del_ambito(terms: Any, lote_numero: str | None) -> list[Requisito
             )
         )
 
-    for peticion in terms.xpath(_hijo("TendererQualificationRequest")):
+    peticiones = [
+        p for terms in bloques for p in terms.xpath(_hijo("TendererQualificationRequest"))
+    ]
+    for peticion in peticiones:
         for hijo in peticion:
             if not _es_elemento(hijo):
                 continue
@@ -755,20 +767,21 @@ def parse_condiciones(entry: Any) -> CondicionesCodice:
     """
     cfs = "./cacext:ContractFolderStatus"
     condiciones = CondicionesCodice()
-    ambitos: list[tuple[Any, str | None]] = [
-        (terms, None) for terms in entry.xpath(f"{cfs}/cac:TenderingTerms", namespaces=NS)
-    ]
+    # Bloques agrupados por ámbito, expediente primero y lotes en orden de
+    # aparición. Agrupar (y no tratar cada bloque por separado) es lo que
+    # mantiene `orden` único dentro de cada ámbito.
+    ambitos: dict[str | None, list[Any]] = {
+        None: list(entry.xpath(f"{cfs}/cac:TenderingTerms", namespaces=NS))
+    }
     for lot_elem in entry.xpath(f"{cfs}/cac:ProcurementProjectLot", namespaces=NS):
         numero = _text(lot_elem, "./cbc:ID")
         if not numero:
             continue
-        ambitos.extend(
-            (terms, numero) for terms in lot_elem.xpath("./cac:TenderingTerms", namespaces=NS)
-        )
-    for terms, lote_numero in ambitos:
-        condiciones.criterios.extend(_criterios_del_ambito(terms, lote_numero))
-        condiciones.garantias.extend(_garantias_del_ambito(terms, lote_numero))
-        condiciones.solvencia.extend(_solvencia_del_ambito(terms, lote_numero))
+        ambitos.setdefault(numero, []).extend(lot_elem.xpath("./cac:TenderingTerms", namespaces=NS))
+    for lote_numero, bloques in ambitos.items():
+        condiciones.criterios.extend(_criterios_del_ambito(bloques, lote_numero))
+        condiciones.garantias.extend(_garantias_del_ambito(bloques, lote_numero))
+        condiciones.solvencia.extend(_solvencia_del_ambito(bloques, lote_numero))
     return condiciones
 
 

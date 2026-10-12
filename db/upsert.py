@@ -515,6 +515,96 @@ _HISTORY_SELECT_COLS = (
 )
 
 
+# ── Condiciones oficiales (v149) ─────────────────────────────────────────────
+#
+# Tabla, atributo de `CondicionesCodice` y columnas (las del dataclass, en su
+# orden) de cada familia. `licitacion_id` y `fecha_extraccion` las pone la
+# escritura: el dataclass no las lleva (ver su comentario).
+_FAMILIAS_CONDICIONES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "licitacion_criterios_adjudicacion",
+        "criterios",
+        tuple(f.name for f in fields(CriterioAdjudicacion)),
+    ),
+    ("licitacion_garantias", "garantias", tuple(f.name for f in fields(GarantiaExigida))),
+    ("licitacion_solvencia", "solvencia", tuple(f.name for f in fields(RequisitoSolvencia))),
+)
+
+_SQL_CONDICIONES_DISPONIBLES = (
+    "SELECT count(*) FROM unnest(%s::text[]) AS t(nombre) WHERE to_regclass(t.nombre) IS NOT NULL"
+)
+
+
+def _condiciones_disponibles(c: Any) -> bool:
+    """¿Existen las tres tablas de v149? Se pregunta al catálogo en cada chunk.
+
+    Mismo motivo y misma falta de caché que `_con_sombras`: el código puede
+    llegar a producción antes que la migración, y un `INSERT` contra una tabla
+    que no existe tumbaría la transacción entera —licitaciones incluidas—.
+    """
+    tablas = [tabla for tabla, _, _ in _FAMILIAS_CONDICIONES]
+    fila = c.execute(_SQL_CONDICIONES_DISPONIBLES, (tablas,)).fetchone()
+    return fila is not None and int(fila[0]) == len(tablas)
+
+
+def _replace_condiciones(c: Any, lics: Iterable[Licitacion]) -> None:
+    """Reemplaza, por familia, las condiciones de las licitaciones que las traen.
+
+    Va dentro de la transacción del upsert de licitaciones y **después** de su
+    `INSERT`, porque las tres tablas llevan FK a `licitaciones`. Reglas:
+
+    - Una familia se reemplaza entera (`DELETE` + `INSERT`) cuando la versión
+      nueva trae al menos una fila de ella: una corrección del órgano sustituye
+      a lo anterior y re-ingerir lo mismo deja lo mismo (invariante 2).
+    - Una familia vacía, o `condiciones=None`, no toca nada: la fase de
+      adjudicación deja de publicar `cac:TenderingTerms` como deja de publicar
+      el plazo (el mismo razonamiento que `_LIC_COALESCE_UPDATE_FIELDS`), y un
+      camino que no lee CODICE no tiene opinión. El precio de la regla: si un
+      órgano retira una familia entera en una corrección, la versión anterior
+      se queda.
+    - Si el lote trae dos versiones del mismo expediente, gana la última que
+      trae filas de esa familia, como gana la última en el `ON CONFLICT`.
+    - Una fila con `(lote_numero, orden)` repetido se descarta: el parser no las
+      produce, pero la unicidad de v149 convertiría una en el fallo del chunk.
+    """
+    por_familia: dict[str, dict[str, list[Any]]] = {t: {} for t, _, _ in _FAMILIAS_CONDICIONES}
+    for lic in lics:
+        if lic.condiciones is None:
+            continue
+        for tabla, atributo, _ in _FAMILIAS_CONDICIONES:
+            filas = getattr(lic.condiciones, atributo)
+            if filas:
+                por_familia[tabla][lic.id_externo] = filas
+    if not any(por_familia.values()):
+        return
+    if not _condiciones_disponibles(c):
+        _log.warning("condiciones_codice_sin_tablas", detalle="v149 sin aplicar")
+        return
+
+    ahora = now_utc_iso()
+    for tabla, _, columnas in _FAMILIAS_CONDICIONES:
+        por_lic = por_familia[tabla]
+        if not por_lic:
+            continue
+        ids = list(por_lic)
+        for i in range(0, len(ids), 500):
+            c.execute(f"DELETE FROM {tabla} WHERE licitacion_id = ANY(%s)", (ids[i : i + 500],))
+        filas_sql: list[list[Any]] = []
+        for licitacion_id, filas in por_lic.items():
+            vistas: set[tuple[str | None, int]] = set()
+            for fila in filas:
+                clave = (fila.lote_numero, fila.orden)
+                if clave in vistas:
+                    continue
+                vistas.add(clave)
+                datos = asdict(fila)
+                filas_sql.append([licitacion_id, *(datos[k] for k in columnas), ahora])
+        nombres = ", ".join(("licitacion_id", *columnas, "fecha_extraccion"))
+        marcadores = ", ".join("%s" for _ in range(len(columnas) + 2))
+        # Nombres de tabla y columna salen de constantes de este módulo.
+        c.executemany(f"INSERT INTO {tabla} ({nombres}) VALUES ({marcadores})", filas_sql)
+
+
 # ---------------------------------------------------------------------------
 # Operaciones de escritura
 # ---------------------------------------------------------------------------
@@ -560,6 +650,7 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
         # from dataclass fields (controlled code) — safe.
         if lic_rows:
             c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
+        _replace_condiciones(c, batch)
 
     existing_ids = set(existing_pub)
     nuevas = sum(1 for lic in batch if lic.id_externo not in existing_ids)
@@ -1036,6 +1127,8 @@ def _upsert_chunk(
             )
         if lic_rows:
             c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
+        # v149: en la misma transacción, después de las licitaciones (FK).
+        _replace_condiciones(c, chunk)
 
     return result
 

@@ -233,6 +233,36 @@ def test_criterios_por_lote_llevan_su_numero_y_su_propia_escala() -> None:
     ]
 
 
+def test_bloques_repetidos_del_mismo_ambito_se_numeran_seguidos() -> None:
+    """Dos ``TenderingTerms`` del expediente, o dos lotes con el mismo número.
+
+    Si cada bloque numerase desde 1, dos filas compartirían
+    ``(licitacion_id, lote_numero, orden)`` y la escritura —que va en la misma
+    transacción que la licitación— fallaría entera. La escala se deduce sobre
+    el ámbito completo.
+    """
+    garantia = (
+        "<cac:RequiredFinancialGuarantee><cbc:AmountRate>5</cbc:AmountRate>"
+        "</cac:RequiredFinancialGuarantee>"
+    )
+    entry = _entry(
+        terminos=_terminos(_criterios(_criterio("Precio", "60")), garantia)
+        + _terminos(_criterios(_criterio("Calidad", "40")), garantia),
+        lotes=_lote("1", _terminos(_criterios(_criterio("Precio", "100"))))
+        + _lote("1", _terminos(_criterios(_criterio("Repetido", "100")))),
+    )
+
+    condiciones = parse_condiciones(entry)
+
+    assert [(c.lote_numero, c.orden, c.peso_pct) for c in condiciones.criterios] == [
+        (None, 1, 60.0),
+        (None, 2, 40.0),
+        ("1", 1, None),
+        ("1", 2, None),
+    ]
+    assert [(g.lote_numero, g.orden) for g in condiciones.garantias] == [(None, 1), (None, 2)]
+
+
 # ─── Garantías ───────────────────────────────────────────────────────────────
 
 
