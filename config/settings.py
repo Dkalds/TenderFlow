@@ -421,6 +421,12 @@ class Settings(ResumenPregenSettings, BaseSettings):
     MAX_DOWNLOAD_SIZE_BYTES: int = 400 * 1024 * 1024
     MAX_XML_SIZE_BYTES: int = 150 * 1024 * 1024
     DAILY_MAX_PAGES: int = 50
+    # Pasadas seguidas del carril diario con el cursor del ATOM de PLACSP
+    # parado tras las que se ingiere el ZIP mensual del mes en curso
+    # (`scheduler/respaldo_zip_placsp.py`). 6 pasadas de 4 h son un día, que es
+    # lo que tarda el ZIP en regenerarse: caer antes reprocesaría el mismo
+    # fichero. 0 apaga el respaldo.
+    PLACSP_ATOM_PASADAS_SIN_AVANCE_ZIP: int = 6
     BACKFILL_MAX_WORKERS: int = 3
     # Límite de tamaño para un adjunto individual (pliego), plan Pliegos+RAG F7.
     # Mucho más chico que MAX_DOWNLOAD_SIZE_BYTES (pensado para ZIPs mensuales
@@ -452,6 +458,17 @@ class Settings(ResumenPregenSettings, BaseSettings):
     PSCP_DATASET_ID: str = "ybgg-dgi6"
     # App token Socrata opcional (solo necesario si aparece rate limiting).
     PSCP_APP_TOKEN: SecretStr = SecretStr("")
+    # Sindicaciones secundarias de PLACSP (revisión de D16). Vacías = fuente
+    # APAGADA: el conector declara `disabled` y no descarga nada, como PSCP sin
+    # dataset. Se encienden fijando la URL documentada en cada módulo
+    # (`URL_SINDICACION_1143` en `scraper/connectors/placsp_menores.py`,
+    # `URL_SINDICACION_1044` en `placsp_agregadas.py`) tras validarla con
+    # `python -m scraper.connectors.<módulo> --check`. Se usa la URL como
+    # interruptor —y no un booleano— porque así viaja por `vars.` en el
+    # workflow igual que `PSCP_DATASET_ID`: una variable de repo sin definir
+    # llega como cadena vacía, que para un booleano es un error de arranque.
+    PLACSP_MENORES_ATOM_URL: str = ""
+    PLACSP_AGREGADAS_ATOM_URL: str = ""
     # Índice de resoluciones TACRC (Ministerio de Hacienda).
     #
     # URL validada con `python -m scraper.connectors.tacrc --check` (2026-06-11):
@@ -463,10 +480,21 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # Resoluciones-Pleno cubre solo resoluciones del Pleno (doctrinales); las
     # resoluciones individuales de recurso quedan pendientes de otro índice.
     # Para cobertura completa, configurar TACRC_INDEX_URL por entorno.
+    #
+    # 2026-10: el conector lee también un listado JSON de la biblioteca de
+    # SharePoint y una URL con `{anio}` que recorre año a año
+    # (`URL_BIBLIOTECA_RESOLUCIONES` en `scraper/connectors/tacrc.py`, sin
+    # verificar: `--check` antes). El valor por defecto NO cambia: en el plano
+    # del worker, sin variable, manda este, y cambiarlo encendería el índice
+    # completo sin decidirlo.
     TACRC_INDEX_URL: str = (
         "https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/"
         "TACRC/Paginas/Resoluciones-Pleno.aspx"
     )
+    # Primer año que recorre un índice por años sin cursor. El TACRC se crea
+    # con la Ley 34/2010; un año sin carpeta responde 404 y se salta, así que
+    # empezar antes de tiempo solo cuesta una petición.
+    TACRC_PRIMER_ANIO: int = 2010
 
     # ── Embeddings / NLP ─────────────────────────────────────────────────
     # Modelo sentence-transformers a usar. Cambiar a un modelo multilingual para

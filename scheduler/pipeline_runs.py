@@ -1191,9 +1191,11 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
       siga viendo los runs diarios tras el flip.
     """
     from observability import bind_run_context, record_run
+    from scheduler import respaldo_zip_placsp
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspAtomConnector
 
+    cursor_atom_antes = respaldo_zip_placsp.cursor_atom_actual()
     run_id = bind_run_context(entrypoint="run_daily_pipeline_connector")
     with record_run(run_id) as metrics:
         connector = PlacspAtomConnector()
@@ -1220,6 +1222,14 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
             metrics.licitaciones_actualizadas = run_result.actualizadas
         metrics.notas = f"daily_connector|{status}"
 
+    # ATOM congelado → ZIP del mes en curso tras N pasadas sin avance. Fuera del
+    # `record_run` del ATOM: el bulk deja su propia salud (`bulk_YYYYMM`).
+    respaldo_zip = respaldo_zip_placsp.tras_pasada_atom(
+        cursor_antes=cursor_atom_antes,
+        cursor_despues=respaldo_zip_placsp.cursor_atom_actual(),
+        fetch_failed=run_result.fetch_failed,
+    )
+
     step_results = _run_post_ingestion_steps(lane=LANE_DAILY) if con_cierre else {}
 
     return {
@@ -1234,6 +1244,7 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
             "entries_error": run_result.errores,
         },
         "connector_result": run_result.as_dict(),
+        "respaldo_zip": respaldo_zip,
         "steps": step_results,
     }
 

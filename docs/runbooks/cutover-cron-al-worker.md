@@ -24,7 +24,7 @@ está en el árbol y es inerte mientras `SCHEDULER_PLANE` no diga `worker`.
 
 | Job | Hoy lo ejecuta | Tras el cutover |
 |---|---|---|
-| `daily_atom` — PLACSP, los seis conectores, el cierre y el healthcheck | `scrape-daily.yml`, cada 4 h | **worker**, cada 4 h |
+| `daily_atom` — PLACSP, los conectores multi-fuente, el cierre y el healthcheck | `scrape-daily.yml`, cada 4 h | **worker**, cada 4 h |
 | `ml_scoring_baja` — scoring, drift, calibración, purgas | `ml-scoring.yml`, tras cada ingesta, una vez al día UTC | **worker**, una vez al día UTC (mismo guard) |
 | `ml_retrain_baja` | `train-predictivos.yml`, mensual | Actions, sin cambios |
 | `documentos_embeddings` | `pliegos.yml`, nocturno | Actions, sin cambios |
