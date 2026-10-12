@@ -3,9 +3,9 @@
 ``LicitacionSummary`` es lo que devuelven el listado, la búsqueda y el
 bulk-get; ``LicitacionDetail`` la extiende y la sirve la ficha. Viven juntas
 porque una hereda de la otra: separar una clase de su base entre dos módulos
-por seguir una regla sale peor que la regla. ``LoteOut`` las acompaña por lo
-mismo — sólo lo construye la ficha, pero es el tipo de un campo de
-``LicitacionDetail`` —.
+por seguir una regla sale peor que la regla. ``LoteOut`` y
+``AdjudicatarioOut`` las acompañan por lo mismo — sólo los construye la ficha,
+pero son el tipo de un campo de ``LicitacionDetail`` —.
 
 Lo que **no** está aquí: ``AdjudicacionSummary`` vive en ``adjudicaciones`` y
 ``DocumentoSummary`` en ``documentos``, cada uno con su única familia. Un
@@ -65,6 +65,29 @@ class LoteOut(BaseModel):
     fecha_limite: str | None = None
 
 
+class AdjudicatarioOut(BaseModel):
+    """Quién ganó el expediente (o uno de sus lotes), tal como lo publicó la fuente.
+
+    Una fila por adjudicatario y lote, sin agregar ni resolver a empresa
+    canónica: la ficha enseña lo publicado, y el maestro de empresas puede estar
+    todavía corrigiendo la identidad en la cola de revisión. Lo que la fuente no
+    publicó llega como ``None`` —nunca como cero—, porque un importe o un número
+    de ofertas a cero se leerían como dato.
+
+    El lote va por su **número** y su título, no por el id de ``lotes``: la
+    re-ingesta borra y reinserta los lotes, y el id no sobrevive (``v110``).
+    ``lote_numero`` ``None`` es la adjudicación del expediente completo.
+    """
+
+    nombre: str
+    nif: str | None = None
+    importe_adjudicado: float | None = None
+    n_ofertas_recibidas: int | None = None
+    fecha_adjudicacion: str | None = None
+    lote_numero: str | None = None
+    lote_titulo: str | None = None
+
+
 class LicitacionDetail(LicitacionSummary):
     descripcion: str | None = None
     tipo_contrato: str | None = None
@@ -97,3 +120,7 @@ class LicitacionDetail(LicitacionSummary):
     # C1.4 — los lotes del expediente. Lista vacía = lote único implícito,
     # que es el caso mayoritario; no significa «no medido».
     lotes: list[LoteOut] = Field(default_factory=list)
+    # El desenlace del expediente. Lista vacía = la ingesta no conoce ninguna
+    # adjudicación, que es lo normal mientras está abierto; no significa que se
+    # declarara desierto (eso lo dice `estado`).
+    adjudicatarios: list[AdjudicatarioOut] = Field(default_factory=list)
