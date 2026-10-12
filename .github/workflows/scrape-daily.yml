@@ -40,13 +40,15 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     # Presupuesto del job >= suma de los presupuestos por step: 45 de la
-    # ingesta de PLACSP + 45 de los seis conectores + 20 del cierre = 110, más
+    # ingesta de PLACSP + 65 de los ocho conectores + 20 del cierre = 130, más
     # la preparación y el healthcheck. Hasta 2026-08 era 30 y truncaba los
     # conectores de la cola (PSCP y TACRC); luego fue 55, que ya no cubría el
     # cierre: el 2026-09-23 (run 35840505923) la ingesta tardó 37 min, el job
     # se canceló a los 56 y el cierre —vista pública, alertas de vigilancia— no
-    # llegó a correr en esa pasada.
-    timeout-minutes: 120
+    # llegó a correr en esa pasada. Pasó de 120 a 140 con los dos conectores de
+    # sindicaciones de PLACSP (2026-10): apagados tardan segundos, pero el
+    # presupuesto se cuenta para cuando estén encendidos.
+    timeout-minutes: 140
 
     env:
       # ENV=prod: este job escribe en la BD de producción, así que los
@@ -145,7 +147,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python -m scheduler.run_update --daily --fase ingesta
 
-      # Los seis conectores llevan `if: !cancelled()`: son fuentes
+      # Los conectores llevan `if: !cancelled()`: son fuentes
       # independientes del feed ATOM y no deben caerse con él. Hasta 2026-08 no
       # tenían condición, así que el `success()` implícito los dejaba a todos en
       # `skipped` cuando el step anterior salía != 0. Y ese step falla justo
@@ -254,6 +256,28 @@ jobs:
           TACRC_INDEX_URL: ${{ vars.TACRC_INDEX_URL }}
         run: python -m scraper.connectors.tacrc
 
+      # Sindicaciones 1044 y 1143 de PLACSP: apagadas por defecto (revisión de
+      # D16). Mismo patrón que PSCP/TACRC: corren siempre, y sin su variable de
+      # repo escriben `disabled` y terminan en 0. Se encienden fijando la URL
+      # documentada en la variable (docs/runbooks/fuentes-opcionales.md).
+      - name: Run PLACSP agregadas connector
+        id: placsp_agregadas
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          PLACSP_AGREGADAS_ATOM_URL: ${{ vars.PLACSP_AGREGADAS_ATOM_URL }}
+        run: python -m scraper.connectors.placsp_agregadas
+
+      - name: Run PLACSP contratos menores connector
+        id: placsp_menores
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          PLACSP_MENORES_ATOM_URL: ${{ vars.PLACSP_MENORES_ATOM_URL }}
+        run: python -m scraper.connectors.placsp_menores
+
       # CIERRE de la pasada: la secuencia canónica completa, ahora que las
       # siete fuentes ya han ingerido. Es lo que hace verdadero el contrato de
       # `db/repositories/publico.py` — «la vista va tan fresca como su último
@@ -306,6 +330,8 @@ jobs:
             watched_awards=${{ steps.watched_awards.outcome }}
             pscp=${{ steps.pscp.outcome }}
             tacrc=${{ steps.tacrc.outcome }}
+            placsp_agregadas=${{ steps.placsp_agregadas.outcome }}
+            placsp_menores=${{ steps.placsp_menores.outcome }}
         run: |
           set -u
           {
