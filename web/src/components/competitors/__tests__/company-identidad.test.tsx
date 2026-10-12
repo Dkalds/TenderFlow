@@ -91,7 +91,7 @@ describe("CompanyIdentidad", () => {
     expect(screen.getByText("+2 más")).toBeInTheDocument();
     // Cada UTE lleva a su propia ficha, en la ruta nueva.
     expect(screen.getByRole("link", { name: "UTE Ejemplo-Norte" })).toHaveAttribute("href", "/competencia/empresa/30");
-    expect(screen.getByRole("link", { name: "Ver en el maestro" })).toHaveAttribute("href", "/empresas?q=NIF-7");
+    expect(screen.getByRole("link", { name: "Ver en el maestro" })).toHaveAttribute("href", "/competencia?vista=empresas&q=NIF-7");
     // Una sola identidad no necesita explicar ninguna suma.
     expect(screen.queryByText(/identidades del maestro/)).not.toBeInTheDocument();
   });
@@ -108,7 +108,7 @@ describe("CompanyIdentidad", () => {
     // Sin NIF, el maestro se busca por nombre.
     expect(screen.getAllByRole("link", { name: "Ver en el maestro" })[0]).toHaveAttribute(
       "href",
-      "/empresas?q=Ejemplo%20Digital",
+      "/competencia?vista=empresas&q=Ejemplo%20Digital",
     );
   });
 

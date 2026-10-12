@@ -122,7 +122,6 @@ export const ICONO_ESPACIO = {
   "mi-watchlist": ICONO_CONCEPTO.seguir,
   "mi-perfil": ICONO_ENTIDAD.persona,
   ajustes: Settings2,
-  empresas: ICONO_ENTIDAD.empresa,
   equipo: ICONO_ENTIDAD.equipo,
   ops: ServerCog,
 } as const satisfies Record<string, LucideIcon>;

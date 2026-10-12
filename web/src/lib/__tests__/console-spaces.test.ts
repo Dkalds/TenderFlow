@@ -95,6 +95,21 @@ describe("CONSOLE_SPACES", () => {
     }
   });
 
+  it("Empresas no es un espacio: su maestro y su cola son vistas de Competencia", () => {
+    // Identidad y rendimiento de la misma empresa vivían en dos espacios, y el
+    // perfil de uno enlazaba al otro. El rail pierde la entrada; la paleta la
+    // sigue encontrando por sus términos de oficio.
+    expect(CONSOLE_SPACES.some((space) => space.key === "empresas")).toBe(false);
+    const competencia = CONSOLE_SPACES.find((space) => space.key === "competencia")!;
+    expect(competencia.views?.map((view) => view.key)).toEqual(["competidores", "utes", "empresas", "revision"]);
+    expect(competencia.terminos).toMatch(/maestro/);
+    expect(competencia.terminos).toMatch(/alias/);
+    expect(spaceAbsorbing("empresas")).toEqual({
+      space: expect.objectContaining({ key: "competencia" }),
+      view: "empresas",
+    });
+  });
+
   it("reserva Ops a administradores", () => {
     expect(ADMIN_ONLY_SPACES.has("ops")).toBe(true);
     for (const slug of ADMIN_ONLY_SPACES) {

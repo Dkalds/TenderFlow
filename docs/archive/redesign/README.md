@@ -95,16 +95,17 @@ completa, así que no se ha tocado una sola de sus funciones:
 | --- | --- | --- |
 | `/mercado` | 9 | tendencias · tendencias-cpv · calendario · geografía · tecnologías · órganos · clusters · proyectos-modulos · renovaciones |
 | `/oportunidades` | 3 | ninguna — tablero (entrada) · cartera · rendimiento, ver abajo |
-| `/competencia` | 2 | competidores · utes |
+| `/competencia` | 4 | competidores · utes · empresas — y la cola de revisión, ver abajo |
 | `/ops` | 5 | observabilidad · calidad-datos · administración · feature-flags · active-learning |
-| `/empresas` | 2 | ninguna — ver abajo |
 
-`/empresas` no absorbe ninguna ruta: sus dos vistas (maestro y cola de
-revisión) siempre convivieron dentro de la misma pantalla y eran unas pestañas
-propias. Pasan a `?vista=` para que la cola sea direccionable
-—`/empresas?vista=revision` es lo que se pega en un mensaje cuando hay matches
-que resolver— y para que cambiar de vista sea el mismo gesto que en el resto
-de espacios.
+`/empresas` fue espacio propio hasta 2026-10, con dos vistas (maestro y cola
+de revisión) que siempre convivieron dentro de la misma pantalla. Era el mismo
+sujeto que Competencia visto por su identidad, y la ficha de uno enlazaba a la
+del otro; hoy son las vistas `empresas` y `revision` de `/competencia`.
+`/empresas` redirige a la primera y su `?vista=` de siempre a la suya
+(`ESPACIOS_ABSORBIDOS` en `lib/space-views.ts`): `/empresas?vista=revision`,
+lo que se pegaba en un mensaje cuando había matches que resolver, sigue
+llevando a la cola.
 
 `/oportunidades` tampoco absorbe rutas: sus tres vistas siempre fueron vistas
 de un espacio. El tablero por fases es la entrada y la pantalla de siempre;

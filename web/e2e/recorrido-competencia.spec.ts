@@ -48,9 +48,10 @@ test("el ranking lista las adjudicatarias del seed y abre el perfil de la que se
   // Sus adjudicaciones en el ámbito, y por dónde seguir.
   await expect(perfil.getByText("Importe adjudicado")).toBeVisible();
   await expect(perfil.getByText("Expedientes ganados")).toBeVisible();
+  // Empresas es una vista de este mismo espacio desde 2026-10.
   await expect(perfil.getByRole("link", { name: "Buscarla en Empresas" })).toHaveAttribute(
     "href",
-    `/empresas?q=${encodeURIComponent(SEGUNDA)}`,
+    `/competencia?vista=empresas&q=${encodeURIComponent(SEGUNDA)}`,
   );
 
   // ── Cerrarlo ─────────────────────────────────────────────────────────────

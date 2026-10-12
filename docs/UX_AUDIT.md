@@ -724,3 +724,51 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   `layout/particle-field.tsx` y `radar-inspector-piezas.tsx`, y se añadieron
   `lib/tipografia.ts`, `lib/marca.ts`, `lib/iconos.ts`, `ui/field.tsx` y
   `console/chip-banda.tsx`.
+
+---
+
+## Menos espacios, un sitio por dato y un solo asistente (2026-10-12)
+
+Cuatro duplicidades de la consola: dos espacios para la misma empresa, la
+misma previsión pintada en dos sitios, una vista de mercado que solo entendía
+SAP y tres entradas de IA con tres estados. La regla de siempre manda en las
+cuatro: **consolidar no elimina funcionalidad**, y lo que se mueve sigue
+entrando por su enlace viejo.
+
+### Empresas es una vista de Competencia
+
+Empresas (identidad: maestro canónico, alias y cola de coincidencias dudosas)
+y Competencia (rendimiento: cuota, rivales, UTE) hablaban de la misma empresa
+desde dos espacios, y la ficha de uno enlazaba al otro. El rail pierde la
+entrada de Empresas y Competencia gana dos pestañas, **Empresas** (el maestro
+con su ficha) y **Revisión** (la cola):
+
+- `/empresas` redirige a `/competencia?vista=empresas` por el `from` de la
+  vista, como cualquier ruta absorbida. El `?vista=` viejo necesitaba algo más:
+  Next fusiona la query de la petición con la del destino y **gana la del
+  destino**, así que `/empresas?vista=revision` habría acabado en el maestro.
+  `ESPACIOS_ABSORBIDOS` (`lib/space-views.ts`) emite un redirect por vista
+  vieja, condicionado a esa query (`has`), que `next.config.ts` pone delante
+  del genérico.
+- El control de administrador no cambia: la pestaña Revisión se ve para todos,
+  con su contador, y a quien no administra le dice que la cola es de
+  administradores en lugar de pintar el 403 como un fallo; la API sigue siendo
+  quien lo impone. El contador de la pestaña va ahora en **todas** las vistas
+  del espacio, no solo en las de identidad: quien mira Competidores también
+  tiene que saber que hay coincidencias esperando, y son las que mueven sus
+  cuotas.
+- La línea de contexto del maestro (canónicas, importe resuelto, vigiladas,
+  revisiones) va en la cabecera solo en Empresas y Revisión, que van a sangre
+  como iban; en Competidores y UTEs la cabecera es la de siempre.
+- Los enlaces que salían de Competencia hacia Empresas («Buscarla en
+  Empresas», «Ver en el maestro», el aviso de cuotas aproximadas) apuntan a la
+  vista del mismo espacio. ⌘K encuentra la vista por «maestro», «NIF» o
+  «alias», que pasan a los términos de Competencia.
+- El contrato de filtros de la barra de ámbito pasa a ser **de la vista**
+  cuando la vista tiene página propia (`lib/navigation.ts`): era la unión del
+  espacio, y Empresas habría heredado el ámbito de Competidores aunque el
+  maestro no lo lee (en `/empresas` la barra decía que no aplicaba, y lo sigue
+  diciendo). La cola toma el contrato del espacio que fue, por
+  `ESPACIOS_ABSORBIDOS`. De paso se cierra la misma costura en Mercado ›
+  Renovaciones, que ofrecía seis controles y aplica uno, tecnología.
+

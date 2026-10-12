@@ -24,7 +24,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { ICONO_ADMIN, ICONO_CONCEPTO, ICONO_ENTIDAD, ICONO_ESPACIO } from "@/lib/iconos";
-import { SPACE_VIEWS } from "@/lib/space-views";
+import { ESPACIOS_ABSORBIDOS, SPACE_VIEWS } from "@/lib/space-views";
 
 export type GlobalFilterKey =
   | "q"
@@ -385,16 +385,38 @@ export function findPage(slug: string) {
 }
 
 /**
+ * Página heredada de la que una vista toma su contrato: la ruta que absorbe, o
+ * —si es la vista de un espacio retirado por entero que no absorbía ruta
+ * propia, como la cola de revisión de Empresas— la de ese espacio.
+ */
+function paginaDeVista(slug: string, vista: string): NavPage | undefined {
+  const view = SPACE_VIEWS[slug]?.find((candidata) => candidata.key === vista);
+  if (!view) return undefined;
+  if (view.from) return findPage(view.from);
+  const absorbido = ESPACIOS_ABSORBIDOS.find(
+    (candidato) => candidato.en === slug && Object.values(candidato.vistas).includes(vista),
+  );
+  return absorbido ? findPage(absorbido.slug) : undefined;
+}
+
+/**
  * Páginas heredadas que un espacio de la consola absorbió (`lib/space-views.ts`).
  *
  * Un espacio no declara su contrato de filtros a mano: lo hereda de las rutas
  * que agrupa. Si ninguna de ellas consumía el ámbito —el caso de Ops y Admin—
  * el espacio tampoco lo consume, y la barra de ámbito no aparece fingiendo que
  * filtra algo.
+ *
+ * Con `vista`, manda la de esa vista si tiene página propia: la unión del
+ * espacio ofrecía en Mercado › Renovaciones los seis controles cuando aplica
+ * uno, y en Competencia › Empresas un ámbito que el maestro no lee. Sin vista,
+ * o con una que no hereda ninguna página, la unión de siempre.
  */
-function absorbedPages(slug: string): NavPage[] {
+function absorbedPages(slug: string, vista?: string | null): NavPage[] {
   const views = SPACE_VIEWS[slug];
   if (!views) return [];
+  const propia = vista ? paginaDeVista(slug, vista) : undefined;
+  if (propia) return [propia];
   const pages: NavPage[] = [];
   for (const view of views) {
     const page = view.from ? findPage(view.from) : undefined;
@@ -405,14 +427,15 @@ function absorbedPages(slug: string): NavPage[] {
 
 /**
  * Whether the page at `pathname` consumes the global filter state.
- * Rutas desconocidas devuelven `true` (comportamiento histórico).
+ * Rutas desconocidas devuelven `true` (comportamiento histórico). `vista` es
+ * el `?vista=` de un espacio: ver `absorbedPages`.
  */
-export function pathUsesGlobalFilters(pathname: string): boolean {
+export function pathUsesGlobalFilters(pathname: string, vista?: string | null): boolean {
   const slug = pathname.replace(/^\//, "").split("/")[0];
   const page = findPage(slug);
   if (page) return page.usesGlobalFilters !== false;
 
-  const absorbed = absorbedPages(slug);
+  const absorbed = absorbedPages(slug, vista);
   // Unión: basta con que una de las vistas del espacio use el ámbito para que
   // el espacio lo use. Si el espacio no agrupa nada conocido, se mantiene el
   // comportamiento histórico de las rutas desconocidas.
@@ -425,12 +448,12 @@ export function pathUsesGlobalFilters(pathname: string): boolean {
  * página consume todos (comportamiento por defecto). La GlobalFilterBar usa
  * esto para renderizar solo los controles relevantes.
  */
-export function pageGlobalFilterKeys(pathname: string): GlobalFilterKey[] | null {
+export function pageGlobalFilterKeys(pathname: string, vista?: string | null): GlobalFilterKey[] | null {
   const slug = pathname.replace(/^\//, "").split("/")[0];
   const page = findPage(slug);
   if (page) return page.globalFilterKeys ?? null;
 
-  const absorbed = absorbedPages(slug);
+  const absorbed = absorbedPages(slug, vista);
   if (!absorbed.length) return null;
   // Si alguna vista del espacio consume todos los filtros, el espacio también:
   // recortar la barra al subconjunto de otra vista escondería un control que
@@ -446,12 +469,12 @@ export function pageGlobalFilterKeys(pathname: string): GlobalFilterKey[] | null
  * hereda la unión de las rutas que absorbe: basta con que una vista los
  * aplique para ofrecerlos.
  */
-export function pageOptInFilterKeys(pathname: string): GlobalFilterKey[] {
+export function pageOptInFilterKeys(pathname: string, vista?: string | null): GlobalFilterKey[] {
   const slug = pathname.replace(/^\//, "").split("/")[0];
   const page = findPage(slug);
   if (page) return page.optInFilterKeys ?? [];
   const union = new Set<GlobalFilterKey>();
-  for (const item of absorbedPages(slug)) for (const key of item.optInFilterKeys ?? []) union.add(key);
+  for (const item of absorbedPages(slug, vista)) for (const key of item.optInFilterKeys ?? []) union.add(key);
   return [...union];
 }
 
