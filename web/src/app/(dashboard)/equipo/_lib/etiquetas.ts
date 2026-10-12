@@ -8,6 +8,7 @@
  */
 
 import type { OrganizationMembershipStatus, OrganizationRole } from "@/hooks/use-organization";
+import type { Schemas } from "@/lib/api-types";
 import type { OrganizationInvitation } from "../_hooks/use-invitations";
 
 export const ROLE_LABELS: Record<OrganizationRole, string> = {
@@ -33,3 +34,18 @@ export const INVITATION_STATUS_LABELS: Record<OrganizationInvitation["status"], 
 
 /** Los roles asignables desde la UI: `owner` no se reparte, se hereda. */
 export type RolAsignable = "admin" | "member" | "viewer";
+
+export type TipoDocumento = Schemas["OrganizationCertification"]["tipo"];
+
+/**
+ * Tipos de documento acreditativo (v147). El primero es lo que el checklist
+ * contrasta con el pliego; los otros cuatro, la documentación administrativa
+ * que hay que tener al día para presentarse.
+ */
+export const TIPO_DOCUMENTO_LABELS: Record<TipoDocumento, string> = {
+  certificacion_tecnica: "Certificación técnica",
+  corriente_aeat: "Al corriente con la AEAT",
+  corriente_seguridad_social: "Al corriente con la Seguridad Social",
+  rolece: "Inscripción en el ROLECE",
+  clasificacion_empresarial: "Clasificación empresarial",
+};
