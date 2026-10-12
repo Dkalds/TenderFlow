@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any
+from typing import Any, Literal
 
 from config import HISTORY_TRACKED_FIELDS
 from db.connection import connect, now_utc_iso
@@ -132,6 +132,106 @@ class Lote:
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
+# ── Condiciones oficiales del expediente (v149) ──────────────────────────────
+#
+# Lo que CODICE publica en `cac:TenderingTerms`, del expediente y de cada lote:
+# criterios de adjudicación, garantías exigidas y requisitos de solvencia. Los
+# tres viajan colgados de `Licitacion.condiciones` (parse-only, como
+# `organo_dir3`) y los escribe el mismo upsert que escribe la licitación, en su
+# transacción: así cualquier camino que ingiera CODICE los persiste sin que
+# cada conector tenga que acordarse.
+#
+# Ninguno lleva `licitacion_id` ni `fecha_extraccion`: el primero lo pone el
+# upsert desde la licitación que los trae, y el segundo es la hora de la
+# escritura, no salida del parseo (el golden del parser compara este árbol y
+# una hora lo haría fallar cada segundo).
+#
+# `lote_numero` es el `cbc:ID` del lote tal como se publica, o `None` para el
+# nivel de expediente. No es un FK a `lotes.id`: `replace_lotes` reasigna esos
+# ids en cada re-ingesta, y la clave estable del lote es su número (el mismo
+# razonamiento que v110 y v140).
+
+#: Clases de requisito de `cac:TendererQualificationRequest`.
+ClaseSolvencia = Literal["tecnica", "economica", "clasificacion"]
+
+
+@dataclass
+class CriterioAdjudicacion:
+    """Un criterio de `cac:AwardingTerms`, con el peso tal como se publica.
+
+    ``peso`` es el `cbc:WeightNumeric` crudo; ``peso_pct`` lo expresa sobre 100
+    solo cuando la suma de los criterios raíz de su ámbito declara la escala
+    (la regla de `parse_peso_precio`). Un subcriterio (``padre_orden`` no nulo)
+    reparte el peso de su padre, así que su ``peso_pct`` es siempre ``None``.
+    """
+
+    orden: int
+    lote_numero: str | None = None
+    padre_orden: int | None = None
+    descripcion: str | None = None
+    peso: float | None = None
+    peso_pct: float | None = None
+    #: Inferido de la descripción o del tipo con la misma regla que alimenta
+    #: `peso_precio_pct`; no es un campo de CODICE.
+    es_precio: bool = False
+    #: Códigos crudos de las listas de CODICE, sin traducir (ver el parser).
+    tipo_codigo: str | None = None
+    subtipo_codigo: str | None = None
+    nota: str | None = None
+
+
+@dataclass
+class GarantiaExigida:
+    """Una `cac:RequiredFinancialGuarantee`.
+
+    ``porcentaje`` es el `cbc:AmountRate` tal cual —«5» para el 5 %, que es la
+    lectura que se asume y que `scripts/medir_terminos_codice.py` permite
+    comprobar contra el feed—; ``importe`` es `cbc:LiabilityAmount`.
+    """
+
+    orden: int
+    lote_numero: str | None = None
+    tipo_codigo: str | None = None
+    porcentaje: float | None = None
+    importe: float | None = None
+    moneda: str | None = None
+    descripcion: str | None = None
+
+
+@dataclass
+class RequisitoSolvencia:
+    """Un requisito de `cac:TendererQualificationRequest`.
+
+    ``clase`` dice de qué elemento sale: técnica (`TechnicalEvaluationCriteria`),
+    económica (`FinancialEvaluationCriteria`) o clasificación empresarial
+    (`RequiredBusinessClassificationScheme/ClassificationCategory`, cuyo
+    `CodeValue` va en ``tipo_codigo``).
+    """
+
+    orden: int
+    clase: ClaseSolvencia
+    lote_numero: str | None = None
+    tipo_codigo: str | None = None
+    descripcion: str | None = None
+    umbral_importe: float | None = None
+    moneda: str | None = None
+
+
+@dataclass
+class CondicionesCodice:
+    """Las tres familias de un expediente, de todos sus ámbitos a la vez.
+
+    Una lista vacía significa «el anuncio no lo trae», nunca «bórralo»: la fase
+    de adjudicación deja de publicar `cac:TenderingTerms` igual que deja de
+    publicar el plazo, y el upsert solo reemplaza una familia cuando la nueva
+    versión trae al menos una fila de ella (ver `_replace_condiciones`).
+    """
+
+    criterios: list[CriterioAdjudicacion] = field(default_factory=list)
+    garantias: list[GarantiaExigida] = field(default_factory=list)
+    solvencia: list[RequisitoSolvencia] = field(default_factory=list)
+
+
 @dataclass
 class Licitacion:
     id_externo: str
@@ -212,6 +312,11 @@ class Licitacion:
     #: órgano lo tenga sin volver a abrir el XML, igual que
     #: `Adjudicacion.lote_numero_raw`.
     organo_dir3: str | None = None
+    #: Criterios, garantías y solvencia de `cac:TenderingTerms` (v149),
+    #: **parse-only**: viven en sus tres tablas, no en `licitaciones`. `None`
+    #: = el camino que construyó la licitación no lee CODICE (TED, PSCP…), y
+    #: entonces el upsert no toca lo que hubiera.
+    condiciones: CondicionesCodice | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
@@ -240,10 +345,10 @@ class DocumentoReferencia:
 # Fragmentos SQL pre-computados (evitan recálculo por fila)
 # ---------------------------------------------------------------------------
 
-# `organo_dir3` es parse-only (ver su docstring): nunca es columna de
-# `licitaciones`, así que se excluye de las columnas del INSERT. Mismo
-# patrón que `lote_numero_raw` en `Adjudicacion`.
-_LIC_PARSE_ONLY_FIELDS = frozenset({"organo_dir3"})
+# `organo_dir3` y `condiciones` son parse-only (ver sus docstrings): nunca son
+# columnas de `licitaciones`, así que se excluyen de las columnas del INSERT.
+# Mismo patrón que `lote_numero_raw` en `Adjudicacion`.
+_LIC_PARSE_ONLY_FIELDS = frozenset({"organo_dir3", "condiciones"})
 _LIC_KEYS = tuple(f.name for f in fields(Licitacion) if f.name not in _LIC_PARSE_ONLY_FIELDS)
 _LIC_COLS = ", ".join(_LIC_KEYS)
 _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)

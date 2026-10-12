@@ -20,7 +20,17 @@ from typing import Any, NamedTuple
 from lxml import etree
 
 from config import settings
-from db.database import Adjudicacion, DocumentoReferencia, Licitacion, Lote
+from db.database import (
+    Adjudicacion,
+    ClaseSolvencia,
+    CondicionesCodice,
+    CriterioAdjudicacion,
+    DocumentoReferencia,
+    GarantiaExigida,
+    Licitacion,
+    Lote,
+    RequisitoSolvencia,
+)
 from observability.logging import get_logger
 from scraper.puerta_tecnologica import MOTIVO_ADMITIDA, senal_tecnologica
 from shared.dates import to_iso_date, to_iso_datetime
@@ -519,6 +529,263 @@ def parse_peso_precio(entry: Any) -> float | None:
     return None
 
 
+# ── Condiciones oficiales: criterios, garantías y solvencia (v149) ───────────
+#
+# Los nombres de elemento se buscan por `local-name()`, como los criterios de
+# arriba: el feed mezcla expedientes publicados con el esquema CODICE
+# (`...Criteria`) y con la grafía de UBL 2.1 (`...Criterion`), y el prefijo de
+# namespace de cada uno no aporta nada a la lectura.
+
+#: Contenedores de un criterio de adjudicación: el de primer nivel y el
+#: anidado, en las dos grafías. Un nodo con uno de estos nombres es un
+#: criterio; cualquier otro hijo de ``AwardingTerms`` (o de un criterio) es un
+#: campo o un envoltorio, y se recorre buscando criterios dentro.
+_CRITERIO_CONTENEDORES = frozenset(
+    {
+        "AwardingCriteria",
+        "AwardingCriterion",
+        "SubordinateAwardingCriteria",
+        "SubordinateAwardingCriterion",
+    }
+)
+
+_SOLVENCIA_POR_ELEMENTO: dict[str, ClaseSolvencia] = {
+    "TechnicalEvaluationCriteria": "tecnica",
+    "TechnicalEvaluationCriterion": "tecnica",
+    "FinancialEvaluationCriteria": "economica",
+    "FinancialEvaluationCriterion": "economica",
+}
+
+
+def _hijo(*nombres: str) -> str:
+    """XPath de un hijo directo por nombre local, en cualquier namespace."""
+    condicion = " or ".join(f"local-name()='{nombre}'" for nombre in nombres)
+    return f"./*[{condicion}]"
+
+
+def _moneda(nodo: Any, nombre: str) -> str | None:
+    valores = nodo.xpath(f"{_hijo(nombre)}/@currencyID")
+    if not valores:
+        return None
+    return str(valores[0]).strip() or None
+
+
+def _es_elemento(nodo: Any) -> bool:
+    """Descarta comentarios e instrucciones de proceso, que lxml también itera."""
+    return isinstance(nodo.tag, str)
+
+
+def _escala_pct(pesos_raiz: list[float]) -> float | None:
+    """Factor que lleva un peso de este ámbito a % sobre 100, o ``None``.
+
+    La misma regla que ``parse_peso_precio``: la suma de los criterios raíz
+    declara la escala (≈100 porcentajes, ≈1 fracciones); fuera de ambas bandas
+    no se puede afirmar y ningún criterio del ámbito lleva porcentaje.
+    """
+    total = sum(p for p in pesos_raiz if p >= 0)
+    if _PESO_TOTAL_PORCENTAJE[0] <= total <= _PESO_TOTAL_PORCENTAJE[1]:
+        return 1.0
+    if _PESO_TOTAL_FRACCION[0] <= total <= _PESO_TOTAL_FRACCION[1]:
+        return 100.0
+    return None
+
+
+def _criterios_del_ambito(terms: Any, lote_numero: str | None) -> list[CriterioAdjudicacion]:
+    """Criterios de un ``TenderingTerms``, en orden de documento, con su padre.
+
+    Se recorre el árbol en vez de pedir los nodos con ``//`` porque lo que
+    importa de un subcriterio es **de quién** es: el padre es el criterio más
+    cercano por encima. Un criterio vacío (sin descripción, peso, tipo ni nota)
+    no se guarda; si tenía hijos, estos suben a su abuelo.
+    """
+    crudos: list[tuple[Any, int | None]] = []
+
+    def recorrer(nodo: Any, padre: int | None) -> None:
+        for hijo in nodo:
+            if not _es_elemento(hijo):
+                continue
+            if etree.QName(hijo).localname in _CRITERIO_CONTENEDORES:
+                crudos.append((hijo, padre))
+                recorrer(hijo, len(crudos) - 1)
+            else:
+                recorrer(hijo, padre)
+
+    for awarding_terms in terms.xpath(_hijo("AwardingTerms")):
+        recorrer(awarding_terms, None)
+
+    leidos: list[CriterioAdjudicacion] = []
+    #: Índice crudo → orden asignado, solo para los criterios que se guardan.
+    orden_por_indice: dict[int, int] = {}
+    #: Índice crudo de un descartado → su antepasado guardado más cercano.
+    heredado: dict[int, int | None] = {}
+    for indice, (nodo, padre) in enumerate(crudos):
+        # Si el padre se descartó, el ancestro es el que heredó el descartado.
+        ancestro = padre if padre is None or padre in orden_por_indice else heredado.get(padre)
+        criterio = CriterioAdjudicacion(
+            orden=0,
+            lote_numero=lote_numero,
+            descripcion=_text(nodo, _hijo("Description", "Name")),
+            peso=_float(nodo, _CRITERIO_PESO_XPATH),
+            tipo_codigo=_text(nodo, _CRITERIO_TIPO_XPATH),
+            subtipo_codigo=_text(
+                nodo, _hijo("AwardingCriteriaSubTypeCode", "AwardingCriterionSubTypeCode")
+            ),
+            nota=_text(nodo, _hijo("Note")),
+        )
+        vacio = not any(
+            (
+                criterio.descripcion,
+                criterio.peso is not None,
+                criterio.tipo_codigo,
+                criterio.subtipo_codigo,
+                criterio.nota,
+            )
+        )
+        if vacio:
+            heredado[indice] = ancestro
+            continue
+        criterio.orden = len(leidos) + 1
+        criterio.padre_orden = orden_por_indice[ancestro] if ancestro is not None else None
+        criterio.es_precio = _es_criterio_precio(nodo)
+        orden_por_indice[indice] = criterio.orden
+        leidos.append(criterio)
+
+    raiz = [c for c in leidos if c.padre_orden is None]
+    factor = _escala_pct([c.peso for c in raiz if c.peso is not None])
+    if factor is not None:
+        for criterio in raiz:
+            if criterio.peso is not None and criterio.peso >= 0:
+                criterio.peso_pct = round(criterio.peso * factor, 4)
+    return leidos
+
+
+def _garantias_del_ambito(terms: Any, lote_numero: str | None) -> list[GarantiaExigida]:
+    garantias: list[GarantiaExigida] = []
+    for nodo in terms.xpath(_hijo("RequiredFinancialGuarantee")):
+        garantia = GarantiaExigida(
+            orden=len(garantias) + 1,
+            lote_numero=lote_numero,
+            tipo_codigo=_text(nodo, _hijo("GuaranteeTypeCode")),
+            porcentaje=_float(nodo, _hijo("AmountRate")),
+            importe=_float(nodo, _hijo("LiabilityAmount")),
+            moneda=_moneda(nodo, "LiabilityAmount"),
+            descripcion=_text(nodo, _hijo("Description")),
+        )
+        if (
+            garantia.tipo_codigo is None
+            and garantia.porcentaje is None
+            and garantia.importe is None
+            and garantia.descripcion is None
+        ):
+            continue
+        garantias.append(garantia)
+    return garantias
+
+
+def _solvencia_del_ambito(terms: Any, lote_numero: str | None) -> list[RequisitoSolvencia]:
+    requisitos: list[RequisitoSolvencia] = []
+
+    def anadir(clase: ClaseSolvencia, **campos: Any) -> None:
+        requisitos.append(
+            RequisitoSolvencia(
+                orden=len(requisitos) + 1, clase=clase, lote_numero=lote_numero, **campos
+            )
+        )
+
+    for peticion in terms.xpath(_hijo("TendererQualificationRequest")):
+        for hijo in peticion:
+            if not _es_elemento(hijo):
+                continue
+            local = etree.QName(hijo).localname
+            clase = _SOLVENCIA_POR_ELEMENTO.get(local)
+            if clase is not None:
+                tipo = _text(
+                    hijo, _hijo("EvaluationCriteriaTypeCode", "EvaluationCriterionTypeCode")
+                )
+                descripcion = _text(hijo, _hijo("Description"))
+                umbral = _float(hijo, _hijo("ThresholdAmount"))
+                if tipo is None and descripcion is None and umbral is None:
+                    continue
+                anadir(
+                    clase,
+                    tipo_codigo=tipo,
+                    descripcion=descripcion,
+                    umbral_importe=umbral,
+                    moneda=_moneda(hijo, "ThresholdAmount"),
+                )
+            elif local == "RequiredBusinessClassificationScheme":
+                for categoria in hijo.xpath(".//*[local-name()='ClassificationCategory']"):
+                    codigo = _text(categoria, _hijo("CodeValue"))
+                    nombre = _text(categoria, _hijo("Name", "Description"))
+                    if codigo is None and nombre is None:
+                        continue
+                    anadir("clasificacion", tipo_codigo=codigo, descripcion=nombre)
+    return requisitos
+
+
+def parse_condiciones(entry: Any) -> CondicionesCodice:
+    """Criterios, garantías y solvencia de ``cac:TenderingTerms`` (v149).
+
+    Lee el bloque del expediente (``ContractFolderStatus/cac:TenderingTerms``)
+    y el de cada lote con número (``cac:ProcurementProjectLot/cac:TenderingTerms``),
+    y devuelve las tres familias aplanadas con ``lote_numero`` para distinguir
+    el ámbito (``None`` = expediente). Un lote sin ``cbc:ID`` se ignora por lo
+    mismo que en :func:`parse_lotes`: no hay a qué lote atribuirlo.
+
+    **Qué se guarda crudo y por qué.** Los códigos (`AwardingCriteriaTypeCode`,
+    `GuaranteeTypeCode`, `EvaluationCriteriaTypeCode`, la categoría de
+    clasificación) van tal cual: sus listas controladas no se han podido
+    verificar contra el servidor de la Plataforma, y traducirlas de memoria
+    convertiría un código en una etiqueta plausible pero falsa (el criterio de
+    ``shared/procedimientos.py``). La UI enseña descripción, peso e importe,
+    que no necesitan lista.
+
+    **Cobertura: sin medir todavía.** La sesión que escribió esto no pudo leer
+    el feed (la política de red bloqueaba ``contrataciondelsectorpublico.gob.es``
+    el 2026-10-12). Los nombres de los criterios coinciden con los de un parser
+    público independiente que sí lee el feed (``cac:AwardingTerms/
+    cac:AwardingCriteria`` con ``AwardingCriteriaTypeCode``,
+    ``AwardingCriteriaSubTypeCode``, ``Description``, ``WeightNumeric`` y
+    ``Note``, también bajo ``ProcurementProjectLot/cac:TenderingTerms``); los
+    de garantía y solvencia salen del esquema CODICE/UBL. Qué porcentaje de
+    entradas trae cada bloque, y a qué nivel, lo mide
+    ``scripts/medir_terminos_codice.py`` sobre páginas del ATOM; mientras
+    tanto, ``parser_field_null_total`` lo cuenta en producción con los campos
+    ``criterios_adjudicacion``, ``garantias`` y ``solvencia``.
+    """
+    cfs = "./cacext:ContractFolderStatus"
+    condiciones = CondicionesCodice()
+    ambitos: list[tuple[Any, str | None]] = [
+        (terms, None) for terms in entry.xpath(f"{cfs}/cac:TenderingTerms", namespaces=NS)
+    ]
+    for lot_elem in entry.xpath(f"{cfs}/cac:ProcurementProjectLot", namespaces=NS):
+        numero = _text(lot_elem, "./cbc:ID")
+        if not numero:
+            continue
+        ambitos.extend(
+            (terms, numero) for terms in lot_elem.xpath("./cac:TenderingTerms", namespaces=NS)
+        )
+    for terms, lote_numero in ambitos:
+        condiciones.criterios.extend(_criterios_del_ambito(terms, lote_numero))
+        condiciones.garantias.extend(_garantias_del_ambito(terms, lote_numero))
+        condiciones.solvencia.extend(_solvencia_del_ambito(terms, lote_numero))
+    return condiciones
+
+
+def _condiciones_o_none(entry: Any) -> CondicionesCodice | None:
+    """:func:`parse_condiciones` sin poder tumbar el parseo de la entry.
+
+    Es un añadido: una entry que se parseaba antes de v149 tiene que seguir
+    parseándose aunque su ``TenderingTerms`` traiga algo que este código no
+    espera. ``None`` le dice al upsert que no toque lo que ya hubiera.
+    """
+    try:
+        return parse_condiciones(entry)
+    except Exception as exc:
+        log.warning("codice_condiciones_parse_error", error=str(exc))
+        return None
+
+
 def parse_lotes(
     entry: Any, licitacion_id: str, *, fallback_fecha_limite: str | None = None
 ) -> list[Lote]:
@@ -701,6 +968,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         tramitacion=tramitacion,
         peso_precio_pct=peso_precio_pct,
         tipos_anuncio=_tipos_anuncio(entry, cfs),
+        condiciones=_condiciones_o_none(entry),
     )
 
     # Track NULL % for critical fields (silent data loss detection)
@@ -722,6 +990,13 @@ def parse_entry(entry: Any) -> Licitacion | None:
             "procedimiento": lic.procedimiento,
             "tramitacion": lic.tramitacion,
             "peso_precio_pct": lic.peso_precio_pct,
+            # v149: cobertura de cada familia de `cac:TenderingTerms`. Una
+            # lista vacía cuenta como NULL: es «este anuncio no lo trae».
+            "criterios_adjudicacion": (lic.condiciones.criterios or None)
+            if lic.condiciones
+            else None,
+            "garantias": (lic.condiciones.garantias or None) if lic.condiciones else None,
+            "solvencia": (lic.condiciones.solvencia or None) if lic.condiciones else None,
         }
         for field, value in _critical.items():
             if value is None:
@@ -832,6 +1107,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         tramitacion=tramitacion,
         peso_precio_pct=peso_precio_pct,
         tipos_anuncio=_tipos_anuncio(entry, cfs),
+        condiciones=_condiciones_o_none(entry),
     )
 
 
