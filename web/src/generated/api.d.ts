@@ -1235,7 +1235,13 @@ export interface paths {
         post?: never;
         /**
          * Remove Totp
-         * @description Desactiva MFA solo desde una sesión que ya superó MFA.
+         * @description Desactiva el segundo factor con un código vigente o uno de recuperación.
+         *
+         *     El código se pide aunque la sesión ya sea reciente y haya pasado el segundo
+         *     factor: sin él, quien se sentara delante de un navegador abierto podía
+         *     quitarlo sin tener el móvil, que es justo lo que el segundo factor protege.
+         *     Uno de recuperación también vale —quien perdió el móvil es quien más
+         *     necesita quitarlo— y queda gastado.
          */
         delete: operations["remove_totp_api_v1_auth_totp_delete"];
         options?: never;
@@ -1275,6 +1281,10 @@ export interface paths {
         /**
          * Setup Totp
          * @description Inicia el alta de TOTP; el secreto solo se revela en esta respuesta.
+         *
+         *     Un alta sin confirmar se puede empezar de nuevo: quien cerró la pestaña con
+         *     el código a medias recibe un secreto nuevo. Solo un segundo factor ya
+         *     confirmado responde 409.
          */
         post: operations["setup_totp_api_v1_auth_totp_setup_post"];
         delete?: never;
@@ -18275,7 +18285,11 @@ export interface operations {
                 session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpCodeRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -18286,6 +18300,27 @@ export interface operations {
                     "application/json": components["schemas"]["StatusOk"];
                 };
             };
+            /** @description El código no es válido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La sesión no es reciente: hay que volver a entrar */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La cuenta no tiene el segundo factor activo */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18294,6 +18329,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Demasiados códigos fallidos seguidos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
