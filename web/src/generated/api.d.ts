@@ -6723,6 +6723,12 @@ export interface components {
              * @enum {string}
              */
             familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /**
+             * Fuente
+             * @default pliego
+             * @enum {string}
+             */
+            fuente: "pliego" | "placsp";
             /** Items */
             items?: components["schemas"]["ChecklistItem"][];
             /**
@@ -6750,6 +6756,12 @@ export interface components {
              * @enum {string}
              */
             familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /**
+             * Fuente
+             * @default pliego
+             * @enum {string}
+             */
+            fuente: "pliego" | "placsp";
             /** Motivo */
             motivo: string;
             /** Requisito */
@@ -9328,6 +9340,8 @@ export interface components {
          * @description Contraste completo de una oportunidad contra la capacidad declarada.
          */
         GoNoGoChecklist: {
+            /** Condiciones Actualizadas */
+            condiciones_actualizadas?: string | null;
             /**
              * Cumple
              * @default 0
@@ -9370,6 +9384,11 @@ export interface components {
              * @default 0
              */
             total_requisitos: number;
+            /**
+             * Usa Condiciones Oficiales
+             * @default false
+             */
+            usa_condiciones_oficiales: boolean;
         };
         /** GoNoGoCriterioOut */
         GoNoGoCriterioOut: {
