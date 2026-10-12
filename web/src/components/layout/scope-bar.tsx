@@ -544,8 +544,8 @@ export function ScopeBar() {
   // Las dos ramas comparten cabecera y el hueco del final (exportar y campana),
   // en la misma posición del árbol; sólo cambia el contenido de la izquierda.
   // Antes cada rama pintaba su propia `NotificationBell`: al pasar de un
-  // espacio con ámbito a otro sin él, React la desmontaba, cerraba el SSE de
-  // `/licitaciones/stream`, abría otro y perdía el contador en vivo.
+  // espacio con ámbito a otro sin él, React la desmontaba y la volvía a montar
+  // (entonces cerraba y reabría un SSE; hoy perdería el menú abierto).
   return (
     <>
       {/* La barra scrollea en horizontal, así que el borde no puede vivir dentro

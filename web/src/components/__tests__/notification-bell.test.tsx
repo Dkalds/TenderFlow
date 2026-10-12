@@ -1,47 +1,113 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const apiMutate = vi.fn().mockResolvedValue({});
-vi.mock("@/lib/api-client", () => ({
+/*
+ * CU-29 — la campana enseña solo lo tuyo y marca como leído lo que abres.
+ *
+ * Hasta 2026-10-12 mezclaba contadores de mercado, licitaciones en vivo por
+ * SSE y una lista de novedades siempre vacía, y marcaba todo como leído al
+ * abrirse. Estos tests fijan lo contrario.
+ */
+
+type Query = Record<string, unknown>;
+
+const { apiMutate, apiGet, fetchWithAuth, toast } = vi.hoisted(() => ({
+  apiMutate: vi.fn().mockResolvedValue({}),
+  apiGet: vi.fn(),
   fetchWithAuth: vi.fn(() => new Promise(() => {})),
+  toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }),
+}));
+vi.mock("@/lib/api-client", () => ({
+  apiGet: (...a: unknown[]) => apiGet(...a),
   apiMutate: (...a: unknown[]) => apiMutate(...a),
+  fetchWithAuth: (...a: unknown[]) => fetchWithAuth(...(a as [])),
 }));
 vi.mock("@/lib/report-error", () => ({ reportError: vi.fn() }));
+vi.mock("@/hooks/use-organization", () => ({
+  useActiveOrganizationId: () => 7,
+  organizacionResuelta: (id: unknown) => id !== undefined,
+}));
+vi.mock("sonner", () => ({ toast }));
+// «Ver todas» se carga bajo demanda con `next/dynamic`; aquí, el componente real.
+vi.mock("next/dynamic", async () => {
+  const { VerTodasSheet } = await import("@/components/campana/ver-todas-sheet");
+  return { default: () => VerTodasSheet };
+});
 
-// jsdom has no EventSource — provide a controllable stub.
-type Listener = (event: { data: string }) => void;
-class MockEventSource {
-  static instances: MockEventSource[] = [];
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  listeners: Record<string, Listener> = {};
-  cerrado = false;
-  constructor(public url: string) {
-    MockEventSource.instances.push(this);
-  }
-  addEventListener(type: string, cb: Listener) {
-    this.listeners[type] = cb;
-  }
-  close() {
-    this.cerrado = true;
-  }
+import { NotificationBell } from "@/components/notification-bell";
+
+const REGLA_ALERTA = {
+  id: 5,
+  created_at: "2026-10-11T09:00:00+00:00",
+  type: "watchlist_rule",
+  title: "SAP en Madrid",
+  body: null,
+  licitacion_id: "LIC-9",
+  rule_id: 3,
+  pursuit_id: null,
+  read: false,
+};
+const MENCION = {
+  id: 6,
+  created_at: "2026-10-10T09:00:00+00:00",
+  type: "pursuit_mencion:44",
+  title: "Te han mencionado en un comentario",
+  body: null,
+  licitacion_id: "LIC-2",
+  rule_id: null,
+  pursuit_id: 12,
+  read: true,
+};
+const REGLA = {
+  id: 3,
+  nombre: "SAP",
+  keyword: "SAP",
+  cpv: null,
+  min_importe: 50000,
+  ccaa: "Madrid",
+  frequency: "daily",
+  active: true,
+  tecnologia: null,
+  organo: null,
+  procedimiento: null,
+  tipo_contrato: null,
+  banda_min: null,
+  plazo_min_dias: null,
+  organization_id: 7,
+  visibility: "private",
+  match_count: 4,
+  email: null,
+};
+
+function pagina(items: unknown[], extra: Partial<{ total: number; sin_leer: number }> = {}) {
+  return {
+    items,
+    total: extra.total ?? items.length,
+    sin_leer: extra.sin_leer ?? items.filter((a) => !(a as { read: boolean }).read).length,
+    limit: 8,
+    offset: 0,
+  };
 }
 
-import { MARGEN_OCULTA_MS, NotificationBell } from "@/components/notification-bell";
+function backend(items: unknown[] = [REGLA_ALERTA, MENCION], extra = {}) {
+  apiGet.mockImplementation(async (path: string, init?: { params?: { query?: Query } }) => {
+    if (path === "/api/v1/notifications/alerts") return { ...pagina(items, extra), ...init?.params?.query };
+    if (path === "/api/v1/watchlist/rules") return { items: [REGLA] };
+    throw new Error(`ruta inesperada ${path}`);
+  });
+}
 
-// Radix's DropdownMenu trigger opens on pointer down (not on a synthetic
-// `click`) and only mounts its content in the DOM while open.
-function openMenu(trigger: HTMLElement) {
+// El disparador de Radix abre con pointerdown (no con un `click` sintético) y
+// solo monta el contenido mientras está abierto.
+function abrirMenu() {
+  const trigger = screen.getByRole("button", { name: /Notificaciones/ });
   fireEvent.pointerDown(trigger, { button: 0, pointerId: 1, pointerType: "mouse" });
   fireEvent.pointerUp(trigger, { button: 0, pointerId: 1, pointerType: "mouse" });
 }
 
-function renderBell(
-  data?: unknown,
-  qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
-) {
-  if (data !== undefined) qc.setQueryData(["notifications"], data);
+function renderBell() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
       <NotificationBell />
@@ -49,73 +115,107 @@ function renderBell(
   );
 }
 
+class EventSourceEspia {
+  static creados = 0;
+  constructor() {
+    EventSourceEspia.creados += 1;
+  }
+}
+
 beforeEach(() => {
-  MockEventSource.instances = [];
-  vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+  EventSourceEspia.creados = 0;
+  vi.stubGlobal("EventSource", EventSourceEspia as unknown as typeof EventSource);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
   apiMutate.mockClear();
+  apiGet.mockReset();
+  toast.mockClear();
+  toast.error.mockClear();
 });
 
-describe("NotificationBell", () => {
-  it("shows an empty state and 'no live connection' before SSE opens", () => {
-    renderBell({ items: [], unread_count: 0, hoy: { calientes: 0, vencen_48h: 0, nuevas_24h: 0, total_activas: 0 } });
-    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
-    expect(screen.getByText("Sin notificaciones")).toBeInTheDocument();
-    expect(screen.getByText("Sin conexión en vivo")).toBeInTheDocument();
+describe("NotificationBell — solo lo tuyo", () => {
+  it("cuenta lo sin leer de la organización activa y abrirla no marca nada", async () => {
+    backend();
+    renderBell();
+
+    expect(await screen.findByRole("button", { name: "Notificaciones (1 sin leer)" })).toBeInTheDocument();
+    expect(apiGet).toHaveBeenCalledWith(
+      "/api/v1/notifications/alerts",
+      expect.objectContaining({
+        params: { query: { organization_id: 7, estado: "todas", limit: 8, offset: 0 } },
+      }),
+    );
+
+    abrirMenu();
+    expect(screen.getByRole("menuitem", { name: /^SAP en Madrid/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Te han mencionado en un comentario" })).toHaveAttribute("href", "/oportunidades/12");
+    expect(apiMutate).not.toHaveBeenCalled();
   });
 
-  it("renders notification items, hoy counters and an unread badge", () => {
-    renderBell({
-      items: [
-        { id: "L1", titulo: "Licitación caliente", importe: 100, organo_contratacion: "Ayto", read: false },
-        { id: "L2", titulo: null, importe: null, organo_contratacion: null, read: true },
-      ],
-      unread_count: 3,
-      hoy: { calientes: 2, vencen_48h: 1, nuevas_24h: 4, total_activas: 10 },
-    });
-    // Unread badge in the trigger aria-label (present even before opening).
-    const trigger = screen.getByRole("button", { name: /3 sin leer/ });
-    openMenu(trigger);
-    expect(screen.getByText("Licitación caliente")).toBeInTheDocument();
-    expect(screen.getByText("Nuevas 24h")).toBeInTheDocument();
+  it("no pinta el mercado ni abre un SSE", async () => {
+    backend();
+    renderBell();
+    abrirMenu();
+    await screen.findByRole("menuitem", { name: /^SAP en Madrid/ });
+
+    expect(screen.queryByText("Nuevas 24h")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sin conexión en vivo")).not.toBeInTheDocument();
+    expect(EventSourceEspia.creados).toBe(0);
+    expect(fetchWithAuth).not.toHaveBeenCalledWith("/api/v1/notifications", expect.anything());
   });
 
-  it("marks all as read when the bell is clicked", async () => {
-    renderBell({
-      items: [{ id: "L1", titulo: "X", importe: null, organo_contratacion: null, read: false }],
-      unread_count: 1,
-      hoy: { calientes: 0, vencen_48h: 0, nuevas_24h: 0, total_activas: 0 },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Notificaciones/ }));
+  it("abrir un aviso lo marca como leído a él solo", async () => {
+    backend();
+    renderBell();
+    await screen.findByRole("button", { name: /1 sin leer/ });
+    abrirMenu();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /^SAP en Madrid/ }));
+
     await waitFor(() =>
-      expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/notifications/read", { ids: ["L1"] }),
+      expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/notifications/alerts/read", {
+        ids: [5],
+        organization_id: 7,
+      }),
+    );
+    expect(apiMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("«Marcar todo como leído» es una acción explícita", async () => {
+    backend();
+    renderBell();
+    await screen.findByRole("button", { name: /1 sin leer/ });
+    abrirMenu();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Marcar todo como leído" }));
+
+    await waitFor(() =>
+      expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/notifications/alerts/read", {
+        all: true,
+        organization_id: 7,
+      }),
     );
   });
 
-  it("F5.6: una alerta sobre un expediente se puede silenciar o posponer desde la campana", async () => {
-    const alerta = {
-      id: 5,
-      created_at: null,
-      type: "rule_match",
-      title: "SAP en Madrid",
-      body: null,
-      licitacion_id: "LIC-9",
-      rule_id: 3,
-      pursuit_id: null,
-      read: true,
-    };
-    renderBell({
-      items: [],
-      unread_count: 0,
-      alerts: [alerta, { ...alerta, id: 6, title: "Sin expediente", licitacion_id: null }],
-      alerts_unread_count: 0,
-      hoy: { calientes: 0, vencen_48h: 0, nuevas_24h: 0, total_activas: 0 },
-    });
-    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
+  it("sin nada pendiente no ofrece marcar y lo dice en lenguaje de usuario", async () => {
+    backend([]);
+    renderBell();
+    await waitFor(() => expect(apiGet).toHaveBeenCalled());
+    abrirMenu();
 
-    // Sin expediente no hay nada que silenciar: sólo una pareja de acciones.
+    expect(await screen.findByText(/Nada por ahora/)).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Marcar todo como leído" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Ver todas/ })).not.toBeInTheDocument();
+  });
+
+  it("F5.6: una alerta sobre un expediente se puede ocultar o posponer desde la campana", async () => {
+    backend([REGLA_ALERTA, { ...REGLA_ALERTA, id: 8, title: "Sin expediente", licitacion_id: null, rule_id: null }]);
+    renderBell();
+    await screen.findByRole("button", { name: /sin leer/ });
+    abrirMenu();
+
+    // Sin expediente no hay nada que ocultar: sólo una pareja de acciones.
     expect(screen.getAllByRole("menuitem", { name: /Ocultar del Radar 30 días/ })).toHaveLength(1);
     fireEvent.click(screen.getByRole("menuitem", { name: "Ocultar del Radar 30 días: SAP en Madrid" }));
     await waitFor(() =>
@@ -127,144 +227,41 @@ describe("NotificationBell", () => {
         dias: 30,
       }),
     );
+  });
 
-    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Recordármelo en 7 días: SAP en Madrid" }));
+  it("«Silenciar esta regla» la pone en pausa sin tocar sus criterios", async () => {
+    backend();
+    renderBell();
+    await screen.findByRole("button", { name: /1 sin leer/ });
+    abrirMenu();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Silenciar esta regla: SAP en Madrid" }));
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledWith("PUT", "/api/v1/watchlist/rules/3", expect.anything()));
+    const [, , cuerpo] = apiMutate.mock.calls.find((c) => c[0] === "PUT")!;
+    expect(cuerpo).toMatchObject({ active: false, keyword: "SAP", min_importe: 50000, ccaa: "Madrid" });
+    expect(cuerpo).not.toHaveProperty("visibility");
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("Regla en pausa: deja de avisarte", expect.anything()));
+  });
+
+  it("«Ver todas» abre la bandeja completa con filtro de lectura", async () => {
+    backend([REGLA_ALERTA, MENCION], { total: 30, sin_leer: 1 });
+    renderBell();
+    await screen.findByRole("button", { name: /1 sin leer/ });
+    abrirMenu();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ver todas (30)" }));
+
+    const panel = await screen.findByRole("dialog", { name: "Notificaciones" });
+    await within(panel).findByText("1–20 de 30");
+    fireEvent.click(within(panel).getByRole("button", { name: /Sin leer/ }));
     await waitFor(() =>
-      expect(apiMutate).toHaveBeenCalledWith(
-        "POST",
-        "/api/v1/radar/dismissals",
-        expect.objectContaining({ accion: "posponer", dias: 7 }),
+      expect(apiGet).toHaveBeenCalledWith(
+        "/api/v1/notifications/alerts",
+        expect.objectContaining({
+          params: { query: { organization_id: 7, estado: "sin_leer", limit: 20, offset: 0 } },
+        }),
       ),
     );
-  });
-
-  it("surfaces a live SSE item and clears the 'no connection' notice", () => {
-    renderBell({ items: [], unread_count: 0, hoy: { calientes: 0, vencen_48h: 0, nuevas_24h: 0, total_activas: 0 } });
-    const es = MockEventSource.instances[0];
-    act(() => es.onopen?.());
-    act(() =>
-      es.listeners["licitaciones_nuevas"]?.({ data: JSON.stringify({ message: "5 nuevas licitaciones" }) }),
-    );
-    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
-    expect(screen.getByText("5 nuevas licitaciones")).toBeInTheDocument();
-    expect(screen.queryByText("Sin conexión en vivo")).not.toBeInTheDocument();
-  });
-});
-
-/*
- * Pestaña oculta: cada SSE abierto ocupa una de las 20 plazas de concurrencia
- * de uvicorn en la API, también el de una pestaña olvidada en segundo plano.
- * Se cierra tras un margen y se reabre al volver, pidiendo otra vez el feed.
- */
-describe("NotificationBell — SSE con la pestaña oculta", () => {
-  let visibilidad: DocumentVisibilityState = "visible";
-  const VACIO = { items: [], unread_count: 0, hoy: { calientes: 0, vencen_48h: 0, nuevas_24h: 0, total_activas: 0 } };
-
-  function cambiarVisibilidad(estado: DocumentVisibilityState) {
-    visibilidad = estado;
-    act(() => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-  }
-
-  const avanzar = (ms: number) =>
-    act(() => {
-      vi.advanceTimersByTime(ms);
-    });
-
-  beforeEach(() => {
-    visibilidad = "visible";
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibilidad });
-    // Solo los temporizadores de la campana (margen y backoff); el resto del
-    // árbol sigue con los reales.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    // Vuelve a la propiedad de jsdom (la del prototipo).
-    delete (document as { visibilityState?: unknown }).visibilityState;
-  });
-
-  it("no cierra por un cambio rápido de pestaña: el margen se reinicia al volver", () => {
-    renderBell(VACIO);
-    const es = MockEventSource.instances[0];
-
-    cambiarVisibilidad("hidden");
-    avanzar(MARGEN_OCULTA_MS - 1);
-    cambiarVisibilidad("visible");
-    avanzar(MARGEN_OCULTA_MS);
-
-    expect(es.cerrado).toBe(false);
-    expect(MockEventSource.instances).toHaveLength(1);
-  });
-
-  it("cierra el SSE tras el margen oculta y, al volver, reconecta y vuelve a pedir el feed", () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-    const invalidar = vi.spyOn(qc, "invalidateQueries");
-    renderBell(VACIO, qc);
-    const primera = MockEventSource.instances[0];
-    act(() => primera.onopen?.());
-
-    cambiarVisibilidad("hidden");
-    avanzar(MARGEN_OCULTA_MS);
-
-    expect(primera.cerrado).toBe(true);
-    // Oculta no reintenta: la plaza queda libre hasta que se vuelva.
-    avanzar(10 * MARGEN_OCULTA_MS);
-    expect(MockEventSource.instances).toHaveLength(1);
-    expect(invalidar).not.toHaveBeenCalled();
-
-    cambiarVisibilidad("visible");
-
-    expect(MockEventSource.instances).toHaveLength(2);
-    // Sin cancelar el refresco al volver que ya pueda estar en vuelo.
-    expect(invalidar).toHaveBeenCalledWith({ queryKey: ["notifications"] }, { cancelRefetch: false });
-    openMenu(screen.getByRole("button", { name: /Notificaciones/ }));
-    // Reconectando: hasta que abre, no se finge conexión en vivo.
-    expect(screen.getByText("Sin conexión en vivo")).toBeInTheDocument();
-  });
-
-  it("volver a la pestaña no reinicia el backoff de una API que estaba fallando", () => {
-    renderBell(VACIO);
-    // Primer fallo: se reintenta al segundo y el siguiente fallo esperará 2 s.
-    act(() => MockEventSource.instances[0].onerror?.());
-    avanzar(1_000);
-    expect(MockEventSource.instances).toHaveLength(2);
-
-    cambiarVisibilidad("hidden");
-    avanzar(MARGEN_OCULTA_MS);
-    cambiarVisibilidad("visible");
-    // Al volver se conecta en el acto…
-    expect(MockEventSource.instances).toHaveLength(3);
-
-    // …pero si vuelve a fallar, espera lo que tocaba (2 s), no el segundo inicial.
-    act(() => MockEventSource.instances[2].onerror?.());
-    avanzar(1_999);
-    expect(MockEventSource.instances).toHaveLength(3);
-    avanzar(1);
-    expect(MockEventSource.instances).toHaveLength(4);
-  });
-
-  it("una pestaña abierta en segundo plano no conecta hasta que se mira", () => {
-    visibilidad = "hidden";
-    renderBell(VACIO);
-    expect(MockEventSource.instances).toHaveLength(0);
-
-    cambiarVisibilidad("visible");
-    expect(MockEventSource.instances).toHaveLength(1);
-  });
-
-  it("al desmontarse cierra el SSE y deja de escuchar la visibilidad", () => {
-    const { unmount } = renderBell(VACIO);
-    const es = MockEventSource.instances[0];
-
-    unmount();
-    cambiarVisibilidad("hidden");
-    cambiarVisibilidad("visible");
-
-    expect(es.cerrado).toBe(true);
-    expect(MockEventSource.instances).toHaveLength(1);
   });
 });
