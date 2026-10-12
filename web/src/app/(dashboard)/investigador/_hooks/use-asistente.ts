@@ -1,25 +1,29 @@
 "use client";
 
 /**
- * El asistente del Investigador: el hilo y sobre qué responde.
+ * El Investigador y el asistente único: sobre qué responde y con qué ajustes.
  *
- * El alcance es de cada pregunta, no del hilo: todas las licitaciones, o hasta
+ * Hasta 2026-10 el Investigador tenía su propio chat al lado de la lista, con
+ * su conversación. Hoy abre el asistente de toda la consola
+ * (`lib/asistente-store.ts`) con su contexto: todas las licitaciones, o hasta
  * tres resultados marcados en la lista (el asistente lee entonces sus pliegos
- * y cita de dónde saca cada dato). Se manda con cada envío, así que marcar o
- * desmarcar no reinicia la conversación.
+ * y cita de dónde saca cada dato), y sus ajustes —modelo, contexto, ámbito y
+ * «tal cual»—. El alcance es de cada pregunta, así que marcar o desmarcar no
+ * reinicia la conversación; y como el panel no es modal, se marca con él
+ * abierto y la siguiente pregunta ya va sobre lo marcado.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { FiltrosCorpus, OpcionesCorpus } from "@/lib/api-types";
-import { useChat, type UseChatResult } from "@/hooks/use-ask";
+import {
+  MAX_EXPEDIENTES_ASISTENTE,
+  useAsistente,
+  type ExpedienteContexto,
+  type OpcionesAsistente,
+} from "@/lib/asistente-store";
 import type { InvestigadorConfig, SearchResult } from "../_lib/types";
 
-/**
- * Expedientes que el asistente puede leer a la vez. Es el tope de
- * `ids_externos` en `POST /ask`: con más, cada uno llegaría con dos fragmentos
- * de pliego y la comparación sería de títulos.
- */
-export const MAX_EXPEDIENTES_ASISTENTE = 3;
+export { MAX_EXPEDIENTES_ASISTENTE };
 
 /**
  * Expedientes de contexto que admite una pregunta sobre todas las licitaciones
@@ -29,27 +33,26 @@ export const MAX_EXPEDIENTES_ASISTENTE = 3;
 const MAX_CONTEXTO_ASISTENTE = 20;
 
 /** Un resultado marcado para preguntarle al asistente por él. */
-export interface ExpedienteMarcado {
-  id: string;
-  titulo: string;
-}
+export type ExpedienteMarcado = ExpedienteContexto;
 
-export interface Asistente {
-  chat: UseChatResult;
+const SIN_MARCAR: ExpedienteMarcado[] = [];
+
+export interface AsistenteInvestigador {
   /** Pregunta sobre lo marcado (o sobre todo, si no hay nada). Con `nueva`, en una conversación nueva. */
   preguntar: (pregunta: string, opciones?: { nueva?: boolean }) => void;
   /** Pregunta sobre todas las licitaciones, en una conversación nueva. */
   preguntarSobreTodo: (pregunta: string) => void;
+  /** Abre el asistente sobre lo marcado, sin preguntar nada todavía. */
+  abrir: () => void;
   seleccion: ExpedienteMarcado[];
   alternarSeleccion: (resultado: SearchResult) => void;
   quitarSeleccion: (id: string) => void;
   soltarSeleccion: () => void;
   /** Ya hay tres marcados: no cabe otro. */
   seleccionLlena: boolean;
-  hayConversacion: boolean;
 }
 
-export function useAsistente({
+export function useAsistenteInvestigador({
   config,
   filtros,
   talCual,
@@ -57,35 +60,46 @@ export function useAsistente({
   config: InvestigadorConfig;
   filtros: FiltrosCorpus;
   talCual: boolean;
-}): Asistente {
-  const chat = useChat();
-  const { send, reset } = chat;
-  const [seleccion, setSeleccion] = useState<ExpedienteMarcado[]>([]);
+}): AsistenteInvestigador {
+  const contexto = useAsistente((s) => s.contexto);
+  const abrirAsistente = useAsistente((s) => s.abrir);
+  const alternarExpediente = useAsistente((s) => s.alternarExpediente);
+  const quitarExpediente = useAsistente((s) => s.quitarExpediente);
+  const soltarExpedientes = useAsistente((s) => s.soltarExpedientes);
+  const fijarOpciones = useAsistente((s) => s.fijarOpciones);
 
-  const opciones = useMemo(
-    () => ({ model: config.model || undefined, topK: Math.min(config.topK, MAX_CONTEXTO_ASISTENTE) }),
-    [config.model, config.topK],
+  // Solo es selección del Investigador lo que marcó el Investigador: el
+  // expediente de una ficha abierta antes no aparece marcado en la lista.
+  const seleccion = contexto.origen === "investigador" ? contexto.expedientes : SIN_MARCAR;
+
+  const opcionesCon = useCallback(
+    (sinInterpretar: boolean): OpcionesAsistente => {
+      const extras: OpcionesCorpus = sinInterpretar ? { ...filtros, interpretar: false } : filtros;
+      return {
+        model: config.model || undefined,
+        topK: Math.min(config.topK, MAX_CONTEXTO_ASISTENTE),
+        extras,
+      };
+    },
+    [config.model, config.topK, filtros],
   );
 
   const enviar = useCallback(
-    (pregunta: string, ids: string[], nueva: boolean, sinInterpretar: boolean) => {
-      const q = pregunta.trim();
-      if (!q) return;
-      if (nueva) reset();
-      const extras: OpcionesCorpus = sinInterpretar ? { ...filtros, interpretar: false } : filtros;
-      void send(q, { ...opciones, extras, idsExternos: ids });
+    (pregunta: string, expedientes: ExpedienteMarcado[], nueva: boolean, sinInterpretar: boolean) => {
+      if (!pregunta.trim()) return;
+      abrirAsistente({
+        contexto: { expedientes, origen: "investigador" },
+        opciones: opcionesCon(sinInterpretar),
+        pregunta,
+        nueva,
+      });
     },
-    [reset, send, opciones, filtros],
+    [abrirAsistente, opcionesCon],
   );
 
   const preguntar = useCallback(
     (pregunta: string, opcionesDeEnvio?: { nueva?: boolean }) =>
-      enviar(
-        pregunta,
-        seleccion.map((s) => s.id),
-        Boolean(opcionesDeEnvio?.nueva),
-        talCual,
-      ),
+      enviar(pregunta, seleccion, Boolean(opcionesDeEnvio?.nueva), talCual),
     [enviar, seleccion, talCual],
   );
 
@@ -95,31 +109,47 @@ export function useAsistente({
   // de la frase y la respuesta, sin leerlos.
   const preguntarSobreTodo = useCallback((pregunta: string) => enviar(pregunta, [], true, false), [enviar]);
 
-  const alternarSeleccion = useCallback((resultado: SearchResult) => {
-    setSeleccion((prev) => {
-      if (prev.some((s) => s.id === resultado.id_externo)) {
-        return prev.filter((s) => s.id !== resultado.id_externo);
-      }
-      if (prev.length >= MAX_EXPEDIENTES_ASISTENTE) return prev;
-      return [...prev, { id: resultado.id_externo, titulo: resultado.titulo ?? resultado.id_externo }];
-    });
-  }, []);
+  const abrir = useCallback(
+    () =>
+      abrirAsistente({
+        contexto: { expedientes: seleccion, origen: "investigador" },
+        opciones: opcionesCon(talCual),
+      }),
+    [abrirAsistente, seleccion, opcionesCon, talCual],
+  );
 
-  const quitarSeleccion = useCallback((id: string) => {
-    setSeleccion((prev) => prev.filter((s) => s.id !== id));
-  }, []);
+  const alternarSeleccion = useCallback(
+    (resultado: SearchResult) => {
+      alternarExpediente(
+        { id: resultado.id_externo, titulo: resultado.titulo ?? resultado.id_externo },
+        "investigador",
+      );
+      // Marcar no pasa por `abrir`: los ajustes tienen que viajar igual.
+      fijarOpciones("investigador", opcionesCon(talCual));
+    },
+    [alternarExpediente, fijarOpciones, opcionesCon, talCual],
+  );
 
-  const soltarSeleccion = useCallback(() => setSeleccion([]), []);
+  const quitarSeleccion = useCallback(
+    (id: string) => {
+      if (seleccion.some((s) => s.id === id)) quitarExpediente(id);
+    },
+    [quitarExpediente, seleccion],
+  );
 
-  return {
-    chat,
-    preguntar,
-    preguntarSobreTodo,
-    seleccion,
-    alternarSeleccion,
-    quitarSeleccion,
-    soltarSeleccion,
-    seleccionLlena: seleccion.length >= MAX_EXPEDIENTES_ASISTENTE,
-    hayConversacion: chat.messages.length > 0 || chat.loading || Boolean(chat.error),
-  };
+  const soltarSeleccion = useCallback(() => soltarExpedientes("investigador"), [soltarExpedientes]);
+
+  return useMemo(
+    () => ({
+      preguntar,
+      preguntarSobreTodo,
+      abrir,
+      seleccion,
+      alternarSeleccion,
+      quitarSeleccion,
+      soltarSeleccion,
+      seleccionLlena: seleccion.length >= MAX_EXPEDIENTES_ASISTENTE,
+    }),
+    [preguntar, preguntarSobreTodo, abrir, seleccion, alternarSeleccion, quitarSeleccion, soltarSeleccion],
+  );
 }

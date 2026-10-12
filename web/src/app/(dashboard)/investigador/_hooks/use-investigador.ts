@@ -4,9 +4,11 @@
  * Estado y llamadas de la consola del Investigador.
  *
  * Una sola caja. Lo que se escribe siempre se busca
- * (`POST /api/v1/search/semantic`) y, si además es una pregunta, el asistente
- * la responde (`use-asistente.ts`). Hasta 2026-10 eran dos modos que había que
- * elegir antes de escribir, y se excluían.
+ * (`POST /api/v1/search/semantic`) y, si además es una pregunta, la responde
+ * el asistente único de la consola, que se abre a un lado sin tapar la lista
+ * (`use-asistente.ts`). Hasta 2026-10 eran dos modos que había que elegir
+ * antes de escribir, y se excluían; y hasta entonces también el asistente era
+ * propio del Investigador.
  *
  * - **La consulta vive en la URL** (`?consulta=`) y sus resultados en la caché
  *   de React Query, con la petición entera en la clave. Abrir una ficha y
@@ -26,12 +28,12 @@ import { useFilters } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { investigadorKeys } from "@/lib/query-keys";
 import { formatDate } from "@/lib/utils";
-import { useAskModels, type UseChatResult } from "@/hooks/use-ask";
+import { useAskModels } from "@/hooks/use-ask";
 import { esPregunta } from "../_lib/pregunta";
 import { FUENTE_CON_SIGNIFICADO } from "../_lib/source-label";
 import type { Interpretacion, InvestigadorConfig, SearchResult, SemanticSearchResponse } from "../_lib/types";
 import { useAjustes } from "./use-ajustes";
-import { useAsistente, type ExpedienteMarcado } from "./use-asistente";
+import { useAsistenteInvestigador, type ExpedienteMarcado } from "./use-asistente";
 
 export { MAX_EXPEDIENTES_ASISTENTE, type ExpedienteMarcado } from "./use-asistente";
 
@@ -74,9 +76,10 @@ export interface UseInvestigadorResult {
   /** El ámbito tal como viaja: lo usa «Crear alerta» para llevárselo. */
   filtros: FiltrosCorpus;
 
-  chat: UseChatResult;
   /** Pregunta al asistente sobre lo marcado. Con `nueva`, en una conversación nueva. */
   preguntar: (pregunta: string, opciones?: { nueva?: boolean }) => void;
+  /** Abre el asistente sobre lo marcado (o sobre todo), sin preguntar todavía. */
+  abrirAsistente: () => void;
   /** Los resultados marcados: sobre ellos responde el asistente. Vacío: sobre todas las licitaciones. */
   seleccion: ExpedienteMarcado[];
   alternarSeleccion: (resultado: SearchResult) => void;
@@ -84,7 +87,10 @@ export interface UseInvestigadorResult {
   /** Ya hay tres marcados: no cabe otro. */
   seleccionLlena: boolean;
 
-  /** `true` cuando no hay ni consulta ni conversación que mostrar. */
+  /**
+   * `true` cuando no hay consulta que mostrar. La conversación no cuenta: vive
+   * en el asistente, a un lado, y no ocupa la pantalla.
+   */
   showEmpty: boolean;
 }
 
@@ -182,7 +188,7 @@ export function useInvestigador(): UseInvestigadorResult {
   // lo mueve tiene que poder seguir viéndolo aunque la siguiente no combine.
   if (!fusionDisponible && searchSource === FUENTE_CON_SIGNIFICADO) setFusionDisponible(true);
 
-  const asistente = useAsistente({ config, filtros, talCual });
+  const asistente = useAsistenteInvestigador({ config, filtros, talCual });
   const { preguntarSobreTodo, soltarSeleccion } = asistente;
 
   const { refetch } = busqueda;
@@ -236,12 +242,12 @@ export function useInvestigador(): UseInvestigadorResult {
     fusionDisponible,
     activeSearchFilters,
     filtros,
-    chat: asistente.chat,
     preguntar: asistente.preguntar,
+    abrirAsistente: asistente.abrir,
     seleccion: asistente.seleccion,
     alternarSeleccion: asistente.alternarSeleccion,
     quitarSeleccion: asistente.quitarSeleccion,
     seleccionLlena: asistente.seleccionLlena,
-    showEmpty: consulta.length === 0 && !asistente.hayConversacion,
+    showEmpty: consulta.length === 0,
   };
 }

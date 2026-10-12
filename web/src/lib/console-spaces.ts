@@ -166,7 +166,7 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     label: "Investigador",
     slug: "investigador",
     description: "Pregunta o busca dentro de las licitaciones y sus pliegos.",
-    terminos: "IA copiloto semántica preguntar",
+    terminos: "IA asistente copiloto semántica preguntar",
     icon: ICONO_ESPACIO.investigador,
     group: "analisis",
   },

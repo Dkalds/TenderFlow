@@ -660,9 +660,9 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   `spain-map.tsx`, no un reemplazo de texto.
 - **El gate de tildes lee texto JSX de una sola línea.** Medido con el AST, hoy
   no esconde nada; pero el hueco existe (lo dice el propio script).
-- `animate-pulse` queda en dos sitios, a propósito: el cursor que parpadea
-  mientras se emite una respuesta (`chat-thread.tsx`, `licitacion-ai.tsx`),
-  `motion-safe` y `aria-hidden`. Y ▲/▼ en Ops › Etiquetado es el signo de
+- `animate-pulse` queda en un sitio, a propósito: el cursor que parpadea
+  mientras se emite una respuesta (`chat-thread.tsx`; el de `licitacion-ai.tsx`
+  se fue con el asistente único, 2026-10), `motion-safe` y `aria-hidden`. Y ▲/▼ en Ops › Etiquetado es el signo de
   una tendencia junto a su cifra, no un icono.
 
 **Hallazgos no hechos, o a medias:**
@@ -819,3 +819,64 @@ categorías y dejar los módulos SAP como desglose de ERP.
   que medía qué parte de todo lo licitado nombraba un módulo SAP.
 - Sigue detrás de `mercado_proyectos_modulos` y marcada como experimental: la
   agrupación es nueva y no se ha validado con uso.
+
+### Un solo asistente, con el contexto de la pantalla
+
+Había tres entradas de IA con tres estados para la misma llamada (`POST /ask`
+con o sin expedientes): el copiloto global (un panel lateral), el chat del
+Investigador junto a los resultados marcados y la pestaña IA de la ficha, con
+su resumen. Más una cuarta que nadie contaba: el chat propio del diálogo de
+comparación de la bandeja. Cada una guardaba su conversación, y una pregunta
+hecha en la ficha no estaba en ningún otro sitio.
+
+**El diseño elegido, el más simple que cubre los tres**: un componente
+(`components/asistente/asistente-panel.tsx`), montado una vez en el layout del
+dashboard, y un almacén (`lib/asistente-store.ts`) con tres cosas: si está
+abierto, el contexto (los expedientes, hasta tres, y de qué pantalla vienen)
+con los ajustes de esa pantalla, y lo que se pidió al abrirlo (una pregunta o
+el resumen). La conversación es la del `useChat` de ese único componente, que
+no se desmonta al cerrarse. Se descartaron dos alternativas: llevar también la
+conversación al almacén (duplicaba `useChat` sin ganar nada, porque solo hay
+un sitio que la pinta) y pintar el mismo componente incrustado en el
+Investigador además de en el panel (dos sitios para un estado, y la duda de
+cuál manda cuando están los dos).
+
+Lo que hace cada entrada:
+
+| Entrada | Abre el asistente con |
+|---|---|
+| «Preguntar a la IA» de la ficha (inspector y ficha completa) | el expediente |
+| «Preguntar a la IA» de la oportunidad (nueva) | el expediente de la oportunidad |
+| Investigador: «Preguntar por este» y la barra del asistente | los marcados (hasta 3) o todas, con modelo, contexto, ámbito y «tal cual» |
+| Investigador: una pregunta en la caja | todas las licitaciones, en conversación nueva |
+| Bandeja de comparación | sus expedientes (cierra el diálogo, que es modal) |
+| Barra del Resumen y ⌘K | todas las licitaciones / el contexto que tuviera |
+
+Decisiones que lo sostienen:
+
+- **El contexto es de cada pregunta**, como ya lo era en el Investigador:
+  abrirlo desde otra ficha cambia sobre qué va la siguiente pregunta y no
+  borra las anteriores; cada turno recuerda sobre qué se preguntó (y el hilo
+  avisa si la respuesta no pudo usar el expediente pedido). Los expedientes se
+  quitan desde el propio panel. «Nueva conversación» empieza de cero.
+- **No es modal.** El Investigador había decidido que resultados y asistente
+  conviven; un panel modal habría tapado la lista. El panel deja usar la
+  pantalla de detrás (pulsar fuera no lo cierra, Escape sí), en el
+  Investigador se marca con él abierto y la siguiente pregunta ya va sobre lo
+  marcado, y en pantalla ancha el Investigador le deja su hueco a la derecha.
+- **El resumen del expediente es un turno más** («Resumir el expediente», con
+  uno solo en el contexto): conserva lo que enseñaba la pestaña —el aviso sin
+  pliego con el estado de cada documento, «guardado de una generación
+  anterior», «Regenerar» (rehace ese turno forzando al proveedor) y sus
+  pulgares como `resumen`— y además queda en el historial de las preguntas que
+  vienen después.
+- **Nada se pierde**: streaming, citas validadas y fuentes del pliego, el aviso
+  de comparación incompleta, el modo degradado, los pulgares y el historial
+  siguen siendo los de `ChatThread`. Lo que cambia de sitio: la pestaña IA del
+  inspector y el panel «Asistente IA» de la ficha completa desaparecen (su
+  botón de cabecera abre el asistente), el panel lateral del Investigador pasa
+  a ser una barra que dice el alcance y abre el asistente, y el chat del
+  diálogo de comparación, un botón.
+- Se llama «Asistente» en todas partes: era «Copiloto» en el panel, «Asistente
+  IA» en la ficha y «Asistente» en el Investigador. ⌘K lo sigue encontrando por
+  «copiloto».

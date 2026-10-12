@@ -80,7 +80,7 @@ describe("CommandPalette", () => {
     useUiStore.setState({ commandOpen: true });
     renderPalette();
     expect(screen.getByRole("dialog", { name: /Paleta de comandos/ })).toBeInTheDocument();
-    expect(screen.getByText("Abrir copiloto")).toBeInTheDocument();
+    expect(screen.getByText("Abrir asistente")).toBeInTheDocument();
     expect(screen.getByText(/Cambiar tema/)).toBeInTheDocument();
   });
 

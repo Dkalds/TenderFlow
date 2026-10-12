@@ -6,7 +6,7 @@ import {
   ScrollEdgeProvider,
   ScrollEdgeSentinel,
 } from "@/components/layout/scroll-edge";
-import { CopilotBar } from "@/components/copilot-panel";
+import { BarraAsistente } from "@/components/asistente/barra-asistente";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { TuDia } from "./tu-dia";
 import { DesdeUltimaVisita } from "./desde-ultima-visita";
@@ -112,7 +112,7 @@ export function ResumenView() {
           className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
         >
           <ScrollEdgeSentinel />
-          <CopilotBar className="mb-4 max-w-[720px]" />
+          <BarraAsistente className="mb-4 max-w-[720px]" />
 
           <PrimerosPasos posicion="arriba" onDescartar={recogerFoco} />
           <DesdeUltimaVisita />

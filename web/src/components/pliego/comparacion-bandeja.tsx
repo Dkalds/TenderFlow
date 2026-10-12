@@ -8,20 +8,16 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBandejaComparacion } from "@/hooks/use-comparacion";
 import { MAX_COMPARAR } from "@/hooks/use-comparar-fichas";
+import { useAsistente } from "@/lib/asistente-store";
 import { cn, truncate } from "@/lib/utils";
 
 // Lo de dentro del diálogo solo existe con el diálogo abierto, y es lo pesado
-// de este módulo: la pregunta cruzada arrastra el hilo de chat con
-// react-markdown. Como Radar, la watchlist y el inspector importan de aquí
+// de este módulo. Como Radar, la watchlist y el inspector importan de aquí
 // `CompararBoton`, cargarlo en estático lo metía en el First Load de todas
 // esas rutas por un botón.
 const ComparacionFichasTabla = dynamic(
   () => import("@/components/pliego/comparar-fichas").then((modulo) => modulo.ComparacionFichasTabla),
   { ssr: false, loading: () => <Skeleton className="mt-4 h-[240px] w-full rounded-md" /> },
-);
-const PreguntaComparacion = dynamic(
-  () => import("@/components/pliego/pregunta-comparacion").then((modulo) => modulo.PreguntaComparacion),
-  { ssr: false, loading: () => <Skeleton className="mt-6 h-[120px] w-full rounded-md" /> },
 );
 
 /**
@@ -70,12 +66,29 @@ export function CompararBoton({
   );
 }
 
+/**
+ * La bandeja y su diálogo de comparación.
+ *
+ * La pregunta cruzada («¿cuál exige más solvencia técnica?») es la del
+ * asistente único: hasta 2026-10 el diálogo tenía su propio chat debajo de la
+ * tabla, con su conversación. El botón abre el asistente con los expedientes
+ * de la bandeja como contexto —la API reparte el contexto entre ellos y cita
+ * cada dato con su expediente— y cierra el diálogo: es modal, y con él abierto
+ * no se podría escribir en el asistente. La tabla sigue a un clic.
+ */
 export function BandejaComparacion() {
   const { items, abierta, quitar, vaciar, setAbierta } = useBandejaComparacion();
+  const abrirAsistente = useAsistente((s) => s.abrir);
   if (items.length === 0) return null;
 
   const ids = items.map((i) => i.id);
   const etiquetas = Object.fromEntries(items.map((i) => [i.id, i.titulo ? truncate(i.titulo, 60) : i.id]));
+  const preguntar = () => {
+    setAbierta(false);
+    abrirAsistente({
+      contexto: { expedientes: items.map((i) => ({ id: i.id, titulo: i.titulo ?? i.id })), origen: "comparacion" },
+    });
+  };
 
   return (
     <>
@@ -120,10 +133,17 @@ export function BandejaComparacion() {
           <DialogTitle>Comparar fichas del pliego</DialogTitle>
           <DialogDescription>
             Lo que cada pliego dice de cada familia, tal como se extrajo, sin resumir: la comparación
-            la haces tú. Debajo puedes preguntar sobre los expedientes a la vez.
+            la haces tú. Para preguntar sobre los expedientes a la vez, el asistente.
           </DialogDescription>
           {abierta && <ComparacionFichasTabla ids={ids} etiquetas={etiquetas} />}
-          {abierta && <PreguntaComparacion ids={ids} etiquetas={etiquetas} />}
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">
+            <Button size="sm" variant="outline" onClick={preguntar}>
+              Preguntar al asistente sobre estos {ids.length} expedientes
+            </Button>
+            <span className="text-tf-meta text-muted-foreground">
+              Cita cada dato con su expediente y la página del pliego de la que sale.
+            </span>
+          </div>
         </DialogContent>
       </Dialog>
     </>

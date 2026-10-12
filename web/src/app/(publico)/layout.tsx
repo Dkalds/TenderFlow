@@ -34,7 +34,7 @@ import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
  * default correcto. Lo que se indexa es la excepción, y la excepción se declara
  * aquí, en el grupo de rutas que de verdad es público.
  *
- * No monta `ConsoleFrame` ni la paleta de comandos ni el copiloto: son piezas
+ * No monta `ConsoleFrame` ni la paleta de comandos ni el asistente: son piezas
  * cliente que exigen sesión. Todo el **contenido** que cuelga de este layout se
  * renderiza en servidor, que es lo que un rastreador puede leer; las dos islas
  * cliente que hay —`ThemeProvider` y el ancla con evento del CTA— no aportan
