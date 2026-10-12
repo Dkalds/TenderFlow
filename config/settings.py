@@ -421,6 +421,12 @@ class Settings(ResumenPregenSettings, BaseSettings):
     MAX_DOWNLOAD_SIZE_BYTES: int = 400 * 1024 * 1024
     MAX_XML_SIZE_BYTES: int = 150 * 1024 * 1024
     DAILY_MAX_PAGES: int = 50
+    # Pasadas seguidas del carril diario con el cursor del ATOM de PLACSP
+    # parado tras las que se ingiere el ZIP mensual del mes en curso
+    # (`scheduler/respaldo_zip_placsp.py`). 6 pasadas de 4 h son un día, que es
+    # lo que tarda el ZIP en regenerarse: caer antes reprocesaría el mismo
+    # fichero. 0 apaga el respaldo.
+    PLACSP_ATOM_PASADAS_SIN_AVANCE_ZIP: int = 6
     BACKFILL_MAX_WORKERS: int = 3
     # Límite de tamaño para un adjunto individual (pliego), plan Pliegos+RAG F7.
     # Mucho más chico que MAX_DOWNLOAD_SIZE_BYTES (pensado para ZIPs mensuales
