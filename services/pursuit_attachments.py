@@ -210,6 +210,37 @@ def _payload(attachment_id: int, expira: int) -> bytes:
     return _PREFIJO_FIRMA + f"{int(attachment_id)}:{int(expira)}".encode("ascii")
 
 
+@dataclass(frozen=True, slots=True)
+class PoliticaAdjuntos:
+    """Lo que la consola tiene que saber **antes** de que alguien elija un fichero.
+
+    Sin esto, la pantalla solo se enteraba de que no había almacén, de que el
+    fichero era grande o de que el tipo no valía después de enviar hasta 25 MiB,
+    y tenía que llevar su propia copia de la lista blanca para avisar antes. Aquí
+    sale de las mismas constantes que aplica :func:`validar`.
+    """
+
+    almacen_disponible: bool
+    max_bytes: int
+    tipos: tuple[tuple[str, tuple[str, ...]], ...]
+
+
+def politica() -> PoliticaAdjuntos:
+    """Si el entorno acepta adjuntos, cuánto cabe y qué tipos.
+
+    No depende de la organización: la lista blanca y el tope por fichero son del
+    producto, y el almacén, del despliegue. El tope por organización no se
+    publica porque su ocupación cuenta también los adjuntos retirados, cuyo
+    binario se conserva (v131): una cifra que no baja al borrar se leería como
+    un error.
+    """
+    return PoliticaAdjuntos(
+        almacen_disponible=get_object_store().enabled,
+        max_bytes=MAX_BYTES,
+        tipos=tuple(sorted(TIPOS_PERMITIDOS.items())),
+    )
+
+
 def _require_pursuit(organization_id: int, pursuit_id: int) -> None:
     if PursuitRepository().get(organization_id, pursuit_id) is None:
         raise PursuitNotFoundError("Oportunidad no encontrada.")
@@ -286,9 +317,13 @@ def subir(
         repo = PursuitAttachmentsRepository()
         ocupado = repo.ocupacion(organization_id_resuelta)
         if ocupado["bytes"] + len(data) > MAX_BYTES_POR_ORGANIZACION:
+            # El mensaje no invita a borrar: desde v131 un adjunto retirado
+            # conserva su binario y sigue contando en `ocupacion`, así que
+            # borrar no liberaría nada y el usuario lo intentaría en vano.
             raise AttachmentTooLarge(
-                f"La organización ocupa {ocupado['bytes']} bytes y el tope es "
-                f"{MAX_BYTES_POR_ORGANIZACION}. Borrá adjuntos antes de subir más."
+                "La organización ha llegado a su tope de adjuntos "
+                f"({MAX_BYTES_POR_ORGANIZACION // (1024**3)} GiB, retirados incluidos). "
+                "Escribe a soporte para ampliarlo."
             )
 
         huella = hashlib.sha256(data).hexdigest()

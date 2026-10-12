@@ -61,6 +61,15 @@ NUEVAS: dict[str, str] = {
         "necesita además las dos pasadas (prueba y guardado) sobre el mismo universo "
         "en una sola respuesta, para poder decir cuánto se mueve cada oportunidad."
     ),
+    "GET /api/v1/pursuits/adjuntos/politica": (
+        "Se miraron GET /pursuits/{id}/adjuntos, que devuelve una lista y no admite "
+        "metadatos sin romper su contrato, y POST /pursuits/{id}/adjuntos, que solo "
+        "dice que no hay almacén (503), que el fichero es grande (413) o que el tipo "
+        "no vale (415) después de recibir hasta 25 MiB. /meta/filters es el catálogo "
+        "de filtros de licitaciones, cacheado y ajeno. La consola necesita saber antes "
+        "de ofrecer la subida si el entorno tiene almacén, el tope y la lista blanca, "
+        "sin llevar su propia copia de las constantes del servidor."
+    ),
 }
 
 

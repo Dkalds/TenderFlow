@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote, unquote
 
 from fastapi import (
     APIRouter,
@@ -229,6 +230,26 @@ class PursuitAttachmentLink(BaseModel):
 
 class PursuitAttachmentIndexableIn(BaseModel):
     indexable: bool
+
+
+class TipoAdjuntoOut(BaseModel):
+    """Un tipo de la lista blanca y las extensiones que le corresponden."""
+
+    content_type: str
+    extensiones: list[str]
+
+
+class PursuitAttachmentPolicy(BaseModel):
+    """Lo que la consola necesita saber antes de ofrecer «Subir adjunto».
+
+    Sale de las mismas constantes con las que el servidor valida la subida: la
+    pantalla no lleva su propia copia de la lista blanca ni del tope, y un
+    entorno sin almacén lo dice aquí en vez de con un 503 tras enviar el fichero.
+    """
+
+    almacen_disponible: bool
+    max_bytes: int
+    tipos: list[TipoAdjuntoOut]
 
 
 class GoNoGoCriterioOut(BaseModel):
@@ -1259,6 +1280,29 @@ async def get_tasks_agenda(
 # las demás estáticas.
 
 
+@router.get("/pursuits/adjuntos/politica", response_model=PursuitAttachmentPolicy)
+async def get_adjuntos_politica(
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitAttachmentPolicy:
+    """Si este entorno acepta adjuntos, el tope por fichero y los tipos admitidos.
+
+    Sin organización: la lista blanca y el tope son del producto y el almacén es
+    del despliegue, iguales para todos. Lo que sí depende de la organización —si
+    quien mira puede subir— lo decide su rol, y la subida lo vuelve a comprobar.
+    """
+    from services.pursuit_attachments import politica
+
+    vigente = politica()
+    return PursuitAttachmentPolicy(
+        almacen_disponible=vigente.almacen_disponible,
+        max_bytes=vigente.max_bytes,
+        tipos=[
+            TipoAdjuntoOut(content_type=tipo, extensiones=list(extensiones))
+            for tipo, extensiones in vigente.tipos
+        ],
+    )
+
+
 @router.get("/pursuits/adjuntos/{attachment_id}/enlace", response_model=PursuitAttachmentLink)
 async def get_adjunto_enlace(
     attachment_id: int,
@@ -1334,12 +1378,24 @@ async def get_adjunto_descarga(
         raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
 
     fila, contenido = resultado
-    nombre = str(fila["filename"])
     return Response(
         content=contenido,
         media_type=str(fila["content_type"]),
-        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+        headers={"Content-Disposition": _content_disposition(str(fila["filename"]))},
     )
+
+
+def _content_disposition(nombre: str) -> str:
+    """``attachment`` con el nombre en ASCII y, entero, en ``filename*`` (RFC 5987).
+
+    Las cabeceras de respuesta viajan en Latin-1: un ``filename="Oferta Łódź.pdf"``
+    a secas no se puede ni escribir y la descarga respondía 500. El nombre
+    saneado admite cualquier letra (``\\w`` Unicode), así que no basta con
+    confiar en él. El navegador prefiere ``filename*``; el ``filename`` en ASCII
+    queda para quien no lo entienda.
+    """
+    ascii_ = nombre.encode("ascii", "replace").decode("ascii").replace('"', "_")
+    return f"attachment; filename=\"{ascii_}\"; filename*=UTF-8''{quote(nombre, safe='')}"
 
 
 @router.put(
@@ -1874,8 +1930,13 @@ async def post_pursuit_adjunto(
     pursuit_id: int,
     x_filename: str = Header(
         alias="X-Filename",
-        max_length=255,
-        description="Nombre original del fichero. Se sanea antes de guardarlo.",
+        # Tres veces los 255 del nombre guardado: codificado como URI, cada
+        # carácter no ASCII ocupa hasta tres `%XX`.
+        max_length=1024,
+        description=(
+            "Nombre original del fichero, codificado como componente de URI "
+            "(`encodeURIComponent`). Se decodifica y se sanea antes de guardarlo."
+        ),
     ),
     organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_any_auth),
@@ -1887,7 +1948,14 @@ async def post_pursuit_adjunto(
     `python-multipart` —una dependencia que este plan no pre-autoriza (D31)— para
     parsear un formato que aquí solo transportaría un campo. El cliente hace
     `fetch(url, {method: 'POST', body: file, headers: {'Content-Type': file.type,
-    'X-Filename': file.name}})`, y el servidor recibe exactamente los bytes.
+    'X-Filename': encodeURIComponent(file.name)}})`, y el servidor recibe
+    exactamente los bytes.
+
+    El nombre va **codificado como URI** porque una cabecera HTTP solo lleva
+    Latin-1: `fetch` lanza `TypeError` ante «Oferta — v2.pdf» (la raya,
+    U+2014), y un nombre con tilde llegaba según cómo lo serializara cada
+    cliente. Un nombre sin `%` se decodifica a sí mismo, así que el cliente que
+    lo mande en claro sigue funcionando.
 
     El tamaño se comprueba **dos veces**: contra `Content-Length` antes de leer
     —para no traer 500 MB a memoria y rechazarlos después— y contra los bytes
@@ -1918,7 +1986,7 @@ async def post_pursuit_adjunto(
             subir,
             int(ctx["user_id"]),
             pursuit_id,
-            filename=x_filename,
+            filename=unquote(x_filename, errors="replace"),
             content_type=content_type,
             data=datos,
             organization_id=organization_id,
