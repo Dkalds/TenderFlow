@@ -4,13 +4,13 @@
  * F1.6 — filtro por etiqueta de organización, el mismo en Oportunidades, el
  * Radar y Detalle.
  *
- * **Filtra lo cargado, no el corpus.** Ningún listado del backend acepta un
- * parámetro de etiqueta (ni `GET /licitaciones` ni el ranking del Radar), así
- * que el filtro se aplica en cliente sobre las filas que la pantalla ya tiene:
- * el top-24 del Radar, la página visible de Detalle, las oportunidades del
- * tablero. Por eso el selector lo dice («en esta página») donde la lista es
- * una página y no el conjunto entero, y por eso no se cuenta ningún total a
- * partir de él (ADR-014).
+ * **Dónde filtra.** Detalle y el tablero de oportunidades lo mandan al
+ * servidor (`GET /licitaciones?etiqueta=` y `GET /pursuits?etiqueta=`, CU-28):
+ * filtran el conjunto entero y su total es el del conjunto etiquetado. El
+ * ranking del Radar no acepta etiqueta, así que allí `useFiltroEtiqueta` filtra
+ * en cliente el top que la pantalla ya tiene; por eso el selector dice su
+ * alcance donde la lista es parcial, y no se cuenta ningún total a partir de
+ * él (ADR-014).
  *
  * Sin etiquetas en la organización el selector no aparece: un filtro que no
  * puede filtrar nada es un control inerte.
