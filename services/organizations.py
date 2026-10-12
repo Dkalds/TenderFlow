@@ -609,11 +609,14 @@ def update_settings(
 # que pueda administrarla, y una que ya no se usa no se puede cerrar. Las dos
 # son situaciones que ocurren solas con el tiempo.
 
-#: Texto que el owner tiene que escribir para borrar una organización.
+#: Texto que la API exige para borrar una organización: una palabra fija, para
+#: que ni un script ni una llamada repetida por error borren sin querer.
 #:
-#: El nombre de la propia organización, no un «SÍ» genérico: obliga a mirar cuál
-#: se está borrando. Con dos pestañas abiertas y dos organizaciones parecidas,
-#: un «¿seguro?» no distingue nada.
+#: Este comentario decía que era «el nombre de la propia organización», y el
+#: código siempre pidió `BORRAR`. Lo de mirar cuál se borra —con dos pestañas
+#: abiertas y dos organizaciones parecidas, una palabra fija no distingue
+#: nada— lo resuelve la consola: la pestaña Organización de Equipo pide teclear
+#: el nombre antes de mandar esta palabra.
 CONFIRMACION_BORRADO = "BORRAR"
 
 
@@ -637,12 +640,15 @@ def transferir_propiedad(
     - El owner saliente queda como `admin`, no fuera: quien monta un equipo no
       debería perder el acceso al traspasarlo.
     """
+    # Antes de ir a la base, y con un texto que vale para cualquier rol: decía
+    # «el owner ya eres tú», falso para un admin que intentara traspasársela a
+    # sí mismo, que es justo el autoascenso que la regla de abajo impide.
     if actor_user_id == nuevo_owner_user_id:
-        raise OrganizationLifecycleError("El owner ya eres tú.")
+        raise OrganizationLifecycleError("No puedes traspasarte la propiedad a ti mismo.")
 
     membresia = _repo.get_active_membership(organization_id, actor_user_id)
     if membresia is None or str(membresia["role"]) != "owner":
-        raise OrganizationPermissionError("Solo el owner puede traspasar la propiedad.")
+        raise OrganizationPermissionError("Solo el propietario puede traspasar la propiedad.")
 
     if _repo.es_personal(organization_id):
         raise OrganizationLifecycleError(
@@ -654,7 +660,7 @@ def transferir_propiedad(
         organization_id, de_user_id=actor_user_id, a_user_id=nuevo_owner_user_id
     ):
         raise OrganizationMemberNotFoundError(
-            "El destinatario no es miembro activo de esta organización. Invitalo primero."
+            "Esa persona no es miembro activo de esta organización. Invítalo primero."
         )
     log.info(
         "organization_ownership_transferred",
@@ -670,6 +676,10 @@ def salir_de_organizacion(*, organization_id: int, user_id: int) -> None:
     El owner **no puede irse sin traspasar**: dejar una organización sin owner la
     deja sin nadie que pueda administrarla, y el estado no tiene salida desde el
     producto. El mensaje lo dice en vez de devolver un 403 mudo.
+
+    Los mensajes de este bloque llegan tal cual a la consola (la pestaña
+    Organización de Equipo enseña el ``detail``), así que hablan como ella: de
+    tú, en castellano peninsular, y «propietario» en vez de «owner».
     """
     membresia = _repo.get_active_membership(organization_id, user_id)
     if membresia is None:
@@ -677,12 +687,12 @@ def salir_de_organizacion(*, organization_id: int, user_id: int) -> None:
 
     if str(membresia["role"]) == "owner":
         raise OrganizationLifecycleError(
-            "Sos el owner: traspasá la propiedad a otro miembro antes de salir, "
-            "o borrá la organización."
+            "Eres el propietario: traspasa la propiedad a otro miembro antes de "
+            "salir, o borra la organización."
         )
 
     if _repo.es_personal(organization_id):
-        raise OrganizationLifecycleError("No podés salir de tu organización personal.")
+        raise OrganizationLifecycleError("No puedes salir de tu organización personal.")
 
     _repo.salir(organization_id, user_id)
     log.info("organization_member_left", organization_id=organization_id, user_id=user_id)
@@ -696,7 +706,7 @@ def resumen_de_borrado(*, organization_id: int, actor_user_id: int) -> dict[str,
     """
     membresia = _repo.get_active_membership(organization_id, actor_user_id)
     if membresia is None or str(membresia["role"]) != "owner":
-        raise OrganizationPermissionError("Solo el owner puede borrar la organización.")
+        raise OrganizationPermissionError("Solo el propietario puede borrar la organización.")
     return _repo.contar_dato_corporativo(organization_id)
 
 
@@ -724,8 +734,8 @@ def borrar_organizacion(
 
     if _repo.es_personal(organization_id):
         raise OrganizationLifecycleError(
-            "La organización personal no se borra: borrá la cuenta con "
-            "`DELETE /me` si es lo que querés."
+            "La organización personal no se borra: si lo que quieres es irte, "
+            "borra tu cuenta desde Ajustes, en Datos y cuenta."
         )
 
     # Los binarios del bucket, ANTES de borrar la fila: el `ON DELETE CASCADE`

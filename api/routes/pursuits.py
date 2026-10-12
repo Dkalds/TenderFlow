@@ -355,6 +355,11 @@ class OrganizationDeletionSummary(BaseModel):
     oportunidades: int = 0
     comentarios: int = 0
     miembros: int = 0
+    #: Ficheros subidos a las oportunidades: lo único de la lista que además
+    #: vive fuera de Postgres. El repositorio lo contaba y este modelo lo
+    #: tiraba sin decir nada, así que la advertencia callaba justo los
+    #: documentos del equipo que se van con la organización.
+    adjuntos: int = 0
 
 
 @router.post(

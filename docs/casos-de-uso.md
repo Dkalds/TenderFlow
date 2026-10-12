@@ -205,6 +205,17 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   recuperación sirve una vez.
 - La desactiva con un código vigente, y sin él no.
 
+### CU-26 — Salir, traspasar o borrar una organización
+
+- **Quién:** miembros y propietaria del equipo. **Dónde:** Equipo ›
+  Organización.
+- Un miembro sale y deja de verla; la propietaria no puede salir sin
+  traspasarla antes, y el motivo se lo dice.
+- La propietaria traspasa la propiedad a otro miembro activo y queda como
+  administradora.
+- Antes de borrarla ve cuánto trabajo se lleva el borrado, y lo confirma
+  escribiendo el nombre; la organización personal no se borra por aquí.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->

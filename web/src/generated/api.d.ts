@@ -10708,6 +10708,11 @@ export interface components {
          */
         OrganizationDeletionSummary: {
             /**
+             * Adjuntos
+             * @default 0
+             */
+            adjuntos: number;
+            /**
              * Comentarios
              * @default 0
              */
