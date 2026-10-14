@@ -87,6 +87,11 @@
       "groupName": "lint (lockfile + hooks de pre-commit)"
     },
     {
+      "description": "codespell 2.4.x marca como erratas inglesas ~150 palabras españolas del repo (argumentos, administrativo, alternar…) y rompe el hook; 2.3.0 va limpio. Se sube a mano cuando el diccionario lo permita.",
+      "matchPackageNames": ["codespell", "codespell-project/codespell"],
+      "enabled": false
+    },
+    {
       "description": "fastapi >= 0.141 devuelve `_IncludedRouter` opacos en app.routes y la API responde 500 en todas las rutas (PR #187). Subir es una migración a mano; los tres van juntos. Detalle en requirements.in.",
       "matchManagers": ["pip-compile"],
       "matchPackageNames": ["fastapi"],
