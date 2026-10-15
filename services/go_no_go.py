@@ -13,7 +13,7 @@ y decidir por alguien:
    ``desconocido`` aunque el dato de la organización encaje: afirmar que se
    cumple un requisito que nadie puede ir a leer al PDF es exactamente el tipo
    de dato fabricado que este producto no publica. La otra fuente admitida es
-   la **publicación oficial** de PLACSP (v149): el requisito sale del anuncio
+   la **publicación oficial** de PLACSP (v148): el requisito sale del anuncio
    CODICE, que es público y está enlazado, y el ítem lo declara con
    ``fuente="placsp"``.
 2. **``desconocido`` es una respuesta de primera.** Se contesta cuando la ficha
@@ -22,7 +22,7 @@ y decidir por alguien:
 3. **Esto no cierra nada.** El resultado es una propuesta para la pestaña
    Decisión; quien marca go/no-go es una persona.
 
-**Por familia, la fuente oficial manda** (v149). Cuando la publicación oficial
+**Por familia, la fuente oficial manda** (v148). Cuando la publicación oficial
 trae requisitos de solvencia económica o técnica, se contrastan esos y no los
 de la ficha LLM de esa familia: mezclar las dos contaría el mismo requisito dos
 veces con dos redacciones. La familia sin dato oficial sigue con la ficha, y
@@ -78,7 +78,7 @@ _fact_sheets_repo = TenderFactSheetsRepository()
 ChecklistVeredicto = Literal["cumple", "no_cumple", "desconocido"]
 
 #: De dónde sale un requisito: la ficha LLM del pliego (con citas) o la
-#: publicación oficial de PLACSP (v149, `shared.dto.CondicionesOficiales`).
+#: publicación oficial de PLACSP (v148, `shared.dto.CondicionesOficiales`).
 ChecklistFuente = Literal["pliego", "placsp"]
 
 #: Las cuatro familias de ``TenderFactSheet`` que el perfil de capacidad puede
@@ -183,7 +183,7 @@ class GoNoGoChecklist(BaseModel):
     requisitos_extraidos: int = Field(default=0, ge=0)
     #: De ``requisitos_extraidos``, los que quedaron en ``desconocido``.
     desconocido_extraidos: int = Field(default=0, ge=0)
-    #: Alguna familia se contrastó con la publicación oficial de PLACSP (v149).
+    #: Alguna familia se contrastó con la publicación oficial de PLACSP (v148).
     usa_condiciones_oficiales: bool = False
     #: Fecha de las condiciones oficiales evaluadas, si se usaron.
     condiciones_actualizadas: str | None = None
@@ -790,7 +790,7 @@ def evaluate(
     Que sea pura es lo que permite que el golden la ejercite con fichas y
     capacidades sintéticas, sin Postgres de por medio.
 
-    ``oficiales`` son las condiciones de la publicación oficial (v149): cuando
+    ``oficiales`` son las condiciones de la publicación oficial (v148): cuando
     traen solvencia económica o técnica, esa familia se contrasta con ellas y
     no con la ficha. ``lote_numero`` acota sus requisitos al lote de la
     oportunidad.
@@ -867,7 +867,7 @@ def _clave_de_sellado(checklist: GoNoGoChecklist) -> str:
     ``extraction_version``, y ese sí es un checklist distinto que merece su
     evento. De ahí que la fecha de la ficha entre en la clave.
 
-    Con condiciones oficiales (v149) la clave añade su fecha: una corrección
+    Con condiciones oficiales (v148) la clave añade su fecha: una corrección
     del órgano re-ingerida es otro checklist. Se **añade** al final y solo en
     ese caso, para que las evaluaciones con la ficha sola conserven la clave
     que ya tenían en el ledger y no se vuelvan a sellar.
@@ -884,7 +884,7 @@ def _condiciones_oficiales_de(licitacion_id: str) -> CondicionesOficiales | None
     """Las condiciones oficiales del expediente, sin poder tumbar el checklist.
 
     Son un añadido sobre la ficha: si no se pueden leer, el checklist se
-    calcula como antes de v149, con la ficha sola, y queda en el log.
+    calcula como antes de v148, con la ficha sola, y queda en el log.
     """
     try:
         return condiciones_oficiales(licitacion_id)

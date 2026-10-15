@@ -1,8 +1,8 @@
-"""Mide qué traen las entradas del ATOM de PLACSP en ``cac:TenderingTerms`` (v149).
+"""Mide qué traen las entradas del ATOM de PLACSP en ``cac:TenderingTerms`` (v148).
 
 Por qué existe
 --------------
-v149 empieza a guardar criterios de adjudicación, garantías y solvencia desde
+v148 empieza a guardar criterios de adjudicación, garantías y solvencia desde
 CODICE, a nivel de expediente y de lote. La pregunta previa —qué porcentaje de
 entradas trae cada bloque, y dónde— no se pudo contestar en la sesión que lo
 escribió: su política de red bloqueaba ``contrataciondelsectorpublico.gob.es``

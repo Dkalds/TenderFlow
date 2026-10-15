@@ -529,7 +529,7 @@ def parse_peso_precio(entry: Any) -> float | None:
     return None
 
 
-# ── Condiciones oficiales: criterios, garantías y solvencia (v149) ───────────
+# ── Condiciones oficiales: criterios, garantías y solvencia (v148) ───────────
 #
 # Los nombres de elemento se buscan por `local-name()`, como los criterios de
 # arriba: el feed mezcla expedientes publicados con el esquema CODICE
@@ -598,7 +598,7 @@ def _criterios_del_ambito(
     ``bloques`` son los ``TenderingTerms`` del ámbito (normalmente uno). Se
     numeran seguidos: si el anuncio repite el bloque, o dos lotes comparten
     número, ``orden`` no vuelve a empezar y la unicidad
-    ``(licitacion_id, lote_numero, orden)`` de v149 se sostiene.
+    ``(licitacion_id, lote_numero, orden)`` de v148 se sostiene.
 
     Se recorre el árbol en vez de pedir los nodos con ``//`` porque lo que
     importa de un subcriterio es **de quién** es: el padre es el criterio más
@@ -736,7 +736,7 @@ def _solvencia_del_ambito(bloques: list[Any], lote_numero: str | None) -> list[R
 
 
 def parse_condiciones(entry: Any) -> CondicionesCodice:
-    """Criterios, garantías y solvencia de ``cac:TenderingTerms`` (v149).
+    """Criterios, garantías y solvencia de ``cac:TenderingTerms`` (v148).
 
     Lee el bloque del expediente (``ContractFolderStatus/cac:TenderingTerms``)
     y el de cada lote con número (``cac:ProcurementProjectLot/cac:TenderingTerms``),
@@ -788,7 +788,7 @@ def parse_condiciones(entry: Any) -> CondicionesCodice:
 def _condiciones_o_none(entry: Any) -> CondicionesCodice | None:
     """:func:`parse_condiciones` sin poder tumbar el parseo de la entry.
 
-    Es un añadido: una entry que se parseaba antes de v149 tiene que seguir
+    Es un añadido: una entry que se parseaba antes de v148 tiene que seguir
     parseándose aunque su ``TenderingTerms`` traiga algo que este código no
     espera. ``None`` le dice al upsert que no toque lo que ya hubiera.
     """
@@ -1003,7 +1003,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
             "procedimiento": lic.procedimiento,
             "tramitacion": lic.tramitacion,
             "peso_precio_pct": lic.peso_precio_pct,
-            # v149: cobertura de cada familia de `cac:TenderingTerms`. Una
+            # v148: cobertura de cada familia de `cac:TenderingTerms`. Una
             # lista vacía cuenta como NULL: es «este anuncio no lo trae».
             "criterios_adjudicacion": (lic.condiciones.criterios or None)
             if lic.condiciones

@@ -1,4 +1,4 @@
-"""Condiciones oficiales de PLACSP de un expediente, agrupadas por ámbito (v149).
+"""Condiciones oficiales de PLACSP de un expediente, agrupadas por ámbito (v148).
 
 Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` —criterios de
 adjudicación, garantías y solvencia— lo guarda la ingesta en tres tablas

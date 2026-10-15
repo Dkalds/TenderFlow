@@ -148,7 +148,7 @@ async def get_condiciones_oficiales(
     id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> CondicionesOficiales:
-    """Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v149).
+    """Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v148).
 
     Es la fuente primaria de criterios, garantías y solvencia; la ficha del
     pliego (``/ficha-pliego``) es la extracción LLM que la complementa, y por

@@ -2382,7 +2382,7 @@ class JobEstadoDTO(BaseModel):
 # que es justo lo que se limpió el 2026-09-03.
 
 
-# ── Condiciones oficiales de PLACSP (v149) ──────────────────────────────────
+# ── Condiciones oficiales de PLACSP (v148) ──────────────────────────────────
 #
 # Criterios, garantías y solvencia tal como los publica el anuncio CODICE
 # (`scraper.codice_parser.parse_condiciones`). Viven aquí porque los comparten
@@ -2465,7 +2465,7 @@ class CondicionesOficiales(BaseModel):
     """Lo que la publicación oficial dice de un expediente, por ámbito.
 
     `ambitos` vacío significa que el anuncio no publica estos bloques —o que el
-    expediente se ingirió antes de v149 y no se ha vuelto a leer—, no que el
+    expediente se ingirió antes de v148 y no se ha vuelto a leer—, no que el
     pliego no los tenga: para eso está la ficha del pliego.
     """
 

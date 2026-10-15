@@ -1,4 +1,4 @@
-"""v151: el ledger se va con la organización, y con nada más.
+"""v149: el ledger se va con la organización, y con nada más.
 
 La migración abre una sola puerta en el trigger append-only de
 ``pursuit_events``: el ``DELETE`` de los eventos de una organización que ya no

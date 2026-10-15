@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-10-12
+Generado: 2026-10-15
 
-Revisión Alembic aplicada: `v149_condiciones_oficiales_codice`.
+Revisión Alembic aplicada: `v149_ledger_borrado_org`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -27,13 +27,13 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Licitaciones y fuente | 14 | 189 | 64 |
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
-| Organizaciones y oportunidades | 15 | 141 | 31 |
+| Organizaciones y oportunidades | 15 | 142 | 31 |
 | Identidad, acceso y auditoría | 15 | 105 | 24 |
 | Seguimiento y notificaciones | 12 | 132 | 35 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 21 | 167 | 31 |
-| **Total** | **100** | **912** | **229** |
+| **Total** | **100** | **913** | **229** |
 
 ## Licitaciones y fuente
 
@@ -527,6 +527,7 @@ Claves: `PRIMARY KEY (ute_empresa_id, miembro_empresa_id)`
 | `nombre` | `text` | no |
 | `ambito` | `text` | no |
 | `vigente_hasta` | `date` | sí |
+| `tipo` | `text` | no |
 
 Claves: `PRIMARY KEY (id)`
 

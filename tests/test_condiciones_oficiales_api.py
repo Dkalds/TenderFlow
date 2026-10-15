@@ -1,4 +1,4 @@
-"""``GET /licitaciones/{id}/condiciones-oficiales`` contra Postgres (v149).
+"""``GET /licitaciones/{id}/condiciones-oficiales`` contra Postgres (v148).
 
 La ruta sirve lo que el parser leyó de la publicación oficial, separado de la
 ficha LLM del pliego: un expediente con condiciones las devuelve agrupadas por

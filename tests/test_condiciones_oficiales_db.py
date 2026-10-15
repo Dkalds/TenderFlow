@@ -1,8 +1,8 @@
-"""Persistencia de las condiciones oficiales de CODICE (v149), contra Postgres.
+"""Persistencia de las condiciones oficiales de CODICE (v148), contra Postgres.
 
 El invariante 2 de AGENTS.md —toda escritura desde el scraper se puede
 re-ejecutar sin duplicar— es lo que estos tests fijan para las tres tablas de
-v149, más las dos reglas que lo concretan:
+v148, más las dos reglas que lo concretan:
 
 - **Una corrección del órgano reemplaza lo anterior.** Si la nueva versión del
   anuncio trae filas de una familia, sustituyen a las de la versión previa.
@@ -253,7 +253,7 @@ def test_el_repositorio_sin_filas_devuelve_listas_vacias(db: Any) -> None:
 
 
 def test_el_repositorio_sin_las_tablas_responde_sin_condiciones(db: Any) -> None:
-    """Código desplegado antes que v149: no hay condiciones guardadas, y se dice así."""
+    """Código desplegado antes que v148: no hay condiciones guardadas, y se dice así."""
     from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
 
     upsert_licitaciones([_lic(None)])

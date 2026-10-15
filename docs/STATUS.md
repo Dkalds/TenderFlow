@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-10
+Generado: 2026-10-15
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -101,9 +101,9 @@ Generado: 2026-10-10
 
 ## Superficie de la API
 
-**293 endpoints** expuestos.
+**297 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **1** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **5** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -238,6 +238,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | GET | `/api/v1/licitaciones/stream` |
 | GET | `/api/v1/licitaciones/{id_externo:path}` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/competencia-esperada` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/condiciones-oficiales` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos/{documento_id}/paginas/{page_number}` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/embeddings-async` |
@@ -262,6 +263,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | GET | `/api/v1/me/keys` |
 | POST | `/api/v1/me/keys` |
 | POST | `/api/v1/me/keys/rotate` |
+| DELETE | `/api/v1/me/keys/{key_id}` |
 | GET | `/api/v1/me/notification-preferences` |
 | PUT | `/api/v1/me/notification-preferences` |
 | DELETE | `/api/v1/me/profile` |
@@ -276,6 +278,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | POST | `/api/v1/models/{name}/activate/{version}` |
 | GET | `/api/v1/models/{name}/versions` |
 | GET | `/api/v1/notifications` |
+| GET | `/api/v1/notifications/alerts` |
 | POST | `/api/v1/notifications/alerts/read` |
 | GET | `/api/v1/notifications/baja` |
 | POST | `/api/v1/notifications/baja` |
@@ -321,6 +324,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | GET | `/api/v1/pursuits` |
 | POST | `/api/v1/pursuits` |
 | GET | `/api/v1/pursuits/actividad` |
+| GET | `/api/v1/pursuits/adjuntos/politica` |
 | DELETE | `/api/v1/pursuits/adjuntos/{attachment_id}` |
 | GET | `/api/v1/pursuits/adjuntos/{attachment_id}/descargar` |
 | GET | `/api/v1/pursuits/adjuntos/{attachment_id}/enlace` |

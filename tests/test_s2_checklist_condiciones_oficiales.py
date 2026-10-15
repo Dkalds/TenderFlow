@@ -1,7 +1,7 @@
-"""El checklist de una oportunidad lee la solvencia oficial de PLACSP (v149).
+"""El checklist de una oportunidad lee la solvencia oficial de PLACSP (v148).
 
 Integración: ``build_checklist`` es quien junta oportunidad, ficha, capacidad y
-—desde v149— condiciones oficiales. Lo que se comprueba aquí es ese cableado
+—desde v148— condiciones oficiales. Lo que se comprueba aquí es ese cableado
 (la regla de cada familia la fija ``test_go_no_go_condiciones_oficiales.py``):
 
 - sin ficha del pliego pero con solvencia oficial, el checklist contrasta y

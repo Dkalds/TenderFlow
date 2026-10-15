@@ -132,7 +132,7 @@ class Lote:
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
-# ── Condiciones oficiales del expediente (v149) ──────────────────────────────
+# ── Condiciones oficiales del expediente (v148) ──────────────────────────────
 #
 # Lo que CODICE publica en `cac:TenderingTerms`, del expediente y de cada lote:
 # criterios de adjudicación, garantías exigidas y requisitos de solvencia. Los
@@ -312,7 +312,7 @@ class Licitacion:
     #: órgano lo tenga sin volver a abrir el XML, igual que
     #: `Adjudicacion.lote_numero_raw`.
     organo_dir3: str | None = None
-    #: Criterios, garantías y solvencia de `cac:TenderingTerms` (v149),
+    #: Criterios, garantías y solvencia de `cac:TenderingTerms` (v148),
     #: **parse-only**: viven en sus tres tablas, no en `licitaciones`. `None`
     #: = el camino que construyó la licitación no lee CODICE (TED, PSCP…), y
     #: entonces el upsert no toca lo que hubiera.
@@ -515,7 +515,7 @@ _HISTORY_SELECT_COLS = (
 )
 
 
-# ── Condiciones oficiales (v149) ─────────────────────────────────────────────
+# ── Condiciones oficiales (v148) ─────────────────────────────────────────────
 #
 # Tabla, atributo de `CondicionesCodice` y columnas (las del dataclass, en su
 # orden) de cada familia. `licitacion_id` y `fecha_extraccion` las pone la
@@ -536,7 +536,7 @@ _SQL_CONDICIONES_DISPONIBLES = (
 
 
 def _condiciones_disponibles(c: Any) -> bool:
-    """¿Existen las tres tablas de v149? Se pregunta al catálogo en cada chunk.
+    """¿Existen las tres tablas de v148? Se pregunta al catálogo en cada chunk.
 
     Mismo motivo y misma falta de caché que `_con_sombras`: el código puede
     llegar a producción antes que la migración, y un `INSERT` contra una tabla
@@ -565,7 +565,7 @@ def _replace_condiciones(c: Any, lics: Iterable[Licitacion]) -> None:
     - Si el lote trae dos versiones del mismo expediente, gana la última que
       trae filas de esa familia, como gana la última en el `ON CONFLICT`.
     - Una fila con `(lote_numero, orden)` repetido se descarta: el parser no las
-      produce, pero la unicidad de v149 convertiría una en el fallo del chunk.
+      produce, pero la unicidad de v148 convertiría una en el fallo del chunk.
     """
     por_familia: dict[str, dict[str, list[Any]]] = {t: {} for t, _, _ in _FAMILIAS_CONDICIONES}
     for lic in lics:
@@ -578,7 +578,7 @@ def _replace_condiciones(c: Any, lics: Iterable[Licitacion]) -> None:
     if not any(por_familia.values()):
         return
     if not _condiciones_disponibles(c):
-        _log.warning("condiciones_codice_sin_tablas", detalle="v149 sin aplicar")
+        _log.warning("condiciones_codice_sin_tablas", detalle="v148 sin aplicar")
         return
 
     ahora = now_utc_iso()
@@ -1127,7 +1127,7 @@ def _upsert_chunk(
             )
         if lic_rows:
             c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
-        # v149: en la misma transacción, después de las licitaciones (FK).
+        # v148: en la misma transacción, después de las licitaciones (FK).
         _replace_condiciones(c, chunk)
 
     return result

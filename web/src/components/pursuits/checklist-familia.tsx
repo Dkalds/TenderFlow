@@ -11,7 +11,7 @@
  * llegara, se degrada a «desconocido» diciendo por qué, que es exactamente lo
  * que el módulo de dominio hace con ese caso.
  *
- * La excepción es la misma que admite el backend (v149): un requisito con
+ * La excepción es la misma que admite el backend (v148): un requisito con
  * `fuente: "placsp"` sale de la publicación oficial, no del pliego, y su
  * respaldo es esa publicación. No lleva cita y no se degrada; la familia lo
  * dice con su etiqueta de procedencia.

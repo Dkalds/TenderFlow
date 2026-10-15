@@ -1,7 +1,7 @@
-"""v149: criterios, garantías y solvencia oficiales de CODICE, por expediente y lote.
+"""v148: criterios, garantías y solvencia oficiales de CODICE, por expediente y lote.
 
-Revision ID: v149_condiciones_oficiales_codice
-Revises: v146_lic_organo_norm_index
+Revision ID: v148_condiciones_oficiales_codice
+Revises: v147_documentacion_tipo
 Create Date: 2026-10-12
 
 Qué falta hoy
@@ -76,8 +76,8 @@ from typing import Any
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "v149_condiciones_oficiales_codice"
-down_revision: str | Sequence[str] | None = "v146_lic_organo_norm_index"
+revision: str = "v148_condiciones_oficiales_codice"
+down_revision: str | Sequence[str] | None = "v147_documentacion_tipo"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

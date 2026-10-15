@@ -104,7 +104,7 @@ def _adjudicacion_pyme(entry: Any) -> bool:
 
 
 def _condiciones(entry: Any) -> bool:
-    """v149: el expediente trae criterios **y** garantía o solvencia propios."""
+    """v148: el expediente trae criterios **y** garantía o solvencia propios."""
     from scraper.codice_parser import parse_condiciones
 
     condiciones = parse_condiciones(entry)
@@ -114,7 +114,7 @@ def _condiciones(entry: Any) -> bool:
 
 
 def _condiciones_por_lote(entry: Any) -> bool:
-    """v149: algún lote publica su propio ``TenderingTerms`` con criterios."""
+    """v148: algún lote publica su propio ``TenderingTerms`` con criterios."""
     from scraper.codice_parser import parse_condiciones
 
     return any(c.lote_numero is not None for c in parse_condiciones(entry).criterios)

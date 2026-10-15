@@ -39,7 +39,7 @@ nivel:
 - ``CondicionesCodice``               — criterios (``CriterioAdjudicacion``),
                                         garantías (``GarantiaExigida``) y solvencia
                                         (``RequisitoSolvencia``) de ``cac:TenderingTerms``
-                                        (v149); viajan en ``Licitacion.condiciones``.
+                                        (v148); viajan en ``Licitacion.condiciones``.
 - ``UpsertResult``                    — resultado enriquecido de upsert con
                                         historial (inserted/modified/unchanged).
 - ``upsert_licitaciones()``           — bulk upsert sin historial; devuelve

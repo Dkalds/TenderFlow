@@ -6,7 +6,7 @@ import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 /**
- * v149 — criterios, garantías y solvencia tal como los publica PLACSP.
+ * v148 — criterios, garantías y solvencia tal como los publica PLACSP.
  *
  * `GET /licitaciones/{id}/condiciones-oficiales` es la fuente primaria de esas
  * familias; la ficha del pliego (`use-tender-fact-sheet`) es la extracción LLM

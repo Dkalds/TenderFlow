@@ -203,7 +203,7 @@ function FactRow({
 }
 
 /**
- * La ficha del pliego, con la publicación oficial delante (v149).
+ * La ficha del pliego, con la publicación oficial delante (v148).
  *
  * Criterios, garantías y solvencia los publica PLACSP en el propio anuncio:
  * cuando la API los trae, van primero y con su procedencia, y lo extraído del

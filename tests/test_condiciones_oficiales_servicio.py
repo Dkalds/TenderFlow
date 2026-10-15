@@ -1,4 +1,4 @@
-"""Composición de las condiciones oficiales de PLACSP por ámbito (v149).
+"""Composición de las condiciones oficiales de PLACSP por ámbito (v148).
 
 ``construir_condiciones`` es la parte de dominio del endpoint: agrupa las filas
 de las tres tablas por ámbito —expediente primero, luego cada lote con su

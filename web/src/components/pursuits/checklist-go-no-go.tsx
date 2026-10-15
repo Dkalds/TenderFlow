@@ -26,7 +26,7 @@
  * capacidad, que no arregla nada: lo que falta ahí es el pliego, no el perfil.
  * Esas familias van en una línea (`sin_hechos`).
  *
- * **La publicación oficial también cuenta (v149).** Cuando PLACSP publica la
+ * **La publicación oficial también cuenta (v148).** Cuando PLACSP publica la
  * solvencia en el propio anuncio, el backend contrasta esa y no la de la
  * ficha (`usa_condiciones_oficiales`). Entonces hay veredictos aunque no haya
  * ficha extraída, y la procedencia declara también la fecha de la publicación

@@ -1,4 +1,4 @@
-"""La medición de ``cac:TenderingTerms`` sobre el corpus del parser (v149).
+"""La medición de ``cac:TenderingTerms`` sobre el corpus del parser (v148).
 
 El script existe para contestar con un comando qué porcentaje de entradas trae
 cada bloque y a qué nivel. Lo que se prueba es que cuenta lo que dice contar:

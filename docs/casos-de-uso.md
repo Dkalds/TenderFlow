@@ -273,10 +273,10 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | Caso | Recorrido por la API | E2E en el navegador | Otros tests que lo citan |
 |---|---|---|---|
 | **CU-01** Entrar y salir de la consola | — | [login.spec.ts](../web/e2e/login.spec.ts) | — |
-| **CU-02** Buscar un expediente y abrir su ficha | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [detail-permalink.spec.ts](../web/e2e/detail-permalink.spec.ts) | — |
+| **CU-02** Buscar un expediente y abrir su ficha | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [detail-permalink.spec.ts](../web/e2e/detail-permalink.spec.ts) | — |
 | **CU-03** Seguir un expediente y anotarlo | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-04** Vigilar el mercado con una alerta | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py) |
-| **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x3) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py) |
+| **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x3) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[test_pursuits_filtros_tablero.py](../tests/test_pursuits_filtros_tablero.py) |
 | **CU-06** Decidir GO o NO-GO con la matriz | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py) |
 | **CU-07** Preparar la oferta con tareas | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | — |
 | **CU-08** Vigilar la cartera y preparar la renovación | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | — | — |
@@ -285,7 +285,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-11** Seguir una cuenta objetivo | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | [recorrido-cuenta.spec.ts](../web/e2e/recorrido-cuenta.spec.ts) | — |
 | **CU-12** Trabajar en equipo con roles | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
 | **CU-13** Mantener separados los datos de cada organización | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
-| **CU-14** Integrar por API con una clave propia | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
+| **CU-14** Integrar por API con una clave propia | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | [claves-view.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/claves-view.test.tsx) |
 | **CU-15** Exportar mis datos y borrar mi cuenta | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-16** Exportar el ámbito a CSV | — | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-17** Ajustar mi perfil de puntuación | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-perfil.spec.ts](../web/e2e/recorrido-perfil.spec.ts) | [test_me_profile_routes.py](../tests/test_me_profile_routes.py) |
@@ -296,7 +296,13 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-22** Leer el pliego con la cita delante | — | [pagina-cita.spec.ts](../web/e2e/pagina-cita.spec.ts) | — |
 | **CU-23** Preguntar al Investigador en lenguaje natural | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | — | — |
 | **CU-24** Ver el trabajo del equipo desde Dirección | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
+| **CU-25** Proteger mi cuenta con la verificación en dos pasos | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | — | [seguridad-view.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/seguridad-view.test.tsx)<br>[space-views.test.ts](../web/src/lib/__tests__/space-views.test.ts) |
+| **CU-26** Salir, traspasar o borrar una organización | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | — | [ciclo-organizacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/ciclo-organizacion.test.tsx) |
+| **CU-27** Guardar la propuesta del equipo en la oportunidad | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py) (x2) | — | [adjuntos-panel.test.tsx](../web/src/components/pursuits/__tests__/adjuntos-panel.test.tsx) |
+| **CU-28** Acotar Detalle y el tablero por etiqueta, responsable y plazo | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py) | — | [use-etiqueta-listado.test.tsx](../web/src/app/(dashboard)/detalle/__tests__/use-etiqueta-listado.test.tsx)<br>[tablero-view.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/tablero-view.test.tsx) |
+| **CU-29** Enterarme de lo que me concierne desde la campana | [test_escenario_campana.py](../tests/test_escenario_campana.py) | — | [notification-bell.test.tsx](../web/src/components/__tests__/notification-bell.test.tsx)<br>[ver-todas-sheet.test.tsx](../web/src/components/campana/__tests__/ver-todas-sheet.test.tsx) |
+| **CU-30** Tener al día la documentación acreditativa | [test_escenario_documentacion.py](../tests/test_escenario_documentacion.py) | — | [page.test.tsx](../web/src/app/(dashboard)/equipo/__tests__/page.test.tsx)<br>[organizacion-documentacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-documentacion.test.tsx) |
 
-**24 casos**, 24 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**30 casos**, 30 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

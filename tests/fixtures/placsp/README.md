@@ -24,7 +24,7 @@ ENV=dev python -m tests.test_codice_parser_golden --update   # regenera el golde
 Los diecisiete casos son **sintéticos**: estructuralmente fieles al CODICE
 que publica PLACSP, pero escritos a mano porque ni la sesión que creó el corpus
 ni las que lo ampliaron tenían ZIP cacheados a mano. La que añadió el 16 y el
-17 (v149, 2026-10-12) intentó leer el ATOM en vivo para recortar entradas
+17 (v148, 2026-10-12) intentó leer el ATOM en vivo para recortar entradas
 reales y la política de red de su entorno bloqueaba
 `contrataciondelsectorpublico.gob.es`: sus dos casos son tan inventados como
 el resto, y `capture_placsp_fixtures.py` trae ya los casos `condiciones` y
@@ -50,8 +50,8 @@ nadie imaginó.
 | `13_criterios_sin_escala_deducible` | Solo se publica un criterio (60) sin el resto: `peso_precio_pct` queda NULL aunque procedimiento y tramitación sí se extraigan |
 | `14_documentos_token_rotativo_y_hash` | Adjuntos con la forma real de PLACSP: URI de `GetDocumentByIdServlet` con token rotativo, sin `cbc:FileName`, con `cbc:ID` (nombre) y `cbc:DocumentHash` (identidad estable). Dos PCAP del mismo expediente con hash distinto: congela que `(licitacion_id, tipo)` **no** identifica un documento |
 | `15_anuncio_previo_notice_type_code` | Cuatro `ValidNoticeInfo` con `NoticeTypeCode` (`DOC_PIN_RTL`, `DOC_CN` dos veces, `DOC_CD`): `tipos_anuncio` los guarda crudos, distintos y ordenados (v138, spike T5); la `fecha_publicacion` sale la mínima de todos los bloques, o sea la del PIN — comportamiento actual de `_issue_date`, congelado, no decidido |
-| `16_condiciones_expediente` | v149: `cac:TenderingTerms` del expediente con los tres bloques — tres criterios con tipo, subtipo y nota (escala porcentual), una garantía por porcentaje (`AmountRate`) y solvencia técnica, económica con `ThresholdAmount` y clasificación empresarial. Los códigos viajan crudos |
-| `17_condiciones_por_lote` | v149: cada lote con su `TenderingTerms` — el 1 con criterios en fracciones (0,8/0,2 → 80/20), el 2 con garantía por importe (`LiabilityAmount`), solvencia técnica y criterios en porcentaje — y una garantía a nivel de expediente declarada **después** de los lotes |
+| `16_condiciones_expediente` | v148: `cac:TenderingTerms` del expediente con los tres bloques — tres criterios con tipo, subtipo y nota (escala porcentual), una garantía por porcentaje (`AmountRate`) y solvencia técnica, económica con `ThresholdAmount` y clasificación empresarial. Los códigos viajan crudos |
+| `17_condiciones_por_lote` | v148: cada lote con su `TenderingTerms` — el 1 con criterios en fracciones (0,8/0,2 → 80/20), el 2 con garantía por importe (`LiabilityAmount`), solvencia técnica y criterios en porcentaje — y una garantía a nivel de expediente declarada **después** de los lotes |
 
 El caso 11 existe porque sin él invertir la prioridad en `_tender_deadline` no
 rompía ningún test del corpus: se detectó mutando el parser a propósito para

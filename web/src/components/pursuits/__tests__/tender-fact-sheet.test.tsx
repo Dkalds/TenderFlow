@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 const extract = vi.fn();
-// v149: lo que devuelve cada fuente se cambia por test. Por defecto, la ficha
-// del pliego y ninguna condición oficial: el caso de antes de v149.
+// v148: lo que devuelve cada fuente se cambia por test. Por defecto, la ficha
+// del pliego y ninguna condición oficial: el caso de antes de v148.
 const h = vi.hoisted(() => ({ sinFicha: false, oficiales: undefined as unknown }));
 vi.mock("@/hooks/use-condiciones-oficiales", () => ({
   useCondicionesOficiales: () => ({ isLoading: false, error: null, data: h.oficiales }),
@@ -124,7 +124,7 @@ describe("TenderFactSheetPanel", () => {
   });
 });
 
-describe("TenderFactSheetPanel — publicación oficial como fuente primaria (v149)", () => {
+describe("TenderFactSheetPanel — publicación oficial como fuente primaria (v148)", () => {
   const OFICIALES = {
     licitacion_id: "LIC-1",
     fuente: "placsp",

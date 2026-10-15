@@ -371,7 +371,7 @@ describe("checklist go/no-go — familias de las que la ficha no sacó nada", ()
   });
 });
 
-describe("checklist go/no-go — solvencia de la publicación oficial (v149)", () => {
+describe("checklist go/no-go — solvencia de la publicación oficial (v148)", () => {
   /** Sin ficha del pliego, con la solvencia económica que publica PLACSP. */
   function soloOficial(): GoNoGoChecklist {
     const base = checklist();

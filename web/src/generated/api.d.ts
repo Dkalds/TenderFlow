@@ -2670,7 +2670,7 @@ export interface paths {
         };
         /**
          * Criterios, garantías y solvencia tal como los publica PLACSP
-         * @description Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v149).
+         * @description Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v148).
          *
          *     Es la fuente primaria de criterios, garantías y solvencia; la ficha del
          *     pliego (``/ficha-pliego``) es la extracción LLM que la complementa, y por
@@ -7678,7 +7678,7 @@ export interface components {
          * @description Lo que la publicación oficial dice de un expediente, por ámbito.
          *
          *     `ambitos` vacío significa que el anuncio no publica estos bloques —o que el
-         *     expediente se ingirió antes de v149 y no se ha vuelto a leer—, no que el
+         *     expediente se ingirió antes de v148 y no se ha vuelto a leer—, no que el
          *     pliego no los tenga: para eso está la ficha del pliego.
          */
         CondicionesOficiales: {

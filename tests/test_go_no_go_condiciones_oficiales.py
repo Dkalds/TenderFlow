@@ -1,4 +1,4 @@
-"""El checklist Go/No-Go contrasta la solvencia oficial de PLACSP cuando existe (v149).
+"""El checklist Go/No-Go contrasta la solvencia oficial de PLACSP cuando existe (v148).
 
 Las reglas que se añaden a las de S2.3, y que estos tests fijan:
 

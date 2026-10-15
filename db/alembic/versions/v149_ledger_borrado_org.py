@@ -1,7 +1,7 @@
-"""v151: el ledger de oportunidades deja borrar la organización entera.
+"""v149: el ledger de oportunidades deja borrar la organización entera.
 
-Revision ID: v151_ledger_borrado_org
-Revises: v146_lic_organo_norm_index
+Revision ID: v149_ledger_borrado_org
+Revises: v148_condiciones_oficiales_codice
 Create Date: 2026-10-12
 
 Qué falla hoy
@@ -40,8 +40,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "v151_ledger_borrado_org"
-down_revision: str | Sequence[str] | None = "v146_lic_organo_norm_index"
+revision: str = "v149_ledger_borrado_org"
+down_revision: str | Sequence[str] | None = "v148_condiciones_oficiales_codice"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

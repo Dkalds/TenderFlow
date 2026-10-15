@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 
 /**
- * v149 — lo que la publicación oficial de PLACSP dice del expediente.
+ * v148 — lo que la publicación oficial de PLACSP dice del expediente.
  *
  * El componente solo presenta lo que manda `GET /condiciones-oficiales`: no
  * suma pesos ni traduce códigos (ADR-014). Lo que se fija aquí es lo que hace

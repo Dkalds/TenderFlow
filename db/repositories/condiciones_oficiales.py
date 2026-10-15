@@ -1,4 +1,4 @@
-"""Lectura de las condiciones oficiales de CODICE de un expediente (v149).
+"""Lectura de las condiciones oficiales de CODICE de un expediente (v148).
 
 La escritura vive en ``db/upsert.py`` (``_replace_condiciones``), dentro de la
 transacción del upsert de licitaciones: es lo que la hace idempotente con la
@@ -52,7 +52,7 @@ class CondicionesOficialesRepository:
         ``"existe"`` (si el expediente está en ``licitaciones``) y ``"url"``, el
         enlace a su publicación en la Plataforma.
 
-        Sin las tablas (código desplegado antes que v149) responde como un
+        Sin las tablas (código desplegado antes que v148) responde como un
         expediente sin condiciones, que es lo cierto: no hay ninguna guardada.
         Cualquier otro error de la base sube tal cual.
         """

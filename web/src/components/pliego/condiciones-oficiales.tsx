@@ -15,7 +15,7 @@ import type {
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 
 /**
- * v149 — criterios, garantías y solvencia tal como los publica PLACSP.
+ * v148 — criterios, garantías y solvencia tal como los publica PLACSP.
  *
  * Es la fuente primaria de esas familias y por eso va primero en la pestaña
  * Pliego, con su procedencia a la vista y el enlace para comprobarla. Todo lo

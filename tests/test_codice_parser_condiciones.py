@@ -1,6 +1,6 @@
-"""Criterios, garantías y solvencia tipados desde CODICE (v149).
+"""Criterios, garantías y solvencia tipados desde CODICE (v148).
 
-Hasta v149 el parser leía de ``cac:TenderingTerms`` un único agregado,
+Hasta v148 el parser leía de ``cac:TenderingTerms`` un único agregado,
 ``peso_precio_pct``, y tiraba el resto: qué criterios, con qué peso, qué
 garantía y qué solvencia. Ese dato solo llegaba por la ficha LLM del pliego,
 que no corre en lote. Estos tests congelan la lectura tipada del bloque, a
