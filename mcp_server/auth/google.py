@@ -118,9 +118,10 @@ class ClienteGoogleReal:
             log.warning("mcp_google_canje_rechazado", status=respuesta.status_code)
             return None
         try:
-            id_token = respuesta.json().get("id_token")
+            cuerpo = respuesta.json()
         except ValueError:
-            id_token = None
+            cuerpo = None
+        id_token = cuerpo.get("id_token") if isinstance(cuerpo, dict) else None
         if not isinstance(id_token, str) or not id_token:
             log.warning("mcp_google_canje_sin_id_token")
             return None

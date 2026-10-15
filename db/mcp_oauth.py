@@ -344,8 +344,13 @@ def consumir_y_emitir(
 
 
 def revocar_familia(family_id: str) -> int:
-    """Revoca los tokens vivos de una familia. Devuelve cuántos cerró."""
+    """Revoca los tokens vivos de una familia. Devuelve cuántos cerró.
+
+    Con el cerrojo de la familia (:func:`_cerrar_familia`): una rotación en
+    curso termina antes, y la revocación alcanza el par que acaba de emitir.
+    """
     with connect() as c:
+        _cerrar_familia(c, family_id)
         return int(
             c.execute(
                 "UPDATE mcp_oauth_tokens SET revoked_at = now() "
@@ -355,16 +360,48 @@ def revocar_familia(family_id: str) -> int:
         )
 
 
+#: Pasadas de :func:`revocar_de_usuario`: cada una solo existe si un canje
+#: simultáneo estrenó familia (un code) mientras la anterior esperaba.
+_MAX_PASADAS = 5
+
+
 def revocar_de_usuario(user_id: int) -> int:
-    """Revoca todos los tokens vivos de un usuario. Devuelve cuántos cerró."""
+    """Revoca todos los tokens vivos de un usuario. Devuelve cuántos cerró.
+
+    Cierra cada familia viva del usuario, en orden estable, antes de tocar
+    filas, como :func:`revocar_familia`. Un code no tiene familia hasta que se
+    canjea: si un canje la estrena mientras esta revocación espera su fila, la
+    pasada siguiente la ve, la cierra y revoca lo emitido. Un cerrojo por
+    usuario serializa dos revocaciones del mismo usuario, que si no podrían
+    cruzar el orden de esas familias tardías.
+    """
+    total = 0
+    cerradas: set[str] = set()
     with connect() as c:
-        return int(
-            c.execute(
-                "UPDATE mcp_oauth_tokens SET revoked_at = now() "
-                "WHERE user_id = %s AND revoked_at IS NULL",
-                (user_id,),
-            ).rowcount
-        )
+        c.execute("SELECT pg_advisory_xact_lock(hashtext('mcp_oauth_usuario:' || %s))", (user_id,))
+        for pasada in range(_MAX_PASADAS):
+            vivas = {
+                str(f[0])
+                for f in c.execute(
+                    "SELECT DISTINCT family_id FROM mcp_oauth_tokens "
+                    "WHERE user_id = %s AND revoked_at IS NULL AND family_id IS NOT NULL",
+                    (user_id,),
+                ).fetchall()
+            }
+            nuevas = sorted(vivas - cerradas)
+            if pasada and not nuevas:
+                break
+            for familia in nuevas:
+                _cerrar_familia(c, familia)
+            cerradas.update(nuevas)
+            total += int(
+                c.execute(
+                    "UPDATE mcp_oauth_tokens SET revoked_at = now() "
+                    "WHERE user_id = %s AND revoked_at IS NULL",
+                    (user_id,),
+                ).rowcount
+            )
+    return total
 
 
 def revocar_token(token: str) -> None:

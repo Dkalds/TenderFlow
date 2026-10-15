@@ -209,23 +209,20 @@ def test_family_id_explicito_solo_para_un_codigo(
     assert emitido is not None and emitido["family_id"] == "elegida"
 
 
-def test_reutilizar_revoca_lo_que_otra_rotacion_emite_a_la_vez(
-    cliente: str, usuario: int, nuevo: Callable[..., None], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """R10 (a): la revocación por reutilización alcanza lo que emite otra rotación simultánea.
+def _carrera(
+    monkeypatch: pytest.MonkeyPatch,
+    emitir: Callable[[], Any],
+    rival: Callable[[], Any],
+) -> tuple[Any, Any]:
+    """``emitir`` gana un canje y se detiene entre consumir y emitir hasta que
+    ``rival`` queda **bloqueado por él** (``pg_blocking_pids``, sin dormir).
 
-    Familia ``fam``: ``r0`` ya se canjeó (lo emitido entonces fue ``r1``, vivo).
-    El hilo legítimo rota ``r1`` y, entre consumirlo y emitir ``r2``, se detiene
-    hasta que el hilo atacante, que reutiliza ``r0``, queda **bloqueado por él**
-    (``pg_blocking_pids``, sin dormir). Sin el cerrojo de familia, el ``UPDATE``
-    de la revocación esperaba la fila de ``r1``, la volvía a evaluar ya
-    consumida y no veía ``r2``, insertada por la transacción a la que esperaba:
-    ``r2`` quedaba vivo en una familia revocada.
+    Devuelve los dos resultados. Es el hueco en el que una revocación que no
+    toma el cerrojo de familia espera la fila del token consumido, la re-evalúa
+    ya consumida y no ve los tokens que el ganador inserta a continuación.
     """
     import db.mcp_oauth as modulo
 
-    nuevo("r0", kind="refresh", family_id="fam")
-    consumir_y_emitir("r0", "refresh", _emitidos(cliente, usuario, "1"))  # emite r-1
     consumido = threading.Event()
 
     def _pausa(c: Any) -> None:
@@ -241,26 +238,89 @@ def test_reutilizar_revoca_lo_que_otra_rotacion_emite_a_la_vez(
             if bloqueados:
                 return
             time.sleep(0.01)
-        raise AssertionError("el hilo que reutiliza r0 nunca llegó a esperar al que rota r1")
+        raise AssertionError("el rival nunca llegó a esperar al canje")
 
     monkeypatch.setattr(modulo, "_antes_de_emitir", _pausa)
 
-    def _rotar() -> tuple[dict[str, Any] | None, bool]:
-        return consumir_y_emitir("r-1", "refresh", _emitidos(cliente, usuario, "2"))
-
-    def _reutilizar() -> tuple[dict[str, Any] | None, bool]:
+    def _rival() -> Any:
         assert consumido.wait(timeout=10)
-        return consumir_y_emitir("r0", "refresh", _emitidos(cliente, usuario, "3"))
+        return rival()
 
     with ThreadPoolExecutor(2) as ex:
-        rotacion = ex.submit(_rotar)
-        reutilizacion = ex.submit(_reutilizar)
-        fila_rot, reu_rot = rotacion.result(timeout=30)
-        fila_reu, reu_reu = reutilizacion.result(timeout=30)
+        primero = ex.submit(emitir)
+        segundo = ex.submit(_rival)
+        return primero.result(timeout=30), segundo.result(timeout=30)
+
+
+def test_reutilizar_revoca_lo_que_otra_rotacion_emite_a_la_vez(
+    cliente: str, usuario: int, nuevo: Callable[..., None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R10 (a): la revocación por reutilización alcanza lo que emite otra rotación simultánea.
+
+    Familia ``fam``: ``r0`` ya se canjeó (lo emitido entonces fue ``r1``, vivo).
+    El hilo legítimo rota ``r1`` mientras el atacante reutiliza ``r0``. Sin el
+    cerrojo de familia, ``r2`` quedaba vivo en una familia revocada.
+    """
+    nuevo("r0", kind="refresh", family_id="fam")
+    consumir_y_emitir("r0", "refresh", _emitidos(cliente, usuario, "1"))  # emite r-1
+    (fila_rot, reu_rot), (fila_reu, reu_reu) = _carrera(
+        monkeypatch,
+        lambda: consumir_y_emitir("r-1", "refresh", _emitidos(cliente, usuario, "2")),
+        lambda: consumir_y_emitir("r0", "refresh", _emitidos(cliente, usuario, "3")),
+    )
     assert fila_rot is not None and not reu_rot  # la rotación ganó y emitió r-2
     assert fila_reu is not None and reu_reu
     assert buscar_token("r-2", "refresh") is not None
     assert obtener_token("r-2", "refresh") is None  # …y la reutilización la alcanzó
+    assert obtener_token("a-2", "access") is None
+
+
+def test_revocar_familia_alcanza_lo_que_emite_una_rotacion_a_la_vez(
+    cliente: str, usuario: int, nuevo: Callable[..., None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un ``/revoke`` explícito simultáneo a una rotación no deja vivo el par nuevo."""
+    nuevo("r1", kind="refresh", family_id="fam")
+    (fila, reutilizado), revocados = _carrera(
+        monkeypatch,
+        lambda: consumir_y_emitir("r1", "refresh", _emitidos(cliente, usuario, "2")),
+        lambda: revocar_familia("fam"),
+    )
+    assert fila is not None and not reutilizado
+    assert revocados == 2  # r-2 y a-2, insertados mientras la revocación esperaba
+    assert buscar_token("r-2", "refresh") is not None
+    assert obtener_token("r-2", "refresh") is None
+    assert obtener_token("a-2", "access") is None
+
+
+def test_revocar_de_usuario_alcanza_lo_que_emite_una_rotacion_a_la_vez(
+    cliente: str, usuario: int, nuevo: Callable[..., None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    nuevo("r1", kind="refresh", family_id="fam")
+    nuevo("otra", kind="refresh", family_id="fam-b")
+    (fila, _), revocados = _carrera(
+        monkeypatch,
+        lambda: consumir_y_emitir("r1", "refresh", _emitidos(cliente, usuario, "2")),
+        lambda: revocar_de_usuario(usuario),
+    )
+    assert fila is not None
+    assert revocados == 3  # otra, r-2 y a-2
+    for token, kind in (("r-2", "refresh"), ("a-2", "access"), ("otra", "refresh")):
+        assert obtener_token(token, kind) is None, token
+
+
+def test_revocar_de_usuario_alcanza_lo_que_emite_un_codigo_a_la_vez(
+    cliente: str, usuario: int, nuevo: Callable[..., None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un code no tiene familia hasta que se canjea: la revocación no podía cerrarla antes."""
+    nuevo("c1", kind="code")
+    (fila, _), _ = _carrera(
+        monkeypatch,
+        lambda: consumir_y_emitir("c1", "code", _emitidos(cliente, usuario, "2")),
+        lambda: revocar_de_usuario(usuario),
+    )
+    assert fila is not None
+    assert buscar_token("r-2", "refresh") is not None
+    assert obtener_token("r-2", "refresh") is None
     assert obtener_token("a-2", "access") is None
 
 

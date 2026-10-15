@@ -1465,6 +1465,17 @@ def mcp_google_redirect_uri() -> str:
     return os.environ.get("MCP_GOOGLE_REDIRECT_URI", "").strip()
 
 
+def mcp_redirect_uris_extra() -> tuple[str, ...]:
+    """``MCP_REDIRECT_URIS_EXTRA`` — redirect URIs exactos que el DCR del MCP admite además.
+
+    Separados por comas; vacío → ``()``. Para clientes con callback propio por
+    app, como ChatGPT (``https://chatgpt.com/connector/oauth/{callback_id}``).
+    Los de claude.ai/claude.com y el loopback ya están en el proveedor.
+    """
+    crudo = os.environ.get("MCP_REDIRECT_URIS_EXTRA", "")
+    return tuple(uri.strip() for uri in crudo.split(",") if uri.strip())
+
+
 # ── ANCLA S5 — cola de trabajo y worker ──────────────────────────────────
 #
 # Fuera de `Settings` y no dentro, por el mismo motivo que `database_admin_url`

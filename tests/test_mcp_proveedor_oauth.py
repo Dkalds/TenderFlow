@@ -401,24 +401,40 @@ async def _rotar(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _sin_redirects_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    """La allowlist de DCR no depende del entorno de quien corre los tests."""
+    monkeypatch.delenv("MCP_REDIRECT_URIS_EXTRA", raising=False)
+
+
 @pytest.mark.parametrize(
     "redirect",
     [
+        # R11: un https cualquiera abría el *confused deputy* (un cliente
+        # registrado por un atacante recibía el código de un admin).
+        "https://evil.example/cb",
+        "https://claude.ai/api/mcp/otra_ruta",
+        "https://claude.ai.evil.example/api/mcp/auth_callback",
+        "https://claude.ai/api/mcp/auth_callback?x=1",
+        "http://claude.ai/api/mcp/auth_callback",
         "http://evil.com/cb",
         "http://localhost.evil.com/cb",
         "http://127.0.0.1.evil.com/cb",
         "http://localhost@evil.com/cb",
+        "https://localhost:6274/cb",
         "cursor://callback",
         "javascript:alert(1)",
-        "https://claude.ai/cb#fragmento",
+        "http://localhost:6274/cb#fragmento",
     ],
 )
-async def test_registro_rechaza_redirect_http_no_local(
+async def test_registro_rechaza_redirect_fuera_de_la_allowlist(
     proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria, redirect: str
 ) -> None:
     with pytest.raises(RegistrationError) as e:
         await proveedor.register_client(_info(REDIRECT, redirect))
     assert e.value.error == "invalid_redirect_uri"
+    assert "https://claude.ai/api/mcp/auth_callback" in (e.value.error_description or "")
+    assert "localhost" in (e.value.error_description or "")
     assert almacen.clientes == {}
 
 
@@ -428,10 +444,16 @@ async def test_registro_rechaza_sin_redirect_uris(proveedor: ProveedorTenderFlow
         await proveedor.register_client(info)
 
 
-async def test_registro_acepta_https_y_localhost(
+async def test_registro_acepta_los_callbacks_de_claude_y_loopback(
     proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria
 ) -> None:
-    uris = (REDIRECT, "http://localhost:6274/oauth/callback", "http://127.0.0.1/cb")
+    uris = (
+        REDIRECT,
+        "https://claude.com/api/mcp/auth_callback",
+        "http://localhost:6274/oauth/callback",
+        "http://127.0.0.1:33418/",
+        "http://localhost/cb",
+    )
     await proveedor.register_client(_info(*uris))
     assert almacen.clientes["cliente-1"]["redirect_uris"] == list(uris)
     leido = await proveedor.get_client("cliente-1")
@@ -439,6 +461,19 @@ async def test_registro_acepta_https_y_localhost(
     assert [str(u) for u in leido.redirect_uris or []] == list(uris)
     assert leido.scope == "mcp" and leido.token_endpoint_auth_method == "none"
     assert await proveedor.get_client("no-existe") is None
+
+
+async def test_registro_acepta_un_redirect_extra_solo_si_esta_configurado(
+    proveedor: ProveedorTenderFlow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chatgpt = "https://chatgpt.com/connector/oauth/abc123"
+    with pytest.raises(RegistrationError):
+        await proveedor.register_client(_info(chatgpt))
+    monkeypatch.setenv("MCP_REDIRECT_URIS_EXTRA", f" {chatgpt} , https://otro.example/cb ,")
+    await proveedor.register_client(_info(chatgpt))
+    assert await proveedor.get_client("cliente-1") is not None
+    with pytest.raises(RegistrationError):  # exacta: ni un sufijo más
+        await proveedor.register_client(_info(chatgpt + "x", client_id="cliente-2"))
 
 
 # ---------------------------------------------------------------------------
@@ -891,6 +926,18 @@ def test_auditar_oauth_escribe_en_audit_log(monkeypatch: pytest.MonkeyPatch) -> 
     assert llamadas[1][0][0] == "anon" and llamadas[1][1] == {"user_id": None}
 
 
+def test_auditar_oauth_es_la_unica_llamada_a_log_action_del_mcp() -> None:
+    """R12: la clave `"user:{id}"` se construye en un solo sitio, que la Task 8 reutiliza."""
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1] / "mcp_server"
+    llamadas = {
+        str(f.relative_to(raiz)): f.read_text(encoding="utf-8").count("log_action(")
+        for f in raiz.rglob("*.py")
+    }
+    assert {k: v for k, v in llamadas.items() if v} == {"auth/proveedor.py": 1}
+
+
 def test_almacen_postgres_delega_en_db_mcp_oauth() -> None:
     import inspect
 
@@ -988,6 +1035,8 @@ async def test_identidad_de_google(google_config: None) -> None:
     [
         (httpx.Response(400, json={"error": "invalid_grant"}), {"email": "a@b.es", "sub": "1"}),
         (httpx.Response(200, json={}), {"email": "a@b.es", "sub": "1"}),
+        (httpx.Response(200, json=["id_token", "jwt"]), {"email": "a@b.es", "sub": "1"}),
+        (httpx.Response(200, text="no es json"), {"email": "a@b.es", "sub": "1"}),
         (httpx.Response(200, json={"id_token": "jwt"}), None),
         (
             httpx.Response(200, json={"id_token": "jwt"}),
@@ -1071,7 +1120,10 @@ async def test_flujo_completo_por_los_handlers_del_sdk(
     ) as http:
         r = await http.post(
             "/register",
-            json={"redirect_uris": ["http://evil.com/cb"], "token_endpoint_auth_method": "none"},
+            json={
+                "redirect_uris": ["https://evil.example/cb"],
+                "token_endpoint_auth_method": "none",
+            },
         )
         assert r.status_code == 400 and r.json()["error"] == "invalid_redirect_uri"
         r = await http.post(

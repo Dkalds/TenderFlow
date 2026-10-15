@@ -9,7 +9,12 @@ from types import ModuleType
 
 import pytest
 
-from config.settings import mcp_database_url, mcp_google_redirect_uri, mcp_public_url
+from config.settings import (
+    mcp_database_url,
+    mcp_google_redirect_uri,
+    mcp_public_url,
+    mcp_redirect_uris_extra,
+)
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_layers.py"
 
@@ -42,6 +47,21 @@ def test_mcp_database_url_y_redirect_se_recortan(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("MCP_GOOGLE_REDIRECT_URI", " https://mcp.example.com/google/callback ")
     assert mcp_database_url() == "postgresql://u:p@h/db"
     assert mcp_google_redirect_uri() == "https://mcp.example.com/google/callback"
+
+
+def test_mcp_redirect_uris_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MCP_REDIRECT_URIS_EXTRA", raising=False)
+    assert mcp_redirect_uris_extra() == ()
+    monkeypatch.setenv("MCP_REDIRECT_URIS_EXTRA", " , ")
+    assert mcp_redirect_uris_extra() == ()
+    monkeypatch.setenv(
+        "MCP_REDIRECT_URIS_EXTRA",
+        " https://chatgpt.com/connector/oauth/abc ,https://otro.example/cb,",
+    )
+    assert mcp_redirect_uris_extra() == (
+        "https://chatgpt.com/connector/oauth/abc",
+        "https://otro.example/cb",
+    )
 
 
 def test_mcp_server_capa_por_encima_de_api() -> None:

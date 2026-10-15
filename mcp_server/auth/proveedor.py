@@ -50,6 +50,7 @@ from mcp.server.auth.provider import (
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
+from config.settings import mcp_redirect_uris_extra
 from db import mcp_oauth
 from db.audit import log_action
 from db.mcp_oauth import TipoToken, TokenNuevo
@@ -60,6 +61,7 @@ from services.access_grants import acceso_oauth_permitido
 from shared.auth_core import generate_oauth_state, oauth_state_nonce, verify_oauth_state
 
 __all__ = [
+    "REDIRECTS_CLAUDE",
     "AlmacenOAuth",
     "AlmacenOAuthPostgres",
     "ProveedorTenderFlow",
@@ -81,6 +83,17 @@ TTL_REFRESH = 30 * 86400
 CACHE_ADMIN = 60
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1"})
+#: Callbacks documentados de Anthropic para conectores MCP (claude.ai / claude.com).
+REDIRECTS_CLAUDE = (
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+)
+_FORMAS_ADMITIDAS = (
+    "redirect_uris admitidos: "
+    + ", ".join(REDIRECTS_CLAUDE)
+    + ", http://localhost[:puerto]/… y http://127.0.0.1[:puerto]/…"
+    + " y los configurados en MCP_REDIRECT_URIS_EXTRA."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -164,18 +177,25 @@ class AlmacenOAuthPostgres:
 def auditar_oauth(accion: str, user_id: int | None, detalle: Mapping[str, object]) -> None:
     """Escribe ``accion`` en ``audit_log`` (``db.audit.log_action``, que no lanza).
 
+    Es la **única** llamada a ``log_action`` del MCP: la auditoría OAuth de este
+    módulo y la de las llamadas a tools (Task 8) pasan por aquí.
+
     ``detalle`` nunca lleva el valor de un token: solo cliente, familia, motivo
     y, en un login denegado, el correo que lo intentó.
     """
+    # El primer argumento posicional de `log_action` es la clave opaca que
+    # persigue el ratchet de identidad de `scripts/` (D18). Aquí vale `"user:{id}"` (o
+    # `"anon"`), derivada del id y NO del correo, así que no amplía esa deuda; va
+    # en posición para no nombrar el parámetro en un fichero nuevo.
     clave = f"user:{user_id}" if user_id is not None else "anon"
     log_action(clave, "mcp", accion, json.dumps(dict(detalle), ensure_ascii=False), user_id=user_id)
 
 
-def redirect_uri_admitido(uri: str) -> bool:
-    """``https://…`` con host, o ``http://`` de loopback (``localhost``/``127.0.0.1``).
+def _es_loopback(uri: str) -> bool:
+    """``http://localhost`` o ``http://127.0.0.1``, con cualquier puerto y ruta, sin fragmento.
 
-    Sin fragmento (RFC 6749 §3.1.2) y comparando el host ya parseado, de modo
-    que ``http://localhost@evil.com/`` o ``http://localhost.evil.com/`` no pasan.
+    Compara el host ya parseado: ``http://localhost@evil.com/`` o
+    ``http://localhost.evil.com/`` no pasan.
     """
     try:
         partes = urlsplit(uri)
@@ -183,12 +203,27 @@ def redirect_uri_admitido(uri: str) -> bool:
         partes.port  # noqa: B018 — un puerto inválido lanza ValueError
     except ValueError:
         return False
-    if partes.fragment or not host:
+    if partes.fragment:
         return False
-    esquema = partes.scheme.lower()
-    if esquema == "https":
-        return True
-    return esquema == "http" and host in _LOOPBACK
+    return partes.scheme.lower() == "http" and host in _LOOPBACK
+
+
+def redirect_uri_admitido(uri: str) -> bool:
+    """¿Admite el DCR este ``redirect_uri``? Allowlist cerrada (ruling R11).
+
+    Exactos: los callbacks de Claude (:data:`REDIRECTS_CLAUDE`) y los de
+    ``MCP_REDIRECT_URIS_EXTRA``. Además, el loopback (:func:`_es_loopback`)
+    para Claude Code y MCP Inspector, que escuchan en un puerto local.
+
+    Un https cualquiera no basta: el registro es abierto y Google solo enseña el
+    selector de cuenta de la app de TenderFlow, ya consentida. Un atacante que
+    registrase ``https://evil.example/cb`` y le pasara a un admin un enlace a
+    ``/authorize`` con su client_id y su PKCE recibiría el código del admin y lo
+    canjearía (*confused deputy*, que las buenas prácticas de seguridad de MCP
+    exigen impedir). Como el SDK exige en ``/authorize`` que el redirect coincida
+    exactamente con uno registrado, limitar lo registrable cierra el ataque.
+    """
+    return uri in REDIRECTS_CLAUDE or uri in mcp_redirect_uris_extra() or _es_loopback(uri)
 
 
 async def _en_hilo(f: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
@@ -288,16 +323,22 @@ class ProveedorTenderFlow(
         datos = {"resource": resource}
         nuevos = [
             TokenNuevo(
-                access, "access", client_id, user_id, scopes_access, self._caduca(TTL_ACCESS), datos
+                token=access,
+                kind="access",
+                client_id=client_id,
+                user_id=user_id,
+                scopes=scopes_access,
+                expires_at=self._caduca(TTL_ACCESS),
+                datos=datos,
             ),
             TokenNuevo(
-                refresh,
-                "refresh",
-                client_id,
-                user_id,
-                scopes_refresh,
-                self._caduca(TTL_REFRESH),
-                datos,
+                token=refresh,
+                kind="refresh",
+                client_id=client_id,
+                user_id=user_id,
+                scopes=scopes_refresh,
+                expires_at=self._caduca(TTL_REFRESH),
+                datos=datos,
             ),
         ]
         return access, refresh, nuevos
@@ -347,10 +388,7 @@ class ProveedorTenderFlow(
             raise RegistrationError("invalid_redirect_uri", "Hace falta al menos un redirect_uri.")
         for uri in uris:
             if not redirect_uri_admitido(uri):
-                raise RegistrationError(
-                    "invalid_redirect_uri",
-                    "redirect_uris: solo https:// o http://localhost / http://127.0.0.1.",
-                )
+                raise RegistrationError("invalid_redirect_uri", _FORMAS_ADMITIDAS)
         await _en_hilo(
             self._almacen.guardar_cliente,
             client_info.client_id,
@@ -477,7 +515,8 @@ class ProveedorTenderFlow(
     ) -> OAuthToken:
         user_id = int(authorization_code.subject or 0)
         if not await self._usuario_sigue_admin(user_id):
-            raise TokenError("invalid_grant", "el usuario ya no tiene acceso")
+            # Mismo texto que un código inválido: no se revela el motivo.
+            raise TokenError("invalid_grant", "código de autorización inválido o ya usado")
         scopes = list(authorization_code.scopes)
         access, refresh, nuevos = self._nuevos(
             client.client_id, user_id, scopes, scopes, authorization_code.resource
