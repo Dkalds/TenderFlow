@@ -58,6 +58,7 @@ from db.users import get_active_user_by_email_ci, get_user_by_id
 from mcp_server.auth.google import ClienteGoogle
 from observability.logging import get_logger
 from services.access_grants import acceso_oauth_permitido
+from services.rate_limiting import get_rate_limiter
 from shared.auth_core import generate_oauth_state, oauth_state_nonce, verify_oauth_state
 
 __all__ = [
@@ -81,6 +82,23 @@ TTL_ACCESS = 3600
 TTL_REFRESH = 30 * 86400
 #: Cuánto vale la última comprobación de «sigue siendo admin» de un usuario.
 CACHE_ADMIN = 60
+
+#: Topes de lo que el DCR abierto y ``/authorize`` escriben en la base (R18).
+MAX_CHARS_CLIENT_NAME = 200
+MAX_REDIRECT_URIS = 5
+MAX_CHARS_CAMPO = 500
+MAX_ELEMENTOS_LISTA = 10
+MAX_CHARS_CLIENTE = 8 * 1024
+MAX_CHARS_STATE = 500
+MAX_SCOPES = 10
+MAX_CHARS_PETICION = 4 * 1024
+#: Rate limits ``(clave, máximo, ventana en s)``. Son globales: la IP real del
+#: cliente solo la sabe ``api.middleware._trusted_client_ip``, que el MCP no
+#: puede importar (capas), así que no hay límite por IP.
+LIMITE_REGISTRO = ("mcp:oauth:registro", 30, 3600)
+LIMITE_AUTORIZAR = ("mcp:oauth:autorizar", 600, 3600)
+#: Por ``client_id``: la clave es ``f"{LIMITE_AUTORIZAR[0]}:{client_id}"``.
+LIMITE_AUTORIZAR_CLIENTE = 60
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1"})
 #: Callbacks documentados de Anthropic para conectores MCP (claude.ai / claude.com).
@@ -226,6 +244,38 @@ def redirect_uri_admitido(uri: str) -> bool:
     return uri in REDIRECTS_CLAUDE or uri in mcp_redirect_uris_extra() or _es_loopback(uri)
 
 
+def _limitar_real(clave: str, maximo: int, ventana: int) -> bool:
+    """``services.rate_limiting``: ``True`` si cabe (falla cerrado si el backend cae)."""
+    return get_rate_limiter().check(clave, max_calls=maximo, window_seconds=ventana)
+
+
+def _exceso(valor: object, campo: str, tope: int = MAX_CHARS_CAMPO) -> str | None:
+    """El primer tope que ``valor`` supera (texto, listas, objetos anidados), o ``None``."""
+    if isinstance(valor, str):
+        return f"{campo}: más de {tope} caracteres" if len(valor) > tope else None
+    if isinstance(valor, list | tuple):
+        maximo = MAX_REDIRECT_URIS if campo == "redirect_uris" else MAX_ELEMENTOS_LISTA
+        if len(valor) > maximo:
+            return f"{campo}: más de {maximo} elementos"
+        return next((e for v in valor if (e := _exceso(v, campo)) is not None), None)
+    if isinstance(valor, Mapping):
+        for clave, v in valor.items():
+            if (e := _exceso(str(clave), f"{campo}.{clave}")) or (e := _exceso(v, campo)):
+                return e
+    return None
+
+
+def _exceso_de_cliente(datos: Mapping[str, object]) -> str | None:
+    """Topes del registro: ``client_name``, ``redirect_uris``, cada campo y el total."""
+    for campo, valor in datos.items():
+        tope = MAX_CHARS_CLIENT_NAME if campo == "client_name" else MAX_CHARS_CAMPO
+        if (e := _exceso(valor, campo, tope)) is not None:
+            return e
+    if len(json.dumps(dict(datos), ensure_ascii=False)) > MAX_CHARS_CLIENTE:
+        return f"el registro ocupa más de {MAX_CHARS_CLIENTE} caracteres"
+    return None
+
+
 async def _en_hilo(f: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
     """Llamada síncrona (BD, auditoría) fuera del bucle de eventos."""
     return await anyio.to_thread.run_sync(functools.partial(f, *args, **kwargs))
@@ -255,6 +305,7 @@ class ProveedorTenderFlow(
         acceso_permitido: Callable[[str], bool] = acceso_oauth_permitido,
         reloj: Callable[[], float] = time.time,
         auditar: Callable[[str, int | None, Mapping[str, object]], None] = auditar_oauth,
+        limitar: Callable[[str, int, int], bool] = _limitar_real,
     ) -> None:
         self._almacen = almacen
         self._google = google
@@ -263,6 +314,7 @@ class ProveedorTenderFlow(
         self._acceso_permitido = acceso_permitido
         self._reloj = reloj
         self._auditar_sync = auditar
+        self._limitar = limitar
         #: user_id → (válido hasta, sigue siendo admin).
         self._cache_admin: dict[int, tuple[float, bool]] = {}
 
@@ -376,13 +428,33 @@ class ProveedorTenderFlow(
 
     # -- clientes ---------------------------------------------------------
 
+    async def _cabe(self, clave: str, maximo: int, ventana: int) -> bool:
+        return await _en_hilo(self._limitar, clave, maximo, ventana)
+
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
+        """El cliente registrado, si **todos** sus ``redirect_uris`` siguen en la allowlist.
+
+        La allowlist puede encoger (``MCP_REDIRECT_URIS_EXTRA``) o el cliente
+        venir de antes de que existiera: se vuelve a comprobar en cada uso.
+        """
         fila = await _en_hilo(self._almacen.obtener_cliente, client_id)
         if fila is None:
+            return None
+        uris = [str(u) for u in fila["redirect_uris"] or []]
+        if not uris or not all(redirect_uri_admitido(u) for u in uris):
+            log.warning("mcp_oauth_cliente_fuera_de_allowlist", client_id=client_id)
             return None
         return OAuthClientInformationFull.model_validate(fila["datos"])
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
+        if not await self._cabe(*LIMITE_REGISTRO):
+            raise RegistrationError(
+                "invalid_client_metadata",
+                "Demasiados registros de clientes en la última hora; inténtalo más tarde.",
+            )
+        datos = client_info.model_dump(mode="json")
+        if (exceso := _exceso_de_cliente(datos)) is not None:
+            raise RegistrationError("invalid_client_metadata", f"Registro desmedido: {exceso}.")
         uris = [str(u) for u in client_info.redirect_uris or []]
         if not uris:
             raise RegistrationError("invalid_redirect_uri", "Hace falta al menos un redirect_uri.")
@@ -394,7 +466,7 @@ class ProveedorTenderFlow(
             client_info.client_id,
             client_info.client_name,
             uris,
-            client_info.model_dump(mode="json"),
+            datos,
         )
 
     # -- /authorize y vuelta de Google -----------------------------------
@@ -402,13 +474,31 @@ class ProveedorTenderFlow(
     async def authorize(
         self, client: OAuthClientInformationFull, params: AuthorizationParams
     ) -> str:
+        clave, maximo, ventana = LIMITE_AUTORIZAR
+        if not (
+            await self._cabe(clave, maximo, ventana)
+            and await self._cabe(f"{clave}:{client.client_id}", LIMITE_AUTORIZAR_CLIENTE, ventana)
+        ):
+            raise AuthorizeError(
+                "temporarily_unavailable",
+                "Demasiadas peticiones de autorización; inténtalo más tarde.",
+            )
+        scopes = params.scopes
+        if scopes is None:
+            scopes = client.scope.split() if client.scope else []
+        datos = params.model_dump(mode="json")
+        if params.state is not None and len(params.state) > MAX_CHARS_STATE:
+            raise AuthorizeError("invalid_request", f"state de más de {MAX_CHARS_STATE} caracteres")
+        if len(scopes) > MAX_SCOPES:
+            raise AuthorizeError("invalid_request", f"más de {MAX_SCOPES} scopes")
+        if len(json.dumps(datos, ensure_ascii=False)) > MAX_CHARS_PETICION:
+            raise AuthorizeError(
+                "invalid_request", f"petición de más de {MAX_CHARS_PETICION} caracteres"
+            )
         state = generate_oauth_state()
         nonce = oauth_state_nonce(state)
         if nonce is None:  # pragma: no cover — generate_oauth_state siempre lo trae
             raise AuthorizeError("server_error", "state sin nonce")
-        scopes = params.scopes
-        if scopes is None:
-            scopes = client.scope.split() if client.scope else []
         await _en_hilo(
             self._almacen.guardar_token,
             nonce,
@@ -417,7 +507,7 @@ class ProveedorTenderFlow(
             user_id=None,
             family_id=None,
             scopes=scopes,
-            datos=params.model_dump(mode="json"),
+            datos=datos,
             expires_at=self._caduca(TTL_PENDIENTE),
         )
         return self._google.url_autorizacion(state)

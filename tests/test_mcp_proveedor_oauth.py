@@ -238,6 +238,9 @@ class Mundo:
     usuarios: dict[int, dict[str, Any]] = field(default_factory=dict)
     permitidos: set[str] = field(default_factory=set)
     auditoria: list[tuple[str, int | None, dict[str, object]]] = field(default_factory=list)
+    #: Rate limit: llamadas vistas ``(clave, máximo, ventana)`` y claves que se niegan.
+    limites: list[tuple[str, int, int]] = field(default_factory=list)
+    negadas: set[str] = field(default_factory=set)
 
     def alta(self, user_id: int, email: str, *, admin: bool = True, activo: bool = True) -> None:
         self.usuarios[user_id] = {
@@ -266,6 +269,10 @@ class Mundo:
 
     def acciones(self) -> list[str]:
         return [a for a, _, _ in self.auditoria]
+
+    def limitar(self, clave: str, maximo: int, ventana: int) -> bool:
+        self.limites.append((clave, maximo, ventana))
+        return clave not in self.negadas
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +326,7 @@ def proveedor(
         acceso_permitido=mundo.permitido,
         reloj=reloj,
         auditar=mundo.auditar,
+        limitar=mundo.limitar,
     )
 
 
@@ -476,6 +484,95 @@ async def test_registro_acepta_un_redirect_extra_solo_si_esta_configurado(
         await proveedor.register_client(_info(chatgpt + "x", client_id="cliente-2"))
 
 
+def _metadatos(**campos: object) -> OAuthClientInformationFull:
+    base: dict[str, object] = {
+        "client_id": "cliente-1",
+        "redirect_uris": [REDIRECT],
+        "token_endpoint_auth_method": "none",
+    }
+    return OAuthClientInformationFull.model_validate(base | campos)
+
+
+_LOOPBACKS = [f"http://localhost:{6000 + n}/cb" for n in range(6)]
+
+
+@pytest.mark.parametrize(
+    "campos",
+    [
+        {"client_name": "x" * 201},
+        {"client_name": "x" * 100_000},
+        {"redirect_uris": _LOOPBACKS},
+        {"redirect_uris": ["http://localhost:6000/" + "a" * 500]},
+        {"contacts": [f"c{n}@empresa.es" for n in range(11)]},
+        {"contacts": ["c" * 501]},
+        {"client_uri": "https://claude.ai/" + "a" * 500},
+        {"software_id": "s" * 501},
+        {"jwks": {"keys": [{"kid": str(n), "x": "k" * 490, "y": "k" * 490} for n in range(10)]}},
+    ],
+    ids=[
+        "client_name_201",
+        "client_name_100000",
+        "seis_redirects",
+        "redirect_largo",
+        "once_contactos",
+        "contacto_largo",
+        "client_uri_largo",
+        "software_id_largo",
+        "jwks_que_pasa_de_8KB",
+    ],
+)
+async def test_registro_rechaza_metadatos_desmedidos(
+    proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria, campos: dict[str, object]
+) -> None:
+    """R18: el DCR es abierto y escribe en la base de producción: todo campo tiene tope."""
+    with pytest.raises(RegistrationError) as e:
+        await proveedor.register_client(_metadatos(**campos))
+    assert e.value.error == "invalid_client_metadata"
+    assert almacen.clientes == {}
+
+
+async def test_registro_admite_los_topes_justos(
+    proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria
+) -> None:
+    await proveedor.register_client(
+        _metadatos(
+            client_name="x" * 200,
+            redirect_uris=_LOOPBACKS[:5],
+            contacts=[f"c{n}@empresa.es" for n in range(10)],
+            software_id="s" * 500,
+        )
+    )
+    assert "cliente-1" in almacen.clientes
+
+
+async def test_registro_con_rate_limit_global(
+    proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria, mundo: Mundo
+) -> None:
+    await proveedor.register_client(_info(REDIRECT))
+    assert mundo.limites == [("mcp:oauth:registro", 30, 3600)]
+    mundo.negadas.add("mcp:oauth:registro")
+    with pytest.raises(RegistrationError) as e:
+        await proveedor.register_client(_info(REDIRECT, client_id="cliente-2"))
+    assert "inténtalo más tarde" in (e.value.error_description or "")
+    assert set(almacen.clientes) == {"cliente-1"}
+
+
+async def test_cliente_con_redirect_ya_no_admitido_no_existe(
+    proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R18 (e): ``get_client`` vuelve a pasar la allowlist a lo ya registrado."""
+    almacen.guardar_cliente(
+        "viejo", None, ["https://evil.example/cb"], {"client_id": "viejo", "redirect_uris": []}
+    )
+    assert await proveedor.get_client("viejo") is None
+    chatgpt = "https://chatgpt.com/connector/oauth/abc123"
+    monkeypatch.setenv("MCP_REDIRECT_URIS_EXTRA", chatgpt)
+    await proveedor.register_client(_info(REDIRECT, chatgpt, client_id="extra"))
+    assert await proveedor.get_client("extra") is not None
+    monkeypatch.delenv("MCP_REDIRECT_URIS_EXTRA")
+    assert await proveedor.get_client("extra") is None
+
+
 # ---------------------------------------------------------------------------
 # /authorize y callback de Google
 # ---------------------------------------------------------------------------
@@ -497,6 +594,52 @@ async def test_authorize_redirige_a_google_con_state(
     assert pendiente["datos"]["state"] == "estado-del-cliente"
     assert pendiente["datos"]["code_challenge"] == "desafio-pkce"
     assert pendiente["expires_at"].timestamp() == pytest.approx(reloj() + 600)
+
+
+def _params_con(**campos: object) -> AuthorizationParams:
+    return AuthorizationParams.model_validate(_params().model_dump() | campos)
+
+
+@pytest.mark.parametrize(
+    "campos",
+    [
+        {"state": "s" * 501},
+        {"scopes": [f"s{n}" for n in range(11)]},
+        {"code_challenge": "c" * 4_000},
+    ],
+    ids=["state_largo", "once_scopes", "peticion_de_mas_de_4KB"],
+)
+async def test_authorize_rechaza_peticiones_desmedidas(
+    proveedor: ProveedorTenderFlow,
+    cliente: OAuthClientInformationFull,
+    almacen: AlmacenEnMemoria,
+    campos: dict[str, object],
+) -> None:
+    """R18 (b): cada ``/authorize`` guarda una fila ``pendiente``: con tope."""
+    with pytest.raises(AuthorizeError) as e:
+        await proveedor.authorize(cliente, _params_con(**campos))
+    assert e.value.error == "invalid_request"
+    assert almacen.tokens == {}
+
+
+async def test_authorize_con_rate_limit_global_y_por_cliente(
+    proveedor: ProveedorTenderFlow,
+    cliente: OAuthClientInformationFull,
+    almacen: AlmacenEnMemoria,
+    mundo: Mundo,
+) -> None:
+    mundo.limites.clear()
+    await proveedor.authorize(cliente, _params())
+    assert mundo.limites == [
+        ("mcp:oauth:autorizar", 600, 3600),
+        ("mcp:oauth:autorizar:cliente-1", 60, 3600),
+    ]
+    for negada in ("mcp:oauth:autorizar", "mcp:oauth:autorizar:cliente-1"):
+        mundo.negadas = {negada}
+        with pytest.raises(AuthorizeError) as e:
+            await proveedor.authorize(cliente, _params())
+        assert e.value.error == "temporarily_unavailable"
+    assert len(almacen.tokens) == 1
 
 
 async def test_login_admin_vuelve_con_codigo_y_state(
@@ -1126,6 +1269,15 @@ async def test_flujo_completo_por_los_handlers_del_sdk(
             },
         )
         assert r.status_code == 400 and r.json()["error"] == "invalid_redirect_uri"
+        r = await http.post(
+            "/register",
+            json={
+                "redirect_uris": [REDIRECT],
+                "token_endpoint_auth_method": "none",
+                "client_name": "x" * 100_000,
+            },
+        )
+        assert r.status_code == 400 and r.json()["error"] == "invalid_client_metadata"
         r = await http.post(
             "/register", json={"redirect_uris": [REDIRECT], "token_endpoint_auth_method": "none"}
         )

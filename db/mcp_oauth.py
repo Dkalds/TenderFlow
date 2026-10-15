@@ -412,3 +412,47 @@ def revocar_token(token: str) -> None:
             "WHERE token_hash = %s AND revoked_at IS NULL",
             (hash_token(token),),
         )
+
+
+# ---------------------------------------------------------------------------
+# Purga
+# ---------------------------------------------------------------------------
+
+#: Lo que el servidor de autorización deja de necesitar y cuándo (R18).
+_SQL_PURGA = (
+    (
+        "peticiones_y_codigos",
+        # Viven 10 min y 60 s; un día de margen para investigar un incidente.
+        "DELETE FROM mcp_oauth_tokens WHERE kind IN ('pendiente', 'code') "
+        "AND expires_at < now() - interval '1 day'",
+    ),
+    (
+        "tokens",
+        # Una semana de margen: un refresh rotado sigue detectando su
+        # reutilización (y revocando la familia) durante ese tiempo.
+        "DELETE FROM mcp_oauth_tokens WHERE kind IN ('access', 'refresh') "
+        "AND (revoked_at < now() - interval '7 days' OR expires_at < now() - interval '7 days')",
+    ),
+    (
+        "clientes",
+        # Registros del DCR abierto que nunca llegaron a tener un token (o cuyos
+        # tokens ya se purgaron). Va después: ve lo que acaban de borrar las otras.
+        "DELETE FROM mcp_oauth_clients c WHERE c.created_at < now() - interval '7 days' "
+        "AND NOT EXISTS (SELECT 1 FROM mcp_oauth_tokens t WHERE t.client_id = c.client_id)",
+    ),
+)
+
+
+def purgar() -> dict[str, int]:
+    """Borra lo caducado o revocado y los clientes huérfanos; devuelve cuántas filas por clase.
+
+    - ``pendiente`` y ``code`` caducados hace más de un día;
+    - ``access`` y ``refresh`` revocados (o consumidos) o caducados hace más de 7 días;
+    - clientes registrados hace más de 7 días sin ningún token.
+
+    Una transacción. La llama el servidor MCP al arrancar y cada hora
+    (``mcp_server/servidor.py``); el DCR y ``/authorize`` son abiertos, y sin
+    esto sus filas crecerían sin fin.
+    """
+    with connect() as c:
+        return {clase: int(c.execute(sql).rowcount) for clase, sql in _SQL_PURGA}

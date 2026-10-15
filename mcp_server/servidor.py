@@ -29,6 +29,8 @@ from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urlsplit
 
+import anyio
+import anyio.to_thread
 from mcp.server.auth.provider import AuthorizeError
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.mcpserver import Context, MCPServer
@@ -48,6 +50,7 @@ from config.settings import (
     mcp_public_url,
 )
 from db.consulta_libre import JSONValue, cerrar_pool_mcp
+from db.mcp_oauth import purgar as purgar_oauth
 from mcp_server.auth.google import ClienteGoogleReal
 from mcp_server.auth.proveedor import AlmacenOAuthPostgres, ProveedorTenderFlow
 from mcp_server.envoltura import (
@@ -59,6 +62,7 @@ from mcp_server.envoltura import (
 from mcp_server.tools.consulta import consultar_sql
 from mcp_server.tools.dominio import buscar_en_pliegos, buscar_licitaciones, ficha_licitacion
 from mcp_server.tools.esquema import describir_esquema, describir_tabla, glosario
+from observability.logging import get_logger
 
 __all__ = [
     "RUTA_CALLBACK_GOOGLE",
@@ -76,6 +80,8 @@ RUTA_CALLBACK_GOOGLE = "/oauth/google/callback"
 _DESCONOCIDA = "tool_desconocida"
 #: Tope del nombre que se repite en un mensaje o en la auditoría.
 _MAX_ECO = 60
+#: Cada cuánto se purgan las tablas OAuth (``db.mcp_oauth.purgar``, R18).
+INTERVALO_PURGA_S: float = 3600
 #: ``MCP_PUBLIC_URL`` en desarrollo si no está configurada (en prod aborta el arranque).
 _URL_LOCAL = "http://localhost:8080"
 #: Orígenes de navegador admitidos además del propio y el loopback. Los
@@ -88,6 +94,8 @@ Servidor de solo lectura sobre la base de datos de licitaciones públicas de Ten
 Empieza por describir_esquema (tablas y glosario) y describir_tabla; agrega, cuenta y cruza con consultar_sql (SELECT de PostgreSQL, 500 filas como máximo).
 Para expedientes concretos usa buscar_licitaciones y ficha_licitacion, y buscar_en_pliegos para el texto de los pliegos.
 """
+
+log = get_logger(__name__)
 
 _SOLO_LECTURA = ToolAnnotations(
     read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
@@ -203,11 +211,35 @@ class _ServidorTenderFlow(MCPServer[None]):
             raise ToolError(mensaje) from causa
 
 
+async def _purgar_periodicamente() -> None:
+    """Purga las tablas OAuth al arrancar y cada :data:`INTERVALO_PURGA_S` segundos.
+
+    El DCR y ``/authorize`` no piden autenticación y escriben filas; sin purga
+    crecerían sin fin. Un fallo se registra y se reintenta en la vuelta siguiente.
+    """
+    while True:
+        try:
+            borrados = await anyio.to_thread.run_sync(purgar_oauth)
+            log.info("mcp_oauth_purga", **borrados)
+        except Exception:
+            log.exception("mcp_oauth_purga_fallida")
+        await anyio.sleep(INTERVALO_PURGA_S)
+
+
 @asynccontextmanager
 async def _ciclo_de_vida(_: MCPServer[None]) -> AsyncIterator[None]:
-    """Cierra el pool del rol MCP al apagar (el lifespan lo entra una vez el gestor HTTP)."""
+    """Purga OAuth en segundo plano y cierre del pool del rol MCP al apagar.
+
+    El lifespan lo entra una vez el gestor HTTP del SDK, durante toda la vida
+    del proceso.
+    """
     try:
-        yield
+        async with anyio.create_task_group() as tareas:
+            tareas.start_soon(_purgar_periodicamente)
+            try:
+                yield
+            finally:
+                tareas.cancel_scope.cancel()
     finally:
         cerrar_pool_mcp()
 

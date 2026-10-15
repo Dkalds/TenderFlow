@@ -39,6 +39,7 @@ from db.mcp_oauth import (
     hash_token,
     obtener_cliente,
     obtener_token,
+    purgar,
     revocar_de_usuario,
     revocar_familia,
     revocar_token,
@@ -500,3 +501,69 @@ def test_las_tablas_nacen_con_rls_sin_force(tmp_db: Any) -> None:
         ("mcp_oauth_clients", True, False),
         ("mcp_oauth_tokens", True, False),
     ]
+
+
+# ── Purga (R18 d) ──────────────────────────────────────────────────────────
+
+
+def _envejecer(token: str, *, caduco_hace: timedelta, revocado_hace: timedelta | None) -> None:
+    ahora = now_utc()
+    with connect() as c:
+        c.execute(
+            "UPDATE mcp_oauth_tokens SET expires_at = %s, revoked_at = %s WHERE token_hash = %s",
+            (
+                ahora - caduco_hace,
+                None if revocado_hace is None else ahora - revocado_hace,
+                hash_token(token),
+            ),
+        )
+
+
+def _hashes() -> set[str]:
+    with connect_read() as c:
+        return {str(f[0]) for f in c.execute("SELECT token_hash FROM mcp_oauth_tokens").fetchall()}
+
+
+def _clientes() -> set[str]:
+    with connect_read() as c:
+        return {str(f[0]) for f in c.execute("SELECT client_id FROM mcp_oauth_clients").fetchall()}
+
+
+def test_purgar_borra_lo_caducado_y_lo_huerfano(nuevo: Callable[..., None], usuario: int) -> None:
+    dia, semana = timedelta(days=1, hours=1), timedelta(days=7, hours=1)
+    # pendiente/code: caducados hace más de un día → fuera; hace menos → se quedan.
+    nuevo("pend-vieja", "pendiente", user_id=None)
+    _envejecer("pend-vieja", caduco_hace=dia, revocado_hace=None)
+    nuevo("pend-reciente", "pendiente", user_id=None)
+    _envejecer("pend-reciente", caduco_hace=timedelta(hours=1), revocado_hace=None)
+    nuevo("code-viejo", "code")
+    _envejecer("code-viejo", caduco_hace=dia, revocado_hace=dia)
+    # access/refresh: revocados o caducados hace más de 7 días → fuera.
+    nuevo("access-caducado", "access")
+    _envejecer("access-caducado", caduco_hace=semana, revocado_hace=None)
+    nuevo("refresh-revocado", "refresh", expires_at=now_utc() + timedelta(days=20))
+    _envejecer("refresh-revocado", caduco_hace=-timedelta(days=20), revocado_hace=semana)
+    nuevo("refresh-revocado-ayer", "refresh")
+    _envejecer("refresh-revocado-ayer", caduco_hace=-timedelta(days=20), revocado_hace=dia)
+    nuevo("access-vivo", "access")
+    # Clientes: viejo y sin tokens → fuera; viejo con tokens o reciente → se quedan.
+    guardar_cliente("huerfano-viejo", None, ["http://localhost:1/cb"], {})
+    guardar_cliente("huerfano-nuevo", None, ["http://localhost:2/cb"], {})
+    guardar_cliente("viejo-con-tokens", None, ["http://localhost:3/cb"], {})
+    nuevo("access-del-viejo", "access", client_id="viejo-con-tokens")
+    with connect() as c:
+        c.execute(
+            "UPDATE mcp_oauth_clients SET created_at = now() - interval '8 days' "
+            "WHERE client_id IN ('huerfano-viejo', 'viejo-con-tokens', %s)",
+            (CLIENTE,),
+        )
+
+    borrados = purgar()
+
+    assert borrados == {"peticiones_y_codigos": 2, "tokens": 2, "clientes": 1}
+    assert _hashes() == {
+        hash_token(t)
+        for t in ("pend-reciente", "refresh-revocado-ayer", "access-vivo", "access-del-viejo")
+    }
+    assert _clientes() == {CLIENTE, "huerfano-nuevo", "viejo-con-tokens"}
+    assert purgar() == {"peticiones_y_codigos": 0, "tokens": 0, "clientes": 0}
