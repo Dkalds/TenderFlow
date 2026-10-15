@@ -12,12 +12,16 @@
 -- Cómo ejecutar (acción manual del usuario — gate secrets+ops, AGENTS.md §6):
 --   1. Generar una password fuerte: openssl rand -base64 32
 --   2. Sustituir el placeholder <GENERAR_PASSWORD_FUERTE> abajo con esa password.
---   3. Ejecutar contra Supabase con el rol ADMIN (dueño del schema, DATABASE_ADMIN_URL):
---        psql "$DATABASE_ADMIN_URL" -f scripts/setup_pg_role_mcp.sql
---   4. Construir MCP_DATABASE_URL con este rol:
+--   3. Aplicar antes las migraciones (`alembic upgrade head`): el script exige que
+--      existan todas las tablas visibles del catálogo y aborta si falta alguna.
+--   4. Ejecutar contra Supabase con el rol ADMIN (dueño del schema, DATABASE_ADMIN_URL),
+--      de forma atómica (sin estos flags un error a medias deja el rol sin permisos):
+--        psql -v ON_ERROR_STOP=1 --single-transaction "$DATABASE_ADMIN_URL" \
+--             -f scripts/setup_pg_role_mcp.sql
+--   5. Construir MCP_DATABASE_URL con este rol:
 --        postgresql://tenderflow_mcp:<password>@<host>:5432/postgres?sslmode=verify-full
 --
--- Idempotente: seguro de re-ejecutar. Los GRANT parten de un REVOKE completo, así
+-- Idempotente: seguro de re-ejecutar (con los flags de arriba, todo o nada). Los GRANT parten de un REVOKE completo, así
 -- que una tabla o columna que el catálogo oculte después pierde el acceso.
 -- Fallo cerrado: no hay ALTER DEFAULT PRIVILEGES; una tabla nueva es invisible
 -- para este rol hasta clasificarla en el catálogo y regenerar este fichero.
@@ -40,6 +44,18 @@ ALTER ROLE "tenderflow_mcp" SET work_mem = '32MB';
 ALTER ROLE "tenderflow_mcp" SET search_path = pg_catalog, public;
 
 -- ── 3. Privilegios de lectura y política RLS ───────────────────────────────
+DO $$
+DECLARE faltan text;
+BEGIN
+    SELECT string_agg(t, ', ' ORDER BY t) INTO faltan
+    FROM unnest(ARRAY['adjudicaciones', 'contrato_eventos', 'extracciones_retirada', 'extraction_runs', 'failed_extractions', 'ingestion_cursors', 'licitacion_criterios_adjudicacion', 'licitacion_garantias', 'licitacion_solvencia', 'licitaciones', 'licitaciones_duplicados', 'licitaciones_history', 'lotes', 'resoluciones_recurso', 'source_ingestion_health', 'documento_chunks', 'documento_pages', 'documentos', 'tender_fact_sheets', 'empresa_aliases', 'empresa_review_queue', 'empresas', 'grupos_empresariales', 'mat_clusters', 'organo_aliases', 'organo_review_queue', 'organos', 'ute_miembros', 'contratos_cartera', 'cuenta_organos', 'cuentas_objetivo', 'etiquetas', 'etiquetas_aplicadas', 'go_no_go_scores', 'go_no_go_weights', 'organization_certifications', 'organization_invitations', 'organization_memberships', 'organization_nifs', 'organization_references', 'organization_report_schedules', 'organization_revenues', 'organization_team_profiles', 'organizations', 'plantillas_aplicadas', 'plantillas_organizacion', 'pursuit_attachments', 'pursuit_comment_mentions', 'pursuit_comments', 'pursuit_events', 'pursuit_tasks', 'pursuits', 'access_grants', 'access_log', 'api_key_tiers', 'audit_log', 'csp_violations', 'solicitudes_acceso', 'users', 'follows', 'notification_preferences', 'notification_reads', 'pending_digests', 'radar_dismissals', 'saved_filters', 'user_event_prefs', 'user_notifications', 'user_profiles', 'watchlist_cpv', 'watchlist_empresas', 'watchlist_items', 'watchlist_rules', 'webhook_deliveries', 'webhooks', 'asistente_feedback', 'feature_store', 'licitacion_tecnologia_pliego', 'licitacion_tecnologia_score', 'ml_feedback', 'model_versions', 'predicciones_baja', 'predicciones_retencion', 'tasas_anulacion_organo', 'tecnologias_keywords', 'client_errors', 'domain_event_dispatches', 'domain_events', 'feature_flags', 'job_locks', 'jobs', 'kpi_snapshots', 'ops_events']) AS t
+    WHERE to_regclass(format('%I.%I', 'public', t)) IS NULL;
+    IF faltan IS NOT NULL THEN
+        RAISE EXCEPTION
+            'tenderflow_mcp: faltan tablas visibles en public: %. '
+            'Aplica antes `alembic upgrade head`.', faltan;
+    END IF;
+END $$;
 REVOKE ALL ON ALL TABLES IN SCHEMA "public" FROM "tenderflow_mcp";
 REVOKE CREATE ON SCHEMA "public" FROM "tenderflow_mcp";
 GRANT USAGE ON SCHEMA "public" TO "tenderflow_mcp";

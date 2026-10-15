@@ -81,6 +81,14 @@ def test_grants_incluyen_politica_idempotente() -> None:
     assert "IF NOT EXISTS" in sql
 
 
+def test_grants_empiezan_comprobando_que_existen_las_tablas_visibles() -> None:
+    sentencias = sentencias_grants()
+    assert "faltan tablas visibles" in sentencias[0]
+    assert "to_regclass" in sentencias[0]
+    assert sentencias[1].startswith("REVOKE")
+    assert not any("REVOKE" in x for x in sentencias[:1])
+
+
 def test_entrada_visible_es_exacta() -> None:
     assert entrada_visible("licitaciones") is not None
     assert entrada_visible("api_keys") is None

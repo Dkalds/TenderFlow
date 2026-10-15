@@ -41,12 +41,16 @@ _CABECERA = """\
 -- Cómo ejecutar (acción manual del usuario — gate secrets+ops, AGENTS.md §6):
 --   1. Generar una password fuerte: openssl rand -base64 32
 --   2. Sustituir el placeholder <GENERAR_PASSWORD_FUERTE> abajo con esa password.
---   3. Ejecutar contra Supabase con el rol ADMIN (dueño del schema, DATABASE_ADMIN_URL):
---        psql "$DATABASE_ADMIN_URL" -f scripts/setup_pg_role_mcp.sql
---   4. Construir MCP_DATABASE_URL con este rol:
+--   3. Aplicar antes las migraciones (`alembic upgrade head`): el script exige que
+--      existan todas las tablas visibles del catálogo y aborta si falta alguna.
+--   4. Ejecutar contra Supabase con el rol ADMIN (dueño del schema, DATABASE_ADMIN_URL),
+--      de forma atómica (sin estos flags un error a medias deja el rol sin permisos):
+--        psql -v ON_ERROR_STOP=1 --single-transaction "$DATABASE_ADMIN_URL" \\
+--             -f scripts/setup_pg_role_mcp.sql
+--   5. Construir MCP_DATABASE_URL con este rol:
 --        postgresql://tenderflow_mcp:<password>@<host>:5432/postgres?sslmode=verify-full
 --
--- Idempotente: seguro de re-ejecutar. Los GRANT parten de un REVOKE completo, así
+-- Idempotente: seguro de re-ejecutar (con los flags de arriba, todo o nada). Los GRANT parten de un REVOKE completo, así
 -- que una tabla o columna que el catálogo oculte después pierde el acceso.
 -- Fallo cerrado: no hay ALTER DEFAULT PRIVILEGES; una tabla nueva es invisible
 -- para este rol hasta clasificarla en el catálogo y regenerar este fichero.

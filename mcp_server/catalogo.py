@@ -572,11 +572,29 @@ def sentencias_grants(rol: str = ROL_MCP, schema: str = "public") -> list[str]:
 
     Idempotente: parte de un ``REVOKE`` completo, de modo que volver a ejecutarlo
     tras ocultar una tabla o una columna retira lo que ya no corresponde.
+
+    La primera sentencia aborta con un error claro si falta alguna tabla visible
+    (típico: ejecutar el script antes de ``alembic upgrade head``), antes de
+    revocar nada: sin ella, un ``GRANT`` fallido deja pasar el resto y el único
+    ``DO`` de políticas se desharía entero, dejando al rol sin filas y sin error.
     """
     r = _ident(rol)
     s = _ident(schema)
     visibles = tablas_visibles()
+    nombres = ", ".join(f"'{e.tabla}'" for e in visibles)
     sentencias = [
+        "DO $$\n"  # noqa: S608 - identificadores validados por _ident; nunca se ejecuta aquí
+        "DECLARE faltan text;\n"
+        "BEGIN\n"
+        "    SELECT string_agg(t, ', ' ORDER BY t) INTO faltan\n"
+        f"    FROM unnest(ARRAY[{nombres}]) AS t\n"
+        f"    WHERE to_regclass(format('%I.%I', '{schema}', t)) IS NULL;\n"
+        "    IF faltan IS NOT NULL THEN\n"
+        "        RAISE EXCEPTION\n"
+        f"            'tenderflow_mcp: faltan tablas visibles en {schema}: %. '\n"
+        "            'Aplica antes `alembic upgrade head`.', faltan;\n"
+        "    END IF;\n"
+        "END $$",
         f"REVOKE ALL ON ALL TABLES IN SCHEMA {s} FROM {r}",
         f"REVOKE CREATE ON SCHEMA {s} FROM {r}",
         f"GRANT USAGE ON SCHEMA {s} TO {r}",
@@ -590,7 +608,6 @@ def sentencias_grants(rol: str = ROL_MCP, schema: str = "public") -> list[str]:
             sentencias.append(f"GRANT SELECT ON {s}.{t} TO {r}")
     # Las tablas tienen RLS activo (v52): sin política el rol vería cero filas.
     # ``IF NOT EXISTS`` porque ``CREATE POLICY`` no admite ``OR REPLACE``.
-    nombres = ", ".join(f"'{e.tabla}'" for e in visibles)
     sentencias.append(
         "DO $$\n"  # noqa: S608 - identificadores validados por _ident; nunca se ejecuta aquí
         "DECLARE t text;\n"

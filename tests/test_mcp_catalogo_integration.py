@@ -124,7 +124,7 @@ def test_grants_aplican_en_postgres(tmp_db: Any, rol_mcp_efimero: str) -> None:
         schema = str(c.execute("SELECT current_schema()").fetchone()[0])
         for sentencia in sentencias_rol(rol):
             c.execute(sentencia)
-        # Las políticas y grants de las tablas que aún no existen no deben romper.
+        # Todas las tablas visibles existen; las OCULTAS futuras no se mencionan.
         for sentencia in sentencias_grants(rol, schema):
             c.execute(sentencia)
         # Re-ejecutar es idempotente.
@@ -171,3 +171,36 @@ def test_grants_aplican_en_postgres(tmp_db: Any, rol_mcp_efimero: str) -> None:
         assert puede[0] is False
         assert puede[1] is True
         assert puede[2] is False
+
+
+def test_grants_abortan_sin_revocar_si_falta_una_tabla_visible(
+    tmp_db: Any, rol_mcp_efimero: str
+) -> None:
+    """Ejecutar antes de las migraciones no puede dejar el rol a medias."""
+    db_mod, _ = tmp_db
+    rol = rol_mcp_efimero
+    with db_mod.connect() as c:
+        schema = str(c.execute("SELECT current_schema()").fetchone()[0])
+        sentencias = sentencias_grants(rol, schema)
+        # Estado previo: un permiso que un REVOKE a medias se llevaría por delante.
+        c.execute(f'GRANT USAGE ON SCHEMA "{schema}" TO "{rol}"')
+        c.execute(f'GRANT SELECT ON "{schema}"."lotes" TO "{rol}"')
+        c.execute(f'DROP TABLE "{schema}"."ute_miembros" CASCADE')
+
+    with db_mod.connect() as c:
+        with pytest.raises(Exception, match="ute_miembros") as exc:
+            for sentencia in sentencias:
+                c.execute(sentencia)
+        assert "faltan tablas visibles" in str(exc.value)
+
+    with db_mod.connect() as c:
+        conserva = c.execute(
+            "SELECT has_table_privilege(%s, %s, 'SELECT')", (rol, f"{schema}.lotes")
+        ).fetchone()
+        assert conserva is not None and conserva[0] is True
+        politicas = c.execute(
+            "SELECT count(*) FROM pg_policies WHERE policyname = 'tenderflow_mcp_read' "
+            "AND schemaname = %s",
+            (schema,),
+        ).fetchone()
+        assert politicas is not None and politicas[0] == 0
