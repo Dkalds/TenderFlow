@@ -149,11 +149,14 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     views: SPACE_VIEWS.direccion,
   },
   {
+    // 2026-10: absorbe Empresas, que era el mismo sujeto visto por su identidad
+    // (maestro canónico, alias, cola de revisión). Sus términos de oficio
+    // pasan aquí para que ⌘K siga encontrando «maestro» o «NIF».
     key: "competencia",
     label: "Competencia",
     slug: "competencia",
-    description: "Quién gana, cuánto y contra quién.",
-    terminos: "competidores UTE adjudicatarios",
+    description: "Quién gana, cuánto, contra quién y quién es cada empresa.",
+    terminos: "competidores UTE adjudicatarios empresas maestro NIF alias revisión",
     icon: ICONO_ESPACIO.competencia,
     group: "analisis",
     views: SPACE_VIEWS.competencia,
@@ -163,7 +166,7 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     label: "Investigador",
     slug: "investigador",
     description: "Pregunta o busca dentro de las licitaciones y sus pliegos.",
-    terminos: "IA copiloto semántica preguntar",
+    terminos: "IA asistente copiloto semántica preguntar",
     icon: ICONO_ESPACIO.investigador,
     group: "analisis",
   },
@@ -212,16 +215,6 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     icon: ICONO_ESPACIO.ajustes,
     group: "personal",
     views: SPACE_VIEWS.ajustes,
-  },
-  {
-    key: "empresas",
-    label: "Empresas",
-    slug: "empresas",
-    description: "Fichas de empresa y alias por revisar.",
-    terminos: "maestro NIF alias revisión",
-    icon: ICONO_ESPACIO.empresas,
-    group: "organizacion",
-    views: SPACE_VIEWS.empresas,
   },
   {
     key: "equipo",

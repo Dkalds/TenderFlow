@@ -504,7 +504,7 @@ def proyectos_modulos(
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ProyectosModulosResult:
-    """SAP module and project type breakdown."""
+    """Familias tecnológicas, módulos SAP como desglose de ERP, tipos de contrato y CPV."""
     filters = ProyectosModulosFilters(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,

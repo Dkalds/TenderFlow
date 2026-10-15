@@ -232,3 +232,66 @@ describe("FeedbackButtons", () => {
     });
   });
 });
+
+// El resumen del expediente es un turno más del hilo desde 2026-10 (era la
+// pestaña «Resumen» de la ficha, `licitacion-ai.tsx`). Conserva lo que aquella
+// enseñaba: el aviso cuando no hay pliego, el estado de cada documento, que vino
+// guardado de una generación anterior, «Regenerar» y sus pulgares.
+describe("ChatThread — un turno de resumen", () => {
+  const resumen = (extra: Partial<ChatTurn> = {}): ChatTurn => ({
+    role: "assistant",
+    content: "Objeto: soporte SAP.",
+    modo: "resumen",
+    expedientesPedidos: ["EXP-1"],
+    resumenMeta: {
+      has_pliego_text: false,
+      truncated: false,
+      cached: true,
+      documentos: [{ tipo: "PCAP", filename: "pcap.pdf", status: "pending" }],
+    },
+    ...extra,
+  });
+  const pedido: ChatTurn = { role: "user", content: "Resume el expediente «Soporte»" };
+
+  it("sin pliego lo dice y enseña el estado de cada documento", () => {
+    render(<ChatThread messages={[pedido, resumen()]} streaming={false} loading={false} error={null} />);
+    expect(screen.getByText(/Resumen basado solo en los datos del anuncio/)).toBeInTheDocument();
+    expect(screen.getByText("pcap.pdf · pendiente")).toBeInTheDocument();
+  });
+
+  it("dice que viene guardado y «Regenerar» rehace ese turno", () => {
+    const regenerar = vi.fn();
+    render(
+      <ChatThread
+        messages={[pedido, resumen()]}
+        streaming={false}
+        loading={false}
+        error={null}
+        onRegenerarResumen={regenerar}
+      />,
+    );
+    expect(screen.getByText("Resumen guardado de una generación anterior.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Regenerar" }));
+    expect(regenerar).toHaveBeenCalledWith(1);
+  });
+
+  it("vota como resumen, no como pregunta", () => {
+    render(<ChatThread messages={[pedido, resumen()]} streaming={false} loading={false} error={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Respuesta útil" }));
+    expect(registrarEvento).toHaveBeenCalledWith("asistente_feedback", expect.objectContaining({ modo: "resumen" }));
+  });
+
+  it("mientras se emite no hay ni Regenerar ni pulgares", () => {
+    render(
+      <ChatThread
+        messages={[pedido, resumen({ content: "Objeto" })]}
+        streaming
+        loading
+        error={null}
+        onRegenerarResumen={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Regenerar" })).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /útil/ })).toHaveLength(0);
+  });
+});

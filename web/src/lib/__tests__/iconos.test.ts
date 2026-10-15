@@ -21,7 +21,13 @@ describe("ICONO_ESPACIO", () => {
   it("los espacios que son una entidad usan el icono de esa entidad", () => {
     expect(ICONO_ESPACIO.oportunidades).toBe(ICONO_ENTIDAD.oportunidad);
     expect(ICONO_ESPACIO.cuentas).toBe(ICONO_ENTIDAD.cuenta);
-    expect(ICONO_ESPACIO.empresas).toBe(ICONO_ENTIDAD.empresa);
+  });
+
+  it("no guarda iconos de espacios que ya no existen", () => {
+    // Empresas pasó a ser una vista de Competencia (2026-10): su glifo sigue
+    // siendo el de la entidad (`ICONO_ENTIDAD.empresa`), no el de un espacio.
+    const claves = new Set(CONSOLE_SPACES.map((espacio) => espacio.key));
+    expect(Object.keys(ICONO_ESPACIO).filter((clave) => !claves.has(clave))).toEqual([]);
   });
 });
 

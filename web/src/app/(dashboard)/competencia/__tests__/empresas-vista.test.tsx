@@ -1,10 +1,14 @@
 /**
- * La pantalla completa: qué pide al servidor y qué enseña sin que se lo pidan.
+ * Competencia › Empresas y › Revisión, montadas por la página del espacio: qué
+ * piden al servidor y qué enseñan sin que se lo pidan.
  *
- * Las reglas que fija: el orden y la página viajan en la petición (no se
- * reordena lo ya traído), la ficha entra con la primera empresa cargada en vez
- * de con un panel que dice que no hay ninguna seleccionada, y esa ficha es de
- * identidad: el análisis está en la de Competencia, a la que enlaza.
+ * Fueron el espacio Empresas hasta 2026-10. Las reglas que fija: el orden y la
+ * página viajan en la petición (no se reordena lo ya traído), la ficha entra con
+ * la primera empresa cargada en vez de con un panel que dice que no hay ninguna
+ * seleccionada, y esa ficha es de identidad: el análisis está en la de
+ * Competencia, a la que enlaza. Y las que fija la mudanza: la línea de contexto
+ * va en la cabecera solo en estas dos vistas, el contador de la cola en su
+ * pestaña desde cualquiera, y la cola sigue siendo de administradores.
  */
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,10 +16,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const { fetchWithAuth, apiMutate, setView } = vi.hoisted(() => ({
+const { fetchWithAuth, apiMutate, setView, estado } = vi.hoisted(() => ({
   fetchWithAuth: vi.fn(),
   apiMutate: vi.fn().mockResolvedValue({}),
   setView: vi.fn(),
+  estado: { vista: "empresas", admin: true },
 }));
 
 vi.mock("@/lib/api-client", () => ({
@@ -28,21 +33,47 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() }),
 }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
-vi.mock("@/hooks/use-admin", () => ({ useAdmin: () => true }));
-// El shell del espacio pinta la cabecera y el conmutador; aquí interesa el
-// cuerpo, más el `?vista=` que gobierna cuál de los dos se monta.
+vi.mock("@/hooks/use-admin", () => ({ useAdmin: () => estado.admin }));
+// El shell del espacio pinta la cabecera y el conmutador; aquí interesa lo que
+// la página le pasa —cuerpo, acciones, contadores y si va a sangre— y el
+// `?vista=` que gobierna qué cuerpo se monta.
 vi.mock("@/components/layout/space-shell", () => ({
-  useSpaceView: () => ({ view: "maestro", setView }),
-  SpaceShell: ({ children, actions }: { children: React.ReactNode; actions?: React.ReactNode }) => (
-    <div>
+  useSpaceView: () => ({ view: estado.vista, setView }),
+  SpaceShell: ({
+    children,
+    actions,
+    viewBadges,
+    bleed,
+  }: {
+    children: React.ReactNode;
+    actions?: React.ReactNode;
+    viewBadges?: Record<string, React.ReactNode>;
+    bleed?: boolean;
+  }) => (
+    <div data-bleed={bleed ? "si" : "no"} data-testid="espacio">
+      <span data-testid="contador-revision">{viewBadges?.revision}</span>
       {actions}
       {children}
     </div>
   ),
 }));
+// Las vistas de análisis tienen sus suites; aquí basta con saber cuál se montó.
+vi.mock("../_components/competidores-view", () => ({ default: () => <p>Vista de competidores</p> }));
+vi.mock("../_components/utes-view", () => ({ default: () => <p>Vista de UTEs</p> }));
 
 import { toast } from "sonner";
-import EmpresasPage from "@/app/(dashboard)/empresas/page";
+import CompetenciaPage from "@/app/(dashboard)/competencia/page";
+
+/**
+ * El cuerpo de cada vista llega con `next/dynamic`: con la suite entera en
+ * paralelo, el primer `import()` de un chunk pasa del segundo por defecto.
+ */
+const CARGA_DE_VISTA = { timeout: 5000 };
+
+/** La página del espacio, como la monta Next: la vista sale de `?vista=`. */
+function EmpresasPage() {
+  return <CompetenciaPage />;
+}
 
 const LISTA = {
   items: [
@@ -149,11 +180,52 @@ function urlsDeLista(): string[] {
 }
 
 beforeEach(() => {
+  estado.vista = "empresas";
+  estado.admin = true;
+  setView.mockClear();
   fetchWithAuth.mockReset();
   fetchWithAuth.mockImplementation((url: string) => Promise.resolve(ruta(url)));
 });
 
 afterEach(() => cleanup());
+
+describe("Competencia › Empresas y Revisión", () => {
+  it("las dos vistas de identidad van a sangre y traen su línea de contexto", async () => {
+    render(<EmpresasPage />, { wrapper: Wrapper });
+    expect(await screen.findByText("Canónicas", {}, CARGA_DE_VISTA)).toBeInTheDocument();
+    expect(screen.getByTestId("espacio")).toHaveAttribute("data-bleed", "si");
+  });
+
+  it("en Competidores no hay línea del maestro, pero el contador de la cola sigue en su pestaña", async () => {
+    estado.vista = "competidores";
+    render(<EmpresasPage />, { wrapper: Wrapper });
+    expect(await screen.findByText("Vista de competidores", {}, CARGA_DE_VISTA)).toBeInTheDocument();
+    expect(screen.getByTestId("espacio")).toHaveAttribute("data-bleed", "no");
+    expect(screen.queryByText("Canónicas")).not.toBeInTheDocument();
+    // Quien no entra en la cola también tiene que saber que hay trabajo en ella.
+    await waitFor(() => expect(screen.getByTestId("contador-revision")).toHaveTextContent("8"));
+    // Y no se pide el maestro: es otra vista.
+    expect(urlsDeLista()).toHaveLength(0);
+  });
+
+  it("la cola sigue reservada a administradores", async () => {
+    estado.vista = "revision";
+    estado.admin = false;
+    render(<EmpresasPage />, { wrapper: Wrapper });
+    expect(await screen.findByText("Cola reservada a administradores", {}, CARGA_DE_VISTA)).toBeInTheDocument();
+    expect(urlsPedidas().some((url) => url.startsWith("/api/v1/empresas/reviews"))).toBe(false);
+  });
+
+  it("un administrador ve la cola y la pide", async () => {
+    estado.vista = "revision";
+    render(<EmpresasPage />, { wrapper: Wrapper });
+    await waitFor(
+      () => expect(urlsPedidas().some((url) => url.startsWith("/api/v1/empresas/reviews"))).toBe(true),
+      CARGA_DE_VISTA,
+    );
+    expect(screen.queryByText("Cola reservada a administradores")).not.toBeInTheDocument();
+  });
+});
 
 describe("Empresas", () => {
   it("entra pidiendo la primera página ordenada por importe", async () => {
@@ -230,7 +302,7 @@ describe("Empresas", () => {
     const vigilar = await screen.findByRole("button", { name: "Vigilar" });
     // Un botón propio que imitara al control volvería a ser dos controles.
     expect(vigilar).toHaveAttribute("data-slot", "seguir-boton");
-    // Deshabilitado hasta saber qué se vigila: alternar a ciegas podría pedir
+    // Deshabilitado hasta saber qué se vigila: pulsar a ciegas podría pedir
     // el alta de una empresa que ya estaba vigilada.
     await waitFor(() => expect(vigilar).toBeEnabled());
 
@@ -266,7 +338,7 @@ describe("Empresas", () => {
     expect(setView).toHaveBeenCalledWith("revision");
   });
 
-  it("«Vigiladas» lleva a la lista, que está en Competencia", async () => {
+  it("«Vigiladas» lleva a la lista, que está en Competidores", async () => {
     render(<EmpresasPage />, { wrapper: Wrapper });
     await screen.findByRole("heading", { name: "Indra Sistemas, S.A." });
 

@@ -12,7 +12,7 @@ import { Toaster } from "@/components/toaster";
  * `toast()` disparado en `/login` se perdía en silencio porque el `Toaster`
  * sólo existía en el dashboard. Ahora esa pila se declara aquí y los tres
  * layouts la usan; lo que cada uno añade (el marco de consola, la paleta, el
- * copiloto…) va como `children`.
+ * asistente…) va como `children`.
  *
  * **Por qué no es un grupo de rutas `(privado)`**, que es lo que pedía el plan:
  * un layout sólo envuelve a sus descendientes en el árbol de ficheros, así que

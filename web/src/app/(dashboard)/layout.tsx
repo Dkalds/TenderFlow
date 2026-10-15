@@ -44,7 +44,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             reintentos en vuelo (arranque en frío de la API). */}
         <ConnectionBanner />
         <ConsoleFrame>{children}</ConsoleFrame>
-        {/* Paleta, copiloto, bandeja de comparación (F2.8: los expedientes
+        {/* Paleta, asistente, bandeja de comparación (F2.8: los expedientes
             marcados siguen a mano al cambiar de pantalla) y ayuda de atajos.
             Cerrados al entrar, así que se descargan la primera vez que se abren:
             ver `overlays-dashboard.tsx`. */}

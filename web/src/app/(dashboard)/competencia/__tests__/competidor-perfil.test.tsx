@@ -236,7 +236,7 @@ describe("CompetidorPerfil", () => {
     expect(screen.getByRole("heading", { name: "Sin identidad en el maestro de empresas" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Buscarla en Empresas" })).toHaveAttribute(
       "href",
-      "/empresas?q=Gamma%20Redes",
+      "/competencia?vista=empresas&q=Gamma%20Redes",
     );
     expect(fetchWithAuth).not.toHaveBeenCalled();
     // Gamma no trae baja media: la celda lleva la raya, no un 0 %.

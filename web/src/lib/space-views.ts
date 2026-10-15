@@ -53,9 +53,17 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     // página de `/mi-pipeline`.
     { key: "renovaciones", label: "Renovaciones", from: "renovaciones" },
   ],
+  // 2026-10: Empresas deja de ser espacio. Identidad (maestro canónico, alias)
+  // y rendimiento (cuota, rivales) eran dos espacios para la misma empresa, y la
+  // ficha de uno enlazaba a la del otro. `empresas` absorbe `/empresas`; la cola
+  // de coincidencias dudosas conserva su vista propia —con su contador en la
+  // pestaña— para seguir siendo direccionable. Su `/empresas?vista=revision` lo
+  // traduce `ESPACIOS_ABSORBIDOS`.
   competencia: [
     { key: "competidores", label: "Competidores", from: "competidores" },
     { key: "utes", label: "UTEs", from: "utes" },
+    { key: "empresas", label: "Empresas", from: "empresas" },
+    { key: "revision", label: "Revisión" },
   ],
   // Reestructura 2026-09-20: Oportunidades es el espacio de ejecución y reúne
   // las tres preguntas sobre las oportunidades propias. `tablero` es la
@@ -101,15 +109,6 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "resultado", label: "Resultado" },
     { key: "carga", label: "Carga del equipo" },
     { key: "actividad", label: "Actividad del equipo" },
-  ],
-  // Empresas no absorbe ninguna ruta heredada: sus dos vistas siempre
-  // convivieron dentro de `/empresas`. Están aquí para que la cola de revisión
-  // sea direccionable —`/empresas?vista=revision` es lo que se pega en un
-  // mensaje cuando hay matches que resolver— y para que el conmutador sea el
-  // mismo gesto que en Mercado o en Ops, y no unas pestañas propias.
-  empresas: [
-    { key: "maestro", label: "Maestro" },
-    { key: "revision", label: "Revisión" },
   ],
   // Ajustes (C7.5). Nace con contenido real y no como espacio vacío: por eso el
   // plan lo secuenció **después** de C2.1 (sesiones), C2.3 (claves) y C2.7
@@ -174,6 +173,30 @@ export const VISTAS_FUSIONADAS: Record<string, VistaFusionada[]> = {
   ],
 };
 
+/** Un espacio entero que pasó a ser vistas de otro. */
+export interface EspacioAbsorbido {
+  /** Slug del espacio retirado: su ruta sigue entrando. */
+  slug: string;
+  /** Espacio que lo absorbe. */
+  en: string;
+  /** Su `?vista=` de entonces → la vista donde vive hoy. */
+  vistas: Record<string, string>;
+}
+
+/**
+ * Espacios retirados por entero, con el destino de cada una de sus vistas.
+ *
+ * La ruta sin `?vista=` la cubre el `from` de una vista del espacio que lo
+ * absorbe, como cualquier ruta heredada. Lo que no cubre es el `?vista=` viejo:
+ * Next fusiona la query de la petición con la del destino y **gana la del
+ * destino**, así que `/empresas?vista=revision` acabaría en
+ * `/competencia?vista=empresas`. Un redirect por vista, condicionado a esa query
+ * (`has`) y emitido antes que el genérico, lo lleva a la suya.
+ */
+export const ESPACIOS_ABSORBIDOS: readonly EspacioAbsorbido[] = [
+  { slug: "empresas", en: "competencia", vistas: { maestro: "empresas", revision: "revision" } },
+];
+
 /**
  * Espacios cuya ruta propia ya existe. Se migran por lotes: mientras un espacio
  * no esté construido, sus rutas heredadas siguen siendo las buenas y **no** se
@@ -192,16 +215,24 @@ export const BUILT_SPACE_ROUTES: readonly string[] = [
   "mi-watchlist",
   "mi-perfil",
   "ajustes",
-  "empresas",
   "cuentas",
   "direccion",
   "equipo",
   "ops",
 ];
 
+/** Condición de un redirect sobre la query de la petición (el `has` de Next). */
+export interface CondicionQuery {
+  type: "query";
+  key: string;
+  value: string;
+}
+
 export interface LegacyRedirect {
   source: string;
   destination: string;
+  /** Solo si la petición trae esta query. Ausente: siempre. */
+  has?: CondicionQuery[];
 }
 
 /**
@@ -242,4 +273,21 @@ export function legacyRedirects(): LegacyRedirect[] {
           destination: `/${slug}?vista=${view.key}`,
         })),
     );
+}
+
+/**
+ * Redirects de los `?vista=` de un espacio absorbido (`ESPACIOS_ABSORBIDOS`).
+ *
+ * `next.config.ts` los emite **antes** que `legacyRedirects()`: Next aplica el
+ * primero que casa, y el genérico de la misma ruta casaría también.
+ */
+export function redirectsDeEspaciosAbsorbidos(): LegacyRedirect[] {
+  return ESPACIOS_ABSORBIDOS.filter((absorbido) => BUILT_SPACE_ROUTES.includes(absorbido.en)).flatMap(
+    (absorbido) =>
+      Object.entries(absorbido.vistas).map(([vieja, nueva]) => ({
+        source: `/${absorbido.slug}`,
+        has: [{ type: "query" as const, key: "vista", value: vieja }],
+        destination: `/${absorbido.en}?vista=${nueva}`,
+      })),
+  );
 }

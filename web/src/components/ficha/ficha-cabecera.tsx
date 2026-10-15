@@ -13,6 +13,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAsistente } from "@/lib/asistente-store";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
 import { riesgoLabel } from "@/lib/riesgos";
@@ -83,16 +84,20 @@ const CLASES_SEGUIR = {
  * Lo que se hace con la licitación: seguirla, compararla, compartirla,
  * preguntar a la IA y reportar un dato erróneo. Con `conFuente`, además, el
  * enlace al portal de origen como acción principal.
+ *
+ * «Preguntar a la IA» abre el asistente único con este expediente como
+ * contexto, desde el inspector y desde la ficha completa por igual. Hasta
+ * 2026-10 llevaba a la pestaña IA de cada ficha, que tenía su propia
+ * conversación y su propio resumen; hoy el resumen es un turno más del
+ * asistente («Resumir el expediente»).
  */
 export function FichaAcciones({
   licitacion: l,
-  onPreguntar,
   conFuente = false,
   claseFuente,
   className,
 }: {
   licitacion: LicitacionDetail;
-  onPreguntar: () => void;
   conFuente?: boolean;
   /** Clases del enlace al portal (p. ej. esconderlo en móvil, donde va al pie). */
   claseFuente?: string;
@@ -107,6 +112,11 @@ export function FichaAcciones({
       toast.error("No se pudo copiar el enlace");
     }
   }, [l.id_externo]);
+  const abrirAsistente = useAsistente((s) => s.abrir);
+  const preguntar = () =>
+    abrirAsistente({
+      contexto: { expedientes: [{ id: l.id_externo, titulo: l.titulo ?? l.id_externo }], origen: "ficha" },
+    });
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
@@ -129,7 +139,7 @@ export function FichaAcciones({
         </TooltipTrigger>
         <TooltipContent>Enlace directo a esta ficha</TooltipContent>
       </Tooltip>
-      <Button type="button" variant="outline" size="sm" onClick={onPreguntar}>
+      <Button type="button" variant="outline" size="sm" onClick={preguntar}>
         <MessageSquareText aria-hidden="true" />
         Preguntar a la IA
       </Button>

@@ -1,25 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import {
-  ModulosBarChart,
+  CategoriasBarChart,
   TiposPieChart,
-  ModulosTreemap,
-  TiposTreemap,
+  ImporteTreemap,
   TipoEstadoStackedChart,
 } from "@/components/charts/proyectos-modulos-charts";
 
 describe("proyectos y modulos charts", () => {
-  it("renders the modules bar chart", () => {
+  it("pinta las barras de familias y de módulos con el mismo gráfico", () => {
     expect(() =>
       render(
-        <ModulosBarChart
+        <CategoriasBarChart
           data={[
-            { modulo: "Redes", count: 30, importe: 500000 },
-            { modulo: "Cloud", count: 18, importe: 320000 },
+            { nombre: "Infraestructura, cloud y redes", count: 30 },
+            { nombre: "Ciberseguridad", count: 18 },
           ]}
         />,
       ),
     ).not.toThrow();
+    expect(() => render(<CategoriasBarChart data={[{ nombre: "FI", count: 3 }]} />)).not.toThrow();
   });
 
   it("renders the types pie chart", () => {
@@ -35,13 +35,12 @@ describe("proyectos y modulos charts", () => {
     ).not.toThrow();
   });
 
-  it("renders both treemaps", () => {
+  it("renders the importe treemap", () => {
     const data = [
       { name: "A", size: 100 },
       { name: "B", size: 60 },
     ];
-    expect(() => render(<ModulosTreemap data={data} />)).not.toThrow();
-    expect(() => render(<TiposTreemap data={data} />)).not.toThrow();
+    expect(() => render(<ImporteTreemap data={data} />)).not.toThrow();
   });
 
   it("renders the type/estado stacked chart with dynamic series", () => {

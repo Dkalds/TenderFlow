@@ -4,12 +4,14 @@
  * El estado lo prueba `use-investigador.test.tsx`; aquí se fija lo que cada
  * pieza enseña y lo que deja de enseñar: la tarjeta dice el estado, el plazo y
  * por qué salió el resultado —y ya no un porcentaje—, la caja declara lo que
- * entendió de la frase, y el asistente tiene su propia entrada bajo el hilo.
+ * entendió de la frase, y la barra del asistente dice sobre qué preguntará y lo
+ * abre. La conversación —el hilo, la caja de seguimiento, Detener, «Nueva
+ * conversación»— es la del asistente único y se prueba en
+ * `components/asistente/__tests__/asistente-panel.test.tsx`.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { UseChatResult } from "@/hooks/use-ask";
 import { DEFAULT_CONFIG } from "../_lib/config-storage";
 import type { SearchResult } from "../_lib/types";
 
@@ -18,7 +20,7 @@ vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 const descargarBlob = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/export", () => ({ descargarBlob }));
 
-import { InvestigadorChatPanel } from "../_components/investigador-chat-panel";
+import { InvestigadorAsistente } from "../_components/investigador-asistente";
 import { InvestigadorConfigPanel } from "../_components/investigador-config-panel";
 import { ConsultasDeEjemplo, MensajeVacio } from "../_components/investigador-empty";
 import { InvestigadorResultCard } from "../_components/investigador-result-card";
@@ -51,19 +53,6 @@ function resultado(extra: Partial<SearchResult> = {}): SearchResult {
       { texto: "licencias", resaltado: true },
     ],
     pasaje: null,
-    ...extra,
-  };
-}
-
-function chat(extra: Partial<UseChatResult> = {}): UseChatResult {
-  return {
-    messages: [],
-    streaming: false,
-    loading: false,
-    error: null,
-    send: vi.fn(async () => {}),
-    stop: vi.fn(),
-    reset: vi.fn(),
     ...extra,
   };
 }
@@ -421,12 +410,18 @@ describe("InvestigadorConfigPanel", () => {
   });
 });
 
-describe("InvestigadorChatPanel", () => {
-  const base = { onPreguntar: vi.fn(), consulta: "licencias sap", seleccion: [], onQuitar: vi.fn() };
+describe("InvestigadorAsistente", () => {
+  const base = {
+    consulta: "licencias sap",
+    seleccion: [],
+    onPreguntar: vi.fn(),
+    onQuitar: vi.fn(),
+    onAbrir: vi.fn(),
+  };
 
-  it("sin conversación ofrece responder lo que se buscó, en una nueva", () => {
+  it("sin marcar, responde sobre todas lo que se buscó, en una conversación nueva", () => {
     const onPreguntar = vi.fn();
-    render(<InvestigadorChatPanel {...base} chat={chat()} onPreguntar={onPreguntar} />);
+    render(<InvestigadorAsistente {...base} onPreguntar={onPreguntar} />);
 
     expect(screen.getByText("todas las licitaciones")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Responder «licencias sap»" }));
@@ -434,86 +429,35 @@ describe("InvestigadorChatPanel", () => {
     expect(onPreguntar).toHaveBeenCalledWith("licencias sap", { nueva: true });
   });
 
-  it("la pregunta de seguimiento se escribe bajo el hilo", () => {
-    const onPreguntar = vi.fn();
-    render(<InvestigadorChatPanel {...base} chat={chat()} onPreguntar={onPreguntar} />);
-    const caja = screen.getByRole("textbox", { name: "Pregunta al asistente" });
-    expect(screen.getByRole("button", { name: "Preguntar" })).toBeDisabled();
+  it("siempre se puede volver al asistente, con la conversación donde estaba", () => {
+    const onAbrir = vi.fn();
+    render(<InvestigadorAsistente {...base} onAbrir={onAbrir} />);
 
-    fireEvent.change(caja, { target: { value: "¿y el plazo?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preguntar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir el asistente" }));
 
-    expect(onPreguntar).toHaveBeenCalledWith("¿y el plazo?");
-    expect(caja).toHaveValue("");
+    expect(onAbrir).toHaveBeenCalledTimes(1);
   });
 
   it("con resultados marcados dice sobre cuáles responde, y se quitan desde ahí", () => {
     const onQuitar = vi.fn();
+    const onAbrir = vi.fn();
     render(
-      <InvestigadorChatPanel
+      <InvestigadorAsistente
         {...base}
-        chat={chat()}
         seleccion={[{ id: "A", titulo: "Mantenimiento de licencias SAP" }]}
         onQuitar={onQuitar}
+        onAbrir={onAbrir}
       />,
     );
 
     expect(screen.queryByText("todas las licitaciones")).toBeNull();
     // Con un alcance elegido, «responder lo buscado» ya no es la pregunta.
     expect(screen.queryByRole("button", { name: /^Responder/ })).toBeNull();
-    expect(screen.getByPlaceholderText("Pregunta por lo marcado…")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Quitar Mantenimiento de licencias SAP del asistente" }));
-
     expect(onQuitar).toHaveBeenCalledWith("A");
-  });
 
-  it("mientras responde se puede detener, y no mandar otra", () => {
-    const stop = vi.fn();
-    const onPreguntar = vi.fn();
-    render(
-      <InvestigadorChatPanel
-        {...base}
-        onPreguntar={onPreguntar}
-        chat={chat({
-          loading: true,
-          streaming: true,
-          stop,
-          messages: [
-            { role: "user", content: "¿Qué es un PCAP?" },
-            { role: "assistant", content: "Es el pliego" },
-          ],
-        })}
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: "Preguntar" })).toBeNull();
-    fireEvent.change(screen.getByRole("textbox", { name: "Pregunta al asistente" }), { target: { value: "otra" } });
-    fireEvent.submit(screen.getByRole("textbox", { name: "Pregunta al asistente" }).closest("form")!);
-    expect(onPreguntar).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Detener" }));
-    expect(stop).toHaveBeenCalledTimes(1);
-  });
-
-  it("con la conversación terminada se puede empezar otra", () => {
-    const reset = vi.fn();
-    render(
-      <InvestigadorChatPanel
-        {...base}
-        chat={chat({
-          reset,
-          messages: [
-            { role: "user", content: "¿Qué es un PCAP?" },
-            { role: "assistant", content: "Es el pliego de cláusulas." },
-          ],
-        })}
-      />,
-    );
-
-    expect(screen.getByText("Es el pliego de cláusulas.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Nueva conversación" }));
-
-    expect(reset).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Preguntar por lo marcado" }));
+    expect(onAbrir).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -4,8 +4,15 @@
  * F4.2 — Resultado: qué se ganó, dónde y si vamos mejor o peor.
  *
  * El orden es el de la lectura de un lunes: las cuatro cifras con su periodo
- * anterior; lo que viene (previsión) junto a por qué perdemos; dónde ganamos
- * (cuatro cortes); si el Radar ordena bien; y lo que falta por registrar.
+ * anterior; dónde ganamos (cuatro cortes); por qué perdemos junto a si el
+ * Radar ordena bien; y lo que falta por registrar.
+ *
+ * Lo que viene —el reparto por trimestre del valor ponderado— no se pinta
+ * aquí: vive en Oportunidades › Rendimiento, con el mismo cálculo
+ * (`_valor_ponderado` de los dos endpoints) y sus supuestos. Allí lo ve
+ * cualquier miembro, que es quien mueve las oportunidades; aquí solo entra un
+ * owner o un admin, y repetirlo era mantener dos dibujos del mismo dato. La
+ * cifra sigue en su tarjeta, con un enlace al reparto.
  *
  * Tres estados de base, en vez de un hueco por panel:
  * - **Sin base en el histórico** (`cierres_historico < n_minimo`): un único
@@ -29,12 +36,19 @@ import { CortesDireccion } from "./cortes-direccion";
 import { DireccionEsqueleto } from "./direccion-esqueleto";
 import { PendientesResultado, PocosCierresEnVentana, SinBaseDireccion } from "./pendientes-direccion";
 import { PerdidasDireccion } from "./perdidas-direccion";
-import { PrevisionDireccion } from "./prevision-direccion";
 import { RadarDireccion } from "./radar-direccion";
 import { SinPermisoDireccion } from "./sin-permiso";
-import { TarjetasDireccion } from "./tarjetas-direccion";
+import { TarjetasDireccion, type EnlaceTarjeta } from "./tarjetas-direccion";
 
 type Cuadro = Schemas["CuadroDireccion"];
+
+/**
+ * El desglose del valor ponderado, en la pantalla que lo pinta. Sin `periodo`:
+ * Rendimiento entra en el histórico, la misma foto de hoy que esta tarjeta.
+ */
+const ENLACES_TARJETA: Partial<Record<string, EnlaceTarjeta>> = {
+  valor_ponderado: { href: "/oportunidades?vista=rendimiento", texto: "Reparto por trimestre en Rendimiento" },
+};
 
 /** «Cierres desde el 9 oct 2025 · frente al mismo periodo de hace un año». */
 function Ventana({ cuadro }: { cuadro: Cuadro | undefined }) {
@@ -64,28 +78,24 @@ function Contenido({ cuadro, onVerHistorico }: { cuadro: Cuadro; onVerHistorico:
       <>
         <SinBaseDireccion cuadro={cuadro} />
         <PendientesResultado cuadro={cuadro} titulo="Lo que falta por registrar" />
-        <TarjetasDireccion tarjetas={pipeline} />
-        <PrevisionDireccion cuadro={cuadro} />
+        <TarjetasDireccion tarjetas={pipeline} enlaces={ENLACES_TARJETA} />
       </>
     );
   }
 
   return (
     <>
-      <TarjetasDireccion tarjetas={tarjetas} />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <PrevisionDireccion cuadro={cuadro} />
-        <PerdidasDireccion cuadro={cuadro} />
-      </div>
+      <TarjetasDireccion tarjetas={tarjetas} enlaces={ENLACES_TARJETA} />
       {sinBaseVentana ? (
         <PocosCierresEnVentana cuadro={cuadro} onVerHistorico={onVerHistorico} />
       ) : (
         <CortesDireccion cortes={cuadro.cortes ?? []} minimo={minimo} />
       )}
       <div className="grid gap-6 lg:grid-cols-2">
+        <PerdidasDireccion cuadro={cuadro} />
         <RadarDireccion cuadro={cuadro} />
-        <PendientesResultado cuadro={cuadro} />
       </div>
+      <PendientesResultado cuadro={cuadro} />
     </>
   );
 }

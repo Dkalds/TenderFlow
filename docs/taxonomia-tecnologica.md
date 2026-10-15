@@ -146,6 +146,30 @@ Dos particularidades:
   social), «gestión documental» a secas (custodia física), «página web» a secas
   (aparece en descripciones como «consultar en la página web»).
 
+## Familias (2026-10)
+
+Mercado › Proyectos y módulos agrupa lo licitado por **familias**: las
+categorías de arriba, en su orden (`FAMILIAS_TECNOLOGICAS`), cada una con los
+fabricantes de su línea (`FAMILIA_DE_FABRICANTE` en `config/keywords.py`). Un
+fabricante entra en una familia solo si su columna «Motivo» le da **una**
+línea de producto; los que venden en varias no se reparten por intuición:
+
+| Familia | Fabricantes que cuentan en ella |
+|---|---|
+| ERP | SAP, Unit4, Sage, Infor |
+| CRM | Salesforce |
+| RRHH y nómina | Workday, Meta4 |
+| Gestión documental | OpenText |
+| Las demás | ninguno: solo su categoría |
+
+Oracle (base de datos y ERP), Microsoft (Dynamics, Azure y 365), IBM,
+ServiceNow (plataforma de ITSM) y Sopra (RRHH, banca e integración) no cuentan
+en ninguna familia, y la vista lo dice. Los módulos SAP (S/4HANA, FI, Ariba…)
+son el desglose de ERP: se buscan solo en lo etiquetado como SAP. Si un
+fabricante nuevo entra en la taxonomía, decidir su familia (o ninguna) es parte
+de añadirlo; `tests/test_analytics_proyectos_familias.py` exige que cada
+fabricante esté en una familia o en la lista de transversales.
+
 ## Efectos de cambiar la semilla
 
 - **`filter_version` cambia solo**: es el hash del contenido del diccionario

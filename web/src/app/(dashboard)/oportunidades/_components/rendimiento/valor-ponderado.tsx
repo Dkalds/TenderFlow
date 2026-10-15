@@ -7,6 +7,10 @@
  * supuestos**: las probabilidades por etapa que usó y cuántas oportunidades
  * quedaron fuera por no tener importe publicado. Sin eso el número no se
  * puede reproducir, y es un número que se lleva a comité.
+ *
+ * Es el único sitio que pinta el reparto: Dirección lo repetía con el mismo
+ * cálculo y hoy enlaza aquí desde su tarjeta. Se queda aquí porque esta vista
+ * la ve cualquier miembro del equipo, y Dirección solo un owner o un admin.
  */
 import { Panel, PanelTitle } from "@/components/console/panel";
 import { PrevisionTrimestral, SupuestosEtapas } from "@/components/pursuits/prevision-trimestral";

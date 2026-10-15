@@ -1,19 +1,23 @@
 /**
- * F2.8 — preguntar sobre los expedientes de la bandeja de comparación.
+ * F2.8 — preguntar sobre varios expedientes a la vez, en el asistente único.
  *
- * Se fija: la pregunta viaja con los tres ids (`ids_externos`), la respuesta
- * se pinta con sus citas por expediente, y una comparación incompleta —un
- * expediente que no cargó o que llegó recortado— se dice con nombre.
+ * Era el suite de `pregunta-comparacion.tsx`, el chat propio de la bandeja de
+ * comparación. Desde 2026-10 la bandeja abre el asistente con sus expedientes,
+ * y lo que se fija es lo mismo: la pregunta viaja con los tres ids
+ * (`ids_externos`), la respuesta se pinta con sus citas por expediente, y una
+ * comparación incompleta —un expediente que no cargó o que llegó recortado— se
+ * dice con nombre.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("@/lib/analytics", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/analytics")>()),
   registrarEvento: vi.fn(),
 }));
 
-import { PreguntaComparacion } from "@/components/pliego/pregunta-comparacion";
+import { AsistentePanel } from "@/components/asistente/asistente-panel";
+import { useAsistente } from "@/lib/asistente-store";
 
 function sse(lineas: string[]): Response {
   const encoder = new TextEncoder();
@@ -26,6 +30,7 @@ function sse(lineas: string[]): Response {
   return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
 }
 
+beforeEach(() => useAsistente.getState().reiniciar());
 afterEach(() => vi.unstubAllGlobals());
 
 const META = {
@@ -42,7 +47,7 @@ const META = {
   },
 };
 
-describe("PreguntaComparacion", () => {
+describe("Asistente — comparación", () => {
   it("pregunta sobre los tres y avisa de lo que no entró", async () => {
     const fetch = vi.fn().mockResolvedValue(
       sse([
@@ -60,17 +65,27 @@ describe("PreguntaComparacion", () => {
     );
     vi.stubGlobal("fetch", fetch);
 
-    render(
-      <PreguntaComparacion ids={["A", "B", "C"]} etiquetas={{ A: "Uno", B: "Dos", C: "Tres" }} />,
+    render(<AsistentePanel />);
+    act(() =>
+      useAsistente.getState().abrir({
+        contexto: {
+          expedientes: [
+            { id: "A", titulo: "Uno" },
+            { id: "B", titulo: "Dos" },
+            { id: "C", titulo: "Tres" },
+          ],
+          origen: "comparacion",
+        },
+      }),
     );
-    expect(screen.getByText(/Preguntar sobre estos 3 expedientes/)).toBeInTheDocument();
+    expect(await screen.findByText(/Pregunta sobre los 3 expedientes a la vez/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("textbox", { name: /expedientes comparados/ }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Pregunta al asistente" }), {
       target: { value: "¿Qué solvencia piden?" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Enviar pregunta" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
 
-    expect(await screen.findByText("Comparación incompleta")).toBeInTheDocument();
+    expect(await screen.findByText("Comparación incompleta", {}, { timeout: 15_000 })).toBeInTheDocument();
     expect(screen.getByText("No se pudo cargar: B.")).toBeInTheDocument();
     expect(screen.getByText(/Pliego recortado para que quepan todos: C\./)).toBeInTheDocument();
     expect(await screen.findByText(/A · PCAP\.pdf, p\. 2/)).toBeInTheDocument();

@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  * y una rejilla 2×2 de gráficos— que la página dejó de tener hace dos
  * rediseños: el usuario veía aparecer una estructura y llegar otra distinta.
  * Esto replica las bandas reales y sus altos, para que la carga no salte: la
- * cabecera sin borde (el borde lo pone el scroll), el campo del copiloto, la
+ * cabecera sin borde (el borde lo pone el scroll), el campo del asistente, la
  * banda de «Desde tu última visita», «Tu día» con sus contadores y la semana,
  * la banda de «Mercado abierto» con la cola a dos tercios y las dos tarjetas
  * apiladas, y el contexto con su composición.
@@ -19,7 +19,7 @@ export default function ResumenLoading() {
         <Skeleton className="h-4 w-24 rounded-sm" />
       </div>
       <div className="min-h-0 flex-1 overflow-hidden px-4 pt-4 pb-6">
-        {/* Copiloto */}
+        {/* Asistente */}
         <Skeleton className="mb-4 h-10 max-w-[720px] rounded-md" />
 
         {/* Desde tu última visita: el reparto a la izquierda y los cambios a la derecha */}

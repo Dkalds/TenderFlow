@@ -11,6 +11,12 @@ contrato no emitía. Siempre caía al fallback —la suma de filas de módulo, d
 una licitación con módulos A+B cuenta dos veces—, así que el cociente leía MÁS
 BAJO cuanto más multi-módulo era el corpus: el inverso de lo que su etiqueta
 prometía.
+
+Desde 2026-10 los módulos SAP son el desglose de ERP dentro de la vista por
+familias, y el porcentaje con módulo divide por las licitaciones SAP del
+ámbito (``total_sap``), no por el ámbito entero: «Match portfolio» medía qué
+parte de todo lo licitado nombraba un módulo SAP, que en una vista de todas
+las familias no es una pregunta.
 """
 
 from __future__ import annotations
@@ -77,12 +83,13 @@ def test_total_del_ambito_incluye_las_no_clasificadas(tmp_db):
     assert sum(m.count for m in result.modulos) == result.menciones_modulo
 
 
-def test_match_portfolio_divide_por_el_ambito(tmp_db):
+def test_pct_con_modulo_divide_por_las_licitaciones_sap(tmp_db):
     _insert(_corpus_mixto())
 
     result = get_proyectos_modulos(ProyectosModulosFilters())
 
-    assert result.pct_match_portfolio == 75.0  # 3 clasificadas / 4 del ámbito
+    assert result.total_sap == 4
+    assert result.pct_sap_con_modulo == 75.0  # 3 con módulo / 4 SAP del ámbito
 
 
 def test_densidad_de_modulos_sube_con_las_multimodulo(tmp_db):
@@ -105,7 +112,7 @@ def test_densidad_de_modulos_sube_con_las_multimodulo(tmp_db):
     assert con_mas_multi.total_clasificados == 4
     assert con_mas_multi.modulos_por_clasificada == 1.5
     assert con_mas_multi.modulos_por_clasificada > mixto.modulos_por_clasificada
-    assert con_mas_multi.pct_match_portfolio != con_mas_multi.modulos_por_clasificada
+    assert con_mas_multi.pct_sap_con_modulo != con_mas_multi.modulos_por_clasificada
 
 
 def test_dataset_vacio_no_divide_por_cero(tmp_db):
@@ -113,5 +120,5 @@ def test_dataset_vacio_no_divide_por_cero(tmp_db):
 
     assert result.total == 0
     assert result.menciones_modulo == 0
-    assert result.pct_match_portfolio == 0.0
+    assert result.pct_sap_con_modulo == 0.0
     assert result.modulos_por_clasificada == 0.0

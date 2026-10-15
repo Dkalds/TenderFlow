@@ -13,14 +13,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ApiError } from "@/lib/api-client";
-import type { AskParams, AskStreamResult } from "@/lib/ask-stream";
+import type { AskParams, AskStreamResult, ResumenParams } from "@/lib/ask-stream";
 import { callUrl, jsonResponse } from "./fetch-call";
 
 // ── Mock ask-stream before importing the hook ──────────────────────────────────
 const mockStreamAsk = vi.fn<(params: AskParams) => Promise<AskStreamResult>>();
+const mockStreamResumen = vi.fn<(params: ResumenParams) => Promise<AskStreamResult>>();
 
 vi.mock("@/lib/ask-stream", () => ({
   streamAsk: (...args: Parameters<typeof mockStreamAsk>) => mockStreamAsk(...args),
+  streamResumen: (...args: Parameters<typeof mockStreamResumen>) => mockStreamResumen(...args),
 }));
 
 // ── Subject under test ─────────────────────────────────────────────────────────
@@ -53,6 +55,7 @@ function makeResult(overrides: Partial<AskStreamResult> = {}): AskStreamResult {
 
 beforeEach(() => {
   mockStreamAsk.mockReset();
+  mockStreamResumen.mockReset();
 });
 
 afterEach(() => {
@@ -304,6 +307,112 @@ describe("useChat", () => {
 });
 
 // ── useAskModels tests ─────────────────────────────────────────────────────────
+
+// El resumen del expediente era una pestaña aparte de la ficha, con su propio
+// estado. Desde 2026-10 es un turno más de la única conversación del
+// asistente: se lee en el mismo hilo y las preguntas de después lo tienen en
+// el historial.
+describe("useChat — resumen del expediente", () => {
+  const META = {
+    has_pliego_text: false,
+    truncated: false,
+    cached: true,
+    documentos: [{ tipo: "PCAP", filename: "pcap.pdf", status: "pending" }],
+  };
+
+  it("resumir() añade el turno y emite en él el resumen con sus metadatos", async () => {
+    mockStreamResumen.mockImplementation(async ({ onToken, onResumenMeta }) => {
+      onResumenMeta?.(META);
+      onToken("Resumen parcial");
+      return makeResult({ answer: "Resumen completo", resumenMeta: META });
+    });
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.resumir({ idExterno: "EXP-1", titulo: "Mantenimiento SAP" });
+    });
+
+    expect(mockStreamResumen.mock.calls[0][0]).toMatchObject({ idExterno: "EXP-1", force: false });
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[0]).toMatchObject({ role: "user", content: "Resume el expediente «Mantenimiento SAP»" });
+    expect(result.current.messages[1]).toMatchObject({
+      role: "assistant",
+      modo: "resumen",
+      content: "Resumen completo",
+      resumenMeta: META,
+      expedientesPedidos: ["EXP-1"],
+    });
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("«Regenerar» reescribe ese resumen en su sitio, forzando al proveedor", async () => {
+    mockStreamResumen.mockResolvedValueOnce(makeResult({ answer: "Primero" }));
+    mockStreamResumen.mockResolvedValueOnce(makeResult({ answer: "Segundo" }));
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.resumir({ idExterno: "EXP-1", titulo: "T" });
+    });
+    await act(async () => {
+      await result.current.resumir({ idExterno: "EXP-1", titulo: "T", force: true, indice: 1 });
+    });
+
+    expect(mockStreamResumen.mock.calls[1][0]).toMatchObject({ force: true });
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[1].content).toBe("Segundo");
+  });
+
+  it("regenerarResumen(i) rehace el turno i con su expediente, sin que el llamante lo repita", async () => {
+    mockStreamResumen.mockResolvedValueOnce(makeResult({ answer: "Primero" }));
+    mockStreamResumen.mockResolvedValueOnce(makeResult({ answer: "Segundo" }));
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.resumir({ idExterno: "EXP-9", titulo: "T" });
+    });
+    const regenerar = result.current.regenerarResumen;
+    await act(async () => {
+      await result.current.regenerarResumen(1);
+    });
+
+    expect(mockStreamResumen.mock.calls[1][0]).toMatchObject({ idExterno: "EXP-9", force: true });
+    expect(result.current.messages[1].content).toBe("Segundo");
+    // Estable entre renders: los turnos del hilo van memorizados.
+    expect(result.current.regenerarResumen).toBe(regenerar);
+  });
+
+  it("la pregunta de después lleva el resumen en el historial", async () => {
+    mockStreamResumen.mockResolvedValue(makeResult({ answer: "El objeto es soporte SAP." }));
+    mockStreamAsk.mockResolvedValue(makeResult({ answer: "Tres años." }));
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.resumir({ idExterno: "EXP-1", titulo: "T" });
+    });
+    await act(async () => {
+      await result.current.send("¿Y el plazo?", { idsExternos: ["EXP-1"] });
+    });
+
+    expect(mockStreamAsk.mock.calls[0][0].messages).toEqual([
+      { role: "user", content: "Resume el expediente «T»" },
+      { role: "assistant", content: "El objeto es soporte SAP." },
+    ]);
+  });
+
+  it("si el resumen falla, queda el error y no un turno vacío", async () => {
+    const rechazo = new ApiError(403, "Forbidden", undefined, "POST /api/v1/licitaciones/EXP-1/resumen");
+    mockStreamResumen.mockRejectedValue(rechazo);
+    const { result } = renderHook(() => useChat(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.resumir({ idExterno: "EXP-1", titulo: "T" });
+    });
+
+    expect(result.current.error).toBe(rechazo);
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].role).toBe("user");
+  });
+});
 
 describe("useAskModels", () => {
   it("reads the models list off the AskModelInfo contract", async () => {

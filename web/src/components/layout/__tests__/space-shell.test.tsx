@@ -171,7 +171,7 @@ describe("SpaceShell", () => {
 
   it("el contador de una vista va en sans con el tinte /10 y forma parte del nombre", () => {
     render(
-      <SpaceShell spaceKey="empresas" view="maestro" viewBadges={{ revision: 3 }}>
+      <SpaceShell spaceKey="competencia" view="empresas" viewBadges={{ revision: 3 }}>
         <p>contenido</p>
       </SpaceShell>,
     );

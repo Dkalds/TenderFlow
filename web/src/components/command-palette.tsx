@@ -31,6 +31,7 @@ const GROUP_LABELS: Record<ConsoleGroup, string> = {
   personal: "Mi seguimiento",
   organizacion: "Organización",
 };
+import { useAsistente } from "@/lib/asistente-store";
 import { useUiStore } from "@/lib/ui-store";
 import { useAdmin } from "@/hooks/use-admin";
 import { useDensity } from "@/lib/density";
@@ -121,7 +122,7 @@ export function CommandPalette() {
 
 function CommandPaletteInner() {
   const setOpen = useUiStore((s) => s.setCommandOpen);
-  const openCopilot = useUiStore((s) => s.openCopilot);
+  const abrirAsistente = useAsistente((s) => s.abrir);
   const openSavedViews = useUiStore((s) => s.openSavedViews);
   const router = useRouter();
   // `resolvedTheme`, no `theme`: con `defaultTheme="system"` el toggle debe
@@ -367,12 +368,12 @@ function CommandPaletteInner() {
             className={GRUPO}
           >
             <Command.Item
-              value="copiloto preguntar ask ia"
-              onSelect={() => run(() => openCopilot())}
+              value="asistente copiloto preguntar ask ia"
+              onSelect={() => run(() => abrirAsistente())}
               className={FILA}
             >
               <IconoIa className={ICONO_FILA} aria-hidden="true" />
-              Abrir copiloto
+              Abrir asistente
             </Command.Item>
             <Command.Item
               value="tema theme oscuro claro dark light"

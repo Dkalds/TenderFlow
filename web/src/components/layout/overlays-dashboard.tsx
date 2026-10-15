@@ -3,16 +3,16 @@
 /**
  * Overlays del dashboard, bajo demanda.
  *
- * La paleta (⌘K), el copiloto, la bandeja de comparación y la ayuda de atajos
+ * La paleta (⌘K), el asistente, la bandeja de comparación y la ayuda de atajos
  * están cerrados al entrar en cualquier pantalla, y aun así viajaban en el
- * First Load de todas: el copiloto con react-markdown y remark-gfm, la paleta
+ * First Load de todas: el asistente con react-markdown y remark-gfm, la paleta
  * con cmdk. Aquí queda montado solo lo mínimo —la suscripción a su store— y
  * cada cuerpo se descarga la primera vez que hace falta.
  *
  * Los atajos no viven aquí sino en `useKeyboardShortcuts` (`DashboardShell`),
  * que solo cambia el store: ⌘K y «?» funcionan antes de que exista la paleta o
  * la ayuda, y la abren a la primera. Las APIs de apertura (`useUiStore`,
- * `useBandejaComparacion`) no cambian.
+ * `useAsistente`, `useBandejaComparacion`) no cambian.
  *
  * `ssr: false` en todos: ninguno pinta nada en el HTML del servidor, porque
  * todos arrancan cerrados.
@@ -21,6 +21,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useBandejaComparacion } from "@/hooks/use-comparacion";
+import { useAsistente } from "@/lib/asistente-store";
 import { useUiStore } from "@/lib/ui-store";
 
 /**
@@ -56,9 +57,10 @@ const CommandPalette = dynamic(() => import("@/components/command-palette").then
   ssr: false,
   loading: PaletaCargando,
 });
-const GlobalCopilot = dynamic(() => import("@/components/copilot-panel").then((modulo) => modulo.GlobalCopilot), {
-  ssr: false,
-});
+const AsistentePanel = dynamic(
+  () => import("@/components/asistente/asistente-panel").then((modulo) => modulo.AsistentePanel),
+  { ssr: false },
+);
 const BandejaComparacion = dynamic(
   () => import("@/components/pliego/comparacion-bandeja").then((modulo) => modulo.BandejaComparacion),
   { ssr: false },
@@ -70,10 +72,10 @@ const KeyboardHelp = dynamic(() => import("@/components/keyboard-help").then((mo
 /**
  * `true` desde la primera vez que `abierto` lo es, y ya para siempre.
  *
- * El copiloto y la ayuda son un Sheet y un Dialog: tienen que seguir montados
- * al cerrarse para que se vea su animación de salida. Y el copiloto guarda la
- * conversación en su estado, así que desmontarlo al cerrar la borraría — antes
- * no pasaba porque estaba montado siempre.
+ * El asistente y la ayuda son un Sheet y un Dialog: tienen que seguir montados
+ * al cerrarse para que se vea su animación de salida. Y el asistente guarda la
+ * conversación en su estado —es el único, para toda la consola—, así que
+ * desmontarlo al cerrar la borraría.
  */
 function useAbiertoAlgunaVez(abierto: boolean): boolean {
   const [visto, setVisto] = React.useState(abierto);
@@ -104,10 +106,10 @@ function PaletaDiferida() {
   return abierta ? <CommandPalette /> : null;
 }
 
-function CopilotoDiferido() {
-  const abierto = useUiStore((s) => s.copilotOpen);
+function AsistenteDiferido() {
+  const abierto = useAsistente((s) => s.abierto);
   const visto = useAbiertoAlgunaVez(abierto);
-  return visto ? <GlobalCopilot /> : null;
+  return visto ? <AsistentePanel /> : null;
 }
 
 /** F2.8 — la bandeja sigue a mano al cambiar de pantalla mientras tenga algo. */
@@ -126,7 +128,7 @@ export function OverlaysDashboard() {
   return (
     <>
       <PaletaDiferida />
-      <CopilotoDiferido />
+      <AsistenteDiferido />
       <BandejaDiferida />
       <AyudaAtajosDiferida />
     </>
