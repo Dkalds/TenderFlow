@@ -30,7 +30,7 @@ import math
 import re
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from datetime import time as hora
@@ -55,8 +55,12 @@ __all__ = [
     "JSONValue",
     "ResultadoConsulta",
     "cerrar_pool_mcp",
+    "claves_foraneas_de",
+    "columnas_de",
     "ejecutar_select",
+    "ejemplo_de",
     "envolver",
+    "filas_aproximadas",
     "normalizar_sql",
     "serializar_valor",
 ]
@@ -448,3 +452,103 @@ def ejecutar_select(sql: str, *, max_filas: int = MAX_FILAS) -> ResultadoConsult
     truncado = len(crudas) > max_filas
     filas = [[serializar_valor(v) for v in fila] for fila in crudas[:max_filas]]
     return _acotar_respuesta(columnas, filas, truncado, duracion_ms)
+
+
+# ── Introspección ──────────────────────────────────────────────────────────
+#
+# Para ``describir_esquema`` / ``describir_tabla``. Tres reglas:
+#
+# * El nombre de la tabla **siempre** viaja como parámetro enlazado y se
+#   resuelve en el servidor con ``to_regclass(quote_ident(%s))``: honra el
+#   ``search_path`` de la conexión igual que lo haría el SQL del LLM (en
+#   producción ``pg_catalog, public``; en los tests, el schema de cada test) y
+#   un nombre hostil no es más que un nombre que no existe. ``current_schema()``
+#   no sirve de ancla: con ``search_path = pg_catalog, public`` devuelve
+#   ``pg_catalog``.
+# * Solo se listan columnas con ``SELECT`` para el rol
+#   (``has_column_privilege``): lo que el catálogo oculta, aquí ni aparece.
+# * Quien llama (``mcp_server/tools/esquema.py``) valida el nombre contra el
+#   catálogo antes de llegar aquí; estas funciones no son la frontera, el rol sí.
+
+_IDENT_SEGURO = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+_SQL_COLUMNAS = """
+SELECT a.attname::text,
+       format_type(a.atttypid, a.atttypmod),
+       NOT a.attnotnull
+  FROM pg_catalog.pg_attribute a
+ WHERE a.attrelid = to_regclass(quote_ident(%s))
+   AND a.attnum > 0
+   AND NOT a.attisdropped
+   AND has_column_privilege(a.attrelid, a.attnum, 'SELECT')
+ ORDER BY a.attnum
+"""
+
+_SQL_CLAVES_FORANEAS = """
+SELECT o.attname::text, d.relname::text, r.attname::text
+  FROM pg_catalog.pg_constraint c
+ CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(origen, destino, orden)
+  JOIN pg_catalog.pg_attribute o ON o.attrelid = c.conrelid AND o.attnum = k.origen
+  JOIN pg_catalog.pg_attribute r ON r.attrelid = c.confrelid AND r.attnum = k.destino
+  JOIN pg_catalog.pg_class d ON d.oid = c.confrelid
+ WHERE c.contype = 'f'
+   AND c.conrelid = to_regclass(quote_ident(%s))
+ ORDER BY c.conname, k.orden
+"""
+
+_SQL_FILAS_APROXIMADAS = """
+SELECT t.nombre, COALESCE(c.reltuples, 0)::bigint
+  FROM unnest(%s::text[]) AS t(nombre)
+  LEFT JOIN pg_catalog.pg_class c ON c.oid = to_regclass(quote_ident(t.nombre))
+"""
+
+
+def _leer(sql: str, params: Sequence[object]) -> list[tuple[object, ...]]:
+    """Ejecuta una consulta de catálogo con el rol MCP y devuelve las filas crudas."""
+    url = mcp_database_url()
+    if not url:
+        raise ErrorConsulta(None, "MCP_DATABASE_URL no configurada", None)
+    pool = _get_pool(url)
+    try:
+        with pool.connection() as conn:
+            return conn.execute(sql, params).fetchall()
+    except psycopg.Error as exc:
+        raise _traducir(exc) from None
+
+
+def columnas_de(tabla: str) -> list[dict[str, str | bool]]:
+    """Columnas legibles por el rol de ``tabla``: ``nombre``, ``tipo`` y ``nulo``."""
+    return [
+        {"nombre": str(n), "tipo": str(t), "nulo": bool(nulo)}
+        for n, t, nulo in _leer(_SQL_COLUMNAS, (tabla,))
+    ]
+
+
+def claves_foraneas_de(tabla: str) -> list[dict[str, str]]:
+    """Claves foráneas de ``tabla``: ``columna``, ``tabla_destino``, ``columna_destino``."""
+    return [
+        {"columna": str(c), "tabla_destino": str(d), "columna_destino": str(r)}
+        for c, d, r in _leer(_SQL_CLAVES_FORANEAS, (tabla,))
+    ]
+
+
+def filas_aproximadas(tablas: Sequence[str]) -> dict[str, int]:
+    """Filas estimadas (``pg_class.reltuples``); ``-1`` (sin ``ANALYZE``) o ausente → ``0``."""
+    if not tablas:
+        return {}
+    filas = _leer(_SQL_FILAS_APROXIMADAS, (list(tablas),))
+    return {str(n): max(int(str(v)), 0) for n, v in filas}
+
+
+def ejemplo_de(tabla: str, columnas: Sequence[str], *, n: int = 3) -> ResultadoConsulta:
+    """``SELECT <columnas> FROM <tabla> LIMIT n`` con los identificadores validados.
+
+    Solo admite identificadores ``[a-z_][a-z0-9_]*`` (los del catálogo y de las
+    columnas reales del esquema), que se citan con comillas dobles: ningún
+    carácter de usuario llega al SQL. ``n`` es un entero fijado por el código.
+    """
+    if not columnas or not all(_IDENT_SEGURO.match(i) for i in (tabla, *columnas)):
+        raise ErrorConsulta(None, "Identificador no válido para el ejemplo.", None)
+    lista = ", ".join(f'"{c}"' for c in columnas)
+    sql = f'SELECT {lista} FROM "{tabla}" LIMIT {int(n)}'
+    return ejecutar_select(sql, max_filas=int(n))
