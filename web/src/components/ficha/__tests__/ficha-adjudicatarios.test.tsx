@@ -34,7 +34,7 @@ describe("FichaAdjudicatarios", () => {
           adjudicatarios: [
             {
               nombre: "Integra SL",
-              nif: "B12345678",
+              nif: "B12345678", // pragma: allowlist secret -- NIF de prueba
               importe_adjudicado: 80000,
               n_ofertas_recibidas: 3,
               fecha_adjudicacion: "2026-10-01",
@@ -57,7 +57,7 @@ describe("FichaAdjudicatarios", () => {
 
     expect(screen.getByRole("heading", { name: "Adjudicación" })).toBeInTheDocument();
     expect(screen.getByText("Integra SL")).toBeInTheDocument();
-    expect(screen.getByText("B12345678")).toBeInTheDocument();
+    expect(screen.getByText("B12345678")).toBeInTheDocument(); // pragma: allowlist secret -- NIF de prueba
     expect(screen.getByText(/Lote 1 · Mantenimiento/)).toBeInTheDocument();
     expect(screen.getByText(/3 ofertas/)).toBeInTheDocument();
     // Lo que la fuente no publicó se dice, no se rellena con un cero.

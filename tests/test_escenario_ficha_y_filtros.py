@@ -47,7 +47,7 @@ def test_cu02_la_ficha_dice_quien_lo_gano_y_que_se_le_parece(client, api_db):
             (
                 "EXP-FIC-2024",
                 "Integra Sistemas SL",
-                "B87654321",
+                "B87654321",  # pragma: allowlist secret -- NIF de prueba
                 255_000.0,
                 5,
                 "2024-06-15",
@@ -61,7 +61,7 @@ def test_cu02_la_ficha_dice_quien_lo_gano_y_que_se_le_parece(client, api_db):
     assert anterior.status_code == 200, anterior.text
     [ganador] = anterior.json()["adjudicatarios"]
     assert ganador["nombre"] == "Integra Sistemas SL"
-    assert ganador["nif"] == "B87654321"
+    assert ganador["nif"] == "B87654321"  # pragma: allowlist secret -- NIF de prueba
     assert ganador["importe_adjudicado"] == 255_000.0
     assert ganador["n_ofertas_recibidas"] == 5
     # El vigente aún no tiene adjudicatario: lista vacía, no un hueco inventado.

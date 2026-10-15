@@ -73,7 +73,13 @@ def test_sin_adjudicacion_la_lista_va_vacia(client, auth) -> None:
 
 def test_el_adjudicatario_del_expediente_completo(client, auth) -> None:
     sembrar_licitacion("EXP-ADJ-1", "Migración a S/4HANA", estado="ADJ")
-    _adjudicacion("EXP-ADJ-1", "Integra SL", nif="B12345678", importe=198_000.0, ofertas=4)
+    _adjudicacion(
+        "EXP-ADJ-1",
+        "Integra SL",
+        nif="B12345678",  # pragma: allowlist secret -- NIF de prueba
+        importe=198_000.0,
+        ofertas=4,
+    )
 
     adjudicatarios = client.get("/api/v1/licitaciones/EXP-ADJ-1", headers=auth).json()[
         "adjudicatarios"
@@ -82,7 +88,7 @@ def test_el_adjudicatario_del_expediente_completo(client, auth) -> None:
     assert adjudicatarios == [
         {
             "nombre": "Integra SL",
-            "nif": "B12345678",
+            "nif": "B12345678",  # pragma: allowlist secret -- NIF de prueba
             "importe_adjudicado": 198_000.0,
             "n_ofertas_recibidas": 4,
             "fecha_adjudicacion": "2026-10-01",
@@ -98,7 +104,12 @@ def test_por_lote_con_su_numero_y_su_titulo(client, auth) -> None:
     lote_1 = _lote("EXP-ADJ-2", "1", "Mantenimiento")
     lote_2 = _lote("EXP-ADJ-2", "2", "Desarrollo evolutivo")
     _adjudicacion(
-        "EXP-ADJ-2", "Integra SL", nif="B12345678", importe=80_000.0, ofertas=3, lote_id=lote_1
+        "EXP-ADJ-2",
+        "Integra SL",
+        nif="B12345678",  # pragma: allowlist secret -- NIF de prueba
+        importe=80_000.0,
+        ofertas=3,
+        lote_id=lote_1,
     )
     _adjudicacion(
         "EXP-ADJ-2", "Consultora Norte SA", nif=None, importe=None, ofertas=None, lote_id=lote_2

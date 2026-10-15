@@ -68,7 +68,7 @@ beforeEach(() => {
       status: 201,
       body: { new_token: "tf_nueva", message: "", old_key_expires_at: "2026-10-19T10:00:00+00:00" },
     },
-    "POST /api/v1/me/keys": { status: 201, body: { id: 9, name: "ERP", api_key: "tf_creada" } },
+    "POST /api/v1/me/keys": { status: 201, body: { id: 9, name: "ERP", api_key: "tf_creada" } }, // pragma: allowlist secret -- token de prueba
   };
   fetchMock.mockImplementation((entrada: unknown, init?: RequestInit) => {
     const clave = `${metodoDe(entrada, init)} ${urlDe(entrada).split("?")[0]}`;
