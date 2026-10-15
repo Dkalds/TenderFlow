@@ -165,3 +165,32 @@ def test_tool_buscar_en_pliegos_sin_resultados_explica(tmp_db: Any) -> None:
     res = buscar_en_pliegos("nada", id_externo="NO-EXISTE")
     assert res["fragmentos"] == []
     assert "aviso" in res
+
+
+def test_tool_buscar_en_pliegos_no_recorta_el_fragmento_a_1000(
+    licitacion_con_lote_y_adjudicacion: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("services.embeddings.embeddings_available", lambda: False)
+    repo = DocumentosRepository()
+    repo.upsert_meta(ID, [DocumentoReferencia(tipo="legal", uri="https://x/largo.pdf")])
+    doc = repo.list_pendientes()[0]
+    repo.mark_extracted(doc["id"], texto="pliego", sha256="h2", filename="LARGO.pdf")
+    repo.replace_chunks(doc["id"], ["penalidades " * 400], [[0.1] * 384])
+
+    res = buscar_en_pliegos("penalidades", id_externo=ID)
+    (fragmento,) = _lista(res["fragmentos"])
+    texto = str(_dict(fragmento)["texto"])
+    assert len(texto) == 1_500
+    assert "…[+" not in texto
+
+
+def test_tool_buscar_licitaciones_rechaza_desde_posterior_a_hasta(tmp_db: Any) -> None:
+    with pytest.raises(ValidationError, match="posterior"):
+        buscar_licitaciones("x", desde="2026-05-01", hasta="2026-01-01")
+
+
+def test_tool_buscar_en_pliegos_aviso_sugiere_reintentar(tmp_db: Any) -> None:
+    sin_id = buscar_en_pliegos("palabras que no existen en ninguna parte")
+    assert "menos palabras" in str(sin_id["aviso"])
+    con_id = buscar_en_pliegos("nada", id_externo="NO-EXISTE")
+    assert "menos palabras" not in str(con_id["aviso"])

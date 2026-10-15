@@ -15,17 +15,23 @@ JSON seguro.
 from __future__ import annotations
 
 import re
-from dataclasses import asdict
 from datetime import date
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from db.consulta_libre import JSONValue, serializar_valor
 from mcp_server.tools import ErrorHerramienta
 from services.expediente import expediente_completo
 from services.licitaciones import search_advanced
-from services.rag.fragmentos import fragmentos_de_pliego
+from services.rag.fragmentos import Fragmento, fragmentos_de_pliego
 
 __all__ = ["buscar_en_pliegos", "buscar_licitaciones", "ficha_licitacion"]
 
@@ -63,6 +69,12 @@ class _EntradaBuscarLicitaciones(_Entrada):
         date.fromisoformat(v)
         return v
 
+    @model_validator(mode="after")
+    def _rango_de_fechas(self) -> _EntradaBuscarLicitaciones:
+        if self.desde is not None and self.hasta is not None and self.desde > self.hasta:
+            raise ValueError("'desde' no puede ser posterior a 'hasta'")
+        return self
+
 
 class _EntradaBuscarEnPliegos(_Entrada):
     pregunta: str = Field(min_length=1, max_length=1_000)
@@ -72,6 +84,22 @@ class _EntradaBuscarEnPliegos(_Entrada):
 
 class _EntradaFicha(_Entrada):
     id_externo: _IdExterno
+
+
+def _fragmento_json(f: Fragmento) -> JSONValue:
+    """Fragmento como JSON sin pasar por ``serializar_valor``.
+
+    Su ``texto`` ya está acotado a 1 500 caracteres en ``Fragmento``; el tope de
+    celda de ``serializar_valor`` (1 000, con marca ``…[+N]``) lo cortaría otra
+    vez y la marca mentiría sobre lo que se perdió del documento.
+    """
+    return {
+        "id_externo": f.id_externo,
+        "documento": f.documento,
+        "tipo": f.tipo,
+        "pagina": f.pagina,
+        "texto": f.texto,
+    }
 
 
 def _como_dict(valor: JSONValue) -> dict[str, JSONValue]:
@@ -108,9 +136,10 @@ def buscar_licitaciones(
     euros; ``desde``/``hasta`` acotan la fecha de publicación (``YYYY-MM-DD``,
     ambos incluidos). ``limite``: de 1 a 50 (por defecto 20).
 
-    Devuelve ``{"total": N, "resultados": [...]}``: ``total`` cuenta todas las
-    coincidencias, ``resultados`` solo las primeras ``limite`` (más recientes
-    primero).
+    ``desde`` no puede ser posterior a ``hasta``. Devuelve ``{"total": N,
+    "resultados": [...]}``: ``total`` cuenta todas las coincidencias,
+    ``resultados`` solo las primeras ``limite`` (más recientes primero); los
+    textos largos de cada fila se recortan a 1 000 caracteres.
     """
     e = _EntradaBuscarLicitaciones(
         texto=texto,
@@ -159,13 +188,16 @@ def buscar_en_pliegos(
     """
     e = _EntradaBuscarEnPliegos(pregunta=pregunta, id_externo=id_externo, limite=limite)
     fragmentos = fragmentos_de_pliego(e.pregunta, id_externo=e.id_externo, limite=e.limite)
-    salida: dict[str, JSONValue] = {
-        "fragmentos": [_como_dict(serializar_valor(asdict(f))) for f in fragmentos]
-    }
+    salida: dict[str, JSONValue] = {"fragmentos": [_fragmento_json(f) for f in fragmentos]}
     if not fragmentos:
         salida["aviso"] = (
             "No hay fragmentos de pliego para esta consulta: el expediente no existe, no "
-            "tiene pliegos indexados o ningún expediente casa con la pregunta."
+            "tiene pliegos indexados o ningún expediente casa con la pregunta. Sin "
+            "id_externo la búsqueda exige todos los términos a la vez: reintenta con menos "
+            "palabras clave, o con el id_externo del expediente (ver buscar_licitaciones)."
+            if e.id_externo is None
+            else "No hay fragmentos de pliego para este expediente: no existe o no tiene "
+            "pliegos indexados."
         )
     return salida
 
