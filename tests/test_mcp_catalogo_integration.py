@@ -23,7 +23,11 @@ from mcp_server.catalogo import (
     sentencias_rol,
 )
 
-_PARECE_SECRETO = re.compile(r"(hash|secret|token|password|passwd|clave|key|totp|salt)", re.I)
+_PARECE_SECRETO = re.compile(
+    r"(hash|secret|token|password|passwd|clave|key|totp|salt|webhook|credential|encrypt"
+    r"|signature|private|bearer|cookie)",
+    re.I,
+)
 
 
 def _columnas_por_tabla(db_mod: Any) -> dict[str, list[str]]:

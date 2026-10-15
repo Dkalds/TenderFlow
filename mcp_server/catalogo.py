@@ -506,6 +506,9 @@ COLUMNAS_REVISADAS: frozenset[tuple[str, str]] = frozenset(
         ("audit_log", "session_hash"),
         # Hash de la pregunta del asistente para agrupar votos repetidos.
         ("asistente_feedback", "pregunta_hash"),
+        # FK al webhook configurado (``webhooks.id``): un entero, no su secreto de
+        # firma (``webhooks.secret`` y la URL están excluidas).
+        ("webhook_deliveries", "webhook_id"),
     }
 )
 
