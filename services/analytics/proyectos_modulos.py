@@ -232,6 +232,17 @@ class ProyectosModulosResult(BaseModel):
     # de SAP; en una vista de todas las familias divide por lo que es SAP.
     pct_sap_con_modulo: float = 0.0
     modulos_por_clasificada: float = 0.0
+    # Deprecado: la pantalla lo cambió por `pct_sap_con_modulo`, pero el campo
+    # sale en la respuesta hasta que lo retire una RFC (docs/api-design.md,
+    # «Qué cuenta como cambio incompatible»). Misma definición de siempre.
+    pct_match_portfolio: float = Field(
+        default=0.0,
+        deprecated=True,
+        description=(
+            "Deprecado: licitaciones con módulo SAP sobre el ámbito entero, en %. "
+            "Usa `pct_sap_con_modulo`."
+        ),
+    )
     # KPIs a nivel licitación (distinct): NO suma de filas de módulo. Una licitación
     # con módulos A+B cuenta una sola vez → sin doble conteo de importe/ticket.
     importe_total_sap: float = 0.0
@@ -433,6 +444,9 @@ def get_proyectos_modulos(filters: ProyectosModulosFilters) -> ProyectosModulosR
         total_clasificados=total_clasificados,
         menciones_modulo=menciones_modulo,
         pct_sap_con_modulo=round(pct_sap_con_modulo, 2),
+        pct_match_portfolio=(
+            round(total_clasificados / total_ambito * 100, 2) if total_ambito else 0.0
+        ),
         modulos_por_clasificada=round(modulos_por_clasificada, 2),
         importe_total_sap=round(importe_total_sap, 2),
         ticket_medio_sap=round(ticket_medio_sap, 2),

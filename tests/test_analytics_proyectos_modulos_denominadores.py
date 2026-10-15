@@ -92,6 +92,19 @@ def test_pct_con_modulo_divide_por_las_licitaciones_sap(tmp_db):
     assert result.pct_sap_con_modulo == 75.0  # 3 con módulo / 4 SAP del ámbito
 
 
+def test_pct_match_portfolio_sigue_dividiendo_por_el_ambito(tmp_db):
+    """El campo deprecado conserva su contrato: clasificadas sobre el ámbito.
+
+    La pantalla ya no lo pinta, pero sale en la respuesta hasta su retirada
+    con RFC; quitarlo sin ella rompe `check_api_breaking.py`.
+    """
+    _insert(_corpus_mixto())
+
+    result = get_proyectos_modulos(ProyectosModulosFilters())
+
+    assert result.model_dump()["pct_match_portfolio"] == 75.0  # 3 con módulo / 4 del ámbito
+
+
 def test_densidad_de_modulos_sube_con_las_multimodulo(tmp_db):
     """El signo correcto: más multi-módulo ⇒ ratio MÁS ALTO.
 
@@ -121,4 +134,5 @@ def test_dataset_vacio_no_divide_por_cero(tmp_db):
     assert result.total == 0
     assert result.menciones_modulo == 0
     assert result.pct_sap_con_modulo == 0.0
+    assert result.model_dump()["pct_match_portfolio"] == 0.0
     assert result.modulos_por_clasificada == 0.0

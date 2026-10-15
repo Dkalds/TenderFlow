@@ -63,6 +63,7 @@ const DATOS: ProyectosModulosResponse = {
   total_clasificados: 10,
   menciones_modulo: 11,
   pct_sap_con_modulo: 50,
+  pct_match_portfolio: 40,
   modulos_por_clasificada: 1.1,
   importe_total_sap: 4_400_000,
   ticket_medio_sap: 440_000,

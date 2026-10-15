@@ -12497,6 +12497,13 @@ export interface components {
              */
             pct_con_familia: number;
             /**
+             * Pct Match Portfolio
+             * @deprecated
+             * @description Deprecado: licitaciones con módulo SAP sobre el ámbito entero, en %. Usa `pct_sap_con_modulo`.
+             * @default 0
+             */
+            pct_match_portfolio: number;
+            /**
              * Pct Sap Con Modulo
              * @default 0
              */
