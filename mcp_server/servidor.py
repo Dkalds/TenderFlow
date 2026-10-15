@@ -41,7 +41,12 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from config import settings
-from config.settings import mcp_database_url, mcp_google_redirect_uri, mcp_public_url
+from config.settings import (
+    LONGITUD_MINIMA_CLAVE,
+    mcp_database_url,
+    mcp_google_redirect_uri,
+    mcp_public_url,
+)
 from db.consulta_libre import JSONValue, cerrar_pool_mcp
 from mcp_server.auth.google import ClienteGoogleReal
 from mcp_server.auth.proveedor import AlmacenOAuthPostgres, ProveedorTenderFlow
@@ -107,7 +112,8 @@ def validar_configuracion() -> list[str]:
     ``{MCP_PUBLIC_URL}/oauth/google/callback`` (la ruta que monta el servidor;
     Google mandaría el login a otro sitio) y, en ``ENV=prod``, un
     ``MCP_PUBLIC_URL`` que no es ``https://`` (issuer OAuth en claro) y un
-    ``AUDIT_HMAC_KEY`` vacío (sin ella la auditoría no escribiría).
+    ``AUDIT_HMAC_KEY`` vacío (sin ella la auditoría no escribiría) y, en prod,
+    ``SIGNING_KEY`` o ``AUDIT_HMAC_KEY`` por debajo de ``LONGITUD_MINIMA_CLAVE``.
     """
     valores = {
         "MCP_DATABASE_URL": mcp_database_url(),
@@ -124,10 +130,21 @@ def validar_configuracion() -> list[str]:
         problemas.append(f"MCP_GOOGLE_REDIRECT_URI (debe ser {publica}{RUTA_CALLBACK_GOOGLE})")
     if publica and settings.ENV == "prod" and urlsplit(publica).scheme != "https":
         problemas.append("MCP_PUBLIC_URL (debe ser https:// en prod)")
-    # Sin la clave de la cadena `log_action` no lanza pero tampoco escribe: el MCP
-    # respondería sin dejar rastro. En dev `db.audit` usa una clave de desarrollo.
-    if settings.ENV == "prod" and not settings.AUDIT_HMAC_KEY.get_secret_value().strip():
-        problemas.append("AUDIT_HMAC_KEY")
+    if settings.ENV == "prod":
+        # Las mismas reglas que `Settings` aplica a la API (`LONGITUD_MINIMA_CLAVE`):
+        # con el perfil `mcp` ya las impone al importar `config.settings`, pero esta
+        # función no depende de qué perfil traiga el proceso. Sin `AUDIT_HMAC_KEY`,
+        # `log_action` no lanza pero tampoco escribe: el MCP respondería sin rastro.
+        claves = {
+            "SIGNING_KEY": settings.SIGNING_KEY.get_secret_value().strip(),
+            "AUDIT_HMAC_KEY": settings.AUDIT_HMAC_KEY.get_secret_value().strip(),
+        }
+        for nombre, valor in claves.items():
+            if not valor:
+                if nombre == "AUDIT_HMAC_KEY":  # la vacía SIGNING_KEY ya figura arriba
+                    problemas.append(nombre)
+            elif len(valor) < LONGITUD_MINIMA_CLAVE:
+                problemas.append(f"{nombre} (mínimo {LONGITUD_MINIMA_CLAVE} caracteres)")
     return problemas
 
 

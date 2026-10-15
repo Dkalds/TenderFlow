@@ -377,6 +377,15 @@ def test_config_redirect_de_google_y_https_en_prod(monkeypatch: pytest.MonkeyPat
     assert validar_configuracion() == ["AUDIT_HMAC_KEY"]
     monkeypatch.setattr(settings, "AUDIT_HMAC_KEY", SecretStr("a" * 40))
     assert validar_configuracion() == []
+    # Misma longitud mínima que la API exige a las dos claves (LONGITUD_MINIMA_CLAVE).
+    monkeypatch.setattr(settings, "AUDIT_HMAC_KEY", SecretStr("a" * 31))
+    monkeypatch.setattr(settings, "SIGNING_KEY", SecretStr("k" * 31))
+    assert validar_configuracion() == [
+        "SIGNING_KEY (mínimo 32 caracteres)",
+        "AUDIT_HMAC_KEY (mínimo 32 caracteres)",
+    ]
+    monkeypatch.setattr(settings, "AUDIT_HMAC_KEY", SecretStr("a" * 40))
+    monkeypatch.setattr(settings, "SIGNING_KEY", SecretStr("k" * 40))
 
     monkeypatch.setenv("MCP_GOOGLE_REDIRECT_URI", "https://otro.example.com/callback")
     assert validar_configuracion() == [

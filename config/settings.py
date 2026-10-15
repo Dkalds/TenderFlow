@@ -40,6 +40,11 @@ _LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1"}
 # hora contra la base de producción.
 _BATCH_STATEMENT_TIMEOUT_MS = 300_000
 
+# Longitud mínima de las claves que firman cosas en producción (``SIGNING_KEY``,
+# ``AUDIT_HMAC_KEY``). La usan los validators de ``Settings`` y, para el
+# servidor MCP, ``mcp_server.servidor.validar_configuracion``: una sola cifra.
+LONGITUD_MINIMA_CLAVE = 32
+
 
 def _extract_host(url: str) -> str | None:
     """Devuelve el hostname de una DATABASE_URL, o None si no se puede parsear."""
@@ -77,7 +82,11 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # de producción y desactivaba de paso validators que sí le aplicaban
     # (ver el fix de sslmode en _validate_prod_database_ssl).
     ENV: Literal["dev", "staging", "prod"] = "prod"
-    APP_PROFILE: Literal["api", "worker", "scraper"] = "api"
+    # `mcp` es el servidor MCP interno (`python -m mcp_server`): no sirve la API
+    # REST ni es un worker, pero sí firma tokens y audita, así que exige
+    # `SIGNING_KEY` y `AUDIT_HMAC_KEY` como la API y nada de lo demás (CORS,
+    # API keys, webhooks...). Tampoco relaja el techo de tiempo por consulta.
+    APP_PROFILE: Literal["api", "worker", "scraper", "mcp"] = "api"
 
     # ── Rutas ────────────────────────────────────────────────────────────
     DATA_DIR: Path = _DEFAULT_DATA_DIR
@@ -933,6 +942,16 @@ class Settings(ResumenPregenSettings, BaseSettings):
         """True si el proceso expone la API HTTP (perfil ``api``)."""
         return self.APP_PROFILE == "api"
 
+    @property
+    def _es_mcp(self) -> bool:
+        """True si el proceso es el servidor MCP interno (perfil ``mcp``)."""
+        return self.APP_PROFILE == "mcp"
+
+    @property
+    def _firma_y_audita(self) -> bool:
+        """True si el proceso firma tokens y escribe en ``audit_log`` (``api`` y ``mcp``)."""
+        return self._serves_http or self._es_mcp
+
     @model_validator(mode="after")
     def _relax_batch_statement_timeout(self) -> Settings:
         """Sube el techo de tiempo por consulta en los perfiles que no sirven HTTP.
@@ -954,7 +973,11 @@ class Settings(ResumenPregenSettings, BaseSettings):
         Un valor explícito en el entorno gana siempre: ``model_fields_set``
         solo contiene los campos que llegaron de fuera, no los defaults.
         """
-        if "DB_STATEMENT_TIMEOUT_MS" not in self.model_fields_set and not self._serves_http:
+        if (
+            "DB_STATEMENT_TIMEOUT_MS" not in self.model_fields_set
+            and not self._serves_http
+            and not self._es_mcp  # atiende peticiones de usuario, no es un batch
+        ):
             self.DB_STATEMENT_TIMEOUT_MS = _BATCH_STATEMENT_TIMEOUT_MS
         return self
 
@@ -982,9 +1005,9 @@ class Settings(ResumenPregenSettings, BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_signing_key(self) -> Settings:
-        if self._is_prod_data and self._serves_http and not self.SIGNING_KEY.get_secret_value():
+        if self._is_prod_data and self._firma_y_audita and not self.SIGNING_KEY.get_secret_value():
             raise ValueError(
-                "SIGNING_KEY es obligatorio en ENV=prod con APP_PROFILE=api para firmar tokens CSRF/OAuth. "
+                "SIGNING_KEY es obligatorio en ENV=prod con APP_PROFILE=api o mcp para firmar tokens CSRF/OAuth. "
                 'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
             )
         return self
@@ -1078,24 +1101,27 @@ class Settings(ResumenPregenSettings, BaseSettings):
     def _validate_prod_audit_hmac_secret(self) -> Settings:
         """db/audit.py solo lo usa el proceso API (login, exports, acciones admin) —
         el scraper/scheduler nunca llama a log_action/log_event, así que este
-        validator debe seguir el mismo gating que sus hermanos (_serves_http).
-        Sin esto, el job diario de scraping (APP_PROFILE=scraper) no arranca."""
+        validator sigue el gating de ``_firma_y_audita`` (``api`` y ``mcp``, que
+        también escribe auditoría). Sin esto, el job diario de scraping
+        (APP_PROFILE=scraper) no arranca."""
         if (
             self._is_prod_data
-            and self._serves_http
-            and len(self.AUDIT_HMAC_KEY.get_secret_value()) < 32
+            and self._firma_y_audita
+            and len(self.AUDIT_HMAC_KEY.get_secret_value()) < LONGITUD_MINIMA_CLAVE
         ):
-            raise ValueError("AUDIT_HMAC_KEY (32+ caracteres) es obligatorio en producción")
+            raise ValueError(
+                f"AUDIT_HMAC_KEY ({LONGITUD_MINIMA_CLAVE}+ caracteres) es obligatorio en producción"
+            )
         return self
 
     @model_validator(mode="after")
     def _validate_prod_signing_key_strength(self) -> Settings:
         """En producción, exigir SIGNING_KEY con longitud mínima de 32 chars."""
-        if self._is_prod_data and self._serves_http:
+        if self._is_prod_data and self._firma_y_audita:
             key = self.SIGNING_KEY.get_secret_value()
-            if key and len(key) < 32:
+            if key and len(key) < LONGITUD_MINIMA_CLAVE:
                 raise ValueError(
-                    "SIGNING_KEY demasiado corto. Usa al menos 32 caracteres "
+                    f"SIGNING_KEY demasiado corto. Usa al menos {LONGITUD_MINIMA_CLAVE} caracteres "
                     '(recomendado: python -c "import secrets; print(secrets.token_hex(32))").'
                 )
         return self

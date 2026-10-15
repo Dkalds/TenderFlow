@@ -13,12 +13,14 @@ Uso::
     python -m scripts.mcp_revocar --email alguien@empresa.es
 
 (Desde la raíz del repo; ``python scripts/mcp_revocar.py`` no encuentra los paquetes.
-Contra producción: ``ENV=prod APP_PROFILE=worker`` con ``DATABASE_URL`` y
+Contra producción: ``ENV=prod APP_PROFILE=mcp`` con ``DATABASE_URL`` y
 ``AUDIT_HMAC_KEY`` de producción. Nunca ``ENV=dev`` contra esa base: la auditoría
 se firmaría con la clave de desarrollo y rompería la cadena.)
 
-Salida: ``Revocados N tokens de <email>`` y código 0. Un correo desconocido
-sale con 1. Cada ejecución deja ``mcp.revocacion_manual`` en ``audit_log``.
+Salida: una línea ``Revocados N tokens de <email>`` por cuenta (el correo se
+compara sin distinguir mayúsculas; si varias cuentas casan, se revocan todas) y
+código 0. Un correo desconocido sale con 1; en producción sin ``AUDIT_HMAC_KEY``,
+con 2 y sin revocar nada. Cada ejecución deja ``mcp.revocacion_manual`` en ``audit_log``.
 """
 
 from __future__ import annotations
@@ -26,8 +28,10 @@ from __future__ import annotations
 import argparse
 import sys
 
+from config import settings
+from config.settings import LONGITUD_MINIMA_CLAVE
 from db.mcp_oauth import revocar_de_usuario
-from db.users import get_user_by_email
+from db.users import get_users_by_email_ci
 from mcp_server.auth.proveedor import auditar_oauth
 
 
@@ -36,16 +40,30 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--email", required=True, help="Correo de la cuenta a revocar")
     args = parser.parse_args(argv)
 
-    # Con `include_deactivated`: una cuenta dada de baja puede tener tokens vivos.
-    usuario = get_user_by_email(args.email.strip(), include_deactivated=True)
-    if usuario is None:
+    # No hay revocación sin rastro: sin la clave de la cadena `log_action` no
+    # escribiría la fila y el operador no se enteraría.
+    if settings.ENV == "prod" and (
+        len(settings.AUDIT_HMAC_KEY.get_secret_value().strip()) < LONGITUD_MINIMA_CLAVE
+    ):
+        print(
+            "ERROR: falta AUDIT_HMAC_KEY (la de producción) en el entorno; "
+            "no se revoca nada sin auditoría.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Sin distinguir mayúsculas (como el login del MCP) y con las dadas de baja:
+    # una cuenta desactivada puede conservar tokens vivos.
+    usuarios = get_users_by_email_ci(args.email.strip(), include_deactivated=True)
+    if not usuarios:
         print(f"ERROR: no existe ninguna cuenta con el correo {args.email}", file=sys.stderr)
         return 1
 
-    revocados = revocar_de_usuario(int(usuario["id"]))
-    # Única vía de auditoría del MCP (ruling R12); el detalle no lleva tokens ni correo.
-    auditar_oauth("mcp.revocacion_manual", int(usuario["id"]), {"revocados": revocados})
-    print(f"Revocados {revocados} tokens de {args.email}")
+    for usuario in usuarios:
+        revocados = revocar_de_usuario(int(usuario["id"]))
+        # Única vía de auditoría del MCP (ruling R12); el detalle no lleva tokens ni correo.
+        auditar_oauth("mcp.revocacion_manual", int(usuario["id"]), {"revocados": revocados})
+        print(f"Revocados {revocados} tokens de {usuario['email']}")
     return 0
 
 

@@ -14,6 +14,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -232,7 +234,7 @@ def test_entrypoint_ejecuta_un_comando_completo_y_conserva_las_opciones(tmp_path
 
     sh = shutil.which("sh")
     if sh is None:
-        return  # sin shell POSIX (Windows) no hay nada que ejecutar
+        pytest.skip("sin shell POSIX (Windows) no hay nada que ejecutar")
     falso = tmp_path / "python"
     falso.write_text('#!/bin/sh\necho "$@"\n')
     falso.chmod(0o755)

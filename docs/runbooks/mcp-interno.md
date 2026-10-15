@@ -24,9 +24,10 @@ alternativas: [ADR-036](../adr/ADR-036-acceso-interno-por-mcp.md). Diseño:
 
 ## 1. Alta (cuatro pasos manuales, del dueño del proyecto)
 
-Orden obligatorio: el paso 1 exige las migraciones aplicadas; el paso 3 necesita
-el host de Render, que solo se conoce al crear el servicio; el paso 2 necesita
-ese host; el 4 es por persona y va al final.
+Orden: el paso 1 exige las migraciones aplicadas; el host de Render solo se
+conoce al crear el servicio, así que el paso 3 se hace en dos tiempos (crear con
+valores provisionales, y fijar los reales y dar de alta el redirect URI en
+Google tras el primer deploy: paso 2); el 4 es por persona y va al final.
 
 ### Paso 1 — Crear el rol de solo lectura en Supabase
 
@@ -93,18 +94,23 @@ Google responde `redirect_uri_mismatch` en el login.
    | `DATABASE_URL` | La misma que `tenderflow-api` (rol de la app: tablas OAuth, `users`, auditoría) |
    | `DATABASE_SSL_ROOT_CERT` | La misma que la API |
    | `MCP_DATABASE_URL` | El DSN del paso 1 |
-   | `MCP_PUBLIC_URL` | `https://<host>`, **sin barra final y sin `:443`** |
-   | `MCP_GOOGLE_REDIRECT_URI` | `https://<host>/oauth/google/callback` (exactamente `MCP_PUBLIC_URL` + `/oauth/google/callback`) |
+   | `APP_PROFILE` | `mcp` (ya en `render.yaml`; perfil propio, ni API ni worker) |
+   | `MCP_PUBLIC_URL` | `https://<host>`, **sin barra final y sin `:443`** (al crear: provisional, ver abajo) |
+   | `MCP_GOOGLE_REDIRECT_URI` | `https://<host>/oauth/google/callback` (exactamente `MCP_PUBLIC_URL` + `/oauth/google/callback`; al crear: provisional) |
    | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Los mismos que la API |
-   | `SIGNING_KEY` | La misma que la API |
+   | `SIGNING_KEY` | La misma que la API (32+ caracteres) |
    | `REDIS_URL`, `REDIS_PASSWORD` | Los mismos que la API (cuota por usuario y nonce de `state`) |
-   | `AUDIT_HMAC_KEY` | **La misma que la API.** Otra clave rompe la verificación de la cadena de auditoría; vacía, el MCP no arranca en prod |
+   | `AUDIT_HMAC_KEY` | **La misma que la API.** Otra clave rompe la verificación de la cadena de auditoría; vacía o de menos de 32 caracteres, el MCP no arranca en prod |
    | `MCP_REDIRECT_URIS_EXTRA` | Opcional, ver paso 4 (ChatGPT) |
 
-   El host `*.onrender.com` solo existe tras crear el servicio: la primera
-   creación arrancará y **abortará** (a propósito) por `MCP_PUBLIC_URL` y
-   `MCP_GOOGLE_REDIRECT_URI` vacías. Cópialo de la pestaña del servicio, rellena
-   esas dos variables, haz el paso 2 y relanza el deploy.
+   El host `*.onrender.com` solo existe tras crear el servicio. **Crea el
+   servicio con valores provisionales** que pasen la validación (por ejemplo
+   `MCP_PUBLIC_URL=https://provisional.invalid` y
+   `MCP_GOOGLE_REDIRECT_URI=https://provisional.invalid/oauth/google/callback`;
+   vacías, el arranque aborta a propósito). Tras el primer deploy, copia el host
+   real de la pestaña del servicio, **sustituye esas dos variables por los
+   valores reales**, da de alta el redirect URI en Google (paso 2) y relanza el
+   deploy. Hasta ese segundo deploy el login no funciona.
 3. Comprobar: `curl -sS https://<host>/healthz` → `{"ok":true}`;
    `curl -sS -i https://<host>/mcp` → `401` con `WWW-Authenticate: Bearer
    resource_metadata=…`.
@@ -132,19 +138,32 @@ Google responde `redirect_uri_mismatch` en el login.
 
 **Cortar sesiones ya abiertas** (pierde el portátil, cierra todo ahora):
 
+La vía recomendada es la **shell del servicio `tenderflow-mcp`** (Render →
+`tenderflow-mcp` → *Shell*): ya tiene todo el entorno de producción
+(`ENV=prod`, `APP_PROFILE=mcp`, `DATABASE_URL` con su CA, `AUDIT_HMAC_KEY`) y el
+SDK instalado, porque el script importa `mcp_server`:
+
 ```bash
-# Desde la raíz del repo, con el venv activo (la forma `python scripts/…` no
-# encuentra los paquetes). APP_PROFILE=worker evita exigir las variables de la API.
-ENV=prod APP_PROFILE=worker DATABASE_URL="$DATABASE_URL" AUDIT_HMAC_KEY="$AUDIT_HMAC_KEY" \
-  python -m scripts.mcp_revocar --email alguien@empresa.es
-# → Revocados N tokens de alguien@empresa.es   (exit 0; un correo desconocido sale con 1)
+python -m scripts.mcp_revocar --email alguien@empresa.es
+# → Revocados N tokens de alguien@empresa.es   (una línea por cuenta; exit 0)
+#   correo desconocido: exit 1;  producción sin AUDIT_HMAC_KEY: exit 2, sin revocar
 ```
 
+El correo se compara **sin distinguir mayúsculas** (como el login) y alcanza
+también cuentas desactivadas; si varias cuentas casan (`Ana@x.es` y `ana@x.es`),
+se revocan todas y se imprime cada una.
+
+Desde otra máquina funciona, pero el venv necesita `requirements-mcp.txt`
+(`pip install -r requirements-mcp.txt`), `DATABASE_SSL_ROOT_CERT` si el DSN es
+`verify-full`, y lanzarlo desde la raíz del repo con
+`ENV=prod APP_PROFILE=mcp DATABASE_URL=… AUDIT_HMAC_KEY=… SIGNING_KEY=…`
+(las de producción; el perfil `mcp` exige las dos claves con 32+ caracteres).
+
 Cierra todos sus tokens vivos (access, refresh y códigos sin canjear). Deja
-`mcp.revocacion_manual` en `audit_log`. Se ejecuta contra la BD de producción
-con el rol de la app y la clave de auditoría de producción; sin `AUDIT_HMAC_KEY`
-la revocación se hace, pero la fila de auditoría **no se escribe**. Nunca con
-`ENV=dev` contra esa base: firmaría la auditoría con la clave de desarrollo.
+`mcp.revocacion_manual` en `audit_log` (con el número de tokens, sin correo). En
+producción el script se niega (exit 2) si falta `AUDIT_HMAC_KEY`: no hay
+revocación sin rastro. Nunca con `ENV=dev` contra la BD de producción: firmaría
+la auditoría con la clave de desarrollo.
 
 **Esto no impide que vuelva a entrar**: si sigue siendo admin y activo, puede
 repetir el login de Google y obtener tokens nuevos. Para quitarle el acceso del
@@ -237,8 +256,15 @@ WHERE a.action IN ('mcp.login_denegado', 'mcp.refresh_reutilizado', 'mcp.codigo_
 ORDER BY a.id DESC LIMIT 50;
 ```
 
-Las consultas de auditoría se hacen con el rol de la app o el admin: `audit_log`
-no es visible para `tenderflow_mcp`.
+**`audit_log` es visible para el MCP.** Por decisión (todo visible salvo
+credenciales y secretos), `tenderflow_mcp` tiene `SELECT` sobre `audit_log`
+(la tabla entera: el catálogo la marca `VISIBLE` y revisó como no secretas `user_key`, `session_hash` y los hashes de la cadena). Eso significa que
+cualquier admin puede, vía `consultar_sql`, leer las filas de auditoría de todos:
+incluido el SQL que otras personas han ejecutado por el MCP (`mcp.consultar_sql`
+con su `detail`) y los correos de los logins denegados. Está aceptado para este
+equipo de tres admins; si el ámbito crece, hay que ocultar la tabla en
+`mcp_server/catalogo.py` y regenerar los grants. Estas mismas consultas pueden
+lanzarse con el rol de la app o el admin, o desde el propio MCP.
 
 ---
 

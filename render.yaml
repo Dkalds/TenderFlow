@@ -437,12 +437,15 @@ services:
   #     `validar_configuracion`); se rellenan tras crear el servicio, runbook
   #     paso 3.
   #
-  # `APP_PROFILE: worker` no significa que esto sea un worker: es el eje que
-  # dice «este proceso no sirve la API REST». Con el defecto (`api`) los
-  # validadores de `Settings` exigirían en prod `API_HMAC_SECRET`,
-  # `CORS_ALLOWED_ORIGINS`, `WEBHOOK_SIGNING_KEY`... que este servicio no usa.
-  # Lo que SÍ usa lo valida `mcp_server/servidor.py::validar_configuracion` al
-  # arrancar (aborta en prod).
+  # `APP_PROFILE: mcp` es un perfil propio (config/settings.py): no es la API
+  # (con `api` los validadores de `Settings` exigirían `API_HMAC_SECRET`,
+  # `CORS_ALLOWED_ORIGINS`, `WEBHOOK_SIGNING_KEY`... que este servicio no usa)
+  # ni un worker (con `worker` se saltaría la longitud mínima de `SIGNING_KEY` y
+  # `AUDIT_HMAC_KEY`, subiría el techo de consulta a 300 s, y
+  # `scripts/check_job_parity.py` daría por declarado el consumidor de la cola
+  # aunque se borrara el worker real). Sí exige esas dos claves, con la longitud
+  # de la API. Lo demás lo valida `mcp_server/servidor.py::validar_configuracion`
+  # al arrancar (aborta en prod).
   - type: web
     name: tenderflow-mcp
     runtime: docker
@@ -458,7 +461,7 @@ services:
       - key: ENV
         value: prod
       - key: APP_PROFILE
-        value: worker
+        value: mcp
       # Variante de dependencias: la API más el SDK `mcp` (`requirements-mcp.in`).
       # Render pasa las variables del servicio como build args.
       - key: REQUIREMENTS_FILE

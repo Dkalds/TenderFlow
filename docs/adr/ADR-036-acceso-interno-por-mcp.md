@@ -83,7 +83,7 @@ ejecuta con `python -m mcp_server`. Resumen de las secciones 2–4 del diseño:
    `ficha_licitacion`), con 500 filas, 100 000 caracteres de respuesta y 20 000
    de SQL como techos, un rate limit de 60 llamadas por minuto y 1 000 al día
    por usuario, y **cada llamada auditada** (`audit_log`, `action = "mcp.<tool>"`,
-   con el SQL completo) por un único helper
+   con el SQL completo; ver abajo quién puede leerla) por un único helper
    (`mcp_server.auth.proveedor.auditar_oauth`).
 
 El MCP conserva `DATABASE_URL` (rol de la app) **solo** para las tablas OAuth,
@@ -118,6 +118,14 @@ de administradores, queda auditado con autor y SQL, y las credenciales y los
 secretos no son legibles ni por el rol. Si algún día el ámbito crece más allá de
 estas tres personas, esta decisión se revisa antes.
 
+- **`audit_log` es legible por el propio MCP.** Siguiendo «todo visible salvo
+  credenciales y secretos», el catálogo marca `audit_log` como visible (la tabla
+  entera, incluidas `user_key` y los hashes de la cadena, revisados como no
+  secretos). Cualquier admin puede, con
+  `consultar_sql`, leer el historial de auditoría de los demás: el SQL que han
+  ejecutado por el MCP, los correos de logins denegados y las acciones del resto
+  de la aplicación. Se acepta para este equipo; si el ámbito crece, se oculta la
+  tabla (una línea en el catálogo y regenerar los grants).
 - **Un segundo camino de lectura a la base de datos**, fuera de `api/` y de
   `db/repositories/`, con su propio rol, su propio pool (máximo 5) y sus propias
   garantías. El perímetro de seguridad pasa a ser el catálogo y el SQL generado:
