@@ -121,7 +121,7 @@ def _select_chunks_pgvector(
     return selected, len(selected) < len(rows)
 
 
-def _rank_by_question(question: str, candidates: list[dict[str, Any]]) -> list[int]:
+def rank_by_question(question: str, candidates: list[dict[str, Any]]) -> list[int]:
     """Índices de candidatos ordenados por relevancia; orden documental de relleno."""
     from services.embeddings import smart_match
 
@@ -148,7 +148,7 @@ def _select_chunks(
     if not usable:
         return [], False
 
-    order = _rank_by_question(question, usable) if question else list(range(len(usable)))
+    order = rank_by_question(question, usable) if question else list(range(len(usable)))
 
     selected: list[dict[str, Any]] = []
     used = 0
