@@ -87,6 +87,11 @@
       "groupName": "lint (lockfile + hooks de pre-commit)"
     },
     {
+      "description": "codespell 2.4.x marca como erratas inglesas ~150 palabras españolas del repo (argumentos, administrativo, alternar…) y rompe el hook; 2.3.0 va limpio. Se sube a mano cuando el diccionario lo permita.",
+      "matchPackageNames": ["codespell", "codespell-project/codespell"],
+      "enabled": false
+    },
+    {
       "description": "fastapi >= 0.141 devuelve `_IncludedRouter` opacos en app.routes y la API responde 500 en todas las rutas (PR #187). Subir es una migración a mano; los tres van juntos. Detalle en requirements.in.",
       "matchManagers": ["pip-compile"],
       "matchPackageNames": ["fastapi"],
@@ -119,6 +124,18 @@
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["python"],
       "allowedVersions": "/^3\\.13\\./"
+    },
+    {
+      "description": "El `python-version` de los workflows no es una actualización: sigue a `.python-version`, a la imagen base y al `--python-version` de los lockfiles. Dentro del grupo github-actions pasó como una acción más y el PR #463 dejó lint, crons y entrenamientos en 3.14 con la suite, la imagen y los lockfiles en 3.13. Subir de menor es un cambio a mano en los cuatro sitios; tests/test_unit_version_python.py los ata.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["python"],
+      "enabled": false
+    },
+    {
+      "description": "Node de los workflows y de la imagen web en un solo PR, fuera del grupo github-actions: es la versión del runtime, no la de una acción, y por separado CI y la imagen quedarían en mayores distintas.",
+      "matchManagers": ["github-actions", "dockerfile"],
+      "matchDepNames": ["node"],
+      "groupName": "node (CI + imagen web)"
     },
     {
       "description": "La mayor de Postgres de CI y del compose local es una decisión de paridad con producción, no una actualización: no se propone.",

@@ -134,7 +134,7 @@ jobs:
         run: docker build -f ${{ matrix.image.dockerfile }} -t ${{ matrix.image.tag }} .
 
       - name: Run Trivy scan (table — visible in logs)
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ matrix.image.tag }}
           severity: "CRITICAL,HIGH"
@@ -143,7 +143,7 @@ jobs:
           format: "table"
 
       - name: Run Trivy scan (SARIF — for GitHub Code Scanning)
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         if: always()
         with:
           image-ref: ${{ matrix.image.tag }}
