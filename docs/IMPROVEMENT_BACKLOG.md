@@ -690,7 +690,27 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Decidida la variable de repo `PLIEGO_FACTS_ENABLED`: con ella a `true`, `pliegos.yml` extrae la ficha de los expedientes abiertos cada noche (gasto acotado por el presupuesto LLM y `PLIEGO_FACTS_BATCH`); sin ella, lotes, criterios y solvencia del pliego solo aparecen al abrir una oportunidad. La publicación oficial de CODICE (v148) no depende de esto.
   - Comprobado que `domain_events_pending` baja tras el primer cierre con el despachador (ver el cerrado del 2026-10-12).
   - Tras el primer deploy: el P0 del ATOM y el P1 de los pliegos de PSCP verificados con datos.
-- **Riesgo:** medio — tres migraciones y el primer reparto real de avisos de caducidad y de la campana nueva.
+- **Estado (2026-10-15):** fusionada como `e8889a0` (#471) y en producción. El
+  primer criterio está hecho: v147–v149 aplicadas con `plan` (run 38765966684)
+  y `apply` (run 38766204885), de v146 a `v149_ledger_borrado_org` a las 16:07
+  UTC; `deploy.yml` (run 38766484577) en verde con `schema_revision = ok
+  (v149_ledger_borrado_org)` y el smoke en verde (pero ver el P2 de
+  `deploy.yml`: sondeó la instancia que ya servía, que era del mismo commit).
+  API, worker y Vercel sirven `e8889a0`. No se comprobó que hubiera una copia
+  reciente de Supabase antes del `apply`: ninguna herramienta de la sesión
+  lista los backups.
+  El autodeploy de Render (P2 de `render.yaml`) llevó `e8889a0` a la API a las
+  14:52 y al worker a las 15:17, antes de las migraciones. La API no dio 5xx en
+  esa ventana. La pasada del worker de las 15:17 sí corrió contra v146: el paso
+  `documentacion_avisos` falló con `UndefinedColumn: column c.tipo does not
+  exist` (la columna es de v147) y saltó la alerta «[pipeline] paso
+  documentacion_avisos falló»; el resto de la pasada terminó. `_run_periodic`
+  libera el lock al fallar, así que la pasada de las 16:17, ya sobre v149, lo
+  reintentó con éxito (`avisos: 0`).
+  Siguen abiertos los otros tres criterios. El despachador corrió a las 16:17
+  (`procesados: 0, ignorados: 1, fallidos: 0`), pero eso todavía no dice si la
+  cola de `domain_events_pending` baja.
+- **Riesgo:** bajo-medio — las migraciones ya están; queda el primer reparto real de avisos de caducidad y de la campana nueva.
 
 ## P2 — Media
 
@@ -760,6 +780,20 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Área:** render.yaml, Render Dashboard (acción del usuario)
 - **Problema:** el Blueprint está en el repo, pero el servicio de producción se creó a mano por el dashboard y nunca se vinculó a él, así que el fichero documenta una intención que nadie aplica: editarlo no cambia nada y leerlo puede inducir a error sobre cómo está configurado el servicio real. Lo que sí está activo es `autoDeploy`, y **sin healthcheck configurado** — es decir, un deploy que arranca mal reemplaza igualmente al que funcionaba, sin rollback automático. (Estado observado en la sesión del 2026-08-04; **reconfirmar en el dashboard antes de actuar**, que es barato.)
 - **Progreso 2026-09-06 (O0.2 del plan v2, cierra D4):** la decisión ya está tomada y escrita — **se vincula el Blueprint y manda `render.yaml`**, con `autoDeploy: false` y `deploy.yml` como único disparador, porque es la única de las dos ramas que conserva CI como gate en vez de dejarlo en advisory. Lo que queda de este ítem es **exactamente lo que un agente no puede hacer**: vincular el Blueprint y apagar `autoDeploy` en el dashboard, y comprobar que un push a `master` produce un solo deploy.
+- **Reconfirmado (2026-10-15), y ya con un fallo:** la API es el servicio
+  `TenderFlow` (`srv-d8dq7df40ujc73cur9q0`, plan `standard`), con `autoDeploy:
+  yes`, disparador `commit` y `healthCheckPath` vacío. El worker `TenderFlow-1`
+  (`srv-db58n80473hc73a94rsg`) tiene healthcheck (`/api/v1/health/ready`) y
+  autodeploy con disparador `checksPass`. Cada push a `master` produce dos
+  deploys por servicio: el automático y el de `deploy.yml` (`deploy_hook`). Con
+  `e8889a0`, la API se desplegó a las 14:52 (`dep-db8egkh42hec73c9a7sg`) y a
+  las 16:09 (`dep-db8fl4t9fdbs739gc3bg`); el worker, a las 15:17 y a las 16:10.
+  Los dos automáticos llegaron antes de que se aplicaran v147–v149 (16:07), y
+  la pasada del worker de las 15:17 falló un paso contra el esquema viejo
+  (detalle en el P1 de la rama `claude/funcionalidades-2026-10`). El gate de
+  schema de `deploy.yml` presupone migrar antes de desplegar, y el autodeploy
+  se adelanta a los dos: cada PR que trae una migración que el código ya lee
+  repetirá el fallo.
 - **Acceptance criteria (lo que queda, todo acción del usuario):**
   - Blueprint vinculado y `autoDeploy` apagado en el servicio real; la cabecera de `render.yaml` anota la fecha de verificación.
   - `healthCheckPath` efectivo, verificado con un deploy deliberadamente fallido.
@@ -767,6 +801,17 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [render.yaml](../render.yaml), [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 - **Relación:** comparte superficie con el P3 de staging y plan de la API (más abajo); si se toca el servicio, conviene decidir ambos a la vez.
 - **Riesgo:** bajo-medio — vincular un Blueprint a un servicio existente puede recrearlo; hacerlo en ventana y con el healthcheck decidido de antemano.
+
+### [P2] `deploy.yml` verifica la instancia que ya servía, no la que acaba de desplegar
+- **Área:** .github/workflows/deploy.yml, api/routes/health.py
+- **Problema:** el paso «Esperar a que la API responda» da la API por lista con el primer 200 de `/health/ready`. Pero Render despliega sin corte: la instancia anterior sigue respondiendo hasta que la nueva está viva. Así que la espera, el gate de alineación de schema y el smoke corren casi siempre contra la instancia vieja. Medido en el run 38766484577 (2026-10-15): «API lista tras 1 intentos» a las 16:08:53, schema y smoke terminados a las 16:09:05, y el deploy que el hook había encolado (`dep-db8fl4t9fdbs739gc3bg`) no quedó vivo hasta las 16:09:32. Esa vez dio igual porque la instancia vieja era del mismo commit: la había puesto el autodeploy (P2 anterior). Con `autoDeploy` apagado, que es lo que decidió D4, el gate verificaría siempre el commit anterior. Un deploy que no arranca saldría en verde, porque Render mantiene la instancia vieja, y el `behind` de una migración sin aplicar no se vería nunca.
+- **Acceptance criteria:**
+  - `/health/ready` dice qué commit corre (`RENDER_GIT_COMMIT`, que Render pone en cada servicio y [observability/sentry.py](../observability/sentry.py) ya lee). Si se prefiere no publicarlo entero, basta un prefijo corto.
+  - La espera sondea hasta que responda el commit desplegado, con el mismo margen de 15 minutos, y solo entonces corren el gate de schema y el smoke. Ojo: el deploy hook despliega la punta de `master`, que puede ser posterior a `COMMIT_SHA` si llegó otro push entretanto. Hay que decidir entre aceptar un descendiente o fijar el commit en el hook, si Render lo admite.
+  - Si el plazo vence con otro commit respondiendo, el job falla y dice cuál responde.
+- **Files de partida:** [.github/workflows/deploy.yml](../.github/workflows/deploy.yml), [api/routes/health.py](../api/routes/health.py)
+- **Relación:** con `autoDeploy` encendido (P2 anterior), el defecto queda tapado. Conviene arreglarlo antes de apagarlo, o en el mismo cambio.
+- **Riesgo:** bajo — un campo nuevo en `/health/ready` y un cambio de workflow (requiere OK humano, AGENTS.md §6).
 
 ### [P2] Migrar `licitaciones.importe` de `real` a `double precision`
 - **Área:** db/alembic, db/upsert.py, shared/numeric.py
