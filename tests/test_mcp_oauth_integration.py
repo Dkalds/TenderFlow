@@ -20,14 +20,19 @@ import json
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
+import psycopg.errors
 import pytest
 
 from db.connection import connect, connect_read, now_utc
 from db.mcp_oauth import (
+    TipoToken,
+    TokenNuevo,
+    buscar_token,
     consumir_token,
+    consumir_y_emitir,
     guardar_cliente,
     guardar_token,
     hash_token,
@@ -125,41 +130,172 @@ def test_pendiente_admite_usuario_nulo(nuevo: Callable[..., None]) -> None:
     assert fila is not None and fila["user_id"] is None
 
 
-def test_consumir_codigo_una_sola_vez(nuevo: Callable[..., None]) -> None:
-    nuevo("c1", kind="code")
-    fila, reutilizado = consumir_token("c1", "code")
+def test_pendiente_se_consume_una_sola_vez(nuevo: Callable[..., None]) -> None:
+    nuevo("p1", kind="pendiente", user_id=None)
+    fila, reutilizado = consumir_token("p1", "pendiente")
     assert fila is not None and not reutilizado
-    assert fila["kind"] == "code"
+    assert consumir_token("p1", "pendiente") == (None, True)
+    assert consumir_token("nada", "pendiente") == (None, False)
+    nuevo("a1", kind="access")
+    assert consumir_token("a1", "pendiente") == (None, False)  # otro tipo
+
+
+def _emitidos(cliente: str, usuario: int, sufijo: str) -> list[TokenNuevo]:
+    futuro = now_utc() + timedelta(hours=1)
+    return [
+        TokenNuevo(f"a-{sufijo}", "access", cliente, usuario, ["mcp:read"], futuro),
+        TokenNuevo(f"r-{sufijo}", "refresh", cliente, usuario, ["mcp:read"], futuro),
+    ]
+
+
+def test_consumir_codigo_emite_y_registra_la_familia(
+    cliente: str, usuario: int, nuevo: Callable[..., None]
+) -> None:
+    nuevo("c1", kind="code")
+    fila, reutilizado = consumir_y_emitir("c1", "code", _emitidos(cliente, usuario, "1"))
+    assert fila is not None and not reutilizado
     assert fila["revoked_at"] is not None
-    fila, reutilizado = consumir_token("c1", "code")
-    assert fila is None and reutilizado
+    familia = fila["family_id"]
+    assert familia  # el código consumido recuerda la familia de lo que emitió
+    pares: list[tuple[str, TipoToken]] = [("a-1", "access"), ("r-1", "refresh")]
+    for token, kind in pares:
+        emitido = obtener_token(token, kind)
+        assert emitido is not None and emitido["family_id"] == familia
     assert obtener_token("c1", "code") is None
 
 
-def test_consumir_inexistente_no_cuenta_como_reutilizado(nuevo: Callable[..., None]) -> None:
-    assert consumir_token("nada", "code") == (None, False)
-    # Existe, pero con otro tipo: tampoco es una reutilización.
-    nuevo("c2", kind="access")
-    assert consumir_token("c2", "code") == (None, False)
+def test_reutilizar_un_codigo_revoca_lo_emitido(
+    cliente: str, usuario: int, nuevo: Callable[..., None]
+) -> None:
+    nuevo("c1", kind="code")
+    consumir_y_emitir("c1", "code", _emitidos(cliente, usuario, "1"))
+    assert obtener_token("a-1", "access") is not None
+    fila, reutilizado = consumir_y_emitir("c1", "code", _emitidos(cliente, usuario, "2"))
+    assert reutilizado and fila is not None and fila["kind"] == "code"
+    assert obtener_token("a-1", "access") is None
+    assert obtener_token("r-1", "refresh") is None
+    # El segundo intento no emitió nada.
+    assert obtener_token("a-2", "access") is None and buscar_token("a-2", "access") is None
 
 
-def test_consumir_caducado_no_cuenta_como_reutilizado(nuevo: Callable[..., None]) -> None:
+def test_rotar_refresh_hereda_la_familia(
+    cliente: str, usuario: int, nuevo: Callable[..., None]
+) -> None:
+    nuevo("r0", kind="refresh", family_id="fam")
+    fila, reutilizado = consumir_y_emitir("r0", "refresh", _emitidos(cliente, usuario, "1"))
+    assert fila is not None and not reutilizado and fila["family_id"] == "fam"
+    nuevo_refresh = obtener_token("r-1", "refresh")
+    assert nuevo_refresh is not None and nuevo_refresh["family_id"] == "fam"
+    # `family_id` explícito en el token nuevo manda sobre la herencia.
+    nuevo("r9", kind="refresh", family_id="fam")
+    futuro = now_utc() + timedelta(hours=1)
+    consumir_y_emitir(
+        "r9",
+        "refresh",
+        [TokenNuevo("x", "access", cliente, usuario, [], futuro, family_id="otra")],
+    )
+    explicito = obtener_token("x", "access")
+    assert explicito is not None and explicito["family_id"] == "otra"
+
+
+def test_reutilizar_refresh_revoca_la_familia(
+    cliente: str, usuario: int, nuevo: Callable[..., None]
+) -> None:
+    nuevo("r0", kind="refresh", family_id="fam")
+    consumir_y_emitir("r0", "refresh", _emitidos(cliente, usuario, "1"))
+    fila, reutilizado = consumir_y_emitir("r0", "refresh", _emitidos(cliente, usuario, "2"))
+    assert reutilizado and fila is not None and fila["family_id"] == "fam"
+    assert obtener_token("a-1", "access") is None
+    assert obtener_token("r-1", "refresh") is None
+    assert buscar_token("a-2", "access") is None
+
+
+def test_desconocido_otro_tipo_o_caducado_no_cambian_nada(
+    cliente: str, usuario: int, nuevo: Callable[..., None]
+) -> None:
+    assert consumir_y_emitir("nada", "refresh", _emitidos(cliente, usuario, "1")) == (None, False)
+    # Existe, pero es un access: no se puede presentar como refresh (ni como code).
+    nuevo("a0", kind="access", family_id="fam")
+    assert consumir_y_emitir("a0", "refresh", _emitidos(cliente, usuario, "2")) == (None, False)
+    assert consumir_y_emitir("a0", "code", _emitidos(cliente, usuario, "2")) == (None, False)
+    assert obtener_token("a0", "access") is not None  # ni consumido ni su familia revocada
     nuevo("viejo", kind="code", expires_at=now_utc() - timedelta(seconds=1))
-    assert consumir_token("viejo", "code") == (None, False)
+    assert consumir_y_emitir("viejo", "code", _emitidos(cliente, usuario, "3")) == (None, False)
+    assert buscar_token("a-1", "access") is None
+    assert buscar_token("a-2", "access") is None
+    assert buscar_token("a-3", "access") is None
 
 
-def test_consumo_concurrente_solo_gana_uno(nuevo: Callable[..., None]) -> None:
+def test_si_falla_la_emision_no_se_consume(
+    cliente: str, usuario: int, nuevo: Callable[..., None]
+) -> None:
+    nuevo("r0", kind="refresh", family_id="fam")
+    futuro = now_utc() + timedelta(hours=1)
+    malo = TokenNuevo("x", "access", "cliente-que-no-existe", usuario, [], futuro)
+    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+        consumir_y_emitir("r0", "refresh", [*_emitidos(cliente, usuario, "1"), malo])
+    assert obtener_token("r0", "refresh") is not None
+    assert buscar_token("a-1", "access") is None  # tampoco quedó el primero
+
+
+def test_buscar_token_ve_revocados_y_caducados(nuevo: Callable[..., None]) -> None:
+    nuevo("vivo", kind="refresh")
+    nuevo("rev", kind="refresh", family_id="f")
+    nuevo("viejo", kind="refresh", expires_at=now_utc() - timedelta(minutes=1))
+    revocar_token("rev")
+    assert buscar_token("vivo", "refresh") is not None
+    revocado = buscar_token("rev", "refresh")
+    assert revocado is not None and revocado["revoked_at"] is not None
+    assert revocado["family_id"] == "f"
+    assert buscar_token("viejo", "refresh") is not None
+    assert obtener_token("viejo", "refresh") is None
+    assert buscar_token("desconocido", "refresh") is None
+    assert buscar_token("vivo", "access") is None  # otro tipo
+
+
+def test_consumo_concurrente_solo_gana_uno_y_la_familia_queda_revocada(
+    cliente: str, usuario: int, nuevo: Callable[..., None]
+) -> None:
+    """Review Focus 4: el perdedor revoca la familia y alcanza los tokens del ganador."""
     nuevo("r1", kind="refresh", family_id="fam")
     salida = threading.Barrier(2)
 
-    def _consumir(_: int) -> tuple[dict[str, Any] | None, bool]:
+    def _consumir(i: int) -> tuple[dict[str, Any] | None, bool]:
         salida.wait(timeout=10)  # los dos hilos arrancan a la vez
-        return consumir_token("r1", "refresh")
+        return consumir_y_emitir("r1", "refresh", _emitidos(cliente, usuario, str(i)))
 
     with ThreadPoolExecutor(2) as ex:
         res = list(ex.map(_consumir, range(2)))
-    assert sum(fila is not None for fila, _ in res) == 1
-    assert sum(reutilizado for _, reutilizado in res) == 1
+    assert sum(fila is not None and not reu for fila, reu in res) == 1
+    assert sum(reu for _, reu in res) == 1
+    ganador = next(i for i, (_, reu) in enumerate(res) if not reu)
+    assert buscar_token(f"a-{ganador}", "access") is not None  # el ganador sí emitió
+    assert buscar_token(f"a-{1 - ganador}", "access") is None  # el perdedor no
+    familia: list[tuple[str, TipoToken]] = [
+        ("r1", "refresh"),
+        (f"a-{ganador}", "access"),
+        (f"r-{ganador}", "refresh"),
+    ]
+    for token, kind in familia:
+        assert obtener_token(token, kind) is None
+
+
+def test_expires_at_ingenuo_se_rechaza(cliente: str, usuario: int) -> None:
+    ingenuo = datetime(2030, 1, 1)
+    with pytest.raises(ValueError, match="zona horaria"):
+        guardar_token(
+            "x",
+            kind="access",
+            client_id=cliente,
+            user_id=usuario,
+            family_id=None,
+            scopes=[],
+            datos=None,
+            expires_at=ingenuo,
+        )
+    with pytest.raises(ValueError, match="zona horaria"):
+        TokenNuevo("x", "access", cliente, usuario, [], ingenuo)
+    assert _todas_las_filas("mcp_oauth_tokens") == []
 
 
 def test_token_caducado_no_se_obtiene(nuevo: Callable[..., None]) -> None:
@@ -209,11 +345,21 @@ def test_borrar_cliente_borra_sus_tokens(cliente: str, nuevo: Callable[..., None
 
 
 def test_kind_invalido_lo_rechaza_la_base(cliente: str, usuario: int) -> None:
-    with pytest.raises(Exception, match="mcp_oauth_tokens"), connect() as c:
+    with pytest.raises(psycopg.errors.CheckViolation), connect() as c:
         c.execute(
             "INSERT INTO mcp_oauth_tokens (token_hash, kind, client_id, user_id, expires_at) "
             "VALUES ('h', 'otro', %s, %s, now())",
             (cliente, usuario),
+        )
+
+
+@pytest.mark.parametrize("kind", ["code", "access", "refresh"])
+def test_solo_la_pendiente_puede_no_tener_usuario(cliente: str, kind: str) -> None:
+    with pytest.raises(psycopg.errors.CheckViolation), connect() as c:
+        c.execute(
+            "INSERT INTO mcp_oauth_tokens (token_hash, kind, client_id, user_id, expires_at) "
+            "VALUES ('h', %s, %s, NULL, now())",
+            (kind, cliente),
         )
 
 

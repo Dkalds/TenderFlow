@@ -24,11 +24,17 @@ Qué cambia
   que quiera «todo lo vivo de este usuario» las necesita juntas.
   - **Solo se guarda ``sha256(token)``** (``token_hash``). Quien lea la tabla
     no puede presentar ningún token; el secreto en claro no existe en la base.
-  - ``user_id`` es nulo solo en ``pendiente``: todavía no se sabe quién es. Con
-    ``ON DELETE CASCADE``, borrar o anonimizar-borrar al usuario cierra sus
+  - ``user_id`` es nulo solo en ``pendiente`` (lo impone un CHECK): todavía no
+    se sabe quién es. Con ``ON DELETE CASCADE``, borrar al usuario cierra sus
     sesiones MCP sin código aparte. ``client_id`` también cascada.
   - ``family_id`` agrupa un refresh y los access/refresh que nacen de rotarlo.
-    Reutilizar un refresh ya consumido revoca la familia entera.
+    Reutilizar un refresh ya consumido revoca la familia entera. El ``code``
+    consumido también conserva la familia de los tokens que se emitieron con
+    él, de modo que reutilizar un código revoca lo emitido (RFC 6749 §4.1.2).
+    Consumir el token, emitir los nuevos y, si era una reutilización, revocar
+    la familia ocurre en **una sola transacción** (``db/mcp_oauth.py``): con la
+    emisión aparte, quien pierde la carrera revocaría la familia antes de que
+    el ganador insertara sus tokens y estos sobrevivirían.
   - ``datos`` (``jsonb``) lleva lo propio de cada clase: PKCE, redirect URI y
     ``resource`` del código; la petición pendiente completa.
   - ``revoked_at`` sirve a la vez de «revocado» y de «consumido»: el consumo de
@@ -140,7 +146,10 @@ def upgrade() -> None:
         " expires_at TIMESTAMPTZ NOT NULL,"
         # Revocado o consumido: el consumo es un UPDATE atómico sobre esta columna.
         " revoked_at TIMESTAMPTZ,"
-        " created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+        # Solo la petición pendiente puede carecer de usuario.
+        " CONSTRAINT ck_mcp_oauth_tokens_usuario"
+        " CHECK (kind = 'pendiente' OR user_id IS NOT NULL)"
         ")"
     )
     op.execute("CREATE INDEX IF NOT EXISTS idx_mcp_oauth_tokens_user ON mcp_oauth_tokens (user_id)")
