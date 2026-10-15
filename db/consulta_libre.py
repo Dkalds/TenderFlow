@@ -128,26 +128,101 @@ class ResultadoConsulta:
 # ── Normalización y envoltorio ─────────────────────────────────────────────
 
 
-#: ``;`` final seguido solo de espacios, comentarios ``-- …`` o ``/* … */`` (y más
-#: ``;``). Sólo se mira la cola: no se interpretan comentarios ni literales en el
-#: resto del SQL. Un ``;`` dentro de un literal o de un comentario no encaja
-#: porque lo que sigue (la comilla o el ``*/``) no pertenece a ninguna
-#: alternativa. ``\s`` suelto, sin ``+``: evita el retroceso exponencial.
-_COLA_VACIA = re.compile(r";(?:\s|;|--[^\n]*|/\*(?:(?!\*/).)*\*/)*\Z", re.DOTALL)
+def _es_ident(c: str) -> bool:
+    return c.isalnum() or c in "_$"
+
+
+def _etiqueta_dolar(sql: str, i: int) -> str | None:
+    """Devuelve ``$tag$`` si en ``sql[i]`` empieza una cadena entre dólares."""
+    n = len(sql)
+    j = i + 1
+    if j < n and (sql[j].isalpha() or sql[j] == "_"):
+        j += 1
+        while j < n and (sql[j].isalnum() or sql[j] == "_"):
+            j += 1
+    if j < n and sql[j] == "$":
+        return sql[i : j + 1]
+    return None
+
+
+def _cola_vacia(sql: str) -> int | None:
+    """Índice donde empieza la cola ``; …`` final de ``sql``, o ``None``.
+
+    Un único recorrido hacia delante, de coste lineal y sin retroceso, que
+    reconoce los estados léxicos de Postgres para no confundir un ``;`` de
+    código con uno que vive dentro de un literal o un comentario: cadenas
+    ``'…'`` (con ``E'…'`` y su ``\\``), identificadores ``"…"``, cadenas entre
+    dólares ``$tag$…$tag$``, comentarios ``-- …`` y ``/* … */`` (que Postgres
+    anida). La cola es el primer ``;`` de código tras el cual solo hay
+    espacios, otros ``;`` y comentarios. Con un literal o un comentario de
+    bloque sin cerrar devuelve ``None``: se deja el SQL tal cual y Postgres
+    informa del error.
+    """
+    n = len(sql)
+    i = 0
+    corte: int | None = None
+    while i < n:
+        c = sql[i]
+        if c.isspace():
+            i += 1
+        elif c == ";":
+            if corte is None:
+                corte = i
+            i += 1
+        elif sql.startswith("--", i):
+            fin = sql.find("\n", i)
+            i = n if fin < 0 else fin + 1
+        elif sql.startswith("/*", i):
+            profundidad = 1
+            i += 2
+            while i < n and profundidad:
+                if sql.startswith("/*", i):
+                    profundidad += 1
+                    i += 2
+                elif sql.startswith("*/", i):
+                    profundidad -= 1
+                    i += 2
+                else:
+                    i += 1
+            if profundidad:
+                return None
+        elif c in "'\"":
+            corte = None
+            escapes = (
+                c == "'" and i > 0 and sql[i - 1] in "Ee" and (i < 2 or not _es_ident(sql[i - 2]))
+            )
+            j = i + 1
+            while j < n and sql[j] != c:
+                j += 2 if escapes and sql[j] == "\\" else 1
+            if j >= n:
+                return None
+            i = j + 1  # un ``''`` o ``""`` doblado cierra y abre otro literal
+        elif (
+            c == "$" and (i == 0 or not _es_ident(sql[i - 1])) and (tag := _etiqueta_dolar(sql, i))
+        ):
+            corte = None
+            fin = sql.find(tag, i + len(tag))
+            if fin < 0:
+                return None
+            i = fin + len(tag)
+        else:
+            corte = None
+            i += 1
+    return corte
 
 
 def normalizar_sql(sql: str) -> str:
     """Quita espacios y la cola ``; …`` (con comentarios); rechaza lo vacío o largo."""
-    if len(sql) > 2 * MAX_CHARS_SQL:  # tope barato antes de aplicar la regex
+    if len(sql) > 2 * MAX_CHARS_SQL:  # tope barato antes de recorrer el texto
         raise ErrorConsulta(
             None,
             f"La consulta tiene {len(sql)} caracteres; el máximo es {MAX_CHARS_SQL}.",
             "Simplifica la consulta o divídela en varias.",
         )
     limpio = sql.strip()
-    cola = _COLA_VACIA.search(limpio)
-    if cola is not None:
-        limpio = limpio[: cola.start()].rstrip()
+    corte = _cola_vacia(limpio)
+    if corte is not None:
+        limpio = limpio[:corte].rstrip()
     if not limpio:
         raise ErrorConsulta(None, "La consulta está vacía.", None)
     if len(limpio) > MAX_CHARS_SQL:
