@@ -25,10 +25,6 @@ from mcp_server.catalogo import (
 
 _PARECE_SECRETO = re.compile(r"(hash|secret|token|password|passwd|clave|key|totp|salt)", re.I)
 
-#: Tablas que el catálogo clasifica por adelantado y que aún no existen en el
-#: esquema (las crea una migración posterior del propio MCP).
-_FUTURAS: frozenset[str] = frozenset({"mcp_oauth_clients", "mcp_oauth_tokens"})
-
 
 def _columnas_por_tabla(db_mod: Any) -> dict[str, list[str]]:
     """Columnas de las BASE TABLE del schema del test, sin ``alembic_version``."""
@@ -57,7 +53,7 @@ def test_toda_tabla_clasificada(tmp_db: Any) -> None:
     sin_clasificar = reales - set(CATALOGO)
     assert sin_clasificar == set(), f"Clasifica en mcp_server/catalogo.py: {sorted(sin_clasificar)}"
     # Una entrada que apunta a una tabla inexistente es un renombrado olvidado.
-    huerfanas = set(CATALOGO) - reales - _FUTURAS
+    huerfanas = set(CATALOGO) - reales
     assert huerfanas == set(), f"Entradas sin tabla real: {sorted(huerfanas)}"
 
 

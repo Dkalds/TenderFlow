@@ -316,13 +316,13 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
         "mcp_oauth_clients",
         _O,
         _IDE,
-        "Clientes OAuth registrados del MCP (la migración llega con la Task 6).",
+        "Clientes OAuth registrados del MCP (v150).",
     ),
     (
         "mcp_oauth_tokens",
         _O,
         _IDE,
-        "Códigos y tokens OAuth del MCP (la migración llega con la Task 6).",
+        "Códigos y tokens OAuth del MCP, solo sha256 (v150).",
     ),
     # ── Seguimiento y notificaciones ───────────────────────────────────────
     ("watchlist_items", _V, _SEG, "Licitaciones favoritas de cada usuario u organización."),
