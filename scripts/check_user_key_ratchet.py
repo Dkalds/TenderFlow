@@ -64,6 +64,13 @@ _REPORTEROS = frozenset(
         # no es tenerla, y congelarlo habría inflado el conteo de STATUS.md con
         # un fichero que no tiene nada que migrar.
         "db/repositories/cuentas.py",
+        # El catálogo del MCP interno lista nombres reales de columna para decidir
+        # su visibilidad (``user_key`` de ``audit_log``, ``notification_reads``…
+        # figura en ``COLUMNAS_REVISADAS``). Nombrar la columna para clasificarla no es
+        # usar la identidad: ninguna consulta del módulo la lee ni la acepta, y
+        # congelarlo inflaría el conteo de STATUS.md con un fichero sin nada
+        # que migrar.
+        "mcp_server/catalogo.py",
     }
 )
 
