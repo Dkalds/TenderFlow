@@ -22,9 +22,9 @@ log = get_logger("mcp_server")  # con `-m`, __name__ sería "__main__"
 def main() -> None:
     configure_logging()
     faltan = validar_configuracion()
-    if faltan:
+    if faltan:  # las que faltan y las mal formadas
         if settings.ENV == "prod":
-            raise SystemExit("Configuración del MCP incompleta; faltan: " + ", ".join(faltan))
+            raise SystemExit("Configuración del MCP incompleta o inválida: " + ", ".join(faltan))
         log.warning("mcp_configuracion_incompleta", faltan=faltan)
     app = crear_app()
     uvicorn.run(

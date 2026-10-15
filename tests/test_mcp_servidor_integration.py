@@ -261,7 +261,10 @@ def test_argumentos_fuera_de_esquema_son_error_compacto(
 def test_ficha_inexistente_trae_pista(app_cliente: TestClient, token_admin: str) -> None:
     resultado = _llamar(app_cliente, token_admin, "ficha_licitacion", {"id_externo": "NO-EXISTE"})
     assert resultado["isError"] is True
-    assert "Pista: búscala con buscar_licitaciones" in resultado["content"][0]["text"]
+    # Exactamente "{mensaje}\nPista: {pista}", sin el prefijo "Error executing tool" del SDK.
+    assert resultado["content"][0]["text"] == (
+        "No existe la licitación 'NO-EXISTE'.\nPista: búscala con buscar_licitaciones"
+    )
 
 
 def test_token_de_no_admin_rechazado(app_cliente: TestClient, token_ex_admin: str) -> None:

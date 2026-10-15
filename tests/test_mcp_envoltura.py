@@ -75,6 +75,17 @@ def token(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     yield
 
 
+@pytest.fixture()
+def servidor(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """El servidor real con un proveedor que no se usa: se llama a ``call_tool`` sin HTTP."""
+    from mcp_server.auth.proveedor import ProveedorTenderFlow
+    from mcp_server.servidor import crear_servidor
+
+    monkeypatch.setenv("MCP_PUBLIC_URL", "http://localhost:8080")
+    falso = ProveedorTenderFlow(almacen=None, google=None)  # type: ignore[arg-type]  # no se usan
+    return crear_servidor(falso)
+
+
 def _detalle(auditoria: list[tuple[tuple[Any, ...], dict[str, Any]]]) -> dict[str, Any]:
     (args, kwargs), *_ = auditoria
     assert args[0] == "user:7" and args[1] == "mcp" and kwargs == {"user_id": 7}
@@ -90,15 +101,14 @@ def _texto(resultado: CallToolResult) -> str:
 
 @pytest.mark.usefixtures("token")
 async def test_audita_exito_con_sql_y_filas(
-    monkeypatch: pytest.MonkeyPatch, limiter: LimiterFalso, auditoria: list[Any]
+    monkeypatch: pytest.MonkeyPatch, limiter: LimiterFalso, auditoria: list[Any], servidor: Any
 ) -> None:
     resultado_db = ResultadoConsulta(
         columnas=["uno"], filas=[[1], [2]], n_filas=2, truncado=False, duracion_ms=3
     )
     monkeypatch.setattr(consulta, "ejecutar_select", lambda sql: resultado_db)
-    tool = envoltura.herramienta("consultar_sql", consulta.consultar_sql)
 
-    resultado = await tool(sql="SELECT 1 AS uno -- ñ")
+    resultado = await servidor.call_tool("consultar_sql", {"sql": "SELECT 1 AS uno -- ñ"})
 
     assert resultado.structured_content == resultado_db.como_dict()
     # JSON compacto (sin sangría) y legible (sin escapar acentos).
@@ -116,17 +126,17 @@ async def test_audita_exito_con_sql_y_filas(
 
 @pytest.mark.usefixtures("token", "limiter")
 async def test_audita_tambien_el_error(
-    monkeypatch: pytest.MonkeyPatch, auditoria: list[Any]
+    monkeypatch: pytest.MonkeyPatch, auditoria: list[Any], servidor: Any
 ) -> None:
     def falla(sql: str) -> ResultadoConsulta:
         raise ErrorConsulta("42P01", "no existe la relación «nada»", "usa describir_esquema")
 
     monkeypatch.setattr(consulta, "ejecutar_select", falla)
-    tool = envoltura.herramienta("consultar_sql", consulta.consultar_sql)
 
     with pytest.raises(ToolError) as exc:
-        await tool(sql="SELECT * FROM nada")
+        await servidor.call_tool("consultar_sql", {"sql": "SELECT * FROM nada"})
 
+    # Exactamente "{mensaje}\nPista: {pista}": sin el prefijo "Error executing tool …" del SDK.
     assert str(exc.value) == (
         "no existe la relación «nada» (SQLSTATE 42P01)\nPista: usa describir_esquema"
     )
@@ -137,33 +147,89 @@ async def test_audita_tambien_el_error(
 
 
 @pytest.mark.usefixtures("token")
-async def test_rate_limit_por_minuto(limiter: LimiterFalso, auditoria: list[Any]) -> None:
+async def test_rate_limit_por_minuto(
+    monkeypatch: pytest.MonkeyPatch, limiter: LimiterFalso, auditoria: list[Any], servidor: Any
+) -> None:
     limiter.deniega = {"min"}
     llamadas: list[str] = []
+    monkeypatch.setattr(consulta, "ejecutar_select", llamadas.append)
 
-    def tool_espia(sql: str) -> dict[str, Any]:
-        llamadas.append(sql)
-        return {}
-
-    tool = envoltura.herramienta("consultar_sql", tool_espia)
-    with pytest.raises(ToolError, match="Límite de uso") as exc:
-        await tool(sql="SELECT 1")
-    assert "espera 60 s" in str(exc.value)
+    with pytest.raises(ToolError) as exc:
+        await servidor.call_tool("consultar_sql", {"sql": "SELECT 1"})
+    assert str(exc.value) == "Límite de uso alcanzado\nPista: espera 60 s"
     assert llamadas == []
+    (args, _), *resto = auditoria
+    assert not resto and args[2] == "mcp.consultar_sql"
     assert "Límite de uso" in _detalle(auditoria)["error"]
 
 
 @pytest.mark.usefixtures("token")
-async def test_rate_limit_por_dia(limiter: LimiterFalso, auditoria: list[Any]) -> None:
+async def test_rate_limit_por_dia(limiter: LimiterFalso, servidor: Any) -> None:
     limiter.deniega = {"dia"}
+    with pytest.raises(ToolError) as exc:
+        await servidor.call_tool("describir_esquema", {})
+    assert str(exc.value) == "Límite de uso alcanzado\nPista: inténtalo mañana"
 
-    def vacia() -> dict[str, Any]:
-        return {}
 
-    tool = envoltura.herramienta("describir_esquema", vacia)
-    with pytest.raises(ToolError, match="Límite de uso") as exc:
+@pytest.mark.usefixtures("token")
+async def test_sql_enorme_rechazado_se_audita_recortado_y_cuenta(
+    limiter: LimiterFalso, auditoria: list[Any], servidor: Any
+) -> None:
+    """Lo que el esquema rechaza también cuenta para el límite y no llena ``audit_log``."""
+    with pytest.raises(ToolError) as exc:
+        await servidor.call_tool("consultar_sql", {"sql": "S" * 30_000})
+    assert str(exc.value).startswith("Argumentos no válidos: sql:")
+    assert limiter.llamadas == [("mcp:min:7", 60, 60), ("mcp:dia:7", 1000, 86400)]
+    (args, _), *resto = auditoria
+    assert not resto and args[2] == "mcp.consultar_sql"
+    assert len(args[3]) <= envoltura.MAX_CHARS_DETALLE
+    sql = _detalle(auditoria)["args"]["sql"]
+    assert sql == "S" * 20_000 + "…[+10000]"
+
+
+@pytest.mark.usefixtures("token")
+async def test_tool_desconocida_se_audita_y_cuenta(
+    limiter: LimiterFalso, auditoria: list[Any], servidor: Any
+) -> None:
+    with pytest.raises(ToolError) as exc:
+        await servidor.call_tool("borrar_todo", {"x": 1})
+    assert "No existe la herramienta 'borrar_todo'" in str(exc.value)
+    assert "consultar_sql" in str(exc.value)
+    assert [k for k, *_ in limiter.llamadas] == ["mcp:min:7", "mcp:dia:7"]
+    (args, _), *_ = auditoria
+    # El nombre lo elige el cliente: no se usa como `action`.
+    assert args[2] == "mcp.tool_desconocida"
+    assert _detalle(auditoria)["args"] == {"tool": "borrar_todo", "argumentos": {"x": 1}}
+
+
+@pytest.mark.usefixtures("token")
+async def test_el_detail_entero_tiene_tope(auditoria: list[Any]) -> None:
+    await envoltura.auditar_rechazo(
+        "buscar_licitaciones", {"a": "a" * 20_000, "b": ['"' * 20_000]}, "e"
+    )
+    (args, _), *_ = auditoria
+    assert len(args[3]) <= envoltura.MAX_CHARS_DETALLE
+    recortados = _detalle(auditoria)["args"]
+    assert isinstance(recortados, str) and recortados.endswith("]")
+    assert "…[+" in recortados
+
+
+@pytest.mark.usefixtures("token", "limiter")
+async def test_la_auditoria_sobrevive_a_la_cancelacion(auditoria: list[Any]) -> None:
+    import time as reloj
+
+    import anyio
+
+    def lenta() -> dict[str, Any]:
+        reloj.sleep(0.3)
+        return {"n_filas": 0}
+
+    tool = envoltura.herramienta("describir_esquema", lenta)
+    with anyio.move_on_after(0.05):
         await tool()
-    assert "86400 s" in str(exc.value)
+    # El cliente cortó a mitad: lo ejecutado queda auditado igual.
+    (args, _), *_ = auditoria
+    assert args[2] == "mcp.describir_esquema"
 
 
 @pytest.mark.usefixtures("token", "limiter")
@@ -290,6 +356,36 @@ def test_falta_config_en_prod(monkeypatch: pytest.MonkeyPatch) -> None:
         "DATABASE_URL",
         "GOOGLE_CLIENT_SECRET",
     ]
+
+
+def test_config_redirect_de_google_y_https_en_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pydantic import SecretStr
+
+    from config import settings
+    from mcp_server.servidor import validar_configuracion
+
+    _vaciar_configuracion(monkeypatch)
+    monkeypatch.setenv("MCP_DATABASE_URL", "postgresql://mcp@h/db")
+    monkeypatch.setattr(settings, "DATABASE_URL", SecretStr("postgresql://app@h/db"))
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "id")
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_SECRET", SecretStr("s"))
+    monkeypatch.setattr(settings, "SIGNING_KEY", SecretStr("k" * 40))
+    monkeypatch.setenv("MCP_PUBLIC_URL", "https://mcp.example.com/")
+    monkeypatch.setenv("MCP_GOOGLE_REDIRECT_URI", "https://mcp.example.com/oauth/google/callback")
+    monkeypatch.setattr(settings, "ENV", "prod")
+    assert validar_configuracion() == []
+
+    monkeypatch.setenv("MCP_GOOGLE_REDIRECT_URI", "https://otro.example.com/callback")
+    assert validar_configuracion() == [
+        "MCP_GOOGLE_REDIRECT_URI (debe ser https://mcp.example.com/oauth/google/callback)"
+    ]
+
+    monkeypatch.setenv("MCP_PUBLIC_URL", "http://mcp.example.com")
+    monkeypatch.setenv("MCP_GOOGLE_REDIRECT_URI", "http://mcp.example.com/oauth/google/callback")
+    assert validar_configuracion() == ["MCP_PUBLIC_URL (debe ser https:// en prod)"]
+    # En desarrollo el http (localhost) es lo normal.
+    monkeypatch.setattr(settings, "ENV", "dev")
+    assert validar_configuracion() == []
 
 
 def test_main_aborta_en_prod_si_falta_config(monkeypatch: pytest.MonkeyPatch) -> None:
