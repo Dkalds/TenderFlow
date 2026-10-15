@@ -14,7 +14,7 @@ from api.routes.auth import _oauth_access_allowed
 
 def test_static_grant_skips_database():
     with (
-        patch("api.routes.auth.oauth_email_allowed", return_value=True),
+        patch("services.access_grants.oauth_email_allowed", return_value=True),
         patch("db.access_grants.is_access_granted") as dynamic,
     ):
         assert asyncio.run(_oauth_access_allowed("allowed@example.test")) is True
@@ -23,7 +23,7 @@ def test_static_grant_skips_database():
 
 def test_dynamic_grant_allows_email():
     with (
-        patch("api.routes.auth.oauth_email_allowed", return_value=False),
+        patch("services.access_grants.oauth_email_allowed", return_value=False),
         patch("db.access_grants.is_access_granted", return_value=True),
     ):
         assert asyncio.run(_oauth_access_allowed("allowed@example.test")) is True
@@ -31,7 +31,7 @@ def test_dynamic_grant_allows_email():
 
 def test_dynamic_allowlist_failure_is_closed():
     with (
-        patch("api.routes.auth.oauth_email_allowed", return_value=False),
+        patch("services.access_grants.oauth_email_allowed", return_value=False),
         patch(
             "db.access_grants.is_access_granted",
             side_effect=RuntimeError("database unavailable"),

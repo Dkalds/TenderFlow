@@ -63,7 +63,6 @@ from shared.auth_core import (
     generate_oauth_state,
     generate_pkce_pair,
     hash_password,
-    oauth_email_allowed,
     oauth_email_is_admin,
     oauth_email_parts,
     oauth_state_nonce,
@@ -103,19 +102,14 @@ _RESET_REQUEST_RESPONSE = "Si existe una cuenta local activa, recibirás un enla
 async def _oauth_access_allowed(email: str) -> bool:
     """Allowlist estática o grant dinámico; cualquier fallo dinámico deniega.
 
-    Es la única definición de «esta dirección puede entrar». Además del
-    callback la usa ``api/routes/admin_solicitudes.py`` para no escribirle «ya
-    tienes acceso» a quien aquí se rechazaría.
+    La regla vive en ``services.access_grants.acceso_oauth_permitido``, que
+    comparte con el login del MCP interno. Además del callback la usa
+    ``api/routes/admin_solicitudes.py`` para no escribirle «ya tienes acceso» a
+    quien aquí se rechazaría.
     """
-    if oauth_email_allowed(email):
-        return True
-    try:
-        from db.access_grants import is_access_granted
+    from services.access_grants import acceso_oauth_permitido
 
-        return bool(await run_db(is_access_granted, email))
-    except Exception:
-        log.exception("oauth_dynamic_allowlist_unavailable")
-        return False
+    return bool(await run_db(acceso_oauth_permitido, email))
 
 
 def _activar_invitaciones(user_id: int, email: str | None) -> None:
