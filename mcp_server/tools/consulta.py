@@ -50,7 +50,9 @@ def consultar_sql(
     máximo por consulta, hasta 20 000 caracteres de SQL. Solo se ven las tablas
     y columnas que lista ``describir_esquema``. El resultado se corta en 500
     filas (``truncado: true``; usa ``LIMIT``/agregados para afinar) y cada texto
-    largo se recorta a 1 000 caracteres con la marca ``…[+N]``.
+    largo se recorta a 1 000 caracteres con la marca ``…[+N]``. No se admiten
+    cerrojos de aviso (``pg_advisory_*``), ``pg_notify``, ``set_config`` ni las
+    funciones que ejecutan SQL escrito en texto (``query_to_xml``, ``ts_stat``…).
 
     Devuelve ``{"columnas": [...], "filas": [[...], ...], "n_filas": N,
     "truncado": bool, "duracion_ms": N}``. Un error de Postgres vuelve con su

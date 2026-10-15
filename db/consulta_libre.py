@@ -4,16 +4,21 @@ La frontera de seguridad **no** está en este módulo sino en el rol de Postgres
 ``tenderflow_mcp`` (``mcp_server/catalogo.py``): solo ``SELECT`` por tabla y
 columna visibles, ``default_transaction_read_only = on``, ``statement_timeout``,
 ``NOBYPASSRLS`` y ``CONNECTION LIMIT 5``. Aquí no se intenta «validar» el SQL
-(un parser casero sería una falsa garantía); solo se acota lo que vuelve:
+(un parser casero sería una falsa garantía); solo se acota lo que vuelve y se
+vetan unas pocas funciones (defensa en profundidad, no frontera):
 
 * un único statement: el SQL se envuelve en ``SELECT * FROM (…) AS q LIMIT %s``
   y se ejecuta **con un parámetro enlazado**, lo que obliga a psycopg a usar el
   protocolo extendido, que rechaza varios comandos (``42601``). Sin parámetros
   usaría el protocolo simple y un ``SELECT 1) AS x; DROP …; SELECT (1`` se
   saldría del envoltorio. Por eso cada ``%`` del SQL del usuario se duplica;
-* a lo sumo ``MAX_FILAS`` filas (se pide una de más para detectar truncado);
+* a lo sumo ``MAX_FILAS`` filas (se pide una de más para detectar truncado),
+  leídas por lotes con un cursor de servidor que deja de pedir en cuanto la
+  respuesta ya no cabe;
 * celdas de texto recortadas a ``MAX_CHARS_CELDA`` y respuesta serializada de
-  como mucho ``MAX_CHARS_RESPUESTA`` caracteres (se quitan filas del final).
+  como mucho ``MAX_CHARS_RESPUESTA`` caracteres (se quitan filas del final);
+* ninguna llamada a las funciones vetadas (cerrojos de aviso, ``pg_notify``,
+  ``set_config``, las que ejecutan SQL en texto…): ver :func:`normalizar_sql`.
 
 El pool es propio y perezoso (la conexión es otro usuario, con otra URL) y no
 reutiliza los pools de la aplicación. Los límites de tiempo los fija el rol; por
@@ -132,50 +137,134 @@ class ResultadoConsulta:
 # ── Normalización y envoltorio ─────────────────────────────────────────────
 
 
+#: Espacios para el léxico de Postgres (``space`` de ``scan.l``). Un espacio
+#: Unicode (U+00A0) no lo es: Postgres lo lee como parte de un identificador.
+_ESPACIOS = " \t\n\r\f\v"
+_SALTOS = "\n\r"
+_ESPACIOS_HORIZONTALES = " \t\f\v"
+
+
+def _inicio_ident(c: str) -> bool:
+    """``ident_start`` de Postgres: letra ASCII, ``_`` o cualquier carácter no ASCII."""
+    return ("a" <= c <= "z") or ("A" <= c <= "Z") or c == "_" or ord(c) >= 0x80
+
+
 def _es_ident(c: str) -> bool:
-    return c.isalnum() or c in "_$"
+    """``ident_cont`` de Postgres: ``ident_start``, dígitos y ``$``."""
+    return _inicio_ident(c) or ("0" <= c <= "9") or c == "$"
 
 
 def _etiqueta_dolar(sql: str, i: int) -> str | None:
-    """Devuelve ``$tag$`` si en ``sql[i]`` empieza una cadena entre dólares."""
+    """Devuelve ``$tag$`` si en ``sql[i]`` empieza una cadena entre dólares.
+
+    La etiqueta sigue ``dolqdelim`` de Postgres: vacía o un ``ident_start``
+    seguido de ``ident_start``/dígitos (sin ``$``).
+    """
     n = len(sql)
     j = i + 1
-    if j < n and (sql[j].isalpha() or sql[j] == "_"):
+    if j < n and _inicio_ident(sql[j]):
         j += 1
-        while j < n and (sql[j].isalnum() or sql[j] == "_"):
+        while j < n and (_inicio_ident(sql[j]) or "0" <= sql[j] <= "9"):
             j += 1
     if j < n and sql[j] == "$":
         return sql[i : j + 1]
     return None
 
 
-def _cola_vacia(sql: str) -> int | None:
-    """Índice donde empieza la cola ``; …`` final de ``sql``, o ``None``.
+def _continua_literal(sql: str, j: int) -> int | None:
+    """Si tras un literal cerrado en ``j`` viene su continuación, el índice de su ``'``.
 
-    Un único recorrido hacia delante, de coste lineal y sin retroceso, que
-    reconoce los estados léxicos de Postgres para no confundir un ``;`` de
-    código con uno que vive dentro de un literal o un comentario: cadenas
-    ``'…'`` (con ``E'…'`` y su ``\\``), identificadores ``"…"``, cadenas entre
-    dólares ``$tag$…$tag$``, comentarios ``-- …`` y ``/* … */`` (que Postgres
-    anida). La cola es el primer ``;`` de código tras el cual solo hay
-    espacios, otros ``;`` y comentarios. Con un literal o un comentario de
-    bloque sin cerrar devuelve ``None``: se deja el SQL tal cual y Postgres
-    informa del error.
+    Postgres une ``'a'`` y ``'b'`` separados por espacios con **al menos un
+    salto de línea** (y comentarios ``--``) en un único literal, en el mismo
+    modo que el primero (``quotecontinue`` de ``scan.l``). Un ``/* */`` corta.
+    """
+    n = len(sql)
+    salto = False
+    while j < n:
+        c = sql[j]
+        if c in _SALTOS:
+            salto = True
+            j += 1
+        elif c in _ESPACIOS_HORIZONTALES:
+            j += 1
+        elif sql.startswith("--", j):
+            while j < n and sql[j] not in _SALTOS:
+                j += 1
+        else:
+            break
+    return j if salto and j < n and sql[j] == "'" else None
+
+
+def _fin_literal(sql: str, i: int, escapes: bool) -> int | None:
+    """Índice tras el literal ``'…'`` que abre ``sql[i]``; ``None`` si no se cierra.
+
+    ``''`` es una comilla dentro del literal; con ``escapes`` (``E'…'``) la
+    barra invertida escapa el carácter siguiente. Sigue en las continuaciones.
+    """
+    n = len(sql)
+    j = i + 1
+    while j < n:
+        c = sql[j]
+        if escapes and c == "\\":
+            j += 2
+        elif c == "'":
+            if j + 1 < n and sql[j + 1] == "'":
+                j += 2
+                continue
+            siguiente = _continua_literal(sql, j + 1)
+            if siguiente is None:
+                return j + 1
+            j = siguiente + 1
+        else:
+            j += 1
+    return None
+
+
+@dataclass(frozen=True)
+class _Lexico:
+    """Lo que :func:`_analizar` sabe del SQL tras un recorrido."""
+
+    #: ``False`` si un literal, identificador o comentario de bloque no se cierra
+    #: (lo que viene detrás no se analizó; Postgres lo rechazará igualmente).
+    completo: bool
+    #: Índice donde empieza la cola ``; …`` final (``;``, espacios y comentarios).
+    corte: int | None
+    #: Identificadores en posición de código, en minúsculas (los ``"…"`` sin comillas).
+    nombres: tuple[str, ...]
+    #: Hay algún identificador ``U&"…"`` (con escapes Unicode que no se descifran).
+    unicode: bool
+
+
+def _analizar(sql: str) -> _Lexico:
+    """Un recorrido lineal con los estados léxicos de Postgres (``scan.l``).
+
+    Reconoce cadenas ``'…'`` (``E'…'`` con ``\\``, ``''`` doblada y la
+    continuación en otra línea), identificadores ``"…"`` y ``U&"…"``, cadenas
+    entre dólares ``$tag$…$tag$``, parámetros ``$1``, números, comentarios
+    ``-- …`` (hasta ``\\n`` o ``\\r``) y ``/* … */`` anidados. Así distingue un
+    ``;`` o un nombre de función en código de uno que vive en un literal o un
+    comentario. Coste lineal y sin retroceso.
     """
     n = len(sql)
     i = 0
     corte: int | None = None
+    nombres: list[str] = []
+    unicode = False
+
+    def incompleto() -> _Lexico:
+        return _Lexico(False, None, tuple(nombres), unicode)
+
     while i < n:
         c = sql[i]
-        if c.isspace():
+        if c in _ESPACIOS:
             i += 1
         elif c == ";":
             if corte is None:
                 corte = i
             i += 1
         elif sql.startswith("--", i):
-            fin = sql.find("\n", i)
-            i = n if fin < 0 else fin + 1
+            while i < n and sql[i] not in _SALTOS:
+                i += 1
         elif sql.startswith("/*", i):
             profundidad = 1
             i += 2
@@ -189,34 +278,141 @@ def _cola_vacia(sql: str) -> int | None:
                 else:
                     i += 1
             if profundidad:
-                return None
-        elif c in "'\"":
-            corte = None
-            escapes = (
-                c == "'" and i > 0 and sql[i - 1] in "Ee" and (i < 2 or not _es_ident(sql[i - 2]))
-            )
-            j = i + 1
-            while j < n and sql[j] != c:
-                j += 2 if escapes and sql[j] == "\\" else 1
-            if j >= n:
-                return None
-            i = j + 1  # un ``''`` o ``""`` doblado cierra y abre otro literal
-        elif (
-            c == "$" and (i == 0 or not _es_ident(sql[i - 1])) and (tag := _etiqueta_dolar(sql, i))
-        ):
-            corte = None
-            fin = sql.find(tag, i + len(tag))
-            if fin < 0:
-                return None
-            i = fin + len(tag)
+                return incompleto()
         else:
             corte = None
-            i += 1
-    return corte
+            if c in "eE" and sql.startswith("'", i + 1):
+                fin = _fin_literal(sql, i + 1, escapes=True)
+            elif c in "uU" and sql.startswith("&'", i + 1):
+                fin = _fin_literal(sql, i + 2, escapes=False)
+            elif c == "'":
+                fin = _fin_literal(sql, i, escapes=False)
+            elif c == '"' or (c in "uU" and sql.startswith('&"', i + 1)):
+                if c != '"':
+                    unicode = True
+                    i += 2
+                partes: list[str] = []
+                j = i + 1
+                while True:
+                    k = sql.find('"', j)
+                    if k < 0:
+                        return incompleto()
+                    partes.append(sql[j:k])
+                    if sql.startswith('"', k + 1):  # ``""`` es una comilla del nombre
+                        partes.append('"')
+                        j = k + 2
+                        continue
+                    break
+                nombres.append("".join(partes).lower())
+                fin = k + 1
+            elif _inicio_ident(c):
+                j = i + 1
+                while j < n and _es_ident(sql[j]):
+                    j += 1
+                nombres.append(sql[i:j].lower())
+                fin = j
+            elif "0" <= c <= "9" or (c == "." and i + 1 < n and "0" <= sql[i + 1] <= "9"):
+                # Número: dígitos, ``.`` y ``_``; lo que siga (``e5``, ``x1F``,
+                # ``abc``) se analiza como identificador aparte, que es lo prudente.
+                j = i + 1
+                while j < n and (("0" <= sql[j] <= "9") or sql[j] in "._"):
+                    j += 1
+                fin = j
+            elif c == "$" and (tag := _etiqueta_dolar(sql, i)):
+                k = sql.find(tag, i + len(tag))
+                if k < 0:
+                    return incompleto()
+                fin = k + len(tag)
+            elif c == "$":
+                j = i + 1
+                while j < n and "0" <= sql[j] <= "9":  # parámetro ``$1``
+                    j += 1
+                fin = j
+            else:
+                fin = i + 1
+            if fin is None:
+                return incompleto()
+            i = fin
+    return _Lexico(True, corte, tuple(nombres), unicode)
+
+
+# ── Funciones vetadas ──────────────────────────────────────────────────────
+#
+# El rol es la frontera, pero hay funciones de ``pg_catalog`` que ``PUBLIC``
+# puede ejecutar y que en Supabase no se pueden retirar sin romper a otros
+# roles: los cerrojos de aviso son compartidos entre roles (con
+# ``pg_advisory_lock`` el SQL del LLM bloquearía la cadena de ``audit_log`` o
+# las familias OAuth), ``pg_notify`` y las señales llegan a otros procesos, y
+# ``query_to_xml``, ``ts_stat``, ``ts_rewrite`` o ``dblink`` ejecutan SQL
+# escrito en texto, que este veto no vería. Es defensa en profundidad (ADR-036):
+# el motor del riesgo es la inyección de instrucciones desde el texto de los
+# pliegos, que el LLM lee y podría obedecer.
+
+_VETADAS = frozenset(
+    {
+        "query_to_xml",
+        "query_to_xmlschema",
+        "query_to_xml_and_xmlschema",
+        "cursor_to_xml",
+        "cursor_to_xmlschema",
+        "pg_notify",
+        "pg_terminate_backend",
+        "pg_cancel_backend",
+        "set_config",
+        "ts_stat",
+        "ts_rewrite",
+    }
+)
+_VETADAS_PREFIJO = ("pg_advisory_", "pg_try_advisory_", "dblink")
+_PISTA_VETADA = (
+    "En el MCP no se admiten cerrojos de aviso (pg_advisory_*), pg_notify, señales "
+    "a otros procesos, set_config ni las funciones que ejecutan SQL escrito en "
+    "texto (query_to_xml, cursor_to_xml, ts_stat, ts_rewrite, dblink). Escribe "
+    "la consulta directamente con SELECT."
+)
+_VETADA_EN_TEXTO = re.compile(
+    "|".join([re.escape(v) for v in sorted(_VETADAS)] + [re.escape(p) for p in _VETADAS_PREFIJO]),
+    re.IGNORECASE,
+)
+
+
+def _vetada(nombre: str) -> bool:
+    return nombre in _VETADAS or nombre.startswith(_VETADAS_PREFIJO)
+
+
+def _rechazar_vetadas(sql: str, lexico: _Lexico) -> None:
+    """``ErrorConsulta`` si el SQL nombra en código una función vetada.
+
+    Se compara el identificador (sin comillas y en minúsculas) haya o no un
+    ``(`` detrás: entre el nombre y el paréntesis cabe un comentario. Si el
+    recorrido no terminó (literal sin cerrar), se mira el texto entero: Postgres
+    rechazará la sentencia, pero por si el léxico se quedara corto.
+    """
+    if lexico.unicode:
+        raise ErrorConsulta(
+            None,
+            'Los identificadores U&"…" no se admiten en el MCP.',
+            'Escribe el nombre tal cual, sin U&"…" ni escapes Unicode.',
+        )
+    for nombre in lexico.nombres:
+        if _vetada(nombre):
+            raise ErrorConsulta(
+                None, f"La función {nombre} no está permitida en el MCP.", _PISTA_VETADA
+            )
+    if not lexico.completo and (hallada := _VETADA_EN_TEXTO.search(sql)):
+        raise ErrorConsulta(
+            None,
+            f"La función {hallada.group(0).lower()} no está permitida en el MCP.",
+            _PISTA_VETADA,
+        )
 
 
 def normalizar_sql(sql: str) -> str:
-    """Quita espacios y la cola ``; …`` (con comentarios); rechaza lo vacío o largo."""
+    """Quita espacios y la cola ``; …`` y veta funciones; rechaza lo vacío o largo.
+
+    Las funciones vetadas (:data:`_VETADAS`) se rechazan aquí, antes de tocar la
+    base, con ``ErrorConsulta(sqlstate=None)``.
+    """
     if len(sql) > 2 * MAX_CHARS_SQL:  # tope barato antes de recorrer el texto
         raise ErrorConsulta(
             None,
@@ -224,9 +420,9 @@ def normalizar_sql(sql: str) -> str:
             "Simplifica la consulta o divídela en varias.",
         )
     limpio = sql.strip()
-    corte = _cola_vacia(limpio)
-    if corte is not None:
-        limpio = limpio[:corte].rstrip()
+    lexico = _analizar(limpio)
+    if lexico.corte is not None:
+        limpio = limpio[: lexico.corte].rstrip()
     if not limpio:
         raise ErrorConsulta(None, "La consulta está vacía.", None)
     if len(limpio) > MAX_CHARS_SQL:
@@ -235,6 +431,7 @@ def normalizar_sql(sql: str) -> str:
             f"La consulta tiene {len(limpio)} caracteres; el máximo es {MAX_CHARS_SQL}.",
             "Simplifica la consulta o divídela en varias.",
         )
+    _rechazar_vetadas(limpio, lexico)
     return limpio
 
 
@@ -285,7 +482,8 @@ def serializar_valor(v: object) -> JSONValue:
     """Convierte un valor devuelto por psycopg en JSON sin tumbar la tool.
 
     ``NaN``/``Infinity`` y los binarios (``bytea``) pasan a ``None``; fechas,
-    ``uuid`` y el resto de tipos sin representación JSON caen a texto.
+    ``uuid``, un ``numeric`` que no cabe en ``float`` y el resto de tipos sin
+    representación JSON caen a texto.
     """
     if v is None or isinstance(v, bool):
         return v
@@ -294,7 +492,13 @@ def serializar_valor(v: object) -> JSONValue:
     if isinstance(v, float):
         return v if math.isfinite(v) else None
     if isinstance(v, Decimal):
-        return float(v) if v.is_finite() else None
+        if not v.is_finite():
+            return None
+        convertido = float(v)
+        # Un ``numeric`` finito pero fuera del rango de ``float`` (``1e400``) da
+        # ``inf``, que ``json.dumps`` escribiría como ``Infinity`` (JSON no válido):
+        # se devuelve su texto.
+        return convertido if math.isfinite(convertido) else _recortar(str(v))
     if isinstance(v, str):
         return _recortar(v)
     if isinstance(v, bytes | bytearray | memoryview):
@@ -433,8 +637,64 @@ def _traducir(exc: psycopg.Error) -> ErrorConsulta:
     return ErrorConsulta(sqlstate, primera_linea, PISTAS.get(sqlstate) if sqlstate else None)
 
 
+#: Filas por ``FETCH`` del cursor de servidor de :func:`ejecutar_select`.
+_FILAS_POR_LOTE = 50
+
+_SQL_STATEMENT_TIMEOUT = (
+    "SELECT setting::bigint FROM pg_catalog.pg_settings WHERE name = 'statement_timeout'"
+)
+
+
+def _error_de_tiempo() -> ErrorConsulta:
+    return ErrorConsulta("57014", "canceling statement due to statement timeout", PISTAS["57014"])
+
+
+def _leer_por_lotes(
+    conn: psycopg.Connection[tuple[object, ...]], envuelta: str, max_filas: int
+) -> tuple[list[str], list[list[JSONValue]]]:
+    """Lee el resultado con un cursor de servidor, lote a lote, y para en cuanto sobra.
+
+    ``fetchall`` traería hasta ``max_filas + 1`` filas enteras a memoria antes de
+    recortar (``documentos.texto`` es el texto completo de un PDF). Aquí cada
+    lote se serializa (celdas ya recortadas) y se deja de pedir en cuanto hay
+    ``max_filas + 1`` filas o la respuesta ya pasa de ``MAX_CHARS_RESPUESTA``:
+    :func:`_acotar_respuesta` quitará filas y marcará ``truncado`` igual que antes.
+
+    Con cursor, ``statement_timeout`` vale por sentencia (el ``DECLARE`` y cada
+    ``FETCH``); para que el tope del rol siga siendo de la consulta entera, antes
+    de cada ``FETCH`` se le deja como ``statement_timeout`` local lo que queda.
+    """
+    inicio = time.monotonic()
+    fila_tope = conn.execute(_SQL_STATEMENT_TIMEOUT).fetchone()
+    tope_ms = int(str(fila_tope[0])) if fila_tope is not None else 0
+    with conn.cursor(name="mcp_consulta") as cur:
+        cur.execute(envuelta, (max_filas + 1,))
+        columnas = [str(d.name) for d in (cur.description or [])]
+        filas: list[list[JSONValue]] = []
+        tamano = 0
+        while len(filas) <= max_filas and tamano <= MAX_CHARS_RESPUESTA:
+            if tope_ms > 0:
+                queda_ms = tope_ms - int((time.monotonic() - inicio) * 1000)
+                if queda_ms <= 0:
+                    raise _error_de_tiempo()
+                conn.execute("SELECT set_config('statement_timeout', %s, true)", (f"{queda_ms}ms",))
+            lote = cur.fetchmany(min(_FILAS_POR_LOTE, max_filas + 1 - len(filas)))
+            if not lote:
+                break
+            for cruda in lote:
+                fila = [serializar_valor(v) for v in cruda]
+                filas.append(fila)
+                tamano += len(json.dumps(fila)) + 2
+    return columnas, filas
+
+
 def ejecutar_select(sql: str, *, max_filas: int = MAX_FILAS) -> ResultadoConsulta:
-    """Ejecuta ``sql`` con el rol MCP y devuelve filas serializadas y acotadas."""
+    """Ejecuta ``sql`` con el rol MCP y devuelve filas serializadas y acotadas.
+
+    En una transacción de solo lectura (el pool es *autocommit*; al devolver la
+    conexión, :func:`_reiniciar_sesion` hace ``RESET ALL`` igual) y con un cursor
+    de servidor leído por lotes (:func:`_leer_por_lotes`).
+    """
     url = mcp_database_url()
     if not url:
         raise ErrorConsulta(None, "MCP_DATABASE_URL no configurada", None)
@@ -442,16 +702,14 @@ def ejecutar_select(sql: str, *, max_filas: int = MAX_FILAS) -> ResultadoConsult
     pool = _get_pool(url)
     inicio = time.perf_counter()
     try:
-        with pool.connection() as conn:
-            cur = conn.execute(envuelta, (max_filas + 1,))
-            columnas = [str(d.name) for d in (cur.description or [])]
-            crudas = cur.fetchall()
+        with pool.connection() as conn, conn.transaction():
+            conn.execute("SET TRANSACTION READ ONLY")
+            columnas, filas = _leer_por_lotes(conn, envuelta, max_filas)
     except psycopg.Error as exc:
         raise _traducir(exc) from None
     duracion_ms = int((time.perf_counter() - inicio) * 1000)
-    truncado = len(crudas) > max_filas
-    filas = [[serializar_valor(v) for v in fila] for fila in crudas[:max_filas]]
-    return _acotar_respuesta(columnas, filas, truncado, duracion_ms)
+    truncado = len(filas) > max_filas
+    return _acotar_respuesta(columnas, filas[:max_filas], truncado, duracion_ms)
 
 
 # ── Introspección ──────────────────────────────────────────────────────────

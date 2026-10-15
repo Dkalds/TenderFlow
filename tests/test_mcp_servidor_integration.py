@@ -245,6 +245,21 @@ def test_consultar_sql_de_escritura_es_error_de_tool(
     assert detalle["error"] and detalle["n_filas"] is None
 
 
+def test_consultar_sql_no_toma_el_cerrojo_de_la_auditoria(
+    app_cliente: TestClient, token_admin: str, usuarios: dict[str, int]
+) -> None:
+    """R17: el SQL del LLM no puede bloquear la cadena de ``audit_log`` de la API."""
+    sql = "SELECT pg_advisory_lock(hashtext('tenderflow.audit_log.chain.v1')), pg_sleep(14)"
+    resultado = _llamar(app_cliente, token_admin, "consultar_sql", {"sql": sql})
+    assert resultado["isError"] is True
+    texto = resultado["content"][0]["text"]
+    assert "pg_advisory_lock no está permitida" in texto and "Pista:" in texto
+    # La auditoría (que toma ese cerrojo) sigue escribiendo, y registra el rechazo.
+    ((user_id, detalle),) = _auditoria("mcp.consultar_sql")
+    assert user_id == usuarios["admin"]
+    assert "pg_advisory_lock" in detalle["error"]
+
+
 def test_argumentos_fuera_de_esquema_son_error_compacto(
     app_cliente: TestClient, token_admin: str
 ) -> None:

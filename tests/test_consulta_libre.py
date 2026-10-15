@@ -141,6 +141,11 @@ def _tiempo(sql: str) -> float:
         "$a$" * (MAX_CHARS_SQL // 3),
         "'" * MAX_CHARS_SQL,
         "SELECT 1" + "; -- x\n" * (MAX_CHARS_SQL // 7),
+        "SELECT E'" + "''" * (MAX_CHARS_SQL // 2 - 8),
+        "SELECT " + "'a'\n" * (MAX_CHARS_SQL // 4 - 2),
+        "SELECT " + "'a' --\n" * (MAX_CHARS_SQL // 7 - 1) + "x",
+        'SELECT "' + '""' * (MAX_CHARS_SQL // 2 - 8),
+        "SELECT " + "pg_advisory_lock" * (MAX_CHARS_SQL // 16 - 1) + "'",
     ],
     ids=[
         "comentarios_con_punto_y_coma",
@@ -152,6 +157,11 @@ def _tiempo(sql: str) -> float:
         "dolares",
         "comillas",
         "cola_repetida",
+        "comillas_dobladas_en_E",
+        "continuaciones",
+        "continuaciones_con_comentario",
+        "identificador_con_comillas_dobladas",
+        "vetada_en_texto_sin_cerrar",
     ],
 )
 def test_normalizar_es_lineal(sql: str) -> None:
@@ -177,3 +187,152 @@ def test_ejemplo_de_rechaza_identificadores_no_estrictos(
         ejemplo_de(tabla, ["id"])
     with pytest.raises(ErrorConsulta, match="Identificador no válido"):
         ejemplo_de("users", [tabla])
+
+
+# ── Funciones vetadas (ruling R17) ─────────────────────────────────────────
+#
+# El rol no puede retirar ``EXECUTE`` de ``pg_catalog`` en Supabase, así que el
+# ejecutor rechaza antes de ejecutar las llamadas que tocan estado compartido
+# con la aplicación (cerrojos de aviso, NOTIFY, señales a otros procesos) o que
+# ejecutan SQL escrito en texto (y se saltarían este veto).
+
+VETADAS = [
+    "pg_advisory_lock",
+    "pg_advisory_xact_lock",
+    "pg_advisory_lock_shared",
+    "pg_advisory_unlock",
+    "pg_advisory_unlock_all",
+    "pg_try_advisory_lock",
+    "pg_try_advisory_xact_lock_shared",
+    "query_to_xml",
+    "query_to_xmlschema",
+    "query_to_xml_and_xmlschema",
+    "cursor_to_xml",
+    "cursor_to_xmlschema",
+    "pg_notify",
+    "pg_terminate_backend",
+    "pg_cancel_backend",
+    "set_config",
+    "dblink",
+    "dblink_exec",
+    "ts_stat",
+    "ts_rewrite",
+]
+
+
+def _vetada(sql: str) -> ErrorConsulta:
+    with pytest.raises(ErrorConsulta) as exc:
+        normalizar_sql(sql)
+    assert exc.value.sqlstate is None
+    assert exc.value.pista
+    return exc.value
+
+
+@pytest.mark.parametrize("nombre", VETADAS)
+@pytest.mark.parametrize(
+    "plantilla",
+    [
+        "SELECT {f}(1)",
+        "SELECT {F}(1)",
+        "SELECT pg_catalog.{f}(1)",
+        "SELECT PG_CATALOG . {F}(1)",
+        'SELECT "{f}"(1)',
+        'SELECT "pg_catalog"."{f}"(1)',
+        "SELECT {f}   (1)",
+        "SELECT {f}\n(1)",
+        "SELECT {f}/* hueco */(1)",
+        "SELECT * FROM {f}(1) AS x",
+        "SELECT 1 WHERE {f}(1) IS NOT NULL;",
+    ],
+    ids=[
+        "minusculas",
+        "mayusculas",
+        "con_schema",
+        "con_schema_y_espacios",
+        "entre_comillas",
+        "schema_y_nombre_entre_comillas",
+        "espacios_antes_del_parentesis",
+        "salto_antes_del_parentesis",
+        "comentario_antes_del_parentesis",
+        "en_from",
+        "en_where",
+    ],
+)
+def test_funcion_vetada_rechazada(nombre: str, plantilla: str) -> None:
+    err = _vetada(plantilla.format(f=nombre, F=nombre.upper()))
+    assert nombre in err.mensaje
+    assert "MCP" in (err.pista or "")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 'pg_advisory_lock(1)'",
+        "SELECT E'\\'set_config(1)'",
+        "SELECT 'a''pg_notify(1)'",
+        "SELECT $$pg_advisory_lock(1)$$",
+        "SELECT $t$ query_to_xml('x') $t$",
+        "SELECT 1 -- pg_advisory_lock(1)",
+        "SELECT 1 /* set_config( /* anidado */ pg_notify( */",
+        "SELECT 1 AS pg_advisory",
+        "SELECT mi_set_config FROM t",
+        "SELECT 1 FROM t WHERE x = 'pg_cancel_backend'",
+        "SELECT U&'pg_notify'",
+    ],
+)
+def test_nombre_en_literal_o_comentario_no_se_rechaza(sql: str) -> None:
+    assert normalizar_sql(sql) == sql
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # Una comilla doblada dentro de E'…' no saca del modo con escapes: para
+        # Postgres el literal es «a''\'» y la llamada es código.
+        "SELECT E'a''\\'' , pg_advisory_lock(1) --'",
+        # Un comentario «--» acaba también en un retorno de carro.
+        "SELECT 1 --x\r, pg_advisory_lock(1)\n",
+        # Un literal que continúa en la línea siguiente sigue en su modo (E'…').
+        "SELECT E'a'\n'\\'' , pg_advisory_lock(1) --'",
+        "SELECT E'a' -- c\n  '\\'' , pg_advisory_lock(1) --'",
+        # Etiqueta de dólar con caracteres no ASCII (Postgres acepta cualquiera).
+        "SELECT $\U0001f600$'$\U0001f600$, pg_advisory_lock(1), 'x'",
+    ],
+    ids=[
+        "comilla_doblada_en_E",
+        "comentario_hasta_retorno_de_carro",
+        "continuacion_de_E",
+        "continuacion_con_comentario",
+        "dolar_no_ascii",
+    ],
+)
+def test_lexico_como_postgres_no_deja_escondite(sql: str) -> None:
+    """Casos en que un léxico ingenuo ve un literal donde Postgres ve código."""
+    assert "pg_advisory_lock" in _vetada(sql).mensaje
+
+
+def test_identificador_unicode_rechazado() -> None:
+    """``U&"…"`` admite escapes (``\\0070`` = ``p``): no se descifran, se rechazan."""
+    err = _vetada('SELECT U&"\\0070g_advisory_lock"(1)')
+    assert 'U&"' in err.mensaje
+
+
+@pytest.mark.parametrize(
+    ("entrada", "esperado"),
+    [
+        ("SELECT 1; --x\r", "SELECT 1"),
+        ("SELECT E'a''\\';' ;", "SELECT E'a''\\';'"),
+        ("SELECT 'a'\n';' ;", "SELECT 'a'\n';'"),
+    ],
+)
+def test_normalizar_con_lexico_de_postgres(entrada: str, esperado: str) -> None:
+    assert normalizar_sql(entrada) == esperado
+
+
+def test_serializar_decimal_enorme_no_da_infinity() -> None:
+    """``float(Decimal('1e400'))`` es ``inf``: el JSON resultante no sería válido."""
+    import json
+
+    valor = serializar_valor(Decimal("1e400"))
+    assert valor == "1E+400"
+    json.dumps(valor, allow_nan=False)
