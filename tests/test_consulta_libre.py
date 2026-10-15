@@ -12,7 +12,9 @@ import pytest
 
 from db.consulta_libre import (
     MAX_CHARS_SQL,
+    PISTAS,
     ErrorConsulta,
+    ejemplo_de,
     envolver,
     normalizar_sql,
     serializar_valor,
@@ -154,3 +156,24 @@ def _tiempo(sql: str) -> float:
 )
 def test_normalizar_es_lineal(sql: str) -> None:
     assert _tiempo(sql) < 0.5
+
+
+def test_pista_de_tabla_inexistente_nombra_una_tool_que_existe() -> None:
+    assert "describir_esquema" in PISTAS["42P01"]
+    assert "listar_tablas" not in " ".join(PISTAS.values())
+
+
+@pytest.mark.parametrize("tabla", ["users\n", "users ", "Users", 'a"b', ""])
+def test_ejemplo_de_rechaza_identificadores_no_estrictos(
+    tabla: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``fullmatch``: un salto de línea final no se cuela como identificador válido."""
+
+    def _no_debe_ejecutar(*_a: object, **_k: object) -> None:
+        raise AssertionError("el identificador no válido llegó a ejecutarse")
+
+    monkeypatch.setattr("db.consulta_libre.ejecutar_select", _no_debe_ejecutar)
+    with pytest.raises(ErrorConsulta, match="Identificador no válido"):
+        ejemplo_de(tabla, ["id"])
+    with pytest.raises(ErrorConsulta, match="Identificador no válido"):
+        ejemplo_de("users", [tabla])

@@ -11,7 +11,7 @@ Fuente única de la política. De este módulo salen tres cosas, y solo estas:
 
 * el SQL del rol (``scripts/setup_pg_role_mcp.sql``, generado por
   ``scripts/gen_mcp_grants.py``);
-* la lista de tablas que ``listar_tablas``/``describir_tabla`` pueden mostrar;
+* la lista de tablas que ``describir_esquema``/``describir_tabla`` pueden mostrar;
 * el ratchet de ``tests/test_mcp_catalogo_integration.py``: toda tabla nueva
   de una migración obliga a clasificarla aquí, y toda columna con nombre de
   secreto obliga a excluirla o a dejar escrito por qué no lo es.

@@ -79,7 +79,7 @@ _POOL_TIMEOUT = 10.0
 
 PISTAS: Mapping[str, str] = MappingProxyType(
     {
-        "42P01": "La tabla no existe o no es visible. Usa listar_tablas para ver las disponibles.",
+        "42P01": "La tabla no existe o no es visible. Usa describir_esquema para ver las disponibles.",
         "42703": "La columna no existe. Usa describir_tabla para ver las columnas de la tabla.",
         "57014": (
             "La consulta superó el tiempo máximo. Acótala con WHERE/LIMIT, "
@@ -547,7 +547,7 @@ def ejemplo_de(tabla: str, columnas: Sequence[str], *, n: int = 3) -> ResultadoC
     columnas reales del esquema), que se citan con comillas dobles: ningún
     carácter de usuario llega al SQL. ``n`` es un entero fijado por el código.
     """
-    if not columnas or not all(_IDENT_SEGURO.match(i) for i in (tabla, *columnas)):
+    if not columnas or not all(_IDENT_SEGURO.fullmatch(i) for i in (tabla, *columnas)):
         raise ErrorConsulta(None, "Identificador no válido para el ejemplo.", None)
     lista = ", ".join(f'"{c}"' for c in columnas)
     sql = f'SELECT {lista} FROM "{tabla}" LIMIT {int(n)}'
