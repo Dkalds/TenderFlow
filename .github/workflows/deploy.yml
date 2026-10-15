@@ -13,8 +13,9 @@ name: Deploy a producción (Render)
 # el resultado en tres pasos (healthcheck, alineación de schema, smoke).
 #
 # Alcance exacto de «único»: gobierna `tenderflow-api`, que es el servicio que
-# atiende internet, y `tenderflow-worker` (la cola y, con ADR-033, el plano de
-# cron), los dos con `autoDeploy: false` en `render.yaml`. El worker se despliega
+# atiende internet, `tenderflow-worker` (la cola y, con ADR-033, el plano de
+# cron) y `tenderflow-mcp` (el servidor MCP interno, ADR-036), los tres con
+# `autoDeploy: false` en `render.yaml`. El worker se despliega
 # del mismo commit y solo cuando la API ha pasado su verificación: ejecuta la
 # ingesta contra la misma BD, y dejarlo en otra generación del código —que es lo
 # que pasaba mientras este workflow solo conocía la API— es tener la pasada
@@ -40,6 +41,12 @@ name: Deploy a producción (Render)
 #   - secrets.RENDER_DEPLOY_HOOK_URL  (Render → tenderflow-api → Settings →
 #     Deploy Hook). Es una URL con token: va como secret, nunca como variable.
 #   - secrets.RENDER_WORKER_DEPLOY_HOOK_URL  (lo mismo en tenderflow-worker).
+#   - secrets.RENDER_MCP_DEPLOY_HOOK_URL  (lo mismo en tenderflow-mcp). A
+#     diferencia de los otros dos es OPCIONAL: sin él el paso se salta con un
+#     aviso, para que este workflow no se rompa antes de que el servicio exista
+#     (docs/runbooks/mcp-interno.md, paso 3). Cuando exista, defínelo: un MCP que
+#     se queda atrás en otra generación del código que la BD es el mismo riesgo
+#     que el del worker.
 #   - vars.SMOKE_BASE_URL / secrets.SMOKE_API_KEY (los mismos que usa smoke.yml).
 
 on:
@@ -187,6 +194,34 @@ jobs:
           fi
           echo "Deploy del worker encolado (HTTP $codigo). Su resultado se ve en Render → tenderflow-worker → Events."
 
+      # El servidor MCP, igual que el worker: mismo commit, tras el visto bueno
+      # de la API, sin sondeo propio (su `/healthz` no dice qué commit sirve y la
+      # versión vieja sigue respondiendo mientras Render construye; si la nueva
+      # no arranca, Render la descarta — Render → tenderflow-mcp → Events).
+      #
+      # Opcional: mientras el servicio no exista no hay hook, y esto no puede
+      # tumbar el despliegue de la API ni del worker. Un hook definido pero
+      # rechazado por Render SÍ falla el paso: eso ya es un servicio que existe y
+      # se queda atrás.
+      - name: Disparar deploy del MCP
+        id: mcp
+        env:
+          MCP_DEPLOY_HOOK: ${{ secrets.RENDER_MCP_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MCP_DEPLOY_HOOK" ]; then
+            echo "::notice title=MCP sin desplegar::No hay secret RENDER_MCP_DEPLOY_HOOK_URL: se omite el deploy de tenderflow-mcp (normal mientras el servicio no exista)."
+            echo "omitido=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          codigo=$(curl -sS -o /tmp/deploy-mcp.json -w "%{http_code}" -X POST "$MCP_DEPLOY_HOOK")
+          if [ "$codigo" -ge 300 ]; then
+            echo "::error title=Deploy del MCP rechazado::Render devolvió HTTP $codigo"
+            cat /tmp/deploy-mcp.json || true
+            exit 1
+          fi
+          echo "Deploy del MCP encolado (HTTP $codigo). Su resultado se ve en Render → tenderflow-mcp → Events."
+
       # Todo lo que viene de `inputs`, `job` o `github` viaja por `env:` y se lee
       # como variable de shell. Interpolar `${{ ... }}` dentro de un bloque
       # `run:` es el patrón que Semgrep marca como
@@ -202,6 +237,8 @@ jobs:
           SKIP_SMOKE: ${{ inputs.skip_smoke }}
           JOB_STATUS: ${{ job.status }}
           WORKER_OUTCOME: ${{ steps.worker.outcome }}
+          MCP_OUTCOME: ${{ steps.mcp.outcome }}
+          MCP_OMITIDO: ${{ steps.mcp.outputs.omitido }}
         run: |
           if [ "$SKIP_SMOKE" = "true" ]; then
             verificacion="omitida (skip_smoke)"
@@ -213,11 +250,23 @@ jobs:
             failure) worker="Render rechazó el deploy hook" ;;
             *) worker="no desplegado: un paso anterior falló, y sigue en la versión previa" ;;
           esac
+          case "$MCP_OUTCOME" in
+            success)
+              if [ "$MCP_OMITIDO" = "true" ]; then
+                mcp="omitido: no hay secret RENDER_MCP_DEPLOY_HOOK_URL"
+              else
+                mcp="deploy encolado; su resultado, en Render → tenderflow-mcp → Events"
+              fi
+              ;;
+            failure) mcp="Render rechazó el deploy hook" ;;
+            *) mcp="no desplegado: un paso anterior falló, y sigue en la versión previa" ;;
+          esac
           {
             echo "### Deploy a producción"
             echo ""
             echo "- Commit: \`$COMMIT_SHA\`"
             echo "- Verificación posterior: $verificacion"
             echo "- Worker: $worker"
+            echo "- MCP: $mcp"
             echo "- Resultado: $JOB_STATUS"
           } >> "$GITHUB_STEP_SUMMARY"

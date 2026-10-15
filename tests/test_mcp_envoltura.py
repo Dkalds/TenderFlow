@@ -373,6 +373,9 @@ def test_config_redirect_de_google_y_https_en_prod(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("MCP_PUBLIC_URL", "https://mcp.example.com/")
     monkeypatch.setenv("MCP_GOOGLE_REDIRECT_URI", "https://mcp.example.com/oauth/google/callback")
     monkeypatch.setattr(settings, "ENV", "prod")
+    # Sin la clave de la cadena de auditoría, el MCP respondería sin dejar rastro.
+    assert validar_configuracion() == ["AUDIT_HMAC_KEY"]
+    monkeypatch.setattr(settings, "AUDIT_HMAC_KEY", SecretStr("a" * 40))
     assert validar_configuracion() == []
 
     monkeypatch.setenv("MCP_GOOGLE_REDIRECT_URI", "https://otro.example.com/callback")

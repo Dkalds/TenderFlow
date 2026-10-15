@@ -335,7 +335,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["api", "db", "scraper", "scheduler", "services", "shared", "observability", "config", "llm"]
+source = ["api", "db", "scraper", "scheduler", "services", "shared", "observability", "config", "llm", "mcp_server"]
 omit = [
     "tests/*",
     "*/__pycache__/*",
@@ -364,7 +364,7 @@ exclude_lines = [
 
 [tool.bandit]
 # Configuración para el hook de pre-commit: bandit -c pyproject.toml -r
-targets = ["api", "db", "scraper", "scheduler", "shared", "config"]
+targets = ["api", "db", "scraper", "scheduler", "shared", "config", "mcp_server"]
 skips = [
     "B101",  # assert — cubierto por ruff S101 ya ignorado en tests
     "B603",  # subprocess sin shell — permitido en scheduler

@@ -338,9 +338,9 @@ docker-build:  ## Build all Docker images
 	docker compose build
 
 security:  ## Run security scanners locally (bandit + semgrep)
-	bandit -r api db scraper scheduler services shared config observability llm -q
+	bandit -r api db scraper scheduler services shared config observability llm mcp_server -q
 	@echo "bandit OK"
-	semgrep --config auto --quiet api db scraper scheduler services shared config observability llm || true
+	semgrep --config auto --quiet api db scraper scheduler services shared config observability llm mcp_server || true
 	@echo "semgrep done"
 
 coverage-html:  ## Generate HTML coverage report

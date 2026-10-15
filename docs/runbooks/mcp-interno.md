@@ -1,0 +1,303 @@
+# Runbook: MCP interno de TenderFlow
+
+Servidor MCP de **solo lectura** para que el equipo (admins) pregunte a la base
+de datos desde Claude u otro cliente MCP, en cualquier dispositivo. Decisión y
+alternativas: [ADR-036](../adr/ADR-036-acceso-interno-por-mcp.md). Diseño:
+[`docs/superpowers/specs/2026-10-15-mcp-interno-design.md`](../superpowers/specs/2026-10-15-mcp-interno-design.md).
+
+| Qué | Valor |
+|---|---|
+| Servicio | Render, `tenderflow-mcp` (`render.yaml`), `python -m mcp_server` |
+| Endpoint MCP | `https://<host>/mcp` |
+| Health | `GET /healthz` → `{"ok": true}` |
+| Callback de Google | `https://<host>/oauth/google/callback` |
+| Rol de BD de lectura | `tenderflow_mcp` (`scripts/setup_pg_role_mcp.sql`, generado) |
+| Quién entra | `users.is_admin = 1`, sin `deactivated_at`, y la allowlist de login (`services.access_grants.acceso_oauth_permitido`) |
+| Despliegue | `.github/workflows/deploy.yml`, secret opcional `RENDER_MCP_DEPLOY_HOOK_URL` |
+
+> **Estado a 2026-10-15: el servicio no existe todavía.** El código, el
+> Blueprint y el workflow están listos y probados en proceso, pero nunca se ha
+> arrancado contra Render, Supabase ni Google. Lo que nadie ha comprobado está en
+> la lista de la sección 6 (primera prueba manual).
+
+---
+
+## 1. Alta (cuatro pasos manuales, del dueño del proyecto)
+
+Orden obligatorio: el paso 1 exige las migraciones aplicadas; el paso 3 necesita
+el host de Render, que solo se conoce al crear el servicio; el paso 2 necesita
+ese host; el 4 es por persona y va al final.
+
+### Paso 1 — Crear el rol de solo lectura en Supabase
+
+1. Migraciones al día (el script aborta si falta alguna tabla visible del
+   catálogo): Actions → *Apply DB migrations (alembic)* con `mode=apply`, o en
+   local `alembic upgrade head` con el rol admin.
+2. Generar una contraseña fuerte y sustituir el placeholder del fichero
+   (**no lo comitees con la contraseña puesta**; hazlo en una copia temporal):
+
+   ```bash
+   PASS=$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-32)
+   sed "s/<GENERAR_PASSWORD_FUERTE>/$PASS/" scripts/setup_pg_role_mcp.sql > /tmp/setup_mcp.sql
+   ```
+
+3. Aplicarlo con el rol admin (dueño del schema), de forma atómica; sin
+   `--single-transaction` un error a medias deja el rol sin permisos:
+
+   ```bash
+   psql -v ON_ERROR_STOP=1 --single-transaction "$DATABASE_ADMIN_URL" -f /tmp/setup_mcp.sql
+   shred -u /tmp/setup_mcp.sql   # o rm: contiene la contraseña
+   ```
+
+   Es idempotente, pero la contraseña solo se fija al **crear** el rol; para
+   cambiarla después, ver la sección 3.
+4. Construir `MCP_DATABASE_URL` con el **session pooler de Supavisor**, donde
+   el usuario lleva el ref del proyecto (`tenderflow_mcp.<project-ref>`):
+
+   ```
+   postgresql://tenderflow_mcp.<project-ref>:<PASS>@<host-del-pooler>:5432/postgres?sslmode=verify-full
+   ```
+
+   Con `verify-full` hace falta `DATABASE_SSL_ROOT_CERT` en el servicio (la CA
+   de Supabase, `db/certs/README.md`), como en la API.
+5. Comprobar con ese DSN (desde tu máquina) que el rol hace lo que debe:
+
+   ```bash
+   psql "$MCP_DATABASE_URL" -c "SELECT count(*) FROM licitaciones"      # OK
+   psql "$MCP_DATABASE_URL" -c "SELECT * FROM api_keys LIMIT 1"         # ERROR 42501
+   psql "$MCP_DATABASE_URL" -c "CREATE TABLE x(a int)"                  # ERROR (permiso / read-only)
+   ```
+
+### Paso 2 — Redirect URI en Google Cloud
+
+Google Cloud Console → APIs y servicios → Credenciales → el **mismo** cliente
+OAuth que usa la API (`GOOGLE_CLIENT_ID`) → *URI de redireccionamiento
+autorizados* → añadir exactamente:
+
+```
+https://<host>/oauth/google/callback
+```
+
+Sin barra final. Si no coincide al carácter con `MCP_GOOGLE_REDIRECT_URI`,
+Google responde `redirect_uri_mismatch` en el login.
+
+### Paso 3 — Crear el servicio en Render
+
+1. Dashboard → *New → Blueprint* sobre este repo (o, si el Blueprint ya está
+   vinculado, *Sync*): crea `tenderflow-mcp` desde `render.yaml`. Los valores
+   con `sync: false` se piden en el alta.
+2. Variables (todas en el servicio `tenderflow-mcp`):
+
+   | Variable | Valor |
+   |---|---|
+   | `DATABASE_URL` | La misma que `tenderflow-api` (rol de la app: tablas OAuth, `users`, auditoría) |
+   | `DATABASE_SSL_ROOT_CERT` | La misma que la API |
+   | `MCP_DATABASE_URL` | El DSN del paso 1 |
+   | `MCP_PUBLIC_URL` | `https://<host>`, **sin barra final y sin `:443`** |
+   | `MCP_GOOGLE_REDIRECT_URI` | `https://<host>/oauth/google/callback` (exactamente `MCP_PUBLIC_URL` + `/oauth/google/callback`) |
+   | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Los mismos que la API |
+   | `SIGNING_KEY` | La misma que la API |
+   | `REDIS_URL`, `REDIS_PASSWORD` | Los mismos que la API (cuota por usuario y nonce de `state`) |
+   | `AUDIT_HMAC_KEY` | **La misma que la API.** Otra clave rompe la verificación de la cadena de auditoría; vacía, el MCP no arranca en prod |
+   | `MCP_REDIRECT_URIS_EXTRA` | Opcional, ver paso 4 (ChatGPT) |
+
+   El host `*.onrender.com` solo existe tras crear el servicio: la primera
+   creación arrancará y **abortará** (a propósito) por `MCP_PUBLIC_URL` y
+   `MCP_GOOGLE_REDIRECT_URI` vacías. Cópialo de la pestaña del servicio, rellena
+   esas dos variables, haz el paso 2 y relanza el deploy.
+3. Comprobar: `curl -sS https://<host>/healthz` → `{"ok":true}`;
+   `curl -sS -i https://<host>/mcp` → `401` con `WWW-Authenticate: Bearer
+   resource_metadata=…`.
+4. **Deploy hook para CI:** Render → `tenderflow-mcp` → Settings → Deploy Hook;
+   copiar la URL a un secret del repo con nombre `RENDER_MCP_DEPLOY_HOOK_URL`.
+   Mientras no exista, `deploy.yml` omite el MCP con un aviso y no falla.
+
+### Paso 4 — Cada persona añade el conector
+
+- **claude.ai** (web, escritorio y móvil, una vez): Configuración → Conectores
+  → *Añadir conector personalizado* → `https://<host>/mcp`. Pide el login de
+  Google; solo pasa un admin activo. Aparece en todos sus dispositivos.
+- **ChatGPT** (donde el plan permita conectores personalizados): la misma URL.
+  ChatGPT registra un callback propio **por app**,
+  `https://chatgpt.com/connector/oauth/<callback_id>`, que el servidor no admite
+  por defecto. Al primer intento el registro falla; copia el `callback_id` que
+  muestra ChatGPT, añade esa URI exacta a `MCP_REDIRECT_URIS_EXTRA` en Render
+  (varias, separadas por comas), redespliega y reintenta. Los callbacks de
+  Claude (`claude.ai`, `claude.com`) y el loopback (`localhost`, `127.0.0.1`,
+  para Claude Code y el Inspector) ya están incorporados.
+
+---
+
+## 2. Revocar el acceso a una persona
+
+**Cortar sesiones ya abiertas** (pierde el portátil, cierra todo ahora):
+
+```bash
+# Desde la raíz del repo, con el venv activo (la forma `python scripts/…` no
+# encuentra los paquetes). APP_PROFILE=worker evita exigir las variables de la API.
+ENV=prod APP_PROFILE=worker DATABASE_URL="$DATABASE_URL" AUDIT_HMAC_KEY="$AUDIT_HMAC_KEY" \
+  python -m scripts.mcp_revocar --email alguien@empresa.es
+# → Revocados N tokens de alguien@empresa.es   (exit 0; un correo desconocido sale con 1)
+```
+
+Cierra todos sus tokens vivos (access, refresh y códigos sin canjear). Deja
+`mcp.revocacion_manual` en `audit_log`. Se ejecuta contra la BD de producción
+con el rol de la app y la clave de auditoría de producción; sin `AUDIT_HMAC_KEY`
+la revocación se hace, pero la fila de auditoría **no se escribe**. Nunca con
+`ENV=dev` contra esa base: firmaría la auditoría con la clave de desarrollo.
+
+**Esto no impide que vuelva a entrar**: si sigue siendo admin y activo, puede
+repetir el login de Google y obtener tokens nuevos. Para quitarle el acceso del
+todo, además:
+
+- quítale `is_admin` (o desactiva la cuenta, `deactivated_at`); el MCP lo
+  re-comprueba en cada petición con una caché de 60 s, así que en ≤ 1 min sus
+  tokens dejan de valer aunque no se hubieran revocado; y/o
+- retira su acceso en la allowlist / `access_grants`.
+
+Orden recomendado si hay urgencia: primero `is_admin`/desactivar, luego
+`mcp_revocar.py`.
+
+---
+
+## 3. Rotar la contraseña del rol `tenderflow_mcp`
+
+Re-ejecutar `setup_pg_role_mcp.sql` **no** cambia la contraseña (el
+`CREATE ROLE` solo corre si el rol no existe). Se cambia a mano:
+
+```bash
+PASS=$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-32)
+psql "$DATABASE_ADMIN_URL" -c "ALTER ROLE tenderflow_mcp PASSWORD '$PASS'"
+```
+
+Luego, **de inmediato** (entre ambos pasos el MCP no consulta datos):
+actualizar `MCP_DATABASE_URL` en Render con la contraseña nueva (si la
+contiene caracteres especiales, codificarla en la URL) y guardar para que
+redespliegue. Verificar con `consultar_sql` desde un cliente y con
+`/healthz`. Las conexiones abiertas del pool con la contraseña vieja siguen
+vivas hasta que el reinicio las cierre; no hace falta cortarlas.
+
+---
+
+## 4. Diagnóstico
+
+Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
+(`mcp_server`); los de acceso de uvicorn, en texto plano (ver sección 7).
+
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| El servicio no arranca: `Configuración del MCP incompleta o inválida: …` | Falta (o está mal formada) una variable. El mensaje lista cuáles | Corregir en Render. Incluye `AUDIT_HMAC_KEY` y que `MCP_GOOGLE_REDIRECT_URI` sea exactamente `MCP_PUBLIC_URL` + `/oauth/google/callback` |
+| El cliente da vueltas pidiendo login (**401 en bucle**) | (a) la persona ya no es admin/activa o no pasa la allowlist (`mcp.login_denegado` en auditoría con `motivo`); (b) el cliente tiene un token de otro `MCP_PUBLIC_URL`/servicio; (c) `SIGNING_KEY` cambió y las peticiones pendientes (10 min) ya no verifican | Mirar `mcp.login_denegado`. Quitar y volver a añadir el conector. Si cambió `SIGNING_KEY`, solo afecta a los logins en curso |
+| `redirect_uri_mismatch` en Google | El paso 2 no coincide al carácter con `MCP_GOOGLE_REDIRECT_URI` | Corregir en Google Cloud o en la variable |
+| El registro del cliente falla (`invalid_redirect_uri` en `/register`) | Un cliente con callback propio (ChatGPT) | Añadirlo a `MCP_REDIRECT_URIS_EXTRA` (paso 4) |
+| **421 Misdirected Request** en `/mcp` | El `Host` de la petición no coincide con `MCP_PUBLIC_URL`. Típico: `MCP_PUBLIC_URL` escrito con `:443` explícito (`https://host:443`), o llamar por otro dominio | Poner `MCP_PUBLIC_URL=https://host` sin puerto y sin barra final; usar el mismo host en el conector |
+| **403** con `Origin` en `/mcp` | Petición de navegador desde un origen que no es el del propio servicio, claude.ai/claude.com, chatgpt.com o localhost | Si es un cliente legítimo nuevo, requiere un cambio de código en `mcp_server/servidor.py::_ORIGENES_CLIENTES` |
+| `consultar_sql` devuelve **`42501`** inesperado | La tabla/columna no está concedida al rol: o es oculta a propósito (`api_keys`, `sessions`, `users.password_hash`…), o es nueva y falta clasificarla en `mcp_server/catalogo.py` y regenerar | Si es nueva: clasificar, `python scripts/gen_mcp_grants.py` y reaplicar el SQL (paso 1.3; la contraseña ya existe, el script no la toca) |
+| **`57014`** (timeout) | Consulta > `statement_timeout = 15s` del rol | Acotar por fecha o agregar antes; no se sube el límite desde el cliente |
+| `25006` (read-only) | Se intentó escribir; está bloqueado a propósito | — |
+| Error de conexión / agotado el pool | El rol tiene `CONNECTION LIMIT 5` y el pool llega a 5 | Esperar; si es continuo, mirar `pg_stat_activity` por `usename = 'tenderflow_mcp'` y consultas colgadas |
+| Llamadas con error de cuota | Rate limit por usuario: 60/min, 1 000/día | El mensaje dice cuánto esperar |
+| Las llamadas funcionan pero **no hay filas `mcp.*` en `audit_log`** | `AUDIT_HMAC_KEY` ausente o distinta (`log_action` no lanza: `audit_log_persist_failed` en logs) | Poner la clave de la API |
+| Render marca el deploy como fallido tras un health check | `/healthz` responde 421/404, o el arranque abortó por configuración | Ver los logs del arranque; ver sección 6 sobre el `Host` del health check |
+
+---
+
+## 5. Auditoría
+
+Cada llamada a una tool y cada evento de OAuth escribe en `audit_log`
+(`session_hash = 'mcp'`, `action` empieza por `mcp.`). `created_at` es texto
+ISO; `detail` es JSON en texto. Acciones: `mcp.<tool>` (por llamada),
+`mcp.login_ok`, `mcp.login_denegado`, `mcp.token_emitido`, `mcp.token_rotado`,
+`mcp.token_revocado`, `mcp.refresh_reutilizado`, `mcp.codigo_reutilizado`,
+`mcp.revocacion_manual`.
+
+```sql
+-- Qué se ha preguntado, por quién y cuándo (últimas 50)
+SELECT a.created_at, u.email, a.action,
+       a.detail::json->'args'->>'sql' AS sql,
+       a.detail::json->>'n_filas'     AS n_filas,
+       a.detail::json->>'duracion_ms' AS ms,
+       a.detail::json->>'error'       AS error
+FROM audit_log a
+LEFT JOIN users u ON u.id = a.user_id
+WHERE a.action LIKE 'mcp.%'
+ORDER BY a.id DESC
+LIMIT 50;
+
+-- Actividad por persona y por tool en los últimos 7 días
+SELECT u.email, a.action, count(*) AS llamadas
+FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+WHERE a.action LIKE 'mcp.%' AND a.created_at >= to_char(now() - interval '7 days', 'YYYY-MM-DD')
+GROUP BY 1, 2 ORDER BY 3 DESC;
+
+-- Logins denegados y reutilización de tokens (señales de alarma)
+SELECT a.created_at, a.action, a.detail
+FROM audit_log a
+WHERE a.action IN ('mcp.login_denegado', 'mcp.refresh_reutilizado', 'mcp.codigo_reutilizado')
+ORDER BY a.id DESC LIMIT 50;
+```
+
+Las consultas de auditoría se hacen con el rol de la app o el admin: `audit_log`
+no es visible para `tenderflow_mcp`.
+
+---
+
+## 6. Primera prueba manual (checklist, nadie la ha hecho aún)
+
+Hasta marcar esto, el MCP está **sin verificar de punta a punta**. Se hace una
+vez, tras el alta (pasos 1–3):
+
+- [ ] `curl https://<host>/healthz` → 200 `{"ok":true}`, y el health check de
+      Render lo da por bueno. Si Render devuelve 421, el validador de `Host`
+      está alcanzando la ruta: anotarlo y abrir un cambio de código.
+- [ ] `curl -i https://<host>/mcp` → 401 con `WWW-Authenticate` que apunta a
+      `/.well-known/oauth-protected-resource`.
+- [ ] **MCP Inspector** contra la URL desplegada:
+      `npx @modelcontextprotocol/inspector` → transporte *Streamable HTTP* →
+      `https://<host>/mcp` → *OAuth*. El loopback del Inspector ya está
+      admitido.
+- [ ] **Login completo con Google** con un admin real: redirige a Google, vuelve
+      por `/oauth/google/callback`, el Inspector queda conectado. Con un usuario
+      **no admin** el login debe terminar en error y dejar
+      `mcp.login_denegado`.
+- [ ] `tools/list` devuelve las seis: `describir_esquema`, `describir_tabla`,
+      `consultar_sql`, `buscar_licitaciones`, `buscar_en_pliegos`,
+      `ficha_licitacion`.
+- [ ] Un `consultar_sql` real (`SELECT count(*) FROM licitaciones`) devuelve
+      filas, y aparece su fila `mcp.consultar_sql` en `audit_log` con el SQL.
+- [ ] Un `consultar_sql` contra `api_keys` devuelve el error `42501` con su
+      pista, sin tumbar el servidor.
+- [ ] **El conector real de claude.ai funciona.** Esto es lo único que el
+      Inspector no prueba: los metadatos OAuth del SDK anuncian
+      `token_endpoint_auth_methods_supported = ["client_secret_post",
+      "client_secret_basic"]` y **no** `none`, aunque `/register` acepta clientes
+      públicos. Si claude.ai registra un cliente público y el canje de `/token`
+      falla, es esto; hay que decidirlo con el conector delante (ver
+      seguimientos).
+- [ ] Probar `mcp_revocar.py` con la cuenta de prueba: el siguiente refresh del
+      cliente falla y vuelve a pedir login.
+- [ ] Anotar aquí la fecha y lo que difiera del runbook.
+
+---
+
+## 7. Seguimientos conocidos
+
+Entradas equivalentes en [`docs/IMPROVEMENT_BACKLOG.md`](../IMPROVEMENT_BACKLOG.md):
+
+- **No hay purga de filas caducadas o revocadas** en `mcp_oauth_tokens`. Crece
+  lento (tres personas) y hay un índice en `expires_at` pensado para ello. Un
+  job que borre filas con `expires_at` muy pasado es el siguiente paso.
+- **El `client_secret` del DCR se guarda legible** en
+  `mcp_oauth_clients.datos`: el SDK lo compara en claro. Queda oculto para el
+  rol `tenderflow_mcp` (la tabla es `OCULTA` en el catálogo), pero un volcado de
+  la BD con el rol de la app lo incluye. Opciones: clientes públicos
+  (`token_endpoint_auth_method = none`, ligado a la comprobación de arriba) o
+  guardarlo cifrado/hasheado.
+- **Los logs de acceso de uvicorn son texto plano** (no JSON) y **incluyen la
+  query string del callback de OAuth** (`code` y `state`). El `code` ya está
+  gastado cuando se escribe (un solo uso, 60 s), pero conviene `access_log=False`
+  o un filtro. Los logs propios del MCP sí van en JSON.
+- El SDK registra el texto de los errores de tool (puede contener literales
+  SQL) a nivel INFO en `mcp.server.mcpserver.server`.
+- El CI no construye la variante `requirements-mcp.txt` de la imagen
+  (`ci.yml::docker-build`): el primer build real será el de Render.

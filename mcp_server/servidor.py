@@ -106,7 +106,8 @@ def validar_configuracion() -> list[str]:
     Detrás, si están: ``MCP_GOOGLE_REDIRECT_URI`` distinto de
     ``{MCP_PUBLIC_URL}/oauth/google/callback`` (la ruta que monta el servidor;
     Google mandaría el login a otro sitio) y, en ``ENV=prod``, un
-    ``MCP_PUBLIC_URL`` que no es ``https://`` (issuer OAuth en claro).
+    ``MCP_PUBLIC_URL`` que no es ``https://`` (issuer OAuth en claro) y un
+    ``AUDIT_HMAC_KEY`` vacío (sin ella la auditoría no escribiría).
     """
     valores = {
         "MCP_DATABASE_URL": mcp_database_url(),
@@ -123,6 +124,10 @@ def validar_configuracion() -> list[str]:
         problemas.append(f"MCP_GOOGLE_REDIRECT_URI (debe ser {publica}{RUTA_CALLBACK_GOOGLE})")
     if publica and settings.ENV == "prod" and urlsplit(publica).scheme != "https":
         problemas.append("MCP_PUBLIC_URL (debe ser https:// en prod)")
+    # Sin la clave de la cadena `log_action` no lanza pero tampoco escribe: el MCP
+    # respondería sin dejar rastro. En dev `db.audit` usa una clave de desarrollo.
+    if settings.ENV == "prod" and not settings.AUDIT_HMAC_KEY.get_secret_value().strip():
+        problemas.append("AUDIT_HMAC_KEY")
     return problemas
 
 

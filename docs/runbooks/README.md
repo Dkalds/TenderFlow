@@ -17,6 +17,7 @@ servicio desplegado — son workflows de GitHub Actions
 | Web frontend | Vercel, proyecto `tenderflow` | `GET /` | Vercel → *Runtime Logs* |
 | Scheduler / scraper | GitHub Actions — `scrape-daily.yml`, cada 4 h | `scheduler/healthcheck.py`; `healthcheck.yml` cada 6 h | `gh run list --workflow=<wf>.yml`, luego `gh run view <id> --log` |
 | DB | Supabase Postgres | `python scripts/doctor.py` | Supabase → *Logs* |
+| MCP interno (solo lectura) | Render, blueprint `tenderflow-mcp` | `GET /healthz` | Render → *Logs* |
 | Prometheus | Render, blueprint `tenderflow-prometheus` (pserv) | — | Render → *Logs* |
 | Grafana | Render, blueprint `tenderflow-grafana` | `GET /api/health` | Render → *Logs* |
 
@@ -50,6 +51,7 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 
 - **Fuentes opcionales** (encender PSCP, TACRC completo, agregadas y contratos menores de PLACSP; respaldo ZIP del ATOM) — [fuentes-opcionales.md](fuentes-opcionales.md)
 - **Conceder acceso** a quien lo solicita — [conceder-acceso.md](conceder-acceso.md)
+- **MCP interno** (alta, revocación, rotación del rol, diagnóstico, auditoría; ADR-036) — [mcp-interno.md](mcp-interno.md)
 - **Correo transaccional** (ESP, dominio, rotación de clave) — [correo-transaccional.md](correo-transaccional.md)
 - **Alertas y receptor de guardia** — [observability-alerts.md](observability-alerts.md)
 - **Despachador de eventos** (outbox, ADR-027) — [despachador-eventos.md](despachador-eventos.md)
