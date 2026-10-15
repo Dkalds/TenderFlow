@@ -1,8 +1,9 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ProfileSkeleton } from "@/components/competitors/company-profile-esqueleto";
 import { SpaceShellEsqueleto, VistaEsqueleto } from "@/components/layout/space-shell-esqueleto";
+import { EmpresasEsqueleto } from "./_components/empresas-esqueleto";
 
 /**
  * Esqueleto de ruta de Competencia.
@@ -15,12 +16,20 @@ import { SpaceShellEsqueleto, VistaEsqueleto } from "@/components/layout/space-s
  * vista, y cualquier hija la forma de la ficha, la misma que pinta
  * `CompanyProfile` mientras llega su dato.
  *
- * Caía en el genérico de `(dashboard)/loading.tsx` —un título y cuatro
- * tarjetas de KPI—, que no es la forma de ninguna de las dos.
+ * Y mira la vista: Empresas y Revisión (el antiguo espacio Empresas) van a
+ * sangre, con la columna del maestro, y su esqueleto también.
  */
 export default function CompetenciaLoading() {
   const pathname = usePathname();
+  const vista = useSearchParams()?.get("vista");
   if (pathname !== "/competencia") return <ProfileSkeleton />;
+  if (vista === "empresas" || vista === "revision") {
+    return (
+      <SpaceShellEsqueleto spaceKey="competencia" bleed>
+        <EmpresasEsqueleto />
+      </SpaceShellEsqueleto>
+    );
+  }
   return (
     <SpaceShellEsqueleto spaceKey="competencia">
       <VistaEsqueleto />

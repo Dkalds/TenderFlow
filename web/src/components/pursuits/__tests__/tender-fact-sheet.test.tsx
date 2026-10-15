@@ -1,9 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 const extract = vi.fn();
+// v148: lo que devuelve cada fuente se cambia por test. Por defecto, la ficha
+// del pliego y ninguna condición oficial: el caso de antes de v148.
+const h = vi.hoisted(() => ({ sinFicha: false, oficiales: undefined as unknown }));
+vi.mock("@/hooks/use-condiciones-oficiales", () => ({
+  useCondicionesOficiales: () => ({ isLoading: false, error: null, data: h.oficiales }),
+}));
 vi.mock("@/hooks/use-tender-fact-sheet", () => ({
-  useTenderFactSheet: () => ({
+  useTenderFactSheet: () => h.sinFicha ? { isLoading: false, error: null, refetch: vi.fn(), data: undefined } : ({
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -115,5 +121,58 @@ describe("TenderFactSheetPanel", () => {
     expect(screen.getByText("Certificaciones")).toBeInTheDocument();
     expect(screen.getByText("ISO 27001")).toBeInTheDocument();
     expect(screen.getByText("Empresa")).toBeInTheDocument();
+  });
+});
+
+describe("TenderFactSheetPanel — publicación oficial como fuente primaria (v148)", () => {
+  const OFICIALES = {
+    licitacion_id: "LIC-1",
+    fuente: "placsp",
+    url_publicacion: "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=1",
+    actualizado: "2026-10-12T10:00:00Z",
+    ambitos: [
+      {
+        lote_numero: null,
+        lote_titulo: null,
+        criterios: [
+          { orden: 1, padre_orden: null, descripcion: "Oferta económica oficial", peso: 60, peso_pct: 60, es_precio: true, tipo_codigo: null, subtipo_codigo: null, nota: null },
+        ],
+        garantias: [],
+        solvencia: [],
+      },
+    ],
+  };
+
+  afterEach(() => {
+    h.sinFicha = false;
+    h.oficiales = undefined;
+  });
+
+  it("enseña primero la publicación oficial y después lo extraído del pliego, separados", () => {
+    h.oficiales = OFICIALES;
+    render(<TenderFactSheetPanel licitacionId="LIC-1" />);
+
+    const oficial = screen.getByText("Publicación oficial (PLACSP)");
+    const pliego = screen.getByText("Extraído del pliego");
+    expect(screen.getByText("Oferta económica oficial")).toBeInTheDocument();
+    // El criterio del LLM sigue ahí, en su sección y con su cita.
+    expect(screen.getByText("Oferta económica")).toBeInTheDocument();
+    expect(oficial.compareDocumentPosition(pliego) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("sin ficha del pliego, la publicación oficial se ve igual y la extracción se ofrece aparte", () => {
+    h.oficiales = OFICIALES;
+    h.sinFicha = true;
+    render(<TenderFactSheetPanel licitacionId="LIC-1" />);
+
+    expect(screen.getByText("Oferta económica oficial")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Extraer ficha" })).toBeInTheDocument();
+  });
+
+  it("sin condiciones oficiales no añade ni la sección ni el rótulo de procedencia", () => {
+    render(<TenderFactSheetPanel licitacionId="LIC-1" />);
+
+    expect(screen.queryByText("Publicación oficial (PLACSP)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Extraído del pliego")).not.toBeInTheDocument();
   });
 });

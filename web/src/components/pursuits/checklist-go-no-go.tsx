@@ -25,6 +25,12 @@
  * extraídos» y cuatro tarjetas iguales con el mismo enlace al perfil de
  * capacidad, que no arregla nada: lo que falta ahí es el pliego, no el perfil.
  * Esas familias van en una línea (`sin_hechos`).
+ *
+ * **La publicación oficial también cuenta (v148).** Cuando PLACSP publica la
+ * solvencia en el propio anuncio, el backend contrasta esa y no la de la
+ * ficha (`usa_condiciones_oficiales`). Entonces hay veredictos aunque no haya
+ * ficha extraída, y la procedencia declara también la fecha de la publicación
+ * evaluada.
  */
 
 import { Panel, PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel";
@@ -50,13 +56,16 @@ const ANCLA = "ficha-requisitos";
 function Procedencia({
   extractionVersion,
   fichaActualizada,
+  condicionesActualizadas,
 }: {
   extractionVersion: string | null | undefined;
   fichaActualizada: string | null | undefined;
+  condicionesActualizadas: string | null | undefined;
 }) {
   const partes = [
     fichaActualizada ? `ficha del ${formatDate(fichaActualizada)}` : null,
     extractionVersion ? `extractor ${extractionVersion}` : null,
+    condicionesActualizadas ? `publicación oficial del ${formatDate(condicionesActualizadas)}` : null,
   ].filter(Boolean);
   if (partes.length === 0) return <>sin versión de ficha declarada</>;
   return <>{partes.join(" · ")}</>;
@@ -105,6 +114,15 @@ export function ChecklistGoNoGo({
   }
 
   const familias = data.familias ?? [];
+  const oficial = data.usa_condiciones_oficiales === true;
+  // Hay algo contrastado si hay ficha o si el backend usó la publicación oficial.
+  const hayFuente = data.ficha_estado != null || oficial;
+  const n = data.requisitos_extraidos;
+  const recuento = !oficial
+    ? `${n === 1 ? "requisito extraído" : "requisitos extraídos"} del pliego`
+    : `${n === 1 ? "requisito contrastado" : "requisitos contrastados"} con ${
+        data.ficha_estado == null ? "" : "el pliego y "
+      }la publicación oficial de PLACSP`;
   const conHechos = familias.filter((familia) => !familia.sin_hechos);
   const sinHechos = familias.filter((familia) => familia.sin_hechos).map((familia) => familia.etiqueta);
   const irAPliego = onAbrirPliego ? (
@@ -124,13 +142,14 @@ export function ChecklistGoNoGo({
           <Procedencia
             extractionVersion={data.extraction_version}
             fichaActualizada={data.ficha_actualizada}
+            condicionesActualizadas={data.condiciones_actualizadas}
           />
         }
       >
         Requisitos del pliego
       </SectionTitle>
 
-      {data.ficha_estado == null ? (
+      {!hayFuente ? (
         <PanelEmpty
           title="Todavía no hay ficha del pliego extraída"
           hint="Sin ficha no hay nada contra lo que contrastar tu capacidad. La extracción se lanza desde la pestaña «Pliego»."
@@ -151,8 +170,7 @@ export function ChecklistGoNoGo({
       ) : (
         <>
           <p className="text-muted-foreground mb-2.5 text-tf-meta leading-relaxed">
-            De {data.requisitos_extraidos} requisito{data.requisitos_extraidos === 1 ? "" : "s"} extraído
-            {data.requisitos_extraidos === 1 ? "" : "s"} del pliego:{" "}
+            De {n} {recuento}:{" "}
             <span className="tf-tnum text-foreground font-medium">{data.cumple}</span> «cumple» ·{" "}
             <span className="tf-tnum text-foreground font-medium">{data.no_cumple}</span> «no
             cumple» ·{" "}
@@ -176,7 +194,7 @@ export function ChecklistGoNoGo({
 
       {/* Solo cuando hay veredictos: sin nada contrastado, advertir de que un
           veredicto no decide es una frase más que leer sin nada debajo. */}
-      {data.ficha_estado != null && data.requisitos_extraidos > 0 ? (
+      {hayFuente && data.requisitos_extraidos > 0 ? (
         <p className="text-muted-foreground mt-3 text-tf-micro leading-relaxed">
           Esto no decide el Go/No-Go: lo propone. La decisión se marca a mano en «Decisión del
           comité», arriba, y un «desconocido» es una pregunta abierta, no un no.

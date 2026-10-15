@@ -26,12 +26,13 @@ test.describe("Ajustes", () => {
     });
   });
 
-  test("las cuatro vistas del espacio se abren", async ({ page }) => {
+  test("las cinco vistas del espacio se abren", async ({ page }) => {
     await page.goto("/ajustes");
     await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });
 
     for (const [vista, marca] of [
       ["sesiones", /Sesiones activas/],
+      ["seguridad", /Verificación en dos pasos/],
       ["claves", /Nueva clave/],
       ["notificaciones", /Qué avisos quieres recibir/],
       ["cuenta", /Descargar mis datos/],

@@ -25,6 +25,9 @@ import { BUILT_SPACE_ROUTES, SPACE_VIEWS, VISTAS_FUSIONADAS, type SpaceView } fr
 /** Agrupación visual del rail. Separadores, no navegación. */
 export type ConsoleGroup = "trabajo" | "analisis" | "personal" | "organizacion";
 
+/** Quién ve un espacio; el detalle de cada nivel, en `ConsoleSpace.visibility`. */
+export type VisibilidadEspacio = "core" | "admin" | "gestion" | "experimental";
+
 export interface ConsoleSpace {
   /** Identificador estable, usado en tests y telemetría. */
   key: string;
@@ -57,8 +60,15 @@ export interface ConsoleSpace {
    * más arriba:
    *
    * - `core` (ausente ≡ core): visible para cualquier usuario autenticado.
-   * - `admin`: solo para administradores. Es un filtro de navegación, **no** un
-   *   control de acceso: la autorización real la impone la API en cada endpoint.
+   * - `admin`: solo para administradores **de la plataforma**. Es un filtro de
+   *   navegación, **no** un control de acceso: la autorización real la impone
+   *   la API en cada endpoint.
+   * - `gestion`: para quien gestiona la organización activa —propietario o
+   *   administrador de un equipo, ver `gestionaOrganizacion`— y para el
+   *   administrador de la plataforma. Existe porque `admin` no distinguía los
+   *   dos administradores: Dirección colgaba de él y su dueña natural, la
+   *   propietaria del equipo, no tenía enlace ninguno a la pantalla que la API
+   *   sí le sirve.
    * - `experimental`: funciona, pero no está a la altura del resto; se marca en
    *   la UI en vez de esconderse.
    *
@@ -68,7 +78,7 @@ export interface ConsoleSpace {
    * `adminOnly` en `navigation.ts` que ya no leía nadie. Un solo campo por
    * nivel evita que las tres respuestas puedan discrepar.
    */
-  visibility?: "core" | "admin" | "experimental";
+  visibility?: VisibilidadEspacio;
   /**
    * Vistas del espacio, tomadas de `lib/space-views.ts` (tabla compartida con
    * `next.config.ts`). La primera es la de entrada (`?vista=` ausente); una
@@ -141,19 +151,22 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     description: "Resultados, carga y actividad del equipo.",
     icon: ICONO_ESPACIO.direccion,
     group: "organizacion",
-    // `admin` aquí es un filtro de **navegación**: la autorización real la
+    // `gestion` aquí es un filtro de **navegación**: la autorización real la
     // impone `GET /pursuits/direccion`, que devuelve 403 a un `member` aunque
     // teclee la URL. Un rail sin enlace es una sugerencia; el 403 es el
     // permiso.
-    visibility: "admin",
+    visibility: "gestion",
     views: SPACE_VIEWS.direccion,
   },
   {
+    // 2026-10: absorbe Empresas, que era el mismo sujeto visto por su identidad
+    // (maestro canónico, alias, cola de revisión). Sus términos de oficio
+    // pasan aquí para que ⌘K siga encontrando «maestro» o «NIF».
     key: "competencia",
     label: "Competencia",
     slug: "competencia",
-    description: "Quién gana, cuánto y contra quién.",
-    terminos: "competidores UTE adjudicatarios",
+    description: "Quién gana, cuánto, contra quién y quién es cada empresa.",
+    terminos: "competidores UTE adjudicatarios empresas maestro NIF alias revisión",
     icon: ICONO_ESPACIO.competencia,
     group: "analisis",
     views: SPACE_VIEWS.competencia,
@@ -163,7 +176,7 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     label: "Investigador",
     slug: "investigador",
     description: "Pregunta o busca dentro de las licitaciones y sus pliegos.",
-    terminos: "IA copiloto semántica preguntar",
+    terminos: "IA asistente copiloto semántica preguntar",
     icon: ICONO_ESPACIO.investigador,
     group: "analisis",
   },
@@ -207,21 +220,11 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     key: "ajustes",
     label: "Ajustes",
     slug: "ajustes",
-    description: "Tus sesiones, claves de API, avisos y datos de cuenta.",
-    terminos: "API keys webhooks notificaciones cuenta",
+    description: "Tus sesiones, la verificación en dos pasos, claves de API, avisos y datos de cuenta.",
+    terminos: "API keys webhooks notificaciones cuenta 2FA TOTP MFA segundo factor autenticador",
     icon: ICONO_ESPACIO.ajustes,
     group: "personal",
     views: SPACE_VIEWS.ajustes,
-  },
-  {
-    key: "empresas",
-    label: "Empresas",
-    slug: "empresas",
-    description: "Fichas de empresa y alias por revisar.",
-    terminos: "maestro NIF alias revisión",
-    icon: ICONO_ESPACIO.empresas,
-    group: "organizacion",
-    views: SPACE_VIEWS.empresas,
   },
   {
     key: "equipo",
@@ -257,9 +260,41 @@ export const ADMIN_ONLY_SPACES = new Set(
   CONSOLE_SPACES.filter((space) => space.visibility === "admin").map((space) => space.key),
 );
 
+/**
+ * Roles de una organización que la gestionan: los que la API deja entrar en
+ * Dirección (`ROLES_DIRECCION` de `services/direccion.py`). Lo comparten el
+ * rail, la paleta y la propia pantalla, para que ninguno de los tres ofrezca lo
+ * que los otros esconden.
+ */
+export const ROLES_GESTION: ReadonlySet<string> = new Set(["owner", "admin"]);
+
+/**
+ * ¿Gestiona quien mira esta organización? Propietario o administrador de un
+ * **equipo**: la organización personal no cuenta aunque en ella se sea
+ * propietario, porque no tiene a nadie más que dirigir —Dirección habla de la
+ * carga y la actividad del equipo—. `undefined` (todavía no se sabe cuál es la
+ * activa) es «no»: un destino que aparece al cargar es menos grave que uno que
+ * desaparece.
+ */
+export function gestionaOrganizacion(
+  organizacion: { role: string; is_personal?: boolean } | undefined,
+): boolean {
+  return organizacion !== undefined && !organizacion.is_personal && ROLES_GESTION.has(organizacion.role);
+}
+
+/** Lo que el rail y la paleta saben de quien mira para decidir qué le ofrecen. */
+export interface AccesoEspacios {
+  /** Administrador de la plataforma (`is_admin` de `/auth/me`). */
+  isAdmin: boolean;
+  /** Gestiona la organización activa (`gestionaOrganizacion`). */
+  gestionaOrganizacion: boolean;
+}
+
 /** ¿Puede este usuario ver el espacio? Filtro de navegación, no de acceso. */
-export function isSpaceVisible(space: ConsoleSpace, isAdmin: boolean): boolean {
-  return space.visibility !== "admin" || isAdmin;
+export function isSpaceVisible(space: ConsoleSpace, acceso: AccesoEspacios): boolean {
+  if (space.visibility === "admin") return acceso.isAdmin;
+  if (space.visibility === "gestion") return acceso.isAdmin || acceso.gestionaOrganizacion;
+  return true;
 }
 
 export const CONSOLE_GROUP_ORDER: ConsoleGroup[] = [

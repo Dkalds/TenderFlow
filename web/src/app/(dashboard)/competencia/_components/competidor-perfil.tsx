@@ -179,7 +179,9 @@ export function CompetidorPerfil({
             {hrefAnalisis ? (
               <EnlaceIr href={hrefAnalisis}>Ver análisis y listado completo</EnlaceIr>
             ) : (
-              <EnlaceIr href={`/empresas?q=${encodeURIComponent(empresa.nombre)}`}>Buscarla en Empresas</EnlaceIr>
+              <EnlaceIr href={`/competencia?vista=empresas&q=${encodeURIComponent(empresa.nombre)}`}>
+                Buscarla en Empresas
+              </EnlaceIr>
             )}
           </div>
         </div>

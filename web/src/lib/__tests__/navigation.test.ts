@@ -142,3 +142,29 @@ describe("contrato de filtros de los espacios", () => {
     expect(pathUsesGlobalFilters("/ruta-que-no-existe")).toBe(true);
   });
 });
+
+describe("contrato de filtros de una vista", () => {
+  // El espacio declara la unión de sus vistas; con `?vista=`, manda la vista.
+  // Sin esto, Empresas —que no aplica el ámbito y en `/empresas` no pintaba
+  // barra— la habría heredado de Competidores al pasar a ser vista de
+  // Competencia.
+  it("Empresas y Revisión no consumen el ámbito aunque Competencia sí", () => {
+    expect(pathUsesGlobalFilters("/competencia", "empresas")).toBe(false);
+    // La cola no absorbe ruta: hereda el contrato del espacio que fue,
+    // a través de `ESPACIOS_ABSORBIDOS`.
+    expect(pathUsesGlobalFilters("/competencia", "revision")).toBe(false);
+    expect(pathUsesGlobalFilters("/competencia", "competidores")).toBe(true);
+    expect(pageGlobalFilterKeys("/competencia", "competidores")).toBeNull();
+  });
+
+  it("Mercado › Renovaciones ofrece solo lo que aplica: tecnología", () => {
+    expect(pageGlobalFilterKeys("/mercado", "renovaciones")).toEqual(["tecnologia"]);
+    expect(pageGlobalFilterKeys("/mercado", "tiempo")).toBeNull();
+  });
+
+  it("sin vista, o con una que no absorbe nada, sigue mandando la unión del espacio", () => {
+    expect(pathUsesGlobalFilters("/competencia", null)).toBe(true);
+    expect(pageGlobalFilterKeys("/mercado", "no-existe")).toBeNull();
+    expect(pathUsesGlobalFilters("/oportunidades", "tablero")).toBe(pathUsesGlobalFilters("/oportunidades"));
+  });
+});

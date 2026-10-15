@@ -660,9 +660,9 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   `spain-map.tsx`, no un reemplazo de texto.
 - **El gate de tildes lee texto JSX de una sola línea.** Medido con el AST, hoy
   no esconde nada; pero el hueco existe (lo dice el propio script).
-- `animate-pulse` queda en dos sitios, a propósito: el cursor que parpadea
-  mientras se emite una respuesta (`chat-thread.tsx`, `licitacion-ai.tsx`),
-  `motion-safe` y `aria-hidden`. Y ▲/▼ en Ops › Etiquetado es el signo de
+- `animate-pulse` queda en un sitio, a propósito: el cursor que parpadea
+  mientras se emite una respuesta (`chat-thread.tsx`; el de `licitacion-ai.tsx`
+  se fue con el asistente único, 2026-10), `motion-safe` y `aria-hidden`. Y ▲/▼ en Ops › Etiquetado es el signo de
   una tendencia junto a su cifra, no un icono.
 
 **Hallazgos no hechos, o a medias:**
@@ -724,3 +724,159 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   `layout/particle-field.tsx` y `radar-inspector-piezas.tsx`, y se añadieron
   `lib/tipografia.ts`, `lib/marca.ts`, `lib/iconos.ts`, `ui/field.tsx` y
   `console/chip-banda.tsx`.
+
+---
+
+## Menos espacios, un sitio por dato y un solo asistente (2026-10-12)
+
+Cuatro duplicidades de la consola: dos espacios para la misma empresa, la
+misma previsión pintada en dos sitios, una vista de mercado que solo entendía
+SAP y tres entradas de IA con tres estados. La regla de siempre manda en las
+cuatro: **consolidar no elimina funcionalidad**, y lo que se mueve sigue
+entrando por su enlace viejo.
+
+### Empresas es una vista de Competencia
+
+Empresas (identidad: maestro canónico, alias y cola de coincidencias dudosas)
+y Competencia (rendimiento: cuota, rivales, UTE) hablaban de la misma empresa
+desde dos espacios, y la ficha de uno enlazaba al otro. El rail pierde la
+entrada de Empresas y Competencia gana dos pestañas, **Empresas** (el maestro
+con su ficha) y **Revisión** (la cola):
+
+- `/empresas` redirige a `/competencia?vista=empresas` por el `from` de la
+  vista, como cualquier ruta absorbida. El `?vista=` viejo necesitaba algo más:
+  Next fusiona la query de la petición con la del destino y **gana la del
+  destino**, así que `/empresas?vista=revision` habría acabado en el maestro.
+  `ESPACIOS_ABSORBIDOS` (`lib/space-views.ts`) emite un redirect por vista
+  vieja, condicionado a esa query (`has`), que `next.config.ts` pone delante
+  del genérico.
+- El control de administrador no cambia: la pestaña Revisión se ve para todos,
+  con su contador, y a quien no administra le dice que la cola es de
+  administradores en lugar de pintar el 403 como un fallo; la API sigue siendo
+  quien lo impone. El contador de la pestaña va ahora en **todas** las vistas
+  del espacio, no solo en las de identidad: quien mira Competidores también
+  tiene que saber que hay coincidencias esperando, y son las que mueven sus
+  cuotas.
+- La línea de contexto del maestro (canónicas, importe resuelto, vigiladas,
+  revisiones) va en la cabecera solo en Empresas y Revisión, que van a sangre
+  como iban; en Competidores y UTEs la cabecera es la de siempre.
+- Los enlaces que salían de Competencia hacia Empresas («Buscarla en
+  Empresas», «Ver en el maestro», el aviso de cuotas aproximadas) apuntan a la
+  vista del mismo espacio. ⌘K encuentra la vista por «maestro», «NIF» o
+  «alias», que pasan a los términos de Competencia.
+- El contrato de filtros de la barra de ámbito pasa a ser **de la vista**
+  cuando la vista tiene página propia (`lib/navigation.ts`): era la unión del
+  espacio, y Empresas habría heredado el ámbito de Competidores aunque el
+  maestro no lo lee (en `/empresas` la barra decía que no aplicaba, y lo sigue
+  diciendo). La cola toma el contrato del espacio que fue, por
+  `ESPACIOS_ABSORBIDOS`. De paso se cierra la misma costura en Mercado ›
+  Renovaciones, que ofrecía seis controles y aplica uno, tecnología.
+
+### La previsión por trimestre, en un solo sitio
+
+El reparto por trimestre del valor ponderado (`PrevisionTrimestral`, con sus
+supuestos por etapa) se pintaba en Oportunidades › Rendimiento y en Dirección
+› Resultado, con el mismo cálculo en el backend (`_valor_ponderado` de los dos
+endpoints). Se queda en **Rendimiento** y Dirección enlaza allí:
+
+- **Por quién lo ve.** Rendimiento lo ve cualquier miembro; Dirección, solo un
+  owner o un admin (`GET /pursuits/direccion` da 403 a un `member`). Dejarlo
+  solo en Dirección quitaba el dato a quien mueve las oportunidades, que es
+  quien puede corregir una fecha o una etapa que lo desvía.
+- **Es la misma cifra.** La tarjeta «Valor ponderado del pipeline» de
+  Dirección es una foto de hoy, y Rendimiento entra en el histórico: el enlace
+  («Reparto por trimestre en Rendimiento») va sin `periodo`, así que aterriza
+  en el mismo universo de oportunidades abiertas.
+- Dirección › Resultado se reordena sin el panel «Lo que viene»: las cifras,
+  dónde ganamos, por qué perdemos junto a si el Radar ordena bien, y lo que
+  falta por registrar. Sin base en el histórico, la tarjeta del pipeline lleva
+  el mismo enlace.
+- `prevision_trimestral` sigue viajando en `CuadroDireccion`: retirarlo es un
+  cambio de contrato que esta pantalla no necesita para dejar de pintarlo.
+
+### Proyectos y módulos, por familias tecnológicas
+
+Mercado › Proyectos y módulos (vista experimental) solo entendía módulos SAP
+sobre un corpus que ya clasifica ERP, CRM, cloud, ciberseguridad, datos e IA,
+desarrollo, GIS, sanidad digital, administración electrónica, RRHH, gestión
+documental y puesto de trabajo. Decisión del dueño: agrupar por esas
+categorías y dejar los módulos SAP como desglose de ERP.
+
+- **Familia = categoría + fabricantes de una sola línea.** Las familias son las
+  categorías de `config/keywords.py` en su orden; SAP, Unit4, Sage e Infor
+  cuentan en ERP, Salesforce en CRM, Workday y Meta4 en RRHH y nómina y
+  OpenText en gestión documental, por la columna «Motivo» de
+  `docs/taxonomia-tecnologica.md`. Oracle, Microsoft, IBM, ServiceNow y Sopra
+  venden en varias familias: no cuentan en ninguna y la vista lo dice debajo
+  de la tabla, en vez de inflar una familia por intuición.
+- **Sin doble conteo.** Una licitación de dos familias cuenta en las dos
+  (barras, treemap y tabla), pero «Licitaciones con familia», el importe medio
+  y el porcentaje del ámbito la cuentan una vez, y llegan hechos del backend.
+- **El desglose es de ERP.** Los módulos SAP se buscan solo en lo etiquetado
+  como SAP: «financiero» es keyword de SAP FI y casaba con cualquier
+  asesoramiento financiero. El porcentaje con módulo divide por las
+  licitaciones SAP, no por el ámbito; desaparece «Encaje con tu portfolio»,
+  que medía qué parte de todo lo licitado nombraba un módulo SAP.
+- Sigue detrás de `mercado_proyectos_modulos` y marcada como experimental: la
+  agrupación es nueva y no se ha validado con uso.
+
+### Un solo asistente, con el contexto de la pantalla
+
+Había tres entradas de IA con tres estados para la misma llamada (`POST /ask`
+con o sin expedientes): el copiloto global (un panel lateral), el chat del
+Investigador junto a los resultados marcados y la pestaña IA de la ficha, con
+su resumen. Más una cuarta que nadie contaba: el chat propio del diálogo de
+comparación de la bandeja. Cada una guardaba su conversación, y una pregunta
+hecha en la ficha no estaba en ningún otro sitio.
+
+**El diseño elegido, el más simple que cubre los tres**: un componente
+(`components/asistente/asistente-panel.tsx`), montado una vez en el layout del
+dashboard, y un almacén (`lib/asistente-store.ts`) con tres cosas: si está
+abierto, el contexto (los expedientes, hasta tres, y de qué pantalla vienen)
+con los ajustes de esa pantalla, y lo que se pidió al abrirlo (una pregunta o
+el resumen). La conversación es la del `useChat` de ese único componente, que
+no se desmonta al cerrarse. Se descartaron dos alternativas: llevar también la
+conversación al almacén (duplicaba `useChat` sin ganar nada, porque solo hay
+un sitio que la pinta) y pintar el mismo componente incrustado en el
+Investigador además de en el panel (dos sitios para un estado, y la duda de
+cuál manda cuando están los dos).
+
+Lo que hace cada entrada:
+
+| Entrada | Abre el asistente con |
+|---|---|
+| «Preguntar a la IA» de la ficha (inspector y ficha completa) | el expediente |
+| «Preguntar a la IA» de la oportunidad (nueva) | el expediente de la oportunidad |
+| Investigador: «Preguntar por este» y la barra del asistente | los marcados (hasta 3) o todas, con modelo, contexto, ámbito y «tal cual» |
+| Investigador: una pregunta en la caja | todas las licitaciones, en conversación nueva |
+| Bandeja de comparación | sus expedientes (cierra el diálogo, que es modal) |
+| Barra del Resumen y ⌘K | todas las licitaciones / el contexto que tuviera |
+
+Decisiones que lo sostienen:
+
+- **El contexto es de cada pregunta**, como ya lo era en el Investigador:
+  abrirlo desde otra ficha cambia sobre qué va la siguiente pregunta y no
+  borra las anteriores; cada turno recuerda sobre qué se preguntó (y el hilo
+  avisa si la respuesta no pudo usar el expediente pedido). Los expedientes se
+  quitan desde el propio panel. «Nueva conversación» empieza de cero.
+- **No es modal.** El Investigador había decidido que resultados y asistente
+  conviven; un panel modal habría tapado la lista. El panel deja usar la
+  pantalla de detrás (pulsar fuera no lo cierra, Escape sí), en el
+  Investigador se marca con él abierto y la siguiente pregunta ya va sobre lo
+  marcado, y en pantalla ancha el Investigador le deja su hueco a la derecha.
+- **El resumen del expediente es un turno más** («Resumir el expediente», con
+  uno solo en el contexto): conserva lo que enseñaba la pestaña —el aviso sin
+  pliego con el estado de cada documento, «guardado de una generación
+  anterior», «Regenerar» (rehace ese turno forzando al proveedor) y sus
+  pulgares como `resumen`— y además queda en el historial de las preguntas que
+  vienen después.
+- **Nada se pierde**: streaming, citas validadas y fuentes del pliego, el aviso
+  de comparación incompleta, el modo degradado, los pulgares y el historial
+  siguen siendo los de `ChatThread`. Lo que cambia de sitio: la pestaña IA del
+  inspector y el panel «Asistente IA» de la ficha completa desaparecen (su
+  botón de cabecera abre el asistente), el panel lateral del Investigador pasa
+  a ser una barra que dice el alcance y abre el asistente, y el chat del
+  diálogo de comparación, un botón.
+- Se llama «Asistente» en todas partes: era «Copiloto» en el panel, «Asistente
+  IA» en la ficha y «Asistente» en el Investigador. ⌘K lo sigue encontrando por
+  «copiloto».

@@ -15,10 +15,14 @@
  * personal incluida: qué tecnologías puntúa el Radar y cuándo sale el informe
  * semanal. Estaban en Mi perfil, mezclados con los pesos de cada persona; son
  * decisiones del equipo y se guardan aparte, así que viven aquí.
+ *
+ * Al final, lo que cierra el ciclo de la organización —salir, traspasarla,
+ * borrarla (CU-26)—: es lo último que se busca y lo único irreversible.
  */
 
 import { Aviso, PanelEmpty } from "@/components/console/panel";
-import { type OrganizacionActiva } from "@/hooks/use-organization";
+import { type OrganizacionActiva, type Organization } from "@/hooks/use-organization";
+import { CicloOrganizacion } from "./ciclo-organizacion";
 import { InformeSemanalCard } from "./informe-semanal-card";
 import { OrganizacionCapacidadCard } from "./organizacion-capacidad-card";
 import { OrganizacionNifsCard } from "./organizacion-nifs-card";
@@ -30,10 +34,13 @@ export function OrganizacionTab({
   organizationId,
   canManage,
   isPersonal,
+  organizacion,
 }: {
   organizationId: OrganizacionActiva;
   canManage: boolean;
   isPersonal: boolean;
+  /** La activa con su nombre y tu rol; sin ella no se ofrece salir ni borrar. */
+  organizacion?: Organization;
 }) {
   if (organizationId == null) {
     return (
@@ -61,6 +68,7 @@ export function OrganizacionTab({
           <ProbabilidadesEtapaCard organizationId={organizationId} canManage={canManage} />
         </>
       )}
+      {organizacion && <CicloOrganizacion organizacion={organizacion} />}
     </div>
   );
 }

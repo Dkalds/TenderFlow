@@ -13,7 +13,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-import pandas as pd
 from pydantic import BaseModel, Field
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
@@ -54,9 +53,8 @@ class ResumenNovedadesResult(BaseModel):
     # marca se lee como "esta no es nueva". Publicando el corte, el cliente
     # compara `fecha_publicacion >= desde` y acierta en todas.
     # El Resumen siempre recibe uno (la última visita, o el tope de 14 días).
-    # `None` solo en la ruta de la campana, que aún lee `users.last_login`, una
-    # columna que no existe: el cliente entonces no marca nada, que es la
-    # salida segura.
+    # `None` es el resultado vacío por defecto: el cliente entonces no marca
+    # nada, que es la salida segura.
     desde: str | None = None
 
 
@@ -224,30 +222,6 @@ def _to_repo_filters(filters: Any) -> LicitacionesFilters:
 # ---------------------------------------------------------------------------
 
 
-def get_resumen_novedades(user_id: int) -> ResumenNovedadesResult:
-    """New licitaciones since user's last login."""
-    log.info("analytics_resumen_novedades_start", user_id=user_id)
-
-    from db.users import get_user_by_id
-
-    user = get_user_by_id(user_id)
-    if not user:
-        return ResumenNovedadesResult()
-
-    last_login = user.get("last_login")
-    if not last_login:
-        return ResumenNovedadesResult()
-
-    # ``last_login`` llega como string ISO o datetime según el driver; se
-    # normaliza con la misma tolerancia que antes (valor ilegible -> sin
-    # novedades, nunca una excepción) al formato ISO que espera el repository.
-    ts = pd.to_datetime(last_login, errors="coerce", utc=True)
-    if pd.isna(ts):
-        return ResumenNovedadesResult()
-
-    return get_resumen_novedades_desde(ts.isoformat())
-
-
 def get_resumen_novedades_desde(
     desde_iso: str, filters: AmbitoResumen | None = None
 ) -> ResumenNovedadesResult:
@@ -259,10 +233,10 @@ def get_resumen_novedades_desde(
     (:func:`services.novedades.corte_ultima_visita`). Sin ``filters``, el
     mercado entero.
 
-    :func:`get_resumen_novedades` —por ``user_id``— lee ``users.last_login``,
-    una columna que ninguna migración crea: siempre devuelve vacío. El Resumen
-    dejó de usarla porque decía «Todo al día» sin haber mirado nada; la
-    campana (``/notifications``) aún la llama.
+    Hubo una gemela por ``user_id`` que contaba desde ``users.last_login``,
+    una columna que ninguna migración crea: siempre devolvía vacío. El Resumen
+    dejó de usarla porque decía «Todo al día» sin haber mirado nada, y se
+    retiró el 2026-10-12, cuando la campana dejó de listar el mercado.
     """
     log.info("analytics_resumen_novedades_desde_start")
     count, rows = _repo.resumen_novedades(

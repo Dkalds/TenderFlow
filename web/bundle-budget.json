@@ -14,7 +14,6 @@
     "/cuentas/[id]": 973298,
     "/detalle": 1265491,
     "/direccion": 1131050,
-    "/empresas": 1152114,
     "/equipo": 1267098,
     "/hub-paginado/cpv/[codigo]/[pagina]": 510098,
     "/hub-paginado/licitaciones/[ccaa]/[pagina]": 510098,

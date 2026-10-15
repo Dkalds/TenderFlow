@@ -538,7 +538,7 @@ export interface paths {
         };
         /**
          * Proyectos Modulos
-         * @description SAP module and project type breakdown.
+         * @description Familias tecnológicas, módulos SAP como desglose de ERP, tipos de contrato y CPV.
          */
         get: operations["proyectos_modulos_api_v1_analytics_proyectos_modulos_get"];
         put?: never;
@@ -1235,7 +1235,13 @@ export interface paths {
         post?: never;
         /**
          * Remove Totp
-         * @description Desactiva MFA solo desde una sesión que ya superó MFA.
+         * @description Desactiva el segundo factor con un código vigente o uno de recuperación.
+         *
+         *     El código se pide aunque la sesión ya sea reciente y haya pasado el segundo
+         *     factor: sin él, quien se sentara delante de un navegador abierto podía
+         *     quitarlo sin tener el móvil, que es justo lo que el segundo factor protege.
+         *     Uno de recuperación también vale —quien perdió el móvil es quien más
+         *     necesita quitarlo— y queda gastado.
          */
         delete: operations["remove_totp_api_v1_auth_totp_delete"];
         options?: never;
@@ -1275,6 +1281,10 @@ export interface paths {
         /**
          * Setup Totp
          * @description Inicia el alta de TOTP; el secreto solo se revela en esta respuesta.
+         *
+         *     Un alta sin confirmar se puede empezar de nuevo: quien cerró la pestaña con
+         *     el código a medias recibe un secreto nuevo. Solo un segundo factor ya
+         *     confirmado responde 409.
          */
         post: operations["setup_totp_api_v1_auth_totp_setup_post"];
         delete?: never;
@@ -2651,6 +2661,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/condiciones-oficiales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Criterios, garantías y solvencia tal como los publica PLACSP
+         * @description Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v148).
+         *
+         *     Es la fuente primaria de criterios, garantías y solvencia; la ficha del
+         *     pliego (``/ficha-pliego``) es la extracción LLM que la complementa, y por
+         *     eso se sirven por separado. Sin condiciones publicadas responde 200 con
+         *     ``ambitos`` vacío: «no lo publica» es un estado, no un error.
+         */
+        get: operations["get_condiciones_oficiales_api_v1_licitaciones__id_externo__condiciones_oficiales_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/documentos": {
         parameters: {
             query?: never;
@@ -3235,6 +3270,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revocar UNA API key propia
+         * @description Apaga una clave al momento, sin esperar a que caduque.
+         *
+         *     Hasta ahora no había forma de retirar una clave desde el producto: borrar
+         *     la cuenta las revocaba todas, y rotar dejaba la vieja viva durante la
+         *     gracia. Revocar una ya revocada responde 204: el estado pedido es el que
+         *     hay.
+         *
+         *     Exige sesión reciente, como la creación, la rotación y cerrar una sesión
+         *     ajena: con una clave filtrada no se puede tumbar la integración buena, y
+         *     con una cookie robada tampoco sin volver a entrar.
+         */
+        delete: operations["revoke_my_key_api_v1_me_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/notification-preferences": {
         parameters: {
             query?: never;
@@ -3527,8 +3591,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Notificaciones del usuario (novedades + alertas + contadores de hoy) */
+        /** Resumen de notificaciones (alertas; campos de mercado deprecados) */
         get: operations["get_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bandeja de la campana: tus alertas, paginadas y con filtro de lectura
+         * @description Lo que te concierne en la organización activa, lo más reciente arriba.
+         *
+         *     Alertas de tus reglas, cambios en lo que sigues, menciones, tareas y plazos
+         *     de tus oportunidades y avisos de tu organización. **Leer no marca nada**:
+         *     cada alerta se marca al abrirla, o todas con ``POST /notifications/alerts/read``
+         *     y ``all=true``. ``sin_leer`` no depende del filtro.
+         */
+        get: operations["get_alertas_api_v1_notifications_alerts_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4316,6 +4405,10 @@ export interface paths {
         /**
          * Get Pursuits
          * @description Lista únicamente opportunities de una organización autorizada.
+         *
+         *     Los filtros van en el `WHERE` y el `total` es el del conjunto filtrado: el
+         *     tablero los usa en vez de filtrar la página que ya tiene, que con más de una
+         *     página escondía lo que no había llegado.
          */
         get: operations["get_pursuits_api_v1_pursuits_get"];
         put?: never;
@@ -4355,6 +4448,30 @@ export interface paths {
          *     ha pasado nada.
          */
         get: operations["get_actividad_api_v1_pursuits_actividad_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/adjuntos/politica": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Adjuntos Politica
+         * @description Si este entorno acepta adjuntos, el tope por fichero y los tipos admitidos.
+         *
+         *     Sin organización: la lista blanca y el tope son del producto y el almacén es
+         *     del despliegue, iguales para todos. Lo que sí depende de la organización —si
+         *     quien mira puede subir— lo decide su rol, y la subida lo vuelve a comprobar.
+         */
+        get: operations["get_adjuntos_politica_api_v1_pursuits_adjuntos_politica_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4829,7 +4946,14 @@ export interface paths {
          *     `python-multipart` —una dependencia que este plan no pre-autoriza (D31)— para
          *     parsear un formato que aquí solo transportaría un campo. El cliente hace
          *     `fetch(url, {method: 'POST', body: file, headers: {'Content-Type': file.type,
-         *     'X-Filename': file.name}})`, y el servidor recibe exactamente los bytes.
+         *     'X-Filename': encodeURIComponent(file.name)}})`, y el servidor recibe
+         *     exactamente los bytes.
+         *
+         *     El nombre va **codificado como URI** porque una cabecera HTTP solo lleva
+         *     Latin-1: `fetch` lanza `TypeError` ante «Oferta — v2.pdf» (la raya,
+         *     U+2014), y un nombre con tilde llegaba según cómo lo serializara cada
+         *     cliente. Un nombre sin `%` se decodifica a sí mismo, así que el cliente que
+         *     lo mande en claro sigue funcionando.
          *
          *     El tamaño se comprueba **dos veces**: contra `Content-Length` antes de leer
          *     —para no traer 500 MB a memoria y rechazarlos después— y contra los bytes
@@ -5848,6 +5972,36 @@ export interface components {
             pct_oferta_minima: number;
         };
         /**
+         * AdjudicatarioOut
+         * @description Quién ganó el expediente (o uno de sus lotes), tal como lo publicó la fuente.
+         *
+         *     Una fila por adjudicatario y lote, sin agregar ni resolver a empresa
+         *     canónica: la ficha enseña lo publicado, y el maestro de empresas puede estar
+         *     todavía corrigiendo la identidad en la cola de revisión. Lo que la fuente no
+         *     publicó llega como ``None`` —nunca como cero—, porque un importe o un número
+         *     de ofertas a cero se leerían como dato.
+         *
+         *     El lote va por su **número** y su título, no por el id de ``lotes``: la
+         *     re-ingesta borra y reinserta los lotes, y el id no sobrevive (``v110``).
+         *     ``lote_numero`` ``None`` es la adjudicación del expediente completo.
+         */
+        AdjudicatarioOut: {
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Lote Titulo */
+            lote_titulo?: string | null;
+            /** N Ofertas Recibidas */
+            n_ofertas_recibidas?: number | null;
+            /** Nif */
+            nif?: string | null;
+            /** Nombre */
+            nombre: string;
+        };
+        /**
          * AdminUserAction
          * @description Resultado de una acción de moderación sobre un usuario.
          */
@@ -5905,6 +6059,28 @@ export interface components {
             title?: string | null;
             /** Type */
             type: string;
+        };
+        /**
+         * AlertasPagina
+         * @description Una página de la bandeja de la campana.
+         */
+        AlertasPagina: {
+            /** Items */
+            items: components["schemas"]["AlertItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Sin Leer
+             * @description Alertas sin leer, sea cual sea el filtro: el número del distintivo.
+             */
+            sin_leer: number;
+            /**
+             * Total
+             * @description Alertas que cumplen el filtro, en todas las páginas.
+             */
+            total: number;
         };
         /**
          * AmbitoCifra
@@ -6698,6 +6874,12 @@ export interface components {
              * @enum {string}
              */
             familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /**
+             * Fuente
+             * @default pliego
+             * @enum {string}
+             */
+            fuente: "pliego" | "placsp";
             /** Items */
             items?: components["schemas"]["ChecklistItem"][];
             /**
@@ -6725,6 +6907,12 @@ export interface components {
              * @enum {string}
              */
             familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /**
+             * Fuente
+             * @default pliego
+             * @enum {string}
+             */
+            fuente: "pliego" | "placsp";
             /** Motivo */
             motivo: string;
             /** Requisito */
@@ -7470,6 +7658,46 @@ export interface components {
             total: number;
         };
         /**
+         * CondicionesAmbito
+         * @description Las condiciones de un ámbito: el expediente (`lote_numero` nulo) o un lote.
+         */
+        CondicionesAmbito: {
+            /** Criterios */
+            criterios?: components["schemas"]["CriterioOficial"][];
+            /** Garantias */
+            garantias?: components["schemas"]["GarantiaOficial"][];
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Lote Titulo */
+            lote_titulo?: string | null;
+            /** Solvencia */
+            solvencia?: components["schemas"]["RequisitoSolvenciaOficial"][];
+        };
+        /**
+         * CondicionesOficiales
+         * @description Lo que la publicación oficial dice de un expediente, por ámbito.
+         *
+         *     `ambitos` vacío significa que el anuncio no publica estos bloques —o que el
+         *     expediente se ingirió antes de v148 y no se ha vuelto a leer—, no que el
+         *     pliego no los tenga: para eso está la ficha del pliego.
+         */
+        CondicionesOficiales: {
+            /** Actualizado */
+            actualizado?: string | null;
+            /** Ambitos */
+            ambitos?: components["schemas"]["CondicionesAmbito"][];
+            /**
+             * Fuente
+             * @default placsp
+             * @constant
+             */
+            fuente: "placsp";
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Url Publicacion */
+            url_publicacion?: string | null;
+        };
+        /**
          * ContratoCartera
          * @description Un contrato ganado que sigue vivo.
          */
@@ -7677,6 +7905,33 @@ export interface components {
             name: string;
             /** Organization Id */
             organization_id?: number | null;
+        };
+        /**
+         * CriterioOficial
+         * @description Un criterio de adjudicación publicado (`cac:AwardingCriteria`).
+         */
+        CriterioOficial: {
+            /** Descripcion */
+            descripcion?: string | null;
+            /**
+             * Es Precio
+             * @default false
+             */
+            es_precio: boolean;
+            /** Nota */
+            nota?: string | null;
+            /** Orden */
+            orden: number;
+            /** Padre Orden */
+            padre_orden?: number | null;
+            /** Peso */
+            peso?: number | null;
+            /** Peso Pct */
+            peso_pct?: number | null;
+            /** Subtipo Codigo */
+            subtipo_codigo?: string | null;
+            /** Tipo Codigo */
+            tipo_codigo?: string | null;
         };
         /**
          * CrossGeoEntry
@@ -8821,6 +9076,22 @@ export interface components {
             running: boolean;
         };
         /**
+         * FamiliaEntry
+         * @description Una familia de la taxonomía: cuántas licitaciones y cuánto importe.
+         */
+        FamiliaEntry: {
+            /** Count */
+            count: number;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Familia */
+            familia: string;
+            /** Importe */
+            importe: number;
+            /** Importe Medio */
+            importe_medio: number;
+        };
+        /**
          * FechaFinManualIn
          * @description Cuerpo de ``PATCH /pursuits/cartera/{id}``: la fecha de fin del contrato.
          */
@@ -9183,6 +9454,24 @@ export interface components {
             pct: number;
         };
         /**
+         * GarantiaOficial
+         * @description Una garantía exigida (`cac:RequiredFinancialGuarantee`).
+         */
+        GarantiaOficial: {
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Moneda */
+            moneda?: string | null;
+            /** Orden */
+            orden: number;
+            /** Porcentaje */
+            porcentaje?: number | null;
+            /** Tipo Codigo */
+            tipo_codigo?: string | null;
+        };
+        /**
          * GeoEntry
          * @description Single CCAA entry.
          */
@@ -9218,6 +9507,8 @@ export interface components {
          * @description Contraste completo de una oportunidad contra la capacidad declarada.
          */
         GoNoGoChecklist: {
+            /** Condiciones Actualizadas */
+            condiciones_actualizadas?: string | null;
             /**
              * Cumple
              * @default 0
@@ -9260,6 +9551,11 @@ export interface components {
              * @default 0
              */
             total_requisitos: number;
+            /**
+             * Usa Condiciones Oficiales
+             * @default false
+             */
+            usa_condiciones_oficiales: boolean;
         };
         /** GoNoGoCriterioOut */
         GoNoGoCriterioOut: {
@@ -9812,6 +10108,8 @@ export interface components {
         };
         /** LicitacionDetail */
         LicitacionDetail: {
+            /** Adjudicatarios */
+            adjudicatarios?: components["schemas"]["AdjudicatarioOut"][];
             /** Ccaa */
             ccaa?: string | null;
             /** Cpv */
@@ -10349,6 +10647,11 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /**
+             * Last Used
+             * @description Última petición autenticada con ella; `null` si nunca se usó
+             */
+            last_used?: string | null;
             /** Name */
             name?: string | null;
             /**
@@ -10444,11 +10747,21 @@ export interface components {
              * @default 0
              */
             alerts_unread_count: number;
+            /**
+             * @deprecated
+             * @description Deprecado: contadores del mercado, que la campana ya no pinta. Los mismos, con el ámbito de la barra, en GET /analytics/resumen/hoy.
+             */
             hoy?: components["schemas"]["HoyCounters"];
-            /** Items */
+            /**
+             * Items
+             * @deprecated
+             * @description Deprecado: siempre vacío. La campana ya no lista novedades del mercado; están en GET /analytics/resumen/novedades.
+             */
             items?: components["schemas"]["NotificationItem"][];
             /**
              * Unread Count
+             * @deprecated
+             * @description Deprecado: siempre 0 (acompañaba a `items`).
              * @default 0
              */
             unread_count: number;
@@ -10628,10 +10941,17 @@ export interface components {
             referencias?: components["schemas"]["OrganizationReferencia"][];
             /** Updated At */
             updated_at?: string | null;
+            /** Vigencias */
+            vigencias?: components["schemas"]["VigenciaDocumento"][];
         };
         /**
          * OrganizationCertification
-         * @description Certificación que la organización puede acreditar.
+         * @description Documento acreditativo de la organización: certificación o papeleo.
+         *
+         *     El nombre histórico se conserva —es el esquema que ya consume la consola—
+         *     aunque desde v147 la fila también puede ser documentación administrativa
+         *     (``tipo``). Lo guardado antes no trae tipo y vale como certificación
+         *     técnica, que es lo único que la pantalla dejaba declarar.
          */
         OrganizationCertification: {
             /**
@@ -10642,6 +10962,12 @@ export interface components {
             ambito: "company" | "team";
             /** Nombre */
             nombre: string;
+            /**
+             * Tipo
+             * @default certificacion_tecnica
+             * @enum {string}
+             */
+            tipo: "certificacion_tecnica" | "corriente_aeat" | "corriente_seguridad_social" | "rolece" | "clasificacion_empresarial";
             /** Vigente Hasta */
             vigente_hasta?: string | null;
         };
@@ -10663,6 +10989,11 @@ export interface components {
          *     Un `-1` significa que ese recuento no se pudo hacer, no que sea cero.
          */
         OrganizationDeletionSummary: {
+            /**
+             * Adjuntos
+             * @default 0
+             */
+            adjuntos: number;
             /**
              * Comentarios
              * @default 0
@@ -12124,11 +12455,30 @@ export interface components {
         ProyectosModulosResult: {
             /** Cpv */
             cpv?: components["schemas"]["CpvEntry"][];
+            /** Fabricantes Sin Familia */
+            fabricantes_sin_familia?: string[];
+            /** Familias */
+            familias?: components["schemas"]["FamiliaEntry"][];
+            /**
+             * Familias Por Licitacion
+             * @default 0
+             */
+            familias_por_licitacion: number;
+            /**
+             * Importe Con Familia
+             * @default 0
+             */
+            importe_con_familia: number;
             /**
              * Importe Total Sap
              * @default 0
              */
             importe_total_sap: number;
+            /**
+             * Menciones Familia
+             * @default 0
+             */
+            menciones_familia: number;
             /**
              * Menciones Modulo
              * @default 0
@@ -12142,10 +12492,27 @@ export interface components {
              */
             modulos_por_clasificada: number;
             /**
+             * Pct Con Familia
+             * @default 0
+             */
+            pct_con_familia: number;
+            /**
              * Pct Match Portfolio
+             * @deprecated
+             * @description Deprecado: licitaciones con módulo SAP sobre el ámbito entero, en %. Usa `pct_sap_con_modulo`.
              * @default 0
              */
             pct_match_portfolio: number;
+            /**
+             * Pct Sap Con Modulo
+             * @default 0
+             */
+            pct_sap_con_modulo: number;
+            /**
+             * Ticket Medio Familia
+             * @default 0
+             */
+            ticket_medio_familia: number;
             /**
              * Ticket Medio Sap
              * @default 0
@@ -12155,6 +12522,7 @@ export interface components {
             tipo_estado?: components["schemas"]["TipoEstadoEntry"][];
             /** Tipos Proyecto */
             tipos_proyecto?: components["schemas"]["ProyectoTipoEntry"][];
+            top_familia_yoy?: components["schemas"]["TopFamiliaYoY"] | null;
             top_modulo_yoy?: components["schemas"]["TopModuloYoY"] | null;
             /**
              * Total
@@ -12166,6 +12534,16 @@ export interface components {
              * @default 0
              */
             total_clasificados: number;
+            /**
+             * Total Con Familia
+             * @default 0
+             */
+            total_con_familia: number;
+            /**
+             * Total Sap
+             * @default 0
+             */
+            total_sap: number;
         };
         /**
          * PublicacionCuenta
@@ -12336,6 +12714,22 @@ export interface components {
             uploaded_by_name?: string | null;
             /** Uploaded By User Id */
             uploaded_by_user_id?: number | null;
+        };
+        /**
+         * PursuitAttachmentPolicy
+         * @description Lo que la consola necesita saber antes de ofrecer «Subir adjunto».
+         *
+         *     Sale de las mismas constantes con las que el servidor valida la subida: la
+         *     pantalla no lleva su propia copia de la lista blanca ni del tope, y un
+         *     entorno sin almacén lo dice aquí en vez de con un 503 tras enviar el fichero.
+         */
+        PursuitAttachmentPolicy: {
+            /** Almacen Disponible */
+            almacen_disponible: boolean;
+            /** Max Bytes */
+            max_bytes: number;
+            /** Tipos */
+            tipos: components["schemas"]["TipoAdjuntoOut"][];
         };
         /**
          * PursuitCommentCreate
@@ -13380,6 +13774,27 @@ export interface components {
             scope: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
             /** Subsanable */
             subsanable?: boolean | null;
+        };
+        /**
+         * RequisitoSolvenciaOficial
+         * @description Un requisito de solvencia (`cac:TendererQualificationRequest`).
+         */
+        RequisitoSolvenciaOficial: {
+            /**
+             * Clase
+             * @enum {string}
+             */
+            clase: "tecnica" | "economica" | "clasificacion";
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Moneda */
+            moneda?: string | null;
+            /** Orden */
+            orden: number;
+            /** Tipo Codigo */
+            tipo_codigo?: string | null;
+            /** Umbral Importe */
+            umbral_importe?: number | null;
         };
         /**
          * ResolucionOut
@@ -14867,6 +15282,16 @@ export interface components {
             total: number;
         };
         /**
+         * TipoAdjuntoOut
+         * @description Un tipo de la lista blanca y las extensiones que le corresponden.
+         */
+        TipoAdjuntoOut: {
+            /** Content Type */
+            content_type: string;
+            /** Extensiones */
+            extensiones: string[];
+        };
+        /**
          * TipoEstadoEntry
          * @description tipo_contrato x estado cell (for the stacked-bar relationship).
          */
@@ -14886,6 +15311,20 @@ export interface components {
             importe: number;
             /** Nombre */
             nombre: string;
+        };
+        /**
+         * TopFamiliaYoY
+         * @description La familia que más crece: últimos 12 meses frente a los 12 anteriores.
+         */
+        TopFamiliaYoY: {
+            /** Crecimiento Pct */
+            crecimiento_pct: number;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Familia */
+            familia: string;
+            /** N Act */
+            n_act: number;
         };
         /** TopLicitacionItem */
         TopLicitacionItem: {
@@ -15408,6 +15847,37 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * VigenciaDocumento
+         * @description Estado de vigencia de un documento del perfil, calculado en el servidor.
+         *
+         *     Lo calcula ``services/documentacion_caducidad.py`` con el mismo criterio
+         *     que los avisos de caducidad, para que la pestaña y el aviso no puedan
+         *     discrepar sobre si un certificado está a punto de caducar.
+         */
+        VigenciaDocumento: {
+            /**
+             * Categoria
+             * @enum {string}
+             */
+            categoria: "tecnica" | "administrativa";
+            /** Dias Restantes */
+            dias_restantes?: number | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "vigente" | "caduca_pronto" | "caducado" | "sin_caducidad";
+            /** Nombre */
+            nombre: string;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "certificacion_tecnica" | "corriente_aeat" | "corriente_seguridad_social" | "rolece" | "clasificacion_empresarial";
+            /** Vigente Hasta */
+            vigente_hasta?: string | null;
         };
         /**
          * VisitaMarcada
@@ -18275,7 +18745,11 @@ export interface operations {
                 session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpCodeRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -18286,6 +18760,27 @@ export interface operations {
                     "application/json": components["schemas"]["StatusOk"];
                 };
             };
+            /** @description El código no es válido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La sesión no es reciente: hay que volver a entrar */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La cuenta no tiene el segundo factor activo */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18294,6 +18789,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Demasiados códigos fallidos seguidos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -20875,6 +21377,10 @@ export interface operations {
                 tipo_contrato?: string | null;
                 /** @description Sólo expedientes cuyo plazo vence dentro de N días. Se calcula en SQL sobre `fecha_limite` y excluye los estados terminales: un expediente ya adjudicado con fecha límite futura no vence, no se puede licitar. */
                 dias_restantes_max?: number | null;
+                /** @description Sólo expedientes con esta etiqueta de la organización (F1.6), puesta como favorito. Filtra en servidor: el total y las páginas son las del conjunto etiquetado entero, no las de la página que el cliente tenga cargada. */
+                etiqueta?: number | null;
+                /** @description Organización dueña de `etiqueta`; por defecto la personal. Sólo se usa con `etiqueta`: sin ella el listado es el mismo para cualquier organización. */
+                organization_id?: number | null;
                 /** @description Orden: fecha_publicacion (default), -importe, importe, titulo */
                 sort?: string | null;
                 /** @description Incluir total (false = más rápido para paginación) */
@@ -21050,6 +21556,10 @@ export interface operations {
                 tipo_contrato?: string | null;
                 /** @description Plazo que vence dentro de N días */
                 dias_restantes_max?: number | null;
+                /** @description Sólo expedientes con esta etiqueta de la organización (F1.6), puesta como favorito. Filtra en servidor: el total y las páginas son las del conjunto etiquetado entero, no las de la página que el cliente tenga cargada. */
+                etiqueta?: number | null;
+                /** @description Organización dueña de `etiqueta`; por defecto la personal. Sólo se usa con `etiqueta`: sin ella el listado es el mismo para cualquier organización. */
+                organization_id?: number | null;
                 /** @description Orden, con los mismos valores que `/licitaciones`: `fecha_publicacion` (recientes primero, el de por defecto), `importe`, `titulo` y sus inversos con `-`. Los nulos van al final en los dos sentidos. El cursor lleva el orden dentro: no vale para otro. */
                 sort?: string | null;
                 /** @description Añade `total`: un COUNT(*) con los mismos filtros. Pídelo sólo en la primera página; el cursor existe para no pagarlo en cada una. */
@@ -21265,6 +21775,55 @@ export interface operations {
                 content?: never;
             };
             /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_condiciones_oficiales_api_v1_licitaciones__id_externo__condiciones_oficiales_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CondicionesOficiales"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Licitación no encontrada */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -22416,6 +22975,53 @@ export interface operations {
             };
         };
     };
+    revoke_my_key_api_v1_me_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                key_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere una sesión de navegador reciente */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La key no existe o no es tuya */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_notification_preferences_api_v1_me_notification_preferences_get: {
         parameters: {
             query?: {
@@ -22926,6 +23532,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_alertas_api_v1_notifications_alerts_get: {
+        parameters: {
+            query?: {
+                /** @description `todas`, `sin_leer` o `leidas`. */
+                estado?: "todas" | "sin_leer" | "leidas";
+                limit?: number;
+                offset?: number;
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertasPagina"];
                 };
             };
             /** @description Validation Error */
@@ -24558,6 +25204,12 @@ export interface operations {
                 organization_id?: number | null;
                 status?: ("identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn") | null;
                 responsible_user_id?: number | null;
+                /** @description Texto en el título del expediente, su referencia o el nombre del responsable; sin distinguir acentos ni mayúsculas. */
+                q?: string | null;
+                /** @description Sólo oportunidades con esta etiqueta de la organización. */
+                etiqueta?: number | null;
+                /** @description Plazo de presentación del expediente, sobre oportunidades abiertas y sin presentar: `vencido` (el día ya pasó), `7d` o `30d` (vence de hoy a dentro de N días, inclusive). */
+                plazo?: ("vencido" | "7d" | "30d") | null;
                 /** @description Tamaño de página (máx. 500). */
                 limit?: number;
                 /** @description Filas a saltar desde el inicio. */
@@ -24666,6 +25318,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_adjuntos_politica_api_v1_pursuits_adjuntos_politica_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentPolicy"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -25518,7 +26203,7 @@ export interface operations {
                 organization_id?: number | null;
             };
             header: {
-                /** @description Nombre original del fichero. Se sanea antes de guardarlo. */
+                /** @description Nombre original del fichero, codificado como componente de URI (`encodeURIComponent`). Se decodifica y se sanea antes de guardarlo. */
                 "X-Filename": string;
                 "X-CSRF-Token"?: string | null;
             };

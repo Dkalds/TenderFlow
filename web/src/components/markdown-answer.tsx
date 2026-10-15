@@ -51,7 +51,7 @@ interface MarkdownAnswerProps {
 }
 
 /**
- * Renderer Markdown de respuestas del LLM (copiloto, investigador, resumen).
+ * Renderer Markdown de respuestas del LLM (el asistente: preguntas y resumen).
  * Sustituye a los renderAnswer de texto plano: soporta las tablas y headings
  * que pide el prompt, y conserva los IDs de expediente como links a /detalle.
  *

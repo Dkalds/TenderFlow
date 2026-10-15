@@ -23,7 +23,9 @@ import {
   useCrearClave,
   useGuardarPreferencias,
   usePreferencias,
+  useRevocarClave,
   useRevocarSesion,
+  useRotarClave,
   useSesiones,
 } from "@/hooks/use-ajustes";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
@@ -119,7 +121,11 @@ describe("useCrearClave", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it("avisa cuando la creación falla", async () => {
+  it("un fallo al crear se pinta en línea, no en un toast", async () => {
+    // La pantalla lo enseña junto al formulario, con su arreglo cuando lo
+    // tiene (la sesión antigua pide volver a entrar: ver `claves-view.test`).
+    // El toast propio que había —«No se pudo crear la clave», sin motivo— se
+    // sumaba además al global de las mutaciones.
     const { toast } = await import("sonner");
     vi.stubGlobal(
       "fetch",
@@ -129,7 +135,40 @@ describe("useCrearClave", () => {
 
     const { result } = renderHook(() => useCrearClave(), { wrapper });
     await expect(result.current.mutateAsync({ name: "ci" })).rejects.toThrow();
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRotarClave", () => {
+  it("rota la clave indicada con la gracia elegida y refresca el listado", async () => {
+    const fetchMock = stub({ new_token: "tf_nueva", message: "", old_key_expires_at: "2026-10-19" });
+    const { client, wrapper } = crearEntorno();
+    const invalidar = vi.spyOn(client, "invalidateQueries");
+
+    const { result } = renderHook(() => useRotarClave(), { wrapper });
+    const rotada = await result.current.mutateAsync({ keyId: 7, diasDeGracia: 0 });
+
+    expect(callUrl(fetchMock.mock.calls[0])).toBe("/api/v1/me/keys/rotate?key_id=7&grace_days=0");
+    expect(callMethod(fetchMock.mock.calls[0])).toBe("POST");
+    expect(rotada.new_token).toBe("tf_nueva");
+    expect(invalidar).toHaveBeenCalledWith({ queryKey: ajustesKeys.claves });
+  });
+});
+
+describe("useRevocarClave", () => {
+  it("borra UNA clave por su id y refresca el listado", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { client, wrapper } = crearEntorno();
+    const invalidar = vi.spyOn(client, "invalidateQueries");
+
+    const { result } = renderHook(() => useRevocarClave(), { wrapper });
+    await result.current.mutateAsync(7);
+
+    expect(callUrl(fetchMock.mock.calls[0])).toBe("/api/v1/me/keys/7");
+    expect(callMethod(fetchMock.mock.calls[0])).toBe("DELETE");
+    expect(invalidar).toHaveBeenCalledWith({ queryKey: ajustesKeys.claves });
   });
 });
 

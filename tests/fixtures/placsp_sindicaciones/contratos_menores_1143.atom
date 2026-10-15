@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+      xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+      xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+      xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_1143/contratosMenoresPerfilesContratantes.atom</id>
+  <title>Contratos menores (fixture sintética, ver README.md)</title>
+  <updated>2026-10-11T23:40:00+02:00</updated>
+  <link href="https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_1143/contratosMenoresPerfilesContratantes.atom" rel="self"/>
+
+  <!-- 1. Tecnología por keyword, adjudicado: entra, con su adjudicatario. -->
+  <entry>
+    <id>https://contrataciondelestado.es/sindicacion/contratosMenores/9000000001</id>
+    <title>Renovación de licencias Microsoft 365 para la sede municipal</title>
+    <updated>2026-10-11T18:05:12+02:00</updated>
+    <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=CM-EJ-0412" rel="alternate"/>
+    <summary type="text">Id licitación: CM-2026-0412; Órgano de Contratación: Ayuntamiento de Villaejemplo; Importe: 12400.00 EUR; Estado: RES</summary>
+    <cacext:ContractFolderStatus>
+      <cbc:ContractFolderID>CM-2026-0412</cbc:ContractFolderID>
+      <cbcext:ContractFolderStatusCode>RES</cbcext:ContractFolderStatusCode>
+      <cacext:LocatedContractingParty>
+        <cac:Party>
+          <cac:PartyName><cbc:Name>Ayuntamiento de Villaejemplo</cbc:Name></cac:PartyName>
+        </cac:Party>
+      </cacext:LocatedContractingParty>
+      <cac:ProcurementProject>
+        <cbc:Name>Renovación de licencias Microsoft 365 para la sede municipal</cbc:Name>
+        <cbc:TypeCode>1</cbc:TypeCode>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>48000000-8</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">12400.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+        <cac:RealizedLocation>
+          <cbc:CountrySubentity>Madrid</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode>ES300</cbc:CountrySubentityCode>
+        </cac:RealizedLocation>
+      </cac:ProcurementProject>
+      <cac:TenderResult>
+        <cbc:ResultCode>8</cbc:ResultCode>
+        <cbc:AwardDate>2026-10-06</cbc:AwardDate>
+        <cbc:ReceivedTenderQuantity>1</cbc:ReceivedTenderQuantity>
+        <cac:AwardedTenderedProject>
+          <cac:LegalMonetaryTotal>
+            <cbc:TaxExclusiveAmount>12400.00</cbc:TaxExclusiveAmount>
+            <cbc:PayableAmount>15004.00</cbc:PayableAmount>
+          </cac:LegalMonetaryTotal>
+        </cac:AwardedTenderedProject>
+        <cac:WinningParty>
+          <cac:PartyName><cbc:Name>Soluciones Informáticas Ejemplo SL</cbc:Name></cac:PartyName>
+          <cac:PartyIdentification><cbc:ID>B12345674</cbc:ID></cac:PartyIdentification>
+        </cac:WinningParty>
+      </cac:TenderResult>
+    </cacext:ContractFolderStatus>
+  </entry>
+
+  <!-- 2. Sin señal tecnológica: se descarta. -->
+  <entry>
+    <id>https://contrataciondelestado.es/sindicacion/contratosMenores/9000000002</id>
+    <title>Suministro de material de limpieza</title>
+    <updated>2026-10-11T17:44:00+02:00</updated>
+    <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=CM-EJ-0413" rel="alternate"/>
+    <summary type="text">Id licitación: CM-2026-0413; Órgano de Contratación: Ayuntamiento de Villaejemplo; Importe: 3100.00 EUR; Estado: RES</summary>
+    <cacext:ContractFolderStatus>
+      <cbc:ContractFolderID>CM-2026-0413</cbc:ContractFolderID>
+      <cbcext:ContractFolderStatusCode>RES</cbcext:ContractFolderStatusCode>
+      <cacext:LocatedContractingParty>
+        <cac:Party>
+          <cac:PartyName><cbc:Name>Ayuntamiento de Villaejemplo</cbc:Name></cac:PartyName>
+        </cac:Party>
+      </cacext:LocatedContractingParty>
+      <cac:ProcurementProject>
+        <cbc:Name>Suministro de material de limpieza</cbc:Name>
+        <cbc:TypeCode>1</cbc:TypeCode>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>39830000-9</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">3100.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+    </cacext:ContractFolderStatus>
+  </entry>
+
+  <!-- 3. Sin keyword pero con CPV 72: entra por CPV, como en PLACSP. -->
+  <entry>
+    <id>https://contrataciondelestado.es/sindicacion/contratosMenores/9000000003</id>
+    <title>Servicio de mantenimiento de la aplicación de gestión de nóminas</title>
+    <updated>2026-10-11T16:20:31+02:00</updated>
+    <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=CM-EJ-0414" rel="alternate"/>
+    <summary type="text">Id licitación: CM-2026-0414; Órgano de Contratación: Diputación Provincial de Ejemplo; Importe: 9800.00 EUR; Estado: ADJ</summary>
+    <cacext:ContractFolderStatus>
+      <cbc:ContractFolderID>CM-2026-0414</cbc:ContractFolderID>
+      <cbcext:ContractFolderStatusCode>ADJ</cbcext:ContractFolderStatusCode>
+      <cacext:LocatedContractingParty>
+        <cac:Party>
+          <cac:PartyName><cbc:Name>Diputación Provincial de Ejemplo</cbc:Name></cac:PartyName>
+        </cac:Party>
+      </cacext:LocatedContractingParty>
+      <cac:ProcurementProject>
+        <cbc:Name>Servicio de mantenimiento de la aplicación de gestión de nóminas</cbc:Name>
+        <cbc:TypeCode>2</cbc:TypeCode>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>72260000-5</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">9800.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+      <cac:TenderResult>
+        <cbc:ResultCode>8</cbc:ResultCode>
+        <cbc:AwardDate>2026-10-02</cbc:AwardDate>
+        <cac:AwardedTenderedProject>
+          <cac:LegalMonetaryTotal>
+            <cbc:TaxExclusiveAmount>9800.00</cbc:TaxExclusiveAmount>
+          </cac:LegalMonetaryTotal>
+        </cac:AwardedTenderedProject>
+        <cac:WinningParty>
+          <cac:PartyName><cbc:Name>Nóminas y Sistemas Ejemplo SA</cbc:Name></cac:PartyName>
+          <cac:PartyIdentification><cbc:ID>B00000000</cbc:ID></cac:PartyIdentification>
+        </cac:WinningParty>
+      </cac:TenderResult>
+    </cacext:ContractFolderStatus>
+  </entry>
+
+  <!-- 4. Defensa: sin código de estado y con un plazo de presentación que un
+       contrato menor no tiene. Entra cerrado y sin plazo. -->
+  <entry>
+    <id>https://contrataciondelestado.es/sindicacion/contratosMenores/9000000004</id>
+    <title>Licencias de Veeam Backup para el centro de proceso de datos</title>
+    <updated>2026-10-11T15:02:09+02:00</updated>
+    <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=CM-EJ-0415" rel="alternate"/>
+    <summary type="text">Id licitación: CM-2026-0415; Órgano de Contratación: Consorcio de Ejemplo; Importe: 7300.00 EUR</summary>
+    <cacext:ContractFolderStatus>
+      <cbc:ContractFolderID>CM-2026-0415</cbc:ContractFolderID>
+      <cacext:LocatedContractingParty>
+        <cac:Party>
+          <cac:PartyName><cbc:Name>Consorcio de Ejemplo</cbc:Name></cac:PartyName>
+        </cac:Party>
+      </cacext:LocatedContractingParty>
+      <cac:ProcurementProject>
+        <cbc:Name>Licencias de Veeam Backup para el centro de proceso de datos</cbc:Name>
+        <cbc:TypeCode>1</cbc:TypeCode>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>48760000-3</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">7300.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+      <cac:TenderingProcess>
+        <cac:TenderSubmissionDeadlinePeriod>
+          <cbc:EndDate>2099-12-31</cbc:EndDate>
+          <cbc:EndTime>14:00:00</cbc:EndTime>
+        </cac:TenderSubmissionDeadlinePeriod>
+      </cac:TenderingProcess>
+    </cacext:ContractFolderStatus>
+  </entry>
+</feed>

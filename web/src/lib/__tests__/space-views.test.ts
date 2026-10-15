@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   BUILT_SPACE_ROUTES,
+  ESPACIOS_ABSORBIDOS,
   SPACE_VIEWS,
   legacyRedirects,
+  redirectsDeEspaciosAbsorbidos,
   SUBRUTAS_MOVIDAS,
   VISTAS_FUSIONADAS,
   type SpaceView,
@@ -18,7 +20,8 @@ describe("SPACE_VIEWS", () => {
     // Los recuentos son el contrato de `docs/archive/redesign/README.md`. Si uno cambia
     // sin actualizar el doc, la tabla del README miente. `ajustes` entró con
     // C7.5: cuatro vistas, de las que solo `cuenta` absorbe una ruta heredada
-    // (`/mi-cuenta`) — las otras tres no existían en ninguna parte.
+    // (`/mi-cuenta`) — las otras tres no existían en ninguna parte. La quinta,
+    // `seguridad`, es el alta del segundo factor (CU-25).
     //
     // Reestructura 2026-09-20 («un espacio, una pregunta»): `mi-pipeline` se
     // queda con la agenda; su embudo y su cartera son las vistas `rendimiento`
@@ -31,14 +34,20 @@ describe("SPACE_VIEWS", () => {
       "competencia",
       "cuentas",
       "direccion",
-      "empresas",
       "mercado",
       "mi-pipeline",
       "oportunidades",
       "ops",
     ]);
     expect(SPACE_VIEWS.mercado).toHaveLength(9);
-    expect(SPACE_VIEWS.competencia).toHaveLength(2);
+    // 2026-10: Empresas deja de ser espacio y sus dos vistas pasan a
+    // Competencia, detrás de las dos de siempre.
+    expect(SPACE_VIEWS.competencia.map((view) => view.key)).toEqual([
+      "competidores",
+      "utes",
+      "empresas",
+      "revision",
+    ]);
     expect(SPACE_VIEWS.oportunidades.map((view) => view.key)).toEqual([
       "tablero",
       "cartera",
@@ -55,10 +64,15 @@ describe("SPACE_VIEWS", () => {
       "etiquetado",
       "administracion",
     ]);
-    expect(SPACE_VIEWS.empresas).toHaveLength(2);
     expect(SPACE_VIEWS.cuentas).toHaveLength(2);
     expect(SPACE_VIEWS.direccion.map((view) => view.key)).toEqual(["resultado", "carga", "actividad"]);
-    expect(SPACE_VIEWS.ajustes).toHaveLength(4);
+    expect(SPACE_VIEWS.ajustes.map((view) => view.key)).toEqual([
+      "sesiones",
+      "seguridad",
+      "claves",
+      "notificaciones",
+      "cuenta",
+    ]);
   });
 
   it("las renovaciones viven en Mercado y absorben su ruta heredada", () => {
@@ -73,12 +87,11 @@ describe("SPACE_VIEWS", () => {
   });
 
   it("los espacios que no consolidan nada no declaran rutas heredadas", () => {
-    // `empresas` tenía sus dos vistas dentro de `/empresas`; `cuentas` y
-    // `direccion` son espacios nuevos del plan de funcionalidades 2026-09, y
-    // las tres vistas de `oportunidades` siempre fueron vistas de un espacio.
-    // Entran en la tabla para ser direccionables (`?vista=`), no para
+    // `cuentas` y `direccion` son espacios nuevos del plan de funcionalidades
+    // 2026-09, y las tres vistas de `oportunidades` siempre fueron vistas de un
+    // espacio. Entran en la tabla para ser direccionables (`?vista=`), no para
     // absorber nada, y por eso el recuento de rutas heredadas de abajo no sube.
-    for (const slug of ["empresas", "cuentas", "direccion", "oportunidades"]) {
+    for (const slug of ["cuentas", "direccion", "oportunidades"]) {
       expect(
         SPACE_VIEWS[slug].every((view) => view.from === undefined),
         `${slug} no debería absorber rutas`,
@@ -107,6 +120,49 @@ describe("SPACE_VIEWS", () => {
         expect(view.key).toMatch(/^[a-z0-9-]+$/);
         expect(view.label.length).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+describe("Empresas, vista de Competencia", () => {
+  it("la ruta del espacio retirado entra en su vista de Competencia", () => {
+    // Identidad (maestro y alias) y rendimiento eran dos espacios para la misma
+    // empresa. `/empresas` deja de ser espacio pero no deja de entrar.
+    expect(BUILT_SPACE_ROUTES).not.toContain("empresas");
+    expect(legacyRedirects()).toContainEqual({
+      source: "/empresas",
+      destination: "/competencia?vista=empresas",
+    });
+  });
+
+  it("la cola de revisión no se queda sin vista propia ni sin su enlace de siempre", () => {
+    // `/empresas?vista=revision` es lo que se pegaba en un mensaje cuando había
+    // coincidencias que resolver. Next deja que el `?vista=` del destino pise el
+    // de la petición, así que sin un redirect condicionado ese enlace caería en
+    // el maestro.
+    expect(SPACE_VIEWS.competencia.find((view) => view.key === "revision")?.from).toBeUndefined();
+    expect(redirectsDeEspaciosAbsorbidos()).toContainEqual({
+      source: "/empresas",
+      has: [{ type: "query", key: "vista", value: "revision" }],
+      destination: "/competencia?vista=revision",
+    });
+    expect(redirectsDeEspaciosAbsorbidos()).toContainEqual({
+      source: "/empresas",
+      has: [{ type: "query", key: "vista", value: "maestro" }],
+      destination: "/competencia?vista=empresas",
+    });
+  });
+
+  it("cada vista vieja de un espacio absorbido acaba en una vista viva del que lo absorbe", () => {
+    for (const absorbido of ESPACIOS_ABSORBIDOS) {
+      expect(BUILT_SPACE_ROUTES, absorbido.slug).not.toContain(absorbido.slug);
+      expect(BUILT_SPACE_ROUTES).toContain(absorbido.en);
+      const vivas = (SPACE_VIEWS[absorbido.en] ?? []).map((view) => view.key);
+      for (const destino of Object.values(absorbido.vistas)) {
+        expect(vivas, `${absorbido.slug} → ${absorbido.en}?vista=${destino}`).toContain(destino);
+      }
+      // Y la ruta sin `?vista=` también entra, por el `from` de una vista.
+      expect(SPACE_VIEWS[absorbido.en].some((view) => view.from === absorbido.slug)).toBe(true);
     }
   });
 });

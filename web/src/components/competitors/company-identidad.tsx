@@ -3,7 +3,8 @@
 /**
  * Pestaña «Identidad» del dossier: quién es la empresa en el maestro.
  *
- * Es lo que la ficha de `/empresas` enseñaba y el dossier no: NIF canónico,
+ * Es lo que la ficha del maestro (Competencia › Empresas, hasta 2026-10 el
+ * espacio `/empresas`) enseñaba y el dossier no: NIF canónico,
  * grupo, alias vistos en fuente y relaciones de UTE. No depende del ámbito ni
  * del periodo —es el registro, no la actividad—, así que no los lee.
  *
@@ -14,7 +15,7 @@
  * las cifras del dossier y las de cada fila del maestro no cuadraban y nada
  * explicaba por qué.
  *
- * La consulta es la misma que usa `/empresas` (`empresasKeys.detail`), así que
+ * La consulta es la misma que usa el maestro (`empresasKeys.detail`), así que
  * las dos pantallas comparten caché.
  */
 
@@ -147,7 +148,9 @@ function IdentidadTarjeta({ consulta }: { consulta: UseQueryResult<EmpresaDetall
       <Relacionadas titulo="Miembros de la UTE" empresas={empresa.ute_miembros} />
       <Relacionadas titulo="Participa en UTEs" empresas={empresa.participa_en_utes} />
 
-      <EnlaceIr href={`/empresas?q=${encodeURIComponent(empresa.nif_canonico ?? empresa.nombre_canonico)}`}>
+      <EnlaceIr
+        href={`/competencia?vista=empresas&q=${encodeURIComponent(empresa.nif_canonico ?? empresa.nombre_canonico)}`}
+      >
         Ver en el maestro
       </EnlaceIr>
     </section>

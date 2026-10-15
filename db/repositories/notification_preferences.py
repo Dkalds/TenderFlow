@@ -73,6 +73,13 @@ TIPOS: tuple[tuple[str, str], ...] = (
     # F4.3. Avisos a seis, tres y un mes del fin de un contrato ganado. Es el
     # opt-out que pide el plan: apagarlo aquí lo apaga en campana y correo.
     ("pursuit.cartera_vence", "Se acerca el fin de un contrato de mi cartera"),
+    # Caducidad de la documentación acreditativa (certificaciones, AEAT,
+    # Seguridad Social, ROLECE, clasificación). Llega a owner y admin; apagarlo
+    # aquí lo apaga en campana y correo para esa persona.
+    (
+        "organizacion.documento_caduca",
+        "Va a caducar un documento acreditativo de mi organización",
+    ),
 )
 
 

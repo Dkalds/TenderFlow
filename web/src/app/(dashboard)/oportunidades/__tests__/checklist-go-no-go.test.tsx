@@ -53,6 +53,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
         etiqueta: "Certificaciones",
         veredicto: "cumple",
         sin_hechos: false,
+        fuente: "pliego",
         items: [
           {
             familia: "certifications",
@@ -61,6 +62,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
             motivo: "La organización declara «ISO 27001» (vigente hasta 2027-01-01).",
             evidencia: [CITA_ISO],
             dato_organizacion: "ISO 27001",
+            fuente: "pliego",
           },
         ],
       },
@@ -69,6 +71,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
         etiqueta: "Solvencia económica",
         veredicto: "desconocido",
         sin_hechos: false,
+        fuente: "pliego",
         items: [
           {
             familia: "economic_solvency",
@@ -84,6 +87,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
               },
             ],
             dato_organizacion: null,
+            fuente: "pliego",
           },
         ],
       },
@@ -92,6 +96,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
         etiqueta: "Solvencia técnica",
         veredicto: "no_cumple",
         sin_hechos: false,
+        fuente: "pliego",
         items: [
           {
             familia: "technical_solvency",
@@ -108,6 +113,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
               },
             ],
             dato_organizacion: "Ayuntamiento de Madrid (2025), 400.000 €",
+            fuente: "pliego",
           },
         ],
       },
@@ -118,6 +124,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
         etiqueta: "Equipo requerido",
         veredicto: "cumple",
         sin_hechos: false,
+        fuente: "pliego",
         items: [
           {
             familia: "team_requirements",
@@ -126,6 +133,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
             motivo: "La plantilla declarada cubre el perfil.",
             evidencia: [],
             dato_organizacion: "Jefe de proyecto: 2 persona(s), 6 años",
+            fuente: "pliego",
           },
         ],
       },
@@ -136,6 +144,7 @@ function checklist(overrides: Partial<GoNoGoChecklist> = {}): GoNoGoChecklist {
     desconocido: 1,
     requisitos_extraidos: 4,
     desconocido_extraidos: 1,
+    usa_condiciones_oficiales: false,
     ...overrides,
   };
 }
@@ -156,6 +165,7 @@ function familiaSinHechos(familia: Familia): Familia {
         motivo: `La ficha del pliego no extrajo ningún requisito de «${familia.etiqueta}».`,
         evidencia: [],
         dato_organizacion: null,
+        fuente: "pliego",
       },
     ],
   };
@@ -358,5 +368,75 @@ describe("checklist go/no-go — familias de las que la ficha no sacó nada", ()
 
     fireEvent.click(await screen.findByRole("button", { name: "Abrir la pestaña «Pliego»" }));
     expect(onAbrirPliego).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("checklist go/no-go — solvencia de la publicación oficial (v148)", () => {
+  /** Sin ficha del pliego, con la solvencia económica que publica PLACSP. */
+  function soloOficial(): GoNoGoChecklist {
+    const base = checklist();
+    const [certificaciones, , tecnica, equipo] = base.familias ?? [];
+    return checklist({
+      ficha_estado: null,
+      extraction_version: null,
+      ficha_actualizada: null,
+      usa_condiciones_oficiales: true,
+      condiciones_actualizadas: "2026-10-12T10:00:00Z",
+      familias: [
+        familiaSinHechos(certificaciones),
+        {
+          familia: "economic_solvency",
+          etiqueta: "Solvencia económica",
+          veredicto: "cumple",
+          sin_hechos: false,
+          fuente: "placsp",
+          items: [
+            {
+              familia: "economic_solvency",
+              requisito: "Volumen anual de negocios",
+              veredicto: "cumple",
+              motivo:
+                "El mejor ejercicio declarado (1.200.000 € en 2025) alcanza el umbral de 1.000.000 € que fija la publicación oficial.",
+              evidencia: [],
+              dato_organizacion: "1.200.000 € en 2025",
+              fuente: "placsp",
+            },
+          ],
+        },
+        familiaSinHechos(tecnica),
+        familiaSinHechos(equipo),
+      ],
+      total_requisitos: 4,
+      cumple: 1,
+      no_cumple: 0,
+      desconocido: 3,
+      requisitos_extraidos: 1,
+      desconocido_extraidos: 0,
+    });
+  }
+
+  it("contrasta sin ficha del pliego y no lo presenta como «sin ficha»", async () => {
+    renderChecklist(soloOficial());
+
+    expect(await screen.findByText("Volumen anual de negocios")).toBeInTheDocument();
+    expect(screen.queryByText(/Todavía no hay ficha del pliego extraída/)).not.toBeInTheDocument();
+    expect(screen.getByText(/De 1 requisito contrastado/)).toBeInTheDocument();
+    expect(screen.getByText(/Esto no decide el Go\/No-Go: lo propone/)).toBeInTheDocument();
+  });
+
+  it("un «cumple» de la publicación oficial no se degrada por no tener cita del pliego", async () => {
+    renderChecklist(soloOficial());
+
+    const cabecera = (await screen.findByText("Solvencia económica")).closest("summary");
+    expect(cabecera).toHaveTextContent("Cumple");
+    expect(cabecera).toHaveTextContent("Publicación oficial (PLACSP)");
+    expect(screen.queryByText(/sin ninguna cita del pliego que lo respalde/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Requisito de la publicación oficial en PLACSP/)).toBeInTheDocument();
+  });
+
+  it("declara la fecha de la publicación oficial evaluada", async () => {
+    renderChecklist(soloOficial());
+
+    expect(await screen.findByText(/publicación oficial del/)).toBeInTheDocument();
   });
 });

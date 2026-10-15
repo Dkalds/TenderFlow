@@ -43,11 +43,12 @@ const COMPARACION = {
   ],
 };
 
-// La pregunta cruzada del diálogo entra por `next/dynamic` y arrastra el hilo
-// de chat con react-markdown: su import en frío se paga aquí, con margen
-// propio, y no dentro del test del diálogo.
+// La tabla del diálogo entra por `next/dynamic`: su import en frío se paga
+// aquí, con margen propio, y no dentro del test del diálogo. (La pregunta
+// cruzada, que arrastraba el hilo de chat, es desde 2026-10 la del asistente
+// único y ya no está en el diálogo.)
 beforeAll(async () => {
-  await import("@/components/pliego/pregunta-comparacion");
+  await import("@/components/pliego/comparar-fichas");
 }, 120_000);
 
 beforeEach(() => {
@@ -141,9 +142,10 @@ describe("bandeja de comparación", () => {
     fireEvent.click(screen.getByRole("button", { name: "Comparar fichas" }));
 
     expect(await screen.findByRole("dialog")).toHaveTextContent("Comparar fichas del pliego");
-    // La tabla y la pregunta cruzada entran por `next/dynamic` al abrirse el
-    // diálogo (la pregunta arrastra el hilo de chat): se esperan con margen.
+    // La tabla entra por `next/dynamic` al abrirse el diálogo: se espera con
+    // margen. La pregunta cruzada es la del asistente único: un botón que lo
+    // abre con estos expedientes (`comparacion-bandeja.test.tsx`).
     expect(await screen.findByText("Precio: 55 puntos", {}, { timeout: 15_000 })).toBeInTheDocument();
-    expect(await screen.findByText(/Preguntar sobre estos 2 expedientes/, {}, { timeout: 15_000 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preguntar al asistente sobre estos 2 expedientes" })).toBeInTheDocument();
   }, 30_000);
 });

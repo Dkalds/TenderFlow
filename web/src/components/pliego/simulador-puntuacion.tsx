@@ -193,7 +193,9 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
                 {data.puntos_precio_origen === "pliego"
                   ? " (leídos del pliego)"
                   : data.puntos_precio_origen === "peso_precio"
-                    ? " (inferidos del peso del precio: el pliego no publica los puntos)"
+                    ? // `peso_precio_pct` solo lo escribe el parser CODICE: es el peso que
+                      // publica el anuncio oficial, y la frase dice de dónde sale.
+                      " (inferidos del peso del precio que publica PLACSP: el pliego no publica los puntos)"
                     : ""}
                 .
               </span>

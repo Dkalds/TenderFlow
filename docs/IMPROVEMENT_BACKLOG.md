@@ -73,6 +73,12 @@ backend solo para la tabla** (`POST /licitaciones/comparar`): `/ask` sigue
 aceptando un único `id_externo`, así que la pregunta cruzada falta también en
 el backend, no solo en la UI.
 
+*Estado (2026-10-12):* las dos salvedades de arriba ya no describen el código.
+F1.4 tiene backend: `tasas_anulacion_organo` (v141) alimenta el flag
+`FLAG_ANULACION` de `services/analytics/scoring.py`. Y `/ask` acepta
+`ids_externos` con hasta tres expedientes (`api/routes/ask.py`), que el
+Investigador usa (`web/src/lib/ask-stream.ts`).
+
 Lo que **no** se hizo, y por qué:
 
 | Ítem | Estado | Motivo |
@@ -112,7 +118,7 @@ Pantallas que faltaban de lado ficha y superficie pública (2026-09-18, rama
 `worktree-agent-ac5d5218d7d3b1f8b`): F2.2, F2.5, F2.6, F2.8, F6.2 y F6.5 ya
 tienen UI; el estado por ítem está anotado en el plan. Quedan sin hacer: el
 PDF del guion (F2.6, sin ruta en el backend), `/ask` multi-expediente (F2.8;
-sin backend ni UI, ver la nota de arriba) y la emisión de `evidencia_abierta` (F2.5). Los E2E nuevos
+hecho después, ver el estado del 2026-10-12 de arriba) y la emisión de `evidencia_abierta` (F2.5). Los E2E nuevos
 (`pagina-cita.spec.ts`, bloque de órganos de `seo.spec.ts`) no se ejecutaron
 en local.
 
@@ -239,6 +245,13 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Decidir si el carril diario cae al ZIP del mes en curso cuando el ATOM no
     avanza durante N pasadas.
 - **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
+- **Estado (2026-10-15):** el criterio pendiente está resuelto en código: tras
+  `PLACSP_ATOM_PASADAS_SIN_AVANCE_ZIP` pasadas (6 por defecto, un día) sin que
+  avance el cursor `placsp`, el carril diario ingiere el ZIP del mes en curso
+  (y el del anterior si el hueco empezó allí; nunca más de dos), sin tocar el
+  cursor y con traza `placsp_atom_respaldo_zip` en `ops_events`
+  (`scheduler/respaldo_zip_placsp.py`, rama `claude/funcionalidades-2026-10`).
+  Queda comprobar en producción que el corpus del 09-08 en adelante aparece.
 - **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
 
 ---
@@ -488,6 +501,12 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   Pendiente: verlo en un run (`entity_resolution_batch` de `source=pscp`, el
   cursor avanzando y el porcentaje enlazado), y decidir si
   `replace_adjudicaciones_batch` debe conservar el enlace.
+- **Estado (2026-10-15):** la causa «con filas» está cerrada en código: PSCP
+  declara `completar_documentos_primero`, así que `run_connector` lee los
+  pliegos antes del cierre del lote, con 120 s de presupuesto propio
+  (`PRESUPUESTO_DOCUMENTOS_S`) y tope por petición (rama
+  `claude/funcionalidades-2026-10`). Queda verlo en un run de producción: log
+  `pscp_documentos_completados` y filas PSCP con documentos.
 - **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [services/entity_resolution.py](../services/entity_resolution.py), [db/empresas.py](../db/empresas.py)
 - **Riesgo:** bajo — el paso ya es fail-open y tiene presupuesto de tiempo.
 
@@ -633,13 +652,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ---
 
-### [P1] El despachador del outbox no lo invoca ningún plano
-- **Área:** scheduler/jobs/event_dispatch.py, scheduler/pipeline_runs.py, scheduler/jobs/__init__.py
-- **Problema:** `scheduler/jobs/event_dispatch.run()` está escrito y probado (S4.1), pero ni el cierre de `pipeline_runs.py` ni el registro de jobs de APScheduler lo llaman (comprobado el 2026-09-18 buscando `event_dispatch` fuera de `tests/` y `docs/`). Ningún evento de `domain_events` se entrega: ni notificaciones in-app, ni correos de `pursuit.*`, ni webhooks del catálogo, ni los nuevos `pursuit.task_due`/`pursuit.mentioned`. La alerta `DomainEventsBacklogHigh` acabará disparándose por esto.
-- **Por qué no se hizo en el mismo cambio:** cablearlo vacía de golpe la cola acumulada desde que existe el outbox —correos y webhooks incluidos, con fechas viejas—. Hace falta decidir antes si se marca como despachado lo anterior a una fecha o se entrega.
-- **Acceptance criteria:** un paso del cierre (plano `pipeline`, ADR-012) llama a `event_dispatch.run()`; decisión documentada sobre la cola histórica; `domain_events_pending` baja en producción.
-- **Riesgo:** medio — primera vez que salen correos y webhooks del outbox.
-
 ### [P1] Recuperación de contraseña: comprobar la entrega en producción y decidir lo que la auditoría dejó fuera
 - **Área:** services/password_reset.py, api/routes/auth.py, api/middleware.py, observability/, config/settings.py, variables de Render (acción del usuario)
 - **Problema:** la auditoría del issue #243 (2026-10-09) cerró los huecos del flujo en el código —ver [el RFC](rfc/243-recuperacion-contrasena-local.md)—, pero dejó ocho cosas que no se arreglan con un commit: dos hay que mirarlas en producción y el resto son decisiones del dueño. Cada una lleva su prioridad.
@@ -669,6 +681,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Comprobado en Render que `OAUTH_MICROSOFT_CLIENT_ID` está vacío mientras esto siga abierto. Si no lo está, este ítem es P0.
 - **Files de partida:** [shared/identity.py](../shared/identity.py), [api/routes/auth.py](../api/routes/auth.py), [db/users.py](../db/users.py), [docs/adr/ADR-030-identidad-user-id-y-oidc.md](adr/ADR-030-identidad-user-id-y-oidc.md)
 - **Riesgo:** alto — toca el login y la vinculación de cuentas; el camino de Google no debe cambiar.
+
+### [P1] Poner en producción la rama `claude/funcionalidades-2026-10` (acción del propietario)
+- **Área:** db/alembic/versions (v147–v149), `.github/workflows/scrape-daily.yml`, variables de repo
+- **Problema:** la rama trae funciones que no se ven hasta que alguien las enciende fuera del código: tres migraciones, un cambio de workflow aprobado el 2026-10-12, y la ficha nocturna del pliego, que sigue apagada por coste.
+- **Acceptance criteria:**
+  - v147 (tipo de documento acreditativo), v148 (condiciones oficiales de CODICE) y v149 (el ledger de oportunidades deja borrar la organización) aplicadas con `plan` antes de `apply` ([runbooks/disaster-recovery.md §5](runbooks/disaster-recovery.md)); `/health/ready → schema: ok`. v149 toca el trigger de un registro inmutable: revisar su test antes.
+  - Decidida la variable de repo `PLIEGO_FACTS_ENABLED`: con ella a `true`, `pliegos.yml` extrae la ficha de los expedientes abiertos cada noche (gasto acotado por el presupuesto LLM y `PLIEGO_FACTS_BATCH`); sin ella, lotes, criterios y solvencia del pliego solo aparecen al abrir una oportunidad. La publicación oficial de CODICE (v148) no depende de esto.
+  - Comprobado que `domain_events_pending` baja tras el primer cierre con el despachador (ver el cerrado del 2026-10-12).
+  - Tras el primer deploy: el P0 del ATOM y el P1 de los pliegos de PSCP verificados con datos.
+- **Riesgo:** medio — tres migraciones y el primer reparto real de avisos de caducidad y de la campana nueva.
 
 ## P2 — Media
 
@@ -782,6 +804,11 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Problema:** los once casos del corpus golden son estructuralmente fieles al CODICE pero escritos a mano: la sesión que los creó no tenía ZIP mensuales cacheados ni acceso al feed. El valor del corpus está en codificar variabilidad que nadie imaginó, y eso solo lo dan los datos reales.
 - **Acceptance criteria:**
   - `ENV=dev python scripts/capture_placsp_fixtures.py --caso <caso>` sustituye cada fixture sintético por uno real, y `python -m tests.test_codice_parser_golden --update` regenera el golden con el diff revisado.
+- **Estado (2026-10-15):** el corpus crece con dos casos más, también
+  sintéticos (16 y 17, condiciones oficiales; el README lo dice), porque el
+  proxy de la sesión que los escribió denegaba PLACSP.
+  `capture_placsp_fixtures.py --caso condiciones|condiciones_por_lote` ya sabe
+  recortarlos de una muestra real.
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
 
@@ -990,6 +1017,25 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [api/routes/security.py](../api/routes/security.py), [web/src/app/(dashboard)/ops/_components/observabilidad/errores-navegador-card.tsx](../web/src/app/(dashboard)/ops/_components/observabilidad/errores-navegador-card.tsx)
 - **Riesgo:** bajo.
 
+### [P2] Encender las fuentes nuevas: contratos menores, plataformas agregadas y TACRC completo
+- **Área:** scraper/connectors/placsp_menores.py, scraper/connectors/placsp_agregadas.py, scraper/connectors/tacrc.py, [runbooks/fuentes-opcionales.md](runbooks/fuentes-opcionales.md)
+- **Problema:** los tres conectores están escritos y apagados (decisión del 2026-10-12, que revisa D16), pero ninguna URL se pudo verificar: el proxy de la sesión que los escribió denegaba PLACSP y Hacienda. Las fixtures de las sindicaciones 1143 y 1044 son sintéticas, y la URL de la biblioteca del TACRC (API REST de SharePoint) es una candidata.
+- **Acceptance criteria:**
+  - `--check --dump` de cada conector contra la URL real, y fixtures sustituidas por un recorte real.
+  - **Antes de encender menores:** decidir su identidad. `placsp_menores:<ContractFolderID>` sigue la convención de PLACSP, pero en menores es más probable que dos órganos repitan número de expediente y se pisen.
+  - Decidido si la analítica de competidores sin filtro de tecnología debe contar los menores.
+  - Variables en `vars.` según el runbook; las tres fuentes en `ok` en el healthcheck.
+- **Riesgo:** medio — volumen nuevo en `adjudicaciones` y `empresas`.
+
+### [P2] Medir la cobertura de las condiciones oficiales de CODICE y verificar sus nombres
+- **Área:** scraper/codice_parser.py (`parse_condiciones`), scripts/medir_terminos_codice.py
+- **Problema:** criterios, garantías y solvencia se leen de `cac:TenderingTerms` desde v148, pero no se pudo medir sobre el feed real (proxy denegado). Los nombres de criterio coinciden con un parser público independiente; los de garantía y solvencia salen del esquema CODICE/UBL sin verificar, y se asume que `AmountRate` viene en porcentaje. Un nombre que no case da dato ausente, no falso.
+- **Acceptance criteria:**
+  - `scripts/medir_terminos_codice.py --vivo --paginas 2 --guardar muestra/` ejecutado; porcentaje por bloque y nivel anotado aquí con fecha.
+  - Nombres y escala corregidos si la muestra los desmiente; `parser_field_null_total` de las tres familias revisado en producción.
+  - Decidido si se rellena el histórico (solo con los ZIP mensuales: la fase de adjudicación deja de publicar el bloque).
+- **Riesgo:** bajo — solo lectura y parser.
+
 ## P3 — Nice to have
 
 ### [P2] [Investigador] La búsqueda por significado no corre en producción: decidir si se sirve
@@ -1018,13 +1064,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Decisión sobre el texto de la consulta en los logs.
   - `MRR_MIN` de `tests/eval/test_eval_rag.py` al valor medido menos el margen.
 - **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [api/routes/search.py](../api/routes/search.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
-- **Riesgo:** bajo.
-
-### [P3] La campana nunca lista novedades de licitaciones: lee `users.last_login`, que no existe
-- **Área:** api/routes/notifications.py, services/analytics/resumen.py (`get_resumen_novedades`)
-- **Problema:** `GET /notifications` rellena `items` (y su parte de `unread_count`) con `get_resumen_novedades(user_id)`, que cuenta desde `users.last_login`. Ninguna migración crea esa columna, así que `items` sale vacío siempre. Los tests de `tests/test_analytics_resumen.py` no lo ven porque sustituyen `get_user_by_id` por un mock que sí la trae. El Resumen tenía el mismo fallo —«Todo al día» siempre— y se arregló el 2026-10-02 contando desde la última visita de `notification_reads` (`get_resumen_novedades_desde` + `services.novedades.corte_ultima_visita`).
-- **Por qué no se arregló con el Resumen:** no es solo un bug. Con la misma marca, la campana pasaría de cero a enseñar hasta diez licitaciones del **mercado entero** como no leídas, y como leer una mueve la marca, el número volvería a diez en cuanto se publicaran más: un contador que nunca baja. Antes de arreglarlo hay que decidir si la campana debe listar novedades de mercado (¿acotadas al ámbito de la organización?) o retirar `items` y dejarla en alertas.
-- **Acceptance criteria:** decisión tomada; o bien `items` sale de la marca de última visita con un alcance que tenga sentido para una campana, o bien se retira junto con `get_resumen_novedades` por `user_id`. Ningún camino lee `users.last_login`.
 - **Riesgo:** bajo.
 
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
@@ -1159,8 +1198,38 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ---
 
+### [P3] Flecos de la rama `claude/funcionalidades-2026-10`
+- **Área:** varios
+- **Problema:** lo que las seis líneas dejaron escrito como pendiente, para que no se pierda.
+- **Acceptance criteria:**
+  - RFC para retirar de `GET /notifications` los campos que la campana ya no usa (`items`, `unread_count`, `hoy`), y `POST /notifications/read` y `GET /licitaciones/stream`: quitarlos rompe el contrato.
+  - Decidir si la cuota de adjuntos (2 GiB por organización) debe descontar los retirados; hoy borrar no libera espacio.
+  - Alta del 2FA con QR (no hay librería instalada) y regenerar los códigos de recuperación sin desactivar el segundo factor.
+  - Renovar la captura de `/competencia` en `visual.spec.ts` (tiene dos pestañas más). `/empresas` ya salió de `web/bundle-budget.json`.
+  - Validar con el dueño el reparto fabricante → familia de «Proyectos y módulos» (`FAMILIA_DE_FABRICANTE`; Oracle, Microsoft, IBM, ServiceNow y Sopra no cuentan en ninguna).
+  - El digest dice «expedientes que sigues» también en los avisos de documentación.
+  - `use-renovaciones` sigue leyendo `usePursuits()` con la página de 50.
+- **Riesgo:** bajo.
+
 ## Cerrados
 
+- [2026-10-15] **P3: La campana nunca lista novedades de licitaciones** (rama
+  `claude/funcionalidades-2026-10`) — decidido «solo lo tuyo»: la campana lee la
+  bandeja `in_app` de la organización activa (`GET /notifications/alerts`,
+  paginada y con filtro), no marca nada al abrirse, tiene «Ver todas» y deja
+  pausar la regla de una alerta. Las novedades de mercado se quedan en el
+  Resumen; `get_resumen_novedades(user_id)` está retirada y un test vigila que
+  nada lea `users.last_login`. Los campos deprecados de `GET /notifications`
+  siguen hasta su RFC (ítem P3 nuevo).
+- [2026-10-12] **P1: El despachador del outbox no lo invoca ningún plano** — el ítem
+  estaba desfasado: el cierre de la pasada ya llama a `event_dispatch` entre
+  `cartera_avisos` y `digests` (`scheduler/pipeline_runs.py`, `_run_event_dispatch`,
+  tier `advisory`), encendido por defecto y con `EVENT_DISPATCH_ENABLED=0` como
+  salida de escape (`config/settings.py`, `event_dispatch_enabled`). La cola
+  histórica se resolvió por antigüedad: `event_dispatch.caducar_viejos` caduca sin
+  repartir lo que supera la antigüedad máxima. Lo único que queda es mirar que
+  `domain_events_pending` baja en producción, y eso va con las demás comprobaciones
+  del propietario.
 - [2026-10-09] **P1: El Investigador no encontraba lo que se le escribía** (rama
   `claude/investigador-improvements-1e5d9c`) — medido contra producción: una
   pregunta normal caía a un `ILIKE` del primer token de la consulta cruda

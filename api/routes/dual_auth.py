@@ -23,6 +23,7 @@ from fastapi import (
 from fastapi.security import APIKeyHeader
 
 from api.concurrency import run_db
+from api.errors import ReautenticacionRequerida
 from config import settings
 from observability.logging import get_logger
 from shared.identity import user_key_from_email
@@ -162,9 +163,10 @@ def require_recent_session() -> Callable[..., Awaitable[dict[str, Any]]]:
             authenticated_at is None
             or (now - authenticated_at).total_seconds() > settings.SENSITIVE_ACTION_MAX_AGE_SECONDS
         ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Reauthenticate before performing this sensitive operation.",
+            # Un tipo propio y no un 403 cualquiera: éste se arregla volviendo
+            # a entrar, y la consola lo ofrece en vez de decir «sin permiso».
+            raise ReautenticacionRequerida(
+                "Reauthenticate before performing this sensitive operation."
             )
 
         if ctx.get("mfa_required"):
@@ -173,9 +175,9 @@ def require_recent_session() -> Callable[..., Awaitable[dict[str, Any]]]:
                 verified_at is None
                 or (now - verified_at).total_seconds() > settings.MFA_STEP_UP_MAX_AGE_SECONDS
             ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Verify MFA again before performing this sensitive operation.",
+                # Mismo arreglo: entrar de nuevo vuelve a pedir el código.
+                raise ReautenticacionRequerida(
+                    "Verify MFA again before performing this sensitive operation."
                 )
         return ctx
 

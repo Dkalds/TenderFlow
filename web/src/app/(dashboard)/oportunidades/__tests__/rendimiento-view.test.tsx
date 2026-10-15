@@ -185,6 +185,24 @@ describe("RendimientoView · funnel", () => {
   });
 });
 
+describe("RendimientoView · previsión", () => {
+  it("el reparto por trimestre vive aquí, con los supuestos con los que se ponderó", () => {
+    // Es la única pantalla que lo pinta (Dirección enlaza aquí): la ve
+    // cualquier miembro, no solo un owner o un admin.
+    backend.data = {
+      ...METRICS,
+      prevision_trimestral: { "2027-Q1": 20000, "2026-Q4": 30000 },
+      probabilidades_etapa_usadas: { identified: 10 },
+    };
+    render(<Vista />);
+
+    expect(screen.getByText("Previsión por trimestre")).toBeInTheDocument();
+    expect(screen.getByText("Valor ponderado del pipeline")).toBeInTheDocument();
+    expect(screen.getByLabelText("Probabilidad por etapa")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem").length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe("RendimientoView · calidad del Radar", () => {
   it("pinta el acierto de la banda que llega al mínimo y el hueco de la que no", () => {
     render(<Vista />);

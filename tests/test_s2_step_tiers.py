@@ -51,6 +51,9 @@ PASOS_ADVISORY = {
     # F4.3: avisos de fin de contrato con meses de margen; la pasada
     # siguiente recupera una fallida.
     "cartera_avisos",
+    # Avisos de caducidad de la documentación acreditativa (60, 30 y 7 días):
+    # semanas de margen y ventana diaria, como los de cartera.
+    "documentacion_avisos",
     "drift_checks",
     "sap_active_learning",
     "webhook_reintentos",

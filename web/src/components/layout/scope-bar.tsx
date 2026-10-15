@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Info, Redo2, RotateCcw, Search, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -382,10 +382,14 @@ export function ScopeBar() {
   // desplazado por debajo de la barra (ver `scroll-edge.tsx`).
   const scrolled = useScrollEdgeState();
 
-  const subsetKeys = pageGlobalFilterKeys(pathname);
+  // El contrato de un espacio es el de la vista que se mira: Competencia ›
+  // Empresas no lee el ámbito aunque Competidores sí (`lib/navigation.ts`). La
+  // barra ya va dentro de un `Suspense` (`console-frame.tsx`).
+  const vista = useSearchParams()?.get("vista") ?? null;
+  const subsetKeys = pageGlobalFilterKeys(pathname, vista);
   const singleValueKeys = pageSingleValueFilterKeys(pathname);
-  const optInKeys = React.useMemo(() => pageOptInFilterKeys(pathname), [pathname]);
-  const filtersApply = pathUsesGlobalFilters(pathname) || (subsetKeys?.length ?? 0) > 0;
+  const optInKeys = React.useMemo(() => pageOptInFilterKeys(pathname, vista), [pathname, vista]);
+  const filtersApply = pathUsesGlobalFilters(pathname, vista) || (subsetKeys?.length ?? 0) > 0;
   // Los filtros opt-in (F1.1) sólo se ven donde la página los declara; el
   // resto sigue el contrato de siempre (ausente = todos).
   const shows = React.useCallback(
@@ -544,8 +548,8 @@ export function ScopeBar() {
   // Las dos ramas comparten cabecera y el hueco del final (exportar y campana),
   // en la misma posición del árbol; sólo cambia el contenido de la izquierda.
   // Antes cada rama pintaba su propia `NotificationBell`: al pasar de un
-  // espacio con ámbito a otro sin él, React la desmontaba, cerraba el SSE de
-  // `/licitaciones/stream`, abría otro y perdía el contador en vivo.
+  // espacio con ámbito a otro sin él, React la desmontaba y la volvía a montar
+  // (entonces cerraba y reabría un SSE; hoy perdería el menú abierto).
   return (
     <>
       {/* La barra scrollea en horizontal, así que el borde no puede vivir dentro

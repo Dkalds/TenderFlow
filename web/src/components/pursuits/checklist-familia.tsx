@@ -10,6 +10,11 @@
  * pinta como cumplido**. El backend garantiza que no lo emite; si un día
  * llegara, se degrada a «desconocido» diciendo por qué, que es exactamente lo
  * que el módulo de dominio hace con ese caso.
+ *
+ * La excepción es la misma que admite el backend (v148): un requisito con
+ * `fuente: "placsp"` sale de la publicación oficial, no del pliego, y su
+ * respaldo es esa publicación. No lleva cita y no se degrada; la familia lo
+ * dice con su etiqueta de procedencia.
  */
 
 import { ExternalLink } from "lucide-react";
@@ -36,9 +41,13 @@ const SIN_CITA =
   "Llegó marcado como cumplido pero sin ninguna cita del pliego que lo respalde, " +
   "así que no se presenta como cumplido.";
 
+/** Etiqueta de procedencia de lo que viene de la publicación oficial. */
+const PUBLICACION_OFICIAL = "Publicación oficial (PLACSP)";
+
 /** El veredicto que se puede defender con lo que trae el propio ítem. */
 function veredictoDeItem(item: ChecklistItem): ChecklistVeredicto {
-  if (item.veredicto === "cumple" && (item.evidencia ?? []).length === 0) return "desconocido";
+  const sinRespaldo = item.fuente !== "placsp" && (item.evidencia ?? []).length === 0;
+  if (item.veredicto === "cumple" && sinRespaldo) return "desconocido";
   return item.veredicto;
 }
 
@@ -153,6 +162,11 @@ function ChecklistItemRow({
             })}
           </ul>
         </details>
+      ) : item.fuente === "placsp" ? (
+        <p className="mt-2 text-tf-micro leading-relaxed text-muted-foreground">
+          Requisito de la publicación oficial en PLACSP: no sale del pliego, así que no lleva
+          cita de página.
+        </p>
       ) : (
         <p className="mt-2 text-tf-micro leading-relaxed text-muted-foreground">
           Sin cita del pliego para este requisito.
@@ -181,6 +195,11 @@ export function ChecklistFamilia({
     <details open className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2.5">
         <span className="min-w-0 flex-1 text-tf-body font-semibold">{familia.etiqueta}</span>
+        {familia.fuente === "placsp" && (
+          <Badge variant="info" size="sm" className="flex-none">
+            {PUBLICACION_OFICIAL}
+          </Badge>
+        )}
         <span className="tf-tnum flex-none text-tf-micro text-muted-foreground">
           {items.length} requisito{items.length === 1 ? "" : "s"}
         </span>

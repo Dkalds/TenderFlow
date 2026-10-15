@@ -1,6 +1,7 @@
 /**
  * El inspector de /detalle: lo que decide si mirar una licitación va arriba,
- * sin pestañas, y el resto se reparte en cinco.
+ * sin pestañas, y el resto se reparte en cuatro. La quinta, IA, se fue en
+ * 2026-10: «Preguntar a la IA» abre el asistente único con este expediente.
  *
  * Se fija lo que motivó el rediseño: la fecha límite y el órgano estaban por
  * debajo de cinco bloques de la pestaña Resumen, y la cabecera solo enseñaba
@@ -33,6 +34,7 @@ vi.mock("@/components/seguir-boton", () => ({
 }));
 
 import { DetailInspector } from "@/components/detail-inspector";
+import { useAsistente } from "@/lib/asistente-store";
 
 const DIA = 86_400_000;
 
@@ -129,22 +131,25 @@ describe("DetailInspector", () => {
     expect(await screen.findByText("~4")).toBeInTheDocument();
   });
 
-  it("reparte el resto en cinco pestañas y Competencia trae la competencia esperada", async () => {
+  it("reparte el resto en cuatro pestañas y Competencia trae la competencia esperada", async () => {
     pintar();
     const pestanas = screen.getAllByRole("tab").map((tab) => tab.textContent);
-    expect(pestanas).toEqual(["Resumen", "Competencia", "Pliegos", "IA", "Recursos"]);
+    expect(pestanas).toEqual(["Resumen", "Competencia", "Pliegos", "Recursos"]);
 
     fireEvent.click(screen.getByRole("tab", { name: "Competencia" }));
     expect(screen.getByRole("tab", { name: "Competencia" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("heading", { name: "Competencia esperada" })).toBeInTheDocument();
   });
 
-  it("«Preguntar a la IA» lleva a la pestaña IA", async () => {
+  it("«Preguntar a la IA» abre el asistente con este expediente", async () => {
+    useAsistente.getState().reiniciar();
     pintar();
     fireEvent.click(screen.getByRole("button", { name: "Preguntar a la IA" }));
-    await waitFor(() =>
-      expect(screen.getByRole("tab", { name: "IA" })).toHaveAttribute("aria-selected", "true"),
-    );
+    await waitFor(() => expect(useAsistente.getState().abierto).toBe(true));
+    expect(useAsistente.getState().contexto).toEqual({
+      expedientes: [{ id: "PLACSP-1", titulo: "Mantenimiento de la plataforma de tramitación" }],
+      origen: "ficha",
+    });
   });
 
   it("abre la ficha completa solo si la pantalla la ofrece", () => {

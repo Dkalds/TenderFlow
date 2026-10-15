@@ -34,9 +34,11 @@ hueco con tres caminos, todos sobre datos abiertos:
 Los dos pasos que se ejecutan tras cada ingesta —:func:`completar_documentos_ted`
 y :func:`completar_documentos_pscp`— los llama ``run_connector`` a través del
 ``completar_documentos`` de cada conector, con presupuesto de tiempo: corren
-dentro del step de 10 minutos de ``scrape-daily.yml``. Con lote van dentro de
-``_post_ingestion``, tras los dedupes; sin lote se llaman igual, porque leen de
-la BD y no de lo que trajo la pasada.
+dentro del step de 10 minutos de ``scrape-daily.yml``. El de TED va dentro de
+``_post_ingestion``, tras los dedupes, porque necesita sus marcas; el de PSCP va
+antes de ese cierre (``completar_documentos_primero``), porque no las necesita y
+detrás de la resolución de empresas el step se cortaba antes de llegar. Sin lote
+se llaman igual, porque leen de la BD y no de lo que trajo la pasada.
 """
 
 from __future__ import annotations
@@ -227,18 +229,21 @@ def _referencia_pscp(doc: Any, apartado: str) -> DocumentoReferencia | None:
     )
 
 
-def _obtener(url: str, *, host: str) -> bytes:
+def _obtener(url: str, *, host: str, timeout_s: float | None = None) -> bytes:
     """GET de *url*, que tiene que estar en *host*, con las guardas del descargador.
 
     Sin reintentos ni circuito: es una consulta de metadatos que la pasada
     siguiente repite sola, y el circuito de la plataforma es para la descarga
     de los pliegos, que no debe abrirse porque una ficha concreta dé 404.
+
+    *timeout_s* lo fija quien tiene un presupuesto que cuidar; sin él manda el
+    ``REQUEST_TIMEOUT`` global.
     """
     respuesta = pinned_https_request(
         "GET",
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-        timeout_seconds=float(settings.REQUEST_TIMEOUT),
+        timeout_seconds=float(timeout_s if timeout_s is not None else settings.REQUEST_TIMEOUT),
         allowed_hosts=frozenset({host}),
     )
     with respuesta:
@@ -251,6 +256,17 @@ def _obtener(url: str, *, host: str) -> bytes:
                 raise ValueError(f"Respuesta de {host} por encima del límite de tamaño")
             trozos.append(trozo)
     return b"".join(trozos)
+
+
+#: Suelo del tope por petición: por debajo, ni la negociación TLS cabe y la
+#: petición fallaría siempre, contando como fallo de la plataforma.
+_TOPE_MINIMO_S = 1.0
+
+
+def _obtener_pscp_con_tope(restante_s: float) -> Callable[[str], bytes]:
+    """Descarga de la ficha con un timeout que no pasa de lo que queda de presupuesto."""
+    tope = max(_TOPE_MINIMO_S, min(float(settings.REQUEST_TIMEOUT), restante_s))
+    return lambda url: _obtener(url, host=_HOST_PSCP, timeout_s=tope)
 
 
 def documentos_de_pscp(
@@ -413,6 +429,7 @@ def completar_documentos_pscp(
     presupuesto_s: float = 120.0,
     pausa_s: float = 0.3,
     obtener: Callable[[str], bytes] | None = None,
+    reloj: Callable[[], float] = time.monotonic,
 ) -> ResumenDocumentos:
     """Pliegos de las convocatorias vigentes de la PSCP, y su anuncio TED.
 
@@ -421,6 +438,14 @@ def completar_documentos_pscp(
     una rectificación añade pliegos, y el anuncio TED que el JSON cita llega días
     después de la publicación en la plataforma. Cada ficha es una petición; el
     presupuesto de tiempo y el corte por fallos seguidos acotan la pasada.
+
+    El presupuesto acota también **cada petición**: sin eso solo se miraba
+    antes de pedir la ficha, y la que estaba en vuelo tenía el
+    ``REQUEST_TIMEOUT`` entero por delante. Corre dentro del step de 10 minutos
+    de ``scrape-daily.yml`` y antes del cierre del lote (ver
+    ``PscpConnector.completar_documentos_primero``), así que lo que se pase de
+    su presupuesto se lo quita a la resolución de empresas. *reloj* existe para
+    los tests.
 
     El anuncio TED citado se marca como republicación si la fila PSCP se
     publica; si no, recibe él los mismos pliegos
@@ -431,10 +456,11 @@ def completar_documentos_pscp(
 
     repo = DocumentosRepository()
     resumen = ResumenDocumentos()
-    inicio = time.monotonic()
+    inicio = reloj()
     fallos_seguidos = 0
     for fila in repo.pscp_vigentes_para_documentos(limit=limite):
-        if time.monotonic() - inicio > presupuesto_s:
+        restante = presupuesto_s - (reloj() - inicio)
+        if restante <= 0:
             resumen.sin_presupuesto = True
             break
         if fallos_seguidos >= _FALLOS_SEGUIDOS_MAX:
@@ -442,7 +468,9 @@ def completar_documentos_pscp(
         resumen.candidatas += 1
         id_externo = str(fila["id_externo"])
         try:
-            detalle = documentos_de_pscp(fila.get("url"), obtener=obtener)
+            detalle = documentos_de_pscp(
+                fila.get("url"), obtener=obtener or _obtener_pscp_con_tope(restante)
+            )
         except Exception as e:
             fallos_seguidos += 1
             resumen.fallidas += 1

@@ -73,6 +73,8 @@ def test_el_inventario_cubre_las_fuentes_vivas() -> None:
         "pscp",
         "tacrc",
         "placsp_watched_company_awards",
+        "placsp_agregadas",
+        "placsp_menores",
     }
 
 
@@ -97,6 +99,8 @@ def test_toda_fuente_declara_por_que_tiene_ese_umbral() -> None:
 def test_las_fuentes_gateadas_por_variable_de_entorno_son_opcionales() -> None:
     assert REGISTERED_SOURCES_BY_ID["pscp"].opcional
     assert REGISTERED_SOURCES_BY_ID["tacrc"].opcional
+    assert REGISTERED_SOURCES_BY_ID["placsp_agregadas"].opcional
+    assert REGISTERED_SOURCES_BY_ID["placsp_menores"].opcional
     assert not REGISTERED_SOURCES_BY_ID["placsp"].opcional
 
 
@@ -117,6 +121,10 @@ def test_solo_se_vigila_el_dato_donde_el_cursor_es_una_marca_de_tiempo() -> None
         "pscp": None,
         "tacrc": None,
         "placsp_watched_company_awards": None,
+        # Las dos sindicaciones secundarias son el mismo ATOM que PLACSP: su
+        # cursor es el `<updated>` más reciente del feed, una marca de tiempo.
+        "placsp_agregadas": 48,
+        "placsp_menores": 168,
     }
 
 

@@ -146,10 +146,14 @@ class ApiKeyRepository:
                 cur = c.execute(
                     # `tier` desde C2.3: sin él, la pantalla de Ajustes no
                     # puede decir qué límite tiene cada clave, y el usuario
-                    # descubre su tier por un 429.
-                    "SELECT id, name, created_at, expires_at, is_active, "
+                    # descubre su tier por un 429. `last_used` para decidir
+                    # cuál revocar: una clave que nadie usa desde hace meses
+                    # es la primera candidata. La más reciente primero: tras
+                    # rotar, la nueva queda arriba.
+                    "SELECT id, name, created_at, expires_at, last_used, is_active, "
                     "COALESCE(tier, 'standard') AS tier "
-                    "FROM api_keys WHERE user_id = %s",
+                    "FROM api_keys WHERE user_id = %s "
+                    "ORDER BY created_at DESC, id DESC",
                     (user_id,),
                 )
                 cols = [d[0] for d in cur.description]
@@ -267,6 +271,21 @@ class ApiKeyRepository:
     def revoke(self, key_hash: str) -> bool:
         with connect() as c:
             cur = c.execute("UPDATE api_keys SET is_active = 0 WHERE key_hash = %s", (key_hash,))
+            return bool(cur.rowcount)
+
+    def revoke_for_user(self, key_id: int, user_id: int) -> bool:
+        """Revoca una key **del usuario**. ``False`` si no existe o es de otro.
+
+        El dueño va en el ``WHERE`` y no en una lectura previa: comprobar y
+        luego actualizar deja una ventana, y además así un id ajeno y uno
+        inexistente responden igual. Revocar una ya revocada cuenta como
+        hecho (la fila casa aunque el valor no cambie).
+        """
+        with connect() as c:
+            cur = c.execute(
+                "UPDATE api_keys SET is_active = 0 WHERE id = %s AND user_id = %s",
+                (key_id, user_id),
+            )
             return bool(cur.rowcount)
 
     def revoke_by_id(self, key_id: int) -> None:

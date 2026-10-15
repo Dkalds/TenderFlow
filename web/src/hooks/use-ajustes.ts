@@ -19,11 +19,13 @@ import type {
   MyApiKeysResult,
   NotificationPreference,
   NotificationPreferencesResult,
+  RotatedKey,
   SessionsResult,
 } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
-export type { CreatedKey, NotificationPreference };
+export type { CreatedKey, NotificationPreference, RotatedKey };
+export type MiClave = NonNullable<MyApiKeysResult["items"]>[number];
 
 export const ajustesKeys = {
   sesiones: ["ajustes", "sesiones"] as const,
@@ -89,7 +91,44 @@ export function useCrearClave() {
       // criterio que la pantalla de webhooks.
       void queryClient.invalidateQueries({ queryKey: ajustesKeys.claves });
     },
-    onError: () => toast.error("No se pudo crear la clave"),
+    // El fallo se pinta junto al formulario, con su arreglo cuando lo tiene
+    // (la sesión antigua pide volver a entrar). Antes salía un toast propio
+    // —«No se pudo crear la clave», sin motivo— y encima el global.
+    meta: META_ERROR_EN_LINEA,
+  });
+}
+
+export interface RotarClaveInput {
+  keyId: number;
+  /** Días que la clave anterior sigue valiendo; 0 la apaga ya. */
+  diasDeGracia: number;
+}
+
+/**
+ * Rota una clave: la API acuña otra con los mismos permisos y deja la anterior
+ * viva `diasDeGracia` días, para migrar la integración sin cortes. Como al
+ * crearla, el token nuevo viaja una sola vez.
+ */
+export function useRotarClave() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ keyId, diasDeGracia }: RotarClaveInput) =>
+      apiMutate<RotatedKey>("POST", `/api/v1/me/keys/rotate?key_id=${keyId}&grace_days=${diasDeGracia}`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ajustesKeys.claves }),
+    meta: META_ERROR_EN_LINEA,
+  });
+}
+
+/** Revoca una clave al momento: lo que la use deja de entrar. */
+export function useRevocarClave() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (keyId: number) => apiMutate<void>("DELETE", `/api/v1/me/keys/${keyId}`),
+    onSuccess: () => {
+      toast.success("Clave revocada");
+      void queryClient.invalidateQueries({ queryKey: ajustesKeys.claves });
+    },
+    meta: META_ERROR_EN_LINEA,
   });
 }
 

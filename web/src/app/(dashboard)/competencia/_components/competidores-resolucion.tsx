@@ -8,6 +8,7 @@
  * coincide el NIF o el nombre normalizado, así que con poca cobertura una misma
  * empresa puede quedar partida en varias filas. Hasta 2026-09-25 el aviso sólo
  * salía en Empresas, que es donde se arregla, y no aquí, que es donde se nota.
+ * Desde 2026-10 la cola es la vista Revisión de este mismo espacio.
  *
  * Sin dato, o con la cobertura por encima del umbral, no pinta nada. Es una
  * advertencia, no un indicador de estado.
@@ -26,7 +27,7 @@ export function CompetidoresResolucion() {
       tone="warning"
       role="note"
       title="Cuotas aproximadas"
-      action={<EnlaceIr href="/empresas?vista=revision">Revisar en Empresas</EnlaceIr>}
+      action={<EnlaceIr href="/competencia?vista=revision">Revisar coincidencias</EnlaceIr>}
     >
       Solo el {formatPercent(data.pct_importe)} del importe adjudicado está resuelto a una empresa del maestro, y el
       umbral es el {formatPercent(UMBRAL_IMPORTE_RESUELTO, 0)}. Mientras no llegue, una misma empresa puede aparecer

@@ -198,6 +198,81 @@ class TestSubida:
         respuesta = client.post(self.RUTA, content=b"x", headers=self.CABECERAS)
         assert respuesta.status_code == 404
 
+    def test_el_nombre_llega_decodificado_al_servicio(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """La consola manda `encodeURIComponent(file.name)`: una cabecera solo
+        lleva Latin-1 y `fetch` rechaza el resto. El servicio sanea el nombre
+        ya decodificado, no los `%XX`."""
+        import services.pursuit_attachments as svc
+
+        recibidos: list[str] = []
+
+        def _subir(*a: Any, filename: str, **k: Any) -> dict[str, Any]:
+            recibidos.append(filename)
+            return _ADJUNTO
+
+        monkeypatch.setattr(svc, "subir", _subir)
+
+        respuesta = client.post(
+            self.RUTA,
+            content=b"x",
+            headers={**self.CABECERAS, "X-Filename": "Propuesta%20t%C3%A9cnica.pdf"},
+        )
+        assert respuesta.status_code == 201
+        assert recibidos == ["Propuesta técnica.pdf"]
+
+    def test_un_nombre_en_claro_sigue_valiendo(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sin `%`, decodificar no cambia nada: quien lo mandaba así no se rompe."""
+        import services.pursuit_attachments as svc
+
+        recibidos: list[str] = []
+        monkeypatch.setattr(
+            svc, "subir", lambda *a, filename, **k: recibidos.append(filename) or _ADJUNTO
+        )
+
+        client.post(self.RUTA, content=b"x", headers=self.CABECERAS)
+        assert recibidos == ["pliego.pdf"]
+
+
+class TestPolitica:
+    RUTA = "/api/v1/pursuits/adjuntos/politica"
+
+    @staticmethod
+    def _almacen(monkeypatch: pytest.MonkeyPatch, *, enabled: bool) -> None:
+        import services.pursuit_attachments as svc
+
+        class _Almacen:
+            pass
+
+        almacen = _Almacen()
+        almacen.enabled = enabled  # type: ignore[attr-defined]
+        monkeypatch.setattr(svc, "get_object_store", lambda: almacen)
+
+    def test_sin_almacen_lo_dice_antes_de_subir(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._almacen(monkeypatch, enabled=False)
+
+        assert client.get(self.RUTA).json()["almacen_disponible"] is False
+
+    def test_tope_y_tipos_son_los_que_aplica_la_subida(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Las mismas constantes que `validar`: la consola no lleva su copia."""
+        import services.pursuit_attachments as svc
+
+        self._almacen(monkeypatch, enabled=True)
+
+        cuerpo = client.get(self.RUTA).json()
+        assert cuerpo["almacen_disponible"] is True
+        assert cuerpo["max_bytes"] == svc.MAX_BYTES
+        assert {t["content_type"]: tuple(t["extensiones"]) for t in cuerpo["tipos"]} == (
+            svc.TIPOS_PERMITIDOS
+        )
+
 
 class TestEnlaceYDescarga:
     ENLACE = "/api/v1/pursuits/adjuntos/1/enlace"
@@ -268,6 +343,24 @@ class TestEnlaceYDescarga:
         assert respuesta.status_code == 200
         assert respuesta.content == b"%PDF-1.7"
         assert 'filename="pliego.pdf"' in respuesta.headers["content-disposition"]
+
+    def test_un_nombre_fuera_de_latin1_no_rompe_la_descarga(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Las cabeceras de respuesta van en Latin-1: «Łódź» en un `filename=` a
+        secas era un 500. Va en `filename*` (RFC 5987) y en claro solo lo ASCII."""
+        import services.pursuit_attachments as svc
+
+        monkeypatch.setattr(svc, "verificar_descarga", lambda aid, *, exp, token: True)
+        monkeypatch.setattr(
+            svc, "descargar", lambda *a, **k: ({**_ADJUNTO, "filename": "Oferta Łódź.pdf"}, b"x")
+        )
+
+        respuesta = client.get(self.DESCARGA, params={"exp": 1, "t": "valida"})
+        assert respuesta.status_code == 200
+        cabecera = respuesta.headers["content-disposition"]
+        assert "filename*=UTF-8''Oferta%20%C5%81%C3%B3d%C5%BA.pdf" in cabecera
+        assert 'filename="Oferta ' in cabecera
 
 
 class TestIndexableYBorrado:

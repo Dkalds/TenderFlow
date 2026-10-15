@@ -70,13 +70,24 @@ def _repo(monkeypatch: pytest.MonkeyPatch, mod: Any, doble: _RepoDoble) -> _Repo
     return doble
 
 
+#: Lo que el voseo delata en un mensaje. Estos textos llegan tal cual a la
+#: consola (la pestaña Organización de Equipo enseña el `detail`), y la consola
+#: habla de tú en castellano peninsular (`docs/UX_AUDIT.md`, regla 15).
+_VOSEO = ("Sos ", "podés", "traspasá", "borrá", "querés", "Invitalo")
+
+
+def _sin_voseo(mensaje: str) -> None:
+    for marca in _VOSEO:
+        assert marca not in mensaje, f"voseo en un mensaje de la API: {mensaje!r}"
+
+
 class TestTraspaso:
     def test_traspasarse_a_uno_mismo_no_es_una_transicion(
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         doble = _repo(monkeypatch, mod, _RepoDoble(membresia={"role": "owner"}))
 
-        with pytest.raises(mod.OrganizationLifecycleError, match="ya eres tú"):
+        with pytest.raises(mod.OrganizationLifecycleError, match="a ti mismo"):
             mod.transferir_propiedad(organization_id=1, actor_user_id=5, nuevo_owner_user_id=5)
         assert doble.traspasos == []
 
@@ -86,6 +97,17 @@ class TestTraspaso:
 
         with pytest.raises(mod.OrganizationPermissionError):
             mod.transferir_propiedad(organization_id=1, actor_user_id=5, nuevo_owner_user_id=9)
+        assert doble.traspasos == []
+
+    def test_un_admin_que_se_la_pide_a_si_mismo_no_oye_que_ya_es_suya(
+        self, mod: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """El mensaje decía «el owner ya eres tú», falso para un admin."""
+        doble = _repo(monkeypatch, mod, _RepoDoble(membresia={"role": "admin"}))
+
+        with pytest.raises(mod.OrganizationLifecycleError, match="a ti mismo") as exc:
+            mod.transferir_propiedad(organization_id=1, actor_user_id=5, nuevo_owner_user_id=5)
+        assert "owner" not in str(exc.value)
         assert doble.traspasos == []
 
     def test_quien_no_es_miembro_tampoco_traspasa(
@@ -115,7 +137,7 @@ class TestTraspaso:
             _RepoDoble(membresia={"role": "owner"}, traspaso_ok=False),
         )
 
-        with pytest.raises(mod.OrganizationMemberNotFoundError, match="Invitalo primero"):
+        with pytest.raises(mod.OrganizationMemberNotFoundError, match="Invítalo primero"):
             mod.transferir_propiedad(organization_id=1, actor_user_id=5, nuevo_owner_user_id=9)
 
     def test_el_owner_traspasa(self, mod: Any, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,20 +159,23 @@ class TestSalida:
     def test_el_owner_no_se_va_sin_traspasar(
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Una organización sin owner queda sin nadie que la administre, y ese
+        """Una organización sin owner queda sin nadie que pueda administrarla, y ese
         estado no tiene salida desde el producto."""
         doble = _repo(monkeypatch, mod, _RepoDoble(membresia={"role": "owner"}))
 
-        with pytest.raises(mod.OrganizationLifecycleError, match="traspas"):
+        with pytest.raises(mod.OrganizationLifecycleError, match="traspas") as exc:
             mod.salir_de_organizacion(organization_id=1, user_id=5)
         assert doble.salidas == []
+        _sin_voseo(str(exc.value))
+        assert "propietario" in str(exc.value)
 
     def test_de_la_personal_no_se_sale(self, mod: Any, monkeypatch: pytest.MonkeyPatch) -> None:
         doble = _repo(monkeypatch, mod, _RepoDoble(membresia={"role": "member"}, personal=True))
 
-        with pytest.raises(mod.OrganizationLifecycleError, match="personal"):
+        with pytest.raises(mod.OrganizationLifecycleError, match="personal") as exc:
             mod.salir_de_organizacion(organization_id=1, user_id=5)
         assert doble.salidas == []
+        _sin_voseo(str(exc.value))
 
     def test_un_miembro_raso_si_se_va(self, mod: Any, monkeypatch: pytest.MonkeyPatch) -> None:
         doble = _repo(monkeypatch, mod, _RepoDoble(membresia={"role": "member"}))
@@ -217,9 +242,12 @@ class TestBorrado:
     ) -> None:
         doble = _repo(monkeypatch, mod, _RepoDoble(membresia={"role": "owner"}, personal=True))
 
-        with pytest.raises(mod.OrganizationLifecycleError, match="DELETE /me"):
+        with pytest.raises(
+            mod.OrganizationLifecycleError, match="Ajustes, en Datos y cuenta"
+        ) as exc:
             mod.borrar_organizacion(organization_id=1, actor_user_id=5, confirmacion="BORRAR")
         assert doble.borrados == []
+        _sin_voseo(str(exc.value))
 
     def test_los_binarios_se_purgan_antes_de_borrar_la_fila(
         self, mod: Any, monkeypatch: pytest.MonkeyPatch

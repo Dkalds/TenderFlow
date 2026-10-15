@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-09-25
+Generado: 2026-10-15
 
-Revisión Alembic aplicada: `v146_lic_organo_norm_index`.
+Revisión Alembic aplicada: `v149_ledger_borrado_org`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,16 +24,16 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 11 | 156 | 61 |
+| Licitaciones y fuente | 14 | 189 | 64 |
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
-| Organizaciones y oportunidades | 15 | 141 | 31 |
+| Organizaciones y oportunidades | 15 | 142 | 31 |
 | Identidad, acceso y auditoría | 15 | 105 | 24 |
 | Seguimiento y notificaciones | 12 | 132 | 35 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 21 | 167 | 31 |
-| **Total** | **97** | **879** | **226** |
+| **Total** | **100** | **913** | **229** |
 
 ## Licitaciones y fuente
 
@@ -141,6 +141,66 @@ Claves: `PRIMARY KEY (id)`
 | `updated_at` | `text` | no |
 
 Claves: `PRIMARY KEY (source)`
+
+### `licitacion_criterios_adjudicacion`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `licitacion_id` | `text` | no |
+| `lote_numero` | `text` | sí |
+| `orden` | `integer` | no |
+| `padre_orden` | `integer` | sí |
+| `descripcion` | `text` | sí |
+| `peso` | `double precision` | sí |
+| `peso_pct` | `double precision` | sí |
+| `es_precio` | `boolean` | no |
+| `tipo_codigo` | `text` | sí |
+| `subtipo_codigo` | `text` | sí |
+| `nota` | `text` | sí |
+| `fecha_extraccion` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `uq_licitacion_criterios_adjudicacion_ambito_orden` (único)
+
+### `licitacion_garantias`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `licitacion_id` | `text` | no |
+| `lote_numero` | `text` | sí |
+| `orden` | `integer` | no |
+| `tipo_codigo` | `text` | sí |
+| `porcentaje` | `double precision` | sí |
+| `importe` | `double precision` | sí |
+| `moneda` | `text` | sí |
+| `descripcion` | `text` | sí |
+| `fecha_extraccion` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `uq_licitacion_garantias_ambito_orden` (único)
+
+### `licitacion_solvencia`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `licitacion_id` | `text` | no |
+| `lote_numero` | `text` | sí |
+| `orden` | `integer` | no |
+| `clase` | `text` | no |
+| `tipo_codigo` | `text` | sí |
+| `descripcion` | `text` | sí |
+| `umbral_importe` | `double precision` | sí |
+| `moneda` | `text` | sí |
+| `fecha_extraccion` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `uq_licitacion_solvencia_ambito_orden` (único)
 
 ### `licitaciones`
 
@@ -467,6 +527,7 @@ Claves: `PRIMARY KEY (ute_empresa_id, miembro_empresa_id)`
 | `nombre` | `text` | no |
 | `ambito` | `text` | no |
 | `vigente_hasta` | `date` | sí |
+| `tipo` | `text` | no |
 
 Claves: `PRIMARY KEY (id)`
 

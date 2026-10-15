@@ -29,6 +29,22 @@ describe("loading de Competencia", () => {
     expect(pieza(container, "ficha-empresa-esqueleto")).toBeNull();
   });
 
+  it("en Empresas y en Revisión pinta el maestro a sangre, como la vista", () => {
+    // Las dos vistas que fueron el espacio Empresas gobiernan su superficie
+    // entera: el esqueleto con relleno saltaría al llegar la columna del
+    // maestro.
+    for (const vista of ["empresas", "revision"]) {
+      irA(`/competencia?vista=${vista}`);
+      const { container, unmount } = render(<CompetenciaLoading />);
+      expect(pieza(container, "space-shell-esqueleto"), vista).not.toBeNull();
+      expect(pieza(container, "empresas-esqueleto"), vista).not.toBeNull();
+      unmount();
+    }
+    irA("/competencia?vista=utes");
+    const { container } = render(<CompetenciaLoading />);
+    expect(pieza(container, "empresas-esqueleto")).toBeNull();
+  });
+
   it("al abrir una empresa pinta la ficha, no el marco del espacio", () => {
     irA("/competencia/empresa/7");
     const { container } = render(<CompetenciaLoading />);

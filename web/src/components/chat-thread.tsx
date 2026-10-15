@@ -5,13 +5,15 @@ import Link from "next/link";
 import { ChevronRight, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Aviso, PanelError } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
 import { detalleTecnico } from "@/lib/query-feedback";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
 import type { ChatTurn } from "@/hooks/use-ask";
-import type { AskMeta, DegradedInfo, FuenteDocumento, SourcesInfo } from "@/lib/ask-stream";
+import type { AskMeta, DegradedInfo, FuenteDocumento, ResumenMeta, SourcesInfo } from "@/lib/ask-stream";
 
 /**
  * Mensaje humano para el fallo de una llamada del asistente. `ask-stream` lanza
@@ -192,6 +194,35 @@ function ComparacionNotice({ meta }: { meta: AskMeta }) {
   );
 }
 
+const ESTADO_DOCUMENTO: Record<string, string> = {
+  pending: "pendiente",
+  downloaded: "descargado",
+  extracted: "procesado",
+  error: "error",
+};
+
+/**
+ * Un resumen sin pliego se apoya solo en el anuncio, y se dice con el estado de
+ * cada documento: «pendiente» explica por qué falta, «error» que no va a
+ * llegar solo.
+ */
+function ResumenSinPliegoNotice({ meta }: { meta: ResumenMeta }) {
+  return (
+    <Aviso tone="warning" className="mb-2">
+      Resumen basado solo en los datos del anuncio: los pliegos no están disponibles o aún no se han procesado.
+      {meta.documentos.length > 0 && (
+        <span className="mt-1 flex flex-wrap gap-1.5">
+          {meta.documentos.map((d, i) => (
+            <Badge key={i} variant="outline" size="sm">
+              {d.filename ?? d.tipo ?? "documento"} · {ESTADO_DOCUMENTO[d.status ?? ""] ?? d.status}
+            </Badge>
+          ))}
+        </span>
+      )}
+    </Aviso>
+  );
+}
+
 /** Aviso cuando el asistente no pudo sintetizar respuesta (modo degradado). */
 function DegradedNotice({ degraded }: { degraded: DegradedInfo }) {
   const docs = degraded.docs ?? [];
@@ -234,10 +265,18 @@ export interface ChatThreadProps {
    * resto de licitaciones en su lugar.
    */
   expectLicitacionContext?: boolean;
+  /**
+   * «Regenerar» de un turno de resumen: rehace el de ese índice ignorando el
+   * caché del servidor. Sin él, el resumen no ofrece regenerarse. Tiene que
+   * ser estable: los turnos van memorizados.
+   */
+  onRegenerarResumen?: (indice: number) => void;
 }
 
 interface TurnoAsistenteProps {
   turno: ChatTurn;
+  /** Posición en el hilo: es lo que se regenera. */
+  indice: number;
   /** La pregunta que lo originó: la hashea el voto de los pulgares. */
   pregunta: string | undefined;
   /** Último turno sin su primer token todavía: esqueleto en vez de burbuja vacía. */
@@ -247,6 +286,7 @@ interface TurnoAsistenteProps {
   /** Último turno con la respuesta en curso: aún no se puede votar. */
   enCurso: boolean;
   expectLicitacionContext?: boolean;
+  onRegenerarResumen?: (indice: number) => void;
 }
 
 /**
@@ -258,18 +298,24 @@ interface TurnoAsistenteProps {
  */
 const TurnoAsistente = React.memo(function TurnoAsistente({
   turno,
+  indice,
   pregunta,
   esperandoPrimerToken,
   emitiendo,
   enCurso,
   expectLicitacionContext,
+  onRegenerarResumen,
 }: TurnoAsistenteProps) {
+  const esResumen = turno.modo === "resumen";
   // El hilo entero es de un expediente (la ficha), o este turno se pidió sobre
   // uno concreto (el Investigador, donde el alcance cambia de un turno a otro).
   // Con varios pedidos, lo que faltó lo dice `ComparacionNotice`.
   const esperaExpediente = expectLicitacionContext || turno.expedientesPedidos?.length === 1;
   return (
     <div className="text-tf-body">
+      {esResumen && turno.resumenMeta && !turno.resumenMeta.has_pliego_text ? (
+        <ResumenSinPliegoNotice meta={turno.resumenMeta} />
+      ) : null}
       {turno.content ? (
         <MarkdownAnswer text={turno.content} />
       ) : esperandoPrimerToken ? (
@@ -297,16 +343,29 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
           <p className="mt-2 text-tf-micro text-muted-foreground">
             {esperaExpediente ? AVISO_GENERADO : AVISO_GENERADO_VARIOS}
           </p>
-          <FeedbackButtons modo="pregunta" pregunta={pregunta} />
+          {/* El resumen no responde a una pregunta del usuario: su voto va
+              con la etiqueta del modo, como iba en la pestaña de la ficha. */}
+          <FeedbackButtons modo={esResumen ? "resumen" : "pregunta"} pregunta={esResumen ? undefined : pregunta} />
         </>
+      ) : null}
+      {esResumen && !enCurso && onRegenerarResumen ? (
+        <div className="mt-2 flex items-center gap-2">
+          {/* Regenerar fuerza al proveedor: el acierto de caché ya se sirvió. */}
+          <Button variant="ghost" size="sm" onClick={() => onRegenerarResumen(indice)}>
+            Regenerar
+          </Button>
+          {turno.resumenMeta?.cached ? (
+            <span className="text-tf-micro text-muted-foreground">Resumen guardado de una generación anterior.</span>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
 });
 
 /**
- * Presentational multi-turn chat thread (shared by the copilot panel, the
- * investigador page and the licitación AI tab). Inputs live in the parents.
+ * El hilo de la conversación, sin caja de texto: lo pinta el asistente único
+ * (`components/asistente/asistente-panel.tsx`), que es quien escribe.
  */
 export function ChatThread({
   messages,
@@ -315,6 +374,7 @@ export function ChatThread({
   error,
   className,
   expectLicitacionContext,
+  onRegenerarResumen,
 }: ChatThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
@@ -344,12 +404,14 @@ export function ChatThread({
         return (
           <TurnoAsistente
             key={i}
+            indice={i}
             turno={m}
             pregunta={messages[i - 1]?.content}
             esperandoPrimerToken={isLast && waitingFirstToken}
             emitiendo={isLast && streaming}
             enCurso={isLast && (streaming || loading)}
             expectLicitacionContext={expectLicitacionContext}
+            onRegenerarResumen={onRegenerarResumen}
           />
         );
       })}

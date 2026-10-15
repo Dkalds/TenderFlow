@@ -110,6 +110,11 @@ _FAMILIAS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
         (
             "licitaciones",
             "lotes",
+            # v148: condiciones oficiales de CODICE. Exactos y no por prefijo:
+            # `licitacion_` es también el de `licitacion_tecnologia_score` (ML).
+            "licitacion_criterios_adjudicacion",
+            "licitacion_garantias",
+            "licitacion_solvencia",
             "adjudicaciones",
             "contrato_eventos",
             "resoluciones_recurso",

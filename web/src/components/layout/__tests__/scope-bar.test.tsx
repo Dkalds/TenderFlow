@@ -15,6 +15,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 const {
   pathnameRef,
+  vistaRef,
   filtersRef,
   filterParamsRef,
   historyRef,
@@ -28,6 +29,8 @@ const {
   redo,
 } = vi.hoisted(() => ({
   pathnameRef: { current: "/mercado" },
+  // `?vista=` de la URL: el contrato de filtros de un espacio es el de la vista.
+  vistaRef: { current: null as string | null },
   filtersRef: {
     current: {
       q: "",
@@ -71,7 +74,10 @@ const {
   redo: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ usePathname: () => pathnameRef.current }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => pathnameRef.current,
+  useSearchParams: () => new URLSearchParams(vistaRef.current ? { vista: vistaRef.current } : {}),
+}));
 vi.mock("@/lib/filters", () => ({
   useFilters: () => filtersRef.current,
   useFilterParams: () => filterParamsRef.current,
@@ -166,6 +172,7 @@ beforeEach(() => {
   // aquí se da por vista para que su texto no se cruce con el de la barra.
   marcarAmbitoIntroVista();
   pathnameRef.current = "/mercado";
+  vistaRef.current = null;
   filterParamsRef.current = {};
   historyRef.current = { canUndo: false, canRedo: false };
   overviewRef.current = { data: { total_licitaciones: 1234 }, isLoading: false };
@@ -385,6 +392,20 @@ describe("ScopeBar — contrato de filtros por página", () => {
     expect(screen.getByText(/El ámbito global no aplica en esta pantalla \(2 filtros activos\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Limpiar/ }));
     expect(filtersRef.current.resetFilters).toHaveBeenCalled();
+  });
+
+  it("manda la vista: Competencia › Empresas no aplica el ámbito aunque Competidores sí", () => {
+    // Empresas fue un espacio sin ámbito; al pasar a ser vista de Competencia
+    // no puede heredar una barra que el maestro no lee.
+    pathnameRef.current = "/competencia";
+    vistaRef.current = "empresas";
+    renderBar();
+    expect(screen.getByText("El ámbito no aplica en esta pantalla.")).toBeInTheDocument();
+    cleanup();
+
+    vistaRef.current = "competidores";
+    renderBar();
+    expect(screen.queryByText("El ámbito no aplica en esta pantalla.")).not.toBeInTheDocument();
   });
 
   it("singulariza el aviso con un solo filtro activo", () => {
@@ -667,8 +688,8 @@ describe("ScopeBar — búsqueda con espera", () => {
 describe("ScopeBar — la campana se monta una sola vez", () => {
   /**
    * Cada rama de la barra pintaba su propia campana. Al pasar de un espacio
-   * con ámbito a otro sin él, React la desmontaba: cerraba el SSE de
-   * `/licitaciones/stream`, abría otro y perdía el contador en vivo.
+   * con ámbito a otro sin él, React la desmontaba: entonces cerraba y reabría
+   * un SSE; hoy perdería el menú abierto y repetiría la consulta.
    */
   const conRuta = (ruta: string, rerender: (ui: React.ReactElement) => void) => {
     pathnameRef.current = ruta;

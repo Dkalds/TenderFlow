@@ -52,9 +52,9 @@ def build_default_registry() -> list[ScheduledJob]:
             default_interval_minutes=240,
             initial_offset_minutes=0,
             heavy=True,
-            # El `timeout-minutes: 120` del job de scrape-daily.yml: 45 de
-            # PLACSP + 45 de los seis conectores + 20 del cierre, más margen.
-            timeout_seconds=120 * 60,
+            # El `timeout-minutes: 140` del job de scrape-daily.yml: 45 de
+            # PLACSP + 65 de los ocho conectores + 20 del cierre, más margen.
+            timeout_seconds=140 * 60,
         ),
         ScheduledJob(
             # plane='manual' (2026-08): el refresh de N meses ya no tiene cron.

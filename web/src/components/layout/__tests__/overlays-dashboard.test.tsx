@@ -35,11 +35,11 @@ function doblarOverlays() {
       KeyboardHelp: () => <p>ayuda {useUiStore((s) => s.shortcutsHelpOpen) ? "abierta" : "cerrada"}</p>,
     };
   });
-  vi.doMock("@/components/copilot-panel", async () => {
-    descargados.add("copiloto");
-    const { useUiStore } = await import("@/lib/ui-store");
+  vi.doMock("@/components/asistente/asistente-panel", async () => {
+    descargados.add("asistente");
+    const { useAsistente } = await import("@/lib/asistente-store");
     return {
-      GlobalCopilot: () => <p>copiloto {useUiStore((s) => s.copilotOpen) ? "abierto" : "cerrado"}</p>,
+      AsistentePanel: () => <p>asistente {useAsistente((s) => s.abierto) ? "abierto" : "cerrado"}</p>,
     };
   });
   vi.doMock("@/components/pliego/comparacion-bandeja", () => {
@@ -57,13 +57,14 @@ async function montar() {
   const { useKeyboardShortcuts } = await import("@/hooks/use-keyboard-shortcuts");
   const { useUiStore } = await import("@/lib/ui-store");
   const { useBandejaComparacion } = await import("@/hooks/use-comparacion");
+  const { useAsistente } = await import("@/lib/asistente-store");
 
   function Dashboard() {
     useKeyboardShortcuts();
     return <OverlaysDashboard />;
   }
   render(<Dashboard />);
-  return { useUiStore, useBandejaComparacion };
+  return { useUiStore, useBandejaComparacion, useAsistente };
 }
 
 const DESCARGA = { timeout: 15_000 };
@@ -90,7 +91,7 @@ describe("OverlaysDashboard", { timeout: 30_000 }, () => {
     await montar();
 
     expect([...descargados]).toEqual([]);
-    expect(screen.queryByText(/paleta|ayuda|copiloto|bandeja/)).toBeNull();
+    expect(screen.queryByText(/paleta|ayuda|asistente|bandeja/)).toBeNull();
   });
 
   it("⌘K abre la paleta a la primera: marco mínimo mientras llega, y la paleta después", async () => {
@@ -144,15 +145,15 @@ describe("OverlaysDashboard", { timeout: 30_000 }, () => {
     expect(screen.getByText("ayuda cerrada")).toBeInTheDocument();
   });
 
-  it("el copiloto se descarga al abrirse y no se desmonta al cerrarlo (conserva la conversación)", async () => {
-    const { useUiStore } = await montar();
+  it("el asistente se descarga al abrirse y no se desmonta al cerrarlo (conserva la conversación)", async () => {
+    const { useAsistente } = await montar();
 
-    act(() => useUiStore.getState().openCopilot("¿Qué vence esta semana?"));
-    expect(await screen.findByText("copiloto abierto", {}, DESCARGA)).toBeInTheDocument();
-    expect(descargados.has("copiloto")).toBe(true);
+    act(() => useAsistente.getState().abrir({ pregunta: "¿Qué vence esta semana?" }));
+    expect(await screen.findByText("asistente abierto", {}, DESCARGA)).toBeInTheDocument();
+    expect(descargados.has("asistente")).toBe(true);
 
-    act(() => useUiStore.getState().setCopilotOpen(false));
-    expect(screen.getByText("copiloto cerrado")).toBeInTheDocument();
+    act(() => useAsistente.getState().cerrar());
+    expect(screen.getByText("asistente cerrado")).toBeInTheDocument();
   });
 
   it("la bandeja aparece con su primer expediente y se va al vaciarla", async () => {

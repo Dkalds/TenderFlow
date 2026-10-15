@@ -31,8 +31,9 @@ const GROUP_LABELS: Record<ConsoleGroup, string> = {
   personal: "Mi seguimiento",
   organizacion: "Organización",
 };
+import { useAsistente } from "@/lib/asistente-store";
 import { useUiStore } from "@/lib/ui-store";
-import { useAdmin } from "@/hooks/use-admin";
+import { useAccesoEspacios } from "@/hooks/use-acceso-espacios";
 import { useDensity } from "@/lib/density";
 import { useFilterParams, useWithFilters } from "@/lib/filters";
 import { buildExportUrl, triggerDownload } from "@/lib/export";
@@ -121,14 +122,14 @@ export function CommandPalette() {
 
 function CommandPaletteInner() {
   const setOpen = useUiStore((s) => s.setCommandOpen);
-  const openCopilot = useUiStore((s) => s.openCopilot);
+  const abrirAsistente = useAsistente((s) => s.abrir);
   const openSavedViews = useUiStore((s) => s.openSavedViews);
   const router = useRouter();
   // `resolvedTheme`, no `theme`: con `defaultTheme="system"` el toggle debe
   // partir del tema que se está viendo, no del literal "system".
   const { resolvedTheme, setTheme } = useTheme();
   const { compact, toggleCompact } = useDensity();
-  const isAdmin = useAdmin();
+  const acceso = useAccesoEspacios();
   const withFilters = useWithFilters();
   const filterParams = useFilterParams();
   const [search, setSearch] = React.useState("");
@@ -152,7 +153,7 @@ function CommandPaletteInner() {
   // Un grupo por familia de espacios; cada espacio multivista despliega sus
   // vistas como destinos propios.
   const spaceGroups = React.useMemo(() => {
-    const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, isAdmin));
+    const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, acceso));
     return CONSOLE_GROUP_ORDER.map((group) => ({
       label: GROUP_LABELS[group],
       items: spaces
@@ -180,7 +181,7 @@ function CommandPaletteInner() {
           ];
         }),
     })).filter((group) => group.items.length > 0);
-  }, [isAdmin]);
+  }, [acceso]);
   const idQuery = search.trim();
   const showJump = looksLikeLicitacionId(idQuery);
   const showSearch = idQuery.length >= 2 && !showJump;
@@ -367,12 +368,12 @@ function CommandPaletteInner() {
             className={GRUPO}
           >
             <Command.Item
-              value="copiloto preguntar ask ia"
-              onSelect={() => run(() => openCopilot())}
+              value="asistente copiloto preguntar ask ia"
+              onSelect={() => run(() => abrirAsistente())}
               className={FILA}
             >
               <IconoIa className={ICONO_FILA} aria-hidden="true" />
-              Abrir copiloto
+              Abrir asistente
             </Command.Item>
             <Command.Item
               value="tema theme oscuro claro dark light"

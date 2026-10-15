@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
 import { withSentryConfig } from "@sentry/nextjs/config";
-import { legacyRedirects, SUBRUTAS_MOVIDAS } from "./src/lib/space-views";
+import { legacyRedirects, redirectsDeEspaciosAbsorbidos, SUBRUTAS_MOVIDAS } from "./src/lib/space-views";
 // Ruta relativa y no alias `@/`: los `paths` de tsconfig no se aplican al
 // cargar este fichero, igual que con `space-views` de arriba.
 import { esValorLegalPlaceholder } from "./src/lib/legal-placeholder";
@@ -73,9 +73,17 @@ const nextConfig: NextConfig = {
    *
    * Detrás van las subrutas que cambiaron de espacio con su parámetro
    * (`SUBRUTAS_MOVIDAS`, hoy la ficha de empresa), con la misma regla.
+   *
+   * Delante, los `?vista=` de un espacio retirado por entero (hoy Empresas,
+   * que vive en Competencia): Next aplica el primer redirect que casa, y en la
+   * fusión de queries gana la del destino, así que el genérico mandaría
+   * `/empresas?vista=revision` al maestro.
    */
   async redirects() {
-    return [...legacyRedirects(), ...SUBRUTAS_MOVIDAS].map((redirect) => ({ ...redirect, permanent: true }));
+    return [...redirectsDeEspaciosAbsorbidos(), ...legacyRedirects(), ...SUBRUTAS_MOVIDAS].map((redirect) => ({
+      ...redirect,
+      permanent: true,
+    }));
   },
 
   /**

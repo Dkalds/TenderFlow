@@ -13,8 +13,13 @@ CSRF de la cookie, igual que el navegador.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 
@@ -91,6 +96,22 @@ def abrir_sesion(
         organization_id=int(organizacion.json()["id"]),
         email=email,
     )
+
+
+def codigo_totp(otpauth_uri: str) -> str:
+    """El código de seis cifras que daría ahora una app de autenticación.
+
+    Calculado aquí (RFC 6238, HMAC-SHA1 y 30 s) y no con ``db.totp``: el
+    escenario hace de la app del móvil, y usar el mismo código que verifica
+    sería comprobar el servidor contra sí mismo.
+    """
+    secreto = parse_qs(urlparse(otpauth_uri).query)["secret"][0]
+    clave = base64.b32decode(secreto + "=" * (-len(secreto) % 8), casefold=True)
+    contador = int(time.time() // 30)
+    resumen = hmac.new(clave, contador.to_bytes(8, "big"), hashlib.sha1).digest()
+    desplazamiento = resumen[-1] & 0x0F
+    valor = int.from_bytes(resumen[desplazamiento : desplazamiento + 4], "big") & 0x7FFF_FFFF
+    return f"{valor % 1_000_000:06d}"
 
 
 def sembrar_licitacion(id_externo: str, titulo: str, **campos: Any) -> None:

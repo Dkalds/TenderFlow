@@ -1,4 +1,4 @@
-"""Carril diario completo: PLACSP → seis conectores → cierre → healthcheck.
+"""Carril diario completo: PLACSP → conectores multi-fuente → cierre → healthcheck.
 
 Es la misma pasada que ``.github/workflows/scrape-daily.yml``, paso a paso, para
 que el plano de cron del worker (ADR-033) pueda sustituir al workflow 1:1. Hasta
@@ -77,6 +77,10 @@ CONECTORES: tuple[Conector, ...] = (
     Conector("watched_awards", "scraper.connectors.watched_company_awards", 5 * 60),
     Conector("pscp", "scraper.connectors.pscp", 10 * 60),
     Conector("tacrc", "scraper.connectors.tacrc", 10 * 60),
+    # Apagados por defecto: sin su variable de URL declaran `disabled` y
+    # terminan al momento (`scraper.connectors.sindicacion_placsp`).
+    Conector("placsp_agregadas", "scraper.connectors.placsp_agregadas", 10 * 60),
+    Conector("placsp_menores", "scraper.connectors.placsp_menores", 10 * 60),
 )
 
 #: Hilo de la última pasada de cada conector: el guardarraíl de solape.

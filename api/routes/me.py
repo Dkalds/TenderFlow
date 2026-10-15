@@ -62,6 +62,7 @@ from services.gdpr import (
 )
 from shared.audit_events import (
     API_KEY_CREATED,
+    API_KEY_REVOKED,
     API_KEY_ROTATED,
     AUTH_LOGOUT_ALL,
     AUTH_SESSION_REVOKED,
@@ -397,7 +398,7 @@ class _CanalYFrecuencia(BaseModel):
     """`canal` y `frecuencia` de una fila de `prefs.listar`, ya con su `Literal`.
 
     Existe para que `get_notification_preferences` construya
-    `NotificationPreference` con argumentos tipados. Las filas son
+    `NotificationPreference` con valores tipados. Las filas son
     `dict[str, Any]` y un `Any` cabe en cualquier `Literal`: pasado tal cual,
     mypy no lo compara con el tipo del campo, y con el `str()` que llevaba la
     ruta hacía falta un `type: ignore`. Con los dos valores validados aquí, mypy
@@ -547,6 +548,9 @@ class MyApiKeyOut(BaseModel):
     is_active: bool = True
     created_at: str | None = None
     expires_at: str | None = None
+    last_used: str | None = Field(
+        default=None, description="Última petición autenticada con ella; `null` si nunca se usó"
+    )
 
 
 class MyApiKeysResult(BaseModel):
@@ -574,6 +578,7 @@ def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> MyApiKeysRe
                 is_active=bool(fila.get("is_active", True)),
                 created_at=(str(fila["created_at"]) if fila.get("created_at") else None),
                 expires_at=(str(fila["expires_at"]) if fila.get("expires_at") else None),
+                last_used=(str(fila["last_used"]) if fila.get("last_used") else None),
             )
             for fila in _key_repo.get_all_for_user(ctx["user_id"])
         ]
@@ -693,6 +698,51 @@ async def create_my_key(
     )
 
 
+#: Lo que se añade al nombre de la clave que sale de una rotación: el listado
+#: tiene que distinguir la nueva de la que sigue viva durante la gracia.
+_SUFIJO_ROTADA = " (rotada)"
+
+
+@router.delete(
+    "/me/keys/{key_id}",
+    summary="Revocar UNA API key propia",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"description": "Requiere una sesión de navegador reciente"},
+        404: {"description": "La key no existe o no es tuya"},
+    },
+)
+async def revoke_my_key(
+    key_id: int,
+    ctx: dict[str, Any] = Depends(require_recent_session()),
+) -> None:
+    """Apaga una clave al momento, sin esperar a que caduque.
+
+    Hasta ahora no había forma de retirar una clave desde el producto: borrar
+    la cuenta las revocaba todas, y rotar dejaba la vieja viva durante la
+    gracia. Revocar una ya revocada responde 204: el estado pedido es el que
+    hay.
+
+    Exige sesión reciente, como la creación, la rotación y cerrar una sesión
+    ajena: con una clave filtrada no se puede tumbar la integración buena, y
+    con una cookie robada tampoco sin volver a entrar.
+    """
+    user_id = int(ctx.get("user_id") or 0)
+    ok = bool(user_id) and await run_db(_key_repo.revoke_for_user, key_id, user_id)
+    if not ok:
+        # 404 y no 403: distinguirlos diría si el id existe.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clave no encontrada.")
+
+    await run_db(
+        log_event,
+        event_type=API_KEY_REVOKED,
+        user_key=_actor_key(ctx),
+        resource=f"api_key:{key_id}",
+        detail={"origen": "ajustes"},
+    )
+    log.info("api_key_revoked", key_id=key_id, user_id=user_id)
+
+
 @router.post(
     "/me/keys/rotate",
     summary="Rotar API key — genera una nueva con grace period",
@@ -746,9 +796,12 @@ def rotate_my_key(
     grace_expires = (datetime.now(UTC) + timedelta(days=grace_days)).isoformat()
     set_key_expiry(key_id, grace_expires)
 
-    # Crear la nueva key
+    # Crear la nueva key. El sufijo se pone una vez: rotar una ya rotada no
+    # la llama «X (rotada) (rotada)». «(rotated)» es el que ponía antes, en
+    # inglés, y se reconoce para no arrastrarlo.
+    base = name.removesuffix(_SUFIJO_ROTADA).removesuffix(" (rotated)")
     new_raw = create_api_key(
-        name=f"{name} (rotated)",
+        name=f"{base}{_SUFIJO_ROTADA}",
         scopes=scopes,
         user_id=user_id,
     )

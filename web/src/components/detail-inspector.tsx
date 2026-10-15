@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Maximize2, X } from "lucide-react";
-import { LicitacionAI } from "@/components/licitacion-ai";
 import { CompetenciaEsperadaBlock } from "@/components/competencia-esperada";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 import { DocumentosBlock } from "@/components/documentos-block";
@@ -15,6 +14,8 @@ import { PanelTabs, SectionTitle, panelDePestana } from "@/components/console/pa
 import { FichaAcciones, FichaAvisos, FichaEstado, FichaOrgano } from "@/components/ficha/ficha-cabecera";
 import { FichaCifras } from "@/components/ficha/ficha-cifras";
 import { FichaCampos } from "@/components/ficha/ficha-campos";
+import { FichaAdjudicatarios } from "@/components/ficha/ficha-adjudicatarios";
+import { FichaSimilares } from "@/components/ficha/ficha-similares";
 import {
   FichaDescripcion,
   FichaEventos,
@@ -36,15 +37,18 @@ import type { LicitacionDetail } from "@/lib/licitacion-detail";
  * y la fecha límite vivía en la rejilla de campos, por debajo de cinco bloques
  * de la pestaña Resumen.
  *
- * Debajo, cinco pestañas con lo que antes se apilaba en cuatro:
+ * Debajo, cuatro pestañas con lo que antes se apilaba en cuatro:
  *
- * - **Resumen**: los campos, el desglose de la puntuación, la descripción
- *   (recortada), las tecnologías, el enlace al portal y los eventos.
- * - **Competencia**: competencia esperada, baja esperada y simulador de
- *   puntuación, que antes alargaban el Resumen.
+ * - **Resumen**: los campos, quién lo ganó (si ya tiene adjudicatario), el
+ *   desglose de la puntuación, la descripción (recortada), las tecnologías, el
+ *   enlace al portal y los eventos.
+ * - **Competencia**: competencia esperada, baja esperada, simulador de
+ *   puntuación y los expedientes parecidos, que antes alargaban el Resumen.
  * - **Pliegos**: documentos, ficha estructurada del pliego (lotes, criterios,
  *   ANS, certificaciones citables) y el guion de oferta que se apoya en ella.
- * - **IA**: el asistente (resumen y «Preguntar»).
+ * - (Hasta 2026-10 había una quinta, **IA**, con su propio chat y su resumen.
+ *   Hoy «Preguntar a la IA» de la cabecera abre el asistente único con este
+ *   expediente, y el resumen es un turno de esa conversación.)
  * - **Recursos**: resoluciones del TACRC.
  *
  * Todo el contenido se desplaza en una sola caja y las pestañas se quedan
@@ -55,13 +59,12 @@ import type { LicitacionDetail } from "@/lib/licitacion-detail";
  * vez, a pantalla entera).
  */
 
-type TabKey = "resumen" | "competencia" | "pliegos" | "ia" | "recursos";
+type TabKey = "resumen" | "competencia" | "pliegos" | "recursos";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
   { key: "competencia", label: "Competencia" },
   { key: "pliegos", label: "Pliegos" },
-  { key: "ia", label: "IA" },
   { key: "recursos", label: "Recursos" },
 ];
 
@@ -77,8 +80,6 @@ export function DetailInspector({
   className?: string;
 }) {
   const [tab, setTab] = React.useState<TabKey>("resumen");
-  // Bump para activar la pestaña «Preguntar» del asistente desde la cabecera.
-  const [askSignal, setAskSignal] = React.useState(0);
   const { data: resoluciones } = useResoluciones(l.id_externo);
   const idPestanas = React.useId();
 
@@ -93,11 +94,6 @@ export function DetailInspector({
     setPrevId(l.id_externo);
     setTab("resumen");
   }
-
-  const preguntar = () => {
-    setTab("ia");
-    setAskSignal((key) => key + 1);
-  };
 
   const resolucionesCount = resoluciones?.items?.length ?? 0;
   // Sólo se cuenta lo que se puede contar sin pedir un dato extra. Un contador
@@ -157,7 +153,7 @@ export function DetailInspector({
           </div>
           <FichaCifras licitacion={l} columnas={2} />
           <FichaAvisos flags={l.risk_flags} />
-          <FichaAcciones licitacion={l} onPreguntar={preguntar} />
+          <FichaAcciones licitacion={l} />
         </div>
 
         <div className="sticky top-0 z-10 border-b border-border/60 bg-card px-4 pt-2">
@@ -186,6 +182,7 @@ export function DetailInspector({
                 <FichaCampos licitacion={l} variante="inspector" />
                 <FichaFuente licitacion={l} className="mt-3" />
               </section>
+              <FichaAdjudicatarios licitacion={l} />
               <FichaPuntuacion licitacion={l} />
               <FichaDescripcion licitacion={l} recortar />
               <div className="[&>*:first-child]:mt-0">
@@ -208,6 +205,11 @@ export function DetailInspector({
               {/* F2.2 — junto a la baja esperada: es con esa baja con la que se
                   mide el rival, y el simulador la ofrece como referencia. */}
               <SimuladorPuntuacion licitacionId={l.id_externo} />
+              {/* Qué más se compra parecido, de cualquier órgano: el contexto
+                  del precio, después de las cifras que lo deciden. */}
+              <div className="mt-6">
+                <FichaSimilares licitacionId={l.id_externo} />
+              </div>
             </div>
           )}
 
@@ -227,8 +229,6 @@ export function DetailInspector({
               <GuionOfertaPanel licitacionId={l.id_externo} />
             </div>
           )}
-
-          {tab === "ia" && <LicitacionAI idExterno={l.id_externo} askSignal={askSignal} />}
 
           {tab === "recursos" && <FichaRecursos licitacionId={l.id_externo} />}
         </div>

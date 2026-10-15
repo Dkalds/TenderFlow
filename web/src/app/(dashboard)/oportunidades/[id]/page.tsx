@@ -1,16 +1,13 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Download, X } from "lucide-react";
 import { PursuitLoteBadge, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
 import { KitPresentacionPanel } from "@/components/pursuits/kit-presentacion";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { PanelError, PanelTabs, panelDePestana } from "@/components/console/panel";
-import { Button, buttonVariants } from "@/components/ui/button";
 import {
   ScrollEdgeDelProveedor,
   ScrollEdgeProvider,
@@ -19,9 +16,9 @@ import {
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { useActiveOrganizationId, useOrganizationMembers } from "@/hooks/use-organization";
 import { usePursuit } from "@/hooks/use-pursuits";
-import { triggerDownload } from "@/lib/export";
 import { llevarA } from "../_lib/llevar-a";
 import type { LugarPaso } from "../_lib/salida-fase";
+import { AccionesCabecera } from "./_components/acciones-cabecera";
 import { ANCLA_CAMPOS, CamposCompletos } from "./_components/campos-completos";
 import { ColumnaDatos, type Editable } from "./_components/columna-datos";
 import { DecisionComite } from "./_components/decision-comite";
@@ -30,7 +27,7 @@ import { HistorialFicha } from "./_components/historial-ficha";
 import { PathFases } from "./_components/path-fases";
 import { PrecargaFicha, idDeRuta } from "./_components/precarga-ficha";
 import { SalidaDeFase } from "./_components/salida-fase";
-import { PestanaDiferida, type TabKey } from "./_components/secciones-diferidas";
+import { PestanaDiferida, pestanasDeFicha, type TabKey } from "./_components/secciones-diferidas";
 
 /** Los paneles del Resumen a los que lleva un paso pendiente. */
 const ANCLA_DE_LUGAR = { decision: "ficha-decision", contraste: "ficha-requisitos", kit: "ficha-kit" } as const;
@@ -184,39 +181,7 @@ export default function OpportunityDetailPage() {
             </p>
           </div>
 
-          <div className="flex flex-none items-center gap-2">
-            {/* F2.7 — el one-pager para dirección. La API lo servía desde
-                `GET /pursuits/{id}/ficha.pdf` y ninguna pantalla lo pedía. */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void triggerDownload(`/api/v1/pursuits/${pursuit.id}/ficha.pdf`)}
-            >
-              <Download aria-hidden="true" />
-              Descargar PDF
-            </Button>
-            {/* Destino de TenderFlow: sin icono de «salir». */}
-            <Link
-              href={`/detalle?lic=${encodeURIComponent(pursuit.licitacion_id)}`}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Ver en Detalle
-            </Link>
-            {/* `ml-auto`: bajo el título, el cierre queda en el extremo derecho
-                de la fila; al lado del título el margen no mueve nada. */}
-            <Link
-              href="/oportunidades"
-              aria-label="Cerrar la ficha"
-              className={buttonVariants({
-                variant: "ghost",
-                size: "icon-sm",
-                className: "text-muted-foreground ml-auto flex-none",
-              })}
-            >
-              <X aria-hidden="true" />
-            </Link>
-          </div>
+          <AccionesCabecera pursuit={pursuit} />
         </div>
 
         <PathFases pursuit={pursuit} className="mt-3.5" />
@@ -227,20 +192,7 @@ export default function OpportunityDetailPage() {
             idBase="ficha"
             value={tab}
             onChange={setTab}
-            tabs={[
-              { key: "resumen", label: "Resumen" },
-              // El expediente vive aquí desde 2026-09: antes había que salir a
-              // `/detalle` para leer órgano, CPV, plazos y pliegos de aquello
-              // sobre lo que se decide en esta misma pantalla.
-              { key: "expediente", label: "Expediente" },
-              { key: "pliego", label: "Pliego" },
-              { key: "precio", label: "Precio" },
-              {
-                key: "conversacion",
-                label: "Conversación",
-                badge: pursuit.comments_count ? pursuit.comments_count : undefined,
-              },
-            ]}
+            tabs={pestanasDeFicha(pursuit)}
           />
         </div>
       </header>

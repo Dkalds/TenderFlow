@@ -32,11 +32,12 @@ import {
   type PerfilEquipo,
   type Referencia,
   Seccion,
-  filaCertificacion,
   filaFacturacion,
   filaPerfil,
   filaReferencia,
 } from "./organizacion-capacidad-filas";
+import { filaDocumento } from "./organizacion-capacidad-documento";
+import { OrganizacionVigencias } from "./organizacion-vigencias";
 
 type Borrador = {
   certificaciones: Certificacion[];
@@ -123,14 +124,18 @@ export function OrganizacionCapacidadCard({
               </Aviso>
             )}
 
+            {/* Lo guardado, no el borrador: el estado de un documento es el
+                que verá la campana, y lo que aún no se guardó no avisa. */}
+            <OrganizacionVigencias vigencias={capacidad.data?.vigencias ?? []} />
+
             <Seccion<Certificacion>
-              titulo="Certificaciones"
-              ayuda="ISO, ENS, partner de fabricante, títulos del equipo. El ámbito importa: una certificación de empresa no acredita un título que el pliego exige a una persona."
+              titulo="Certificaciones y documentación administrativa"
+              ayuda="Certificaciones técnicas (ISO, ENS, partner de fabricante, títulos del equipo) y la documentación que caduca: al corriente con la AEAT y con la Seguridad Social, ROLECE y clasificación. En las certificaciones el ámbito importa: una de empresa no acredita un título que el pliego exige a una persona."
               filas={valores.certificaciones}
-              nueva={() => ({ nombre: "", ambito: "company", vigente_hasta: null })}
+              nueva={() => ({ nombre: "", tipo: "certificacion_tecnica", ambito: "company", vigente_hasta: null })}
               onChange={(filas) => setBorrador({ ...valores, certificaciones: filas })}
               editable={canManage}
-              render={(fila, actualizar) => filaCertificacion(fila, actualizar, canManage)}
+              render={(fila, actualizar) => filaDocumento(fila, actualizar, canManage)}
             />
             <Separator />
 

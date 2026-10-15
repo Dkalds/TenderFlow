@@ -57,9 +57,10 @@ describe("CompetidoresResolucion", () => {
     expect(aviso).toHaveTextContent("Cuotas aproximadas");
     expect(aviso).toHaveTextContent("Solo el 91,8% del importe adjudicado");
     expect(aviso).toHaveTextContent("el umbral es el 95%");
-    expect(screen.getByRole("link", { name: "Revisar en Empresas" })).toHaveAttribute(
+    // La cola es una vista del mismo espacio desde 2026-10: se llega sin salir.
+    expect(screen.getByRole("link", { name: "Revisar coincidencias" })).toHaveAttribute(
       "href",
-      "/empresas?vista=revision",
+      "/competencia?vista=revision",
     );
     expect(fetchWithAuth).toHaveBeenCalledWith("/api/v1/empresas/stats");
   });

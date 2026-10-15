@@ -3,9 +3,12 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useUiStore } from "@/lib/ui-store";
 
-const { apiGet, registrarEvento } = vi.hoisted(() => ({
+const { apiGet, registrarEvento, acceso } = vi.hoisted(() => ({
   apiGet: vi.fn(),
   registrarEvento: vi.fn(),
+  // Quién mira: administrador de la plataforma y rol en la organización
+  // activa (la 7), que juntos deciden qué espacios ofrece la paleta.
+  acceso: { admin: true, rol: "member" },
 }));
 vi.mock("@/lib/api-client", () => ({ apiGet }));
 vi.mock("@/lib/analytics", async (importOriginal) => ({
@@ -17,6 +20,10 @@ vi.mock("@/hooks/use-organization", () => ({
   // ninguna», que sí es una respuesta y deja pasar la consulta.
   organizacionResuelta: (id: unknown) => id !== undefined,
   useActiveOrganizationId: () => 7,
+  useOrganizations: () => ({
+    isLoading: false,
+    data: [{ id: 7, name: "Acme", role: acceso.rol, is_personal: false }],
+  }),
 }));
 
 const push = vi.fn();
@@ -25,7 +32,7 @@ const writeText = vi.fn();
 let filterParamsStub: Record<string, string> = {};
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 vi.mock("next-themes", () => ({ useTheme: () => ({ theme: "light", setTheme }) }));
-vi.mock("@/hooks/use-admin", () => ({ useAdmin: () => true }));
+vi.mock("@/hooks/use-admin", () => ({ useAdmin: () => acceso.admin }));
 vi.mock("@/lib/filters", () => ({
   useWithFilters: () => (p: string) => p,
   useFilterParams: () => filterParamsStub,
@@ -64,6 +71,8 @@ beforeEach(() => {
   writeText.mockClear();
   vi.mocked(toast.success).mockClear();
   filterParamsStub = {};
+  acceso.admin = true;
+  acceso.rol = "member";
   Object.assign(navigator, { clipboard: { writeText } });
 });
 afterEach(() => {
@@ -80,7 +89,7 @@ describe("CommandPalette", () => {
     useUiStore.setState({ commandOpen: true });
     renderPalette();
     expect(screen.getByRole("dialog", { name: /Paleta de comandos/ })).toBeInTheDocument();
-    expect(screen.getByText("Abrir copiloto")).toBeInTheDocument();
+    expect(screen.getByText("Abrir asistente")).toBeInTheDocument();
     expect(screen.getByText(/Cambiar tema/)).toBeInTheDocument();
   });
 
@@ -101,6 +110,27 @@ describe("CommandPalette", () => {
     renderPalette();
     fireEvent.change(screen.getByPlaceholderText(/Buscar páginas/), { target: { value: "scoring" } });
     expect(screen.getByText("Mi perfil")).toBeInTheDocument();
+  });
+
+  it("ofrece Dirección a la propietaria del equipo, y Ops no", () => {
+    // Mismo criterio que el rail: la paleta es la otra puerta a los espacios, y
+    // si una de las dos escondiera Dirección, la propietaria seguiría sin saber
+    // que existe.
+    acceso.admin = false;
+    acceso.rol = "owner";
+    useUiStore.setState({ commandOpen: true });
+    renderPalette();
+    // El espacio y, como pista, cada una de sus vistas.
+    expect(screen.getAllByText("Dirección").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Ops y Admin")).not.toBeInTheDocument();
+  });
+
+  it("no ofrece Dirección a un miembro del equipo", () => {
+    acceso.admin = false;
+    acceso.rol = "member";
+    useUiStore.setState({ commandOpen: true });
+    renderPalette();
+    expect(screen.queryAllByText("Dirección")).toHaveLength(0);
   });
 
   it("navigates when a section page item is selected", () => {

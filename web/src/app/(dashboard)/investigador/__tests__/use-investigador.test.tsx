@@ -2,13 +2,17 @@
  * `useInvestigador` sin árbol de render: qué se pide, cuándo y con qué.
  *
  * La URL es la real (nuqs con su adaptador de pruebas) y la caché de React
- * Query también; se doblan la red, el hilo del asistente y el ámbito. Lo que
- * se fija aquí es lo que la pantalla no deja ver fácil:
+ * Query también, y el almacén del asistente único también: es el contrato
+ * entre el Investigador y el panel. Se doblan la red y el ámbito. Lo que se
+ * fija aquí es lo que la pantalla no deja ver fácil:
  *
  * - la consulta vive en la URL y la petición entera entra en la clave de caché;
- * - una pregunta despierta al asistente y unas palabras sueltas no;
- * - el alcance del asistente viaja con cada pregunta;
+ * - una pregunta abre el asistente y unas palabras sueltas no;
+ * - el alcance del asistente —los marcados o todas— viaja con cada pregunta;
  * - «Resultados» no se manda al asistente por encima de lo que admite.
+ *
+ * Hasta 2026-10 el Investigador tenía su propio chat al lado de la lista; hoy
+ * abre el asistente de toda la consola con su contexto y sus ajustes.
  */
 
 import type { ReactNode } from "react";
@@ -31,21 +35,17 @@ const ambito = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/filters", () => ({ useFilters: () => ambito }));
 
-const chat = vi.hoisted(() => ({
-  send: vi.fn<(pregunta: string, opciones?: Record<string, unknown>) => Promise<void>>(async () => {}),
-  reset: vi.fn(),
-  stop: vi.fn(),
-  messages: [] as { role: string; content: string }[],
-  loading: false,
-  streaming: false,
-  error: null as Error | null,
-}));
 vi.mock("@/hooks/use-ask", () => ({
-  useChat: () => chat,
   useAskModels: () => ({ data: ["modelo-a"] }),
 }));
 
 import { MAX_EXPEDIENTES_ASISTENTE, useInvestigador } from "../_hooks/use-investigador";
+import { useAsistente } from "@/lib/asistente-store";
+
+/** Lo último que el Investigador le pidió al asistente. */
+function pedido() {
+  return useAsistente.getState().pedido;
+}
 
 function hit(id: string, extra: Partial<SearchResult> = {}): SearchResult {
   return {
@@ -116,11 +116,7 @@ beforeEach(() => {
   window.localStorage.clear();
   fetchWithAuth.mockReset().mockResolvedValue(respuesta());
   registrarEvento.mockReset();
-  chat.send.mockClear();
-  chat.reset.mockClear();
-  chat.messages = [];
-  chat.loading = false;
-  chat.error = null;
+  useAsistente.getState().reiniciar();
   ambito.ccaas = [];
   ambito.tecnologias = [];
   ambito.rango = { desde: null, hasta: null };
@@ -160,7 +156,8 @@ describe("la consulta vive en la URL", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(cuerpo().q).toBe("baja temeraria");
     // Recargar o volver no despierta al asistente: no hay gesto que lo pida.
-    expect(chat.send).not.toHaveBeenCalled();
+    expect(pedido()).toBeNull();
+    expect(useAsistente.getState().abierto).toBe(false);
   });
 
   it("la petición lleva lo que la búsqueda necesita", async () => {
@@ -336,19 +333,17 @@ describe("«Tipo de coincidencia»", () => {
 });
 
 describe("el asistente", () => {
-  it("una pregunta se busca y además se responde, en una conversación nueva", async () => {
+  it("una pregunta se busca y además abre el asistente, en una conversación nueva", async () => {
     const { result } = montar();
 
     act(() => result.current.submit("¿Qué es un PCAP?"));
 
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledTimes(1));
-    expect(chat.reset).toHaveBeenCalledTimes(1);
-    expect(chat.send).toHaveBeenCalledWith("¿Qué es un PCAP?", {
-      model: undefined,
-      topK: 10,
-      extras: {},
-      idsExternos: [],
-    });
+    const estado = useAsistente.getState();
+    expect(estado.abierto).toBe(true);
+    expect(pedido()).toMatchObject({ tipo: "pregunta", texto: "¿Qué es un PCAP?", nueva: true });
+    expect(estado.contexto).toEqual({ expedientes: [], origen: "investigador" });
+    expect(estado.opciones).toEqual({ model: undefined, topK: 10, extras: {} });
   });
 
   it("unas palabras sueltas solo se buscan", async () => {
@@ -357,7 +352,8 @@ describe("el asistente", () => {
     act(() => result.current.submit("licencias sap"));
 
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledTimes(1));
-    expect(chat.send).not.toHaveBeenCalled();
+    expect(pedido()).toBeNull();
+    expect(useAsistente.getState().abierto).toBe(false);
   });
 
   it("«Resultados» no se manda al asistente por encima de lo que admite", async () => {
@@ -366,9 +362,9 @@ describe("el asistente", () => {
 
     act(() => result.current.preguntar("¿y el plazo?"));
 
-    expect(chat.send).toHaveBeenCalledWith("¿y el plazo?", expect.objectContaining({ topK: 20, model: "modelo-a" }));
+    expect(useAsistente.getState().opciones).toMatchObject({ topK: 20, model: "modelo-a" });
     // Una pregunta de seguimiento continúa la conversación.
-    expect(chat.reset).not.toHaveBeenCalled();
+    expect(pedido()).toMatchObject({ texto: "¿y el plazo?", nueva: false });
   });
 
   it("el ámbito y «tal cual» viajan también al asistente", async () => {
@@ -378,7 +374,7 @@ describe("el asistente", () => {
 
     act(() => result.current.preguntar("¿cuál es la mayor?"));
 
-    expect(chat.send.mock.calls.at(-1)?.[1]).toMatchObject({ extras: { ccaa: ["Madrid"], interpretar: false } });
+    expect(useAsistente.getState().opciones).toMatchObject({ extras: { ccaa: ["Madrid"], interpretar: false } });
   });
 
   it("una pregunta nueva desde la caja no hereda el «tal cual» de la consulta anterior", async () => {
@@ -391,7 +387,8 @@ describe("el asistente", () => {
 
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledTimes(2));
     expect(cuerpo().interpretar).toBe(true);
-    expect(chat.send.mock.calls.at(-1)?.[1]).toMatchObject({ extras: {}, idsExternos: [] });
+    expect(useAsistente.getState().opciones).toMatchObject({ extras: {} });
+    expect(useAsistente.getState().contexto.expedientes).toEqual([]);
   });
 
   it("una pregunta vacía no se manda", () => {
@@ -399,7 +396,7 @@ describe("el asistente", () => {
 
     act(() => result.current.preguntar("   "));
 
-    expect(chat.send).not.toHaveBeenCalled();
+    expect(pedido()).toBeNull();
   });
 
   it("los resultados marcados son el alcance de la siguiente pregunta", async () => {
@@ -412,11 +409,26 @@ describe("el asistente", () => {
       { id: "A", titulo: "Título A" },
       { id: "B", titulo: "B" },
     ]);
+    // Marcar ya es el contexto del asistente, con los ajustes del Investigador.
+    expect(useAsistente.getState().contexto).toEqual({ expedientes: result.current.seleccion, origen: "investigador" });
+    expect(useAsistente.getState().opciones).toMatchObject({ topK: 10 });
 
     act(() => result.current.preguntar("compara los plazos", { nueva: true }));
 
-    expect(chat.reset).toHaveBeenCalledTimes(1);
-    expect(chat.send.mock.calls.at(-1)?.[1]).toMatchObject({ idsExternos: ["A", "B"] });
+    expect(pedido()).toMatchObject({ texto: "compara los plazos", nueva: true });
+    expect(useAsistente.getState().contexto.expedientes.map((e) => e.id)).toEqual(["A", "B"]);
+  });
+
+  it("«Preguntar por lo marcado» abre el asistente sobre ellos, sin preguntar nada aún", async () => {
+    const { result } = montar("?consulta=sap");
+    await waitFor(() => expect(result.current.searchResults).toHaveLength(2));
+    act(() => result.current.alternarSeleccion(hit("A")));
+
+    act(() => result.current.abrirAsistente());
+
+    expect(useAsistente.getState().abierto).toBe(true);
+    expect(pedido()).toBeNull();
+    expect(useAsistente.getState().contexto.expedientes.map((e) => e.id)).toEqual(["A"]);
   });
 
   it("marcar dos veces desmarca, y no caben más de tres", () => {
@@ -436,6 +448,14 @@ describe("el asistente", () => {
     expect(result.current.seleccionLlena).toBe(false);
   });
 
+  it("lo marcado en una ficha no cuenta como selección del Investigador", () => {
+    useAsistente.getState().abrir({ contexto: { expedientes: [{ id: "Z", titulo: "Otra" }], origen: "ficha" } });
+
+    const { result } = montar();
+
+    expect(result.current.seleccion).toEqual([]);
+  });
+
   it("una consulta nueva suelta lo marcado: era de la lista anterior", async () => {
     const { result } = montar("?consulta=sap");
     await waitFor(() => expect(result.current.searchResults).toHaveLength(2));
@@ -446,11 +466,11 @@ describe("el asistente", () => {
     expect(result.current.seleccion).toEqual([]);
   });
 
-  it("con una conversación en marcha la pantalla no está vacía", () => {
-    chat.messages = [{ role: "user", content: "hola" }];
+  it("sin consulta la pantalla está vacía aunque haya conversación: la conversación vive en el asistente", () => {
+    useAsistente.getState().abrir({ pregunta: "hola" });
 
     const { result } = montar();
 
-    expect(result.current.showEmpty).toBe(false);
+    expect(result.current.showEmpty).toBe(true);
   });
 });

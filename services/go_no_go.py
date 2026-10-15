@@ -8,15 +8,26 @@ organización. Este módulo cruza lo uno con lo otro y responde, por requisito,
 Tres reglas que no se negocian, porque son la diferencia entre ayudar a decidir
 y decidir por alguien:
 
-1. **Ningún ``cumple`` sin ``EvidenceRef``.** Si el hecho del pliego llega sin
-   cita, el veredicto baja a ``desconocido`` aunque el dato de la organización
-   encaje: afirmar que se cumple un requisito que nadie puede ir a leer al PDF
-   es exactamente el tipo de dato fabricado que este producto no publica.
+1. **Ningún ``cumple`` sin una fuente que se pueda comprobar.** Si el hecho
+   del pliego llega sin cita (``EvidenceRef``), el veredicto baja a
+   ``desconocido`` aunque el dato de la organización encaje: afirmar que se
+   cumple un requisito que nadie puede ir a leer al PDF es exactamente el tipo
+   de dato fabricado que este producto no publica. La otra fuente admitida es
+   la **publicación oficial** de PLACSP (v148): el requisito sale del anuncio
+   CODICE, que es público y está enlazado, y el ítem lo declara con
+   ``fuente="placsp"``.
 2. **``desconocido`` es una respuesta de primera.** Se contesta cuando la ficha
    no extrajo el hecho *o* cuando la organización no rellenó el campo. No hay
    valor por defecto optimista ni pesimista: no saber se dice.
 3. **Esto no cierra nada.** El resultado es una propuesta para la pestaña
    Decisión; quien marca go/no-go es una persona.
+
+**Por familia, la fuente oficial manda** (v148). Cuando la publicación oficial
+trae requisitos de solvencia económica o técnica, se contrastan esos y no los
+de la ficha LLM de esa familia: mezclar las dos contaría el mismo requisito dos
+veces con dos redacciones. La familia sin dato oficial sigue con la ficha, y
+cada familia dice de cuál sale (``fuente``). La clasificación empresarial no
+entra: el perfil de capacidad no la declara.
 
 El golden ``tests/fixtures/golden_go_no_go.jsonl`` fija el veredicto esperado
 por familia en diez fichas escritas a mano. Está escrito a mano **a propósito**:
@@ -27,6 +38,7 @@ hace lo que hace.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
 
@@ -39,9 +51,11 @@ from db.repositories.organization_capabilities import (
 from db.repositories.pursuits import PursuitRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from observability.logging import get_logger
+from services.condiciones_oficiales import condiciones_oficiales
 from services.normalization import fold_text
 from services.organizations import alcance_resuelto
 from shared.dto import (
+    CondicionesOficiales,
     OrganizationCapabilities,
     OrganizationCertification,
     OrganizationReferencia,
@@ -50,7 +64,6 @@ from shared.dto import (
 from shared.tender_facts import (
     CertificationRequirement,
     EvidenceRef,
-    FactItem,
     TeamRequirement,
     TenderFactSheet,
     TenderFactSheetRecord,
@@ -63,6 +76,10 @@ _pursuit_repo = PursuitRepository()
 _fact_sheets_repo = TenderFactSheetsRepository()
 
 ChecklistVeredicto = Literal["cumple", "no_cumple", "desconocido"]
+
+#: De dónde sale un requisito: la ficha LLM del pliego (con citas) o la
+#: publicación oficial de PLACSP (v148, `shared.dto.CondicionesOficiales`).
+ChecklistFuente = Literal["pliego", "placsp"]
 
 #: Las cuatro familias de ``TenderFactSheet`` que el perfil de capacidad puede
 #: contrastar. Las demás (lotes, criterios, plazos…) describen el expediente,
@@ -110,6 +127,10 @@ class ChecklistItem(BaseModel):
     evidencia: list[EvidenceRef] = Field(default_factory=list)
     #: Qué dato del perfil se usó, o ``None`` si no había ninguno que usar.
     dato_organizacion: str | None = None
+    #: De dónde sale el requisito. Con ``placsp`` la evidencia es la
+    #: publicación oficial (``GoNoGoChecklist.condiciones_actualizadas``), no
+    #: una cita del pliego, y ``evidencia`` va vacía.
+    fuente: ChecklistFuente = "pliego"
 
 
 class ChecklistFamiliaResultado(BaseModel):
@@ -128,6 +149,8 @@ class ChecklistFamiliaResultado(BaseModel):
     #: lo agrupa en una línea en vez de pintarlo como un requisito sin
     #: contrastar.
     sin_hechos: bool = False
+    #: Fuente de los requisitos de esta familia: nunca se mezclan las dos.
+    fuente: ChecklistFuente = "pliego"
 
 
 class GoNoGoChecklist(BaseModel):
@@ -160,6 +183,10 @@ class GoNoGoChecklist(BaseModel):
     requisitos_extraidos: int = Field(default=0, ge=0)
     #: De ``requisitos_extraidos``, los que quedaron en ``desconocido``.
     desconocido_extraidos: int = Field(default=0, ge=0)
+    #: Alguna familia se contrastó con la publicación oficial de PLACSP (v148).
+    usa_condiciones_oficiales: bool = False
+    #: Fecha de las condiciones oficiales evaluadas, si se usaron.
+    condiciones_actualizadas: str | None = None
 
 
 class ChecklistNotFoundError(LookupError):
@@ -213,6 +240,26 @@ def _eur(valor: float) -> str:
     return f"{valor:,.0f} €".replace(",", ".")
 
 
+@dataclass(frozen=True)
+class _Requisito:
+    """Un requisito de solvencia venga de donde venga, para contrastarlo igual.
+
+    ``umbral`` es el importe que el requisito declara aparte (``amount_eur`` de
+    la ficha, ``ThresholdAmount`` de CODICE); si no lo hay, las reglas lo buscan
+    en el texto. ``evidencia`` solo la trae la ficha.
+    """
+
+    texto: str
+    umbral: float | None
+    evidencia: list[EvidenceRef]
+    fuente: ChecklistFuente
+
+
+def _origen(fuente: ChecklistFuente) -> str:
+    """Sujeto de las frases que hablan de lo que exige la fuente."""
+    return "El pliego" if fuente == "pliego" else "La publicación oficial"
+
+
 def _con_evidencia(
     familia: ChecklistFamilia,
     requisito: str,
@@ -220,9 +267,13 @@ def _con_evidencia(
     evidencia: list[EvidenceRef],
     motivo: str,
     dato: str | None,
+    fuente: ChecklistFuente = "pliego",
 ) -> ChecklistItem:
-    """``cumple`` solo si hay cita; si no, ``desconocido`` diciendo por qué."""
-    if not evidencia:
+    """``cumple`` solo con fuente comprobable; si no, ``desconocido`` y por qué.
+
+    Una cita del pliego o la publicación oficial (regla 1 del módulo).
+    """
+    if not evidencia and fuente != "placsp":
         return ChecklistItem(
             familia=familia,
             requisito=requisito,
@@ -238,6 +289,7 @@ def _con_evidencia(
         motivo=motivo,
         evidencia=evidencia,
         dato_organizacion=dato,
+        fuente=fuente,
     )
 
 
@@ -268,8 +320,16 @@ def _evaluar_certificaciones(
     hoy: date,
 ) -> list[ChecklistItem]:
     items: list[ChecklistItem] = []
+    # Desde v147 el perfil guarda también documentación administrativa (AEAT,
+    # Seguridad Social, ROLECE, clasificación). Encaja contra todo lo declarado
+    # —un pliego puede pedir la clasificación por su nombre—, pero «no ha
+    # declarado ninguna» se decide solo con las técnicas: quien rellenó su
+    # papeleo y no sus certificaciones no ha dicho nada de su ISO, y contestar
+    # «no cumple» castigaría haber rellenado otra cosa.
+    tecnicas = [c for c in capacidad.certificaciones if c.tipo == "certificacion_tecnica"]
     for requisito in facts.certifications:
-        if not capacidad.certificaciones:
+        encaje = _certificacion_que_encaja(requisito, capacidad.certificaciones)
+        if encaje is None and not tecnicas:
             items.append(
                 ChecklistItem(
                     familia="certifications",
@@ -280,7 +340,6 @@ def _evaluar_certificaciones(
                 )
             )
             continue
-        encaje = _certificacion_que_encaja(requisito, capacidad.certificaciones)
         if encaje is None:
             items.append(
                 ChecklistItem(
@@ -328,7 +387,7 @@ def _evaluar_certificaciones(
 
 
 def _evaluar_solvencia_economica(
-    facts: TenderFactSheet,
+    requisitos: list[_Requisito],
     capacidad: OrganizationCapabilities,
 ) -> list[ChecklistItem]:
     # La LCSP mide el volumen anual de negocio por el **mejor** de los tres
@@ -341,33 +400,39 @@ def _evaluar_solvencia_economica(
         else None
     )
     items: list[ChecklistItem] = []
-    for requisito in facts.economic_solvency:
+    for requisito in requisitos:
+        fuente = requisito.fuente
+        # La frase de la publicación oficial dice de dónde sale el umbral: no
+        # hay cita del pliego que lo enseñe.
+        de_donde = "" if fuente == "pliego" else " que fija la publicación oficial"
         if mejor is None or mejor_ejercicio is None:
             items.append(
                 ChecklistItem(
                     familia="economic_solvency",
-                    requisito=requisito.description,
+                    requisito=requisito.texto,
                     veredicto="desconocido",
                     motivo="La organización no ha declarado su facturación anual.",
-                    evidencia=list(requisito.evidence),
+                    evidencia=list(requisito.evidencia),
+                    fuente=fuente,
                 )
             )
             continue
-        umbral = requisito.amount_eur
+        umbral = requisito.umbral
         if umbral is None:
-            umbral = _importe_en_texto(requisito.description)
+            umbral = _importe_en_texto(requisito.texto)
         if umbral is None:
             items.append(
                 ChecklistItem(
                     familia="economic_solvency",
-                    requisito=requisito.description,
+                    requisito=requisito.texto,
                     veredicto="desconocido",
                     motivo=(
-                        "El pliego no cifra un umbral que se pueda comparar con la "
+                        f"{_origen(fuente)} no cifra un umbral que se pueda comparar con la "
                         "facturación declarada."
                     ),
-                    evidencia=list(requisito.evidence),
+                    evidencia=list(requisito.evidencia),
                     dato_organizacion=f"{_eur(mejor)} en {mejor_ejercicio}",
+                    fuente=fuente,
                 )
             )
             continue
@@ -376,43 +441,46 @@ def _evaluar_solvencia_economica(
             items.append(
                 _con_evidencia(
                     "economic_solvency",
-                    requisito.description,
-                    evidencia=list(requisito.evidence),
+                    requisito.texto,
+                    evidencia=list(requisito.evidencia),
                     motivo=(
                         f"El mejor ejercicio declarado ({dato}) alcanza el umbral de "
-                        f"{_eur(umbral)}."
+                        f"{_eur(umbral)}{de_donde}."
                     ),
                     dato=dato,
+                    fuente=fuente,
                 )
             )
             continue
         items.append(
             ChecklistItem(
                 familia="economic_solvency",
-                requisito=requisito.description,
+                requisito=requisito.texto,
                 veredicto="no_cumple",
                 motivo=(
-                    f"El mejor ejercicio declarado ({dato}) no llega al umbral de {_eur(umbral)}."
+                    f"El mejor ejercicio declarado ({dato}) no llega al umbral de "
+                    f"{_eur(umbral)}{de_donde}."
                 ),
-                evidencia=list(requisito.evidence),
+                evidencia=list(requisito.evidencia),
                 dato_organizacion=dato,
+                fuente=fuente,
             )
         )
     return items
 
 
 def _referencia_por_tecnologia(
-    requisito: FactItem,
+    texto: str,
     referencias: list[OrganizationReferencia],
 ) -> OrganizationReferencia | None:
     for referencia in referencias:
-        if referencia.tecnologia and _contiene(requisito.description, referencia.tecnologia):
+        if referencia.tecnologia and _contiene(texto, referencia.tecnologia):
             return referencia
     return None
 
 
 def _evaluar_solvencia_tecnica(
-    facts: TenderFactSheet,
+    requisitos: list[_Requisito],
     capacidad: OrganizationCapabilities,
 ) -> list[ChecklistItem]:
     """Contrasta cada requisito técnico contra las referencias declaradas.
@@ -429,32 +497,37 @@ def _evaluar_solvencia_tecnica(
     """
     items: list[ChecklistItem] = []
     con_importe = [r for r in capacidad.referencias if r.importe_eur is not None]
-    for requisito in facts.technical_solvency:
+    for requisito in requisitos:
+        fuente = requisito.fuente
         if not capacidad.referencias:
             items.append(
                 ChecklistItem(
                     familia="technical_solvency",
-                    requisito=requisito.description,
+                    requisito=requisito.texto,
                     veredicto="desconocido",
                     motivo="La organización no ha declarado referencias de contratos.",
-                    evidencia=list(requisito.evidence),
+                    evidencia=list(requisito.evidencia),
+                    fuente=fuente,
                 )
             )
             continue
 
-        umbral = _importe_en_texto(requisito.description)
+        umbral = (
+            requisito.umbral if requisito.umbral is not None else _importe_en_texto(requisito.texto)
+        )
         if umbral is not None:
             if not con_importe:
                 items.append(
                     ChecklistItem(
                         familia="technical_solvency",
-                        requisito=requisito.description,
+                        requisito=requisito.texto,
                         veredicto="desconocido",
                         motivo=(
                             "El requisito exige un importe mínimo y ninguna referencia "
                             "declarada lleva importe."
                         ),
-                        evidencia=list(requisito.evidence),
+                        evidencia=list(requisito.evidencia),
+                        fuente=fuente,
                     )
                 )
                 continue
@@ -465,43 +538,46 @@ def _evaluar_solvencia_tecnica(
                 items.append(
                     _con_evidencia(
                         "technical_solvency",
-                        requisito.description,
-                        evidencia=list(requisito.evidence),
+                        requisito.texto,
+                        evidencia=list(requisito.evidencia),
                         motivo=(
                             f"La mejor referencia declarada —{dato}— alcanza el umbral "
                             f"de {_eur(umbral)}."
                         ),
                         dato=dato,
+                        fuente=fuente,
                     )
                 )
             else:
                 items.append(
                     ChecklistItem(
                         familia="technical_solvency",
-                        requisito=requisito.description,
+                        requisito=requisito.texto,
                         veredicto="no_cumple",
                         motivo=(
                             f"La mejor referencia declarada —{dato}— no llega al umbral "
                             f"de {_eur(umbral)}."
                         ),
-                        evidencia=list(requisito.evidence),
+                        evidencia=list(requisito.evidencia),
                         dato_organizacion=dato,
+                        fuente=fuente,
                     )
                 )
             continue
 
-        encaje = _referencia_por_tecnologia(requisito, capacidad.referencias)
+        encaje = _referencia_por_tecnologia(requisito.texto, capacidad.referencias)
         if encaje is None:
             items.append(
                 ChecklistItem(
                     familia="technical_solvency",
-                    requisito=requisito.description,
+                    requisito=requisito.texto,
                     veredicto="desconocido",
                     motivo=(
                         "El requisito no cifra un importe ni nombra una tecnología de "
                         "las referencias declaradas: hay que contrastarlo a mano."
                     ),
-                    evidencia=list(requisito.evidence),
+                    evidencia=list(requisito.evidencia),
+                    fuente=fuente,
                 )
             )
             continue
@@ -509,10 +585,11 @@ def _evaluar_solvencia_tecnica(
         items.append(
             _con_evidencia(
                 "technical_solvency",
-                requisito.description,
-                evidencia=list(requisito.evidence),
+                requisito.texto,
+                evidencia=list(requisito.evidencia),
                 motivo=f"La organización declara una referencia de {encaje.tecnologia}: {dato}.",
                 dato=dato,
+                fuente=fuente,
             )
         )
     return items
@@ -632,6 +709,63 @@ def _veredicto_familia(items: list[ChecklistItem]) -> ChecklistVeredicto:
     return "cumple"
 
 
+#: Cómo se nombra un requisito oficial que no trae descripción: por su clase,
+#: sin inventar el texto que el anuncio no publica.
+_SIN_DESCRIPCION_OFICIAL: dict[str, str] = {
+    "economica": "Solvencia económica (publicación oficial)",
+    "tecnica": "Solvencia técnica (publicación oficial)",
+}
+
+
+def _requisitos_oficiales(
+    oficiales: CondicionesOficiales | None,
+    clase: Literal["economica", "tecnica"],
+    lote_numero: str | None,
+) -> list[_Requisito]:
+    """Requisitos de una clase en el ámbito de la oportunidad.
+
+    Con lote, los del expediente y los de ese lote; sin lote, todos, con el
+    número de lote delante para que no se lean como del expediente entero.
+    """
+    if oficiales is None:
+        return []
+    requisitos: list[_Requisito] = []
+    for ambito in oficiales.ambitos:
+        if lote_numero is not None and ambito.lote_numero not in (None, lote_numero):
+            continue
+        prefijo = (
+            f"Lote {ambito.lote_numero} · "
+            if ambito.lote_numero is not None and lote_numero is None
+            else ""
+        )
+        for oficial in ambito.solvencia:
+            if oficial.clase != clase:
+                continue
+            texto = oficial.descripcion or _SIN_DESCRIPCION_OFICIAL[clase]
+            requisitos.append(
+                _Requisito(
+                    texto=f"{prefijo}{texto}",
+                    umbral=oficial.umbral_importe,
+                    evidencia=[],
+                    fuente="placsp",
+                )
+            )
+    return requisitos
+
+
+def _requisitos_de_la_ficha(items: list[Any], *, con_importe: bool) -> list[_Requisito]:
+    """Hechos de la ficha como requisitos; ``con_importe`` lee ``amount_eur``."""
+    return [
+        _Requisito(
+            texto=item.description,
+            umbral=getattr(item, "amount_eur", None) if con_importe else None,
+            evidencia=list(item.evidence),
+            fuente="pliego",
+        )
+        for item in items
+    ]
+
+
 def _sin_hechos(familia: ChecklistFamilia) -> ChecklistItem:
     return ChecklistItem(
         familia=familia,
@@ -648,20 +782,42 @@ def evaluate(
     record: TenderFactSheetRecord | None,
     capabilities: OrganizationCapabilities,
     hoy: date,
+    oficiales: CondicionesOficiales | None = None,
+    lote_numero: str | None = None,
 ) -> GoNoGoChecklist:
     """Contrasta una ficha contra un perfil. Función pura: ni lee ni escribe BD.
 
     Que sea pura es lo que permite que el golden la ejercite con fichas y
     capacidades sintéticas, sin Postgres de por medio.
+
+    ``oficiales`` son las condiciones de la publicación oficial (v148): cuando
+    traen solvencia económica o técnica, esa familia se contrasta con ellas y
+    no con la ficha. ``lote_numero`` acota sus requisitos al lote de la
+    oportunidad.
     """
     facts = record.facts if record is not None else None
     if facts is None:
         facts = TenderFactSheet()
 
+    economica_oficial = _requisitos_oficiales(oficiales, "economica", lote_numero)
+    tecnica_oficial = _requisitos_oficiales(oficiales, "tecnica", lote_numero)
+    fuentes: dict[ChecklistFamilia, ChecklistFuente] = {
+        "certifications": "pliego",
+        "economic_solvency": "placsp" if economica_oficial else "pliego",
+        "technical_solvency": "placsp" if tecnica_oficial else "pliego",
+        "team_requirements": "pliego",
+    }
+    economica = economica_oficial or _requisitos_de_la_ficha(
+        list(facts.economic_solvency), con_importe=True
+    )
+    tecnica = tecnica_oficial or _requisitos_de_la_ficha(
+        list(facts.technical_solvency), con_importe=False
+    )
+
     por_familia: dict[ChecklistFamilia, list[ChecklistItem]] = {
         "certifications": _evaluar_certificaciones(facts, capabilities, hoy),
-        "economic_solvency": _evaluar_solvencia_economica(facts, capabilities),
-        "technical_solvency": _evaluar_solvencia_tecnica(facts, capabilities),
+        "economic_solvency": _evaluar_solvencia_economica(economica, capabilities),
+        "technical_solvency": _evaluar_solvencia_tecnica(tecnica, capabilities),
         "team_requirements": _evaluar_equipo(facts, capabilities),
     }
 
@@ -675,6 +831,7 @@ def evaluate(
                 veredicto=_veredicto_familia(por_familia[familia]),
                 items=items,
                 sin_hechos=not por_familia[familia],
+                fuente=fuentes[familia],
             )
         )
 
@@ -693,6 +850,12 @@ def evaluate(
         desconocido=sum(1 for item in todos if item.veredicto == "desconocido"),
         requisitos_extraidos=len(extraidos),
         desconocido_extraidos=sum(1 for item in extraidos if item.veredicto == "desconocido"),
+        usa_condiciones_oficiales=bool(economica_oficial or tecnica_oficial),
+        condiciones_actualizadas=(
+            oficiales.actualizado
+            if oficiales is not None and (economica_oficial or tecnica_oficial)
+            else None
+        ),
     )
 
 
@@ -703,10 +866,35 @@ def _clave_de_sellado(checklist: GoNoGoChecklist) -> str:
     produce otra ficha (documentos nuevos, OCR) bajo la misma
     ``extraction_version``, y ese sí es un checklist distinto que merece su
     evento. De ahí que la fecha de la ficha entre en la clave.
+
+    Con condiciones oficiales (v148) la clave añade su fecha: una corrección
+    del órgano re-ingerida es otro checklist. Se **añade** al final y solo en
+    ese caso, para que las evaluaciones con la ficha sola conserven la clave
+    que ya tenían en el ledger y no se vuelvan a sellar.
     """
     version = checklist.extraction_version or "sin_version"
     fecha = checklist.ficha_actualizada or "sin_fecha"
-    return f"checklist:{version}:{fecha}"
+    clave = f"checklist:{version}:{fecha}"
+    if checklist.usa_condiciones_oficiales:
+        clave += f":placsp:{checklist.condiciones_actualizadas or 'sin_fecha'}"
+    return clave
+
+
+def _condiciones_oficiales_de(licitacion_id: str) -> CondicionesOficiales | None:
+    """Las condiciones oficiales del expediente, sin poder tumbar el checklist.
+
+    Son un añadido sobre la ficha: si no se pueden leer, el checklist se
+    calcula como antes de v148, con la ficha sola, y queda en el log.
+    """
+    try:
+        return condiciones_oficiales(licitacion_id)
+    except Exception as exc:
+        log.warning(
+            "checklist_condiciones_oficiales_no_disponibles",
+            licitacion_id=licitacion_id,
+            error=str(exc)[:200],
+        )
+        return None
 
 
 def build_checklist(
@@ -726,17 +914,20 @@ def build_checklist(
         raw = _fact_sheets_repo.get(licitacion_id)
         record = TenderFactSheetRecord.model_validate(raw) if raw else None
         capabilities = OrganizationCapabilities.model_validate(_capabilities_repo.get(resolved_id))
+        lote = row.get("lote_numero")
         checklist = evaluate(
             licitacion_id=licitacion_id,
             organization_id=resolved_id,
             record=record,
             capabilities=capabilities,
             hoy=hoy or date.today(),
+            oficiales=_condiciones_oficiales_de(licitacion_id),
+            lote_numero=str(lote) if lote is not None else None,
         )
 
-        # Sin ficha no hay nada que sellar: el ledger contaría «se evaluó» de algo
-        # que no se pudo evaluar.
-        if record is not None:
+        # Sin ficha ni condiciones oficiales no hay nada que sellar: el ledger
+        # contaría «se evaluó» de algo que no se pudo evaluar.
+        if record is not None or checklist.usa_condiciones_oficiales:
             payload: dict[str, Any] = {
                 "licitacion_id": licitacion_id,
                 "extraction_version": checklist.extraction_version,
@@ -749,6 +940,8 @@ def build_checklist(
                 "familias": {
                     resultado.familia: resultado.veredicto for resultado in checklist.familias
                 },
+                "usa_condiciones_oficiales": checklist.usa_condiciones_oficiales,
+                "condiciones_actualizadas": checklist.condiciones_actualizadas,
             }
             try:
                 seal_checklist_evaluated(

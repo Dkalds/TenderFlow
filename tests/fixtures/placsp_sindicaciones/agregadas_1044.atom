@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+      xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+      xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+      xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores.atom</id>
+  <title>Licitaciones agregadas sin menores (fixture sintética, ver README.md)</title>
+  <updated>2026-10-11T23:50:00+02:00</updated>
+  <link href="https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores.atom" rel="self"/>
+
+  <!-- 1. Convocatoria abierta de tecnología: entra como oportunidad, con el
+       pliego alojado en PLACSP y sin el que vive en otro host. -->
+  <entry>
+    <id>https://contrataciondelestado.es/sindicacion/PlataformasAgregadasSinMenores/9100000001</id>
+    <title>Soporte y evolución de SAP S/4HANA del Servicio Regional de Ejemplo</title>
+    <updated>2026-10-11T21:14:02+02:00</updated>
+    <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=AGR-EJ-0123" rel="alternate"/>
+    <summary type="text">Id licitación: 2026/000123; Órgano de Contratación: Servicio Regional de Ejemplo; Importe: 480000.00 EUR; Estado: PUB</summary>
+    <cacext:ContractFolderStatus>
+      <cbc:ContractFolderID>2026/000123</cbc:ContractFolderID>
+      <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+      <cacext:LocatedContractingParty>
+        <cac:Party>
+          <cac:PartyName><cbc:Name>Servicio Regional de Ejemplo</cbc:Name></cac:PartyName>
+        </cac:Party>
+      </cacext:LocatedContractingParty>
+      <cacext:ValidNoticeInfo>
+        <cacext:AdditionalPublicationStatus>
+          <cacext:AdditionalPublicationDocumentReference>
+            <cbc:IssueDate>2026-10-11</cbc:IssueDate>
+          </cacext:AdditionalPublicationDocumentReference>
+        </cacext:AdditionalPublicationStatus>
+      </cacext:ValidNoticeInfo>
+      <cac:ProcurementProject>
+        <cbc:Name>Soporte y evolución de SAP S/4HANA del Servicio Regional de Ejemplo</cbc:Name>
+        <cbc:TypeCode>2</cbc:TypeCode>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">480000.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+        <cac:RealizedLocation>
+          <cbc:CountrySubentity>Sevilla</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode>ES618</cbc:CountrySubentityCode>
+        </cac:RealizedLocation>
+      </cac:ProcurementProject>
+      <cac:TenderingProcess>
+        <cac:TenderSubmissionDeadlinePeriod>
+          <cbc:EndDate>2099-11-15</cbc:EndDate>
+          <cbc:EndTime>14:00:00</cbc:EndTime>
+        </cac:TenderSubmissionDeadlinePeriod>
+      </cac:TenderingProcess>
+      <cac:LegalDocumentReference>
+        <cbc:ID>PCAP</cbc:ID>
+        <cac:Attachment>
+          <cac:ExternalReference>
+            <cbc:URI>https://contrataciondelestado.es/docs/AGR-EJ-0123-pcap.pdf</cbc:URI>
+            <cbc:FileName>pliego-administrativo.pdf</cbc:FileName>
+          </cac:ExternalReference>
+        </cac:Attachment>
+      </cac:LegalDocumentReference>
+      <cac:TechnicalDocumentReference>
+        <cbc:ID>PPT</cbc:ID>
+        <cac:Attachment>
+          <cac:ExternalReference>
+            <cbc:URI>https://plataforma-autonomica.example/docs/AGR-EJ-0123-ppt.pdf</cbc:URI>
+            <cbc:FileName>pliego-tecnico.pdf</cbc:FileName>
+          </cac:ExternalReference>
+        </cac:Attachment>
+      </cac:TechnicalDocumentReference>
+    </cacext:ContractFolderStatus>
+  </entry>
+
+  <!-- 2. Sin señal tecnológica: se descarta. -->
+  <entry>
+    <id>https://contrataciondelestado.es/sindicacion/PlataformasAgregadasSinMenores/9100000002</id>
+    <title>Obras de reforma de la cubierta del polideportivo municipal</title>
+    <updated>2026-10-11T20:01:44+02:00</updated>
+    <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=AGR-EJ-0124" rel="alternate"/>
+    <summary type="text">Id licitación: 2026/000124; Órgano de Contratación: Ayuntamiento de Villaejemplo; Importe: 950000.00 EUR; Estado: PUB</summary>
+    <cacext:ContractFolderStatus>
+      <cbc:ContractFolderID>2026/000124</cbc:ContractFolderID>
+      <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+      <cacext:LocatedContractingParty>
+        <cac:Party>
+          <cac:PartyName><cbc:Name>Ayuntamiento de Villaejemplo</cbc:Name></cac:PartyName>
+        </cac:Party>
+      </cacext:LocatedContractingParty>
+      <cac:ProcurementProject>
+        <cbc:Name>Obras de reforma de la cubierta del polideportivo municipal</cbc:Name>
+        <cbc:TypeCode>3</cbc:TypeCode>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>45261000-4</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">950000.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+      </cac:ProcurementProject>
+    </cacext:ContractFolderStatus>
+  </entry>
+
+  <!-- 3. El mismo contrato que ya entra por la PSCP (mismo expediente, órgano y
+       CPV): se persiste con su namespace y el dedupe lo marca. -->
+  <entry>
+    <id>https://contrataciondelestado.es/sindicacion/PlataformasAgregadasSinMenores/9100000003</id>
+    <title>Ampliación de licencias Salesforce Service Cloud para atención ciudadana</title>
+    <updated>2026-10-11T19:30:00+02:00</updated>
+    <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=AGR-EJ-0077" rel="alternate"/>
+    <summary type="text">Id licitación: EXP-2026-77; Órgano de Contratación: Consorci d'Exemple; Importe: 64000.00 EUR; Estado: PUB</summary>
+    <cacext:ContractFolderStatus>
+      <cbc:ContractFolderID>EXP-2026-77</cbc:ContractFolderID>
+      <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+      <cacext:LocatedContractingParty>
+        <cac:Party>
+          <cac:PartyName><cbc:Name>Consorci d'Exemple</cbc:Name></cac:PartyName>
+        </cac:Party>
+      </cacext:LocatedContractingParty>
+      <cacext:ValidNoticeInfo>
+        <cacext:AdditionalPublicationStatus>
+          <cacext:AdditionalPublicationDocumentReference>
+            <cbc:IssueDate>2026-10-09</cbc:IssueDate>
+          </cacext:AdditionalPublicationDocumentReference>
+        </cacext:AdditionalPublicationStatus>
+      </cacext:ValidNoticeInfo>
+      <cac:ProcurementProject>
+        <cbc:Name>Ampliación de licencias Salesforce Service Cloud para atención ciudadana</cbc:Name>
+        <cbc:TypeCode>1</cbc:TypeCode>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode>48000000-8</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:BudgetAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">64000.00</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+        <cac:RealizedLocation>
+          <cbc:CountrySubentity>Barcelona</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode>ES511</cbc:CountrySubentityCode>
+        </cac:RealizedLocation>
+      </cac:ProcurementProject>
+      <cac:TenderingProcess>
+        <cac:TenderSubmissionDeadlinePeriod>
+          <cbc:EndDate>2099-11-02</cbc:EndDate>
+          <cbc:EndTime>12:00:00</cbc:EndTime>
+        </cac:TenderSubmissionDeadlinePeriod>
+      </cac:TenderingProcess>
+    </cacext:ContractFolderStatus>
+  </entry>
+</feed>

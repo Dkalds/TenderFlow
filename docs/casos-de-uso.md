@@ -47,6 +47,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   clasificados con tecnología.
 - Abre la ficha de uno por su enlace permanente; uno que no existe no rompe la
   página.
+- En la ficha ve quién lo ganó —por lote, con NIF, importe adjudicado y número
+  de ofertas—, el contrato anterior del mismo órgano con su incumbente y los
+  expedientes parecidos.
 
 ### CU-03 — Seguir un expediente y anotarlo
 
@@ -130,7 +133,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 
 - **Quién:** integrador. **Dónde:** Ajustes › Claves.
 - Crea una clave, que se enseña una sola vez y nace con el mínimo privilegio.
-- La usa sin sesión, y al rotarla recibe una nueva que funciona.
+- La usa sin sesión, y al rotarla recibe una nueva que funciona mientras la
+  vieja aguanta la gracia.
+- Revoca la que ya no usa, y deja de abrir la API al momento.
 
 ### CU-15 — Exportar mis datos y borrar mi cuenta
 
@@ -194,6 +199,73 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Ve la carga por persona y la actividad reciente de las oportunidades de la
   organización.
 
+### CU-25 — Proteger mi cuenta con la verificación en dos pasos
+
+- **Quién:** cualquier usuario. **Dónde:** Ajustes › Seguridad.
+- La activa con la clave de su app de autenticación y el primer código, y ve
+  sus códigos de recuperación una sola vez. Un alta a medias se reempieza.
+- Desde entonces, entrar pide el código además de la contraseña; un código de
+  recuperación sirve una vez.
+- La desactiva con un código vigente, y sin él no.
+
+### CU-26 — Salir, traspasar o borrar una organización
+
+- **Quién:** miembros y propietaria del equipo. **Dónde:** Equipo ›
+  Organización.
+- Un miembro sale y deja de verla; la propietaria no puede salir sin
+  traspasarla antes, y el motivo se lo dice.
+- La propietaria traspasa la propiedad a otro miembro activo y queda como
+  administradora.
+- Antes de borrarla ve cuánto trabajo se lleva el borrado, y lo confirma
+  escribiendo el nombre; la organización personal no se borra por aquí.
+
+### CU-27 — Guardar la propuesta del equipo en la oportunidad
+
+- **Quién:** equipo de preventa. **Dónde:** ficha de la oportunidad, Adjuntos.
+- Sube los documentos de la oferta, los descarga con un enlace que caduca y
+  retira los que ya no sirven; el mismo fichero no se sube dos veces.
+- El tamaño y los tipos admitidos los dicta el servidor, y la pantalla los dice
+  antes de elegir el fichero.
+- Quien solo lee los ve y los descarga, pero no sube ni retira; otra
+  organización no los alcanza ni por su identificador.
+- Un entorno sin almacén de documentos lo dice y no acepta ningún fichero.
+
+### CU-28 — Acotar Detalle y el tablero por etiqueta, responsable y plazo
+
+- **Quién:** comercial y responsable de oportunidades. **Dónde:** `/detalle`,
+  `/oportunidades`.
+- Filtra los expedientes por una etiqueta de su organización y obtiene todos
+  los etiquetados, con su total, no solo los de la página cargada.
+- En el tablero filtra por texto, etiqueta, responsable y plazo de
+  presentación —vencido, 7 días, 30 días— sobre todas las oportunidades.
+- El plazo cuenta solo en las oportunidades abiertas y sin presentar, igual
+  que en Dirección.
+
+### CU-29 — Enterarme de lo que me concierne desde la campana
+
+- **Quién:** cualquier miembro de una organización. **Dónde:** la campana de la
+  barra de ámbito, y «Ver todas».
+- Ve solo lo suyo en la organización activa: alertas de sus reglas, cambios en
+  lo que sigue, menciones, tareas y plazos de sus oportunidades y avisos de la
+  organización. Las novedades del mercado no están: son del Resumen.
+- Mirar la campana no marca nada; cada aviso se marca al abrirlo, y «Marcar
+  todo como leído» es una acción aparte.
+- Recorre la lista completa, paginada, filtrando leídos y sin leer, y pone en
+  pausa la regla que disparó una alerta sin salir de la campana.
+
+### CU-30 — Tener al día la documentación acreditativa
+
+- **Quién:** propietario o administrador de la organización. **Dónde:**
+  Equipo › Organización, perfil de capacidad.
+- Declara cada documento con su tipo —certificación técnica, o documentación
+  administrativa: corriente con la AEAT y con la Seguridad Social, ROLECE,
+  clasificación— y hasta cuándo vale.
+- Ve el estado de cada uno (vigente, caduca en N días, caducado, sin caducidad
+  declarada), ordenado por la próxima caducidad.
+- Recibe en la campana y por correo un aviso a 60, 30 y 7 días y al caducar,
+  una sola vez por umbral y documento; renovarlo con otra fecha vuelve a
+  avisar en sus umbrales. Lo puede apagar en Ajustes.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -201,10 +273,10 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | Caso | Recorrido por la API | E2E en el navegador | Otros tests que lo citan |
 |---|---|---|---|
 | **CU-01** Entrar y salir de la consola | — | [login.spec.ts](../web/e2e/login.spec.ts) | — |
-| **CU-02** Buscar un expediente y abrir su ficha | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [detail-permalink.spec.ts](../web/e2e/detail-permalink.spec.ts) | — |
+| **CU-02** Buscar un expediente y abrir su ficha | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [detail-permalink.spec.ts](../web/e2e/detail-permalink.spec.ts) | — |
 | **CU-03** Seguir un expediente y anotarlo | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-04** Vigilar el mercado con una alerta | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py) |
-| **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x3) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py) |
+| **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x3) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[test_pursuits_filtros_tablero.py](../tests/test_pursuits_filtros_tablero.py) |
 | **CU-06** Decidir GO o NO-GO con la matriz | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py) |
 | **CU-07** Preparar la oferta con tareas | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | — |
 | **CU-08** Vigilar la cartera y preparar la renovación | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | — | — |
@@ -213,7 +285,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-11** Seguir una cuenta objetivo | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | [recorrido-cuenta.spec.ts](../web/e2e/recorrido-cuenta.spec.ts) | — |
 | **CU-12** Trabajar en equipo con roles | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
 | **CU-13** Mantener separados los datos de cada organización | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
-| **CU-14** Integrar por API con una clave propia | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
+| **CU-14** Integrar por API con una clave propia | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | [claves-view.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/claves-view.test.tsx) |
 | **CU-15** Exportar mis datos y borrar mi cuenta | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-16** Exportar el ámbito a CSV | — | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-17** Ajustar mi perfil de puntuación | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-perfil.spec.ts](../web/e2e/recorrido-perfil.spec.ts) | [test_me_profile_routes.py](../tests/test_me_profile_routes.py) |
@@ -224,7 +296,13 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-22** Leer el pliego con la cita delante | — | [pagina-cita.spec.ts](../web/e2e/pagina-cita.spec.ts) | — |
 | **CU-23** Preguntar al Investigador en lenguaje natural | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | — | — |
 | **CU-24** Ver el trabajo del equipo desde Dirección | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
+| **CU-25** Proteger mi cuenta con la verificación en dos pasos | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | — | [seguridad-view.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/seguridad-view.test.tsx)<br>[space-views.test.ts](../web/src/lib/__tests__/space-views.test.ts) |
+| **CU-26** Salir, traspasar o borrar una organización | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | — | [ciclo-organizacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/ciclo-organizacion.test.tsx) |
+| **CU-27** Guardar la propuesta del equipo en la oportunidad | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py) (x2) | — | [adjuntos-panel.test.tsx](../web/src/components/pursuits/__tests__/adjuntos-panel.test.tsx) |
+| **CU-28** Acotar Detalle y el tablero por etiqueta, responsable y plazo | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py) | — | [use-etiqueta-listado.test.tsx](../web/src/app/(dashboard)/detalle/__tests__/use-etiqueta-listado.test.tsx)<br>[tablero-view.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/tablero-view.test.tsx) |
+| **CU-29** Enterarme de lo que me concierne desde la campana | [test_escenario_campana.py](../tests/test_escenario_campana.py) | — | [notification-bell.test.tsx](../web/src/components/__tests__/notification-bell.test.tsx)<br>[ver-todas-sheet.test.tsx](../web/src/components/campana/__tests__/ver-todas-sheet.test.tsx) |
+| **CU-30** Tener al día la documentación acreditativa | [test_escenario_documentacion.py](../tests/test_escenario_documentacion.py) | — | [page.test.tsx](../web/src/app/(dashboard)/equipo/__tests__/page.test.tsx)<br>[organizacion-documentacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-documentacion.test.tsx) |
 
-**24 casos**, 24 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**30 casos**, 30 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

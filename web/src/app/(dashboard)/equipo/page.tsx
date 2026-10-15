@@ -12,7 +12,7 @@
  *
  * La pestaña «Organización» es el destino que S2.1 y S2.2 le habían dado a sus
  * tarjetas de NIF y capacidad: existían y estaban probadas, pero ninguna
- * pantalla las montaba.
+ * pantalla las montaba. Al final lleva salir, traspasar y borrar (CU-26).
  *
  * La pestaña «Integraciones» es la mitad de S4.2 que faltaba: los webhooks de
  * la organización salieron de `/ops` (donde queda la vista global de la
@@ -29,6 +29,7 @@
  */
 
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { Panel, PanelTitle } from "@/components/console/panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SpaceShell } from "@/components/layout/space-shell";
@@ -61,7 +62,16 @@ const ActividadEquipo = dynamic(
   { loading },
 );
 
+/**
+ * Pestañas a las que se puede llegar con `?tab=`. El aviso de caducidad de un
+ * documento (la campana) abre «Organización», donde está el perfil de
+ * capacidad; «Integraciones» no entra porque solo existe para owner y admin.
+ */
+const PESTANAS_ENLAZABLES = new Set(["miembros", "organizacion", "actividad"]);
+
 export default function EquipoPage() {
+  const pestanaPedida = useSearchParams().get("tab");
+  const pestanaInicial = pestanaPedida && PESTANAS_ENLAZABLES.has(pestanaPedida) ? pestanaPedida : "miembros";
   const organizations = useOrganizations();
   const activeOrganizationId = useActiveOrganizationId();
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
@@ -77,7 +87,7 @@ export default function EquipoPage() {
           <CrearOrganizacionForm />
         </Panel>
 
-        <Tabs defaultValue="miembros">
+        <Tabs defaultValue={pestanaInicial}>
           <TabsList>
             <TabsTrigger value="miembros">Miembros</TabsTrigger>
             <TabsTrigger value="organizacion">Organización</TabsTrigger>
@@ -106,6 +116,7 @@ export default function EquipoPage() {
               organizationId={activeOrganizationId}
               canManage={canManage}
               isPersonal={isPersonal}
+              organizacion={activeOrganization}
             />
           </TabsContent>
 

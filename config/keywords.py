@@ -1414,6 +1414,58 @@ if not (set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO) == set(
     )
 
 
+# ── Familias: qué se compra, con los fabricantes dentro (2026-10) ────────────
+#
+# «Proyectos y módulos», en Mercado, agrupa lo licitado por **familias**, que son las
+# categorías de la taxonomía en su orden. Un fabricante cuenta en la familia de
+# su línea de producto solo si la tiene una: es la columna «Motivo» de
+# `docs/taxonomia-tecnologica.md`, no una estimación —SAP (S/4HANA, ECC), Unit4
+# (Agresso), Sage (X3) e Infor (LN, M3) son ERP; Salesforce, CRM; Workday y
+# Meta4, RRHH y nómina; OpenText, gestión documental—. Los que venden en varias
+# —Oracle (base de datos y ERP), Microsoft (Dynamics, Azure y 365), IBM
+# (Maximo, Cognos, DB2), ServiceNow (plataforma de ITSM) y Sopra (RRHH, banca e
+# integración)— no se reparten por intuición: no cuentan en ninguna familia y la
+# vista lo dice. Es lo que deja los módulos SAP como desglose **dentro** de ERP.
+
+#: Las familias de la vista: las categorías, en el orden de la taxonomía.
+FAMILIAS_TECNOLOGICAS: tuple[str, ...] = tuple(
+    label for label, tipo in TECH_LABEL_TIPO.items() if tipo == "categoria"
+)
+
+#: Familia de cada fabricante de una sola línea. Los que faltan son transversales.
+FAMILIA_DE_FABRICANTE: dict[str, str] = {
+    "SAP": "ERP",
+    "UNIT4": "ERP",
+    "SAGE": "ERP",
+    "INFOR": "ERP",
+    "SALESFORCE": "CRM",
+    "WORKDAY": "RRHH_NOMINA",
+    "META4": "RRHH_NOMINA",
+    "OPENTEXT": "GESTION_DOCUMENTAL",
+}
+
+if not all(
+    TECH_LABEL_TIPO.get(fabricante) == "fabricante" and familia in FAMILIAS_TECNOLOGICAS
+    for fabricante, familia in FAMILIA_DE_FABRICANTE.items()
+):
+    raise ValueError("FAMILIA_DE_FABRICANTE solo admite fabricantes y familias de la taxonomía")
+
+
+def etiqueta_familia(familia: str) -> str:
+    """Nombre de la familia en la UI.
+
+    Es la etiqueta de su categoría sin el «(genérico)» de ERP y CRM: ese sufijo
+    distingue el label sin fabricante, y la familia ERP incluye además a SAP,
+    Unit4, Sage e Infor.
+    """
+    return TECH_CATEGORIAS[familia].removesuffix(" (genérico)")
+
+
+def codigos_de_familia(familia: str) -> list[str]:
+    """Códigos de `tecnologia` que cuentan en la familia: su categoría y sus fabricantes."""
+    return [familia, *(fab for fab, fam in FAMILIA_DE_FABRICANTE.items() if fam == familia)]
+
+
 # ── Límites de palabra para keywords que no empiezan (o acaban) en letra ────
 #
 # El patrón de siempre era ``\b(kw1|kw2|...)\b``, y con él **`.net` no puede

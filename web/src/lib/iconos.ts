@@ -81,7 +81,7 @@ export const ICONO_ENTIDAD = {
 export const ICONO_CONCEPTO = {
   /** Fecha límite, plazo de presentación, próxima acción con fecha. */
   plazo: CalendarClock,
-  /** Todo lo que responde un modelo: copiloto, resumen, preguntar. */
+  /** Todo lo que responde un modelo: el asistente, su resumen, preguntar. */
   ia: MessageSquareText,
   /** Buscar dentro de textos (pliegos, expedientes): el Investigador. */
   investigar: TextSearch,
@@ -122,7 +122,6 @@ export const ICONO_ESPACIO = {
   "mi-watchlist": ICONO_CONCEPTO.seguir,
   "mi-perfil": ICONO_ENTIDAD.persona,
   ajustes: Settings2,
-  empresas: ICONO_ENTIDAD.empresa,
   equipo: ICONO_ENTIDAD.equipo,
   ops: ServerCog,
 } as const satisfies Record<string, LucideIcon>;

@@ -689,6 +689,12 @@ PursuitStatus = Literal[
 PursuitDecision = Literal["pending", "go", "no_go"]
 PursuitOutcome = Literal["pending", "won", "lost", "cancelled"]
 
+#: Filtro de plazo del tablero (`GET /pursuits?plazo=`): el de presentación del
+#: expediente, sobre oportunidades abiertas y sin presentar. `vencido` es «el
+#: día ya pasó»; `7d` y `30d`, «vence de hoy a dentro de N días», ambos
+#: inclusive. Mismo criterio que `services/carga_equipo.py` en Dirección.
+PursuitPlazo = Literal["vencido", "7d", "30d"]
+
 #: Vocabulario de bandas del Radar, y **la declaración canónica de este
 #: enumerado**. Lo fija ``_band()`` en ``services/analytics/scoring.py``; la
 #: revisión ``v93`` lo guardó deliberadamente como TEXT para que la banda pueda
@@ -1548,7 +1554,10 @@ class PursuitListResponse(BaseModel):
     organization_id: int = Field(ge=1)
     items: list[PursuitSummary] = Field(default_factory=list)
     total: int = Field(ge=0)
-    limit: int = Field(ge=1, le=200)
+    # El mismo tope que acepta la ruta (`api/pagination.py`). Con `le=200` aquí y
+    # 500 allí, pedir `limit=300` pasaba la validación de entrada y reventaba al
+    # construir la respuesta: un 400 por un parámetro que la API declara válido.
+    limit: int = Field(ge=1, le=MAX_PAGE_LIMIT)
     offset: int = Field(ge=0)
 
 
@@ -2033,17 +2042,80 @@ class OrganizationNifsOut(BaseModel):
     nifs: list[OrganizationNifOut] = Field(default_factory=list)
 
 
+#: Tipo de documento acreditativo (v147). ``certificacion_tecnica`` es lo que
+#: el checklist contrasta con el pliego (ISO 9001, ISO/IEC 27001, ENS, partner
+#: de fabricante, títulos del equipo); el resto es la **documentación
+#: administrativa** que una empresa tiene que tener al día para presentarse:
+#: estar al corriente con la AEAT y con la Seguridad Social, la inscripción en
+#: el ROLECE y la clasificación empresarial. Espejo del ``CHECK`` de v147.
+OrganizationDocumentType = Literal[
+    "certificacion_tecnica",
+    "corriente_aeat",
+    "corriente_seguridad_social",
+    "rolece",
+    "clasificacion_empresarial",
+]
+
+#: Las dos familias de documento: lo que acredita capacidad técnica y lo que
+#: acredita que la empresa está en regla.
+OrganizationDocumentCategory = Literal["tecnica", "administrativa"]
+
+#: Estado de vigencia de un documento en el perfil de capacidad.
+#:
+#: ``caduca_pronto`` es «dentro de la ventana del primer aviso» (60 días),
+#: ``sin_caducidad`` es que no se declaró fecha —no que valga para siempre—.
+EstadoVigencia = Literal["vigente", "caduca_pronto", "caducado", "sin_caducidad"]
+
+
 class OrganizationCertification(BaseModel):
-    """Certificación que la organización puede acreditar."""
+    """Documento acreditativo de la organización: certificación o papeleo.
+
+    El nombre histórico se conserva —es el esquema que ya consume la consola—
+    aunque desde v147 la fila también puede ser documentación administrativa
+    (``tipo``). Lo guardado antes no trae tipo y vale como certificación
+    técnica, que es lo único que la pantalla dejaba declarar.
+    """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     nombre: SafeStr = Field(min_length=1, max_length=300)
+    tipo: OrganizationDocumentType = "certificacion_tecnica"
     ambito: OrganizationCapabilityScope = "company"
     #: ``None`` significa «sin caducidad declarada», no «vigente para
     #: siempre»: el checklist la da por vigente porque no tiene motivo para
     #: decir lo contrario, y lo dice en el motivo del veredicto.
     vigente_hasta: date | None = None
+
+    @model_validator(mode="after")
+    def _administrativa_es_de_empresa(self) -> OrganizationCertification:
+        """La AEAT, la Seguridad Social, el ROLECE y la clasificación certifican
+        a la empresa. Documentación administrativa «del equipo» no existe, y
+        guardarlo así solo produciría un perfil que no dice la verdad."""
+        if self.tipo != "certificacion_tecnica" and self.ambito != "company":
+            raise ValueError(
+                "La documentación administrativa la acredita la empresa, no una persona."
+            )
+        return self
+
+
+class VigenciaDocumento(BaseModel):
+    """Estado de vigencia de un documento del perfil, calculado en el servidor.
+
+    Lo calcula ``services/documentacion_caducidad.py`` con el mismo criterio
+    que los avisos de caducidad, para que la pestaña y el aviso no puedan
+    discrepar sobre si un certificado está a punto de caducar.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str
+    tipo: OrganizationDocumentType
+    categoria: OrganizationDocumentCategory
+    vigente_hasta: date | None = None
+    estado: EstadoVigencia
+    #: Días hasta ``vigente_hasta`` (negativo si ya caducó; ``0`` es su último
+    #: día de vigencia). ``None`` sin caducidad declarada.
+    dias_restantes: int | None = None
 
 
 class OrganizationFacturacion(BaseModel):
@@ -2109,6 +2181,9 @@ class OrganizationCapabilitiesOut(OrganizationCapabilities):
     #: Familias vacías. La UI las marca para que se entienda por qué el
     #: checklist de una oportunidad contesta «desconocido» en esa familia.
     campos_incompletos: list[OrganizationCapabilityField] = Field(default_factory=list)
+    #: Vigencia de cada documento declarado, ordenada por la próxima
+    #: caducidad (lo caducado primero, lo que no declara fecha al final).
+    vigencias: list[VigenciaDocumento] = Field(default_factory=list)
 
 
 # ── ANCLA S3 — oportunidad por lote y calidad del Radar ────────────────────
@@ -2305,3 +2380,103 @@ class JobEstadoDTO(BaseModel):
 # Traerlos aquí no los haría más públicos, sólo los alejaría de lo que
 # describen — y añadiría nombres al esquema OpenAPI que ninguna ruta alcanza,
 # que es justo lo que se limpió el 2026-09-03.
+
+
+# ── Condiciones oficiales de PLACSP (v148) ──────────────────────────────────
+#
+# Criterios, garantías y solvencia tal como los publica el anuncio CODICE
+# (`scraper.codice_parser.parse_condiciones`). Viven aquí porque los comparten
+# la ruta que los sirve (`GET /licitaciones/{id}/condiciones-oficiales`) y el
+# checklist Go/No-Go (`services/go_no_go.py`), que contrasta la solvencia
+# oficial cuando existe. Son el contrato de la **fuente primaria**; la ficha
+# LLM del pliego (`shared/tender_facts.py`) es otro contrato y no se mezcla.
+#
+# Los `*_codigo` son los códigos crudos de las listas de CODICE, sin traducir:
+# sus listas no están verificadas en el repo, y una etiqueta de memoria sería
+# plausible pero falsa.
+
+ClaseSolvenciaOficial = Literal["tecnica", "economica", "clasificacion"]
+
+
+class CriterioOficial(BaseModel):
+    """Un criterio de adjudicación publicado (`cac:AwardingCriteria`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    orden: int = Field(ge=1)
+    #: `orden` del criterio del que cuelga, si es un subcriterio.
+    padre_orden: int | None = Field(default=None, ge=1)
+    descripcion: str | None = None
+    #: `cbc:WeightNumeric` tal como lo publica el órgano, en su escala.
+    peso: float | None = None
+    #: El mismo peso sobre 100, solo cuando la escala de su ámbito es deducible
+    #: (la suma de los criterios raíz da ~100 o ~1). Nulo en los subcriterios.
+    peso_pct: float | None = None
+    #: Inferido de la descripción o el tipo; no es un campo de CODICE.
+    es_precio: bool = False
+    tipo_codigo: str | None = None
+    subtipo_codigo: str | None = None
+    nota: str | None = None
+
+
+class GarantiaOficial(BaseModel):
+    """Una garantía exigida (`cac:RequiredFinancialGuarantee`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    orden: int = Field(ge=1)
+    tipo_codigo: str | None = None
+    #: `cbc:AmountRate` tal cual: 5 es el 5 %.
+    porcentaje: float | None = None
+    #: `cbc:LiabilityAmount`.
+    importe: float | None = None
+    moneda: str | None = None
+    descripcion: str | None = None
+
+
+class RequisitoSolvenciaOficial(BaseModel):
+    """Un requisito de solvencia (`cac:TendererQualificationRequest`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    orden: int = Field(ge=1)
+    clase: ClaseSolvenciaOficial
+    #: Código de criterio de evaluación; en `clasificacion`, la categoría.
+    tipo_codigo: str | None = None
+    descripcion: str | None = None
+    #: `cbc:ThresholdAmount`.
+    umbral_importe: float | None = None
+    moneda: str | None = None
+
+
+class CondicionesAmbito(BaseModel):
+    """Las condiciones de un ámbito: el expediente (`lote_numero` nulo) o un lote."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lote_numero: str | None = None
+    lote_titulo: str | None = None
+    criterios: list[CriterioOficial] = Field(default_factory=list)
+    garantias: list[GarantiaOficial] = Field(default_factory=list)
+    solvencia: list[RequisitoSolvenciaOficial] = Field(default_factory=list)
+
+
+class CondicionesOficiales(BaseModel):
+    """Lo que la publicación oficial dice de un expediente, por ámbito.
+
+    `ambitos` vacío significa que el anuncio no publica estos bloques —o que el
+    expediente se ingirió antes de v148 y no se ha vuelto a leer—, no que el
+    pliego no los tenga: para eso está la ficha del pliego.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: El expediente cuya publicación se lee. Una republicación confirmada
+    #: (TED de un expediente de PLACSP) devuelve la del original.
+    licitacion_id: str
+    fuente: Literal["placsp"] = "placsp"
+    #: Enlace a la publicación en la Plataforma, para comprobarla allí.
+    url_publicacion: str | None = None
+    #: Última vez que la ingesta escribió estas filas (ISO 8601).
+    actualizado: str | None = None
+    ambitos: list[CondicionesAmbito] = Field(default_factory=list)

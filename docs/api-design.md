@@ -78,7 +78,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `account:read` | GET | `/me/data` |
 | `admin` | todos | `/admin/dlq`, `/admin/ejecuciones`, `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types`, `/webhooks/global` |
 | `analytics:read` | GET/POST | `/analytics/calendario`, `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
-| `api_keys:read` | GET/POST | `/me/keys` |
+| `api_keys:read` | GET/POST/DELETE | `/me/keys` |
 | `api_keys:rotate` | POST | `/me/keys` |
 | `ask:read` | GET/POST | `/ask`, `/ask/models` |
 | `audit:read` | GET | `/organizations` |
@@ -94,7 +94,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `licitaciones:read` | GET/POST | `/licitaciones`, `/licitaciones/bulk-get`, `/licitaciones/cursor`, `/licitaciones/search`, `/licitaciones/stream` |
 | `licitaciones:write` | POST | `/licitaciones`, `/licitaciones/comparar` |
 | `models:read` | GET/POST | `/models` |
-| `notifications:read` | GET | `/notifications`, `/notifications/baja` |
+| `notifications:read` | GET | `/notifications`, `/notifications/alerts`, `/notifications/baja` |
 | `notifications:write` | POST | `/notifications/alerts`, `/notifications/baja`, `/notifications/read` |
 | `profile:read` | GET | `/me/profile` |
 | `profile:write` | POST/PUT/DELETE | `/me/profile` |

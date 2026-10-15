@@ -21,10 +21,10 @@ import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
-interface ModuloBarEntry {
-  modulo: string;
+/** Una barra: una familia de la taxonomía o un módulo SAP, y sus licitaciones. */
+interface CategoriaBarEntry {
+  nombre: string;
   count: number;
-  importe: number;
 }
 
 interface TipoPieEntry {
@@ -46,7 +46,13 @@ interface TipoEstadoRow {
 
 /* ── Exported chart components ─────────────────────────────────── */
 
-export function ModulosBarChart({ data }: { data: ModuloBarEntry[] }) {
+/**
+ * Licitaciones por categoría, en barras horizontales. Lo usan las familias
+ * (nombres largos: «Infraestructura, cloud y redes») y los módulos SAP (cortos:
+ * «FI»), así que el ancho del eje sale del nombre más largo.
+ */
+export function CategoriasBarChart({ data }: { data: CategoriaBarEntry[] }) {
+  const ancho = Math.min(200, Math.max(60, ...data.map((d) => d.nombre.length * 6.5)));
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer
@@ -56,7 +62,7 @@ export function ModulosBarChart({ data }: { data: ModuloBarEntry[] }) {
         <BarChart accessibilityLayer
           data={data}
           layout="vertical"
-          margin={{ left: 80 }}
+          margin={{ left: 8 }}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -64,9 +70,9 @@ export function ModulosBarChart({ data }: { data: ModuloBarEntry[] }) {
           />
           <XAxis type="number" tick={{ fontSize: 11 }} />
           <YAxis
-            dataKey="modulo"
+            dataKey="nombre"
             type="category"
-            width={80}
+            width={ancho}
             tick={{ fontSize: 11 }}
           />
           <Tooltip
@@ -126,22 +132,8 @@ export function TiposPieChart({ data }: { data: TipoPieEntry[] }) {
   );
 }
 
-export function ModulosTreemap({ data }: { data: TreemapEntry[] }) {
-  return (
-    <ChartErrorBoundary>
-      <ResponsiveContainer width="100%" height={350}>
-        <Treemap
-          data={data}
-          dataKey="size"
-          nameKey="name"
-          content={<TreemapContent minWidth={35} minHeight={22} fontSize={10} valueFontSize={9} borderRadius={3} formatValue={(v) => formatCurrency(v)} />}
-        />
-      </ResponsiveContainer>
-    </ChartErrorBoundary>
-  );
-}
-
-export function TiposTreemap({ data }: { data: TreemapEntry[] }) {
+/** Importe por categoría (familia, módulo o tipo de proyecto), en treemap. */
+export function ImporteTreemap({ data }: { data: TreemapEntry[] }) {
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={350}>

@@ -98,15 +98,13 @@ describe("OrganizacionTab", () => {
       expect(screen.getByText(/responderá «desconocido» en estas familias/i)).toBeInTheDocument(),
     );
     // Cada familia aparece dos veces: como aviso de lo que falta y como
-    // título de su sección editable.
-    for (const familia of [
-      "Certificaciones",
-      "Facturación anual",
-      "Referencias de contratos",
-      "Perfiles de equipo",
-    ]) {
+    // título de su sección editable. Las certificaciones comparten sección con
+    // la documentación administrativa (v147), que tiene su propio título.
+    for (const familia of ["Facturación anual", "Referencias de contratos", "Perfiles de equipo"]) {
       expect(screen.getAllByText(familia).length).toBe(2);
     }
+    expect(screen.getAllByText("Certificaciones").length).toBe(1);
+    expect(screen.getByText("Certificaciones y documentación administrativa")).toBeInTheDocument();
   });
 
   it("deja de marcar una familia en cuanto tiene datos", async () => {
@@ -114,9 +112,9 @@ describe("OrganizacionTab", () => {
     renderTab({ canManage: true });
 
     await waitFor(() => expect(screen.getByDisplayValue("ISO/IEC 27001")).toBeInTheDocument());
-    // Las certificaciones ya solo salen como título de sección; las otras
-    // tres siguen saliendo además como aviso de lo que falta.
-    expect(screen.getAllByText("Certificaciones").length).toBe(1);
+    // Las certificaciones ya no salen como aviso de lo que falta; las otras
+    // tres siguen saliendo como aviso y como título de sección.
+    expect(screen.queryByText("Certificaciones")).not.toBeInTheDocument();
     expect(screen.getAllByText("Facturación anual").length).toBe(2);
   });
 

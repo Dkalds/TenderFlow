@@ -116,13 +116,22 @@ class AdjudicacionRepository:
         agregar ni resolver a empresa canónica —para cerrar un pursuit basta el
         nombre publicado, y resolverlo aquí acoplaría la ficha al maestro de
         empresas que la cola de revisión todavía puede estar corrigiendo.
+
+        ``lote_numero`` y ``lote_titulo`` salen del ``LEFT JOIN`` con ``lotes``:
+        son lo que la ficha del expediente enseña, porque ``lote_id`` se
+        renumera en cada re-ingesta y fuera de esta consulta no identifica nada.
+        La ficha de la oportunidad sigue usando ``lote_id``, que le basta para
+        agrupar.
         """
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, licitacion_id, nombre, nif, importe_adjudicado, "
-                "fecha_adjudicacion, n_ofertas_recibidas, lote_id, result_code "
-                "FROM adjudicaciones WHERE licitacion_id = %s "
-                "ORDER BY lote_id NULLS FIRST, importe_adjudicado DESC NULLS LAST, id",
+                "SELECT a.id, a.licitacion_id, a.nombre, a.nif, a.importe_adjudicado, "
+                "a.fecha_adjudicacion, a.n_ofertas_recibidas, a.lote_id, a.result_code, "
+                "lo.numero AS lote_numero, lo.titulo AS lote_titulo "
+                "FROM adjudicaciones a "
+                "LEFT JOIN lotes lo ON lo.id = a.lote_id "
+                "WHERE a.licitacion_id = %s "
+                "ORDER BY a.lote_id NULLS FIRST, a.importe_adjudicado DESC NULLS LAST, a.id",
                 (licitacion_id,),
             )
             return rows_to_dicts(cur)

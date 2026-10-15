@@ -2,7 +2,7 @@
 
 import { X } from "lucide-react";
 import { Segmented } from "@/components/console/panel";
-import { type FiltroEtiqueta, FiltroEtiquetaSelect } from "@/components/etiquetas/filtro-etiqueta";
+import { FiltroEtiquetaSelect } from "@/components/etiquetas/filtro-etiqueta";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /** Chip de un recorte activo, que se quita al pulsarlo. */
@@ -38,8 +38,8 @@ export function DetalleBarra({
   onClearSort: () => void;
   compact: boolean;
   onCompactChange: (compact: boolean) => void;
-  /** F1.6 — filtro por etiqueta de favorito sobre la página cargada. */
-  etiqueta?: FiltroEtiqueta;
+  /** F1.6 — filtro por etiqueta de favorito, sobre el listado entero (CU-28). */
+  etiqueta?: { filtro: string; setFiltro: (filtro: string) => void };
 }) {
   return (
     // `overflow-x-auto` y hijos `flex-none`: a 375 px, con los dos chips de
@@ -74,18 +74,9 @@ export function DetalleBarra({
         </button>
       )}
       {etiqueta && (
-        // Sin parámetro de etiqueta en `/licitaciones`: filtra las filas de
-        // esta página, y el nombre accesible lo dice.
-        <FiltroEtiquetaSelect
-          value={etiqueta.filtro}
-          onChange={etiqueta.setFiltro}
-          alcance="en esta página"
-        />
-      )}
-      {etiqueta?.activo && (
-        <span className="text-tf-micro text-muted-foreground">
-          {etiqueta.cargando ? "Cargando etiquetas…" : "Sólo en esta página"}
-        </span>
+        // Filtra en servidor: el listado, sus páginas y su total son los del
+        // conjunto etiquetado entero, así que no hay «solo en esta página».
+        <FiltroEtiquetaSelect value={etiqueta.filtro} onChange={etiqueta.setFiltro} />
       )}
       <Segmented
         aria-label="Densidad de la tabla"

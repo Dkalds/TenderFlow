@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
+import json
+from datetime import date
 
+import pytest
+import requests
+
+from scraper.connectors import tacrc
 from scraper.connectors.tacrc import _fecha_iso, _sentido, parse_index, run
 from services.resoluciones import (
     Resolucion,
@@ -244,3 +249,263 @@ def test_api_resoluciones_filtra_por_sentido(client, auth):
         ).status_code
         == 422
     )
+
+
+# ---------------------------------------------------------------------------
+# Índice completo: la biblioteca de resoluciones, año a año
+# ---------------------------------------------------------------------------
+#
+# Los nombres de fichero son **reales**: los de PDFs publicados en
+# hacienda.gob.es bajo `/tacrc/resoluciones/año AAAA/`, localizados por búsqueda
+# web el 2026-10-12. El sobre JSON es el formato documentado de la API REST de
+# SharePoint (`GetFolderByServerRelativeUrl(...)/Files`, en sus dos formas:
+# `odata=verbose` → `{"d": {"results": [...]}}` y `odata=nometadata` →
+# `{"value": [...]}`). Que el servidor del ministerio sirva esa API a un
+# visitante anónimo NO se ha podido comprobar (la sesión no tenía salida al
+# host): `--check` es lo primero que hay que correr al encenderlo.
+
+_NOMBRES_REALES = {
+    2016: [
+        "Recursos 1036, 1037 y 1038-2016 AST 65, 66 y 67-2016 (Res 1048) 16-12-2016.pdf",
+    ],
+    2020: ["recurso 0209-2020 (res 507) 02-04-2020.pdf"],
+    2023: [
+        "recurso 0339-2023 val 74-2023 (res 468) 20-04-2023.pdf",
+        "recurso 1131-2023 mu 83-2023 (res 1411) 27-10-2023.pdf",
+    ],
+    2025: ["recurso 1745-2025 (res 1758) 04-12-2025.pdf"],
+}
+
+
+def _listado_verbose(anio: int) -> str:
+    return json.dumps(
+        {
+            "d": {
+                "results": [
+                    {
+                        "Name": nombre,
+                        "ServerRelativeUrl": f"/tacrc/resoluciones/año {anio}/{nombre}",
+                        "TimeLastModified": f"{anio}-12-31T10:00:00Z",
+                    }
+                    for nombre in _NOMBRES_REALES.get(anio, [])
+                ]
+            }
+        }
+    )
+
+
+_URL_ANIO = (
+    "https://www.hacienda.gob.es/tacrc/_api/web/"
+    "GetFolderByServerRelativeUrl('/tacrc/resoluciones/año {anio}')/Files"
+)
+
+
+def test_el_listado_json_de_la_biblioteca_se_parsea_con_los_mismos_patrones():
+    items = parse_index(_listado_verbose(2023), base_url=_URL_ANIO.replace("{anio}", "2023"))
+
+    por_numero = {r.numero_resolucion: r for r in items}
+    assert set(por_numero) == {"468/2023", "1411/2023"}
+    res = por_numero["1411/2023"]
+    assert res.numero_recurso == "1131/2023"
+    assert res.fecha == "2023-10-27"
+    assert res.url_pdf == (
+        "https://www.hacienda.gob.es/tacrc/resoluciones/a%C3%B1o%202023/"
+        "recurso%201131-2023%20mu%2083-2023%20(res%201411)%2027-10-2023.pdf"
+    )
+
+
+def test_el_listado_json_en_forma_nometadata():
+    nombre = _NOMBRES_REALES[2016][0]
+    texto = json.dumps(
+        {
+            "value": [
+                {"Name": nombre, "ServerRelativeUrl": f"/tacrc/resoluciones/año 2016/{nombre}"},
+                {"Name": "Forms", "ServerRelativeUrl": "/tacrc/resoluciones/Forms"},
+            ]
+        }
+    )
+
+    items = parse_index(texto, base_url="https://www.hacienda.gob.es/tacrc/_api/x")
+
+    # Tres recursos acumulados en una resolución: el número sale del «(Res N)»
+    # con el año de la fecha. Lo que no es un PDF (la carpeta Forms) se ignora.
+    assert [(r.numero_resolucion, r.fecha) for r in items] == [("1048/2016", "2016-12-16")]
+
+
+def test_un_json_que_no_es_un_listado_no_da_resoluciones():
+    assert parse_index('{"error": {"code": "-2147024894"}}', base_url=_URL_ANIO) == []
+
+
+def test_las_paginas_de_un_indice_por_anios_van_del_cursor_a_hoy():
+    urls = tacrc.urls_del_indice(_URL_ANIO, desde_anio=2023, hoy=date(2025, 3, 1))
+
+    assert [anio for anio, _ in urls] == [2023, 2024, 2025]
+    assert urls[0][1].endswith("año 2023')/Files")
+
+
+def test_un_indice_sin_marcador_es_una_sola_pagina():
+    url = (
+        "https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/"
+        "TACRC/Paginas/Resoluciones-Pleno.aspx"
+    )
+
+    assert tacrc.urls_del_indice(url, desde_anio=2010, hoy=date(2026, 1, 1)) == [(None, url)]
+
+
+def test_el_valor_por_defecto_de_produccion_sigue_siendo_el_pleno():
+    """Cambiarlo encendería el índice completo en el plano del worker sin decidirlo.
+
+    En `scrape-daily.yml` la variable de repo vacía apaga TACRC; en el worker,
+    sin la variable, manda este valor por defecto.
+    """
+    from config.settings import Settings
+
+    assert Settings.model_fields["TACRC_INDEX_URL"].default.endswith("Resoluciones-Pleno.aspx")
+    assert Settings.model_fields["TACRC_PRIMER_ANIO"].default == 2010
+    assert tacrc.MARCADOR_ANIO in tacrc.URL_BIBLIOTECA_RESOLUCIONES
+
+
+def test_a_la_api_de_sharepoint_se_le_pide_json():
+    pedidas: list[dict[str, str]] = []
+
+    class _Respuesta:
+        text = "{}"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Sesion:
+        def get(self, url: str, **kw: object) -> _Respuesta:
+            pedidas.append(dict(kw.get("headers") or {}))  # type: ignore[call-overload]
+            return _Respuesta()
+
+    tacrc.fetch_index(_URL_ANIO.replace("{anio}", "2025"), session=_Sesion())  # type: ignore[arg-type]
+    tacrc.fetch_index("https://tribunal.example/index.html", session=_Sesion())  # type: ignore[arg-type]
+
+    assert pedidas[0]["Accept"].startswith("application/json")
+    assert "Accept" not in pedidas[1]
+
+
+def _fetch_por_anio(roto: dict[int, Exception] | None = None):
+    pedidos: list[int] = []
+
+    def fetch(url: str | None = None, session: object = None) -> str:
+        anio = int(str(url).split("año ")[1][:4])
+        pedidos.append(anio)
+        if roto and anio in roto:
+            raise roto[anio]
+        return _listado_verbose(anio)
+
+    return fetch, pedidos
+
+
+def _http_404() -> requests.HTTPError:
+    respuesta = requests.Response()
+    respuesta.status_code = 404
+    return requests.HTTPError("404 Client Error", response=respuesta)
+
+
+def test_run_con_indice_por_anios_desde_el_primer_anio_configurado(db, monkeypatch):
+    from config import settings
+    from db.database import get_cursor
+
+    monkeypatch.setattr(settings, "TACRC_PRIMER_ANIO", 2022)
+    fetch, pedidos = _fetch_por_anio(roto={2024: _http_404()})
+    monkeypatch.setattr("scraper.connectors.tacrc.fetch_index", fetch)
+
+    stats = run(_URL_ANIO, hoy=date(2025, 6, 1))
+
+    # 2024 no tiene carpeta (404): un año sin índice no es un error.
+    assert pedidos == [2022, 2023, 2024, 2025]
+    assert stats["errores"] == 0
+    assert stats["nuevas"] == 3
+    assert get_cursor("tacrc")["last_seen_updated"] == "2025-12-04"
+
+
+def test_run_con_indice_por_anios_retoma_desde_el_anio_del_cursor(db, monkeypatch):
+    from db.database import set_cursor
+
+    set_cursor("tacrc", last_seen_updated="2023-06-01")
+    fetch, pedidos = _fetch_por_anio()
+    monkeypatch.setattr("scraper.connectors.tacrc.fetch_index", fetch)
+
+    stats = run(_URL_ANIO, hoy=date(2025, 6, 1))
+
+    assert pedidos == [2023, 2024, 2025]
+    # Del 2023 solo entra lo posterior al cursor (la 1411, de octubre).
+    assert stats["nuevas"] == 2
+
+
+def test_un_anio_roto_conserva_lo_anterior_y_no_salta_al_siguiente(db, monkeypatch):
+    """Por años ascendentes y cursor por año: un corte no tira lo ya escrito.
+
+    Saltar el año roto y seguir movería el cursor por encima de él, y ese año
+    no se volvería a pedir nunca.
+    """
+    from config import settings
+    from db.database import get_cursor
+
+    monkeypatch.setattr(settings, "TACRC_PRIMER_ANIO", 2020)
+    fetch, pedidos = _fetch_por_anio(roto={2023: RuntimeError("timeout")})
+    monkeypatch.setattr("scraper.connectors.tacrc.fetch_index", fetch)
+
+    stats = run(_URL_ANIO, hoy=date(2025, 6, 1))
+
+    assert pedidos == [2020, 2021, 2022, 2023]
+    assert stats["errores"] == 1
+    assert stats["nuevas"] == 1
+    assert get_cursor("tacrc")["last_seen_updated"] == "2020-04-02"
+
+
+def test_desde_anio_fuerza_un_backfill_que_ignora_el_cursor(db, monkeypatch):
+    from db.database import set_cursor
+
+    set_cursor("tacrc", last_seen_updated="2025-01-01")
+    fetch, pedidos = _fetch_por_anio()
+    monkeypatch.setattr("scraper.connectors.tacrc.fetch_index", fetch)
+
+    stats = run(_URL_ANIO, desde_anio=2016, hoy=date(2016, 12, 31))
+
+    assert pedidos == [2016]
+    assert stats["nuevas"] == 1
+
+
+def test_check_con_indice_por_anios_mira_el_anio_en_curso(monkeypatch, capsys):
+    fetch, pedidos = _fetch_por_anio()
+    monkeypatch.setattr("scraper.connectors.tacrc.fetch_index", fetch)
+    monkeypatch.setattr(tacrc, "_hoy", lambda: date(2023, 11, 2))
+
+    codigo = tacrc.main(["--check", "--url", _URL_ANIO])
+
+    assert codigo == 0
+    assert pedidos == [2023]
+    assert "2 resoluciones" in capsys.readouterr().out
+
+
+def test_upsert_por_lotes_cuenta_bien_y_no_pisa_la_vinculacion(db):
+    from db.database import connect
+
+    assert upsert_resoluciones(
+        [_resolucion_estimada(), _resolucion_estimada(numero_resolucion="124/2026")]
+    ) == (2, 0)
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
+            "VALUES ('EXP-L', 'x', 'placsp', CURRENT_TIMESTAMP)"
+        )
+        c.execute(
+            "UPDATE resoluciones_recurso SET licitacion_id = 'EXP-L' "
+            "WHERE numero_resolucion = '123/2026'"
+        )
+
+    assert upsert_resoluciones(
+        [
+            _resolucion_estimada(sentido="desestimado"),
+            _resolucion_estimada(numero_resolucion="125/2026"),
+        ]
+    ) == (1, 1)
+
+    filas = {r["numero_resolucion"]: r for r in resoluciones()}
+    assert filas["123/2026"]["licitacion_id"] == "EXP-L"
+    assert filas["123/2026"]["sentido"] == "desestimado"
+    assert set(filas) == {"123/2026", "124/2026", "125/2026"}

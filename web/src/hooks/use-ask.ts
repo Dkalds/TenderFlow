@@ -6,10 +6,12 @@ import { ApiError, apiGet } from "@/lib/api-client";
 import type { OpcionesCorpus } from "@/lib/api-types";
 import {
   streamAsk,
+  streamResumen,
   type AskMeta,
   type ChatMessage,
   type DegradedInfo,
   type FuenteDocumento,
+  type ResumenMeta,
   type SourcesInfo,
 } from "@/lib/ask-stream";
 import { askKeys } from "@/lib/query-keys";
@@ -68,6 +70,24 @@ export interface ChatTurn {
    * cuando no coinciden.
    */
   expedientesPedidos?: string[];
+  /**
+   * El turno es el resumen del expediente (`POST /licitaciones/{id}/resumen`),
+   * no una respuesta a una pregunta: lleva sus metadatos y se puede regenerar.
+   */
+  modo?: "resumen";
+  /** Si había pliego, qué documentos y si vino del caché del servidor. */
+  resumenMeta?: ResumenMeta | null;
+}
+
+export interface ResumirOptions {
+  idExterno: string;
+  /** Para el turno del usuario: «Resume el expediente «…»». */
+  titulo: string;
+  /** Ignorar el caché del servidor («Regenerar»). */
+  force?: boolean;
+  model?: string;
+  /** Turno de resumen que se rehace en su sitio; ausente, se añade uno. */
+  indice?: number;
 }
 
 export interface SendOptions {
@@ -92,6 +112,10 @@ export interface UseChatResult {
    */
   error: Error | null;
   send: (question: string, opts?: SendOptions) => Promise<void>;
+  /** Resume el expediente como un turno más de la conversación. */
+  resumir: (opts: ResumirOptions) => Promise<void>;
+  /** «Regenerar»: rehace el resumen del turno `indice`, con su expediente. Estable. */
+  regenerarResumen: (indice: number, opts?: { model?: string }) => Promise<void>;
   stop: () => void;
   reset: () => void;
 }
@@ -201,6 +225,87 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
     [idExterno, idsClave, updateLastAssistant],
   );
 
+  const resumir = useCallback(
+    async ({ idExterno, titulo, force = false, model, indice }: ResumirOptions) => {
+      abortRef.current?.abort();
+      const abort = new AbortController();
+      abortRef.current = abort;
+
+      const previo = indice != null ? messagesRef.current[indice] : undefined;
+      const enSitio = previo?.role === "assistant" && previo.modo === "resumen";
+      const objetivo = enSitio ? (indice as number) : messagesRef.current.length + 1;
+      const vacio: ChatTurn = {
+        role: "assistant",
+        content: "",
+        modo: "resumen",
+        resumenMeta: null,
+        expedientesPedidos: [idExterno],
+      };
+      setMessages((prev) => {
+        if (enSitio) {
+          const next = prev.slice();
+          next[objetivo] = vacio;
+          return next;
+        }
+        return [...prev, { role: "user", content: `Resume el expediente «${titulo}»` }, vacio];
+      });
+      setLoading(true);
+      setError(null);
+      setStreaming(true);
+
+      const actualizar = (patch: Partial<ChatTurn>) =>
+        setMessages((prev) => {
+          if (!prev[objetivo]) return prev;
+          const next = prev.slice();
+          next[objetivo] = { ...next[objetivo], ...patch };
+          return next;
+        });
+
+      try {
+        const result = await streamResumen({
+          idExterno,
+          force,
+          model,
+          signal: abort.signal,
+          onToken: (accumulated) => actualizar({ content: accumulated }),
+          onResumenMeta: (resumenMeta) => actualizar({ resumenMeta }),
+          onDegraded: (degraded) => actualizar({ degraded }),
+        });
+        actualizar({ content: result.answer, resumenMeta: result.resumenMeta, degraded: result.degraded });
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (abortRef.current !== abort) return;
+        setError(err instanceof Error ? err : new Error("Error desconocido"));
+        // Como en `send`: sin respuesta no queda un turno vacío. Si se estaba
+        // regenerando, vuelve el resumen que había.
+        setMessages((prev) => {
+          if (enSitio && previo) {
+            const next = prev.slice();
+            next[objetivo] = previo;
+            return next;
+          }
+          return prev[objetivo] && !prev[objetivo].content ? prev.slice(0, objetivo) : prev;
+        });
+      } finally {
+        if (abortRef.current === abort) {
+          setLoading(false);
+          setStreaming(false);
+        }
+      }
+    },
+    [],
+  );
+
+  const regenerarResumen = useCallback(
+    async (indice: number, opts?: { model?: string }) => {
+      const turno = messagesRef.current[indice];
+      const idExterno = turno?.modo === "resumen" ? turno.expedientesPedidos?.[0] : undefined;
+      if (!idExterno) return;
+      await resumir({ idExterno, titulo: idExterno, force: true, model: opts?.model, indice });
+    },
+    [resumir],
+  );
+
   const stop = useCallback(() => {
     abortRef.current?.abort();
     setLoading(false);
@@ -219,5 +324,5 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
     setLoading(false);
   }, []);
 
-  return { messages, streaming, loading, error, send, stop, reset };
+  return { messages, streaming, loading, error, send, resumir, regenerarResumen, stop, reset };
 }

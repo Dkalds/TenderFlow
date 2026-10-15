@@ -60,6 +60,14 @@ SOURCE_ID = "pscp"
 _PAGE_SIZE = 1000
 _TIMEOUT = 60
 _PAGE_PAUSE_S = 0.5  # cortesía con la API pública
+#: Segundos que el paso de documentos puede quitarle al step de 10 minutos de
+#: ``scrape-daily.yml``. Corre antes que la resolución de empresas y los dedupes
+#: (ver ``completar_documentos_primero``), así que esto es lo que les resta:
+#: con 120 s quedan unos ocho minutos para el resto si el fetch fue corto, que
+#: es lo habitual (el dataset se actualiza una vez al día). La pasada en seco
+#: del 2026-10-03 leyó las 120 candidatas vigentes en 52 s, así que cabe entero
+#: con margen; el de cada petición lo acota `completar_documentos_pscp`.
+PRESUPUESTO_DOCUMENTOS_S = 120.0
 # Toda la PSCP es contratación catalana: NUTS2 Cataluña (fallback si la
 # fila no trae codi_nuts).
 _NUTS_CATALUNYA = "ES51"
@@ -295,6 +303,11 @@ class PscpConnector:
     # necesario (el dataset con republicación completa ~1.86M filas no cabe en el
     # timeout de un solo run). Los feeds newest-first (ATOM/TED) no lo declaran.
     cursor_advances_incrementally = True
+    # El paso de documentos corre antes del cierre del lote (resolución de
+    # empresas + dedupes), no detrás: ver `run_connector`. Lee de la BD las
+    # convocatorias vigentes, así que no necesita nada de lo que el cierre
+    # escribe, y detrás de él no llegaba a correr nunca.
+    completar_documentos_primero = True
 
     def __init__(
         self,
@@ -613,7 +626,7 @@ class PscpConnector:
         """
         from scraper.documentos_plataforma import completar_documentos_pscp
 
-        resumen = completar_documentos_pscp()
+        resumen = completar_documentos_pscp(presupuesto_s=PRESUPUESTO_DOCUMENTOS_S)
         log.info("pscp_documentos_completados", **resumen.as_dict())
 
     # ── cursor ───────────────────────────────────────────────────────────

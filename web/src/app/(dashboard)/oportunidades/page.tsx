@@ -4,10 +4,10 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { VistaEsqueleto } from "@/components/layout/space-shell-esqueleto";
-import { TODAS_LAS_ETIQUETAS } from "@/components/etiquetas/filtro-etiqueta";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { TableroFiltros } from "./_components/tablero-filtros";
 import TableroView from "./_components/tablero-view";
+import { FILTROS_VACIOS, type FiltrosTablero } from "./_lib/filtros-tablero";
 
 /**
  * Oportunidades — el espacio de ejecución, con las tres preguntas sobre las
@@ -26,11 +26,12 @@ import TableroView from "./_components/tablero-view";
  * viejos los reenvía aquella página. Se cargan bajo demanda, como en Mercado:
  * quien entra al tablero no paga las tablas de la cartera.
  *
- * Los filtros del tablero (búsqueda y etiqueta) son estado de esta página y no
- * del tablero porque sus controles van en la cabecera del espacio (`actions`),
- * que sólo se monta en esa vista. Dos `useState` sin efectos no cuestan nada
- * en las otras dos; lo que sí cuesta —las consultas— vive en `TableroView`,
- * que sólo se monta cuando el tablero es la vista activa.
+ * Los filtros del tablero (texto, etiqueta, responsable y plazo) son estado de
+ * esta página y no del tablero porque sus controles van en la cabecera del
+ * espacio (`actions`), que sólo se monta en esa vista. Un `useState` sin
+ * efectos no cuesta nada en las otras dos; lo que sí cuesta —las consultas, ya
+ * filtradas en servidor— vive en `TableroView`, que sólo se monta cuando el
+ * tablero es la vista activa.
  */
 
 // El mismo esqueleto que pinta `loading.tsx` de la ruta: la vista aparece donde
@@ -46,8 +47,11 @@ const SPACE = CONSOLE_SPACES.find((space) => space.key === "oportunidades")!;
 
 export default function OportunidadesPage() {
   const { view, setView } = useSpaceView(SPACE);
-  const [query, setQuery] = React.useState("");
-  const [etiquetaFiltro, setEtiquetaFiltro] = React.useState<string>(TODAS_LAS_ETIQUETAS);
+  const [filtros, setFiltros] = React.useState<FiltrosTablero>(FILTROS_VACIOS);
+  const cambiarFiltros = React.useCallback(
+    (cambio: Partial<FiltrosTablero>) => setFiltros((actuales) => ({ ...actuales, ...cambio })),
+    [],
+  );
 
   // `useSpaceView` ya cae a la primera vista (`tablero`) ante un `?vista=`
   // desconocido; el `?? null` es sólo para que el tablero sea también el
@@ -62,19 +66,14 @@ export default function OportunidadesPage() {
       onViewChange={setView}
       actions={
         esTablero ? (
-          <TableroFiltros
-            query={query}
-            onQuery={setQuery}
-            etiqueta={etiquetaFiltro}
-            onEtiqueta={setEtiquetaFiltro}
-          />
+          <TableroFiltros filtros={filtros} onCambiar={cambiarFiltros} />
         ) : undefined
       }
       // Sin relleno ni scroll propio sólo en el tablero: sus columnas hacen
       // su propio scroll. Cartera y Rendimiento son paneles normales.
       bleed={esTablero}
     >
-      {View ? <View /> : <TableroView query={query} etiquetaFiltro={etiquetaFiltro} />}
+      {View ? <View /> : <TableroView filtros={filtros} onLimpiar={() => setFiltros(FILTROS_VACIOS)} />}
     </SpaceShell>
   );
 }

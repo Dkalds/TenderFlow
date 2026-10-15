@@ -199,6 +199,26 @@ formulario de solicitud es público, y un clic sobre una solicitud enviada desde
 Gmail dejaría entrar a cualquier cuenta de Gmail. Esas solicitudes se conceden
 por email.
 
+### Segundo factor (TOTP)
+
+Se activa y se quita desde Ajustes › Seguridad, y los cuatro pasos exigen sesión
+reciente (`require_recent_session`). `POST /auth/totp/setup` entrega el secreto
+una sola vez, dentro del URI `otpauth://` (emisor `TenderFlow`), y lo guarda
+cifrado y sin confirmar; repetirlo antes de confirmar lo sustituye, así que un
+alta abandonada no deja la cuenta sin forma de activarlo. `POST
+/auth/totp/confirm` lo da por bueno con el primer código y devuelve los diez
+códigos de recuperación, que solo se guardan como hash Argon2 y no se pueden
+volver a ver.
+
+Quitarlo (`DELETE /auth/totp`) pide un código vigente o uno de recuperación,
+que queda gastado, aunque la sesión ya haya pasado el segundo factor: sin él,
+cualquiera delante de un navegador abierto podía desactivarlo sin el móvil. Los
+fallos cuentan contra el mismo límite de intentos que el login.
+
+El 403 de una acción sensible con la sesión antigua lleva el tipo propio
+`…/errors/reauthentication-required` (`api/errors.py`): tiene arreglo —volver a
+entrar— y la consola lo ofrece, en vez de confundirlo con un 403 de permiso.
+
 ### Recuperación de contraseña local
 
 `POST /auth/password-reset/request` no revela si existe la cuenta, ni por el

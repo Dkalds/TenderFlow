@@ -18,7 +18,7 @@ streams converjan, su sitio natural es ``PursuitRepository``.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
@@ -32,7 +32,7 @@ from db.repositories.base import rows_to_dicts
 # interna de la tabla—. Enumerar aquí lo que sale es lo que hace que la
 # validación de arriba sea directa en vez de una lista de campos a ignorar.
 _CERTIFICACIONES = (
-    "SELECT nombre, ambito, vigente_hasta, created_at "
+    "SELECT nombre, tipo, ambito, vigente_hasta, created_at "
     "FROM organization_certifications WHERE organization_id = %s ORDER BY nombre"
 )
 _FACTURACION = (
@@ -156,11 +156,14 @@ class OrganizationCapabilitiesRepository:
             for cert in certificaciones:
                 conn.execute(
                     "INSERT INTO organization_certifications "
-                    "(organization_id, nombre, ambito, vigente_hasta, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s)",
+                    "(organization_id, nombre, tipo, ambito, vigente_hasta, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
                     (
                         organization_id,
                         cert["nombre"],
+                        # Sin tipo, el de la columna (v147): un llamador
+                        # anterior a la revisión declara certificaciones.
+                        cert.get("tipo", "certificacion_tecnica"),
                         cert.get("ambito", "company"),
                         cert.get("vigente_hasta"),
                         now,
@@ -197,6 +200,31 @@ class OrganizationCapabilitiesRepository:
                     (organization_id, perfil["rol"], perfil["anios"], perfil["cantidad"], now),
                 )
         return self.get_with_updated_at(organization_id)
+
+    def documentos_que_caducan_hasta(self, hasta: date) -> list[dict[str, Any]]:
+        """Documentos de **todas** las organizaciones con caducidad ``<= hasta``.
+
+        Es el barrido del paso del cierre que avisa de caducidades
+        (``services/documentacion_caducidad.emitir_avisos_de_caducidad``): corre
+        sin ámbito de organización, como el resto del scheduler, y por eso no
+        filtra por una. Incluye lo ya caducado —el aviso «ha caducado» sale una
+        vez— y deja fuera lo que no declara fecha, que no tiene de qué avisar.
+
+        Solo organizaciones compartidas: la personal no concurre a nada, y la
+        pantalla no deja declararle perfil.
+        """
+        with connect_read() as conn:
+            return rows_to_dicts(
+                conn.execute(
+                    "SELECT c.organization_id, c.nombre, c.tipo, c.ambito, c.vigente_hasta "
+                    "FROM organization_certifications c "
+                    "JOIN organizations o ON o.id = c.organization_id "
+                    "WHERE c.vigente_hasta IS NOT NULL AND c.vigente_hasta <= %s "
+                    "AND NOT o.is_personal "
+                    "ORDER BY c.organization_id, c.vigente_hasta, c.nombre",
+                    (hasta,),
+                )
+            )
 
 
 def seal_checklist_evaluated(

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any
+from typing import Any, Literal
 
 from config import HISTORY_TRACKED_FIELDS
 from db.connection import connect, now_utc_iso
@@ -132,6 +132,106 @@ class Lote:
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
+# ── Condiciones oficiales del expediente (v148) ──────────────────────────────
+#
+# Lo que CODICE publica en `cac:TenderingTerms`, del expediente y de cada lote:
+# criterios de adjudicación, garantías exigidas y requisitos de solvencia. Los
+# tres viajan colgados de `Licitacion.condiciones` (parse-only, como
+# `organo_dir3`) y los escribe el mismo upsert que escribe la licitación, en su
+# transacción: así cualquier camino que ingiera CODICE los persiste sin que
+# cada conector tenga que acordarse.
+#
+# Ninguno lleva `licitacion_id` ni `fecha_extraccion`: el primero lo pone el
+# upsert desde la licitación que los trae, y el segundo es la hora de la
+# escritura, no salida del parseo (el golden del parser compara este árbol y
+# una hora lo haría fallar cada segundo).
+#
+# `lote_numero` es el `cbc:ID` del lote tal como se publica, o `None` para el
+# nivel de expediente. No es un FK a `lotes.id`: `replace_lotes` reasigna esos
+# ids en cada re-ingesta, y la clave estable del lote es su número (el mismo
+# razonamiento que v110 y v140).
+
+#: Clases de requisito de `cac:TendererQualificationRequest`.
+ClaseSolvencia = Literal["tecnica", "economica", "clasificacion"]
+
+
+@dataclass
+class CriterioAdjudicacion:
+    """Un criterio de `cac:AwardingTerms`, con el peso tal como se publica.
+
+    ``peso`` es el `cbc:WeightNumeric` crudo; ``peso_pct`` lo expresa sobre 100
+    solo cuando la suma de los criterios raíz de su ámbito declara la escala
+    (la regla de `parse_peso_precio`). Un subcriterio (``padre_orden`` no nulo)
+    reparte el peso de su padre, así que su ``peso_pct`` es siempre ``None``.
+    """
+
+    orden: int
+    lote_numero: str | None = None
+    padre_orden: int | None = None
+    descripcion: str | None = None
+    peso: float | None = None
+    peso_pct: float | None = None
+    #: Inferido de la descripción o del tipo con la misma regla que alimenta
+    #: `peso_precio_pct`; no es un campo de CODICE.
+    es_precio: bool = False
+    #: Códigos crudos de las listas de CODICE, sin traducir (ver el parser).
+    tipo_codigo: str | None = None
+    subtipo_codigo: str | None = None
+    nota: str | None = None
+
+
+@dataclass
+class GarantiaExigida:
+    """Una `cac:RequiredFinancialGuarantee`.
+
+    ``porcentaje`` es el `cbc:AmountRate` tal cual —«5» para el 5 %, que es la
+    lectura que se asume y que `scripts/medir_terminos_codice.py` permite
+    comprobar contra el feed—; ``importe`` es `cbc:LiabilityAmount`.
+    """
+
+    orden: int
+    lote_numero: str | None = None
+    tipo_codigo: str | None = None
+    porcentaje: float | None = None
+    importe: float | None = None
+    moneda: str | None = None
+    descripcion: str | None = None
+
+
+@dataclass
+class RequisitoSolvencia:
+    """Un requisito de `cac:TendererQualificationRequest`.
+
+    ``clase`` dice de qué elemento sale: técnica (`TechnicalEvaluationCriteria`),
+    económica (`FinancialEvaluationCriteria`) o clasificación empresarial
+    (`RequiredBusinessClassificationScheme/ClassificationCategory`, cuyo
+    `CodeValue` va en ``tipo_codigo``).
+    """
+
+    orden: int
+    clase: ClaseSolvencia
+    lote_numero: str | None = None
+    tipo_codigo: str | None = None
+    descripcion: str | None = None
+    umbral_importe: float | None = None
+    moneda: str | None = None
+
+
+@dataclass
+class CondicionesCodice:
+    """Las tres familias de un expediente, de todos sus ámbitos a la vez.
+
+    Una lista vacía significa «el anuncio no lo trae», nunca «bórralo»: la fase
+    de adjudicación deja de publicar `cac:TenderingTerms` igual que deja de
+    publicar el plazo, y el upsert solo reemplaza una familia cuando la nueva
+    versión trae al menos una fila de ella (ver `_replace_condiciones`).
+    """
+
+    criterios: list[CriterioAdjudicacion] = field(default_factory=list)
+    garantias: list[GarantiaExigida] = field(default_factory=list)
+    solvencia: list[RequisitoSolvencia] = field(default_factory=list)
+
+
 @dataclass
 class Licitacion:
     id_externo: str
@@ -212,6 +312,11 @@ class Licitacion:
     #: órgano lo tenga sin volver a abrir el XML, igual que
     #: `Adjudicacion.lote_numero_raw`.
     organo_dir3: str | None = None
+    #: Criterios, garantías y solvencia de `cac:TenderingTerms` (v148),
+    #: **parse-only**: viven en sus tres tablas, no en `licitaciones`. `None`
+    #: = el camino que construyó la licitación no lee CODICE (TED, PSCP…), y
+    #: entonces el upsert no toca lo que hubiera.
+    condiciones: CondicionesCodice | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
@@ -240,10 +345,10 @@ class DocumentoReferencia:
 # Fragmentos SQL pre-computados (evitan recálculo por fila)
 # ---------------------------------------------------------------------------
 
-# `organo_dir3` es parse-only (ver su docstring): nunca es columna de
-# `licitaciones`, así que se excluye de las columnas del INSERT. Mismo
-# patrón que `lote_numero_raw` en `Adjudicacion`.
-_LIC_PARSE_ONLY_FIELDS = frozenset({"organo_dir3"})
+# `organo_dir3` y `condiciones` son parse-only (ver sus docstrings): nunca son
+# columnas de `licitaciones`, así que se excluyen de las columnas del INSERT.
+# Mismo patrón que `lote_numero_raw` en `Adjudicacion`.
+_LIC_PARSE_ONLY_FIELDS = frozenset({"organo_dir3", "condiciones"})
 _LIC_KEYS = tuple(f.name for f in fields(Licitacion) if f.name not in _LIC_PARSE_ONLY_FIELDS)
 _LIC_COLS = ", ".join(_LIC_KEYS)
 _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
@@ -410,6 +515,96 @@ _HISTORY_SELECT_COLS = (
 )
 
 
+# ── Condiciones oficiales (v148) ─────────────────────────────────────────────
+#
+# Tabla, atributo de `CondicionesCodice` y columnas (las del dataclass, en su
+# orden) de cada familia. `licitacion_id` y `fecha_extraccion` las pone la
+# escritura: el dataclass no las lleva (ver su comentario).
+_FAMILIAS_CONDICIONES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "licitacion_criterios_adjudicacion",
+        "criterios",
+        tuple(f.name for f in fields(CriterioAdjudicacion)),
+    ),
+    ("licitacion_garantias", "garantias", tuple(f.name for f in fields(GarantiaExigida))),
+    ("licitacion_solvencia", "solvencia", tuple(f.name for f in fields(RequisitoSolvencia))),
+)
+
+_SQL_CONDICIONES_DISPONIBLES = (
+    "SELECT count(*) FROM unnest(%s::text[]) AS t(nombre) WHERE to_regclass(t.nombre) IS NOT NULL"
+)
+
+
+def _condiciones_disponibles(c: Any) -> bool:
+    """¿Existen las tres tablas de v148? Se pregunta al catálogo en cada chunk.
+
+    Mismo motivo y misma falta de caché que `_con_sombras`: el código puede
+    llegar a producción antes que la migración, y un `INSERT` contra una tabla
+    que no existe tumbaría la transacción entera —licitaciones incluidas—.
+    """
+    tablas = [tabla for tabla, _, _ in _FAMILIAS_CONDICIONES]
+    fila = c.execute(_SQL_CONDICIONES_DISPONIBLES, (tablas,)).fetchone()
+    return fila is not None and int(fila[0]) == len(tablas)
+
+
+def _replace_condiciones(c: Any, lics: Iterable[Licitacion]) -> None:
+    """Reemplaza, por familia, las condiciones de las licitaciones que las traen.
+
+    Va dentro de la transacción del upsert de licitaciones y **después** de su
+    `INSERT`, porque las tres tablas llevan FK a `licitaciones`. Reglas:
+
+    - Una familia se reemplaza entera (`DELETE` + `INSERT`) cuando la versión
+      nueva trae al menos una fila de ella: una corrección del órgano sustituye
+      a lo anterior y re-ingerir lo mismo deja lo mismo (invariante 2).
+    - Una familia vacía, o `condiciones=None`, no toca nada: la fase de
+      adjudicación deja de publicar `cac:TenderingTerms` como deja de publicar
+      el plazo (el mismo razonamiento que `_LIC_COALESCE_UPDATE_FIELDS`), y un
+      camino que no lee CODICE no tiene opinión. El precio de la regla: si un
+      órgano retira una familia entera en una corrección, la versión anterior
+      se queda.
+    - Si el lote trae dos versiones del mismo expediente, gana la última que
+      trae filas de esa familia, como gana la última en el `ON CONFLICT`.
+    - Una fila con `(lote_numero, orden)` repetido se descarta: el parser no las
+      produce, pero la unicidad de v148 convertiría una en el fallo del chunk.
+    """
+    por_familia: dict[str, dict[str, list[Any]]] = {t: {} for t, _, _ in _FAMILIAS_CONDICIONES}
+    for lic in lics:
+        if lic.condiciones is None:
+            continue
+        for tabla, atributo, _ in _FAMILIAS_CONDICIONES:
+            filas = getattr(lic.condiciones, atributo)
+            if filas:
+                por_familia[tabla][lic.id_externo] = filas
+    if not any(por_familia.values()):
+        return
+    if not _condiciones_disponibles(c):
+        _log.warning("condiciones_codice_sin_tablas", detalle="v148 sin aplicar")
+        return
+
+    ahora = now_utc_iso()
+    for tabla, _, columnas in _FAMILIAS_CONDICIONES:
+        por_lic = por_familia[tabla]
+        if not por_lic:
+            continue
+        ids = list(por_lic)
+        for i in range(0, len(ids), 500):
+            c.execute(f"DELETE FROM {tabla} WHERE licitacion_id = ANY(%s)", (ids[i : i + 500],))
+        filas_sql: list[list[Any]] = []
+        for licitacion_id, filas in por_lic.items():
+            vistas: set[tuple[str | None, int]] = set()
+            for fila in filas:
+                clave = (fila.lote_numero, fila.orden)
+                if clave in vistas:
+                    continue
+                vistas.add(clave)
+                datos = asdict(fila)
+                filas_sql.append([licitacion_id, *(datos[k] for k in columnas), ahora])
+        nombres = ", ".join(("licitacion_id", *columnas, "fecha_extraccion"))
+        marcadores = ", ".join("%s" for _ in range(len(columnas) + 2))
+        # Nombres de tabla y columna salen de constantes de este módulo.
+        c.executemany(f"INSERT INTO {tabla} ({nombres}) VALUES ({marcadores})", filas_sql)
+
+
 # ---------------------------------------------------------------------------
 # Operaciones de escritura
 # ---------------------------------------------------------------------------
@@ -455,6 +650,7 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
         # from dataclass fields (controlled code) — safe.
         if lic_rows:
             c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
+        _replace_condiciones(c, batch)
 
     existing_ids = set(existing_pub)
     nuevas = sum(1 for lic in batch if lic.id_externo not in existing_ids)
@@ -931,6 +1127,8 @@ def _upsert_chunk(
             )
         if lic_rows:
             c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
+        # v148: en la misma transacción, después de las licitaciones (FK).
+        _replace_condiciones(c, chunk)
 
     return result
 

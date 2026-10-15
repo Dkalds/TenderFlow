@@ -13,16 +13,43 @@ circundante recurso, fecha y sentido cuando aparecen.
 La URL del índice no va hardcodeada (misma regla operativa que PSCP):
 configurá ``TACRC_INDEX_URL`` tras validarla con ``--check``.
 
+**Índice completo (2026-10).** El valor por defecto de ``TACRC_INDEX_URL`` es el
+índice del Pleno: unas 17 resoluciones doctrinales, no las ~1.900 al año que
+dicta el tribunal. El buscador completo (``BuscadordeResoluciones.aspx``) lo
+pinta JavaScript y con ``lxml`` no da nada. Lo que sí está a la vista es dónde
+viven los PDFs: la biblioteca de SharePoint ``/tacrc/resoluciones/año AAAA/``
+(comprobado el 2026-10-12 por las URL de PDFs publicados, p. ej.
+``/tacrc/resoluciones/año 2025/recurso 1745-2025 (res 1758) 04-12-2025.pdf``).
+Para leerla, este conector acepta además:
+
+- **Un listado JSON** de la API REST de SharePoint (``{"d": {"results": [...]}}``
+  o ``{"value": [...]}``, con ``Name`` y ``ServerRelativeUrl`` por fichero),
+  que se parsea con los mismos patrones de nombre que el HTML.
+- **Una URL con** ``{anio}``, que se recorre año a año, ascendente, desde el año
+  del cursor (o ``TACRC_PRIMER_ANIO`` sin cursor) hasta el actual, avanzando el
+  cursor tras cada año: un run cortado conserva los años ya escritos. Un año
+  que responde 404 no tiene carpeta y no es un error.
+
+La candidata es :data:`URL_BIBLIOTECA_RESOLUCIONES`. **No está verificada**: la
+sesión que la escribió no tenía salida a ``hacienda.gob.es``, y que el servidor
+sirva su API REST a un visitante anónimo es justo lo que hay que comprobar con
+``--check`` antes de fijarla. El valor por defecto no cambia a propósito: en el
+plano del worker, sin variable, manda el valor por defecto, y cambiarlo
+encendería el índice completo sin decidirlo.
+
 Uso directo:
     python -m scraper.connectors.tacrc            # ingesta incremental
     python -m scraper.connectors.tacrc --check    # valida la URL sin escribir
+    python -m scraper.connectors.tacrc --url "<plantilla con {anio}>" --desde-anio 2010
 """
 
 from __future__ import annotations
 
+import json
 import re
+from datetime import UTC, date, datetime
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import quote, unquote, urlparse
 
 import requests
 from lxml import html as lxml_html
@@ -37,6 +64,20 @@ log = get_logger(__name__)
 
 SOURCE_ID = "tacrc"
 _TIMEOUT = 60
+
+#: Marcador de año en una URL de índice que se recorre año a año.
+MARCADOR_ANIO = "{anio}"
+#: Candidata al índice completo: los ficheros de la carpeta de un año de la
+#: biblioteca de resoluciones, por la API REST de SharePoint. Sin verificar
+#: (ver docstring del módulo): `--check --url` antes de fijarla.
+URL_BIBLIOTECA_RESOLUCIONES = (
+    "https://www.hacienda.gob.es/tacrc/_api/web/"
+    "GetFolderByServerRelativeUrl('/tacrc/resoluciones/año {anio}')/Files"
+    "?$select=Name,ServerRelativeUrl,TimeLastModified"
+)
+#: La API REST de SharePoint responde Atom XML salvo que se le pida JSON. La
+#: forma ``verbose`` la entienden todas sus versiones; ``nometadata``, no.
+_ACCEPT_JSON_SHAREPOINT = "application/json;odata=verbose"
 
 _NUM_RESOLUCION_RE = re.compile(r"resoluci[oó]n\s*n?[ºo°.]*\s*(\d{1,5}/\d{4})", re.IGNORECASE)
 _NUM_BARE_RE = re.compile(r"\b(\d{1,5}/\d{4})\b")
@@ -129,9 +170,15 @@ def parse_index(page_html: str | bytes, base_url: str = "") -> list[Resolucion]:
     o el de su fila contienen un número ``NNN/AAAA``. El contexto (la fila
     ``<tr>`` o ``<li>`` contenedora, o el propio texto del enlace) aporta el
     resto de metadatos. Deduplica por número de resolución.
+
+    Si lo que llega es un listado JSON de la biblioteca de SharePoint, lo
+    parsea :func:`parse_listado_json` (ver docstring del módulo).
     """
     if not page_html:
         return []
+    texto = page_html.decode("utf-8", "replace") if isinstance(page_html, bytes) else page_html
+    if texto.lstrip().startswith("{"):
+        return parse_listado_json(texto, base_url=base_url)
     tree = lxml_html.fromstring(page_html)
     if base_url:
         tree.make_links_absolute(base_url)
@@ -176,6 +223,82 @@ def parse_index(page_html: str | bytes, base_url: str = "") -> list[Resolucion]:
     return list(vistas.values())
 
 
+def parse_listado_json(texto: str, base_url: str = "") -> list[Resolucion]:
+    """Resoluciones de un listado JSON de la biblioteca de SharePoint.
+
+    Acepta las dos formas de la API REST (``odata=verbose`` →
+    ``{"d": {"results": [...]}}``, ``odata=nometadata`` → ``{"value": [...]}``)
+    y, por fichero, ``Name``/``ServerRelativeUrl`` (``Files``) o
+    ``FileLeafRef``/``FileRef`` (elementos de lista). Del nombre salen recurso,
+    resolución y fecha con los mismos patrones que del HTML; la URL del PDF es
+    la ruta del fichero sobre el host de *base_url*. Lo que no es un PDF
+    —carpetas, ``Forms``— se ignora, y un JSON que no es un listado (un error
+    de la API) da una lista vacía, no una excepción: ``--check`` lo dice.
+    """
+    try:
+        datos = json.loads(texto)
+    except ValueError:
+        return []
+    filas: Any = []
+    if isinstance(datos, dict):
+        filas = datos.get("value")
+        if filas is None and isinstance(datos.get("d"), dict):
+            filas = datos["d"].get("results")
+    if not isinstance(filas, list):
+        return []
+    partes = urlparse(base_url)
+    origen = f"{partes.scheme}://{partes.netloc}" if partes.scheme and partes.netloc else ""
+
+    vistas: dict[str, Resolucion] = {}
+    for fila in filas:
+        if not isinstance(fila, dict):
+            continue
+        nombre = str(fila.get("Name") or fila.get("FileLeafRef") or "")
+        ruta = str(fila.get("ServerRelativeUrl") or fila.get("FileRef") or "")
+        if not nombre.lower().endswith(".pdf"):
+            continue
+        textos = (nombre, unquote(ruta))
+        numero_recurso = _extraer_numero_recurso(textos)
+        fecha = _fecha_iso(nombre)
+        numero = _extraer_numero_resolucion(textos, numero_recurso, fecha)
+        if not numero:
+            continue
+        url_pdf = f"{origen}{quote(ruta, safe='/()')}" if origen and ruta.startswith("/") else None
+        res = Resolucion(
+            numero_resolucion=numero,
+            numero_recurso=numero_recurso,
+            fecha=fecha,
+            url_pdf=url_pdf,
+            resumen=nombre[:500],
+        )
+        previa = vistas.get(numero)
+        if previa is None or (res.url_pdf and not previa.url_pdf):
+            vistas[numero] = res
+    return list(vistas.values())
+
+
+def _hoy() -> date:
+    return datetime.now(UTC).date()
+
+
+def urls_del_indice(
+    index_url: str, *, desde_anio: int | None = None, hoy: date | None = None
+) -> list[tuple[int | None, str]]:
+    """Las páginas que recorre una pasada, con su año (``None`` si no va por años).
+
+    Sin :data:`MARCADOR_ANIO`, una sola página: el comportamiento de siempre.
+    Con él, de *desde_anio* (o ``TACRC_PRIMER_ANIO``) al año de *hoy*, en orden
+    ascendente: es el orden que deja avanzar el cursor año a año.
+    """
+    if MARCADOR_ANIO not in index_url:
+        return [(None, index_url)]
+    hasta = (hoy or _hoy()).year
+    inicio = desde_anio if desde_anio is not None else settings.TACRC_PRIMER_ANIO
+    return [
+        (anio, index_url.replace(MARCADOR_ANIO, str(anio))) for anio in range(inicio, hasta + 1)
+    ]
+
+
 def fetch_index(index_url: str | None = None, *, session: requests.Session | None = None) -> str:
     url = index_url or settings.TACRC_INDEX_URL
     if not url:
@@ -184,63 +307,101 @@ def fetch_index(index_url: str | None = None, *, session: requests.Session | Non
             "`python -m scraper.connectors.tacrc --check --url <url>` y fijala "
             "por entorno (regla operativa del RFC 20260611-1)."
         )
-    resp = (session or requests).get(url, timeout=_TIMEOUT)
+    if "/_api/" in url:
+        resp = (session or requests).get(
+            url, timeout=_TIMEOUT, headers={"Accept": _ACCEPT_JSON_SHAREPOINT}
+        )
+    else:
+        resp = (session or requests).get(url, timeout=_TIMEOUT)
     resp.raise_for_status()
     return str(resp.text)
 
 
-def run(index_url: str | None = None, *, session: requests.Session | None = None) -> dict[str, Any]:
+def _es_404(exc: BaseException) -> bool:
+    respuesta = getattr(exc, "response", None)
+    return isinstance(exc, requests.HTTPError) and getattr(respuesta, "status_code", None) == 404
+
+
+def run(
+    index_url: str | None = None,
+    *,
+    session: requests.Session | None = None,
+    desde_anio: int | None = None,
+    hoy: date | None = None,
+) -> dict[str, Any]:
     """Ciclo completo de ingesta TACRC: fetch → parse → upsert → vinculación.
 
     Cursor ``tacrc`` (last_seen_updated = fecha máxima vista): en ejecuciones
     incrementales solo se upsertan resoluciones con fecha >= cursor - el
     upsert idempotente absorbe el solape. Fallos de fetch van a la DLQ sin
     avanzar el cursor.
+
+    Con un índice por años (:data:`MARCADOR_ANIO`) se recorre desde el año del
+    cursor y el cursor avanza tras cada año; el primer año que falla corta la
+    pasada —saltarlo y seguir movería el cursor por encima de él y no se
+    volvería a pedir nunca—. *desde_anio* fuerza un backfill desde ese año e
+    ignora el cursor. *hoy* existe para los tests.
     """
     from scraper.connectors.base import record_source_health, record_source_started
 
+    url = index_url or settings.TACRC_INDEX_URL
     stats: dict[str, Any] = {"fetched": 0, "nuevas": 0, "actualizadas": 0, "errores": 0}
     cursor = get_cursor(SOURCE_ID)
-    last_seen = str((cursor or {}).get("last_seen_updated") or "")
+    last_seen = "" if desde_anio is not None else str((cursor or {}).get("last_seen_updated") or "")
+    anio_cursor = int(last_seen[:4]) if last_seen[:4].isdigit() else None
     # TACRC no pasa por ``run_connector`` (tiene runner ligero propio), así que
     # hasta 2026-09 era la única fuente que NO escribía
     # ``source_ingestion_health``: para cualquier chequeo de frescura era
     # indistinguible de una fuente muerta.
     record_source_started(SOURCE_ID)
-    try:
-        page = fetch_index(index_url, session=session)
-        items = parse_index(page, base_url=index_url or settings.TACRC_INDEX_URL)
-    except Exception as e:
-        stats["errores"] += 1
-        record_failure(None, SOURCE_ID, e, scope="fetch")
-        log.error("tacrc_run_failed", error=str(e))
-        record_source_health(SOURCE_ID, status="failed", errors=1)
-        return stats
 
-    stats["fetched"] = len(items)
-    if last_seen:
-        items = [r for r in items if not r.fecha or r.fecha >= last_seen]
-    nuevas, actualizadas = upsert_resoluciones(items)
-    stats["nuevas"], stats["actualizadas"] = nuevas, actualizadas
+    procesadas = parsed = 0
+    cursor_escrito = last_seen
+    for anio, url_pagina in urls_del_indice(url, desde_anio=desde_anio or anio_cursor, hoy=hoy):
+        try:
+            page = fetch_index(url_pagina, session=session)
+            items = parse_index(page, base_url=url_pagina)
+        except Exception as e:
+            if anio is not None and _es_404(e):
+                log.info("tacrc_anio_sin_indice", anio=anio)
+                continue
+            stats["errores"] += 1
+            record_failure(None, SOURCE_ID, e, scope="fetch")
+            log.error("tacrc_run_failed", error=str(e), anio=anio)
+            break
+        procesadas += 1
+        stats["fetched"] += len(items)
+        if last_seen:
+            items = [r for r in items if not r.fecha or r.fecha >= last_seen]
+        parsed += len(items)
+        nuevas, actualizadas = upsert_resoluciones(items)
+        stats["nuevas"] += nuevas
+        stats["actualizadas"] += actualizadas
+        fechas = [r.fecha for r in items if r.fecha]
+        if fechas and max(fechas) > cursor_escrito:
+            cursor_escrito = max(fechas)
+            set_cursor(SOURCE_ID, last_seen_updated=cursor_escrito)
+
+    if not procesadas and stats["errores"]:
+        record_source_health(SOURCE_ID, status="failed", errors=int(stats["errores"]))
+        return stats
 
     link_stats = link_unlinked()
     stats.update(link_stats)
-
-    fechas = [r.fecha for r in items if r.fecha]
-    if fechas:
-        set_cursor(SOURCE_ID, last_seen_updated=max(fechas))
     log.info("tacrc_run_done", **stats)
     record_source_health(
         SOURCE_ID,
-        status="success",
+        status="partial" if stats["errores"] else "success",
         fetched=int(stats["fetched"]),
-        parsed=len(items),
+        parsed=parsed,
         errors=int(stats["errores"]),
     )
     return stats
 
 
-def ejecutar(*, index_url: str | None = None) -> dict[str, Any] | None:
+def ejecutar(
+    *, index_url: str | None = None, desde_anio: int | None = None
+) -> dict[str, Any] | None:
     """Una pasada de TACRC; ``None`` si la fuente está apagada.
 
     Sin índice configurado la fuente está APAGADA, no rota (S2.5): se declara
@@ -260,7 +421,7 @@ def ejecutar(*, index_url: str | None = None) -> dict[str, Any] | None:
             ),
         )
         return None
-    return run(index_url)
+    return run(index_url, desde_anio=desde_anio)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -278,16 +439,28 @@ def main(argv: list[str] | None = None) -> int:
         metavar="ARCHIVO",
         help="Con --check: guarda el HTML recibido para diagnóstico del parser",
     )
+    parser.add_argument(
+        "--desde-anio",
+        type=int,
+        help=(
+            f"Con una URL por años ({MARCADOR_ANIO}): backfill desde ese año, ignorando el cursor"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.check:
-        page = fetch_index(args.url)
+        # Con un índice por años se mira solo el año en curso: basta para saber
+        # si la URL responde y el parser la entiende, sin bajar todo el histórico.
+        url_check = urls_del_indice(
+            args.url or settings.TACRC_INDEX_URL, desde_anio=_hoy().year, hoy=_hoy()
+        )[-1][1]
+        page = fetch_index(url_check)
         if args.dump:
             from pathlib import Path
 
             Path(args.dump).write_text(page, encoding="utf-8")
             print(f"HTML recibido guardado en {args.dump} ({len(page)} bytes)")
-        items = parse_index(page, base_url=args.url or settings.TACRC_INDEX_URL)
+        items = parse_index(page, base_url=url_check)
         print(f"TACRC --check: {len(items)} resoluciones detectadas en el índice")
         for res in items[:5]:
             print(f"  {res.numero_resolucion}  fecha={res.fecha}  sentido={res.sentido}")
@@ -304,7 +477,7 @@ def main(argv: list[str] | None = None) -> int:
 
     init_db()
     try:
-        stats = ejecutar(index_url=args.url)
+        stats = ejecutar(index_url=args.url, desde_anio=args.desde_anio)
     finally:
         close_pool()
     if stats is None:

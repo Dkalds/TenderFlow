@@ -60,6 +60,7 @@ CANONICAL_STEPS: list[str] = [
     "aggregates_precompute",
     "watchlist_notify",
     "cartera_avisos",
+    "documentacion_avisos",
     "event_dispatch",
     "digests",
     "informes_programados",
@@ -116,6 +117,10 @@ STEP_TIER: dict[str, StepTier] = {
     # la ventana es diaria; una pasada fallida la recupera la siguiente. No
     # puede tumbar la ingesta.
     "cartera_avisos": "advisory",
+    # advisory: los avisos de caducidad de la documentación acreditativa tienen
+    # semanas de margen (60, 30 y 7 días) y la ventana es diaria; una pasada
+    # fallida la recupera la siguiente. No puede tumbar la ingesta.
+    "documentacion_avisos": "advisory",
     # advisory: el outbox es persistente. Si el reparto falla, los eventos
     # siguen pendientes y la pasada siguiente los entrega (dentro de la
     # antigüedad máxima, ver `event_dispatch.caducar_viejos`); un receptor de
@@ -787,6 +792,24 @@ def _run_cartera_avisos() -> str:
     return _run_periodic("cartera_avisos", _SEGUNDOS_DIA, _run)
 
 
+def _run_documentacion_avisos() -> str:
+    """Caducidad de la documentación acreditativa: avisa una vez al día.
+
+    Escribe en el outbox un ``organizacion.documento_caduca`` por documento del
+    perfil de capacidad que cruza un umbral (60, 30, 7 días, o caducado), una
+    vez por umbral y documento. Va antes de ``event_dispatch`` para que el
+    aviso salga en esta misma pasada; el reparto lo hace el despachador, como
+    el de cualquier otro evento.
+    """
+    from services import documentacion_caducidad
+
+    def _run() -> None:
+        emitidos = documentacion_caducidad.emitir_avisos_de_caducidad()
+        log.info("documentacion_avisos_done", avisos=emitidos)
+
+    return _run_periodic("documentacion_avisos", _SEGUNDOS_DIA, _run)
+
+
 def _run_follows_paridad() -> str:
     """Paridad `follows` ↔ tablas de origen (ADR-031 §B), una vez al día.
 
@@ -1191,9 +1214,11 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
       siga viendo los runs diarios tras el flip.
     """
     from observability import bind_run_context, record_run
+    from scheduler import respaldo_zip_placsp
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspAtomConnector
 
+    cursor_atom_antes = respaldo_zip_placsp.cursor_atom_actual()
     run_id = bind_run_context(entrypoint="run_daily_pipeline_connector")
     with record_run(run_id) as metrics:
         connector = PlacspAtomConnector()
@@ -1220,6 +1245,14 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
             metrics.licitaciones_actualizadas = run_result.actualizadas
         metrics.notas = f"daily_connector|{status}"
 
+    # ATOM congelado → ZIP del mes en curso tras N pasadas sin avance. Fuera del
+    # `record_run` del ATOM: el bulk deja su propia salud (`bulk_YYYYMM`).
+    respaldo_zip = respaldo_zip_placsp.tras_pasada_atom(
+        cursor_antes=cursor_atom_antes,
+        cursor_despues=respaldo_zip_placsp.cursor_atom_actual(),
+        fetch_failed=run_result.fetch_failed,
+    )
+
     step_results = _run_post_ingestion_steps(lane=LANE_DAILY) if con_cierre else {}
 
     return {
@@ -1234,6 +1267,7 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
             "entries_error": run_result.errores,
         },
         "connector_result": run_result.as_dict(),
+        "respaldo_zip": respaldo_zip,
         "steps": step_results,
     }
 

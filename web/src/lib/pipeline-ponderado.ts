@@ -47,8 +47,7 @@ export interface SupuestoEtapa {
 
 /**
  * Probabilidades que el backend **usó** (sólo etapas con oportunidades
- * abiertas). Vale para `PursuitMetrics` y para el cuadro de Dirección, que
- * declaran los supuestos con el mismo campo.
+ * abiertas), con el campo con el que `PursuitMetrics` los declara.
  */
 export function supuestosEtapas(
   metrics: Pick<PursuitMetrics, "probabilidades_etapa_usadas">,
@@ -79,7 +78,7 @@ export function etiquetaTrimestre(clave: string): string {
   return match ? `T${match[2]} ${match[1]}` : clave;
 }
 
-/** Previsión por trimestre en orden cronológico (Rendimiento y Dirección). */
+/** Previsión por trimestre en orden cronológico (Oportunidades › Rendimiento). */
 export function previsionOrdenada(
   metrics: Pick<PursuitMetrics, "prevision_trimestral">,
 ): TrimestrePrevision[] {

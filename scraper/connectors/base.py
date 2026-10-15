@@ -374,6 +374,20 @@ def _completar_documentos_de(connector: Connector) -> Callable[[], object] | Non
     return paso if callable(paso) else None
 
 
+def _completar_documentos_primero(connector: Connector) -> bool:
+    """¿El conector pide su paso de documentos **antes** del cierre del lote?
+
+    Opt-in por atributo (``completar_documentos_primero = True``), como
+    ``cursor_advances_incrementally``. Solo es correcto si el paso no lee nada
+    de lo que escriben la resolución de empresas o los dedupes de
+    :func:`_post_ingestion`: el de TED sí lo necesita (un aviso recién
+    emparejado lee los pliegos de su canónica) y el de PLACSP persiste lo que
+    rescató el parseo; el de PSCP lee de la BD las convocatorias vigentes y nada
+    más, así que es el único que lo declara.
+    """
+    return bool(getattr(connector, "completar_documentos_primero", False))
+
+
 def _completar_documentos(source_id: str, paso: Callable[[], object] | None) -> None:
     """Ejecuta el paso de documentos del conector. Fail-open: nunca tumba la pasada."""
     if paso is None:
@@ -646,6 +660,15 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         set_cursor(source_id, **final_cursor)
 
     completar_documentos = _completar_documentos_de(connector)
+    if completar_documentos is not None and _completar_documentos_primero(connector):
+        # Antes del cierre del lote, y no detrás: con filas, el step de PSCP se
+        # cortaba a los 10 minutos dentro de la resolución de empresas (run
+        # 37126368765, 2026-10-03) y el paso, detrás de ella y de los dos
+        # dedupes, no llegaba a correr nunca. Aquí lo acota su propio
+        # presupuesto, que es lo único que le quita al cierre de detrás; la
+        # resolución de empresas ya es reanudable y lleva el suyo.
+        _completar_documentos(source_id, completar_documentos)
+        completar_documentos = None
     if result.parsed or result.adjudicaciones:
         _post_ingestion(
             source_id,

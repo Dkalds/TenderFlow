@@ -2,19 +2,36 @@
  * Tests del rail de espacios (`components/layout/console-rail.tsx`).
  *
  * El rail sustituye a la sidebar de 248px, así que lo que hay que demostrar es
- * que no se perdió navegación: los 14 espacios están, Ops sólo si eres admin, y
- * una ruta heredada marca activo el espacio que la absorbió — si no, quien
- * aterrice por un enlace viejo no sabe dónde está.
+ * que no se perdió navegación: los 14 espacios están, Ops sólo si eres admin,
+ * Dirección si además diriges la organización activa, y una ruta heredada
+ * marca activo el espacio que la absorbió — si no, quien aterrice por un
+ * enlace viejo no sabe dónde está.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ADMIN_ONLY_SPACES, CONSOLE_SPACES } from "@/lib/console-spaces";
 
-const { pathnameRef, adminRef, setTheme, toggleCompact, initDensity, apiMutate, setActiveOrganizationId } =
-  vi.hoisted(() => ({
+const {
+  pathnameRef,
+  adminRef,
+  organizacionRef,
+  setTheme,
+  toggleCompact,
+  initDensity,
+  apiMutate,
+  setActiveOrganizationId,
+} = vi.hoisted(() => ({
     pathnameRef: { current: "/resumen" },
     adminRef: { current: true },
+    organizacionRef: {
+      current: { id: 1, name: "Acme", role: "admin", is_personal: false } as {
+        id: number;
+        name: string;
+        role: string;
+        is_personal: boolean;
+      },
+    },
     setTheme: vi.fn(),
     toggleCompact: vi.fn(),
     initDensity: vi.fn(),
@@ -31,8 +48,8 @@ vi.mock("@/lib/density", () => ({
   initDensity,
 }));
 vi.mock("@/hooks/use-organization", () => ({
-  useOrganizations: () => ({ isLoading: false, data: [{ id: 1, name: "Acme", role: "admin" }] }),
-  useActiveOrganizationId: () => 1,
+  useOrganizations: () => ({ isLoading: false, data: [organizacionRef.current] }),
+  useActiveOrganizationId: () => organizacionRef.current.id,
   useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
 }));
 vi.mock("@/lib/api-client", () => ({ apiMutate: (...a: unknown[]) => apiMutate(...a) }));
@@ -40,9 +57,12 @@ vi.mock("@/lib/report-error", () => ({ reportError: vi.fn() }));
 
 import { ConsoleRail } from "@/components/layout/console-rail";
 
-const renderRail = (pathname = "/resumen", admin = true) => {
+const ACME = { id: 1, name: "Acme", role: "admin", is_personal: false };
+
+const renderRail = (pathname = "/resumen", admin = true, organizacion = ACME) => {
   pathnameRef.current = pathname;
   adminRef.current = admin;
+  organizacionRef.current = organizacion;
   return render(
     <TooltipProvider>
       <ConsoleRail />
@@ -85,6 +105,8 @@ describe("ConsoleRail", () => {
     // El recuento sale de `ADMIN_ONLY_SPACES`, que se deriva de las
     // definiciones: cuando Dirección entró como espacio de owner/admin, un
     // número fijo aquí decía que se escondía uno cuando ya se escondían dos.
+    // Quien mira es administradora de Acme, así que Dirección (nivel
+    // `gestion`) sí sale.
     renderRail("/resumen", false);
     for (const space of CONSOLE_SPACES) {
       const enlace = within(railNav()).queryByRole("link", { name: railName(space) });
@@ -98,6 +120,35 @@ describe("ConsoleRail", () => {
     expect(within(railNav()).getAllByRole("link")).toHaveLength(
       CONSOLE_SPACES.length - ADMIN_ONLY_SPACES.size + 1,
     );
+  });
+
+  it("la propietaria de un equipo ve Dirección sin ser administradora de la plataforma", () => {
+    // El caso que motivó el nivel `gestion`: la API le sirve `/pursuits/direccion`
+    // y hasta ahora no había ningún enlace que la llevara allí.
+    renderRail("/resumen", false, { ...ACME, role: "owner" });
+    expect(railLink(bySlug("direccion"))).toHaveAttribute("href", "/direccion");
+    expect(within(railNav()).queryByRole("link", { name: "Ops y Admin" })).not.toBeInTheDocument();
+  });
+
+  it("un miembro del equipo no ve Dirección: la API le respondería 403", () => {
+    for (const role of ["member", "viewer"]) {
+      renderRail("/resumen", false, { ...ACME, role });
+      expect(
+        within(railNav()).queryByRole("link", { name: "Dirección" }),
+        `${role} no debería ver Dirección`,
+      ).not.toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it("en la organización personal no hay Dirección: no hay equipo que dirigir", () => {
+    renderRail("/resumen", false, { id: 9, name: "Personal", role: "owner", is_personal: true });
+    expect(within(railNav()).queryByRole("link", { name: "Dirección" })).not.toBeInTheDocument();
+  });
+
+  it("el administrador de la plataforma ve Dirección en cualquier organización", () => {
+    renderRail("/resumen", true, { ...ACME, role: "viewer" });
+    expect(railLink(bySlug("direccion"))).toBeInTheDocument();
   });
 
   it("pinta el nombre de cada espacio bajo su icono, sin códigos ni texto oculto", () => {

@@ -54,12 +54,45 @@ MOTIVO_MINIMO = 40
 # alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
 # que añaden operaciones distintas no choquen al fusionar.
 NUEVAS: dict[str, str] = {
+    "GET /api/v1/licitaciones/{id_externo:path}/condiciones-oficiales": (
+        "Se miró GET /licitaciones/{id}/ficha-pliego, que sirve la extracción LLM del "
+        "pliego y responde 404 mientras no se ha extraído: meter ahí el dato de PLACSP "
+        "mezclaría dos procedencias en un mismo contrato y lo escondería tras ese 404. "
+        "GET /licitaciones/{id} (detalle) no lo trae y engordaría la lectura más "
+        "caliente de la API con tres tablas que solo pide la pestaña Pliego y el "
+        "checklist Go/No-Go."
+    ),
+    "DELETE /api/v1/me/keys/{key_id}": (
+        "Se miró POST /me/keys/rotate, que deja la clave vieja viva durante la gracia "
+        "(con 0 días sigue acuñando otra), DELETE /me, que revoca todas a la vez junto con "
+        "la cuenta, y POST /security/leaked-key, que solo acepta el webhook "
+        "firmado de GitHub. Ninguna deja al dueño apagar una clave concreta al momento, "
+        "que es lo que hace falta cuando una se filtra o deja de usarse."
+    ),
     "POST /api/v1/me/profile/preview": (
         "Se miró GET /analytics/scoring, que puntúa siempre con el perfil guardado: "
         "no admite uno de prueba, y unos pesos con sus palabras clave y CPV no caben "
         "en una query. PUT /me/profile lo aceptaría, pero guardándolo. La vista previa "
         "necesita además las dos pasadas (prueba y guardado) sobre el mismo universo "
         "en una sola respuesta, para poder decir cuánto se mueve cada oportunidad."
+    ),
+    "GET /api/v1/notifications/alerts": (
+        "Se miró GET /notifications: devuelve las 30 alertas más recientes con las no "
+        "leídas primero, sin total ni desplazamiento, y arrastra los contadores de "
+        "mercado (`hoy`, deprecado pero aún calculado por compatibilidad), una consulta "
+        "sobre licitaciones que cada página de «Ver todas» y cada refresco de la campana "
+        "pagarían sin pintarla. Ampliarlo con filtro y paginación habría mezclado dos "
+        "contratos en uno; la bandeja paginada con filtro de lectura y el número sin leer "
+        "es la que pide la campana «solo lo tuyo»."
+    ),
+    "GET /api/v1/pursuits/adjuntos/politica": (
+        "Se miraron GET /pursuits/{id}/adjuntos, que devuelve una lista y no admite "
+        "metadatos sin romper su contrato, y POST /pursuits/{id}/adjuntos, que solo "
+        "dice que no hay almacén (503), que el fichero es grande (413) o que el tipo "
+        "no vale (415) después de recibir hasta 25 MiB. /meta/filters es el catálogo "
+        "de filtros de licitaciones, cacheado y ajeno. La consola necesita saber antes "
+        "de ofrecer la subida si el entorno tiene almacén, el tope y la lista blanca, "
+        "sin llevar su propia copia de las constantes del servidor."
     ),
 }
 

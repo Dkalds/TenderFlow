@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Las tres tablas de «Proyectos y módulos»: módulos (ordenable), tipos de
- * proyecto y códigos CPV.
+ * Las tablas de «Proyectos y módulos»: familias y módulos SAP (ordenables, la
+ * misma tabla para los dos cortes), tipos de proyecto y códigos CPV.
  *
- * Sólo la primera es ordenable, y por eso es la única que recibe `sortKey` /
- * `onSort`: las otras dos llegan ya ordenadas por el llamante.
+ * El orden de las ordenables es estado de la tabla: cada una lleva el suyo y
+ * entra por licitaciones, de más a menos, como llegan.
  */
 
 import { Panel, PanelTitle } from "@/components/console/panel";
@@ -21,10 +21,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 
 import type { Schemas } from "@/lib/api-types";
-import type { ModSortKey, ModuloConMedia, TipoProyectoRow } from "../_hooks/use-proyectos-modulos-view";
+import type { FilaCategoria, TipoProyectoRow } from "../_hooks/use-proyectos-modulos-view";
 
 function FilasCargando({ rows = 5 }: { rows?: number }) {
   return (
@@ -47,48 +48,70 @@ function FilaVacia({ columnas, children }: { columnas: number; children: React.R
   );
 }
 
-const COLUMNAS_MODULO: [ModSortKey, string][] = [
-  ["modulo", "Módulo"],
-  ["count", "Licitaciones"],
-  ["importe", "Importe total"],
-  ["importe_medio", "Importe medio"],
-];
+type ClaveOrden = keyof FilaCategoria;
 
-export function ProyectosModulosTabla({
+/** El nombre entra A→Z; las cifras, de mayor a menor. */
+const SENTIDO_INICIAL = (clave: ClaveOrden): "asc" | "desc" => (clave === "nombre" ? "asc" : "desc");
+
+function ordenar(filas: FilaCategoria[], clave: ClaveOrden, sentido: "asc" | "desc"): FilaCategoria[] {
+  const signo = sentido === "asc" ? 1 : -1;
+  return [...filas].sort((a, b) => {
+    const va = a[clave];
+    const vb = b[clave];
+    return signo * (typeof va === "string" ? va.localeCompare(String(vb)) : va - Number(vb));
+  });
+}
+
+/**
+ * Familias o módulos SAP con su cantidad, su importe y su importe medio,
+ * ordenable por cualquiera de las cuatro columnas.
+ */
+export function TablaCategorias({
+  titulo,
+  etiqueta,
+  columnaNombre,
   filas,
+  vacio,
   isLoading,
-  sortKey,
-  sortDir,
-  onSort,
 }: {
-  filas: ModuloConMedia[];
+  titulo: string;
+  /** Nombre accesible de la tabla. */
+  etiqueta: string;
+  columnaNombre: string;
+  filas: FilaCategoria[];
+  vacio: string;
   isLoading: boolean;
-  /** Columna y sentido del orden activo: la cabecera los anuncia (`aria-sort`). */
-  sortKey: ModSortKey;
-  sortDir: "asc" | "desc";
-  onSort: (key: ModSortKey) => void;
 }) {
+  const { sortKey, sortDir, toggleSort } = useSortToggle<ClaveOrden>("count", "desc", SENTIDO_INICIAL);
+  const columnas: [ClaveOrden, string][] = [
+    ["nombre", columnaNombre],
+    ["count", "Licitaciones"],
+    ["importe", "Importe total"],
+    ["importe_medio", "Importe medio"],
+  ];
+  const ordenadas = ordenar(filas, sortKey, sortDir);
+
   return (
     <Panel>
-      <PanelTitle title="Importe medio por módulo SAP" />
+      <PanelTitle title={titulo} />
       {isLoading ? (
         <FilasCargando />
       ) : (
-        <Table>
+        <Table aria-label={etiqueta}>
           <TableHeader>
             <TableRow>
-              {COLUMNAS_MODULO.map(([key, label]) => {
-                const activa = sortKey === key;
+              {columnas.map(([clave, label]) => {
+                const activa = sortKey === clave;
                 return (
                   <TableHead
-                    key={key}
+                    key={clave}
                     aria-sort={activa ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
-                    className={cn(key !== "modulo" && "text-right")}
+                    className={cn(clave !== "nombre" && "text-right")}
                   >
                     {/* La versal va en el botón: el navegador no se la hereda. */}
                     <button
                       type="button"
-                      onClick={() => onSort(key)}
+                      onClick={() => toggleSort(clave)}
                       className={cn(
                         CABECERA_COLUMNA,
                         "group inline-flex items-center gap-1 transition-colors hover:text-foreground",
@@ -104,17 +127,15 @@ export function ProyectosModulosTabla({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filas.map((item, idx) => (
-              <TableRow key={idx}>
-                <TableCell className="font-medium">{item.modulo}</TableCell>
-                <TableCell numeric>{formatNumber(item.count)}</TableCell>
-                <TableCell numeric>{formatCurrency(item.importe)}</TableCell>
-                <TableCell numeric>{formatCurrency(item.importe_medio)}</TableCell>
+            {ordenadas.map((fila) => (
+              <TableRow key={fila.nombre}>
+                <TableCell className="font-medium">{fila.nombre}</TableCell>
+                <TableCell numeric>{formatNumber(fila.count)}</TableCell>
+                <TableCell numeric>{formatCurrency(fila.importe)}</TableCell>
+                <TableCell numeric>{formatCurrency(fila.importe_medio)}</TableCell>
               </TableRow>
             ))}
-            {filas.length === 0 && (
-              <FilaVacia columnas={4}>Ninguna licitación del ámbito actual menciona un módulo SAP.</FilaVacia>
-            )}
+            {filas.length === 0 && <FilaVacia columnas={4}>{vacio}</FilaVacia>}
           </TableBody>
         </Table>
       )}

@@ -162,8 +162,8 @@ def test_cu13_lo_de_una_organizacion_no_se_ve_desde_otra(client, api_db):
     assert una.get("/pursuits").json()["total"] == 1
 
 
-def test_cu14_clave_de_api_crear_usar_y_rotar(client, api_db):
-    """CU-14 — la clave abre la API sin sesión, y rotarla entrega una nueva que vale."""
+def test_cu14_clave_de_api_crear_usar_rotar_y_revocar(client, api_db):
+    """CU-14 — la clave abre la API sin sesión, rotarla entrega una nueva y revocarla la apaga."""
     from api.app import app
 
     sembrar_licitacion("EXP-KEY-1", "Integración con el ERP", tecnologia="SAP")
@@ -194,6 +194,16 @@ def test_cu14_clave_de_api_crear_usar_y_rotar(client, api_db):
     assert nuevo != token
     con_nueva = maquina.get("/api/v1/licitaciones", headers={"X-API-Key": nuevo})
     assert con_nueva.status_code == 200, con_nueva.text
+    # Durante la gracia la vieja sigue abriendo: la integración migra sin cortes.
+    assert maquina.get("/api/v1/licitaciones", headers={"X-API-Key": token}).status_code == 200
+
+    # Migrada la integración, revocar la vieja la apaga al momento, sin esperar
+    # a que acabe la gracia, y la nueva sigue valiendo.
+    assert sesion.delete(f"/me/keys/{creada.json()['id']}").status_code == 204
+    assert maquina.get("/api/v1/licitaciones", headers={"X-API-Key": token}).status_code == 401
+    assert maquina.get("/api/v1/licitaciones", headers={"X-API-Key": nuevo}).status_code == 200
+    claves = {c["name"]: c["is_active"] for c in sesion.get("/me/keys").json()["items"]}
+    assert claves == {"Integración CRM": False, "Integración CRM (rotada)": True}
 
 
 def test_cu15_exportar_mis_datos_y_borrar_la_cuenta(client, api_db):

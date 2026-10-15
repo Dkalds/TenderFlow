@@ -39,8 +39,14 @@ def generate_totp_secret() -> str:
         return base64.b32encode(raw).decode().rstrip("=")
 
 
-def get_totp_uri(secret: str, email: str, issuer: str = "Licitaciones-SAP") -> str:
-    """Genera el URI otpauth:// para codificar como QR."""
+def get_totp_uri(secret: str, email: str, issuer: str = "TenderFlow") -> str:
+    """Genera el URI otpauth:// para codificar como QR.
+
+    El emisor es lo que la app del móvil enseña junto al código. Era
+    «Licitaciones-SAP», el nombre histórico del paquete (ADR-015): quien
+    buscara TenderFlow en su lista de cuentas no lo encontraba. Cambiarlo no
+    afecta a las altas ya hechas, porque el código sale solo del secreto.
+    """
     try:
         import pyotp
 

@@ -149,6 +149,27 @@ def problem_503(detail: str = "Servicio temporalmente no disponible.") -> Proble
 TIPO_CONSULTA_CANCELADA = "https://licitaciones-sap/errors/query-timeout"
 
 
+#: Tipo del 403 de una acción sensible pedida con una sesión que ya no es
+#: reciente (``require_recent_session``). Tiene arreglo —cerrar sesión y volver
+#: a entrar— y un 403 de permiso no, así que la consola los distingue por aquí
+#: (``web/src/lib/reautenticacion.ts``) y no por el texto del ``detail``.
+TIPO_REAUTENTICACION = "https://licitaciones-sap/errors/reauthentication-required"
+
+
+class ReautenticacionRequerida(HTTPException):
+    """403 de step-up: la sesión vale, pero no para esto sin volver a entrar.
+
+    Una subclase y no un ``HTTPException`` con el tipo en ``headers``: los
+    headers de la excepción acaban en la respuesta, y el tipo pertenece al
+    cuerpo RFC 7807. El manejador de abajo lo lee de la clase.
+    """
+
+    tipo = TIPO_REAUTENTICACION
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(status_code=403, detail=detail)
+
+
 def problem_consulta_cancelada() -> ProblemDetail:
     return ProblemDetail(
         type=TIPO_CONSULTA_CANCELADA,
@@ -284,7 +305,11 @@ def register_exception_handlers(app: FastAPI) -> None:
             503: lambda: problem_503(str(exc.detail)),
         }
         builder = constructors.get(status_code)
-        if builder:
+        if isinstance(exc, ReautenticacionRequerida):
+            problem = ProblemDetail(
+                type=exc.tipo, title="Forbidden", status=403, detail=str(exc.detail)
+            )
+        elif builder:
             problem = builder()
         else:
             problem = ProblemDetail(
