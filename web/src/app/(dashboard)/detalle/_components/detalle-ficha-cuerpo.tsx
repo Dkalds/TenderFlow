@@ -6,6 +6,8 @@ import { Panel, PanelTitle } from "@/components/console/panel";
 import { DocumentosBlock } from "@/components/documentos-block";
 import { FichaAcciones, FichaAvisos, FichaEstado, FichaOrgano } from "@/components/ficha/ficha-cabecera";
 import { FichaCifras } from "@/components/ficha/ficha-cifras";
+import { FichaAdjudicatarios } from "@/components/ficha/ficha-adjudicatarios";
+import { FichaSimilares } from "@/components/ficha/ficha-similares";
 import { FichaCalendario, FichaCampos } from "@/components/ficha/ficha-campos";
 import {
   FichaDescripcion,
@@ -32,10 +34,10 @@ const PANEL_DE_BLOQUES = "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0";
  *
  * Arriba lo que decide (estado, título, órgano, acciones, cifras y avisos);
  * debajo dos columnas. A la izquierda lo que publica el expediente —campos y
- * calendario, descripción, los pliegos y su ficha—; a la
- * derecha lo que TenderFlow calcula sobre él —puntuación, competencia, baja y
- * simulador— y su historia —eventos y recursos—. Por debajo de ~1000 px las
- * dos columnas se apilan.
+ * calendario, adjudicación, descripción, los pliegos y su ficha—; a la
+ * derecha lo que TenderFlow calcula sobre él —puntuación, competencia,
+ * parecidos, baja y simulador— y su historia —eventos y recursos—. Por debajo
+ * de ~1000 px las dos columnas se apilan.
  *
  * El asistente no tiene panel aquí desde 2026-10: «Preguntar a la IA» de la
  * cabecera abre el asistente único con este expediente, con su resumen.
@@ -81,6 +83,11 @@ export function DetalleFichaCuerpo({ licitacion: l }: { licitacion: LicitacionDe
               <FichaCampos licitacion={l} variante="completa" />
             </section>
           </Panel>
+          {/* Sin adjudicatario y sin estar adjudicado no pinta nada:
+              `empty:hidden` no deja un panel en blanco. */}
+          <Panel className="empty:hidden">
+            <FichaAdjudicatarios licitacion={l} />
+          </Panel>
           <Panel className={PANEL_DE_BLOQUES}>
             <FichaDescripcion licitacion={l} />
             <div className="mt-5 [&>*:first-child]:mt-0">
@@ -107,6 +114,9 @@ export function DetalleFichaCuerpo({ licitacion: l }: { licitacion: LicitacionDe
           )}
           <Panel>
             <CompetenciaEsperadaBlock licitacionId={l.id_externo} className="pb-0" />
+          </Panel>
+          <Panel>
+            <FichaSimilares licitacionId={l.id_externo} />
           </Panel>
           <Panel className={PANEL_DE_BLOQUES}>
             <PrediccionBajaBlock licitacionId={l.id_externo} />

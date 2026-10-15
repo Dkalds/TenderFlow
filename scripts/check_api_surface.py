@@ -85,6 +85,15 @@ NUEVAS: dict[str, str] = {
         "contratos en uno; la bandeja paginada con filtro de lectura y el número sin leer "
         "es la que pide la campana «solo lo tuyo»."
     ),
+    "GET /api/v1/pursuits/adjuntos/politica": (
+        "Se miraron GET /pursuits/{id}/adjuntos, que devuelve una lista y no admite "
+        "metadatos sin romper su contrato, y POST /pursuits/{id}/adjuntos, que solo "
+        "dice que no hay almacén (503), que el fichero es grande (413) o que el tipo "
+        "no vale (415) después de recibir hasta 25 MiB. /meta/filters es el catálogo "
+        "de filtros de licitaciones, cacheado y ajeno. La consola necesita saber antes "
+        "de ofrecer la subida si el entorno tiene almacén, el tope y la lista blanca, "
+        "sin llevar su propia copia de las constantes del servidor."
+    ),
 }
 
 

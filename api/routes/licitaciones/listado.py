@@ -39,6 +39,7 @@ from api.routes.licitaciones._base import (
 from api.routes.licitaciones.modelos import (
     LicitacionSummary,
 )
+from api.tenancy import resolve_organization_ctx
 from observability.logging import get_logger
 from shared.dto import (
     MAX_PAGE_LIMIT,
@@ -51,6 +52,33 @@ from shared.export_safety import sanitize_spreadsheet_record
 log = get_logger(__name__)
 
 router = APIRouter(tags=["licitaciones"])
+
+_DESC_ETIQUETA = (
+    "Sólo expedientes con esta etiqueta de la organización (F1.6), puesta como "
+    "favorito. Filtra en servidor: el total y las páginas son las del conjunto "
+    "etiquetado entero, no las de la página que el cliente tenga cargada."
+)
+_DESC_ORGANIZACION_ETIQUETA = (
+    "Organización dueña de `etiqueta`; por defecto la personal. Sólo se usa con "
+    "`etiqueta`: sin ella el listado es el mismo para cualquier organización."
+)
+
+
+async def _organizacion_de_la_etiqueta(
+    ctx: dict[str, Any], etiqueta: int | None, organization_id: int | None
+) -> int | None:
+    """La organización resuelta para el filtro por etiqueta, o ``None`` sin él.
+
+    Se resuelve **solo** con la etiqueta puesta: el listado de expedientes no es
+    de ninguna organización, y validar una membresía en cada página sin filtro
+    sería un viaje a la base por nada. Con ella puesta se resuelve siempre
+    —también sin `organization_id`, que cae en la personal—, y quien pide la
+    organización de otro recibe el 403 de `resolve_organization_ctx`.
+    """
+    if etiqueta is None:
+        return None
+    resuelto = await resolve_organization_ctx(ctx, organization_id)
+    return int(resuelto["organization_id"])
 
 
 # ── /licitaciones (offset pagination — marcado deprecated) ───────────────
@@ -171,6 +199,8 @@ async def list_licitaciones(
             "puede licitar."
         ),
     ),
+    etiqueta: int | None = Query(None, ge=1, description=_DESC_ETIQUETA),
+    organization_id: int | None = Query(None, ge=1, description=_DESC_ORGANIZACION_ETIQUETA),
     sort: str | None = Query(
         None, description="Orden: fecha_publicacion (default), -importe, importe, titulo"
     ),
@@ -201,6 +231,8 @@ async def list_licitaciones(
         successor="/api/v1/licitaciones/cursor",
     )
 
+    etiqueta_org = await _organizacion_de_la_etiqueta(_ctx, etiqueta, organization_id)
+
     items, total = await run_db(
         _lic_repo.list_paginated,
         q=q,
@@ -223,6 +255,8 @@ async def list_licitaciones(
         tramitacion=tramitacion,
         tipo_contrato=tipo_contrato,
         dias_restantes_max=dias_restantes_max,
+        etiqueta_id=etiqueta,
+        etiqueta_organization_id=etiqueta_org,
         limit=page.limit,
         offset=page.offset,
         sort=sort,
@@ -289,6 +323,8 @@ async def list_licitaciones_cursor(
     dias_restantes_max: int | None = Query(
         None, ge=0, le=3650, description="Plazo que vence dentro de N días"
     ),
+    etiqueta: int | None = Query(None, ge=1, description=_DESC_ETIQUETA),
+    organization_id: int | None = Query(None, ge=1, description=_DESC_ORGANIZACION_ETIQUETA),
     sort: str | None = Query(
         None,
         pattern="^-?(fecha_publicacion|importe|titulo)$",
@@ -356,6 +392,10 @@ async def list_licitaciones_cursor(
         "tramitacion": tramitacion,
         "tipo_contrato": tipo_contrato,
         "dias_restantes_max": dias_restantes_max,
+        "etiqueta_id": etiqueta,
+        "etiqueta_organization_id": await _organizacion_de_la_etiqueta(
+            _ctx, etiqueta, organization_id
+        ),
     }
 
     def _leer() -> tuple[list[dict[str, Any]], int | None]:

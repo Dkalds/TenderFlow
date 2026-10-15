@@ -151,6 +151,18 @@ export async function triggerDownload(url: string): Promise<void> {
 }
 
 /**
+ * Entrega al usuario un fichero suyo que ya está en memoria, **sin medirlo**.
+ *
+ * Para descargas que no son exportaciones: un adjunto propio de una
+ * oportunidad es un documento del equipo, no uso analítico del producto, y
+ * contarlo en `export_lanzado` mezclaría las dos cosas (mismo criterio que las
+ * descargas RGPD de `mi-cuenta`).
+ */
+export function guardarFichero(nombre: string, blob: Blob): void {
+  volcarBlob(nombre, blob);
+}
+
+/**
  * Recursos que se exportan generando el fichero en el propio navegador.
  *
  * Es una unión cerrada a propósito: `recurso` viaja a la telemetría, donde sólo

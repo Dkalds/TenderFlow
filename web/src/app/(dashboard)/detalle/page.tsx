@@ -4,7 +4,6 @@ import { startTransition, useCallback, useEffect, useMemo, useState } from "reac
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useTable } from "@tanstack/react-table";
-import { useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { useDensity } from "@/lib/density";
 import { useFilterParams, useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
@@ -22,6 +21,7 @@ import { useDetalleFavoritos } from "./_hooks/use-detalle-favoritos";
 import { useDetalleQueries, useDetailWithScore } from "./_hooks/use-detalle-queries";
 import { useDetalleRows, useDetalleTableState } from "./_hooks/use-detalle-table";
 import { useDetalleTeclado } from "./_hooks/use-detalle-teclado";
+import { useEtiquetaDelListado } from "./_hooks/use-etiqueta-listado";
 import { pasosDeFicha, useFichaCompleta } from "./_hooks/use-ficha-completa";
 
 /**
@@ -73,9 +73,11 @@ export default function DetallePage() {
   // /resumen llega con la ventana de cierre y con los chips de ámbito que el
   // usuario tuviera puestos, y la tabla tiene que respetar los dos.
   const cierre = useCierreRecorte();
+  // F1.6 — la etiqueta también es un filtro del listado, en servidor (CU-28).
+  const etiqueta = useEtiquetaDelListado();
   const queryFilters = useMemo(
-    () => ({ ...filterParams, ...cierre.params }),
-    [filterParams, cierre.params],
+    () => ({ ...filterParams, ...cierre.params, ...etiqueta.params }),
+    [filterParams, cierre.params, etiqueta.params],
   );
 
   const tabla = useDetalleTableState({ filterParams: queryFilters, q });
@@ -122,11 +124,7 @@ export default function DetallePage() {
     alcanzables: tabla.alcanzables,
     setRowSelection,
   });
-  const { mergedRows: filasPagina, totalPages, selectedIds, selectedItems } = filas;
-  // F1.6 — filtra la página cargada: `GET /licitaciones` no acepta etiqueta.
-  const etiqueta = useFiltroEtiqueta("favorito", filasPagina.map((row) => row.id_externo));
-  const pasaEtiqueta = etiqueta.pasa;
-  const mergedRows = useMemo(() => filasPagina.filter((row) => pasaEtiqueta(row.id_externo)), [filasPagina, pasaEtiqueta]);
+  const { mergedRows, totalPages, selectedIds, selectedItems } = filas;
   const total = queries.data?.total ?? 0;
 
   const table = useTable({

@@ -113,6 +113,28 @@ export function formatNumber(
 }
 
 /**
+ * Tamaño de fichero legible en castellano: «830 B», «12 KB», «1,5 MB».
+ *
+ * Potencias de 1024, que es como mide el servidor sus topes (25 MiB son
+ * 26 214 400 bytes): con potencias de mil, el máximo anunciado y el de un
+ * fichero rechazado por poco no cuadrarían. Se rotula KB/MB, que es lo que
+ * enseñan el explorador de ficheros y el gestor de descargas.
+ */
+export function formatTamano(bytes: number | null | undefined): string {
+  if (sinDato(bytes)) return EMPTY;
+  if (bytes < 1024) return `${bytes} B`;
+  const unidades = ["KB", "MB", "GB"];
+  let valor = bytes / 1024;
+  let i = 0;
+  while (valor >= 1024 && i < unidades.length - 1) {
+    valor /= 1024;
+    i += 1;
+  }
+  const cifra = new Intl.NumberFormat("es-ES", { maximumFractionDigits: valor < 10 ? 1 : 0 }).format(valor);
+  return `${cifra} ${unidades[i]}`;
+}
+
+/**
  * Format a percentage.
  */
 export function formatPercent(

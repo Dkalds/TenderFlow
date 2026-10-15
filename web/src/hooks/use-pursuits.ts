@@ -18,6 +18,7 @@ import type {
   PursuitDetail,
   PursuitListResponse,
   PursuitMetrics as PursuitMetricsDTO,
+  PursuitPlazo,
   PursuitUpdate,
 } from "@/lib/api-types";
 import { organizationKeys } from "@/lib/query-keys";
@@ -66,9 +67,18 @@ export type AgendaKind = PipelineAgendaItem["kind"];
 
 export { pursuitKeys } from "@/lib/query-keys";
 
+export type { PursuitPlazo };
+
 export interface PursuitFilters {
   status?: PursuitStatus;
   responsible_user_id?: number;
+  /** Título, referencia o responsable; lo pliega y escapa el servidor. */
+  q?: string;
+  /** Id de una etiqueta de la organización. */
+  etiqueta?: number;
+  plazo?: PursuitPlazo;
+  /** Tamaño de página; sin él, el de la API (50). */
+  limit?: number;
 }
 
 /**
@@ -79,6 +89,10 @@ function pursuitQuery(filters: PursuitFilters, organizationId: OrganizacionActiv
   return {
     status: filters.status,
     responsible_user_id: filters.responsible_user_id || undefined,
+    q: filters.q || undefined,
+    etiqueta: filters.etiqueta || undefined,
+    plazo: filters.plazo,
+    limit: filters.limit,
     organization_id: organizationId ?? undefined,
   };
 }
@@ -113,6 +127,11 @@ export function usePursuits(filters: PursuitFilters = {}) {
       apiGet("/api/v1/pursuits", { params: { query: pursuitQuery(filters, organizationId) }, signal }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
+    // Al cambiar un filtro se sigue viendo el resultado anterior hasta que llega
+    // el nuevo, en vez de vaciar las seis columnas en cada tecla. Solo dentro de
+    // la misma organización: la de otra no puede asomar ni un instante.
+    placeholderData: (anterior, consultaAnterior) =>
+      consultaAnterior?.queryKey.at(-1) === organizationId ? anterior : undefined,
     meta: META_ERROR_EN_LINEA,
   });
 }

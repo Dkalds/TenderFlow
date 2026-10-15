@@ -16,7 +16,13 @@ from sqlalchemy import Select, Text, and_, cast, func, literal_column, or_, sele
 from sqlalchemy.dialects.postgresql import ARRAY, array
 
 from db.database import connect_read, fts_available
-from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
+from db.models import (
+    _DIALECT,
+    compile_query,
+    etiquetas_aplicadas,
+    licitacion_tecnologia_score,
+    licitaciones,
+)
 from db.repositories.base import (
     ambito_busqueda_sql,
     csv_values,
@@ -126,6 +132,28 @@ def _dia_siguiente(iso_date: str) -> str | None:
         return (date.fromisoformat(iso_date) + timedelta(days=1)).isoformat()
     except ValueError:
         return None
+
+
+#: `objeto_tipo` con el que se etiqueta un expediente: el «favorito» de F1.6,
+#: cuyo `objeto_id` es el `id_externo` de la licitación.
+OBJETO_ETIQUETA_EXPEDIENTE: Final = "favorito"
+
+
+def _etiqueta_requerida(
+    etiqueta_id: int | None, organization_id: int | None
+) -> tuple[int, int] | None:
+    """``(organización, etiqueta)`` del filtro, o ``None`` si no se pidió.
+
+    Una etiqueta sin organización **falla** en vez de filtrar por id a secas:
+    los ids de `etiquetas` son globales, y un filtro que olvidara la
+    organización casaría con lo etiquetado por otro cliente. La resuelve quien
+    llama (la ruta, con la sesión delante), nunca este repositorio.
+    """
+    if etiqueta_id is None:
+        return None
+    if organization_id is None:
+        raise ValueError("El filtro por etiqueta necesita la organización resuelta.")
+    return int(organization_id), int(etiqueta_id)
 
 
 def _plegado(column: Any) -> Any:
@@ -413,6 +441,8 @@ class LicitacionRepository:
         tramitacion: str | None = None,
         tipo_contrato: str | None = None,
         dias_restantes_max: int | None = None,
+        etiqueta_id: int | None = None,
+        etiqueta_organization_id: int | None = None,
         only_classified: bool = True,
     ) -> list[Any]:
         """Devuelve lista de cláusulas SA Core para WHERE.
@@ -582,6 +612,30 @@ class LicitacionRepository:
             clauses.append(fecha_lim >= datetime.now(UTC).date().isoformat())
             clauses.append(abierta_core(licitaciones.c.estado))
 
+        # Etiqueta de organización (F1.6) puesta al expediente como favorito.
+        # Va en el `WHERE` y no filtrando la página en el cliente, que era lo que
+        # hacía Detalle: así el total y las páginas son las del conjunto
+        # etiquetado entero. La organización viaja con la etiqueta y entra en el
+        # `EXISTS` —además del respaldo RLS de `v128`—: una etiqueta es dato de
+        # un cliente, y sin ella en el predicado el filtro casaría con lo que
+        # otra organización ha etiquetado con el mismo id.
+        if etiqueta := _etiqueta_requerida(etiqueta_id, etiqueta_organization_id):
+            org, eid = etiqueta
+            ea = etiquetas_aplicadas
+            clauses.append(
+                select(literal_column("1"))
+                .select_from(ea)
+                .where(
+                    and_(
+                        ea.c.organization_id == org,
+                        ea.c.etiqueta_id == eid,
+                        ea.c.objeto_tipo == OBJETO_ETIQUETA_EXPEDIENTE,
+                        ea.c.objeto_id == licitaciones.c.id_externo,
+                    )
+                )
+                .exists()
+            )
+
         return clauses
 
     # ── public API ────────────────────────────────────────────────────────────
@@ -644,6 +698,8 @@ class LicitacionRepository:
         tramitacion: str | None = None,
         tipo_contrato: str | None = None,
         dias_restantes_max: int | None = None,
+        etiqueta_id: int | None = None,
+        etiqueta_organization_id: int | None = None,
         limit: int = 50,
         offset: int = 0,
         sort: str | None = None,
@@ -683,6 +739,8 @@ class LicitacionRepository:
             tramitacion=tramitacion,
             tipo_contrato=tipo_contrato,
             dias_restantes_max=dias_restantes_max,
+            etiqueta_id=etiqueta_id,
+            etiqueta_organization_id=etiqueta_organization_id,
         )
 
         # Usar FTS5 para búsquedas de texto si disponible
@@ -708,6 +766,8 @@ class LicitacionRepository:
                 tramitacion=tramitacion,
                 tipo_contrato=tipo_contrato,
                 dias_restantes_max=dias_restantes_max,
+                etiqueta_id=etiqueta_id,
+                etiqueta_organization_id=etiqueta_organization_id,
                 limit=limit,
                 offset=offset,
                 order=order,
@@ -845,6 +905,8 @@ class LicitacionRepository:
         tramitacion: str | None = None,
         tipo_contrato: str | None = None,
         dias_restantes_max: int | None = None,
+        etiqueta_id: int | None = None,
+        etiqueta_organization_id: int | None = None,
         limit: int,
         offset: int,
         order: Any,
@@ -990,6 +1052,17 @@ class LicitacionRepository:
             extra_params.append(_dia_siguiente(tope))
             extra_conditions.append(abierta_sql("l.estado"))
 
+        # Mismo `EXISTS` que `_base_filters`: sin él, escribir en la caja de
+        # búsqueda soltaría la etiqueta y devolvería el corpus que casa con el
+        # texto.
+        if etiqueta := _etiqueta_requerida(etiqueta_id, etiqueta_organization_id):
+            extra_conditions.append(
+                "EXISTS (SELECT 1 FROM etiquetas_aplicadas ea "
+                "WHERE ea.organization_id = %s AND ea.etiqueta_id = %s "
+                "AND ea.objeto_tipo = %s AND ea.objeto_id = l.id_externo)"
+            )
+            extra_params.extend([*etiqueta, OBJETO_ETIQUETA_EXPEDIENTE])
+
         # Compilar order clause a string para insertar en FTS SQL
         compiled_order = str(order.compile(dialect=_DIALECT))
         # SA prefija la tabla: "licitaciones.fecha_publicacion DESC" → quitar prefijo
@@ -1037,6 +1110,8 @@ class LicitacionRepository:
         tramitacion: str | None = None,
         tipo_contrato: str | None = None,
         dias_restantes_max: int | None = None,
+        etiqueta_id: int | None = None,
+        etiqueta_organization_id: int | None = None,
         limit: int = 100,
         sort: str | None = None,
         cursor_orden: tuple[str | float | None, str] | None = None,
@@ -1079,6 +1154,8 @@ class LicitacionRepository:
             tramitacion=tramitacion,
             tipo_contrato=tipo_contrato,
             dias_restantes_max=dias_restantes_max,
+            etiqueta_id=etiqueta_id,
+            etiqueta_organization_id=etiqueta_organization_id,
         )
 
         if sort and sort != "fecha_publicacion":

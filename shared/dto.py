@@ -689,6 +689,12 @@ PursuitStatus = Literal[
 PursuitDecision = Literal["pending", "go", "no_go"]
 PursuitOutcome = Literal["pending", "won", "lost", "cancelled"]
 
+#: Filtro de plazo del tablero (`GET /pursuits?plazo=`): el de presentación del
+#: expediente, sobre oportunidades abiertas y sin presentar. `vencido` es «el
+#: día ya pasó»; `7d` y `30d`, «vence de hoy a dentro de N días», ambos
+#: inclusive. Mismo criterio que `services/carga_equipo.py` en Dirección.
+PursuitPlazo = Literal["vencido", "7d", "30d"]
+
 #: Vocabulario de bandas del Radar, y **la declaración canónica de este
 #: enumerado**. Lo fija ``_band()`` en ``services/analytics/scoring.py``; la
 #: revisión ``v93`` lo guardó deliberadamente como TEXT para que la banda pueda
@@ -1548,7 +1554,10 @@ class PursuitListResponse(BaseModel):
     organization_id: int = Field(ge=1)
     items: list[PursuitSummary] = Field(default_factory=list)
     total: int = Field(ge=0)
-    limit: int = Field(ge=1, le=200)
+    # El mismo tope que acepta la ruta (`api/pagination.py`). Con `le=200` aquí y
+    # 500 allí, pedir `limit=300` pasaba la validación de entrada y reventaba al
+    # construir la respuesta: un 400 por un parámetro que la API declara válido.
+    limit: int = Field(ge=1, le=MAX_PAGE_LIMIT)
     offset: int = Field(ge=0)
 
 

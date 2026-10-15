@@ -23,9 +23,11 @@ from pydantic import BaseModel, Field, field_validator
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
+    _adj_repo,
     _lic_repo,
 )
 from api.routes.licitaciones.modelos import (
+    AdjudicatarioOut,
     LicitacionDetail,
     LoteOut,
 )
@@ -115,11 +117,34 @@ async def get_licitacion(
     # el middleware en cada respuesta. Dos implementaciones de lo mismo en una
     # ruta, y la que se leía en el código era la que no corría.
 
-    canonica = await run_db(_dedupe_repo.canonical_for, id_externo)
-    lotes = await run_db(lotes_de, id_externo)
+    def _relacionados() -> tuple[str | None, list[dict[str, Any]], list[dict[str, Any]]]:
+        # Las tres lecturas que cuelgan del expediente, en un solo salto al
+        # threadpool: son independientes y cada `run_db` es una espera más.
+        return (
+            _dedupe_repo.canonical_for(id_externo),
+            lotes_de(id_externo),
+            _adj_repo.list_for_licitacion(id_externo),
+        )
+
+    canonica, lotes, adjudicaciones = await run_db(_relacionados)
     campos = {k: data.get(k) for k in LicitacionDetail.model_fields}
     campos["republicacion_de"] = canonica
     campos["lotes"] = [LoteOut(**lote) for lote in lotes]
+    campos["adjudicatarios"] = [
+        AdjudicatarioOut(
+            nombre=str(fila.get("nombre") or "Adjudicatario sin nombre publicado"),
+            nif=fila.get("nif"),
+            importe_adjudicado=fila.get("importe_adjudicado"),
+            n_ofertas_recibidas=fila.get("n_ofertas_recibidas"),
+            # La fuente guarda a veces la hora; la ficha habla de días.
+            fecha_adjudicacion=(
+                str(fila["fecha_adjudicacion"])[:10] if fila.get("fecha_adjudicacion") else None
+            ),
+            lote_numero=fila.get("lote_numero"),
+            lote_titulo=fila.get("lote_titulo"),
+        )
+        for fila in adjudicaciones
+    ]
     # `model_validate` y no `**campos`: cada valor sale de `dict.get` como
     # opcional, y es pydantic quien decide si un `None` cabe en el campo.
     return LicitacionDetail.model_validate(campos)

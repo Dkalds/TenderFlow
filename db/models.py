@@ -162,6 +162,23 @@ lotes = Table(
 )
 
 # ---------------------------------------------------------------------------
+# Etiquetas de organización aplicadas a objetos (v105, F1.6)
+# ---------------------------------------------------------------------------
+
+# Sólo las columnas que leen los filtros del listado: la tabla la escribe
+# `db/repositories/cuentas.py` con SQL directo, y aquí basta lo que el `EXISTS`
+# de «expedientes con esta etiqueta» necesita para compilarse.
+etiquetas_aplicadas = Table(
+    "etiquetas_aplicadas",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("organization_id", Integer, nullable=False),
+    Column("etiqueta_id", Integer, nullable=False),
+    Column("objeto_tipo", Text, nullable=False),
+    Column("objeto_id", Text, nullable=False),
+)
+
+# ---------------------------------------------------------------------------
 # Compiler helper
 # ---------------------------------------------------------------------------
 

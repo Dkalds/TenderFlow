@@ -35,6 +35,17 @@ describe("useBusquedaListado", () => {
     expect(registrarEvento).toHaveBeenCalledTimes(1);
   });
 
+  it("la organización que acompaña a la etiqueta no cuenta como otro filtro", () => {
+    const filtros = { etiqueta: "4", organization_id: "7", provincia: "Sevilla" };
+    renderHook(() => useBusquedaListado(filtros, { total: 3 }, false));
+    // Dos filtros (etiqueta y provincia), no tres.
+    expect(registrarEvento).toHaveBeenCalledWith("busqueda_realizada", {
+      superficie: "listado",
+      con_resultados: "si",
+      filtros: "1-2",
+    });
+  });
+
   it("abrir la tabla sin filtros no es buscar", () => {
     renderHook(() => useBusquedaListado({}, { total: 900 }, false));
     expect(registrarEvento).not.toHaveBeenCalled();

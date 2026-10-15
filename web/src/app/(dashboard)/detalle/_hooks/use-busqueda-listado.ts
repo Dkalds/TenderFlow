@@ -19,11 +19,13 @@ import { registrarEvento, tramoDeFiltros } from "@/lib/analytics";
 
 /**
  * Filtros activos contados como los ve el usuario: el periodo es uno aunque
- * viaje en dos parámetros.
+ * viaje en dos parámetros, y `organization_id` no es ninguno —solo dice de
+ * quién es la etiqueta que lo acompaña—.
  */
 export function contarFiltros(params: Record<string, string>): number {
   const claves = new Set(Object.keys(params).filter((clave) => params[clave] !== ""));
   if (claves.has("fecha_desde") && claves.has("fecha_hasta")) claves.delete("fecha_hasta");
+  claves.delete("organization_id");
   return claves.size;
 }
 

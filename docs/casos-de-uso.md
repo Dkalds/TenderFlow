@@ -47,6 +47,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   clasificados con tecnología.
 - Abre la ficha de uno por su enlace permanente; uno que no existe no rompe la
   página.
+- En la ficha ve quién lo ganó —por lote, con NIF, importe adjudicado y número
+  de ofertas—, el contrato anterior del mismo órgano con su incumbente y los
+  expedientes parecidos.
 
 ### CU-03 — Seguir un expediente y anotarlo
 
@@ -215,6 +218,28 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   administradora.
 - Antes de borrarla ve cuánto trabajo se lleva el borrado, y lo confirma
   escribiendo el nombre; la organización personal no se borra por aquí.
+
+### CU-27 — Guardar la propuesta del equipo en la oportunidad
+
+- **Quién:** equipo de preventa. **Dónde:** ficha de la oportunidad, Adjuntos.
+- Sube los documentos de la oferta, los descarga con un enlace que caduca y
+  retira los que ya no sirven; el mismo fichero no se sube dos veces.
+- El tamaño y los tipos admitidos los dicta el servidor, y la pantalla los dice
+  antes de elegir el fichero.
+- Quien solo lee los ve y los descarga, pero no sube ni retira; otra
+  organización no los alcanza ni por su identificador.
+- Un entorno sin almacén de documentos lo dice y no acepta ningún fichero.
+
+### CU-28 — Acotar Detalle y el tablero por etiqueta, responsable y plazo
+
+- **Quién:** comercial y responsable de oportunidades. **Dónde:** `/detalle`,
+  `/oportunidades`.
+- Filtra los expedientes por una etiqueta de su organización y obtiene todos
+  los etiquetados, con su total, no solo los de la página cargada.
+- En el tablero filtra por texto, etiqueta, responsable y plazo de
+  presentación —vencido, 7 días, 30 días— sobre todas las oportunidades.
+- El plazo cuenta solo en las oportunidades abiertas y sin presentar, igual
+  que en Dirección.
 
 ### CU-29 — Enterarme de lo que me concierne desde la campana
 

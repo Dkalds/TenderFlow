@@ -1,3 +1,5 @@
+import type { Adjudicatario } from "@/lib/api-types";
+
 /** Ficha de licitación tal como la consumen /detalle, el inspector y el comparador. */
 export interface LicitacionDetail {
   id_externo: string;
@@ -21,6 +23,12 @@ export interface LicitacionDetail {
   fecha_inicio: string | null;
   fecha_fin: string | null;
   descripcion: string | null;
+  /**
+   * Quién lo ganó, por lote cuando lo hay. Opcional porque el comparador
+   * también construye fichas desde el listado, que no lo trae; la ficha de
+   * `GET /licitaciones/{id}` lo manda siempre (lista vacía si no hay).
+   */
+  adjudicatarios?: Adjudicatario[];
   score?: number;
   /** Banda del scoring (`Caliente|Atractiva|Tibia|Descarte`), si ya llegó. */
   band?: string | null;

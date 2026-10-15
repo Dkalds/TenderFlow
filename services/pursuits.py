@@ -53,6 +53,7 @@ from shared.dto import (
     PursuitListResponse,
     PursuitMetrics,
     PursuitOutcomeReasonCode,
+    PursuitPlazo,
     PursuitStatus,
     PursuitSummary,
     PursuitUpdate,
@@ -392,20 +393,53 @@ def _con_fecha_prevista(rows: list[dict[str, Any]]) -> list[PursuitSummary]:
     return items
 
 
+#: Estados en los que el plazo de presentación ya no pide nada: la oferta está
+#: entregada o la oportunidad cerrada. Es la exclusión de la carga del equipo en
+#: Dirección (`services/carga_equipo.py`), para que «plazo vencido» cuente lo
+#: mismo en el tablero y en el cuadro de quien dirige.
+ESTADOS_SIN_PLAZO_PENDIENTE: tuple[PursuitStatus, ...] = ("submitted", "won", "lost", "withdrawn")
+
+
+def ventana_de_plazo(plazo: PursuitPlazo | None, *, hoy: date) -> tuple[str | None, str | None]:
+    """``(desde, hasta)`` del filtro de plazo: desde inclusive, hasta exclusivo.
+
+    ``vencido`` es «el día ya pasó» (``fecha_limite < hoy``): el plazo que cierra
+    hoy a las 14:00 sigue siendo de hoy toda la jornada, igual que lo cuenta
+    Dirección. ``7d``/``30d`` van de hoy al día N inclusive, y por eso el techo
+    exclusivo es N+1. El día es el peninsular, que es en el que se publica un
+    plazo (`shared.dates.hoy_peninsular`).
+    """
+    if plazo is None:
+        return None, None
+    if plazo == "vencido":
+        return None, hoy.isoformat()
+    dias = 7 if plazo == "7d" else 30
+    return hoy.isoformat(), (hoy + timedelta(days=dias + 1)).isoformat()
+
+
 def list_pursuits(
     user_id: int,
     *,
     organization_id: int | None = None,
     status: PursuitStatus | None = None,
     responsible_user_id: int | None = None,
+    q: str | None = None,
+    etiqueta_id: int | None = None,
+    plazo: PursuitPlazo | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> PursuitListResponse:
+    desde, hasta = ventana_de_plazo(plazo, hoy=hoy_peninsular())
     with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
         rows, total = _repo.list_scoped(
             resolved_id,
             status=status,
             responsible_user_id=responsible_user_id,
+            q=q,
+            etiqueta_id=etiqueta_id,
+            plazo_desde=desde,
+            plazo_hasta=hasta,
+            excluir_estados=ESTADOS_SIN_PLAZO_PENDIENTE if plazo else (),
             limit=limit,
             offset=offset,
         )
