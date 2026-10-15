@@ -217,6 +217,17 @@ VETADAS = [
     "dblink_exec",
     "ts_stat",
     "ts_rewrite",
+    # Escriben WAL o asignan un xid aunque la transacción sea de solo lectura.
+    "pg_logical_emit_message",
+    "pg_logical_slot_get_changes",
+    "pg_current_xact_id",
+    "txid_current",
+    # Ranuras de replicación: hoy las frena NOREPLICATION, pero retendrían WAL.
+    "pg_create_logical_replication_slot",
+    "pg_create_physical_replication_slot",
+    "pg_copy_logical_replication_slot",
+    "pg_drop_replication_slot",
+    "pg_replication_slot_advance",
 ]
 
 

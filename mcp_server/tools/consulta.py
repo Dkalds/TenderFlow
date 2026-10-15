@@ -51,8 +51,9 @@ def consultar_sql(
     y columnas que lista ``describir_esquema``. El resultado se corta en 500
     filas (``truncado: true``; usa ``LIMIT``/agregados para afinar) y cada texto
     largo se recorta a 1 000 caracteres con la marca ``…[+N]``. No se admiten
-    cerrojos de aviso (``pg_advisory_*``), ``pg_notify``, ``set_config`` ni las
-    funciones que ejecutan SQL escrito en texto (``query_to_xml``, ``ts_stat``…).
+    cerrojos de aviso (``pg_advisory_*``), ``pg_notify``, ``set_config``, las que
+    escriben WAL (``pg_logical_*``, ``txid_current``) ni las que ejecutan SQL
+    escrito en texto (``query_to_xml``, ``ts_stat``…).
 
     Devuelve ``{"columnas": [...], "filas": [[...], ...], "n_filas": N,
     "truncado": bool, "duracion_ms": N}``. Un error de Postgres vuelve con su

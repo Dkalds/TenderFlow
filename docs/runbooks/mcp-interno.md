@@ -244,7 +244,7 @@ Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
 | El registro del cliente falla (`invalid_redirect_uri` en `/register`) | Un cliente con callback propio (ChatGPT) | Añadirlo a `MCP_REDIRECT_URIS_EXTRA` (paso 4) |
 | `/register` responde `invalid_client_metadata` «Demasiados registros…» o «Registro desmedido…»; `/authorize` vuelve con `error=temporarily_unavailable` | Topes y rate limit del DCR abierto: 30 registros/h y 600 autorizaciones/h **globales**, 60/h por cliente; campos de más de 500 caracteres, registro de más de 8 KB. No hay límite por IP | Si es un abuso, esperar a que pase la hora (o vaciar las claves `mcp:oauth:*` de `rate_limits`/Redis, ver `rate-limit-reset.md`); si es un cliente legítimo con metadatos enormes, es un cambio de código en `mcp_server/auth/proveedor.py` |
 | Un conector que funcionaba da `invalid_client` / «Client ID … not found» | El cliente se purgó (más de 7 días sin tokens) o uno de sus `redirect_uris` ya no está en la allowlist (`MCP_REDIRECT_URIS_EXTRA` se cambió) | Quitar y volver a añadir el conector: se registra de nuevo |
-| `consultar_sql`: «La función X no está permitida en el MCP» | Llamada vetada (cerrojos `pg_advisory_*`, `pg_notify`, `set_config`, señales a otros procesos, funciones que ejecutan SQL en texto); ADR-036 | Reescribir la consulta sin esa función. Si el LLM la escribió sin que nadie se lo pidiera, mirar si venía de un pliego (inyección de instrucciones) |
+| `consultar_sql`: «La función X no está permitida en el MCP» | Llamada vetada (cerrojos `pg_advisory_*`, `pg_notify`, `set_config`, señales a otros procesos, las que escriben WAL —`pg_logical_*`, `txid_current`, ranuras de replicación—, funciones que ejecutan SQL en texto); ADR-036 | Reescribir la consulta sin esa función. Si el LLM la escribió sin que nadie se lo pidiera, mirar si venía de un pliego (inyección de instrucciones) |
 | **421 Misdirected Request** en `/mcp` | El `Host` de la petición no coincide con `MCP_PUBLIC_URL`. Típico: `MCP_PUBLIC_URL` escrito con `:443` explícito (`https://host:443`), o llamar por otro dominio | Poner `MCP_PUBLIC_URL=https://host` sin puerto y sin barra final; usar el mismo host en el conector |
 | **403** con `Origin` en `/mcp` | Petición de navegador desde un origen que no es el del propio servicio, claude.ai/claude.com, chatgpt.com o localhost | Si es un cliente legítimo nuevo, requiere un cambio de código en `mcp_server/servidor.py::_ORIGENES_CLIENTES` |
 | `consultar_sql` devuelve **`42501`** inesperado | La tabla/columna no está concedida al rol: o es oculta a propósito (`api_keys`, `sessions`, `users.password_hash`…), o es nueva y falta clasificarla en `mcp_server/catalogo.py` y regenerar | Si es nueva: clasificar, `python scripts/gen_mcp_grants.py` y reaplicar el SQL (paso 1.3; la contraseña ya existe, el script no la toca) |
@@ -330,6 +330,12 @@ vez, tras el alta (pasos 1–3):
       filas, y aparece su fila `mcp.consultar_sql` en `audit_log` con el SQL.
 - [ ] Un `consultar_sql` contra `api_keys` devuelve el error `42501` con su
       pista, sin tumbar el servidor.
+- [ ] Esquemas a los que llega el rol (en Supabase hay `extensions`, `net`
+      —`pg_net` hace peticiones HTTP—, `graphql`, `vault`…):
+      `SELECT nspname FROM pg_namespace WHERE has_schema_privilege('tenderflow_mcp', oid, 'USAGE')`
+      debe dar solo `pg_catalog`, `information_schema` y `public`. Si sale otro,
+      revisar sus funciones contra la lista de vetadas de `db/consulta_libre.py`
+      (ADR-036) antes de abrir el servicio.
 - [ ] **El conector real de claude.ai funciona.** Esto es lo único que el
       Inspector no prueba: los metadatos OAuth del SDK anuncian
       `token_endpoint_auth_methods_supported = ["client_secret_post",

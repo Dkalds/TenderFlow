@@ -156,18 +156,29 @@ estas tres personas, esta decisión se revisa antes.
   bloquearía cada `log_action` de la API (y sus filas se perderían por
   timeout); igual con los cerrojos de `tecnologia_pliego` o de las familias
   OAuth. `pg_notify` y las señales (`pg_cancel_backend`,
-  `pg_terminate_backend`) llegan a otros procesos, y `query_to_xml`,
-  `cursor_to_xml`, `ts_stat`, `ts_rewrite` o `dblink` ejecutan SQL escrito en
-  texto, que esquivaría el veto. `db/consulta_libre.py` rechaza antes de
-  ejecutar cualquier identificador en posición de código con esos nombres
-  (`pg_advisory_*`, `pg_try_advisory_*`, `dblink*`, `set_config`…), con un
+  `pg_terminate_backend`) llegan a otros procesos; `pg_logical_emit_message`
+  **escribe WAL aun en una transacción de solo lectura** (gigabytes en los 15 s
+  de una consulta llenarían el disco y Supabase pasaría la base a solo
+  lectura), y `pg_current_xact_id`/`txid_current` asignan un xid cuyo commit
+  también escribe; las ranuras de replicación retendrían WAL (hoy las frena
+  `NOREPLICATION`). `query_to_xml`, `cursor_to_xml`, `ts_stat`, `ts_rewrite` o
+  `dblink` ejecutan SQL escrito en texto, que esquivaría el veto.
+  `db/consulta_libre.py` rechaza antes de ejecutar cualquier identificador en
+  posición de código con esos nombres (`pg_advisory_*`, `pg_try_advisory_*`,
+  `pg_logical_*`, `pg_create_*`, `pg_copy_*`, `pg_replication_*`, `dblink*`,
+  `set_config`…), con un
   recorrido léxico que sigue el de Postgres 16 (`scan.l`: `E'…'`, continuación
   de literales, comentarios, cadenas entre dólares; `U&"…"` se rechaza) y que
   los tests contrastan con Postgres real. Es **defensa en profundidad, no
   frontera**: el rol sigue siendo el límite principal (no escribe ni lee lo
-  oculto); una función dañina que falte en la lista, o un cambio léxico de una
-  versión futura de Postgres, quedaría abierta, y lo peor que permitiría es
-  bloquear o molestar a otros procesos, no leer ni escribir más. El motor del
+  oculto). La lista sale de revisar las funciones de `pg_catalog` que `PUBLIC`
+  puede ejecutar en PG16 (2026-10-15, informe de la revisión final); una
+  función dañina que falte, una de una extensión instalada después o un cambio
+  léxico de una versión futura de Postgres quedaría abierta. No daría lectura de
+  lo oculto ni escritura de datos (lo impiden los grants y la solo lectura),
+  pero sí podría afectar al servidor compartido: bloquear o señalar a otros
+  procesos, o consumir recursos como WAL o disco. Por eso cada extensión nueva
+  obliga a repasar la lista. El motor del
   riesgo es la **inyección de instrucciones**: el LLM lee el texto de los
   pliegos (`buscar_en_pliegos`, `documentos.texto`), escrito por terceros, y un
   pliego hostil podría pedirle que ejecute una de esas llamadas.

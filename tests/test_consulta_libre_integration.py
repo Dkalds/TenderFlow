@@ -324,3 +324,24 @@ def test_tope_de_tiempo_es_de_la_consulta_entera(rol_mcp: str) -> None:
     assert err.sqlstate == "57014"
     assert err.pista
     assert time.perf_counter() - inicio < 3
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_logical_emit_message(false, 'tf', repeat('x', 1000000))",
+        "SELECT pg_logical_emit_message(true, 'tf', repeat('x', 1000000))",
+        "SELECT \"pg_catalog\".pg_logical_emit_message(true, 'tf', 'x'::bytea)",
+        "SELECT pg_current_xact_id()",
+        "SELECT txid_current()",
+    ],
+)
+def test_lo_que_escribe_wal_en_solo_lectura_esta_vetado(rol_mcp: str, sql: str) -> None:
+    """``pg_logical_emit_message`` escribe WAL (y asignar un xid, un commit) aun en solo lectura.
+
+    Sin veto, el SQL del LLM podría escribir gigabytes de WAL por llamada dentro
+    de los 15 s y llenar el disco de Supabase (que pasa la base a solo lectura).
+    """
+    err = _err(sql)
+    assert err.sqlstate is None
+    assert "no está permitida" in err.mensaje

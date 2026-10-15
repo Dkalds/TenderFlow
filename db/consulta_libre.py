@@ -342,7 +342,8 @@ def _analizar(sql: str) -> _Lexico:
 # puede ejecutar y que en Supabase no se pueden retirar sin romper a otros
 # roles: los cerrojos de aviso son compartidos entre roles (con
 # ``pg_advisory_lock`` el SQL del LLM bloquearía la cadena de ``audit_log`` o
-# las familias OAuth), ``pg_notify`` y las señales llegan a otros procesos, y
+# las familias OAuth), ``pg_notify`` y las señales llegan a otros procesos,
+# ``pg_logical_emit_message`` escribe WAL aun en solo lectura, y
 # ``query_to_xml``, ``ts_stat``, ``ts_rewrite`` o ``dblink`` ejecutan SQL
 # escrito en texto, que este veto no vería. Es defensa en profundidad (ADR-036):
 # el motor del riesgo es la inyección de instrucciones desde el texto de los
@@ -361,14 +362,33 @@ _VETADAS = frozenset(
         "set_config",
         "ts_stat",
         "ts_rewrite",
+        # Asignan un xid aunque la transacción sea de solo lectura: su commit
+        # escribe WAL y consume identificadores de transacción.
+        "pg_current_xact_id",
+        "txid_current",
+        "pg_drop_replication_slot",
     }
 )
-_VETADAS_PREFIJO = ("pg_advisory_", "pg_try_advisory_", "dblink")
+_VETADAS_PREFIJO = (
+    "pg_advisory_",
+    "pg_try_advisory_",
+    "dblink",
+    # ``pg_logical_emit_message`` escribe WAL en una transacción de solo lectura
+    # (gigabytes en 15 s llenarían el disco); ``pg_logical_slot_*`` y las de
+    # ranuras de replicación retendrían WAL. Hoy las ranuras las frena
+    # ``NOREPLICATION``; se vetan igual.
+    "pg_logical_",
+    "pg_create_",
+    "pg_copy_",
+    "pg_replication_",
+)
 _PISTA_VETADA = (
     "En el MCP no se admiten cerrojos de aviso (pg_advisory_*), pg_notify, señales "
-    "a otros procesos, set_config ni las funciones que ejecutan SQL escrito en "
-    "texto (query_to_xml, cursor_to_xml, ts_stat, ts_rewrite, dblink). Escribe "
-    "la consulta directamente con SELECT."
+    "a otros procesos, set_config, las funciones que escriben WAL o asignan "
+    "transacción (pg_logical_*, ranuras de replicación, pg_current_xact_id, "
+    "txid_current) ni las que ejecutan SQL escrito en texto (query_to_xml, "
+    "cursor_to_xml, ts_stat, ts_rewrite, dblink). Escribe la consulta directamente "
+    "con SELECT."
 )
 _VETADA_EN_TEXTO = re.compile(
     "|".join([re.escape(v) for v in sorted(_VETADAS)] + [re.escape(p) for p in _VETADAS_PREFIJO]),
