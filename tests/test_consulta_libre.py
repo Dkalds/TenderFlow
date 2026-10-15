@@ -19,7 +19,18 @@ from db.consulta_libre import (
 
 @pytest.mark.parametrize(
     ("entrada", "esperado"),
-    [("SELECT 1;", "SELECT 1"), ("  SELECT 1 ;; \n", "SELECT 1")],
+    [
+        ("SELECT 1;", "SELECT 1"),
+        ("  SELECT 1 ;; \n", "SELECT 1"),
+        ("SELECT 1; -- fin", "SELECT 1"),
+        ("SELECT 1;\n/* x */\n", "SELECT 1"),
+        ("SELECT 1; -- a\n-- b\n ; /* c */ ;", "SELECT 1"),
+        # Sin ``;`` delante, un comentario final se deja: el envoltorio lo soporta.
+        ("SELECT 1 -- fin", "SELECT 1 -- fin"),
+        # Un ``;`` o un comentario dentro de un literal no se toca.
+        ("SELECT 'a;'", "SELECT 'a;'"),
+        ("SELECT 1 /* x; */", "SELECT 1 /* x; */"),
+    ],
 )
 def test_normalizar_quita_puntos_y_coma(entrada: str, esperado: str) -> None:
     assert normalizar_sql(entrada) == esperado
@@ -28,6 +39,8 @@ def test_normalizar_quita_puntos_y_coma(entrada: str, esperado: str) -> None:
 def test_normalizar_rechaza_vacio_y_largo() -> None:
     with pytest.raises(ErrorConsulta):
         normalizar_sql(" ; ")
+    with pytest.raises(ErrorConsulta):
+        normalizar_sql(" ; -- solo comentario\n/* x */ ;")
     with pytest.raises(ErrorConsulta) as exc:
         normalizar_sql("SELECT " + "1," * 10_001 + "1")
     assert exc.value.sqlstate is None

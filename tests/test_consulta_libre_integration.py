@@ -51,8 +51,20 @@ def test_comentario_final(rol_mcp: str) -> None:
     assert ejecutar_select("SELECT 1 AS a -- fin").filas == [[1]]
 
 
-def test_punto_y_coma_y_comentario_detras(rol_mcp: str) -> None:
+def test_punto_y_coma_y_espacios_detras(rol_mcp: str) -> None:
     assert ejecutar_select("SELECT 1 AS a; ").filas == [[1]]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 1 AS a; -- fin",
+        "SELECT 1 AS a;\n/* fin */\n",
+        "SELECT 1 AS a -- uno\n; -- dos\n/* tres */ ;",
+    ],
+)
+def test_punto_y_coma_con_comentarios_detras(rol_mcp: str, sql: str) -> None:
+    assert ejecutar_select(sql).filas == [[1]]
 
 
 def test_cte(rol_mcp: str) -> None:
@@ -84,6 +96,44 @@ def test_escape_del_envoltorio_rechazado(rol_mcp: str, tmp_db: Any) -> None:
 def test_insert_falla(rol_mcp: str) -> None:
     err = _err("INSERT INTO licitaciones (id_externo) VALUES ('x') RETURNING 1")
     assert err.sqlstate in {"25006", "42501", "42601"}
+
+
+def test_funcion_que_escribe_cae_en_solo_lectura(rol_mcp: str) -> None:
+    """Parsea dentro del envoltorio y solo falla por ``default_transaction_read_only``."""
+    err = _err("SELECT lo_create(0)")
+    assert err.sqlstate == "25006"
+    assert err.pista
+
+
+@pytest.fixture()
+def una_sola_conexion(rol_mcp: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pool de una conexión: la segunda llamada reutiliza por fuerza la primera."""
+    monkeypatch.setattr("db.consulta_libre._POOL_MAX", 1)
+
+
+def test_set_config_no_sobrevive_al_pool_timeout(una_sola_conexion: None) -> None:
+    """Una consulta no puede debilitar la sesión que usará la siguiente."""
+    primera = ejecutar_select(
+        "SELECT set_config('statement_timeout', '0', false) AS t, pg_backend_pid() AS pid"
+    )
+    assert primera.filas[0][0] == "0"
+    err = _err("SELECT pg_sleep(5)")
+    assert err.sqlstate == "57014"
+    # Mismo proceso de Postgres: la segunda llamada reutilizó la conexión.
+    segunda = ejecutar_select("SELECT pg_backend_pid() AS pid")
+    assert segunda.filas[0][0] == primera.filas[0][1]
+
+
+def test_set_config_no_sobrevive_al_pool_solo_lectura(una_sola_conexion: None) -> None:
+    primera = ejecutar_select(
+        "SELECT set_config('default_transaction_read_only', 'off', false) AS v, "
+        "pg_backend_pid() AS pid"
+    )
+    assert primera.filas[0][0] == "off"
+    err = _err("SELECT lo_create(0)")
+    assert err.sqlstate == "25006"
+    segunda = ejecutar_select("SELECT pg_backend_pid() AS pid")
+    assert segunda.filas[0][0] == primera.filas[0][1]
 
 
 def test_escritura_en_cte_falla(rol_mcp: str) -> None:

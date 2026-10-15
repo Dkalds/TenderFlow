@@ -128,11 +128,26 @@ class ResultadoConsulta:
 # ── Normalización y envoltorio ─────────────────────────────────────────────
 
 
+#: ``;`` final seguido solo de espacios, comentarios ``-- …`` o ``/* … */`` (y más
+#: ``;``). Sólo se mira la cola: no se interpretan comentarios ni literales en el
+#: resto del SQL. Un ``;`` dentro de un literal o de un comentario no encaja
+#: porque lo que sigue (la comilla o el ``*/``) no pertenece a ninguna
+#: alternativa. ``\s`` suelto, sin ``+``: evita el retroceso exponencial.
+_COLA_VACIA = re.compile(r";(?:\s|;|--[^\n]*|/\*(?:(?!\*/).)*\*/)*\Z", re.DOTALL)
+
+
 def normalizar_sql(sql: str) -> str:
-    """Quita espacios y ``;`` finales; rechaza lo vacío o demasiado largo."""
+    """Quita espacios y la cola ``; …`` (con comentarios); rechaza lo vacío o largo."""
+    if len(sql) > 2 * MAX_CHARS_SQL:  # tope barato antes de aplicar la regex
+        raise ErrorConsulta(
+            None,
+            f"La consulta tiene {len(sql)} caracteres; el máximo es {MAX_CHARS_SQL}.",
+            "Simplifica la consulta o divídela en varias.",
+        )
     limpio = sql.strip()
-    while limpio.endswith(";"):
-        limpio = limpio[:-1].rstrip()
+    cola = _COLA_VACIA.search(limpio)
+    if cola is not None:
+        limpio = limpio[: cola.start()].rstrip()
     if not limpio:
         raise ErrorConsulta(None, "La consulta está vacía.", None)
     if len(limpio) > MAX_CHARS_SQL:
@@ -272,6 +287,23 @@ def _conn_kwargs(url: str) -> dict[str, object]:
     return kwargs
 
 
+def _reiniciar_sesion(conn: psycopg.Connection[tuple[object, ...]]) -> None:
+    """Deja la conexión como recién abierta antes de devolverla al pool.
+
+    ``default_transaction_read_only``, ``statement_timeout``,
+    ``idle_in_transaction_session_timeout`` y ``work_mem`` son modificables por
+    el usuario de la sesión: ``SELECT set_config('statement_timeout', '0', false)``
+    es un SELECT legal y sin reinicio el cambio persistiría para el siguiente
+    que use la conexión. ``RESET ALL`` devuelve cada parámetro a su valor de
+    arranque (el ``ALTER ROLE … SET`` del rol más las opciones de conexión) y los
+    bloqueos de aviso de sesión se sueltan aparte. No se usa ``DISCARD ALL``:
+    borraría los statements preparados que psycopg cree tener. Si esto falla,
+    el pool descarta la conexión.
+    """
+    conn.execute("RESET ALL")
+    conn.execute("SELECT pg_advisory_unlock_all()")
+
+
 def _get_pool(url: str) -> ConnectionPool:
     """Pool perezoso por ``MCP_DATABASE_URL``; si la URL cambia se reconstruye."""
     global _pool, _pool_url
@@ -284,9 +316,10 @@ def _get_pool(url: str) -> ConnectionPool:
         try:
             _pool = ConnectionPool(
                 conninfo=url,
-                min_size=1,
+                min_size=min(1, _POOL_MAX),
                 max_size=_POOL_MAX,
                 kwargs=_conn_kwargs(url),
+                reset=_reiniciar_sesion,
                 timeout=_POOL_TIMEOUT,
                 check=ConnectionPool.check_connection,
                 open=True,
