@@ -792,13 +792,24 @@ async def setup_totp(
     response: Response,
     user: dict[str, Any] = Depends(require_recent_session_auth),
 ) -> TotpSetupResult:
-    """Inicia el alta de TOTP; el secreto solo se revela en esta respuesta."""
+    """Inicia el alta de TOTP; el secreto solo se revela en esta respuesta.
+
+    Un alta sin confirmar se puede empezar de nuevo: quien cerró la pestaña con
+    el código a medias recibe un secreto nuevo. Solo un segundo factor ya
+    confirmado responde 409.
+    """
     from db.totp import generate_totp_secret, get_totp_secret, get_totp_uri, save_totp_secret
 
     user_id = int(user["user_id"])
 
     def _setup() -> str:
-        if get_totp_secret(user_id) is not None:
+        # Hasta 2026-10 cualquier fila, confirmada o no, daba 409: un alta
+        # abandonada dejaba la cuenta sin forma de activar el segundo factor
+        # salvo llamando a mano a `DELETE /auth/totp`. Pisar un secreto sin
+        # confirmar no abre nada —ese secreto todavía no protege la cuenta—, y
+        # `save_totp_secret` lo sustituye en la misma fila.
+        actual = get_totp_secret(user_id)
+        if actual is not None and actual["confirmed"]:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail="TOTP already configured"
             )
@@ -889,23 +900,59 @@ async def verify_totp_login(
     return StatusOk(status="ok")
 
 
-@router.delete("/totp")
+@router.delete(
+    "/totp",
+    responses={
+        400: {"description": "El código no es válido"},
+        403: {"description": "La sesión no es reciente: hay que volver a entrar"},
+        409: {"description": "La cuenta no tiene el segundo factor activo"},
+        429: {"description": "Demasiados códigos fallidos seguidos"},
+    },
+)
 async def remove_totp(
+    body: TotpCodeRequest,
     user: dict[str, Any] = Depends(require_recent_session_auth),
 ) -> StatusOk:
-    """Desactiva MFA solo desde una sesión que ya superó MFA."""
+    """Desactiva el segundo factor con un código vigente o uno de recuperación.
+
+    El código se pide aunque la sesión ya sea reciente y haya pasado el segundo
+    factor: sin él, quien se sentara delante de un navegador abierto podía
+    quitarlo sin tener el móvil, que es justo lo que el segundo factor protege.
+    Uno de recuperación también vale —quien perdió el móvil es quien más
+    necesita quitarlo— y queda gastado.
+    """
     if user.get("mfa_required") and not user.get("mfa_verified_at"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Verify MFA before disabling it"
         )
-    from db.totp import delete_totp
+    from db.rate_limits import clear_mfa_attempts
+    from db.totp import delete_totp, get_totp_secret, use_recovery_code, verify_totp
 
-    await run_db(delete_totp, int(user["user_id"]))
+    user_id = int(user["user_id"])
+
+    def _remove() -> None:
+        # Mismo límite de intentos que el login: si no, esta ruta serviría
+        # para adivinar códigos sin la ventana de bloqueo.
+        _reject_if_mfa_locked(user_id)
+        record = get_totp_secret(user_id)
+        if record is None or not record["confirmed"]:
+            # Nada que quitar: no es un código fallido y no cuenta como intento.
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="TOTP not configured")
+        valid = body.code.isdecimal() and verify_totp(record["secret"], body.code)
+        if not valid and len(body.code) == 16:
+            valid = use_recovery_code(user_id, body.code)
+        if not valid:
+            _record_mfa_failure(user_id)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA code")
+        delete_totp(user_id)
+        clear_mfa_attempts(user_id)
+
+    await run_db(_remove)
     await run_db(
         log_event,
         event_type=AUTH_TOTP_DISABLED,
-        user_id=int(user["user_id"]),
-        resource=f"user:{user['user_id']}",
+        user_id=user_id,
+        resource=f"user:{user_id}",
     )
     return StatusOk(status="ok")
 

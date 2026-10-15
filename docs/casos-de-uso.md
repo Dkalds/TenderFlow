@@ -130,7 +130,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 
 - **Quién:** integrador. **Dónde:** Ajustes › Claves.
 - Crea una clave, que se enseña una sola vez y nace con el mínimo privilegio.
-- La usa sin sesión, y al rotarla recibe una nueva que funciona.
+- La usa sin sesión, y al rotarla recibe una nueva que funciona mientras la
+  vieja aguanta la gracia.
+- Revoca la que ya no usa, y deja de abrir la API al momento.
 
 ### CU-15 — Exportar mis datos y borrar mi cuenta
 
@@ -193,6 +195,26 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - **Quién:** dirección. **Dónde:** `/direccion`.
 - Ve la carga por persona y la actividad reciente de las oportunidades de la
   organización.
+
+### CU-25 — Proteger mi cuenta con la verificación en dos pasos
+
+- **Quién:** cualquier usuario. **Dónde:** Ajustes › Seguridad.
+- La activa con la clave de su app de autenticación y el primer código, y ve
+  sus códigos de recuperación una sola vez. Un alta a medias se reempieza.
+- Desde entonces, entrar pide el código además de la contraseña; un código de
+  recuperación sirve una vez.
+- La desactiva con un código vigente, y sin él no.
+
+### CU-26 — Salir, traspasar o borrar una organización
+
+- **Quién:** miembros y propietaria del equipo. **Dónde:** Equipo ›
+  Organización.
+- Un miembro sale y deja de verla; la propietaria no puede salir sin
+  traspasarla antes, y el motivo se lo dice.
+- La propietaria traspasa la propiedad a otro miembro activo y queda como
+  administradora.
+- Antes de borrarla ve cuánto trabajo se lleva el borrado, y lo confirma
+  escribiendo el nombre; la organización personal no se borra por aquí.
 
 ### CU-29 — Enterarme de lo que me concierne desde la campana
 

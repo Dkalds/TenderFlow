@@ -12,7 +12,7 @@
  *
  * La pestaña «Organización» es el destino que S2.1 y S2.2 le habían dado a sus
  * tarjetas de NIF y capacidad: existían y estaban probadas, pero ninguna
- * pantalla las montaba.
+ * pantalla las montaba. Al final lleva salir, traspasar y borrar (CU-26).
  *
  * La pestaña «Integraciones» es la mitad de S4.2 que faltaba: los webhooks de
  * la organización salieron de `/ops` (donde queda la vista global de la
@@ -116,6 +116,7 @@ export default function EquipoPage() {
               organizationId={activeOrganizationId}
               canManage={canManage}
               isPersonal={isPersonal}
+              organizacion={activeOrganization}
             />
           </TabsContent>
 

@@ -62,6 +62,13 @@ NUEVAS: dict[str, str] = {
         "caliente de la API con tres tablas que solo pide la pestaña Pliego y el "
         "checklist Go/No-Go."
     ),
+    "DELETE /api/v1/me/keys/{key_id}": (
+        "Se miró POST /me/keys/rotate, que deja la clave vieja viva durante la gracia "
+        "(con 0 días sigue acuñando otra), DELETE /me, que revoca todas a la vez junto con "
+        "la cuenta, y POST /security/leaked-key, que solo acepta el webhook "
+        "firmado de GitHub. Ninguna deja al dueño apagar una clave concreta al momento, "
+        "que es lo que hace falta cuando una se filtra o deja de usarse."
+    ),
     "POST /api/v1/me/profile/preview": (
         "Se miró GET /analytics/scoring, que puntúa siempre con el perfil guardado: "
         "no admite uno de prueba, y unos pesos con sus palabras clave y CPV no caben "

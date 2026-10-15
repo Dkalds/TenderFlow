@@ -119,6 +119,9 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
   // dos entradas montan, igual que hicieron las seis de Ops.
   ajustes: [
     { key: "sesiones", label: "Sesiones" },
+    // El segundo factor tenía login y endpoints de alta y baja, pero ninguna
+    // pantalla para activarlo (CU-25).
+    { key: "seguridad", label: "Seguridad" },
     { key: "claves", label: "Claves de API" },
     { key: "notificaciones", label: "Notificaciones" },
     { key: "cuenta", label: "Datos y cuenta", from: "mi-cuenta" },

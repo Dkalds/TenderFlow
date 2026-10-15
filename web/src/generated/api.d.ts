@@ -1235,7 +1235,13 @@ export interface paths {
         post?: never;
         /**
          * Remove Totp
-         * @description Desactiva MFA solo desde una sesión que ya superó MFA.
+         * @description Desactiva el segundo factor con un código vigente o uno de recuperación.
+         *
+         *     El código se pide aunque la sesión ya sea reciente y haya pasado el segundo
+         *     factor: sin él, quien se sentara delante de un navegador abierto podía
+         *     quitarlo sin tener el móvil, que es justo lo que el segundo factor protege.
+         *     Uno de recuperación también vale —quien perdió el móvil es quien más
+         *     necesita quitarlo— y queda gastado.
          */
         delete: operations["remove_totp_api_v1_auth_totp_delete"];
         options?: never;
@@ -1275,6 +1281,10 @@ export interface paths {
         /**
          * Setup Totp
          * @description Inicia el alta de TOTP; el secreto solo se revela en esta respuesta.
+         *
+         *     Un alta sin confirmar se puede empezar de nuevo: quien cerró la pestaña con
+         *     el código a medias recibe un secreto nuevo. Solo un segundo factor ya
+         *     confirmado responde 409.
          */
         post: operations["setup_totp_api_v1_auth_totp_setup_post"];
         delete?: never;
@@ -3255,6 +3265,35 @@ export interface paths {
          */
         post: operations["rotate_my_key_api_v1_me_keys_rotate_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revocar UNA API key propia
+         * @description Apaga una clave al momento, sin esperar a que caduque.
+         *
+         *     Hasta ahora no había forma de retirar una clave desde el producto: borrar
+         *     la cuenta las revocaba todas, y rotar dejaba la vieja viva durante la
+         *     gracia. Revocar una ya revocada responde 204: el estado pedido es el que
+         *     hay.
+         *
+         *     Exige sesión reciente, como la creación, la rotación y cerrar una sesión
+         *     ajena: con una clave filtrada no se puede tumbar la integración buena, y
+         *     con una cookie robada tampoco sin volver a entrar.
+         */
+        delete: operations["revoke_my_key_api_v1_me_keys__key_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -10541,6 +10580,11 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /**
+             * Last Used
+             * @description Última petición autenticada con ella; `null` si nunca se usó
+             */
+            last_used?: string | null;
             /** Name */
             name?: string | null;
             /**
@@ -10878,6 +10922,11 @@ export interface components {
          *     Un `-1` significa que ese recuento no se pudo hacer, no que sea cero.
          */
         OrganizationDeletionSummary: {
+            /**
+             * Adjuntos
+             * @default 0
+             */
+            adjuntos: number;
             /**
              * Comentarios
              * @default 0
@@ -18596,7 +18645,11 @@ export interface operations {
                 session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpCodeRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -18607,6 +18660,27 @@ export interface operations {
                     "application/json": components["schemas"]["StatusOk"];
                 };
             };
+            /** @description El código no es válido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La sesión no es reciente: hay que volver a entrar */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La cuenta no tiene el segundo factor activo */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18615,6 +18689,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Demasiados códigos fallidos seguidos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -22769,6 +22850,53 @@ export interface operations {
                 content?: never;
             };
             /** @description La key no existe o no pertenece al usuario */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_my_key_api_v1_me_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                key_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere una sesión de navegador reciente */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La key no existe o no es tuya */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -33,7 +33,7 @@ import {
   routeSlug,
   spaceAbsorbing,
 } from "@/lib/console-spaces";
-import { useAdmin } from "@/hooks/use-admin";
+import { useAccesoEspacios } from "@/hooks/use-acceso-espacios";
 import { useWithFilters } from "@/lib/filters";
 import { useDensity, initDensity } from "@/lib/density";
 import { useActiveOrganizationId, useOrganizations, useOrganizationStore } from "@/hooks/use-organization";
@@ -225,11 +225,11 @@ function AccountMenu() {
 
 export function ConsoleRail() {
   const activeKey = useActiveSpaceKey();
-  const isAdmin = useAdmin();
+  const acceso = useAccesoEspacios();
   const withFilters = useWithFilters();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
-  const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, isAdmin));
+  const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, acceso));
 
   const groups = CONSOLE_GROUP_ORDER.map((group) => ({
     group,
