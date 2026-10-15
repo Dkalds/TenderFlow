@@ -84,14 +84,40 @@ Google responde `redirect_uri_mismatch` en el login.
 
 ### Paso 3 — Crear el servicio en Render
 
-1. Dashboard → *New → Blueprint* sobre este repo (o, si el Blueprint ya está
-   vinculado, *Sync*): crea `tenderflow-mcp` desde `render.yaml`. Los valores
-   con `sync: false` se piden en el alta.
+1. **A mano, no con *New → Blueprint*.** Los servicios de producción se crearon
+   por el dashboard y el Blueprint **no está vinculado** (checklist de la
+   cabecera de `render.yaml`). Una *New Blueprint Instance* sobre este repo
+   crearía **todos** los servicios del fichero, incluido un segundo
+   `tenderflow-worker` (el plano de cron) contra la base de producción. Hasta
+   que ese checklist esté completo, el alta es: Dashboard → *New → Web
+   Service* → este repo, con lo mismo que declara `render.yaml` para
+   `tenderflow-mcp`:
+
+   | Campo del dashboard | Valor |
+   |---|---|
+   | Name | `tenderflow-mcp` |
+   | Runtime / Language | **Docker** |
+   | Region | Frankfurt (la de los demás servicios) |
+   | Branch | `master` |
+   | Dockerfile Path | `docker/Dockerfile.api` |
+   | Docker Build Context Directory | `.` |
+   | Docker Command | `python -m mcp_server` |
+   | Instance Type (plan) | Starter |
+   | Health Check Path | `/healthz` |
+   | Auto-Deploy | **Off** (Settings → Build & Deploy): solo despliega `deploy.yml` |
+
+   Variables de entorno fijas (además de las de la tabla siguiente):
+   `ENV=prod`, `APP_PROFILE=mcp`, `REQUIREMENTS_FILE=requirements-mcp.txt`
+   (Render la pasa como **build arg** de Docker: es la que mete el SDK `mcp` en
+   la imagen; sin ella el arranque falla con `ModuleNotFoundError: mcp`),
+   `HEALTHCHECK_PATH=/healthz`, `DB_POOL_SIZE=2` y `DB_READ_POOL_SIZE=2`.
+   Cuando el Blueprint se vincule, comprobar que su definición de
+   `tenderflow-mcp` coincide con lo creado aquí (si no, el *Sync* lo recrearía).
 2. Variables (todas en el servicio `tenderflow-mcp`):
 
    | Variable | Valor |
    |---|---|
-   | `DATABASE_URL` | La misma que `tenderflow-api` (rol de la app: tablas OAuth, `users`, auditoría) |
+   | `DATABASE_URL` | La misma que `tenderflow-api` (rol de la app: tablas OAuth, `users`, auditoría y las tres tools de dominio, con el SQL fijo de los repositorios) |
    | `DATABASE_SSL_ROOT_CERT` | La misma que la API |
    | `MCP_DATABASE_URL` | El DSN del paso 1 |
    | `APP_PROFILE` | `mcp` (ya en `render.yaml`; perfil propio, ni API ni worker) |
@@ -146,8 +172,15 @@ SDK instalado, porque el script importa `mcp_server`:
 ```bash
 python -m scripts.mcp_revocar --email alguien@empresa.es
 # → Revocados N tokens de alguien@empresa.es   (una línea por cuenta; exit 0)
-#   correo desconocido: exit 1;  producción sin AUDIT_HMAC_KEY: exit 2, sin revocar
+#   correo desconocido: exit 1 con «ERROR: no existe ninguna cuenta…»
 ```
+
+Con `ENV=prod` y `APP_PROFILE=mcp`, si falta `AUDIT_HMAC_KEY` o `SIGNING_KEY`
+(o tiene menos de 32 caracteres) el script **ni llega a arrancar**:
+`config.settings` aborta al importarse con un `ValidationError` de pydantic
+(traza, exit 1) y no se revoca nada. Distínguelo del correo desconocido por la
+traza. El `exit 2` del propio script («falta AUDIT_HMAC_KEY») es una segunda red
+para un perfil que no valide las claves; con el perfil `mcp` no se alcanza.
 
 El correo se compara **sin distinguir mayúsculas** (como el login) y alcanza
 también cuentas desactivadas; si varias cuentas casan (`Ana@x.es` y `ana@x.es`),
@@ -161,9 +194,9 @@ Desde otra máquina funciona, pero el venv necesita `requirements-mcp.txt`
 
 Cierra todos sus tokens vivos (access, refresh y códigos sin canjear). Deja
 `mcp.revocacion_manual` en `audit_log` (con el número de tokens, sin correo). En
-producción el script se niega (exit 2) si falta `AUDIT_HMAC_KEY`: no hay
-revocación sin rastro. Nunca con `ENV=dev` contra la BD de producción: firmaría
-la auditoría con la clave de desarrollo.
+producción no hay revocación sin rastro: sin `AUDIT_HMAC_KEY` no arranca (ver
+arriba). Nunca con `ENV=dev` contra la BD de producción: firmaría la auditoría
+con la clave de desarrollo.
 
 **Esto no impide que vuelva a entrar**: si sigue siendo admin y activo, puede
 repetir el login de Google y obtener tokens nuevos. Para quitarle el acceso del
@@ -209,6 +242,9 @@ Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
 | El cliente da vueltas pidiendo login (**401 en bucle**) | (a) la persona ya no es admin/activa o no pasa la allowlist (`mcp.login_denegado` en auditoría con `motivo`); (b) el cliente tiene un token de otro `MCP_PUBLIC_URL`/servicio; (c) `SIGNING_KEY` cambió y las peticiones pendientes (10 min) ya no verifican | Mirar `mcp.login_denegado`. Quitar y volver a añadir el conector. Si cambió `SIGNING_KEY`, solo afecta a los logins en curso |
 | `redirect_uri_mismatch` en Google | El paso 2 no coincide al carácter con `MCP_GOOGLE_REDIRECT_URI` | Corregir en Google Cloud o en la variable |
 | El registro del cliente falla (`invalid_redirect_uri` en `/register`) | Un cliente con callback propio (ChatGPT) | Añadirlo a `MCP_REDIRECT_URIS_EXTRA` (paso 4) |
+| `/register` responde `invalid_client_metadata` «Demasiados registros…» o «Registro desmedido…»; `/authorize` vuelve con `error=temporarily_unavailable` | Topes y rate limit del DCR abierto: 30 registros/h y 600 autorizaciones/h **globales**, 60/h por cliente; campos de más de 500 caracteres, registro de más de 8 KB. No hay límite por IP | Si es un abuso, esperar a que pase la hora (o vaciar las claves `mcp:oauth:*` de `rate_limits`/Redis, ver `rate-limit-reset.md`); si es un cliente legítimo con metadatos enormes, es un cambio de código en `mcp_server/auth/proveedor.py` |
+| Un conector que funcionaba da `invalid_client` / «Client ID … not found» | El cliente se purgó (más de 7 días sin tokens) o uno de sus `redirect_uris` ya no está en la allowlist (`MCP_REDIRECT_URIS_EXTRA` se cambió) | Quitar y volver a añadir el conector: se registra de nuevo |
+| `consultar_sql`: «La función X no está permitida en el MCP» | Llamada vetada (cerrojos `pg_advisory_*`, `pg_notify`, `set_config`, señales a otros procesos, funciones que ejecutan SQL en texto); ADR-036 | Reescribir la consulta sin esa función. Si el LLM la escribió sin que nadie se lo pidiera, mirar si venía de un pliego (inyección de instrucciones) |
 | **421 Misdirected Request** en `/mcp` | El `Host` de la petición no coincide con `MCP_PUBLIC_URL`. Típico: `MCP_PUBLIC_URL` escrito con `:443` explícito (`https://host:443`), o llamar por otro dominio | Poner `MCP_PUBLIC_URL=https://host` sin puerto y sin barra final; usar el mismo host en el conector |
 | **403** con `Origin` en `/mcp` | Petición de navegador desde un origen que no es el del propio servicio, claude.ai/claude.com, chatgpt.com o localhost | Si es un cliente legítimo nuevo, requiere un cambio de código en `mcp_server/servidor.py::_ORIGENES_CLIENTES` |
 | `consultar_sql` devuelve **`42501`** inesperado | La tabla/columna no está concedida al rol: o es oculta a propósito (`api_keys`, `sessions`, `users.password_hash`…), o es nueva y falta clasificarla en `mcp_server/catalogo.py` y regenerar | Si es nueva: clasificar, `python scripts/gen_mcp_grants.py` y reaplicar el SQL (paso 1.3; la contraseña ya existe, el script no la toca) |
@@ -228,7 +264,8 @@ Cada llamada a una tool y cada evento de OAuth escribe en `audit_log`
 ISO; `detail` es JSON en texto. Acciones: `mcp.<tool>` (por llamada),
 `mcp.login_ok`, `mcp.login_denegado`, `mcp.token_emitido`, `mcp.token_rotado`,
 `mcp.token_revocado`, `mcp.refresh_reutilizado`, `mcp.codigo_reutilizado`,
-`mcp.revocacion_manual`.
+`mcp.revocacion_manual`. Las llamadas cortadas por el rate limit se auditan una
+vez por usuario, ventana (`min`/`dia`) y minuto; el resto solo va al log (debug).
 
 ```sql
 -- Qué se ha preguntado, por quién y cuándo (últimas 50)
@@ -310,9 +347,19 @@ vez, tras el alta (pasos 1–3):
 
 Entradas equivalentes en [`docs/IMPROVEMENT_BACKLOG.md`](../IMPROVEMENT_BACKLOG.md):
 
-- **No hay purga de filas caducadas o revocadas** en `mcp_oauth_tokens`. Crece
-  lento (tres personas) y hay un índice en `expires_at` pensado para ello. Un
-  job que borre filas con `expires_at` muy pasado es el siguiente paso.
+- **Purga de las tablas OAuth** (`db.mcp_oauth.purgar`): el servidor la corre
+  al arrancar y cada hora (log `mcp_oauth_purga` con lo borrado por clase):
+  peticiones pendientes y códigos caducados hace más de un día, access y
+  refresh revocados o caducados hace más de 7 días, y clientes registrados hace
+  más de 7 días sin ningún token. Consecuencias: un refresh rotado hace más de
+  7 días ya no se reconoce como reutilizado (se rechaza como desconocido, sin
+  revocar la familia), y un conector sin tokens durante una semana pierde su
+  registro y tiene que volver a añadirse.
+- **Una celda enorme de `consultar_sql` se carga entera**: el ejecutor lee por
+  lotes y para en cuanto la respuesta no cabe, pero un único valor gigante
+  (`string_agg` de `documentos.texto`, `database_to_xml`) llega completo a la
+  memoria del proceso antes de recortarse a 1 000 caracteres. Si hay OOM en
+  `starter`, ese es el sospechoso.
 - **El `client_secret` del DCR se guarda legible** en
   `mcp_oauth_clients.datos`: el SDK lo compara en claro. Queda oculto para el
   rol `tenderflow_mcp` (la tabla es `OCULTA` en el catálogo), pero un volcado de

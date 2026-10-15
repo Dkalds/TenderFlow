@@ -75,8 +75,11 @@ ejecuta con `python -m mcp_server`. Resumen de las secciones 2–4 del diseño:
    los grants se **genera** (`scripts/gen_mcp_grants.py` →
    `scripts/setup_pg_role_mcp.sql`) y un ratchet falla si aparece una tabla sin
    clasificar: por defecto, una tabla nueva no se expone. `db/consulta_libre.py`
-   envuelve la consulta y da errores útiles, pero **aunque fallara, el rol no
-   puede escribir ni leer lo oculto**.
+   envuelve la consulta, la lee por lotes con un cursor de servidor, veta unas
+   pocas funciones (ver Consecuencias) y da errores útiles, pero **aunque
+   fallara, el rol no puede escribir ni leer lo oculto**. Esta garantía cubre
+   `consultar_sql` y las tools de esquema, que son las que corren con el rol
+   (ver el párrafo tras la lista).
 
 4. **Seis tools de lectura** (`describir_esquema`, `describir_tabla`,
    `consultar_sql`, `buscar_licitaciones`, `buscar_en_pliegos`,
@@ -86,9 +89,19 @@ ejecuta con `python -m mcp_server`. Resumen de las secciones 2–4 del diseño:
    con el SQL completo; ver abajo quién puede leerla) por un único helper
    (`mcp_server.auth.proveedor.auditar_oauth`).
 
-El MCP conserva `DATABASE_URL` (rol de la app) **solo** para las tablas OAuth,
-la lectura de `users` y la escritura en `audit_log`; los datos de negocio solo se
-leen con `MCP_DATABASE_URL`.
+**Dos roles, dos garantías.** `consultar_sql`, `describir_esquema` y
+`describir_tabla` corren con `MCP_DATABASE_URL` (rol `tenderflow_mcp`): para
+ellas vale el criterio 3 del diseño, «la garantía la da Postgres». El MCP
+conserva además `DATABASE_URL` (rol de la app) para las tablas OAuth, la lectura
+de `users` y la escritura en `audit_log`, **y para las tres tools de dominio**:
+`buscar_licitaciones`, `buscar_en_pliegos` y `ficha_licitacion` leen datos de
+negocio con los servicios y repositorios de la aplicación
+(`services.licitaciones.search_advanced`, `services.rag.fragmentos`,
+`services.expediente`), es decir, con el rol de la app. Ahí lo que impide
+escribir o leer secretos no es el rol sino que el SQL es **fijo**, del
+repositorio: el LLM solo aporta valores de parámetros enlazados y validados por
+los modelos de entrada, nunca texto SQL, y las columnas que salen las elige el
+código.
 
 ## Alternativas descartadas
 
@@ -134,9 +147,40 @@ estas tres personas, esta decisión se revisa antes.
   más en Google, un deploy hook más en `deploy.yml`, y un runbook. Una caída del
   MCP no afecta a la API, ni al revés: comparten la base de datos, no el
   proceso.
+- **Funciones vetadas en `consultar_sql`: denylist, riesgo residual
+  aceptado.** Algunas funciones de `pg_catalog` que `PUBLIC` puede ejecutar
+  tocan estado compartido con la aplicación, y en Supabase un rol no
+  superusuario no puede retirarles `EXECUTE` sin afectar a otros roles y a los
+  internals de la plataforma. Los cerrojos de aviso son comunes a todos los
+  roles: `SELECT pg_advisory_lock(hashtext('tenderflow.audit_log.chain.v1'))`
+  bloquearía cada `log_action` de la API (y sus filas se perderían por
+  timeout); igual con los cerrojos de `tecnologia_pliego` o de las familias
+  OAuth. `pg_notify` y las señales (`pg_cancel_backend`,
+  `pg_terminate_backend`) llegan a otros procesos, y `query_to_xml`,
+  `cursor_to_xml`, `ts_stat`, `ts_rewrite` o `dblink` ejecutan SQL escrito en
+  texto, que esquivaría el veto. `db/consulta_libre.py` rechaza antes de
+  ejecutar cualquier identificador en posición de código con esos nombres
+  (`pg_advisory_*`, `pg_try_advisory_*`, `dblink*`, `set_config`…), con un
+  recorrido léxico que sigue el de Postgres 16 (`scan.l`: `E'…'`, continuación
+  de literales, comentarios, cadenas entre dólares; `U&"…"` se rechaza) y que
+  los tests contrastan con Postgres real. Es **defensa en profundidad, no
+  frontera**: el rol sigue siendo el límite principal (no escribe ni lee lo
+  oculto); una función dañina que falte en la lista, o un cambio léxico de una
+  versión futura de Postgres, quedaría abierta, y lo peor que permitiría es
+  bloquear o molestar a otros procesos, no leer ni escribir más. El motor del
+  riesgo es la **inyección de instrucciones**: el LLM lee el texto de los
+  pliegos (`buscar_en_pliegos`, `documentos.texto`), escrito por terceros, y un
+  pliego hostil podría pedirle que ejecute una de esas llamadas.
+- **El DCR y `/authorize` no piden autenticación y escriben en la base**:
+  topes por campo (registro ≤ 8 KB, petición pendiente ≤ 4 KB), rate limit
+  **global** (30 registros/h, 600 autorizaciones/h y 60/h por cliente; no por
+  IP, porque la IP de confianza la resuelve `api.middleware`, fuera del alcance
+  de las capas del MCP) y una purga horaria (`db.mcp_oauth.purgar`) de lo
+  caducado, lo revocado y los clientes huérfanos.
 - **La auditoría escribe en la misma cadena firmada que la API**
   (`AUDIT_HMAC_KEY` compartida): el MCP se niega a arrancar en prod sin ella.
-- **Deuda conocida**, anotada en el runbook y en el backlog: no hay purga de
-  tokens caducados o revocados; el `client_secret` del DCR queda legible en
-  `mcp_oauth_clients.datos` (oculto para el rol MCP); los logs de acceso de
-  uvicorn son texto plano e incluyen la query string del callback de OAuth.
+- **Deuda conocida**, anotada en el runbook y en el backlog: el
+  `client_secret` del DCR queda legible en `mcp_oauth_clients.datos` (oculto
+  para el rol MCP); los logs de acceso de uvicorn son texto plano e incluyen la
+  query string del callback de OAuth; una única celda enorme del resultado de
+  `consultar_sql` se carga entera en memoria antes de recortarse.

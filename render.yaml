@@ -422,6 +422,12 @@ services:
   # propio ritmo de despliegue. Procedimiento de alta y operación en
   # `docs/runbooks/mcp-interno.md`.
   #
+  # ALTA A MANO, NO POR BLUEPRINT: mientras el Blueprint no esté vinculado
+  # (checklist de la cabecera), una «New Blueprint Instance» sobre este fichero
+  # crearía TODOS sus servicios, incluido un segundo `tenderflow-worker` (plano
+  # de cron) contra producción. `tenderflow-mcp` se crea por el dashboard con
+  # los valores de abajo: docs/runbooks/mcp-interno.md, paso 3.
+  #
   # SIN VERIFICAR EN RENDER (escrito el 2026-10-15, el servicio no existe aún):
   #   - Que `dockerCommand` llega al entrypoint como comando completo. El
   #     entrypoint (`docker/docker-entrypoint-api.sh`) lo ejecuta tal cual si el
@@ -429,13 +435,14 @@ services:
   #     ENTRYPOINT, el resultado es el mismo.
   #   - Que `REQUIREMENTS_FILE` llega como build arg, igual que en el worker.
   #   - Que `plan: starter` (512 MB) basta. El proceso es uvicorn + el SDK y un
-  #     pool de 5 conexiones; las respuestas están acotadas a 100 000 caracteres.
-  #     Si hay OOM, `standard`.
+  #     pool de 5 conexiones; las respuestas están acotadas a 100 000 caracteres
+  #     y `consultar_sql` lee por lotes de 50 filas (para en cuanto no caben).
+  #     Una sola celda enorme sí se carga entera. Si hay OOM, `standard`.
   #   - `MCP_PUBLIC_URL`: el host `*.onrender.com` solo se conoce al crear el
-  #     servicio. El primer arranque, con `MCP_PUBLIC_URL` y
-  #     `MCP_GOOGLE_REDIRECT_URI` aún vacías, aborta (a propósito:
-  #     `validar_configuracion`); se rellenan tras crear el servicio, runbook
-  #     paso 3.
+  #     servicio. Con `MCP_PUBLIC_URL` y `MCP_GOOGLE_REDIRECT_URI` vacías el
+  #     arranque aborta (a propósito: `validar_configuracion`): se crea con
+  #     valores provisionales y se fijan los reales tras el primer deploy
+  #     (runbook, paso 3).
   #
   # `APP_PROFILE: mcp` es un perfil propio (config/settings.py): no es la API
   # (con `api` los validadores de `Settings` exigirían `API_HMAC_SECRET`,
@@ -469,8 +476,11 @@ services:
       # Solo lo usa el HEALTHCHECK de Docker (la API monta otra ruta).
       - key: HEALTHCHECK_PATH
         value: /healthz
-      # Rol de la aplicación: tablas OAuth (`mcp_oauth_*`), usuarios y auditoría.
-      # El MCP NUNCA consulta datos de negocio con este rol.
+      # Rol de la aplicación: tablas OAuth (`mcp_oauth_*`), usuarios, auditoría
+      # **y las tres tools de dominio** (`buscar_licitaciones`,
+      # `buscar_en_pliegos`, `ficha_licitacion`), que leen datos de negocio con
+      # los repositorios de la app: SQL fijo, sin texto del LLM. El SQL libre
+      # (`consultar_sql`) y las tools de esquema van solo por `MCP_DATABASE_URL`.
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_SSL_ROOT_CERT

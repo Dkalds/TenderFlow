@@ -1,7 +1,9 @@
 # MCP interno de TenderFlow — diseño
 
 - **Fecha:** 2026-10-15
-- **Estado:** propuesto (pendiente de revisión)
+- **Estado:** aprobado (por el usuario, 2026-10-15). Las decisiones tomadas
+  después durante la implementación (rulings) están en
+  [ADR-036](../../adr/ADR-036-acceso-interno-por-mcp.md), que manda si difieren.
 - **Rama:** `claude/laughing-newton-dbht10`
 - **Relacionado:** ADR-016 (Supabase), ADR-022 (SQL en `db/`), ADR-025 (pools),
   ADR-030 (identidad), ADR-034 (RLS por tenant), RFC 242 (`access_grants`)
@@ -28,7 +30,9 @@ dispositivos —móvil y ordenador—, no solo en local.
 2. Una pregunta analítica libre («¿qué empresas ganaron más importe en
    Andalucía en 2025?») se responde con datos reales vía `consultar_sql`.
 3. Es imposible escribir en la BD o leer credenciales desde el MCP, y la
-   garantía la da Postgres (rol y grants), no el código del servidor.
+   garantía la da Postgres (rol y grants), no el código del servidor. Vale
+   para `consultar_sql` y las tools de esquema; las de dominio usan el SQL fijo
+   de los repositorios (§4.1).
 4. Retirar `is_admin` o desactivar al usuario corta el acceso en ≤ 60 s
    (re-comprobación por petición, §3.6), sin esperar a que caduque el token.
 5. Cada llamada queda auditada con autor y SQL.
@@ -124,8 +128,13 @@ ALTER ROLE tenderflow_mcp SET search_path = pg_catalog, public;
   (v52), así que cada tabla visible recibe
   `CREATE POLICY tenderflow_mcp_read ON <t> FOR SELECT TO tenderflow_mcp USING (true)`.
 - Conexión por `MCP_DATABASE_URL` (Supavisor, session mode, como el resto).
-  El MCP sigue necesitando `DATABASE_URL` con el rol de la app **solo** para
-  `db/mcp_oauth.py`, la lectura de `users` y la escritura en `audit_log`.
+  El MCP sigue necesitando `DATABASE_URL` con el rol de la app para
+  `db/mcp_oauth.py`, la lectura de `users`, la escritura en `audit_log` **y las
+  tres tools de dominio** (`buscar_licitaciones`, `buscar_en_pliegos`,
+  `ficha_licitacion`), que leen con los repositorios de la app: ahí la
+  protección es el SQL fijo del repositorio (el LLM solo aporta parámetros), no
+  el rol. El criterio de éxito 3 («la garantía la da Postgres») se refiere a
+  `consultar_sql` y a las tools de esquema, que son las que usan este rol.
 
 ### 4.2 Catálogo de visibilidad
 

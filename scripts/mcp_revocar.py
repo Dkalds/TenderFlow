@@ -19,8 +19,11 @@ se firmaría con la clave de desarrollo y rompería la cadena.)
 
 Salida: una línea ``Revocados N tokens de <email>`` por cuenta (el correo se
 compara sin distinguir mayúsculas; si varias cuentas casan, se revocan todas) y
-código 0. Un correo desconocido sale con 1; en producción sin ``AUDIT_HMAC_KEY``,
-con 2 y sin revocar nada. Cada ejecución deja ``mcp.revocacion_manual`` en ``audit_log``.
+código 0. Un correo desconocido sale con 1. Con ``ENV=prod APP_PROFILE=mcp`` y
+``AUDIT_HMAC_KEY`` o ``SIGNING_KEY`` ausentes o cortas, ``config.settings`` aborta
+al importarse (``ValidationError``, exit 1) y no se revoca nada; el exit 2 de
+abajo es una segunda red para perfiles que no validan las claves. Cada ejecución
+deja ``mcp.revocacion_manual`` en ``audit_log``.
 """
 
 from __future__ import annotations
