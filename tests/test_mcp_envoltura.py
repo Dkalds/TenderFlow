@@ -51,6 +51,12 @@ class LimiterFalso:
         return key.split(":")[1] not in self.deniega
 
 
+@pytest.fixture(autouse=True)
+def _sin_denegaciones_previas(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cada test empieza sin marcas de «denegación ya auditada» de otro test."""
+    monkeypatch.setattr(envoltura, "_denegaciones_auditadas", {})
+
+
 @pytest.fixture()
 def limiter(monkeypatch: pytest.MonkeyPatch) -> LimiterFalso:
     falso = LimiterFalso()
@@ -454,3 +460,57 @@ def test_callback_de_google_redirige_al_cliente_sin_cache(monkeypatch: pytest.Mo
     assert r.headers["location"] == "http://localhost:3000/cb?code=c0d1g0&state=s"
     assert r.headers["cache-control"] == "no-store"
     assert recibido == [("st", "g", None)]
+
+
+async def test_el_ciclo_de_vida_purga_al_arrancar_y_cada_intervalo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R18 (d): la purga de las tablas OAuth corre al arrancar y luego periódicamente.
+
+    Un fallo de la purga se registra y no tumba el servidor.
+    """
+    import anyio
+
+    from mcp_server import servidor
+
+    llamadas: list[int] = []
+
+    def purgar() -> dict[str, int]:
+        llamadas.append(1)
+        if len(llamadas) == 2:
+            raise RuntimeError("base caída")
+        return {"tokens": 0}
+
+    cerrados: list[int] = []
+    monkeypatch.setattr(servidor, "purgar_oauth", purgar)
+    monkeypatch.setattr(servidor, "INTERVALO_PURGA_S", 0.01)
+    monkeypatch.setattr(servidor, "cerrar_pool_mcp", lambda: cerrados.append(1))
+    async with servidor._ciclo_de_vida(None):  # type: ignore[arg-type]  # el servidor no se usa
+        with anyio.fail_after(5):
+            while len(llamadas) < 3:
+                await anyio.sleep(0.01)
+    assert len(llamadas) >= 3
+    assert cerrados == [1]
+
+
+@pytest.mark.usefixtures("token")
+async def test_denegaciones_por_limite_se_auditan_una_vez_por_minuto(
+    monkeypatch: pytest.MonkeyPatch, limiter: LimiterFalso, auditoria: list[Any], servidor: Any
+) -> None:
+    """Un cliente que reintenta sin parar no llena ``audit_log``: una fila por minuto y ventana."""
+    reloj = [1_000.0]
+    monkeypatch.setattr(envoltura, "_reloj", lambda: reloj[0])
+    limiter.deniega = {"min"}
+    for _ in range(5):
+        with pytest.raises(ToolError):
+            await servidor.call_tool("describir_esquema", {})
+    assert len(auditoria) == 1
+    limiter.deniega = {"dia"}  # otra ventana: su propia fila
+    with pytest.raises(ToolError):
+        await servidor.call_tool("describir_esquema", {})
+    assert len(auditoria) == 2
+    reloj[0] += 61
+    limiter.deniega = {"min"}
+    with pytest.raises(ToolError):
+        await servidor.call_tool("describir_esquema", {})
+    assert len(auditoria) == 3

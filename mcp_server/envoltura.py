@@ -12,7 +12,8 @@ y ``services/``; :func:`herramienta` les pone lo que exige el servidor:
    llegar a la tool (argumentos fuera de esquema, tool inexistente).
 3. **Ejecución** en el threadpool (``anyio.to_thread``): las tools hacen E/S
    bloqueante (psycopg) y no pueden ocupar el bucle de eventos.
-4. **Auditoría siempre**, también si la llamada falla o la corta el límite:
+4. **Auditoría siempre**, también si la llamada falla o la corta el límite
+   (las denegaciones por límite, una fila por usuario, ventana y minuto):
    ``audit_log`` con ``action = "mcp.<tool>"`` y en ``detail`` los argumentos
    (el SQL entero hasta 20 000 caracteres; cada texto se recorta ahí con la
    marca ``…[+N]`` y el ``detail`` completo a 25 000), ``n_filas``,
@@ -77,6 +78,14 @@ ERROR_INTERNO = "Error interno; revisa los logs del servidor"
 MAX_CHARS_AUDITADO = MAX_CHARS_SQL
 #: Tope del ``detail`` entero: un SQL máximo más los metadatos, con holgura.
 MAX_CHARS_DETALLE = 25_000
+#: Segundos durante los que no se vuelve a auditar la denegación por límite de
+#: un mismo usuario en una misma ventana (cada una sigue en el log, a ``debug``).
+SILENCIO_DENEGACIONES_S = 60
+
+#: Reloj de las marcas de denegación (inyectable en los tests).
+_reloj = time.monotonic
+#: ``(user_id, ventana)`` → hasta cuándo no se vuelve a auditar su denegación.
+_denegaciones_auditadas: dict[tuple[int, str], float] = {}
 
 
 def _recortar(texto: str, maximo: int) -> str:
@@ -133,7 +142,8 @@ def _usuario_o_none() -> int | None:
         return None
 
 
-async def _limitar(user_id: int) -> None:
+async def _limitar(user_id: int) -> tuple[str, ErrorHerramienta] | None:
+    """La primera ventana que se supera y su error, o ``None`` si la llamada cabe."""
     limiter = get_rate_limiter()
     for ventana, maximo, segundos, pista in LIMITES:
         clave = f"mcp:{ventana}:{user_id}"
@@ -142,7 +152,24 @@ async def _limitar(user_id: int) -> None:
             functools.partial(limiter.check, clave, max_calls=maximo, window_seconds=segundos)
         )
         if not permitido:
-            raise ErrorHerramienta("Límite de uso alcanzado", pista)
+            return ventana, ErrorHerramienta("Límite de uso alcanzado", pista)
+    return None
+
+
+def _auditar_denegacion(user_id: int, ventana: str) -> bool:
+    """¿Se audita esta denegación? Una por usuario y ventana cada :data:`SILENCIO_DENEGACIONES_S`.
+
+    Marca en memoria del proceso: un cliente que reintenta en bucle contra el
+    límite escribiría una fila de ``audit_log`` por intento.
+    """
+    ahora = _reloj()
+    for marca, hasta in list(_denegaciones_auditadas.items()):
+        if hasta <= ahora:
+            del _denegaciones_auditadas[marca]
+    if (user_id, ventana) in _denegaciones_auditadas:
+        return False
+    _denegaciones_auditadas[(user_id, ventana)] = ahora + SILENCIO_DENEGACIONES_S
+    return True
 
 
 async def limitar_llamada(nombre: str, argumentos: Mapping[str, Any]) -> None:
@@ -151,18 +178,24 @@ async def limitar_llamada(nombre: str, argumentos: Mapping[str, Any]) -> None:
     La llama el servidor al entrar en ``call_tool``, antes de que el SDK busque
     la tool o compruebe los argumentos: una llamada rechazada por el esquema o a
     una tool que no existe también cuenta (y escribe en la auditoría). Si se
-    supera el límite, se audita y sale como ``ToolError``. Sin usuario no hace
-    nada: la tool (:func:`herramienta`) lo rechaza y lo audita.
+    supera el límite sale como ``ToolError``; la denegación se audita una vez
+    por usuario, ventana y minuto (:func:`_auditar_denegacion`) y cada una va al
+    log. Sin usuario no hace nada: la tool (:func:`herramienta`) lo rechaza y
+    lo audita.
     """
     user_id = _usuario_o_none()
     if user_id is None:
         return
-    try:
-        await _limitar(user_id)
-    except ErrorHerramienta as exc:
-        error = _texto_herramienta(exc)
+    denegada = await _limitar(user_id)
+    if denegada is None:
+        return
+    ventana, exc = denegada
+    error = _texto_herramienta(exc)
+    if _auditar_denegacion(user_id, ventana):
         await _auditar(nombre, user_id, argumentos, None, 0, error)
-        raise ToolError(error) from None
+    else:
+        log.debug("mcp_tool_limite", tool=nombre, user_id=user_id, ventana=ventana)
+    raise ToolError(error)
 
 
 def _contar_filas(resultado: Mapping[str, JSONValue]) -> int | None:
