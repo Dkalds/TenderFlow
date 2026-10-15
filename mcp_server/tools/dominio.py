@@ -109,15 +109,43 @@ def _como_dict(valor: JSONValue) -> dict[str, JSONValue]:
 
 
 def buscar_licitaciones(
-    texto: str,
-    estado: list[str] | None = None,
-    ccaa: list[str] | None = None,
-    tecnologia: list[str] | None = None,
-    importe_min: float | None = None,
-    importe_max: float | None = None,
-    desde: str | None = None,
-    hasta: str | None = None,
-    limite: int = 20,
+    texto: Annotated[
+        str,
+        Field(
+            max_length=500,
+            description="Texto a buscar (subcadena, sin distinguir mayúsculas ni acentos); "
+            "vacío = sin filtro de texto. Ejemplo: 'mantenimiento SAP'",
+        ),
+    ],
+    estado: Annotated[
+        list[str] | None,
+        Field(max_length=20, description="Códigos de estado exactos. Ejemplo: ['PUB', 'ADJ']"),
+    ] = None,
+    ccaa: Annotated[
+        list[str] | None,
+        Field(max_length=30, description="Comunidades autónomas exactas. Ejemplo: ['Madrid']"),
+    ] = None,
+    tecnologia: Annotated[
+        list[str] | None,
+        Field(max_length=30, description="Tecnologías exactas. Ejemplo: ['SAP', 'ORACLE']"),
+    ] = None,
+    importe_min: Annotated[
+        float | None, Field(ge=0, description="Importe mínimo en euros (incluido)")
+    ] = None,
+    importe_max: Annotated[
+        float | None, Field(ge=0, description="Importe máximo en euros (incluido)")
+    ] = None,
+    desde: Annotated[
+        str | None,
+        Field(description="Fecha de publicación mínima, YYYY-MM-DD (incluida). Ej.: '2026-01-01'"),
+    ] = None,
+    hasta: Annotated[
+        str | None,
+        Field(description="Fecha de publicación máxima, YYYY-MM-DD (incluida). Ej.: '2026-06-30'"),
+    ] = None,
+    limite: Annotated[
+        int, Field(ge=1, le=50, description="Cuántos resultados devolver (1-50)")
+    ] = 20,
 ) -> dict[str, JSONValue]:
     """Busca licitaciones por texto (título, descripción, órgano...) con filtros opcionales.
 
@@ -167,7 +195,26 @@ def buscar_licitaciones(
 
 
 def buscar_en_pliegos(
-    pregunta: str, id_externo: str | None = None, limite: int = 10
+    pregunta: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=1_000,
+            description="Qué buscar en los pliegos, en lenguaje natural o palabras clave. "
+            "Ejemplo: 'penalidades por retraso en la entrega'",
+        ),
+    ],
+    id_externo: Annotated[
+        str | None,
+        Field(
+            max_length=200,
+            description="Expediente en cuyos pliegos buscar (de buscar_licitaciones); "
+            "sin él se busca en los 5 expedientes que mejor casan",
+        ),
+    ] = None,
+    limite: Annotated[
+        int, Field(ge=1, le=20, description="Cuántos fragmentos devolver (1-20)")
+    ] = 10,
 ) -> dict[str, JSONValue]:
     """Recupera los fragmentos de los pliegos (PCAP/PPT) más relevantes para una pregunta.
 
@@ -202,7 +249,17 @@ def buscar_en_pliegos(
     return salida
 
 
-def ficha_licitacion(id_externo: str) -> dict[str, JSONValue]:
+def ficha_licitacion(
+    id_externo: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=200,
+            description="Identificador del expediente (columna licitaciones.id_externo), "
+            "tal como lo devuelve buscar_licitaciones",
+        ),
+    ],
+) -> dict[str, JSONValue]:
     """Devuelve el expediente completo de una licitación por su ``id_externo``.
 
     Reúne en una sola llamada: ``licitacion`` (todas las columnas del anuncio),

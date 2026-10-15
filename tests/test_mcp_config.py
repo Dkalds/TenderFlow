@@ -69,3 +69,22 @@ def test_mcp_server_capa_por_encima_de_api() -> None:
     assert capas.CAPAS[-1] == "mcp_server" and capas.CAPAS[-2] == "api"
     assert ("mcp_server", "api") in capas.PROHIBIDAS
     assert ("mcp_server", "scraper") in capas.PROHIBIDAS
+
+
+def test_mcp_redirect_uris_extra_se_normalizan_como_pydantic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """El DCR compara contra ``str(AnyUrl(...))``: sin normalizar, ``https://Chatgpt.COM`` no casaría."""
+    from pydantic import AnyUrl
+
+    from mcp_server.auth.proveedor import redirect_uri_admitido
+
+    monkeypatch.setenv(
+        "MCP_REDIRECT_URIS_EXTRA",
+        "https://Chatgpt.COM, no es una url ,https://otro.example/cb",
+    )
+    with pytest.warns(UserWarning, match="MCP_REDIRECT_URIS_EXTRA"):
+        extra = mcp_redirect_uris_extra()
+    assert extra == ("https://chatgpt.com/", "https://otro.example/cb")
+    monkeypatch.setenv("MCP_REDIRECT_URIS_EXTRA", "https://Chatgpt.COM")
+    assert redirect_uri_admitido(str(AnyUrl("https://chatgpt.com")))

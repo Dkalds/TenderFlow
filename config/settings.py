@@ -8,7 +8,7 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import AnyUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from config.settings_resumen import ResumenPregenSettings
@@ -1471,9 +1471,26 @@ def mcp_redirect_uris_extra() -> tuple[str, ...]:
     Separados por comas; vacío → ``()``. Para clientes con callback propio por
     app, como ChatGPT (``https://chatgpt.com/connector/oauth/{callback_id}``).
     Los de claude.ai/claude.com y el loopback ya están en el proveedor.
+
+    Cada entrada se normaliza como ``pydantic.AnyUrl`` (host en minúsculas,
+    ``/`` como ruta vacía), que es la forma en que el DCR recibe el
+    ``redirect_uri`` del cliente: sin eso, ``https://Chatgpt.COM`` nunca casaría.
+    Una entrada que no es una URL se descarta con un aviso.
     """
     crudo = os.environ.get("MCP_REDIRECT_URIS_EXTRA", "")
-    return tuple(uri.strip() for uri in crudo.split(",") if uri.strip())
+    normalizadas: list[str] = []
+    for entrada in (uri.strip() for uri in crudo.split(",")):
+        if not entrada:
+            continue
+        try:
+            normalizadas.append(str(AnyUrl(entrada)))
+        except ValueError:  # pydantic.ValidationError hereda de ValueError
+            warnings.warn(
+                f"MCP_REDIRECT_URIS_EXTRA: se ignora {entrada!r}, no es una URL válida.",
+                UserWarning,
+                stacklevel=2,
+            )
+    return tuple(normalizadas)
 
 
 # ── ANCLA S5 — cola de trabajo y worker ──────────────────────────────────

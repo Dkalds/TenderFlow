@@ -15,6 +15,9 @@ from __future__ import annotations
 import re
 from functools import cache
 from pathlib import Path
+from typing import Annotated
+
+from pydantic import Field
 
 from db.consulta_libre import (
     JSONValue,
@@ -58,7 +61,18 @@ def ejemplos_sql_del_glosario() -> list[str]:
 
 
 def describir_esquema() -> dict[str, JSONValue]:
-    """Tablas visibles por dominio, con descripción y filas aproximadas, más el glosario."""
+    """Mapa de la base de datos: tablas visibles por dominio, más el glosario de negocio.
+
+    Llámala antes de escribir SQL. Cada tabla trae una línea de descripción y
+    sus filas aproximadas (``filas_aprox``, de las estadísticas de Postgres).
+    El ``glosario`` explica las trampas del dominio: qué fila contar cuando una
+    licitación llega por varias fuentes, qué base lleva cada importe, los
+    valores de ``estado``, las claves de unión y ejemplos de SQL válidos.
+
+    Devuelve ``{"dominios": [{"dominio", "tablas": [{"tabla", "descripcion",
+    "filas_aprox"}, ...]}, ...], "glosario": "..."}``. Las columnas de una
+    tabla se ven con ``describir_tabla``.
+    """
     visibles = tablas_visibles()
     filas = filas_aproximadas([e.tabla for e in visibles])
     dominios: list[JSONValue] = []
@@ -81,8 +95,27 @@ def _columnas_visibles(entrada: EntradaCatalogo) -> list[dict[str, str | bool]]:
     return columnas
 
 
-def describir_tabla(tabla: str) -> dict[str, JSONValue]:
-    """Columnas, claves foráneas y 3 filas de ejemplo de una tabla visible."""
+def describir_tabla(
+    tabla: Annotated[
+        str,
+        Field(
+            description="Nombre exacto de una tabla de describir_esquema, en minúsculas. "
+            "Ejemplo: 'licitaciones'"
+        ),
+    ],
+) -> dict[str, JSONValue]:
+    """Columnas, claves foráneas y 3 filas de ejemplo de una tabla visible.
+
+    Úsala para saber qué columnas puede leer ``consultar_sql`` en una tabla y
+    cómo se une con otras. Solo se muestran las columnas visibles para el MCP
+    (las sensibles no aparecen) y solo las claves foráneas hacia tablas que
+    también lo son.
+
+    Devuelve ``{"tabla", "dominio", "descripcion", "columnas": [{"nombre",
+    "tipo", "nulo"}, ...], "claves_foraneas": [{"columna", "tabla_destino",
+    "columna_destino"}, ...], "ejemplo": {"columnas", "filas", ...}}``. Un
+    nombre que no está en el catálogo es un error que lista las tablas válidas.
+    """
     entrada = entrada_visible(tabla)
     if entrada is None:
         eco = tabla if len(tabla) <= _MAX_ECO else f"{tabla[:_MAX_ECO]}…"
