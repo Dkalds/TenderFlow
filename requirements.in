@@ -114,3 +114,9 @@ boto3>=1.43.56,<1.44
 # POST /ficha-pliego/extract descarga y extrae adjuntos bajo demanda
 # (services/rag/fact_sheet.py::ensure_documents_ready). Mismo rango que el extra.
 pypdf>=4.0,<7
+
+# Servidor MCP interno (mcp_server/): SDK oficial v2 (`mcp.server.mcpserver.MCPServer`,
+# sin `FastMCP`). Solo lo instala el proceso MCP (requirements-mcp.in); vive aquí
+# para que `requirements.txt` —el lock que prueba el CI— lo pine y los hijos
+# salgan con las mismas versiones.
+mcp>=2.3,<3

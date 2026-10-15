@@ -37,6 +37,10 @@ REQUIREMENTS_API_IN = REPO_ROOT / "requirements-api.in"
 REQUIREMENTS_API_TXT = REPO_ROOT / "requirements-api.txt"
 REQUIREMENTS_PIPELINE_IN = REPO_ROOT / "requirements-pipeline.in"
 REQUIREMENTS_PIPELINE_TXT = REPO_ROOT / "requirements-pipeline.txt"
+# El servidor MCP interno (mcp_server/) es un tercer plano: hereda el cono de la
+# API y añade `mcp`. Mismo trato que los otros hijos.
+REQUIREMENTS_MCP_IN = REPO_ROOT / "requirements-mcp.in"
+REQUIREMENTS_MCP_TXT = REPO_ROOT / "requirements-mcp.txt"
 
 #: Paquetes de `requirements.in` que el corte deja fuera a propósito.
 #:
@@ -51,6 +55,12 @@ REQUIREMENTS_PIPELINE_TXT = REPO_ROOT / "requirements-pipeline.txt"
 #: descarga pliegos para la ficha bajo demanda, y sin ellos esa extracción
 #: moría en el import de `scraper/resilience.py`.
 SOLO_PIPELINE = frozenset({"lxml", "scikit-learn", "statsmodels", "networkx"})
+
+#: Paquetes de `requirements.in` que solo instala el proceso MCP
+#: (`requirements-mcp.in`). Siguen en `requirements.in` para que el lock que
+#: prueba el CI los pine y los hijos salgan con las mismas versiones, pero la
+#: imagen de la API no los trae.
+SOLO_MCP = frozenset({"mcp"})
 
 # PEP 503: normaliza nombres de paquete para comparar (case-insensitive,
 # "-"/"_"/"." equivalentes). p.ej. "psycopg-pool" == "psycopg_pool" == "Psycopg.Pool".
@@ -121,7 +131,7 @@ def _comprueba_pines_coherentes() -> int:
         return 0
     referencia = _pines(REQUIREMENTS_TXT)
     codigo = 0
-    for hijo in (REQUIREMENTS_API_TXT, REQUIREMENTS_PIPELINE_TXT):
+    for hijo in (REQUIREMENTS_API_TXT, REQUIREMENTS_PIPELINE_TXT, REQUIREMENTS_MCP_TXT):
         if not hijo.exists():
             continue
         distintos = sorted(
@@ -136,7 +146,7 @@ def _comprueba_pines_coherentes() -> int:
             )
             for linea in distintos:
                 print(f"  - {linea}")
-            print("\nRecompila los tres con `make lock`.")
+            print("\nRecompila todos con `make lock`.")
             codigo = 1
     if codigo == 0:
         print(
@@ -189,8 +199,9 @@ def _comprueba_corte() -> int:
     historico = _names_from_in(REQUIREMENTS_IN)
     api = _names_from_in(REQUIREMENTS_API_IN)
     solo_pipeline = {_normalize(n) for n in SOLO_PIPELINE}
+    solo_mcp = {_normalize(n) for n in SOLO_MCP}
 
-    sin_asignar = sorted(historico - api - solo_pipeline)
+    sin_asignar = sorted(historico - api - solo_pipeline - solo_mcp)
     if sin_asignar:
         print(
             "[check-requirements-sync] paquetes de requirements.in que el corte "
@@ -200,11 +211,11 @@ def _comprueba_corte() -> int:
             print(f"  - {name}")
         print(
             "\nAñadilos a requirements-api.in (si alguna ruta los importa, aunque "
-            "sea de forma perezosa) o a SOLO_PIPELINE de este script."
+            "sea de forma perezosa) o a SOLO_PIPELINE / SOLO_MCP de este script."
         )
         return 1
 
-    filtrados = sorted(api & solo_pipeline)
+    filtrados = sorted(api & (solo_pipeline | solo_mcp))
     if filtrados:
         print(
             "[check-requirements-sync] paquetes declarados a la vez en la API y "
@@ -216,7 +227,7 @@ def _comprueba_corte() -> int:
     # podría volver a traer scikit-learn al lockfile sin que nadie lo escriba
     # en un `.in`. Lo que cuenta es lo que la imagen instala.
     if REQUIREMENTS_API_TXT.exists():
-        colados = sorted(_names_from_compiled(REQUIREMENTS_API_TXT) & solo_pipeline)
+        colados = sorted(_names_from_compiled(REQUIREMENTS_API_TXT) & (solo_pipeline | solo_mcp))
         if colados:
             print(
                 "[check-requirements-sync] requirements-api.txt instala paquetes "
@@ -227,7 +238,7 @@ def _comprueba_corte() -> int:
     print(
         f"[check-requirements-sync] OK — el corte C3.1 asigna los "
         f"{len(historico)} paquetes: {len(api & historico)} a la API, "
-        f"{len(solo_pipeline)} solo al pipeline."
+        f"{len(solo_pipeline)} solo al pipeline, {len(solo_mcp)} solo al MCP."
     )
     return 0
 
@@ -237,6 +248,7 @@ def main() -> int:
     codigo |= _comprueba_par(REQUIREMENTS_IN, REQUIREMENTS_TXT)
     codigo |= _comprueba_par(REQUIREMENTS_API_IN, REQUIREMENTS_API_TXT)
     codigo |= _comprueba_par(REQUIREMENTS_PIPELINE_IN, REQUIREMENTS_PIPELINE_TXT)
+    codigo |= _comprueba_par(REQUIREMENTS_MCP_IN, REQUIREMENTS_MCP_TXT)
     codigo |= _comprueba_corte()
     codigo |= _comprueba_pines_coherentes()
     return codigo

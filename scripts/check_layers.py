@@ -11,11 +11,12 @@ empaquetar una de las dos mitades por separado.
 
 El orden, de abajo arriba (ver ``CAPAS``)::
 
-    config < observability < shared < llm < db < services < scraper < scheduler < api
+    config < observability < shared < llm < db < services < scraper < scheduler < api < mcp_server
 
 Un módulo puede importar de su paquete y de cualquiera **por debajo**. Importar
 de uno por encima es una violación. Además hay aristas prohibidas aunque el
-orden las permita (``PROHIBIDAS``): la API no importa del paquete de ingesta.
+orden las permita (``PROHIBIDAS``): la API no importa del paquete de ingesta,
+ni el servidor MCP del de ingesta ni de la API (es un proceso aparte).
 
 Qué se cuenta
 -------------
@@ -66,12 +67,17 @@ CAPAS: tuple[str, ...] = (
     "scraper",
     "scheduler",
     "api",
+    "mcp_server",
 )
 
 #: Aristas prohibidas aunque el orden las permita: ``(quien importa, de quién)``.
 #: ``api → scraper``: servir una petición no depende del paquete de ingesta. Es
 #: lo que llevó los clasificadores de ``scraper/`` a ``services/ml/``.
-PROHIBIDAS: frozenset[tuple[str, str]] = frozenset({("api", "scraper")})
+#: ``mcp_server`` es un proceso aparte, de solo lectura: ni la ingesta ni las
+#: rutas HTTP son suyas (lee la BD con su propio rol y reutiliza ``services/``).
+PROHIBIDAS: frozenset[tuple[str, str]] = frozenset(
+    {("api", "scraper"), ("mcp_server", "api"), ("mcp_server", "scraper")}
+)
 
 #: Directorios excluidos del escaneo (ver el docstring del módulo).
 _EXCLUIDOS = ("db/alembic/versions/",)

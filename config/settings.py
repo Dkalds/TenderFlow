@@ -1444,6 +1444,27 @@ def oauth_microsoft_tenant() -> str:
     return os.environ.get("OAUTH_MICROSOFT_TENANT", "").strip() or "common"
 
 
+# ── Servidor MCP interno (mcp_server/) ───────────────────────────────────────
+# Funciones y no campos de ``Settings``, como ``oauth_microsoft_*``: que falten
+# no debe abortar la API en ``prod``. Quien valida que estén es el arranque del
+# MCP, que es el único que las necesita.
+
+
+def mcp_database_url() -> str:
+    """``MCP_DATABASE_URL`` — DSN del rol ``tenderflow_mcp`` (solo lectura)."""
+    return os.environ.get("MCP_DATABASE_URL", "").strip()
+
+
+def mcp_public_url() -> str:
+    """``MCP_PUBLIC_URL`` — URL pública del servidor MCP, sin barra final."""
+    return os.environ.get("MCP_PUBLIC_URL", "").strip().rstrip("/")
+
+
+def mcp_google_redirect_uri() -> str:
+    """``MCP_GOOGLE_REDIRECT_URI`` — callback de Google registrado para el MCP."""
+    return os.environ.get("MCP_GOOGLE_REDIRECT_URI", "").strip()
+
+
 # ── ANCLA S5 — cola de trabajo y worker ──────────────────────────────────
 #
 # Fuera de `Settings` y no dentro, por el mismo motivo que `database_admin_url`

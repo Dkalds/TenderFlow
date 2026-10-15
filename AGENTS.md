@@ -109,8 +109,9 @@ El mapa detallado, entry points y documentación por paquete viven en
     predicción no depende del paquete de ingesta.
 - **Los imports van hacia abajo.** Orden de capas, de abajo arriba:
     `config < observability < shared < llm < db < services < scraper <
-    scheduler < api`. Un paquete importa de sí mismo y de los que tiene por
-    debajo; además `api/` no importa de `scraper/`. Un import dentro de una
+    scheduler < api < mcp_server`. Un paquete importa de sí mismo y de los que
+    tiene por debajo; además ni `api/` ni `mcp_server/` importan de `scraper/`,
+    y `mcp_server/` no importa de `api/`. Un import dentro de una
     función cuenta igual. `scripts/check_layers.py` es un ratchet: las
     violaciones heredadas están congeladas y **no se le añaden entradas** —si
     dos capas necesitan la misma pieza, la pieza baja.

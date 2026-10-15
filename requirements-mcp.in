@@ -1,0 +1,20 @@
+# Dependencias del servidor MCP interno (mcp_server/).
+#
+# Compilar con `make lock`. Lo instala la imagen del proceso MCP, que es un
+# servicio aparte de la API: de solo lectura, con su propio rol de Postgres
+# (`tenderflow_mcp`) y su propia URL pública. **No** viaja a la imagen de la API
+# ni a los runners del pipeline.
+#
+# Incluye todo lo de la API porque `mcp_server/` reutiliza `config/`, `db/` y
+# `services/` (autorización, rate limiting, composición de la ficha de
+# licitación) y esas capas importan el mismo `psycopg`, `structlog` y
+# `cachetools`. Lo que añade abajo es lo que solo el MCP usa. No usa nada del
+# pipeline (`lxml`, ML): `mcp_server/` no importa de `scraper/` ni de `api/`
+# (scripts/check_layers.py).
+-r requirements-api.in
+
+# ── Protocolo MCP ────────────────────────────────────────────────────────────
+# SDK v2: `from mcp.server.mcpserver import MCPServer` (`FastMCP` ya no existe)
+# y la autorización en `mcp.server.auth.*`. El techo `<3` evita saltar de mayor
+# sin revisar el contrato de `OAuthAuthorizationServerProvider`.
+mcp>=2.3,<3

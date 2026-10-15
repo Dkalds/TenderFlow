@@ -188,6 +188,9 @@ lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
 	# `scripts/check_requirements_sync.py` lo verifica pin a pin.
 	$(call compilar_lock,requirements-api.in,requirements-api.txt,--constraint=requirements.txt)
 	$(call compilar_lock,requirements-pipeline.in,requirements-pipeline.txt,--constraint=requirements.txt)
+	# Servidor MCP interno (mcp_server/): proceso aparte, de solo lectura. Hereda
+	# el cono de la API (`-r requirements-api.in`) y añade `mcp`.
+	$(call compilar_lock,requirements-mcp.in,requirements-mcp.txt,--constraint=requirements.txt)
 
 lock-hashes: lock
 
