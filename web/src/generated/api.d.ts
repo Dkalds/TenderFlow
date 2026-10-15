@@ -2651,6 +2651,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/condiciones-oficiales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Criterios, garantías y solvencia tal como los publica PLACSP
+         * @description Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v149).
+         *
+         *     Es la fuente primaria de criterios, garantías y solvencia; la ficha del
+         *     pliego (``/ficha-pliego``) es la extracción LLM que la complementa, y por
+         *     eso se sirven por separado. Sin condiciones publicadas responde 200 con
+         *     ``ambitos`` vacío: «no lo publica» es un estado, no un error.
+         */
+        get: operations["get_condiciones_oficiales_api_v1_licitaciones__id_externo__condiciones_oficiales_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/documentos": {
         parameters: {
             query?: never;
@@ -6745,6 +6770,12 @@ export interface components {
              * @enum {string}
              */
             familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /**
+             * Fuente
+             * @default pliego
+             * @enum {string}
+             */
+            fuente: "pliego" | "placsp";
             /** Items */
             items?: components["schemas"]["ChecklistItem"][];
             /**
@@ -6772,6 +6803,12 @@ export interface components {
              * @enum {string}
              */
             familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /**
+             * Fuente
+             * @default pliego
+             * @enum {string}
+             */
+            fuente: "pliego" | "placsp";
             /** Motivo */
             motivo: string;
             /** Requisito */
@@ -7517,6 +7554,46 @@ export interface components {
             total: number;
         };
         /**
+         * CondicionesAmbito
+         * @description Las condiciones de un ámbito: el expediente (`lote_numero` nulo) o un lote.
+         */
+        CondicionesAmbito: {
+            /** Criterios */
+            criterios?: components["schemas"]["CriterioOficial"][];
+            /** Garantias */
+            garantias?: components["schemas"]["GarantiaOficial"][];
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Lote Titulo */
+            lote_titulo?: string | null;
+            /** Solvencia */
+            solvencia?: components["schemas"]["RequisitoSolvenciaOficial"][];
+        };
+        /**
+         * CondicionesOficiales
+         * @description Lo que la publicación oficial dice de un expediente, por ámbito.
+         *
+         *     `ambitos` vacío significa que el anuncio no publica estos bloques —o que el
+         *     expediente se ingirió antes de v149 y no se ha vuelto a leer—, no que el
+         *     pliego no los tenga: para eso está la ficha del pliego.
+         */
+        CondicionesOficiales: {
+            /** Actualizado */
+            actualizado?: string | null;
+            /** Ambitos */
+            ambitos?: components["schemas"]["CondicionesAmbito"][];
+            /**
+             * Fuente
+             * @default placsp
+             * @constant
+             */
+            fuente: "placsp";
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Url Publicacion */
+            url_publicacion?: string | null;
+        };
+        /**
          * ContratoCartera
          * @description Un contrato ganado que sigue vivo.
          */
@@ -7724,6 +7801,33 @@ export interface components {
             name: string;
             /** Organization Id */
             organization_id?: number | null;
+        };
+        /**
+         * CriterioOficial
+         * @description Un criterio de adjudicación publicado (`cac:AwardingCriteria`).
+         */
+        CriterioOficial: {
+            /** Descripcion */
+            descripcion?: string | null;
+            /**
+             * Es Precio
+             * @default false
+             */
+            es_precio: boolean;
+            /** Nota */
+            nota?: string | null;
+            /** Orden */
+            orden: number;
+            /** Padre Orden */
+            padre_orden?: number | null;
+            /** Peso */
+            peso?: number | null;
+            /** Peso Pct */
+            peso_pct?: number | null;
+            /** Subtipo Codigo */
+            subtipo_codigo?: string | null;
+            /** Tipo Codigo */
+            tipo_codigo?: string | null;
         };
         /**
          * CrossGeoEntry
@@ -9230,6 +9334,24 @@ export interface components {
             pct: number;
         };
         /**
+         * GarantiaOficial
+         * @description Una garantía exigida (`cac:RequiredFinancialGuarantee`).
+         */
+        GarantiaOficial: {
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Moneda */
+            moneda?: string | null;
+            /** Orden */
+            orden: number;
+            /** Porcentaje */
+            porcentaje?: number | null;
+            /** Tipo Codigo */
+            tipo_codigo?: string | null;
+        };
+        /**
          * GeoEntry
          * @description Single CCAA entry.
          */
@@ -9265,6 +9387,8 @@ export interface components {
          * @description Contraste completo de una oportunidad contra la capacidad declarada.
          */
         GoNoGoChecklist: {
+            /** Condiciones Actualizadas */
+            condiciones_actualizadas?: string | null;
             /**
              * Cumple
              * @default 0
@@ -9307,6 +9431,11 @@ export interface components {
              * @default 0
              */
             total_requisitos: number;
+            /**
+             * Usa Condiciones Oficiales
+             * @default false
+             */
+            usa_condiciones_oficiales: boolean;
         };
         /** GoNoGoCriterioOut */
         GoNoGoCriterioOut: {
@@ -13450,6 +13579,27 @@ export interface components {
             scope: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
             /** Subsanable */
             subsanable?: boolean | null;
+        };
+        /**
+         * RequisitoSolvenciaOficial
+         * @description Un requisito de solvencia (`cac:TendererQualificationRequest`).
+         */
+        RequisitoSolvenciaOficial: {
+            /**
+             * Clase
+             * @enum {string}
+             */
+            clase: "tecnica" | "economica" | "clasificacion";
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Moneda */
+            moneda?: string | null;
+            /** Orden */
+            orden: number;
+            /** Tipo Codigo */
+            tipo_codigo?: string | null;
+            /** Umbral Importe */
+            umbral_importe?: number | null;
         };
         /**
          * ResolucionOut
@@ -21366,6 +21516,55 @@ export interface operations {
                 content?: never;
             };
             /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_condiciones_oficiales_api_v1_licitaciones__id_externo__condiciones_oficiales_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CondicionesOficiales"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Licitación no encontrada */
             404: {
                 headers: {
                     [name: string]: unknown;

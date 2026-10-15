@@ -36,6 +36,10 @@ nivel:
 - ``Adjudicacion``                    — dataclass de una adjudicación.
 - ``DocumentoReferencia``             — dataclass de un adjunto (pliego) referenciado
                                         en el CODICE (ver db.repositories.documentos).
+- ``CondicionesCodice``               — criterios (``CriterioAdjudicacion``),
+                                        garantías (``GarantiaExigida``) y solvencia
+                                        (``RequisitoSolvencia``) de ``cac:TenderingTerms``
+                                        (v149); viajan en ``Licitacion.condiciones``.
 - ``UpsertResult``                    — resultado enriquecido de upsert con
                                         historial (inserted/modified/unchanged).
 - ``upsert_licitaciones()``           — bulk upsert sin historial; devuelve
@@ -90,9 +94,14 @@ from db.schema import init_db
 # Re-exportar desde db.upsert
 from db.upsert import (
     Adjudicacion,
+    ClaseSolvencia,
+    CondicionesCodice,
+    CriterioAdjudicacion,
     DocumentoReferencia,
+    GarantiaExigida,
     Licitacion,
     Lote,
+    RequisitoSolvencia,
     UpsertResult,
     count_licitaciones,
     estimar_filas,
@@ -124,9 +133,14 @@ __all__ = [
     "init_db",
     # upsert
     "Adjudicacion",
+    "ClaseSolvencia",
+    "CondicionesCodice",
+    "CriterioAdjudicacion",
     "DocumentoReferencia",
+    "GarantiaExigida",
     "Licitacion",
     "Lote",
+    "RequisitoSolvencia",
     "UpsertResult",
     "count_licitaciones",
     "estimar_filas",

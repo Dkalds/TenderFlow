@@ -18,6 +18,7 @@ Uso (``ENV=dev`` porque carga ``config.settings`` para resolver ``DOWNLOADS_DIR`
 
     ENV=dev python scripts/capture_placsp_fixtures.py --listar   # qué hay disponible
     ENV=dev python scripts/capture_placsp_fixtures.py --caso multilote --caso ute
+    ENV=dev python scripts/capture_placsp_fixtures.py --atom muestra/*.atom --caso condiciones
 
 Cada expediente capturado se escribe como ``<NN>_<caso>.xml``. Tras capturar,
 regenerá el golden y revisá el diff::
@@ -102,6 +103,23 @@ def _adjudicacion_pyme(entry: Any) -> bool:
     return bool(entry.xpath(".//cbc:SMEAwardedIndicator", namespaces=_ns()))
 
 
+def _condiciones(entry: Any) -> bool:
+    """v149: el expediente trae criterios **y** garantía o solvencia propios."""
+    from scraper.codice_parser import parse_condiciones
+
+    condiciones = parse_condiciones(entry)
+    expediente = [c for c in condiciones.criterios if c.lote_numero is None]
+    otros = [x for x in (*condiciones.garantias, *condiciones.solvencia) if x.lote_numero is None]
+    return bool(expediente and otros)
+
+
+def _condiciones_por_lote(entry: Any) -> bool:
+    """v149: algún lote publica su propio ``TenderingTerms`` con criterios."""
+    from scraper.codice_parser import parse_condiciones
+
+    return any(c.lote_numero is not None for c in parse_condiciones(entry).criterios)
+
+
 _CASOS: dict[str, Callable[[Any], bool]] = {
     "multilote": _es_multilote,
     "ute": _es_ute,
@@ -110,6 +128,8 @@ _CASOS: dict[str, Callable[[Any], bool]] = {
     "importe_total_amount": _importe_total_amount,
     "documentos": _con_documentos,
     "pyme": _adjudicacion_pyme,
+    "condiciones": _condiciones,
+    "condiciones_por_lote": _condiciones_por_lote,
 }
 
 
@@ -141,6 +161,21 @@ def _iter_entries(max_zips: int) -> Iterator[Any]:
             yield from root.iter(f"{{{ns['atom']}}}entry")
 
 
+def _iter_entries_atom(rutas: list[Path]) -> Iterator[Any]:
+    """Produce elementos ``<entry>`` de páginas ATOM ya descargadas.
+
+    Las que guarda ``scripts/medir_terminos_codice.py --vivo --guardar``: así la
+    misma muestra con la que se mide da los fixtures reales del corpus.
+    """
+    from lxml import etree
+
+    ns = _ns()
+    parser = etree.XMLParser(huge_tree=False, resolve_entities=False, no_network=True)
+    for ruta in rutas:
+        print(f"[capture] Leyendo {ruta.name}")
+        yield from etree.parse(str(ruta), parser).getroot().iter(f"{{{ns['atom']}}}entry")
+
+
 def _siguiente_indice() -> int:
     existentes = [p.name for p in _FIXTURES.glob("*.xml")]
     indices = [int(n[:2]) for n in existentes if n[:2].isdigit()]
@@ -157,6 +192,12 @@ def main() -> int:
     )
     parser.add_argument("--max-zips", type=int, default=2, help="ZIP más recientes a recorrer")
     parser.add_argument(
+        "--atom",
+        nargs="+",
+        type=Path,
+        help="páginas ATOM ya descargadas en vez de los ZIP cacheados",
+    )
+    parser.add_argument(
         "--listar",
         action="store_true",
         help="Solo cuenta cuántos ejemplares hay de cada caso, sin escribir nada",
@@ -170,7 +211,8 @@ def main() -> int:
     encontrados: dict[str, Any] = {}
     conteo = dict.fromkeys(casos, 0)
 
-    for entry in _iter_entries(args.max_zips):
+    entradas = _iter_entries_atom(args.atom) if args.atom else _iter_entries(args.max_zips)
+    for entry in entradas:
         for nombre, predicado in list(pendientes.items()):
             try:
                 if not predicado(entry):

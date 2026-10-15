@@ -4,6 +4,7 @@ import * as React from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { toast } from "sonner";
+import { CondicionesOficialesBloque } from "@/components/pliego/condiciones-oficiales";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // Del módulo de los pulgares, no de `chat-thread`: importarlos de allí metía
 // el hilo de chat entero (react-markdown incluido) en la pestaña Pliego.
 import { FeedbackButtons } from "@/components/feedback-buttons";
+import { useCondicionesOficiales } from "@/hooks/use-condiciones-oficiales";
 import {
   type AnyFact,
   type EvidenceRef,
@@ -200,7 +202,18 @@ function FactRow({
   );
 }
 
+/**
+ * La ficha del pliego, con la publicación oficial delante (v149).
+ *
+ * Criterios, garantías y solvencia los publica PLACSP en el propio anuncio:
+ * cuando la API los trae, van primero y con su procedencia, y lo extraído del
+ * pliego por el LLM queda debajo, rotulado como tal y con sus citas. Las dos
+ * fuentes no se mezclan en una misma lista: cada una dice de dónde sale.
+ */
 export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string }) {
+  const oficiales = useCondicionesOficiales(licitacionId);
+  const datosOficiales = oficiales.data;
+  const hayOficiales = (datosOficiales?.ambitos?.length ?? 0) > 0;
   const factSheet = useTenderFactSheet(licitacionId);
   const extraction = useTenderFactSheetExtraction(licitacionId);
   const documentos = useFactSheetDocumentos(licitacionId);
@@ -245,9 +258,29 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
     <Panel>
       <PanelTitle
         title="Ficha estructurada del pliego"
-        hint="Requisitos que se pueden comprobar en una página concreta del documento."
+        hint={
+          hayOficiales
+            ? "Primero lo que publica la Plataforma; después lo extraído del pliego, con la página que lo cita."
+            : "Requisitos que se pueden comprobar en una página concreta del documento."
+        }
         actions={presentation ? <Badge variant={presentation.variant}>{presentation.label}</Badge> : undefined}
       />
+      {hayOficiales && datosOficiales && (
+        <div className="mb-5 border-b border-border/60 pb-5">
+          <CondicionesOficialesBloque datos={datosOficiales} licitacionId={licitacionId} />
+        </div>
+      )}
+      {oficiales.error != null && (
+        <Aviso tone="warning" role="status" className="mb-4">
+          No se pudo leer la publicación oficial de PLACSP: lo que sigue es solo lo extraído del
+          pliego.
+        </Aviso>
+      )}
+      {hayOficiales && (
+        <SectionTitle className="mb-3" hint="Complementa la publicación oficial">
+          Extraído del pliego
+        </SectionTitle>
+      )}
       <div>
         {factSheet.isLoading ? (
           <div className="space-y-3">
