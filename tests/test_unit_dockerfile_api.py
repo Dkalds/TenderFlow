@@ -14,6 +14,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -217,3 +219,41 @@ def test_el_corte_de_requirements_esta_declarado() -> None:
         "el pipeline comparte persistencia y observabilidad con la API: "
         "requirements-pipeline.in debe heredar de requirements-api.in"
     )
+
+
+def test_entrypoint_ejecuta_un_comando_completo_y_conserva_las_opciones(tmp_path: Path) -> None:
+    """``python -m mcp_server`` (``dockerCommand`` de ``tenderflow-mcp``) no se pasa a uvicorn.
+
+    Con un ``python`` de mentira en el PATH se ve qué ejecuta el entrypoint: un
+    comando se ejecuta tal cual, y las opciones (el ``CMD`` por defecto,
+    ``--workers 1``) siguen yendo a uvicorn.
+    """
+    import os
+    import shutil
+    import subprocess
+
+    sh = shutil.which("sh")
+    if sh is None:
+        pytest.skip("sin shell POSIX (Windows) no hay nada que ejecutar")
+    falso = tmp_path / "python"
+    falso.write_text('#!/bin/sh\necho "$@"\n')
+    falso.chmod(0o755)
+    entorno = {**os.environ, "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"}
+    entrypoint = str(ROOT / "docker" / "docker-entrypoint-api.sh")
+
+    def lanzar(*args: str) -> str:
+        return subprocess.run(
+            [sh, entrypoint, *args], capture_output=True, text=True, env=entorno, check=True
+        ).stdout.strip()
+
+    assert lanzar("python", "-m", "mcp_server") == "-m mcp_server"
+    por_defecto = lanzar("--workers", "1")
+    assert por_defecto.startswith("-m uvicorn api.app:app")
+    assert por_defecto.endswith("--workers 1")
+
+
+def test_dockerfile_copia_el_lockfile_mcp_y_el_healthcheck_es_configurable() -> None:
+    content = (ROOT / "docker" / "Dockerfile.api").read_text()
+    copias = [linea for linea in content.splitlines() if linea.startswith("COPY requirements-")]
+    assert any("requirements-mcp.txt" in linea for linea in copias)
+    assert "${HEALTHCHECK_PATH:-/api/v1/health}" in content

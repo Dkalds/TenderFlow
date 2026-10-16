@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-15
 
-Revisión Alembic aplicada: `v149_ledger_borrado_org`.
+Revisión Alembic aplicada: `v150_mcp_oauth`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -32,8 +32,8 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Seguimiento y notificaciones | 12 | 132 | 35 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 21 | 167 | 31 |
-| **Total** | **100** | **913** | **229** |
+| Otras | 23 | 182 | 34 |
+| **Total** | **102** | **928** | **232** |
 
 ## Licitaciones y fuente
 
@@ -1692,6 +1692,37 @@ Claves: `PRIMARY KEY (id)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `uq_go_no_go_weights` (único)
+
+### `mcp_oauth_clients`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `client_id` | `text` | no |
+| `client_name` | `text` | sí |
+| `redirect_uris` | `jsonb` | no |
+| `datos` | `jsonb` | no |
+| `created_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (client_id)`
+
+### `mcp_oauth_tokens`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `token_hash` | `text` | no |
+| `kind` | `text` | no |
+| `client_id` | `text` | no |
+| `user_id` | `integer` | sí |
+| `family_id` | `text` | sí |
+| `scopes` | `jsonb` | no |
+| `datos` | `jsonb` | sí |
+| `expires_at` | `timestamp with time zone` | no |
+| `revoked_at` | `timestamp with time zone` | sí |
+| `created_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (token_hash)`
+
+Índices: `idx_mcp_oauth_tokens_expires`, `idx_mcp_oauth_tokens_family`, `idx_mcp_oauth_tokens_user`
 
 ### `notification_preferences`
 

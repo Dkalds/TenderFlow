@@ -1013,3 +1013,52 @@ def client(api_db):
 def auth(api_key):
     """Headers de autenticación con la API key de test."""
     return {"X-API-Key": api_key}
+
+
+@pytest.fixture()
+def rol_mcp(tmp_db, monkeypatch):
+    """Rol efímero con la política del MCP y ``MCP_DATABASE_URL`` apuntando a él.
+
+    Aplica ``sentencias_rol`` + ``sentencias_grants`` (la política real del
+    catálogo) a un rol con nombre único —los roles son globales al clúster y
+    ``-n auto`` corre tests en paralelo— y deja el ejecutor de SQL libre
+    conectando **como ese rol**, no como el dueño: así los tests prueban la
+    frontera de seguridad de verdad. ``statement_timeout`` se baja a 1 s solo
+    por velocidad (el valor de producción, 15 s, lo fija el test del catálogo).
+    """
+    import secrets
+    from urllib.parse import quote, urlsplit, urlunsplit
+
+    from db.consulta_libre import cerrar_pool_mcp
+    from mcp_server.catalogo import sentencias_grants, sentencias_rol
+
+    db_mod, _ = tmp_db
+    rol = f"tf_mcp_probe_{os.getpid()}_{secrets.token_hex(4)}"
+    clave = secrets.token_hex(16)
+    with db_mod.connect() as c:
+        schema = str(c.execute("SELECT current_schema()").fetchone()[0])
+        c.execute(f"CREATE ROLE \"{rol}\" LOGIN PASSWORD '{clave}' NOBYPASSRLS")
+        for sentencia in sentencias_rol(rol):
+            c.execute(sentencia)
+        for sentencia in sentencias_grants(rol, schema):
+            c.execute(sentencia)
+        c.execute(f"ALTER ROLE \"{rol}\" SET statement_timeout = '1s'")
+
+    base = urlsplit(_pg_test_url())
+    host = base.hostname or "localhost"
+    if ":" in host:  # IPv6 literal
+        host = f"[{host}]"
+    netloc = f"{quote(rol, safe='')}:{clave}@{host}" + (f":{base.port}" if base.port else "")
+    query = f"{base.query}&" if base.query else ""
+    dsn = urlunsplit(
+        (base.scheme, netloc, base.path, f"{query}options=-csearch_path%3D{schema}%2Cpublic", "")
+    )
+    cerrar_pool_mcp()
+    monkeypatch.setenv("MCP_DATABASE_URL", dsn)
+    try:
+        yield rol
+    finally:
+        cerrar_pool_mcp()
+        with db_mod.connect() as c:
+            c.execute(f'DROP OWNED BY "{rol}"')
+            c.execute(f'DROP ROLE IF EXISTS "{rol}"')

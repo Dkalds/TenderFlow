@@ -414,6 +414,123 @@ services:
       # tocar `.env*` requiere OK explícito (AGENTS.md §6). Hasta entonces se
       # ponen desde el dashboard: lo lista el paso 1 del runbook del cutover.
 
+  # ── Servidor MCP interno (ADR-036, 2026-10-15) ──────────────────────────
+  # Acceso de lectura a los datos para el equipo (3 personas, todas admin) desde
+  # claude.ai y otros clientes MCP: `python -m mcp_server`, OAuth 2.1 con login
+  # de Google. Es un proceso aparte de la API (ADR-036 §Alternativas): otra
+  # superficie pública, otro rol de BD (`tenderflow_mcp`, solo lectura) y su
+  # propio ritmo de despliegue. Procedimiento de alta y operación en
+  # `docs/runbooks/mcp-interno.md`.
+  #
+  # ALTA A MANO, NO POR BLUEPRINT: mientras el Blueprint no esté vinculado
+  # (checklist de la cabecera), una «New Blueprint Instance» sobre este fichero
+  # crearía TODOS sus servicios, incluido un segundo `tenderflow-worker` (plano
+  # de cron) contra producción. `tenderflow-mcp` se crea por el dashboard con
+  # los valores de abajo: docs/runbooks/mcp-interno.md, paso 3.
+  #
+  # SIN VERIFICAR EN RENDER (escrito el 2026-10-15, el servicio no existe aún):
+  #   - Que `dockerCommand` llega al entrypoint como comando completo. El
+  #     entrypoint (`docker/docker-entrypoint-api.sh`) lo ejecuta tal cual si el
+  #     primer argumento no empieza por `-`; si Render reemplazara además el
+  #     ENTRYPOINT, el resultado es el mismo.
+  #   - Que `REQUIREMENTS_FILE` llega como build arg, igual que en el worker.
+  #   - Que `plan: starter` (512 MB) basta. El proceso es uvicorn + el SDK y un
+  #     pool de 5 conexiones; las respuestas están acotadas a 100 000 caracteres
+  #     y `consultar_sql` lee por lotes de 50 filas (para en cuanto no caben).
+  #     Una sola celda enorme sí se carga entera. Si hay OOM, `standard`.
+  #   - `MCP_PUBLIC_URL`: el host `*.onrender.com` solo se conoce al crear el
+  #     servicio. Con `MCP_PUBLIC_URL` y `MCP_GOOGLE_REDIRECT_URI` vacías el
+  #     arranque aborta (a propósito: `validar_configuracion`): se crea con
+  #     valores provisionales y se fijan los reales tras el primer deploy
+  #     (runbook, paso 3).
+  #
+  # `APP_PROFILE: mcp` es un perfil propio (config/settings.py): no es la API
+  # (con `api` los validadores de `Settings` exigirían `API_HMAC_SECRET`,
+  # `CORS_ALLOWED_ORIGINS`, `WEBHOOK_SIGNING_KEY`... que este servicio no usa)
+  # ni un worker (con `worker` se saltaría la longitud mínima de `SIGNING_KEY` y
+  # `AUDIT_HMAC_KEY`, subiría el techo de consulta a 300 s, y
+  # `scripts/check_job_parity.py` daría por declarado el consumidor de la cola
+  # aunque se borrara el worker real). Sí exige esas dos claves, con la longitud
+  # de la API. Lo demás lo valida `mcp_server/servidor.py::validar_configuracion`
+  # al arrancar (aborta en prod).
+  - type: web
+    name: tenderflow-mcp
+    runtime: docker
+    dockerfilePath: docker/Dockerfile.api
+    dockerContext: .
+    dockerCommand: python -m mcp_server
+    plan: starter
+    region: frankfurt
+    # Mismo gate que la API y el worker: solo llega lo que lanza `deploy.yml`.
+    autoDeploy: false
+    healthCheckPath: /healthz
+    envVars:
+      - key: ENV
+        value: prod
+      - key: APP_PROFILE
+        value: mcp
+      # Variante de dependencias: la API más el SDK `mcp` (`requirements-mcp.in`).
+      # Render pasa las variables del servicio como build args.
+      - key: REQUIREMENTS_FILE
+        value: requirements-mcp.txt
+      # Solo lo usa el HEALTHCHECK de Docker (la API monta otra ruta).
+      - key: HEALTHCHECK_PATH
+        value: /healthz
+      # Rol de la aplicación: tablas OAuth (`mcp_oauth_*`), usuarios, auditoría
+      # **y las tres tools de dominio** (`buscar_licitaciones`,
+      # `buscar_en_pliegos`, `ficha_licitacion`), que leen datos de negocio con
+      # los repositorios de la app: SQL fijo, sin texto del LLM. El SQL libre
+      # (`consultar_sql`) y las tools de esquema van solo por `MCP_DATABASE_URL`.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL_ROOT_CERT
+        sync: false
+      # Rol de solo lectura `tenderflow_mcp` (`scripts/setup_pg_role_mcp.sql`),
+      # el único con el que se ejecuta el SQL que escribe el LLM. DSN del
+      # session pooler de Supavisor con usuario `tenderflow_mcp.<project-ref>`.
+      - key: MCP_DATABASE_URL
+        sync: false
+      # `https://<host>`, sin barra final ni `:443`. Es el issuer OAuth y la base
+      # de la URL que se pega en el conector.
+      - key: MCP_PUBLIC_URL
+        sync: false
+      # Debe valer exactamente `{MCP_PUBLIC_URL}/oauth/google/callback` y estar
+      # dado de alta como URI de redirección autorizado en el cliente OAuth de
+      # Google. Si no coincide, el arranque lo rechaza.
+      - key: MCP_GOOGLE_REDIRECT_URI
+        sync: false
+      # Mismo cliente OAuth de Google que la API: solo cambia el redirect URI.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: SIGNING_KEY
+        sync: false
+      # Cuota por usuario (60/min, 1 000/día) y nonce del estado OAuth. Sin
+      # Redis cada reinicio los olvida.
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      # Firma de la cadena de auditoría. **El mismo valor que `tenderflow-api`**:
+      # el MCP escribe en la misma `audit_log`, y con otra clave la cadena firmada
+      # dejaría de verificar. Sin ella `log_action` no lanza (no rompe la
+      # petición) pero tampoco escribe: el MCP funcionaría sin dejar rastro.
+      - key: AUDIT_HMAC_KEY
+        sync: false
+      # Presupuesto de conexiones al pooler de Supabase (ver la nota larga de
+      # `tenderflow-api`): el tráfico de la app es mínimo (login y tokens).
+      # Aparte, el pool de `MCP_DATABASE_URL` tiene su máximo de 5 en código y
+      # el rol tiene `CONNECTION LIMIT 5`.
+      - key: DB_POOL_SIZE
+        value: "2"
+      - key: DB_READ_POOL_SIZE
+        value: "2"
+      # Opcional, no declarada a propósito (un `sync: false` vacío bloquea el
+      # alta del Blueprint): `MCP_REDIRECT_URIS_EXTRA`, redirect URIs exactos
+      # que el registro dinámico admite además de los de Claude y el loopback
+      # (p. ej. el de ChatGPT). Se pone desde el dashboard; ver el runbook.
+
   # ── Observabilidad (ADR-019) ────────────────────────────────────────────
   # El código expone /metrics desde siempre, pero hasta ahora nadie lo
   # scrapeaba: el único Prometheus vivía en docker-compose.yml apuntando a

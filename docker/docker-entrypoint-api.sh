@@ -17,6 +17,12 @@ export WEB_CONCURRENCY=0
 # que el navegador reintenta con backoff y se percibe como lentitud. Lo que
 # protege de verdad al proceso son el threadpool (API_THREADPOOL_TOKENS) y los
 # pools de BD, así que este techo solo tiene que cortar un abuso real.
+# Un primer argumento que no es una opción (`python -m mcp_server`) es un
+# comando completo, no argumentos de uvicorn: es como `tenderflow-mcp` reutiliza
+# esta imagen. El CMD por defecto (`--workers 1`) empieza por `-` y no entra aquí.
+if [ "$#" -gt 0 ] && [ "${1#-}" = "$1" ]; then
+    exec "$@"
+fi
 exec python -m uvicorn api.app:app \
     --host 0.0.0.0 \
     --port "${PORT:-8080}" \

@@ -34,6 +34,10 @@
 --        psql "$DATABASE_URL" -c "SELECT count(*) FROM licitaciones"  -- debe funcionar
 --
 -- Idempotente: seguro de re-ejecutar (CREATE ROLE / CREATE POLICY guardados).
+--
+-- El rol del MCP interno (`tenderflow_mcp`, solo lectura) NO se define aquí: vive en
+-- `scripts/setup_pg_role_mcp.sql`, generado desde `mcp_server/catalogo.py` por
+-- `scripts/gen_mcp_grants.py`.
 
 -- ── 1. Rol de aplicación ────────────────────────────────────────────────────
 

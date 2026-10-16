@@ -459,6 +459,45 @@ def test_api_profile_still_requires_http_secrets(missing, match):
         Settings(ENV="prod", APP_PROFILE="api", DATABASE_URL="", **kwargs)
 
 
+def test_mcp_profile_en_prod_exige_solo_las_claves_de_firma_y_auditoria():
+    """``mcp``: ni secretos de la API (CORS, HMAC de API keys, Redis) ni los de un worker.
+
+    Pero firma tokens y escribe auditoría, así que ``SIGNING_KEY`` y
+    ``AUDIT_HMAC_KEY`` se exigen con la misma longitud que a la API.
+    """
+    from config.settings import LONGITUD_MINIMA_CLAVE, Settings
+
+    clave = "z" * LONGITUD_MINIMA_CLAVE
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = Settings(
+            ENV="prod", APP_PROFILE="mcp", DATABASE_URL="", SIGNING_KEY=clave, AUDIT_HMAC_KEY=clave
+        )
+    assert s.APP_PROFILE == "mcp"
+
+    for campo, match in (
+        ("SIGNING_KEY", "SIGNING_KEY es obligatorio"),
+        ("AUDIT_HMAC_KEY", "AUDIT_HMAC_KEY"),
+    ):
+        kwargs = {"SIGNING_KEY": clave, "AUDIT_HMAC_KEY": clave, campo: ""}
+        with pytest.raises(Exception, match=match):
+            Settings(ENV="prod", APP_PROFILE="mcp", DATABASE_URL="", **kwargs)
+        kwargs[campo] = "corta"
+        with pytest.raises(Exception, match=campo):
+            Settings(ENV="prod", APP_PROFILE="mcp", DATABASE_URL="", **kwargs)
+
+
+def test_mcp_profile_no_relaja_el_techo_de_tiempo_por_consulta():
+    """Un worker o un job suben el techo a 300 s; el MCP atiende peticiones de usuario."""
+    from config.settings import Settings
+
+    mcp = Settings(APP_PROFILE="mcp", ENV="dev")
+    api = Settings(APP_PROFILE="api", ENV="dev")
+    batch = Settings(APP_PROFILE="worker", ENV="dev")
+    assert mcp.DB_STATEMENT_TIMEOUT_MS == api.DB_STATEMENT_TIMEOUT_MS
+    assert batch.DB_STATEMENT_TIMEOUT_MS > mcp.DB_STATEMENT_TIMEOUT_MS
+
+
 def test_api_profile_prod_ok_with_all_secrets():
     from config.settings import Settings
 

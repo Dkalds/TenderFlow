@@ -106,6 +106,24 @@ def get_user_by_email(email: str, *, include_deactivated: bool = False) -> dict[
         return dict(zip(cols, row, strict=False))
 
 
+def get_users_by_email_ci(email: str, *, include_deactivated: bool = False) -> list[dict[str, Any]]:
+    """Cuentas cuyo correo coincide sin distinguir mayúsculas, por ``id``.
+
+    El alta self-service no canonicaliza el correo y ``users.email`` es único
+    solo con su capitalización exacta, así que ``Ana@x.es`` y ``ana@x.es`` pueden
+    existir a la vez. El login del MCP compara sin mayúsculas; quien opere a
+    mano (``scripts/mcp_revocar.py``) debe poder alcanzar las mismas cuentas, y
+    por eso devuelve todas las que casan, no una.
+    """
+    sql = "SELECT * FROM users WHERE lower(email) = lower(%s)"
+    if not include_deactivated:
+        sql += " AND deactivated_at IS NULL"
+    with connect() as c:
+        cur = c.execute(sql + " ORDER BY id", (email,))
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
 def get_active_user_by_email_ci(email: str) -> dict[str, Any] | None:
     """Busca una cuenta activa por correo, sin distinguir mayúsculas.
 

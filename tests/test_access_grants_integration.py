@@ -80,7 +80,7 @@ def _login_permitido(email: str) -> bool:
     """
     from api.routes.auth import _oauth_access_allowed
 
-    with patch("api.routes.auth.oauth_email_allowed", return_value=False):
+    with patch("services.access_grants.oauth_email_allowed", return_value=False):
         return asyncio.run(_oauth_access_allowed(email))
 
 
@@ -336,7 +336,7 @@ def test_avisar_sin_conceder_solo_escribe_a_quien_ya_puede_entrar(client, api_db
     _autenticar(admin)
     try:
         with (
-            patch("api.routes.auth.oauth_email_allowed", return_value=False),
+            patch("services.access_grants.oauth_email_allowed", return_value=False),
             patch(
                 "api.routes.admin_solicitudes.notificar_acceso_concedido", return_value=True
             ) as avisar,

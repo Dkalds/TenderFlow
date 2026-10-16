@@ -34,11 +34,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   resulta inaceptable antes de que la RFC
 #   `docs/rfc/2026-09-18-rfc-explain-fuera-del-proceso-api.md` se resuelva,
 #   `REQUIREMENTS_FILE=requirements-pipeline.txt` devuelve el conjunto anterior
-#   (es `requirements.txt` pin a pin; `check_requirements_sync.py` lo vigila).
+#   (mismos pines que `requirements.txt`, salvo el plano MCP;
+#   `check_requirements_sync.py` lo vigila).
+# - **El servidor MCP interno** (`render.yaml::tenderflow-mcp`, 2026-10-15)
+#   corre esta misma imagen con `REQUIREMENTS_FILE=requirements-mcp.txt`: el
+#   conjunto de la API más el SDK `mcp`. Arranca con `python -m mcp_server`, que
+#   el entrypoint ejecuta tal cual cuando recibe un comando en vez de opciones.
 #
 # El CI construye las dos variantes (`.github/workflows/ci.yml::docker-build`).
 ARG REQUIREMENTS_FILE=requirements-api.txt
-COPY requirements-api.txt requirements-pipeline.txt pyproject.toml ./
+COPY requirements-api.txt requirements-pipeline.txt requirements-mcp.txt pyproject.toml ./
 RUN pip install --upgrade "pip>=26.1" \
     && pip install --prefix=/install --no-cache-dir --require-hashes -r "${REQUIREMENTS_FILE}"
 
@@ -105,8 +110,11 @@ RUN chmod +x docker/docker-entrypoint-api.sh
 
 USER appuser
 
+# `HEALTHCHECK_PATH` (por defecto el de la API) la fija el servicio MCP a
+# `/healthz`: su proceso no monta `/api/v1/health`, y sin esto Docker lo daría
+# por no saludable aunque sirva bien. Render usa su propio `healthCheckPath`.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD curl --fail --silent --max-time 5 http://localhost:${PORT:-8080}/api/v1/health || exit 1
+    CMD curl --fail --silent --max-time 5 "http://localhost:${PORT:-8080}${HEALTHCHECK_PATH:-/api/v1/health}" || exit 1
 
 ENTRYPOINT ["./docker/docker-entrypoint-api.sh"]
 CMD ["--workers", "1"]

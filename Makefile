@@ -188,6 +188,9 @@ lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
 	# `scripts/check_requirements_sync.py` lo verifica pin a pin.
 	$(call compilar_lock,requirements-api.in,requirements-api.txt,--constraint=requirements.txt)
 	$(call compilar_lock,requirements-pipeline.in,requirements-pipeline.txt,--constraint=requirements.txt)
+	# Servidor MCP interno (mcp_server/): proceso aparte, de solo lectura. Hereda
+	# el cono de la API (`-r requirements-api.in`) y añade `mcp`.
+	$(call compilar_lock,requirements-mcp.in,requirements-mcp.txt,--constraint=requirements.txt)
 
 lock-hashes: lock
 
@@ -335,9 +338,9 @@ docker-build:  ## Build all Docker images
 	docker compose build
 
 security:  ## Run security scanners locally (bandit + semgrep)
-	bandit -r api db scraper scheduler services shared config observability llm -q
+	bandit -r api db scraper scheduler services shared config observability llm mcp_server -q
 	@echo "bandit OK"
-	semgrep --config auto --quiet api db scraper scheduler services shared config observability llm || true
+	semgrep --config auto --quiet api db scraper scheduler services shared config observability llm mcp_server || true
 	@echo "semgrep done"
 
 coverage-html:  ## Generate HTML coverage report

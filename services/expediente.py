@@ -1,0 +1,49 @@
+"""El expediente completo de una licitación, compuesto para consumo externo (MCP interno).
+
+Reúne en un solo dict lo que la ficha del producto enseña repartido: el anuncio,
+su canónica (si es una republicación), los lotes, las adjudicaciones, las
+condiciones oficiales de CODICE (criterios, solvencia, garantías) y la ficha
+extraída del pliego. No sustituye a ``GET /licitaciones/{id}``: esa ruta sigue
+devolviendo su propio contrato tipado.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from db.repositories import dedupe
+from db.repositories.adjudicaciones import AdjudicacionRepository
+from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
+from db.repositories.licitaciones import lotes_de
+from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
+from services.licitaciones import get_licitacion_detail
+
+__all__ = ["expediente_completo"]
+
+#: Columnas internas de búsqueda: no son datos del expediente y pesan.
+_COLUMNAS_INTERNAS = frozenset({"search_vector", "embedding"})
+
+
+def expediente_completo(id_externo: str) -> dict[str, Any] | None:
+    """Expediente ``id_externo`` con todo lo que cuelga de él, o ``None`` si no existe.
+
+    Claves: ``licitacion`` (fila completa), ``canonica`` (``id_externo`` del
+    anuncio original si este es una republicación, si no ``None``), ``lotes``,
+    ``adjudicaciones``, ``criterios``, ``solvencia``, ``garantias`` (condiciones
+    oficiales; listas vacías si el anuncio no las publicó) y ``ficha_pliego``
+    (la ficha extraída de los pliegos, o ``None`` si aún no hay).
+    """
+    detalle = get_licitacion_detail(id_externo)
+    if detalle is None:
+        return None
+    condiciones = CondicionesOficialesRepository().get(id_externo)
+    return {
+        "licitacion": {k: v for k, v in detalle.items() if k not in _COLUMNAS_INTERNAS},
+        "canonica": dedupe.canonical_for(id_externo),
+        "lotes": lotes_de(id_externo),
+        "adjudicaciones": AdjudicacionRepository().list_for_licitacion(id_externo),
+        "criterios": condiciones["criterios"],
+        "solvencia": condiciones["solvencia"],
+        "garantias": condiciones["garantias"],
+        "ficha_pliego": TenderFactSheetsRepository().get(id_externo),
+    }

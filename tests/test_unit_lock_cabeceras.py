@@ -9,7 +9,7 @@ el fichero con «Option … not supported (yet)» y deja de proponer
 actualizaciones de Python sin que ningún check lo diga.
 
 Si este test falla tras recompilar a mano o tras un PR de seguridad de
-Dependabot: ``make lock`` reescribe las cuatro cabeceras en el formato bueno.
+Dependabot: ``make lock`` reescribe las cinco cabeceras en el formato bueno.
 """
 
 from __future__ import annotations
@@ -37,6 +37,10 @@ CABECERAS = {
         "uv pip compile requirements-pipeline.in --output-file=requirements-pipeline.txt"
         " --constraint=requirements.txt --generate-hashes --python-version=3.13"
     ),
+    "requirements-mcp.txt": (
+        "uv pip compile requirements-mcp.in --output-file=requirements-mcp.txt"
+        " --constraint=requirements.txt --generate-hashes --python-version=3.13"
+    ),
 }
 
 
@@ -60,6 +64,7 @@ def test_make_lock_escribe_esa_cabecera() -> None:
         ("requirements-dev.in", "requirements-dev.txt,"),
         ("requirements-api.in", "requirements-api.txt,--constraint=requirements.txt"),
         ("requirements-pipeline.in", "requirements-pipeline.txt,--constraint=requirements.txt"),
+        ("requirements-mcp.in", "requirements-mcp.txt,--constraint=requirements.txt"),
     ):
         assert f"$(call compilar_lock,{fuente},{destino})" in makefile
 

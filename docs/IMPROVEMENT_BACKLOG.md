@@ -1256,6 +1256,26 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `use-renovaciones` sigue leyendo `usePursuits()` con la página de 50.
 - **Riesgo:** bajo.
 
+### [P3] Purgar los tokens OAuth del MCP caducados o revocados
+- **Área:** db/mcp_oauth.py, scheduler/ (job de mantenimiento)
+- **Problema:** `mcp_oauth_tokens` solo crece: nada borra las filas caducadas ni las revocadas (access de 1 h, refresh de 30 días, códigos de 60 s). Con tres personas el volumen es mínimo, pero la tabla está en la ruta de cada petición y un refresh rotado deja una fila por rotación. El índice `idx_mcp_oauth_tokens_expires (expires_at)` ya existe para esto.
+- **Acceptance criteria:**
+  - Un job (el plano de cron del worker, ADR-033, o `retention_cleanup`) borra las filas con `expires_at` anterior a hace N días (N ≥ 30, para que la detección de reutilización de un refresh reciente siga viendo la familia) y las revocadas igual de antiguas.
+  - El SQL vive en `db/mcp_oauth.py`; test de integración que fija qué borra y qué conserva (una familia con un refresh vivo no pierde sus filas antiguas).
+  - Se anota en `docs/runbooks/mcp-interno.md` §7 que ya no es un seguimiento.
+- **Files de partida:** [db/mcp_oauth.py](../db/mcp_oauth.py), [docs/runbooks/mcp-interno.md](runbooks/mcp-interno.md)
+- **Riesgo:** bajo — borrado acotado a filas que ya no valen; lo delicado es no romper la detección de reutilización.
+- **Hecho el 2026-10-15** (rama `claude/laughing-newton-dbht10`, revisión final del MCP): `db.mcp_oauth.purgar`, que el propio servidor MCP corre al arrancar y cada hora (no el worker). Con los plazos que fijó la revisión, **más cortos que N ≥ 30**: pendientes/códigos caducados hace > 1 día, access/refresh revocados o caducados hace > 7 días (aunque la familia siga viva: un refresh rotado hace más de una semana deja de detectarse como reutilizado) y clientes de > 7 días sin tokens. Runbook §7 actualizado.
+
+### [P3] El `client_secret` del registro dinámico del MCP se guarda legible
+- **Área:** db/mcp_oauth.py, mcp_server/auth/
+- **Problema:** `mcp_oauth_clients.datos` guarda el `client_secret` que emite el DCR en claro, porque el SDK de `mcp` lo compara tal cual al autenticar el cliente en `/token`. Está oculto para el rol `tenderflow_mcp` (la tabla es `OCULTA` en el catálogo), pero lo ve cualquiera con el rol de la app, un volcado o un backup. Los tokens, en cambio, sí van como `sha256`.
+- **Acceptance criteria:**
+  - Decidir con el conector real de claude.ai delante (checklist de `docs/runbooks/mcp-interno.md` §6): o los clientes se registran como públicos (`token_endpoint_auth_method = none`, que además obliga a que los metadatos OAuth lo anuncien) o el secreto se guarda hasheado/cifrado y se compara sin exponerlo.
+  - Test que fija que ninguna columna de `mcp_oauth_clients` contiene el secreto en claro tras el registro.
+- **Files de partida:** [db/mcp_oauth.py](../db/mcp_oauth.py), [mcp_server/auth/proveedor.py](../mcp_server/auth/proveedor.py)
+- **Riesgo:** medio — toca el contrato de autenticación de los clientes; un cambio equivocado deja a claude.ai sin poder canjear el código.
+
 ## Cerrados
 
 - [2026-10-15] **P3: La campana nunca lista novedades de licitaciones** (rama

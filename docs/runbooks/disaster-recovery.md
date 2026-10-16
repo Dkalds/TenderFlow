@@ -171,6 +171,13 @@ Si faltan muchas revisiones (producción llegó a ir 30 por detrás en
 septiembre de 2026), aplicarlas **por tandas** y comprobar `/health/ready` y
 `make audit-truth-check` entre tanda y tanda.
 
+**Tras una migración que añade tablas o columnas**, el rol de solo lectura del
+MCP no las ve hasta regenerar sus grants: clasificarlas en
+`mcp_server/catalogo.py` si el ratchet lo pide, `python scripts/gen_mcp_grants.py`
+(cambio de catálogo, va en un PR) y volver a aplicar
+`scripts/setup_pg_role_mcp.sql` con el rol admin ([mcp-interno.md](mcp-interno.md),
+paso 1.3; no toca la contraseña).
+
 ---
 
 ## 6. Plano de cron parado

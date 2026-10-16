@@ -44,6 +44,7 @@ _PAQUETES_DE_PRODUCCION: tuple[str, ...] = (
     "config",
     "db",
     "llm",
+    "mcp_server",
     "observability",
     "scheduler",
     "scraper",

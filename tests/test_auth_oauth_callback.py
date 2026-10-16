@@ -276,7 +276,7 @@ def test_callback_con_la_tabla_de_concesiones_caida_no_deja_entrar(callback_vigi
     """Con la función real, no un doble: lista estática que no casa y Postgres caído."""
     auth_routes, ejecutado = callback_vigilado
     _claims_de_google(monkeypatch, auth_routes, "nadie@example.test")
-    monkeypatch.setattr(auth_routes, "oauth_email_allowed", lambda _email: False)
+    monkeypatch.setattr("services.access_grants.oauth_email_allowed", lambda _email: False)
 
     def _caida(_email):
         raise RuntimeError("database unavailable")
@@ -290,7 +290,7 @@ def test_callback_con_una_concesion_dinamica_deja_entrar(callback_vigilado, monk
     """El otro lado del mismo camino: sin lista estática, la concesión basta."""
     auth_routes, ejecutado = callback_vigilado
     _claims_de_google(monkeypatch, auth_routes, "concedida@example.test")
-    monkeypatch.setattr(auth_routes, "oauth_email_allowed", lambda _email: False)
+    monkeypatch.setattr("services.access_grants.oauth_email_allowed", lambda _email: False)
     monkeypatch.setattr(
         "db.access_grants.is_access_granted", lambda email: email == "concedida@example.test"
     )
