@@ -345,7 +345,12 @@ def _analizar(sql: str) -> _Lexico:
 # las familias OAuth), ``pg_notify`` y las señales llegan a otros procesos,
 # ``pg_logical_emit_message`` escribe WAL aun en solo lectura, y
 # ``query_to_xml``, ``ts_stat``, ``ts_rewrite`` o ``dblink`` ejecutan SQL
-# escrito en texto, que este veto no vería. Es defensa en profundidad (ADR-036):
+# escrito en texto, que este veto no vería. ``net.*`` (la extensión ``pg_net``
+# de Supabase, ejecutable por ``PUBLIC``) y ``http*`` (``pgsql-http``) hacen
+# peticiones HTTP salientes: sacarían datos de la base a una URL cualquiera. Hoy
+# el modo de solo lectura las frena (``net.http_get`` encola con un INSERT y
+# falla con 25006, comprobado en producción el 2026-10-16), pero un cambio de
+# versión podría no escribir antes de salir. Es defensa en profundidad (ADR-036):
 # el motor del riesgo es la inyección de instrucciones desde el texto de los
 # pliegos, que el LLM lee y podría obedecer.
 
@@ -367,6 +372,8 @@ _VETADAS = frozenset(
         "pg_current_xact_id",
         "txid_current",
         "pg_drop_replication_slot",
+        # Esquema de ``pg_net``: el nombre ``net`` de ``net.http_post(...)``.
+        "net",
     }
 )
 _VETADAS_PREFIJO = (
@@ -381,13 +388,17 @@ _VETADAS_PREFIJO = (
     "pg_create_",
     "pg_copy_",
     "pg_replication_",
+    # ``pgsql-http`` (``http``, ``http_get``, ``http_post``…) y las funciones de
+    # ``pg_net`` llamadas sin esquema si algún día entra en el ``search_path``.
+    "http",
 )
 _PISTA_VETADA = (
     "En el MCP no se admiten cerrojos de aviso (pg_advisory_*), pg_notify, señales "
     "a otros procesos, set_config, las funciones que escriben WAL o asignan "
     "transacción (pg_logical_*, ranuras de replicación, pg_current_xact_id, "
     "txid_current) ni las que ejecutan SQL escrito en texto (query_to_xml, "
-    "cursor_to_xml, ts_stat, ts_rewrite, dblink). Escribe la consulta directamente "
+    "cursor_to_xml, ts_stat, ts_rewrite, dblink) ni las que hacen peticiones HTTP "
+    "(net.*, http*). Escribe la consulta directamente "
     "con SELECT."
 )
 _VETADA_EN_TEXTO = re.compile(

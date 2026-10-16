@@ -36,7 +36,8 @@ BEGIN
 END $$;
 
 -- ── 2. Límites del rol ──────────────────────────────────────────────────────
-ALTER ROLE "tenderflow_mcp" NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 5;
+DO $$ BEGIN IF (SELECT rolsuper FROM pg_roles WHERE rolname = 'tenderflow_mcp') THEN RAISE EXCEPTION 'tenderflow_mcp no puede ser superusuario'; END IF; END $$;
+ALTER ROLE "tenderflow_mcp" NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 5;
 ALTER ROLE "tenderflow_mcp" SET default_transaction_read_only = on;
 ALTER ROLE "tenderflow_mcp" SET statement_timeout = '15s';
 ALTER ROLE "tenderflow_mcp" SET idle_in_transaction_session_timeout = '30s';
