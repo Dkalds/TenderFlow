@@ -35,7 +35,7 @@ Google tras el primer deploy: paso 2); el 4 es por persona y va al final.
    catálogo): Actions → *Apply DB migrations (alembic)* con `mode=apply`, o en
    local `alembic upgrade head` con el rol admin.
 2. Generar una contraseña fuerte y sustituir el placeholder del fichero
-   (**no lo comitees con la contraseña puesta**; hazlo en una copia temporal):
+   (**no lo subas al repo con la contraseña puesta**; hazlo en una copia temporal):
 
    ```bash
    PASS=$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-32)
@@ -180,7 +180,7 @@ Con `ENV=prod` y `APP_PROFILE=mcp`, si falta `AUDIT_HMAC_KEY` o `SIGNING_KEY`
 `config.settings` aborta al importarse con un `ValidationError` de pydantic
 (traza, exit 1) y no se revoca nada. Distínguelo del correo desconocido por la
 traza. El `exit 2` del propio script («falta AUDIT_HMAC_KEY») es una segunda red
-para un perfil que no valide las claves; con el perfil `mcp` no se alcanza.
+para un perfil que no compruebe las claves; con el perfil `mcp` no se alcanza.
 
 El correo se compara **sin distinguir mayúsculas** (como el login) y alcanza
 también cuentas desactivadas; si varias cuentas casan (`Ana@x.es` y `ana@x.es`),
