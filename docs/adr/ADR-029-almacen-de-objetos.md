@@ -1,3 +1,16 @@
+---
+id: ADR-029
+title: "Almacén de objetos para binarios: se revoca «texto por página, sin blob store»"
+status: accepted
+date: 2026-09-06
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-022-frontera-de-persistencia]]"
+  - "[[ADR-016-destino-persistencia-supabase]]"
+  - "[[ADR-028-cola-de-trabajo-y-worker]]"
+tags: [adr]
+---
+
 # ADR-029 — Almacén de objetos para binarios: se revoca «texto por página, sin blob store»
 
 - **Estado:** aceptado

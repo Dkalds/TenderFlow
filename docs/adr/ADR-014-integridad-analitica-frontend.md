@@ -16,9 +16,9 @@ tags: [adr]
 * **Estado:** Aceptado
 * **Fecha:** 2026-06-22
 * **Deciders:** Daniel Kalitovics
-* **Relacionados:** [[ADR-007-services-domain-layer|ADR-007]] (capa de servicios de dominio), [[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]] (jerarquía de
+* **Relacionados:** [ADR-007](ADR-007-services-domain-layer.md) (capa de servicios de dominio), [ADR-013](ADR-013-jerarquia-materializaciones-analiticas.md) (jerarquía de
   materializaciones analíticas), AGENTS.md §3.8 (frontend siempre vía API)
-* **RFC origen:** [[2026-06-16-rfc-meta-integridad-analitica-frontend|docs/rfc/2026-06-16-rfc-meta-integridad-analitica-frontend.md]]
+* **RFC origen:** [docs/rfc/2026-06-16-rfc-meta-integridad-analitica-frontend.md](../rfc/2026-06-16-rfc-meta-integridad-analitica-frontend.md)
 
 ## Contexto
 

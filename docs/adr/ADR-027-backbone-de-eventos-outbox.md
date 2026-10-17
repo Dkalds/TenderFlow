@@ -1,3 +1,17 @@
+---
+id: ADR-027
+title: "Un solo backbone de eventos: outbox sobre `domain_events`"
+status: accepted
+date: 2026-09-06
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-022-frontera-de-persistencia]]"
+  - "[[ADR-012-plano-unico-orquestacion]]"
+  - "[[ADR-028-cola-de-trabajo-y-worker]]"
+  - "[[ADR-024-services-biblioteca-no-frontera]]"
+tags: [adr]
+---
+
 # ADR-027 — Un solo backbone de eventos: outbox sobre `domain_events`
 
 - **Estado:** aceptado

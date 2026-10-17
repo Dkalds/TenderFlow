@@ -1,3 +1,16 @@
+---
+id: ADR-031
+title: "Seguimiento unificado: una tabla `follows`, un control «Seguir»"
+status: accepted
+date: 2026-09-06
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-022-frontera-de-persistencia]]"
+  - "[[ADR-027-backbone-de-eventos-outbox]]"
+  - "[[ADR-030-identidad-user-id-y-oidc]]"
+tags: [adr]
+---
+
 # ADR-031 — Seguimiento unificado: una tabla `follows`, un control «Seguir»
 
 - **Estado:** aceptado

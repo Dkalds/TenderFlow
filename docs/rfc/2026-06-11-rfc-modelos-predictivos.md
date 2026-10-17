@@ -1,6 +1,6 @@
 ---
 rfc: 20260611-2
-title: Fase 6 — Modelos predictivos: baja ganadora y probabilidad de adjudicación
+title: "Fase 6 — Modelos predictivos: baja ganadora y probabilidad de adjudicación"
 issue: N/A (roadmap interno, Crítica 5 analítica predictiva)
 author: agent:architect
 date: 2026-06-11

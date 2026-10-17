@@ -1,7 +1,7 @@
 ---
 rfc: 2026-09-06-retirada-endpoints-analitica
 title: Retirada de tres endpoints de analítica sin consumidor y del listado por offset
-issue: (sin issue: decisión D19 del plan de arquitectura 2026-09 v2)
+issue: "(sin issue: decisión D19 del plan de arquitectura 2026-09 v2)"
 author: agent:claude-code
 date: 2026-09-06
 status: approved

@@ -4,7 +4,7 @@ title: "Retirada de SQLite como backend soportado — mono-dialecto Postgres"
 status: accepted
 date: 2026-07-27
 deciders: "Daniel Kalitovics"
-supersedes: ADR-018
+supersedes: "[[ADR-018-paridad-motor-tests-produccion]]"
 related:
   - "[[ADR-004-sqlite-turso-vs-postgres]]"
   - "[[ADR-016-destino-persistencia-supabase]]"
@@ -17,14 +17,14 @@ tags: [adr, persistence, sqlite, postgres]
 
 * **Estado:** Aceptado
 * **Fecha:** 2026-07-27
-* **Sustituye a:** [[ADR-018-paridad-motor-tests-produccion|ADR-018]] (en su
+* **Sustituye a:** [ADR-018](ADR-018-paridad-motor-tests-produccion.md) (en su
   parte de "SQLite local sigue siendo conveniencia de dev intencional")
 
 ## Contexto
 
 Producción corre sobre Supabase Postgres desde el cutover F3c
-([[ADR-016-destino-persistencia-supabase|ADR-016]]). Turso/libSQL se retiró en
-[[ADR-020-retirada-turso|ADR-020]]. Lo que quedaba era **SQLite como backend de
+([ADR-016](ADR-016-destino-persistencia-supabase.md)). Turso/libSQL se retiró en
+[ADR-020](ADR-020-retirada-turso.md). Lo que quedaba era **SQLite como backend de
 desarrollo local**, que ADR-018 declaró explícitamente conveniencia intencional
 y no legado a eliminar sin más.
 

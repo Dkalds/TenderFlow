@@ -254,11 +254,11 @@ todo, aunque las políticas estén instaladas. El cutover sigue cerrando el DDL
 
 ---
 
-# Parte 3 — Tripwires de persistencia ([[ADR-004-sqlite-turso-vs-postgres|ADR-004]])
+# Parte 3 — Tripwires de persistencia ([ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md))
 
 Estos tripwires nacieron señalando que el supuesto "single writer" de
-[[ADR-004-sqlite-turso-vs-postgres|ADR-004]] ya no se sostenía y había que
-decidir si migrar a PostgreSQL — esa migración **ya ocurrió** ([[ADR-016-destino-persistencia-supabase|ADR-016]],
+[ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md) ya no se sostenía y había que
+decidir si migrar a PostgreSQL — esa migración **ya ocurrió** ([ADR-016](../adr/ADR-016-destino-persistencia-supabase.md),
 cutover 2026-07-11, ver `docs/archive/runbooks/migracion-persistencia.md`). El mismo
 invariante (¿cuántos escritores concurrentes tolera la arquitectura antes de
 necesitar revisión?) se sigue vigilando, ahora sobre el pool `psycopg_pool` de
@@ -285,7 +285,7 @@ adquirir una conexión del pool en vez de reintentos de lock de fichero.
 1. **Confirmar el alcance** en Grafana: ¿es un pico puntual (backfill, migración
    manual) o sostenido? Los tripwires usan `for: 15m` para filtrar ruido, pero
    un backfill largo puede dispararlos legítimamente.
-2. **Identificar los writers activos** ([[ADR-004-sqlite-turso-vs-postgres|ADR-004]] §Tripwires): scraper pipeline,
+2. **Identificar los writers activos** ([ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md) §Tripwires): scraper pipeline,
    scheduler (KPI/aggregates/drift), API (webhooks, exports, API keys,
    watchlist, auth), dashboard (sesiones/auth).
 3. **Correlacionar** con `scheduler_job_duration_seconds` y la ventana de

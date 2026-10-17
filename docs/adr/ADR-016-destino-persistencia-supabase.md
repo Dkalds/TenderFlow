@@ -4,7 +4,7 @@ title: "Destino de persistencia: Supabase + psycopg3"
 status: accepted
 date: 2026-07-05
 deciders: "Daniel Kalitovics"
-supersedes: ADR-004
+supersedes: "[[ADR-004-sqlite-turso-vs-postgres]]"
 tags: [adr, persistence, postgres, supabase]
 ---
 

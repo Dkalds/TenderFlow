@@ -1,7 +1,7 @@
 ---
 rfc: 2026-09-18-explain-fuera-del-proceso-api
 title: Sacar la inferencia de scikit-learn del proceso HTTP — destino de /explain y de /analytics/clusters
-issue: (sin issue: backlog P2 «Separar los requirements de la API de los del pipeline/ML» y plan de salida al mercado §4 «Aligerar la imagen de la API»)
+issue: "(sin issue: backlog P2 «Separar los requirements de la API de los del pipeline/ML» y plan de salida al mercado §4 «Aligerar la imagen de la API»)"
 author: agent:claude-code
 date: 2026-09-18
 status: review
