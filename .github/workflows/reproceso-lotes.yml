@@ -1,0 +1,81 @@
+name: Reproceso del lote de las adjudicaciones (manual)
+
+# Asigna su lote a las adjudicaciones ya guardadas de los expedientes
+# multilote, leyendo los ZIP mensuales de PLACSP (`scraper/reproceso_lotes.py`).
+#
+# Existe porque hasta 2026-10 el parser no leía el lote del `TenderResult` y
+# ninguna adjudicación multilote tenía `lote_id`. La ingesta corrige lo que
+# vuelve a publicarse, pero el bulk (`scrape-bulk.yml`) tarda más de dos horas
+# por mes —escribe los documentos de cada expediente uno a uno— y no puede
+# reprocesar el histórico. Esto solo rellena `lote_id` en sitio: no toca la
+# licitación, los documentos ni la resolución de empresas.
+#
+# Sin `aplicar` solo cuenta lo que asignaría; con `aplicar`, escribe mes a mes,
+# así que un rango largo puede partirse en varias ejecuciones. Repetir un mes
+# no cambia nada.
+
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Primer mes, YYYY-MM"
+        required: true
+        default: "2025-01"
+      hasta:
+        description: "Último mes, YYYY-MM (incluido)"
+        required: true
+        default: "2026-10"
+      aplicar:
+        description: "Escribir en la BD (sin marcar, solo cuenta)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# El mismo grupo que la ingesta (ADR-012): nunca corre a la vez que un bulk o
+# un tick diario contra la misma BD.
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  reproceso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Reprocesar
+        env:
+          DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
+          APLICAR: ${{ inputs.aplicar }}
+        run: |
+          set -eu
+          if [ "$APLICAR" = "true" ]; then
+            python -m scraper.reproceso_lotes --desde "$DESDE" --hasta "$HASTA" --aplicar
+          else
+            python -m scraper.reproceso_lotes --desde "$DESDE" --hasta "$HASTA"
+          fi

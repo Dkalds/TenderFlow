@@ -428,21 +428,17 @@ services:
   # de cron) contra producción. `tenderflow-mcp` se crea por el dashboard con
   # los valores de abajo: docs/runbooks/mcp-interno.md, paso 3.
   #
-  # SIN VERIFICAR EN RENDER (escrito el 2026-10-15, el servicio no existe aún):
-  #   - Que `dockerCommand` llega al entrypoint como comando completo. El
-  #     entrypoint (`docker/docker-entrypoint-api.sh`) lo ejecuta tal cual si el
-  #     primer argumento no empieza por `-`; si Render reemplazara además el
-  #     ENTRYPOINT, el resultado es el mismo.
-  #   - Que `REQUIREMENTS_FILE` llega como build arg, igual que en el worker.
-  #   - Que `plan: starter` (512 MB) basta. El proceso es uvicorn + el SDK y un
-  #     pool de 5 conexiones; las respuestas están acotadas a 100 000 caracteres
-  #     y `consultar_sql` lee por lotes de 50 filas (para en cuanto no caben).
-  #     Una sola celda enorme sí se carga entera. Si hay OOM, `standard`.
-  #   - `MCP_PUBLIC_URL`: el host `*.onrender.com` solo se conoce al crear el
-  #     servicio. Con `MCP_PUBLIC_URL` y `MCP_GOOGLE_REDIRECT_URI` vacías el
-  #     arranque aborta (a propósito: `validar_configuracion`): se crea con
-  #     valores provisionales y se fijan los reales tras el primer deploy
-  #     (runbook, paso 3).
+  # Creado el 2026-10-17 (`srv-db9cr1om7kps73ctg25g`, host
+  # `https://tenderflow-mcp.onrender.com`). Comprobado en el primer deploy:
+  #   - `dockerCommand` llega al entrypoint como comando completo
+  #     (`docker/docker-entrypoint-api.sh` lo ejecuta tal cual).
+  #   - `REQUIREMENTS_FILE` llega como build arg: la imagen instala
+  #     `requirements-mcp.txt` (con `mcp-2.3.0`).
+  # SIN VERIFICAR: que `plan: starter` (512 MB) baste bajo uso real. El proceso
+  # es uvicorn + el SDK y un pool de 5 conexiones; las respuestas están acotadas
+  # a 100 000 caracteres y `consultar_sql` lee por lotes de 50 filas (para en
+  # cuanto no caben). Una sola celda enorme sí se carga entera. Si hay OOM,
+  # `standard`.
   #
   # `APP_PROFILE: mcp` es un perfil propio (config/settings.py): no es la API
   # (con `api` los validadores de `Settings` exigirían `API_HMAC_SECRET`,
@@ -503,6 +499,17 @@ services:
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Allowlist del login (`services.access_grants.acceso_oauth_permitido`,
+      # la misma regla que la API): además de `is_admin`, el correo de Google
+      # tiene que estar aquí o tener una concesión en `access_grants`. Sin ella
+      # todo login vuelve a claude.ai con `access_denied` («Tenderflow wasn't
+      # connected») y `audit_log` registra `mcp.login_denegado` con motivo
+      # `fuera_de_allowlist`. Correos exactos separados por comas: los de los
+      # admins que usan el MCP. `OAUTH_ALLOWED_DOMAINS` (dominios enteros)
+      # también vale; no se declara porque un `sync: false` vacío bloquea el
+      # alta del Blueprint.
+      - key: OAUTH_ALLOWED_EMAILS
         sync: false
       - key: SIGNING_KEY
         sync: false

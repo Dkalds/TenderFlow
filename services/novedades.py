@@ -91,13 +91,51 @@ class VisitaMarcada(BaseModel):
     visto_en: str
 
 
+#: Clave de orden de los ítems sin fecha legible: quedan por debajo de todos.
+_SIN_INSTANTE = datetime.min.replace(tzinfo=UTC)
+
+
+def _instante(cuando: str) -> datetime | None:
+    """``cuando`` como instante UTC, o ``None`` si no se entiende.
+
+    Las cuatro fuentes no escriben la fecha igual: el historial y el ledger
+    llevan ISO con ``T``, los pliegos antiguos el ``now()::text`` de Postgres
+    (con espacio y offset corto, ``2026-09-16 15:00:00+00``) y los recursos
+    sólo la fecha. Comparadas como texto, ``' ' < 'T'`` dejaba un pliego de hoy
+    por debajo de cualquier cambio de hoy aunque fuera posterior. Una fecha sin
+    hora vale su medianoche UTC, que es como la comparaba el texto.
+    """
+    if not cuando:
+        return None
+    try:
+        dt = datetime.fromisoformat(cuando.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
+
+
+def _cuando_iso(cuando: Any) -> str:
+    """``cuando`` en ISO-8601 UTC con ``T``, que es lo que el cliente sabe leer.
+
+    El ``2026-09-16 15:00:00+00`` de un pliego antiguo no es un ``dateTime``
+    válido para ``<time>`` y ``Date`` no lo lee en todos los navegadores. Una
+    fecha sin hora se deja como está (decir «00:00» sería inventar la hora), y
+    lo ilegible también: el orden ya lo manda al final.
+    """
+    texto = str(cuando or "")
+    if len(texto) <= 10:
+        return texto
+    instante = _instante(texto)
+    return instante.isoformat() if instante is not None else texto
+
+
 def _a_novedad(aviso: Aviso, licitacion_id: str | None, cuando: Any) -> Novedad:
     return Novedad(
         subtipo=aviso.subtipo,
         titulo=aviso.titulo,
         detalle=aviso.detalle,
         licitacion_id=str(licitacion_id) if licitacion_id else None,
-        cuando=str(cuando or ""),
+        cuando=_cuando_iso(cuando),
     )
 
 
@@ -146,8 +184,10 @@ def corte_ultima_visita(last_seen: str | None) -> tuple[datetime, bool]:
     except ValueError:
         log.warning("novedades_last_seen_invalido", valor=str(last_seen)[:40])
         return tope, False
-    if marcado.tzinfo is None:
-        marcado = marcado.replace(tzinfo=UTC)
+    # En UTC siempre: el corte viaja al SQL como texto y se compara con
+    # columnas escritas en UTC, así que una marca en `+02:00` cortaría en su
+    # hora de pared y dejaría fuera las dos horas siguientes.
+    marcado = marcado.replace(tzinfo=UTC) if marcado.tzinfo is None else marcado.astimezone(UTC)
     if marcado < tope:
         return tope, True
     return marcado, False
@@ -231,21 +271,23 @@ def desde_ultima_visita(
                         titulo=f"Tu equipo movió «{titulo[:70]}»",
                         detalle=f"Ahora está en {fila.get('status')}.",
                         licitacion_id=str(fila.get("licitacion_id") or "") or None,
-                        cuando=str(fila.get("created_at") or ""),
+                        cuando=_cuando_iso(fila.get("created_at")),
                     )
                 )
         except Exception:
             log.warning("novedades_pursuits_error", exc_info=True)
 
-    # Orden por fecha descendente. Las cuatro fuentes traen ISO, así que el
-    # orden lexicográfico es el cronológico; las que vienen sin fecha caen al
-    # final en vez de encabezar el diff por ordenar la cadena vacía primero.
+    # Orden por instante descendente, no por el texto (ver `_instante`). Las
+    # que vienen sin fecha legible caen al final en vez de encabezar el diff.
     #
-    # La clave es `!= ""` y no `== ""`: con `reverse=True` la tupla entera se
-    # invierte, así que `(True, "")` quedaba **por encima** de cualquier fecha
-    # real y los sin fecha encabezaban el diff, justo al revés de lo que dice
-    # la línea de arriba. Con `!=`, los que tienen fecha valen `True` y ganan.
-    items.sort(key=lambda n: (n.cuando != "", n.cuando), reverse=True)
+    # La clave empieza por «tiene instante» y no por «no lo tiene»: con
+    # `reverse=True` la tupla entera se invierte, así que `(True, …)` para los
+    # sin fecha los pondría **por encima** de cualquier fecha real.
+    def _clave(n: Novedad) -> tuple[bool, datetime]:
+        instante = _instante(n.cuando)
+        return (instante is not None, instante or _SIN_INSTANTE)
+
+    items.sort(key=_clave, reverse=True)
     items = items[:limit]
 
     por_subtipo: dict[str, int] = {}

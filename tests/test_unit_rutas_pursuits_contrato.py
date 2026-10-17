@@ -98,7 +98,7 @@ class TestTraspasoDePropiedad:
     def test_quien_no_es_owner_recibe_403(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
         from services.organizations import OrganizationPermissionError
 
         _falla_con(
@@ -111,7 +111,7 @@ class TestTraspasoDePropiedad:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """No es un cuerpo mal formado: es un recurso que no está."""
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
         from services.organizations import OrganizationMemberNotFoundError
 
         _falla_con(
@@ -127,7 +127,7 @@ class TestTraspasoDePropiedad:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Conflicto con el estado del recurso, no falta de permiso."""
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
         from services.organizations import OrganizationLifecycleError
 
         _falla_con(
@@ -139,7 +139,7 @@ class TestTraspasoDePropiedad:
     def test_el_traspaso_bueno_responde_ok(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
 
         monkeypatch.setattr(rutas, "transferir_propiedad", lambda **k: None)
 
@@ -154,7 +154,7 @@ class TestSalida:
     def test_quien_no_es_miembro_es_404(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
         from services.organizations import OrganizationMemberNotFoundError
 
         _falla_con(
@@ -168,7 +168,7 @@ class TestSalida:
     ) -> None:
         """403 diría «no podés»; 409 dice «no en este estado», que es lo cierto:
         traspasando primero, sí puede."""
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
         from services.organizations import OrganizationLifecycleError
 
         _falla_con(
@@ -180,7 +180,7 @@ class TestSalida:
     def test_la_salida_buena_responde_ok(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
 
         monkeypatch.setattr(rutas, "salir_de_organizacion", lambda **k: None)
 
@@ -194,7 +194,7 @@ class TestBorrado:
     def test_el_preview_solo_lo_ve_el_owner(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
         from services.organizations import OrganizationPermissionError
 
         _falla_con(
@@ -206,7 +206,7 @@ class TestBorrado:
     def test_el_preview_cuenta_lo_que_se_va_a_perder(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
 
         # El doble devuelve lo mismo que el repositorio real, adjuntos incluidos:
         # el DTO los tiraba y la advertencia callaba los ficheros del equipo.
@@ -226,7 +226,7 @@ class TestBorrado:
     def test_una_confirmacion_incorrecta_es_409(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
         from services.organizations import OrganizationLifecycleError
 
         _falla_con(
@@ -238,7 +238,7 @@ class TestBorrado:
     def test_una_organizacion_inexistente_es_404(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
         from services.organizations import OrganizationMemberNotFoundError
 
         _falla_con(
@@ -251,7 +251,7 @@ class TestBorrado:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Es lo que va al registro de auditoría."""
-        import api.routes.pursuits as rutas
+        import api.routes.organizations as rutas
 
         monkeypatch.setattr(
             rutas,
