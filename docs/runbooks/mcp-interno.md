@@ -8,17 +8,18 @@ alternativas: [ADR-036](../adr/ADR-036-acceso-interno-por-mcp.md). Diseño:
 | Qué | Valor |
 |---|---|
 | Servicio | Render, `tenderflow-mcp` (`render.yaml`), `python -m mcp_server` |
-| Endpoint MCP | `https://<host>/mcp` |
+| Host | `https://tenderflow-mcp.onrender.com` (`srv-db9cr1om7kps73ctg25g`) |
+| Endpoint MCP | `https://tenderflow-mcp.onrender.com/mcp` |
 | Health | `GET /healthz` → `{"ok": true}` |
-| Callback de Google | `https://<host>/oauth/google/callback` |
+| Callback de Google | `https://tenderflow-mcp.onrender.com/oauth/google/callback` |
 | Rol de BD de lectura | `tenderflow_mcp` (`scripts/setup_pg_role_mcp.sql`, generado) |
-| Quién entra | `users.is_admin = 1`, sin `deactivated_at`, y la allowlist de login (`services.access_grants.acceso_oauth_permitido`) |
+| Quién entra | `users.is_admin = 1`, sin `deactivated_at`, y la allowlist de login (`services.access_grants.acceso_oauth_permitido`: `OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS` **del servicio MCP** o una concesión en `access_grants`) |
 | Despliegue | `.github/workflows/deploy.yml`, secret opcional `RENDER_MCP_DEPLOY_HOOK_URL` |
 
-> **Estado a 2026-10-15: el servicio no existe todavía.** El código, el
-> Blueprint y el workflow están listos y probados en proceso, pero nunca se ha
-> arrancado contra Render, Supabase ni Google. Lo que nadie ha comprobado está en
-> la lista de la sección 6 (primera prueba manual).
+> **Estado a 2026-10-17: en producción.** Pasos 1 a 3 hechos; el primer admin
+> conectó desde claude.ai y `consultar_sql` y `buscar_licitaciones` responden
+> (el SQL libre corre como `tenderflow_mcp`, en solo lectura). Lo que queda de la
+> primera prueba manual está en la sección 6.
 
 ---
 
@@ -31,10 +32,10 @@ Google tras el primer deploy: paso 2); el 4 es por persona y va al final.
 
 ### Paso 1 — Crear el rol de solo lectura en Supabase
 
-> **Estado (2026-10-16):** aplicado en producción con el placeholder sustituido
-> por `PASSWORD NULL`, para que la contraseña no pasara por ningún registro. Falta
-> fijarla desde el SQL Editor de Supabase:
-> `ALTER ROLE tenderflow_mcp PASSWORD '<openssl rand -base64 32>';`.
+> **Estado (2026-10-17):** aplicado en producción el 2026-10-16 con el
+> placeholder sustituido por `PASSWORD NULL`, para que la contraseña no pasara
+> por ningún registro, y la contraseña fijada después desde el SQL Editor de
+> Supabase (`ALTER ROLE tenderflow_mcp PASSWORD '…';`).
 > Re-ejecutar el script (p. ej. tras cambiar el catálogo) no la toca: el
 > `CREATE ROLE` solo corre si el rol no existe.
 
@@ -133,8 +134,14 @@ Google responde `redirect_uri_mismatch` en el login.
    | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Los mismos que la API |
    | `SIGNING_KEY` | La misma que la API (32+ caracteres) |
    | `REDIS_URL`, `REDIS_PASSWORD` | Los mismos que la API (cuota por usuario y nonce de `state`) |
+| `OAUTH_ALLOWED_EMAILS` | **Obligatoria en la práctica.** Los correos de Google de los admins que usan el MCP, separados por comas (o `OAUTH_ALLOWED_DOMAINS` para dominios enteros). El MCP aplica la misma allowlist que el login de la API, pero lee **sus propias** variables: no hereda las de `tenderflow-api`. Sin ninguna, solo entra quien tenga concesión en `access_grants`, y el resto ve «Tenderflow wasn't connected» |
    | `AUDIT_HMAC_KEY` | **La misma que la API.** Otra clave rompe la verificación de la cadena de auditoría; vacía o de menos de 32 caracteres, el MCP no arranca en prod |
    | `MCP_REDIRECT_URIS_EXTRA` | Opcional, ver paso 4 (ChatGPT) |
+
+   En producción ya está hecho: el servicio se creó por la API de Render y,
+   como el host salió `tenderflow-mcp.onrender.com` (el nombre del servicio), se
+   fijaron los valores reales justo después de crearlo. Si se recrea con otro
+   nombre, el host cambia:
 
    El host `*.onrender.com` solo existe tras crear el servicio. **Crea el
    servicio con valores provisionales** que pasen la validación (por ejemplo
@@ -154,8 +161,12 @@ Google responde `redirect_uri_mismatch` en el login.
 ### Paso 4 — Cada persona añade el conector
 
 - **claude.ai** (web, escritorio y móvil, una vez): Configuración → Conectores
-  → *Añadir conector personalizado* → `https://<host>/mcp`. Pide el login de
-  Google; solo pasa un admin activo. Aparece en todos sus dispositivos.
+  → *Añadir conector personalizado* → `https://tenderflow-mcp.onrender.com/mcp`.
+  Pide el login de Google; solo pasa un admin activo cuyo correo esté en
+  `OAUTH_ALLOWED_EMAILS` del servicio MCP (o con concesión en `access_grants`):
+  **antes de dar el alta a una persona, añade su correo ahí** (Render →
+  `tenderflow-mcp` → *Environment*, guardar redespliega). Aparece en todos sus
+  dispositivos.
 - **ChatGPT** (donde el plan permita conectores personalizados): la misma URL.
   ChatGPT registra un callback propio **por app**,
   `https://chatgpt.com/connector/oauth/<callback_id>`, que el servidor no admite
@@ -246,6 +257,7 @@ Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | El servicio no arranca: `Configuración del MCP incompleta o inválida: …` | Falta (o está mal formada) una variable. El mensaje lista cuáles | Corregir en Render. Incluye `AUDIT_HMAC_KEY` y que `MCP_GOOGLE_REDIRECT_URI` sea exactamente `MCP_PUBLIC_URL` + `/oauth/google/callback` |
+| claude.ai: «Tenderflow wasn't connected. If you didn't cancel the sign-in, ask your Tenderflow admin for access.» En los logs, `GET /oauth/google/callback` → `302` y **ningún** `POST /token` después | El callback denegó el login y devolvió `access_denied`. `audit_log` tiene `mcp.login_denegado` con `motivo`: `fuera_de_allowlist` (el correo no está en `OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS` **del servicio MCP** ni en `access_grants`; fue el caso del primer alta), `no_admin` o `sin_usuario_activo` (no hay cuenta activa con ese correo de Google) | `SELECT detail, created_at FROM audit_log WHERE action = 'mcp.login_denegado' ORDER BY id DESC LIMIT 3`. Para `fuera_de_allowlist`, añadir el correo a `OAUTH_ALLOWED_EMAILS` en `tenderflow-mcp` y reintentar tras el redeploy |
 | El cliente da vueltas pidiendo login (**401 en bucle**) | (a) la persona ya no es admin/activa o no pasa la allowlist (`mcp.login_denegado` en auditoría con `motivo`); (b) el cliente tiene un token de otro `MCP_PUBLIC_URL`/servicio; (c) `SIGNING_KEY` cambió y las peticiones pendientes (10 min) ya no verifican | Mirar `mcp.login_denegado`. Quitar y volver a añadir el conector. Si cambió `SIGNING_KEY`, solo afecta a los logins en curso |
 | `redirect_uri_mismatch` en Google | El paso 2 no coincide al carácter con `MCP_GOOGLE_REDIRECT_URI` | Corregir en Google Cloud o en la variable |
 | El registro del cliente falla (`invalid_redirect_uri` en `/register`) | Un cliente con callback propio (ChatGPT) | Añadirlo a `MCP_REDIRECT_URIS_EXTRA` (paso 4) |
@@ -312,32 +324,37 @@ lanzarse con el rol de la app o el admin, o desde el propio MCP.
 
 ---
 
-## 6. Primera prueba manual (checklist, nadie la ha hecho aún)
+## 6. Primera prueba manual (checklist)
 
-Hasta marcar esto, el MCP está **sin verificar de punta a punta**. Se hace una
-vez, tras el alta (pasos 1–3):
+Se hace una vez, tras el alta (pasos 1–3). Lo marcado se comprobó el
+2026-10-17 con el conector de claude.ai y los logs de Render:
 
-- [ ] `curl https://<host>/healthz` → 200 `{"ok":true}`, y el health check de
-      Render lo da por bueno. Si Render devuelve 421, el validador de `Host`
+- [x] `curl https://<host>/healthz` → 200 `{"ok":true}`, y el health check de
+      Render lo da por bueno (200 cada 5 s en los logs). Si Render devuelve 421, el validador de `Host`
       está alcanzando la ruta: anotarlo y abrir un cambio de código.
-- [ ] `curl -i https://<host>/mcp` → 401 con `WWW-Authenticate` que apunta a
-      `/.well-known/oauth-protected-resource`.
+- [x] `curl -i https://<host>/mcp` → 401 con `WWW-Authenticate` que apunta a
+      `/.well-known/oauth-protected-resource` (claude.ai lo siguió: 401 en
+      `POST /mcp` y a continuación `GET /.well-known/oauth-protected-resource/mcp`).
 - [ ] **MCP Inspector** contra la URL desplegada:
       `npx @modelcontextprotocol/inspector` → transporte *Streamable HTTP* →
       `https://<host>/mcp` → *OAuth*. El loopback del Inspector ya está
       admitido.
-- [ ] **Login completo con Google** con un admin real: redirige a Google, vuelve
-      por `/oauth/google/callback`, el Inspector queda conectado. Con un usuario
-      **no admin** el login debe terminar en error y dejar
-      `mcp.login_denegado`.
-- [ ] `tools/list` devuelve las seis: `describir_esquema`, `describir_tabla`,
+- [x] **Login completo con Google** con un admin real (desde claude.ai, no
+      desde el Inspector): `/register` → `/authorize` → Google →
+      `/oauth/google/callback` → conectado. El primer intento falló por
+      `fuera_de_allowlist` (faltaba `OAUTH_ALLOWED_EMAILS` en el servicio MCP).
+- [ ] Con un usuario **no admin** el login termina en error y deja
+      `mcp.login_denegado` con motivo `no_admin`.
+- [x] `tools/list` devuelve las seis: `describir_esquema`, `describir_tabla`,
       `consultar_sql`, `buscar_licitaciones`, `buscar_en_pliegos`,
       `ficha_licitacion`.
-- [ ] Un `consultar_sql` real (`SELECT count(*) FROM licitaciones`) devuelve
-      filas, y aparece su fila `mcp.consultar_sql` en `audit_log` con el SQL.
+- [x] Un `consultar_sql` real devuelve filas: corre como `tenderflow_mcp` con
+      `transaction_read_only = on` (~370 ms un `count(*)` de 2026). Un filtro
+      con regex sobre todo `licitaciones` cortó en 15 s con `57014` y su pista.
+- [ ] Su fila `mcp.consultar_sql` aparece en `audit_log` con el SQL.
 - [ ] Un `consultar_sql` contra `api_keys` devuelve el error `42501` con su
       pista, sin tumbar el servidor.
-- [ ] Esquemas a los que llega el rol (en Supabase hay `extensions`, `net`
+- [x] Esquemas a los que llega el rol (en Supabase hay `extensions`, `net`
       —`pg_net` hace peticiones HTTP—, `graphql`, `vault`…):
       `SELECT nspname FROM pg_namespace WHERE has_schema_privilege('tenderflow_mcp', oid, 'USAGE')`
       debe dar solo `pg_catalog`, `information_schema` y `public`. Si sale otro,
@@ -348,7 +365,8 @@ vez, tras el alta (pasos 1–3):
       `net.http_post`…). El modo de solo lectura lo frena (`net.http_get` encola
       con un INSERT y falla con 25006) y el ejecutor veta `net` y `http*`; en
       `public` solo hay funciones de pgvector y pg_trgm.
-- [ ] **El conector real de claude.ai funciona.** Esto es lo único que el
+- [x] **El conector real de claude.ai funciona** (el canje de `/token` pasó
+      con el cliente que registra claude.ai). Esto es lo único que el
       Inspector no prueba: los metadatos OAuth del SDK anuncian
       `token_endpoint_auth_methods_supported = ["client_secret_post",
       "client_secret_basic"]` y **no** `none`, aunque `/register` acepta clientes

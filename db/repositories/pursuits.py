@@ -11,9 +11,9 @@ from db.repositories.base import ambito_agenda_sql, rows_to_dicts
 from db.sql_fragments import FOLD_TABLE, empresa_key_sql, escape_like, fold_expr, iso_guard
 
 # El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
-# numero)`` y no por un id guardado: ``db/upsert.py::replace_lotes`` borra y
-# reinserta los lotes del expediente en cada re-ingesta, así que sus ids cambian
-# y sólo el número sobrevive (ver el docstring de la revisión ``v110``). Un lote
+# numero)`` y no por un id guardado: hasta 2026-10 ``db/upsert.py::replace_lotes``
+# borraba y reinsertaba los lotes en cada re-ingesta, así que solo el número
+# sobrevivía, y las oportunidades ya guardadas persisten número (``v110``). Un lote
 # que el pliego deja de publicar da ``lote_id``/``lote_titulo`` NULL sin tocar
 # la oportunidad, que conserva el número para el que se abrió.
 _PURSUIT_SELECT = (
@@ -75,14 +75,20 @@ _AGENDA_SELECT = (
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.next_action, p.next_action_due, p.version, "
     # Lo que la ingesta sabe del expediente: sin esto la agenda trataba como
-    # viva una oportunidad sobre una licitación ya adjudicada. Los
-    # adjudicatarios solo se piden para la oportunidad del expediente completo:
-    # con lote, la adjudicación de **otro** lote no cierra el suyo, y las filas
-    # de ``adjudicaciones`` no dicen de cuál son (``lote_id`` va vacío).
+    # viva una oportunidad sobre una licitación ya adjudicada. Con lote, solo
+    # cuentan las adjudicaciones **de ese lote** —la de otro lote no cierra el
+    # suyo—, unidas por número como en ``_PURSUIT_SELECT`` porque los ids de
+    # ``lotes`` cambian en cada re-ingesta. Una adjudicación sin ``lote_id``
+    # no dice de qué lote es y no se le atribuye a ninguno.
     "l.estado AS tender_estado, "
     "CASE WHEN p.lote_numero IS NULL THEN "
     "  (SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
     "    WHERE a.licitacion_id = p.licitacion_id) "
+    "ELSE "
+    "  (SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
+    "    JOIN lotes la ON la.id = a.lote_id "
+    "    WHERE a.licitacion_id = p.licitacion_id "
+    "      AND la.licitacion_id = p.licitacion_id AND la.numero = p.lote_numero) "
     "END AS adjudicatarios "
     "FROM pursuits p "
     "JOIN licitaciones l ON l.id_externo = p.licitacion_id "

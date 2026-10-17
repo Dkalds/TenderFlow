@@ -431,7 +431,7 @@ class TestCicloDeVidaDeLaOrganizacion:
 
     def test_el_recuento_precede_a_la_confirmacion(self) -> None:
         """«14 oportunidades y 37 comentarios» es una advertencia; «¿seguro?» no."""
-        from api.routes.pursuits import OrganizationDeletionSummary
+        from api.routes.organizations import OrganizationDeletionSummary
 
         assert {"oportunidades", "comentarios", "miembros"} <= set(
             OrganizationDeletionSummary.model_fields
@@ -451,7 +451,7 @@ class TestCicloDeVidaDeLaOrganizacion:
 
     def test_el_borrado_exige_sesion_reciente(self) -> None:
         """Se lleva trabajo de otras personas y no tiene deshacer."""
-        import api.routes.pursuits as mod
+        import api.routes.organizations as mod
 
         fuente = inspect.getsource(mod.post_delete_organization)
         assert "require_recent_session" in fuente

@@ -8,7 +8,7 @@ on:
   # Barrido semanal. Existe por una sola razón: es donde vive ahora la matriz de
   # Python 3.12 (ver el job `test`). Producción está fijada a `python:3.13.13`
   # en docker/Dockerfile.api, así que pagar 3.12 en cada PR era duplicar el job
-  # más caro de la suite (25 min) para verificar una versión que no se despliega
+  # más caro de la suite (35 min de techo) para verificar una versión que no se despliega
   # en ningún sitio. Semanal basta para detectar que 3.12 dejó de funcionar
   # antes de que a alguien le haga falta.
   schedule:
@@ -185,7 +185,7 @@ jobs:
   test:
     name: Tests (Postgres)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -194,7 +194,7 @@ jobs:
         # Producción corre `python:3.13.13-slim-bookworm` (docker/Dockerfile.api,
         # y `.python-version` fija lo mismo), así que 3.12 no se despliega en
         # ningún sitio: pagarlo en cada PR duplicaba el job más caro de la suite
-        # —25 minutos de techo, ~3100 tests con `-n auto`— para verificar una
+        # —35 minutos de techo, ~8.900 tests con `-n auto`— para verificar una
         # versión que nadie ejecuta. Semanal detecta que 3.12 dejó de funcionar
         # con semanas de antelación sobre el día en que hiciera falta.
         python-version: ${{ github.event_name == 'schedule' && fromJSON('["3.12","3.13"]') || fromJSON('["3.13"]') }}
@@ -237,7 +237,12 @@ jobs:
       # workers (lock de fichero en el tmp compartido del run) y los schemas
       # por test llevan el pid, así que no colisionan. Medido en un contenedor
       # de 4 CPUs: 3094 tests en 359 s con -n auto, frente a >600 s en serie,
-      # sin fallos de aislamiento. El techo del job son 25 min.
+      # sin fallos de aislamiento. El techo del job son 35 min desde el
+      # 2026-10-17: con ~8.900 tests el paso tarda unos 19 min en `master`
+      # (run 39065274885, 18 min 54 s), y en el PR #483, solapado con ese run,
+      # superó los 25 min del techo anterior y el runner lo canceló sin que
+      # ningún test fallara. 35 deja margen a un runner lento sin tapar una
+      # suite que se dispare: una pasada normal queda a ~15 min del límite.
       # Si el paralelo diera falsos rojos, quitar `-n auto` restaura la
       # ejecución en serie sin ningún otro cambio.
       # `--cov-report=json` es nuevo: lo consume el gate por módulo del step

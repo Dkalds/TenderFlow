@@ -69,6 +69,7 @@ check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, docs genera
 	python scripts/check_agent_docs.py
 	python scripts/gen_retention_doc.py --check
 	python scripts/gen_rfc_index.py --check
+	python scripts/gen_adr_index.py --check
 	python scripts/check_backlog_freshness.py
 
 check-env-parity:  ## Variables obligatorias en prod declaradas en render.yaml y documentadas

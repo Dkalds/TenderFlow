@@ -62,15 +62,21 @@ class NovedadesRepository:
         y el aviso de F5.1 sería ruido diario en vez de una señal. Se agrupa
         por hash y se toma la primera aparición, que es la fecha en que de
         verdad se publicó.
+
+        ``created_at`` se compara como instante y no como texto: hasta v151 su
+        ``DEFAULT now()`` lo escribía con espacio (``2026-09-16 15:00:00+00``)
+        y el corte llega con ``T``, así que ``' ' < 'T'`` dejaba fuera todo
+        pliego publicado el mismo día de la visita. Las filas anteriores a
+        v151 que no se hayan normalizado siguen comparando bien así.
         """
         with connect_read() as c:
             cur = c.execute(
                 "SELECT d.licitacion_id, d.tipo, d.filename, "
-                "       MIN(d.created_at) AS publicado_en, l.titulo "
+                "       MIN(d.created_at::timestamptz) AS publicado_en, l.titulo "
                 "FROM documentos d "
                 "JOIN watchlist_items w ON w.id_externo = d.licitacion_id "
                 "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
-                f"WHERE {_IDENT_W} AND d.created_at >= %s "
+                f"WHERE {_IDENT_W} AND d.created_at::timestamptz >= %s::timestamptz "
                 "GROUP BY COALESCE(d.source_hash, d.uri), d.licitacion_id, d.tipo, "
                 "         d.filename, l.titulo "
                 "ORDER BY publicado_en DESC "

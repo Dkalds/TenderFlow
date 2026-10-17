@@ -258,7 +258,13 @@ Para todo lo demás (editar código de feature, añadir tests, refactor local), 
 - [docs/c4-architecture.md](docs/c4-architecture.md),
   [docs/database-schema.md](docs/database-schema.md) y
   [docs/api-design.md](docs/api-design.md): arquitectura y contratos.
-- [docs/adr/](docs/adr/), [docs/runbooks/](docs/runbooks/),
+- [docs/README.md](docs/README.md): índice de `docs/`. Un documento nuevo de
+  primer nivel se enlaza ahí (`tests/test_docs_paths.py` lo exige). En `docs/`
+  los links del cuerpo van en markdown relativo y los wikilinks solo en el
+  frontmatter; `make check-agent-docs` lo verifica
+  ([docs/runbooks/obsidian.md](docs/runbooks/obsidian.md) explica por qué).
+- [docs/adr/README.md](docs/adr/README.md) (índice generado desde el frontmatter
+  de cada ADR con `python scripts/gen_adr_index.py`), [docs/runbooks/](docs/runbooks/),
   [docs/sli-slo.md](docs/sli-slo.md) y [docs/SECURITY.md](docs/SECURITY.md):
   decisiones y operación.
 - [docs/COSTES.md](docs/COSTES.md): coste mensual por proveedor, umbral de

@@ -218,41 +218,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P0 — Urgente
 
-### [P0] El feed ATOM de PLACSP está congelado desde el 2026-09-08 y nada lo avisa
-- **Área:** scraper/atom_live.py, scheduler/healthcheck.py, .github/workflows/scrape-daily.yml
-- **Problema:** medido el 2026-09-24. La cabecera de
-  `licitacionesPerfilesContratanteCompleto3.atom` se regeneró el 2026-09-23
-  (`Last-Modified`), pero su entrada más reciente es del 2026-09-08 22:31 y las
-  páginas `next` siguen hacia atrás desde ahí. El cursor `placsp` está en ese
-  mismo instante, así que cada pasada lee una entrada, para con
-  `stopped=cursor_reached` e ingiere 0 avisos (run 35978335055) — en verde. El
-  healthcheck da PLACSP por «fresca» (`lag_hours: 0.4`) porque mide cuándo acabó
-  el último run, no la antigüedad del dato. El ZIP mensual
-  `..._202609.zip` sí se regeneró el 2026-09-24 04:01 GMT.
-- **Acceptance criteria:**
-  - Recuperar el hueco: `scrape-bulk.yml` con `months=1` (acción del usuario:
-    escribe en producción) y comprobar que el corpus PLACSP del 09-08 en adelante
-    aparece. *Lanzado el 2026-09-25 (run 36127626642); falta comprobar el
-    corpus.* `months=1` procesa el mes en curso (`meses_a_procesar`). No cubre
-    `placsp_watched_company_awards`, que lee el mismo ATOM y sigue parado.
-  - ~~El healthcheck avisa cuando el `last_seen_updated` de una fuente con cursor
-    de dato (PLACSP, TED) supera un umbral propio, además de `last_success_at`.~~
-    **Hecho el 2026-09-25:** `RegisteredSource.max_antiguedad_dato_hours` (48 h
-    PLACSP, 168 h TED) y el estado `sin_datos_nuevos` en
-    `comprobar_frescura_fuentes`, con aviso `fuente_sin_datos_nuevos:<fuente>`.
-    Mientras el ATOM siga congelado avisará en cada healthcheck: es la señal
-    que faltaba, no ruido.
-  - Decidir si el carril diario cae al ZIP del mes en curso cuando el ATOM no
-    avanza durante N pasadas.
-- **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
-- **Estado (2026-10-15):** el criterio pendiente está resuelto en código: tras
-  `PLACSP_ATOM_PASADAS_SIN_AVANCE_ZIP` pasadas (6 por defecto, un día) sin que
-  avance el cursor `placsp`, el carril diario ingiere el ZIP del mes en curso
-  (y el del anterior si el hueco empezó allí; nunca más de dos), sin tocar el
-  cursor y con traza `placsp_atom_respaldo_zip` en `ops_events`
-  (`scheduler/respaldo_zip_placsp.py`, rama `claude/funcionalidades-2026-10`).
-  Queda comprobar en producción que el corpus del 09-08 en adelante aparece.
-- **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
+_Sin ítems abiertos._
 
 ---
 
@@ -585,15 +551,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** bajo en código, alto en oportunidad — mientras el set sea pequeño, el gate de promoción bloquea con poca evidencia y el umbral servido tiene una varianza que ninguna mejora del modelo puede compensar.
 - *Estado (2026-09-27):* el plan [2026-09-27-clasificacion-tres-niveles](plans/2026-09-27-clasificacion-tres-niveles.md) propone sustituir este golden por `golden_ti.jsonl` (fase F2): la etiqueta pasa de «es SAP» a «es TI», que es lo que el binario aprende de verdad, y los ~500 ejemplos se revisan partiendo de la propuesta del LLM en vez de etiquetarse desde cero. Ese día el reentrenamiento del binario (primero que completa desde julio) quedó rechazado con `recall_no_keyword` 0/3 sobre los 17 ejemplos del holdout.
 
-### [P2] Mejorar el ranking de retrieval de producción (MRR 0.689)
-- **Área:** db/search_backend.py, services/licitaciones.py
-- **Problema:** Medido al migrar el eval RAG al motor real (ADR-018) sobre el golden set de 15 preguntas: SQLite/FTS5 da MRR ≈0.78 y Postgres/`tsvector`+`ts_rank_cd` da **0.689**. El `hit_rate@5` es **1.000 en ambos** — producción encuentra siempre el documento esperado dentro del top-5, pero lo ordena peor. No es una regresión de la migración: es la calidad real que ven los usuarios de `/ask` hoy, que nadie medía porque el eval corría sobre FTS5. El eval ratchea en `MRR_MIN = 0.65` (`tests/eval/test_eval_rag.py`), así que una regresión adicional salta. Con SQLite retirado (ADR-021) ya no hay comparación entre motores: 0.75 es el objetivo, no una paridad.
-- **Acceptance criteria:**
-  - MRR ≥ 0.75, subiendo `MRR_MIN` al valor alcanzado.
-  - Vías a explorar: pesos por campo en el `tsvector` (`setweight` para dar más peso a `titulo` que a `descripcion`), `ts_rank_cd` con normalización distinta, o combinar con similitud `pg_trgm`.
-- **Files de partida:** [db/search_backend.py](../db/search_backend.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
-- **Riesgo:** bajo — el eval con golden set actúa de red; cualquier cambio se mide antes de mergear.
-
 ### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
 - **Área:** scraper/connectors/pscp.py, observability
 - **Problema:** El fix del cursor PSCP (ver Cerrados) es correcto y verificado con tests, pero corre contra un cursor YA atascado en producción desde hace semanas (`last_seen_updated='2026-06-19'`, sin `last_entry_id`). El primer run post-deploy re-consultará desde ese mismo punto (comportamiento esperado y correcto), pero hay que confirmar en los logs de Actions que el cursor **avanza** en el run siguiente (antes se quedaba pegado indefinidamente). Además, dado el volumen de filas que comparten el `:updated_at` de la republicación masiva (~1.86M filas), el conector tardará muchos ciclos en ponerse al día — el throughput por-registro (~240ms, probablemente dominado por round-trips US↔EU a Supabase) es una preocupación separada, no resuelta por este fix. **Actualización 2026-07-27:** el throughput sí está resuelto — la ruta de escritura pasó de un round trip por fila a `executemany` (ver _Cerrados_: 2201 → 6 viajes por lote de 800 filas). Queda solo la verificación en logs de que el cursor avanza.
@@ -627,8 +584,10 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`; D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
 - **Progreso T4 (2026-09-14, v129 · ADR-030 fase 2):** `user_id` junto a `user_key` en las doce tablas de usuario (nueve nuevas + FK e índice en las tres que ya la tenían), backfill por email en SQL y lectura dual + escritura doble en `db/`, `services/notifications.py`, `services/watchlist_rules.py` y los productores de alertas; GDPR exporta y borra por id o por clave (y cubre por fin `saved_filters`). Test de aceptación del ADR: `tests/test_user_id_cambio_email_integration.py`. **Queda la fase 3** (dejar de escribir `user_key`, recrear las PK de `user_profiles`/`radar_dismissals`, retirar `user_key` del payload de `watchlist_rule.matched` con RFC, y llevar el ratchet a cero).
 - **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`. *Estado (2026-09-19):* `docs/database-schema.md` ya está regenerado con v135 y v140 (`98f34bee`; su cabecera dice `v138_notice_type_code`).
+- *Nota (2026-10-17):* este ítem se lleva también la mayoría de las 64 `# noqa: S608` del repo (34 en producción; 18 entre `services/notifications.py` y `services/watchlist_rules.py`). No son inyección: interpolan `_IDENT`, el predicado constante de identidad dual `user_id`/`user_key`, y duplican cada consulta en una rama con y otra sin `organization_id`. Quitarlas antes obligaría a copiar el predicado en cada sentencia; cuando la lectura sea solo por `user_id` el fragmento desaparece y con él la supresión. Sacarlas en el mismo PR que retire la columna.
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
+- **Estado (2026-10-17):** el **Problema** ya no describe el código en su primera frase: invitar a quien no tiene cuenta existe (`services/organizations.py::invite_member_by_email`, tabla `organization_invitations`, aceptación por token y al iniciar sesión con `accept_invitations_for_email`). `add_member_by_email` sigue rechazando un correo sin cuenta porque es el alta directa, no la invitación. Lo abierto es lo de la fase 3 de `user_key` descrito arriba.
 - **Riesgo:** medio — S1.2 toca el login, que es el camino por el que entra todo el mundo; el resto es aditivo.
 
 ### [P1] [Ola 1 · S2] La organización no sabe quién es: NIF, capacidad y go/no-go asistido
@@ -971,6 +930,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S3), [db/repositories/pursuits.py](../db/repositories/pursuits.py)
 - **Relación:** desbloquea el P2 «Modelo de baja por lote» de este backlog (S6.5 del plan sirve las filas por lote que `predicciones_baja` ya guarda desde `v86`).
 - **Estado:** lo dice el §5 del plan, no este ítem. **Corrección de un hecho de la línea anterior**, comprobada el 2026-09-08: `predicciones_baja` **no guarda filas por lote**. `v86` dejó la columna `lote_id` preparada, pero el único escritor (`score_predicciones_baja`) nunca la rellena y su `ON CONFLICT(licitacion_id)` ni siquiera dejaría convivir dos filas del mismo expediente. S6.5 sirve la estimación agregada declarándolo en `prediccion_ambito`; la `baja_real` sí es del lote. El «Modelo de baja por lote» sigue, pues, siendo trabajo de ML, no de fontanería. (2026-09-18: `v140` ya permite y escribe filas por lote, identificadas por `lote_numero`; ver el progreso de ese ítem.)
+- **Estado (2026-10-17):** las dos mitades del **Problema** están resueltas en código: la oportunidad por lote existe (`pursuits.lote_numero`, `v110`, con el lote resuelto por número en `_PURSUIT_SELECT`) y `score_al_abrir`/`banda_al_abrir` se leen en `services/pursuits.py::calcular_radar_quality`, que pinta precisión y tasa de cierre por banda con mínimo de N (`components/pursuits/radar-quality.tsx`, Dirección). Lo que faltaba para cerrar una oportunidad de lote —saber de qué lote es cada adjudicación— es el P3 «Saber si el lote de una oportunidad ya se adjudicó».
 - **Riesgo:** medio — cambia la clave única de una tabla viva; `plan` antes de `apply`.
 
 ### [P2] [Ola 1 · S4] Eventos y salida: siete almacenes con forma de evento y ningún backbone
@@ -979,6 +939,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Decisión ya tomada (2026-09-06):** D13 → plantillas de payload (`json`, `slack_blocks`, `teams_adaptive_card`) sobre el webhook genérico, no integraciones nativas con OAuth de cada plataforma, y webhooks que pueda crear un miembro dentro de su organización.
 - **Acceptance criteria:** los de S4.1–S4.6 del plan v2. El que sostiene lo demás es el ratchet de productores: toda inserción directa en `user_notifications`/`pending_digests` fuera del despachador entra en una lista que solo puede encoger.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S4), [db/events.py](../db/events.py), [api/routes/webhooks.py](../api/routes/webhooks.py)
+- **Estado (2026-10-17):** dos frases del **Problema** ya no son ciertas: los webhooks los crea un miembro con escritura en su organización (`require_organization(write=True)`, `v108`) con formatos `json`/`slack_blocks`/`teams_adaptive_card`, y un cambio en un expediente seguido sí genera aviso (`services/avisos.py::clasificar_cambio`, llamado desde `services/contract_events.py` y `services/novedades.py`). Lo abierto es el ratchet de productores fuera del despachador.
 - **Riesgo:** medio — toca el camino de escritura de pursuits y de reglas.
 
 ### [P2] [Ola 1 · S7] Frontend: las tres deudas que dejó a medias el plan de septiembre, más formularios, flags e inspectores
@@ -1081,7 +1042,77 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Decidido si se rellena el histórico (solo con los ZIP mensuales: la fase de adjudicación deja de publicar el bloque).
 - **Riesgo:** bajo — solo lectura y parser.
 
+### [P2] Partir `shared/dto.py` y las cuatro firmas de 26-28 parámetros del listado de licitaciones
+- **Área:** shared/dto.py, api/routes/licitaciones/listado.py, db/repositories/licitaciones.py
+- **Problema:** el P3 de los módulos-dios nombra `aggregates.py` y `settings.py`, pero medido con AST el 2026-10-17 hay más y pesan más en el día a día: `shared/dto.py` tiene 2.482 líneas, 106 modelos y 45 módulos que lo importan —cada agente que añade un DTO toca el mismo fichero, y con varios en paralelo es el conflicto de merge más probable del repo—; `LicitacionRepository` tiene 1.470 líneas, con `_base_filters` de 218 líneas y 23 parámetros; y los filtros del listado viajan como parámetros sueltos por cuatro firmas hermanas que hay que mantener sincronizadas a mano: `list_licitaciones` (28 parámetros `Query`), `list_licitaciones_cursor` (25), `list_paginated` (27), `list_cursor` (26) y `_list_fts` (27). Un filtro nuevo son cinco ediciones y un sitio donde olvidarlo. En total hay 57 funciones de producción de 120 líneas o más y 61 con 9 o más parámetros.
+- **Acceptance criteria:**
+  - Un modelo `FiltrosLicitacion` (Pydantic) inyectado con `Depends()` en las dos rutas del listado y pasado entero hasta el repositorio; las cinco firmas de arriba reciben el objeto, no la lista de parámetros. El OpenAPI de las dos operaciones no cambia (los `Query` individuales siguen saliendo con el mismo nombre y descripción: `check_api_breaking.py` en verde).
+  - `shared/dto.py` partido en un paquete `shared/dto/` por dominio (público, paginación, watchlist, pursuits, analítica…) con re-export completo desde `shared/dto/__init__.py`: ningún `from shared.dto import X` cambia, y `components.schemas` de `api/openapi.json` queda idéntico (el nombre del componente sale de la clase, no del módulo).
+  - Ninguna función nueva de 120 líneas o más en los módulos tocados; el conteo total (57) solo baja.
+- **Files de partida:** [shared/dto.py](../shared/dto.py), [api/routes/licitaciones/listado.py](../api/routes/licitaciones/listado.py), [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [scripts/check_api_breaking.py](../scripts/check_api_breaking.py)
+- **Riesgo:** medio — toca el camino más usado de la API; mitigado porque el contrato OpenAPI es el oráculo (codegen-drift y check_api_breaking lo fijan).
+
+### [P2] Fijar la convención de la API pública antes de más consumidores: idioma, errores y una sola paginación
+- **Área:** api/routes/*, api/errors.py, shared/dto.py, docs/api-design.md, .github/workflows/release-sdk.yml
+- **Problema:** la API tiene claves para terceros (CU-14) y un SDK Python que `release-sdk.yml` genera del OpenAPI, así que la superficie es contrato. Medido el 2026-10-17 sobre `docs/STATUS.md`: 297 operaciones con la nomenclatura mezclada en la misma versión —`/pursuits`, `/organizations`, `/follows`, `/saved-filters`, `/feature-flags` junto a `/cuentas`, `/etiquetas`, `/licitaciones`, `/publico`, `/resoluciones`—; dos paginaciones para el mismo recurso (`GET /licitaciones` por offset y `GET /licitaciones/cursor`, cuyo RFC del 2026-09-06 lo llama «sucesor»); y 307 `HTTPException(...)` con cadenas sueltas en `api/routes/` frente a 16 handlers en `api/errors.py`, de modo que el cliente generado no tiene una forma de error estable que parsear. Cada consumidor externo nuevo hace más caro arreglarlo.
+- **Acceptance criteria:**
+  - RFC en `docs/rfc/` (es contrato público: política de §5 de AGENTS.md) que decida (a) el idioma de los paths para `/api/v1` y si los renombres se hacen con alias y `Deprecation`/`Sunset` o esperan a `/api/v2`; (b) un único envelope de error (propuesta: RFC 9457 `application/problem+json`, con `type` estable por condición) emitido por `api/errors.py` para todo `HTTPException`; (c) la fecha de retirada de la paginación por offset de `/licitaciones`.
+  - Un ratchet (conteo de `HTTPException(` en `api/routes/` con cadena literal) que solo baja, y la tabla de códigos de error en `docs/api-design.md` generada desde `api/errors.py`.
+  - El SDK publicado tras la RFC tipa el error una sola vez.
+- **Files de partida:** [api/errors.py](../api/errors.py), [api/routes/licitaciones/listado.py](../api/routes/licitaciones/listado.py), [docs/api-design.md](api-design.md), [docs/STATUS.md](STATUS.md)
+- **Riesgo:** alto — breaking para los consumidores de la API; por eso nace como RFC y con periodo de alias, no como PR directo.
+
+### [P2] Un objetivo de bajada para el First Load JS del dashboard, no solo un techo
+- **Área:** web/bundle-budget.json, web/src/app/(dashboard)/*, web/src/lib/server-prefetch.ts
+- **Problema:** `bundle-budget.json` impide que cada ruta crezca, pero no fija adónde hay que llegar. Medido el 2026-10-17 en ese fichero: las rutas del dashboard cargan entre 1,1 y 1,6 MB de JS sin comprimir en el primer render (`/resumen` 1.630 KB, `/oportunidades/[id]` 1.372 KB, `/equipo` 1.267 KB, `/detalle` 1.265 KB), frente a 540 KB de la superficie pública. 416 de los 533 componentes (78 %) son `"use client"`, y el prefetch en servidor con hidratación (S7.1) existe en dos rutas de diecinueve (`resumen`, `radar`). La causa más probable son las librerías que viajan enteras con la pila común —recharts, leaflet, react-markdown, cmdk— pero no está medido por módulo.
+- **Acceptance criteria:**
+  - Informe de `@next/bundle-analyzer` (ya en `devDependencies`) sobre `/resumen`, `/detalle` y `/oportunidades/[id]`, anotado aquí: qué módulos pesan más de 100 KB en el First Load y en qué rutas se usan de verdad.
+  - Carga diferida (`next/dynamic`) de las librerías que solo necesita una parte de la pantalla (mapa, gráficos, markdown del asistente), con esqueleto propio; un test por ruta que fija que el chunk no está en el HTML inicial.
+  - `bundle-budget.json` baja al menos un 25 % en las cuatro rutas de más de 1,2 MB y se añade al fichero un campo `objetivo` por ruta, para que el ratchet tenga destino y no solo freno.
+  - Prefetch en servidor extendido a `detalle` y `oportunidades/[id]` siguiendo el patrón de `web/AGENTS.md` (módulo `_lib/prefetch`, página envuelta en `PrefetchServidor`, test de paridad de claves).
+- **Files de partida:** [web/bundle-budget.json](../web/bundle-budget.json), [web/src/lib/server-prefetch.ts](../web/src/lib/server-prefetch.ts), [web/src/app/(dashboard)/resumen/_lib/prefetch.ts](../web/src/app/(dashboard)/resumen/_lib/prefetch.ts), [scripts/check_bundle_budget.py](../scripts/check_bundle_budget.py)
+- **Riesgo:** bajo — cambios de carga, no de comportamiento; el E2E y el presupuesto de bundle los fijan.
+
+### [P2] Desbloquear los pines que acumulan deuda: FastAPI, suelo de Python y las dos fuentes de dependencias
+- **Área:** requirements.in, requirements-api.in, pyproject.toml, renovate.json, scripts/gen_status.py, scripts/check_api_surface.py, tests que recorren `app.routes`
+- **Problema:** tres topes de versión llevan meses y cada semana que pasa su salto es más grande. (1) `fastapi<0.137` (y con él `starlette<1.4`, `uvicorn<0.47`) desde el 2026-08-17 porque desde 0.141 los routers montados aparecen en `app.routes` como `_IncludedRouter` opacos; lo que depende de esa introspección es acotado —`scripts/gen_status.py`, `scripts/check_api_surface.py` y 10 ficheros de tests— y todo ello puede leerse de `app.openapi()`, que es estable. (2) `requires-python >=3.11`, `ruff target-version py311` y `mypy python_version 3.11`, mientras producción corre `python:3.13` (`.python-version`, `Dockerfile.api`, CI): ningún módulo puede usar sintaxis de 3.12+ y mypy comprueba contra un intérprete que no se despliega. (3) `pyproject.toml` declara `dependencies` a mano y no coincide con `requirements.in` (no lista httpx, email-validator, statsmodels, uvicorn, starlette, pypdf en el mismo rango, mcp…): dos fuentes de verdad que `check_requirements_sync.py` no compara. Además `faiss`, retirado en julio, sigue en los `overrides` de mypy, en los `skips` de bandit y en el README.
+- **Acceptance criteria:**
+  - `gen_status.py`, `check_api_surface.py` y los tests que recorren `app.routes` leen de `app.openapi()`; `superficie_congelada.txt` sigue dando 297; el tope de fastapi/starlette/uvicorn sube en `requirements*.in` y en `renovate.json`, con el job E2E en verde contra la versión nueva.
+  - `requires-python >=3.13` (o >=3.12 con el motivo escrito), `target-version`/`python_version` alineados, y la matriz de CI deja de probar 3.12 en el `schedule` si el suelo sube.
+  - `pyproject.dependencies` se genera o se verifica contra `requirements.in` (ampliar `check_requirements_sync.py`), y los restos de `faiss` desaparecen de `pyproject.toml` y del README.
+- **Files de partida:** [requirements.in](../requirements.in), [pyproject.toml](../pyproject.toml), [renovate.json](../renovate.json), [scripts/gen_status.py](../scripts/gen_status.py), [scripts/check_requirements_sync.py](../scripts/check_requirements_sync.py)
+- **Riesgo:** medio — el salto de FastAPI toca todas las rutas; mitigado por el gate de arranque del job E2E y el fuzz de Schemathesis, que es justo lo que detectó la rotura en agosto.
+
+### [P2] La telemetría de producto tiene catálogo y no tiene emisores: medir el uso por espacio antes de la siguiente ola
+- **Área:** web/src/lib/analytics.ts, web/src/components/layout/*, web/src/hooks/*, docs/UX_AUDIT.md
+- **Problema:** `web/src/lib/analytics.ts` nació en agosto para responder «qué se usa, qué se abandona y qué se puede retirar» con un catálogo de eventos categóricos y reglas de privacidad; medido el 2026-10-17 solo hay dos llamadas a `track()` fuera del propio módulo y las dos están en la superficie pública (solicitar acceso y su resultado). Dentro del producto —15 espacios, 297 operaciones, 30 casos de uso— sigue sin medirse nada, así que las decisiones de retirar o fusionar superficies (como la del 2026-10-12, que absorbió Empresas y unificó el asistente) se toman sin dato de uso. El punto 0 de AGENTS.md pide comprobar que una superficie nueva hace falta; sin esta medida no se puede comprobar que una existente sobra.
+- **Acceptance criteria:**
+  - Un evento por espacio al entrar (dimensión `espacio`, y `vista` cuando la haya) y los eventos de acción que el catálogo ya define, emitidos desde el marco de la consola, no desde cada pantalla; ninguna propiedad fuera de `PROPIEDADES_PERMITIDAS` (test).
+  - Tras 30 días, una tabla en `docs/UX_AUDIT.md` con sesiones por espacio y por vista, y una decisión escrita por cada espacio o vista con menos del 2 % de uso: se queda, se fusiona o se retira.
+  - La misma pregunta para la API: `pursuits/metrics` o `admin/ejecuciones` ya existen; falta el inventario de operaciones sin ninguna llamada en 30 días (`http_requests_total` por handler ya está en Prometheus), y la lista va a `superficie_congelada.txt` como candidatas a encoger.
+- **Files de partida:** [web/src/lib/analytics.ts](../web/src/lib/analytics.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [api/superficie_congelada.txt](../api/superficie_congelada.txt)
+- **Riesgo:** bajo — telemetría categórica sin identificadores; el filtro del módulo ya la acota.
+
+### [P2] Los `except Exception` que tragan errores en los módulos calientes, y el CLI que vive dentro de `sap_classifier`
+- **Área:** scraper/connectors/base.py, scheduler/pipeline_runs.py, db/connection.py, llm/client.py, services/ml/sap_classifier.py, scraper/connectors/*
+- **Problema:** medido el 2026-10-17 hay 501 `except Exception` en código de producción; muchos son los «best-effort persisters» que el repo admite a propósito (`S110`/`B110` ignorados), pero los más concentrados están en el camino crítico —17 en `scraper/connectors/base.py`, 15 en `scheduler/pipeline_runs.py`, 15 en `db/connection.py`, 12 en `llm/client.py`, 12 en `scheduler/jobs/documentos_embeddings.py`— y es donde un error de programación se registra como un aviso más y la pasada sigue en verde (el P1 de los pliegos de PSCP que no se leen es un ejemplo de fallo silencioso en ese camino). Aparte, hay 58 `print()` en módulos de producción: 30 están en `services/ml/sap_classifier.py`, que lleva un CLI de entrenamiento bajo `if __name__ == "__main__"` —un módulo de dominio que escribe por `stdout` y que además fija el nombre de clase que los `.pkl` publicados esperan—, y el resto en conectores (`tacrc`, `sindicacion_placsp`, `ted`, `galicia`, `euskadi`, `watched_company_awards`) donde conviven con `structlog`.
+- **Acceptance criteria:**
+  - En los cinco módulos de arriba, cada `except Exception` o se estrecha a la excepción que de verdad se espera, o conserva el `exc_info` y el contexto en el log **y** cuenta en una métrica (`*_errores_total` con la etiqueta del paso), de modo que un fallo repetido salte en `observability/alert_rules.yml`. Lista antes/después anotada aquí.
+  - El CLI de `sap_classifier.py` se mueve a `scripts/` (o a `python -m services.ml.sap_classifier` con `logging`, no `print`) sin cambiar el nombre cualificado de `SAPClassifier`, que los pickles ya publicados resuelven; `tests/test_ml_*` siguen cargando los artefactos de la Release.
+  - Cero `print()` en `scraper/`, `services/` y `scheduler/` fuera de un `__main__`; un ratchet stdlib lo fija.
+- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [db/connection.py](../db/connection.py), [llm/client.py](../llm/client.py), [services/ml/sap_classifier.py](../services/ml/sap_classifier.py)
+- **Riesgo:** medio — estrechar una excepción en el pipeline puede convertir un aviso en una pasada en rojo; es el objetivo, pero conviene hacerlo módulo a módulo y mirar `scrape-daily` después de cada uno.
+
 ## P3 — Nice to have
+
+### [P3] Pasar las fechas de `text` a `timestamptz`
+- **Área:** db/ (esquema), todo lector de fechas
+- **Problema:** 132 columnas de fecha son `text` (frente a 35 `timestamptz` y 2 `date`), así que cada comparación y cada orden en SQL o en Python depende de que todos los escritores usen exactamente `now_utc_iso()`. Cuando uno no lo hizo (los `DEFAULT now()` y los `NOW()::text` escritos a mano), el fallo fue silencioso: «desde tu última visita» perdía los pliegos del mismo día. La migración de 2026-10-17 arregla el formato y un test impide nuevos `text DEFAULT now()`, pero el tipo sigue sin proteger nada.
+- **Acceptance criteria:**
+  - Inventario de las columnas por tabla y de quién las lee como cadena (slicing `[:10]`, comparaciones de texto, serialización a JSON).
+  - Migración por tabla, empezando por las que entran en diffs y órdenes (`documentos`, `licitaciones_history`, `pursuit_events`, `user_notifications`), con la suite verde entre cada una.
+- **Files de partida:** [docs/database-schema.md](database-schema.md), [db/connection.py](../db/connection.py) (`now_utc_iso`), [tests/test_v151_fechas_texto_iso_migration.py](../tests/test_v151_fechas_texto_iso_migration.py)
+- **Riesgo:** alto — cambia el tipo que devuelve psycopg (de `str` a `datetime`) en cientos de lecturas; requiere RFC por ser cambio de persistencia.
 
 ### [P2] [Investigador] La búsqueda por significado no corre en producción: decidir si se sirve
 - **Área:** services/investigador/search_engine.py, services/embeddings.py, requirements-api.in, docker/Dockerfile.api
@@ -1093,15 +1124,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — dependencia nueva y memoria del proceso de la API.
 - **Progreso (2026-10-17, rama `claude/quirky-wozniak-xp20q0`):** lo que la fusión haría al encenderse ya no empeora la pantalla. Hasta esa fecha, con embeddings la ruta respondía **solo** con la fusión: sin `coincide_en`, pasaje, resaltados ni `fecha_limite`, ignorando «las más recientes» y, en la lista vectorial, las comillas y la `-exclusión`. Ahora completa la lista del texto (`services/investigador/busqueda.py::combinar`): primero lo que casa con todos los términos, después lo que solo se parece por significado (`coincide_en=["significado"]`, con su fragmento), y al final lo parcial. No corre con operadores, con «recientes» ni con `alpha=0`. La decisión de servirla sigue pendiente.
 
-### [P2] [Investigador] Medir en producción la muestra ordenada de pasajes de pliego
-- **Área:** db/repositories/investigador.py (`licitaciones_con_pasaje`)
-- **Problema:** desde 2026-10-17 la muestra de `limite_pasajes` fragmentos es la de los documentos más recientes (`ORDER BY documento_id DESC` sobre las coincidencias materializadas), y no los primeros que leía el plan, que en la práctica eran los pliegos más viejos. El precio es leer **todas** las coincidencias del GIN y no solo las primeras 2.000: con un término muy común («mantenimiento», ~37.000 fragmentos) eso no se ha medido contra producción.
-- **Acceptance criteria:**
-  - `EXPLAIN (ANALYZE, BUFFERS)` de la consulta con «mantenimiento» y con un término raro, antes y después, contra la base de producción.
-  - Si el caso común pasa de ~200 ms, acotar con un tope de coincidencias leídas o un índice que sirva el orden.
-- **Files de partida:** [db/repositories/investigador.py](../db/repositories/investigador.py)
-- **Riesgo:** bajo — consulta de solo lectura con `statement_timeout`; si se dispara, el motor la trata como fallida (`_pasajes_seguro`) y responde con los anuncios.
-
 ### [P3] [Investigador] El historial de consultas sigue en `localStorage`
 - **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
 - **Problema:** las consultas recientes viven en el navegador (`docs/frontend-data-invariants.md`, anti-patrón 3): no viajan a otro dispositivo. `saved_filters` no sirve tal cual —guarda instantáneas del ámbito que las demás pantallas restauran—, así que hace falta una tabla propia, es decir, una migración (§6).
@@ -1110,17 +1132,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - El término no llega a la telemetría de producto (sigue siendo «la estrategia comercial de quien lo escribe»).
 - **Files de partida:** [web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts](<../web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts>)
 - **Riesgo:** bajo.
-
-### [P3] [Investigador] Flecos de la reescritura de la búsqueda
-- **Área:** db/repositories/licitaciones.py, services/investigador/search_engine.py, api/routes/search.py
-- **Problema:** tres cosas que quedaron fuera a propósito. (1) `ids_for_filters`, `fts5_bm25_search`, `like_fallback_search`, `fetch_metadata_by_ids` y sus envoltorios `fts5_search`/`like_search`/`fetch_docs` ya no los llama la ruta; siguen por sus tests y por `rag_query` (`scripts/eval_rag_generation.py`). (2) `semantic_search.ok` escribe los primeros 80 caracteres de la consulta en el log de Render, mientras la analítica del frontend evita mandar el término. (3) `tests/test_investigador_busqueda_bd.py` fija el orden, pero el MRR del motor nuevo sobre el golden set solo se lee en el resumen del job de CI: subir `MRR_MIN` cuando se haya leído.
-- **Acceptance criteria:**
-  - Código sin llamantes retirado junto con sus tests (borrar tests exige OK, §6), o motivo anotado para conservarlo.
-  - Decisión sobre el texto de la consulta en los logs.
-  - `MRR_MIN` de `tests/eval/test_eval_rag.py` al valor medido menos el margen.
-- **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [api/routes/search.py](../api/routes/search.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
-- **Riesgo:** bajo.
-- **Progreso (2026-10-17):** (2) resuelto — `semantic_search.ok` y `semantic_search.failed` escriben `q_len`, no el texto. También se retiró `_hits_from_fused` de `api/routes/search.py`, que quedó sin llamantes con la fusión nueva (sus tests pasan a probar `combinar`). (1) resuelto el mismo día, con el OK del propietario para borrar sus tests: se retiraron `rag_query`, `escape_fts5`, `fts5_search`, `like_search` y `fetch_docs` de `services/investigador/search_engine.py`, y `ids_for_filters`, `fts5_bm25_search`, `like_fallback_search` y `fetch_metadata_by_ids` de `LicitacionRepository`, con sus tests (`tests/test_search_engine.py` entero). `scripts/eval_rag_generation.py` ya no los importaba. Queda (3).
 
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios
@@ -1153,6 +1164,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Al tocar un bloque cohesivo existente **por otro motivo**, se evalúa extraerlo en el mismo cambio. El destino de `AggregateRepository` es partido por dominio (overview / geografía / competidores) y el de `Settings` submodelos anidados por eje preservando los nombres de variables de entorno — pero **llegando por partes, con la suite verde entre cada una**, no en un big-bang.
 - **Progreso 2026-09-18 (rama worktree-agent-acad4a43a2c0f0bae):** primer módulo hermano de settings, `config/settings_resumen.py` (`ResumenPregenSettings`, de la que hereda `Settings`: mismos nombres de variable de entorno y mismo acceso `settings.X`). Es el patrón para los siguientes settings nuevos. En `aggregates.py` no hubo agregación nueva que mover.
 - *Estado (2026-09-19) — las cifras del problema están caducadas y la regla «no crecer» no se ha cumplido:* `db/repositories/aggregates.py` tiene hoy **1.980 líneas** (eran 1.327) y `AggregateRepository` **60 métodos** (eran 55); `config/settings.py`, **1.422 líneas** (eran 946) y **27 validadores**. `shared/dto.py` ya no es el contraejemplo sano: **1.904 líneas y 83 clases** (eran 620 / 45). Medido con `wc -l` y `grep` sobre el árbol.
+- *Progreso 2026-10-17 (rama `claude/nifty-turing-axm5xg`):* la misma regla aplicada a los dos módulos de oportunidades, que ya eran los más grandes después de `shared/dto.py` y `aggregates.py`. `services/pursuits.py` (2.308 → 1.758 líneas): las piezas de la agenda salen a `services/pursuits_agenda.py`; `get_agenda` y las señales de reglas se quedan porque reciben `user_key` y el ratchet no deja que un fichero nuevo herede esa deuda. `api/routes/pursuits.py` (2.112 → 1.646): las rutas de organizaciones salen a `api/routes/organizations.py`, con el OpenAPI idéntico (comparado antes y después). Siguen pendientes los dos de este ítem, `aggregates.py` (2.457) y `shared/dto.py` (2.482).
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
@@ -1250,6 +1262,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - La ingesta escribe `adjudicaciones.lote_id` cuando la fuente lo publica, o se documenta por qué no puede.
   - `_AGENDA_SELECT` afirma adjudicatario para una oportunidad con lote solo con las adjudicaciones de ese lote, con su test en `tests/test_agenda_ambito_sql.py` (hoy `test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote` fija lo contrario a propósito).
 - **Files de partida:** [db/repositories/pursuits.py](../db/repositories/pursuits.py), [services/pursuits.py](../services/pursuits.py) (`_expediente_cerrado`), [tests/test_agenda_ambito_sql.py](../tests/test_agenda_ambito_sql.py)
+- **Estado (2026-10-17, rama `claude/happy-maxwell-xjan4q`):** resuelto en código; falta verlo en producción. La causa no era que la fuente no publicase el lote: `parse_adjudicaciones` lo buscaba en `cac:ProcurementProjectLotReference/cbc:ID`, una forma sacada del fixture sintético `01_multilote`, y CODICE lo publica en `cac:AwardedTenderedProject/cbc:ProcurementProjectLotID`. Medido ese día en producción: 761 expedientes multilote con adjudicación, 1.619 filas, **ninguna** con `lote_id`. El parser lee ahora las tres formas (`_lote_del_resultado`, caso golden `18_lote_en_proyecto_adjudicado`), `run_connector` avisa con `adj_lote_sin_resolver` cuando un multilote se queda sin lote, y `_AGENDA_SELECT` afirma adjudicatario para la oportunidad de un lote solo con las adjudicaciones de ese lote (`tests/test_agenda_ambito_sql.py`). Bajas, dataset ML, ficha y competencia esperada ya leían `lote_id` y se benefician sin cambios. **Queda (acción del propietario):** relanzar `scrape-bulk.yml` (lanzado el 2026-10-17 con `months=3`, run 39059575492) y, para el histórico, `reproceso-lotes.yml` (`scraper/reproceso_lotes.py`): lee los ZIP del rango y asigna `lote_id` **en sitio** a las adjudicaciones de los multilote, sin tocar documentos ni empresas, porque el bulk tarda más de 2 h por mes y no puede reprocesar años. Primero sin `aplicar` (cuenta), luego con él, por tramos si el rango no cabe en 2 h. Después, comprobar `SELECT count(lote_id) FROM adjudicaciones` > 0 y que `adj_lote_sin_resolver` no aparece en cada pasada. Si sigue a cero, el formato es otro: capturar un expediente real con `scripts/capture_placsp_fixtures.py --caso multilote`.
 - **Riesgo:** bajo — la regla actual es la conservadora; relajarla solo añade casos.
 
 ---
@@ -1287,8 +1300,122 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [db/mcp_oauth.py](../db/mcp_oauth.py), [mcp_server/auth/proveedor.py](../mcp_server/auth/proveedor.py)
 - **Riesgo:** medio — toca el contrato de autenticación de los clientes; un cambio equivocado deja a claude.ai sin poder canjear el código.
 
+### [P3] Decidir qué hacer con los ratchets que llevan meses congelados sin bajar
+- **Área:** scripts/check_layers.py, pyproject.toml (TID251), scripts/check_user_key_ratchet.py, docs/STATUS.md
+- **Problema:** tres ratchets congelan deuda con nombre y ninguno tiene plan de bajada: 22 imports contra el orden de capas (los peores van de la capa inferior a la superior: `db/repositories/go_no_go.py -> services.go_no_go_template`, `db/repositories/licitaciones.py -> services.investigador.search_engine`, `db/access_grants.py -> services.access_grants`, `config/settings.py -> shared.*`), 22 ficheros con SQL fuera de `db/` (TID251: de 32 entradas en agosto a 22 hoy, según los comentarios de `pyproject.toml`) y 59 ficheros con `user_key` (el P1 de S1 lo lleva a cero con T4, pero el resto no tiene dueño). Un ratchet que solo impide crecer protege el futuro y deja el presente igual; medido el 2026-10-17 contra `docs/STATUS.md`.
+- **Acceptance criteria:**
+  - Decisión escrita del dueño por ratchet: (a) cuota de bajada —por ejemplo, cada PR que toque un módulo de la lista saca ese módulo o explica por qué no—, (b) fecha objetivo para llegar a cero, o (c) aceptar la violación como diseño y borrarla de la lista (y, en el caso de capas, actualizar AGENTS.md §2).
+  - Para capas: las cuatro violaciones `db/* -> services.*` tienen prioridad, porque son las únicas en que la persistencia conoce el dominio; la pieza compartida baja a `shared/` o a `db/`.
+  - `docs/STATUS.md` muestra la tendencia (valor y fecha del último descenso), no solo el valor.
+- **Files de partida:** [scripts/check_layers.py](../scripts/check_layers.py), [pyproject.toml](../pyproject.toml), [docs/STATUS.md](STATUS.md)
+- **Riesgo:** bajo — es una decisión de política; cada bajada concreta tiene su propio riesgo.
+
+### [P3] `strict` con 2.113 `Any`: tipar las filas de los repositorios calientes
+- **Área:** db/repositories/licitaciones.py, db/repositories/pursuits.py, db/repositories/aggregates.py, api/routes/*
+- **Problema:** mypy strict pasa en los 1.269 ficheros, pero medido el 2026-10-17 hay 2.113 usos de `Any` en código de producción y 383 `dict[str, Any]` solo en `api/routes/` y `shared/dto.py`: los repositorios devuelven filas como `dict[str, Any]` (`rows_to_dicts`) y la ruta vuelve a tipar a mano al construir el DTO, así que un cambio de columna no lo detecta mypy sino el test de integración, si lo hay. El contrato hacia fuera ya está tipado (0 operaciones opacas); el hueco es hacia dentro.
+- **Acceptance criteria:**
+  - Un `TypedDict` (o dataclass) por forma de fila en los tres repositorios más usados, devuelto por sus métodos públicos; la ruta construye el DTO desde él sin `cast` ni `# type: ignore`.
+  - El conteo de `dict[str, Any]` en `api/routes/` baja al menos un tercio y se añade como ratchet stdlib (solo baja).
+- **Files de partida:** [db/repositories/base.py](../db/repositories/base.py), [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [db/repositories/pursuits.py](../db/repositories/pursuits.py)
+- **Riesgo:** bajo — cambios de tipos sin cambio de comportamiento; mypy es el gate.
+
+### [P3] Documentar o fundir las dos caras de la persistencia, y retirar `services/sql_fragments.py` y `drift_monitor.py`
+- **Área:** db/*.py, db/repositories/*.py, services/sql_fragments.py, scheduler/drift_monitor.py, docs/adr/ADR-022-frontera-de-persistencia.md
+- **Problema:** para `watchlist`, `webhooks` y `audit` conviven un módulo de funciones en `db/` y un repositorio en `db/repositories/` sobre las mismas tablas; en `empresas` la pareja está documentada (escritura en el módulo, lectura en el repositorio), en las otras tres no, y quien busca «dónde está el SQL de webhooks» tiene dos respuestas (357 y 635 líneas). ADR-022 admite los dos estilos pero no dice cuándo una entidad lleva ambos. Aparte: `services/sql_fragments.py` (69 líneas, dos constantes) sobrevive como excepción nominal de AGENTS.md §3.10 cuando su contenido ya bajó a `db/sql_fragments.py`; y `scheduler/drift_monitor.py` es la capa para APScheduler, que no es el plano activo (ADR-012/033), así que es código para un plano que no corre.
+- **Acceptance criteria:**
+  - ADR-022 (o una nota en AGENTS.md §3.10) fija la regla: escritura en módulo / lectura en repositorio, o un solo sitio por entidad; `watchlist`, `webhooks` y `audit` quedan con la cabecera que lo diga, como `db/repositories/empresas.py` ya hace.
+  - `services/sql_fragments.py` desaparece (sus dos constantes van a `db/sql_fragments.py`) y la excepción se borra de AGENTS.md §3.10.
+  - `drift_monitor.py` se retira o se registra en el plano del worker (ADR-033) con su job en `docs/STATUS.md`; no hay módulo del scheduler que solo exista para APScheduler.
+- **Files de partida:** [db/webhooks.py](../db/webhooks.py), [db/repositories/webhooks.py](../db/repositories/webhooks.py), [services/sql_fragments.py](../services/sql_fragments.py), [scheduler/drift_monitor.py](../scheduler/drift_monitor.py), [docs/adr/ADR-022-frontera-de-persistencia.md](adr/ADR-022-frontera-de-persistencia.md)
+- **Riesgo:** bajo — reorganización sin cambio de SQL; TID251 y los tests de repositorio lo fijan.
+
+### [P3] El coste de leer el repo: deriva documental y un backlog que su propia regla llama ilegible
+- **Área:** docs/AGENT_PLAYBOOK.md, README.md, docs/IMPROVEMENT_BACKLOG.md, AGENTS.md
+- **Problema:** medido el 2026-10-17: 202 ficheros y 39.489 líneas en `docs/`; AGENTS.md, CLAUDE.md, el playbook, este backlog y `web/AGENTS.md` suman 259 KB que cada sesión de agente carga antes de la primera línea de código; este fichero tiene 1.696 líneas con 62 ítems abiertos y `check_backlog_freshness.py` emite 15 avisos de frescura, mientras AGENTS.md §0 dice que «un backlog que nadie puede leer entero no prioriza nada». Deriva concreta, que la regla de §5 pide arreglar en el mismo cambio en que se detecta: el playbook cita `services/analytics_engine.py` (DuckDB) y `shared/i18n`, que no existen; el README dice «umbral: 70 %» de cobertura y `pyproject.toml` exige 78; `api/routes/licitaciones.py` figura en `per-file-ignores` de ruff y es un paquete desde septiembre.
+- **Acceptance criteria:**
+  - Las cuatro derivas de arriba corregidas.
+  - Los ítems de este backlog con avisos de frescura revisados uno a uno (cerrar, actualizar o anotar por qué siguen abiertos aunque la revisión citada exista), y `check_backlog_freshness.py --strict` en CI en vez del modo informe.
+  - Una regla de tamaño para el backlog (por ejemplo, 40 ítems abiertos o 1.000 líneas) que `check_backlog_freshness.py` avise al superar, y un apartado «Trabajo del propietario» que agrupe los 13 ítems que hoy son acciones manuales fuera del código, para que no se mezclen con lo que un agente puede coger.
+- **Files de partida:** [docs/AGENT_PLAYBOOK.md](AGENT_PLAYBOOK.md), [README.md](../README.md), [scripts/check_backlog_freshness.py](../scripts/check_backlog_freshness.py), [pyproject.toml](../pyproject.toml)
+- **Riesgo:** bajo — solo documentación; `check-agent-docs` valida las rutas citadas.
+
+### [P3] Agrupar la veintena de gates stdlib en un solo target y un solo job
+- **Área:** Makefile, .github/workflows/ci.yml, scripts/check_*.py
+- **Problema:** medido el 2026-10-17: 22 workflows y 4.213 líneas de YAML, `ci.yml` con 957 líneas y 11 jobs, y unos veinte gates y ratchets (`check_layers`, `check_api_surface`, `check_user_key_ratchet`, `check_analytics_unbounded`, `check_frontend_invariants`, `check_inline_styles`, `check_title_attrs`, `check_ortografia_ui`, `check_public_surface`, `check_env_parity`, `check_backlog_freshness`, `check_casos_uso`, `check_job_parity`, `check_coverage_per_module`, `check_bundle_budget`…) repartidos entre pasos de `static-analysis`, targets del Makefile y tests `tests/test_unit_ratchet_*.py`. Funcionan, pero cada gate nuevo es un paso más que mantener en tres sitios y la lista de qué corre dónde no está escrita en ninguno.
+- **Acceptance criteria:**
+  - Un `make gates` que ejecute todos los checks que solo necesitan la stdlib (y `make gates-deps` para los que necesitan la API importable), con salida agregada; `ci.yml` los invoca con un paso cada uno en vez de uno por script.
+  - `docs/AGENT_PLAYBOOK.md` §2 lista los gates desde ese target (o se genera), y `tests/test_unit_ratchet_*.py` deja de duplicar los que ya corren como paso, o al revés: una sola vía por gate.
+- **Files de partida:** [Makefile](../Makefile), [.github/workflows/ci.yml](../.github/workflows/ci.yml), [docs/AGENT_PLAYBOOK.md](AGENT_PLAYBOOK.md)
+- **Riesgo:** bajo — reordena controles existentes; el riesgo es dejar uno fuera, y la lista explícita es justo lo que lo evita.
+
+### [P3] Los 41 `SELECT *` de `db/` y el SQL propio de `services/notifications.py` y `services/watchlist_rules.py`
+- **Área:** db/*.py, db/repositories/*.py, services/notifications.py, services/watchlist_rules.py, db/notifications.py, db/repositories/watchlist_rules.py
+- **Problema:** medido el 2026-10-17 hay 41 `SELECT *` en `db/`: cada columna nueva viaja en todas esas lecturas y el orden de las columnas pasa a ser contrato implícito (es lo que hace frágil `rows_to_dicts` ante un `ALTER TABLE`). Aparte, `services/notifications.py` (18 sentencias con `# noqa: S608`) y `services/watchlist_rules.py` (10) construyen y ejecutan SQL propio pese a existir `db/notifications.py`, `db/repositories/notification_preferences.py` y `db/repositories/watchlist_rules.py`: son dos de las 22 entradas del ratchet TID251 y las dos tienen ya un destino en `db/`.
+- **Acceptance criteria:**
+  - Las lecturas con `SELECT *` que sirven a la API nombran sus columnas (las de `pg_dump`/herramientas internas pueden quedarse con el motivo en la línea); el conteo baja y se fija.
+  - El SQL de `services/notifications.py` y `services/watchlist_rules.py` vive en sus módulos de `db/`; los dos ficheros salen de la whitelist TID251 de `pyproject.toml` (22 → 20) y `docs/STATUS.md` lo refleja.
+- **Files de partida:** [services/notifications.py](../services/notifications.py), [services/watchlist_rules.py](../services/watchlist_rules.py), [db/notifications.py](../db/notifications.py), [db/repositories/watchlist_rules.py](../db/repositories/watchlist_rules.py)
+- **Riesgo:** bajo — movimiento de SQL con tests de integración existentes para ambos módulos.
+
+### [P3] Frontend: navegación con `window.location.href` y acceso a la API desde componentes
+- **Área:** web/src/lib/api-client.ts, web/src/app/login/_hooks/use-login-form.ts, web/src/components/layout/console-rail.tsx, web/src/components/**
+- **Problema:** `npm run lint` da seis avisos `@next/next/no-location-assign-relative-destination` (medido el 2026-10-17: `api-client.ts:60`, `use-login-form.ts:195/215/257`, `console-rail.tsx:143`, `ajustes/_components/cuenta-view.tsx:88`): una navegación interna con recarga completa pierde el estado de React Query y el prefetch. Y 18 componentes fuera de `web/src/hooks/` llaman a `fetchWithAuth`/`apiGet`/`apiMutate` directamente, con lo que la clave de caché, el manejo de error y el toast se deciden en cada componente en vez de en un hook; es la misma dispersión que D6 del UX_AUDIT (doble toast en mutaciones) ve desde el otro lado.
+- **Acceptance criteria:**
+  - Cero avisos de lint en `web/`: `useRouter().push()`/`redirect()` donde la navegación es interna; donde la recarga es intencionada (cambio de organización, cierre de sesión) un comentario `eslint-disable-next-line` con el motivo.
+  - Las 18 llamadas directas pasan por un hook de `web/src/hooks/` (o un `_hooks/` de su ruta) con clave en `query-keys.ts`; una regla de ESLint (`no-restricted-imports` de `api-client` fuera de `hooks/` y `lib/`) lo fija.
+- **Files de partida:** [web/src/lib/api-client.ts](../web/src/lib/api-client.ts), [web/src/app/login/_hooks/use-login-form.ts](../web/src/app/login/_hooks/use-login-form.ts), [web/eslint.config.mjs](../web/eslint.config.mjs), [web/src/lib/query-keys.ts](../web/src/lib/query-keys.ts)
+- **Riesgo:** bajo — refactor mecánico con tests de hooks existentes; el E2E de login cubre las recargas.
+
+### [P3] Los avisos de deprecación que la suite ya emite
+- **Área:** scraper/resilience.py, api/routes/pursuits.py, api/routes/security.py, tests/test_ola1_fixes.py
+- **Problema:** la suite unitaria del 2026-10-17 (8.323 tests en verde) emite tres avisos de deprecación que, con la siguiente major de cada librería, pasan a ser errores: `wait_exponential_jitter(initial=…)` de tenacity en `scraper/resilience.py:93` (el parámetro es `multiplier`), `HTTP_413_REQUEST_ENTITY_TOO_LARGE` de Starlette (ahora `HTTP_413_CONTENT_TOO_LARGE`) en `api/routes/pursuits.py:1984` y `:2014` y en `api/routes/security.py:277`, y `Settings.__fields__` de Pydantic v1 en `tests/test_ola1_fixes.py:176` (`model_fields`). Son cambios de una línea y conviene hacerlos antes de que Renovate traiga la major.
+- **Acceptance criteria:**
+  - Los tres sustituidos y `pytest -W error::DeprecationWarning -m unit` en verde sobre esos módulos (o `filterwarnings = ["error::DeprecationWarning:tenacity", …]` en `pyproject.toml` para que no vuelvan).
+- **Files de partida:** [scraper/resilience.py](../scraper/resilience.py), [api/routes/pursuits.py](../api/routes/pursuits.py), [api/routes/security.py](../api/routes/security.py), [tests/test_ola1_fixes.py](../tests/test_ola1_fixes.py), [pyproject.toml](../pyproject.toml)
+- **Riesgo:** bajo — sustituciones de nombre.
+
 ## Cerrados
 
+- [2026-10-17] **P2: Aplicar `v151_fechas_texto_iso` en producción** — aplicada con
+  `migrate.yml` (`mode=apply`, run 39066215215, 82 s) fuera de la ventana de la ingesta:
+  `alembic current` en `v151_fechas_texto_iso`, 0 de 54.300 filas de `documentos` con el
+  formato de `now()::text` y `trg_lts_derivar_ml` habilitado (`tgenabled = 'O'`). El
+  criterio que pedía 0 también en `licitacion_tecnologia_score.computed_at` estaba mal
+  planteado: quedaban 53.903 filas, más 134 en `contrato_eventos.created_at`, con otro
+  formato, el de SQLite sin zona (`2026-05-21 15:02:22`, de mayo a julio de 2026), que
+  v151 dejaba fuera a propósito para no adivinar la zona. `v152_fechas_sin_zona_utc`
+  las reescribe en ISO leyéndolas como UTC (la zona de `datetime('now')` en SQLite), en
+  las mismas 34 columnas; se aplica con `migrate.yml` tras el merge.
+- [2026-10-17] **Bug sin ítem: «desde tu última visita» perdía los pliegos del mismo día**
+  (rama `claude/nifty-turing-axm5xg`, `4a7d04e` y `f383d88`) — lo documentaban tres
+  `xfail(strict=True)` en `tests/test_novedades_desde_ultima_visita.py`. Las fechas se
+  comparaban y ordenaban como texto: el corte con otro offset no se pasaba a UTC, y
+  `documentos.created_at` (`DEFAULT now()`) se guardaba con espacio. Ahora el corte va en
+  UTC, la consulta de pliegos compara instantes, el diff ordena por instante y `cuando`
+  sale en ISO con `T`. `v151` corrige el DEFAULT de las 33 columnas afectadas y normaliza
+  sus filas (aplicarla en producción es el P2 nuevo). Se quitan los tres `xfail` y se
+  añade un test con filas en el formato antiguo, más un ratchet contra nuevos
+  `text DEFAULT now()`. En el mismo cambio, `/organizations/{id}/settings` gana test HTTP
+  (`332c0d4`): solo tenía tests de servicio con dobles.
+- [2026-10-17] **P2: Mejorar el ranking de retrieval de producción (MRR 0.689)**
+  y **P3: Flecos de la reescritura de la búsqueda del Investigador** — el
+  golden set de `tests/eval/test_eval_rag.py`, medido en Postgres 16 con tres
+  corridas idénticas, da para el camino de producción de `/ask`
+  (`search_for_ask`, que desde 2026-10-09 responde con el motor del
+  Investigador) `hit_rate@5 = 1.000` y **MRR = 1.000**, frente al 0.689 del
+  2026-07. No hizo falta tocar pesos: lo cambió el motor nuevo (basta casar
+  algún término y el orden pesa los raros). `MRR_MIN` sube de 0.65 a **0.95**,
+  el valor medido menos una pregunta que baje al segundo puesto. Con esto se
+  cierran los tres flecos del P3: el texto de la consulta fuera del log, el
+  código sin llamantes retirado y el `MRR_MIN` ratcheado.
+- [2026-10-17] **P2: Medir en producción la muestra ordenada de pasajes de pliego**
+  — medido con «mantenimiento» (40.690 fragmentos) por el MCP de solo lectura:
+  la muestra ordenada por `documento_id` tardaba 2,6–6,5 s frente a 175–509 ms
+  la que no se ordena, y no era más reciente (46 expedientes de 2026 frente a
+  54), porque `documento_id` no sigue a la fecha de publicación. Con menos
+  coincidencias que el tope («baja temeraria», 480) las dos devolvían lo mismo
+  en ~0,4–0,5 s. Se revierte a la muestra sin orden; el porqué queda en el
+  docstring de `licitaciones_con_pasaje`.
 - [2026-10-17] **Repaso del Investigador** (rama `claude/quirky-wozniak-xp20q0`)
   — lo que quedaba tras la reescritura del 2026-10-09:
   - **Fusión:** completa la lista del texto en vez de sustituirla (ver el P2 de

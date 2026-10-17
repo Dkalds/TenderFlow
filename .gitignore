@@ -109,10 +109,20 @@ graphify-out/
 # (one file per node, ~18k files - not meant for git history)
 docs/codegraph/
 
-# Obsidian stubs and canvas files (regenerables desde Obsidian)
-docs/Sin título*
-# Estado local del vault de Obsidian (workspace, plugins): por usuario, no del repo.
-docs/.obsidian/
+# Obsidian (ver docs/runbooks/obsidian.md). El vault puede abrirse en `docs/` o
+# en la raíz del repo, así que las reglas cubren los dos.
+# - Estado local del vault (workspace, plugins, ajustes): por usuario, no del
+#   repo. Sin barra delante, `.obsidian/` vale a cualquier profundidad.
+# - `.trash/`: la papelera propia de Obsidian, si se elige en «Deleted files».
+# - Notas, canvas y bases recién creados y sin nombre («Sin título» con la
+#   interfaz en español, «Untitled» en inglés). Solo en la raíz y bajo `docs/`,
+#   que es donde Obsidian los crea: un `Untitled*` en `web/` sería otra cosa.
+.obsidian/
+.trash/
+/Sin título*
+/Untitled*
+docs/**/Sin título*
+docs/**/Untitled*
 
 # ── Frontend dependencies ─────────────────────────────────────────
 node_modules/

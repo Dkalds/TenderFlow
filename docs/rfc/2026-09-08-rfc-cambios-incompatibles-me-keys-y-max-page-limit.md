@@ -1,7 +1,7 @@
 ---
 rfc: 2026-09-08-me-keys-y-max-page-limit
 title: Dos cambios incompatibles del contrato - el sobre de /me/keys y el tope universal de paginacion
-issue: (sin issue: los pide el plan complementario 2026-09, items C2.3 y C8.5)
+issue: "(sin issue: los pide el plan complementario 2026-09, items C2.3 y C8.5)"
 author: agent:claude-code
 date: 2026-09-08
 status: implemented

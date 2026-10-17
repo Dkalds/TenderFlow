@@ -18,7 +18,10 @@ herramienta (`.claude/`, `.agents/`, `.codex/`, `.opencode/`):
 6. Los hooks apuntan a scripts existentes y sin rutas absolutas de una máquina.
 7. Los comandos de `.claude/commands/` y sus copias
    `.agents/skills/source-command-*/` no divergen.
-8. No quedan wikilinks de Obsidian anidados dentro de links markdown.
+8. No hay wikilinks de Obsidian en el cuerpo de `docs/` ni de las
+   instrucciones (GitHub no los renderiza; van como links markdown relativos),
+   ni anidados dentro de links markdown. El frontmatter sí los admite: dentro
+   de una propiedad es el único formato que Obsidian reconoce como link.
 9. Los hooks Claude/Codex son equivalentes y los plugins OpenCode existen.
 10. No se introducen markers pytest manuales de categoría —ni como decorador
     ni vía `pytestmark`— fuera de las excepciones históricas congeladas.
@@ -109,6 +112,14 @@ ABSOLUTE_PATH_PATTERNS = [
 
 BACKTICK = re.compile(r"`([^`\n]+)`")
 LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
+# `[[nota]]`, `[[nota#sección|texto]]` y el embed `![[nota]]`. El destino tiene
+# que llevar una letra y ningún carácter de código: `[[1]]` o `[["a", "b"]]` son
+# listas de Python citadas en un bloque indentado, no links.
+WIKILINK = re.compile(
+    r"!?\[\[([^\[\]\n|#\"'(),=]*[A-Za-z][^\[\]\n|#\"'(),=]*)(?:[#|][^\[\]\n]*)?\]\]"
+)
+FRONTMATTER_BLOCK = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.S)
+FENCED_CODE = re.compile(r"^(```|~~~).*?^\1[^\n]*$", re.S | re.M)
 MAKE_CALL = re.compile(r"\bmake\s+([a-z][a-z0-9-]*)(?![a-z0-9*-])")
 HOOK_SCRIPT = re.compile(r"(\.claude|\.codex)/hooks/([\w-]+\.py)")
 FRONTMATTER_NAME = re.compile(r"^name:\s*[\"']?([^\"'\n]+)[\"']?", re.MULTILINE)
@@ -444,17 +455,58 @@ def check_command_copies() -> None:
             )
 
 
-def check_nested_wikilinks() -> None:
-    files = [ROOT / rel for rel in INSTRUCTION_FILES] + sorted((ROOT / "docs").rglob("*.md"))
+def docs_markdown() -> list[Path]:
+    """Los `.md` de `docs/` que git versiona o versionaría.
+
+    No basta con `rglob`: `docs/codegraph/` (el vault que se genera desde el
+    grafo de graphify, miles de notas hechas de wikilinks) y los borradores
+    `Sin título*` de Obsidian están en `.gitignore`, pero existen en la máquina
+    de quien los genera, y el hook de pre-commit fallaría ahí por ficheros que
+    nunca llegan al repo. Fuera de un repo git (los tests) se recorre el árbol.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "-co", "--exclude-standard", "--", "docs"],  # noqa: S607 -- git del PATH, argumentos fijos
+            cwd=ROOT,
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return sorted((ROOT / "docs").rglob("*.md"))
+    rutas = {ROOT / rel for rel in proc.stdout.decode("utf-8").split("\0") if rel.endswith(".md")}
+    return sorted(path for path in rutas if path.is_file())
+
+
+def _sin_frontmatter_ni_codigo(text: str) -> str:
+    """El texto con el frontmatter y el código tapados, sin mover los saltos de línea."""
+
+    def tapar(m: re.Match[str]) -> str:
+        return re.sub(r"[^\n]", " ", m.group(0))
+
+    text = FRONTMATTER_BLOCK.sub(tapar, text, count=1)
+    text = FENCED_CODE.sub(tapar, text)
+    return BACKTICK.sub(tapar, text)
+
+
+def check_wikilinks() -> None:
+    files = [ROOT / rel for rel in INSTRUCTION_FILES] + docs_markdown()
     for path in files:
         if not path.exists():
             continue
-        for target in LINK_TARGET.findall(path.read_text(encoding="utf-8")):
+        rel = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        for target in LINK_TARGET.findall(text):
             if "[[" in target:
-                fail(
-                    str(path.relative_to(ROOT)),
-                    f"wikilink anidado dentro de un link markdown: {target}",
-                )
+                fail(rel, f"wikilink anidado dentro de un link markdown: {target}")
+        cuerpo = _sin_frontmatter_ni_codigo(text)
+        for m in WIKILINK.finditer(cuerpo):
+            linea = cuerpo.count("\n", 0, m.start()) + 1
+            fail(
+                f"{rel}:{linea}",
+                f"wikilink en el cuerpo: {m.group(0)}. GitHub no lo renderiza: usá un link "
+                "markdown relativo (en Obsidian, desactivá «Use [[Wikilinks]]»; ver "
+                "docs/runbooks/obsidian.md). En el frontmatter sí se admiten.",
+            )
 
 
 def _category_marker(node: ast.AST) -> str | None:
@@ -629,7 +681,7 @@ def main() -> int:
     check_hook_parity()
     check_opencode_plugins()
     check_command_copies()
-    check_nested_wikilinks()
+    check_wikilinks()
     check_manual_test_markers()
 
     for w in warnings:

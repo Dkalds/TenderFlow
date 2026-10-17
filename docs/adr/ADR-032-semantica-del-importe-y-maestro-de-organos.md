@@ -1,3 +1,16 @@
+---
+id: ADR-032
+title: "Semántica del importe y maestro de órganos"
+status: accepted
+date: 2026-09-06
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-022-frontera-de-persistencia]]"
+  - "[[ADR-026-caminos-de-lectura-y-precedencia-tecnologica]]"
+  - "[[ADR-009-framework-conectores-multifuente]]"
+tags: [adr]
+---
+
 # ADR-032 — Semántica del importe y maestro de órganos
 
 - **Estado:** aceptado

@@ -6,10 +6,10 @@ Los procedimientos detallados son los ficheros de este directorio (`docs/runbook
 ## Resumen de servicios
 
 Producción no corre sobre Docker: la API vive en Render, el frontend en Vercel y
-la BD es Supabase Postgres ([[ADR-016-destino-persistencia-supabase|ADR-016]];
-SQLite se retiró en [[ADR-021-retirada-sqlite|ADR-021]]). El scheduler no es un
+la BD es Supabase Postgres ([ADR-016](../adr/ADR-016-destino-persistencia-supabase.md);
+SQLite se retiró en [ADR-021](../adr/ADR-021-retirada-sqlite.md)). El scheduler no es un
 servicio desplegado — son workflows de GitHub Actions
-(`SCHEDULER_PLANE=actions`, [[ADR-012-plano-unico-orquestacion|ADR-012]]).
+(`SCHEDULER_PLANE=actions`, [ADR-012](../adr/ADR-012-plano-unico-orquestacion.md)).
 
 | Servicio | Dónde corre | Health | Logs |
 | --- | --- | --- | --- |
@@ -66,6 +66,11 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 
 Los runbooks ya ejecutados (p. ej. el cutover a Supabase) viven en
 [../archive/runbooks/](../archive/runbooks/).
+
+### Entorno de trabajo
+
+- **Windows** (los controles corren en WSL) — [entorno-wsl.md](entorno-wsl.md)
+- **Obsidian** (abrir `docs/` como vault sin romper cómo se ve en GitHub) — [obsidian.md](obsidian.md)
 
 ## SLOs vigentes
 
@@ -132,9 +137,9 @@ docker compose exec scheduler python -c \
 * F5: i18n del dashboard Streamlit (retirado con él).
 * F5: Sentry opt-in en `observability/sentry.py`.
 * F5: dashboard Grafana RED en `observability/grafana/dashboards/api_red.json`.
-* F6: diagramas C4 en `docs/c4-architecture.md`. [[ADR-005-clustering-ctfidf-minibatch|ADR-005]] documenta el
+* F6: diagramas C4 en `docs/c4-architecture.md`. [ADR-005](../adr/ADR-005-clustering-ctfidf-minibatch.md) documenta el
   refactor de clustering.
-* F7: capa `services/` como dominio compartido (ver [[ADR-007-services-domain-layer|ADR-007]]).
+* F7: capa `services/` como dominio compartido (ver [ADR-007](../adr/ADR-007-services-domain-layer.md)).
   `services/normalization.py` y `services/classification.py` concentran
   la lógica reutilizable consumida por API y frontend web.
 * F7: `scripts/verify_audit_chain.py` valida íntegramente la cadena de

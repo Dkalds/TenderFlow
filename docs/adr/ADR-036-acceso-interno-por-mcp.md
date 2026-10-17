@@ -1,3 +1,18 @@
+---
+id: ADR-036
+title: "Acceso interno por MCP con rol de solo lectura: un servicio aparte, OAuth propio y el SQL lo limita Postgres"
+status: accepted
+date: 2026-10-15
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-016-destino-persistencia-supabase]]"
+  - "[[ADR-022-frontera-de-persistencia]]"
+  - "[[ADR-025-construccion-de-sql-y-pools]]"
+  - "[[ADR-030-identidad-user-id-y-oidc]]"
+  - "[[ADR-034-rls-por-tenant]]"
+tags: [adr]
+---
+
 # ADR-036 — Acceso interno por MCP con rol de solo lectura: un servicio aparte, OAuth propio y el SQL lo limita Postgres
 
 - **Estado:** aceptado

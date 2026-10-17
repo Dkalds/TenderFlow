@@ -14,7 +14,7 @@ superseded_reason: >
   Un RFC en `draft` cuya decisión ya es un ADR ejecutable en CI solo confunde a
   quien lo lea. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de
   arquitectura v2).
-graduates-to: [[ADR-014-integridad-analitica-frontend|ADR-014]] (graduado el 2026-07-28)
+graduates-to: "[[ADR-014-integridad-analitica-frontend|ADR-014]] (graduado el 2026-07-28)"
 ---
 
 ## Contexto
@@ -23,8 +23,8 @@ El barrido página-por-página del dashboard (25 RFCs `2026-06-16-rfc-ux-*`) no
 encontró bugs aislados: encontró **5 patrones sistémicos** que se repiten porque el
 frontend asume responsabilidades que son del backend. Este meta-RFC consolida los 5,
 establece invariantes y —lo importante— añade **guardarraíles** para que no
-reaparezcan. Complementa **[[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]]** (jerarquía de materializaciones analíticas en
-backend), **[[ADR-007-services-domain-layer|ADR-007]]** (capa de servicios de dominio) y el invariante **AGENTS.md
+reaparezcan. Complementa **[ADR-013](../adr/ADR-013-jerarquia-materializaciones-analiticas.md)** (jerarquía de materializaciones analíticas en
+backend), **[ADR-007](../adr/ADR-007-services-domain-layer.md)** (capa de servicios de dominio) y el invariante **AGENTS.md
 §3.8** (frontend siempre vía API): §3.8 dice "consumí la API"; este RFC añade "y
 **no fabriques** la analítica que la API no te dio".
 
@@ -153,7 +153,7 @@ cliente de una tacada.
 | Alternativa | Pros | Contras | Motivo de descarte |
 |---|---|---|---|
 | Solo los 25 RFCs por página | Arregla instancias | Sin guardarraíl → el patrón reaparece en la página 26 | No ataca la causa |
-| Guardarraíl como ADR directamente | Autoridad arquitectónica | Salta el ciclo RFC→review | Este meta-RFC **propone**; gradúa a [[ADR-014-integridad-analitica-frontend|ADR-014]] al aprobarse |
+| Guardarraíl como ADR directamente | Autoridad arquitectónica | Salta el ciclo RFC→review | Este meta-RFC **propone**; gradúa a [ADR-014](../adr/ADR-014-integridad-analitica-frontend.md) al aprobarse |
 | Lint duro (error) desde el día 1 | Máxima prevención | Bloquea hasta migrar 5+ páginas | Se prefiere warning→error progresivo (precedente del repo) |
 | No hacer nada sistémico | Cero coste | Deuda recurrente; dato falso en herramienta de inteligencia | Inaceptable |
 
@@ -175,7 +175,7 @@ cliente de una tacada.
 3. **Backend compartido**: helpers de cross-tab/daily/distinct en `services/analytics/`
    y exposición de los grafos (`organ_company_graph`, `partners`).
 4. **Migrar las 5 páginas de Patrón 1** a datos reales (cierra sus RFCs por página).
-5. **Graduar a [[ADR-014-integridad-analitica-frontend|ADR-014]]** "Integridad analítica del frontend" en `docs/adr/` tras review.
+5. **Graduar a [ADR-014](../adr/ADR-014-integridad-analitica-frontend.md)** "Integridad analítica del frontend" en `docs/adr/` tras review.
 6. Iterar Patrones 2-5 vía sus RFCs por página, ya bajo el invariante.
 
 **Archivos de partida**: `web/AGENTS.md`, `docs/frontend-data-invariants.md` (nuevo),
@@ -192,16 +192,16 @@ check de CI; el riesgo está en no romper páginas al quitar las derivaciones cl
 - [ ] `docs/frontend-data-invariants.md` y la sección en `web/AGENTS.md` documentan los 3 invariantes y los 5 anti-patrones con ejemplos.
 - [ ] `scripts/check_frontend_invariants.py` corre en CI y detecta: `localhost` hardcodeado, `MOCK_/LOCAL_` arrays de datos, `localStorage` de reglas/alertas, `limit=500/1000`+agregación, grafo por CCAA.
 - [ ] Las 5 páginas de Patrón 1 consumen cross-tabs/grafos reales del backend; cero derivación sintética cliente.
-- [ ] Existe (o está planificado) el [[ADR-014-integridad-analitica-frontend|ADR-014]] que registra el invariante.
+- [ ] Existe (o está planificado) el [ADR-014](../adr/ADR-014-integridad-analitica-frontend.md) que registra el invariante.
 - [ ] `make lint && make typecheck && make test-unit` y `npm run typecheck && npm run lint && npm test` (web) en verde.
 
 ## Notas de review
 
 <!-- YYYY-MM-DDTHH:MMZ agent:reviewer — comentario -->
-<!-- Decisión de producto/arquitectura: aprobar el invariante habilita el [[ADR-014-integridad-analitica-frontend|ADR-014]] y el check de CI. -->
+<!-- Decisión de producto/arquitectura: aprobar el invariante habilita el [ADR-014](../adr/ADR-014-integridad-analitica-frontend.md) y el check de CI. -->
 
 2026-06-22 — **Implementado (parcial, guardarraíles).** Graduado a
-[[ADR-014-integridad-analitica-frontend|ADR-014]]. Entregado: doc canónico
+[ADR-014](../adr/ADR-014-integridad-analitica-frontend.md). Entregado: doc canónico
 `docs/frontend-data-invariants.md`, sección en `web/AGENTS.md`, check
 `scripts/check_frontend_invariants.py` (modo aviso, detecta las 5 categorías; 13
 hallazgos reales pendientes en 9 páginas), target `make check-frontend-invariants`,

@@ -1,3 +1,15 @@
+---
+id: ADR-030
+title: "La identidad interna es `user_id`; los proveedores OIDC son intercambiables"
+status: accepted
+date: 2026-09-06
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-015-identidad-tenderflow]]"
+  - "[[ADR-022-frontera-de-persistencia]]"
+tags: [adr]
+---
+
 # ADR-030 — La identidad interna es `user_id`; los proveedores OIDC son intercambiables
 
 - **Estado:** aceptado

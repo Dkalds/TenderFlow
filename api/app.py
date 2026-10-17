@@ -78,6 +78,7 @@ from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
 from api.routes.organization_audit import router as organization_audit_router
 from api.routes.organization_settings import router as organization_settings_router
+from api.routes.organizations import router as organizations_router
 from api.routes.organizations_capacidad import router as organizations_capacidad_router
 from api.routes.predicciones import router as predicciones_router
 from api.routes.publico import router as publico_router
@@ -488,6 +489,9 @@ if not _ES_WORKER:
     # Único endpoint público de escritura: la cola de solicitudes de acceso que
     # alimenta el formulario de la landing. Mismo prefijo y mismo motivo.
     app.include_router(publico_solicitudes_router, prefix="/api/v1")
+    # Antes que `pursuits_router`: sus rutas vivían al principio de ese router y
+    # el orden del contrato OpenAPI se conserva.
+    app.include_router(organizations_router, prefix="/api/v1")
     app.include_router(pursuits_router, prefix="/api/v1")
     app.include_router(organization_settings_router, prefix="/api/v1")
     app.include_router(organizations_capacidad_router, prefix="/api/v1")

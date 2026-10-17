@@ -4,8 +4,8 @@ title: "Cómputo en vivo del camino de lectura analítico: agregación SQL, no s
 status: accepted
 date: 2026-07-28
 deciders: "Daniel Kalitovics"
-supersedes: ADR-017
-superseded_parcialmente_por: ADR-026
+supersedes: "[[ADR-017-camino-lectura-analitico]]"
+superseded_parcialmente_por: "[[ADR-026-caminos-de-lectura-y-precedencia-tecnologica]]"
 related:
   - "[[ADR-026-caminos-de-lectura-y-precedencia-tecnologica]]"
   - "[[ADR-017-camino-lectura-analitico]]"
@@ -19,7 +19,7 @@ tags: [adr, analytics, performance, materializations]
 
 * **Estado:** Aceptado
 * **Fecha:** 2026-07-28
-* **Sustituye a:** [[ADR-017-camino-lectura-analitico|ADR-017]]
+* **Sustituye a:** [ADR-017](ADR-017-camino-lectura-analitico.md)
 
 ## Contexto
 

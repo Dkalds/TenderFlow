@@ -1,7 +1,7 @@
 ---
 rfc: 2026-09-26-purga-pscp-sin-tecnologia
 title: Purga de las licitaciones de PSCP sin señal tecnológica y puerta de ingesta endurecida
-issue: (sin issue: petición directa del propietario, 2026-09-26)
+issue: "(sin issue: petición directa del propietario, 2026-09-26)"
 author: agent:claude-code
 date: 2026-09-26
 status: review

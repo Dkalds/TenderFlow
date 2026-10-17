@@ -25,6 +25,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.check_agent_docs import docs_markdown
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # Documentos que un humano lee para orientarse. No son ficheros de instrucciones
@@ -32,9 +34,12 @@ ROOT = Path(__file__).resolve().parent.parent
 # verificaba.
 DOCS_VERIFICADOS = (
     "README.md",
+    "docs/README.md",
+    "docs/adr/README.md",
     "docs/api-design.md",
     "docs/AGENT_PLAYBOOK.md",
     "docs/c4-architecture.md",
+    "docs/runbooks/obsidian.md",
 )
 
 # Prefijos de artefactos que el código *produce* en tiempo de ejecución. Un doc
@@ -116,6 +121,61 @@ def test_enlaces_markdown_resuelven(rel: str) -> None:
             rotos.append(target)
 
     assert not rotos, f"{rel} tiene enlaces rotos: {rotos}"
+
+
+def test_la_nota_de_inicio_enlaza_cada_documento_de_primer_nivel() -> None:
+    """`docs/README.md` es la entrada a `docs/` (y la nota de inicio del vault de
+    Obsidian). Un índice que se queda atrás manda a buscar a mano justo lo que
+    prometía encontrar: cada `.md` de primer nivel y el `README.md` de cada
+    carpeta que lo tenga tiene que estar enlazado.
+
+    Solo cuenta lo que git versionaría: un `Sin título.md` recién creado en
+    Obsidian o el vault de `docs/codegraph/` están en `.gitignore`."""
+    docs = ROOT / "docs"
+    indice = docs / "README.md"
+    enlazados = {
+        (docs / target.split("#")[0]).resolve()
+        for target in LINK_TARGET.findall(indice.read_text(encoding="utf-8"))
+        if not target.startswith(("http", "mailto:", "#"))
+    }
+    esperados = [
+        p
+        for p in docs_markdown()
+        if p != indice and (p.parent == docs or (p.name == "README.md" and p.parent.parent == docs))
+    ]
+
+    faltan = sorted(
+        p.relative_to(docs).as_posix() for p in esperados if p.resolve() not in enlazados
+    )
+    assert not faltan, f"docs/README.md no enlaza: {faltan}"
+
+
+_FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.S)
+
+
+def test_el_frontmatter_de_docs_es_yaml_valido() -> None:
+    """Los índices de ADR y RFC leen el frontmatter con regex y lo toleraban
+    roto, pero Obsidian (y cualquier otra herramienta que lea propiedades) no:
+    con un YAML que no parsea, la nota se queda sin ninguna. Once RFC lo tenían
+    así, casi siempre por un valor sin comillas con `: ` dentro."""
+    import yaml
+
+    invalidos: list[str] = []
+    for path in docs_markdown():
+        m = _FRONTMATTER.match(path.read_text(encoding="utf-8"))
+        if not m:
+            continue
+        try:
+            datos = yaml.safe_load(m.group(1))
+        except yaml.YAMLError as exc:
+            invalidos.append(f"{path.relative_to(ROOT).as_posix()}: {str(exc).splitlines()[0]}")
+            continue
+        if not isinstance(datos, dict):
+            invalidos.append(f"{path.relative_to(ROOT).as_posix()}: no es un mapa clave: valor")
+
+    assert not invalidos, (
+        "frontmatter que no es YAML válido (entrecomillá el valor):\n" + "\n".join(invalidos)
+    )
 
 
 def _rutas_reales_de_la_api() -> set[str]:

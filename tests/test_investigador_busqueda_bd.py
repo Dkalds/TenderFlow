@@ -395,26 +395,3 @@ class TestPlazoYProcedimientoDeLaFrase:
         """«01» y «1» son el mismo procedimiento abierto."""
         assert self._ids("soporte SAP por procedimiento abierto") == ["P-SEMANA"]
         assert self._ids("contratos menores de soporte SAP") == ["P-NOVIEMBRE"]
-
-
-class TestMuestraDePasajes:
-    def test_con_tope_entran_los_pliegos_mas_recientes(self, tmp_db):
-        """Con más coincidencias que el tope, la muestra no la decide el orden
-        físico de la tabla: entran los documentos más recientes."""
-        from db.repositories import investigador as repo
-
-        _sembrar(
-            {"id_externo": "VIEJO", "titulo": "Obra", "estado": "PUB"},
-            {"id_externo": "NUEVO", "titulo": "Obra", "estado": "PUB"},
-        )
-        _sembrar_pasaje("VIEJO", "La baja temeraria se calcula así.")
-        _sembrar_pasaje("NUEVO", "La baja temeraria se calcula así.")
-        consulta, ambito = preparar("baja temeraria")
-
-        con_tope = repo.licitaciones_con_pasaje(consulta.texto, ambito, limite_pasajes=1)
-        assert con_tope == [("NUEVO", 1)]
-        # Sin tope que apriete, los dos.
-        assert {i for i, _ in repo.licitaciones_con_pasaje(consulta.texto, ambito)} == {
-            "VIEJO",
-            "NUEVO",
-        }

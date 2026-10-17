@@ -1,7 +1,7 @@
 ---
 rfc: 2026-10-15-baja-totp-con-codigo
 title: Quitar el segundo factor exige un código (`DELETE /auth/totp` con `code` requerido)
-issue: (sin issue: PR #471, línea A «Cuenta y acceso»)
+issue: "(sin issue: PR #471, línea A «Cuenta y acceso»)"
 author: agent:claude-code
 date: 2026-10-15
 status: implemented

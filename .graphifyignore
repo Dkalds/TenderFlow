@@ -32,9 +32,11 @@ data/*.log
 # Git internals
 .git/
 
-# Obsidian companion vault (18k+ archivos regenerables)
+# Obsidian companion vault (18k+ archivos regenerables) y estado local del
+# vault, se abra en docs/ o en la raíz del repo.
 docs/codegraph/
-docs/.obsidian/
+.obsidian/
+.trash/
 
 # graphify output (caché local, no se versiona)
 graphify-out/

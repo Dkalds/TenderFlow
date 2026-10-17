@@ -26,7 +26,7 @@ $ grep -rln '^from db\.\|^    from db\.' api/routes/*.py | wc -l
 ```
 
 18 de 27 archivos en `api/routes/` importan `db.*` directamente, saltándose
-`services/`. El ratchet TID251 ([[ADR-022-frontera-de-persistencia|ADR-022]])
+`services/`. El ratchet TID251 ([ADR-022](ADR-022-frontera-de-persistencia.md))
 vigila **dónde vive el SQL** (dentro de `db/`) — no **qué capa puede llamar a
 `db/`**. Desde la perspectiva del propio ratchet, los 18 archivos cumplen: el
 SQL está en `db/`. Eso deja sin responder la pregunta real: ¿debería

@@ -2,7 +2,7 @@
 id: ADR-018
 title: "Paridad de motor entre la suite de tests y producción"
 status: superseded
-superseded_by: ADR-021
+superseded_by: "[[ADR-021-retirada-sqlite]]"
 date: 2026-07-26
 deciders: "Daniel Kalitovics"
 related:
@@ -14,7 +14,7 @@ tags: [adr, testing, postgres, persistence]
 
 # ADR-018 — Paridad de motor entre la suite de tests y producción
 
-> **Superseded por [[ADR-021-retirada-sqlite|ADR-021]] (2026-07-28)** en su
+> **Superseded por [ADR-021](ADR-021-retirada-sqlite.md) (2026-07-28)** en su
 > parte de "el SQLite local sigue siendo una conveniencia de dev intencional".
 > La infraestructura de tests sobre Postgres que esta ADR construyó **sigue
 > vigente y es la única**: `TEST_DATABASE_URL` pasó de opcional a obligatoria y
@@ -26,7 +26,7 @@ tags: [adr, testing, postgres, persistence]
 
 ## Contexto
 
-Tras el cutover a Supabase Postgres ([[ADR-016-destino-persistencia-supabase|ADR-016]]),
+Tras el cutover a Supabase Postgres ([ADR-016](ADR-016-destino-persistencia-supabase.md)),
 la suite siguió corriendo sobre ficheros SQLite temporales: `tests/conftest.py`
 montaba `tmp_db` y `api_db` sobre `tmp_path / "test.db"` y blanqueaba
 `DATABASE_URL`. Más aún, `db/connection.py::is_postgres_backend()` incluía una

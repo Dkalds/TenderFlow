@@ -57,7 +57,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, Self
 from urllib.parse import unquote, urlparse
 
-from db.database import connect, connect_read, get_cursor, set_cursor
+from db.database import connect, connect_read, get_cursor, now_utc_iso, set_cursor
 from db.repositories import dedupe as dedupe_repo
 from db.repositories.base import rows_to_dicts
 
@@ -848,15 +848,14 @@ def review_pending(limit: int = 100) -> list[dict[str, Any]]:
 
 def resolve_pending(licitacion_id: str, *, accept: bool, resolved_by: str = "") -> bool:
     """Resuelve un match pendiente: aceptar lo confirma, rechazarlo lo descarta."""
-    # resolved_at es TEXT (v39_licitaciones_duplicados) — castear explícitamente
-    # evita el error de asignación timestamp→text.
-    resolved_at_sql = "NOW()::text"
+    # resolved_at es TEXT ISO (v39_licitaciones_duplicados). Un `NOW()::text`
+    # lo escribía con espacio en vez de `T` y offset corto (normalizado en v151).
     with connect() as c:
         cur = c.execute(
-            "UPDATE licitaciones_duplicados "  # noqa: S608 — resolved_at_sql es un fragmento constante
-            f"SET status = %s, resolved_at = {resolved_at_sql}, resolved_by = %s "
+            "UPDATE licitaciones_duplicados "
+            "SET status = %s, resolved_at = %s, resolved_by = %s "
             "WHERE licitacion_id = %s AND status = 'pending'",
-            ("confirmed" if accept else "rejected", resolved_by, licitacion_id),
+            ("confirmed" if accept else "rejected", now_utc_iso(), resolved_by, licitacion_id),
         )
         return bool(cur.rowcount)
 
