@@ -39,50 +39,26 @@ _FIXTURE = Path(__file__).parent / "fixtures" / "eval_rag.jsonl"
 HIT_RATE_MIN = 0.85
 TOP_K = 5
 
-# Ratchet del motor de búsqueda de producción (`tsvector` + `ts_rank_cd` con el
-# diccionario español, ver `db/search_backend.py`).
+# Ratchet del ranking del camino de producción de ``/ask`` (``search_for_ask``,
+# que desde 2026-10-09 responde con el motor de texto del Investigador,
+# ``services/investigador/busqueda.py``).
 #
-# Medido el 2026-07-26 sobre el golden set de 15 preguntas:
-#   Postgres/tsvector → hit_rate@5 = 1.000 · MRR ≈ 0.689
-#   (SQLite/FTS5, retirado en ADR-021, daba MRR ≈ 0.78)
+# Historia:
+# - 2026-07-26, Postgres/tsvector con la tsquery estricta y el LIKE sin orden:
+#   hit_rate@5 = 1.000 · MRR ≈ 0.689. El umbral se dejó en 0.65 sin leer el
+#   número en CI (el `print` de un test que pasa se lo traga pytest; desde
+#   2026-09-19 sale en `GITHUB_STEP_SUMMARY`, ver `_publicar`).
+# - 2026-10-17, medido en Postgres 16 local, tres corridas idénticas:
+#   producción (/ask) hit_rate@5 = 1.000 · MRR = 1.000, y
+#   `PgTsBackend.search_ids` igual (1.000 · 1.000). Basta casar alguno de los
+#   términos y el orden pesa los raros (`db/repositories/investigador.py`): el
+#   documento esperado sale primero en las 15 preguntas.
 #
-# Es decir: producción **recupera igual de bien** —encuentra el documento
-# esperado dentro del top-5 en los 15 casos— pero lo **ordena algo peor** que
-# el motor de desarrollo que se retiró. No era un bug de la migración: es la
-# calidad real de retrieval que ven los usuarios, que nadie medía porque el
-# eval corría sobre el otro motor. Se ratchea al valor medido en vez de relajar
-# el umbral, para que una regresión futura salte.
-#
-# **Este umbral sigue en 0.65 a propósito.** El diagnóstico de por qué el MRR
-# es 0.689 está en `test_strict_tsquery_alone_leaves_questions_unanswered`
-# (la tsquery estricta devuelve cero filas para preguntas en lenguaje natural,
-# y el fallback LIKE de `/ask` no tiene `ORDER BY`), y la mejora de ranking
-# vive ya en `db/search_backend.py`. Lo que falta para subir el umbral es el
-# número: `test_backend_ranking_vs_production_path` lo imprime en CI, que es
-# donde hay Postgres. Subirlo antes de leer ese número sería ratchear a ciegas,
-# que es justo el fallo que un ratchet existe para prevenir.
-#
-# **Por qué ese número no ha aparecido todavía (2026-09-19).** El `print` de
-# un test que pasa lo captura pytest, y CI no corre con `-s` ni `-rP`: la
-# evidencia se generaba en cada corrida y se tiraba. Desde esta fecha los tres
-# tests que miden publican además su línea en el resumen del job
-# (`GITHUB_STEP_SUMMARY`, ver `_publicar`). Lo que falta para cerrar el ítem
-# (MRR 0.689 → 0.75), en este orden:
-#
-# 1. Leer en el resumen de un job de CI el MRR de producción y el de
-#    `PgTsBackend.search_ids`.
-# 2. Tocar lo que mueve el número que se ratchea. Ojo: `TS_RANK_WEIGHTS` y
-#    `TS_RANK_NORMALIZATION` (`db/search_backend.py`) **sólo** afectan a
-#    `PgTsBackend`; `/ask` va por `search_fts_docs` (pesos por defecto de
-#    Postgres) y por `search_like_for_ask`, sin `ORDER BY`. Si el backend ya
-#    mide ≥ 0.75, la palanca es encaminar `/ask` por su ranking (o dar orden
-#    al fallback LIKE), no retocar pesos.
-# 3. Con cualquier cambio de pesos, medir el MRR antes y después sobre este
-#    golden set en Postgres y subir `MRR_MIN` al valor medido menos el margen.
-#
-# No se tocó ningún peso en local: esta máquina no tiene Postgres y el ranking
-# es `ts_rank_cd` sobre `tsvector` en español, que no tiene equivalente fuera.
-MRR_MIN = 0.65
+# El umbral es el valor medido menos un margen de una pregunta: si una de las
+# 15 baja del primer puesto al segundo, el MRR queda en 0.967 y pasa. Dos, o
+# una que caiga más abajo, ya son una regresión de ranking que hay que mirar,
+# no un umbral que bajar.
+MRR_MIN = 0.95
 
 # Licitaciones "ruido": vocabulario genérico que se solapa con el golden set
 # (SAP, ERP, cloud, IA...) para que el eval no sea trivial — sin ruido,
