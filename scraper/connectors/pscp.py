@@ -129,6 +129,38 @@ _FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
 #: `inclusion_reason` de lo que entra por CPV: el mismo valor que PLACSP.
 INCLUSION_CPV_TI = "cpv_ti_universe"
 
+# `codi_expedient` es texto libre que teclea cada órgano, así que como clave no
+# basta solo. No es único entre órganos: en prod (2026-10-17) 1.556 ids PSCP
+# guardaban en `licitaciones_history` un contrato de **otro** órgano y con otro
+# título —«2026/18» de la Universitat de Barcelona pisado por el del Ajuntament
+# de Viladecans—, porque el upsert va por `id_externo`. Y a veces ni siquiera es
+# un expediente: «Obert» (el procedimiento), «Factura», «N.A.».
+#
+# Lo que sí identifica el expediente es el UUID de su ficha en la plataforma,
+# ``/detall-publicacio/{uuid}/{id de la publicación}``: es de un solo órgano
+# (ninguno compartido entre órganos en las 60.501 filas de prod) y, según la
+# propia API (``detall-publicacio-expedient/{uuid}/{publicación}``), el mismo en
+# todas las fases, a diferencia del número final. Solo no basta: los contratos
+# menores agregados (`AGR`) salen varios en la misma ficha, y lo que los separa
+# es el `codi_expedient`. De ahí la clave ``{uuid}:{codi_expedient}``.
+_UUID_FICHA = re.compile(r"/detall-publicacio/([0-9a-fA-F-]{36})/\d")
+
+
+def _natural_id(record: dict[str, Any]) -> str | None:
+    """``{uuid de la ficha}:{codi_expedient}``, o ``None`` si no hay ficha PSCP.
+
+    Sin la ficha no hay nada estable que distinga el expediente de los de otro
+    órgano con el mismo código, y escribirlo con el código solo es justo lo que
+    pisaba filas. Es raro (ninguna de las filas de prod carecía de ella) y se
+    cuenta en ``pscp_sin_identificador``.
+    """
+    ficha = _UUID_FICHA.search(_text(record, "url") or "")
+    if ficha is None:
+        return None
+    uuid = ficha.group(1).lower()
+    expediente = _text(record, "expediente")
+    return f"{uuid}:{expediente}" if expediente else uuid
+
 
 def _field(record: dict[str, Any], concept: str) -> Any:
     """Primer candidato de campo presente y no vacío para un concepto."""
@@ -337,6 +369,9 @@ class PscpConnector:
         #: Avisos cuya única señal era una keyword ambigua y el CPV la
         #: contradecía (:data:`KEYWORDS_AMBIGUAS`).
         self._ambigua_sin_cpv_ti = 0
+        #: Registros sin ficha PSCP de la que sacar una clave estable
+        #: (:func:`_natural_id`): no se pueden upsertar sin pisar otros.
+        self._sin_identificador = 0
 
     # ── fetch ────────────────────────────────────────────────────────────
 
@@ -444,8 +479,9 @@ class PscpConnector:
             for record in records:
                 if not isinstance(record, dict):
                     continue
-                natural_id = _text(record, "expediente")
+                natural_id = _natural_id(record)
                 if not natural_id:
+                    self._sin_identificador += 1
                     continue
                 # Timestamp completo (NO truncar a fecha): el $order
                 # ":updated_at ASC, :id ASC" garantiza que el stream es
@@ -612,6 +648,7 @@ class PscpConnector:
             "pscp_sin_senal_tecnologica": self._sin_senal_tecnologica,
             "pscp_keyword_ambigua_sin_cpv_ti": self._ambigua_sin_cpv_ti,
             "pscp_fechas_implausibles": self._fechas_implausibles,
+            "pscp_sin_identificador": self._sin_identificador,
         }
 
     # ── documentos ───────────────────────────────────────────────────────

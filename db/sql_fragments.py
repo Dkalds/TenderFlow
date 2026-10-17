@@ -742,9 +742,9 @@ def fecha_valida_sql(nombre: str, alias: str | None = "l", *, tipada: bool | Non
 # Por qué NO se usa el expediente natural, que es la clave débil de
 # `services.dedupe.match_key`: tanto TED como PSCP acuñan un `id_externo` por
 # **anuncio**, no por **contrato** (`ted:{publication-number}`,
-# `pscp:{codi_expedient|id}`). En una republicación —el caso contra el que esto
-# defiende— los expedientes naturales son distintos por construcción, así que
-# esa clave no ve nada. Lo que sí se repite palabra por palabra es el título
+# `pscp:{uuid de la ficha}:{codi_expedient}`). En una republicación —el caso
+# contra el que esto defiende— los expedientes naturales son distintos por
+# construcción, así que esa clave no ve nada. Lo que sí se repite palabra por palabra es el título
 # publicado, que además es lo que hace que dos filas sean *la misma página*
 # para quien lee: el criterio de contenido duplicado de un buscador es el texto
 # que sirve la URL, no el identificador interno.
