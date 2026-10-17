@@ -876,34 +876,51 @@ def replace_adjudicaciones_batch(
     return persisted, dropped, failed
 
 
+_LOTE_UPSERT_SQL = (
+    f"INSERT INTO lotes ({_LOTE_COLS}) VALUES ({_LOTE_PLACEHOLDERS}) "
+    "ON CONFLICT (licitacion_id, numero) DO UPDATE SET "
+    + ", ".join(f"{k} = EXCLUDED.{k}" for k in _LOTE_KEYS if k not in ("licitacion_id", "numero"))
+    + " RETURNING id"
+)
+
+
 def replace_lotes(licitacion_id: str, items: Iterable[Lote]) -> dict[str, int]:
-    """Reemplaza los lotes de una licitación (idempotente): mismo patrón
-    DELETE-then-insert que ``replace_adjudicaciones``.
+    """Deja los lotes de una licitación como los publica la fuente (idempotente).
 
-    Devuelve el mapeo ``numero -> id`` (autoincrement fresco de esta llamada)
-    para que el llamador resuelva ``Adjudicacion.lote_id`` a partir de
-    ``lote_numero_raw`` antes de persistir adjudicaciones **en el mismo ciclo
-    de escritura**: ambas tablas se recalculan juntas en cada re-ingesta, así
-    que un id nuevo en ``lotes`` nunca deja huérfano un ``lote_id`` ya
-    persistido de una corrida anterior (esa fila de adjudicaciones también se
-    reemplaza a la vez).
+    Upsert por ``(licitacion_id, numero)``: un lote que sigue publicándose
+    **conserva su id**. Hasta 2026-10 esto era un DELETE-then-insert, y la FK
+    ``adjudicaciones.lote_id`` es ``ON DELETE SET NULL``: mientras ninguna
+    adjudicación tenía lote no pasaba nada, pero en cuanto el parser lo
+    resolvió, reingerir un expediente donde la misma empresa ganó dos lotes
+    por el mismo importe dejaba las dos filas a NULL a la vez y chocaban con
+    ``uq_adjudicaciones_lic_nif_importe_sin_lote``, tumbando el lote de
+    escritura entero (bulk del 2026-10-17, los tres meses en error).
 
-    Sin SAVEPOINT/DLQ por fila (a diferencia de ``replace_adjudicaciones``):
-    el volumen por expediente es pequeño (unas pocas decenas de lotes como
-    mucho) y el parser ya descarta un lote sin ``numero``, así que no hay un
-    camino realista para que una fila viole una constraint aquí.
+    Un lote que la fuente deja de publicar se borra **con sus adjudicaciones**:
+    ponerlas a NULL puede chocar con esa misma unique, y si el expediente sigue
+    trayendo adjudicaciones el llamador las reescribe en el mismo ciclo.
+
+    Devuelve el mapeo ``numero -> id`` para que el llamador resuelva
+    ``Adjudicacion.lote_id`` a partir de ``lote_numero_raw``.
     """
     rows = list(items)
+    numeros = [lote.numero for lote in rows]
     with connect() as c:
-        c.execute("DELETE FROM lotes WHERE licitacion_id = %s", [licitacion_id])
+        c.execute(
+            "DELETE FROM adjudicaciones WHERE lote_id IN ("
+            "  SELECT id FROM lotes WHERE licitacion_id = %s AND NOT (numero = ANY(%s))"
+            ")",
+            [licitacion_id, numeros],
+        )
+        c.execute(
+            "DELETE FROM lotes WHERE licitacion_id = %s AND NOT (numero = ANY(%s))",
+            [licitacion_id, numeros],
+        )
         mapping: dict[str, int] = {}
         for lote in rows:
             data = asdict(lote)
             vals = [data[k] for k in _LOTE_KEYS]
-            row = c.execute(
-                f"INSERT INTO lotes ({_LOTE_COLS}) VALUES ({_LOTE_PLACEHOLDERS}) RETURNING id",
-                vals,
-            ).fetchone()
+            row = c.execute(_LOTE_UPSERT_SQL, vals).fetchone()
             mapping[lote.numero] = int(row[0])
     return mapping
 

@@ -217,6 +217,98 @@ def test_runner_multi_lote_misma_empresa_mismo_importe_no_pierde_filas(db):
     assert all(r[0] == "B00000001" and r[1] == pytest.approx(5000.0) for r in rows)
 
 
+_MISMA_EMPRESA_DOS_LOTES = [
+    {
+        "id": "N1",
+        "titulo": "Expediente con dos lotes",
+        "lotes": [{"numero": "1"}, {"numero": "2"}],
+        "ganadores_multi_lote": [
+            {
+                "nombre": "Misma Empresa SL",
+                "nif": "B00000001",
+                "importe_adjudicado": 5000.0,
+                "lote_numero": "1",
+            },
+            {
+                "nombre": "Misma Empresa SL",
+                "nif": "B00000001",
+                "importe_adjudicado": 5000.0,
+                "lote_numero": "2",
+            },
+        ],
+    }
+]
+
+
+def test_runner_reingerir_misma_empresa_en_dos_lotes_no_falla(db):
+    """Incidente del 2026-10-17 (bulk run 39059575492, los tres meses en error).
+
+    ``replace_lotes`` borraba y reinsertaba los lotes, y la FK
+    ``adjudicaciones.lote_id`` es ``ON DELETE SET NULL``: al reingerir, las dos
+    filas de la misma empresa por el mismo importe pasaban a ``lote_id`` NULL a
+    la vez y chocaban con ``uq_adjudicaciones_lic_nif_importe_sin_lote``. Desde
+    que el parser resuelve el lote, cualquier expediente así tumbaba su lote de
+    escritura en la segunda pasada.
+    """
+    from db.database import connect
+
+    run_connector(FakeConnector(_MISMA_EMPRESA_DOS_LOTES))
+    with connect() as c:
+        ids_antes = c.execute(
+            "SELECT numero, id FROM lotes WHERE licitacion_id = %s ORDER BY numero", ["fake:N1"]
+        ).fetchall()
+
+    result = run_connector(FakeConnector(_MISMA_EMPRESA_DOS_LOTES))
+
+    assert result.errores == 0
+    assert result.adjudicaciones == 2
+    with connect() as c:
+        ids_despues = c.execute(
+            "SELECT numero, id FROM lotes WHERE licitacion_id = %s ORDER BY numero", ["fake:N1"]
+        ).fetchall()
+        numeros = c.execute(
+            "SELECT l.numero FROM adjudicaciones a JOIN lotes l ON l.id = a.lote_id "
+            "WHERE a.licitacion_id = %s ORDER BY l.numero",
+            ["fake:N1"],
+        ).fetchall()
+    # El lote conserva su id entre ingestas: ya no se borra y reinserta.
+    assert ids_despues == ids_antes
+    assert [r[0] for r in numeros] == ["1", "2"]
+
+
+def test_runner_lote_que_desaparece_se_borra_con_sus_adjudicaciones(db):
+    """Un lote que la fuente deja de publicar sale, y su adjudicación con él.
+
+    Ponerla a ``lote_id`` NULL (lo que hacía la FK) puede chocar con la unique
+    ``..._sin_lote``; y si el expediente sigue trayendo adjudicaciones, se
+    reescriben en el mismo ciclo.
+    """
+    from db.database import connect
+
+    run_connector(FakeConnector(_MISMA_EMPRESA_DOS_LOTES))
+    solo_lote_1 = [
+        {
+            **_MISMA_EMPRESA_DOS_LOTES[0],
+            "lotes": [{"numero": "1"}],
+            "ganadores_multi_lote": _MISMA_EMPRESA_DOS_LOTES[0]["ganadores_multi_lote"][:1],
+        }
+    ]
+    result = run_connector(FakeConnector(solo_lote_1))
+
+    assert result.errores == 0
+    with connect() as c:
+        lotes = c.execute(
+            "SELECT numero FROM lotes WHERE licitacion_id = %s", ["fake:N1"]
+        ).fetchall()
+        adjs = c.execute(
+            "SELECT l.numero FROM adjudicaciones a LEFT JOIN lotes l ON l.id = a.lote_id "
+            "WHERE a.licitacion_id = %s",
+            ["fake:N1"],
+        ).fetchall()
+    assert [r[0] for r in lotes] == ["1"]
+    assert [r[0] for r in adjs] == ["1"]
+
+
 def test_runner_sin_lote_preserva_dedup_antiguo(db):
     """Sin lote_numero (expediente de lote único, el caso común hoy), la
     protección original (licitacion_id, nif, importe_adjudicado) se mantiene:
