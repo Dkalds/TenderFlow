@@ -809,6 +809,27 @@ class TestAskMetaEvent:
         assert meta["contexto"] == "general"
         assert meta["id_externo"] is None
 
+    def test_ask_meta_declara_que_la_busqueda_fallo(self, ask_client):
+        """Una caída de la búsqueda no se presenta como «el corpus no cubre la
+        pregunta», y esa respuesta sin contexto no entra en la caché."""
+        import json as _json
+
+        from api.routes.ask import _RecuperacionFallida
+
+        with patch("api.routes.ask._retrieve_docs", side_effect=_RecuperacionFallida):
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                with patch("shared.cache.aget_cache") as aget_cache:
+                    resp = ask_client.post(
+                        "/api/v1/ask", json={"question": "¿Qué licitaciones SAP hay?"}
+                    )
+
+        assert resp.status_code == 200
+        lines = [line for line in resp.text.splitlines() if '"ask_meta"' in line]
+        meta = _json.loads(lines[0][len("data: ") :])["ask_meta"]
+        assert meta["contexto"] == "general"
+        assert meta["recuperacion_fallida"] is True
+        aget_cache.assert_not_called()
+
     def test_ask_meta_flags_fallback_to_corpus_when_licitacion_context_fails(self, ask_client):
         """Con id_externo pedido pero contexto de licitación no disponible, la
         respuesta degrada al corpus — y ask_meta lo hace visible en vez de

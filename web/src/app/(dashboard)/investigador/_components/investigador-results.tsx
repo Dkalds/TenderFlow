@@ -31,6 +31,12 @@ interface Props {
   seleccion: ExpedienteMarcado[];
   seleccionLlena: boolean;
   onAlternar: (result: SearchResult) => void;
+  /** La búsqueda tenía más de los que se enseñan. */
+  hayMas?: boolean;
+  /** Pide la siguiente tanda; sin él, no hay más que pedir aquí. */
+  onMostrarMas?: (() => void) | null;
+  /** La siguiente tanda está en camino. */
+  cargandoMas?: boolean;
 }
 
 export function InvestigadorResults({
@@ -43,6 +49,9 @@ export function InvestigadorResults({
   seleccion,
   seleccionLlena,
   onAlternar,
+  hayMas = false,
+  onMostrarMas = null,
+  cargandoMas = false,
 }: Props) {
   const etiqueta = sourceLabel(source);
   const pista = sourceHint(source);
@@ -52,7 +61,10 @@ export function InvestigadorResults({
     <section aria-labelledby="investigador-resultados" className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h2 id="investigador-resultados" className="text-tf-body font-semibold">
+          {/* El recuento se anuncia al llegar: con lector de pantalla, una
+              búsqueda terminada no tenía ninguna señal. */}
+          <h2 id="investigador-resultados" className="text-tf-body font-semibold" aria-live="polite">
+            {hayMas ? "Los primeros " : ""}
             {results.length} {results.length === 1 ? "resultado" : "resultados"}
           </h2>
           {/* La fuente es la que llegó en la respuesta, no la que se esperaba.
@@ -101,15 +113,31 @@ export function InvestigadorResults({
           }
         />
       ) : (
-        results.map((r) => (
-          <InvestigadorResultCard
-            key={r.id_externo}
-            result={r}
-            marcado={marcados.has(r.id_externo)}
-            sinHueco={seleccionLlena && !marcados.has(r.id_externo)}
-            onAlternar={onAlternar}
-          />
-        ))
+        <>
+          {results.map((r) => (
+            <InvestigadorResultCard
+              key={r.id_externo}
+              result={r}
+              marcado={marcados.has(r.id_externo)}
+              sinHueco={seleccionLlena && !marcados.has(r.id_externo)}
+              onAlternar={onAlternar}
+            />
+          ))}
+          {/* Más resultados: la misma búsqueda con un `top_k` mayor. No hay
+              total: contarlo costaría la búsqueda entera. */}
+          {hayMas &&
+            (onMostrarMas ? (
+              <div className="flex justify-center">
+                <Button variant="outline" size="sm" onClick={onMostrarMas} disabled={cargandoMas} aria-busy={cargandoMas}>
+                  {cargandoMas ? "Cargando más…" : "Mostrar más resultados"}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-center text-tf-meta text-muted-foreground">
+                Hay más resultados de los que se pueden enseñar: afina la búsqueda para verlos.
+              </p>
+            ))}
+        </>
       )}
     </section>
   );

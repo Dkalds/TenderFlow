@@ -107,6 +107,11 @@ class Ambito:
     importe_min: float | None = None
     importe_max: float | None = None
     solo_abiertas: bool = False
+    #: Ventana del fin del plazo de presentación (``fecha_limite``), por día.
+    cierre_desde: str | None = None
+    cierre_hasta: str | None = None
+    #: Códigos CODICE de procedimiento (``shared.procedimientos``).
+    procedimiento: tuple[str, ...] = ()
 
     def sql(self, alias: str = "l") -> tuple[list[str], list[Any]]:
         """``(cláusulas, parámetros)`` del ámbito sobre ``licitaciones``."""
@@ -128,6 +133,9 @@ class Ambito:
             importe_min=self.importe_min,
             importe_max=self.importe_max,
             solo_abiertas=self.solo_abiertas,
+            cierre_desde=self.cierre_desde,
+            cierre_hasta=self.cierre_hasta,
+            procedimiento=list(self.procedimiento),
         )
         return [*clausulas, *resto], [*valores, *valores_resto]
 
@@ -330,9 +338,19 @@ def licitaciones_con_pasaje(
     345.000 fragmentos, casa con decenas de miles y no dice nada.
 
     ``limite_pasajes`` acota los fragmentos que se llegan a mirar. Un término
-    muy común («mantenimiento», 37.000 fragmentos) no puede convertir una
+    muy común («mantenimiento», 40.690 fragmentos) no puede convertir una
     búsqueda en un recorrido de la tabla; con el tope, el recuento de esos
     casos es de una muestra, y el expediente sigue apareciendo.
+
+    La muestra no se ordena a propósito. El 2026-10-17 se probó tomarla de los
+    documentos más recientes (materializar las coincidencias y ordenar por
+    ``documento_id``) y se midió en producción con «mantenimiento»: de 2,6 a 6,5 s
+    frente a 175 a 509 ms, porque ordenar obliga a leer todas las coincidencias
+    del GIN y no solo las primeras. Y no compraba lo que prometía:
+    ``documento_id`` no sigue a la fecha de publicación, y la muestra ordenada
+    traía 46 expedientes de 2026 frente a 54 de la que no se ordena. Con menos
+    coincidencias que el tope (480 de «baja temeraria») las dos devuelven lo
+    mismo.
     """
     if not texto.strip():
         return []

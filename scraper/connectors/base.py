@@ -42,7 +42,7 @@ from db.dlq import record_failure
 from observability import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
     from services.dedupe import ReferenciaCruzada
@@ -471,6 +471,32 @@ def _post_ingestion(
         log.debug("connector_cache_signal_failed", source=source_id)
 
 
+def resolver_lotes_adjudicaciones(
+    adj_por_lic: Mapping[str, Sequence[Adjudicacion]],
+    lote_ids_por_lic: Mapping[str, Mapping[str, int]],
+) -> tuple[int, int]:
+    """Pone ``lote_id`` a cada adjudicación que dice de qué lote es.
+
+    ``lote_ids_por_lic`` es ``{licitacion_id: {numero: lote_id}}``, lo que
+    devuelve ``replace_lotes_batch``. Devuelve ``(resueltas, sin_lote)``:
+    ``sin_lote`` cuenta solo las adjudicaciones de expedientes con **dos o
+    más** lotes que se quedan sin el suyo —en uno de lote único, ``NULL`` es el
+    «lote único implícito» de siempre y no falta nada—.
+    """
+    resueltas = sin_lote = 0
+    for licitacion_id, mapping in lote_ids_por_lic.items():
+        if not mapping:
+            continue
+        for adj in adj_por_lic.get(licitacion_id, ()):
+            if adj.lote_numero_raw is not None:
+                adj.lote_id = mapping.get(adj.lote_numero_raw)
+            if adj.lote_id is not None:
+                resueltas += 1
+            elif len(mapping) >= 2:
+                sin_lote += 1
+    return resueltas, sin_lote
+
+
 def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRunResult:
     """Ejecuta un ciclo completo de ingesta para una fuente.
 
@@ -514,12 +540,18 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
             # asignar replace_lotes_batch para resolver lote_numero_raw en
             # cada Adjudicacion del mismo lote de escritura.
             lote_ids_por_lic = replace_lotes_batch(lotes_por_lic)
-            for licitacion_id, mapping in lote_ids_por_lic.items():
-                if not mapping:
-                    continue
-                for adj in adj_por_lic.get(licitacion_id, ()):
-                    if adj.lote_numero_raw is not None:
-                        adj.lote_id = mapping.get(adj.lote_numero_raw)
+            resueltas, sin_lote = resolver_lotes_adjudicaciones(adj_por_lic, lote_ids_por_lic)
+            if sin_lote:
+                # Un expediente con varios lotes cuyas adjudicaciones no dicen
+                # de cuál son: la agenda no puede cerrar la oportunidad de un
+                # lote con ellas. Hasta 2026-10 era el 100 % (XPath del lote
+                # equivocado); si vuelve a crecer, el formato ha cambiado.
+                log.warning(
+                    "adj_lote_sin_resolver",
+                    source=source_id,
+                    sin_lote=sin_lote,
+                    resueltas=resueltas,
+                )
         if adj_por_lic:
             n_adj, n_dropped, n_failed = replace_adjudicaciones_batch(
                 adj_por_lic, run_id=None, fuente=source_id

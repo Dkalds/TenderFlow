@@ -194,6 +194,19 @@ function ComparacionNotice({ meta }: { meta: AskMeta }) {
   );
 }
 
+/**
+ * La búsqueda de licitaciones falló y el modelo respondió sin ellas. Sin este
+ * aviso se leía igual que «el corpus no cubre la pregunta», y no lo es: la
+ * misma pregunta un momento después sí tiene contexto.
+ */
+function RecuperacionFallidaNotice() {
+  return (
+    <Aviso tone="warning" title="No se pudo buscar en las licitaciones" className="mt-2">
+      Esta respuesta no se apoya en ellas. Vuelve a preguntar en un momento.
+    </Aviso>
+  );
+}
+
 const ESTADO_DOCUMENTO: Record<string, string> = {
   pending: "pendiente",
   downloaded: "descargado",
@@ -334,6 +347,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
         <ScopeFallbackNotice />
       ) : null}
       {turno.askMeta?.expedientes ? <ComparacionNotice meta={turno.askMeta} /> : null}
+      {turno.askMeta?.recuperacion_fallida ? <RecuperacionFallidaNotice /> : null}
       {turno.degraded ? <DegradedNotice degraded={turno.degraded} /> : null}
       {turno.sources ? <CitasBlock info={turno.sources} /> : null}
       {turno.sources?.sinFuentes ? <SinFuentesNotice /> : null}

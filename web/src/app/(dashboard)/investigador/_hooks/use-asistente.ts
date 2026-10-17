@@ -13,7 +13,7 @@
  * abierto y la siguiente pregunta ya va sobre lo marcado.
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { FiltrosCorpus, OpcionesCorpus } from "@/lib/api-types";
 import {
   MAX_EXPEDIENTES_ASISTENTE,
@@ -83,6 +83,15 @@ export function useAsistenteInvestigador({
     },
     [config.model, config.topK, filtros],
   );
+
+  // Los ajustes siguen a la pantalla mientras el contexto del asistente sea del
+  // Investigador. Sin esto solo se fijaban al abrir o al marcar, y la pregunta
+  // de seguimiento que se escribe en el panel salía con el modelo, el ámbito o
+  // el «tal cual» de antes de cambiarlos. `fijarOpciones` no hace nada si el
+  // contexto es de otra pantalla.
+  useEffect(() => {
+    fijarOpciones("investigador", opcionesCon(talCual));
+  }, [fijarOpciones, opcionesCon, talCual]);
 
   const enviar = useCallback(
     (pregunta: string, expedientes: ExpedienteMarcado[], nueva: boolean, sinInterpretar: boolean) => {

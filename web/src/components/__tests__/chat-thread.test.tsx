@@ -120,6 +120,22 @@ describe("ChatThread mientras se emite una respuesta", () => {
     expect(screen.getByText("Generado automáticamente · revisa el pliego")).toBeInTheDocument();
   });
 
+  it("si buscar en las licitaciones falló, lo dice: no es que no cubran la pregunta", () => {
+    const sinContexto: ChatTurn = {
+      role: "assistant",
+      content: "En general, un PCAP recoge…",
+      askMeta: { contexto: "general", id_externo: null, recuperacion_fallida: true },
+    };
+    const normal: ChatTurn = {
+      role: "assistant",
+      content: "Hay doce.",
+      askMeta: { contexto: "general", id_externo: null },
+    };
+    render(hilo([pregunta1, sinContexto, pregunta2, normal], false));
+
+    expect(screen.getAllByText("No se pudo buscar en las licitaciones")).toHaveLength(1);
+  });
+
   it("un turno pedido sobre un expediente que sí se cargó no avisa de nada", () => {
     const sobreUno: ChatTurn = {
       role: "assistant",

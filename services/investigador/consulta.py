@@ -10,7 +10,9 @@ y tres de las cinco preguntas de ejemplo de la pantalla, con ninguno.
 Aquí se separan las dos cosas, sin modelo y sin red:
 
 - **filtros** que la frase dice sin ambigüedad (comunidad autónoma, importe,
-  fechas de publicación, «abiertas», «más recientes»), y
+  fechas de publicación —también un mes con nombre—, fin del plazo de
+  presentación «que cierran esta semana», procedimiento «contratos menores»,
+  «abiertas», «más recientes»), y
 - **términos** con los que sí se busca por texto: lo que queda, sin las
   palabras vacías ni las de petición («puedes mirar…», «dame…»).
 
@@ -273,6 +275,78 @@ _ULTIMO_RE = re.compile(
 )
 _DIAS_POR_UNIDAD = {"dias": 1, "semanas": 7, "meses": 30, "semana": 7, "mes": 30, "ano": 365}
 
+_MESES: dict[str, int] = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
+_MES_ALT = "|".join(_MESES)
+
+#: «en marzo», «durante el mes de mayo de 2025». Solo detrás de «en» o
+#: «durante»: «Dos de Mayo» es una plaza y «de marzo» suelto, media fecha.
+_EN_MES_RE = re.compile(
+    r"(?<![a-z0-9])(?:en|durante)\s+(?:el\s+mes\s+de\s+)?"
+    rf"(?P<mes>{_MES_ALT})(?:\s+(?:de\s+|del\s+)?(?P<anio>20\d{{2}}))?(?![a-z0-9])"
+)
+
+# ── Fin del plazo de presentación ────────────────────────────────────────────
+
+#: El verbo que hace de la fecha un **cierre** y no una publicación: «que
+#: cierran esta semana», «con plazo hasta…», «vencen mañana». Sin él, «esta
+#: semana» sigue siendo de publicación, como siempre.
+_CIERRE = (
+    r"(?<![a-z0-9])(?:(?:que|cuyo\s+plazo|con\s+(?:el\s+)?plazo\s+que)\s+)?"
+    r"(?:cierra|cierran|cierre|cierren|vence|vencen|venza|venzan|termina|terminan|"
+    r"termine|terminen|acaba|acaban|acabe|acaben|finaliza|finalizan|finalice|finalicen)"
+    r"(?:\s+(?:el|su)\s+plazo)?"
+    r"|(?<![a-z0-9])(?P<hasta>con\s+(?:el\s+)?plazo\s+(?:de\s+presentacion\s+)?hasta)"
+)
+_CIERRE_HORIZONTE = (
+    r"(?P<hoy>hoy)|(?P<manana>manana)"
+    r"|(?P<semana>esta\s+semana)|(?P<mes_actual>este\s+mes)"
+    r"|(?P<semana_que_viene>(?:la\s+)?(?:semana\s+que\s+viene|proxima\s+semana))"
+    r"|(?P<mes_que_viene>(?:el\s+)?(?:mes\s+que\s+viene|proximo\s+mes))"
+    r"|(?:en\s+)?(?:los\s+|las\s+)?(?:proxim[oa]s\s+)?(?P<n>\d{1,3})\s+(?P<unidad>dias|semanas)"
+    r"|antes\s+del?\s+(?P<antes_dia>\d{1,2})\s+de\s+(?P<antes_mes>" + _MES_ALT + r")"
+    r"(?:\s+(?:de\s+|del\s+)?(?P<antes_anio>20\d{2}))?"
+    r"|(?:el\s+)?(?P<dia>\d{1,2})\s+de\s+(?P<dia_mes>" + _MES_ALT + r")"
+    r"(?:\s+(?:de\s+|del\s+)?(?P<dia_anio>20\d{2}))?"
+    r"|en\s+(?P<mes>" + _MES_ALT + r")(?:\s+(?:de\s+|del\s+)?(?P<mes_anio>20\d{2}))?"
+)
+_CIERRE_RE = re.compile(rf"(?:{_CIERRE})\s+(?:{_CIERRE_HORIZONTE})(?![a-z0-9])")
+
+# ── Procedimiento ────────────────────────────────────────────────────────────
+
+#: Frases que nombran un procedimiento → códigos CODICE (``shared.procedimientos``).
+#: Cada una exige la palabra que la hace inequívoca: «abierto» suelto es un
+#: adjetivo («datos abiertos»), «procedimiento abierto» no.
+_PROCEDIMIENTOS: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = tuple(
+    (re.compile(rf"(?<![a-z0-9])(?:por\s+|de\s+|mediante\s+)?{patron}(?![a-z0-9])"), codigos)
+    for patron, codigos in (
+        (r"contratos?\s+menor(?:es)?", ("6",)),
+        (r"(?:procedimientos?\s+)?abiertos?\s+simplificados?", ("9",)),
+        (r"procedimientos?\s+abiertos?", ("1",)),
+        (r"procedimientos?\s+restringidos?", ("2",)),
+        (r"(?:procedimientos?\s+)?negociados?\s+sin\s+publicidad", ("3",)),
+        (r"(?:procedimientos?\s+)?negociados?\s+con\s+publicidad", ("4",)),
+        (r"procedimientos?\s+negociados?", ("3", "4")),
+        (r"dialogos?\s+competitivos?", ("5",)),
+        (r"(?:derivados?|basados?)\s+(?:de|en)\s+(?:un\s+)?acuerdos?\s+marco", ("7",)),
+        (r"concursos?\s+de\s+proyectos", ("8",)),
+        (r"asociacion(?:es)?\s+para\s+la\s+innovacion", ("10",)),
+    )
+)
+
 # ── Estado y orden ───────────────────────────────────────────────────────────
 
 _ABIERTAS_RE = re.compile(
@@ -310,6 +384,11 @@ class ConsultaInterpretada:
     solo_abiertas: bool = False
     fecha_desde: str | None = None
     fecha_hasta: str | None = None
+    #: Ventana del fin del plazo de presentación («que cierran esta semana»).
+    cierre_desde: str | None = None
+    cierre_hasta: str | None = None
+    #: Códigos CODICE de procedimiento («contratos menores» → ``6``).
+    procedimiento: tuple[str, ...] = ()
     orden: Orden = "relevancia"
 
     @property
@@ -322,6 +401,9 @@ class ConsultaInterpretada:
             or self.solo_abiertas
             or self.fecha_desde
             or self.fecha_hasta
+            or self.cierre_desde
+            or self.cierre_hasta
+            or self.procedimiento
         )
 
     @property
@@ -417,6 +499,78 @@ def _texto_y_terminos(restante: str) -> tuple[str, tuple[str, ...], bool]:
     return " ".join(terminos), terminos, False
 
 
+def _anio_del_mes(mes: int, anio: str | None, referencia: date, *, futuro: bool) -> int:
+    """El año de un mes dicho sin año: el último que ya empezó, o el próximo.
+
+    «Publicadas en marzo» en octubre es el marzo pasado; «que cierran en
+    marzo», el que viene. El mes en curso es el de este año en los dos casos.
+    """
+    if anio:
+        return int(anio)
+    if futuro:
+        return referencia.year + (1 if mes < referencia.month else 0)
+    return referencia.year - (1 if mes > referencia.month else 0)
+
+
+def _ultimo_dia(anio: int, mes: int) -> date:
+    siguiente = date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
+    return siguiente - timedelta(days=1)
+
+
+def _ventana_de_cierre(m: re.Match[str], hoy: date) -> tuple[date, date] | None:
+    """``(desde, hasta)`` del horizonte de un match de :data:`_CIERRE_RE`.
+
+    Un cierre que ya pasó no es lo que se busca: el suelo es siempre ``hoy``,
+    salvo que se nombre un día concreto («que cierran el 30 de noviembre»). Con
+    «con plazo hasta…» la fecha es el techo y el suelo vuelve a ser ``hoy``.
+    Una fecha que no existe («31 de febrero») no se entiende y la frase se
+    busca como texto.
+    """
+    ventana = _horizonte(m.groupdict(), hoy)
+    if ventana is None or ventana[1] < hoy:
+        return None
+    desde, hasta = ventana
+    return (hoy if m.group("hasta") else max(desde, hoy)), hasta
+
+
+def _horizonte(g: dict[str, str | None], hoy: date) -> tuple[date, date] | None:
+    """La ventana que nombra el horizonte, antes de aplicarle el suelo."""
+    if g["hoy"]:
+        return hoy, hoy
+    if g["manana"]:
+        return hoy + timedelta(days=1), hoy + timedelta(days=1)
+    if g["semana"]:
+        return hoy, hoy + timedelta(days=6 - hoy.weekday())
+    if g["mes_actual"]:
+        return hoy, _ultimo_dia(hoy.year, hoy.month)
+    if g["semana_que_viene"]:
+        lunes = hoy + timedelta(days=7 - hoy.weekday())
+        return lunes, lunes + timedelta(days=6)
+    if g["mes_que_viene"]:
+        anio, mes = (hoy.year + 1, 1) if hoy.month == 12 else (hoy.year, hoy.month + 1)
+        return date(anio, mes, 1), _ultimo_dia(anio, mes)
+    if g["n"]:
+        dias = int(g["n"] or 0) * _DIAS_POR_UNIDAD[g["unidad"] or "dias"]
+        return hoy, hoy + timedelta(days=dias)
+    try:
+        if g["antes_dia"] and g["antes_mes"]:
+            mes = _MESES[g["antes_mes"]]
+            anio = _anio_del_mes(mes, g["antes_anio"], hoy, futuro=True)
+            return hoy, date(anio, mes, int(g["antes_dia"])) - timedelta(days=1)
+        if g["dia"] and g["dia_mes"]:
+            mes = _MESES[g["dia_mes"]]
+            anio = _anio_del_mes(mes, g["dia_anio"], hoy, futuro=True)
+            dia = date(anio, mes, int(g["dia"]))
+            return dia, dia
+    except ValueError:
+        return None
+    if g["mes"]:
+        mes = _MESES[g["mes"]]
+        anio = _anio_del_mes(mes, g["mes_anio"], hoy, futuro=True)
+        return date(anio, mes, 1), _ultimo_dia(anio, mes)
+    return None
+
+
 def interpretar(
     consulta: str, *, hoy: date | None = None, filtros: bool = True
 ) -> ConsultaInterpretada:
@@ -451,6 +605,16 @@ def interpretar(
         cifra, (importe_max,) = hallado
         frase.tachar(*cifra.span())
 
+    # El plazo antes que la publicación: en «que cierran esta semana» la
+    # semana es del cierre, y la leería como publicación el patrón de abajo.
+    cierre_desde: str | None = None
+    cierre_hasta: str | None = None
+    for cierre in _CIERRE_RE.finditer(frase.plegada):
+        if ventana := _ventana_de_cierre(cierre, referencia):
+            cierre_desde, cierre_hasta = (d.isoformat() for d in ventana)
+            frase.tachar(*cierre.span())
+            break
+
     if m := _ULTIMOS_N_RE.search(frase.plegada):
         dias = int(m.group("n")) * _DIAS_POR_UNIDAD[m.group("unidad")]
         fecha_desde = (referencia - timedelta(days=dias)).isoformat()
@@ -467,6 +631,12 @@ def interpretar(
         frase.tachar(*m.span())
     elif m := _ESTE_ANIO_RE.search(frase.plegada):
         fecha_desde = f"{referencia.year}-01-01"
+        frase.tachar(*m.span())
+    elif m := _EN_MES_RE.search(frase.plegada):
+        mes = _MESES[m.group("mes")]
+        anio = _anio_del_mes(mes, m.group("anio"), referencia, futuro=False)
+        fecha_desde = date(anio, mes, 1).isoformat()
+        fecha_hasta = _ultimo_dia(anio, mes).isoformat()
         frase.tachar(*m.span())
     else:
         if m := _DESDE_ANIO_RE.search(frase.plegada):
@@ -485,6 +655,12 @@ def interpretar(
         for alias in _CCAA_UNA_RE.finditer(m.group(0)):
             ccaa.setdefault(ALIAS_CCAA[alias.group(0)], None)
         frase.tachar(*m.span())
+
+    procedimiento: dict[str, None] = {}
+    for patron, codigos in _PROCEDIMIENTOS:
+        for m in list(patron.finditer(frase.plegada)):
+            procedimiento.update(dict.fromkeys(codigos))
+            frase.tachar(*m.span())
 
     solo_abiertas = False
     for m in list(_ABIERTAS_RE.finditer(frase.plegada)):
@@ -508,5 +684,8 @@ def interpretar(
         solo_abiertas=solo_abiertas,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
+        cierre_desde=cierre_desde,
+        cierre_hasta=cierre_hasta,
+        procedimiento=tuple(procedimiento),
         orden=orden,
     )

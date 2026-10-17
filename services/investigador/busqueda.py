@@ -18,7 +18,13 @@ está:
 Dentro de cada escalón manda el orden de ``db.repositories.investigador``.
 Si nada casa, queda un último recurso por subcadena (``like``).
 
-``preparar`` es pura; ``buscar_por_texto`` es la que consulta.
+Si la instalación puede codificar la consulta, :func:`buscar` completa esa
+lista con lo que la fusión RRF (texto + similitud vectorial sobre los pliegos)
+encuentra **por significado**, entre el primer escalón y el tercero
+(:func:`combinar`). La fusión ya no sustituye a la lista: un resultado que solo
+llega por ahí lo dice (``coincide_en=["significado"]``).
+
+``preparar`` es pura; ``buscar_por_texto`` y ``buscar`` son las que consultan.
 """
 
 from __future__ import annotations
@@ -48,6 +54,14 @@ FUENTES: tuple[str, ...] = (FUENTE_FUSION, FUENTE_TEXTO, FUENTE_LITERAL, FUENTE_
 
 EN_ANUNCIO = "anuncio"
 EN_PLIEGO = "pliego"
+#: El resultado se parece a la consulta por significado (la lista vectorial de
+#: la fusión), con o sin casar por texto.
+EN_SIGNIFICADO = "significado"
+
+#: Caracteres del fragmento de pliego que se enseña de un resultado que solo
+#: llegó por significado: no hay términos que resaltar, así que se enseña el
+#: arranque del fragmento más cercano.
+_MAX_FRAGMENTO_PARECIDO = 320
 
 #: Columnas de un expediente que viajan en cada resultado.
 _CAMPOS = (
@@ -111,6 +125,9 @@ def preparar(
         importe_min=consulta.importe_min,
         importe_max=consulta.importe_max,
         solo_abiertas=consulta.solo_abiertas,
+        cierre_desde=consulta.cierre_desde,
+        cierre_hasta=consulta.cierre_hasta,
+        procedimiento=consulta.procedimiento,
     )
     return consulta, ambito
 
@@ -136,6 +153,12 @@ def filtros_de_fusion(ambito: Ambito) -> dict[str, Any]:
         filtros["importe_max"] = ambito.importe_max
     if ambito.solo_abiertas:
         filtros["solo_abiertas"] = True
+    if ambito.cierre_desde:
+        filtros["cierre_desde"] = ambito.cierre_desde
+    if ambito.cierre_hasta:
+        filtros["cierre_hasta"] = ambito.cierre_hasta
+    if ambito.procedimiento:
+        filtros["procedimiento"] = list(ambito.procedimiento)
     return filtros
 
 
@@ -331,6 +354,119 @@ def buscar_por_texto(
 
     literales = repo.anuncios_literales(consulta.terminos, ambito, limit=top_k)
     return Resultado(_simples(literales, con_proporcion=True), FUENTE_LITERAL)
+
+
+def _fuerte(hit: dict[str, Any]) -> bool:
+    """Casó con todos los términos, en el anuncio o en el pliego."""
+    return bool(hit["coincide_en"]) and not hit["terminos_ausentes"]
+
+
+def _parecido(doc: dict[str, Any], fila: dict[str, Any], score: float) -> dict[str, Any]:
+    """Un resultado que solo trajo la fusión, con el fragmento que lo acercó."""
+    hit = _base(fila)
+    hit["coincide_en"] = [EN_SIGNIFICADO]
+    hit["terminos_ausentes"] = []
+    hit["titulo_tramos"] = []
+    hit["extracto"] = []
+    hit["score"] = score
+    chunks = doc.get("chunks") or []
+    texto = _ESPACIOS_RE.sub(" ", str(chunks[0].get("texto") or "")).strip() if chunks else ""
+    if len(texto) > _MAX_FRAGMENTO_PARECIDO:
+        texto = texto[:_MAX_FRAGMENTO_PARECIDO].rsplit(" ", 1)[0] + " …"
+    hit["pasaje"] = (
+        {
+            "documento_id": None,
+            "tipo": None,
+            "filename": None,
+            "page_number": None,
+            "tramos": [{"texto": texto, "resaltado": False}],
+        }
+        if texto
+        else None
+    )
+    hit["chunks"] = []
+    return hit
+
+
+def combinar(por_texto: Resultado, fusion: list[dict[str, Any]], top_k: int) -> Resultado:
+    """La lista del texto completada con lo que la fusión encontró por significado.
+
+    La fusión **no sustituye** al motor de texto: hasta 2026-10 lo hacía, y una
+    instalación con embeddings perdía todo lo que explica un resultado (dónde
+    casa, qué términos faltan, el pasaje del pliego, el plazo) y el orden por
+    fecha que pedía «las más recientes». Ahora:
+
+    1. primero lo que casa con todos los términos, con su explicación;
+    2. después lo que solo se parece por significado, en el orden de la fusión;
+    3. al final lo que casa con parte de los términos, o por subcadena.
+
+    Solo cuenta como «por significado» lo que llegó por la lista vectorial, que
+    es lo que trae ``chunks``: lo que la fusión encontró solo por su lado léxico
+    ya lo ordena —mejor— el motor de texto. Un resultado del texto que la
+    lista vectorial también trae suma ``significado`` a ``coincide_en``. El
+    ``score`` de los que solo trae la fusión se escala contra el mejor de la
+    fusión en esta respuesta. Sin nada que aportar, la fuente sigue siendo la
+    del texto.
+    """
+    fusion = [d for d in fusion if d.get("chunks")]
+    if not fusion:
+        return por_texto
+    max_rrf = max(float(d.get("rrf_score") or 0.0) for d in fusion)
+    vistos = {str(h["id_externo"]) for h in por_texto.hits}
+    nuevos = [d for d in fusion if str(d.get("id_externo")) not in vistos]
+    filas = repo.anuncios_por_id([str(d["id_externo"]) for d in nuevos]) if nuevos else {}
+    parecidos = [
+        _parecido(
+            d,
+            filas[str(d["id_externo"])],
+            round(float(d.get("rrf_score") or 0.0) / max_rrf, 6) if max_rrf > 0 else 0.0,
+        )
+        for d in nuevos
+        if str(d["id_externo"]) in filas
+    ]
+    en_fusion = {str(d.get("id_externo")) for d in fusion}
+    texto = [
+        {**h, "coincide_en": [*h["coincide_en"], EN_SIGNIFICADO]}
+        if str(h["id_externo"]) in en_fusion
+        else h
+        for h in por_texto.hits
+    ]
+    fuertes = [h for h in texto if _fuerte(h)] if por_texto.fuente == FUENTE_TEXTO else []
+    debiles = [h for h in texto if not (por_texto.fuente == FUENTE_TEXTO and _fuerte(h))]
+    if not parecidos and not any(EN_SIGNIFICADO in h["coincide_en"] for h in texto):
+        return por_texto
+    return Resultado([*fuertes, *parecidos, *debiles][:top_k], FUENTE_FUSION)
+
+
+def buscar(
+    consulta: ConsultaInterpretada,
+    ambito: Ambito,
+    top_k: int,
+    *,
+    alpha: float | None = None,
+) -> Resultado:
+    """La búsqueda del Investigador: el texto y, si la instalación puede, la fusión.
+
+    La fusión (``search_engine.hybrid_search``) no corre cuando no aporta o
+    contradiría lo pedido: sin texto que buscar, con operadores (la lista
+    vectorial no sabe excluir ``-palabra`` ni respetar comillas), con «las
+    más recientes» (su orden es de parecido, no de fecha) y con ``alpha=0``
+    (el significado no pesa: la lista es la del texto).
+    """
+    from services.investigador.search_engine import hybrid_search
+
+    por_texto = buscar_por_texto(consulta, ambito, top_k)
+    if (
+        not consulta.tiene_texto
+        or consulta.con_operadores
+        or consulta.orden == "recientes"
+        or (alpha is not None and alpha <= 0)
+    ):
+        return por_texto
+    fusion = hybrid_search(
+        consulta.texto, min(top_k * 2, 200), alpha=alpha, filtros=filtros_de_fusion(ambito)
+    )
+    return combinar(por_texto, fusion, top_k)
 
 
 def documentos_de_contexto(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:

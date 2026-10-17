@@ -22,6 +22,7 @@ import { AYUDA_CAMPO, ETIQUETA_CAMPO, Field } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import { MAX_TOP_K, MIN_TOP_K } from "../_lib/config-storage";
 import type { InvestigadorConfig } from "../_lib/types";
 
 interface Props {
@@ -37,8 +38,31 @@ interface Props {
   fusionDisponible: boolean;
 }
 
+/**
+ * El valor de un deslizador mientras se arrastra, y el aplicado al soltarlo.
+ *
+ * `topK` y `alpha` van en la clave de la búsqueda: aplicarlos en cada paso del
+ * arrastre (`onValueChange`) lanzaba una petición por paso —de 10 a 50, hasta
+ * cuarenta `POST /search/semantic`— y escribía `localStorage` otras tantas. Se
+ * aplican en `onValueCommit`, al soltar o con cada tecla, que Radix emite una
+ * vez por cambio terminado.
+ */
+function useArrastre(aplicado: number): [number, (valor: number) => void] {
+  const [arrastre, setArrastre] = useState<number | null>(null);
+  const [aplicadoVisto, setAplicadoVisto] = useState(aplicado);
+  if (aplicadoVisto !== aplicado) {
+    // El valor aplicado cambió (al soltar, o al leer los ajustes guardados):
+    // lo que se arrastraba ya no manda.
+    setAplicadoVisto(aplicado);
+    setArrastre(null);
+  }
+  return [arrastre ?? aplicado, setArrastre];
+}
+
 export function InvestigadorConfigPanel({ config, onChange, models, fusionDisponible }: Props) {
   const [abierto, setAbierto] = useState(false);
+  const [topK, setTopK] = useArrastre(config.topK);
+  const [alpha, setAlpha] = useArrastre(Math.round(config.alpha * 100));
   const idPanel = useId();
   const idResultados = useId();
   const idCoincidencia = useId();
@@ -69,14 +93,15 @@ export function InvestigadorConfigPanel({ config, onChange, models, fusionDispon
                 anuncia su valor, y repetirla en el nombre la leería dos veces. */}
             <p className={cn(ETIQUETA_CAMPO, "flex items-baseline justify-between gap-2")}>
               <span id={idResultados}>Resultados</span>
-              <span className="tf-tnum text-muted-foreground">{config.topK}</span>
+              <span className="tf-tnum text-muted-foreground">{topK}</span>
             </p>
             <Slider
-              value={[config.topK]}
-              onValueChange={([v]) => onChange({ topK: v })}
+              value={[topK]}
+              onValueChange={([v]) => setTopK(v)}
+              onValueCommit={([v]) => onChange({ topK: v })}
               aria-labelledby={idResultados}
-              min={1}
-              max={50}
+              min={MIN_TOP_K}
+              max={MAX_TOP_K}
               className="w-full"
             />
           </div>
@@ -90,16 +115,20 @@ export function InvestigadorConfigPanel({ config, onChange, models, fusionDispon
                 Tipo de coincidencia
               </p>
               <Slider
-                value={[Math.round(config.alpha * 100)]}
-                onValueChange={([v]) => onChange({ alpha: v / 100 })}
+                value={[alpha]}
+                onValueChange={([v]) => setAlpha(v)}
+                onValueCommit={([v]) => onChange({ alpha: v / 100 })}
                 aria-labelledby={idCoincidencia}
                 min={0}
                 max={100}
                 className="w-full"
               />
+              {/* Lo que casa con todas tus palabras va primero siempre; esto
+                  decide cuánto pesa el significado al completar la lista. Al
+                  mínimo no se completa. */}
               <div className={cn(AYUDA_CAMPO, "flex justify-between")}>
-                <span>Palabras exactas</span>
-                <span>Por significado</span>
+                <span>Solo palabras</span>
+                <span>Más por significado</span>
               </div>
             </div>
           )}

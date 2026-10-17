@@ -640,41 +640,6 @@ class LicitacionRepository:
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def ids_for_filters(
-        self,
-        *,
-        ccaa: list[str] | None = None,
-        tecnologia: list[str] | None = None,
-        fecha_desde: str | None = None,
-        fecha_hasta: str | None = None,
-        cap: int = 5000,
-    ) -> set[str]:
-        """Conjunto de ``id_externo`` que cumplen los filtros (multi-valor).
-
-        Lo usa la búsqueda semántica para restringir los hits a los filtros
-        activos (``allowed_ids``) sin fabricar el filtrado en el cliente. Devuelve
-        un set acotado a ``cap``. Sin cláusulas devuelve ``set()`` — el caller solo
-        debe invocarlo cuando hay al menos un filtro activo.
-        """
-        clauses: list[Any] = []
-        if ccaa:
-            clauses.append(licitaciones.c.ccaa.in_(ccaa))
-        if tecnologia:
-            # Mismo casado contra el CSV de la fila que el listado: si la
-            # búsqueda semántica acotara por igualdad, sus `allowed_ids`
-            # dejarían fuera expedientes que la tabla de al lado sí enseña.
-            clauses.append(_tecnologia_en_csv(list(tecnologia)))
-        if fecha_desde and _DATE_RE.match(fecha_desde):
-            clauses.append(licitaciones.c.fecha_publicacion >= fecha_desde)
-        if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            clauses.append(licitaciones.c.fecha_publicacion <= fecha_hasta)
-        if not clauses:
-            return set()
-        stmt = select(licitaciones.c.id_externo).where(and_(*clauses)).limit(cap)
-        sql, params = compile_query(stmt)
-        with connect_read() as c:
-            return {row[0] for row in c.execute(sql, params).fetchall()}
-
     def list_paginated(
         self,
         *,
@@ -1852,82 +1817,6 @@ class LicitacionRepository:
                 [query, *valores, query, limit],
             )
             return rows_to_dicts(cur)
-
-    def fts5_bm25_search(self, query: str, top_k: int) -> list[tuple[str, float]]:
-        """Búsqueda por ``ts_rank_cd`` normalizada para search_engine.
-
-        Conserva el nombre histórico (``fts5_bm25``) porque es el contrato que
-        consumen ``services/investigador/search_engine.py`` y sus tests; el
-        motor detrás es Postgres desde ADR-021.
-        """
-        try:
-            with connect_read() as c:
-                cur = c.execute(
-                    "SELECT id_externo, "
-                    "ts_rank_cd(search_vector, websearch_to_tsquery('spanish', %s)) AS score "
-                    "FROM licitaciones "
-                    "WHERE search_vector @@ websearch_to_tsquery('spanish', %s) "
-                    f"ORDER BY score DESC LIMIT {top_k * 2}",
-                    [query, query],
-                )
-                rows = cur.fetchall()
-        except Exception:
-            log.warning("fts_bm25_search_failed", exc_info=True)
-            return []
-
-        if not rows:
-            return []
-        raw_scores = [abs(float(r[1])) for r in rows]
-        max_s = max(raw_scores) if raw_scores else 1.0
-        return [(r[0], s / max_s) for r, s in zip(rows, raw_scores, strict=False)]
-
-    def like_fallback_search(self, query: str, top_k: int) -> list[tuple[str, float]]:
-        """LIKE fallback para cuando FTS5/search_vector no está disponible."""
-        token = next(
-            (w for w in query.split() if len(w) >= 4),
-            query.split()[0] if query.split() else "",
-        )
-        if not token:
-            return []
-        # Postgres LIKE es case-sensitive: ILIKE para búsqueda insensible.
-        like_op = "ILIKE"
-        try:
-            with connect_read() as c:
-                cur = c.execute(
-                    f"SELECT id_externo FROM licitaciones "
-                    f"WHERE titulo {like_op} %s ESCAPE '\\' OR descripcion {like_op} %s ESCAPE '\\' "
-                    "LIMIT %s",
-                    [f"%{escape_like(token)}%", f"%{escape_like(token)}%", top_k],
-                )
-                return [(r[0], 0.20) for r in cur.fetchall()]
-        except Exception:
-            log.warning("like_fallback_search_failed", exc_info=True)
-            return []
-
-    def fetch_metadata_by_ids(
-        self, ids: list[str], allowed_ids: set[str] | None = None
-    ) -> dict[str, dict[str, Any]]:
-        """Recupera metadatos de la BD para una lista de IDs."""
-        if not ids:
-            return {}
-        if allowed_ids is not None:
-            ids = [i for i in ids if i in allowed_ids]
-        if not ids:
-            return {}
-        placeholders = ",".join("%s" for _ in ids)
-        try:
-            with connect_read() as c:
-                cur = c.execute(
-                    f"SELECT id_externo, titulo, organo_contratacion, importe, "
-                    f"       descripcion, url, fecha_publicacion, ccaa, estado "
-                    f"FROM licitaciones WHERE id_externo IN ({placeholders})",
-                    ids,
-                )
-                cols = [d[0] for d in cur.description]
-                return {r[0]: dict(zip(cols, r, strict=False)) for r in cur.fetchall()}
-        except Exception:
-            log.warning("metadata_fetch_by_ids_failed", exc_info=True)
-            return {}
 
     def get_history(self, id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
         """Devuelve el historial de cambios de una licitación."""

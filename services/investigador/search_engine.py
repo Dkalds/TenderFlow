@@ -1,33 +1,32 @@
-"""Motor de búsqueda del Investigador — RRF (FTS + pgvector), FTS y LIKE.
+"""Piezas compartidas de la búsqueda: la fusión RRF y la noción de palabra relevante.
 
-Encapsula los tres caminos de recuperación, de más a menos informado:
-
-1. ``hybrid_search``: fusión Reciprocal Rank Fusion de la lista FTS y la
-   lista de similitud vectorial sobre ``documento_chunks`` (pgvector), con el
-   peso relativo de ambas gobernado por ``alpha``.
-2. ``fts5_search``: ``tsvector``/``ts_rank_cd`` (los nombres ``fts5_*``
-   sobreviven por contrato; el motor es Postgres desde ADR-021).
-3. ``like_search``: coincidencia literal, último recurso.
+- ``hybrid_search``: fusión Reciprocal Rank Fusion de la lista de texto completo
+  y la de similitud vectorial sobre ``documento_chunks`` (pgvector), con el peso
+  relativo de ambas gobernado por ``alpha``. La consume
+  :func:`services.investigador.busqueda.buscar`, que con ella completa la
+  lista del motor de texto.
+- ``extract_keywords`` y ``FTS5_STOPWORDS``: qué cuenta como palabra relevante.
+  Los comparten el último recurso por subcadena de ``/ask``
+  (``LicitacionRepository.search_like_for_ask``) y la interpretación de la
+  frase (:mod:`services.investigador.consulta`).
 
 FAISS se eliminó en la Fase 3 del plan de reducción de superficie
-(2026-07-04). Lo que le sucede no es un índice en memoria sino la fusión RRF
-en SQL de ``db/search_backend.py``, que existía desde el plan Pliegos+RAG y
-hasta 2026-09 solo consumía ``/ask``.
+(2026-07-04). El camino FTS → LIKE de ``rag_query`` (con ``escape_fts5``,
+``fts5_search``, ``like_search`` y ``fetch_docs``) se retiró el 2026-10-17: la
+búsqueda del Investigador y ``/ask`` responden con el motor de
+:mod:`services.investigador.busqueda` desde 2026-10-09 y no le quedaban
+llamantes.
 """
 
 from __future__ import annotations
 
 import re
-import time
 from collections.abc import Mapping
 from typing import Any
 
-from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 
 log = get_logger(__name__)
-
-_repo = LicitacionRepository()
 
 # Stopwords en español: palabras interrogativas, conectores, verbos de petición y
 # los pocos términos que *definen* el corpus (y por tanto no discriminan: aparecen
@@ -186,55 +185,14 @@ def extract_keywords(query: str) -> list[str]:
 
     Elimina metacaracteres, pasa a minúsculas, filtra stopwords y tokens de
     <=2 caracteres, y deduplica conservando los términos más largos (heurística
-    barata de especificidad). Reutilizado por ``escape_fts5`` (FTS5) y por el
-    fallback LIKE del repositorio para que ambos caminos compartan la misma
-    noción de "palabra relevante".
+    barata de especificidad). Lo usa el último recurso LIKE de ``/ask``
+    (``search_like_for_ask``).
     """
     cleaned = re.sub(r'["*+\-():\^/¿¡!?,.;]', " ", query).lower()
     tokens = [t for t in cleaned.split() if len(t) > 2 and t not in FTS5_STOPWORDS]
     if not tokens:
         return []
     return sorted(set(tokens), key=len, reverse=True)[:12]
-
-
-def escape_fts5(query: str) -> str:
-    """Escapa y normaliza la query para FTS5 MATCH (semántica RAG).
-
-    Dos bugs históricos que esta función corrige:
-
-    1. **AND implícito**: FTS5 trata tokens separados por espacio como AND
-       lógico (``sap licitaciones`` exige docs con *ambas* palabras). Para
-       preguntas en lenguaje natural eso devuelve 0 resultados casi siempre,
-       forzando el fallback LIKE con peor relevancia. Unimos los tokens con
-       ``OR`` explícito para semántica "cualquiera de estas palabras", que es
-       lo correcto para recuperación RAG (BM25 ya prioriza términos raros).
-
-    2. **Ruido de stopwords**: palabras interrogativas, conectores y términos
-       que definen el corpus (``cuántas``, ``de``, ``licitaciones``,
-       ``importe``...) inflaban la query y saturaban el ranking con documentos
-       genéricos. Se filtran vía ``extract_keywords`` antes de construir la
-       query.
-
-    Cada token se encierra entre comillas dobles (con las comillas internas
-    escapadas) para neutralizar operadores FTS5 y prevenir inyección; las
-    comillas con ``OR`` entre ellas siguen produciendo disyunción de frases de
-    una sola palabra (``"foo" OR "bar"``), no proximidad.
-    """
-    keywords = extract_keywords(query)
-    if not keywords:
-        return '""'
-    quoted = [f'"{t.replace(chr(34), chr(34) * 2)}"' for t in keywords]
-    return " OR ".join(quoted)
-
-
-def fts5_search(question: str, top_k: int) -> list[tuple[str, float]]:
-    """Búsqueda léxica FTS5/BM25. Devuelve (id_externo, score ∈ [0,1]) normalizado."""
-    return _repo.fts5_bm25_search(question, top_k)
-
-
-def like_search(question: str, top_k: int) -> list[tuple[str, float]]:
-    """LIKE fallback para cuando FTS5 no está disponible."""
-    return _repo.like_fallback_search(question, top_k)
 
 
 def hybrid_search(
@@ -246,8 +204,8 @@ def hybrid_search(
 ) -> list[dict[str, Any]]:
     """Fusión RRF (FTS + pgvector) para una consulta, o ``[]`` si no aplica.
 
-    Devuelve licitaciones completas (los mismos campos que ``fetch_docs``, más
-    ``tecnologia``, ``rrf_score`` y ``chunks``) ya ordenadas por la fusión.
+    Devuelve licitaciones (las columnas del anuncio, más ``tecnologia``,
+    ``rrf_score`` y ``chunks``) ya ordenadas por la fusión.
 
     ``[]`` significa «este camino no está disponible o no encontró nada» y el
     llamador debe degradar a FTS: no hay modelo de embeddings instalado
@@ -295,57 +253,3 @@ def hybrid_search(
         log.debug("hybrid_search.query_failed", error=str(e))
         return []
     return docs
-
-
-def fetch_docs(ids: list[str], allowed_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
-    """Recupera metadatos de la BD para una lista de IDs, filtrando por allowed_ids."""
-    return _repo.fetch_metadata_by_ids(ids, allowed_ids)
-
-
-def rag_query(
-    question: str,
-    *,
-    top_k: int = 5,
-    allowed_ids: set[str] | None = None,
-    embedding_model: str = "",
-) -> tuple[list[dict[str, Any]], str]:
-    """Búsqueda FTS5/BM25 con fallback LIKE.
-
-    Returns:
-        (docs, source_badge) donde source_badge indica el motor usado
-        ("FTS5" o "LIKE").
-    """
-    t0 = time.perf_counter()
-    fts_hits = fts5_search(question, top_k * 2)
-
-    if fts_hits:
-        ranked = sorted(fts_hits, key=lambda x: x[1], reverse=True)[:top_k]
-        source = "FTS5"
-    else:
-        ranked = like_search(question, top_k)
-        source = "LIKE"
-
-    if allowed_ids is not None:
-        ranked = [(id_, sc) for id_, sc in ranked if id_ in allowed_ids]
-    ranked = ranked[:top_k]
-
-    ids = [id_ for id_, _ in ranked]
-    docs_map = fetch_docs(ids, allowed_ids)
-
-    docs: list[dict[str, Any]] = []
-    for id_, score in ranked:
-        if id_ in docs_map:
-            doc = dict(docs_map[id_])
-            doc["_score"] = score
-            docs.append(doc)
-
-    elapsed_ms = round((time.perf_counter() - t0) * 1000)
-    log.debug(
-        "search_engine.rag_query",
-        question=question[:80],
-        n=len(docs),
-        source=source,
-        elapsed_ms=elapsed_ms,
-        allowed=len(allowed_ids) if allowed_ids is not None else "all",
-    )
-    return docs, source

@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function InvestigadorSkeleton() {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" role="status" aria-busy="true" aria-label="Buscando…">
       {[1, 2, 3].map((i) => (
         <Skeleton key={i} className="h-24 w-full rounded-xl" />
       ))}

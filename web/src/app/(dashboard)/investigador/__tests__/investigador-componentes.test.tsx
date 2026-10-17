@@ -18,7 +18,8 @@ import type { SearchResult } from "../_lib/types";
 vi.mock("react-markdown", () => ({ default: ({ children }: { children: string }) => <p>{children}</p> }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 const descargarBlob = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/export", () => ({ descargarBlob }));
+// El CSV se compone con el `csvBlob` de verdad; solo la descarga es un doble.
+vi.mock("@/lib/export", async (original) => ({ ...(await original<typeof import("@/lib/export")>()), descargarBlob }));
 
 import { InvestigadorAsistente } from "../_components/investigador-asistente";
 import { InvestigadorConfigPanel } from "../_components/investigador-config-panel";
@@ -201,12 +202,48 @@ describe("InvestigadorResultCard", () => {
     expect(screen.getByRole("button", { name: /Quitar del asistente/ })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("con tres ya marcados, el cuarto no cabe y dice por qué", () => {
-    render(<InvestigadorResultCard result={resultado()} marcado={false} sinHueco onAlternar={vi.fn()} />);
+  it("con tres ya marcados, el cuarto no cabe y dice por qué, también con teclado", () => {
+    const onAlternar = vi.fn();
+    render(<InvestigadorResultCard result={resultado()} marcado={false} sinHueco onAlternar={onAlternar} />);
 
     const boton = screen.getByRole("button", { name: /Preguntar por este/ });
-    expect(boton).toBeDisabled();
-    expect(boton).toHaveAttribute("title", expect.stringContaining("tres expedientes"));
+    // Enfocable: un `disabled` no recibía foco y el motivo no se oía nunca.
+    expect(boton).toBeEnabled();
+    expect(boton).toHaveAttribute("aria-disabled", "true");
+    expect(boton).toHaveAccessibleDescription(expect.stringContaining("tres expedientes"));
+    fireEvent.click(boton);
+    expect(onAlternar).not.toHaveBeenCalled();
+  });
+
+  it("lo que solo trae la búsqueda por significado lo dice, con su fragmento", () => {
+    render(
+      <InvestigadorResultCard
+        result={resultado({
+          coincide_en: ["significado"],
+          titulo_tramos: [],
+          extracto: [],
+          pasaje: {
+            documento_id: null,
+            tipo: null,
+            filename: null,
+            page_number: null,
+            tramos: [{ texto: "Soporte evolutivo del ERP", resaltado: false }],
+          },
+        })}
+        {...props}
+      />,
+    );
+
+    expect(screen.getByText("Parecido por significado")).toBeInTheDocument();
+    expect(screen.getByText("Fragmento parecido del pliego")).toBeInTheDocument();
+    expect(screen.getByText("Soporte evolutivo del ERP")).toBeInTheDocument();
+  });
+
+  it("lo que casa por texto y además se parece lo dice sin esconder lo primero", () => {
+    render(<InvestigadorResultCard result={resultado({ coincide_en: ["pliego", "significado"] })} {...props} />);
+
+    expect(screen.getByText("Coincide en el pliego")).toBeInTheDocument();
+    expect(screen.getByText("También por significado")).toBeInTheDocument();
   });
 });
 
@@ -262,7 +299,35 @@ describe("InvestigadorResults", () => {
     );
 
     expect(screen.getByRole("button", { name: /Quitar del asistente/ })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /Preguntar por este/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Preguntar por este/ })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("con más resultados de los que enseña, ofrece la siguiente tanda", () => {
+    const onMostrarMas = vi.fn();
+    render(<InvestigadorResults {...base} results={[resultado()]} hayMas onMostrarMas={onMostrarMas} />);
+
+    expect(screen.getByRole("heading", { name: /Los primeros 1 resultado/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar más resultados" }));
+    expect(onMostrarMas).toHaveBeenCalledTimes(1);
+  });
+
+  it("mientras llega la siguiente tanda, el botón lo dice y no se repite", () => {
+    render(<InvestigadorResults {...base} results={[resultado()]} hayMas onMostrarMas={vi.fn()} cargandoMas />);
+
+    expect(screen.getByRole("button", { name: "Cargando más…" })).toBeDisabled();
+  });
+
+  it("en el tope, pide afinar en vez de ofrecer más", () => {
+    render(<InvestigadorResults {...base} results={[resultado()]} hayMas onMostrarMas={null} />);
+
+    expect(screen.queryByRole("button", { name: "Mostrar más resultados" })).toBeNull();
+    expect(screen.getByText(/afina la búsqueda/)).toBeInTheDocument();
+  });
+
+  it("el recuento se anuncia al llegar", () => {
+    render(<InvestigadorResults {...base} results={[resultado()]} />);
+
+    expect(screen.getByRole("heading", { name: "1 resultado" })).toHaveAttribute("aria-live", "polite");
   });
 
   it("sin resultados no ofrece exportar y sugiere otras palabras", () => {
@@ -354,6 +419,20 @@ describe("InvestigadorSearchBar", () => {
     expect(screen.getByText("Abiertas")).toBeInTheDocument();
   });
 
+  it("dice con qué palabras se buscó si no son las escritas", () => {
+    render(<InvestigadorSearchBar {...base} buscadoComo="mantenimiento sap" />);
+
+    expect(screen.getByText("Se buscó «mantenimiento sap»")).toBeInTheDocument();
+    // Sin filtros leídos no hay nada que «tal cual» deshaga.
+    expect(screen.queryByRole("button", { name: "Buscar el texto tal cual" })).toBeNull();
+  });
+
+  it("no deja escribir más de lo que la búsqueda admite", () => {
+    render(<InvestigadorSearchBar {...base} />);
+
+    expect(screen.getByRole("textbox", { name: "Busca o pregunta" })).toHaveAttribute("maxLength", "500");
+  });
+
   it("lo entendido se puede deshacer, y volver a pedir", () => {
     const onTalCualChange = vi.fn();
     const { rerender } = render(
@@ -396,7 +475,23 @@ describe("InvestigadorConfigPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Opciones avanzadas" }));
 
     expect(screen.getByText("Tipo de coincidencia")).toBeInTheDocument();
-    expect(screen.getByText("Palabras exactas")).toBeInTheDocument();
+    expect(screen.getByText("Solo palabras")).toBeInTheDocument();
+  });
+
+  it("arrastrar «Resultados» no aplica nada hasta soltar", () => {
+    const onChange = vi.fn();
+    render(<InvestigadorConfigPanel {...base} onChange={onChange} fusionDisponible={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Opciones avanzadas" }));
+    const deslizador = screen.getByRole("slider", { name: "Resultados" });
+
+    // Cada flecha es un cambio terminado para Radix: se aplica una vez por
+    // tecla. Lo que no puede pasar es aplicar en cada paso de un arrastre;
+    // eso lo cubre `onValueCommit`, que es lo único que llama a `onChange`.
+    fireEvent.keyDown(deslizador, { key: "ArrowRight" });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith({ topK: DEFAULT_CONFIG.topK + 1 });
+    expect(screen.getByText(String(DEFAULT_CONFIG.topK + 1))).toBeInTheDocument();
   });
 
   it("el ámbito se enciende con su casilla", () => {

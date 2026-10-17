@@ -75,14 +75,20 @@ _AGENDA_SELECT = (
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.next_action, p.next_action_due, p.version, "
     # Lo que la ingesta sabe del expediente: sin esto la agenda trataba como
-    # viva una oportunidad sobre una licitación ya adjudicada. Los
-    # adjudicatarios solo se piden para la oportunidad del expediente completo:
-    # con lote, la adjudicación de **otro** lote no cierra el suyo, y las filas
-    # de ``adjudicaciones`` no dicen de cuál son (``lote_id`` va vacío).
+    # viva una oportunidad sobre una licitación ya adjudicada. Con lote, solo
+    # cuentan las adjudicaciones **de ese lote** —la de otro lote no cierra el
+    # suyo—, unidas por número como en ``_PURSUIT_SELECT`` porque los ids de
+    # ``lotes`` cambian en cada re-ingesta. Una adjudicación sin ``lote_id``
+    # no dice de qué lote es y no se le atribuye a ninguno.
     "l.estado AS tender_estado, "
     "CASE WHEN p.lote_numero IS NULL THEN "
     "  (SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
     "    WHERE a.licitacion_id = p.licitacion_id) "
+    "ELSE "
+    "  (SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
+    "    JOIN lotes la ON la.id = a.lote_id "
+    "    WHERE a.licitacion_id = p.licitacion_id "
+    "      AND la.licitacion_id = p.licitacion_id AND la.numero = p.lote_numero) "
     "END AS adjudicatarios "
     "FROM pursuits p "
     "JOIN licitaciones l ON l.id_externo = p.licitacion_id "

@@ -211,16 +211,19 @@ class TestAbiertasYOrden:
         assert r.solo_abiertas is True
         assert r.terminos == ("sap",)
 
-    @pytest.mark.parametrize(
-        "frase", ["procedimiento abierto", "portal de datos abiertos", "código abierto"]
-    )
+    @pytest.mark.parametrize("frase", ["portal de datos abiertos", "código abierto"])
     def test_el_masculino_no_es_el_estado(self, frase: str) -> None:
-        """«Procedimiento abierto» es un tipo de procedimiento y «datos
-        abiertos», un tema: tacharlos borraría justo lo que se busca."""
+        """«Datos abiertos» es un tema: tacharlo borraría justo lo que se busca."""
         r = _i(frase)
 
         assert r.solo_abiertas is False
         assert any(t.startswith("abiert") for t in r.terminos)
+
+    def test_procedimiento_abierto_es_un_procedimiento_no_el_estado(self) -> None:
+        r = _i("procedimiento abierto")
+
+        assert r.solo_abiertas is False
+        assert r.procedimiento == ("1",)
 
     @pytest.mark.parametrize(
         "frase", ["últimas licitaciones de oracle", "oracle más recientes", "lo último de oracle"]
@@ -307,3 +310,119 @@ class TestSinInterpretar:
             solo_abiertas=True,
             fecha_desde="2025-01-01",
         )
+
+
+class TestFinDelPlazo:
+    """«que cierran…»: la fecha es del fin del plazo, no de la publicación.
+
+    ``HOY`` es viernes 2026-10-09.
+    """
+
+    @pytest.mark.parametrize(
+        ("frase", "desde", "hasta"),
+        [
+            ("sap que cierran esta semana", "2026-10-09", "2026-10-11"),
+            ("sap que vencen hoy", "2026-10-09", "2026-10-09"),
+            ("sap que cierran mañana", "2026-10-10", "2026-10-10"),
+            ("sap que cierran este mes", "2026-10-09", "2026-10-31"),
+            ("sap que cierran la semana que viene", "2026-10-12", "2026-10-18"),
+            ("sap que acaban el mes que viene", "2026-11-01", "2026-11-30"),
+            ("sap que vencen en los próximos 10 días", "2026-10-09", "2026-10-19"),
+            ("sap que terminan en 2 semanas", "2026-10-09", "2026-10-23"),
+            ("sap con plazo hasta el 30 de noviembre", "2026-10-09", "2026-11-30"),
+            ("sap que cierran el 30 de noviembre", "2026-11-30", "2026-11-30"),
+            ("sap que cierran antes del 1 de diciembre", "2026-10-09", "2026-11-30"),
+            ("sap que cierran en noviembre", "2026-11-01", "2026-11-30"),
+            ("sap que cierran en enero", "2027-01-01", "2027-01-31"),
+            ("sap que cierran en octubre", "2026-10-09", "2026-10-31"),
+        ],
+    )
+    def test_ventanas(self, frase: str, desde: str, hasta: str) -> None:
+        r = _i(frase)
+
+        assert (r.cierre_desde, r.cierre_hasta) == (desde, hasta)
+        assert r.terminos == ("sap",)
+        assert r.fecha_desde is None and r.fecha_hasta is None
+        assert r.tiene_filtros
+
+    def test_sin_verbo_de_cierre_esta_semana_sigue_siendo_publicacion(self) -> None:
+        r = _i("sap de esta semana")
+
+        assert r.cierre_desde is None
+        assert r.fecha_desde == "2026-10-05"
+
+    @pytest.mark.parametrize(
+        "frase",
+        [
+            "sap que cierran antes del 31 de febrero",  # no existe
+            "sap que cierran el 2 de octubre",  # ya pasó
+        ],
+    )
+    def test_una_fecha_imposible_o_pasada_no_se_entiende(self, frase: str) -> None:
+        r = _i(frase)
+
+        assert r.cierre_desde is None and r.cierre_hasta is None
+        assert "sap" in r.terminos
+
+
+class TestMesesConNombre:
+    @pytest.mark.parametrize(
+        ("frase", "desde", "hasta"),
+        [
+            ("software publicado en marzo", "2026-03-01", "2026-03-31"),
+            ("software en marzo de 2025", "2025-03-01", "2025-03-31"),
+            ("software durante el mes de septiembre", "2026-09-01", "2026-09-30"),
+            # Diciembre aún no ha llegado este año: el último fue el pasado.
+            ("software en diciembre", "2025-12-01", "2025-12-31"),
+            ("software en febrero 2024", "2024-02-01", "2024-02-29"),
+        ],
+    )
+    def test_el_mes_es_de_publicacion(self, frase: str, desde: str, hasta: str) -> None:
+        r = _i(frase)
+
+        assert (r.fecha_desde, r.fecha_hasta) == (desde, hasta)
+        assert r.terminos == ("software",)
+
+    @pytest.mark.parametrize("frase", ["obras plaza dos de mayo", "plaza de mayo"])
+    def test_sin_en_o_durante_el_mes_es_texto(self, frase: str) -> None:
+        r = _i(frase)
+
+        assert r.fecha_desde is None
+        assert "mayo" in r.terminos
+
+
+class TestProcedimiento:
+    @pytest.mark.parametrize(
+        ("frase", "codigos"),
+        [
+            ("contratos menores de ciberseguridad", ("6",)),
+            ("ciberseguridad por contrato menor", ("6",)),
+            ("ciberseguridad procedimiento abierto simplificado", ("9",)),
+            ("ciberseguridad abierto simplificado", ("9",)),
+            ("ciberseguridad procedimiento restringido", ("2",)),
+            ("ciberseguridad negociado sin publicidad", ("3",)),
+            ("ciberseguridad negociado con publicidad", ("4",)),
+            ("ciberseguridad procedimiento negociado", ("3", "4")),
+            ("ciberseguridad diálogo competitivo", ("5",)),
+            ("ciberseguridad derivado de acuerdo marco", ("7",)),
+        ],
+    )
+    def test_frases_de_procedimiento(self, frase: str, codigos: tuple[str, ...]) -> None:
+        r = _i(frase)
+
+        assert r.procedimiento == codigos
+        assert r.terminos == ("ciberseguridad",)
+
+    @pytest.mark.parametrize(
+        "frase", ["acuerdo marco de ciberseguridad", "obra menor", "datos abiertos"]
+    )
+    def test_lo_que_no_nombra_un_procedimiento_sigue_siendo_texto(self, frase: str) -> None:
+        r = _i(frase)
+
+        assert r.procedimiento == ()
+
+    def test_sin_interpretar_no_hay_procedimiento(self) -> None:
+        r = _i("contratos menores de ciberseguridad", filtros=False)
+
+        assert r.procedimiento == ()
+        assert "menores" in r.terminos
