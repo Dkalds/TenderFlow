@@ -68,12 +68,11 @@ export const BANDA_OPTIONS: { value: string; label: string }[] = [
 ];
 
 /**
- * Procedimientos y tipos de contrato que persiste la ingesta (revisión `v85`).
- * No salen de `/meta/filters` —ese catálogo solo publica estado, CCAA,
- * tecnología y CPV— así que aquí son las etiquetas del selector, no datos
- * derivados: el filtro real lo aplica el backend contra la columna.
+ * Tipos de contrato que persiste la ingesta (revisión `v85`). El procedimiento
+ * ya no vive aquí: la columna guarda el código CODICE y no la palabra, así que
+ * «abierto» no casaba con nada; sus opciones salen del catálogo de
+ * `/meta/filters` (`procedimientoList`).
  */
-export const PROCEDIMIENTO_OPTIONS = ["abierto", "restringido", "negociado", "menor"];
 
 export const TIPO_CONTRATO_OPTIONS = ["servicios", "suministros", "obras"];
 

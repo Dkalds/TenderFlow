@@ -348,6 +348,32 @@ describe("enlaceDeAlerta", () => {
       q: "sap",
     });
   });
+
+  it("el órgano y el procedimiento entendidos van a la regla", () => {
+    expect(
+      prefill(
+        enlaceDeAlerta({
+          texto: "limpieza",
+          ccaa: [],
+          tecnologia: [],
+          importeMin: null,
+          organo: ["Ayuntamiento de Valencia, Distrito 3", "Cabildo de Tenerife"],
+          procedimiento: ["6"],
+        }),
+      ),
+    ).toEqual({ q: "limpieza", organo: "Ayuntamiento de Valencia, Distrito 3", procedimiento: "6" });
+  });
+
+  it("con dos procedimientos no va ninguno: la alerta no puede ser más estrecha que la búsqueda", () => {
+    const enlace = enlaceDeAlerta({
+      texto: "obras",
+      ccaa: [],
+      tecnologia: [],
+      importeMin: null,
+      procedimiento: ["3", "4"],
+    });
+    expect(prefill(enlace)).toEqual({ q: "obras" });
+  });
 });
 
 describe("plazoDe", () => {

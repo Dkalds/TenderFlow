@@ -10,6 +10,7 @@
  * quien lo pinte.
  */
 
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
@@ -36,13 +37,38 @@ export interface ValoresNuevaRegla {
 }
 
 /**
+ * Criterios que llegan en el prefill y el alta rápida no tiene como campo: la
+ * tecnología del ámbito de la paleta, y el órgano y el procedimiento (código
+ * CODICE) que el Investigador entendió de la frase. `NuevaReglaCard` los
+ * enseña («Además filtra por») y deja quitarlos: un filtro que se guarda sin
+ * verse es una alerta que no avisa sin explicación.
+ */
+export interface CriteriosDelPrefill {
+  tecnologia: string;
+  organo: string;
+  procedimiento: string;
+}
+
+export const SIN_CRITERIOS_DEL_PREFILL: CriteriosDelPrefill = { tecnologia: "", organo: "", procedimiento: "" };
+
+/** Los criterios del prefill y cómo vaciarlos (al crear la regla o con «Quitar»). */
+export function useCriteriosDelPrefill({ tecnologia, organo, procedimiento }: CriteriosDelPrefill) {
+  const [criterios, setCriterios] = useState<CriteriosDelPrefill>(() => ({ tecnologia, organo, procedimiento }));
+  return [criterios, () => setCriterios(SIN_CRITERIOS_DEL_PREFILL)] as const;
+}
+
+export function hayCriteriosDelPrefill({ tecnologia, organo, procedimiento }: CriteriosDelPrefill): boolean {
+  return Boolean(tecnologia || organo.trim() || procedimiento);
+}
+
+/**
  * El cuerpo de una regla del alta rápida. Lo usan el alta y su vista previa:
  * si cada una lo armara por su cuenta, la previa mediría una regla distinta de
  * la que se guarda.
  */
 export function cuerpoDeNuevaRegla(
   { keyword, cpv, min_importe, ccaa, frequency }: ValoresNuevaRegla,
-  tecnologiaPrefill: string,
+  prefill: CriteriosDelPrefill,
 ): RuleBody {
   return {
     nombre: keyword.trim(),
@@ -54,13 +80,13 @@ export function cuerpoDeNuevaRegla(
     active: true,
     // El alta rápida no expone los criterios de S4.4 —se afinan en el panel
     // de edición, sobre una regla que ya tiene conteo con el que comparar—
-    // así que viajan a `null`, que es «este criterio no filtra». La única
-    // excepción es la tecnología del prefill de la command palette: venía en
-    // el ámbito desde el que se pulsó «crear regla», y perderla haría que la
-    // regla naciera más ancha de lo que el usuario estaba mirando.
-    tecnologia: tecnologiaPrefill || null,
-    organo: null,
-    procedimiento: null,
+    // así que viajan a `null`, que es «este criterio no filtra». La excepción
+    // es lo que trae el prefill (`CriteriosDelPrefill`): venía en la búsqueda
+    // desde la que se pulsó «crear regla», y perderlo haría que la regla
+    // naciera más ancha de lo que el usuario estaba mirando.
+    tecnologia: prefill.tecnologia || null,
+    organo: prefill.organo.trim() || null,
+    procedimiento: prefill.procedimiento || null,
     tipo_contrato: null,
     banda_min: null,
     plazo_min_dias: null,

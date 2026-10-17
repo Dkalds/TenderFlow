@@ -147,7 +147,7 @@ def ambito_busqueda_sql(
     - ``procedimiento``: códigos CODICE comparados sin ceros a la izquierda
       (la fuente publica ``01`` y ``1``), como el filtro del listado.
     - ``organo``: OR entre nombres; cada uno casa si el órgano plegado
-      contiene todas sus palabras (:func:`_organo_sql`).
+      contiene todas sus palabras (:func:`db.sql_fragments.palabras_de_organo`).
 
     Los seis últimos los pone el Investigador cuando la frase los dice («de
     más de 500K», «abiertas», «que cierran esta semana», «contratos
@@ -160,7 +160,12 @@ def ambito_busqueda_sql(
     respuesta llegaría sin contexto y sin error. Las cláusulas salen en ese
     orden y los parámetros, en el de sus marcadores.
     """
-    from db.sql_fragments import columna_nucleo_sql, fecha_valida_sql, tecnologia_en_csv_sql
+    from db.sql_fragments import (
+        columna_nucleo_sql,
+        fecha_valida_sql,
+        palabras_de_organo,
+        tecnologia_en_csv_sql,
+    )
     from shared.estados import abierta_sql
 
     clauses: list[str] = []
@@ -211,61 +216,29 @@ def ambito_busqueda_sql(
             f"COALESCE(NULLIF(ltrim(trim({alias}.procedimiento), '0'), ''), '0') IN ({marcadores})"
         )
         params.extend(codigos)
-    if nombres := [n for n in organo or () if _palabras_de_organo(n)]:
+    if nombres := [n for n in organo or () if palabras_de_organo(n)]:
         clausula, valores = _organo_sql(alias, nombres)
         clauses.append(clausula)
         params.extend(valores)
     return clauses, params
 
 
-#: Lo que en un nombre de órgano no distingue a uno de otro: los enlaces y los
-#: calificativos que la fuente pone o no («Diputación Provincial de Granada»,
-#: «Cabildo Insular de Tenerife»; quien escribe se los come).
-_RELLENO_ORGANO = frozenset(
-    {"de", "del", "la", "las", "los", "el", "provincial", "insular", "foral"}
-)
-#: La clase de órgano tal como la escribe la fuente en otras lenguas, plegada y
-#: recortada para que una raíz cubra las variantes: «Ajuntament de Barcelona»
-#: (589 filas) frente a «Ayuntamiento de Barcelona» (4), medido 2026-10-17.
-_SINONIMOS_ORGANO: dict[str, tuple[str, ...]] = {
-    "ayuntamiento": ("ayuntamiento", "ajuntament", "concello", "udala"),
-    "universidad": ("universidad", "universitat", "universidade"),
-    "universitat": ("universidad", "universitat", "universidade"),
-    "diputacion": ("diputacio", "deputacion"),
-    "consejeria": ("consejeria", "conselleria"),
-    "conselleria": ("consejeria", "conselleria"),
-    "mancomunidad": ("mancomunidad", "mancomunitat"),
-}
-
-
-def _palabras_de_organo(nombre: str) -> list[tuple[str, ...]]:
-    """Las palabras que distinguen a un órgano, cada una con sus variantes."""
-    from db.sql_fragments import FOLD_TABLE
-
-    palabras = []
-    for palabra in nombre.translate(FOLD_TABLE).lower().split():
-        palabra = re.sub(r"^[dl]'", "", palabra.strip(".,;:"))
-        if palabra and palabra not in _RELLENO_ORGANO:
-            palabras.append(_SINONIMOS_ORGANO.get(palabra, (palabra,)))
-    return palabras
-
-
 def _organo_sql(alias: str, nombres: Sequence[str]) -> tuple[str, list[str]]:
     """``(cláusula, params)``: el órgano plegado contiene cada palabra de un nombre.
 
     Por palabras y no la frase entera porque quien escribe no copia el nombre
-    de la fuente: «Diputación de Granada» no está en ninguna fila y
-    «Diputación Provincial de Granada» en 30. Cada ``LIKE`` va sobre la
-    expresión de ``idx_lic_organo_plegado_trgm``, así que lo resuelve el índice.
+    de la fuente (:func:`db.sql_fragments.palabras_de_organo`). Cada ``LIKE``
+    va sobre la expresión de ``idx_lic_organo_plegado_trgm``, así que lo
+    resuelve el índice.
     """
-    from db.sql_fragments import escape_like, fold_expr
+    from db.sql_fragments import escape_like, fold_expr, palabras_de_organo
 
     plegado = fold_expr(f"{alias}.organo_contratacion")
     por_nombre: list[str] = []
     params: list[str] = []
     for nombre in nombres:
         palabras = []
-        for variantes in _palabras_de_organo(nombre):
+        for variantes in palabras_de_organo(nombre):
             palabras.append("(" + " OR ".join([f"{plegado} LIKE %s"] * len(variantes)) + ")")
             params.extend(f"%{escape_like(v)}%" for v in variantes)
         por_nombre.append("(" + " AND ".join(palabras) + ")")

@@ -35,6 +35,8 @@ diverjan en silencio.
 
 from __future__ import annotations
 
+import re
+
 # Universo por defecto de los agregados del radar. Las filas anteriores al
 # linaje se consideran legado del radar porque el único pipeline histórico
 # filtraba tecnología; las nuevas fuentes deben declarar su universo y quedan
@@ -467,6 +469,49 @@ def escape_like(texto: str) -> str:
     transformarlo después, porque partiría un par de escape.
     """
     return texto.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+
+
+# ── Órgano por palabras ──────────────────────────────────────────────────
+
+#: Lo que en un nombre de órgano no distingue a uno de otro: los enlaces y los
+#: calificativos que la fuente pone o no («Diputación Provincial de Granada»,
+#: «Cabildo Insular de Tenerife»; quien escribe se los come).
+_RELLENO_ORGANO = frozenset(
+    {"de", "del", "d", "la", "las", "los", "el", "l", "provincial", "insular", "foral"}
+)
+#: La clase de órgano tal como la escribe la fuente en otras lenguas, plegada y
+#: recortada para que una raíz cubra las variantes: «Ajuntament de Barcelona»
+#: (589 filas) frente a «Ayuntamiento de Barcelona» (4), medido 2026-10-17.
+#: Cualquier forma del grupo trae el grupo entero.
+_GRUPOS_ORGANO: tuple[tuple[str, ...], ...] = (
+    ("ayuntamiento", "ajuntament", "concello", "udala"),
+    ("universidad", "universitat", "universidade"),
+    ("diputacio", "deputacion"),
+    ("consejeria", "conselleria"),
+    ("mancomunidad", "mancomunitat"),
+)
+_SINONIMOS_ORGANO: dict[str, tuple[str, ...]] = {
+    forma: grupo for grupo in _GRUPOS_ORGANO for forma in grupo
+} | {"diputacion": ("diputacio", "deputacion")}
+
+
+def palabras_de_organo(nombre: str) -> list[tuple[str, ...]]:
+    """Las palabras que distinguen a un órgano, plegadas y con sus variantes.
+
+    Un órgano casa si su nombre plegado contiene **cada** palabra (alguna de
+    sus variantes): quien escribe no copia el nombre de la fuente, y
+    «Diputación de Granada» no está en ninguna fila mientras «Diputación
+    Provincial de Granada» está en 30 (medido 2026-10-17). Lo comparten el
+    órgano de la frase del Investigador y el de una regla de vigilancia, para
+    que la alerta creada desde una búsqueda avise de lo que la búsqueda
+    enseñaba.
+    """
+    palabras = []
+    for palabra in nombre.translate(FOLD_TABLE).lower().split():
+        palabra = re.sub(r"^[dl]['\u2019]", "", palabra.strip(".,;:"))
+        if palabra and palabra not in _RELLENO_ORGANO:
+            palabras.append(_SINONIMOS_ORGANO.get(palabra, (palabra,)))
+    return palabras
 
 
 def tecnologia_tokens_sql(col: str) -> str:
