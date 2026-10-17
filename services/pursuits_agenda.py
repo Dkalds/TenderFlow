@@ -7,8 +7,8 @@ renovaciones del mercado, y no saben de quién es la agenda.
 
 ``get_agenda`` —que resuelve la organización, lee los repositorios y las
 reglas del usuario y monta la respuesta con estas piezas— y las señales de
-reglas siguen en :mod:`services.pursuits`: dependen de ``user_key``, y el
-ratchet de ``scripts/check_user_key_ratchet.py`` no deja que un fichero nuevo
+reglas siguen en :mod:`services.pursuits`: dependen de la clave de identidad
+heredada que D18 está retirando, y su ratchet no deja que un fichero nuevo
 herede esa deuda.
 """
 
