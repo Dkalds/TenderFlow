@@ -4,14 +4,16 @@
 sin perder sus hijas ni los datos de usuario, y recuperar los contratos que la
 clave vieja dejó pisar.
 
-**Estado**: pendiente. La migración de datos **no está escrita**: tocar
-`db/alembic/` requiere OK explícito (AGENTS.md §6).
+**Estado**: pendiente de ejecutar. La migración es
+`db/alembic/versions/v152_rekey_pscp_id_externo.py` (aprobada para escribirse el
+2026-10-17; correrla en producción sigue siendo una decisión, `migrate.yml` es
+`workflow_dispatch`).
 
-> **No desplegar el conector nuevo sin esta ventana.** Desde el cambio,
-> `scraper/connectors/pscp.py` escribe `pscp:{uuid}:{codi_expedient}`. Toda fila
-> PSCP que la fuente vuelva a publicar entraría como fila **nueva** junto a la
-> vieja `pscp:{codi_expedient}`: duplicados en todas las superficies. Merge del
-> código y re-key van en el mismo despliegue, o el re-key primero.
+> **No dejar correr el conector nuevo contra filas sin re-key.** Desde este
+> cambio, `scraper/connectors/pscp.py` escribe `pscp:{uuid}:{codi_expedient}`.
+> Toda fila PSCP que la fuente vuelva a publicar entre el merge y la migración
+> entraría como fila **nueva** junto a la vieja, y v152 aborta al encontrarla
+> (paso 4). Por eso la ingesta PSCP se pausa antes del merge.
 
 ---
 
@@ -61,40 +63,76 @@ Cambian **las 60.501** filas PSCP, no solo las 20. Hijas por `licitacion_id` /
 (1.350), `licitaciones_duplicados` (54, en `licitacion_id` o `canonical_id`),
 `licitaciones_history`, `licitacion_tecnologia_score`, `contrato_eventos`, y
 **datos de usuario**: `pursuits` (3, una sobre `pscp:Obert`), `user_notifications`
-(5), `contratos_cartera` (1). La migración tiene que recorrer las 25 columnas
-que referencian el id (consulta de abajo), no solo las que hoy tienen filas.
+(5), `contratos_cartera` (1); `licitacion_tecnologia_score` es la grande
+(960.361).
 
-```sql
-SELECT table_name, column_name FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND column_name IN ('licitacion_id', 'id_externo', 'canonical_id');
-```
+## Qué hace v152
 
-## Propuesta (pendiente de OK)
+Ver su docstring. En corto: mapa viejo → nuevo con la misma derivación que el
+conector; aborta sin tocar nada si una clave nueva se repite o ya existe, o si
+una FK a `licitaciones(id_externo)` no está en su lista; copia cada fila con su
+id nuevo, repunta las 27 columnas que guardan el id (17 FK, 7 sin FK y 3
+polimórficas: `follows`, `etiquetas_aplicadas`, `feature_store`), comprueba que
+no queda ninguna referencia vieja y solo entonces borra las filas viejas. Va
+con `row_security = off`: bajo un rol al que la RLS se le aplique falla en vez
+de saltarse filas de otras organizaciones. El `postgres` de Supabase tiene
+`BYPASSRLS` (medido el 2026-10-17) y no lo nota.
 
-1. **Migración de datos** (revisión nueva, append-only), en una transacción:
-   - Mapa viejo → nuevo, con la misma derivación que el conector:
+No limpia los restos de las colisiones (snapshots de `licitaciones_history` y
+eventos `modificacion` de contratos ajenos, p. ej. los 4 de `pscp:Factura` y
+`pscp:FACTURA`): siguen con la fila que los recibió. Si se quieren limpiar es
+una decisión aparte.
+
+Medido en local con volumen de prod (60.500 licitaciones, 968 k
+`licitacion_tecnologia_score`, 58 k adjudicaciones): 52 s. En Supabase, con
+filas más anchas, contar con unos minutos; `migrate.yml` tiene 90.
+
+## Procedimiento
+
+1. **Verificar el supuesto del UUID** (arriba), desde una máquina con salida a
+   la API. Si el UUID cambiara entre fases, parar: la clave nueva partiría cada
+   expediente en una fila por fase.
+2. **Pausar la ingesta PSCP** en todos los planos que la corren:
+   - GitHub Actions (`scrape-daily.yml`): borrar la variable de repo
+     `PSCP_DATASET_ID`. Sin ella el conector se declara `disabled` en
+     `ops_events` y sale en 0.
+   - Worker (`scheduler/jobs/daily_atom.py`, ADR-033) y el reintento de la DLQ
+     (`scheduler/dlq_retry.py`), si están activos: `PSCP_DATASET_ID=""` en su
+     entorno. **Ojo**: sin la variable caen al default de
+     `config/settings.py` (`ybgg-dgi6`) y siguen corriendo; tiene que estar
+     definida y vacía.
+3. **Merge** del PR.
+4. **Migrar**: `gh workflow run migrate.yml` (usa `DATABASE_ADMIN_URL`).
+   - Si aborta con `ya existen con la clave nueva`: algo escribió con el
+     conector nuevo antes de la migración. Esas filas son copias recientes de
+     la fuente que la re-ingesta del paso 7 vuelve a traer, así que se pueden
+     borrar sin perder nada, **salvo** que ya tengan datos de usuario:
      ```sql
-     CREATE TEMP TABLE rekey_pscp AS
-     SELECT id_externo AS viejo,
-            'pscp:' || lower(substring(url from '/detall-publicacio/([0-9a-fA-F-]{36})/'))
-            || coalesce(':' || nullif(substr(id_externo, 6), ''), '') AS nuevo
-     FROM licitaciones WHERE fuente = 'pscp';
+     -- Quién choca y si tiene pursuits/follows (si los tiene, parar y decidir).
+     SELECT l.id_externo,
+            (SELECT count(*) FROM pursuits p WHERE p.licitacion_id = l.id_externo) AS pursuits,
+            (SELECT count(*) FROM follows f WHERE f.target_type = 'licitacion'
+                AND f.target_id = l.id_externo) AS follows
+     FROM licitaciones l
+     WHERE l.fuente = 'pscp' AND l.id_externo ~ '^pscp:[0-9a-f-]{36}(:|$)'
+       AND l.fecha_extraccion >= '<fecha del merge>';
      ```
-     Abortar si algún `nuevo` es `NULL`, se repite o ya existe en `licitaciones`.
-   - Copiar cada fila de `licitaciones` con su id nuevo, repuntar todas las
-     hijas, borrar la vieja. (Copia + repunte en vez de `UPDATE` de la PK: las
-     FK no declaran `ON UPDATE CASCADE`.)
-   - Borrar los `contrato_eventos` `modificacion` de `pscp:Factura` y
-     `pscp:FACTURA`.
-2. **Re-ingesta** para recuperar lo pisado: con la clave nueva, cada contrato
-   vuelve como fila propia. Hace falta pasar por todo el dataset (los pisados
-   tienen marcas `:updated_at` dispersas), p. ej.
-   `python -m scraper.connectors.pscp --desde 2024-01-01`. Avanza por lotes
-   (`cursor_advances_incrementally`), así que puede repartirse en varios runs.
-   Sin el paso 1, esto duplicaría las 60.501 filas.
-3. **Dedupe**: `natural_expediente` y `_EXPEDIENTE_NATURAL_SQL` ya quitan el
-   UUID, así que el emparejamiento PSCP ↔ PLACSP sigue por `codi_expedient`.
+     Borrarlas (`DELETE FROM licitaciones WHERE id_externo IN (...)`) y volver
+     a lanzar la migración.
+   - Si aborta con `row-level security`: migró con un rol sin `BYPASSRLS`.
+     Repetir con `DATABASE_ADMIN_URL`.
+5. **Refrescar `licitaciones_canonicas`**, o la superficie pública seguirá
+   enlazando las claves viejas hasta el próximo `aggregates_precompute`:
+   `python -c "from db.repositories.publico import refrescar_vista_canonicas as r; print(r())"`
+   con el `DATABASE_URL` de producción.
+6. **Reanudar la ingesta**: restaurar `PSCP_DATASET_ID=ybgg-dgi6` en los planos
+   del paso 2.
+7. **Re-ingesta** para recuperar los contratos pisados: con la clave nueva cada
+   uno vuelve como fila propia. Los pisados tienen marcas `:updated_at`
+   dispersas, así que hay que recorrer el dataset entero:
+   `python -m scraper.connectors.pscp --desde 2024-01-01`. El cursor avanza por
+   lotes (`cursor_advances_incrementally`): si la pasada se corta, el paso
+   diario continúa desde donde quedó.
 
 ## Comprobación tras la ventana
 
