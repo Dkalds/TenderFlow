@@ -121,8 +121,10 @@ export function ResumenView() {
           <AtencionCards />
           <ContextoStrip />
           {/* El ritmo del periodo y lo que se movió en él, uno junto al otro; la
-              tabla que los desglosa, debajo y a todo el ancho. */}
-          <div className="mb-3.5 grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+              tabla que los desglosa, debajo y a todo el ancho. Las dos columnas
+              se estiran al mismo alto: el gráfico crece hasta el de los
+              movimientos en vez de dejar un hueco debajo. */}
+          <div className="mb-3.5 grid grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <PublicacionesPanel />
             <EventosFeed />
           </div>
