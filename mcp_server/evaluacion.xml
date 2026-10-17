@@ -33,9 +33,11 @@
 
   <!-- 3. Texto del pliego (buscar_en_pliegos): PCAP de SSCC PA 281/25 (IB-Salut,
        soporte de SAP HCMPSe), apartado «Manipulación de datos»: «Adicionalmente se
-       deducirá el 10% de la factura ... del mes siguiente». -->
+       deducirá el 10% de la factura ... del mes siguiente». La pregunta dice
+       «adicional» porque el incumplimiento muy grave del ANS tiene su propia
+       penalidad (40 %); en la primera pasada a ciegas eso dejó la duda 10/40. -->
   <qa_pair>
-    <question>El servicio de salud de las Islas Baleares licitó a principios de 2026 el soporte y mantenimiento de su sistema de recursos humanos de SAP junto con su migración. Según el pliego de cláusulas, si el servicio detecta que el contratista ha manipulado los datos que falsean los resultados del nivel de servicio, ¿qué porcentaje de la factura del mes siguiente se deduce? Responde solo con el número.</question>
+    <question>El servicio de salud de las Islas Baleares licitó a principios de 2026 el soporte y mantenimiento de su sistema de recursos humanos de SAP junto con su migración. Según el pliego de cláusulas, si el servicio detecta que el contratista ha manipulado los datos que falsean los resultados del nivel de servicio, además de tratarse como incumplimiento muy grave, ¿qué porcentaje adicional de la factura del mes siguiente se deduce? Responde solo con el número.</question>
     <answer>10</answer>
   </qa_pair>
 
@@ -89,9 +91,12 @@
 
   <!-- 10. Adjudicación por lotes: 2026000435 (Principado de Asturias, AsturCon XXI,
        3 lotes), tres filas en adjudicaciones a INETUM ESPAÑA SA:
-       11 782 200 + 1 695 800 + 3 742 000 = 17 220 000. -->
+       11 782 155 + 1 695 800 + 3 742 000 = 17 219 955 (importe_adjudicado es real:
+       el euro exacto no es recuperable, por eso la respuesta va en millones).
+       La primera pasada a ciegas destapó que el MCP enseñaba los real con 6 cifras
+       (11 782 200): extra_float_digits = 0 en Supabase; el rol fija 3. -->
   <qa_pair>
-    <question>El Principado de Asturias licitó en mayo de 2026, en tres lotes, la gestión, el mantenimiento y la evolución de los sistemas de su plataforma de gestión económico-financiera, y los tres lotes los ganó la misma empresa. ¿Cuánto suman los importes adjudicados sin IVA de los tres lotes? Responde en euros, como número entero sin separadores.</question>
-    <answer>17220000</answer>
+    <question>El Principado de Asturias licitó en mayo de 2026, en tres lotes, la gestión, el mantenimiento y la evolución de los sistemas de su plataforma de gestión económico-financiera, y los tres lotes los ganó la misma empresa. ¿Cuánto suman los importes adjudicados sin IVA de los tres lotes? Responde en millones de euros con un decimal y punto decimal (por ejemplo, 3.5).</question>
+    <answer>17.2</answer>
   </qa_pair>
 </evaluation>
