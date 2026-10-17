@@ -1,8 +1,9 @@
 ---
-adr: "015"
+id: ADR-015
 title: Identidad del producto — Tenderflow (plataforma genérica de licitaciones)
 date: 2026-07-04
 status: accepted
+tags: [adr]
 ---
 
 ## Contexto

@@ -292,6 +292,62 @@ class AgentDocsCheckerTests(unittest.TestCase):
 
         self.assertEqual(check_agent_docs.errors, [])
 
+    def test_wikilinks_reject_body_wikilink_with_its_line(self) -> None:
+        _write(
+            self.root / "docs/adr/ADR-001.md",
+            "# ADR-001\n\nVer [[ADR-002-otra|ADR-002]].\n\n![[diagrama]]\n",
+        )
+
+        check_agent_docs.check_wikilinks()
+
+        self.assertEqual(len(check_agent_docs.errors), 2)
+        self.assertTrue(
+            check_agent_docs.errors[0].startswith(
+                "docs/adr/ADR-001.md:3: wikilink en el cuerpo: [[ADR-002-otra|ADR-002]]"
+            )
+        )
+        self.assertTrue(
+            check_agent_docs.errors[1].startswith("docs/adr/ADR-001.md:5: wikilink en el cuerpo")
+        )
+
+    def test_wikilinks_accept_frontmatter_code_and_python_lists(self) -> None:
+        _write(
+            self.root / "docs/adr/ADR-001.md",
+            '---\nrelated:\n  - "[[ADR-002-otra]]"\n---\n\n# ADR-001\n\n'
+            "```md\n[[ejemplo]]\n```\n\n"
+            "Inline: `[[ejemplo]]`.\n\n"
+            "    assert r.filas == [[1]]\n"
+            '    assert r.filas == [["a", "b"]]\n',
+        )
+
+        check_agent_docs.check_wikilinks()
+
+        self.assertEqual(check_agent_docs.errors, [])
+
+    def test_wikilinks_reject_nested_wikilink(self) -> None:
+        _write(self.root / "docs/nota.md", "[ADR-001]([[ADR-001]].md)\n")
+
+        check_agent_docs.check_wikilinks()
+
+        self.assertIn(
+            "docs/nota.md: wikilink anidado dentro de un link markdown: [[ADR-001]].md",
+            check_agent_docs.errors,
+        )
+
+    def test_wikilinks_skip_gitignored_docs(self) -> None:
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        _write(self.root / ".gitignore", "docs/codegraph/\n")
+        _write(self.root / "docs/codegraph/modulo.md", "Importa [[otro_modulo]].\n")
+        _write(self.root / "docs/nota.md", "# Nota\n")
+
+        check_agent_docs.check_wikilinks()
+
+        self.assertEqual(check_agent_docs.errors, [])
+        self.assertEqual(
+            [p.relative_to(self.root).as_posix() for p in check_agent_docs.docs_markdown()],
+            ["docs/nota.md"],
+        )
+
 
 class AgentHookTests(unittest.TestCase):
     def setUp(self) -> None:

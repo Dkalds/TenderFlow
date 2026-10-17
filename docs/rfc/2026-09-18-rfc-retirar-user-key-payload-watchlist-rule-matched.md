@@ -1,7 +1,7 @@
 ---
 rfc: 2026-09-18-retirar-user-key-payload-watchlist-rule-matched
 title: Retirar `user_key` del payload del webhook `watchlist_rule.matched`
-issue: (sin issue: ADR-030 fase 3, T4 del plan de arquitectura 2026-09 v2)
+issue: "(sin issue: ADR-030 fase 3, T4 del plan de arquitectura 2026-09 v2)"
 author: agent:claude-code
 date: 2026-09-18
 status: draft

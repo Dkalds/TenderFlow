@@ -2,7 +2,7 @@
 id: ADR-004
 title: "SQLite + Turso vs PostgreSQL"
 status: superseded
-superseded_by: ADR-016
+superseded_by: "[[ADR-016-destino-persistencia-supabase]]"
 date: 2024-01-01
 deciders: "Daniel Kalitovics"
 tags: [adr]
@@ -49,7 +49,7 @@ optional remote replica for production deployments.
   - SQLite's write concurrency is limited (single writer). Acceptable for the
     scraper-only write pattern (one pipeline run at a time).
   - `ALTER TABLE DROP COLUMN` is unsupported before SQLite 3.35; some migrations
-    are irreversible as a result (see [[ADR-003-migraciones-caseras-plus-alembic|ADR-003]]).
+    are irreversible as a result (see [ADR-003](ADR-003-migraciones-caseras-plus-alembic.md)).
   - Turso adds a managed-service dependency for production; outages affect
     read/write access.
 - **Migration path:** If write concurrency becomes a bottleneck (e.g., multiple

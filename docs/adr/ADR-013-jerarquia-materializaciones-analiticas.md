@@ -2,7 +2,7 @@
 id: ADR-013
 title: "Jerarquía de materializaciones analíticas"
 status: superseded
-superseded_by: ADR-017
+superseded_by: "[[ADR-017-camino-lectura-analitico]]"
 date: 2026-06-10
 deciders: "Daniel Kalitovics"
 related:
@@ -13,16 +13,16 @@ tags: [adr]
 
 # ADR-013 — Jerarquía de materializaciones analíticas
 
-> **Superseded por [[ADR-017-camino-lectura-analitico|ADR-017]] (2026-07-26).**
+> **Superseded por [ADR-017](ADR-017-camino-lectura-analitico.md) (2026-07-26).**
 > Este ADR asume SQLite como motor OLTP y el dashboard Streamlit como
 > consumidor. Ninguna de las dos premisas se sostiene tras el cutover a
 > Postgres (ADR-016) y la retirada de `dashboard/` (ADR-002). Se conserva como
 > registro histórico; el camino de lectura vigente está en ADR-017.
 
-* **Estado:** Superseded por [[ADR-017-camino-lectura-analitico|ADR-017]] (2026-07-26)
+* **Estado:** Superseded por [ADR-017](ADR-017-camino-lectura-analitico.md) (2026-07-26)
 * **Fecha:** 2026-06-10
 * **Deciders:** Daniel Kalitovics
-* **Relacionados:** [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (SQLite/Turso), [[ADR-012-plano-unico-orquestacion|ADR-012]] (pipeline canónica)
+* **Relacionados:** [ADR-004](ADR-004-sqlite-turso-vs-postgres.md) (SQLite/Turso), [ADR-012](ADR-012-plano-unico-orquestacion.md) (pipeline canónica)
 
 ## Contexto
 
@@ -30,7 +30,7 @@ Coexisten tres mecanismos de materialización analítica sin jerarquía definida
 
 | Materialización | Motor | Refresh | Consumidores |
 |---|---|---|---|
-| KPI snapshots (`kpi_snapshots`) | SQLite directo | Pipeline canónica ([[ADR-012-plano-unico-orquestacion|ADR-012]]) | `dashboard/kpi_bar.py` |
+| KPI snapshots (`kpi_snapshots`) | SQLite directo | Pipeline canónica ([ADR-012](ADR-012-plano-unico-orquestacion.md)) | `dashboard/kpi_bar.py` |
 | Aggregates (`mat_clusters`, `mat_top_empresas_ccaa`) | SQLite directo | Pipeline canónica | `dashboard/clustering.py`, `dashboard/data_loader.py` |
 | DuckDB analytics export | DuckDB ATTACH + Parquet | Opcional (`--export-parquet`) | Análisis offline |
 
@@ -54,7 +54,7 @@ SQLite (OLTP) ──[pipeline canónica]──> KPI snapshots (SQLite, caché co
 
 2. **Parquet = snapshot offline canónico.** Producido por `run_analytics_export()`
    en la pipeline canónica. Es la única salida para análisis fuera del sistema
-   (notebooks, BI tools). El manifest de linaje ([[086-linaje-analitico-parquet-manifest|RFC-086]]) documenta qué datos
+   (notebooks, BI tools). El manifest de linaje ([RFC-086](../rfc/086-linaje-analitico-parquet-manifest.md)) documenta qué datos
    contiene y cuándo se generó.
 
 3. **DuckDB = motor opcional para exports Parquet pesados.** No es un read path
@@ -66,7 +66,7 @@ SQLite (OLTP) ──[pipeline canónica]──> KPI snapshots (SQLite, caché co
 - El dashboard **nunca** lee DuckDB ni Parquet directamente. Lee de
   `kpi_snapshots` y `mat_*` (via `services/` per §3.8).
 - Un consumidor externo lee de Parquet. Nunca de `kpi_snapshots` SQLite.
-- El único job que materializa es la pipeline canónica ([[ADR-012-plano-unico-orquestacion|ADR-012]]). No hay
+- El único job que materializa es la pipeline canónica ([ADR-012](ADR-012-plano-unico-orquestacion.md)). No hay
   materialización fuera de `_run_post_ingestion_steps()`.
 
 ## Consecuencias

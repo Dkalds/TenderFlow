@@ -15,12 +15,12 @@ superseded_reason: >
 
 ## Contexto
 
-[[ADR-004-sqlite-turso-vs-postgres|ADR-004]] eligió SQLite/Turso sobre Postgres bajo una premisa explícita: **un solo
+[ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md) eligió SQLite/Turso sobre Postgres bajo una premisa explícita: **un solo
 writer** (el pipeline del scraper, un run a la vez). Esa premisa **ya no se
 cumple**, y el propio ADR lo reconoce en el bloque "Migration Tripwires (added
 2026-06-10)":
 
-> *"The original 'single writer' assumption from [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] no longer holds; these
+> *"The original 'single writer' assumption from [ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md) no longer holds; these
 > tripwires provide a proactive migration signal instead of reacting to incidents."*
 
 Writers concurrentes hoy: scraper pipeline, scheduler (KPI/aggregates/drift),
@@ -40,7 +40,7 @@ El problema: **la detección está, pero la decisión sigue diferida**. Cuando s
 el tripwire, alguien (el mantenedor, solo) tendrá que *diseñar* la migración bajo
 presión de incidente — porting de FTS5→`pg_trgm`, recableado del pool, estrategia
 de doble escritura/corte, validación de paridad — que es precisamente cuando peor
-se diseña. Y el vector de presión va a crecer: [[ADR-009-framework-conectores-multifuente|ADR-009]] ya metió 3 conectores
+se diseña. Y el vector de presión va a crecer: [ADR-009](../adr/ADR-009-framework-conectores-multifuente.md) ya metió 3 conectores
 nuevos (`ted`, `pscp`, `tacrc`) que escriben vía `run_connector`, y las fases
 autonómicas siguientes suman más writers concurrentes.
 
@@ -58,7 +58,7 @@ ejecutable y validado en un spike, materializado en tres entregables:
    - **(a) Postgres managed** (Supabase/Neon) como OLTP único.
    - **(b) Separación de planos**: mantener SQLite/Turso como caché OLTP de lectura
      y mover *solo el plano de escritura analítico/concurrente* a Postgres, o
-     descargar lo analítico a Parquet/DuckDB read-only (coherente con [[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]], que
+     descargar lo analítico a Parquet/DuckDB read-only (coherente con [ADR-013](../adr/ADR-013-jerarquia-materializaciones-analiticas.md), que
      ya define SQLite=caché OLTP / Parquet=snapshot / DuckDB=motor opcional).
    - El ADR fija **un** destino con su rationale, no deja la disyuntiva abierta.
 
@@ -85,7 +85,7 @@ La detección ya existe; lo que falta es que el disparo encuentre el plan hecho.
 - **No** se toca `db/alembic/**` con migraciones nuevas de producción (el spike
   vive en branch; requiere OK humano de todas formas, AGENTS.md §6).
 - **No** se retiran los tripwires ni se relajan umbrales — siguen siendo el gatillo.
-- **No** se cambia [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (sigue Accepted); ADR-015 lo *extiende* con el plan de
+- **No** se cambia [ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md) (sigue Accepted); ADR-015 lo *extiende* con el plan de
   salida, no lo revierte.
 
 ## Alternativas consideradas
@@ -95,7 +95,7 @@ La detección ya existe; lo que falta es que el disparo encuentre el plan hecho.
 | Status quo (solo tripwires) | Cero trabajo ahora | El diseño de la migración ocurre bajo incidente, que es cuando peor sale | Es la situación actual; el RFC existe para superarla |
 | Migrar a Postgres ya, preventivo | Elimina el riesgo de raíz | Coste/ops innecesario hoy; los tripwires no han disparado; contradice "medir antes de actuar" | Sobredimensionado sin señal real |
 | Solo el ADR de destino, sin spike | Barato | El porting de FTS5 es la incógnita real; un ADR sin validarlo es papel | Deja el riesgo técnico sin despejar |
-| Separar writers para forzar single-writer otra vez | Salva [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] sin cambiar motor | Reintroduce acoplamiento; serializa la API tras el scraper; frágil | Trata el síntoma, no escala con multi-fuente |
+| Separar writers para forzar single-writer otra vez | Salva [ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md) sin cambiar motor | Reintroduce acoplamiento; serializa la API tras el scraper; frágil | Trata el síntoma, no escala con multi-fuente |
 
 ## Impacto en invariantes (AGENTS.md §3)
 
@@ -112,7 +112,7 @@ La detección ya existe; lo que falta es que el disparo encuentre el plan hecho.
 ## Plan de implementación
 
 1. `docs/adr/ADR-015-destino-migracion-persistencia.md` — decidir y justificar
-   destino (a/b). Referencia cruzada a [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] y [[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]].
+   destino (a/b). Referencia cruzada a [ADR-004](../adr/ADR-004-sqlite-turso-vs-postgres.md) y [ADR-013](../adr/ADR-013-jerarquia-materializaciones-analiticas.md).
 2. Branch `spike/persistence-postgres` — levantar destino, `alembic upgrade head`
    contra Postgres, port FTS5→`pg_trgm`, test de paridad de búsqueda sobre dataset
    fijo. **Sin merge.**

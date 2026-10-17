@@ -1,7 +1,7 @@
 ---
 rfc: 2026-09-03-retirada-exports-asincronos
 title: Retirada de los tres endpoints de export asíncrono y de su almacén en memoria
-issue: (sin issue: decisión D7 del plan de arquitectura 2026-09)
+issue: "(sin issue: decisión D7 del plan de arquitectura 2026-09)"
 author: agent:claude-code
 date: 2026-09-03
 status: implemented

@@ -161,7 +161,7 @@ opcionalmente, exponer `degree` ya presente.
 |---|---|---|
 | §3.1 Typing strict | `PartnerNode.community` nuevo; props de `NetworkGraph` tipadas | Tipar; regenerar `@/generated/api` |
 | §3.5 Pydantic v2 DTOs | **Aditivo**: `community: int \| None` en `PartnerNode` | Campo opcional, backward-compatible |
-| §3.8 Frontend vía API / [[ADR-014-integridad-analitica-frontend|ADR-014]] | **Refuerza**: comunidades y color-map salen del backend/escala, no del front; se elimina el color hardcodeado de la leyenda | `check_frontend_invariants.py` (synthetic-graph sigue 0) |
+| §3.8 Frontend vía API / [ADR-014](../adr/ADR-014-integridad-analitica-frontend.md) | **Refuerza**: comunidades y color-map salen del backend/escala, no del front; se elimina el color hardcodeado de la leyenda | `check_frontend_invariants.py` (synthetic-graph sigue 0) |
 | §3.3 Migraciones | Ninguno (no hay esquema nuevo; se calcula al vuelo) | — |
 | §3.2 / §3.4 / §3.6 | Ninguno | — |
 
@@ -195,7 +195,7 @@ opcionalmente, exponer `degree` ya presente.
 - `web/src/components/charts/force-graph.tsx` (retirado) (reescritura)
 - `web/src/app/(dashboard)/red-organo-empresa/page.tsx` (retirado) (graphNodes/links, leyenda, drill-down)
 - `web/src/app/(dashboard)/ecosistema-partners/page.tsx` (retirado) (graph, `_highlighted`, drill-down)
-- [`services/partners.py`](../../services/partners.py:19) (`build_partnership_graph` + community)
+- [`services/partners.py`](../../services/partners.py) (`build_partnership_graph` + community)
 - `services/analytics/ecosistema_partners.py` (retirado) (`PartnerNode.community`)
 - RFCs previos: `2026-06-16-rfc-ux-red-organo-empresa.md`, `2026-06-16-rfc-ux-ecosistema-partners.md`
 

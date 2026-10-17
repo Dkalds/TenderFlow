@@ -4,7 +4,7 @@ title: "Plano único de orquestación por entorno + convergencia de entrypoints"
 status: accepted
 date: 2026-06-10
 deciders: "Daniel Kalitovics"
-superseded_parcialmente_por: ADR-028
+superseded_parcialmente_por: "[[ADR-028-cola-de-trabajo-y-worker]]"
 related:
   - "[[ADR-028-cola-de-trabajo-y-worker]]"
   - "[[ADR-004-sqlite-turso-vs-postgres]]"
@@ -15,13 +15,13 @@ tags: [adr]
 
 # ADR-012 — Plano único de orquestación por entorno + convergencia de entrypoints
 
-* **Estado:** Aceptado — **parcialmente superado** por [[ADR-028-cola-de-trabajo-y-worker|ADR-028]]: la regla «un solo plano por
+* **Estado:** Aceptado — **parcialmente superado** por [ADR-028](ADR-028-cola-de-trabajo-y-worker.md): la regla «un solo plano por
   entorno» gobierna el **cron**; el trabajo *a demanda* corre en un segundo
   plano (`worker`) disjunto por tipo de job.
 * **Fecha:** 2026-06-10
 * **Deciders:** Daniel Kalitovics
-* **Relacionados:** [[ADR-004-sqlite-turso-vs-postgres|ADR-004]] (SQLite/Turso, supuesto single-writer), [[ADR-007-services-domain-layer|ADR-007]]
-  (capa `services/`), [[086-linaje-analitico-parquet-manifest|RFC-086]] (linaje analítico — flaggeó el drift de `run_update.py`)
+* **Relacionados:** [ADR-004](ADR-004-sqlite-turso-vs-postgres.md) (SQLite/Turso, supuesto single-writer), [ADR-007](ADR-007-services-domain-layer.md)
+  (capa `services/`), [RFC-086](../rfc/086-linaje-analitico-parquet-manifest.md) (linaje analítico — flaggeó el drift de `run_update.py`)
 
 ## Contexto
 

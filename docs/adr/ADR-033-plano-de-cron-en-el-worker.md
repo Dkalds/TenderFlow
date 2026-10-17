@@ -1,3 +1,16 @@
+---
+id: ADR-033
+title: "Plano de cron dentro del worker de Render"
+status: accepted
+date: 2026-09-14
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-012-plano-unico-orquestacion]]"
+  - "[[ADR-028-cola-de-trabajo-y-worker]]"
+  - "[[ADR-019-observabilidad-desplegada]]"
+tags: [adr]
+---
+
 # ADR-033 — Plano de cron dentro del worker de Render
 
 - **Estado:** aceptado, **enmendado el 2026-10-10** (ver [Enmienda](#enmienda-2026-10-10-lo-que-el-worker-no-hacía-igual-que-actions)).

@@ -1,7 +1,7 @@
 ---
 rfc: 2026-09-19-retirada-endpoints-watchlist
 title: Retirada de los endpoints antiguos de seguimiento (favoritos, empresas vigiladas y descartes) en favor de `/follows`
-issue: (sin issue: T1 del plan de arquitectura 2026-09 v2, ADR-031 §B fase 3)
+issue: "(sin issue: T1 del plan de arquitectura 2026-09 v2, ADR-031 §B fase 3)"
 author: agent:claude-code
 date: 2026-09-19
 status: draft

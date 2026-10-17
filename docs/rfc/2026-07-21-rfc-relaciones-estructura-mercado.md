@@ -67,7 +67,7 @@ de mercado orientada a preguntas"**. El grafo se **degrada a ego-network** (una
 entidad + sus vecinos — el único caso donde un node-link es legible) y el peso
 analítico se mueve a métricas que hoy faltan y son lo más valioso del dato:
 concentración/incumbencia, rankings y drill-down. Todo el cálculo nuevo va en
-**backend** ([[ADR-014-integridad-analitica-frontend|ADR-014]]).
+**backend** ([ADR-014](../adr/ADR-014-integridad-analitica-frontend.md)).
 
 ### A. Backend (aditivo)
 

@@ -1,3 +1,18 @@
+---
+id: ADR-026
+title: "Caminos de lectura analítica y precedencia de la señal tecnológica"
+status: accepted
+date: 2026-09-03
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-023-computo-en-vivo-agregacion-sql]]"
+  - "[[ADR-013-jerarquia-materializaciones-analiticas]]"
+  - "[[ADR-017-camino-lectura-analitico]]"
+  - "[[ADR-022-frontera-de-persistencia]]"
+  - "[[ADR-024-services-biblioteca-no-frontera]]"
+tags: [adr]
+---
+
 # ADR-026 — Caminos de lectura analítica y precedencia de la señal tecnológica
 
 - **Estado:** aceptado

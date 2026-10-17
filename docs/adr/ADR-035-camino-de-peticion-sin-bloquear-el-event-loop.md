@@ -1,3 +1,16 @@
+---
+id: ADR-035
+title: "El camino de cada petición no bloquea el event loop: cuota en Redis por defecto, ETag al cachear y consulta cancelada como 503"
+status: accepted
+date: 2026-09-25
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-006-etag-pdf-export-ratelimit-redis]]"
+  - "[[ADR-025-construccion-de-sql-y-pools]]"
+  - "[[ADR-034-rls-por-tenant]]"
+tags: [adr]
+---
+
 # ADR-035 — El camino de cada petición no bloquea el event loop: cuota en Redis por defecto, ETag al cachear y consulta cancelada como 503
 
 - **Estado:** aceptado

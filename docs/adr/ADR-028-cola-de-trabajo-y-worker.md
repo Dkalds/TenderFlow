@@ -1,3 +1,16 @@
+---
+id: ADR-028
+title: "Cola de trabajo y worker: un plano de cron, un plano de trabajo a demanda"
+status: accepted
+date: 2026-09-06
+deciders: "Daniel Kalitovics"
+related:
+  - "[[ADR-012-plano-unico-orquestacion]]"
+  - "[[ADR-022-frontera-de-persistencia]]"
+  - "[[ADR-027-backbone-de-eventos-outbox]]"
+tags: [adr]
+---
+
 # ADR-028 — Cola de trabajo y worker: un plano de cron, un plano de trabajo a demanda
 
 - **Estado:** aceptado
