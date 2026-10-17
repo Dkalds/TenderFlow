@@ -11,9 +11,9 @@ from db.repositories.base import ambito_agenda_sql, rows_to_dicts
 from db.sql_fragments import FOLD_TABLE, empresa_key_sql, escape_like, fold_expr, iso_guard
 
 # El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
-# numero)`` y no por un id guardado: ``db/upsert.py::replace_lotes`` borra y
-# reinserta los lotes del expediente en cada re-ingesta, así que sus ids cambian
-# y sólo el número sobrevive (ver el docstring de la revisión ``v110``). Un lote
+# numero)`` y no por un id guardado: hasta 2026-10 ``db/upsert.py::replace_lotes``
+# borraba y reinsertaba los lotes en cada re-ingesta, así que solo el número
+# sobrevivía, y las oportunidades ya guardadas persisten número (``v110``). Un lote
 # que el pliego deja de publicar da ``lote_id``/``lote_titulo`` NULL sin tocar
 # la oportunidad, que conserva el número para el que se abrió.
 _PURSUIT_SELECT = (
