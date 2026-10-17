@@ -114,8 +114,9 @@ export function ContextoStrip() {
         </StatStrip>
       )}
       {/* Los dos cortes del ámbito que filtran al pulsarlos: lado a lado desde
-          `xl`, apilados por debajo. */}
-      <div className="mt-2.5 grid grid-cols-1 items-start gap-2.5 xl:grid-cols-2">
+          `xl`, apilados por debajo, y estirados al mismo alto para que sus
+          bordes casen. */}
+      <div className="mt-2.5 grid grid-cols-1 gap-2.5 xl:grid-cols-2">
         <ComposicionPanel />
         <ComunidadesPanel />
       </div>

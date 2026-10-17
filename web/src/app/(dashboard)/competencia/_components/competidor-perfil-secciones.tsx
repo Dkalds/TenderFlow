@@ -18,25 +18,10 @@ import type { Schemas } from "@/lib/api-types";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import { cn, formatNumber, formatPercent } from "@/lib/utils";
 
-import { buildCasillas } from "../_hooks/casillas-ccaa";
+import { buildCasillas, COLUMNA_CASILLA, FILA_CASILLA, PASO_CASILLA } from "../_hooks/casillas-ccaa";
 import { Muestra } from "./dibujos";
 
 /* ── Dónde gana ─────────────────────────────────────────────────────── */
-
-/** Clase de cada paso de intensidad; el más alto invierte el texto. */
-const PASO_CASILLA = [
-  "border border-border/60 text-muted-foreground",
-  "bg-primary/10",
-  "bg-primary/20",
-  "bg-primary/35",
-  "bg-primary/50",
-  "bg-primary/90 text-primary-foreground",
-];
-
-// Las clases de posición van escritas enteras: Tailwind no ve una clase que se
-// compone en ejecución.
-const COLUMNA = ["", "col-start-1", "col-start-2", "col-start-3", "col-start-4", "col-start-5", "col-start-6", "col-start-7"];
-const FILA = ["", "row-start-1", "row-start-2", "row-start-3", "row-start-4", "row-start-5"];
 
 /** Cuántas comunidades se nombran en el pie del mapa. */
 const CCAA_EN_PIE = 3;
@@ -81,8 +66,8 @@ export function DondeGana({
                 <span
                   className={cn(
                     "grid place-items-center rounded-sm text-tf-micro font-medium",
-                    COLUMNA[casilla.columna],
-                    FILA[casilla.fila],
+                    COLUMNA_CASILLA[casilla.columna],
+                    FILA_CASILLA[casilla.fila],
                     PASO_CASILLA[casilla.paso],
                   )}
                 >
