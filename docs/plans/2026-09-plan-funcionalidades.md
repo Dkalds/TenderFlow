@@ -40,6 +40,11 @@ de AGENTS.md §6 marcados **[§6]** salvo lo que D39 pre-autoriza.
 > sí (`POST /licitaciones/comparar` en `api/routes/licitaciones/ficha.py`), pero
 > `/ask` sigue aceptando un solo `id_externo`, así que la pregunta cruzada no
 > tiene ni backend ni UI.
+>
+> *Estado (2026-10-17):* las dos excepciones de la nota anterior ya no lo son.
+> **F1.4** tiene backend: `tasas_anulacion_organo` (v141) alimenta
+> `FLAG_ANULACION` en `services/analytics/scoring.py`. **F2.8** acepta varios
+> expedientes: `AskRequest.ids_externos` (hasta tres) en `api/routes/ask.py`.
 
 ## 0. Alcance y método
 

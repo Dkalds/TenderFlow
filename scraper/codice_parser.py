@@ -109,6 +109,30 @@ def _int(elem: Any, xpath: str) -> int | None:
         return None
 
 
+# Dónde dice un `cac:TenderResult` a qué lote corresponde, en orden de
+# preferencia. CODICE de PLACSP lo publica dentro del proyecto adjudicado
+# (`AwardedTenderedProject/cbc:ProcurementProjectLotID`). La primera versión del
+# parser solo leía la tercera forma —un wrapper "X + Reference" al estilo de las
+# *DocumentReference— porque se escribió contra un fixture sintético, y en
+# producción ninguna de las 1.619 adjudicaciones de expedientes multilote
+# (medido el 2026-10-17) resolvió su lote. Se conservan las otras dos formas:
+# leerlas no cuesta nada y un expediente que las use no debe perder el dato.
+_XPATHS_LOTE_RESULTADO = (
+    "./cac:AwardedTenderedProject/cbc:ProcurementProjectLotID",
+    "./cac:AwardedTenderedProject/cac:ProcurementProjectLot/cbc:ID",
+    "./cac:ProcurementProjectLotReference/cbc:ID",
+)
+
+
+def _lote_del_resultado(tr: Any) -> str | None:
+    """Número del lote al que corresponde un ``cac:TenderResult``, o ``None``."""
+    for xpath in _XPATHS_LOTE_RESULTADO:
+        numero = _text(tr, xpath)
+        if numero and numero.strip():
+            return numero.strip()
+    return None
+
+
 def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
     """Extrae todas las adjudicaciones (TenderResult+WinningParty) de una entry."""
     cfs = "./cacext:ContractFolderStatus"
@@ -117,11 +141,10 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
     for tr in results:
         result_code = _text(tr, "./cbc:ResultCode")
         result_desc = _text(tr, "./cbc:Description")
-        # Referencia UBL estándar al lote (mismo shape que las *DocumentReference
-        # de más abajo: un wrapper "X + Reference" con cbc:ID). Ausente en
-        # expedientes de lote único -- lote_numero_raw queda None, resuelto a
-        # lote_id=None (lote único implícito) en el punto de persistencia.
-        lote_numero = _text(tr, "./cac:ProcurementProjectLotReference/cbc:ID")
+        # Ausente en expedientes de lote único -- lote_numero_raw queda None,
+        # resuelto a lote_id=None (lote único implícito) en el punto de
+        # persistencia. Ver `_lote_del_resultado` para las formas que se leen.
+        lote_numero = _lote_del_resultado(tr)
         award_date = to_iso_date(_text(tr, "./cbc:AwardDate"))
         n_ofertas = _int(tr, "./cbc:ReceivedTenderQuantity")
         oferta_min = _float(tr, "./cbc:LowerTenderAmount")
