@@ -9684,6 +9684,11 @@ export interface components {
         };
         /** HealthResponse */
         HealthResponse: {
+            /**
+             * Commit
+             * @default unknown
+             */
+            commit: string;
             /** Db */
             db: string;
             /** Disk */
