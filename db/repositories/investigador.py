@@ -176,6 +176,7 @@ def anuncios_por_terminos(
     *,
     limit: int,
     recientes: bool = False,
+    acentuadas: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
     """Anuncios que casan con alguno de ``terminos``, los más completos primero.
 
@@ -193,6 +194,11 @@ def anuncios_por_terminos(
 
     Con ``recientes`` van primero los que casan con todos y, dentro, los de
     publicación más reciente.
+
+    ``acentuadas`` trae, alineada con ``terminos``, la forma con la tilde
+    probable de cada uno (``""`` si no hay): el término casa con cualquiera de
+    las dos, porque sin tilde el diccionario saca otra raíz
+    (``services.investigador.consulta.forma_acentuada``).
 
     Cada fila trae ``cobertura`` (términos que casan), ``n_terminos``,
     ``ausentes`` (los que no) y ``extracto`` (con :data:`MARCA_INICIO` y
@@ -222,8 +228,13 @@ def anuncios_por_terminos(
     sql = f"""
         WITH terminos AS MATERIALIZED (
             SELECT min(u.o) AS ord, min(u.t) AS termino, lex::text AS lex_txt
-            FROM unnest(%s::text[]) WITH ORDINALITY AS u(t, o)
-            CROSS JOIN LATERAL plainto_tsquery('spanish', u.t) AS lex
+            FROM unnest(%s::text[], %s::text[]) WITH ORDINALITY AS u(t, a, o)
+            CROSS JOIN LATERAL (
+                SELECT CASE WHEN u.a <> ''
+                    THEN plainto_tsquery('spanish', u.t) || plainto_tsquery('spanish', u.a)
+                    ELSE plainto_tsquery('spanish', u.t)
+                END AS lex
+            ) x
             WHERE numnode(lex) > 0
             GROUP BY lex::text
         ),
@@ -273,7 +284,15 @@ def anuncios_por_terminos(
     """
     with connect_read() as c:
         cur = c.execute(
-            sql, [list(terminos), *valores, limit, _OPCIONES_TITULO, _OPCIONES_EXTRACTO]
+            sql,
+            [
+                list(terminos),
+                _alineadas(acentuadas, len(terminos)),
+                *valores,
+                limit,
+                _OPCIONES_TITULO,
+                _OPCIONES_EXTRACTO,
+            ],
         )
         return rows_to_dicts(cur)
 
@@ -338,10 +357,25 @@ def anuncios_por_expresion(
         return rows_to_dicts(cur)
 
 
-def _tsquery_de_pasaje(expresion: bool) -> str:
-    """La tsquery de un pasaje: la expresión tal cual, o todos los términos."""
+def _alineadas(acentuadas: Sequence[str], n: int) -> list[str]:
+    """``acentuadas`` con un valor por término: ``""`` donde no hay o falta."""
+    lista = [a or "" for a in acentuadas][:n]
+    return lista + [""] * (n - len(lista))
+
+
+def _tsquery_de_pasaje(
+    texto: str, *, expresion: bool, acentuado: str | None
+) -> tuple[str, list[str]]:
+    """``(tsquery, params)`` de un pasaje: la expresión tal cual, o todos los términos.
+
+    Con ``acentuado`` (los mismos términos con la tilde probable) vale
+    cualquiera de las dos frases: el fragmento que escribe «instalación»
+    también responde a «instalacion».
+    """
     funcion = "websearch_to_tsquery" if expresion else "plainto_tsquery"
-    return f"{funcion}('spanish', %s)"
+    if acentuado and not expresion:
+        return f"({funcion}('spanish', %s) || {funcion}('spanish', %s))", [texto, acentuado]
+    return f"{funcion}('spanish', %s)", [texto]
 
 
 def licitaciones_con_pasaje(
@@ -349,6 +383,7 @@ def licitaciones_con_pasaje(
     ambito: Ambito,
     *,
     expresion: bool = False,
+    acentuado: str | None = None,
     limite_pasajes: int = 2000,
     limit: int = 50,
 ) -> list[tuple[str, int]]:
@@ -376,7 +411,7 @@ def licitaciones_con_pasaje(
     if not texto.strip():
         return []
     clausulas, valores = ambito.sql("l")
-    tsq = _tsquery_de_pasaje(expresion)
+    tsq, valores_tsq = _tsquery_de_pasaje(texto, expresion=expresion, acentuado=acentuado)
     join_ambito = "JOIN licitaciones l ON l.id_externo = d.licitacion_id " if clausulas else ""
     sql = f"""
         SELECT m.licitacion_id, count(*) AS pasajes
@@ -394,12 +429,12 @@ def licitaciones_con_pasaje(
         LIMIT %s
     """
     with connect_read() as c:
-        filas = c.execute(sql, [texto, *valores, limite_pasajes, limit]).fetchall()
+        filas = c.execute(sql, [*valores_tsq, *valores, limite_pasajes, limit]).fetchall()
     return [(str(f[0]), int(f[1])) for f in filas]
 
 
 def mejores_pasajes(
-    ids: Sequence[str], texto: str, *, expresion: bool = False
+    ids: Sequence[str], texto: str, *, expresion: bool = False, acentuado: str | None = None
 ) -> dict[str, dict[str, Any]]:
     """El mejor fragmento de pliego de cada expediente de ``ids`` para ``texto``.
 
@@ -412,7 +447,7 @@ def mejores_pasajes(
     """
     if not ids or not texto.strip():
         return {}
-    tsq = _tsquery_de_pasaje(expresion)
+    tsq, valores_tsq = _tsquery_de_pasaje(texto, expresion=expresion, acentuado=acentuado)
     sql = f"""
         WITH mejores AS (
             SELECT DISTINCT ON (d.licitacion_id)
@@ -429,7 +464,9 @@ def mejores_pasajes(
         JOIN documento_chunks dc ON dc.id = m.chunk_id
     """
     with connect_read() as c:
-        cur = c.execute(sql, [list(ids), texto, texto, texto, _OPCIONES_EXTRACTO])
+        cur = c.execute(
+            sql, [list(ids), *valores_tsq, *valores_tsq, *valores_tsq, _OPCIONES_EXTRACTO]
+        )
         filas = rows_to_dicts(cur)
     return {str(f["licitacion_id"]): f for f in filas}
 

@@ -410,6 +410,64 @@ _ORGANO_RE = re.compile(
 _PALABRA_ORGANO_RE = re.compile(r" (?P<p>[a-z0-9][a-z0-9'·-]*)(?![a-z0-9'·-])")
 
 
+# ── Tilde probable ───────────────────────────────────────────────────────────
+
+#: Terminaciones que en español llevan tilde (casi) siempre, y en las que la
+#: tilde cambia la raíz del diccionario: el lematizador solo corta «-ción» o
+#: «-ía» si llevan tilde. «instalación» se indexa ``instal`` e «instalacion»
+#: ``instalacion``; «energía» ``energ`` y «energia» ``energi`` (medido en
+#: producción el 2026-10-17). Sin la tilde, la palabra no casaba con los
+#: anuncios que sí la escriben. Las «-ia» van solo con los sufijos que la llevan
+#: siempre («-ería», «-logía», «-grafía»...) y unas pocas palabras: «historia»
+#: con tilde sería ``histor``, la raíz de «histórico», y traería ruido.
+_TILDE_PROBABLE = (
+    (re.compile(r"cion$"), "ción"),
+    (
+        re.compile(
+            r"(er|log|graf|fon|nom|metr|^auditor|^consultor|^asesor|^polic|^cirug|^energ)ia(s?)$"
+        ),
+        r"\1ía\2",
+    ),
+)
+#: «-eria» sin tilde: la regla de arriba se equivocaría con ellas.
+_SIN_TILDE = frozenset(
+    [
+        "materia",
+        "materias",
+        "feria",
+        "ferias",
+        "arteria",
+        "arterias",
+        "bacteria",
+        "bacterias",
+        "histeria",
+        "miseria",
+        "serie",
+        "seria",
+        "serias",
+        "periferia",
+        "criteria",
+        "iberia",
+        "siberia",
+    ]
+)
+
+
+def forma_acentuada(termino: str) -> str | None:
+    """``termino`` con la tilde que casi seguro le falta, o ``None``.
+
+    Solo para palabras escritas sin ninguna tilde: si ya trae una, es la que
+    quiso escribir quien busca.
+    """
+    if termino != _plegar(termino) or termino in _SIN_TILDE:
+        return None
+    for patron, reemplazo in _TILDE_PROBABLE:
+        acentuada = patron.sub(reemplazo, termino)
+        if acentuada != termino:
+            return acentuada
+    return None
+
+
 @dataclass(frozen=True)
 class ConsultaInterpretada:
     """Lo que se entendió de una consulta: filtros, términos y orden."""
@@ -456,6 +514,26 @@ class ConsultaInterpretada:
             or self.procedimiento
             or self.organo
         )
+
+    @property
+    def acentuadas(self) -> tuple[str, ...]:
+        """Por cada término, su forma con la tilde probable, o ``""`` si no hay.
+
+        El motor busca las dos formas (:func:`forma_acentuada`): sin la tilde,
+        «instalacion» no casaba con los anuncios que escriben «instalación».
+        """
+        return tuple(forma_acentuada(t) or "" for t in self.terminos)
+
+    @property
+    def texto_acentuado(self) -> str | None:
+        """``texto`` con la tilde probable en cada término, si alguno la tiene.
+
+        Para los pliegos, que exigen todos los términos en el mismo fragmento:
+        se busca ``texto`` o esto. Con operadores manda la expresión escrita.
+        """
+        if self.con_operadores or not any(self.acentuadas):
+            return None
+        return " ".join(a or t for t, a in zip(self.terminos, self.acentuadas, strict=True))
 
     @property
     def tiene_texto(self) -> bool:

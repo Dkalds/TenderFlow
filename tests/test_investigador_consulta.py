@@ -15,6 +15,7 @@ from services.investigador.consulta import (
     ALIAS_CCAA,
     MAX_TERMINOS,
     ConsultaInterpretada,
+    forma_acentuada,
     interpretar,
 )
 from shared.geo import NUTS3_TO_CCAA
@@ -524,3 +525,58 @@ class TestOrgano:
 
         assert r.organo == ()
         assert "valencia" in r.terminos
+
+
+class TestTildeProbable:
+    @pytest.mark.parametrize(
+        ("termino", "acentuada"),
+        [
+            ("instalacion", "instalación"),
+            ("depuracion", "depuración"),
+            ("energia", "energía"),
+            ("energias", "energías"),
+            ("tecnologia", "tecnología"),
+            ("ingenierias", "ingenierías"),
+            ("cartografia", "cartografía"),
+            ("telefonia", "telefonía"),
+            ("auditoria", "auditoría"),
+            ("consultorias", "consultorías"),
+        ],
+    )
+    def test_la_tilde_que_casi_seguro_falta(self, termino: str, acentuada: str) -> None:
+        assert forma_acentuada(termino) == acentuada
+
+    @pytest.mark.parametrize(
+        "termino",
+        [
+            # La tilde no cambia la raíz: no hace falta otra forma.
+            "instalaciones",
+            "gestion",
+            "camion",
+            # «-ia» sin tilde, o con una tilde que traería ruido («histor»).
+            "licencia",
+            "farmacia",
+            "historia",
+            "convocatoria",
+            "materia",
+            "periferia",
+            # Ya trae tilde: es la que se quiso escribir.
+            "instalación",
+            "energía",
+        ],
+    )
+    def test_sin_forma_acentuada(self, termino: str) -> None:
+        assert forma_acentuada(termino) is None
+
+    def test_la_consulta_las_alinea_con_sus_terminos(self) -> None:
+        r = _i("instalacion de placas solares para energia")
+
+        assert r.terminos == ("instalacion", "placas", "solares", "energia")
+        assert r.acentuadas == ("instalación", "", "", "energía")
+        assert r.texto_acentuado == "instalación placas solares energía"
+
+    def test_sin_tilde_probable_no_hay_texto_acentuado(self) -> None:
+        assert _i("mantenimiento de ascensores").texto_acentuado is None
+
+    def test_con_operadores_manda_la_expresion(self) -> None:
+        assert _i('"instalacion electrica" -baja').texto_acentuado is None

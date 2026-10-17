@@ -520,3 +520,41 @@ class TestOrganoDeLaFrase:
         )
 
         assert sorted(ids) == ["O-BCN", "O-VLC"]
+
+
+class TestTildeProbable:
+    """Quien no escribe la tilde encuentra lo que sí la lleva."""
+
+    @pytest.fixture()
+    def con_tildes(self, tmp_db):
+        _sembrar(
+            {
+                "id_externo": "T-INSTALACION",
+                "titulo": "Instalación de placas fotovoltaicas",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-01",
+            },
+            {
+                "id_externo": "T-ENERGIA",
+                "titulo": "Suministro de energía eléctrica",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-02",
+            },
+            {
+                "id_externo": "T-PLIEGO",
+                "titulo": "Obras en el colegio",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-03",
+            },
+        )
+        _sembrar_pasaje("T-PLIEGO", "Incluye la depuración de aguas residuales del centro.")
+
+    def test_el_anuncio_casa_sin_la_tilde(self, con_tildes):
+        assert _ids(_buscar("instalacion fotovoltaica")) == ["T-INSTALACION"]
+        assert _ids(_buscar("energia")) == ["T-ENERGIA"]
+
+    def test_el_pliego_casa_sin_la_tilde(self, con_tildes):
+        assert "T-PLIEGO" in _ids(_buscar("depuracion de aguas"))
+
+    def test_con_la_tilde_sigue_casando(self, con_tildes):
+        assert _ids(_buscar("instalación fotovoltaica")) == ["T-INSTALACION"]
