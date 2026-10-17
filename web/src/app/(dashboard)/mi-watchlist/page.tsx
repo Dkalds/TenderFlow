@@ -46,6 +46,7 @@ export default function MiWatchlistPage() {
               <NuevaReglaCard
                 form={w.nueva}
                 ccaaList={w.ccaaList}
+                procedimientoList={w.procedimientoList}
                 open={w.formOpen}
                 onToggle={() => w.setFormOpen((o) => !o)}
               />
@@ -67,6 +68,7 @@ export default function MiWatchlistPage() {
                 rule={w.editingRule}
                 ccaaList={w.ccaaList}
                 tecnologiaList={w.tecnologiaList}
+                procedimientoList={w.procedimientoList}
                 onClose={() => w.setEditingRule(null)}
                 onSave={w.saveEdit}
                 saving={w.savingEdit}

@@ -97,7 +97,7 @@ def corpus(tmp_db):
                 "ccaa": "Madrid",
                 "estado": "PUB",
                 "tecnologia": "SAP,SALESFORCE",
-                "procedimiento": "abierto",
+                "procedimiento": "01",
                 "tipo_contrato": "servicios",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _EN_UN_MES,
@@ -113,7 +113,7 @@ def corpus(tmp_db):
                 "ccaa": "Madrid",
                 "estado": "ADJ",
                 "tecnologia": "SAP",
-                "procedimiento": "abierto",
+                "procedimiento": "1",
                 "tipo_contrato": "servicios",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _EN_UN_MES,
@@ -129,7 +129,7 @@ def corpus(tmp_db):
                 "ccaa": "Aragon",
                 "estado": "PUB",
                 "tecnologia": "SAP",
-                "procedimiento": "negociado",
+                "procedimiento": "3",
                 "tipo_contrato": "servicios",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _AYER,
@@ -145,7 +145,7 @@ def corpus(tmp_db):
                 "ccaa": "Madrid",
                 "estado": "PUB",
                 "tecnologia": "OTROS",
-                "procedimiento": "abierto",
+                "procedimiento": "1",
                 "tipo_contrato": "suministros",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _MANANA,
@@ -197,10 +197,10 @@ def test_los_criterios_nuevos_a_none_no_estrechan_nada(corpus):
         WatchlistRule(keyword="SAP"),
         WatchlistRule(tecnologia="SAP"),
         WatchlistRule(organo="Ayuntamiento de Alcañiz"),
-        WatchlistRule(procedimiento="abierto"),
+        WatchlistRule(procedimiento="1"),
         WatchlistRule(tipo_contrato="servicios"),
         WatchlistRule(plazo_min_dias=10),
-        WatchlistRule(keyword="SAP", tecnologia="SAP", procedimiento="abierto"),
+        WatchlistRule(keyword="SAP", tecnologia="SAP", procedimiento="1"),
     ],
 )
 def test_preview_y_matches_dan_el_mismo_total(corpus, regla):
@@ -236,8 +236,29 @@ def test_organo_casa_pese_a_la_tilde_y_a_la_caja(corpus):
 
 
 def test_procedimiento_y_tipo_de_contrato_filtran(corpus):
-    assert _ids(WatchlistRule(procedimiento="negociado")) == {"S4-SAP-SIN-PLAZO"}
+    assert _ids(WatchlistRule(procedimiento="3")) == {"S4-SAP-SIN-PLAZO"}
     assert _ids(WatchlistRule(tipo_contrato="suministros")) == {"S4-OTRA-TECNOLOGIA"}
+
+
+def test_el_procedimiento_es_el_codigo_sin_ceros(corpus):
+    """La columna guarda el código CODICE (``01`` o ``1``), no la palabra: una
+    regla «abierto» no casaba con nada y la alerta no avisaba nunca."""
+    abiertos = {"S4-SAP-MADRID", "S4-SAP-CERRADA", "S4-OTRA-TECNOLOGIA"}
+    assert _ids(WatchlistRule(procedimiento="1")) == abiertos
+    assert _ids(WatchlistRule(procedimiento="01")) == abiertos
+
+
+def test_el_organo_casa_por_palabras_como_en_el_investigador(corpus):
+    """Lo que se escribe no es el nombre exacto de la fuente: «Diputación
+    Provincial de Teruel» es la «Diputación de Teruel», y el órgano de una
+    regla creada desde el Investigador casa con las mismas filas."""
+    assert _ids(WatchlistRule(organo="Diputación Provincial de Teruel")) == {"S4-SAP-SIN-PLAZO"}
+    assert _ids(WatchlistRule(organo="Ajuntament d'Alcañiz")) == {
+        "S4-SAP-MADRID",
+        "S4-SAP-CERRADA",
+        "S4-OTRA-TECNOLOGIA",
+    }
+    assert _ids(WatchlistRule(organo="Ayuntamiento de Teruel")) == set()
 
 
 def test_plazo_min_dias_descarta_lo_que_vence_antes(corpus):
@@ -284,7 +305,7 @@ def test_los_seis_criterios_sobreviven_al_crud(corpus, duenya):
         keyword="SAP",
         tecnologia="SAP",
         organo="Ayuntamiento de Alcañiz",
-        procedimiento="abierto",
+        procedimiento="1",
         tipo_contrato="servicios",
         banda_min="Tibia",
         plazo_min_dias=15,
@@ -293,7 +314,7 @@ def test_los_seis_criterios_sobreviven_al_crud(corpus, duenya):
     guardada = next(r for r in list_rules("uk-s4", org_id) if r.id == rule_id)
     assert guardada.tecnologia == "SAP"
     assert guardada.organo == "Ayuntamiento de Alcañiz"
-    assert guardada.procedimiento == "abierto"
+    assert guardada.procedimiento == "1"
     assert guardada.tipo_contrato == "servicios"
     assert guardada.banda_min == "Tibia"
     assert guardada.plazo_min_dias == 15

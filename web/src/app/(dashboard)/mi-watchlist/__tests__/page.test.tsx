@@ -3,8 +3,9 @@ import { render, screen, within, fireEvent, waitFor } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+const { busqueda } = vi.hoisted(() => ({ busqueda: { params: new URLSearchParams() } }));
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => busqueda.params,
   // La página limpia `?baja=<n>` tras avisar de la baja de correos.
   useRouter: () => ({ replace: vi.fn() }),
 }));
@@ -40,7 +41,9 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
  * crudo con credentials:"include" contra la API real, no el cliente OpenAPI. */
 function mockFetchRouter(handlers: {
   onPut?: (id: number, body: unknown) => void;
+  onPost?: (body: Record<string, unknown>) => void;
   rules?: typeof RULE[];
+  meta?: Record<string, unknown>;
 }) {
   const rules = handlers.rules ?? [RULE, RULE_NO_EMAIL];
   vi.stubGlobal(
@@ -51,13 +54,14 @@ function mockFetchRouter(handlers: {
         return jsonResponse({ items: rules });
       }
       if (url === "/api/v1/watchlist/rules" && method === "POST") {
+        handlers.onPost?.(init?.body ? JSON.parse(init.body as string) : {});
         return jsonResponse({ id: 99 });
       }
       if (url.startsWith("/api/v1/watchlist/rules/") && url.endsWith("/matches")) {
         return jsonResponse({ items: [] });
       }
       if (url === "/api/v1/meta/filters") {
-        return jsonResponse({ ccaas: ["Madrid", "Cataluna"] });
+        return jsonResponse(handlers.meta ?? { ccaas: ["Madrid", "Cataluna"] });
       }
       if (url === "/api/v1/watchlist/rules/preview" && method === "POST") {
         // Forma de `PreviewResult` (F5.5): ocho semanas, antiguas primero.
@@ -103,6 +107,7 @@ function renderPage() {
 }
 
 afterEach(() => {
+  busqueda.params = new URLSearchParams();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -204,5 +209,46 @@ describe("MiWatchlistPage — alta con vista previa de ruido (F5.5)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Añadir regla/ }));
     await waitFor(() => expect(registrarEvento).toHaveBeenCalledWith("regla_creada", expect.anything()));
     expect(registrarEvento.mock.calls[0][1]).not.toHaveProperty("ruido_avisado");
+  });
+});
+
+describe("MiWatchlistPage — alta desde el Investigador", () => {
+  const PREFILL = { q: "limpieza", organo: "Ayuntamiento de Valencia", procedimiento: "6" };
+  const META = {
+    ccaa: ["Madrid"],
+    procedimiento: [{ codigo: "6", etiqueta: "Contrato menor", descripcion: "" }],
+  };
+
+  it("enseña el órgano y el procedimiento que trae, y los guarda con la regla", async () => {
+    busqueda.params = new URLSearchParams({ prefill: JSON.stringify(PREFILL) });
+    const onPost = vi.fn();
+    mockFetchRouter({ onPost, meta: META });
+    renderPage();
+
+    expect(await screen.findByText("Órgano: Ayuntamiento de Valencia")).toBeInTheDocument();
+    expect(await screen.findByText("Procedimiento: Contrato menor")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Añadir regla/ }));
+    await waitFor(() => expect(onPost).toHaveBeenCalled());
+    expect(onPost.mock.calls[0][0]).toMatchObject({
+      keyword: "limpieza",
+      organo: "Ayuntamiento de Valencia",
+      procedimiento: "6",
+    });
+    // La siguiente regla no los hereda.
+    await waitFor(() => expect(screen.queryByText(/Además filtra por/)).toBeNull());
+  });
+
+  it("«Quitar» los deja fuera de la regla", async () => {
+    busqueda.params = new URLSearchParams({ prefill: JSON.stringify(PREFILL) });
+    const onPost = vi.fn();
+    mockFetchRouter({ onPost, meta: META });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Quitar" }));
+    expect(screen.queryByText(/Además filtra por/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Añadir regla/ }));
+    await waitFor(() => expect(onPost).toHaveBeenCalled());
+    expect(onPost.mock.calls[0][0]).toMatchObject({ keyword: "limpieza", organo: null, procedimiento: null });
   });
 });

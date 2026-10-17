@@ -128,6 +128,7 @@ def preparar(
         cierre_desde=consulta.cierre_desde,
         cierre_hasta=consulta.cierre_hasta,
         procedimiento=consulta.procedimiento,
+        organo=consulta.organo,
     )
     return consulta, ambito
 
@@ -159,6 +160,8 @@ def filtros_de_fusion(ambito: Ambito) -> dict[str, Any]:
         filtros["cierre_hasta"] = ambito.cierre_hasta
     if ambito.procedimiento:
         filtros["procedimiento"] = list(ambito.procedimiento)
+    if ambito.organo:
+        filtros["organo"] = list(ambito.organo)
     return filtros
 
 
@@ -228,7 +231,11 @@ def _pasajes_seguro(
     """
     try:
         return repo.licitaciones_con_pasaje(
-            consulta.texto, ambito, expresion=consulta.con_operadores, limit=limit
+            consulta.texto,
+            ambito,
+            expresion=consulta.con_operadores,
+            acentuado=consulta.texto_acentuado,
+            limit=limit,
         )
     except Exception:
         log.warning("investigador.pasajes_failed", exc_info=True)
@@ -239,7 +246,12 @@ def _mejores_seguro(ids: list[str], consulta: ConsultaInterpretada) -> dict[str,
     if not ids:
         return {}
     try:
-        return repo.mejores_pasajes(ids, consulta.texto, expresion=consulta.con_operadores)
+        return repo.mejores_pasajes(
+            ids,
+            consulta.texto,
+            expresion=consulta.con_operadores,
+            acentuado=consulta.texto_acentuado,
+        )
     except Exception:
         log.warning("investigador.mejores_pasajes_failed", exc_info=True)
         return {}
@@ -263,7 +275,11 @@ def _por_texto(
         )
     else:
         anuncios = repo.anuncios_por_terminos(
-            consulta.terminos, ambito, limit=top_k, recientes=recientes
+            consulta.terminos,
+            ambito,
+            limit=top_k,
+            recientes=recientes,
+            acentuadas=consulta.acentuadas,
         )
     pasajes = _pasajes_seguro(consulta, ambito, top_k) if con_pliegos else []
 

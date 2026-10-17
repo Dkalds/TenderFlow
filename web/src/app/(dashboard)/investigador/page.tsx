@@ -83,6 +83,8 @@ export default function InvestigadorPage() {
                   ccaa: inv.filtros.ccaa?.length ? inv.filtros.ccaa : (inv.interpretacion?.ccaa ?? []),
                   tecnologia: inv.filtros.tecnologia ?? [],
                   importeMin: inv.interpretacion?.importe_min,
+                  organo: inv.interpretacion?.organo,
+                  procedimiento: inv.interpretacion?.procedimiento,
                 })}
                 hayFiltrosEntendidos={entendido.length > 0}
                 hayAmbito={inv.activeSearchFilters.length > 0}

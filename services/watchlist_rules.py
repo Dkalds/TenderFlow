@@ -23,7 +23,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import and_, bindparam, func, literal_column, or_, select, text
+from sqlalchemy import ColumnElement, and_, bindparam, func, literal_column, or_, select, text
 
 from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
@@ -33,7 +33,7 @@ from db.repositories.watchlist_rules import (
     daily_match_counts,
     matches_pendientes,
 )
-from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard
+from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard, palabras_de_organo
 from services.dedupe import normalize_organo
 from shared.dto import RadarBanda
 from shared.estados import abierta_core
@@ -340,7 +340,14 @@ def _clausula_tecnologia(tecnologia: str) -> Any:
 
 
 def _clausula_organo(organo_norm: str) -> Any:
-    """Órgano por coincidencia sobre la forma plegada de los dos lados.
+    """Órgano por las palabras de su nombre, plegadas en los dos lados.
+
+    Casa si el órgano contiene **cada** palabra que distingue al de la regla
+    (:func:`db.sql_fragments.palabras_de_organo`): «Diputación de Granada»
+    avisa de lo de la «Diputación Provincial de Granada», y «Ayuntamiento de
+    Barcelona» de lo del «Ajuntament de Barcelona». Es el mismo criterio que el
+    órgano de la frase del Investigador, desde donde se crean reglas con un
+    clic: la regla avisa de lo que la búsqueda enseñaba.
 
     El needle ya viene normalizado con ``services/dedupe.normalize_organo``
     (sin acentos, sin formas societarias, en minúsculas) y la columna se pliega
@@ -359,10 +366,35 @@ def _clausula_organo(organo_norm: str) -> Any:
     parámetro anónimo del texto de la columna —tildes y comillas incluidas— y
     ``compile_query`` no lo encuentra al ordenar los posicionales.
     """
-    patron = f"%{escape_like(organo_norm.translate(FOLD_TABLE))}%"
-    return literal_column(fold_expr("licitaciones.organo_contratacion")).like(
-        bindparam("wr_organo", patron, unique=True)
+    plegado: ColumnElement[str] = literal_column(fold_expr("licitaciones.organo_contratacion"))
+    palabras = palabras_de_organo(organo_norm) or [(organo_norm.translate(FOLD_TABLE),)]
+    return and_(
+        *(
+            or_(
+                *(
+                    plegado.like(bindparam("wr_organo", f"%{escape_like(v)}%", unique=True))
+                    for v in variantes
+                )
+            )
+            for variantes in palabras
+        )
     )
+
+
+def _clausula_procedimiento(procedimiento: str) -> Any:
+    """El código CODICE de la regla contra la columna, sin ceros a la izquierda.
+
+    La fuente publica ``01`` y ``1`` para el mismo procedimiento; el filtro del
+    listado y el del Investigador ya comparan así
+    (``db.repositories.base.ambito_busqueda_sql``), y una regla creada desde
+    una búsqueda tiene que casar con las mismas filas.
+    """
+    limpio = procedimiento.strip()
+    codigo = str(int(limpio)) if limpio.isdigit() else limpio
+    columna = func.coalesce(
+        func.nullif(func.ltrim(func.trim(licitaciones.c.procedimiento), "0"), ""), "0"
+    )
+    return columna == bindparam("wr_procedimiento", codigo, unique=True)
 
 
 def _clausulas_universo_puntuable(hoy_iso: str | None) -> list[Any]:
@@ -427,7 +459,7 @@ def _rule_clauses(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list[An
     if organo_norm:
         clauses.append(_clausula_organo(organo_norm))
     if rule.procedimiento:
-        clauses.append(licitaciones.c.procedimiento == rule.procedimiento)
+        clauses.append(_clausula_procedimiento(rule.procedimiento))
     if rule.tipo_contrato:
         clauses.append(licitaciones.c.tipo_contrato == rule.tipo_contrato)
     if rule.plazo_min_dias is not None:

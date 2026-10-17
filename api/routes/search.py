@@ -239,6 +239,10 @@ class Interpretacion(BaseModel):
         default_factory=list,
         description="Las etiquetas legibles de `procedimiento`, en el mismo orden.",
     )
+    organo: list[str] = Field(
+        default_factory=list,
+        description="Órganos de contratación nombrados en la frase, como se escribieron.",
+    )
     orden: Literal["relevancia", "recientes"]
 
     @classmethod
@@ -256,6 +260,7 @@ class Interpretacion(BaseModel):
             cierre_hasta=consulta.cierre_hasta,
             procedimiento=list(consulta.procedimiento),
             procedimiento_etiquetas=[etiqueta_procedimiento(c) for c in consulta.procedimiento],
+            organo=list(consulta.organo),
             orden=consulta.orden,
         )
 

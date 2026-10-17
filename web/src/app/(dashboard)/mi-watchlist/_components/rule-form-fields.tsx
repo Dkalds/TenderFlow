@@ -37,9 +37,9 @@ import {
   BANDA_OPTIONS,
   FREQ_NOTE,
   FREQ_OPTIONS,
-  PROCEDIMIENTO_OPTIONS,
   TIPO_CONTRATO_OPTIONS,
 } from "../_hooks/watchlist-rule-options";
+import type { OpcionCodificada } from "../_hooks/use-mi-watchlist";
 import type { Frequency, RuleFormState } from "../_hooks/watchlist-rule-types";
 
 /** Valor del `Select` que significa «sin filtro». Radix no admite `""`. */
@@ -52,6 +52,18 @@ function opcionesConVacio(valores: string[]): { value: string; label: string }[]
   ];
 }
 
+/**
+ * Las opciones de procedimiento: código CODICE como valor y etiqueta del
+ * catálogo como texto. Si la regla guarda un valor que el catálogo no trae
+ * (una regla anterior al catálogo, o el catálogo aún sin llegar) se ofrece tal
+ * cual: un `Select` con un valor sin opción se pinta vacío y parece «Cualquiera».
+ */
+function opcionesDeProcedimiento(catalogo: OpcionCodificada[], actual: string) {
+  const opciones = catalogo.map((o) => ({ value: o.codigo, label: o.etiqueta }));
+  if (actual && !opciones.some((o) => o.value === actual)) opciones.push({ value: actual, label: actual });
+  return [{ value: SIN_FILTRO, label: "Cualquiera" }, ...opciones];
+}
+
 /** Mensaje de error por campo, ya resuelto por el esquema. */
 export type RuleFormErrors = Partial<Record<keyof RuleFormState, string>>;
 
@@ -61,6 +73,7 @@ export function RuleFormFields({
   errores = {},
   ccaaList,
   tecnologiaList = [],
+  procedimientoList = [],
   idPrefix,
 }: {
   value: RuleFormState;
@@ -69,6 +82,8 @@ export function RuleFormFields({
   ccaaList: string[];
   /** Catálogo de `/meta/filters`; vacío mientras carga o si la API falla. */
   tecnologiaList?: string[];
+  /** Catálogo CODICE de `/meta/filters`; vacío mientras carga o si la API falla. */
+  procedimientoList?: OpcionCodificada[];
   idPrefix: string;
 }) {
   return (
@@ -157,7 +172,7 @@ export function RuleFormFields({
             <SelectValue placeholder="Cualquiera" />
           </SelectTrigger>
           <SelectContent>
-            {opcionesConVacio(PROCEDIMIENTO_OPTIONS).map((o) => (
+            {opcionesDeProcedimiento(procedimientoList, value.procedimiento).map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>

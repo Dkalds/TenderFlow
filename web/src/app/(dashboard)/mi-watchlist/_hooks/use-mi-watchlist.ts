@@ -27,9 +27,16 @@ import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
+import type { Schemas } from "@/lib/api-types";
 import { watchlistKeys } from "@/lib/query-keys";
 import { parsePrefill, prefillToFormState } from "./use-watchlist-rules";
-import { cuerpoDeNuevaRegla, ruidoAvisado, usePreviewRegla } from "./use-preview-regla";
+import {
+  type CriteriosDelPrefill,
+  cuerpoDeNuevaRegla,
+  ruidoAvisado,
+  useCriteriosDelPrefill,
+  usePreviewRegla,
+} from "./use-preview-regla";
 import { activeRulesOf, dedupeMatches } from "./watchlist-matches";
 import { ccaaOptions } from "./watchlist-rule-options";
 import type { ApiRule, MatchItem, RuleBody } from "./watchlist-rule-types";
@@ -38,6 +45,9 @@ import type { ApiRule, MatchItem, RuleBody } from "./watchlist-rule-types";
 const RULES_KEY = "/api/v1/watchlist/rules";
 
 export type WatchlistTab = "reglas" | "favoritos";
+
+/** Una opción de lista controlada de `/meta/filters` (código + etiqueta). */
+export type OpcionCodificada = Schemas["OpcionCodificada"];
 
 /**
  * Vuelta del enlace de baja del correo.
@@ -89,6 +99,9 @@ export interface NuevaReglaForm {
   /** F5.5 — valida y pide la vista previa de ruido de lo escrito. */
   probar: () => void;
   preview: ReturnType<typeof usePreviewRegla>;
+  /** Lo que trajo el prefill sin campo en el alta rápida; se guarda con la regla. */
+  criteriosDelPrefill: CriteriosDelPrefill;
+  quitarCriteriosDelPrefill: () => void;
 }
 
 export interface MiWatchlistState {
@@ -100,6 +113,8 @@ export interface MiWatchlistState {
   ccaaList: string[];
   /** Catálogo de tecnologías para el criterio de S4.4; vacío si meta falla. */
   tecnologiaList: string[];
+  /** Catálogo CODICE de procedimientos (`/meta/filters`); vacío si meta falla. */
+  procedimientoList: OpcionCodificada[];
   rules: ApiRule[] | undefined;
   ruleCount: number;
   rulesLoading: boolean;
@@ -147,6 +162,8 @@ export function useMiWatchlist(): MiWatchlistState {
       frequency: prefilled.frequency,
     },
   });
+  // Se vacían al crear la regla: la siguiente que se escriba no los hereda.
+  const [criteriosDelPrefill, vaciarCriteriosDelPrefill] = useCriteriosDelPrefill(prefilled);
   const [formOpen, setFormOpen] = useState(true);
   const [editingRule, setEditingRule] = useState<ApiRule | null>(null);
 
@@ -173,6 +190,7 @@ export function useMiWatchlist(): MiWatchlistState {
   const { data: meta } = useMetaFilters();
   const ccaaList = ccaaOptions(meta?.ccaa);
   const tecnologiaList = meta?.tecnologia ?? [];
+  const procedimientoList = meta?.procedimiento ?? [];
 
   /* ---- Mutations ---- */
   const invalidate = () => qc.invalidateQueries({ queryKey: watchlistKeys.rules });
@@ -210,16 +228,17 @@ export function useMiWatchlist(): MiWatchlistState {
   // guardará (`cuerpoDeNuevaRegla`).
   const previewNueva = usePreviewRegla();
   const crear = (valores: NuevaReglaValores) => {
-    const body = cuerpoDeNuevaRegla(valores, prefilled.tecnologia);
+    const body = cuerpoDeNuevaRegla(valores, criteriosDelPrefill);
     createMut.mutate({ body, ruido: ruidoAvisado(previewNueva, body) });
     nuevaForm.reset(NUEVA_VACIA);
+    vaciarCriteriosDelPrefill();
     previewNueva.reset();
   };
   // `handleSubmit` dentro del evento, no al renderizar (compilador de React).
   const submit = () => void nuevaForm.handleSubmit(crear)();
   const probarNueva = () =>
     void nuevaForm.handleSubmit((valores) =>
-      previewNueva.mutate(cuerpoDeNuevaRegla(valores, prefilled.tecnologia)),
+      previewNueva.mutate(cuerpoDeNuevaRegla(valores, criteriosDelPrefill)),
     )();
 
   const activeRules = useMemo(() => activeRulesOf(rules), [rules]);
@@ -254,11 +273,14 @@ export function useMiWatchlist(): MiWatchlistState {
       creating: createMut.isPending,
       probar: probarNueva,
       preview: previewNueva,
+      criteriosDelPrefill,
+      quitarCriteriosDelPrefill: () => (vaciarCriteriosDelPrefill(), previewNueva.reset()),
     },
     formOpen,
     setFormOpen,
     ccaaList,
     tecnologiaList,
+    procedimientoList,
     rules,
     ruleCount: rules?.length ?? 0,
     rulesLoading,

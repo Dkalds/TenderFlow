@@ -53,6 +53,7 @@ export function chipsDeInterpretacion(interpretacion: Interpretacion | null | un
   }
 
   for (const etiqueta of interpretacion.procedimiento_etiquetas ?? []) chips.push(`Procedimiento: ${etiqueta}`);
+  for (const organo of interpretacion.organo ?? []) chips.push(`Órgano: ${organo}`);
 
   if (interpretacion.orden === "recientes") chips.push("Más recientes primero");
   return chips;
@@ -80,24 +81,32 @@ export function textoBuscado(interpretacion: Interpretacion | null | undefined, 
  *
  * Reutiliza el `?prefill=` que ya usa la paleta («Crear regla con estos
  * filtros»): mismas claves, mismo formulario, y la vista previa de cuánto
- * avisaría antes de guardar nada. La regla admite una comunidad y una
- * tecnología; con varias va la primera, que es lo que hace también la paleta.
+ * avisaría antes de guardar nada. La regla admite una comunidad, una
+ * tecnología y un órgano; con varios va el primero, que es lo que hace también
+ * la paleta. El procedimiento va solo si es uno: «procedimiento negociado» son
+ * dos códigos, y quedarse con uno haría la alerta más estrecha que la búsqueda.
  */
 export function enlaceDeAlerta({
   texto,
   ccaa,
   tecnologia,
   importeMin,
+  organo = [],
+  procedimiento = [],
 }: {
   texto: string;
   ccaa: readonly string[];
   tecnologia: readonly string[];
   importeMin: number | null | undefined;
+  organo?: readonly string[];
+  procedimiento?: readonly string[];
 }): string {
   const prefill: Record<string, string> = {};
   if (texto.trim()) prefill.q = texto.trim();
   if (ccaa.length > 0) prefill.ccaa = ccaa.join(",");
   if (tecnologia.length > 0) prefill.tecnologia = tecnologia.join(",");
   if (importeMin != null) prefill.importe_min = String(importeMin);
+  if (organo.length > 0) prefill.organo = organo[0];
+  if (procedimiento.length === 1) prefill.procedimiento = procedimiento[0];
   return `/mi-watchlist?prefill=${encodeURIComponent(JSON.stringify(prefill))}`;
 }

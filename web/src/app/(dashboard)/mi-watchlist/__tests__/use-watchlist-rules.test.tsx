@@ -187,7 +187,7 @@ describe("tieneCriterio", () => {
     ["ccaa", "Madrid"],
     ["tecnologia", "SAP"],
     ["organo", "Ayuntamiento"],
-    ["procedimiento", "abierto"],
+    ["procedimiento", "1"],
     ["tipo_contrato", "servicios"],
     ["banda_min", "Caliente"],
     ["plazo_min_dias", "15"],
@@ -244,6 +244,13 @@ describe("prefillToFormState", () => {
     // tiene, y perderla haría que la regla naciera más ancha que lo que el
     // usuario estaba mirando cuando pulsó «crear regla».
     expect(prefillToFormState({ tecnologia: "SAP,SALESFORCE" }).tecnologia).toBe("SAP");
+  });
+
+  it("el órgano y el procedimiento del Investigador llegan sin trocear", () => {
+    // Un nombre de órgano puede llevar comas: el Investigador ya manda uno solo.
+    const form = prefillToFormState({ organo: "Ayuntamiento de Valencia, Distrito 3", procedimiento: "6" });
+    expect(form.organo).toBe("Ayuntamiento de Valencia, Distrito 3");
+    expect(form.procedimiento).toBe("6");
   });
 });
 

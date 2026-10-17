@@ -151,8 +151,11 @@ export function prefillToFormState(
     // El ámbito global también trae tecnología: llega con el mismo nombre que
     // usa el resto de la consola, así que se prefija igual que la CCAA.
     tecnologia: prefill?.tecnologia?.split(",")[0] ?? "",
-    organo: "",
-    procedimiento: "",
+    // Del Investigador: el órgano y el procedimiento entendidos en la frase.
+    // Llegan ya de uno en uno (`enlaceDeAlerta`): un nombre de órgano puede
+    // llevar comas, así que aquí no se trocea.
+    organo: prefill?.organo ?? "",
+    procedimiento: prefill?.procedimiento ?? "",
     tipo_contrato: "",
     banda_min: "",
     plazo_min_dias: "",
