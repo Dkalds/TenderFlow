@@ -16,6 +16,17 @@ from scraper.connectors.pscp import PscpConnector, _fase_to_estado, _field, _num
 # ---------------------------------------------------------------------------
 
 
+#: UUID de la ficha PSCP de los registros de prueba: el conector acota con él
+#: el `codi_expedient` (ver `_natural_id`).
+_UUID = "6f1c2a3b-0d4e-4f5a-9b8c-7d6e5f4a3b2c"
+_FICHA = f"https://contractaciopublica.cat/ca/detall-publicacio/{_UUID}/300000001"
+
+
+def _nid(expediente: str) -> str:
+    """Id natural que el fetch deriva de un registro de `_pscp_record`."""
+    return f"{_UUID}:{expediente}"
+
+
 def _pscp_record():
     # Nombres de campo del dataset real ybgg-dgi6 (probe del 2026-06-11)
     return {
@@ -29,7 +40,7 @@ def _pscp_record():
         "codi_nuts": "ES511",
         "tipus_contracte": "Serveis",
         "fase_publicacio": "Anunci de licitació",
-        "enllac_publicacio": {"url": "https://contractaciopublica.cat/ca/detall/123"},
+        "enllac_publicacio": {"url": _FICHA},
     }
 
 
@@ -48,7 +59,7 @@ def test_pscp_parse_anuncio_licitacion():
     assert lic.cpv == "72000000"  # primer CPV de la lista
     assert lic.fecha_publicacion == "2026-05-20"
     assert lic.fecha_limite == "2026-06-15"
-    assert lic.url == "https://contractaciopublica.cat/ca/detall/123"
+    assert lic.url == _FICHA
     assert lic.nuts_code == "ES511"  # codi_nuts real de la fila
     assert lic.ccaa == "Cataluña"
     assert "SAP" in (lic.tecnologia or "")  # char_wb detecta SAP en catalán
@@ -204,7 +215,7 @@ def test_pscp_fetch_pagina_y_avanza_cursor():
 
     notices = list(connector.fetch({"last_seen_updated": "2026-05-21"}))
 
-    assert [n.natural_id for n in notices] == ["CTTI-2026-00123", "X-2"]
+    assert [n.natural_id for n in notices] == [_nid("CTTI-2026-00123"), _nid("X-2")]
     # Cursor completo (timestamp + id), NO truncado a fecha (fix 2026-07-12).
     assert connector.new_cursor() == {
         "last_seen_updated": "2026-05-22T09:00:00.000Z",
@@ -268,7 +279,7 @@ def test_pscp_fetch_pagina_multiple_usa_cursor_no_offset(monkeypatch):
 
     notices = list(connector.fetch({"last_seen_updated": "2026-05-21"}))
 
-    assert [n.natural_id for n in notices] == ["CTTI-2026-00123", "X-2", "X-3"]
+    assert [n.natural_id for n in notices] == [_nid("CTTI-2026-00123"), _nid("X-2"), _nid("X-3")]
     assert len(session.calls) == 2
     for call in session.calls:
         assert "$offset" not in call
@@ -324,7 +335,7 @@ def test_pscp_cursor_avanza_entre_runs_con_timestamps_repetidos(monkeypatch):
     session1 = FakeSession(pages=[[rec_a, rec_b]])
     connector1 = PscpConnector(dataset_id="abcd-1234", session=session1)
     notices1 = list(connector1.fetch({"last_seen_updated": "2026-06-19"}))
-    assert [n.natural_id for n in notices1] == ["A", "B"]
+    assert [n.natural_id for n in notices1] == [_nid("A"), _nid("B")]
     cursor_after_run1 = connector1.new_cursor()
     assert cursor_after_run1 == {"last_seen_updated": same_stamp, "last_entry_id": "id-b"}
 
@@ -338,7 +349,7 @@ def test_pscp_cursor_avanza_entre_runs_con_timestamps_repetidos(monkeypatch):
     # idéntico al run 1, re-pidiendo A y B para siempre.
     assert f":updated_at = '{same_stamp}'" in where_run2
     assert ":id > 'id-b'" in where_run2
-    assert [n.natural_id for n in notices2] == ["C"]
+    assert [n.natural_id for n in notices2] == [_nid("C")]
 
 
 # ── C4.1 / D24: el conector acota al universo tecnológico ───────────────────
@@ -753,7 +764,7 @@ def test_un_tropiezo_en_una_pagina_se_reintenta_sin_perder_ni_repetir_avisos(esp
 
     avisos = [n.natural_id for n in conector.fetch({"last_seen_updated": "2026-07-13"})]
 
-    assert avisos == ["A", "B", "C", "D", "E"]
+    assert avisos == [_nid("A"), _nid("B"), _nid("C"), _nid("D"), _nid("E")]
     # El reintento pide la MISMA página: la paginación es por cursor y el cursor
     # no se mueve hasta que la página se ha servido entera.
     assert len(sesion.calls) == 4
@@ -779,7 +790,7 @@ def test_un_fallo_que_no_cede_agota_los_intentos_y_sale_el_error_original(espera
     assert fallo.value is caida
     assert len(sesion.calls) == 1 + 4
     # Lo servido antes de la caída ya salió, y el cursor se queda en ello.
-    assert vistos == ["A", "B"]
+    assert vistos == [_nid("A"), _nid("B")]
     assert conector.new_cursor() == _cursor_en("B")
 
 
@@ -898,7 +909,7 @@ def test_la_pasada_con_un_timeout_puntual_termina_bien_y_escribe_cada_aviso_una_
     assert pasada.ejecutar(sesion) == 0
 
     escritos = [id_externo for lote in pasada.lotes for id_externo in lote]
-    assert escritos == ["pscp:A", "pscp:B", "pscp:C", "pscp:D", "pscp:E"]
+    assert escritos == [f"pscp:{_nid(x)}" for x in "ABCDE"]
     assert pasada.fallos == []
     assert pasada.cursores[-1] == _cursor_en("E")
 
@@ -921,5 +932,155 @@ def test_la_pasada_con_la_fuente_caida_sigue_fallando_y_conserva_lo_ya_escrito(p
 
     assert len(sesion.calls) == 2 + 4
     assert pasada.fallos == [("fetch", _READ_TIMEOUT)]
-    assert pasada.lotes == [["pscp:A", "pscp:B", "pscp:C"]]
+    assert pasada.lotes == [[f"pscp:{_nid(x)}" for x in "ABC"]]
     assert pasada.cursores == [_cursor_en("C")]
+
+
+# ---------------------------------------------------------------------------
+# id_externo estable: `codi_expedient` acotado por la ficha PSCP
+# ---------------------------------------------------------------------------
+
+_FICHA_CLINIC = (
+    "https://contractaciopublica.cat/ca/detall-publicacio/"
+    "38d06b2c-6449-44f1-b47f-60ef10cc0ff6/300017093"
+)
+
+
+def _ficha(uuid: str, publicacion: str = "300000001") -> dict:
+    return {"url": f"https://contractaciopublica.cat/ca/detall-publicacio/{uuid}/{publicacion}"}
+
+
+def _registro_clinic(**cambios):
+    """La fila que acabó en prod como ``pscp:Obert`` (extraída el 2026-09-27).
+
+    `codi_expedient` es texto libre que teclea cada órgano: el Clínic escribió
+    ahí el procedimiento («Obert»), no un número de expediente.
+    """
+    registro = {
+        "codi_expedient": "Obert",
+        "objecte_contracte": (
+            "Serveis per a l'execució del disseny, definició i implantació SAP "
+            "SuccessFactors per tal d'afavorir un canvi cultural cap a la digitalització"
+        ),
+        "nom_organ": "Consorci Hospital Clínic de Barcelona (HCB)",
+        "pressupost_licitacio_sense": "900000",
+        "codi_cpv": "72263000-6",
+        "codi_nuts": "ES511",
+        "tipus_contracte": "Serveis",
+        "fase_publicacio": "Anunci previ",
+        "enllac_publicacio": {"url": _FICHA_CLINIC},
+        ":updated_at": "2026-07-13T13:26:08.273Z",
+        ":id": "row-clinic",
+    }
+    registro.update(cambios)
+    return registro
+
+
+def _ids_de(registros):
+    """``id_externo`` que acaba escribiendo el conector para cada registro."""
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class FakeSession:
+        def get(self, url, *, params, headers, timeout):
+            return FakeResponse(registros)
+
+    conector = PscpConnector(dataset_id="abcd-1234", session=FakeSession())
+    ids = []
+    for aviso in conector.fetch({"last_seen_updated": "2026-07-01"}):
+        parsed = conector.parse(aviso)
+        assert parsed is not None
+        ids.append(parsed.licitacion.id_externo)
+    return ids, conector
+
+
+def test_un_codi_expedient_categorico_no_es_el_id_solo():
+    """«Obert» es el nombre del procedimiento abierto, no un expediente.
+
+    Con él de clave, cualquier otra licitación cuyo órgano escriba lo mismo
+    pisaría esta fila en el upsert por `id_externo`.
+    """
+    ids, _ = _ids_de([_registro_clinic()])
+
+    assert ids == ["pscp:38d06b2c-6449-44f1-b47f-60ef10cc0ff6:Obert"]
+
+
+def test_el_mismo_codi_en_dos_organos_no_colisiona():
+    """El caso de prod: «2026/18» de la UB lo pisó el de Viladecans."""
+    ub = _registro_clinic(
+        codi_expedient="2026/18",
+        nom_organ="Universitat de Barcelona",
+        enllac_publicacio=_ficha("0b5e3f8a-1c2d-4e5f-8a9b-0c1d2e3f4a5b"),
+    )
+    viladecans = _registro_clinic(
+        codi_expedient="2026/18",
+        nom_organ="Ajuntament de Viladecans",
+        enllac_publicacio=_ficha("9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a"),
+        **{":id": "row-viladecans"},
+    )
+
+    ids, _ = _ids_de([ub, viladecans])
+
+    assert len(set(ids)) == 2
+
+
+def test_la_misma_ficha_agregada_con_codis_distintos_no_colisiona():
+    """Los menores agregados comparten ficha: el UUID solo no basta (visto en prod)."""
+    a = _registro_clinic(codi_expedient="Formació OpenText")
+    b = _registro_clinic(codi_expedient="INFORMA D&B", **{":id": "row-b"})
+
+    ids, _ = _ids_de([a, b])
+
+    assert ids == [
+        "pscp:38d06b2c-6449-44f1-b47f-60ef10cc0ff6:Formació OpenText",
+        "pscp:38d06b2c-6449-44f1-b47f-60ef10cc0ff6:INFORMA D&B",
+    ]
+
+
+def test_las_fases_del_mismo_expediente_conservan_el_id():
+    """El UUID es del expediente; el número final es de la publicación (fase).
+
+    ``run_connector`` colapsa las fases por `id_externo`: si el id dependiera
+    de la publicación, cada fase sería una licitación distinta.
+    """
+    adjudicacion = _registro_clinic(
+        fase_publicacio="Adjudicació",
+        enllac_publicacio=_ficha("38D06B2C-6449-44F1-B47F-60EF10CC0FF6", "300099999"),
+        **{":id": "row-adj"},
+    )
+
+    ids, _ = _ids_de([_registro_clinic(), adjudicacion])
+
+    assert ids[0] == ids[1]
+
+
+def test_sin_codi_expedient_el_id_es_la_ficha():
+    ids, _ = _ids_de([_registro_clinic(codi_expedient="")])
+
+    assert ids == ["pscp:38d06b2c-6449-44f1-b47f-60ef10cc0ff6"]
+
+
+def test_sin_ficha_pscp_se_descarta_y_se_cuenta():
+    sin_ficha = _registro_clinic(enllac_publicacio={"url": "https://example.cat/x"})
+
+    ids, conector = _ids_de([sin_ficha])
+
+    assert ids == []
+    assert conector.contadores_de_descarte()["pscp_sin_identificador"] == 1
+
+
+def test_el_dedupe_cross_fuente_sigue_viendo_el_codi_expedient():
+    """PSCP casa con PLACSP por el expediente, no por la ficha de la Generalitat."""
+    from services.dedupe import natural_expediente
+
+    ids, _ = _ids_de([_registro_clinic(codi_expedient="2026/18")])
+
+    assert natural_expediente(ids[0]) == "2026/18"

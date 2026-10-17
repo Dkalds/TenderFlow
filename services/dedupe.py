@@ -53,6 +53,7 @@ evalúa filas nuevas de la pasada — sin full scan de pares.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, Self
 from urllib.parse import unquote, urlparse
@@ -141,10 +142,21 @@ def normalize_organo(name: str | None) -> str | None:
     return normalized.lower() if normalized else None
 
 
+#: El UUID de ficha con que PSCP acota su ``codi_expedient`` al órgano
+#: (``pscp:{uuid}:{codi_expedient}``, ver ``scraper.connectors.pscp._natural_id``).
+#: Gemelo de ``db.repositories.dedupe._EXPEDIENTE_NATURAL_SQL``.
+_UUID_FICHA_PSCP = re.compile(r"^[0-9a-f-]{36}:")
+
+
 def natural_expediente(id_externo: str) -> str:
-    """Expediente nacional: el id natural sin el namespace de fuente (ADR-009)."""
+    """Expediente nacional: el id natural sin el namespace de fuente (ADR-009).
+
+    Sin el UUID de ficha de PSCP tampoco: lo que casa con el expediente de otra
+    fuente es el ``codi_expedient``, no la ficha en la que lo publicó la
+    Generalitat. Que órgano y CPV coincidan lo sigue exigiendo el matching.
+    """
     _, sep, rest = id_externo.partition(":")
-    return rest if sep else id_externo
+    return _UUID_FICHA_PSCP.sub("", rest, count=1) if sep else id_externo
 
 
 def _cpv4(cpv: str | None) -> str | None:

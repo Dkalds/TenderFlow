@@ -52,6 +52,10 @@ def test_normalize_organo_pliega_acentos_y_formas():
 def test_natural_expediente_quita_namespace():
     assert natural_expediente("pscp:CTTI-2026-1") == "CTTI-2026-1"
     assert natural_expediente("EXP-PLACSP-7") == "EXP-PLACSP-7"  # placsp sin prefijo
+    # PSCP acota su código con el UUID de la ficha; el expediente es el código.
+    ficha = "38d06b2c-6449-44f1-b47f-60ef10cc0ff6"
+    assert natural_expediente(f"pscp:{ficha}:2026/18") == "2026/18"
+    assert natural_expediente(f"pscp:{ficha}") == ficha  # sin codi_expedient
 
 
 def test_match_key():
@@ -215,9 +219,10 @@ def test_detect_sin_match_no_marca(db):
 def test_indice_de_candidatas_solo_trae_los_expedientes_pedidos(db):
     """El prefiltro SQL devuelve otras fuentes y sólo los expedientes pedidos.
 
-    Cubre las dos ramas de ``_EXPEDIENTE_NATURAL_SQL``: el ``id_externo``
-    namespaceado (``pscp:X``) y el que no lo está (PLACSP), que es el gemelo del
-    ``partition(':')`` de :func:`natural_expediente`.
+    Cubre las ramas de ``_EXPEDIENTE_NATURAL_SQL``: el ``id_externo``
+    namespaceado (``pscp:X``), el que no lo está (PLACSP) —el gemelo del
+    ``partition(':')`` de :func:`natural_expediente`— y el PSCP acotado por el
+    UUID de su ficha (``pscp:{uuid}:X``).
     """
     from db.database import connect
     from db.repositories.dedupe import iter_filas_de_otras_fuentes_por_expediente
@@ -252,6 +257,15 @@ def test_indice_de_candidatas_solo_trae_los_expedientes_pedidos(db):
         )
         _insert_lic(
             c,
+            "pscp:38d06b2c-6449-44f1-b47f-60ef10cc0ff6:EXP-PEDIDO",
+            fuente="pscp",
+            organo="Organo Z",
+            cpv="72000000",
+            fecha_pub="2026-05-01",
+            extraccion="2026-05-02T00:00:00",
+        )
+        _insert_lic(
+            c,
             "EXP-AJENO",
             fuente="placsp",
             organo="Organo Z",
@@ -269,6 +283,12 @@ def test_indice_de_candidatas_solo_trae_los_expedientes_pedidos(db):
     # expediente no pedido tampoco viaja: es justo lo que el SELECT sin LIMIT
     # traía —el corpus entero— en cada ingesta.
     assert traidas == {"EXP-PEDIDO", "ted:EXP-PEDIDO"}
+    # Y el id PSCP acotado por la ficha casa por su `codi_expedient`.
+    desde_ted = {
+        row["id_externo"]
+        for row in iter_filas_de_otras_fuentes_por_expediente("ted", ["EXP-PEDIDO"])
+    }
+    assert "pscp:38d06b2c-6449-44f1-b47f-60ef10cc0ff6:EXP-PEDIDO" in desde_ted
     assert list(iter_filas_de_otras_fuentes_por_expediente("pscp", [])) == []
 
 
