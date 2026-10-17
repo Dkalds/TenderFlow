@@ -278,3 +278,26 @@ def test_eventos_recientes_filtra_por_tipo(db):
     assert len(prorrogas) == 1
     assert prorrogas[0]["tipo"] == "prorroga"
     assert prorrogas[0]["titulo"] == "Mantenimiento SAP"
+
+
+def test_eventos_por_tipo_cuenta_la_ventana_entera(db):
+    """El reparto cuenta todos los movimientos de la ventana, sin el tope del feed."""
+    from db.repositories.aggregates import LicitacionesFilters
+    from services.contract_events import derive_new_events, eventos_por_tipo, eventos_recientes
+
+    upsert(db, lic_id="C-MAD", ccaa="Madrid", importe=100000.0, fecha_fin="2026-12-31")
+    upsert(db, lic_id="C-MAD", ccaa="Madrid", importe=150000.0, fecha_fin="2027-12-31")
+    upsert(db, lic_id="C-CAT", ccaa="Cataluña", importe=100000.0)
+    upsert(db, lic_id="C-CAT", ccaa="Cataluña", importe=90000.0)
+    derive_new_events()
+
+    reparto = eventos_por_tipo(dias=365)
+    assert reparto == [{"tipo": "modificacion", "n": 2}, {"tipo": "prorroga", "n": 1}]
+    assert sum(t["n"] for t in reparto) == len(eventos_recientes(dias=365, limit=500))
+    # La página del feed no recorta el reparto.
+    assert len(eventos_recientes(dias=365, limit=1)) == 1
+
+    madrid = eventos_por_tipo(dias=365, filters=LicitacionesFilters(ccaa="Madrid"))
+    assert madrid == [{"tipo": "modificacion", "n": 1}, {"tipo": "prorroga", "n": 1}]
+    assert eventos_por_tipo(tipos=("prorroga",), dias=365) == [{"tipo": "prorroga", "n": 1}]
+    assert eventos_por_tipo(desde="2099-01-01") == []

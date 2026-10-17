@@ -20,9 +20,10 @@ import { useFilters } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useMemo } from "react";
 import { getSeriesColor } from "@/lib/chart-colors";
-import { formatCurrency, formatDate, truncate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatNumber, truncate } from "@/lib/utils";
 import type { EventosFeedResult } from "@/lib/api-types";
 import { agruparPorDia } from "@/lib/agrupar-por-dia";
+import { BarraApilada, tramosApilados, type TramoEstado } from "./contexto-graficos";
 
 const TIPO_ICON: Record<string, LucideIcon> = {
   adjudicacion: Trophy,
@@ -91,6 +92,27 @@ function ImporteDelta({ value }: { value: number | null | undefined }) {
   );
 }
 
+/**
+ * Leyenda del reparto por tipo: el nombre de cada clase, su color en la barra
+ * y su recuento. Es la que dice el reparto al lector de pantalla; la barra es
+ * decorativa.
+ */
+function LeyendaTipos({ tramos }: { tramos: readonly TramoEstado[] }) {
+  return (
+    <ul aria-label="Movimientos por tipo" className="flex flex-wrap gap-x-3.5 gap-y-1">
+      {tramos.map((tramo) => (
+        <li key={tramo.estado} className="inline-flex items-center gap-1.5 text-tf-micro text-muted-foreground">
+          <svg aria-hidden="true" viewBox="0 0 8 8" className="h-2 w-2 flex-none">
+            <circle cx="4" cy="4" r="4" fill={tramo.color} />
+          </svg>
+          {TIPO_LABEL[tramo.estado] ?? tramo.estado}
+          <span className="tf-tnum font-semibold text-foreground">{formatNumber(tramo.n)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Ventana del feed en palabras, para que el panel diga qué está midiendo
  * cuando el ámbito mueve las fechas. */
 function ventanaLabel(desde: string | null, hasta: string | null): string {
@@ -127,6 +149,17 @@ export function EventosFeed() {
   // eslint-disable-next-line react-hooks/purity
   const ahora = useMemo(() => new Date(Date.now()), []);
   const dias = useMemo(() => agruparPorDia(visibles, ahora), [visibles, ahora]);
+  // El reparto y el total cuentan la ventana entera, no las filas pedidas: los
+  // da el backend (`por_tipo`, `total`), y la lista es la muestra más reciente.
+  // Una respuesta sin `total` cae al tamaño de la muestra, como antes.
+  const total = data?.total || items.length;
+  const tramos = useMemo(
+    () =>
+      tramosApilados(
+        (data?.por_tipo ?? []).map((t) => ({ estado: t.tipo, n: t.n, color: colorDeTipo(t.tipo) })),
+      ),
+    [data?.por_tipo],
+  );
 
   return (
     <Panel>
@@ -134,9 +167,9 @@ export function EventosFeed() {
         title="Movimientos del mercado"
         hint={`${ventanaLabel(rango.desde, rango.hasta)} · del ámbito`}
         actions={
-          !error && items.length > visibles.length ? (
+          !error && total > visibles.length ? (
             <span className="tf-tnum text-tf-micro text-muted-foreground">
-              {visibles.length} de {items.length}
+              {visibles.length} de {formatNumber(total)}
             </span>
           ) : undefined
         }
@@ -164,9 +197,16 @@ export function EventosFeed() {
           hint="Prórrogas, modificaciones, adjudicaciones y anulaciones del ámbito salen aquí. Amplía las fechas para ver más."
         />
       ) : (
-        // Línea de tiempo: un grupo por día y, en cada movimiento, un disco con
-        // el icono de su clase sobre la línea vertical.
+        // Arriba, de qué se compone la ventana; debajo, la línea de tiempo: un
+        // grupo por día y, en cada movimiento, un disco con el icono de su
+        // clase —del color de su tramo— sobre la línea vertical.
         <div className="flex flex-col gap-1">
+          {tramos.length > 0 && (
+            <div className="mb-2 flex flex-col gap-2 border-b border-border/60 pb-3">
+              <BarraApilada tramos={tramos} total={total} activos={[]} />
+              <LeyendaTipos tramos={tramos} />
+            </div>
+          )}
           {dias.map((dia) => (
             <section key={dia.clave} aria-label={dia.etiqueta}>
               <h3 className="pb-0.5 pl-9 text-tf-micro font-semibold text-muted-foreground">{dia.etiqueta}</h3>

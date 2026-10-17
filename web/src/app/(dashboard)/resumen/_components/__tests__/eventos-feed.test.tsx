@@ -111,6 +111,55 @@ describe("EventosFeed", () => {
     expect(screen.getByText("algo_nuevo")).toBeInTheDocument();
   });
 
+  it("draws the window's breakdown by type and counts the whole window", () => {
+    const evento = (i: number, tipo: string) => ({
+      licitacion_id: `L${i}`,
+      tipo,
+      fecha: "2026-07-01",
+      detalle: null,
+      importe_delta: null,
+      titulo: `Contrato ${i}`,
+      organo_contratacion: null,
+      fuente: "placsp",
+    });
+    const { container } = renderFeed({
+      items: Array.from({ length: 20 }, (_, i) => evento(i, i % 3 ? "adjudicacion" : "prorroga")),
+      dias: 30,
+      por_tipo: [
+        { tipo: "adjudicacion", n: 98 },
+        { tipo: "prorroga", n: 45 },
+      ],
+      total: 143,
+    });
+    const leyenda = screen.getByRole("list", { name: "Movimientos por tipo" });
+    expect(leyenda).toHaveTextContent("Adjudicación98");
+    expect(leyenda).toHaveTextContent("Prórroga45");
+    // La barra reparte la ventana entera, tramo tras tramo.
+    const tramos = container.querySelectorAll("svg[viewBox='0 0 143 1'] rect");
+    expect(Array.from(tramos, (r) => [r.getAttribute("x"), r.getAttribute("width")])).toEqual([
+      ["0", "98"],
+      ["98", "45"],
+    ]);
+    // El pie cuenta la ventana, no las 20 filas pedidas.
+    expect(screen.getByText("8 de 143")).toBeInTheDocument();
+  });
+
+  it("falls back to the sample size without a backend breakdown", () => {
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      licitacion_id: `L${i}`,
+      tipo: "prorroga",
+      fecha: "2026-07-01",
+      detalle: null,
+      importe_delta: null,
+      titulo: `Contrato ${i}`,
+      organo_contratacion: null,
+      fuente: "placsp",
+    }));
+    renderFeed({ items, dias: 30 });
+    expect(screen.queryByRole("list", { name: "Movimientos por tipo" })).not.toBeInTheDocument();
+    expect(screen.getByText("8 de 10")).toBeInTheDocument();
+  });
+
   it("sends the active scope to the API", () => {
     scope.params = { ccaa: "Madrid", tecnologia: "SAP", fecha_desde: "2026-01-01" };
     renderFeed();

@@ -69,6 +69,8 @@ def test_eventos_feed_sin_filtros(client, auth):
     assert "items" in data
     assert "dias" in data
     assert isinstance(data["items"], list)
+    assert isinstance(data["por_tipo"], list)
+    assert data["total"] == sum(t["n"] for t in data["por_tipo"])
 
 
 def test_eventos_feed_con_tipo(client, auth):

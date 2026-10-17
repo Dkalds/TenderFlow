@@ -18,7 +18,14 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.repositories.aggregates import LicitacionesFilters
 from db.repositories.licitaciones import LicitacionRepository
-from services.contract_events import EventoFeedItem, EventosFeedResult, eventos_recientes, timeline
+from services.contract_events import (
+    EventoFeedItem,
+    EventosFeedResult,
+    EventosPorTipo,
+    eventos_por_tipo,
+    eventos_recientes,
+    timeline,
+)
 
 router = APIRouter(tags=["eventos"])
 
@@ -141,13 +148,20 @@ async def get_eventos(
         solo_abiertas=solo_abiertas,
         q=q,
     )
-    items = await run_db(
-        eventos_recientes,
-        tipos=tipos,
+    ventana = {
+        "tipos": tipos,
+        "dias": dias,
+        "desde": fecha_desde.isoformat() if fecha_desde else None,
+        "hasta": fecha_hasta.isoformat() if fecha_hasta else None,
+        "filters": filters,
+    }
+    items = await run_db(eventos_recientes, limit=limit, **ventana)
+    # El reparto por tipo cuenta la ventana entera, no la página de `items`:
+    # es lo que deja al Resumen decir «8 de 143» y dibujar de qué se compone.
+    por_tipo = await run_db(eventos_por_tipo, **ventana)
+    return EventosFeedResult(
+        items=[EventoFeedItem(**i) for i in items],
         dias=dias,
-        limit=limit,
-        desde=fecha_desde.isoformat() if fecha_desde else None,
-        hasta=fecha_hasta.isoformat() if fecha_hasta else None,
-        filters=filters,
+        por_tipo=[EventosPorTipo(**t) for t in por_tipo],
+        total=sum(t["n"] for t in por_tipo),
     )
-    return EventosFeedResult(items=[EventoFeedItem(**i) for i in items], dias=dias)

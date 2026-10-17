@@ -69,11 +69,27 @@ class EventoFeedItem(BaseModel):
     fuente: str | None = None
 
 
+class EventosPorTipo(BaseModel):
+    """Movimientos de un tipo en la ventana del feed."""
+
+    tipo: str
+    n: int
+
+
 class EventosFeedResult(BaseModel):
-    """Respuesta de ``GET /eventos``."""
+    """Respuesta de ``GET /eventos``.
+
+    ``por_tipo`` cuenta **todos** los movimientos de la ventana y el ámbito, por
+    tipo y de mayor a menor; ``items`` es solo la página más reciente, con su
+    ``limit``. El reparto sale de la misma cláusula que la lista
+    (:func:`_filtro_eventos`), así que ``total`` —la suma de ``por_tipo``— es el
+    total del que ``items`` es una muestra.
+    """
 
     items: list[EventoFeedItem] = []
     dias: int = 30
+    por_tipo: list[EventosPorTipo] = []
+    total: int = 0
 
 
 _CURSOR_SOURCE = "contract_events"
@@ -415,26 +431,24 @@ def timeline(licitacion_id: str) -> list[dict[str, Any]]:
     return eventos
 
 
-def eventos_recientes(
+def _filtro_eventos(
     *,
-    tipos: tuple[str, ...] | None = None,
-    dias: int = 30,
-    limit: int = 100,
-    desde: str | None = None,
-    hasta: str | None = None,
-    filters: LicitacionesFilters | None = None,
-) -> list[dict[str, Any]]:
-    """Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard.
+    tipos: tuple[str, ...] | None,
+    dias: int,
+    desde: str | None,
+    hasta: str | None,
+    filters: LicitacionesFilters | None,
+) -> tuple[str, list[Any]]:
+    """``WHERE`` del feed sobre ``contrato_eventos ev JOIN licitaciones l``.
 
-    ``filters`` acota el feed al mismo universo de licitaciones que el resto del
-    Resumen (CCAA, tecnología, estado, importe mínimo, búsqueda…): el JOIN con
-    ``licitaciones`` ya estaba ahí para el título, así que el ámbito se aplica
-    sobre él con el mismo ``WHERE`` que las agregaciones.
+    Una sola cláusula para la lista y para el reparto por tipo: si cada uno
+    construyera la suya, el recuento podría medir otra ventana u otro ámbito que
+    las filas que resume.
 
-    Las fechas van aparte a propósito y **no** dentro de ``filters``: ahí
-    acotarían ``fecha_publicacion`` (cuándo se publicó el expediente) y aquí lo
-    que se pregunta es cuándo se movió el contrato. ``desde`` sustituye a la
-    ventana relativa de ``dias``; ``hasta`` la remata por arriba.
+    Las fechas van aparte de ``filters`` a propósito: ahí acotarían
+    ``fecha_publicacion`` (cuándo se publicó el expediente) y aquí lo que se
+    pregunta es cuándo se movió el contrato. ``desde`` sustituye a la ventana
+    relativa de ``dias``; ``hasta`` la remata por arriba.
     """
     cutoff_expr = "to_char(CURRENT_DATE - (%s * INTERVAL '1 day'), 'YYYY-MM-DD')"
     clauses: list[str] = []
@@ -457,7 +471,29 @@ def eventos_recientes(
         lic_where, lic_params = build_licitaciones_where(filters, alias="l")
         clauses.append(f"({lic_where})")
         params.extend(lic_params)
+    return " AND ".join(clauses), params
 
+
+def eventos_recientes(
+    *,
+    tipos: tuple[str, ...] | None = None,
+    dias: int = 30,
+    limit: int = 100,
+    desde: str | None = None,
+    hasta: str | None = None,
+    filters: LicitacionesFilters | None = None,
+) -> list[dict[str, Any]]:
+    """Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard.
+
+    ``filters`` acota el feed al mismo universo de licitaciones que el resto del
+    Resumen (CCAA, tecnología, estado, importe mínimo, búsqueda…): el JOIN con
+    ``licitaciones`` ya estaba ahí para el título, así que el ámbito se aplica
+    sobre él con el mismo ``WHERE`` que las agregaciones. Ventana y fechas, en
+    :func:`_filtro_eventos`.
+    """
+    where, params = _filtro_eventos(
+        tipos=tipos, dias=dias, desde=desde, hasta=hasta, filters=filters
+    )
     # Lo único interpolado son fragmentos construidos aquí o en
     # `build_licitaciones_where`; todo valor de usuario va con placeholder.
     sql = (
@@ -465,8 +501,37 @@ def eventos_recientes(
         "       l.titulo, l.organo_contratacion, l.fuente "
         "FROM contrato_eventos ev "
         "JOIN licitaciones l ON l.id_externo = ev.licitacion_id "
-        "WHERE " + " AND ".join(clauses) + " ORDER BY ev.fecha DESC LIMIT %s"
+        "WHERE " + where + " ORDER BY ev.fecha DESC LIMIT %s"
     )
     params.append(max(1, min(int(limit), 500)))
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))
+
+
+def eventos_por_tipo(
+    *,
+    tipos: tuple[str, ...] | None = None,
+    dias: int = 30,
+    desde: str | None = None,
+    hasta: str | None = None,
+    filters: LicitacionesFilters | None = None,
+) -> list[dict[str, Any]]:
+    """Cuántos movimientos de cada tipo hay en la ventana y el ámbito del feed.
+
+    El feed devuelve como mucho ``limit`` filas, y contarlas en el navegador
+    daría el reparto de la muestra, no el de la ventana (ADR-014). Esto cuenta
+    en SQL sobre el mismo ``WHERE`` y sin tope: la cardinalidad la acota el
+    ``GROUP BY tipo`` (los tipos de ``_ESTADO_EVENTO`` y del historial, unos
+    pocos), no el número de movimientos (ADR-023).
+    """
+    where, params = _filtro_eventos(
+        tipos=tipos, dias=dias, desde=desde, hasta=hasta, filters=filters
+    )
+    sql = (
+        "SELECT ev.tipo, COUNT(*) AS n "
+        "FROM contrato_eventos ev "
+        "JOIN licitaciones l ON l.id_externo = ev.licitacion_id "
+        "WHERE " + where + " GROUP BY ev.tipo ORDER BY n DESC, ev.tipo"
+    )
+    with connect_read() as c:
+        return [{"tipo": tipo, "n": int(n)} for tipo, n in c.execute(sql, params).fetchall()]
