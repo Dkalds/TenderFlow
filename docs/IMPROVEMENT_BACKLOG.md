@@ -1041,6 +1041,15 @@ _Sin ítems abiertos._
   - Decidido si se rellena el histórico (solo con los ZIP mensuales: la fase de adjudicación deja de publicar el bloque).
 - **Riesgo:** bajo — solo lectura y parser.
 
+### [P2] [Watchlist] El tipo de contrato de una regla no casa con lo que guarda la columna
+- **Área:** services/watchlist_rules.py, web/src/app/(dashboard)/mi-watchlist/_hooks/watchlist-rule-options.ts, shared/procedimientos.py
+- **Problema:** el selector ofrece «servicios», «suministros» y «obras», y `_rule_clauses` compara por igualdad con `licitaciones.tipo_contrato`. La columna mezcla códigos CODICE y texto de cada fuente en su lengua: lo publicado desde el 2026-09-01 son «Serveis» (1.126), «1» (771), «2» (748), «services» (647), «Subministraments» (643), «supplies» (370)… y ninguna fila dice «servicios» (medido el 2026-10-17). Una regla con tipo de contrato no avisa de casi nada, sin error. Es el mismo fallo que tenía el procedimiento, cerrado ese día.
+- **Acceptance criteria:**
+  - La regla filtra por el código CODICE (opciones de `/meta/filters`, `tipo_contrato`) y casa también con las etiquetas de cada fuente que significan lo mismo, o el valor se normaliza en ingesta (decisión aparte: v85 guarda el código crudo a propósito).
+  - Test con filas «Serveis», «services» y «2» que casan con la misma regla.
+- **Files de partida:** [services/watchlist_rules.py](../services/watchlist_rules.py), [shared/procedimientos.py](../shared/procedimientos.py)
+- **Riesgo:** medio — toca qué filas avisan; contar antes las reglas con `tipo_contrato` en producción.
+
 ## P3 — Nice to have
 
 ### [P2] [Investigador] La búsqueda por significado no corre en producción: decidir si se sirve
@@ -1229,6 +1238,31 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — toca el contrato de autenticación de los clientes; un cambio equivocado deja a claude.ai sin poder canjear el código.
 
 ## Cerrados
+
+- [2026-10-17] **Segundo repaso del Investigador** (rama
+  `claude/quirky-wozniak-xp20q0`):
+  - **Duplicados:** los cinco caminos del motor (términos, expresión,
+    subcadena, solo filtros y pliegos) esconden las copias `confirmed` y
+    `pending` de `licitaciones_duplicados`, la regla de listados de ADR-026.
+    Medido ese día: 6 de 11 resultados de una búsqueda corriente eran copias
+    TED.
+  - **Órgano en la frase:** «del Ayuntamiento de Valencia» filtra por órgano.
+    Casa por palabras plegadas (`db.sql_fragments.palabras_de_organo`), con la
+    clase en otras lenguas («Ajuntament de Barcelona», 589 filas frente a 4 de
+    «Ayuntamiento de Barcelona») y sin exigir «Provincial» o «Insular».
+  - **Tildes:** sin migración, la consulta añade la forma con la tilde
+    probable (-cion, -ería, -logía…) y busca las dos. «instalacion» pasa de 18
+    anuncios a 2.790; «depuracion», de 0 a 46.
+  - **Crear alerta:** lleva el órgano y el procedimiento entendidos, y el alta
+    rápida los enseña («Además filtra por», con «Quitar»). De paso, la regla
+    comparaba el procedimiento con palabras («abierto») contra una columna de
+    códigos CODICE y no casaba nunca; ahora compara códigos sin ceros y las
+    opciones salen de `/meta/filters`. En producción no había reglas con
+    procedimiento.
+  - **E2E:** `web/e2e/recorrido-investigador.spec.ts` recorre CU-23.
+  - **Medido y descartado:** buscar el procedimiento en el texto de las filas
+    con `procedimiento` nulo (93 % del corpus). «contrato menor» solo traía 7
+    filas más, y «acuerdo marco» acertaba en 10 de 103.
 
 - [2026-10-17] **P2: Mejorar el ranking de retrieval de producción (MRR 0.689)**
   y **P3: Flecos de la reescritura de la búsqueda del Investigador** — el
