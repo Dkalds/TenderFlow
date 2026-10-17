@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-10-15
+Generado: 2026-10-17
 
-Revisión Alembic aplicada: `v150_mcp_oauth`.
+Revisión Alembic aplicada: `v151_fechas_texto_iso`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
