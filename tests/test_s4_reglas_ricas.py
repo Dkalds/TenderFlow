@@ -98,7 +98,7 @@ def corpus(tmp_db):
                 "estado": "PUB",
                 "tecnologia": "SAP,SALESFORCE",
                 "procedimiento": "01",
-                "tipo_contrato": "servicios",
+                "tipo_contrato": "Serveis",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _EN_UN_MES,
                 "fecha_extraccion": _AYER,
@@ -114,7 +114,7 @@ def corpus(tmp_db):
                 "estado": "ADJ",
                 "tecnologia": "SAP",
                 "procedimiento": "1",
-                "tipo_contrato": "servicios",
+                "tipo_contrato": "2",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _EN_UN_MES,
                 "fecha_extraccion": _AYER,
@@ -130,7 +130,7 @@ def corpus(tmp_db):
                 "estado": "PUB",
                 "tecnologia": "SAP",
                 "procedimiento": "3",
-                "tipo_contrato": "servicios",
+                "tipo_contrato": "services",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _AYER,
                 "fecha_extraccion": _AYER,
@@ -146,7 +146,7 @@ def corpus(tmp_db):
                 "estado": "PUB",
                 "tecnologia": "OTROS",
                 "procedimiento": "1",
-                "tipo_contrato": "suministros",
+                "tipo_contrato": "Subministraments",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _MANANA,
                 "fecha_extraccion": _AYER,
@@ -238,6 +238,17 @@ def test_organo_casa_pese_a_la_tilde_y_a_la_caja(corpus):
 def test_procedimiento_y_tipo_de_contrato_filtran(corpus):
     assert _ids(WatchlistRule(procedimiento="3")) == {"S4-SAP-SIN-PLAZO"}
     assert _ids(WatchlistRule(tipo_contrato="suministros")) == {"S4-OTRA-TECNOLOGIA"}
+
+
+def test_el_tipo_de_contrato_casa_con_el_codigo_y_con_el_texto_de_cada_fuente(corpus):
+    """La columna guarda «2», «Serveis» o «services» para lo mismo: la regla
+    casa con los tres, la escriba con el código del catálogo o con la palabra
+    que ofrecía el selector antiguo."""
+    servicios = {"S4-SAP-MADRID", "S4-SAP-CERRADA", "S4-SAP-SIN-PLAZO"}
+    assert _ids(WatchlistRule(tipo_contrato="2")) == servicios
+    assert _ids(WatchlistRule(tipo_contrato="servicios")) == servicios
+    assert _ids(WatchlistRule(tipo_contrato="1")) == {"S4-OTRA-TECNOLOGIA"}
+    assert _ids(WatchlistRule(tipo_contrato="3")) == set()
 
 
 def test_el_procedimiento_es_el_codigo_sin_ceros(corpus):

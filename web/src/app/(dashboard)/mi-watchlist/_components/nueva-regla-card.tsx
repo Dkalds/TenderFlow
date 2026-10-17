@@ -31,7 +31,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FREQ_NOTE, FREQ_OPTIONS } from "../_hooks/watchlist-rule-options";
-import type { NuevaReglaForm, OpcionCodificada } from "../_hooks/use-mi-watchlist";
+import type { NuevaReglaForm } from "../_hooks/use-mi-watchlist";
+import type { CatalogosCodificados, OpcionCodificada } from "../_hooks/watchlist-rule-types";
 import { type CriteriosDelPrefill, hayCriteriosDelPrefill } from "../_hooks/use-preview-regla";
 import { VistaPreviaRuido } from "./vista-previa-ruido";
 
@@ -64,13 +65,13 @@ function CriteriosDelPrefillNota({
 export function NuevaReglaCard({
   form,
   ccaaList,
-  procedimientoList,
+  catalogos,
   open,
   onToggle,
 }: {
   form: NuevaReglaForm;
   ccaaList: string[];
-  procedimientoList: OpcionCodificada[];
+  catalogos: CatalogosCodificados;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -170,7 +171,7 @@ export function NuevaReglaCard({
           </div>
           <CriteriosDelPrefillNota
             criterios={form.criteriosDelPrefill}
-            procedimientoList={procedimientoList}
+            procedimientoList={catalogos.procedimiento}
             onQuitar={form.quitarCriteriosDelPrefill}
           />
           {/* F5.5 — antes de crearla, cuántas alertas habría dado cada semana. */}

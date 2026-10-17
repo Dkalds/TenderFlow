@@ -20,11 +20,13 @@ from shared.procedimientos import (
     TRAMITACIONES,
     catalogado,
     catalogo,
+    codigo_tipo_contrato,
     etiqueta_procedimiento,
     etiqueta_tipo_contrato,
     etiqueta_tramitacion,
     no_catalogados,
     opciones,
+    textos_de_tipo_contrato,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -178,3 +180,40 @@ class TestCoberturaDeLaCodelist:
             "50",
             "999",
         }
+
+
+class TestTipoContratoEscritoComoTexto:
+    """La PSCP y TED escriben el tipo en su lengua; casi siempre, de hecho."""
+
+    @pytest.mark.parametrize(
+        ("valor", "codigo"),
+        [
+            ("2", "2"),
+            ("02", "2"),
+            ("Serveis", "2"),
+            ("services", "2"),
+            ("Servizos", "2"),
+            ("servicios", "2"),
+            ("Contracte de serveis especials (annex IV)", "2"),
+            ("Subministraments", "1"),
+            ("Subministracións", "1"),
+            ("supplies", "1"),
+            ("Obres", "3"),
+            ("works", "3"),
+            ("Concessió de serveis", "22"),
+            ("Privat d'Administració Pública", "8"),
+            ("Administratiu especial", "7"),
+        ],
+    )
+    def test_codigo_o_texto_al_codigo(self, valor: str, codigo: str) -> None:
+        assert codigo_tipo_contrato(valor) == codigo
+
+    @pytest.mark.parametrize("valor", [None, "", "  ", "Altra legislació sectorial"])
+    def test_lo_que_no_es_ningun_tipo_no_se_adivina(self, valor: str | None) -> None:
+        assert codigo_tipo_contrato(valor) is None
+
+    def test_cada_texto_lleva_a_un_codigo_del_catalogo(self) -> None:
+        for codigo in TIPOS_CONTRATO:
+            for texto in textos_de_tipo_contrato(codigo):
+                assert codigo_tipo_contrato(texto) == codigo
+        assert "serveis" in textos_de_tipo_contrato("2")
