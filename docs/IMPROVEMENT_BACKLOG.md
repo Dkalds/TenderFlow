@@ -627,6 +627,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`; D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
 - **Progreso T4 (2026-09-14, v129 · ADR-030 fase 2):** `user_id` junto a `user_key` en las doce tablas de usuario (nueve nuevas + FK e índice en las tres que ya la tenían), backfill por email en SQL y lectura dual + escritura doble en `db/`, `services/notifications.py`, `services/watchlist_rules.py` y los productores de alertas; GDPR exporta y borra por id o por clave (y cubre por fin `saved_filters`). Test de aceptación del ADR: `tests/test_user_id_cambio_email_integration.py`. **Queda la fase 3** (dejar de escribir `user_key`, recrear las PK de `user_profiles`/`radar_dismissals`, retirar `user_key` del payload de `watchlist_rule.matched` con RFC, y llevar el ratchet a cero).
 - **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`. *Estado (2026-09-19):* `docs/database-schema.md` ya está regenerado con v135 y v140 (`98f34bee`; su cabecera dice `v138_notice_type_code`).
+- *Nota (2026-10-17):* este ítem se lleva también la mayoría de las 64 `# noqa: S608` del repo (34 en producción; 18 entre `services/notifications.py` y `services/watchlist_rules.py`). No son inyección: interpolan `_IDENT`, el predicado constante de identidad dual `user_id`/`user_key`, y duplican cada consulta en una rama con y otra sin `organization_id`. Quitarlas antes obligaría a copiar el predicado en cada sentencia; cuando la lectura sea solo por `user_id` el fragmento desaparece y con él la supresión. Sacarlas en el mismo PR que retire la columna.
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
 - **Riesgo:** medio — S1.2 toca el login, que es el camino por el que entra todo el mundo; el resto es aditivo.
@@ -713,6 +714,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** bajo-medio — las migraciones ya están; queda el primer reparto real de avisos de caducidad y de la campana nueva.
 
 ## P2 — Media
+
+### [P2] Aplicar `v151_fechas_texto_iso` en producción (acción del propietario)
+- **Área:** db/alembic/versions/v151_fechas_texto_iso.py, `.github/workflows/migrate.yml`
+- **Problema:** 33 columnas `text` tenían `DEFAULT now()` y guardaban la fecha con el formato de salida de Postgres (`2026-09-16 15:00:00+00`). Comparado como texto con un corte ISO, `' ' < 'T'` dejaba fuera de «desde tu última visita» los pliegos del mismo día. El código ya no depende de ello (la consulta de pliegos compara instantes y el diff ordena por instante), pero el formato sigue mal en las filas y en el DEFAULT hasta que corra la migración. El orden con el despliegue da igual: la migración es compatible con el código anterior y el código con el esquema anterior.
+- **Acceptance criteria:**
+  - `migrate.yml` ejecutado y `alembic current` en `v151_fechas_texto_iso`.
+  - `SELECT count(*) FROM documentos WHERE created_at ~ '^[0-9-]{10} '` devuelve 0 (y lo mismo en `licitacion_tecnologia_score.computed_at`).
+  - El trigger `trg_lts_derivar_ml` sigue habilitado (`pg_trigger.tgenabled = 'O'`): la migración lo pausa solo durante su `UPDATE`.
+- **Files de partida:** [db/alembic/versions/v151_fechas_texto_iso.py](../db/alembic/versions/v151_fechas_texto_iso.py)
+- **Riesgo:** bajo — recorre `documentos` y `licitacion_tecnologia_score` enteras dentro de la transacción de Alembic; mejor fuera de la ventana de la ingesta.
 
 ### [P2] Instalar la app de Renovate y ver su primer PR de Python (acción del propietario)
 - **Área:** GitHub (app), renovate.json, .github/dependabot.yml
@@ -1083,6 +1094,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P3 — Nice to have
 
+### [P3] Pasar las fechas de `text` a `timestamptz`
+- **Área:** db/ (esquema), todo lector de fechas
+- **Problema:** 132 columnas de fecha son `text` (frente a 35 `timestamptz` y 2 `date`), así que cada comparación y cada orden en SQL o en Python depende de que todos los escritores usen exactamente `now_utc_iso()`. Cuando uno no lo hizo (los `DEFAULT now()` y los `NOW()::text` escritos a mano), el fallo fue silencioso: «desde tu última visita» perdía los pliegos del mismo día. La migración de 2026-10-17 arregla el formato y un test impide nuevos `text DEFAULT now()`, pero el tipo sigue sin proteger nada.
+- **Acceptance criteria:**
+  - Inventario de las columnas por tabla y de quién las lee como cadena (slicing `[:10]`, comparaciones de texto, serialización a JSON).
+  - Migración por tabla, empezando por las que entran en diffs y órdenes (`documentos`, `licitaciones_history`, `pursuit_events`, `user_notifications`), con la suite verde entre cada una.
+- **Files de partida:** [docs/database-schema.md](database-schema.md), [db/connection.py](../db/connection.py) (`now_utc_iso`), [tests/test_v151_fechas_texto_iso_migration.py](../tests/test_v151_fechas_texto_iso_migration.py)
+- **Riesgo:** alto — cambia el tipo que devuelve psycopg (de `str` a `datetime`) en cientos de lecturas; requiere RFC por ser cambio de persistencia.
+
 ### [P2] [Investigador] La búsqueda por significado no corre en producción: decidir si se sirve
 - **Área:** services/investigador/search_engine.py, services/embeddings.py, requirements-api.in, docker/Dockerfile.api
 - **Problema:** `hybrid_search` exige `sentence-transformers` para codificar la consulta y la imagen de la API no lo instala a propósito (C3.1: PyTorch pesa ~2 GB). Medido el 2026-10-09: `POST /search/semantic` responde siempre `fts` o `like`, y los 345.422 fragmentos embebidos de `documento_chunks` (2,2 GB de los 6,9 GB de la base; el HNSW, 637 MB) no los consulta ninguna ruta por vector. Desde esa fecha la pantalla ya no lo promete —«Tipo de coincidencia» solo aparece si una respuesta llega por `rrf`— y la búsqueda por texto mira dentro de los pliegos, pero la decisión sigue pendiente.
@@ -1142,6 +1162,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Al tocar un bloque cohesivo existente **por otro motivo**, se evalúa extraerlo en el mismo cambio. El destino de `AggregateRepository` es partido por dominio (overview / geografía / competidores) y el de `Settings` submodelos anidados por eje preservando los nombres de variables de entorno — pero **llegando por partes, con la suite verde entre cada una**, no en un big-bang.
 - **Progreso 2026-09-18 (rama worktree-agent-acad4a43a2c0f0bae):** primer módulo hermano de settings, `config/settings_resumen.py` (`ResumenPregenSettings`, de la que hereda `Settings`: mismos nombres de variable de entorno y mismo acceso `settings.X`). Es el patrón para los siguientes settings nuevos. En `aggregates.py` no hubo agregación nueva que mover.
 - *Estado (2026-09-19) — las cifras del problema están caducadas y la regla «no crecer» no se ha cumplido:* `db/repositories/aggregates.py` tiene hoy **1.980 líneas** (eran 1.327) y `AggregateRepository` **60 métodos** (eran 55); `config/settings.py`, **1.422 líneas** (eran 946) y **27 validadores**. `shared/dto.py` ya no es el contraejemplo sano: **1.904 líneas y 83 clases** (eran 620 / 45). Medido con `wc -l` y `grep` sobre el árbol.
+- *Progreso 2026-10-17 (rama `claude/nifty-turing-axm5xg`):* la misma regla aplicada a los dos módulos de oportunidades, que ya eran los más grandes después de `shared/dto.py` y `aggregates.py`. `services/pursuits.py` (2.308 → 1.758 líneas): las piezas de la agenda salen a `services/pursuits_agenda.py`; `get_agenda` y las señales de reglas se quedan porque reciben `user_key` y el ratchet no deja que un fichero nuevo herede esa deuda. `api/routes/pursuits.py` (2.112 → 1.646): las rutas de organizaciones salen a `api/routes/organizations.py`, con el OpenAPI idéntico (comparado antes y después). Siguen pendientes los dos de este ítem, `aggregates.py` (2.457) y `shared/dto.py` (2.482).
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
@@ -1278,6 +1299,17 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## Cerrados
 
+- [2026-10-17] **Bug sin ítem: «desde tu última visita» perdía los pliegos del mismo día**
+  (rama `claude/nifty-turing-axm5xg`, `4a7d04e` y `f383d88`) — lo documentaban tres
+  `xfail(strict=True)` en `tests/test_novedades_desde_ultima_visita.py`. Las fechas se
+  comparaban y ordenaban como texto: el corte con otro offset no se pasaba a UTC, y
+  `documentos.created_at` (`DEFAULT now()`) se guardaba con espacio. Ahora el corte va en
+  UTC, la consulta de pliegos compara instantes, el diff ordena por instante y `cuando`
+  sale en ISO con `T`. `v151` corrige el DEFAULT de las 33 columnas afectadas y normaliza
+  sus filas (aplicarla en producción es el P2 nuevo). Se quitan los tres `xfail` y se
+  añade un test con filas en el formato antiguo, más un ratchet contra nuevos
+  `text DEFAULT now()`. En el mismo cambio, `/organizations/{id}/settings` gana test HTTP
+  (`332c0d4`): solo tenía tests de servicio con dobles.
 - [2026-10-15] **P3: La campana nunca lista novedades de licitaciones** (rama
   `claude/funcionalidades-2026-10`) — decidido «solo lo tuyo»: la campana lee la
   bandeja `in_app` de la organización activa (`GET /notifications/alerts`,
