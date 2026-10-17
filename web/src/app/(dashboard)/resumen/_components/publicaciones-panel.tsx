@@ -76,7 +76,9 @@ export function PublicacionesPanel() {
   }, []);
 
   return (
-    <Panel>
+    // En columna: el corte ocupa el alto que sobra cuando «Movimientos», al
+    // lado, es más alto, y el panel no deja un hueco debajo.
+    <Panel className="flex flex-col">
       <PanelTitle title="Publicaciones en el periodo" hint={HINTS[corte]} />
       <div className="mb-2.5">
         <PanelTabs
@@ -88,7 +90,7 @@ export function PublicacionesPanel() {
         />
       </div>
 
-      <div {...panelDePestana("resumen-publicaciones", corte)}>
+      <div {...panelDePestana("resumen-publicaciones", corte)} className="flex min-h-0 flex-1 flex-col">
         {publicaciones.error ? (
           <PanelError
             variant="inline"

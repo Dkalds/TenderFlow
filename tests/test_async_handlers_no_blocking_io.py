@@ -108,6 +108,7 @@ _PURE_CALLS: frozenset[str] = frozenset(
         # Modelos Pydantic/dataclasses: construir o validar no toca la BD.
         "EventoFeedItem",
         "EventosFeedResult",
+        "EventosPorTipo",
         "LicitacionesFilters",
         "RenovacionesResult",
         "RenovacionesResumenResult",

@@ -347,8 +347,10 @@ class TestCspEstilosInline:
                 web / "app/(dashboard)/resumen/_components/composicion-panel.tsx",
                 web / "app/(dashboard)/resumen/_components/composicion-panel.tsx",
             ),
+            # Los tres cortes de Publicaciones comparten la clase como
+            # `ALTO_MINIMO`, declarada junto a su `ALTO`.
             (
-                web / "app/(dashboard)/resumen/_components/publicaciones/importes-histograma.tsx",
+                web / "app/(dashboard)/resumen/_components/publicaciones/publicaciones-data.ts",
                 web / "app/(dashboard)/resumen/_components/publicaciones/publicaciones-data.ts",
             ),
         ]

@@ -13,9 +13,9 @@
 
 import { PanelEmpty } from "@/components/console/panel";
 import { getSeriesColor } from "@/lib/chart-colors";
-import { formatNumber, formatPercent } from "@/lib/utils";
+import { cn, formatNumber, formatPercent } from "@/lib/utils";
 import type { HistogramBin } from "@/lib/api-types";
-import { ALTO } from "./publicaciones-data";
+import { ALTO, ALTO_MINIMO } from "./publicaciones-data";
 
 export interface ImportesHistogramaProps {
   histograma: HistogramBin[];
@@ -38,7 +38,9 @@ export function ImportesHistograma({ histograma, total, maximo }: ImportesHistog
 
   return (
     <>
-      <div className="min-h-[288px]">
+      {/* Los tramos se reparten en el alto que tenga el panel: crece con la
+          columna de al lado, como los otros dos cortes. */}
+      <div className={cn("flex flex-1 flex-col justify-evenly", ALTO_MINIMO)}>
         {histograma.map((bin, indice) => {
           const pct = total ? (bin.count / total) * 100 : 0;
           return (

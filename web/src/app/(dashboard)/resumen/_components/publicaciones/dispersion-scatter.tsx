@@ -24,9 +24,9 @@ import {
 import { PanelEmpty } from "@/components/console/panel";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { estadoLabel } from "@/lib/estados";
-import { formatCompactCurrency, formatCurrency, formatDate, formatNumber, truncate } from "@/lib/utils";
+import { cn, formatCompactCurrency, formatCurrency, formatDate, formatNumber, truncate } from "@/lib/utils";
 import { TIMELINE_MAX } from "../types";
-import { ALTO, type PuntoScatter } from "./publicaciones-data";
+import { ALTO, ALTO_MINIMO, type PuntoScatter } from "./publicaciones-data";
 
 export interface DispersionScatterProps {
   puntos: PuntoScatter[];
@@ -61,66 +61,72 @@ export function DispersionScatter({
 
   return (
     <>
-      <ChartErrorBoundary>
-        <ResponsiveContainer width="100%" height={ALTO}>
-          <ScatterChart accessibilityLayer margin={{ top: 8, right: 8, bottom: 4, left: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-            <XAxis
-              dataKey="x"
-              type="number"
-              domain={["dataMin", "dataMax"]}
-              tickFormatter={(value: number) => formatDate(new Date(value))}
-              tick={{ fontSize: 11 }}
-              name="Fecha"
-            />
-            {/* Logarítmico: con el 71 % de los importes por debajo de 1.000 €
-                y máximos de 16 M, la escala lineal dejaba la nube entera
-                aplastada contra el eje. */}
-            <YAxis
-              dataKey="y"
-              type="number"
-              scale="log"
-              // `dataMin`/`dataMax` y no `auto`: con `auto`, recharts añade
-              // un tick de 0 € a un eje logarítmico, donde el cero no
-              // existe.
-              domain={["dataMin", "dataMax"]}
-              allowDataOverflow
-              tickFormatter={(value: number) => formatCompactCurrency(value)}
-              tick={{ fontSize: 11 }}
-              name="Importe"
-              width={64}
-            />
-            <Tooltip
-              content={({ payload }) => {
-                if (!payload?.[0]) return null;
-                const punto = payload[0].payload as PuntoScatter;
-                return (
-                  <div className="rounded-md border border-border bg-popover p-2 text-tf-meta shadow-md">
-                    <p className="font-medium">{truncate(punto.titulo, 50)}</p>
-                    <p className="tf-tnum">{formatCurrency(punto.y)}</p>
-                    <p className="text-muted-foreground">{estadoLabel(punto.estado)}</p>
-                  </div>
-                );
-              }}
-            />
-            <Scatter
-              data={puntos}
-              shape="circle"
-              legendType="none"
-              className="cursor-pointer"
-              onClick={(punto: unknown) => {
-                const nodo = punto as { id?: string; payload?: { id?: string } } | undefined;
-                const id = nodo?.id ?? nodo?.payload?.id;
-                if (id) router.push(`/detalle?lic=${encodeURIComponent(id)}`);
-              }}
-            >
-              {puntos.map((entrada) => (
-                <Cell key={entrada.id} fill={entrada.fill} />
-              ))}
-            </Scatter>
-          </ScatterChart>
-        </ResponsiveContainer>
-      </ChartErrorBoundary>
+      {/* El hueco crece con el panel y el gráfico lo llena: el contenedor va
+          en absoluto para tener un alto definido que medir. */}
+      <div className={cn("relative flex-1", ALTO_MINIMO)}>
+        <div className="absolute inset-0">
+          <ChartErrorBoundary>
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart accessibilityLayer margin={{ top: 8, right: 8, bottom: 4, left: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis
+                  dataKey="x"
+                  type="number"
+                  domain={["dataMin", "dataMax"]}
+                  tickFormatter={(value: number) => formatDate(new Date(value))}
+                  tick={{ fontSize: 11 }}
+                  name="Fecha"
+                />
+                {/* Logarítmico: con el 71 % de los importes por debajo de 1.000 €
+                    y máximos de 16 M, la escala lineal dejaba la nube entera
+                    aplastada contra el eje. */}
+                <YAxis
+                  dataKey="y"
+                  type="number"
+                  scale="log"
+                  // `dataMin`/`dataMax` y no `auto`: con `auto`, recharts añade
+                  // un tick de 0 € a un eje logarítmico, donde el cero no
+                  // existe.
+                  domain={["dataMin", "dataMax"]}
+                  allowDataOverflow
+                  tickFormatter={(value: number) => formatCompactCurrency(value)}
+                  tick={{ fontSize: 11 }}
+                  name="Importe"
+                  width={64}
+                />
+                <Tooltip
+                  content={({ payload }) => {
+                    if (!payload?.[0]) return null;
+                    const punto = payload[0].payload as PuntoScatter;
+                    return (
+                      <div className="rounded-md border border-border bg-popover p-2 text-tf-meta shadow-md">
+                        <p className="font-medium">{truncate(punto.titulo, 50)}</p>
+                        <p className="tf-tnum">{formatCurrency(punto.y)}</p>
+                        <p className="text-muted-foreground">{estadoLabel(punto.estado)}</p>
+                      </div>
+                    );
+                  }}
+                />
+                <Scatter
+                  data={puntos}
+                  shape="circle"
+                  legendType="none"
+                  className="cursor-pointer"
+                  onClick={(punto: unknown) => {
+                    const nodo = punto as { id?: string; payload?: { id?: string } } | undefined;
+                    const id = nodo?.id ?? nodo?.payload?.id;
+                    if (id) router.push(`/detalle?lic=${encodeURIComponent(id)}`);
+                  }}
+                >
+                  {puntos.map((entrada) => (
+                    <Cell key={entrada.id} fill={entrada.fill} />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
+          </ChartErrorBoundary>
+        </div>
+      </div>
 
       <ul className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         {leyenda.map(([codigo, color]) => (

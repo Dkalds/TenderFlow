@@ -33,8 +33,10 @@ function PuntoNueva({ nueva }: { nueva: boolean }) {
  * Barra del importe. SVG con atributos y no un ancho en un estilo en línea: el
  * ancho cambia por fila y un estilo en línea más alejaría el día en que
  * `style-src` deje de llevar `'unsafe-inline'` (scripts/check_inline_styles.py).
+ * La usa también la muestra de «Nuevas» (`atencion-cards.tsx`): el mismo
+ * importe se lee con la misma barra en toda la pantalla.
  */
-function BarraImporte({ importe }: { importe: number | null }) {
+export function BarraImporte({ importe }: { importe: number | null }) {
   const ancho = anchoImporte(importe);
   return (
     <svg

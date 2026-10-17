@@ -23,6 +23,13 @@ export const TABS: { key: Corte; label: string }[] = [
 /** Alto común de los tres cortes: cambiar de pestaña no debe mover la página. */
 export const ALTO = 288;
 
+/**
+ * El mismo alto como mínimo, en clase: el gráfico crece hasta el alto de la
+ * columna de «Movimientos» cuando esta es más alta, en vez de dejar un hueco
+ * bajo el panel, y nunca baja de `ALTO`.
+ */
+export const ALTO_MINIMO = "min-h-[288px]";
+
 export const HINTS: Record<Corte, string> = {
   ritmo: "por día · pulsa una barra para acotar el ámbito a ese día",
   importes: "por tramo de importe",

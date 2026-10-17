@@ -18,6 +18,7 @@ import type { ResumenHoyResult } from "@/lib/api-types";
 import { useNovedades } from "../_hooks/use-novedades";
 import { Proporcion } from "./cifras-graficos";
 import { ColaCierre } from "./cola-cierre";
+import { BarraImporte } from "./ultimas-publicaciones-tabla";
 
 /**
  * Mercado abierto — lo que exige mirar hoy en el mercado.
@@ -106,7 +107,8 @@ function UrgentCard({ card }: { card: Tarjeta }) {
             <span key={fila.id} className="flex min-w-0 items-center gap-2">
               <span className="h-1.5 w-1.5 flex-none rounded-full bg-primary" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate text-tf-meta">{fila.titulo}</span>
-              <span className="tf-tnum flex-none text-tf-micro font-semibold text-muted-foreground">
+              <BarraImporte importe={fila.importe} />
+              <span className="tf-tnum w-14 flex-none text-right text-tf-micro font-semibold text-muted-foreground">
                 {formatCompactCurrency(fila.importe)}
               </span>
             </span>
@@ -250,7 +252,10 @@ export function AtencionCards() {
           onRetry={() => void hoy.refetch()}
         />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-3">
+        // `grid-cols-1` y no la columna implícita: esa es `auto` y crece hasta el
+        // ancho mínimo del contenido, así que a 390 px la banda medía 410 y la
+        // cola se salía por la derecha. `minmax(0, 1fr)` la deja en lo que hay.
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <ColaCierre
             className="lg:col-span-2"
             total={data?.vencen_48h}
@@ -258,7 +263,7 @@ export function AtencionCards() {
             href={scopedHref(vencenHref)}
             target="Abre Detalle: cierran en 48 h"
           />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
             {cards.map((card) => (
               <UrgentCard key={card.key} card={card} />
             ))}

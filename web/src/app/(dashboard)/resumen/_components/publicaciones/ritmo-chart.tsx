@@ -21,9 +21,9 @@ import {
 import { PanelEmpty } from "@/components/console/panel";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CHART_SERIES } from "@/lib/chart-colors";
-import { formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
+import { cn, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { TrendPoint } from "@/lib/api-types";
-import { ALTO } from "./publicaciones-data";
+import { ALTO, ALTO_MINIMO } from "./publicaciones-data";
 
 export interface RitmoChartProps {
   serie: TrendPoint[];
@@ -48,52 +48,58 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
 
   return (
     <>
-      <ChartErrorBoundary>
-        <ResponsiveContainer width="100%" height={ALTO}>
-          <BarChart accessibilityLayer data={serie} margin={{ top: 8, right: 8, bottom: 4, left: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-            <XAxis
-              dataKey="period"
-              tickFormatter={(value: string) => formatDate(value)}
-              tick={{ fontSize: 11 }}
-              interval="preserveStartEnd"
-              minTickGap={24}
-            />
-            <YAxis
-              tickFormatter={(value: number) => formatNumber(value)}
-              tick={{ fontSize: 11 }}
-              width={52}
-            />
-            <Tooltip
-              cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }}
-              content={({ payload }) => {
-                const punto = payload?.[0]?.payload as TrendPoint | undefined;
-                if (!punto) return null;
-                return (
-                  <div className="rounded-md border border-border bg-popover p-2 text-tf-meta shadow-md">
-                    <p className="font-medium">{formatDate(punto.period)}</p>
-                    <p className="tf-tnum">{formatNumber(punto.count)} publicaciones</p>
-                    <p className="tf-tnum text-muted-foreground">{formatCompactCurrency(punto.importe)}</p>
-                  </div>
-                );
-              }}
-            />
-            {/* Clic en una marca filtra el ámbito, no navega: regla dura
-                del sistema de gráficos de la consola. */}
-            <Bar
-              dataKey="count"
-              fill={CHART_SERIES[0]}
-              radius={[2, 2, 0, 0]}
-              className="cursor-pointer"
-              onClick={(punto: unknown) => {
-                const nodo = punto as { period?: string; payload?: { period?: string } };
-                const dia = nodo?.period ?? nodo?.payload?.period;
-                if (dia) onDia(dia);
-              }}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-      </ChartErrorBoundary>
+      {/* El hueco crece con el panel y el gráfico lo llena: el contenedor va
+          en absoluto para tener un alto definido que medir. */}
+      <div className={cn("relative flex-1", ALTO_MINIMO)}>
+        <div className="absolute inset-0">
+          <ChartErrorBoundary>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart accessibilityLayer data={serie} margin={{ top: 8, right: 8, bottom: 4, left: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                <XAxis
+                  dataKey="period"
+                  tickFormatter={(value: string) => formatDate(value)}
+                  tick={{ fontSize: 11 }}
+                  interval="preserveStartEnd"
+                  minTickGap={24}
+                />
+                <YAxis
+                  tickFormatter={(value: number) => formatNumber(value)}
+                  tick={{ fontSize: 11 }}
+                  width={52}
+                />
+                <Tooltip
+                  cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }}
+                  content={({ payload }) => {
+                    const punto = payload?.[0]?.payload as TrendPoint | undefined;
+                    if (!punto) return null;
+                    return (
+                      <div className="rounded-md border border-border bg-popover p-2 text-tf-meta shadow-md">
+                        <p className="font-medium">{formatDate(punto.period)}</p>
+                        <p className="tf-tnum">{formatNumber(punto.count)} publicaciones</p>
+                        <p className="tf-tnum text-muted-foreground">{formatCompactCurrency(punto.importe)}</p>
+                      </div>
+                    );
+                  }}
+                />
+                {/* Clic en una marca filtra el ámbito, no navega: regla dura
+                    del sistema de gráficos de la consola. */}
+                <Bar
+                  dataKey="count"
+                  fill={CHART_SERIES[0]}
+                  radius={[2, 2, 0, 0]}
+                  className="cursor-pointer"
+                  onClick={(punto: unknown) => {
+                    const nodo = punto as { period?: string; payload?: { period?: string } };
+                    const dia = nodo?.period ?? nodo?.payload?.period;
+                    if (dia) onDia(dia);
+                  }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartErrorBoundary>
+        </div>
+      </div>
       <p className="mt-2 text-tf-micro text-muted-foreground">
         {formatNumber(total)} publicaciones {ventana}, en {serie.length} días con actividad.
         {serieTruncada
