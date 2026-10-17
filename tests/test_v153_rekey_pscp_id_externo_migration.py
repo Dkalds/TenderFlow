@@ -1,4 +1,4 @@
-"""v152: las licitaciones PSCP pasan a ``pscp:{uuid de la ficha}:{codi_expedient}``.
+"""v153: las licitaciones PSCP pasan a ``pscp:{uuid de la ficha}:{codi_expedient}``.
 
 Dos niveles, como v151. Sin base, la forma de lo que emite la migración. Con
 base (``tmp_db``), que reaplicar sus sentencias sobre filas sembradas con la
@@ -29,7 +29,7 @@ _RUTA = (
     / "db"
     / "alembic"
     / "versions"
-    / "v152_rekey_pscp_id_externo.py"
+    / "v153_rekey_pscp_id_externo.py"
 )
 
 _CLINIC = "38d06b2c-6449-44f1-b47f-60ef10cc0ff6"
@@ -37,7 +37,7 @@ _UB = "0b5e3f8a-1c2d-4e5f-8a9b-0c1d2e3f4a5b"
 
 
 def _cargar() -> Any:
-    spec = importlib.util.spec_from_file_location("v152_rekey_pscp_id_externo", _RUTA)
+    spec = importlib.util.spec_from_file_location("v153_rekey_pscp_id_externo", _RUTA)
     assert spec is not None and spec.loader is not None
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
@@ -63,10 +63,10 @@ def _ficha(uuid: str, publicacion: str = "300017093") -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_encadena_con_v151() -> None:
+def test_encadena_con_v152() -> None:
     modulo = _cargar()
-    assert modulo.revision == "v152_rekey_pscp_id_externo"
-    assert modulo.down_revision == "v151_fechas_texto_iso"
+    assert modulo.revision == "v153_rekey_pscp_id_externo"
+    assert modulo.down_revision == "v152_fechas_sin_zona_utc"
 
 
 def test_fuera_de_postgres_no_emite_nada() -> None:
@@ -242,7 +242,7 @@ def _rol_miembro_del_dueno(atributos: str) -> Iterator[str]:
     ``SUPERUSER`` y ``BYPASSRLS`` no se heredan nunca: solo tiene los suyos.
     Nombre único: los roles son globales al clúster y la suite corre en paralelo.
     """
-    rol = f"tf_v152_{os.getpid()}_{secrets.token_hex(4)}"
+    rol = f"tf_v153_{os.getpid()}_{secrets.token_hex(4)}"
     with connect() as c:
         dueno = str(_uno(c, "SELECT current_user"))
         c.execute(f'CREATE ROLE "{rol}" NOLOGIN NOSUPERUSER {atributos}')

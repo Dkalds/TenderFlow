@@ -63,7 +63,7 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 - **Cron al worker** (ADR-033) — [cutover-cron-al-worker.md](cutover-cron-al-worker.md)
 - **Seguimiento unificado** (ADR-031) — [cutover-follows.md](cutover-follows.md)
 - **Núcleo tipado** (`importe_num`) — [nucleo-tipado-ventana.md](nucleo-tipado-ventana.md)
-- **Re-key de `id_externo` PSCP** (v152; pausar la ingesta PSCP antes del merge) — [rekey-pscp-id-externo.md](rekey-pscp-id-externo.md)
+- **Re-key de `id_externo` PSCP** (v153; pausar la ingesta PSCP antes del merge) — [rekey-pscp-id-externo.md](rekey-pscp-id-externo.md)
 
 Los runbooks ya ejecutados (p. ej. el cutover a Supabase) viven en
 [../archive/runbooks/](../archive/runbooks/).

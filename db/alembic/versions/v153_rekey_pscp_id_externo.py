@@ -1,7 +1,7 @@
-"""v152: re-key de las licitaciones PSCP a ``pscp:{uuid de la ficha}:{codi_expedient}``.
+"""v153: re-key de las licitaciones PSCP a ``pscp:{uuid de la ficha}:{codi_expedient}``.
 
-Revision ID: v152_rekey_pscp_id_externo
-Revises: v151_fechas_texto_iso
+Revision ID: v153_rekey_pscp_id_externo
+Revises: v152_fechas_sin_zona_utc
 Create Date: 2026-10-17
 
 Qué falla hoy
@@ -63,8 +63,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision: str = "v152_rekey_pscp_id_externo"
-down_revision: str | None = "v151_fechas_texto_iso"
+revision: str = "v153_rekey_pscp_id_externo"
+down_revision: str | None = "v152_fechas_sin_zona_utc"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | tuple[str, ...] | None = None
 
@@ -151,14 +151,14 @@ DECLARE
 BEGIN
     SELECT count(*) - count(DISTINCT nuevo) INTO repetidas FROM {_MAPA};
     IF repetidas > 0 THEN
-        RAISE EXCEPTION 'v152: % claves nuevas repetidas en el mapa PSCP', repetidas;
+        RAISE EXCEPTION 'v153: % claves nuevas repetidas en el mapa PSCP', repetidas;
     END IF;
 
     SELECT count(*) INTO existentes
     FROM {_MAPA} m JOIN licitaciones l ON l.id_externo = m.nuevo;
     IF existentes > 0 THEN
         RAISE EXCEPTION
-            'v152: % licitaciones PSCP ya existen con la clave nueva (el conector nuevo '
+            'v153: % licitaciones PSCP ya existen con la clave nueva (el conector nuevo '
             'corrió antes que esta revisión). Ver docs/runbooks/rekey-pscp-id-externo.md',
             existentes;
     END IF;
@@ -170,7 +170,7 @@ BEGIN
     WHERE c.contype = 'f' AND c.confrelid = 'licitaciones'::regclass
       AND r.relname || '.' || a.attname <> ALL (ARRAY[{cubiertas}]);
     IF sin_cubrir IS NOT NULL THEN
-        RAISE EXCEPTION 'v152: FK a licitaciones sin repuntar: %', sin_cubrir;
+        RAISE EXCEPTION 'v153: FK a licitaciones sin repuntar: %', sin_cubrir;
     END IF;
 
     SELECT count(*) INTO sin_ficha
@@ -178,7 +178,7 @@ BEGIN
     WHERE fuente = 'pscp' AND id_externo !~ '{_CLAVE_NUEVA}'
       AND coalesce(url, '') !~ '{_UUID_FICHA}';
     IF sin_ficha > 0 THEN
-        RAISE NOTICE 'v152: % licitaciones PSCP sin ficha se quedan con la clave vieja',
+        RAISE NOTICE 'v153: % licitaciones PSCP sin ficha se quedan con la clave vieja',
             sin_ficha;
     END IF;
 END
@@ -230,7 +230,7 @@ BEGIN
     SELECT string_agg(ref || '=' || n, ', ') INTO quedan
     FROM ({consultas}) r WHERE n > 0;
     IF quedan IS NOT NULL THEN
-        RAISE EXCEPTION 'v152: referencias sin repuntar a ids PSCP viejos: %', quedan;
+        RAISE EXCEPTION 'v153: referencias sin repuntar a ids PSCP viejos: %', quedan;
     END IF;
 END
 $$"""
@@ -269,7 +269,7 @@ def downgrade() -> None:
 
     La inversa es quitar el UUID, y eso vuelve a juntar en una clave los
     expedientes de órganos distintos que esta revisión separó: es exactamente
-    la colisión que la motiva. Bajar de v152 deja las filas con la clave nueva;
+    la colisión que la motiva. Bajar de v153 deja las filas con la clave nueva;
     el conector anterior las duplicaría al re-ingerir, así que bajar el código
     exige también purgar a mano.
     """

@@ -5,14 +5,14 @@ sin perder sus hijas ni los datos de usuario, y recuperar los contratos que la
 clave vieja dejó pisar.
 
 **Estado**: pendiente de ejecutar. La migración es
-`db/alembic/versions/v152_rekey_pscp_id_externo.py` (aprobada para escribirse el
+`db/alembic/versions/v153_rekey_pscp_id_externo.py` (aprobada para escribirse el
 2026-10-17; correrla en producción sigue siendo una decisión, `migrate.yml` es
 `workflow_dispatch`).
 
 > **No dejar correr el conector nuevo contra filas sin re-key.** Desde este
 > cambio, `scraper/connectors/pscp.py` escribe `pscp:{uuid}:{codi_expedient}`.
 > Toda fila PSCP que la fuente vuelva a publicar entre el merge y la migración
-> entraría como fila **nueva** junto a la vieja, y v152 aborta al encontrarla
+> entraría como fila **nueva** junto a la vieja, y v153 aborta al encontrarla
 > (paso 4). Por eso la ingesta PSCP se pausa antes del merge.
 
 ---
@@ -66,7 +66,7 @@ Cambian **las 60.501** filas PSCP, no solo las 20. Hijas por `licitacion_id` /
 (5), `contratos_cartera` (1); `licitacion_tecnologia_score` es la grande
 (960.361).
 
-## Qué hace v152
+## Qué hace v153
 
 Ver su docstring. En corto: mapa viejo → nuevo con la misma derivación que el
 conector; aborta sin tocar nada si una clave nueva se repite o ya existe, o si
