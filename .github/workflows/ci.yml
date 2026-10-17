@@ -102,10 +102,11 @@ jobs:
       - name: Verify no unbounded analytics scans (ADR-023, C3.2)
         run: python scripts/check_analytics_unbounded.py
 
-      - name: Verify generated docs (retención, índice RFC, backlog)
+      - name: Verify generated docs (retención, índices RFC y ADR, backlog)
         run: |
           python scripts/gen_retention_doc.py --check
           python scripts/gen_rfc_index.py --check
+          python scripts/gen_adr_index.py --check
           python scripts/check_backlog_freshness.py
 
       - name: Verify frontend analytical integrity (ADR-014)

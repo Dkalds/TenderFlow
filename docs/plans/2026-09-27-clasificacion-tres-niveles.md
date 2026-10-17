@@ -5,6 +5,7 @@ se proponen en §7. F1 hecha (§6).
 **Alcance:** qué entra en el corpus como TI, con qué familia y de qué fabricante,
 y cómo se entrenan, evalúan y sirven los modelos que lo deciden. Fuera de
 alcance: la ficha del pliego, los modelos de baja y de retención.
+**Plan de implementación de F1:** [2026-09-27-clasificacion-f1-plan.md](2026-09-27-clasificacion-f1-plan.md).
 
 ## 1. Por qué (medido el 2026-09-27)
 
