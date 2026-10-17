@@ -64,7 +64,7 @@ describe("DesdeUltimaVisita", () => {
     });
     renderBanda();
 
-    expect(await screen.findByText(/2 cambios en lo que sigues desde el/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^2 cambios en lo que sigues desde el / })).toBeInTheDocument();
     expect(apiGet).toHaveBeenCalledWith("/api/v1/analytics/resumen/desde-mi-ultima-visita", {
       params: { query: { organization_id: 21 } },
     });
@@ -93,7 +93,7 @@ describe("DesdeUltimaVisita", () => {
     });
     renderBanda();
 
-    expect(await screen.findByText(/Sin cambios en lo que sigues desde el/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Sin cambios en lo que sigues desde el / })).toBeInTheDocument();
     expect(screen.getByRole("region")).toBeInTheDocument();
     // Sin cambios no hay nada que marcar.
     expect(screen.queryByRole("button", { name: /Marcar todo como visto/ })).not.toBeInTheDocument();
@@ -121,7 +121,7 @@ describe("DesdeUltimaVisita", () => {
     await waitFor(() =>
       expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto"),
     );
-    expect(await screen.findByText(/Sin cambios en lo que sigues desde el/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Sin cambios en lo que sigues desde el / })).toBeInTheDocument();
     expect(apiGet).toHaveBeenCalledTimes(2);
   });
 

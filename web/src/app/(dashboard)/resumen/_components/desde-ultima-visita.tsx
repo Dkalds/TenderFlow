@@ -201,10 +201,24 @@ export function DesdeUltimaVisita() {
           derecha qué en concreto. Sin cambios, una sola línea que lo dice. */}
       <div className={cn("grid gap-x-8 gap-y-3", hayCambios && "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]")}>
         <div className="flex min-w-0 flex-col gap-2.5">
-          <h2 id="desde-ultima-visita-titulo" className="font-display text-tf-lede font-semibold">
-            {hayCambios
-              ? `${items.length} ${items.length === 1 ? "cambio" : "cambios"} en lo que sigues desde el ${desde}`
-              : `Sin cambios en lo que sigues desde el ${desde}`}
+          {/* Con cambios, la cifra encabeza la banda a tamaño de cifra única
+              (`tf-hero`), como el resto de la consola encabeza con su número;
+              sin ellos, una línea que lo confirma. Los espacios entre los
+              trozos van escritos: sin ellos, el nombre accesible del título
+              salía «6cambios en lo que siguesdesde el…». */}
+          <h2
+            id="desde-ultima-visita-titulo"
+            className="flex flex-wrap items-baseline gap-x-2.5 font-display text-tf-lede font-semibold"
+          >
+            {hayCambios ? (
+              <>
+                <span className="tf-tnum text-tf-hero leading-none">{items.length}</span>{" "}
+                <span>{items.length === 1 ? "cambio" : "cambios"} en lo que sigues</span>
+              </>
+            ) : (
+              <span>Sin cambios en lo que sigues</span>
+            )}{" "}
+            <span className="w-full font-sans text-tf-meta font-normal text-muted-foreground">desde el {desde}</span>
           </h2>
           {data.ventana_recortada && (
             <p className="-mt-1.5 text-tf-micro text-muted-foreground">
