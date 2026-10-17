@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-17
 
-Revisión Alembic aplicada: `v151_fechas_texto_iso`.
+Revisión Alembic aplicada: `v152_fechas_sin_zona_utc`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
