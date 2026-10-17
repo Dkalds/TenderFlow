@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -29,10 +30,18 @@ def test_rol_lleva_los_limites_del_spec() -> None:
         "idle_in_transaction_session_timeout = '30s'",
         "work_mem = '32MB'",
         "search_path = pg_catalog, public",
-        "NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS",
+        "NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS",
         "CONNECTION LIMIT 5",
+        "no puede ser superusuario",
     ):
         assert fragmento in sql
+
+
+def test_rol_no_toca_el_atributo_superuser() -> None:
+    # Postgres 16+ exige ser superusuario para tocar SUPERUSER, aunque sea para
+    # quitarlo, y el `postgres` de Supabase no lo es: el script abortaba con 42501.
+    sql = "\n".join(sentencias_rol("tenderflow_mcp"))
+    assert re.search(r"\b(NO)?SUPERUSER\b", sql) is None
 
 
 def test_tablas_de_credenciales_ocultas() -> None:

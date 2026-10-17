@@ -557,10 +557,20 @@ def _ident(nombre: str) -> str:
 
 
 def sentencias_rol(rol: str = ROL_MCP) -> list[str]:
-    """``ALTER ROLE`` con los límites del rol de solo lectura (sin ``;`` final)."""
+    """``ALTER ROLE`` con los límites del rol de solo lectura (sin ``;`` final).
+
+    No lleva ``NOSUPERUSER``: desde Postgres 16 tocar ese atributo, aunque sea
+    para quitarlo, exige ser superusuario, y el ``postgres`` de Supabase no lo
+    es (el script abortaba con 42501 en producción). Un rol creado por un no
+    superusuario nace ``NOSUPERUSER``; la primera sentencia lo comprueba y
+    aborta si no fuera así.
+    """
     r = _ident(rol)
     return [
-        f"ALTER ROLE {r} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION "
+        "DO $$ BEGIN IF (SELECT rolsuper FROM pg_roles WHERE rolname = "  # noqa: S608 - rol validado por _ident; nunca se ejecuta aquí
+        f"'{rol}') THEN RAISE EXCEPTION '{rol} no puede ser superusuario'; "
+        "END IF; END $$",
+        f"ALTER ROLE {r} NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION "
         "NOBYPASSRLS CONNECTION LIMIT 5",
         f"ALTER ROLE {r} SET default_transaction_read_only = on",
         f"ALTER ROLE {r} SET statement_timeout = '15s'",

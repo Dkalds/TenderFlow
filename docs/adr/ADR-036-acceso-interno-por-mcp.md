@@ -66,7 +66,9 @@ ejecuta con `python -m mcp_server`. Resumen de las secciones 2–4 del diseño:
    esperar a que caduque el token.
 
 3. **La barrera de lectura la pone Postgres, no el código.** Un rol dedicado,
-   `tenderflow_mcp` (`NOSUPERUSER … NOBYPASSRLS CONNECTION LIMIT 5`,
+   `tenderflow_mcp` (`NOCREATEDB … NOBYPASSRLS CONNECTION LIMIT 5`; nace
+   `NOSUPERUSER` y el script lo comprueba, porque desde Postgres 16 tocar ese
+   atributo exige ser superusuario y el `postgres` de Supabase no lo es,
    `default_transaction_read_only = on`, `statement_timeout = 15s`,
    `idle_in_transaction_session_timeout = 30s`), con `SELECT` solo sobre lo que
    el catálogo `mcp_server/catalogo.py` marca como visible y una política

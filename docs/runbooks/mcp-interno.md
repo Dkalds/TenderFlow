@@ -31,6 +31,13 @@ Google tras el primer deploy: paso 2); el 4 es por persona y va al final.
 
 ### Paso 1 — Crear el rol de solo lectura en Supabase
 
+> **Estado (2026-10-16):** aplicado en producción con el placeholder sustituido
+> por `PASSWORD NULL`, para que la contraseña no pasara por ningún registro. Falta
+> fijarla desde el SQL Editor de Supabase:
+> `ALTER ROLE tenderflow_mcp PASSWORD '<openssl rand -base64 32>';`.
+> Re-ejecutar el script (p. ej. tras cambiar el catálogo) no la toca: el
+> `CREATE ROLE` solo corre si el rol no existe.
+
 1. Migraciones al día (el script aborta si falta alguna tabla visible del
    catálogo): Actions → *Apply DB migrations (alembic)* con `mode=apply`, o en
    local `alembic upgrade head` con el rol admin.
@@ -336,6 +343,11 @@ vez, tras el alta (pasos 1–3):
       debe dar solo `pg_catalog`, `information_schema` y `public`. Si sale otro,
       revisar sus funciones contra la lista de vetadas de `db/consulta_libre.py`
       (ADR-036) antes de abrir el servicio.
+      *Visto en producción el 2026-10-16:* el rol llega a `net` porque Supabase
+      da `USAGE` y `EXECUTE` a `PUBLIC` sobre `pg_net` (`net.http_get`,
+      `net.http_post`…). El modo de solo lectura lo frena (`net.http_get` encola
+      con un INSERT y falla con 25006) y el ejecutor veta `net` y `http*`; en
+      `public` solo hay funciones de pgvector y pg_trgm.
 - [ ] **El conector real de claude.ai funciona.** Esto es lo único que el
       Inspector no prueba: los metadatos OAuth del SDK anuncian
       `token_endpoint_auth_methods_supported = ["client_secret_post",

