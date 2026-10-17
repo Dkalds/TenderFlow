@@ -337,20 +337,20 @@ def licitaciones_con_pasaje(
     casan. Dentro de un fragmento se exigen todos los términos: uno solo, sobre
     345.000 fragmentos, casa con decenas de miles y no dice nada.
 
-    ``limite_pasajes`` acota los fragmentos que se cuentan. Un término muy
-    común («mantenimiento», 37.000 fragmentos) casa con decenas de miles de
-    expedientes; con el tope, el recuento de esos casos es de una muestra.
-    Hasta 2026-10 la muestra eran los primeros ``limite_pasajes`` que leía el
-    plan —sin ``ORDER BY``, en la práctica los de los pliegos más viejos—, así
-    que qué expedientes entraban por su pliego dependía del orden físico de la
-    tabla. Ahora son los de los documentos más recientes (``documento_id``
-    crece con la ingesta), y la muestra es la misma en cada llamada.
+    ``limite_pasajes`` acota los fragmentos que se llegan a mirar. Un término
+    muy común («mantenimiento», 40.690 fragmentos) no puede convertir una
+    búsqueda en un recorrido de la tabla; con el tope, el recuento de esos
+    casos es de una muestra, y el expediente sigue apareciendo.
 
-    Las coincidencias se materializan antes de ordenar: con un ``ORDER BY …
-    LIMIT`` directo el planificador puede preferir recorrer el índice de
-    ``documento_id`` hacia atrás evaluando la tsquery fila a fila, que con un
-    término raro es la tabla entera. El coste es leer todas las coincidencias
-    del GIN, no solo las primeras.
+    La muestra no se ordena a propósito. El 2026-10-17 se probó tomarla de los
+    documentos más recientes (materializar las coincidencias y ordenar por
+    ``documento_id``) y se midió en producción con «mantenimiento»: de 2,6 a 6,5 s
+    frente a 175 a 509 ms, porque ordenar obliga a leer todas las coincidencias
+    del GIN y no solo las primeras. Y no compraba lo que prometía:
+    ``documento_id`` no sigue a la fecha de publicación, y la muestra ordenada
+    traía 46 expedientes de 2026 frente a 54 de la que no se ordena. Con menos
+    coincidencias que el tope (480 de «baja temeraria») las dos devuelven lo
+    mismo.
     """
     if not texto.strip():
         return []
@@ -358,17 +358,13 @@ def licitaciones_con_pasaje(
     tsq = _tsquery_de_pasaje(expresion)
     join_ambito = "JOIN licitaciones l ON l.id_externo = d.licitacion_id " if clausulas else ""
     sql = f"""
-        WITH casan AS MATERIALIZED (
-            SELECT d.licitacion_id, dc.documento_id, dc.id AS chunk_id
+        SELECT m.licitacion_id, count(*) AS pasajes
+        FROM (
+            SELECT d.licitacion_id
             FROM documento_chunks dc
             JOIN documentos d ON d.id = dc.documento_id
             {join_ambito}
             WHERE dc.search_vector @@ {tsq}{_y(clausulas)}
-        )
-        SELECT m.licitacion_id, count(*) AS pasajes
-        FROM (
-            SELECT licitacion_id FROM casan
-            ORDER BY documento_id DESC, chunk_id
             LIMIT %s
         ) m
         GROUP BY m.licitacion_id
