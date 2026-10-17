@@ -1093,15 +1093,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — dependencia nueva y memoria del proceso de la API.
 - **Progreso (2026-10-17, rama `claude/quirky-wozniak-xp20q0`):** lo que la fusión haría al encenderse ya no empeora la pantalla. Hasta esa fecha, con embeddings la ruta respondía **solo** con la fusión: sin `coincide_en`, pasaje, resaltados ni `fecha_limite`, ignorando «las más recientes» y, en la lista vectorial, las comillas y la `-exclusión`. Ahora completa la lista del texto (`services/investigador/busqueda.py::combinar`): primero lo que casa con todos los términos, después lo que solo se parece por significado (`coincide_en=["significado"]`, con su fragmento), y al final lo parcial. No corre con operadores, con «recientes» ni con `alpha=0`. La decisión de servirla sigue pendiente.
 
-### [P2] [Investigador] Medir en producción la muestra ordenada de pasajes de pliego
-- **Área:** db/repositories/investigador.py (`licitaciones_con_pasaje`)
-- **Problema:** desde 2026-10-17 la muestra de `limite_pasajes` fragmentos es la de los documentos más recientes (`ORDER BY documento_id DESC` sobre las coincidencias materializadas), y no los primeros que leía el plan, que en la práctica eran los pliegos más viejos. El precio es leer **todas** las coincidencias del GIN y no solo las primeras 2.000: con un término muy común («mantenimiento», ~37.000 fragmentos) eso no se ha medido contra producción.
-- **Acceptance criteria:**
-  - `EXPLAIN (ANALYZE, BUFFERS)` de la consulta con «mantenimiento» y con un término raro, antes y después, contra la base de producción.
-  - Si el caso común pasa de ~200 ms, acotar con un tope de coincidencias leídas o un índice que sirva el orden.
-- **Files de partida:** [db/repositories/investigador.py](../db/repositories/investigador.py)
-- **Riesgo:** bajo — consulta de solo lectura con `statement_timeout`; si se dispara, el motor la trata como fallida (`_pasajes_seguro`) y responde con los anuncios.
-
 ### [P3] [Investigador] El historial de consultas sigue en `localStorage`
 - **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
 - **Problema:** las consultas recientes viven en el navegador (`docs/frontend-data-invariants.md`, anti-patrón 3): no viajan a otro dispositivo. `saved_filters` no sirve tal cual —guarda instantáneas del ámbito que las demás pantallas restauran—, así que hace falta una tabla propia, es decir, una migración (§6).
@@ -1289,6 +1280,14 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## Cerrados
 
+- [2026-10-17] **P2: Medir en producción la muestra ordenada de pasajes de pliego**
+  — medido con «mantenimiento» (40.690 fragmentos) por el MCP de solo lectura:
+  la muestra ordenada por `documento_id` tardaba 2,6–6,5 s frente a 175–509 ms
+  la que no se ordena, y no era más reciente (46 expedientes de 2026 frente a
+  54), porque `documento_id` no sigue a la fecha de publicación. Con menos
+  coincidencias que el tope («baja temeraria», 480) las dos devolvían lo mismo
+  en ~0,4–0,5 s. Se revierte a la muestra sin orden; el porqué queda en el
+  docstring de `licitaciones_con_pasaje`.
 - [2026-10-17] **Repaso del Investigador** (rama `claude/quirky-wozniak-xp20q0`)
   — lo que quedaba tras la reescritura del 2026-10-09:
   - **Fusión:** completa la lista del texto en vez de sustituirla (ver el P2 de
