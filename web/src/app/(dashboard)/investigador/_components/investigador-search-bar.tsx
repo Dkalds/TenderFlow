@@ -16,16 +16,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+/** Lo que admite la búsqueda (`_MAX_Q_LEN` de `api/routes/search.py`). */
+export const MAX_CONSULTA = 500;
+
 interface Props {
   texto: string;
   onTextoChange: (texto: string) => void;
   onSubmit: (override?: string) => void;
-  /** Deshabilita el botón mientras llega la primera respuesta de una búsqueda. */
+  /** Hay una búsqueda en camino, aunque se vea la lista de antes. */
   busy: boolean;
   history: string[];
   activeSearchFilters: string[];
   /** Los filtros que salieron de la frase, ya en palabras. */
   entendido: string[];
+  /** Las palabras con las que se buscó, si no son las escritas. */
+  buscadoComo?: string | null;
   /** La última búsqueda se hizo sin leer filtros en la frase. */
   talCual: boolean;
   onTalCualChange: (talCual: boolean) => void;
@@ -39,6 +44,7 @@ export function InvestigadorSearchBar({
   history,
   activeSearchFilters,
   entendido,
+  buscadoComo = null,
   talCual,
   onTalCualChange,
 }: Props) {
@@ -50,14 +56,16 @@ export function InvestigadorSearchBar({
   return (
     <Panel className="py-4">
       <form role="search" onSubmit={enviar} className="flex gap-2">
+        {/* El tope es el de la API: pasarlo era un 422 genérico. */}
         <Input
           aria-label="Busca o pregunta"
           placeholder="Busca o pregunta: mantenimiento SAP abiertas en Andalucía…"
           value={texto}
+          maxLength={MAX_CONSULTA}
           onChange={(e) => onTextoChange(e.target.value)}
           className="flex-1"
         />
-        <Button type="submit" disabled={busy || !texto.trim()}>
+        <Button type="submit" disabled={busy || !texto.trim()} aria-busy={busy}>
           {busy ? "Buscando…" : "Buscar"}
         </Button>
       </form>
@@ -98,17 +106,28 @@ export function InvestigadorSearchBar({
       {/* Lo que se leyó en la frase como filtro. Un filtro que se aplica sin
           decirlo es un resultado que falta sin explicación; por eso se enseña,
           y se puede deshacer. */}
-      {entendido.length > 0 && (
+      {(entendido.length > 0 || buscadoComo) && (
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <span className={ROTULO_DATO}>Entendido de tu frase</span>
+          {/* Con qué palabras se buscó: las de petición («puedes mirar…») y
+              las que eran filtros no se buscan, y sin decirlo una lista vacía
+              no se explica. */}
+          {buscadoComo && (
+            <Badge variant="outline" size="sm">
+              Se buscó «{buscadoComo}»
+            </Badge>
+          )}
           {entendido.map((f) => (
             <Badge key={f} variant="info" size="sm">
               {f}
             </Badge>
           ))}
-          <Button type="button" variant="ghost" size="sm" onClick={() => onTalCualChange(true)}>
-            Buscar el texto tal cual
-          </Button>
+          {/* «Tal cual» deshace los filtros leídos, no la limpieza de palabras. */}
+          {entendido.length > 0 && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => onTalCualChange(true)}>
+              Buscar el texto tal cual
+            </Button>
+          )}
         </div>
       )}
       {talCual && (

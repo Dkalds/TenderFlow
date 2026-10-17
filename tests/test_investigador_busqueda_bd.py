@@ -15,6 +15,7 @@ generada con el diccionario español y no tiene equivalente fuera.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 import pytest
@@ -341,3 +342,79 @@ class TestRutaDePuntaAPunta:
         assert hit["coincide_en"] == ["anuncio"]
         assert hit["estado"] == "PUB"
         assert "chunks" not in hit
+
+
+class TestPlazoYProcedimientoDeLaFrase:
+    """Los filtros nuevos de la frase, contra el SQL de verdad."""
+
+    HOY = date(2026, 10, 9)
+
+    @pytest.fixture()
+    def plazos(self, tmp_db):
+        _sembrar(
+            {
+                "id_externo": "P-SEMANA",
+                "titulo": "Soporte SAP del ministerio",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-01",
+                # Cierra el último día de la ventana, con hora: tiene que entrar.
+                "fecha_limite": "2026-10-11T14:00:00",
+                "procedimiento": "01",
+            },
+            {
+                "id_externo": "P-NOVIEMBRE",
+                "titulo": "Soporte SAP de la consejería",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-15",
+                "fecha_limite": "2026-11-20T14:00:00",
+                "procedimiento": "6",
+            },
+            {
+                "id_externo": "P-SIN-PLAZO",
+                "titulo": "Soporte SAP del ayuntamiento",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-20",
+            },
+        )
+
+    def _ids(self, q: str) -> list[str]:
+        consulta, ambito = preparar(q, hoy=self.HOY)
+        return sorted(_ids(buscar_por_texto(consulta, ambito, 10)))
+
+    def test_que_cierran_esta_semana_entra_el_ultimo_dia_con_hora(self, plazos):
+        assert self._ids("soporte SAP que cierran esta semana") == ["P-SEMANA"]
+
+    def test_que_cierran_en_noviembre(self, plazos):
+        assert self._ids("soporte SAP que cierran en noviembre") == ["P-NOVIEMBRE"]
+
+    def test_sin_plazo_publicado_no_pasa_un_filtro_de_plazo(self, plazos):
+        assert "P-SIN-PLAZO" not in self._ids("soporte SAP con plazo hasta el 31 de diciembre")
+        assert "P-SIN-PLAZO" in self._ids("soporte SAP")
+
+    def test_el_procedimiento_compara_sin_ceros(self, plazos):
+        """«01» y «1» son el mismo procedimiento abierto."""
+        assert self._ids("soporte SAP por procedimiento abierto") == ["P-SEMANA"]
+        assert self._ids("contratos menores de soporte SAP") == ["P-NOVIEMBRE"]
+
+
+class TestMuestraDePasajes:
+    def test_con_tope_entran_los_pliegos_mas_recientes(self, tmp_db):
+        """Con más coincidencias que el tope, la muestra no la decide el orden
+        físico de la tabla: entran los documentos más recientes."""
+        from db.repositories import investigador as repo
+
+        _sembrar(
+            {"id_externo": "VIEJO", "titulo": "Obra", "estado": "PUB"},
+            {"id_externo": "NUEVO", "titulo": "Obra", "estado": "PUB"},
+        )
+        _sembrar_pasaje("VIEJO", "La baja temeraria se calcula así.")
+        _sembrar_pasaje("NUEVO", "La baja temeraria se calcula así.")
+        consulta, ambito = preparar("baja temeraria")
+
+        con_tope = repo.licitaciones_con_pasaje(consulta.texto, ambito, limite_pasajes=1)
+        assert con_tope == [("NUEVO", 1)]
+        # Sin tope que apriete, los dos.
+        assert {i for i, _ in repo.licitaciones_con_pasaje(consulta.texto, ambito)} == {
+            "VIEJO",
+            "NUEVO",
+        }

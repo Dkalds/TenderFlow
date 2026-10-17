@@ -1091,6 +1091,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Si se sirve: `source=rrf` en el log `semantic_search.ok` de producción, y el MRR del golden set (`tests/eval/test_eval_rag.py`) medido antes y después.
 - **Files de partida:** [services/investigador/search_engine.py](../services/investigador/search_engine.py), [services/embeddings.py](../services/embeddings.py), [requirements-api.in](../requirements-api.in)
 - **Riesgo:** medio — dependencia nueva y memoria del proceso de la API.
+- **Progreso (2026-10-17, rama `claude/quirky-wozniak-xp20q0`):** lo que la fusión haría al encenderse ya no empeora la pantalla. Hasta esa fecha, con embeddings la ruta respondía **solo** con la fusión: sin `coincide_en`, pasaje, resaltados ni `fecha_limite`, ignorando «las más recientes» y, en la lista vectorial, las comillas y la `-exclusión`. Ahora completa la lista del texto (`services/investigador/busqueda.py::combinar`): primero lo que casa con todos los términos, después lo que solo se parece por significado (`coincide_en=["significado"]`, con su fragmento), y al final lo parcial. No corre con operadores, con «recientes» ni con `alpha=0`. La decisión de servirla sigue pendiente.
+
+### [P2] [Investigador] Medir en producción la muestra ordenada de pasajes de pliego
+- **Área:** db/repositories/investigador.py (`licitaciones_con_pasaje`)
+- **Problema:** desde 2026-10-17 la muestra de `limite_pasajes` fragmentos es la de los documentos más recientes (`ORDER BY documento_id DESC` sobre las coincidencias materializadas), y no los primeros que leía el plan, que en la práctica eran los pliegos más viejos. El precio es leer **todas** las coincidencias del GIN y no solo las primeras 2.000: con un término muy común («mantenimiento», ~37.000 fragmentos) eso no se ha medido contra producción.
+- **Acceptance criteria:**
+  - `EXPLAIN (ANALYZE, BUFFERS)` de la consulta con «mantenimiento» y con un término raro, antes y después, contra la base de producción.
+  - Si el caso común pasa de ~200 ms, acotar con un tope de coincidencias leídas o un índice que sirva el orden.
+- **Files de partida:** [db/repositories/investigador.py](../db/repositories/investigador.py)
+- **Riesgo:** bajo — consulta de solo lectura con `statement_timeout`; si se dispara, el motor la trata como fallida (`_pasajes_seguro`) y responde con los anuncios.
 
 ### [P3] [Investigador] El historial de consultas sigue en `localStorage`
 - **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
@@ -1110,6 +1120,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `MRR_MIN` de `tests/eval/test_eval_rag.py` al valor medido menos el margen.
 - **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [api/routes/search.py](../api/routes/search.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
 - **Riesgo:** bajo.
+- **Progreso (2026-10-17):** (2) resuelto — `semantic_search.ok` y `semantic_search.failed` escriben `q_len`, no el texto. También se retiró `_hits_from_fused` de `api/routes/search.py`, que quedó sin llamantes con la fusión nueva (sus tests pasan a probar `combinar`). (1) y (3) siguen abiertos: retirar `rag_query` y sus envoltorios exige borrar sus tests (OK del propietario, §6) y decidir qué hace `scripts/eval_rag_generation.py`.
 
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios
@@ -1277,6 +1288,28 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — toca el contrato de autenticación de los clientes; un cambio equivocado deja a claude.ai sin poder canjear el código.
 
 ## Cerrados
+
+- [2026-10-17] **Repaso del Investigador** (rama `claude/quirky-wozniak-xp20q0`)
+  — lo que quedaba tras la reescritura del 2026-10-09:
+  - **Fusión:** completa la lista del texto en vez de sustituirla (ver el P2 de
+    la búsqueda por significado).
+  - **Frase:** entiende el fin del plazo («que cierran esta semana», «con plazo
+    hasta el 30 de noviembre»), los meses con nombre («en marzo») y el
+    procedimiento («contratos menores», «procedimiento abierto»). Los tres van
+    en el `WHERE` de todos los caminos (`ambito_busqueda_sql`) y vuelven en
+    `interpretacion`.
+  - **Resultados y `/ask`:** `hay_mas` y «Mostrar más» (hasta 100). `/ask`
+    declara en `ask_meta.recuperacion_fallida` que buscar falló —antes se leía
+    como «el corpus no cubre la pregunta»— y no cachea esa respuesta.
+  - **Pantalla:** los deslizadores aplican al soltar (antes, una petición por
+    paso del arrastre). Las preguntas de seguimiento llevan los ajustes vigentes.
+    La selección se suelta al cambiar la consulta de la URL, no al repetir la
+    misma. «Buscar» dice que busca también con lista en pantalla. Se enseña con
+    qué palabras se buscó.
+  - **Exportación y accesibilidad:** CSV con BOM y sin fórmulas, un solo
+    `csvCell` en `@/lib/export`. «Recientes» solo guarda lo que se pudo buscar.
+    `maxLength` en la caja. Recuento con `aria-live`. «Preguntar por este» sin
+    hueco sigue enfocable y explica por qué. Los ajustes guardados se validan.
 
 - [2026-10-15] **P3: La campana nunca lista novedades de licitaciones** (rama
   `claude/funcionalidades-2026-10`) — decidido «solo lo tuyo»: la campana lee la

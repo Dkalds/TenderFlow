@@ -107,6 +107,11 @@ class Ambito:
     importe_min: float | None = None
     importe_max: float | None = None
     solo_abiertas: bool = False
+    #: Ventana del fin del plazo de presentación (``fecha_limite``), por día.
+    cierre_desde: str | None = None
+    cierre_hasta: str | None = None
+    #: Códigos CODICE de procedimiento (``shared.procedimientos``).
+    procedimiento: tuple[str, ...] = ()
 
     def sql(self, alias: str = "l") -> tuple[list[str], list[Any]]:
         """``(cláusulas, parámetros)`` del ámbito sobre ``licitaciones``."""
@@ -128,6 +133,9 @@ class Ambito:
             importe_min=self.importe_min,
             importe_max=self.importe_max,
             solo_abiertas=self.solo_abiertas,
+            cierre_desde=self.cierre_desde,
+            cierre_hasta=self.cierre_hasta,
+            procedimiento=list(self.procedimiento),
         )
         return [*clausulas, *resto], [*valores, *valores_resto]
 
@@ -329,10 +337,20 @@ def licitaciones_con_pasaje(
     casan. Dentro de un fragmento se exigen todos los términos: uno solo, sobre
     345.000 fragmentos, casa con decenas de miles y no dice nada.
 
-    ``limite_pasajes`` acota los fragmentos que se llegan a mirar. Un término
-    muy común («mantenimiento», 37.000 fragmentos) no puede convertir una
-    búsqueda en un recorrido de la tabla; con el tope, el recuento de esos
-    casos es de una muestra, y el expediente sigue apareciendo.
+    ``limite_pasajes`` acota los fragmentos que se cuentan. Un término muy
+    común («mantenimiento», 37.000 fragmentos) casa con decenas de miles de
+    expedientes; con el tope, el recuento de esos casos es de una muestra.
+    Hasta 2026-10 la muestra eran los primeros ``limite_pasajes`` que leía el
+    plan —sin ``ORDER BY``, en la práctica los de los pliegos más viejos—, así
+    que qué expedientes entraban por su pliego dependía del orden físico de la
+    tabla. Ahora son los de los documentos más recientes (``documento_id``
+    crece con la ingesta), y la muestra es la misma en cada llamada.
+
+    Las coincidencias se materializan antes de ordenar: con un ``ORDER BY …
+    LIMIT`` directo el planificador puede preferir recorrer el índice de
+    ``documento_id`` hacia atrás evaluando la tsquery fila a fila, que con un
+    término raro es la tabla entera. El coste es leer todas las coincidencias
+    del GIN, no solo las primeras.
     """
     if not texto.strip():
         return []
@@ -340,13 +358,17 @@ def licitaciones_con_pasaje(
     tsq = _tsquery_de_pasaje(expresion)
     join_ambito = "JOIN licitaciones l ON l.id_externo = d.licitacion_id " if clausulas else ""
     sql = f"""
-        SELECT m.licitacion_id, count(*) AS pasajes
-        FROM (
-            SELECT d.licitacion_id
+        WITH casan AS MATERIALIZED (
+            SELECT d.licitacion_id, dc.documento_id, dc.id AS chunk_id
             FROM documento_chunks dc
             JOIN documentos d ON d.id = dc.documento_id
             {join_ambito}
             WHERE dc.search_vector @@ {tsq}{_y(clausulas)}
+        )
+        SELECT m.licitacion_id, count(*) AS pasajes
+        FROM (
+            SELECT licitacion_id FROM casan
+            ORDER BY documento_id DESC, chunk_id
             LIMIT %s
         ) m
         GROUP BY m.licitacion_id

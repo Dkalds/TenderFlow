@@ -17,9 +17,11 @@ export type { Interpretacion, SemanticSearchResponse, TramoTexto };
 export interface InvestigadorConfig {
   topK: number;
   /**
-   * «Tipo de coincidencia»: cuánto pesa el significado frente a las palabras
-   * exactas cuando la búsqueda combina las dos cosas; viaja como `alpha`. El
-   * control solo aparece si una respuesta ha llegado por ese camino.
+   * «Tipo de coincidencia»: cuánto pesa el significado al completar la lista
+   * con lo que se parece a la consulta sin usar sus palabras; viaja como
+   * `alpha`, y a 0 no se completa. Lo que casa con todas las palabras va
+   * primero siempre. El control solo aparece si una respuesta ha llegado por
+   * ese camino.
    */
   alpha: number;
   model: string;

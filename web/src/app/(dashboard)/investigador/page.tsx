@@ -23,7 +23,7 @@ import { ConsultasDeEjemplo, MensajeVacio } from "./_components/investigador-emp
 import { InvestigadorError, InvestigadorSkeleton } from "./_components/investigador-feedback";
 import { InvestigadorResults } from "./_components/investigador-results";
 import { InvestigadorSearchBar } from "./_components/investigador-search-bar";
-import { chipsDeInterpretacion, enlaceDeAlerta } from "./_lib/interpretacion";
+import { chipsDeInterpretacion, enlaceDeAlerta, textoBuscado } from "./_lib/interpretacion";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { useAsistente } from "@/lib/asistente-store";
 import { cn } from "@/lib/utils";
@@ -42,10 +42,11 @@ export default function InvestigadorPage() {
           texto={inv.texto}
           onTextoChange={inv.setTexto}
           onSubmit={inv.submit}
-          busy={inv.loading}
+          busy={inv.buscando}
           history={inv.history}
           activeSearchFilters={inv.activeSearchFilters}
           entendido={entendido}
+          buscadoComo={textoBuscado(inv.interpretacion, inv.consulta)}
           talCual={inv.talCual}
           onTalCualChange={inv.setTalCual}
         />
@@ -89,6 +90,9 @@ export default function InvestigadorPage() {
                 seleccion={inv.seleccion}
                 seleccionLlena={inv.seleccionLlena}
                 onAlternar={inv.alternarSeleccion}
+                hayMas={inv.hayMas}
+                onMostrarMas={inv.mostrarMas}
+                cargandoMas={inv.cargandoMas}
               />
             )}
           </div>

@@ -237,12 +237,39 @@ class TestAmbitoBusquedaSql:
         """Mismo criterio que ``ids_for_filters`` (``/search/semantic``)."""
         assert ambito_busqueda_sql("l", fecha_desde="ayer", fecha_hasta="2026-13") == ([], [])
 
-    def test_los_parametros_siguen_el_orden_de_las_clausulas(self):
-        clausulas, params = ambito_busqueda_sql(
-            "l", ccaa=["Madrid"], tecnologia=["SAP"], fecha_desde="2026-01-01"
+    def test_el_plazo_acota_fecha_limite_con_techo_exclusivo(self):
+        """``fecha_limite`` lleva la hora: el día pedido entra entero."""
+        from db.sql_fragments import columna_nucleo_sql, fecha_valida_sql
+
+        limite = columna_nucleo_sql("fecha_limite", "l")
+        assert ambito_busqueda_sql("l", cierre_desde="2026-10-09", cierre_hasta="2026-10-11") == (
+            [fecha_valida_sql("fecha_limite", "l"), f"{limite} >= %s", f"{limite} < %s"],
+            ["2026-10-09", "2026-10-12"],
         )
 
-        assert params == ["Madrid", "SAP", "2026-01-01"]
+    def test_un_plazo_imposible_o_mal_formado_no_filtra(self):
+        assert ambito_busqueda_sql("l", cierre_desde="hoy", cierre_hasta="2026-02-31") == ([], [])
+
+    def test_el_procedimiento_compara_codigos_sin_ceros(self):
+        """La fuente publica ``01`` y ``1`` para lo mismo, como en el listado."""
+        clausulas, params = ambito_busqueda_sql("l", procedimiento=["06", "3", " "])
+
+        assert params == ["3", "6"]
+        assert len(clausulas) == 1
+        assert "ltrim(trim(l.procedimiento), '0')" in clausulas[0]
+        assert clausulas[0].count("%s") == 2
+
+    def test_los_parametros_siguen_el_orden_de_las_clausulas(self):
+        clausulas, params = ambito_busqueda_sql(
+            "l",
+            ccaa=["Madrid"],
+            tecnologia=["SAP"],
+            fecha_desde="2026-01-01",
+            cierre_desde="2026-10-09",
+            procedimiento=["6"],
+        )
+
+        assert params == ["Madrid", "SAP", "2026-01-01", "2026-10-09", "6"]
         assert sum(c.count("%s") for c in clausulas) == len(params)
 
 
@@ -302,3 +329,23 @@ class TestConsultasDelRepositorio:
             assert clausula in conexion.sql
         assert conexion.params[-(len(valores) + 1) :] == [*valores, 5]
         assert conexion.sql.count("%s") == len(conexion.params)
+
+
+class TestRecuperacionFallida:
+    """Que la búsqueda falle no es lo mismo que no encontrar nada."""
+
+    def test_un_fallo_de_la_busqueda_se_declara(self):
+        req = AskRequest.model_validate({"question": "soporte sap"})
+        with patch("services.licitaciones.search_for_ask", side_effect=RuntimeError("bd caída")):
+            docs, mode, _declarados, fallida = _prepare_ask_context(req)
+
+        assert docs == [] and mode == "general"
+        assert fallida is True
+
+    def test_no_encontrar_nada_no_es_un_fallo(self):
+        req = AskRequest.model_validate({"question": "soporte sap"})
+        with patch("services.licitaciones.search_for_ask", return_value=[]):
+            docs, mode, _declarados, fallida = _prepare_ask_context(req)
+
+        assert docs == [] and mode == "general"
+        assert fallida is False

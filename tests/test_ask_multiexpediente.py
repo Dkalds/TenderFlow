@@ -90,7 +90,7 @@ class TestContexto:
 
         req = AskRequest(question="¿Qué solvencia piden?", ids_externos=["A", "B", "C"])
         with patch("services.rag.context.build_licitacion_context", side_effect=_build):
-            docs, mode, declarados = _prepare_ask_context(req)
+            docs, mode, declarados, _fallida = _prepare_ask_context(req)
 
         assert mode == "comparacion"
         assert [d["id_externo"] for d in docs] == ["A", "B", "C"]
@@ -107,7 +107,7 @@ class TestContexto:
 
         req = AskRequest(question="¿plazo?", ids_externos=["A", "B", "C"])
         with patch("services.rag.context.build_licitacion_context", side_effect=_build):
-            docs, mode, declarados = _prepare_ask_context(req)
+            docs, mode, declarados, _fallida = _prepare_ask_context(req)
 
         assert mode == "comparacion"
         assert [d["id_externo"] for d in docs] == ["A", "C"]
@@ -119,7 +119,7 @@ class TestContexto:
 
         req = AskRequest(question="¿plazo?", ids_externos=["A", "B"])
         with patch("services.rag.context.build_licitacion_context", side_effect=_build):
-            docs, mode, declarados = _prepare_ask_context(req)
+            docs, mode, declarados, _fallida = _prepare_ask_context(req)
 
         assert mode == "licitacion"
         assert [d["id_externo"] for d in docs] == ["A"]
@@ -131,7 +131,7 @@ class TestContexto:
             patch("services.rag.context.build_licitacion_context", return_value=None),
             patch("api.routes.ask._retrieve_docs", return_value=[]),
         ):
-            docs, mode, declarados = _prepare_ask_context(req)
+            docs, mode, declarados, _fallida = _prepare_ask_context(req)
 
         assert (docs, mode) == ([], "general")
         assert [d["encontrado"] for d in declarados] == [False, False]
@@ -141,7 +141,7 @@ class TestContexto:
         with patch(
             "services.rag.context.build_licitacion_context", return_value=_ctx("A")
         ) as build:
-            _docs, mode, declarados = _prepare_ask_context(req)
+            _docs, mode, declarados, _fallida = _prepare_ask_context(req)
 
         assert mode == "licitacion"
         assert declarados == []

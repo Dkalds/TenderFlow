@@ -38,8 +38,41 @@ export function chipsDeInterpretacion(interpretacion: Interpretacion | null | un
     chips.push(`Publicadas hasta el ${formatDate(hasta)}`);
   }
 
+  // Campos que llegaron después: una respuesta en caché de antes no los trae.
+  const { cierre_desde: cierreDesde, cierre_hasta: cierreHasta } = interpretacion;
+  if (cierreDesde && cierreHasta) {
+    chips.push(
+      cierreDesde === cierreHasta
+        ? `Cierran el ${formatDate(cierreDesde)}`
+        : `Cierran del ${formatDate(cierreDesde)} al ${formatDate(cierreHasta)}`,
+    );
+  } else if (cierreDesde) {
+    chips.push(`Cierran desde el ${formatDate(cierreDesde)}`);
+  } else if (cierreHasta) {
+    chips.push(`Cierran hasta el ${formatDate(cierreHasta)}`);
+  }
+
+  for (const etiqueta of interpretacion.procedimiento_etiquetas ?? []) chips.push(`Procedimiento: ${etiqueta}`);
+
   if (interpretacion.orden === "recientes") chips.push("Más recientes primero");
   return chips;
+}
+
+/**
+ * Con qué palabras se buscó, si no son las que se escribieron.
+ *
+ * «Puedes mirar las licitaciones de mantenimiento SAP en Andalucía» se busca
+ * como «mantenimiento sap»: los filtros salen de la frase y las palabras de
+ * petición no se buscan. Las fichas de arriba dicen lo primero; esto, lo
+ * segundo, que es lo que explica una lista vacía. `null` si coincide con lo
+ * escrito o si no quedó ninguna palabra (eso ya lo dice la fuente «Solo
+ * filtros»).
+ */
+export function textoBuscado(interpretacion: Interpretacion | null | undefined, consulta: string): string | null {
+  const texto = interpretacion?.texto.trim();
+  if (!texto) return null;
+  const normaliza = (t: string) => t.toLocaleLowerCase("es").replace(/\s+/g, " ").trim();
+  return normaliza(texto) === normaliza(consulta) ? null : texto;
 }
 
 /**

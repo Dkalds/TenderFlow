@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from datetime import date, timedelta
 from typing import Any
 
 # Identificadores SQL que se pueden interpolar: los nombres de tabla y columna
@@ -116,6 +117,9 @@ def ambito_busqueda_sql(
     importe_min: float | None = None,
     importe_max: float | None = None,
     solo_abiertas: bool = False,
+    cierre_desde: str | None = None,
+    cierre_hasta: str | None = None,
+    procedimiento: Sequence[str] | None = None,
 ) -> tuple[list[str], list[Any]]:
     """Cláusulas del ámbito de una búsqueda sobre ``licitaciones``: ``(clauses, params)``.
 
@@ -134,10 +138,18 @@ def ambito_busqueda_sql(
       (:func:`db.sql_fragments.columna_nucleo_sql`), la misma columna que
       filtra el listado. Una fila sin importe no pasa ninguno de los dos.
     - ``solo_abiertas``: el juicio de :func:`shared.estados.abierta_sql`.
+    - ``cierre_desde``/``cierre_hasta``: sobre ``fecha_limite`` (fin del plazo
+      de presentación), con la cota superior **exclusiva** del día siguiente:
+      ``fecha_limite`` guarda la hora y ``'2026-09-20T14:00' <= '2026-09-20'``
+      es falso. El mismo par de predicados que ``cierre_*`` del listado. Una
+      fila sin plazo publicado no pasa ninguna de las dos.
+    - ``procedimiento``: códigos CODICE comparados sin ceros a la izquierda
+      (la fuente publica ``01`` y ``1``), como el filtro del listado.
 
-    Los tres últimos los pone el Investigador cuando la frase los dice («de
-    más de 500K», «abiertas»); el resto de llamantes no los pasa y su consulta
-    no cambia en un carácter.
+    Los cinco últimos los pone el Investigador cuando la frase los dice («de
+    más de 500K», «abiertas», «que cierran esta semana», «contratos
+    menores»); el resto de llamantes no los pasa y su consulta no cambia en un
+    carácter.
 
     ``ccaa`` y ``tecnologia`` aceptan una lista —el cuerpo JSON de ``/ask``— o
     el CSV de la barra de ámbito (:func:`csv_values`), y los valores en blanco
@@ -145,7 +157,7 @@ def ambito_busqueda_sql(
     respuesta llegaría sin contexto y sin error. Las cláusulas salen en ese
     orden y los parámetros, en el de sus marcadores.
     """
-    from db.sql_fragments import columna_nucleo_sql, tecnologia_en_csv_sql
+    from db.sql_fragments import columna_nucleo_sql, fecha_valida_sql, tecnologia_en_csv_sql
     from shared.estados import abierta_sql
 
     clauses: list[str] = []
@@ -178,7 +190,41 @@ def ambito_busqueda_sql(
         # Los estados cerrados van como literales —constantes de `shared`, no
         # entrada de usuario—, así que la cláusula no gasta marcadores.
         clauses.append(abierta_sql(f"{alias}.estado"))
+    desde_ok = cierre_desde if cierre_desde and _FECHA_ISO_RE.match(cierre_desde) else None
+    hasta_exclusivo = _dia_siguiente(cierre_hasta) if cierre_hasta else None
+    if desde_ok or hasta_exclusivo:
+        limite = columna_nucleo_sql("fecha_limite", alias)
+        clauses.append(fecha_valida_sql("fecha_limite", alias))
+        if desde_ok:
+            clauses.append(f"{limite} >= %s")
+            params.append(desde_ok)
+        if hasta_exclusivo:
+            clauses.append(f"{limite} < %s")
+            params.append(hasta_exclusivo)
+    if codigos := sorted({_codigo_normalizado(c) for c in procedimiento or () if c and c.strip()}):
+        marcadores = ", ".join(["%s"] * len(codigos))
+        # `NULLIF`+`COALESCE`: `ltrim('0','0')` deja '', que no es ningún código.
+        clauses.append(
+            f"COALESCE(NULLIF(ltrim(trim({alias}.procedimiento), '0'), ''), '0') IN ({marcadores})"
+        )
+        params.extend(codigos)
     return clauses, params
+
+
+def _dia_siguiente(iso: str) -> str | None:
+    """``YYYY-MM-DD`` + 1 día, o ``None`` si no es una fecha que exista."""
+    if not _FECHA_ISO_RE.match(iso):
+        return None
+    try:
+        return (date.fromisoformat(iso) + timedelta(days=1)).isoformat()
+    except ValueError:
+        return None
+
+
+def _codigo_normalizado(codigo: str) -> str:
+    """Un código de lista controlada sin ceros a la izquierda (``01`` → ``1``)."""
+    limpio = codigo.strip()
+    return str(int(limpio)) if limpio.isdigit() else limpio
 
 
 def rows_to_dicts(cursor: Any) -> list[dict[str, Any]]:

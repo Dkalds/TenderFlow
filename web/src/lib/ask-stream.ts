@@ -82,6 +82,11 @@ export interface AskMeta {
   expedientes?: AskMetaExpediente[];
   /** F2.8 — algún expediente llegó al modelo con su parte del contexto recortada. */
   truncado?: boolean;
+  /**
+   * La búsqueda del contexto **falló** (no que no encontrara nada): la
+   * respuesta no se apoya en las licitaciones porque no se pudieron leer.
+   */
+  recuperacion_fallida?: boolean;
 }
 
 export interface AskMetaExpediente {

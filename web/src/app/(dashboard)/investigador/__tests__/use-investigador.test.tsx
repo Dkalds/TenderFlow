@@ -76,6 +76,7 @@ function respuesta(extra: Partial<SemanticSearchResponse> = {}): SemanticSearchR
     top_k: 10,
     source: "fts",
     hits: [hit("A"), hit("B")],
+    hay_mas: false,
     elapsed_ms: 12,
     interpretacion: {
       texto: "sap",
@@ -193,6 +194,21 @@ describe("la consulta vive en la URL", () => {
     expect(JSON.stringify(registrarEvento.mock.calls)).not.toContain("algo que no existe");
   });
 
+  it("repetir la consulta dice que está buscando aunque ya haya lista", async () => {
+    const { result } = montar("?consulta=sap");
+    await waitFor(() => expect(result.current.searchResults).toHaveLength(2));
+    let responder: (r: SemanticSearchResponse) => void = () => {};
+    fetchWithAuth.mockReturnValueOnce(new Promise((r) => (responder = r)));
+
+    act(() => result.current.submit("sap"));
+
+    await waitFor(() => expect(result.current.buscando).toBe(true));
+    // La lista sigue: no es un esqueleto, es «Buscando…» en el botón.
+    expect(result.current.loading).toBe(false);
+    act(() => responder(respuesta()));
+    await waitFor(() => expect(result.current.buscando).toBe(false));
+  });
+
   it("un fallo se enseña y se puede reintentar", async () => {
     fetchWithAuth.mockRejectedValueOnce(new Error("503"));
     const { result } = montar();
@@ -212,13 +228,26 @@ describe("historial y ajustes", () => {
     const { result } = montar();
 
     act(() => result.current.submit("uno"));
+    await waitFor(() => expect(result.current.history).toEqual(["uno"]));
     act(() => result.current.submit("dos"));
+    await waitFor(() => expect(result.current.history).toEqual(["dos", "uno"]));
+    // Volver a una que ya está en la caché también la sube arriba.
     act(() => result.current.submit("uno"));
 
-    expect(result.current.history).toEqual(["uno", "dos"]);
+    await waitFor(() => expect(result.current.history).toEqual(["uno", "dos"]));
     cleanup();
     const otra = montar();
     await waitFor(() => expect(otra.result.current.history).toEqual(["uno", "dos"]));
+  });
+
+  it("una consulta que falla no entra en «Recientes»", async () => {
+    fetchWithAuth.mockRejectedValueOnce(new Error("422"));
+    const { result } = montar();
+
+    act(() => result.current.submit("una consulta rota"));
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
+
+    expect(result.current.history).toEqual([]);
   });
 
   it("«Resultados» cambia la petición", async () => {
@@ -463,7 +492,48 @@ describe("el asistente", () => {
 
     act(() => result.current.submit("oracle"));
 
-    expect(result.current.seleccion).toEqual([]);
+    await waitFor(() => expect(result.current.seleccion).toEqual([]));
+  });
+
+  it("repetir la misma consulta no suelta lo marcado: la lista es la misma", async () => {
+    const { result } = montar("?consulta=sap");
+    await waitFor(() => expect(result.current.searchResults).toHaveLength(2));
+    act(() => result.current.alternarSeleccion(hit("A")));
+
+    act(() => result.current.submit("sap"));
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledTimes(2));
+
+    expect(result.current.seleccion.map((s) => s.id)).toEqual(["A"]);
+  });
+
+  it("cambiar los ajustes con el asistente abierto los lleva a la siguiente pregunta", async () => {
+    const { result } = montar("?consulta=sap");
+    await waitFor(() => expect(result.current.searchResults).toHaveLength(2));
+    act(() => result.current.alternarSeleccion(hit("A")));
+    expect(useAsistente.getState().opciones).toMatchObject({ model: undefined });
+
+    act(() => result.current.updateConfig({ model: "modelo-a" }));
+    act(() => result.current.setTalCual(true));
+
+    await waitFor(() =>
+      expect(useAsistente.getState().opciones).toMatchObject({
+        model: "modelo-a",
+        extras: { interpretar: false },
+      }),
+    );
+  });
+
+  it("los ajustes no pisan el contexto que puso otra pantalla", async () => {
+    useAsistente.getState().abrir({
+      contexto: { expedientes: [{ id: "Z", titulo: "Otra" }], origen: "ficha" },
+      opciones: { model: "de-la-ficha" },
+    });
+    const { result } = montar();
+
+    act(() => result.current.updateConfig({ model: "modelo-a" }));
+
+    await waitFor(() => expect(result.current.config.model).toBe("modelo-a"));
+    expect(useAsistente.getState().opciones).toMatchObject({ model: "de-la-ficha" });
   });
 
   it("sin consulta la pantalla está vacía aunque haya conversación: la conversación vive en el asistente", () => {
@@ -472,5 +542,43 @@ describe("el asistente", () => {
     const { result } = montar();
 
     expect(result.current.showEmpty).toBe(true);
+  });
+});
+
+
+describe("«Mostrar más»", () => {
+  it("pide la misma búsqueda con la tanda siguiente, sin perder la lista mientras llega", async () => {
+    fetchWithAuth.mockResolvedValueOnce(respuesta({ hay_mas: true }));
+    const { result } = montar("?consulta=sap");
+    await waitFor(() => expect(result.current.mostrarMas).not.toBeNull());
+    let responder: (r: SemanticSearchResponse) => void = () => {};
+    fetchWithAuth.mockReturnValueOnce(new Promise((r) => (responder = r)));
+
+    act(() => result.current.mostrarMas?.());
+
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledTimes(2));
+    expect(cuerpo().top_k).toBe(20);
+    expect(result.current.searchResults).toHaveLength(2);
+    expect(result.current.cargandoMas).toBe(true);
+    expect(result.current.loading).toBe(false);
+
+    act(() => responder(respuesta({ hits: [hit("A"), hit("B"), hit("C")] })));
+    await waitFor(() => expect(result.current.searchResults).toHaveLength(3));
+    expect(result.current.mostrarMas).toBeNull();
+    // No es otra búsqueda: el embudo la cuenta una vez.
+    expect(registrarEvento).toHaveBeenCalledTimes(1);
+  });
+
+  it("una consulta nueva vuelve a la primera tanda", async () => {
+    fetchWithAuth.mockResolvedValue(respuesta({ hay_mas: true }));
+    const { result } = montar("?consulta=sap");
+    await waitFor(() => expect(result.current.mostrarMas).not.toBeNull());
+    act(() => result.current.mostrarMas?.());
+    await waitFor(() => expect(cuerpo().top_k).toBe(20));
+
+    act(() => result.current.submit("oracle"));
+
+    await waitFor(() => expect(cuerpo().q).toBe("oracle"));
+    expect(cuerpo().top_k).toBe(10);
   });
 });

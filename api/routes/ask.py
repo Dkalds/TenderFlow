@@ -300,6 +300,10 @@ def _validate_model(model: str) -> None:
         )
 
 
+class _RecuperacionFallida(Exception):
+    """La búsqueda del contexto falló: no es lo mismo que no encontrar nada."""
+
+
 def _retrieve_docs(
     question: str,
     top_k: int,
@@ -315,6 +319,10 @@ def _retrieve_docs(
     Delega en ``services.licitaciones.search_for_ask``, que responde con el
     mismo motor de texto que ``/search/semantic`` (anuncios y pasajes de
     pliego, con los filtros que diga la pregunta).
+
+    Si la búsqueda **falla** levanta :class:`_RecuperacionFallida`: hasta
+    2026-10 devolvía ``[]`` y el modelo respondía «con conocimiento general»,
+    así que una caída de la BD se leía como un corpus que no cubría la pregunta.
     """
     try:
         from services.licitaciones import search_for_ask
@@ -330,7 +338,7 @@ def _retrieve_docs(
         )
     except Exception as exc:
         log.warning("ask.retrieve_docs_failed", error=str(exc))
-        return []
+        raise _RecuperacionFallida from exc
 
 
 def _fuentes_documentos(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -584,7 +592,7 @@ def _contexto_comparacion(
 
 def _prepare_ask_context(
     request: AskRequest,
-) -> tuple[list[dict[str, Any]], PromptMode, list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], PromptMode, list[dict[str, Any]], bool]:
     """Recupera los documentos de contexto para la pregunta (trabajo de BD).
 
     Se separa de ``_stream_ask`` para poder despacharla al threadpool: es la
@@ -594,7 +602,9 @@ def _prepare_ask_context(
     del LLM ya estaba correctamente aislado en un thread.
 
     El tercer elemento declara, en una pregunta cruzada (F2.8), qué expediente
-    entró, con cuántos fragmentos y si se recortó. Vacío en los demás modos.
+    entró, con cuántos fragmentos y si se recortó. Vacío en los demás modos. El
+    cuarto dice si la búsqueda del contexto general **falló** (no si no
+    encontró nada).
     """
     mode: PromptMode = "general"
     docs: list[dict[str, Any]] = []
@@ -604,11 +614,11 @@ def _prepare_ask_context(
     if len(expedientes) > 1:
         docs, declarados = _contexto_comparacion(expedientes, request.question)
         if len(docs) > 1:
-            return docs, "comparacion", declarados
+            return docs, "comparacion", declarados, False
         if len(docs) == 1:
             # Solo uno de los pedidos existe: es una pregunta sobre ese
             # expediente y se declara como tal, no como una comparación.
-            return docs, "licitacion", declarados
+            return docs, "licitacion", declarados, False
         # Ninguno existe: cae al corpus, y `declarados` dice que ninguno cargó.
         docs = []
     elif expedientes:
@@ -632,21 +642,25 @@ def _prepare_ask_context(
             docs = [primary_doc_from_context(request.id_externo, ctx)]
             mode = "licitacion"
 
+    fallida = False
     if not docs:
         # Modo general: sin docs el LLM responde igualmente con conocimiento
         # general (el prompt indica que no se basa en el corpus).
-        docs = _retrieve_docs(
-            question=request.question,
-            top_k=request.top_k,
-            ccaa=request.ccaa,
-            tecnologia=request.tecnologia,
-            fecha_desde=request.fecha_desde,
-            fecha_hasta=request.fecha_hasta,
-            interpretar=request.interpretar,
-        )
+        try:
+            docs = _retrieve_docs(
+                question=request.question,
+                top_k=request.top_k,
+                ccaa=request.ccaa,
+                tecnologia=request.tecnologia,
+                fecha_desde=request.fecha_desde,
+                fecha_hasta=request.fecha_hasta,
+                interpretar=request.interpretar,
+            )
+        except _RecuperacionFallida:
+            docs, fallida = [], True
         mode = "general"
 
-    return docs, mode, declarados
+    return docs, mode, declarados, fallida
 
 
 async def _stream_ask(
@@ -658,7 +672,7 @@ async def _stream_ask(
 
     _validate_model(request.model)
 
-    docs, mode, declarados = await run_db(_prepare_ask_context, request)
+    docs, mode, declarados, recuperacion_fallida = await run_db(_prepare_ask_context, request)
 
     keywords = [w for w in request.question.split() if len(w) > 3][:10]
     history: list[ChatMessage] = [
@@ -683,6 +697,10 @@ async def _stream_ask(
         ask_meta["ids_externos"] = [d["id_externo"] for d in declarados]
         ask_meta["expedientes"] = declarados
         ask_meta["truncado"] = any(d.get("truncado") for d in declarados)
+    if recuperacion_fallida:
+        # La respuesta no se apoya en el corpus porque buscar falló, no porque
+        # el corpus no cubra la pregunta: la UI lo dice con esas palabras.
+        ask_meta["recuperacion_fallida"] = True
     pre_events: list[dict[str, Any]] = [{"ask_meta": ask_meta}]
     if fuentes:
         pre_events.append({"fuentes_documentos": fuentes})
@@ -697,7 +715,10 @@ async def _stream_ask(
     from observability.runtime_metrics import llm_cache_hit_total
     from shared.cache import LLM_CACHE_TTL_SECONDS, LLM_NAMESPACE, aget_cache, llm_cache_key
 
-    cacheable = not history
+    # Tampoco una respuesta sin contexto porque la búsqueda falló: su huella es
+    # la de «no hay documentos», y la caché la serviría 24 h a preguntas que sí
+    # los tienen.
+    cacheable = not history and not recuperacion_fallida
     # La lectura va con `aget`: este cuerpo corre en el event loop. La escritura
     # de abajo (`set`) no hace falta cambiarla: vive en `_factory`, que corre en
     # un hilo.
