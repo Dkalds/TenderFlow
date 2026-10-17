@@ -1,7 +1,7 @@
 """Buffer de eventos operativos con flush best-effort a BD.
 
 Reemplaza los counters Prometheus (por-proceso, mueren con el proceso efimero
-del scheduler en GH Actions) por persistencia en SQLite: la unica fuente de
+del scheduler en GH Actions) por persistencia en la base: la unica fuente de
 verdad comun entre todos los planos de ejecucion.
 
 Semantica de diseno:
@@ -44,6 +44,10 @@ _atexit_registered = False
 # solo se emite 1 vez por minuto como maximo.
 _last_writers_high: float = 0.0
 _WRITERS_HIGH_MIN_INTERVAL = 60.0  # segundos
+
+# Un flush fallido se avisa una vez por proceso: en cada commit sería ruido, y
+# en ninguno es lo que dejó ``ops_events`` vacía sin que nadie lo viera.
+_aviso_flush_emitido = False
 
 
 def record_event(
@@ -99,8 +103,22 @@ def flush_events() -> None:
 
     try:
         _flush_postgres(rows)
-    except Exception:
-        pass
+    except Exception as exc:
+        _avisar_flush_fallido(exc, perdidos=len(rows))
+
+
+def _avisar_flush_fallido(exc: Exception, *, perdidos: int) -> None:
+    """Deja en el log, la primera vez, por qué no llegan los eventos a la base."""
+    global _aviso_flush_emitido
+    if _aviso_flush_emitido:
+        return
+    _aviso_flush_emitido = True
+    log.warning(
+        "ops_events_flush_failed",
+        error_type=type(exc).__name__,
+        error=str(exc)[:300],
+        eventos_perdidos=perdidos,
+    )
 
 
 def _flush_postgres(rows: list[dict[str, Any]]) -> None:
@@ -116,11 +134,16 @@ def _flush_postgres(rows: list[dict[str, Any]]) -> None:
     """
     import psycopg
 
-    from db.connection import _database_url
+    from db.connection import _database_url, _pg_connect_kwargs
 
     # Conexion directa sin pool: flush_events puede llamarse desde atexit,
-    # cuando el pool ya esta cerrado.
-    with psycopg.connect(_database_url(), connect_timeout=5) as conn:
+    # cuando el pool ya esta cerrado. Con los mismos parametros libpq que el
+    # pool: sin ``sslrootcert``, ``sslmode=verify-full`` no encuentra la CA de
+    # ``DATABASE_SSL_ROOT_CERT`` (es una ruta, no va en la URL) y la conexion
+    # fallaba siempre en produccion, con la tabla vacia desde el cutover.
+    url = _database_url()
+    kwargs = {**_pg_connect_kwargs(url), "connect_timeout": 5}
+    with psycopg.connect(url, **kwargs) as conn:
         conn.execute("SET statement_timeout = 2000")
         conn.cursor().executemany(
             "INSERT INTO ops_events (ts, event_type, value, plane, pid, detail) "
