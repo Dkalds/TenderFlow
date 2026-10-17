@@ -2,14 +2,16 @@
  * Los dibujos que acompañan a las cifras del Resumen: cada número lleva debajo
  * la forma que lo sitúa, como las celdas de Competencia (`competidores-cifras`).
  *
- * Ninguno calcula nada: los puntos son el recuento que mandó el backend y el
- * reloj coloca cada expediente de la cola por su propio plazo. Son SVG o cajas
+ * Ninguno calcula nada: los puntos son el recuento que mandó el backend, el
+ * reloj coloca cada expediente de la cola por su propio plazo y la proporción
+ * divide dos recuentos del backend sobre el mismo conjunto. Son SVG o cajas
  * con clases, sin `style` en línea (scripts/check_inline_styles.py), sin
  * transición —son una medida, no algo que se mueva— y decorativos para el
  * lector de pantalla: la cifra va escrita al lado.
  */
 
-import { cn, formatNumber } from "@/lib/utils";
+import { BarraPct } from "@/app/(dashboard)/competencia/_components/dibujos";
+import { cn, formatNumber, formatPercent } from "@/lib/utils";
 
 /** Puntos que caben en una fila de celda; el resto se dice en texto. */
 export const TOPE_PUNTOS = 20;
@@ -97,5 +99,34 @@ export function RelojCierre({ horas, className }: { horas: readonly number[]; cl
         <span>48 h</span>
       </div>
     </div>
+  );
+}
+
+/**
+ * Una parte sobre su total, en barra y con el porcentaje escrito al lado. Solo
+ * para dos recuentos del mismo conjunto, donde la parte está dentro del total
+ * —«Grandes en plazo» sobre las activas, las activas sobre el ámbito—: entre
+ * universos distintos la barra mentiría. Una parte diminuta no se redondea a
+ * «0,0%», que se lee como ninguna.
+ */
+export function Proporcion({
+  parte,
+  total,
+  de,
+  className,
+}: {
+  parte: number;
+  total: number;
+  de: string;
+  className?: string;
+}) {
+  const pct = total > 0 ? (parte / total) * 100 : 0;
+  return (
+    <span className={cn("flex items-center gap-2", className)}>
+      <BarraPct pct={pct} className="min-w-0 flex-1" />
+      <span className="tf-tnum flex-none text-tf-micro text-muted-foreground">
+        {parte > 0 && pct < 0.1 ? "<0,1%" : formatPercent(pct)} {de}
+      </span>
+    </span>
   );
 }
