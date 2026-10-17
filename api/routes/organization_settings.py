@@ -1,7 +1,7 @@
 """Configuración de producto por organización.
 
-Vive aparte de ``api/routes/pursuits.py`` —donde están el resto de rutas de
-organizaciones— porque es la única superficie que escribe en
+Vive aparte de ``api/routes/organizations.py`` —donde están el resto de rutas
+de organizaciones— porque es la única superficie que escribe en
 ``organizations.settings_json`` y conviene que su contrato se lea entero en un
 sitio.
 
