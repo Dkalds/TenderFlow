@@ -25,7 +25,12 @@ jobs:
     name: Semgrep SAST
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep
+      # Fijada por tag + digest: con `latest` el motor de Semgrep cambiaba
+      # entre ejecuciones y alternaba verde/rojo con código casi idéntico
+      # (issue #470). Renovate propone las subidas de versión. Ojo: los packs
+      # `p/*` siguen viniendo del registro vivo, así que las reglas pueden
+      # seguir moviéndose aunque el motor no.
+      image: semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a44787fd93c91397419762a04abe2bafaae396304b
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
