@@ -585,15 +585,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** bajo en código, alto en oportunidad — mientras el set sea pequeño, el gate de promoción bloquea con poca evidencia y el umbral servido tiene una varianza que ninguna mejora del modelo puede compensar.
 - *Estado (2026-09-27):* el plan [2026-09-27-clasificacion-tres-niveles](plans/2026-09-27-clasificacion-tres-niveles.md) propone sustituir este golden por `golden_ti.jsonl` (fase F2): la etiqueta pasa de «es SAP» a «es TI», que es lo que el binario aprende de verdad, y los ~500 ejemplos se revisan partiendo de la propuesta del LLM en vez de etiquetarse desde cero. Ese día el reentrenamiento del binario (primero que completa desde julio) quedó rechazado con `recall_no_keyword` 0/3 sobre los 17 ejemplos del holdout.
 
-### [P2] Mejorar el ranking de retrieval de producción (MRR 0.689)
-- **Área:** db/search_backend.py, services/licitaciones.py
-- **Problema:** Medido al migrar el eval RAG al motor real (ADR-018) sobre el golden set de 15 preguntas: SQLite/FTS5 da MRR ≈0.78 y Postgres/`tsvector`+`ts_rank_cd` da **0.689**. El `hit_rate@5` es **1.000 en ambos** — producción encuentra siempre el documento esperado dentro del top-5, pero lo ordena peor. No es una regresión de la migración: es la calidad real que ven los usuarios de `/ask` hoy, que nadie medía porque el eval corría sobre FTS5. El eval ratchea en `MRR_MIN = 0.65` (`tests/eval/test_eval_rag.py`), así que una regresión adicional salta. Con SQLite retirado (ADR-021) ya no hay comparación entre motores: 0.75 es el objetivo, no una paridad.
-- **Acceptance criteria:**
-  - MRR ≥ 0.75, subiendo `MRR_MIN` al valor alcanzado.
-  - Vías a explorar: pesos por campo en el `tsvector` (`setweight` para dar más peso a `titulo` que a `descripcion`), `ts_rank_cd` con normalización distinta, o combinar con similitud `pg_trgm`.
-- **Files de partida:** [db/search_backend.py](../db/search_backend.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
-- **Riesgo:** bajo — el eval con golden set actúa de red; cualquier cambio se mide antes de mergear.
-
 ### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
 - **Área:** scraper/connectors/pscp.py, observability
 - **Problema:** El fix del cursor PSCP (ver Cerrados) es correcto y verificado con tests, pero corre contra un cursor YA atascado en producción desde hace semanas (`last_seen_updated='2026-06-19'`, sin `last_entry_id`). El primer run post-deploy re-consultará desde ese mismo punto (comportamiento esperado y correcto), pero hay que confirmar en los logs de Actions que el cursor **avanza** en el run siguiente (antes se quedaba pegado indefinidamente). Además, dado el volumen de filas que comparten el `:updated_at` de la republicación masiva (~1.86M filas), el conector tardará muchos ciclos en ponerse al día — el throughput por-registro (~240ms, probablemente dominado por round-trips US↔EU a Supabase) es una preocupación separada, no resuelta por este fix. **Actualización 2026-07-27:** el throughput sí está resuelto — la ruta de escritura pasó de un round trip por fila a `executemany` (ver _Cerrados_: 2201 → 6 viajes por lote de 800 filas). Queda solo la verificación en logs de que el cursor avanza.
@@ -1102,17 +1093,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts](<../web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts>)
 - **Riesgo:** bajo.
 
-### [P3] [Investigador] Flecos de la reescritura de la búsqueda
-- **Área:** db/repositories/licitaciones.py, services/investigador/search_engine.py, api/routes/search.py
-- **Problema:** tres cosas que quedaron fuera a propósito. (1) `ids_for_filters`, `fts5_bm25_search`, `like_fallback_search`, `fetch_metadata_by_ids` y sus envoltorios `fts5_search`/`like_search`/`fetch_docs` ya no los llama la ruta; siguen por sus tests y por `rag_query` (`scripts/eval_rag_generation.py`). (2) `semantic_search.ok` escribe los primeros 80 caracteres de la consulta en el log de Render, mientras la analítica del frontend evita mandar el término. (3) `tests/test_investigador_busqueda_bd.py` fija el orden, pero el MRR del motor nuevo sobre el golden set solo se lee en el resumen del job de CI: subir `MRR_MIN` cuando se haya leído.
-- **Acceptance criteria:**
-  - Código sin llamantes retirado junto con sus tests (borrar tests exige OK, §6), o motivo anotado para conservarlo.
-  - Decisión sobre el texto de la consulta en los logs.
-  - `MRR_MIN` de `tests/eval/test_eval_rag.py` al valor medido menos el margen.
-- **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [api/routes/search.py](../api/routes/search.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
-- **Riesgo:** bajo.
-- **Progreso (2026-10-17):** (2) resuelto — `semantic_search.ok` y `semantic_search.failed` escriben `q_len`, no el texto. También se retiró `_hits_from_fused` de `api/routes/search.py`, que quedó sin llamantes con la fusión nueva (sus tests pasan a probar `combinar`). (1) resuelto el mismo día, con el OK del propietario para borrar sus tests: se retiraron `rag_query`, `escape_fts5`, `fts5_search`, `like_search` y `fetch_docs` de `services/investigador/search_engine.py`, y `ids_for_filters`, `fts5_bm25_search`, `like_fallback_search` y `fetch_metadata_by_ids` de `LicitacionRepository`, con sus tests (`tests/test_search_engine.py` entero). `scripts/eval_rag_generation.py` ya no los importaba. Queda (3).
-
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios
 - **Problema:** lo que la rama no pudo cerrar por falta de build, de permiso o de alcance:
@@ -1280,6 +1260,17 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## Cerrados
 
+- [2026-10-17] **P2: Mejorar el ranking de retrieval de producción (MRR 0.689)**
+  y **P3: Flecos de la reescritura de la búsqueda del Investigador** — el
+  golden set de `tests/eval/test_eval_rag.py`, medido en Postgres 16 con tres
+  corridas idénticas, da para el camino de producción de `/ask`
+  (`search_for_ask`, que desde 2026-10-09 responde con el motor del
+  Investigador) `hit_rate@5 = 1.000` y **MRR = 1.000**, frente al 0.689 del
+  2026-07. No hizo falta tocar pesos: lo cambió el motor nuevo (basta casar
+  algún término y el orden pesa los raros). `MRR_MIN` sube de 0.65 a **0.95**,
+  el valor medido menos una pregunta que baje al segundo puesto. Con esto se
+  cierran los tres flecos del P3: el texto de la consulta fuera del log, el
+  código sin llamantes retirado y el `MRR_MIN` ratcheado.
 - [2026-10-17] **P2: Medir en producción la muestra ordenada de pasajes de pliego**
   — medido con «mantenimiento» (40.690 fragmentos) por el MCP de solo lectura:
   la muestra ordenada por `documento_id` tardaba 2,6–6,5 s frente a 175–509 ms
