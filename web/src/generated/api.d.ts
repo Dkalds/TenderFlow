@@ -5328,7 +5328,7 @@ export interface paths {
         put?: never;
         /**
          * Búsqueda de texto completo en anuncios y pliegos, con fusión semántica
-         * @description Interpreta los filtros que diga la frase, busca por texto completo en los anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la instalación tiene embeddings con los que codificar la consulta, fusiona (RRF) con la similitud vectorial, ponderada por alpha. Si el texto no encuentra nada degrada a coincidencia literal; el campo source de la respuesta dice cuál de los caminos se ejecutó.
+         * @description Interpreta los filtros que diga la frase, busca por texto completo en los anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la instalación tiene embeddings con los que codificar la consulta, completa la lista con lo que la fusión (RRF, ponderada por alpha) encuentra por significado. Si el texto no encuentra nada degrada a coincidencia literal; el campo source de la respuesta dice cuál de los caminos se ejecutó.
          */
         post: operations["semantic_search_api_v1_search_semantic_post"];
         delete?: never;
@@ -9893,6 +9893,16 @@ export interface components {
         Interpretacion: {
             /** Ccaa */
             ccaa: string[];
+            /**
+             * Cierre Desde
+             * @description Fin del plazo de presentación desde (YYYY-MM-DD).
+             */
+            cierre_desde?: string | null;
+            /**
+             * Cierre Hasta
+             * @description Fin del plazo de presentación hasta (YYYY-MM-DD, incluido).
+             */
+            cierre_hasta?: string | null;
             /** Fecha Desde */
             fecha_desde: string | null;
             /** Fecha Hasta */
@@ -9906,6 +9916,16 @@ export interface components {
              * @enum {string}
              */
             orden: "relevancia" | "recientes";
+            /**
+             * Procedimiento
+             * @description Códigos CODICE de procedimiento entendidos.
+             */
+            procedimiento?: string[];
+            /**
+             * Procedimiento Etiquetas
+             * @description Las etiquetas legibles de `procedimiento`, en el mismo orden.
+             */
+            procedimiento_etiquetas?: string[];
             /** Solo Abiertas */
             solo_abiertas: boolean;
             /** Terminos */
@@ -14419,9 +14439,9 @@ export interface components {
             ccaa: string | null;
             /**
              * Coincide En
-             * @description Dónde casa la consulta: en el anuncio (título, descripción o CPV), en un pasaje del pliego, o en los dos. Vacío con source=rrf y con source=filtros.
+             * @description Dónde casa la consulta: en el anuncio (título, descripción o CPV), en un pasaje del pliego, y/o por significado (solo con source=rrf: la similitud vectorial lo trajo). Vacío con source=filtros.
              */
-            coincide_en: ("anuncio" | "pliego")[];
+            coincide_en: ("anuncio" | "pliego" | "significado")[];
             /** Descripcion */
             descripcion: string | null;
             /** Estado */
@@ -14444,11 +14464,11 @@ export interface components {
             importe: number | null;
             /** Organo Contratacion */
             organo_contratacion: string | null;
-            /** @description El fragmento de pliego que casa, cuando coincide_en lo incluye. */
+            /** @description El fragmento de pliego que casa, cuando coincide_en incluye pliego; o, en un resultado que solo casa por significado, el arranque del fragmento más parecido, sin resaltados. */
             pasaje: components["schemas"]["PasajePliego"] | null;
             /**
              * Score
-             * @description En [0, 1], y su significado DEPENDE de source; no es comparable entre búsquedas ni entre fuentes. Con fts es la parte de los términos de la consulta que casan: 1 = todos, en el anuncio o en un pasaje del pliego. Con like, la parte de los términos buscados por subcadena que el anuncio contiene. Con rrf se escala contra el mejor resultado de esta misma respuesta, que vale 1. Con filtros vale 0: no hubo texto que casar.
+             * @description En [0, 1], y su significado DEPENDE de source; no es comparable entre búsquedas ni entre fuentes. Con fts es la parte de los términos de la consulta que casan: 1 = todos, en el anuncio o en un pasaje del pliego. Con like, la parte de los términos buscados por subcadena que el anuncio contiene. Con rrf, los resultados que casan por texto conservan esa escala, y los que solo se parecen por significado se escalan contra el mejor de la fusión en esta misma respuesta, que vale 1. Con filtros vale 0: no hubo texto que casar.
              */
             score: number;
             /**
@@ -14533,6 +14553,12 @@ export interface components {
         SemanticSearchResponse: {
             /** Elapsed Ms */
             elapsed_ms: number;
+            /**
+             * Hay Mas
+             * @description El motor tenía más resultados que top_k: pedir un top_k mayor trae la siguiente tanda. No es un total; contarlo costaría la búsqueda entera.
+             * @default false
+             */
+            hay_mas: boolean;
             /** Hits */
             hits: components["schemas"]["SemanticHit"][];
             /** @description Los filtros y términos que salieron de la frase y se aplicaron. */
@@ -14541,7 +14567,7 @@ export interface components {
             q: string;
             /**
              * Source
-             * @description Camino REALMENTE ejecutado: rrf (fusión de texto completo y similitud vectorial), fts (texto completo sobre anuncios y pliegos), like (coincidencia literal) o filtros (la frase eran solo filtros: lo más reciente del ámbito). No se declara por configuración.
+             * @description Camino REALMENTE ejecutado: rrf (el texto completo, completado con lo que la similitud vectorial trajo de más o confirmó), fts (texto completo sobre anuncios y pliegos), like (coincidencia literal) o filtros (la frase eran solo filtros: lo más reciente del ámbito). No se declara por configuración.
              */
             source: string;
             /** Top K */

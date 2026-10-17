@@ -12,9 +12,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { TextoResaltado } from "../_lib/highlight";
-import { DEFAULT_CONFIG, EJEMPLOS, loadConfig, saveConfig } from "../_lib/config-storage";
+import { DEFAULT_CONFIG, EJEMPLOS, loadConfig, loadHistory, saveConfig } from "../_lib/config-storage";
 import { exportCSV } from "../_lib/export-csv";
-import { chipsDeInterpretacion, enlaceDeAlerta } from "../_lib/interpretacion";
+import { chipsDeInterpretacion, enlaceDeAlerta, textoBuscado } from "../_lib/interpretacion";
+import { mismaBusquedaSalvoTopK } from "../_lib/paginas";
 import { plazoDe } from "../_lib/plazo";
 import { esPregunta } from "../_lib/pregunta";
 import type { Interpretacion, SearchResult } from "../_lib/types";
@@ -24,7 +25,8 @@ import type { Interpretacion, SearchResult } from "../_lib/types";
 const descargarBlob = vi.hoisted(() =>
   vi.fn<(nombre: string, blob: Blob, recurso: "investigador") => void>(),
 );
-vi.mock("@/lib/export", () => ({ descargarBlob }));
+// El CSV se compone con el `csvBlob` de verdad; solo la descarga es un doble.
+vi.mock("@/lib/export", async (original) => ({ ...(await original<typeof import("@/lib/export")>()), descargarBlob }));
 
 /** Un resultado completo: el contrato no tiene campos opcionales. */
 export function resultado(extra: Partial<SearchResult> = {}): SearchResult {
@@ -126,6 +128,20 @@ describe("loadConfig", () => {
     expect(loadConfig().alpha).toBe(0.25);
     expect(loadConfig().model).toBe("gpt-x");
   });
+  it("un valor fuera de rango se acota: guardado, era un 422 en cada búsqueda", () => {
+    window.localStorage.setItem(
+      "lsap:v1:investigador_config",
+      JSON.stringify({ topK: 500, alpha: -3, model: 7, useGlobalFilters: "si" }),
+    );
+    expect(loadConfig()).toEqual({ ...DEFAULT_CONFIG, topK: 50, alpha: 0 });
+  });
+
+  it("un historial que no es una lista de textos no rompe la pantalla", () => {
+    window.localStorage.setItem("lsap:v1:search_history", JSON.stringify(["sap", 3, null, "oracle"]));
+    expect(loadHistory()).toEqual(["sap", "oracle"]);
+    window.localStorage.setItem("lsap:v1:search_history", JSON.stringify({ sap: 1 }));
+    expect(loadHistory()).toEqual([]);
+  });
 });
 
 describe("exportCSV", () => {
@@ -143,8 +159,8 @@ describe("exportCSV", () => {
   it("escribe la fuente de la respuesta en cada fila, no un campo por resultado", async () => {
     const csv = await csvEmitido([resultado({ titulo: "Obra" })], "fts");
     const [cabecera, fila] = csv.split("\n");
-    expect(cabecera.split(",").at(-1)).toBe("source");
-    expect(fila.split(",").at(-1)).toBe("fts");
+    expect(cabecera.split(",").at(-1)).toBe('"source"');
+    expect(fila.split(",").at(-1)).toBe('"fts"');
   });
 
   it("dice dónde casa cada resultado, no un porcentaje", async () => {
@@ -152,7 +168,7 @@ describe("exportCSV", () => {
     const [cabecera, fila] = csv.split("\n");
     expect(cabecera).toContain("coincide_en");
     expect(cabecera).not.toContain("score");
-    expect(fila).toContain("anuncio+pliego");
+    expect(fila).toContain('"anuncio+pliego"');
   });
 
   it("escapa las comillas del título en vez de romper la columna", async () => {
@@ -163,6 +179,18 @@ describe("exportCSV", () => {
   it("un id de expediente con comas no parte la fila", async () => {
     const csv = await csvEmitido([resultado({ id_externo: "7783/2025, ABI MIXTO" })], null);
     expect(csv.split("\n")[1].startsWith('"7783/2025, ABI MIXTO",')).toBe(true);
+  });
+
+  it("lleva el BOM de UTF-8, sin el cual Excel rompe las tildes", async () => {
+    exportCSV([resultado()], "fts");
+    const [, blob] = descargarBlob.mock.calls[0];
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+  });
+
+  it("un título que empieza como fórmula se exporta como texto", async () => {
+    const csv = await csvEmitido([resultado({ titulo: '=HYPERLINK("http://x")' })], null);
+    expect(csv.split("\n")[1]).toContain(`"'=HYPERLINK(""http://x"")"`);
   });
 
   it("se emite por `descargarBlob`, que es lo que mide la descarga", async () => {
@@ -237,6 +265,53 @@ describe("chipsDeInterpretacion", () => {
     expect(chips).toHaveLength(2);
     expect(chips[0]).toMatch(/^Entre 100\.000.* y 500\.000/);
     expect(chips[1]).toMatch(/^Publicadas del 1 ene 2025 al 31 dic 2025$/);
+  });
+});
+
+describe("chipsDeInterpretacion: plazo y procedimiento", () => {
+  it("el plazo de cierre se dice como cierre, no como publicación", () => {
+    expect(
+      chipsDeInterpretacion(interpretacion({ cierre_desde: "2026-10-09", cierre_hasta: "2026-10-11" })),
+    ).toEqual(["Cierran del 9 oct 2026 al 11 oct 2026"]);
+    expect(
+      chipsDeInterpretacion(interpretacion({ cierre_desde: "2026-11-30", cierre_hasta: "2026-11-30" })),
+    ).toEqual(["Cierran el 30 nov 2026"]);
+  });
+
+  it("el procedimiento va con su nombre, no con su código", () => {
+    expect(
+      chipsDeInterpretacion(interpretacion({ procedimiento: ["6"], procedimiento_etiquetas: ["Contrato menor"] })),
+    ).toEqual(["Procedimiento: Contrato menor"]);
+  });
+});
+
+describe("textoBuscado", () => {
+  it("dice con qué palabras se buscó si no son las escritas", () => {
+    expect(
+      textoBuscado(interpretacion({ texto: "mantenimiento sap" }), "Puedes mirar mantenimiento SAP en Andalucía"),
+    ).toBe("mantenimiento sap");
+  });
+
+  it("calla si son las mismas, o si no quedó ninguna", () => {
+    expect(textoBuscado(interpretacion({ texto: "licencias sap" }), "Licencias  SAP")).toBeNull();
+    expect(textoBuscado(interpretacion({ texto: "" }), "abiertas en Madrid")).toBeNull();
+    expect(textoBuscado(null, "sap")).toBeNull();
+  });
+});
+
+describe("mismaBusquedaSalvoTopK", () => {
+  const peticion = { q: "sap", top_k: 20, alpha: 0.7, interpretar: true };
+
+  it("«Mostrar más» es la misma búsqueda con otro top_k", () => {
+    expect(mismaBusquedaSalvoTopK(["investigador", "busqueda", { ...peticion, top_k: 10 }], peticion)).toBe(true);
+  });
+
+  it("otra frase, otro ámbito o «tal cual» es otra búsqueda", () => {
+    expect(mismaBusquedaSalvoTopK(["investigador", "busqueda", { ...peticion, q: "oracle" }], peticion)).toBe(false);
+    expect(mismaBusquedaSalvoTopK(["investigador", "busqueda", { ...peticion, ccaa: ["Madrid"] }], peticion)).toBe(
+      false,
+    );
+    expect(mismaBusquedaSalvoTopK(undefined, peticion)).toBe(false);
   });
 });
 

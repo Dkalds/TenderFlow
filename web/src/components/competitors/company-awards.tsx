@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDebounce } from "@/hooks/use-debounce";
 import { fetchWithAuth } from "@/lib/api-client";
-import { descargarBlob } from "@/lib/export";
+import { csvBlob, descargarBlob } from "@/lib/export";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { EMPTY, formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
 
@@ -25,12 +25,6 @@ import { competitiveKeys } from "@/lib/query-keys";
 interface CompanyAwardsProps {
   empresaId: number;
   scopeQuery: string;
-}
-
-function csvCell(value: string | number | null | undefined): string {
-  let text = value == null ? "" : String(value);
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
-  return `"${text.replaceAll('"', '""')}"`;
 }
 
 export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
@@ -112,30 +106,26 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
         "Baja %",
         "Ofertas",
       ];
-      const csv = [
-        header.map(csvCell).join(","),
-        ...rows.map((row) =>
-          [
-            row.fecha_adjudicacion,
-            row.titulo ?? row.licitacion_id,
-            row.organo_contratacion,
-            row.cpv,
-            row.ccaa,
-            row.presupuesto_licitacion,
-            row.importe_adjudicado,
-            row.baja_pct,
-            row.n_ofertas_recibidas,
-          ]
-            .map(csvCell)
-            .join(","),
-        ),
-      ].join("\n");
+      const filas = [
+        header,
+        ...rows.map((row) => [
+          row.fecha_adjudicacion,
+          row.titulo ?? row.licitacion_id,
+          row.organo_contratacion,
+          row.cpv,
+          row.ccaa,
+          row.presupuesto_licitacion,
+          row.importe_adjudicado,
+          row.baja_pct,
+          row.n_ofertas_recibidas,
+        ]),
+      ];
       // `descargarBlob` en vez de un ancla propia: el fichero se compone en el
       // cliente y no pasa por `/exports/download`, que es el único sitio donde
       // se emitía el evento de exportación. `empresaId` no viaja a la métrica.
       descargarBlob(
         `adjudicaciones-empresa-${empresaId}.csv`,
-        new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }),
+        csvBlob(filas),
         "adjudicaciones-empresa",
       );
     } finally {

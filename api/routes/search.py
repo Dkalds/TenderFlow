@@ -10,11 +10,15 @@ Diseño
   «abiertas» o «desde 2025» son filtros, no palabras, y lo entendido vuelve en
   ``interpretacion`` para que la pantalla lo enseñe. ``interpretar=false``
   busca el texto tal cual.
-* Cuatro caminos, y ``source`` dice cuál se ejecutó de verdad: fusión RRF
-  (texto + pgvector sobre ``documento_chunks``, solo si la instalación puede
-  codificar la consulta), texto completo de Postgres sobre anuncios **y
-  pliegos** (``fts``), coincidencia literal (``like``) y, cuando la frase eran
-  solo filtros, lo más reciente del ámbito (``filtros``).
+* Cuatro caminos, y ``source`` dice cuál se ejecutó de verdad: texto completo
+  de Postgres sobre anuncios **y pliegos** (``fts``), coincidencia literal
+  (``like``), lo más reciente del ámbito cuando la frase eran solo filtros
+  (``filtros``) y ``rrf`` cuando la fusión con la similitud vectorial sobre
+  ``documento_chunks`` aportó algo. La fusión **completa** la lista del texto,
+  no la sustituye (:func:`services.investigador.busqueda.combinar`): cada
+  resultado sigue diciendo dónde casa.
+* ``hay_mas`` dice si el motor tenía más resultados que ``top_k``: la pantalla
+  pide la siguiente tanda con un ``top_k`` mayor.
 * El ámbito —el explícito y el entendido— va en el ``WHERE`` de cada camino.
   Hasta 2026-10 se aplicaba después, contra un conjunto de 5.000 ids sin
   ordenar: con Cataluña (60.840 filas) el filtro descartaba el 92 % de lo que
@@ -49,10 +53,10 @@ from services.investigador.busqueda import (
     FUENTE_LITERAL,
     FUENTE_TEXTO,
     FUENTES,
-    filtros_de_fusion,
 )
 from services.investigador.busqueda import preparar as preparar_consulta
 from services.investigador.consulta import ConsultaInterpretada
+from shared.procedimientos import etiqueta_procedimiento
 
 log = get_logger(__name__)
 
@@ -60,7 +64,7 @@ router = APIRouter(tags=["search"])
 
 _MAX_Q_LEN = 500
 _DEFAULT_TOP_K = 10
-_MAX_TOP_K = 50
+_MAX_TOP_K = 100
 
 # Valores posibles de ``SemanticSearchResponse.source``, en el orden en que se
 # intentan los caminos. Son constantes y no un literal suelto porque el
@@ -177,14 +181,17 @@ class SemanticHit(BaseModel):
             "búsquedas ni entre fuentes. Con fts es la parte de los términos de la "
             "consulta que casan: 1 = todos, en el anuncio o en un pasaje del pliego. "
             "Con like, la parte de los términos buscados por subcadena que el anuncio "
-            "contiene. Con rrf se escala contra el mejor resultado de esta misma "
-            "respuesta, que vale 1. Con filtros vale 0: no hubo texto que casar."
+            "contiene. Con rrf, los resultados que casan por texto conservan esa "
+            "escala, y los que solo se parecen por significado se escalan contra el "
+            "mejor de la fusión en esta misma respuesta, que vale 1. Con filtros vale "
+            "0: no hubo texto que casar."
         )
     )
-    coincide_en: list[Literal["anuncio", "pliego"]] = Field(
+    coincide_en: list[Literal["anuncio", "pliego", "significado"]] = Field(
         description=(
             "Dónde casa la consulta: en el anuncio (título, descripción o CPV), en un "
-            "pasaje del pliego, o en los dos. Vacío con source=rrf y con source=filtros."
+            "pasaje del pliego, y/o por significado (solo con source=rrf: la "
+            "similitud vectorial lo trajo). Vacío con source=filtros."
         ),
     )
     terminos_ausentes: list[str] = Field(
@@ -200,7 +207,11 @@ class SemanticHit(BaseModel):
         ),
     )
     pasaje: PasajePliego | None = Field(
-        description="El fragmento de pliego que casa, cuando coincide_en lo incluye."
+        description=(
+            "El fragmento de pliego que casa, cuando coincide_en incluye pliego; o, "
+            "en un resultado que solo casa por significado, el arranque del "
+            "fragmento más parecido, sin resaltados."
+        )
     )
 
 
@@ -215,6 +226,19 @@ class Interpretacion(BaseModel):
     solo_abiertas: bool
     fecha_desde: str | None
     fecha_hasta: str | None
+    cierre_desde: str | None = Field(
+        default=None, description="Fin del plazo de presentación desde (YYYY-MM-DD)."
+    )
+    cierre_hasta: str | None = Field(
+        default=None, description="Fin del plazo de presentación hasta (YYYY-MM-DD, incluido)."
+    )
+    procedimiento: list[str] = Field(
+        default_factory=list, description="Códigos CODICE de procedimiento entendidos."
+    )
+    procedimiento_etiquetas: list[str] = Field(
+        default_factory=list,
+        description="Las etiquetas legibles de `procedimiento`, en el mismo orden.",
+    )
     orden: Literal["relevancia", "recientes"]
 
     @classmethod
@@ -228,6 +252,10 @@ class Interpretacion(BaseModel):
             solo_abiertas=consulta.solo_abiertas,
             fecha_desde=consulta.fecha_desde,
             fecha_hasta=consulta.fecha_hasta,
+            cierre_desde=consulta.cierre_desde,
+            cierre_hasta=consulta.cierre_hasta,
+            procedimiento=list(consulta.procedimiento),
+            procedimiento_etiquetas=[etiqueta_procedimiento(c) for c in consulta.procedimiento],
             orden=consulta.orden,
         )
 
@@ -242,77 +270,25 @@ class SemanticSearchResponse(BaseModel):
     # cualquier camino futuro en un 500 de validación en producción.
     source: str = Field(
         description=(
-            "Camino REALMENTE ejecutado: rrf (fusión de texto completo y "
-            "similitud vectorial), fts (texto completo sobre anuncios y pliegos), "
+            "Camino REALMENTE ejecutado: rrf (el texto completo, completado con lo "
+            "que la similitud vectorial trajo de más o confirmó), fts (texto completo "
+            "sobre anuncios y pliegos), "
             "like (coincidencia literal) o filtros (la frase eran solo filtros: lo "
             "más reciente del ámbito). No se declara por configuración."
         )
     )
     hits: list[SemanticHit]
+    hay_mas: bool = Field(
+        default=False,
+        description=(
+            "El motor tenía más resultados que top_k: pedir un top_k mayor trae "
+            "la siguiente tanda. No es un total; contarlo costaría la búsqueda entera."
+        ),
+    )
     elapsed_ms: int
     interpretacion: Interpretacion = Field(
         description="Los filtros y términos que salieron de la frase y se aplicaron.",
     )
-
-
-# ── Normalización de los hits de la fusión ───────────────────────────────────
-
-# Campos de ``hybrid_search_docs`` que sí viajan al cliente. El resto de lo que
-# devuelve (``rrf_score``, ``chunks``) es para el RAG, no para esta ruta.
-_HIT_FIELDS = (
-    "id_externo",
-    "titulo",
-    "organo_contratacion",
-    "importe",
-    "descripcion",
-    "url",
-    "fecha_publicacion",
-    "ccaa",
-    "estado",
-    "tecnologia",
-)
-
-# Lo que la fusión no calcula. Viaja vacío, y no ausente, para que el contrato
-# sea el mismo por cualquier camino: quien pinta no tiene que preguntarse por
-# qué fuente llegó el resultado antes de leer un campo.
-_SIN_DETALLE: dict[str, Any] = {
-    "fecha_limite": None,
-    "coincide_en": [],
-    "terminos_ausentes": [],
-    "titulo_tramos": [],
-    "extracto": [],
-    "pasaje": None,
-}
-
-
-def _hits_from_fused(
-    docs: list[dict[str, Any]],
-    allowed_ids: set[str] | None,
-    top_k: int,
-) -> list[dict[str, Any]]:
-    """Adapta los documentos de la fusión RRF a la forma de ``SemanticHit``.
-
-    El ``rrf_score`` bruto vive en torno a 1/60 y no tiene techo conocido, así
-    que se escala contra el mejor de esta misma respuesta para que el contrato
-    ``score ∈ [0, 1]`` se cumpla sin fingir una escala absoluta que no existe:
-    la descripción del campo dice que es relativo a la respuesta.
-    """
-    if allowed_ids is not None:
-        docs = [d for d in docs if d.get("id_externo") in allowed_ids]
-    docs = docs[:top_k]
-    if not docs:
-        return []
-
-    max_score = max(float(d.get("rrf_score") or 0.0) for d in docs)
-    hits: list[dict[str, Any]] = []
-    for doc in docs:
-        hit: dict[str, Any] = {k: doc.get(k) for k in _HIT_FIELDS} | {
-            k: (list(v) if isinstance(v, list) else v) for k, v in _SIN_DETALLE.items()
-        }
-        raw = float(doc.get("rrf_score") or 0.0)
-        hit["score"] = round(raw / max_score, 6) if max_score > 0 else 0.0
-        hits.append(hit)
-    return hits
 
 
 # ── Endpoint ─────────────────────────────────────────────────────────────────
@@ -325,10 +301,10 @@ def _hits_from_fused(
     description=(
         "Interpreta los filtros que diga la frase, busca por texto completo en los "
         "anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la "
-        "instalación tiene embeddings con los que codificar la consulta, fusiona "
-        "(RRF) con la similitud vectorial, ponderada por alpha. Si el texto no "
-        "encuentra nada degrada a coincidencia literal; el campo source de la "
-        "respuesta dice cuál de los caminos se ejecutó."
+        "instalación tiene embeddings con los que codificar la consulta, completa "
+        "la lista con lo que la fusión (RRF, ponderada por alpha) encuentra por "
+        "significado. Si el texto no encuentra nada degrada a coincidencia literal; "
+        "el campo source de la respuesta dice cuál de los caminos se ejecutó."
     ),
 )
 async def semantic_search(
@@ -351,40 +327,31 @@ async def semantic_search(
     )
 
     def _run() -> tuple[list[dict[str, Any]], str]:
-        from services.investigador.busqueda import buscar_por_texto
-        from services.investigador.search_engine import hybrid_search
+        from services.investigador.busqueda import buscar
 
-        # La fusión primero: solo devuelve algo cuando hay modelo de embeddings
-        # y chunks embebidos con los que fusionar. Que esté vacía significa que
-        # el camino no existe hoy en esta instalación, no que la consulta no
-        # tenga resultados — por eso se sigue al texto en vez de responder vacío.
-        if consulta.tiene_texto:
-            fused = hybrid_search(
-                consulta.texto,
-                min(body.top_k * 2, 200),
-                alpha=body.alpha,
-                filtros=filtros_de_fusion(ambito),
-            )
-            if fused:
-                return _hits_from_fused(fused, None, body.top_k), SOURCE_RRF
-
-        resultado = buscar_por_texto(consulta, ambito, body.top_k)
+        # Uno de más: si llega, hay otra tanda que pedir.
+        resultado = buscar(consulta, ambito, body.top_k + 1, alpha=body.alpha)
         return resultado.hits, resultado.fuente
 
     try:
         hits, source = await run_ml(_run)
     except Exception as exc:
-        log.error("semantic_search.failed", error=str(exc), q=body.q[:80])
+        log.error("semantic_search.failed", error=str(exc), q_len=len(body.q))
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="El servicio de búsqueda semántica no está disponible temporalmente.",
         ) from exc
+    hay_mas = len(hits) > body.top_k
+    hits = hits[: body.top_k]
 
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
 
     log.info(
         "semantic_search.ok",
-        q=body.q[:80],
+        # El texto de la consulta no se escribe: es la estrategia comercial de
+        # quien lo busca, y la analítica del frontend tampoco lo manda. La
+        # longitud y los términos que quedaron bastan para leer el log.
+        q_len=len(body.q),
         n=len(hits),
         source=source,
         # ``alpha`` solo se interpreta cuando ``source`` es rrf; loguear ambos
@@ -405,6 +372,7 @@ async def semantic_search(
         top_k=body.top_k,
         source=source,
         hits=[SemanticHit(**{k: v for k, v in h.items() if k in campos}) for h in hits],
+        hay_mas=hay_mas,
         elapsed_ms=elapsed_ms,
         interpretacion=Interpretacion.de(consulta),
     )

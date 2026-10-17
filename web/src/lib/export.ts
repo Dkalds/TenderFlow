@@ -188,6 +188,29 @@ function formatoDeNombre(nombre: string): EventosProducto["export_lanzado"]["for
 }
 
 /**
+ * Una celda de CSV compuesto en el cliente: entre comillas, con las comillas
+ * internas dobladas y **neutralizada como fórmula**. Una celda que empieza por
+ * `=`, `+`, `-` o `@` Excel la ejecuta al abrir el fichero (inyección CSV); el
+ * apóstrofo delante la deja como texto. Los títulos y órganos son texto de
+ * terceros, así que esto no es teórico.
+ */
+export function csvCell(value: string | number | null | undefined): string {
+  let text = value == null ? "" : String(value);
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+/**
+ * Un CSV listo para `descargarBlob`: filas de celdas ya escapadas con
+ * {@link csvCell}, y el BOM de UTF-8 delante, sin el cual Excel abre las
+ * tildes como «Ã³».
+ */
+export function csvBlob(filas: readonly (readonly (string | number | null | undefined)[])[]): Blob {
+  const csv = filas.map((fila) => fila.map(csvCell).join(",")).join("\n");
+  return new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
+}
+
+/**
  * Entrega al usuario un fichero construido en el cliente, midiéndolo.
  *
  * Tres pantallas (Detalle, Investigador y el histórico de adjudicaciones de una

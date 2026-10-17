@@ -16,7 +16,7 @@ Baseline medido 2026-07-13 sobre este golden set (FTS puro, flag
 ``RAG_HYBRID_ENABLED`` en su default False — el camino que realmente corre
 en CI/producción hoy): ``hit_rate@5 = 1.00``, ``MRR = 1.00``. Los umbrales de
 abajo son un ratchet con margen bajo ese baseline; si una regresión de
-``search_for_ask``/``escape_fts5``/``search_like_for_ask`` los rompe, el
+``search_for_ask``/``search_like_for_ask`` los rompe, el
 review debe justificar el cambio, no bajar el umbral.
 
 Nada aquí necesita red ni proveedor LLM: los tests de retrieval llaman al

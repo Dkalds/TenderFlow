@@ -25,7 +25,7 @@ export const SOURCE_LABELS: Record<string, string> = {
  * no es un fallo de otra cosa, es la búsqueda.
  */
 export const SOURCE_HINTS: Record<string, string> = {
-  rrf: "Combina las palabras de tu consulta con el parecido de significado sobre los pliegos; cuánto pesa cada lado lo fija «Tipo de coincidencia».",
+  rrf: "Primero, lo que contiene todas las palabras de tu consulta; después, lo que se le parece por significado en los pliegos aunque no las use. Cuánto pesa el significado lo fija «Tipo de coincidencia».",
   fts: "Busca las palabras de tu consulta en los anuncios y dentro de los pliegos. Primero van los que las contienen todas.",
   like: "Ninguna palabra de tu consulta aparece como tal: estos resultados contienen parte de su texto. Sin orden de relevancia, los más recientes primero.",
   filtros: "Tu consulta no trae palabras que buscar: esto es lo más reciente dentro de los filtros.",

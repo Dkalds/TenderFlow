@@ -21,9 +21,9 @@ from api.routes.search import (
     SOURCE_LIKE,
     SOURCE_RRF,
     SemanticSearchResponse,
-    _hits_from_fused,
 )
 from db.search_backend import fusion_weights
+from services.investigador.busqueda import Resultado, combinar
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INVESTIGADOR = _REPO_ROOT / "web" / "src" / "app" / "(dashboard)" / "investigador"
@@ -219,62 +219,158 @@ class TestElRagNoCambia:
         assert "WHERE f.rrf_score > 0" not in self._sql().sql
 
 
-class TestHitsDeLaFusion:
-    """La adaptación de los docs de RRF a ``SemanticHit``."""
+class TestCombinarTextoYFusion:
+    """La fusión completa la lista del texto; ya no la sustituye.
+
+    Hasta 2026-10 una instalación con embeddings respondía solo con la fusión
+    y perdía dónde casa cada resultado, el pasaje del pliego y el plazo.
+    """
 
     @staticmethod
-    def _doc(id_externo: str, rrf: float) -> dict[str, object]:
+    def _doc(id_externo: str, rrf: float, texto: str = "fragmento del pliego") -> dict[str, object]:
         return {
             "id_externo": id_externo,
             "titulo": f"Licitación {id_externo}",
-            "organo_contratacion": "AEAT",
-            "importe": 1000.0,
-            "descripcion": "texto",
-            "url": None,
-            "fecha_publicacion": "2026-01-01",
-            "ccaa": "Madrid",
-            "estado": "PUB",
-            "tecnologia": "SAP",
             "rrf_score": rrf,
-            "chunks": [{"chunk_id": 1, "chunk_index": 0, "texto": "..."}],
+            "chunks": [{"chunk_id": 1, "chunk_index": 0, "texto": texto}],
         }
 
-    def test_score_normalizado_a_uno_en_el_mejor(self) -> None:
-        hits = _hits_from_fused([self._doc("A", 0.03), self._doc("B", 0.015)], None, 10)
-        assert [h["score"] for h in hits] == [1.0, 0.5]
+    @staticmethod
+    def _hit(id_externo: str, *, ausentes: tuple[str, ...] = ()) -> dict[str, object]:
+        return {
+            "id_externo": id_externo,
+            "titulo": f"Licitación {id_externo}",
+            "fecha_limite": "2026-11-30T14:00:00",
+            "coincide_en": ["anuncio"],
+            "terminos_ausentes": list(ausentes),
+            "score": 0.5 if ausentes else 1.0,
+            "pasaje": None,
+        }
 
-    def test_no_arrastra_campos_internos(self) -> None:
-        """``chunks`` y ``rrf_score`` son del RAG, no del contrato de esta ruta."""
-        (hit,) = _hits_from_fused([self._doc("A", 0.03)], None, 10)
-        assert "chunks" not in hit
-        assert "rrf_score" not in hit
+    @staticmethod
+    def _filas(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+        """``anuncios_por_id`` sin BD: la fila completa, con su plazo."""
+        import services.investigador.busqueda as busqueda
 
-    def test_lo_que_la_fusion_no_calcula_viaja_vacio_no_ausente(self) -> None:
-        """El contrato es el mismo por cualquier camino: la tecnología del
-        expediente sí llega (la tarjeta la pinta), y lo que solo calcula el
-        motor de texto va vacío."""
-        uno, otro = _hits_from_fused([self._doc("A", 0.03), self._doc("B", 0.02)], None, 10)
-        assert uno["tecnologia"] == "SAP"
-        assert uno["coincide_en"] == [] and uno["pasaje"] is None
-        # Cada hit con su lista: mutar uno no toca al siguiente.
-        uno["coincide_en"].append("anuncio")
-        assert otro["coincide_en"] == []
+        pedidas: list[list[str]] = []
 
-    def test_respeta_allowed_ids_y_top_k(self) -> None:
-        docs = [self._doc("A", 0.03), self._doc("B", 0.02), self._doc("C", 0.01)]
-        hits = _hits_from_fused(docs, {"B", "C"}, 1)
-        assert [h["id_externo"] for h in hits] == ["B"]
+        def _por_id(ids: list[str]) -> dict[str, dict[str, object]]:
+            pedidas.append(list(ids))
+            return {
+                i: {"id_externo": i, "titulo": f"Licitación {i}", "fecha_limite": "2026-12-01"}
+                for i in ids
+            }
 
-    def test_todos_a_cero_no_divide_por_cero(self) -> None:
-        hits = _hits_from_fused([self._doc("A", 0.0)], None, 10)
-        assert hits[0]["score"] == 0.0
+        monkeypatch.setattr(busqueda.repo, "anuncios_por_id", _por_id)
+        return pedidas
 
-    def test_la_respuesta_valida_con_los_hits_de_la_fusion(self) -> None:
-        """Contrato: lo que produce la fusión encaja en el DTO publicado."""
+    def _combinar(
+        self, texto: list[dict[str, object]], fusion: list[dict[str, object]], fuente: str = "fts"
+    ) -> Resultado:
+        return combinar(Resultado(texto, fuente), fusion, 10)
+
+    def test_sin_fusion_la_lista_del_texto_queda_igual(self) -> None:
+        original = Resultado([self._hit("A")], SOURCE_FTS)
+        assert combinar(original, [], 10) is original
+
+    def test_lo_nuevo_va_entre_lo_completo_y_lo_parcial(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._filas(monkeypatch)
+        res = self._combinar(
+            [self._hit("A"), self._hit("P", ausentes=("sap",))],
+            [self._doc("N", 0.03)],
+        )
+        assert [h["id_externo"] for h in res.hits] == ["A", "N", "P"]
+        assert res.fuente == SOURCE_RRF
+
+    def test_lo_que_solo_trae_la_fusion_dice_por_que_y_trae_su_plazo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._filas(monkeypatch)
+        (hit,) = self._combinar([], [self._doc("N", 0.03, "  mantenimiento\n del ERP  ")]).hits
+        assert hit["coincide_en"] == ["significado"]
+        assert hit["fecha_limite"] == "2026-12-01"
+        assert hit["pasaje"]["tramos"] == [{"texto": "mantenimiento del ERP", "resaltado": False}]
+        assert "rrf_score" not in hit and hit["chunks"] == []
+
+    def test_lo_que_casa_por_texto_y_por_significado_lo_dice_sin_moverse(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pedidas = self._filas(monkeypatch)
+        res = self._combinar([self._hit("A"), self._hit("B")], [self._doc("B", 0.03)])
+        assert [h["id_externo"] for h in res.hits] == ["A", "B"]
+        assert res.hits[1]["coincide_en"] == ["anuncio", "significado"]
+        assert res.hits[1]["fecha_limite"] == "2026-11-30T14:00:00"
+        assert pedidas == []  # nada nuevo que leer de la BD
+        assert res.fuente == SOURCE_RRF
+
+    def test_el_score_de_lo_nuevo_se_escala_al_mejor_de_la_fusion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._filas(monkeypatch)
+        res = self._combinar([], [self._doc("A", 0.04), self._doc("B", 0.02)])
+        assert [h["score"] for h in res.hits] == [1.0, 0.5]
+
+    def test_lo_que_la_fusion_trajo_solo_por_su_lado_lexico_no_es_significado(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sin fragmento no vino de la lista vectorial: lo léxico lo ordena el
+        motor de texto, y llamarlo «parecido» sería mentir."""
+        pedidas = self._filas(monkeypatch)
+        lexico = {"id_externo": "X", "rrf_score": 0.03, "chunks": []}
+        original = Resultado([self._hit("A")], SOURCE_FTS)
+        assert combinar(original, [lexico, {**lexico, "id_externo": "A"}], 10) is original
+        assert pedidas == []
+
+    def test_todos_a_cero_no_divide_por_cero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._filas(monkeypatch)
+        res = self._combinar([], [self._doc("A", 0.0)])
+        assert res.hits[0]["score"] == 0.0
+
+    def test_con_subcadena_lo_parecido_va_delante(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Una coincidencia por subcadena es más débil que un parecido."""
+        self._filas(monkeypatch)
+        res = self._combinar([self._hit("L")], [self._doc("N", 0.03)], fuente=SOURCE_LIKE)
+        assert [h["id_externo"] for h in res.hits] == ["N", "L"]
+
+    def test_un_id_que_ya_no_existe_no_se_inventa(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import services.investigador.busqueda as busqueda
+
+        monkeypatch.setattr(busqueda.repo, "anuncios_por_id", lambda ids: {})
+        res = self._combinar([self._hit("A")], [self._doc("X", 0.03)])
+        assert [h["id_externo"] for h in res.hits] == ["A"]
+        assert res.fuente == SOURCE_FTS
+
+    def test_la_respuesta_valida_con_lo_que_trae_la_fusion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Contrato: un resultado por significado encaja en el DTO publicado."""
+        import services.investigador.busqueda as busqueda
         from api.routes.search import Interpretacion
         from services.investigador.consulta import interpretar
 
-        hits = _hits_from_fused([self._doc("A", 0.03)], None, 10)
+        monkeypatch.setattr(
+            busqueda.repo,
+            "anuncios_por_id",
+            lambda ids: {
+                i: {
+                    "id_externo": i,
+                    "titulo": "T",
+                    "organo_contratacion": None,
+                    "importe": None,
+                    "descripcion": None,
+                    "url": None,
+                    "fecha_publicacion": None,
+                    "fecha_limite": None,
+                    "ccaa": None,
+                    "estado": None,
+                    "tecnologia": None,
+                }
+                for i in ids
+            },
+        )
+        hits = combinar(Resultado([], SOURCE_FTS), [self._doc("A", 0.03)], 10).hits
         resp = SemanticSearchResponse(
             q="sap",
             top_k=10,
@@ -283,7 +379,8 @@ class TestHitsDeLaFusion:
             elapsed_ms=1,
             interpretacion=Interpretacion.de(interpretar("sap")),
         )
-        assert resp.hits[0].id_externo == "A"
+        assert resp.hits[0].coincide_en == ["significado"]
+        assert resp.hits[0].pasaje is not None
         assert 0.0 <= resp.hits[0].score <= 1.0
 
 

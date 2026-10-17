@@ -156,30 +156,27 @@ class TestFuenteDerivadaDelCaminoEjecutado:
 
 
 class TestAlphaGobiernaLaFusion:
-    """El deslizador del Investigador deja de ser decorativo."""
+    """El deslizador decide cuánto pesa el significado al completar la lista.
 
-    def test_alpha_uno_deja_solo_el_lado_semantico(self, search_client, embeddings_simulados):
+    Lo que casa con todos los términos va primero sea cual sea ``alpha``: la
+    fusión completa la lista del texto, no la reordena por encima.
+    """
+
+    def test_alpha_uno_completa_con_lo_semantico(self, search_client, embeddings_simulados):
         _seed_licitaciones()
         _seed_chunk("L-VEC", _vec(0))
         data = _buscar(search_client, alpha=1.0)
         assert data["source"] == "rrf"
-        # L-FTS solo aparece en la lista léxica, que pesa cero.
-        assert [h["id_externo"] for h in data["hits"]] == ["L-VEC"]
+        assert [h["id_externo"] for h in data["hits"]] == ["L-FTS", "L-VEC"]
+        assert data["hits"][0]["coincide_en"] == ["anuncio"]
+        assert data["hits"][1]["coincide_en"] == ["significado"]
 
-    def test_alpha_cero_deja_solo_el_lado_lexico(self, search_client, embeddings_simulados):
+    def test_alpha_cero_deja_solo_el_texto(self, search_client, embeddings_simulados):
         _seed_licitaciones()
         _seed_chunk("L-VEC", _vec(0))
         data = _buscar(search_client, alpha=0.0)
-        assert data["source"] == "rrf"
+        assert data["source"] == "fts"
         assert [h["id_externo"] for h in data["hits"]] == ["L-FTS"]
-
-    def test_alpha_alto_ordena_antes_lo_semantico(self, search_client, embeddings_simulados):
-        _seed_licitaciones()
-        _seed_chunk("L-VEC", _vec(0))
-        alto = _buscar(search_client, alpha=0.9)["hits"]
-        bajo = _buscar(search_client, alpha=0.1)["hits"]
-        assert alto[0]["id_externo"] == "L-VEC"
-        assert bajo[0]["id_externo"] == "L-FTS"
 
 
 class TestDefaultDelRag:
@@ -359,8 +356,9 @@ class TestFiltrosDelLadoVectorial:
 
 class TestFiltrosSobreLaFusion:
     def test_los_filtros_globales_acotan_tambien_el_rrf(self, search_client, embeddings_simulados):
-        """El filtrado sigue siendo del backend (allowed_ids), también cuando
-        los resultados vienen de la fusión."""
+        """El ámbito acota también la fusión: el fragmento de L-VEC, de fuera
+        de Galicia, no se cuela como parecido. Dentro del ámbito la fusión no
+        tiene nada vectorial que aportar, así que la fuente es la del texto."""
         from db.upsert import Licitacion, upsert_licitaciones
 
         _seed_licitaciones()
@@ -370,7 +368,7 @@ class TestFiltrosSobreLaFusion:
         _seed_chunk("L-VEC", _vec(0))
 
         data = _buscar(search_client, ccaa=["Galicia"])
-        assert data["source"] == "rrf"
+        assert data["source"] == "fts"
         assert [h["id_externo"] for h in data["hits"]] == ["L-OTRA"]
 
     def test_la_tecnologia_encuentra_los_expedientes_multi_tecnologia(self, api_db):

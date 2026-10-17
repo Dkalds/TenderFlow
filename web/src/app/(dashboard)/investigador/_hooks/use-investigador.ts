@@ -18,7 +18,7 @@
  *   la búsqueda espera a tenerlos.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
 import { fetchWithAuth } from "@/lib/api-client";
@@ -29,6 +29,7 @@ import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { investigadorKeys } from "@/lib/query-keys";
 import { formatDate } from "@/lib/utils";
 import { useAskModels } from "@/hooks/use-ask";
+import { MAX_RESULTADOS, mismaBusquedaSalvoTopK } from "../_lib/paginas";
 import { esPregunta } from "../_lib/pregunta";
 import { FUENTE_CON_SIGNIFICADO } from "../_lib/source-label";
 import type { Interpretacion, InvestigadorConfig, SearchResult, SemanticSearchResponse } from "../_lib/types";
@@ -53,6 +54,11 @@ export interface UseInvestigadorResult {
 
   /** `true` mientras llega la primera respuesta de una consulta. */
   loading: boolean;
+  /**
+   * `true` mientras se pide algo, también si ya hay una lista en pantalla: al
+   * repetir la consulta o al pedir más. Es lo que dice el botón «Buscar».
+   */
+  buscando: boolean;
   /** Lo que lanzó la búsqueda, tal cual: `PanelError` saca de ahí el mensaje humano y el detalle técnico. */
   error: unknown;
   reintentar: () => void;
@@ -61,6 +67,12 @@ export interface UseInvestigadorResult {
   searchSource: string | null;
   /** Los filtros que salieron de la frase y se aplicaron. */
   interpretacion: Interpretacion | null;
+  /** La búsqueda tenía más resultados de los que se enseñan. */
+  hayMas: boolean;
+  /** Pide la siguiente tanda; `null` si no hay más o ya se llegó al tope. */
+  mostrarMas: (() => void) | null;
+  /** La siguiente tanda está en camino; la lista de antes sigue a la vista. */
+  cargandoMas: boolean;
   /** La búsqueda se hizo con el texto tal cual, sin leer filtros en la frase. */
   talCual: boolean;
   setTalCual: (talCual: boolean) => void;
@@ -102,12 +114,16 @@ export function useInvestigador(): UseInvestigadorResult {
   const talCual = parametros.tal_cual === "1";
 
   const [texto, setTexto] = useState(consulta);
+  // Resultados pedidos de más con «Mostrar más», sobre los de «Resultados».
+  const [extra, setExtra] = useState(0);
   // La caja sigue a la URL cuando esta cambia por fuera (atrás, adelante, un
   // enlace): se ajusta durante el render, sin un efecto que pinte dos veces.
+  // Una consulta nueva vuelve a la primera tanda.
   const [consultaVista, setConsultaVista] = useState(consulta);
   if (consultaVista !== consulta) {
     setConsultaVista(consulta);
     setTexto(consulta);
+    setExtra(0);
   }
 
   const { config, lista: ajustesListos, updateConfig, history, addHistory } = useAjustes();
@@ -143,12 +159,12 @@ export function useInvestigador(): UseInvestigadorResult {
   const peticion = useMemo(
     () => ({
       q: consulta,
-      top_k: config.topK,
+      top_k: Math.min(config.topK + extra, MAX_RESULTADOS),
       alpha: config.alpha,
       interpretar: !talCual,
       ...filtros,
     }),
-    [consulta, config.topK, config.alpha, talCual, filtros],
+    [consulta, config.topK, extra, config.alpha, talCual, filtros],
   );
 
   const busqueda = useQuery({
@@ -166,12 +182,19 @@ export function useInvestigador(): UseInvestigadorResult {
       // aquí y no al pintar: la lista que vuelve de la caché no es otra
       // búsqueda. El término buscado NO viaja — es la estrategia comercial de
       // quien lo escribe, igual que las keywords de una regla de vigilancia.
-      registrarEvento("busqueda_realizada", {
-        superficie: "investigador",
-        con_resultados: data.hits.length > 0 ? "si" : "no",
-      });
+      // «Mostrar más» no es otra búsqueda: no cuenta otra vez en el embudo.
+      if (peticion.top_k <= config.topK) {
+        registrarEvento("busqueda_realizada", {
+          superficie: "investigador",
+          con_resultados: data.hits.length > 0 ? "si" : "no",
+        });
+      }
       return data;
     },
+    // «Mostrar más» enseña la lista que había mientras llega la siguiente
+    // tanda; cualquier otro cambio de la petición es otra búsqueda.
+    placeholderData: (previo, consultaPrevia) =>
+      mismaBusquedaSalvoTopK(consultaPrevia?.queryKey, peticion) ? previo : undefined,
     enabled: ajustesListos && consulta.length > 0,
     // Los anuncios no cambian de un minuto a otro: volver de una ficha
     // encuentra la lista sin esperar ni pedirla otra vez.
@@ -182,6 +205,13 @@ export function useInvestigador(): UseInvestigadorResult {
     meta: META_ERROR_EN_LINEA,
   });
 
+  // A «Recientes» va lo que se pudo buscar (también desde la caché, para que
+  // volver a una consulta la suba): una que falla no se queda ahí.
+  const buscada = busqueda.isSuccess && !busqueda.isPlaceholderData;
+  useEffect(() => {
+    if (buscada && consulta) addHistory(consulta);
+  }, [buscada, consulta, addHistory]);
+
   const searchSource = busqueda.data?.source ?? null;
   // «Tipo de coincidencia» solo aparece cuando una respuesta ha combinado de
   // verdad significado y texto. Se queda puesto el resto de la visita: quien
@@ -191,16 +221,26 @@ export function useInvestigador(): UseInvestigadorResult {
   const asistente = useAsistenteInvestigador({ config, filtros, talCual });
   const { preguntarSobreTodo, soltarSeleccion } = asistente;
 
+  // Una consulta nueva es otra investigación: los resultados marcados eran de
+  // la lista anterior. Se suelta cuando cambia la consulta de la URL —también
+  // con atrás y adelante— y no al pulsar «Buscar»: repetir la misma no cambia
+  // la lista, y no tiene por qué borrar lo marcado. Solo si hay algo marcado:
+  // una pregunta recién enviada sobre todas las licitaciones es del
+  // Investigador y no se le quita el contexto.
+  const consultaPrevia = useRef(consulta);
+  const haySeleccion = asistente.seleccion.length > 0;
+  useEffect(() => {
+    if (consultaPrevia.current === consulta) return;
+    consultaPrevia.current = consulta;
+    if (haySeleccion) soltarSeleccion();
+  }, [consulta, haySeleccion, soltarSeleccion]);
+
   const { refetch } = busqueda;
   const submit = useCallback(
     (override?: string) => {
       const q = (override ?? texto).trim();
       if (!q) return;
-      addHistory(q);
       setTexto(q);
-      // Una consulta nueva es otra investigación: los resultados marcados eran
-      // de la lista anterior.
-      soltarSeleccion();
       if (q === consulta && !talCual) {
         void refetch();
       } else {
@@ -212,8 +252,11 @@ export function useInvestigador(): UseInvestigadorResult {
       // nueva; las de seguimiento se hacen desde el propio hilo.
       if (esPregunta(q)) preguntarSobreTodo(q);
     },
-    [texto, consulta, talCual, addHistory, refetch, setParametros, soltarSeleccion, preguntarSobreTodo],
+    [texto, consulta, talCual, refetch, setParametros, preguntarSobreTodo],
   );
+
+  const hayMas = Boolean(busqueda.data?.hay_mas);
+  const mostrarMas = useCallback(() => setExtra((previo) => previo + config.topK), [config.topK]);
 
   const setTalCual = useCallback(
     (valor: boolean) => void setParametros({ tal_cual: valor ? "1" : null }),
@@ -228,11 +271,15 @@ export function useInvestigador(): UseInvestigadorResult {
     // También mientras se leen los ajustes guardados: con una consulta en la
     // URL, ese instante es «buscando», no «sin nada que enseñar».
     loading: consulta.length > 0 && (busqueda.isLoading || !ajustesListos),
+    buscando: consulta.length > 0 && (busqueda.isFetching || !ajustesListos),
     error: busqueda.error,
     reintentar: () => void refetch(),
     searchResults: busqueda.data?.hits ?? null,
     searchSource,
     interpretacion: busqueda.data?.interpretacion ?? null,
+    hayMas,
+    mostrarMas: hayMas && peticion.top_k < MAX_RESULTADOS ? mostrarMas : null,
+    cargandoMas: busqueda.isPlaceholderData && busqueda.isFetching,
     talCual,
     setTalCual,
     history,

@@ -42,7 +42,9 @@ def _doc(id_externo: str, rrf: float) -> dict[str, Any]:
         "estado": "PUB",
         "tecnologia": "SAP",
         "rrf_score": rrf,
-        "chunks": [],
+        # Con fragmento: viene de la lista vectorial, que es lo que cuenta como
+        # «por significado».
+        "chunks": [{"chunk_id": 1, "chunk_index": 0, "texto": "fragmento"}],
     }
 
 
@@ -126,6 +128,12 @@ class _MotorFalso:
 
         monkeypatch.setattr(motor, "hybrid_search", self.hybrid_search)
         monkeypatch.setattr(busqueda, "buscar_por_texto", self.buscar_por_texto)
+        # Lo que solo trae la fusión se completa con su fila de anuncio.
+        monkeypatch.setattr(
+            busqueda.repo,
+            "anuncios_por_id",
+            lambda ids: {i: _hit(i, fecha_limite="2026-12-01") for i in ids},
+        )
 
 
 def _buscar(q: str = "sap", **body: Any) -> SemanticSearchResponse:
@@ -143,15 +151,20 @@ def _buscar(q: str = "sap", **body: Any) -> SemanticSearchResponse:
 class TestFuenteDerivadaDelCamino:
     """Criterios 2 y 4 de O0.6a, ejecutados aquí."""
 
-    def test_con_fusion_la_fuente_es_rrf(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_con_fusion_la_fuente_es_rrf_y_completa_al_texto(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """La fusión ya no sustituye a la lista del texto: la completa, y lo que
+        solo trae ella dice que casa por significado y trae su plazo."""
         motor = _MotorFalso(fused=[_doc("A", 0.03)], texto=[_hit("Z")])
         motor.instalar(monkeypatch)
         resp = _buscar()
         assert resp.source == SOURCE_RRF
-        assert [h.id_externo for h in resp.hits] == ["A"]
-        # Y no ejecutó el camino de texto: la fuente no es una etiqueta puesta
-        # encima de otro resultado.
-        assert motor.llamadas == ["hybrid"]
+        assert [h.id_externo for h in resp.hits] == ["Z", "A"]
+        assert resp.hits[0].coincide_en == ["anuncio"]
+        assert resp.hits[1].coincide_en == ["significado"]
+        assert resp.hits[1].fecha_limite == "2026-12-01"
+        assert motor.llamadas == ["texto", "hybrid"]
 
     def test_sin_chunks_embebidos_la_fuente_es_fts_y_no_hay_error(
         self, monkeypatch: pytest.MonkeyPatch
@@ -163,7 +176,7 @@ class TestFuenteDerivadaDelCamino:
         resp = _buscar()
         assert resp.source == SOURCE_FTS
         assert [h.id_externo for h in resp.hits] == ["B", "C"]
-        assert motor.llamadas == ["hybrid", "texto"]
+        assert motor.llamadas == ["texto", "hybrid"]
 
     def test_la_fuente_del_motor_de_texto_no_se_reetiqueta(
         self, monkeypatch: pytest.MonkeyPatch
@@ -197,6 +210,52 @@ class TestFuenteDerivadaDelCamino:
         motor.instalar(monkeypatch)
         resp = _buscar(top_k=2)
         assert [h.id_externo for h in resp.hits] == ["A", "B"]
+        assert resp.hay_mas is True
+
+    def test_hay_mas_solo_si_el_motor_tenia_otro(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """La ruta pide uno de más: si llega, hay otra tanda; si no, no."""
+        motor = _MotorFalso(texto=[_hit("A"), _hit("B"), _hit("C")])
+        motor.instalar(monkeypatch)
+        assert _buscar(top_k=2).hay_mas is True
+        assert _buscar(top_k=3).hay_mas is False
+        assert [h.id_externo for h in _buscar(top_k=3).hits] == ["A", "B", "C"]
+
+    @pytest.mark.parametrize(
+        "q",
+        ['"baja temeraria" sap', "mantenimiento -limpieza", "las más recientes de sap"],
+        ids=["comillas", "exclusion", "recientes"],
+    )
+    def test_sin_fusion_cuando_contradiria_lo_pedido(
+        self, q: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """La lista vectorial no sabe excluir ni respetar comillas, y su orden
+        es de parecido, no de fecha."""
+        motor = _MotorFalso(fused=[_doc("A", 0.03)], texto=[_hit("B")])
+        motor.instalar(monkeypatch)
+        resp = _buscar(q)
+        assert motor.llamadas == ["texto"]
+        assert resp.source == SOURCE_FTS
+
+    def test_el_log_no_lleva_el_texto_de_la_consulta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """El término es la estrategia comercial de quien lo escribe."""
+        import api.routes.search as ruta
+
+        eventos: list[dict[str, Any]] = []
+
+        class _Log:
+            def info(self, evento: str, **campos: Any) -> None:
+                eventos.append({"evento": evento, **campos})
+
+            def error(self, evento: str, **campos: Any) -> None:
+                eventos.append({"evento": evento, **campos})
+
+        monkeypatch.setattr(ruta, "log", _Log())
+        _MotorFalso(texto=[_hit("B")]).instalar(monkeypatch)
+        _buscar("consultoría secreta SAP")
+        (evento,) = eventos
+        assert "q" not in evento
+        assert "secreta" not in repr(evento)
+        assert evento["q_len"] == len("consultoría secreta SAP")
 
     def test_la_fusion_normaliza_el_score_al_mejor(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Lo que promete la descripción del campo para ``source=rrf``."""
@@ -287,6 +346,14 @@ class TestLaFraseEntendida:
 
 class TestElDeslizadorLlegaAlMotor:
     """Criterio 6: ``alpha`` deja de morir en el DTO."""
+
+    def test_alpha_cero_no_llama_a_la_fusion(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Sin peso del significado la lista es la del texto."""
+        motor = _MotorFalso(fused=[_doc("A", 0.03)], texto=[_hit("B")])
+        motor.instalar(monkeypatch)
+        resp = _buscar(alpha=0.0)
+        assert motor.llamadas == ["texto"]
+        assert resp.source == SOURCE_FTS
 
     def test_alpha_del_cuerpo_viaja_a_la_fusion(self, monkeypatch: pytest.MonkeyPatch) -> None:
         motor = _MotorFalso(fused=[_doc("A", 0.03)])

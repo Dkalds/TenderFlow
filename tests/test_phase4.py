@@ -93,7 +93,11 @@ class TestSemanticSearchEndpoint:
         assert resp.status_code == 422
 
     def test_top_k_out_of_range_rejected(self, client, auth):
-        resp = client.post("/api/v1/search/semantic", json={"q": "SAP", "top_k": 100}, headers=auth)
+        # El tope es 100: «Mostrar más» del Investigador pide tandas mayores
+        # que la primera (`_MAX_TOP_K` de `api/routes/search.py`).
+        resp = client.post("/api/v1/search/semantic", json={"q": "SAP", "top_k": 101}, headers=auth)
+        assert resp.status_code == 422
+        resp = client.post("/api/v1/search/semantic", json={"q": "SAP", "top_k": 0}, headers=auth)
         assert resp.status_code == 422
 
     def test_alpha_out_of_range_rejected(self, client, auth):

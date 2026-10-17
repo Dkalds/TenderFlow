@@ -14,6 +14,7 @@
  * fingir una medida.
  */
 
+import { useId } from "react";
 import Link from "next/link";
 import { ExternalLink, MessageSquareText } from "lucide-react";
 import { Panel, ROTULO_DATO } from "@/components/console/panel";
@@ -32,7 +33,10 @@ const CLASE_DE_PLIEGO: Record<string, string> = {
   additional: "Documento adicional",
 };
 
-function origenDelPasaje(pasaje: NonNullable<SearchResult["pasaje"]>): string {
+function origenDelPasaje(pasaje: NonNullable<SearchResult["pasaje"]>, soloPorSignificado: boolean): string {
+  // Un resultado que llegó solo por significado trae el fragmento más parecido,
+  // sin términos que resaltar ni documento de origen.
+  if (soloPorSignificado) return "Fragmento parecido del pliego";
   const partes = [
     (pasaje.tipo && CLASE_DE_PLIEGO[pasaje.tipo]) || "Pliego",
     pasaje.filename,
@@ -40,6 +44,8 @@ function origenDelPasaje(pasaje: NonNullable<SearchResult["pasaje"]>): string {
   ];
   return partes.filter(Boolean).join(" · ");
 }
+
+const MOTIVO_SIN_HUECO = "El asistente lee como mucho tres expedientes a la vez";
 
 interface Props {
   result: SearchResult;
@@ -56,7 +62,11 @@ export function InvestigadorResultCard({ result, marcado, sinHueco, onAlternar }
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
-  const soloEnPliego = result.coincide_en.length === 1 && result.coincide_en[0] === "pliego";
+  const enAnuncio = result.coincide_en.includes("anuncio");
+  const soloEnPliego = result.coincide_en.includes("pliego") && !enAnuncio;
+  const porSignificado = result.coincide_en.includes("significado");
+  const soloPorSignificado = porSignificado && !enAnuncio && !result.coincide_en.includes("pliego");
+  const idMotivo = useId();
 
   return (
     <Panel tono={marcado ? "accent" : undefined}>
@@ -89,7 +99,7 @@ export function InvestigadorResultCard({ result, marcado, sinHueco, onAlternar }
 
       {result.pasaje && result.pasaje.tramos.length > 0 && (
         <div className="mt-2 border-l-2 border-border pl-2.5">
-          <p className={ROTULO_DATO}>{origenDelPasaje(result.pasaje)}</p>
+          <p className={ROTULO_DATO}>{origenDelPasaje(result.pasaje, soloPorSignificado)}</p>
           <p className="mt-0.5 text-tf-body text-muted-foreground">
             <TextoResaltado tramos={result.pasaje.tramos} />
           </p>
@@ -100,6 +110,13 @@ export function InvestigadorResultCard({ result, marcado, sinHueco, onAlternar }
         {soloEnPliego && (
           <Badge variant="info" size="sm">
             Coincide en el pliego
+          </Badge>
+        )}
+        {/* Llegó por la similitud de significado: no usa (todas) tus palabras,
+            o además de usarlas se parece. */}
+        {porSignificado && (
+          <Badge variant="info" size="sm">
+            {soloPorSignificado ? "Parecido por significado" : "También por significado"}
           </Badge>
         )}
         {tecnologias.map((t) => (
@@ -121,18 +138,31 @@ export function InvestigadorResultCard({ result, marcado, sinHueco, onAlternar }
               </a>
             </Button>
           )}
+          {/* Sin hueco no se deshabilita con `disabled`: un botón deshabilitado
+              no recibe foco, y con teclado o lector de pantalla no se llegaba
+              al porqué. `aria-disabled` lo deja enfocable y el motivo va
+              asociado como descripción. */}
           <Button
             type="button"
             variant={marcado ? "secondary" : "ghost"}
             size="sm"
             aria-pressed={marcado}
-            disabled={sinHueco}
-            title={sinHueco ? "El asistente lee como mucho tres expedientes a la vez" : undefined}
-            onClick={() => onAlternar(result)}
+            aria-disabled={sinHueco || undefined}
+            aria-describedby={sinHueco ? idMotivo : undefined}
+            title={sinHueco ? MOTIVO_SIN_HUECO : undefined}
+            className={cn(sinHueco && "cursor-not-allowed opacity-50")}
+            onClick={() => {
+              if (!sinHueco) onAlternar(result);
+            }}
           >
             <MessageSquareText aria-hidden="true" />
             {marcado ? "Quitar del asistente" : "Preguntar por este"}
           </Button>
+          {sinHueco && (
+            <span id={idMotivo} className="sr-only">
+              {MOTIVO_SIN_HUECO}
+            </span>
+          )}
         </div>
       </div>
     </Panel>
