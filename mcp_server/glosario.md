@@ -40,7 +40,8 @@ La web pública además colapsa por clave (órgano plegado + CPV4 + año-mes + t
 `licitaciones.importe` es histórico y mezcla bases: el parser tomaba el importe sin IVA y, si faltaba, el total con IVA, sin guardar cuál. Por eso:
 - `importe_tipo` dice qué es el `importe` de la fila: `sin_iva`, `con_iva` o `desconocido` (casi todo lo anterior a la re-ingesta; `NULL` se trata como `desconocido`).
 - `importe_base_sin_iva`: presupuesto base de licitación SIN IVA. `importe_con_iva`: el mismo CON IVA. `valor_estimado`: valor estimado del contrato (incluye prórrogas y modificaciones; es lo que decide el procedimiento). Pueden ser `NULL`: se pueblan al re-ingerir.
-- `importe_num` (numeric) e `importe` (double) son el mismo dato; usa `importe_num` solo con `COALESCE`, puede faltar en filas antiguas.
+- `importe_num` (numeric) e `importe` (`real`) son el mismo dato; `importe_num` es exacto pero puede faltar en filas antiguas: `COALESCE(importe_num, importe)`.
+- Precisión: `licitaciones.importe` y los importes de `adjudicaciones` (`importe_adjudicado`, `importe_pagable`, `oferta_minima`, `oferta_maxima`) son `real`, unas 7 cifras significativas: 11 782 154,55 € se guarda como 11 782 155. Para cifras exactas usa `importe_base_sin_iva`/`importe_con_iva`/`importe_num` (numeric o double). Las tools de dominio (`ficha_licitacion`, `buscar_licitaciones`) pueden mostrar los `real` redondeados a 6 cifras (11782200): si necesitas el importe adjudicado al euro, léelo con `consultar_sql`.
 - Nunca mezcles bases al promediar o sumar. Mínimo: `COALESCE(importe_tipo, 'desconocido') <> 'con_iva'`. Para declarar «sin IVA»: `importe_tipo = 'sin_iva' AND importe_base_sin_iva IS NOT NULL`. Di en la respuesta qué base usaste.
 - `lotes.importe`: base sin IVA del lote.
 
@@ -182,7 +183,9 @@ ORDER BY mes
 
 ## 8. Otros consejos
 
-- Texto libre: `search_vector @@ websearch_to_tsquery('spanish', 'mantenimiento sap')` usa índice; `titulo ILIKE '%…%'` recorre la tabla entera.
+- Texto libre: `search_vector @@ websearch_to_tsquery('spanish', 'mantenimiento sap')` usa índice; `titulo ILIKE '%…%'` recorre la tabla entera. La búsqueda por `search_vector` casa palabras enteras (con raíz): «automatización» no encuentra «hiperautomatización». Si no da nada, prueba `titulo ILIKE '%raíz%'` acotado por fecha u órgano.
+- `buscar_licitaciones` solo ve licitaciones con `tecnologia` asignada. Un contrato de tecnología con `tecnologia` vacía (p. ej. clasificado solo por CPV) no sale ahí: búscalo en `licitaciones` con `consultar_sql`.
+- Criterios de adjudicación (`licitacion_criterios_adjudicacion`): `es_precio` y `licitaciones.peso_precio_pct` se deducen del texto del criterio y fallan con las etiquetas genéricas de PLACSP. «…mera aplicación de fórmulas, diferentes al precio» sale como `es_precio = true` y el criterio de precio real, no. El criterio de precio es el de `subtipo_codigo = '1'`; el nombre concreto del criterio suele estar en `nota`, no en `descripcion`. Ante la duda, lee los tres campos antes de dar el peso del precio.
 - Antes de unir tablas desconocidas, llama a `describir_tabla`: muestra columnas, claves foráneas y 3 filas de ejemplo.
 - Las tablas de credenciales, sesiones y tokens no son visibles; `users` y `webhooks` solo muestran sus columnas no sensibles, y `SELECT *` sobre ellas falla: pide columnas concretas.
 

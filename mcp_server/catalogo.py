@@ -564,6 +564,11 @@ def sentencias_rol(rol: str = ROL_MCP) -> list[str]:
     es (el script abortaba con 42501 en producción). Un rol creado por un no
     superusuario nace ``NOSUPERUSER``; la primera sentencia lo comprueba y
     aborta si no fuera así.
+
+    ``extra_float_digits = 3``: Supabase fija ``0`` en su fichero de
+    configuración, y con ``0`` Postgres envía los ``real`` con 6 cifras
+    significativas (``11782155`` llega como ``1.17822e+07``). El SQL libre
+    devolvería importes adjudicados redondeados a la centena de miles.
     """
     r = _ident(rol)
     return [
@@ -577,6 +582,7 @@ def sentencias_rol(rol: str = ROL_MCP) -> list[str]:
         f"ALTER ROLE {r} SET idle_in_transaction_session_timeout = '30s'",
         f"ALTER ROLE {r} SET work_mem = '32MB'",
         f"ALTER ROLE {r} SET search_path = pg_catalog, public",
+        f"ALTER ROLE {r} SET extra_float_digits = 3",
     ]
 
 
