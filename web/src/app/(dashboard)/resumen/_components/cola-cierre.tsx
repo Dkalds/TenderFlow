@@ -11,6 +11,7 @@ import { useFilterParams } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { LicitacionSummary, LicitacionesCursorPage } from "@/lib/api-types";
+import { RelojCierre } from "./cifras-graficos";
 
 /**
  * «Vencen en 48 horas» — la cola de cierre, no su recuento.
@@ -36,6 +37,11 @@ import type { LicitacionSummary, LicitacionesCursorPage } from "@/lib/api-types"
  *    puede presentar.
  * 3. **Las horas se redondean hacia abajo.** «9 h» y no «9,4 h»: es un plazo
  *    que se agota, y redondear hacia arriba regala tiempo que no existe.
+ *
+ * Encima de las filas va el **reloj de cierre** (`cifras-graficos.tsx`): las
+ * 48 horas en una regla con un punto por expediente traído. Las cuatro filas
+ * dicen cuáles cierran antes; el reloj, si la cola se amontona esta tarde o
+ * viene repartida.
  */
 
 /** Filas visibles. Cuatro entran sin scroll junto a las dos tarjetas apiladas. */
@@ -91,6 +97,17 @@ export function horasRestantes(limite: string | null | undefined, ahora: number)
   const ms = Date.parse(limite);
   if (Number.isNaN(ms)) return null;
   return Math.max(0, Math.floor((ms - ahora) / 3_600_000));
+}
+
+/**
+ * Las horas que quedan a cada expediente traído, para el reloj. Solo las que
+ * caen dentro de la ventana: la petición corta por día y trae algún cierre de
+ * más allá de las 48 horas.
+ */
+export function horasEnVentana(items: LicitacionSummary[], ahora: number): number[] {
+  return items
+    .map((item) => horasRestantes(item.fecha_limite, ahora))
+    .filter((horas): horas is number => horas !== null && horas <= VENTANA_HORAS);
 }
 
 /** Ordena por plazo ascendente y recorta a las que caben. */
@@ -166,9 +183,11 @@ export function ColaCierre({
     meta: META_ERROR_EN_LINEA,
   });
 
-  const filas = useMemo(() => {
+  const { filas, horas } = useMemo(() => {
     // eslint-disable-next-line react-hooks/purity
-    return proximasACerrar(cola.data?.items ?? [], Date.now());
+    const ahora = Date.now();
+    const items = cola.data?.items ?? [];
+    return { filas: proximasACerrar(items, ahora), horas: horasEnVentana(items, ahora) };
   }, [cola.data?.items]);
 
   const recortada = cola.data?.has_more === true;
@@ -216,6 +235,10 @@ export function ColaCierre({
         Array.from({ length: VISIBLES }, (_, index) => (
           <Skeleton key={index} className="mt-0 h-10 w-full rounded-none border-t border-border/40" />
         ))}
+
+      {hayCola && !cola.isLoading && !cola.error && horas.length > 0 && (
+        <RelojCierre horas={horas} className="mb-3" />
+      )}
 
       {hayCola && !cola.isLoading && !cola.error && (
         <ul className="flex flex-col">
