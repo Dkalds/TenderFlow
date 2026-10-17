@@ -79,7 +79,10 @@ export function ContextoStrip() {
           onRetry={() => void overview.refetch()}
         />
       ) : (
-        <StatStrip columns={3}>
+        // Tres cifras no caben en la rejilla de dos de un teléfono: la tercera
+        // quedaba sola junto a un hueco gris. Una por fila hasta `sm`, y tres
+        // desde ahí.
+        <StatStrip columns={3} className="grid-cols-1 sm:grid-cols-3">
           <StatCell
             label="Activas"
             loading={hoy.isLoading}

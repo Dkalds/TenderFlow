@@ -352,5 +352,8 @@ describe("AtencionCards", () => {
     expect(tarjeta).toHaveTextContent("Servicio de ciberseguridad gestionada");
     // Sin título, el expediente se nombra por su id y no por «undefined».
     expect(tarjeta).toHaveTextContent("N2");
+    // Cada fila lleva la barra de importe de la tabla; sin importe, solo el carril.
+    const barras = [...(tarjeta?.querySelectorAll('svg[viewBox="0 0 100 4"]') ?? [])];
+    expect(barras.map((barra) => barra.querySelectorAll("rect").length)).toEqual([2, 1]);
   });
 });

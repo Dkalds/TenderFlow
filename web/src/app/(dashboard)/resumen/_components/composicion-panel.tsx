@@ -147,7 +147,7 @@ export function ComposicionPanel({ className }: { className?: string }) {
           <div
             role="group"
             aria-label="Filtrar el ámbito por estado"
-            className="grid grid-cols-1 gap-x-6 gap-y-0.5 sm:grid-cols-2"
+            className="grid grid-cols-1 gap-x-6 gap-y-0.5 lg:grid-cols-2"
           >
             {tramos.map((tramo) => {
               const activo = estados.includes(tramo.estado);
@@ -159,7 +159,9 @@ export function ComposicionPanel({ className }: { className?: string }) {
                   aria-pressed={activo}
                   onClick={() => alternarEstado(tramo.estado)}
                   className={cn(
-                    "-mx-1.5 grid h-8 grid-cols-[minmax(0,9rem)_minmax(0,1fr)_4.5rem_3.25rem] items-center gap-2.5 rounded-md px-1.5 text-left text-tf-meta transition-colors active:duration-0",
+                    // En un teléfono la etiqueta y las cifras se estrechan para que a la
+                    // barra le quede sitio: con 9rem de etiqueta medía unos 30 px.
+                    "-mx-1.5 grid h-8 grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)_3.5rem_2.75rem] items-center gap-2.5 rounded-md px-1.5 text-left text-tf-meta transition-colors active:duration-0 sm:grid-cols-[minmax(0,9rem)_minmax(0,1fr)_4.5rem_3.25rem]",
                     activo ? "bg-primary/10" : "hover:bg-primary/5 active:bg-primary/10",
                   )}
                 >

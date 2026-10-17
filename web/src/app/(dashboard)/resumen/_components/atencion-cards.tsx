@@ -18,6 +18,7 @@ import type { ResumenHoyResult } from "@/lib/api-types";
 import { useNovedades } from "../_hooks/use-novedades";
 import { Proporcion } from "./cifras-graficos";
 import { ColaCierre } from "./cola-cierre";
+import { BarraImporte } from "./ultimas-publicaciones-tabla";
 
 /**
  * Mercado abierto — lo que exige mirar hoy en el mercado.
@@ -106,7 +107,8 @@ function UrgentCard({ card }: { card: Tarjeta }) {
             <span key={fila.id} className="flex min-w-0 items-center gap-2">
               <span className="h-1.5 w-1.5 flex-none rounded-full bg-primary" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate text-tf-meta">{fila.titulo}</span>
-              <span className="tf-tnum flex-none text-tf-micro font-semibold text-muted-foreground">
+              <BarraImporte importe={fila.importe} />
+              <span className="tf-tnum w-14 flex-none text-right text-tf-micro font-semibold text-muted-foreground">
                 {formatCompactCurrency(fila.importe)}
               </span>
             </span>

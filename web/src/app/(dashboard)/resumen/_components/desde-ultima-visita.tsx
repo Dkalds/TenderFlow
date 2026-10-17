@@ -185,7 +185,10 @@ export function DesdeUltimaVisita() {
     });
   }, [data]);
 
-  if (isPending) return <Skeleton className="mb-3.5 h-11 w-full rounded-xl" />;
+  // El alto de la banda con cambios, que es lo habitual y lo que pinta el
+  // esqueleto de la ruta (`loading.tsx`): con 44 px la pantalla saltaba
+  // ~140 px al llegar el dato.
+  if (isPending) return <Skeleton className="mb-3.5 h-[180px] w-full rounded-xl" />;
   // Un fallo no tumba el Resumen: la banda es un añadido sobre lo que ya había.
   if (isError || !data) return null;
 
