@@ -128,6 +128,7 @@ def preparar(
         cierre_desde=consulta.cierre_desde,
         cierre_hasta=consulta.cierre_hasta,
         procedimiento=consulta.procedimiento,
+        organo=consulta.organo,
     )
     return consulta, ambito
 
@@ -159,6 +160,8 @@ def filtros_de_fusion(ambito: Ambito) -> dict[str, Any]:
         filtros["cierre_hasta"] = ambito.cierre_hasta
     if ambito.procedimiento:
         filtros["procedimiento"] = list(ambito.procedimiento)
+    if ambito.organo:
+        filtros["organo"] = list(ambito.organo)
     return filtros
 
 

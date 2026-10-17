@@ -9917,6 +9917,11 @@ export interface components {
              */
             orden: "relevancia" | "recientes";
             /**
+             * Organo
+             * @description Órganos de contratación nombrados en la frase, como se escribieron.
+             */
+            organo?: string[];
+            /**
              * Procedimiento
              * @description Códigos CODICE de procedimiento entendidos.
              */

@@ -426,3 +426,101 @@ class TestProcedimiento:
 
         assert r.procedimiento == ()
         assert "menores" in r.terminos
+
+
+class TestOrgano:
+    @pytest.mark.parametrize(
+        ("frase", "organo", "terminos"),
+        [
+            (
+                "mantenimiento del Ayuntamiento de Valencia",
+                ("Ayuntamiento de Valencia",),
+                ("mantenimiento",),
+            ),
+            (
+                "limpieza viaria del Ayuntamiento de Madrid",
+                ("Ayuntamiento de Madrid",),
+                ("limpieza", "viaria"),
+            ),
+            # Con mayúsculas, el nombre llega hasta la última palabra con mayúscula.
+            (
+                "obras del Ayuntamiento de Madrid de limpieza",
+                ("Ayuntamiento de Madrid",),
+                ("obras", "limpieza"),
+            ),
+            (
+                "obras de la Universidad Politécnica de Madrid",
+                ("Universidad Politécnica de Madrid",),
+                ("obras",),
+            ),
+            (
+                "obras del Ayuntamiento de San Sebastián de los Reyes",
+                ("Ayuntamiento de San Sebastián de los Reyes",),
+                ("obras",),
+            ),
+            ("software de la Generalitat Valenciana", ("Generalitat Valenciana",), ("software",)),
+            # Todo en minúsculas se corta en la primera palabra tras el enlace.
+            (
+                "limpieza del ayuntamiento de valencia mantenimiento",
+                ("ayuntamiento de valencia",),
+                ("limpieza", "mantenimiento"),
+            ),
+            (
+                "limpieza de la universidad politecnica de madrid",
+                ("universidad politecnica de madrid",),
+                ("limpieza",),
+            ),
+            # La coma y las palabras de cierre acaban el nombre.
+            (
+                "obras del Ayuntamiento de Madrid, limpieza",
+                ("Ayuntamiento de Madrid",),
+                ("obras", "limpieza"),
+            ),
+            (
+                "obras del cabildo de tenerife y del Ayuntamiento de Getafe",
+                ("cabildo de tenerife", "Ayuntamiento de Getafe"),
+                ("obras",),
+            ),
+        ],
+    )
+    def test_frases_con_organo(
+        self, frase: str, organo: tuple[str, ...], terminos: tuple[str, ...]
+    ) -> None:
+        r = _i(frase)
+
+        assert r.organo == organo
+        assert r.terminos == terminos
+        assert r.tiene_filtros
+
+    def test_el_organo_acaba_donde_empieza_otro_filtro(self) -> None:
+        r = _i("limpieza del Ayuntamiento de Valencia que cierran esta semana")
+
+        assert r.organo == ("Ayuntamiento de Valencia",)
+        assert r.cierre_desde == "2026-10-09"
+
+    def test_la_comunidad_detras_del_organo_sigue_siendo_comunidad(self) -> None:
+        r = _i("obras del Ayuntamiento de Leganés en Madrid")
+
+        assert r.organo == ("Ayuntamiento de Leganés",)
+        assert r.ccaa == ("Madrid",)
+
+    @pytest.mark.parametrize(
+        "frase",
+        [
+            "mantenimiento del servicio de limpieza",
+            "obras del Ayuntamiento",
+            "obras del Ayuntamiento de",
+            "ayuntamiento de Valencia",
+            "obras del ayuntamiento en Madrid",
+        ],
+    )
+    def test_lo_que_no_nombra_un_organo_sigue_siendo_texto(self, frase: str) -> None:
+        r = _i(frase)
+
+        assert r.organo == ()
+
+    def test_sin_interpretar_no_hay_organo(self) -> None:
+        r = _i("mantenimiento del Ayuntamiento de Valencia", filtros=False)
+
+        assert r.organo == ()
+        assert "valencia" in r.terminos

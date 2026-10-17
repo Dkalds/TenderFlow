@@ -362,6 +362,53 @@ _RECIENTES_RE = re.compile(
 
 _OPERADORES_RE = re.compile(r'"|(?:^|\s)-\w')
 
+# ── Órgano de contratación ───────────────────────────────────────────────────
+
+#: Clases de órgano que nombran a quien contrata sin ambigüedad. Quedan fuera a
+#: propósito «servicio», «departamento», «junta», «hospital» o «instituto»:
+#: «mantenimiento del servicio de limpieza» no es un órgano, y el nombre del
+#: órgano de un hospital no suele ser el del hospital.
+_CLASES_ORGANO = (
+    r"ayuntamiento|diputacion(?: provincial| foral)?|cabildo(?: insular)?|"
+    r"consell (?:insular|comarcal)|universidad|universitat|ministerio|"
+    r"consejeria|conselleria|generalitat|mancomunidad|autoridad portuaria"
+)
+#: Palabras que cierran el nombre de un órgano: lo que sigue ya es otra cosa.
+_FIN_ORGANO = frozenset(
+    [
+        "en",
+        "que",
+        "con",
+        "para",
+        "sobre",
+        "y",
+        "o",
+        "e",
+        "a",
+        "desde",
+        "hasta",
+        "entre",
+        "sin",
+        "por",
+        "cuyo",
+        "cuya",
+    ]
+)
+#: Palabras de enlace dentro de un nombre («Ayuntamiento de San Sebastián de
+#: los Reyes»); nunca lo cierran.
+_ENLACES_ORGANO = frozenset({"de", "del", "la", "las", "los", "el"})
+#: Como mucho, palabras que se miran detrás de la clase.
+_MAX_PALABRAS_ORGANO = 6
+#: «del Ayuntamiento», «de la Universidad», «por el Cabildo»: dónde empieza un
+#: órgano. Hasta dónde llega lo decide ``_organo``, palabra a palabra.
+_ORGANO_RE = re.compile(
+    r"(?<![a-z0-9])(?:del|de la|de las|de los|por el|por la|en el|en la)\s+"
+    rf"(?P<clase>{_CLASES_ORGANO})(?![a-z0-9])"
+)
+#: Una palabra del nombre, pegada a la anterior por un único espacio: lo que
+#: otro patrón ya tachó deja un hueco más ancho, y ahí acaba el nombre.
+_PALABRA_ORGANO_RE = re.compile(r" (?P<p>[a-z0-9][a-z0-9'·-]*)(?![a-z0-9'·-])")
+
 
 @dataclass(frozen=True)
 class ConsultaInterpretada:
@@ -389,6 +436,9 @@ class ConsultaInterpretada:
     cierre_hasta: str | None = None
     #: Códigos CODICE de procedimiento («contratos menores» → ``6``).
     procedimiento: tuple[str, ...] = ()
+    #: Órganos de contratación nombrados en la frase («del Ayuntamiento de
+    #: Valencia»), con la grafía con que se escribieron.
+    organo: tuple[str, ...] = ()
     orden: Orden = "relevancia"
 
     @property
@@ -404,6 +454,7 @@ class ConsultaInterpretada:
             or self.cierre_desde
             or self.cierre_hasta
             or self.procedimiento
+            or self.organo
         )
 
     @property
@@ -571,6 +622,60 @@ def _horizonte(g: dict[str, str | None], hoy: date) -> tuple[date, date] | None:
     return None
 
 
+def _organo(frase: _Frase, m: re.Match[str]) -> tuple[str, int] | None:
+    """``(nombre, fin)`` del órgano que empieza en ``m``, o ``None`` si no lo hay.
+
+    Si el nombre trae mayúsculas, llega hasta la última palabra con mayúscula
+    («Ayuntamiento de Madrid limpieza viaria» → «Ayuntamiento de Madrid»). Todo
+    en minúsculas no hay esa pista y se corta pronto: lo que sigue a la clase
+    hasta la primera palabra detrás de un enlace («ayuntamiento de valencia
+    limpieza» → «ayuntamiento de valencia», «universidad politecnica de
+    madrid»). Un nombre cortado de más filtra de más, nunca de menos.
+
+    Sin nada detrás de la clase («del Ayuntamiento» a secas) no hay órgano que
+    filtrar: sería «todos los ayuntamientos», que es texto, no un filtro.
+    """
+    palabras: list[tuple[str, int, int]] = []
+    pos = m.end("clase")
+    while len(palabras) < _MAX_PALABRAS_ORGANO and (
+        p := _PALABRA_ORGANO_RE.match(frase.plegada, pos)
+    ):
+        if p.group("p") in _FIN_ORGANO:
+            break
+        palabras.append((p.group("p"), p.start("p"), p.end("p")))
+        pos = p.end()
+
+    def mayuscula(inicio: int) -> bool:
+        return frase.original[inicio].isupper()
+
+    con_mayusculas = any(
+        mayuscula(i) for plegada, i, _ in palabras if plegada not in _ENLACES_ORGANO
+    )
+    tomadas = 0
+    tras_enlace = False
+    sueltas = 0
+    for plegada, inicio, _ in palabras:
+        if plegada in _ENLACES_ORGANO:
+            tras_enlace = True
+        elif con_mayusculas:
+            if not mayuscula(inicio):
+                break
+        elif tras_enlace:
+            tomadas += 1
+            break
+        else:
+            sueltas += 1
+            if sueltas > 1:
+                break
+        tomadas += 1
+    while tomadas and palabras[tomadas - 1][0] in _ENLACES_ORGANO:
+        tomadas -= 1
+    if not tomadas:
+        return None
+    fin = palabras[tomadas - 1][2]
+    return frase.original[m.start("clase") : fin], fin
+
+
 def interpretar(
     consulta: str, *, hoy: date | None = None, filtros: bool = True
 ) -> ConsultaInterpretada:
@@ -672,6 +777,15 @@ def interpretar(
         orden = "recientes"
         frase.tachar(*m.span())
 
+    # El órgano, lo último: su nombre acaba donde empieza lo que otro patrón ya
+    # tachó («del Ayuntamiento de Valencia que cierran esta semana»).
+    organo: dict[str, None] = {}
+    for m in list(_ORGANO_RE.finditer(frase.plegada)):
+        if encontrado := _organo(frase, m):
+            nombre, fin = encontrado
+            organo.setdefault(nombre, None)
+            frase.tachar(m.start(), fin)
+
     texto, terminos, con_operadores = _texto_y_terminos(frase.original)
     return ConsultaInterpretada(
         original=consulta,
@@ -687,5 +801,6 @@ def interpretar(
         cierre_desde=cierre_desde,
         cierre_hasta=cierre_hasta,
         procedimiento=tuple(procedimiento),
+        organo=tuple(organo),
         orden=orden,
     )

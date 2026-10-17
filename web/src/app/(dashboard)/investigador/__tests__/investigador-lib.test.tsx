@@ -268,7 +268,7 @@ describe("chipsDeInterpretacion", () => {
   });
 });
 
-describe("chipsDeInterpretacion: plazo y procedimiento", () => {
+describe("chipsDeInterpretacion: plazo, procedimiento y órgano", () => {
   it("el plazo de cierre se dice como cierre, no como publicación", () => {
     expect(
       chipsDeInterpretacion(interpretacion({ cierre_desde: "2026-10-09", cierre_hasta: "2026-10-11" })),
@@ -282,6 +282,12 @@ describe("chipsDeInterpretacion: plazo y procedimiento", () => {
     expect(
       chipsDeInterpretacion(interpretacion({ procedimiento: ["6"], procedimiento_etiquetas: ["Contrato menor"] })),
     ).toEqual(["Procedimiento: Contrato menor"]);
+  });
+
+  it("el órgano va con la grafía con que se escribió", () => {
+    expect(
+      chipsDeInterpretacion(interpretacion({ organo: ["Ayuntamiento de Valencia", "cabildo de tenerife"] })),
+    ).toEqual(["Órgano: Ayuntamiento de Valencia", "Órgano: cabildo de tenerife"]);
   });
 });
 

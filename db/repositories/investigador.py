@@ -27,7 +27,10 @@ Lo que hay aquí:
   ámbito.
 
 En todos el ámbito va **en el WHERE** (``ambito_busqueda_sql``): el orden se
-calcula ya dentro de él.
+calcula ya dentro de él. Y en todos se esconden los duplicados marcados
+(``confirmed`` y ``pending``, :func:`_visibles`), como en cualquier listado: el
+2026-10-17, 6 de los 11 primeros de «servicio de mantenimiento» eran copias de
+TED de un expediente de PLACSP, y uno salía tres veces.
 """
 
 from __future__ import annotations
@@ -39,7 +42,12 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import ambito_busqueda_sql, rows_to_dicts
 from db.search_backend import TS_RANK_NORMALIZATION, TS_RANK_WEIGHTS
-from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr
+from db.sql_fragments import (
+    FOLD_TABLE,
+    escape_like,
+    exclude_duplicados_presentacion_sql,
+    fold_expr,
+)
 
 __all__ = [
     "MARCA_FIN",
@@ -112,6 +120,8 @@ class Ambito:
     cierre_hasta: str | None = None
     #: Códigos CODICE de procedimiento (``shared.procedimientos``).
     procedimiento: tuple[str, ...] = ()
+    #: Órganos de contratación nombrados en la frase, como se escribieron.
+    organo: tuple[str, ...] = ()
 
     def sql(self, alias: str = "l") -> tuple[list[str], list[Any]]:
         """``(cláusulas, parámetros)`` del ámbito sobre ``licitaciones``."""
@@ -136,6 +146,7 @@ class Ambito:
             cierre_desde=self.cierre_desde,
             cierre_hasta=self.cierre_hasta,
             procedimiento=list(self.procedimiento),
+            organo=list(self.organo),
         )
         return [*clausulas, *resto], [*valores, *valores_resto]
 
@@ -147,6 +158,16 @@ class Ambito:
 def _y(clausulas: Sequence[str]) -> str:
     """``AND a AND b`` para añadir a un WHERE que ya tiene condición, o ``""``."""
     return "".join(f" AND {c}" for c in clausulas)
+
+
+def _visibles(ambito: Ambito, alias: str = "l") -> tuple[list[str], list[Any]]:
+    """Las cláusulas del ámbito más la que esconde los duplicados marcados.
+
+    Va aparte de :meth:`Ambito.sql` a propósito: ``Ambito.vacio`` pregunta si el
+    usuario acotó algo, y esconder duplicados no es acotar.
+    """
+    clausulas, valores = ambito.sql(alias)
+    return [*clausulas, exclude_duplicados_presentacion_sql(f"{alias}.id_externo")], valores
 
 
 def anuncios_por_terminos(
@@ -185,7 +206,7 @@ def anuncios_por_terminos(
     """
     if not terminos:
         return []
-    clausulas, valores = ambito.sql("l")
+    clausulas, valores = _visibles(ambito)
     orden = (
         "(cardinality(c.casados) = (SELECT count(*) FROM terminos)) DESC, "
         "c.fpub DESC NULLS LAST, c.id_externo"
@@ -272,7 +293,7 @@ def anuncios_por_expresion(
     """
     if not expresion.strip():
         return []
-    clausulas, valores = ambito.sql("l")
+    clausulas, valores = _visibles(ambito)
     tsq = "websearch_to_tsquery('spanish', %s)"
     orden = (
         "l.fecha_publicacion DESC NULLS LAST, l.id_externo"
@@ -365,6 +386,7 @@ def licitaciones_con_pasaje(
             JOIN documentos d ON d.id = dc.documento_id
             {join_ambito}
             WHERE dc.search_vector @@ {tsq}{_y(clausulas)}
+              AND {exclude_duplicados_presentacion_sql("d.licitacion_id")}
             LIMIT %s
         ) m
         GROUP BY m.licitacion_id
@@ -413,12 +435,18 @@ def mejores_pasajes(
 
 
 def anuncios_por_id(ids: Sequence[str]) -> dict[str, dict[str, Any]]:
-    """Las columnas de resultado de los expedientes de ``ids``, por ``id_externo``."""
+    """Las columnas de resultado de los expedientes de ``ids``, por ``id_externo``.
+
+    Un duplicado marcado no vuelve: lo que llega por el pliego o por la fusión
+    pasa por aquí, y no puede colarse lo que las búsquedas por el anuncio ya
+    esconden.
+    """
     if not ids:
         return {}
     with connect_read() as c:
         cur = c.execute(
-            f"SELECT {_COLUMNAS} FROM licitaciones l WHERE l.id_externo = ANY(%s)",
+            f"SELECT {_COLUMNAS} FROM licitaciones l WHERE l.id_externo = ANY(%s) "
+            f"AND {exclude_duplicados_presentacion_sql('l.id_externo')}",
             [list(ids)],
         )
         return {str(f["id_externo"]): f for f in rows_to_dicts(cur)}
@@ -450,7 +478,7 @@ def anuncios_literales(
     utiles = utiles[:_MAX_TERMINOS_LITERALES]
     if not utiles:
         return []
-    clausulas, valores = ambito.sql("l")
+    clausulas, valores = _visibles(ambito)
     contiene = f"({fold_expr('l.titulo')} LIKE %s OR {fold_expr('l.descripcion')} LIKE %s)"
     cobertura = " + ".join([f"(CASE WHEN {contiene} THEN 1 ELSE 0 END)"] * len(utiles))
     alguno = " OR ".join([contiene] * len(utiles))
@@ -478,7 +506,7 @@ def anuncios_del_ambito(ambito: Ambito, *, limit: int) -> list[dict[str, Any]]:
     es el orden pedido y corta en el ``LIMIT``: 5 ms. Un expediente sin fecha
     de publicación no puede ser «lo más reciente» de nada.
     """
-    clausulas, valores = ambito.sql("l")
+    clausulas, valores = _visibles(ambito)
     donde = " AND ".join(["l.fecha_publicacion IS NOT NULL", *clausulas])
     sql = (
         f"SELECT {_COLUMNAS} FROM licitaciones l WHERE {donde} "

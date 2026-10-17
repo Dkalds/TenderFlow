@@ -395,3 +395,128 @@ class TestPlazoYProcedimientoDeLaFrase:
         """«01» y «1» son el mismo procedimiento abierto."""
         assert self._ids("soporte SAP por procedimiento abierto") == ["P-SEMANA"]
         assert self._ids("contratos menores de soporte SAP") == ["P-NOVIEMBRE"]
+
+
+class TestDuplicados:
+    """Un contrato publicado en PLACSP y en TED sale una vez, como en los listados."""
+
+    @pytest.fixture()
+    def con_copia_ted(self, tmp_db):
+        from db.database import connect
+
+        _sembrar(
+            {
+                "id_externo": "PLACSP-1",
+                "titulo": "Servicio de mantenimiento de ascensores",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-01",
+            },
+            {
+                "id_externo": "ted:1-2026",
+                "titulo": "Servicio de mantenimiento de ascensores",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-02",
+            },
+            {
+                "id_externo": "ted:2-2026",
+                "titulo": "Servicio de mantenimiento de ascensores",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-03",
+            },
+        )
+        _sembrar_pasaje("PLACSP-1", "El mantenimiento de ascensores incluye revisiones.")
+        _sembrar_pasaje("ted:1-2026", "El mantenimiento de ascensores incluye revisiones.")
+        with connect() as c:
+            for dup, estado in (("ted:1-2026", "confirmed"), ("ted:2-2026", "pending")):
+                c.execute(
+                    "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, "
+                    "clave_match, confianza, status, detectado_en) "
+                    "VALUES (%s, 'PLACSP-1', 'x', 1.0, %s, '2026-09-04')",
+                    (dup, estado),
+                )
+
+    def test_por_terminos_sale_una_vez(self, con_copia_ted):
+        assert _ids(_buscar("mantenimiento de ascensores")) == ["PLACSP-1"]
+
+    def test_por_expresion_sale_una_vez(self, con_copia_ted):
+        assert _ids(_buscar('"mantenimiento de ascensores"')) == ["PLACSP-1"]
+
+    def test_por_subcadena_sale_una_vez(self, con_copia_ted):
+        assert _ids(_buscar("ascens")) == ["PLACSP-1"]
+
+    def test_solo_filtros_sale_una_vez(self, con_copia_ted):
+        assert _ids(_buscar("las más recientes")) == ["PLACSP-1"]
+
+    def test_el_pliego_de_la_copia_no_la_trae(self, con_copia_ted):
+        from db.repositories import investigador as repo
+
+        consulta, ambito = preparar("revisiones")
+        assert repo.licitaciones_con_pasaje(consulta.texto, ambito) == [("PLACSP-1", 1)]
+        assert set(repo.anuncios_por_id(["PLACSP-1", "ted:1-2026", "ted:2-2026"])) == {"PLACSP-1"}
+
+    def test_un_duplicado_rechazado_si_sale(self, con_copia_ted):
+        """«No es duplicado» lo dijo una persona: la fila vuelve a contar."""
+        from db.database import connect
+
+        with connect() as c:
+            c.execute(
+                "UPDATE licitaciones_duplicados SET status = 'rejected' "
+                "WHERE licitacion_id = 'ted:2-2026'"
+            )
+        assert set(_ids(_buscar("mantenimiento de ascensores"))) == {"PLACSP-1", "ted:2-2026"}
+
+
+class TestOrganoDeLaFrase:
+    """El órgano de la frase filtra por las palabras de su nombre, no por la frase."""
+
+    @pytest.fixture()
+    def organos(self, tmp_db):
+        _sembrar(
+            {
+                "id_externo": "O-BCN",
+                "titulo": "Mantenimiento de alumbrado",
+                "organo_contratacion": "Ajuntament de Barcelona",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-01",
+            },
+            {
+                "id_externo": "O-GRANADA",
+                "titulo": "Mantenimiento de alumbrado",
+                "organo_contratacion": "Diputación Provincial de Granada",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-02",
+            },
+            {
+                "id_externo": "O-VLC",
+                "titulo": "Mantenimiento de alumbrado",
+                "organo_contratacion": "Junta de Gobierno Local del Ayuntamiento de València",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-03",
+            },
+            {
+                "id_externo": "O-HOSPITAL",
+                "titulo": "Mantenimiento de alumbrado",
+                "organo_contratacion": "Hospital Universitario de Granada",
+                "estado": "PUB",
+                "fecha_publicacion": "2026-09-04",
+            },
+        )
+
+    def test_la_clase_casa_en_otra_lengua(self, organos):
+        assert _ids(_buscar("alumbrado del Ayuntamiento de Barcelona")) == ["O-BCN"]
+
+    def test_el_calificativo_que_no_se_escribe_no_hace_falta(self, organos):
+        assert _ids(_buscar("alumbrado de la Diputación de Granada")) == ["O-GRANADA"]
+
+    def test_las_tildes_no_cuentan(self, organos):
+        assert _ids(_buscar("alumbrado del ayuntamiento de valencia")) == ["O-VLC"]
+
+    def test_universidad_no_es_universitario(self, organos):
+        assert _ids(_buscar("alumbrado de la Universidad de Granada")) == []
+
+    def test_varios_organos_suman(self, organos):
+        ids = _ids(
+            _buscar("alumbrado del Ayuntamiento de Barcelona y del Ayuntamiento de Valencia")
+        )
+
+        assert sorted(ids) == ["O-BCN", "O-VLC"]

@@ -53,6 +53,7 @@ export function chipsDeInterpretacion(interpretacion: Interpretacion | null | un
   }
 
   for (const etiqueta of interpretacion.procedimiento_etiquetas ?? []) chips.push(`Procedimiento: ${etiqueta}`);
+  for (const organo of interpretacion.organo ?? []) chips.push(`Órgano: ${organo}`);
 
   if (interpretacion.orden === "recientes") chips.push("Más recientes primero");
   return chips;
