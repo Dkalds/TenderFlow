@@ -13,10 +13,10 @@ import { useAnnounceOnChange } from "@/components/live-region";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { cn, formatCompactCurrency, formatDate, formatDateTime, formatNumber, formatPercent } from "@/lib/utils";
+import { cn, formatCompactCurrency, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { ResumenHoyResult } from "@/lib/api-types";
-import { BarraPct } from "@/app/(dashboard)/competencia/_components/dibujos";
 import { useNovedades } from "../_hooks/use-novedades";
+import { Proporcion } from "./cifras-graficos";
 import { ColaCierre } from "./cola-cierre";
 
 /**
@@ -77,20 +77,6 @@ interface Tarjeta {
   proporcion?: { parte: number; total: number; de: string };
 }
 
-/** Barra de la parte sobre su total, con el porcentaje escrito al lado. */
-function Proporcion({ parte, total, de }: { parte: number; total: number; de: string }) {
-  const pct = total > 0 ? (parte / total) * 100 : 0;
-  return (
-    <span className="mt-2.5 flex items-center gap-2">
-      <BarraPct pct={pct} className="min-w-0 flex-1" />
-      <span className="tf-tnum flex-none text-tf-micro text-muted-foreground">
-        {/* «0,0%» con grandes en plazo se lee como ninguna. */}
-        {parte > 0 && pct < 0.1 ? "<0,1%" : formatPercent(pct)} {de}
-      </span>
-    </span>
-  );
-}
-
 function UrgentCard({ card }: { card: Tarjeta }) {
   const scopedHref = useScopedHref();
 
@@ -109,7 +95,9 @@ function UrgentCard({ card }: { card: Tarjeta }) {
       ) : (
         <span className="tf-tnum text-tf-title font-semibold">{formatNumber(card.value)}</span>
       )}
-      {!card.cargando && card.proporcion && card.proporcion.total > 0 && <Proporcion {...card.proporcion} />}
+      {!card.cargando && card.proporcion && card.proporcion.total > 0 && (
+        <Proporcion {...card.proporcion} className="mt-2.5" />
+      )}
       <span className="mt-1 text-tf-meta text-muted-foreground">{card.subtitle}</span>
       {card.muestra && card.muestra.length > 0 && (
         // Texto y no enlaces: la tarjeta entera ya es un enlace.

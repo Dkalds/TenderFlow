@@ -7,6 +7,7 @@ import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
 import { useDesdeResumen, useRitmoDiario } from "../_hooks/use-publicaciones";
+import { Proporcion } from "./cifras-graficos";
 import { ComposicionPanel } from "./composicion-panel";
 import { Sparkline } from "./contexto-graficos";
 
@@ -20,7 +21,9 @@ import { Sparkline } from "./contexto-graficos";
  * ámbito— en una pantalla llena de chips. Esas magnitudes viven en Mercado y en
  * Competencia, que es donde se analizan; aquí queda lo que sitúa el día:
  *
- * - **Activas** — cuánto hay abierto en el ámbito, y enlace al listado.
+ * - **Activas** — cuánto hay abierto en el ámbito, y enlace al listado. Lleva
+ *   su parte del ámbito en barra: `total_activas` sobre `total_licitaciones`,
+ *   los dos sobre el mismo conjunto filtrado (ver abajo).
  * - **Publicadas 30 d**, con su variación contra los 30 días previos
  *   (`yoy_delta`, que el backend calcula así pese al nombre).
  * - **Importe 30 d** — lo que se ha puesto en juego en ese mismo mes.
@@ -82,6 +85,11 @@ export function ContextoStrip() {
             loading={hoy.isLoading}
             value={formatNumber(hoy.data?.total_activas)}
             href={scopedHref("/detalle?solo_abiertas=true")}
+            grafico={
+              hoy.data && data && data.total_licitaciones > 0 ? (
+                <Proporcion parte={hoy.data.total_activas} total={data.total_licitaciones} de="del ámbito" />
+              ) : undefined
+            }
             hint="sin adjudicar ni cerrar"
           />
           <StatCell
