@@ -200,10 +200,10 @@ def _resolver_lote(licitacion_id: str, lote_id: int | None) -> str | None:
 
     ``None`` significa «el expediente completo», que es el caso por defecto y
     el único que existía antes de la revisión ``v110``. Se traduce a número
-    porque los ids de ``lotes`` se renumeran en cada re-ingesta
-    (``db/upsert.py::replace_lotes``) y una oportunidad tiene que sobrevivir a
-    eso; la comprobación de pertenencia impide abrir un expediente apuntando al
-    lote de otro.
+    porque el número es la clave de negocio del lote: el id cambia si el lote
+    deja de publicarse y vuelve (``db/upsert.py::replace_lotes``), y hasta
+    2026-10 cambiaba en cada re-ingesta; la comprobación de pertenencia impide
+    abrir un expediente apuntando al lote de otro.
     """
     if lote_id is None:
         return None
