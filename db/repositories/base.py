@@ -90,9 +90,9 @@ def ambito_agenda_sql(
     return clauses, params
 
 
-#: La guarda de ``ids_for_filters`` —el filtro de ``/search/semantic``— para
-#: ``fecha_desde``/``fecha_hasta``: ``fecha_publicacion`` es texto ISO y se
-#: compara como texto, así que una fecha mal formada acotaría cualquier cosa.
+#: La guarda de ``fecha_desde``/``fecha_hasta``: ``fecha_publicacion`` es
+#: texto ISO y se compara como texto, así que una fecha mal formada acotaría
+#: cualquier cosa.
 _FECHA_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -126,8 +126,8 @@ def ambito_busqueda_sql(
     Las comparten los tres caminos del retrieval de ``/ask`` —la fusión híbrida
     (sus **dos** listas, la FTS y la vectorial), el FTS y el LIKE— para que
     acote igual el que responda. Con el filtro solo en la lista FTS, la fusión
-    traía por el lado vectorial pliegos de cualquier tecnología o CCAA. El
-    criterio es el de ``ids_for_filters``, que acota ``/search/semantic``:
+    traía por el lado vectorial pliegos de cualquier tecnología o CCAA. Es
+    también el ámbito de ``/search/semantic`` (``Ambito`` del Investigador):
 
     - ``ccaa``: OR dentro de la lista; con un solo valor, igualdad, como antes.
     - ``tecnologia``: el código en el CSV de la fila

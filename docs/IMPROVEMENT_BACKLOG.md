@@ -1120,7 +1120,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `MRR_MIN` de `tests/eval/test_eval_rag.py` al valor medido menos el margen.
 - **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [api/routes/search.py](../api/routes/search.py), [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py)
 - **Riesgo:** bajo.
-- **Progreso (2026-10-17):** (2) resuelto — `semantic_search.ok` y `semantic_search.failed` escriben `q_len`, no el texto. También se retiró `_hits_from_fused` de `api/routes/search.py`, que quedó sin llamantes con la fusión nueva (sus tests pasan a probar `combinar`). (1) y (3) siguen abiertos: retirar `rag_query` y sus envoltorios exige borrar sus tests (OK del propietario, §6) y decidir qué hace `scripts/eval_rag_generation.py`.
+- **Progreso (2026-10-17):** (2) resuelto — `semantic_search.ok` y `semantic_search.failed` escriben `q_len`, no el texto. También se retiró `_hits_from_fused` de `api/routes/search.py`, que quedó sin llamantes con la fusión nueva (sus tests pasan a probar `combinar`). (1) resuelto el mismo día, con el OK del propietario para borrar sus tests: se retiraron `rag_query`, `escape_fts5`, `fts5_search`, `like_search` y `fetch_docs` de `services/investigador/search_engine.py`, y `ids_for_filters`, `fts5_bm25_search`, `like_fallback_search` y `fetch_metadata_by_ids` de `LicitacionRepository`, con sus tests (`tests/test_search_engine.py` entero). `scripts/eval_rag_generation.py` ya no los importaba. Queda (3).
 
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios

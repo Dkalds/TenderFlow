@@ -234,7 +234,7 @@ class TestAmbitoBusquedaSql:
         )
 
     def test_una_fecha_mal_formada_se_ignora_como_en_la_busqueda(self):
-        """Mismo criterio que ``ids_for_filters`` (``/search/semantic``)."""
+        """Mismo criterio que el ámbito de ``/search/semantic``."""
         assert ambito_busqueda_sql("l", fecha_desde="ayer", fecha_hasta="2026-13") == ([], [])
 
     def test_el_plazo_acota_fecha_limite_con_techo_exclusivo(self):
