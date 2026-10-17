@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { EnlaceIr, PanelError, SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
@@ -10,8 +10,15 @@ import { fetchWithAuth } from "@/lib/api-client";
 import { useFilterParams } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, formatCompactCurrency, formatNumber } from "@/lib/utils";
-import type { LicitacionSummary, LicitacionesCursorPage } from "@/lib/api-types";
+import type { LicitacionesCursorPage } from "@/lib/api-types";
 import { RelojCierre } from "./cifras-graficos";
+import {
+  filasQueCaben,
+  horasEnVentana,
+  proximasACerrar,
+  VENTANA_HORAS,
+  VISIBLES,
+} from "./cola-cierre-data";
 
 /**
  * «Vencen en 48 horas» — la cola de cierre, no su recuento.
@@ -39,24 +46,47 @@ import { RelojCierre } from "./cifras-graficos";
  *    que se agota, y redondear hacia arriba regala tiempo que no existe.
  *
  * Encima de las filas va el **reloj de cierre** (`cifras-graficos.tsx`): las
- * 48 horas en una regla con un punto por expediente traído. Las cuatro filas
- * dicen cuáles cierran antes; el reloj, si la cola se amontona esta tarde o
- * viene repartida.
+ * 48 horas en una regla con un punto por expediente traído. Las filas dicen
+ * cuáles cierran antes; el reloj, si la cola se amontona esta tarde o viene
+ * repartida.
+ *
+ * **La lista ocupa el alto de la tarjeta.** En escritorio la tarjeta se estira
+ * hasta el alto de las dos de al lado, y con cuatro filas fijas el pie quedaba
+ * colgando bajo un hueco. Ahora caben las filas que entren en ese alto, nunca
+ * menos de cuatro: el sitio que sobraba enseña más cierres en vez de nada. La
+ * lista va en absoluto dentro de su hueco, así que su alto no empuja la
+ * tarjeta y la cuenta no se retroalimenta.
  */
 
-/** Filas visibles. Cuatro entran sin scroll junto a las dos tarjetas apiladas. */
-const VISIBLES = 4;
+/** Alto mínimo del hueco de la lista según cuántas filas haya, hasta cuatro. */
+const ALTO_MINIMO = ["min-h-0", "min-h-10", "min-h-20", "min-h-30", "min-h-40"] as const;
+
+/**
+ * Las filas que caben en el hueco de la lista, medido con un `ResizeObserver`.
+ * Empieza en `VISIBLES`, lo mismo que pinta el servidor, para que la
+ * hidratación case; sin observador, se queda ahí.
+ */
+function useFilasQueCaben(hueco: RefObject<HTMLDivElement | null>, activo: boolean): number {
+  const [filas, setFilas] = useState(VISIBLES);
+  useEffect(() => {
+    const nodo = hueco.current;
+    if (!activo || !nodo || typeof ResizeObserver === "undefined") return;
+    const observador = new ResizeObserver(([entrada]) => {
+      if (entrada) setFilas(filasQueCaben(entrada.contentRect.height));
+    });
+    observador.observe(nodo);
+    return () => observador.disconnect();
+  }, [hueco, activo]);
+  return filas;
+}
 
 /**
  * Techo de la petición. La ventana son dos días de cierres —en el corpus real,
  * decenas de expedientes—, así que 200 la cubre entera con holgura y deja el
  * orden por plazo bien resuelto en cliente. Si aun así se quedara corto, la
- * tarjeta lo dice en vez de fingir que las cuatro son las más próximas.
+ * tarjeta lo dice en vez de fingir que las de la lista son las más próximas.
  */
 const TECHO = 200;
-
-/** La ventana de la cola, en horas: el 100 % de la barra de cada fila. */
-const VENTANA_HORAS = 48;
 
 /**
  * Lo que le queda a una fila, como barra sobre las 48 horas: se agota hacia la
@@ -78,55 +108,6 @@ function BarraPlazo({ horas }: { horas: number }) {
       <rect x="49.6" width="0.8" height="6" className="fill-card" />
     </svg>
   );
-}
-
-interface FilaCierre {
-  id: string;
-  titulo: string;
-  organo: string;
-  importe: number | null;
-  horas: number;
-}
-
-/**
- * Horas completas hasta `limite` desde `ahora`, o `null` si la fecha no se
- * puede leer. Exportada por su test: el redondeo es la parte que engaña.
- */
-export function horasRestantes(limite: string | null | undefined, ahora: number): number | null {
-  if (!limite) return null;
-  const ms = Date.parse(limite);
-  if (Number.isNaN(ms)) return null;
-  return Math.max(0, Math.floor((ms - ahora) / 3_600_000));
-}
-
-/**
- * Las horas que quedan a cada expediente traído, para el reloj. Solo las que
- * caen dentro de la ventana: la petición corta por día y trae algún cierre de
- * más allá de las 48 horas.
- */
-export function horasEnVentana(items: LicitacionSummary[], ahora: number): number[] {
-  return items
-    .map((item) => horasRestantes(item.fecha_limite, ahora))
-    .filter((horas): horas is number => horas !== null && horas <= VENTANA_HORAS);
-}
-
-/** Ordena por plazo ascendente y recorta a las que caben. */
-export function proximasACerrar(
-  items: LicitacionSummary[],
-  ahora: number,
-  visibles = VISIBLES,
-): FilaCierre[] {
-  return items
-    .map((item) => ({
-      id: item.id_externo,
-      titulo: item.titulo ?? item.id_externo,
-      organo: item.organo_contratacion ?? "—",
-      importe: item.importe ?? null,
-      horas: horasRestantes(item.fecha_limite, ahora),
-    }))
-    .filter((fila): fila is FilaCierre => fila.horas !== null)
-    .sort((a, b) => a.horas - b.horas)
-    .slice(0, visibles);
 }
 
 export function ColaCierre({
@@ -183,15 +164,19 @@ export function ColaCierre({
     meta: META_ERROR_EN_LINEA,
   });
 
+  const recortada = cola.data?.has_more === true;
+  const cargandoFilas = hayCola && cola.isLoading;
+  const conLista = hayCola && !cola.isLoading && !cola.error;
+
+  const hueco = useRef<HTMLDivElement>(null);
+  const caben = useFilasQueCaben(hueco, conLista);
+
   const { filas, horas } = useMemo(() => {
     // eslint-disable-next-line react-hooks/purity
     const ahora = Date.now();
     const items = cola.data?.items ?? [];
-    return { filas: proximasACerrar(items, ahora), horas: horasEnVentana(items, ahora) };
-  }, [cola.data?.items]);
-
-  const recortada = cola.data?.has_more === true;
-  const cargandoFilas = hayCola && cola.isLoading;
+    return { filas: proximasACerrar(items, ahora, caben), horas: horasEnVentana(items, ahora) };
+  }, [cola.data?.items, caben]);
 
   return (
     <div
@@ -236,46 +221,53 @@ export function ColaCierre({
           <Skeleton key={index} className="mt-0 h-10 w-full rounded-none border-t border-border/40" />
         ))}
 
-      {hayCola && !cola.isLoading && !cola.error && horas.length > 0 && (
+      {conLista && horas.length > 0 && (
         <RelojCierre horas={horas} className="mb-3" />
       )}
 
-      {hayCola && !cola.isLoading && !cola.error && (
-        <ul className="flex flex-col">
-          {filas.map((fila) => (
-            <li key={fila.id}>
-              <Link
-                href={`/detalle?lic=${encodeURIComponent(fila.id)}`}
-                className="-mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t border-border/40 px-1.5 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0 sm:grid-cols-[minmax(0,1fr)_88px_minmax(80px,160px)_60px]"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-tf-meta font-medium">{fila.titulo}</span>
-                  <span className="block truncate text-tf-micro text-muted-foreground">{fila.organo}</span>
-                </span>
-                <span className="tf-tnum truncate text-right text-tf-meta font-medium">
-                  {formatCompactCurrency(fila.importe)}
-                </span>
-                <BarraPlazo horas={fila.horas} />
-                <span
-                  className={cn(
-                    "tf-tnum text-right text-tf-meta font-semibold",
-                    fila.horas <= 24 ? "text-destructive" : "text-foreground",
-                  )}
+      {conLista && (
+        // El hueco crece con la tarjeta y la lista va encima en absoluto: así
+        // su alto no empuja la tarjeta, y el pie no queda bajo un vacío.
+        <div
+          ref={hueco}
+          className={cn("relative flex-1", ALTO_MINIMO[Math.min(filas.length, VISIBLES)])}
+        >
+          <ul className="absolute inset-x-0 top-0 flex flex-col">
+            {filas.map((fila) => (
+              <li key={fila.id}>
+                <Link
+                  href={`/detalle?lic=${encodeURIComponent(fila.id)}`}
+                  className="-mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t border-border/40 px-1.5 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0 sm:grid-cols-[minmax(0,1fr)_88px_minmax(80px,160px)_60px]"
                 >
-                  {fila.horas} h
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+                  <span className="min-w-0">
+                    <span className="block truncate text-tf-meta font-medium">{fila.titulo}</span>
+                    <span className="block truncate text-tf-micro text-muted-foreground">{fila.organo}</span>
+                  </span>
+                  <span className="tf-tnum truncate text-right text-tf-meta font-medium">
+                    {formatCompactCurrency(fila.importe)}
+                  </span>
+                  <BarraPlazo horas={fila.horas} />
+                  <span
+                    className={cn(
+                      "tf-tnum text-right text-tf-meta font-semibold",
+                      fila.horas <= 24 ? "text-destructive" : "text-foreground",
+                    )}
+                  >
+                    {fila.horas} h
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
-      {/* El desglose no puede prometer que son «las cuatro más próximas» si no
+      {/* El desglose no puede prometer que son «las más próximas» si no
           se trajo la ventana entera: se dice, y el enlace de arriba sigue
           abriendo la cola completa. Sin «de N»: la petición va sin
           `with_total`, así que el total del cursor llega vacío y el recuento
           autoritativo ya está en la cabecera. */}
-      {hayCola && !cola.isLoading && !cola.error && recortada && (
+      {conLista && recortada && (
         <p className="mt-2 text-tf-micro text-muted-foreground">
           Ordenadas sobre las {formatNumber(cola.data?.items.length)} primeras: puede quedar fuera
           alguna que cierre antes.

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { horasEnVentana, horasRestantes, proximasACerrar } from "@/app/(dashboard)/resumen/_components/cola-cierre";
+import {
+  filasQueCaben,
+  horasEnVentana,
+  horasRestantes,
+  proximasACerrar,
+} from "@/app/(dashboard)/resumen/_components/cola-cierre-data";
 import { esNueva } from "@/app/(dashboard)/resumen/_components/types";
 import type { LicitacionSummary } from "@/lib/api-types";
 
@@ -99,5 +104,18 @@ describe("horasEnVentana", () => {
     // La petición corta por día y trae algún cierre de más allá de la ventana.
     const items = [lic("DENTRO", "2026-09-08T11:00:00Z"), lic("FUERA", "2026-09-08T13:00:00Z"), lic("SIN", null)];
     expect(horasEnVentana(items, AHORA)).toEqual([47]);
+  });
+});
+
+describe("filasQueCaben", () => {
+  it("cuenta las filas enteras de 40 px que entran en el hueco", () => {
+    expect(filasQueCaben(240)).toBe(6);
+    // Una fila a medias no se pinta: quedaría cortada.
+    expect(filasQueCaben(279)).toBe(6);
+  });
+
+  it("nunca baja de cuatro, que es lo que se ve en un teléfono", () => {
+    expect(filasQueCaben(0)).toBe(4);
+    expect(filasQueCaben(120)).toBe(4);
   });
 });

@@ -271,6 +271,45 @@ describe("AtencionCards", () => {
     expect(screen.getByText("AEAT")).toBeInTheDocument();
   });
 
+  it("llena con filas el alto que le da la columna de al lado, en vez de dejar un hueco", async () => {
+    // En escritorio la tarjeta se estira hasta el alto de las dos apiladas: el
+    // hueco de la lista mide aquí 240 px, donde caben seis filas de 40.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly avisar: ResizeObserverCallback) {}
+        observe() {
+          this.avisar([{ contentRect: { height: 240 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const enHoras = (h: number) => new Date(Date.now() + h * 3_600_000 + 30_000).toISOString();
+    fetchWithAuth.mockImplementation((url: string) =>
+      url.includes("/api/v1/licitaciones")
+        ? Promise.resolve({
+            items: [2, 5, 9, 14, 20, 27, 33, 41].map((h) => ({
+              id_externo: `C${h}`,
+              titulo: `Cierra en ${h}`,
+              fecha_limite: enHoras(h),
+            })),
+          })
+        : new Promise(() => {}),
+    );
+
+    try {
+      renderCards();
+      expect(await screen.findByText("Cierra en 2")).toBeInTheDocument();
+      const lista = screen.getByText("Cierra en 2").closest("ul") as HTMLElement;
+      expect(within(lista).getAllByRole("link")).toHaveLength(6);
+      // Las seis más próximas, no seis cualesquiera.
+      expect(within(lista).queryByText("Cierra en 33")).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("no avisa de filtros ignorados: el endpoint aplica el ámbito entero", () => {
     // Con búsqueda y estado la banda decía «Estas cifras no aplican búsqueda y
     // estado». Ya los aplica, y el aviso no tiene nada que declarar.

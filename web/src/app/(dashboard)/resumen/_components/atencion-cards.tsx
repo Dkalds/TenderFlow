@@ -250,7 +250,10 @@ export function AtencionCards() {
           onRetry={() => void hoy.refetch()}
         />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-3">
+        // `grid-cols-1` y no la columna implícita: esa es `auto` y crece hasta el
+        // ancho mínimo del contenido, así que a 390 px la banda medía 410 y la
+        // cola se salía por la derecha. `minmax(0, 1fr)` la deja en lo que hay.
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <ColaCierre
             className="lg:col-span-2"
             total={data?.vencen_48h}
@@ -258,7 +261,7 @@ export function AtencionCards() {
             href={scopedHref(vencenHref)}
             target="Abre Detalle: cierran en 48 h"
           />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
             {cards.map((card) => (
               <UrgentCard key={card.key} card={card} />
             ))}
