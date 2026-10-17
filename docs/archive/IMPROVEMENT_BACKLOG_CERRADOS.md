@@ -21,6 +21,48 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrado el 2026-10-17 — el hueco del ATOM de PLACSP está recuperado
+
+**Cerrado el 2026-10-17** (rama `claude/happy-maxwell-xjan4q`). Comprobado contra producción por el MCP de solo lectura: filas `placsp` por semana de `fecha_publicacion` desde el 2026-09-07 — 134, 220, 226, 245, 270 y 199 (semana en curso) —, en la línea de las anteriores al congelamiento (146 la del 08-31). El hueco del 09-08 en adelante está cubierto y el carril diario ingiere. Los otros dos criterios ya estaban hechos en código (aviso `fuente_sin_datos_nuevos` y respaldo al ZIP tras seis pasadas sin avance). Sigue sin verificar `placsp_watched_company_awards`, que lee el mismo ATOM.
+
+### [P0] El feed ATOM de PLACSP está congelado desde el 2026-09-08 y nada lo avisa
+- **Área:** scraper/atom_live.py, scheduler/healthcheck.py, .github/workflows/scrape-daily.yml
+- **Problema:** medido el 2026-09-24. La cabecera de
+  `licitacionesPerfilesContratanteCompleto3.atom` se regeneró el 2026-09-23
+  (`Last-Modified`), pero su entrada más reciente es del 2026-09-08 22:31 y las
+  páginas `next` siguen hacia atrás desde ahí. El cursor `placsp` está en ese
+  mismo instante, así que cada pasada lee una entrada, para con
+  `stopped=cursor_reached` e ingiere 0 avisos (run 35978335055) — en verde. El
+  healthcheck da PLACSP por «fresca» (`lag_hours: 0.4`) porque mide cuándo acabó
+  el último run, no la antigüedad del dato. El ZIP mensual
+  `..._202609.zip` sí se regeneró el 2026-09-24 04:01 GMT.
+- **Acceptance criteria:**
+  - Recuperar el hueco: `scrape-bulk.yml` con `months=1` (acción del usuario:
+    escribe en producción) y comprobar que el corpus PLACSP del 09-08 en adelante
+    aparece. *Lanzado el 2026-09-25 (run 36127626642); falta comprobar el
+    corpus.* `months=1` procesa el mes en curso (`meses_a_procesar`). No cubre
+    `placsp_watched_company_awards`, que lee el mismo ATOM y sigue parado.
+  - ~~El healthcheck avisa cuando el `last_seen_updated` de una fuente con cursor
+    de dato (PLACSP, TED) supera un umbral propio, además de `last_success_at`.~~
+    **Hecho el 2026-09-25:** `RegisteredSource.max_antiguedad_dato_hours` (48 h
+    PLACSP, 168 h TED) y el estado `sin_datos_nuevos` en
+    `comprobar_frescura_fuentes`, con aviso `fuente_sin_datos_nuevos:<fuente>`.
+    Mientras el ATOM siga congelado avisará en cada healthcheck: es la señal
+    que faltaba, no ruido.
+  - Decidir si el carril diario cae al ZIP del mes en curso cuando el ATOM no
+    avanza durante N pasadas.
+- **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
+- **Estado (2026-10-15):** el criterio pendiente está resuelto en código: tras
+  `PLACSP_ATOM_PASADAS_SIN_AVANCE_ZIP` pasadas (6 por defecto, un día) sin que
+  avance el cursor `placsp`, el carril diario ingiere el ZIP del mes en curso
+  (y el del anterior si el hueco empezó allí; nunca más de dos), sin tocar el
+  cursor y con traza `placsp_atom_respaldo_zip` en `ops_events`
+  (`scheduler/respaldo_zip_placsp.py`, rama `claude/funcionalidades-2026-10`).
+  Queda comprobar en producción que el corpus del 09-08 en adelante aparece.
+- **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
+
+---
+
 ## Cerrados el 2026-10-11 — el grafo deja de versionarse
 
 **Cerrado el 2026-10-11** (rama `claude/ai-dev-tools-architecture-a18cd2`). Decisión: `graphify-out/` sale del control de versiones y queda como caché local de la máquina que tiene el CLI. Ese día pesaba **52,4 MB** en `HEAD` (51,6 de `graph.json`), por encima de los 50 MB que AGENTS.md §1 fijaba para volver a decidir, y llevaba 51 commits de retraso respecto al código. El motivo para conservarlo —que lo leyeran las sesiones sin el CLI— no se cumplía: ninguna herramienta de lectura de un agente abre un JSON de 51 MB. Lo sustituye `scripts/code_map.py` (definición y usos de un símbolo, importadores de un módulo, esquema de un paquete o un fichero; solo stdlib, sin artefacto que caduque), que pasa a ser el paso 2 de AGENTS.md §1. El hook `session_start_contexto.py` siembra el grafo en los worktrees nuevos copiándolo del checkout principal. Ni artefacto de CI ni LFS: el CLI no existe en CI, así que no habría quien lo generase. El historial conserva los blobs antiguos; el cambio frena el crecimiento del clon, no lo encoge.

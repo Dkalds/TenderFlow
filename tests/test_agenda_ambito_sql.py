@@ -290,11 +290,11 @@ def test_la_fila_trae_el_estado_y_los_adjudicatarios_de_su_expediente(
 def test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote(
     escenario: _Escenario,
 ) -> None:
-    """Con lote, quién se llevó **otro** lote no dice nada del suyo.
+    """Una adjudicación sin lote no se le atribuye a la oportunidad de un lote.
 
-    Las filas de ``adjudicaciones`` no dicen de qué lote son, así que para la
-    oportunidad de un lote no se afirma ningún adjudicatario: decir «adjudicada
-    a Indra» de un lote que sigue abierto la sacaría de la semana.
+    La fila no dice de qué lote es, así que no se afirma ningún adjudicatario:
+    decir «adjudicada a Indra» de un lote que sigue abierto la sacaría de la
+    semana.
     """
     from db.database import connect
 
@@ -308,5 +308,63 @@ def test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote(
 
     filas, _truncado = PursuitRepository().agenda_rows(escenario.organizacion)
     [fila] = [f for f in filas if str(f["licitacion_id"]) == _SAP]
+
+    assert fila["adjudicatarios"] is None
+
+
+def _lotes_con_adjudicacion(licitacion_id: str, adjudicaciones: dict[str, str]) -> None:
+    """Dos lotes en el expediente y, por cada número dado, su adjudicatario."""
+    from db.database import connect
+
+    with connect() as conn:
+        ids: dict[str, int] = {}
+        for numero in ("1", "2"):
+            row = conn.execute(
+                "INSERT INTO lotes (licitacion_id, numero, titulo, fecha_extraccion) "
+                "VALUES (%s, %s, %s, %s) RETURNING id",
+                (licitacion_id, numero, f"Lote {numero}", "2026-09-20T10:00:00+00:00"),
+            ).fetchone()
+            assert row is not None
+            ids[numero] = int(row[0])
+        for numero, nombre in adjudicaciones.items():
+            conn.execute(
+                "INSERT INTO adjudicaciones (licitacion_id, nombre, lote_id, fecha_extraccion) "
+                "VALUES (%s, %s, %s, %s)",
+                (licitacion_id, nombre, ids[numero], "2026-09-20T10:00:00+00:00"),
+            )
+
+
+def _agenda_con_lote(escenario: _Escenario, licitacion_id: str, lote: str) -> dict[str, Any]:
+    from db.database import connect
+
+    with connect() as conn:
+        conn.execute(
+            "UPDATE pursuits SET lote_numero = %s "
+            "WHERE organization_id = %s AND licitacion_id = %s",
+            (lote, escenario.organizacion, licitacion_id),
+        )
+    filas, _truncado = PursuitRepository().agenda_rows(escenario.organizacion)
+    [fila] = [f for f in filas if str(f["licitacion_id"]) == licitacion_id]
+    return fila
+
+
+def test_la_adjudicacion_de_su_lote_cierra_la_oportunidad_de_un_lote(
+    escenario: _Escenario,
+) -> None:
+    """Con la adjudicación atada a su lote, la agenda sí puede afirmarla."""
+    _lotes_con_adjudicacion(_SAP, {"2": "Indra"})
+
+    fila = _agenda_con_lote(escenario, _SAP, "2")
+
+    assert fila["adjudicatarios"] == "Indra"
+
+
+def test_la_adjudicacion_de_otro_lote_no_cierra_la_oportunidad(
+    escenario: _Escenario,
+) -> None:
+    """Quién se llevó el lote 1 no dice nada del lote 2."""
+    _lotes_con_adjudicacion(_SAP, {"1": "Indra"})
+
+    fila = _agenda_con_lote(escenario, _SAP, "2")
 
     assert fila["adjudicatarios"] is None

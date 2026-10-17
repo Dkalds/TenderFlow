@@ -218,41 +218,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P0 — Urgente
 
-### [P0] El feed ATOM de PLACSP está congelado desde el 2026-09-08 y nada lo avisa
-- **Área:** scraper/atom_live.py, scheduler/healthcheck.py, .github/workflows/scrape-daily.yml
-- **Problema:** medido el 2026-09-24. La cabecera de
-  `licitacionesPerfilesContratanteCompleto3.atom` se regeneró el 2026-09-23
-  (`Last-Modified`), pero su entrada más reciente es del 2026-09-08 22:31 y las
-  páginas `next` siguen hacia atrás desde ahí. El cursor `placsp` está en ese
-  mismo instante, así que cada pasada lee una entrada, para con
-  `stopped=cursor_reached` e ingiere 0 avisos (run 35978335055) — en verde. El
-  healthcheck da PLACSP por «fresca» (`lag_hours: 0.4`) porque mide cuándo acabó
-  el último run, no la antigüedad del dato. El ZIP mensual
-  `..._202609.zip` sí se regeneró el 2026-09-24 04:01 GMT.
-- **Acceptance criteria:**
-  - Recuperar el hueco: `scrape-bulk.yml` con `months=1` (acción del usuario:
-    escribe en producción) y comprobar que el corpus PLACSP del 09-08 en adelante
-    aparece. *Lanzado el 2026-09-25 (run 36127626642); falta comprobar el
-    corpus.* `months=1` procesa el mes en curso (`meses_a_procesar`). No cubre
-    `placsp_watched_company_awards`, que lee el mismo ATOM y sigue parado.
-  - ~~El healthcheck avisa cuando el `last_seen_updated` de una fuente con cursor
-    de dato (PLACSP, TED) supera un umbral propio, además de `last_success_at`.~~
-    **Hecho el 2026-09-25:** `RegisteredSource.max_antiguedad_dato_hours` (48 h
-    PLACSP, 168 h TED) y el estado `sin_datos_nuevos` en
-    `comprobar_frescura_fuentes`, con aviso `fuente_sin_datos_nuevos:<fuente>`.
-    Mientras el ATOM siga congelado avisará en cada healthcheck: es la señal
-    que faltaba, no ruido.
-  - Decidir si el carril diario cae al ZIP del mes en curso cuando el ATOM no
-    avanza durante N pasadas.
-- **Files de partida:** [scraper/atom_live.py](../scraper/atom_live.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [scraper/connectors/__init__.py](../scraper/connectors/__init__.py)
-- **Estado (2026-10-15):** el criterio pendiente está resuelto en código: tras
-  `PLACSP_ATOM_PASADAS_SIN_AVANCE_ZIP` pasadas (6 por defecto, un día) sin que
-  avance el cursor `placsp`, el carril diario ingiere el ZIP del mes en curso
-  (y el del anterior si el hueco empezó allí; nunca más de dos), sin tocar el
-  cursor y con traza `placsp_atom_respaldo_zip` en `ops_events`
-  (`scheduler/respaldo_zip_placsp.py`, rama `claude/funcionalidades-2026-10`).
-  Queda comprobar en producción que el corpus del 09-08 en adelante aparece.
-- **Riesgo:** bajo para el aviso (solo añade warnings); medio para el fallback al ZIP, que compite por la ventana del carril diario.
+_Sin ítems abiertos._
 
 ---
 
@@ -620,6 +586,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`. *Estado (2026-09-19):* `docs/database-schema.md` ya está regenerado con v135 y v140 (`98f34bee`; su cabecera dice `v138_notice_type_code`).
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
+- **Estado (2026-10-17):** el **Problema** ya no describe el código en su primera frase: invitar a quien no tiene cuenta existe (`services/organizations.py::invite_member_by_email`, tabla `organization_invitations`, aceptación por token y al iniciar sesión con `accept_invitations_for_email`). `add_member_by_email` sigue rechazando un correo sin cuenta porque es el alta directa, no la invitación. Lo abierto es lo de la fase 3 de `user_key` descrito arriba.
 - **Riesgo:** medio — S1.2 toca el login, que es el camino por el que entra todo el mundo; el resto es aditivo.
 
 ### [P1] [Ola 1 · S2] La organización no sabe quién es: NIF, capacidad y go/no-go asistido
@@ -962,6 +929,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S3), [db/repositories/pursuits.py](../db/repositories/pursuits.py)
 - **Relación:** desbloquea el P2 «Modelo de baja por lote» de este backlog (S6.5 del plan sirve las filas por lote que `predicciones_baja` ya guarda desde `v86`).
 - **Estado:** lo dice el §5 del plan, no este ítem. **Corrección de un hecho de la línea anterior**, comprobada el 2026-09-08: `predicciones_baja` **no guarda filas por lote**. `v86` dejó la columna `lote_id` preparada, pero el único escritor (`score_predicciones_baja`) nunca la rellena y su `ON CONFLICT(licitacion_id)` ni siquiera dejaría convivir dos filas del mismo expediente. S6.5 sirve la estimación agregada declarándolo en `prediccion_ambito`; la `baja_real` sí es del lote. El «Modelo de baja por lote» sigue, pues, siendo trabajo de ML, no de fontanería. (2026-09-18: `v140` ya permite y escribe filas por lote, identificadas por `lote_numero`; ver el progreso de ese ítem.)
+- **Estado (2026-10-17):** las dos mitades del **Problema** están resueltas en código: la oportunidad por lote existe (`pursuits.lote_numero`, `v110`, con el lote resuelto por número en `_PURSUIT_SELECT`) y `score_al_abrir`/`banda_al_abrir` se leen en `services/pursuits.py::calcular_radar_quality`, que pinta precisión y tasa de cierre por banda con mínimo de N (`components/pursuits/radar-quality.tsx`, Dirección). Lo que faltaba para cerrar una oportunidad de lote —saber de qué lote es cada adjudicación— es el P3 «Saber si el lote de una oportunidad ya se adjudicó».
 - **Riesgo:** medio — cambia la clave única de una tabla viva; `plan` antes de `apply`.
 
 ### [P2] [Ola 1 · S4] Eventos y salida: siete almacenes con forma de evento y ningún backbone
@@ -970,6 +938,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Decisión ya tomada (2026-09-06):** D13 → plantillas de payload (`json`, `slack_blocks`, `teams_adaptive_card`) sobre el webhook genérico, no integraciones nativas con OAuth de cada plataforma, y webhooks que pueda crear un miembro dentro de su organización.
 - **Acceptance criteria:** los de S4.1–S4.6 del plan v2. El que sostiene lo demás es el ratchet de productores: toda inserción directa en `user_notifications`/`pending_digests` fuera del despachador entra en una lista que solo puede encoger.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S4), [db/events.py](../db/events.py), [api/routes/webhooks.py](../api/routes/webhooks.py)
+- **Estado (2026-10-17):** dos frases del **Problema** ya no son ciertas: los webhooks los crea un miembro con escritura en su organización (`require_organization(write=True)`, `v108`) con formatos `json`/`slack_blocks`/`teams_adaptive_card`, y un cambio en un expediente seguido sí genera aviso (`services/avisos.py::clasificar_cambio`, llamado desde `services/contract_events.py` y `services/novedades.py`). Lo abierto es el ratchet de productores fuera del despachador.
 - **Riesgo:** medio — toca el camino de escritura de pursuits y de reglas.
 
 ### [P2] [Ola 1 · S7] Frontend: las tres deudas que dejó a medias el plan de septiembre, más formularios, flags e inspectores
@@ -1221,6 +1190,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - La ingesta escribe `adjudicaciones.lote_id` cuando la fuente lo publica, o se documenta por qué no puede.
   - `_AGENDA_SELECT` afirma adjudicatario para una oportunidad con lote solo con las adjudicaciones de ese lote, con su test en `tests/test_agenda_ambito_sql.py` (hoy `test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote` fija lo contrario a propósito).
 - **Files de partida:** [db/repositories/pursuits.py](../db/repositories/pursuits.py), [services/pursuits.py](../services/pursuits.py) (`_expediente_cerrado`), [tests/test_agenda_ambito_sql.py](../tests/test_agenda_ambito_sql.py)
+- **Estado (2026-10-17, rama `claude/happy-maxwell-xjan4q`):** resuelto en código; falta verlo en producción. La causa no era que la fuente no publicase el lote: `parse_adjudicaciones` lo buscaba en `cac:ProcurementProjectLotReference/cbc:ID`, una forma sacada del fixture sintético `01_multilote`, y CODICE lo publica en `cac:AwardedTenderedProject/cbc:ProcurementProjectLotID`. Medido ese día en producción: 761 expedientes multilote con adjudicación, 1.619 filas, **ninguna** con `lote_id`. El parser lee ahora las tres formas (`_lote_del_resultado`, caso golden `18_lote_en_proyecto_adjudicado`), `run_connector` avisa con `adj_lote_sin_resolver` cuando un multilote se queda sin lote, y `_AGENDA_SELECT` afirma adjudicatario para la oportunidad de un lote solo con las adjudicaciones de ese lote (`tests/test_agenda_ambito_sql.py`). Bajas, dataset ML, ficha y competencia esperada ya leían `lote_id` y se benefician sin cambios. **Queda (acción del propietario):** desplegar, relanzar `scrape-bulk.yml` para que la re-ingesta reescriba las adjudicaciones ya guardadas (el feed solo corrige lo que vuelve a publicarse), y comprobar `SELECT count(lote_id) FROM adjudicaciones` > 0 y que `adj_lote_sin_resolver` no aparece en cada pasada. Si sigue a cero, el formato es otro: capturar un expediente real con `scripts/capture_placsp_fixtures.py --caso multilote`.
 - **Riesgo:** bajo — la regla actual es la conservadora; relajarla solo añade casos.
 
 ---

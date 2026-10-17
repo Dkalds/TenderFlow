@@ -21,7 +21,7 @@ ENV=dev python -m tests.test_codice_parser_golden --update   # regenera el golde
 
 ## Estado de los fixtures
 
-Los diecisiete casos son **sintéticos**: estructuralmente fieles al CODICE
+Los dieciocho casos son **sintéticos**: estructuralmente fieles al CODICE
 que publica PLACSP, pero escritos a mano porque ni la sesión que creó el corpus
 ni las que lo ampliaron tenían ZIP cacheados a mano. La que añadió el 16 y el
 17 (v148, 2026-10-12) intentó leer el ATOM en vivo para recortar entradas
@@ -52,6 +52,7 @@ nadie imaginó.
 | `15_anuncio_previo_notice_type_code` | Cuatro `ValidNoticeInfo` con `NoticeTypeCode` (`DOC_PIN_RTL`, `DOC_CN` dos veces, `DOC_CD`): `tipos_anuncio` los guarda crudos, distintos y ordenados (v138, spike T5); la `fecha_publicacion` sale la mínima de todos los bloques, o sea la del PIN — comportamiento actual de `_issue_date`, congelado, no decidido |
 | `16_condiciones_expediente` | v148: `cac:TenderingTerms` del expediente con los tres bloques — tres criterios con tipo, subtipo y nota (escala porcentual), una garantía por porcentaje (`AmountRate`) y solvencia técnica, económica con `ThresholdAmount` y clasificación empresarial. Los códigos viajan crudos |
 | `17_condiciones_por_lote` | v148: cada lote con su `TenderingTerms` — el 1 con criterios en fracciones (0,8/0,2 → 80/20), el 2 con garantía por importe (`LiabilityAmount`), solvencia técnica y criterios en porcentaje — y una garantía a nivel de expediente declarada **después** de los lotes |
+| `18_lote_en_proyecto_adjudicado` | El lote del resultado dentro del proyecto adjudicado (`AwardedTenderedProject/cbc:ProcurementProjectLotID`), que es como lo publica CODICE; el tercer `TenderResult` no dice lote y queda `NULL`. Incidente del 2026-10-17: el parser solo leía la forma del caso 01 y ninguna adjudicación de producción resolvía su lote |
 
 El caso 11 existe porque sin él invertir la prioridad en `_tender_deadline` no
 rompía ningún test del corpus: se detectó mutando el parser a propósito para
