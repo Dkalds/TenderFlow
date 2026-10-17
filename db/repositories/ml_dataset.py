@@ -59,7 +59,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect, connect_read
+from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.sql_fragments import (
@@ -1081,15 +1081,18 @@ def guardar_scores_tecnologia(
                 (reemplazar,),
             )
         if scores:
+            # `computed_at` es texto ISO (v151): un `NOW()` aquí lo escribiría
+            # con el formato de salida de Postgres, con espacio en vez de `T`.
+            ahora = now_utc_iso()
             c.executemany(
                 "INSERT INTO licitacion_tecnologia_score "
                 "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
-                "VALUES (%s, %s, %s, %s, NOW()) "
+                "VALUES (%s, %s, %s, %s, %s) "
                 "ON CONFLICT(licitacion_id, tecnologia) DO UPDATE SET "
                 "probabilidad=excluded.probabilidad, "
                 "threshold_aplicado=excluded.threshold_aplicado, "
                 "computed_at=excluded.computed_at",
-                scores,
+                [(*fila, ahora) for fila in scores],
             )
         if sin_score:
             c.executemany(
