@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { horasRestantes, proximasACerrar } from "@/app/(dashboard)/resumen/_components/cola-cierre";
+import { horasEnVentana, horasRestantes, proximasACerrar } from "@/app/(dashboard)/resumen/_components/cola-cierre";
 import { esNueva } from "@/app/(dashboard)/resumen/_components/types";
 import type { LicitacionSummary } from "@/lib/api-types";
 
@@ -86,5 +86,18 @@ describe("esNueva", () => {
     expect(esNueva("no es una fecha", "2026-09-01T10:00:00Z")).toBe(false);
     expect(esNueva("2026-09-02T00:00:00Z", "tampoco")).toBe(false);
     expect(esNueva(null, "2026-09-01T10:00:00Z")).toBe(false);
+  });
+});
+
+describe("horasEnVentana", () => {
+  it("coloca todas las traídas en el reloj, no solo las cuatro de la lista", () => {
+    const items = ["A", "B", "C", "D", "E"].map((id, i) => lic(id, `2026-09-06T1${3 + i}:00:00Z`));
+    expect(horasEnVentana(items, AHORA)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("deja fuera lo que pasa de 48 h y lo que no tiene fecha legible", () => {
+    // La petición corta por día y trae algún cierre de más allá de la ventana.
+    const items = [lic("DENTRO", "2026-09-08T11:00:00Z"), lic("FUERA", "2026-09-08T13:00:00Z"), lic("SIN", null)];
+    expect(horasEnVentana(items, AHORA)).toEqual([47]);
   });
 });

@@ -16,6 +16,7 @@ import { useFilters } from "@/lib/filters";
 import { cn, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import { type AgendaBanda, bandaDe } from "@/app/(dashboard)/mi-pipeline/_components/agenda/agenda-meta";
 import { usePipelineAgenda } from "@/hooks/use-pursuits";
+import { PuntosUnidad } from "./cifras-graficos";
 import { SemanaEnCarriles } from "./tu-dia-semana";
 import { semanaEnCarriles } from "./tu-dia-semana-data";
 
@@ -45,6 +46,10 @@ import { semanaEnCarriles } from "./tu-dia-semana-data";
  * carril por día con algo, colocado por los `dias_restantes` que manda el
  * backend. Cuatro filas en lista no decían si el viernes venía cargado; un
  * carril por día sí, y de un vistazo.
+ *
+ * **Cada contador lleva sus puntos** (`cifras-graficos.tsx`): un cuadrado por
+ * compromiso contado, en el tono de la cifra. Son recuentos pequeños, y «tres»
+ * frente a «diecisiete» se ve antes de leer el número.
  */
 
 /** Tramos que caben en una banda de entrada: lo vencido, lo de hoy y la semana. */
@@ -118,6 +123,7 @@ export function TuDia() {
               loading={isPending}
               value={cifras ? formatNumber(cifras.plazos) : EMPTY}
               tono={cifras && cifras.plazos > 0 ? "destructive" : undefined}
+              grafico={cifras && <PuntosUnidad n={cifras.plazos} tono="destructive" />}
               hint={
                 cifras && cifras.plazos > 0
                   ? `${formatCompactCurrency(cifras.plazosImporte)} en juego`
@@ -128,12 +134,14 @@ export function TuDia() {
               label="Acciones hoy o vencidas"
               loading={isPending}
               value={cifras ? formatNumber(cifras.acciones) : EMPTY}
+              grafico={cifras && <PuntosUnidad n={cifras.acciones} />}
               hint="Tareas propias con fecha pasada o de hoy"
             />
             <StatCell
               label="Go/No-Go pendientes"
               loading={isPending}
               value={cifras ? formatNumber(cifras.goNoGo) : EMPTY}
+              grafico={cifras && <PuntosUnidad n={cifras.goNoGo} />}
               hint="Sin decisión tomada"
             />
             <StatCell
@@ -141,6 +149,7 @@ export function TuDia() {
               loading={isPending}
               value={cifras ? formatNumber(cifras.sinAccion) : EMPTY}
               tono={cifras && cifras.sinAccion > 0 ? "warning" : undefined}
+              grafico={cifras && <PuntosUnidad n={cifras.sinAccion} tono="warning" />}
               hint="Oportunidades sin tarea abierta"
             />
             </StatStrip>

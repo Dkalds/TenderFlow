@@ -1,12 +1,13 @@
 /**
- * Las dos piezas visuales de «Contexto de mercado»: la línea del ritmo bajo
- * «Publicadas 30 d» y la barra apilada de la composición por estado.
+ * Las piezas visuales de «Contexto de mercado»: las áreas del ritmo bajo
+ * «Publicadas 30 d» e «Importe 30 d» y la barra apilada de la composición por
+ * estado.
  *
- * Ninguna calcula nada que el backend no haya dado: la línea dibuja la serie
- * diaria de `/analytics/trends` y la barra, el `por_estado` de
- * `/analytics/overview`. Las dos son SVG con atributos y no anchos en `style`
- * (scripts/check_inline_styles.py), y las dos son decorativas para el lector:
- * la cifra y la leyenda dicen lo mismo en texto.
+ * Ninguna calcula nada que el backend no haya dado: las áreas dibujan la
+ * serie diaria de `/analytics/trends` (su `count` y su `importe`) y la barra,
+ * el `por_estado` de `/analytics/overview`. Todas son SVG con atributos y no
+ * anchos en `style` (scripts/check_inline_styles.py), y todas son decorativas
+ * para el lector: la cifra y la leyenda dicen lo mismo en texto.
  */
 
 import { CHART_SERIES } from "@/lib/chart-colors";
@@ -28,7 +29,20 @@ export function puntosSparkline(valores: readonly number[], ancho: number, alto:
     .join(" ");
 }
 
-export function Sparkline({ valores, className }: { valores: readonly number[]; className?: string }) {
+/**
+ * La serie como línea o, con `area`, como área: el relleno es plano y tenue,
+ * del mismo color que el trazo, para que la forma del mes pese más que una
+ * raya de 1,5 px sin competir con la cifra de encima.
+ */
+export function Sparkline({
+  valores,
+  area = false,
+  className,
+}: {
+  valores: readonly number[];
+  area?: boolean;
+  className?: string;
+}) {
   const puntos = puntosSparkline(valores, 100, 24);
   if (!puntos) return null;
   return (
@@ -38,6 +52,7 @@ export function Sparkline({ valores, className }: { valores: readonly number[]; 
       preserveAspectRatio="none"
       className={cn("h-6 w-full overflow-visible", className)}
     >
+      {area && <polygon points={`0,24 ${puntos} 100,24`} fill={CHART_SERIES[0]} fillOpacity="0.14" />}
       <polyline
         points={puntos}
         fill="none"

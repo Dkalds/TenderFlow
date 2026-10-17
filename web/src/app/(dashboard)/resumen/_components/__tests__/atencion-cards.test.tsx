@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const fetchWithAuth = vi.hoisted(() => vi.fn((_url: string) => new Promise(() => {})));
@@ -263,7 +263,9 @@ describe("AtencionCards", () => {
     renderCards();
 
     expect(await screen.findByText("Cierra esta tarde")).toBeInTheDocument();
-    expect(screen.getAllByText(/^\d+ h$/).map((n) => n.textContent)).toEqual(["9 h", "38 h"]);
+    // Dentro de la lista: el reloj de encima rotula su eje con «24 h» y «48 h».
+    const lista = screen.getByText("Cierra esta tarde").closest("ul") as HTMLElement;
+    expect(within(lista).getAllByText(/^\d+ h$/).map((n) => n.textContent)).toEqual(["9 h", "38 h"]);
     // Cada fila abre su ficha: es lo que ahorra el viaje al listado.
     expect(hrefDe("Cierra esta tarde")).toContain("lic=PRONTO");
     expect(screen.getByText("AEAT")).toBeInTheDocument();
@@ -281,6 +283,22 @@ describe("AtencionCards", () => {
   it("«Grandes en plazo» dice en cifra dónde empieza el 25 % de mayor importe", () => {
     renderCards();
     expect(screen.getByText(/^Desde .+: el 25 % de mayor importe, abiertas y en plazo$/)).toBeInTheDocument();
+  });
+
+  it("«Grandes en plazo» se dibuja como parte de las activas, que es su mismo conjunto", () => {
+    renderCards({ ...HOY, calientes: 1050, total_activas: 4200 });
+    const tarjeta = screen.getByText("Grandes en plazo").closest("a");
+    expect(tarjeta).toHaveTextContent("25,0% de las activas");
+  });
+
+  it("una parte diminuta no se redondea a cero: se dice que es menos de una décima", () => {
+    renderCards({ ...HOY, calientes: 12, total_activas: 42100 });
+    expect(screen.getByText("Grandes en plazo").closest("a")).toHaveTextContent("<0,1% de las activas");
+  });
+
+  it("sin activas no hay proporción que dibujar", () => {
+    renderCards({ ...HOY, calientes: 0, total_activas: 0 });
+    expect(screen.queryByText(/de las activas/)).not.toBeInTheDocument();
   });
 
   it("«Nuevas» enseña bajo la cifra la muestra que trae el endpoint", () => {
