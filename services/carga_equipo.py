@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuits import PursuitRepository
 from services.direccion import direccion_resuelta
-from services.pursuits import _parse_iso_date
+from services.pursuits_agenda import _parse_iso_date
 from shared.dates import a_fecha
 
 __all__ = [

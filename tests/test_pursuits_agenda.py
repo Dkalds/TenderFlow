@@ -1,4 +1,5 @@
-"""Unit tests de la agenda de Mi Pipeline (``services.pursuits.get_agenda``).
+"""Unit tests de la agenda de Mi Pipeline (``services.pursuits.get_agenda`` y sus
+piezas en ``services.pursuits_agenda``).
 
 Las bandas de urgencia, el orden y la fusión son el contrato que el frontend
 renderiza sin recalcular (ADR-014): si esto se mueve, la agenda entera miente.
@@ -20,6 +21,7 @@ from typing import Any
 import pytest
 
 import services.pursuits as sp
+import services.pursuits_agenda as spa
 from services.cartera import ContratoCartera
 from services.watchlist_rules import WatchlistRule
 from tests.dobles_tenencia import alcance_fijo
@@ -43,7 +45,7 @@ from tests.dobles_tenencia import alcance_fijo
     ],
 )
 def test_urgencia_bandas(dias: int | None, banda: str) -> None:
-    assert sp._urgencia(dias) == banda
+    assert spa._urgencia(dias) == banda
 
 
 @pytest.mark.parametrize(
@@ -61,7 +63,7 @@ def test_urgencia_bandas(dias: int | None, banda: str) -> None:
     ],
 )
 def test_parse_iso_date(valor: object, esperado: date | None) -> None:
-    assert sp._parse_iso_date(valor) == esperado
+    assert spa._parse_iso_date(valor) == esperado
 
 
 # ── Construcción de items ───────────────────────────────────────────────────
@@ -138,7 +140,7 @@ class TestItemPursuit:
         sin distinguir si lo que vencía era la licitación o una nota que el
         propio usuario se había puesto. La acción ahora tiene su fila ``tarea``.
         """
-        item = sp._pursuit_item(
+        item = spa._pursuit_item(
             _pursuit_row(tender_deadline="2026-08-30T00:00:00+00:00", next_action_due="2026-08-15"),
             date(2026, 8, 13),
         )
@@ -149,7 +151,7 @@ class TestItemPursuit:
         assert item.next_action_due == date(2026, 8, 15)
 
     def test_sin_plazo_va_a_sin_fecha_aunque_haya_accion_pendiente(self) -> None:
-        item = sp._pursuit_item(
+        item = spa._pursuit_item(
             _pursuit_row(next_action="Llamar al órgano", next_action_due="2026-08-15"),
             date(2026, 8, 13),
         )
@@ -158,7 +160,7 @@ class TestItemPursuit:
         assert item.due_kind == "plazo"
 
     def test_los_campos_de_la_oportunidad_viajan_enteros(self) -> None:
-        item = sp._pursuit_item(_pursuit_row(tender_deadline="2026-08-14"), date(2026, 8, 13))
+        item = spa._pursuit_item(_pursuit_row(tender_deadline="2026-08-14"), date(2026, 8, 13))
         assert (item.pursuit_id, item.version, item.status) == (11, 2, "preparing")
         assert (item.responsible_user_id, item.responsible_name) == (3, "Dana")
         assert (item.tarea_id, item.tarea_texto, item.cartera_id) == (None, None, None)
@@ -168,7 +170,7 @@ class TestItemTarea:
     """Cada acción interna es su propio compromiso, con su propio vencimiento."""
 
     def test_hereda_la_oportunidad_y_lleva_su_vencimiento(self) -> None:
-        item = sp._tarea_item(
+        item = spa._tarea_item(
             _tarea_row(),
             date(2026, 8, 13),
             tarea_id=41,
@@ -188,7 +190,7 @@ class TestItemTarea:
 
     def test_sin_vencimiento_es_sin_fecha_y_no_hoy(self) -> None:
         """Una tarea sin fecha no es más urgente que una que vence mañana."""
-        item = sp._tarea_item(
+        item = spa._tarea_item(
             _tarea_row(), date(2026, 8, 13), tarea_id=41, tarea_texto="Algo", vence=None
         )
         assert (item.due_date, item.dias_restantes, item.urgencia) == (None, None, "sin_fecha")
@@ -199,7 +201,7 @@ class TestFusionDeTareas:
     HOY = date(2026, 8, 13)
 
     def test_una_fila_por_tarea_abierta(self) -> None:
-        items = sp._agenda_tareas(
+        items = spa._agenda_tareas(
             [],
             [
                 _tarea_row(tarea_id=41, tarea_vence="2026-08-14"),
@@ -212,7 +214,7 @@ class TestFusionDeTareas:
 
     def test_la_next_action_manual_de_un_pursuit_sin_tareas_emite_una_sin_id(self) -> None:
         """Existe como compromiso, pero no hay fila de ``pursuit_tasks`` que editar."""
-        items = sp._agenda_tareas(
+        items = spa._agenda_tareas(
             [_pursuit_row(next_action="Confirmar visita", next_action_due="2026-08-15")],
             [],
             self.HOY,
@@ -225,7 +227,7 @@ class TestFusionDeTareas:
     def test_un_pursuit_con_tareas_no_repite_su_next_action(self) -> None:
         """``next_action`` se deriva de la tarea más urgente (C6.1): repetirla
         contaría dos veces el mismo compromiso."""
-        items = sp._agenda_tareas(
+        items = spa._agenda_tareas(
             [_pursuit_row(next_action="Pedir el certificado de solvencia")],
             [_tarea_row(tarea_vence="2026-08-14")],
             self.HOY,
@@ -233,11 +235,11 @@ class TestFusionDeTareas:
         assert [i.tarea_id for i in items] == [41]
 
     def test_un_pursuit_sin_next_action_y_sin_tareas_no_emite_nada(self) -> None:
-        assert sp._agenda_tareas([_pursuit_row()], [], self.HOY) == []
+        assert spa._agenda_tareas([_pursuit_row()], [], self.HOY) == []
 
     def test_la_tarea_de_otro_pursuit_no_tapa_la_next_action_del_primero(self) -> None:
         """El cruce es por ``pursuit_id``, no «hay alguna tarea en la agenda»."""
-        items = sp._agenda_tareas(
+        items = spa._agenda_tareas(
             [_pursuit_row(pursuit_id=11, next_action="Confirmar visita")],
             [_tarea_row(pursuit_id=12, licitacion_id="EXP-2")],
             self.HOY,
@@ -251,7 +253,7 @@ class TestItemContrato:
     HOY = date(2026, 8, 13)
 
     def test_con_ventana_y_sin_renovacion_la_fecha_es_el_inicio_de_la_ventana(self) -> None:
-        item = sp._contrato_item(_contrato(), self.HOY)
+        item = spa._contrato_item(_contrato(), self.HOY)
         assert item.kind == "contrato"
         assert (item.due_date, item.due_kind) == (date(2026, 9, 30), "relicitacion")
         assert item.dias_restantes == 48
@@ -259,19 +261,19 @@ class TestItemContrato:
 
     def test_con_la_renovacion_ya_preparada_la_fecha_pasa_a_ser_el_fin(self) -> None:
         """Ya hay oportunidad abierta: lo que queda por vigilar es el fin."""
-        item = sp._contrato_item(_contrato(renovacion_pursuit_id=99), self.HOY)
+        item = spa._contrato_item(_contrato(renovacion_pursuit_id=99), self.HOY)
         assert (item.due_date, item.due_kind) == (date(2027, 3, 31), "fin_contrato")
         assert item.renovacion_pursuit_id == 99
 
     def test_sin_ventana_pero_con_fin_la_fecha_es_el_fin(self) -> None:
-        item = sp._contrato_item(
+        item = spa._contrato_item(
             _contrato(relicitacion_desde=None, relicitacion_hasta=None), self.HOY
         )
         assert (item.due_date, item.due_kind) == (date(2027, 3, 31), "fin_contrato")
 
     def test_sin_fecha_de_fin_no_se_inventa_ninguna(self) -> None:
         """La cartera no inventa fecha de fin y la agenda tampoco."""
-        item = sp._contrato_item(
+        item = spa._contrato_item(
             _contrato(
                 fecha_fin_efectiva=None,
                 fecha_fin_origen=None,
@@ -285,7 +287,7 @@ class TestItemContrato:
 
     def test_lleva_los_campos_del_contrato_y_deja_vacios_los_del_pursuit_abierto(self) -> None:
         """``pursuit_id`` enlaza a la oportunidad ganada de origen, no a una abierta."""
-        item = sp._contrato_item(_contrato(), self.HOY)
+        item = spa._contrato_item(_contrato(), self.HOY)
         assert (item.cartera_id, item.pursuit_id) == (77, 11)
         assert item.fecha_fin_efectiva == date(2027, 3, 31)
         assert (item.relicitacion_desde, item.relicitacion_hasta) == (
@@ -316,7 +318,7 @@ class TestAmbitoDeLosContratos:
     def _ids(self, contratos: list[ContratoCartera], **ambito: Any) -> list[str]:
         ambito.setdefault("tecnologias", [])
         ambito.setdefault("ccaas", [])
-        return [i.licitacion_id for i in sp._agenda_contratos(contratos, self.HOY, **ambito)]
+        return [i.licitacion_id for i in spa._agenda_contratos(contratos, self.HOY, **ambito)]
 
     def test_sin_ambito_entran_todos(self) -> None:
         assert self._ids([_contrato(), _contrato(licitacion_id="CTR-2", tecnologia="Oracle")]) == [
@@ -375,9 +377,9 @@ class TestAmbitoDeLosContratos:
             relicitacion_desde="2019-06-30",
             relicitacion_hasta="2019-09-30",
         )
-        items = sp._agenda_contratos([_contrato(), terminado], self.HOY, tecnologias=[], ccaas=[])
+        items = spa._agenda_contratos([_contrato(), terminado], self.HOY, tecnologias=[], ccaas=[])
         assert [item.licitacion_id for item in items] == ["CTR-1"]
-        assert sp._agenda_kpis(items).relicitaciones_abiertas == 0
+        assert spa._agenda_kpis(items).relicitaciones_abiertas == 0
 
     def test_el_contrato_sin_fecha_de_fin_sigue_estando(self) -> None:
         """Sin fecha de fin no se puede afirmar que terminó, así que se queda.
@@ -391,7 +393,7 @@ class TestAmbitoDeLosContratos:
             relicitacion_desde=None,
             relicitacion_hasta=None,
         )
-        items = sp._agenda_contratos([sin_fin], self.HOY, tecnologias=[], ccaas=[])
+        items = spa._agenda_contratos([sin_fin], self.HOY, tecnologias=[], ccaas=[])
         assert [item.licitacion_id for item in items] == ["CTR-SIN-FIN"]
         assert items[0].urgencia == "sin_fecha"
 
@@ -403,7 +405,7 @@ class TestAmbitoDeLosContratos:
             relicitacion_desde=None,
             relicitacion_hasta=None,
         )
-        items = sp._agenda_contratos([hoy_mismo], self.HOY, tecnologias=[], ccaas=[])
+        items = spa._agenda_contratos([hoy_mismo], self.HOY, tecnologias=[], ccaas=[])
         assert [item.licitacion_id for item in items] == ["CTR-HOY"]
         assert items[0].due_kind == "fin_contrato"
         assert items[0].dias_restantes == 0
@@ -475,11 +477,11 @@ class TestAmbitoSql:
 
 
 def _item(kind: str, *, dias: int | None, licitacion_id: str) -> Any:
-    """Un item mínimo, sólo con lo que mira :func:`sp._agenda_orden`."""
+    """Un item mínimo, sólo con lo que mira :func:`spa._agenda_orden`."""
     return sp.PipelineAgendaItem.model_validate(
         {
             "kind": kind,
-            "urgencia": sp._urgencia(dias),
+            "urgencia": spa._urgencia(dias),
             "due_date": None,
             "dias_restantes": dias,
             "licitacion_id": licitacion_id,
@@ -512,7 +514,7 @@ class TestOrden:
             _item("pursuit", dias=-30, licitacion_id="B"),
             _item("pursuit", dias=5, licitacion_id="C"),
         ]
-        assert [i.licitacion_id for i in sorted(items, key=sp._agenda_orden)] == ["B", "C", "A"]
+        assert [i.licitacion_id for i in sorted(items, key=spa._agenda_orden)] == ["B", "C", "A"]
 
     def test_a_igual_dia_manda_la_clase_de_compromiso(self) -> None:
         """Primero el plazo externo, después lo que hay que hacer, después lo
@@ -524,7 +526,7 @@ class TestOrden:
             _item("tarea", dias=3, licitacion_id="A"),
             _item("pursuit", dias=3, licitacion_id="A"),
         ]
-        assert [i.kind for i in sorted(items, key=sp._agenda_orden)] == [
+        assert [i.kind for i in sorted(items, key=spa._agenda_orden)] == [
             "pursuit",
             "tarea",
             "contrato",
@@ -537,7 +539,7 @@ class TestOrden:
             _item("tarea", dias=2, licitacion_id="EXP-9"),
             _item("tarea", dias=2, licitacion_id="EXP-1"),
         ]
-        assert [i.licitacion_id for i in sorted(items, key=sp._agenda_orden)] == ["EXP-1", "EXP-9"]
+        assert [i.licitacion_id for i in sorted(items, key=spa._agenda_orden)] == ["EXP-1", "EXP-9"]
 
 
 # ── KPIs ────────────────────────────────────────────────────────────────────
@@ -548,11 +550,11 @@ class TestKpis:
 
     def test_vence_semana_mide_pursuits_e_incluye_los_vencidos(self) -> None:
         """Un plazo pasado sigue exigiendo acción: no desaparece por llegar tarde."""
-        vencido = sp._pursuit_item(
+        vencido = spa._pursuit_item(
             _pursuit_row(tender_deadline="2026-08-10", importe_eur=50_000.0, decision="pending"),
             self.HOY,
         )
-        lejano = sp._pursuit_item(
+        lejano = spa._pursuit_item(
             _pursuit_row(
                 licitacion_id="EXP-2",
                 pursuit_id=12,
@@ -563,7 +565,7 @@ class TestKpis:
         )
         senal = _item("senal", dias=1, licitacion_id="SEN-1")
 
-        kpis = sp._agenda_kpis([vencido, lejano, senal])
+        kpis = spa._agenda_kpis([vencido, lejano, senal])
 
         assert kpis.vence_semana == 1
         assert kpis.vence_semana_importe_eur == 50_000.0
@@ -572,38 +574,44 @@ class TestKpis:
 
     def test_una_tarea_que_vence_no_cuenta_como_plazo_de_presentacion(self) -> None:
         """Los relojes no se suman: ``vence_semana`` son plazos, no acciones."""
-        tarea = sp._tarea_item(
+        tarea = spa._tarea_item(
             _tarea_row(), self.HOY, tarea_id=41, tarea_texto="X", vence="2026-08-14"
         )
-        kpis = sp._agenda_kpis([tarea])
+        kpis = spa._agenda_kpis([tarea])
         assert (kpis.vence_semana, kpis.vence_semana_importe_eur) == (0, 0.0)
 
     def test_acciones_hoy_cuenta_tareas_de_hoy_y_vencidas(self) -> None:
         tareas = [
-            sp._tarea_item(_tarea_row(), self.HOY, tarea_id=1, tarea_texto="A", vence="2026-08-10"),
-            sp._tarea_item(_tarea_row(), self.HOY, tarea_id=2, tarea_texto="B", vence="2026-08-13"),
-            sp._tarea_item(_tarea_row(), self.HOY, tarea_id=3, tarea_texto="C", vence="2026-08-14"),
-            sp._tarea_item(_tarea_row(), self.HOY, tarea_id=4, tarea_texto="D", vence=None),
+            spa._tarea_item(
+                _tarea_row(), self.HOY, tarea_id=1, tarea_texto="A", vence="2026-08-10"
+            ),
+            spa._tarea_item(
+                _tarea_row(), self.HOY, tarea_id=2, tarea_texto="B", vence="2026-08-13"
+            ),
+            spa._tarea_item(
+                _tarea_row(), self.HOY, tarea_id=3, tarea_texto="C", vence="2026-08-14"
+            ),
+            spa._tarea_item(_tarea_row(), self.HOY, tarea_id=4, tarea_texto="D", vence=None),
         ]
-        assert sp._agenda_kpis(tareas).acciones_hoy == 2
+        assert spa._agenda_kpis(tareas).acciones_hoy == 2
 
     def test_relicitaciones_abiertas_son_las_ventanas_ya_empezadas(self) -> None:
         """La que empieza dentro de un mes no está abierta; la de ayer sí."""
-        abierta = sp._contrato_item(
+        abierta = spa._contrato_item(
             _contrato(relicitacion_desde="2026-08-12", licitacion_id="CTR-1"), self.HOY
         )
-        futura = sp._contrato_item(
+        futura = spa._contrato_item(
             _contrato(relicitacion_desde="2026-09-30", licitacion_id="CTR-2"), self.HOY
         )
         # Ventana abierta pero renovación ya preparada: deja de ser pendiente.
-        preparada = sp._contrato_item(
+        preparada = spa._contrato_item(
             _contrato(
                 relicitacion_desde="2026-08-12", licitacion_id="CTR-3", renovacion_pursuit_id=5
             ),
             self.HOY,
         )
 
-        kpis = sp._agenda_kpis([abierta, futura, preparada])
+        kpis = spa._agenda_kpis([abierta, futura, preparada])
 
         assert kpis.relicitaciones_abiertas == 1
 
@@ -617,10 +625,10 @@ class TestKpis:
         con_tarea = _pursuit_row(pursuit_id=11, licitacion_id="EXP-1")
         sin_nada = _pursuit_row(pursuit_id=12, licitacion_id="EXP-2")
         con_texto = _pursuit_row(pursuit_id=13, licitacion_id="EXP-3", next_action="Llamar")
-        items = [sp._pursuit_item(row, self.HOY) for row in (con_tarea, sin_nada, con_texto)]
-        items.extend(sp._agenda_tareas([con_tarea, sin_nada, con_texto], [_tarea_row()], self.HOY))
+        items = [spa._pursuit_item(row, self.HOY) for row in (con_tarea, sin_nada, con_texto)]
+        items.extend(spa._agenda_tareas([con_tarea, sin_nada, con_texto], [_tarea_row()], self.HOY))
 
-        kpis = sp._agenda_kpis(items)
+        kpis = spa._agenda_kpis(items)
 
         # Sólo `sin_nada`: el primero tiene tarea y el tercero, texto.
         assert kpis.sin_proxima_accion == 1
@@ -641,7 +649,7 @@ class TestBanda:
     HOY = date(2026, 8, 13)
 
     def test_un_plazo_pasado_sin_presentar_es_un_cierre_pendiente(self) -> None:
-        item = sp._pursuit_item(
+        item = spa._pursuit_item(
             _pursuit_row(tender_deadline="2026-08-01", status="qualifying", decision="pending"),
             self.HOY,
         )
@@ -653,7 +661,7 @@ class TestBanda:
     def test_una_oferta_presentada_espera_resolucion_venza_cuando_venza(
         self, plazo: str | None
     ) -> None:
-        item = sp._pursuit_item(_pursuit_row(tender_deadline=plazo, status="submitted"), self.HOY)
+        item = spa._pursuit_item(_pursuit_row(tender_deadline=plazo, status="submitted"), self.HOY)
         assert item.banda == "en_resolucion"
 
     @pytest.mark.parametrize(
@@ -669,7 +677,7 @@ class TestBanda:
     def test_con_el_plazo_por_delante_la_banda_es_la_urgencia(
         self, plazo: str | None, banda: str
     ) -> None:
-        item = sp._pursuit_item(_pursuit_row(tender_deadline=plazo), self.HOY)
+        item = spa._pursuit_item(_pursuit_row(tender_deadline=plazo), self.HOY)
         assert (item.banda, item.urgencia) == (banda, banda)
 
     def test_un_expediente_resuelto_sin_plazo_es_un_cierre_pendiente(self) -> None:
@@ -678,7 +686,7 @@ class TestBanda:
         Caía en «Sin fecha» como una oportunidad viva a la que le faltaba el
         siguiente paso, y la franja la contaba en «Go/No-Go pendientes».
         """
-        item = sp._pursuit_item(
+        item = spa._pursuit_item(
             _pursuit_row(
                 tender_deadline=None,
                 status="identified",
@@ -696,7 +704,7 @@ class TestBanda:
 
     @pytest.mark.parametrize("estado", ["RES", "ADJ", "ANUL"])
     def test_un_estado_de_cierre_cierra_aunque_el_plazo_no_haya_pasado(self, estado: str) -> None:
-        item = sp._pursuit_item(
+        item = spa._pursuit_item(
             _pursuit_row(tender_deadline="2026-08-20", status="qualifying", tender_estado=estado),
             self.HOY,
         )
@@ -704,7 +712,7 @@ class TestBanda:
 
     def test_una_adjudicacion_publicada_cierra_aunque_el_estado_siga_abierto(self) -> None:
         """TED no mueve el estado del anuncio: la adjudicación llega aparte."""
-        item = sp._pursuit_item(
+        item = spa._pursuit_item(
             _pursuit_row(
                 tender_deadline="2026-08-20",
                 status="qualifying",
@@ -717,7 +725,7 @@ class TestBanda:
 
     @pytest.mark.parametrize("estado", ["PUB", "EV", None])
     def test_un_expediente_abierto_no_cambia_de_tramo(self, estado: str | None) -> None:
-        item = sp._pursuit_item(
+        item = spa._pursuit_item(
             _pursuit_row(tender_deadline="2026-08-16", status="qualifying", tender_estado=estado),
             self.HOY,
         )
@@ -725,7 +733,7 @@ class TestBanda:
 
     def test_una_oferta_presentada_sobre_un_expediente_resuelto_sigue_esperando(self) -> None:
         """Lo pendiente es registrar el resultado, y la fila ya sabe quién ganó."""
-        item = sp._pursuit_item(
+        item = spa._pursuit_item(
             _pursuit_row(status="submitted", tender_estado="ADJ", adjudicatarios="Indra"),
             self.HOY,
         )
@@ -734,13 +742,13 @@ class TestBanda:
 
     def test_una_tarea_vencida_sigue_siendo_vencida(self) -> None:
         """Llega tarde, pero todavía se puede hacer: eso sí es una urgencia."""
-        item = sp._tarea_item(
+        item = spa._tarea_item(
             _tarea_row(), self.HOY, tarea_id=41, tarea_texto="X", vence="2026-08-10"
         )
         assert item.banda == "vencida"
 
     def test_el_contrato_lleva_la_banda_de_su_urgencia(self) -> None:
-        item = sp._contrato_item(_contrato(), self.HOY)
+        item = spa._contrato_item(_contrato(), self.HOY)
         assert item.banda == item.urgencia == "despues"
 
 
@@ -749,15 +757,17 @@ class TestHoraDelPlazo:
 
     def test_el_pursuit_lleva_la_hora_peninsular_de_su_plazo(self) -> None:
         """«Hoy» no distingue las 09:00 de la medianoche; la hora sí."""
-        item = sp._pursuit_item(_pursuit_row(tender_deadline="2026-08-30T12:00:00+00:00"), self.HOY)
+        item = spa._pursuit_item(
+            _pursuit_row(tender_deadline="2026-08-30T12:00:00+00:00"), self.HOY
+        )
         assert (item.due_date, item.due_hora) == (date(2026, 8, 30), "14:00")
 
     def test_sin_hora_publicada_no_se_inventa(self) -> None:
-        item = sp._pursuit_item(_pursuit_row(tender_deadline="2026-08-30"), self.HOY)
+        item = spa._pursuit_item(_pursuit_row(tender_deadline="2026-08-30"), self.HOY)
         assert item.due_hora is None
 
     def test_una_tarea_no_tiene_hora(self) -> None:
-        item = sp._tarea_item(
+        item = spa._tarea_item(
             _tarea_row(), self.HOY, tarea_id=41, tarea_texto="X", vence="2026-08-14"
         )
         assert item.due_hora is None
@@ -784,7 +794,7 @@ class TestContadores:
         return _pursuit_row(**campos)
 
     def _tarea(self, tarea_id: int, vence: str | None) -> Any:
-        return sp._tarea_item(
+        return spa._tarea_item(
             _tarea_row(), self.HOY, tarea_id=tarea_id, tarea_texto="X", vence=vence
         )
 
@@ -794,43 +804,49 @@ class TestContadores:
         Era el ruido de la franja: cinco plazos pasados contaban a la vez como
         «plazos esta semana», «Go/No-Go pendientes» y «sin próxima acción».
         """
-        [item] = sp._marcar([sp._pursuit_item(self._viva(tender_deadline="2026-08-01"), self.HOY)])
+        [item] = spa._marcar(
+            [spa._pursuit_item(self._viva(tender_deadline="2026-08-01"), self.HOY)]
+        )
         assert item.cuenta_en == ["plazo_pasado"]
 
     def test_un_expediente_resuelto_solo_cuenta_como_cierre_pendiente(self) -> None:
         """Ni decisión pendiente ni «sin siguiente paso», aunque no tenga plazo."""
         fila = self._viva(tender_deadline=None, tender_estado="RES", adjudicatarios="Indra")
-        [item] = sp._marcar([sp._pursuit_item(fila, self.HOY)])
+        [item] = spa._marcar([spa._pursuit_item(fila, self.HOY)])
         assert item.cuenta_en == ["plazo_pasado"]
 
     def test_una_oportunidad_viva_cuenta_en_cada_reloj_que_le_toca(self) -> None:
-        [item] = sp._marcar([sp._pursuit_item(self._viva(), self.HOY)])
+        [item] = spa._marcar([spa._pursuit_item(self._viva(), self.HOY)])
         assert set(item.cuenta_en) == {"plazo_semana", "go_no_go", "sin_paso"}
 
     def test_el_plazo_de_hoy_cuenta_en_la_semana(self) -> None:
-        [item] = sp._marcar([sp._pursuit_item(self._viva(tender_deadline="2026-08-13"), self.HOY)])
+        [item] = spa._marcar(
+            [spa._pursuit_item(self._viva(tender_deadline="2026-08-13"), self.HOY)]
+        )
         assert "plazo_semana" in item.cuenta_en
 
     def test_un_plazo_lejano_no_cuenta_en_la_semana(self) -> None:
-        [item] = sp._marcar([sp._pursuit_item(self._viva(tender_deadline="2026-09-30"), self.HOY)])
+        [item] = spa._marcar(
+            [spa._pursuit_item(self._viva(tender_deadline="2026-09-30"), self.HOY)]
+        )
         assert set(item.cuenta_en) == {"go_no_go", "sin_paso"}
 
     def test_una_oferta_presentada_no_cuenta_en_ninguno(self) -> None:
         """No queda plazo que cumplir ni decisión que tomar: queda esperar."""
-        [item] = sp._marcar(
-            [sp._pursuit_item(self._viva(status="submitted", decision="go"), self.HOY)]
+        [item] = spa._marcar(
+            [spa._pursuit_item(self._viva(status="submitted", decision="go"), self.HOY)]
         )
         assert item.cuenta_en == []
 
     def test_con_una_tarea_abierta_ya_tiene_siguiente_paso(self) -> None:
         row = self._viva()
-        items = sp._marcar(
-            [sp._pursuit_item(row, self.HOY), *sp._agenda_tareas([row], [_tarea_row()], self.HOY)]
+        items = spa._marcar(
+            [spa._pursuit_item(row, self.HOY), *spa._agenda_tareas([row], [_tarea_row()], self.HOY)]
         )
         assert "sin_paso" not in items[0].cuenta_en
 
     def test_la_tarea_de_hoy_o_vencida_cuenta_como_accion_vencida(self) -> None:
-        tareas = sp._marcar(
+        tareas = spa._marcar(
             [
                 self._tarea(1, "2026-08-10"),
                 self._tarea(2, "2026-08-13"),
@@ -846,12 +862,12 @@ class TestContadores:
         hoy = self._viva(pursuit_id=3, licitacion_id="EXP-3", tender_deadline="2026-08-13")
         presentada = self._viva(pursuit_id=4, licitacion_id="EXP-4", status="submitted")
         rows = [pasado, viva, hoy, presentada]
-        items = [sp._pursuit_item(row, self.HOY) for row in rows]
+        items = [spa._pursuit_item(row, self.HOY) for row in rows]
         tarea_de_hoy = _tarea_row(pursuit_id=3, licitacion_id="EXP-3", tarea_vence="2026-08-12")
-        items.extend(sp._agenda_tareas(rows, [tarea_de_hoy], self.HOY))
+        items.extend(spa._agenda_tareas(rows, [tarea_de_hoy], self.HOY))
 
-        marcados = sp._marcar(items)
-        contadores = sp._agenda_contadores(marcados)
+        marcados = spa._marcar(items)
+        contadores = spa._agenda_contadores(marcados)
 
         for nombre in ("plazo_semana", "accion_vencida", "go_no_go", "sin_paso", "plazo_pasado"):
             en_filas = sum(nombre in fila.cuenta_en for fila in marcados)
@@ -867,9 +883,9 @@ class TestContadores:
         sin = self._viva(pursuit_id=2, licitacion_id="EXP-2")
         manual = self._viva(pursuit_id=3, licitacion_id="EXP-3", next_action="Llamar")
         rows = [con, sin, manual]
-        items = [sp._pursuit_item(row, self.HOY) for row in rows]
+        items = [spa._pursuit_item(row, self.HOY) for row in rows]
         items.extend(
-            sp._agenda_tareas(
+            spa._agenda_tareas(
                 rows,
                 [
                     _tarea_row(pursuit_id=1, licitacion_id="EXP-1", tarea_id=41),
@@ -879,7 +895,7 @@ class TestContadores:
             )
         )
 
-        marcados = sp._marcar(items)
+        marcados = spa._marcar(items)
 
         assert [i.tareas_abiertas for i in marcados if i.kind == "pursuit"] == [2, 0, 1]
         assert {i.tareas_abiertas for i in marcados if i.kind == "tarea"} == {None}
@@ -890,11 +906,11 @@ class TestContadores:
         La consola dejó de leerlo (lee ``contadores``), pero quien integre contra
         la API tiene que seguir recibiendo el mismo número con el mismo sentido.
         """
-        marcados = sp._marcar(
-            [sp._pursuit_item(self._viva(tender_deadline="2026-08-01"), self.HOY)]
+        marcados = spa._marcar(
+            [spa._pursuit_item(self._viva(tender_deadline="2026-08-01"), self.HOY)]
         )
-        assert sp._agenda_kpis(marcados).vence_semana == 1
-        assert sp._agenda_contadores(marcados).plazo_semana == 0
+        assert spa._agenda_kpis(marcados).vence_semana == 1
+        assert spa._agenda_contadores(marcados).plazo_semana == 0
 
 
 class TestOrdenDeLaAgenda:
@@ -903,7 +919,7 @@ class TestOrdenDeLaAgenda:
     HOY = date(2026, 8, 13)
 
     def _pursuit(self, pursuit_id: int, plazo: str | None, **overrides: Any) -> Any:
-        return sp._pursuit_item(
+        return spa._pursuit_item(
             _pursuit_row(
                 pursuit_id=pursuit_id,
                 licitacion_id=f"EXP-{pursuit_id}",
@@ -914,7 +930,7 @@ class TestOrdenDeLaAgenda:
         )
 
     def _tarea(self, pursuit_id: int, tarea_id: int, vence: str | None) -> Any:
-        return sp._tarea_item(
+        return spa._tarea_item(
             _tarea_row(pursuit_id=pursuit_id, licitacion_id=f"EXP-{pursuit_id}"),
             self.HOY,
             tarea_id=tarea_id,
@@ -927,19 +943,19 @@ class TestOrdenDeLaAgenda:
         pasado = self._pursuit(1, "2026-07-01", status="identified")
         semana = self._pursuit(2, "2026-08-16")
         mes = self._pursuit(3, "2026-09-01")
-        ordenados = sp._ordenar_agenda([pasado, mes, semana])
+        ordenados = spa._ordenar_agenda([pasado, mes, semana])
         assert [i.pursuit_id for i in ordenados] == [2, 1, 3]
 
     def test_lo_presentado_va_al_final_delante_de_lo_sin_fecha(self) -> None:
         presentada = self._pursuit(1, "2026-08-01", status="submitted")
         lejana = self._pursuit(2, "2026-12-01")
         sin_fecha = self._pursuit(3, None)
-        ordenados = sp._ordenar_agenda([sin_fecha, presentada, lejana])
+        ordenados = spa._ordenar_agenda([sin_fecha, presentada, lejana])
         assert [i.pursuit_id for i in ordenados] == [2, 1, 3]
 
     def test_las_tareas_siguen_a_su_oportunidad_dentro_de_la_misma_banda(self) -> None:
         """Juntas se leen como un trabajo; sueltas, como cuatro títulos repetidos."""
-        ordenados = sp._ordenar_agenda(
+        ordenados = spa._ordenar_agenda(
             [
                 self._pursuit(1, "2026-08-18"),
                 self._pursuit(2, "2026-08-19"),
@@ -961,7 +977,7 @@ class TestOrdenDeLaAgenda:
         """La tarea de hoy no espera al plazo de dentro de tres semanas."""
         lejana = self._pursuit(1, "2026-09-05")
         semana = self._pursuit(2, "2026-08-16")
-        ordenados = sp._ordenar_agenda([lejana, semana, self._tarea(1, 11, "2026-08-13")])
+        ordenados = spa._ordenar_agenda([lejana, semana, self._tarea(1, 11, "2026-08-13")])
         assert [(i.kind, i.pursuit_id) for i in ordenados] == [
             ("tarea", 1),
             ("pursuit", 2),
@@ -975,7 +991,7 @@ class TestOrdenDeLaAgenda:
             _item("pursuit", dias=-30, licitacion_id="B"),
             _item("pursuit", dias=5, licitacion_id="C"),
         ]
-        assert [i.licitacion_id for i in sp._ordenar_agenda(items)] == ["B", "C", "A"]
+        assert [i.licitacion_id for i in spa._ordenar_agenda(items)] == ["B", "C", "A"]
 
 
 # ── get_agenda: fusión con dependencias mockeadas ───────────────────────────
@@ -1078,7 +1094,7 @@ def agenda_deps(monkeypatch: pytest.MonkeyPatch) -> _Dependencias:
             },
         ]
 
-    monkeypatch.setattr(sp, "proximas_renovaciones", _renovaciones)
+    monkeypatch.setattr(spa, "proximas_renovaciones", _renovaciones)
     return deps
 
 
@@ -1131,7 +1147,7 @@ def test_get_agenda_con_mercado_anade_las_renovaciones_sin_pursuit(
     assert [item.licitacion_id for item in renovaciones] == ["REN-1"]
     assert renovaciones[0].adjudicatario == "Competidor A"
     assert renovaciones[0].due_kind == "fin_contrato"
-    assert respuesta.renovaciones_horizonte_meses == sp.AGENDA_RENOVACIONES_MESES
+    assert respuesta.renovaciones_horizonte_meses == spa.AGENDA_RENOVACIONES_MESES
 
 
 def test_get_agenda_solo_mios_limita_pursuits_y_tareas(agenda_deps: _Dependencias) -> None:
@@ -1214,7 +1230,7 @@ def test_get_agenda_declara_el_corte_de_tareas(monkeypatch: pytest.MonkeyPatch) 
 
     assert respuesta.tareas_truncadas is True
     assert respuesta.pursuits_truncados is False
-    assert sp.AGENDA_TAREAS_MAX >= 1
+    assert spa.AGENDA_TAREAS_MAX >= 1
     assert respuesta.reglas_activas == 0
 
 

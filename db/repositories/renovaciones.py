@@ -166,7 +166,7 @@ def proximas_renovaciones(
     ``order_by``:
 
     - ``"fecha"`` (por defecto): proximidad del vencimiento, ascendente. Es
-      el orden que asume ``services/pursuits.py`` para quedarse con la fila
+      el orden que asume ``services/pursuits_agenda.py`` para quedarse con la fila
       más próxima a vencer de una UTE.
     - ``"score"``: score de oportunidad descendente, con el vencimiento como
       desempate. Con este orden ``limit`` recorta el **top-N real**.
