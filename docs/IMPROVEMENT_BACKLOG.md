@@ -673,16 +673,6 @@ _Sin ítems abiertos._
 
 ## P2 — Media
 
-### [P2] Aplicar `v151_fechas_texto_iso` en producción (acción del propietario)
-- **Área:** db/alembic/versions/v151_fechas_texto_iso.py, `.github/workflows/migrate.yml`
-- **Problema:** 33 columnas `text` tenían `DEFAULT now()` y guardaban la fecha con el formato de salida de Postgres (`2026-09-16 15:00:00+00`). Comparado como texto con un corte ISO, `' ' < 'T'` dejaba fuera de «desde tu última visita» los pliegos del mismo día. El código ya no depende de ello (la consulta de pliegos compara instantes y el diff ordena por instante), pero el formato sigue mal en las filas y en el DEFAULT hasta que corra la migración. El orden con el despliegue da igual: la migración es compatible con el código anterior y el código con el esquema anterior.
-- **Acceptance criteria:**
-  - `migrate.yml` ejecutado y `alembic current` en `v151_fechas_texto_iso`.
-  - `SELECT count(*) FROM documentos WHERE created_at ~ '^[0-9-]{10} '` devuelve 0 (y lo mismo en `licitacion_tecnologia_score.computed_at`).
-  - El trigger `trg_lts_derivar_ml` sigue habilitado (`pg_trigger.tgenabled = 'O'`): la migración lo pausa solo durante su `UPDATE`.
-- **Files de partida:** [db/alembic/versions/v151_fechas_texto_iso.py](../db/alembic/versions/v151_fechas_texto_iso.py)
-- **Riesgo:** bajo — recorre `documentos` y `licitacion_tecnologia_score` enteras dentro de la transacción de Alembic; mejor fuera de la ventana de la ingesta.
-
 ### [P2] Instalar la app de Renovate y ver su primer PR de Python (acción del propietario)
 - **Área:** GitHub (app), renovate.json, .github/dependabot.yml
 - **Problema:** desde el 2026-10-11 las actualizaciones de versión las abre Renovate y las de Dependabot están apagadas (`open-pull-requests-limit: 0`), pero la app de Renovate no está instalada en el repositorio. Mientras no lo esté, `renovate.json` es configuración muerta y el repo **no recibe actualizaciones de versión**.
@@ -1251,6 +1241,16 @@ _Sin ítems abiertos._
 
 ## Cerrados
 
+- [2026-10-17] **P2: Aplicar `v151_fechas_texto_iso` en producción** — aplicada con
+  `migrate.yml` (`mode=apply`, run 39066215215, 82 s) fuera de la ventana de la ingesta:
+  `alembic current` en `v151_fechas_texto_iso`, 0 de 54.300 filas de `documentos` con el
+  formato de `now()::text` y `trg_lts_derivar_ml` habilitado (`tgenabled = 'O'`). El
+  criterio que pedía 0 también en `licitacion_tecnologia_score.computed_at` estaba mal
+  planteado: quedaban 53.903 filas, más 134 en `contrato_eventos.created_at`, con otro
+  formato, el de SQLite sin zona (`2026-05-21 15:02:22`, de mayo a julio de 2026), que
+  v151 dejaba fuera a propósito para no adivinar la zona. `v152_fechas_sin_zona_utc`
+  las reescribe en ISO leyéndolas como UTC (la zona de `datetime('now')` en SQLite), en
+  las mismas 34 columnas; se aplica con `migrate.yml` tras el merge.
 - [2026-10-17] **Bug sin ítem: «desde tu última visita» perdía los pliegos del mismo día**
   (rama `claude/nifty-turing-axm5xg`, `4a7d04e` y `f383d88`) — lo documentaban tres
   `xfail(strict=True)` en `tests/test_novedades_desde_ultima_visita.py`. Las fechas se
