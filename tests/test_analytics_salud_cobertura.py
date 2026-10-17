@@ -107,8 +107,19 @@ class _RepoFalso:
     def overview_tasa_anulacion(self, _filters: Any, **_kw: Any) -> tuple[int, int]:
         return (1, 10)
 
-    def overview_concentracion_ccaa(self, _filters: Any, **_kw: Any) -> tuple[float, float]:
-        return (700.0, 1000.0)
+    def overview_por_ccaa(self, _filters: Any) -> list[dict[str, Any]]:
+        # Top 3 = 700 de 1000.
+        return [
+            {"ccaa": c, "n": 1, "importe": i}
+            for c, i in (
+                ("A", 400.0),
+                ("B", 200.0),
+                ("C", 100.0),
+                ("D", 100.0),
+                ("E", 100.0),
+                ("F", 100.0),
+            )
+        ]
 
     def overview_ccaa_cubiertas(self, _filters: Any) -> int:
         return 3

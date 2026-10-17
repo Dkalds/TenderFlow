@@ -43,10 +43,14 @@ export default function ResumenLoading() {
           </div>
         </div>
 
-        {/* Contexto de mercado: la tira de tres con sus áreas y la composición por estado */}
+        {/* Contexto de mercado: la tira de tres con sus áreas, y la composición
+            por estado y el reparto por comunidad, lado a lado desde `xl` */}
         <Skeleton className="mb-2.5 h-4 w-36 rounded-sm" />
         <Skeleton className="mb-2.5 h-[124px] w-full rounded-xl" />
-        <Skeleton className="h-[220px] w-full rounded-xl" />
+        <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
+          <Skeleton className="h-[328px] w-full rounded-xl" />
+          <Skeleton className="h-[328px] w-full rounded-xl" />
+        </div>
       </div>
     </div>
   );
