@@ -148,17 +148,20 @@ async def get_eventos(
         solo_abiertas=solo_abiertas,
         q=q,
     )
-    ventana = {
+    ventana: dict[str, Any] = {
         "tipos": tipos,
         "dias": dias,
         "desde": fecha_desde.isoformat() if fecha_desde else None,
         "hasta": fecha_hasta.isoformat() if fecha_hasta else None,
         "filters": filters,
     }
-    items = await run_db(eventos_recientes, limit=limit, **ventana)
-    # El reparto por tipo cuenta la ventana entera, no la página de `items`:
-    # es lo que deja al Resumen decir «8 de 143» y dibujar de qué se compone.
-    por_tipo = await run_db(eventos_por_tipo, **ventana)
+
+    def _work() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        # El reparto por tipo cuenta la ventana entera, no la página de `items`:
+        # es lo que deja al Resumen decir «8 de 143» y dibujar de qué se compone.
+        return eventos_recientes(limit=limit, **ventana), eventos_por_tipo(**ventana)
+
+    items, por_tipo = await run_db(_work)
     return EventosFeedResult(
         items=[EventoFeedItem(**i) for i in items],
         dias=dias,
