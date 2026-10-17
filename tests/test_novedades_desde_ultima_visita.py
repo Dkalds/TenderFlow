@@ -165,42 +165,6 @@ def _por_expediente(resultado: NovedadesDesdeUltimaVisita) -> set[str | None]:
     return {n.licitacion_id for n in resultado.items}
 
 
-class _SintomaDelBug(Exception):
-    """El valor exacto que produce un bug abierto, y sólo ése.
-
-    Los xfail de este módulo declaran ``raises=_SintomaDelBug`` y no
-    ``AssertionError``. Así, cualquier otra excepción —un ``assert`` que falle
-    en la siembra, un fixture roto, un error dentro del servicio o la
-    comprobación de control del propio test— sale en rojo (FAILED, o ERROR si
-    rompe el fixture) en vez de absorberse como XFAIL. No hereda de
-    ``AssertionError`` para que no quepa la duda.
-
-    Se distingue por el valor, no por la causa: otra regresión que dé
-    exactamente el mismo resultado que el bug también sale XFAIL. Por ejemplo,
-    el xfail del pliego de hoy frente al cambio de hoy da el mismo valor con un
-    diff ordenado sólo por fecha; ese caso lo fija, sin xfail,
-    ``test_dentro_del_mismo_dia_el_orden_tambien_es_por_hora``.
-    """
-
-
-def _sintoma_del_bug(obtenido: object, *, correcto: object, con_el_bug: object) -> None:
-    """La aserción final de un xfail, con sus tres salidas separadas.
-
-    * ``obtenido == correcto``: vuelve sin más. El test pasa y, como el xfail
-      es estricto, sale XPASS y obliga a quitar el marcador.
-    * ``obtenido == con_el_bug``: lanza ``_SintomaDelBug``, lo único que el
-      xfail acepta.
-    * Cualquier otro valor es una regresión distinta de la documentada y falla
-      con ``AssertionError``: no se deja esconder detrás del bug conocido.
-    """
-    if obtenido == correcto:
-        return
-    assert obtenido == con_el_bug, (
-        f"ni el resultado correcto ({correcto!r}) ni el del bug ({con_el_bug!r}): {obtenido!r}"
-    )
-    raise _SintomaDelBug(f"{obtenido!r} en vez de {correcto!r}")
-
-
 # ---------------------------------------------------------------------------
 # Qué cuenta como novedad
 # ---------------------------------------------------------------------------
@@ -524,8 +488,8 @@ def test_una_visita_mas_antigua_que_la_ventana_se_recorta_y_lo_dice(tmp_db):
 )
 def test_z_y_la_marca_sin_zona_cortan_igual_que_utc(tmp_db, formato):
     """``Z`` y la marca sin zona se leen como UTC: las tres grafías de la
-    misma marca dan el mismo corte y el mismo ``desde``. Sólo cubre marcas
-    UTC; con otro offset el corte se desplaza (ver el xfail de abajo)."""
+    misma marca dan el mismo corte y el mismo ``desde``. Las marcas con otro
+    offset tienen su propio test justo debajo."""
     marca = _hace(days=2).replace(microsecond=0)
     _licitacion("NOV-ZONA")
     _seguir(_UK_ANA, "NOV-ZONA")
@@ -538,18 +502,6 @@ def test_z_y_la_marca_sin_zona_cortan_igual_que_utc(tmp_db, formato):
     assert [n.detalle for n in resultado.items] == ["url"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=_SintomaDelBug,
-    reason=(
-        "Bug latente: desde_ultima_visita no pasa a UTC una marca con otro offset "
-        "(no hay astimezone) y el corte llega al SQL como '...T19:00:00+02:00'. "
-        "Comparado como texto contra columnas en UTC, todo lo ocurrido en las dos "
-        "horas siguientes a la marca queda fuera. Hoy la ruta sólo le pasa read_at "
-        "de now_utc_iso(), así que no se ve desde la API. Al corregirlo, quitar el "
-        "xfail."
-    ),
-)
 def test_una_marca_con_otro_offset_corta_en_el_mismo_instante(tmp_db):
     """La firma acepta cualquier ISO con zona; el instante es lo que manda, no
     la hora de pared de la zona en que se escribió."""
@@ -568,11 +520,10 @@ def test_una_marca_con_otro_offset_corta_en_el_mismo_instante(tmp_db):
     en_madrid = desde_ultima_visita(_UK_ANA, last_seen=marca.astimezone(madrid_verano).isoformat())
 
     # Control: con la misma marca escrita en UTC sale justo la fila posterior.
-    # Si falla, lo roto no es el offset, y el test cae en rojo en vez de XFAIL.
     assert [n.detalle for n in en_utc.items] == ["url"]
-    # Con el bug, el corte de pared en `+02:00` deja fuera también la fila
-    # posterior: ninguna de las dos llega.
-    _sintoma_del_bug([n.detalle for n in en_madrid.items], correcto=["url"], con_el_bug=[])
+    # Sin pasar la marca a UTC, el corte de pared en `+02:00` dejaba fuera
+    # también la fila posterior: no llegaba ninguna de las dos.
+    assert [n.detalle for n in en_madrid.items] == ["url"]
 
 
 def test_una_marca_ilegible_no_rompe_el_resumen(tmp_db):
@@ -596,8 +547,8 @@ def test_el_diff_va_del_mas_reciente_al_mas_antiguo_y_respeta_el_limite(tmp_db):
     el servicio concatena las fuentes (primero todo el historial) no coincide
     con el esperado, y un límite aplicado antes de ordenar dejaría fuera el
     pliego y no el cambio viejo. Cada ítem cae en un día natural distinto (se
-    separan más de 24 h) para no depender de cómo compara el texto una fecha
-    con espacio, una con ``T`` y una sin hora; ese caso tiene su propio xfail.
+    separan más de 24 h); el orden dentro de un mismo día entre una fecha con
+    espacio, una con ``T`` y una sin hora tiene sus propios tests más abajo.
     """
     _licitacion("NOV-ORDEN")
     _seguir(_UK_ANA, "NOV-ORDEN")
@@ -627,7 +578,7 @@ def test_dentro_del_mismo_dia_el_orden_tambien_es_por_hora(tmp_db):
     (que se concatena primero) es de las 08:00 y el movimiento del ledger (que
     se concatena el último) de las 20:00 del mismo día UTC. Ambas columnas
     guardan el ISO con ``T`` tal como se siembra, así que el resultado no
-    depende del bug del espacio en ``documentos.created_at``. Un orden sólo
+    depende del formato con espacio de ``documentos.created_at``. Un orden sólo
     por fecha dejaría el cambio delante, y con ``limit=1`` sobreviviría él.
     """
     user_id, org_id = _usuario_con_equipo("novedades-mismo-dia@example.test", "Equipo mismo día")
@@ -647,17 +598,6 @@ def test_dentro_del_mismo_dia_el_orden_tambien_es_por_hora(tmp_db):
     assert [n.subtipo for n in recortado.items] == ["pursuit"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=_SintomaDelBug,
-    reason=(
-        "Bug abierto: documentos.created_at lo rellena DEFAULT now() y el cast a "
-        "texto usa espacio ('2026-09-16 15:00:00+00'), mientras el corte es ISO con "
-        "'T'. Como ' ' < 'T', todo pliego publicado el mismo día de la última "
-        "visita queda fuera del diff aunque sea posterior. Al corregirlo, quitar "
-        "el xfail."
-    ),
-)
 def test_un_pliego_publicado_el_dia_de_la_visita_pero_despues_es_novedad(tmp_db):
     """El caso habitual: miro el Resumen por la mañana, el órgano publica el
     pliego por la tarde y vuelvo al día siguiente."""
@@ -687,22 +627,9 @@ def test_un_pliego_publicado_el_dia_de_la_visita_pero_despues_es_novedad(tmp_db)
     # Control: con la visita un día antes el pliego sí sale, así que la siembra
     # y el cruce con lo seguido funcionan y lo único que cambia es la fecha.
     assert del_dia_anterior.por_subtipo == {"documento_nuevo": 1}
-    _sintoma_del_bug(del_mismo_dia.por_subtipo, correcto={"documento_nuevo": 1}, con_el_bug={})
+    assert del_mismo_dia.por_subtipo == {"documento_nuevo": 1}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=_SintomaDelBug,
-    reason=(
-        "Bug abierto, misma causa que el anterior y otro síntoma: el diff se ordena "
-        "por `cuando` como texto, y el `cuando` de un pliego es MIN(created_at) con "
-        "espacio ('2026-09-16 16:09:04+00') mientras el de un cambio lleva 'T'. Un "
-        "pliego de hoy queda por debajo de cualquier cambio de hoy aunque sea "
-        "posterior, y `limit` lo deja fuera. Arreglar sólo el filtro de "
-        "documentos no lo corrige: hay que normalizar también `publicado_en`. Al "
-        "corregirlo, quitar el xfail."
-    ),
-)
 def test_un_pliego_de_hoy_va_por_delante_de_un_cambio_de_hoy_anterior(tmp_db):
     """La visita fue otro día, así que el filtro deja pasar el pliego; lo que
     falla es dónde cae en el diff y, con límite, si llega a salir."""
@@ -724,22 +651,41 @@ def test_un_pliego_de_hoy_va_por_delante_de_un_cambio_de_hoy_anterior(tmp_db):
     dia = datetime.fromisoformat(f"{creado[:10]}T00:00:00+00:00")
     # El cambio, a medianoche UTC del día del pliego: anterior a él y en su misma
     # fecha, sea cual sea la hora a la que corra la suite. Con `_iso(minutes=5)`
-    # el test daría XPASS en los cinco primeros minutos de cada día.
+    # el cambio caería después del pliego en los cinco primeros minutos del día.
     _historial("NOV-ORDEN-HOY", cuando=dia.isoformat(), cambiados="url")
     visita = (dia - timedelta(days=2)).isoformat()
 
     completo = desde_ultima_visita(_UK_ANA, last_seen=visita)
     recortado = desde_ultima_visita(_UK_ANA, last_seen=visita, limit=1)
 
-    # Control: llegan los dos ítems y el límite deja uno. El bug sólo cambia el
-    # orden y, con él, cuál sobrevive al recorte; si falta un ítem, es otra cosa.
+    # Control: llegan los dos ítems y el límite deja uno. Ordenado como texto,
+    # el pliego quedaba detrás del cambio y era él quien caía con el recorte.
     assert sorted(n.subtipo for n in completo.items) == ["cambio", "documento_nuevo"]
     assert len(recortado.items) == 1
-    _sintoma_del_bug(
-        ([n.subtipo for n in completo.items], [n.subtipo for n in recortado.items]),
-        correcto=(["documento_nuevo", "cambio"], ["documento_nuevo"]),
-        con_el_bug=(["cambio", "documento_nuevo"], ["cambio"]),
-    )
+    assert [n.subtipo for n in completo.items] == ["documento_nuevo", "cambio"]
+    assert [n.subtipo for n in recortado.items] == ["documento_nuevo"]
+
+
+def test_un_pliego_con_la_fecha_antigua_de_now_cuenta_y_ordena_por_instante(tmp_db):
+    """Las filas escritas antes de v151 guardan ``created_at`` con espacio y
+    offset corto (``2026-09-16 16:00:00.000000+00``). v151 normaliza las de
+    producción, pero la consulta no puede depender de que esa migración haya
+    pasado: el pliego de la tarde sigue siendo novedad para una visita de esa
+    misma mañana y va por delante del cambio de las 08:00.
+
+    Además, ``cuando`` sale en ISO con ``T``: el formato antiguo no es un
+    ``dateTime`` válido para el ``<time>`` del Resumen."""
+    _licitacion("NOV-LEGADO")
+    _seguir(_UK_ANA, "NOV-LEGADO")
+    dia = _hace(days=2).replace(hour=0, minute=0, second=0, microsecond=0)
+    _historial("NOV-LEGADO", cuando=(dia + timedelta(hours=8)).isoformat(), cambiados="url")
+    _documento("NOV-LEGADO", uri="https://placsp.test/legado.pdf", creado=dia + timedelta(hours=16))
+
+    resultado = desde_ultima_visita(_UK_ANA, last_seen=dia.isoformat())
+
+    assert [n.subtipo for n in resultado.items] == ["documento_nuevo", "cambio"]
+    pliego = resultado.items[0]
+    assert pliego.cuando == (dia + timedelta(hours=16)).isoformat()
 
 
 # ---------------------------------------------------------------------------
