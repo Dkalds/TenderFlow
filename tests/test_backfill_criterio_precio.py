@@ -76,16 +76,16 @@ def test_recalcula_las_marcas_y_el_peso_de_fogasa() -> None:
     assert (recalculo.peso_antes, recalculo.peso_despues) == (18.0, 42.0)
 
 
-def test_cada_lote_es_su_ambito_y_el_peso_sale_solo_del_expediente() -> None:
-    """El lote 1 usa ``OBJ``/``1``; el expediente no, y ahí manda el texto."""
+def test_el_peso_sale_solo_de_los_criterios_raiz_del_expediente() -> None:
+    """Los lotes y los subcriterios llevan su marca, pero no entran en la suma."""
     lic = CriteriosDeLicitacion(
         "L-1",
         None,
         (
             _guardado(1, "Oferta económica", 70, tipo="OBJ", subtipo="2"),
             _guardado(2, "Plazo de entrega", 30, tipo="OBJ", subtipo="2"),
-            _guardado(3, "Precio", 60, tipo="OBJ", subtipo="1", lote="1"),
-            _guardado(4, "Precio hora", 40, tipo="OBJ", subtipo="2", lote="1"),
+            _guardado(3, _FORMULAS, 60, tipo="OBJ", subtipo="1", lote="1"),
+            _guardado(4, "Memoria técnica", 40, tipo="SUBJ", subtipo="99", lote="1"),
             _guardado(5, "Precio unitario", 100, tipo="OBJ", subtipo="2", padre=1),
         ),
     )
@@ -93,7 +93,6 @@ def test_cada_lote_es_su_ambito_y_el_peso_sale_solo_del_expediente() -> None:
     recalculo = recalcular(lic)
 
     assert recalculo.es_precio == {1: True, 2: False, 3: True, 4: False, 5: True}
-    # El subcriterio (padre 1) no entra en la suma: 70 + 30.
     assert recalculo.peso_despues == 70.0
 
 

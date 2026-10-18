@@ -274,11 +274,11 @@ def test_sin_codigos_el_texto_no_cuenta_las_menciones_negadas() -> None:
     assert parse_peso_precio(entry) == 60.0
 
 
-def test_ambito_que_no_usa_el_subtipo_1_cae_al_texto() -> None:
+def test_el_texto_que_nombra_el_precio_manda_sobre_el_subtipo() -> None:
     """Hay órganos que codifican todo criterio de fórmula como ``OBJ``/``2``.
 
-    Si ningún criterio del ámbito lleva el ``1``, el subtipo no separa el
-    precio del resto y fiarse de él dejaría el peso en 0: manda el texto.
+    El precio incluido (``DTC-67/2026``, ``128/2026``): fiarse del subtipo
+    dejaría el peso del precio en 0.
     """
     entry = _entry(
         terminos=_terminos(
@@ -295,34 +295,40 @@ def test_ambito_que_no_usa_el_subtipo_1_cae_al_texto() -> None:
     assert parse_peso_precio(entry) == 85.0
 
 
-def test_ambito_con_subtipo_1_no_mira_el_texto_de_los_demas() -> None:
+def test_varias_partidas_de_precio_aunque_solo_una_lleve_el_subtipo_1() -> None:
+    """Patrón ``MM/2026/083``: una «OFERTA ECONÓMICA» por producto, solo la primera ``1``."""
     entry = _entry(
         terminos=_terminos(
             _criterios(
-                _criterio("Precio", "60", tipo="OBJ", subtipo="1"),
-                _criterio("Precio hora de evolutivos", "10", tipo="OBJ", subtipo="2"),
-                _criterio("Calidad ambiental", "30", tipo="OBJ", subtipo="3"),
+                _criterio("C1. OFERTA ECONÓMICA. Service Cloud", "50", tipo="OBJ", subtipo="1"),
+                _criterio("C2. OFERTA ECONOMICA. Contact Center", "30", tipo="OBJ", subtipo="2"),
+                _criterio("Plan de formación", "20", tipo="OBJ", subtipo="2"),
             )
         )
     )
 
-    assert [c.es_precio for c in parse_condiciones(entry).criterios] == [True, False, False]
-    assert parse_peso_precio(entry) == 60.0
+    assert [c.es_precio for c in parse_condiciones(entry).criterios] == [True, True, False]
+    assert parse_peso_precio(entry) == 80.0
 
 
-def test_juicio_de_valor_nunca_es_el_precio() -> None:
-    """El precio se valora siempre por fórmula (art. 146 LCSP): ``SUBJ`` no lo es."""
+def test_juicio_de_valor_solo_es_el_precio_si_lo_dice_expresamente() -> None:
+    """El precio se valora por fórmula (art. 146 LCSP), pero hay órganos que lo
+    publican como ``SUBJ`` (``SUM-26-0283-PA``: «Oferta económica» ``SUBJ``/``99``
+    con 100). En ``SUBJ`` no basta "económica" o "coste": «Gestión económica y
+    contabilidad» es un módulo del software, no el precio.
+    """
     entry = _entry(
         terminos=_terminos(
             _criterios(
-                _criterio("Gestión económica y contabilidad", "40", tipo="SUBJ", subtipo="99"),
-                _criterio("Oferta económica", "60", tipo="OBJ", subtipo="2"),
+                _criterio("Gestión económica y contabilidad", "20", tipo="SUBJ", subtipo="99"),
+                _criterio("Herramienta de gestión de costes", "10", tipo="SUBJ", subtipo="99"),
+                _criterio("Oferta económica", "70", tipo="SUBJ", subtipo="99"),
             )
         )
     )
 
-    assert [c.es_precio for c in parse_condiciones(entry).criterios] == [False, True]
-    assert parse_peso_precio(entry) == 60.0
+    assert [c.es_precio for c in parse_condiciones(entry).criterios] == [False, False, True]
+    assert parse_peso_precio(entry) == 70.0
 
 
 # ─── Por lote ────────────────────────────────────────────────────────────────

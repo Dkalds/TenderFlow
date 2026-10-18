@@ -431,11 +431,16 @@ _TIPOS_CRITERIO_PRECIO = frozenset({"price", "cost"})
 # CODICE de PLACSP lo codifica con una pareja tipo/subtipo. El tipo dice cómo se
 # valora: `SUBJ` juicio de valor, `OBJ` fórmulas. El subtipo de `OBJ` dice qué:
 # `1` precio, `2` otros criterios de fórmula «distintos del precio», `3`
-# medioambientales, `4` sociales (los de `SUBJ` son `01`/`02`/`99` y nunca son el
-# precio). La lista oficial no se ha podido leer (el host de la Plataforma está
-# bloqueado desde el entorno de desarrollo); la lectura sale de cruzar los
-# códigos con las descripciones de ~11 000 criterios en producción (2026-10-17),
-# donde cada subtipo describe lo que dice esta tabla.
+# medioambientales, `4` sociales (los de `SUBJ` son `01`/`02`/`99`). La lista
+# oficial no se ha podido leer (el host de la Plataforma está bloqueado desde el
+# entorno de desarrollo); la lectura sale de cruzar los códigos con las
+# descripciones de ~11 000 criterios en producción (2026-10-17).
+#
+# El código no siempre es fiable: hay órganos que codifican todas las partidas
+# de fórmula como `OBJ`/`2`, el precio incluido; que ponen el `1` en una sola de
+# varias «OFERTA ECONÓMICA» por producto, o en un criterio que no es el precio; o
+# que publican la oferta económica como `SUBJ`. Por eso el código solo decide
+# cuando la descripción no nombra el precio (ver `criterio_es_precio`).
 _TIPO_CRITERIO_JUICIO = "SUBJ"
 _TIPO_CRITERIO_FORMULA = "OBJ"
 _SUBTIPO_CRITERIO_PRECIO = "1"
@@ -463,6 +468,11 @@ _MENCION_NEGADA_PRECIO = re.compile(
     r"|\bsin\s+(?:sobre)?costes?\b"
     r"|\bcoste\s+(?:cero|0)\b"
 )
+
+# Lo que hace falta para tomar un criterio de juicio de valor por el precio. En
+# `SUBJ` "económica" o "coste" no bastan: «Gestión económica y contabilidad» o
+# «Herramienta de gestión de costes» son módulos del software que se valora.
+_PRECIO_EXPLICITO = re.compile(r"\b(?:oferta|propuesta|proposicion)\s+economica|\bprecios?\b")
 
 # Bandas en las que la suma de TODOS los pesos publicados declara su escala:
 # ~100 son porcentajes, ~1 son fracciones. Fuera de ambas no se puede afirmar
@@ -539,33 +549,19 @@ def _codigos_normalizados(tipo: str | None, subtipo: str | None) -> tuple[str, s
     return (tipo or "").strip().upper(), (subtipo or "").strip()
 
 
-def ambito_codifica_precio(codigos: Iterable[tuple[str | None, str | None]]) -> bool:
-    """¿Algún criterio del ámbito lleva el código del precio (``OBJ``/``1``)?
-
-    ``codigos`` son las parejas (tipo, subtipo) crudas de todos los criterios
-    del ámbito, subcriterios incluidos. Solo si alguna es ``OBJ``/``1`` el
-    subtipo distingue el precio del resto. Hay órganos que codifican todo
-    criterio de fórmula como ``OBJ``/``2``, el precio incluido; ahí fiarse del
-    subtipo pondría el peso del precio a 0.
-    """
-    precio = (_TIPO_CRITERIO_FORMULA, _SUBTIPO_CRITERIO_PRECIO)
-    return any(_codigos_normalizados(tipo, subtipo) == precio for tipo, subtipo in codigos)
-
-
-def criterio_es_precio(
-    tipo: str | None,
-    subtipo: str | None,
-    texto: str | None,
-    *,
-    ambito_codifica_precio: bool,
-) -> bool:
+def criterio_es_precio(tipo: str | None, subtipo: str | None, texto: str | None) -> bool:
     """¿Es este criterio el precio?
 
-    Por orden: el tipo textual de UBL 2.1 (``PRICE``/``COST``); un juicio de
-    valor (``SUBJ``) nunca lo es, porque el precio se valora por fórmula (art.
-    146 LCSP); el subtipo de ``OBJ``, si el ámbito lo usa para el precio (ver
-    :func:`ambito_codifica_precio`); y si nada de eso decide, el texto de la
-    descripción sin las menciones que niegan el precio.
+    Por orden:
+
+    1. El tipo textual de UBL 2.1 (``PRICE``/``COST``) lo es.
+    2. Un juicio de valor (``SUBJ``) solo si la descripción lo dice expresamente
+       (:data:`_PRECIO_EXPLICITO`): el precio se valora por fórmula (art. 146
+       LCSP), pero hay órganos que publican así la oferta económica.
+    3. Si la descripción, sin las menciones que niegan el precio, lo nombra, lo
+       es, diga lo que diga el subtipo.
+    4. Si la descripción calla («…mera aplicación de fórmulas.»), decide el
+       código: ``OBJ``/``1``.
 
     Trabaja sobre valores y no sobre el XML porque es la misma regla que aplica
     ``scripts/backfill_criterio_precio.py`` a las filas ya guardadas.
@@ -573,12 +569,12 @@ def criterio_es_precio(
     tipo, subtipo = _codigos_normalizados(tipo, subtipo)
     if tipo.lower() in _TIPOS_CRITERIO_PRECIO:
         return True
-    if tipo == _TIPO_CRITERIO_JUICIO:
-        return False
-    if ambito_codifica_precio and tipo == _TIPO_CRITERIO_FORMULA and subtipo:
-        return subtipo == _SUBTIPO_CRITERIO_PRECIO
     plano = _MENCION_NEGADA_PRECIO.sub(" ", _sin_acentos(texto or ""))
-    return any(token in plano for token in _TOKENS_CRITERIO_PRECIO)
+    if tipo == _TIPO_CRITERIO_JUICIO:
+        return _PRECIO_EXPLICITO.search(plano) is not None
+    if any(token in plano for token in _TOKENS_CRITERIO_PRECIO):
+        return True
+    return tipo == _TIPO_CRITERIO_FORMULA and subtipo == _SUBTIPO_CRITERIO_PRECIO
 
 
 def peso_precio_de_criterios(criterios: Iterable[tuple[float | None, bool]]) -> float | None:
@@ -607,13 +603,9 @@ def _codigos_criterio(nodo: Any) -> tuple[str | None, str | None]:
     return _text(nodo, _CRITERIO_TIPO_XPATH), _text(nodo, _CRITERIO_SUBTIPO_XPATH)
 
 
-def _es_criterio_precio(nodo: Any, *, ambito_codifica_precio: bool) -> bool:
+def _es_criterio_precio(nodo: Any) -> bool:
     textos = nodo.xpath(_CRITERIO_TEXTO_XPATH, namespaces=NS)
-    return criterio_es_precio(
-        *_codigos_criterio(nodo),
-        " ".join(str(t) for t in textos),
-        ambito_codifica_precio=ambito_codifica_precio,
-    )
+    return criterio_es_precio(*_codigos_criterio(nodo), " ".join(str(t) for t in textos))
 
 
 def parse_peso_precio(entry: Any) -> float | None:
@@ -638,18 +630,8 @@ def parse_peso_precio(entry: Any) -> float | None:
     no ausencia de dato.
     """
     cfs = "./cacext:ContractFolderStatus"
-    # El ámbito incluye los subcriterios, como en `_criterios_del_ambito`: las
-    # dos lecturas del mismo bloque tienen que marcar el mismo precio.
-    codifica_precio = ambito_codifica_precio(
-        _codigos_criterio(nodo)
-        for nodo in entry.xpath(f"{cfs}/cac:TenderingTerms/cac:AwardingTerms//*", namespaces=NS)
-        if _es_elemento(nodo) and etree.QName(nodo).localname in _CRITERIO_CONTENEDORES
-    )
     return peso_precio_de_criterios(
-        (
-            _float(nodo, _CRITERIO_PESO_XPATH),
-            _es_criterio_precio(nodo, ambito_codifica_precio=codifica_precio),
-        )
+        (_float(nodo, _CRITERIO_PESO_XPATH), _es_criterio_precio(nodo))
         for nodo in _criterios_raiz(entry, cfs)
     )
 
@@ -746,7 +728,6 @@ def _criterios_del_ambito(
         for awarding_terms in terms.xpath(_hijo("AwardingTerms")):
             recorrer(awarding_terms, None)
 
-    codifica_precio = ambito_codifica_precio(_codigos_criterio(nodo) for nodo, _ in crudos)
     leidos: list[CriterioAdjudicacion] = []
     #: Índice crudo → orden asignado, solo para los criterios que se guardan.
     orden_por_indice: dict[int, int] = {}
@@ -780,7 +761,7 @@ def _criterios_del_ambito(
             continue
         criterio.orden = len(leidos) + 1
         criterio.padre_orden = orden_por_indice[ancestro] if ancestro is not None else None
-        criterio.es_precio = _es_criterio_precio(nodo, ambito_codifica_precio=codifica_precio)
+        criterio.es_precio = _es_criterio_precio(nodo)
         orden_por_indice[indice] = criterio.orden
         leidos.append(criterio)
 
