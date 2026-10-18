@@ -7,7 +7,7 @@ Derivado de [`skills-lock.json`](../skills-lock.json) y el frontmatter de cada
 `python scripts/gen_skills_inventory.py` tras instalar/actualizar un skill.
 Ver AGENTS.md §7 para qué significa `trust`.
 
-Total: 40 skills.
+Total: 38 skills.
 
 | Skill | Trust | Source | Descripción |
 | --- | --- | --- | --- |
@@ -16,8 +16,6 @@ Total: 40 skills.
 | `apple-design` | community | emilkowalski/skill | Apple's approach to interface design and fluid, physical motion, translated for the web. Use when building or reviewing gesture-driven… |
 | `bash-defensive-patterns` | community | wshobson/agents | Master defensive Bash programming techniques for production-grade scripts. Use when writing robust shell scripts, CI/CD pipelines, or… |
 | `design-taste-frontend` | community | Leonxlnx/taste-skill | tasteskill v2, the anti-slop frontend skill. Art direction for websites, distilled from a study of 247 curated gallery sites (One Page… |
-| `design-taste-frontend-v1` | community | Leonxlnx/taste-skill | The original v1 taste-skill, preserved for projects depending on its exact behavior. The current default is `design-taste-frontend`… |
-| `design-taste-frontend-v2-experimental` | community | Leonxlnx/taste-skill | Old v2 (experimental) of taste-skill, the single-file dial-driven version, preserved for projects depending on its exact behavior. The… |
 | `emil-design-eng` | community | emilkowalski/skill | This skill encodes Emil Kowalski's philosophy on UI polish, component design, animation decisions, and the invisible details that make… |
 | `fastapi-python` | community | mindrally/skills | Expert in FastAPI Python development with best practices for APIs and async operations |
 | `find-animation-opportunities` | community | emilkowalski/skill | Search a codebase or UI for places that don't animate but should, and reject everything that shouldn't. Read-only; it proposes motion… |

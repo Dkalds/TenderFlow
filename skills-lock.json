@@ -54,22 +54,6 @@
       "trust": "community",
       "verifiedHash": "cdde5dcd11d5002f94f95957e6edc7195bad5cbc7fcb1376b2e447d951e4b7b1"
     },
-    "design-taste-frontend-v1": {
-      "source": "Leonxlnx/taste-skill",
-      "sourceType": "github",
-      "skillPath": "skills/taste-skill-v1/SKILL.md",
-      "computedHash": "c6746fba186bed90e57923b80454984ad45126ae0e585c00ceaa7f96657911b7",
-      "trust": "community",
-      "verifiedHash": "6451b734e1fbf036b0bf052d0d5a21634cb13fd67efde687d96355288ad0c794"
-    },
-    "design-taste-frontend-v2-experimental": {
-      "source": "Leonxlnx/taste-skill",
-      "sourceType": "github",
-      "skillPath": "skills/taste-skill-v2-experimental/SKILL.md",
-      "computedHash": "2c015feb005bbc65c053b7b7e176e53bb1457b9a5cf7a3c05232c4b4e482a369",
-      "trust": "community",
-      "verifiedHash": "e03cba5c9d269aa3f7e63a5127b5582b30892836209bd0419a1e7373edfbba18"
-    },
     "emil-design-eng": {
       "source": "emilkowalski/skill",
       "sourceType": "github",
