@@ -180,12 +180,6 @@ al acabar. La ruta mínima en PowerShell está en
 
 ### 2.3 Lo que verifica un cambio además de los tests
 
-- **Revisión de PR por un modelo que no escribió el cambio**:
-  `.github/workflows/claude-review.yml`. Apagado por defecto (variable de
-  repositorio `CLAUDE_REVIEW_ENABLED`); no es un check requerido. La etiqueta
-  `claude-review` en un PR pide otra pasada. Si la acción falla antes de
-  revisar, el paso «Motivo del fallo» anota el estado de la API y el mensaje
-  (401 del token, 429 del límite de la suscripción, saldo agotado).
 - **Cambios en el prompt de clasificación** (`services/llm_tech_labeling.py`):
   los tests sustituyen al proveedor, así que no dicen nada del prompt.
   `make eval-clasificacion` lo mide contra el LLM real —estabilidad entre
