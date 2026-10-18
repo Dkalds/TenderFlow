@@ -37,6 +37,7 @@ from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard, pala
 from services.dedupe import normalize_organo
 from shared.dto import RadarBanda
 from shared.estados import abierta_core
+from shared.procedimientos import codigo_tipo_contrato, textos_de_tipo_contrato
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
@@ -391,10 +392,40 @@ def _clausula_procedimiento(procedimiento: str) -> Any:
     """
     limpio = procedimiento.strip()
     codigo = str(int(limpio)) if limpio.isdigit() else limpio
-    columna = func.coalesce(
-        func.nullif(func.ltrim(func.trim(licitaciones.c.procedimiento), "0"), ""), "0"
+    return _sin_ceros(licitaciones.c.procedimiento) == bindparam(
+        "wr_procedimiento", codigo, unique=True
     )
-    return columna == bindparam("wr_procedimiento", codigo, unique=True)
+
+
+def _sin_ceros(columna: Any) -> Any:
+    """``columna`` sin ceros a la izquierda (``01`` → ``1``), como la normaliza
+    ``shared.procedimientos``; ``ltrim`` deja ``''`` de un ``0`` y eso no es
+    ningún código."""
+    return func.coalesce(func.nullif(func.ltrim(func.trim(columna), "0"), ""), "0")
+
+
+def _clausula_tipo_contrato(tipo_contrato: str) -> Any:
+    """El tipo de contrato de la regla, escrito como código o como texto.
+
+    La columna mezcla el código CODICE («2») con el texto de cada fuente en su
+    lengua («Serveis», «services»), y el texto es la mayoría
+    (``shared.procedimientos.codigo_tipo_contrato``). Por igualdad, una regla
+    «servicios» no casaba con ninguna fila. Un valor que no se sabe traducir se
+    compara tal cual, como antes.
+    """
+    codigo = codigo_tipo_contrato(tipo_contrato)
+    if codigo is None:
+        return licitaciones.c.tipo_contrato == tipo_contrato
+    plegado: ColumnElement[str] = literal_column(fold_expr("licitaciones.tipo_contrato"))
+    por_codigo = _sin_ceros(licitaciones.c.tipo_contrato) == bindparam(
+        "wr_tipo_contrato", codigo, unique=True
+    )
+    if not (textos := textos_de_tipo_contrato(codigo)):
+        return por_codigo
+    return or_(
+        por_codigo,
+        *(plegado == bindparam("wr_tipo_contrato_texto", t, unique=True) for t in textos),
+    )
 
 
 def _clausulas_universo_puntuable(hoy_iso: str | None) -> list[Any]:
@@ -461,7 +492,7 @@ def _rule_clauses(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list[An
     if rule.procedimiento:
         clauses.append(_clausula_procedimiento(rule.procedimiento))
     if rule.tipo_contrato:
-        clauses.append(licitaciones.c.tipo_contrato == rule.tipo_contrato)
+        clauses.append(_clausula_tipo_contrato(rule.tipo_contrato))
     if rule.plazo_min_dias is not None:
         corte = (_hoy(hoy_iso) + timedelta(days=int(rule.plazo_min_dias))).isoformat()
         clauses.append(text(iso_guard("licitaciones.fecha_limite")))
