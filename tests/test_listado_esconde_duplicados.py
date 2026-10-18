@@ -9,9 +9,10 @@ enseñando, y los KPIs de encima del listado contaban la copia.
 Aquí se fija la regla de punta a punta sobre Postgres: las cuatro superficies
 que comparten el universo del listado (paginado, cursor, texto libre y export)
 esconden ``pending`` y ``confirmed`` y dejan ver ``rejected``; los KPIs que
-abren el listado cuentan lo mismo que la lista enseña; el Radar no cambia; y la
-ficha del duplicado sigue respondiendo, porque un enlace guardado no puede
-romperse por una marca del job nocturno.
+abren el listado cuentan lo mismo que la lista enseña; el Radar no cambia; las
+agregaciones de Mercado siguen contando («métrica cuenta»); y la ficha del
+duplicado sigue respondiendo, porque un enlace guardado no puede romperse por
+una marca del job nocturno.
 """
 
 from __future__ import annotations
@@ -143,6 +144,28 @@ class TestLasCifrasDeEncima:
     def test_el_radar_sigue_escondiendolos(self) -> None:
         candidatas = AggregateRepository().scoring_candidates(hoy_iso=_hoy().isoformat())
         assert _ids(candidatas) == VISIBLES
+
+    def test_el_calendario_cuenta_los_cierres_que_el_listado_abre(self) -> None:
+        """Cada día del calendario enlaza al listado filtrado por cierre: mismo universo."""
+        hoy = _hoy()
+        dias = AggregateRepository().vencimientos_diarios(
+            LicitacionesFilters(),
+            desde_iso=hoy.date().isoformat(),
+            hasta_exclusivo_iso=(hoy + timedelta(days=30)).date().isoformat(),
+        )
+        assert sum(int(d["count"]) for d in dias) == len(VISIBLES)
+
+
+@pytest.mark.usefixtures("corpus")
+class TestLaMetricaCuenta:
+    """Mercado no es una lista: agrega sobre el ámbito entero (ADR-026 D23)."""
+
+    def test_las_agregaciones_de_mercado_no_esconden(self) -> None:
+        repo = AggregateRepository()
+        total, _sin_clasificar = repo.tecnologias_total_y_sin_clasificar(LicitacionesFilters())
+        assert total == 5
+        por_ccaa = repo.geography_by_ccaa(LicitacionesFilters())
+        assert sum(int(f["count"]) for f in por_ccaa) == 5
 
 
 @pytest.mark.usefixtures("corpus")

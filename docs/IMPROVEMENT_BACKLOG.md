@@ -1363,19 +1363,24 @@ _Sin ítems abiertos._
 
 - [2026-10-17] **P2: Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23
   dice que sí)** (rama `claude/listado-esconde-duplicados`) — manda D23: el listado es
-  presentación y esconde `pending` y `confirmed`, como el Radar. La exclusión entra en
-  `_base_filters` (paginado y cursor), en la rama FTS, en el export (`fetch_for_pdf`), en el
-  feed SSE del dashboard (`fetch_recent`), en `build_licitaciones_where`
-  (los KPIs de encima del listado; el Radar la aplicaba a mano y ahora la hereda de ahí),
-  en `count_total_activas` y en el universo del snapshot (`db/kpi_precompute.py`), de modo
-  que lista, KPIs, Radar y snapshot cuentan lo mismo; la ficha por id no cambia. Las
-  métricas competitivas siguen con `exclude_duplicados_sql`. Fuera a propósito:
-  `POST /licitaciones/search` (`search_advanced`), que monta su propio SQL por rango de
-  `ml_proba`, `search_vector` y ventanas de fecha y no tiene consumidor en la web; si algún
-  cliente de la API lo usa como listado, es un cambio aparte. La decisión queda escrita en
-  ADR-026 (nota del 2026-10-17) y en el docstring del guardrail de dedupe. Lo fijan
-  `tests/test_listado_esconde_duplicados.py` (Postgres: cuatro superficies, KPIs, snapshot,
-  Radar y ficha) y los tests de SQL emitido de `tests/test_republicaciones_regla.py`.
+  presentación y esconde `pending` y `confirmed`, como el Radar. La exclusión entra siempre
+  en `_base_filters` (paginado y cursor), en la rama FTS, en el export (`fetch_for_pdf`) y en
+  el feed SSE del dashboard (`fetch_recent`); `build_licitaciones_where` la emite solo con
+  `presentacion=True`, que es como la piden el overview y sus tarjetas, el Resumen, el
+  calendario de vencimientos y el Radar (`scoring_candidates`, `pipeline_window`; la aplicaba
+  a mano). `count_total_activas` y el universo del snapshot (`db/kpi_precompute.py`) siguen la
+  misma regla, de modo que lista, KPIs, Radar y snapshot cuentan lo mismo; la ficha por id no
+  cambia. Siguen contando, sin el flag: las agregaciones de Mercado (tendencias, geografía,
+  órganos, tecnologías, CPV, forecast, tipos, clusters, proyectos) y sus drill-downs —son la
+  fila «métrica» de D23 y leen de `idx_lic_analitica` (v144), que no incluye `id_externo`—,
+  el feed de eventos del Resumen (lista eventos, no expedientes) y las métricas competitivas,
+  que siguen con `exclude_duplicados_sql`. Fuera a propósito: `POST /licitaciones/search`
+  (`search_advanced`), que monta su propio SQL por rango de `ml_proba`, `search_vector` y
+  ventanas de fecha y no tiene consumidor en la web; si algún cliente de la API lo usa como
+  listado, es un cambio aparte. La decisión queda escrita en ADR-026 (nota del 2026-10-17) y
+  en el docstring del guardrail de dedupe. Lo fijan `tests/test_listado_esconde_duplicados.py`
+  (Postgres: cuatro superficies, KPIs, snapshot, calendario, Radar, Mercado y ficha) y los
+  tests de SQL emitido y de «quién pide qué» de `tests/test_republicaciones_regla.py`.
 - [2026-10-17] **P2: Aplicar `v151_fechas_texto_iso` en producción** — aplicada con
   `migrate.yml` (`mode=apply`, run 39066215215, 82 s) fuera de la ventana de la ingesta:
   `alembic current` en `v151_fechas_texto_iso`, 0 de 54.300 filas de `documentos` con el

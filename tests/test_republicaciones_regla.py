@@ -8,17 +8,23 @@ hubiera reemitido, y la ficha lo servía sin decir que lo era.
 Estos tests fijan la asimetría, que es la parte que se rompe sola si alguien
 "unifica" los dos fragmentos SQL por parecerse.
 
-Desde 2026-10-17 la fila «listados» de D23 también se cumple: la exclusión de
-presentación la emiten los dos constructores de ámbito (``_base_filters`` y
-``build_licitaciones_where``) y la rama FTS, y el Radar la hereda del segundo.
-El recorrido con Postgres está en ``tests/test_listado_esconde_duplicados.py``;
-aquí se fija el SQL emitido, sin base.
+Desde 2026-10-17 la fila «listados» de D23 también se cumple: ``_base_filters``
+(listado, cursor, export) y la rama FTS emiten siempre la exclusión de
+presentación, y ``build_licitaciones_where`` la emite **solo cuando se le pide**
+con ``presentacion=True``, que es como la llaman las superficies que encabezan
+o abren una lista (overview, Resumen, calendario de vencimientos, Radar). Las
+agregaciones de Mercado la llaman sin ese flag y siguen contando: son
+métricas, y además leen de un índice que no incluye ``id_externo`` (v144). El
+recorrido con Postgres está en ``tests/test_listado_esconde_duplicados.py``;
+aquí se fija el SQL emitido y quién lo pide, sin base.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+
+import pytest
 
 from db.sql_fragments import (
     exclude_duplicados_presentacion_sql,
@@ -57,26 +63,89 @@ class TestFragmentos:
 class TestSuperficies:
     """Quién usa cuál, verificado sobre el código."""
 
-    def test_el_ambito_compartido_emite_la_variante_de_presentacion(self) -> None:
-        """`build_licitaciones_where` es el universo del Radar y de los KPIs del listado."""
+    def test_el_ambito_compartido_solo_esconde_cuando_se_le_pide(self) -> None:
+        """`build_licitaciones_where` es métrica por defecto y presentación con el flag.
+
+        El orden importa: la exclusión va pegada a la base, antes de cualquier
+        filtro, para que una superficie de presentación sin filtros emita
+        exactamente ``1 = 1 AND <anti-join>``.
+        """
         from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 
         where, _ = build_licitaciones_where(LicitacionesFilters())
-        assert exclude_duplicados_presentacion_sql("id_externo") in where
-        where_alias, _ = build_licitaciones_where(LicitacionesFilters(), alias="l")
-        assert exclude_duplicados_presentacion_sql("l.id_externo") in where_alias
+        assert where == "1 = 1"
+        assert "licitaciones_duplicados" not in where
 
-    def test_el_radar_se_construye_sobre_el_ambito_compartido(self) -> None:
-        """`scoring_candidates` hereda la exclusión del constructor común.
+        where, _ = build_licitaciones_where(LicitacionesFilters(), presentacion=True)
+        assert where == "1 = 1 AND " + exclude_duplicados_presentacion_sql("id_externo")
+        where_alias, _ = build_licitaciones_where(
+            LicitacionesFilters(), alias="l", presentacion=True
+        )
+        assert where_alias == "1 = 1 AND " + exclude_duplicados_presentacion_sql("l.id_externo")
 
-        Hasta 2026-10-17 la añadía a mano; si dejara de pasar por
-        `_build_where`, el universo del Radar volvería a mostrar el mismo
-        contrato N veces.
-        """
+    #: Encabezan o abren una lista: cuentan lo que la lista enseña.
+    PRESENTACION = (
+        "overview_kpis",
+        "overview_por_estado",
+        "overview_por_mes",
+        "overview_top_organos",
+        "overview_funnel",
+        "overview_yoy_and_recent",
+        "overview_concentracion_organos",
+        "overview_concentracion_ccaa",
+        "overview_ccaa_cubiertas",
+        "overview_tasa_anulacion",
+        "overview_para_hoy",
+        "resumen_timeline_items",
+        "resumen_novedades",
+        "resumen_sankey",
+        "resumen_top_licitaciones",
+        "vencimientos_diarios",
+        "vencimientos_kpis",
+        "scoring_candidates",
+        "pipeline_window",
+    )
+
+    #: Mercado y sus drill-downs: métricas que cuentan sobre el ámbito entero y
+    #: leen de ``idx_lic_analitica`` (v144), que no incluye ``id_externo``.
+    METRICA = (
+        "trends_daily",
+        "geography_by_ccaa",
+        "tecnologias_entries",
+        "cpv_top_por_count",
+        "forecast_monthly",
+        "tipos_contrato_breakdown",
+        "_organos_where",
+        "licitaciones_por_organo",
+        "tecnologia_detalle_kpis",
+    )
+
+    @staticmethod
+    def _cuerpo(metodo: str) -> str:
         fuente = (ROOT / "db" / "repositories" / "aggregates.py").read_text(encoding="utf-8")
-        cuerpo = re.search(r"def scoring_candidates\(.*?return rows_to_dicts", fuente, re.S)
-        assert cuerpo, "no se encontró scoring_candidates"
-        assert "_build_where(" in cuerpo.group(0)
+        patron = rf"    def {re.escape(metodo)}\(.*?(?=\n    def |\n    # ──|\Z)"
+        cuerpo = re.search(patron, fuente, re.S)
+        assert cuerpo, f"no se encontró {metodo}"
+        return cuerpo.group(0)
+
+    @pytest.mark.parametrize("metodo", PRESENTACION)
+    def test_las_superficies_de_presentacion_piden_la_exclusion(self, metodo: str) -> None:
+        """Cada una pasa por `_build_where` con `presentacion=True`.
+
+        Hasta 2026-10-17 el Radar añadía la cláusula a mano; si cualquiera de
+        estas dejara de pedirla, su cifra volvería a contar la copia del DOUE
+        que el listado al que enlaza ya no enseña.
+        """
+        cuerpo = self._cuerpo(metodo)
+        assert "_build_where(" in cuerpo
+        assert "presentacion=True" in cuerpo
+
+    @pytest.mark.parametrize("metodo", METRICA)
+    def test_las_metricas_de_mercado_no_la_piden(self, metodo: str) -> None:
+        """«Métrica cuenta»: la agregación no esconde y el índice v144 la sigue sirviendo."""
+        cuerpo = self._cuerpo(metodo)
+        assert "_build_where(" in cuerpo
+        assert "presentacion" not in cuerpo
 
     def test_el_listado_usa_la_variante_de_presentacion(self) -> None:
         """`_base_filters` es el universo del listado, el cursor y el export (D23)."""

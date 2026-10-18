@@ -61,8 +61,15 @@ def _listado(**filtros: Any) -> tuple[str, list[Any]]:
 
 
 def _agregados(**filtros: Any) -> tuple[str, list[Any]]:
-    """El ``WHERE`` de los agregados, calificado como lo califica SQLAlchemy."""
-    return build_licitaciones_where(LicitacionesFilters(**filtros), alias="licitaciones")
+    """El ``WHERE`` de los agregados, calificado como lo califica SQLAlchemy.
+
+    Con ``presentacion=True`` porque la paridad que se mide aquí es la del
+    listado con los KPIs que lo encabezan (overview, Resumen): ese es el modo
+    en que esas superficies llaman al constructor (ADR-026 D23).
+    """
+    return build_licitaciones_where(
+        LicitacionesFilters(**filtros), alias="licitaciones", presentacion=True
+    )
 
 
 def _plegados(sql: str) -> list[tuple[str, str, str]]:
@@ -192,7 +199,7 @@ def test_tecnologia_un_marcador_por_codigo_y_ninguno_sin_codigos() -> None:
 def test_tecnologia_en_blanco_no_filtra_en_ninguno_de_los_dos_lados() -> None:
     """Un ``,`` suelto de la barra de ámbito no puede convertirse en un filtro vacío.
 
-    Desde 2026-10-17 el ``WHERE`` de los dos lados nace con la exclusión de
+    Desde 2026-10-17 el ``WHERE`` de los dos lados lleva la exclusión de
     presentación de duplicados (ADR-026 D23): es la única cláusula que puede
     quedar, y a cada lado va sobre su propia forma de nombrar la columna.
     """

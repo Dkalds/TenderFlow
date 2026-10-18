@@ -173,11 +173,8 @@ def test_alias_califica_todas_las_columnas_del_ambito():
 
 
 def test_valor_en_blanco_no_anade_clausula():
-    """Un valor en blanco no filtra: queda solo el universo de presentación (D23)."""
-    from db.sql_fragments import exclude_duplicados_presentacion_sql
-
     where, params = build_licitaciones_where(LicitacionesFilters(ccaa=" , "))
-    assert where == "1 = 1 AND " + exclude_duplicados_presentacion_sql("id_externo")
+    assert where == "1 = 1"
     assert params == []
 
 
