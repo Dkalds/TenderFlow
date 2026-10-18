@@ -225,6 +225,25 @@ def test_concentracion_geo_top3_y_ccaa_cubiertas(db):
     assert res.ccaa_cubiertas == len({r[2] for r in _ROWS})
 
 
+def test_por_ccaa_reparte_el_ambito_por_comunidad(db):
+    res = get_overview(OverviewFilters())
+    esperado: dict[str, list[float]] = {}
+    for r in _ROWS:
+        n, importe = esperado.setdefault(r[2], [0, 0.0])
+        esperado[r[2]] = [n + 1, importe + (r[4] or 0.0)]
+    assert {c.ccaa: [c.n, c.importe] for c in res.por_ccaa} == pytest.approx(esperado)
+    # De más a menos expedientes, y los del ámbito sin CCAA fuera.
+    assert [c.n for c in res.por_ccaa] == sorted((c.n for c in res.por_ccaa), reverse=True)
+    assert sum(c.n for c in res.por_ccaa) <= res.total_licitaciones
+
+
+def test_concentracion_top_ignora_los_grupos_sin_importe():
+    from services.analytics.overview import concentracion_top
+
+    assert concentracion_top([100.0, None, 300.0, 200.0, 50.0], top_n=2) == (500.0, 650.0)
+    assert concentracion_top([None, None], top_n=3) == (0.0, 0.0)
+
+
 def test_tasa_anulacion_respeta_ventana_12_meses(db):
     res = get_overview(OverviewFilters())
     # Solo OV-12 (ANUL, -2400h ~= 100d) cae dentro de los últimos 365 días;

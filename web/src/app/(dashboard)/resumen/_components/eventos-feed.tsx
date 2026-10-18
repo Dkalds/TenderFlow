@@ -1,117 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Activity,
-  ArrowRightLeft,
-  CalendarClock,
-  FileCheck,
-  type LucideIcon,
-  CircleX,
-  RefreshCw,
-  Scale,
-  Trophy,
-} from "lucide-react";
+import { Activity } from "lucide-react";
 import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { useMemo } from "react";
-import { getSeriesColor } from "@/lib/chart-colors";
-import { formatCurrency, formatDate, formatNumber, truncate } from "@/lib/utils";
+import { useMemo, useState } from "react";
+import { formatDate, formatNumber, truncate } from "@/lib/utils";
 import type { EventosFeedResult } from "@/lib/api-types";
 import { agruparPorDia } from "@/lib/agrupar-por-dia";
-import { BarraApilada, tramosApilados, type TramoEstado } from "./contexto-graficos";
-
-const TIPO_ICON: Record<string, LucideIcon> = {
-  adjudicacion: Trophy,
-  formalizacion: FileCheck,
-  modificacion: RefreshCw,
-  prorroga: CalendarClock,
-  anulacion: CircleX,
-  cambio_estado: ArrowRightLeft,
-  recurso: Scale,
-};
-
-const TIPO_LABEL: Record<string, string> = {
-  adjudicacion: "Adjudicación",
-  formalizacion: "Formalización",
-  modificacion: "Modificación",
-  prorroga: "Prórroga",
-  anulacion: "Anulación",
-  cambio_estado: "Cambio de estado",
-  recurso: "Recurso",
-};
+import { BarraApilada, tramosApilados } from "./contexto-graficos";
+import { colorDeTipo, ImporteDelta, LeyendaTipos, TIPO_ICON, TIPO_LABEL } from "./eventos-tipos";
 
 const MAX_FILAS = 8;
-
-/**
- * Color de cada clase de movimiento en la línea de tiempo: por posición en la
- * serie de la consola, fijo de un día a otro. El cambio de estado —y lo que no
- * se sabe nombrar— va en el gris de «Otros» (`chart-8`).
- */
-const TIPO_SERIE: Record<string, number> = {
-  adjudicacion: 1,
-  formalizacion: 5,
-  modificacion: 2,
-  prorroga: 9,
-  anulacion: 8,
-  recurso: 4,
-  cambio_estado: 7,
-};
-
-function colorDeTipo(tipo: string): string {
-  return getSeriesColor(TIPO_SERIE[tipo] ?? 7);
-}
-
-/**
- * Variación del importe del contrato.
- *
- * Iba en rojo cuando subía y en verde cuando bajaba, con `text-red-600` /
- * `text-green-400` a pelo — fuera del sistema de tokens y, peor, emitiendo un
- * juicio que el dato no contiene: que un contrato del mercado crezca no es malo
- * para quien mira el mercado. Queda el signo, que es lo que sí dice el dato.
- */
-function ImporteDelta({ value }: { value: number | null | undefined }) {
-  if (value == null || value === 0) return null;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {/* Sin `tabIndex` ni `<button>`: esto vive dentro de un `<Link>`, y un
-            control focusable aquí sería `nested-interactive` — la primera regla
-            que C7.1 quiere reactivar. */}
-        <span className="tf-tnum flex-none text-tf-micro font-semibold">
-          {value > 0 ? "+" : ""}
-          {formatCurrency(value)}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>Variación del importe del contrato</TooltipContent>
-    </Tooltip>
-  );
-}
-
-/**
- * Leyenda del reparto por tipo: el nombre de cada clase, su color en la barra
- * y su recuento. Es la que dice el reparto al lector de pantalla; la barra es
- * decorativa.
- */
-function LeyendaTipos({ tramos }: { tramos: readonly TramoEstado[] }) {
-  return (
-    <ul aria-label="Movimientos por tipo" className="flex flex-wrap gap-x-3.5 gap-y-1">
-      {tramos.map((tramo) => (
-        <li key={tramo.estado} className="inline-flex items-center gap-1.5 text-tf-micro text-muted-foreground">
-          <svg aria-hidden="true" viewBox="0 0 8 8" className="h-2 w-2 flex-none">
-            <circle cx="4" cy="4" r="4" fill={tramo.color} />
-          </svg>
-          {TIPO_LABEL[tramo.estado] ?? tramo.estado}
-          <span className="tf-tnum font-semibold text-foreground">{formatNumber(tramo.n)}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 /** Ventana del feed en palabras, para que el panel diga qué está midiendo
  * cuando el ámbito mueve las fechas. */
@@ -143,16 +46,30 @@ export function EventosFeed() {
     { staleTime: 2 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     { dias: "30", limit: "20" },
   );
+  // Con un tipo de la leyenda pulsado, la lista es otra petición —la misma con
+  // `tipo`—; la barra y la leyenda siguen con la ventana entera. Sin datos
+  // previos de relleno: cambiar de tipo no enseña un instante los del anterior.
+  const [tipo, setTipo] = useState<string | null>(null);
+  const filtrada = useFilteredQuery<EventosFeedResult>(
+    ["eventos", "feed"],
+    "/api/v1/eventos",
+    { staleTime: 2 * 60 * 1000, meta: META_ERROR_EN_LINEA, enabled: tipo !== null },
+    { dias: "30", limit: "20", ...(tipo ? { tipo } : {}) },
+    true,
+  );
+  const lista = tipo ? filtrada.data : data;
 
-  const items = data?.items ?? [];
+  const items = lista?.items ?? [];
   const visibles = items.slice(0, MAX_FILAS);
   // eslint-disable-next-line react-hooks/purity
   const ahora = useMemo(() => new Date(Date.now()), []);
   const dias = useMemo(() => agruparPorDia(visibles, ahora), [visibles, ahora]);
   // El reparto y el total cuentan la ventana entera, no las filas pedidas: los
   // da el backend (`por_tipo`, `total`), y la lista es la muestra más reciente.
-  // Una respuesta sin `total` cae al tamaño de la muestra, como antes.
-  const total = data?.total || items.length;
+  // Una respuesta sin `total` cae al tamaño de la muestra, como antes. Con un
+  // tipo pulsado, el pie cuenta los de ese tipo.
+  const total = lista?.total || items.length;
+  const totalVentana = data?.total || (data?.items.length ?? 0);
   const tramos = useMemo(
     () =>
       tramosApilados(
@@ -191,7 +108,7 @@ export function EventosFeed() {
             <Skeleton key={index} className="h-7 w-full rounded-sm" />
           ))}
         </div>
-      ) : visibles.length === 0 ? (
+      ) : (data?.items.length ?? 0) === 0 ? (
         <PanelEmpty
           title="Ningún contrato se ha movido en la ventana"
           hint="Prórrogas, modificaciones, adjudicaciones y anulaciones del ámbito salen aquí. Amplía las fechas para ver más."
@@ -203,10 +120,27 @@ export function EventosFeed() {
         <div className="flex flex-col gap-1">
           {tramos.length > 0 && (
             <div className="mb-2 flex flex-col gap-2 border-b border-border/60 pb-3">
-              <BarraApilada tramos={tramos} total={total} activos={[]} />
-              <LeyendaTipos tramos={tramos} />
+              <BarraApilada tramos={tramos} total={totalVentana} activos={tipo ? [tipo] : []} />
+              <LeyendaTipos tramos={tramos} activo={tipo} onTipo={setTipo} />
             </div>
           )}
+          {tipo && filtrada.error ? (
+            <PanelError
+              variant="inline"
+              title="No se pudieron cargar los movimientos de este tipo"
+              error={filtrada.error}
+              onRetry={() => void filtrada.refetch()}
+              height={120}
+            />
+          ) : tipo && filtrada.isLoading ? (
+            <div className="flex flex-col gap-1.5">
+              {Array.from({ length: 3 }, (_, index) => (
+                <Skeleton key={index} className="h-7 w-full rounded-sm" />
+              ))}
+            </div>
+          ) : tipo && items.length === 0 ? (
+            <p className="py-2 text-tf-meta text-muted-foreground">Ningún movimiento de este tipo en la ventana.</p>
+          ) : null}
           {dias.map((dia) => (
             <section key={dia.clave} aria-label={dia.etiqueta}>
               <h3 className="pb-0.5 pl-9 text-tf-micro font-semibold text-muted-foreground">{dia.etiqueta}</h3>

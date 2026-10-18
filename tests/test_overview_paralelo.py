@@ -93,9 +93,16 @@ class _RepoAnotador:
         self._anota("conc_organos")
         return (500.0, 1000.0)
 
-    def overview_concentracion_ccaa(self, _f: Any, **_kw: Any) -> tuple[float, float]:
-        self._anota("conc_ccaa")
-        return (900.0, 1000.0)
+    def overview_por_ccaa(self, _f: Any) -> list[dict[str, Any]]:
+        self._anota("por_ccaa")
+        # Top 3 = 900 de 1000; la comunidad sin importe no cuenta.
+        return [
+            {"ccaa": "A", "n": 5, "importe": 500.0},
+            {"ccaa": "B", "n": 3, "importe": 300.0},
+            {"ccaa": "C", "n": 2, "importe": None},
+            {"ccaa": "D", "n": 1, "importe": 100.0},
+            {"ccaa": "E", "n": 1, "importe": 100.0},
+        ]
 
     def overview_top_organos(self, _f: Any) -> list[dict[str, Any]]:
         self._anota("top_organos")
@@ -122,7 +129,7 @@ _TODAS = {
     "para_hoy",
     "yoy",
     "conc_organos",
-    "conc_ccaa",
+    "por_ccaa",
     "top_organos",
     "por_mes",
     "por_estado",
@@ -176,6 +183,8 @@ def test_en_serie_y_en_paralelo_dan_la_misma_respuesta(
     assert en_serie.total_licitaciones == 20
     assert en_serie.tasa_anulacion == pytest.approx(5.0)
     assert en_serie.concentracion_geo_top3 == pytest.approx(90.0)
+    assert [c.ccaa for c in en_serie.por_ccaa] == ["A", "B", "C", "D", "E"]
+    assert en_serie.por_ccaa[2].importe == 0.0
     assert en_serie.hhi == 999.0
 
 
