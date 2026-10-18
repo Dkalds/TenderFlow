@@ -112,7 +112,8 @@ _SQL_CRITERIOS = (
 _SQL_REESCRIBIR_ES_PRECIO = (
     "UPDATE licitacion_criterios_adjudicacion AS c SET es_precio = v.es_precio "
     "FROM unnest(%s::bigint[], %s::boolean[]) AS v(id, es_precio) "
-    "WHERE c.id = v.id AND c.es_precio IS DISTINCT FROM v.es_precio"
+    # `es_precio` es NOT NULL y la marca nueva siempre es un bool: `<>` basta.
+    "WHERE c.id = v.id AND c.es_precio <> v.es_precio"
 )
 _SQL_REESCRIBIR_PESO = (
     "UPDATE licitaciones AS l SET peso_precio_pct = v.peso "
