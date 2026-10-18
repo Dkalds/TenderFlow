@@ -13,6 +13,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -23,7 +24,7 @@ import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import { cn, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { TrendPoint } from "@/lib/api-types";
-import { ALTO, ALTO_MINIMO } from "./publicaciones-data";
+import { ALTO, ALTO_MINIMO, tramosFinDeSemana } from "./publicaciones-data";
 
 export interface RitmoChartProps {
   serie: TrendPoint[];
@@ -45,6 +46,7 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
   }
 
   const total = serie.reduce((suma, punto) => suma + punto.count, 0);
+  const findes = tramosFinDeSemana(serie.map((punto) => punto.period));
 
   return (
     <>
@@ -56,6 +58,22 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
             <ResponsiveContainer width="100%" height="100%">
               <BarChart accessibilityLayer data={serie} margin={{ top: 8, right: 8, bottom: 4, left: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                {/* Sábados y domingos, en una banda tenue detrás de sus barras: el
+                    mercado casi no publica en fin de semana, y sin la banda esas
+                    barras bajas se leían como un bache. Va antes que las barras
+                    para quedar detrás, y no recibe el ratón: la barra sigue
+                    siendo la que filtra. */}
+                {findes.map((tramo) => (
+                  <ReferenceArea
+                    key={tramo.desde}
+                    x1={tramo.desde}
+                    x2={tramo.hasta}
+                    fill="hsl(var(--muted-foreground))"
+                    fillOpacity={0.08}
+                    stroke="none"
+                    className="pointer-events-none"
+                  />
+                ))}
                 <XAxis
                   dataKey="period"
                   tickFormatter={(value: string) => formatDate(value)}
@@ -102,6 +120,7 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
       </div>
       <p className="mt-2 text-tf-micro text-muted-foreground">
         {formatNumber(total)} publicaciones {ventana}, en {serie.length} días con actividad.
+        {findes.length > 0 ? " La banda gris marca los sábados y domingos." : ""}
         {serieTruncada
           ? " El periodo es demasiado largo para dibujarlo entero: faltan días; acórtalo para verlos todos."
           : ""}

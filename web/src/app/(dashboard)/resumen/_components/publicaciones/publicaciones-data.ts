@@ -78,3 +78,47 @@ export function leyendaEstados(puntos: PuntoScatter[]): [string, string][] {
   }
   return [...vistos.entries()];
 }
+
+/** Un tramo de fin de semana en el eje del ritmo: del primer al último día. */
+export interface TramoFinDeSemana {
+  desde: string;
+  hasta: string;
+}
+
+/** `YYYY-MM-DD` como fecha local: sin pasar por UTC, el día no cambia de zona. */
+function diaLocal(periodo: string): Date | null {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})/.exec(periodo);
+  if (!partes) return null;
+  return new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3]));
+}
+
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Los sábados y domingos del eje, juntos cuando van seguidos: sábado y domingo
+ * son una sola banda. No mira el dato, solo la fecha de cada barra; el eje solo
+ * tiene los días con actividad, así que un fin de semana sin publicaciones no
+ * tiene barra y no se marca.
+ */
+export function tramosFinDeSemana(periodos: readonly string[]): TramoFinDeSemana[] {
+  const tramos: TramoFinDeSemana[] = [];
+  let previo: Date | null = null;
+  for (const periodo of periodos) {
+    const dia = diaLocal(periodo);
+    const esFinde = dia !== null && (dia.getDay() === 0 || dia.getDay() === 6);
+    if (!esFinde || dia === null) {
+      previo = null;
+      continue;
+    }
+    const ultimo = tramos.at(-1);
+    // Contiguo si el día anterior del eje es el día anterior del calendario
+    // (con redondeo: un cambio de hora no deja el salto en 24 h justas).
+    if (ultimo && previo && Math.round((dia.getTime() - previo.getTime()) / UN_DIA_MS) === 1) {
+      ultimo.hasta = periodo;
+    } else {
+      tramos.push({ desde: periodo, hasta: periodo });
+    }
+    previo = dia;
+  }
+  return tramos;
+}

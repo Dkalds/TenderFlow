@@ -9,6 +9,7 @@ import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
 import { useDesdeResumen, useRitmoDiario } from "../_hooks/use-publicaciones";
 import { Proporcion } from "./cifras-graficos";
 import { ComposicionPanel } from "./composicion-panel";
+import { ComunidadesPanel } from "./comunidades-panel";
 import { Sparkline } from "./contexto-graficos";
 
 /**
@@ -112,7 +113,13 @@ export function ContextoStrip() {
           />
         </StatStrip>
       )}
-      <ComposicionPanel className="mt-2.5" />
+      {/* Los dos cortes del ámbito que filtran al pulsarlos: lado a lado desde
+          `xl`, apilados por debajo, y estirados al mismo alto para que sus
+          bordes casen. */}
+      <div className="mt-2.5 grid grid-cols-1 gap-2.5 xl:grid-cols-2">
+        <ComposicionPanel />
+        <ComunidadesPanel />
+      </div>
     </section>
   );
 }

@@ -79,7 +79,9 @@ export function PublicacionesPanel() {
     // En columna: el corte ocupa el alto que sobra cuando «Movimientos», al
     // lado, es más alto, y el panel no deja un hueco debajo.
     <Panel className="flex flex-col">
-      <PanelTitle title="Publicaciones en el periodo" hint={HINTS[corte]} />
+      {/* `h2`: el panel es una sección de la página, no un apartado de «Contexto
+          de mercado», que va antes; así lo lee el lector de encabezados. */}
+      <PanelTitle as="h2" title="Publicaciones en el periodo" hint={HINTS[corte]} />
       <div className="mb-2.5">
         <PanelTabs
           tabs={TABS}

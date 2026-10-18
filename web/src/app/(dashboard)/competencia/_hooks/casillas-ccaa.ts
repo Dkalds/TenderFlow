@@ -13,7 +13,7 @@
 
 import { foldText } from "@/lib/utils";
 
-interface CasillaBase {
+export interface CasillaBase {
   codigo: string;
   /** Nombre canónico del backend (`shared/geo.py`). */
   nombre: string;
@@ -49,6 +49,36 @@ const REJILLA: (CasillaBase & { alias: string[] })[] = [
   { codigo: "CE", nombre: "Ceuta", fila: 5, columna: 3, alias: [] },
   { codigo: "ML", nombre: "Melilla", fila: 5, columna: 4, alias: [] },
 ];
+
+/** Las diecinueve casillas, en el orden de la rejilla y sin sus alias. */
+export const CASILLAS: readonly CasillaBase[] = REJILLA.map(({ alias: _alias, ...casilla }) => casilla);
+
+/**
+ * Clase de cada paso de intensidad; el más alto invierte el texto. La comparten
+ * los mapas de casillas de Competencia y del Resumen.
+ */
+export const PASO_CASILLA = [
+  "border border-border/60 text-muted-foreground",
+  "bg-primary/10",
+  "bg-primary/20",
+  "bg-primary/35",
+  "bg-primary/50",
+  "bg-primary/90 text-primary-foreground",
+];
+
+// Las clases de posición van escritas enteras: Tailwind no ve una clase que se
+// compone en ejecución.
+export const COLUMNA_CASILLA = [
+  "",
+  "col-start-1",
+  "col-start-2",
+  "col-start-3",
+  "col-start-4",
+  "col-start-5",
+  "col-start-6",
+  "col-start-7",
+];
+export const FILA_CASILLA = ["", "row-start-1", "row-start-2", "row-start-3", "row-start-4", "row-start-5"];
 
 const POR_NOMBRE = new Map<string, CasillaBase>(
   REJILLA.flatMap(({ alias, ...casilla }) =>

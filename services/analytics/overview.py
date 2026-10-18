@@ -360,6 +360,16 @@ class EstadoCount(BaseModel):
     n: int
 
 
+class CcaaCount(BaseModel):
+    """Expedientes e importe de una comunidad autónoma del ámbito."""
+
+    ccaa: str
+    n: int
+    importe: float = Field(
+        description="Suma de `importe` de sus expedientes; 0 si ninguno lo trae."
+    )
+
+
 class MesAggregate(BaseModel):
     """Monthly aggregate."""
 
@@ -428,6 +438,13 @@ class OverviewResult(BaseModel):
     licitaciones_30d: int = 0
     importe_30d: float = 0.0
     por_estado: list[EstadoCount] = Field(default_factory=list)
+    por_ccaa: list[CcaaCount] = Field(
+        default_factory=list,
+        description=(
+            "Reparto del ámbito por comunidad autónoma, de más a menos expedientes. "
+            "No incluye los expedientes sin CCAA."
+        ),
+    )
     por_mes: list[MesAggregate] = Field(default_factory=list)
     top_organos: list[OrganoAggregate] = Field(default_factory=list)
     funnel_estados: list[FunnelStep] = Field(default_factory=list)
@@ -470,6 +487,17 @@ class OverviewResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def concentracion_top(importes: Sequence[float | None], top_n: int) -> tuple[float, float]:
+    """(importe de los ``top_n`` mayores, importe total), sin los grupos sin importe.
+
+    Es la concentración que calculaba en SQL ``overview_concentracion_ccaa``
+    (``HAVING SUM(importe) IS NOT NULL ORDER BY SUM DESC``), ahora sobre las
+    filas de ``overview_por_ccaa``, que ya agrupan por comunidad.
+    """
+    sumas = sorted((float(i) for i in importes if i is not None), reverse=True)
+    return sum(sumas[:top_n]), sum(sumas)
 
 
 def _to_repo_filters(filters: OverviewFilters) -> LicitacionesFilters:
@@ -623,7 +651,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         )
     )
     t_conc_organos = _Tarea(partial(_repo.overview_concentracion_organos, repo_filters, top_n=10))
-    t_conc_ccaa = _Tarea(partial(_repo.overview_concentracion_ccaa, repo_filters, top_n=3))
+    t_por_ccaa = _Tarea(partial(_repo.overview_por_ccaa, repo_filters))
     t_top_organos = _Tarea(partial(_repo.overview_top_organos, repo_filters))
     t_por_mes = _Tarea(partial(_repo.overview_por_mes, repo_filters))
     t_por_estado = _Tarea(partial(_repo.overview_por_estado, repo_filters))
@@ -638,7 +666,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
             t_para_hoy,
             t_yoy,
             t_conc_organos,
-            t_conc_ccaa,
+            t_por_ccaa,
             t_top_organos,
             t_por_mes,
             t_por_estado,
@@ -662,7 +690,8 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     anul_count, total_12m = t_tasa.resultado()
     tasa_anulacion = (anul_count / total_12m * 100) if total_12m > 0 else 0.0
 
-    top3_imp, total_imp_geo = t_conc_ccaa.resultado()
+    filas_ccaa = t_por_ccaa.resultado()
+    top3_imp, total_imp_geo = concentracion_top([row["importe"] for row in filas_ccaa], top_n=3)
     total_imp_geo = total_imp_geo or 1.0
     concentracion_geo_top3 = top3_imp / total_imp_geo * 100
 
@@ -671,6 +700,10 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
 
     por_estado = [
         EstadoCount(estado=row["estado"], n=int(row["n"])) for row in t_por_estado.resultado()
+    ]
+    por_ccaa = [
+        CcaaCount(ccaa=row["ccaa"], n=int(row["n"]), importe=float(row["importe"] or 0.0))
+        for row in filas_ccaa
     ]
     por_mes = [
         MesAggregate(
@@ -698,6 +731,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         licitaciones_30d=int(v_act),
         importe_30d=yoy_data["importe_30d"],
         por_estado=por_estado,
+        por_ccaa=por_ccaa,
         por_mes=por_mes,
         top_organos=top_organos,
         funnel_estados=funnel_estados,
