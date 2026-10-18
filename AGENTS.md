@@ -258,6 +258,8 @@ Para todo lo demás (editar código de feature, añadir tests, refactor local), 
 - [docs/c4-architecture.md](docs/c4-architecture.md),
   [docs/database-schema.md](docs/database-schema.md) y
   [docs/api-design.md](docs/api-design.md): arquitectura y contratos.
+- [DESIGN.md](DESIGN.md): tokens y reglas de estilo de la UI (generado con
+  `npx getdesign add claude`); leelo antes de escribir o restilar UI en `web/`.
 - [docs/README.md](docs/README.md): índice de `docs/`. Un documento nuevo de
   primer nivel se enlaza ahí (`tests/test_docs_paths.py` lo exige). En `docs/`
   los links del cuerpo van en markdown relativo y los wikilinks solo en el

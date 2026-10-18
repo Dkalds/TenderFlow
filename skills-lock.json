@@ -39,12 +39,44 @@
       "verifiedHash": "613e426b732dcf9948f5d0502d108e9915d0cd77466d33cb2d2aba8e0e30a7a3",
       "trust": "community"
     },
+    "brandkit": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/brandkit/SKILL.md",
+      "computedHash": "4bf33908992cde092395205122fad7a59e117190292bc8847cdba324b6f1c5b2",
+      "trust": "community",
+      "verifiedHash": "73d26211dc6b65af7fcd68310a064810068cafabaef9a06d00b3ed94a14a1c6a"
+    },
     "deploy-to-vercel": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "autoskills-registry",
       "computedHash": "698dfb0ec0cf3e8d97c3f181e13b37b3b8fbc872a4b031d812adb4193f66035e",
       "verifiedHash": "21b1e71c4b8e146bc94e9ada84966277371f4e876b6edeee282983b4d3c176f0",
       "trust": "first-party"
+    },
+    "design-taste-frontend": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "18f81679d2b0247ce9da298b03ed8e47ecd3c206f2951d70eefb1b65d3219345",
+      "trust": "community",
+      "verifiedHash": "cdde5dcd11d5002f94f95957e6edc7195bad5cbc7fcb1376b2e447d951e4b7b1"
+    },
+    "design-taste-frontend-v1": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill-v1/SKILL.md",
+      "computedHash": "c6746fba186bed90e57923b80454984ad45126ae0e585c00ceaa7f96657911b7",
+      "trust": "community",
+      "verifiedHash": "6451b734e1fbf036b0bf052d0d5a21634cb13fd67efde687d96355288ad0c794"
+    },
+    "design-taste-frontend-v2-experimental": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill-v2-experimental/SKILL.md",
+      "computedHash": "2c015feb005bbc65c053b7b7e176e53bb1457b9a5cf7a3c05232c4b4e482a369",
+      "trust": "community",
+      "verifiedHash": "e03cba5c9d269aa3f7e63a5127b5582b30892836209bd0419a1e7373edfbba18"
     },
     "emil-design-eng": {
       "source": "emilkowalski/skill",
@@ -85,6 +117,54 @@
       "verifiedHash": "835d4a9525e329a1cc591973f0c0304fab808c014e9f2df5ea9e855b837b9058",
       "trust": "first-party"
     },
+    "full-output-enforcement": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/output-skill/SKILL.md",
+      "computedHash": "26bd29ce4c5e02c7666b2d503609bf466bd32290822e91f0e984147048dbb924",
+      "trust": "community",
+      "verifiedHash": "40ef5e3209acec14dc30c4f8501ebff4472f3d1e768d2ab7ce22508d348359d2"
+    },
+    "gpt-taste": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/gpt-tasteskill/SKILL.md",
+      "computedHash": "a7517d2f71baa638a57ffdba2d712f9debddda96c9a8f264006e64c2a9cca1f5",
+      "trust": "community",
+      "verifiedHash": "90b80b325771f31b61a1070e84e49127d9aa789f561c1327c171a861e879624c"
+    },
+    "high-end-visual-design": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/soft-skill/SKILL.md",
+      "computedHash": "7db385e4c5370e5a7fca9704a1361b056e4504ea6a03924bb86f33a4f00b5c73",
+      "trust": "community",
+      "verifiedHash": "1d6480438babe3ac02b3f55ffeddd6faa43bc8a27c5d2ec6f46579e398c516b6"
+    },
+    "image-to-code": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/image-to-code-skill/SKILL.md",
+      "computedHash": "58517b03b2a01f4c9ba65861559d03df931400871bbc200978c975b24bb92c73",
+      "trust": "community",
+      "verifiedHash": "df7c70f8c74d0155868e615b85a725a928d09a66a82119019ebbad270aa29752"
+    },
+    "imagegen-frontend-mobile": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/imagegen-frontend-mobile/SKILL.md",
+      "computedHash": "9ab7f4f6ce66a3cff02bbf5894e5bd5af50bf5d6ef0adffdc88e8fab772fe44f",
+      "trust": "community",
+      "verifiedHash": "8cd6111130ff18b17883b432f32e6d495b6763ee49e71387c8a734f1cc0e23de"
+    },
+    "imagegen-frontend-web": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/imagegen-frontend-web/SKILL.md",
+      "computedHash": "65f5ae59fa317567809438310b1c54f78cd133426deb43e4d3d4ca4c8f541628",
+      "trust": "community",
+      "verifiedHash": "f12d457f740d7a12897ca840a41c0f424c4be7ff4efc52a818d988cb8356c0ef"
+    },
     "improve-animations": {
       "source": "emilkowalski/skill",
       "sourceType": "github",
@@ -93,12 +173,28 @@
       "verifiedHash": "d9263e097dd977a40eb16c22c32b1babbb34bd52a32df1749d9167688d95fb23",
       "trust": "community"
     },
+    "industrial-brutalist-ui": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/brutalist-skill/SKILL.md",
+      "computedHash": "8fc355c4aadb7d29c53ca28bc41be3cd6eea765d121e3737c4dc2d0f90a8effa",
+      "trust": "community",
+      "verifiedHash": "05abca4f621a0d28d1d3e885683ad824c99a1678443791cb3c58bab84e6f959d"
+    },
     "machine-learning": {
       "source": "pluginagentmarketplace/custom-plugin-python",
       "sourceType": "autoskills-registry",
       "computedHash": "2381439c0d230fad40ead759b6820ecf58f189c4dfc0f446369fea93cfec40ff",
       "verifiedHash": "ab7c6e7d1d1fcc86b555d7454951dcd55c16f51cc47f92e2c9685c0add30cd22",
       "trust": "community"
+    },
+    "minimalist-ui": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/minimalist-skill/SKILL.md",
+      "computedHash": "b201c0763796192405cfed7933b55e3dab6d530ca7f06a5e8095063d476635d7",
+      "trust": "community",
+      "verifiedHash": "e28e67a960493432d17db2c3bb2e8e07991bc29388d5da4c21f9fa35fda44217"
     },
     "pandas-pro": {
       "source": "jeffallan/claude-skills",
@@ -135,6 +231,14 @@
       "computedHash": "07b87d62993c0b6159a91d18fc8723b7f4c13d5000c0984266c207493ce641ff",
       "verifiedHash": "1a8a500d3490876366ad2031ab2fcb8c39d6961b8c88e44bab5fbda71134e3bb",
       "trust": "community"
+    },
+    "redesign-existing-projects": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/redesign-skill/SKILL.md",
+      "computedHash": "52f2ade5449b7005942ebd221e53808a245b3e088ff096c44a374e1e481e9f6b",
+      "trust": "community",
+      "verifiedHash": "4c734d6a4c3f35d7215e9820cf354b55bff528a2ae7ea01ab6dac72c100464a9"
     },
     "review-animations": {
       "source": "emilkowalski/skill",
@@ -178,6 +282,14 @@
       "computedHash": "fe76e624bdfe84923c1a3e03f54d23d1c6216c21aa43dd7a2c06b09a93b5bb39",
       "verifiedHash": "52e201a54ea615910ff2296c29e71dd2e96f446ac21b4044c129a4a952899d7c",
       "trust": "community"
+    },
+    "stitch-design-taste": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/stitch-skill/SKILL.md",
+      "computedHash": "13322f38406cd3abf16ba45e35bdc9b18002d0153a79b4612b97aefc65d5a335",
+      "trust": "community",
+      "verifiedHash": "4fc08d212da48991c193cd057eda7993eadc49618e6dd3bb7ce376887b298c2b"
     },
     "supabase": {
       "source": "supabase/agent-skills",
