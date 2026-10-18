@@ -28,6 +28,7 @@ from sqlalchemy import ColumnElement, and_, bindparam, func, literal_column, or_
 from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
 from db.repositories.base import rows_to_dicts
+from db.repositories.licitaciones import tipo_contrato_en
 from db.repositories.watchlist_rules import (
     bounded_match_counts,
     daily_match_counts,
@@ -37,7 +38,7 @@ from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard, pala
 from services.dedupe import normalize_organo
 from shared.dto import RadarBanda
 from shared.estados import abierta_core
-from shared.procedimientos import codigo_tipo_contrato, variantes_tipo_contrato
+from shared.procedimientos import codigo_tipo_contrato
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
@@ -409,35 +410,6 @@ def _clausula_procedimiento(procedimiento: str) -> Any:
     return columna == bindparam("wr_procedimiento", codigo, unique=True)
 
 
-def _clausula_tipo_contrato(tipo_contrato: str) -> Any:
-    """El tipo de la regla contra la columna, como código o como etiqueta.
-
-    ``licitaciones.tipo_contrato`` guarda lo que publica cada fuente: el código
-    CODICE (``2``, a veces ``02``) o la etiqueta en su lengua («Serveis»,
-    «services»). Comparar por igualdad dejaba la regla sin avisar de casi
-    nada. La regla trae el código (``WatchlistRule`` lo normaliza) y casa con
-    el código sin ceros y con cualquiera de las etiquetas que significan lo
-    mismo (``shared.procedimientos.variantes_tipo_contrato``).
-    """
-    plegada = func.lower(func.trim(licitaciones.c.tipo_contrato))
-    if not tipo_contrato.isdigit():
-        # Un valor que el catálogo no reconoce: se compara tal cual, sin caja.
-        return plegada == bindparam("wr_tipo_contrato", tipo_contrato.casefold(), unique=True)
-    columna = func.coalesce(
-        func.nullif(func.ltrim(func.trim(licitaciones.c.tipo_contrato), "0"), ""), "0"
-    )
-    por_codigo = columna == bindparam("wr_tipo_contrato", tipo_contrato, unique=True)
-    etiquetas = variantes_tipo_contrato(tipo_contrato)
-    if not etiquetas:
-        return por_codigo
-    return or_(
-        por_codigo,
-        plegada.in_(
-            bindparam("wr_tipo_contrato_etiquetas", etiquetas, expanding=True, unique=True)
-        ),
-    )
-
-
 def _clausulas_universo_puntuable(hoy_iso: str | None) -> list[Any]:
     """El universo del Radar: estado no terminal **y** plazo vivo.
 
@@ -502,7 +474,8 @@ def _rule_clauses(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list[An
     if rule.procedimiento:
         clauses.append(_clausula_procedimiento(rule.procedimiento))
     if rule.tipo_contrato:
-        clauses.append(_clausula_tipo_contrato(rule.tipo_contrato))
+        # Código o etiqueta de cada fuente, como el filtro del listado.
+        clauses.append(tipo_contrato_en(licitaciones.c.tipo_contrato, [rule.tipo_contrato]))
     if rule.plazo_min_dias is not None:
         corte = (_hoy(hoy_iso) + timedelta(days=int(rule.plazo_min_dias))).isoformat()
         clauses.append(text(iso_guard("licitaciones.fecha_limite")))

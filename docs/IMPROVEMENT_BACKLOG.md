@@ -1392,9 +1392,11 @@ _Sin ítems abiertos._
   `shared/procedimientos.py` a partir de los valores distintos de la columna
   en producción. El selector toma las opciones de `/meta/filters`
   (`tipo_contrato`), como el procedimiento. En producción no había reglas con
-  tipo de contrato. Queda sin código «Altra legislació sectorial», que no
-  tiene equivalente en la codelist. El filtro `tipo_contrato` del listado
-  (`db/repositories/licitaciones.py`) sigue comparando por igualdad.
+  tipo de contrato. El filtro `tipo_contrato` del listado comparaba el código
+  sin ceros pero no casaba con las etiquetas: usa el mismo predicado
+  (`db.repositories.licitaciones.tipo_contrato_en`, también en la rama FTS),
+  así que regla y listado traen las mismas filas. Queda sin código «Altra
+  legislació sectorial», que no tiene equivalente en la codelist.
 
 - [2026-10-17] **Segundo repaso del Investigador** (rama
   `claude/quirky-wozniak-xp20q0`):

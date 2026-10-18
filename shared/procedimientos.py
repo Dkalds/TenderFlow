@@ -60,6 +60,7 @@ __all__ = [
     "etiqueta_tramitacion",
     "no_catalogados",
     "opciones",
+    "terminos_tipo_contrato",
     "variantes_tipo_contrato",
 ]
 
@@ -385,3 +386,28 @@ def variantes_tipo_contrato(codigo: str) -> list[str]:
     if entrada is not None:
         etiquetas.add(entrada.etiqueta.casefold())
     return sorted(etiquetas)
+
+
+def terminos_tipo_contrato(valores: list[str]) -> tuple[list[str], list[str]]:
+    """Lo que un filtro por tipo de contrato compara contra la columna.
+
+    Devuelve ``(codigos, etiquetas)``: los códigos CODICE sin ceros, que el
+    llamante compara con la columna normalizada igual, y las etiquetas en
+    minúsculas que cada fuente usa para esos códigos, que se comparan con la
+    columna en minúsculas. Un valor que no se reconoce entra tal cual entre las
+    etiquetas: filtrar por él casa con las filas que lo dicen literalmente.
+    Las dos listas van ordenadas y sin repetidos para que la sentencia sea
+    estable.
+    """
+    codigos: set[str] = set()
+    etiquetas: set[str] = set()
+    for valor in valores:
+        codigo = codigo_tipo_contrato(valor)
+        if codigo is None:
+            continue
+        if codigo.isdigit():
+            codigos.add(codigo)
+            etiquetas.update(variantes_tipo_contrato(codigo))
+        else:
+            etiquetas.add(codigo.casefold())
+    return sorted(codigos), sorted(etiquetas)

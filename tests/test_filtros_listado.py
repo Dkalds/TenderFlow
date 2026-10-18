@@ -240,6 +240,31 @@ class TestParidad:
         """E3 está guardado como `01`; pedir `1` tiene que traerlo."""
         assert "E3" in self._ids_offset(procedimiento="1")
 
+    def test_el_tipo_de_contrato_casa_con_la_etiqueta_de_cada_fuente(self) -> None:
+        """La PSCP guarda «Serveis» y TED «services» donde PLACSP pone ``2``:
+        filtrar por el código del desplegable tiene que traer las tres, también
+        con texto libre (la rama FTS reescribe el WHERE en SQL crudo)."""
+        from db.database import connect
+
+        with connect() as c:
+            for id_ext, tipo in (
+                ("E5", "Serveis"),
+                ("E6", " services "),
+                ("E7", "Subministraments"),
+            ):
+                c.execute(
+                    "INSERT INTO licitaciones (id_externo, titulo, tipo_contrato, tecnologia, "
+                    "estado, fecha_publicacion, fecha_extraccion) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (id_ext, "Soporte SAP", tipo, "SAP", "PUB", "2026-09-01", "2026-09-01"),
+                )
+        servicios = {"E1", "E2", "E5", "E6"}
+        assert self._ids_offset(tipo_contrato="2") == servicios
+        assert self._ids_cursor(tipo_contrato="2") == servicios
+        assert self._ids_offset(q="SAP", tipo_contrato="2") == servicios
+        assert self._ids_offset(tipo_contrato="1,3") == {"E3", "E7"}
+        assert self._ids_offset(q="SAP", tipo_contrato="1") == {"E7"}
+
     def test_importe_nulo_queda_fuera_del_rango(self) -> None:
         from db.database import connect
 

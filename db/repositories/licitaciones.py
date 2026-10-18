@@ -55,6 +55,7 @@ from shared.estados import (
     abierta_sql,
     abierta_sql_marcadores,
 )
+from shared.procedimientos import terminos_tipo_contrato
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -219,6 +220,41 @@ def _codigo_en(column: Any, values: list[str]) -> Any:
     # `NULLIF`+`COALESCE`: `ltrim('0','0')` deja '', que no es ningún código.
     normalizada = func.coalesce(func.nullif(func.ltrim(func.trim(column), "0"), ""), "0")
     return normalizada.in_(sorted(codigos))
+
+
+def tipo_contrato_en(column: Any, values: list[str]) -> Any:
+    """``column`` es alguno de los tipos de contrato pedidos, como código o etiqueta.
+
+    La columna guarda lo que publica cada fuente: el código CODICE (``2``,
+    ``02``) o la etiqueta en su lengua («Serveis», «services»). Comparar solo
+    el código dejaba fuera las filas de la PSCP, de TED y de los RSS
+    regionales. Los términos salen de ``shared.procedimientos``; lo usan el
+    listado y las reglas de watchlist, que tienen que casar con las mismas
+    filas.
+    """
+    codigos, etiquetas = terminos_tipo_contrato(values)
+    condiciones: list[Any] = []
+    if codigos:
+        normalizada = func.coalesce(func.nullif(func.ltrim(func.trim(column), "0"), ""), "0")
+        condiciones.append(normalizada.in_(codigos))
+    if etiquetas:
+        condiciones.append(func.lower(func.trim(column)).in_(etiquetas))
+    if not condiciones:
+        return text("1=1")
+    return or_(*condiciones)
+
+
+def _tipo_contrato_en_sql(columna: str, values: list[str]) -> tuple[str, list[str]] | None:
+    """:func:`tipo_contrato_en` en SQL crudo, para la rama FTS del listado."""
+    codigos, etiquetas = terminos_tipo_contrato(values)
+    partes: list[str] = []
+    if codigos:
+        partes.append(f"{codigo_normalizado_sql(columna)} IN ({', '.join(['%s'] * len(codigos))})")
+    if etiquetas:
+        partes.append(f"lower(trim({columna})) IN ({', '.join(['%s'] * len(etiquetas))})")
+    if not partes:
+        return None
+    return "(" + " OR ".join(partes) + ")", [*codigos, *etiquetas]
 
 
 def _any_of(column: Any, values: list[str]) -> Any:
@@ -592,10 +628,12 @@ class LicitacionRepository:
         for columna, valores in (
             (licitaciones.c.procedimiento, csv_values(procedimiento)),
             (licitaciones.c.tramitacion, csv_values(tramitacion)),
-            (licitaciones.c.tipo_contrato, csv_values(tipo_contrato)),
         ):
             if valores:
                 clauses.append(_codigo_en(columna, valores))
+        # El tipo de contrato, además, llega como etiqueta de cada fuente.
+        if tipos := csv_values(tipo_contrato):
+            clauses.append(tipo_contrato_en(licitaciones.c.tipo_contrato, tipos))
 
         # Plazo restante en días, calculado en SQL sobre `fecha_limite` y sin
         # los estados terminales: un expediente adjudicado con fecha límite
@@ -996,10 +1034,13 @@ class LicitacionRepository:
             extra_conditions.append(f"l.provincia IN ({marcadores})")
             extra_params.extend(provincias)
 
+        if filtro_tipo := _tipo_contrato_en_sql("l.tipo_contrato", csv_values(tipo_contrato)):
+            extra_conditions.append(filtro_tipo[0])
+            extra_params.extend(filtro_tipo[1])
+
         for columna, valores in (
             ("l.procedimiento", csv_values(procedimiento)),
             ("l.tramitacion", csv_values(tramitacion)),
-            ("l.tipo_contrato", csv_values(tipo_contrato)),
         ):
             codigos = sorted({_normaliza_codigo(v) for v in valores if v.strip()})
             if codigos:
