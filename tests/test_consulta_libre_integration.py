@@ -158,6 +158,31 @@ def test_set_config_no_sobrevive_al_pool_solo_lectura(una_sola_conexion: None) -
     assert segunda.filas[0][0] == primera[1]
 
 
+@pytest.fixture()
+def rol_como_supabase(una_sola_conexion: None, rol_mcp: str, tmp_db: Any) -> None:
+    """El rol del MCP con ``extra_float_digits = 0``, el valor de Supabase.
+
+    En producción el 0 viene del fichero de configuración y el rol puede no
+    tener el ``ALTER ROLE … SET extra_float_digits = 3`` de ``sentencias_rol``;
+    aquí se le pone 0 al rol para que sea el valor por defecto de la sesión (el
+    que restaura ``RESET ALL``) y el ejecutor tenga que corregirlo él solo.
+    """
+    db_mod, _ = tmp_db
+    with db_mod.connect() as c:
+        c.execute(f'ALTER ROLE "{rol_mcp}" SET extra_float_digits = 0')
+    consulta_libre.cerrar_pool_mcp()
+
+
+def test_real_exacto_aunque_el_servidor_redondee(rol_como_supabase: None) -> None:
+    """``11782155::real`` no puede llegar como 11782200 (6 cifras significativas)."""
+    assert _en_el_pool("SHOW extra_float_digits")[0] == "3"
+    assert ejecutar_select("SELECT 11782155::real AS importe").filas == [[11782155]]
+    # La segunda consulta reutiliza la conexión tras el RESET ALL del pool,
+    # que devuelve el valor por defecto de la sesión (0): sigue exacto.
+    assert ejecutar_select("SELECT 11782155::real AS importe").filas == [[11782155]]
+    assert _en_el_pool("SHOW extra_float_digits")[0] == "3"
+
+
 def test_escritura_en_cte_falla(rol_mcp: str) -> None:
     err = _err(
         "WITH i AS (INSERT INTO licitaciones (id_externo) VALUES ('x') RETURNING 1) SELECT * FROM i"

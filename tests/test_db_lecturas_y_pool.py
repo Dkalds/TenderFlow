@@ -424,10 +424,24 @@ class _ConexionDelPool:
         self.rota = rota
         self.consultas: list[str] = []
 
-    def execute(self, sql: str) -> None:
+    def execute(self, sql: str, params: object = None) -> None:
         self.consultas.append(sql)
         if self.rota:
             raise ConnectionError("server closed the connection unexpectedly")
+
+    def cursor(self) -> _ConexionDelPool:
+        # El `configure` abre un cursor para sus `set_config`; basta con que
+        # ejecute sobre la misma lista.
+        return self
+
+    def __enter__(self) -> _ConexionDelPool:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def commit(self) -> None:
+        return None
 
 
 def test_una_conexion_usada_hace_poco_no_se_verifica() -> None:
@@ -502,8 +516,8 @@ def test_una_conexion_recien_abierta_cuenta_como_activa(monkeypatch: pytest.Monk
     monkeypatch.setattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 0)
     conexion = _ConexionDelPool()
 
-    # Sin ajustes que fijar (timeouts a 0, pool de escritura) no ejecuta nada:
-    # lo único que se comprueba es la marca.
+    # Con los timeouts a 0 solo fija `extra_float_digits`; lo que se comprueba
+    # aquí es la marca.
     conn_mod._make_pg_configure(read_only=False)(conexion)
 
     assert time.monotonic() - getattr(conexion, conn_mod._ATRIBUTO_ACTIVIDAD) < 1
