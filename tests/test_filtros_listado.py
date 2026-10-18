@@ -146,7 +146,8 @@ class TestParidad:
                 "Cádiz",
                 "9",
                 "2",
-                "2",
+                # Como lo escribe la PSCP: el texto, no el código «2».
+                "Serveis",
                 40,
             ),
             (
@@ -239,6 +240,14 @@ class TestParidad:
     def test_el_codigo_con_cero_a_la_izquierda_casa(self) -> None:
         """E3 está guardado como `01`; pedir `1` tiene que traerlo."""
         assert "E3" in self._ids_offset(procedimiento="1")
+
+    def test_el_tipo_de_contrato_casa_con_el_texto_de_la_fuente(self) -> None:
+        """E2 dice «Serveis» y E1 «2»: los dos son servicios, en las tres rutas."""
+        assert self._ids_offset(tipo_contrato="2") == {"E1", "E2"}
+        assert self._ids_cursor(tipo_contrato="2") == {"E1", "E2"}
+        con_texto, _ = _repo.list_paginated(limit=200, q="SAP", tipo_contrato="2")
+        assert {str(i["id_externo"]) for i in con_texto} == {"E1", "E2"}
+        assert self._ids_offset(tipo_contrato="3") == {"E3"}
 
     def test_importe_nulo_queda_fuera_del_rango(self) -> None:
         from db.database import connect

@@ -27,7 +27,6 @@ import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
-import type { Schemas } from "@/lib/api-types";
 import { watchlistKeys } from "@/lib/query-keys";
 import { parsePrefill, prefillToFormState } from "./use-watchlist-rules";
 import {
@@ -39,15 +38,13 @@ import {
 } from "./use-preview-regla";
 import { activeRulesOf, dedupeMatches } from "./watchlist-matches";
 import { ccaaOptions } from "./watchlist-rule-options";
-import type { ApiRule, MatchItem, RuleBody } from "./watchlist-rule-types";
+import type { ApiRule, CatalogosCodificados, MatchItem, RuleBody } from "./watchlist-rule-types";
 
 /** Raíz de los endpoints de reglas (sesión por cookie, como el resto del dash). */
 const RULES_KEY = "/api/v1/watchlist/rules";
 
 export type WatchlistTab = "reglas" | "favoritos";
 
-/** Una opción de lista controlada de `/meta/filters` (código + etiqueta). */
-export type OpcionCodificada = Schemas["OpcionCodificada"];
 
 /**
  * Vuelta del enlace de baja del correo.
@@ -113,8 +110,8 @@ export interface MiWatchlistState {
   ccaaList: string[];
   /** Catálogo de tecnologías para el criterio de S4.4; vacío si meta falla. */
   tecnologiaList: string[];
-  /** Catálogo CODICE de procedimientos (`/meta/filters`); vacío si meta falla. */
-  procedimientoList: OpcionCodificada[];
+  /** Catálogos CODICE de `/meta/filters`; vacíos si meta falla. */
+  catalogos: CatalogosCodificados;
   rules: ApiRule[] | undefined;
   ruleCount: number;
   rulesLoading: boolean;
@@ -190,7 +187,7 @@ export function useMiWatchlist(): MiWatchlistState {
   const { data: meta } = useMetaFilters();
   const ccaaList = ccaaOptions(meta?.ccaa);
   const tecnologiaList = meta?.tecnologia ?? [];
-  const procedimientoList = meta?.procedimiento ?? [];
+  const catalogos = { procedimiento: meta?.procedimiento ?? [], tipo_contrato: meta?.tipo_contrato ?? [] };
 
   /* ---- Mutations ---- */
   const invalidate = () => qc.invalidateQueries({ queryKey: watchlistKeys.rules });
@@ -280,7 +277,7 @@ export function useMiWatchlist(): MiWatchlistState {
     setFormOpen,
     ccaaList,
     tecnologiaList,
-    procedimientoList,
+    catalogos,
     rules,
     ruleCount: rules?.length ?? 0,
     rulesLoading,

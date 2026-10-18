@@ -68,15 +68,6 @@ export const BANDA_OPTIONS: { value: string; label: string }[] = [
 ];
 
 /**
- * Tipos de contrato que persiste la ingesta (revisión `v85`). El procedimiento
- * ya no vive aquí: la columna guarda el código CODICE y no la palabra, así que
- * «abierto» no casaba con nada; sus opciones salen del catálogo de
- * `/meta/filters` (`procedimientoList`).
- */
-
-export const TIPO_CONTRATO_OPTIONS = ["servicios", "suministros", "obras"];
-
-/**
  * Nota bajo el selector: la latencia es de la ingesta, no de la frecuencia
  * elegida, y para un plazo que vence hoy ninguna frecuencia es suficiente.
  */

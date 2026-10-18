@@ -9,10 +9,15 @@
  */
 
 import type * as z from "zod/mini";
-import type { WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
+import type { Schemas, WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
 import type { regla } from "@/lib/forms/esquemas";
 
 export type Frequency = "immediate" | "daily" | "weekly";
+
+/** Una opción de lista controlada de `/meta/filters` (código + etiqueta). */
+export type OpcionCodificada = Schemas["OpcionCodificada"];
+/** Los catálogos CODICE que usan los criterios de una regla. */
+export type CatalogosCodificados = Record<"procedimiento" | "tipo_contrato", OpcionCodificada[]>;
 
 /** Banda comercial del Radar, de menor a mayor exigencia. */
 export type Banda = "Descarte" | "Tibia" | "Atractiva" | "Caliente";
