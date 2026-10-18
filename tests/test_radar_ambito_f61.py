@@ -97,10 +97,13 @@ def test_tipos_organo_con_alias_califica_la_tabla_exterior() -> None:
 
 
 def test_filtros_vacios_no_anaden_clausulas() -> None:
+    """Sin ámbito queda solo el universo de presentación (ADR-026 D23), sin parámetros."""
+    from db.sql_fragments import exclude_duplicados_presentacion_sql
+
     where, params = build_licitaciones_where(
         LicitacionesFilters(cpv_prefijos=" , ", procedimientos_excluidos="", tipos_organo=None)
     )
-    assert where == "1 = 1"
+    assert where == "1 = 1 AND " + exclude_duplicados_presentacion_sql("id_externo")
     assert params == []
 
 

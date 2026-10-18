@@ -236,7 +236,13 @@ def build_licitaciones_where(
     def col_nucleo(name: str) -> str:
         return columna_nucleo_sql(name, alias) if nucleo else col(name)
 
-    clauses: list[str] = ["1 = 1"]
+    # ADR-026 D23 (2026-10-17): el ámbito de la pantalla esconde las
+    # republicaciones `pending` y `confirmed`, igual que el listado con el que
+    # comparte semántica (`_base_filters`): los KPIs de encima cuentan lo que
+    # la lista enseña, y el Radar lo hereda de aquí. Las métricas competitivas
+    # (cuota, HHI, bajas) no pasan por este constructor y siguen excluyendo
+    # solo `confirmed` con `exclude_duplicados_sql`.
+    clauses: list[str] = ["1 = 1", exclude_duplicados_presentacion_sql(col("id_externo"))]
     params: list[Any] = []
 
     if filters.fecha_desde:
@@ -675,8 +681,16 @@ class AggregateRepository:
         return float(row[0])
 
     def count_total_activas(self, *, conn: Any | None = None) -> int:
-        """Expedientes no terminales en toda la tabla, para el snapshot."""
-        sql = f"SELECT COUNT(*) FROM licitaciones WHERE {abierta_sql()}"
+        """Expedientes no terminales en toda la tabla, para el snapshot.
+
+        Mismo universo de presentación que el listado (ADR-026 D23): el
+        snapshot sirve el total global de ``/resumen`` y tiene que contar lo que
+        la lista enseña, sin las republicaciones ``pending`` y ``confirmed``.
+        """
+        sql = (
+            f"SELECT COUNT(*) FROM licitaciones WHERE {abierta_sql()} "
+            f"AND {exclude_duplicados_presentacion_sql('id_externo')}"
+        )
         with _lectura(conn) as c:
             row = c.execute(sql).fetchone()
         return int(row[0]) if row and row[0] is not None else 0
@@ -2307,20 +2321,18 @@ class AggregateRepository:
         # C4.2 / D23 — el Radar enseña un contrato una vez.
         #
         # Este universo no excluía **ningún** duplicado, ni siquiera los
-        # `confirmed`. TED acuña un `publication-number` por anuncio y PSCP cae
+        # `confirmed`: TED acuña un `publication-number` por anuncio y PSCP cae
         # al `id` de la fila cuando no hay expediente, así que el mismo contrato
-        # llegaba al Radar tantas veces como veces se hubiera reemitido.
-        #
-        # Se usa la variante de presentación (esconde también `pending`) y no la
-        # analítica: el Radar es una lista que alguien lee, no una métrica de
-        # cuota de mercado. El razonamiento completo está en
-        # `exclude_duplicados_presentacion_sql` y en ADR-026.
-        no_duplicada = exclude_duplicados_presentacion_sql("id_externo")
+        # llegaba al Radar tantas veces como veces se hubiera reemitido. Desde
+        # 2026-09-06 se excluían aquí a mano con la variante de presentación
+        # (esconde también `pending`), y desde 2026-10-17 esa exclusión la
+        # emite `build_licitaciones_where` —viene dentro de `where`— porque el
+        # listado y los KPIs comparten este mismo ámbito y tenían que contar lo
+        # mismo. El razonamiento completo está en ADR-026.
         sql = (
             f"SELECT {self._scoring_cols()} FROM licitaciones "
             f"WHERE {where} "
             f"  AND {abierta} "
-            f"  AND {no_duplicada} "
             f"  AND {guard} AND {fecha_limite} >= %s"
         )
         with connect_read() as c:

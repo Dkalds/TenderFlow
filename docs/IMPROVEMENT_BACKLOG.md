@@ -691,21 +691,6 @@ _Sin ítems abiertos._
   - El valor elegido fijado en Render (o el default del setting cambiado) con el motivo; preferiblemente después del P1 de índices.
 - **Riesgo:** medio — un techo corto convierte consultas lentas en errores.
 
-### [P2] Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23 dice que sí)
-- **Área:** db/repositories/licitaciones.py (`_base_filters`), db/repositories/aggregates.py
-- **Problema:** D23 fija «Radar, listados: esconde `pending` y `confirmed`», pero
-  `_base_filters` —listado, cursor y export— no excluye ningún duplicado, y el
-  guardrail de dedupe lo exime como «CRUD por diseño». El Radar sí los esconde.
-  Con las marcas de TED de 2026-09-24, el Radar deja de enseñar la copia TED y el
-  listado la sigue enseñando.
-- **Acceptance criteria:**
-  - Decisión escrita (en ADR-026 o en el guardrail) sobre cuál de las dos reglas manda.
-  - Si se esconden: `exclude_duplicados_presentacion_sql` en `_base_filters` y en
-    la rama FTS, y los contadores de `/resumen` que abren el listado miden lo mismo
-    (hoy los fija un test de paridad).
-- **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [tests/test_dedup_guardrail.py](../tests/test_dedup_guardrail.py)
-- **Riesgo:** medio — cambia el universo del listado, el cursor y el export a la vez.
-
 ### [P2] La portada cita el tamaño del censo bajo un titular que promete lo contrario
 - **Área:** producción (acción del usuario) + web/src/app/(publico)/_components/franja-datos.tsx
 - **Problema:** la franja de la portada publica el total del corpus público —medido el 2026-09-03 en producción: 417.182 expedientes— justo encima de una sección titulada «Un radar tecnológico, no un censo de toda la contratación pública». Las dos cosas son honestas por separado: el número sale tal cual de `/publico/sitemap/resumen` (ADR-014) y el titular describe la regla de entrada. Lo que las hace incompatibles es que la migración **v98**, que acota la superficie pública al universo tecnológico, está mergeada y **sin aplicar**: `migrate.yml` es `workflow_dispatch` y el `autoDeploy` de Render no migra. Ver el ítem cerrado del 2026-09-02 en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
@@ -1376,6 +1361,21 @@ _Sin ítems abiertos._
 
 ## Cerrados
 
+- [2026-10-17] **P2: Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23
+  dice que sí)** (rama `claude/listado-esconde-duplicados`) — manda D23: el listado es
+  presentación y esconde `pending` y `confirmed`, como el Radar. La exclusión entra en
+  `_base_filters` (paginado y cursor), en la rama FTS, en el export (`fetch_for_pdf`), en el
+  feed SSE del dashboard (`fetch_recent`), en `build_licitaciones_where`
+  (los KPIs de encima del listado; el Radar la aplicaba a mano y ahora la hereda de ahí),
+  en `count_total_activas` y en el universo del snapshot (`db/kpi_precompute.py`), de modo
+  que lista, KPIs, Radar y snapshot cuentan lo mismo; la ficha por id no cambia. Las
+  métricas competitivas siguen con `exclude_duplicados_sql`. Fuera a propósito:
+  `POST /licitaciones/search` (`search_advanced`), que monta su propio SQL por rango de
+  `ml_proba`, `search_vector` y ventanas de fecha y no tiene consumidor en la web; si algún
+  cliente de la API lo usa como listado, es un cambio aparte. La decisión queda escrita en
+  ADR-026 (nota del 2026-10-17) y en el docstring del guardrail de dedupe. Lo fijan
+  `tests/test_listado_esconde_duplicados.py` (Postgres: cuatro superficies, KPIs, snapshot,
+  Radar y ficha) y los tests de SQL emitido de `tests/test_republicaciones_regla.py`.
 - [2026-10-17] **P2: Aplicar `v151_fechas_texto_iso` en producción** — aplicada con
   `migrate.yml` (`mode=apply`, run 39066215215, 82 s) fuera de la ventana de la ingesta:
   `alembic current` en `v151_fechas_texto_iso`, 0 de 54.300 filas de `documentos` con el

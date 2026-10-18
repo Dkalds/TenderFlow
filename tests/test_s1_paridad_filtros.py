@@ -40,6 +40,7 @@ from db.sql_fragments import (
     FOLD_SRC,
     FOLD_SRC_SQL,
     _literal_constante_sql,
+    exclude_duplicados_presentacion_sql,
     fold_expr,
     tecnologia_en_csv_sql,
     tecnologia_tokens_sql,
@@ -189,9 +190,21 @@ def test_tecnologia_un_marcador_por_codigo_y_ninguno_sin_codigos() -> None:
 
 
 def test_tecnologia_en_blanco_no_filtra_en_ninguno_de_los_dos_lados() -> None:
-    """Un ``,`` suelto de la barra de ámbito no puede convertirse en un filtro vacío."""
-    assert LicitacionRepository._base_filters(only_classified=False, tecnologia=" , ") == []
-    assert _agregados(tecnologia=" , ") == ("1 = 1", [])
+    """Un ``,`` suelto de la barra de ámbito no puede convertirse en un filtro vacío.
+
+    Desde 2026-10-17 el ``WHERE`` de los dos lados nace con la exclusión de
+    presentación de duplicados (ADR-026 D23): es la única cláusula que puede
+    quedar, y a cada lado va sobre su propia forma de nombrar la columna.
+    """
+    sql_listado, params_listado = _listado(tecnologia=" , ")
+    assert sql_listado.endswith(
+        "WHERE " + exclude_duplicados_presentacion_sql("licitaciones.id_externo")
+    )
+    assert params_listado == []
+    assert _agregados(tecnologia=" , ") == (
+        "1 = 1 AND " + exclude_duplicados_presentacion_sql("licitaciones.id_externo"),
+        [],
+    )
 
 
 def test_el_export_y_la_agenda_emiten_el_mismo_fragmento(monkeypatch: pytest.MonkeyPatch) -> None:

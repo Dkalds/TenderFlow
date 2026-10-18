@@ -7,6 +7,12 @@ hubiera reemitido, y la ficha lo servía sin decir que lo era.
 
 Estos tests fijan la asimetría, que es la parte que se rompe sola si alguien
 "unifica" los dos fragmentos SQL por parecerse.
+
+Desde 2026-10-17 la fila «listados» de D23 también se cumple: la exclusión de
+presentación la emiten los dos constructores de ámbito (``_base_filters`` y
+``build_licitaciones_where``) y la rama FTS, y el Radar la hereda del segundo.
+El recorrido con Postgres está en ``tests/test_listado_esconde_duplicados.py``;
+aquí se fija el SQL emitido, sin base.
 """
 
 from __future__ import annotations
@@ -51,14 +57,44 @@ class TestFragmentos:
 class TestSuperficies:
     """Quién usa cuál, verificado sobre el código."""
 
-    def test_el_radar_usa_la_variante_de_presentacion(self) -> None:
-        """`scoring_candidates` es el universo del Radar y no excluía nada."""
+    def test_el_ambito_compartido_emite_la_variante_de_presentacion(self) -> None:
+        """`build_licitaciones_where` es el universo del Radar y de los KPIs del listado."""
+        from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
+
+        where, _ = build_licitaciones_where(LicitacionesFilters())
+        assert exclude_duplicados_presentacion_sql("id_externo") in where
+        where_alias, _ = build_licitaciones_where(LicitacionesFilters(), alias="l")
+        assert exclude_duplicados_presentacion_sql("l.id_externo") in where_alias
+
+    def test_el_radar_se_construye_sobre_el_ambito_compartido(self) -> None:
+        """`scoring_candidates` hereda la exclusión del constructor común.
+
+        Hasta 2026-10-17 la añadía a mano; si dejara de pasar por
+        `_build_where`, el universo del Radar volvería a mostrar el mismo
+        contrato N veces.
+        """
         fuente = (ROOT / "db" / "repositories" / "aggregates.py").read_text(encoding="utf-8")
         cuerpo = re.search(r"def scoring_candidates\(.*?return rows_to_dicts", fuente, re.S)
         assert cuerpo, "no se encontró scoring_candidates"
-        assert "exclude_duplicados_presentacion_sql" in cuerpo.group(0), (
-            "el universo del Radar volvería a mostrar el mismo contrato N veces"
-        )
+        assert "_build_where(" in cuerpo.group(0)
+
+    def test_el_listado_usa_la_variante_de_presentacion(self) -> None:
+        """`_base_filters` es el universo del listado, el cursor y el export (D23)."""
+        from sqlalchemy import and_, select
+
+        from db.models import compile_query, licitaciones
+        from db.repositories.licitaciones import LicitacionRepository
+
+        clausulas = LicitacionRepository._base_filters(only_classified=False)
+        sql, _ = compile_query(select(licitaciones.c.id_externo).where(and_(*clausulas)))
+        assert exclude_duplicados_presentacion_sql("licitaciones.id_externo") in sql
+
+    def test_la_busqueda_de_texto_escribe_la_misma_regla(self) -> None:
+        """La rama FTS monta su `WHERE` a mano: la cláusula tiene que estar en su código."""
+        fuente = (ROOT / "db" / "repositories" / "licitaciones.py").read_text(encoding="utf-8")
+        cuerpo = re.search(r"def _list_fts\(.*?def list_cursor\(", fuente, re.S)
+        assert cuerpo, "no se encontró _list_fts"
+        assert 'exclude_duplicados_presentacion_sql("l.id_externo")' in cuerpo.group(0)
 
     def test_la_analitica_de_adjudicaciones_no_cambio(self) -> None:
         """Las métricas competitivas siguen contando los `pending`."""

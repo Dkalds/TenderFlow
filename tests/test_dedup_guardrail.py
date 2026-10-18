@@ -37,11 +37,16 @@ de la migración pareciendo verde. Los módulos de ``db/`` que reciben SQL
 analítico migrado se añaden aquí **en el mismo cambio que los crea**.
 
 No se escanea ``db/repositories/`` entero a propósito: ahí conviven las queries
-analíticas con el CRUD del API (leer un expediente por id, listar paginado), y
-ese CRUD no debe deduplicar —muestra lo que hay, no agrega métricas—. Una regla
-por directorio marcaría todo eso como violación y la reacción sería engordar
-``_ALLOWLIST`` hasta vaciarla de sentido. La lista explícita obliga a decidir
-módulo a módulo, que es la decisión que importa.
+analíticas con el CRUD del API. La ficha por id no deduplica —sirve la fila que
+se le pide y declara ``republicacion_de``—, y el listado paginado sigue otra
+regla, la de presentación de ADR-026 D23: esconde ``pending`` **y**
+``confirmed`` con ``exclude_duplicados_presentacion_sql`` (desde 2026-10-17;
+lo fija ``tests/test_listado_esconde_duplicados.py``). Esa variante no es la que
+este guardrail vigila: aquí se protege la métrica, no la lista, y las dos
+reglas son distintas a propósito (``tests/test_republicaciones_regla.py``). Una
+regla por directorio marcaría todo eso como violación y la reacción sería
+engordar ``_ALLOWLIST`` hasta vaciarla de sentido. La lista explícita obliga a
+decidir módulo a módulo, que es la decisión que importa.
 """
 
 from __future__ import annotations

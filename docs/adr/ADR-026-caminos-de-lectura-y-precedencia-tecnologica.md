@@ -187,6 +187,18 @@ Antes de este addendum:
 | Cuota, HHI, bajas | Esconde **solo** `confirmed` | `exclude_duplicados_sql` (sin cambios) |
 | Ficha de detalle | La sirve **y lo dice** | `LicitacionDetail.republicacion_de` |
 
+*Nota del 2026-10-17.* La fila «listados» tardó en cumplirse: el Radar aplicó la
+regla desde este addendum, pero `GET /licitaciones` —paginado, cursor, export,
+la rama de texto libre y el feed SSE— siguió enseñando las republicaciones hasta esa fecha, y
+con las marcas de TED del 2026-09-24 el Radar escondía la copia del DOUE que el
+listado aún mostraba. Desde entonces la exclusión vive en los dos constructores
+de ámbito, `LicitacionRepository._base_filters` y `build_licitaciones_where`, y
+en el universo del snapshot de KPIs (`db/kpi_precompute.py`), de modo que la
+lista, los KPIs de encima, el Radar (que la hereda del constructor común) y el
+snapshot cuentan lo mismo. Las métricas competitivas (`mercado`, `competitive`)
+no pasan por esos constructores y siguen con `exclude_duplicados_sql`. Lo fija
+`tests/test_listado_esconde_duplicados.py`.
+
 ### Por qué esta asimetría y no una regla única
 
 Porque los dos errores no cuestan lo mismo.
