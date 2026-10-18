@@ -533,45 +533,86 @@ def _criterios_raiz(entry: Any, cfs: str) -> list[Any]:
     return raiz
 
 
-def _codigos_criterio(nodo: Any) -> tuple[str, str]:
-    """Tipo (en mayúsculas) y subtipo del criterio, cadena vacía si faltan."""
-    tipo = _text(nodo, _CRITERIO_TIPO_XPATH) or ""
-    subtipo = _text(nodo, _CRITERIO_SUBTIPO_XPATH) or ""
-    return tipo.strip().upper(), subtipo.strip()
+def _codigos_normalizados(tipo: str | None, subtipo: str | None) -> tuple[str, str]:
+    """Tipo en mayúsculas y subtipo, sin espacios y como cadena vacía si faltan."""
+    return (tipo or "").strip().upper(), (subtipo or "").strip()
 
 
-def _ambito_codifica_precio(nodos: Iterable[Any]) -> bool:
+def ambito_codifica_precio(codigos: Iterable[tuple[str | None, str | None]]) -> bool:
     """¿Algún criterio del ámbito lleva el código del precio (``OBJ``/``1``)?
 
-    Solo entonces el subtipo distingue el precio del resto. Hay órganos que
-    codifican todo criterio de fórmula como ``OBJ``/``2``, el precio incluido;
-    ahí fiarse del subtipo pondría el peso del precio a 0.
+    ``codigos`` son las parejas (tipo, subtipo) crudas de todos los criterios
+    del ámbito, subcriterios incluidos. Solo si alguna es ``OBJ``/``1`` el
+    subtipo distingue el precio del resto. Hay órganos que codifican todo
+    criterio de fórmula como ``OBJ``/``2``, el precio incluido; ahí fiarse del
+    subtipo pondría el peso del precio a 0.
     """
-    return any(
-        _codigos_criterio(nodo) == (_TIPO_CRITERIO_FORMULA, _SUBTIPO_CRITERIO_PRECIO)
-        for nodo in nodos
-    )
+    precio = (_TIPO_CRITERIO_FORMULA, _SUBTIPO_CRITERIO_PRECIO)
+    return any(_codigos_normalizados(tipo, subtipo) == precio for tipo, subtipo in codigos)
 
 
-def _es_criterio_precio(nodo: Any, *, ambito_codifica_precio: bool) -> bool:
+def criterio_es_precio(
+    tipo: str | None,
+    subtipo: str | None,
+    texto: str | None,
+    *,
+    ambito_codifica_precio: bool,
+) -> bool:
     """¿Es este criterio el precio?
 
     Por orden: el tipo textual de UBL 2.1 (``PRICE``/``COST``); un juicio de
     valor (``SUBJ``) nunca lo es, porque el precio se valora por fórmula (art.
     146 LCSP); el subtipo de ``OBJ``, si el ámbito lo usa para el precio (ver
-    ``_ambito_codifica_precio``); y si nada de eso decide, el texto de la
+    :func:`ambito_codifica_precio`); y si nada de eso decide, el texto de la
     descripción sin las menciones que niegan el precio.
+
+    Trabaja sobre valores y no sobre el XML porque es la misma regla que aplica
+    ``scripts/backfill_criterio_precio.py`` a las filas ya guardadas.
     """
-    tipo, subtipo = _codigos_criterio(nodo)
+    tipo, subtipo = _codigos_normalizados(tipo, subtipo)
     if tipo.lower() in _TIPOS_CRITERIO_PRECIO:
         return True
     if tipo == _TIPO_CRITERIO_JUICIO:
         return False
     if ambito_codifica_precio and tipo == _TIPO_CRITERIO_FORMULA and subtipo:
         return subtipo == _SUBTIPO_CRITERIO_PRECIO
-    textos = nodo.xpath(_CRITERIO_TEXTO_XPATH, namespaces=NS)
-    plano = _MENCION_NEGADA_PRECIO.sub(" ", _sin_acentos(" ".join(str(t) for t in textos)))
+    plano = _MENCION_NEGADA_PRECIO.sub(" ", _sin_acentos(texto or ""))
     return any(token in plano for token in _TOKENS_CRITERIO_PRECIO)
+
+
+def peso_precio_de_criterios(criterios: Iterable[tuple[float | None, bool]]) -> float | None:
+    """Peso del precio en % sobre 100 a partir de los criterios raíz.
+
+    ``criterios`` son parejas (peso publicado, es el precio). La regla de la
+    escala está en :func:`parse_peso_precio`; vive aquí, sobre valores, para
+    que el backfill la aplique igual a las filas guardadas.
+    """
+    total = 0.0
+    precio = 0.0
+    for peso, es_precio in criterios:
+        if peso is None or peso < 0:
+            continue
+        total += peso
+        if es_precio:
+            precio += peso
+    if _PESO_TOTAL_PORCENTAJE[0] <= total <= _PESO_TOTAL_PORCENTAJE[1]:
+        return round(precio, 4)
+    if _PESO_TOTAL_FRACCION[0] <= total <= _PESO_TOTAL_FRACCION[1]:
+        return round(precio * 100.0, 4)
+    return None
+
+
+def _codigos_criterio(nodo: Any) -> tuple[str | None, str | None]:
+    return _text(nodo, _CRITERIO_TIPO_XPATH), _text(nodo, _CRITERIO_SUBTIPO_XPATH)
+
+
+def _es_criterio_precio(nodo: Any, *, ambito_codifica_precio: bool) -> bool:
+    textos = nodo.xpath(_CRITERIO_TEXTO_XPATH, namespaces=NS)
+    return criterio_es_precio(
+        *_codigos_criterio(nodo),
+        " ".join(str(t) for t in textos),
+        ambito_codifica_precio=ambito_codifica_precio,
+    )
 
 
 def parse_peso_precio(entry: Any) -> float | None:
@@ -598,25 +639,18 @@ def parse_peso_precio(entry: Any) -> float | None:
     cfs = "./cacext:ContractFolderStatus"
     # El ámbito incluye los subcriterios, como en `_criterios_del_ambito`: las
     # dos lecturas del mismo bloque tienen que marcar el mismo precio.
-    codifica_precio = _ambito_codifica_precio(
-        nodo
+    codifica_precio = ambito_codifica_precio(
+        _codigos_criterio(nodo)
         for nodo in entry.xpath(f"{cfs}/cac:TenderingTerms/cac:AwardingTerms//*", namespaces=NS)
         if _es_elemento(nodo) and etree.QName(nodo).localname in _CRITERIO_CONTENEDORES
     )
-    total = 0.0
-    precio = 0.0
-    for nodo in _criterios_raiz(entry, cfs):
-        peso = _float(nodo, _CRITERIO_PESO_XPATH)
-        if peso is None or peso < 0:
-            continue
-        total += peso
-        if _es_criterio_precio(nodo, ambito_codifica_precio=codifica_precio):
-            precio += peso
-    if _PESO_TOTAL_PORCENTAJE[0] <= total <= _PESO_TOTAL_PORCENTAJE[1]:
-        return round(precio, 4)
-    if _PESO_TOTAL_FRACCION[0] <= total <= _PESO_TOTAL_FRACCION[1]:
-        return round(precio * 100.0, 4)
-    return None
+    return peso_precio_de_criterios(
+        (
+            _float(nodo, _CRITERIO_PESO_XPATH),
+            _es_criterio_precio(nodo, ambito_codifica_precio=codifica_precio),
+        )
+        for nodo in _criterios_raiz(entry, cfs)
+    )
 
 
 # ── Condiciones oficiales: criterios, garantías y solvencia (v148) ───────────
@@ -711,7 +745,7 @@ def _criterios_del_ambito(
         for awarding_terms in terms.xpath(_hijo("AwardingTerms")):
             recorrer(awarding_terms, None)
 
-    codifica_precio = _ambito_codifica_precio(nodo for nodo, _ in crudos)
+    codifica_precio = ambito_codifica_precio(_codigos_criterio(nodo) for nodo, _ in crudos)
     leidos: list[CriterioAdjudicacion] = []
     #: Índice crudo → orden asignado, solo para los criterios que se guardan.
     orden_por_indice: dict[int, int] = {}
