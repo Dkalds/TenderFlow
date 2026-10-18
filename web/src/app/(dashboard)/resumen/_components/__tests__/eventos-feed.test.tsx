@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -142,6 +142,54 @@ describe("EventosFeed", () => {
     ]);
     // El pie cuenta la ventana, no las 20 filas pedidas.
     expect(screen.getByText("8 de 143")).toBeInTheDocument();
+  });
+
+  it("filters the list by a type of the legend, keeping the whole breakdown in the bar", () => {
+    const evento = (i: number, tipo: string) => ({
+      licitacion_id: `L${i}`,
+      tipo,
+      fecha: "2026-07-01",
+      detalle: null,
+      importe_delta: null,
+      titulo: `Contrato ${i}`,
+      organo_contratacion: null,
+      fuente: "placsp",
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    qc.setQueryData(feedKey(), {
+      items: [evento(1, "adjudicacion"), evento(2, "prorroga")],
+      dias: 30,
+      por_tipo: [
+        { tipo: "adjudicacion", n: 98 },
+        { tipo: "prorroga", n: 45 },
+      ],
+      total: 143,
+    });
+    // La lista de un tipo es la misma consulta con `tipo`.
+    qc.setQueryData([...feedKey().slice(0, 3), { ...(feedKey()[3] as object), tipo: "prorroga" }], {
+      items: [evento(2, "prorroga"), evento(3, "prorroga")],
+      dias: 30,
+      por_tipo: [{ tipo: "prorroga", n: 45 }],
+      total: 45,
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <TooltipProvider>
+          <EventosFeed />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    const prorroga = screen.getByRole("button", { name: /Prórroga/ });
+    fireEvent.click(prorroga);
+    expect(prorroga).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Contrato 3")).toBeInTheDocument();
+    expect(screen.queryByText("Contrato 1")).not.toBeInTheDocument();
+    // La leyenda sigue contando la ventana entera.
+    expect(screen.getByRole("button", { name: /Adjudicación/ })).toHaveTextContent("98");
+
+    fireEvent.click(prorroga);
+    expect(prorroga).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Contrato 1")).toBeInTheDocument();
   });
 
   it("falls back to the sample size without a backend breakdown", () => {
