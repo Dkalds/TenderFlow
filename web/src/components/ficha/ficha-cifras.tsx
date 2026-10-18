@@ -107,7 +107,7 @@ export function FichaCifras({
         key="score"
         label="Puntuación"
         badge={l.band ? <StatusBadge value={l.band} kind="band" /> : undefined}
-        value={l.score.toFixed(1).replace(".", ",")}
+        value={formatNumber(l.score, "es-ES", { decimales: 1 })}
         hint="Sobre 100"
       />
     ) : null,

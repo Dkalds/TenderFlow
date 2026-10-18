@@ -21,6 +21,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from observability.logging import get_logger
+from services.email_html import (
+    CERRAR_DOCUMENTO,
+    ESTILO_ENLACE,
+    ESTILO_PIE,
+    PAPEL,
+    SECUNDARIO,
+    abrir_documento,
+    contar,
+)
 
 log = get_logger(__name__)
 
@@ -180,7 +189,10 @@ def asunto_digest(frecuencia: str, total: int, *, avisos: int = 0) -> str:
 def _cabecera(bloques: list[BloqueDigest], cuando: str) -> str:
     nuevas = sum(len(b.licitaciones) for b in bloques if not b.es_aviso)
     avisos = sum(len(b.licitaciones) for b in bloques if b.es_aviso)
-    reglas = f"{nuevas} licitación(es) nueva(s) {cuando} para tus reglas de seguimiento."
+    reglas = (
+        f"{contar(nuevas, 'licitación nueva', 'licitaciones nuevas')} {cuando} "
+        "para tus reglas de seguimiento."
+    )
     if not avisos:
         return reglas
     seguidos = f"{avisos} {_plural_avisos(avisos)} en los expedientes que sigues."
@@ -201,15 +213,14 @@ def render_digest(
 
     texto: list[str] = [cabecera, ""]
     partes_html: list[str] = [
-        '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;'
-        'max-width:640px;margin:0 auto;color:#1f2733;line-height:1.5">',
+        abrir_documento(),
         f'<p style="font-size:15px">{html.escape(cabecera)}</p>',
     ]
 
     for bloque in bloques:
         texto.append(f"== {bloque.etiqueta} ({len(bloque.licitaciones)}) ==")
         partes_html.append(
-            '<h3 style="margin:20px 0 8px;font-size:14px;color:#55606e;'
+            f'<h3 style="margin:20px 0 8px;font-size:14px;color:{SECUNDARIO};'
             f'text-transform:uppercase;letter-spacing:.04em">{html.escape(bloque.etiqueta)}'
             f' <span style="font-weight:normal">· {len(bloque.licitaciones)}</span></h3>'
         )
@@ -236,19 +247,15 @@ def render_digest(
             if enlace:
                 titulo_html = (
                     f'<a href="{html.escape(enlace, quote=True)}" '
-                    f'style="color:#1d4ed8;text-decoration:none">{titulo_html}</a>'
+                    f'style="{ESTILO_ENLACE};text-decoration:none">{titulo_html}</a>'
                 )
             partes_html.append(
-                '<div style="padding:10px 12px;margin:0 0 8px;border:1px solid #e5e8ec;'
+                f'<div style="padding:10px 12px;margin:0 0 8px;border:1px solid {PAPEL};'
                 'border-radius:8px">'
                 f'<div style="font-weight:600">{titulo_html}</div>'
-                + (
-                    f'<div style="font-size:13px;color:#1f2733">{html.escape(aviso)}</div>'
-                    if aviso
-                    else ""
-                )
-                + f'<div style="font-size:13px;color:#55606e">{html.escape(organo)}</div>'
-                f'<div style="font-size:13px"><strong>{html.escape(importe)}</strong>'
+                + (f"<div>{html.escape(aviso)}</div>" if aviso else "")
+                + f'<div style="color:{SECUNDARIO}">{html.escape(organo)}</div>'
+                f"<div><strong>{html.escape(importe)}</strong>"
                 f" · plazo {html.escape(plazo)}"
                 + (f" · {html.escape(extras)}" if extras else "")
                 + "</div></div>"
@@ -256,28 +263,26 @@ def render_digest(
         resto = len(bloque.licitaciones) - max_por_bloque
         if resto > 0:
             texto.append(f"  … y {resto} más.")
-            partes_html.append(
-                f'<p style="font-size:13px;color:#55606e">… y {resto} más en la consola.</p>'
-            )
+            partes_html.append(f'<p style="color:{SECUNDARIO}">… y {resto} más en la consola.</p>')
         texto.append("")
 
     if base_url:
         texto.append(f"Mi Watchlist: {base_url}/mi-watchlist")
         partes_html.append(
-            f'<p style="font-size:13px"><a href="{html.escape(base_url, quote=True)}/mi-watchlist" '
-            'style="color:#1d4ed8">Gestionar mis reglas</a></p>'
+            f'<p><a href="{html.escape(base_url, quote=True)}/mi-watchlist" '
+            f'style="{ESTILO_ENLACE}">Gestionar mis reglas</a></p>'
         )
     if baja_url:
         texto.append(f"Dejar de recibir estos correos: {baja_url}")
         partes_html.append(
-            '<p style="font-size:12px;color:#8a93a0;margin-top:24px">'
-            f'<a href="{html.escape(baja_url, quote=True)}" style="color:#8a93a0">'
+            f'<p style="{ESTILO_PIE};margin-top:24px">'
+            f'<a href="{html.escape(baja_url, quote=True)}" style="color:{SECUNDARIO}">'
             "Dejar de recibir estos correos</a> (pausa tus reglas; se reactivan desde "
             "Mi Watchlist).</p>"
         )
     partes_html.append(
-        '<p style="color:#8a93a0;font-size:12px;margin-top:16px">TenderFlow · '
-        "inteligencia de licitaciones públicas de tecnología</p></body></html>"
+        f'<p style="{ESTILO_PIE};margin-top:16px">TenderFlow · '
+        "inteligencia de licitaciones públicas de tecnología</p>" + CERRAR_DOCUMENTO
     )
     return "\n".join(texto).rstrip() + "\n", "".join(partes_html)
 
@@ -325,15 +330,14 @@ def render_evento(
     if enlace:
         titulo_html = (
             f'<a href="{html.escape(enlace, quote=True)}" '
-            f'style="color:#1d4ed8;text-decoration:none">{titulo_html}</a>'
+            f'style="{ESTILO_ENLACE};text-decoration:none">{titulo_html}</a>'
         )
     partes = [
-        '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;'
-        'max-width:640px;margin:0 auto;color:#1f2733;line-height:1.5">',
+        abrir_documento(),
         f'<p style="font-size:15px;font-weight:600">{titulo_html}</p>',
-        f'<p style="font-size:14px;color:#55606e">{html.escape(cuerpo)}</p>',
-        '<p style="color:#8a93a0;font-size:12px;margin-top:24px">TenderFlow · '
-        "gestiona qué avisos recibes por correo en tu perfil.</p></body></html>",
+        f'<p style="color:{SECUNDARIO}">{html.escape(cuerpo)}</p>',
+        f'<p style="{ESTILO_PIE};margin-top:24px">TenderFlow · '
+        "gestiona qué avisos recibes por correo en tu perfil.</p>" + CERRAR_DOCUMENTO,
     ]
     return "\n".join(texto).rstrip() + "\n", "".join(partes)
 

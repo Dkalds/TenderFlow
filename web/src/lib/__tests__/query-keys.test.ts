@@ -34,6 +34,7 @@ import {
   cuentaKeys,
   documentosKeys,
   empresasKeys,
+  estaticosKeys,
   etiquetaKeys,
   featureFlagKeys,
   eventosKeys,
@@ -220,6 +221,10 @@ const FABRICAS: readonly Fabrica[] = [
         nombre: "competitiveKeys.competenciaEsperada",
         clave: competitiveKeys.competenciaEsperada("ES-1", 21),
       },
+      {
+        nombre: "competitiveKeys.watchlistMovimientos",
+        clave: competitiveKeys.watchlistMovimientos(30),
+      },
     ],
   },
   {
@@ -365,6 +370,11 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "renovacionesKeys.lista", clave: renovacionesKeys.lista(6, "SAP") },
       { nombre: "renovacionesKeys.resumen", clave: renovacionesKeys.resumen(6, "SAP") },
     ],
+  },
+  {
+    nombre: "estaticosKeys",
+    raiz: estaticosKeys.all,
+    miembros: [{ nombre: "estaticosKeys.geoCcaa", clave: estaticosKeys.geoCcaa }],
   },
 ];
 
@@ -516,6 +526,7 @@ describe("las fábricas parametrizadas", () => {
     // La organización entra en la clave: la respuesta saca de los rivales a la que mira.
     { nombre: "competitiveKeys.competenciaEsperada", conA: () => competitiveKeys.competenciaEsperada("ES-1", 21), conB: () => competitiveKeys.competenciaEsperada("ES-1", null) },
     { nombre: "searchKeys.global", conA: () => searchKeys.global("indra", 21), conB: () => searchKeys.global("indra", null) },
+    { nombre: "competitiveKeys.watchlistMovimientos", conA: () => competitiveKeys.watchlistMovimientos(30), conB: () => competitiveKeys.watchlistMovimientos(7) },
     { nombre: "competitiveKeys.companyAwards", conA: () => competitiveKeys.companyAwards(7, "limit=20"), conB: () => competitiveKeys.companyAwards(7, { limit: "20" }) },
     { nombre: "pursuitKeys.list", conA: () => pursuitKeys.list({ estado: "abierto" }), conB: () => pursuitKeys.list({ estado: "ganado" }) },
     { nombre: "pursuitKeys.detail", conA: () => pursuitKeys.detail("7"), conB: () => pursuitKeys.detail("8") },
@@ -599,6 +610,7 @@ const FABRICAS_CON_ARGUMENTOS: readonly string[] = [
   "competitiveKeys.contraMi",
   "competitiveKeys.partners",
   "competitiveKeys.competenciaEsperada",
+  "competitiveKeys.watchlistMovimientos",
   "searchKeys.global",
   "radarKeys.scopedScoring",
   "radarKeys.dismissed",

@@ -44,7 +44,9 @@ export function BarraAsistente({ className }: { className?: string }) {
     <form
       onSubmit={submit}
       // El foco se ve en el contenedor (el input no dibuja el suyo): el mismo
-      // anillo que `Input`.
+      // anillo que `Input`. El `!` del input hace falta porque el contorno
+      // global de `:focus-visible` (globals.css) no tiene capa y gana a
+      // cualquier utilidad.
       className={cn(
         "border-border/60 bg-card focus-within:border-ring focus-within:ring-ring flex h-10 items-center gap-2 rounded-md border pr-1 pl-3 transition-colors focus-within:ring-1",
         className,
@@ -59,7 +61,7 @@ export function BarraAsistente({ className }: { className?: string }) {
         onPointerEnter={precargar}
         placeholder="Pregúntale a tus licitaciones…"
         aria-label="Pregunta al asistente"
-        className="text-campo placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent outline-none focus-visible:outline-none"
+        className="text-campo placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent outline-none focus-visible:outline-none!"
       />
       <Button type="submit" size="sm" className="shrink-0">
         Preguntar

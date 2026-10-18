@@ -84,6 +84,23 @@ describe("FichaLicitacion", () => {
     expect(login).toHaveAttribute("href", "/login?utm_source=publico&utm_content=ficha");
   });
 
+  it("recorta el título de los metadatos entre palabras, no a mitad de una", async () => {
+    vi.mocked(obtenerLicitacion).mockResolvedValue(
+      anuncio({
+        titulo:
+          "Contratación del servicio de mantenimiento evolutivo y correctivo de la plataforma de administración electrónica",
+      }),
+    );
+    const meta = await ficha.generateMetadata({
+      params: Promise.resolve({ ccaa: "cataluna", slug: "redes", ref: "abc123" }),
+    });
+
+    const esperado = "Contratación del servicio de mantenimiento evolutivo y…";
+    expect(meta.title).toBe(esperado);
+    expect(meta.openGraph?.title).toBe(esperado);
+    expect(meta.twitter?.title).toBe(esperado);
+  });
+
   it("se sirve desde la caché ISR: nada en el build, todo en su primera visita", async () => {
     // Declaraba `revalidate` y se renderizaba en cada petición: a una ruta
     // dinámica le hace falta además `generateStaticParams`, aunque sea vacía.

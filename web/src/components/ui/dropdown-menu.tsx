@@ -17,8 +17,10 @@ function DropdownMenu(props: React.ComponentPropsWithoutRef<typeof DropdownMenuP
   return <DropdownMenuPrimitive.Root {...props} />
 }
 
-function DropdownMenuTrigger({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
-  return <DropdownMenuPrimitive.Trigger className={cn("outline-none", className)} {...props} />
+function DropdownMenuTrigger(props: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
+  // Sin `outline-none`: el foco de teclado lo pinta el contorno global de
+  // `:focus-visible` (globals.css) o el anillo del `Button` que llegue por `asChild`.
+  return <DropdownMenuPrimitive.Trigger {...props} />
 }
 
 interface DropdownMenuContentProps

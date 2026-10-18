@@ -12,6 +12,7 @@ from db.audit import log_event
 from db.password_reset import create_reset_token_for_email
 from observability.alerts import enviar_email_transaccional
 from observability.logging import get_logger
+from services.email_html import CERRAR_DOCUMENTO, ESTILO_ENLACE, abrir_documento
 from services.solicitudes_acceso import url_de_login
 from shared.audit_events import AUTH_PASSWORD_RESET_REQUESTED
 
@@ -87,14 +88,16 @@ def send_password_reset_email(email: str, token: str) -> bool:
     text_lines += ["", "Si no lo solicitaste, ignora este correo."]
     text = "\n".join(text_lines)
     link = (
-        f'<p><a href="{html.escape(reset_url)}">Restablecer contraseña</a></p>' if reset_url else ""
+        f'<p><a href="{html.escape(reset_url)}" style="{ESTILO_ENLACE}">'
+        "Restablecer contraseña</a></p>"
+        if reset_url
+        else ""
     )
     html_body = (
-        "<!DOCTYPE html><html><body>"
-        "<p>Se ha solicitado restablecer la contraseña de tu cuenta local de TenderFlow.</p>"
+        abrir_documento(max_ancho=600)
+        + "<p>Se ha solicitado restablecer la contraseña de tu cuenta local de TenderFlow.</p>"
         "<p>El enlace caduca en 30 minutos y sólo puede usarse una vez.</p>"
-        f"{link}<p>Si no lo solicitaste, ignora este correo.</p>"
-        "</body></html>"
+        f"{link}<p>Si no lo solicitaste, ignora este correo.</p>" + CERRAR_DOCUMENTO
     )
     sent = enviar_email_transaccional(
         to_addr=email,

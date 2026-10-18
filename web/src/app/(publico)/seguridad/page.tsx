@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { metadatosPublicos } from "../_components/metadatos-publicos";
 import { PaginaEvidencia, type SeccionEvidencia } from "../_components/pagina-evidencia";
 
-export const metadata: Metadata = {
-  title: "Seguridad",
-  description: "Controles de identidad, sesión, segundo factor, aislamiento y claves de API implementados en TenderFlow.",
-  alternates: { canonical: "/seguridad" },
-};
+export const metadata: Metadata = metadatosPublicos({
+  titulo: "Seguridad",
+  descripcion: "Controles de identidad, sesión, segundo factor, aislamiento y claves de API implementados en TenderFlow.",
+  ruta: "/seguridad",
+});
 
 const SECCIONES: SeccionEvidencia[] = [
   {

@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { listarLicitaciones } from "@/lib/publico-api";
 import { cn, formatNumber } from "@/lib/utils";
-import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaPublicaDePagina } from "@/lib/paginacion-hubs";
 import { CCAA_SIN_ASIGNAR, rutaHubCcaa } from "@/lib/slug";
 import { ListadoLicitaciones } from "./listado-licitaciones";
 import { Paginacion } from "./paginacion";
 import { CierrePublico } from "./cierre-publico";
+import { metadatosPublicos } from "./metadatos-publicos";
 import { KICKER, TITULO_PAGINA } from "./piel-publica";
 
 /**
@@ -45,22 +45,16 @@ export function metadatosHubCcaa(ccaa: string, pagina: number): Metadata {
   const titulo = `Licitaciones de tecnología en ${nombre}`;
   const descripcion = `Concursos públicos de tecnología en ${nombre}: objeto, órgano de contratación, presupuesto y plazos, con enlace al anuncio oficial.`;
 
-  return {
-    title: titulo,
-    description: descripcion.slice(0, 160),
-    // Canonical auto-referente **incluyendo la página**, y en su forma pública
-    // (`?p=N`) aunque esta página se sirva desde el segmento interno. Apuntar
-    // todas las páginas a la primera es el error clásico: Google descarta las
-    // demás y con ellas los enlaces a las fichas que solo aparecen ahí.
-    alternates: { canonical: rutaPublicaDePagina(rutaHubCcaa(ccaa), pagina) },
-    openGraph: {
-      ...OG_IMAGE_COMPARTIDA,
-      title: titulo,
-      description: descripcion.slice(0, 160),
-      url: rutaHubCcaa(ccaa),
-    },
-    twitter: { ...TWITTER_COMPARTIDO, title: titulo, description: descripcion.slice(0, 160) },
-  };
+  return metadatosPublicos({
+    titulo,
+    descripcion: descripcion.slice(0, 160),
+    // Canonical (y `og:url`) auto-referente **incluyendo la página**, y en su
+    // forma pública (`?p=N`) aunque esta página se sirva desde el segmento
+    // interno. Apuntar todas las páginas a la primera es el error clásico:
+    // Google descarta las demás y con ellas los enlaces a las fichas que solo
+    // aparecen ahí.
+    ruta: rutaPublicaDePagina(rutaHubCcaa(ccaa), pagina),
+  });
 }
 
 export async function paginaHubCcaa(ccaa: string, pagina: number) {

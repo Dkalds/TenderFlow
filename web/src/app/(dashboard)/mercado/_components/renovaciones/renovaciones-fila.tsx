@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Pista } from "@/components/ui/pista";
 import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
-import { formatCurrency, formatDate, truncate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatPercent, truncate } from "@/lib/utils";
 import type { MarcaPropia, RenovacionRow } from "../../_hooks/use-renovaciones";
 
 /** Semáforo del plazo: los mismos cortes de urgencia que usa el resto del producto. */
@@ -126,7 +126,7 @@ export function CeldasRenovacion({
                 fila.riesgo_cambio >= 0.6 ? "destructive" : fila.riesgo_cambio >= 0.35 ? "secondary" : "outline"
               }
             >
-              {(fila.riesgo_cambio * 100).toFixed(0)}%
+              {formatPercent(fila.riesgo_cambio * 100, 0)}
             </Badge>
           </Pista>
         ) : (

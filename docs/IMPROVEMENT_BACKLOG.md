@@ -1247,6 +1247,32 @@ _Sin ítems abiertos._
   - Si el lote viene en otra forma, añadirla a `_XPATHS_LOTE_RESULTADO` y relanzar `reproceso-lotes.yml` con `aplicar` sobre el rango afectado; si de verdad no viene, documentarlo en el docstring de `_lote_del_resultado` y cerrar.
 - **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py), [scraper/reproceso_lotes.py](../scraper/reproceso_lotes.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — es lectura del XML; el reproceso solo rellena `lote_id` vacío.
+
+### [P3] Partir los componentes con cinco o más booleanos de modo en variantes explícitas
+- **Área:** web/src (composición de componentes)
+- **Problema:** la auditoría del 2026-10 contra la skill `vercel-composition-patterns` encontró componentes cuyo modo se elige con varios booleanos que se solapan. Medido ese día, la cuenta de props `boolean` era de 7 en `detalle-fila.tsx`, 7 en `detalle-tabla.tsx` y 7 en `chat-thread.tsx`, y de 4-5 en `detalle-pie`, `radar-fila`, `barra-guardado` y `vista-previa-card`. Cada combinación nueva es un camino que nadie prueba, y quien llama tiene que saber qué pares son incompatibles. No hay ningún bug abierto por esto: es coste de cambio.
+- **Acceptance criteria:**
+  - `chat-thread` y la pareja `detalle-fila`/`detalle-tabla` exponen variantes con nombre (componentes explícitos o una prop `variante` con unión de literales) en vez de booleanos combinables.
+  - Los tests existentes siguen verdes sin tocar su intención.
+- **Files de partida:** [web/src/components/chat-thread.tsx](../web/src/components/chat-thread.tsx), [web/src/app/(dashboard)/detalle/_components/detalle-fila.tsx](../web/src/app/%28dashboard%29/detalle/_components/detalle-fila.tsx), [web/src/app/(dashboard)/detalle/_components/detalle-tabla.tsx](../web/src/app/%28dashboard%29/detalle/_components/detalle-tabla.tsx)
+- **Riesgo:** medio — refactor sin cambio visible, pero toca componentes con muchos consumidores.
+
+### [P3] Decidir el copy de la portada frente a las señales de plantilla (acción del propietario)
+- **Área:** web/src/app/(publico)/_content/landing.ts
+- **Problema:** la auditoría del 2026-10 contra la skill `design-taste-frontend` (`tells.md`) marca en la portada patrones de copy que esa skill considera señal de plantilla:
+  - Rótulos en versalitas en cada sección y uno («FAQ») que repite su titular.
+  - Cadenas con punto medio.
+  - Un titular con la corrección «X, no Y» («Un radar tecnológico, no un censo…»).
+  - Unas 8 rayas de inciso y un `familiasTitulo` de unas 45 palabras.
+  - Un `ctaIntermedioTexto` que habla de la propia página.
+
+  El rótulo único `KICKER` es decisión registrada (UX_AUDIT F46) y **no** entra aquí; lo que hay que decidir es si cada sección necesita además el suyo y si el texto se reescribe.
+- **Acceptance criteria:**
+  - Decisión escrita del propietario: qué se reescribe y qué se mantiene a propósito.
+  - Si se reescribe: `faqKicker` desaparece, el h2 de «Qué entra» afirma en positivo y `familiasTitulo` se parte en un título corto y una enumeración.
+- **Files de partida:** [web/src/app/(publico)/_content/landing.ts](../web/src/app/%28publico%29/_content/landing.ts), [web/src/app/(publico)/_components/piel-publica.ts](../web/src/app/%28publico%29/_components/piel-publica.ts)
+- **Riesgo:** bajo — solo copy, pero es la cara pública y la voz la decide el propietario.
+
 ---
 
 ### [P3] Flecos de la rama `claude/funcionalidades-2026-10`

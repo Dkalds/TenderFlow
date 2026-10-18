@@ -54,7 +54,7 @@ export function ClustersControles({
         Elegir el número automáticamente
       </label>
       <Button size="sm" variant="outline" onClick={onRecalcular} disabled={isFetching}>
-        {isFetching && <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+        {isFetching && <Loader2 className="animate-spin" aria-hidden="true" />}
         Recalcular
       </Button>
     </Panel>
@@ -91,7 +91,7 @@ export function ClustersKpis({
       />
       <StatCell
         label="Calidad del agrupamiento"
-        value={silhouette == null ? EMPTY : silhouette.toFixed(2).replace(".", ",")}
+        value={formatNumber(silhouette, "es-ES", { decimales: 2 })}
         hint={lecturaCalidad(silhouette)}
         loading={isLoading}
       />

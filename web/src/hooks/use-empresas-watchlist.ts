@@ -14,7 +14,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
-import { watchlistKeys } from "@/lib/query-keys";
+import { competitiveKeys, watchlistKeys } from "@/lib/query-keys";
 
 interface EmpresaSeguida {
   empresa_id: number;
@@ -77,6 +77,13 @@ export function useToggleEmpresaWatch() {
     meta: { errorTitle: "No se pudo cambiar la vigilancia" },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: watchlistKeys.empresas });
+      // «Tus vigilados» y las marcas del mapa y del ranking de Competencia
+      // salen de los movimientos, no de la lista: sin esto, seguir o dejar de
+      // seguir no se veía allí hasta que caducaban (5 min).
+      void queryClient.invalidateQueries({
+        queryKey: competitiveKeys.all,
+        predicate: (q) => q.queryKey[1] === competitiveKeys.watchlistMovimientos(0)[1],
+      });
     },
   });
 }

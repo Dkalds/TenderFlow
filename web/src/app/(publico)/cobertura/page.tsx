@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { EnlaceIrPublico } from "../_components/enlace-ir";
+import { metadatosPublicos } from "../_components/metadatos-publicos";
 import { TITULO_SECCION } from "../_components/piel-publica";
 import { PaginaEvidencia } from "../_components/pagina-evidencia";
 import { CONTENIDO } from "../_content/landing";
@@ -17,11 +18,11 @@ import { CABECERA, META, SECCIONES } from "./_lib/copy";
  * reglas de entrada, que no viven en ninguna tabla.
  */
 
-export const metadata: Metadata = {
-  title: META.title,
-  description: META.description,
-  alternates: { canonical: "/cobertura" },
-};
+export const metadata: Metadata = metadatosPublicos({
+  titulo: META.title,
+  descripcion: META.description,
+  ruta: "/cobertura",
+});
 
 /**
  * Una hora, como el resto de la superficie pública. La cobertura declarada

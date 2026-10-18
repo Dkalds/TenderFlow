@@ -97,11 +97,15 @@ export function formatCompactCurrency(
 
 /**
  * Format a number with thousands separators.
+ *
+ * Con `decimales`, fija ese número exacto de decimales (`4.25` con 1 →
+ * "4,3"). Sustituye al `toFixed(n).replace(".", ",")` hecho a mano, que no
+ * agrupa miles y deja el punto si alguien olvida el `replace`.
  */
 export function formatNumber(
   value: number | null | undefined,
   locale = "es-ES",
-  { agruparSiempre = false }: { agruparSiempre?: boolean } = {},
+  { agruparSiempre = false, decimales }: { agruparSiempre?: boolean; decimales?: number } = {},
 ): string {
   if (sinDato(value)) return EMPTY;
   // `es-ES` no agrupa los números de cuatro dígitos (`minimumGroupingDigits` es
@@ -109,7 +113,12 @@ export function formatNumber(
   // Correcto en prosa; malo cuando las cifras se leen como una serie, que es lo
   // que pasa en la franja de la portada: parecen de familias distintas. Se pide
   // explícitamente donde estorba, en vez de cambiarlo para toda la aplicación.
-  return new Intl.NumberFormat(locale, agruparSiempre ? { useGrouping: "always" } : {}).format(value);
+  const opciones: Intl.NumberFormatOptions = agruparSiempre ? { useGrouping: "always" } : {};
+  if (decimales !== undefined) {
+    opciones.minimumFractionDigits = decimales;
+    opciones.maximumFractionDigits = decimales;
+  }
+  return new Intl.NumberFormat(locale, opciones).format(value);
 }
 
 /**

@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SpainMap } from "@/components/charts/spain-map";
+
+/** Cliente nuevo por test: la caché de los contornos no se arrastra entre casos. */
+function nuevoCliente() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+function renderMapa(ui: React.ReactElement, client = nuevoCliente()) {
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 // react-leaflet cannot initialise a real Leaflet map in jsdom. Mock the pieces
 // SpainMap uses and, for GeoJSON, invoke the `style` and `onEachFeature`
@@ -62,13 +72,13 @@ describe("SpainMap", () => {
 
   it("shows a loading state before the geojson resolves", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    render(<SpainMap data={DATA} />);
+    renderMapa(<SpainMap data={DATA} />);
     expect(screen.getByText("Cargando mapa…")).toBeInTheDocument();
   });
 
   it("shows an error state when the geojson fetch fails", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("network"))));
-    render(<SpainMap data={DATA} />);
+    renderMapa(<SpainMap data={DATA} />);
     expect(await screen.findByText("No se pudo cargar el mapa")).toBeInTheDocument();
   });
 
@@ -77,7 +87,7 @@ describe("SpainMap", () => {
       "fetch",
       vi.fn(() => Promise.resolve({ ok: false, status: 404 } as Response)),
     );
-    render(<SpainMap data={DATA} />);
+    renderMapa(<SpainMap data={DATA} />);
     expect(await screen.findByText("No se pudo cargar el mapa")).toBeInTheDocument();
   });
 
@@ -88,7 +98,7 @@ describe("SpainMap", () => {
         Promise.resolve({ ok: true, json: () => Promise.resolve(GEOJSON) } as unknown as Response),
       ),
     );
-    render(<SpainMap data={DATA} colorScale="green" metric="Importe" />);
+    renderMapa(<SpainMap data={DATA} colorScale="green" metric="Importe" />);
     await waitFor(() => expect(screen.getByTestId("map-container")).toBeInTheDocument());
     expect(screen.getByTestId("geojson")).toBeInTheDocument();
   });
@@ -101,7 +111,7 @@ describe("SpainMap", () => {
       ),
     );
     const onCcaaClick = vi.fn();
-    render(<SpainMap data={DATA} metric="Licitaciones" onCcaaClick={onCcaaClick} />);
+    renderMapa(<SpainMap data={DATA} metric="Licitaciones" onCcaaClick={onCcaaClick} />);
     expect(
       await screen.findByRole("region", { name: "Mapa de España por comunidad autónoma: Licitaciones" }),
     ).toHaveAccessibleDescription(/Tabulador/);
@@ -121,8 +131,26 @@ describe("SpainMap", () => {
         Promise.resolve({ ok: true, json: () => Promise.resolve(GEOJSON) } as unknown as Response),
       ),
     );
-    render(<SpainMap data={DATA} />);
+    renderMapa(<SpainMap data={DATA} />);
     await waitFor(() => expect(screen.getByTestId("map-container")).toBeInTheDocument());
     expect(screen.getAllByTestId("region-madrid").at(-1)).not.toHaveAttribute("tabindex");
+  });
+
+  it("los contornos se piden una sola vez aunque el mapa se vuelva a montar", async () => {
+    // Antes vivían en un `useEffect`: cada montaje (cambiar de pestaña y
+    // volver) bajaba otra vez el GeoJSON entero.
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(GEOJSON) } as unknown as Response),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = nuevoCliente();
+
+    const primero = renderMapa(<SpainMap data={DATA} />, client);
+    await waitFor(() => expect(screen.getByTestId("map-container")).toBeInTheDocument());
+    primero.unmount();
+
+    renderMapa(<SpainMap data={DATA} />, client);
+    expect(screen.getByTestId("map-container")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

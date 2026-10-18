@@ -68,7 +68,7 @@ Reference these guidelines when:
 
 ### 4. Client-Side Data Fetching (MEDIUM-HIGH)
 
-- `client-swr-dedup` - Use SWR for automatic request deduplication
+- `client-swr-dedup` - Use SWR for automatic request deduplication (TenderFlow: `web/` uses TanStack Query, which already deduplicates by `queryKey`; apply the idea there, do not add SWR)
 - `client-event-listeners` - Deduplicate global event listeners
 - `client-passive-event-listeners` - Use passive listeners for scroll
 - `client-localstorage-schema` - Version and minimize localStorage data
