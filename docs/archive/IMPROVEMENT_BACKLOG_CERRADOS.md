@@ -21,6 +21,28 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrado el 2026-10-18 — cada adjudicación sabe de qué lote es
+
+**Cerrado el 2026-10-18** (#479, #484, #487). Los dos criterios se cumplen en producción. La ingesta escribe `adjudicaciones.lote_id`: el parser lo buscaba en `cac:ProcurementProjectLotReference/cbc:ID` (forma inventada por el fixture sintético `01_multilote`) y CODICE lo publica en `cac:AwardedTenderedProject/cbc:ProcurementProjectLotID`; `_lote_del_resultado` lee las tres formas (caso golden 18). `_AGENDA_SELECT` afirma adjudicatario para la oportunidad de un lote solo con las adjudicaciones de ese lote.
+
+Por el camino aparecieron dos cosas que no estaban en el ítem:
+- **Reingerir un multilote tumbaba el lote de escritura** (#487). `replace_lotes` borraba y reinsertaba los lotes, y la FK `ON DELETE SET NULL` dejaba a NULL a la vez las filas de la misma empresa por el mismo importe, que chocaban con `uq_adjudicaciones_lic_nif_importe_sin_lote`. El bulk del 2026-10-17 (run 39059575492) acabó con los tres meses en error por eso. Ahora es un upsert por `(licitacion_id, numero)`: el lote conserva su id.
+- **El histórico no se podía recuperar con el bulk**, que tarda más de 2 h por mes. `reproceso-lotes.yml` (#484) lee los ZIP y asigna el lote en sitio. Ejecutado el 2026-10-17/18 sobre 2020-10..2026-10 en tres tramos (runs 39080069332, 39084120398, 39143918928), tras un recuento sin `aplicar` (run 39067395474) que encontró 188 de los 190 expedientes objetivo.
+
+Medido en producción el 2026-10-18: `count(lote_id)` pasó de **0 a 1.271**; en expedientes con dos o más lotes, de 0 a **999 de 1.246** filas, y los expedientes con alguna fila sin lote de 304 a **113**. El resto (247 filas) es el P3 «247 adjudicaciones de expedientes multilote siguen sin lote».
+
+### [P3] Saber si el **lote** de una oportunidad ya se adjudicó
+- **Área:** db/repositories/pursuits.py (`_AGENDA_SELECT`), scraper (adjudicaciones por lote)
+- **Problema:** desde el 2026-10-09 la agenda mira el expediente y lleva a «Por cerrar» la oportunidad cuya licitación ya está resuelta o adjudicada. Para una oportunidad **de un lote** solo puede fiarse del estado del expediente entero: las filas de `adjudicaciones` no dicen de qué lote son (medido ese día en producción: 77.965 filas, ninguna con `lote_id`), así que la consulta no afirma adjudicatario cuando hay `lote_numero` — la adjudicación de otro lote no cierra el suyo. Consecuencia: un lote ya adjudicado en un expediente que sigue en `PUB` (lo normal en TED) se queda en su tramo de plazo hasta que la fecha pase. Hoy no afecta a nadie (0 oportunidades con lote), y por eso es P3.
+- **Acceptance criteria:**
+  - La ingesta escribe `adjudicaciones.lote_id` cuando la fuente lo publica, o se documenta por qué no puede.
+  - `_AGENDA_SELECT` afirma adjudicatario para una oportunidad con lote solo con las adjudicaciones de ese lote, con su test en `tests/test_agenda_ambito_sql.py` (hoy `test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote` fija lo contrario a propósito).
+- **Files de partida:** [db/repositories/pursuits.py](../db/repositories/pursuits.py), [services/pursuits.py](../services/pursuits.py) (`_expediente_cerrado`), [tests/test_agenda_ambito_sql.py](../tests/test_agenda_ambito_sql.py)
+- **Estado (2026-10-17, rama `claude/happy-maxwell-xjan4q`):** resuelto en código; falta verlo en producción. La causa no era que la fuente no publicase el lote: `parse_adjudicaciones` lo buscaba en `cac:ProcurementProjectLotReference/cbc:ID`, una forma sacada del fixture sintético `01_multilote`, y CODICE lo publica en `cac:AwardedTenderedProject/cbc:ProcurementProjectLotID`. Medido ese día en producción: 761 expedientes multilote con adjudicación, 1.619 filas, **ninguna** con `lote_id`. El parser lee ahora las tres formas (`_lote_del_resultado`, caso golden `18_lote_en_proyecto_adjudicado`), `run_connector` avisa con `adj_lote_sin_resolver` cuando un multilote se queda sin lote, y `_AGENDA_SELECT` afirma adjudicatario para la oportunidad de un lote solo con las adjudicaciones de ese lote (`tests/test_agenda_ambito_sql.py`). Bajas, dataset ML, ficha y competencia esperada ya leían `lote_id` y se benefician sin cambios. **Queda (acción del propietario):** relanzar `scrape-bulk.yml` (lanzado el 2026-10-17 con `months=3`, run 39059575492) y, para el histórico, `reproceso-lotes.yml` (`scraper/reproceso_lotes.py`): lee los ZIP del rango y asigna `lote_id` **en sitio** a las adjudicaciones de los multilote, sin tocar documentos ni empresas, porque el bulk tarda más de 2 h por mes y no puede reprocesar años. Primero sin `aplicar` (cuenta), luego con él, por tramos si el rango no cabe en 2 h. Después, comprobar `SELECT count(lote_id) FROM adjudicaciones` > 0 y que `adj_lote_sin_resolver` no aparece en cada pasada. Si sigue a cero, el formato es otro: capturar un expediente real con `scripts/capture_placsp_fixtures.py --caso multilote`.
+- **Riesgo:** bajo — la regla actual es la conservadora; relajarla solo añade casos.
+
+---
+
 ## Cerrado el 2026-10-17 — el hueco del ATOM de PLACSP está recuperado
 
 **Cerrado el 2026-10-17** (rama `claude/happy-maxwell-xjan4q`). Comprobado contra producción por el MCP de solo lectura: filas `placsp` por semana de `fecha_publicacion` desde el 2026-09-07 — 134, 220, 226, 245, 270 y 199 (semana en curso) —, en la línea de las anteriores al congelamiento (146 la del 08-31). El hueco del 09-08 en adelante está cubierto y el carril diario ingiere. Los otros dos criterios ya estaban hechos en código (aviso `fuente_sin_datos_nuevos` y respaldo al ZIP tras seis pasadas sin avance). Sigue sin verificar `placsp_watched_company_awards`, que lee el mismo ATOM.
