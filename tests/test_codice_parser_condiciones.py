@@ -27,7 +27,12 @@ import textwrap
 import pytest
 from lxml import etree
 
-from scraper.codice_parser import parse_condiciones, parse_entry, parse_entry_unfiltered
+from scraper.codice_parser import (
+    parse_condiciones,
+    parse_entry,
+    parse_entry_unfiltered,
+    parse_peso_precio,
+)
 
 _NS = {
     "cbc": "urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2",
@@ -207,6 +212,117 @@ def test_criterio_sin_descripcion_ni_peso_se_descarta() -> None:
     criterios = parse_condiciones(entry).criterios
 
     assert [(c.orden, c.descripcion) for c in criterios] == [(1, "Precio")]
+
+
+# ─── Qué criterio es el precio ───────────────────────────────────────────────
+#
+# PLACSP codifica el criterio como ``AwardingCriteriaTypeCode`` (``SUBJ`` juicio
+# de valor, ``OBJ`` fórmulas) más un subtipo; bajo ``OBJ`` el ``1`` es el
+# precio. Muchos órganos rellenan la descripción con la etiqueta genérica de la
+# categoría, que menciona el precio para negarlo («…diferentes al precio»).
+
+_FORMULAS_SIN_PRECIO = (
+    "Elementos de la proposición cuya valoración depende de la mera aplicación"
+    " de fórmulas, diferentes al precio"
+)
+_FORMULAS = "Elementos de la proposición cuya valoración depende de la mera aplicación de fórmulas."
+
+
+def test_subtipo_obj_1_es_el_precio_aunque_la_descripcion_diga_otra_cosa() -> None:
+    """Patrón FOGASA 20/2026: el texto marcaba el 18 como precio en vez del 42."""
+    entry = _entry(
+        terminos=_terminos(
+            _criterios(
+                _criterio("Memoria técnica", "40", tipo="SUBJ", subtipo="99"),
+                _criterio(
+                    _FORMULAS_SIN_PRECIO, "18", tipo="OBJ", subtipo="2", nota="Equipo Anexo 6"
+                ),
+                _criterio(_FORMULAS, "42", tipo="OBJ", subtipo="1", nota="Precio ofertado Anexo 5"),
+            )
+        )
+    )
+
+    criterios = parse_condiciones(entry).criterios
+
+    assert [(c.peso, c.es_precio) for c in criterios] == [
+        (40.0, False),
+        (18.0, False),
+        (42.0, True),
+    ]
+    assert parse_peso_precio(entry) == 42.0
+
+
+def test_sin_codigos_el_texto_no_cuenta_las_menciones_negadas() -> None:
+    negadas = (
+        "Criterios automáticos distintos del precio",
+        "Mejoras distintas del precio",
+        "Aspectos no relacionados con el precio",
+        "Bolsa de horas adicionales sin coste",
+    )
+    entry = _entry(
+        terminos=_terminos(
+            _criterios(
+                *(_criterio(texto, "10") for texto in negadas),
+                _criterio("Oferta económica", "60"),
+            )
+        )
+    )
+
+    criterios = parse_condiciones(entry).criterios
+
+    assert [c.es_precio for c in criterios] == [False, False, False, False, True]
+    assert parse_peso_precio(entry) == 60.0
+
+
+def test_ambito_que_no_usa_el_subtipo_1_cae_al_texto() -> None:
+    """Hay órganos que codifican todo criterio de fórmula como ``OBJ``/``2``.
+
+    Si ningún criterio del ámbito lleva el ``1``, el subtipo no separa el
+    precio del resto y fiarse de él dejaría el peso en 0: manda el texto.
+    """
+    entry = _entry(
+        terminos=_terminos(
+            _criterios(
+                _criterio("Oferta económica", "85", tipo="OBJ", subtipo="2"),
+                _criterio("Ampliación del plazo de garantía", "15", tipo="OBJ", subtipo="2"),
+            )
+        )
+    )
+
+    criterios = parse_condiciones(entry).criterios
+
+    assert [c.es_precio for c in criterios] == [True, False]
+    assert parse_peso_precio(entry) == 85.0
+
+
+def test_ambito_con_subtipo_1_no_mira_el_texto_de_los_demas() -> None:
+    entry = _entry(
+        terminos=_terminos(
+            _criterios(
+                _criterio("Precio", "60", tipo="OBJ", subtipo="1"),
+                _criterio("Precio hora de evolutivos", "10", tipo="OBJ", subtipo="2"),
+                _criterio("Calidad ambiental", "30", tipo="OBJ", subtipo="3"),
+            )
+        )
+    )
+
+    assert [c.es_precio for c in parse_condiciones(entry).criterios] == [True, False, False]
+    assert parse_peso_precio(entry) == 60.0
+
+
+def test_juicio_de_valor_nunca_es_el_precio() -> None:
+    """El precio se valora siempre por fórmula (art. 146 LCSP): ``SUBJ`` no lo es."""
+    entry = _entry(
+        terminos=_terminos(
+            _criterios(
+                _criterio("Gestión económica y contabilidad", "40", tipo="SUBJ", subtipo="99"),
+                _criterio("Oferta económica", "60", tipo="OBJ", subtipo="2"),
+            )
+        )
+    )
+
+    assert [c.es_precio for c in parse_condiciones(entry).criterios] == [False, True]
+    assert parse_peso_precio(entry) == 60.0
 
 
 # ─── Por lote ────────────────────────────────────────────────────────────────
