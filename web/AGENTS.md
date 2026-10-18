@@ -51,6 +51,9 @@ qué no animar nunca y por qué `motion`/Framer Motion salió del bundle:
 cualquier animación, revisar ese documento y las skills `emil-design-eng` /
 `review-animations` / `apple-design` (instaladas en los dos árboles: Claude Code
 las carga de `.claude/skills/`, el resto de herramientas de `.agents/skills/`).
+`review-animations` no se invoca sola: pedila por nombre o leé su `SKILL.md`.
+Qué skill de diseño usar para cada tarea, y qué reglas suyas no aplican aquí:
+el último apartado de [`DESIGN.md`](../DESIGN.md).
 
 # Prefetch en servidor con hidratación (S7.1)
 

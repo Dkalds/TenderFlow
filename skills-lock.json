@@ -46,6 +46,14 @@
       "verifiedHash": "21b1e71c4b8e146bc94e9ada84966277371f4e876b6edeee282983b4d3c176f0",
       "trust": "first-party"
     },
+    "design-taste-frontend": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "41463de84d80d8839b1e9fc8ddfd140578443d095b53710d1f331dbab3079712",
+      "trust": "community",
+      "verifiedHash": "c7b2e8220a6d498e6d00125d3f5f8ed18dc1001b5e1b335a22d2ed56d392e70b"
+    },
     "emil-design-eng": {
       "source": "emilkowalski/skill",
       "sourceType": "github",
@@ -82,15 +90,23 @@
       "sourceType": "github",
       "skillPath": "skills/frontend-design/SKILL.md",
       "computedHash": "516bd2154eb843a8240e43d5b285229129853114ad7075a5e141e1c08e408c84",
-      "verifiedHash": "835d4a9525e329a1cc591973f0c0304fab808c014e9f2df5ea9e855b837b9058",
+      "verifiedHash": "876fced5c484f4f9ea6abeaed1b03b5ad3a4a48e5ec557a135de795ba1b35e58",
       "trust": "first-party"
+    },
+    "full-output-enforcement": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/output-skill/SKILL.md",
+      "computedHash": "524f7c7950c3fde726101613f630140411c7d080e63be718687f4b38f919be81",
+      "trust": "community",
+      "verifiedHash": "24e0912f34792c3ed0c6fb475baab803501232fe6fef1838757b95a314f81d9f"
     },
     "improve-animations": {
       "source": "emilkowalski/skill",
       "sourceType": "github",
       "skillPath": "skills/improve-animations/SKILL.md",
       "computedHash": "9cd956e91139211efa5e17fc5e1675b9a3f711ef38cbc92aa8f3fa5b626b7e12",
-      "verifiedHash": "d9263e097dd977a40eb16c22c32b1babbb34bd52a32df1749d9167688d95fb23",
+      "verifiedHash": "675f0073dd46d5d671a431b4c2c264339c8068e640a4d7b90164014cd1fa2548",
       "trust": "community"
     },
     "machine-learning": {
@@ -99,6 +115,14 @@
       "computedHash": "2381439c0d230fad40ead759b6820ecf58f189c4dfc0f446369fea93cfec40ff",
       "verifiedHash": "ab7c6e7d1d1fcc86b555d7454951dcd55c16f51cc47f92e2c9685c0add30cd22",
       "trust": "community"
+    },
+    "minimalist-ui": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/minimalist-skill/SKILL.md",
+      "computedHash": "f9174b67ed00bce3f62641ac6393911a53f61f210f5b59ee3248acbed2ad11a0",
+      "trust": "community",
+      "verifiedHash": "278605bf5bc06b69a536a2e30591819bf47e9b95f71d76e7f2df78a37de5f41c"
     },
     "pandas-pro": {
       "source": "jeffallan/claude-skills",
@@ -136,6 +160,14 @@
       "verifiedHash": "1a8a500d3490876366ad2031ab2fcb8c39d6961b8c88e44bab5fbda71134e3bb",
       "trust": "community"
     },
+    "redesign-existing-projects": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/redesign-skill/SKILL.md",
+      "computedHash": "d39f2dfb1c6e4026a288b203e42cee265cf97321b412ea76c402d399f4ec99e0",
+      "trust": "community",
+      "verifiedHash": "f7cc3b928947da9078ea1cdfc40444cd0e175bb6519ae21ccab52c54393752a6"
+    },
     "review-animations": {
       "source": "emilkowalski/skill",
       "sourceType": "github",
@@ -162,7 +194,7 @@
       "source": "addyosmani/web-quality-skills",
       "sourceType": "autoskills-registry",
       "computedHash": "c184da724d1c61ad077f27418ea8e7e88fd54bcdf98165e18be7e4681cbd5e20",
-      "verifiedHash": "b641f8a43480103ba292d4f704d7fb3918423c62e4550cda94f5648cb2167890",
+      "verifiedHash": "93c8073bf0709656cc9b7c8c6eb4159ce9f73fb483811534782967e191777d40",
       "trust": "community"
     },
     "sqlalchemy": {
@@ -195,14 +227,6 @@
       "verifiedHash": "1f4219f4bbdddc3ae671859ff94d777b5b1c131cffa18843664d7dc5ea802ac8",
       "trust": "first-party"
     },
-    "ui-ux-pro-max": {
-      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
-      "sourceType": "github",
-      "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
-      "computedHash": "6337038fe1fe6bbe1b9f252ab678ee575859190bab6f0f246f4061824eb40875",
-      "verifiedHash": "a96b911c5db188133b3d8b97e30c167788c2e3da8873635b820461abe5db6592",
-      "trust": "community"
-    },
     "upstash-cli": {
       "source": "upstash/skills",
       "sourceType": "github",
@@ -224,7 +248,7 @@
       "sourceType": "github",
       "skillPath": "skills/react-best-practices/SKILL.md",
       "computedHash": "ca7b0c0c6e5f2750043f7f0cd72d16ac4e2abc48f9b5500d047a4b77a2506212",
-      "verifiedHash": "0cdcb8dfa5f4c189d6c50370d91b3a33ca3b82604eb3dcfebeb5f2f61b8fe6c2",
+      "verifiedHash": "a6e0a9fe232d8de1701fd74a77161c541bb8df0a8c8326524283a4d987210a38",
       "trust": "first-party"
     },
     "web-design-guidelines": {
@@ -232,7 +256,7 @@
       "sourceType": "github",
       "skillPath": "skills/web-design-guidelines/SKILL.md",
       "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474",
-      "verifiedHash": "bb9c0f46dfaa38ca9a656748f3a055cd348eda19b97ecc721c46479eb87eefac",
+      "verifiedHash": "9b81c7a98b22e9cabf1b1dab8d0a9c1d040ad8efe6d694b9a51a5d6ec561ca5c",
       "trust": "first-party"
     }
   }

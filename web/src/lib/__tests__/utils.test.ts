@@ -217,6 +217,33 @@ describe("formatNumber", () => {
     const result = formatNumber(1_000, "en-US");
     expect(result).toBe("1,000");
   });
+
+  describe("decimales", () => {
+    it("fija el número exacto de decimales con coma", () => {
+      expect(formatNumber(4.25, "es-ES", { decimales: 1 })).toBe("4,3");
+      expect(formatNumber(3, "es-ES", { decimales: 1 })).toBe("3,0");
+      expect(formatNumber(0.1234, "es-ES", { decimales: 3 })).toBe("0,123");
+      expect(formatNumber(0.5, "es-ES", { decimales: 2 })).toBe("0,50");
+    });
+
+    it("con cero decimales redondea al entero", () => {
+      expect(formatNumber(42.6, "es-ES", { decimales: 0 })).toBe("43");
+    });
+
+    it("agrupa los miles como el resto de cifras, no como toFixed", () => {
+      expect(formatNumber(12345.67, "es-ES", { decimales: 1 })).toBe("12.345,7");
+      expect(formatNumber(1038.5, "es-ES", { decimales: 1, agruparSiempre: true })).toBe("1.038,5");
+    });
+
+    it("sigue devolviendo EMPTY sin dato", () => {
+      expect(formatNumber(null, "es-ES", { decimales: 1 })).toBe(EMPTY);
+      expect(formatNumber(Number.NaN, "es-ES", { decimales: 1 })).toBe(EMPTY);
+    });
+
+    it("sin la opción conserva el formato de siempre", () => {
+      expect(formatNumber(3.14159)).toBe("3,142");
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

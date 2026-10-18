@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { metadatosPublicos } from "../_components/metadatos-publicos";
 import { PaginaEvidencia, type SeccionEvidencia } from "../_components/pagina-evidencia";
 
-export const metadata: Metadata = {
-  title: "Metodología",
-  description: "Cómo calcula TenderFlow el scoring, los escenarios de baja y el contexto competitivo, con sus límites.",
-  alternates: { canonical: "/metodologia" },
-};
+export const metadata: Metadata = metadatosPublicos({
+  titulo: "Metodología",
+  descripcion: "Cómo calcula TenderFlow el scoring, los escenarios de baja y el contexto competitivo, con sus límites.",
+  ruta: "/metodologia",
+});
 
 const SECCIONES: SeccionEvidencia[] = [
   {

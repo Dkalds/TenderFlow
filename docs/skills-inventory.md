@@ -7,7 +7,7 @@ Derivado de [`skills-lock.json`](../skills-lock.json) y el frontmatter de cada
 `python scripts/gen_skills_inventory.py` tras instalar/actualizar un skill.
 Ver AGENTS.md §7 para qué significa `trust`.
 
-Total: 31 skills.
+Total: 34 skills.
 
 | Skill | Trust | Source | Descripción |
 | --- | --- | --- | --- |
@@ -15,23 +15,26 @@ Total: 31 skills.
 | `animation-vocabulary` | community | emilkowalski/skill | Reverse-lookup glossary that turns a vague description of a web animation or motion effect into its exact term ("the bouncy thing when… |
 | `apple-design` | community | emilkowalski/skill | Apple's approach to interface design and fluid, physical motion, translated for the web. Use when building or reviewing gesture-driven… |
 | `bash-defensive-patterns` | community | wshobson/agents | Master defensive Bash programming techniques for production-grade scripts. Use when writing robust shell scripts, CI/CD pipelines, or… |
+| `design-taste-frontend` | community | Leonxlnx/taste-skill | tasteskill v2, the anti-slop frontend skill. Art direction for websites, distilled from a study of 247 curated gallery sites (One Page… |
 | `emil-design-eng` | community | emilkowalski/skill | This skill encodes Emil Kowalski's philosophy on UI polish, component design, animation decisions, and the invisible details that make… |
 | `fastapi-python` | community | mindrally/skills | Expert in FastAPI Python development with best practices for APIs and async operations |
 | `find-animation-opportunities` | community | emilkowalski/skill | Search a codebase or UI for places that don't animate but should, and reject everything that shouldn't. Read-only; it proposes motion… |
+| `full-output-enforcement` | community | Leonxlnx/taste-skill | Overrides default LLM truncation behavior. Enforces complete code generation, bans placeholder patterns, and handles token-limit splits… |
 | `improve-animations` | community | emilkowalski/skill | Survey a codebase's animation and motion code as a senior motion advisor, then produce a prioritized audit and self-contained… |
 | `machine-learning` | community | pluginagentmarketplace/custom-plugin-python | Python machine learning with scikit-learn, PyTorch, and TensorFlow |
+| `minimalist-ui` | community | Leonxlnx/taste-skill | Clean editorial-style interfaces. Warm monochrome palette, typographic contrast, flat bento grids, muted pastels. No gradients, no… |
 | `pandas-pro` | community | jeffallan/claude-skills | Performs pandas DataFrame operations for data analysis, manipulation, and transformation. Use when working with pandas DataFrames, data… |
 | `pick-ui-library` | community | emilkowalski/skill | Pick the right library for a given frontend task from a curated, opinionated list — numbers, OTP inputs, charts, command menus,… |
 | `pydantic` | community | bobmatnyc/claude-mpm-skills | Python data validation using type hints and runtime type checking with Pydantic v2's Rust-powered core for high-performance validation… |
 | `python-patterns` | community | affaan-m/everything-claude-code | Pythonic idioms, PEP 8 standards, type hints, and best practices for building robust, efficient, and maintainable Python applications. |
 | `python-testing-patterns` | community | wshobson/agents | Implement comprehensive testing strategies with pytest, fixtures, mocking, and test-driven development. Use when writing Python tests,… |
+| `redesign-existing-projects` | community | Leonxlnx/taste-skill | Upgrades existing websites and apps to premium quality. Audits current design, identifies generic AI patterns, and applies high-end… |
 | `review-animations` | community | emilkowalski/skill | Reviews animation and motion code against a high craft bar derived from Emil Kowalski's design engineering philosophy. Default to… |
 | `scikit-learn` | community | davila7/claude-code-templates | Machine learning in Python with scikit-learn. Use when working with supervised learning (classification, regression), unsupervised… |
 | `senior-data-scientist` | community | davila7/claude-code-templates | World-class data science skill for statistical modeling, experimentation, causal inference, and advanced analytics. Expertise in Python… |
 | `seo` | community | addyosmani/web-quality-skills | Optimize for search engine visibility and ranking. Use when asked to "improve SEO", "optimize for search", "fix meta tags", "add… |
 | `sqlalchemy` | community | bobmatnyc/claude-mpm-skills | SQLAlchemy Python SQL toolkit and ORM with powerful query builder, relationship mapping, and database migrations via Alembic |
 | `sqlalchemy-alembic-expert-best-practices-code-review` | community | wispbit-ai/skills | SQLAlchemy ORM and Alembic migration best practices for building safe, performant database schemas. This skill should be used when… |
-| `ui-ux-pro-max` | community | nextlevelbuilder/ui-ux-pro-max-skill | UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX… |
 | `agent-browser` | first-party | vercel-labs/agent-browser | Browser automation CLI for AI agents. Use when the user needs to interact with websites, including navigating pages, filling forms,… |
 | `deploy-to-vercel` | first-party | vercel-labs/agent-skills | Deploy applications and websites to Vercel. Use when the user requests deployment actions like "deploy my app", "deploy and give me the… |
 | `find-skills` | first-party | vercel-labs/skills | Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill… |

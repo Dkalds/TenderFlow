@@ -11,6 +11,7 @@ import { AtribucionFuente } from "@/app/(publico)/_components/ficha-atribucion";
 import { CabeceraFicha, type Miga } from "@/app/(publico)/_components/ficha-cabecera";
 import { DatosDelAnuncio } from "@/app/(publico)/_components/ficha-datos";
 import { LotesLicitacion } from "@/app/(publico)/_components/ficha-lotes";
+import { tituloParaMetadatos } from "@/app/(publico)/_components/metadatos-publicos";
 import { BOTON_SECUNDARIO } from "@/app/(publico)/_components/piel-publica";
 
 /**
@@ -87,17 +88,18 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   // `opengraph-image.tsx` con los datos del anuncio, y los metadatos por
   // convención de fichero tienen prioridad. Declarar además la genérica
   // emitiría dos `og:image` compitiendo.
+  const titulo = tituloParaMetadatos(lic.titulo);
   return {
-    title: lic.titulo.slice(0, 70),
+    title: titulo,
     description: descripcion,
     alternates: { canonical },
     openGraph: {
-      title: lic.titulo.slice(0, 70),
+      title: titulo,
       description: descripcion,
       url: canonical,
       type: "article",
     },
-    twitter: { ...TWITTER_COMPARTIDO, title: lic.titulo.slice(0, 70), description: descripcion },
+    twitter: { ...TWITTER_COMPARTIDO, title: titulo, description: descripcion },
   };
 }
 

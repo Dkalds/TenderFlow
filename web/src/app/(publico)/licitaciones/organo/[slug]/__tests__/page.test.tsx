@@ -81,7 +81,8 @@ describe("HubOrgano", () => {
     // para nadie: lo que se declara es la URL que se indexa.
     const meta = await paginada.generateMetadata(pedirPagina("consejeria-de-sanidad", "2"));
     expect(meta.alternates?.canonical).toBe("/licitaciones/organo/consejeria-de-sanidad?p=2");
-    expect(meta.openGraph?.url).toBe("/licitaciones/organo/consejeria-de-sanidad");
+    // `og:url` es el mismo canonical: compartir la página 2 no la presenta como la 1.
+    expect(meta.openGraph?.url).toBe("/licitaciones/organo/consejeria-de-sanidad?p=2");
   });
 
   it("la página 2 pide su tramo y enlaza a la 1 sin ?p y a la 3 con él", async () => {

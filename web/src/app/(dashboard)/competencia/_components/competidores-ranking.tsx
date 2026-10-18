@@ -221,7 +221,7 @@ export function CompetidoresRanking({
                               className="h-1.5 min-w-8 flex-1"
                             />
                             <span className="tf-tnum w-7 shrink-0 text-right">
-                              {c.ofertas_medias.toFixed(1).replace(".", ",")}
+                              {formatNumber(c.ofertas_medias, "es-ES", { decimales: 1 })}
                             </span>
                           </div>
                         ) : (

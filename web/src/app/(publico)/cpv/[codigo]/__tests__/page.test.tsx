@@ -61,13 +61,14 @@ describe("HubCpv", () => {
     expect(screen.queryByRole("link", { name: "Siguiente" })).not.toBeInTheDocument();
   });
 
-  it("los canonicals son auto-referentes y en su forma pública", async () => {
+  it("los canonicals son auto-referentes y en su forma pública, y og:url los sigue", async () => {
     await expect(primera.generateMetadata(pedir("72222300"))).resolves.toMatchObject({
       alternates: { canonical: "/cpv/72222300" },
+      openGraph: { url: "/cpv/72222300" },
     });
     await expect(paginada.generateMetadata(pedirPagina("72222300", "2"))).resolves.toMatchObject({
       alternates: { canonical: "/cpv/72222300?p=2" },
-      openGraph: { url: "/cpv/72222300" },
+      openGraph: { url: "/cpv/72222300?p=2" },
     });
   });
 

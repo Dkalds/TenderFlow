@@ -14,6 +14,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api-client";
+import { competitiveKeys } from "@/lib/query-keys";
 
 import type { Movimientos } from "./vigilados";
 
@@ -22,7 +23,7 @@ export const DIAS_VIGILADOS = 30;
 
 export function useMovimientosVigiladas() {
   return useQuery<Movimientos>({
-    queryKey: ["competitive", "watchlist-movimientos", DIAS_VIGILADOS],
+    queryKey: competitiveKeys.watchlistMovimientos(DIAS_VIGILADOS),
     queryFn: () =>
       apiGet("/api/v1/competitive/watchlist/movimientos", {
         params: { query: { dias: DIAS_VIGILADOS } },

@@ -28,6 +28,19 @@ export function WebhookRow({ webhook, editable }: { webhook: WebhookAmpliado; ed
   const formato = webhook.formato ?? "json";
   const fallos = webhook.failure_count ?? 0;
   const idEntregas = `entregas-webhook-${webhook.id}`;
+  const [confirmando, setConfirmando] = React.useState(false);
+  const botonEliminar = React.useRef<HTMLButtonElement>(null);
+  const botonCancelar = React.useRef<HTMLButtonElement>(null);
+  const estabaConfirmando = React.useRef(false);
+  const cancelar = () => setConfirmando(false);
+
+  // Al armar la confirmación el foco pasa a «Cancelar» (lo seguro con el
+  // teclado); al desarmarla vuelve a la papelera, que es de donde salió.
+  React.useEffect(() => {
+    if (confirmando) botonCancelar.current?.focus();
+    else if (estabaConfirmando.current) botonEliminar.current?.focus();
+    estabaConfirmando.current = confirmando;
+  }, [confirmando]);
 
   return (
     <Panel>
@@ -89,16 +102,12 @@ export function WebhookRow({ webhook, editable }: { webhook: WebhookAmpliado; ed
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  ref={botonEliminar}
                   size="icon-sm"
                   variant="ghost"
                   className="text-destructive"
-                  onClick={() => {
-                    // Confirmación explícita: borrar un webhook rompe una integración
-                    // viva del cliente y no se puede deshacer.
-                    if (window.confirm(`¿Eliminar el webhook «${webhook.name}»?`)) {
-                      remove.mutate(webhook.id);
-                    }
-                  }}
+                  onClick={() => setConfirmando(true)}
+                  disabled={confirmando || remove.isPending}
                   aria-label={`Eliminar ${webhook.name}`}
                 >
                   <Trash2 aria-hidden="true" />
@@ -109,6 +118,31 @@ export function WebhookRow({ webhook, editable }: { webhook: WebhookAmpliado; ed
           </div>
         )}
       </div>
+      {/* Confirmación en dos pasos dentro de la propia ficha, como en el resto
+          de la consola: borrar un webhook rompe una integración viva del
+          cliente y no se puede deshacer. */}
+      {editable && confirmando && (
+        <div
+          role="group"
+          aria-label={`Confirmar la eliminación de ${webhook.name}`}
+          className="mt-3 flex flex-wrap items-center gap-2 text-tf-meta"
+        >
+          <span className="text-muted-foreground">
+            ¿Eliminar el webhook «{webhook.name}»? Dejará de recibir entregas y no se puede deshacer.
+          </span>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate(webhook.id, { onSettled: () => setConfirmando(false) })}
+          >
+            Sí, eliminar
+          </Button>
+          <Button ref={botonCancelar} size="sm" variant="ghost" onClick={cancelar}>
+            Cancelar
+          </Button>
+        </div>
+      )}
       <Button
         size="sm"
         variant="ghost"

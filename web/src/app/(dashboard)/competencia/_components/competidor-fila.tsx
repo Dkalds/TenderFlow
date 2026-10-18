@@ -63,7 +63,7 @@ export const CompetitorRow = React.memo(function CompetitorRow({
       <TableCell numeric>{c.contratos_por_anio > 0 ? formatNumber(c.contratos_por_anio) : EMPTY}</TableCell>
       <TableCell numeric>{c.importe_medio > 0 ? formatCurrency(c.importe_medio) : EMPTY}</TableCell>
       <TableCell numeric>{valorOEmpty(c.baja_media, formatPercent)}</TableCell>
-      <TableCell numeric>{valorOEmpty(c.ofertas_medias, (v) => v.toFixed(1).replace(".", ","))}</TableCell>
+      <TableCell numeric>{valorOEmpty(c.ofertas_medias, (v) => formatNumber(v, "es-ES", { decimales: 1 }))}</TableCell>
       <TableCell numeric>{valorOEmpty(c.pct_monopolio, formatPercent)}</TableCell>
       <TableCell numeric>{c.n_organos > 0 ? formatPercent(c.pct_top_organo) : EMPTY}</TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground">{c.ultima ? formatDate(c.ultima) : EMPTY}</TableCell>

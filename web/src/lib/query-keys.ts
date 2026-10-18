@@ -291,6 +291,12 @@ export const competitiveKeys = {
    */
   competenciaEsperada: (licitacionId: string, organizationId: OrganizacionDeClave) =>
     ["competitive", "competencia-esperada", licitacionId, organizationId] as const,
+  /**
+   * Movimientos de las empresas vigiladas en los últimos `dias`
+   * (`GET /competitive/watchlist/movimientos`). Bajo la raíz `competitive`:
+   * invalidarla los refresca con el resto de la competencia.
+   */
+  watchlistMovimientos: (dias: number) => ["competitive", "watchlist-movimientos", dias] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -532,4 +538,18 @@ export const renovacionesKeys = {
     ["renovaciones", meses, tecnologia] as const,
   resumen: (meses: number, tecnologia: string | null) =>
     ["renovaciones-resumen", meses, tecnologia] as const,
+};
+
+// ---------------------------------------------------------------------------
+// Ficheros estáticos de `public/`
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursos que sirve Next desde `public/` y no cambian mientras dura la
+ * sesión: se piden una vez y se quedan en caché (`staleTime: Infinity`).
+ */
+export const estaticosKeys = {
+  all: ["estaticos"] as const,
+  /** Contornos de las comunidades autónomas (`/spain-ccaa.json`). */
+  geoCcaa: ["estaticos", "spain-ccaa"] as const,
 };

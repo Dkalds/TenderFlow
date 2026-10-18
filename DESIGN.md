@@ -112,9 +112,12 @@ Resumen de [docs/frontend-motion.md](docs/frontend-motion.md):
   puntuación y de progreso: se pintan en su valor).
 - Hover de filas y celdas solo de color; sin `translate` de hover ni pulsos
   infinitos decorativos.
-- Solo `transform` y `opacity`; nunca `width`, `height`, `top` o `left`.
+- Solo se mueve con `transform` y `opacity`, nunca con `width`, `height`, `top`
+  o `left`; los cambios de estado sí transicionan color, fondo y borde.
 - Sin Framer Motion: los enter/exit son los primitivos CSS de `globals.css`.
-- Todo respeta `prefers-reduced-motion`.
+- Todo respeta `prefers-reduced-motion`, que no quiere decir cero movimiento:
+  se conservan los fundidos de opacidad y color. La red de `/login` se queda en
+  un fotograma y tiene botón de pausa.
 
 ## Iconos y voz
 
@@ -122,20 +125,64 @@ Resumen de [docs/frontend-motion.md](docs/frontend-motion.md):
   ([lib/iconos.ts](web/src/lib/iconos.ts)). Sin emojis ni Sparkles.
 - Castellano peninsular con tuteo. La interfaz no narra su implementación.
 
-## Skills de diseño genéricas: qué aplica y qué no
+## Skills de diseño: cuál usar y qué no aplica
 
-Las skills de `.agents/skills/` (p. ej. `design-taste-frontend-v1`) son
-heurísticas generales. Donde chocan con una decisión registrada, manda la
-decisión:
+Las skills viven en `.claude/skills/` (Claude Code) y en su copia idéntica
+`.agents/skills/` (resto de herramientas); el inventario está en
+[docs/skills-inventory.md](docs/skills-inventory.md). Son heurísticas
+generales: donde chocan con una decisión registrada, manda la decisión.
+
+Las de estética general **no se invocan solas** (`disable-model-invocation:
+true`): `frontend-design`, `design-taste-frontend`, `minimalist-ui` y
+`redesign-existing-projects` piden un rumbo visual propio (maximalismo, grano,
+Motion, una fuente distinta en cada página) que contradice este fichero si se
+aplica a la consola. Se piden por nombre y para la portada.
+
+| Tarea | Skill | Cómo se carga |
+|---|---|---|
+| Pantalla o componente de la consola | Ninguna de estética: este fichero y las reglas de la casa de [docs/UX_AUDIT.md](docs/UX_AUDIT.md) | — |
+| Añadir o cambiar una animación | `emil-design-eng`, `apple-design` y [docs/frontend-motion.md](docs/frontend-motion.md) | Solas |
+| Revisar un diff con movimiento | `review-animations` | Por nombre |
+| Buscar dónde falta movimiento, o auditar el que hay | `find-animation-opportunities` / `improve-animations` | Sola / por nombre |
+| Ponerle nombre a un efecto | `animation-vocabulary` | Sola |
+| Elegir una librería | `pick-ui-library`, contrastada con `web/package.json` (no reintroduce `motion` ni añade NumberFlow) | Por nombre |
+| Accesibilidad y revisión de interfaz | `accessibility`, `web-design-guidelines` (fijada a un commit; lo que choque con este fichero se reporta como conflicto) | Solas |
+| Rendimiento de React/Next y API de componentes | `vercel-react-best-practices` (con TanStack Query, no SWR), `vercel-composition-patterns` | Solas |
+| Rediseño o pulido de la portada | `design-taste-frontend` (sus scripts lanzan Chrome y descargan imágenes), `frontend-design`, `minimalist-ui`, `redesign-existing-projects` | Por nombre |
+| SEO de la portada | `seo` (genérica; la de verdad es la Metadata API de Next) | Por nombre |
+
+`full-output-enforcement` no es de diseño y tampoco se invoca sola: su
+descripción pretende sobrescribir las instrucciones de concisión del agente.
+
+El 2026-10-18 se retiraron once skills tras contrastarlas con este fichero:
+
+- `design-taste-frontend-v1` y `-v2-experimental`: versiones antiguas que se
+  conservaban solo por compatibilidad.
+- `gpt-taste` y `high-end-visual-design`: GSAP obligatorio, un RNG de Python
+  simulado y una estética opuesta a la casa.
+- `stitch-design-taste` (Google Stitch) e `industrial-brutalist-ui`, que se
+  activaba con «data-heavy dashboards».
+- `brandkit`, `image-to-code`, `imagegen-frontend-web` e
+  `imagegen-frontend-mobile`: exigen generar imágenes, una herramienta que aquí
+  no hay, y no existe app móvil.
+- `ui-ux-pro-max`: sus `data/` y `scripts/` eran enlaces rotos y ordenaba
+  ejecutar un `search.py` inexistente.
+
+Antes de reinstalar alguna, mirá por qué salió.
 
 | Regla de la skill | En TenderFlow |
 |---|---|
-| Sin serif en dashboards | **No aplica**: Fraunces en titulares ≥ 15 px es la decisión D1 |
-| Framer Motion, micro-animaciones perpetuas, stagger | **No aplica**: `docs/frontend-motion.md` las excluye de la consola |
-| Iconos Phosphor/Radix | **No aplica**: lucide en todo el árbol |
-| Contenedores `rounded-[2.5rem]`, padding generoso | **No aplica**: la consola es densa y usa `rounded-xl` |
+| Serif prohibida en dashboards, o «serif display como atajo a premium» (`design-taste-frontend`) | **No aplica**: Fraunces en titulares ≥ 15 px es la decisión D1 |
+| Lucide prohibido; Phosphor o Radix Icons (`minimalist-ui`, `redesign-existing-projects`) | **No aplica**: lucide en todo el árbol |
+| Motion o GSAP, reveals de 500-900 ms al hacer scroll, stagger en listas, bucles infinitos, parallax (`frontend-design`, `design-taste-frontend`, `minimalist-ui`, `redesign-existing-projects`) | **No aplica**: `docs/frontend-motion.md` los excluye; el stagger solo va en el hero de la portada |
+| Transiciones de 200-300 ms en todo lo interactivo | **No aplica**: 150 ms por defecto, ≤ 200 ms en la consola |
+| Padding generoso (`py-24` o más), píldoras, radios grandes | **No aplica**: la consola es densa; `rounded-md` y `rounded-xl` |
+| Grano, ruido, mallas de degradado, cristal, sombras dramáticas, una fuente distinta en cada página (`frontend-design`, `redesign-existing-projects`) | **No aplica**: paneles opacos, D4 y los tokens de `globals.css` |
+| Sin `shadow-md`/`shadow-lg` (`minimalist-ui`) | **No aplica**: la sombra va en lo que flota (popover, menú, modal) |
+| «Randomize dates to appear real» (`redesign-existing-projects`) | **Nunca**: el frontend no fabrica datos ([docs/frontend-data-invariants.md](docs/frontend-data-invariants.md)) |
 | `dvh` en vez de `h-screen` | Aplica |
 | Neutros de una sola familia, sin negro puro | Aplica (neutros cálidos, `bg-scrim`) |
-| Skeletons en vez de spinners para contenido | Aplica |
+| Skeletons en vez de spinners para contenido; estados vacío, error y carga | Aplica (ver «Estados») |
 | Sin filas de tres columnas iguales en la portada | Aplica (`landing-como-funciona.tsx`, asimétrica) |
-| Animar solo `transform`/`opacity` | Aplica |
+| Mover solo con `transform`/`opacity` | Aplica al movimiento; color, fondo y borde sí transicionan |
+| Cifras tabulares | Aplica (el body activa `tnum`) |

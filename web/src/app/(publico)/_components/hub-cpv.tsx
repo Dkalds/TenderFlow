@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { listarLicitaciones } from "@/lib/publico-api";
 import { cn, formatNumber } from "@/lib/utils";
-import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaPublicaDePagina } from "@/lib/paginacion-hubs";
 import { rutaHubCpv } from "@/lib/slug";
 import { ListadoLicitaciones } from "./listado-licitaciones";
 import { Paginacion } from "./paginacion";
 import { CierrePublico } from "./cierre-publico";
+import { metadatosPublicos } from "./metadatos-publicos";
 import { KICKER, TITULO_PAGINA } from "./piel-publica";
 
 /**
@@ -51,21 +51,15 @@ export function metadatosHubCpv(codigo: string, pagina: number): Metadata {
     ? `Concursos públicos con código CPV ${codigo} — ${division}. Objeto, órgano de contratación, presupuesto y plazos.`
     : `Concursos públicos con código CPV ${codigo}: objeto, órgano de contratación, presupuesto y plazos.`;
 
-  return {
-    title: titulo,
-    description: descripcion.slice(0, 160),
-    // Auto-referente incluyendo la página, y en su forma pública (`?p=N`)
-    // aunque se sirva desde el segmento interno: si todas apuntaran a la
-    // primera, Google descartaría el resto junto con sus enlaces a las fichas.
-    alternates: { canonical: rutaPublicaDePagina(rutaHubCpv(codigo), pagina) },
-    openGraph: {
-      ...OG_IMAGE_COMPARTIDA,
-      title: titulo,
-      description: descripcion.slice(0, 160),
-      url: rutaHubCpv(codigo),
-    },
-    twitter: { ...TWITTER_COMPARTIDO, title: titulo, description: descripcion.slice(0, 160) },
-  };
+  return metadatosPublicos({
+    titulo,
+    descripcion: descripcion.slice(0, 160),
+    // Canonical (y `og:url`) auto-referente incluyendo la página, y en su forma
+    // pública (`?p=N`) aunque se sirva desde el segmento interno: si todas
+    // apuntaran a la primera, Google descartaría el resto junto con sus enlaces
+    // a las fichas.
+    ruta: rutaPublicaDePagina(rutaHubCpv(codigo), pagina),
+  });
 }
 
 export async function paginaHubCpv(codigo: string, pagina: number) {

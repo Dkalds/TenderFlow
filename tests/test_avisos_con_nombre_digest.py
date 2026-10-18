@@ -210,7 +210,7 @@ def test_el_digest_con_avisos_no_los_cuenta_como_licitaciones_nuevas() -> None:
     texto, html = render_digest(bloques=bloques, frecuencia="daily", base_url=None, baja_url=None)
 
     primera = texto.splitlines()[0]
-    assert primera.startswith("1 licitación(es) nueva(s) de hoy")
+    assert primera.startswith("1 licitación nueva de hoy")
     assert "1 novedad en los expedientes que sigues" in primera
     assert "Plazo ampliado al 12/10/2026 — Antes cerraba el 01/10/2026." in texto
     assert "== Plazo ampliado (1) ==" in texto

@@ -141,7 +141,7 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
             value={
               totals.ofertas_medias == null
                 ? EMPTY
-                : `${totals.ofertas_medias.toFixed(1).replace(".", ",")} ofertas`
+                : `${formatNumber(totals.ofertas_medias, "es-ES", { decimales: 1 })} ofertas`
             }
             hint={`Cobertura del dato: ${formatPercent(totals.cobertura_ofertas_pct, 0)}`}
           />

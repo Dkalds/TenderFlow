@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { listarLicitaciones, obtenerHubs } from "@/lib/publico-api";
 import { cn, formatNumber } from "@/lib/utils";
-import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaPublicaDePagina } from "@/lib/paginacion-hubs";
 import { esSlugOrgano, rutaHubOrgano } from "@/lib/slug";
 import { ListadoLicitaciones } from "./listado-licitaciones";
 import { Paginacion } from "./paginacion";
 import { CierrePublico } from "./cierre-publico";
+import { metadatosPublicos } from "./metadatos-publicos";
 import { KICKER, TITULO_PAGINA } from "./piel-publica";
 
 /**
@@ -47,20 +47,13 @@ export async function metadatosHubOrgano(slug: string, pagina: number): Promise<
 
   const titulo = `Licitaciones de ${hub.nombre}`;
   const descripcion = `Concursos públicos de tecnología publicados por ${hub.nombre}: objeto, presupuesto y plazos, con enlace al anuncio oficial.`;
-  return {
-    title: titulo,
-    description: descripcion.slice(0, 160),
-    // Canonical auto-referente incluyendo la página, en su forma pública
-    // (`?p=N`), como los otros hubs.
-    alternates: { canonical: rutaPublicaDePagina(rutaHubOrgano(slug), pagina) },
-    openGraph: {
-      ...OG_IMAGE_COMPARTIDA,
-      title: titulo,
-      description: descripcion.slice(0, 160),
-      url: rutaHubOrgano(slug),
-    },
-    twitter: { ...TWITTER_COMPARTIDO, title: titulo, description: descripcion.slice(0, 160) },
-  };
+  return metadatosPublicos({
+    titulo,
+    descripcion: descripcion.slice(0, 160),
+    // Canonical (y `og:url`) auto-referente incluyendo la página, en su forma
+    // pública (`?p=N`), como los otros hubs.
+    ruta: rutaPublicaDePagina(rutaHubOrgano(slug), pagina),
+  });
 }
 
 export async function paginaHubOrgano(slug: string, pagina: number) {

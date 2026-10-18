@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { riesgoLabel } from "@/lib/riesgos";
 
 /**
@@ -153,7 +153,7 @@ export function ScoreDesglose({
             />
           </span>
           <span className="tf-tnum text-right text-tf-micro font-medium">
-            {valor.toFixed(1).replace(".", ",")}
+            {formatNumber(valor, "es-ES", { decimales: 1 })}
           </span>
         </div>
       ))}

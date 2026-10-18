@@ -49,11 +49,16 @@ function VirtuosoTableRow({
   );
 }
 
-const VirtuosoTableHead = React.forwardRef<HTMLTableSectionElement, React.ComponentProps<"thead">>(
-  function VirtuosoTableHead(props, ref) {
-    return <TableHeader ref={ref} {...props} className={cn("bg-card", props.className)} />;
-  },
-);
+function VirtuosoTableHead({
+  className,
+  context: _context,
+  ...props
+}: React.ComponentProps<"thead"> & { context?: RenovacionesRowContext }) {
+  // React 19: `ref` llega como prop y viaja en `props` hasta el `<thead>`, que
+  // Virtuoso necesita para medir la cabecera fija. `context` también llega
+  // (Virtuoso se lo pasa a todo componente propio) y no debe acabar en el DOM.
+  return <TableHeader {...props} className={cn("bg-card", className)} />;
+}
 
 const renovacionesTableComponents: TableComponents<RenovacionRow, RenovacionesRowContext> = {
   Table: VirtuosoTable,
@@ -100,7 +105,10 @@ export function RenovacionesLista({
         // contratos que vencen».
         hint={empresaSearch ? `${formatNumber(items.length)} coinciden con el filtro` : undefined}
         actions={
-          <div className="flex h-8 w-56 items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 focus-within:border-primary/50 md:h-7">
+          // El foco se ve en el contenedor, con el anillo de `Input`; el input
+          // quita el contorno global (`!`: esa regla va sin capa y gana a
+          // cualquier utilidad) para no pintar dos marcas.
+          <div className="flex h-8 w-56 items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring md:h-7">
             <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
             <input
               type="search"
@@ -108,7 +116,7 @@ export function RenovacionesLista({
               onChange={(e) => onEmpresaSearchChange(e.target.value)}
               placeholder="Empresa, órgano o título…"
               aria-label="Filtrar los contratos servidos por empresa, órgano o título"
-              className="h-6 min-w-0 flex-1 border-0 bg-transparent text-tf-meta text-foreground outline-none placeholder:text-muted-foreground"
+              className="h-6 min-w-0 flex-1 border-0 bg-transparent text-tf-meta text-foreground placeholder:text-muted-foreground focus-visible:outline-none!"
             />
           </div>
         }

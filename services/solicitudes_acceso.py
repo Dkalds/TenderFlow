@@ -34,6 +34,15 @@ import html
 
 from observability.alerts import AlertLevel, enviar_email_transaccional, notify
 from observability.logging import get_logger
+from services.email_html import (
+    BLANCO,
+    CERRAR_DOCUMENTO,
+    ESTILO_PIE,
+    OXIDO,
+    SECUNDARIO,
+    abrir_documento,
+    contar,
+)
 
 log = get_logger(__name__)
 
@@ -109,22 +118,19 @@ def _cuerpo_acceso(empresa: str | None, enlace: str | None) -> tuple[str, str]:
     saludo_html = html.escape(saludo)
     boton = (
         f'<p style="margin:20px 0"><a href="{html.escape(enlace)}" '
-        'style="background:#0e7490;color:#fff;padding:10px 18px;border-radius:6px;'
+        f'style="background:{OXIDO};color:{BLANCO};padding:10px 18px;border-radius:6px;'
         'text-decoration:none;display:inline-block">Entrar en TenderFlow</a></p>'
         if enlace
         else ""
     )
     cuerpo_html = (
-        '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;'
-        'max-width:600px;margin:0 auto;color:#1f2733;line-height:1.55">'
-        f"<p>{saludo_html}:</p>"
+        abrir_documento(max_ancho=600) + f"<p>{saludo_html}:</p>"
         "<p><strong>Ya tienes acceso a TenderFlow.</strong></p>"
         f"<p>{html.escape(pasos)}</p>"
         f"{boton}"
-        f'<p style="color:#55606e;font-size:14px">{html.escape(cierre)}</p>'
-        '<p style="color:#8a93a0;font-size:12px;margin-top:24px">TenderFlow · '
-        "inteligencia de licitaciones públicas de tecnología</p>"
-        "</body></html>"
+        f'<p style="color:{SECUNDARIO}">{html.escape(cierre)}</p>'
+        f'<p style="{ESTILO_PIE};margin-top:24px">TenderFlow · '
+        "inteligencia de licitaciones públicas de tecnología</p>" + CERRAR_DOCUMENTO
     )
     return texto, cuerpo_html
 
@@ -206,7 +212,7 @@ def avisar_operador_de_solicitud(
         notify(
             AlertLevel.WARN,
             "Solicitud de acceso pendiente",
-            f"Hay {pendientes} solicitud(es) esperando revisión en el panel.",
+            f"Hay {contar(pendientes, 'solicitud', 'solicitudes')} esperando revisión en el panel.",
             solicitud_id=solicitud_id,
             empresa=empresa or "—",
             origen=origen or "—",
