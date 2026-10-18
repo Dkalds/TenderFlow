@@ -653,8 +653,8 @@ _Sin ítems abiertos._
   primer criterio está hecho: v147–v149 aplicadas con `plan` (run 38765966684)
   y `apply` (run 38766204885), de v146 a `v149_ledger_borrado_org` a las 16:07
   UTC; `deploy.yml` (run 38766484577) en verde con `schema_revision = ok
-  (v149_ledger_borrado_org)` y el smoke en verde (pero ver el P2 de
-  `deploy.yml`: sondeó la instancia que ya servía, que era del mismo commit).
+  (v149_ledger_borrado_org)` y el smoke en verde (pero sondeó la instancia que
+  ya servía, que era del mismo commit; ese gate se arregló el 2026-10-17).
   API, worker y Vercel sirven `e8889a0`. No se comprobó que hubiera una copia
   reciente de Supabase antes del `apply`: ninguna herramienta de la sesión
   lista los backups.
@@ -760,17 +760,7 @@ _Sin ítems abiertos._
 - **Files de partida:** [render.yaml](../render.yaml), [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 - **Relación:** comparte superficie con el P3 de staging y plan de la API (más abajo); si se toca el servicio, conviene decidir ambos a la vez.
 - **Riesgo:** bajo-medio — vincular un Blueprint a un servicio existente puede recrearlo; hacerlo en ventana y con el healthcheck decidido de antemano.
-
-### [P2] `deploy.yml` verifica la instancia que ya servía, no la que acaba de desplegar
-- **Área:** .github/workflows/deploy.yml, api/routes/health.py
-- **Problema:** el paso «Esperar a que la API responda» da la API por lista con el primer 200 de `/health/ready`. Pero Render despliega sin corte: la instancia anterior sigue respondiendo hasta que la nueva está viva. Así que la espera, el gate de alineación de schema y el smoke corren casi siempre contra la instancia vieja. Medido en el run 38766484577 (2026-10-15): «API lista tras 1 intentos» a las 16:08:53, schema y smoke terminados a las 16:09:05, y el deploy que el hook había encolado (`dep-db8fl4t9fdbs739gc3bg`) no quedó vivo hasta las 16:09:32. Esa vez dio igual porque la instancia vieja era del mismo commit: la había puesto el autodeploy (P2 anterior). Con `autoDeploy` apagado, que es lo que decidió D4, el gate verificaría siempre el commit anterior. Un deploy que no arranca saldría en verde, porque Render mantiene la instancia vieja, y el `behind` de una migración sin aplicar no se vería nunca.
-- **Acceptance criteria:**
-  - `/health/ready` dice qué commit corre (`RENDER_GIT_COMMIT`, que Render pone en cada servicio y [observability/sentry.py](../observability/sentry.py) ya lee). Si se prefiere no publicarlo entero, basta un prefijo corto.
-  - La espera sondea hasta que responda el commit desplegado, con el mismo margen de 15 minutos, y solo entonces corren el gate de schema y el smoke. Ojo: el deploy hook despliega la punta de `master`, que puede ser posterior a `COMMIT_SHA` si llegó otro push entretanto. Hay que decidir entre aceptar un descendiente o fijar el commit en el hook, si Render lo admite.
-  - Si el plazo vence con otro commit respondiendo, el job falla y dice cuál responde.
-- **Files de partida:** [.github/workflows/deploy.yml](../.github/workflows/deploy.yml), [api/routes/health.py](../api/routes/health.py)
-- **Relación:** con `autoDeploy` encendido (P2 anterior), el defecto queda tapado. Conviene arreglarlo antes de apagarlo, o en el mismo cambio.
-- **Riesgo:** bajo — un campo nuevo en `/health/ready` y un cambio de workflow (requiere OK humano, AGENTS.md §6).
+- **Al apagar `autoDeploy`:** los hooks de `deploy.yml` pueden pasar `?ref=<sha>` para desplegar exactamente `github.sha` en vez de la punta de `master` del momento. Render lo admite y responde 404 si el SHA no existe, pero **desplegar un commit concreto apaga el autodeploy del servicio**: por eso no se hizo en el arreglo del gate del 2026-10-17 (ver _Cerrados_). Una vez apagado a propósito, ya no hay efecto lateral.
 
 ### [P2] Migrar `licitaciones.importe` de `real` a `double precision`
 - **Área:** db/alembic, db/upsert.py, shared/numeric.py
@@ -1384,6 +1374,22 @@ _Sin ítems abiertos._
 
 ## Cerrados
 
+- [2026-10-17] **P2: `deploy.yml` verificaba la instancia que ya servía, no la que acababa de
+  desplegar** (rama `claude/funcionalidades-2026-10`) — Render despliega sin corte, y la
+  espera aceptaba el primer 200 de `/health/ready`, que daba la instancia vieja: en el run
+  38766484577 schema y smoke terminaron a las 16:09:05 y el deploy encolado no quedó vivo
+  hasta las 16:09:32. Ahora `/health/ready` publica `commit` (`RENDER_GIT_COMMIT`, o
+  `GIT_SHA` fuera de Render; `unknown` sin ninguno), y la espera es
+  `scripts/esperar_deploy.py`: sondea hasta un 200 que traiga `github.sha`. Una respuesta
+  sin el campo es de la versión anterior a este gate, y otro commit es la instancia vieja
+  o un push posterior; si vence el plazo, el job dice qué commit respondía. Con `commit:
+  unknown` falla al primer intento, porque reintentar no lo arregla. El gate de schema
+  lee el payload verificado en vez de volver a preguntar. El hook sigue desplegando la
+  punta de `master`: `?ref=<sha>` apagaría el autodeploy del servicio, y eso va con el P2
+  de `render.yaml`. Tests en `tests/test_deploy_gate_commit.py`. **Pendiente de ver en
+  producción:** el primer `deploy.yml` tras el merge confirma que el contenedor recibe
+  `RENDER_GIT_COMMIT`. Render lo documenta para todos los runtimes, pero aquí no se pudo
+  comprobar.
 - [2026-10-17] **Segundo repaso del Investigador** (rama
   `claude/quirky-wozniak-xp20q0`):
   - **Duplicados:** los cinco caminos del motor (términos, expresión,

@@ -75,6 +75,25 @@ _DEFAULT_CHECK_TIMEOUT = 5.0
 _DEFAULT_SCHEMA_TTL = 300.0
 _schema_cache: tuple[float, str] | None = None
 
+# ── Commit que sirve este proceso ────────────────────────────────────────────
+# Render despliega sin corte: la instancia anterior sigue respondiendo hasta que
+# la nueva está viva. Sin saber qué commit da el 200, `deploy.yml` verificaba
+# casi siempre la instancia vieja (run 38766484577, 2026-10-15), y con
+# `autoDeploy` apagado un deploy que no arranca habría salido verde. Con este
+# campo, `scripts/esperar_deploy.py` sondea hasta que responde el commit
+# desplegado. Render pone `RENDER_GIT_COMMIT` en cada servicio; `GIT_SHA` es
+# para un despliegue fuera de Render. Un SHA no es un secreto.
+_VARIABLES_DE_COMMIT = ("RENDER_GIT_COMMIT", "GIT_SHA")
+
+
+def _commit_desplegado() -> str:
+    """El commit del código que corre, o ``unknown`` si el entorno no lo dice."""
+    for nombre in _VARIABLES_DE_COMMIT:
+        valor = os.environ.get(nombre, "").strip()
+        if valor:
+            return valor
+    return "unknown"
+
 
 def _min_free_disk_bytes() -> int:
     """Devuelve el umbral de espacio libre configurado o el default."""
@@ -128,6 +147,10 @@ class HealthResponse(BaseModel):
     # repo: ``ok (v98)`` · ``behind (v97 < v98)`` · ``ahead (v99 > v98)`` ·
     # ``unknown`` (no se pudo determinar) · ``unconfigured`` (sin DATABASE_URL).
     schema_revision: str = "unknown"
+    # Commit del código que sirve esta respuesta (``RENDER_GIT_COMMIT``), o
+    # ``unknown``. Es lo que deja a ``deploy.yml`` distinguir la instancia que
+    # acaba de desplegar de la que ya servía.
+    commit: str = "unknown"
     timestamp: str
 
 
@@ -317,6 +340,7 @@ async def health() -> HealthResponse:
         redis=redis_status,
         disk=disk_status,
         schema_revision=schema_status,
+        commit=_commit_desplegado(),
         timestamp=datetime.now(UTC).isoformat(),
     )
 
@@ -358,6 +382,7 @@ async def readiness() -> JSONResponse:
         redis=redis_status,
         disk=disk_status,
         schema_revision=schema_status,
+        commit=_commit_desplegado(),
         timestamp=datetime.now(UTC).isoformat(),
     )
     return JSONResponse(content=body.model_dump(), status_code=http_status)

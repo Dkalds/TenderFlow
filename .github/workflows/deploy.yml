@@ -109,26 +109,27 @@ jobs:
           echo "Deploy encolado (HTTP $codigo)."
 
       # Render no expone el fin del despliegue por el deploy hook, así que se
-      # sondea el healthcheck hasta que la instancia nueva responde. Los 15
-      # minutos de margen cubren el build de la imagen, no un spin-down: el
-      # servicio corre en `standard` desde antes del 2026-08-28 (render.yaml).
-      - name: Esperar a que la API responda
+      # sondea el healthcheck hasta que responde la instancia nueva. Un 200 a
+      # secas no basta: Render despliega sin corte y la instancia anterior sigue
+      # respondiendo 200 hasta que la nueva está viva. Hasta el 2026-10-17 esta
+      # espera salía al primer intento contra la vieja, y el gate de schema y el
+      # smoke la verificaban a ella (run 38766484577). Ahora se espera a que
+      # `/health/ready` diga que sirve `github.sha` (campo `commit`), y su
+      # payload queda en un fichero para que el gate de schema juzgue esa misma
+      # respuesta. Los 15 minutos de margen cubren el build de la imagen, no un
+      # spin-down: el servicio corre en `standard` desde antes del 2026-08-28
+      # (render.yaml).
+      #
+      # El deploy hook despliega la punta de `master` del momento, no
+      # `github.sha`: si entra otro push entre lanzar el workflow y el hook,
+      # esta espera vence y lo dice («sirve X, no Y»), en vez de dar por bueno
+      # un commit que no es el elegido.
+      - name: Esperar a que la API sirva el commit desplegado
         if: ${{ !inputs.skip_smoke }}
         env:
           SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
-        run: |
-          set -uo pipefail
-          for intento in $(seq 1 60); do
-            estado=$(curl -sS -o /dev/null -w "%{http_code}" "$SMOKE_BASE_URL/api/v1/health/ready" || echo "000")
-            if [ "$estado" = "200" ]; then
-              echo "API lista tras $intento intentos."
-              exit 0
-            fi
-            echo "Intento $intento: HTTP $estado — reintentando en 15 s."
-            sleep 15
-          done
-          echo "::error title=La API no llegó a responder::15 minutos sin un 200 en /health/ready."
-          exit 1
+          COMMIT_SHA: ${{ github.sha }}
+        run: python scripts/esperar_deploy.py --commit "$COMMIT_SHA" --salida "$RUNNER_TEMP/health-ready.json"
 
       # Gate de alineación código ↔ schema (S6.2). Va ANTES del smoke y por
       # separado porque su diagnóstico es distinto: aquí el despliegue "funciona"
@@ -136,13 +137,14 @@ jobs:
       # el fallo aparecerá más tarde, en la primera consulta que las toque. Es el
       # incidente que motivó `migrate.yml` (`column "lote_id" of relation
       # "adjudicaciones" does not exist`), que hasta ahora ningún gate veía.
+      #
+      # Lee el payload que el paso anterior verificó, no uno nuevo: así el
+      # veredicto es el de la instancia que sirve `github.sha`.
       - name: Verificar alineación del schema
         if: ${{ !inputs.skip_smoke }}
-        env:
-          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
         run: |
           set -uo pipefail
-          payload=$(curl -sS --max-time 30 "$SMOKE_BASE_URL/api/v1/health/ready" || echo '{}')
+          payload=$(cat "$RUNNER_TEMP/health-ready.json" 2>/dev/null || echo '{}')
           schema=$(printf '%s' "$payload" | python -c "import json,sys; print(json.load(sys.stdin).get('schema_revision','unknown'))" 2>/dev/null || echo unknown)
           echo "schema_revision = $schema"
           case "$schema" in
@@ -174,12 +176,12 @@ jobs:
       # lo que quiere un rollback urgente: devolver los dos servicios a la misma
       # versión.
       #
-      # No se sondea su `/health/ready` como el de la API, y no por olvido. Ese
-      # endpoint no dice qué commit está sirviendo, y mientras Render construye
-      # la versión nueva sigue respondiendo la anterior: un 200 no probaría nada.
-      # Si la nueva no arranca, Render la marca como fallida y mantiene la
-      # anterior viva, así que un deploy roto del worker no lo tumba — se ve en
-      # Render → tenderflow-worker → Events.
+      # Su `/health/ready` no se sondea. Desde el 2026-10-17 dice qué commit
+      # sirve (`commit`), así que `scripts/esperar_deploy.py` podría verificarlo
+      # igual que la API, pero este workflow no tiene la URL del worker. Hasta
+      # que la tenga: si la versión nueva no arranca, Render la marca como
+      # fallida y mantiene la anterior viva, así que un deploy roto del worker
+      # no lo tumba — se ve en Render → tenderflow-worker → Events.
       - name: Disparar deploy del worker
         id: worker
         env:
