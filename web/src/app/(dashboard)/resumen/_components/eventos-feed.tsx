@@ -81,6 +81,8 @@ export function EventosFeed() {
   return (
     <Panel>
       <PanelTitle
+        // `h2`, como «Publicaciones»: es una sección de la página, y sus días van en `h3`.
+        as="h2"
         title="Movimientos del mercado"
         hint={`${ventanaLabel(rango.desde, rango.hasta)} · del ámbito`}
         actions={

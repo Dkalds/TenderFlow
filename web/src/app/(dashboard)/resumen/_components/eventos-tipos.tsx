@@ -116,10 +116,15 @@ export function LeyendaTipos({
               className={cn(
                 "inline-flex h-6 items-center gap-1.5 rounded-md px-1.5 text-tf-micro text-muted-foreground transition-colors active:duration-0",
                 pulsado ? "bg-primary/10 text-foreground" : "hover:bg-primary/5 active:bg-primary/10",
-                activo !== null && !pulsado && "opacity-60",
               )}
             >
-              <svg aria-hidden="true" viewBox="0 0 8 8" className="h-2 w-2 flex-none">
+              {/* Con otro tipo pulsado se atenúa solo el punto: el texto atenuado
+                  bajaba de 4,5:1 en el tema oscuro (WCAG 1.4.3). */}
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 8 8"
+                className={cn("h-2 w-2 flex-none", activo !== null && !pulsado && "opacity-30")}
+              >
                 <circle cx="4" cy="4" r="4" fill={tramo.color} />
               </svg>
               {TIPO_LABEL[tramo.estado] ?? tramo.estado}

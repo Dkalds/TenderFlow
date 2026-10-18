@@ -97,11 +97,13 @@ function MapaCasillas({
                 aria-label={`${fila.ccaa}: ${formatNumber(fila.n)} expedientes`}
                 onClick={() => onAlternar(fila.ccaa)}
                 className={cn(
-                  "grid place-items-center rounded-sm text-tf-micro font-medium transition-opacity active:duration-0",
+                  "grid place-items-center rounded-sm text-tf-micro font-medium transition-colors active:duration-0",
                   posicion,
-                  PASO_CASILLA[pasoIntensidad(fila.n, maximo)],
+                  // Con otra comunidad en el ámbito, la casilla pierde el relleno
+                  // pero no el código: atenuarla entera lo dejaba por debajo de
+                  // 4,5:1 (WCAG 1.4.3).
+                  PASO_CASILLA[activas.length > 0 && !activa ? 0 : pasoIntensidad(fila.n, maximo)],
                   activa && "border-2 border-foreground",
-                  activas.length > 0 && !activa && "opacity-30",
                 )}
               >
                 {/* El código es la etiqueta visible; el nombre accesible lleva el nombre entero. */}
