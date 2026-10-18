@@ -43,7 +43,7 @@ describe("Sheet", () => {
     // visual backdrop); select it by its distinguishing class instead of
     // `[role="presentation"]` used by the previous hand-rolled overlay.
     // Un solo scrim para diálogo, hoja y paleta: negro al 50 %.
-    expect(document.querySelector(".fixed.inset-0.bg-black\\/50")).toBeInTheDocument();
+    expect(document.querySelector(".fixed.inset-0.bg-scrim")).toBeInTheDocument();
   });
 
   it("closes on Escape (Radix's built-in dismiss behavior)", () => {

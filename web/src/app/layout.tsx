@@ -3,12 +3,13 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import { ClientErrorListener } from "@/components/client-error-listener";
 import { VARIABLES_FUENTES } from "@/lib/tipografia";
+import { MARCA_HEX } from "@/lib/marca";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#090E11" },
+    { media: "(prefers-color-scheme: dark)", color: MARCA_HEX.tinta },
     { media: "(prefers-color-scheme: light)", color: "#F7F5F3" },
   ],
   width: "device-width",
@@ -94,7 +95,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning className={VARIABLES_FUENTES}>
-      <body className="bg-background min-h-screen font-sans antialiased" suppressHydrationWarning>
+      <body className="bg-background min-h-dvh font-sans antialiased" suppressHydrationWarning>
         <a href="#main-content" className="skip-link">
           Saltar al contenido principal
         </a>

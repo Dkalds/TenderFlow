@@ -246,7 +246,7 @@ function CommandPaletteInner() {
         // de alta frecuencia para power users. Raycast/Spotlight no animan su
         // apertura y esa es la referencia (find-animation-opportunities).
         // El mismo velo que el diálogo y el panel lateral, sin desenfoque.
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-scrim"
         onClick={() => setOpen(false)}
       />
       <Command

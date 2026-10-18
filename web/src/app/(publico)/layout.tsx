@@ -89,7 +89,7 @@ const ENLACES_PIE = [
 export default function PublicoLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
-      <div className="bg-background flex min-h-screen flex-col">
+      <div className="bg-background flex min-h-dvh flex-col">
         <header className="tf-glass border-border/60 sticky top-0 z-40 border-b">
           {/* El header se reparte en varias filas por debajo de `sm` y vuelve a
               una sola línea a partir de ahí, con una sola nav en el DOM. Antes

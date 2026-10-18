@@ -241,7 +241,7 @@ export function ConsoleRail() {
       <nav
         aria-label="Espacios"
         style={{ width: RAIL_WIDTH }}
-        className="sticky top-0 hidden h-screen shrink-0 flex-col items-center gap-1 border-r border-border bg-card py-3 md:flex"
+        className="sticky top-0 hidden h-dvh shrink-0 flex-col items-center gap-1 border-r border-border bg-card py-3 md:flex"
       >
         <Link href={withFilters("/resumen")} aria-label="TenderFlow · ir al resumen" className="mb-3 shrink-0 rounded-md">
           <TenderFlowLogo showText={false} boxSize={32} />

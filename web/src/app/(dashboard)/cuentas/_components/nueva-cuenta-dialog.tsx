@@ -50,7 +50,7 @@ export function NuevaCuentaDialog({
 
   return (
     <Dialog open={open} onOpenChange={cerrar}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] w-[min(40rem,calc(100vw-2rem))] overflow-y-auto p-5">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[min(40rem,calc(100vw-2rem))] overflow-y-auto p-5">
         <DialogTitle>Nueva cuenta</DialogTitle>
         <DialogDescription className="mt-1">
           Un cliente y sus órganos de contratación. Todo el equipo recibirá en la campana sus

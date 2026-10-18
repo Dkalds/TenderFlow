@@ -186,7 +186,7 @@ export const SpainMap = React.memo(function SpainMap({
   const getColor = React.useCallback(
     (ccaa: string) => {
       const val = valueMap.get(ccaa);
-      if (val == null) return dark ? "hsl(200 15% 16%)" : "hsl(200 15% 92%)";
+      if (val == null) return dark ? "hsl(30 6% 16%)" : "hsl(36 12% 91%)";
       const t = maxVal === minVal ? 0.5 : (val - minVal) / (maxVal - minVal);
       return interpolateColor(t, colorScale, dark ? "dark" : "light");
     },
@@ -206,10 +206,10 @@ export const SpainMap = React.memo(function SpainMap({
         color: dark
           ? isHovered
             ? "hsl(36 12% 90%)"
-            : "hsl(200 15% 40%)"
+            : "hsl(34 10% 40%)"
           : isHovered
-            ? "hsl(204 35% 15%)"
-            : "hsl(200 15% 55%)",
+            ? "hsl(30 14% 15%)"
+            : "hsl(34 10% 55%)",
         weight: isHovered ? 2.5 : 1,
       };
     },

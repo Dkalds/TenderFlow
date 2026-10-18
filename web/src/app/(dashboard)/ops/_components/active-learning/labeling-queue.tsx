@@ -52,8 +52,11 @@ export function LabelingQueue({ estado }: { estado: ActiveLearning }) {
         </span>
         {items.length > 0 && (
           <div className="h-1.5 max-w-xs flex-1 overflow-hidden rounded-full bg-muted">
+            {/* Sin transición, como las demás barras (docs/frontend-motion.md):
+                animar `width` fuerza layout en cada frame, y el avance se lee
+                mejor si salta al valor nuevo al descartar. */}
             <div
-              className="h-full rounded-full bg-primary transition-[width]"
+              className="h-full rounded-full bg-primary"
               style={{
                 width: `${Math.min((dismissedCount / items.length) * 100, 100)}%`,
               }}

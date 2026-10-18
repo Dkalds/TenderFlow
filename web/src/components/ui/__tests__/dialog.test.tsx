@@ -26,7 +26,7 @@ describe("Dialog", () => {
 
   it("el scrim es el mismo que el de la hoja: negro al 50 %", () => {
     render(<Abierto />);
-    expect(document.querySelector(".fixed.inset-0.bg-black\\/50")).toBeInTheDocument();
+    expect(document.querySelector(".fixed.inset-0.bg-scrim")).toBeInTheDocument();
   });
 
   it("superficie opaca, radio de superficie y sombra de modal", () => {

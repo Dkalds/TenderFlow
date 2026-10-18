@@ -5,8 +5,8 @@ import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 /**
  * Web App Manifest.
  *
- * El color es la tinta de la marca (`lib/marca.ts`), el mismo `#090E11` del
- * `themeColor` oscuro que declara el `viewport` de `app/layout.tsx`: el
+ * El color es la tinta de la marca (`lib/marca.ts`), la misma que usa el
+ * `themeColor` oscuro del `viewport` de `app/layout.tsx`: el
  * manifest no puede leer variables CSS, y la marca tiene un solo sitio.
  */
 export default function manifest(): MetadataRoute.Manifest {

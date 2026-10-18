@@ -54,9 +54,9 @@ export const MARCA_HEX = {
   naranja: "#F39349",
   naranjaFavicon: "#E8823E",
   oxido: "#9A4513",
-  tinta: "#090E11",
+  tinta: "#0E0D0C",
   papel: "#EFEEEB",
-  gris: "#8A9199",
+  gris: "#98928B",
 } as const;
 
 /** Nombre del producto tal como se escribe en el wordmark. */

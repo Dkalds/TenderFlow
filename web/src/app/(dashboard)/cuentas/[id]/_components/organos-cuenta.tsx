@@ -45,7 +45,7 @@ function AnadirOrganosDialog({
 
   return (
     <Dialog open={open} onOpenChange={cerrar}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] w-[min(40rem,calc(100vw-2rem))] overflow-y-auto p-5">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[min(40rem,calc(100vw-2rem))] overflow-y-auto p-5">
         <DialogTitle>Añadir órganos a «{cuenta.nombre}»</DialogTitle>
         <DialogDescription className="mt-1">
           La cuenta avisará también de lo que publiquen y de sus contratos que venzan.
