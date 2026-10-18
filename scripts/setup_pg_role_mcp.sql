@@ -43,6 +43,7 @@ ALTER ROLE "tenderflow_mcp" SET statement_timeout = '15s';
 ALTER ROLE "tenderflow_mcp" SET idle_in_transaction_session_timeout = '30s';
 ALTER ROLE "tenderflow_mcp" SET work_mem = '32MB';
 ALTER ROLE "tenderflow_mcp" SET search_path = pg_catalog, public;
+ALTER ROLE "tenderflow_mcp" SET extra_float_digits = 3;
 
 -- ── 3. Privilegios de lectura y política RLS ───────────────────────────────
 DO $$

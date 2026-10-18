@@ -1,8 +1,8 @@
 """Índice de ADR (``scripts/gen_adr_index.py``).
 
-El primer test corre el gate de verdad sobre el repo —así CI lo ejecuta sin un
-paso propio en el workflow—; el resto mueven una pieza cada uno sobre un
-directorio de ADR mínimo.
+El primer test corre el gate de verdad sobre el repo —el mismo `--check` que el
+paso «Verify generated docs» de CI, para quien solo ejecuta la suite—; el resto
+mueven una pieza cada uno sobre un directorio de ADR mínimo.
 """
 
 from __future__ import annotations

@@ -282,9 +282,9 @@ _BASE_WHERE = _publicable_sql("l")
 # `confirmed`. Ese job es *cross-fuente* y su clave es el expediente natural,
 # así que no ve el caso que de verdad ensucia esta superficie: la misma fuente
 # reemitiendo el mismo contrato con otro `id_externo` (TED acuña un
-# `publication-number` por anuncio; PSCP cae al `id` de la fila cuando el
-# registro no trae `codi_expedient`). Resultado observado en la auditoría: el
-# hub de Cataluña servía el mismo contrato dos veces en la primera página.
+# `publication-number` por anuncio; PSCP, uno por ficha de la plataforma:
+# `pscp:{uuid}:{codi_expedient}`). Resultado observado en la auditoría: el hub
+# de Cataluña servía el mismo contrato dos veces en la primera página.
 #
 # De ahí que la proyección se defienda sola en vez de confiar en que el job
 # haya corrido. La cláusula se compone una sola vez y la usan las **seis**

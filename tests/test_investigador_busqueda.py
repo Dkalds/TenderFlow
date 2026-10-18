@@ -95,7 +95,13 @@ class _Repo:
         self.llamadas: list[tuple[str, dict[str, Any]]] = []
 
     def anuncios_por_terminos(
-        self, terminos: Any, ambito: Ambito, *, limit: int, recientes: bool = False
+        self,
+        terminos: Any,
+        ambito: Ambito,
+        *,
+        limit: int,
+        recientes: bool = False,
+        acentuadas: Any = (),
     ) -> list[dict[str, Any]]:
         self.llamadas.append(
             ("terminos", {"terminos": tuple(terminos), "ambito": ambito, "recientes": recientes})
@@ -109,7 +115,14 @@ class _Repo:
         return list(self.anuncios)[:limit]
 
     def licitaciones_con_pasaje(
-        self, texto: str, ambito: Ambito, *, expresion: bool = False, limit: int = 50, **_: Any
+        self,
+        texto: str,
+        ambito: Ambito,
+        *,
+        expresion: bool = False,
+        acentuado: str | None = None,
+        limit: int = 50,
+        **_: Any,
     ) -> list[tuple[str, int]]:
         self.llamadas.append(("pasajes", {"texto": texto, "expresion": expresion}))
         if self.pasajes_revienta:
@@ -117,7 +130,7 @@ class _Repo:
         return list(self.pasajes)[:limit]
 
     def mejores_pasajes(
-        self, ids: Any, texto: str, *, expresion: bool = False
+        self, ids: Any, texto: str, *, expresion: bool = False, acentuado: str | None = None
     ) -> dict[str, dict[str, Any]]:
         self.llamadas.append(("mejores", {"ids": list(ids)}))
         if self.mejores_revienta:
@@ -604,6 +617,16 @@ class TestFormaDeLasConsultas:
         assert "fpub DESC NULLS LAST" in conexion.sql
         assert conexion.sql.count("%s") == len(conexion.params)
 
+    def test_anuncios_por_terminos_con_tilde_probable(self, conexion: _Conexion) -> None:
+        """La forma acentuada va alineada con su término; sin ella, ``""``."""
+        repo.anuncios_por_terminos(
+            ["instalacion", "solar"], _AMBITO, limit=7, acentuadas=["instalación"]
+        )
+
+        self._comprueba(conexion)
+        assert conexion.params[:2] == [["instalacion", "solar"], ["instalación", ""]]
+        assert "plainto_tsquery('spanish', u.t) || plainto_tsquery('spanish', u.a)" in conexion.sql
+
     def test_sin_terminos_no_se_consulta(self, conexion: _Conexion) -> None:
         assert repo.anuncios_por_terminos([], _AMBITO, limit=5) == []
         assert conexion.sql == ""
@@ -624,6 +647,15 @@ class TestFormaDeLasConsultas:
         assert conexion.params[0] == "baja temeraria"
         assert conexion.params[-2:] == [2000, 9]
 
+    def test_el_pasaje_vale_con_tilde_o_sin_ella(self, conexion: _Conexion) -> None:
+        repo.licitaciones_con_pasaje(
+            "instalacion solar", _AMBITO, acentuado="instalación solar", limit=9
+        )
+
+        self._comprueba(conexion)
+        assert "plainto_tsquery('spanish', %s) || plainto_tsquery('spanish', %s)" in conexion.sql
+        assert conexion.params[:2] == ["instalacion solar", "instalación solar"]
+
     def test_licitaciones_con_pasaje_sin_ambito_no_une_licitaciones(
         self, conexion: _Conexion
     ) -> None:
@@ -640,6 +672,12 @@ class TestFormaDeLasConsultas:
         assert conexion.params[0] == ["A", "B"]
         # El extracto se calcula fuera del DISTINCT ON, una vez por expediente.
         assert conexion.sql.index("DISTINCT ON") < conexion.sql.index("ts_headline")
+
+    def test_mejores_pasajes_con_tilde_probable(self, conexion: _Conexion) -> None:
+        repo.mejores_pasajes(["A"], "instalacion", acentuado="instalación")
+
+        assert conexion.sql.count("%s") == len(conexion.params)
+        assert conexion.params.count("instalación") == 3
 
     def test_mejores_pasajes_sin_ids_no_consulta(self, conexion: _Conexion) -> None:
         assert repo.mejores_pasajes([], "baja") == {}

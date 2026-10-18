@@ -77,13 +77,17 @@ _COLUMNAS = (
 #: Expediente natural: el ``id_externo`` sin el namespace de fuente (ADR-009).
 #: Gemelo SQL de ``services.dedupe.natural_expediente`` — corta por el PRIMER
 #: ``':'`` y devuelve el id entero cuando no hay separador, que es el caso de
-#: PLACSP (sus ``id_externo`` no llevan prefijo). Si las dos definiciones
-#: divergieran, el prefiltro de este módulo escondería pares que el matching de
-#: Python sí considera, y el dedupe dejaría de ver duplicados sin decir nada.
+#: PLACSP (sus ``id_externo`` no llevan prefijo); luego quita el UUID de ficha
+#: con que PSCP acota su código (``pscp:{uuid}:{codi_expedient}``). Si las dos
+#: definiciones divergieran, el prefiltro de este módulo escondería pares que el
+#: matching de Python sí considera, y el dedupe dejaría de ver duplicados sin
+#: decir nada.
 _EXPEDIENTE_NATURAL_SQL = (
+    "regexp_replace("
     "CASE WHEN position(':' in l.id_externo) > 0 "
     "THEN substr(l.id_externo, position(':' in l.id_externo) + 1) "
-    "ELSE l.id_externo END"
+    "ELSE l.id_externo END, "
+    "'^[0-9a-f-]{36}:', '')"
 )
 
 

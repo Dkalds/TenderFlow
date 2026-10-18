@@ -120,6 +120,7 @@ def ambito_busqueda_sql(
     cierre_desde: str | None = None,
     cierre_hasta: str | None = None,
     procedimiento: Sequence[str] | None = None,
+    organo: Sequence[str] | None = None,
 ) -> tuple[list[str], list[Any]]:
     """Cláusulas del ámbito de una búsqueda sobre ``licitaciones``: ``(clauses, params)``.
 
@@ -145,10 +146,12 @@ def ambito_busqueda_sql(
       fila sin plazo publicado no pasa ninguna de las dos.
     - ``procedimiento``: códigos CODICE comparados sin ceros a la izquierda
       (la fuente publica ``01`` y ``1``), como el filtro del listado.
+    - ``organo``: OR entre nombres; cada uno casa si el órgano plegado
+      contiene todas sus palabras (:func:`db.sql_fragments.palabras_de_organo`).
 
-    Los cinco últimos los pone el Investigador cuando la frase los dice («de
+    Los seis últimos los pone el Investigador cuando la frase los dice («de
     más de 500K», «abiertas», «que cierran esta semana», «contratos
-    menores»); el resto de llamantes no los pasa y su consulta no cambia en un
+    menores», «del Ayuntamiento de Valencia»); el resto de llamantes no los pasa y su consulta no cambia en un
     carácter.
 
     ``ccaa`` y ``tecnologia`` aceptan una lista —el cuerpo JSON de ``/ask``— o
@@ -157,7 +160,12 @@ def ambito_busqueda_sql(
     respuesta llegaría sin contexto y sin error. Las cláusulas salen en ese
     orden y los parámetros, en el de sus marcadores.
     """
-    from db.sql_fragments import columna_nucleo_sql, fecha_valida_sql, tecnologia_en_csv_sql
+    from db.sql_fragments import (
+        columna_nucleo_sql,
+        fecha_valida_sql,
+        palabras_de_organo,
+        tecnologia_en_csv_sql,
+    )
     from shared.estados import abierta_sql
 
     clauses: list[str] = []
@@ -208,7 +216,33 @@ def ambito_busqueda_sql(
             f"COALESCE(NULLIF(ltrim(trim({alias}.procedimiento), '0'), ''), '0') IN ({marcadores})"
         )
         params.extend(codigos)
+    if nombres := [n for n in organo or () if palabras_de_organo(n)]:
+        clausula, valores = _organo_sql(alias, nombres)
+        clauses.append(clausula)
+        params.extend(valores)
     return clauses, params
+
+
+def _organo_sql(alias: str, nombres: Sequence[str]) -> tuple[str, list[str]]:
+    """``(cláusula, params)``: el órgano plegado contiene cada palabra de un nombre.
+
+    Por palabras y no la frase entera porque quien escribe no copia el nombre
+    de la fuente (:func:`db.sql_fragments.palabras_de_organo`). Cada ``LIKE``
+    va sobre la expresión de ``idx_lic_organo_plegado_trgm``, así que lo
+    resuelve el índice.
+    """
+    from db.sql_fragments import escape_like, fold_expr, palabras_de_organo
+
+    plegado = fold_expr(f"{alias}.organo_contratacion")
+    por_nombre: list[str] = []
+    params: list[str] = []
+    for nombre in nombres:
+        palabras = []
+        for variantes in palabras_de_organo(nombre):
+            palabras.append("(" + " OR ".join([f"{plegado} LIKE %s"] * len(variantes)) + ")")
+            params.extend(f"%{escape_like(v)}%" for v in variantes)
+        por_nombre.append("(" + " AND ".join(palabras) + ")")
+    return "(" + " OR ".join(por_nombre) + ")", params
 
 
 def _dia_siguiente(iso: str) -> str | None:

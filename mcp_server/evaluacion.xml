@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Evaluación del MCP interno (docs/superpowers/plans/2026-10-15-mcp-interno.md, Task 10).
+
+  Diez preguntas de solo lectura sobre datos de producción, con ventanas de tiempo
+  cerradas para que la respuesta no cambie. Formato del skill mcp-builder
+  (reference/evaluation.md): una respuesta por pregunta, comparable como texto.
+  Cada respuesta se verificó a mano con consultar_sql el 2026-10-17; la consulta
+  de verificación va en el comentario de cada pregunta.
+
+  Uso: pasarla con un cliente conectado al MCP que NO vea este fichero. Si una
+  respuesta falla, se corrige el glosario o la descripción de la tool, no la
+  pregunta (Task 10, paso 3).
+-->
+<evaluation>
+  <!-- 1. Tecnología por CSV (tecnologia/ml_tecnologias) + adjudicaciones + ventana 2025.
+       Verificación: adjudicaciones de 2025 cuya licitación lleva SAP en tecnologia o
+       ml_tecnologias, sin duplicados confirmados, ORDER BY importe_adjudicado DESC:
+       LICT/99/031/2024/0167 (FREMAP, S/4HANA RISE, 10 806 300 €), n_ofertas_recibidas = 4. -->
+  <qa_pair>
+    <question>De todos los contratos relacionados con SAP adjudicados en el año 2025, toma el de mayor importe adjudicado sin IVA. ¿Cuántas ofertas recibió ese concurso? Responde solo con el número.</question>
+    <answer>4</answer>
+  </qa_pair>
+
+  <!-- 2. Criterios de adjudicación: el flag es_precio y peso_precio_pct de esta fila
+       marcan el criterio de 18 puntos («...diferentes al precio», Equipo de trabajo),
+       pero el precio ofertado (nota «Precio ofertado Anexo 5») pesa 42.
+       Verificación: ficha_licitacion('20/2026') → criterios. -->
+  <qa_pair>
+    <question>El organismo autónomo que paga a los trabajadores los salarios e indemnizaciones que no abonan las empresas insolventes licitó en abril de 2026 un servicio de oficina de ciberseguridad. ¿Cuántos puntos sobre 100 valía el precio ofertado en ese concurso? Responde solo con el número.</question>
+    <answer>42</answer>
+  </qa_pair>
+
+  <!-- 3. Texto del pliego (buscar_en_pliegos): PCAP de SSCC PA 281/25 (IB-Salut,
+       soporte de SAP HCMPSe), apartado «Manipulación de datos»: «Adicionalmente se
+       deducirá el 10% de la factura ... del mes siguiente». La pregunta dice
+       «adicional» porque el incumplimiento muy grave del ANS tiene su propia
+       penalidad (40 %); en la primera pasada a ciegas eso dejó la duda 10/40. -->
+  <qa_pair>
+    <question>El servicio de salud de las Islas Baleares licitó a principios de 2026 el soporte y mantenimiento de su sistema de recursos humanos de SAP junto con su migración. Según el pliego de cláusulas, si el servicio detecta que el contratista ha manipulado los datos que falsean los resultados del nivel de servicio, además de tratarse como incumplimiento muy grave, ¿qué porcentaje adicional de la factura del mes siguiente se deduce? Responde solo con el número.</question>
+    <answer>10</answer>
+  </qa_pair>
+
+  <!-- 4. Lotes de una licitación SIN tecnología asignada (tecnologia NULL): no sale en
+       buscar_licitaciones, hay que ir por consultar_sql o ficha_licitacion.
+       Verificación: lotes de LIC-9687; el mayor es el 4, 23 760 000 €. -->
+  <qa_pair>
+    <question>En marzo de 2026 el banco central español publicó un acuerdo marco de servicios de digitalización y nuevas tecnologías dividido en lotes. ¿Cómo se titula el lote con mayor presupuesto? Responde con el título exacto del lote.</question>
+    <answer>Agilidad y Mejora de Procesos</answer>
+  </qa_pair>
+
+  <!-- 5. Ranking por órgano maestro (organo_id = 224) y empresa canónica, contando
+       contratos distintos y excluyendo duplicados confirmados.
+       Verificación: adjudicaciones de 2025 del Banco de España por empresa:
+       INDRA SOLUCIONES TECNOLOGIAS DE LA INFORMACIÓN, S.L.U. 16; la siguiente, 6. -->
+  <qa_pair>
+    <question>¿Qué empresa ganó más contratos distintos del Banco de España adjudicados durante 2025? Responde solo con el nombre comercial en una palabra (por ejemplo, «Accenture»).</question>
+    <answer>Indra</answer>
+  </qa_pair>
+
+  <!-- 6. Baja con base sin IVA (importe_tipo = 'sin_iva'):
+       PSS/2025/0000084432 (Extremadura), base 7 879 622,85 €, adjudicado 5 751 560 €
+       a EY → (7879622.85 - 5751560) / 7879622.85 * 100 = 27.01. -->
+  <qa_pair>
+    <question>Una consejería autonómica de Extremadura adjudicó en mayo de 2026 la implantación y operación de un centro de automatización inteligente de procesos e inteligencia artificial. ¿Qué baja porcentual obtuvo el adjudicatario sobre el presupuesto base sin IVA? Responde con el número redondeado a dos decimales, con punto decimal y sin el símbolo %.</question>
+    <answer>27.01</answer>
+  </qa_pair>
+
+  <!-- 7. Adjudicaciones por empresa dentro de un órgano y una ventana cerrada.
+       Verificación: adjudicaciones del Banco de España a Deloitte con fecha en el
+       primer semestre de 2026; la mayor es 24/04861 (4 968 100 €), 2026-05-05. -->
+  <qa_pair>
+    <question>De los contratos que Deloitte se adjudicó en el Banco de España durante el primer semestre de 2026, ¿en qué fecha se adjudicó el de mayor importe? Responde en formato AAAA-MM-DD.</question>
+    <answer>2026-05-05</answer>
+  </qa_pair>
+
+  <!-- 8. Solvencia (licitacion_solvencia, clase técnica) de Exp 261/2025
+       (Conselleria de Sanidad valenciana, adjudicado a IQVIA): «deberá ser al menos el
+       60 % del valor anual medio (VAM) del contrato». -->
+  <qa_pair>
+    <question>La consejería de sanidad de la Comunidad Valenciana adjudicó en abril de 2026, por más de 57 millones de euros, la adquisición y el mantenimiento de un sistema de información. Para acreditar la solvencia técnica, ¿qué porcentaje del valor anual medio del contrato debía haber ejecutado la empresa en su año de mayor ejecución? Responde solo con el número.</question>
+    <answer>60</answer>
+  </qa_pair>
+
+  <!-- 9. Duplicados entre fuentes: ted:615809-2026 y ted:660367-2026 son duplicados
+       confirmados de 2026/032169 (Castilla-La Mancha, 95 100 200 €). -->
+  <qa_pair>
+    <question>El mayor contrato de telecomunicaciones y ciberseguridad que publicó la Junta de Comunidades de Castilla-La Mancha en el primer semestre de 2026 aparece varias veces en la base porque también se anunció en el Diario Oficial de la Unión Europea. ¿Cuál es el identificador (id_externo) de la fila canónica? Responde solo con el identificador.</question>
+    <answer>2026/032169</answer>
+  </qa_pair>
+
+  <!-- 10. Adjudicación por lotes: 2026000435 (Principado de Asturias, AsturCon XXI,
+       3 lotes), tres filas en adjudicaciones a INETUM ESPAÑA SA:
+       11 782 155 + 1 695 800 + 3 742 000 = 17 219 955 (importe_adjudicado es real:
+       el euro exacto no es recuperable, por eso la respuesta va en millones).
+       La primera pasada a ciegas destapó que el MCP enseñaba los real con 6 cifras
+       (11 782 200): extra_float_digits = 0 en Supabase; el rol fija 3. -->
+  <qa_pair>
+    <question>El Principado de Asturias licitó en mayo de 2026, en tres lotes, la gestión, el mantenimiento y la evolución de los sistemas de su plataforma de gestión económico-financiera, y los tres lotes los ganó la misma empresa. ¿Cuánto suman los importes adjudicados sin IVA de los tres lotes? Responde en millones de euros con un decimal y punto decimal (por ejemplo, 3.5).</question>
+    <answer>17.2</answer>
+  </qa_pair>
+</evaluation>

@@ -14,29 +14,63 @@
  *
  * Los valores y la validación son de react-hook-form con el esquema de alta
  * rápida (S7.2): cada error sale debajo de su campo, enlazado a él (`Field`).
+ *
+ * Lo que el prefill trae sin campo aquí (tecnología, órgano, procedimiento) se
+ * enseña debajo, con «Quitar»: se guarda con la regla, y un filtro que no se
+ * ve es una alerta que calla sin explicación.
  */
 
 import * as React from "react";
 import { ChevronDown, Plus } from "lucide-react";
 import { Controller, useWatch } from "react-hook-form";
 import { Panel } from "@/components/console/panel";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, ariaDeField } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FREQ_NOTE, FREQ_OPTIONS } from "../_hooks/watchlist-rule-options";
-import type { NuevaReglaForm } from "../_hooks/use-mi-watchlist";
+import type { NuevaReglaForm, OpcionCodificada } from "../_hooks/use-mi-watchlist";
+import { type CriteriosDelPrefill, hayCriteriosDelPrefill } from "../_hooks/use-preview-regla";
 import { VistaPreviaRuido } from "./vista-previa-ruido";
+
+/** «Además filtra por…»: los criterios del prefill, con su etiqueta legible. */
+function CriteriosDelPrefillNota({
+  criterios,
+  procedimientoList,
+  onQuitar,
+}: {
+  criterios: CriteriosDelPrefill;
+  procedimientoList: OpcionCodificada[];
+  onQuitar: () => void;
+}) {
+  if (!hayCriteriosDelPrefill(criterios)) return null;
+  const { tecnologia, organo, procedimiento } = criterios;
+  const etiqueta = procedimientoList.find((o) => o.codigo === procedimiento)?.etiqueta ?? procedimiento;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-tf-meta">
+      <span className="text-muted-foreground">Además filtra por</span>
+      {tecnologia && <Badge size="sm" variant="outline">Tecnología: {tecnologia}</Badge>}
+      {organo.trim() && <Badge size="sm" variant="outline">Órgano: {organo.trim()}</Badge>}
+      {procedimiento && <Badge size="sm" variant="outline">Procedimiento: {etiqueta}</Badge>}
+      <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={onQuitar}>
+        Quitar
+      </Button>
+    </div>
+  );
+}
 
 export function NuevaReglaCard({
   form,
   ccaaList,
+  procedimientoList,
   open,
   onToggle,
 }: {
   form: NuevaReglaForm;
   ccaaList: string[];
+  procedimientoList: OpcionCodificada[];
   open: boolean;
   onToggle: () => void;
 }) {
@@ -134,6 +168,11 @@ export function NuevaReglaCard({
               </Button>
             </div>
           </div>
+          <CriteriosDelPrefillNota
+            criterios={form.criteriosDelPrefill}
+            procedimientoList={procedimientoList}
+            onQuitar={form.quitarCriteriosDelPrefill}
+          />
           {/* F5.5 — antes de crearla, cuántas alertas habría dado cada semana. */}
           <div className="mt-4 space-y-2">
             <div className="flex flex-wrap items-center gap-3">

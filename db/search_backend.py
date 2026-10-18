@@ -287,6 +287,7 @@ class PgTsBackend:
         cierre_desde: str | None = None,
         cierre_hasta: str | None = None,
         procedimiento: Sequence[str] | None = None,
+        organo: Sequence[str] | None = None,
         limit: int = 20,
         candidate_k: int = 50,
         alpha: float | None = None,
@@ -310,7 +311,7 @@ class PgTsBackend:
 
         Los filtros (``ccaa``, ``tecnologia``, ``fecha_desde``/``fecha_hasta`` y,
         desde el Investigador, ``importe_min``/``importe_max``/``solo_abiertas``,
-        la ventana ``cierre_desde``/``cierre_hasta`` y ``procedimiento``;
+        la ventana ``cierre_desde``/``cierre_hasta``, ``procedimiento`` y ``organo``;
         ver ``db.repositories.base.ambito_busqueda_sql``) acotan las **dos**
         listas antes de fusionar, así que el ranking de cada una se cuenta ya
         dentro del ámbito y ningún fragmento de fuera llega a ``chunks``.
@@ -350,6 +351,7 @@ class PgTsBackend:
             cierre_desde=cierre_desde,
             cierre_hasta=cierre_hasta,
             procedimiento=procedimiento,
+            organo=organo,
         )
         fts_where = " AND ".join(
             ["l.search_vector @@ websearch_to_tsquery('spanish', %s)", *ambito]
@@ -513,6 +515,7 @@ def hybrid_search_docs(
     cierre_desde: str | None = None,
     cierre_hasta: str | None = None,
     procedimiento: Sequence[str] | None = None,
+    organo: Sequence[str] | None = None,
     limit: int = 20,
     candidate_k: int = 50,
     alpha: float | None = None,
@@ -546,6 +549,7 @@ def hybrid_search_docs(
             cierre_desde=cierre_desde,
             cierre_hasta=cierre_hasta,
             procedimiento=procedimiento,
+            organo=organo,
             limit=limit,
             candidate_k=candidate_k,
             alpha=alpha,

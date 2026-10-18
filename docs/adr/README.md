@@ -45,7 +45,7 @@ el cuerpo.
 
 **35 ADR**, de los cuales **30** están vigentes. `accepted` 30 · `rejected` 1 · `superseded` 4.
 
-Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmatter de cada ADR; `make check-agent-docs` y la suite (`tests/test_unit_ratchet_indice_adr.py`) la verifican con `--check`. Un ADR sin `id` o `status` —o con un estado fuera del vocabulario— la hace fallar.
+Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmatter de cada ADR; CI la verifica con `--check`, igual que `make check-agent-docs` y la suite (`tests/test_unit_ratchet_indice_adr.py`). Un ADR sin `id` o `status` —o con un estado fuera del vocabulario— la hace fallar.
 
 | Estado | Significado |
 |---|---|

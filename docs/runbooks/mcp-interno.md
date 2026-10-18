@@ -36,6 +36,14 @@ Google tras el primer deploy: paso 2); el 4 es por persona y va al final.
 > placeholder sustituido por `PASSWORD NULL`, para que la contraseña no pasara
 > por ningún registro, y la contraseña fijada después desde el SQL Editor de
 > Supabase (`ALTER ROLE tenderflow_mcp PASSWORD '…';`).
+>
+> **Pendiente desde 2026-10-17:** `ALTER ROLE tenderflow_mcp SET extra_float_digits = 3;`
+> (la línea nueva del script). Supabase fija `extra_float_digits = 0` en su
+> configuración y, sin esto, `consultar_sql` devuelve las columnas `real`
+> (`adjudicaciones.importe_adjudicado`, `licitaciones.importe`…) con 6 cifras
+> significativas: 11 782 155 llega como 11 782 200. Se aplica sin reiniciar; vale
+> para las conexiones nuevas del pool (redesplegar el MCP para no esperar a que
+> se reciclen).
 > Re-ejecutar el script (p. ej. tras cambiar el catálogo) no la toca: el
 > `CREATE ROLE` solo corre si el rol no existe.
 

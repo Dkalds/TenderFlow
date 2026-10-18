@@ -5,6 +5,7 @@
   después durante la implementación (rulings) están en
   [ADR-036](../../adr/ADR-036-acceso-interno-por-mcp.md), que manda si difieren.
 - **Rama:** `claude/laughing-newton-dbht10`
+- **Plan de implementación:** [docs/superpowers/plans/2026-10-15-mcp-interno.md](../plans/2026-10-15-mcp-interno.md)
 - **Relacionado:** ADR-016 (Supabase), ADR-022 (SQL en `db/`), ADR-025 (pools),
   ADR-030 (identidad), ADR-034 (RLS por tenant), RFC 242 (`access_grants`)
 

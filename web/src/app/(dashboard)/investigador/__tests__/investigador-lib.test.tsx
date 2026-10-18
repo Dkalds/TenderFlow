@@ -268,7 +268,7 @@ describe("chipsDeInterpretacion", () => {
   });
 });
 
-describe("chipsDeInterpretacion: plazo y procedimiento", () => {
+describe("chipsDeInterpretacion: plazo, procedimiento y órgano", () => {
   it("el plazo de cierre se dice como cierre, no como publicación", () => {
     expect(
       chipsDeInterpretacion(interpretacion({ cierre_desde: "2026-10-09", cierre_hasta: "2026-10-11" })),
@@ -282,6 +282,12 @@ describe("chipsDeInterpretacion: plazo y procedimiento", () => {
     expect(
       chipsDeInterpretacion(interpretacion({ procedimiento: ["6"], procedimiento_etiquetas: ["Contrato menor"] })),
     ).toEqual(["Procedimiento: Contrato menor"]);
+  });
+
+  it("el órgano va con la grafía con que se escribió", () => {
+    expect(
+      chipsDeInterpretacion(interpretacion({ organo: ["Ayuntamiento de Valencia", "cabildo de tenerife"] })),
+    ).toEqual(["Órgano: Ayuntamiento de Valencia", "Órgano: cabildo de tenerife"]);
   });
 });
 
@@ -341,6 +347,32 @@ describe("enlaceDeAlerta", () => {
     expect(prefill(enlaceDeAlerta({ texto: " sap ", ccaa: [], tecnologia: [], importeMin: null }))).toEqual({
       q: "sap",
     });
+  });
+
+  it("el órgano y el procedimiento entendidos van a la regla", () => {
+    expect(
+      prefill(
+        enlaceDeAlerta({
+          texto: "limpieza",
+          ccaa: [],
+          tecnologia: [],
+          importeMin: null,
+          organo: ["Ayuntamiento de Valencia, Distrito 3", "Cabildo de Tenerife"],
+          procedimiento: ["6"],
+        }),
+      ),
+    ).toEqual({ q: "limpieza", organo: "Ayuntamiento de Valencia, Distrito 3", procedimiento: "6" });
+  });
+
+  it("con dos procedimientos no va ninguno: la alerta no puede ser más estrecha que la búsqueda", () => {
+    const enlace = enlaceDeAlerta({
+      texto: "obras",
+      ccaa: [],
+      tecnologia: [],
+      importeMin: null,
+      procedimiento: ["3", "4"],
+    });
+    expect(prefill(enlace)).toEqual({ q: "obras" });
   });
 });
 

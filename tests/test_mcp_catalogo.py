@@ -30,6 +30,7 @@ def test_rol_lleva_los_limites_del_spec() -> None:
         "idle_in_transaction_session_timeout = '30s'",
         "work_mem = '32MB'",
         "search_path = pg_catalog, public",
+        "extra_float_digits = 3",
         "NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS",
         "CONNECTION LIMIT 5",
         "no puede ser superusuario",

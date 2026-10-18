@@ -294,7 +294,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-20** Gestionar la plataforma como administrador | — | [admin-guard.spec.ts](../web/e2e/admin-guard.spec.ts) | — |
 | **CU-21** Descubrir el producto en la web pública | — | [seo.spec.ts](../web/e2e/seo.spec.ts) | — |
 | **CU-22** Leer el pliego con la cita delante | — | [pagina-cita.spec.ts](../web/e2e/pagina-cita.spec.ts) | — |
-| **CU-23** Preguntar al Investigador en lenguaje natural | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | — | — |
+| **CU-23** Preguntar al Investigador en lenguaje natural | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-investigador.spec.ts](../web/e2e/recorrido-investigador.spec.ts) | — |
 | **CU-24** Ver el trabajo del equipo desde Dirección | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
 | **CU-25** Proteger mi cuenta con la verificación en dos pasos | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | — | [seguridad-view.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/seguridad-view.test.tsx)<br>[space-views.test.ts](../web/src/lib/__tests__/space-views.test.ts) |
 | **CU-26** Salir, traspasar o borrar una organización | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | — | [ciclo-organizacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/ciclo-organizacion.test.tsx) |
