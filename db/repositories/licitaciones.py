@@ -40,6 +40,7 @@ from db.sql_fragments import (
     columna_nucleo,
     columna_nucleo_sql,
     escape_like,
+    exclude_duplicados_presentacion_sql,
     fecha_valida_sql,
     fold_expr,
     importe_select_sql,
@@ -186,6 +187,12 @@ def _plegado(column: Any) -> Any:
 #: 2026-09 buscaban en sitios distintos (aquí título + descripción, allí título
 #: + órgano + id) sin plegar acentos en este lado. El mismo texto en la misma
 #: caja daba dos recuentos. ``tests/test_s1_paridad_filtros.py`` los compara.
+#: Universo de presentación del listado (ADR-026 D23): fuera las
+#: republicaciones ``pending`` y ``confirmed``, como en el Radar. Es ``text()``
+#: y no una subconsulta SA Core para que el SQL emitido sea la misma cadena que
+#: en los agregados (``build_licitaciones_where``) y en la rama FTS.
+_SIN_REPUBLICACIONES = text(exclude_duplicados_presentacion_sql("licitaciones.id_externo"))
+
 _COLUMNAS_BUSQUEDA = (
     licitaciones.c.titulo,
     licitaciones.c.descripcion,
@@ -479,8 +486,16 @@ class LicitacionRepository:
         Son ejes distintos y combinables: el listado que abre la tarjeta
         «Vencen 48h» de ``/resumen`` pide el segundo, que hasta ahora no
         existía y dejaba el enlace abriendo el catálogo entero.
+
+        El ``WHERE`` nace con la exclusión de presentación de duplicados
+        (ADR-026 D23, desde 2026-10-17): el listado esconde las republicaciones
+        ``pending`` y ``confirmed`` igual que el Radar. Va aquí y no en cada
+        llamador para que paginado, cursor y export —y los KPIs que comparten
+        este ámbito vía ``build_licitaciones_where``— midan lo mismo. La ficha
+        por id no pasa por aquí: un enlace guardado sigue respondiendo, y
+        declara ``republicacion_de``.
         """
-        clauses = []
+        clauses: list[Any] = [_SIN_REPUBLICACIONES]
 
         if only_classified:
             clauses.append(
@@ -912,7 +927,12 @@ class LicitacionRepository:
         fpub = columna_nucleo_sql("fecha_publicacion", "l")
         flim = columna_nucleo_sql("fecha_limite", "l")
         imp = columna_nucleo_sql("importe", "l")
-        extra_conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
+        extra_conditions: list[str] = [
+            "tecnologia IS NOT NULL AND tecnologia != ''",
+            # Misma regla de presentación que `_base_filters` (ADR-026 D23): la
+            # búsqueda de texto es otro camino al mismo listado.
+            exclude_duplicados_presentacion_sql("l.id_externo"),
+        ]
         extra_params: list[Any] = []
         # `csv_values` y no el valor crudo: la rama SA Core acepta multi-valor
         # (`?estado=A,B`) y ésta comparaba la cadena entera, de modo que el
@@ -1728,14 +1748,21 @@ class LicitacionRepository:
         since_actualizacion: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Carga licitaciones recientes para SSE streaming."""
+        """Carga licitaciones recientes para SSE streaming.
+
+        Es el feed en vivo del dashboard, otra cara del listado: esconde las
+        republicaciones ``pending`` y ``confirmed`` con la misma regla de
+        presentación (ADR-026 D23) para no anunciar como nueva una fila que la
+        lista no va a enseñar.
+        """
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id_externo, titulo, organo_contratacion, importe, estado, "
                 "url, fecha_publicacion, ccaa, tecnologia, fecha_extraccion, "
                 "fecha_actualizacion_fuente "
                 "FROM licitaciones "
-                "WHERE fecha_extraccion >= %s OR fecha_actualizacion_fuente >= %s "
+                "WHERE (fecha_extraccion >= %s OR fecha_actualizacion_fuente >= %s) "
+                f"AND {exclude_duplicados_presentacion_sql('id_externo')} "
                 "ORDER BY COALESCE(fecha_actualizacion_fuente, fecha_extraccion) DESC "
                 "LIMIT %s",
                 (since_extraccion, since_actualizacion, limit),
@@ -1769,8 +1796,12 @@ class LicitacionRepository:
         el importe NULL, provincia multi-valor y procedimiento por código
         normalizado. Sin ellos el export bajaba el corpus entero mientras el
         listado de la misma pantalla estaba acotado.
+
+        Nace con la exclusión de presentación de duplicados (ADR-026 D23), la
+        misma de ``_base_filters``: el export baja lo que el listado enseña, no
+        las republicaciones ``pending`` y ``confirmed`` que la lista esconde.
         """
-        conditions: list[str] = []
+        conditions: list[str] = [exclude_duplicados_presentacion_sql("id_externo")]
         params: list[Any] = []
         if ccaa:
             conditions.append("ccaa = %s")

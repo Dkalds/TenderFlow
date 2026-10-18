@@ -185,7 +185,11 @@ class LicitacionesFilters:
 
 
 def build_licitaciones_where(
-    filters: LicitacionesFilters, *, alias: str | None = None, nucleo: bool = False
+    filters: LicitacionesFilters,
+    *,
+    alias: str | None = None,
+    nucleo: bool = False,
+    presentacion: bool = False,
 ) -> tuple[str, list[Any]]:
     """Construye el ``WHERE`` (dialecto qmark) desde :class:`LicitacionesFilters`.
 
@@ -228,6 +232,19 @@ def build_licitaciones_where(
     paso 6) pasa las lecturas consulta a consulta, y este constructor lo usan
     decenas de agregados que no son de las cinco calientes. Con el flag
     apagado el texto emitido es el mismo con y sin ``nucleo``.
+
+    ``presentacion=True`` (ADR-026 D23, 2026-10-17) añade la exclusión de
+    republicaciones de presentación —``pending`` y ``confirmed``, la misma que
+    ``_base_filters`` aplica siempre al listado— para que lo que encabeza o
+    abre una lista cuente lo que la lista enseña: el overview y sus tarjetas,
+    el Resumen, el calendario de vencimientos y el Radar. Es **opt-in** y no la
+    base del constructor por dos razones. La primera es semántica: D23 dice
+    «presentación esconde; métrica cuenta», y las agregaciones de Mercado
+    (tendencias, geografía, órganos, tecnologías, CPV, forecast, tipos) y sus
+    drill-downs son métricas que siguen contando sobre el ámbito entero. La
+    segunda es física: esas agregaciones leen de ``idx_lic_analitica`` (v144)
+    por Index Only Scan, y el anti-join sobre ``id_externo`` —columna que el
+    índice no incluye— las devolvería al heap (``tests/test_v144_indices_analitica.py``).
     """
 
     def col(name: str) -> str:
@@ -238,6 +255,11 @@ def build_licitaciones_where(
 
     clauses: list[str] = ["1 = 1"]
     params: list[Any] = []
+    if presentacion:
+        # Va justo detrás de la base y antes de cualquier filtro: así el
+        # ``WHERE`` de una superficie de presentación sin filtros es
+        # ``1 = 1 AND <anti-join>`` y el de una métrica sigue siendo ``1 = 1``.
+        clauses.append(exclude_duplicados_presentacion_sql(col("id_externo")))
 
     if filters.fecha_desde:
         clauses.append(f"{col_nucleo('fecha_publicacion')} >= %s")
@@ -362,7 +384,7 @@ class AggregateRepository:
         Una de las cinco consultas calientes de T2: filtros e importe pasan por
         el núcleo tipado (``nucleo=True`` e :func:`importe_sql`).
         """
-        where, params = _build_where(filters, nucleo=True)
+        where, params = _build_where(filters, nucleo=True, presentacion=True)
         importe = importe_sql(None)
         sql = (
             "SELECT COUNT(*) AS total, "
@@ -383,7 +405,7 @@ class AggregateRepository:
         }
 
     def overview_por_estado(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT estado, COUNT(*) AS n FROM licitaciones "
             "WHERE " + where + " AND estado IS NOT NULL "
@@ -393,7 +415,7 @@ class AggregateRepository:
             return rows_to_dicts(c.execute(sql, params))
 
     def overview_por_mes(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT substr(fecha_publicacion, 1, 7) AS mes, "
             "       COUNT(*) AS n_licitaciones, "
@@ -408,7 +430,7 @@ class AggregateRepository:
     def overview_top_organos(
         self, filters: LicitacionesFilters, n: int = 15
     ) -> list[dict[str, Any]]:
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT organo_contratacion, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe "
             "FROM licitaciones "
@@ -419,7 +441,7 @@ class AggregateRepository:
             return rows_to_dicts(c.execute(sql, [*params, n]))
 
     def overview_funnel(self, filters: LicitacionesFilters) -> dict[str, int]:
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         # AGR, EJEC y CPM entran aquí desde v91, y no son un detalle: AGR es el
         # 93% del corpus (la publicación agregada de la PSCP catalana). Sin su
         # cubo, los cinco tramos originales sumaban el 7% de `total` y el embudo
@@ -555,7 +577,7 @@ class AggregateRepository:
         inferior — una fecha de publicación futura, si existiera, se incluiría
         igual). ``lics_prev30d`` sí es un rango cerrado ``[hoy-60d, hoy-30d)``.
         """
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         col = "fecha_publicacion"
         guard = iso_guard(col)
         sql = (
@@ -586,7 +608,7 @@ class AggregateRepository:
         self, filters: LicitacionesFilters, *, top_n: int = 10
     ) -> tuple[float, float]:
         """(top_n_importe, total_importe) agrupado por organo (dropna, min_count=1)."""
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT SUM(importe) AS s FROM licitaciones "
             "WHERE " + where + " AND organo_contratacion IS NOT NULL "
@@ -608,7 +630,7 @@ class AggregateRepository:
         (``services.analytics.overview.concentracion_top``), que antes hacía su
         propio ``GROUP BY ccaa`` para quedarse solo con las sumas.
         """
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT ccaa, COUNT(*) AS n, SUM(importe) AS importe FROM licitaciones "
             "WHERE " + where + " AND ccaa IS NOT NULL "
@@ -629,7 +651,7 @@ class AggregateRepository:
         if filters.is_empty():
             with connect_read() as c:
                 return loose_distinct_count(c, "licitaciones", "ccaa")
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         sql = "SELECT COUNT(DISTINCT ccaa) FROM licitaciones WHERE " + where
         with connect_read() as c:
             row = c.execute(sql, params).fetchone()
@@ -639,7 +661,7 @@ class AggregateRepository:
         self, filters: LicitacionesFilters, *, hace_365d_iso: str, conn: Any | None = None
     ) -> tuple[int, int]:
         """(anul_count, total_count) sobre fecha_publicacion >= hoy-365d."""
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         guard = iso_guard("fecha_publicacion")
         sql = (
             "SELECT "
@@ -676,8 +698,16 @@ class AggregateRepository:
         return float(row[0])
 
     def count_total_activas(self, *, conn: Any | None = None) -> int:
-        """Expedientes no terminales en toda la tabla, para el snapshot."""
-        sql = f"SELECT COUNT(*) FROM licitaciones WHERE {abierta_sql()}"
+        """Expedientes no terminales en toda la tabla, para el snapshot.
+
+        Mismo universo de presentación que el listado (ADR-026 D23): el
+        snapshot sirve el total global de ``/resumen`` y tiene que contar lo que
+        la lista enseña, sin las republicaciones ``pending`` y ``confirmed``.
+        """
+        sql = (
+            f"SELECT COUNT(*) FROM licitaciones WHERE {abierta_sql()} "
+            f"AND {exclude_duplicados_presentacion_sql('id_externo')}"
+        )
         with _lectura(conn) as c:
             row = c.execute(sql).fetchone()
         return int(row[0]) if row and row[0] is not None else 0
@@ -725,7 +755,7 @@ class AggregateRepository:
                 p75=p75,
                 total_activas=total_activas,
             )
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         pub_guard = iso_guard("fecha_publicacion")
         lim_guard = iso_guard("fecha_limite")
         # `abierta_sql()` y no `estado IN ('PUB','EV')`: con la lista blanca,
@@ -859,7 +889,7 @@ class AggregateRepository:
         enseña es todo o una parte (regla del rediseño: nada de topes
         silenciosos).
         """
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         guard = iso_guard("fecha_publicacion")
 
         if not muestrear:
@@ -920,7 +950,7 @@ class AggregateRepository:
         ``filters`` acota al ámbito con el mismo ``WHERE`` que el resto de
         agregados del Resumen; sin él cuenta el mercado entero (la campana).
         """
-        filtro, params = _build_where(filters or LicitacionesFilters())
+        filtro, params = _build_where(filters or LicitacionesFilters(), presentacion=True)
         guard = iso_guard("fecha_publicacion")
         where = f"{filtro} AND {guard} AND fecha_publicacion > %s"
         with connect_read() as c:
@@ -1311,7 +1341,7 @@ class AggregateRepository:
         El tamaño está acotado por la ventana (un día por fila), que el servicio
         limita; no escala con el número de licitaciones.
         """
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         guard = iso_guard("fecha_limite")
         sql = (
             "SELECT substr(fecha_limite, 1, 10) AS dia, "
@@ -1339,7 +1369,7 @@ class AggregateRepository:
         responde «¿qué me vence ya?» aunque el usuario esté mirando otro año.
         Todas las cotas superiores son exclusivas (ver la nota de la sección).
         """
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         guard = iso_guard("fecha_limite")
         sql = (
             "SELECT "
@@ -1517,7 +1547,7 @@ class AggregateRepository:
 
     def resumen_sankey(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
         """(tipo_contrato, estado, value) — flujo tipo→estado, NULLs excluidos."""
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT tipo_contrato, estado, COUNT(*) AS value FROM licitaciones "
             "WHERE " + where + " AND tipo_contrato IS NOT NULL AND estado IS NOT NULL "
@@ -1539,7 +1569,7 @@ class AggregateRepository:
         ``n_adj``: eso replicaba el bug del pandas original, que sumaba
         ``importe_licitacion`` una vez por fila del join (n_adj * importe).
         """
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT l.id_externo, l.titulo, l.organo_contratacion, l.importe, l.estado, "
             "       adj.nombre AS adjudicatario, adj.sum_adj, adj.n_adj "
@@ -2301,27 +2331,28 @@ class AggregateRepository:
         # T2: una de las cinco consultas calientes. Plazo, filtros e importe
         # proyectado pasan por el núcleo tipado; con el flag apagado el SQL es
         # el de siempre (lo fija `tests/test_nucleo_tipado_consultas.py`).
-        where, params = _build_where(filters or LicitacionesFilters(), nucleo=True)
+        where, params = _build_where(
+            filters or LicitacionesFilters(), nucleo=True, presentacion=True
+        )
         abierta = abierta_sql_marcadores("estado", n=len(cerrados))
         guard = fecha_valida_sql("fecha_limite", None)
         fecha_limite = columna_nucleo_sql("fecha_limite", None)
         # C4.2 / D23 — el Radar enseña un contrato una vez.
         #
         # Este universo no excluía **ningún** duplicado, ni siquiera los
-        # `confirmed`. TED acuña un `publication-number` por anuncio y PSCP cae
+        # `confirmed`: TED acuña un `publication-number` por anuncio y PSCP cae
         # al `id` de la fila cuando no hay expediente, así que el mismo contrato
-        # llegaba al Radar tantas veces como veces se hubiera reemitido.
-        #
-        # Se usa la variante de presentación (esconde también `pending`) y no la
-        # analítica: el Radar es una lista que alguien lee, no una métrica de
-        # cuota de mercado. El razonamiento completo está en
-        # `exclude_duplicados_presentacion_sql` y en ADR-026.
-        no_duplicada = exclude_duplicados_presentacion_sql("id_externo")
+        # llegaba al Radar tantas veces como veces se hubiera reemitido. Desde
+        # 2026-09-06 se excluían aquí a mano con la variante de presentación
+        # (esconde también `pending`); desde 2026-10-17 la pide con
+        # `presentacion=True` a `build_licitaciones_where` —viene dentro de
+        # `where`—, que es la misma llave que usan el overview, el Resumen y el
+        # calendario: el Radar es una lista que alguien lee, no una métrica de
+        # cuota de mercado. El razonamiento completo está en ADR-026.
         sql = (
             f"SELECT {self._scoring_cols()} FROM licitaciones "
             f"WHERE {where} "
             f"  AND {abierta} "
-            f"  AND {no_duplicada} "
             f"  AND {guard} AND {fecha_limite} >= %s"
         )
         with connect_read() as c:
@@ -2415,7 +2446,7 @@ class AggregateRepository:
         días) es una fracción pequeña de la tabla, y los buckets/scoring
         posteriores operan en Python sobre ese resultado ya reducido.
         """
-        where, params = _build_where(filters)
+        where, params = _build_where(filters, presentacion=True)
         guard = iso_guard("fecha_limite")
         sql = (
             f"SELECT {self._SCORING_COLS} FROM licitaciones "

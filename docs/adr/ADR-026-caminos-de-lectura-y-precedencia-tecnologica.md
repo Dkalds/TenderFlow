@@ -187,6 +187,27 @@ Antes de este addendum:
 | Cuota, HHI, bajas | Esconde **solo** `confirmed` | `exclude_duplicados_sql` (sin cambios) |
 | Ficha de detalle | La sirve **y lo dice** | `LicitacionDetail.republicacion_de` |
 
+*Nota del 2026-10-17.* La fila «listados» tardó en cumplirse: el Radar aplicó la
+regla desde este addendum, pero `GET /licitaciones` —paginado, cursor, export,
+la rama de texto libre y el feed SSE— siguió enseñando las republicaciones hasta
+esa fecha, y con las marcas de TED del 2026-09-24 el Radar escondía la copia del
+DOUE que el listado aún mostraba. Desde entonces la exclusión la emite siempre
+`LicitacionRepository._base_filters` (y la rama FTS, que monta su `WHERE` a
+mano), y `build_licitaciones_where` la emite **solo con `presentacion=True`**,
+que es como la piden las superficies que encabezan o abren una lista: el
+overview y sus tarjetas, el Resumen, el calendario de vencimientos y el Radar
+(que hasta entonces la añadía a mano). El universo del snapshot de KPIs
+(`db/kpi_precompute.py`) y `count_total_activas` siguen la misma regla, de modo
+que lista, KPIs, Radar y snapshot cuentan lo mismo. Las agregaciones de Mercado
+—tendencias, geografía, órganos, tecnologías, CPV, forecast, tipos— y sus
+drill-downs llaman al constructor sin el flag y siguen contando sobre el ámbito
+entero: son la fila «métrica» de la tabla, y además leen de `idx_lic_analitica`
+(v144) por Index Only Scan, cosa que el anti-join sobre `id_externo` —columna
+que el índice no incluye— rompería. Las métricas competitivas (`mercado`,
+`competitive`) no pasan por esos constructores y siguen con
+`exclude_duplicados_sql`. Lo fijan `tests/test_listado_esconde_duplicados.py`
+(Postgres) y `tests/test_republicaciones_regla.py` (quién pide qué).
+
 ### Por qué esta asimetría y no una regla única
 
 Porque los dos errores no cuestan lo mismo.

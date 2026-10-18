@@ -69,15 +69,21 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from db.sql_fragments import universo_tecnologico_sql
+from db.sql_fragments import exclude_duplicados_presentacion_sql, universo_tecnologico_sql
 
 if TYPE_CHECKING:
     import pandas as pd
 
 #: El universo del radar, en su forma ancha y escrita una sola vez. El alias
 #: ``l`` obliga a que todas las consultas de abajo lo declaren; ver el
-#: docstring del módulo para por qué la ancha y no la estrecha.
-_UNIVERSO = universo_tecnologico_sql("l")
+#: docstring del módulo para por qué la ancha y no la estrecha. Desde
+#: 2026-10-17 lleva además la exclusión de presentación de duplicados (ADR-026
+#: D23): el snapshot alimenta el camino rápido del overview, y ese camino tiene
+#: que contar lo mismo que el listado y que el cálculo en vivo
+#: (``build_licitaciones_where``), que ya la aplican.
+_UNIVERSO = (
+    f"{universo_tecnologico_sql('l')} AND {exclude_duplicados_presentacion_sql('l.id_externo')}"
+)
 
 #: Una fila de ``kpi_snapshots`` antes de persistirse: ``metrica``,
 #: ``dimension``, ``valor``, ``valor_text`` y ``computed_at``. Los valores son
