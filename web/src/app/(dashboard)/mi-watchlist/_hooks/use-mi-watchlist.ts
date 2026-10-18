@@ -113,8 +113,9 @@ export interface MiWatchlistState {
   ccaaList: string[];
   /** Catálogo de tecnologías para el criterio de S4.4; vacío si meta falla. */
   tecnologiaList: string[];
-  /** Catálogo CODICE de procedimientos (`/meta/filters`); vacío si meta falla. */
+  /** Catálogos CODICE de procedimiento y tipo de contrato (`/meta/filters`); vacíos si meta falla. */
   procedimientoList: OpcionCodificada[];
+  tipoContratoList: OpcionCodificada[];
   rules: ApiRule[] | undefined;
   ruleCount: number;
   rulesLoading: boolean;
@@ -189,8 +190,6 @@ export function useMiWatchlist(): MiWatchlistState {
   // dimensiones no añade una petición (ver `hooks/use-meta-filters.ts`).
   const { data: meta } = useMetaFilters();
   const ccaaList = ccaaOptions(meta?.ccaa);
-  const tecnologiaList = meta?.tecnologia ?? [];
-  const procedimientoList = meta?.procedimiento ?? [];
 
   /* ---- Mutations ---- */
   const invalidate = () => qc.invalidateQueries({ queryKey: watchlistKeys.rules });
@@ -279,8 +278,9 @@ export function useMiWatchlist(): MiWatchlistState {
     formOpen,
     setFormOpen,
     ccaaList,
-    tecnologiaList,
-    procedimientoList,
+    tecnologiaList: meta?.tecnologia ?? [],
+    procedimientoList: meta?.procedimiento ?? [],
+    tipoContratoList: meta?.tipo_contrato ?? [],
     rules,
     ruleCount: rules?.length ?? 0,
     rulesLoading,

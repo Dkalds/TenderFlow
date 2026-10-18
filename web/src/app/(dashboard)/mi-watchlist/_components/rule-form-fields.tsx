@@ -33,12 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  BANDA_OPTIONS,
-  FREQ_NOTE,
-  FREQ_OPTIONS,
-  TIPO_CONTRATO_OPTIONS,
-} from "../_hooks/watchlist-rule-options";
+import { BANDA_OPTIONS, FREQ_NOTE, FREQ_OPTIONS } from "../_hooks/watchlist-rule-options";
 import type { OpcionCodificada } from "../_hooks/use-mi-watchlist";
 import type { Frequency, RuleFormState } from "../_hooks/watchlist-rule-types";
 
@@ -53,12 +48,13 @@ function opcionesConVacio(valores: string[]): { value: string; label: string }[]
 }
 
 /**
- * Las opciones de procedimiento: código CODICE como valor y etiqueta del
- * catálogo como texto. Si la regla guarda un valor que el catálogo no trae
- * (una regla anterior al catálogo, o el catálogo aún sin llegar) se ofrece tal
- * cual: un `Select` con un valor sin opción se pinta vacío y parece «Cualquiera».
+ * Las opciones de procedimiento y tipo de contrato: código CODICE como valor y
+ * etiqueta del catálogo como texto. Si la regla guarda un valor que el
+ * catálogo no trae (una regla anterior al catálogo, o el catálogo aún sin
+ * llegar) se ofrece tal cual: un `Select` con un valor sin opción se pinta
+ * vacío y parece «Cualquiera».
  */
-function opcionesDeProcedimiento(catalogo: OpcionCodificada[], actual: string) {
+function opcionesDeCatalogo(catalogo: OpcionCodificada[], actual: string) {
   const opciones = catalogo.map((o) => ({ value: o.codigo, label: o.etiqueta }));
   if (actual && !opciones.some((o) => o.value === actual)) opciones.push({ value: actual, label: actual });
   return [{ value: SIN_FILTRO, label: "Cualquiera" }, ...opciones];
@@ -74,6 +70,7 @@ export function RuleFormFields({
   ccaaList,
   tecnologiaList = [],
   procedimientoList = [],
+  tipoContratoList = [],
   idPrefix,
 }: {
   value: RuleFormState;
@@ -84,6 +81,8 @@ export function RuleFormFields({
   tecnologiaList?: string[];
   /** Catálogo CODICE de `/meta/filters`; vacío mientras carga o si la API falla. */
   procedimientoList?: OpcionCodificada[];
+  /** Catálogo CODICE de `/meta/filters`; vacío mientras carga o si la API falla. */
+  tipoContratoList?: OpcionCodificada[];
   idPrefix: string;
 }) {
   return (
@@ -172,7 +171,7 @@ export function RuleFormFields({
             <SelectValue placeholder="Cualquiera" />
           </SelectTrigger>
           <SelectContent>
-            {opcionesDeProcedimiento(procedimientoList, value.procedimiento).map((o) => (
+            {opcionesDeCatalogo(procedimientoList, value.procedimiento).map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
@@ -190,7 +189,7 @@ export function RuleFormFields({
             <SelectValue placeholder="Cualquiera" />
           </SelectTrigger>
           <SelectContent>
-            {opcionesConVacio(TIPO_CONTRATO_OPTIONS).map((o) => (
+            {opcionesDeCatalogo(tipoContratoList, value.tipo_contrato).map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>

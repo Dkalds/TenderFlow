@@ -56,6 +56,7 @@ export function EditRuleSheet({
   ccaaList,
   tecnologiaList,
   procedimientoList,
+  tipoContratoList,
   onClose,
   onSave,
   saving,
@@ -64,6 +65,7 @@ export function EditRuleSheet({
   ccaaList: string[];
   tecnologiaList?: string[];
   procedimientoList?: OpcionCodificada[];
+  tipoContratoList?: OpcionCodificada[];
   onClose: () => void;
   onSave: (id: number, body: RuleBody) => void;
   saving: boolean;
@@ -124,6 +126,7 @@ export function EditRuleSheet({
               ccaaList={ccaaList}
               tecnologiaList={tecnologiaList}
               procedimientoList={procedimientoList}
+              tipoContratoList={tipoContratoList}
               idPrefix="edit-wl"
             />
 

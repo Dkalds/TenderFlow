@@ -1034,14 +1034,6 @@ _Sin ítems abiertos._
   - Decidido si se rellena el histórico (solo con los ZIP mensuales: la fase de adjudicación deja de publicar el bloque).
 - **Riesgo:** bajo — solo lectura y parser.
 
-### [P2] [Watchlist] El tipo de contrato de una regla no casa con lo que guarda la columna
-- **Área:** services/watchlist_rules.py, web/src/app/(dashboard)/mi-watchlist/_hooks/watchlist-rule-options.ts, shared/procedimientos.py
-- **Problema:** el selector ofrece «servicios», «suministros» y «obras», y `_rule_clauses` compara por igualdad con `licitaciones.tipo_contrato`. La columna mezcla códigos CODICE y texto de cada fuente en su lengua: lo publicado desde el 2026-09-01 son «Serveis» (1.126), «1» (771), «2» (748), «services» (647), «Subministraments» (643), «supplies» (370)… y ninguna fila dice «servicios» (medido el 2026-10-17). Una regla con tipo de contrato no avisa de casi nada, sin error. Es el mismo fallo que tenía el procedimiento, cerrado ese día.
-- **Acceptance criteria:**
-  - La regla filtra por el código CODICE (opciones de `/meta/filters`, `tipo_contrato`) y casa también con las etiquetas de cada fuente que significan lo mismo, o el valor se normaliza en ingesta (decisión aparte: v85 guarda el código crudo a propósito).
-  - Test con filas «Serveis», «services» y «2» que casan con la misma regla.
-- **Files de partida:** [services/watchlist_rules.py](../services/watchlist_rules.py), [shared/procedimientos.py](../shared/procedimientos.py)
-- **Riesgo:** medio — toca qué filas avisan; contar antes las reglas con `tipo_contrato` en producción.
 ### [P2] Partir `shared/dto.py` y las cuatro firmas de 26-28 parámetros del listado de licitaciones
 - **Área:** shared/dto.py, api/routes/licitaciones/listado.py, db/repositories/licitaciones.py
 - **Problema:** el P3 de los módulos-dios nombra `aggregates.py` y `settings.py`, pero medido con AST el 2026-10-17 hay más y pesan más en el día a día: `shared/dto.py` tiene 2.482 líneas, 106 modelos y 45 módulos que lo importan —cada agente que añade un DTO toca el mismo fichero, y con varios en paralelo es el conflicto de merge más probable del repo—; `LicitacionRepository` tiene 1.470 líneas, con `_base_filters` de 218 líneas y 23 parámetros; y los filtros del listado viajan como parámetros sueltos por cuatro firmas hermanas que hay que mantener sincronizadas a mano: `list_licitaciones` (28 parámetros `Query`), `list_licitaciones_cursor` (25), `list_paginated` (27), `list_cursor` (26) y `_list_fts` (27). Un filtro nuevo son cinco ediciones y un sitio donde olvidarlo. En total hay 57 funciones de producción de 120 líneas o más y 61 con 9 o más parámetros.
@@ -1392,6 +1384,18 @@ _Sin ítems abiertos._
   producción:** el primer `deploy.yml` tras el merge confirma que el contenedor recibe
   `RENDER_GIT_COMMIT`. Render lo documenta para todos los runtimes, pero aquí no se pudo
   comprobar.
+- [2026-10-18] **[P2] [Watchlist] El tipo de contrato de una regla no casa con
+  lo que guarda la columna** (rama `claude/nifty-turing-axm5xg`): la regla
+  guarda el código CODICE (`WatchlistRule` traduce «servicios» u otra etiqueta
+  a `2`) y casa con el código sin ceros y con las etiquetas que cada fuente
+  usa para él («Serveis», «services», «Subministraments»…), mapeadas en
+  `shared/procedimientos.py` a partir de los valores distintos de la columna
+  en producción. El selector toma las opciones de `/meta/filters`
+  (`tipo_contrato`), como el procedimiento. En producción no había reglas con
+  tipo de contrato. Queda sin código «Altra legislació sectorial», que no
+  tiene equivalente en la codelist. El filtro `tipo_contrato` del listado
+  (`db/repositories/licitaciones.py`) sigue comparando por igualdad.
+
 - [2026-10-17] **Segundo repaso del Investigador** (rama
   `claude/quirky-wozniak-xp20q0`):
   - **Duplicados:** los cinco caminos del motor (términos, expresión,

@@ -20,11 +20,13 @@ from shared.procedimientos import (
     TRAMITACIONES,
     catalogado,
     catalogo,
+    codigo_tipo_contrato,
     etiqueta_procedimiento,
     etiqueta_tipo_contrato,
     etiqueta_tramitacion,
     no_catalogados,
     opciones,
+    variantes_tipo_contrato,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -126,6 +128,47 @@ class TestTipoContratoCorregido:
         assert tipo_contrato_label("2") == "Servicios"
         assert tipo_contrato_label(None) == "—"
         assert tipo_contrato_label("99") == "99"
+
+
+class TestTipoContratoDeCadaFuente:
+    """La columna mezcla el código con la etiqueta de cada fuente en su lengua."""
+
+    @pytest.mark.parametrize(
+        ("valor", "codigo"),
+        [
+            ("2", "2"),
+            ("02", "2"),
+            ("Servicios", "2"),
+            ("servicios", "2"),
+            ("Serveis", "2"),
+            ("services", "2"),
+            ("Subministraments", "1"),
+            ("supplies", "1"),
+            ("Obres", "3"),
+            ("Concessió de serveis", "22"),
+        ],
+    )
+    def test_codigo_de_un_valor_de_la_columna(self, valor: str, codigo: str) -> None:
+        assert codigo_tipo_contrato(valor) == codigo
+
+    def test_lo_que_no_reconoce_vuelve_sin_traducir(self) -> None:
+        assert codigo_tipo_contrato(" Altra legislació sectorial ") == "Altra legislació sectorial"
+        assert codigo_tipo_contrato("") is None
+        assert codigo_tipo_contrato(None) is None
+
+    def test_las_variantes_incluyen_la_etiqueta_del_catalogo_y_las_de_fuente(self) -> None:
+        variantes = variantes_tipo_contrato("2")
+        assert {"servicios", "serveis", "services"} <= set(variantes)
+        assert variantes == sorted(variantes)
+        assert variantes_tipo_contrato("999") == ["otros"]
+        assert variantes_tipo_contrato("77") == []
+
+    def test_cada_variante_vuelve_a_su_codigo(self) -> None:
+        """Ida y vuelta: si una etiqueta de fuente cayera en dos códigos, la
+        regla de uno avisaría de los expedientes del otro."""
+        for codigo in TIPOS_CONTRATO:
+            for variante in variantes_tipo_contrato(codigo):
+                assert codigo_tipo_contrato(variante) == codigo, variante
 
 
 class TestCorpusCubierto:

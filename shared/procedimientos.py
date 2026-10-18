@@ -54,11 +54,13 @@ __all__ = [
     "Familia",
     "catalogado",
     "catalogo",
+    "codigo_tipo_contrato",
     "etiqueta_procedimiento",
     "etiqueta_tipo_contrato",
     "etiqueta_tramitacion",
     "no_catalogados",
     "opciones",
+    "variantes_tipo_contrato",
 ]
 
 # Familias que este módulo cataloga. Es un `Literal` y no un `str` libre para
@@ -235,6 +237,26 @@ TIPOS_CONTRATO: Final[Mapping[str, CodigoCatalogado]] = _mapa(
 )
 
 
+# Lo que algunas fuentes escriben en ``tipo_contrato`` en vez del código: la
+# PSCP catalana, los RSS regionales y TED publican la etiqueta en su lengua. Se
+# guarda tal cual (v85), así que quien filtre por código tiene que casar
+# también con estas. En minúsculas; sale de los valores distintos de la columna
+# en producción (2026-10-17). «Altra legislació sectorial» no tiene código
+# CODICE equivalente y se queda fuera a propósito.
+_ETIQUETAS_FUENTE_TIPO_CONTRATO: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        "1": frozenset({"subministraments", "supplies", "subministracións"}),
+        "2": frozenset(
+            {"serveis", "services", "servizos", "contracte de serveis especials (annex iv)"}
+        ),
+        "3": frozenset({"obres", "works"}),
+        "7": frozenset({"administratiu especial"}),
+        "8": frozenset({"privat d'administració pública"}),
+        "22": frozenset({"concessió de serveis", "concesión de servizos"}),
+    }
+)
+
+
 _CATALOGOS: Final[Mapping[Familia, Mapping[str, CodigoCatalogado]]] = MappingProxyType(
     {
         "procedimiento": PROCEDIMIENTOS,
@@ -328,3 +350,38 @@ def no_catalogados(familia: Familia, codes: list[str | None]) -> list[str]:
         if normalizado is not None and normalizado not in _CATALOGOS[familia]:
             vistos[normalizado] = None
     return sorted(vistos)
+
+
+def codigo_tipo_contrato(valor: str | None) -> str | None:
+    """El código CODICE de un tipo de contrato escrito como código o etiqueta.
+
+    Acepta el código (con o sin ceros), la etiqueta del catálogo
+    («Servicios») y las de cada fuente («Serveis», «services»). Lo que no se
+    reconoce vuelve limpio pero sin traducir: igual que :func:`_etiqueta`, no
+    se adivina el vecino más parecido.
+    """
+    normalizado = _normaliza(valor)
+    if normalizado is None or normalizado.isdigit():
+        return normalizado
+    plegado = normalizado.casefold()
+    for codigo, entrada in TIPOS_CONTRATO.items():
+        if entrada.etiqueta.casefold() == plegado:
+            return codigo
+    for codigo, etiquetas in _ETIQUETAS_FUENTE_TIPO_CONTRATO.items():
+        if plegado in etiquetas:
+            return codigo
+    return normalizado
+
+
+def variantes_tipo_contrato(codigo: str) -> list[str]:
+    """Las etiquetas, en minúsculas, que la columna usa para ese código.
+
+    La del catálogo y las de cada fuente; el código en sí lo compara el
+    llamante sin ceros a la izquierda. Ordenadas para que la sentencia sea
+    estable entre llamadas.
+    """
+    entrada = TIPOS_CONTRATO.get(codigo)
+    etiquetas = set(_ETIQUETAS_FUENTE_TIPO_CONTRATO.get(codigo, ()))
+    if entrada is not None:
+        etiquetas.add(entrada.etiqueta.casefold())
+    return sorted(etiquetas)

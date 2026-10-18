@@ -69,6 +69,7 @@ export default function MiWatchlistPage() {
                 ccaaList={w.ccaaList}
                 tecnologiaList={w.tecnologiaList}
                 procedimientoList={w.procedimientoList}
+                tipoContratoList={w.tipoContratoList}
                 onClose={() => w.setEditingRule(null)}
                 onSave={w.saveEdit}
                 saving={w.savingEdit}

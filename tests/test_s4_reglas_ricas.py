@@ -98,7 +98,7 @@ def corpus(tmp_db):
                 "estado": "PUB",
                 "tecnologia": "SAP,SALESFORCE",
                 "procedimiento": "01",
-                "tipo_contrato": "servicios",
+                "tipo_contrato": "Serveis",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _EN_UN_MES,
                 "fecha_extraccion": _AYER,
@@ -114,7 +114,7 @@ def corpus(tmp_db):
                 "estado": "ADJ",
                 "tecnologia": "SAP",
                 "procedimiento": "1",
-                "tipo_contrato": "servicios",
+                "tipo_contrato": "services",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _EN_UN_MES,
                 "fecha_extraccion": _AYER,
@@ -130,7 +130,7 @@ def corpus(tmp_db):
                 "estado": "PUB",
                 "tecnologia": "SAP",
                 "procedimiento": "3",
-                "tipo_contrato": "servicios",
+                "tipo_contrato": "02",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _AYER,
                 "fecha_extraccion": _AYER,
@@ -146,7 +146,7 @@ def corpus(tmp_db):
                 "estado": "PUB",
                 "tecnologia": "OTROS",
                 "procedimiento": "1",
-                "tipo_contrato": "suministros",
+                "tipo_contrato": "Subministraments",
                 "fecha_publicacion": _AYER,
                 "fecha_limite": _MANANA,
                 "fecha_extraccion": _AYER,
@@ -198,7 +198,7 @@ def test_los_criterios_nuevos_a_none_no_estrechan_nada(corpus):
         WatchlistRule(tecnologia="SAP"),
         WatchlistRule(organo="Ayuntamiento de Alcañiz"),
         WatchlistRule(procedimiento="1"),
-        WatchlistRule(tipo_contrato="servicios"),
+        WatchlistRule(tipo_contrato="2"),
         WatchlistRule(plazo_min_dias=10),
         WatchlistRule(keyword="SAP", tecnologia="SAP", procedimiento="1"),
     ],
@@ -237,7 +237,27 @@ def test_organo_casa_pese_a_la_tilde_y_a_la_caja(corpus):
 
 def test_procedimiento_y_tipo_de_contrato_filtran(corpus):
     assert _ids(WatchlistRule(procedimiento="3")) == {"S4-SAP-SIN-PLAZO"}
-    assert _ids(WatchlistRule(tipo_contrato="suministros")) == {"S4-OTRA-TECNOLOGIA"}
+    assert _ids(WatchlistRule(tipo_contrato="1")) == {"S4-OTRA-TECNOLOGIA"}
+
+
+def test_el_tipo_de_contrato_casa_con_el_codigo_y_con_la_etiqueta_de_cada_fuente(corpus):
+    """La columna guarda lo que publica cada fuente: «Serveis» (PSCP),
+    «services» (TED) o el código CODICE con o sin cero. Por igualdad, una regla
+    «servicios» no casaba con ninguna fila de producción."""
+    servicios = {"S4-SAP-MADRID", "S4-SAP-CERRADA", "S4-SAP-SIN-PLAZO"}
+    assert _ids(WatchlistRule(tipo_contrato="2")) == servicios
+    assert _ids(WatchlistRule(tipo_contrato="02")) == servicios
+    assert _ids(WatchlistRule(tipo_contrato="3")) == set()
+
+
+def test_una_regla_con_la_palabra_de_antes_se_guarda_como_codigo(corpus):
+    """El selector antiguo enviaba «servicios»: la regla la recibe como ``2``
+    y casa con las mismas filas que la creada con el código."""
+    regla = WatchlistRule(tipo_contrato="servicios")
+    assert regla.tipo_contrato == "2"
+    assert _ids(regla) == _ids(WatchlistRule(tipo_contrato="2"))
+    assert WatchlistRule(tipo_contrato="Suministros").tipo_contrato == "1"
+    assert WatchlistRule(tipo_contrato="  ").tipo_contrato is None
 
 
 def test_el_procedimiento_es_el_codigo_sin_ceros(corpus):
@@ -315,7 +335,7 @@ def test_los_seis_criterios_sobreviven_al_crud(corpus, duenya):
     assert guardada.tecnologia == "SAP"
     assert guardada.organo == "Ayuntamiento de Alcañiz"
     assert guardada.procedimiento == "1"
-    assert guardada.tipo_contrato == "servicios"
+    assert guardada.tipo_contrato == "2", "se guarda el código, no la palabra"
     assert guardada.banda_min == "Tibia"
     assert guardada.plazo_min_dias == 15
 

@@ -2,10 +2,15 @@
  * Catálogos de los selectores del formulario de reglas.
  *
  * Son copy y listas fijas, no dato derivado: lo que el usuario lee al elegir
- * frecuencia, banda, procedimiento o tipo de contrato. Viven aparte de
+ * frecuencia o banda. Viven aparte de
  * `use-watchlist-rules.ts` porque los consumen las piezas de `_components/`,
  * que no traducen nada del contrato y no tienen por qué importar el módulo que
  * sí lo hace.
+ *
+ * Procedimiento y tipo de contrato no viven aquí: la columna guarda el código
+ * CODICE (o la etiqueta de cada fuente), no una palabra fija, y sus opciones
+ * salen del catálogo de `/meta/filters` (`procedimientoList`,
+ * `tipoContratoList`).
  */
 
 import type { Frequency } from "./watchlist-rule-types";
@@ -66,15 +71,6 @@ export const BANDA_OPTIONS: { value: string; label: string }[] = [
   { value: "Atractiva", label: "Atractiva o mejor" },
   { value: "Caliente", label: "Solo Caliente" },
 ];
-
-/**
- * Tipos de contrato que persiste la ingesta (revisión `v85`). El procedimiento
- * ya no vive aquí: la columna guarda el código CODICE y no la palabra, así que
- * «abierto» no casaba con nada; sus opciones salen del catálogo de
- * `/meta/filters` (`procedimientoList`).
- */
-
-export const TIPO_CONTRATO_OPTIONS = ["servicios", "suministros", "obras"];
 
 /**
  * Nota bajo el selector: la latencia es de la ingesta, no de la frecuencia
