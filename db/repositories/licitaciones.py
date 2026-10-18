@@ -55,6 +55,7 @@ from shared.estados import (
     abierta_sql,
     abierta_sql_marcadores,
 )
+from shared.procedimientos import codigo_tipo_contrato, textos_de_tipo_contrato
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -219,6 +220,32 @@ def _codigo_en(column: Any, values: list[str]) -> Any:
     # `NULLIF`+`COALESCE`: `ltrim('0','0')` deja '', que no es ningún código.
     normalizada = func.coalesce(func.nullif(func.ltrim(func.trim(column), "0"), ""), "0")
     return normalizada.in_(sorted(codigos))
+
+
+def _tipos_de_contrato(values: list[str]) -> tuple[list[str], list[str]]:
+    """``(códigos, textos plegados)`` que significan los tipos de ``values``.
+
+    ``tipo_contrato`` guarda el código CODICE o el texto de cada fuente en su
+    lengua, y el texto es la mayoría: «Serveis» 41.523 filas y «services» 2.149
+    frente a 13.652 «2» (medido en producción el 2026-10-17). Filtrar solo por
+    el código dejaba fuera tres de cada cuatro servicios
+    (``shared.procedimientos.codigo_tipo_contrato``). Un valor que no se sabe
+    traducir se busca como código, como antes.
+    """
+    codigos = sorted(
+        {codigo_tipo_contrato(v) or _normaliza_codigo(v) for v in values if v and v.strip()}
+    )
+    textos = sorted({t for c in codigos for t in textos_de_tipo_contrato(c)})
+    return codigos, textos
+
+
+def _tipo_contrato_en(values: list[str]) -> Any:
+    """:func:`_codigo_en` para ``tipo_contrato``: el código o el texto de la fuente."""
+    codigos, textos = _tipos_de_contrato(values)
+    por_codigo = _codigo_en(licitaciones.c.tipo_contrato, codigos)
+    if not textos:
+        return por_codigo
+    return or_(por_codigo, literal_column(fold_expr("licitaciones.tipo_contrato")).in_(textos))
 
 
 def _any_of(column: Any, values: list[str]) -> Any:
@@ -592,10 +619,11 @@ class LicitacionRepository:
         for columna, valores in (
             (licitaciones.c.procedimiento, csv_values(procedimiento)),
             (licitaciones.c.tramitacion, csv_values(tramitacion)),
-            (licitaciones.c.tipo_contrato, csv_values(tipo_contrato)),
         ):
             if valores:
                 clauses.append(_codigo_en(columna, valores))
+        if tipos := csv_values(tipo_contrato):
+            clauses.append(_tipo_contrato_en(tipos))
 
         # Plazo restante en días, calculado en SQL sobre `fecha_limite` y sin
         # los estados terminales: un expediente adjudicado con fecha límite
@@ -1001,12 +1029,22 @@ class LicitacionRepository:
             ("l.tramitacion", csv_values(tramitacion)),
             ("l.tipo_contrato", csv_values(tipo_contrato)),
         ):
-            codigos = sorted({_normaliza_codigo(v) for v in valores if v.strip()})
+            textos: list[str] = []
+            if columna == "l.tipo_contrato":
+                codigos, textos = _tipos_de_contrato(valores)
+            else:
+                codigos = sorted({_normaliza_codigo(v) for v in valores if v.strip()})
             if codigos:
                 marcadores = ", ".join(["%s"] * len(codigos))
                 normalizada = f"COALESCE(NULLIF(ltrim(trim({columna}), '0'), ''), '0')"
-                extra_conditions.append(f"{normalizada} IN ({marcadores})")
+                condicion = f"{normalizada} IN ({marcadores})"
                 extra_params.extend(codigos)
+                if textos:
+                    # El texto con que la fuente escribe el mismo tipo («Serveis»).
+                    marcadores = ", ".join(["%s"] * len(textos))
+                    condicion = f"({condicion} OR {fold_expr(columna)} IN ({marcadores}))"
+                    extra_params.extend(textos)
+                extra_conditions.append(condicion)
 
         if dias_restantes_max is not None:
             tope = (datetime.now(UTC) + timedelta(days=int(dias_restantes_max))).date().isoformat()

@@ -1042,16 +1042,6 @@ _Sin ítems abiertos._
   - Decidido si se rellena el histórico (solo con los ZIP mensuales: la fase de adjudicación deja de publicar el bloque).
 - **Riesgo:** bajo — solo lectura y parser.
 
-### [P2] [Licitaciones] Filtrar por tipo de contrato deja fuera lo que la fuente escribe como texto
-- **Área:** db/repositories/licitaciones.py (`_codigo_en` en `_base_filters` y en el listado SQL), shared/procedimientos.py
-- **Problema:** el filtro `tipo_contrato` del listado, el cursor y el export compara el código CODICE normalizado (`_codigo_en`). La columna mezcla el código con el texto de cada fuente en su lengua, y el texto es la mayoría: «Serveis» 41.523 filas, «Subministraments» 18.748, «services» 2.149, frente a «2» 13.652 y «1» 9.843 (medido el 2026-10-17). Filtrar por «Servicios» en la consola deja fuera tres de cada cuatro filas, sin error. Las reglas de vigilancia ya casan con las dos formas (`shared.procedimientos.codigo_tipo_contrato` / `textos_de_tipo_contrato`, 2026-10-17).
-- **Acceptance criteria:**
-  - El filtro del listado casa con el código y con los textos que lo significan, con el mismo mapa que las reglas.
-  - Medido antes en producción con `EXPLAIN ANALYZE`: el filtro va sobre `licitaciones` entera y `tipo_contrato` no tiene índice.
-  - Paridad de totales entre listado, cursor y export (los tests de paridad que ya existen).
-- **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [shared/procedimientos.py](../shared/procedimientos.py)
-- **Riesgo:** medio — cambia los totales que enseña la consola filtrando por tipo.
-
 ### [P2] Partir `shared/dto.py` y las cuatro firmas de 26-28 parámetros del listado de licitaciones
 - **Área:** shared/dto.py, api/routes/licitaciones/listado.py, db/repositories/licitaciones.py
 - **Problema:** el P3 de los módulos-dios nombra `aggregates.py` y `settings.py`, pero medido con AST el 2026-10-17 hay más y pesan más en el día a día: `shared/dto.py` tiene 2.482 líneas, 106 modelos y 45 módulos que lo importan —cada agente que añade un DTO toca el mismo fichero, y con varios en paralelo es el conflicto de merge más probable del repo—; `LicitacionRepository` tiene 1.470 líneas, con `_base_filters` de 218 líneas y 23 parámetros; y los filtros del listado viajan como parámetros sueltos por cuatro firmas hermanas que hay que mantener sincronizadas a mano: `list_licitaciones` (28 parámetros `Query`), `list_licitaciones_cursor` (25), `list_paginated` (27), `list_cursor` (26) y `_list_fts` (27). Un filtro nuevo son cinco ediciones y un sitio donde olvidarlo. En total hay 57 funciones de producción de 120 líneas o más y 61 con 9 o más parámetros.
@@ -1392,7 +1382,10 @@ _Sin ítems abiertos._
   y casa con el código sin ceros y con los textos de cada fuente que lo
   significan («Serveis», «services», «Servizos»…). Las opciones del selector
   salen de `/meta/filters`. No había reglas con tipo de contrato en producción.
-  El listado tiene el mismo fallo: queda abierto como P2 aparte.
+  El filtro `tipo_contrato` del listado, el cursor, el export y la rama FTS
+  casa igual (`_tipos_de_contrato` en `db/repositories/licitaciones.py`):
+  filtrar por servicios pasa de 13.652 filas a 57.339, de 200 a 373 ms sobre la
+  tabla entera (medido en producción el 2026-10-18).
 
 - [2026-10-17] **Segundo repaso del Investigador** (rama
   `claude/quirky-wozniak-xp20q0`):
