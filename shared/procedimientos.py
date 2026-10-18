@@ -39,6 +39,7 @@ nuevo se ve como código nuevo; nunca como el vecino más parecido.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -54,11 +55,13 @@ __all__ = [
     "Familia",
     "catalogado",
     "catalogo",
+    "codigo_tipo_contrato",
     "etiqueta_procedimiento",
     "etiqueta_tipo_contrato",
     "etiqueta_tramitacion",
     "no_catalogados",
     "opciones",
+    "textos_de_tipo_contrato",
 ]
 
 # Familias que este módulo cataloga. Es un `Literal` y no un `str` libre para
@@ -233,6 +236,72 @@ TIPOS_CONTRATO: Final[Mapping[str, CodigoCatalogado]] = _mapa(
     ("50", "Patrimonial", "Compraventa o arrendamiento de bienes del patrimonio del órgano."),
     ("999", "Otros", "La fuente lo clasifica como «otros» sin más detalle."),
 )
+
+
+# ── Tipo de contrato escrito como texto ─────────────────────────────────
+#
+# No todas las fuentes publican el código: la PSCP catalana y TED escriben el
+# tipo en su lengua. Medido en producción el 2026-10-17 sobre todo el corpus:
+# «Serveis» 41.523 filas, «Subministraments» 18.748, «services» 2.149,
+# «supplies» 1.094, «Obres» 176…, frente a «2» 13.652 y «1» 9.843. Filtrar por
+# el código dejaba fuera tres de cada cuatro filas. v85 guarda el valor crudo a
+# propósito, así que la equivalencia se aplica al leer, no en ingesta.
+#
+# Las claves van plegadas (sin tildes, en minúsculas), que es como las compara
+# ``fold_expr`` en SQL. Lo que no está aquí («Altra legislació sectorial») no
+# se traduce: no es ningún tipo del catálogo.
+_TIPO_CONTRATO_POR_TEXTO: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "suministros": "1",
+        "subministraments": "1",
+        "subministracions": "1",
+        "supplies": "1",
+        "servicios": "2",
+        "serveis": "2",
+        "servizos": "2",
+        "services": "2",
+        # Los servicios del anexo IV de la LCSP siguen siendo servicios.
+        "contracte de serveis especials (annex iv)": "2",
+        "obras": "3",
+        "obres": "3",
+        "works": "3",
+        "administrativo especial": "7",
+        "administratiu especial": "7",
+        "privado": "8",
+        "privat d'administracio publica": "8",
+        "concesion de servicios": "22",
+        "concessio de serveis": "22",
+        "concesion de servizos": "22",
+        "concesion de obras": "32",
+        "concessio d'obres": "32",
+        "patrimonial": "50",
+    }
+)
+
+
+def _plegar(texto: str) -> str:
+    """Sin tildes y en minúsculas, como ``fold_expr`` en SQL."""
+    sin_tildes = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in sin_tildes if not unicodedata.combining(c)).casefold().strip()
+
+
+def codigo_tipo_contrato(valor: str | None) -> str | None:
+    """El código CODICE de un tipo de contrato, venga como código o como texto.
+
+    ``"02"`` → ``"2"``; «Serveis» o «servicios» → ``"2"``. ``None`` si no es
+    ninguno de los dos: un texto que nadie sabe traducir no se adivina.
+    """
+    normalizado = _normaliza(valor)
+    if normalizado is None:
+        return None
+    if normalizado.isdigit():
+        return normalizado
+    return _TIPO_CONTRATO_POR_TEXTO.get(_plegar(normalizado))
+
+
+def textos_de_tipo_contrato(codigo: str) -> list[str]:
+    """Los textos (plegados) con que las fuentes escriben el tipo ``codigo``."""
+    return sorted(t for t, c in _TIPO_CONTRATO_POR_TEXTO.items() if c == codigo)
 
 
 _CATALOGOS: Final[Mapping[Familia, Mapping[str, CodigoCatalogado]]] = MappingProxyType(

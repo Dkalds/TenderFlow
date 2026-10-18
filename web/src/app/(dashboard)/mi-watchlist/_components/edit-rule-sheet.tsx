@@ -32,8 +32,7 @@ import {
   ruleToFormState,
   tieneCriterio,
 } from "../_hooks/use-watchlist-rules";
-import type { ApiRule, RuleBody, RuleFormState } from "../_hooks/watchlist-rule-types";
-import type { OpcionCodificada } from "../_hooks/use-mi-watchlist";
+import type { ApiRule, CatalogosCodificados, RuleBody, RuleFormState } from "../_hooks/watchlist-rule-types";
 import { RuleFormFields, type RuleFormErrors } from "./rule-form-fields";
 import { VistaPreviaRuido } from "./vista-previa-ruido";
 
@@ -55,7 +54,7 @@ export function EditRuleSheet({
   rule,
   ccaaList,
   tecnologiaList,
-  procedimientoList,
+  catalogos,
   onClose,
   onSave,
   saving,
@@ -63,7 +62,7 @@ export function EditRuleSheet({
   rule: ApiRule | null;
   ccaaList: string[];
   tecnologiaList?: string[];
-  procedimientoList?: OpcionCodificada[];
+  catalogos?: CatalogosCodificados;
   onClose: () => void;
   onSave: (id: number, body: RuleBody) => void;
   saving: boolean;
@@ -123,7 +122,7 @@ export function EditRuleSheet({
               errores={errores}
               ccaaList={ccaaList}
               tecnologiaList={tecnologiaList}
-              procedimientoList={procedimientoList}
+              catalogos={catalogos}
               idPrefix="edit-wl"
             />
 

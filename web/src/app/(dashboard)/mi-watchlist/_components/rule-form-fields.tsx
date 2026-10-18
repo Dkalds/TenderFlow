@@ -37,10 +37,13 @@ import {
   BANDA_OPTIONS,
   FREQ_NOTE,
   FREQ_OPTIONS,
-  TIPO_CONTRATO_OPTIONS,
 } from "../_hooks/watchlist-rule-options";
-import type { OpcionCodificada } from "../_hooks/use-mi-watchlist";
-import type { Frequency, RuleFormState } from "../_hooks/watchlist-rule-types";
+import type {
+  CatalogosCodificados,
+  Frequency,
+  OpcionCodificada,
+  RuleFormState,
+} from "../_hooks/watchlist-rule-types";
 
 /** Valor del `Select` que significa «sin filtro». Radix no admite `""`. */
 const SIN_FILTRO = "__any__";
@@ -53,16 +56,21 @@ function opcionesConVacio(valores: string[]): { value: string; label: string }[]
 }
 
 /**
- * Las opciones de procedimiento: código CODICE como valor y etiqueta del
- * catálogo como texto. Si la regla guarda un valor que el catálogo no trae
- * (una regla anterior al catálogo, o el catálogo aún sin llegar) se ofrece tal
- * cual: un `Select` con un valor sin opción se pinta vacío y parece «Cualquiera».
+ * Las opciones de una lista CODICE (procedimiento, tipo de contrato): código
+ * como valor y etiqueta del catálogo como texto. La regla guarda el código, y
+ * el backend casa también con el texto con que lo escribe cada fuente
+ * («Serveis», «services»); una palabra del selector antiguo («servicios») no
+ * casaba con nada. Si la regla guarda un valor que el catálogo no trae (una
+ * regla anterior, o el catálogo aún sin llegar) se ofrece tal cual: un
+ * `Select` con un valor sin opción se pinta vacío y parece «Cualquiera».
  */
-function opcionesDeProcedimiento(catalogo: OpcionCodificada[], actual: string) {
+function opcionesCodificadas(catalogo: OpcionCodificada[], actual: string) {
   const opciones = catalogo.map((o) => ({ value: o.codigo, label: o.etiqueta }));
   if (actual && !opciones.some((o) => o.value === actual)) opciones.push({ value: actual, label: actual });
   return [{ value: SIN_FILTRO, label: "Cualquiera" }, ...opciones];
 }
+
+const SIN_CATALOGOS: CatalogosCodificados = { procedimiento: [], tipo_contrato: [] };
 
 /** Mensaje de error por campo, ya resuelto por el esquema. */
 export type RuleFormErrors = Partial<Record<keyof RuleFormState, string>>;
@@ -73,7 +81,7 @@ export function RuleFormFields({
   errores = {},
   ccaaList,
   tecnologiaList = [],
-  procedimientoList = [],
+  catalogos = SIN_CATALOGOS,
   idPrefix,
 }: {
   value: RuleFormState;
@@ -82,8 +90,8 @@ export function RuleFormFields({
   ccaaList: string[];
   /** Catálogo de `/meta/filters`; vacío mientras carga o si la API falla. */
   tecnologiaList?: string[];
-  /** Catálogo CODICE de `/meta/filters`; vacío mientras carga o si la API falla. */
-  procedimientoList?: OpcionCodificada[];
+  /** Catálogos CODICE de `/meta/filters`; vacíos mientras cargan o si la API falla. */
+  catalogos?: CatalogosCodificados;
   idPrefix: string;
 }) {
   return (
@@ -172,7 +180,7 @@ export function RuleFormFields({
             <SelectValue placeholder="Cualquiera" />
           </SelectTrigger>
           <SelectContent>
-            {opcionesDeProcedimiento(procedimientoList, value.procedimiento).map((o) => (
+            {opcionesCodificadas(catalogos.procedimiento, value.procedimiento).map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
@@ -190,7 +198,7 @@ export function RuleFormFields({
             <SelectValue placeholder="Cualquiera" />
           </SelectTrigger>
           <SelectContent>
-            {opcionesConVacio(TIPO_CONTRATO_OPTIONS).map((o) => (
+            {opcionesCodificadas(catalogos.tipo_contrato, value.tipo_contrato).map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>

@@ -1042,14 +1042,16 @@ _Sin ítems abiertos._
   - Decidido si se rellena el histórico (solo con los ZIP mensuales: la fase de adjudicación deja de publicar el bloque).
 - **Riesgo:** bajo — solo lectura y parser.
 
-### [P2] [Watchlist] El tipo de contrato de una regla no casa con lo que guarda la columna
-- **Área:** services/watchlist_rules.py, web/src/app/(dashboard)/mi-watchlist/_hooks/watchlist-rule-options.ts, shared/procedimientos.py
-- **Problema:** el selector ofrece «servicios», «suministros» y «obras», y `_rule_clauses` compara por igualdad con `licitaciones.tipo_contrato`. La columna mezcla códigos CODICE y texto de cada fuente en su lengua: lo publicado desde el 2026-09-01 son «Serveis» (1.126), «1» (771), «2» (748), «services» (647), «Subministraments» (643), «supplies» (370)… y ninguna fila dice «servicios» (medido el 2026-10-17). Una regla con tipo de contrato no avisa de casi nada, sin error. Es el mismo fallo que tenía el procedimiento, cerrado ese día.
+### [P2] [Licitaciones] Filtrar por tipo de contrato deja fuera lo que la fuente escribe como texto
+- **Área:** db/repositories/licitaciones.py (`_codigo_en` en `_base_filters` y en el listado SQL), shared/procedimientos.py
+- **Problema:** el filtro `tipo_contrato` del listado, el cursor y el export compara el código CODICE normalizado (`_codigo_en`). La columna mezcla el código con el texto de cada fuente en su lengua, y el texto es la mayoría: «Serveis» 41.523 filas, «Subministraments» 18.748, «services» 2.149, frente a «2» 13.652 y «1» 9.843 (medido el 2026-10-17). Filtrar por «Servicios» en la consola deja fuera tres de cada cuatro filas, sin error. Las reglas de vigilancia ya casan con las dos formas (`shared.procedimientos.codigo_tipo_contrato` / `textos_de_tipo_contrato`, 2026-10-17).
 - **Acceptance criteria:**
-  - La regla filtra por el código CODICE (opciones de `/meta/filters`, `tipo_contrato`) y casa también con las etiquetas de cada fuente que significan lo mismo, o el valor se normaliza en ingesta (decisión aparte: v85 guarda el código crudo a propósito).
-  - Test con filas «Serveis», «services» y «2» que casan con la misma regla.
-- **Files de partida:** [services/watchlist_rules.py](../services/watchlist_rules.py), [shared/procedimientos.py](../shared/procedimientos.py)
-- **Riesgo:** medio — toca qué filas avisan; contar antes las reglas con `tipo_contrato` en producción.
+  - El filtro del listado casa con el código y con los textos que lo significan, con el mismo mapa que las reglas.
+  - Medido antes en producción con `EXPLAIN ANALYZE`: el filtro va sobre `licitaciones` entera y `tipo_contrato` no tiene índice.
+  - Paridad de totales entre listado, cursor y export (los tests de paridad que ya existen).
+- **Files de partida:** [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [shared/procedimientos.py](../shared/procedimientos.py)
+- **Riesgo:** medio — cambia los totales que enseña la consola filtrando por tipo.
+
 ### [P2] Partir `shared/dto.py` y las cuatro firmas de 26-28 parámetros del listado de licitaciones
 - **Área:** shared/dto.py, api/routes/licitaciones/listado.py, db/repositories/licitaciones.py
 - **Problema:** el P3 de los módulos-dios nombra `aggregates.py` y `settings.py`, pero medido con AST el 2026-10-17 hay más y pesan más en el día a día: `shared/dto.py` tiene 2.482 líneas, 106 modelos y 45 módulos que lo importan —cada agente que añade un DTO toca el mismo fichero, y con varios en paralelo es el conflicto de merge más probable del repo—; `LicitacionRepository` tiene 1.470 líneas, con `_base_filters` de 218 líneas y 23 parámetros; y los filtros del listado viajan como parámetros sueltos por cuatro firmas hermanas que hay que mantener sincronizadas a mano: `list_licitaciones` (28 parámetros `Query`), `list_licitaciones_cursor` (25), `list_paginated` (27), `list_cursor` (26) y `_list_fts` (27). Un filtro nuevo son cinco ediciones y un sitio donde olvidarlo. En total hay 57 funciones de producción de 120 líneas o más y 61 con 9 o más parámetros.
@@ -1383,6 +1385,14 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — sustituciones de nombre.
 
 ## Cerrados
+
+- [2026-10-17] **P2: El tipo de contrato de una regla no casa con lo que guarda
+  la columna** — la regla traduce lo que guarda (código o la palabra del
+  selector antiguo) a código CODICE con `shared.procedimientos.codigo_tipo_contrato`
+  y casa con el código sin ceros y con los textos de cada fuente que lo
+  significan («Serveis», «services», «Servizos»…). Las opciones del selector
+  salen de `/meta/filters`. No había reglas con tipo de contrato en producción.
+  El listado tiene el mismo fallo: queda abierto como P2 aparte.
 
 - [2026-10-17] **Segundo repaso del Investigador** (rama
   `claude/quirky-wozniak-xp20q0`):

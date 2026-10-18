@@ -188,7 +188,7 @@ describe("tieneCriterio", () => {
     ["tecnologia", "SAP"],
     ["organo", "Ayuntamiento"],
     ["procedimiento", "1"],
-    ["tipo_contrato", "servicios"],
+    ["tipo_contrato", "2"],
     ["banda_min", "Caliente"],
     ["plazo_min_dias", "15"],
   ] as [keyof RuleFormState, string][])(
