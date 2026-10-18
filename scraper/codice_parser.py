@@ -456,7 +456,8 @@ _TOKENS_CRITERIO_PRECIO = ("precio", "economic", "coste")
 # buscar los tokens: «Oferta económica y criterios distintos del precio» sigue
 # siendo el precio por "económica".
 _MENCION_NEGADA_PRECIO = re.compile(
-    r"\b(?:diferentes?|distint[oa]s?)\s+(?:(?:a|de)\s+)?(?:(?:al|del|el|la|los|las)\s+)?"
+    r"\b(?:diferentes?|distinto|distinta|distintos|distintas)\s+"
+    r"(?:(?:a|de)\s+)?(?:(?:al|del|el|la|los|las)\s+)?"
     r"(?:precio|coste|(?:propuesta|oferta|valoracion)\s+economica)"
     r"|\bno\s+relacionad[oa]s?\s+con\s+(?:el\s+)?(?:precio|coste)"
     r"|\bsin\s+(?:sobre)?costes?\b"
