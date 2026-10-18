@@ -7,7 +7,7 @@ Derivado de [`skills-lock.json`](../skills-lock.json) y el frontmatter de cada
 `python scripts/gen_skills_inventory.py` tras instalar/actualizar un skill.
 Ver AGENTS.md §7 para qué significa `trust`.
 
-Total: 45 skills.
+Total: 40 skills.
 
 | Skill | Trust | Source | Descripción |
 | --- | --- | --- | --- |
@@ -15,19 +15,14 @@ Total: 45 skills.
 | `animation-vocabulary` | community | emilkowalski/skill | Reverse-lookup glossary that turns a vague description of a web animation or motion effect into its exact term ("the bouncy thing when… |
 | `apple-design` | community | emilkowalski/skill | Apple's approach to interface design and fluid, physical motion, translated for the web. Use when building or reviewing gesture-driven… |
 | `bash-defensive-patterns` | community | wshobson/agents | Master defensive Bash programming techniques for production-grade scripts. Use when writing robust shell scripts, CI/CD pipelines, or… |
-| `brandkit` | community | Leonxlnx/taste-skill | Premium brand-kit image generation skill for creating high-end brand-guidelines boards, logo systems, identity decks, and visual-world… |
 | `design-taste-frontend` | community | Leonxlnx/taste-skill | tasteskill v2, the anti-slop frontend skill. Art direction for websites, distilled from a study of 247 curated gallery sites (One Page… |
 | `design-taste-frontend-v1` | community | Leonxlnx/taste-skill | The original v1 taste-skill, preserved for projects depending on its exact behavior. The current default is `design-taste-frontend`… |
 | `design-taste-frontend-v2-experimental` | community | Leonxlnx/taste-skill | Old v2 (experimental) of taste-skill, the single-file dial-driven version, preserved for projects depending on its exact behavior. The… |
 | `emil-design-eng` | community | emilkowalski/skill | This skill encodes Emil Kowalski's philosophy on UI polish, component design, animation decisions, and the invisible details that make… |
 | `fastapi-python` | community | mindrally/skills | Expert in FastAPI Python development with best practices for APIs and async operations |
 | `find-animation-opportunities` | community | emilkowalski/skill | Search a codebase or UI for places that don't animate but should, and reject everything that shouldn't. Read-only; it proposes motion… |
-| `full-output-enforcement` | community | Leonxlnx/taste-skill | Overrides default LLM truncation behavior. Enforces complete code generation, bans placeholder patterns, and handles token-limit splits… |
 | `gpt-taste` | community | Leonxlnx/taste-skill | Elite UX/UI & Advanced GSAP Motion Engineer. Enforces Python-driven true randomization for layout variance, strict AIDA page structure,… |
 | `high-end-visual-design` | community | Leonxlnx/taste-skill | Teaches the AI to design like a high-end agency. Defines the exact fonts, spacing, shadows, card structures, and animations that make a… |
-| `image-to-code` | community | Leonxlnx/taste-skill | Elite website image-to-code skill for Codex. For visually important web tasks, it must first generate the design image(s) itself,… |
-| `imagegen-frontend-mobile` | community | Leonxlnx/taste-skill | Elite mobile app image-generation skill for creating premium, app-native screen concepts and flows. Designed for iOS, Android, and… |
-| `imagegen-frontend-web` | community | Leonxlnx/taste-skill | Elite frontend image-direction skill for generating premium, conversion-aware website design references. CRITICAL OUTPUT RULE —… |
 | `improve-animations` | community | emilkowalski/skill | Survey a codebase's animation and motion code as a senior motion advisor, then produce a prioritized audit and self-contained… |
 | `industrial-brutalist-ui` | community | Leonxlnx/taste-skill | Raw mechanical interfaces fusing Swiss typographic print with military terminal aesthetics. Rigid grids, extreme type scale contrast,… |
 | `machine-learning` | community | pluginagentmarketplace/custom-plugin-python | Python machine learning with scikit-learn, PyTorch, and TensorFlow |
