@@ -6817,6 +6817,21 @@ export interface components {
             vencen_6_meses_importe_eur: number;
         };
         /**
+         * CcaaCount
+         * @description Expedientes e importe de una comunidad autónoma del ámbito.
+         */
+        CcaaCount: {
+            /** Ccaa */
+            ccaa: string;
+            /**
+             * Importe
+             * @description Suma de `importe` de sus expedientes; 0 si ninguno lo trae.
+             */
+            importe: number;
+            /** N */
+            n: number;
+        };
+        /**
          * CeldaComparacion
          * @description Lo que una ficha dice de una familia.
          */
@@ -11601,6 +11616,11 @@ export interface components {
              * @default 0
              */
             pct_pyme: number;
+            /**
+             * Por Ccaa
+             * @description Reparto del ámbito por comunidad autónoma, de más a menos expedientes. No incluye los expedientes sin CCAA.
+             */
+            por_ccaa?: components["schemas"]["CcaaCount"][];
             /** Por Estado */
             por_estado?: components["schemas"]["EstadoCount"][];
             /** Por Mes */

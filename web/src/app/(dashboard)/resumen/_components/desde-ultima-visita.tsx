@@ -258,7 +258,7 @@ export function DesdeUltimaVisita() {
 
             {items.length > VISIBLES && (
               <details className="group">
-                <summary className="inline-flex cursor-pointer list-none items-center gap-1 px-1.5 py-1 text-tf-micro text-muted-foreground transition-colors hover:text-foreground">
+                <summary className="inline-flex min-h-6 cursor-pointer list-none items-center gap-1 px-1.5 py-1 text-tf-micro text-muted-foreground transition-colors hover:text-foreground">
                   <ChevronRight className="h-3 w-3 transition-[rotate] group-open:rotate-90" aria-hidden="true" />
                   Ver {items.length - VISIBLES} más
                 </summary>

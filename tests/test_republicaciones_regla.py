@@ -92,7 +92,7 @@ class TestSuperficies:
         "overview_funnel",
         "overview_yoy_and_recent",
         "overview_concentracion_organos",
-        "overview_concentracion_ccaa",
+        "overview_por_ccaa",
         "overview_ccaa_cubiertas",
         "overview_tasa_anulacion",
         "overview_para_hoy",

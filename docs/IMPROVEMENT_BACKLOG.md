@@ -738,6 +738,13 @@ _Sin ítems abiertos._
   schema de `deploy.yml` presupone migrar antes de desplegar, y el autodeploy
   se adelanta a los dos: cada PR que trae una migración que el código ya lee
   repetirá el fallo.
+- **Estado (2026-10-18, 01:22 UTC):** el autodeploy **sigue activo** según la API de Render,
+  aunque se dio por apagado en el dashboard: `TenderFlow` con `autoDeploy: yes` y disparador
+  `commit`, y `TenderFlow-1` con `yes` y `checksPass`. La prueba: `aec5c4b` (#496), fusionado
+  a las 01:16:56, se desplegó solo en la API a las 01:16:59 (`dep-dba1s2oae00c739beh30`,
+  `trigger: new_commit`). `tenderflow-mcp`, creado el 2026-10-17, ya tiene `autoDeploy: no`.
+  Comprobar con `get_service` tras cambiarlo: el campo `updatedAt` del servicio cambia
+  cuando se guarda el ajuste.
 - **Acceptance criteria (lo que queda, todo acción del usuario):**
   - Blueprint vinculado y `autoDeploy` apagado en el servicio real; la cabecera de `render.yaml` anota la fecha de verificación.
   - `healthCheckPath` efectivo, verificado con un deploy deliberadamente fallido.
@@ -1393,10 +1400,14 @@ _Sin ítems abiertos._
   unknown` falla al primer intento, porque reintentar no lo arregla. El gate de schema
   lee el payload verificado en vez de volver a preguntar. El hook sigue desplegando la
   punta de `master`: `?ref=<sha>` apagaría el autodeploy del servicio, y eso va con el P2
-  de `render.yaml`. Tests en `tests/test_deploy_gate_commit.py`. **Pendiente de ver en
-  producción:** el primer `deploy.yml` tras el merge confirma que el contenedor recibe
-  `RENDER_GIT_COMMIT`. Render lo documenta para todos los runtimes, pero aquí no se pudo
-  comprobar.
+  de `render.yaml`. Tests en `tests/test_deploy_gate_commit.py`. **Verificado en
+  producción el 2026-10-18** (#495, `da64d45`; `deploy.yml` run 39085288930): el intento 1
+  vio «sin campo `commit`», la instancia de `54385dd` anterior al gate, y siguió esperando;
+  el intento 2, 15 s después, vio `da64d45` (el contenedor recibe `RENDER_GIT_COMMIT`).
+  Schema `ok (v153_rekey_pscp_id_externo)` y smoke en verde. La instancia aprobada fue la
+  del autodeploy (`dep-dba1n37lk1mc73ceiog0`, viva a las 01:07:08), no la del hook (viva a
+  las 01:07:49). Es el mismo commit, así que el veredicto vale, pero mientras siga el
+  autodeploy el gate no prueba el arranque de la instancia del hook.
 - [2026-10-17] **Segundo repaso del Investigador** (rama
   `claude/quirky-wozniak-xp20q0`):
   - **Duplicados:** los cinco caminos del motor (términos, expresión,

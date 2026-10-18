@@ -147,7 +147,9 @@ export function ComposicionPanel({ className }: { className?: string }) {
           <div
             role="group"
             aria-label="Filtrar el ámbito por estado"
-            className="grid grid-cols-1 gap-x-6 gap-y-0.5 lg:grid-cols-2"
+            // Dos columnas de filas desde `lg`; desde `xl` el panel comparte fila
+            // con el reparto por comunidad y vuelve a una.
+            className="grid grid-cols-1 gap-x-6 gap-y-0.5 lg:grid-cols-2 xl:grid-cols-1"
           >
             {tramos.map((tramo) => {
               const activo = estados.includes(tramo.estado);

@@ -621,22 +621,23 @@ class AggregateRepository:
         sums = [float(r[0]) for r in rows]
         return sum(sums[:top_n]), sum(sums)
 
-    def overview_concentracion_ccaa(
-        self, filters: LicitacionesFilters, *, top_n: int = 3
-    ) -> tuple[float, float]:
-        """(top_n_importe, total_importe) agrupado por ccaa (dropna, min_count=1)."""
+    def overview_por_ccaa(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+        """(ccaa, n, importe) por comunidad, de más a menos expedientes.
+
+        ``importe`` es ``SUM(importe)`` tal cual: ``NULL`` si ninguna fila de la
+        comunidad trae importe. Una sola agrupación sirve al reparto del Resumen
+        y a la concentración geográfica de los indicadores de mercado
+        (``services.analytics.overview.concentracion_top``), que antes hacía su
+        propio ``GROUP BY ccaa`` para quedarse solo con las sumas.
+        """
         where, params = _build_where(filters, presentacion=True)
         sql = (
-            "SELECT SUM(importe) AS s FROM licitaciones "
+            "SELECT ccaa, COUNT(*) AS n, SUM(importe) AS importe FROM licitaciones "
             "WHERE " + where + " AND ccaa IS NOT NULL "
-            "GROUP BY ccaa "
-            "HAVING SUM(importe) IS NOT NULL "
-            "ORDER BY s DESC"
+            "GROUP BY ccaa ORDER BY n DESC, ccaa"
         )
         with connect_read() as c:
-            rows = c.execute(sql, params).fetchall()
-        sums = [float(r[0]) for r in rows]
-        return sum(sums[:top_n]), sum(sums)
+            return rows_to_dicts(c.execute(sql, params))
 
     def overview_ccaa_cubiertas(self, filters: LicitacionesFilters) -> int:
         """CCAA distintas presentes en el ámbito.
