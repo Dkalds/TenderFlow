@@ -160,8 +160,8 @@ def render_block(adrs: list[Adr]) -> str:
         f"**{len(adrs)} ADR**, de los cuales **{por_estado.get('accepted', 0)}** están "
         f"vigentes. {resumen}.\n\n"
         "Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del "
-        "frontmatter de cada ADR; `make check-agent-docs` y la suite "
-        "(`tests/test_unit_ratchet_indice_adr.py`) la verifican con `--check`. Un ADR "
+        "frontmatter de cada ADR; CI la verifica con `--check`, igual que "
+        "`make check-agent-docs` y la suite (`tests/test_unit_ratchet_indice_adr.py`). Un ADR "
         "sin `id` o `status` —o con un estado fuera del vocabulario— la hace fallar."
     )
 

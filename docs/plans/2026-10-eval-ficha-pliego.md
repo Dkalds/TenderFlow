@@ -11,6 +11,7 @@ Fuera de alcance: las respuestas del asistente, el clasificador, la búsqueda de
 **Ítem del backlog que implementa:** «[P2] Golden set de extracción de fichas:
 la calidad de la ficha no se mide». Desbloquea «[P2] Unificar la selección de
 páginas de la ficha con el retrieval pgvector».
+**Plan de implementación:** [2026-10-eval-ficha-pliego-plan.md](2026-10-eval-ficha-pliego-plan.md).
 
 ## 1. Por qué
 
