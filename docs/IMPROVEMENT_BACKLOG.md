@@ -1299,6 +1299,7 @@ _Sin ítems abiertos._
 - **Files de partida:** [db/mcp_oauth.py](../db/mcp_oauth.py), [docs/runbooks/mcp-interno.md](runbooks/mcp-interno.md)
 - **Riesgo:** bajo — borrado acotado a filas que ya no valen; lo delicado es no romper la detección de reutilización.
 - **Hecho el 2026-10-15** (rama `claude/laughing-newton-dbht10`, revisión final del MCP): `db.mcp_oauth.purgar`, que el propio servidor MCP corre al arrancar y cada hora (no el worker). Con los plazos que fijó la revisión, **más cortos que N ≥ 30**: pendientes/códigos caducados hace > 1 día, access/refresh revocados o caducados hace > 7 días (aunque la familia siga viva: un refresh rotado hace más de una semana deja de detectarse como reutilizado) y clientes de > 7 días sin tokens. Runbook §7 actualizado.
+- **Plazo confirmado (2026-10-19):** el dueño elige **30 días** para access/refresh y clientes huérfanos (pendientes y códigos siguen en 1 día). Con 30, lo que vive un refresh, un refresh rotado delata su reutilización durante toda su vida. En la misma conversación dio el OK, a posteriori, al cambio de `.env.example` (comentarios de las `MCP_*`) que entró con #473 fuera del plan.
 
 ### [P3] El `client_secret` del registro dinámico del MCP se guarda legible
 - **Área:** db/mcp_oauth.py, mcp_server/auth/
