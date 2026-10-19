@@ -27,10 +27,12 @@ otro sitio donde un trabajo puede quedarse sin nadie que lo ejecute:
 - Cada tipo de :data:`shared.jobs.TIPOS_A_DEMANDA` debe tener su handler
   resoluble (``modulo:funcion``). Un tipo con handler roto se encolaría desde la
   API y giraría hasta agotar intentos, con el usuario mirando un spinner.
-- El **plano worker** debe estar declarado en ``render.yaml``: un servicio con
-  ``APP_PROFILE=worker``. Sin él, la cola a demanda no la consume nadie en
-  producción — que es exactamente la clase de «job muerto» que este script
-  existe para detectar, solo que en el plano nuevo.
+- La cola a demanda debe tener **consumidor declarado** en producción: un
+  servicio de ``render.yaml`` con ``APP_PROFILE=worker`` o, desde que
+  ``tenderflow-worker`` se retiró (2026-10-19), la propia API (ADR-028 §G):
+  ``jobs_consumidor_en_api("prod")`` encendido por defecto y ``render.yaml`` sin
+  un literal que lo apague. Sin consumidor, la cola no la vacía nadie — que es
+  exactamente la clase de «job muerto» que este script existe para detectar.
 - Los tipos programados (``TIPOS_PROGRAMADOS``) NO exigen worker: los consume el
   propio job de Actions dentro del cierre de la pasada (ADR-012).
 
@@ -43,6 +45,7 @@ Uso::
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -82,6 +85,12 @@ _APP_PROFILE_WORKER = re.compile(
     r"-\s*key:\s*APP_PROFILE\s*\n\s*value:\s*[\"']?worker[\"']?\s*$",
     re.MULTILINE,
 )
+# Lo mismo para el interruptor de ADR-028 §G: un `value:` literal que lo apague
+# en el Blueprint dejaría la API sin consumir la cola en el siguiente despliegue.
+_CONSUMIDOR_API_APAGADO = re.compile(
+    r"-\s*key:\s*JOBS_CONSUMIDOR_EN_API\s*\n\s*value:\s*[\"']?(0|false|no|off)[\"']?\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
 
 
 def _modules_invoked_by_workflows() -> tuple[set[str], set[str]]:
@@ -108,29 +117,58 @@ def _modules_invoked_by_workflows() -> tuple[set[str], set[str]]:
 def plano_worker_declarado() -> bool:
     """¿Hay en ``render.yaml`` un servicio con ``APP_PROFILE=worker``?
 
-    Es la comprobación de S5.3: la cola a demanda solo tiene consumidor en
-    producción si ese servicio existe. No se verifica contra la API de Render
-    —este script corre en CI sin credenciales—, así que lo que se afirma es que
-    el Blueprint lo declara; que el Blueprint esté vinculado es el checklist
-    humano de la cabecera de ``render.yaml`` (O0.2).
+    No se verifica contra la API de Render —este script corre en CI sin
+    credenciales—, así que lo que se afirma es que el Blueprint lo declara.
     """
     if not _RENDER_YAML.is_file():
         return False
     return bool(_APP_PROFILE_WORKER.search(_RENDER_YAML.read_text(encoding="utf-8")))
 
 
+def api_consume_la_cola() -> bool:
+    """¿La API de producción consume la cola a demanda? (ADR-028 §G)
+
+    Dos condiciones: el valor por defecto de ``jobs_consumidor_en_api`` en
+    ``prod`` —evaluado sin la variable, que es como arranca el servicio si nadie
+    la define— y que ``render.yaml`` no la fije a un valor que la apague. Lo que
+    el dashboard tenga puesto (``sync: false``) no se ve desde CI; eso lo dice
+    el log ``api_consumidor_cola_arrancado`` de cada arranque.
+    """
+    from unittest.mock import patch
+
+    from config.settings import jobs_consumidor_en_api
+
+    with patch.dict(os.environ):
+        os.environ.pop("JOBS_CONSUMIDOR_EN_API", None)
+        por_defecto = jobs_consumidor_en_api("prod")
+    if not por_defecto:
+        return False
+    if not _RENDER_YAML.is_file():
+        return True
+    return not _CONSUMIDOR_API_APAGADO.search(_RENDER_YAML.read_text(encoding="utf-8"))
+
+
+def consumidor_de_la_cola() -> str:
+    """Quién consume la cola a demanda en producción, o ``""`` si nadie."""
+    if plano_worker_declarado():
+        return "render.yaml (APP_PROFILE=worker)"
+    if api_consume_la_cola():
+        return "tenderflow-api (ADR-028 §G)"
+    return ""
+
+
 def check_cola() -> tuple[list[dict[str, Any]], list[str]]:
-    """Paridad de la cola de trabajo: handler resoluble y plano declarado."""
+    """Paridad de la cola de trabajo: handler resoluble y consumidor declarado."""
     import importlib
 
     from shared.jobs import TIPOS_A_DEMANDA, TIPOS_PROGRAMADOS
 
-    hay_worker = plano_worker_declarado()
+    consumidor = consumidor_de_la_cola()
     rows: list[dict[str, Any]] = []
     problems: list[str] = []
 
-    for tipos, plano, exige_worker in (
-        (TIPOS_A_DEMANDA, "worker", True),
+    for tipos, plano, exige_consumidor in (
+        (TIPOS_A_DEMANDA, "cola", True),
         (TIPOS_PROGRAMADOS, "pipeline", False),
     ):
         for nombre, declarado in tipos.items():
@@ -148,14 +186,14 @@ def check_cola() -> tuple[list[dict[str, Any]], list[str]]:
                         "encolaría y giraría hasta agotar intentos"
                     )
             cubierto_por = ""
-            if exige_worker and not hay_worker:
+            if exige_consumidor and not consumidor:
                 problems.append(
-                    f"{nombre}: tipo a demanda sin plano worker — ningún servicio de "
-                    "render.yaml declara APP_PROFILE=worker, así que en producción "
-                    "nadie consume la cola"
+                    f"{nombre}: tipo a demanda sin consumidor — ningún servicio de "
+                    "render.yaml declara APP_PROFILE=worker y la API no consume la "
+                    "cola (JOBS_CONSUMIDOR_EN_API), así que en producción nadie la vacía"
                 )
-            elif exige_worker:
-                cubierto_por = "render.yaml (APP_PROFILE=worker)"
+            elif exige_consumidor:
+                cubierto_por = consumidor
             else:
                 cubierto_por = "cierre de la pasada (Actions)"
             rows.append(

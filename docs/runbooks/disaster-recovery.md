@@ -70,9 +70,9 @@ duplicar lo que el proveedor ya hace. Aquí solo el orden y las comprobaciones
 que un incidente exige.
 
 ```bash
-# 2.1 Congelar la escritura: apagar el cron y el worker mientras dure la restauración.
+# 2.1 Congelar la escritura: apagar el cron y la cola mientras dure la restauración.
 #     Actions: gh workflow disable scrape-daily.yml  (y ml-scoring, pliegos, healthcheck)
-#     Render:  suspender tenderflow-worker desde el dashboard (o SCHEDULER_PLANE vacío si el cron corre ahí, ADR-033)
+#     Render:  JOBS_CONSUMIDOR_EN_API=0 en tenderflow-api (la cola a demanda la consume la API, ADR-028 §G)
 
 # 2.2 Elegir el punto de restauración: Supabase → Database → Backups.
 #     Con PITR, el instante justo anterior al incidente; si no, el último diario.
@@ -188,10 +188,9 @@ Los datos dejan de refrescarse pero todo lo demás responde.
   60 días sin actividad en el repositorio y no avisa. `gh workflow list` muestra
   `disabled_inactivity`; `gh workflow enable <fichero>` los reactiva. También
   mirar la pestaña Usage por si se agotaron los minutos.
-- **Worker** (`SCHEDULER_PLANE=worker`, [ADR-033](../adr/ADR-033-plano-de-cron-en-el-worker.md)):
-  `/health/ready` del worker expone `cron_plane` y el último tick; si no
-  avanza, reiniciar el servicio `tenderflow-worker` desde Render y revisar
-  `ops_events`.
+- **Worker** ([ADR-033](../adr/ADR-033-plano-de-cron-en-el-worker.md)): no
+  aplica desde el 2026-10-19, cuando `tenderflow-worker` se retiró; el cron es
+  solo de Actions.
 - En ambos casos, `scheduler/healthcheck.py` (cada 6 h) debería haber
   alertado por `source_ingestion_health`; si no lo hizo, el receptor de
   alertas es el segundo incidente (ver [observability-alerts.md](observability-alerts.md)).

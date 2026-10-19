@@ -20,7 +20,9 @@
 #     el servicio a mano. Es el valor que tienen que llevar `vars.SMOKE_BASE_URL`
 #     (smoke.yml, deploy.yml) y `CORS_ALLOWED_ORIGINS`/`FRONTEND_URL`.
 #   - `plan`: **standard** en el servicio real (este fichero ya dice `standard`).
-#   - `autoDeploy`: **ACTIVO** en el servicio real. Este fichero dice `false`.
+#   - `autoDeploy`: estaba **ACTIVO** en el servicio real; se apagó el
+#     2026-10-18 desde el dashboard (`autoDeployTrigger: off`, leído por la API
+#     de Render), igual que en `tenderflow-mcp`. Ya coincide con este fichero.
 #   - `healthCheckPath`: el 2026-08-04 el servicio real no tenía ninguno
 #     configurado. Sin re-verificar desde entonces.
 #
@@ -37,8 +39,10 @@
 #
 #   [ ] 1. Dashboard → Blueprints → New Blueprint Instance sobre este repo, o
 #          Settings del servicio → vincularlo a este `render.yaml`.
-#   [ ] 2. Settings → Build & Deploy → confirmar que `Auto-Deploy` queda en
-#          **No**. Es lo que impide el segundo camino de despliegue.
+#   [x] 2. Settings → Build & Deploy → confirmar que `Auto-Deploy` queda en
+#          **No**. Es lo que impide el segundo camino de despliegue. Hecho el
+#          2026-10-18 sin vincular el Blueprint: queda comprobar que vincular
+#          no lo vuelve a encender.
 #   [ ] 3. Settings → Health Check Path → confirmar `/api/v1/health`. Sin él
 #          Render corta la instancia vieja antes de saber si la nueva arranca,
 #          y no hay rollback automático de un arranque roto.
@@ -255,164 +259,31 @@ services:
       # corre sin captura de errores ni trazas.
       - key: SENTRY_DSN
         sync: false
-      # ADR-028 §G: mientras `tenderflow-worker` no exista, ESTE servicio
-      # consume la cola a demanda (la ficha del pliego, los embeddings de un
-      # expediente, el PDF grande) en un hilo propio. Sin definir = consume en
-      # prod. Poner `0` desde el dashboard cuando el worker esté sano. `sync:
-      # false` por lo mismo que `SCHEDULER_PLANE`: que un despliegue del
-      # Blueprint no apague el único consumidor sin que nadie lo decida.
+      # ADR-028 §G: ESTE servicio consume la cola a demanda (la ficha del
+      # pliego, los embeddings de un expediente, el PDF grande) en un hilo
+      # propio, y desde el 2026-10-19 es el único consumidor: `tenderflow-worker`
+      # se retiró (ver la nota de abajo). Sin definir = consume en prod; `0` lo
+      # apagaría y dejaría la cola sin nadie. `sync: false` para que un
+      # despliegue del Blueprint no lo cambie sin que nadie lo decida.
       - key: JOBS_CONSUMIDOR_EN_API
         sync: false
 
-  # ── Worker de la cola de trabajo (S5.3, decisión D14) ───────────────────
-  # **No existe en Render** (verificado por su API el 2026-09-30: el único
-  # servicio es la API). Durante dos semanas los jobs `ficha_pliego` se
-  # encolaron sin que nadie los reclamara; desde ADR-028 §G los consume la API
-  # (`JOBS_CONSUMIDOR_EN_API`, arriba) hasta que este bloque se cree.
+  # ── Worker de la cola de trabajo: RETIRADO (2026-10-19) ─────────────────
+  # Aquí se declaraba `tenderflow-worker` (S5.3, D14; plano de cron de ADR-033).
+  # Se creó a mano el 2026-10-10 en el plan free de Render, que hiberna un web
+  # service a los ~15 min sin tráfico HTTP: el consumidor de la cola y el plano
+  # de cron solo corrían en los minutos siguientes a cada deploy, y su
+  # intervalo de 4 h no llegó a dispararse nunca. Se retiró en vez de pagar
+  # `standard`, porque no hacía nada que no esté cubierto:
   #
-  # Consume `jobs` (v106): lo que un usuario pide y no cabe en una request —la
-  # ficha del pliego, los embeddings de un expediente abierto, el PDF de una
-  # exportación grande—. Hasta ahora eso corría en los BackgroundTasks del
-  # propio proceso de la API, con 30 s de drenado al apagar: un despliegue en
-  # mitad de una extracción la mataba y el frontend se quedaba sondeando un
-  # trabajo muerto. Con este servicio, el job vuelve a `pending` por TTL y otro
-  # worker lo termina.
+  # - la ingesta (`daily_atom`) y el scoring siguen en Actions
+  #   (`scrape-daily.yml`, `ml-scoring.yml`), que nunca dejaron de correr;
+  # - la cola a demanda la consume `tenderflow-api` (ADR-028 §G, arriba).
   #
-  # `type: web` y no `type: worker`, y es la parte contraintuitiva: un
-  # background worker de Render NO admite `healthCheckPath`, y el criterio de
-  # aceptación de S5.3 exige que `/health/ready` exista y que Render lo use.
-  # Sin healthcheck, un worker que arranca roto (BD inalcanzable, migración
-  # pendiente) se queda vivo y mudo, que es el modo de fallo que este servicio
-  # viene a terminar. La superficie que publica es solo el router de salud:
-  # `api/app.py` monta ÚNICAMENTE `health` cuando `APP_PROFILE=worker`, así que
-  # esta URL no es una segunda copia de la API.
-  #
-  # Misma imagen y mismo entrypoint que `tenderflow-api` a propósito: el
-  # entrypoint arranca `api.app:app` y lo que cambia el comportamiento es
-  # `APP_PROFILE`. Un Dockerfile propio para el worker significaría dos
-  # imágenes que pueden divergir en dependencias y en versión de código.
-  #
-  # Plano de cron (ADR-033): con `SCHEDULER_PLANE=worker` este proceso asume
-  # además la ingesta diaria (`daily_atom`: PLACSP, los seis conectores, el
-  # cierre y el healthcheck) y el scoring (`ml_scoring_baja`), en un hilo. El
-  # reentrenamiento y los embeddings de pliegos se quedan en Actions
-  # (`scheduler/cron_plane.py::SE_QUEDAN_EN_ACTIONS`). Sin la variable, el
-  # worker solo reacciona a lo que alguien pidió. El procedimiento está en
-  # `docs/runbooks/cutover-cron-al-worker.md`.
-  #
-  # `plan: standard` (2 GB) y no `starter` (512 MB), por el plano de cron. Para
-  # la cola sola bastaba `starter`: ráfagas cortas de I/O esperando al
-  # proveedor LLM. Pero el scoring construye en pandas el dataset histórico
-  # completo y la pasada diaria parsea un feed ATOM de 17 MB, en el mismo
-  # proceso que la cola y el healthcheck: con 512 MB un OOM se lleva el
-  # servicio entero. Ninguno de los dos se ha medido todavía fuera de un runner
-  # de Actions; tras dos semanas de cutover, el pico de memoria decide si se
-  # puede bajar. Si la cola se acumulara, la respuesta sigue siendo más
-  # instancias, no una más grande — `SELECT … FOR UPDATE SKIP LOCKED` escala
-  # horizontalmente por diseño.
-  - type: web
-    name: tenderflow-worker
-    runtime: docker
-    dockerfilePath: ./docker/Dockerfile.api
-    plan: standard
-    region: frankfurt
-    # Mismo gate que la API: a producción solo llega lo que `deploy.yml` lanza
-    # sobre un commit verde (O0.2). Un worker que se despliega solo mataría
-    # trabajo en vuelo cada vez que alguien mergea.
-    autoDeploy: false
-    healthCheckPath: /api/v1/health/ready
-    envVars:
-      - key: ENV
-        value: prod
-      # La línea que decide todo: con este perfil `api/app.py` monta solo el
-      # router de salud y su lifespan arranca el consumidor de la cola.
-      - key: APP_PROFILE
-        value: worker
-      # Variante de dependencias (C3.1, 2026-09-18). La imagen por defecto es
-      # la de la API, sin lxml ni scikit-learn; el plano de cron de este
-      # servicio los necesita (el parser de PLACSP, TACRC, drift, clusters, el
-      # scoring). Render expone las variables del servicio como build args, y
-      # `docker/Dockerfile.api` declara `ARG REQUIREMENTS_FILE`: sin esta
-      # variable la imagen se construye sin ellos y la pasada diaria revienta
-      # al importar.
-      - key: REQUIREMENTS_FILE
-        value: requirements-pipeline.txt
-      - key: DATABASE_URL
-        sync: false
-      - key: DATABASE_SSL_ROOT_CERT
-        sync: false
-      # Presupuesto de conexiones: este servicio SUMA al de la API contra el
-      # mismo pooler de Supabase (ver la nota larga de `tenderflow-api`). Con
-      # 2 + 2 el techo del worker es 4 conexiones, que caben en el margen que
-      # deja el 24 de la API bajo el `Pool Size` de 30. Al subirlos, subir
-      # antes el pooler.
-      - key: DB_POOL_SIZE
-        value: "2"
-      - key: DB_READ_POOL_SIZE
-        value: "2"
-      # Redis NO es opcional aquí, aunque el validador de `Settings` solo lo
-      # exija con `APP_PROFILE=api`: el PDF que maqueta este servicio viaja a la
-      # API por la caché compartida (`shared/jobs.py::CACHE_EXPORTS`). Sin
-      # Redis, cada proceso tiene la suya y la descarga encolada nunca aparece.
-      - key: REDIS_URL
-        sync: false
-      - key: REDIS_PASSWORD
-        sync: false
-      # El handler de la ficha llama al proveedor LLM con la misma clave que la
-      # API: es el mismo trabajo, movido de proceso.
-      - key: NVIDIA_API_KEY
-        sync: false
-      # Firma de la cadena de auditoría: obligatoria en prod para cualquier
-      # perfil, porque el worker también escribe.
-      - key: AUDIT_HMAC_KEY
-        sync: false
-      - key: SENTRY_DSN
-        sync: false
-      # Tuning de la cola (config/settings.py, ancla S5). Se dejan con su
-      # defecto salvo el TTL, explícito porque es el que gobierna cuánto tarda
-      # en recuperarse un job que murió con su worker.
-      - key: JOBS_LOCK_TTL_SEGUNDOS
-        value: "900"
-      # Plano de cron (ADR-033). `sync: false` y NO un valor literal, que es la
-      # parte importante: el cutover consiste en poner `worker` aquí desde el
-      # dashboard, y un `value:` en este fichero se lo comería en el siguiente
-      # despliegue del Blueprint — apagando el cron de producción sin que nadie
-      # tocara nada. Con `sync: false` manda el dashboard.
-      #
-      # Mientras valga `actions` (o esté sin definir) este proceso arranca solo
-      # el consumidor de la cola: el plano de cron sigue siendo GitHub Actions.
-      # El procedimiento completo, con su vuelta atrás, está en
-      # `docs/runbooks/cutover-cron-al-worker.md`.
-      - key: SCHEDULER_PLANE
-        sync: false
-      # Canal de alertas del plano de cron. En Actions cada workflow las recibe
-      # de sus secrets; aquí, sin ellas, `notify()` solo escribe en el log: los
-      # fallos de la ingesta, del cierre, del scoring y el healthcheck
-      # post-pasada dejarían de llegar por correo el día del cutover.
-      - key: ALERT_EMAIL_TO
-        sync: false
-      - key: ALERT_SMTP_USER
-        sync: false
-      - key: ALERT_SMTP_PASSWORD
-        sync: false
-      - key: ALERT_MIN_LEVEL
-        sync: false
-      # Dead-man's switch del healthcheck post-pasada (scheduler/latido.py).
-      # Con el cron en este servicio, la rutina que vigila los workflows de
-      # Actions deja de ver la ingesta: si el hilo de cron muere, el worker
-      # sigue contestando `/health/ready` y nadie nota que la pasada dejó de
-      # correr. El latido es lo que lo delata. Mismo valor que el secret
-      # `HEALTHCHECK_HEARTBEAT_URL` de Actions: el check externo es uno solo y
-      # late desde el plano que esté activo.
-      - key: HEALTHCHECK_HEARTBEAT_URL
-        sync: false
-      # Pendientes de declarar aquí: GITHUB_TOKEN (el scoring descarga el modelo
-      # de la Release `ml-models`), PSCP_DATASET_ID, PSCP_APP_TOKEN,
-      # TACRC_INDEX_URL y las LLM_TECH_LABELING_* / LLM_TECH_FEEDBACK_ENABLED que
-      # hoy llegan como `vars` de Actions. `scripts/check_env_parity.py` exige
-      # que toda variable de este fichero esté documentada en `.env.example`, y
-      # tocar `.env*` requiere OK explícito (AGENTS.md §6). Hasta entonces se
-      # ponen desde el dashboard: lo lista el paso 1 del runbook del cutover.
+  # El código del perfil (`APP_PROFILE=worker`, `scheduler/worker.py`,
+  # `scheduler/cron_plane.py`) se queda: `python -m scheduler.worker` sigue
+  # siendo el consumidor en local, y volver a tener worker es recrear este
+  # bloque desde el historial de git en un plan que no hiberne.
 
   # ── Servidor MCP interno (ADR-036, 2026-10-15) ──────────────────────────
   # Acceso de lectura a los datos para el equipo (3 personas, todas admin) desde
@@ -424,9 +295,9 @@ services:
   #
   # ALTA A MANO, NO POR BLUEPRINT: mientras el Blueprint no esté vinculado
   # (checklist de la cabecera), una «New Blueprint Instance» sobre este fichero
-  # crearía TODOS sus servicios, incluido un segundo `tenderflow-worker` (plano
-  # de cron) contra producción. `tenderflow-mcp` se crea por el dashboard con
-  # los valores de abajo: docs/runbooks/mcp-interno.md, paso 3.
+  # crearía TODOS sus servicios, incluida una segunda API contra producción.
+  # `tenderflow-mcp` se crea por el dashboard con los valores de abajo:
+  # docs/runbooks/mcp-interno.md, paso 3.
   #
   # Creado el 2026-10-17 (`srv-db9cr1om7kps73ctg25g`, host
   # `https://tenderflow-mcp.onrender.com`). Comprobado en el primer deploy:
@@ -444,11 +315,9 @@ services:
   # (con `api` los validadores de `Settings` exigirían `API_HMAC_SECRET`,
   # `CORS_ALLOWED_ORIGINS`, `WEBHOOK_SIGNING_KEY`... que este servicio no usa)
   # ni un worker (con `worker` se saltaría la longitud mínima de `SIGNING_KEY` y
-  # `AUDIT_HMAC_KEY`, subiría el techo de consulta a 300 s, y
-  # `scripts/check_job_parity.py` daría por declarado el consumidor de la cola
-  # aunque se borrara el worker real). Sí exige esas dos claves, con la longitud
-  # de la API. Lo demás lo valida `mcp_server/servidor.py::validar_configuracion`
-  # al arrancar (aborta en prod).
+  # `AUDIT_HMAC_KEY` y subiría el techo de consulta a 300 s). Sí exige esas dos
+  # claves, con la longitud de la API. Lo demás lo valida
+  # `mcp_server/servidor.py::validar_configuracion` al arrancar (aborta en prod).
   - type: web
     name: tenderflow-mcp
     runtime: docker
@@ -457,7 +326,7 @@ services:
     dockerCommand: python -m mcp_server
     plan: starter
     region: frankfurt
-    # Mismo gate que la API y el worker: solo llega lo que lanza `deploy.yml`.
+    # Mismo gate que la API: solo llega lo que lanza `deploy.yml`.
     autoDeploy: false
     healthCheckPath: /healthz
     envVars:

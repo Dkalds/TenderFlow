@@ -104,8 +104,8 @@ Google responde `redirect_uri_mismatch` en el login.
 1. **A mano, no con *New → Blueprint*.** Los servicios de producción se crearon
    por el dashboard y el Blueprint **no está vinculado** (checklist de la
    cabecera de `render.yaml`). Una *New Blueprint Instance* sobre este repo
-   crearía **todos** los servicios del fichero, incluido un segundo
-   `tenderflow-worker` (el plano de cron) contra la base de producción. Hasta
+   crearía **todos** los servicios del fichero, incluida una segunda API
+   contra la base de producción. Hasta
    que ese checklist esté completo, el alta es: Dashboard → *New → Web
    Service* → este repo, con lo mismo que declara `render.yaml` para
    `tenderflow-mcp`:

@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-15
+Generado: 2026-10-19
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -26,9 +26,9 @@ Generado: 2026-10-15
 | `llm_models_canary` | pipeline | CANONICAL_STEPS[llm_models_canary] |
 | `anomaly_checks` | pipeline | CANONICAL_STEPS[anomaly_checks] |
 | `drift_report` | pipeline | CANONICAL_STEPS[drift_checks] |
-| `ficha_pliego` | worker | render.yaml (APP_PROFILE=worker) |
-| `embeddings_expediente` | worker | render.yaml (APP_PROFILE=worker) |
-| `export_pdf` | worker | render.yaml (APP_PROFILE=worker) |
+| `ficha_pliego` | cola | tenderflow-api (ADR-028 §G) |
+| `embeddings_expediente` | cola | tenderflow-api (ADR-028 §G) |
+| `export_pdf` | cola | tenderflow-api (ADR-028 §G) |
 | `paso_pipeline` | pipeline | cierre de la pasada (Actions) |
 
 **18 jobs, todos con plano verificado.**

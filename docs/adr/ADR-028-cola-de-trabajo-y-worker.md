@@ -175,6 +175,18 @@ devuelve a `pending` en vez de perderlo.
 **Disparador de revisión:** crear `tenderflow-worker` en Render. En ese momento
 `JOBS_CONSUMIDOR_EN_API=0` en la API y este apartado queda como historia.
 
+**Revisión 2026-10-19: §G es el estado definitivo.** El disparador se cumplió a
+medias: `tenderflow-worker` se creó a mano el 2026-10-10, pero en el plan
+`free`, que hiberna un web service a los ~15 min sin tráfico HTTP. Sus logs del
+2026-10-18 lo muestran despierto solo en los minutos que seguían a cada deploy;
+`JOBS_CONSUMIDOR_EN_API` nunca se puso a `0`, así que la cola la siguió
+vaciando la API. En vez de pagar `standard` por un servicio que no aportaba
+nada que no estuviera cubierto, se retiró: la API es el único consumidor de la
+cola a demanda (`scripts/check_job_parity.py` lo comprueba así) y el plano de
+cron sigue en Actions (ADR-033, misma fecha). El código de `APP_PROFILE=worker`
+se queda; volver a tener worker es recrear su bloque de `render.yaml` en un
+plan que no hiberne y entonces sí apagar el consumidor de la API.
+
 ---
 
 ## Consecuencias

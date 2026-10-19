@@ -189,10 +189,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
         cron = arrancar_cron()
     elif settings.APP_PROFILE == "api":
-        # ADR-028 §G: mientras `tenderflow-worker` no exista en Render, la API
-        # consume la cola a demanda (nunca los tipos programados: `claim` filtra
-        # por `TIPOS_A_DEMANDA`). Sin esto la ficha del pliego se encolaba y no
-        # la ejecutaba nadie. Solo la cola, nunca el plano de cron.
+        # ADR-028 §G: la API consume la cola a demanda (nunca los tipos
+        # programados: `claim` filtra por `TIPOS_A_DEMANDA`). Desde que
+        # `tenderflow-worker` se retiró (2026-10-19) es el único consumidor en
+        # producción: sin esto la ficha del pliego se encolaría y no la
+        # ejecutaría nadie. Solo la cola, nunca el plano de cron.
         from config.settings import jobs_consumidor_en_api
 
         if jobs_consumidor_en_api(settings.ENV):
