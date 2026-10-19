@@ -9,6 +9,9 @@ import { GeoJSON, MapContainer, ZoomControl } from "react-leaflet";
 // Va con el único componente que lo usa.
 import "leaflet/dist/leaflet.css";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { estaticosKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils";
 
@@ -136,6 +139,12 @@ function formatCompact(n: number): string {
   return formatNumber(n);
 }
 
+async function cargarGeoCcaa({ signal }: { signal: AbortSignal }): Promise<FeatureCollection> {
+  const respuesta = await fetch("/spain-ccaa.json", { signal });
+  if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+  return (await respuesta.json()) as FeatureCollection;
+}
+
 export const SpainMap = React.memo(function SpainMap({
   data,
   metric = "Valor",
@@ -146,29 +155,19 @@ export const SpainMap = React.memo(function SpainMap({
 }: SpainMapProps) {
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme === "dark";
-  const [geoData, setGeoData] = React.useState<FeatureCollection | null>(null);
-  const [geoError, setGeoError] = React.useState(false);
+  const { data: geoData, isError: geoError } = useQuery({
+    queryKey: estaticosKeys.geoCcaa,
+    queryFn: cargarGeoCcaa,
+    // Los contornos no cambian en la sesión: una sola petición, aunque el mapa
+    // se monte y desmonte al cambiar de pestaña.
+    staleTime: Infinity,
+    gcTime: 24 * 60 * 60 * 1000,
+    // El fallo ya se pinta en el hueco del mapa; el toast lo repetiría.
+    meta: META_ERROR_EN_LINEA,
+  });
   const [hoveredCcaa, setHoveredCcaa] = React.useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
   const mapHelpId = React.useId();
-
-  React.useEffect(() => {
-    let cancelled = false;
-    fetch("/spain-ccaa.json")
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((d: FeatureCollection) => {
-        if (!cancelled) setGeoData(d);
-      })
-      .catch(() => {
-        if (!cancelled) setGeoError(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const valueMap = React.useMemo(() => {
     const map = new Map<string, number>();
@@ -186,7 +185,7 @@ export const SpainMap = React.memo(function SpainMap({
   const getColor = React.useCallback(
     (ccaa: string) => {
       const val = valueMap.get(ccaa);
-      if (val == null) return dark ? "hsl(200 15% 16%)" : "hsl(200 15% 92%)";
+      if (val == null) return dark ? "hsl(30 6% 16%)" : "hsl(36 12% 91%)";
       const t = maxVal === minVal ? 0.5 : (val - minVal) / (maxVal - minVal);
       return interpolateColor(t, colorScale, dark ? "dark" : "light");
     },
@@ -206,10 +205,10 @@ export const SpainMap = React.memo(function SpainMap({
         color: dark
           ? isHovered
             ? "hsl(36 12% 90%)"
-            : "hsl(200 15% 40%)"
+            : "hsl(34 10% 40%)"
           : isHovered
-            ? "hsl(204 35% 15%)"
-            : "hsl(200 15% 55%)",
+            ? "hsl(30 14% 15%)"
+            : "hsl(34 10% 55%)",
         weight: isHovered ? 2.5 : 1,
       };
     },

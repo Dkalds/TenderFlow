@@ -58,7 +58,7 @@ export function Puerta({
   fondo?: React.ReactNode;
 }) {
   return (
-    <div className="bg-background relative isolate flex min-h-screen flex-col">
+    <div className="bg-background relative isolate flex min-h-dvh flex-col">
       <header className="border-border/60 border-b">
         <div className="mx-auto flex w-full max-w-6xl items-center px-6 py-3.5">
           <Link

@@ -48,7 +48,7 @@ import psycopg
 from psycopg_pool import ConnectionPool
 
 from config.settings import mcp_database_url
-from db.connection import _pg_connect_kwargs
+from db.connection import EXTRA_FLOAT_DIGITS, _pg_connect_kwargs
 
 __all__ = [
     "MAX_CHARS_CELDA",
@@ -613,9 +613,28 @@ def _reiniciar_sesion(conn: psycopg.Connection[tuple[object, ...]]) -> None:
     bloqueos de aviso de sesión se sueltan aparte. No se usa ``DISCARD ALL``:
     borraría los statements preparados que psycopg cree tener. Si esto falla,
     el pool descarta la conexión.
+
+    ``RESET ALL`` también devuelve ``extra_float_digits`` al valor por defecto,
+    que en Supabase es ``0``: :func:`_fijar_precision` lo vuelve a subir.
     """
     conn.execute("RESET ALL")
     conn.execute("SELECT pg_advisory_unlock_all()")
+    _fijar_precision(conn)
+
+
+def _fijar_precision(conn: psycopg.Connection[tuple[object, ...]]) -> None:
+    """Deja ``extra_float_digits`` en :data:`~db.connection.EXTRA_FLOAT_DIGITS` para la sesión.
+
+    Supabase fija ``0`` en su configuración y, con ``0``, los ``real``
+    (``adjudicaciones.importe_adjudicado``, ``licitaciones.importe``…) llegan
+    con 6 cifras significativas: 11 782 155 como 11 782 200. Va en el
+    ``configure`` del pool (conexión nueva) y tras cada ``RESET ALL``; no
+    depende de que el rol tenga su ``ALTER ROLE … SET`` ni de que el pooler
+    deje pasar los ``options`` de arranque. El SQL del LLM no puede deshacerlo
+    para la siguiente consulta: ``set_config`` está vetado y el reinicio lo
+    restaura. El pool es *autocommit*: el ajuste de sesión no espera commit.
+    """
+    conn.execute("SELECT set_config('extra_float_digits', %s, false)", (EXTRA_FLOAT_DIGITS,))
 
 
 def _get_pool(url: str) -> ConnectionPool:
@@ -633,6 +652,7 @@ def _get_pool(url: str) -> ConnectionPool:
                 min_size=min(1, _POOL_MAX),
                 max_size=_POOL_MAX,
                 kwargs=_conn_kwargs(url),
+                configure=_fijar_precision,
                 reset=_reiniciar_sesion,
                 timeout=_POOL_TIMEOUT,
                 check=ConnectionPool.check_connection,

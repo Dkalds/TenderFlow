@@ -40,6 +40,10 @@ import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
  * luego una variable `--alto-cromo`), y lo que la cuenta no sabía alargaba el
  * documento: la franja de primer uso del ámbito (`ambito-intro.tsx`), 84px a
  * 1366×768 en toda pantalla con ámbito, y en móvil la barra superior, 48px.
+ *
+ * `h-dvh` y no `h-screen`: en iOS Safari `100vh` es el alto con la barra de
+ * direcciones recogida, así que el marco sobresalía por debajo y el final de
+ * `#main-content` quedaba tapado hasta que el usuario desplazaba el documento.
  */
 export function ConsoleFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -51,7 +55,7 @@ export function ConsoleFrame({ children }: { children: React.ReactNode }) {
           la escala y no los 14 del `body`, que son los de la superficie
           pública. Va en el marco que ya existía, no en un div nuevo que
           rompería la cadena de alturas. */}
-      <div className="flex h-screen flex-col bg-background text-tf-body text-foreground md:flex-row">
+      <div className="flex h-dvh flex-col bg-background text-tf-body text-foreground md:flex-row">
         <ConsoleRail />
 
         {/* `min-h-0`: apilada bajo la barra móvil, la columna es un hijo flex

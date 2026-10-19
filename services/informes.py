@@ -277,33 +277,49 @@ def render_html(informe: InformeSemanal, *, url_baja: str | None = None) -> str:
     la razón *de verdad* por la que aquí no hay ninguna imagen.
     """
     from services.email_digest import _importe
+    from services.email_html import (
+        CERRAR_DOCUMENTO,
+        ESTILO_ENLACE,
+        ESTILO_PIE,
+        PAPEL,
+        SECUNDARIO,
+        TINTA,
+        abrir_documento,
+    )
+
+    celda = f"border:1px solid {PAPEL};padding:6px;text-align:left"
 
     def _tabla(titulo: str, filas: list[dict[str, Any]]) -> str:
         if not filas:
             return f"<h3>{escape(titulo)}</h3><p>Nada que mostrar.</p>"
         columnas = list(filas[0].keys())
-        cabecera = "".join(f"<th align='left'>{escape(c)}</th>" for c in columnas)
+        cabecera = "".join(
+            f"<th scope='col' style='{celda};background:{PAPEL};color:{TINTA}'>{escape(c)}</th>"
+            for c in columnas
+        )
         cuerpo = "".join(
-            "<tr>" + "".join(f"<td>{escape(str(f.get(c, '')))}</td>" for c in columnas) + "</tr>"
+            "<tr>"
+            + "".join(f"<td style='{celda}'>{escape(str(f.get(c, '')))}</td>" for c in columnas)
+            + "</tr>"
             for f in filas
         )
         return (
             f"<h3>{escape(titulo)}</h3>"
             "<table border='1' cellpadding='6' cellspacing='0' "
-            "style='border-collapse:collapse;font-size:13px'>"
-            f"<tr style='background:#1a5276;color:#fff'>{cabecera}</tr>{cuerpo}</table>"
+            "style='border-collapse:collapse;font-size:14px'>"
+            f"<thead><tr>{cabecera}</tr></thead><tbody>{cuerpo}</tbody></table>"
         )
 
     pie_baja = (
-        f"<p style='font-size:11px;color:#777'>"
-        f"<a href='{escape(url_baja)}'>Dejar de recibir este informe</a></p>"
+        f"<p style='{ESTILO_PIE}'>"
+        f"<a href='{escape(url_baja)}' style='{ESTILO_ENLACE}'>Dejar de recibir este informe</a>"
+        "</p>"
         if url_baja
         else ""
     )
     return (
-        "<html><body style='font-family:Arial,sans-serif;max-width:760px'>"
-        f"<h2>{escape(informe.asunto)}</h2>"
-        "<p style='font-size:12px;color:#555'>"
+        abrir_documento(max_ancho=760) + f"<h2>{escape(informe.asunto)}</h2>"
+        f"<p style='color:{SECUNDARIO}'>"
         f"{escape(informe.universo)} {escape(informe.ventana)} "
         f"Dato a {escape(informe.fecha_dato)}.</p>"
         f"<p><b>{informe.abiertas}</b> oportunidades abiertas · "
@@ -323,10 +339,10 @@ def render_html(informe: InformeSemanal, *, url_baja: str | None = None) -> str:
             f"Vence en los próximos {DIAS_VENCIMIENTO} días",
             _filas_vencimiento(informe),
         )
-        + "<p style='font-size:11px;color:#777'>El PDF adjunto lleva lo mismo. "
-        "TenderFlow no registra si abrís este correo ni en qué hacéis clic.</p>"
+        + f"<p style='{ESTILO_PIE}'>El PDF adjunto lleva lo mismo. "
+        "TenderFlow no registra si abres este correo ni en qué haces clic.</p>"
         + pie_baja
-        + "</body></html>"
+        + CERRAR_DOCUMENTO
     )
 
 

@@ -5,7 +5,9 @@ Fuente: las 7 skills `emilkowalski/skill` (`skills-lock.json`) — `emil-design-
 `improve-animations`, `pick-ui-library`, `animation-vocabulary`. Este documento
 es la referencia rápida de lo que ya está implementado en el repo; para el
 catálogo completo de reglas, ver las skills directamente
-(`.agents/skills/*/SKILL.md`).
+(`.claude/skills/<nombre>/SKILL.md` o su copia idéntica en `.agents/skills/`).
+`review-animations`, `improve-animations` y `pick-ui-library` no se invocan
+solas (`disable-model-invocation: true`): se piden por nombre o se leen.
 
 ## Tokens
 
@@ -18,7 +20,7 @@ utilities `ease-*`, sobrescribiendo las curvas débiles por defecto:
 @theme {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);      /* clase: ease-out */
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);  /* clase: ease-in-out */
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* clase: ease-drawer */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* animación: anim-ease-drawer (Sheet) */
   --default-transition-duration: 150ms;               /* cualquier transition-* sin duration-* */
   --default-transition-timing-function: var(--ease-out); /* ...y sin ease-* */
 }
@@ -28,6 +30,16 @@ Las dos últimas líneas son el valor por defecto de cualquier `transition-*`
 que no fije duración ni curva. Hasta el 2026-09-26 no existían, y la mitad de
 los `transition-colors` del árbol (los que van sin `duration-*` ni `ease-*`)
 usaban la curva estándar de Tailwind, justo la débil que este bloque sustituye.
+
+`--ease-drawer` es la curva de los paneles de borde: la usa el `Sheet`
+(`ui/sheet.tsx`) al entrar y al salir, con `data-[state=open]:anim-ease-drawer`
+y `data-[state=closed]:anim-ease-drawer`. La utilidad `ease-drawer` de Tailwind
+no vale para eso: escribe `transition-timing-function`, y `animate-in/out` fijan
+`animation-timing-function`. Los modificadores de una animación
+(`anim-duration-*`, `anim-ease-drawer`) llevan **la misma variante** que el
+`animate-in/out` al que acompañan: sin ella pierden por especificidad. Así
+estuvo el Sheet y el Dialog hasta el 2026-10-18, con un `anim-duration-300`
+suelto que nunca se aplicaba: entraban en 150 ms y salían en 200.
 
 **Nunca** `ease-in` en UI — arranca lento, retrasa el instante que el usuario
 está mirando. `ease-in` solo existe como default débil de Tailwind; no se usa
@@ -52,7 +64,7 @@ incluye. Había 23; hoy una lista con `transform` no pasa `npm run lint`
 | Pulsación de superficies grandes (filas enlazadas, celdas de la tira de KPIs, tarjetas enlace) | tinte instantáneo: `active:bg-primary/10 active:duration-0`, sin escala | `PULSABLE_SOBRE_TARJETA` de `console/panel.tsx` y filas propias |
 | Tooltips | 150ms enter (skip en repetición) | `ui/tooltip.tsx` |
 | Dropdown / Select / Popover | 150ms | `@utility animate-in/out` |
-| Sheet / Dialog | 300ms enter / 200ms exit (asimétrico) | `anim-duration-300`/`-200` |
+| Sheet / Dialog | 300ms enter / 200ms exit (asimétrico); el Sheet con `--ease-drawer` | `data-[state=…]:anim-duration-300`/`-200` |
 | Puerta (login, restablecer, 404): una sola entrada del contenido, la del panel | 200ms | `(publico)/_components/puerta.tsx` |
 | Fondo de `/login`: fundido de entrada, una vez por visita | 500ms | `login/_components/fondo-particulas.tsx` |
 | Esqueleto de carga (`Skeleton`, `.tf-shimmer`) | barrido de 1,2 s, `linear` | `globals.css` |
@@ -102,8 +114,8 @@ el 2026-09-26 con su único consumidor, la tira de KPIs de Competencia.
 | Nunca animar navegación (100+/día) | Sin fade de ruta entre páginas y sin barra de progreso: la navegación la señalan los `loading.tsx` de cada segmento, que pintan al instante. NProgress se retiró el 2026-09-26: solo se encendía con clics en `<a>`, así que las navegaciones por `router.push` (paleta ⌘K, atajos G+X, Agenda, Renovaciones) no daban ninguna señal, y su «peg» luminoso era la firma del ejemplo `with-nprogress` |
 | Nunca animar datos que el usuario vino a leer | `StatCell` pinta el valor directo, sin count-up ni entrada escalonada. Las barras de puntuación y de plazo, igual: el ancho se pinta sin transición. Con los 420 ms que llevaban no llegaban a verse en cuatro sitios, y en la ficha de /detalle interpolaban la puntuación de una licitación hasta la de la siguiente |
 | Cambio de pestaña | `PanelTabs` y `TabsContent` cambian el contenido al instante: se cambian con flechas (teclado) y muchas veces por sesión |
-| Hover en la consola: solo color u opacidad | Filas, celdas, tarjetas y enlaces «ir a» (`EnlaceIr`) no se desplazan al pasar el ratón: lo que se ve decenas de veces al día no se mueve. Sin `translate` de hover ni `animate-ping`/pulsos infinitos decorativos (`animate-ping` y `animate-bounce` no pasan el lint). El único parpadeo que queda es el cursor mientras se emite una respuesta del chat, `motion-safe` y `aria-hidden` |
-| Nada de fondos animados a pantalla completa, con una excepción: `/login` | El login tuvo una red de partículas en canvas (un bucle `requestAnimationFrame` perpetuo) sobre una retícula con máscara; se retiraron el 2026-09-26 (apple-design §14; WCAG 2.2.2). La red volvió el 2026-10-04 por decisión del dueño, solo a `/login` y sin la retícula (`login/_components/fondo-particulas.tsx`, `login/_lib/red-particulas.ts`), con lo que le faltaba: un botón que la pausa, un solo fotograma con `prefers-reduced-motion`, bucle parado con la pestaña oculta y paso medido en tiempo (misma velocidad a 60 que a 120 Hz). El formulario va en un panel sólido que la tapa. No es precedente para la consola ni para la portada |
+| Hover en la consola: solo color u opacidad | Filas, celdas, tarjetas y enlaces «ir a» (`EnlaceIr`) no se desplazan al pasar el ratón: lo que se ve decenas de veces al día no se mueve. Sin `translate` de hover ni `animate-ping`/pulsos infinitos decorativos (`animate-ping` y `animate-bounce` no pasan el lint). El único parpadeo que queda es el cursor mientras se emite una respuesta de IA —el del chat (`chat-thread.tsx`) y el del análisis de la licitación (`licitacion-ai.tsx`)—, los dos `motion-safe` y `aria-hidden` |
+| Nada de fondos animados a pantalla completa, con una excepción: `/login` | El login tuvo una red de partículas en canvas (un bucle `requestAnimationFrame` perpetuo) sobre una retícula con máscara; se retiraron el 2026-09-26 (apple-design §14: «avoid full-viewport moving backgrounds»; y WCAG 2.2.2, criterio añadido por TenderFlow). La red volvió el 2026-10-04 por decisión del dueño, solo a `/login` y sin la retícula (`login/_components/fondo-particulas.tsx`, `login/_lib/red-particulas.ts`), con lo que le faltaba: un botón que la pausa, un solo fotograma con `prefers-reduced-motion`, bucle parado con la pestaña oculta y paso medido en tiempo (misma velocidad a 60 que a 120 Hz). El formulario va en un panel sólido que la tapa. No es precedente para la consola ni para la portada |
 | CSS gana a JS bajo carga | `motion`/Framer Motion salió del bundle: `MotionProvider`, `FadeIn`, `PageTransition` y `AnimatedNumber` se eliminaron; `Stagger` se reescribió en CSS puro y después se retiró |
 
 `motion` como dependencia solo se justifica para springs/gestos reales
@@ -111,6 +123,25 @@ el 2026-09-26 con su único consumidor, la tira de KPIs de Competencia.
 lo necesita genuinamente, `pick-ui-library` sigue recomendando `motion`
 (Framer Motion) para ese caso — no hay que reintroducirla para timers o
 transiciones predeterminadas.
+
+**Desviaciones conscientes de las skills.** Tres reglas de las skills de motion
+no se aplican aquí, y no es un olvido:
+
+- `emil-design-eng` («Elements all appear at once → Add stagger») y
+  `find-animation-opportunities`: en la consola las filas, los KPI y los paneles
+  aparecen a la vez. El stagger solo vive en el hero de la portada.
+- `pick-ui-library` recomienda NumberFlow para «counters, prices, stats»: no
+  aplica, porque `StatCell` pinta la cifra en su valor (fila «datos» de arriba).
+- `apple-design` §14 pide suavizar el salto de brillo al cambiar entre claro y
+  oscuro. Los dos `ThemeProvider` (`components/providers.tsx` y
+  `app/(publico)/layout.tsx`) usan `disableTransitionOnChange`: el cambio es
+  instantáneo, para que las transiciones de color de 150 ms de cada control no
+  se disparen a destiempo y la página no pase por estados intermedios.
+
+Las skills de estética generales (`frontend-design`, `design-taste-frontend`,
+`minimalist-ui`, `redesign-existing-projects`) piden GSAP o Motion, reveals de
+500-900 ms, bucles infinitos o stagger en todo. Ninguna de esas reglas aplica
+aquí: la tabla de `DESIGN.md` dice qué se toma de cada una.
 
 ## Toasts
 
@@ -130,6 +161,15 @@ esto. El movimiento es el de Sonner, que ya respeta reduced-motion.
   el movimiento (`--tf-enter-translate-*`, `--tf-enter-scale`) se neutraliza
   reescribiendo las mismas custom properties que consumen los keyframes, así
   que cada overlay degrada a un fade puro en vez de teleportar.
+  - Los spinners (`animate-spin`) quedan exentos: siguen girando a 1 s por
+    vuelta. El bloque global limita toda animación a una pasada de 150 ms, y
+    un spinner así se paraba a un cuarto de vuelta y parecía colgado; un
+    indicador de acción en curso no se rompe por pedir menos movimiento
+    (apple-design §14).
+  - `tf-pressable` no escala, igual que `Button`
+    (`motion-reduce:active:scale-100`): sin la transición de la escala, que el
+    bloque global quita, la pulsación sería un salto. El cambio de color se
+    queda.
 - `prefers-reduced-transparency: reduce` y `prefers-contrast: more` —
   `.tf-glass` y `.tf-glass-strong` caen a fondo sólido (mismo fallback que el
   `@supports not (backdrop-filter)` existente). El vidrio solo se usa donde de
@@ -158,7 +198,9 @@ paneles desaparecían de golpe al cerrarse.
   centrados (`Comparator`) usan `components/ui/dialog.tsx`, que **no**
   sobrescribe `transform-origin` — a diferencia de Sheet/DropdownMenu/Popover
   (anclados al trigger), un modal centrado mantiene el origin por defecto
-  (apple-design §7 / emil-design-eng: "modals are exempt").
+  (apple-design §7 ancla al disparador lo que tiene disparador; la exención
+  de los modales viene de emil-design-eng —«modals are exempt — keep
+  centered»— y de `review-animations/STANDARDS.md`).
 
 ## Tooltip
 

@@ -14,7 +14,7 @@ function SheetOverlay({ className, ...props }: React.ComponentProps<typeof Dialo
   return (
     <DialogPrimitive.Overlay
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 anim-duration-300 data-[state=closed]:anim-duration-200",
+        "fixed inset-0 z-50 bg-scrim data-[state=open]:anim-duration-300 data-[state=closed]:anim-duration-200",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className
       )}
@@ -47,8 +47,10 @@ function SheetContent({ className, side = "right", children, ...props }: SheetCo
       <SheetOverlay />
       <DialogPrimitive.Content
         className={cn(
-          "fixed z-50 gap-4 bg-popover p-6 text-popover-foreground shadow-lg anim-duration-300 data-[state=closed]:anim-duration-200 focus:outline-none",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out",
+          "fixed z-50 gap-4 bg-popover p-6 text-popover-foreground shadow-lg data-[state=open]:anim-duration-300 data-[state=closed]:anim-duration-200 focus:outline-none",
+          // Curva de cajón en la entrada y en la salida: arranca rápido y se
+          // posa sin rebote, como un panel que se desliza desde el borde.
+          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:anim-ease-drawer data-[state=closed]:anim-ease-drawer",
           SIDE_TRANSITIONS[side],
           side === "right" && "inset-y-0 right-0 h-full w-3/4 border-l border-border sm:max-w-sm",
           side === "left" && "inset-y-0 left-0 h-full w-3/4 border-r border-border sm:max-w-sm",
@@ -59,7 +61,7 @@ function SheetContent({ className, side = "right", children, ...props }: SheetCo
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
           <X className="h-4 w-4" aria-hidden="true" />
           <span className="sr-only">Cerrar</span>
         </DialogPrimitive.Close>

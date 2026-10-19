@@ -88,17 +88,22 @@ describe("HubCcaa", () => {
     expect(screen.getByRole("link", { name: "Anterior" })).toHaveAttribute("href", "/licitaciones/comunidad-de-madrid");
   });
 
-  it("el canonical de la página interna es la URL pública, con ?p=", () => {
+  it("el canonical de la página interna es la URL pública, con ?p=, y og:url lo sigue", () => {
     return expect(paginada.generateMetadata(pedirPagina("comunidad-de-madrid", "3"))).resolves.toMatchObject({
       alternates: { canonical: "/licitaciones/comunidad-de-madrid?p=3" },
-      openGraph: { url: "/licitaciones/comunidad-de-madrid" },
+      openGraph: { url: "/licitaciones/comunidad-de-madrid?p=3" },
     });
   });
 
-  it("las dos rutas publican los mismos metadatos salvo el canonical", async () => {
+  it("las dos rutas publican los mismos metadatos salvo el canonical y og:url", async () => {
     const uno = await primera.generateMetadata(pedir("sin-comunidad"));
     const dos = await paginada.generateMetadata(pedirPagina("sin-comunidad", "2"));
-    expect({ ...dos, alternates: undefined }).toEqual({ ...uno, alternates: undefined });
+    const sinUrl = (meta: typeof uno) => ({
+      ...meta,
+      alternates: undefined,
+      openGraph: { ...meta.openGraph, url: undefined },
+    });
+    expect(sinUrl(dos)).toEqual(sinUrl(uno));
     expect(uno.title).toBe("Licitaciones de tecnología en sin comunidad autónoma asignada");
   });
 

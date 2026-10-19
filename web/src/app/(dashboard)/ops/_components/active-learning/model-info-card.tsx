@@ -28,7 +28,7 @@ const NOMBRE_METRICA: Record<string, string> = {
 const REJILLA = "grid gap-px overflow-hidden rounded-md border border-border/60 bg-border/60";
 
 /** Métrica de 0 a 1 con tres decimales y coma decimal (0,874). */
-const tresDecimales = (valor: number) => valor.toFixed(3).replace(".", ",");
+const tresDecimales = (valor: number) => formatNumber(valor, "es-ES", { decimales: 3 });
 
 export function ModelInfoCard({
   stats,

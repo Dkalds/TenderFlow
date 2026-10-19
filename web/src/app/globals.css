@@ -42,23 +42,29 @@
   :root {
     color-scheme: light;
     --background: 40 22% 96%;
-    --foreground: 204 35% 10%;
+    --foreground: 30 14% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 204 35% 10%;
+    --card-foreground: 30 14% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 204 35% 10%;
+    --popover-foreground: 30 14% 10%;
     --primary: 22 78% 34%;
     --primary-foreground: 36 100% 97%;
     --secondary: 42 14% 91%;
-    --secondary-foreground: 204 30% 12%;
+    --secondary-foreground: 30 14% 12%;
     --muted: 42 14% 91%;
     /* 40% -> 34% (2026-09-19, axe `color-contrast` en /detalle). El gris
      * secundario va sobre superficies que no son la página: el badge neutro
      * (`bg-muted-foreground/10`) dentro de la fila activa (`bg-primary/9`)
      * daba 4,04:1. A 34 % esa misma pila da 5,05:1 y la página limpia 6,59:1,
      * lejos aún de los ~16:1 del `--foreground`: la jerarquía primario /
-     * secundario se conserva. Lo fija `contraste-tokens.test.ts`. */
-    --muted-foreground: 200 10% 34%;
+     * secundario se conserva. Lo fija `contraste-tokens.test.ts`.
+     *
+     * Tono 200 -> 34 (2026-10-18): los neutros de texto, borde y sombra eran
+     * azul pizarra sobre un papel y un acento cálidos, dos familias de gris en
+     * la misma pantalla. A la misma L el gris cálido luce un poco más
+     * (Y 0,0986 frente a 0,0968), así que los ratios bajan centésimas y siguen
+     * por encima de 4,5. */
+    --muted-foreground: 34 8% 34%;
     --accent: 26 70% 92%;
     --accent-foreground: 22 75% 28%;
     --destructive: 355 75% 42%;
@@ -109,12 +115,12 @@
     --warning-foreground: 42 100% 8%;
     --info: 210 90% 37%;
     --info-foreground: 0 0% 100%;
-    --border: 200 15% 40% / 0.28;
-    --input: 200 15% 40% / 0.3;
+    --border: 30 12% 40% / 0.28;
+    --input: 30 12% 40% / 0.3;
     --ring: 22 78% 34%;
     --radius: 0.625rem;
 
-    --shadow-ink: 204 30% 10%;
+    --shadow-ink: 30 20% 10%;
 
     /* Escala de elevación. La sombra dice «esto flota», así que solo la llevan
      * las capas que flotan: lo anclado a un control (popover, menú, select,
@@ -146,7 +152,7 @@
     --chart-5: 270 60% 58%;
     --chart-6: 160 85% 32%;
     --chart-7: 330 70% 50%;
-    --chart-8: 200 8% 48%;
+    --chart-8: 36 8% 48%;
     --chart-9: 355 75% 46%;
     --chart-10: 218 75% 48%;
 
@@ -163,26 +169,32 @@
      *   --score-hot   48% -> 42%   4,67 · 4,10 -> 5,79 · 5,08
      *   --score-cold  45% -> 38%   4,43 · 3,89 -> 5,78 · 5,07
      *   --score-skip  46% -> 38%   4,19 · 3,67 -> 5,67 · 4,97
+     *
+     * `--score-skip` pasa a gris cálido (2026-10-18) y baja un punto más de L
+     * para compensar la luminancia del tono 36 y no perder lo ganado.
      */
     --score-hot: 0 78% 42%;
     --score-cold: 210 80% 38%;
-    --score-skip: 200 6% 38%;
+    --score-skip: 36 6% 37%;
   }
 
   .dark {
     color-scheme: dark;
-    --background: 200 32% 5%;
+    --background: 30 8% 5%;
     --foreground: 36 12% 93%;
-    --card: 198 28% 8%;
+    /* Tarjeta y popover oscuros en 8 % y 10 %, no en 9 y 11: a igual L el gris
+     * cálido luce más que la pizarra que sustituyen, y a 9 % `--score-hot` y
+     * `--destructive` bajaban del suelo de `contraste-tokens.test.ts`. */
+    --card: 30 8% 8%;
     --card-foreground: 36 14% 96%;
-    --popover: 198 26% 10%;
+    --popover: 30 8% 10%;
     --popover-foreground: 36 14% 96%;
     --primary: 26 88% 62%;
-    --primary-foreground: 204 45% 8%;
-    --secondary: 198 22% 12%;
+    --primary-foreground: 30 30% 8%;
+    --secondary: 30 7% 13%;
     --secondary-foreground: 36 12% 95%;
-    --muted: 198 20% 14%;
-    --muted-foreground: 200 10% 65%;
+    --muted: 30 7% 15%;
+    --muted-foreground: 34 8% 65%;
     --accent: 24 45% 20%;
     --accent-foreground: 28 90% 88%;
     --destructive: 355 75% 55%;
@@ -193,11 +205,11 @@
     --warning-foreground: 42 100% 8%;
     --info: 207 90% 64%;
     --info-foreground: 210 100% 8%;
-    --border: 200 20% 60% / 0.22;
-    --input: 200 20% 60% / 0.26;
+    --border: 34 12% 60% / 0.22;
+    --input: 34 12% 60% / 0.26;
     --ring: 26 88% 62%;
 
-    --shadow-ink: 202 40% 2%;
+    --shadow-ink: 30 20% 2%;
 
     --tf-shadow-sm: 0 1px 2px hsl(var(--shadow-ink) / 0.5);
     --tf-shadow-md: 0 2px 6px hsl(var(--shadow-ink) / 0.45), 0 10px 24px -12px hsl(var(--shadow-ink) / 0.6);
@@ -215,14 +227,14 @@
     --chart-5: 270 65% 72%;
     --chart-6: 160 70% 45%;
     --chart-7: 330 70% 65%;
-    --chart-8: 200 8% 55%;
+    --chart-8: 36 8% 55%;
     --chart-9: 355 75% 58%;
     --chart-10: 218 75% 65%;
 
     --score-hot: 0 75% 58%;
     --score-warm: 45 90% 55%;
     --score-cold: 210 75% 60%;
-    --score-skip: 200 8% 62%;
+    --score-skip: 36 8% 62%;
   }
 }
 
@@ -285,6 +297,10 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  /* Velo de los modales (diálogo, sheet, paleta, overlays de la consola). Era
+   * `bg-black/50`: negro puro sobre una paleta cálida, que en claro dejaba la
+   * página gris sucio. Usa la misma tinta que las sombras. */
+  --color-scrim: hsl(var(--shadow-ink) / 0.5);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -502,7 +518,11 @@
   --tf-exit-translate-x: initial;
   --tf-exit-translate-y: initial;
 }
-/* Longer beat for modals/drawers (200-500ms budget) vs. the 150ms dropdown default. */
+/* Longer beat for modals/drawers (200-500ms budget) vs. the 150ms dropdown default.
+ * Estos modificadores llevan la misma variante que el `animate-in/out` al que
+ * acompañan (`data-[state=open]:anim-duration-300`): sin ella pierden por
+ * especificidad contra `data-[state=open]:animate-in`, y el Sheet y el Dialog
+ * entraban en 150 ms, más rápido de lo que salían. */
 @utility anim-duration-300 {
   animation-duration: 300ms;
 }
@@ -516,6 +536,13 @@
  * landing pública—, nunca para UI operativa, que se queda bajo 300ms. */
 @utility anim-duration-500 {
   animation-duration: 500ms;
+}
+/* Curva de cajón (`--ease-drawer`) para paneles de borde: el Sheet. Va con la
+ * misma variante que `animate-in/out`, como los `anim-duration-*`. La utilidad
+ * `ease-drawer` de Tailwind no sirve aquí, porque escribe
+ * `transition-timing-function` y `animate-in/out` fijan la de la animación. */
+@utility anim-ease-drawer {
+  animation-timing-function: var(--ease-drawer);
 }
 
 @utility fade-in-0 {
@@ -585,8 +612,9 @@
  * el `transition-colors` de al lado sobra, pero no estorba. La duración y la
  * curva salen de `duration-*`/`ease-*` si el elemento las trae y, si no, de las
  * de la casa. Anima `scale`, la propiedad que escriben `active:scale-*` y
- * `Button`, no `transform`. Con reduced-motion el bloque global le quita la
- * transición de la escala y deja la de color.
+ * `Button`, no `transform`. Con reduced-motion no escala, como `Button`
+ * (`motion-reduce:active:scale-100`): el bloque global le quita la transición
+ * de la escala, y sin ella la pulsación sería un salto; la de color se queda.
  */
 .tf-pressable {
   transition-property:
@@ -655,6 +683,18 @@
     --tf-exit-translate-x: 0 !important;
     --tf-exit-translate-y: 0 !important;
     --tf-exit-scale: 1 !important;
+  }
+
+  /* Un spinner dice que hay una acción en curso: con un solo giro de 150 ms se
+   * quedaba parado a un cuarto de vuelta y parecía colgado. Menos movimiento
+   * no es un indicador roto (apple-design §14), así que sigue girando. */
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .tf-pressable:active:not(:disabled, [aria-disabled="true"]) {
+    scale: none;
   }
 }
 

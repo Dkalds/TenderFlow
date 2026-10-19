@@ -23,7 +23,7 @@ import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import type { FilaDuelo, MedidaDuelo } from "../_hooks/competidores-series";
 import { Ala, Muestra } from "./dibujos";
 
-const ofertas = (valor: number) => valor.toFixed(1).replace(".", ",");
+const ofertas = (valor: number) => formatNumber(valor, "es-ES", { decimales: 1 });
 
 const MEDIDAS: Record<MedidaDuelo, { rotulo: string; formato: (valor: number) => string }> = {
   cuota: { rotulo: "Cuota del importe", formato: (v) => formatPercent(v) },

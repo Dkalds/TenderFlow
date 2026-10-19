@@ -319,8 +319,19 @@ def _pool_lifecycle_kwargs() -> dict[str, Any]:
     return kwargs
 
 
+#: ``extra_float_digits`` de cada sesión. Supabase fija ``0`` en su fichero de
+#: configuración y, con ``0``, Postgres envía los ``real`` (float4) en texto con
+#: 6 cifras significativas: psycopg, que lee en texto, recibía ``1.17822e+07``
+#: por un ``importe_adjudicado`` de 11 782 155. ``3`` es el máximo y, desde
+#: Postgres 12, cualquier valor positivo da la representación exacta más corta.
+EXTRA_FLOAT_DIGITS = "3"
+
+
 def _make_pg_configure(*, read_only: bool) -> Callable[[Any], None]:
     """Callback ``configure`` del pool: fija los ajustes de sesión con ``SET``.
+
+    ``extra_float_digits`` (:data:`EXTRA_FLOAT_DIGITS`) va siempre: no depende
+    de ningún ajuste y sin él los ``real`` llegan redondeados a 6 cifras.
 
     Duplica a propósito lo que ``_pg_connect_kwargs`` ya pide por ``options``,
     porque **ese camino no está llegando a las conexiones de la API**. Con
@@ -357,15 +368,13 @@ def _make_pg_configure(*, read_only: bool) -> Callable[[Any], None]:
         _marcar_actividad(conn)
         stmt_ms = int(getattr(settings, "DB_STATEMENT_TIMEOUT_MS", 30_000))
         idle_ms = int(getattr(settings, "DB_IDLE_TX_TIMEOUT_MS", 60_000))
-        ajustes: list[tuple[str, str]] = []
+        ajustes: list[tuple[str, str]] = [("extra_float_digits", EXTRA_FLOAT_DIGITS)]
         if stmt_ms > 0:
             ajustes.append(("statement_timeout", str(stmt_ms)))
         if idle_ms > 0:
             ajustes.append(("idle_in_transaction_session_timeout", str(idle_ms)))
         if read_only:
             ajustes.append(("default_transaction_read_only", "on"))
-        if not ajustes:
-            return
         with conn.cursor() as cur:
             for nombre, valor in ajustes:
                 cur.execute("SELECT set_config(%s, %s, false)", (nombre, valor))

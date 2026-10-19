@@ -73,7 +73,7 @@ function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
         id={idFuentes}
         inert={!open}
         className={cn(
-          "grid transition-[grid-template-rows] duration-200 ease-out",
+          "grid transition-[grid-template-rows] duration-150 ease-out",
           open ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"
         )}
       >

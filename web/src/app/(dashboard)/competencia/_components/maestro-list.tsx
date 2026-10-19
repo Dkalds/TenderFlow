@@ -77,7 +77,7 @@ export function MaestroList({
           espacio, encima de las dos vistas, así que seguía visible en la cola
           de revisión —donde no busca nada— y parecía global. */}
       <div className="border-border/60 flex flex-none items-center gap-2 border-b px-4 py-3">
-        <div className="border-border/70 bg-background focus-within:border-primary/50 flex h-8 flex-1 items-center gap-2 rounded-md border px-2.5">
+        <div className="border-border/70 bg-background focus-within:border-ring focus-within:ring-ring flex h-8 flex-1 items-center gap-2 rounded-md border px-2.5 transition-colors focus-within:ring-1">
           <Search className="text-muted-foreground h-3.5 w-3.5 flex-none" aria-hidden="true" />
           <input
             type="text"
@@ -85,7 +85,7 @@ export function MaestroList({
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder="Nombre, alias o NIF"
             aria-label="Buscar empresa"
-            className="text-tf-body text-foreground placeholder:text-muted-foreground h-6 min-w-0 flex-1 border-0 bg-transparent outline-none"
+            className="text-tf-body text-foreground placeholder:text-muted-foreground h-6 min-w-0 flex-1 border-0 bg-transparent focus-visible:outline-none!"
           />
           {fromDeepLink && (
             <Pista contenido="La búsqueda venía en el enlace con el que has llegado">

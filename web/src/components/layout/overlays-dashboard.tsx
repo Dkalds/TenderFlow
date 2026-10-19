@@ -42,7 +42,7 @@ function PaletaCargando() {
       <button
         type="button"
         aria-label="Cerrar paleta de comandos"
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-scrim"
         onClick={() => cerrar(false)}
       />
       {/* Calca la paleta: superficie opaca de capa modal y `shadow-lg`. */}

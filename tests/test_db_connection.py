@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 # ── now_utc / now_utc_iso ────────────────────────────────────────────────────
 
 
@@ -315,8 +317,8 @@ def test_configure_del_pool_de_lectura_fija_el_modo_solo_lectura(monkeypatch):
     assert conn.commits == 0, "en autocommit no hay transacción que confirmar"
 
 
-def test_configure_con_timeouts_desactivados_no_ejecuta_nada(monkeypatch):
-    """A 0 (sin límite) no se emite ningún SET."""
+def test_configure_con_timeouts_desactivados_solo_fija_la_precision(monkeypatch):
+    """A 0 (sin límite) no se emite ningún timeout; la precisión de los real, siempre."""
     from config import settings
     from db import connection as conn_mod
 
@@ -326,8 +328,19 @@ def test_configure_con_timeouts_desactivados_no_ejecuta_nada(monkeypatch):
     conn = _FakeConn()
     conn_mod._make_pg_configure(read_only=False)(conn)
 
-    assert conn.ejecutadas == []
-    assert conn.commits == 0
+    assert _ajustes(conn) == {"extra_float_digits": "3"}
+    assert conn.commits == 1
+
+
+@pytest.mark.parametrize("read_only", [False, True])
+def test_configure_fija_extra_float_digits_en_los_dos_pools(monkeypatch, read_only):
+    """Supabase sirve ``extra_float_digits = 0``: sin esto los ``real`` llegan con 6 cifras."""
+    from db import connection as conn_mod
+
+    conn = _FakeConn(autocommit=read_only)
+    conn_mod._make_pg_configure(read_only=read_only)(conn)
+
+    assert _ajustes(conn)["extra_float_digits"] == conn_mod.EXTRA_FLOAT_DIGITS == "3"
 
 
 def test_perfil_batch_recibe_un_techo_mas_alto():

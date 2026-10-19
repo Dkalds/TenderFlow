@@ -14,7 +14,15 @@ administración del repositorio en GitHub. **Ningún agente puede hacerlo**: los
 pasos 1, 4 y 8 son cambios de configuración en las plataformas, y el 7 toca
 workflows.
 
-**Estado (2026-10-10):** no ejecutado. **`tenderflow-worker` no existe en
+**Estado (2026-10-19): en pausa, sin worker.** `tenderflow-worker` llegó a
+crearse (2026-10-10) en el plan `free`, que lo hibernaba a los ~15 min, y se
+retiró el 2026-10-19 (nota en `render.yaml`, ADR-033). La ingesta y el scoring
+siguen en Actions y `deploy.yml` ya no despliega ningún worker. Si se retoma,
+este runbook vale desde el paso 1, con dos cambios: el plan **no** puede ser
+`free`, y hay que devolver a `deploy.yml` el paso del worker y su secret
+`RENDER_WORKER_DEPLOY_HOOK_URL` (están en el historial de git).
+
+**Estado anterior (2026-10-10):** no ejecutado. **`tenderflow-worker` no existe en
 Render** (verificado por su API el 2026-09-30): el paso 1 lo crea. El código
 está en el árbol y es inerte mientras `SCHEDULER_PLANE` no diga `worker`.
 

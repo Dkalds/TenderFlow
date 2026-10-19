@@ -621,15 +621,16 @@ export function ScopeBar() {
  * accesible es la palabra que se ve (WCAG 2.5.3); antes era «Abrir búsqueda y
  * comandos» sobre un botón que decía «Buscar ⌘K».
  */
-// `forwardRef` y el resto de props: va dentro de un `TooltipTrigger asChild`,
-// que le pasa su ref y sus manejadores.
-const BotonBuscar = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { onSearch: () => void }
->(function BotonBuscar({ onSearch, onClick, className, ...props }, ref) {
+// Acepta `ref` y el resto de props: va dentro de un `TooltipTrigger asChild`,
+// que le pasa su ref y sus manejadores. En React 19 `ref` es una prop más.
+function BotonBuscar({
+  onSearch,
+  onClick,
+  className,
+  ...props
+}: React.ComponentProps<"button"> & { onSearch: () => void }) {
   return (
     <Button
-      ref={ref}
       variant="outline"
       size="sm"
       {...props}
@@ -649,7 +650,7 @@ const BotonBuscar = React.forwardRef<
       </kbd>
     </Button>
   );
-});
+}
 
 /**
  * Cuándo se actualizaron los datos por última vez. En castellano y sin punto

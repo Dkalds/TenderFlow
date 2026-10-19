@@ -37,13 +37,14 @@ Google tras el primer deploy: paso 2); el 4 es por persona y va al final.
 > por ningún registro, y la contraseña fijada después desde el SQL Editor de
 > Supabase (`ALTER ROLE tenderflow_mcp PASSWORD '…';`).
 >
-> **Pendiente desde 2026-10-17:** `ALTER ROLE tenderflow_mcp SET extra_float_digits = 3;`
-> (la línea nueva del script). Supabase fija `extra_float_digits = 0` en su
-> configuración y, sin esto, `consultar_sql` devuelve las columnas `real`
-> (`adjudicaciones.importe_adjudicado`, `licitaciones.importe`…) con 6 cifras
-> significativas: 11 782 155 llega como 11 782 200. Se aplica sin reiniciar; vale
-> para las conexiones nuevas del pool (redesplegar el MCP para no esperar a que
-> se reciclen).
+> `extra_float_digits`: Supabase fija `0` en su configuración y, con ese
+> valor, las columnas `real` (`adjudicaciones.importe_adjudicado`,
+> `licitaciones.importe`…) llegan con 6 cifras significativas (11 782 155 como
+> 11 782 200). Lo corrigen los propios pools: `db/connection.py` (API, worker y
+> tools de dominio) y `db/consulta_libre.py` (SQL libre) fijan `3` en cada
+> conexión y tras cada `RESET ALL`. La línea
+> `ALTER ROLE tenderflow_mcp SET extra_float_digits = 3` del script es una
+> segunda red; a 2026-10-18 aún no estaba aplicada en producción.
 > Re-ejecutar el script (p. ej. tras cambiar el catálogo) no la toca: el
 > `CREATE ROLE` solo corre si el rol no existe.
 
@@ -103,8 +104,8 @@ Google responde `redirect_uri_mismatch` en el login.
 1. **A mano, no con *New → Blueprint*.** Los servicios de producción se crearon
    por el dashboard y el Blueprint **no está vinculado** (checklist de la
    cabecera de `render.yaml`). Una *New Blueprint Instance* sobre este repo
-   crearía **todos** los servicios del fichero, incluido un segundo
-   `tenderflow-worker` (el plano de cron) contra la base de producción. Hasta
+   crearía **todos** los servicios del fichero, incluida una segunda API
+   contra la base de producción. Hasta
    que ese checklist esté completo, el alta es: Dashboard → *New → Web
    Service* → este repo, con lo mismo que declara `render.yaml` para
    `tenderflow-mcp`:

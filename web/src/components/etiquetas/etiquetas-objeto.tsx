@@ -9,7 +9,7 @@
  * que elija.
  */
 import * as React from "react";
-import { Loader2, Plus, Tag } from "lucide-react";
+import { Plus, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ETIQUETA_CAMPO } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   COLORES_ETIQUETA,
   MAX_ETIQUETAS,
@@ -125,7 +126,16 @@ export function EtiquetasEditor({
         <fieldset>
           <legend className="mb-2 text-tf-meta font-semibold">Etiquetas del equipo</legend>
           {etiquetas.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-label="Cargando etiquetas" />
+            // Filas con la forma de las de verdad (casilla + chip) para que el
+            // popover no cambie de alto al llegar la lista.
+            <div role="status" aria-label="Cargando etiquetas" className="space-y-1">
+              {["w-24", "w-32", "w-20"].map((ancho) => (
+                <div key={ancho} aria-hidden="true" className="flex items-center gap-2">
+                  <Skeleton className="size-4 rounded-sm" />
+                  <Skeleton className={cn("h-5", ancho)} />
+                </div>
+              ))}
+            </div>
           ) : todas.length === 0 ? (
             <p className="text-tf-meta text-muted-foreground">
               Tu organización aún no tiene etiquetas. Crea la primera abajo.

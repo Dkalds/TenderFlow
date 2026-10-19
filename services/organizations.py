@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from db.repositories.organizations import OrganizationRepository
 from db.users import get_active_user_by_email_ci
 from observability.logging import get_logger
+from services.email_html import CERRAR_DOCUMENTO, ESTILO_ENLACE, abrir_documento
 from shared.dto import (
     OrganizationInvitationOut,
     OrganizationMembershipOut,
@@ -352,12 +353,12 @@ def _send_invitation_email(email: str, organization_name: str, token: str) -> bo
         ]
     )
     cuerpo_html = (
-        "<!DOCTYPE html><html><body>"
-        f"<p>Te han invitado a unirte a «{html.escape(organization_name)}» en TenderFlow.</p>"
+        abrir_documento(max_ancho=600)
+        + f"<p>Te han invitado a unirte a «{html.escape(organization_name)}» en TenderFlow.</p>"
         f"<p>El enlace caduca en {INVITATION_TTL_DAYS} días y solo puede usarse una vez.</p>"
-        f'<p><a href="{html.escape(invite_url)}">Aceptar la invitación</a></p>'
-        "<p>Si no esperabas esta invitación, ignora este correo.</p>"
-        "</body></html>"
+        f'<p><a href="{html.escape(invite_url)}" style="{ESTILO_ENLACE}">'
+        "Aceptar la invitación</a></p>"
+        "<p>Si no esperabas esta invitación, ignora este correo.</p>" + CERRAR_DOCUMENTO
     )
     enviado = enviar_email_transaccional(
         to_addr=email,

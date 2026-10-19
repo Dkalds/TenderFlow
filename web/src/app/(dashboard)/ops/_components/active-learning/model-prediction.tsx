@@ -118,7 +118,7 @@ function TechScoreRow({
         )}
       </div>
       <span className="tf-tnum text-tf-meta w-[42px] text-right shrink-0">
-        {(score * 100).toFixed(0)}%
+        {formatPercent(score * 100, 0)}
       </span>
       {isPredicted && !isSelected && !isSecondary && (
         <Check aria-hidden="true" className="text-success h-3 w-3 shrink-0" />

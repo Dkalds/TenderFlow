@@ -52,38 +52,65 @@ def _job(tipo: str, payload: dict[str, object], *, job_id: int = 1) -> Job:
 
 
 # ---------------------------------------------------------------------------
-# El plano worker está declarado y el checker lo exige
+# La cola a demanda tiene consumidor declarado y el checker lo exige
 # ---------------------------------------------------------------------------
 
 
-def test_render_declara_un_servicio_con_app_profile_worker() -> None:
-    """Sin este servicio, la cola a demanda no la consume nadie en producción."""
-    assert check_job_parity.plano_worker_declarado() is True
+def test_la_cola_a_demanda_la_consume_la_api() -> None:
+    """Sin consumidor, la cola a demanda no la vacía nadie en producción.
+
+    Desde el 2026-10-19 no hay ``tenderflow-worker`` (el plan free de Render lo
+    hibernaba): el consumidor es la API, por ADR-028 §G.
+    """
+    assert check_job_parity.plano_worker_declarado() is False
+    assert check_job_parity.consumidor_de_la_cola() == "tenderflow-api (ADR-028 §G)"
 
 
-def test_el_servicio_worker_tiene_healthcheck_y_no_autodeploy() -> None:
-    """Los dos criterios de S5.3 sobre el servicio, leídos del Blueprint.
+def test_el_blueprint_no_apaga_el_consumidor_de_la_api() -> None:
+    """``JOBS_CONSUMIDOR_EN_API`` va ``sync: false``, nunca con un literal.
 
-    ``healthCheckPath`` porque un worker que arranca roto se queda vivo y mudo
-    sin él; ``autoDeploy: false`` porque un despliegue automático mataría
-    trabajo en vuelo cada vez que alguien mergea (y contradiría O0.2).
+    Un ``value: "0"`` en ``tenderflow-api`` dejaría la cola sin consumidor en
+    el siguiente despliegue del Blueprint, sin que nadie lo decidiera.
     """
     texto = (_RAIZ / "render.yaml").read_text(encoding="utf-8")
-    bloque = texto[texto.index("name: tenderflow-worker") :]
-    bloque = bloque[: bloque.index("- type:", 1)] if "- type:" in bloque[1:] else bloque
+    bloque = texto[texto.index("name: tenderflow-api") :]
+    bloque = bloque[: bloque.index("- type:")] if "- type:" in bloque else bloque
 
-    assert "healthCheckPath: /api/v1/health/ready" in bloque
-    assert "autoDeploy: false" in bloque
-    assert "value: worker" in bloque
+    assert "- key: JOBS_CONSUMIDOR_EN_API\n        sync: false" in bloque
 
 
-def test_check_job_parity_detecta_la_ausencia_del_plano_worker() -> None:
+def test_check_job_parity_detecta_la_cola_sin_consumidor() -> None:
     """El valor de un checker está en que falle cuando debe."""
-    with patch.object(check_job_parity, "plano_worker_declarado", return_value=False):
+    with patch.object(check_job_parity, "consumidor_de_la_cola", return_value=""):
         _rows, problems = check_job_parity.check_cola()
 
     assert len(problems) == len(TIPOS_A_DEMANDA)
-    assert all("sin plano worker" in p for p in problems)
+    assert all("sin consumidor" in p for p in problems)
+
+
+def test_un_literal_que_apaga_el_consumidor_de_la_api_cuenta_como_sin_consumidor(
+    tmp_path: Path,
+) -> None:
+    render = tmp_path / "render.yaml"
+    render.write_text(
+        "services:\n  - type: web\n    name: tenderflow-api\n    envVars:\n"
+        '      - key: JOBS_CONSUMIDOR_EN_API\n        value: "0"\n',
+        encoding="utf-8",
+    )
+    with patch.object(check_job_parity, "_RENDER_YAML", render):
+        assert check_job_parity.consumidor_de_la_cola() == ""
+
+
+def test_el_worker_declarado_sigue_contando_como_consumidor(tmp_path: Path) -> None:
+    """Volver a tener worker es recrear su bloque: el checker lo reconoce."""
+    render = tmp_path / "render.yaml"
+    render.write_text(
+        "services:\n  - type: web\n    name: tenderflow-worker\n    envVars:\n"
+        "      - key: APP_PROFILE\n        value: worker\n",
+        encoding="utf-8",
+    )
+    with patch.object(check_job_parity, "_RENDER_YAML", render):
+        assert check_job_parity.consumidor_de_la_cola() == "render.yaml (APP_PROFILE=worker)"
 
 
 def test_check_job_parity_detecta_un_handler_que_no_existe() -> None:

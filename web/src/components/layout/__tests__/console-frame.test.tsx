@@ -108,7 +108,9 @@ describe("ConsoleFrame — alto", () => {
     montar();
     const marco = screen.getByTestId("barra-movil").parentElement!;
 
-    expect(marco).toHaveClass("h-screen");
+    // `dvh`: en iOS Safari `100vh` no descuenta la barra de direcciones.
+    expect(marco).toHaveClass("h-dvh");
+    expect(marco).not.toHaveClass("h-screen");
     expect(marco).not.toHaveClass("min-h-screen");
   });
 
