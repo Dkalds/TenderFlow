@@ -3,13 +3,14 @@
 ``_es_criterio_precio`` decidía por texto en CODICE, y la etiqueta genérica
 «…mera aplicación de fórmulas, diferentes al precio» marcaba como precio el
 criterio que no lo era (FOGASA 20/2026: ``peso_precio_pct`` 18 en vez de 42).
-La regla nueva (``scraper.codice_parser.criterio_es_precio``) usa el código
-``OBJ``/``1`` y descarta las menciones negadas; este script la aplica a las
-filas ya guardadas en vez de esperar a que cada anuncio se re-ingiera.
+La regla nueva (``scraper.codice_parser.criterio_es_precio``) descarta las
+menciones negadas y, cuando la descripción no nombra el precio, usa el código
+``OBJ``/``1``; este script la aplica a las filas ya guardadas en vez de esperar a
+que cada anuncio se re-ingiera.
 
-Medido en producción el 2026-10-17, antes del primer pase: 322 licitaciones con
-algún ``es_precio`` distinto y 280 con ``peso_precio_pct`` distinto (163 suben,
-117 bajan).
+Medido en producción el 2026-10-18, antes del primer pase: 283 licitaciones con
+algún ``es_precio`` distinto (390 criterios) y 247 con ``peso_precio_pct``
+distinto.
 
 Recalcula desde ``licitacion_criterios_adjudicacion``, sin leer el feed: la
 regla solo necesita tipo, subtipo, descripción, peso, padre y lote, y todo eso
@@ -45,22 +46,16 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from collections import defaultdict
 from collections.abc import Callable
 
 from db.criterios_precio import (
-    CriterioGuardado,
     CriteriosDeLicitacion,
     Lote,
     Recalculo,
     recalcular_lote,
 )
 from observability.logging import get_logger
-from scraper.codice_parser import (
-    ambito_codifica_precio,
-    criterio_es_precio,
-    peso_precio_de_criterios,
-)
+from scraper.codice_parser import criterio_es_precio, peso_precio_de_criterios
 
 log = get_logger(__name__)
 
@@ -70,23 +65,14 @@ _REINTENTOS = 5
 def recalcular(lic: CriteriosDeLicitacion) -> Recalculo:
     """Aplica la regla del parser a las filas guardadas de una licitación.
 
-    Mismos ámbitos que el parser: el expediente y cada lote por separado, cada
-    uno con sus subcriterios. ``peso_precio_pct`` sale, como en
-    ``parse_peso_precio``, de los criterios raíz del expediente.
+    ``peso_precio_pct`` sale, como en ``parse_peso_precio``, de los criterios
+    raíz del expediente (sin lote ni padre).
     """
-    ambitos: dict[str | None, list[CriterioGuardado]] = defaultdict(list)
-    for criterio in lic.criterios:
-        ambitos[criterio.lote_numero].append(criterio)
-
-    nuevas: dict[int, bool] = {}
-    for criterios in ambitos.values():
-        codifica = ambito_codifica_precio((c.tipo_codigo, c.subtipo_codigo) for c in criterios)
-        for c in criterios:
-            nuevas[c.id] = criterio_es_precio(
-                c.tipo_codigo, c.subtipo_codigo, c.descripcion, ambito_codifica_precio=codifica
-            )
-
-    raiz = [c for c in ambitos.get(None, []) if c.padre_orden is None]
+    nuevas = {
+        c.id: criterio_es_precio(c.tipo_codigo, c.subtipo_codigo, c.descripcion)
+        for c in lic.criterios
+    }
+    raiz = [c for c in lic.criterios if c.lote_numero is None and c.padre_orden is None]
     return Recalculo(
         es_precio=nuevas,
         peso_antes=peso_precio_de_criterios((c.peso, c.es_precio) for c in raiz),
