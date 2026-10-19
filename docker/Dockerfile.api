@@ -1,5 +1,5 @@
 # ── Etapa 1: builder ──────────────────────────────────────────────────────────
-FROM python:3.13.15-slim-bookworm AS builder
+FROM python:3.13.16-slim-bookworm AS builder
 
 # Cache-bust: 2026-05-31 (force dep reinstall after httpx addition)
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -49,7 +49,7 @@ RUN pip install --upgrade "pip>=26.1" \
 
 
 # ── Etapa 2: imagen de producción — FastAPI / uvicorn ────────────────────────
-FROM python:3.13.15-slim-bookworm AS runtime
+FROM python:3.13.16-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
