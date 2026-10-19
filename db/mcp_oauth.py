@@ -428,16 +428,18 @@ _SQL_PURGA = (
     ),
     (
         "tokens",
-        # Una semana de margen: un refresh rotado sigue detectando su
-        # reutilización (y revocando la familia) durante ese tiempo.
+        # 30 días de margen, lo que vive un refresh: un refresh rotado sigue
+        # detectando su reutilización (y revocando la familia) durante toda la
+        # vida que habría tenido. Plazo confirmado por el dueño el 2026-10-19
+        # (la revisión del MCP había dejado 7 días pendiente de confirmar).
         "DELETE FROM mcp_oauth_tokens WHERE kind IN ('access', 'refresh') "
-        "AND (revoked_at < now() - interval '7 days' OR expires_at < now() - interval '7 days')",
+        "AND (revoked_at < now() - interval '30 days' OR expires_at < now() - interval '30 days')",
     ),
     (
         "clientes",
         # Registros del DCR abierto que nunca llegaron a tener un token (o cuyos
         # tokens ya se purgaron). Va después: ve lo que acaban de borrar las otras.
-        "DELETE FROM mcp_oauth_clients c WHERE c.created_at < now() - interval '7 days' "
+        "DELETE FROM mcp_oauth_clients c WHERE c.created_at < now() - interval '30 days' "
         "AND NOT EXISTS (SELECT 1 FROM mcp_oauth_tokens t WHERE t.client_id = c.client_id)",
     ),
 )
@@ -447,8 +449,8 @@ def purgar() -> dict[str, int]:
     """Borra lo caducado o revocado y los clientes huérfanos; devuelve cuántas filas por clase.
 
     - ``pendiente`` y ``code`` caducados hace más de un día;
-    - ``access`` y ``refresh`` revocados (o consumidos) o caducados hace más de 7 días;
-    - clientes registrados hace más de 7 días sin ningún token.
+    - ``access`` y ``refresh`` revocados (o consumidos) o caducados hace más de 30 días;
+    - clientes registrados hace más de 30 días sin ningún token.
 
     Una transacción. La llama el servidor MCP al arrancar y cada hora
     (``mcp_server/servidor.py``); el DCR y ``/authorize`` son abiertos, y sin

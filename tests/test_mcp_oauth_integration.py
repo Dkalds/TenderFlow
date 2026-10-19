@@ -530,7 +530,8 @@ def _clientes() -> set[str]:
 
 
 def test_purgar_borra_lo_caducado_y_lo_huerfano(nuevo: Callable[..., None], usuario: int) -> None:
-    dia, semana = timedelta(days=1, hours=1), timedelta(days=7, hours=1)
+    dia, mes = timedelta(days=1, hours=1), timedelta(days=30, hours=1)
+    semana = timedelta(days=7, hours=1)
     # pendiente/code: caducados hace más de un día → fuera; hace menos → se quedan.
     nuevo("pend-vieja", "pendiente", user_id=None)
     _envejecer("pend-vieja", caduco_hace=dia, revocado_hace=None)
@@ -538,13 +539,18 @@ def test_purgar_borra_lo_caducado_y_lo_huerfano(nuevo: Callable[..., None], usua
     _envejecer("pend-reciente", caduco_hace=timedelta(hours=1), revocado_hace=None)
     nuevo("code-viejo", "code")
     _envejecer("code-viejo", caduco_hace=dia, revocado_hace=dia)
-    # access/refresh: revocados o caducados hace más de 7 días → fuera.
+    # access/refresh: revocados o caducados hace más de 30 días → fuera; hace
+    # una semana se quedan (el refresh rotado sigue delatando su reutilización).
     nuevo("access-caducado", "access")
-    _envejecer("access-caducado", caduco_hace=semana, revocado_hace=None)
+    _envejecer("access-caducado", caduco_hace=mes, revocado_hace=None)
+    nuevo("access-caducado-hace-una-semana", "access")
+    _envejecer("access-caducado-hace-una-semana", caduco_hace=semana, revocado_hace=None)
     nuevo("refresh-revocado", "refresh", expires_at=now_utc() + timedelta(days=20))
-    _envejecer("refresh-revocado", caduco_hace=-timedelta(days=20), revocado_hace=semana)
-    nuevo("refresh-revocado-ayer", "refresh")
-    _envejecer("refresh-revocado-ayer", caduco_hace=-timedelta(days=20), revocado_hace=dia)
+    _envejecer("refresh-revocado", caduco_hace=-timedelta(days=20), revocado_hace=mes)
+    nuevo("refresh-revocado-hace-una-semana", "refresh")
+    _envejecer(
+        "refresh-revocado-hace-una-semana", caduco_hace=-timedelta(days=20), revocado_hace=semana
+    )
     nuevo("access-vivo", "access")
     # Clientes: viejo y sin tokens → fuera; viejo con tokens o reciente → se quedan.
     guardar_cliente("huerfano-viejo", None, ["http://localhost:1/cb"], {})
@@ -553,7 +559,7 @@ def test_purgar_borra_lo_caducado_y_lo_huerfano(nuevo: Callable[..., None], usua
     nuevo("access-del-viejo", "access", client_id="viejo-con-tokens")
     with connect() as c:
         c.execute(
-            "UPDATE mcp_oauth_clients SET created_at = now() - interval '8 days' "
+            "UPDATE mcp_oauth_clients SET created_at = now() - interval '31 days' "
             "WHERE client_id IN ('huerfano-viejo', 'viejo-con-tokens', %s)",
             (CLIENTE,),
         )
@@ -563,7 +569,13 @@ def test_purgar_borra_lo_caducado_y_lo_huerfano(nuevo: Callable[..., None], usua
     assert borrados == {"peticiones_y_codigos": 2, "tokens": 2, "clientes": 1}
     assert _hashes() == {
         hash_token(t)
-        for t in ("pend-reciente", "refresh-revocado-ayer", "access-vivo", "access-del-viejo")
+        for t in (
+            "pend-reciente",
+            "access-caducado-hace-una-semana",
+            "refresh-revocado-hace-una-semana",
+            "access-vivo",
+            "access-del-viejo",
+        )
     }
     assert _clientes() == {CLIENTE, "huerfano-nuevo", "viejo-con-tokens"}
     assert purgar() == {"peticiones_y_codigos": 0, "tokens": 0, "clientes": 0}

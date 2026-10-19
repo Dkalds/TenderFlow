@@ -271,7 +271,7 @@ Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
 | `redirect_uri_mismatch` en Google | El paso 2 no coincide al carácter con `MCP_GOOGLE_REDIRECT_URI` | Corregir en Google Cloud o en la variable |
 | El registro del cliente falla (`invalid_redirect_uri` en `/register`) | Un cliente con callback propio (ChatGPT) | Añadirlo a `MCP_REDIRECT_URIS_EXTRA` (paso 4) |
 | `/register` responde `invalid_client_metadata` «Demasiados registros…» o «Registro desmedido…»; `/authorize` vuelve con `error=temporarily_unavailable` | Topes y rate limit del DCR abierto: 30 registros/h y 600 autorizaciones/h **globales**, 60/h por cliente; campos de más de 500 caracteres, registro de más de 8 KB. No hay límite por IP | Si es un abuso, esperar a que pase la hora (o vaciar las claves `mcp:oauth:*` de `rate_limits`/Redis, ver `rate-limit-reset.md`); si es un cliente legítimo con metadatos enormes, es un cambio de código en `mcp_server/auth/proveedor.py` |
-| Un conector que funcionaba da `invalid_client` / «Client ID … not found» | El cliente se purgó (más de 7 días sin tokens) o uno de sus `redirect_uris` ya no está en la allowlist (`MCP_REDIRECT_URIS_EXTRA` se cambió) | Quitar y volver a añadir el conector: se registra de nuevo |
+| Un conector que funcionaba da `invalid_client` / «Client ID … not found» | El cliente se purgó (más de 30 días sin tokens) o uno de sus `redirect_uris` ya no está en la allowlist (`MCP_REDIRECT_URIS_EXTRA` se cambió) | Quitar y volver a añadir el conector: se registra de nuevo |
 | `consultar_sql`: «La función X no está permitida en el MCP» | Llamada vetada (cerrojos `pg_advisory_*`, `pg_notify`, `set_config`, señales a otros procesos, las que escriben WAL —`pg_logical_*`, `txid_current`, ranuras de replicación—, funciones que ejecutan SQL en texto); ADR-036 | Reescribir la consulta sin esa función. Si el LLM la escribió sin que nadie se lo pidiera, mirar si venía de un pliego (inyección de instrucciones) |
 | **421 Misdirected Request** en `/mcp` | El `Host` de la petición no coincide con `MCP_PUBLIC_URL`. Típico: `MCP_PUBLIC_URL` escrito con `:443` explícito (`https://host:443`), o llamar por otro dominio | Poner `MCP_PUBLIC_URL=https://host` sin puerto y sin barra final; usar el mismo host en el conector |
 | **403** con `Origin` en `/mcp` | Petición de navegador desde un origen que no es el del propio servicio, claude.ai/claude.com, chatgpt.com o localhost | Si es un cliente legítimo nuevo, requiere un cambio de código en `mcp_server/servidor.py::_ORIGENES_CLIENTES` |
@@ -395,10 +395,11 @@ Entradas equivalentes en [`docs/IMPROVEMENT_BACKLOG.md`](../IMPROVEMENT_BACKLOG.
 - **Purga de las tablas OAuth** (`db.mcp_oauth.purgar`): el servidor la corre
   al arrancar y cada hora (log `mcp_oauth_purga` con lo borrado por clase):
   peticiones pendientes y códigos caducados hace más de un día, access y
-  refresh revocados o caducados hace más de 7 días, y clientes registrados hace
-  más de 7 días sin ningún token. Consecuencias: un refresh rotado hace más de
-  7 días ya no se reconoce como reutilizado (se rechaza como desconocido, sin
-  revocar la familia), y un conector sin tokens durante una semana pierde su
+  refresh revocados o caducados hace más de 30 días, y clientes registrados hace
+  más de 30 días sin ningún token (plazo confirmado el 2026-10-19; antes, 7).
+  Consecuencias: un refresh rotado hace más de 30 días —lo que vive un
+  refresh— ya no se reconoce como reutilizado (se rechaza como desconocido, sin
+  revocar la familia), y un conector sin tokens durante un mes pierde su
   registro y tiene que volver a añadirse.
 - **Una celda enorme de `consultar_sql` se carga entera**: el ejecutor lee por
   lotes y para en cuanto la respuesta no cabe, pero un único valor gigante
