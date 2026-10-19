@@ -208,8 +208,9 @@ Alta, una sola vez (**acción humana pendiente**):
    gracia de **2 h**: el healthcheck programado corre cada seis horas y
    GitHub puede retrasar un `schedule` más de una hora.
 2. Guardar su URL de ping como secret `HEALTHCHECK_HEARTBEAT_URL` del
-   repositorio (lo leen `healthcheck.yml` y `scrape-daily.yml`) y, cuando el
-   cron pase al worker, como variable del servicio `tenderflow-worker`.
+   repositorio (lo leen `healthcheck.yml` y `scrape-daily.yml`). Si algún día
+   el cron pasa a un worker (ADR-033, hoy sin efecto), también como variable
+   de ese servicio.
 3. Lanzar `healthcheck.yml` a mano y comprobar en el panel del servicio que
    llegó el ping; en el log del job aparece `latido_enviado`.
 

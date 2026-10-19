@@ -307,19 +307,20 @@ def test_el_worker_arranca_con_el_lockfile_del_pipeline() -> None:
     )
 
 
-def test_render_construye_el_worker_con_la_variante_del_pipeline() -> None:
-    """Sin el build arg, el worker saldría con la imagen de la API y su plano de
-    cron (drift, clusters, DLQ de TACRC) fallaría en la primera pasada."""
+def test_render_construye_la_api_con_la_variante_por_defecto() -> None:
+    """La API sale con la imagen slim del Dockerfile: sin build arg propio.
+
+    Hasta el 2026-10-19 este test leía también el bloque de
+    ``tenderflow-worker``, que se construía con ``requirements-pipeline.txt``;
+    el servicio se retiró (ver su nota en ``render.yaml``).
+    """
     import yaml
 
     servicios = {
         s["name"]: s
         for s in yaml.safe_load((ROOT / "render.yaml").read_text(encoding="utf-8"))["services"]
     }
-    variables = {
-        v["key"]: v.get("value") for v in servicios["tenderflow-worker"].get("envVars", [])
-    }
-    assert variables.get("REQUIREMENTS_FILE") == "requirements-pipeline.txt"
+    assert "tenderflow-worker" not in servicios
     api = {v["key"] for v in servicios["tenderflow-api"].get("envVars", [])}
     assert "REQUIREMENTS_FILE" not in api, "la API usa el valor por defecto del Dockerfile"
 

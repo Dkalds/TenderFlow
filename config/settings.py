@@ -1610,18 +1610,18 @@ def jobs_consumidor_en_api(env: str) -> bool:
     """¿El proceso de la API consume él mismo la cola a demanda? (ADR-028 §G)
 
     ADR-028 da la cola a demanda (la ficha del pliego, los embeddings de un
-    expediente, el PDF grande) a un servicio ``tenderflow-worker`` que nunca se
-    llegó a crear en Render: hasta el 2026-10-01 los jobs ``ficha_pliego`` se
-    encolaban y nadie los reclamaba, y la pestaña Pliego decía «Extrayendo…»
-    para siempre. Mientras ese servicio no exista, la API los consume en un
-    hilo propio.
+    expediente, el PDF grande) a un servicio ``tenderflow-worker``: hasta el
+    2026-10-01 no existía y los jobs ``ficha_pliego`` se encolaban sin que nadie
+    los reclamara (la pestaña Pliego decía «Extrayendo…» para siempre). Desde
+    entonces la API los consume en un hilo propio, y desde el 2026-10-19, en que
+    el worker se retiró, es el único consumidor en producción.
 
     Por defecto sí en ``prod``/``staging`` y no en el resto: en ``dev`` y
     ``test`` un hilo reclamando jobs desde el lifespan de cada ``TestClient``
     ejecutaría handlers reales en mitad de tests que encolan para mirar la
-    fila. ``JOBS_CONSUMIDOR_EN_API=0`` lo apaga en cuanto el worker dedicado
-    exista (``render.yaml`` lo declara ``sync: false`` en ``tenderflow-api``:
-    lo decide el dashboard); ``=1`` lo enciende en local. Dos consumidores a la
+    fila. ``JOBS_CONSUMIDOR_EN_API=0`` lo apaga, solo si vuelve a haber un
+    worker dedicado (``render.yaml`` lo declara ``sync: false`` en
+    ``tenderflow-api``: lo decide el dashboard); ``=1`` lo enciende en local. Dos consumidores a la
     vez no son un fallo —``SKIP LOCKED``—: apagarlo solo devuelve ese trabajo a
     su proceso.
     """

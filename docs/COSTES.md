@@ -30,7 +30,7 @@ staging «por coste» sin que nadie pudiera decir cuánto costaba lo que ya hay
 | `tenderflow-prometheus` | `pserv` | `starter`, `frankfurt` | 10 GB | `render.yaml` |
 | `tenderflow-alertmanager` | `pserv` | `starter`, `frankfurt` | 1 GB | `render.yaml` |
 | `tenderflow-grafana` | `web` | `starter`, `frankfurt` | 1 GB | `render.yaml` |
-| `tenderflow-worker` | `web` | `standard`, `frankfurt` — **aún sin crear** | — | `render.yaml` |
+| `tenderflow-mcp` | `web` | `starter`, `frankfurt` — alta a mano | — | `render.yaml` |
 
 ```bash
 grep -n "name:\|type:\|plan:\|sizeGB:" render.yaml

@@ -14,10 +14,16 @@ tags: [adr]
 # ADR-033 — Plano de cron dentro del worker de Render
 
 - **Estado:** aceptado, **enmendado el 2026-10-10** (ver [Enmienda](#enmienda-2026-10-10-lo-que-el-worker-no-hacía-igual-que-actions)).
-  **El código está; el cutover no:** mientras `SCHEDULER_PLANE` no diga
-  `worker` en el servicio de Render —que además aún no existe—, esta decisión
-  no cambia nada en producción (ver el
-  [runbook de cutover](../runbooks/cutover-cron-al-worker.md)).
+  **Sin efecto en producción desde el 2026-10-19:** el servicio
+  `tenderflow-worker` se creó el 2026-10-10 con `SCHEDULER_PLANE=worker`, pero
+  en el plan `free` de Render, que lo hibernaba a los ~15 min; su plano de cron
+  solo corría tras cada deploy y su intervalo de 4 h no se disparó nunca. Las
+  pasadas reales las siguió haciendo Actions (`scrape-daily.yml`, `ml-scoring.yml`),
+  que no se llegó a apagar. El servicio se retiró (ver la nota en `render.yaml`
+  y la revisión del 2026-10-19 de ADR-028 §G): el plano de cron es de Actions.
+  El código (`scheduler/cron_plane.py`) se queda; retomar esta decisión exige un
+  worker en un plan que no hiberne y el
+  [runbook de cutover](../runbooks/cutover-cron-al-worker.md) desde su paso 1.
 - **Fecha:** 2026-09-14
 - **Extiende:** [ADR-012](ADR-012-plano-unico-orquestacion.md) — no lo deroga.
   La regla «un solo plano dueño por entorno» sigue vigente; lo que cambia es
