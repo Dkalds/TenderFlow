@@ -151,8 +151,9 @@ aplica a la consola. Se piden por nombre y para la portada.
 | Rediseño o pulido de la portada | `design-taste-frontend` (sus scripts lanzan Chrome y descargan imágenes), `frontend-design`, `minimalist-ui`, `redesign-existing-projects` | Por nombre |
 | SEO de la portada | `seo` (genérica; la de verdad es la Metadata API de Next) | Por nombre |
 
-`full-output-enforcement` no es de diseño y tampoco se invoca sola: su
-descripción pretende sobrescribir las instrucciones de concisión del agente.
+`full-output-enforcement` no es de diseño y tampoco se invoca sola
+(`disable-model-invocation`): pedila por nombre cuando haga falta una entrega
+completa, sin placeholders.
 
 El 2026-10-18 se retiraron once skills tras contrastarlas con este fichero:
 

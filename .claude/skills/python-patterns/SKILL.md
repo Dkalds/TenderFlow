@@ -76,40 +76,33 @@ def get_value(dictionary: dict, key: str) -> Any:
 ### Basic Type Annotations
 
 ```python
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 def process_user(
     user_id: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
     active: bool = True
-) -> Optional[User]:
+) -> User | None:
     """Process a user and return the updated User or None."""
     if not active:
         return None
     return User(user_id, data)
 ```
 
-### Modern Type Hints (Python 3.9+)
+### Built-in Generics
 
 ```python
-# Python 3.9+ - Use built-in types
 def process_items(items: list[str]) -> dict[str, int]:
-    return {item: len(item) for item in items}
-
-# Python 3.8 and earlier - Use typing module
-from typing import List, Dict
-
-def process_items(items: List[str]) -> Dict[str, int]:
     return {item: len(item) for item in items}
 ```
 
 ### Type Aliases and TypeVar
 
 ```python
-from typing import TypeVar, Union
+from typing import Any, TypeVar
 
 # Type alias for complex types
-JSON = Union[dict[str, Any], list[Any], str, int, float, bool, None]
+JSON = dict[str, Any] | list[Any] | str | int | float | bool | None
 
 def parse_json(data: str) -> JSON:
     return json.loads(data)
@@ -613,73 +606,6 @@ buffer = StringIO()
 for item in items:
     buffer.write(str(item))
 result = buffer.getvalue()
-```
-
-## Python Tooling Integration
-
-### Essential Commands
-
-```bash
-# Code formatting
-black .
-isort .
-
-# Linting
-ruff check .
-pylint mypackage/
-
-# Type checking
-mypy .
-
-# Testing
-pytest --cov=mypackage --cov-report=html
-
-# Security scanning
-bandit -r .
-
-# Dependency management
-pip-audit
-safety check
-```
-
-### pyproject.toml Configuration
-
-```toml
-[project]
-name = "mypackage"
-version = "1.0.0"
-requires-python = ">=3.9"
-dependencies = [
-    "requests>=2.31.0",
-    "pydantic>=2.0.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.5.0",
-]
-
-[tool.black]
-line-length = 88
-target-version = ['py39']
-
-[tool.ruff]
-line-length = 88
-select = ["E", "F", "I", "N", "W"]
-
-[tool.mypy]
-python_version = "3.9"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--cov=mypackage --cov-report=term-missing"
 ```
 
 ## Quick Reference: Python Idioms

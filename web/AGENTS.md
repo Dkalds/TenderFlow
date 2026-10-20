@@ -25,7 +25,7 @@ analítica.** Detalle completo, anti-patrones y checklist en
    `localhost` en datos renderizados.
 
 Verificado por `make check-frontend-invariants` (`scripts/check_frontend_invariants.py
---strict`). **Bloqueante desde 2026-07-28**, en local y en CI: un hallazgo nuevo
+--strict`). Es **bloqueante**, en local y en CI: un hallazgo nuevo
 se corrige o se justifica en su línea con `fdi-allow:<categoria>`.
 
 # Estado UX/UI
@@ -100,9 +100,7 @@ aunque las consultas no dependan de la URL: el `loading.tsx` de un segmento
 envuelve su página pero no su layout, así que un `await` en el layout deja la
 navegación en el esqueleto genérico del padre; y si el segmento tiene
 `loading.tsx`, cada prefetch de un `<Link>` —el rail enlaza todos los
-espacios— ejecuta el layout y sus consultas. Radar lo hizo en el layout hasta
-2026-09 y por eso no tenía `loading.tsx` propio; hoy vive en su página, como
-en Resumen.
+espacios— ejecuta el layout y sus consultas.
 
 Los providers, el `Toaster` y el nonce de la CSP de las tres superficies con
 sesión (dashboard, login y restablecer contraseña) se montan en

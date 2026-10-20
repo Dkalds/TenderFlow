@@ -64,7 +64,7 @@ df['tax'] = df['price'] * 0.2
 ### Safe Subsetting with `.copy()`
 
 ```python
-# ❌ AVOID: chained indexing triggers SettingWithCopyWarning
+# ❌ AVOID: chained assignment - under Copy-on-Write (default in pandas 3) it never updates df
 df['A']['B'] = 1
 
 # ✅ USE: .loc[] with explicit copy when mutating a subset
@@ -108,7 +108,7 @@ merged.drop(columns=['_merge'], inplace=True)
 df['price'] = df['price'].ffill().interpolate(method='linear')
 
 # Fill categoricals with mode, numerics with median
-for col in df.select_dtypes(include='object'):
+for col in df.select_dtypes(include=['object', 'string']):
     df[col] = df[col].fillna(df[col].mode()[0])
 for col in df.select_dtypes(include='number'):
     df[col] = df[col].fillna(df[col].median())
@@ -150,20 +150,17 @@ print(df.memory_usage(deep=True).sum() / 1e6, "MB after optimization")
 
 ## Constraints
 
-### MUST DO
+### Prefer
 - Use vectorized operations instead of loops
 - Set appropriate dtypes (categorical for low-cardinality strings)
-- Check memory usage with `.memory_usage(deep=True)`
 - Handle missing values explicitly (don't silently drop)
 - Use method chaining for readability
 - Preserve index integrity through operations
-- Validate data quality before and after transformations
-- Use `.copy()` when modifying subsets to avoid SettingWithCopyWarning
+- Assign through `.loc[]`; under Copy-on-Write a subset you modify is already independent of its parent
 
-### MUST NOT DO
+### Avoid
 - Iterate over DataFrame rows with `.iterrows()` unless absolutely necessary
 - Use chained indexing (`df['A']['B']`) — use `.loc[]` or `.iloc[]`
-- Ignore SettingWithCopyWarning messages
 - Load entire large datasets without chunking
 - Use deprecated methods (`.ix`, `.append()` — use `pd.concat()`)
 - Convert to Python lists for operations possible in pandas

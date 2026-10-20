@@ -6,13 +6,13 @@ argument-hint: <nombre del paquete o concepto>
 Querés trabajar en `$ARGUMENTS`. Da un panorama denso y accionable, en este orden:
 
 1. **Graphify-first**: si el CLI `graphify` está disponible, ejecutá `graphify explain "$ARGUMENTS"` y copiá el output relevante. Si falta el CLI, no intentes instalarlo: `python scripts/code_map.py paquete "$ARGUMENTS"` da los módulos y su API pública, y `simbolo` / `importadores` las relaciones. Para lo que eso no cubra, seguí con el playbook y búsqueda de texto.
-2. **Archivos del paquete**: si `$ARGUMENTS` es un paquete (`services`, `api`, `db`, `scraper`, `scheduler`, `config`, `shared`, `observability`, `llm`), listá `ls <paquete>/` con tamaño en líneas de cada `.py`.
+2. **Archivos del paquete**: si `$ARGUMENTS` es un paquete (`services`, `api`, `db`, `scraper`, `scheduler`, `config`, `shared`, `observability`, `llm`, `mcp_server`), listá `ls <paquete>/` con tamaño en líneas de cada `.py`.
 3. **Entry point**: identificá el archivo principal (mirando `docs/AGENT_PLAYBOOK.md` sección 1, "Mapa detallado de paquetes").
 4. **Tests asociados**: `ls tests/test_<area>*.py` o `grep -l "from <area>" tests/`. Indicar coverage rápido solo si existe `.coverage` y la herramienta `coverage` está disponible.
 5. **Docs relacionados**: revisar `docs/AGENT_PLAYBOOK.md` columna "Docs relacionados" del paquete + `docs/adr/` por nombre.
 6. **Estado de typing**: confirmar el invariante strict global de `AGENTS.md` y mencionar únicamente overrides relevantes de tests/scripts si afectan al área.
-7. **Invariantes específicos**: mencionar los del paquete si están en AGENTS.md sección 3 o playbook sección 3.
+7. **Invariantes específicos**: mencionar los del paquete si están en AGENTS.md sección 3 o en la tabla «Patterns por área» del playbook (sección 4).
 
-**Output esperado**: un brief de ~30 líneas que sirva como context-pack para empezar a trabajar. No te metas en detalles de implementación — solo orientación.
+**Output esperado**: un brief corto y denso que sirva como context-pack para empezar a trabajar: orientación, no detalles de implementación.
 
 Si `$ARGUMENTS` está vacío, pedí al usuario: "¿Sobre qué área? Ej: `services`, `scraper`, `db/repositories`, `api/routes`, o un concepto como `upsert`, `auth`, `CPV`."

@@ -9,19 +9,6 @@ description: Machine learning in Python with scikit-learn. Use when working with
 
 This skill provides comprehensive guidance for machine learning tasks using scikit-learn, the industry-standard Python library for classical machine learning. Use this skill for classification, regression, clustering, dimensionality reduction, preprocessing, model evaluation, and building production-ready ML pipelines.
 
-## Installation
-
-```bash
-# Install scikit-learn using uv
-uv uv pip install scikit-learn
-
-# Optional: Install visualization dependencies
-uv uv pip install matplotlib seaborn
-
-# Commonly used with
-uv uv pip install pandas numpy
-```
-
 ## When to Use This Skill
 
 Use the scikit-learn skill when:
