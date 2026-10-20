@@ -46,7 +46,15 @@ jobs:
     # hasta dos veces: el bulk necesita un único step largo, mientras que el
     # carril diario reparte sus 120 min entre la ingesta (45), seis conectores
     # y el cierre (20). Al ser manual, un job largo no bloquea ninguna cadencia.
-    timeout-minutes: 120
+    #
+    # 240 y no 120: el run de `months=3` del 2026-10-19 (#502) llegó a registrar
+    # `status: ok, months_ok: 3` en el healthcheck pero el job se canceló
+    # exactamente a los 120 min, con el pool de BD aún sin cerrar. El bulk
+    # corre además los pasos post-ingesta, así que no hay un tiempo medido que
+    # fijar con más precisión: 240 deja margen sobre lo observado (>120) sin
+    # acercarse al tope de 360 de GitHub. Si un run vuelve a tocar el techo,
+    # mirar primero qué paso consume el tiempo antes de subirlo otra vez.
+    timeout-minutes: 240
 
     env:
       # Mismo perfil que el carril diario: escribe en la BD de producción, así
