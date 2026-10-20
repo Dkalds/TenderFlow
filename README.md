@@ -134,6 +134,8 @@ graph LR
     Verif -->|"si pasa"| MCP["Render<br/>tenderflow-mcp"]
     Master -->|"migrate.yml, a mano"| DB[("Supabase<br/>alembic upgrade head")]
     Master -->|"autoDeploy de Render"| Obs["Render<br/>Prometheus · Alertmanager · Grafana"]
+    Master -->|"integración Git de Vercel"| Web["Vercel<br/>web"]
+    Push -.->|"preview por rama"| Web
 ```
 
 - **`deploy.yml` es el único disparador** de la API y del MCP: los dos tienen
@@ -144,6 +146,10 @@ graph LR
   mano. Un deploy verde no prueba que la migración de ese PR haya corrido.
 - **La observabilidad sí se redespliega sola**: su configuración va horneada en
   la imagen, y una regla de alerta editada solo llega con un build nuevo.
+- **La web también**: Vercel despliega a producción cada push a `master` y
+  publica una preview por rama, que enlaza en el propio PR. No pasa por
+  `deploy.yml`, así que un merge llega al frontend aunque la API no se haya
+  redesplegado todavía.
 
 Procedimientos de operación e incidentes en [docs/runbooks/](docs/runbooks/README.md).
 
