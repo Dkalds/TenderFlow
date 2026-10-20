@@ -20,5 +20,4 @@ Pasos (en orden, no abandones si uno falla — sigue al siguiente y reporta todo
 Para cada paso reportá: ✅ pasó / ❌ falló (con primeras 5-10 líneas del error). Si hay fallos, **no intentes arreglarlos automáticamente** — listá los archivos afectados y esperá indicación del usuario.
 
 Al final, si todo pasó verde:
-- Recordá correr `graphify update .` si hubo cambios estructurales (nuevos módulos, renames).
-- Mostrá el comando para correrlo: `graphify update .` o `/graph-refresh`.
+- Si el CLI `graphify` está disponible y hubo cambios estructurales (nuevos módulos, renames), recordá correr `graphify update .` o `/graph-refresh`. Sin el CLI, omitilo.

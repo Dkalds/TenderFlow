@@ -55,8 +55,6 @@ Output:
 
 ## Glossary
 
-_A curated snapshot mirroring the project's `/vocabulary` page; keep the two in sync when either changes._
-
 ### Entrances & Exits — how elements appear and disappear
 - **Fade in / Fade out** — Element appears or disappears by changing opacity.
 - **Slide in** — Element enters by sliding in from off-screen (left, right, top, or bottom).

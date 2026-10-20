@@ -21,7 +21,7 @@ Search ranking factors (approximate influence):
 | Content quality & relevance | ~40% | Partial (structure) |
 | Backlinks & authority | ~25% | ✗ |
 | Technical SEO | ~15% | ✓ |
-| Page experience (Core Web Vitals) | ~10% | See [Core Web Vitals](../core-web-vitals/SKILL.md) |
+| Page experience (Core Web Vitals) | ~10% | Core Web Vitals (no skill for it here) |
 | On-page SEO | ~10% | ✓ |
 
 ---
@@ -510,5 +510,3 @@ body {
 
 - [Google Search Central](https://developers.google.com/search)
 - [Schema.org](https://schema.org/)
-- [Core Web Vitals](../core-web-vitals/SKILL.md)
-- [Web Quality Audit](../web-quality-audit/SKILL.md)

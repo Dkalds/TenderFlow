@@ -74,7 +74,7 @@ Present vetted findings as one table, ordered by leverage (impact ÷ effort):
 
 Severity: **HIGH** = feel-breaking (wrong easing on UI, animation on keyboard/high-frequency actions, dropped frames, `scale(0)`); **MEDIUM** = noticeably off (wrong origin, non-interruptible dynamic UI, missing reduced-motion); **LOW** = polish (stagger, blur-masked crossfades, token consolidation).
 
-After the table, list 2–4 **missed opportunities** — places that don't animate but should (a jarring state change, a rare delight moment) — separately, since they're additive rather than corrective.
+After the table, list the **missed opportunities** you found — places that don't animate but should (a jarring state change, a rare delight moment) — separately, since they're additive rather than corrective.
 
 Then **stop and wait for the user to select** which findings become plans. If running non-interactively, default to the top 3–5 by leverage.
 

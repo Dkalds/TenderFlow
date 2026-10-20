@@ -108,7 +108,7 @@ The CLI is working but the project isn't linked yet. This is the opportunity to 
 
 1. **Ask the user which team to deploy to.** Present the team slugs from Step 1 as a bulleted list. If there's only one team (or just a personal account), skip this step.
 
-2. **Once a team is selected, proceed directly to linking.** Tell the user what will happen but do not ask for separate confirmation:
+2. **Once a team is selected, ask before linking.** Linking is a persistent change beyond this one deploy, so tell the user what will happen and wait for their OK:
    ```
    Linking this project to <team name> on Vercel. This will create a Vercel
    project to deploy to and enable automatic deployments on future git pushes.
@@ -232,7 +232,7 @@ You have full shell access. Do NOT use the `/mnt/skills/` path. Follow the decis
 
 For the no-auth fallback, run the deploy script from the skill's installed location:
 ```bash
-bash ~/.claude/skills/deploy-to-vercel/resources/deploy.sh [path]
+bash <this skill's directory>/resources/deploy.sh [path]
 ```
 The path may vary depending on where the user installed the skill.
 
@@ -293,4 +293,4 @@ the command with escalated permissions — want me to proceed?
 
 ### CLI Auth Failure
 
-If `vercel login` or `vercel deploy` fails with authentication errors, fall back to the no-auth deploy script (claude.ai or Codex variant, depending on the environment).
+If `vercel login` or `vercel deploy` fails with authentication errors, offer the no-auth deploy script (claude.ai or Codex variant, depending on the environment) and run it only after the user agrees: it uploads the project as an anonymous, claimable deployment, which is a different action from the one they approved.

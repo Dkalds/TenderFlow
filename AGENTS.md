@@ -15,18 +15,11 @@ UX/UI del frontend con su roadmap por olas en
 
 ## 0. Alcance y prioridades
 
-**Congelamiento de superficie — levantado el 2026-08-10.** Estuvo vigente desde
-el 2026-08-07 mientras corría
-[docs/archive/plans/2026-08-plan-saneamiento.md](docs/archive/plans/2026-08-plan-saneamiento.md);
-sus dos olas están cerradas, así que la restricción ya no aplica y las features
-nuevas están permitidas. (Su última frase se contradecía con las anteriores, y
-un agente que lo leyera hoy no sabría cuál de las dos obedecer.)
-
-Lo que **sí** sigue vigente es el motivo por el que se declaró: el producto
-acumuló 154 endpoints y 13 espacios de consola en doce días, y varias de esas
-superficies mostraban datos fabricados o placeholder. Antes de añadir una
-superficie nueva, comprobá que ninguna existente cubre ya el caso, y que la que
-añadís muestra datos reales desde el primer commit.
+**Antes de añadir una superficie nueva** (endpoint, espacio de consola,
+pantalla), comprobá que ninguna existente cubre ya el caso, y que la que añadís
+muestra datos reales desde el primer commit: el producto llegó a acumular 154
+endpoints y 13 espacios de consola en doce días, y varias de esas superficies
+mostraban datos fabricados o placeholder.
 
 Para la API esa comprobación deja rastro: `scripts/check_api_surface.py` falla
 ante una operación que no esté en la línea base
@@ -67,31 +60,14 @@ Usá este orden para preguntas de arquitectura y relaciones cross-file:
 Leé archivos raw cuando vayas a modificar o depurar código concreto, o cuando
 ninguna de las dos herramientas tenga el detalle necesario.
 
-**`graphify-out/` no se versiona** (decisión del 2026-10-11; revoca la del
-2026-09-06, que lo conservaba commiteado y fijaba 50 MB como punto de
-revisión). Medido ese día en `HEAD`: **52,4 MB**, de los que 51,6 son
-`graph.json` — eran 17 MB en septiembre. El disparador saltó, y al volver a
-mirar la decisión, el motivo para conservarlo ya no se sostenía:
-
-- **El fallback no se podía usar.** El grafo se guardaba para las sesiones sin
-  el CLI, pero ninguna herramienta de lectura de un agente abre un JSON de
-  51 MB, y `wiki/` era un índice de 4,7 KB. En la práctica el paso 2 era
-  buscar texto.
-- **Iba por detrás.** Solo se regenera en la máquina que tiene el CLI: el día
-  de la medida el commiteado llevaba 51 commits de retraso, 36 de ellos con
-  cambios en `.py`.
-- **Ensuciaba cada checkout.** Los hooks de git de graphify lo reescriben tras
-  cada commit y cada cambio de rama, así que el árbol nunca estaba limpio:
-  cambiar de rama o traer master abortaba hasta hacer `git restore
-  graphify-out/`.
-
-Lo que lo sustituye en cada caso: con el CLI, el grafo sigue en
-`graphify-out/` como caché local (lo mantienen los hooks de git de graphify, y
-`.claude/hooks/session_start_contexto.py` lo siembra en un worktree nuevo
-copiándolo del checkout principal); sin el CLI, `scripts/code_map.py`, que no
-puede quedarse viejo porque no guarda nada. El historial de git conserva los
-blobs antiguos: dejar de versionarlo frena el crecimiento del clon, no lo
-encoge.
+**`graphify-out/` no se versiona**: es una caché local que mantienen los hooks
+de git de graphify en la máquina que tiene el CLI, y
+`.claude/hooks/session_start_contexto.py` la siembra en un worktree nuevo
+copiándola del checkout principal. Sin el CLI, `scripts/code_map.py` cubre el
+mismo uso y no puede quedarse viejo porque no guarda nada. No la añadas al
+repo: commiteada iba por detrás del código, nadie podía abrir un `graph.json`
+de decenas de MB y los hooks de graphify dejaban el árbol sucio tras cada
+commit y cambio de rama.
 
 ---
 
@@ -122,7 +98,7 @@ El mapa detallado, entry points y documentación por paquete viven en
 
 1. **Typing strict en todo el código de producción**: `pyproject.toml` declara `strict = true` global. Los únicos overrides son `tests.*`/`scripts.*` y dependencias de terceros sin stubs. Si tocás cualquier `.py` de producción, sale strict o no sale. No añadas `# type: ignore` ni `Any` sin un comentario inline que explique el motivo, y nunca abras un override nuevo de módulo en `pyproject.toml`.
 2. **Upsert idempotente**: cualquier escritura desde scraper debe poder re-ejecutarse sin duplicar (ver `db/upsert.py`).
-3. **Migraciones append-only**: nunca modificar migraciones alembic ya commiteadas. Siempre nueva revisión.
+3. **Migraciones append-only**: nunca modificar migraciones alembic ya commiteadas. Siempre nueva revisión. El esquema cambia solo así: nada de DDL por el MCP o la CLI de Supabase (`execute_sql`, `supabase migration`, `supabase db push`), que aquí es solo el host de Postgres.
 4. **Auto-marking de tests**: `tests/conftest.py` infiere `unit`, `integration`, `e2e`, `property` y `load` por nombre, y además marca `integration` todo test cuyo cierre de fixtures abra Postgres (`tmp_db`/`api_db`, directo o transitivo vía `client`/`api_key`/`auth`) — `unit` significa "sin BD" de verdad, y también sin red: un test `unit` que resuelva o conecte fuera de la máquina falla (guard de `tests/conftest.py`; si necesita una respuesta DNS, parchea `socket.getaddrinfo`). `load` casa como palabra del nombre del módulo, y `tests/test_markers_automarking.py` lista por nombre los módulos que quedan fuera de `make check`. No introduzcas markers manuales de categoría: renombrá el test (la categoría por BD sale sola del fixture). Las excepciones históricas están congeladas por `scripts/check_agent_docs.py`; `slow` sí puede marcarse explícitamente. `make check` corre `unit or integration`; `make test-unit` es el bucle rápido sin BD.
 5. **DTOs Pydantic v2** son el contrato API↔web (`shared/dto.py`). Cambios a campos requieren migración consciente. Una ruta nueva **nace tipada**: `dict[str, Any]` genera `{ [key: string]: unknown }` en el cliente y obliga al frontend a duplicar la forma a mano. `scripts/check_openapi_contract.py` es un ratchet con allowlist decreciente — **no se le añaden entradas**.
 6. **HMAC-signed CSRF + argon2/bcrypt** para auth (`shared/auth_core.py`). No reemplazar por algo más débil.
@@ -141,7 +117,8 @@ El [Makefile](Makefile) es la fuente de comandos; el catálogo y la matriz de
 prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
 
 - Para cambios Python: `make lint`, `make typecheck` y `make test-unit`.
-    `make check` es el atajo fail-fast que ejecuta esos tres en orden.
+    `make check` es el atajo fail-fast: lint, typecheck y la suite
+    `(unit or integration) and not slow` (necesita `TEST_DATABASE_URL`).
 - `/check` es un workflow de Claude que ejecuta los mismos controles de forma
     independiente para reportar todos los resultados; no es un alias de shell de
     `make check`.
@@ -182,14 +159,10 @@ mano.
 
 ## 5. Workflow estándar
 
-**Pre-flight (siempre):**
-1. Seguí el orden Graphify CLI → `scripts/code_map.py` → búsqueda textual de §1.
+**Pre-flight:**
+1. Para preguntas de arquitectura o relaciones entre ficheros, seguí el orden de §1 (Graphify CLI → `scripts/code_map.py` → búsqueda textual).
 2. Lee [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) si vas a tocar un área que no conocés.
 3. Revisa [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md) si te pidieron "encuentra una mejora".
-
-**Durante:**
-- Respetá los invariantes (sección 3).
-- Todo módulo Python de producción debe seguir pasando strict.
 
 **Post-flight (siempre tras editar `.py`):**
 1. Corré `/check` o los tres controles Python de §4. Si faltan prerrequisitos, reportá los controles no ejecutados.
@@ -305,6 +278,12 @@ de la herramienta que documenta — `anthropics`, `vercel-labs`, `upstash`,
 descripción) en [docs/skills-inventory.md](docs/skills-inventory.md),
 generada con `make skills-inventory` (`scripts/gen_skills_inventory.py`) — no
 se edita a mano.
+
+Los skills instalados son genéricos y de terceros: donde choquen con este
+archivo, manda este archivo. Choques ya vistos: markers manuales de categoría,
+SQLite o una carpeta por tipo de test (§3.4, §4); handlers `async` sobre el
+`db/` síncrono; cambios de esquema fuera de Alembic (§3.3), e instalar skills
+en global (`-g`) o sin pasar por `skills-lock.json` y los dos árboles.
 
 **Asimetría de enforcement entre clientes**: solo `.claude/settings.json`
 declara un `permissions.allow` (allow-list de comandos Bash auto-aprobados).
