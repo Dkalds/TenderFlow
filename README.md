@@ -2,52 +2,156 @@
 
 Inteligencia de licitaciones del Sector Público español.
 
+TenderFlow reúne en una sola base los anuncios de PLACSP, TED y las plataformas
+autonómicas, detecta los que son de tecnología, y da a un equipo comercial lo que
+necesita para decidir a cuáles presentarse y prepararlos: búsqueda, alertas,
+análisis de competencia y de mercado, un pipeline de oportunidades con matriz
+GO/NO-GO y un asistente que responde en lenguaje natural citando los pliegos.
+
+Cada decisión estructural, con su porqué, está en [`docs/adr/`](docs/adr/README.md);
+el índice de toda la documentación, en [`docs/README.md`](docs/README.md).
+
 ---
 
-## Características principales
+## Qué hace
 
 | Módulo | Descripción |
 |--------|-------------|
-| **Scraper multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (feed ATOM en vivo en el cron diario; si el ATOM no avanza en seis pasadas, el carril cae al ZIP mensual del mes en curso; ZIPs bulk a demanda vía `scrape-bulk.yml`), TED, Galicia y Euskadi activos cada 4 h; PSCP y TACRC (índice del Pleno o, por años, el completo) se activan cuando sus variables de fuente están configuradas; las plataformas autonómicas agregadas y los contratos menores de PLACSP están escritos y **apagados** hasta revisar D16 ([cómo se encienden](docs/runbooks/fuentes-opcionales.md)). Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
-| **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
-| **Base de datos** | **Postgres** en producción, CI y desarrollo — motor único ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md) Supabase, psycopg3 + pool gestionado; Turso retirado en [ADR-020](docs/adr/ADR-020-retirada-turso.md) y SQLite en [ADR-021](docs/adr/ADR-021-retirada-sqlite.md)). Upsert batcheado e idempotente, historial de cambios, DLQ |
-| **Web frontend** | Next.js 16 con dashboard analítico (KPIs, pipeline, competidores, tendencias), búsqueda y administración |
-| **Asistente RAG (`/api/v1/ask`)** | Preguntas en lenguaje natural sobre licitaciones vía LLM (NVIDIA NIM/DeepSeek por defecto; OpenAI/Anthropic opcionales), streaming SSE, presupuesto/circuit-breaker de gasto |
-| **Analítica competitiva** | Detección de bajas anómalas, análisis de mercado, renovaciones y riesgo de cambio de proveedor (`services/competitive/`) |
-| **Alertas** | Emails automáticos por watchlist de usuario (CPV, keyword, CCAA, importe mínimo), alertas de competidores y de concept drift del modelo ML |
-| **Observabilidad** | Structlog (JSON/consola), Prometheus metrics, healthcheck, tracing OTLP opcional, alertas por nivel de severidad, dashboards Grafana |
+| **Ingesta multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (feed ATOM en vivo en la pasada de cada 4 h; si el ATOM no avanza en seis pasadas, el carril cae al ZIP mensual del mes en curso; ZIPs bulk a demanda vía `scrape-bulk.yml`), TED, Galicia y Euskadi activos en cada pasada; PSCP y TACRC (índice del Pleno o, por años, el completo) se activan cuando sus variables de fuente están configuradas; las plataformas autonómicas agregadas y los contratos menores de PLACSP están escritos y **apagados** hasta revisar D16 ([cómo se encienden](docs/runbooks/fuentes-opcionales.md)). Parser CODICE/UBL con resiliencia (circuit breaker, reintentos, DLQ) |
+| **Clasificación** | Filtro por keywords en castellano, catalán, euskera y gallego + clasificadores TF-IDF + LogisticRegression entrenados sobre los propios datos (`services/ml/`) + etiquetado por LLM de la señal tecnológica |
+| **Base de datos** | **Postgres** en producción, CI y desarrollo — motor único ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md) Supabase, psycopg3 + pool gestionado; Turso retirado en [ADR-020](docs/adr/ADR-020-retirada-turso.md) y SQLite en [ADR-021](docs/adr/ADR-021-retirada-sqlite.md)). Upsert batcheado e idempotente, historial de cambios, detección de duplicados entre fuentes |
+| **Consola web** | Next.js 16: resumen y KPIs, detalle de expedientes, mercado, competencia, Radar de priorización, cuentas objetivo, watchlist, Dirección y administración (`/ops`) |
+| **Oportunidades** | Pipeline del expediente al cierre: matriz GO/NO-GO, tareas, comentarios, adjuntos, simulador de precio y renovaciones de cartera (`services/pursuits*.py`, `services/go_no_go*.py`) |
+| **Investigador y asistente RAG** | Búsqueda full-text (`tsvector` + GIN, vía `db/search_backend.py`) y preguntas en lenguaje natural (`/api/v1/ask`) vía LLM (NVIDIA NIM/DeepSeek por defecto; OpenAI/Anthropic opcionales), con streaming SSE y presupuesto/circuit-breaker de gasto |
+| **Analítica competitiva** | Bajas anómalas, cuota de mercado, renovaciones y riesgo de cambio de proveedor (`services/competitive/`) |
+| **Alertas y avisos** | Watchlist por CPV, keyword, CCAA o importe; alertas de competidores; campana de notificaciones; digests diarios y semanales; informes programados; webhooks |
+| **Multi-organización** | Equipos con roles, y aislamiento de datos en dos capas: filtro de aplicación + RLS por tenant ([ADR-034](docs/adr/ADR-034-rls-por-tenant.md)) |
+| **Web pública** | Fichas indexables del **anuncio** de licitación, con cita de la fuente y fecha de actualización (ver [Marco legal](#marco-legal)) |
+| **MCP interno** | Servidor MCP de solo lectura para que el equipo consulte la base desde Claude u otro cliente MCP ([ADR-036](docs/adr/ADR-036-acceso-interno-por-mcp.md), [runbook](docs/runbooks/mcp-interno.md)) |
+| **Observabilidad** | Structlog (JSON/consola), métricas Prometheus, Alertmanager, dashboards Grafana, tracing OTLP y Sentry opcionales ([ADR-019](docs/adr/ADR-019-observabilidad-desplegada.md)) |
 | **Autenticación** | Password con recuperación de un solo uso + Google OAuth 2.0 con grants dinámicos auditables, HMAC-signed CSRF state y TOTP (2FA) |
-| **Búsqueda** | Full-text nativo (`tsvector`+GIN, vía `db/search_backend.py`) + búsqueda semántica opcional con sentence-transformers |
+
+Los recorridos completos de usuario, con su test, están en
+[docs/casos-de-uso.md](docs/casos-de-uso.md).
 
 ---
 
 ## Arquitectura
 
-```
-┌───────────────────────────────┐       ┌──────────────────────────┐
-│ Fuentes (multi-conector)      │──────▶│  scraper/connectors      │
-│ - PLACSP: ZIPs + ATOM en vivo │       │  - descarga + parse      │
-│ - PSCP, TACRC, TED            │       │  - filtro keywords       │
-└───────────────────────────────┘       │  - clasificador ML       │
-                                        └──────────┬───────────────┘
-                                                   │  upsert idempotente
-                                                   ▼
-                              ┌────────────────────────────────────┐
-                              │  Postgres / Supabase (ADR-016)      │
-                              │  motor único (ADR-021)              │
-                              │  (historial de cambios, DLQ)        │
-                              └──────────┬───────────────────────────┘
-                                         │
-                     ┌───────────────────┼──────────────────┬──────────────┐
-                     ▼                   ▼                  ▼              ▼
-          ┌──────────────┐   ┌────────────────────┐  ┌──────────────┐ ┌────────────┐
-          │ GitHub       │   │  API FastAPI ◀──▶   │  │ Alertas      │ │ LLM /ask   │
-          │ Actions cron │   │  Next.js UI (KPIs)  │  │ email/SMTP   │ │ (RAG, SSE) │
-          └──────────────┘   └────────────────────┘  └──────────────┘ └────────────┘
+```mermaid
+graph TD
+    Fuentes["Fuentes oficiales<br/>PLACSP · TED · PSCP · TACRC · Galicia · Euskadi"]
+    Actions["GitHub Actions<br/>plano de cron (ADR-012)"]
+    Scraper["scraper/<br/>conectores + parser CODICE/UBL"]
+    DB[("Postgres / Supabase<br/>motor único, RLS por tenant")]
+    API["api/<br/>FastAPI · /api/v1"]
+    Web["web/<br/>Next.js 16"]
+    MCP["mcp_server/<br/>MCP interno, solo lectura"]
+    LLM["Proveedor LLM<br/>NVIDIA NIM · OpenAI · Anthropic"]
+    Obs["Observabilidad<br/>Prometheus · Alertmanager · Grafana"]
+    Usuario["Usuario<br/>(navegador)"]
+    Integracion["Integración externa<br/>X-API-Key"]
+    Admin["Admin<br/>(Claude u otro cliente MCP)"]
+
+    Actions -->|"cada 4 h"| Scraper
+    Fuentes -->|"ATOM · ZIP mensual · APIs"| Scraper
+    Scraper -->|"upsert idempotente"| DB
+    Usuario -->|"HTTPS"| Web
+    Web -->|"contratos OpenAPI tipados"| API
+    Integracion --> API
+    API <--> DB
+    API -->|"/ask, con presupuesto de gasto"| LLM
+    Admin -->|"OAuth 2.1"| MCP
+    MCP -->|"rol tenderflow_mcp"| DB
+    Obs -->|"scrape GET /metrics"| API
 ```
 
+- **Capas con imports hacia abajo**: `config < observability < shared < llm < db
+  < services < scraper < scheduler < api < mcp_server`. Todo el SQL vive en
+  `db/` ([ADR-022](docs/adr/ADR-022-frontera-de-persistencia.md)), `services/`
+  es biblioteca de dominio ([ADR-024](docs/adr/ADR-024-services-biblioteca-no-frontera.md))
+  y `web/` solo habla con `api/`. `scripts/check_layers.py` lo verifica.
+- **Un solo plano de orquestación por entorno**
+  ([ADR-012](docs/adr/ADR-012-plano-unico-orquestacion.md)): en producción
+  son los workflows de GitHub Actions; en local, el servicio `scheduler` de
+  `docker-compose.yml`. Nunca los dos contra la misma base.
+- **El MCP es un servicio aparte** con su propio OAuth y un rol de Postgres que
+  solo ve las tablas y columnas del catálogo (`mcp_server/catalogo.py`): el
+  límite del SQL lo pone Postgres, no el código.
+
 Diagramas C4 completos (contexto, contenedores, componentes) en
-[docs/c4-architecture.md](docs/c4-architecture.md).
+[docs/c4-architecture.md](docs/c4-architecture.md); el esquema real de la base,
+en [docs/database-schema.md](docs/database-schema.md).
+
+### Una pasada de ingesta
+
+`scrape-daily.yml` corre cada 4 h y la parte en dos mitades, para que el cierre
+vea los datos de todas las fuentes y no solo los de PLACSP:
+
+```mermaid
+graph LR
+    Fuente["Fuente<br/>ATOM · ZIP · API"] -->|"descarga + parse"| Parse["Licitación normalizada<br/>codice_parser.py · connectors/"]
+    Parse --> Filtro["Filtro tecnológico<br/>keywords multilingües"]
+    Filtro -->|"upsert idempotente"| DB[("Postgres")]
+    Filtro -.->|"fila que viola una restricción"| DLQ[("DLQ<br/>reintento en el cierre")]
+    DB --> Cierre["Cierre<br/>run_update --fase cierre"]
+    Cierre --> ML["Scoring ML<br/>+ señal tecnológica"]
+    Cierre --> KPI["KPIs y agregados<br/>precalculados"]
+    Cierre --> Avisos["Alertas, eventos,<br/>digests e informes"]
+    Cierre --> Mant["Reintento DLQ · anomalías<br/>retención · drift"]
+```
+
+| Paso | Qué hace | Dónde |
+|---|---|---|
+| **Ingesta PLACSP** | Feed ATOM en vivo; si no avanza, ZIP mensual del mes en curso | `run_update --daily --fase ingesta` |
+| **Conectores** | TED, Galicia, Euskadi, empresas vigiladas; PSCP, TACRC y los opcionales si su variable está configurada | `python -m scraper.connectors.<fuente>` |
+| **Cierre** | La secuencia canónica de pasos post-ingesta, cada uno marcado como bloqueante o advisory | `run_update --daily --fase cierre` · `CANONICAL_STEPS` en `scheduler/pipeline_runs.py` |
+| **Healthcheck** | Frescura de los datos; alerta si falla | `python -m scheduler.healthcheck --alert` |
+
+Reejecutar una pasada no duplica nada: el upsert va por `id_externo`
+(`db/upsert.py`), y los duplicados entre fuentes se marcan en
+`licitaciones_duplicados` en vez de borrarse.
+
+---
+
+## Producción
+
+| Servicio | Dónde corre | Health |
+|---|---|---|
+| API REST | Render, `tenderflow-api` | `GET /api/v1/health` |
+| Web | Vercel, proyecto `tenderflow` (`web/vercel.json`, región `fra1`) | `GET /` |
+| Ingesta y jobs | GitHub Actions (`scrape-daily.yml` cada 4 h, `ml-scoring.yml`, …) | `healthcheck.yml` cada 6 h |
+| Base de datos | Supabase Postgres | `python scripts/doctor.py` |
+| MCP interno | Render, `tenderflow-mcp` | `GET /healthz` |
+| Observabilidad | Render: `tenderflow-prometheus`, `tenderflow-alertmanager`, `tenderflow-grafana` | `GET /api/health` (Grafana) |
+
+```mermaid
+graph LR
+    Push["push / pull request"] --> CI["ci.yml<br/>lint · mypy · tests Postgres<br/>fuzzing · E2E · Trivy"]
+    CI -->|"merge"| Master["master"]
+    Master -->|"deploy.yml, a mano"| API["Render<br/>tenderflow-api"]
+    API --> Verif["healthcheck · alineación<br/>de schema · smoke"]
+    Verif -->|"si pasa"| MCP["Render<br/>tenderflow-mcp"]
+    Master -->|"migrate.yml, a mano"| DB[("Supabase<br/>alembic upgrade head")]
+    Master -->|"autoDeploy de Render"| Obs["Render<br/>Prometheus · Alertmanager · Grafana"]
+    Master -->|"integración Git de Vercel"| Web["Vercel<br/>web"]
+    Push -.->|"preview por rama"| Web
+```
+
+- **`deploy.yml` es el único disparador** de la API y del MCP: los dos tienen
+  `autoDeploy: false` en `render.yaml`, así que un push a `master` no despliega
+  un commit sin verificar. El MCP sale del mismo commit, y solo si la API pasó
+  su verificación.
+- **Migrar producción es una decisión explícita**: `migrate.yml` solo se lanza a
+  mano. Un deploy verde no prueba que la migración de ese PR haya corrido.
+- **La observabilidad sí se redespliega sola**: su configuración va horneada en
+  la imagen, y una regla de alerta editada solo llega con un build nuevo.
+- **La web también**: Vercel despliega a producción cada push a `master` y
+  publica una preview por rama, que enlaza en el propio PR. No pasa por
+  `deploy.yml`, así que un merge llega al frontend aunque la API no se haya
+  redesplegado todavía.
+
+Procedimientos de operación e incidentes en [docs/runbooks/](docs/runbooks/README.md).
 
 ---
 
@@ -55,166 +159,81 @@ Diagramas C4 completos (contexto, contenedores, componentes) en
 
 ```
 tenderflow/
-├── config/                       # Configuración modular
-│   ├── settings.py               #   Variables de entorno (pydantic-settings)
-│   ├── keywords.py               #   SAP_KEYWORDS, TECHNOLOGY_KEYWORDS
-│   ├── constants.py              #   URLs PLACSP, CPV_PREFIXES_TI, campos histórico
-│   └── secrets.py                #   Gestión segura de secretos
-├── shared/                       # Utilidades cross-cutting (sin lógica de negocio)
-│   ├── auth_core.py              #   Crypto de auth (argon2/bcrypt, HMAC, PKCE)
-│   ├── dto.py                    #   DTOs Pydantic v2 (contrato API ↔ web)
-│   ├── geo.py                    #   NUTS3 → CCAA
-│   ├── i18n.py                   #   Internacionalización (es/en)
-│   ├── signing.py                #   Rotación de claves de firma (kid/JWKS)
-│   ├── csrf.py                   #   HMAC-signed CSRF state
-│   ├── ssrf.py                   #   Validación de URLs salientes (documentos, webhooks)
-│   ├── cache_signal.py           #   Señal de invalidación scraper → frontend
-│   └── ...                       #   cache, crypto, dates, export_safety, identity, password_policy
-├── services/                     # Capa de dominio (lógica de negocio pura)
-│   ├── licitaciones.py           #   Reglas y agregaciones de licitaciones
-│   ├── normalization.py          #   Normalización de empresas y NIFs
-│   ├── classification.py         #   Clasificación por CPV, módulos, tecnología
-│   ├── clusters.py               #   Clustering de licitaciones
-│   ├── analytics_engine.py       #   Motor analítico DuckDB
-│   ├── rate_limiting.py          #   Rate limiting (backend en BD)
-│   ├── rate_limit_redis.py       #   Rate limiting (Redis backend, opcional)
-│   ├── analytics/                #   Overview, pipeline, scoring, forecast, tendencias, geografía
-│   ├── competitive/               #   Bajas anómalas, análisis de mercado, renovaciones
-│   ├── investigador/             #   Motor de búsqueda FTS5/tsvector
-│   ├── ml/                       #   Modelos de scoring/baja/retención, calibración, drift
-│   ├── rag/                      #   Chunking + construcción de contexto para `/ask`
-│   └── ...                       #   admin, auth, gdpr, health, security, watchlist
-├── db/                           # Persistencia y acceso a datos
-│   ├── connection.py             #   Pool de conexión (Postgres/psycopg3)
-│   ├── database.py               #   Fachada principal (init, connect, upsert)
-│   ├── search_backend.py         #   Abstracción FTS: tsvector+GIN (Postgres)
-│   ├── upsert.py                 #   Upsert idempotente con historial
-│   ├── repositories/             #   Patrón Repository (licitaciones, adjudicaciones, ...)
-│   ├── alembic/                  #   Migraciones Alembic (sistema canónico, DDL versionadas)
-│   ├── certs/                    #   CA de Supabase para `sslmode=verify-full`
-│   ├── watchlist.py              #   Persistencia de watchlist
-│   ├── dlq.py                    #   Dead Letter Queue
-│   ├── rate_limits.py            #   Rate limiting persistente en BD
-│   ├── model_registry.py         #   Registro de versiones de modelos ML
-│   ├── feature_flags.py          #   Feature flags
-│   ├── audit.py                  #   Log de auditoría (SHA-256 encadenado)
-│   └── ...                       #   analytics, events, users, sessions, webhooks, totp
-├── api/                          # API REST (FastAPI)
-│   ├── app.py                    #   Composición de routers + middlewares
-│   ├── auth.py                   #   Autenticación por X-API-Key + scopes
-│   ├── middleware.py             #   CSP/HSTS, rate-limit, cost, access log
-│   ├── errors.py                 #   Errores RFC 7807 (Problem Details)
-│   └── routes/                   #   licitaciones, ask (RAG), analytics, competitive, search, ...
-├── scraper/                      # Pipeline de extracción de datos
-│   ├── pipeline.py               #   Carril diario legacy + clasificación ML compartida
-│   │                             #   (el orquestador vivo es scheduler/pipeline_runs.py)
-│   ├── connectors/                #   Framework multi-fuente (ADR-009): placsp, pscp, tacrc, ted
-│   ├── bulk_downloader.py        #   Descarga ZIPs mensuales de PLACSP
-│   ├── codice_parser.py          #   Parser ATOM/CODICE (formato UBL)
-│   ├── atom_live.py              #   Feed ATOM en vivo (cada 4h)
-│   ├── document_fetcher.py       #   Descarga de pliegos/documentos anexos
-│   ├── filters.py                #   Detección de keywords por tecnología
-│   ├── ml_classifier.py          #   Clasificador ML TF-IDF + LogisticRegression
-│   ├── ml_training.py            #   Entrenamiento y re-cómputo de ml_proba
-│   ├── ml_pipeline.py            #   Pipeline ML de extremo a extremo
-│   └── resilience.py             #   Circuit breaker, reintentos, timeouts
-├── scheduler/                    # Tareas programadas
-│   ├── loop.py                   #   Bucle principal del scheduler (Docker)
-│   ├── run_update.py             #   Entry point para cron / GitHub Actions
-│   ├── jobs/                      #   Definición de jobs individuales
-│   ├── kpi_precompute.py         #   Pre-cómputo de KPIs pesados
-│   ├── aggregates_precompute.py  #   Pre-cómputo de agregados analíticos
-│   ├── watchlist_alerts.py       #   Alertas por watchlist (batch optimizado)
-│   ├── competitor_alerts.py      #   Alertas de competidores/renovaciones
-│   ├── drift_monitor.py          #   Detección de concept drift + alertas
-│   ├── anomaly_alerts.py         #   Alertas de anomalías (frescura, cobertura)
-│   ├── healthcheck.py            #   Verificación de frescura de datos
-│   ├── retention.py              #   Retención/purga de datos según política
-│   └── dlq_retry.py              #   Reintento automático de DLQ
-├── observability/                # Logging, métricas, trazas
-│   ├── logging.py                #   Structlog (JSON/consola), redacción de secretos
-│   ├── alerts.py                 #   Envío de alertas por email / nivel
-│   ├── metrics.py                #   Métricas de sistema (kpi_snapshots)
-│   ├── prometheus.py             #   Métricas Prometheus (textfile + HTTP)
-│   ├── tracing.py                #   OpenTelemetry (OTLP, opcional)
-│   ├── sentry.py                 #   Sentry (opt-in)
-│   └── grafana/                  #   Dashboards Grafana (RED, SLO)
-├── llm/                          # Integración con LLMs (opcional, endpoint /ask)
-│   ├── client.py                 #   Cliente unificado
-│   ├── budget.py                 #   Presupuesto/circuit-breaker de gasto
-│   ├── prompts.py                #   Plantillas de prompts RAG
-│   └── providers/                #   NVIDIA NIM (OpenAI-compatible), OpenAI, Anthropic
-├── scripts/                      # Scripts de mantenimiento
-│   ├── doctor.py                 #   Verificación de entorno
-│   ├── rotate_api_keys.py        #   Rotación de API keys
-│   ├── check_frontend_invariants.py  # Integridad analítica del frontend (ADR-014)
-│   └── ...                       #   retención, evaluación RAG, checks de CI, ...
-├── docs/                         # Documentación técnica
-│   ├── adr/                      #   Architecture Decision Records (ADR-001..026)
-│   ├── runbooks/                 #   Playbooks operativos (DLQ, DR, migración, ...)
-│   ├── c4-architecture.md        #   Diagramas C4 (Mermaid)
-│   ├── database-schema.md        #   Esquema real de Postgres (generado: `make schema-doc`)
-│   ├── api-design.md             #   Convenciones y contratos de la API REST
-│   ├── testing.md                #   Auto-marking, fixtures, cobertura
-│   ├── sli-slo.md                #   SLIs/SLOs del sistema
-│   └── SECURITY.md               #   Prácticas de seguridad y rotación
-├── tests/                        # Tests (unit, integration, e2e, property, load)
-├── .github/workflows/            # CI/CD
-│   ├── ci.yml                    #   Lint, tipos, tests, pre-commit, audit, docker build
-│   ├── pr-title.yml              #   Commitlint sobre el título del PR (reevalúa al editarlo)
-│   ├── security.yml              #   Semgrep SAST + Trivy + rotation reminder
-│   ├── scrape-daily.yml          #   Feed ATOM/conectores en vivo (cada 4h)
-│   ├── scrape-bulk.yml           #   Refresh de N meses (manual, sin cron)
-│   ├── healthcheck.yml           #   Healthcheck (cada 6h)
-│   ├── train-model.yml           #   Entrenamiento programado del clasificador
-│   ├── ml-scoring.yml            #   Scoring diario de predicciones (baja/retención)
-│   ├── train-predictivos.yml     #   Retrain mensual + publicación de artefactos
-│   └── ...                       #   changelog, release, release-sdk
-├── docker/                       # Dockerfiles (multi-stage) + entrypoints
-│   ├── Dockerfile.api            #   Imagen de la API/scheduler
-│   └── Dockerfile.web            #   Imagen del frontend Next.js
-├── docker-compose.yml            # web + api + scheduler (+ profile monitoring opcional)
-├── docker-compose.override.yml   # Overrides locales (no versionar cambios sensibles)
-├── render.yaml                   # Despliegue declarativo en Render.com (alternativa a Docker propio)
-└── data/                         # Modelos + métricas + exports (gitignored)
+├── config/              Settings (pydantic-settings), semilla de keywords, constantes PLACSP
+├── observability/       Structlog, métricas Prometheus, alertas, Sentry, OTLP, dashboards Grafana
+├── shared/              Utilidades sin lógica de negocio: auth_core, dto (contrato API↔web), csrf,
+│                        signing (JWKS), ssrf, geo (NUTS3→CCAA), object_store, …
+├── llm/                 Cliente LLM unificado, providers y presupuesto de gasto (budget.py)
+├── db/                  Todo el SQL: conexión y pools, upsert idempotente, repositories/,
+│                        migraciones Alembic (alembic/), auditoría encadenada, DLQ
+├── services/            Dominio: licitaciones, oportunidades, GO/NO-GO, avisos, analytics/,
+│                        competitive/, investigador/ (FTS), ml/ (clasificadores y modelos), rag/
+├── scraper/             Ingesta: connectors/ (una fuente por módulo), parser CODICE/UBL,
+│                        feed ATOM, ZIPs bulk, documentos, filtro tecnológico, resiliencia
+├── scheduler/           Orquestación: run_update, pipeline_runs (pasos de cierre), jobs/,
+│                        precomputes, alertas, drift, retención, worker de la cola
+├── api/                 FastAPI: app.py, middlewares, auth por X-API-Key, routes/
+├── mcp_server/          MCP interno de solo lectura: OAuth propio (auth/), tools/, catálogo
+├── web/                 Frontend Next.js (src/app/: consola en (dashboard)/, web pública en (publico)/)
+├── scripts/             Doctor, ratchets de CI, generadores de docs, evaluaciones, mantenimiento
+├── tests/               pytest con auto-marking (unit, integration, e2e, property, load)
+├── docs/                ADRs, runbooks, RFCs, casos de uso, esquema, SLI/SLO, seguridad, legal
+├── docker/              Dockerfiles multi-stage (api, web, prometheus, alertmanager) + entrypoints
+├── .github/workflows/   CI, seguridad, ingesta, scoring y entrenamiento ML, deploy, migraciones
+├── docker-compose.yml   Stack local (web + api + postgres; perfiles scheduler, redis, monitoring)
+└── render.yaml          Blueprint de Render (API, MCP y observabilidad)
 ```
+
+El mapa de paquetes con sus entry points y documentación está en
+[docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md); los conteos (tests, endpoints,
+jobs, ratchets), en [docs/STATUS.md](docs/STATUS.md), que genera `make status`.
 
 ---
 
-## Instalación
+## Puesta en marcha en local
 
-### Instalación estándar
+Requiere Python 3.11+ (CI y producción usan 3.13, el de `.python-version`),
+Node para `web/` y Docker para Postgres.
 
 ```bash
 git clone https://github.com/Dkalds/TenderFlow.git
 cd TenderFlow
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux / macOS
-pip install -e .
+source .venv/bin/activate           # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -r requirements-dev.txt
+pip install -e ".[pliegos]"         # extracción de PDF: la piden sus tests
+cp .env.example .env                # ENV=dev y DATABASE_URL local, ver «Configuración»
+docker compose up -d postgres
 ```
 
-### Con búsqueda semántica (opcional, ~2 GB adicionales por PyTorch)
+Extras opcionales de `pyproject.toml`: `[ml]` (embeddings con sentence-transformers,
+~2 GB por PyTorch), `[llm]`, `[tracing]`, `[analytics]`, `[crypto]`.
+
+Para arrancar las piezas por separado:
 
 ```bash
-pip install -e ".[ml]"
+make api                            # FastAPI en modo desarrollo
+cd web && npm ci && cd ..
+make web-dev                        # Next.js en http://localhost:3000
 ```
 
-### Con Docker
+O el stack entero en Docker:
 
 ```bash
-docker compose up -d
+docker compose up -d                          # web (:3000) + api (:8080) + postgres
+docker compose --profile scheduler up -d      # + scheduler (SCHEDULER_PLANE=docker)
+docker compose --profile monitoring up -d     # + Prometheus y Grafana
 ```
 
-La web estará disponible en http://localhost:3000 y la API en http://localhost:8080.
-El scheduler ejecuta actualizaciones automáticamente en el mismo stack.
+En Windows, la ruta mínima en PowerShell está en
+[docs/windows-happy-path.md](docs/windows-happy-path.md).
 
 ---
 
 ## Configuración
 
-Copia `.env.example` a `.env` y rellena los valores (`cp .env.example .env`).
-Extracto de las variables más relevantes para empezar:
+`.env.example` es la lista completa comentada. Extracto de las variables más
+relevantes para empezar:
 
 ```dotenv
 # ── Entorno ─────────────────────────────────────────────
@@ -240,7 +259,7 @@ OAUTH_REDIRECT_URI=http://localhost:3000
 OAUTH_ALLOWED_EMAILS=persona@empresa.com,otra@empresa.com
 OAUTH_ALLOWED_DOMAINS=empresa.com
 OAUTH_ADMIN_EMAILS=admin@empresa.com
-# Clave independiente para firmar tokens CSRF (recomendado en producción):
+# Clave independiente para firmar tokens CSRF (obligatoria en producción):
 # python -c "import secrets; print(secrets.token_hex(32))"
 SIGNING_KEY=<clave-aleatoria-32-chars>
 
@@ -257,9 +276,10 @@ ALERT_SMTP_USER=remitente@gmail.com
 ALERT_SMTP_PASSWORD=<app-password-gmail>
 ```
 
-`config/settings.py` declara muchas más variables (Redis, rate limiting,
-TOTP/2FA, webhooks, auditoría, CORS, tracing OTLP, tuning de ML/anomalías) con
-defaults seguros — consulta `.env.example` para la lista completa comentada.
+`config/settings.py` declara muchas más (Redis, rate limiting, TOTP/2FA,
+webhooks, auditoría, CORS, tracing OTLP, tuning de ML y anomalías) con defaults
+seguros. Las obligatorias en producción tienen que estar declaradas en
+`render.yaml`: `make check-env-parity` lo verifica.
 
 > **Importante:** `.env` está en `.gitignore`. Nunca lo commitees.
 
@@ -267,74 +287,55 @@ defaults seguros — consulta `.env.example` para la lista completa comentada.
 
 ## Uso
 
-### 1. Primera carga histórica
-
 ```bash
-python -m scheduler.run_update --backfill 2024 1
+python -m scheduler.run_update --backfill 2024 1   # primera carga: de enero 2024 a hoy
+python -m scheduler.run_update                     # refresca los últimos 3 meses (--months N)
+python -m scheduler.run_update --daily             # carril ligero: feed ATOM en vivo
+python -m services.ml.sap_classifier train         # entrena el clasificador SAP
 ```
 
-Descarga todos los meses desde enero 2024 hasta hoy.
-
-### 2. Actualización incremental (últimos 3 meses)
-
-```bash
-python -m scheduler.run_update
-```
-
-Operación **idempotente**: usa upsert por `id_externo`. Ejecutarlo varias
-veces no duplica registros.
-
-### 3. Actualización ligera (feed ATOM en vivo)
-
-```bash
-python -m scheduler.run_update --daily
-```
-
-### 4. Entrenar el clasificador ML
-
-```bash
-python -m services.ml.sap_classifier train
-```
-
-Requiere al menos 50 registros en la BD. El modelo se guarda en
-`data/models/sap_classifier.pkl`.
+Todas son **idempotentes**: el upsert va por `id_externo`, y ejecutarlas varias
+veces no duplica registros. El clasificador necesita al menos 50 registros
+etiquetados y se guarda en `data/models/sap_classifier.pkl`.
 
 ---
 
-## Despliegue
-
-### Docker (autohospedado)
+## Calidad y CI
 
 ```bash
-cp .env.example .env   # edita con tus credenciales
-docker compose up -d
+make check           # lint + typecheck + tests unitarios y de integración, fail-fast
+make test-unit       # bucle rápido, sin BD
+make lint            # ruff
+make typecheck       # mypy strict en todo el código de producción
 ```
 
-El `docker-compose.yml` levanta tres servicios principales que comparten el mismo
-volumen de datos: `web` (`docker/Dockerfile.web`), `api` (`docker/Dockerfile.api`)
-y `scheduler` (mismo build que `api`, cron de scraping). Opcionalmente, con
-`--profile monitoring`, también Prometheus y Grafana. `docker-compose.override.yml`
-permite overrides locales sin tocar el compose base.
+Los tests usan **solo Postgres** y leen `TEST_DATABASE_URL`; cada test recibe un
+schema aislado. CI exige un 78 % de cobertura con branch coverage.
 
-Variables recomendadas para despliegue Docker:
+Para cambios en `web/`:
 
-```dotenv
-DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>?sslmode=verify-full
-API_HMAC_SECRET=<secreto-hmac-32+-chars>
-FORWARDED_ALLOW_IPS=<ip-o-rango-del-reverse-proxy>
-GF_SECURITY_ADMIN_PASSWORD=<password-admin-grafana>
+```bash
+make web-lint        # ESLint
+make web-typecheck   # tsc --noEmit
+make web-test        # Vitest, con gate de suite realmente ejecutada
+make web-test-e2e    # Playwright
 ```
 
-Los workflows de `.github/workflows/` siguen disponibles para scraping,
-healthchecks y despliegues automatizados.
+Además de los tests, varios ratchets fallan si el repo empeora: dirección de
+imports (`make check-layers`), contrato API↔web (`make check-api-contract`),
+operaciones nuevas de la API sin motivo (`make check-api-surface`), integridad
+analítica del frontend (`make check-frontend-invariants`), superficie pública
+(`make check-public-surface`) y casos de uso sin recorrido (`make check-casos-uso`).
+`make help` lista todos los targets.
 
-### Render.com (PaaS, alternativa a Docker propio)
+`ci.yml` corre en cada push y PR: lint, typecheck y pre-commit; tests contra
+Postgres; fuzzing del contrato con Schemathesis; migraciones online; auditoría de
+dependencias y bandit; build de Docker + Trivy; drift de codegen; compatibilidad
+del contrato API; y el frontend (typecheck, lint, tests, build y E2E de Playwright
+contra un backend real). `security.yml` añade Semgrep y el recordatorio de rotación.
 
-`render.yaml` define el servicio `tenderflow-api` (build vía
-`docker/Dockerfile.api`) con las variables de entorno de producción declaradas
-como `sync: false` (se configuran en el dashboard de Render, nunca en el repo).
-Conectá el repositorio en Render y usa "Blueprint" para aplicar `render.yaml`
-directamente.
+Cómo se trabaja en el repo (instrucciones para personas y agentes) en
+[CONTRIBUTING.md](CONTRIBUTING.md) y [AGENTS.md](AGENTS.md).
 
 ---
 
@@ -348,12 +349,15 @@ directamente.
 | Google OAuth | HMAC-SHA256 state con nonce + timestamp. Clave de firma independiente (`SIGNING_KEY`) del client secret |
 | TOTP (2FA) | Secretos cifrados con Fernet (`TOTP_ENCRYPTION_KEY`), obligatorio en `ENV=prod` |
 | Recuperación local | Token aleatorio de un uso; sólo se persiste SHA-256, caduca en 30 min y revoca todas las sesiones al cambiar la contraseña |
+| API keys | `X-API-Key` con scopes, rotables con `scripts/rotate_api_keys.py` |
+| MCP interno | OAuth 2.1 propio con login de Google solo para admins; rol de Postgres de solo lectura ([ADR-036](docs/adr/ADR-036-acceso-interno-por-mcp.md)) |
 
 ### Protecciones generales
 
 | Área | Medida |
 |------|--------|
-| Inyección SQL | Queries parametrizadas (shim qmark→`%s` en Postgres, ver [ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md)); acceso a BD solo vía `db/repositories/*` |
+| Inyección SQL | Queries parametrizadas ([ADR-025](docs/adr/ADR-025-construccion-de-sql-y-pools.md)); todo el SQL vive en `db/` |
+| Aislamiento entre organizaciones | Filtro de aplicación + RLS por tenant en Postgres ([ADR-034](docs/adr/ADR-034-rls-por-tenant.md)) |
 | XSS | HTML dinámico escapado con `html.escape()` |
 | SSRF | `shared/ssrf.py` valida URLs salientes (documentos, webhooks); `WEBHOOK_ALLOWED_HOSTS`/`DOCUMENT_ALLOWED_HOSTS` como allowlist |
 | XXE (XML) | Parser lxml con `resolve_entities=False`, `no_network=True` |
@@ -411,44 +415,6 @@ Lista completa con el motivo de cada label en
 
 ---
 
-## CI / Calidad de código
-
-```bash
-# Linting y formato
-ruff check .
-ruff format .
-
-# Tipos (todo el repo)
-mypy .
-
-# Tests con cobertura (umbral: 70%, branch coverage activado)
-pytest
-
-# Pre-commit hooks
-pre-commit run --all-files
-
-# Auditoría de dependencias
-pip-audit --strict --desc
-```
-
-O simplemente `make check` (lint + typecheck + tests unitarios) —
-también disponible como slash-command `/check` en Claude Code.
-
-Para cambios en `web/`, además:
-
-```bash
-make web-lint        # ESLint
-make web-typecheck   # tsc --noEmit
-npm --prefix web run test          # Vitest (thresholds en vitest.config.ts)
-make web-test-e2e    # Playwright
-```
-
-El pipeline de CI (`.github/workflows/ci.yml`) incluye además un job de
-`docker build` que verifica que la imagen compila correctamente en cada push,
-y `security.yml` corre Semgrep SAST + Trivy sobre la imagen.
-
----
-
 ## Marco legal
 
 Los datos se reutilizan al amparo de:
@@ -478,6 +444,9 @@ nada derivado del pipeline propio (scoring ML, linaje del filtro, predicciones).
 La proyección pública es una allowlist explícita en
 `db/repositories/publico.py`, y `make check-public-surface` la verifica en CI.
 
+El registro de tratamientos (art. 30 RGPD) y el anexo de encargo para clientes
+B2B están en [docs/legal/](docs/legal/registro-tratamientos.md).
+
 ---
 
 ## Limitaciones conocidas
@@ -488,7 +457,8 @@ La proyección pública es una allowlist explícita en
   se loggean y se omiten sin interrumpir el proceso.
 - Los datos de meses recientes pueden tardar en publicarse
   (el ZIP del mes M suele aparecer a mediados del mes M+1).
-- La búsqueda de texto (`/search`) usa `tsvector`+GIN
-  (Postgres) por defecto; `faiss-cpu` se eliminó en Fase 3 (2026-07-04).
-  La similitud semántica basada en embeddings (sentence-transformers) requiere
-  instalar el extra `[ml]` y sigue en uso en clasificación/clustering.
+- `licitaciones.importe` es histórico y mezcla bases con y sin IVA; las columnas
+  `importe_base_sin_iva`, `importe_con_iva` y `valor_estimado` se pueblan al
+  re-ingerir ([ADR-032](docs/adr/ADR-032-semantica-del-importe-y-maestro-de-organos.md)).
+- La similitud semántica basada en embeddings (sentence-transformers) requiere
+  el extra `[ml]`; sin él, la búsqueda sigue funcionando sobre `tsvector`.

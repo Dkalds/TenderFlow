@@ -13,18 +13,21 @@ C4Context
     title TenderFlow — Contexto
 
     Person(user, "Analista comercial", "Equipo SAP que busca licitaciones del sector público")
-    Person(admin, "Administrador", "Gestiona usuarios, modelos y configuración")
+    Person(admin, "Administrador", "Gestiona usuarios, modelos y configuración; consulta la base desde un cliente MCP")
 
     System(licitaciones, "TenderFlow", "Detecta, analiza y alerta sobre licitaciones del sector público")
 
     System_Ext(fuentes, "Fuentes de contratación (PLACSP, PSCP, TACRC, TED)", "CODICE/UBL + Atom, vía scraper/connectors (ADR-009)")
     System_Ext(oauth, "Google OAuth", "Identidad federada")
+    System_Ext(mcpclient, "Cliente MCP (Claude u otro)", "Asistente del administrador")
     System_Ext(llm, "Proveedor LLM (NVIDIA NIM / OpenAI / Anthropic)", "Síntesis RAG para /api/v1/ask")
     System_Ext(otlp, "OTLP collector", "Trazas + métricas")
     System_Ext(slack, "Slack / Email", "Canal de alertas")
 
     Rel(user, licitaciones, "Consulta el frontend web, pregunta al asistente, exporta informes")
     Rel(admin, licitaciones, "Administra modelos, flags y usuarios")
+    Rel(admin, mcpclient, "Pregunta en lenguaje natural")
+    Rel(mcpclient, licitaciones, "Consulta de solo lectura", "MCP sobre HTTPS, OAuth 2.1")
     Rel(licitaciones, fuentes, "Descarga bulk + feeds en vivo (cada 4h)", "HTTPS")
     Rel(licitaciones, oauth, "Login federado")
     Rel(licitaciones, llm, "Genera respuestas del asistente RAG", "HTTPS, con presupuesto/circuit-breaker")
@@ -40,10 +43,12 @@ C4Container
     title TenderFlow — Contenedores
 
     Person(user, "Analista comercial")
+    Person(admin, "Administrador")
 
     System_Boundary(s1, "TenderFlow") {
         Container(web, "Web frontend", "Next.js 16", "UI analítica y exploración")
         Container(api, "API REST", "FastAPI", "API pública v1 con auth por API-Key, incl. /ask (RAG)")
+        Container(mcp, "MCP interno", "Python, SDK mcp (Streamable HTTP sin estado)", "Servicio aparte en Render (tenderflow-mcp): seis tools de solo lectura, OAuth 2.1 propio solo para admins (ADR-036)")
         Container(scraper, "Scraper", "Python", "connectors/: PLACSP bulk+Atom, PSCP, TACRC, TED")
         Container(sched, "Scheduler (plano cron)", "GitHub Actions en producción; APScheduler solo en local/dev", "Ingesta programada, KPI/aggregates precompute, drift, retrain, retención, alertas. Un solo plano activo por entorno (ADR-012); el trabajo a demanda va al worker de ADR-028")
         ContainerDb(db, "Postgres / Supabase", "Database", "Datos operacionales (ADR-016); motor único también en dev/CI (ADR-018/ADR-021)")
@@ -54,6 +59,8 @@ C4Container
 
     System_Ext(fuentes, "Fuentes de contratación")
     System_Ext(llm, "Proveedor LLM")
+    System_Ext(mcpclient, "Cliente MCP (Claude u otro)")
+    System_Ext(oauth, "Google OAuth")
     System_Ext(otlp, "OTLP")
 
     Rel(user, web, "HTTPS")
@@ -61,6 +68,10 @@ C4Container
     Rel(web, api, "Consume API REST")
     Rel(api, db, "SQL (psycopg3)")
     Rel(api, llm, "Síntesis RAG para /ask", "HTTPS")
+    Rel(admin, mcpclient, "Usa")
+    Rel(mcpclient, mcp, "POST /mcp con Bearer", "HTTPS, OAuth 2.1")
+    Rel(mcp, oauth, "Login del admin")
+    Rel(mcp, db, "SELECT con el rol tenderflow_mcp", "psycopg3, solo lectura")
     Rel(scraper, fuentes, "HTTPS")
     Rel(scraper, db, "INSERT/UPDATE (upsert idempotente)")
     Rel(sched, db, "Pre-compute KPI / agregados / drift")
@@ -114,6 +125,7 @@ La codebase se organiza en capas con dependencias unidireccionales:
 web/        ──► api/
 api/        ──► services/ ──► db/ + shared/
 scheduler/  ──► services/      (dominio)    (persistencia + utilidades)
+mcp_server/ ──► services/ + db/ + shared/  (ni api/ ni scraper/)
 ```
 
 * `services/` contiene lógica de dominio pura (normalización,
@@ -122,6 +134,11 @@ scheduler/  ──► services/      (dominio)    (persistencia + utilidades)
 * `shared/` aloja helpers transversales (auth core, signing, i18n,
   geo, schemas Pandera).
 * `web/` consume la API REST y no accede a `services/` o `db/` directamente.
+* `mcp_server/` es la capa más alta y no importa de `api/` ni de `scraper/`.
+  Su SQL vive en `db/` (`db/consulta_libre.py`, `db/mcp_oauth.py`), y qué
+  tablas y columnas ve lo decide el catálogo (`mcp_server/catalogo.py`) junto
+  con los permisos del rol en Postgres. Ver
+  [ADR-036](adr/ADR-036-acceso-interno-por-mcp.md).
 
 ## Notas de mantenimiento
 
