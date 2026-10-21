@@ -14,7 +14,7 @@ structlog>=24.1.0,<27
 pybreaker>=1.0.0,<2
 reportlab>=4.0,<6
 # Forzar versión sin CVEs conocidas (transitiva via reportlab): PYSEC-2026-2253/54/55/56/57
-pillow>=12.3,<13
+pillow>=13,<14
 # ML — clasificador TF-IDF + LogisticRegression para detección SAP
 # `<1.9`: la 1.9.0 tiene una regresión en HistGradientBoostingRegressor —
 # _find_binning_thresholds (sklearn/ensemble/_hist_gradient_boosting/binning.py)
