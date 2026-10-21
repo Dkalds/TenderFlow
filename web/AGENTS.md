@@ -102,12 +102,12 @@ navegación en el esqueleto genérico del padre; y si el segmento tiene
 `loading.tsx`, cada prefetch de un `<Link>` —el rail enlaza todos los
 espacios— ejecuta el layout y sus consultas.
 
-Los providers, el `Toaster` y el nonce de la CSP de las tres superficies con
-sesión (dashboard, login y restablecer contraseña) se montan en
+Los providers, el `Toaster` y el nonce de la CSP de las superficies con
+sesión (dashboard, login, restablecer contraseña y verificar correo) se montan en
 `web/src/components/layout/superficie-privada.tsx`; ningún layout los monta a mano.
 La excepción es `TooltipProvider`, que monta solo el layout del dashboard: es la
 única superficie que pinta tooltips, y en la pila común cargaba Radix Tooltip en
-el First Load de las otras dos.
+el First Load de las demás.
 
 Lo que importa la pantalla de login viaja entero: un módulo de `web/src/` entra
 completo en el bundle de quien use cualquiera de sus exports (medido: Turbopack

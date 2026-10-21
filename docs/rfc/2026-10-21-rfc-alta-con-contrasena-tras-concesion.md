@@ -4,7 +4,16 @@ title: Alta con correo y contraseña para quien tiene el acceso concedido
 issue: "(sin issue: petición directa del mantenedor, 2026-10-21)"
 author: agent:claude-code
 date: 2026-10-21
-status: review
+status: implemented
+implemented_on: 2026-10-21
+implemented_evidence: >
+  Revisión `v154_verificacion_email`, `db/email_verification.py`,
+  `services/email_verification.py`, `POST /auth/register` (modo cerrado),
+  `POST /auth/verify-email` y la comprobación de `POST /auth/login` en
+  `api/routes/auth.py`; página `web/src/app/verificar-correo/`. Criterios en
+  `tests/test_auth_alta_cerrada.py` y el recorrido CU-31 en
+  `tests/test_escenario_alta_tras_concesion.py`. Pendiente fuera del código:
+  las credenciales de correo en Render (§7).
 ---
 
 ## Contexto
@@ -234,21 +243,23 @@ Revisión nueva (`v154_verificacion_email`), append-only:
 
 ## Criterios de aceptación
 
-- [ ] Alta de un correo sin concesión → 403 `access_not_granted`, sin usuario creado.
-- [ ] Alta de un correo concedido → 202, usuario sin verificar, correo con enlace; sin sesión ni invitaciones activadas.
-- [ ] Concesión por dominio: cualquier dirección del dominio puede darse de alta y verificar.
-- [ ] Login de una cuenta sin verificar con la contraseña correcta → 403 `email_not_verified`; con la incorrecta → 401 como siempre.
-- [ ] Verificar → sesión abierta, invitaciones activadas, token gastado; segundo uso → 400.
-- [ ] Verificar con la concesión ya revocada → 403, sin sesión.
-- [ ] Segunda alta sobre una cuenta sin verificar sustituye la contraseña e invalida el enlace anterior.
-- [ ] Alta sobre una cuenta verificada → mismo 202; no cambia la contraseña; envía el correo «ya tienes cuenta».
-- [ ] Alta sobre una cuenta solo Google → el enlace del correo le crea la primera contraseña y después entra con ella.
-- [ ] Revocar la concesión → el siguiente login con contraseña de un no-admin da 403; un admin sigue entrando.
-- [ ] Google sobre una cuenta local sin verificar → queda verificada y sin `password_hash`.
-- [ ] Consumir un reset marca la cuenta como verificada.
-- [ ] Modo abierto (`ENV=dev`): `/auth/register` responde 201 con sesión, como hoy.
-- [ ] La migración deja verificadas todas las cuentas existentes.
-- [ ] En `ENV=prod` sin credenciales de correo, el arranque deja `email_backend_not_configured` a nivel `warning`.
+Todos los prueba `tests/test_auth_alta_cerrada.py` (con BD: corren en CI, no en `make test-unit`), salvo el modo abierto, que siguen fijando `tests/test_auth_register.py` y los fixtures de toda la suite.
+
+- [x] Alta de un correo sin concesión → 403 `access_not_granted`, sin usuario creado.
+- [x] Alta de un correo concedido → 202, usuario sin verificar, correo con enlace; sin sesión ni invitaciones activadas.
+- [x] Concesión por dominio: cualquier dirección del dominio puede darse de alta y verificar.
+- [x] Login de una cuenta sin verificar con la contraseña correcta → 403 `email_not_verified`; con la incorrecta → 401 como siempre.
+- [x] Verificar → sesión abierta, invitaciones activadas, token gastado; segundo uso → 400.
+- [x] Verificar con la concesión ya revocada → 403, sin sesión.
+- [x] Segunda alta sobre una cuenta sin verificar sustituye la contraseña e invalida el enlace anterior.
+- [x] Alta sobre una cuenta verificada → mismo 202; no cambia la contraseña; envía el correo «ya tienes cuenta».
+- [x] Alta sobre una cuenta solo Google → el enlace del correo le crea la primera contraseña y después entra con ella.
+- [x] Revocar la concesión → el siguiente login con contraseña de un no-admin da 403; un admin sigue entrando.
+- [x] Google sobre una cuenta local sin verificar → queda verificada y sin `password_hash`.
+- [x] Consumir un reset marca la cuenta como verificada.
+- [x] Modo abierto (`ENV=dev`): `/auth/register` responde 201 con sesión, como hoy.
+- [x] La migración deja verificadas todas las cuentas existentes.
+- [x] En `ENV=prod` sin credenciales de correo, el arranque deja `email_backend_not_configured` a nivel `warning`.
 
 ## Antes de desplegar
 

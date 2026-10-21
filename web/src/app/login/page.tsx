@@ -6,7 +6,8 @@
  * Aquí solo queda el armazón: la carcasa de la puerta
  * (`(publico)/_components/puerta.tsx`, la misma de restablecer contraseña y del
  * 404 raíz) y la decisión de qué cuerpo se monta en su panel —la sesión ya
- * abierta, el gate de segundo factor o el panel de acceso normal—. Los cinco
+ * abierta, el gate de segundo factor, el «Revisa tu correo» del alta cerrada o
+ * el panel de acceso normal—. Los cinco
  * caminos de entrada y sus errores viven en `_hooks/use-login-form.ts`, y cada
  * bloque del panel en `_components/`.
  *
@@ -22,7 +23,7 @@ import { lazy, Suspense } from "react";
 import { Puerta } from "@/app/(publico)/_components/puerta";
 import { useSession } from "@/lib/auth";
 import { AccessPanel } from "./_components/access-panel";
-import { ALTA_ABIERTA, AuthModeTabs } from "./_components/auth-mode-tabs";
+import { AuthModeTabs } from "./_components/auth-mode-tabs";
 import { useLoginForm } from "./_hooks/use-login-form";
 
 // Las dos ramas que casi nadie ve al llegar —el gate del segundo factor y la
@@ -31,9 +32,9 @@ import { useLoginForm } from "./_hooks/use-login-form";
 // `React.lazy` y no `next/dynamic`, que añade a esta ruta su propio cargador
 // (medido: +2,5 KB, más de lo que ahorra).
 const MfaForm = lazy(() => import("./_components/mfa-form").then((m) => ({ default: m.MfaForm })));
-const SesionAbierta = lazy(() =>
-  import("./_components/sesion-abierta").then((m) => ({ default: m.SesionAbierta })),
-);
+const SesionAbierta = lazy(() => import("./_components/sesion-abierta").then((m) => ({ default: m.SesionAbierta })));
+// Igual con el «Revisa tu correo» del alta cerrada: solo se ve tras enviarla.
+const RevisaCorreo = lazy(() => import("./_components/revisa-correo").then((m) => ({ default: m.RevisaCorreo })));
 // El fondo en movimiento también llega aparte: es decorativo y el formulario
 // tiene que poder usarse antes de que se pinte.
 const FondoParticulas = lazy(() =>
@@ -78,10 +79,16 @@ function LoginPageContent() {
         <MfaForm login={login} />
       </Suspense>
     );
+  } else if (login.correoPendiente) {
+    panel = (
+      <Suspense fallback={null}>
+        <RevisaCorreo login={login} />
+      </Suspense>
+    );
   } else {
     panel = (
       <>
-        {ALTA_ABIERTA && <AuthModeTabs mode={login.mode} onChange={login.switchMode} />}
+        <AuthModeTabs mode={login.mode} onChange={login.switchMode} />
         <AccessPanel login={login} />
       </>
     );
