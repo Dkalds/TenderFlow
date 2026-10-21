@@ -33,4 +33,4 @@ class ResumenPregenSettings(BaseSettings):
     # de caché, así que pre-generar con otro no calienta nada. Mantener
     # sincronizado con `ResumenRequest.model` (`api/routes/ask.py`) y con
     # `llm.client.DEFAULT_MODEL` (lo comprueba `tests/test_llm_client.py`).
-    RESUMEN_PREGEN_MODEL: str = "nvidia/nemotron-3-super-120b-a12b"
+    RESUMEN_PREGEN_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b"

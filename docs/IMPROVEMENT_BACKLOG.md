@@ -711,6 +711,16 @@ _Sin ítems abiertos._
 - **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
 - **Riesgo:** bajo.
 
+### [P2] El canary de modelos NIM no ve un modelo que sigue en el catálogo y no se sirve
+- **Área:** scheduler/jobs/llm_models_canary.py, llm/client.py
+- **Problema:** el canary solo comprueba que cada modelo NIM de `AVAILABLE_MODELS` aparece en `GET /v1/models`. Desde el 2026-10-20 `nvidia/nemotron-3-super-120b-a12b` seguía listado y el chat respondía 404: el canary dio `llm_models_canary_ok` el 2026-10-21 a las 14:51, cuatro minutos después de que el etiquetado recibiera ese 404, y quien avisó fue el fallo de la ficha y del etiquetado (issue #523). El default se cambió a `nemotron-3-ultra` en la rama `claude/relaxed-noether-ghoqr4`; el punto ciego sigue.
+- **Acceptance criteria:**
+  - El canary hace además una petición mínima de chat (`max_tokens` pequeño, sin traza de razonamiento) a cada modelo NIM ofertado cuando hay `NVIDIA_API_KEY`, y un 404/410 cuenta como modelo ausente.
+  - Sin key, se queda en la comprobación del catálogo y lo dice en el log.
+  - Test que simula catálogo con el modelo y chat con 404, y espera `llm_models_canary_models_missing`.
+- **Files de partida:** [scheduler/jobs/llm_models_canary.py](../scheduler/jobs/llm_models_canary.py), [tests/test_llm_models_canary.py](../tests/test_llm_models_canary.py)
+- **Riesgo:** bajo — una llamada de pocos tokens por modelo y día, que entra en el BudgetGuard.
+
 ### [P2] Dar de alta el check externo del latido del healthcheck (acción del propietario)
 - **Área:** healthchecks.io (o equivalente), GitHub (variables cifradas de Actions), Render
 - **Problema:** `scheduler/latido.py` hace una petición a `HEALTHCHECK_HEARTBEAT_URL` tras cada healthcheck con alertas, pero la variable está vacía en todas partes: no hay check externo esperándola. Mientras tanto, si el cron deja de ejecutar el healthcheck o el correo deja de entregarse, nadie lo nota.

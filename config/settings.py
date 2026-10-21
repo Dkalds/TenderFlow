@@ -674,11 +674,13 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # ficha; se apaga sin tocar el job nocturno.
     PLIEGO_FACTS_ON_PURSUIT: bool = True
     # Mantener sincronizado con llm.client.DEFAULT_MODEL (lo comprueba
-    # tests/test_llm_client.py). Los dos valores anteriores acabaron en 410 al
+    # tests/test_llm_client.py). Los dos primeros valores acabaron en 410 al
     # retirarlos NVIDIA: deepseek-v4-pro el 2026-08-07 y deepseek-v4-flash-0731
-    # el 2026-09-21. La variable de repo del mismo nombre, si existe, pisa este
-    # default en pliegos.yml: al cambiarlo, revisar también `gh variable list`.
-    PLIEGO_FACTS_MODEL: str = "nvidia/nemotron-3-super-120b-a12b"
+    # el 2026-09-21; el tercero, nemotron-3-super, en 404 el 2026-10-20 sin
+    # salir del catálogo (issue #523). La variable de repo del mismo nombre, si
+    # existe, pisa este default en pliegos.yml: al cambiarlo, revisar también
+    # `gh variable list`.
+    PLIEGO_FACTS_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b"
     # Tamaños de lote por fase del job scheduler/jobs/documentos_embeddings.py.
     # pliegos.yml propaga REDIS_URL desde el secret del mismo nombre; si el
     # secret no está definido, el gate de presupuesto LLM arranca de 0 en cada
@@ -723,10 +725,11 @@ class Settings(ResumenPregenSettings, BaseSettings):
     LLM_TECH_LABELING_ENABLED: bool = False
     # Mantener sincronizado con llm.client.DEFAULT_MODEL (lo comprueba
     # tests/test_llm_client.py): deepseek-v4-pro y deepseek-v4-flash-0731
-    # acabaron en 410 (EOL en NVIDIA el 2026-08-07 y el 2026-09-21). El modelo
-    # entra en `signal_version`, así que cambiarlo vuelve a etiquetar el corpus
-    # desde lo más reciente, a razón de LLM_TECH_LABELING_BATCH por corrida.
-    LLM_TECH_LABELING_MODEL: str = "nvidia/nemotron-3-super-120b-a12b"
+    # acabaron en 410 (EOL en NVIDIA el 2026-08-07 y el 2026-09-21) y
+    # nemotron-3-super en 404 (2026-10-20). El modelo entra en `signal_version`,
+    # así que cambiarlo vuelve a etiquetar el corpus desde lo más reciente, a
+    # razón de LLM_TECH_LABELING_BATCH por corrida.
+    LLM_TECH_LABELING_MODEL: str = "nvidia/nemotron-3-ultra-550b-a55b"
     # Licitaciones clasificadas por corrida. Mismo caveat que PLIEGO_*_BATCH:
     # sin REDIS_URL en el runner, el presupuesto LLM arranca de 0 en cada
     # corrida y el tope real de gasto es este tamaño de lote (~$0.07 por 200).
