@@ -62,9 +62,10 @@ def test_toda_tabla_purgada_tiene_politica() -> None:
     """
     en_politica = {r.tabla for r in POLITICA_RETENCION}
     purgadas_por_plazo = set(COLUMNA_FECHA)
-    # `failed_extractions` y `rate_limits` se purgan por camino propio (DLQ
-    # resueltos y ventanas expiradas), así que no están en COLUMNA_FECHA.
-    solo_camino_propio = {"failed_extractions", "rate_limits"}
+    # `failed_extractions`, `rate_limits` y `users` se purgan por camino propio
+    # (DLQ resueltos, ventanas expiradas y altas sin verificar), así que no
+    # están en COLUMNA_FECHA.
+    solo_camino_propio = {"failed_extractions", "rate_limits", "users"}
 
     assert purgadas_por_plazo - en_politica == set(), (
         f"tablas purgadas sin fila en POLITICA_RETENCION: {purgadas_por_plazo - en_politica}"

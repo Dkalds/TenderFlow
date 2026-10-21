@@ -119,7 +119,7 @@ GRANT SELECT ON "public"."api_key_tiers" TO "tenderflow_mcp";
 GRANT SELECT ON "public"."audit_log" TO "tenderflow_mcp";
 GRANT SELECT ON "public"."csp_violations" TO "tenderflow_mcp";
 GRANT SELECT ON "public"."solicitudes_acceso" TO "tenderflow_mcp";
-GRANT SELECT ("id", "email", "oauth_provider", "oauth_sub", "display_name", "created_at", "is_admin", "deactivated_at", "admin_granted_by") ON "public"."users" TO "tenderflow_mcp";
+GRANT SELECT ("id", "email", "oauth_provider", "oauth_sub", "display_name", "created_at", "is_admin", "deactivated_at", "admin_granted_by", "email_verified_at") ON "public"."users" TO "tenderflow_mcp";
 GRANT SELECT ON "public"."follows" TO "tenderflow_mcp";
 GRANT SELECT ON "public"."notification_preferences" TO "tenderflow_mcp";
 GRANT SELECT ON "public"."notification_reads" TO "tenderflow_mcp";

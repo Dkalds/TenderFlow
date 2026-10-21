@@ -49,7 +49,11 @@ Lista completa de subencargados y mecanismos de transferencia:
   `viewer`), scopes por operación centralizados en `api/scopes.py` y
   verificados en CI contra `docs/api-design.md`.
 - **Acceso al producto:** por invitación o solicitud aprobada; sin alta libre
-  (`ALLOW_SELF_REGISTRATION=false`).
+  (`ALLOW_SELF_REGISTRATION=false`). Quien tiene el acceso concedido se da de
+  alta con correo y contraseña, y la cuenta no entra hasta verificar el correo
+  con un enlace de un solo uso; cada login con contraseña vuelve a comprobar la
+  concesión, como el de Google
+  ([RFC](rfc/2026-10-21-rfc-alta-con-contrasena-tras-concesion.md)).
 
 ## 4. Aislamiento entre clientes
 

@@ -56,6 +56,11 @@ AUTH_LOGOUT_ALL: Final = "auth.logout_all"
 # la palabra en el identificador.
 AUTH_PASSWORD_RESET_REQUESTED: Final = "auth.password_reset_requested"  # noqa: S105
 AUTH_PASSWORD_RESET_COMPLETED: Final = "auth.password_reset_completed"  # noqa: S105
+#: Alta cerrada (RFC 2026-10-21): se pidió crear la cuenta y, después, se
+#: verificó el correo con el enlace. Sin id ni correo en el primero, como el
+#: reset: la respuesta no distingue si la cuenta existía.
+AUTH_SIGNUP_REQUESTED: Final = "auth.signup_requested"
+AUTH_EMAIL_VERIFIED: Final = "auth.email_verified"
 AUTH_TOTP_ENABLED: Final = "auth.totp_enabled"
 AUTH_TOTP_DISABLED: Final = "auth.totp_disabled"
 #: Revocación de UNA sesión propia (``DELETE /me/sessions/{id}``). Ya se
@@ -138,6 +143,8 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
             AUTH_LOGOUT_ALL,
             AUTH_PASSWORD_RESET_REQUESTED,
             AUTH_PASSWORD_RESET_COMPLETED,
+            AUTH_SIGNUP_REQUESTED,
+            AUTH_EMAIL_VERIFIED,
             AUTH_TOTP_ENABLED,
             AUTH_TOTP_DISABLED,
             AUTH_SESSION_REVOKED,

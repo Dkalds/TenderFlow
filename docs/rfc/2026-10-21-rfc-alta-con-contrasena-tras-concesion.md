@@ -177,17 +177,21 @@ Parte de este RFC (va primero en el plan):
 
 Revisión nueva (`v154_verificacion_email`), append-only:
 
-- `users.email_verified_at TIMESTAMPTZ NULL`. Backfill
-  `email_verified_at = NOW()` para **todas** las filas existentes: las OAuth las
-  verificó el proveedor y las locales se respetan tal cual, para que nadie que
-  hoy entra deje de poder hacerlo por este cambio.
+- `users.email_verified_at TIMESTAMPTZ NULL DEFAULT NOW()`. El default rellena
+  **todas** las filas existentes —las OAuth las verificó el proveedor y las
+  locales se respetan tal cual, para que nadie que hoy entra deje de poder
+  hacerlo por este cambio— y deja verificada cualquier cuenta creada por un
+  camino que no sabe de la columna (OAuth, alta abierta, scripts). Solo el alta
+  cerrada escribe `NULL` explícitamente.
 - `email_verification_tokens`: misma forma que `password_reset_tokens` (`id`,
   `user_id` FK con `ON DELETE CASCADE`, `token_hash` único, `created_at`,
   `expires_at`, `used_at`), índice parcial de pendientes y la misma protección
   RLS de `v96`.
-- `scheduler/retention.py`: purga de tokens como la de `password_reset_tokens`,
-  y borrado de cuentas locales **sin verificar** con más de 7 días (sin
-  `oauth_sub`, sin sesiones). Son altas que nadie confirmó.
+- `scheduler/retention.py`: purga de tokens con el plazo de
+  `password_reset_tokens`, y borrado de cuentas locales **sin verificar** con
+  más de `RETENTION_UNVERIFIED_SIGNUP_DAYS` (7) días, sin `oauth_sub` ni
+  sesiones. Son altas que nadie confirmó. Las dos reglas se publican en
+  `docs/SECURITY.md`.
 
 ## Alternativas consideradas
 
@@ -223,8 +227,8 @@ Revisión nueva (`v154_verificacion_email`), append-only:
    reset.
 5. Web: pestaña «Crear cuenta» siempre visible, mensajes de 403/202, página
    `/verificar-correo`, texto del correo de acceso concedido.
-6. Retención, `docs/casos-de-uso.md` (caso nuevo «Crearme la cuenta tras
-   recibir acceso» con su test de escenario), `make status`.
+6. Retención, `docs/casos-de-uso.md` (CU-31 con su test de escenario,
+   `tests/test_escenario_alta_tras_concesion.py`), `make status`.
 
 **Riesgo estimado:** alto (autenticación y migración).
 

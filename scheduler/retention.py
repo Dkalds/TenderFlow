@@ -137,6 +137,7 @@ COLUMNA_FECHA: dict[str, str] = {
     "solicitudes_acceso": "created_at",
     # pragma: allowlist secret -- nombre de tabla y de columna, no una credencial
     "password_reset_tokens": "created_at",  # pragma: allowlist secret
+    "email_verification_tokens": "created_at",
     # C2.6: la huella se purga por su ÚLTIMA ocurrencia, no por la primera.
     # Un error que sigue pasando cada día no puede caducar por haber
     # empezado hace un mes.
@@ -223,6 +224,19 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
         "password_reset_tokens",  # pragma: allowlist secret
         "RETENTION_PASSWORD_RESET_DAYS",
         "Un token de recuperación caducado no sirve para nada y sí identifica a quien lo pidió.",
+    ),
+    ReglaRetencion(
+        "email_verification_tokens",
+        "RETENTION_PASSWORD_RESET_DAYS",
+        "Enlace de activación del alta con contraseña: caducado no sirve para "
+        "nada y sí identifica a quien se dio de alta.",
+    ),
+    ReglaRetencion(
+        "users",
+        "RETENTION_UNVERIFIED_SIGNUP_DAYS",
+        "**Solo las altas con contraseña que nadie verificó**, sin OAuth ni "
+        "sesiones: cuentas que nunca se usaron con el correo de una persona. "
+        "Ninguna otra cuenta caduca por tiempo.",
     ),
     ReglaRetencion(
         "client_errors",
@@ -318,6 +332,12 @@ def run_retention(
             # sólo contiene hashes, pero la minimización también aplica a
             # identificadores indirectos y a credenciales ya inválidas.
             ("password_reset_tokens", _plazo("password_reset_tokens")),  # pragma: allowlist secret
+            # Mismo plazo y mismo motivo que los del reset: el enlace de
+            # activación del alta (RFC 2026-10-21) caduca en 24 horas.
+            (
+                "email_verification_tokens",
+                _plazo("password_reset_tokens"),
+            ),  # pragma: allowlist secret
             ("client_errors", _plazo("client_errors")),
         )
     ]
@@ -379,6 +399,20 @@ def run_retention(
             results["rate_limits"] = int(n_rl)
             log.info("retention.table", table="rate_limits", count=n_rl, days=0, apply=apply)
         results.setdefault("rate_limits", -1)
+
+    # `users`: solo las altas cerradas que nadie verificó, por camino propio
+    # (`db.email_verification`). Fuera del `with` de arriba porque abre su
+    # propia transacción; un fallo aquí se anota como -1, como el resto.
+    dias_altas = _plazo("users")
+    try:
+        from db.email_verification import delete_stale_unverified
+
+        n_altas = delete_stale_unverified(dias_altas, apply=apply)
+        results["users"] = n_altas
+        log.info("retention.table", table="users", count=n_altas, days=dias_altas, apply=apply)
+    except Exception:
+        log.warning("retention.table_failed", table="users", exc_info=True)
+        results["users"] = -1
 
     total = sum(v for v in results.values() if v >= 0)
     log.info("retention.done", total=total, apply=apply, tables=list(results.keys()))
