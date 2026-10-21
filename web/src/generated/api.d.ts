@@ -18844,7 +18844,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserInfo"] | components["schemas"]["DetailMessage"];
+                    "application/json": components["schemas"]["UserInfo"];
                 };
             };
             /** @description Alta cerrada: el enlace de activación va al correo. */

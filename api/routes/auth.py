@@ -27,7 +27,7 @@ from fastapi import (
     Response,
     status,
 )
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from api.concurrency import run_db
@@ -609,8 +609,10 @@ def _registro_abierto() -> bool:
 
 @router.post(
     "/register",
-    response_model=UserInfo | DetailMessage,
+    response_model=UserInfo,
     status_code=status.HTTP_201_CREATED,
+    # El 201 (modo abierto) conserva su contrato; el 202 del modo cerrado es
+    # una respuesta más, no un cambio de la existente.
     responses={
         202: {
             "model": DetailMessage,
@@ -624,7 +626,7 @@ async def register(
     response: Response,
     request: Request,
     background_tasks: BackgroundTasks,
-) -> UserInfo | DetailMessage:
+) -> UserInfo | JSONResponse:
     """Alta con correo y contraseña.
 
     Política de contraseña equilibrada: mínimo 10 caracteres con mayúsculas,
@@ -646,7 +648,7 @@ async def register(
     display_name = (body.display_name or "").strip() or None
 
     if not _registro_abierto():
-        return await _register_closed(body, display_name, response, request, background_tasks)
+        return await _register_closed(body, display_name, request, background_tasks)
 
     def _create_account() -> int:
         """BD + ``hash_password`` (argon2) fuera del event loop."""
@@ -682,10 +684,9 @@ async def register(
 async def _register_closed(
     body: RegisterRequest,
     display_name: str | None,
-    response: Response,
     request: Request,
     background_tasks: BackgroundTasks,
-) -> DetailMessage:
+) -> JSONResponse:
     """El alta de producción: concesión, cuota y todo lo demás en segundo plano."""
     email = str(body.email).strip().lower()
     # La cuota va antes de mirar la concesión: el 403 dice si un correo la
@@ -706,8 +707,13 @@ async def _register_closed(
     # una sin verificar, el correo que toca) va con la respuesta ya enviada, para
     # que ni el cuerpo ni la latencia lo distingan.
     background_tasks.add_task(process_registration, email, body.password, display_name)
-    response.status_code = status.HTTP_202_ACCEPTED
-    return DetailMessage(detail=_REGISTER_RESPONSE)
+    # Respuesta directa y no el modelo: `response_model` es el `UserInfo` del 201,
+    # y FastAPI no valida contra él lo que ya es una `Response`. Las tareas en
+    # segundo plano se le cuelgan igual (`background_tasks` inyectado).
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=DetailMessage(detail=_REGISTER_RESPONSE).model_dump(),
+    )
 
 
 @router.post(
