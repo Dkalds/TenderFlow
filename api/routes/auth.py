@@ -743,9 +743,8 @@ async def verify_email(
     from services.access_grants import acceso_oauth_permitido
     from services.password_reset import token_hash
 
-    digest = token_hash(body.token)
-
     def _verify() -> UserInfo:
+        digest = token_hash(body.token)
         email = pending_token_email(digest)
         if email is None:
             raise HTTPException(status_code=400, detail="El enlace no es válido o ha caducado.")

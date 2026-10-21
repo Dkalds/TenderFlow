@@ -79,8 +79,10 @@ def upgrade() -> None:
         ),
     )
 
+    # El nombre literal, no `_TABLA`: `tests/test_tablas_citadas_existen.py`
+    # lee de las migraciones qué tablas existen, y solo ve literales.
     op.create_table(
-        _TABLA,
+        "email_verification_tokens",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column(
             "user_id",
