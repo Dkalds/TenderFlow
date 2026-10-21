@@ -77,7 +77,7 @@ python-dateutil>=2.8.2,<3
 
 # ── Exports ──────────────────────────────────────────────────────────────────
 reportlab>=4.0,<6
-pillow>=12.3,<13
+pillow>=13,<14
 openpyxl>=3.1.0,<4
 
 # ── Extracción de pliegos bajo demanda ───────────────────────────────────────
