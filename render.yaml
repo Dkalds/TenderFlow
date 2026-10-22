@@ -268,6 +268,31 @@ services:
       - key: JOBS_CONSUMIDOR_EN_API
         sync: false
 
+      # ── Correo (alertas y correo de producto) ─────────────────────────
+      # Sin estas variables no sale NINGÚN correo: ni el aviso de solicitud
+      # al operador, ni el de acceso concedido, ni la verificación del alta,
+      # ni el reset de contraseña, ni los digests. Hasta 2026-10-21 no estaban
+      # declaradas y en producción no salía nada sin que se notara (RFC
+      # 2026-10-21-alta-con-contrasena-tras-concesion §7). Con el backend `smtp`
+      # bastan ALERT_SMTP_USER y ALERT_SMTP_PASSWORD (contraseña de aplicación
+      # de Google); con `resend`/`postmark`, EMAIL_FROM y EMAIL_API_KEY. Ver
+      # docs/runbooks/correo-transaccional.md.
+      - key: EMAIL_BACKEND
+        value: smtp
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_REPLY_TO
+        sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      # Buzón del operador: aquí llegan los avisos de solicitud de acceso.
+      - key: ALERT_EMAIL_TO
+        sync: false
+      - key: ALERT_SMTP_USER
+        sync: false
+      - key: ALERT_SMTP_PASSWORD
+        sync: false
+
   # ── Worker de la cola de trabajo: RETIRADO (2026-10-19) ─────────────────
   # Aquí se declaraba `tenderflow-worker` (S5.3, D14; plano de cron de ADR-033).
   # Se creó a mano el 2026-10-10 en el plan free de Render, que hiberna un web

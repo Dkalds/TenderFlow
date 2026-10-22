@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-10-17
+Generado: 2026-10-21
 
-Revisión Alembic aplicada: `v153_rekey_pscp_id_externo`.
+Revisión Alembic aplicada: `v154_verificacion_email`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -28,12 +28,12 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 142 | 31 |
-| Identidad, acceso y auditoría | 15 | 105 | 24 |
+| Identidad, acceso y auditoría | 16 | 112 | 25 |
 | Seguimiento y notificaciones | 12 | 132 | 35 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 23 | 182 | 34 |
-| **Total** | **102** | **928** | **232** |
+| **Total** | **103** | **935** | **233** |
 
 ## Licitaciones y fuente
 
@@ -904,6 +904,21 @@ Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_csp_created`
 
+### `email_verification_tokens`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_id` | `integer` | no |
+| `token_hash` | `text` | no |
+| `created_at` | `timestamp with time zone` | no |
+| `expires_at` | `timestamp with time zone` | no |
+| `used_at` | `timestamp with time zone` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (token_hash)`
+
+Índices: `ix_email_verification_tokens_user_pending`
+
 ### `idempotency_keys`
 
 | Columna | Tipo | Nulo |
@@ -1025,6 +1040,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_id)`
 | `is_admin` | `integer` | no |
 | `deactivated_at` | `text` | sí |
 | `admin_granted_by` | `text` | sí |
+| `email_verified_at` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (email)` · `UNIQUE (oauth_provider, oauth_sub)`
 

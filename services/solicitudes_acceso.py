@@ -31,6 +31,7 @@ recibiría un "ya puedes entrar" y se encontraría ``email_not_allowed``.
 from __future__ import annotations
 
 import html
+from urllib.parse import quote
 
 from observability.alerts import AlertLevel, enviar_email_transaccional, notify
 from observability.logging import get_logger
@@ -88,27 +89,34 @@ def url_de_login() -> str | None:
     return url_absoluta("/login")
 
 
-def _cuerpo_acceso(empresa: str | None, enlace: str | None) -> tuple[str, str]:
+def _cuerpo_acceso(empresa: str | None, enlace: str | None, email: str) -> tuple[str, str]:
     """Texto plano y HTML del correo de acceso concedido.
 
     Se escribe entero aquí y no con la plantilla de alertas porque el
     destinatario es una persona que no conoce el producto, no un operador
     leyendo una incidencia. Dice tres cosas y ninguna más: que ya puede entrar,
-    cómo entra, y qué hacer si no funciona.
+    las dos formas de hacerlo, y qué hacer si no funciona.
+
+    Las dos formas desde el RFC 2026-10-21: crearse la cuenta con correo y
+    contraseña —el enlace abre «Crear cuenta» con la dirección ya puesta— o
+    entrar con Google. Hasta entonces solo se ofrecía Google, y quien no tenía
+    cuenta de Google con esa dirección no tenía por dónde entrar.
     """
     saludo = "Hola" if not empresa else f"Hola, equipo de {empresa}"
     pasos = (
-        "Entra con el botón «Continuar con Google», usando esta misma dirección "
-        "de correo (o la de tu empresa, si habilitamos el dominio entero)."
+        "Crea tu cuenta con esta misma dirección de correo y la contraseña que "
+        "elijas, o entra con el botón «Continuar con Google» si esta dirección es "
+        "una cuenta de Google."
     )
     cierre = (
         "Si al entrar te dice que tu cuenta no tiene acceso, respóndenos a este "
         "correo y lo revisamos."
     )
+    enlace_alta = f"{enlace}?modo=registro&email={quote(email)}" if enlace else None
 
     lineas = [f"{saludo}:", "", "Ya tienes acceso a TenderFlow.", "", pasos]
-    if enlace:
-        lineas += ["", enlace]
+    if enlace_alta and enlace:
+        lineas += ["", f"Crear mi cuenta: {enlace_alta}", f"Entrar con Google: {enlace}"]
     lineas += ["", cierre, "", "— TenderFlow"]
     texto = "\n".join(lineas)
 
@@ -116,18 +124,20 @@ def _cuerpo_acceso(empresa: str | None, enlace: str | None) -> tuple[str, str]:
     # escapa antes de entrar en el HTML. Es la misma regla que el resto del
     # proyecto aplica al HTML dinámico.
     saludo_html = html.escape(saludo)
-    boton = (
-        f'<p style="margin:20px 0"><a href="{html.escape(enlace)}" '
+    botones = (
+        f'<p style="margin:20px 0"><a href="{html.escape(enlace_alta)}" '
         f'style="background:{OXIDO};color:{BLANCO};padding:10px 18px;border-radius:6px;'
-        'text-decoration:none;display:inline-block">Entrar en TenderFlow</a></p>'
-        if enlace
+        'text-decoration:none;display:inline-block">Crear mi cuenta</a></p>'
+        f'<p><a href="{html.escape(enlace)}" style="color:{OXIDO}">'
+        "O entra con Google</a></p>"
+        if enlace_alta and enlace
         else ""
     )
     cuerpo_html = (
         abrir_documento(max_ancho=600) + f"<p>{saludo_html}:</p>"
         "<p><strong>Ya tienes acceso a TenderFlow.</strong></p>"
         f"<p>{html.escape(pasos)}</p>"
-        f"{boton}"
+        f"{botones}"
         f'<p style="color:{SECUNDARIO}">{html.escape(cierre)}</p>'
         f'<p style="{ESTILO_PIE};margin-top:24px">TenderFlow · '
         "inteligencia de licitaciones públicas de tecnología</p>" + CERRAR_DOCUMENTO
@@ -145,7 +155,7 @@ def notificar_acceso_concedido(*, email: str, empresa: str | None = None) -> boo
     justamente el fallo que este módulo existe para evitar.
     """
     enlace = url_de_login()
-    texto, cuerpo_html = _cuerpo_acceso(empresa, enlace)
+    texto, cuerpo_html = _cuerpo_acceso(empresa, enlace, email)
     enviado = enviar_email_transaccional(
         to_addr=email, subject=_ASUNTO_ACCESO, texto=texto, html=cuerpo_html
     )

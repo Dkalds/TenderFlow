@@ -577,10 +577,9 @@ def test_consumir_un_enlace_invalida_los_demas_pendientes_del_usuario(tmp_db):
     assert consume_reset_token(ajeno, hash_password(_SIN_ESPECIAL)) == otra_cuenta
 
 
-def test_una_cuenta_solo_oauth_no_recibe_enlace_ni_puede_consumirlo(tmp_db):
+def test_una_cuenta_solo_oauth_no_recibe_enlace_por_el_reset_publico(tmp_db):
     from db.database import connect
-    from db.password_reset import consume_reset_token
-    from db.users import get_or_create_oauth_user, get_user_by_id
+    from db.users import get_or_create_oauth_user
     from services.password_reset import issue_password_reset
 
     email = "solo-oauth@example.test"
@@ -594,12 +593,28 @@ def test_una_cuenta_solo_oauth_no_recibe_enlace_ni_puede_consumirlo(tmp_db):
     assert fila is not None
     assert fila[0] == 0
 
-    # Ni aunque el token existiera: una cuenta sin contraseña no estrena una por aquí.
-    digest = _insertar_token(user_id, "enlace-imposible-" + "x" * 32)
-    assert consume_reset_token(digest, _HASH_QUE_NO_SE_ESCRIBE) is None
+
+def test_una_cuenta_solo_oauth_estrena_contrasena_con_el_enlace_del_alta(tmp_db):
+    """RFC 2026-10-21 §4: el alta de un correo con cuenta solo Google manda un
+    enlace de reset emitido por `create_reset_token_for_user`, y consumirlo le
+    pone la primera contraseña. Hasta ese RFC una cuenta sin contraseña no
+    podía estrenar una por ningún camino."""
+    from db.password_reset import consume_reset_token, create_reset_token_for_user
+    from db.users import get_or_create_oauth_user, get_user_by_id
+    from services.password_reset import token_hash
+
+    user_id = get_or_create_oauth_user(
+        email="solo-oauth@example.test", oauth_provider="google", oauth_sub="sub-243"
+    )
+    digest = token_hash("enlace-del-alta-" + "x" * 32)
+    assert create_reset_token_for_user(user_id, digest, _FUTURO) is True
+
+    assert consume_reset_token(digest, "hash-de-la-primera") == user_id
     user = get_user_by_id(user_id)
     assert user is not None
-    assert user["password_hash"] is None
+    assert user["password_hash"] == "hash-de-la-primera"  # pragma: allowlist secret
+    # Un solo uso, como cualquier otro enlace de reset.
+    assert consume_reset_token(digest, "hash-de-otra") is None
 
 
 @pytest.mark.parametrize("baja", ["deactivate_user", "anonymize_user"])

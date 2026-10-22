@@ -347,8 +347,40 @@ def _normalizar(mensaje: Mensaje, settings: Any) -> _Preparado | ResultadoEnvio:
     )
 
 
+def credenciales_que_faltan(settings: Any) -> list[str]:
+    """Variables que le faltan al backend de ``EMAIL_BACKEND`` para poder enviar.
+
+    Lista vacía si el backend tiene lo que necesita (o es ``console``, que no
+    necesita nada). Es la misma comprobación que hace cada envío, pero sin un
+    mensaje que enviar: la usa el arranque de la API para avisar antes de que
+    el primer correo se pierda.
+    """
+    backend = str(settings.EMAIL_BACKEND)
+    if backend == "smtp":
+        return [
+            nombre
+            for nombre, valor in (
+                ("ALERT_SMTP_USER", (settings.ALERT_SMTP_USER or "").strip()),
+                ("ALERT_SMTP_PASSWORD", settings.ALERT_SMTP_PASSWORD.get_secret_value().strip()),
+            )
+            if not valor
+        ]
+    if backend in ("resend", "postmark"):
+        faltan: list[str] = []
+        if not _clave_api(settings):
+            faltan.append("EMAIL_API_KEY")
+        if not _remitente(settings)[0]:
+            faltan.append("EMAIL_FROM")
+        return faltan
+    return []
+
+
 def _no_configurado(backend: str, faltan: list[str]) -> ResultadoEnvio:
-    log.debug("mailer_not_configured", backend=backend, missing=faltan)
+    # `warning` y no `debug`: un correo que no sale por falta de credenciales
+    # es un correo perdido. En debug no se veía, y en producción no salió
+    # ninguno durante semanas sin que nadie se enterase (RFC
+    # 2026-10-21-alta-con-contrasena-tras-concesion §7).
+    log.warning("mailer_not_configured", backend=backend, missing=faltan)
     return ResultadoEnvio(
         ok=False,
         error=f"faltan {', '.join(faltan)}",

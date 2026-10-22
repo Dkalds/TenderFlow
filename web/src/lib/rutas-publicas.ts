@@ -157,6 +157,15 @@ export const PAGINAS_PUBLICAS: readonly PaginaPublica[] = [
     rastreable: false,
     sitemap: null,
   },
+  {
+    // Destino del enlace de activación del alta cerrada: llega sin sesión por
+    // definición y la abre. Superficie de credenciales, como la anterior.
+    ruta: "/verificar-correo",
+    coincidencia: "prefijo",
+    prerenderizada: false,
+    rastreable: false,
+    sitemap: null,
+  },
 ];
 
 /**

@@ -1205,16 +1205,19 @@ export interface paths {
         put?: never;
         /**
          * Register
-         * @description Alta self-service con email + password. Hace auto-login (set session cookie).
+         * @description Alta con correo y contraseña.
          *
          *     Política de contraseña equilibrada: mínimo 10 caracteres con mayúsculas,
          *     minúsculas y al menos un dígito (sin exigir carácter especial).
          *
-         *     **El alta NO es abierta.** Está cerrada por defecto
-         *     (``ALLOW_SELF_REGISTRATION=False``) y en producción responde 403: el acceso
-         *     a TenderFlow es por invitación y se concede a mano desde el panel de
-         *     solicitudes. Este docstring decía «Registro abierto: cualquier email válido
-         *     puede crear cuenta» dos líneas por encima del guard que lo impide.
+         *     **Modo cerrado** (producción): solo para correos con el acceso concedido
+         *     —lista estática o ``access_grants``, la misma regla que el login OAuth—.
+         *     Responde 202 sin crear sesión, exista o no la cuenta, y el enlace de
+         *     activación llega al correo (RFC 2026-10-21-alta-con-contrasena-tras-concesion).
+         *     Un correo sin concesión recibe 403 ``access_not_granted``.
+         *
+         *     **Modo abierto** (``ENV=dev`` o ``ALLOW_SELF_REGISTRATION``): crea la cuenta
+         *     verificada, abre sesión y responde 201 con el usuario, como siempre.
          */
         post: operations["register_api_v1_auth_register_post"];
         delete?: never;
@@ -1310,6 +1313,30 @@ export interface paths {
          *     gatearla dejaría a todo usuario con TOTP sin forma de completar el login.
          */
         post: operations["verify_totp_login_api_v1_auth_totp_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/verify-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Email
+         * @description Activa la cuenta del alta cerrada con el enlace del correo y abre sesión.
+         *
+         *     Comprueba otra vez la concesión: si se revocó entre el alta y el clic,
+         *     responde 403 ``access_not_granted`` sin gastar el enlace ni abrir sesión.
+         *     Token inválido, caducado o ya usado → 400 genérico.
+         */
+        post: operations["verify_email_api_v1_auth_verify_email_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8527,6 +8554,14 @@ export interface components {
             trabajos?: components["schemas"]["TrabajoResumen"][];
             /** Ventana Dias */
             ventana_dias: number;
+        };
+        /**
+         * EmailVerificationConfirm
+         * @description Token del enlace de activación que llega al correo tras el alta.
+         */
+        EmailVerificationConfirm: {
+            /** Token */
+            token: string;
         };
         /** EmpresaAlias */
         EmpresaAlias: {
@@ -18488,6 +18523,13 @@ export interface operations {
                     "application/json": components["schemas"]["UserInfo"];
                 };
             };
+            /** @description Contraseña correcta pero sin entrada: `email_not_verified` o `access_not_granted`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18805,6 +18847,22 @@ export interface operations {
                     "application/json": components["schemas"]["UserInfo"];
                 };
             };
+            /** @description Alta cerrada: el enlace de activación va al correo. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailMessage"];
+                };
+            };
+            /** @description El correo no tiene el acceso concedido (`access_not_granted`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18976,6 +19034,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StatusOk"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_email_api_v1_auth_verify_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailVerificationConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserInfo"];
+                };
+            };
+            /** @description El acceso se revocó antes de verificar. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

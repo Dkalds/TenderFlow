@@ -135,6 +135,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         log.error("api_startup_db_error", error=str(exc))
         raise  # fail fast en todos los entornos
 
+    # Sin credenciales de correo la API arranca igual —el producto funciona—,
+    # pero cada correo se pierde. Se dice una vez al arrancar, a nivel warning,
+    # para que se vea en el log del deploy y no solo cuando alguien echa en
+    # falta un correo.
+    if settings.ENV == "prod":
+        from observability.mailer import credenciales_que_faltan
+
+        faltan = credenciales_que_faltan(settings)
+        if faltan:
+            log.warning(
+                "email_backend_not_configured",
+                backend=str(settings.EMAIL_BACKEND),
+                missing=faltan,
+            )
+
     # Exponer el set de pending tasks en app.state para que middlewares puedan registrarlas
     app.state.pending_background_tasks = set()
 

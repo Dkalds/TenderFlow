@@ -31,6 +31,7 @@ Todo el correo del proyecto —de operación y de producto— entra por
 | Invitación a una organización | `services/organizations.py` | `enviar_email_transaccional` |
 | Recuperación de contraseña | `services/password_reset.py` | `enviar_email_transaccional` |
 | Aviso de acceso concedido | `services/solicitudes_acceso.py` | `enviar_email_transaccional` |
+| Activación del alta con contraseña y «ya tienes cuenta» | `services/email_verification.py` | `enviar_email_transaccional` |
 | **Informe semanal de pipeline** (con PDF adjunto) | `scheduler/jobs/informes_programados.py` | `mailer.enviar(Mensaje(..., adjuntos=[...]))` |
 
 Lo que el mailer garantiza a todos, sea cual sea el backend:
@@ -148,9 +149,15 @@ atrás sea un cambio de una variable.
 
 ### 2.6 Dónde viven las variables
 
-- **Render (API y worker)**: dashboard → *Environment*. `render.yaml` hoy no
-  declara `EMAIL_*`; conviene añadirlas con `sync: false` (`EMAIL_BACKEND`
-  puede llevar `value: smtp`) para que aparezcan en el dashboard sin buscarlas.
+- **Render (API)**: dashboard → *Environment*. Desde 2026-10-21 `render.yaml`
+  declara en el servicio de la API `EMAIL_BACKEND` (`value: smtp`),
+  `EMAIL_FROM`, `EMAIL_REPLY_TO`, `EMAIL_API_KEY`, `ALERT_EMAIL_TO`,
+  `ALERT_SMTP_USER` y `ALERT_SMTP_PASSWORD` con `sync: false`. Hasta entonces
+  no estaban y en producción no salía ningún correo (`enviado: false` en el
+  log, motivo `not_configured`) sin que se notara. Ahora el arranque deja
+  `email_backend_not_configured` a nivel `warning` si al backend le faltan
+  credenciales, y cada envío perdido deja `mailer_not_configured`, también en
+  `warning`.
 - **GitHub Actions** (`healthcheck.yml` y los jobs que llaman a `notify`):
   llevan su propio bloque `env:` con `ALERT_*`. Si se quiere que las alertas de
   esos jobs también salgan por el ESP hay que añadir ahí `EMAIL_BACKEND`,

@@ -148,6 +148,7 @@ _FAMILIAS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
             "sessions",
             "solicitudes_acceso",
             "password_reset_tokens",
+            "email_verification_tokens",
             "idempotency_keys",
             "rate_limits",
             "csp_violations",

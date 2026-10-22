@@ -142,7 +142,7 @@ def test_informe_tutea_y_tabla_accesible() -> None:
 
 
 def test_correo_de_acceso_con_boton_de_marca() -> None:
-    texto, html = _cuerpo_acceso("<script>", "https://x.example/login")
+    texto, html = _cuerpo_acceso("<script>", "https://x.example/login", "ana@empresa.example")
     _comprobar_html(html)
     assert f"background:{OXIDO};color:{BLANCO}" in html
     assert "&lt;script&gt;" in html and "<script>" not in html

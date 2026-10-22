@@ -4,8 +4,9 @@ import { Providers } from "@/components/providers";
 import { Toaster } from "@/components/toaster";
 
 /**
- * El envoltorio común de la superficie con sesión: dashboard, `/login` y
- * `/restablecer-contrasena` (S5.9 del plan de septiembre, S7.1 del v2).
+ * El envoltorio común de la superficie con sesión: dashboard, `/login`,
+ * `/restablecer-contrasena` y `/verificar-correo` (S5.9 del plan de
+ * septiembre, S7.1 del v2).
  *
  * Los tres layouts montaban a mano la misma pila —leer el nonce, `Providers`,
  * `Toaster`, `LiveRegion`— y ya habían divergido una vez: un

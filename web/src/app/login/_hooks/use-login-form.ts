@@ -9,9 +9,9 @@
  * y el canje de la invitación. `page.tsx` y sus piezas solo pintan lo que este
  * hook decide.
  *
- * Refactor de estructura, no de comportamiento: mismos endpoints, mismos
- * textos de error, mismo orden de efectos y mismas navegaciones duras que
- * cuando esto vivía dentro de `page.tsx`.
+ * El alta acaba en 201 con sesión (modo abierto: dev, E2E) o en 202 sin ella
+ * (producción): la cuenta espera al enlace del correo, que lleva a
+ * `/verificar-correo` (RFC 2026-10-21-alta-con-contrasena-tras-concesion).
  */
 
 import { useEffect, useState, type FormEvent } from "react";
@@ -22,7 +22,10 @@ import * as z from "zod/mini";
 // De `esquemas-acceso` y no de `esquemas`: ese módulo trae los esquemas de
 // todas las pantallas al First Load de `/login` (ver `esquemas-acceso.ts`).
 import { acceso, registroFormulario } from "@/lib/forms/esquemas-acceso";
-import { apiMutate, ApiError, fetchWithAuth, MENSAJE_SIN_CONEXION } from "@/lib/api-client";
+import type { components } from "@/generated/api";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import * as fallos from "../_lib/fallos-acceso";
+import type { AccionError, Fallo } from "../_lib/fallos-acceso";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { registrarEvento } from "@/lib/analytics";
@@ -30,20 +33,9 @@ import { registrarEvento } from "@/lib/analytics";
 import { olvidarOrganizacionPorDefecto } from "@/lib/organization-store";
 
 export type Mode = "login" | "register";
+export type { AccionError } from "../_lib/fallos-acceso";
 
-const OAUTH_FALLBACK_ERROR = "No se pudo completar el inicio de sesión. Inténtalo de nuevo.";
-
-const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  invalid_state: "La sesión de inicio caducó o ya se usó. Inténtalo de nuevo.",
-  oauth_failed: OAUTH_FALLBACK_ERROR,
-  email_not_allowed: "Tu cuenta no tiene acceso a TenderFlow.",
-};
-
-/* El mismo texto que el resto de la aplicación para el mismo fallo. El resto
- * de errores de la API pasan por `getErrorMessage(…, "accion")`: el `detail`
- * cuando explica qué falló de lo pedido, y un mensaje humano en los 5xx en vez
- * del texto crudo del servidor. */
-const ERROR_CONEXION = MENSAJE_SIN_CONEXION;
+type RespuestaAlta = components["schemas"]["UserInfo"] | components["schemas"]["DetailMessage"];
 
 /**
  * Campos del acceso con correo y contraseña, con los nombres de `LoginRequest` y
@@ -79,17 +71,21 @@ export function useLoginForm() {
   useEffect(() => {
     olvidarOrganizacionPorDefecto();
   }, []);
-  const [mode, setMode] = useState<Mode>("login");
+  // El correo de «acceso concedido» enlaza a `?modo=registro&email=…`: abre el
+  // alta con la dirección puesta. Solo cuenta al montar.
+  const [mode, setMode] = useState<Mode>(() => (searchParams.get("modo") === "registro" ? "register" : "login"));
+  const correoDeLaUrl = searchParams.get("email")?.trim() ?? "";
   const form = useForm<CredencialesValores, { mode: Mode }>({
     resolver: resolverCredenciales,
     context: { mode },
-    defaultValues: { email: "", password: "", display_name: "", confirm_password: "" },
+    defaultValues: { email: correoDeLaUrl, password: "", display_name: "", confirm_password: "" },
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(() => {
-    const oauthError = searchParams.get("error");
-    return oauthError ? (OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_FALLBACK_ERROR) : null;
-  });
+  const [fallo, setFallo] = useState<Fallo | null>(() => fallos.falloDelCallback(searchParams.get("error")));
+  const setError = (texto: string | null) => setFallo(texto ? { texto } : null);
+  // Correo al que se mandó el enlace de activación (alta cerrada, 202) y
+  // cuántas veces: mientras lo haya, el panel enseña «Revisa tu correo».
+  const [pendiente, setPendiente] = useState<{ correo: string; envios: number } | null>(null);
   const [loading, setLoading] = useState(false);
   // El callback de Google vuelve con `?mfa=required` cuando la cuenta tiene
   // segundo factor: la sesión ya está creada, solo falta elevarla.
@@ -117,6 +113,12 @@ export function useLoginForm() {
     setMode(next);
     setError(null);
     form.clearErrors();
+  }
+
+  /** De la cuenta sin activar al alta con el mismo correo, que manda otro enlace. */
+  function pedirOtroEnlace() {
+    switchMode("register");
+    setTimeout(() => form.setFocus("confirm_password"), 0);
   }
 
   async function login({ email, password }: CredencialesValores) {
@@ -147,11 +149,7 @@ export function useLoginForm() {
       await canjearInvitacion();
       window.location.href = destino();
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.status === 401 ? "Credenciales incorrectas." : getErrorMessage(err, "accion"));
-      } else {
-        setError(ERROR_CONEXION);
-      }
+      setFallo(fallos.falloDelAcceso(err));
     } finally {
       setLoading(false);
     }
@@ -172,17 +170,7 @@ export function useLoginForm() {
       registrarEvento("sesion_iniciada", { metodo: "totp" });
       window.location.href = destino();
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(
-          err.status === 429
-            ? "Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo."
-            : err.status === 401
-              ? "Código incorrecto. Revisa tu app de autenticación."
-              : getErrorMessage(err, "accion"),
-        );
-      } else {
-        setError(ERROR_CONEXION);
-      }
+      setFallo(fallos.falloDelSegundoFactor(err));
       setLoading(false);
     }
   }
@@ -201,25 +189,29 @@ export function useLoginForm() {
     setError(null);
     setLoading(true);
     try {
-      // El backend setea la cookie de sesion (auto-login) al crear la cuenta.
-      await apiMutate("POST", "/api/v1/auth/register", {
+      const respuesta = await apiMutate<RespuestaAlta>("POST", "/api/v1/auth/register", {
         email,
         password,
         display_name: display_name.trim() || undefined,
       });
-      // El alta self-service está apagada en producción, así que esto sólo se
-      // ve el día que se abra; entonces conviene poder distinguir la primera
-      // entrada de las siguientes sin tener que instrumentar nada más.
+      // Alta cerrada (202): no hay sesión hasta que se pulse el enlace del
+      // correo. Se distingue por el cuerpo porque `apiMutate` no expone el
+      // estado: el 201 trae el usuario (`user_id`) y el 202 solo un `detail`.
+      if (!("user_id" in respuesta)) {
+        setPendiente((previo) => ({
+          correo: email,
+          envios: previo?.correo === email ? previo.envios + 1 : 1,
+        }));
+        return;
+      }
+      // Alta abierta (201): la API ya dejó la cookie de sesión. Solo aquí se
+      // entra de verdad; en el alta cerrada el evento lo manda
+      // `/verificar-correo` al activar la cuenta.
       registrarEvento("sesion_iniciada", { metodo: "registro" });
       await canjearInvitacion();
       window.location.href = "/resumen";
     } catch (err) {
-      if (err instanceof ApiError) {
-        // 409: email ya registrado · 400: contrasena no cumple la politica
-        setError(err.status === 409 ? "Este correo ya está registrado." : getErrorMessage(err, "accion"));
-      } else {
-        setError(ERROR_CONEXION);
-      }
+      setFallo(fallos.falloDelAlta(err));
     } finally {
       setLoading(false);
     }
@@ -269,7 +261,9 @@ export function useLoginForm() {
     form,
     showPassword,
     toggleShowPassword: () => setShowPassword((v) => !v),
-    error,
+    error: fallo?.texto ?? null,
+    /** Lo que se ofrece junto al error, si hay algo que hacer con él. */
+    errorAccion: (fallo?.accion ?? null) as AccionError | null,
     loading,
     invitacion,
     mfaPending,
@@ -279,6 +273,18 @@ export function useLoginForm() {
     // compilador de React no toma `login`/`register` por código de render.
     handleLogin: (e: FormEvent) => form.handleSubmit(login)(e),
     handleRegister: (e: FormEvent) => form.handleSubmit(register)(e),
+    /** Correo al que se envió el enlace de activación, o `null` si no hay ninguno pendiente. */
+    correoPendiente: pendiente?.correo ?? null,
+    /** ¿Ya se ha pedido otro enlace desde «Revisa tu correo»? */
+    enlaceReenviado: (pendiente?.envios ?? 0) > 1,
+    /** Repite el alta con los mismos datos: la API manda otro enlace e invalida el anterior. */
+    reenviarEnlace: () => form.handleSubmit(register)(),
+    /** Vuelve del «Revisa tu correo» al formulario, para corregir el correo. */
+    volverAlFormulario: () => {
+      setPendiente(null);
+      setError(null);
+    },
+    pedirOtroEnlace,
     handleVerifyMfa,
     cancelarMfa,
     handleOAuthLogin,
