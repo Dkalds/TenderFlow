@@ -20,6 +20,11 @@
  *   encima de todas las vistas, y la cola se trabaja en Ejecuciones.
  * - «Resumen de la ingesta», que era el total de registros otra vez: ahora va
  *   en el pie del gráfico de completitud, que es de lo que es denominador.
+ *
+ * Lo que se añadió: las dos colas de revisión del dato (duplicados y órganos),
+ * que se llenaban solas y no tenían dónde vaciarse, y la auditoría de verdad
+ * del dato, que solo llegaba por correo. Cada una trae su propia consulta y
+ * no depende de `/analytics/quality`: si esa cae, se pueden seguir decidiendo.
  */
 
 import { PanelError } from "@/components/console/panel";
@@ -29,7 +34,10 @@ import { useCalidadDatos } from "../_hooks/use-calidad-datos";
 import { CompletitudCard } from "./calidad-datos/completitud-card";
 import { FormatoFechaCard } from "./calidad-datos/formato-fecha-card";
 import { ReportesCard } from "./calidad-datos/reportes-card";
+import { RevisionDuplicadosCard } from "./calidad-datos/revision-duplicados-card";
+import { RevisionOrganosCard } from "./calidad-datos/revision-organos-card";
 import { TendenciaCompletitudCard } from "./calidad-datos/tendencia-completitud-card";
+import { VerdadDominioCard } from "./calidad-datos/verdad-dominio-card";
 
 export default function CalidadDatosView() {
   const { data, isLoading, error, refetch, chartData, fechasNoIso } = useCalidadDatos();
@@ -64,6 +72,12 @@ export default function CalidadDatosView() {
           <ReportesCard reportes={data?.reportes_por_tipo} isLoading={isLoading} />
         </>
       )}
+
+      <RevisionDuplicadosCard />
+
+      <RevisionOrganosCard />
+
+      <VerdadDominioCard />
 
       {/* Calibración del modelo de baja — closed loop predicción vs. realidad */}
       <CalibracionBajaBlock />

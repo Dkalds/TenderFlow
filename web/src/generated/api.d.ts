@@ -92,6 +92,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/revision/duplicados": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pares de duplicados sin decidir */
+        get: operations["listar_duplicados_api_v1_admin_revision_duplicados_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/revision/duplicados/{id_externo}/resolver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirmar o rechazar un par de duplicados */
+        post: operations["resolver_duplicado_api_v1_admin_revision_duplicados__id_externo__resolver_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/revision/organos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fusiones dudosas de órganos sin decidir */
+        get: operations["listar_organos_api_v1_admin_revision_organos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/revision/organos/{revision_id}/resolver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fusionar una grafía con su candidato o separarla como órgano propio */
+        post: operations["resolver_organo_api_v1_admin_revision_organos__revision_id__resolver_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/revision/verdad": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auditoría de verdad del dato contra sus umbrales calibrados
+         * @description Las secciones de BD de ``scripts/audit_domain_truth.py``, cacheadas una hora.
+         *
+         *     La (b), multi-lote, no está: lee ZIP en disco que el servidor de la API no
+         *     tiene. Una sección que no pudo medirse sale con ``estado="error"`` y no
+         *     tumba las demás.
+         */
+        get: operations["verdad_dominio_api_v1_admin_revision_verdad_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/solicitudes-acceso": {
         parameters: {
             query?: never;
@@ -8575,6 +8667,70 @@ export interface components {
             /** Items */
             items: components["schemas"]["DocumentoSummary"][];
         };
+        /**
+         * DuplicadoPendiente
+         * @description Un par sin decidir: la fila que se escondería y la canónica que se queda.
+         */
+        DuplicadoPendiente: {
+            /**
+             * Canonical Id
+             * @description La fila canónica que se queda.
+             */
+            canonical_id: string;
+            /** Clave Match */
+            clave_match?: string | null;
+            /** Confianza */
+            confianza: number;
+            /** Detectado En */
+            detectado_en?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Fecha Publicacion Canonica */
+            fecha_publicacion_canonica?: string | null;
+            /** Fuente */
+            fuente?: string | null;
+            /** Fuente Canonica */
+            fuente_canonica?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Importe Canonica */
+            importe_canonica?: number | null;
+            /**
+             * Licitacion Id
+             * @description La fila marcada como duplicada.
+             */
+            licitacion_id: string;
+            /** Organo */
+            organo?: string | null;
+            /** Organo Canonica */
+            organo_canonica?: string | null;
+            /** Titulo */
+            titulo?: string | null;
+            /** Titulo Canonica */
+            titulo_canonica?: string | null;
+        };
+        /** DuplicadoResuelto */
+        DuplicadoResuelto: {
+            /** Detalle */
+            detalle: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "confirmed" | "rejected";
+            /** Licitacion Id */
+            licitacion_id: string;
+        };
+        /** DuplicadosPendientes */
+        DuplicadosPendientes: {
+            /** Items */
+            items?: components["schemas"]["DuplicadoPendiente"][];
+            /**
+             * Total
+             * @description Pares pendientes en toda la cola, no solo en esta página.
+             */
+            total: number;
+        };
         /** EjecucionesResumen */
         EjecucionesResumen: {
             /** Generado At */
@@ -11576,6 +11732,65 @@ export interface components {
             total_licitaciones: number;
         };
         /**
+         * OrganoPendiente
+         * @description Una grafía que se parece a un órgano del maestro, a la espera de decisión.
+         */
+        OrganoPendiente: {
+            /** Alias Normalizado */
+            alias_normalizado: string;
+            /** Candidato Nombre */
+            candidato_nombre?: string | null;
+            /** Candidato Organo Id */
+            candidato_organo_id?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Dir3 */
+            dir3?: string | null;
+            /** Id */
+            id: number;
+            /** Nombre Original */
+            nombre_original: string;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+        };
+        /** OrganoResuelto */
+        OrganoResuelto: {
+            /** Detalle */
+            detalle: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "accepted" | "rejected";
+            /**
+             * Filas Asignadas
+             * @description Licitaciones que recibieron el órgano.
+             */
+            filas_asignadas: number;
+            /** Id */
+            id: number;
+            /** Organo Id */
+            organo_id: number;
+            /**
+             * Organo Nuevo
+             * @description True si la grafía quedó como órgano propio.
+             */
+            organo_nuevo: boolean;
+        };
+        /** OrganosPendientes */
+        OrganosPendientes: {
+            /** Items */
+            items?: components["schemas"]["OrganoPendiente"][];
+            /**
+             * Total
+             * @description Grafías pendientes en toda la cola, no solo en esta página.
+             */
+            total: number;
+        };
+        /**
          * OrganosResult
          * @description Combined organos response.
          */
@@ -13390,6 +13605,8 @@ export interface components {
             dlq_count: number;
             /** Documentos Por Formato */
             documentos_por_formato?: components["schemas"]["DocumentoFormatoCobertura"][];
+            /** Duplicados Pendientes */
+            duplicados_pendientes?: number | null;
             /**
              * Fechas No Iso
              * @default 0
@@ -14163,6 +14380,14 @@ export interface components {
             review_id: number;
             /** Status */
             status: string;
+        };
+        /** RevisionDecision */
+        RevisionDecision: {
+            /**
+             * Aceptar
+             * @description Duplicados: true confirma el par (la fila se esconde de listados y métricas), false lo rechaza (vuelve a contar). Órganos: true fusiona la grafía con el candidato, false crea un órgano propio.
+             */
+            aceptar: boolean;
         };
         /**
          * Rival
@@ -16014,6 +16239,58 @@ export interface components {
             total: number;
         };
         /**
+         * VerdadDominio
+         * @description Lo que mide la auditoría nocturna de verdad del dato, contra sus umbrales.
+         */
+        VerdadDominio: {
+            /** Medido En */
+            medido_en: string;
+            /** Secciones */
+            secciones?: components["schemas"]["VerdadSeccion"][];
+            /**
+             * Violaciones
+             * @description Las mismas frases que manda el correo del cron.
+             */
+            violaciones?: string[];
+        };
+        /** VerdadMetrica */
+        VerdadMetrica: {
+            /** Detalle */
+            detalle?: string | null;
+            /** Etiqueta */
+            etiqueta: string;
+            /**
+             * Limite
+             * @description Umbral calibrado; null si el número se informa sin evaluar.
+             */
+            limite?: number | null;
+            /**
+             * Supera
+             * @default false
+             */
+            supera: boolean;
+            /** Unidad */
+            unidad: string;
+            /** Valor */
+            valor?: number | null;
+        };
+        /** VerdadSeccion */
+        VerdadSeccion: {
+            /** Clave */
+            clave: string;
+            /** Error */
+            error?: string | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "ok" | "violacion" | "error" | "sin_datos";
+            /** Metricas */
+            metricas?: components["schemas"]["VerdadMetrica"][];
+            /** Titulo */
+            titulo: string;
+        };
+        /**
          * VigenciaDocumento
          * @description Estado de vigencia de un documento del perfil, calculado en el servidor.
          *
@@ -16836,6 +17113,202 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EjecucionesResumen"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_duplicados_api_v1_admin_revision_duplicados_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicadosPendientes"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolver_duplicado_api_v1_admin_revision_duplicados__id_externo__resolver_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                /** @description La fila marcada como duplicada. */
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicadoResuelto"];
+                };
+            };
+            /** @description El par no existe o ya estaba resuelto */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_organos_api_v1_admin_revision_organos_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganosPendientes"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolver_organo_api_v1_admin_revision_organos__revision_id__resolver_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                revision_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganoResuelto"];
+                };
+            };
+            /** @description La revisión no existe o ya estaba resuelta */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verdad_dominio_api_v1_admin_revision_verdad_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerdadDominio"];
                 };
             };
             /** @description Validation Error */

@@ -519,6 +519,13 @@ export const adminKeys = {
     all: ["admin", "dlq"] as const,
     estado: (estado: "abiertas" | "agotadas") => ["admin", "dlq", estado] as const,
   },
+  /** Colas de revisión del dato y panel de verdad (`/admin/revision/*`). */
+  revision: {
+    all: ["admin", "revision"] as const,
+    duplicados: ["admin", "revision", "duplicados"] as const,
+    organos: ["admin", "revision", "organos"] as const,
+    verdad: ["admin", "revision", "verdad"] as const,
+  },
 };
 
 /**

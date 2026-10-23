@@ -98,9 +98,9 @@ Generado: 2026-10-23
 
 ## Superficie de la API
 
-**299 endpoints** expuestos.
+**304 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **7** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **12** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -115,6 +115,11 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | POST | `/api/v1/admin/dlq/{failure_id}/descartar` |
 | POST | `/api/v1/admin/dlq/{failure_id}/reintentar` |
 | GET | `/api/v1/admin/ejecuciones` |
+| GET | `/api/v1/admin/revision/duplicados` |
+| POST | `/api/v1/admin/revision/duplicados/{id_externo:path}/resolver` |
+| GET | `/api/v1/admin/revision/organos` |
+| POST | `/api/v1/admin/revision/organos/{revision_id}/resolver` |
+| GET | `/api/v1/admin/revision/verdad` |
 | GET | `/api/v1/admin/solicitudes-acceso` |
 | GET | `/api/v1/admin/solicitudes-acceso/grants` |
 | DELETE | `/api/v1/admin/solicitudes-acceso/grants/{grant_id}` |

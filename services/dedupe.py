@@ -16,7 +16,9 @@ CPV a 4 dígitos.
 - Match completo (órgano + expediente + CPV4) → confianza 1.0, ``confirmed``.
 - Órgano + expediente sin CPV coincidente → confianza 0.8, ``pending``
   (cola de revisión humana, mismo patrón que ``empresa_review_queue``;
-  el status vive en la propia tabla, preferencia del RFC).
+  el status vive en la propia tabla, preferencia del RFC). La cola se lee y
+  se resuelve en ``db/repositories/dedupe.py`` y se trabaja desde
+  ``/admin/revision/duplicados``.
 
 Canónico: la fila PLACSP cuando existe (más detalle de adjudicación);
 si no, la más antigua por fecha de publicación/extracción; y a igualdad de
@@ -58,9 +60,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, Self
 from urllib.parse import unquote, urlparse
 
-from db.database import connect, connect_read, get_cursor, now_utc_iso, set_cursor
+from db.database import connect_read, get_cursor, set_cursor
 from db.repositories import dedupe as dedupe_repo
-from db.repositories.base import rows_to_dicts
 
 # Reexport: el fragmento SQL bajó a ``db/sql_fragments.py`` (ADR-022) para que
 # ``db/`` pueda interpolarlo sin importar hacia arriba (ADR-024). La lógica de
@@ -836,40 +837,6 @@ def expediente_del_pliego(licitacion_id: str) -> str:
     detección por referencia ya descarta como canónica una fila marcada.
     """
     return dedupe_repo.canonical_for(licitacion_id, solo_confirmadas=True) or licitacion_id
-
-
-def review_pending(limit: int = 100) -> list[dict[str, Any]]:
-    """Cola de revisión humana: matches con confianza < 1.0 sin resolver."""
-    with connect_read() as c:
-        return rows_to_dicts(
-            c.execute(
-                """
-                SELECT d.licitacion_id, d.canonical_id, d.clave_match, d.confianza,
-                       d.detectado_en, l.titulo, l.fuente,
-                       lc.titulo AS titulo_canonica, lc.fuente AS fuente_canonica
-                FROM licitaciones_duplicados d
-                JOIN licitaciones l  ON l.id_externo  = d.licitacion_id
-                JOIN licitaciones lc ON lc.id_externo = d.canonical_id
-                WHERE d.status = 'pending'
-                ORDER BY d.detectado_en LIMIT %s
-                """,
-                (max(1, min(int(limit), 500)),),
-            )
-        )
-
-
-def resolve_pending(licitacion_id: str, *, accept: bool, resolved_by: str = "") -> bool:
-    """Resuelve un match pendiente: aceptar lo confirma, rechazarlo lo descarta."""
-    # resolved_at es TEXT ISO (v39_licitaciones_duplicados). Un `NOW()::text`
-    # lo escribía con espacio en vez de `T` y offset corto (normalizado en v151).
-    with connect() as c:
-        cur = c.execute(
-            "UPDATE licitaciones_duplicados "
-            "SET status = %s, resolved_at = %s, resolved_by = %s "
-            "WHERE licitacion_id = %s AND status = 'pending'",
-            ("confirmed" if accept else "rejected", now_utc_iso(), resolved_by, licitacion_id),
-        )
-        return bool(cur.rowcount)
 
 
 def medir_solape(fuente_a: str = "pscp", fuente_b: str = "placsp") -> dict[str, Any]:

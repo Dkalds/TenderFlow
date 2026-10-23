@@ -37,6 +37,12 @@ export interface QualityData {
   reportes_por_tipo?: Record<string, number>;
   /** RFC calidad #3 — completitud por mes de publicación (`QualityResult.tendencia_completitud`). */
   tendencia_completitud?: CompletitudMes[];
+  /**
+   * Tamaño de las colas de revisión del dato (`QualityResult`). `null` = no
+   * medido. La lista y las decisiones están en `revision-*-card.tsx`.
+   */
+  duplicados_pendientes?: number | null;
+  organos_revision_pendiente?: number | null;
   [key: string]: unknown;
 }
 

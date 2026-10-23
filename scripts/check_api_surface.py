@@ -70,6 +70,37 @@ NUEVAS: dict[str, str] = {
         "hiciera dos cosas según qué tabla guardara el token. POST "
         "/organizations/invitations/accept exige sesión, que es justo lo que aún no hay."
     ),
+    "GET /api/v1/admin/revision/duplicados": (
+        "Se miró GET /empresas/reviews, que lista la cola de identidad de EMPRESAS "
+        "(empresa_review_queue), no pares de licitaciones; GET /admin/dlq, que es de "
+        "extracciones fallidas de la ingesta; y GET /analytics/quality, que solo cuenta. "
+        "Ninguna enseña los pares pending de licitaciones_duplicados con las dos filas "
+        "a la vista, que es lo que hace falta para decidir si son el mismo contrato."
+    ),
+    "POST /api/v1/admin/revision/duplicados/{id_externo:path}/resolver": (
+        "Se miró POST /empresas/reviews/{id}, que resuelve la cola de empresas y vincula "
+        "adjudicaciones, y POST /admin/dlq/{id}/reintentar, que reencola filas de "
+        "ingesta. Ninguna cambia el status de licitaciones_duplicados: hasta ahora un "
+        "par pending solo se resolvía desde un test."
+    ),
+    "GET /api/v1/admin/revision/organos": (
+        "Se miró GET /empresas/reviews, que decide identidad de empresas y no de órganos "
+        "de contratación, y GET /analytics/quality, que publica solo el tamaño de "
+        "organo_review_queue (organos_revision_pendiente). Ninguna lista las grafías "
+        "dudosas con su candidato, que es lo que se necesita para decidir la fusión."
+    ),
+    "POST /api/v1/admin/revision/organos/{revision_id}/resolver": (
+        "Se miró POST /empresas/reviews/{id}, que es el mismo patrón para empresas pero "
+        "escribe en empresas/empresa_aliases y adjudicaciones, no en organos ni en "
+        "licitaciones.organo_id. No existía ninguna función, ni ruta, que resolviera "
+        "organo_review_queue: la cola solo crecía."
+    ),
+    "GET /api/v1/admin/revision/verdad": (
+        "Se miró GET /analytics/quality, que mide completitud y frescura pero no aplica "
+        "los umbrales calibrados de la auditoría de verdad del dato, y GET /admin/dlq, "
+        "que es de la ingesta. scripts/audit_domain_truth.py solo sale por correo y como "
+        "artefacto de Actions: sin esta ruta la consola no puede enseñar sus violaciones."
+    ),
     "GET /api/v1/licitaciones/{id_externo:path}/condiciones-oficiales": (
         "Se miró GET /licitaciones/{id}/ficha-pliego, que sirve la extracción LLM del "
         "pliego y responde 404 mientras no se ha extraído: meter ahí el dato de PLACSP "

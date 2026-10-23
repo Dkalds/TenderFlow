@@ -106,6 +106,10 @@ TECNOLOGIAS_KEYWORD_ADDED: Final = "tecnologias_keyword.added"
 TECNOLOGIAS_KEYWORD_REMOVED: Final = "tecnologias_keyword.removed"
 TECNOLOGIAS_KEYWORD_SEEDED: Final = "tecnologias_keyword.seeded"
 EMPRESA_REVIEW_RESOLVED: Final = "empresa.review_resolved"
+#: Colas de revisión del dato (``api/routes/admin_revision.py``): un par de
+#: duplicados confirmado o rechazado, y una fusión dudosa de órganos decidida.
+DEDUPE_REVIEW_RESOLVED: Final = "dedupe.review_resolved"
+ORGANO_REVIEW_RESOLVED: Final = "organo.review_resolved"
 
 # ── operación — acciones sobre la ingesta (solo administración) ────────────
 DLQ_REQUEUED: Final = "dlq.requeued"
@@ -169,6 +173,8 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
             TECNOLOGIAS_KEYWORD_REMOVED,
             TECNOLOGIAS_KEYWORD_SEEDED,
             EMPRESA_REVIEW_RESOLVED,
+            DEDUPE_REVIEW_RESOLVED,
+            ORGANO_REVIEW_RESOLVED,
         }
     ),
     "operacion": frozenset({DLQ_REQUEUED, DLQ_DISCARDED}),

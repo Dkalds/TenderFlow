@@ -151,6 +151,11 @@ class QualityResult(BaseModel):
     # NO MEDIDO (la consulta falló), misma regla que `cobertura_nif`.
     organos_cobertura_pct: float | None = None
     organos_revision_pendiente: int | None = None
+    # Cola de duplicados por revisar (ADR-026): pares `pending` que el detector
+    # no pudo confirmar. Se esconden de los listados pero cuentan en las
+    # métricas hasta que alguien decide; la cola se trabaja en
+    # `/admin/revision/duplicados`. `None` = NO MEDIDO, misma regla que arriba.
+    duplicados_pendientes: int | None = None
     # RFC ux-calidad-datos #3 — tendencia de completitud por mes de
     # PUBLICACIÓN, últimos `MESES_TENDENCIA` meses. Cada punto es la cohorte de
     # ese mes medida hoy, no un snapshot histórico (no hay tabla de
@@ -322,6 +327,17 @@ def _organos_cobertura() -> tuple[float | None, int | None]:
         return None, None
 
 
+def _duplicados_pendientes() -> int | None:
+    """Pares de duplicados sin revisar. Best-effort como sus vecinas."""
+    try:
+        from db.repositories import dedupe as repo_dedupe
+
+        return repo_dedupe.pendientes_count()
+    except Exception:
+        log.debug("quality_duplicados_unavailable")
+        return None
+
+
 def _adjudicaciones_por_fuente() -> list[AdjudicacionesPorFuente]:
     """Cobertura por fuente, tolerante a fallo.
 
@@ -409,6 +425,7 @@ def get_quality() -> QualityResult:
     codigos_no_catalogados = _codigos_no_catalogados()
     reportes_por_tipo = _reportes_por_tipo()
     organos_cobertura_pct, organos_revision_pendiente = _organos_cobertura()
+    duplicados_pendientes = _duplicados_pendientes()
 
     total = stats["total"]
     if total == 0:
@@ -424,6 +441,7 @@ def get_quality() -> QualityResult:
             reportes_por_tipo=reportes_por_tipo,
             organos_cobertura_pct=organos_cobertura_pct,
             organos_revision_pendiente=organos_revision_pendiente,
+            duplicados_pendientes=duplicados_pendientes,
         )
 
     cols: dict[str, int] = stats["cols"]
@@ -479,6 +497,7 @@ def get_quality() -> QualityResult:
         adjudicaciones_por_fuente=_adjudicaciones_por_fuente(),
         organos_cobertura_pct=organos_cobertura_pct,
         organos_revision_pendiente=organos_revision_pendiente,
+        duplicados_pendientes=duplicados_pendientes,
         tendencia_completitud=_tendencia_completitud(),
         # cobertura_nif / cobertura_modulo_sap se quedan en su default `None`
         # (no medidas): ver la nota del DTO.
