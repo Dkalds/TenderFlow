@@ -9,7 +9,7 @@ Un mismo contrato puede estar varias veces en `licitaciones`: lo publican PLACSP
 `licitaciones_duplicados` marca las filas que NO son la canónica:
 - `licitacion_id`: la fila duplicada (clave primaria). `canonical_id`: la fila canónica que se queda.
 - `status`: `confirmed` (duplicado seguro), `pending` (lo detectó el job por órgano + CPV4 + año-mes + título y nadie lo ha revisado), `rejected` (una persona dijo que NO es duplicado: cuéntala).
-- Canónica = `fuente = 'placsp'` primero; si no, la de `fecha_publicacion` más antigua; si no, la de `primera_extraccion` (o `fecha_extraccion`) más antigua; al final `id_externo`. Con TED confirmada, la canónica es siempre la otra fuente.
+- Canónica = PLACSP primero (`fuente = 'placsp'` o `bulk_YYYYMM`), TED (`fuente = 'ted'`) la última y el resto en medio; empatadas ahí, la de `fecha_publicacion` más antigua; si no, la de `primera_extraccion` (o `fecha_extraccion`) más antigua; al final `id_externo`. Con TED confirmada, la canónica es siempre la otra fuente.
 
 Reglas, según la pregunta (ADR-026):
 - Métricas (cuota de mercado, importes, bajas, conteos): excluye solo `confirmed`.
@@ -40,8 +40,8 @@ La web pública además colapsa por clave (órgano plegado + CPV4 + año-mes + t
 `licitaciones.importe` es histórico y mezcla bases: el parser tomaba el importe sin IVA y, si faltaba, el total con IVA, sin guardar cuál. Por eso:
 - `importe_tipo` dice qué es el `importe` de la fila: `sin_iva`, `con_iva` o `desconocido` (casi todo lo anterior a la re-ingesta; `NULL` se trata como `desconocido`).
 - `importe_base_sin_iva`: presupuesto base de licitación SIN IVA. `importe_con_iva`: el mismo CON IVA. `valor_estimado`: valor estimado del contrato (incluye prórrogas y modificaciones; es lo que decide el procedimiento). Pueden ser `NULL`: se pueblan al re-ingerir.
-- `importe_num` (numeric) e `importe` (`real`) son el mismo dato; `importe_num` es exacto pero puede faltar en filas antiguas: `COALESCE(importe_num, importe)`.
-- Precisión: `licitaciones.importe` y los importes de `adjudicaciones` (`importe_adjudicado`, `importe_pagable`, `oferta_minima`, `oferta_maxima`) son `real`, unas 7 cifras significativas: 11 782 154,55 € se guarda como 11 782 155. Para cifras exactas usa `importe_base_sin_iva`/`importe_con_iva`/`importe_num` (numeric o double).
+- `importe_num` (numeric) e `importe` (`double precision`) son el mismo dato; `importe_num` es exacto pero puede faltar en filas antiguas: `COALESCE(importe_num, importe)`.
+- Precisión: `licitaciones.importe` y los importes de `adjudicaciones` (`importe_adjudicado`, `importe_pagable`, `oferta_minima`, `oferta_maxima`) son `double precision` desde la revisión `v156`; antes eran `real` (unas 7 cifras significativas) y lo que se escribió entonces conserva ese redondeo hasta que el expediente se reingiere: 11 782 154,55 € puede leerse como 11 782 155. Para cifras exactas usa `importe_base_sin_iva`/`importe_con_iva`/`importe_num`.
 - Nunca mezcles bases al promediar o sumar. Mínimo: `COALESCE(importe_tipo, 'desconocido') <> 'con_iva'`. Para declarar «sin IVA»: `importe_tipo = 'sin_iva' AND importe_base_sin_iva IS NOT NULL`. Di en la respuesta qué base usaste.
 - `lotes.importe`: base sin IVA del lote.
 
