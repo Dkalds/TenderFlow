@@ -96,3 +96,62 @@ def test_cu18_del_ranking_al_perfil_del_rival_y_a_vigilarlo(client, api_db):
     assert sesion.delete(f"/competitive/watchlist/{rival['empresa_id']}").status_code == 200
     assert sesion.get("/competitive/watchlist").json()["items"] == []
     assert sesion.get("/competitive/watchlist/movimientos").json()["empresas"] == []
+
+
+def test_cu18_de_la_concentracion_del_segmento_a_la_baja_de_referencia(client, api_db):
+    """CU-18 — qué segmento está concentrado, quién se lo reparte y a qué baja se gana.
+
+    Es el recorrido de «Mercado por segmento» en Competencia: el HHI ordena los
+    segmentos, la cuota dice quién manda en el elegido y la baja de referencia,
+    cuánto se rebajó para ganarlo. Las tres cifras miden el mismo universo.
+    """
+    import db.database as db_mod
+
+    # CPV 72: una empresa con casi todo. CPV 48: tres a partes iguales.
+    insert_contract(db_mod, "SEG-72-1", "Dominante SL", importe=500_000.0, adjudicado=400_000.0)
+    insert_contract(db_mod, "SEG-72-2", "Dominante SL", importe=250_000.0, adjudicado=200_000.0)
+    insert_contract(db_mod, "SEG-72-3", "Menor SA", importe=40_000.0, adjudicado=36_000.0)
+    for i, nombre in enumerate(("Uno SL", "Dos SL", "Tres SL")):
+        insert_contract(
+            db_mod,
+            f"SEG-48-{i}",
+            nombre,
+            cpv="48000000",
+            organo="Diputación Z",
+            importe=125_000.0,
+            adjudicado=100_000.0,
+        )
+    resolve(db_mod)
+    sesion = abrir_sesion("segmentos@example.com", client)
+
+    hhi = sesion.get("/competitive/hhi", params={"segment_by": "cpv", "min_contratos": 1})
+    assert hhi.status_code == 200, hhi.text
+    segmentos = {s["segmento"]: s for s in hhi.json()["items"]}
+    # El más concentrado primero; el reparto a tercios es exactamente 3.333.
+    assert [s["segmento"] for s in hhi.json()["items"]] == ["72", "48"]
+    assert segmentos["72"]["hhi"] > 2500
+    assert round(segmentos["48"]["hhi"]) == 3333
+    assert (segmentos["72"]["empresas"], segmentos["72"]["contratos"]) == (2, 3)
+
+    # Quién se reparte el segmento 72, con su cuota sobre ese segmento.
+    cuota = sesion.get("/competitive/cuota", params={"cpv": "72", "limit": 10})
+    assert cuota.status_code == 200, cuota.text
+    reparto = [(c["empresa"], c["contratos"], c["cuota_pct"]) for c in cuota.json()["items"]]
+    assert reparto == [("Dominante SL", 2, 94.34), ("Menor SA", 1, 5.66)]
+    assert cuota.json()["scope"]["filters"] == {"cpv_prefix": "72"}
+    assert cuota.json()["scope"]["denominator_records"] == 3
+
+    # A qué baja se gana ahí: 20 % y 10 %, y sobre qué base de importe.
+    referencia = sesion.get("/competitive/bajas/referencia", params={"cpv": "72"})
+    assert referencia.status_code == 200, referencia.text
+    ref = referencia.json()
+    assert (ref["contratos"], ref["baja_min_pct"], ref["baja_max_pct"]) == (3, 10, 20)
+    assert ref["base"] == "mixta"
+
+    # Y por órgano, las bajas del ámbito con su masa mínima.
+    bajas = sesion.get("/competitive/bajas", params={"group_by": "organo", "min_contratos": 3})
+    assert bajas.status_code == 200, bajas.text
+    por_organo = {b["grupo"]: b for b in bajas.json()["items"]}
+    assert set(por_organo) == {"Ministerio X", "Diputación Z"}
+    assert por_organo["Diputación Z"]["baja_media_pct"] == 20
+    assert bajas.json()["base"] == "mixta"

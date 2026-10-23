@@ -35,6 +35,7 @@ import {
   documentosKeys,
   empresasKeys,
   estaticosKeys,
+  gobiernoOrgKeys,
   etiquetaKeys,
   featureFlagKeys,
   eventosKeys,
@@ -225,6 +226,13 @@ const FABRICAS: readonly Fabrica[] = [
         nombre: "competitiveKeys.watchlistMovimientos",
         clave: competitiveKeys.watchlistMovimientos(30),
       },
+      { nombre: "competitiveKeys.hhi", clave: competitiveKeys.hhi("cpv", 5) },
+      { nombre: "competitiveKeys.cuota", clave: competitiveKeys.cuota({ cpv: "72" }) },
+      { nombre: "competitiveKeys.bajas", clave: competitiveKeys.bajas({ group_by: "organo" }) },
+      {
+        nombre: "competitiveKeys.bajaReferencia",
+        clave: competitiveKeys.bajaReferencia({ cpv: "72" }),
+      },
     ],
   },
   {
@@ -375,6 +383,17 @@ const FABRICAS: readonly Fabrica[] = [
     nombre: "estaticosKeys",
     raiz: estaticosKeys.all,
     miembros: [{ nombre: "estaticosKeys.geoCcaa", clave: estaticosKeys.geoCcaa }],
+  },
+  {
+    nombre: "gobiernoOrgKeys",
+    raiz: gobiernoOrgKeys.all,
+    miembros: [
+      { nombre: "gobiernoOrgKeys.pesosGoNoGo", clave: gobiernoOrgKeys.pesosGoNoGo(21) },
+      {
+        nombre: "gobiernoOrgKeys.auditoria",
+        clave: gobiernoOrgKeys.auditoria(21, "2026-10-01", null),
+      },
+    ],
   },
 ];
 
