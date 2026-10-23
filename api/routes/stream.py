@@ -1,4 +1,8 @@
-"""SSE — GET /api/v1/licitaciones/stream.
+"""SSE — GET /api/v1/licitaciones/stream. **Deprecado: se apaga el 2027-02-01.**
+
+Sin consumidor en ``web/`` (la campana dejó de abrir el ``EventSource`` el
+2026-10-12). La retirada y sus sucesoras están en
+``docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md``.
 
 Implementa Server-Sent Events (SSE) para notificaciones push de nuevas
 licitaciones sin polling del cliente.
@@ -55,18 +59,24 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from api.concurrency import run_db
+from api.errors import deprecate_route, sunset_anunciado
 from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
 router = APIRouter(tags=["stream"])
+
+#: Apagado del stream, anunciado el 2026-10-23 con la ventana de 90 días. Ver
+#: la RFC citada en el docstring del módulo.
+SUNSET_STREAM = sunset_anunciado(date(2027, 2, 1), anunciado=date(2026, 10, 23))
 
 # Configuración
 _POLL_INTERVAL = 5.0  # segundos entre polls al centinela
@@ -366,7 +376,8 @@ async def _event_generator(
 
 @router.get(
     "/licitaciones/stream",
-    summary="SSE — Notificaciones en tiempo real de nuevas licitaciones",
+    summary="[DEPRECADO 2027-02-01] SSE — Notificaciones en tiempo real de nuevas licitaciones",
+    deprecated=True,
     description=(
         "Abre una conexión Server-Sent Events. Emite eventos ``licitaciones_nuevas`` "
         "cuando el scraper ingesta datos nuevos, y ``heartbeat`` cada 30 s para "
@@ -406,7 +417,7 @@ async def licitaciones_stream(
         last_event_ts=last_event_ts,
     )
 
-    return StreamingResponse(
+    respuesta = StreamingResponse(
         _event_generator(request, last_event_ts, batch_size),
         media_type="text/event-stream",
         headers={
@@ -415,3 +426,13 @@ async def licitaciones_stream(
             "Connection": "keep-alive",
         },
     )
+    # Sobre la respuesta devuelta y no sobre una inyectada: FastAPI no mezcla
+    # las cabeceras de la respuesta temporal cuando el handler devuelve una
+    # `Response` propia.
+    deprecate_route(
+        respuesta,
+        sunset=SUNSET_STREAM,
+        successor="/api/v1/licitaciones/cursor",
+        rfc="docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md",
+    )
+    return respuesta

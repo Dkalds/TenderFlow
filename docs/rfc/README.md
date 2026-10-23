@@ -17,7 +17,7 @@ Todos los RFCs siguen esta estructura.
 
 <!-- BEGIN indice-rfc (generado por scripts/gen_rfc_index.py — no editar a mano) -->
 
-**78 RFC**, de los cuales **19** siguen abiertos. `approved` 1 · `draft` 2 · `implemented` 53 · `obsolete` 4 · `partially-implemented` 14 · `review` 2 · `superseded` 2.
+**79 RFC**, de los cuales **20** siguen abiertos. `approved` 1 · `draft` 2 · `implemented` 53 · `obsolete` 4 · `partially-implemented` 14 · `review` 3 · `superseded` 2.
 
 **Criterio de `implemented`: que el código exista en el árbol, no que el PR se haya mergeado.** Un RFC cuyo código está pero cuyo PR quedó abierto está implementado; uno cuyo PR se mergeó sin dejar código, no.
 
@@ -114,6 +114,7 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [UX/KPIs · Tendencias — heatmap real Mes×Estado, banda de forecast theme-safe, drill-down](2026-06-16-rfc-ux-tendencias.md) | `partially-implemented` | 2026-06-16 | — |
 | [Sacar la inferencia de scikit-learn del proceso HTTP — destino de /explain y de /analytics/clusters](2026-09-18-rfc-explain-fuera-del-proceso-api.md) | `review` | 2026-09-18 | — |
 | [Purga de las licitaciones de PSCP sin señal tecnológica y puerta de ingesta endurecida](2026-09-26-rfc-purga-pscp-sin-tecnologia.md) | `review` | 2026-09-26 | — |
+| [Retirada de lo que la campana dejó de usar (campos de mercado de `GET /notifications`, `POST /notifications/read`), del stream SSE y de `forecast/retendering`](2026-10-23-rfc-retirada-campana-antigua-y-stream.md) | `review` | 2026-10-23 | — |
 | [Meta-RFC · Integridad analítica del frontend — el frontend no fabrica datos; backend = única fuente de verdad analítica](2026-06-16-rfc-meta-integridad-analitica-frontend.md) | `superseded` | 2026-06-16 | El meta-RFC graduó: la decisión vive en `docs/adr/ADR-014-integridad-analitica-frontend.md` y su guardarraíl es `scripts/check_frontend_invariants.py --strict`, bloqueante en el job `static-analysis` de `.github/workflows/ci.yml` desde 2026-07-28. Un RFC en `draft` cuya decisión ya es un ADR ejecutable en CI solo confunde a quien lo lea. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2). |
 | [Plan de migración de persistencia pre-cocido con disparador binario (SQLite/Turso → Postgres)](2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md) | `superseded` | 2026-06-30 | Decisión de migración tomada sin esperar tripwires (2026-07-05). El destino es Supabase + psycopg3. La ejecución está documentada en ADR-016 y el plan de fases en AGENTS.md §0. Este RFC escala a ejecución directa. |
 
@@ -261,4 +262,4 @@ evidencia concreta está en el front matter de cada fichero.
 | [2026-06-30-rfc-retrofit-pipeline-placsp-connector](2026-06-30-rfc-retrofit-pipeline-placsp-connector.md) | `implemented` | `PlacspAtomConnector` y `PlacspBulkConnector` en `scraper/connectors/placsp.py` |
 | [2026-06-16-rfc-meta-integridad-analitica-frontend](2026-06-16-rfc-meta-integridad-analitica-frontend.md) | `superseded` | Graduó a [ADR-014](../adr/ADR-014-integridad-analitica-frontend.md); el guardarraíl es `scripts/check_frontend_invariants.py --strict`, bloqueante en `ci.yml` |
 | [2026-07-21-rfc-relaciones-estructura-mercado](2026-07-21-rfc-relaciones-estructura-mercado.md) | `obsolete` | Las tres superficies que rediseñaba ya no existen en `web/src` |
-| [2026-09-06-rfc-retirada-endpoints-analitica](2026-09-06-rfc-retirada-endpoints-analitica.md) | `approved` | Retirada anunciada de D19; efectiva el 2026-12-04. Las cuatro operaciones ya salen `deprecated` en el OpenAPI |
+| [2026-09-06-rfc-retirada-endpoints-analitica](2026-09-06-rfc-retirada-endpoints-analitica.md) | `approved` | Retirada anunciada de D19; efectiva el 2026-12-04, movida al 2027-01-15 por la ventana de 90 días (addendum del 2026-10-23). Las cuatro operaciones ya salen `deprecated` en el OpenAPI |

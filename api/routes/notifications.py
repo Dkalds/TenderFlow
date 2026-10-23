@@ -13,19 +13,21 @@ concreto y las cubre el Resumen.
   la acción explícita «Marcar todo como leído».
 - ``GET /notifications``: el resumen de antes, conservado por compatibilidad.
   Sus campos de mercado (``items``, ``unread_count``, ``hoy``) están
-  deprecados: retirarlos es un cambio incompatible del contrato y va por RFC
-  (``docs/api-design.md``).
+  deprecados y se retiran el 2027-02-01, igual que ``POST /notifications/read``
+  (``docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md``).
 """
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.errors import deprecate_route, sunset_anunciado
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.connection import lecturas_agrupadas
@@ -43,6 +45,12 @@ from shared.dto import DESCRIPCION_GRANDES_EN_PLAZO, StatusOk
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+#: Retirada de lo que la campana dejó de usar el 2026-10-12: los campos de
+#: mercado de ``GET /notifications`` y ``POST /notifications/read``. Anunciada
+#: el 2026-10-23 con la ventana de 90 días de ``DEPRECATION_WINDOW_DAYS``.
+SUNSET_CAMPANA_ANTIGUA = sunset_anunciado(date(2027, 2, 1), anunciado=date(2026, 10, 23))
+_RFC_CAMPANA_ANTIGUA = "docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md"
 
 
 def _user_key(ctx: dict[str, Any]) -> str:
@@ -106,14 +114,14 @@ class NotificationsResult(BaseModel):
     items: list[NotificationItem] = Field(
         default_factory=list,
         description=(
-            "Deprecado: siempre vacío. La campana ya no lista novedades del mercado; "
-            "están en GET /analytics/resumen/novedades."
+            "Deprecado: siempre vacío; se retira el 2027-02-01. La campana ya no lista "
+            "novedades del mercado; están en GET /analytics/resumen/novedades."
         ),
         json_schema_extra=_DEPRECADO,
     )
     unread_count: int = Field(
         default=0,
-        description="Deprecado: siempre 0 (acompañaba a `items`).",
+        description="Deprecado: siempre 0 (acompañaba a `items`); se retira el 2027-02-01.",
         json_schema_extra=_DEPRECADO,
     )
     alerts: list[AlertItem] = Field(default_factory=list)
@@ -121,8 +129,9 @@ class NotificationsResult(BaseModel):
     hoy: HoyCounters = Field(
         default_factory=HoyCounters,
         description=(
-            "Deprecado: contadores del mercado, que la campana ya no pinta. "
-            "Los mismos, con el ámbito de la barra, en GET /analytics/resumen/hoy."
+            "Deprecado: contadores del mercado, que la campana ya no pinta; se retira "
+            "el 2027-02-01. Los mismos, con el ámbito de la barra, en "
+            "GET /analytics/resumen/hoy."
         ),
         json_schema_extra=_DEPRECADO,
     )
@@ -240,11 +249,28 @@ async def get_alertas(
     )
 
 
-@router.post("/read", summary="Marcar novedades como leidas")
+@router.post(
+    "/read",
+    summary="[DEPRECADO 2027-02-01] Marcar novedades como leidas",
+    deprecated=True,
+)
 async def post_mark_read(
     body: MarkReadRequest,
+    response: Response,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> StatusOk:
+    """Marca novedades del mercado como leídas. Sin consumidor desde el 2026-10-12.
+
+    La campana ya no lista novedades: sus alertas se marcan con
+    ``POST /notifications/alerts/read``, y la última visita del Resumen con
+    ``POST /analytics/resumen/desde-mi-ultima-visita/visto``.
+    """
+    deprecate_route(
+        response,
+        sunset=SUNSET_CAMPANA_ANTIGUA,
+        successor="/api/v1/notifications/alerts/read",
+        rfc=_RFC_CAMPANA_ANTIGUA,
+    )
     if body.ids:
         await run_db(mark_all_read, _user_key(ctx), body.ids, user_id=_user_id_int(ctx))
     return StatusOk(status="ok")

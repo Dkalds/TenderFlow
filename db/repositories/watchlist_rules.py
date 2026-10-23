@@ -24,7 +24,7 @@ ADR-022: el SQL vive en ``db/``. Las cláusulas del filtro las construye
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, TypedDict
 
 from sqlalchemy import Select, and_, func, literal, literal_column, select, text
 
@@ -316,3 +316,269 @@ def set_rule_email(user_key: str, rule_id: int, email: str, *, user_id: int | No
             f"UPDATE watchlist_rules SET email = %s WHERE id = %s AND {_IDENT}",
             (email, rule_id, user_id, user_key, user_id),
         )
+
+
+# ── CRUD de las reglas y ejecución del matching ──────────────────────────────
+#
+# Vivían en ``services/watchlist_rules.py`` con ``connect``/``connect_read``
+# importados en el servicio (whitelist TID251) y ocho ``noqa: S608``. ADR-022:
+# el SQL vive en ``db/``. El servicio conserva el modelo de dominio
+# (``WatchlistRule``), la normalización del órgano y la construcción de las
+# cláusulas del filtro; aquí se escriben las sentencias y se ejecutan. El
+# comportamiento es el mismo, sentencia a sentencia.
+#
+# Las f-strings de este bloque solo interpolan constantes del módulo
+# (``_IDENT``, ``_COLS_REGLA``, ``_SETS_REGLA``): ningún valor de usuario llega
+# al texto SQL, todos viajan como ``%s``. Por eso no es inyección y el ``S608``
+# de ``db/**`` está desactivado en ``pyproject.toml``.
+
+
+class ValoresRegla(TypedDict):
+    """Columnas editables de una regla, tal y como se escriben en la tabla.
+
+    ``active`` va como entero (0/1) porque así lo guarda la columna; la
+    conversión desde el ``bool`` del modelo la hace el servicio.
+    """
+
+    nombre: str | None
+    keyword: str | None
+    cpv: str | None
+    min_importe: float | None
+    ccaa: str | None
+    frequency: str
+    active: int
+    tecnologia: str | None
+    organo: str | None
+    organo_norm: str | None
+    procedimiento: str | None
+    tipo_contrato: str | None
+    banda_min: str | None
+    plazo_min_dias: int | None
+
+
+#: Proyección de una regla para el modelo de dominio. Una sola constante para
+#: las dos ramas del listado: cuando eran dos literales, añadir un criterio
+#: obligaba a acordarse de los dos, y el que se olvidara devolvía la regla sin
+#: ese filtro — es decir, una regla más ancha de la que el usuario escribió.
+_COLS_REGLA = (
+    "id, nombre, keyword, cpv, min_importe, ccaa, frequency, active, "
+    "organization_id, visibility, tecnologia, organo, procedimiento, "
+    "tipo_contrato, banda_min, plazo_min_dias"
+)
+
+#: Columnas que reescribe ``actualizar_regla``, en el orden de :func:`_valores_set`.
+_CAMPOS_SET: tuple[str, ...] = (
+    "nombre",
+    "keyword",
+    "cpv",
+    "min_importe",
+    "ccaa",
+    "frequency",
+    "active",
+    "tecnologia",
+    "organo",
+    "organo_norm",
+    "procedimiento",
+    "tipo_contrato",
+    "banda_min",
+    "plazo_min_dias",
+)
+_SETS_REGLA = ", ".join(f"{campo} = %s" for campo in _CAMPOS_SET)
+
+
+def _valores_set(valores: ValoresRegla) -> tuple[Any, ...]:
+    """Valores de ``valores`` en el orden de :data:`_CAMPOS_SET`.
+
+    Explícito y no ``valores[campo] for campo in _CAMPOS_SET``: un ``TypedDict``
+    no admite indexarse con una clave que no sea literal sin perder el tipado.
+    ``test_unit_watchlist_rules_repo`` fija que los dos órdenes coinciden.
+    """
+    return (
+        valores["nombre"],
+        valores["keyword"],
+        valores["cpv"],
+        valores["min_importe"],
+        valores["ccaa"],
+        valores["frequency"],
+        valores["active"],
+        valores["tecnologia"],
+        valores["organo"],
+        valores["organo_norm"],
+        valores["procedimiento"],
+        valores["tipo_contrato"],
+        valores["banda_min"],
+        valores["plazo_min_dias"],
+    )
+
+
+def insertar_regla(
+    user_key: str,
+    valores: ValoresRegla,
+    *,
+    user_id: int | None = None,
+    organization_id: int | None = None,
+    visibility: str = "private",
+) -> int:
+    """Persiste una regla nueva y devuelve su id."""
+    with connect() as c:
+        row = c.execute(
+            "INSERT INTO watchlist_rules "
+            "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
+            " frequency, active, organization_id, visibility, "
+            " tecnologia, organo, organo_norm, procedimiento, tipo_contrato, "
+            " banda_min, plazo_min_dias) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+            "        %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (
+                user_key,
+                user_id,
+                valores["nombre"],
+                valores["keyword"],
+                valores["cpv"],
+                valores["min_importe"],
+                valores["ccaa"],
+                valores["frequency"],
+                valores["active"],
+                organization_id,
+                visibility,
+                valores["tecnologia"],
+                valores["organo"],
+                valores["organo_norm"],
+                valores["procedimiento"],
+                valores["tipo_contrato"],
+                valores["banda_min"],
+                valores["plazo_min_dias"],
+            ),
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def filas_de_reglas(
+    user_key: str, organization_id: int | None = None, *, user_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Reglas del usuario (o visibles en la organización), más recientes primero.
+
+    Sin ``organization_id``: las del usuario. Con él: las de esa organización
+    que son del usuario o se compartieron con ella (``visibility``).
+    """
+    with connect() as c:
+        if organization_id is None:
+            cur = c.execute(
+                f"SELECT {_COLS_REGLA} FROM watchlist_rules WHERE {_IDENT} "
+                "ORDER BY created_at DESC, id DESC",
+                (user_id, user_key, user_id),
+            )
+        else:
+            cur = c.execute(
+                f"SELECT {_COLS_REGLA} FROM watchlist_rules "
+                "WHERE organization_id = %s "
+                f"AND (visibility = 'organization' OR {_IDENT}) "
+                "ORDER BY created_at DESC, id DESC",
+                (organization_id, user_id, user_key, user_id),
+            )
+        return rows_to_dicts(cur)
+
+
+def actualizar_regla(
+    user_key: str,
+    rule_id: int,
+    valores: ValoresRegla,
+    organization_id: int | None = None,
+    *,
+    user_id: int | None = None,
+) -> bool:
+    """Reescribe una regla propia. ``False`` si no existe o no es del usuario."""
+    sets = _valores_set(valores)
+    with connect() as c:
+        if organization_id is None:
+            cur = c.execute(
+                f"UPDATE watchlist_rules SET {_SETS_REGLA} WHERE id = %s AND {_IDENT}",
+                (*sets, rule_id, user_id, user_key, user_id),
+            )
+        else:
+            cur = c.execute(
+                f"UPDATE watchlist_rules SET {_SETS_REGLA} "
+                f"WHERE id = %s AND {_IDENT} AND organization_id = %s",
+                (*sets, rule_id, user_id, user_key, user_id, organization_id),
+            )
+        return bool(cur.rowcount > 0)
+
+
+def borrar_regla(
+    user_key: str,
+    rule_id: int,
+    organization_id: int | None = None,
+    *,
+    user_id: int | None = None,
+) -> bool:
+    """Borra una regla propia. ``False`` si no existe o no es del usuario."""
+    with connect() as c:
+        if organization_id is None:
+            cur = c.execute(
+                f"DELETE FROM watchlist_rules WHERE id = %s AND {_IDENT}",
+                (rule_id, user_id, user_key, user_id),
+            )
+        else:
+            cur = c.execute(
+                f"DELETE FROM watchlist_rules WHERE id = %s AND {_IDENT} AND organization_id = %s",
+                (rule_id, user_id, user_key, user_id, organization_id),
+            )
+        return bool(cur.rowcount > 0)
+
+
+def borrar_reglas_de_usuario(user_key: str, *, user_id: int | None = None) -> int:
+    """Borra todas las reglas del usuario (GDPR). Filas borradas."""
+    with connect() as c:
+        cur = c.execute(
+            f"DELETE FROM watchlist_rules WHERE {_IDENT}",
+            (user_id, user_key, user_id),
+        )
+        return int(cur.rowcount)
+
+
+def pausar_reglas_de_usuario(user_key: str, *, user_id: int | None = None) -> int:
+    """Pone ``active = 0`` en las reglas activas del usuario. Cuántas pausó."""
+    with connect() as c:
+        cur = c.execute(
+            f"UPDATE watchlist_rules SET active = 0 WHERE {_IDENT} AND active = 1",
+            (user_id, user_key, user_id),
+        )
+        return int(cur.rowcount)
+
+
+def ids_que_casan(clauses: Sequence[Any], *, limit: int) -> list[str]:
+    """``id_externo`` de hasta ``limit`` licitaciones que cumplen ``clauses``."""
+    stmt = select(licitaciones.c.id_externo).select_from(licitaciones)
+    if clauses:
+        stmt = stmt.where(and_(*clauses))
+    sql, params = compile_query(stmt.limit(limit))
+    with connect_read() as c:
+        return [str(row[0]) for row in c.execute(sql, params).fetchall()]
+
+
+def contar_matches(clauses: Sequence[Any]) -> int:
+    """Conteo EXACTO de las licitaciones que cumplen ``clauses``.
+
+    Escaneo completo: es la fuente del total del detalle y de la vista previa.
+    Para el badge del listado está :func:`bounded_match_counts`.
+    """
+    stmt = select(func.count()).select_from(licitaciones)
+    if clauses:
+        stmt = stmt.where(and_(*clauses))
+    sql, params = compile_query(stmt)
+    with connect_read() as c:
+        row = c.execute(sql, params).fetchone()
+    return int(row[0]) if row else 0
+
+
+def listar_matches(
+    clauses: Sequence[Any], columns: Sequence[Any], *, limit: int
+) -> list[dict[str, Any]]:
+    """Las ``limit`` licitaciones más recientes que cumplen ``clauses``."""
+    stmt = select(*columns).select_from(licitaciones)
+    if clauses:
+        stmt = stmt.where(and_(*clauses))
+    stmt = stmt.order_by(licitaciones.c.fecha_publicacion.desc()).limit(limit)
+    sql, params = compile_query(stmt)
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, params))
