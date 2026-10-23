@@ -12,9 +12,9 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { apiGet, apiMutate } from "@/lib/api-client";
+import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
-import type { WatchlistFavoriteCreated, WatchlistFavoriteItem } from "@/lib/api-types";
+import type { Schemas, WatchlistFavoriteCreated, WatchlistFavoriteItem } from "@/lib/api-types";
 import { watchlistKeys } from "@/lib/query-keys";
 
 // Del contrato OpenAPI (la ruta ya declara su DTO) — antes duplicado a mano.
@@ -126,6 +126,56 @@ export function useRemoveWatchlistItem() {
     // crece o si la gente entra y sale de las mismas licitaciones.
     onSuccess: () => {
       registrarEvento("licitacion_seguida", { accion: "dejar_de_seguir" });
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: WATCHLIST_ITEMS_KEY });
+    },
+  });
+}
+
+/** Tope de la nota personal; el mismo que valida `WatchlistNotaBody` en la API. */
+export const MAX_NOTA_FAVORITO = 2000;
+
+export interface NotaFavoritoInput {
+  idExterno: string;
+  /** Vacía (o solo espacios) borra la nota: es la forma de quitarla que ofrece la API. */
+  nota: string;
+}
+
+type NotaFavorito = Schemas["WatchlistNotaBody"];
+
+/**
+ * Escribe o borra la nota **personal** de un favorito (CU-03, C6.6).
+ *
+ * Optimista como el alta y la baja: la nota aparece guardada al pulsar y, si
+ * la API la rechaza, vuelve la anterior con un aviso. Un 404 no es un fallo de
+ * red: la nota es de quien sigue el expediente, y un favorito que la
+ * organización comparte pero que no sigues tú no la admite.
+ */
+export function useSetWatchlistNota() {
+  const qc = useQueryClient();
+  return useMutation<NotaFavorito, unknown, NotaFavoritoInput, MutationContext>({
+    mutationFn: ({ idExterno, nota }) =>
+      apiMutate<NotaFavorito>(
+        "PUT",
+        // Mismo escape que el DELETE: los `id_externo` de PLACSP llevan barras.
+        `/api/v1/watchlist/items/${encodeURIComponent(idExterno)}/nota`,
+        { nota: nota.trim() || null },
+      ),
+    onMutate: async ({ idExterno, nota }) => {
+      const previous = await cancelAndSnapshot(qc);
+      qc.setQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY, (old) =>
+        (old ?? []).map((item) => (item.id_externo === idExterno ? { ...item, nota: nota.trim() || null } : item)),
+      );
+      return { previous };
+    },
+    onError: (error, _input, ctx) => {
+      qc.setQueryData(WATCHLIST_ITEMS_KEY, ctx?.previous);
+      toast.error(
+        error instanceof ApiError && error.status === 404
+          ? "Solo puedes anotar los favoritos que sigues tú"
+          : "No se pudo guardar la nota",
+      );
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: WATCHLIST_ITEMS_KEY });

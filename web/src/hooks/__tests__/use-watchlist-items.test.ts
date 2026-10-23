@@ -26,6 +26,7 @@ import {
   useWatchlistItems,
   useAddWatchlistItem,
   useRemoveWatchlistItem,
+  useSetWatchlistNota,
   type WatchlistItem,
 } from "@/hooks/use-watchlist-items";
 import { callCredentials, callMethod, callUrl, jsonResponse } from "./fetch-call";
@@ -253,3 +254,71 @@ describe("useRemoveWatchlistItem", () => {
 function cachedLength(qc: QueryClient): number {
   return (qc.getQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY) ?? []).length;
 }
+
+function notaEnCache(qc: QueryClient, idExterno: string): string | null | undefined {
+  return qc.getQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY)?.find((item) => item.id_externo === idExterno)?.nota;
+}
+
+describe("useSetWatchlistNota (CU-03)", () => {
+  it("pinta la nota antes de que responda el PUT y la manda a la ruta del favorito", async () => {
+    const qc = createClient();
+    qc.setQueryData(WATCHLIST_ITEMS_KEY, ITEMS);
+
+    let resolver!: (value: Response) => void;
+    const pendiente = new Promise<Response>((resolve) => {
+      resolver = resolve;
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(pendiente);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSetWatchlistNota(), { wrapper: createWrapper(qc) });
+    act(() => {
+      result.current.mutate({ idExterno: "PA-S 2026/000058", nota: "  Llamar al cliente  " });
+    });
+    act(() => {
+      result.current.mutate({ idExterno: "EXT-1", nota: "  Llamar al cliente  " });
+    });
+
+    await waitFor(() => expect(notaEnCache(qc, "EXT-1")).toBe("Llamar al cliente"));
+
+    // Los `id_externo` de PLACSP llevan barras y espacios: van escapados.
+    expect(callUrl(fetchMock.mock.calls[0])).toBe("/api/v1/watchlist/items/PA-S%202026%2F000058/nota");
+    const [, init] = fetchMock.mock.calls[1];
+    expect(callUrl(fetchMock.mock.calls[1])).toBe("/api/v1/watchlist/items/EXT-1/nota");
+    expect(init?.method).toBe("PUT");
+    expect(JSON.parse(String(init?.body))).toEqual({ nota: "Llamar al cliente" });
+
+    resolver(makeResponse({ nota: "Llamar al cliente" }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+
+  it("una nota vacía se manda como null, que es como la API la borra", async () => {
+    const qc = createClient();
+    qc.setQueryData(WATCHLIST_ITEMS_KEY, [{ ...ITEMS[0], nota: "vieja" }]);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(makeResponse({ nota: null }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSetWatchlistNota(), { wrapper: createWrapper(qc) });
+    act(() => {
+      result.current.mutate({ idExterno: "EXT-1", nota: "   " });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ nota: null });
+  });
+
+  it("si la API la rechaza vuelve la nota anterior, y un 404 dice por qué", async () => {
+    const qc = createClient();
+    qc.setQueryData(WATCHLIST_ITEMS_KEY, [{ ...ITEMS[0], nota: "anterior" }]);
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ detail: "Favorito no encontrado." }, 404)));
+
+    const { result } = renderHook(() => useSetWatchlistNota(), { wrapper: createWrapper(qc) });
+    act(() => {
+      result.current.mutate({ idExterno: "EXT-1", nota: "nueva" });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(notaEnCache(qc, "EXT-1")).toBe("anterior");
+    expect(toast.error).toHaveBeenCalledWith("Solo puedes anotar los favoritos que sigues tú");
+  });
+});

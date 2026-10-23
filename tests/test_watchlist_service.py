@@ -154,26 +154,26 @@ def test_store_pending_digest_returns_false_on_exception():
 
 
 def test_generate_atom_feed_empty_watchlist_returns_valid_xml():
-    """generate_atom_feed sin entradas devuelve XML Atom válido con feed vacío."""
+    """generate_atom_feed sin reglas activas devuelve XML Atom válido con feed vacío."""
     from services.watchlist import generate_atom_feed
 
-    with patch("services.watchlist.query_licitaciones_batch", return_value={}):
-        with patch("db.watchlist.list_entries", return_value=[]):
-            xml = generate_atom_feed("user_key_test")
+    with patch("services.watchlist_rules.list_rules", return_value=[]):
+        xml = generate_atom_feed("user_key_test")
 
     assert '<?xml version="1.0"' in xml
     assert "<feed" in xml
-    assert "sin entradas" in xml
+    assert "<entry>" not in xml
+    assert "sin alertas activas" in xml
 
 
 def test_generate_atom_feed_with_licitaciones_returns_entries():
-    """generate_atom_feed con resultados incluye <entry> en el feed."""
+    """generate_atom_feed lista lo que casa cada regla activa, sin repetir expedientes."""
     from services.watchlist import generate_atom_feed
+    from services.watchlist_rules import WatchlistRule
 
     lic = {
         "id_externo": "LIC-001",
         "titulo": "SAP S/4HANA",
-        "descripcion": "Implantación",
         "organo_contratacion": "AEAT",
         "importe": 100000.0,
         "ccaa": "Madrid",
@@ -182,12 +182,22 @@ def test_generate_atom_feed_with_licitaciones_returns_entries():
         "url": "https://example.com/lic-001",
         "cpv": "72210000",
     }
-    watchlist_entries = [{"cpv_prefix": "7221", "last_notified_at": None}]
+    reglas = [
+        WatchlistRule(id=1, cpv="7221"),
+        WatchlistRule(id=2, cpv="72"),
+        WatchlistRule(id=3, cpv="45", active=False),
+    ]
+    consultadas: list[int | None] = []
 
-    with patch("db.watchlist.list_entries", return_value=watchlist_entries):
-        with patch("services.watchlist.query_licitaciones_batch", return_value={"7221": [lic]}):
+    def _matches(regla: WatchlistRule, *, limit: int) -> list[dict[str, object]]:
+        consultadas.append(regla.id)
+        return [lic]
+
+    with patch("services.watchlist_rules.list_rules", return_value=reglas):
+        with patch("services.watchlist_rules.list_matches", side_effect=_matches):
             xml = generate_atom_feed("user_key_test")
 
-    assert "<entry>" in xml
+    assert xml.count("<entry>") == 1, "dos reglas que casan lo mismo no lo duplican"
     assert "LIC-001" in xml
     assert "SAP S/4HANA" in xml
+    assert consultadas == [1, 2], "una regla pausada no alimenta el feed"

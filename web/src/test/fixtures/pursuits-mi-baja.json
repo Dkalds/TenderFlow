@@ -1,0 +1,27 @@
+{
+  "organization_id": 7,
+  "base": "sin_iva",
+  "ofertas_consideradas": 8,
+  "segmentos": [
+    {
+      "segmento": "cpv4",
+      "clave": "7220",
+      "n": 6,
+      "baja_propia_pct": 12.5,
+      "baja_mercado_pct": 10.0,
+      "contratos_mercado": 40,
+      "suficiente": true,
+      "delta_pct": 2.5
+    },
+    {
+      "segmento": "organo",
+      "clave": "Ayuntamiento de Getafe",
+      "n": 2,
+      "baja_propia_pct": 8.0,
+      "baja_mercado_pct": null,
+      "contratos_mercado": 0,
+      "suficiente": false,
+      "delta_pct": null
+    }
+  ]
+}

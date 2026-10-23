@@ -72,12 +72,12 @@ export function useClaves() {
   });
 }
 
-export interface CrearClaveInput {
-  name: string;
-  scopes?: string[];
-  ttl_days?: number;
-  organization_id?: number | null;
-}
+/**
+ * Cuerpo de `POST /me/keys`, del contrato. Se escribía a mano con `scopes`
+ * como lista y `ttl_days`, cuando la API recibe una cadena separada por comas
+ * y `expires_days`: nadie los mandaba y por eso no fallaba.
+ */
+export type CrearClaveInput = import("@/lib/api-types").Schemas["CreateKeyBody"];
 
 export function useCrearClave() {
   const queryClient = useQueryClient();

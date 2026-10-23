@@ -81,6 +81,10 @@ vi.mock("@/components/pursuits/price-scenarios", () => {
   h.descargados.add("escenarios");
   return { PriceScenariosPanel: () => <p>escenarios de precio</p> };
 });
+vi.mock("@/components/pursuits/mi-baja", () => {
+  h.descargados.add("mi-baja");
+  return { MiBajaPanel: () => <p>tu baja frente al mercado</p> };
+});
 vi.mock("@/components/pliego/simulador-puntuacion", () => {
   h.descargados.add("simulador");
   return { SimuladorPuntuacion: () => <p>simulador de puntuación</p> };
@@ -165,8 +169,8 @@ describe("ficha de la oportunidad — pestañas bajo demanda", TEST_LENTO, () =>
     ["Pliego", ["ficha del pliego", "guion de la oferta"], ["ficha", "guion"]],
     [
       "Precio",
-      ["competencia esperada", "escenarios de precio", "simulador de puntuación"],
-      ["competencia", "escenarios", "simulador"],
+      ["competencia esperada", "escenarios de precio", "tu baja frente al mercado", "simulador de puntuación"],
+      ["competencia", "escenarios", "mi-baja", "simulador"],
     ],
     ["Conversación", ["hilo de la oportunidad"], ["conversacion"]],
   ])("la pestaña %s no se descarga hasta abrirla", async (nombre, textos, modulos) => {

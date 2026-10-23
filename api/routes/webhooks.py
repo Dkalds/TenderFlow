@@ -9,6 +9,7 @@ Endpoints:
     POST   /api/v1/webhooks/{id}/ping    — enviar entrega de prueba
     POST   /api/v1/webhooks/{id}/rotate-secret — secret nuevo (se devuelve una sola vez)
     GET    /api/v1/webhooks/{id}/deliveries — historial de entregas
+    POST   /api/v1/webhooks/{id}/deliveries/{delivery_id}/redeliver — reencolar una entrega
 
 Cada entrega —evento, ping o reintento— lleva ``X-Webhook-Signature`` (v1,
 HMAC del cuerpo), ``X-Webhook-Timestamp`` y ``X-Webhook-Signature-V2`` (HMAC
@@ -47,7 +48,7 @@ import hmac
 import json
 import re
 import secrets
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
@@ -61,6 +62,7 @@ from db.audit import log_event
 from db.events import registrar_metrica_pendientes
 from db.repositories.webhooks import WebhookRepository
 from observability.logging import get_logger
+from shared.audit_events import WEBHOOK_REDELIVERED
 from shared.crypto import cabeceras_de_firma, segundos_unix
 from shared.dto import StatusOk
 from shared.events import (
@@ -195,6 +197,10 @@ class WebhookDelivery(BaseModel):
     success: bool
     payload_size: int | None = None
     created_at: str
+    #: `pending` (en cola de reintento), `delivered` o `failed`. `None` en las
+    #: entregas de prueba (`ping`), que no pasan por la cola. Es lo que dice si
+    #: tiene sentido ofrecer «reenviar»: `success` solo cuenta el último intento.
+    estado: Literal["pending", "delivered", "failed"] | None = None
 
 
 class WebhookEventTypes(BaseModel):
@@ -743,14 +749,15 @@ async def rotate_secret(
     responses={
         202: {"description": "Encolada para reenvío"},
         401: {"description": "API key inválida"},
-        404: {"description": "Webhook o entrega no encontrados"},
-        409: {"description": "La entrega ya se completó"},
+        403: {"description": "Scope insuficiente o sin permiso de escritura en la organización"},
+        404: {"description": "El webhook no es de tu organización, o la entrega no es suya"},
+        409: {"description": "La entrega ya se completó o no guarda cuerpo que reenviar"},
     },
 )
 async def redeliver(
     webhook_id: int,
     delivery_id: int,
-    _ctx: dict[str, Any] = Depends(require_admin),
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> StatusOk:
     """Vuelve a intentar una entrega concreta (C2.4).
 
@@ -762,22 +769,40 @@ async def redeliver(
     No reinicia el contador de intentos: hacerlo convertiría este botón en una
     forma de reintentar indefinidamente un endpoint muerto, que es justo lo que
     el tope de `MAX_INTENTOS` evita.
+
+    Mismo alcance que ``rotate-secret``: el webhook tiene que ser de la
+    organización activa y la entrega, de ese webhook. Hasta 2026-10 exigía
+    ``require_admin`` —el dueño de la organización no podía reenviar las
+    suyas— y no comprobaba ninguna de las dos cosas.
     """
     from db.database import now_utc_iso
     from db.repositories.webhooks import encolar_reintento
 
-    if await run_db(_repo.get_by_id, webhook_id) is None:
+    organization_id = int(ctx["organization_id"])
+    if await run_db(_repo.get_by_id, webhook_id, organization_id=organization_id) is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
 
-    encolada = await run_db(encolar_reintento, delivery_id, ahora=now_utc_iso())
-    if not encolada:
-        # 409 y no 404: la entrega puede existir y estar ya `delivered`, y
-        # decirle al operador «no existe» le haría buscar un problema que no hay.
+    resultado = await run_db(
+        encolar_reintento, delivery_id, webhook_id=webhook_id, ahora=now_utc_iso()
+    )
+    if resultado == "no_existe":
+        raise HTTPException(status_code=404, detail="Entrega no encontrada.")
+    if resultado == "no_reenviable":
+        # 409 y no 404: la entrega existe y está `delivered` (o es un ping sin
+        # cuerpo), y decirle al operador «no existe» le haría buscar un
+        # problema que no hay.
         raise HTTPException(
             status_code=409,
-            detail="La entrega no existe o ya se completó.",
+            detail="La entrega ya se completó o no guarda un cuerpo que reenviar.",
         )
 
+    await run_db(
+        log_event,
+        event_type=WEBHOOK_REDELIVERED,
+        user_key=_actor_key(ctx),
+        resource=f"webhook:{webhook_id}",
+        detail={"organization_id": organization_id, "delivery_id": delivery_id},
+    )
     log.info("webhook_redeliver_encolada", webhook_id=webhook_id, delivery_id=delivery_id)
     return StatusOk(status="encolada")
 

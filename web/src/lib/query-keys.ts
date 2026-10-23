@@ -359,6 +359,12 @@ export const pursuitKeys = {
    */
   adjuntos: (pursuitId: number | string) => ["pursuits", "adjuntos", String(pursuitId)] as const,
   /**
+   * «Mi baja frente al mercado» de la organización (`GET /pursuits/mi-baja`,
+   * C6.5). Bajo la raíz `pursuits`: fijar una oferta presentada cambia la
+   * media, y las mutaciones de pursuits ya invalidan por ese prefijo.
+   */
+  miBaja: (organizationId: OrganizacionDeClave) => ["pursuits", "mi-baja", organizationId] as const,
+  /**
    * Política de adjuntos del entorno (`GET /pursuits/adjuntos/politica`): si hay
    * almacén, el tope y los tipos. No depende de la organización.
    */
